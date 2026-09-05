@@ -80,6 +80,68 @@ const errorResponse = (
 afterEach(() => vi.unstubAllGlobals());
 
 describe('command plan workspace', () => {
+    it('follows the same item through two moves and cancellation, distinguishing 1T, 0T and automatic slots', async () => {
+        let serverQueue = commandQueue(1, [item(11, 1, { command_name: 'A' }), item(22, 2, { command_name: 'B', consumes_turn: false }), item(33, 3, { command_name: 'C' })]);
+        const deleted: string[] = [];
+        vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+            if (init?.method === 'PUT') {
+                const body = JSON.parse(String(init.body)) as { placements: Array<{ id: number; position: number }> };
+                serverQueue = commandQueue(serverQueue.version + 1, serverQueue.items.map((entry) => ({ ...entry, queue_position: body.placements.find((placement) => placement.id === entry.id)!.position })));
+            }
+            if (init?.method === 'DELETE') {
+                deleted.push(String(input));
+                serverQueue = commandQueue(serverQueue.version + 1, serverQueue.items.filter((entry) => entry.id !== 11));
+            }
+            return jsonResponse(String(input).includes('command-definitions') ? catalog([]) : serverQueue);
+        }));
+        const wrapper = mount(CommandQueuePanel, { props: { nationId: 1, mapSpaceId: 2, selected } });
+        await flushPromises();
+        expect(wrapper.findAll('.plan-turn-marker').slice(0, 4).map((marker) => marker.text())).toEqual(['1T', '0T', '1T', '自動']);
+        await wrapper.find('.plan-row').trigger('click');
+        for (const position of [2, 3]) {
+            await wrapper.findAll('.plan-selection-actions button').find((button) => button.text() === '下へ')!.trigger('click');
+            await flushPromises();
+            expect(wrapper.get('.plan-selection-toolbar').text()).toContain(`${position}番を選択中A`);
+        }
+        await wrapper.findAll('.plan-selection-actions button').find((button) => button.text() === '取消')!.trigger('click');
+        await flushPromises();
+        expect(deleted).toEqual(['/api/v1/nations/1/map-spaces/2/command-queue/11']);
+        expect(wrapper.find('.plan-selection-toolbar').exists()).toBe(false);
+    });
+
+    it('preserves a conflicted draft and updates its version only after explicit plan confirmation', async () => {
+        let serverQueue = commandQueue(7);
+        const attempts: Array<Record<string, unknown>> = [];
+        vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+            if (init?.method === 'POST') {
+                attempts.push(JSON.parse(String(init.body)) as Record<string, unknown>);
+                if (attempts.length === 1) {
+                    serverQueue = commandQueue(8, [item(22, 1, { command_name: '別タブの予約' })]);
+                    return errorResponse('conflict', 409);
+                }
+                return jsonResponse({ queue: commandQueue(9) });
+            }
+            return jsonResponse(String(input).includes('command-definitions') ? catalog([definition({ quantity_semantics: 'ordinary' })]) : serverQueue);
+        }));
+        const wrapper = mount(CommandQueuePanel, { props: { nationId: 1, mapSpaceId: 2, selected } });
+        await flushPromises();
+        await wrapper.get('.command-grid button').trigger('click');
+        await wrapper.get('.command-entry-sheet input').setValue('5');
+        await wrapper.get('.command-entry-sheet form').trigger('submit');
+        await flushPromises();
+        expect(wrapper.get<HTMLInputElement>('.command-entry-sheet input').element.value).toBe('5');
+        expect(wrapper.get('.command-entry-context').text()).toContain('x=8, y=7');
+        expect(wrapper.get('[aria-label="最新計画の再確認"]').text()).toContain('別タブの予約');
+        await wrapper.get('.command-entry-sheet form').trigger('submit');
+        expect(attempts).toHaveLength(1);
+        await wrapper.findAll('[aria-label="最新計画の再確認"] button')[1]!.trigger('click');
+        await wrapper.get('.command-entry-sheet form').trigger('submit');
+        await flushPromises();
+        expect(attempts.map((attempt) => attempt.expected_version)).toEqual([7, 8]);
+        expect(attempts[1]).toMatchObject({ target_x: 8, target_y: 7, position: 1, quantity: 5 });
+        expect(wrapper.find('.command-entry-sheet').exists()).toBe(false);
+    });
+
     it('updates one selected owner Ship heading without spending a Nation turn and blocks recovery controls', async () => {
         const shipSelected: MapCell = {
             ...selected,
@@ -830,6 +892,7 @@ describe('command plan workspace', () => {
         const wrapper = mount(CommandQueuePanel, { props: { nationId: 1, mapSpaceId: 2, selected } });
         await flushPromises();
 
+        await wrapper.find('.plan-row').trigger('click');
         await wrapper.find('.plan-row').trigger('keydown', { key: 'Escape' });
         expect(wrapper.find('.plan-row').classes()).toContain('selected');
         const cancel = wrapper.findAll('.plan-selection-actions button').find((button) => button.text() === '取消')!;
@@ -852,6 +915,7 @@ describe('command plan workspace', () => {
         const wrapper = mount(CommandQueuePanel, { props: { nationId: 1, mapSpaceId: 2, selected } });
         await flushPromises();
 
+        await wrapper.find('.plan-row').trigger('click');
         const cancel = wrapper.findAll('.plan-selection-actions button').find((button) => button.text() === '取消')!;
         await cancel.trigger('click');
         await flushPromises();

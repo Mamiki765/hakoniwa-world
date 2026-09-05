@@ -28,14 +28,12 @@ const healthPercent = computed(() => props.state.max_hp > 0
 </script>
 
 <template>
-    <article class="underground-matchup-card" :data-side="side">
-        <div class="underground-matchup-portrait">
-            <img v-if="imageUrl" :src="imageUrl" :alt="`${name}の登録画像`">
-            <span v-else aria-hidden="true">{{ side === 'player' ? '秘' : '◆' }}</span>
+    <article class="underground-matchup-card" :class="{ 'has-portrait': imageUrl }" :data-side="side">
+        <div v-if="imageUrl" class="underground-matchup-portrait">
+            <img :src="imageUrl" :alt="`${name}の登録画像`">
         </div>
         <div class="underground-matchup-content">
             <header>
-                <small>{{ side === 'player' ? 'PLAYER' : 'ENCOUNTER' }}</small>
                 <h2>{{ name }}</h2>
             </header>
             <div class="underground-vitals underground-matchup-vitals">

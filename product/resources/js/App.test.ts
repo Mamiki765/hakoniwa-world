@@ -1887,7 +1887,15 @@ describe('application lobby and island entry', () => {
             rounds: [
                 {
                     round: 1,
-                    actions: [{ type: 'decision', side: '秘書', label: '防御', reason: 'priority_rule_0' }],
+                    actions: [
+                        { type: 'decision', side: '秘書', label: '防御', reason: 'priority_rule_0' },
+                        { type: 'action', side: '秘書', actor_name: '過去のペリドット', label: '治癒祈祷' },
+                        { type: 'mp_cost', side: '秘書', actor_name: '過去のペリドット', label: 'MP消費', amount: 1146 },
+                        { type: 'role_stack_gain', side: '秘書', actor_name: '過去のペリドット', label: '増加: 恩寵', amount: 1 },
+                        { type: 'recovery', side: '秘書', actor_name: '過去のペリドット', target_name: '過去のペリドット', label: '治癒祈祷', amount: 84 },
+                        { type: 'counter', side: '対戦相手', actor_name: '深層追跡者', target_name: '過去のペリドット', label: '反撃', amount: 7 },
+                        { type: 'mp_recovery', side: '秘書', actor_name: '過去のペリドット', label: 'MP回復', amount: 3000 },
+                    ],
                     end_state: {
                         player: { hp: 650, max_hp: 660, mp: 9700, barrier: 40, statuses: [], role_stacks: { fighting_spirit: 1, grace: 0 } },
                         enemy: { hp: 100, max_hp: 200, mp: 0, barrier: 0, statuses: [], role_stacks: { fighting_spirit: 0, grace: 0 } },
@@ -2521,9 +2529,24 @@ describe('application lobby and island entry', () => {
         expect(wrapper.get('.underground-combat-summary').text()).not.toContain('ラウンド数');
         expect(wrapper.get('.underground-combat-summary').text()).not.toContain('残HP');
         expect(wrapper.get('.underground-combat-summary').text()).not.toContain('最終MP');
-        expect(wrapper.findAll('.underground-matchup-card')).toHaveLength(2);
-        expect(wrapper.findAll('.underground-vitals progress.hp')).toHaveLength(2);
-        expect(wrapper.findAll('.underground-vitals progress.mp')).toHaveLength(2);
+        expect(wrapper.findAll('.underground-matchup .underground-matchup-card')).toHaveLength(2);
+        expect(wrapper.findAll('.underground-matchup .underground-vitals progress.hp')).toHaveLength(2);
+        expect(wrapper.findAll('.underground-matchup .underground-vitals progress.mp')).toHaveLength(2);
+        expect(wrapper.findAll('.underground-round-state')).toHaveLength(2);
+        expect(wrapper.findAll('.underground-round-state')[0]!.get('summary').text()).toBe('ラウンド1終了時の状態');
+        expect(wrapper.findAll('.underground-round-state')[0]!.findAll('progress.mp')).toHaveLength(2);
+        const firstRoundLog = wrapper.findAll('.underground-round')[0]!;
+        expect(firstRoundLog.findAll('.underground-action-log > li')).toHaveLength(4);
+        expect(firstRoundLog.get('.underground-action-cost').text()).toBe('MP −1,146');
+        expect(firstRoundLog.get('.underground-action-details').findAll('p').map((line) => line.text())).toEqual([
+            '過去のペリドットは「治癒祈祷」を使用した。',
+            '過去のペリドットはMPを1146消費した。',
+            '過去のペリドットの恩寵が1増加した。',
+            '過去のペリドットは「治癒祈祷」でHPを84回復した。',
+        ]);
+        expect(firstRoundLog.get('[data-action-type="counter"]').text()).toContain('7ダメージ');
+        expect(firstRoundLog.get('.is-support').text()).toContain('MPを3000回復');
+        expect(firstRoundLog.get('.is-support').text()).not.toContain('自然');
         expect(wrapper.findAll('.underground-round')).toHaveLength(2);
         expect(wrapper.findAll('.underground-round')[0]!.text()).toContain('Round 1');
         expect(wrapper.findAll('.underground-round')[1]!.text()).toContain('Round 2');

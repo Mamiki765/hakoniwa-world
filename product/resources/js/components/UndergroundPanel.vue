@@ -1136,17 +1136,45 @@ function withoutActionPrefix(label: string, prefix: string): string {
 function actionTone(action: RoundAction): string {
     if (action.type === 'warning' || action.type === 'phase_transition') return 'is-warning';
     if (action.type === 'awakening' || action.type === 'awakening_technique') return 'is-awakening';
-    if (action.type === 'recovery' || action.type === 'mp_recovery' || action.type === 'barrier') return 'is-recovery';
+    if (action.type === 'mp_recovery') return 'is-support';
+    if (action.type === 'recovery' || action.type === 'barrier') return 'is-recovery';
     if (action.critical) return 'is-critical';
     if (action.evaded || action.parried || action.complete_guarded || action.type === 'guard') return 'is-defense';
     if (action.type === 'damage' || action.type === 'counter') return 'is-impact';
     return 'is-neutral';
 }
 
+// Only coalesce an adjacent declaration/cost/role-stack/result with matching actor and label.
+// Counterattacks, ongoing effects and ambiguous historical rows retain source order.
+function actionGroups(actions: RoundAction[]): Array<{ action: RoundAction; source: RoundAction[]; cost: number | null }> {
+    const groups: Array<{ action: RoundAction; source: RoundAction[]; cost: number | null }> = [];
+    for (let index = 0; index < actions.length; index++) {
+        const declaration = actions[index]!;
+        const cost = actions[index + 1];
+        let effectIndex = index + 2;
+        while (actions[effectIndex] && ['role_stack_gain', 'role_stack_spent'].includes(actions[effectIndex]!.type)
+            && actions[effectIndex]!.side === declaration.side && actions[effectIndex]!.actor_name === declaration.actor_name) effectIndex++;
+        const effect = actions[effectIndex];
+        if (declaration.type === 'action' && declaration.actor_name
+            && cost?.type === 'mp_cost' && cost.amount !== undefined
+            && cost.side === declaration.side && cost.actor_name === declaration.actor_name
+            && effect && ['damage', 'recovery', 'barrier'].includes(effect.type)
+            && effect.side === declaration.side && effect.actor_name === declaration.actor_name
+            && effect.label === declaration.label) {
+            groups.push({ action: effect, source: actions.slice(index, effectIndex + 1), cost: cost.amount });
+            index = effectIndex;
+        } else {
+            groups.push({ action: declaration, source: [declaration], cost: null });
+        }
+    }
+    return groups;
+}
+
 function actionHighlight(action: RoundAction): string | null {
     if (action.type === 'awakening' || action.type === 'awakening_technique') return '覚醒';
     if (action.critical) return '会心';
-    if (action.type === 'recovery' || action.type === 'mp_recovery') return '回復';
+    if (action.type === 'mp_recovery') return 'MP回復';
+    if (action.type === 'recovery') return '回復';
     if (action.complete_guarded) return '完全防御';
     if (action.evaded) return '回避';
     if (action.parried) return '受け流し';
@@ -1212,7 +1240,6 @@ onUnmounted(() => {
 
                 <section v-if="finalBattleState" class="underground-matchup" aria-labelledby="underground-matchup-title">
                     <div class="underground-matchup-heading">
-                        <p class="eyebrow">MATCHUP</p>
                         <h2 id="underground-matchup-title">最終ラウンド終了時</h2>
                     </div>
                     <div class="underground-matchup-grid">
@@ -1237,25 +1264,41 @@ onUnmounted(() => {
                         <h2>Round {{ round.round }}</h2>
                         <ul class="underground-action-log">
                             <li
-                                v-for="(action, index) in round.actions"
+                                v-for="(group, index) in actionGroups(round.actions)"
                                 :key="index"
-                                :class="actionTone(action)"
-                                :data-action-type="action.type"
+                                :class="actionTone(group.action)"
+                                :data-action-type="group.action.type"
                             >
                                 <span class="underground-action-marker" aria-hidden="true" />
                                 <div>
-                                    <span v-if="actionHighlight(action)" class="underground-event-badge">{{ actionHighlight(action) }}</span>
-                                    <small v-if="action.agility_combo_hits" class="underground-agility-combo">{{ action.agility_combo_hits }}連続ヒット！</small>
-                                    <p>{{ actionNarrative(action, currentBattle) }}</p>
+                                    <span v-if="actionHighlight(group.action)" class="underground-event-badge">{{ actionHighlight(group.action) }}</span>
+                                    <small v-if="group.action.agility_combo_hits" class="underground-agility-combo">{{ group.action.agility_combo_hits }}連続ヒット！</small>
+                                    <span v-if="group.cost !== null" class="underground-action-cost">MP −{{ group.cost.toLocaleString() }}</span>
+                                    <p v-for="(supplement, supplementIndex) in group.source.slice(2, -1)" :key="supplementIndex" class="underground-action-supplement">{{ actionNarrative(supplement, currentBattle) }}</p>
+                                    <p>{{ actionNarrative(group.action, currentBattle) }}</p>
+                                    <details v-if="group.source.length > 1" class="underground-action-details">
+                                        <summary>行動の全詳細</summary>
+                                        <p v-for="(source, sourceIndex) in group.source" :key="sourceIndex">{{ actionNarrative(source, currentBattle) }}</p>
+                                    </details>
                                 </div>
                             </li>
                         </ul>
+                        <details v-if="round.end_state" class="underground-round-state">
+                            <summary>ラウンド{{ round.round }}終了時の状態</summary>
+                            <div class="underground-matchup-grid">
+                                <UndergroundCombatantCard :name="currentPlayerDisplayName" side="player" :state="round.end_state.player" />
+                                <UndergroundCombatantCard :name="currentBattle.encounter_name" side="enemy" :state="round.end_state.enemy" />
+                            </div>
+                        </details>
                     </article>
 
                     <article v-for="roundNumber in simpleRoundNumbers(currentBattle)" :key="`simple-${roundNumber}`" class="underground-round">
                         <h2>Round {{ roundNumber }}</h2>
                         <ol class="underground-action-log">
-                            <li v-for="(action, index) in simpleActions(currentBattle).filter((item) => item.round === roundNumber)" :key="index">{{ simpleActionNarrative(action, currentBattle) }}</li>
+                            <li v-for="(action, index) in simpleActions(currentBattle).filter((item) => item.round === roundNumber)" :key="index">
+                                <span class="underground-action-marker" aria-hidden="true" />
+                                <div><p>{{ simpleActionNarrative(action, currentBattle) }}</p></div>
+                            </li>
                         </ol>
                     </article>
                 </div>

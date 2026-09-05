@@ -70,6 +70,8 @@ const commandStatus = ref<CommandStatus>({ kind: 'idle', text: '未送信' });
 const shipStatus = ref<CommandStatus>({ kind: 'idle', text: '未変更' });
 const shipHeading = ref<number | null>(null);
 const selectedPosition = ref(1);
+const selectedItemId = ref<number | null>(null);
+const pendingNeedsConfirmation = ref(false);
 const draggedItemId = ref<number | null>(null);
 const pendingDefinition = ref<CommandDefinition | null>(null);
 const pendingCommandContext = ref<FrozenCommandContext | null>(null);
@@ -98,7 +100,10 @@ const pendingCostMoney = computed(() => {
 });
 const ownShip = computed(() => props.selected?.ship?.is_owner === true ? props.selected.ship : null);
 const selectedPlanSlot = computed(() => queue.value.plan.find((slot) => slot.position === selectedPosition.value) ?? null);
-const selectedPlanItem = computed(() => selectedPlanSlot.value?.kind === 'explicit' ? selectedPlanSlot.value : null);
+const selectedPlanItem = computed(() => {
+    const slot = queue.value.plan.find((slot) => slot.kind === 'explicit' && slot.id === selectedItemId.value);
+    return slot?.kind === 'explicit' ? slot : null;
+});
 const pendingTargetLabel = computed(() => {
     const context = pendingCommandContext.value;
     if (context === null) return '';
@@ -245,12 +250,13 @@ function prepareCommand(
     trigger: HTMLElement | null = null,
     frozen = freezeCommandContext(),
 ): void {
+    pendingNeedsConfirmation.value = false;
     pendingQuantity.value = definition.quantity_default;
     commandParameters.value = Object.fromEntries(Object.entries(definition.parameters).map(([key, schema]) => [
         key,
         schema.default ?? null,
     ]));
-    if (definition.quantity_semantics !== 'unused' || Object.keys(definition.parameters).length > 0) {
+    if (definition.quantity_semantics !== 'unused' || Object.keys(definition.parameters).length > 0 || definition.execution_warnings.length > 0) {
         commandTrigger.value = trigger;
         pendingCommandContext.value = frozen;
         pendingDefinition.value = definition;
@@ -348,6 +354,7 @@ const parametersAreValid = computed(() => {
 });
 
 async function addPendingCommand(): Promise<void> {
+    if (pendingNeedsConfirmation.value) return;
     const definition = pendingDefinition.value;
     const frozen = pendingCommandContext.value;
     if (definition === null || frozen === null || !pendingQuantityIsValid.value || !parametersAreValid.value || pendingQuantity.value === null) return;
@@ -391,6 +398,7 @@ async function addCommand(
             refreshRequestedAfterMutation = true;
             return false;
         }
+        selectedItemId.value = null;
         applyServerQueue(result.queue);
         if (selectedPosition.value === submittedPosition) {
             selectedPosition.value = clampPosition(submittedPosition + 1, result.queue.limit);
@@ -410,6 +418,7 @@ async function addCommand(
 }
 
 function closePendingCommand(): void {
+    pendingNeedsConfirmation.value = false;
     pendingDefinition.value = null;
     pendingCommandContext.value = null;
     const trigger = commandTrigger.value;
@@ -436,6 +445,7 @@ function trapCommandDialogFocus(event: KeyboardEvent): void {
 
 function selectPlanSlot(slot: EffectivePlanSlot): void {
     selectedPosition.value = slot.position;
+    selectedItemId.value = slot.kind === 'explicit' ? slot.id : null;
 }
 
 function beginDrag(slot: EffectivePlanSlot): void {
@@ -459,7 +469,7 @@ async function dropAt(target: EffectivePlanSlot): Promise<void> {
     await mutateQueue('PUT', `${basePath()}/command-queue/reorder`, {
         placements,
         expected_version: queue.value.version,
-    });
+    }, sourceId);
 }
 
 async function move(itemId: number, delta: number): Promise<void> {
@@ -518,7 +528,7 @@ function planKeydown(event: KeyboardEvent, slot: EffectivePlanSlot): void {
     }
 }
 
-async function mutateQueue(method: 'PUT' | 'PATCH' | 'DELETE', path: string, body: object): Promise<boolean> {
+async function mutateQueue(method: 'PUT' | 'PATCH' | 'DELETE', path: string, body: object, followItemId = selectedItemId.value): Promise<boolean> {
     if (busy.value) return false;
     const context = queueContext();
     beginMutation();
@@ -528,6 +538,7 @@ async function mutateQueue(method: 'PUT' | 'PATCH' | 'DELETE', path: string, bod
             refreshRequestedAfterMutation = true;
             return false;
         }
+        selectedItemId.value = followItemId;
         applyServerQueue(nextQueue);
         setCommandSuccess();
         return true;
@@ -552,6 +563,11 @@ function applyServerQueue(nextQueue: CommandQueue): void {
     queue.value = nextQueue;
     emit('queue', nextQueue);
     selectedPosition.value = clampPosition(selectedPosition.value, nextQueue.limit);
+    if (selectedItemId.value !== null) {
+        const selected = nextQueue.items.find((item) => item.id === selectedItemId.value);
+        if (selected) selectedPosition.value = selected.queue_position;
+        else selectedItemId.value = null;
+    }
     synchronizeEditingItem(nextQueue);
 }
 
@@ -627,12 +643,21 @@ function handleMutationError(error: unknown): void {
         return;
     }
     if (error instanceof ApiError && error.status === 409) {
+        if (pendingCommandContext.value !== null) pendingNeedsConfirmation.value = true;
         setCommandError('開発計画が更新されたため再読み込みしました');
         refreshRequestedAfterMutation = true;
         return;
     }
     setCommandError(playerFacingReason(error, '通信に失敗しました'));
     if (!(error instanceof ApiError) || error.status >= 500) refreshRequestedAfterMutation = true;
+}
+
+function confirmPendingPlan(): void {
+    const context = pendingCommandContext.value;
+    if (busy.value || context === null || !isCurrentQueueContext(context) || queue.value.version <= context.queueVersion) return;
+    pendingCommandContext.value = { ...context, queueVersion: queue.value.version };
+    pendingNeedsConfirmation.value = false;
+    commandStatus.value = { kind: 'idle', text: '最新の計画を確認しました。入力内容を確認して登録してください' };
 }
 
 function playerFacingReason(error: unknown, fallback: string): string {
@@ -712,7 +737,7 @@ onBeforeUnmount(() => {
                             <span class="turn-cost-badge">{{ definition.consumes_turn ? '1ターン' : 'ターン消費なし' }}</span>
                             <span v-if="definition.initial_facility_capacity">初期 {{ definition.initial_facility_capacity.formatted }}</span>
                             <span v-if="definition.shortfall_money > 0" class="shortfall">資金が{{ formatExactMoney(definition.shortfall_money) }}不足</span>
-                            <span v-for="warning in definition.execution_warnings" :key="warning" class="shortfall">{{ warning }}</span>
+                            <span v-if="definition.execution_warnings.length" class="shortfall">注意事項あり</span>
                         </button>
                     </div>
                     <p v-else class="empty-state">
@@ -779,7 +804,7 @@ onBeforeUnmount(() => {
                                 >{{ slot.command_suffix }}</span>
                                 <template v-if="slot.kind === 'explicit' && slot.quantity_semantics === 'ordinary'"> ×{{ slot.quantity }}</template>
                                 <template v-else-if="slot.kind === 'explicit' && slot.quantity_semantics === 'selector'">（{{ slot.quantity_label }}）</template>
-                                <span class="plan-turn-marker">{{ slot.consumes_turn ? '1T' : '自動' }}</span>
+                                <span class="plan-turn-marker">{{ slot.kind === 'automatic_finance' ? '自動' : slot.consumes_turn ? '1T' : '0T' }}</span>
                             </strong>
                             <small v-if="slot.kind === 'explicit' && slot.target_context === 'underground_slot'">
                                 地下{{ slot.target_layer }}層・slot {{ slot.target_slot_index }}
@@ -787,7 +812,7 @@ onBeforeUnmount(() => {
                             <small v-else-if="slot.kind === 'explicit'">
                                 x={{ slot.target_x }}, y={{ slot.target_y }}
                             </small>
-                            <small v-else>ターン消費なし</small>
+                            <small v-else>空き枠の資金繰り</small>
                         </span>
                     </li>
                 </ol>
@@ -831,6 +856,20 @@ onBeforeUnmount(() => {
                     {{ commandStatus.text }}
                 </p>
                 <form @submit.prevent="addPendingCommand">
+                    <p v-for="warning in pendingDefinition.execution_warnings" :key="warning" class="shortfall">{{ warning }}</p>
+                    <section v-if="pendingNeedsConfirmation" aria-label="最新計画の再確認">
+                        <p>入力と対象は保持しています。最新の計画を確認してください（この位置へ挿入します）。</p>
+                        <ol>
+                            <li v-for="slot in queue.plan" :key="slot.position">
+                                {{ slot.position }}番：{{ slot.command_name }}<strong v-if="slot.position === pendingCommandContext.position"> ← 挿入位置</strong>
+                                <small v-if="slot.kind === 'explicit'">
+                                    ×{{ slot.quantity }}・{{ slot.target_context === 'underground_slot' ? `地下${slot.target_layer}層 slot ${slot.target_slot_index}` : `x=${slot.target_x}, y=${slot.target_y}` }}
+                                </small>
+                            </li>
+                        </ol>
+                        <button type="button" :disabled="busy" @click="requestRefresh">最新計画を再取得</button>
+                        <button type="button" :disabled="busy || queue.version <= pendingCommandContext.queueVersion" @click="confirmPendingPlan">最新計画と挿入位置を確認した</button>
+                    </section>
                     <label v-if="pendingDefinition.quantity_semantics === 'selector'">種類
                         <select v-model.number="pendingQuantity" required>
                             <option :value="null" disabled>選択してください</option>
@@ -858,7 +897,7 @@ onBeforeUnmount(() => {
                     </label>
                     <div class="popover-actions">
                         <button type="button" @click="closePendingCommand">キャンセル</button>
-                        <button type="submit" :disabled="busy || !pendingQuantityIsValid || !parametersAreValid">計画へ登録</button>
+                        <button type="submit" :disabled="busy || pendingNeedsConfirmation || !pendingQuantityIsValid || !parametersAreValid">計画へ登録</button>
                     </div>
                 </form>
             </section>
