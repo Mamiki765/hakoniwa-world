@@ -20,7 +20,7 @@
         "martial_red": {
             "label": "武力技巧型（赤）",
             "growth_path": "martial_red",
-            "stp_weights_bps": {"vitality": 1500, "might": 5000, "finesse": 2500, "spirit": 0, "agility": 1000},
+            "stp_weights_bps": {"vitality": 2500, "might": 4500, "finesse": 2000, "spirit": 0, "agility": 1000},
             "skill_allocations": {
                 "martial_precision_cut": {"rank": 1, "active_slot": 1},
                 "martial_weapon_mastery": {"rank": 5, "active_slot": null},
@@ -138,7 +138,7 @@
         "trial2_breach_charge": {
             "label": "破城突進", "node_key": null, "mp_cost": 0, "cooldown": 0, "required_weapon_styles": [], "consume_status": "telegraph",
             "effects": [
-                {"type": "damage", "target": "enemy", "category": "physical", "potency_bps": 11200, "stat_coefficients": {"might": 10000}, "weapon_coefficient_bps": 12000, "fixed": 0, "target_max_hp_bps": 0, "can_crit": false, "dodgeable": true, "hits": 1}
+                {"type": "damage", "target": "enemy", "category": "physical", "potency_bps": 10000, "stat_coefficients": {"might": 10000}, "weapon_coefficient_bps": 11000, "fixed": 0, "target_max_hp_bps": 0, "can_crit": false, "dodgeable": true, "hits": 1}
             ]
         },
         "trial2_funeral_hymn": {
@@ -162,7 +162,7 @@
         "trial2_judgment_charge": {
             "label": "断罪突進", "node_key": null, "mp_cost": 0, "cooldown": 0, "required_weapon_styles": [], "consume_status": "telegraph",
             "effects": [
-                {"type": "damage", "target": "enemy", "category": "physical", "potency_bps": 11800, "stat_coefficients": {"might": 9000, "spirit": 1000}, "weapon_coefficient_bps": 12000, "fixed": 0, "target_max_hp_bps": 0, "can_crit": false, "dodgeable": false, "hits": 1}
+                {"type": "damage", "target": "enemy", "category": "physical", "potency_bps": 10500, "stat_coefficients": {"might": 9000, "spirit": 1000}, "weapon_coefficient_bps": 11000, "fixed": 0, "target_max_hp_bps": 0, "can_crit": false, "dodgeable": false, "hits": 1}
             ]
         },
         "trial2_headless_stance": {
@@ -210,72 +210,72 @@
     "enemies": {
         "trial2_sootfang_scout": {
             "label": "煤牙の斥候", "species": "ゴブリン", "boss": false,
-            "base_stats": {"vitality": 350, "might": 700, "finesse": 250, "spirit": 150, "agility": 220},
-            "max_hp": 3500, "physical_defense": 220, "magical_defense": 180, "weapon_power": 240,
+            "base_stats": {"vitality": 350, "might": 550, "finesse": 220, "spirit": 150, "agility": 220},
+            "max_hp": 2300, "physical_defense": 175, "magical_defense": 145, "weapon_power": 180,
             "normal_attack": {"type": "damage", "category": "physical", "potency_bps": 5500, "stat_coefficients": {"might": 8500, "finesse": 1500}, "weapon_coefficient_bps": 10000, "fixed": 0, "target_max_hp_bps": 0, "can_crit": false, "dodgeable": true, "hits": 1},
             "skills": [], "ai_rules": [{"conditions": [{"type": "always"}], "action": "normal_attack"}], "modifiers": {}
         },
         "trial2_mockflame_jester": {
             "label": "嘲炎の道化", "species": "インプ", "boss": false,
-            "base_stats": {"vitality": 360, "might": 180, "finesse": 260, "spirit": 850, "agility": 170},
-            "max_hp": 4200, "physical_defense": 200, "magical_defense": 220, "weapon_power": 260,
+            "base_stats": {"vitality": 360, "might": 180, "finesse": 230, "spirit": 650, "agility": 170},
+            "max_hp": 2700, "physical_defense": 160, "magical_defense": 175, "weapon_power": 195,
             "normal_attack": {"type": "damage", "category": "miracle", "potency_bps": 6000, "stat_coefficients": {"spirit": 10000}, "weapon_coefficient_bps": 10000, "fixed": 0, "target_max_hp_bps": 0, "can_crit": false, "dodgeable": true, "hits": 1},
             "skills": ["trial2_mocking_flame"], "ai_rules": [{"conditions": [{"type": "skill_ready", "skill": "trial2_mocking_flame"}], "action": "skill:trial2_mocking_flame"}, {"conditions": [{"type": "always"}], "action": "normal_attack"}], "modifiers": {}
         },
         "trial2_ironchain_hellhound": {
             "label": "鉄鎖の獄犬", "species": "ヘルハウンド", "boss": false,
-            "base_stats": {"vitality": 400, "might": 850, "finesse": 350, "spirit": 160, "agility": 200},
-            "max_hp": 4500, "physical_defense": 230, "magical_defense": 190, "weapon_power": 270,
+            "base_stats": {"vitality": 400, "might": 650, "finesse": 280, "spirit": 160, "agility": 200},
+            "max_hp": 3000, "physical_defense": 185, "magical_defense": 150, "weapon_power": 205,
             "normal_attack": {"type": "damage", "category": "physical", "potency_bps": 5800, "stat_coefficients": {"might": 7500, "finesse": 2500}, "weapon_coefficient_bps": 10000, "fixed": 0, "target_max_hp_bps": 0, "can_crit": false, "dodgeable": true, "hits": 1},
             "skills": ["trial2_chain_fang"], "ai_rules": [{"conditions": [{"type": "skill_ready", "skill": "trial2_chain_fang"}], "action": "skill:trial2_chain_fang"}, {"conditions": [{"type": "always"}], "action": "normal_attack"}], "modifiers": {}
         },
         "trial2_sleepless_stonewing": {
             "label": "不寝番の石翼", "species": "ガーゴイル", "boss": false,
-            "base_stats": {"vitality": 650, "might": 780, "finesse": 180, "spirit": 180, "agility": 120},
-            "max_hp": 6000, "physical_defense": 500, "magical_defense": 220, "weapon_power": 280,
+            "base_stats": {"vitality": 650, "might": 600, "finesse": 180, "spirit": 180, "agility": 120},
+            "max_hp": 3300, "physical_defense": 380, "magical_defense": 170, "weapon_power": 210,
             "normal_attack": {"type": "damage", "category": "physical", "potency_bps": 6500, "stat_coefficients": {"might": 10000}, "weapon_coefficient_bps": 10000, "fixed": 0, "target_max_hp_bps": 0, "can_crit": false, "dodgeable": true, "hits": 1},
             "skills": [], "ai_rules": [{"conditions": [{"type": "always"}], "action": "normal_attack"}], "modifiers": {}
         },
         "trial2_redhorn_breacher": {
             "label": "赤角の破城兵", "species": "ミノタウロス", "boss": false,
-            "base_stats": {"vitality": 700, "might": 1200, "finesse": 180, "spirit": 160, "agility": 120},
-            "max_hp": 7000, "physical_defense": 350, "magical_defense": 300, "weapon_power": 340,
+            "base_stats": {"vitality": 700, "might": 750, "finesse": 180, "spirit": 160, "agility": 120},
+            "max_hp": 3800, "physical_defense": 270, "magical_defense": 230, "weapon_power": 230,
             "normal_attack": {"type": "damage", "category": "physical", "potency_bps": 7500, "stat_coefficients": {"might": 10000}, "weapon_coefficient_bps": 10000, "fixed": 0, "target_max_hp_bps": 0, "can_crit": false, "dodgeable": true, "hits": 1},
             "skills": ["enemy_telegraph", "trial2_breach_charge"], "ai_rules": [{"conditions": [{"type": "self_has_status", "status": "telegraph"}], "action": "skill:trial2_breach_charge"}, {"conditions": [{"type": "round_modulo", "modulo": 4, "equals": 3}], "action": "skill:enemy_telegraph"}, {"conditions": [{"type": "always"}], "action": "normal_attack"}], "modifiers": {}
         },
         "trial2_funeral_bell_priest": {
             "label": "弔鐘の司祭", "species": "レイス", "boss": false,
-            "base_stats": {"vitality": 520, "might": 180, "finesse": 260, "spirit": 1000, "agility": 140},
-            "max_hp": 6500, "physical_defense": 260, "magical_defense": 420, "weapon_power": 320,
+            "base_stats": {"vitality": 520, "might": 180, "finesse": 230, "spirit": 750, "agility": 140},
+            "max_hp": 3600, "physical_defense": 200, "magical_defense": 320, "weapon_power": 230,
             "normal_attack": {"type": "damage", "category": "miracle", "potency_bps": 7000, "stat_coefficients": {"spirit": 10000}, "weapon_coefficient_bps": 10000, "fixed": 0, "target_max_hp_bps": 0, "can_crit": false, "dodgeable": true, "hits": 1},
             "skills": ["trial2_funeral_hymn"], "ai_rules": [{"conditions": [{"type": "self_lacks_status", "status": "trial2_funeral_blessing"}, {"type": "skill_ready", "skill": "trial2_funeral_hymn"}], "action": "skill:trial2_funeral_hymn"}, {"conditions": [{"type": "always"}], "action": "normal_attack"}], "modifiers": {}
         },
         "trial2_beguiling_serpent_princess": {
             "label": "蠱惑の蛇姫", "species": "ラミア", "boss": false,
-            "base_stats": {"vitality": 560, "might": 300, "finesse": 500, "spirit": 850, "agility": 210},
-            "max_hp": 6800, "physical_defense": 300, "magical_defense": 320, "weapon_power": 320,
+            "base_stats": {"vitality": 560, "might": 300, "finesse": 380, "spirit": 600, "agility": 210},
+            "max_hp": 3600, "physical_defense": 230, "magical_defense": 245, "weapon_power": 225,
             "normal_attack": {"type": "damage", "category": "miracle", "potency_bps": 6200, "stat_coefficients": {"spirit": 8000, "finesse": 2000}, "weapon_coefficient_bps": 10000, "fixed": 0, "target_max_hp_bps": 0, "can_crit": false, "dodgeable": true, "hits": 1},
             "skills": ["trial2_beguiling_gaze"], "ai_rules": [{"conditions": [{"type": "skill_ready", "skill": "trial2_beguiling_gaze"}], "action": "skill:trial2_beguiling_gaze"}, {"conditions": [{"type": "always"}], "action": "normal_attack"}], "modifiers": {}
         },
         "trial2_night_banquet_blood_lord": {
             "label": "夜宴の血侯", "species": "ヴァンパイア", "boss": false,
-            "base_stats": {"vitality": 650, "might": 1100, "finesse": 420, "spirit": 400, "agility": 190},
-            "max_hp": 7500, "physical_defense": 340, "magical_defense": 340, "weapon_power": 350,
-            "normal_attack": {"type": "damage", "category": "physical", "potency_bps": 7200, "stat_coefficients": {"might": 8000, "finesse": 2000}, "weapon_coefficient_bps": 10000, "fixed": 0, "target_max_hp_bps": 0, "can_crit": true, "dodgeable": true, "hits": 1},
-            "skills": [], "ai_rules": [{"conditions": [{"type": "always"}], "action": "normal_attack"}], "modifiers": {"lifesteal_bps": 500, "self_regeneration_target_hp_bps": 40}
+            "base_stats": {"vitality": 650, "might": 600, "finesse": 320, "spirit": 400, "agility": 190},
+            "max_hp": 4000, "physical_defense": 255, "magical_defense": 255, "weapon_power": 220,
+            "normal_attack": {"type": "damage", "category": "physical", "potency_bps": 6500, "stat_coefficients": {"might": 8000, "finesse": 2000}, "weapon_coefficient_bps": 10000, "fixed": 0, "target_max_hp_bps": 0, "can_crit": true, "dodgeable": true, "hits": 1},
+            "skills": [], "ai_rules": [{"conditions": [{"type": "always"}], "action": "normal_attack"}], "modifiers": {"lifesteal_bps": 400, "self_regeneration_target_hp_bps": 30}
         },
         "trial2_oath_eater_black_knight": {
             "label": "誓約喰らいの黒騎士", "species": "デーモンナイト", "boss": false,
-            "base_stats": {"vitality": 800, "might": 1300, "finesse": 300, "spirit": 320, "agility": 130},
-            "max_hp": 8500, "physical_defense": 400, "magical_defense": 350, "weapon_power": 380,
-            "normal_attack": {"type": "damage", "category": "physical", "potency_bps": 7800, "stat_coefficients": {"might": 9000, "vitality": 1000}, "weapon_coefficient_bps": 10000, "fixed": 0, "target_max_hp_bps": 0, "can_crit": false, "dodgeable": true, "hits": 1},
+            "base_stats": {"vitality": 800, "might": 800, "finesse": 250, "spirit": 320, "agility": 130},
+            "max_hp": 4500, "physical_defense": 300, "magical_defense": 270, "weapon_power": 250,
+            "normal_attack": {"type": "damage", "category": "physical", "potency_bps": 7000, "stat_coefficients": {"might": 9000, "vitality": 1000}, "weapon_coefficient_bps": 10000, "fixed": 0, "target_max_hp_bps": 0, "can_crit": false, "dodgeable": true, "hits": 1},
             "skills": ["trial2_black_vow"], "ai_rules": [{"conditions": [{"type": "self_lacks_status", "status": "trial2_black_vow"}, {"type": "skill_ready", "skill": "trial2_black_vow"}], "action": "skill:trial2_black_vow"}, {"conditions": [{"type": "round_modulo", "modulo": 4, "equals": 0}], "action": "defend"}, {"conditions": [{"type": "always"}], "action": "normal_attack"}], "modifiers": {}
         },
         "trial2_headless_lord_of_judgment": {
             "label": "首なき断罪卿（デュラハン）", "species": "デュラハン", "boss": true,
-            "base_stats": {"vitality": 1000, "might": 1500, "finesse": 320, "spirit": 300, "agility": 150},
-            "max_hp": 11000, "physical_defense": 450, "magical_defense": 420, "weapon_power": 450,
-            "normal_attack": {"type": "damage", "category": "physical", "potency_bps": 8200, "stat_coefficients": {"might": 9000, "vitality": 1000}, "weapon_coefficient_bps": 10000, "fixed": 0, "target_max_hp_bps": 0, "can_crit": false, "dodgeable": true, "hits": 1},
+            "base_stats": {"vitality": 1000, "might": 900, "finesse": 270, "spirit": 300, "agility": 150},
+            "max_hp": 5200, "physical_defense": 340, "magical_defense": 320, "weapon_power": 300,
+            "normal_attack": {"type": "damage", "category": "physical", "potency_bps": 7500, "stat_coefficients": {"might": 9000, "vitality": 1000}, "weapon_coefficient_bps": 10000, "fixed": 0, "target_max_hp_bps": 0, "can_crit": false, "dodgeable": true, "hits": 1},
             "skills": ["enemy_telegraph", "trial2_judgment_charge", "trial2_headless_stance"],
             "ai_rules": [
                 {"conditions": [{"type": "self_has_status", "status": "telegraph"}], "action": "skill:trial2_judgment_charge"},
