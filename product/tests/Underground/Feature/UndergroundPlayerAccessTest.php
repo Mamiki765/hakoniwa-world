@@ -2711,7 +2711,10 @@ final class UndergroundPlayerAccessTest extends TestCase
         $this->assertFalse(collect($locked['recollections']['entries'])->contains('key', 'true_name_after'));
         $secretaryNaming = collect($locked['recollections']['entries'])->firstWhere('key', 'secretary_naming');
         $this->assertSame('秘書との出会い', $secretaryNaming['title']);
-        $this->assertSame('秘書画面を初めて開いた時、あなたは海賊の施設で鎖につながれたその人物と出会った。', $secretaryNaming['body'][0]);
+        $stories = json_decode(file_get_contents(resource_path('stories/intro.json')), true, 512, JSON_THROW_ON_ERROR);
+        $this->assertSame($stories['secretary_naming']['body'], $secretaryNaming['body']);
+        $this->assertStringContainsString('その手の趣向の持ち主に合わせた整形の線も考えたが、そのような跡は見受けられなかった。', $secretaryNaming['body'][1]);
+        $this->assertSame('「私の名前は——」', $secretaryNaming['body'][2]);
         $this->assertStringNotContainsString('現在の名前', implode("\n", $secretaryNaming['body']));
         $this->actingAs($owner)->postJson('/api/v1/me/underground/recollections/read', [
             'request_id' => (string) Str::uuid(),

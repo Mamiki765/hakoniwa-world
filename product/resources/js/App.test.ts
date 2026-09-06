@@ -1584,6 +1584,8 @@ describe('application lobby and island entry', () => {
         await flushPromises();
 
         expect(wrapper.get('.secretary-story').text()).toContain('怪獣に踏み荒らされた地から妙な施設が見つかった');
+        expect(wrapper.get('.secretary-story').text()).toContain('その手の趣向の持ち主に合わせた整形の線も考えたが、そのような跡は見受けられなかった。');
+        expect(wrapper.findAll('.secretary-story p').at(-1)?.text()).toBe('「私の名前は——」');
         expect(wrapper.get('.secretary-page-title').text()).toBe('秘書');
         expect(wrapper.get('.secretary-name').text()).toBe('？？？');
         expect(wrapper.get<HTMLInputElement>('#secretary-name').element.value).toBe('ペリドット');

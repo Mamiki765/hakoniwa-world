@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import stories from '../stories/intro.json';
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
 import { ApiError, api, apiEnvelope } from './api/client';
 import CellDetails from './components/CellDetails.vue';
@@ -2017,20 +2018,7 @@ async function abandonNation(): Promise<void> {
             <template v-if="viewedSecretaryProfile?.is_owner && secretary?.name === null">
                 <h2 class="secretary-name">？？？</h2>
                 <div class="secretary-story">
-                    <p>
-                        今日も開発の計画を指示するあなたの元に一つの知らせが入り込んだ。<br>
-                        どうやら、怪獣に踏み荒らされた地から妙な施設が見つかったという。<br>
-                        恐らくは海賊のものだろう、非合法な組織が拉致した人々を収容していた施設。<br>
-                        その最奥で、あなたは鎖に繋がれたその人物と出会う。
-                    </p>
-                    <p>
-                        その人物は、耳が長く尖っていた。<br>
-                        その人物の瞳は、不思議な淡い光を宿していた。<br>
-                        恐らくは最高級の『商品』として保管されていたのだろう。<br>
-                        その手の趣向の持ち主に合わせた整形の線も考えたが、そのような跡は見受けられなかった。<br>
-                        あなたは名前を、尋ねた。
-                    </p>
-                    <p>「私の名前は——」</p>
+                    <p v-for="paragraph in stories.secretary_naming.body" :key="paragraph" style="white-space: pre-line">{{ paragraph }}</p>
                 </div>
                 <form class="secretary-naming-form" @submit.prevent="nameSecretary">
                     <label for="secretary-name">秘書の名前を決めてください。</label>
