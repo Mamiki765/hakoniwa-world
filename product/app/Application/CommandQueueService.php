@@ -311,12 +311,14 @@ final class CommandQueueService
                 if (SettlementOverbuildPolicy::protectsCapital($definition->key, $target->facility?->key)) {
                     throw new PlayerFacingCommandException('首都を通常建設commandで上書きすることはできません。');
                 }
+                $projectionMemo = new SurfaceCommandProjectionMemo;
                 $projectedTarget = $this->projectCellStateBeforePosition(
                     $target,
                     $queue,
                     $position,
                     $lockedNation,
                     $mapSpace,
+                    projectionMemo: $projectionMemo,
                 );
                 if ($definition instanceof CommandDefinition) {
                     $this->assertFacilityExpansionRegistration(
@@ -324,6 +326,11 @@ final class CommandQueueService
                         $target,
                         $projectedTarget,
                         $ruleset->settings,
+                        $queue,
+                        $position,
+                        $lockedNation,
+                        $mapSpace,
+                        $projectionMemo,
                     );
                 }
                 $ownerOverbuildEffect = OwnerFacilityOverbuildPolicy::effectForState(
@@ -1727,10 +1734,25 @@ final class CommandQueueService
         MapCell $target,
         array $projectedState,
         array $rulesetSettings,
+        NationCommandQueue $queue,
+        int $beforePosition,
+        Nation $nation,
+        MapSpace $mapSpace,
+        SurfaceCommandProjectionMemo $projectionMemo,
     ): void {
         if (! $this->facilityExpansionCommand($definition)
             || $projectedState['facility_key'] !== $definition->result_facility_key
             || $target->facility?->key !== $definition->result_facility_key) {
+            return;
+        }
+        if ($this->precedingProjectedCommandReplacesCurrentFacility(
+            $target,
+            $queue,
+            $beforePosition,
+            $nation,
+            $mapSpace,
+            $projectionMemo,
+        )) {
             return;
         }
         $facility = $target->facility;
@@ -1748,6 +1770,43 @@ final class CommandQueueService
         if ($target->facility_scale >= $maximumScale) {
             throw new PlayerFacingCommandException('施設の規模が上限に達しています。');
         }
+    }
+
+    private function precedingProjectedCommandReplacesCurrentFacility(
+        MapCell $target,
+        NationCommandQueue $queue,
+        int $beforePosition,
+        Nation $nation,
+        MapSpace $mapSpace,
+        SurfaceCommandProjectionMemo $projectionMemo,
+    ): bool {
+        $currentFacilityKey = $target->facility?->key;
+        if ($currentFacilityKey === null) {
+            return false;
+        }
+
+        foreach ($queue->items as $item) {
+            $itemPosition = (int) $item->queue_position;
+            if ($item->target_context !== 'surface_cell'
+                || $itemPosition >= $beforePosition
+                || $item->target_x !== $target->x
+                || $item->target_y !== $target->y) {
+                continue;
+            }
+            $stateAfterItem = $this->projectCellStateBeforePosition(
+                $target,
+                $queue,
+                $itemPosition + 1,
+                $nation,
+                $mapSpace,
+                projectionMemo: $projectionMemo,
+            );
+            if ($stateAfterItem['facility_key'] !== $currentFacilityKey) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /** @return array<string, mixed> */
