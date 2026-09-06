@@ -686,21 +686,21 @@ class DomesticCommandExecutionTest extends TestCase
             ->whereHas('terrain', fn ($query) => $query->where('key', 'plain'))
             ->firstOrFail();
         FacilityDefinition::query()->where('key', 'farm')->firstOrFail()->update([
-            'initial_scale' => 10_000,
-            'scale_increment' => 2_000,
-            'maximum_scale' => 50_000,
+            'initial_scale' => 10,
+            'scale_increment' => 2,
+            'maximum_scale' => 50,
         ]);
         $this->queue($user, $nation, $space, 'build_farm', $target, 3, 1);
         $executor = app(DomesticCommandExecutor::class);
         $context = $this->context($world, [$nation->id], str_repeat('c', 64));
 
         $executor->execute($context);
-        $this->assertSame(10_000, $target->fresh()->facility_scale);
+        $this->assertSame(10, $target->fresh()->facility_scale);
         $executor->execute($context);
-        $this->assertSame(12_000, $target->fresh()->facility_scale);
-        $target->update(['facility_scale' => 50_000]);
+        $this->assertSame(12, $target->fresh()->facility_scale);
+        $target->update(['facility_scale' => 99]);
         $executor->execute($context);
-        $this->assertSame(50_000, $target->fresh()->facility_scale);
+        $this->assertSame(100, $target->fresh()->facility_scale);
 
         $projectionSnapshots = DB::table('audit_events')
             ->where('event_type', 'command.facility_built_public')
@@ -713,9 +713,9 @@ class DomesticCommandExecutionTest extends TestCase
                 return [$decoded['expanded'], $decoded['before_scale'], $decoded['facility_scale']];
             })->all();
         $this->assertSame([
-            [false, null, 10_000],
-            [true, 10_000, 12_000],
-            [true, 50_000, 50_000],
+            [false, null, 10],
+            [true, 10, 12],
+            [true, 99, 100],
         ], $projectionSnapshots);
 
         $world->update(['current_turn' => 2]);
@@ -727,11 +727,11 @@ class DomesticCommandExecutionTest extends TestCase
             $publicMessages,
         );
         $this->assertContains(
-            sprintf('規模表示島(%d,%d)で農場整備が行われました。（規模 10,000 → 12,000）', $target->x, $target->y),
+            sprintf('規模表示島(%d,%d)で農場整備が行われました。（規模 10 → 12）', $target->x, $target->y),
             $publicMessages,
         );
         $this->assertContains(
-            sprintf('規模表示島(%d,%d)で農場整備が行われました。（規模 50,000 → 50,000）', $target->x, $target->y),
+            sprintf('規模表示島(%d,%d)で農場整備が行われました。（規模 99 → 100）', $target->x, $target->y),
             $publicMessages,
         );
     }

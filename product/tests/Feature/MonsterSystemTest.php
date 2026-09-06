@@ -147,7 +147,7 @@ class MonsterSystemTest extends TestCase
         $this->assertNotSame('aoi_inora', $spawned->definition->key);
     }
 
-    public function test_natural_spawn_supports_ten_definitions_without_adding_non_pool_species_or_changing_the_type_draw(): void
+    public function test_natural_spawn_supports_all_authored_definitions_without_adding_non_pool_species_or_changing_the_type_draw(): void
     {
         [$world, $nation, $ruleset, $space] = $this->worldAndNation('十種自然発生国');
         $settings = $ruleset->settings;
@@ -171,7 +171,7 @@ class MonsterSystemTest extends TestCase
         $spawnedKey = MonsterInstance::query()->with('definition')->sole()->definition->key;
         $this->assertSame($expected, $spawnedKey);
         $this->assertNotContains($spawnedKey, ['mecha_inora_zero', 'aoi_inora']);
-        $this->assertSame(10, MonsterDefinition::query()
+        $this->assertSame(count($settings['monster_definitions']), MonsterDefinition::query()
             ->where('ruleset_version_id', $ruleset->id)->count());
     }
 
@@ -210,7 +210,7 @@ class MonsterSystemTest extends TestCase
         $spawnedKey = MonsterInstance::query()->with('definition')->sole()->definition->key;
         $this->assertSame($expected, $spawnedKey);
         $this->assertContains($spawnedKey, $pool);
-        $this->assertSame(20, MonsterDefinition::query()
+        $this->assertSame(count($settings['monster_definitions']), MonsterDefinition::query()
             ->where('ruleset_version_id', $ruleset->id)->count());
     }
 
