@@ -50,6 +50,10 @@ final class UndergroundPlayerAccessTest extends TestCase
         $this->getJson('/api/v1/me/underground/surface-map')->assertUnauthorized();
         $this->postJson('/api/v1/me/underground/entry', ['request_id' => (string) Str::uuid()])
             ->assertUnauthorized();
+        $this->postJson('/api/v1/me/underground/recollections/read', [
+            'request_id' => (string) Str::uuid(),
+            'chapter' => 1,
+        ])->assertUnauthorized();
         $this->postJson('/api/v1/me/underground/explore', ['request_id' => (string) Str::uuid()])
             ->assertUnauthorized();
         $this->postJson('/api/v1/me/underground/trial/start')->assertUnauthorized();
@@ -2685,6 +2689,260 @@ final class UndergroundPlayerAccessTest extends TestCase
         $this->assertSame(0, UndergroundIntroRequest::query()->count());
     }
 
+    public function test_recollections_require_trial_two_first_clear_and_are_sequential_idempotent_and_side_effect_free(): void
+    {
+        [$owner, $ownerSecretary] = $this->secretaryUser('Recollection secretary');
+        $profile = $this->openEquipmentProfile($ownerSecretary);
+        UndergroundTrialProgress::query()->create([
+            'underground_profile_id' => $profile->id,
+            'trial_key' => 'trial_02',
+            'unlocked_at' => Carbon::now(),
+            'first_cleared_at' => null,
+        ]);
+
+        $locked = $this->actingAs($owner)->getJson('/api/v1/me/underground')
+            ->assertOk()
+            ->json('data');
+        $this->assertTrue($locked['recollections']['available']);
+        $this->assertFalse($locked['recollections']['trial_02_first_cleared']);
+        $this->assertFalse($locked['recollections']['past_available']);
+        $this->assertFalse(collect($locked['recollections']['entries'])->contains('key', 'past_1'));
+        $this->actingAs($owner)->postJson('/api/v1/me/underground/recollections/read', [
+            'request_id' => (string) Str::uuid(),
+            'chapter' => 1,
+        ])->assertConflict()->assertJsonPath('code', 'underground_recollection_locked');
+        $this->assertSame(0, UndergroundIntroRequest::query()->where('operation', 'recollection_read')->count());
+
+        UndergroundTrialProgress::query()
+            ->where('underground_profile_id', $profile->id)
+            ->where('trial_key', 'trial_02')
+            ->update(['first_cleared_at' => Carbon::now()]);
+        $unread = $this->actingAs($owner)->getJson('/api/v1/me/underground')
+            ->assertOk()
+            ->json('data');
+        $this->assertTrue($unread['recollections']['available']);
+        $this->assertTrue($unread['recollections']['past_available']);
+        $this->assertSame(0, $unread['recollections']['max_completed']);
+        $this->assertNull($unread['recollections']['serious_talk']);
+        $pastOne = collect($unread['recollections']['entries'])->firstWhere('key', 'past_1');
+        $pastTwo = collect($unread['recollections']['entries'])->firstWhere('key', 'past_2');
+        $this->assertFalse($pastOne['locked']);
+        $this->assertFalse($pastOne['experienced']);
+        $this->assertArrayNotHasKey('body', $pastOne);
+        $this->assertTrue($pastTwo['locked']);
+        $this->assertFalse($pastTwo['experienced']);
+        $this->assertArrayNotHasKey('body', $pastTwo);
+
+        $introProgress = UndergroundIntroProgress::query()
+            ->where('underground_profile_id', $profile->id)
+            ->sole();
+        $before = [
+            ...$profile->refresh()->only(['combat_level', 'combat_xp', 'shard_balance', 'current_hp']),
+            'guide_recollection_max_completed' => $introProgress->guide_recollection_max_completed,
+        ];
+        $battleCount = UndergroundBattle::query()->count();
+        $requestId = (string) Str::uuid();
+        $this->actingAs($owner)->postJson('/api/v1/me/underground/recollections/read', [
+            'request_id' => (string) Str::uuid(),
+            'chapter' => 2,
+        ])->assertConflict()->assertJsonPath('code', 'underground_recollection_sequence_conflict');
+        $this->assertSame(0, $introProgress->refresh()->guide_recollection_max_completed);
+
+        $first = $this->actingAs($owner)->postJson('/api/v1/me/underground/recollections/read', [
+            'request_id' => $requestId,
+            'chapter' => 1,
+        ])->assertOk();
+        $firstData = $first->json('data');
+        $this->assertSame(1, $firstData['recollections']['max_completed']);
+        $this->assertTrue(collect($firstData['recollections']['entries'])->firstWhere('key', 'past_1')['experienced']);
+        $this->assertContains(
+            '「ええ。かつての世界の全てを滅ぼし、深い海に沈め、永遠に解かれぬ封印をつけたのが犯人というのなら、私がそうですよ」',
+            collect($firstData['recollections']['entries'])->firstWhere('key', 'past_1')['body'],
+        );
+        $this->assertSame($battleCount, UndergroundBattle::query()->count());
+        $afterFirst = [
+            ...$profile->refresh()->only(['combat_level', 'combat_xp', 'shard_balance', 'current_hp']),
+            'guide_recollection_max_completed' => $introProgress->refresh()->guide_recollection_max_completed,
+        ];
+        $this->assertSame($before['combat_level'], $afterFirst['combat_level']);
+        $this->assertSame($before['combat_xp'], $afterFirst['combat_xp']);
+        $this->assertSame($before['shard_balance'], $afterFirst['shard_balance']);
+        $this->assertSame($before['current_hp'], $afterFirst['current_hp']);
+        $this->assertSame(1, UndergroundIntroRequest::query()->where('operation', 'recollection_read')->count());
+
+        $retry = $this->actingAs($owner)->postJson('/api/v1/me/underground/recollections/read', [
+            'request_id' => $requestId,
+            'chapter' => 1,
+        ])->assertOk();
+        $this->assertSame($first->json(), $retry->json());
+        $this->assertSame(1, UndergroundIntroRequest::query()->where('operation', 'recollection_read')->count());
+
+        $this->actingAs($owner)->postJson('/api/v1/me/underground/recollections/read', [
+            'request_id' => $requestId,
+            'chapter' => 2,
+        ])->assertConflict()->assertJsonPath('code', 'underground_request_conflict');
+        $this->actingAs($owner)->postJson('/api/v1/me/underground/recollections/read', [
+            'request_id' => (string) Str::uuid(),
+            'chapter' => 3,
+        ])->assertConflict()->assertJsonPath('code', 'underground_recollection_sequence_conflict');
+
+        for ($chapter = 2; $chapter <= 5; $chapter++) {
+            $response = $this->actingAs($owner)->postJson('/api/v1/me/underground/recollections/read', [
+                'request_id' => (string) Str::uuid(),
+                'chapter' => $chapter,
+            ])->assertOk();
+            $this->assertSame($chapter, $response->json('data.recollections.max_completed'));
+        }
+        $complete = $this->actingAs($owner)->getJson('/api/v1/me/underground')
+            ->assertOk()
+            ->json('data');
+        $this->assertSame(5, $complete['recollections']['max_completed']);
+        $this->assertSame('案内人に真剣な話をする', $complete['recollections']['serious_talk']['title']);
+        $talkScenes = $complete['recollections']['serious_talk']['scenes'];
+        $this->assertSame('true_name', $talkScenes['root']['choices'][0]['next']);
+        $this->assertSame([
+            '「私は、自分のことが嫌いです」',
+            '「……それに、最初に私に名前をつけたあなたの夢が覚めることになります」',
+            '「私は、一応は夢魔と名付けられた魔族のハーフです。夢が覚めることはしたくありませんね」',
+            '「どうか夢に浸ってください、私の唯一のお客様」',
+        ], $talkScenes['true_name']['lines']);
+        $this->assertSame('それでも教えて欲しい', $talkScenes['true_name']['choices'][0]['label']);
+        $this->assertSame('true_name_branch', $talkScenes['true_name']['choices'][0]['next']);
+        $this->assertSame([
+            '「……案内係」',
+            '「ええ、はい。　偶然一致していたのです！　なんと奇跡的な一致でしょうね♪ いひひ♪」',
+        ], $talkScenes['true_name_branch']['lines']);
+        $this->assertSame([
+            'あなたについて知ることが私の夢だと伝える',
+            '彼女に自分がつけた名前を呼ぶ',
+            '立ち去る',
+        ], array_column($talkScenes['true_name_branch']['choices'], 'label'));
+        $this->assertSame('root', $talkScenes['true_name_branch']['choices'][2]['next']);
+        $this->assertSame(['「………………」', '「リカ。」'], $talkScenes['true_name_reveal']['lines']);
+        $this->assertSame('true_name_named', $talkScenes['true_name_reveal']['choices'][0]['next']);
+        $this->assertSame(['「そう。それでいい。」'], $talkScenes['true_name_named']['lines']);
+        $this->assertStringNotContainsString('闘いを挑む', json_encode($complete, JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE));
+
+        $scriptedLoss = $this->tutorialBattle($profile);
+        UndergroundIntroProgress::query()
+            ->where('underground_profile_id', $profile->id)
+            ->sole()
+            ->update([
+                'branch_identity' => 'true_name',
+                'shopkeeper_name' => 'リカ',
+                'special_loss_required' => true,
+                'scripted_loss_battle_id' => $scriptedLoss->id,
+            ]);
+        $trueName = $this->actingAs($owner)->getJson('/api/v1/me/underground')
+            ->assertOk()
+            ->json('data.recollections.serious_talk.scenes');
+        $this->assertSame([
+            '「……揶揄ってるんですかね、知ってるくせに」',
+            '「苗字のことなら、私にはありませんよ」',
+            '「なぜなら、私は魔王の一族ですから。王族には名前しかありません」',
+            '「リカという名前しか無いのです。　一時期、『自分に苗字がないのはおかしい』と本気で考えて雨宮なんてもん付け足したりしてましたけどね」',
+            '「代わりに、種族の名をつけて呼ぶことはありましたけどね」',
+            '「RIKA the Succubus……リカ＝サキュバス。おお、さむい、さむい」',
+        ], $trueName['true_name_branch']['lines']);
+    }
+
+    public function test_recollection_uses_the_initial_growth_choice_after_respec_and_explicitly_falls_back(): void
+    {
+        [$owner, $secretary] = $this->secretaryUser('Growth recollection secretary');
+        $profile = $this->openEquipmentProfile($secretary);
+        UndergroundIntroRequest::query()->create([
+            'underground_profile_id' => $profile->id,
+            'request_id' => (string) Str::uuid(),
+            'request_fingerprint' => $this->introFingerprint('growth_path', [
+                'growth_path_key' => 'martial_red',
+            ]),
+            'operation' => 'growth_path',
+            'resulting_stage' => 'growth_path_selected',
+        ]);
+
+        $respecified = $this->actingAs($owner)->postJson('/api/v1/me/underground/respec', [
+            'request_id' => (string) Str::uuid(),
+            'growth_path_key' => 'free_black',
+        ])->assertOk()->json('data');
+        $this->assertSame('free_black', $profile->fresh()->growth_path_key);
+        $body = collect($respecified['recollections']['entries'])->firstWhere('key', 'common_ending')['body'];
+        $this->assertSame([
+            '【初回選択時】',
+            '「ふふ、とってもお似合いですよ、その能力」',
+            '【別の成長方針を選んだ場合】',
+            '「全部？　まぁ、別にあなたにしか必要のないものです。ええ、あげますよ、欲張りさん？」',
+        ], array_slice($body, 0, 4));
+
+        UndergroundIntroRequest::query()
+            ->where('underground_profile_id', $profile->id)
+            ->where('operation', 'growth_path')
+            ->delete();
+        $fallback = $this->actingAs($owner)->getJson('/api/v1/me/underground')
+            ->assertOk()->json('data.recollections.entries');
+        $fallbackBody = collect($fallback)->firstWhere('key', 'common_ending')['body'];
+        $this->assertSame([
+            '【初回選択の保存記録なし】現在の成長方針からは推測せず、両方の分岐台詞を表示します。',
+            '「ふふ、とってもお似合いですよ、その能力」',
+            '「全部？　まぁ、別にあなたにしか必要のないものです。ええ、あげますよ、欲張りさん？」',
+        ], array_slice($fallbackBody, 0, 3));
+    }
+
+    public function test_recollection_trial_stories_remain_bounded_with_many_late_battles(): void
+    {
+        [$owner, $secretary] = $this->secretaryUser('Bounded recollection secretary');
+        $profile = $this->openEquipmentProfile($secretary);
+        UndergroundTrialProgress::query()->create([
+            'underground_profile_id' => $profile->id,
+            'trial_key' => 'trial_02',
+            'unlocked_at' => Carbon::now(),
+            'first_cleared_at' => Carbon::now(),
+        ]);
+        $rows = [];
+        foreach (['trial_01', 'trial_02'] as $trialKey) {
+            for ($run = 1; $run <= 7; $run++) {
+                $runKey = (string) Str::uuid();
+                for ($index = 1; $index <= 10; $index++) {
+                    $snapshot = [];
+                    if ($run === 1 && $index === 1) {
+                        $snapshot['challenge_intro'] = "{$trialKey} start story";
+                    }
+                    if ($run === 7 && $index === 10) {
+                        $snapshot['first_clear_story'] = [
+                            'title' => "{$trialKey} first clear",
+                            'body' => "{$trialKey} late clear story",
+                            'system_messages' => ["{$trialKey} clear reward"],
+                        ];
+                    }
+                    $rows[] = $this->trialBattleRow($profile, $trialKey, $runKey, $index, $snapshot);
+                }
+            }
+        }
+        DB::table('underground_battles')->insert($rows);
+
+        DB::flushQueryLog();
+        DB::enableQueryLog();
+        $entries = $this->actingAs($owner)->getJson('/api/v1/me/underground')
+            ->assertOk()->json('data.recollections.entries');
+        $queries = collect(DB::getQueryLog())->filter(static fn (array $query): bool => str_contains($query['query'], 'from "underground_battles"')
+            && str_contains($query['query'], '"activity_type"')
+            && str_contains($query['query'], '"activity_key"')
+        )->values();
+        DB::disableQueryLog();
+
+        $this->assertSame('trial_01 start story', collect($entries)->firstWhere('key', 'trial_01_start')['body'][0]);
+        $this->assertSame([
+            'trial_02 late clear story',
+            'trial_02 clear reward',
+        ], collect($entries)->firstWhere('key', 'trial_02_clear')['body']);
+        $this->assertCount(4, $queries);
+        foreach ($queries as $query) {
+            $normalized = strtolower((string) $query['query']);
+            $this->assertStringContainsString('select "id", "snapshot"', $normalized);
+            $this->assertStringContainsString('limit 1', $normalized);
+            $this->assertStringNotContainsString('select *', $normalized);
+        }
+    }
+
     /** @return array{User, Secretary} */
     private function secretaryUser(string $name): array
     {
@@ -2778,5 +3036,62 @@ final class UndergroundPlayerAccessTest extends TestCase
             'started_at' => Carbon::now(),
             'finished_at' => Carbon::now(),
         ]);
+    }
+
+    /** @param array<string, mixed> $payload */
+    private function introFingerprint(string $operation, array $payload): string
+    {
+        ksort($payload);
+
+        return hash('sha256', json_encode([
+            'story_identity' => app(UndergroundIntroCatalog::class)->identity(),
+            'operation' => $operation,
+            'payload' => $payload,
+        ], JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE));
+    }
+
+    /**
+     * @param  array<string, mixed>  $snapshot
+     * @return array<string, mixed>
+     */
+    private function trialBattleRow(
+        UndergroundProfile $profile,
+        string $trialKey,
+        string $runKey,
+        int $battleIndex,
+        array $snapshot,
+    ): array {
+        $now = Carbon::now();
+
+        return [
+            'underground_profile_id' => $profile->id,
+            'request_id' => (string) Str::uuid(),
+            'request_fingerprint' => str_repeat('b', 64),
+            'runtime_identity' => 'bounded-recollection-test',
+            'activity_type' => UndergroundBattle::ACTIVITY_TRIAL,
+            'activity_key' => $trialKey,
+            'encounter_key' => "{$trialKey}_encounter",
+            'trial_run_key' => $runKey,
+            'trial_battle_index' => $battleIndex,
+            'result' => UndergroundBattle::RESULT_VICTORY,
+            'rounds' => 1,
+            'damage_dealt' => 1,
+            'damage_received' => 0,
+            'healing_done' => 0,
+            'xp_awarded' => 0,
+            'shard_delta' => 0,
+            'combat_level_before' => 1,
+            'combat_level_after' => 1,
+            'combat_xp_before' => 0,
+            'combat_xp_after' => 0,
+            'shard_balance_before' => 0,
+            'shard_balance_after' => 0,
+            'private_seed' => $battleIndex,
+            'snapshot' => json_encode($snapshot, JSON_THROW_ON_ERROR),
+            'started_at' => $now,
+            'finished_at' => $now,
+            'created_at' => $now,
+            'updated_at' => $now,
+        ];
     }
 }

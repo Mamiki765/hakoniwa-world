@@ -55,7 +55,7 @@ html[data-theme="dark"] {
 html { color: var(--ink); background: var(--paper-deep); }
 body { margin: 0; line-height: 1.8; }
 a { color: var(--navy); text-underline-offset: 3px; }
-.manual-header { display: flex; justify-content: space-between; gap: 1rem; padding: 1rem clamp(1rem, 4vw, 3rem); color: var(--on-solid); background: var(--navy-solid); }
+.manual-header { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 1rem; padding: 1rem clamp(1rem, 4vw, 3rem); color: var(--on-solid); background: var(--navy-solid); }
 .manual-header a { color: var(--on-solid); font-size: 1.15rem; font-weight: 800; text-decoration: none; }
 .manual-layout { display: grid; grid-template-columns: 220px minmax(0, 760px); justify-content: center; gap: 2rem; padding: 2rem 1rem 4rem; }
 .manual-layout nav { display: grid; align-content: start; gap: .35rem; position: sticky; top: 1rem; height: fit-content; }
@@ -67,10 +67,11 @@ h1 { margin-top: 0; font-family: Georgia, "Yu Mincho", serif; font-size: clamp(2
 h2 { margin-top: 2.4rem; padding-bottom: .35rem; border-bottom: 2px solid var(--heading-line); }
 h3 { margin-top: 1.8rem; }
 li + li { margin-top: .25rem; }
-.manual-content table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+.manual-table-scroll { max-width: 100%; overflow-x: auto; }
+.manual-table-scroll:focus-visible { outline: 2px solid var(--navy); outline-offset: 2px; }
+.manual-content table { width: 100%; min-width: 36rem; border-collapse: collapse; table-layout: fixed; }
 .manual-content th, .manual-content td { padding: .65rem .75rem; border: 1px solid var(--line); text-align: left; vertical-align: top; overflow-wrap: anywhere; }
 .manual-content th { background: var(--paper-deep); }
-.manual-content th:first-child, .manual-content td:first-child { width: 6.5rem; }
 .contact-action a { display: inline-block; padding: .75rem 1rem; color: var(--on-solid); background: var(--navy-solid); font-weight: 800; text-decoration: none; }
 .contact-unavailable { padding: .75rem 1rem; background: var(--warning-surface); }
 
@@ -78,6 +79,5 @@ li + li { margin-top: .25rem; }
     .manual-layout { grid-template-columns: 1fr; }
     .manual-layout nav { position: static; grid-template-columns: repeat(2, 1fr); }
     .manual-content th, .manual-content td { padding: .55rem; }
-    .manual-content th:first-child, .manual-content td:first-child { width: 5rem; }
     .standalone-content { margin: 1rem; }
 }

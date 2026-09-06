@@ -2,8 +2,10 @@
 
 namespace Tests\Feature;
 
+use App\Application\NationBasicStatusProjection;
 use App\Application\NationCreationService;
 use App\Domain\Facility\FacilityCapacityService;
+use App\Domain\Facility\FacilityRankPolicy;
 use App\Domain\Facility\MissileBaseRules;
 use App\Domain\Map\MapCellStateService;
 use App\Models\FacilityDefinition;
@@ -92,6 +94,65 @@ final class FacilityAndMapStateTest extends TestCase
 
         $this->expectException(DomainException::class);
         app(FacilityCapacityService::class)->validateScale($farm, 51);
+    }
+
+    public function test_rank_two_contract_drives_scale_boundaries_capacity_and_shared_map_details(): void
+    {
+        [$user, $nation, $mapSpace] = $this->nation('ランク施設国');
+        $world = $nation->world()->with('rulesetVersion')->firstOrFail();
+        $settings = $world->rulesetVersion->settings;
+        $ranks = app(FacilityRankPolicy::class);
+
+        foreach ([
+            'farm' => [50, 1, 100],
+            'factory' => [100, 5, 200],
+            'mine' => [200, 2, 400],
+        ] as $key => [$rankOneMaximum, $rankTwoIncrement, $rankTwoMaximum]) {
+            $facility = FacilityDefinition::query()->where('key', $key)->firstOrFail();
+            $this->assertSame(1, $ranks->rank($settings, $key, $rankOneMaximum));
+            $this->assertSame(2, $ranks->rank($settings, $key, $rankOneMaximum + $rankTwoIncrement));
+            $this->assertSame($rankOneMaximum, $ranks->expandedScale($settings, $facility, $rankOneMaximum - 1));
+            $this->assertSame($rankOneMaximum + $rankTwoIncrement, $ranks->expandedScale($settings, $facility, $rankOneMaximum));
+            $this->assertSame($rankTwoMaximum, $ranks->maximumScale($settings, $facility));
+        }
+
+        $farm = FacilityDefinition::query()->where('key', 'farm')->firstOrFail();
+        $cell = MapCell::query()->where('owner_nation_id', $nation->id)
+            ->whereNull('facility_definition_id')
+            ->whereHas('terrain', fn ($query) => $query->where('key', 'plain'))
+            ->firstOrFail();
+        app(MapCellStateService::class)->setFacility($cell, $farm, 51, null, 100);
+        $cell->save();
+
+        $status = app(NationBasicStatusProjection::class)->forNation($nation->fresh());
+        $this->assertSame(51_000, $status['farm_capacity_people']);
+        $this->assertSame('tile.large_farm', $ranks->presentation($settings, $farm, 51)['asset_key']);
+
+        $presented = $this->cellFromResponse(
+            $this->actingAs($user)->getJson($this->chunkUrl($mapSpace, $cell))->assertOk()->json('data.cells'),
+            $cell,
+        );
+        $details = collect($presented['details'])->keyBy('key');
+        $this->assertSame('大農場', $presented['facility_name']);
+        $this->assertSame('大農場', $presented['display_name']);
+        $this->assertSame('tile.farm', $presented['asset']['key']);
+        $this->assertSame(2, $details['facility_rank']['value']);
+        $this->assertSame('51,000人規模', $details['facility_capacity']['formatted']);
+        $this->assertSame('森3個分の台風耐性', $details['facility_effect']['formatted']);
+
+        $cell->update(['facility_scale' => 50]);
+        $presentedAfterDowngrade = $this->cellFromResponse(
+            $this->actingAs($user)->getJson($this->chunkUrl($mapSpace, $cell))->assertOk()->json('data.cells'),
+            $cell,
+        );
+        $downgradeDetails = collect($presentedAfterDowngrade['details'])->keyBy('key');
+        $this->assertSame('農場', $presentedAfterDowngrade['facility_name']);
+        $this->assertSame(1, $downgradeDetails['facility_rank']['value']);
+        $this->assertSame('50,000人規模', $downgradeDetails['facility_capacity']['formatted']);
+        $this->assertSame(
+            '50,000人規模で再度農場整備するとランク2へ',
+            $downgradeDetails['facility_promotion']['formatted'],
+        );
     }
 
     public function test_owner_sees_missile_state_and_other_viewers_receive_indistinguishable_forest(): void

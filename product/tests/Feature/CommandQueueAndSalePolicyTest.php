@@ -1045,6 +1045,95 @@ class CommandQueueAndSalePolicyTest extends TestCase
         $this->assertSame(1, DB::table('audit_events')->where('event_type', 'command.cancelled')->count());
     }
 
+    public function test_facility_queue_catalog_and_registration_use_the_v21_effective_maximum(): void
+    {
+        [$user, $nation, $mapSpace] = $this->nation('施設queue上限国');
+        $targets = MapCell::query()->where('owner_nation_id', $nation->id)
+            ->whereNull('facility_definition_id')
+            ->whereHas('terrain', fn ($query) => $query->where('key', 'plain'))
+            ->orderBy('id')->limit(2)->get();
+        $this->assertCount(2, $targets);
+        [$expandable, $atMaximum] = [$targets[0], $targets[1]];
+        $farm = FacilityDefinition::query()->where('key', 'farm')->firstOrFail();
+        $state = app(MapCellStateService::class);
+        $state->setFacility($expandable, $farm, 49, null, 100);
+        $expandable->save();
+        $state->setFacility($atMaximum, $farm, 100, null, 100);
+        $atMaximum->save();
+        $base = "/api/v1/nations/{$nation->id}/map-spaces/{$mapSpace->id}";
+
+        $catalog = collect($this->actingAs($user)->getJson(
+            "{$base}/command-definitions?target_x={$expandable->x}&target_y={$expandable->y}",
+        )->assertOk()->json('data.commands'));
+        $expandableDefinition = $catalog->firstWhere('key', 'build_farm');
+        $this->assertSame('currently_executable', $expandableDefinition['execution_preview_status']);
+        $this->assertTrue($expandableDefinition['available']);
+        $this->assertSame([], $expandableDefinition['execution_warnings']);
+
+        $queuePath = "{$base}/command-queue";
+        $queued = $this->postJson($queuePath, [
+            'command_key' => 'build_farm',
+            'target_x' => $expandable->x,
+            'target_y' => $expandable->y,
+            'quantity' => 2,
+            'request_key' => (string) Str::uuid(),
+            'expected_version' => 1,
+        ])->assertCreated();
+        $this->assertSame(2, $queued->json('data.queue.items.0.quantity'));
+
+        $catalogAtMaximum = collect($this->actingAs($user)->getJson(
+            "{$base}/command-definitions?target_x={$atMaximum->x}&target_y={$atMaximum->y}",
+        )->assertOk()->json('data.commands'));
+        $maximumDefinition = $catalogAtMaximum->firstWhere('key', 'build_farm');
+        $this->assertSame('currently_unavailable', $maximumDefinition['execution_preview_status']);
+        $this->assertContains('施設の規模が上限に達しています。', $maximumDefinition['execution_warnings']);
+
+        $this->postJson($queuePath, [
+            'command_key' => 'build_farm',
+            'target_x' => $atMaximum->x,
+            'target_y' => $atMaximum->y,
+            'request_key' => (string) Str::uuid(),
+            'expected_version' => 2,
+        ])->assertUnprocessable()
+            ->assertJsonPath('code', 'command_rejected');
+    }
+
+    public function test_maximum_rank_facility_can_be_cleared_rebuilt_and_then_expanded_in_one_plan(): void
+    {
+        [$user, $nation, $mapSpace] = $this->nation('施設再建予約国');
+        $nation->update(['money' => 10_000]);
+        $target = MapCell::query()->where('owner_nation_id', $nation->id)
+            ->whereNull('facility_definition_id')
+            ->whereHas('terrain', fn ($query) => $query->where('key', 'plain'))
+            ->firstOrFail();
+        $farm = FacilityDefinition::query()->where('key', 'farm')->firstOrFail();
+        app(MapCellStateService::class)->setFacility($target, $farm, 100, null, 100);
+        $target->save();
+        $queuePath = "/api/v1/nations/{$nation->id}/map-spaces/{$mapSpace->id}/command-queue";
+
+        foreach (['land_clear', 'build_farm', 'build_farm'] as $index => $commandKey) {
+            $this->actingAs($user)->postJson($queuePath, [
+                'command_key' => $commandKey,
+                'target_x' => $target->x,
+                'target_y' => $target->y,
+                'request_key' => (string) Str::uuid(),
+                'expected_version' => $index + 1,
+            ])->assertCreated();
+        }
+
+        $this->assertSame(
+            ['land_clear', 'build_farm', 'build_farm'],
+            NationCommandQueueItem::query()
+                ->where('status', 'queued')
+                ->orderBy('queue_position')
+                ->with('definition')
+                ->get()
+                ->map(static fn (NationCommandQueueItem $item): string => $item->definition->key)
+                ->all(),
+        );
+        $this->assertSame(100, $target->fresh()->facility_scale);
+    }
+
     public function test_single_add_request_key_conflicts_fail_closed_for_every_canonical_field(): void
     {
         [$user, $nation, $mapSpace] = $this->nation('単体冪等競合国');

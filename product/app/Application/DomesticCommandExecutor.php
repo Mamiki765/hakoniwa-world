@@ -14,6 +14,7 @@ use App\Domain\Command\TerritoryExpansionFacts;
 use App\Domain\Command\TerritoryExpansionPolicy;
 use App\Domain\Economy\CapacityBoundedAssetService;
 use App\Domain\Economy\NationCapacityResolver;
+use App\Domain\Facility\FacilityRankPolicy;
 use App\Domain\Map\ChunkCoordinateService;
 use App\Domain\Map\GridCoordinate;
 use App\Domain\Map\MapCellStateService;
@@ -79,6 +80,7 @@ final class DomesticCommandExecutor
         private readonly SurfaceShipCatalog $surfaceShips,
         private readonly SurfaceShipBuildService $surfaceShipBuild,
         private readonly SurfaceShipForcedDisplacementService $surfaceShipDisplacement,
+        private readonly FacilityRankPolicy $facilityRanks,
     ) {}
 
     /**
@@ -496,10 +498,21 @@ final class DomesticCommandExecutor
                 && $ownerOverbuildEffect === null) {
                 return ['reason' => CommandFailureReason::FacilityExists, 'observed' => $observed];
             }
-            if ($matchingQuantityFacility
-                && ($cell->facility_scale === null || $cell->facility?->scale_increment === null
-                || $cell->facility->maximum_scale === null)) {
-                return ['reason' => CommandFailureReason::InvalidFacilityScale, 'observed' => $observed];
+            if ($matchingQuantityFacility) {
+                $facility = $cell->facility;
+                if ($cell->facility_scale === null
+                    || ! $facility instanceof FacilityDefinition
+                    || $facility->scale_increment === null
+                    || $facility->maximum_scale === null) {
+                    return ['reason' => CommandFailureReason::InvalidFacilityScale, 'observed' => $observed];
+                }
+                $rankContract = $this->facilityRanks->contract($context->ruleset->settings, $facility->key);
+                $maximumScale = $rankContract === null
+                    ? null
+                    : $this->facilityRanks->maximumScale($context->ruleset->settings, $facility);
+                if ($maximumScale !== null && $cell->facility_scale >= $maximumScale) {
+                    return ['reason' => CommandFailureReason::InvalidFacilityScale, 'observed' => $observed];
+                }
             }
         }
         if ($definition->target_facility_keys !== []
@@ -991,9 +1004,10 @@ final class DomesticCommandExecutor
         $beforeScale = $cell->facility_scale;
         $scale = null;
         if ($expanded) {
-            $scale = min(
-                (int) $facility->maximum_scale,
-                (int) $cell->facility_scale + (int) $facility->scale_increment,
+            $scale = $this->facilityRanks->expandedScale(
+                $context->ruleset->settings,
+                $facility,
+                (int) $cell->facility_scale,
             );
         }
         $initialExperience = $context->ruleset->settings['facility_definitions'][$facilityKey]['initial_experience'] ?? null;
@@ -1002,6 +1016,9 @@ final class DomesticCommandExecutor
             $facility,
             $scale,
             is_int($initialExperience) ? $initialExperience : null,
+            $facility->scale_unit_people === null
+                ? null
+                : $this->facilityRanks->maximumScale($context->ruleset->settings, $facility),
         );
         $monument = null;
         $population = 0;

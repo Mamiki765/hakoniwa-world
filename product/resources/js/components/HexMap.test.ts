@@ -216,6 +216,7 @@ describe('staggered square-image map', () => {
                 asset: { key: 'hakoniwa_original.monster.hardened', url: null, available: false, fallback_label: 'サンジラ', fallback_style: 'hakoniwa-original-monster-hardened' },
                 current_hp: 1, spawned_max_hp: 2, hp_range: { min: 1, max: 2 },
                 skill_description: '奇数ターンは硬化する。', hardened_now: true, public_state: 'alive',
+                traits: [],
                 coordinate: { x: 0, y: 0 }, host_nation: { nation_number: 3, name: '第三国' }, host_label: 'N3',
             },
             aria_label: 'x 0 y 0 平地 怪獣 サンジラ HP 1 N3 硬化中',

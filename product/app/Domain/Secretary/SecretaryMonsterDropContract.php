@@ -11,6 +11,7 @@ final class SecretaryMonsterDropContract
         'hakoniwa-2s-plus-v18',
         'hakoniwa-2s-plus-v19',
         'hakoniwa-2s-plus-v20',
+        'hakoniwa-2s-plus-v21',
     ];
 
     /** @var list<string> */
@@ -62,7 +63,8 @@ final class SecretaryMonsterDropContract
                 $definitionKeys[] = $definition['key'];
             }
         }
-        foreach ([...self::ELIGIBLE_MONSTERS, ...self::EXCLUDED_MONSTERS] as $monsterKey) {
+        $eligibleMonsters = $this->eligibleMonsters($settings);
+        foreach ([...$eligibleMonsters, ...self::EXCLUDED_MONSTERS] as $monsterKey) {
             if (! in_array($monsterKey, $definitionKeys, true)) {
                 throw new DomainException("Monster drop references unknown monster {$monsterKey}.");
             }
@@ -112,7 +114,7 @@ final class SecretaryMonsterDropContract
             }
         }
         $tables = $drop['monster_tables'] ?? null;
-        if (! is_array($tables) || ! $this->hasExactKeys($tables, self::ELIGIBLE_MONSTERS)) {
+        if (! is_array($tables) || ! $this->hasExactKeys($tables, $eligibleMonsters)) {
             throw new DomainException('ruleset.monster_system.item_drop.monster_tables has invalid monster keys/order.');
         }
         foreach ($tables as $monsterKey => $table) {
@@ -153,6 +155,16 @@ final class SecretaryMonsterDropContract
     private function authoredPools(array $drop): mixed
     {
         return $drop['rarity_pools'] ?? null;
+    }
+
+    /** @param array<string, mixed> $settings
+     * @return list<string>
+     */
+    private function eligibleMonsters(array $settings): array
+    {
+        return ($settings['key'] ?? null) === 'hakoniwa-2s-plus-v21'
+            ? [...self::ELIGIBLE_MONSTERS, 'nyowamiya']
+            : self::ELIGIBLE_MONSTERS;
     }
 
     /** @param array<array-key, mixed> $value

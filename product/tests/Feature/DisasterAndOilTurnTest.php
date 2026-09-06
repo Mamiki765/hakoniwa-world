@@ -806,6 +806,304 @@ class DisasterAndOilTurnTest extends TestCase
             ->whereRaw("metadata->>'turn_run_id' = ?", [(string) $failureRun->id])->count());
     }
 
+    public function test_v21_rank_two_factory_fire_damage_preserves_the_facility_and_cell_state(): void
+    {
+        [$world, $nation, $ruleset, $space, $owner] = $this->worldAndNation('ランク二工場火災国');
+        $ruleset = $this->updateRuleset($ruleset, static function (array &$settings): void {
+            $settings['turn_processing']['disasters']['fire']['probability'] = [
+                'numerator' => 1,
+                'denominator' => 1,
+            ];
+        });
+        $target = $this->cellAt($space, $this->boundsFor($world)->center()->x, $this->boundsFor($world)->center()->y);
+        $this->setCell($target, 'plain', 'factory', $nation->id, 0);
+        $target->facility_scale = 105;
+        $target->save();
+        $target = $target->fresh(['terrain', 'facility']);
+        $beforeVersion = (int) $target->version;
+        $beforeChunkVersion = (int) DB::table('map_chunks')->where('id', $target->map_chunk_id)->value('version');
+        [$context, $run] = $this->context($world, $ruleset, hash('sha256', 'rank-two-factory-fire'), [$nation->id]);
+        $cellIndex = DisasterMutableCellIndex::fromCells([$target]);
+
+        $this->assertTrue(app(DisasterTurnService::class)->processFire($context, $target, $cellIndex));
+
+        $after = $target->fresh(['terrain', 'facility']);
+        $this->assertSame('factory', $after->facility?->key);
+        $this->assertSame(85, $after->facility_scale);
+        $this->assertSame('plain', $after->terrain->key);
+        $this->assertSame($nation->id, $after->owner_nation_id);
+        $this->assertSame(0, $after->population);
+        $this->assertSame($beforeVersion + 1, (int) $after->version);
+        $this->assertSame([$after->map_chunk_id], $context->state->changedMapChunkIds());
+        app(CompleteTurnEngine::class)->execute('aggregate_nations', $context);
+        $this->assertSame($beforeChunkVersion + 1, (int) DB::table('map_chunks')
+            ->where('id', $after->map_chunk_id)->value('version'));
+        $damage = $this->event($run, 'facility.partially_damaged');
+        $this->assertSame('factory', $damage['facility_key']);
+        $this->assertSame('fire', $damage['damage_kind']);
+        $this->assertSame(105, $damage['before_scale']);
+        $this->assertSame(85, $damage['after_scale']);
+        $this->assertSame(20, $damage['scale_loss']);
+        $this->assertSame(0, DB::table('audit_events')->where('event_type', 'fire.damaged')
+            ->whereRaw("metadata->>'turn_run_id' = ?", [(string) $run->id])->count());
+        $world->update(['current_turn' => 2]);
+
+        foreach ([
+            $this->getJson("/api/v1/public/nations/{$nation->id}/events")->assertOk(),
+            $this->actingAs($owner)->getJson("/api/v1/nations/{$nation->id}/events")->assertOk(),
+        ] as $response) {
+            $event = collect($response->json('data.groups'))
+                ->flatMap(static fn (array $group): array => $group['events'])
+                ->firstWhere('type', 'facility.partially_damaged');
+            $this->assertIsArray($event);
+            $this->assertSame('warning', $event['importance']);
+            $this->assertSame(
+                "{$nation->name}({$target->x},{$target->y})の大工場が火災により一部損壊し、"
+                .'規模が105,000人から85,000人へ減少しました。ランク1へ降格しました。',
+                $event['message'],
+            );
+        }
+    }
+
+    public function test_v21_rank_two_factory_earthquake_damage_preserves_the_facility_and_cell_state(): void
+    {
+        [$world, $nation, $ruleset, $space] = $this->worldAndNation('ランク二工場地震国');
+        $ruleset = $this->forceGlobal($ruleset, 'earthquake');
+        $center = $this->boundsFor($world)->center();
+        $target = $this->cellAt($space, $center->x, $center->y);
+        $this->setCell($target, 'plain', 'factory', $nation->id, 0);
+        $target->facility_scale = 105;
+        $target->save();
+        $target = $target->fresh(['terrain', 'facility']);
+        $beforeVersion = (int) $target->version;
+        $beforeChunkVersion = (int) DB::table('map_chunks')->where('id', $target->map_chunk_id)->value('version');
+        [$context, $run] = $this->context(
+            $world,
+            $ruleset,
+            $this->seedForCenter(TurnRandomStreamFactory::GLOBAL_EARTHQUAKE_CENTER, $center->x, $center->y, $space),
+            [$nation->id],
+        );
+
+        $result = app(DisasterTurnService::class)->executeGlobal($context);
+
+        $after = $target->fresh(['terrain', 'facility']);
+        $this->assertSame(1, $result['damaged_cells']);
+        $this->assertSame('factory', $after->facility?->key);
+        $this->assertSame(85, $after->facility_scale);
+        $this->assertSame('plain', $after->terrain->key);
+        $this->assertSame($nation->id, $after->owner_nation_id);
+        $this->assertSame(0, $after->population);
+        $this->assertSame($beforeVersion + 1, (int) $after->version);
+        $this->assertSame([$after->map_chunk_id], $context->state->changedMapChunkIds());
+        app(CompleteTurnEngine::class)->execute('aggregate_nations', $context);
+        $this->assertSame($beforeChunkVersion + 1, (int) DB::table('map_chunks')
+            ->where('id', $after->map_chunk_id)->value('version'));
+        $damage = $this->event($run, 'facility.partially_damaged');
+        $this->assertSame('earthquake', $damage['damage_kind']);
+        $this->assertSame(20, $damage['scale_loss']);
+        $this->assertSame(0, DB::table('audit_events')->where('event_type', 'disaster.cell_damaged')
+            ->whereRaw("metadata->>'turn_run_id' = ?", [(string) $run->id])->count());
+    }
+
+    public function test_v21_rank_two_farm_typhoon_uses_the_rank_two_threshold_but_still_removes_the_facility(): void
+    {
+        [$world, $nation, $ruleset, $space] = $this->worldAndNation('ランク二農場台風国');
+        $ruleset = $this->forceGlobal($ruleset, 'typhoon');
+        $ruleset = $this->updateRuleset($ruleset, static function (array &$settings): void {
+            $settings['turn_processing']['disasters']['typhoon']['base_damage_threshold'] = 0;
+        });
+        $center = $this->boundsFor($world)->center();
+        $target = $this->cellAt($space, $center->x, $center->y);
+        $this->setCell($target, 'plain', 'farm', $nation->id, 0);
+        $target->facility_scale = 51;
+        $target->save();
+        [$context, $run] = $this->context(
+            $world,
+            $ruleset,
+            $this->seedForCenter(TurnRandomStreamFactory::GLOBAL_TYPHOON_CENTER, $center->x, $center->y, $space),
+            [$nation->id],
+        );
+
+        $result = app(DisasterTurnService::class)->executeGlobal($context);
+
+        $after = $target->fresh(['terrain', 'facility']);
+        $this->assertSame(1, $result['damaged_cells']);
+        $this->assertNull($after->facility_definition_id);
+        $this->assertNull($after->facility_scale);
+        $this->assertSame('plain', $after->terrain->key);
+        $this->assertSame($nation->id, $after->owner_nation_id);
+        $this->assertSame(0, $after->population);
+        $damage = $this->event($run, 'disaster.cell_damaged');
+        $this->assertSame('typhoon', $damage['disaster_key']);
+        $this->assertSame('farm', $damage['removed_facility_key']);
+    }
+
+    public function test_v21_meteor_shower_uses_land_destruction_scale_damage_for_rank_two_farm(): void
+    {
+        [$world, $nation, $ruleset, $space] = $this->worldAndNation('ランク二農場流星群国');
+        $ruleset = $this->forceGlobal($ruleset, 'meteor_shower');
+        $center = $this->boundsFor($world)->center();
+        $target = $this->cellAt($space, $center->x, $center->y);
+        $this->setCell($target, 'plain', 'farm', $nation->id, 0);
+        $target->facility_scale = 51;
+        $target->save();
+        $target = $target->fresh(['terrain', 'facility']);
+        $beforeVersion = (int) $target->version;
+        $beforeChunkVersion = (int) DB::table('map_chunks')->where('id', $target->map_chunk_id)->value('version');
+        [$context, $run] = $this->context(
+            $world,
+            $ruleset,
+            $this->seedForCenter(TurnRandomStreamFactory::GLOBAL_METEOR_SHOWER_CENTER, $center->x, $center->y, $space),
+            [$nation->id],
+        );
+
+        $result = app(DisasterTurnService::class)->executeGlobal($context);
+
+        $after = $target->fresh(['terrain', 'facility']);
+        $this->assertSame(1, $result['damaged_cells']);
+        $this->assertSame('farm', $after->facility?->key);
+        $this->assertSame(48, $after->facility_scale);
+        $this->assertSame('plain', $after->terrain->key);
+        $this->assertSame($nation->id, $after->owner_nation_id);
+        $this->assertSame(0, $after->population);
+        $this->assertSame($beforeVersion + 1, (int) $after->version);
+        $this->assertSame([$after->map_chunk_id], $context->state->changedMapChunkIds());
+        app(CompleteTurnEngine::class)->execute('aggregate_nations', $context);
+        $this->assertSame($beforeChunkVersion + 1, (int) DB::table('map_chunks')
+            ->where('id', $after->map_chunk_id)->value('version'));
+        $damage = $this->event($run, 'facility.partially_damaged');
+        $this->assertSame('land_destruction', $damage['damage_kind']);
+        $this->assertSame('meteor_shower', $damage['source_key']);
+        $this->assertSame(3, $damage['scale_loss']);
+    }
+
+    public function test_v21_huge_meteor_ring_distance_selects_land_then_ordinary_damage(): void
+    {
+        [$world, $nation, $ruleset, $space] = $this->worldAndNation('ランク二施設巨大隕石国');
+        $center = $this->boundsFor($world)->center();
+        $ringOneCoordinate = $center->ring(1)[0];
+        $ringTwoCoordinate = $center->ring(2)[0];
+        $ringOne = $this->cellAt($space, $ringOneCoordinate->x, $ringOneCoordinate->y);
+        $ringTwo = $this->cellAt($space, $ringTwoCoordinate->x, $ringTwoCoordinate->y);
+        $this->setCell($ringOne, 'plain', 'farm', $nation->id, 0);
+        $ringOne->facility_scale = 51;
+        $ringOne->save();
+        $this->setCell($ringTwo, 'plain', 'factory', $nation->id, 0);
+        $ringTwo->facility_scale = 105;
+        $ringTwo->save();
+        $ringOne = $ringOne->fresh(['terrain', 'facility']);
+        $ringTwo = $ringTwo->fresh(['terrain', 'facility']);
+        $beforeRingOneVersion = (int) $ringOne->version;
+        $beforeRingTwoVersion = (int) $ringTwo->version;
+        $cellIndex = DisasterMutableCellIndex::fromCells([$ringOne, $ringTwo], [$nation->id]);
+        [$context, $run] = $this->context($world, $ruleset, hash('sha256', 'rank-two-huge-ring'), [$nation->id]);
+
+        $result = app(DisasterTurnService::class)->resolveHugeMeteorBlast(
+            $context,
+            $space,
+            $center,
+            $ruleset->settings['turn_processing']['disasters']['huge_meteor'],
+            cellIndex: $cellIndex,
+        );
+
+        $this->assertSame(2, $result);
+        $afterRingOne = $ringOne->fresh(['terrain', 'facility']);
+        $afterRingTwo = $ringTwo->fresh(['terrain', 'facility']);
+        $this->assertSame('farm', $afterRingOne->facility?->key);
+        $this->assertSame(48, $afterRingOne->facility_scale);
+        $this->assertSame('plain', $afterRingOne->terrain->key);
+        $this->assertSame($beforeRingOneVersion + 1, (int) $afterRingOne->version);
+        $this->assertSame('factory', $afterRingTwo->facility?->key);
+        $this->assertSame(100, $afterRingTwo->facility_scale);
+        $this->assertSame('plain', $afterRingTwo->terrain->key);
+        $this->assertSame($beforeRingTwoVersion + 1, (int) $afterRingTwo->version);
+        $expectedChunkIds = array_values(array_unique([$ringOne->map_chunk_id, $ringTwo->map_chunk_id]));
+        sort($expectedChunkIds, SORT_NUMERIC);
+        $this->assertSame(
+            $expectedChunkIds,
+            $context->state->changedMapChunkIds(),
+        );
+        $damages = $this->events($run, 'facility.partially_damaged');
+        $this->assertCount(2, $damages);
+        $this->assertSame(['land_destruction', 'ordinary_terrain_destruction'], array_column($damages, 'damage_kind'));
+        $this->assertSame([3, 5], array_column($damages, 'scale_loss'));
+    }
+
+    public function test_v21_huge_meteor_ring_two_keeps_mountain_mine_outside_the_existing_target(): void
+    {
+        [$world, $nation, $ruleset, $space] = $this->worldAndNation('ランク二採掘場巨大隕石国');
+        $center = $this->boundsFor($world)->center();
+        $targetCoordinate = $center->ring(2)[0];
+        $target = $this->cellAt($space, $targetCoordinate->x, $targetCoordinate->y);
+        $this->setCell($target, 'mountain', 'mine', $nation->id, 0);
+        $target->facility_scale = 202;
+        $target->save();
+        $target = $target->fresh(['terrain', 'facility']);
+        $beforeVersion = (int) $target->version;
+        $cellIndex = DisasterMutableCellIndex::fromCells([$target], [$nation->id]);
+        [$context, $run] = $this->context($world, $ruleset, hash('sha256', 'rank-two-mine-ring-two'), [$nation->id]);
+
+        $result = app(DisasterTurnService::class)->resolveHugeMeteorBlast(
+            $context,
+            $space,
+            $center,
+            $ruleset->settings['turn_processing']['disasters']['huge_meteor'],
+            cellIndex: $cellIndex,
+        );
+
+        $after = $target->fresh(['terrain', 'facility']);
+        $this->assertSame(0, $result);
+        $this->assertSame('mountain', $after->terrain->key);
+        $this->assertSame('mine', $after->facility?->key);
+        $this->assertSame(202, $after->facility_scale);
+        $this->assertSame($beforeVersion, (int) $after->version);
+        $this->assertSame(0, DB::table('audit_events')->where('event_type', 'facility.partially_damaged')
+            ->whereRaw("metadata->>'turn_run_id' = ?", [(string) $run->id])->count());
+    }
+
+    public function test_huge_meteor_ring_two_treats_zero_scale_loss_as_resistance_without_counting_damage(): void
+    {
+        [$world, $nation, $ruleset, $space] = $this->worldAndNation('広域爆発零損失国');
+        $ruleset = $this->updateRuleset($ruleset, static function (array &$settings): void {
+            $settings['facility_rank_system']['definitions']['farm']['damage_scale_loss']['ordinary_terrain_destruction'] = 0;
+        });
+        $center = $this->boundsFor($world)->center();
+        $targetCoordinate = $center->ring(2)[0];
+        $target = $this->cellAt($space, $targetCoordinate->x, $targetCoordinate->y);
+        $this->setCell($target, 'plain', 'farm', $nation->id, 0);
+        $target->facility_scale = 51;
+        $target->save();
+        $target = $target->fresh(['terrain', 'facility']);
+        $beforeVersion = (int) $target->version;
+        $cellIndex = DisasterMutableCellIndex::fromCells([$target], [$nation->id]);
+        [$context, $run] = $this->context(
+            $world,
+            $ruleset,
+            hash('sha256', 'zero-scale-loss-ring-two'),
+            [$nation->id],
+        );
+
+        $result = app(DisasterTurnService::class)->resolveHugeMeteorBlast(
+            $context,
+            $space,
+            $center,
+            $ruleset->settings['turn_processing']['disasters']['huge_meteor'],
+            cellIndex: $cellIndex,
+        );
+
+        $after = $target->fresh(['terrain', 'facility']);
+        $this->assertSame(0, $result);
+        $this->assertSame('plain', $after->terrain->key);
+        $this->assertSame('farm', $after->facility?->key);
+        $this->assertSame(51, $after->facility_scale);
+        $this->assertSame($beforeVersion, (int) $after->version);
+        $this->assertSame([], $context->state->changedMapChunkIds());
+        $this->assertSame(0, DB::table('audit_events')
+            ->whereRaw("metadata->>'turn_run_id' = ?", [(string) $run->id])
+            ->whereIn('event_type', ['facility.partially_damaged', 'disaster.cell_damaged'])
+            ->count());
+    }
+
     /** @return array{World, Nation, RulesetVersion, MapSpace, User} */
     private function worldAndNation(string $name): array
     {

@@ -596,6 +596,7 @@ export interface MonsterOverlay {
     spawned_max_hp: number;
     hp_range: { min: number; max: number };
     skill_description: string;
+    traits: string[];
     hardened_now: boolean;
     public_state: 'alive';
     coordinate: { x: number; y: number };

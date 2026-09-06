@@ -47,6 +47,7 @@ final class MapCellStateService
         ?FacilityDefinition $facility,
         ?int $scale = null,
         ?int $experience = null,
+        ?int $maximumScale = null,
     ): void {
         if ($facility === null) {
             $cell->facility_definition_id = null;
@@ -70,6 +71,7 @@ final class MapCellStateService
             $cell->facility_scale = $this->capacities->validateScale(
                 $facility,
                 $scale ?? $this->capacities->initialScale($facility),
+                $maximumScale,
             );
             $cell->facility_experience = null;
 

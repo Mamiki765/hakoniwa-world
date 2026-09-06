@@ -24,6 +24,9 @@ final class SurfaceShipRemovalService
         string $reason,
         array $metadata = [],
     ): ?Ship {
+        if (! $this->hasShipSystem($context)) {
+            return null;
+        }
         $ship = Ship::query()
             ->where('world_id', $context->world->id)
             ->where('map_cell_id', $cell->id)
@@ -37,6 +40,10 @@ final class SurfaceShipRemovalService
     /** @return Collection<int, Ship> */
     public function lockActiveWorldIndex(TurnContext $context): Collection
     {
+        if (! $this->hasShipSystem($context)) {
+            return new Collection;
+        }
+
         return Ship::query()
             ->where('world_id', $context->world->id)
             ->where('state', Ship::STATE_ACTIVE)
@@ -87,5 +94,10 @@ final class SurfaceShipRemovalService
         ], 'nation', 'warning');
 
         return $ship;
+    }
+
+    private function hasShipSystem(TurnContext $context): bool
+    {
+        return ($context->ruleset->settings['surface_ships']['movement'] ?? null) !== null;
     }
 }

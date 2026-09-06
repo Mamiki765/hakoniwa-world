@@ -686,21 +686,21 @@ class DomesticCommandExecutionTest extends TestCase
             ->whereHas('terrain', fn ($query) => $query->where('key', 'plain'))
             ->firstOrFail();
         FacilityDefinition::query()->where('key', 'farm')->firstOrFail()->update([
-            'initial_scale' => 10_000,
-            'scale_increment' => 2_000,
-            'maximum_scale' => 50_000,
+            'initial_scale' => 10,
+            'scale_increment' => 2,
+            'maximum_scale' => 50,
         ]);
         $this->queue($user, $nation, $space, 'build_farm', $target, 3, 1);
         $executor = app(DomesticCommandExecutor::class);
         $context = $this->context($world, [$nation->id], str_repeat('c', 64));
 
         $executor->execute($context);
-        $this->assertSame(10_000, $target->fresh()->facility_scale);
+        $this->assertSame(10, $target->fresh()->facility_scale);
         $executor->execute($context);
-        $this->assertSame(12_000, $target->fresh()->facility_scale);
-        $target->update(['facility_scale' => 50_000]);
+        $this->assertSame(12, $target->fresh()->facility_scale);
+        $target->update(['facility_scale' => 99]);
         $executor->execute($context);
-        $this->assertSame(50_000, $target->fresh()->facility_scale);
+        $this->assertSame(100, $target->fresh()->facility_scale);
 
         $projectionSnapshots = DB::table('audit_events')
             ->where('event_type', 'command.facility_built_public')
@@ -713,9 +713,9 @@ class DomesticCommandExecutionTest extends TestCase
                 return [$decoded['expanded'], $decoded['before_scale'], $decoded['facility_scale']];
             })->all();
         $this->assertSame([
-            [false, null, 10_000],
-            [true, 10_000, 12_000],
-            [true, 50_000, 50_000],
+            [false, null, 10],
+            [true, 10, 12],
+            [true, 99, 100],
         ], $projectionSnapshots);
 
         $world->update(['current_turn' => 2]);
@@ -727,13 +727,73 @@ class DomesticCommandExecutionTest extends TestCase
             $publicMessages,
         );
         $this->assertContains(
-            sprintf('規模表示島(%d,%d)で農場整備が行われました。（規模 10,000 → 12,000）', $target->x, $target->y),
+            sprintf('規模表示島(%d,%d)で農場整備が行われました。（規模 10 → 12）', $target->x, $target->y),
             $publicMessages,
         );
         $this->assertContains(
-            sprintf('規模表示島(%d,%d)で農場整備が行われました。（規模 50,000 → 50,000）', $target->x, $target->y),
+            sprintf('規模表示島(%d,%d)で農場整備が行われました。（規模 99 → 100）', $target->x, $target->y),
             $publicMessages,
         );
+    }
+
+    public function test_rank_two_facility_expansion_clamps_rank_one_then_uses_rank_two_increment_and_maximum(): void
+    {
+        $world = $this->lightweightWorld();
+        [$user, $nation] = $this->createNation($world, 'ランク二施設実行国');
+        $nation->update(['money' => 10_000]);
+        $space = $this->surfaceMapSpace($world);
+        $plainTargets = MapCell::query()->where('owner_nation_id', $nation->id)
+            ->whereNull('facility_definition_id')
+            ->whereHas('terrain', fn ($query) => $query->where('key', 'plain'))
+            ->orderBy('id')->take(2)->get();
+        $this->assertCount(2, $plainTargets);
+        $farmTarget = $plainTargets[0];
+        $factoryTarget = $plainTargets[1];
+        $mineTarget = $this->ownedTerrain($nation, 'mountain');
+        $state = app(MapCellStateService::class);
+        $farm = FacilityDefinition::query()->where('key', 'farm')->firstOrFail();
+        $factory = FacilityDefinition::query()->where('key', 'factory')->firstOrFail();
+        $mine = FacilityDefinition::query()->where('key', 'mine')->firstOrFail();
+        $state->setFacility($farmTarget, $farm, 49, null, 100);
+        $farmTarget->save();
+        $state->setFacility($factoryTarget, $factory, 99, null, 200);
+        $factoryTarget->save();
+        $state->setFacility($mineTarget, $mine, 199, null, 400);
+        $mineTarget->save();
+
+        $farmItem = $this->queue($user, $nation, $space, 'build_farm', $farmTarget, 2, 1);
+        $factoryItem = $this->queue($user, $nation, $space, 'build_factory', $factoryTarget, 2, 2);
+        $mineItem = $this->queue($user, $nation, $space, 'build_mine', $mineTarget, 2, 3);
+        $executor = app(DomesticCommandExecutor::class);
+        $context = $this->context($world, [$nation->id], hash('sha256', 'rank-two-facility-expansion'));
+
+        $first = $executor->execute($context);
+        $this->assertSame([1, 0, 1], [$first['successes'], $first['failures'], $first['quantity_decrements']]);
+        $this->assertSame(50, $farmTarget->fresh()->facility_scale);
+        $this->assertSame(1, $farmItem->fresh()->quantity);
+        $executor->execute($context);
+        $this->assertSame(51, $farmTarget->fresh()->facility_scale);
+        $this->assertSame('completed', $farmItem->fresh()->status);
+
+        $executor->execute($context);
+        $this->assertSame(100, $factoryTarget->fresh()->facility_scale);
+        $executor->execute($context);
+        $this->assertSame(105, $factoryTarget->fresh()->facility_scale);
+        $this->assertSame('completed', $factoryItem->fresh()->status);
+
+        $executor->execute($context);
+        $this->assertSame(200, $mineTarget->fresh()->facility_scale);
+        $executor->execute($context);
+        $this->assertSame(202, $mineTarget->fresh()->facility_scale);
+        $this->assertSame('completed', $mineItem->fresh()->status);
+
+        $state->setFacility($factoryTarget, $factory, 200, null, 200);
+        $factoryTarget->save();
+        $atMaximum = $this->queue($user, $nation, $space, 'build_factory', $factoryTarget, 1, 1);
+        $failed = $executor->execute($context);
+        $this->assertSame([0, 1], [$failed['successes'], $failed['failures']]);
+        $this->assertSame('invalid_facility_scale', $atMaximum->fresh()->failure_code);
+        $this->assertSame(200, $factoryTarget->fresh()->facility_scale);
     }
 
     public function test_factory_and_mine_construction_and_expansion_reach_the_top_public_api(): void

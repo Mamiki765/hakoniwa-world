@@ -247,6 +247,39 @@ class PlayerIslandEventApiTest extends TestCase
         $this->assertNotContains($killedWithHost, $attackerEventIds);
     }
 
+    public function test_nyowamiya_kill_projection_includes_the_actual_attack_and_cheese_once(): void
+    {
+        [$world, , $nation] = $this->nation('ニョワミヤ表示島');
+        $world->update(['current_turn' => 2]);
+        DB::table('audit_events')->delete();
+        $this->audit('monster.killed', $nation, $nation, 'public', 2, [
+            'monster_key' => 'nyowamiya',
+            'damage_type' => 'pp_missile',
+            'killer_nation_id' => $nation->id,
+            'host_nation_id' => $nation->id,
+            'x' => 12,
+            'y' => 8,
+        ]);
+
+        $response = $this->getJson("/api/v1/public/worlds/{$world->id}/events")->assertOk();
+        $event = collect($response->json('data.groups'))->flatMap(
+            static fn (array $group): array => $group['events'],
+        )->firstWhere('type', 'monster.killed');
+
+        $this->assertIsArray($event);
+        $this->assertStringContainsString(
+            'ニョワミヤ表示島(12,8)の珍獣ニョワミヤにPPミサイルが命中し、珍獣ニョワミヤはものすごく不機嫌そうな顔をしました。',
+            $event['message'],
+        );
+        $this->assertStringContainsString(
+            'ニョワミヤ表示島(12,8)の珍獣ニョワミヤは怒って大量のチーズを置いてどっかに帰りました。なぜか怪獣肉として保管・分配されました',
+            $event['message'],
+        );
+        $this->assertSame(1, substr_count($event['message'], 'PPミサイルが命中'));
+        $this->assertSame(1, substr_count($event['message'], 'チーズ'));
+        $this->assertStringNotContainsString('SPPミサイル', $event['message']);
+    }
+
     public function test_public_aid_is_one_world_event_related_to_both_snapshot_nations_and_exposes_only_actual_transfer(): void
     {
         [$world, , $sender] = $this->nation('援助元島');
@@ -327,6 +360,65 @@ class PlayerIslandEventApiTest extends TestCase
             ->assertJsonPath('data.groups.0.events.0.id', $eventId);
         $originResponse = $this->getJson("/api/v1/public/nations/{$originNation->id}/events")->assertOk();
         $this->assertSame([], $originResponse->json('data.groups'));
+    }
+
+    public function test_non_missile_partial_damage_uses_generic_damage_while_companion_logs_identify_the_cause(): void
+    {
+        [$world, $owner, $nation] = $this->nation('部分被害島');
+        $world->update(['current_turn' => 2]);
+        DB::table('audit_events')->delete();
+
+        $this->audit('disaster.triggered', $nation, $nation, 'public', 2, [
+            'disaster_key' => 'defense_self_destruct', 'center_x' => 10, 'center_y' => 11,
+        ]);
+        $this->audit('disaster.triggered', $nation, $nation, 'public', 2, [
+            'disaster_key' => 'monument_flight', 'center_x' => 12, 'center_y' => 13,
+        ]);
+        $this->audit('monster.nuclear_self_destructed', $nation, $nation, 'public', 2, [
+            'nation_name' => $nation->name, 'monster_key' => 'mechanical_inora_zero',
+            'center_x' => 14, 'center_y' => 15,
+        ]);
+
+        foreach ([
+            ['defense_self_destruct', 20, 21],
+            ['monument_flight', 22, 23],
+            ['nuclear_self_destruct_blast', 24, 25],
+        ] as [$sourceKey, $x, $y]) {
+            $this->audit('facility.partially_damaged', $nation, $nation, 'public', 2, [
+                'nation_name' => $nation->name,
+                'x' => $x,
+                'y' => $y,
+                'facility_key' => 'factory',
+                'damage_kind' => 'ordinary_terrain_destruction',
+                'source_key' => $sourceKey,
+                'before_scale' => 120,
+                'after_scale' => 115,
+                'scale_unit_people' => 1_000,
+                'rank_before' => 2,
+                'rank_after' => 2,
+            ]);
+        }
+
+        foreach ([
+            $this->getJson("/api/v1/public/nations/{$nation->id}/events")->assertOk(),
+            $this->actingAs($owner)->getJson("/api/v1/nations/{$nation->id}/events")->assertOk(),
+        ] as $response) {
+            $messages = $this->messages($response->json('data.groups'));
+            $this->assertContains('(10,11)で防衛施設が自爆しました。', $messages);
+            $this->assertContains('何かとてつもないものが落ちてきました！', $messages);
+            $this->assertContains(
+                '部分被害島(14,15)のメカいのら零式が突然輝きだし、とてつもない爆発を起こしました！',
+                $messages,
+            );
+            foreach ([[20, 21], [22, 23], [24, 25]] as [$x, $y]) {
+                $this->assertContains(
+                    "部分被害島({$x},{$y})の大工場が被害により一部損壊し、"
+                    .'規模が120,000人から115,000人へ減少しました。',
+                    $messages,
+                );
+            }
+            $this->assertStringNotContainsString('ミサイルにより一部損壊', (string) $response->getContent());
+        }
     }
 
     public function test_owner_log_requires_membership_and_includes_only_its_own_public_island_events(): void
@@ -695,6 +787,15 @@ class PlayerIslandEventApiTest extends TestCase
             'firing_nation_name' => $firing->name, 'target_nation_name' => $target->name,
             'missile_key' => 'pp_missile', 'effect' => 'ship_sunk', 'x' => 19, 'y' => 15,
         ]);
+        $this->audit('missile.impact', $target, $target, 'public', 2, [
+            'firing_nation_name' => $firing->name, 'target_nation_name' => $target->name,
+            'missile_key' => 'missile', 'effect' => 'facility_scale_damaged', 'x' => 20, 'y' => 16,
+        ]);
+        $this->audit('missile.impact', $target, $target, 'public', 2, [
+            'firing_nation_name' => $firing->name, 'target_nation_name' => $target->name,
+            'missile_key' => 'land_destruction_missile', 'effect' => 'facility_scale_land_damaged',
+            'x' => 21, 'y' => 17,
+        ]);
         $this->audit('missile.ineffective_aggregated', $firing, $firing, 'public', 2, [
             'nation_name' => $firing->name, 'command_key' => 'pp_missile',
             'queue_item_id' => 88, 'ineffective_impacts' => 8,
@@ -724,6 +825,9 @@ class PlayerIslandEventApiTest extends TestCase
                 ['x' => 17, 'y' => 13, 'effect' => 'secretary_intercepted', 'meaningful' => false],
                 ['x' => 18, 'y' => 14, 'effect' => 'ship_damaged', 'meaningful' => true],
                 ['x' => 19, 'y' => 15, 'effect' => 'ship_sunk', 'meaningful' => true],
+                ['x' => 20, 'y' => 16, 'effect' => 'facility_scale_damaged', 'meaningful' => true],
+                ['x' => 21, 'y' => 17, 'effect' => 'facility_scale_land_damaged', 'meaningful' => true],
+                ['x' => 22, 'y' => 18, 'effect' => 'facility_scale_ineffective', 'meaningful' => false],
             ],
         ]);
 
@@ -735,6 +839,8 @@ class PlayerIslandEventApiTest extends TestCase
         $this->assertContains('被弾島(13,9)に発射島のPPミサイルが着弾し、土地を焼け跡にしました。', $publicMessages);
         $this->assertContains('被弾島(18,14)に発射島のPPミサイルが着弾し、船に損傷を与えました。', $publicMessages);
         $this->assertContains('被弾島(19,15)に発射島のPPミサイルが着弾し、船を撃沈しました。', $publicMessages);
+        $this->assertContains('被弾島(20,16)に発射島のミサイルが着弾し、施設の規模を減少させました。', $publicMessages);
+        $this->assertContains('被弾島(21,17)に発射島の陸地破壊弾が着弾し、施設の規模を減少させました。', $publicMessages);
         $this->assertTrue(collect($publicMessages)->contains(
             static fn (string $message): bool => str_contains($message, 'PPミサイルのうち8発は効果がありませんでした。'),
         ));
@@ -768,13 +874,17 @@ class PlayerIslandEventApiTest extends TestCase
         $this->assertStringContainsString('(17,13): 最終防衛ラインに迎撃されました', $ownerMessages);
         $this->assertStringContainsString('(18,14): 船に損傷を与えました', $ownerMessages);
         $this->assertStringContainsString('(19,15): 船を撃沈しました', $ownerMessages);
+        $this->assertStringContainsString('(20,16): 施設の規模を減少させました', $ownerMessages);
+        $this->assertStringContainsString('(21,17): 施設の規模を減少させました', $ownerMessages);
+        $this->assertStringContainsString('(22,18): 施設の規模へ被害を与えられませんでした', $ownerMessages);
+        $this->assertStringNotContainsString('着弾結果が記録されました', $ownerMessages);
         $this->assertSame(1, substr_count($ownerMessages, '怪獣がいた荒地は焦土化しました'));
         $ownerTypes = collect($ownerResponse->json('data.groups.0.events'))->pluck('type');
         $this->assertFalse($ownerTypes->contains('missile.launched'));
         $this->assertSame(1, $ownerTypes->filter(
             static fn (string $type): bool => $type === 'missile.ineffective_aggregated',
         )->count());
-        $this->assertSame(1, $ownerTypes->filter(
+        $this->assertSame(2, $ownerTypes->filter(
             static fn (string $type): bool => $type === 'missile.ineffective_impact',
         )->count());
         $this->assertStringNotContainsString('PPミサイルのうち8発は効果がありませんでした。', $ownerMessages);

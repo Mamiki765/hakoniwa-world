@@ -54,6 +54,7 @@ class MonsterApiAssetTest extends TestCase
         foreach (range(0, 8) as $index) {
             file_put_contents($directory.DIRECTORY_SEPARATOR."monster{$index}.gif", $onePixelGif);
         }
+        file_put_contents($directory.DIRECTORY_SEPARATOR.'monsnyowa.gif', $onePixelGif);
         config([
             'hakoniwa.assets.path' => $directory,
             'hakoniwa.assets.base_url' => 'https://assets.example.test/hakoniwa-tiles',
@@ -80,6 +81,9 @@ class MonsterApiAssetTest extends TestCase
             $this->assertStringNotContainsString('_references', $asset['url']);
             $this->assertSame('image/gif', $resolver->contentTypeForFilename($filename));
         }
+        $nyowamiya = $resolver->resolve('hakoniwa_custom.monster.nyowamiya', '珍獣ニョワミヤ');
+        $this->assertTrue($nyowamiya['available']);
+        $this->assertStringContainsString('/monsnyowa.gif?v=', $nyowamiya['url']);
 
         File::delete($directory.DIRECTORY_SEPARATOR.'monster4.gif');
         $fallback = (new AssetManifestResolver)->resolve('hakoniwa_original.monster.hardened', '硬化怪獣');
@@ -110,6 +114,7 @@ class MonsterApiAssetTest extends TestCase
         $this->assertNull($projected['monster']['asset_url']);
         $this->assertFalse($projected['monster']['asset']['available']);
         $this->assertSame(2, $projected['monster']['current_hp']);
+        $this->assertSame([], $projected['monster']['traits']);
         $this->assertTrue($projected['monster']['hardened_now']);
         $this->assertSame(['nation_number' => $nation->nation_number, 'name' => $nation->name], $projected['monster']['host_nation']);
         $this->assertSame('N'.$nation->nation_number, $projected['monster']['host_label']);
@@ -242,11 +247,10 @@ class MonsterApiAssetTest extends TestCase
         $this->assertContains($nation->id, $statQueries[0]['bindings']);
     }
 
-    public function test_public_detail_and_rankings_project_all_species_by_effective_order_with_bounded_queries(): void
+    public function test_public_detail_and_rankings_project_all_authored_species_by_effective_order_with_bounded_queries(): void
     {
         [$world, $nation, $ruleset] = $this->worldAndNation('十種討伐国');
         $secondNation = $this->createNation($world, '第二十種討伐国');
-        $fixture = collect(CurrentRulesetFixture::settings()['monster_definitions'])->keyBy('key');
         $definitions = MonsterDefinition::query()->where('ruleset_version_id', $ruleset->id)->get();
         foreach ($definitions as $index => $definition) {
             DB::table('nation_monster_kill_stats')->insert([
@@ -290,10 +294,11 @@ class MonsterApiAssetTest extends TestCase
             $queries[] = strtolower($query->sql);
         });
         $detail = $this->getJson("/api/v1/public/nations/{$nation->id}")->assertOk()->json('data');
-        $expectedKeys = $fixture->sortBy('display_order')->keys()->values()->all();
+        $expectedKeys = $definitions->sortBy('display_order')->pluck('key')->values()->all();
+        $expectedCount = count($ruleset->settings['monster_definitions']);
         $this->assertSame($expectedKeys, array_column($detail['monster_kill_stats'], 'key'));
-        $this->assertCount(10, $detail['monster_kill_stats']);
-        $this->assertSame(array_sum(range(1, 10)), $detail['monster_final_blow_count']);
+        $this->assertCount($expectedCount, $detail['monster_kill_stats']);
+        $this->assertSame(array_sum(range(1, $expectedCount)), $detail['monster_final_blow_count']);
         $this->assertSame(1, collect($queries)->filter(
             static fn (string $sql): bool => str_contains($sql, 'nation_monster_kill_stats'),
         )->count());
@@ -306,11 +311,11 @@ class MonsterApiAssetTest extends TestCase
             ->assertOk()->json('data');
         $ranking = collect($rankingRows)->firstWhere('id', $nation->id)['achievements']['monster_kills'];
         $this->assertSame($expectedKeys, array_column($ranking['species'], 'key'));
-        $this->assertSame(array_sum(range(1, 10)), $ranking['total_count']);
-        $this->assertSame('hakoniwa_original.monster.king_inora', $ranking['asset']['key']);
+        $this->assertSame(array_sum(range(1, $expectedCount)), $ranking['total_count']);
+        $this->assertSame('hakoniwa_custom.monster.nyowamiya', $ranking['asset']['key']);
         $secondRanking = collect($rankingRows)->firstWhere('id', $secondNation->id)['achievements']['monster_kills'];
         $this->assertSame($expectedKeys, array_column($secondRanking['species'], 'key'));
-        $this->assertSame(10, $secondRanking['total_count']);
+        $this->assertSame($expectedCount, $secondRanking['total_count']);
         $this->assertSame(1, collect($queries)->filter(
             static fn (string $sql): bool => str_contains($sql, 'nation_monster_kill_stats'),
         )->count());
@@ -319,7 +324,7 @@ class MonsterApiAssetTest extends TestCase
         )->count());
     }
 
-    public function test_public_detail_and_rankings_keep_the_same_query_bound_for_twenty_species(): void
+    public function test_public_detail_and_rankings_keep_the_same_query_bound_for_many_species(): void
     {
         [$world, $nation, $ruleset] = $this->worldAndNation('二十種討伐国');
         $template = CurrentRulesetFixture::newMonsterDefinitions()[0];
@@ -334,7 +339,8 @@ class MonsterApiAssetTest extends TestCase
         $definitions = MonsterDefinition::query()
             ->where('ruleset_version_id', $ruleset->id)
             ->get();
-        $this->assertCount(20, $definitions);
+        $expectedCount = count($ruleset->settings['monster_definitions']) + 10;
+        $this->assertCount($expectedCount, $definitions);
         foreach ($definitions as $definition) {
             DB::table('nation_monster_kill_stats')->insert([
                 'world_id' => $world->id,
@@ -354,8 +360,8 @@ class MonsterApiAssetTest extends TestCase
             $queries[] = strtolower($query->sql);
         });
         $detail = $this->getJson("/api/v1/public/nations/{$nation->id}")->assertOk()->json('data');
-        $this->assertCount(20, $detail['monster_kill_stats']);
-        $this->assertSame(20, $detail['monster_final_blow_count']);
+        $this->assertCount($expectedCount, $detail['monster_kill_stats']);
+        $this->assertSame($expectedCount, $detail['monster_final_blow_count']);
         $this->assertSame(1, collect($queries)->filter(
             static fn (string $sql): bool => str_contains($sql, 'nation_monster_kill_stats'),
         )->count());
@@ -366,8 +372,8 @@ class MonsterApiAssetTest extends TestCase
         $queries = [];
         $ranking = $this->getJson("/api/v1/public/worlds/{$world->id}/rankings")
             ->assertOk()->json('data.0.achievements.monster_kills');
-        $this->assertCount(20, $ranking['species']);
-        $this->assertSame(20, $ranking['total_count']);
+        $this->assertCount($expectedCount, $ranking['species']);
+        $this->assertSame($expectedCount, $ranking['total_count']);
         $this->assertSame('hakoniwa_custom.monster.synthetic_monster_10', $ranking['asset']['key']);
         $this->assertFalse($ranking['asset']['available']);
         $this->assertNull($ranking['asset']['url']);

@@ -53,6 +53,7 @@ final class CommandQueueController extends Controller
         try {
             $queue = $service->queueFor($request->user(), $nation, $mapSpace);
             $world = $nation->world()->with('rulesetVersion')->firstOrFail();
+            $rulesetSettings = $world->rulesetVersion->settings;
             $position = max(1, min(
                 $this->queueLimit($nation),
                 $request->integer('position', 1),
@@ -182,7 +183,7 @@ final class CommandQueueController extends Controller
                 ->get()
                 ->keyBy('key');
             $definitions = $definitions
-                ->map(function (CommandDefinition $definition) use ($cell, $nation, $mapSpace, $service, $capacities, $queue, $position, $nationTargetOptions, $monsterDispatchTargetOptions, $projected, $resultFacilities, $visibleState, $projectionMemo): array {
+                ->map(function (CommandDefinition $definition) use ($cell, $nation, $mapSpace, $service, $capacities, $queue, $position, $nationTargetOptions, $monsterDispatchTargetOptions, $projected, $resultFacilities, $visibleState, $projectionMemo, $rulesetSettings): array {
                     $ownerOverbuildEffect = $projected === null
                         ? null
                         : $service->projectedOwnerOverbuildEffect($definition, $nation, $projected);
@@ -191,7 +192,14 @@ final class CommandQueueController extends Controller
                     $currentlyExecutable = false;
                     if ($definition->target_type === 'cell' && $cell !== null) {
                         try {
-                            $service->validateTarget($nation, $mapSpace, $definition, $cell, $visibleState);
+                            $service->validateTarget(
+                                $nation,
+                                $mapSpace,
+                                $definition,
+                                $cell,
+                                $visibleState,
+                                $rulesetSettings,
+                            );
                             $currentlyExecutable = true;
                         } catch (PlayerFacingCommandException $exception) {
                             $unavailableReason = $exception->getMessage();

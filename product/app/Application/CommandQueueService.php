@@ -16,12 +16,14 @@ use App\Domain\Command\SurfaceCommandProjectionMemo;
 use App\Domain\Command\TerritoryExpansionFacts;
 use App\Domain\Command\TerritoryExpansionPolicy;
 use App\Domain\Concurrency\OptimisticLockException;
+use App\Domain\Facility\FacilityRankPolicy;
 use App\Domain\Map\GridCoordinate;
 use App\Domain\Monster\MonsterDispatchOptionResolver;
 use App\Domain\Ruleset\CurrentRulesetGuard;
 use App\Domain\Underground\Facility\UndergroundCommandCatalog;
 use App\Domain\Underground\Facility\UndergroundCommandDefinition;
 use App\Models\CommandDefinition;
+use App\Models\FacilityDefinition;
 use App\Models\MapCell;
 use App\Models\MapSpace;
 use App\Models\MonsterOccupancy;
@@ -46,6 +48,13 @@ final class CommandQueueService
     /** @var list<string> */
     private const DANGEROUS_OWNER_OVERBUILD_EFFECTS = ['defense_self_destruct', 'monument_flight'];
 
+    /** @var array<string, string> */
+    private const FACILITY_BUILD_RESULTS = [
+        'build_farm' => 'farm',
+        'build_factory' => 'factory',
+        'build_mine' => 'mine',
+    ];
+
     public function __construct(
         private readonly CommandParametersValidator $parameters,
         private readonly CurrentRulesetGuard $rulesetGuard,
@@ -58,6 +67,7 @@ final class CommandQueueService
         private readonly UndergroundFacilityService $undergroundFacilities,
         private readonly UndergroundCommandCatalog $undergroundCommands,
         private readonly QueuedCommandDefinitionResolver $queuedCommandDefinitions,
+        private readonly FacilityRankPolicy $facilityRanks,
     ) {}
 
     /**
@@ -301,13 +311,28 @@ final class CommandQueueService
                 if (SettlementOverbuildPolicy::protectsCapital($definition->key, $target->facility?->key)) {
                     throw new PlayerFacingCommandException('首都を通常建設commandで上書きすることはできません。');
                 }
+                $projectionMemo = new SurfaceCommandProjectionMemo;
                 $projectedTarget = $this->projectCellStateBeforePosition(
                     $target,
                     $queue,
                     $position,
                     $lockedNation,
                     $mapSpace,
+                    projectionMemo: $projectionMemo,
                 );
+                if ($definition instanceof CommandDefinition) {
+                    $this->assertFacilityExpansionRegistration(
+                        $definition,
+                        $target,
+                        $projectedTarget,
+                        $ruleset->settings,
+                        $queue,
+                        $position,
+                        $lockedNation,
+                        $mapSpace,
+                        $projectionMemo,
+                    );
+                }
                 $ownerOverbuildEffect = OwnerFacilityOverbuildPolicy::effectForState(
                     $definition,
                     $lockedNation,
@@ -1368,13 +1393,17 @@ final class CommandQueueService
         return $this->queuedCommandDefinitions->resolve($item);
     }
 
-    /** @param array{terrain_key: string, facility_key: string|null, owner_nation_id: int|null}|null $visibleState */
+    /**
+     * @param  array{terrain_key: string, facility_key: string|null, owner_nation_id: int|null}|null  $visibleState
+     * @param  array<string, mixed>|null  $rulesetSettings
+     */
     public function validateTarget(
         Nation $nation,
         MapSpace $mapSpace,
         CommandDefinition $definition,
         MapCell $cell,
         ?array $visibleState = null,
+        ?array $rulesetSettings = null,
     ): void {
         $state = $visibleState ?? [
             'terrain_key' => $cell->terrain->key,
@@ -1418,11 +1447,29 @@ final class CommandQueueService
         if (! in_array($terrainKey, $definition->target_terrain_keys, true)) {
             throw new PlayerFacingCommandException('対象地形ではこのcommandをqueueへ追加できません。');
         }
+        $facilityExpansion = false;
+        if ($this->facilityExpansionCommand($definition)
+            && $facilityKey === $definition->result_facility_key
+            && $cell->facility?->key === $facilityKey) {
+            $rulesetSettings ??= $this->rulesetSettingsForMapSpace($mapSpace);
+            $rankContract = $this->facilityRanks->contract($rulesetSettings, $facilityKey);
+            if ($rankContract !== null && ! is_int($cell->facility_scale)) {
+                throw new PlayerFacingCommandException('施設の規模情報が不完全です。');
+            }
+            if ($rankContract !== null) {
+                $maximumScale = $this->facilityRanks->maximumScale($rulesetSettings, $cell->facility);
+                if ($cell->facility_scale >= $maximumScale) {
+                    throw new PlayerFacingCommandException('施設の規模が上限に達しています。');
+                }
+                $facilityExpansion = true;
+            }
+        }
         if (SettlementOverbuildPolicy::protectsCapital($definition->key, $facilityKey)) {
             throw new PlayerFacingCommandException('首都を通常建設commandで上書きすることはできません。');
         }
         if ($definition->requires_empty_facility && $facilityKey !== null
             && ! SettlementOverbuildPolicy::allows($definition->key, $facilityKey)
+            && ! $facilityExpansion
             && $ownerOverbuildEffect === null) {
             throw new PlayerFacingCommandException('施設のあるcellにはこのcommandをqueueへ追加できません。');
         }
@@ -1665,6 +1712,109 @@ final class CommandQueueService
         }
 
         return $ruleset->settings;
+    }
+
+    private function facilityExpansionCommand(CommandDefinition $definition): bool
+    {
+        return isset(self::FACILITY_BUILD_RESULTS[$definition->key])
+            && self::FACILITY_BUILD_RESULTS[$definition->key] === $definition->result_facility_key;
+    }
+
+    /**
+     * Registration is intentionally narrower than full execution validation:
+     * only reject a same-facility build that is already at its effective limit.
+     * Other future-plan state remains subject to the existing execution-time
+     * revalidation contract.
+     *
+     * @param  array{terrain_key: string, facility_key: string|null, owner_nation_id: int|null}  $projectedState
+     * @param  array<string, mixed>  $rulesetSettings
+     */
+    private function assertFacilityExpansionRegistration(
+        CommandDefinition $definition,
+        MapCell $target,
+        array $projectedState,
+        array $rulesetSettings,
+        NationCommandQueue $queue,
+        int $beforePosition,
+        Nation $nation,
+        MapSpace $mapSpace,
+        SurfaceCommandProjectionMemo $projectionMemo,
+    ): void {
+        if (! $this->facilityExpansionCommand($definition)
+            || $projectedState['facility_key'] !== $definition->result_facility_key
+            || $target->facility?->key !== $definition->result_facility_key) {
+            return;
+        }
+        if ($this->precedingProjectedCommandReplacesCurrentFacility(
+            $target,
+            $queue,
+            $beforePosition,
+            $nation,
+            $mapSpace,
+            $projectionMemo,
+        )) {
+            return;
+        }
+        $facility = $target->facility;
+        if (! $facility instanceof FacilityDefinition) {
+            throw new PlayerFacingCommandException('施設定義が不完全です。');
+        }
+        $rankContract = $this->facilityRanks->contract($rulesetSettings, $facility->key);
+        if ($rankContract === null) {
+            return;
+        }
+        if (! is_int($target->facility_scale)) {
+            throw new PlayerFacingCommandException('施設の規模情報が不完全です。');
+        }
+        $maximumScale = $this->facilityRanks->maximumScale($rulesetSettings, $facility);
+        if ($target->facility_scale >= $maximumScale) {
+            throw new PlayerFacingCommandException('施設の規模が上限に達しています。');
+        }
+    }
+
+    private function precedingProjectedCommandReplacesCurrentFacility(
+        MapCell $target,
+        NationCommandQueue $queue,
+        int $beforePosition,
+        Nation $nation,
+        MapSpace $mapSpace,
+        SurfaceCommandProjectionMemo $projectionMemo,
+    ): bool {
+        $currentFacilityKey = $target->facility?->key;
+        if ($currentFacilityKey === null) {
+            return false;
+        }
+
+        foreach ($queue->items as $item) {
+            $itemPosition = (int) $item->queue_position;
+            if ($item->target_context !== 'surface_cell'
+                || $itemPosition >= $beforePosition
+                || $item->target_x !== $target->x
+                || $item->target_y !== $target->y) {
+                continue;
+            }
+            $stateAfterItem = $this->projectCellStateBeforePosition(
+                $target,
+                $queue,
+                $itemPosition + 1,
+                $nation,
+                $mapSpace,
+                projectionMemo: $projectionMemo,
+            );
+            if ($stateAfterItem['facility_key'] !== $currentFacilityKey) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /** @return array<string, mixed> */
+    private function rulesetSettingsForMapSpace(MapSpace $mapSpace): array
+    {
+        $world = $mapSpace->world()->with('rulesetVersion')->firstOrFail();
+
+        return $world->rulesetVersion->settings;
     }
 
     private function targetCell(MapSpace $mapSpace, int $x, int $y): MapCell

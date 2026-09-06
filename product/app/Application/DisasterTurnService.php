@@ -3,6 +3,7 @@
 namespace App\Application;
 
 use App\Domain\Disaster\LandSubsidenceThresholdResolver;
+use App\Domain\Facility\FacilityRankPolicy;
 use App\Domain\Map\GridCoordinate;
 use App\Domain\Map\MapCellStateService;
 use App\Domain\Map\NationLandAreaCalculator;
@@ -30,6 +31,8 @@ final class DisasterTurnService
         private readonly MonsterWorldSpawnService $monsterWorldSpawn,
         private readonly NationProtectionPolicy $nationProtection,
         private readonly SurfaceShipRemovalService $shipRemoval,
+        private readonly FacilityRankPolicy $facilityRanks,
+        private readonly FacilityScaleDamageService $facilityScaleDamage,
     ) {}
 
     /** @return array<string, int> */
@@ -520,6 +523,23 @@ final class DisasterTurnService
             return true;
         }
 
+        if ($facilityKey === 'factory') {
+            $facilityDamage = $this->facilityScaleDamage->apply(
+                $context,
+                $cell,
+                FacilityRankPolicy::FIRE,
+                'fire',
+                [
+                    'disaster_key' => 'fire',
+                    'draw' => $trigger['draw'],
+                    'numerator' => $settings['probability']['numerator'],
+                    'denominator' => $settings['probability']['denominator'],
+                ],
+            );
+            if ($facilityDamage !== null && $facilityDamage['scale_loss'] > 0) {
+                return true;
+            }
+        }
         $this->changeCell($context, $cell, 'fire', 'wasteland', false, 'fire.damaged', [
             'draw' => $trigger['draw'],
             'numerator' => $settings['probability']['numerator'],
@@ -569,6 +589,26 @@ final class DisasterTurnService
                     'draw' => $draw['draw'],
                 ]);
             } else {
+                if ($facilityKey === 'factory') {
+                    $facilityDamage = $this->facilityScaleDamage->apply(
+                        $context,
+                        $cell,
+                        FacilityRankPolicy::EARTHQUAKE,
+                        'earthquake',
+                        [
+                            'disaster_key' => 'earthquake',
+                            'source' => $source,
+                            'center_x' => $center->x,
+                            'center_y' => $center->y,
+                            'draw' => $draw['draw'],
+                        ],
+                    );
+                    if ($facilityDamage !== null && $facilityDamage['scale_loss'] > 0) {
+                        $damaged++;
+
+                        continue;
+                    }
+                }
                 $this->changeCell($context, $cell, 'earthquake', 'wasteland', false, 'disaster.cell_damaged', [
                     'source' => $source,
                     'center_x' => $center->x,
@@ -646,7 +686,18 @@ final class DisasterTurnService
             $protection = $this->adjacentProtectionCount($cell, $settings['protection_facility_keys'], $cellIndex);
             $draw = $context->random->stream(TurnRandomStreamFactory::GLOBAL_TYPHOON_EFFECT)
                 ->integer(0, $settings['internal_denominator'] - 1);
-            if ($draw >= max(0, $settings['base_damage_threshold'] - $protection)) {
+            $threshold = $settings['base_damage_threshold'];
+            if ($cell->facility?->key === 'farm') {
+                $rankTwoThreshold = $this->facilityRanks->rankTwoTyphoonThreshold(
+                    $context->ruleset->settings,
+                    'farm',
+                    $cell->facility_scale,
+                );
+                if ($rankTwoThreshold !== null) {
+                    $threshold = $rankTwoThreshold;
+                }
+            }
+            if ($draw >= max(0, $threshold - $protection)) {
                 continue;
             }
             if ($this->nationProtection->protectsFromDisaster($context, $cell->x, $cell->y)) {
@@ -694,7 +745,28 @@ final class DisasterTurnService
                     ]);
                     $damaged++;
                 } else {
-                    if ($cell->terrain->key === 'shallow') {
+                    $landTarget = $cell->terrain->key !== 'sea'
+                        || in_array($cell->facility?->key, $settings['seabed_facility_keys'], true);
+                    $monsterRemoved = false;
+                    $facilityDamage = null;
+                    if ($landTarget && in_array($cell->facility?->key, ['farm', 'factory', 'mine'], true)) {
+                        $monsterRemoved = $this->removeMonsterForTerrainEvent($context, $cell, 'meteor_shower');
+                        $facilityDamage = $this->facilityScaleDamage->apply(
+                            $context,
+                            $cell,
+                            FacilityRankPolicy::LAND_DESTRUCTION,
+                            'meteor_shower',
+                            [
+                                'disaster_key' => 'meteor_shower',
+                                'center_x' => $center->x,
+                                'center_y' => $center->y,
+                                'monster_removed' => $monsterRemoved,
+                            ],
+                        );
+                    }
+                    if ($facilityDamage !== null && $facilityDamage['scale_loss'] > 0) {
+                        $damaged++;
+                    } elseif ($cell->terrain->key === 'shallow') {
                         if ($this->changeCell(
                             $context,
                             $cell,
@@ -794,6 +866,26 @@ final class DisasterTurnService
 
                     continue;
                 }
+                $facilityDamage = null;
+                if (in_array($cell->facility?->key, ['farm', 'factory', 'mine'], true)) {
+                    $facilityDamage = $this->facilityScaleDamage->apply(
+                        $context,
+                        $cell,
+                        FacilityRankPolicy::ORDINARY_TERRAIN_DESTRUCTION,
+                        $disasterKey,
+                        [
+                            'disaster_key' => $disasterKey,
+                            'ring_distance' => 2,
+                            'monster_removed' => $monsterRemoved,
+                            ...$eventMetadata,
+                        ],
+                    );
+                }
+                if ($facilityDamage !== null) {
+                    $damaged += $facilityDamage['scale_loss'] > 0 ? 1 : 0;
+
+                    continue;
+                }
                 $changed = $this->changeCell(
                     $context,
                     $cell,
@@ -817,6 +909,27 @@ final class DisasterTurnService
                     $cellIndex,
                 );
             } else {
+                $facilityDamage = null;
+                if ($distance === 1 && in_array($cell->facility?->key, ['farm', 'factory', 'mine'], true)) {
+                    $monsterRemoved = $this->removeMonsterForTerrainEvent($context, $cell, $disasterKey);
+                    $facilityDamage = $this->facilityScaleDamage->apply(
+                        $context,
+                        $cell,
+                        FacilityRankPolicy::LAND_DESTRUCTION,
+                        $disasterKey,
+                        [
+                            'disaster_key' => $disasterKey,
+                            'ring_distance' => 1,
+                            'monster_removed' => $monsterRemoved,
+                            ...$eventMetadata,
+                        ],
+                    );
+                }
+                if ($facilityDamage !== null) {
+                    $damaged += $facilityDamage['scale_loss'] > 0 ? 1 : 0;
+
+                    continue;
+                }
                 $changed = $this->changeCell(
                     $context,
                     $cell,

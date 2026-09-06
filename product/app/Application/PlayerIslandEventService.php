@@ -103,6 +103,7 @@ final class PlayerIslandEventService
         'disaster.cell_damaged',
         'capital.disaster_damaged',
         'fire.damaged',
+        'facility.partially_damaged',
         'monster.spawned',
         'monster.moved',
         'monster.trampled',
@@ -780,21 +781,57 @@ final class PlayerIslandEventService
                 number_format($this->integer($metadata, 'damage_percent')),
                 number_format($this->integer($metadata, 'after_population')),
             ),
+            'facility.partially_damaged' => $this->publicFacilityPartialDamageMessage($metadata),
             'monster.spawned' => ($metadata['spawn_source'] ?? null) === 'world_aoi_disaster'
                 ? "中立海域({$x},{$y})に{$monster}が出現しました。"
                 : "{$nation}({$x},{$y})に{$monster}が出現し、一帯を踏み荒らしました。",
             'monster.moved' => ($nation === '島' ? '中立海域' : $nation)."({$x},{$y})へ{$monster}が移動した模様です。",
-            'monster.trampled' => sprintf(
-                '%s(%s,%s)の%sが%sに踏み荒らされました。',
-                $nation,
-                $x,
-                $y,
-                $metadata['location_label'] ?? '土地',
-                $monster,
-            ),
+            'monster.trampled' => ($metadata['monster_key'] ?? null) === 'nyowamiya'
+                ? sprintf(
+                    '%s(%s,%s)を%sが踏み荒らし……なぜか平地になりました',
+                    $nation,
+                    $x,
+                    $y,
+                    $monster,
+                )
+                : sprintf(
+                    '%s(%s,%s)の%sが%sに踏み荒らされました。',
+                    $nation,
+                    $x,
+                    $y,
+                    $metadata['location_label'] ?? '土地',
+                    $monster,
+                ),
             'monster.damage_blocked' => "{$nation}({$x},{$y})の{$monster}に攻撃が命中しましたが、硬化中のため効果がありませんでした。",
-            'monster.damaged' => "{$nation}({$x},{$y})の{$monster}に攻撃が命中し、苦しそうに咆哮しました。",
-            'monster.killed' => "{$nation}({$x},{$y})の{$monster}は力尽き、倒れました。"
+            'monster.damaged' => ($metadata['monster_key'] ?? null) === 'nyowamiya'
+                ? sprintf(
+                    '%s(%s,%s)の%sに%sが命中し、%sはものすごく不機嫌そうな顔をしました',
+                    $nation,
+                    $x,
+                    $y,
+                    $monster,
+                    $metadata['attack_label'] ?? '攻撃',
+                    $monster,
+                )
+                : "{$nation}({$x},{$y})の{$monster}に攻撃が命中し、苦しそうに咆哮しました。",
+            'monster.killed' => ($metadata['monster_key'] ?? null) === 'nyowamiya'
+                ? sprintf(
+                    '%s(%s,%s)の%sに%sが命中し、%sはものすごく不機嫌そうな顔をしました。%s(%s,%s)の%sは怒って大量のチーズを置いてどっかに帰りました%s',
+                    $nation,
+                    $x,
+                    $y,
+                    $monster,
+                    $metadata['attack_label'] ?? '攻撃',
+                    $monster,
+                    $nation,
+                    $x,
+                    $y,
+                    $monster,
+                    ($metadata['reward_distributed'] ?? false) === true
+                        ? '。なぜか怪獣肉として保管・分配されました'
+                        : '。',
+                )
+                : "{$nation}({$x},{$y})の{$monster}は力尽き、倒れました。"
                 .(($metadata['reward_distributed'] ?? false) === true
                     ? '怪獣は解体され、報酬が分配されました。'
                     : ''),
@@ -996,6 +1033,11 @@ final class PlayerIslandEventService
             'capital.disaster_damaged' => [
                 'nation_name', 'x', 'y', 'disaster_key', 'damage_percent', 'after_population',
             ],
+            'facility.partially_damaged' => [
+                'nation_name', 'x', 'y', 'facility_key', 'damage_kind', 'source_key',
+                'missile_key', 'before_scale', 'after_scale', 'scale_unit_people',
+                'rank_before', 'rank_after',
+            ],
             'monster.damage_blocked', 'monster.damaged',
             'monster.killed',
             'monster.removed_by_terrain_event' => ['nation_name', 'monster_key', 'x', 'y'],
@@ -1046,6 +1088,10 @@ final class PlayerIslandEventService
         if ($eventType === 'monster.killed' && is_numeric($metadata['killer_nation_id'] ?? null)) {
             $safe['reward_distributed'] = true;
         }
+        if (in_array($eventType, ['monster.damaged', 'monster.killed'], true)
+            && ($safe['monster_key'] ?? null) === 'nyowamiya') {
+            $safe['attack_label'] = $this->monsterAttackLabel($metadata['damage_type'] ?? null);
+        }
         if ($eventType === 'monster.trampled') {
             $safe['location_label'] = $this->publicAffectedLocationLabel($metadata);
         }
@@ -1077,6 +1123,66 @@ final class PlayerIslandEventService
             $metadata,
             $this->facilityLabel($facilityKey),
         );
+    }
+
+    /** @param array<string, mixed> $metadata */
+    private function publicFacilityPartialDamageMessage(array $metadata): string
+    {
+        $facilityKey = $metadata['facility_key'] ?? null;
+        $facility = $this->integer($metadata, 'rank_before') === 2
+            ? match ($facilityKey) {
+                'farm' => '大農場',
+                'factory' => '大工場',
+                'mine' => '大採掘場',
+                default => $this->facilityLabel($facilityKey),
+            }
+        : $this->facilityLabel($facilityKey);
+        $scaleUnitPeople = max(1, $this->integer($metadata, 'scale_unit_people'));
+        $message = sprintf(
+            '%s(%s,%s)の%sが%sにより一部損壊し、規模が%s人から%s人へ減少しました。',
+            is_string($metadata['nation_name'] ?? null) ? $metadata['nation_name'] : '島',
+            $this->publicCoordinate($metadata, 'x'),
+            $this->publicCoordinate($metadata, 'y'),
+            $facility,
+            $this->facilityPartialDamageCause($metadata),
+            number_format($this->integer($metadata, 'before_scale') * $scaleUnitPeople),
+            number_format($this->integer($metadata, 'after_scale') * $scaleUnitPeople),
+        );
+
+        return $this->integer($metadata, 'rank_before') > $this->integer($metadata, 'rank_after')
+            ? $message.'ランク1へ降格しました。'
+            : $message;
+    }
+
+    /** @param array<string, mixed> $metadata */
+    private function facilityPartialDamageCause(array $metadata): string
+    {
+        $damageKind = $metadata['damage_kind'] ?? null;
+        if ($damageKind === 'fire') {
+            return '火災';
+        }
+        if ($damageKind === 'earthquake') {
+            return '地震';
+        }
+
+        $sourceKey = $metadata['source_key'] ?? null;
+        if (in_array($sourceKey, ['meteor_shower', 'huge_meteor'], true)) {
+            return $this->disasterLabel($sourceKey);
+        }
+        if (in_array($sourceKey, [
+            'defense_self_destruct',
+            'monument_flight',
+            'nuclear_self_destruct_blast',
+        ], true)) {
+            return '被害';
+        }
+
+        $missileKey = $metadata['missile_key'] ?? null;
+        if (is_string($missileKey) && $missileKey !== '') {
+            return $this->missileLabel($missileKey);
+        }
+
+        return $damageKind === 'land_destruction' ? '陸地破壊' : '攻撃';
     }
 
     /** @param array<string, mixed> $metadata */
@@ -2243,6 +2349,21 @@ final class PlayerIslandEventService
         };
     }
 
+    private function monsterAttackLabel(mixed $key): string
+    {
+        return match ($key) {
+            'missile' => 'ミサイル',
+            'pp_missile' => 'PPミサイル',
+            'land_destruction_missile' => '陸地破壊弾',
+            'spp_missile' => 'SPPミサイル',
+            'secretary_old_bow' => '古びた弓',
+            'secretary_elf_bow' => 'エルフの弓',
+            'secretary_longshot_bow' => '遠当ての弓',
+            'secretary_mechanical_bow' => '機械弓',
+            default => '攻撃',
+        };
+    }
+
     /** @param array<string, mixed> $metadata */
     private function secretaryLabel(array $metadata): string
     {
@@ -2262,6 +2383,8 @@ final class PlayerIslandEventService
             'water_facility_destroyed' => '水上施設を破壊しました',
             'ship_damaged' => '船に損傷を与えました',
             'ship_sunk' => '船を撃沈しました',
+            'facility_scale_damaged', 'facility_scale_land_damaged' => '施設の規模を減少させました',
+            'facility_scale_ineffective' => '施設の規模へ被害を与えられませんでした',
             'land_scorched' => '土地を焼け跡にしました',
             'terrain_destroyed' => '陸地を破壊しました',
             'out_of_bounds_sea' => '狙点外の海へ落下し効果はありませんでした',
@@ -2464,6 +2587,7 @@ final class PlayerIslandEventService
         return match ($key) {
             'mecha_inora' => 'メカいのら',
             'mecha_inora_zero' => 'メカいのら零式',
+            'nyowamiya' => '珍獣ニョワミヤ',
             'inora' => 'いのら',
             'sanjira' => 'サンジラ',
             'red_inora' => 'レッドいのら',
@@ -2482,6 +2606,7 @@ final class PlayerIslandEventService
             'command.failed', 'command.invalid', 'command.insufficient_assets', 'resource.food_shortage',
             'famine.applied', 'facility.riot', 'capacity.overflow', 'resource.food_overflow_resolved',
             'disaster.cell_damaged', 'capital.disaster_damaged', 'fire.damaged', 'oil.depleted',
+            'facility.partially_damaged',
             'monster.damage_blocked', 'monster.damaged', 'monster.defense_self_destructed',
             'monster.nuclear_self_destructed',
             'monster.removed_by_terrain_event' => 'warning',

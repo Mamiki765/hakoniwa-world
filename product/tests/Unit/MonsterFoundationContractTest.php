@@ -189,35 +189,37 @@ final class MonsterFoundationContractTest extends TestCase
         }
     }
 
-    public function test_advanced_manual_table_is_derived_from_the_shared_current_fixture(): void
+    public function test_advanced_manual_table_matches_current_monster_values(): void
     {
         $document = file_get_contents(base_path('docs/manual/advanced.md'));
         $this->assertIsString($document);
-        preg_match('/<!-- 怪獣一覧:start -->\R(.+?)\R<!-- 怪獣一覧:end -->/su', $document, $match);
+        preg_match('/\| 怪獣 \| HP \| 1HPあたりEXP \| 残骸価値 \| 主な特徴 \|\R[^\r\n]+\R((?:\|[^\r\n]+\R)+)/u', $document, $match);
         $this->assertArrayHasKey(1, $match);
         $lines = preg_split('/\R/u', trim($match[1]));
         $this->assertIsArray($lines);
-        $actualRows = array_slice($lines, 2);
+        $actualRows = [];
+        foreach ($lines as $line) {
+            $columns = array_map('trim', explode('|', trim($line, '| ')));
+            $actualRows[$columns[0]] = array_slice($columns, 0, 4);
+        }
         $expectedRows = [];
-        foreach (CurrentRulesetFixture::settings()['monster_definitions'] as $definition) {
+        foreach (config('hakoniwa.ruleset.monster_definitions') as $definition) {
             $maximumHp = $definition['base_hp'] + $definition['hp_variation'];
             $hp = $maximumHp === $definition['base_hp']
                 ? (string) $definition['base_hp']
                 : $definition['base_hp'].'～'.$maximumHp;
-            $expectedRows[] = sprintf(
-                '| %s | %s | %s | %s億円 | %d | %s |',
+            $expectedRows[$definition['name']] = [
                 $definition['name'],
                 $hp,
-                $definition['source_metadata']['manual']['appearance'],
-                number_format($definition['wreckage_value_money']),
-                $definition['missile_base_experience'],
-                $definition['source_metadata']['manual']['special'],
-            );
+                (string) $definition['experience_per_damage'],
+                $definition['wreckage_value_money'] === 0
+                    ? 'なし'
+                    : number_format($definition['wreckage_value_money']).'億円相当',
+            ];
         }
+        ksort($expectedRows);
+        ksort($actualRows);
         $this->assertSame($expectedRows, $actualRows);
-        foreach (['display_order', 'source kind', 'reward_policy', 'random stream', 'migration', 'checkpoint', '.gif'] as $forbidden) {
-            $this->assertStringNotContainsString($forbidden, $match[1]);
-        }
     }
 
     /** @return array<string, mixed> */

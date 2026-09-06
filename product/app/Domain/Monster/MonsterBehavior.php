@@ -12,5 +12,7 @@ final readonly class MonsterBehavior
         public string $specialAction,
         public bool $islandCreationDisplaceable,
         public ?array $worldSpawn,
+        public string $movementStage = 'normal',
+        public ?string $defeatTerrainKey = null,
     ) {}
 }

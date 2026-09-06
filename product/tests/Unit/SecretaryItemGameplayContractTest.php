@@ -71,7 +71,7 @@ final class SecretaryItemGameplayContractTest extends TestCase
         );
     }
 
-    public function test_v17_monster_drop_tables_and_pools_are_closed_and_exclude_old_bow_and_mecha(): void
+    public function test_current_monster_drop_tables_and_pools_are_closed_and_exclude_old_bow_and_mecha(): void
     {
         $settings = config('hakoniwa.ruleset');
         app(SecretaryMonsterDropContract::class)->validate($settings);
@@ -90,6 +90,18 @@ final class SecretaryItemGameplayContractTest extends TestCase
             $drop['monster_tables']['king_inora']['rarity_weights'],
         );
         $this->assertSame(100, $drop['monster_tables']['king_inora']['level_cap_percent']);
+        $this->assertSame($drop['monster_tables']['king_inora'], $drop['monster_tables']['nyowamiya']);
+    }
+
+    public function test_v20_monster_drop_table_remains_valid_without_nyowamiya(): void
+    {
+        $settings = require config_path('hakoniwa/rulesets/hakoniwa-2s-plus-v20.php');
+        $contract = app(SecretaryMonsterDropContract::class);
+
+        $contract->validate($settings);
+
+        $this->assertArrayNotHasKey('nyowamiya', $settings['monster_system']['item_drop']['monster_tables']);
+        $this->assertNull($contract->table($settings, 'nyowamiya'));
     }
 
     public function test_current_contract_validates_and_resolves_exact_player_text(): void

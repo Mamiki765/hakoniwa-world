@@ -1567,12 +1567,21 @@ describe('application lobby and island entry', () => {
         const wrapper = mount(App);
         await flushPromises();
 
-        expect(window.location.pathname).toBe('/');
+        expect(window.location.pathname).toBe('/underground');
         expect(wrapper.find('.underground-panel').exists()).toBe(false);
-        expect(wrapper.find('.secretary-panel').exists()).toBe(true);
+        expect(wrapper.find('.secretary-panel').exists()).toBe(false);
+        expect(wrapper.get('.underground-unnamed-gate').text()).toContain('こっちより先に？？？って露骨な方触りなさいよ');
+        expect(fetchMock.mock.calls.some(([path]) => String(path) === '/api/v1/me/underground')).toBe(false);
+        const headerButtons = wrapper.findAll('.site-header nav button');
+        const undergroundButtonIndex = headerButtons.findIndex((button) => button.text() === '地底');
+        const optionsButtonIndex = headerButtons.findIndex((button) => button.text() === 'オプション');
+        expect(undergroundButtonIndex).toBeGreaterThanOrEqual(0);
+        expect(optionsButtonIndex).toBe(undergroundButtonIndex + 1);
         const secretaryButton = wrapper.findAll('.site-header nav button')
             .find((button) => button.text() === '？？？')!;
         expect(secretaryButton.exists()).toBe(true);
+        await secretaryButton.trigger('click');
+        await flushPromises();
 
         expect(wrapper.get('.secretary-story').text()).toContain('怪獣に踏み荒らされた地から妙な施設が見つかった');
         expect(wrapper.get('.secretary-page-title').text()).toBe('秘書');
@@ -3748,7 +3757,7 @@ describe('Underground equipment navigation', () => {
         }];
         let respecProjection = { cost: 20, last_completed_at: null as string | null, next_available_at: null as string | null, growth_paths: paths };
         let respecCommitted = false;
-        let openState = {
+        let openState: any = {
             stage: 'underground_open', secretary_name: 'ペリドット', combat_level: 2, combat_xp: 100,
             next_level_xp: 200, next_level_requirement: 100, xp_to_next_level: 100, shard_balance: 240,
             banked_shard_balance: 1000, current_hp: 400, unspent_stp: 5,
@@ -3770,6 +3779,22 @@ describe('Underground equipment navigation', () => {
             respec: respecProjection,
             trial: { key: 'trial_01', label: '地下に眠る古代遺跡', total_battles: 10, first_cleared: false, active_run: null },
             awakening: null,
+            recollections: {
+                available: true,
+                trial_02_first_cleared: true,
+                past_available: true,
+                max_completed: 0,
+                entries: [1, 2, 3, 4, 5].map((chapter) => ({
+                    key: `past_${chapter}`,
+                    kind: 'past',
+                    title: `過去について問う・${chapter}`,
+                    chapter,
+                    experienced: false,
+                    completed: false,
+                    locked: chapter > 1,
+                })),
+                serious_talk: null,
+            },
             ai: {
                 schema_version: 1, max_rules: 16, max_conditions_per_rule: 2, is_custom: false,
                 rules: [{ conditions: [{ type: 'always' }], action: 'normal_attack' }],
@@ -3784,6 +3809,7 @@ describe('Underground equipment navigation', () => {
             battle: null, next_battle_at: null,
         };
         const respecPayloads: Array<{ request_id: string; growth_path_key: string }> = [];
+        const recollectionPayloads: Array<{ request_id: string; chapter: number }> = [];
         const skillPayloads: Array<{ request_id: string; node_key: string }> = [];
         const loadoutPayloads: Array<{ request_id: string; slots: Array<string | null> }> = [];
         const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -3792,6 +3818,44 @@ describe('Underground equipment navigation', () => {
             if (path === '/api/v1/me/underground/battles') {
                 if (respecCommitted) throw new TypeError('Battle history refresh failed');
                 return response([]);
+            }
+            if (path === '/api/v1/me/underground/recollections/read' && init?.method === 'POST') {
+                const payload = JSON.parse(String(init.body)) as { request_id: string; chapter: number };
+                recollectionPayloads.push(payload);
+                if (recollectionPayloads.length === 1) throw new TypeError('Recollection response lost');
+                const chapter = payload.chapter;
+                openState = {
+                    ...openState,
+                    recollections: {
+                        ...openState.recollections,
+                        max_completed: chapter,
+                        entries: [1, 2, 3, 4, 5].map((entryChapter) => ({
+                            key: `past_${entryChapter}`,
+                            kind: 'past',
+                            title: `過去について問う・${entryChapter}`,
+                            chapter: entryChapter,
+                            experienced: entryChapter <= chapter,
+                            completed: entryChapter <= chapter,
+                            locked: entryChapter > chapter + 1,
+                            ...(entryChapter <= chapter ? { body: [`past-${entryChapter}`] } : {}),
+                        })),
+                        serious_talk: chapter >= 5 ? {
+                            title: '案内人に真剣な話をする',
+                            initial_scene: 'root',
+                            scenes: {
+                                root: {
+                                    lines: ['「まだ、何か？」'],
+                                    choices: [
+                                        { key: 'true_name', label: '本名を聞く', next: 'true_name' },
+                                        { key: 'embrace', label: '抱き締める', next: 'embrace' },
+                                        { key: 'leave', label: '戻る', next: 'guide' },
+                                    ],
+                                },
+                            },
+                        } : null,
+                    },
+                };
+                return response(openState);
             }
             if (path === '/api/v1/me/underground/respec' && init?.method === 'POST') {
                 const payload = JSON.parse(String(init.body)) as { request_id: string; growth_path_key: string };
@@ -3807,10 +3871,10 @@ describe('Underground equipment navigation', () => {
                     shard_balance: 220,
                     skill_points_unspent: 20,
                     skill_points_spent: 0,
-                    skill_trees: openState.skill_trees.map((tree) => ({
+                    skill_trees: openState.skill_trees.map((tree: (typeof skillTrees)[number]) => ({
                         ...tree,
                         invested_points: 0,
-                        nodes: tree.nodes.map((node) => ({ ...node, rank: 0, can_acquire: true, active_slot: null })),
+                        nodes: tree.nodes.map((node: (typeof skillTrees)[number]['nodes'][number]) => ({ ...node, rank: 0, can_acquire: true, active_slot: null })),
                     })),
                     active_slots: [null, null, null, null, null],
                     respec: respecProjection,
@@ -3824,9 +3888,9 @@ describe('Underground equipment navigation', () => {
                 if (!respecCommitted) throw new TypeError('Skill response lost');
                 openState = {
                     ...openState,
-                    skill_trees: openState.skill_trees.map((tree) => ({
+                    skill_trees: openState.skill_trees.map((tree: (typeof skillTrees)[number]) => ({
                         ...tree,
-                        nodes: tree.nodes.map((node) => node.key === payload.node_key
+                        nodes: tree.nodes.map((node: (typeof skillTrees)[number]['nodes'][number]) => node.key === payload.node_key
                             ? { ...node, rank: 1, can_acquire: false }
                             : node),
                     })),
@@ -3862,10 +3926,35 @@ describe('Underground equipment navigation', () => {
         expect(wrapper.get('.underground-ai-editor').text()).toContain('初期設定を表示しています');
         await wrapper.findAll('.underground-main-navigation button')[2]!.trigger('click');
         expect(wrapper.get('.underground-guide-room-greeting').text()).toBe('案内人「あら、どうしたんですか？」');
-        await wrapper.get('.underground-guide-actions button').trigger('click');
+        const guideAction = (label: string) => wrapper.findAll('.underground-guide-actions > button')
+            .find((button) => button.text() === label)!;
+        await guideAction('少しお話がしたい').trigger('click');
         expect(wrapper.get('.underground-guide-conversation').text())
             .toBe('「あ、あー……話題が思い浮かんだらまた来てちょうだいな？」');
-        await wrapper.findAll('.underground-guide-actions button')[1]!.trigger('click');
+        await guideAction('過去について問う').trigger('click');
+        const firstRecollection = wrapper.findAll('.underground-recollection-list button')
+            .find((button) => button.text().includes('過去について問う・1'))!;
+        await firstRecollection.trigger('click');
+        await wrapper.get('.underground-recollection-detail .button.primary').trigger('click');
+        await flushPromises();
+        expect(wrapper.get('[role="alert"]').text()).toContain('Recollection response lost');
+        await wrapper.get('.underground-recollection-detail .button.primary').trigger('click');
+        await flushPromises();
+        expect(recollectionPayloads).toHaveLength(2);
+        expect(recollectionPayloads[1]).toEqual(recollectionPayloads[0]);
+        for (const chapter of [2, 3, 4, 5]) {
+            await wrapper.findAll('.underground-recollection-list button')
+                .find((button) => button.text().includes(`過去について問う・${chapter}`))!.trigger('click');
+            await wrapper.get('.underground-recollection-detail .button.primary').trigger('click');
+            await flushPromises();
+        }
+        expect(wrapper.get('.underground-guide-room').text()).toContain('案内人に真剣な話をする');
+        await guideAction('案内人に真剣な話をする').trigger('click');
+        expect(wrapper.get('.underground-guide-serious-talk').text()).not.toContain('闘いを挑む');
+        expect(wrapper.get('.underground-guide-serious-talk').text()).toContain('本名を聞く');
+        expect(wrapper.get('.underground-guide-serious-talk').text()).toContain('抱き締める');
+        expect(wrapper.get('.underground-guide-serious-talk').text()).toContain('戻る');
+        await guideAction('再振りをしたい').trigger('click');
         expect(wrapper.get('.underground-respec-explanations').text()).toContain('SP・STP・成長方針を再設定します。');
         expect(wrapper.get('.underground-respec-explanations').text()).toContain('輝石のかけらが Lv × 10 G 必要です。');
         expect(wrapper.get('.underground-respec-explanations').text()).toContain('一度行うと24時間は再び行うことができません。');

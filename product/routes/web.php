@@ -39,7 +39,7 @@ Route::get('/assets/hakoniwa-original/{filename}', AssetController::class)
     ->where('filename', '[A-Za-z0-9_-]+\.(?:gif|png|webp)');
 
 Route::get('/manual/{section?}', ManualController::class)
-    ->where('section', 'beginner|intermediate|advanced|trading-post|secretary|underground');
+    ->where('section', 'beginner|intermediate|economy|advanced|disasters|ships|trading-post|secretary|underground|combat|equipment|faq');
 Route::get('/community-guidelines', CommunityGuidelinesController::class);
 
 Route::prefix('api/v1/public')
@@ -94,6 +94,7 @@ Route::prefix('api/v1')->middleware(['auth', PrivateApiResponse::class])->group(
         Route::post('/tutorial', [UndergroundIntroController::class, 'tutorial']);
         Route::post('/shopkeeper/name', [UndergroundIntroController::class, 'nameShopkeeper']);
         Route::post('/scripted-loss', [UndergroundIntroController::class, 'scriptedLoss']);
+        Route::post('/recollections/read', [UndergroundIntroController::class, 'completeRecollection']);
         Route::post('/contract', [UndergroundIntroController::class, 'contract']);
         Route::post('/growth-path', [UndergroundIntroController::class, 'growthPath']);
         Route::post('/respec', [UndergroundIntroController::class, 'respec']);

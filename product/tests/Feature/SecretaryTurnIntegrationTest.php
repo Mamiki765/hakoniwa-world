@@ -191,7 +191,7 @@ final class SecretaryTurnIntegrationTest extends TestCase
             'grant_key' => 'test:secretary-suit:experience',
             'obtained_at' => now(),
         ]);
-        $seed = collect(range(1, 2_000))->map(
+        $seed = collect(range(1, 20_000))->map(
             static fn (int $attempt): string => hash('sha256', "secretary suit success {$attempt}"),
         )->first(static function (string $candidate) use ($nation): bool {
             $random = new TurnRandomStreamFactory($candidate);

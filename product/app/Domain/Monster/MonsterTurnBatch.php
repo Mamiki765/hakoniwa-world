@@ -23,6 +23,9 @@ final class MonsterTurnBatch
     /** @var array<int, true> */
     private array $actionDeferredMonsterIds = [];
 
+    /** @var array<int, true> */
+    private array $prepassClaimedMonsterIds = [];
+
     /** @var array<string, int> */
     private array $metrics = [
         'monsters_loaded' => 0,
@@ -71,6 +74,22 @@ final class MonsterTurnBatch
         return isset($this->actionDeferredMonsterIds[$monsterId]);
     }
 
+    public function claimPrepassAction(int $monsterId): bool
+    {
+        if (isset($this->prepassClaimedMonsterIds[$monsterId])) {
+            return false;
+        }
+
+        $this->prepassClaimedMonsterIds[$monsterId] = true;
+
+        return true;
+    }
+
+    public function isPrepassActionClaimed(int $monsterId): bool
+    {
+        return isset($this->prepassClaimedMonsterIds[$monsterId]);
+    }
+
     public function move(
         MonsterOccupancy $occupancy,
         int $fromCellId,
@@ -105,6 +124,7 @@ final class MonsterTurnBatch
             unset($this->occupancyByMonsterId[$occupancy->monster_instance_id]);
         }
         unset($this->actionDeferredMonsterIds[$occupancy->monster_instance_id]);
+        unset($this->prepassClaimedMonsterIds[$occupancy->monster_instance_id]);
     }
 
     public function synchronizeMonsterSnapshot(MonsterInstance $monster): void

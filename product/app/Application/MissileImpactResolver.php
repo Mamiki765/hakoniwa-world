@@ -3,6 +3,7 @@
 namespace App\Application;
 
 use App\Application\Underground\UndergroundFacilityBenefits;
+use App\Domain\Facility\FacilityRankPolicy;
 use App\Domain\Facility\MissileBaseRules;
 use App\Domain\Map\GridCoordinate;
 use App\Domain\Map\MapCellStateService;
@@ -87,6 +88,7 @@ final class MissileImpactResolver
         private readonly UndergroundFacilityBenefits $undergroundBenefits,
         private readonly SurfaceShipCatalog $surfaceShips,
         private readonly SurfaceShipRemovalService $shipRemoval,
+        private readonly FacilityScaleDamageService $facilityScaleDamage,
     ) {}
 
     /** @param array<string, MapCell>|null $surfaceCellsByCoordinate */
@@ -763,6 +765,12 @@ final class MissileImpactResolver
         if (($impact['effect'] ?? null) === 'terrain_destroyed') {
             return $points['land_destroyed'];
         }
+        if (($impact['effect'] ?? null) === 'facility_scale_damaged') {
+            return $points['facility_scale_damaged'];
+        }
+        if (($impact['effect'] ?? null) === 'facility_scale_land_damaged') {
+            return $points['facility_scale_land_damaged'];
+        }
         if (($impact['effect'] ?? null) === 'capital_damaged') {
             return $points['capital_above_minimum'];
         }
@@ -1308,6 +1316,55 @@ final class MissileImpactResolver
                 'firing_base_experience_applied' => $experience,
             ];
         }
+        $facilityDamage = $this->facilityScaleDamage->apply(
+            $context,
+            $cell,
+            FacilityRankPolicy::ORDINARY_TERRAIN_DESTRUCTION,
+            $missileKey,
+            [
+                'missile_key' => $missileKey,
+                'from_terrain_key' => $beforeTerrain,
+                'to_terrain_key' => $beforeTerrain,
+            ],
+        );
+        if ($facilityDamage !== null) {
+            $meaningful = $facilityDamage['scale_loss'] > 0;
+            $effect = $meaningful ? 'facility_scale_damaged' : 'facility_scale_ineffective';
+            if ($meaningful) {
+                $this->markCellChanged($context, $cell);
+                $this->recordMeaningfulImpact(
+                    $context,
+                    $firingNation,
+                    $cell,
+                    $missileKey,
+                    $effect,
+                    [
+                        'facility_key' => $facilityDamage['facility_key'],
+                        'before_scale' => $facilityDamage['before_scale'],
+                        'after_scale' => $facilityDamage['after_scale'],
+                        'scale_loss' => $facilityDamage['scale_loss'],
+                        'from_terrain_key' => $beforeTerrain,
+                        'to_terrain_key' => $beforeTerrain,
+                    ],
+                    $targetNationId,
+                    $targetNationName,
+                );
+            }
+
+            return [
+                ...$base,
+                'meaningful' => $meaningful,
+                'effect' => $effect,
+                'target_nation_id' => $targetNationId,
+                'target_nation_name' => $targetNationName,
+                'facility_key' => $facilityDamage['facility_key'],
+                'before_scale' => $facilityDamage['before_scale'],
+                'after_scale' => $facilityDamage['after_scale'],
+                'scale_loss' => $facilityDamage['scale_loss'],
+                'from_terrain_key' => $beforeTerrain,
+                'to_terrain_key' => $beforeTerrain,
+            ];
+        }
         $isWater = in_array($beforeTerrain, ['sea', 'shallow'], true);
         if ($isWater && $beforeFacility === null) {
             return $base;
@@ -1459,6 +1516,54 @@ final class MissileImpactResolver
             'monster.removed_by_terrain_event',
             ['terrain_event_key' => 'terrain_destruction_missile', 'hardening_ignored' => true],
         );
+        $facilityDamage = $this->facilityScaleDamage->apply(
+            $context,
+            $cell,
+            FacilityRankPolicy::LAND_DESTRUCTION,
+            'land_destruction_missile',
+            [
+                'missile_key' => 'land_destruction_missile',
+                'monster_removed' => $monsterRemoved,
+                'from_terrain_key' => $beforeTerrain,
+                'to_terrain_key' => $beforeTerrain,
+            ],
+        );
+        if ($facilityDamage !== null && $facilityDamage['scale_loss'] > 0) {
+            $this->markCellChanged($context, $cell);
+            $this->recordMeaningfulImpact(
+                $context,
+                $firingNation,
+                $cell,
+                'land_destruction_missile',
+                'facility_scale_land_damaged',
+                [
+                    'facility_key' => $facilityDamage['facility_key'],
+                    'before_scale' => $facilityDamage['before_scale'],
+                    'after_scale' => $facilityDamage['after_scale'],
+                    'scale_loss' => $facilityDamage['scale_loss'],
+                    'from_terrain_key' => $beforeTerrain,
+                    'to_terrain_key' => $beforeTerrain,
+                    'monster_removed' => $monsterRemoved,
+                ],
+                $targetNationId,
+                $targetNationName,
+            );
+
+            return [
+                ...$base,
+                'meaningful' => true,
+                'effect' => 'facility_scale_land_damaged',
+                'target_nation_id' => $targetNationId,
+                'target_nation_name' => $targetNationName,
+                'facility_key' => $facilityDamage['facility_key'],
+                'before_scale' => $facilityDamage['before_scale'],
+                'after_scale' => $facilityDamage['after_scale'],
+                'scale_loss' => $facilityDamage['scale_loss'],
+                'from_terrain_key' => $beforeTerrain,
+                'to_terrain_key' => $beforeTerrain,
+                'monster_removed' => $monsterRemoved,
+            ];
+        }
         $targetTerrain = match ($beforeTerrain) {
             'sea' => null,
             'shallow' => 'sea',

@@ -95,6 +95,28 @@ class TileAssetTest extends TestCase
         $this->assertStringContainsString('/port.gif?v=', (string) $resolver->resolve('tile.port', '港')['url']);
     }
 
+    public function test_rank_two_facilities_use_the_owner_confirmed_case_sensitive_gif_names(): void
+    {
+        foreach (['Land702.gif', 'KLand47.gif', 'land19.gif'] as $filename) {
+            $this->writeGif($filename);
+        }
+
+        $resolver = app(AssetManifestResolver::class);
+        $expected = [
+            'tile.large_farm' => 'Land702.gif',
+            'tile.large_factory' => 'KLand47.gif',
+            'tile.large_mine' => 'land19.gif',
+        ];
+
+        foreach ($expected as $assetKey => $filename) {
+            $asset = $resolver->resolve($assetKey, 'ランク2施設');
+            $this->assertTrue($asset['available'], $assetKey);
+            $this->assertStringContainsString("/{$filename}?v=", (string) $asset['url']);
+            $this->assertSame($filename, $resolver->filenameForAssetKey($assetKey));
+            $this->assertNotNull($resolver->pathForFilename($filename));
+        }
+    }
+
     public function test_themed_assets_use_only_allowlisted_external_files_and_fall_back_safely(): void
     {
         mkdir($this->assetDirectory.DIRECTORY_SEPARATOR.'snow', 0777, true);

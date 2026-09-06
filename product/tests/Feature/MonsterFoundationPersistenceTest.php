@@ -26,7 +26,7 @@ final class MonsterFoundationPersistenceTest extends TestCase
             ->get();
 
         $this->assertSame(
-            [0, 50, 100, 200, 300, 400, 450, 500, 600, 700],
+            [0, 50, 100, 200, 300, 400, 450, 500, 600, 700, 750],
             $definitions->pluck('display_order')->all(),
         );
 

@@ -8,7 +8,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>{{ $title }} | 箱庭諸島２S＋</title>
-    <meta name="description" content="箱庭諸島２S＋の遊び方を初級・中級・上級に分けて説明します。">
+    <meta name="description" content="箱庭諸島２S＋の島づくり、施設、怪獣、秘書、地底探索などを用途別に説明します。">
     @vite(['resources/css/manual.css'])
 </head>
 <body>

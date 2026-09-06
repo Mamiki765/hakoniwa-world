@@ -12,6 +12,7 @@ use App\Application\Ver270SecretaryItemRulesetUpgrade;
 use App\Application\Ver280UnderseaCityRulesetUpgrade;
 use App\Application\Ver310RulesetUpgrade;
 use App\Application\Ver350RulesetUpgrade;
+use App\Application\Ver370RulesetUpgrade;
 use App\Domain\Secretary\SecretarySkillCatalog;
 use App\Domain\Secretary\SecretarySkillProgression;
 use App\Domain\World\WorldGenerationProfile;
@@ -65,26 +66,30 @@ final class FreshInstallRebaselineTest extends TestCase
 
     private const AWAKENING_TECHNIQUE_MIGRATION = '2026_09_06_000000_add_underground_awakening_technique_selection';
 
-    public function test_empty_postgresql_uses_direct_current_schema_and_v20_catalog_baseline(): void
+    private const RECOLLECTION_MIGRATION = '2026_09_06_010000_add_underground_recollections';
+
+    private const V21_MIGRATION = '2026_09_06_020000_publish_v21_3_7_0_release';
+
+    public function test_empty_postgresql_uses_direct_current_schema_and_v21_catalog_baseline(): void
     {
         config(['hakoniwa' => require config_path('hakoniwa.php')]);
         $current = config('hakoniwa.ruleset');
         app(CurrentCatalogInstaller::class)->install($current);
         app(RulesetPublisher::class)->publish($current);
-        $ruleset = RulesetVersion::query()->where('key', 'hakoniwa-2s-plus-v20')->sole();
+        $ruleset = RulesetVersion::query()->where('key', 'hakoniwa-2s-plus-v21')->sole();
 
-        $this->assertSame('3.6.1', config('hakoniwa.application_version'));
-        $this->assertSame(['hakoniwa-2s-plus-v20'], array_keys(config('hakoniwa.published_rulesets')));
-        $this->assertSame('hakoniwa-2s-plus-v20', $ruleset->key);
-        $this->assertSame(20, $ruleset->version);
+        $this->assertSame('3.7.0', config('hakoniwa.application_version'));
+        $this->assertSame(['hakoniwa-2s-plus-v21'], array_keys(config('hakoniwa.published_rulesets')));
+        $this->assertSame('hakoniwa-2s-plus-v21', $ruleset->key);
+        $this->assertSame(21, $ruleset->version);
         $this->assertDatabaseHas('ruleset_versions', [
             'key' => Ver350RulesetUpgrade::SOURCE_KEY,
             'version' => Ver350RulesetUpgrade::SOURCE_VERSION,
         ]);
         $this->assertSame(30, CommandDefinition::query()->where('ruleset_version_id', $ruleset->id)->count());
         $this->assertSame(3, ProductionDefinition::query()->where('ruleset_version_id', $ruleset->id)->count());
-        $this->assertSame(10, MonsterDefinition::query()->where('ruleset_version_id', $ruleset->id)->count());
-        $this->assertSame(62, DB::table('migrations')->count());
+        $this->assertSame(11, MonsterDefinition::query()->where('ruleset_version_id', $ruleset->id)->count());
+        $this->assertSame(64, DB::table('migrations')->count());
         $this->assertDatabaseHas('migrations', [
             'migration' => '2026_08_22_000000_rebaseline_ver_2_4_install_and_upgrade',
         ]);
@@ -132,6 +137,12 @@ final class FreshInstallRebaselineTest extends TestCase
         ]);
         $this->assertDatabaseHas('migrations', [
             'migration' => self::AWAKENING_TECHNIQUE_MIGRATION,
+        ]);
+        $this->assertDatabaseHas('migrations', [
+            'migration' => '2026_09_06_010000_add_underground_recollections',
+        ]);
+        $this->assertDatabaseHas('migrations', [
+            'migration' => '2026_09_06_020000_publish_v21_3_7_0_release',
         ]);
         $this->assertTrue(Schema::hasColumn('underground_profiles', 'awakening_technique_key'));
         $this->assertSame(0, DB::table('migrations')->whereIn('migration', [
@@ -1254,7 +1265,7 @@ SQL);
     public function test_exact_340_to_350_upgrade_is_atomic_and_repairs_only_facilityless_owned_water(): void
     {
         $this->returnDatabaseToExact340Source();
-        $targetSettings = config('hakoniwa.ruleset');
+        $targetSettings = require config_path('hakoniwa/rulesets/hakoniwa-2s-plus-v20.php');
         $sourceSettings = require config_path('hakoniwa/rulesets/hakoniwa-2s-plus-v19.php');
         config([
             'hakoniwa.ruleset' => $sourceSettings,
@@ -1669,6 +1680,29 @@ SQL);
 
     private function returnDatabaseToExact350Source(): void
     {
+        RulesetVersion::query()->where('key', Ver370RulesetUpgrade::TARGET_KEY)->delete();
+        $v20Settings = require config_path('hakoniwa/rulesets/hakoniwa-2s-plus-v20.php');
+        config([
+            'hakoniwa.ruleset' => $v20Settings,
+            'hakoniwa.published_rulesets' => [$v20Settings['key'] => $v20Settings],
+        ]);
+        DB::statement(<<<'SQL'
+ALTER TABLE monster_definitions
+  DROP CONSTRAINT monster_definitions_spawn_tier_check,
+  ADD CONSTRAINT monster_definitions_spawn_tier_check
+    CHECK (natural_spawn_tier IS NULL OR natural_spawn_tier BETWEEN 1 AND 3)
+SQL);
+        DB::statement(
+            'ALTER TABLE underground_intro_progress '
+            .'DROP CONSTRAINT underground_intro_progress_recollection_completed_check',
+        );
+        Schema::table('underground_intro_progress', function (Blueprint $table): void {
+            $table->dropColumn('guide_recollection_max_completed');
+        });
+        DB::table('migrations')->whereIn('migration', [
+            self::RECOLLECTION_MIGRATION,
+            self::V21_MIGRATION,
+        ])->delete();
         DB::statement(<<<'SQL'
 ALTER TABLE underground_intro_requests
   DROP CONSTRAINT underground_intro_requests_operation_check,
@@ -1828,7 +1862,11 @@ SQL);
     {
         return array_values(array_filter(
             $this->pendingMigrations(),
-            static fn (string $migration): bool => $migration !== self::AWAKENING_TECHNIQUE_MIGRATION,
+            static fn (string $migration): bool => ! in_array($migration, [
+                self::AWAKENING_TECHNIQUE_MIGRATION,
+                self::RECOLLECTION_MIGRATION,
+                self::V21_MIGRATION,
+            ], true),
         ));
     }
 

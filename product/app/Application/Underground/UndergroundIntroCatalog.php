@@ -18,6 +18,22 @@ final class UndergroundIntroCatalog
             : throw new RuntimeException('Underground intro identity is missing.');
     }
 
+    /** @return array<string, mixed> */
+    public function recollections(): array
+    {
+        $recollections = $this->data()['recollections'] ?? null;
+        if (! is_array($recollections)
+            || ! is_string($recollections['identity'] ?? null)
+            || $recollections['identity'] === ''
+            || ! is_array($recollections['past'] ?? null)
+            || ! is_array($recollections['serious_talk'] ?? null)
+            || ! is_array($recollections['history'] ?? null)) {
+            throw new RuntimeException('Underground recollection configuration is invalid.');
+        }
+
+        return $recollections;
+    }
+
     /**
      * @return array{
      *   activity_type: string, activity_key: string, encounter_key: string, display_name: string,
