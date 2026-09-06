@@ -287,13 +287,17 @@ final class UndergroundRuntimeTest extends TestCase
         $this->assertSame(0, $profile->refresh()->awakening_gauge);
 
         $progress->update(['first_cleared_at' => Carbon::now()]);
-        $profile->refresh()->update(['awakening_gauge' => 980]);
+        $profile->refresh()->update([
+            'awakening_gauge' => 980,
+            'awakening_technique_key' => 'shura_bloodline',
+        ]);
         Carbon::setTestNow(Carbon::now()->addSeconds(10));
         $capRequestId = (string) Str::uuid();
         $capped = $runtime->explore($user, $capRequestId);
         $cappedDuplicate = $runtime->explore($user, $capRequestId);
         $this->assertTrue($combat->calls[1]['player_snapshot']['awakening']['unlocked']);
         $this->assertSame(980, $combat->calls[1]['player_snapshot']['awakening']['gauge']);
+        $this->assertSame('shura_bloodline', $combat->calls[1]['player_snapshot']['awakening']['technique_key']);
         $this->assertSame(1_000, $capped['battle']->snapshot['awakening']['gauge_after']);
         $this->assertSame(1_000, $profile->refresh()->awakening_gauge);
         $this->assertTrue($cappedDuplicate['duplicate']);
@@ -1252,7 +1256,12 @@ final class ScriptedUndergroundExplorationCombat implements AtomicUndergroundExp
             ? $awakeningInput['growth_path']
             : 'martial_red';
         $technique = $unlocked
-            ? array_merge(app(UndergroundAwakening::class)->technique($growthPath), [
+            ? array_merge(app(UndergroundAwakening::class)->technique(
+                $growthPath,
+                is_string($awakeningInput['technique_key'] ?? null)
+                    ? $awakeningInput['technique_key']
+                    : null,
+            ), [
                 'used' => is_array($configured) && ($configured['awakening_technique_used'] ?? false) === true,
             ])
             : null;

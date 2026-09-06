@@ -23,6 +23,7 @@ use App\Http\Requests\UndergroundTrialRunRequest;
 use App\Http\Requests\UpdateUndergroundActiveLoadoutRequest;
 use App\Http\Requests\UpdateUndergroundAiConfigurationRequest;
 use App\Http\Requests\UpdateUndergroundAwakeningMessageRequest;
+use App\Http\Requests\UpdateUndergroundAwakeningTechniqueRequest;
 use DomainException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -282,6 +283,17 @@ final class UndergroundIntroController extends Controller
             $request->user(),
             $request->string('request_id')->value(),
             is_string($message) ? $message : null,
+        ));
+    }
+
+    public function updateAwakeningTechnique(
+        UpdateUndergroundAwakeningTechniqueRequest $request,
+        UndergroundIntroService $service,
+    ): JsonResponse {
+        return $this->respond(fn (): array => $service->updateAwakeningTechnique(
+            $request->user(),
+            $request->string('request_id')->value(),
+            $request->string('technique_key')->value(),
         ));
     }
 

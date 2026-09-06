@@ -235,6 +235,7 @@ final class UndergroundAlphaV1BattleProjector
             'awakened' => (bool) ($value['awakened'] ?? false),
             'awakening_technique_used' => (bool) ($value['awakening_technique_used'] ?? false),
             'awakening_guard_rounds_remaining' => (int) ($value['awakening_guard_rounds_remaining'] ?? 0),
+            'awakening_lifesteal_rounds_remaining' => (int) ($value['awakening_lifesteal_rounds_remaining'] ?? 0),
             'awakening_unlocked' => (bool) ($value['awakening_unlocked'] ?? false),
             'awakening_gauge' => (int) ($value['awakening_gauge'] ?? 0),
             'awakening_gauge_max' => (int) ($value['awakening_gauge_max'] ?? UndergroundAwakening::GAUGE_MAX),
@@ -259,6 +260,13 @@ final class UndergroundAlphaV1BattleProjector
             'absolute_aegis_expired' => '絶対護界終了',
             'life_requiem' => '生命讃歌',
             'limitless_reprise' => '無窮再演',
+            'shura_bloodline' => '修羅の血脈',
+            'shura_bloodline_lifesteal' => '修羅の血脈',
+            'shura_bloodline_expired' => '修羅の血脈終了',
+            'fortress_strike' => '城塞撃',
+            'fortress_strike_guard' => '城塞撃の防御態勢',
+            'judgment_light' => '裁きの天光',
+            'formless_strike' => '無相の一撃',
         ];
         if (isset($plain[$action])) {
             return $plain[$action];

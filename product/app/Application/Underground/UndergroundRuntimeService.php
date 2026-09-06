@@ -533,8 +533,11 @@ STORY;
     public function projectAwakeningState(UndergroundProfile $profile, bool $unlocked): array
     {
         $technique = is_string($profile->growth_path_key)
-            ? $this->awakening->technique($profile->growth_path_key)
+            ? $this->awakening->technique($profile->growth_path_key, $profile->awakening_technique_key)
             : null;
+        $techniques = is_string($profile->growth_path_key)
+            ? $this->awakening->techniques($profile->growth_path_key)
+            : [];
 
         return [
             'identity' => UndergroundAwakening::IDENTITY,
@@ -544,10 +547,12 @@ STORY;
             'custom_message' => $unlocked ? $profile->awakening_message : null,
             'default_message' => UndergroundAwakening::DEFAULT_MESSAGE,
             'technique' => $unlocked ? $technique : null,
+            'techniques' => $unlocked ? $techniques : [],
+            'selected_technique_key' => $unlocked ? ($technique['key'] ?? null) : null,
         ];
     }
 
-    /** @return array{unlocked: bool, gauge: int, message: string, growth_path: string} */
+    /** @return array{unlocked: bool, gauge: int, message: string, growth_path: string, technique_key: string} */
     private function awakeningSnapshot(
         UndergroundProfile $profile,
         bool $unlocked,
@@ -560,11 +565,17 @@ STORY;
             );
         }
 
+        $technique = $this->awakening->technique(
+            $profile->growth_path_key,
+            $profile->awakening_technique_key,
+        );
+
         return [
             'unlocked' => $unlocked,
             'gauge' => $unlocked ? $profile->awakening_gauge : 0,
             'message' => $this->awakening->renderMessage($profile->awakening_message, $secretaryName),
             'growth_path' => $profile->growth_path_key,
+            'technique_key' => $technique['key'],
         ];
     }
 

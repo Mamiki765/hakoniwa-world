@@ -383,6 +383,7 @@ final readonly class UndergroundIntroService
                 $profile->{'allocated_'.$stat.'_stp'} = 0;
             }
             $profile->skill_points_unspent = $profile->skill_points_total;
+            $profile->awakening_technique_key = null;
             $profile->last_respec_at = $now;
             $newMaxHp = $this->alphaV1Catalog->currentMaxHp(
                 $growthPathKey,
@@ -756,6 +757,46 @@ final readonly class UndergroundIntroService
                     );
                 }
                 $profile->awakening_message = $normalized;
+                $profile->save();
+            },
+        );
+    }
+
+    /** @return array<string, mixed> */
+    public function updateAwakeningTechnique(User $user, string $requestId, string $techniqueKey): array
+    {
+        return $this->mutate(
+            $user,
+            $requestId,
+            'awakening_technique',
+            ['technique_key' => $techniqueKey],
+            function (
+                Secretary $_secretary,
+                UndergroundProfile $profile,
+                UndergroundIntroProgress $intro,
+            ) use ($techniqueKey): void {
+                $this->assertGrowthUnlocked($profile, $intro);
+                $unlocked = UndergroundTrialProgress::query()
+                    ->where('underground_profile_id', $profile->id)
+                    ->where('trial_key', $this->runtimeCatalog->firstTrialKey())
+                    ->whereNotNull('first_cleared_at')
+                    ->lockForUpdate()
+                    ->exists();
+                if (! $unlocked) {
+                    throw new UndergroundRuntimeException(
+                        'underground_awakening_locked',
+                        '覚醒奥義は一つ目の封印の地を初回制覇すると設定できます。',
+                    );
+                }
+                try {
+                    $this->awakening->technique((string) $profile->growth_path_key, $techniqueKey);
+                } catch (InvalidArgumentException) {
+                    throw new UndergroundRuntimeException(
+                        'underground_awakening_technique_invalid',
+                        '現在の成長方針で選べる覚醒奥義を確認してください。',
+                    );
+                }
+                $profile->awakening_technique_key = $techniqueKey;
                 $profile->save();
             },
         );

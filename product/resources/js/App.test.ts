@@ -2602,7 +2602,7 @@ describe('application lobby and island entry', () => {
             contract_completed: true, growth_paths: null, growth_path: growthPath, playtest: null,
             trial: { key: 'trial_01', label: '地下に眠る古代遺跡', total_battles: 10, first_cleared: true, active_run: null },
             awakening: {
-                identity: 'secretary-underground-awakening-v1', unlocked: true, current: 1000, maximum: 1000,
+                identity: 'secretary-underground-awakening-v2', unlocked: true, current: 1000, maximum: 1000,
                 custom_message: '<b>{secretary_name}</b>、限界突破！' as string | null,
                 default_message: '魔力が{secretary_name}の全身を駆け巡る――！',
                 technique: {
@@ -2610,6 +2610,16 @@ describe('application lobby and island entry', () => {
                     summary: 'MPを全回復し、通常active skillのcooldownを全解除。そのまま行動。',
                     consumes_action: false,
                 },
+                techniques: [{
+                    key: 'limitless_reprise', name: '無窮再演',
+                    summary: 'MPを全回復し、通常active skillのcooldownを全解除。そのまま行動。',
+                    consumes_action: false,
+                }, {
+                    key: 'formless_strike', name: '無相の一撃',
+                    summary: '技巧100%を使い、enemyのphysical・magical defenseの低い側を参照するdirect attack。',
+                    consumes_action: true,
+                }],
+                selected_technique_key: 'limitless_reprise',
             },
             battle: null, next_battle_at: null,
         };
@@ -2659,6 +2669,19 @@ describe('application lobby and island entry', () => {
                 };
                 return response(state);
             }
+            if (path === '/api/v1/me/underground/awakening/technique' && init?.method === 'PUT') {
+                const payload = JSON.parse(String(init.body)) as { technique_key: string };
+                const technique = state.awakening.techniques.find((candidate) => candidate.key === payload.technique_key)!;
+                state = {
+                    ...state,
+                    awakening: {
+                        ...state.awakening,
+                        technique,
+                        selected_technique_key: technique.key,
+                    },
+                };
+                return response(state);
+            }
 
             return response(null, 404);
         });
@@ -2673,12 +2696,24 @@ describe('application lobby and island entry', () => {
         expect(wrapper.get<HTMLProgressElement>('.underground-awakening-gauge progress').element.value).toBe(1000);
         await wrapper.findAll('.underground-character-actions button')[1]!.trigger('click');
         expect(wrapper.get('.underground-awakening-settings').text()).toContain('無窮再演');
+        expect(wrapper.get('.underground-awakening-settings').text()).toContain('無相の一撃');
+        expect(wrapper.get('.underground-awakening-settings').text()).toContain('技巧100%');
         expect(wrapper.get('.underground-awakening-settings').text()).toContain('覚醒中に1度だけ使用可能');
         expect(wrapper.get('.underground-awakening-settings').text()).toContain('通常actionを消費せず');
+        await wrapper.get<HTMLInputElement>('input[value="formless_strike"]').setValue();
+        await wrapper.get('.underground-awakening-technique-save').trigger('click');
+        await flushPromises();
+        const techniqueSave = fetchMock.mock.calls.find(([path, init]) => (
+            String(path) === '/api/v1/me/underground/awakening/technique' && init?.method === 'PUT'
+        ));
+        expect(JSON.parse(String(techniqueSave?.[1]?.body))).toEqual({
+            request_id: expect.any(String), technique_key: 'formless_strike',
+        });
+        expect(wrapper.get<HTMLInputElement>('input[value="formless_strike"]').element.checked).toBe(true);
         expect(wrapper.get<HTMLTextAreaElement>('#underground-awakening-message').element.value)
             .toBe('<b>{secretary_name}</b>、限界突破！');
         await wrapper.get('#underground-awakening-message').setValue('<script>表示秘書</script>覚醒');
-        await wrapper.get('.underground-awakening-settings .button').trigger('click');
+        await wrapper.get('.underground-awakening-message-save').trigger('click');
         await flushPromises();
         const save = fetchMock.mock.calls.find(([path, init]) => (
             String(path) === '/api/v1/me/underground/awakening/message' && init?.method === 'PUT'
@@ -2689,7 +2724,7 @@ describe('application lobby and island entry', () => {
         expect(wrapper.find('.underground-awakening-settings script').exists()).toBe(false);
 
         await wrapper.get('#underground-awakening-message').setValue('');
-        await wrapper.get('.underground-awakening-settings .button').trigger('click');
+        await wrapper.get('.underground-awakening-message-save').trigger('click');
         await flushPromises();
         expect(wrapper.get<HTMLTextAreaElement>('#underground-awakening-message').element.value)
             .toBe(state.awakening.default_message);

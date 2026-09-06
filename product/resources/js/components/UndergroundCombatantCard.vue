@@ -12,6 +12,7 @@ interface CombatantState {
     awakened?: boolean;
     awakening_technique_used?: boolean;
     awakening_guard_rounds_remaining?: number;
+    awakening_lifesteal_rounds_remaining?: number;
     awakening_unlocked?: boolean;
     awakening_gauge?: number;
     awakening_gauge_max?: number;
@@ -59,7 +60,7 @@ const awakeningGauge = computed(() => Math.max(0, Math.min(awakeningMaximum.valu
                 <span>覚醒ゲージ</span>
                 <progress :max="awakeningMaximum" :value="awakeningGauge" :aria-label="`覚醒ゲージ ${awakeningGauge}/${awakeningMaximum}`" />
             </div>
-            <ul v-if="state.barrier > 0 || visibleStatuses.length > 0 || state.role_stacks.fighting_spirit > 0 || state.role_stacks.grace > 0 || state.awakened || (state.awakening_guard_rounds_remaining ?? 0) > 0 || state.taunt" class="underground-active-state" aria-label="有効な状態">
+            <ul v-if="state.barrier > 0 || visibleStatuses.length > 0 || state.role_stacks.fighting_spirit > 0 || state.role_stacks.grace > 0 || state.awakened || (state.awakening_guard_rounds_remaining ?? 0) > 0 || (state.awakening_lifesteal_rounds_remaining ?? 0) > 0 || state.taunt" class="underground-active-state" aria-label="有効な状態">
                 <li v-if="state.barrier > 0">障壁 {{ state.barrier }}</li>
                 <li v-for="status in visibleStatuses" :key="`${status.label}-${status.remaining}-${status.stacks}`">
                     {{ status.label }}<template v-if="status.stacks > 1"> {{ status.stacks }}段階</template><template v-if="status.remaining > 0"> 残{{ status.remaining }}</template>
@@ -69,6 +70,7 @@ const awakeningGauge = computed(() => Math.max(0, Math.min(awakeningMaximum.valu
                 <li v-if="state.taunt">{{ state.taunt.label ?? '挑発' }}<template v-if="state.taunt.remaining"> 残{{ state.taunt.remaining }}</template></li>
                 <li v-if="state.awakened">覚醒中</li>
                 <li v-if="(state.awakening_guard_rounds_remaining ?? 0) > 0">覚醒防御 残{{ state.awakening_guard_rounds_remaining }}</li>
+                <li v-if="(state.awakening_lifesteal_rounds_remaining ?? 0) > 0">修羅の血脈 残{{ state.awakening_lifesteal_rounds_remaining }}</li>
             </ul>
         </div>
     </article>

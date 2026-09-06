@@ -50,6 +50,7 @@ interface RoundState {
     awakened?: boolean;
     awakening_technique_used?: boolean;
     awakening_guard_rounds_remaining?: number;
+    awakening_lifesteal_rounds_remaining?: number;
     awakening_unlocked?: boolean;
     awakening_gauge?: number;
     awakening_gauge_max?: number;
@@ -148,6 +149,13 @@ interface TrialState {
     active_run: TrialRun | null;
 }
 
+interface AwakeningTechnique {
+    key: string;
+    name: string;
+    summary: string;
+    consumes_action: boolean;
+}
+
 interface AwakeningState {
     identity: string;
     unlocked: boolean;
@@ -155,12 +163,9 @@ interface AwakeningState {
     maximum: number;
     custom_message: string | null;
     default_message: string;
-    technique: {
-        key: string;
-        name: string;
-        summary: string;
-        consumes_action: boolean;
-    } | null;
+    technique: AwakeningTechnique | null;
+    techniques: AwakeningTechnique[];
+    selected_technique_key: string | null;
 }
 
 interface GrowthPath {
@@ -458,8 +463,10 @@ const loadoutDraft = ref<Array<string | null>>([null, null, null, null, null]);
 const pendingStpMutation = ref<PendingMutation | null>(null);
 const pendingSkillAcquire = ref<PendingMutation | null>(null);
 const pendingLoadoutMutation = ref<PendingMutation | null>(null);
-const pendingAwakeningMutation = ref<PendingMutation | null>(null);
+const pendingAwakeningMessageMutation = ref<PendingMutation | null>(null);
+const pendingAwakeningTechniqueMutation = ref<PendingMutation | null>(null);
 const awakeningMessageDraft = ref('');
+const awakeningTechniqueDraft = ref<string | null>(null);
 const equipmentView = ref<'main' | 'shop' | 'guide' | 'ai' | 'vault'>('main');
 const guideMode = ref<'basic' | 'conversation' | 'respec'>('basic');
 const selectedRespecPathKey = ref<string | null>(null);
@@ -601,8 +608,13 @@ watch(() => state.value?.skill_trees, (trees) => {
 }, { deep: true, immediate: true });
 
 watch(() => state.value?.awakening, (awakening) => {
-    if (!awakening || pendingAwakeningMutation.value) return;
-    awakeningMessageDraft.value = awakening.custom_message ?? awakening.default_message;
+    if (!awakening) return;
+    if (!pendingAwakeningMessageMutation.value) {
+        awakeningMessageDraft.value = awakening.custom_message ?? awakening.default_message;
+    }
+    if (!pendingAwakeningTechniqueMutation.value) {
+        awakeningTechniqueDraft.value = awakening.selected_technique_key;
+    }
 }, { deep: true, immediate: true });
 
 watch(() => state.value?.hunting_grounds, (grounds) => {
@@ -976,21 +988,39 @@ async function saveLoadout(): Promise<void> {
 
 async function saveAwakeningMessage(): Promise<void> {
     const fingerprint = JSON.stringify({ message: awakeningMessageDraft.value });
-    const pending = pendingAwakeningMutation.value?.fingerprint === fingerprint
-        ? pendingAwakeningMutation.value
+    const pending = pendingAwakeningMessageMutation.value?.fingerprint === fingerprint
+        ? pendingAwakeningMessageMutation.value
         : { fingerprint, requestId: requestId() };
-    pendingAwakeningMutation.value = pending;
+    pendingAwakeningMessageMutation.value = pending;
     if (await mutate(
         '/api/v1/me/underground/awakening/message',
         { message: awakeningMessageDraft.value },
         pending.requestId,
         'PUT',
     )) {
-        pendingAwakeningMutation.value = null;
+        pendingAwakeningMessageMutation.value = null;
         const awakening = state.value?.awakening;
         if (awakening) {
             awakeningMessageDraft.value = awakening.custom_message ?? awakening.default_message;
         }
+    }
+}
+
+async function saveAwakeningTechnique(): Promise<void> {
+    if (!awakeningTechniqueDraft.value) return;
+    const fingerprint = awakeningTechniqueDraft.value;
+    const pending = pendingAwakeningTechniqueMutation.value?.fingerprint === fingerprint
+        ? pendingAwakeningTechniqueMutation.value
+        : { fingerprint, requestId: requestId() };
+    pendingAwakeningTechniqueMutation.value = pending;
+    if (await mutate(
+        '/api/v1/me/underground/awakening/technique',
+        { technique_key: awakeningTechniqueDraft.value },
+        pending.requestId,
+        'PUT',
+    )) {
+        pendingAwakeningTechniqueMutation.value = null;
+        awakeningTechniqueDraft.value = state.value?.awakening?.selected_technique_key ?? null;
     }
 }
 
@@ -1774,15 +1804,34 @@ onUnmounted(() => {
 
                 <section v-if="state.awakening?.unlocked && state.awakening.technique" class="underground-awakening-settings" aria-labelledby="underground-awakening-settings-title">
                     <header>
-                        <div><p class="eyebrow">Awakening</p><h3 id="underground-awakening-settings-title">{{ state.awakening.technique.name }}</h3></div>
+                        <div><p class="eyebrow">Awakening</p><h3 id="underground-awakening-settings-title">覚醒奥義設定</h3></div>
                         <strong>覚醒中に1度だけ使用可能</strong>
                     </header>
-                    <p>{{ state.awakening.technique.summary }}</p>
-                    <p>{{ state.awakening.technique.consumes_action ? '通常actionを消費します。' : '通常actionを消費せず、そのままAI行動を続けます。' }}</p>
+                    <p>戦闘へ持ち込む奥義を一つ選びます。戦闘と戦闘の間はいつでも変更できます。</p>
+                    <div class="underground-awakening-technique-grid" role="radiogroup" aria-label="覚醒奥義">
+                        <label
+                            v-for="technique in state.awakening.techniques"
+                            :key="technique.key"
+                            :data-selected="awakeningTechniqueDraft === technique.key"
+                        >
+                            <span><input v-model="awakeningTechniqueDraft" type="radio" name="awakening-technique" :value="technique.key" :disabled="busy"><strong>{{ technique.name }}</strong></span>
+                            <small>{{ technique.summary }}</small>
+                            <small>{{ technique.consumes_action ? '通常actionを消費' : '通常actionを消費せず、そのまま行動' }}</small>
+                        </label>
+                    </div>
+                    <button
+                        class="button primary underground-awakening-technique-save"
+                        type="button"
+                        :disabled="busy || !awakeningTechniqueDraft || awakeningTechniqueDraft === state.awakening.selected_technique_key"
+                        @click="saveAwakeningTechnique"
+                    >
+                        選んだ覚醒奥義を保存
+                    </button>
+                    <hr>
                     <label for="underground-awakening-message">覚醒時の最初の演出文</label>
                     <textarea id="underground-awakening-message" v-model="awakeningMessageDraft" maxlength="100" rows="3" :disabled="busy"></textarea>
                     <p class="underground-progression-note"><code>{secretary_name}</code> はbattle開始時の秘書名へ置換されます。空欄でdefaultへ戻ります。{{ awakeningMessageDraft.length }} / 100</p>
-                    <button class="button primary" type="button" :disabled="busy" @click="saveAwakeningMessage">覚醒演出文を保存</button>
+                    <button class="button primary underground-awakening-message-save" type="button" :disabled="busy" @click="saveAwakeningMessage">覚醒演出文を保存</button>
                 </section>
             </section>
 

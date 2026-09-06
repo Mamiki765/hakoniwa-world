@@ -6,7 +6,7 @@ use InvalidArgumentException;
 
 final class UndergroundAwakening
 {
-    public const IDENTITY = 'secretary-underground-awakening-v1';
+    public const IDENTITY = 'secretary-underground-awakening-v2';
 
     public const GAUGE_MAX = 1_000;
 
@@ -34,34 +34,91 @@ final class UndergroundAwakening
 
     public const MARTIAL_POTENCY_BPS = 35_000;
 
+    public const BLOODLINE_DURATION_ROUNDS = 3;
+
+    public const BLOODLINE_LIFESTEAL_BPS = 1_500;
+
+    public const LIFESTEAL_CAP_BPS = 2_500;
+
+    public const FORTRESS_STRIKE_POTENCY_BPS = 18_000;
+
+    public const JUDGMENT_LIGHT_POTENCY_BPS = 22_000;
+
+    public const FORMLESS_STRIKE_POTENCY_BPS = 24_000;
+
     /** @return array{key: string, name: string, summary: string, consumes_action: bool} */
-    public function technique(string $growthPath): array
+    public function technique(string $growthPath, ?string $techniqueKey = null): array
+    {
+        $techniques = $this->techniques($growthPath);
+        $resolvedKey = $techniqueKey ?? $this->defaultTechniqueKey($growthPath);
+        foreach ($techniques as $technique) {
+            if ($technique['key'] === $resolvedKey) {
+                return $technique;
+            }
+        }
+
+        throw new InvalidArgumentException('Underground awakening technique is invalid for the growth path.');
+    }
+
+    /** @return list<array{key: string, name: string, summary: string, consumes_action: bool}> */
+    public function techniques(string $growthPath): array
     {
         return match ($growthPath) {
-            'martial_red' => [
+            'martial_red' => [[
                 'key' => 'decisive_heavenrend',
                 'name' => '天断一閃',
                 'summary' => 'current enemy 1体へ極めて大きなdamageを与える。',
                 'consumes_action' => true,
-            ],
-            'guardianship_blue' => [
+            ], [
+                'key' => 'shura_bloodline',
+                'name' => '修羅の血脈',
+                'summary' => '発動後3ラウンド、direct attackで敵HPへ実際に与えたdamageの15%を吸収して回復する。合計吸収率は25%上限。',
+                'consumes_action' => true,
+            ]],
+            'guardianship_blue' => [[
                 'key' => 'absolute_aegis',
                 'name' => '絶対護界',
                 'summary' => '発動後2ラウンドのあいだ、direct damageを90%軽減する。',
                 'consumes_action' => true,
-            ],
-            'blessing_green' => [
+            ], [
+                'key' => 'fortress_strike',
+                'name' => '城塞撃',
+                'summary' => '生命75%・武力25%を主に使うphysical attack。攻撃後、次に受けるdirect hitへ防御態勢を取る。',
+                'consumes_action' => true,
+            ]],
+            'blessing_green' => [[
                 'key' => 'life_requiem',
                 'name' => '生命讃歌',
                 'summary' => 'current soloでは自身のHPを全回復する。MPは回復しない。',
                 'consumes_action' => true,
-            ],
-            'free_black' => [
+            ], [
+                'key' => 'judgment_light',
+                'name' => '裁きの天光',
+                'summary' => '精神85%・技巧15%を使うdirect miracle damageの後、enemyの解除可能buffを1つ解除する。',
+                'consumes_action' => true,
+            ]],
+            'free_black' => [[
                 'key' => 'limitless_reprise',
                 'name' => '無窮再演',
                 'summary' => 'MPを全回復し、通常active skillのcooldownを全解除。そのまま行動。',
                 'consumes_action' => false,
-            ],
+            ], [
+                'key' => 'formless_strike',
+                'name' => '無相の一撃',
+                'summary' => '技巧100%を使い、enemyのphysical・magical defenseの低い側を参照するdirect attack。同値ではphysicalを選ぶ。',
+                'consumes_action' => true,
+            ]],
+            default => throw new InvalidArgumentException('Underground awakening growth path is invalid.'),
+        };
+    }
+
+    public function defaultTechniqueKey(string $growthPath): string
+    {
+        return match ($growthPath) {
+            'martial_red' => 'decisive_heavenrend',
+            'guardianship_blue' => 'absolute_aegis',
+            'blessing_green' => 'life_requiem',
+            'free_black' => 'limitless_reprise',
             default => throw new InvalidArgumentException('Underground awakening growth path is invalid.'),
         };
     }

@@ -931,6 +931,7 @@ final class UndergroundPlayerAccessTest extends TestCase
             'skill_points_unspent' => 55,
             'awakening_gauge' => 750,
             'awakening_message' => '私がついています！',
+            'awakening_technique_key' => 'fortress_strike',
         ]);
         UndergroundSkillAllocation::query()->create([
             'underground_profile_id' => $profile->id,
@@ -982,7 +983,8 @@ final class UndergroundPlayerAccessTest extends TestCase
             ->assertJsonPath('data.active_slots', [null, null, null, null, null])
             ->assertJsonPath('data.respec.cost', 40)
             ->assertJsonPath('data.awakening.current', 750)
-            ->assertJsonPath('data.awakening.custom_message', '私がついています！');
+            ->assertJsonPath('data.awakening.custom_message', '私がついています！')
+            ->assertJsonPath('data.awakening.selected_technique_key', 'limitless_reprise');
         $this->assertNotNull($result->json('data.respec.last_completed_at'));
         $this->assertNotNull($result->json('data.respec.next_available_at'));
         $this->assertSame(
@@ -1011,6 +1013,7 @@ final class UndergroundPlayerAccessTest extends TestCase
         $this->assertSame(0, array_sum($profile->allocatedStp()));
         $this->assertNotNull($profile->underground_contract_completed_at);
         $this->assertNotNull($profile->last_respec_at);
+        $this->assertNull($profile->awakening_technique_key);
         $this->assertSame(0, UndergroundSkillAllocation::query()
             ->where('underground_profile_id', $profile->id)->count());
         $this->assertSame($equipmentIds, UndergroundOwnedEquipment::query()
@@ -2421,6 +2424,10 @@ final class UndergroundPlayerAccessTest extends TestCase
             'request_id' => (string) Str::uuid(),
             'message' => 'まだ使えない',
         ])->assertConflict()->assertJsonPath('code', 'underground_awakening_locked');
+        $this->actingAs($user)->putJson('/api/v1/me/underground/awakening/technique', [
+            'request_id' => (string) Str::uuid(),
+            'technique_key' => 'shura_bloodline',
+        ])->assertConflict()->assertJsonPath('code', 'underground_awakening_locked');
 
         UndergroundTrialProgress::query()->create([
             'underground_profile_id' => $profile->id,
@@ -2437,7 +2444,45 @@ final class UndergroundPlayerAccessTest extends TestCase
             ->assertJsonPath('data.awakening.default_message', UndergroundAwakening::DEFAULT_MESSAGE)
             ->assertJsonPath('data.awakening.technique.key', 'decisive_heavenrend')
             ->assertJsonPath('data.awakening.technique.name', '天断一閃')
-            ->assertJsonPath('data.awakening.technique.consumes_action', true);
+            ->assertJsonPath('data.awakening.technique.consumes_action', true)
+            ->assertJsonPath('data.awakening.selected_technique_key', 'decisive_heavenrend')
+            ->assertJsonCount(2, 'data.awakening.techniques')
+            ->assertJsonPath('data.awakening.techniques.1.key', 'shura_bloodline')
+            ->assertJsonPath('data.awakening.techniques.1.name', '修羅の血脈');
+
+        $techniqueRequestId = (string) Str::uuid();
+        $techniqueSaved = $this->actingAs($user)->putJson('/api/v1/me/underground/awakening/technique', [
+            'request_id' => $techniqueRequestId,
+            'technique_key' => 'shura_bloodline',
+        ])->assertOk()
+            ->assertJsonPath('data.awakening.technique.key', 'shura_bloodline')
+            ->assertJsonPath('data.awakening.selected_technique_key', 'shura_bloodline');
+        $this->actingAs($user)->putJson('/api/v1/me/underground/awakening/technique', [
+            'request_id' => $techniqueRequestId,
+            'technique_key' => 'shura_bloodline',
+        ])->assertOk()->assertExactJson($techniqueSaved->json());
+        $this->actingAs($user)->putJson('/api/v1/me/underground/awakening/technique', [
+            'request_id' => $techniqueRequestId,
+            'technique_key' => 'decisive_heavenrend',
+        ])->assertConflict()->assertJsonPath('code', 'underground_request_conflict');
+        $this->actingAs($user)->putJson('/api/v1/me/underground/awakening/technique', [
+            'request_id' => (string) Str::uuid(),
+            'technique_key' => 'formless_strike',
+        ])->assertConflict()->assertJsonPath('code', 'underground_awakening_technique_invalid');
+        UndergroundTrialRun::query()->create([
+            'underground_profile_id' => $profile->id,
+            'run_key' => (string) Str::uuid(),
+            'trial_key' => 'trial_01',
+            'trial_content_identity' => 'secretary-underground-trial-01-v2',
+            'next_battle_index' => 2,
+            'status' => UndergroundTrialRun::STATUS_ACTIVE,
+            'started_at' => Carbon::now(),
+        ]);
+        $this->actingAs($user)->putJson('/api/v1/me/underground/awakening/technique', [
+            'request_id' => (string) Str::uuid(),
+            'technique_key' => 'decisive_heavenrend',
+        ])->assertOk()->assertJsonPath('data.awakening.selected_technique_key', 'decisive_heavenrend');
+        $this->assertSame('decisive_heavenrend', $profile->refresh()->awakening_technique_key);
 
         $requestId = (string) Str::uuid();
         $custom = '<script>{secretary_name}</script>が覚醒した。';

@@ -166,6 +166,7 @@ final readonly class AlphaV1BuildCatalog
             if (! is_string($key) || ! is_array($status)
                 || ! in_array($status['disposition'] ?? null, ['buff', 'debuff'], true)
                 || ! in_array($status['stack_policy'] ?? null, ['refresh', 'stack_refresh'], true)
+                || (array_key_exists('dispellable', $status) && ! is_bool($status['dispellable']))
                 || ! is_int($status['duration_rounds'] ?? null) || $status['duration_rounds'] < 1
                 || ! is_int($status['max_stacks'] ?? null) || $status['max_stacks'] < 1
                 || ! is_array($status['effects'] ?? null) || ! array_is_list($status['effects'])) {
