@@ -1,686 +1,314 @@
 # hakoniwa-world 開発経緯・現行引継ぎ
 
-> 更新日: 2026-09-05 JST（PR #149 `5bad2cd`再レビュー後。新チャットへの引継ぎとしてOwnerが同PRへの文書commitを明示許可）
-> 対象リポジトリ: `Mamiki765/hakoniwa-world`  
-> 配置先: `product/docs/handoffs/development-history-and-current-handoff.md`  
-> 用途: 新しいチャットのAstra / Sol / 実装Agentが、開発経緯・現在地・Owner意図・未決事項・停止条件を引き継ぐための書物  
-> 状態: #148までmain反映済み。#149 `release/3.5.2`のコードhead `5bad2cd64f77d57a94b3ed225b9d21b67856fefa`を再レビュー済み、未merge・未deploy。PR内applicationは3.5.2、mainは3.5.0表記。次は#149 close-out判断、その後に地下戦闘バランス／行動ログ形式の設計相談。最新productionのexact SHA / migration ledgerは独立未確認
+> 更新日: 2026-09-06 JST。Ownerによる3.6.0 merge報告と、handoff更新の明示依頼に基づく。
+> 対象: `Mamiki765/hakoniwa-world`
+> 確認したmain: `382c838edc5c92c33302b2895eeb394e45cc58ec`（PR #150 merge）
+> repository上のapplication: **3.6.0** / Surface Ruleset **v20** / Underground combat **v3**。
+> productionの最新checkout・migration ledger・deploy完了は今回独立未確認。GitHub mergeとproduction deployを区別する。
 >
-> この文書はOwnerとWeb版ChatGPTが管理する。Codex / implementation agentはread-onlyで利用し、Ownerがhandoff更新そのものを明示的に依頼した場合だけ編集してよい。
+> 本書はOwnerとWeb版ChatGPTが管理する。Codex / implementation agentは原則read-only。Ownerがhandoff編集そのものを明示的に依頼した場合だけ編集する。
 
----
+# 0. 読み方と、今回の重要な更新
 
-# 0. この文書の読み方
+作業開始時はremote、対象branch、exact HEAD、未commit差分を確認する。ここに書かれたSHAへ未確認でresetしない。実装値はcurrent code / schema / accepted decision、release scopeと未決事項はOwnerの最新明示指示を確認する。
 
-- 作業開始時は、まずremoteの`main`、対象release branch、対象PRのexact HEADを取得する。この文書のSHA記載だけでcheckout先を決めない。
-- #149がopenなら最新handoffは`release/3.5.2`側にある。mainの古いhandoffだけで「UI未着手」と判断しない。merge済みならmainへ読み替える。
-- この文書の第2〜5章は既存のゲーム契約、第6章後半は次期設計の相談。将来候補で過去契約を上書きせず、既存作業や未完了事項を忘れない。
-- release boundaryとOwner decisionはこのhandoffを正本とする。細かな実装値はcurrent code、migration、test、architectureを正本とする。
-- 文書とcurrent code / schema / accepted ADRが矛盾した場合、都合よく統合せず、矛盾箇所と影響をOwnerへ報告する。
-- GitHubでmainへmerge済みであることと、productionへdeploy / migrate済みであることは別の事実として扱う。
-- production deploy、OCI操作、production DB操作、main mergeは、それぞれ明示されたOwner gateの範囲だけで行う。
-- `_references/`はread-only。過去のroadmap、audit、historical reportをcurrent authorityとして使わない。
-- 実装済み、Owner要望、設計上の推奨案、未決事項、レビューでの仮説を区別する。提案を実装済みcontractとして記録しない。
+**3.6.0では技巧・会心・敏捷・精神魔法・自然成長を再設計していない。** 防具IL由来の技巧抵抗R、魔力昇華、five-stat mean会心率、自然敏捷成長などの研究案は今回不採用。旧handoffの6.6を次の実装指示として復活させない。
 
----
+3.6.0は戦闘の時系列UI、四つの追加覚醒奥義、試練2「黒曜石の魔窟」、途中撤退でも育成できる通常報酬を実装した。次の相談は**地上の島経営・産業連鎖・電力・第三次産業・素材制作**へ重心を戻す。
+
+更新前の詳細全文は[2026-09-05版](archive/development-history-and-current-handoff-2026-09-05.md)へ元blobのまま保存した。旧版は経緯確認用であり、#149未merge、Trial 2未実装、旧6.6の成長案などは現在の状態ではない。必要な歴史だけ参照し、毎回全文を読み直さない。
+
+今回の参考作品調査は[箱庭RA Final Edition設計レビュー](../../../docs/reference-analysis/hako-ra-final-edition-design-review.md)を参照する。分析・提案であって実装承認ではない。
 
 # 1. 現在地
 
-## 1.1 GitHub / application / production
+## 1.1 GitHub・CI・production
 
-3.5.0はSurfaceの船システム、港、航行、missile連携、visibilityを追加したrepository release boundaryである。mainはmigration統一 #147、Hotfix 3.5.1 #148、その後の文書更新まで反映済み。3.5.2のUI改善と漁獲overflow修正は#149で実装済みだが、今回確認時点ではopenであり、main / production反映済みではない。
+| 項目 | 確認結果 |
+|---|---|
+| PR #150 | closed / merged。`codex/3.6.0-trial2-gameplay` → `main` |
+| merge日時 | 2026-09-06 14:16:31 JST |
+| 最終PR HEAD | `5a32331ca9da2083c1ada2d353ac6990ee6f9ae0` |
+| merge commit | `382c838edc5c92c33302b2895eeb394e45cc58ec` |
+| 最終HEADのQuality | run `34012796576`、completed / success |
+| application | `product/config/hakoniwa.php`は3.6.0 |
+| production | 今回OCI・本番DBへ照会／変更していない。最新deploy状況は未確認 |
 
-```text
-確認したmain / PR base:
-  712836e9f32be37213ba0a7476134867f21134e6
-  runtimeは#148の4e4d9b8と同じ（その後はhandoff文書更新）
+最終PR HEADとmerge commitのtreeはともに`de720796a623cb62e49f41c138163487c2a4c933`。初期HEAD `64ddb238`のCI failureを最終HEADの状態と混同しない。
 
-PR #149 code head（今回のレビュー対象）:
-  5bad2cd64f77d57a94b3ed225b9d21b67856fefa
-  release/3.5.2 → main、open / 未merge
-  initial implementation: 0f44c4d2ee609389a011b5444dfa179b8c35ca0d
+証拠入口:
+- PR: https://github.com/Mamiki765/hakoniwa-world/pull/150
+- Quality: https://github.com/Mamiki765/hakoniwa-world/actions/runs/34012796576
+- balance report: `product/docs/underground-trial2-v1-200-seeds.md`
 
-application_version: main = 3.5.0 / PR #149 = 3.5.2
-hotfix呼称: #148 = 3.5.1
-3.5.0 feature-freeze anchor: 22203ae9f7b06607bfa6a5a6821bb948e011f634
-Surface Ruleset: hakoniwa-2s-plus-v20 / version 20
-Underground combat: secretary-underground-alpha-v3
-直近: #149 close-out判断（merge / deployは別Owner gate）
-次の設計相談: 地下戦闘バランス・presentation log改善（未実装）
-```
+balance reportの末尾に残る「main未反映」は報告作成時点の記録。本書更新時点では#150はmerge済みである。ただし、それをproduction反映済みと読み替えない。
 
-#148はControllerと既存testの修正であり、application_versionの更新を含まない。このため「hotfix実装済み」と「画面のversion表示が3.5.1」は同じ事実ではない。本handoff更新でもruntimeのversion値は変更していない。
+## 1.2 直近releaseの履歴
 
-production情報は時点を区別する。
-
-- migration統一の承認時点: Ownerはproductionがapplication 3.4.0 / Surface Ruleset v19で、旧3.5.0 migration 4本は未適用と明示した。#147はこの確認済み前提で行われた。
-- その後: Ownerはブラウザで左右のコマンド／開発計画の復旧を確認した。さらに本番turn 368〜371の漁獲問題を報告した。今回の3.5.2画像は検証環境のpreviewでありproduction deployの証拠ではない。
-- 最新実環境のexact checkout SHA、application設定値、migration ledger: 今回Web側からOCIへ独立照会していない。古い「productionは3.4.0」という記録を現在も成立すると断定しない。
-
-本更新は文書作業のみ。production deploy / migration / OCI操作は行わない。以後の本番操作前には実際の状態を別Owner gateで確認し、既に適用されたmigrationを再統合・resetしない。
-
-## 1.2 3.5.0と後続hotfixの構成
-
-| PR / commit | 内容 | merge / anchor commit |
+| PR | 内容 | merge / anchor |
 |---|---|---|
-| #140 | Surface water ownership修正、限定backfill、Ruleset v20開始 | `cea7f39992c5885317b6102aa42469ea32fcaaba` |
+| #140 | Surface water ownership限定修復、v20開始 | `cea7f39992c5885317b6102aa42469ea32fcaaba` |
 | #141 | Ship persistence / projection、港 | `763a0993e5533eb9318048af925abb9f48206ade` |
-| #142 | 船舶建造、任意廃船 | `c2ed1e66ca50d93119ea4766fc718402dcdc3446` |
-| #143 | 進路API、randomized cell processing内の航行、燃料 / 報酬 / 秘書XP、lifecycle、forced displacement、Monster / 壊滅event連携 | `dd76f7fbe0eb0bbcb07420a20c4b62f379d8899f` |
-| #144 | Ship-first missile impact、visibility、探索船表示 | `22203ae9f7b06607bfa6a5a6821bb948e011f634` |
-| #146 | Release 3.5.0をmainへ昇格 | `c79a5dac056a20609137477e6ac0c112fab4990d` |
-| #147 | 旧3.5.0 migration 4本を1本へ統一 | `146687a5d5f3f2703f405be6532fae562da3bd58` |
-| #148 | Hotfix 3.5.1: command定義JSONのarray contractを復旧 | `4e4d9b85524df5b31a874ec5083c9f74be5cedcd` |
-| #149 | 3.5.2 UI / UX＋漁獲overflow修正、追加レビュー対応 | **未merge**。code head `5bad2cd64f77d57a94b3ed225b9d21b67856fefa` |
+| #142 | 船舶建造・任意廃船 | `c2ed1e66ca50d93119ea4766fc718402dcdc3446` |
+| #143 | 航行・燃料・報酬・秘書XP・forced displacement | `dd76f7fbe0eb0bbcb07420a20c4b62f379d8899f` |
+| #144 | Ship-first missile、visibility | `22203ae9f7b06607bfa6a5a6821bb948e011f634` |
+| #146 | 3.5.0 main昇格 | `c79a5dac056a20609137477e6ac0c112fab4990d` |
+| #147 | Owner確認済み未適用3.5.0 migrationの統一 | `146687a5d5f3f2703f405be6532fae562da3bd58` |
+| #148 | Hotfix 3.5.1、command定義JSONのarray復旧 | `4e4d9b85524df5b31a874ec5083c9f74be5cedcd` |
+| #149 | 3.5.2 UI / UX、漁獲overflow、レビュー修正 | `70871f9e3345ac183e3c2b97b3f499ad672ba6bb` |
+| #150 | 3.6.0 Trial 2、選択式覚醒奥義、戦闘UI、release修正 | `382c838edc5c92c33302b2895eeb394e45cc58ec` |
 
-3.5.0のSurface gameplay sliceは船システムで閉じ、NPC海賊船、Ship修理、destination pathfinding、Ship Lv / XP、generic Actor / Spawn / Ship AI frameworkは含めない。
+#149は`5bad2cd`再レビュー後にhandoff commit `b30fee8`を追加し、同HEADのQuality成功を確認してmergeした経緯がある。当時の未merge記述を現在へ持ち越さない。
 
-## 1.3 Version / Ruleset / identity
-
-```text
-application_version（config）:
-  main: 3.5.0（PR #148 Hotfix 3.5.1のコードを含む）
-  PR #149: 3.5.2（未merge / 未deploy）
-
-Surface Ruleset:
-  hakoniwa-2s-plus-v20
-  checksum: fdc8ca06a567aaa5a17860ad26fcecca50c4aa5a25a7ad430f6017178d485b5e
-
-Underground combat:
-  secretary-underground-alpha-v3
-
-exploration selector/runtime:
-  secretary-underground-exploration-alpha-v2
-
-hunting-ground content:
-  shallow_caves: secretary-underground-exploration-alpha-v1
-  black_crystal_cave: secretary-underground-black-crystal-cave-alpha-v1
-
-exploration drop:
-  secretary-underground-exploration-drop-alpha-v1
-
-equipment shop catalog:
-  secretary-underground-shop-equipment-alpha-v2
-  legacy v1 catalog remains readable
-
-generated equipment:
-  secretary-underground-drop-equipment-alpha-v1
-```
-
-3.5.0はSurface gameplay semantic changeのため、当時のproduction baseline v19から1世代だけ進めたv20を全Ship sliceで共有する。v21は作成していない。#147 / #148 / #149でもfinal v20 payloadとcombat identityは変更していない。
-
-## 1.4 Supported migration / production ledger
-
-3.5.0へ進めるsupported upgrade sourceはexact application 3.4.0 / Surface Ruleset v19である。これはupgrade経路の定義であり、現在のproductionがまだsource上にあるという確認ではない。3.4.0のmigrationは別releaseとして維持する。
+## 1.3 現在のidentity
 
 ```text
-product/database/migrations/2026_09_03_020000_add_underground_custom_ai.php
-product/database/migrations/2026_09_04_000000_rebaseline_3_5_0_release.php
+application_version: 3.6.0
+Surface Ruleset: hakoniwa-2s-plus-v20
+Underground combat: secretary-underground-alpha-v3
+awakening: secretary-underground-awakening-v2
+presentation_log_version: 2
+Trial 1: secretary-underground-trial-01-v2
+Trial 2: secretary-underground-trial-02-v1
+exploration: secretary-underground-exploration-alpha-v2
+shallow_caves: secretary-underground-exploration-alpha-v1
+black_crystal_cave: secretary-underground-black-crystal-cave-alpha-v1
+exploration drop: secretary-underground-exploration-drop-alpha-v1
+shop equipment: secretary-underground-shop-equipment-alpha-v2
+generated equipment: secretary-underground-drop-equipment-alpha-v1
 ```
 
-3.5.0の1本は、final v20のappend-only publish、current live referenceのstable-key rebind、facilityのないowned shallow / seaの限定修復、Ship schema / integrity guard、`ship_operations` constraint / backfillを1 transactionで適用する。movement、forced displacement、missile / visibilityを含むfinal v20 payloadを直接publishし、開発途中draft間のpayload照合は行わない。正当なfacility付きwater ownershipは維持する。
+3.6.0はSurface v21や新しい基礎combat identityを作っていない。IL90までの装備拡張も既存入力の出力を保つdomain extensionとしてgenerator identityを維持する。将来変更時もidentityが不要という一般規則にはしない。
 
-旧3.5.0 migration 4本は、production未適用というOwner-confirmed baselineに基づき#147で削除した。旧4本を適用済みのlocal / CI databaseはsupported upgrade sourceではなく、当該開発DBはfresh/resetして新ledgerへ揃える前提である。これはproduction reset許可ではない。旧4本適用済みproduction向けのcompatibility pathは設けていない。
+## 1.4 Migrationと本番境界
 
-`FreshInstallRebaselineTest`のfresh installとexact application 3.4.0 / v19 → application 3.5.0 / v20 regressionをsupported upgradeの正本とする。#148はmigrationを追加・変更していない。今回のUI改善でもmigrationを作らない。
+3.6.0のforward-only migration:
+`product/database/migrations/2026_09_06_000000_add_underground_awakening_technique_selection.php`
 
-## 1.5 3.5.0 Shipのplayer-facing contract
+`underground_profiles.awakening_technique_key`をnullableで追加し、growth pathと許可された技の組合せ、intro request operationを検証する。NULLは既存技へfallbackし、既存playerのbackfillや能力再計算は不要。旧battle / JSONBを書き換えるmigrationはない。
 
-- ShipはNation-ownedのWorld actorであり、Monsterや秘書itemとは別domainである。1 cellにShipは最大1隻。
-- 通常航行はseaだけ。canonicalにseaへ擬態するfacilityとだけ同居でき、publicな海底油田等とは同居できない。Map画像はShipを優先するがunderlying terrain / facilityは保持する。
-- 港は条件を満たす中立shallowを通常landへ変換し、建設Nation所有のport facilityを置く。建設費は1,000億円。港数はShip capacityを増やさない。
-- Nation-wideで漁船・観光船・探索船を各最大3隻保有できる。「船舶建造」で船種を選び、成功時は1 turnを消費する。spawn候補がない場合は費用もturnも消費しない。任意廃船は自国Ship選択時の通常commandで、成功時1 turn消費、返金なし。
-- 漁船は500億円 / HP 1 / 成功航行ごとに石油10,000バレルで魚7,000t。観光船は1,500億円 / HP 2 / 石油20,000バレルで20億円。探索船は1,000億円 / HP 2 / 石油10,000バレル、直接報酬なし、visibility 3 hex。報酬は既存capacity経路を使う。
-- Shipはrandomized Surface cell processing内でIDごと1 turn最大1回だけ通常eventを処理する。process_cells開始時の自国port有無snapshotを航行条件とし、同turn内の最後の港喪失は次turnから航行停止に反映する。
-- `heading = null`はrandom mode。明示進路が不能な場合は移動可能な隣接seaからbounded random fallbackを1回試し、その後random modeへ戻る。進路変更はturnを消費しない。
-- 成功航行1 cellごとに所有Nationの秘書`ship_operations`へ基礎XP +1。既存passive skill experience modifierを通常どおり適用する。required XPは65,535、表示は「準備中」、固有gameplay効果はない。
-- active NationのShipだけが通常航行する。dormant / recoveryでは航行と進路操作を停止するが、missile、壊滅event、水棲Monsterの外部作用は受ける。abandonedになったNationのShipは除去する。
-- forced displacementは隣接valid sea、近い自国portのdistance 1 → 2の順で無料退避し、不可能なら破棄する。通常航行event、燃料、報酬、秘書XPは消費しない。外国Shipが破棄された場合はterrain変更NationへKarma +1。複数port探索の実装とOwner意図の差は1.7の未決事項を参照する。
-- 水棲MonsterはShipを破壊してからatomicに進入する。cellを壊滅させる既存eventはShipも沈没させ、壊滅でないeventはShip専用damageを追加しない。
-- missileは既存interception後にShip-firstでimpactする。通常 / PP / SPPは1 damage、陸地破壊弾は即時撃沈。沈没後の後続弾は最新状態のunderlying terrain / facilityへ作用できる。外国player Ship撃沈はKarma +1。
-- visibilityは自国land / 通常Shipのdistance 0〜1、探索船の0〜3で、擬態facilityのidentityと表示可能なownerを現在の表示時だけ開示する。永続Fog of Warはない。緑枠toggleはdefault OFFで、操作権限やprivate情報は増やさない。
-- Ship修理、Ship Lv / XP、NPC海賊船は3.5.0の範囲外。NPC海賊船は3.6.0以降の別Owner gateへDeferredする。
+初期CIで発生したPHPStanの配列型不整合と、fresh / upgradeテストのmigration件数不一致は後続修正を経て最終HEADのQualityが成功している。最新migrationを増やしたことを理由に、過去baseline fixtureや件数を無差別に変更しない。
 
-## 1.6 Hotfix 3.5.1の完了状態
+3.5.0ではOwnerがproduction 3.4.0 / v19、旧4本未適用と確認したため#147の統一を認めた。これは**その時点の限定承認**であり、以後のproduction migrationを再統合する許可ではない。
 
-- 原因: `scuttle_ship`のfilter除外でCollectionの数値keyが飛び、`commands`がJSON arrayではなくobjectになった。frontendの`.filter()`が失敗して左右panelが消えた。
-- 修正: `CommandQueueController`の最終map後に`values()`を追加してlistへreindexする。
-- 回帰: 既存`DomesticCommandExecutionTest`へ、廃船を除外した応答でもraw JSONの`data.commands`がarrayであることを追加確認する。
-- head: `a76738a1c0585f6949c204a8b6340df3cf5e43ef`。Quality `33924054076`のsuccessを前回独立レビューで確認した。Ownerもブラウザ上の復旧を報告した。
-- 修正のためにgameplay semantics、Ruleset、schema、migrationは変更していない。hotfixを再実装したり、frontendで壊れたobjectを無条件に吸収する方式へ戻さない。
+本番操作前にはactual checkout / application / Ruleset / migration ledger / 未解決Turnを別途確認する。cronは未解決Turnの自動retryをしない。manual retry、backup、restoreはcurrent runbookとOwner gateに従う。
 
-## 1.7 2026-09-05独立レビューの残件
+## 1.5 既存Ship契約の要点
 
-前回レビューは固定commitの静的確認、OwnerのAPI / Console / screenshot、限定したJSON / CSS再現に基づく。本番の認証付き操作や全PHPUnitの独立再実行ではない。以下を「全て修正済み」や「本番で全件再現済み」と書かない。
+- ShipはNation-ownedのWorld actor。Monster、秘書itemとは別。1cellに最大1隻。
+- 港建設は条件を満たす中立shallowをlandへ変更し、自国portを置く。港数で船の保有上限は増えない。
+- 漁船・観光船・探索船は各最大3隻。spawnできなければ建造費・turnを消費しない。任意廃船は通常commandで返金なし。
+- 通常航行はsea。canonical sea擬態facilityとの同居条件を維持し、見た目で判断しない。
+- 漁船は航行ごと石油1万バレル→魚7,000t。観光船は石油2万バレル→20億円。探索船は石油1万バレル、直接報酬なし、visibility 3hex。
+- randomized process_cells内、Ship IDごとに一turn最大一回。自国port有無はphase開始時snapshot。最後の港を同turnに失った影響は次turnの通常航行から。
+- heading NULLはrandom。指定進路不可時のbounded fallbackを維持する。進路変更自体はturn不要。
+- 成功航行は秘書ship_operationsへ基礎XP+1。既存modifierを適用。準備中の技能へ固有効果を勝手に追加しない。
+- forced displacementは通常航行ではなく、燃料・通常報酬・秘書XPを発生させない。
+- NPC海賊、船修理、destination pathfinding、船Lv／XP、汎用Ship AIは未実装の別scope。
+
+細かな休眠・復帰、missile、visibility、port候補順はcurrent Ship codeと旧版1.5を必要なときだけ照合する。
+
+## 1.6 漁獲overflow修正
+
+#149で航行報酬のfood overflowを既存FoodOverflowResolverへ接続した。食料庫満杯時は魚在庫ではなく標準売却収入へ反映され得る。航行距離・燃料・基礎報酬・秘書XP自体を変更したものではない。
+
+## 1.7 既知残件・現在の扱い
 
 | 項目 | 状態 / 次の扱い |
 |---|---|
-| 廃船の選択→保存のShip同一性 | P2指摘。UIが座標だけ送るため、船Aを選択後にそのcellへ船Bが来るとBを保存対象にし得る。登録後のID固定とは別。実DB再現後、表示したShip IDの期待値確認を最小修正候補とする |
-| forced displacementの港探索 | 現行は距離順の最寄り1港だけを調べる。別港の空きも探すかはOwner未決。UI改善で勝手に全港探索へ変更しない |
-| AI設定の既存入口 | mainには旧入口が残るが#149で既存editorへ接続済み。新規AI engineを作る残件ではない |
-| theme / CSS | #149にcontrast / token整理、5bad2cdにゲージ幅・画像・旧ログ列の修正を含む。実装済み部分を未着手としてやり直さない |
-| 覚醒満タンの黄背景という指摘 | `app.css`の後段overrideを確認して誤検出として撤回済み。実entrypointを見ずに再度不具合と断定しない |
-| version表示 | #149では3.5.2へ更新済み。mainは未mergeなので3.5.0表記。本handoff更新はruntimeを変更しない |
-
-大量の理論上の異常値testを足すより、実API応答とbrowser描画をつなぐ代表操作確認を優先する。Ship全体の作り直し、追加cache / framework、migration再整理を指示するレビューではない。
-
-## 1.8 PR #149 再レビューとclose-out境界
-
-- 初版`0f44c4d`はSolによるUI実装＋漁獲overflow修正。前回レビューの4件は、予約選択ID、409後の再確認、explicit 0Tと自動資金繰りの混同、途中round stateへのアクセス喪失だった。
-- `5bad2cd`はOwner報告ではAstra Midによる修正。初版との差分は既存6ファイルのVue / CSS / frontend testsに限定され、backend、API、保存形式、migration、Rulesetの追加変更はない。
-- 今回Web側でsourceとtestを再読し、4件とも修正済みと判断した。`selectedItemId`追従と消失時解除、409後のdraft保持→最新計画の明示確認→再登録、`slot.kind`による0T/自動の分離、各roundの`end_state`を開くdetailsを確認した。
-- MP消費を伴う隣接した同一actor・同一技名の宣言／cost／role stack／最初の効果だけを限定集約し、元行は「行動の全詳細」に残す。MP回復は小さい補助表示にした。無料行動、反撃、曖昧なログは独立行のままで、完全な行動ログv2ではない。
-- 画像なしの敵の空portrait枠、MATCHUP / PLAYER / ENCOUNTERの飾り文字を削除。画像はcontain、vitalsのCSS競合は修正。現在の画像ありpreviewは検証用PNGで、実player画像での美的評価を全部済ませた証拠ではない。
-- この再レビュー範囲で**新たなP0/P1/P2は確認しなかった**。4件を理由に#149を差し戻す必要はなく、既知の別残件を明示したうえでclose-out判断へ進める。これは全既知bugが解消した／GitHubの正式Approveを投稿した／mergeした、という意味ではない。
-- code head `5bad2cd64f77d57a94b3ed225b9d21b67856fefa`のQuality [33969905193](https://github.com/Mamiki765/hakoniwa-world/actions/runs/33969905193)はsuccess。16 PHPUnit shards、backend-static、frontend、documentationとbackend集約gateの成功を確認した。review threadsは取得時0件だが、それだけで独立review完了とみなさない。
-- 実装担当は既存78 frontend tests、typecheck / lint / build、認証付き実APIでの代表操作とPC/mobile・Light/Dark確認、一時環境撤去を報告した。報告元は[PR対応コメント](https://github.com/Mamiki765/hakoniwa-world/pull/149#issuecomment-5552282804)。Web側自身はsource / diff / screenshot照合と、関数を転記したNodeの9項目の限定ロジック確認を実施した。Vue全体のmount、認証付き実アプリ、Laravel/PostgreSQL統合testの独立再実行ではない。
-- 本文書はそのcode headへ重ねるdocs-only更新。**本文書追加後のHEADのCIを、5bad2cdのgreenと混同しない**。最新headとdiffが文書だけかを確認し、最新CI / Owner gateを満たしてからmergeする。
-- 今回Ownerが許可した書込みは#149側のhandoff更新。main merge、production deploy、OCI、補填実行は許可されていない。
-
-## 1.9 漁船incidentと未実施の補填
-
-- Ownerはナム孤島の本番turn 368〜371で「船が中立」「魚が増えない」と報告したが、後のtooltip画像で船舶所有はナム孤島と確認した。中立なのは下の海。**この報告を船籍DB破損確定として扱わない**。#149では船主とマス所有を区別する表示へ修正済み。
-- 別問題として、航行報酬の`creditFood()`が返すoverflowを換金／端数処理へ渡していないコードを確認した。#149で既存`FoodOverflowResolver`を接続済み。食料庫が満杯なら魚在庫ではなく標準の売却収入へ反映される。移動、燃料、XP、報酬額そのものは変更しない。
-- 本番DBの当該`ship.moved` audit、実際の損失期間・量・資金上限、修正deploy境界はまだ独立未確認。補填も未実施。UI修正完了を補填完了と読み替えない。
-- 補填候補は正常完了・非dry-runのturnに属する`ship.moved`の`resource_requested / applied / overflow`から選び、元event ID単位で重複を防ぐ。建造隻数×経過turnによる推計、現在残る船だけの集計、過去turnの再実行は行わない。
-- 当時のRulesetの売却lotを各eventへ適用し、元の資金上限まで復元する厳密方式か、overflow魚の売却相当額を救済する方式かをOwnerが選ぶ。既出の63億円は条件付きの例で、確定補填額ではない。燃料・XP・船代を自動的に重ねて返さない。
-- 実支払は別Owner gate。dry-run一覧→承認→既存lock / transaction / capacity / auditを使い、満額入らない分を無言で破棄しない。新しい万能補填framework、production reset、migration再統合は不要。
-
-
----
-
-# 2. 3.1.xから継承する主要contract
-
-## 2.1 封印の地 / Trial 1
-
-player-facing名称:
-
-```text
-封印の地
-└ 地下に眠る古代遺跡
-```
-
-- 全10戦
-- HPは戦闘間でcarry
-- battle 1〜9勝利後、次戦前にcurrent max HPの20%を回復しmax HPでcap
-- 実際に1以上回復した結果へ`体力が少し回復した`を表示
-- MPは各戦闘開始時にcanonical maximum 10,000へreset
-- battle 1〜9勝利結果に`次の階層へ`を表示し、直接次battleへ進める
-- battle 10 clear、defeat、withdrawalでは`次の階層へ`を表示しない
-- defeat / withdrawalでrun終了
-- 途中progressは永続化され、画面更新後も再開可能
-- active run中は宿を使用できない
-- 初回clear時のみSP +40、first-clear story、覚醒、地底layer 1 / 4 slotsを解禁
-- repeat clear可能。初回報酬とstoryは再発しない
-- Trial 1全10戦の報酬合計は800 EXP / 205G
-
-## 2.2 Awakening
-
-- persistent gauge、internal maximum 1000
-- player-facing UIでは`0 / 1000`等の数値を出さずprogress barのみ
-- 満タン時も外枠、card背景、layoutは通常状態のまま。変えるのはゲージfill色だけ
-- 一戦につき最大1回
-- default presetはgauge fullかつHP 20%以下で覚醒を試みる。custom設定では明示的な覚醒ruleが必要
-- 覚醒activation自体は通常actionの時間を消費せず、同じturnの残りrule評価と既存の覚醒戦技orderingへ進む
-- 発動時HP / MP全回復
-- 戦闘終了まで5主能力値+30%
-- growth pathごとの固定Awakening techniqueあり
-- 武技・守護・加護のtechniqueはactionを消費し、自由のtechniqueはactionを消費せず通常行動へ続く
-
-## 2.3 地底facilityとsurface map
-
-ownership:
-
-- Trial progression / layer unlockはSecretary-owned
-- facilityはNation-owned
-- 同じSecretaryがNationを作り直してもlayer entitlementは残るが、旧Nationのfacilityは残らない
-
-facility contract:
-
-```text
-1 layer = 4 facility slots
-地底都市: 首都effective population maximum +10,000
-地底農場: aggregate farm workforce capacity +10,000
-地底工場: aggregate factory workforce capacity +30,000
-地底ミサイル基地: missile capacity +1
-```
-
-- build / removalはofficial Turnを1消費
-- entranceと固定梯子はfacility slotではない
-- Surface MapCellや3D coordinate persistenceは使用しない
-- 地底マップは自島画面の開発画面と伝言板の間に置く。別ページへ分離しない
-- 見出しは`首都地下`
-- 地上と同じ正方形tile sizeの5列連続mapとして表示
-- facility名や座標計算式をtile上へ常時overlayしない
-- tile選択時だけ赤枠を付け、詳細欄へfacility名とflavor座標を表示
-
-## 2.4 公開表示
-
-- 他人の秘書プロフィールにも戦闘Lvを表示
-- 他人の島でも、そのNationの地底mapを閲覧可能
-- 自作・委託等の非AI秘書画像は、閲覧者側の画像設定が未設定でも表示可能
-- AI画像についての既存consent boundaryは維持
-- 公開mapからOwner専用のfacility操作権限やprivate detailを漏らさない
-
----
-
-# 3. application 3.2.0で確定した主要contract
-
-## 3.1 敏捷の戦闘効果
-
-敏捷はinitiativeだけでなく、相手との相対差に応じた攻撃・防御補助を持つ。
-
-```text
-self <= opponent: 0
-self > opponent: (self - opponent) / (self + opponent)
-```
-
-- 有限の敏捷比で効果を止めるhard saturationは置かず、式自体のnatural saturationを使う
-- 相手以下では敏捷由来のcombo / evasion bonusは0
-- initiativeは実効敏捷が高い側を先とし、同値時のみ既存tie-break
-- action impairment resistanceの既存contractも維持
-
-combo:
-
-- damage actionごとに1回だけ2・3・4連続ヒットを抽選
-- 追加action、追加damage event、追加critical、追加status判定、追加Awakening gain、native hit数追加は発生させない
-- post-mitigation damageへ最終倍率を1回掛ける
-- native multi-hitでもaction単位の同じcombo結果を使う
-- combat logは最初の成立damage行へ`N連続ヒット！`を1回だけ表示
-- evasion / complete guard等でdamageが成立しない場合はcombo表示を出さない
-
-代表値:
-
-```text
-敏捷比 3.0:
-  evasion bonus 8.00%
-  2 / 3 / 4 combo 1.63% / 0.57% / 0.30%
-  expected damage x1.0367
-  expected incoming damage x0.9200
-
-Lv30・同量17 STP:
-  武力専門に対する攻撃寄与 37.77%
-  精神専門に対する攻撃寄与 34.31%
-  生命の物理EHP寄与に対する防御寄与 29.73%
-```
+| 廃船の表示対象と登録対象の同一性 | 未解消残件として維持。別のShipへすり替わらないID / intent境界を確認する |
+| 強制退避の別自国港探索 | **Owner採用決定済み**。最寄り不可なら別の自国港も探す。今回の#150は地下作業であり、この船変更の実装完了は確認していない |
+| 漁獲overflow損失の実測・補填 | 本番audit調査と支払いは今回未実施。修正mergeを補填完了と混同しない |
+| 「地底」ヘッダー導線 | Owner将来要望。今回のhandoff作業で実装しない |
+| 地上の産業・電力・第三次産業 | 次期設計相談。RAから原理を抽出する段階。数式・release番号・migration未決 |
+| 32×32素材編集ツール | 開発支援案。実装していない |
 
-Trial 1のワイバーン敏捷は12。装備dropや黒晶洞の都合だけで、この確定したTrial 1 / Wyvern balanceを再調整しない。
+別港探索は隣接valid sea優先を維持し、その後の自国港候補を既存の距離・座標・ID順で順次調べる小さな変更案がある。仕様採用の可否を再び未決に戻さない一方、未確認のコードを実装済みと書かない。
 
-## 3.2 装備枠 / generated equipment
+## 1.8 PR #150のレビューと測定
 
-装備枠は計5つ。
-
-```text
-weapon x1
-armor x1
-accessory_1 x1
-accessory_2 x1
-accessory_3 x1
-```
-
-- weaponは必須で外せない
-- armorと3 accessoryは個別に装備・交換・解除可能
-- 装備変更でmax HPが増えても無料回復しない
-- max HPが下がった場合だけcurrent HPを新maxまでclampする
-- 宝物庫capacityは500。装備中itemも含む
-- fixed equipment catalog v1は既存owned item / snapshot解決のため保持
-- current shop catalogはv2
-
-Generated item:
+初期HEAD `64ddb238`での独立レビューは次を指摘した。
+1. 夜宴の血侯のlifestealがplayer条件で無効。
+2. 新攻撃奥義4技へ既存敏捷comboが未接続。
+3. Git情報不明を明示SHAだけでdirty=falseにしていた。
 
-- 取得時のimmutable payloadをDBへ保存し、後のconfigから再生成しない
-- Item Lv 1〜60
-- Item Lv本体を更新の主軸とし、rarityでbody全体へhidden倍率を掛けない
-- 1狩場前の良Relicが次狩場Noviceを上回る場合は許容するが、2狩場先では通常更新対象になる設計
-- rarityはノービス、レギュラー、ハイクオリティ、アーティファクト、レリック。ユニークは予約のみで未実装
-- player-facingでは内部`miracle_damage_bps`を`魔法攻撃力アップ`と表示
-- generated装備の売却価格は同Item Lv Novice curveを基準に10%。rarity倍率は付けない
+最終PR body、後続code、更新された報告では修正されている。通常吸収は敵／player共通、修羅の追加だけplayer固有。新技は既存の一行動一combo抽選を使う。Gitを検証できない環境をclean認定しない。追加レビューのapplication 3.6.0表示、通常／敵吸収ログ、served manualのTrial 2 drop説明も後続release修正対象となった。最終HEADのCI成功が現在の検証状態であり、初期失敗を残件扱いしない。
 
-## 3.3 通常探索drop / 黒晶洞
+測定の正本は`product/docs/underground-trial2-v1-200-seeds.md`。source `a644447f62bfb3a3749bd57916471c6a58d977b7`、manifest hash `069c03893ac7389e3c71917c2a5dbc332c17c14e06f7d4de174124bc3b66e487`。
 
-- 通常探索のvictory時のみdrop抽選
-- 1戦につき最大1個
-- Trial、defeat、withdrawalではdropしない
-- battle seedからdrop domainを分離し、同じrequest retryは同じ結果
-- battle作成、EXP/G settlement、drop grantを同一transaction / profile lockで処理
-- `source_battle_id`単位で二重grantを防ぐ
-- 宝物庫満杯でもEXP/Gは確定し、itemだけ持ち帰れない
-- 満杯時にauto-sellしない
+- 16scenario各200seed。Lv150/180・SP60・**generated IL50 uncommon（ハイクオリティ）武器／防具／アクセサリ各1部位**。ノービス一式の結果ではない。
+- 主比較の戦技clear率は**Lv150 16.0%、Lv180 71.5%**。修正前17.0% / 72.5%と区別する。
+- 護身・祝福・自由の代表例は両Lvで200/200clear。ただし有限seed・特定buildの結果であり、全配分の安全性証明ではない。
+- default AIでは護身と祝福は新奥義を使わなかった。覚醒優先AIの20seed比較で両技を実使用できることを別途確認した。
+- 同条件の天断／修羅200seed比較ではclear率同じ、天断が平均1.01～2.99round短い。修羅を常時上位と証明したものではない。
+- 途中のレベルアップと装備変更はsimulationでは固定。実playerの浅層育成・装備更新も攻略手段にする。
 
-第二狩場`黒晶洞`はTrial 1初回clearで解禁する。Item Lv帯は30〜60。不純物の多い黒い輝石が多く見られるため黒晶洞と呼ばれ、黒色は階層rankを表さない。
+本handoff更新は報告・code・CIの照合であり、200seedや全テストをWeb側で再実行したとの主張ではない。
 
-```text
-黒晶蝙蝠
-黒晶獣
-晶殻蟲
-黒晶術師
-破晶の狂戦士
-黒晶再生体
-黒晶の番人
-黒晶虫
-```
-
-weight込み長期期待値:
-
-```text
-240.25 EXP / battle
-61.53 G / battle
-10戦換算: 2402.5 EXP / 615.3G
-```
+## 1.9 漁船incidentと補填境界
 
-Trial 1一周800 EXP / 205Gの約3倍を、黒晶洞10戦の期待値目標としている。
-
-## 3.4 探索UI / compatibility
-
-- `周囲を探索`1ボタン + 狩場selector
-- 解禁済み狩場が2つ以上なら`▼`を表示
-- 最後に選んだ狩場はbrowser localStorageへ保存
-- 戦闘結果に`もう一度ここを探索する`を表示
-- repeatは表示中battle snapshotのhunting-ground keyを使い、新UUIDを発行
-- 通信失敗retryでは同じhunting ground + 同じintentの場合だけpending UUIDを再利用
-- combat identity v1 / v2の既存snapshotはhistorical recordとして残しmigrationしない
-- shallow caves content identity v1と旧request replay互換を維持
-- persisted generated payloadをcurrent configで再解釈しない
+ナム孤島turn368～371の「船が中立」は、後のtooltipで船主は自国、下の海が中立と確認した経緯がある。船籍DB破損と断定しない。
 
----
+実際のoverflow損失、修正deploy境界、資金上限、払い済みの有無は本番auditで確認する。正常完了・非dry-run turnのship.moved resource_requested / applied / overflowを元event IDごとに調べる。建造数×経過turn、現在残る船だけ、過去Turn再実行で補填額を作らない。
 
-# 4. application 3.3.0から継承する確定contract
+当時の売却lotと資金上限まで復元するか、売却相当額の救済にするかは別Owner判断。以前の63億円は例で確定額ではない。燃料・船代・XPを自動的に重ねて返さない。dry-run→承認→既存lock / transaction / capacity / auditで支払い、満額入らない分を無言で破棄しない。
 
-## 4.1 STP直接入力
+# 2. 地下RPGの継承契約と3.6.0
 
-- 5能力の今回配分値を非負整数で直接入力できる
-- 合計は現在の未使用STPを超えないようUIとserverの双方で制限する
-- 既存server-side validation、UUID idempotency、profile lockを維持する
-- 確定済みSTPと装備補正は別に計算し、通常配分の確定は従来どおり取り消せない
+## 2.1 Trial 1
 
-## 4.2 案内人の部屋と再振り
+「地下に眠る古代遺跡」は10連戦。HP carry、1～9戦勝利後max HPの20%回復、MPは毎戦10,000。active run中に宿を使わない。勝利後は次戦へ、敗北／撤退でrun終了。画面更新でも進行を保持する。
 
-上位tab:
+初回clearのみSP40・物語・覚醒・地底layer1（4設備枠）。再clearで初回報酬は重複しない。合計800EXP / 205G。**Trial 1は通常装備dropなし、Trial 2はあり**と区別する。
 
-```text
-地下メイン / 装備ショップ / 案内人の部屋 / 宝物庫
-```
+## 2.2 覚醒共通仕様と選択技
 
-案内人の部屋には会話placeholderと再振りflowを置く。
+gaugeは永続、内部最大1000。default AIは満タンかつHP20%以下で発動を試みる。custom AIでは明示した覚醒ruleを使う。一戦最大一回であり、試練全体で一回ではない。activationそのものは通常actionを消費せず、HP／MP全回復・装備込み五能力+30%を戦闘終了まで適用する。
 
-再振りは1回のtransactionで次を行う。
+3.6.0では各growth pathの既存技／追加技を戦闘間に一つ選ぶ。選択NULLの既存playerは既存技。再振り時はNULLへ戻す。取得に追加SP・新skill node・Trial 2clearは要求しない。覚醒本体は通常のdispellable buffではない。
 
-- SPを全返却し、active skill slotを全解除
-- 手動配分STPを全返却
-- 選択した成長方針へ切り替え、現在Combat Lvまでの自然成長とSTP entitlementを再計算
-- 費用`Combat Lv x 10G`を手持ちの輝石のかけらだけから支払う
-- 成功後24時間は再実行不可
-- active Trial中、費用不足、cooldown中、validation failureでは状態を変えない
-- Combat Lv / XP、装備、inventory、Trial progress、覚醒、解禁、intro履歴は維持する
-- max HP低下時だけcurrent HPを下方clampし、回復はしない
-- 同一UUID / 同一payloadは元の成功結果を返し、別payload conflictと同時実行を安全に拒否する
+| 系統 | 既存技 | 追加技の採用内容 |
+|---|---|---|
+| 戦技 | 天断一閃 | 修羅の血脈：potency160%の物理初撃、武力80%／技巧20%／weapon100%。初撃含む3round、実HP damage15%吸収、既存吸収との合計上限25% |
+| 護身 | 絶対護界：2round直接damage90%軽減 | 城塞撃：potency180%、生命75%／武力25%／weapon80%、攻撃後に次direct hitを既存guardで受ける |
+| 祝福 | 生命讃歌：HP全回復、MP回復なし | 裁きの天光：potency220%、精神85%／技巧15%／weapon100%、会心可、damage後に解除可能buffをkey順で一つ除去 |
+| 自由 | 無窮再演：MP全回復・通常技CT解除、行動継続 | 無相の一撃：potency240%、技巧100%／weapon100%、会心可、実効物理／魔法防御の低い側、同値physical |
 
-成長方針ごとのSTP entitlement差:
+追加四技はactionを消費する。修羅の吸収はoverkill・障壁で吸収した分・反撃・継続damageを含めない。無相は一撃であり防御無視や二重攻撃ではない。新しい魔力昇華はない。無窮再演で覚醒奥義を再使用可能にしない。
 
-```text
-free_black: 1Lvごと6 STP
-その他3種: 1Lvごと5 STP
-```
+## 2.3 Trial 2「黒曜石の魔窟」
 
-旧方針由来の総量をそのまま持ち越さず、新方針をLv1から選んでいたものとしてcanonical entitlementを再計算する。intro FSMは巻き戻さない。
+Trial 1初回clearで解禁、level hard gateなし。比較／攻略の想定はLv150～180帯・SP60・IL50級。低Lv突破、育成での押し切り、浅層での装備更新を許容し、正解buildを当てるだけの試験にしない。
 
-## 4.3 条件指定型の宝物庫まとめ売り
+| 戦 | 敵名 | 種族 | EXP / 欠片 | 装備IL |
+|---:|---|---|---:|---|
+| 1 | 煤牙の斥候 | ゴブリン | 250 / 65 | 55–66 |
+| 2 | 嘲炎の道化 | インプ | 260 / 68 | 56–67 |
+| 3 | 鉄鎖の獄犬 | ヘルハウンド | 270 / 70 | 58–69 |
+| 4 | 不寝番の石翼 | ガーゴイル | 280 / 72 | 60–72 |
+| 5 | 赤角の破城兵 | ミノタウロス | 290 / 75 | 62–74 |
+| 6 | 弔鐘の司祭 | レイス | 300 / 78 | 64–76 |
+| 7 | 蠱惑の蛇姫 | ラミア | 320 / 82 | 66–78 |
+| 8 | 夜宴の血侯 | ヴァンパイア | 350 / 88 | 68–82 |
+| 9 | 誓約喰らいの黒騎士 | デーモンナイト | 400 / 95 | 72–86 |
+| 10 | 首なき断罪卿 | デュラハン | 2,000 / 540 | 76–90 |
 
-filter:
+10戦、HP carry、1～9勝利後20%回復、各戦MP reset。各勝利のEXP・欠片・dropを同一settlementで即時確定し、戦闘間帰還でも持ち帰る。新runの再勝利は通常報酬を再取得できるが、同一request再送／表示更新では重複付与しない。未勝利battleのwithdrawalと、勝利後のrun帰還は別。
 
-- Item Lv上限
-- rarity
-- category
-- canonical weapon style
-
-contract:
+1～9平均は約1.25倍、10戦完走平均はXP・欠片とも黒晶洞名目平均の約2倍。合計4,720EXP / 1,233G。平均倍率は勝利・抽選前提付きで実時間効率そのものではない。魔窟装備は既存のIL売値式を使い、専用の売値倍率は付けない。護符は主能力別に5名称。
 
-- 選択肢とlabelはserver catalogから投影する
-- previewは装備中itemと通常売却不可itemを除外し、具体的item ID、canonical売却価格、合計を返す
-- confirmはpreviewで示したIDと価格だけを再検証し、preview後に取得したitemを追加しない
-- 所有、存在、装備状態、売却可否、価格を全件再検証してから、同一transactionでdeleteと手持ちG creditを行う
-- UUID idempotency、profile lock、request ledgerによりretryや同時requestの二重creditを防ぐ
-- filter表示設定はclient preferenceであり、通常dropをauto-sellしない
+初回clearは**SP+40（Trial 1後の60から合計100）、地底layer2／8設備枠、Owner提供の物語**。追加覚醒・特別item・称号なし。初回挑戦／初回clear物語を再挑戦へ自動再表示しない。`(秘書名)`を実際の秘書名へ置換する。
 
----
+舞台は黒晶洞最奥の封印の地。案内人はサキュバスの元魔王であり、敵の誘惑枠はサキュバスではなくラミア。物語の詳細はOwnerの文章とcurrent実装を正本とし、以前の自由案で書き換えない。
 
-# 5. application 3.4.0 custom AIの確定contract
+## 2.4 地底施設と公開境界
 
-custom AIはSecretaryごとに有効な設定を1つだけ持つ。保存値`null`はdefault preset、空のcustom rule list `[]`はruleなしの有効なcustom設定であり、同じ意味に畳み込まない。
+Trial進行とlayer権利はSecretary-owned、施設はNation-owned。同じ秘書で島を作り直しても権利は残るが旧島の施設を持ち越さない。
 
-- 最大16 rules、1 rule最大2 conditions
-- 同じrule内のconditionsはAND、empty conditionは`always`
-- OR / NOT / nested logic / generic DSLは導入しない
-- skill actionは「条件成立後に使用を試み、現在使用不能ならfallbackせず次ruleへ進む」
-- default presetでは同じskillを指す`skill_ready`条件を付けない。`skill_ready`自体は、skill Aの可否からjumpまたは別actionを選ぶruleに利用できる
-- jumpはforward-onlyとし、loopを構造的に作れない
-- 全rulesを評価してもactionを実行できなかった場合だけ、現在使用可能な習得済みattackをcanonicalな決定順で選び、それもなければnormal attackへdeterministic fallbackする
-- idle turnは作らない
-- Awakening activationはaction時間を消費しない。HP 20%以下はhard availabilityではなくdefault preset上のconditionとする
-- Awakening hard availabilityはunlock済み、gauge full、battle内未使用の3条件とする
-- 各battle snapshotへ、そのbattleで実際に使用したnormalized AI rules全文とSHA-256 hashを固定する
-- Trial中のAI変更はbattle間だけ許可し、次battleから適用する。生成済みbattleへは影響させない
-- historical combat v2は再解釈せず、current combat identityは`secretary-underground-alpha-v3`とする
-- custom AI未設定playerはdefault presetを使用し、3.3.0までのdefault AIの意図した挙動を可能な限りbehavior-equivalentに維持する
+1layer=4設備枠。地底都市は首都effective最大人口+10,000、地底農場は農業労働容量+10,000、地底工場は工業労働容量+30,000、地底ミサイル基地はcapacity+1。建設・撤去はofficial Turnを一つ使う。入口・梯子は設備枠ではない。Surface MapCellや3D Worldを新設しない。
 
-APIは既存のowner-only Underground boundary、profile row lock、UUID idempotency、request fingerprint、単一transactionを再利用する。canonicalだが未習得のskillもruleとして保存でき、実戦では使用不能として次ruleへ進む。
+現行の地底マップは自島画面、見出し「首都地下」、正方形tileの5列連続配置。選択時だけ赤枠と詳細を出す。他島からも地底mapと秘書戦闘Lvを閲覧できるが、操作は自国権限へ限定する。AI画像の閲覧consentを維持する。
 
-実装分割:
+# 3. 装備・敏捷・資源
 
-```text
-PR #134: AI設定の保存・検証・API
-PR #135: 戦闘適用・AI snapshot/hash・combat identity v3・覚醒順序
-PR #136: AI編集画面・説明文書・default preset簡潔化
-```
+## 3.1 敏捷は現行のまま
 
----
+高い実効敏捷が先手、同値のみ既存tie-break。相対敏捷差による回避・comboと行動阻害抵抗を維持する。新しい自然敏捷成長は採用していない。
 
-# 6. 3.5.2 UIの意図と、次の設計相談
+damage action一回につきcomboを一回抽選し、native多段でも同じ結果を使う。追加action、追加damage event、追加会心、追加status抽選、追加覚醒gainを生まない。軽減後damageへの倍率である。ワイバーン敏捷12を別contentの都合で変更しない。
 
-## 6.1 Ownerの最新依頼と実装状態
+## 3.2 装備
 
-OwnerはWebで作成したUI設計ZIPと漁獲incident ZIPを実装担当へ渡し、Solが#149を作成した。初版の再レビュー後、Astra Midが`5bad2cd`で修正した。直近の状態と残件は1.8〜1.9を参照する。以下6.2〜6.4は設計の意図であり、全項目が未実装のTODOという意味ではない。
+既存5枠はweapon1・armor1・accessory3。generated itemは保存したpayload / identityを使用し、旧装備を現在catalogで作り直さない。3.6.0で生成IL上限を60から90へ拡張し、60以下のanchor・既存入力を維持した。
 
-実装担当はSolでも構わないというOwner指示。Astra単体性能試験への固定は不要となった。Luna Max等は必要な限定作業に任意利用してよいが、主担当がUIの統一と契約を保持する。
+shopのノービスとgenerated rarityのレギュラー／ハイクオリティ等を混同しない。Trial 2報告はuncommon3部位の限定比較である。Unique、強化、汎用enchant、marketは別の将来scope。
 
-詳細な実装設計は元チャット添付の`3.5.2-ui-ux-design-and-sol-instructions.md`、前回レビューは`REVIEW-PR149.md`。repository内に同名ファイルがあるとは限らず、WindowsのローカルpathへWebからアクセスできるとも限らない。新チャットでは本文書とcurrent codeを入口にし、必要な添付だけProjectのFilesから取得する。
+## 3.3 地上資源との区別
 
-## 6.2 地上・コマンドのOwner意図
+current Surface resource definitionsには小麦、魚、怪獣肉、工業品、鉱物、石油がある。石油内部単位は万バレル。地下EXP／欠片と地上資源を無断で統合しない。
 
-- コマンド一覧・予約一覧が縦に長すぎる。一覧はcompactにし、説明と編集buttonを全行へ常駐させない。
-- 旧箱庭の一行形式は密度の参考。スマホへ極小一行を強制する仕様ではない。名称の上へ数量・上下・取消buttonが重なる状態を解消する。
-- 数量・種類入力を一覧の上へ固定し、下のcommandを選んだ後に上へ戻らせる操作を解消する。
-- 操作元の近くへ小窓を出し、選択command・対象座標・挿入位置を忘れずに入力できるようにする。狭い画面でのsheet等は設計案であり、配置の固定指定ではない。
-- コマンドと選択マスを覆わない位置を優先する。全ての非重複が不可能なmobile / keyboard表示時は対象文脈を小窓へ残し、閉じると元の操作位置に戻れることを優先する。
-- ターン消費あり／なしを一覧と予約の両方で見分けやすくする。青／茶色は候補で、色だけへ依存しない。消費なしqueue commandを「即時実行」と誤表示しない。
-- 小窓表示中・送信待ちの対象すり替え、stale responseでのdraft破棄、背景keyboard操作の漏れを防ぐ。
-- quantity_semantics、将来計画の登録可否、費用、bulk、queue limit、既存の競合検知は維持する。
+今後の産業案は、この既存の農作物・工業品・鉱物・石油を活用する方針。まだ電力や加工品のruntimeを追加していない。基礎資源を細分化するか、加工結果を新在庫にするかは未決。
 
-## 6.3 地下戦闘のOwner意図
+# 4. 既存育成・倉庫操作
 
-- 番号付きの均一な文章と全状態一覧を主役にせず、登録した秘書が戦っていると感じられる構図にする。
-- 敵には原則画像がなく、案内人等の例外がある。画像あり／なしの双方で自然に成立させ、画像を必須にしない。
-- HPは現在／最大。MP最大値は基本10,000固定で、主表示は現在値だけでよい。将来のMP回復量エンチャを最大MP変動と読み替えない。
-- 障壁はHPの近くにまとめてよい。0の障壁、存在しないbuff/debuff、0のstack等を常時列挙しない。HP0・MP0は重要な状態なので隠さない。
-- CT待ちがある場合の「技名: あと2」等は表示候補。既存保存データに値がなければ推測せず保留する。
-- HP赤／MP緑、数値の上下、左右の構図は固定仕様ではない。
-- 会心・回復・敵の危険行動へ色・文字・配置で強弱をつける。味方会心gold系／敵会心danger系／回復green系は候補で、必ず色以外でも意味を伝える。
-- MP自然回復と能動的な回復技を同じ強さで表示しない。魔法のMP消費は独立した主行動ではなく、その技に付随するcostとして読ませたい。3.5.2の限定集約より先の変更は6.7を参照する。
-- 既存の英語の飾り見出しをOwnerのセンス／固定要望と誤認しない。不要な重複ラベルは削ってよいが、Awaken!等の演出まで一律禁止する意味ではない。
-- 覚醒発動は`Awaken!`や「覚醒中」等で識別できるようにする。ゲージ満タンと発動済みを分ける。満タン時のfillのみ変える既存contractは維持する。
-- 画像・vitals等を一人分の小さな表示componentへ分ける程度でPT戦や変身画像への将来拡張を考える。PT戦本体・変身画像登録schemaは今作らない。
-- 確定battleを表示するだけで、演出再生やskipにより戦闘実行・報酬を再発させない。時点がround-endだけなら行動直後と偽装しない。
-- 現在の秘書profileを過去battleの途中状態に使わず、historical snapshot/hash・combat identityを変更しない。
+直接STP入力、有限SP、skill取得、active slot、複合再振り、倉庫bulk saleは既存仕様を維持する。再振りは自然成長・手動割当・skill・奥義選択の関連を既存経路で扱い、無料回復や初回報酬の再取得へ転用しない。
 
-## 6.4 実装・検証の境界
+削除・売却などのpreviewとmutationは同じ対象identityを保つ。現在の選択や画面表示だけで過去requestを解釈し直さない。具体的なcost / cooldown / constraintはcurrent serviceとtestsを読む。詳細経緯は旧版4章を参照する。
 
-UI構図や小さいcomponent分割は実装担当が判断してよい。既存definition／保存情報から必要な表示fieldだけを追加投影する案は可だが、データ不足を新しいgameplay engine・trace保存・migrationで埋めない。
+# 5. AIと戦闘ログの境界
 
-PC/mobile・Light/Dark、特にDark、長い名称・画面端・数字keyboard・画像なしを実ブラウザで確認する。frontend mockだけで完了とせず、実APIから一覧を取得しコマンドを登録する代表操作を確認する。
+custom AIはplayer保存済み設定を使い、既定AIを新ダンジョン専用に無言で差し替えない。覚醒HP条件の変更だけでも攻略時間や発動率は変わるため、比較報告へ明記する。
 
-原則1本のUI改善PRへまとめ、foundation-onlyの別PRを作らない。小さな意味のあるcommitは可。十分な成果で終了し、usageを使い切ることは目標にしない。main merge / production deploy / OCIは別Owner gate。
+一つのexecuteTurnに覚醒activation・奥義・通常行動が含まれる場合がある。技の宣言、MP cost、効果、反撃、継続効果、自然回復を混同しない。PT、manual combat、万能action frameworkは未実装。
 
-## 6.5 将来候補・今回の非目標
+# 6. 表示の現在地と、次に相談するもの
 
-- NPC海賊船はapplication 3.6.0以降へDeferred。3.5.0にpirate schema / AI / 捕虜 / raid / rescueの先行実装はない
-- 案内人名変更後の新しい「リカ」再戦
-- Unique装備
-- 汎用装備エンチャ、装備強化。MP回復量等の効果は今後検討するが数値未確定
-- 技巧 / criticalの再設計。現行式と単発／多段、他能力との比較を別途検討する
-- status potencyの再設計
-- Trial 2以降
-- 第三狩場以降
-- manual combat
-- party / market
-- 覚醒時の専用変身画像登録
+## 6.1 3.6.0戦闘UI
 
-3.5.2 UI改善以外のscopeは今回一括承認していない。published v20 payloadは上書きしない。FFA / 原作箱庭のUIは参考であってcodeや画像を複製する対象ではない。原作箱庭2.3は前回Drive調査で原本未特定であり、2＋を2.3原本として代用しない。
+冒頭で最終HPを見せず、遭遇→第1round開始状態→行動→次round開始状態→最後に決着状態・勝敗・報酬。次round開始カードは前roundの全終了処理後であり、次round開始処理後と偽らない。
 
-## 6.6 次の地下戦闘バランス設計：Ownerの相談内容（未実装）
+途中の状態カードを折り畳まず、末尾の分析統計を「戦闘詳細」にまとめて初期closed。「末尾へ」を維持。覚醒gauge満タンと覚醒中を区別する。内部0～1000を生の数値として見せず、barを基本にし、アクセシビリティ上の値はpercentageで伝える。fill以外のcard背景／外枠を勝手に発光させない。
 
-以下は次の相談の出発点。#149へ追加する指示、数式・release番号・移行方法の最終承認ではない。current combat v3、現行growth、既存enemy値をここで上書きしない。
+専用覚醒portraitの登録・歴史的画像snapshot機構まで実装済みとは扱わない。stateの覚醒中表示と登録画像の表示を区別する。
 
-### 成長案
+## 6.2 旧ログを変えない
 
-Ownerは祝福の武力+1を誤記と明言し、**祝福の武力は+0**と確定した。次期baseline候補は次のとおり。
+presentation v2は新battleのinitial_stateとround boundary等の投影を追加した。旧v1／flat logは保存済み情報でfallback。旧battleを再戦・再計算して補完しない。不足状態を現在profileや0で埋めない。表示やdetails開閉で抽選・報酬を再実行しない。
 
-| 方針 | 生命 | 武力 | 技巧 | 精神 | 敏捷 | 手動STP / Lv |
-|---|---:|---:|---:|---:|---:|---:|
-| 戦技 | +1 | +2 | +1 | +0 | +1 | 5 |
-| 護身 | +2 | +1 | +0 | +1 | +1 | 5 |
-| 祝福 | +1 | +0 | +1 | +2 | +1 | 5 |
-| 自由 | +1 | +0 | +2 | +0 | +1 | 6 |
+## 6.3 次の主題：地上の産業連鎖
 
-全行は自然成長＋手動STPで10。現行のLv2以降の加算とLv1 baselineを区別する。現在は敏捷の自然成長0を検証するコードがあるため、configだけ変えれば終わりではない。既存playerの自然成長再計算、手動STP、growth identity、current HP、無料回復の有無は移行設計で明示する。
+Ownerの最新意図は「箱庭がメインなので、地上の島経営を豊かにする」。第一次・第二次産業から生まれる農作物・工業品・鉱物と石油を基礎に、電力、加工、第三次産業へつなげたい。
 
-### 技巧・会心・会心抵抗
+完成品のUI・施設・仕組みを観察してアイデアを出す段階であり、RA移植や次release全機能の承認ではない。地下の技巧再設計へ話を戻さない。
 
-- 攻撃者技巧と防御者技巧の関係で会心率／会心抵抗を表現したい。技巧差が大きい場合は会心damage倍率も上がる案。
-- 自然な会心率の範囲5〜80%、会心倍率の下側1.2〜1.5倍はOwnerの**イメージ値**であり採用済み定数ではない。倍率上限、同値時の率、曲線、enchant / skill / equipment加算後の最終capは未決。
-- 護身の攻撃技にも会心を出せるようにしたい。技巧自然成長0は技巧そのもの0でも、会心率enchantしか効かないという意味でもない。Lv1値・手動STP・装備・skill補正を保持して検討する。
-- 武力極は安定火力100、技巧極は80〜110程度に上下し、上振れで一度Trialを突破できる価値を狙う。これはconceptで、平均／一撃／戦闘総量／分位点のどれに80〜110を当てるかは未決。前のAI提案「平均90〜95、P10/P90」等をOwner確定値へ昇格させない。
-- 技巧魔法型は精神型より回復・障壁を捨てるため、攻撃面では精神型を上回れる余地を持たせたい。ただし回復能力が完全に0になるわけではなく、武力技巧の攻撃特化より低くても構わない。
+参考資料はGoogle Driveの「箱庭リファレンス / hako-r-a_FE」のみ。
+`https://drive.google.com/drive/folders/1hjeYuiMFwmXf1Qz7_WtvA7zcXKD4VJgI`
 
-### 魔力昇華（DH相当枠）
+Owner提供のRA最新版として扱うが、世界中の公開版の最新版を確認したとの意味ではない。readmeはFinal Editionを名乗り、モジュールには旧version表記もある。今回、他のreference作品の兄弟folderは調べない。
 
-- Ownerは「魔力昇華を忘れていた」と再言及しており、不要／撤回ではない。「クリダイは気持ちいい」という上振れの楽しさは設計目的の一つ。
-- 攻撃魔法で会心と重なり得る追加強化枠を作り、技巧特化の魔法使い派生を支える案。回復・障壁へ同じ強化を乗せない方向を出発点とする。
-- 発動条件、独立抽選か、技巧への依存、倍率・上限、対象技、取得cost、実装するreleaseは未決。二重の率×倍率増幅を平均値だけで調整せず、重複時の上限と分散を確認する。単に全魔法への無料buffにしない。
+## 6.4 素材制作と「地底」導線
 
-### 敏捷・職間目標・測定
+Ownerは将来ヘッダーへ「地底」を追加してアクセスを容易にしたい。現在位置やURL、閲覧／操作権限を確認して別のUI変更として考える。今回の文書更新で追加済みとは書かない。
 
-- 同量の追加STPに対し、敏捷の攻撃寄与は主攻撃能力の30〜40%、生存寄与は生命の30〜40%程度、さらに先手の価値を持たせたい。これは**能力の生値比ではなく投資効率**。生命の物理／魔法に対する差、攻撃と回復行動の比率を区別して比較する。
-- Lv1、Lv30（比較用SP60・ワイバーン）、Lv100（比較用SP100・Trial 2クリア相当）で、戦技100、護身80前半、祝福80前半だが護身未満、自由90台目安を狙う。例の100/82/80は目標イメージで全敵・全buildに固定する係数ではない。自由の比率への拘りは弱い。
-- 純攻撃機会あたりの火力と、回復／防御込みの実戦火力・突破率を分ける。代表AI、SP配分、装備、同量投資の基準を先に固定する。Lv30/SP60等はOwner指定の測定budgetで、全playerの自然な取得状況を証明するものではない。
-- 突破率はLv1雑魚、適正Lvの洞窟強敵、Lv30ワイバーンを優先する。Trial全10戦を毎回回す必要はないが、ワイバーン単戦勝率をTrial全周の突破率と呼ばない。entry HPやMP等を明示する。
-- ワイバーン・黒晶洞の難易度を変えすぎない。必要なら全体調整は可だが、敵個別数値の大量変更で式の問題を隠さない。まずcurrentとの比較を出す。許容する勝率／round差は未決。
-- Lv100のTrial 2は未実装の将来benchmarkとして扱い、実在のclear成績を作らない。Lv500も同格の仮想環境で技巧／敏捷の役割が維持されるかを見る。Lv500対Lv30の敵で同じ強さを要求しない。
-- 200〜1000 seedsから始め、差がノイズ帯なら増やす。10000 seedsを既定にしない。meanだけでなく分位点・上振れ・clear率と不確実性を見る。既存runtime / simulatorを再利用し、raw logや巨大JSONを量産しない。
+32×32の地形下地（平地・荒地・海・浅瀬）に、人とAIが描き足せるGIF制作ツールも候補。提案は下地ロック、palette、layer、nearest-neighbor拡大、原寸／隣接preview、undo、JSON等の編集元、GIF／PNG出力。AI生成の見栄えと正確なpixel編集は別の課題。RA画像そのものの複製や無条件の再配布許可を前提にしない。
 
-設計担当は数式候補と測定条件、実装主担当はidentity / migration / retry / historical boundary、補助Agentは限定した比較実行を担当する案。特定modelの性能・使用量倍率をrepoの技術的契約にしない。最終式・採用案と実装開始はOwner判断を得る。
+## 6.5 ほかの将来候補
 
-## 6.7 行動ログ形式の改善：次期設計の論点（未実装）
+NPC海賊、船修理、第三狩場以降、Unique、enchant／装備強化、案内人再戦、専用覚醒画像、PT、manual combat、marketは必要になった時にOwner gateで検討する。Trial 2はこの一覧から除く（3.6.0で実装済み）。
 
-Ownerは「ログ形式を変えて、一つの技とMP cost／効果をまとめられないか」と明示した。3.5.2の制約を永久的な禁止へ読み替えない。一方で#149内は保存形式を変更していないため、今すぐv2が実装済みと扱わない。
+## 6.6 技巧・成長研究の結論：今回不採用
 
-- 行動に属するevent、round start/end、MP回復のnatural / skill / passive / status等の由来を明示し、UIの隣接行や数値からの推測を減らす。
-- `action_id`、`phase`、`source`、`action_key`、presentation log v2等は設計候補。必要最小限のfieldでよく、generic Event / Animation frameworkは不要。
-- `executeTurn`一回を必ず一技とみなさない。覚醒activation、覚醒技、通常行動が同じturnにある場合や反撃・継続効果を、誤って一つの主技へ吸収しない。行動者・対象・順序・親行動との関係を保つ。
-- 自然回復はround内の小さい補助欄へまとめ、MP costは対応する技のcostとして表示する。将来PTでも誰に何が起きたかは消さず、全生ログへ到達できるようにする。
-- 現行の保存経路ではprojected roundsを保存し、内部にあるcooldown等が全て保存されるわけではない。新規battleへ必要情報を投影する案と、既存ログにない情報を補うことを区別する。欠損は0／使用可能と解釈しない。
-- 旧battleを再戦・再計算して書き換えない。旧形式はfallback表示を維持する。log-only変更と、技巧／敏捷／会心のgameplay変更に必要なcombat identity更新を分けて判断する。schema migrationの要否も実際のJSON・validation・保存hash契約から確認する。
-- 今回の限定集約は移行用の初版として維持してよい。完全なログv2、変身画像登録、PT戦、手動戦闘を#149 close-outの必須条件として増やさない。
+旧版6.6の相対技巧、会心倍率、防具IL共通R、魔力昇華、魔法係数変更、自然敏捷成長、祝福武力+0を含む自然成長候補は、検討を経て**今回すべて採用しない**とOwnerが決定した。
 
+「成長曲線」はこの会話ではLvごとの能力上昇を指しており、必要EXP曲線を変える依頼ではなかった。その能力成長も現状維持。既存の精神型、敏捷、ワイバーン等へ広範な影響を出さないことを優先する。
 
----
+将来、自由へ**技量型のskill tree**を追加し、安定型とは違う上振れ／下振れの遊びを局所的に作る案はある。現行の技巧を全員向けに改造する計画ではなく、現在の実装scopeでもない。
+
+研究結果は参考として残してよいが、candidate codeを新releaseへ自動的に混ぜない。旧版の「Owner確定」「昇華は撤回ではない」は当時の相談記録で、今回の最終判断に優先しない。
+
+## 6.7 行動ログ形式：実装済みと未実装
+
+presentation_log_version=2、初期状態、round開始／終了、覚醒gauge表示は#150で実装済み。旧6.7にあった汎用action_id／parent_action_id／source等の全提案が実装されたわけではない。
+
+MP costと効果の所属をより明確にする将来改善は、必要な保存情報だけで行う。v2という番号だけを根拠に、全行動を再生できる完全traceが存在すると判断しない。
 
 # 7. Test / review / Agent運用
 
-## 7.1 Test authority
+- localはfocused tests。migrationではfresh install／supported upgrade等の直接関係する検証を追加する。
+- repository全体のPHPUnitはexact-head Quality CIをauthorityとし、同じsource／dependency／設定で全suiteを何度も重複実行しない。
+- worktree、source、vendor、Composer設定、test設定を同世代に揃える。stale containerをruntime不具合と取り違えない。
+- simulationはsource commit・manifest hash・seed・compact aggregate・再現commandを記録する。未知のGit状態をcleanとしない。raw巨大JSONを常設成果物へ増やさない。
+- P1/P2は実際に到達可能なproduction経路、データ、権限、retry／lock、利用者への回帰を具体的に示す。好みやあり得ない異常値だけで重大指摘にしない。
+- subagentへは限定した調査・機械的作業・focused test。Owner意図、release境界、移行、統合、production判断は主担当が保持する。
+- 一releaseのSurface Ruleset追加は原則一世代。過去の未適用統合を現在のmigrationへ一般化しない。
+- main merge、release merge、deploy、OCI、本番DB、補填はそれぞれOwnerの明示許可を確認する。handoff編集依頼はこれらの許可を兼ねない。
 
-Quality CIはPHPUnit全集合をshardへ分割して全件実行する。
+# 8. 次のagentが最初に行うこと
 
-- localはfocused testsを優先
-- migrationではfresh install / supported upgradeを追加確認
-- PostgreSQL concurrency、environment固有contract等、CIに含まれないものだけlocal追加
-- CI failureの再現が必要な場合だけ対象をlocal実行
-- repository-wide回帰の最終authorityはexact-head CI
-- source / test設定 / dependencyが変わっていなければ同じ全suiteを理由なく繰り返さない
-
-この原則は`AGENTS.md`へ恒久反映済み。
-
-## 7.2 Container / worktree
-
-過去に、test fileだけcurrent worktreeからmountし、container内`composer.json` / vendorが古いimageのままという世代混在が起きた。
-
-- 1回のverificationでは1つのworktree / exact HEADへ揃える
-- source、composer metadata、dependency、test設定を別世代で混在させない
-- stale dev/test containerをfailure evidenceとして扱う前に、実行環境のsource identityを確認
-- runtime codeを直す前に、environment由来かfocused testで切り分ける
-
-## 7.3 Simulation artifact
-
-- balance simulationはcompact aggregateを原則とする
-- source commit、identity、manifest hash、seed start/count、aggregate metrics、abnormal count、reproduction commandだけを保存する
-- seedごとのraw result、action log、巨大JSONを通常artifactとして増やさない
-- 既存historical 1000 / 10000 seed JSONは当時の証拠として変更しない
-- 通常のPlan / reviewでhistorical巨大JSON全文をcontextへ読まない
-
-## 7.4 Subagent
-
-利用可能なら、低riskで機械的な作業はLuna Max等のsubagentへ委譲してよい。
-
-委譲候補:
-
-- read-only inventory
-- schema / test参照箇所の列挙
-- 数値表の照合
-- focused regression追加
-- frontend参照箇所の棚卸し
-- CI failure原因調査
-
-main agentが保持するもの:
-
-- Owner intent
-- release scope
-- identity / Ruleset / migration境界
-- balance最終判断
-- transaction / idempotency / concurrency
-- review dispositionとmerge判断
-
-subagent成果はmain agentが確認してから採用する。
-
----
-
-# 8. 次に作業するagentが最初に行うこと
-
-1. remote `main`、対象branch、worktreeを確認し、#147 / #148を含む最新の意図したbaseを確定する。cleanは未commit差分がないという意味であり、正しいbranchにいる証拠ではない。staleなorigin/mainや別作業commitを調べずresetしない。
-2. #149がopenなら`release/3.5.2`の最新handoffとcode head / CIを確認する。1.8で解消済みの4件を再び未修正として扱わない。本書追加後のdocs-only差分とCIを見て、Ownerのclose-out / merge判断を待つ。
-3. hotfixを維持し、1.7〜1.9の未修正／未決／撤回済みを区別する。廃船同一性と補填は消えていない。Ship再設計や未決の全港退避をUI改善へ混ぜない。
-4. production操作は今回不要。別途許可された場合だけ、実際のcheckout SHA・version・migration ledgerを確認し、古いproduction記録で判断しない。
-5. #149ではSurface v20、combat v3、historical snapshotを維持する。次の地下バランス／ログ設計は6.6〜6.7を入口にし、数式・version・移行の採用前に実装を開始しない。
-6. 最初から全docsを読み直さず、次の関連入口とtask-specific codeへ進む。handoffはread-onlyで、終了時に更新材料をOwnerへ報告する。
-
-最初に読むcurrent file:
-
-```text
-AGENTS.md
-product/docs/handoffs/development-history-and-current-handoff.md
-docs/README.md
-docs/open-questions.md
-product/config/hakoniwa.php
-product/resources/js/components/CommandQueuePanel.vue
-product/app/Http/Controllers/Api/CommandQueueController.php
-product/app/Application/CommandQueueService.php
-product/resources/js/components/UndergroundPanel.vue
-product/resources/js/components/UndergroundAiEditor.vue
-product/app/Application/Underground/UndergroundAlphaV1BattleProjector.php
-product/resources/js/App.vue
-product/resources/js/state/mapState.ts
-product/resources/css/app.css
-product/resources/css/hakoniwa.css
-product/package.json
-product/vite.config.js
-```
-
-migration／Ship runtime自体の調査が別途必要な時だけ、`SurfaceShip*Service`、`MissileImpactResolver`、current migrations、`FreshInstallRebaselineTest`等へ広げる。historicalなPR bodyやsimulation reportだけを読んでcurrent contractを再構成しない。
+1. remote mainと対象branchを確認し、#150 merge後から開始する。#149／#150の初期失敗を現HEADの未修正事項として扱わない。
+2. 本書1.7～1.9の船・補填残件と、6.3～6.4の新しい地上設計相談を分離する。
+3. 基礎戦闘／自然成長を維持するOwner判断を守る。技巧研究を再開しない。
+4. `AGENTS.md`、`docs/README.md`、`docs/open-questions.md`からtask固有のcurrent codeへ進む。全歴史資料を最初から読み直さない。
+5. RA分析は指定folderと本書から参照する分析文書を入口にする。原理の独立実装と、第三者code／素材の複製を混同しない。
+6. UI／産業／素材ツールの具体的な実装は別のOwner scopeを確認する。今回の自由なアイデア出しを全部実装する指示にしない。
+7. production操作は別gate。完了時は必要な検証根拠とhandoff更新材料をOwnerへ返す。
