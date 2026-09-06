@@ -11,6 +11,7 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\AcquireUndergroundSkillRequest;
 use App\Http\Requests\AdvanceUndergroundIntroRequest;
 use App\Http\Requests\AllocateUndergroundStpRequest;
+use App\Http\Requests\CompleteUndergroundRecollectionRequest;
 use App\Http\Requests\NameUndergroundShopkeeperRequest;
 use App\Http\Requests\RespecUndergroundProfileRequest;
 use App\Http\Requests\SelectUndergroundGrowthPathRequest;
@@ -95,6 +96,17 @@ final class UndergroundIntroController extends Controller
         return $this->respond(fn (): array => $service->scriptedLoss(
             $request->user(),
             $request->string('request_id')->value(),
+        ));
+    }
+
+    public function completeRecollection(
+        CompleteUndergroundRecollectionRequest $request,
+        UndergroundIntroService $service,
+    ): JsonResponse {
+        return $this->respond(fn (): array => $service->completeRecollection(
+            $request->user(),
+            $request->string('request_id')->value(),
+            $request->integer('chapter'),
         ));
     }
 

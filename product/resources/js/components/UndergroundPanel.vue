@@ -267,6 +267,45 @@ interface PendingMutation {
     requestId: string;
 }
 
+interface RecollectionEntry {
+    key: string;
+    kind: 'historical' | 'past';
+    title: string;
+    experienced: boolean;
+    locked: boolean;
+    completed?: boolean;
+    chapter?: number;
+    body?: string[];
+    trial_key?: string;
+    battle_id?: number;
+}
+
+interface SeriousTalkChoice {
+    key: string;
+    label: string;
+    next: string;
+}
+
+interface SeriousTalkScene {
+    lines: string[];
+    choices: SeriousTalkChoice[];
+}
+
+interface SeriousTalk {
+    title: string;
+    initial_scene: string;
+    scenes: Record<string, SeriousTalkScene>;
+}
+
+interface RecollectionState {
+    available: boolean;
+    trial_02_first_cleared: boolean;
+    past_available: boolean;
+    max_completed: number;
+    entries: RecollectionEntry[];
+    serious_talk: SeriousTalk | null;
+}
+
 interface PendingExplorationRequest {
     requestId: string;
     huntingGroundKey: string;
@@ -319,6 +358,7 @@ interface UndergroundState {
     hunting_grounds?: HuntingGround[] | null;
     trial: TrialState | null;
     awakening: AwakeningState | null;
+    recollections?: RecollectionState;
     ai?: UndergroundAiConfiguration | null;
     battle: Battle | null;
 }
@@ -478,14 +518,23 @@ const pendingAwakeningTechniqueMutation = ref<PendingMutation | null>(null);
 const awakeningMessageDraft = ref('');
 const awakeningTechniqueDraft = ref<string | null>(null);
 const equipmentView = ref<'main' | 'shop' | 'guide' | 'ai' | 'vault'>('main');
-const guideMode = ref<'basic' | 'conversation' | 'respec'>('basic');
+const guideMode = ref<'basic' | 'conversation' | 'recollections' | 'serious_talk' | 'respec'>('basic');
+const selectedRecollectionKey = ref<string | null>(null);
+const seriousTalkSceneKey = ref('root');
 const selectedRespecPathKey = ref<string | null>(null);
 const respecConfirmOpen = ref(false);
 const pendingRespecMutation = ref<PendingMutation | null>(null);
+const pendingRecollectionMutation = ref<PendingMutation | null>(null);
 const cooldownNowMs = ref(Date.now());
 let cooldownTimer: ReturnType<typeof window.setInterval> | null = null;
 let huntingGroundPreferenceHydrated = false;
 const currentBattle = computed(() => selectedBattle.value ?? state.value?.battle ?? null);
+const recollectionEntries = computed(() => state.value?.recollections?.entries ?? []);
+const selectedRecollection = computed(() => recollectionEntries.value.find((entry) => entry.key === selectedRecollectionKey.value) ?? null);
+const seriousTalkScene = computed(() => {
+    const talk = state.value?.recollections?.serious_talk;
+    return talk?.scenes[seriousTalkSceneKey.value] ?? null;
+});
 const unlockedHuntingGrounds = computed(() => (state.value?.hunting_grounds ?? [])
     .filter((ground) => !ground.locked));
 const selectedHuntingGround = computed(() => unlockedHuntingGrounds.value
@@ -741,13 +790,68 @@ async function chooseGrowthPath(key: string): Promise<void> {
     await mutate('/api/v1/me/underground/growth-path', { growth_path_key: key });
 }
 
-function openGuide(mode: 'basic' | 'conversation' | 'respec' = 'basic'): void {
+function openGuide(mode: 'basic' | 'conversation' | 'recollections' | 'serious_talk' | 'respec' = 'basic'): void {
     equipmentView.value = 'guide';
     guideMode.value = mode;
+    if (mode === 'serious_talk') {
+        seriousTalkSceneKey.value = state.value?.recollections?.serious_talk?.initial_scene ?? 'root';
+    }
     if (mode !== 'respec') {
         selectedRespecPathKey.value = null;
         respecConfirmOpen.value = false;
     }
+}
+
+function openRecollections(): void {
+    if (state.value?.recollections?.available !== true) return;
+    selectedRecollectionKey.value = null;
+    openGuide('recollections');
+}
+
+function selectRecollection(entry: RecollectionEntry): void {
+    if (entry.locked || !entry.experienced && entry.kind === 'historical') return;
+    selectedRecollectionKey.value = entry.key;
+}
+
+async function completeRecollection(entry: RecollectionEntry): Promise<void> {
+    const chapter = entry.chapter;
+    const recollections = state.value?.recollections;
+    if (chapter === undefined
+        || entry.kind !== 'past'
+        || entry.completed === true
+        || entry.locked
+        || recollections?.available !== true
+        || chapter !== recollections.max_completed + 1
+        || busy.value) {
+        return;
+    }
+    selectedRecollectionKey.value = entry.key;
+    const fingerprint = JSON.stringify({ chapter });
+    const pending = pendingRecollectionMutation.value?.fingerprint === fingerprint
+        ? pendingRecollectionMutation.value
+        : { fingerprint, requestId: requestId() };
+    pendingRecollectionMutation.value = pending;
+    if (await mutate('/api/v1/me/underground/recollections/read', { chapter }, pending.requestId)) {
+        pendingRecollectionMutation.value = null;
+    }
+}
+
+function openSeriousTalk(): void {
+    if (state.value?.recollections?.serious_talk === null
+        || state.value?.recollections?.serious_talk === undefined) return;
+    openGuide('serious_talk');
+}
+
+function chooseSeriousTalk(choice: SeriousTalkChoice): void {
+    const scene = seriousTalkScene.value;
+    if (!scene || !scene.choices.some((candidate) => candidate.key === choice.key && candidate.next === choice.next)) {
+        return;
+    }
+    if (choice.next === 'guide') {
+        openGuide();
+        return;
+    }
+    seriousTalkSceneKey.value = choice.next;
 }
 
 function selectRespecPath(key: string): void {
@@ -1537,6 +1641,30 @@ onUnmounted(() => {
                         少しお話がしたい
                     </button>
                     <button
+                        v-if="state.recollections?.available"
+                        type="button"
+                        :aria-pressed="guideMode === 'recollections'"
+                        @click="openRecollections"
+                    >
+                        過去のイベントを振り返る
+                    </button>
+                    <button
+                        v-if="state.recollections?.past_available"
+                        type="button"
+                        :aria-pressed="guideMode === 'recollections'"
+                        @click="openRecollections"
+                    >
+                        過去について問う
+                    </button>
+                    <button
+                        v-if="state.recollections?.serious_talk"
+                        type="button"
+                        :aria-pressed="guideMode === 'serious_talk'"
+                        @click="openSeriousTalk"
+                    >
+                        案内人に真剣な話をする
+                    </button>
+                    <button
                         type="button"
                         :aria-pressed="guideMode === 'respec'"
                         :disabled="state.respec === null || state.respec === undefined"
@@ -1546,6 +1674,55 @@ onUnmounted(() => {
                     </button>
                 </div>
                 <p v-if="guideMode === 'conversation'" class="underground-guide-conversation">「あ、あー……話題が思い浮かんだらまた来てちょうだいな？」</p>
+                <section v-else-if="guideMode === 'recollections'" class="underground-guide-recollections" aria-labelledby="underground-recollections-title">
+                    <header>
+                        <p class="eyebrow">Recollections</p>
+                        <h2 id="underground-recollections-title">過去のイベントを振り返る</h2>
+                    </header>
+                    <p v-if="!state.recollections?.past_available" class="underground-guide-conversation">
+                        試練2を初回クリアすると、案内人の過去について問えるようになります。
+                    </p>
+                    <ul class="underground-recollection-list">
+                        <li v-for="entry in recollectionEntries" :key="entry.key">
+                            <button
+                                type="button"
+                                :disabled="entry.locked"
+                                :aria-disabled="entry.locked ? 'true' : undefined"
+                                @click="selectRecollection(entry)"
+                            >
+                                {{ entry.title }}<span v-if="entry.locked">（未解禁）</span><span v-else-if="entry.kind === 'past' && !entry.completed">（読む）</span>
+                            </button>
+                        </li>
+                    </ul>
+                    <article v-if="selectedRecollection" class="underground-recollection-detail" aria-live="polite">
+                        <h3>{{ selectedRecollection.title }}</h3>
+                        <div v-if="selectedRecollection.body" class="underground-story">
+                            <p v-for="(line, index) in selectedRecollection.body" :key="`${selectedRecollection.key}-${index}`">{{ line }}</p>
+                        </div>
+                        <button
+                            v-if="selectedRecollection.kind === 'past' && !selectedRecollection.completed"
+                            class="button primary"
+                            type="button"
+                            :disabled="busy || selectedRecollection.locked"
+                            @click="completeRecollection(selectedRecollection)"
+                        >
+                            この回想を読む
+                        </button>
+                    </article>
+                    <p v-else class="underground-guide-conversation">読める記録を選んでください。</p>
+                </section>
+                <section v-else-if="guideMode === 'serious_talk' && state.recollections?.serious_talk && seriousTalkScene" class="underground-guide-serious-talk" aria-labelledby="underground-serious-talk-title">
+                    <header>
+                        <p class="eyebrow">Serious Talk</p>
+                        <h2 id="underground-serious-talk-title">{{ state.recollections.serious_talk.title }}</h2>
+                    </header>
+                    <div class="underground-story">
+                        <p v-for="(line, index) in seriousTalkScene.lines" :key="`${seriousTalkSceneKey}-${index}`">{{ line }}</p>
+                    </div>
+                    <div class="underground-guide-actions underground-serious-talk-actions">
+                        <button v-for="choice in seriousTalkScene.choices" :key="choice.key" type="button" @click="chooseSeriousTalk(choice)">{{ choice.label }}</button>
+                    </div>
+                </section>
                 <section v-else-if="guideMode === 'respec'" class="underground-respec-panel" aria-labelledby="underground-respec-title">
                     <header>
                         <div>

@@ -94,6 +94,7 @@ Route::prefix('api/v1')->middleware(['auth', PrivateApiResponse::class])->group(
         Route::post('/tutorial', [UndergroundIntroController::class, 'tutorial']);
         Route::post('/shopkeeper/name', [UndergroundIntroController::class, 'nameShopkeeper']);
         Route::post('/scripted-loss', [UndergroundIntroController::class, 'scriptedLoss']);
+        Route::post('/recollections/read', [UndergroundIntroController::class, 'completeRecollection']);
         Route::post('/contract', [UndergroundIntroController::class, 'contract']);
         Route::post('/growth-path', [UndergroundIntroController::class, 'growthPath']);
         Route::post('/respec', [UndergroundIntroController::class, 'respec']);

@@ -119,7 +119,7 @@ watch(page, (nextPage) => {
 });
 
 function canOpenUnderground(): boolean {
-    return user.value !== null && secretary.value !== null && secretary.value.name !== null;
+    return user.value !== null && secretary.value !== null;
 }
 
 function redirectFromUnavailableUnderground(): void {
@@ -1156,7 +1156,7 @@ async function openSecretary(): Promise<void> {
 }
 
 function openUnderground(): void {
-    if (user.value === null || secretary.value?.name === null) return;
+    if (!canOpenUnderground()) return;
     message.value = '';
     window.history.replaceState({ page: page.value }, '', window.location.href);
     page.value = 'underground';
@@ -1439,6 +1439,7 @@ async function abandonNation(): Promise<void> {
             <button v-if="secretary" type="button" @click="openSecretary">{{ secretary.header_label }}</button>
             <button v-if="nation" type="button" @click="page = 'resources'">資源売却</button>
             <button v-if="nation" type="button" @click="page = 'trading-post'">交易場</button>
+            <button v-if="secretary" type="button" @click="openUnderground">地底</button>
             <button type="button" @click="openOptions">オプション</button>
             <a href="/manual">マニュアル</a>
         </nav>
@@ -1996,6 +1997,14 @@ async function abandonNation(): Promise<void> {
         <SalePolicyPanel v-else-if="user && nation && page === 'resources'" :nation-id="nation.id" />
 
         <TradingPostPanel v-else-if="user && nation && page === 'trading-post'" :nation-id="nation.id" :world-id="nation.world_id" />
+
+        <section
+            v-else-if="page === 'underground' && user && secretary && secretary.name === null"
+            class="panel underground-unnamed-gate"
+        >
+            <h1>地底</h1>
+            <p>「こっちより先に？？？って露骨な方触りなさいよ」</p>
+        </section>
 
         <UndergroundPanel
             v-else-if="page === 'underground' && user && secretary?.name"

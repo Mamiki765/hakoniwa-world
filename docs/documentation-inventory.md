@@ -82,6 +82,7 @@ Dates and filenames were not used as a substitute for content, code, Ruleset, AD
 | `docs/decisions/ADR-0016-ver-2.5.0-secretary-profile.md` | CURRENT AUTHORITY | TASK-SPECIFIC | Accepted ver 2.5.0 | Secretary profile/capacity decision | Active where inherited. |
 | `docs/future-systems/deployment-integration.md` | FUTURE / ROADMAP | DO NOT USE AS CURRENT AUTHORITY | Future | Deployment integration proposal | Current production operations require current runbooks/Owner approval. |
 | `docs/future-systems/event-log-and-notifications.md` | FUTURE / ROADMAP | DO NOT USE AS CURRENT AUTHORITY | Future | Event/outbox/notification proposal | Some event foundations exist; future delivery is not approved by this file. |
+| `docs/future-systems/guide-dream-queen-battle.md` | FUTURE / ROADMAP | DO NOT USE AS CURRENT AUTHORITY | Future / 3.7.0対象外 | Owner-provided dream queen battle draft | Dialogue and battle parameters are preserved for future design only; no runtime battle or item is authorized. |
 | `docs/future-systems/mariachang-integration.md` | FUTURE / ROADMAP | DO NOT USE AS CURRENT AUTHORITY | Future | Mariachang integration idea | Requires separate Owner-approved roadmap. |
 | `docs/future-systems/meteor-items-and-placeables.md` | FUTURE / ROADMAP | DO NOT USE AS CURRENT AUTHORITY | Future | Meteor Item/placeable idea | Not current gameplay. |
 | `docs/future-systems/meteor-targeting.md` | FUTURE / ROADMAP | DO NOT USE AS CURRENT AUTHORITY | Future | Meteor targeting idea | Not current gameplay. |

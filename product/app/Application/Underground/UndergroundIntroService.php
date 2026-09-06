@@ -80,6 +80,49 @@ final readonly class UndergroundIntroService
         return $this->projectState($secretary, $profile, $profile?->introProgress);
     }
 
+    /** @return array<string, mixed> */
+    public function completeRecollection(User $user, string $requestId, int $chapter): array
+    {
+        if ($chapter < 1 || $chapter > 5) {
+            throw new UndergroundRuntimeException(
+                'underground_recollection_chapter_invalid',
+                '回想の章を確認してください。',
+            );
+        }
+
+        return $this->mutate(
+            $user,
+            $requestId,
+            'recollection_read',
+            ['chapter' => $chapter],
+            function (
+                Secretary $secretary,
+                UndergroundProfile $profile,
+                UndergroundIntroProgress $intro,
+            ) use ($chapter): void {
+                if ($intro->stage !== UndergroundIntroStage::UNDERGROUND_OPEN
+                    || ! $this->hasTrialTwoFirstClear($profile)) {
+                    throw new UndergroundRuntimeException(
+                        'underground_recollection_locked',
+                        '試練2を初回クリアすると回想を読めます。',
+                    );
+                }
+
+                $completed = (int) $intro->guide_recollection_max_completed;
+                if ($chapter > $completed + 1) {
+                    throw new UndergroundRuntimeException(
+                        'underground_recollection_sequence_conflict',
+                        '回想は順番に読んでください。',
+                    );
+                }
+                if ($chapter === $completed + 1) {
+                    $intro->guide_recollection_max_completed = $chapter;
+                    $intro->save();
+                }
+            },
+        );
+    }
+
     /** @return array<string, mixed>|null */
     public function secretarySummary(User $user): ?array
     {
@@ -1417,6 +1460,7 @@ final readonly class UndergroundIntroService
                     'growth_paths' => $this->alphaV1Catalog->growthPaths(),
                 ]
                 : null;
+        $recollectionState = $this->projectRecollections($secretary, $profile, $intro);
 
         return [
             'stage' => $stage,
@@ -1476,8 +1520,389 @@ final readonly class UndergroundIntroService
             'respec' => $respecState,
             'trial' => $trialState,
             'awakening' => $awakeningState,
+            'recollections' => $recollectionState,
             'battle' => $battle instanceof UndergroundBattle ? $this->projectBattle($battle, true) : null,
         ];
+    }
+
+    /** @return array<string, mixed> */
+    private function projectRecollections(
+        Secretary $secretary,
+        ?UndergroundProfile $profile,
+        ?UndergroundIntroProgress $intro,
+    ): array {
+        $empty = [
+            'available' => false,
+            'trial_02_first_cleared' => false,
+            'past_available' => false,
+            'max_completed' => 0,
+            'entries' => [],
+            'serious_talk' => null,
+        ];
+        if (! $profile instanceof UndergroundProfile || ! $intro instanceof UndergroundIntroProgress) {
+            return $empty;
+        }
+        if ($intro->stage !== UndergroundIntroStage::UNDERGROUND_OPEN) {
+            return $empty;
+        }
+
+        $config = $this->catalog->recollections();
+        $trialTwoFirstCleared = $this->hasTrialTwoFirstClear($profile);
+        $entries = $this->projectHistoricalRecollections($secretary, $profile, $intro, $config['history']);
+        if (! $trialTwoFirstCleared) {
+            return [
+                'available' => true,
+                'trial_02_first_cleared' => false,
+                'past_available' => false,
+                'max_completed' => 0,
+                'entries' => $entries,
+                'serious_talk' => null,
+            ];
+        }
+        $maxCompleted = min(5, max(0, (int) $intro->guide_recollection_max_completed));
+        foreach ($config['past'] as $past) {
+            if (! is_array($past)
+                || ! is_string($past['key'] ?? null)
+                || ! is_int($past['chapter'] ?? null)
+                || ! is_string($past['title'] ?? null)) {
+                throw new RuntimeException('Underground recollection entry is invalid.');
+            }
+            $chapter = $past['chapter'];
+            $entry = [
+                'key' => $past['key'],
+                'kind' => 'past',
+                'title' => $past['title'],
+                'chapter' => $chapter,
+                'experienced' => $chapter <= $maxCompleted,
+                'completed' => $chapter <= $maxCompleted,
+                'locked' => $chapter > $maxCompleted + 1,
+            ];
+            if ($chapter <= $maxCompleted) {
+                $entry['body'] = $this->stringList($past['body'] ?? null, 'recollection body');
+            }
+            $entries[] = $entry;
+        }
+
+        return [
+            'available' => true,
+            'trial_02_first_cleared' => true,
+            'past_available' => true,
+            'max_completed' => $maxCompleted,
+            'entries' => $entries,
+            'serious_talk' => $maxCompleted >= 5
+                ? $this->projectSeriousTalk($config['serious_talk'], $intro)
+                : null,
+        ];
+    }
+
+    /** @return list<array<string, mixed>> */
+    private function projectHistoricalRecollections(
+        Secretary $secretary,
+        UndergroundProfile $profile,
+        UndergroundIntroProgress $intro,
+        mixed $history,
+    ): array {
+        if (! is_array($history)) {
+            throw new RuntimeException('Underground recollection history is invalid.');
+        }
+        $stage = $intro->stage;
+        $entries = [];
+        $secretaryNamed = is_string($secretary->name) && $secretary->name !== '';
+        $entries[] = $this->historicalEntry(
+            'secretary_naming',
+            '秘書の名付け',
+            $secretaryNamed,
+            $secretaryNamed
+                ? [
+                    "秘書の現在の名前は「{$secretary->name}」です。",
+                    '初回に付けられた名前は保存されていないため、現在名を表示しています。',
+                ]
+                : null,
+        );
+        $entries[] = $this->historicalEntry(
+            'underground_intro',
+            $this->historyTitle($history, 'underground_intro'),
+            $this->stageAtLeast($stage, UndergroundIntroStage::TUTORIAL_READY),
+            $this->stageAtLeast($stage, UndergroundIntroStage::TUTORIAL_READY)
+                ? $this->historyBody($history, 'underground_intro')
+                : null,
+        );
+
+        $tutorial = $intro->tutorialBattle;
+        $tutorialExperienced = $intro->tutorial_battle_id !== null && $tutorial instanceof UndergroundBattle;
+        $entries[] = $this->historicalEntry(
+            'tutorial',
+            '最初の試練',
+            $tutorialExperienced,
+            $tutorialExperienced
+                ? ["{$tutorial->encounter_key}とのTutorial戦闘を経験しました。"]
+                : null,
+            $tutorialExperienced ? ['battle_id' => $tutorial->id] : [],
+        );
+        $tutorialAftermathExperienced = $this->stageAtLeast($stage, UndergroundIntroStage::RETURNED_AFTER_TUTORIAL);
+        $entries[] = $this->historicalEntry(
+            'tutorial_aftermath',
+            $this->historyTitle($history, 'tutorial_aftermath'),
+            $tutorialAftermathExperienced,
+            $tutorialAftermathExperienced ? $this->historyBody($history, 'tutorial_aftermath') : null,
+        );
+        $encounterExperienced = $this->stageAtLeast($stage, UndergroundIntroStage::SHOPKEEPER_NAMING);
+        $entries[] = $this->historicalEntry(
+            'shopkeeper_encounter',
+            $this->historyTitle($history, 'shopkeeper_encounter'),
+            $encounterExperienced,
+            $encounterExperienced ? $this->historyBody($history, 'shopkeeper_encounter') : null,
+        );
+        $trueNameExperienced = $intro->branch_identity === 'true_name'
+            && $intro->scripted_loss_battle_id !== null;
+        $entries[] = $this->historicalEntry(
+            'true_name_before',
+            $this->historyTitle($history, 'true_name_before'),
+            $trueNameExperienced,
+            $trueNameExperienced ? $this->historyBody($history, 'true_name_before') : null,
+        );
+        $trueNameAfterExperienced = $trueNameExperienced
+            && $this->stageAtLeast($stage, UndergroundIntroStage::SHOP_EXPLANATION);
+        $entries[] = $this->historicalEntry(
+            'true_name_after',
+            $this->historyTitle($history, 'true_name_after'),
+            $trueNameAfterExperienced,
+            $trueNameAfterExperienced ? $this->historyBody($history, 'true_name_after') : null,
+        );
+        $shopExperienced = $this->stageAtLeast($stage, UndergroundIntroStage::CONTRACT_READY);
+        $entries[] = $this->historicalEntry(
+            'shop_explanation',
+            $this->historyTitle($history, 'shop_explanation'),
+            $shopExperienced,
+            $shopExperienced ? $this->historyBody($history, 'shop_explanation') : null,
+        );
+        $crystalExperienced = $profile->growth_path_key !== null;
+        $entries[] = $this->historicalEntry(
+            'crystal_offer',
+            $this->historyTitle($history, 'crystal_offer'),
+            $crystalExperienced,
+            $crystalExperienced ? $this->historyBody($history, 'crystal_offer') : null,
+        );
+        $openExperienced = $stage === UndergroundIntroStage::UNDERGROUND_OPEN;
+        $growthEnding = $history['growth_ending'] ?? null;
+        if (! is_array($growthEnding)) {
+            throw new RuntimeException('Underground growth ending recollection is invalid.');
+        }
+        $growthLine = $profile->growth_path_key === 'free_black'
+            ? $growthEnding['free_black'] ?? null
+            : $growthEnding['default'] ?? null;
+        if (! is_string($growthLine) || $growthLine === '') {
+            throw new RuntimeException('Underground growth ending recollection is invalid.');
+        }
+        $entries[] = $this->historicalEntry(
+            'common_ending',
+            $this->historyTitle($history, 'common_ending'),
+            $openExperienced,
+            $openExperienced
+                ? [$growthLine, ...$this->historyBody($history, 'common_ending')]
+                : null,
+        );
+
+        foreach ($this->projectTrialRecollections($profile) as $entry) {
+            $entries[] = $entry;
+        }
+
+        return $entries;
+    }
+
+    /** @return array<string, mixed> */
+    private function projectSeriousTalk(mixed $talk, UndergroundIntroProgress $intro): array
+    {
+        if (! is_array($talk)
+            || ! is_string($talk['title'] ?? null)
+            || ! is_array($talk['scenes'] ?? null)) {
+            throw new RuntimeException('Underground serious talk configuration is invalid.');
+        }
+        $scenes = [];
+        foreach ($talk['scenes'] as $sceneKey => $scene) {
+            if (! is_string($sceneKey) || ! is_array($scene)) {
+                throw new RuntimeException('Underground serious talk scene is invalid.');
+            }
+            $lines = $this->stringList($scene['lines'] ?? null, 'serious talk lines');
+            if ($sceneKey === 'true_name_branch') {
+                $branchKey = $intro->branch_identity === 'true_name' ? 'true_name_branch' : 'normal_branch';
+                $lines = [
+                    ...$lines,
+                    ...$this->stringList($scene[$branchKey] ?? null, 'serious talk name branch'),
+                ];
+                if ($branchKey === 'normal_branch') {
+                    $assignedName = $intro->shopkeeper_name ?? '案内人';
+                    $lines = array_map(
+                        static fn (string $line): string => str_replace('{{assigned_name}}', $assignedName, $line),
+                        $lines,
+                    );
+                }
+            }
+            $choices = [];
+            foreach ($scene['choices'] ?? [] as $choice) {
+                if (! is_array($choice)
+                    || ! is_string($choice['key'] ?? null)
+                    || ! is_string($choice['label'] ?? null)
+                    || ! is_string($choice['next'] ?? null)) {
+                    throw new RuntimeException('Underground serious talk choice is invalid.');
+                }
+                $choices[] = [
+                    'key' => $choice['key'],
+                    'label' => $choice['label'],
+                    'next' => $choice['next'],
+                ];
+            }
+            $scenes[$sceneKey] = ['lines' => $lines, 'choices' => $choices];
+        }
+
+        return [
+            'title' => $talk['title'],
+            'initial_scene' => 'root',
+            'scenes' => $scenes,
+        ];
+    }
+
+    /**
+     * @param  list<string>|null  $body
+     * @param  array<string, mixed>  $extra
+     * @return array<string, mixed>
+     */
+    private function historicalEntry(
+        string $key,
+        string $title,
+        bool $experienced,
+        ?array $body,
+        array $extra = [],
+    ): array {
+        $entry = [
+            'key' => $key,
+            'kind' => 'historical',
+            'title' => $title,
+            'experienced' => $experienced,
+            'locked' => ! $experienced,
+            ...$extra,
+        ];
+        if ($experienced && $body !== null) {
+            $entry['body'] = $body;
+        }
+
+        return $entry;
+    }
+
+    /** @param array<string, mixed> $history */
+    private function historyTitle(array $history, string $key): string
+    {
+        $event = $history[$key] ?? null;
+        if (! is_array($event) || ! is_string($event['title'] ?? null) || $event['title'] === '') {
+            throw new RuntimeException('Underground recollection history entry is invalid.');
+        }
+
+        return $event['title'];
+    }
+
+    /**
+     * @param  array<string, mixed>  $history
+     * @return list<string>
+     */
+    private function historyBody(array $history, string $key): array
+    {
+        $event = $history[$key] ?? null;
+        if (! is_array($event)) {
+            throw new RuntimeException('Underground recollection history entry is invalid.');
+        }
+
+        return $this->stringList($event['body'] ?? null, 'recollection history body');
+    }
+
+    /** @return list<array<string, mixed>> */
+    private function projectTrialRecollections(UndergroundProfile $profile): array
+    {
+        $battles = UndergroundBattle::query()
+            ->where('underground_profile_id', $profile->id)
+            ->where('activity_type', UndergroundBattle::ACTIVITY_TRIAL)
+            ->whereIn('activity_key', ['trial_01', 'trial_02'])
+            ->orderBy('id')
+            ->get();
+        $entries = [];
+        foreach (['trial_01', 'trial_02'] as $trialKey) {
+            $trial = $this->runtimeCatalog->trial($trialKey);
+            $start = null;
+            $clear = null;
+            foreach ($battles as $battle) {
+                if ($battle->activity_key !== $trialKey) {
+                    continue;
+                }
+                $snapshot = $battle->snapshot;
+                if ($start === null
+                    && $battle->trial_battle_index === 1
+                    && is_string($snapshot['challenge_intro'] ?? null)) {
+                    $start = $battle;
+                }
+                if ($clear === null && is_array($snapshot['first_clear_story'] ?? null)) {
+                    $clear = $battle;
+                }
+            }
+            if ($start instanceof UndergroundBattle) {
+                $entries[] = $this->historicalEntry(
+                    "{$trialKey}_start",
+                    "{$trial['label']}の開始",
+                    true,
+                    [$start->snapshot['challenge_intro']],
+                    ['trial_key' => $trialKey, 'battle_id' => $start->id],
+                );
+            }
+            if ($clear instanceof UndergroundBattle) {
+                $story = $clear->snapshot['first_clear_story'];
+                if (is_array($story) && is_string($story['body'] ?? null)) {
+                    $body = [$story['body']];
+                    if (is_array($story['system_messages'] ?? null)) {
+                        $body = [...$body, ...$this->stringList($story['system_messages'], 'trial clear story messages')];
+                    }
+                    $entries[] = $this->historicalEntry(
+                        "{$trialKey}_clear",
+                        is_string($story['title'] ?? null) ? $story['title'] : "{$trial['label']}のクリア",
+                        true,
+                        $body,
+                        ['trial_key' => $trialKey, 'battle_id' => $clear->id],
+                    );
+                }
+            }
+        }
+
+        return $entries;
+    }
+
+    private function hasTrialTwoFirstClear(UndergroundProfile $profile): bool
+    {
+        return UndergroundTrialProgress::query()
+            ->where('underground_profile_id', $profile->id)
+            ->where('trial_key', 'trial_02')
+            ->whereNotNull('first_cleared_at')
+            ->exists();
+    }
+
+    private function stageAtLeast(string $stage, string $minimum): bool
+    {
+        $order = array_flip(UndergroundIntroStage::all());
+
+        return isset($order[$stage], $order[$minimum]) && $order[$stage] >= $order[$minimum];
+    }
+
+    /** @return list<string> */
+    private function stringList(mixed $value, string $description): array
+    {
+        if (! is_array($value) || ! array_is_list($value)) {
+            throw new RuntimeException("Underground {$description} is invalid.");
+        }
+        $result = [];
+        foreach ($value as $line) {
+            if (! is_string($line)) {
+                throw new RuntimeException("Underground {$description} is invalid.");
+            }
+            $result[] = $line;
+        }
+
+        return $result;
     }
 
     private function nextLevelXp(UndergroundProfile $profile): int
