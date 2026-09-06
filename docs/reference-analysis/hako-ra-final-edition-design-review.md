@@ -44,7 +44,7 @@ Owner提供の最新版として扱った配布物で、`read-renas.txt`は「Ha
 | read-renas.txt | 4037 | 266ad3db7f4f9105817e7058d19c844db245fb63336b717c1bd4491cf03f34c2 |
 | hako-main.cgi | 82059 | fe5eea6de1ef3b8f54abe1a3fe9cf5c6bfcae3869b52998cff9fe540dfb7baff |
 | hako-turn.cgi | 668179 | af097c1ad27ebe3b2a739f9a08c0da3a5da65b60bac083ff166cf98e2ea73ea7 |
-| hako-top.cgi | 87902 | 7244a40ac8b230164d74432fd59fd9eb7348e7054089f73f75b48ad7bee8a |
+| hako-top.cgi | 87902 | 7244a40ac8b230164d74432fd59fd9eb7348e7054089f73f75f35b48ad7bee8a |
 | hako-map.cgi | 129361 | aa07acd555d88680a4b54e10cbd3e69063400cf01c0ac28eaebf591ce2437f76 |
 | hakoimg.zip | 800872 | a644a8a1ed8d1a59373e83904bb480999a1f7ab8a815830aa5e24d797f0efd03 |
 
