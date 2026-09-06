@@ -881,8 +881,8 @@ final class DisasterTurnService
                         ],
                     );
                 }
-                if ($facilityDamage !== null && $facilityDamage['scale_loss'] > 0) {
-                    $damaged++;
+                if ($facilityDamage !== null) {
+                    $damaged += $facilityDamage['scale_loss'] > 0 ? 1 : 0;
 
                     continue;
                 }
@@ -925,8 +925,8 @@ final class DisasterTurnService
                         ],
                     );
                 }
-                if ($facilityDamage !== null && $facilityDamage['scale_loss'] > 0) {
-                    $damaged++;
+                if ($facilityDamage !== null) {
+                    $damaged += $facilityDamage['scale_loss'] > 0 ? 1 : 0;
 
                     continue;
                 }

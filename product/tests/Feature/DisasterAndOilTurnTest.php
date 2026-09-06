@@ -1061,6 +1061,49 @@ class DisasterAndOilTurnTest extends TestCase
             ->whereRaw("metadata->>'turn_run_id' = ?", [(string) $run->id])->count());
     }
 
+    public function test_huge_meteor_ring_two_treats_zero_scale_loss_as_resistance_without_counting_damage(): void
+    {
+        [$world, $nation, $ruleset, $space] = $this->worldAndNation('広域爆発零損失国');
+        $ruleset = $this->updateRuleset($ruleset, static function (array &$settings): void {
+            $settings['facility_rank_system']['definitions']['farm']['damage_scale_loss']['ordinary_terrain_destruction'] = 0;
+        });
+        $center = $this->boundsFor($world)->center();
+        $targetCoordinate = $center->ring(2)[0];
+        $target = $this->cellAt($space, $targetCoordinate->x, $targetCoordinate->y);
+        $this->setCell($target, 'plain', 'farm', $nation->id, 0);
+        $target->facility_scale = 51;
+        $target->save();
+        $target = $target->fresh(['terrain', 'facility']);
+        $beforeVersion = (int) $target->version;
+        $cellIndex = DisasterMutableCellIndex::fromCells([$target], [$nation->id]);
+        [$context, $run] = $this->context(
+            $world,
+            $ruleset,
+            hash('sha256', 'zero-scale-loss-ring-two'),
+            [$nation->id],
+        );
+
+        $result = app(DisasterTurnService::class)->resolveHugeMeteorBlast(
+            $context,
+            $space,
+            $center,
+            $ruleset->settings['turn_processing']['disasters']['huge_meteor'],
+            cellIndex: $cellIndex,
+        );
+
+        $after = $target->fresh(['terrain', 'facility']);
+        $this->assertSame(0, $result);
+        $this->assertSame('plain', $after->terrain->key);
+        $this->assertSame('farm', $after->facility?->key);
+        $this->assertSame(51, $after->facility_scale);
+        $this->assertSame($beforeVersion, (int) $after->version);
+        $this->assertSame([], $context->state->changedMapChunkIds());
+        $this->assertSame(0, DB::table('audit_events')
+            ->whereRaw("metadata->>'turn_run_id' = ?", [(string) $run->id])
+            ->whereIn('event_type', ['facility.partially_damaged', 'disaster.cell_damaged'])
+            ->count());
+    }
+
     /** @return array{World, Nation, RulesetVersion, MapSpace, User} */
     private function worldAndNation(string $name): array
     {
