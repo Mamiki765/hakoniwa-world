@@ -1210,7 +1210,7 @@ final readonly class AlphaV1CombatModel
                 }
                 $this->counter($target, $actor, $round, $metrics, $actionUsage, $actionLog);
             }
-            if ($hpDamage > 0) {
+            if ($hpDamage > 0 && $actor->alive()) {
                 $baseLifestealBps = max(0, (int) ($actor->modifiers['lifesteal_bps'] ?? 0));
                 $bloodlineActive = $actor->side === 'player'
                     && $actor->awakeningLifestealRoundsRemaining > 0;

@@ -1796,6 +1796,62 @@ final class UndergroundCombatBuildTest extends TestCase
         ));
     }
 
+    public function test_enemy_lifesteal_after_a_guarded_hit_requires_surviving_the_counter(): void
+    {
+        $manifest = $this->awakeningCatalog(enemyWeaponPower: 1_000)->manifest();
+        $manifest['enemies']['awakening_target']['modifiers'] = [
+            'lifesteal_bps' => 400,
+            'self_regeneration_target_hp_bps' => 0,
+        ];
+        $snapshot = $this->awakeningPlayerSnapshot(
+            'guardianship_blue',
+            gauge: 0,
+            currentHp: null,
+            aiRules: [['conditions' => [['type' => 'always']], 'action' => 'defend']],
+        );
+        $snapshot['modifiers']['counter_power_bps'] = 2_500;
+        $fight = function (int $enemyMaxHp) use ($manifest, $snapshot): BuildCombatResult {
+            $candidate = $manifest;
+            $candidate['enemies']['awakening_target']['max_hp'] = $enemyMaxHp;
+
+            return $this->model()->fightPlayerSnapshot(
+                new AlphaV1BuildCatalog($candidate),
+                $snapshot,
+                'awakening_target',
+                307,
+                1,
+                0,
+            );
+        };
+
+        $survived = $fight(10_000);
+        $survivingAttack = collect($survived->actionLog)->first(
+            static fn (array $row): bool => ($row['side'] ?? null) === 'enemy'
+                && ($row['effect_type'] ?? null) === 'damage',
+        );
+        $survivingCounter = collect($survived->actionLog)->firstWhere('action', 'counter');
+        $survivingLifesteal = collect($survived->actionLog)->firstWhere('action', 'lifesteal');
+        $this->assertIsArray($survivingAttack);
+        $this->assertIsArray($survivingCounter);
+        $this->assertIsArray($survivingLifesteal);
+        $expectedLifesteal = min(
+            $survivingCounter['amount'],
+            intdiv($survivingAttack['amount'] * 400, 10_000),
+        );
+        $this->assertGreaterThan(0, $expectedLifesteal);
+        $this->assertSame(-$expectedLifesteal, $survivingLifesteal['amount']);
+        $this->assertSame(
+            10_000 - $survivingCounter['amount'] + $expectedLifesteal,
+            $survived->enemyRemainingHp,
+        );
+
+        $defeated = $fight(1);
+        $this->assertSame('player', $defeated->winner);
+        $this->assertSame(0, $defeated->enemyRemainingHp);
+        $this->assertNotNull(collect($defeated->actionLog)->firstWhere('action', 'counter'));
+        $this->assertNull(collect($defeated->actionLog)->firstWhere('action', 'lifesteal'));
+    }
+
     public function test_fortress_strike_deals_one_vitality_attack_and_guards_the_next_direct_hit(): void
     {
         $result = $this->model()->fightPlayerSnapshot(
