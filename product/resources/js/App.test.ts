@@ -3851,6 +3851,32 @@ describe('Underground equipment navigation', () => {
                                         { key: 'leave', label: '戻る', next: 'guide' },
                                     ],
                                 },
+                                true_name: {
+                                    lines: ['「私は、自分のことが嫌いです」'],
+                                    choices: [
+                                        { key: 'ask_again', label: 'それでも教えて欲しい', next: 'true_name_branch' },
+                                        { key: 'tell_dream', label: 'あなたについて知ることが私の夢だと伝える', next: 'true_name_reveal' },
+                                        { key: 'leave', label: '立ち去る', next: 'root' },
+                                    ],
+                                },
+                                true_name_reveal: {
+                                    lines: ['「………………」', '「リカ。」'],
+                                    choices: [
+                                        { key: 'back', label: '本名を聞いた後の選択に戻る', next: 'true_name' },
+                                    ],
+                                },
+                                embrace: {
+                                    lines: ['「……夢魔が、抱かれるのは慣れてます」'],
+                                    choices: [
+                                        { key: 'more', label: 'もっと抱き締める', next: 'embrace_more' },
+                                    ],
+                                },
+                                embrace_more: {
+                                    lines: ['「実に感情的ですね」'],
+                                    choices: [
+                                        { key: 'back', label: 'はじめに戻る', next: 'root' },
+                                    ],
+                                },
                             },
                         } : null,
                     },
@@ -3931,7 +3957,10 @@ describe('Underground equipment navigation', () => {
         await guideAction('少しお話がしたい').trigger('click');
         expect(wrapper.get('.underground-guide-conversation').text())
             .toBe('「あ、あー……話題が思い浮かんだらまた来てちょうだいな？」');
-        await guideAction('過去について問う').trigger('click');
+        expect(wrapper.findAll('.underground-guide-actions > button').map((button) => button.text()))
+            .not.toContain('過去について問う');
+        await guideAction('過去のイベントを振り返る').trigger('click');
+        expect(wrapper.find('.underground-recollection-section-start').exists()).toBe(true);
         const firstRecollection = wrapper.findAll('.underground-recollection-list button')
             .find((button) => button.text().includes('過去について問う・1'))!;
         await firstRecollection.trigger('click');
@@ -3954,6 +3983,19 @@ describe('Underground equipment navigation', () => {
         expect(wrapper.get('.underground-guide-serious-talk').text()).toContain('本名を聞く');
         expect(wrapper.get('.underground-guide-serious-talk').text()).toContain('抱き締める');
         expect(wrapper.get('.underground-guide-serious-talk').text()).toContain('戻る');
+        expect(wrapper.find('.underground-guide-serious-talk .eyebrow').exists()).toBe(false);
+        const seriousTalkChoice = (label: string) => wrapper.findAll('.underground-serious-talk-actions > button')
+            .find((button) => button.text() === label)!;
+        await seriousTalkChoice('本名を聞く').trigger('click');
+        expect(wrapper.findAll('.underground-serious-talk-actions > button').map((button) => button.text()))
+            .toEqual(['それでも教えて欲しい', 'あなたについて知ることが私の夢だと伝える', '立ち去る']);
+        await seriousTalkChoice('あなたについて知ることが私の夢だと伝える').trigger('click');
+        expect(wrapper.get('.underground-guide-serious-talk').text()).toContain('「リカ。」');
+        await guideAction('案内人に真剣な話をする').trigger('click');
+        await seriousTalkChoice('抱き締める').trigger('click');
+        await seriousTalkChoice('もっと抱き締める').trigger('click');
+        expect(wrapper.findAll('.underground-serious-talk-actions > button').map((button) => button.text()))
+            .toEqual(['はじめに戻る']);
         await guideAction('再振りをしたい').trigger('click');
         expect(wrapper.get('.underground-respec-explanations').text()).toContain('SP・STP・成長方針を再設定します。');
         expect(wrapper.get('.underground-respec-explanations').text()).toContain('輝石のかけらが Lv × 10 G 必要です。');

@@ -2707,6 +2707,12 @@ final class UndergroundPlayerAccessTest extends TestCase
         $this->assertFalse($locked['recollections']['trial_02_first_cleared']);
         $this->assertFalse($locked['recollections']['past_available']);
         $this->assertFalse(collect($locked['recollections']['entries'])->contains('key', 'past_1'));
+        $this->assertFalse(collect($locked['recollections']['entries'])->contains('key', 'true_name_before'));
+        $this->assertFalse(collect($locked['recollections']['entries'])->contains('key', 'true_name_after'));
+        $secretaryNaming = collect($locked['recollections']['entries'])->firstWhere('key', 'secretary_naming');
+        $this->assertSame('秘書との出会い', $secretaryNaming['title']);
+        $this->assertSame('秘書画面を初めて開いた時、あなたは海賊の施設で鎖につながれたその人物と出会った。', $secretaryNaming['body'][0]);
+        $this->assertStringNotContainsString('現在の名前', implode("\n", $secretaryNaming['body']));
         $this->actingAs($owner)->postJson('/api/v1/me/underground/recollections/read', [
             'request_id' => (string) Str::uuid(),
             'chapter' => 1,
@@ -2806,21 +2812,31 @@ final class UndergroundPlayerAccessTest extends TestCase
             '「私は、一応は夢魔と名付けられた魔族のハーフです。夢が覚めることはしたくありませんね」',
             '「どうか夢に浸ってください、私の唯一のお客様」',
         ], $talkScenes['true_name']['lines']);
-        $this->assertSame('それでも教えて欲しい', $talkScenes['true_name']['choices'][0]['label']);
-        $this->assertSame('true_name_branch', $talkScenes['true_name']['choices'][0]['next']);
+        $this->assertSame([
+            'それでも教えて欲しい',
+            'あなたについて知ることが私の夢だと伝える',
+            '立ち去る',
+        ], array_column($talkScenes['true_name']['choices'], 'label'));
+        $this->assertSame([
+            'true_name_branch',
+            'true_name_reveal',
+            'root',
+        ], array_column($talkScenes['true_name']['choices'], 'next'));
         $this->assertSame([
             '「……案内係」',
             '「ええ、はい。　偶然一致していたのです！　なんと奇跡的な一致でしょうね♪ いひひ♪」',
         ], $talkScenes['true_name_branch']['lines']);
         $this->assertSame([
-            'あなたについて知ることが私の夢だと伝える',
             '彼女に自分がつけた名前を呼ぶ',
             '立ち去る',
         ], array_column($talkScenes['true_name_branch']['choices'], 'label'));
-        $this->assertSame('root', $talkScenes['true_name_branch']['choices'][2]['next']);
+        $this->assertSame('root', $talkScenes['true_name_branch']['choices'][1]['next']);
         $this->assertSame(['「………………」', '「リカ。」'], $talkScenes['true_name_reveal']['lines']);
         $this->assertSame('true_name_named', $talkScenes['true_name_reveal']['choices'][0]['next']);
+        $this->assertSame('true_name', $talkScenes['true_name_reveal']['choices'][2]['next']);
         $this->assertSame(['「そう。それでいい。」'], $talkScenes['true_name_named']['lines']);
+        $this->assertSame('true_name', $talkScenes['true_name_named']['choices'][0]['next']);
+        $this->assertSame(['はじめに戻る'], array_column($talkScenes['embrace_more']['choices'], 'label'));
         $this->assertStringNotContainsString('闘いを挑む', json_encode($complete, JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE));
 
         $scriptedLoss = $this->tutorialBattle($profile);
@@ -2833,9 +2849,13 @@ final class UndergroundPlayerAccessTest extends TestCase
                 'special_loss_required' => true,
                 'scripted_loss_battle_id' => $scriptedLoss->id,
             ]);
-        $trueName = $this->actingAs($owner)->getJson('/api/v1/me/underground')
+        $trueNameData = $this->actingAs($owner)->getJson('/api/v1/me/underground')
             ->assertOk()
-            ->json('data.recollections.serious_talk.scenes');
+            ->json('data');
+        $trueName = $trueNameData['recollections']['serious_talk']['scenes'];
+        $trueNameEntries = collect($trueNameData['recollections']['entries']);
+        $this->assertSame('案内人に例の名前をつけると…', $trueNameEntries->firstWhere('key', 'true_name_before')['title']);
+        $this->assertSame('ボコられました。', $trueNameEntries->firstWhere('key', 'true_name_after')['title']);
         $this->assertSame([
             '「……揶揄ってるんですかね、知ってるくせに」',
             '「苗字のことなら、私にはありませんよ」',
@@ -2846,7 +2866,7 @@ final class UndergroundPlayerAccessTest extends TestCase
         ], $trueName['true_name_branch']['lines']);
     }
 
-    public function test_recollection_uses_the_initial_growth_choice_after_respec_and_explicitly_falls_back(): void
+    public function test_recollection_only_projects_the_initial_growth_choice_and_never_invents_the_free_branch(): void
     {
         [$owner, $secretary] = $this->secretaryUser('Growth recollection secretary');
         $profile = $this->openEquipmentProfile($secretary);
@@ -2866,12 +2886,9 @@ final class UndergroundPlayerAccessTest extends TestCase
         ])->assertOk()->json('data');
         $this->assertSame('free_black', $profile->fresh()->growth_path_key);
         $body = collect($respecified['recollections']['entries'])->firstWhere('key', 'common_ending')['body'];
-        $this->assertSame([
-            '【初回選択時】',
-            '「ふふ、とってもお似合いですよ、その能力」',
-            '【別の成長方針を選んだ場合】',
-            '「全部？　まぁ、別にあなたにしか必要のないものです。ええ、あげますよ、欲張りさん？」',
-        ], array_slice($body, 0, 4));
+        $this->assertSame('「ふふ、とってもお似合いですよ、その能力」', $body[0]);
+        $this->assertNotContains('「全部？　まぁ、別にあなたにしか必要のないものです。ええ、あげますよ、欲張りさん？」', $body);
+        $this->assertStringNotContainsString('別の成長方針', implode("\n", $body));
 
         UndergroundIntroRequest::query()
             ->where('underground_profile_id', $profile->id)
@@ -2880,11 +2897,23 @@ final class UndergroundPlayerAccessTest extends TestCase
         $fallback = $this->actingAs($owner)->getJson('/api/v1/me/underground')
             ->assertOk()->json('data.recollections.entries');
         $fallbackBody = collect($fallback)->firstWhere('key', 'common_ending')['body'];
-        $this->assertSame([
-            '【初回選択の保存記録なし】現在の成長方針からは推測せず、両方の分岐台詞を表示します。',
-            '「ふふ、とってもお似合いですよ、その能力」',
-            '「全部？　まぁ、別にあなたにしか必要のないものです。ええ、あげますよ、欲張りさん？」',
-        ], array_slice($fallbackBody, 0, 3));
+        $this->assertSame('「ふふ、とってもお似合いですよ、その能力」', $fallbackBody[0]);
+        $this->assertNotContains('「全部？　まぁ、別にあなたにしか必要のないものです。ええ、あげますよ、欲張りさん？」', $fallbackBody);
+
+        UndergroundIntroRequest::query()->create([
+            'underground_profile_id' => $profile->id,
+            'request_id' => (string) Str::uuid(),
+            'request_fingerprint' => $this->introFingerprint('growth_path', [
+                'growth_path_key' => 'free_black',
+            ]),
+            'operation' => 'growth_path',
+            'resulting_stage' => 'growth_path_selected',
+        ]);
+        $free = $this->actingAs($owner)->getJson('/api/v1/me/underground')
+            ->assertOk()->json('data.recollections.entries');
+        $freeBody = collect($free)->firstWhere('key', 'common_ending')['body'];
+        $this->assertSame('「全部？　まぁ、別にあなたにしか必要のないものです。ええ、あげますよ、欲張りさん？」', $freeBody[0]);
+        $this->assertNotContains('「ふふ、とってもお似合いですよ、その能力」', $freeBody);
     }
 
     public function test_recollection_trial_stories_remain_bounded_with_many_late_battles(): void
@@ -2934,6 +2963,7 @@ final class UndergroundPlayerAccessTest extends TestCase
             'trial_02 late clear story',
             'trial_02 clear reward',
         ], collect($entries)->firstWhere('key', 'trial_02_clear')['body']);
+        $this->assertSame('デュラハンの撃破と案内人', collect($entries)->firstWhere('key', 'trial_02_clear')['title']);
         $this->assertCount(4, $queries);
         foreach ($queries as $query) {
             $normalized = strtolower((string) $query['query']);
