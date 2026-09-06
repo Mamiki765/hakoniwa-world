@@ -852,6 +852,9 @@ STORY;
      * @param array{
      *   label: string,
      *   content_identity: string,
+     *   balance_manifest: string,
+     *   required_trial_key: string|null,
+     *   drop_tier_key: string|null,
      *   interbattle_heal_bps: int,
      *   first_clear_skill_points: int,
      *   encounters: list<string>,

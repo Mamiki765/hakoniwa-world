@@ -412,11 +412,11 @@ final readonly class UndergroundTrialBalanceSimulator
                     $result->actionLog,
                     static fn (array $row): bool => ($row['effect_type'] ?? null) === 'phase_transition',
                 )),
-                'awakening_triggered' => ($result->awakening['triggered'] ?? false) === true,
+                'awakening_triggered' => $result->awakening['triggered'] === true,
                 'awakening_technique_used' => ($result->awakening['technique']['used'] ?? false) === true,
                 'awakening_technique_key' => $result->awakening['technique']['key'] ?? null,
-                'awakening_gauge_before' => $result->awakening['gauge_before'] ?? 0,
-                'awakening_gauge_after' => $result->awakening['gauge_after'] ?? 0,
+                'awakening_gauge_before' => $result->awakening['gauge_before'],
+                'awakening_gauge_after' => $result->awakening['gauge_after'],
                 'abnormal_state' => $result->abnormalState,
             ];
             if ($includeActionLogs) {
@@ -432,7 +432,7 @@ final readonly class UndergroundTrialBalanceSimulator
                 break;
             }
             $currentHp = $postHealHp;
-            $awakeningGauge = (int) ($result->awakening['gauge_after'] ?? 0);
+            $awakeningGauge = $result->awakening['gauge_after'];
         }
         $cleared = count($battles) === 10
             && $failedBattle === null

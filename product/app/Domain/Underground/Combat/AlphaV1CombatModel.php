@@ -1210,9 +1210,10 @@ final readonly class AlphaV1CombatModel
                 }
                 $this->counter($target, $actor, $round, $metrics, $actionUsage, $actionLog);
             }
-            if ($actor->side === 'player' && $hpDamage > 0) {
+            if ($hpDamage > 0) {
                 $baseLifestealBps = max(0, (int) ($actor->modifiers['lifesteal_bps'] ?? 0));
-                $bloodlineActive = $actor->awakeningLifestealRoundsRemaining > 0;
+                $bloodlineActive = $actor->side === 'player'
+                    && $actor->awakeningLifestealRoundsRemaining > 0;
                 $lifestealBps = $bloodlineActive
                     ? min(
                         UndergroundAwakening::LIFESTEAL_CAP_BPS,
@@ -1485,7 +1486,7 @@ final readonly class AlphaV1CombatModel
         $keys = array_keys(array_filter(
             $target->statuses,
             static fn (array $status): bool => $status['disposition'] === $disposition
-                && ($status['dispellable'] ?? true) === true,
+                && $status['dispellable'] === true,
         ));
         sort($keys, SORT_STRING);
         $removed = 0;
@@ -1960,6 +1961,13 @@ final readonly class AlphaV1CombatModel
         } elseif ($techniqueKey === 'shura_bloodline') {
             $player->awakeningLifestealRoundsRemaining = UndergroundAwakening::BLOODLINE_DURATION_ROUNDS - 1;
             $player->awakeningLifestealAppliedRound = $round;
+            $agilityComboHits = $this->agilityComboHits(
+                $player,
+                $enemy,
+                $random,
+                $round,
+                $techniqueKey,
+            );
             $this->applyDamage(
                 $player,
                 $enemy,
@@ -1980,11 +1988,19 @@ final readonly class AlphaV1CombatModel
                 $metrics,
                 $actionUsage,
                 $actionLog,
+                $agilityComboHits,
             );
         } elseif ($techniqueKey === 'absolute_aegis') {
             $player->awakeningGuardRoundsRemaining = UndergroundAwakening::GUARDIAN_DURATION_ROUNDS;
             $player->awakeningGuardAppliedRound = $round;
         } elseif ($techniqueKey === 'fortress_strike') {
+            $agilityComboHits = $this->agilityComboHits(
+                $player,
+                $enemy,
+                $random,
+                $round,
+                $techniqueKey,
+            );
             $this->applyDamage(
                 $player,
                 $enemy,
@@ -2005,6 +2021,7 @@ final readonly class AlphaV1CombatModel
                 $metrics,
                 $actionUsage,
                 $actionLog,
+                $agilityComboHits,
             );
             $player->guarding = true;
             $actionLog[] = $this->logRow(
@@ -2030,6 +2047,13 @@ final readonly class AlphaV1CombatModel
                 targetSide: 'player',
             );
         } elseif ($techniqueKey === 'judgment_light') {
+            $agilityComboHits = $this->agilityComboHits(
+                $player,
+                $enemy,
+                $random,
+                $round,
+                $techniqueKey,
+            );
             $this->applyDamage(
                 $player,
                 $enemy,
@@ -2051,6 +2075,7 @@ final readonly class AlphaV1CombatModel
                 $metrics,
                 $actionUsage,
                 $actionLog,
+                $agilityComboHits,
             );
             $this->removeStatuses(
                 $player,
@@ -2082,6 +2107,13 @@ final readonly class AlphaV1CombatModel
             }
         } elseif ($techniqueKey === 'formless_strike') {
             $category = $this->lowerDefenseCategory($enemy);
+            $agilityComboHits = $this->agilityComboHits(
+                $player,
+                $enemy,
+                $random,
+                $round,
+                $techniqueKey,
+            );
             $this->applyDamage(
                 $player,
                 $enemy,
@@ -2103,6 +2135,7 @@ final readonly class AlphaV1CombatModel
                 $metrics,
                 $actionUsage,
                 $actionLog,
+                $agilityComboHits,
             );
         } else {
             throw new InvalidArgumentException('Underground awakening technique execution is invalid.');

@@ -1725,6 +1725,60 @@ final class UndergroundCombatBuildTest extends TestCase
         $this->assertTrue($result->awakening['technique']['used']);
     }
 
+    public function test_enemy_lifesteal_recovers_from_actual_hp_damage_independently_of_regeneration(): void
+    {
+        $catalog = $this->awakeningCatalog(enemyWeaponPower: 5_000);
+        $manifest = $catalog->manifest();
+        $manifest['skills']['precision_cut']['effects'][] = [
+            'type' => 'barrier',
+            'target' => 'self',
+            'source_stat_coefficients' => [],
+            'target_max_hp_bps' => 0,
+            'fixed' => 100,
+        ];
+        $manifest['enemies']['awakening_target']['modifiers'] = [
+            'lifesteal_bps' => 400,
+            'self_regeneration_target_hp_bps' => 0,
+        ];
+        $snapshot = $this->awakeningPlayerSnapshot(
+            'martial_red',
+            gauge: 0,
+            currentHp: null,
+            skills: ['precision_cut'],
+            aiRules: [['conditions' => [['type' => 'always']], 'action' => 'skill:precision_cut']],
+        );
+        $result = $this->model()->fightPlayerSnapshot(
+            new AlphaV1BuildCatalog($manifest),
+            $snapshot,
+            'awakening_target',
+            293,
+            1,
+            0,
+        );
+
+        $playerDamage = collect($result->actionLog)->first(
+            static fn (array $row): bool => ($row['action'] ?? null) === 'precision_cut'
+                && ($row['effect_type'] ?? null) === 'damage',
+        );
+        $enemyDamage = collect($result->actionLog)->first(
+            static fn (array $row): bool => ($row['side'] ?? null) === 'enemy'
+                && ($row['effect_type'] ?? null) === 'damage',
+        );
+        $this->assertIsArray($playerDamage);
+        $this->assertIsArray($enemyDamage);
+        $this->assertGreaterThan(0, $enemyDamage['amount']);
+        $this->assertGreaterThan(0, $enemyDamage['barrier_absorbed']);
+        $expectedLifesteal = min($playerDamage['amount'], intdiv($enemyDamage['amount'] * 400, 10_000));
+        $this->assertGreaterThan(0, $expectedLifesteal);
+        $this->assertSame(
+            $manifest['enemies']['awakening_target']['max_hp'] - $playerDamage['amount'] + $expectedLifesteal,
+            $result->enemyRemainingHp,
+        );
+        $this->assertFalse(collect($result->actionLog)->contains(
+            static fn (array $row): bool => ($row['action'] ?? null) === 'self_regeneration',
+        ));
+    }
+
     public function test_fortress_strike_deals_one_vitality_attack_and_guards_the_next_direct_hit(): void
     {
         $result = $this->model()->fightPlayerSnapshot(
@@ -1809,6 +1863,50 @@ final class UndergroundCombatBuildTest extends TestCase
                 ->values();
             $this->assertCount(1, $hits);
             $this->assertSame($case['expected'], $hits[0]['damage_category']);
+        }
+    }
+
+    public function test_additional_direct_awakening_techniques_share_one_agility_combo_across_one_native_hit(): void
+    {
+        $cases = [
+            ['growth_path' => 'martial_red', 'technique' => 'shura_bloodline'],
+            ['growth_path' => 'guardianship_blue', 'technique' => 'fortress_strike'],
+            ['growth_path' => 'blessing_green', 'technique' => 'judgment_light'],
+            ['growth_path' => 'free_black', 'technique' => 'formless_strike'],
+        ];
+
+        foreach ($cases as $case) {
+            $snapshot = $this->awakeningPlayerSnapshot(
+                $case['growth_path'],
+                techniqueKey: $case['technique'],
+            );
+            $snapshot['stats']['agility'] = 1_000;
+            $comboResult = null;
+            foreach (range(0, 500) as $seed) {
+                $result = $this->model()->fightPlayerSnapshot(
+                    $this->awakeningCatalog(enemyWeaponPower: 100),
+                    $snapshot,
+                    'awakening_target',
+                    $seed,
+                    1,
+                    0,
+                );
+                $damageRows = collect($result->actionLog)
+                    ->filter(static fn (array $row): bool => ($row['action'] ?? null) === $case['technique']
+                        && ($row['effect_type'] ?? null) === 'damage')
+                    ->values();
+                if ($damageRows->contains(static fn (array $row): bool => isset($row['agility_combo_hits']))) {
+                    $comboResult = [$result, $damageRows];
+
+                    break;
+                }
+            }
+
+            $this->assertIsArray($comboResult, $case['technique'].' must use the agility combo roll.');
+            [$result, $damageRows] = $comboResult;
+            $this->assertCount(1, $damageRows);
+            $this->assertContains($damageRows[0]['agility_combo_hits'], [2, 3, 4]);
+            $this->assertSame(1, $result->actionUsage['awakening_technique']);
         }
     }
 
