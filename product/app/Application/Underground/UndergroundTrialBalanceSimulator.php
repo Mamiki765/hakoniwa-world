@@ -750,6 +750,12 @@ final readonly class UndergroundTrialBalanceSimulator
                 throw new InvalidArgumentException('Trial simulation is missing a required level checkpoint.');
             }
         }
+        foreach ($checkpoints as $checkpoint) {
+            if (! is_int($checkpoint) || $checkpoint < 1) {
+                throw new InvalidArgumentException('Trial simulation level checkpoint is invalid.');
+            }
+            $this->rules->progressionScaleBps($checkpoint, $checkpoint);
+        }
         $primaryHeal = $comparison['primary_bps'] ?? null;
         $comparisonBps = $comparison['comparison_bps'] ?? null;
         $comparisonLevels = $comparison['comparison_levels'] ?? null;

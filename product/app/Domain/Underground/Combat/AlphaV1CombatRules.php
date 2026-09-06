@@ -6,6 +6,9 @@ use InvalidArgumentException;
 
 final class AlphaV1CombatRules
 {
+    // Reserve 100x BPS headroom for downstream stat, HP, damage, and status products.
+    private const LEVEL_SCALE_INTEGER_HEADROOM = 1_000_000;
+
     public const IDENTITY = 'secretary-underground-alpha-v3';
 
     public const SIMULATOR_VERSION = 'underground-build-balance-alpha-v2';
@@ -96,8 +99,9 @@ final class AlphaV1CombatRules
 
     private function levelScaleBps(int $level): int
     {
-        if ($level - 1 > intdiv(PHP_INT_MAX - 10_000, 900)) {
-            throw new InvalidArgumentException('Underground level scale exceeds the supported integer range.');
+        $maximumScaleBps = intdiv(PHP_INT_MAX, self::LEVEL_SCALE_INTEGER_HEADROOM);
+        if ($level - 1 > intdiv($maximumScaleBps - 10_000, 900)) {
+            throw new InvalidArgumentException('Underground level scale exceeds the supported combat integer range.');
         }
 
         return 10_000 + (($level - 1) * 900);

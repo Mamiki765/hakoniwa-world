@@ -143,6 +143,7 @@ final class UndergroundCombatBuildTest extends TestCase
 
         $invalidCalculations = [
             fn () => $rules->progressionScaleBps(0, 1),
+            fn () => $rules->progressionScaleBps(10_248_191_152_060_851, 1),
             fn () => $rules->progressionScaleBps(PHP_INT_MAX, 1),
             fn () => $rules->storyBenchmarkScaleBps(0),
             fn () => $rules->storyBenchmarkScaleBps(PHP_INT_MAX),

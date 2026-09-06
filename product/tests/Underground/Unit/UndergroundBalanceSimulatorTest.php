@@ -203,6 +203,21 @@ final class UndergroundBalanceSimulatorTest extends TestCase
         $this->assertSame(1_254, $result['scenario']['level']);
     }
 
+    public function test_trial_simulator_rejects_a_level_that_cannot_leave_integer_headroom_for_combat(): void
+    {
+        [, $manifest] = $this->trialTwoManifest();
+        $manifest['checkpoints'][] = 10_248_191_152_060_851;
+
+        $this->expectException(InvalidArgumentException::class);
+        $this->expectExceptionMessage('supported combat integer range');
+
+        $this->trialSimulator()->replay(
+            $manifest,
+            'martial_red:lv10248191152060851:heal2000',
+            0,
+        );
+    }
+
     public function test_trial_wyvern_enters_its_healer_pressure_phase_at_round_40_without_losing_its_action(): void
     {
         [, $manifest] = $this->trialManifest();
