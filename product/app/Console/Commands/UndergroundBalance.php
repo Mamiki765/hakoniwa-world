@@ -170,8 +170,11 @@ final class UndergroundBalance extends Command
         $status->run();
         $dirty = $status->isSuccessful() ? trim($status->getOutput()) !== '' : null;
         $commitSha = $sourceIdentity->resolve($explicitCommitSha, $detected, $dirty);
+        $verifiedDirty = $detected === null && $dirty === null && $explicitCommitSha !== null
+            ? false
+            : $dirty;
 
-        return [$commitSha, $dirty];
+        return [$commitSha, $verifiedDirty];
     }
 
     private function writeAtomically(string $path, string $contents): void
