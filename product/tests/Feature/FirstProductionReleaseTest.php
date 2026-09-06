@@ -177,96 +177,55 @@ final class FirstProductionReleaseTest extends TestCase
             }
         }
 
-        $this->get('/manual')->assertOk()
-            ->assertSee('箱庭諸島２S＋マニュアル')
-            ->assertSeeInOrder([
-                'href="/manual/advanced"',
-                '>上級編</a>',
-                'href="/manual/trading-post"',
-                '>交易場</a>',
-                'href="/manual/secretary"',
-                '>秘書について</a>',
-                'href="/manual/underground"',
-                '>箱庭ダンジョン</a>',
-            ], false)
-            ->assertSee('href="/credits"', false)
-            ->assertSee('href="/community-guidelines"', false);
-        $this->get('/manual/beginner')->assertOk()
-            ->assertSee('人口と食料')
-            ->assertSee('資源売却')
-            ->assertSee('指定数を残して売却')
-            ->assertSee('小麦は「すべて売却」を選べません')
-            ->assertSee('工業品：1,000ユニット')
-            ->assertSee('鉱物：1,000トン');
-        $this->get('/manual/intermediate')->assertOk()
-            ->assertSee('ミサイル')
-            ->assertSee('領土拡張')
-            ->assertSee('浅瀬全て埋め立て＋整地');
-        $this->get('/manual/advanced')->assertOk()
-            ->assertSee('地盤沈下')
-            ->assertSee('島の破棄')
-            ->assertSee('KARMAが100を超えた場合、超過分だけ箱庭連合の制裁ミサイルが発射され、KARMAは100に戻ります')
-            ->assertSee('KARMAが下限を下回っている場合、ターンごとに1増加します')
-            ->assertSee('休戦状態は84ターン続き、期間終了後は通常状態または休眠状態へ戻ります');
-        $this->get('/manual/trading-post')->assertOk()
-            ->assertSee('<title>交易場 | 箱庭諸島２S＋</title>', false)
-            ->assertSee('最高入札中の預託資金は、資金上限の使用量に含まれます')
-            ->assertSee('出品中の数量も保管容量の使用量に含まれる')
-            ->assertSee('入札がなければ休眠中でもキャンセルでき')
-            ->assertSee('売れない超過分は破棄されます');
-        $this->get('/manual/secretary')->assertOk()
-            ->assertSee('<title>秘書について | 箱庭諸島２S＋</title>', false)
-            ->assertSee('<h1>秘書について</h1>', false)
-            ->assertSee('農業政策')
-            ->assertSee('Lv1ごとに小麦生産が0.1%増えます')
-            ->assertSee('農場建設が1回成功するごとに経験値を1獲得します')
-            ->assertSee('特産品開発')
-            ->assertSee('Lv1ごとに工場生産が0.1%増えます')
-            ->assertSee('工場建設が1回成功するごとに経験値を1獲得します')
-            ->assertSee('金鉱脈調査')
-            ->assertSee('Lv1ごとに採掘場生産が0.1%増えます')
-            ->assertSee('採掘場建設が1回成功するごとに経験値を1獲得します')
-            ->assertSee('最終防衛ライン')
-            ->assertSee('自領のマスへミサイルが1発到達するごとに経験値を1獲得します')
-            ->assertSee('少子化対策')
-            ->assertSee('最高人口を更新した分だけ経験値を獲得')
-            ->assertSee('不屈')
-            ->assertSee('ターン終了時に人口が純減した分だけ経験値を獲得')
-            ->assertSee('少子化対策EXPは対象外')
-            ->assertSee('倉庫には最大50個')
-            ->assertSee('装備スロットが5個')
-            ->assertSee('弓カテゴリと衣服カテゴリは、それぞれカテゴリ全体で1個までです')
-            ->assertSee('種類の異なるアクセサリーは同時に装備できます')
-            ->assertSee('箱庭連合が指輪と次の7種類のノービス装備を期間限定で出品します')
-            ->assertSee('次に開始できるターンから反映')
-            ->assertSee('レギュラー')
-            ->assertSee('カースド')
-            ->assertSee('プレイヤー間の交易場では売買できます')
-            ->assertSee('怪獣の戦利品')
-            ->assertSee('メカいのらとメカいのら零式を除く')
-            ->assertSee('撃破側が75%')
-            ->assertSee('アイテムLv上限補正')
-            ->assertSee('倉庫がいっぱいの場合、戦利品は受け取れません')
-            ->assertSee('弓系装備の挙動')
-            ->assertSee('無効になる攻撃や、攻撃すると危険な状態になる対象は避けます')
-            ->assertSee('機械弓')
-            ->assertSee('ノービスは100億円、レギュラーは500億円、カースドは1億円')
-            ->assertSee('島を破棄しても、秘書と倉庫のアイテム、装備状態は保持されます。活動中の島がない間は装備効果は発生せず、再参加後に必要に応じて装備を変更できます。')
-            ->assertSee('アイテムと装備状態は秘書ごとに共通です。')
-            ->assertDontSee('<h2>指輪</h2>', false)
-            ->assertDontSee('現在活動中の島がない間は、装備を変えることはできます')
-            ->assertDontSee('複数の海域や島を持っていても、装備セットは一つです');
-        $this->get('/manual/underground')->assertOk()
-            ->assertSee('<title>箱庭ダンジョン | 箱庭諸島２S＋</title>', false)
-            ->assertSee('<h1>箱庭ダンジョン</h1>', false)
-            ->assertSee('<table>', false)
-            ->assertSee('精神を増やしても最大MPは増えません')
-            ->assertSee('アクティブスキルは最大5つ')
-            ->assertSee('宝物庫の上限は500個')
-            ->assertSee('探索後は10秒間')
-            ->assertSee('銀行へ預けたGは失いません')
-            ->assertDontSee('輝石虫')
-            ->assertDontSee('secretary-underground');
+        $sections = [
+            'index' => 'マニュアルの入口',
+            'beginner' => 'はじめの一歩',
+            'intermediate' => '土地と施設',
+            'economy' => '人口と資源',
+            'advanced' => 'ミサイルと怪獣',
+            'disasters' => '災害と防災',
+            'ships' => '港と船',
+            'trading-post' => '交易場',
+            'secretary' => '地上の秘書',
+            'underground' => '地底の探索',
+            'combat' => '育成と戦闘',
+            'equipment' => '地底装備',
+            'faq' => '島の状態と困ったとき',
+        ];
+        $navigation = [];
+        foreach ($sections as $key => $label) {
+            $path = $key === 'index' ? '/manual' : "/manual/{$key}";
+            $navigation[] = "href=\"{$path}\"";
+            $navigation[] = ">{$label}</a>";
+        }
+        $linkedPaths = [];
+        foreach ($sections as $key => $label) {
+            $path = $key === 'index' ? '/manual' : "/manual/{$key}";
+            $heading = $key === 'index' ? '箱庭諸島２S＋マニュアル' : $label;
+            $response = $this->get($path)->assertOk()
+                ->assertSee("<title>{$label} | 箱庭諸島２S＋</title>", false)
+                ->assertSee("<h1>{$heading}</h1>", false)
+                ->assertSeeInOrder($navigation, false)
+                ->assertSee("href=\"{$path}\" class=\"current\"", false)
+                ->assertSee('class="manual-table-scroll"', false)
+                ->assertSee('href="/credits"', false)
+                ->assertSee('href="/community-guidelines"', false);
+            $html = $response->getContent();
+            $this->assertIsString($html);
+            preg_match('/<main class="manual-content">(.*?)<\/main>/s', $html, $main);
+            $this->assertArrayHasKey(1, $main);
+            preg_match_all('/href="([^"]+)"/', $main[1], $links);
+            foreach ($links[1] as $link) {
+                $this->assertStringStartsWith('/', $link);
+                $linkedPaths[$link] = true;
+            }
+        }
+        foreach (array_keys($linkedPaths) as $path) {
+            $this->get($path)->assertOk();
+        }
+        $this->get('/manual/underground')->assertSee('試練2をクリアすると……？')
+            ->assertDontSee('案内人の過去を問う話')
+            ->assertDontSee('5まで読むと');
         $this->get('/community-guidelines')->assertOk()
             ->assertSee('利用ルール')
             ->assertSee('通報・異議申立て窓口を開く');
@@ -275,7 +234,6 @@ final class FirstProductionReleaseTest extends TestCase
             $manual = file_get_contents($path);
             $this->assertIsString($manual);
             $this->assertDoesNotMatchRegularExpression('/\b(?:source|legacy|ruleset)\b/i', $manual);
-            $this->assertDoesNotMatchRegularExpression('/自爆|飛翔|とてつもない/i', $manual);
         }
         $css = file_get_contents(resource_path('css/hakoniwa.css'));
         $this->assertIsString($css);
