@@ -103,6 +103,7 @@ final class PlayerIslandEventService
         'disaster.cell_damaged',
         'capital.disaster_damaged',
         'fire.damaged',
+        'facility.partially_damaged',
         'monster.spawned',
         'monster.moved',
         'monster.trampled',
@@ -780,6 +781,7 @@ final class PlayerIslandEventService
                 number_format($this->integer($metadata, 'damage_percent')),
                 number_format($this->integer($metadata, 'after_population')),
             ),
+            'facility.partially_damaged' => $this->publicFacilityPartialDamageMessage($metadata),
             'monster.spawned' => ($metadata['spawn_source'] ?? null) === 'world_aoi_disaster'
                 ? "中立海域({$x},{$y})に{$monster}が出現しました。"
                 : "{$nation}({$x},{$y})に{$monster}が出現し、一帯を踏み荒らしました。",
@@ -1031,6 +1033,11 @@ final class PlayerIslandEventService
             'capital.disaster_damaged' => [
                 'nation_name', 'x', 'y', 'disaster_key', 'damage_percent', 'after_population',
             ],
+            'facility.partially_damaged' => [
+                'nation_name', 'x', 'y', 'facility_key', 'damage_kind', 'source_key',
+                'missile_key', 'before_scale', 'after_scale', 'scale_unit_people',
+                'rank_before', 'rank_after',
+            ],
             'monster.damage_blocked', 'monster.damaged',
             'monster.killed',
             'monster.removed_by_terrain_event' => ['nation_name', 'monster_key', 'x', 'y'],
@@ -1116,6 +1123,58 @@ final class PlayerIslandEventService
             $metadata,
             $this->facilityLabel($facilityKey),
         );
+    }
+
+    /** @param array<string, mixed> $metadata */
+    private function publicFacilityPartialDamageMessage(array $metadata): string
+    {
+        $facilityKey = $metadata['facility_key'] ?? null;
+        $facility = $this->integer($metadata, 'rank_before') === 2
+            ? match ($facilityKey) {
+                'farm' => '大農場',
+                'factory' => '大工場',
+                'mine' => '大採掘場',
+                default => $this->facilityLabel($facilityKey),
+            }
+        : $this->facilityLabel($facilityKey);
+        $scaleUnitPeople = max(1, $this->integer($metadata, 'scale_unit_people'));
+        $message = sprintf(
+            '%s(%s,%s)の%sが%sにより一部損壊し、規模が%s人から%s人へ減少しました。',
+            is_string($metadata['nation_name'] ?? null) ? $metadata['nation_name'] : '島',
+            $this->publicCoordinate($metadata, 'x'),
+            $this->publicCoordinate($metadata, 'y'),
+            $facility,
+            $this->facilityPartialDamageCause($metadata),
+            number_format($this->integer($metadata, 'before_scale') * $scaleUnitPeople),
+            number_format($this->integer($metadata, 'after_scale') * $scaleUnitPeople),
+        );
+
+        return $this->integer($metadata, 'rank_before') > $this->integer($metadata, 'rank_after')
+            ? $message.'ランク1へ降格しました。'
+            : $message;
+    }
+
+    /** @param array<string, mixed> $metadata */
+    private function facilityPartialDamageCause(array $metadata): string
+    {
+        $damageKind = $metadata['damage_kind'] ?? null;
+        if ($damageKind === 'fire') {
+            return '火災';
+        }
+        if ($damageKind === 'earthquake') {
+            return '地震';
+        }
+
+        $sourceKey = $metadata['source_key'] ?? null;
+        if (in_array($sourceKey, ['meteor_shower', 'huge_meteor'], true)) {
+            return $this->disasterLabel($sourceKey);
+        }
+        $missileKey = $metadata['missile_key'] ?? $sourceKey;
+        if (is_string($missileKey) && $missileKey !== '') {
+            return $this->missileLabel($missileKey);
+        }
+
+        return $damageKind === 'land_destruction' ? '陸地破壊' : '攻撃';
     }
 
     /** @param array<string, mixed> $metadata */
@@ -2537,6 +2596,7 @@ final class PlayerIslandEventService
             'command.failed', 'command.invalid', 'command.insufficient_assets', 'resource.food_shortage',
             'famine.applied', 'facility.riot', 'capacity.overflow', 'resource.food_overflow_resolved',
             'disaster.cell_damaged', 'capital.disaster_damaged', 'fire.damaged', 'oil.depleted',
+            'facility.partially_damaged',
             'monster.damage_blocked', 'monster.damaged', 'monster.defense_self_destructed',
             'monster.nuclear_self_destructed',
             'monster.removed_by_terrain_event' => 'warning',

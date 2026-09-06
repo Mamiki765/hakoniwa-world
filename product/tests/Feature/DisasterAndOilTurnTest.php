@@ -808,7 +808,7 @@ class DisasterAndOilTurnTest extends TestCase
 
     public function test_v21_rank_two_factory_fire_damage_preserves_the_facility_and_cell_state(): void
     {
-        [$world, $nation, $ruleset, $space] = $this->worldAndNation('ランク二工場火災国');
+        [$world, $nation, $ruleset, $space, $owner] = $this->worldAndNation('ランク二工場火災国');
         $ruleset = $this->updateRuleset($ruleset, static function (array &$settings): void {
             $settings['turn_processing']['disasters']['fire']['probability'] = [
                 'numerator' => 1,
@@ -846,6 +846,23 @@ class DisasterAndOilTurnTest extends TestCase
         $this->assertSame(20, $damage['scale_loss']);
         $this->assertSame(0, DB::table('audit_events')->where('event_type', 'fire.damaged')
             ->whereRaw("metadata->>'turn_run_id' = ?", [(string) $run->id])->count());
+        $world->update(['current_turn' => 2]);
+
+        foreach ([
+            $this->getJson("/api/v1/public/nations/{$nation->id}/events")->assertOk(),
+            $this->actingAs($owner)->getJson("/api/v1/nations/{$nation->id}/events")->assertOk(),
+        ] as $response) {
+            $event = collect($response->json('data.groups'))
+                ->flatMap(static fn (array $group): array => $group['events'])
+                ->firstWhere('type', 'facility.partially_damaged');
+            $this->assertIsArray($event);
+            $this->assertSame('warning', $event['importance']);
+            $this->assertSame(
+                "{$nation->name}({$target->x},{$target->y})の大工場が火災により一部損壊し、"
+                .'規模が105,000人から85,000人へ減少しました。ランク1へ降格しました。',
+                $event['message'],
+            );
+        }
     }
 
     public function test_v21_rank_two_factory_earthquake_damage_preserves_the_facility_and_cell_state(): void

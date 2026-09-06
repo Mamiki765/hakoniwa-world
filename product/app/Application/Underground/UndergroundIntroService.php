@@ -1688,18 +1688,13 @@ final readonly class UndergroundIntroService
         if (! is_array($growthEnding)) {
             throw new RuntimeException('Underground growth ending recollection is invalid.');
         }
-        $growthLine = $profile->growth_path_key === 'free_black'
-            ? $growthEnding['free_black'] ?? null
-            : $growthEnding['default'] ?? null;
-        if (! is_string($growthLine) || $growthLine === '') {
-            throw new RuntimeException('Underground growth ending recollection is invalid.');
-        }
+        $growthLines = $this->growthEndingRecollectionLines($profile, $growthEnding);
         $entries[] = $this->historicalEntry(
             'common_ending',
             $this->historyTitle($history, 'common_ending'),
             $openExperienced,
             $openExperienced
-                ? [$growthLine, ...$this->historyBody($history, 'common_ending')]
+                ? [...$growthLines, ...$this->historyBody($history, 'common_ending')]
                 : null,
         );
 
@@ -1817,31 +1812,22 @@ final readonly class UndergroundIntroService
     /** @return list<array<string, mixed>> */
     private function projectTrialRecollections(UndergroundProfile $profile): array
     {
-        $battles = UndergroundBattle::query()
-            ->where('underground_profile_id', $profile->id)
-            ->where('activity_type', UndergroundBattle::ACTIVITY_TRIAL)
-            ->whereIn('activity_key', ['trial_01', 'trial_02'])
-            ->orderBy('id')
-            ->get();
         $entries = [];
         foreach (['trial_01', 'trial_02'] as $trialKey) {
             $trial = $this->runtimeCatalog->trial($trialKey);
-            $start = null;
-            $clear = null;
-            foreach ($battles as $battle) {
-                if ($battle->activity_key !== $trialKey) {
-                    continue;
-                }
-                $snapshot = $battle->snapshot;
-                if ($start === null
-                    && $battle->trial_battle_index === 1
-                    && is_string($snapshot['challenge_intro'] ?? null)) {
-                    $start = $battle;
-                }
-                if ($clear === null && is_array($snapshot['first_clear_story'] ?? null)) {
-                    $clear = $battle;
-                }
-            }
+            $base = static fn () => UndergroundBattle::query()
+                ->where('underground_profile_id', $profile->id)
+                ->where('activity_type', UndergroundBattle::ACTIVITY_TRIAL)
+                ->where('activity_key', $trialKey);
+            $start = $base()
+                ->where('trial_battle_index', 1)
+                ->whereRaw("jsonb_typeof(snapshot->'challenge_intro') = 'string'")
+                ->orderBy('id')
+                ->first(['id', 'snapshot']);
+            $clear = $base()
+                ->whereRaw("jsonb_typeof(snapshot->'first_clear_story') = 'object'")
+                ->orderBy('id')
+                ->first(['id', 'snapshot']);
             if ($start instanceof UndergroundBattle) {
                 $entries[] = $this->historicalEntry(
                     "{$trialKey}_start",
@@ -1870,6 +1856,61 @@ final readonly class UndergroundIntroService
         }
 
         return $entries;
+    }
+
+    /**
+     * @param  array<string, mixed>  $growthEnding
+     * @return list<string>
+     */
+    private function growthEndingRecollectionLines(
+        UndergroundProfile $profile,
+        array $growthEnding,
+    ): array {
+        $default = $growthEnding['default'] ?? null;
+        $free = $growthEnding['free_black'] ?? null;
+        if (! is_string($default) || $default === '' || ! is_string($free) || $free === '') {
+            throw new RuntimeException('Underground growth ending recollection is invalid.');
+        }
+
+        $initialPath = $this->initialGrowthPathKey($profile);
+        if ($initialPath === null) {
+            return [
+                '【初回選択の保存記録なし】現在の成長方針からは推測せず、両方の分岐台詞を表示します。',
+                $default,
+                $free,
+            ];
+        }
+
+        $initialLine = $initialPath === 'free_black' ? $free : $default;
+        $alternateLine = $initialPath === 'free_black' ? $default : $free;
+
+        return [
+            '【初回選択時】',
+            $initialLine,
+            '【別の成長方針を選んだ場合】',
+            $alternateLine,
+        ];
+    }
+
+    private function initialGrowthPathKey(UndergroundProfile $profile): ?string
+    {
+        $fingerprint = UndergroundIntroRequest::query()
+            ->where('underground_profile_id', $profile->id)
+            ->where('operation', 'growth_path')
+            ->orderBy('id')
+            ->value('request_fingerprint');
+        if (! is_string($fingerprint) || $fingerprint === '') {
+            return null;
+        }
+        foreach ($this->alphaV1Catalog->growthPaths() as $path) {
+            $pathKey = $path['key'] ?? null;
+            if (is_string($pathKey)
+                && hash_equals($fingerprint, $this->fingerprint('growth_path', ['growth_path_key' => $pathKey]))) {
+                return $pathKey;
+            }
+        }
+
+        return null;
     }
 
     private function hasTrialTwoFirstClear(UndergroundProfile $profile): bool

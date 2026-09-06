@@ -65,6 +65,7 @@ final readonly class FacilityScaleDamageService
             'y' => $cell->y,
             'damage_kind' => $damageKind,
             'source_key' => $sourceKey,
+            'scale_unit_people' => $facility->scale_unit_people,
             ...$result,
             ...$metadata,
         ], 'public');

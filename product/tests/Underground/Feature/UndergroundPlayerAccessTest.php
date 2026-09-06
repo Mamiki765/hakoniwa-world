@@ -2846,6 +2846,103 @@ final class UndergroundPlayerAccessTest extends TestCase
         ], $trueName['true_name_branch']['lines']);
     }
 
+    public function test_recollection_uses_the_initial_growth_choice_after_respec_and_explicitly_falls_back(): void
+    {
+        [$owner, $secretary] = $this->secretaryUser('Growth recollection secretary');
+        $profile = $this->openEquipmentProfile($secretary);
+        UndergroundIntroRequest::query()->create([
+            'underground_profile_id' => $profile->id,
+            'request_id' => (string) Str::uuid(),
+            'request_fingerprint' => $this->introFingerprint('growth_path', [
+                'growth_path_key' => 'martial_red',
+            ]),
+            'operation' => 'growth_path',
+            'resulting_stage' => 'growth_path_selected',
+        ]);
+
+        $respecified = $this->actingAs($owner)->postJson('/api/v1/me/underground/respec', [
+            'request_id' => (string) Str::uuid(),
+            'growth_path_key' => 'free_black',
+        ])->assertOk()->json('data');
+        $this->assertSame('free_black', $profile->fresh()->growth_path_key);
+        $body = collect($respecified['recollections']['entries'])->firstWhere('key', 'common_ending')['body'];
+        $this->assertSame([
+            '【初回選択時】',
+            '「ふふ、とってもお似合いですよ、その能力」',
+            '【別の成長方針を選んだ場合】',
+            '「全部？　まぁ、別にあなたにしか必要のないものです。ええ、あげますよ、欲張りさん？」',
+        ], array_slice($body, 0, 4));
+
+        UndergroundIntroRequest::query()
+            ->where('underground_profile_id', $profile->id)
+            ->where('operation', 'growth_path')
+            ->delete();
+        $fallback = $this->actingAs($owner)->getJson('/api/v1/me/underground')
+            ->assertOk()->json('data.recollections.entries');
+        $fallbackBody = collect($fallback)->firstWhere('key', 'common_ending')['body'];
+        $this->assertSame([
+            '【初回選択の保存記録なし】現在の成長方針からは推測せず、両方の分岐台詞を表示します。',
+            '「ふふ、とってもお似合いですよ、その能力」',
+            '「全部？　まぁ、別にあなたにしか必要のないものです。ええ、あげますよ、欲張りさん？」',
+        ], array_slice($fallbackBody, 0, 3));
+    }
+
+    public function test_recollection_trial_stories_remain_bounded_with_many_late_battles(): void
+    {
+        [$owner, $secretary] = $this->secretaryUser('Bounded recollection secretary');
+        $profile = $this->openEquipmentProfile($secretary);
+        UndergroundTrialProgress::query()->create([
+            'underground_profile_id' => $profile->id,
+            'trial_key' => 'trial_02',
+            'unlocked_at' => Carbon::now(),
+            'first_cleared_at' => Carbon::now(),
+        ]);
+        $rows = [];
+        foreach (['trial_01', 'trial_02'] as $trialKey) {
+            for ($run = 1; $run <= 7; $run++) {
+                $runKey = (string) Str::uuid();
+                for ($index = 1; $index <= 10; $index++) {
+                    $snapshot = [];
+                    if ($run === 1 && $index === 1) {
+                        $snapshot['challenge_intro'] = "{$trialKey} start story";
+                    }
+                    if ($run === 7 && $index === 10) {
+                        $snapshot['first_clear_story'] = [
+                            'title' => "{$trialKey} first clear",
+                            'body' => "{$trialKey} late clear story",
+                            'system_messages' => ["{$trialKey} clear reward"],
+                        ];
+                    }
+                    $rows[] = $this->trialBattleRow($profile, $trialKey, $runKey, $index, $snapshot);
+                }
+            }
+        }
+        DB::table('underground_battles')->insert($rows);
+
+        DB::flushQueryLog();
+        DB::enableQueryLog();
+        $entries = $this->actingAs($owner)->getJson('/api/v1/me/underground')
+            ->assertOk()->json('data.recollections.entries');
+        $queries = collect(DB::getQueryLog())->filter(static fn (array $query): bool => str_contains($query['query'], 'from "underground_battles"')
+            && str_contains($query['query'], '"activity_type"')
+            && str_contains($query['query'], '"activity_key"')
+        )->values();
+        DB::disableQueryLog();
+
+        $this->assertSame('trial_01 start story', collect($entries)->firstWhere('key', 'trial_01_start')['body'][0]);
+        $this->assertSame([
+            'trial_02 late clear story',
+            'trial_02 clear reward',
+        ], collect($entries)->firstWhere('key', 'trial_02_clear')['body']);
+        $this->assertCount(4, $queries);
+        foreach ($queries as $query) {
+            $normalized = strtolower((string) $query['query']);
+            $this->assertStringContainsString('select "id", "snapshot"', $normalized);
+            $this->assertStringContainsString('limit 1', $normalized);
+            $this->assertStringNotContainsString('select *', $normalized);
+        }
+    }
+
     /** @return array{User, Secretary} */
     private function secretaryUser(string $name): array
     {
@@ -2939,5 +3036,62 @@ final class UndergroundPlayerAccessTest extends TestCase
             'started_at' => Carbon::now(),
             'finished_at' => Carbon::now(),
         ]);
+    }
+
+    /** @param array<string, mixed> $payload */
+    private function introFingerprint(string $operation, array $payload): string
+    {
+        ksort($payload);
+
+        return hash('sha256', json_encode([
+            'story_identity' => app(UndergroundIntroCatalog::class)->identity(),
+            'operation' => $operation,
+            'payload' => $payload,
+        ], JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE));
+    }
+
+    /**
+     * @param  array<string, mixed>  $snapshot
+     * @return array<string, mixed>
+     */
+    private function trialBattleRow(
+        UndergroundProfile $profile,
+        string $trialKey,
+        string $runKey,
+        int $battleIndex,
+        array $snapshot,
+    ): array {
+        $now = Carbon::now();
+
+        return [
+            'underground_profile_id' => $profile->id,
+            'request_id' => (string) Str::uuid(),
+            'request_fingerprint' => str_repeat('b', 64),
+            'runtime_identity' => 'bounded-recollection-test',
+            'activity_type' => UndergroundBattle::ACTIVITY_TRIAL,
+            'activity_key' => $trialKey,
+            'encounter_key' => "{$trialKey}_encounter",
+            'trial_run_key' => $runKey,
+            'trial_battle_index' => $battleIndex,
+            'result' => UndergroundBattle::RESULT_VICTORY,
+            'rounds' => 1,
+            'damage_dealt' => 1,
+            'damage_received' => 0,
+            'healing_done' => 0,
+            'xp_awarded' => 0,
+            'shard_delta' => 0,
+            'combat_level_before' => 1,
+            'combat_level_after' => 1,
+            'combat_xp_before' => 0,
+            'combat_xp_after' => 0,
+            'shard_balance_before' => 0,
+            'shard_balance_after' => 0,
+            'private_seed' => $battleIndex,
+            'snapshot' => json_encode($snapshot, JSON_THROW_ON_ERROR),
+            'started_at' => $now,
+            'finished_at' => $now,
+            'created_at' => $now,
+            'updated_at' => $now,
+        ];
     }
 }
