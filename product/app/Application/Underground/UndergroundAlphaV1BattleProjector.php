@@ -250,6 +250,7 @@ final class UndergroundAlphaV1BattleProjector
             'counter' => '反撃',
             'action_impaired' => '行動不能',
             'self_regeneration' => '自己再生',
+            'lifesteal' => '吸血',
             'complete_guard' => '完全防御',
             'mp_cost' => 'MP消費',
             'mp_recovery' => 'MP回復',

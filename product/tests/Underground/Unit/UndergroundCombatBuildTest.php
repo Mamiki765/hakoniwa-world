@@ -1747,8 +1747,9 @@ final class UndergroundCombatBuildTest extends TestCase
             skills: ['precision_cut'],
             aiRules: [['conditions' => [['type' => 'always']], 'action' => 'skill:precision_cut']],
         );
+        $catalog = new AlphaV1BuildCatalog($manifest);
         $result = $this->model()->fightPlayerSnapshot(
-            new AlphaV1BuildCatalog($manifest),
+            $catalog,
             $snapshot,
             'awakening_target',
             293,
@@ -1774,6 +1775,22 @@ final class UndergroundCombatBuildTest extends TestCase
             $manifest['enemies']['awakening_target']['max_hp'] - $playerDamage['amount'] + $expectedLifesteal,
             $result->enemyRemainingHp,
         );
+        $lifestealRows = collect($result->actionLog)
+            ->filter(static fn (array $row): bool => ($row['action'] ?? null) === 'lifesteal')
+            ->values();
+        $this->assertCount(1, $lifestealRows);
+        $this->assertSame('enemy', $lifestealRows[0]['side']);
+        $this->assertSame('enemy', $lifestealRows[0]['target_side']);
+        $this->assertSame('recovery', $lifestealRows[0]['effect_type']);
+        $this->assertSame(-$expectedLifesteal, $lifestealRows[0]['amount']);
+        $projectedLifesteal = collect((new UndergroundAlphaV1BattleProjector)->project($result, $catalog)['rounds'])
+            ->flatMap(static fn (array $round): array => $round['actions'])
+            ->first(static fn (array $action): bool => ($action['label'] ?? null) === '吸血');
+        $this->assertIsArray($projectedLifesteal);
+        $this->assertSame('対戦相手', $projectedLifesteal['side']);
+        $this->assertSame('対戦相手', $projectedLifesteal['actor_name']);
+        $this->assertSame('対戦相手', $projectedLifesteal['target_name']);
+        $this->assertSame($expectedLifesteal, $projectedLifesteal['amount']);
         $this->assertFalse(collect($result->actionLog)->contains(
             static fn (array $row): bool => ($row['action'] ?? null) === 'self_regeneration',
         ));

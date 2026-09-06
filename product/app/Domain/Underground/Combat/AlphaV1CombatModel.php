@@ -1222,16 +1222,16 @@ final readonly class AlphaV1CombatModel
                     : $baseLifestealBps;
                 if ($lifestealBps > 0) {
                     $effective = $this->healExact($actor, intdiv($hpDamage * $lifestealBps, 10_000), $metrics);
-                    if ($bloodlineActive && $effective > 0) {
+                    if ($effective > 0) {
                         $actionLog[] = $this->logRow(
                             $round,
                             $actor,
-                            'shura_bloodline_lifesteal',
+                            $bloodlineActive ? 'shura_bloodline_lifesteal' : 'lifesteal',
                             -$effective,
                             false,
                             false,
                             effectType: 'recovery',
-                            targetSide: 'player',
+                            targetSide: $actor->side,
                         );
                     }
                 }
