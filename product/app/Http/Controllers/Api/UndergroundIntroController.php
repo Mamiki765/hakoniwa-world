@@ -20,6 +20,7 @@ use App\Http\Requests\UndergroundIntroMutationRequest;
 use App\Http\Requests\UndergroundPlaytestRequest;
 use App\Http\Requests\UndergroundTrialFightRequest;
 use App\Http\Requests\UndergroundTrialRunRequest;
+use App\Http\Requests\UndergroundTrialStartRequest;
 use App\Http\Requests\UpdateUndergroundActiveLoadoutRequest;
 use App\Http\Requests\UpdateUndergroundAiConfigurationRequest;
 use App\Http\Requests\UpdateUndergroundAwakeningMessageRequest;
@@ -164,10 +165,17 @@ final class UndergroundIntroController extends Controller
         });
     }
 
-    public function startTrial(Request $request, UndergroundRuntimeService $service): JsonResponse
-    {
+    public function startTrial(
+        UndergroundTrialStartRequest $request,
+        UndergroundRuntimeService $service,
+    ): JsonResponse {
+        $validated = $request->validated();
+
         return $this->respond(fn (): array => $service->projectTrialRun(
-            $service->startTrial($request->user(), 'trial_01'),
+            $service->startTrial(
+                $request->user(),
+                is_string($validated['trial_key'] ?? null) ? $validated['trial_key'] : 'trial_01',
+            ),
         ));
     }
 

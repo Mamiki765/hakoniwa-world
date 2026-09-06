@@ -38,6 +38,9 @@ final class UndergroundRuntimeEquipmentGeneratorTest extends TestCase
                     40 => self::base(100, 0, 0, 0, self::stats(finesse: 15, agility: 10)),
                     50 => self::base(120, 0, 0, 0, self::stats(finesse: 18, agility: 12)),
                     60 => self::base(140, 0, 0, 0, self::stats(finesse: 20, agility: 13)),
+                    70 => self::base(160, 0, 0, 0, self::stats(finesse: 22, agility: 15)),
+                    80 => self::base(180, 0, 0, 0, self::stats(finesse: 24, agility: 16)),
+                    90 => self::base(200, 0, 0, 0, self::stats(finesse: 26, agility: 18)),
                 ],
             ],
             'rapier' => [
@@ -52,6 +55,9 @@ final class UndergroundRuntimeEquipmentGeneratorTest extends TestCase
                     40 => self::base(112, 0, 0, 0, self::stats(might: 12, finesse: 9)),
                     50 => self::base(134, 0, 0, 0, self::stats(might: 14, finesse: 11)),
                     60 => self::base(156, 0, 0, 0, self::stats(might: 16, finesse: 12)),
+                    70 => self::base(178, 0, 0, 0, self::stats(might: 18, finesse: 14)),
+                    80 => self::base(200, 0, 0, 0, self::stats(might: 20, finesse: 15)),
+                    90 => self::base(222, 0, 0, 0, self::stats(might: 22, finesse: 17)),
                 ],
             ],
             'longsword' => [
@@ -66,6 +72,9 @@ final class UndergroundRuntimeEquipmentGeneratorTest extends TestCase
                     40 => self::base(102, 26, 0, 0, self::stats(vitality: 15, might: 9)),
                     50 => self::base(122, 33, 0, 0, self::stats(vitality: 18, might: 11)),
                     60 => self::base(142, 40, 0, 0, self::stats(vitality: 20, might: 12)),
+                    70 => self::base(162, 48, 0, 0, self::stats(vitality: 22, might: 14)),
+                    80 => self::base(182, 56, 0, 0, self::stats(vitality: 24, might: 15)),
+                    90 => self::base(202, 64, 0, 0, self::stats(vitality: 26, might: 17)),
                 ],
             ],
             'crystal_staff' => [
@@ -80,6 +89,9 @@ final class UndergroundRuntimeEquipmentGeneratorTest extends TestCase
                     40 => self::base(88, 0, 0, 0, self::stats(finesse: 5, spirit: 20)),
                     50 => self::base(106, 0, 0, 0, self::stats(finesse: 6, spirit: 24)),
                     60 => self::base(124, 0, 0, 0, self::stats(finesse: 7, spirit: 27)),
+                    70 => self::base(142, 0, 0, 0, self::stats(finesse: 8, spirit: 30)),
+                    80 => self::base(160, 0, 0, 0, self::stats(finesse: 9, spirit: 34)),
+                    90 => self::base(178, 0, 0, 0, self::stats(finesse: 10, spirit: 38)),
                 ],
             ],
             'armor' => [
@@ -94,6 +106,9 @@ final class UndergroundRuntimeEquipmentGeneratorTest extends TestCase
                     40 => self::base(0, 120, 100, 300, self::stats(vitality: 5)),
                     50 => self::base(0, 170, 140, 425, self::stats(vitality: 6)),
                     60 => self::base(0, 220, 180, 550, self::stats(vitality: 7)),
+                    70 => self::base(0, 270, 220, 675, self::stats(vitality: 8)),
+                    80 => self::base(0, 320, 260, 800, self::stats(vitality: 9)),
+                    90 => self::base(0, 370, 300, 925, self::stats(vitality: 10)),
                 ],
             ],
             'accessory' => [
@@ -108,6 +123,9 @@ final class UndergroundRuntimeEquipmentGeneratorTest extends TestCase
                     40 => self::base(0, 0, 0, 0, self::stats(spirit: 6)),
                     50 => self::base(0, 0, 0, 0, self::stats(spirit: 9)),
                     60 => self::base(0, 0, 0, 0, self::stats(spirit: 12)),
+                    70 => self::base(0, 0, 0, 0, self::stats(spirit: 15)),
+                    80 => self::base(0, 0, 0, 0, self::stats(spirit: 18)),
+                    90 => self::base(0, 0, 0, 0, self::stats(spirit: 21)),
                 ],
             ],
         ];
@@ -140,15 +158,16 @@ final class UndergroundRuntimeEquipmentGeneratorTest extends TestCase
         $this->assertSame(36, $dagger['base']['weapon_power']);
     }
 
-    public function test_item_level_one_and_sixty_are_valid_but_outside_boundary_is_rejected(): void
+    public function test_item_level_one_and_ninety_are_valid_but_outside_boundary_is_rejected(): void
     {
         $first = $this->generate(1, 'shallow_caves', 'common', 'weapon', 'dagger', null, 0);
-        $last = $this->generate(60, 'shallow_caves', 'common', 'weapon', 'dagger', null, 0);
+        $last = $this->generate(90, 'obsidian_cavern', 'common', 'weapon', 'dagger', null, 0);
 
         $this->assertSame(1, $first['item_level']);
-        $this->assertSame(60, $last['item_level']);
+        $this->assertSame(90, $last['item_level']);
+        $this->assertSame('黒曜の短剣', $last['name']);
 
-        foreach ([0, 61] as $itemLevel) {
+        foreach ([0, 91] as $itemLevel) {
             try {
                 $this->generate($itemLevel, 'shallow_caves', 'common', 'weapon', 'dagger', null, 0);
                 $this->fail("Item Lv {$itemLevel} should be rejected.");

@@ -145,13 +145,7 @@ STORY;
         return DB::transaction(function () use ($user, $trialKey, $trial): UndergroundTrialRun {
             $profile = $this->lockedProfileForUser($user);
             $this->assertExplorationUnlocked($profile);
-            UndergroundTrialProgress::query()->firstOrCreate(
-                [
-                    'underground_profile_id' => $profile->id,
-                    'trial_key' => $this->catalog->firstTrialKey(),
-                ],
-                ['unlocked_at' => Carbon::now()],
-            );
+            $this->reconcileTrialProgresses($profile);
             $progress = UndergroundTrialProgress::query()
                 ->where('underground_profile_id', $profile->id)
                 ->where('trial_key', $trialKey)
@@ -406,34 +400,59 @@ STORY;
     /** @return array<string, mixed> */
     public function projectTrialState(UndergroundProfile $profile): array
     {
-        $trialKey = $this->catalog->firstTrialKey();
-        $trial = $this->catalog->trial($trialKey);
+        $firstTrialKey = $this->catalog->firstTrialKey();
+        $firstTrial = $this->catalog->trial($firstTrialKey);
 
-        return DB::transaction(function () use ($profile, $trialKey, $trial): array {
+        return DB::transaction(function () use ($profile, $firstTrialKey, $firstTrial): array {
             $lockedProfile = UndergroundProfile::query()
                 ->whereKey($profile->id)
                 ->lockForUpdate()
                 ->firstOrFail();
-            $progress = UndergroundTrialProgress::query()
+            $progresses = UndergroundTrialProgress::query()
                 ->where('underground_profile_id', $lockedProfile->id)
-                ->where('trial_key', $trialKey)
-                ->first();
+                ->get()
+                ->keyBy('trial_key');
             $run = UndergroundTrialRun::query()
                 ->where('underground_profile_id', $lockedProfile->id)
-                ->where('trial_key', $trialKey)
                 ->where('status', UndergroundTrialRun::STATUS_ACTIVE)
                 ->lockForUpdate()
                 ->first();
             if ($run instanceof UndergroundTrialRun) {
-                $run = $this->reconcileActiveTrialContent($run, $trial['content_identity']);
+                $activeTrial = $this->catalog->trial($run->trial_key);
+                $run = $this->reconcileActiveTrialContent($run, $activeTrial['content_identity']);
             }
+            $trials = [];
+            foreach ($this->catalog->trialKeys() as $trialKey) {
+                $trial = $this->catalog->trial($trialKey);
+                $progress = $progresses->get($trialKey);
+                $requiredTrialKey = $trial['required_trial_key'];
+                $requiredProgress = is_string($requiredTrialKey)
+                    ? $progresses->get($requiredTrialKey)
+                    : null;
+                $unlocked = $progress instanceof UndergroundTrialProgress
+                    || $requiredTrialKey === null
+                    || ($requiredProgress instanceof UndergroundTrialProgress
+                        && $requiredProgress->first_cleared_at !== null);
+                $trials[] = [
+                    'key' => $trialKey,
+                    'label' => $trial['label'],
+                    'total_battles' => count($trial['encounters']),
+                    'locked' => ! $unlocked,
+                    'unlock_condition' => $requiredTrialKey === 'trial_01'
+                        ? '試練1を初回clear'
+                        : null,
+                    'first_cleared' => $progress?->first_cleared_at !== null,
+                ];
+            }
+            $firstProgress = $progresses->get($firstTrialKey);
 
             return [
-                'key' => $trialKey,
-                'label' => $trial['label'],
-                'total_battles' => count($trial['encounters']),
-                'first_cleared' => $progress?->first_cleared_at !== null,
+                'key' => $firstTrialKey,
+                'label' => $firstTrial['label'],
+                'total_battles' => count($firstTrial['encounters']),
+                'first_cleared' => $firstProgress?->first_cleared_at !== null,
                 'active_run' => $run instanceof UndergroundTrialRun ? $this->projectTrialRun($run) : null,
+                'trials' => $trials,
             ];
         }, 3);
     }
@@ -497,10 +516,7 @@ STORY;
                 && is_array($snapshot['hunting_ground'] ?? null)
                     ? $snapshot['hunting_ground']
                     : null,
-            'drop' => $context === UndergroundBattle::ACTIVITY_EXPLORATION
-                && is_array($snapshot['drop'] ?? null)
-                    ? $snapshot['drop']
-                    : null,
+            'drop' => is_array($snapshot['drop'] ?? null) ? $snapshot['drop'] : null,
             'trial_key' => $context === UndergroundBattle::ACTIVITY_TRIAL ? $battle->activity_key : null,
             'trial_run_key' => $context === UndergroundBattle::ACTIVITY_TRIAL ? $battle->trial_run_key : null,
             'trial_battle_index' => $context === UndergroundBattle::ACTIVITY_TRIAL
@@ -845,7 +861,8 @@ STORY;
             $equipment,
         );
         $currentHpBefore = min($profile->current_hp ?? $maxHpBefore, $maxHpBefore);
-        $definition = $this->alphaV1Catalog->trialOneCombatDefinition(
+        $definition = $this->alphaV1Catalog->trialCombatDefinition(
+            $trialRun->trial_key,
             $profile->growth_path_key,
             $profile->combat_level,
             $profile->allocatedStp(),
@@ -952,17 +969,17 @@ STORY;
             $secretary->name,
             $encounterLabel,
         );
-        if ($isTrialBoss && $result->rounds >= 20) {
+        if ($trialRun->trial_key === 'trial_01' && $isTrialBoss && $result->rounds >= 20) {
             $projection = $this->withTrialOneRoundTwentyWarning($projection);
         }
         $projection['summary']['result'] = $resultType;
-        $firstChallenge = $trialBattleIndex === 1
+        $firstChallenge = $trialRun->trial_key === 'trial_01' && $trialBattleIndex === 1
             && ! UndergroundBattle::query()
                 ->where('underground_profile_id', $profile->id)
                 ->where('activity_type', UndergroundBattle::ACTIVITY_TRIAL)
                 ->where('activity_key', $trialRun->trial_key)
                 ->exists();
-        $firstClearStory = $firstClear ? [
+        $firstClearStory = $firstClear && $trialRun->trial_key === 'trial_01' ? [
             'title' => self::FIRST_CLEAR_STORY_TITLE,
             'body' => self::FIRST_CLEAR_STORY_BODY,
             'system_messages' => [
@@ -1040,10 +1057,33 @@ STORY;
                 'trial_next_battle_index' => $trialRun->next_battle_index,
                 'challenge_intro' => $firstChallenge ? self::FIRST_CHALLENGE_INTRO : null,
                 'first_clear_story' => $firstClearStory,
+                'drop' => [
+                    'identity' => $this->alphaV1Catalog->explorationDropConfig()['identity'],
+                    'status' => 'pending',
+                ],
             ],
             'started_at' => $startedAt,
             'finished_at' => $finishedAt,
         ]);
+        $dropTierKey = $trial['drop_tier_key'] ?? null;
+        $snapshot = $battle->snapshot;
+        $snapshot['drop'] = is_string($dropTierKey)
+            ? ($resultType === UndergroundBattle::RESULT_VICTORY
+                ? $this->equipmentDrops->settleTrialVictory(
+                    $profile,
+                    $battle,
+                    $trialRun->trial_key,
+                    $dropTierKey,
+                    $reward,
+                    $seed,
+                )
+                : [
+                    'identity' => $this->alphaV1Catalog->explorationDropConfig()['identity'],
+                    'status' => 'ineligible',
+                ])
+            : null;
+        $battle->snapshot = $snapshot;
+        $battle->save();
         UndergroundBattleLog::query()->create([
             'underground_battle_id' => $battle->id,
             'actions' => $projection['rounds'],
@@ -1133,6 +1173,7 @@ STORY;
             $reward = $this->catalog->trial($run->trial_key)['first_clear_skill_points'];
             $profile->skill_points_total += $reward;
             $profile->skill_points_unspent += $reward;
+            $this->reconcileTrialProgresses($profile, $finishedAt);
         }
         if ($run->trial_key === 'trial_01' && $profile->unlocked_area_layers < 1) {
             $profile->unlocked_area_layers = 1;
@@ -1143,6 +1184,32 @@ STORY;
         $run->save();
 
         return $firstClear;
+    }
+
+    private function reconcileTrialProgresses(
+        UndergroundProfile $profile,
+        ?Carbon $unlockedAt = null,
+    ): void {
+        $unlockedAt ??= Carbon::now();
+        $cleared = UndergroundTrialProgress::query()
+            ->where('underground_profile_id', $profile->id)
+            ->whereNotNull('first_cleared_at')
+            ->pluck('trial_key')
+            ->all();
+        foreach ($this->catalog->trialKeys() as $trialKey) {
+            $trial = $this->catalog->trial($trialKey);
+            $required = $trial['required_trial_key'];
+            if (is_string($required) && ! in_array($required, $cleared, true)) {
+                continue;
+            }
+            UndergroundTrialProgress::query()->firstOrCreate(
+                [
+                    'underground_profile_id' => $profile->id,
+                    'trial_key' => $trialKey,
+                ],
+                ['unlocked_at' => $unlockedAt],
+            );
+        }
     }
 
     private function lockedProfileForUser(User $user): UndergroundProfile

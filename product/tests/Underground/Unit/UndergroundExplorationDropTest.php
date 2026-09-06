@@ -103,6 +103,18 @@ final class UndergroundExplorationDropTest extends TestCase
                 'presence_bps' => 10_000,
                 'rarity_weights' => ['common' => 5000, 'uncommon' => 3000, 'rare' => 1500, 'epic' => 500],
             ],
+            'trial2_shallow' => [
+                'presence_bps' => 5500,
+                'rarity_weights' => ['common' => 6500, 'uncommon' => 2500, 'rare' => 900, 'epic' => 100],
+            ],
+            'trial2_middle' => [
+                'presence_bps' => 6500,
+                'rarity_weights' => ['common' => 5000, 'uncommon' => 3200, 'rare' => 1500, 'epic' => 300],
+            ],
+            'trial2_deep' => [
+                'presence_bps' => 8000,
+                'rarity_weights' => ['common' => 3500, 'uncommon' => 3500, 'rare' => 2400, 'epic' => 600],
+            ],
         ], $drop['profiles']);
 
         $encounterMix = ['standard' => 7000, 'elite' => 2900, 'rare' => 100];

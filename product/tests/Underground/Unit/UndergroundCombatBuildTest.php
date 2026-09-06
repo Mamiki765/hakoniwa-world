@@ -1804,6 +1804,88 @@ final class UndergroundCombatBuildTest extends TestCase
         }
     }
 
+    public function test_dullahan_hatred_stacks_each_round_caps_at_fifty_and_judgment_can_reset_it(): void
+    {
+        [$manifest] = $this->catalog();
+        $contents = file_get_contents(dirname(__DIR__, 3).'/config/underground/balance/trial2-v1.json');
+        $this->assertIsString($contents);
+        $trial = json_decode($contents, true, flags: JSON_THROW_ON_ERROR);
+        $this->assertIsArray($trial);
+        foreach (['skills', 'statuses', 'enemies'] as $section) {
+            $manifest[$section] = array_merge($manifest[$section], $trial[$section]);
+        }
+        $catalog = new AlphaV1BuildCatalog($manifest);
+        $hatred = $catalog->status('trial2_hatred');
+        $this->assertSame([
+            'label' => '憎悪',
+            'dispellable' => true,
+            'max_stacks' => 50,
+            'damage_bps_per_stack' => 50,
+        ], [
+            'label' => $hatred['label'],
+            'dispellable' => $hatred['dispellable'],
+            'max_stacks' => $hatred['max_stacks'],
+            'damage_bps_per_stack' => $hatred['effects'][0]['value_bps'],
+        ]);
+
+        $durable = $this->awakeningPlayerSnapshot('guardianship_blue', gauge: 0, currentHp: null);
+        $durable['stats'] = [
+            'vitality' => 1_000_000,
+            'might' => 1,
+            'finesse' => 1,
+            'spirit' => 1,
+            'agility' => 1,
+        ];
+        $longFight = $this->model()->fightPlayerSnapshot(
+            $catalog,
+            $durable,
+            'trial2_headless_lord_of_judgment',
+            239,
+            52,
+            0,
+        );
+        $applications = collect($longFight->actionLog)
+            ->filter(static fn (array $row): bool => ($row['action'] ?? null) === 'status:trial2_hatred'
+                && ($row['effect_type'] ?? null) === 'status_applied')
+            ->values();
+        $this->assertCount(52, $applications);
+        $this->assertSame([1, 2, 3], $applications->take(3)->pluck('amount')->all());
+        $this->assertSame([50, 50, 50], $applications->slice(49)->pluck('amount')->all());
+
+        $judgment = $this->awakeningPlayerSnapshot(
+            'blessing_green',
+            currentHp: 1_000,
+            techniqueKey: 'judgment_light',
+        );
+        $judgment['stats'] = [
+            'vitality' => 1_000_000,
+            'might' => 1,
+            'finesse' => 1,
+            'spirit' => 1,
+            'agility' => 1_000,
+        ];
+        $resetFight = $this->model()->fightPlayerSnapshot(
+            $catalog,
+            $judgment,
+            'trial2_headless_lord_of_judgment',
+            241,
+            2,
+            0,
+        );
+        $resetApplications = collect($resetFight->actionLog)
+            ->filter(static fn (array $row): bool => ($row['action'] ?? null) === 'status:trial2_hatred'
+                && ($row['effect_type'] ?? null) === 'status_applied')
+            ->pluck('amount')
+            ->all();
+        $removed = collect($resetFight->actionLog)->first(
+            static fn (array $row): bool => ($row['action'] ?? null) === 'judgment_light'
+                && ($row['effect_type'] ?? null) === 'status_removed',
+        );
+        $this->assertSame([1, 1], $resetApplications);
+        $this->assertIsArray($removed);
+        $this->assertSame(-1, $removed['amount']);
+    }
+
     public function test_true_name_story_profile_is_a_short_deterministic_alpha_v1_tank_defeat(): void
     {
         [$manifest] = $this->catalog();

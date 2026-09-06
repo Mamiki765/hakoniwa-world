@@ -67,6 +67,15 @@ final class UndergroundEquipmentCatalog
             : throw new RuntimeException('Underground equipment generator identity is invalid.');
     }
 
+    public function generatorItemLevelMax(): int
+    {
+        $maximum = $this->data()['generator']['item_level_max'] ?? null;
+
+        return is_int($maximum) && $maximum >= 60
+            ? $maximum
+            : throw new RuntimeException('Underground equipment generator item-level maximum is invalid.');
+    }
+
     public function vaultCapacity(): int
     {
         $capacity = $this->data()['vault_capacity'] ?? null;
@@ -287,7 +296,8 @@ final class UndergroundEquipmentCatalog
             || ($category === 'weapon' && ! in_array($style, ['dagger', 'rapier', 'longsword', 'crystal_staff'], true))
             || ($category !== 'weapon' && $style !== null)
             || ! is_int($definition['rank'] ?? null) || $definition['rank'] < 0 || $definition['rank'] > 4
-            || ! is_int($definition['item_level'] ?? null) || $definition['item_level'] < 1 || $definition['item_level'] > 60
+            || ! is_int($definition['item_level'] ?? null) || $definition['item_level'] < 1
+            || $definition['item_level'] > $this->generatorItemLevelMax()
             || ! in_array($rarity, ['common', 'uncommon', 'rare', 'epic'], true)
             || ! is_string($definition['rarity_label'] ?? null) || $definition['rarity_label'] === ''
             || (! is_null($definition['buy_price'] ?? null) && (! is_int($definition['buy_price']) || $definition['buy_price'] < 1))

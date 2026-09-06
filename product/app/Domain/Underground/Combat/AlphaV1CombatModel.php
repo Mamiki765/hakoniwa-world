@@ -180,6 +180,7 @@ final readonly class AlphaV1CombatModel
                 $player->tickCooldowns();
                 $enemy->tickCooldowns();
                 $this->applyPhaseTransition($catalog, $enemy, $random, $round, $actionLog);
+                $this->applyRoundStartStatus($catalog, $enemy, $random, $round, $actionLog);
                 $this->changeMp($player, $naturalRecovery, 0, $round, 'natural', $metrics, $mpHistory, $actionLog);
                 $this->changeMp($enemy, $naturalRecovery, 0, $round, 'natural', $metrics, $mpHistory, $actionLog, false);
             },
@@ -522,6 +523,31 @@ final readonly class AlphaV1CombatModel
         $completeGuardChance = $modifiers['complete_guard_chance_bps'] ?? 0;
         if (! is_int($completeGuardChance) || $completeGuardChance < 0 || $completeGuardChance > 10_000) {
             throw new InvalidArgumentException("Underground alpha-v1 enemy [{$enemyKey}] complete guard trait is invalid.");
+        }
+        $roundStartStatusKey = $modifiers['round_start_status_key'] ?? null;
+        if ($roundStartStatusKey !== null) {
+            if (! is_string($roundStartStatusKey) || $roundStartStatusKey === '') {
+                throw new InvalidArgumentException("Underground alpha-v1 enemy [{$enemyKey}] round-start status is invalid.");
+            }
+            $roundStartStatus = $catalog->status($roundStartStatusKey);
+            $hasPositiveDamageModifier = false;
+            foreach ($roundStartStatus['effects'] as $effect) {
+                if (is_array($effect)
+                    && ($effect['type'] ?? null) === 'damage_dealt_modifier'
+                    && ($effect['category'] ?? 'all') === 'all'
+                    && is_int($effect['value_bps'] ?? null)
+                    && $effect['value_bps'] > 0) {
+                    $hasPositiveDamageModifier = true;
+                    break;
+                }
+            }
+            if (($roundStartStatus['disposition'] ?? null) !== 'buff'
+                || ($roundStartStatus['stack_policy'] ?? null) !== 'stack_refresh'
+                || ! $hasPositiveDamageModifier) {
+                throw new InvalidArgumentException(
+                    "Underground alpha-v1 enemy [{$enemyKey}] round-start status must stack a positive all-damage buff.",
+                );
+            }
         }
         $phaseTransition = $this->phaseTransition($catalog, $enemy, $enemyKey);
 
@@ -1374,6 +1400,34 @@ final readonly class AlphaV1CombatModel
             false,
             effectType: 'status_applied',
             targetSide: $target->side,
+        );
+    }
+
+    /** @param list<array<string, mixed>> $actionLog */
+    private function applyRoundStartStatus(
+        AlphaV1BuildCatalog $catalog,
+        BuildCombatState $state,
+        UndergroundRandom $random,
+        int $round,
+        array &$actionLog,
+    ): void {
+        $statusKey = $state->modifiers['round_start_status_key'] ?? null;
+        if ($statusKey === null) {
+            return;
+        }
+        if (! is_string($statusKey) || $statusKey === '') {
+            throw new InvalidArgumentException('Underground round-start status modifier is invalid.');
+        }
+        $this->applyStatus(
+            $catalog,
+            $state,
+            $state,
+            $statusKey,
+            $random,
+            $round,
+            'round_start_status',
+            $actionLog,
+            true,
         );
     }
 

@@ -46,6 +46,53 @@ final readonly class UndergroundEquipmentDropService
                 $battle->request_id,
             ]),
         );
+
+        return $this->settleGeneratedDrop($profile, $battle, $drop, 'exploration-drop:'.$battle->request_id);
+    }
+
+    /**
+     * @param  array<string, mixed>  $reward
+     * @return array<string, mixed>
+     */
+    public function settleTrialVictory(
+        UndergroundProfile $profile,
+        UndergroundBattle $battle,
+        string $trialKey,
+        string $tierKey,
+        array $reward,
+        int $battleSeed,
+    ): array {
+        if (! $battle->exists
+            || $battle->underground_profile_id !== $profile->id
+            || $battle->activity_type !== UndergroundBattle::ACTIVITY_TRIAL
+            || $battle->activity_key !== $trialKey
+            || $battle->result !== UndergroundBattle::RESULT_VICTORY) {
+            throw new RuntimeException('Underground equipment drop settlement requires a persisted Trial victory.');
+        }
+        $drop = $this->rollForTier(
+            $tierKey,
+            $reward,
+            $battleSeed,
+            implode(':', [
+                $this->playerCatalog->explorationDropConfig()['identity'],
+                $trialKey,
+                $battle->request_id,
+            ]),
+        );
+
+        return $this->settleGeneratedDrop($profile, $battle, $drop, 'trial-drop:'.$battle->request_id);
+    }
+
+    /**
+     * @param  array<string, mixed>  $drop
+     * @return array<string, mixed>
+     */
+    private function settleGeneratedDrop(
+        UndergroundProfile $profile,
+        UndergroundBattle $battle,
+        array $drop,
+        string $grantKey,
+    ): array {
         if ($drop['status'] === 'none') {
             return $drop;
         }
@@ -70,7 +117,7 @@ final readonly class UndergroundEquipmentDropService
             'definition_key' => $payload['key'],
             'catalog_identity' => $this->equipmentCatalog->identity(),
             'equipped_slot' => null,
-            'grant_key' => 'exploration-drop:'.$battle->request_id,
+            'grant_key' => $grantKey,
             'instance_kind' => 'generated',
             'instance_identity' => $payload['instance_identity'],
             'generator_identity' => $payload['generator_identity'],
@@ -97,6 +144,20 @@ final readonly class UndergroundEquipmentDropService
         string $sourceIdentity,
     ): array {
         $this->playerCatalog->explorationHuntingGround($huntingGroundKey);
+
+        return $this->rollForTier($huntingGroundKey, $encounter, $battleSeed, $sourceIdentity);
+    }
+
+    /**
+     * @param  array<string, mixed>  $encounter
+     * @return array<string, mixed>
+     */
+    private function rollForTier(
+        string $tierKey,
+        array $encounter,
+        int $battleSeed,
+        string $sourceIdentity,
+    ): array {
         $drop = $this->playerCatalog->explorationDropConfig();
         $profileKey = $encounter['drop_profile'] ?? null;
         $itemLevelMin = $encounter['item_level_min'] ?? null;
@@ -104,7 +165,8 @@ final readonly class UndergroundEquipmentDropService
         $profile = is_string($profileKey) ? ($drop['profiles'][$profileKey] ?? null) : null;
         if (! is_array($profile)
             || ! is_int($itemLevelMin) || ! is_int($itemLevelMax)
-            || $itemLevelMin < 1 || $itemLevelMax < $itemLevelMin || $itemLevelMax > 60) {
+            || $itemLevelMin < 1 || $itemLevelMax < $itemLevelMin
+            || $itemLevelMax > $this->equipmentCatalog->generatorItemLevelMax()) {
             throw new RuntimeException('Underground encounter drop metadata is invalid.');
         }
 
@@ -140,7 +202,7 @@ final readonly class UndergroundEquipmentDropService
         $affixSeed = $random->integer('drop:affix', 0, 2_147_483_647);
         $payload = $this->generator->generate(
             $itemLevel,
-            $huntingGroundKey,
+            $tierKey,
             $rarity,
             $category,
             is_string($weaponStyle) ? $weaponStyle : null,

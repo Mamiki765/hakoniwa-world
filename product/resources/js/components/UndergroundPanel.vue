@@ -147,6 +147,16 @@ interface TrialState {
     total_battles: number;
     first_cleared: boolean;
     active_run: TrialRun | null;
+    trials?: TrialOption[];
+}
+
+interface TrialOption {
+    key: string;
+    label: string;
+    total_battles: number;
+    locked: boolean;
+    unlock_condition: string | null;
+    first_cleared: boolean;
 }
 
 interface AwakeningTechnique {
@@ -480,6 +490,18 @@ const unlockedHuntingGrounds = computed(() => (state.value?.hunting_grounds ?? [
     .filter((ground) => !ground.locked));
 const selectedHuntingGround = computed(() => unlockedHuntingGrounds.value
     .find((ground) => ground.key === selectedHuntingGroundKey.value) ?? null);
+const trialOptions = computed<TrialOption[]>(() => {
+    const trial = state.value?.trial;
+    if (!trial) return [];
+    return trial.trials ?? [{
+        key: trial.key,
+        label: trial.label,
+        total_battles: trial.total_battles,
+        locked: false,
+        unlock_condition: null,
+        first_cleared: trial.first_cleared,
+    }];
+});
 const repeatableExplorationGroundKey = computed(() => {
     const battle = currentBattle.value;
     if (battle?.context !== 'exploration' || !battle.hunting_ground) return null;
@@ -847,7 +869,7 @@ async function repeatCurrentExploration(): Promise<void> {
     await runExplore(groundKey, `repeat-battle:${battle.id}`);
 }
 
-async function runTrial(): Promise<void> {
+async function runTrial(trialKey?: string): Promise<void> {
     if (busy.value || !state.value?.trial) return;
     innRested.value = false;
     busy.value = true;
@@ -857,7 +879,11 @@ async function runTrial(): Promise<void> {
         if (!pending) {
             let run = state.value.trial.active_run;
             if (!run) {
-                run = await api<TrialRun>('/api/v1/me/underground/trial/start', { method: 'POST' });
+                if (!trialKey) return;
+                run = await api<TrialRun>('/api/v1/me/underground/trial/start', {
+                    method: 'POST',
+                    body: JSON.stringify({ trial_key: trialKey }),
+                });
             }
             pending = { requestId: requestId(), runKey: run.run_key };
             pendingTrialRequest.value = pending;
@@ -1406,7 +1432,7 @@ onUnmounted(() => {
                     class="button primary underground-trial-next"
                     type="button"
                     :disabled="busy || exploreCooldownSeconds > 0"
-                    @click="runTrial"
+                    @click="runTrial()"
                 >
                     次の階層へ<small v-if="exploreCooldownSeconds > 0">あと{{ exploreCooldownSeconds }}秒</small>
                 </button>
@@ -1683,7 +1709,21 @@ onUnmounted(() => {
                                     <span class="underground-ground-chevron" aria-hidden="true">▼</span>
                                 </template>
                             </div>
-                            <button class="underground-trial-entry" type="button" :disabled="busy || exploreCooldownSeconds > 0 || !state.trial" @click="runTrial">封印の地<small>{{ exploreCooldownSeconds > 0 ? `あと${exploreCooldownSeconds}秒` : state.trial?.active_run ? `${state.trial.active_run.next_battle_index}/${state.trial.active_run.total_battles}戦目` : state.trial?.label }}</small></button>
+                            <button
+                                v-for="trial in trialOptions"
+                                :key="trial.key"
+                                class="underground-trial-entry"
+                                type="button"
+                                :disabled="busy || exploreCooldownSeconds > 0 || trial.locked || Boolean(state.trial?.active_run && state.trial.active_run.key !== trial.key)"
+                                @click="runTrial(trial.key)"
+                            >
+                                封印の地
+                                <small>{{ trial.label }}</small>
+                                <small v-if="exploreCooldownSeconds > 0">あと{{ exploreCooldownSeconds }}秒</small>
+                                <small v-else-if="state.trial?.active_run?.key === trial.key">{{ state.trial.active_run.next_battle_index }}/{{ state.trial.active_run.total_battles }}戦目</small>
+                                <small v-else-if="trial.locked">{{ trial.unlock_condition ?? '未解禁' }}</small>
+                                <small v-else>{{ trial.first_cleared ? 'clear済み・再挑戦可' : `${trial.total_battles}連戦` }}</small>
+                            </button>
                         </div>
                         <button v-if="state.trial?.active_run" class="button secondary" type="button" :disabled="busy" @click="withdrawTrial">封印の地から帰還する</button>
                     </section>

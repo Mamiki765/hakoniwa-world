@@ -8,6 +8,7 @@ use App\Application\Underground\UndergroundBalanceSimulator;
 use App\Application\Underground\UndergroundBuildBalanceSimulator;
 use App\Application\Underground\UndergroundEquipmentCatalog;
 use App\Application\Underground\UndergroundReportSourceIdentity;
+use App\Application\Underground\UndergroundRuntimeEquipmentGenerator;
 use App\Application\Underground\UndergroundTrialBalanceSimulator;
 use App\Domain\Underground\Combat\AlphaV1CombatModel;
 use App\Domain\Underground\Combat\AlphaV1CombatRules;
@@ -147,6 +148,44 @@ final class UndergroundBalanceSimulatorTest extends TestCase
             'spirit_accessory_rank_3',
         ], $ownerBaseline['equipment_keys']);
         $this->assertArrayNotHasKey('battles', $report['scenarios'][0]);
+    }
+
+    public function test_trial_two_simulation_uses_level_band_sixty_sp_il50_and_selected_awakening(): void
+    {
+        [$contents, $manifest] = $this->trialTwoManifest();
+        $report = $this->trialSimulator()->run(
+            $manifest,
+            $contents,
+            hash('sha256', $contents),
+            'config/underground/balance/trial2-v1.json',
+            str_repeat('d', 40),
+            false,
+            0,
+            2,
+            'martial_red:lv150:heal2000',
+        );
+
+        $this->assertTrue($report['trial_contract_passed']);
+        $this->assertSame(2, $report['trial_generation']);
+        $this->assertSame('trial_02', $report['trial_key']);
+        $this->assertSame([150, 180], $report['checkpoints']);
+        $this->assertSame(60, $report['skill_points_total']);
+        $this->assertCount(10, $report['battle_sequence']);
+        $this->assertSame('首なき断罪卿（デュラハン）', $report['battle_sequence'][9]['label']);
+        $this->assertSame('trial2_hatred', $report['battle_sequence'][9]['modifiers']['round_start_status_key']);
+        foreach ($report['builds'] as $levels) {
+            foreach ($levels as $build) {
+                $this->assertSame(60, $build['skill_points_total']);
+                $this->assertSame(60, $build['skill_points_spent']);
+                $this->assertContains($build['awakening_technique_key'], [
+                    'shura_bloodline',
+                    'fortress_strike',
+                    'judgment_light',
+                    'formless_strike',
+                ]);
+                $this->assertSame([50, 50, 50], array_column($build['equipment']['items'], 'item_level'));
+            }
+        }
     }
 
     public function test_trial_wyvern_enters_its_healer_pressure_phase_at_round_40_without_losing_its_action(): void
@@ -590,6 +629,18 @@ final class UndergroundBalanceSimulatorTest extends TestCase
         return [$contents, $manifest];
     }
 
+    /** @return array{string, array<string, mixed>} */
+    private function trialTwoManifest(): array
+    {
+        $path = dirname(__DIR__, 3).'/config/underground/balance/trial2-v1.json';
+        $contents = file_get_contents($path);
+        $this->assertIsString($contents);
+        $manifest = json_decode($contents, true, flags: JSON_THROW_ON_ERROR);
+        $this->assertIsArray($manifest);
+
+        return [$contents, $manifest];
+    }
+
     private function trialSimulator(): UndergroundTrialBalanceSimulator
     {
         $rules = new AlphaV1CombatRules;
@@ -608,6 +659,8 @@ final class UndergroundBalanceSimulatorTest extends TestCase
             new UndergroundAlphaV1PlayerCatalog($rules, $validator),
             new UndergroundEquipmentCatalog,
             $rules,
+            new UndergroundRuntimeEquipmentGenerator,
+            new UndergroundAwakening,
         );
     }
 }
