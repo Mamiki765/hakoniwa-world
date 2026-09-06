@@ -36,6 +36,8 @@ final class UndergroundAwakening
 
     public const BLOODLINE_DURATION_ROUNDS = 3;
 
+    public const BLOODLINE_STRIKE_POTENCY_BPS = 16_000;
+
     public const BLOODLINE_LIFESTEAL_BPS = 1_500;
 
     public const LIFESTEAL_CAP_BPS = 2_500;
@@ -72,7 +74,7 @@ final class UndergroundAwakening
             ], [
                 'key' => 'shura_bloodline',
                 'name' => '修羅の血脈',
-                'summary' => '発動後3ラウンド、direct attackで敵HPへ実際に与えたdamageの15%を吸収して回復する。合計吸収率は25%上限。',
+                'summary' => '発動時にやや強いphysical attackを放ち、その初撃を含む3ラウンド、direct attackで敵HPへ実際に与えたdamageの15%を吸収して回復する。合計吸収率は25%上限。',
                 'consumes_action' => true,
             ]],
             'guardianship_blue' => [[

@@ -56,7 +56,7 @@ final class UndergroundRuntimeEquipmentGenerator
                 throw new InvalidArgumentException('Underground generated accessory main stat is invalid.');
             }
             $bodyKey = 'accessory';
-            $name = $tier['accessory_name'] ?? null;
+            $name = $tier['accessory_names'][$mainStat] ?? $tier['accessory_name'] ?? null;
         }
         if (! is_string($name) || $name === '') {
             throw new RuntimeException('Underground generated equipment name is invalid.');

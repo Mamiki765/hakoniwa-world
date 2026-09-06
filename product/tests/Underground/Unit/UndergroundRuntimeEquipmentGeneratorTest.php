@@ -165,7 +165,7 @@ final class UndergroundRuntimeEquipmentGeneratorTest extends TestCase
 
         $this->assertSame(1, $first['item_level']);
         $this->assertSame(90, $last['item_level']);
-        $this->assertSame('黒曜の短剣', $last['name']);
+        $this->assertSame('魔窟の短剣', $last['name']);
 
         foreach ([0, 91] as $itemLevel) {
             try {
@@ -174,6 +174,24 @@ final class UndergroundRuntimeEquipmentGeneratorTest extends TestCase
             } catch (InvalidArgumentException) {
                 // Expected boundary rejection.
             }
+        }
+    }
+
+    public function test_obsidian_cavern_accessory_name_identifies_its_main_stat(): void
+    {
+        $expectedNames = [
+            'vitality' => '魔窟の生命護符',
+            'might' => '魔窟の武力護符',
+            'finesse' => '魔窟の技巧護符',
+            'spirit' => '魔窟の精神護符',
+            'agility' => '魔窟の敏捷護符',
+        ];
+
+        foreach ($expectedNames as $mainStat => $expectedName) {
+            $item = $this->generate(70, 'obsidian_cavern', 'common', 'accessory', null, $mainStat, 0);
+
+            $this->assertSame($expectedName, $item['name']);
+            $this->assertSame(15, $item['base']['stats'][$mainStat]);
         }
     }
 

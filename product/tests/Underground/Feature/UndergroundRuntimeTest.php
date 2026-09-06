@@ -1040,11 +1040,14 @@ final class UndergroundRuntimeTest extends TestCase
         $profile = $profile->refresh();
         $drop = $battle->snapshot['drop'];
         $this->assertSame('trial2_sootfang_scout', $battle->encounter_key);
-        $this->assertSame([1800, 180], [$battle->xp_awarded, $battle->shard_delta]);
-        $this->assertSame([1800, 180], [$profile->combat_xp, $profile->shard_balance]);
+        $this->assertSame([250, 65], [$battle->xp_awarded, $battle->shard_delta]);
+        $this->assertSame([250, 65], [$profile->combat_xp, $profile->shard_balance]);
         $this->assertSame('granted', $drop['status']);
         $this->assertGreaterThanOrEqual(55, $drop['item']['item_level']);
         $this->assertLessThanOrEqual(66, $drop['item']['item_level']);
+        $this->assertStringStartsWith('魔窟の', $drop['item']['name']);
+        $this->assertStringStartsWith("●試練2　黒曜石の魔窟\n", $battle->snapshot['challenge_intro']);
+        $this->assertStringEndsWith('倒れたらまた、担いで運んであげますからね', $battle->snapshot['challenge_intro']);
         $this->assertSame($drop, $runtime->projectTrialBattle($battle)['drop']);
         $this->assertDatabaseHas('underground_owned_equipment', [
             'underground_profile_id' => $profile->id,
@@ -1055,14 +1058,14 @@ final class UndergroundRuntimeTest extends TestCase
         $withdrawn = $runtime->withdrawTrial($user, $run->run_key);
         $this->assertSame(UndergroundTrialRun::STATUS_WITHDRAWN, $withdrawn->status);
         $this->assertSame(1, $withdrawn->next_battle_index);
-        $this->assertSame([1800, 180], [
+        $this->assertSame([250, 65], [
             $profile->refresh()->combat_xp,
             $profile->shard_balance,
         ]);
         $this->assertCount(1, $combat->calls);
     }
 
-    public function test_trial_two_first_clear_adds_no_unapproved_meta_reward_or_story(): void
+    public function test_trial_two_first_clear_awards_common_skill_points_unlocks_layer_and_shows_story_once(): void
     {
         Carbon::setTestNow('2026-09-06 09:20:00+09:00');
         config(['underground-alpha-v1.exploration.drop.profiles.trial2_deep.presence_bps' => 0]);
@@ -1079,7 +1082,7 @@ final class UndergroundRuntimeTest extends TestCase
             'unlocked_at' => Carbon::now(),
             'first_cleared_at' => Carbon::now(),
         ]);
-        [$runtime] = $this->runtimeWithOutcomes(['player']);
+        [$runtime] = $this->runtimeWithOutcomes(['player', 'player']);
 
         $run = $runtime->startTrial($user, 'trial_02');
         $run->update(['next_battle_index' => 10]);
@@ -1088,21 +1091,42 @@ final class UndergroundRuntimeTest extends TestCase
         $projected = $runtime->projectTrialBattle($battle);
 
         $this->assertSame('trial2_headless_lord_of_judgment', $battle->encounter_key);
-        $this->assertSame([7500, 900], [$battle->xp_awarded, $battle->shard_delta]);
+        $this->assertSame([2000, 540], [$battle->xp_awarded, $battle->shard_delta]);
         $this->assertSame(UndergroundTrialRun::STATUS_CLEARED, $run->refresh()->status);
         $this->assertNotNull(UndergroundTrialProgress::query()
             ->where('underground_profile_id', $profile->id)
             ->where('trial_key', 'trial_02')
             ->sole()
             ->first_cleared_at);
-        $this->assertSame([60, 60, 1], [
+        $this->assertSame([100, 100, 2], [
             $profile->skill_points_total,
             $profile->skill_points_unspent,
             $profile->unlocked_area_layers,
         ]);
         $this->assertNull($projected['challenge_intro']);
-        $this->assertNull($projected['first_clear_story']);
+        $this->assertSame('●', $projected['first_clear_story']['title']);
+        $this->assertSame([
+            "{$secretary->name}は二つ目の封印の地を制覇した。",
+            'SPを40入手した。',
+            '地底マップが8マスまで拡張された。',
+        ], $projected['first_clear_story']['system_messages']);
+        $this->assertStringStartsWith("　{$secretary->name}が倒したはずのデュラハンは突然", $projected['first_clear_story']['body']);
+        $this->assertStringContainsString('『貴様さえ　キサマさえ生まれていなければ！！！』', $projected['first_clear_story']['body']);
+        $this->assertStringEndsWith('「さぁ、帰って傷を癒しましょう。せっかくの暇つぶし相手に死なれては私が困りますから」', $projected['first_clear_story']['body']);
         $this->assertSame('none', $projected['drop']['status']);
+
+        Carbon::setTestNow(Carbon::now()->addSeconds(10));
+        $repeat = $runtime->startTrial($user, 'trial_02');
+        $repeat->update(['next_battle_index' => 10]);
+        $repeatBattle = $runtime->fightTrial($user, $repeat->run_key, (string) Str::uuid())['battle'];
+        $profile = $profile->refresh();
+
+        $this->assertSame([100, 100, 2], [
+            $profile->skill_points_total,
+            $profile->skill_points_unspent,
+            $profile->unlocked_area_layers,
+        ]);
+        $this->assertNull($runtime->projectTrialBattle($repeatBattle)['first_clear_story']);
     }
 
     public function test_vault_full_records_lost_drop_without_rolling_back_exploration_rewards(): void

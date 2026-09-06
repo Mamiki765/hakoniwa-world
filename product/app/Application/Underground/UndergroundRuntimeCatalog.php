@@ -222,16 +222,19 @@ final class UndergroundRuntimeCatalog
                 'item_level_max' => $itemLevelMax,
             ];
         }
+        if ($trial['first_clear_skill_points'] !== 40) {
+            throw new RuntimeException('Each Underground Trial must award 40 skill points on first clear.');
+        }
         if ($key === 'trial_01'
             && (array_sum(array_column($rewards, 'xp')) !== 800
-                || array_sum(array_column($rewards, 'shards')) !== 205
-                || $trial['first_clear_skill_points'] !== 40)) {
+                || array_sum(array_column($rewards, 'shards')) !== 205)) {
             throw new RuntimeException('Underground Trial 1 total rewards are invalid.');
         }
         if ($key === 'trial_02'
             && ($trial['required_trial_key'] !== 'trial_01'
-                || $trial['first_clear_skill_points'] !== 0)) {
-            throw new RuntimeException('Underground Trial 2 unlock and first-clear reward contract is invalid.');
+                || array_sum(array_column($rewards, 'xp')) !== 4720
+                || array_sum(array_column($rewards, 'shards')) !== 1233)) {
+            throw new RuntimeException('Underground Trial 2 unlock and total rewards are invalid.');
         }
 
         return [

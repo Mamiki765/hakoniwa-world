@@ -1917,7 +1917,7 @@ final readonly class AlphaV1CombatModel
             'kind' => 'awakening_technique',
             'round' => $round,
             'side' => 'player',
-            'target_side' => in_array($techniqueKey, ['shura_bloodline', 'life_requiem', 'limitless_reprise'], true)
+            'target_side' => in_array($techniqueKey, ['life_requiem', 'limitless_reprise'], true)
                 ? 'player'
                 : 'enemy',
             'action' => $techniqueKey,
@@ -1958,8 +1958,29 @@ final readonly class AlphaV1CombatModel
                 $agilityComboHits,
             );
         } elseif ($techniqueKey === 'shura_bloodline') {
-            $player->awakeningLifestealRoundsRemaining = UndergroundAwakening::BLOODLINE_DURATION_ROUNDS;
+            $player->awakeningLifestealRoundsRemaining = UndergroundAwakening::BLOODLINE_DURATION_ROUNDS - 1;
             $player->awakeningLifestealAppliedRound = $round;
+            $this->applyDamage(
+                $player,
+                $enemy,
+                [
+                    'category' => 'physical',
+                    'potency_bps' => UndergroundAwakening::BLOODLINE_STRIKE_POTENCY_BPS,
+                    'stat_coefficients' => ['might' => 8_000, 'finesse' => 2_000],
+                    'weapon_coefficient_bps' => 10_000,
+                    'fixed' => 0,
+                    'target_max_hp_bps' => 0,
+                    'can_crit' => true,
+                    'dodgeable' => false,
+                    'hits' => 1,
+                ],
+                $random,
+                $round,
+                $techniqueKey,
+                $metrics,
+                $actionUsage,
+                $actionLog,
+            );
         } elseif ($techniqueKey === 'absolute_aegis') {
             $player->awakeningGuardRoundsRemaining = UndergroundAwakening::GUARDIAN_DURATION_ROUNDS;
             $player->awakeningGuardAppliedRound = $round;

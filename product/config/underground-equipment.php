@@ -154,9 +154,15 @@ return [
                 'accessory_name' => '黒晶の護符',
             ],
             'obsidian_cavern' => [
-                'weapon_names' => ['dagger' => '黒曜の短剣', 'rapier' => '黒曜の細剣', 'longsword' => '黒曜の長剣', 'crystal_staff' => '黒曜の杖'],
-                'armor_name' => '黒曜の胸当て',
-                'accessory_name' => '黒曜の護符',
+                'weapon_names' => ['dagger' => '魔窟の短剣', 'rapier' => '魔窟の細剣', 'longsword' => '魔窟の長剣', 'crystal_staff' => '魔窟の杖'],
+                'armor_name' => '魔窟の胸当て',
+                'accessory_names' => [
+                    'vitality' => '魔窟の生命護符',
+                    'might' => '魔窟の武力護符',
+                    'finesse' => '魔窟の技巧護符',
+                    'spirit' => '魔窟の精神護符',
+                    'agility' => '魔窟の敏捷護符',
+                ],
             ],
         ],
         'rarities' => [

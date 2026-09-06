@@ -1680,7 +1680,7 @@ final class UndergroundCombatBuildTest extends TestCase
         $awakening->technique('martial_red', 'formless_strike');
     }
 
-    public function test_shura_bloodline_combines_direct_lifesteal_at_the_cap_for_three_attacking_rounds(): void
+    public function test_shura_bloodline_strikes_on_activation_and_combines_direct_lifesteal_for_three_rounds(): void
     {
         $snapshot = $this->awakeningPlayerSnapshot(
             'martial_red',
@@ -1703,8 +1703,16 @@ final class UndergroundCombatBuildTest extends TestCase
         $drains = collect($result->actionLog)
             ->filter(static fn (array $row): bool => ($row['action'] ?? null) === 'shura_bloodline_lifesteal')
             ->values();
+        $openingStrike = collect($result->actionLog)->first(
+            static fn (array $row): bool => ($row['action'] ?? null) === 'shura_bloodline'
+                && ($row['effect_type'] ?? null) === 'damage',
+        );
+        $this->assertIsArray($openingStrike);
+        $this->assertSame(1, $openingStrike['round']);
+        $this->assertGreaterThan(0, $openingStrike['amount']);
         $this->assertSame(UndergroundAwakening::LIFESTEAL_CAP_BPS, 2_500);
-        $this->assertSame(UndergroundAwakening::BLOODLINE_DURATION_ROUNDS, $drains->count());
+        $this->assertSame(UndergroundAwakening::BLOODLINE_DURATION_ROUNDS - 1, $drains->count());
+        $this->assertSame([2, 3], $drains->pluck('round')->all());
         foreach ($drains as $drain) {
             $damage = $damageByRound->get($drain['round']);
             $this->assertIsArray($damage);
@@ -1712,7 +1720,7 @@ final class UndergroundCombatBuildTest extends TestCase
         }
         $expiry = collect($result->actionLog)->firstWhere('action', 'shura_bloodline_expired');
         $this->assertIsArray($expiry);
-        $this->assertSame(4, $expiry['round']);
+        $this->assertSame(3, $expiry['round']);
         $this->assertSame('shura_bloodline', $result->awakening['technique']['key']);
         $this->assertTrue($result->awakening['technique']['used']);
     }

@@ -25,17 +25,28 @@ use Illuminate\Support\Str;
 
 final readonly class UndergroundRuntimeService
 {
-    private const FIRST_CLEAR_STORY_TITLE = '●封印の解放';
+    private const TRIAL_ONE_FIRST_CLEAR_STORY_TITLE = '●封印の解放';
 
-    private const FIRST_CHALLENGE_INTRO = <<<'STORY'
+    private const TRIAL_ONE_FIRST_CHALLENGE_INTRO = <<<'STORY'
 　崩れかけた石壁の向こうに広がっていた不思議な空間。
 　土と岩に埋もれたそこは、明らかに人の手で造られた古い石造りの遺跡であった。
 　入り口からは生暖かい風が吹いている……そこが魔物の巣窟であることは、明らかであった。
 STORY;
 
+    private const TRIAL_TWO_FIRST_CHALLENGE_INTRO = <<<'STORY'
+●試練2　黒曜石の魔窟
+　あなたも薄々察しているでしょう。この辺りの黒い結晶。あれもまた輝石の一つです——光は放ちませんけどね？
+　黒い輝石は浅層に見られる、不純物の多い輝石です。地上の一説には、そういった輝石にこのような逸話があります
+　輝石自身が、その美しい輝きに心奪われ欲を抱いた時……その光を自らに吸収してしまい、黒く濁ってしまうと。
+　私は、そうは思いたくありません。
+　だって欲望が、人の業が、黒い輝石が罪深いと吐き捨てるなんて余りにも冷酷だとは思いませんか？
+　同じく黒い黒曜石は、あんなにも透き通るような美しさを秘めていると言うのに。
+　……さぁ、この先が次の封印の地。黒晶洞の最奥です。挑戦は止めませんとも。倒れたらまた、担いで運んであげますからね
+STORY;
+
     private const TRIAL_ONE_ROUND_TWENTY_WARNING = '洞窟が崩れそうだ……';
 
-    private const FIRST_CLEAR_STORY_BODY = <<<'STORY'
+    private const TRIAL_ONE_FIRST_CLEAR_STORY_BODY = <<<'STORY'
 　ワイバーンの肉体が自らの魔力に耐え切れず、内から光を放ちながら崩壊していくその瞬間。
 　秘書の中で何かが強く脈打った。ドクン、ドクンと、全身の細胞が歓喜に震え、肉体の輪郭が歪んでいく幻覚が見える。
 　膝をつき、堕としてしまった武器を拾い上げたのは、あの案内人であった。
@@ -54,6 +65,31 @@ STORY;
 　それは桃色の、妖しく輝く楕円形の宝石であった。
 
 「ただし、あなたがその力に溺れないという決意を見せてくれたらの話ですけれど、ね？」
+STORY;
+
+    private const TRIAL_TWO_FIRST_CLEAR_STORY_BODY = <<<'STORY'
+　(秘書名)が倒したはずのデュラハンは突然、恐ろしい音を鳴り響かせながら立ち上がった。
+　暴風がその鎧から溢れ出し、武器が手から離れ彼方へと飛ばされる。
+『貴様さえ　キサマさえ生まれていなければ！！！』
+　まるで全てを呪うかのような頭の『声』は、この洞窟の輝石をより黒く、黒く染め上げるかのようであった。
+　そしてデュラハンは巨大な大剣を振り上げ、体勢を崩したあなたにそのままトドメの一撃を完遂する、はずだった。
+「まったく、同感ね」
+　目が眩むほどの雷鳴が突然視界を焼き焦がしたかと思えば、デュラハンの鎧は粉々に砕かれていた。
+　黒い洞窟よりも遥かに黒い、吸い込まれるような黒い剣に走る、ローズピンクの迅る魔力。
+　その眩さは自分が敵う相手ではないと、一瞬で思い知らされるほどであった。
+「……」
+　鎧を踏み抜き、砕いたかと思えば。こちらの方へと彼女は張り付いた笑顔でにっこりと小首をかしげた。
+
+「いやいや、危なかったですが。お見事、お見事。新しい自分の戦い方にも慣れてきたようで」
+
+「お陰様でこの封印の地も用済みです。つまりは必要がなくなったバリアが下がって——あなたの大好きなご主人様の島が使える領域はますます広がることでしょう」
+
+　誰か問おうと、彼女の答えはいつも通り。
+「私はただの、案内人ですよ」
+
+「輝かしいはずの秩序も混沌も、理性も欲望も、人間に寄生しないと生きられないはずの自分の存在意義や名前すらも、何もかも見てられなくなって嫌になって、自分の世界の全部を海に沈めて無かったことにした。愚かな愚かな、案内人です」
+
+「さぁ、帰って傷を癒しましょう。せっかくの暇つぶし相手に死なれては私が困りますから」
 STORY;
 
     public function __construct(
@@ -973,23 +1009,40 @@ STORY;
             $projection = $this->withTrialOneRoundTwentyWarning($projection);
         }
         $projection['summary']['result'] = $resultType;
-        $firstChallenge = $trialRun->trial_key === 'trial_01' && $trialBattleIndex === 1
+        $firstChallenge = $trialBattleIndex === 1
             && ! UndergroundBattle::query()
                 ->where('underground_profile_id', $profile->id)
                 ->where('activity_type', UndergroundBattle::ACTIVITY_TRIAL)
                 ->where('activity_key', $trialRun->trial_key)
                 ->exists();
-        $firstClearStory = $firstClear && $trialRun->trial_key === 'trial_01' ? [
-            'title' => self::FIRST_CLEAR_STORY_TITLE,
-            'body' => self::FIRST_CLEAR_STORY_BODY,
-            'system_messages' => [
-                "{$secretary->name}は一つ目の封印の地を制覇した。",
-                'SPを40入手した。',
-                '地底マップが'.UndergroundAreaCapacity::forUnlockedLayers(1).'マス解禁された。',
-                '覚醒を習得した。',
-                '覚醒ゲージが解禁された。',
+        $challengeIntro = $firstChallenge ? match ($trialRun->trial_key) {
+            'trial_01' => self::TRIAL_ONE_FIRST_CHALLENGE_INTRO,
+            'trial_02' => self::TRIAL_TWO_FIRST_CHALLENGE_INTRO,
+            default => null,
+        } : null;
+        $firstClearStory = $firstClear ? match ($trialRun->trial_key) {
+            'trial_01' => [
+                'title' => self::TRIAL_ONE_FIRST_CLEAR_STORY_TITLE,
+                'body' => self::TRIAL_ONE_FIRST_CLEAR_STORY_BODY,
+                'system_messages' => [
+                    "{$secretary->name}は一つ目の封印の地を制覇した。",
+                    'SPを40入手した。',
+                    '地底マップが'.UndergroundAreaCapacity::forUnlockedLayers(1).'マス解禁された。',
+                    '覚醒を習得した。',
+                    '覚醒ゲージが解禁された。',
+                ],
             ],
-        ] : null;
+            'trial_02' => [
+                'title' => '●',
+                'body' => str_replace('(秘書名)', $secretary->name, self::TRIAL_TWO_FIRST_CLEAR_STORY_BODY),
+                'system_messages' => [
+                    "{$secretary->name}は二つ目の封印の地を制覇した。",
+                    'SPを40入手した。',
+                    '地底マップが'.UndergroundAreaCapacity::forUnlockedLayers(2).'マスまで拡張された。',
+                ],
+            ],
+            default => null,
+        } : null;
         $battle = UndergroundBattle::query()->create([
             'underground_profile_id' => $profile->id,
             'request_id' => $requestId,
@@ -1055,7 +1108,7 @@ STORY;
                 'trial_total_battles' => count($trial['encounters']),
                 'trial_status' => $trialRun->status,
                 'trial_next_battle_index' => $trialRun->next_battle_index,
-                'challenge_intro' => $firstChallenge ? self::FIRST_CHALLENGE_INTRO : null,
+                'challenge_intro' => $challengeIntro,
                 'first_clear_story' => $firstClearStory,
                 'drop' => [
                     'identity' => $this->alphaV1Catalog->explorationDropConfig()['identity'],
@@ -1175,8 +1228,13 @@ STORY;
             $profile->skill_points_unspent += $reward;
             $this->reconcileTrialProgresses($profile, $finishedAt);
         }
-        if ($run->trial_key === 'trial_01' && $profile->unlocked_area_layers < 1) {
-            $profile->unlocked_area_layers = 1;
+        $unlockedAreaLayers = match ($run->trial_key) {
+            'trial_01' => 1,
+            'trial_02' => 2,
+            default => null,
+        };
+        if ($unlockedAreaLayers !== null && $profile->unlocked_area_layers < $unlockedAreaLayers) {
+            $profile->unlocked_area_layers = $unlockedAreaLayers;
         }
         $run->status = UndergroundTrialRun::STATUS_CLEARED;
         $run->next_battle_index = 1;
