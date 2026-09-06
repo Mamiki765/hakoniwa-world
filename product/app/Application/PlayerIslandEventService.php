@@ -1169,7 +1169,15 @@ final class PlayerIslandEventService
         if (in_array($sourceKey, ['meteor_shower', 'huge_meteor'], true)) {
             return $this->disasterLabel($sourceKey);
         }
-        $missileKey = $metadata['missile_key'] ?? $sourceKey;
+        if (in_array($sourceKey, [
+            'defense_self_destruct',
+            'monument_flight',
+            'nuclear_self_destruct_blast',
+        ], true)) {
+            return '被害';
+        }
+
+        $missileKey = $metadata['missile_key'] ?? null;
         if (is_string($missileKey) && $missileKey !== '') {
             return $this->missileLabel($missileKey);
         }

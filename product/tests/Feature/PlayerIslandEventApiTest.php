@@ -362,6 +362,65 @@ class PlayerIslandEventApiTest extends TestCase
         $this->assertSame([], $originResponse->json('data.groups'));
     }
 
+    public function test_non_missile_partial_damage_uses_generic_damage_while_companion_logs_identify_the_cause(): void
+    {
+        [$world, $owner, $nation] = $this->nation('部分被害島');
+        $world->update(['current_turn' => 2]);
+        DB::table('audit_events')->delete();
+
+        $this->audit('disaster.triggered', $nation, $nation, 'public', 2, [
+            'disaster_key' => 'defense_self_destruct', 'center_x' => 10, 'center_y' => 11,
+        ]);
+        $this->audit('disaster.triggered', $nation, $nation, 'public', 2, [
+            'disaster_key' => 'monument_flight', 'center_x' => 12, 'center_y' => 13,
+        ]);
+        $this->audit('monster.nuclear_self_destructed', $nation, $nation, 'public', 2, [
+            'nation_name' => $nation->name, 'monster_key' => 'mechanical_inora_zero',
+            'center_x' => 14, 'center_y' => 15,
+        ]);
+
+        foreach ([
+            ['defense_self_destruct', 20, 21],
+            ['monument_flight', 22, 23],
+            ['nuclear_self_destruct_blast', 24, 25],
+        ] as [$sourceKey, $x, $y]) {
+            $this->audit('facility.partially_damaged', $nation, $nation, 'public', 2, [
+                'nation_name' => $nation->name,
+                'x' => $x,
+                'y' => $y,
+                'facility_key' => 'factory',
+                'damage_kind' => 'ordinary_terrain_destruction',
+                'source_key' => $sourceKey,
+                'before_scale' => 120,
+                'after_scale' => 115,
+                'scale_unit_people' => 1_000,
+                'rank_before' => 2,
+                'rank_after' => 2,
+            ]);
+        }
+
+        foreach ([
+            $this->getJson("/api/v1/public/nations/{$nation->id}/events")->assertOk(),
+            $this->actingAs($owner)->getJson("/api/v1/nations/{$nation->id}/events")->assertOk(),
+        ] as $response) {
+            $messages = $this->messages($response->json('data.groups'));
+            $this->assertContains('(10,11)で防衛施設が自爆しました。', $messages);
+            $this->assertContains('何かとてつもないものが落ちてきました！', $messages);
+            $this->assertContains(
+                '部分被害島(14,15)のメカいのら零式が突然輝きだし、とてつもない爆発を起こしました！',
+                $messages,
+            );
+            foreach ([[20, 21], [22, 23], [24, 25]] as [$x, $y]) {
+                $this->assertContains(
+                    "部分被害島({$x},{$y})の大工場が被害により一部損壊し、"
+                    .'規模が120,000人から115,000人へ減少しました。',
+                    $messages,
+                );
+            }
+            $this->assertStringNotContainsString('ミサイルにより一部損壊', (string) $response->getContent());
+        }
+    }
+
     public function test_owner_log_requires_membership_and_includes_only_its_own_public_island_events(): void
     {
         [$world, $owner, $nation] = $this->nation('所有島');
