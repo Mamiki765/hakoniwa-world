@@ -31,6 +31,7 @@ const healthPercent = computed(() => props.state.max_hp > 0
     : 0);
 const awakeningMaximum = computed(() => Math.max(1, props.state.awakening_gauge_max ?? 1000));
 const awakeningGauge = computed(() => Math.max(0, Math.min(awakeningMaximum.value, props.state.awakening_gauge ?? 0)));
+const awakeningPercent = computed(() => Math.round((awakeningGauge.value / awakeningMaximum.value) * 100));
 </script>
 
 <template>
@@ -58,7 +59,7 @@ const awakeningGauge = computed(() => Math.max(0, Math.min(awakeningMaximum.valu
                 :data-full="awakeningGauge >= awakeningMaximum"
             >
                 <span>覚醒ゲージ</span>
-                <progress :max="awakeningMaximum" :value="awakeningGauge" :aria-label="`覚醒ゲージ ${awakeningGauge}/${awakeningMaximum}`" />
+                <progress :max="awakeningMaximum" :value="awakeningGauge" aria-label="覚醒ゲージ" :aria-valuetext="`${awakeningPercent}%`" />
             </div>
             <ul v-if="state.barrier > 0 || visibleStatuses.length > 0 || state.role_stacks.fighting_spirit > 0 || state.role_stacks.grace > 0 || state.awakened || (state.awakening_guard_rounds_remaining ?? 0) > 0 || (state.awakening_lifesteal_rounds_remaining ?? 0) > 0 || state.taunt" class="underground-active-state" aria-label="有効な状態">
                 <li v-if="state.barrier > 0">障壁 {{ state.barrier }}</li>
