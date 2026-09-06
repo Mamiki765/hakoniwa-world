@@ -159,6 +159,19 @@ final class UndergroundCombatBuildTest extends TestCase
         }
     }
 
+    public function test_combat_value_scaling_rejects_an_actual_operand_product_that_cannot_fit_an_integer(): void
+    {
+        $rules = new AlphaV1CombatRules;
+        $scaleBps = $rules->progressionScaleBps(2_147_483_647, 1);
+
+        $this->assertSame(1_932_735_291_400, $scaleBps);
+
+        $this->expectException(InvalidArgumentException::class);
+        $this->expectExceptionMessage('scaled combat value exceeds the supported integer range');
+
+        $rules->scaledCombatValue(100_000_000, $scaleBps);
+    }
+
     public function test_weighted_multi_stat_power_and_ratio_defense_keep_damage_legal_under_inflation(): void
     {
         $rules = new AlphaV1CombatRules;

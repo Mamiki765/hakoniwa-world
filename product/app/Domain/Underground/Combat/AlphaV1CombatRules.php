@@ -107,6 +107,18 @@ final class AlphaV1CombatRules
         return 10_000 + (($level - 1) * 900);
     }
 
+    public function scaledCombatValue(int $baseValue, int $scaleBps): int
+    {
+        if ($baseValue < 0 || $scaleBps < 1) {
+            throw new InvalidArgumentException('Underground combat scaling inputs are invalid.');
+        }
+        if ($baseValue !== 0 && $scaleBps > intdiv(PHP_INT_MAX, $baseValue)) {
+            throw new InvalidArgumentException('Underground scaled combat value exceeds the supported integer range.');
+        }
+
+        return intdiv($baseValue * $scaleBps, 10_000);
+    }
+
     /**
      * @param  array<string, int>  $baseStats
      * @param  array<string, int>  $equipmentStats
@@ -121,7 +133,7 @@ final class AlphaV1CombatRules
         $this->assertFiveStats($baseStats, $requireBaseBudget);
         $stats = [];
         foreach (self::STATS as $key) {
-            $stats[$key] = max(1, intdiv($baseStats[$key] * $scaleBps, 10_000)
+            $stats[$key] = max(1, $this->scaledCombatValue($baseStats[$key], $scaleBps)
                 + ($equipmentStats[$key] ?? 0));
         }
 
@@ -132,15 +144,15 @@ final class AlphaV1CombatRules
     public function maxHp(array $stats, int $scaleBps, int $equipmentHp = 0): int
     {
         $this->assertFiveStats($stats, false);
-        $baselineVitality = max(1, intdiv(20 * $scaleBps, 10_000));
-        $baselineHp = max(1, intdiv(500 * $scaleBps, 10_000));
+        $baselineVitality = max(1, $this->scaledCombatValue(20, $scaleBps));
+        $baselineHp = max(1, $this->scaledCombatValue(500, $scaleBps));
 
         return max(1, $baselineHp + (($stats['vitality'] - $baselineVitality) * 8) + $equipmentHp);
     }
 
     public function defenseReference(int $scaleBps): int
     {
-        return max(1, intdiv(100 * $scaleBps, 10_000));
+        return max(1, $this->scaledCombatValue(100, $scaleBps));
     }
 
     /**

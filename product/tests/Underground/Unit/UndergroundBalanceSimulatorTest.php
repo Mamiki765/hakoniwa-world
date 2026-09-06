@@ -364,20 +364,7 @@ final class UndergroundBalanceSimulatorTest extends TestCase
         $this->assertIsString($contents);
         $manifest = json_decode($contents, true, flags: JSON_THROW_ON_ERROR);
         $this->assertIsArray($manifest);
-        $rules = new AlphaV1CombatRules;
-        $generator = new DeterministicEquipmentGenerator($rules);
-        $simulator = new UndergroundBuildBalanceSimulator(
-            new AlphaV1CombatModel(
-                $rules,
-                new UndergroundBuildValidator($rules),
-                $generator,
-                new PriorityCombatAi,
-                new CanonicalCombatOrchestrator,
-                new UndergroundAwakening,
-            ),
-            new UndergroundBuildValidator($rules),
-            $generator,
-        );
+        $simulator = $this->alphaV1Simulator();
         $report = $simulator->run(
             $manifest,
             $contents,
@@ -438,6 +425,21 @@ final class UndergroundBalanceSimulatorTest extends TestCase
             $sidegrade['combat_observation']['low_item_level_unique']['effective_healing_average'],
         );
         $this->assertSame([], $sidegrade['combat_observation']['low_item_level_unique']['abnormal_seeds']);
+    }
+
+    public function test_alpha_v1_replay_rejects_canonical_enemy_scaling_before_php_integer_overflow(): void
+    {
+        $path = dirname(__DIR__, 3).'/config/underground/balance/foundation-v1.json';
+        $contents = file_get_contents($path);
+        $this->assertIsString($contents);
+        $manifest = json_decode($contents, true, flags: JSON_THROW_ON_ERROR);
+        $this->assertIsArray($manifest);
+        $manifest['tiers']['early'] = ['combat_level' => 2_147_483_647, 'item_level' => 1];
+
+        $this->expectException(InvalidArgumentException::class);
+        $this->expectExceptionMessage('scaled combat value exceeds the supported integer range');
+
+        $this->alphaV1Simulator()->replay($manifest, 'mp:pure_attacker:early', 0);
     }
 
     public function test_small_smoke_generates_a_reproducible_laboratory_summary_without_raw_logs(): void
@@ -644,6 +646,25 @@ final class UndergroundBalanceSimulatorTest extends TestCase
         return new UndergroundBalanceSimulator(
             $rules,
             new UndergroundCombatEngine($rules, new BuiltInCombatAi),
+        );
+    }
+
+    private function alphaV1Simulator(): UndergroundBuildBalanceSimulator
+    {
+        $rules = new AlphaV1CombatRules;
+        $generator = new DeterministicEquipmentGenerator($rules);
+
+        return new UndergroundBuildBalanceSimulator(
+            new AlphaV1CombatModel(
+                $rules,
+                new UndergroundBuildValidator($rules),
+                $generator,
+                new PriorityCombatAi,
+                new CanonicalCombatOrchestrator,
+                new UndergroundAwakening,
+            ),
+            new UndergroundBuildValidator($rules),
+            $generator,
         );
     }
 
