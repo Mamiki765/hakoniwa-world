@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Domain\Facility\FacilityCapacityService;
+use App\Domain\Facility\FacilityRankPolicy;
 use App\Domain\Facility\FacilityVisibilityPolicy;
 use App\Domain\Facility\MissileBaseRules;
 use App\Domain\Map\SeaAreaNameResolver;
@@ -10,6 +11,7 @@ use App\Domain\Monster\MonsterHardening;
 use App\Domain\Ship\SurfaceShipCatalog;
 use App\Models\FacilityDefinition;
 use App\Models\MapCell;
+use App\Models\MonsterDefinition;
 use App\Models\Nation;
 use App\Models\Ship;
 use App\Models\TerrainDefinition;
@@ -25,20 +27,26 @@ final class MapCellPresenter
     public function __construct(
         private readonly AssetManifestResolver $assets,
         private readonly FacilityCapacityService $capacities,
+        private readonly FacilityRankPolicy $facilityRanks,
         private readonly MissileBaseRules $missiles,
         private readonly MonsterHardening $hardening,
         private readonly SeaAreaNameResolver $seaAreas,
         private readonly SurfaceShipCatalog $ships,
     ) {}
 
-    /** @return array<string, mixed> */
+    /**
+     * @param  array<string, mixed>|null  $rulesetSettings
+     * @return array<string, mixed>
+     */
     public function present(
         MapCell $cell,
         ?int $viewerNationId,
         int $currentTurn,
         ?string $theme = null,
         bool $withinViewerVisibility = false,
+        ?array $rulesetSettings = null,
     ): array {
+        $rulesetSettings ??= $this->configuredRulesetSettings();
         $isOwner = $viewerNationId !== null && $viewerNationId === $cell->owner_nation_id;
         $isDisguised = self::isDisguised($cell, $viewerNationId, $withinViewerVisibility);
         $visibleState = self::visibleState($cell, $viewerNationId, $withinViewerVisibility);
@@ -55,15 +63,35 @@ final class MapCellPresenter
                 : $this->facility($visibleState['facility_key']));
         $ship = $this->ship($cell, $viewerNationId);
         $displayDefinition = $facility ?? $terrain;
+        $facilityPresentation = $facility !== null
+            && $facility->key === $cell->facility?->key
+            && $facility->scale_unit_people !== null
+            && $cell->facility_scale !== null
+            ? $this->facilityRanks->presentation($rulesetSettings, $facility, (int) $cell->facility_scale)
+            : null;
         $displayAssetKey = $ship['asset_key'] ?? ($facility?->key === 'monument' && $cell->monumentDefinition !== null
             ? $cell->monumentDefinition->asset_key
-            : $displayDefinition->asset_key);
+            : ($facilityPresentation['asset_key'] ?? $displayDefinition->asset_key));
         $displayName = $ship['name'] ?? ($facility?->key === 'monument' && $cell->monumentDefinition !== null
             ? $cell->monumentDefinition->name
-            : $displayDefinition->name);
+            : ($facilityPresentation['name'] ?? $displayDefinition->name));
         $layers = $this->assets->resolveLayers($displayAssetKey, $displayName, theme: $theme);
+        if ($facilityPresentation !== null
+            && ! $layers['completed']['available']
+            && $facility !== null
+            && $facility->asset_key !== $displayAssetKey) {
+            $displayAssetKey = $facility->asset_key;
+            $layers = $this->assets->resolveLayers($displayAssetKey, $displayName, theme: $theme);
+        }
         $seaAreaName = $this->seaAreas->forCoordinate($cell->x, $cell->y);
-        $details = $this->details($cell, $isOwner, $isDisguised, $seaAreaName);
+        $details = $this->details(
+            $cell,
+            $isOwner,
+            $isDisguised,
+            $seaAreaName,
+            $rulesetSettings,
+            $facilityPresentation,
+        );
         $monster = $this->monster($cell, $currentTurn, $neutralizeOwnership);
 
         return [
@@ -72,7 +100,9 @@ final class MapCellPresenter
             'terrain' => $terrain->key,
             'terrain_name' => $terrain->name,
             'facility' => $facility?->key,
-            'facility_name' => $facility?->key === 'monument' ? $displayName : $facility?->name,
+            'facility_name' => $facility?->key === 'monument'
+                ? $displayName
+                : ($facilityPresentation['name'] ?? $facility?->name),
             'display_name' => $displayName,
             'sea_area_name' => $seaAreaName,
             'owner_nation_id' => $visibleState['owner_nation_id'],
@@ -148,6 +178,7 @@ final class MapCellPresenter
                 'max' => $definition->base_hp + $definition->hp_variation,
             ],
             'skill_description' => $definition->skill_description,
+            'traits' => $this->monsterTraits($definition),
             'hardened_now' => $hardened,
             'public_state' => 'alive',
             'coordinate' => ['x' => $cell->x, 'y' => $cell->y],
@@ -157,6 +188,20 @@ final class MapCellPresenter
             ],
             'host_label' => $hostNation === null ? '無所属' : 'N'.$hostNation->nation_number,
         ];
+    }
+
+    /** @return list<string> */
+    private function monsterTraits(MonsterDefinition $definition): array
+    {
+        $traits = $definition->source_metadata['traits'] ?? null;
+        if (! is_array($traits)) {
+            return [];
+        }
+
+        return array_values(array_filter(
+            $traits,
+            static fn (mixed $trait): bool => is_string($trait) && $trait !== '',
+        ));
     }
 
     /** @return array<string, mixed>|null */
@@ -193,9 +238,19 @@ final class MapCellPresenter
         ];
     }
 
-    /** @return array<int, array{key: string, label: string, value: int|string, unit: string|null, formatted: string, visibility: string}> */
-    private function details(MapCell $cell, bool $isOwner, bool $isDisguised, string $seaAreaName): array
-    {
+    /**
+     * @param  array<string, mixed>  $rulesetSettings
+     * @param  array<string, mixed>|null  $facilityPresentation
+     * @return array<int, array{key: string, label: string, value: int|string, unit: string|null, formatted: string, visibility: string}>
+     */
+    private function details(
+        MapCell $cell,
+        bool $isOwner,
+        bool $isDisguised,
+        string $seaAreaName,
+        array $rulesetSettings,
+        ?array $facilityPresentation,
+    ): array {
         if ($isDisguised) {
             return [$this->detail('sea_area', '海域', $seaAreaName, null, $seaAreaName, 'public')];
         }
@@ -218,8 +273,29 @@ final class MapCellPresenter
 
         $facility = $cell->facility;
         if ($facility?->scale_unit_people !== null && $cell->facility_scale !== null) {
-            $capacity = $this->capacities->capacityPeople($facility, $cell->facility_scale);
+            $capacity = $this->capacities->capacityPeople(
+                $facility,
+                $cell->facility_scale,
+                $this->facilityRanks->maximumScale($rulesetSettings, $facility),
+            );
             $details[] = $this->detail('facility_capacity', '規模', $capacity, '人', number_format($capacity).'人規模', 'public');
+        }
+        if ($facilityPresentation !== null) {
+            $rank = (int) $facilityPresentation['rank'];
+            $details[] = $this->detail('facility_rank', 'ランク', $rank, null, "ランク{$rank}", 'public');
+            $description = $rank === 2
+                ? $facilityPresentation['effect_description']
+                : $facilityPresentation['promotion_description'];
+            if ($description !== '') {
+                $details[] = $this->detail(
+                    $rank === 2 ? 'facility_effect' : 'facility_promotion',
+                    $rank === 2 ? '効果' : '昇格条件',
+                    $description,
+                    null,
+                    $description,
+                    'public',
+                );
+            }
         }
 
         if ($facility !== null && $cell->facility_experience !== null && $isOwner) {
@@ -292,6 +368,14 @@ final class MapCellPresenter
     private function facility(string $key): FacilityDefinition
     {
         return $this->facilities[$key] ??= FacilityDefinition::query()->where('key', $key)->firstOrFail();
+    }
+
+    /** @return array<string, mixed> */
+    private function configuredRulesetSettings(): array
+    {
+        $settings = config('hakoniwa.ruleset', []);
+
+        return is_array($settings) ? $settings : [];
     }
 
     private static function isDisguised(

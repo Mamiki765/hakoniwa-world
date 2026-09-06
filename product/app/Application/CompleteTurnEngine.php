@@ -10,6 +10,7 @@ use App\Domain\Economy\NationEconomyCalculator;
 use App\Domain\Economy\SalePolicy;
 use App\Domain\Economy\UnderseaCityMaintenancePlanner;
 use App\Domain\Facility\FacilityCapacityService;
+use App\Domain\Facility\FacilityRankPolicy;
 use App\Domain\Map\GridCoordinate;
 use App\Domain\Map\MapCellStateService;
 use App\Domain\Map\NationLandAreaCalculator;
@@ -61,6 +62,7 @@ final class CompleteTurnEngine
         private readonly NationEconomyCalculator $economyCalculator,
         private readonly UnderseaCityMaintenancePlanner $underseaCityMaintenance,
         private readonly FacilityCapacityService $facilityCapacities,
+        private readonly FacilityRankPolicy $facilityRanks,
         private readonly MapCellStateService $cells,
         private readonly NationLandAreaCalculator $landArea,
         private readonly TurnEventRecorder $events,
@@ -364,7 +366,7 @@ final class CompleteTurnEngine
             if ($cell->facility_scale === null) {
                 throw new DomainException("Facility {$key} has incomplete workforce capacity state.");
             }
-            $capacity = $this->facilityCapacities->capacityPeople($definition, (int) $cell->facility_scale);
+            $capacity = $this->facilityCapacity($context, $definition, (int) $cell->facility_scale);
             if ($key === 'farm') {
                 $farmCapacity += $capacity;
             } else {
@@ -518,6 +520,21 @@ final class CompleteTurnEngine
         );
         $monsterBatch = $this->monsters->load($context);
         $shipBatch = $this->ships->load($context, $space);
+        foreach ($context->state->surfaceCellIds() as $cellId) {
+            $cell = $cellsById->get($cellId);
+            if (! $cell instanceof MapCell) {
+                throw new DomainException("Surface cell order references missing cell {$cellId}.");
+            }
+            $this->monsters->processPrepassCell(
+                $context,
+                $space,
+                $cell,
+                $cellsByCoordinate,
+                $monsterBatch,
+                $disasterCells,
+                $shipBatch,
+            );
+        }
         $metrics['missile_boundary_monsters'] = $this->karma->snapshotMissileBoundary($context);
         $this->missiles->begin($cellsByCoordinate, $shipBatch);
         $launchBaseKeys = $context->ruleset->settings['military']['launch_base_facility_keys'] ?? [];
@@ -744,8 +761,11 @@ final class CompleteTurnEngine
             if ($cell->facility_scale === null || $cell->facility->scale_unit_people === null) {
                 throw new DomainException("Facility {$key} has incomplete workforce capacity state.");
             }
-            $aggregates[$nationId]["{$key}_capacity"] +=
-                $cell->facility_scale * $cell->facility->scale_unit_people;
+            $aggregates[$nationId]["{$key}_capacity"] += $this->facilityCapacity(
+                $context,
+                $cell->facility,
+                (int) $cell->facility_scale,
+            );
         }
         foreach ($nationIds as $nationId) {
             $aggregates[$nationId]['farm_capacity'] +=
@@ -765,6 +785,18 @@ final class CompleteTurnEngine
             'owned_land_cells' => $ownedLandCells,
             'map_chunks_updated' => $changedChunks,
         ];
+    }
+
+    private function facilityCapacity(
+        TurnContext $context,
+        FacilityDefinition $definition,
+        int $scale,
+    ): int {
+        return $this->facilityCapacities->capacityPeople(
+            $definition,
+            $scale,
+            $this->facilityRanks->maximumScale($context->ruleset->settings, $definition),
+        );
     }
 
     private function updateChangedMapChunkVersions(TurnContext $context): int

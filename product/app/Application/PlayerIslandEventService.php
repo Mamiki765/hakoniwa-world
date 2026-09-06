@@ -784,17 +784,52 @@ final class PlayerIslandEventService
                 ? "中立海域({$x},{$y})に{$monster}が出現しました。"
                 : "{$nation}({$x},{$y})に{$monster}が出現し、一帯を踏み荒らしました。",
             'monster.moved' => ($nation === '島' ? '中立海域' : $nation)."({$x},{$y})へ{$monster}が移動した模様です。",
-            'monster.trampled' => sprintf(
-                '%s(%s,%s)の%sが%sに踏み荒らされました。',
-                $nation,
-                $x,
-                $y,
-                $metadata['location_label'] ?? '土地',
-                $monster,
-            ),
+            'monster.trampled' => ($metadata['monster_key'] ?? null) === 'nyowamiya'
+                ? sprintf(
+                    '%s(%s,%s)を%sが踏み荒らし……なぜか平地になりました',
+                    $nation,
+                    $x,
+                    $y,
+                    $monster,
+                )
+                : sprintf(
+                    '%s(%s,%s)の%sが%sに踏み荒らされました。',
+                    $nation,
+                    $x,
+                    $y,
+                    $metadata['location_label'] ?? '土地',
+                    $monster,
+                ),
             'monster.damage_blocked' => "{$nation}({$x},{$y})の{$monster}に攻撃が命中しましたが、硬化中のため効果がありませんでした。",
-            'monster.damaged' => "{$nation}({$x},{$y})の{$monster}に攻撃が命中し、苦しそうに咆哮しました。",
-            'monster.killed' => "{$nation}({$x},{$y})の{$monster}は力尽き、倒れました。"
+            'monster.damaged' => ($metadata['monster_key'] ?? null) === 'nyowamiya'
+                ? sprintf(
+                    '%s(%s,%s)の%sに%sが命中し、%sはものすごく不機嫌そうな顔をしました',
+                    $nation,
+                    $x,
+                    $y,
+                    $monster,
+                    $metadata['attack_label'] ?? '攻撃',
+                    $monster,
+                )
+                : "{$nation}({$x},{$y})の{$monster}に攻撃が命中し、苦しそうに咆哮しました。",
+            'monster.killed' => ($metadata['monster_key'] ?? null) === 'nyowamiya'
+                ? sprintf(
+                    '%s(%s,%s)の%sに%sが命中し、%sはものすごく不機嫌そうな顔をしました。%s(%s,%s)の%sは怒って大量のチーズを置いてどっかに帰りました%s',
+                    $nation,
+                    $x,
+                    $y,
+                    $monster,
+                    $metadata['attack_label'] ?? '攻撃',
+                    $monster,
+                    $nation,
+                    $x,
+                    $y,
+                    $monster,
+                    ($metadata['reward_distributed'] ?? false) === true
+                        ? '。なぜか怪獣肉として保管・分配されました'
+                        : '。',
+                )
+                : "{$nation}({$x},{$y})の{$monster}は力尽き、倒れました。"
                 .(($metadata['reward_distributed'] ?? false) === true
                     ? '怪獣は解体され、報酬が分配されました。'
                     : ''),
@@ -1045,6 +1080,10 @@ final class PlayerIslandEventService
         }
         if ($eventType === 'monster.killed' && is_numeric($metadata['killer_nation_id'] ?? null)) {
             $safe['reward_distributed'] = true;
+        }
+        if (in_array($eventType, ['monster.damaged', 'monster.killed'], true)
+            && ($safe['monster_key'] ?? null) === 'nyowamiya') {
+            $safe['attack_label'] = $this->monsterAttackLabel($metadata['damage_type'] ?? null);
         }
         if ($eventType === 'monster.trampled') {
             $safe['location_label'] = $this->publicAffectedLocationLabel($metadata);
@@ -2243,6 +2282,21 @@ final class PlayerIslandEventService
         };
     }
 
+    private function monsterAttackLabel(mixed $key): string
+    {
+        return match ($key) {
+            'missile' => 'ミサイル',
+            'pp_missile' => 'PPミサイル',
+            'land_destruction_missile' => '陸地破壊弾',
+            'spp_missile' => 'SPPミサイル',
+            'secretary_old_bow' => '古びた弓',
+            'secretary_elf_bow' => 'エルフの弓',
+            'secretary_longshot_bow' => '遠当ての弓',
+            'secretary_mechanical_bow' => '機械弓',
+            default => '攻撃',
+        };
+    }
+
     /** @param array<string, mixed> $metadata */
     private function secretaryLabel(array $metadata): string
     {
@@ -2464,6 +2518,7 @@ final class PlayerIslandEventService
         return match ($key) {
             'mecha_inora' => 'メカいのら',
             'mecha_inora_zero' => 'メカいのら零式',
+            'nyowamiya' => '珍獣ニョワミヤ',
             'inora' => 'いのら',
             'sanjira' => 'サンジラ',
             'red_inora' => 'レッドいのら',

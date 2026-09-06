@@ -2351,7 +2351,7 @@ class CommandAndMissileTest extends TestCase
     public function test_current_explicit_targeting_preserves_v2_own_foreign_neutral_and_unowned_sea_contract(): void
     {
         [$world, $user, $firing, $foreign] = $this->combatants();
-        $this->assertSame('hakoniwa-2s-plus-v20', $world->rulesetVersion()->value('key'));
+        $this->assertSame('hakoniwa-2s-plus-v21', $world->rulesetVersion()->value('key'));
         $firing->update(['money' => 10_000]);
         $space = $this->surfaceMapSpace($world);
         $base = $this->missileBase($firing);
@@ -4908,6 +4908,155 @@ class CommandAndMissileTest extends TestCase
         $this->assertSame(20, $impact['alliance_money']);
     }
 
+    public function test_v21_rank_two_ordinary_facility_damage_preserves_cell_and_adds_one_karma_point(): void
+    {
+        [$world, $firingUser, $firing, $target] = $this->combatants('rank-two-ordinary-facility');
+        $firing->update(['money' => 9_999, 'karma' => 0]);
+        $target->update(['karma' => 0]);
+        DB::table('secretary_skills')
+            ->where('skill_key', SecretarySkillCatalog::FINAL_DEFENSE_LINE)
+            ->update(['level' => 0, 'experience' => 0]);
+
+        $space = $this->surfaceMapSpace($world);
+        $base = $this->missileBase($firing);
+        $cell = MapCell::query()->where('owner_nation_id', $target->id)
+            ->whereKeyNot($target->capital()->value('map_cell_id'))
+            ->whereNull('facility_definition_id')
+            ->whereHas('terrain', fn ($query) => $query->where('key', 'plain'))
+            ->with(['terrain', 'facility', 'ownerNation'])->firstOrFail();
+        app(MapCellStateService::class)->setFacility(
+            $cell,
+            FacilityDefinition::query()->where('key', 'farm')->firstOrFail(),
+            scale: 51,
+            maximumScale: 100,
+        );
+        $cell->owner_nation_id = $target->id;
+        $cell->population = 0;
+        $cell->save();
+        $before = $cell->fresh(['terrain', 'facility', 'ownerNation']);
+        $beforeVersion = (int) $before->version;
+        $context = $this->resolveKarmaMissileTurn(
+            $world,
+            $firingUser,
+            $firing,
+            $target,
+            $base,
+            'spp_missile',
+            $cell,
+            2,
+        );
+
+        $after = $cell->fresh(['terrain', 'facility', 'ownerNation']);
+        $this->assertSame('farm', $after->facility?->key);
+        $this->assertSame(50, $after->facility_scale);
+        $this->assertSame('plain', $after->terrain->key);
+        $this->assertSame($target->id, $after->owner_nation_id);
+        $this->assertSame(0, $after->population);
+        $this->assertSame($beforeVersion + 1, (int) $after->version);
+        $this->assertSame([$after->map_chunk_id], $context->state->changedMapChunkIds());
+
+        $impact = DB::table('audit_events')->where('event_type', 'missile.impact')
+            ->whereRaw("metadata->>'effect' = 'facility_scale_damaged'")
+            ->orderByDesc('id')->value('metadata');
+        $this->assertIsString($impact);
+        $impact = json_decode($impact, true, 512, JSON_THROW_ON_ERROR);
+        $this->assertSame('facility_scale_damaged', $impact['effect']);
+        $this->assertSame('farm', $impact['facility_key']);
+        $this->assertSame(51, $impact['before_scale']);
+        $this->assertSame(50, $impact['after_scale']);
+        $this->assertSame(1, $impact['scale_loss']);
+        $this->assertArrayNotHasKey('removed_facility_key', $impact);
+
+        $karma = DB::table('audit_events')->where('event_type', 'karma.missile_impact')
+            ->whereRaw("metadata->>'effect' = 'facility_scale_damaged'")
+            ->orderByDesc('id')->value('metadata');
+        $this->assertIsString($karma);
+        $karma = json_decode($karma, true, 512, JSON_THROW_ON_ERROR);
+        $this->assertSame(1, $karma['impact_category_points']);
+        $this->assertSame(1, $karma['crime_points']);
+        $this->assertSame(1, (int) $firing->fresh()->karma);
+    }
+
+    public function test_v21_rank_two_land_facility_damage_preserves_cell_and_adds_three_karma_points(): void
+    {
+        [$world, $firingUser, $firing, $target] = $this->combatants('rank-two-land-facility');
+        $firing->update(['money' => 9_999, 'karma' => 0]);
+        $target->update(['karma' => 0]);
+        DB::table('secretary_skills')
+            ->where('skill_key', SecretarySkillCatalog::FINAL_DEFENSE_LINE)
+            ->update(['level' => 0, 'experience' => 0]);
+
+        $space = $this->surfaceMapSpace($world);
+        $base = $this->missileBase($firing);
+        $cell = MapCell::query()->where('owner_nation_id', $target->id)
+            ->whereKeyNot($target->capital()->value('map_cell_id'))
+            ->whereNull('facility_definition_id')
+            ->whereHas('terrain', fn ($query) => $query->where('key', 'plain'))
+            ->with(['terrain', 'facility', 'ownerNation'])->firstOrFail();
+        app(MapCellStateService::class)->setFacility(
+            $cell,
+            FacilityDefinition::query()->where('key', 'farm')->firstOrFail(),
+            scale: 51,
+            maximumScale: 100,
+        );
+        $cell->owner_nation_id = $target->id;
+        $cell->population = 0;
+        $cell->save();
+        $before = $cell->fresh(['terrain', 'facility', 'ownerNation']);
+        $beforeVersion = (int) $before->version;
+        $item = $this->queue(
+            app(CommandQueueService::class),
+            $firingUser,
+            $firing,
+            $space,
+            'land_destruction_missile',
+            $cell,
+        );
+        $seed = $this->seedForImpactIndex($item, $cell, 2, $cell);
+
+        $result = $this->resolveKarmaLaunchWithBoundaryMutation(
+            $world,
+            $firing,
+            $target,
+            $item,
+            [$base],
+            2,
+            static function (): void {},
+            $seed,
+        );
+
+        $this->assertSame(1, $result['shots_fired']);
+        $after = $cell->fresh(['terrain', 'facility', 'ownerNation']);
+        $this->assertSame('farm', $after->facility?->key);
+        $this->assertSame(48, $after->facility_scale);
+        $this->assertSame('plain', $after->terrain->key);
+        $this->assertSame($target->id, $after->owner_nation_id);
+        $this->assertSame(0, $after->population);
+        $this->assertSame($beforeVersion + 1, (int) $after->version);
+        $this->assertSame([$after->map_chunk_id], $result['changed_map_chunk_ids']);
+
+        $impact = DB::table('audit_events')->where('event_type', 'missile.impact')
+            ->whereRaw("metadata->>'effect' = 'facility_scale_land_damaged'")
+            ->orderByDesc('id')->value('metadata');
+        $this->assertIsString($impact);
+        $impact = json_decode($impact, true, 512, JSON_THROW_ON_ERROR);
+        $this->assertSame('facility_scale_land_damaged', $impact['effect']);
+        $this->assertSame('farm', $impact['facility_key']);
+        $this->assertSame(51, $impact['before_scale']);
+        $this->assertSame(48, $impact['after_scale']);
+        $this->assertSame(3, $impact['scale_loss']);
+        $this->assertArrayNotHasKey('removed_facility_key', $impact);
+
+        $karma = DB::table('audit_events')->where('event_type', 'karma.missile_impact')
+            ->whereRaw("metadata->>'effect' = 'facility_scale_land_damaged'")
+            ->orderByDesc('id')->value('metadata');
+        $this->assertIsString($karma);
+        $karma = json_decode($karma, true, 512, JSON_THROW_ON_ERROR);
+        $this->assertSame(3, $karma['impact_category_points']);
+        $this->assertSame(3, $karma['crime_points']);
+        $this->assertSame(3, (int) $firing->fresh()->karma);
+    }
+
     /** @return array{World, User, Nation, Nation} */
     private function combatants(string $suffix = ''): array
     {
@@ -5163,7 +5312,7 @@ class CommandAndMissileTest extends TestCase
         string $missileKey,
         MapCell $targetCell,
         int $targetTurn,
-    ): void {
+    ): TurnContext {
         $item = $this->queue(
             app(CommandQueueService::class),
             $user,
@@ -5172,7 +5321,8 @@ class CommandAndMissileTest extends TestCase
             $missileKey,
             $targetCell->fresh(['terrain', 'facility', 'ownerNation']),
         );
-        $this->resolvePreparedKarmaMissileTurn(
+
+        return $this->resolvePreparedKarmaMissileTurn(
             $world,
             $firing,
             $target,
@@ -5191,7 +5341,7 @@ class CommandAndMissileTest extends TestCase
         NationCommandQueueItem $item,
         int $targetTurn,
         string $seed,
-    ): void {
+    ): TurnContext {
         $nationIds = [$firing->id, $target->id];
         $context = $this->context($world, $targetTurn, $seed, $nationIds);
         $context->state->setLifecycleNationIds($nationIds);
@@ -5218,6 +5368,8 @@ class CommandAndMissileTest extends TestCase
         $karma->settleAllianceMoney($context);
         $resolver->resolveSanctions($context);
         $karma->finalize($context);
+
+        return $context;
     }
 
     /**
@@ -5225,6 +5377,8 @@ class CommandAndMissileTest extends TestCase
      * @return array{
      *     shots_fired: int,
      *     crime_points: int,
+     *     changed_cell_ids: list<int>,
+     *     changed_map_chunk_ids: list<int>,
      *     classification: array{
      *         turn_start_monster: bool,
      *         missile_boundary_monster: bool,
@@ -5259,12 +5413,18 @@ class CommandAndMissileTest extends TestCase
         $resolver = app(MissileImpactResolver::class);
         $resolver->begin($this->missileCellIndex($world));
         $shotsFired = 0;
+        $changedCellIds = [];
         foreach ($bases as $base) {
-            $shotsFired += $resolver->processBase(
+            $metrics = $resolver->processBase(
                 $context,
                 $this->surfaceMapSpace($world),
                 $base->fresh(['terrain', 'facility', 'ownerNation']),
-            )['shots_fired'];
+            );
+            $shotsFired += $metrics['shots_fired'];
+            $changedCellIds = array_values(array_unique([
+                ...$changedCellIds,
+                ...$metrics['changed_cell_ids'],
+            ]));
         }
         $resolver->finalize($context);
         $karma->settleAllianceMoney($context);
@@ -5278,6 +5438,8 @@ class CommandAndMissileTest extends TestCase
         return [
             'shots_fired' => $shotsFired,
             'crime_points' => $context->state->karmaLedgerForNation($firing->id)['crime_points'],
+            'changed_cell_ids' => $changedCellIds,
+            'changed_map_chunk_ids' => $context->state->changedMapChunkIds(),
             'classification' => [
                 'turn_start_monster' => $classification['turn_start_monster'],
                 'missile_boundary_monster' => $classification['missile_boundary_monster'],

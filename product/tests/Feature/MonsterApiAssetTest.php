@@ -54,6 +54,7 @@ class MonsterApiAssetTest extends TestCase
         foreach (range(0, 8) as $index) {
             file_put_contents($directory.DIRECTORY_SEPARATOR."monster{$index}.gif", $onePixelGif);
         }
+        file_put_contents($directory.DIRECTORY_SEPARATOR.'monsnyowa.gif', $onePixelGif);
         config([
             'hakoniwa.assets.path' => $directory,
             'hakoniwa.assets.base_url' => 'https://assets.example.test/hakoniwa-tiles',
@@ -80,6 +81,9 @@ class MonsterApiAssetTest extends TestCase
             $this->assertStringNotContainsString('_references', $asset['url']);
             $this->assertSame('image/gif', $resolver->contentTypeForFilename($filename));
         }
+        $nyowamiya = $resolver->resolve('hakoniwa_custom.monster.nyowamiya', '珍獣ニョワミヤ');
+        $this->assertTrue($nyowamiya['available']);
+        $this->assertStringContainsString('/monsnyowa.gif?v=', $nyowamiya['url']);
 
         File::delete($directory.DIRECTORY_SEPARATOR.'monster4.gif');
         $fallback = (new AssetManifestResolver)->resolve('hakoniwa_original.monster.hardened', '硬化怪獣');
@@ -110,6 +114,7 @@ class MonsterApiAssetTest extends TestCase
         $this->assertNull($projected['monster']['asset_url']);
         $this->assertFalse($projected['monster']['asset']['available']);
         $this->assertSame(2, $projected['monster']['current_hp']);
+        $this->assertSame([], $projected['monster']['traits']);
         $this->assertTrue($projected['monster']['hardened_now']);
         $this->assertSame(['nation_number' => $nation->nation_number, 'name' => $nation->name], $projected['monster']['host_nation']);
         $this->assertSame('N'.$nation->nation_number, $projected['monster']['host_label']);

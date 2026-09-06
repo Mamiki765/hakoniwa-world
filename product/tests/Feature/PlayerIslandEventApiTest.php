@@ -247,6 +247,39 @@ class PlayerIslandEventApiTest extends TestCase
         $this->assertNotContains($killedWithHost, $attackerEventIds);
     }
 
+    public function test_nyowamiya_kill_projection_includes_the_actual_attack_and_cheese_once(): void
+    {
+        [$world, , $nation] = $this->nation('ニョワミヤ表示島');
+        $world->update(['current_turn' => 2]);
+        DB::table('audit_events')->delete();
+        $this->audit('monster.killed', $nation, $nation, 'public', 2, [
+            'monster_key' => 'nyowamiya',
+            'damage_type' => 'pp_missile',
+            'killer_nation_id' => $nation->id,
+            'host_nation_id' => $nation->id,
+            'x' => 12,
+            'y' => 8,
+        ]);
+
+        $response = $this->getJson("/api/v1/public/worlds/{$world->id}/events")->assertOk();
+        $event = collect($response->json('data.groups'))->flatMap(
+            static fn (array $group): array => $group['events'],
+        )->firstWhere('type', 'monster.killed');
+
+        $this->assertIsArray($event);
+        $this->assertStringContainsString(
+            'ニョワミヤ表示島(12,8)の珍獣ニョワミヤにPPミサイルが命中し、珍獣ニョワミヤはものすごく不機嫌そうな顔をしました。',
+            $event['message'],
+        );
+        $this->assertStringContainsString(
+            'ニョワミヤ表示島(12,8)の珍獣ニョワミヤは怒って大量のチーズを置いてどっかに帰りました。なぜか怪獣肉として保管・分配されました',
+            $event['message'],
+        );
+        $this->assertSame(1, substr_count($event['message'], 'PPミサイルが命中'));
+        $this->assertSame(1, substr_count($event['message'], 'チーズ'));
+        $this->assertStringNotContainsString('SPPミサイル', $event['message']);
+    }
+
     public function test_public_aid_is_one_world_event_related_to_both_snapshot_nations_and_exposes_only_actual_transfer(): void
     {
         [$world, , $sender] = $this->nation('援助元島');

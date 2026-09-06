@@ -11,6 +11,7 @@ final class SecretaryMonsterDropContract
         'hakoniwa-2s-plus-v18',
         'hakoniwa-2s-plus-v19',
         'hakoniwa-2s-plus-v20',
+        'hakoniwa-2s-plus-v21',
     ];
 
     /** @var list<string> */

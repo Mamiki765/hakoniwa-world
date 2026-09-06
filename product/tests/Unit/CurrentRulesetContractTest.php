@@ -19,6 +19,8 @@ final class CurrentRulesetContractTest extends TestCase
 
     private const V20_CHECKSUM = 'fdc8ca06a567aaa5a17860ad26fcecca50c4aa5a25a7ad430f6017178d485b5e';
 
+    private const V21_CHECKSUM = 'e78017aad4840639d6f17b22d908d293b855f992974e0d934a88c2a961340a33';
+
     /** @var array{domains: int, leaves: int, behavior: int, data: int, flavor: int} */
     private const V16_COVERAGE = [
         'domains' => 10,
@@ -28,7 +30,7 @@ final class CurrentRulesetContractTest extends TestCase
         'flavor' => 176,
     ];
 
-    public function test_normal_config_loads_v20_while_preserving_the_explicit_v16_through_v19_contracts(): void
+    public function test_normal_config_loads_v21_while_preserving_the_explicit_v16_through_v20_contracts(): void
     {
         $normalConfig = require config_path('hakoniwa.php');
         $current = $normalConfig['ruleset'];
@@ -36,16 +38,17 @@ final class CurrentRulesetContractTest extends TestCase
         $v17 = require config_path('hakoniwa/rulesets/hakoniwa-2s-plus-v17.php');
         $v18 = require config_path('hakoniwa/rulesets/hakoniwa-2s-plus-v18.php');
         $v19 = require config_path('hakoniwa/rulesets/hakoniwa-2s-plus-v19.php');
+        $v20 = require config_path('hakoniwa/rulesets/hakoniwa-2s-plus-v20.php');
         $source = file_get_contents(config_path('hakoniwa/rulesets/hakoniwa-2s-plus-v16.php'));
 
         $this->assertIsString($source);
         $this->assertSame(10, substr_count($source, "require __DIR__.'/current/"));
         $this->assertLessThan(100, substr_count($source, "\n"));
-        $this->assertSame(['hakoniwa-2s-plus-v20'], array_keys($normalConfig['published_rulesets']));
-        $this->assertSame($current, $normalConfig['published_rulesets']['hakoniwa-2s-plus-v20']);
+        $this->assertSame(['hakoniwa-2s-plus-v21'], array_keys($normalConfig['published_rulesets']));
+        $this->assertSame($current, $normalConfig['published_rulesets']['hakoniwa-2s-plus-v21']);
         $this->assertSame($current['secretary'], $normalConfig['current_catalogs']['secretary']);
-        $this->assertSame('hakoniwa-2s-plus-v20', $current['key']);
-        $this->assertSame(20, $current['version']);
+        $this->assertSame('hakoniwa-2s-plus-v21', $current['key']);
+        $this->assertSame(21, $current['version']);
         $this->assertArrayNotHasKey('behavior', $current);
         $this->assertArrayNotHasKey('data', $current);
         $this->assertArrayNotHasKey('flavor', $current);
@@ -53,7 +56,8 @@ final class CurrentRulesetContractTest extends TestCase
         $this->assertSame(self::V17_CHECKSUM, $this->checksum($v17));
         $this->assertSame(self::V18_CHECKSUM, $this->checksum($v18));
         $this->assertSame(self::V19_CHECKSUM, $this->checksum($v19));
-        $this->assertSame(self::V20_CHECKSUM, $this->checksum($current));
+        $this->assertSame(self::V20_CHECKSUM, $this->checksum($v20));
+        $this->assertSame(self::V21_CHECKSUM, $this->checksum($current));
         $v18UnderseaCity = collect($v18['command_definitions'])->firstWhere('key', 'build_undersea_city');
         $v19UnderseaCity = collect($v19['command_definitions'])->firstWhere('key', 'build_undersea_city');
         $v20UnderseaCity = collect($current['command_definitions'])->firstWhere('key', 'build_undersea_city');
@@ -123,10 +127,28 @@ final class CurrentRulesetContractTest extends TestCase
             ['missile_launch_capacity' => 1],
             $underground['facility_definitions']['underground_missile_base']['effect'],
         );
+        $this->assertSame(['farm', 'factory', 'mine'], array_keys(
+            $current['facility_rank_system']['definitions'],
+        ));
+        $this->assertSame(100, $current['facility_rank_system']['definitions']['farm']['rank_two_maximum_scale']);
+        $this->assertSame(200, $current['facility_rank_system']['definitions']['factory']['rank_two_maximum_scale']);
+        $this->assertSame(400, $current['facility_rank_system']['definitions']['mine']['rank_two_maximum_scale']);
+        $this->assertSame([
+            'tile.large_farm',
+            'tile.large_factory',
+            'tile.large_mine',
+        ], array_column($current['facility_rank_system']['definitions'], 'rank_two_asset_key'));
+        $tier = $current['monster_system']['natural_spawn']['population_tiers'][3];
+        $this->assertSame(500_000, $tier['minimum_population']);
+        $this->assertSame(['nyowamiya', 'mecha_inora_zero'], array_slice($tier['monster_keys'], -2));
+        $this->assertSame(
+            'single_uniform_draw_no_retry',
+            $current['monster_system']['natural_spawn']['rank_two_condition']['fallback_selection'],
+        );
 
         $summary = app(RulesetAuthoringValidator::class)->validate($current);
-        $this->assertSame('hakoniwa-2s-plus-v20', $summary['key']);
-        $this->assertSame(20, $summary['version']);
+        $this->assertSame('hakoniwa-2s-plus-v21', $summary['key']);
+        $this->assertSame(21, $summary['version']);
         $this->assertSame(count($current['command_definitions']), $summary['commands']);
         $this->assertSame(count($current['production_definitions']), $summary['production']);
     }
@@ -134,7 +156,7 @@ final class CurrentRulesetContractTest extends TestCase
     public function test_current_domain_authoring_classifies_every_scalar_leaf_exactly_once(): void
     {
         $this->assertSame(
-            12,
+            13,
             app(CurrentRulesetAuthoringInspector::class)->inspect(config('hakoniwa.ruleset'))['domains'],
         );
         $coverage = app(CurrentRulesetAuthoringInspector::class)->inspect(config('hakoniwa.ruleset'));

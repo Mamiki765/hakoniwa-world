@@ -233,6 +233,127 @@ class MonsterSystemTest extends TestCase
         $this->assertSame(0, MonsterInstance::query()->count());
     }
 
+    public function test_nyowamiya_or_zero_draw_without_rank_two_uses_one_uniform_fallback_from_the_existing_seven(): void
+    {
+        [$world, $nation, $ruleset, $space] = $this->worldAndNation('ニョワミヤ資格不足国');
+        $this->prepareSettlement($nation, 500_000);
+        $settings = $ruleset->settings;
+        $natural = $settings['monster_system']['natural_spawn'];
+        $fallbackPool = [
+            'inora', 'sanjira', 'red_inora', 'dark_inora', 'inora_ghost', 'whale', 'king_inora',
+        ];
+        $natural['population_tiers'] = array_values(array_filter(
+            $natural['population_tiers'],
+            static fn (array $tier): bool => ($tier['minimum_population'] ?? 0) < 500_000,
+        ));
+        $natural['population_tiers'][] = [
+            'minimum_population' => 500_000,
+            'monster_keys' => [...$fallbackPool, 'nyowamiya', 'mecha_inora_zero'],
+        ];
+        $natural['rank_two_condition'] = [
+            'facility_keys' => ['farm', 'factory', 'mine'],
+            'conditional_monster_keys' => ['nyowamiya', 'mecha_inora_zero'],
+            'fallback_monster_keys' => $fallbackPool,
+            'fallback_selection' => 'single_uniform_draw_no_retry',
+        ];
+        $settings['monster_system']['natural_spawn'] = $natural;
+        $ruleset->settings = $settings;
+        $ruleset = $this->guaranteeNaturalSpawn($ruleset);
+
+        $seedLabel = null;
+        $expectedFallback = null;
+        foreach (range(0, 10_000) as $candidate) {
+            $label = "nyowamiya-fallback-{$candidate}";
+            $stream = (new TurnRandomStreamFactory(hash('sha256', $label)))->stream(
+                TurnRandomStreamFactory::monsterSpawn($nation->id, 'type', 1),
+            );
+            if ($stream->integer(0, 8) < 7) {
+                continue;
+            }
+            $seedLabel = $label;
+            $expectedFallback = $fallbackPool[$stream->integer(0, 6)];
+            break;
+        }
+        $this->assertNotNull($seedLabel);
+        $this->assertNotNull($expectedFallback);
+        [$context] = $this->context($world, $ruleset, 2, $seedLabel, [$nation->id]);
+
+        $metrics = app(MonsterSpawnService::class)->spawnNatural($context, $space);
+
+        $this->assertSame(1, $metrics['spawn_draws']);
+        $this->assertSame(1, $metrics['monsters_spawned']);
+        $this->assertSame(
+            $expectedFallback,
+            MonsterInstance::query()->with('definition')->sole()->definition->key,
+        );
+        $this->assertContains($expectedFallback, $fallbackPool);
+    }
+
+    public function test_nyowamiya_or_zero_draw_with_rank_two_is_kept_in_the_nine_entry_pool(): void
+    {
+        [$world, $nation, $ruleset, $space] = $this->worldAndNation('ニョワミヤ資格国');
+        $settlement = $this->prepareSettlement($nation, 500_000);
+        $rankTwoCell = MapCell::query()
+            ->where('map_space_id', $space->id)
+            ->where('owner_nation_id', $nation->id)
+            ->whereNull('facility_definition_id')
+            ->whereKeyNot($settlement->id)
+            ->with(['terrain', 'facility'])
+            ->firstOrFail();
+        $this->setCell($rankTwoCell, 'plain', 'farm', $nation->id, 0);
+        $rankTwoCell->update(['facility_scale' => 51]);
+
+        $settings = $ruleset->settings;
+        $natural = $settings['monster_system']['natural_spawn'];
+        $fallbackPool = [
+            'inora', 'sanjira', 'red_inora', 'dark_inora', 'inora_ghost', 'whale', 'king_inora',
+        ];
+        $natural['population_tiers'] = array_values(array_filter(
+            $natural['population_tiers'],
+            static fn (array $tier): bool => ($tier['minimum_population'] ?? 0) < 500_000,
+        ));
+        $natural['population_tiers'][] = [
+            'minimum_population' => 500_000,
+            'monster_keys' => [...$fallbackPool, 'nyowamiya', 'mecha_inora_zero'],
+        ];
+        $natural['rank_two_condition'] = [
+            'facility_keys' => ['farm', 'factory', 'mine'],
+            'conditional_monster_keys' => ['nyowamiya', 'mecha_inora_zero'],
+            'fallback_monster_keys' => $fallbackPool,
+            'fallback_selection' => 'single_uniform_draw_no_retry',
+        ];
+        $settings['monster_system']['natural_spawn'] = $natural;
+        $ruleset->settings = $settings;
+        $ruleset = $this->guaranteeNaturalSpawn($ruleset);
+
+        $seedLabel = null;
+        $expectedRare = null;
+        foreach (range(0, 10_000) as $candidate) {
+            $label = "nyowamiya-qualified-{$candidate}";
+            $stream = (new TurnRandomStreamFactory(hash('sha256', $label)))->stream(
+                TurnRandomStreamFactory::monsterSpawn($nation->id, 'type', 1),
+            );
+            $typeIndex = $stream->integer(0, 8);
+            if ($typeIndex < 7) {
+                continue;
+            }
+            $seedLabel = $label;
+            $expectedRare = ['nyowamiya', 'mecha_inora_zero'][$typeIndex - 7];
+            break;
+        }
+        $this->assertNotNull($seedLabel);
+        $this->assertNotNull($expectedRare);
+        [$context] = $this->context($world, $ruleset, 2, $seedLabel, [$nation->id]);
+
+        $metrics = app(MonsterSpawnService::class)->spawnNatural($context, $space);
+
+        $this->assertSame(1, $metrics['monsters_spawned']);
+        $this->assertSame(
+            $expectedRare,
+            MonsterInstance::query()->with('definition')->sole()->definition->key,
+        );
+    }
+
     public function test_recovery_excludes_natural_spawn_and_protects_all_territory_from_monster_movement(): void
     {
         [$world, $nation, $ruleset, $space] = $this->worldAndNation('休戦怪獣除外国');
@@ -609,6 +730,58 @@ class MonsterSystemTest extends TestCase
         $this->assertCount(0, $originEvents);
     }
 
+    public function test_monster_trampling_a_rank_two_facility_still_destroys_it_completely(): void
+    {
+        [$world, $nation, $ruleset, $space] = $this->worldAndNation('ランク2踏み荒らし国');
+        $origin = $this->safeInteriorCell($space, $world);
+        $states = app(MapCellStateService::class);
+        $farm = FacilityDefinition::query()->where('key', 'farm')->firstOrFail();
+        $plain = TerrainDefinition::query()->where('key', 'plain')->firstOrFail();
+
+        foreach ((new GridCoordinate($origin->x, $origin->y))->ring(1) as $coordinate) {
+            $cell = $this->cellAt($space, $coordinate->x, $coordinate->y)->fresh(['terrain', 'facility']);
+            $states->setFacility($cell, null);
+            $states->transitionTerrain($cell, $plain);
+            $states->setFacility($cell, $farm, 51, maximumScale: 100);
+            $cell->owner_nation_id = $nation->id;
+            $cell->population = 0;
+            $cell->version++;
+            $cell->save();
+        }
+        $this->setCell($origin, 'wasteland', null, $nation->id, 0);
+        $monster = $this->createMonster($world, $ruleset, $origin, 'inora', 1);
+        [$context] = $this->context($world, $ruleset, 2, 'rank-two-facility-trample', [$nation->id]);
+        $turn = app(MonsterTurnService::class);
+        $batch = $turn->load($context);
+        $cells = MapCell::query()->where('map_space_id', $space->id)->with(['terrain', 'facility'])->get();
+        $index = $cells->keyBy(static fn (MapCell $cell): string => $cell->x.':'.$cell->y)->all();
+
+        $this->assertTrue($turn->processCell(
+            $context,
+            $space,
+            $origin->fresh(['terrain', 'facility']),
+            $index,
+            $batch,
+        ));
+
+        $destinationId = (int) MonsterOccupancy::query()->where('monster_instance_id', $monster->id)
+            ->value('map_cell_id');
+        $destination = MapCell::query()->with(['terrain', 'facility'])->findOrFail($destinationId);
+        $this->assertSame('wasteland', $destination->terrain->key);
+        $this->assertNull($destination->facility_definition_id);
+        $this->assertNull($destination->facility_scale);
+        $this->assertSame($nation->id, $destination->owner_nation_id);
+        $this->assertSame(0, $destination->population);
+
+        $trample = DB::table('audit_events')->where('event_type', 'monster.trampled')
+            ->where('x', $destination->x)->where('y', $destination->y)->sole();
+        $metadata = json_decode($trample->metadata, true, 512, JSON_THROW_ON_ERROR);
+        $this->assertSame('farm', $metadata['removed_facility_key']);
+        $this->assertSame('farm', $metadata['pre_impact_facility_key']);
+        $this->assertArrayNotHasKey('after_facility_scale', $metadata);
+        $this->assertSame(1, $batch->metrics()['monster_moves']);
+    }
+
     public function test_normal_monster_moves_once_then_stops_at_its_definition_limit(): void
     {
         [$world, $nation, $ruleset, $space] = $this->worldAndNation('通常移動国');
@@ -637,6 +810,48 @@ class MonsterSystemTest extends TestCase
         $this->assertSame(2, $batch->metrics()['monster_actions']);
         $this->assertSame(1, DB::table('audit_events')->where('event_type', 'monster.stayed')
             ->whereRaw("metadata->>'reason' = 'movement_limit'")->count());
+    }
+
+    public function test_nyowamiya_prepass_moves_once_before_the_normal_monster_pass(): void
+    {
+        [$world, $nation, $ruleset, $space] = $this->worldAndNation('ニョワミヤ先行移動国');
+        $origin = $this->safeInteriorCell($space, $world);
+        foreach ((new GridCoordinate($origin->x, $origin->y))->radius(1) as $coordinate) {
+            $this->setCell(
+                $this->cellAt($space, $coordinate->x, $coordinate->y),
+                'plain',
+                null,
+                $nation->id,
+                0,
+            );
+        }
+        $this->setCell($origin, 'wasteland', null, $nation->id, 0);
+        $monster = $this->createMonster($world, $ruleset, $origin, 'nyowamiya', 1);
+        $seedLabel = $this->movementSeedForDirections($monster, [0]);
+        [$context] = $this->context($world, $ruleset, 2, $seedLabel, [$nation->id]);
+        $turn = app(MonsterTurnService::class);
+        $batch = $turn->load($context);
+        $cells = MapCell::query()->where('map_space_id', $space->id)->with(['terrain', 'facility'])->get();
+        $index = $cells->keyBy(static fn (MapCell $cell): string => $cell->x.':'.$cell->y)->all();
+
+        $this->assertTrue($turn->processPrepassCell(
+            $context,
+            $space,
+            $origin->fresh(['terrain', 'facility']),
+            $index,
+            $batch,
+        ));
+        $destinationId = (int) MonsterOccupancy::query()->where('monster_instance_id', $monster->id)
+            ->value('map_cell_id');
+        $destination = $cells->firstWhere('id', $destinationId);
+        $this->assertInstanceOf(MapCell::class, $destination);
+
+        $this->assertFalse($turn->processCell($context, $space, $destination, $index, $batch));
+        $this->assertSame(1, $batch->metrics()['monster_actions']);
+        $this->assertSame(1, $batch->metrics()['monster_moves']);
+        $this->assertSame('plain', $destination->fresh(['terrain'])->terrain->key);
+        $this->assertSame(1, DB::table('audit_events')->where('event_type', 'monster.moved')->count());
+        $this->assertSame(1, DB::table('audit_events')->where('event_type', 'monster.trampled')->count());
     }
 
     public function test_world_edge_and_monster_collisions_leave_actor_in_place(): void

@@ -9,9 +9,8 @@ const usesWorkforce = computed(() => ['farm', 'factory', 'mine'].includes(props.
 <template>
     <section class="selected-cell" aria-live="polite">
         <template v-if="cell">
-            <h3>{{ cell.display_name }}</h3>
+            <h3>{{ cell.display_name }} ({{ cell.x }}, {{ cell.y }})</h3>
             <dl>
-                <dt>座標</dt><dd>x={{ cell.x }}, y={{ cell.y }}</dd>
                 <template v-if="cell.ship">
                     <dt>船の所有者</dt>
                     <dd>{{ cell.ship.owner_nation.name }}（N{{ cell.ship.owner_nation.nation_number }}）</dd>
@@ -29,6 +28,7 @@ const usesWorkforce = computed(() => ['farm', 'factory', 'mine'].includes(props.
                     <dt>現在HP</dt><dd>{{ cell.monster.current_hp }}</dd>
                     <dt>出現時HP</dt><dd>{{ cell.monster.spawned_max_hp }}（定義 {{ cell.monster.hp_range.min }}～{{ cell.monster.hp_range.max }}）</dd>
                     <dt>能力</dt><dd>{{ cell.monster.skill_description }}</dd>
+                    <dt>特性</dt><dd>{{ cell.monster.traits.length > 0 ? cell.monster.traits.join('、') : 'なし' }}</dd>
                     <dt>硬化</dt><dd>{{ cell.monster.hardened_now ? '硬化中' : 'なし' }}</dd>
                     <dt>所在Nation</dt>
                     <dd>{{ cell.monster.host_nation?.name ?? '無所属' }}<span v-if="cell.monster.host_nation">（N{{ cell.monster.host_nation.nation_number }}）</span></dd>

@@ -3,6 +3,8 @@
 namespace App\Application;
 
 use App\Domain\Economy\CapacityBoundedAssetService;
+use App\Domain\Map\MapCellStateService;
+use App\Domain\Monster\MonsterBehaviorResolver;
 use App\Domain\Monster\MonsterDamageResult;
 use App\Domain\Monster\MonsterHardening;
 use App\Domain\Monster\MonsterRewardPolicyResolver;
@@ -14,11 +16,14 @@ use App\Models\Nation;
 use App\Models\NationMonsterKillStat;
 use App\Models\NationUndergroundFacility;
 use App\Models\ResourceDefinition;
+use App\Models\TerrainDefinition;
 use DomainException;
 use Illuminate\Support\Facades\DB;
 
 final class MonsterDamageService
 {
+    private ?TerrainDefinition $plain = null;
+
     public function __construct(
         private readonly MonsterHardening $hardening,
         private readonly CapacityBoundedAssetService $boundedAssets,
@@ -30,6 +35,8 @@ final class MonsterDamageService
         private readonly MonsterRewardPolicyResolver $rewardPolicies,
         private readonly SecretaryExperienceAwardService $secretaryExperience,
         private readonly SecretaryMonsterDropService $itemDrops,
+        private readonly MapCellStateService $cells,
+        private readonly MonsterBehaviorResolver $behaviors,
     ) {}
 
     public function applyDamage(
@@ -221,6 +228,19 @@ final class MonsterDamageService
                 }
             }
 
+            $defeatTerrainKey = $this->behaviors->forDefinition($locked->definition)->defeatTerrainKey;
+            $defeatTerrainMetadata = [];
+            if ($defeatTerrainKey !== null) {
+                $beforeDefeatTerrain = $hostCell->terrain->key;
+                $this->cells->transitionTerrain($hostCell, $this->terrain($defeatTerrainKey));
+                $hostCell->version++;
+                $hostCell->save();
+                $defeatTerrainMetadata = [
+                    'defeat_terrain_key' => $defeatTerrainKey,
+                    'from_terrain_key' => $beforeDefeatTerrain,
+                    'to_terrain_key' => $defeatTerrainKey,
+                ];
+            }
             $this->removal->detachForKill($context, $occupancy, $hostCell);
             $locked->current_hp = 0;
             $locked->state = 'killed';
@@ -286,6 +306,7 @@ final class MonsterDamageService
                 'previous_monster_cycle_kill_count' => $monsterCycle['previous'] ?? null,
                 'new_monster_cycle_kill_count' => $monsterCycle['current'] ?? null,
                 'karma_foreign_monster_kill_qualified' => $foreignMonsterKill,
+                ...$defeatTerrainMetadata,
             ];
             if ($rewardShares['explicitly_authored']) {
                 $eventMetadata['monster_reward_policy'] = $rewardShares['policy'];
@@ -409,6 +430,14 @@ SQL, [
         }
 
         return $experience;
+    }
+
+    private function terrain(string $key): TerrainDefinition
+    {
+        return match ($key) {
+            'plain' => $this->plain ??= TerrainDefinition::query()->where('key', 'plain')->firstOrFail(),
+            default => TerrainDefinition::query()->where('key', $key)->firstOrFail(),
+        };
     }
 
     private function isSecretaryBowDamage(string $damageType): bool

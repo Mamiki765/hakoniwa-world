@@ -105,6 +105,7 @@ const tooltipDetails = computed(() => {
             `怪獣: ${cell.monster.name}`,
             `HP: ${cell.monster.current_hp}/${cell.monster.spawned_max_hp}`,
             `所在: ${cell.monster.host_nation?.name ?? '無所属'} (${cell.monster.host_label})`,
+            ...(cell.monster.traits.length > 0 ? [`特性: ${cell.monster.traits.join('、')}`] : []),
             ...(cell.monster.hardened_now ? ['状態: 硬化中'] : []),
         ]),
         ...(cell.facility === null ? ['施設: なし'] : []),

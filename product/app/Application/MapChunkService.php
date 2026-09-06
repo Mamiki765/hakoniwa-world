@@ -50,7 +50,9 @@ final class MapChunkService
             );
         }
 
-        $currentTurn = (int) $mapSpace->world()->value('current_turn');
+        $world = $mapSpace->world()->with('rulesetVersion')->firstOrFail();
+        $rulesetSettings = $world->rulesetVersion->settings;
+        $currentTurn = (int) $world->current_turn;
         $lifecycle = config('hakoniwa.ruleset.nation_lifecycle', []);
         $radius = is_int($lifecycle['dormant_protection_radius'] ?? null)
             ? $lifecycle['dormant_protection_radius'] : 0;
@@ -69,6 +71,7 @@ final class MapChunkService
                 ->distanceTo(new GridCoordinate($cell->x, $cell->y)) <= $radius)
                 ? $theme : null,
             isset($visibleCoordinates[$cell->x.':'.$cell->y]),
+            $rulesetSettings,
         ))->values();
         $representationVersion = hash('sha256', json_encode($presentedCells, JSON_THROW_ON_ERROR));
 

@@ -20,6 +20,13 @@ function cell(overrides: Partial<MapCell> = {}): MapCell {
 }
 
 describe('viewer-safe cell details', () => {
+    it('shows the cell name and coordinates together in the heading', () => {
+        const wrapper = mount(CellDetails, { props: { cell: cell() } });
+
+        expect(wrapper.get('h3').text()).toBe('平地 (3, -2)');
+        expect(wrapper.text()).not.toContain('座標x=3, y=-2');
+    });
+
     it('separates a Ship owner from the neutral sea cell owner', () => {
         const wrapper = mount(CellDetails, { props: { cell: cell({
             display_name: '観光船',
@@ -105,6 +112,7 @@ describe('viewer-safe cell details', () => {
                 asset: { key: 'hakoniwa_original.monster.kujira', url: null, available: false, fallback_label: 'クジラ', fallback_style: 'monster-kujira' },
                 current_hp: 4, spawned_max_hp: 5, hp_range: { min: 4, max: 5 },
                 skill_description: '偶数ターンは硬化する。', hardened_now: true, public_state: 'alive',
+                traits: [],
                 coordinate: { x: 3, y: -2 }, host_nation: { nation_number: 1, name: '試験島' }, host_label: 'N1',
             },
         }) } });

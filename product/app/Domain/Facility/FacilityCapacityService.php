@@ -16,21 +16,22 @@ final class FacilityCapacityService
         return $this->validateScale($definition, $definition->initial_scale);
     }
 
-    public function validateScale(FacilityDefinition $definition, int $scale): int
+    public function validateScale(FacilityDefinition $definition, int $scale, ?int $maximumScale = null): int
     {
-        if ($definition->scale_unit_people === null || $definition->maximum_scale === null) {
+        $maximumScale ??= $definition->maximum_scale;
+        if ($definition->scale_unit_people === null || $maximumScale === null) {
             throw new DomainException("{$definition->key} does not use facility scale.");
         }
-        if ($scale < 0 || $scale > $definition->maximum_scale) {
-            throw new DomainException("Facility scale must be between 0 and {$definition->maximum_scale}.");
+        if ($maximumScale < 1 || $scale < 0 || $scale > $maximumScale) {
+            throw new DomainException("Facility scale must be between 0 and {$maximumScale}.");
         }
 
         return $scale;
     }
 
-    public function capacityPeople(FacilityDefinition $definition, int $scale): int
+    public function capacityPeople(FacilityDefinition $definition, int $scale, ?int $maximumScale = null): int
     {
-        $this->validateScale($definition, $scale);
+        $this->validateScale($definition, $scale, $maximumScale);
 
         return $scale * (int) $definition->scale_unit_people;
     }

@@ -4,6 +4,7 @@ namespace App\Application;
 
 use App\Application\Underground\UndergroundFacilityBenefits;
 use App\Domain\Facility\FacilityCapacityService;
+use App\Domain\Facility\FacilityRankPolicy;
 use App\Domain\Map\NationLandAreaCalculator;
 use App\Models\FacilityDefinition;
 use App\Models\MapCell;
@@ -24,6 +25,7 @@ final class NationBasicStatusProjection
     public function __construct(
         private readonly NationLandAreaCalculator $landArea,
         private readonly FacilityCapacityService $facilityCapacities,
+        private readonly FacilityRankPolicy $facilityRanks,
         private readonly UndergroundFacilityBenefits $undergroundBenefits,
     ) {}
 
@@ -40,6 +42,8 @@ final class NationBasicStatusProjection
      */
     public function forNation(Nation $nation): array
     {
+        $world = $nation->world()->with('rulesetVersion')->firstOrFail();
+        $rulesetSettings = $world->rulesetVersion->settings;
         $foodTotals = $this->foodTotals([$nation->id]);
         $status = [
             'total_population' => (int) $nation->territoryCells()->sum('population'),
@@ -69,6 +73,7 @@ final class NationBasicStatusProjection
             $status[$field] += $this->facilityCapacities->capacityPeople(
                 $definition,
                 (int) $group->facility_scale,
+                $this->facilityRanks->maximumScale($rulesetSettings, $definition),
             ) * (int) $group->getRawOriginal('aggregate');
         }
         $status['farm_capacity_people'] += $this->undergroundBenefits->farmCapacityBonus($nation->id);
@@ -105,6 +110,7 @@ final class NationBasicStatusProjection
         $areas = $this->landArea->forWorld($world);
         $foodTotals = $this->foodTotals($nationIds);
         $undergroundCapacityBonuses = $this->undergroundBenefits->workforceCapacityBonuses($nationIds);
+        $rulesetSettings = $world->rulesetVersion()->firstOrFail()->settings;
         $projection = [];
 
         foreach ($nations as $nation) {
@@ -112,6 +118,7 @@ final class NationBasicStatusProjection
                 $cellsByNation->get($nation->id, collect()),
                 $areas[$nation->id] ?? 0,
                 $foodTotals[$nation->id] ?? 0,
+                $rulesetSettings,
             );
             $projection[$nation->id]['farm_capacity_people'] +=
                 $undergroundCapacityBonuses[$nation->id]['farm_capacity_people'];
@@ -124,6 +131,7 @@ final class NationBasicStatusProjection
 
     /**
      * @param  iterable<int, MapCell>  $cells
+     * @param  array<string, mixed>  $rulesetSettings
      * @return array{
      *     total_population: int,
      *     territory_cell_count: int,
@@ -134,8 +142,12 @@ final class NationBasicStatusProjection
      *     mine_capacity_people: int
      * }
      */
-    private function project(iterable $cells, int $ownedLandCells, int $foodTotalTons): array
-    {
+    private function project(
+        iterable $cells,
+        int $ownedLandCells,
+        int $foodTotalTons,
+        array $rulesetSettings,
+    ): array {
         $status = [
             'total_population' => 0,
             'territory_cell_count' => 0,
@@ -155,6 +167,7 @@ final class NationBasicStatusProjection
                 $status[$field] += $this->facilityCapacities->capacityPeople(
                     $facility,
                     (int) $cell->facility_scale,
+                    $this->facilityRanks->maximumScale($rulesetSettings, $facility),
                 );
             }
         }

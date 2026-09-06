@@ -6,6 +6,7 @@ use App\Application\Underground\UndergroundFacilityBenefits;
 use App\Domain\Economy\NationEconomyCalculator;
 use App\Domain\Economy\UnderseaCityMaintenancePlanner;
 use App\Domain\Facility\FacilityCapacityService;
+use App\Domain\Facility\FacilityRankPolicy;
 use App\Domain\Nation\NationLifecyclePrepareStateResolver;
 use App\Models\FacilityDefinition;
 use App\Models\Nation;
@@ -22,6 +23,7 @@ final class NationResourceForecastProjection
         private readonly UnderseaCityMaintenancePlanner $underseaCityMaintenance,
         private readonly SecretaryTurnService $secretaries,
         private readonly FacilityCapacityService $facilityCapacities,
+        private readonly FacilityRankPolicy $facilityRanks,
         private readonly NationLifecyclePrepareStateResolver $prepareState,
         private readonly UndergroundFacilityBenefits $undergroundBenefits,
         private readonly NationQueuedMeaningfulActivityQuery $meaningfulActivity,
@@ -126,7 +128,11 @@ final class NationResourceForecastProjection
             $industrialFacilities[] = [
                 'cell_id' => (int) $row->id,
                 'key' => $definition->key,
-                'capacity' => $this->facilityCapacities->capacityPeople($definition, (int) $row->facility_scale),
+                'capacity' => $this->facilityCapacities->capacityPeople(
+                    $definition,
+                    (int) $row->facility_scale,
+                    $this->facilityRanks->maximumScale($ruleset->settings, $definition),
+                ),
             ];
         }
         foreach ($this->undergroundBenefits->factoryFacilities($nation->id) as $facility) {

@@ -2,6 +2,7 @@
 
 namespace App\Application;
 
+use App\Domain\Facility\FacilityRankPolicy;
 use App\Domain\Map\MapCellStateService;
 use App\Domain\Map\NationLandAreaCalculator;
 use App\Domain\Monster\MonsterDispatchOption;
@@ -33,6 +34,7 @@ final class MonsterSpawnService
         private readonly TurnEventRecorder $events,
         private readonly NationProtectionPolicy $nationProtection,
         private readonly SecretaryItemEffectAggregator $secretaryItems,
+        private readonly FacilityRankPolicy $facilityRanks,
     ) {}
 
     /** @return array<string, int> */
@@ -93,6 +95,15 @@ final class MonsterSpawnService
         }
 
         $landByNation = $this->landArea->forNationIds($context->world, $populationEligibleNationIds);
+        $rankTwoCondition = $this->rankTwoCondition($system, $definitions->keys()->all());
+        $rankTwoNationIds = $rankTwoCondition === null
+            ? []
+            : $this->rankTwoNationIds(
+                $context,
+                $space,
+                $populationEligibleNationIds,
+                $rankTwoCondition['facility_keys'],
+            );
         $settlementKeys = $system['settlement_facility_keys'] ?? [];
         $cells = MapCell::query()
             ->where('map_space_id', $space->id)
@@ -169,11 +180,19 @@ final class MonsterSpawnService
                 TurnRandomStreamFactory::monsterSpawn($nation->id, 'candidate', $streamVersion),
             )->integer(0, count($candidates) - 1);
             $cell = $candidates[$candidateIndex];
-            $typeIndex = $context->random->stream(
+            $typeStream = $context->random->stream(
                 TurnRandomStreamFactory::monsterSpawn($nation->id, 'type', $streamVersion),
-            )->integer(0, count($pool) - 1);
+            );
+            $typeIndex = $typeStream->integer(0, count($pool) - 1);
+            $monsterKey = $pool[$typeIndex];
+            if ($rankTwoCondition !== null
+                && in_array($monsterKey, $rankTwoCondition['conditional_monster_keys'], true)
+                && ! isset($rankTwoNationIds[$nation->id])) {
+                $fallbackPool = $rankTwoCondition['fallback_monster_keys'];
+                $monsterKey = $fallbackPool[$typeStream->integer(0, count($fallbackPool) - 1)];
+            }
             /** @var MonsterDefinition|null $definition */
-            $definition = $definitions->get($pool[$typeIndex]);
+            $definition = $definitions->get($monsterKey);
             if ($definition === null || $definition->key === 'mecha_inora') {
                 throw new DomainException('Natural spawn selected an invalid monster definition.');
             }
@@ -319,5 +338,91 @@ final class MonsterSpawnService
     private function wasteland(): TerrainDefinition
     {
         return $this->wasteland ??= TerrainDefinition::query()->where('key', 'wasteland')->firstOrFail();
+    }
+
+    /**
+     * @param  array<string, mixed>  $system
+     * @param  list<string>  $definitionKeys
+     * @return array{facility_keys: list<string>, conditional_monster_keys: list<string>, fallback_monster_keys: list<string>, fallback_selection: string}|null
+     */
+    private function rankTwoCondition(array $system, array $definitionKeys): ?array
+    {
+        $condition = $system['rank_two_condition'] ?? null;
+        if ($condition === null) {
+            return null;
+        }
+        if (! is_array($condition) || array_is_list($condition)) {
+            throw new DomainException('The active ruleset has an invalid rank-two monster condition.');
+        }
+        $requiredKeys = ['facility_keys', 'conditional_monster_keys', 'fallback_monster_keys', 'fallback_selection'];
+        foreach ($requiredKeys as $key) {
+            if (! array_key_exists($key, $condition)) {
+                throw new DomainException("The active ruleset rank-two monster condition is missing {$key}.");
+            }
+        }
+        foreach (['facility_keys', 'conditional_monster_keys', 'fallback_monster_keys'] as $key) {
+            if (! is_array($condition[$key]) || ! array_is_list($condition[$key]) || $condition[$key] === []) {
+                throw new DomainException("The active ruleset rank-two monster condition has an invalid {$key}.");
+            }
+            foreach ($condition[$key] as $monsterKey) {
+                if (! is_string($monsterKey) || $monsterKey === '') {
+                    throw new DomainException("The active ruleset rank-two monster condition has an invalid {$key} entry.");
+                }
+                if ($key !== 'facility_keys' && ! in_array($monsterKey, $definitionKeys, true)) {
+                    throw new DomainException("The active ruleset rank-two monster condition references missing definition {$monsterKey}.");
+                }
+            }
+        }
+        if ($condition['fallback_selection'] !== 'single_uniform_draw_no_retry') {
+            throw new DomainException('The active ruleset rank-two monster fallback selection is unsupported.');
+        }
+
+        return [
+            'facility_keys' => $condition['facility_keys'],
+            'conditional_monster_keys' => $condition['conditional_monster_keys'],
+            'fallback_monster_keys' => $condition['fallback_monster_keys'],
+            'fallback_selection' => $condition['fallback_selection'],
+        ];
+    }
+
+    /**
+     * @param  list<int>  $nationIds
+     * @param  list<string>  $facilityKeys
+     * @return array<int, true>
+     */
+    private function rankTwoNationIds(
+        TurnContext $context,
+        MapSpace $space,
+        array $nationIds,
+        array $facilityKeys,
+    ): array {
+        if ($nationIds === []) {
+            return [];
+        }
+        $rankTwoNationIds = [];
+        $cells = MapCell::query()
+            ->where('map_space_id', $space->id)
+            ->whereIn('owner_nation_id', $nationIds)
+            ->whereHas('facility', fn ($query) => $query->whereIn('key', $facilityKeys))
+            ->with('facility')
+            ->orderBy('id')
+            ->lockForUpdate()
+            ->get();
+        foreach ($cells as $cell) {
+            $ownerNationId = $cell->owner_nation_id;
+            $facility = $cell->facility;
+            if ($ownerNationId === null || $facility === null) {
+                continue;
+            }
+            if ($this->facilityRanks->isRankTwo(
+                $context->ruleset->settings,
+                $facility->key,
+                $cell->facility_scale,
+            )) {
+                $rankTwoNationIds[$ownerNationId] = true;
+            }
+        }
+
+        return $rankTwoNationIds;
     }
 }

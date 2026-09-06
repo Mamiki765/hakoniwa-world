@@ -14,6 +14,12 @@ AWARD-01は`docs/decisions/ADR-0009-ver-1.3.0-awards-and-classic-top.md`で決�
 
 PR22のpublic/private missile visibilityとactive Nation限定targetを維持し、報復予約やhidden metadataを先行追加しない。
 
+### ランク2施設への怪獣接触
+
+3.7.0では、怪獣がランク2施設へ移動した場合も従来どおり踏み荒らし、施設を全損させる。
+
+将来候補として、怪獣が施設へ踏み込まず、その場から「ミサイル10発分相当」の規模damageを与える挙動を検討する。正確な減少量、攻撃後の移動、処理順、表示・log等は未決であり、3.7.0ではruntime定義、設定、schema、未使用hookを追加しない。
+
 ## Lifecycle
 
 - 30日経過による休眠状態遷移Job

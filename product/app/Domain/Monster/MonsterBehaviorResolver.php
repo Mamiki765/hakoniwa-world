@@ -15,6 +15,10 @@ final class MonsterBehaviorResolver
 
     public const NUCLEAR_AT_HP_ONE = 'nuclear_self_destruct_at_hp_one';
 
+    public const NORMAL_MOVEMENT_STAGE = 'normal';
+
+    public const BEFORE_SURFACE_CELL_PROCESSING_MOVEMENT_STAGE = 'before_surface_cell_processing';
+
     public function forDefinition(MonsterDefinition $definition): MonsterBehavior
     {
         return $this->resolve($definition->source_metadata, $definition->key);
@@ -36,6 +40,8 @@ final class MonsterBehaviorResolver
             specialAction: $behavior['special_action'],
             islandCreationDisplaceable: $behavior['island_creation_displaceable'],
             worldSpawn: $behavior['world_spawn'] ?? null,
+            movementStage: $behavior['movement_stage'] ?? self::NORMAL_MOVEMENT_STAGE,
+            defeatTerrainKey: $behavior['defeat_terrain_key'] ?? null,
         );
     }
 
@@ -51,7 +57,12 @@ final class MonsterBehaviorResolver
         if (array_values(array_intersect($required, array_keys($authored))) !== $required) {
             throw new DomainException("Monster {$monsterKey} behavior is missing required fields.");
         }
-        $unknown = array_values(array_diff(array_keys($authored), [...$required, 'world_spawn']));
+        $unknown = array_values(array_diff(array_keys($authored), [
+            ...$required,
+            'world_spawn',
+            'movement_stage',
+            'defeat_terrain_key',
+        ]));
         if ($unknown !== []) {
             throw new DomainException("Monster {$monsterKey} behavior contains unknown fields.");
         }
@@ -59,7 +70,13 @@ final class MonsterBehaviorResolver
             || ! is_bool($authored['dispatchable'])
             || $authored['can_act_on_spawn_turn'] !== false
             || ! in_array($authored['special_action'], ['none', self::NUCLEAR_AT_HP_ONE], true)
-            || ! is_bool($authored['island_creation_displaceable'])) {
+            || ! is_bool($authored['island_creation_displaceable'])
+            || ! in_array($authored['movement_stage'] ?? self::NORMAL_MOVEMENT_STAGE, [
+                self::NORMAL_MOVEMENT_STAGE,
+                self::BEFORE_SURFACE_CELL_PROCESSING_MOVEMENT_STAGE,
+            ], true)
+            || ($authored['defeat_terrain_key'] ?? null) !== null
+                && (! is_string($authored['defeat_terrain_key']) || $authored['defeat_terrain_key'] === '')) {
             throw new DomainException("Monster {$monsterKey} behavior has an unsupported value.");
         }
 
@@ -87,6 +104,15 @@ final class MonsterBehaviorResolver
             if ($this->canonicalize($authored['world_spawn'] ?? null) !== $this->canonicalize($expectedSpawn)) {
                 throw new DomainException('Aoi Inora World spawn behavior differs from the approved v11 contract.');
             }
+        }
+        if ($monsterKey === 'nyowamiya') {
+            if (($authored['movement_stage'] ?? null) !== self::BEFORE_SURFACE_CELL_PROCESSING_MOVEMENT_STAGE
+                || ($authored['defeat_terrain_key'] ?? null) !== 'plain') {
+                throw new DomainException('Nyowamiya behavior must author pre-surface movement and plain defeat terrain.');
+            }
+        } elseif (array_key_exists('movement_stage', $authored)
+            || array_key_exists('defeat_terrain_key', $authored)) {
+            throw new DomainException("Monster {$monsterKey} must not author Nyowamiya-only behavior fields.");
         }
 
         return $authored;

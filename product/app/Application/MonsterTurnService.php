@@ -70,11 +70,78 @@ final class MonsterTurnService
         ?DisasterMutableCellIndex $disasterCells = null,
         ?SurfaceShipTurnBatch $ships = null,
     ): bool {
+        return $this->processCellInternal(
+            $context,
+            $space,
+            $cell,
+            $cellsByCoordinate,
+            $batch,
+            $disasterCells,
+            $ships,
+        );
+    }
+
+    /**
+     * Process only monsters authored for the pre-surface-cell movement stage.
+     *
+     * A claimed prepass action is skipped by the ordinary monster pass. The
+     * claim is made before protection/candidate checks so a blocked monster is
+     * not given a second action later in the same turn.
+     *
+     * @param  array<string, MapCell>  $cellsByCoordinate
+     */
+    public function processPrepassCell(
+        TurnContext $context,
+        MapSpace $space,
+        MapCell $cell,
+        array $cellsByCoordinate,
+        MonsterTurnBatch $batch,
+        ?DisasterMutableCellIndex $disasterCells = null,
+        ?SurfaceShipTurnBatch $ships = null,
+    ): bool {
+        $occupancy = $batch->occupancyAt($cell->id);
+        if ($occupancy === null || $batch->isActionDeferred($occupancy->monster_instance_id)) {
+            return false;
+        }
+        $behavior = $batch->behaviorForDefinition((int) $occupancy->monster->definition->id);
+        if ($behavior->movementStage !== MonsterBehaviorResolver::BEFORE_SURFACE_CELL_PROCESSING_MOVEMENT_STAGE
+            || ! $batch->claimPrepassAction($occupancy->monster_instance_id)) {
+            return false;
+        }
+
+        return $this->processCellInternal(
+            $context,
+            $space,
+            $cell,
+            $cellsByCoordinate,
+            $batch,
+            $disasterCells,
+            $ships,
+            true,
+        );
+    }
+
+    /**
+     * @param  array<string, MapCell>  $cellsByCoordinate
+     */
+    private function processCellInternal(
+        TurnContext $context,
+        MapSpace $space,
+        MapCell $cell,
+        array $cellsByCoordinate,
+        MonsterTurnBatch $batch,
+        ?DisasterMutableCellIndex $disasterCells = null,
+        ?SurfaceShipTurnBatch $ships = null,
+        bool $prepass = false,
+    ): bool {
         $occupancy = $batch->occupancyAt($cell->id);
         if ($occupancy === null) {
             return false;
         }
         if ($batch->isActionDeferred($occupancy->monster_instance_id)) {
+            return false;
+        }
+        if (! $prepass && $batch->isPrepassActionClaimed($occupancy->monster_instance_id)) {
             return false;
         }
         $batch->countAction();
@@ -107,6 +174,10 @@ final class MonsterTurnService
         }
 
         $movement = $definition->movement_terrain_contract;
+        $destinationTerrainKey = $movement['destination_terrain_key'] ?? 'wasteland';
+        if (! is_string($destinationTerrainKey) || $destinationTerrainKey === '') {
+            throw new DomainException('The active monster definition has an invalid destination terrain contract.');
+        }
         $attempts = $movement['candidate_attempts_per_action'] ?? null;
         if (! is_int($attempts) || $attempts !== 3) {
             throw new DomainException('The active monster definition has an invalid movement contract.');
@@ -172,7 +243,14 @@ final class MonsterTurnService
                 return true;
             }
 
-            $this->moveAndTrample($context, $cell, $destination, $occupancy, $batch);
+            $this->moveAndTrample(
+                $context,
+                $cell,
+                $destination,
+                $occupancy,
+                $batch,
+                $destinationTerrainKey,
+            );
 
             return true;
         }
@@ -297,13 +375,14 @@ final class MonsterTurnService
         MapCell $destination,
         MonsterOccupancy $occupancy,
         MonsterTurnBatch $batch,
+        string $destinationTerrainKey,
     ): void {
         $monster = $occupancy->monster;
         $beforeTerrain = $destination->terrain->key;
         $beforeFacility = $destination->facility?->key;
         $beforePopulation = $destination->population;
         $this->cells->setFacility($destination, null);
-        $this->cells->transitionTerrain($destination, $this->wasteland());
+        $this->cells->transitionTerrain($destination, $this->terrain($destinationTerrainKey));
         $destination->population = 0;
         $destination->version++;
         $destination->save();
@@ -326,7 +405,7 @@ final class MonsterTurnService
             'y' => $destination->y,
             'from_terrain_key' => $beforeTerrain,
             'pre_impact_terrain_key' => $beforeTerrain,
-            'to_terrain_key' => 'wasteland',
+            'to_terrain_key' => $destinationTerrainKey,
             'removed_facility_key' => $beforeFacility,
             'pre_impact_facility_key' => $beforeFacility,
             'before_population' => $beforePopulation,
@@ -414,6 +493,15 @@ final class MonsterTurnService
     private function wasteland(): TerrainDefinition
     {
         return $this->wasteland ??= TerrainDefinition::query()->where('key', 'wasteland')->firstOrFail();
+    }
+
+    private function terrain(string $key): TerrainDefinition
+    {
+        return match ($key) {
+            'wasteland' => $this->wasteland(),
+            'sea' => $this->sea(),
+            default => TerrainDefinition::query()->where('key', $key)->firstOrFail(),
+        };
     }
 
     private function sea(): TerrainDefinition

@@ -736,6 +736,66 @@ class DomesticCommandExecutionTest extends TestCase
         );
     }
 
+    public function test_rank_two_facility_expansion_clamps_rank_one_then_uses_rank_two_increment_and_maximum(): void
+    {
+        $world = $this->lightweightWorld();
+        [$user, $nation] = $this->createNation($world, 'ランク二施設実行国');
+        $nation->update(['money' => 10_000]);
+        $space = $this->surfaceMapSpace($world);
+        $plainTargets = MapCell::query()->where('owner_nation_id', $nation->id)
+            ->whereNull('facility_definition_id')
+            ->whereHas('terrain', fn ($query) => $query->where('key', 'plain'))
+            ->orderBy('id')->take(2)->get();
+        $this->assertCount(2, $plainTargets);
+        $farmTarget = $plainTargets[0];
+        $factoryTarget = $plainTargets[1];
+        $mineTarget = $this->ownedTerrain($nation, 'mountain');
+        $state = app(MapCellStateService::class);
+        $farm = FacilityDefinition::query()->where('key', 'farm')->firstOrFail();
+        $factory = FacilityDefinition::query()->where('key', 'factory')->firstOrFail();
+        $mine = FacilityDefinition::query()->where('key', 'mine')->firstOrFail();
+        $state->setFacility($farmTarget, $farm, 49, null, 100);
+        $farmTarget->save();
+        $state->setFacility($factoryTarget, $factory, 99, null, 200);
+        $factoryTarget->save();
+        $state->setFacility($mineTarget, $mine, 199, null, 400);
+        $mineTarget->save();
+
+        $farmItem = $this->queue($user, $nation, $space, 'build_farm', $farmTarget, 2, 1);
+        $factoryItem = $this->queue($user, $nation, $space, 'build_factory', $factoryTarget, 2, 2);
+        $mineItem = $this->queue($user, $nation, $space, 'build_mine', $mineTarget, 2, 3);
+        $executor = app(DomesticCommandExecutor::class);
+        $context = $this->context($world, [$nation->id], hash('sha256', 'rank-two-facility-expansion'));
+
+        $first = $executor->execute($context);
+        $this->assertSame([1, 0, 1], [$first['successes'], $first['failures'], $first['quantity_decrements']]);
+        $this->assertSame(50, $farmTarget->fresh()->facility_scale);
+        $this->assertSame(1, $farmItem->fresh()->quantity);
+        $executor->execute($context);
+        $this->assertSame(51, $farmTarget->fresh()->facility_scale);
+        $this->assertSame('completed', $farmItem->fresh()->status);
+
+        $executor->execute($context);
+        $this->assertSame(100, $factoryTarget->fresh()->facility_scale);
+        $executor->execute($context);
+        $this->assertSame(105, $factoryTarget->fresh()->facility_scale);
+        $this->assertSame('completed', $factoryItem->fresh()->status);
+
+        $executor->execute($context);
+        $this->assertSame(200, $mineTarget->fresh()->facility_scale);
+        $executor->execute($context);
+        $this->assertSame(202, $mineTarget->fresh()->facility_scale);
+        $this->assertSame('completed', $mineItem->fresh()->status);
+
+        $state->setFacility($factoryTarget, $factory, 200, null, 200);
+        $factoryTarget->save();
+        $atMaximum = $this->queue($user, $nation, $space, 'build_factory', $factoryTarget, 1, 1);
+        $failed = $executor->execute($context);
+        $this->assertSame([0, 1], [$failed['successes'], $failed['failures']]);
+        $this->assertSame('invalid_facility_scale', $atMaximum->fresh()->failure_code);
+        $this->assertSame(200, $factoryTarget->fresh()->facility_scale);
+    }
+
     public function test_factory_and_mine_construction_and_expansion_reach_the_top_public_api(): void
     {
         $world = $this->lightweightWorld();
