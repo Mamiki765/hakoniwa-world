@@ -6,18 +6,18 @@
 
 - Branch: `codex/3.6.0-trial2-gameplay`
 - Base: `origin/release/3.6.0` / `70871f9e3345ac183e3c2b97b3f499ad672ba6bb`
-- Simulation source: `e332c4dec36f1b9124ba2961c2b01a41ad10c356`
+- Simulation source: `a644447f62bfb3a3749bd57916471c6a58d977b7`
 - Simulator: `underground-trial-balance-v3`
 - Manifest: `config/underground/balance/trial2-v1.json`
 - Manifest SHA-256: `069c03893ac7389e3c71917c2a5dbc332c17c14e06f7d4de174124bc3b66e487`
 - Seeds: 16 scenariosそれぞれ`0..199`
-- Conditions: Lv150 / Lv180、SP60、generated IL50 uncommon 3部位、追加覚醒奥義を選択
+- Conditions: Lv150 / Lv180、SP60、generated IL50 uncommon（ゲーム内表示はハイクオリティ）の武器・防具・アクセサリ各1部位、追加覚醒奥義を選択。IL50ノービス装備ではない
 - Primary interbattle heal: 20%。Lv150では10% / 20% / 30%も比較
 - MP: 各battle開始時10,000へreset、roundごとに300回復
 - Result: `working_tree_dirty=false`、`trial_contract_passed=true`、`laboratory_contract_passed=true`
 - Abnormal seed / stalemate / failure後の継続 / HP回復overflow: すべて0
 
-`AlphaV1CombatRules`、critical、agility、growth path自然成長、STP entitlement、既存攻撃魔法係数は変更していない。既存combat modelへの追加は、新奥義、解除可否、デュラハンのround-start buff、表示用snapshotに局所化した。Trial 1、Wyvern、黒晶洞の既存parameterも変更していない。
+`AlphaV1CombatRules`、critical、agility、growth path自然成長、STP entitlement、既存攻撃魔法係数は変更していない。既存combat modelへの追加は、新奥義、解除可否、デュラハンのround-start buff、表示用snapshotに局所化した。新奥義4種のdirect attackは既存damage actionと同じく一行動一回のagility combo抽選を共有し、native hit、critical、statusの追加抽選は増やしていない。Trial 1、Wyvern、黒晶洞の既存parameterも変更していない。
 
 ## Battle UI and snapshot
 
@@ -44,7 +44,7 @@
 | 祝福 | 裁きの天光 | potency 220%、精神85%・技巧15%、weapon 100%、会心可。damage後に解除可能buffをkey順で1個解除 | 消費 |
 | 自由 | 無相の一撃 | potency 240%、技巧100%、weapon 100%、会心可。実効physical / magical defenseの低い側を一度だけ参照。同値はphysical | 消費 |
 
-修羅の血脈は初撃から吸収が成立する。overkill、barrier吸収、periodic damage、counterを吸収元に含めず、回復は最大HPで止まる。裁きの天光は覚醒本体、boss trait、innate effect、`dispellable=false`を解除しない。デュラハンの憎悪は解除可能であり、解除後は次round開始時に1 stackから再開する。
+修羅の血脈は初撃から吸収が成立する。通常の`lifesteal_bps`は敵・player共通、修羅の加算だけをplayer固有とし、夜宴の血侯の4%吸収も有効にした。いずれもoverkill、barrier吸収、periodic damage、counterを吸収元に含めず、実HP damageを基準として回復は最大HPで止まる。再生は別処理である。裁きの天光は覚醒本体、boss trait、innate effect、`dispellable=false`を解除しない。デュラハンの憎悪は解除可能であり、解除後は次round開始時に1 stackから再開する。
 
 ## Trial 2 contract
 
@@ -90,9 +90,9 @@
 | 5 | 赤角の破城兵 | 290 | 75 | middle 65% | 62–74 | 13.72 / 9.01 / 19.11 / 41.54 |
 | 6 | 弔鐘の司祭 | 300 | 78 | middle 65% | 64–76 | 10.48 / 8.09 / 21.05 / 26.20 |
 | 7 | 蠱惑の蛇姫 | 320 | 82 | middle 65% | 66–78 | 11.34 / 8.26 / 13.97 / 25.03 |
-| 8 | 夜宴の血侯 | 350 | 88 | deep 80% | 68–82 | 12.96 / 8.07 / 18.52 / 30.79 |
-| 9 | 誓約喰らいの黒騎士 | 400 | 95 | deep 80% | 72–86 | 13.53 / 14.67 / 19.36 / 32.84 |
-| 10 | 首なき断罪卿 | 2,000 | 540 | deep 80% | 76–90 | 23.93 / 15.41 / 32.28 / 46.34 |
+| 8 | 夜宴の血侯 | 350 | 88 | deep 80% | 68–82 | 13.20 / 8.07 / 18.58 / 31.14 |
+| 9 | 誓約喰らいの黒騎士 | 400 | 95 | deep 80% | 72–86 | 13.62 / 14.67 / 19.36 / 32.58 |
+| 10 | 首なき断罪卿 | 2,000 | 540 | deep 80% | 76–90 | 23.61 / 15.41 / 32.28 / 46.10 |
 
 Rarity weightはshallow=`65/25/9/1`、middle=`50/32/15/3`、deep=`35/35/24/6`（common/uncommon/rare/epic）。10戦clear時の期待drop数は6.65個、内訳はcommon 3.2125、uncommon 2.0845、rare 1.1145、epic 0.2385、drop時の期待ILは約70.83である。
 
@@ -108,27 +108,51 @@ Rarity weightはshallow=`65/25/9/1`、middle=`50/32/15/3`、deep=`35/35/24/6`（
 
 | Build | Lv | clear | Boss到達 | 平均round | clear時final HP |
 |---|---:|---:|---:|---:|---:|
-| 戦技・修羅の血脈 | 150 | 17.0% | 97.5% | 119.53 | 1,074.53 |
-| 戦技・修羅の血脈 | 180 | 72.5% | 100% | 106.62 | 1,622.00 |
+| 戦技・修羅の血脈 | 150 | 16.0% | 97.0% | 119.35 | 1,040.97 |
+| 戦技・修羅の血脈 | 180 | 71.5% | 100% | 106.84 | 1,598.10 |
 | 護身・城塞撃 | 150 | 100% | 100% | 85.94 | 6,825.00 |
 | 護身・城塞撃 | 180 | 100% | 100% | 74.89 | 7,905.00 |
-| 祝福・裁きの天光 | 150 | 100% | 100% | 153.78 | 2,230.53 |
-| 祝福・裁きの天光 | 180 | 100% | 100% | 115.94 | 2,658.88 |
-| 自由・無相の一撃 | 150 | 100% | 100% | 272.99 | 2,835.24 |
-| 自由・無相の一撃 | 180 | 100% | 100% | 237.39 | 4,564.47 |
+| 祝福・裁きの天光 | 150 | 100% | 100% | 153.84 | 2,230.53 |
+| 祝福・裁きの天光 | 180 | 100% | 100% | 116.03 | 2,658.88 |
+| 自由・無相の一撃 | 150 | 100% | 100% | 272.84 | 2,735.48 |
+| 自由・無相の一撃 | 180 | 100% | 100% | 238.49 | 4,585.10 |
 
-Lv150戦技の敗北はbattle 8が5 / 200、boss到達195 / 200のうちboss敗北が161で、道中farmは成立している。修羅の血脈への発動時初撃追加により、clear率とboss到達率を変えずに平均roundは122.13から119.53へ短縮し、clear時final HPは1,039.35から1,074.53へ微増した。Lv180で72.5%まで上がり、低Lvhard gateではなくlevel・装備・skill・AIで改善できる開始帯から安定帯への勾配を残した。護身は最速かつ安全、祝福は遅いが安定、自由は非常に遅い代わりに自己回復で完走するという差が出た。
+Lv150戦技の敗北はbattle 8が6 / 200、boss到達194 / 200のうちboss敗北が162で、道中farmは成立している。夜宴の血侯の4%吸収を有効にした修正前reportとの比較では、clear率17.0%から16.0%、boss到達97.5%から97.0%へ小幅に低下した。Lv180では71.5%まで上がり、低Lvhard gateではなくlevel・装備・skill・AIで改善できる開始帯から安定帯への勾配を残した。護身は最速かつ安全、祝福は遅いが安定、自由は非常に遅い代わりに自己回復で完走するという差が出た。
 
-default AIはHP20%以下で覚醒するため、ほとんどdamageを受けない護身と自己回復を優先する祝福では新奥義を使用しなかった。これは奥義選択の不具合ではなくAI条件の結果であり、戦闘間にcustom AIを変更すれば使用できる。新奥義4種の効果自体は個別deterministic regressionで確認する。
+default AIはHP20%以下で覚醒するため、ほとんどdamageを受けない護身と自己回復を優先する祝福では新奥義を使用しなかった。これは奥義選択の不具合ではなくAI条件の結果であり、次の限定再測定で戦闘間custom AIにより実使用できることを確認した。新奥義4種の効果と一行動一抽選のagility comboは個別deterministic regressionでも確認した。
+
+### Review後の限定再測定
+
+戦技は装備、build、battle sequence、20%回復、seed `0..199`を同一にし、選択奥義だけを天断一閃と修羅の血脈で切り替えた。
+
+| 奥義 | Lv | clear | Boss到達 | 平均round | clear時final HP | 奥義使用回数 |
+|---|---:|---:|---:|---:|---:|---:|
+| 天断一閃 | 150 | 16.0% | 97.0% | 116.36 | 1,024.50 | 322 |
+| 修羅の血脈 | 150 | 16.0% | 97.0% | 119.35 | 1,040.97 | 322 |
+| 天断一閃 | 180 | 71.5% | 100% | 105.83 | 1,602.92 | 161 |
+| 修羅の血脈 | 180 | 71.5% | 100% | 106.84 | 1,598.10 | 161 |
+
+この標本ではclear率とBoss到達率は同じで、天断一閃が平均1.01～2.99 round短く、survival差は小さい。修羅だけが常に上位になる結果ではない。
+
+護身・祝福はLv150、20%回復、同じIL50 uncommon 3部位、seed `0..19`で、新奥義を選択したままdefault AIと覚醒優先AIを比較した。覚醒優先AIは既存ruleの先頭にある覚醒HP条件だけを20%から100%へ変え、gauge満了後に最初の行動機会で覚醒する。他のskill優先順は変更していない。
+
+| Build / 新奥義 | AI | clear | 平均round | clear時final HP | 奥義使用回数 | 奥義使用run |
+|---|---|---:|---:|---:|---:|---:|
+| 護身・城塞撃 | default HP20% | 20 / 20 | 86.15 | 6,825.00 | 0 | 0 / 20 |
+| 護身・城塞撃 | gauge満了優先 | 20 / 20 | 83.70 | 8,430.60 | 33 | 20 / 20 |
+| 祝福・裁きの天光 | default HP20% | 20 / 20 | 152.30 | 2,248.45 | 0 | 0 / 20 |
+| 祝福・裁きの天光 | gauge満了優先 | 20 / 20 | 126.85 | 3,934.20 | 57 | 20 / 20 |
+
+少数比較では両新奥義を全20 runで実使用し、clearを維持したまま平均roundが護身2.45、祝福25.45短縮した。奥義使用回数がrun数を超えるのは、覚醒が一試練一回ではなく従来どおり一戦につき最大一回で、10連戦中に複数battleで発動するためである。この比較はAIで使用可能なことの確認であり、新たなbalance acceptance gateではない。
 
 Lv150の回復率比較は次のとおり。
 
 | Build | 10% | 20% | 30% |
 |---|---:|---:|---:|
-| 戦技 | 0.5% | 17.0% | 63.0% |
+| 戦技 | 0.5% | 16.0% | 63.0% |
 | 護身 | 100% | 100% | 100% |
 | 祝福 | 100% | 100% | 100% |
-| 自由 | 100% | 100% | 99.0% |
+| 自由 | 100% | 100% | 99.5% |
 
 自由30%の1敗はseedごとの別scenario RNGによる標本差で、20%より回復したことが敗因ではない。20%は戦技の連戦負荷を残しつつ他growth pathを壊さないため採用する。
 
@@ -148,7 +172,9 @@ Trial 2の初回clearは、SP40、第2層解放、Owner支給のstoryまで確�
 ## Reproduction
 
 ```powershell
-php artisan underground:balance --manifest=config/underground/balance/trial2-v1.json --count=200 --commit-sha=e332c4dec36f1b9124ba2961c2b01a41ad10c356
+php artisan underground:balance --manifest=config/underground/balance/trial2-v1.json --count=200 --commit-sha=a644447f62bfb3a3749bd57916471c6a58d977b7
 ```
+
+このcommandはGit HEADとworking treeを実際に検証できる環境で実行する。Git情報を取得できない環境では`--commit-sha`だけを指定しても`working_tree_dirty`をfalseと推測せず、fail closedする。
 
 release/3.6.0、main、production、OCI、production DB、Owner管理handoffには未反映である。
