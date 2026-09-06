@@ -135,6 +135,18 @@ return [
                     'presence_bps' => 10000,
                     'rarity_weights' => ['common' => 5000, 'uncommon' => 3000, 'rare' => 1500, 'epic' => 500],
                 ],
+                'trial2_shallow' => [
+                    'presence_bps' => 5500,
+                    'rarity_weights' => ['common' => 6500, 'uncommon' => 2500, 'rare' => 900, 'epic' => 100],
+                ],
+                'trial2_middle' => [
+                    'presence_bps' => 6500,
+                    'rarity_weights' => ['common' => 5000, 'uncommon' => 3200, 'rare' => 1500, 'epic' => 300],
+                ],
+                'trial2_deep' => [
+                    'presence_bps' => 8000,
+                    'rarity_weights' => ['common' => 3500, 'uncommon' => 3500, 'rare' => 2400, 'epic' => 600],
+                ],
             ],
             'category_weights' => ['weapon' => 2000, 'armor' => 2000, 'accessory' => 6000],
             'weapon_styles' => ['dagger', 'rapier', 'longsword', 'crystal_staff'],

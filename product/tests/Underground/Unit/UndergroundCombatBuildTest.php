@@ -105,6 +105,15 @@ final class UndergroundCombatBuildTest extends TestCase
         $this->assertSame(AlphaV1CombatRules::IDENTITY, $first->rulesIdentity);
         $this->assertSame(AlphaV1CombatRules::GENERATOR_IDENTITY, $first->generatorIdentity);
         $this->assertSame($manifest['generator_identity'], $first->generatedEquipment[0]['generator_identity']);
+        $this->assertSame($first->initialState, $retry->initialState);
+        $this->assertSame(10_000, $first->initialState['player']['mp']);
+        $this->assertSame(0, $first->initialState['player']['awakening_gauge']);
+
+        $projection = (new UndergroundAlphaV1BattleProjector)->project($first, $catalog);
+        $this->assertSame($projection['initial_state'], $projection['rounds'][0]['start_state']);
+        foreach (array_slice($projection['rounds'], 1) as $index => $round) {
+            $this->assertSame($projection['rounds'][$index]['end_state'], $round['start_state']);
+        }
     }
 
     public function test_level_one_standard_hp_is_500_and_mp_never_scales_or_leaves_fixed_bounds(): void
@@ -1651,6 +1660,411 @@ final class UndergroundCombatBuildTest extends TestCase
         $this->assertSame(0, $lastRound['player']['cooldowns']['severing_bleed']);
     }
 
+    public function test_each_growth_path_exposes_its_existing_and_additional_awakening_techniques(): void
+    {
+        $awakening = new UndergroundAwakening;
+        $expected = [
+            'martial_red' => ['decisive_heavenrend', 'shura_bloodline'],
+            'guardianship_blue' => ['absolute_aegis', 'fortress_strike'],
+            'blessing_green' => ['life_requiem', 'judgment_light'],
+            'free_black' => ['limitless_reprise', 'formless_strike'],
+        ];
+
+        foreach ($expected as $growthPath => $keys) {
+            $this->assertSame($keys, array_column($awakening->techniques($growthPath), 'key'));
+            $this->assertSame($keys[0], $awakening->technique($growthPath)['key']);
+            $this->assertSame($keys[1], $awakening->technique($growthPath, $keys[1])['key']);
+        }
+
+        $this->expectException(InvalidArgumentException::class);
+        $awakening->technique('martial_red', 'formless_strike');
+    }
+
+    public function test_shura_bloodline_strikes_on_activation_and_combines_direct_lifesteal_for_three_rounds(): void
+    {
+        $snapshot = $this->awakeningPlayerSnapshot(
+            'martial_red',
+            techniqueKey: 'shura_bloodline',
+        );
+        $snapshot['modifiers']['lifesteal_bps'] = 2_000;
+        $result = $this->model()->fightPlayerSnapshot(
+            $this->awakeningCatalog(enemyWeaponPower: 100),
+            $snapshot,
+            'awakening_target',
+            211,
+            5,
+            0,
+        );
+
+        $damageByRound = collect($result->actionLog)
+            ->filter(static fn (array $row): bool => ($row['side'] ?? null) === 'player'
+                && ($row['effect_type'] ?? null) === 'damage')
+            ->keyBy('round');
+        $drains = collect($result->actionLog)
+            ->filter(static fn (array $row): bool => ($row['action'] ?? null) === 'shura_bloodline_lifesteal')
+            ->values();
+        $openingStrike = collect($result->actionLog)->first(
+            static fn (array $row): bool => ($row['action'] ?? null) === 'shura_bloodline'
+                && ($row['effect_type'] ?? null) === 'damage',
+        );
+        $this->assertIsArray($openingStrike);
+        $this->assertSame(1, $openingStrike['round']);
+        $this->assertGreaterThan(0, $openingStrike['amount']);
+        $this->assertSame(UndergroundAwakening::LIFESTEAL_CAP_BPS, 2_500);
+        $this->assertSame(UndergroundAwakening::BLOODLINE_DURATION_ROUNDS - 1, $drains->count());
+        $this->assertSame([2, 3], $drains->pluck('round')->all());
+        foreach ($drains as $drain) {
+            $damage = $damageByRound->get($drain['round']);
+            $this->assertIsArray($damage);
+            $this->assertSame(intdiv($damage['amount'] * 2_500, 10_000), -$drain['amount']);
+        }
+        $expiry = collect($result->actionLog)->firstWhere('action', 'shura_bloodline_expired');
+        $this->assertIsArray($expiry);
+        $this->assertSame(3, $expiry['round']);
+        $this->assertSame('shura_bloodline', $result->awakening['technique']['key']);
+        $this->assertTrue($result->awakening['technique']['used']);
+    }
+
+    public function test_enemy_lifesteal_recovers_from_actual_hp_damage_independently_of_regeneration(): void
+    {
+        $catalog = $this->awakeningCatalog(enemyWeaponPower: 5_000);
+        $manifest = $catalog->manifest();
+        $manifest['skills']['precision_cut']['effects'][] = [
+            'type' => 'barrier',
+            'target' => 'self',
+            'source_stat_coefficients' => [],
+            'target_max_hp_bps' => 0,
+            'fixed' => 100,
+        ];
+        $manifest['enemies']['awakening_target']['modifiers'] = [
+            'lifesteal_bps' => 400,
+            'self_regeneration_target_hp_bps' => 0,
+        ];
+        $snapshot = $this->awakeningPlayerSnapshot(
+            'martial_red',
+            gauge: 0,
+            currentHp: null,
+            skills: ['precision_cut'],
+            aiRules: [['conditions' => [['type' => 'always']], 'action' => 'skill:precision_cut']],
+        );
+        $catalog = new AlphaV1BuildCatalog($manifest);
+        $result = $this->model()->fightPlayerSnapshot(
+            $catalog,
+            $snapshot,
+            'awakening_target',
+            293,
+            1,
+            0,
+        );
+
+        $playerDamage = collect($result->actionLog)->first(
+            static fn (array $row): bool => ($row['action'] ?? null) === 'precision_cut'
+                && ($row['effect_type'] ?? null) === 'damage',
+        );
+        $enemyDamage = collect($result->actionLog)->first(
+            static fn (array $row): bool => ($row['side'] ?? null) === 'enemy'
+                && ($row['effect_type'] ?? null) === 'damage',
+        );
+        $this->assertIsArray($playerDamage);
+        $this->assertIsArray($enemyDamage);
+        $this->assertGreaterThan(0, $enemyDamage['amount']);
+        $this->assertGreaterThan(0, $enemyDamage['barrier_absorbed']);
+        $expectedLifesteal = min($playerDamage['amount'], intdiv($enemyDamage['amount'] * 400, 10_000));
+        $this->assertGreaterThan(0, $expectedLifesteal);
+        $this->assertSame(
+            $manifest['enemies']['awakening_target']['max_hp'] - $playerDamage['amount'] + $expectedLifesteal,
+            $result->enemyRemainingHp,
+        );
+        $lifestealRows = collect($result->actionLog)
+            ->filter(static fn (array $row): bool => ($row['action'] ?? null) === 'lifesteal')
+            ->values();
+        $this->assertCount(1, $lifestealRows);
+        $this->assertSame('enemy', $lifestealRows[0]['side']);
+        $this->assertSame('enemy', $lifestealRows[0]['target_side']);
+        $this->assertSame('recovery', $lifestealRows[0]['effect_type']);
+        $this->assertSame(-$expectedLifesteal, $lifestealRows[0]['amount']);
+        $projectedLifesteal = collect((new UndergroundAlphaV1BattleProjector)->project($result, $catalog)['rounds'])
+            ->flatMap(static fn (array $round): array => $round['actions'])
+            ->first(static fn (array $action): bool => ($action['label'] ?? null) === '吸血');
+        $this->assertIsArray($projectedLifesteal);
+        $this->assertSame('対戦相手', $projectedLifesteal['side']);
+        $this->assertSame('対戦相手', $projectedLifesteal['actor_name']);
+        $this->assertSame('対戦相手', $projectedLifesteal['target_name']);
+        $this->assertSame($expectedLifesteal, $projectedLifesteal['amount']);
+        $this->assertFalse(collect($result->actionLog)->contains(
+            static fn (array $row): bool => ($row['action'] ?? null) === 'self_regeneration',
+        ));
+    }
+
+    public function test_enemy_lifesteal_after_a_guarded_hit_requires_surviving_the_counter(): void
+    {
+        $manifest = $this->awakeningCatalog(enemyWeaponPower: 1_000)->manifest();
+        $manifest['enemies']['awakening_target']['modifiers'] = [
+            'lifesteal_bps' => 400,
+            'self_regeneration_target_hp_bps' => 0,
+        ];
+        $snapshot = $this->awakeningPlayerSnapshot(
+            'guardianship_blue',
+            gauge: 0,
+            currentHp: null,
+            aiRules: [['conditions' => [['type' => 'always']], 'action' => 'defend']],
+        );
+        $snapshot['modifiers']['counter_power_bps'] = 2_500;
+        $fight = function (int $enemyMaxHp) use ($manifest, $snapshot): BuildCombatResult {
+            $candidate = $manifest;
+            $candidate['enemies']['awakening_target']['max_hp'] = $enemyMaxHp;
+
+            return $this->model()->fightPlayerSnapshot(
+                new AlphaV1BuildCatalog($candidate),
+                $snapshot,
+                'awakening_target',
+                307,
+                1,
+                0,
+            );
+        };
+
+        $survived = $fight(10_000);
+        $survivingAttack = collect($survived->actionLog)->first(
+            static fn (array $row): bool => ($row['side'] ?? null) === 'enemy'
+                && ($row['effect_type'] ?? null) === 'damage',
+        );
+        $survivingCounter = collect($survived->actionLog)->firstWhere('action', 'counter');
+        $survivingLifesteal = collect($survived->actionLog)->firstWhere('action', 'lifesteal');
+        $this->assertIsArray($survivingAttack);
+        $this->assertIsArray($survivingCounter);
+        $this->assertIsArray($survivingLifesteal);
+        $expectedLifesteal = min(
+            $survivingCounter['amount'],
+            intdiv($survivingAttack['amount'] * 400, 10_000),
+        );
+        $this->assertGreaterThan(0, $expectedLifesteal);
+        $this->assertSame(-$expectedLifesteal, $survivingLifesteal['amount']);
+        $this->assertSame(
+            10_000 - $survivingCounter['amount'] + $expectedLifesteal,
+            $survived->enemyRemainingHp,
+        );
+
+        $defeated = $fight(1);
+        $this->assertSame('player', $defeated->winner);
+        $this->assertSame(0, $defeated->enemyRemainingHp);
+        $this->assertNotNull(collect($defeated->actionLog)->firstWhere('action', 'counter'));
+        $this->assertNull(collect($defeated->actionLog)->firstWhere('action', 'lifesteal'));
+    }
+
+    public function test_fortress_strike_deals_one_vitality_attack_and_guards_the_next_direct_hit(): void
+    {
+        $result = $this->model()->fightPlayerSnapshot(
+            $this->awakeningCatalog(enemyWeaponPower: 100),
+            $this->awakeningPlayerSnapshot('guardianship_blue', techniqueKey: 'fortress_strike'),
+            'awakening_target',
+            223,
+            1,
+            0,
+        );
+        $attack = collect($result->actionLog)->first(
+            static fn (array $row): bool => ($row['action'] ?? null) === 'fortress_strike'
+                && ($row['effect_type'] ?? null) === 'damage',
+        );
+        $enemyHit = collect($result->actionLog)->first(
+            static fn (array $row): bool => ($row['side'] ?? null) === 'enemy'
+                && ($row['effect_type'] ?? null) === 'damage',
+        );
+
+        $this->assertIsArray($attack);
+        $this->assertGreaterThan(0, $attack['amount']);
+        $this->assertFalse($attack['critical']);
+        $this->assertIsArray($enemyHit);
+        $this->assertTrue($enemyHit['guarded']);
+        $this->assertSame(1, collect($result->actionLog)->where('action', 'fortress_strike_guard')->count());
+    }
+
+    public function test_judgment_light_deals_damage_then_removes_one_dispellable_buff_only(): void
+    {
+        $snapshot = $this->awakeningPlayerSnapshot('blessing_green', currentHp: 1, techniqueKey: 'judgment_light');
+        $snapshot['stats']['agility'] = 1;
+        $result = $this->model()->fightPlayerSnapshot(
+            $this->awakeningCatalog(enemyAgility: 75, enemyBuffs: true),
+            $snapshot,
+            'awakening_target',
+            227,
+            1,
+            0,
+        );
+        $damageIndex = collect($result->actionLog)->search(
+            static fn (array $row): bool => ($row['action'] ?? null) === 'judgment_light'
+                && ($row['effect_type'] ?? null) === 'damage',
+        );
+        $dispelIndex = collect($result->actionLog)->search(
+            static fn (array $row): bool => ($row['action'] ?? null) === 'judgment_light'
+                && ($row['effect_type'] ?? null) === 'status_removed',
+        );
+        $roundEnd = collect($result->actionLog)->firstWhere('kind', 'round_end');
+
+        $this->assertIsInt($damageIndex);
+        $this->assertIsInt($dispelIndex);
+        $this->assertLessThan($dispelIndex, $damageIndex);
+        $this->assertSame(-1, $result->actionLog[$dispelIndex]['amount']);
+        $this->assertIsArray($roundEnd);
+        $this->assertSame(['protected_aegis'], array_column($roundEnd['enemy']['statuses'], 'key'));
+    }
+
+    public function test_formless_strike_uses_the_lower_effective_defense_and_physical_on_a_tie_once(): void
+    {
+        $snapshot = $this->awakeningPlayerSnapshot('free_black', techniqueKey: 'formless_strike');
+        $cases = [
+            ['physical' => 50_000, 'magical' => 100, 'expected' => 'miracle'],
+            ['physical' => 100, 'magical' => 50_000, 'expected' => 'physical'],
+            ['physical' => 100, 'magical' => 100, 'expected' => 'physical'],
+        ];
+
+        foreach ($cases as $index => $case) {
+            $result = $this->model()->fightPlayerSnapshot(
+                $this->awakeningCatalog(
+                    enemyPhysicalDefense: $case['physical'],
+                    enemyMagicalDefense: $case['magical'],
+                ),
+                $snapshot,
+                'awakening_target',
+                229 + $index,
+                1,
+                0,
+            );
+            $hits = collect($result->actionLog)
+                ->filter(static fn (array $row): bool => ($row['action'] ?? null) === 'formless_strike'
+                    && ($row['effect_type'] ?? null) === 'damage')
+                ->values();
+            $this->assertCount(1, $hits);
+            $this->assertSame($case['expected'], $hits[0]['damage_category']);
+        }
+    }
+
+    public function test_additional_direct_awakening_techniques_share_one_agility_combo_across_one_native_hit(): void
+    {
+        $cases = [
+            ['growth_path' => 'martial_red', 'technique' => 'shura_bloodline'],
+            ['growth_path' => 'guardianship_blue', 'technique' => 'fortress_strike'],
+            ['growth_path' => 'blessing_green', 'technique' => 'judgment_light'],
+            ['growth_path' => 'free_black', 'technique' => 'formless_strike'],
+        ];
+
+        foreach ($cases as $case) {
+            $snapshot = $this->awakeningPlayerSnapshot(
+                $case['growth_path'],
+                techniqueKey: $case['technique'],
+            );
+            $snapshot['stats']['agility'] = 1_000;
+            $comboResult = null;
+            foreach (range(0, 500) as $seed) {
+                $result = $this->model()->fightPlayerSnapshot(
+                    $this->awakeningCatalog(enemyWeaponPower: 100),
+                    $snapshot,
+                    'awakening_target',
+                    $seed,
+                    1,
+                    0,
+                );
+                $damageRows = collect($result->actionLog)
+                    ->filter(static fn (array $row): bool => ($row['action'] ?? null) === $case['technique']
+                        && ($row['effect_type'] ?? null) === 'damage')
+                    ->values();
+                if ($damageRows->contains(static fn (array $row): bool => isset($row['agility_combo_hits']))) {
+                    $comboResult = [$result, $damageRows];
+
+                    break;
+                }
+            }
+
+            $this->assertIsArray($comboResult, $case['technique'].' must use the agility combo roll.');
+            [$result, $damageRows] = $comboResult;
+            $this->assertCount(1, $damageRows);
+            $this->assertContains($damageRows[0]['agility_combo_hits'], [2, 3, 4]);
+            $this->assertSame(1, $result->actionUsage['awakening_technique']);
+        }
+    }
+
+    public function test_dullahan_hatred_stacks_each_round_caps_at_fifty_and_judgment_can_reset_it(): void
+    {
+        [$manifest] = $this->catalog();
+        $contents = file_get_contents(dirname(__DIR__, 3).'/config/underground/balance/trial2-v1.json');
+        $this->assertIsString($contents);
+        $trial = json_decode($contents, true, flags: JSON_THROW_ON_ERROR);
+        $this->assertIsArray($trial);
+        foreach (['skills', 'statuses', 'enemies'] as $section) {
+            $manifest[$section] = array_merge($manifest[$section], $trial[$section]);
+        }
+        $catalog = new AlphaV1BuildCatalog($manifest);
+        $hatred = $catalog->status('trial2_hatred');
+        $this->assertSame([
+            'label' => '憎悪',
+            'dispellable' => true,
+            'max_stacks' => 50,
+            'damage_bps_per_stack' => 50,
+        ], [
+            'label' => $hatred['label'],
+            'dispellable' => $hatred['dispellable'],
+            'max_stacks' => $hatred['max_stacks'],
+            'damage_bps_per_stack' => $hatred['effects'][0]['value_bps'],
+        ]);
+
+        $durable = $this->awakeningPlayerSnapshot('guardianship_blue', gauge: 0, currentHp: null);
+        $durable['stats'] = [
+            'vitality' => 1_000_000,
+            'might' => 1,
+            'finesse' => 1,
+            'spirit' => 1,
+            'agility' => 1,
+        ];
+        $longFight = $this->model()->fightPlayerSnapshot(
+            $catalog,
+            $durable,
+            'trial2_headless_lord_of_judgment',
+            239,
+            52,
+            0,
+        );
+        $applications = collect($longFight->actionLog)
+            ->filter(static fn (array $row): bool => ($row['action'] ?? null) === 'status:trial2_hatred'
+                && ($row['effect_type'] ?? null) === 'status_applied')
+            ->values();
+        $this->assertCount(52, $applications);
+        $this->assertSame([1, 2, 3], $applications->take(3)->pluck('amount')->all());
+        $this->assertSame([50, 50, 50], $applications->slice(49)->pluck('amount')->all());
+
+        $judgment = $this->awakeningPlayerSnapshot(
+            'blessing_green',
+            currentHp: 1_000,
+            techniqueKey: 'judgment_light',
+        );
+        $judgment['stats'] = [
+            'vitality' => 1_000_000,
+            'might' => 1,
+            'finesse' => 1,
+            'spirit' => 1,
+            'agility' => 1_000,
+        ];
+        $resetFight = $this->model()->fightPlayerSnapshot(
+            $catalog,
+            $judgment,
+            'trial2_headless_lord_of_judgment',
+            241,
+            2,
+            0,
+        );
+        $resetApplications = collect($resetFight->actionLog)
+            ->filter(static fn (array $row): bool => ($row['action'] ?? null) === 'status:trial2_hatred'
+                && ($row['effect_type'] ?? null) === 'status_applied')
+            ->pluck('amount')
+            ->all();
+        $removed = collect($resetFight->actionLog)->first(
+            static fn (array $row): bool => ($row['action'] ?? null) === 'judgment_light'
+                && ($row['effect_type'] ?? null) === 'status_removed',
+        );
+        $this->assertSame([1, 1], $resetApplications);
+        $this->assertIsArray($removed);
+        $this->assertSame(-1, $removed['amount']);
+    }
+
     public function test_true_name_story_profile_is_a_short_deterministic_alpha_v1_tank_defeat(): void
     {
         [$manifest] = $this->catalog();
@@ -1730,8 +2144,34 @@ final class UndergroundCombatBuildTest extends TestCase
         bool $enemyDefends = false,
         string $enemyCategory = 'physical',
         int $enemyAgility = 10,
+        int $enemyPhysicalDefense = 100,
+        int $enemyMagicalDefense = 100,
+        bool $enemyBuffs = false,
     ): AlphaV1BuildCatalog {
         [$manifest] = $this->catalog();
+        if ($enemyBuffs) {
+            $manifest['statuses']['protected_aegis'] = [
+                'label' => '不可侵加護',
+                'disposition' => 'buff',
+                'dispellable' => false,
+                'duration_rounds' => 3,
+                'stack_policy' => 'refresh',
+                'max_stacks' => 1,
+                'application_chance_bps' => 10_000,
+                'effects' => [],
+            ];
+            $manifest['skills']['awakening_test_buffs'] = [
+                'label' => '試験加護',
+                'node_key' => null,
+                'mp_cost' => 0,
+                'cooldown' => 0,
+                'required_weapon_styles' => [],
+                'effects' => [
+                    ['type' => 'apply_status', 'target' => 'self', 'status' => 'protected_aegis'],
+                    ['type' => 'apply_status', 'target' => 'self', 'status' => 'regeneration'],
+                ],
+            ];
+        }
         $manifest['enemies']['awakening_target'] = [
             'label' => '覚醒試験体',
             'boss' => false,
@@ -1743,8 +2183,8 @@ final class UndergroundCombatBuildTest extends TestCase
                 'agility' => $enemyAgility,
             ],
             'max_hp' => 10_000_000,
-            'physical_defense' => 100,
-            'magical_defense' => 100,
+            'physical_defense' => $enemyPhysicalDefense,
+            'magical_defense' => $enemyMagicalDefense,
             'weapon_power' => $enemyWeaponPower,
             'normal_attack' => [
                 'type' => 'damage',
@@ -1758,10 +2198,10 @@ final class UndergroundCombatBuildTest extends TestCase
                 'dodgeable' => false,
                 'hits' => $enemyHits,
             ],
-            'skills' => [],
+            'skills' => $enemyBuffs ? ['awakening_test_buffs'] : [],
             'ai_rules' => [[
                 'conditions' => [['type' => 'always']],
-                'action' => $enemyDefends ? 'defend' : 'normal_attack',
+                'action' => $enemyBuffs ? 'skill:awakening_test_buffs' : ($enemyDefends ? 'defend' : 'normal_attack'),
             ]],
             'modifiers' => [],
         ];
@@ -1780,6 +2220,7 @@ final class UndergroundCombatBuildTest extends TestCase
         bool $unlocked = true,
         array $skills = [],
         ?array $aiRules = null,
+        ?string $techniqueKey = null,
     ): array {
         $configuration = require dirname(__DIR__, 3).'/config/underground-alpha-v1.php';
         $snapshot = [
@@ -1801,6 +2242,7 @@ final class UndergroundCombatBuildTest extends TestCase
                 'gauge' => $gauge,
                 'message' => '魔力が覚醒秘書の全身を駆け巡る――！',
                 'growth_path' => $growthPath,
+                'technique_key' => $techniqueKey,
             ],
         ];
         if ($currentHp !== null) {

@@ -32,6 +32,7 @@ final readonly class BuildCombatResult
      *     used: bool
      *   }|null
      * }  $awakening
+     * @param  array{player: array<string, mixed>, enemy: array<string, mixed>}|array{}  $initialState
      */
     public function __construct(
         public string $rulesIdentity,
@@ -67,6 +68,7 @@ final readonly class BuildCombatResult
         public array $actionLog,
         public array $generatedEquipment,
         public array $awakening,
+        public array $initialState = [],
     ) {}
 
     /** @return array<string, mixed> */
@@ -107,6 +109,7 @@ final readonly class BuildCombatResult
             'action_log' => $this->actionLog,
             'generated_equipment' => $this->generatedEquipment,
             'awakening' => $this->awakening,
+            'initial_state' => $this->initialState,
         ];
     }
 }

@@ -25,17 +25,28 @@ use Illuminate\Support\Str;
 
 final readonly class UndergroundRuntimeService
 {
-    private const FIRST_CLEAR_STORY_TITLE = '●封印の解放';
+    private const TRIAL_ONE_FIRST_CLEAR_STORY_TITLE = '●封印の解放';
 
-    private const FIRST_CHALLENGE_INTRO = <<<'STORY'
+    private const TRIAL_ONE_FIRST_CHALLENGE_INTRO = <<<'STORY'
 　崩れかけた石壁の向こうに広がっていた不思議な空間。
 　土と岩に埋もれたそこは、明らかに人の手で造られた古い石造りの遺跡であった。
 　入り口からは生暖かい風が吹いている……そこが魔物の巣窟であることは、明らかであった。
 STORY;
 
+    private const TRIAL_TWO_FIRST_CHALLENGE_INTRO = <<<'STORY'
+●試練2　黒曜石の魔窟
+　あなたも薄々察しているでしょう。この辺りの黒い結晶。あれもまた輝石の一つです——光は放ちませんけどね？
+　黒い輝石は浅層に見られる、不純物の多い輝石です。地上の一説には、そういった輝石にこのような逸話があります
+　輝石自身が、その美しい輝きに心奪われ欲を抱いた時……その光を自らに吸収してしまい、黒く濁ってしまうと。
+　私は、そうは思いたくありません。
+　だって欲望が、人の業が、黒い輝石が罪深いと吐き捨てるなんて余りにも冷酷だとは思いませんか？
+　同じく黒い黒曜石は、あんなにも透き通るような美しさを秘めていると言うのに。
+　……さぁ、この先が次の封印の地。黒晶洞の最奥です。挑戦は止めませんとも。倒れたらまた、担いで運んであげますからね
+STORY;
+
     private const TRIAL_ONE_ROUND_TWENTY_WARNING = '洞窟が崩れそうだ……';
 
-    private const FIRST_CLEAR_STORY_BODY = <<<'STORY'
+    private const TRIAL_ONE_FIRST_CLEAR_STORY_BODY = <<<'STORY'
 　ワイバーンの肉体が自らの魔力に耐え切れず、内から光を放ちながら崩壊していくその瞬間。
 　秘書の中で何かが強く脈打った。ドクン、ドクンと、全身の細胞が歓喜に震え、肉体の輪郭が歪んでいく幻覚が見える。
 　膝をつき、堕としてしまった武器を拾い上げたのは、あの案内人であった。
@@ -54,6 +65,31 @@ STORY;
 　それは桃色の、妖しく輝く楕円形の宝石であった。
 
 「ただし、あなたがその力に溺れないという決意を見せてくれたらの話ですけれど、ね？」
+STORY;
+
+    private const TRIAL_TWO_FIRST_CLEAR_STORY_BODY = <<<'STORY'
+　(秘書名)が倒したはずのデュラハンは突然、恐ろしい音を鳴り響かせながら立ち上がった。
+　暴風がその鎧から溢れ出し、武器が手から離れ彼方へと飛ばされる。
+『貴様さえ　キサマさえ生まれていなければ！！！』
+　まるで全てを呪うかのような頭の『声』は、この洞窟の輝石をより黒く、黒く染め上げるかのようであった。
+　そしてデュラハンは巨大な大剣を振り上げ、体勢を崩したあなたにそのままトドメの一撃を完遂する、はずだった。
+「まったく、同感ね」
+　目が眩むほどの雷鳴が突然視界を焼き焦がしたかと思えば、デュラハンの鎧は粉々に砕かれていた。
+　黒い洞窟よりも遥かに黒い、吸い込まれるような黒い剣に走る、ローズピンクの迅る魔力。
+　その眩さは自分が敵う相手ではないと、一瞬で思い知らされるほどであった。
+「……」
+　鎧を踏み抜き、砕いたかと思えば。こちらの方へと彼女は張り付いた笑顔でにっこりと小首をかしげた。
+
+「いやいや、危なかったですが。お見事、お見事。新しい自分の戦い方にも慣れてきたようで」
+
+「お陰様でこの封印の地も用済みです。つまりは必要がなくなったバリアが下がって——あなたの大好きなご主人様の島が使える領域はますます広がることでしょう」
+
+　誰か問おうと、彼女の答えはいつも通り。
+「私はただの、案内人ですよ」
+
+「輝かしいはずの秩序も混沌も、理性も欲望も、人間に寄生しないと生きられないはずの自分の存在意義や名前すらも、何もかも見てられなくなって嫌になって、自分の世界の全部を海に沈めて無かったことにした。愚かな愚かな、案内人です」
+
+「さぁ、帰って傷を癒しましょう。せっかくの暇つぶし相手に死なれては私が困りますから」
 STORY;
 
     public function __construct(
@@ -145,13 +181,7 @@ STORY;
         return DB::transaction(function () use ($user, $trialKey, $trial): UndergroundTrialRun {
             $profile = $this->lockedProfileForUser($user);
             $this->assertExplorationUnlocked($profile);
-            UndergroundTrialProgress::query()->firstOrCreate(
-                [
-                    'underground_profile_id' => $profile->id,
-                    'trial_key' => $this->catalog->firstTrialKey(),
-                ],
-                ['unlocked_at' => Carbon::now()],
-            );
+            $this->reconcileTrialProgresses($profile);
             $progress = UndergroundTrialProgress::query()
                 ->where('underground_profile_id', $profile->id)
                 ->where('trial_key', $trialKey)
@@ -406,34 +436,59 @@ STORY;
     /** @return array<string, mixed> */
     public function projectTrialState(UndergroundProfile $profile): array
     {
-        $trialKey = $this->catalog->firstTrialKey();
-        $trial = $this->catalog->trial($trialKey);
+        $firstTrialKey = $this->catalog->firstTrialKey();
+        $firstTrial = $this->catalog->trial($firstTrialKey);
 
-        return DB::transaction(function () use ($profile, $trialKey, $trial): array {
+        return DB::transaction(function () use ($profile, $firstTrialKey, $firstTrial): array {
             $lockedProfile = UndergroundProfile::query()
                 ->whereKey($profile->id)
                 ->lockForUpdate()
                 ->firstOrFail();
-            $progress = UndergroundTrialProgress::query()
+            $progresses = UndergroundTrialProgress::query()
                 ->where('underground_profile_id', $lockedProfile->id)
-                ->where('trial_key', $trialKey)
-                ->first();
+                ->get()
+                ->keyBy('trial_key');
             $run = UndergroundTrialRun::query()
                 ->where('underground_profile_id', $lockedProfile->id)
-                ->where('trial_key', $trialKey)
                 ->where('status', UndergroundTrialRun::STATUS_ACTIVE)
                 ->lockForUpdate()
                 ->first();
             if ($run instanceof UndergroundTrialRun) {
-                $run = $this->reconcileActiveTrialContent($run, $trial['content_identity']);
+                $activeTrial = $this->catalog->trial($run->trial_key);
+                $run = $this->reconcileActiveTrialContent($run, $activeTrial['content_identity']);
             }
+            $trials = [];
+            foreach ($this->catalog->trialKeys() as $trialKey) {
+                $trial = $this->catalog->trial($trialKey);
+                $progress = $progresses->get($trialKey);
+                $requiredTrialKey = $trial['required_trial_key'];
+                $requiredProgress = is_string($requiredTrialKey)
+                    ? $progresses->get($requiredTrialKey)
+                    : null;
+                $unlocked = $progress instanceof UndergroundTrialProgress
+                    || $requiredTrialKey === null
+                    || ($requiredProgress instanceof UndergroundTrialProgress
+                        && $requiredProgress->first_cleared_at !== null);
+                $trials[] = [
+                    'key' => $trialKey,
+                    'label' => $trial['label'],
+                    'total_battles' => count($trial['encounters']),
+                    'locked' => ! $unlocked,
+                    'unlock_condition' => $requiredTrialKey === 'trial_01'
+                        ? '試練1を初回clear'
+                        : null,
+                    'first_cleared' => $progress?->first_cleared_at !== null,
+                ];
+            }
+            $firstProgress = $progresses->get($firstTrialKey);
 
             return [
-                'key' => $trialKey,
-                'label' => $trial['label'],
-                'total_battles' => count($trial['encounters']),
-                'first_cleared' => $progress?->first_cleared_at !== null,
+                'key' => $firstTrialKey,
+                'label' => $firstTrial['label'],
+                'total_battles' => count($firstTrial['encounters']),
+                'first_cleared' => $firstProgress?->first_cleared_at !== null,
                 'active_run' => $run instanceof UndergroundTrialRun ? $this->projectTrialRun($run) : null,
+                'trials' => $trials,
             ];
         }, 3);
     }
@@ -449,7 +504,8 @@ STORY;
         $log = $battle->relationLoaded('log') && $battle->getRelation('log') instanceof UndergroundBattleLog
             ? $battle->getRelation('log')
             : null;
-        $hasPresentationLog = ($snapshot['presentation_log_version'] ?? null) === 1
+        $presentationLogVersion = $snapshot['presentation_log_version'] ?? null;
+        $hasPresentationLog = in_array($presentationLogVersion, [1, UndergroundAlphaV1BattleProjector::PRESENTATION_LOG_VERSION], true)
             && $log instanceof UndergroundBattleLog;
 
         return [
@@ -477,6 +533,12 @@ STORY;
             'max_hp_after' => (int) ($snapshot['max_hp_after'] ?? 0),
             'interbattle_heal_amount' => (int) ($snapshot['interbattle_heal_amount'] ?? 0),
             'summary' => $summary,
+            'initial_state' => $withRounds
+                && $hasPresentationLog
+                && $presentationLogVersion === UndergroundAlphaV1BattleProjector::PRESENTATION_LOG_VERSION
+                && is_array($snapshot['initial_state'] ?? null)
+                    ? $snapshot['initial_state']
+                    : null,
             'rounds' => $withRounds && $hasPresentationLog ? $log->actions : null,
             'detail_available' => $withRounds
                 ? $hasPresentationLog
@@ -490,10 +552,7 @@ STORY;
                 && is_array($snapshot['hunting_ground'] ?? null)
                     ? $snapshot['hunting_ground']
                     : null,
-            'drop' => $context === UndergroundBattle::ACTIVITY_EXPLORATION
-                && is_array($snapshot['drop'] ?? null)
-                    ? $snapshot['drop']
-                    : null,
+            'drop' => is_array($snapshot['drop'] ?? null) ? $snapshot['drop'] : null,
             'trial_key' => $context === UndergroundBattle::ACTIVITY_TRIAL ? $battle->activity_key : null,
             'trial_run_key' => $context === UndergroundBattle::ACTIVITY_TRIAL ? $battle->trial_run_key : null,
             'trial_battle_index' => $context === UndergroundBattle::ACTIVITY_TRIAL
@@ -526,8 +585,11 @@ STORY;
     public function projectAwakeningState(UndergroundProfile $profile, bool $unlocked): array
     {
         $technique = is_string($profile->growth_path_key)
-            ? $this->awakening->technique($profile->growth_path_key)
+            ? $this->awakening->technique($profile->growth_path_key, $profile->awakening_technique_key)
             : null;
+        $techniques = is_string($profile->growth_path_key)
+            ? $this->awakening->techniques($profile->growth_path_key)
+            : [];
 
         return [
             'identity' => UndergroundAwakening::IDENTITY,
@@ -537,10 +599,12 @@ STORY;
             'custom_message' => $unlocked ? $profile->awakening_message : null,
             'default_message' => UndergroundAwakening::DEFAULT_MESSAGE,
             'technique' => $unlocked ? $technique : null,
+            'techniques' => $unlocked ? $techniques : [],
+            'selected_technique_key' => $unlocked ? ($technique['key'] ?? null) : null,
         ];
     }
 
-    /** @return array{unlocked: bool, gauge: int, message: string, growth_path: string} */
+    /** @return array{unlocked: bool, gauge: int, message: string, growth_path: string, technique_key: string} */
     private function awakeningSnapshot(
         UndergroundProfile $profile,
         bool $unlocked,
@@ -553,11 +617,17 @@ STORY;
             );
         }
 
+        $technique = $this->awakening->technique(
+            $profile->growth_path_key,
+            $profile->awakening_technique_key,
+        );
+
         return [
             'unlocked' => $unlocked,
             'gauge' => $unlocked ? $profile->awakening_gauge : 0,
             'message' => $this->awakening->renderMessage($profile->awakening_message, $secretaryName),
             'growth_path' => $profile->growth_path_key,
+            'technique_key' => $technique['key'],
         ];
     }
 
@@ -714,7 +784,8 @@ STORY;
                 'ai' => $definition['ai'],
                 'player_display_name' => $secretary->name,
                 'encounter_display_name' => $encounter['label'],
-                'presentation_log_version' => 1,
+                'presentation_log_version' => UndergroundAlphaV1BattleProjector::PRESENTATION_LOG_VERSION,
+                'initial_state' => $projection['initial_state'],
                 'summary' => $projection['summary'],
                 'growth_path_key' => $profile->growth_path_key,
                 'growth_path_identity' => $profile->growth_path_identity,
@@ -781,6 +852,9 @@ STORY;
      * @param array{
      *   label: string,
      *   content_identity: string,
+     *   balance_manifest: string,
+     *   required_trial_key: string|null,
+     *   drop_tier_key: string|null,
      *   interbattle_heal_bps: int,
      *   first_clear_skill_points: int,
      *   encounters: list<string>,
@@ -826,7 +900,8 @@ STORY;
             $equipment,
         );
         $currentHpBefore = min($profile->current_hp ?? $maxHpBefore, $maxHpBefore);
-        $definition = $this->alphaV1Catalog->trialOneCombatDefinition(
+        $definition = $this->alphaV1Catalog->trialCombatDefinition(
+            $trialRun->trial_key,
             $profile->growth_path_key,
             $profile->combat_level,
             $profile->allocatedStp(),
@@ -933,7 +1008,7 @@ STORY;
             $secretary->name,
             $encounterLabel,
         );
-        if ($isTrialBoss && $result->rounds >= 20) {
+        if ($trialRun->trial_key === 'trial_01' && $isTrialBoss && $result->rounds >= 20) {
             $projection = $this->withTrialOneRoundTwentyWarning($projection);
         }
         $projection['summary']['result'] = $resultType;
@@ -943,17 +1018,34 @@ STORY;
                 ->where('activity_type', UndergroundBattle::ACTIVITY_TRIAL)
                 ->where('activity_key', $trialRun->trial_key)
                 ->exists();
-        $firstClearStory = $firstClear ? [
-            'title' => self::FIRST_CLEAR_STORY_TITLE,
-            'body' => self::FIRST_CLEAR_STORY_BODY,
-            'system_messages' => [
-                "{$secretary->name}は一つ目の封印の地を制覇した。",
-                'SPを40入手した。',
-                '地底マップが'.UndergroundAreaCapacity::forUnlockedLayers(1).'マス解禁された。',
-                '覚醒を習得した。',
-                '覚醒ゲージが解禁された。',
+        $challengeIntro = $firstChallenge ? match ($trialRun->trial_key) {
+            'trial_01' => self::TRIAL_ONE_FIRST_CHALLENGE_INTRO,
+            'trial_02' => self::TRIAL_TWO_FIRST_CHALLENGE_INTRO,
+            default => null,
+        } : null;
+        $firstClearStory = $firstClear ? match ($trialRun->trial_key) {
+            'trial_01' => [
+                'title' => self::TRIAL_ONE_FIRST_CLEAR_STORY_TITLE,
+                'body' => self::TRIAL_ONE_FIRST_CLEAR_STORY_BODY,
+                'system_messages' => [
+                    "{$secretary->name}は一つ目の封印の地を制覇した。",
+                    'SPを40入手した。',
+                    '地底マップが'.UndergroundAreaCapacity::forUnlockedLayers(1).'マス解禁された。',
+                    '覚醒を習得した。',
+                    '覚醒ゲージが解禁された。',
+                ],
             ],
-        ] : null;
+            'trial_02' => [
+                'title' => '●',
+                'body' => str_replace('(秘書名)', $secretary->name, self::TRIAL_TWO_FIRST_CLEAR_STORY_BODY),
+                'system_messages' => [
+                    "{$secretary->name}は二つ目の封印の地を制覇した。",
+                    'SPを40入手した。',
+                    '地底マップが'.UndergroundAreaCapacity::forUnlockedLayers(2).'マスまで拡張された。',
+                ],
+            ],
+            default => null,
+        } : null;
         $battle = UndergroundBattle::query()->create([
             'underground_profile_id' => $profile->id,
             'request_id' => $requestId,
@@ -984,7 +1076,8 @@ STORY;
                 'ai' => $definition['ai'],
                 'player_display_name' => $secretary->name,
                 'encounter_display_name' => $encounterLabel,
-                'presentation_log_version' => 1,
+                'presentation_log_version' => UndergroundAlphaV1BattleProjector::PRESENTATION_LOG_VERSION,
+                'initial_state' => $projection['initial_state'],
                 'summary' => $projection['summary'],
                 'growth_path_key' => $profile->growth_path_key,
                 'growth_path_identity' => $profile->growth_path_identity,
@@ -1018,12 +1111,35 @@ STORY;
                 'trial_total_battles' => count($trial['encounters']),
                 'trial_status' => $trialRun->status,
                 'trial_next_battle_index' => $trialRun->next_battle_index,
-                'challenge_intro' => $firstChallenge ? self::FIRST_CHALLENGE_INTRO : null,
+                'challenge_intro' => $challengeIntro,
                 'first_clear_story' => $firstClearStory,
+                'drop' => [
+                    'identity' => $this->alphaV1Catalog->explorationDropConfig()['identity'],
+                    'status' => 'pending',
+                ],
             ],
             'started_at' => $startedAt,
             'finished_at' => $finishedAt,
         ]);
+        $dropTierKey = $trial['drop_tier_key'] ?? null;
+        $snapshot = $battle->snapshot;
+        $snapshot['drop'] = is_string($dropTierKey)
+            ? ($resultType === UndergroundBattle::RESULT_VICTORY
+                ? $this->equipmentDrops->settleTrialVictory(
+                    $profile,
+                    $battle,
+                    $trialRun->trial_key,
+                    $dropTierKey,
+                    $reward,
+                    $seed,
+                )
+                : [
+                    'identity' => $this->alphaV1Catalog->explorationDropConfig()['identity'],
+                    'status' => 'ineligible',
+                ])
+            : null;
+        $battle->snapshot = $snapshot;
+        $battle->save();
         UndergroundBattleLog::query()->create([
             'underground_battle_id' => $battle->id,
             'actions' => $projection['rounds'],
@@ -1113,9 +1229,15 @@ STORY;
             $reward = $this->catalog->trial($run->trial_key)['first_clear_skill_points'];
             $profile->skill_points_total += $reward;
             $profile->skill_points_unspent += $reward;
+            $this->reconcileTrialProgresses($profile, $finishedAt);
         }
-        if ($run->trial_key === 'trial_01' && $profile->unlocked_area_layers < 1) {
-            $profile->unlocked_area_layers = 1;
+        $unlockedAreaLayers = match ($run->trial_key) {
+            'trial_01' => 1,
+            'trial_02' => 2,
+            default => null,
+        };
+        if ($unlockedAreaLayers !== null && $profile->unlocked_area_layers < $unlockedAreaLayers) {
+            $profile->unlocked_area_layers = $unlockedAreaLayers;
         }
         $run->status = UndergroundTrialRun::STATUS_CLEARED;
         $run->next_battle_index = 1;
@@ -1123,6 +1245,32 @@ STORY;
         $run->save();
 
         return $firstClear;
+    }
+
+    private function reconcileTrialProgresses(
+        UndergroundProfile $profile,
+        ?Carbon $unlockedAt = null,
+    ): void {
+        $unlockedAt ??= Carbon::now();
+        $cleared = UndergroundTrialProgress::query()
+            ->where('underground_profile_id', $profile->id)
+            ->whereNotNull('first_cleared_at')
+            ->pluck('trial_key')
+            ->all();
+        foreach ($this->catalog->trialKeys() as $trialKey) {
+            $trial = $this->catalog->trial($trialKey);
+            $required = $trial['required_trial_key'];
+            if (is_string($required) && ! in_array($required, $cleared, true)) {
+                continue;
+            }
+            UndergroundTrialProgress::query()->firstOrCreate(
+                [
+                    'underground_profile_id' => $profile->id,
+                    'trial_key' => $trialKey,
+                ],
+                ['unlocked_at' => $unlockedAt],
+            );
+        }
     }
 
     private function lockedProfileForUser(User $user): UndergroundProfile

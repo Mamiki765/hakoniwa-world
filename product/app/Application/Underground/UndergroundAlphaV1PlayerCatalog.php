@@ -626,17 +626,22 @@ final readonly class UndergroundAlphaV1PlayerCatalog
         return new AlphaV1BuildCatalog($manifest);
     }
 
-    public function trialOneCatalog(): AlphaV1BuildCatalog
+    public function trialCatalog(string $trialKey): AlphaV1BuildCatalog
     {
+        $manifestPath = match ($trialKey) {
+            'trial_01' => 'underground/balance/trial1-v1.json',
+            'trial_02' => 'underground/balance/trial2-v1.json',
+            default => throw new RuntimeException("Unknown Underground Trial catalog [{$trialKey}]."),
+        };
         try {
             $trial = json_decode(
-                file_get_contents(config_path('underground/balance/trial1-v1.json')) ?: '',
+                file_get_contents(config_path($manifestPath)) ?: '',
                 true,
                 512,
                 JSON_THROW_ON_ERROR,
             );
         } catch (JsonException $exception) {
-            throw new RuntimeException('Underground Trial 1 manifest is invalid.', previous: $exception);
+            throw new RuntimeException("Underground {$trialKey} manifest is invalid.", previous: $exception);
         }
         if (! is_array($trial)
             || ($trial['schema_version'] ?? null) !== 1
@@ -644,20 +649,25 @@ final readonly class UndergroundAlphaV1PlayerCatalog
             || ! is_array($trial['skills'] ?? null)
             || ! is_array($trial['statuses'] ?? null)
             || ! is_array($trial['enemies'] ?? null)) {
-            throw new RuntimeException('Underground Trial 1 manifest is invalid.');
+            throw new RuntimeException("Underground {$trialKey} manifest is invalid.");
         }
 
         $manifest = $this->laboratoryCatalog()->manifest();
         foreach (['skills', 'statuses', 'enemies'] as $section) {
             foreach ($trial[$section] as $key => $definition) {
                 if (! is_string($key) || ! is_array($definition) || array_key_exists($key, $manifest[$section])) {
-                    throw new RuntimeException("Underground Trial 1 {$section} catalog is invalid.");
+                    throw new RuntimeException("Underground {$trialKey} {$section} catalog is invalid.");
                 }
                 $manifest[$section][$key] = $definition;
             }
         }
 
         return new AlphaV1BuildCatalog($manifest);
+    }
+
+    public function trialOneCatalog(): AlphaV1BuildCatalog
+    {
+        return $this->trialCatalog('trial_01');
     }
 
     /**
@@ -707,8 +717,39 @@ final readonly class UndergroundAlphaV1PlayerCatalog
         array $skillAllocations = [],
         ?array $customAiRules = null,
     ): array {
+        return $this->trialCombatDefinition(
+            'trial_01',
+            $growthPathKey,
+            $combatLevel,
+            $allocatedStp,
+            $equipment,
+            $playerDisplayName,
+            $currentHp,
+            $skillAllocations,
+            $customAiRules,
+        );
+    }
+
+    /**
+     * @param  array{vitality: int, might: int, finesse: int, spirit: int, agility: int}  $allocatedStp
+     * @param  array<string, array{rank: int, active_slot: int|null}>  $skillAllocations
+     * @param  array<string, mixed>  $equipment
+     * @param  list<array<string, mixed>>|null  $customAiRules
+     * @return array{catalog: AlphaV1BuildCatalog, player_snapshot: array<string, mixed>, progression_stats: array<string, int>, combat_stats: array<string, int>, equipment: array<string, mixed>, current_hp: int, max_hp: int, acquired_nodes: array<string, int>, active_skills: list<string>, passive_modifiers: array<string, int|bool|string>, ai: array{schema_version: int, rules: list<array<string, mixed>>, hash: string}}
+     */
+    public function trialCombatDefinition(
+        string $trialKey,
+        string $growthPathKey,
+        int $combatLevel,
+        array $allocatedStp,
+        array $equipment,
+        string $playerDisplayName,
+        ?int $currentHp = null,
+        array $skillAllocations = [],
+        ?array $customAiRules = null,
+    ): array {
         return $this->playerCombatDefinition(
-            $this->trialOneCatalog(),
+            $this->trialCatalog($trialKey),
             $growthPathKey,
             $combatLevel,
             $allocatedStp,
@@ -947,7 +988,15 @@ final readonly class UndergroundAlphaV1PlayerCatalog
             throw new RuntimeException('Underground exploration drop configuration is invalid.');
         }
         $rarities = ['common', 'uncommon', 'rare', 'epic'];
-        foreach (['standard', 'elite', 'rare'] as $profileKey) {
+        $profileKeys = [
+            'standard',
+            'elite',
+            'rare',
+            'trial2_shallow',
+            'trial2_middle',
+            'trial2_deep',
+        ];
+        foreach ($profileKeys as $profileKey) {
             $profile = $drop['profiles'][$profileKey] ?? null;
             $weights = is_array($profile) ? ($profile['rarity_weights'] ?? null) : null;
             if (! is_array($profile)
@@ -960,7 +1009,7 @@ final readonly class UndergroundAlphaV1PlayerCatalog
                 throw new RuntimeException("Underground exploration drop profile [{$profileKey}] is invalid.");
             }
         }
-        if (array_keys($drop['profiles']) !== ['standard', 'elite', 'rare']
+        if (array_keys($drop['profiles']) !== $profileKeys
             || array_keys($drop['category_weights']) !== ['weapon', 'armor', 'accessory']
             || array_filter(
                 $drop['category_weights'],

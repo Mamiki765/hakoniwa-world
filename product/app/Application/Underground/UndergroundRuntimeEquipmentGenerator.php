@@ -56,7 +56,7 @@ final class UndergroundRuntimeEquipmentGenerator
                 throw new InvalidArgumentException('Underground generated accessory main stat is invalid.');
             }
             $bodyKey = 'accessory';
-            $name = $tier['accessory_name'] ?? null;
+            $name = $tier['accessory_names'][$mainStat] ?? $tier['accessory_name'] ?? null;
         }
         if (! is_string($name) || $name === '') {
             throw new RuntimeException('Underground generated equipment name is invalid.');
@@ -282,6 +282,7 @@ final class UndergroundRuntimeEquipmentGenerator
      */
     private function body(array $definition, int $itemLevel, ?string $mainStat): array
     {
+        $zeroAnchors = [1 => 0, $this->config()['item_level_max'] => 0];
         $stats = array_fill_keys(AlphaV1CombatRules::STATS, 0);
         foreach (($definition['stats'] ?? []) as $stat => $anchors) {
             if (! in_array($stat, AlphaV1CombatRules::STATS, true) || ! is_array($anchors)) {
@@ -297,10 +298,10 @@ final class UndergroundRuntimeEquipmentGenerator
         }
 
         return [
-            'weapon_power' => $this->interpolate($definition['weapon_power'] ?? [1 => 0, 60 => 0], $itemLevel),
-            'physical_defense' => $this->interpolate($definition['physical_defense'] ?? [1 => 0, 60 => 0], $itemLevel),
-            'magical_defense' => $this->interpolate($definition['magical_defense'] ?? [1 => 0, 60 => 0], $itemLevel),
-            'max_hp' => $this->interpolate($definition['max_hp'] ?? [1 => 0, 60 => 0], $itemLevel),
+            'weapon_power' => $this->interpolate($definition['weapon_power'] ?? $zeroAnchors, $itemLevel),
+            'physical_defense' => $this->interpolate($definition['physical_defense'] ?? $zeroAnchors, $itemLevel),
+            'magical_defense' => $this->interpolate($definition['magical_defense'] ?? $zeroAnchors, $itemLevel),
+            'max_hp' => $this->interpolate($definition['max_hp'] ?? $zeroAnchors, $itemLevel),
             'stats' => $stats,
         ];
     }
@@ -342,9 +343,9 @@ final class UndergroundRuntimeEquipmentGenerator
     private function sellPrice(string $category, int $itemLevel, int $sellPriceBps): int
     {
         $anchors = match ($category) {
-            'weapon' => [1 => 120, 10 => 360, 20 => 1_000, 40 => 3_000, 60 => 6_000],
-            'armor' => [1 => 100, 10 => 300, 20 => 900, 40 => 2_700, 60 => 5_400],
-            'accessory' => [1 => 60, 10 => 180, 20 => 600, 40 => 1_800, 60 => 3_600],
+            'weapon' => [1 => 120, 10 => 360, 20 => 1_000, 40 => 3_000, 60 => 6_000, 90 => 12_000],
+            'armor' => [1 => 100, 10 => 300, 20 => 900, 40 => 2_700, 60 => 5_400, 90 => 10_800],
+            'accessory' => [1 => 60, 10 => 180, 20 => 600, 40 => 1_800, 60 => 3_600, 90 => 7_200],
             default => throw new RuntimeException('Underground generated equipment category is invalid.'),
         };
         $buyEquivalent = $this->interpolate($anchors, $itemLevel);

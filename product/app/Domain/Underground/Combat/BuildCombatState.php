@@ -26,7 +26,8 @@ final class BuildCombatState
      *     applied_round: int,
      *     stacks: int,
      *     effects: list<array<string, mixed>>,
-     *     control: bool
+     *     control: bool,
+     *     dispellable: bool
      * }>
      */
     public array $statuses = [];
@@ -60,6 +61,10 @@ final class BuildCombatState
     public int $awakeningGuardRoundsRemaining = 0;
 
     public ?int $awakeningGuardAppliedRound = null;
+
+    public int $awakeningLifestealRoundsRemaining = 0;
+
+    public ?int $awakeningLifestealAppliedRound = null;
 
     /** @var array<string, int> */
     public array $normalStats;

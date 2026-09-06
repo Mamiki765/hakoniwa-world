@@ -12,6 +12,10 @@ interface CombatantState {
     awakened?: boolean;
     awakening_technique_used?: boolean;
     awakening_guard_rounds_remaining?: number;
+    awakening_lifesteal_rounds_remaining?: number;
+    awakening_unlocked?: boolean;
+    awakening_gauge?: number;
+    awakening_gauge_max?: number;
 }
 
 const props = defineProps<{
@@ -25,6 +29,9 @@ const visibleStatuses = computed(() => props.state.statuses.filter((status) => s
 const healthPercent = computed(() => props.state.max_hp > 0
     ? Math.max(0, Math.min(100, Math.round((props.state.hp / props.state.max_hp) * 100)))
     : 0);
+const awakeningMaximum = computed(() => Math.max(1, props.state.awakening_gauge_max ?? 1000));
+const awakeningGauge = computed(() => Math.max(0, Math.min(awakeningMaximum.value, props.state.awakening_gauge ?? 0)));
+const awakeningPercent = computed(() => Math.round((awakeningGauge.value / awakeningMaximum.value) * 100));
 </script>
 
 <template>
@@ -46,7 +53,15 @@ const healthPercent = computed(() => props.state.max_hp > 0
                     <progress class="mp" max="10000" :value="state.mp" :aria-label="`MP ${state.mp}/10000`" />
                 </label>
             </div>
-            <ul v-if="state.barrier > 0 || visibleStatuses.length > 0 || state.role_stacks.fighting_spirit > 0 || state.role_stacks.grace > 0 || state.awakened || (state.awakening_guard_rounds_remaining ?? 0) > 0 || state.taunt" class="underground-active-state" aria-label="有効な状態">
+            <div
+                v-if="side === 'player' && state.awakening_unlocked"
+                class="underground-combatant-awakening"
+                :data-full="awakeningGauge >= awakeningMaximum"
+            >
+                <span>覚醒ゲージ</span>
+                <progress :max="awakeningMaximum" :value="awakeningGauge" aria-label="覚醒ゲージ" :aria-valuetext="`${awakeningPercent}%`" />
+            </div>
+            <ul v-if="state.barrier > 0 || visibleStatuses.length > 0 || state.role_stacks.fighting_spirit > 0 || state.role_stacks.grace > 0 || state.awakened || (state.awakening_guard_rounds_remaining ?? 0) > 0 || (state.awakening_lifesteal_rounds_remaining ?? 0) > 0 || state.taunt" class="underground-active-state" aria-label="有効な状態">
                 <li v-if="state.barrier > 0">障壁 {{ state.barrier }}</li>
                 <li v-for="status in visibleStatuses" :key="`${status.label}-${status.remaining}-${status.stacks}`">
                     {{ status.label }}<template v-if="status.stacks > 1"> {{ status.stacks }}段階</template><template v-if="status.remaining > 0"> 残{{ status.remaining }}</template>
@@ -56,6 +71,7 @@ const healthPercent = computed(() => props.state.max_hp > 0
                 <li v-if="state.taunt">{{ state.taunt.label ?? '挑発' }}<template v-if="state.taunt.remaining"> 残{{ state.taunt.remaining }}</template></li>
                 <li v-if="state.awakened">覚醒中</li>
                 <li v-if="(state.awakening_guard_rounds_remaining ?? 0) > 0">覚醒防御 残{{ state.awakening_guard_rounds_remaining }}</li>
+                <li v-if="(state.awakening_lifesteal_rounds_remaining ?? 0) > 0">修羅の血脈 残{{ state.awakening_lifesteal_rounds_remaining }}</li>
             </ul>
         </div>
     </article>

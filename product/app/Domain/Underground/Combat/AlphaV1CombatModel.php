@@ -159,6 +159,10 @@ final readonly class AlphaV1CombatModel
         $statusUptime = [];
         $mpHistory = [];
         $actionLog = [];
+        $initialState = [
+            'player' => $this->stateSnapshot($player),
+            'enemy' => $this->stateSnapshot($enemy),
+        ];
 
         $completedRounds = $this->orchestrator->run(
             $maxRounds,
@@ -176,6 +180,7 @@ final readonly class AlphaV1CombatModel
                 $player->tickCooldowns();
                 $enemy->tickCooldowns();
                 $this->applyPhaseTransition($catalog, $enemy, $random, $round, $actionLog);
+                $this->applyRoundStartStatus($catalog, $enemy, $random, $round, $actionLog);
                 $this->changeMp($player, $naturalRecovery, 0, $round, 'natural', $metrics, $mpHistory, $actionLog);
                 $this->changeMp($enemy, $naturalRecovery, 0, $round, 'natural', $metrics, $mpHistory, $actionLog, false);
             },
@@ -223,6 +228,7 @@ final readonly class AlphaV1CombatModel
                 $this->processRoundEnd($catalog, $enemy, $player, $round, $metrics, $statusUptime, $actionLog);
                 $this->gainAwakeningGauge($player, UndergroundAwakening::ROUND_GAIN);
                 $this->advanceAwakeningGuardRound($player, $round, $actionLog);
+                $this->advanceAwakeningLifestealRound($player, $round, $actionLog);
                 $actionLog[] = [
                     'kind' => 'round_end',
                     'round' => $round,
@@ -282,11 +288,15 @@ final readonly class AlphaV1CombatModel
                 'normal_stats' => $player->normalStats,
                 'final_stats' => $player->stats,
                 'technique' => $player->awakeningTechniqueKey !== null
-                    ? array_merge($this->awakening->technique($this->growthPathForTechnique($player)), [
+                    ? array_merge($this->awakening->technique(
+                        $this->growthPathForTechnique($player),
+                        $player->awakeningTechniqueKey,
+                    ), [
                         'used' => $player->awakeningTechniqueUsed,
                     ])
                     : null,
             ],
+            $initialState,
         );
     }
 
@@ -426,7 +436,11 @@ final readonly class AlphaV1CombatModel
             $state->awakeningGauge = $awakening['gauge'];
             $state->awakeningGaugeBefore = $awakening['gauge'];
             $state->awakeningMessage = $awakening['message'];
-            $technique = $this->awakening->technique($awakening['growth_path']);
+            $techniqueKey = $awakening['technique_key'] ?? null;
+            if ($techniqueKey !== null && ! is_string($techniqueKey)) {
+                throw new InvalidArgumentException('Underground awakening technique snapshot is invalid.');
+            }
+            $technique = $this->awakening->technique($awakening['growth_path'], $techniqueKey);
             $state->awakeningTechniqueKey = $awakening['unlocked'] ? $technique['key'] : null;
             $state->flags['awakening_growth_path'] = $awakening['growth_path'];
             $state->equipmentMaxHp = $equipment['max_hp'];
@@ -509,6 +523,31 @@ final readonly class AlphaV1CombatModel
         $completeGuardChance = $modifiers['complete_guard_chance_bps'] ?? 0;
         if (! is_int($completeGuardChance) || $completeGuardChance < 0 || $completeGuardChance > 10_000) {
             throw new InvalidArgumentException("Underground alpha-v1 enemy [{$enemyKey}] complete guard trait is invalid.");
+        }
+        $roundStartStatusKey = $modifiers['round_start_status_key'] ?? null;
+        if ($roundStartStatusKey !== null) {
+            if (! is_string($roundStartStatusKey) || $roundStartStatusKey === '') {
+                throw new InvalidArgumentException("Underground alpha-v1 enemy [{$enemyKey}] round-start status is invalid.");
+            }
+            $roundStartStatus = $catalog->status($roundStartStatusKey);
+            $hasPositiveDamageModifier = false;
+            foreach ($roundStartStatus['effects'] as $effect) {
+                if (is_array($effect)
+                    && ($effect['type'] ?? null) === 'damage_dealt_modifier'
+                    && ($effect['category'] ?? 'all') === 'all'
+                    && is_int($effect['value_bps'] ?? null)
+                    && $effect['value_bps'] > 0) {
+                    $hasPositiveDamageModifier = true;
+                    break;
+                }
+            }
+            if (($roundStartStatus['disposition'] ?? null) !== 'buff'
+                || ($roundStartStatus['stack_policy'] ?? null) !== 'stack_refresh'
+                || ! $hasPositiveDamageModifier) {
+                throw new InvalidArgumentException(
+                    "Underground alpha-v1 enemy [{$enemyKey}] round-start status must stack a positive all-damage buff.",
+                );
+            }
         }
         $phaseTransition = $this->phaseTransition($catalog, $enemy, $enemyKey);
 
@@ -1141,7 +1180,7 @@ final readonly class AlphaV1CombatModel
             }
             $loggedAgilityComboHits = $showAgilityCombo && ! $agilityComboLogged ? $agilityComboHits : 1;
             $agilityComboLogged = true;
-            $actionLog[] = $this->logRow(
+            $damageRow = $this->logRow(
                 $round,
                 $actor,
                 $actionKey,
@@ -1155,6 +1194,10 @@ final readonly class AlphaV1CombatModel
                 $target->side,
                 agilityComboHits: $loggedAgilityComboHits,
             );
+            if (($effect['report_category'] ?? false) === true) {
+                $damageRow['damage_category'] = $category;
+            }
+            $actionLog[] = $damageRow;
             if ($guarded || $barrierAbsorbed > 0) {
                 if (($target->modifiers['fighting_spirit_enabled'] ?? false) === true) {
                     $this->grantRoleStack($target, 'fighting_spirit', 5, $round, $actionLog);
@@ -1167,10 +1210,30 @@ final readonly class AlphaV1CombatModel
                 }
                 $this->counter($target, $actor, $round, $metrics, $actionUsage, $actionLog);
             }
-            if ($actor->side === 'player' && $hpDamage > 0) {
-                $lifestealBps = max(0, (int) ($actor->modifiers['lifesteal_bps'] ?? 0));
+            if ($hpDamage > 0 && $actor->alive()) {
+                $baseLifestealBps = max(0, (int) ($actor->modifiers['lifesteal_bps'] ?? 0));
+                $bloodlineActive = $actor->side === 'player'
+                    && $actor->awakeningLifestealRoundsRemaining > 0;
+                $lifestealBps = $bloodlineActive
+                    ? min(
+                        UndergroundAwakening::LIFESTEAL_CAP_BPS,
+                        $baseLifestealBps + UndergroundAwakening::BLOODLINE_LIFESTEAL_BPS,
+                    )
+                    : $baseLifestealBps;
                 if ($lifestealBps > 0) {
-                    $this->healExact($actor, intdiv($hpDamage * $lifestealBps, 10_000), $metrics);
+                    $effective = $this->healExact($actor, intdiv($hpDamage * $lifestealBps, 10_000), $metrics);
+                    if ($effective > 0) {
+                        $actionLog[] = $this->logRow(
+                            $round,
+                            $actor,
+                            $bloodlineActive ? 'shura_bloodline_lifesteal' : 'lifesteal',
+                            -$effective,
+                            false,
+                            false,
+                            effectType: 'recovery',
+                            targetSide: $actor->side,
+                        );
+                    }
                 }
             }
         }
@@ -1322,6 +1385,7 @@ final readonly class AlphaV1CombatModel
         $target->statuses[$statusKey] = [
             'key' => $statusKey,
             'disposition' => $definition['disposition'],
+            'dispellable' => ($definition['dispellable'] ?? true) === true,
             'remaining' => (int) $definition['duration_rounds'],
             'applied_round' => $round,
             'stacks' => $stacks,
@@ -1337,6 +1401,34 @@ final readonly class AlphaV1CombatModel
             false,
             effectType: 'status_applied',
             targetSide: $target->side,
+        );
+    }
+
+    /** @param list<array<string, mixed>> $actionLog */
+    private function applyRoundStartStatus(
+        AlphaV1BuildCatalog $catalog,
+        BuildCombatState $state,
+        UndergroundRandom $random,
+        int $round,
+        array &$actionLog,
+    ): void {
+        $statusKey = $state->modifiers['round_start_status_key'] ?? null;
+        if ($statusKey === null) {
+            return;
+        }
+        if (! is_string($statusKey) || $statusKey === '') {
+            throw new InvalidArgumentException('Underground round-start status modifier is invalid.');
+        }
+        $this->applyStatus(
+            $catalog,
+            $state,
+            $state,
+            $statusKey,
+            $random,
+            $round,
+            'round_start_status',
+            $actionLog,
+            true,
         );
     }
 
@@ -1393,7 +1485,8 @@ final readonly class AlphaV1CombatModel
         $maximum = max(1, (int) ($effect['maximum'] ?? 1));
         $keys = array_keys(array_filter(
             $target->statuses,
-            static fn (array $status): bool => $status['disposition'] === $disposition,
+            static fn (array $status): bool => $status['disposition'] === $disposition
+                && $status['dispellable'] === true,
         ));
         sort($keys, SORT_STRING);
         $removed = 0;
@@ -1744,6 +1837,11 @@ final readonly class AlphaV1CombatModel
             'awakening_technique_used' => $state->awakeningTechniqueUsed,
             'awakening_guard_rounds_remaining' => $state->awakeningGuardRoundsRemaining,
             'awakening_guard_applied_round' => $state->awakeningGuardAppliedRound,
+            'awakening_lifesteal_rounds_remaining' => $state->awakeningLifestealRoundsRemaining,
+            'awakening_lifesteal_applied_round' => $state->awakeningLifestealAppliedRound,
+            'awakening_unlocked' => $state->awakeningUnlocked,
+            'awakening_gauge' => $state->awakeningGauge,
+            'awakening_gauge_max' => UndergroundAwakening::GAUGE_MAX,
         ];
     }
 
@@ -1801,15 +1899,14 @@ final readonly class AlphaV1CombatModel
             return false;
         }
         $growthPath = $this->growthPathForTechnique($player);
-        $technique = $this->awakening->technique($growthPath);
+        $technique = $this->awakening->technique($growthPath, $player->awakeningTechniqueKey);
+        $techniqueKey = $technique['key'];
         $cooldownsInUse = count(array_filter($player->cooldowns, static fn (int $remaining): bool => $remaining > 0));
-        $shouldUse = match ($growthPath) {
-            'martial_red' => $enemy->boss || ($enemy->hp * 100) > ($enemy->maxHp * 15),
-            'guardianship_blue' => $enemy->boss || ($enemy->hp * 100) > ($enemy->maxHp * 15),
-            'blessing_green' => ($player->hp * 10_000) <= ($player->maxHp * UndergroundAwakening::BLESSING_USE_HP_BPS),
-            'free_black' => ($player->mp * 10_000) <= (AlphaV1CombatRules::MAX_MP * UndergroundAwakening::FREE_USE_MP_BPS)
+        $shouldUse = match ($techniqueKey) {
+            'life_requiem' => ($player->hp * 10_000) <= ($player->maxHp * UndergroundAwakening::BLESSING_USE_HP_BPS),
+            'limitless_reprise' => ($player->mp * 10_000) <= (AlphaV1CombatRules::MAX_MP * UndergroundAwakening::FREE_USE_MP_BPS)
                 || $cooldownsInUse >= UndergroundAwakening::FREE_USE_COOLDOWN_COUNT,
-            default => false,
+            default => $enemy->boss || ($enemy->hp * 100) > ($enemy->maxHp * 15),
         };
         if (! $shouldUse) {
             return false;
@@ -1821,21 +1918,23 @@ final readonly class AlphaV1CombatModel
             'kind' => 'awakening_technique',
             'round' => $round,
             'side' => 'player',
-            'target_side' => in_array($growthPath, ['blessing_green', 'free_black'], true) ? 'player' : 'enemy',
-            'action' => $technique['key'],
+            'target_side' => in_array($techniqueKey, ['life_requiem', 'limitless_reprise'], true)
+                ? 'player'
+                : 'enemy',
+            'action' => $techniqueKey,
             'effect_type' => 'awakening_technique',
             'amount' => 0,
             'message' => $technique['name'],
             'consumes_action' => $technique['consumes_action'],
         ];
 
-        if ($growthPath === 'martial_red') {
+        if ($techniqueKey === 'decisive_heavenrend') {
             $agilityComboHits = $this->agilityComboHits(
                 $player,
                 $enemy,
                 $random,
                 $round,
-                $technique['key'],
+                $techniqueKey,
             );
             $this->applyDamage(
                 $player,
@@ -1853,28 +1952,141 @@ final readonly class AlphaV1CombatModel
                 ],
                 $random,
                 $round,
-                $technique['key'],
+                $techniqueKey,
                 $metrics,
                 $actionUsage,
                 $actionLog,
                 $agilityComboHits,
             );
-        } elseif ($growthPath === 'guardianship_blue') {
+        } elseif ($techniqueKey === 'shura_bloodline') {
+            $player->awakeningLifestealRoundsRemaining = UndergroundAwakening::BLOODLINE_DURATION_ROUNDS - 1;
+            $player->awakeningLifestealAppliedRound = $round;
+            $agilityComboHits = $this->agilityComboHits(
+                $player,
+                $enemy,
+                $random,
+                $round,
+                $techniqueKey,
+            );
+            $this->applyDamage(
+                $player,
+                $enemy,
+                [
+                    'category' => 'physical',
+                    'potency_bps' => UndergroundAwakening::BLOODLINE_STRIKE_POTENCY_BPS,
+                    'stat_coefficients' => ['might' => 8_000, 'finesse' => 2_000],
+                    'weapon_coefficient_bps' => 10_000,
+                    'fixed' => 0,
+                    'target_max_hp_bps' => 0,
+                    'can_crit' => true,
+                    'dodgeable' => false,
+                    'hits' => 1,
+                ],
+                $random,
+                $round,
+                $techniqueKey,
+                $metrics,
+                $actionUsage,
+                $actionLog,
+                $agilityComboHits,
+            );
+        } elseif ($techniqueKey === 'absolute_aegis') {
             $player->awakeningGuardRoundsRemaining = UndergroundAwakening::GUARDIAN_DURATION_ROUNDS;
             $player->awakeningGuardAppliedRound = $round;
-        } elseif ($growthPath === 'blessing_green') {
+        } elseif ($techniqueKey === 'fortress_strike') {
+            $agilityComboHits = $this->agilityComboHits(
+                $player,
+                $enemy,
+                $random,
+                $round,
+                $techniqueKey,
+            );
+            $this->applyDamage(
+                $player,
+                $enemy,
+                [
+                    'category' => 'physical',
+                    'potency_bps' => UndergroundAwakening::FORTRESS_STRIKE_POTENCY_BPS,
+                    'stat_coefficients' => ['vitality' => 7_500, 'might' => 2_500],
+                    'weapon_coefficient_bps' => 8_000,
+                    'fixed' => 0,
+                    'target_max_hp_bps' => 0,
+                    'can_crit' => false,
+                    'dodgeable' => false,
+                    'hits' => 1,
+                ],
+                $random,
+                $round,
+                $techniqueKey,
+                $metrics,
+                $actionUsage,
+                $actionLog,
+                $agilityComboHits,
+            );
+            $player->guarding = true;
+            $actionLog[] = $this->logRow(
+                $round,
+                $player,
+                'fortress_strike_guard',
+                0,
+                false,
+                false,
+                effectType: 'guard',
+                targetSide: 'player',
+            );
+        } elseif ($techniqueKey === 'life_requiem') {
             $effective = $this->healExact($player, $player->maxHp, $metrics);
             $actionLog[] = $this->logRow(
                 $round,
                 $player,
-                $technique['key'],
+                $techniqueKey,
                 -$effective,
                 false,
                 false,
                 effectType: 'recovery',
                 targetSide: 'player',
             );
-        } else {
+        } elseif ($techniqueKey === 'judgment_light') {
+            $agilityComboHits = $this->agilityComboHits(
+                $player,
+                $enemy,
+                $random,
+                $round,
+                $techniqueKey,
+            );
+            $this->applyDamage(
+                $player,
+                $enemy,
+                [
+                    'category' => 'miracle',
+                    'potency_bps' => UndergroundAwakening::JUDGMENT_LIGHT_POTENCY_BPS,
+                    'stat_coefficients' => ['spirit' => 8_500, 'finesse' => 1_500],
+                    'weapon_coefficient_bps' => 10_000,
+                    'fixed' => 0,
+                    'target_max_hp_bps' => 0,
+                    'can_crit' => true,
+                    'dodgeable' => false,
+                    'hits' => 1,
+                    'report_category' => true,
+                ],
+                $random,
+                $round,
+                $techniqueKey,
+                $metrics,
+                $actionUsage,
+                $actionLog,
+                $agilityComboHits,
+            );
+            $this->removeStatuses(
+                $player,
+                $enemy,
+                'buff',
+                ['maximum' => 1],
+                $round,
+                $techniqueKey,
+                $actionLog,
+            );
+        } elseif ($techniqueKey === 'limitless_reprise') {
             $gain = AlphaV1CombatRules::MAX_MP - $player->mp;
             if ($gain > 0) {
                 $this->changeMp(
@@ -1893,6 +2105,40 @@ final readonly class AlphaV1CombatModel
                     $player->cooldowns[$skillKey] = 0;
                 }
             }
+        } elseif ($techniqueKey === 'formless_strike') {
+            $category = $this->lowerDefenseCategory($enemy);
+            $agilityComboHits = $this->agilityComboHits(
+                $player,
+                $enemy,
+                $random,
+                $round,
+                $techniqueKey,
+            );
+            $this->applyDamage(
+                $player,
+                $enemy,
+                [
+                    'category' => $category,
+                    'potency_bps' => UndergroundAwakening::FORMLESS_STRIKE_POTENCY_BPS,
+                    'stat_coefficients' => ['finesse' => 10_000],
+                    'weapon_coefficient_bps' => 10_000,
+                    'fixed' => 0,
+                    'target_max_hp_bps' => 0,
+                    'can_crit' => true,
+                    'dodgeable' => false,
+                    'hits' => 1,
+                    'report_category' => true,
+                ],
+                $random,
+                $round,
+                $techniqueKey,
+                $metrics,
+                $actionUsage,
+                $actionLog,
+                $agilityComboHits,
+            );
+        } else {
+            throw new InvalidArgumentException('Underground awakening technique execution is invalid.');
         }
 
         return $technique['consumes_action'];
@@ -1917,6 +2163,37 @@ final readonly class AlphaV1CombatModel
                 'amount' => 0,
             ];
         }
+    }
+
+    /** @param list<array<string, mixed>> $actionLog */
+    private function advanceAwakeningLifestealRound(BuildCombatState $player, int $round, array &$actionLog): void
+    {
+        if ($player->awakeningLifestealRoundsRemaining < 1 || $player->awakeningLifestealAppliedRound === $round) {
+            return;
+        }
+        $player->awakeningLifestealRoundsRemaining--;
+        if ($player->awakeningLifestealRoundsRemaining === 0) {
+            $player->awakeningLifestealAppliedRound = null;
+            $actionLog[] = [
+                'kind' => 'effect',
+                'round' => $round,
+                'side' => 'player',
+                'target_side' => 'player',
+                'action' => 'shura_bloodline_expired',
+                'effect_type' => 'status_expired',
+                'amount' => 0,
+            ];
+        }
+    }
+
+    private function lowerDefenseCategory(BuildCombatState $target): string
+    {
+        $physical = $target->physicalDefense
+            + $this->defenseStatusDelta($target, 'physical', $target->physicalDefense);
+        $magical = $target->magicalDefense
+            + $this->defenseStatusDelta($target, 'miracle', $target->magicalDefense);
+
+        return $physical <= $magical ? 'physical' : 'miracle';
     }
 
     private function growthPathForTechnique(BuildCombatState $player): string

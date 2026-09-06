@@ -63,6 +63,8 @@ final class FreshInstallRebaselineTest extends TestCase
         'nation_underground_facilities',
     ];
 
+    private const AWAKENING_TECHNIQUE_MIGRATION = '2026_09_06_000000_add_underground_awakening_technique_selection';
+
     public function test_empty_postgresql_uses_direct_current_schema_and_v20_catalog_baseline(): void
     {
         config(['hakoniwa' => require config_path('hakoniwa.php')]);
@@ -71,7 +73,7 @@ final class FreshInstallRebaselineTest extends TestCase
         app(RulesetPublisher::class)->publish($current);
         $ruleset = RulesetVersion::query()->where('key', 'hakoniwa-2s-plus-v20')->sole();
 
-        $this->assertSame('3.5.2', config('hakoniwa.application_version'));
+        $this->assertSame('3.6.0', config('hakoniwa.application_version'));
         $this->assertSame(['hakoniwa-2s-plus-v20'], array_keys(config('hakoniwa.published_rulesets')));
         $this->assertSame('hakoniwa-2s-plus-v20', $ruleset->key);
         $this->assertSame(20, $ruleset->version);
@@ -82,7 +84,7 @@ final class FreshInstallRebaselineTest extends TestCase
         $this->assertSame(30, CommandDefinition::query()->where('ruleset_version_id', $ruleset->id)->count());
         $this->assertSame(3, ProductionDefinition::query()->where('ruleset_version_id', $ruleset->id)->count());
         $this->assertSame(10, MonsterDefinition::query()->where('ruleset_version_id', $ruleset->id)->count());
-        $this->assertSame(61, DB::table('migrations')->count());
+        $this->assertSame(62, DB::table('migrations')->count());
         $this->assertDatabaseHas('migrations', [
             'migration' => '2026_08_22_000000_rebaseline_ver_2_4_install_and_upgrade',
         ]);
@@ -128,6 +130,10 @@ final class FreshInstallRebaselineTest extends TestCase
         $this->assertDatabaseHas('migrations', [
             'migration' => '2026_09_04_000000_rebaseline_3_5_0_release',
         ]);
+        $this->assertDatabaseHas('migrations', [
+            'migration' => self::AWAKENING_TECHNIQUE_MIGRATION,
+        ]);
+        $this->assertTrue(Schema::hasColumn('underground_profiles', 'awakening_technique_key'));
         $this->assertSame(0, DB::table('migrations')->whereIn('migration', [
             '2026_09_04_000000_publish_v20_and_repair_water_ownership',
             '2026_09_04_010000_add_surface_ship_foundation',
@@ -416,7 +422,7 @@ SQL);
             '2026_09_03_010000_add_underground_bulk_sale_operation',
             '2026_09_03_020000_add_underground_custom_ai',
             '2026_09_04_000000_rebaseline_3_5_0_release',
-        ], $this->pendingMigrations());
+        ], $this->pendingHistoricalMigrations());
         foreach ([
             'database/migrations/2026_09_03_000000_add_underground_respec.php',
             'database/migrations/2026_09_03_010000_add_underground_bulk_sale_operation.php',
@@ -476,7 +482,7 @@ SQL);
         $this->assertSame([
             '2026_09_03_020000_add_underground_custom_ai',
             '2026_09_04_000000_rebaseline_3_5_0_release',
-        ], $this->pendingMigrations());
+        ], $this->pendingHistoricalMigrations());
         $this->assertSame(59, DB::table('migrations')->count());
     }
 
@@ -525,7 +531,7 @@ SQL);
         $this->assertSame([
             '2026_09_03_020000_add_underground_custom_ai',
             '2026_09_04_000000_rebaseline_3_5_0_release',
-        ], $this->pendingMigrations());
+        ], $this->pendingHistoricalMigrations());
         $this->assertSame(59, DB::table('migrations')->count());
 
         $this->artisan('migrate', [
@@ -570,7 +576,7 @@ SQL);
             [
                 '2026_09_04_000000_rebaseline_3_5_0_release',
             ],
-            $this->pendingMigrations(),
+            $this->pendingHistoricalMigrations(),
         );
         $this->assertSame(60, DB::table('migrations')->count());
     }
@@ -728,7 +734,7 @@ SQL);
                 '2026_09_03_020000_add_underground_custom_ai',
                 '2026_09_04_000000_rebaseline_3_5_0_release',
             ],
-            $this->pendingMigrations(),
+            $this->pendingHistoricalMigrations(),
         );
         $this->assertSame(55, DB::table('migrations')->count());
         $this->migratePaths([
@@ -741,7 +747,7 @@ SQL);
         $this->assertSame([
             '2026_09_03_020000_add_underground_custom_ai',
             '2026_09_04_000000_rebaseline_3_5_0_release',
-        ], $this->pendingMigrations());
+        ], $this->pendingHistoricalMigrations());
         $this->assertTrue(Schema::hasTable('underground_profiles'));
         $this->assertTrue(Schema::hasTable('underground_owned_equipment'));
         $this->assertTrue(Schema::hasTable('nation_underground_facilities'));
@@ -859,7 +865,7 @@ SQL);
                 '2026_09_03_020000_add_underground_custom_ai',
                 '2026_09_04_000000_rebaseline_3_5_0_release',
             ],
-            $this->pendingMigrations(),
+            $this->pendingHistoricalMigrations(),
         );
         $this->assertSame(56, DB::table('migrations')->count());
         $this->assertFalse(Schema::hasColumn('underground_owned_equipment', 'instance_kind'));
@@ -877,7 +883,7 @@ SQL);
         $this->assertSame([
             '2026_09_03_020000_add_underground_custom_ai',
             '2026_09_04_000000_rebaseline_3_5_0_release',
-        ], $this->pendingMigrations());
+        ], $this->pendingHistoricalMigrations());
         $this->assertSame(59, DB::table('migrations')->count());
         $this->assertTrue(Schema::hasColumn('underground_owned_equipment', 'instance_kind'));
         $this->assertTrue(Schema::hasColumn('underground_owned_equipment', 'generated_payload'));
@@ -1321,7 +1327,7 @@ SQL);
 
         $this->assertSame([$migrationPath], array_map(
             static fn (string $name): string => 'database/migrations/'.$name.'.php',
-            $this->pendingMigrations(),
+            $this->pendingHistoricalMigrations(),
         ));
         $this->assertSame(60, DB::table('migrations')->count());
         $this->assertFalse(Schema::hasTable('ships'));
@@ -1379,7 +1385,7 @@ SQL);
             '--force' => true,
             '--no-interaction' => true,
         ])->assertSuccessful();
-        $this->assertSame([], $this->pendingMigrations());
+        $this->assertSame([], $this->pendingHistoricalMigrations());
         $this->assertSame(61, DB::table('migrations')->count());
         $this->assertDatabaseHas('migrations', [
             'migration' => '2026_09_04_000000_rebaseline_3_5_0_release',
@@ -1596,6 +1602,7 @@ SQL);
 
     private function returnDatabaseToExact340Source(): void
     {
+        $this->returnDatabaseToExact350Source();
         DB::table('migrations')->where(
             'migration',
             '2026_09_04_000000_rebaseline_3_5_0_release',
@@ -1658,6 +1665,27 @@ $$;
 SQL);
         $this->returnPortCatalogToPre350Source();
         RulesetVersion::query()->where('key', Ver350RulesetUpgrade::TARGET_KEY)->delete();
+    }
+
+    private function returnDatabaseToExact350Source(): void
+    {
+        DB::statement(<<<'SQL'
+ALTER TABLE underground_intro_requests
+  DROP CONSTRAINT underground_intro_requests_operation_check,
+  ADD CONSTRAINT underground_intro_requests_operation_check
+  CHECK (operation IN (
+    'entry', 'advance', 'tutorial', 'shopkeeper_name', 'scripted_loss',
+    'contract', 'growth_path', 'inn_rest', 'bank_transfer', 'playtest',
+    'stp_allocate', 'skill_acquire', 'active_loadout', 'awakening_message',
+    'equipment_purchase', 'equipment_sell', 'equipment_equip', 'equipment_unequip',
+    'respec', 'equipment_bulk_sell', 'ai_configuration'
+  ))
+SQL);
+        DB::statement('ALTER TABLE underground_profiles DROP CONSTRAINT underground_profiles_awakening_technique_check');
+        Schema::table('underground_profiles', function (Blueprint $table): void {
+            $table->dropColumn('awakening_technique_key');
+        });
+        DB::table('migrations')->where('migration', self::AWAKENING_TECHNIQUE_MIGRATION)->delete();
     }
 
     private function returnPortCatalogToPre350Source(): void
@@ -1793,6 +1821,15 @@ SQL);
         $ran = app('migrator')->getRepository()->getRan();
 
         return array_values(array_diff(array_keys($files), $ran));
+    }
+
+    /** @return list<string> */
+    private function pendingHistoricalMigrations(): array
+    {
+        return array_values(array_filter(
+            $this->pendingMigrations(),
+            static fn (string $migration): bool => $migration !== self::AWAKENING_TECHNIQUE_MIGRATION,
+        ));
     }
 
     /** @param array<string, mixed> $settings */
