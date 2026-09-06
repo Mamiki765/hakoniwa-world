@@ -6,6 +6,9 @@ use InvalidArgumentException;
 
 final class AlphaV1CombatRules
 {
+    // Reserve 100x BPS headroom for downstream stat, HP, damage, and status products.
+    private const LEVEL_SCALE_INTEGER_HEADROOM = 1_000_000;
+
     public const IDENTITY = 'secretary-underground-alpha-v3';
 
     public const SIMULATOR_VERSION = 'underground-build-balance-alpha-v2';
@@ -78,20 +81,42 @@ final class AlphaV1CombatRules
 
     public function progressionScaleBps(int $combatLevel, int $itemLevel): int
     {
-        if ($combatLevel < 1 || $itemLevel < 1 || $combatLevel > 1_000 || $itemLevel > 1_000) {
-            throw new InvalidArgumentException('Underground alpha-v1 level and item level must be between 1 and 1000.');
+        if ($combatLevel < 1 || $itemLevel < 1) {
+            throw new InvalidArgumentException('Underground alpha-v1 level and item level must be positive integers.');
         }
 
-        return 10_000 + ((max($combatLevel, $itemLevel) - 1) * 900);
+        return $this->levelScaleBps(max($combatLevel, $itemLevel));
     }
 
     public function storyBenchmarkScaleBps(int $equivalentCombatLevel): int
     {
-        if ($equivalentCombatLevel < 1 || $equivalentCombatLevel > 10_000) {
-            throw new InvalidArgumentException('Underground story benchmark level is invalid.');
+        if ($equivalentCombatLevel < 1) {
+            throw new InvalidArgumentException('Underground story benchmark level must be a positive integer.');
         }
 
-        return 10_000 + (($equivalentCombatLevel - 1) * 900);
+        return $this->levelScaleBps($equivalentCombatLevel);
+    }
+
+    private function levelScaleBps(int $level): int
+    {
+        $maximumScaleBps = intdiv(PHP_INT_MAX, self::LEVEL_SCALE_INTEGER_HEADROOM);
+        if ($level - 1 > intdiv($maximumScaleBps - 10_000, 900)) {
+            throw new InvalidArgumentException('Underground level scale exceeds the supported combat integer range.');
+        }
+
+        return 10_000 + (($level - 1) * 900);
+    }
+
+    public function scaledCombatValue(int $baseValue, int $scaleBps): int
+    {
+        if ($baseValue < 0 || $scaleBps < 1) {
+            throw new InvalidArgumentException('Underground combat scaling inputs are invalid.');
+        }
+        if ($baseValue !== 0 && $scaleBps > intdiv(PHP_INT_MAX, $baseValue)) {
+            throw new InvalidArgumentException('Underground scaled combat value exceeds the supported integer range.');
+        }
+
+        return intdiv($baseValue * $scaleBps, 10_000);
     }
 
     /**
@@ -108,7 +133,7 @@ final class AlphaV1CombatRules
         $this->assertFiveStats($baseStats, $requireBaseBudget);
         $stats = [];
         foreach (self::STATS as $key) {
-            $stats[$key] = max(1, intdiv($baseStats[$key] * $scaleBps, 10_000)
+            $stats[$key] = max(1, $this->scaledCombatValue($baseStats[$key], $scaleBps)
                 + ($equipmentStats[$key] ?? 0));
         }
 
@@ -119,15 +144,15 @@ final class AlphaV1CombatRules
     public function maxHp(array $stats, int $scaleBps, int $equipmentHp = 0): int
     {
         $this->assertFiveStats($stats, false);
-        $baselineVitality = max(1, intdiv(20 * $scaleBps, 10_000));
-        $baselineHp = max(1, intdiv(500 * $scaleBps, 10_000));
+        $baselineVitality = max(1, $this->scaledCombatValue(20, $scaleBps));
+        $baselineHp = max(1, $this->scaledCombatValue(500, $scaleBps));
 
         return max(1, $baselineHp + (($stats['vitality'] - $baselineVitality) * 8) + $equipmentHp);
     }
 
     public function defenseReference(int $scaleBps): int
     {
-        return max(1, intdiv(100 * $scaleBps, 10_000));
+        return max(1, $this->scaledCombatValue(100, $scaleBps));
     }
 
     /**

@@ -1899,6 +1899,13 @@ final class UndergroundPlayerAccessTest extends TestCase
             'categories' => ['weapon', 'armor'],
             'weapon_styles' => ['dagger'],
         ];
+        $this->actingAs($user)
+            ->postJson('/api/v1/me/underground/equipment/vault/bulk-sell/preview', [
+                ...$filters,
+                'item_level_max' => 1_254,
+            ])
+            ->assertOk()
+            ->assertJsonPath('data.count', 2);
         $preview = $this->actingAs($user)
             ->postJson('/api/v1/me/underground/equipment/vault/bulk-sell/preview', $filters)
             ->assertOk()

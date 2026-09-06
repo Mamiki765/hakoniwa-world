@@ -15,6 +15,7 @@ final readonly class UndergroundAlphaV1PlayerCatalog
         private AlphaV1CombatRules $rules,
         private UndergroundBuildValidator $buildValidator,
         private PriorityCombatAiConfiguration $aiConfiguration = new PriorityCombatAiConfiguration,
+        private UndergroundEquipmentCatalog $equipmentCatalog = new UndergroundEquipmentCatalog,
     ) {}
 
     public function growthIdentity(): string
@@ -541,7 +542,7 @@ final readonly class UndergroundAlphaV1PlayerCatalog
                 || ! is_int($entry['item_level_min'] ?? null) || $entry['item_level_min'] < 1
                 || ! is_int($entry['item_level_max'] ?? null)
                 || $entry['item_level_max'] < $entry['item_level_min']
-                || $entry['item_level_max'] > 60
+                || $entry['item_level_max'] > $this->equipmentCatalog->generatorItemLevelMax()
                 || ! is_array($entry['enemy'] ?? null)) {
                 throw new RuntimeException("Underground exploration encounter [{$key}] is invalid.");
             }
@@ -1060,7 +1061,7 @@ final readonly class UndergroundAlphaV1PlayerCatalog
             || ! is_int($ground['item_level_min'] ?? null) || $ground['item_level_min'] < 1
             || ! is_int($ground['item_level_max'] ?? null)
             || $ground['item_level_max'] < $ground['item_level_min']
-            || $ground['item_level_max'] > 60
+            || $ground['item_level_max'] > $this->equipmentCatalog->generatorItemLevelMax()
             || ! is_array($ground['encounters'] ?? null) || $ground['encounters'] === []) {
             throw new RuntimeException("Underground hunting ground [{$key}] is invalid.");
         }
