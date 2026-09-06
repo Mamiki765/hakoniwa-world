@@ -134,6 +134,30 @@ final class UndergroundCombatBuildTest extends TestCase
         }
     }
 
+    public function test_level_scaling_rejects_only_non_positive_or_unrepresentable_values(): void
+    {
+        $rules = new AlphaV1CombatRules;
+
+        $this->assertSame(1_137_700, $rules->progressionScaleBps(1_254, 90));
+        $this->assertSame(11_295_100, $rules->storyBenchmarkScaleBps(12_540));
+
+        $invalidCalculations = [
+            fn () => $rules->progressionScaleBps(0, 1),
+            fn () => $rules->progressionScaleBps(PHP_INT_MAX, 1),
+            fn () => $rules->storyBenchmarkScaleBps(0),
+            fn () => $rules->storyBenchmarkScaleBps(PHP_INT_MAX),
+        ];
+
+        foreach ($invalidCalculations as $calculate) {
+            try {
+                $calculate();
+                $this->fail('An invalid or unrepresentable level should be rejected.');
+            } catch (InvalidArgumentException) {
+                // Expected invalid input.
+            }
+        }
+    }
+
     public function test_weighted_multi_stat_power_and_ratio_defense_keep_damage_legal_under_inflation(): void
     {
         $rules = new AlphaV1CombatRules;

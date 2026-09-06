@@ -17,7 +17,7 @@ final class PreviewUndergroundBulkSellRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'item_level_max' => ['nullable', 'integer', 'between:1,60'],
+            'item_level_max' => ['nullable', 'integer', 'min:1'],
             'rarities' => ['present', 'array', 'max:6'],
             'rarities.*' => ['string', 'distinct', Rule::in(UndergroundEquipmentService::BULK_SELL_RARITY_KEYS)],
             'categories' => ['present', 'array', 'max:3'],

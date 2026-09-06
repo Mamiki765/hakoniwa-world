@@ -188,6 +188,21 @@ final class UndergroundBalanceSimulatorTest extends TestCase
         }
     }
 
+    public function test_trial_simulator_accepts_a_checkpoint_above_the_legacy_level_ceiling(): void
+    {
+        [, $manifest] = $this->trialTwoManifest();
+        $manifest['checkpoints'][] = 1_254;
+
+        $result = $this->trialSimulator()->replay(
+            $manifest,
+            'martial_red:lv1254:heal2000',
+            0,
+        );
+
+        $this->assertSame(1_254, $result['result']['build']['combat_level']);
+        $this->assertSame(1_254, $result['scenario']['level']);
+    }
+
     public function test_trial_wyvern_enters_its_healer_pressure_phase_at_round_40_without_losing_its_action(): void
     {
         [, $manifest] = $this->trialManifest();

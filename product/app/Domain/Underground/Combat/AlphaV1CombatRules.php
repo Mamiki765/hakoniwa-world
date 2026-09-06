@@ -78,20 +78,29 @@ final class AlphaV1CombatRules
 
     public function progressionScaleBps(int $combatLevel, int $itemLevel): int
     {
-        if ($combatLevel < 1 || $itemLevel < 1 || $combatLevel > 1_000 || $itemLevel > 1_000) {
-            throw new InvalidArgumentException('Underground alpha-v1 level and item level must be between 1 and 1000.');
+        if ($combatLevel < 1 || $itemLevel < 1) {
+            throw new InvalidArgumentException('Underground alpha-v1 level and item level must be positive integers.');
         }
 
-        return 10_000 + ((max($combatLevel, $itemLevel) - 1) * 900);
+        return $this->levelScaleBps(max($combatLevel, $itemLevel));
     }
 
     public function storyBenchmarkScaleBps(int $equivalentCombatLevel): int
     {
-        if ($equivalentCombatLevel < 1 || $equivalentCombatLevel > 10_000) {
-            throw new InvalidArgumentException('Underground story benchmark level is invalid.');
+        if ($equivalentCombatLevel < 1) {
+            throw new InvalidArgumentException('Underground story benchmark level must be a positive integer.');
         }
 
-        return 10_000 + (($equivalentCombatLevel - 1) * 900);
+        return $this->levelScaleBps($equivalentCombatLevel);
+    }
+
+    private function levelScaleBps(int $level): int
+    {
+        if ($level - 1 > intdiv(PHP_INT_MAX - 10_000, 900)) {
+            throw new InvalidArgumentException('Underground level scale exceeds the supported integer range.');
+        }
+
+        return 10_000 + (($level - 1) * 900);
     }
 
     /**
