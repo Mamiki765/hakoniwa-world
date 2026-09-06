@@ -111,8 +111,8 @@ return [
                     ],
                     'choices' => [
                         ['key' => 'ask_again', 'label' => 'それでも教えて欲しい', 'next' => 'true_name_branch'],
+                        ['key' => 'tell_dream', 'label' => 'あなたについて知ることが私の夢だと伝える', 'next' => 'true_name_reveal'],
                         ['key' => 'leave', 'label' => '立ち去る', 'next' => 'root'],
-                        ['key' => 'back', 'label' => 'はじめに戻る', 'next' => 'root'],
                     ],
                 ],
                 'true_name_branch' => [
@@ -130,7 +130,6 @@ return [
                         '「RIKA the Succubus……リカ＝サキュバス。おお、さむい、さむい」',
                     ],
                     'choices' => [
-                        ['key' => 'tell_dream', 'label' => 'あなたについて知ることが私の夢だと伝える', 'next' => 'true_name_reveal'],
                         ['key' => 'call_name', 'label' => '彼女に自分がつけた名前を呼ぶ', 'next' => 'true_name_named'],
                         ['key' => 'leave', 'label' => '立ち去る', 'next' => 'root'],
                     ],
@@ -140,13 +139,13 @@ return [
                     'choices' => [
                         ['key' => 'call_name', 'label' => '彼女に自分がつけた名前を呼ぶ', 'next' => 'true_name_named'],
                         ['key' => 'leave', 'label' => '立ち去る', 'next' => 'root'],
-                        ['key' => 'back', 'label' => '最後の3択に戻る', 'next' => 'true_name_branch'],
+                        ['key' => 'back', 'label' => '本名を聞いた後の選択に戻る', 'next' => 'true_name'],
                     ],
                 ],
                 'true_name_named' => [
                     'lines' => ['「そう。それでいい。」'],
                     'choices' => [
-                        ['key' => 'back', 'label' => '最後の3択に戻る', 'next' => 'true_name_branch'],
+                        ['key' => 'back', 'label' => '本名を聞いた後の選択に戻る', 'next' => 'true_name'],
                     ],
                 ],
                 'embrace' => [
@@ -168,7 +167,6 @@ return [
                         '「……そっち方面を期待してるなら、私も飢えてます。相手してやってもいいですが」',
                     ],
                     'choices' => [
-                        ['key' => 'leave', 'label' => '離れる', 'next' => 'embrace_leave'],
                         ['key' => 'back', 'label' => 'はじめに戻る', 'next' => 'root'],
                     ],
                 ],
@@ -181,6 +179,15 @@ return [
             ],
         ],
         'history' => [
+            'secretary_naming' => [
+                'title' => '秘書との出会い',
+                'body' => [
+                    '秘書画面を初めて開いた時、あなたは海賊の施設で鎖につながれたその人物と出会った。',
+                    'その人物は、耳が長く尖っていた。瞳には不思議な淡い光が宿っていた。',
+                    'あなたは名前を尋ねた。',
+                    '「私の名前は——」',
+                ],
+            ],
             'underground_intro' => [
                 'title' => '地下への導入',
                 'body' => [
@@ -243,7 +250,7 @@ return [
                 ],
             ],
             'true_name_before' => [
-                'title' => '本当の名前をめぐる出来事',
+                'title' => '案内人に例の名前をつけると…',
                 'body' => [
                     '「……リカ？　あなた、私にその名前をつけたの？」',
                     '「単なる偶然？　読心術？　それとも何か地上でヘマした……？」',
@@ -252,7 +259,7 @@ return [
                 ],
             ],
             'true_name_after' => [
-                'title' => '本当の名前をめぐる出来事の後',
+                'title' => 'ボコられました。',
                 'body' => [
                     '「……」',
                     '「…………はぁ……」',

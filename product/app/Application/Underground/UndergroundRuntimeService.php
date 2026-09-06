@@ -27,6 +27,8 @@ final readonly class UndergroundRuntimeService
 {
     private const TRIAL_ONE_FIRST_CLEAR_STORY_TITLE = '●封印の解放';
 
+    private const TRIAL_TWO_FIRST_CLEAR_STORY_TITLE = 'デュラハンの撃破と案内人';
+
     private const TRIAL_ONE_FIRST_CHALLENGE_INTRO = <<<'STORY'
 　崩れかけた石壁の向こうに広がっていた不思議な空間。
 　土と岩に埋もれたそこは、明らかに人の手で造られた古い石造りの遺跡であった。
@@ -1036,7 +1038,7 @@ STORY;
                 ],
             ],
             'trial_02' => [
-                'title' => '●',
+                'title' => self::TRIAL_TWO_FIRST_CLEAR_STORY_TITLE,
                 'body' => str_replace('(秘書名)', $secretary->name, self::TRIAL_TWO_FIRST_CLEAR_STORY_BODY),
                 'system_messages' => [
                     "{$secretary->name}は二つ目の封印の地を制覇した。",

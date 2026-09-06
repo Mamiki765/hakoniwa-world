@@ -535,6 +535,14 @@ main { width: min(1560px, 100%); margin: 0 auto; padding: clamp(16px, 3vw, 46px)
 .underground-guide-actions button { min-height: 3.7rem; }
 .underground-guide-actions button[aria-pressed="true"] { border-color: var(--coral); background: var(--selected-surface); color: var(--ink); }
 .underground-guide-conversation { padding: 1rem; border: 1px solid var(--line); background: var(--paper); line-height: 1.9; }
+.underground-guide-recollections { display: grid; gap: 1rem; padding-top: 1rem; border-top: 1px solid var(--line); }
+.underground-recollection-list { display: grid; gap: .4rem; margin: 0; padding-left: 1.5rem; }
+.underground-recollection-list li { min-width: 0; }
+.underground-recollection-list button { max-width: 100%; overflow-wrap: anywhere; }
+.underground-recollection-list .underground-recollection-section-start { margin-top: .55rem; padding-top: .9rem; border-top: 1px solid var(--line); }
+.underground-recollection-detail { display: grid; gap: 1rem; padding-top: 1rem; border-top: 1px solid var(--line); }
+.underground-recollection-detail .underground-story p { white-space: pre-wrap; }
+.underground-guide-serious-talk { display: grid; gap: 1rem; padding-top: 1rem; border-top: 1px solid var(--line); }
 .underground-respec-panel { display: grid; gap: 1rem; padding-top: 1rem; border-top: 1px solid var(--line); }
 .underground-respec-panel > header { display: flex; align-items: start; justify-content: space-between; gap: 1rem; }
 .underground-respec-panel > header > div { display: grid; gap: .4rem; }

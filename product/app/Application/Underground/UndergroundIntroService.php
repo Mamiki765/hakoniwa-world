@@ -29,6 +29,8 @@ use RuntimeException;
 
 final readonly class UndergroundIntroService
 {
+    private const TRIAL_TWO_FIRST_CLEAR_STORY_TITLE = 'デュラハンの撃破と案内人';
+
     private const RESPEC_COST_PER_LEVEL = 10;
 
     private const RESPEC_COOLDOWN_HOURS = 24;
@@ -1610,14 +1612,9 @@ final readonly class UndergroundIntroService
         $secretaryNamed = is_string($secretary->name) && $secretary->name !== '';
         $entries[] = $this->historicalEntry(
             'secretary_naming',
-            '秘書の名付け',
+            $this->historyTitle($history, 'secretary_naming'),
             $secretaryNamed,
-            $secretaryNamed
-                ? [
-                    "秘書の現在の名前は「{$secretary->name}」です。",
-                    '初回に付けられた名前は保存されていないため、現在名を表示しています。',
-                ]
-                : null,
+            $secretaryNamed ? $this->historyBody($history, 'secretary_naming') : null,
         );
         $entries[] = $this->historicalEntry(
             'underground_intro',
@@ -1655,20 +1652,23 @@ final readonly class UndergroundIntroService
         );
         $trueNameExperienced = $intro->branch_identity === 'true_name'
             && $intro->scripted_loss_battle_id !== null;
-        $entries[] = $this->historicalEntry(
-            'true_name_before',
-            $this->historyTitle($history, 'true_name_before'),
-            $trueNameExperienced,
-            $trueNameExperienced ? $this->historyBody($history, 'true_name_before') : null,
-        );
-        $trueNameAfterExperienced = $trueNameExperienced
-            && $this->stageAtLeast($stage, UndergroundIntroStage::SHOP_EXPLANATION);
-        $entries[] = $this->historicalEntry(
-            'true_name_after',
-            $this->historyTitle($history, 'true_name_after'),
-            $trueNameAfterExperienced,
-            $trueNameAfterExperienced ? $this->historyBody($history, 'true_name_after') : null,
-        );
+        if ($trueNameExperienced) {
+            $entries[] = $this->historicalEntry(
+                'true_name_before',
+                $this->historyTitle($history, 'true_name_before'),
+                true,
+                $this->historyBody($history, 'true_name_before'),
+            );
+            $trueNameAfterExperienced = $this->stageAtLeast($stage, UndergroundIntroStage::SHOP_EXPLANATION);
+            if ($trueNameAfterExperienced) {
+                $entries[] = $this->historicalEntry(
+                    'true_name_after',
+                    $this->historyTitle($history, 'true_name_after'),
+                    true,
+                    $this->historyBody($history, 'true_name_after'),
+                );
+            }
+        }
         $shopExperienced = $this->stageAtLeast($stage, UndergroundIntroStage::CONTRACT_READY);
         $entries[] = $this->historicalEntry(
             'shop_explanation',
@@ -1846,7 +1846,9 @@ final readonly class UndergroundIntroService
                     }
                     $entries[] = $this->historicalEntry(
                         "{$trialKey}_clear",
-                        is_string($story['title'] ?? null) ? $story['title'] : "{$trial['label']}のクリア",
+                        $trialKey === 'trial_02'
+                            ? self::TRIAL_TWO_FIRST_CLEAR_STORY_TITLE
+                            : (is_string($story['title'] ?? null) ? $story['title'] : "{$trial['label']}のクリア"),
                         true,
                         $body,
                         ['trial_key' => $trialKey, 'battle_id' => $clear->id],
@@ -1873,23 +1875,8 @@ final readonly class UndergroundIntroService
         }
 
         $initialPath = $this->initialGrowthPathKey($profile);
-        if ($initialPath === null) {
-            return [
-                '【初回選択の保存記録なし】現在の成長方針からは推測せず、両方の分岐台詞を表示します。',
-                $default,
-                $free,
-            ];
-        }
 
-        $initialLine = $initialPath === 'free_black' ? $free : $default;
-        $alternateLine = $initialPath === 'free_black' ? $default : $free;
-
-        return [
-            '【初回選択時】',
-            $initialLine,
-            '【別の成長方針を選んだ場合】',
-            $alternateLine,
-        ];
+        return [$initialPath === 'free_black' ? $free : $default];
     }
 
     private function initialGrowthPathKey(UndergroundProfile $profile): ?string

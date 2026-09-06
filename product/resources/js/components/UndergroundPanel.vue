@@ -813,6 +813,12 @@ function selectRecollection(entry: RecollectionEntry): void {
     selectedRecollectionKey.value = entry.key;
 }
 
+function recollectionStartsSection(entry: RecollectionEntry): boolean {
+    return entry.key === 'trial_01_start'
+        || entry.key === 'trial_02_start'
+        || entry.key === 'past_1';
+}
+
 async function completeRecollection(entry: RecollectionEntry): Promise<void> {
     const chapter = entry.chapter;
     const recollections = state.value?.recollections;
@@ -1649,14 +1655,6 @@ onUnmounted(() => {
                         過去のイベントを振り返る
                     </button>
                     <button
-                        v-if="state.recollections?.past_available"
-                        type="button"
-                        :aria-pressed="guideMode === 'recollections'"
-                        @click="openRecollections"
-                    >
-                        過去について問う
-                    </button>
-                    <button
                         v-if="state.recollections?.serious_talk"
                         type="button"
                         :aria-pressed="guideMode === 'serious_talk'"
@@ -1683,7 +1681,11 @@ onUnmounted(() => {
                         試練2を初回クリアすると、案内人の過去について問えるようになります。
                     </p>
                     <ul class="underground-recollection-list">
-                        <li v-for="entry in recollectionEntries" :key="entry.key">
+                        <li
+                            v-for="entry in recollectionEntries"
+                            :key="entry.key"
+                            :class="{ 'underground-recollection-section-start': recollectionStartsSection(entry) }"
+                        >
                             <button
                                 type="button"
                                 :disabled="entry.locked"
@@ -1713,7 +1715,6 @@ onUnmounted(() => {
                 </section>
                 <section v-else-if="guideMode === 'serious_talk' && state.recollections?.serious_talk && seriousTalkScene" class="underground-guide-serious-talk" aria-labelledby="underground-serious-talk-title">
                     <header>
-                        <p class="eyebrow">Serious Talk</p>
                         <h2 id="underground-serious-talk-title">{{ state.recollections.serious_talk.title }}</h2>
                     </header>
                     <div class="underground-story">

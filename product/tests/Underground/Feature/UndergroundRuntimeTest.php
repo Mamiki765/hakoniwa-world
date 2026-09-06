@@ -1104,7 +1104,7 @@ final class UndergroundRuntimeTest extends TestCase
             $profile->unlocked_area_layers,
         ]);
         $this->assertNull($projected['challenge_intro']);
-        $this->assertSame('●', $projected['first_clear_story']['title']);
+        $this->assertSame('デュラハンの撃破と案内人', $projected['first_clear_story']['title']);
         $this->assertSame([
             "{$secretary->name}は二つ目の封印の地を制覇した。",
             'SPを40入手した。',
