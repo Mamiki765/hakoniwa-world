@@ -6,7 +6,7 @@
 
 - Branch: `codex/3.6.0-trial2-gameplay`
 - Base: `origin/release/3.6.0` / `70871f9e3345ac183e3c2b97b3f499ad672ba6bb`
-- Simulation source: `f35d232c69e2662e6b08e8565853277c2dc173d7`
+- Simulation source: `e332c4dec36f1b9124ba2961c2b01a41ad10c356`
 - Simulator: `underground-trial-balance-v3`
 - Manifest: `config/underground/balance/trial2-v1.json`
 - Manifest SHA-256: `069c03893ac7389e3c71917c2a5dbc332c17c14e06f7d4de174124bc3b66e487`
@@ -39,12 +39,12 @@
 
 | Growth | 新奥義 | 採用値 | Action |
 |---|---|---|---|
-| 戦技 | 修羅の血脈 | 3round、能動的direct attackが敵HPへ与えた実damageの15%を吸収。既存lifestealとの合計は25% cap | 消費 |
+| 戦技 | 修羅の血脈 | 発動時にpotency 160%、武力80%・技巧20%、weapon 100%のphysical初撃。初撃を含む3round、能動的direct attackが敵HPへ与えた実damageの15%を吸収。既存lifestealとの合計は25% cap | 消費 |
 | 護身 | 城塞撃 | potency 180%、生命75%・武力25%、weapon 80%。一回のphysical damage後に次のdirect hitを既存guardで受ける | 消費 |
 | 祝福 | 裁きの天光 | potency 220%、精神85%・技巧15%、weapon 100%、会心可。damage後に解除可能buffをkey順で1個解除 | 消費 |
 | 自由 | 無相の一撃 | potency 240%、技巧100%、weapon 100%、会心可。実効physical / magical defenseの低い側を一度だけ参照。同値はphysical | 消費 |
 
-修羅の血脈はoverkill、barrier吸収、periodic damage、counterを吸収元に含めず、回復は最大HPで止まる。裁きの天光は覚醒本体、boss trait、innate effect、`dispellable=false`を解除しない。デュラハンの憎悪は解除可能であり、解除後は次round開始時に1 stackから再開する。
+修羅の血脈は初撃から吸収が成立する。overkill、barrier吸収、periodic damage、counterを吸収元に含めず、回復は最大HPで止まる。裁きの天光は覚醒本体、boss trait、innate effect、`dispellable=false`を解除しない。デュラハンの憎悪は解除可能であり、解除後は次round開始時に1 stackから再開する。
 
 ## Trial 2 contract
 
@@ -54,7 +54,9 @@
 - battle間の明示的撤退はrunを終了して次回battle 1へ戻すが、勝利済み報酬を保持
 - 未勝利battleのwithdrawal rewardと、勝利後のplayer retreatを混同しない
 - defeat時の既存欠片penalty、request idempotency、row lock、active run content identityを再利用
-- Trial 2初回clearはprogressだけを記録し、現時点ではSP、地底layer、story、覚醒、特別item、称号を与えない
+- Trial共通の初回clear報酬としてSP40を付与。Trial 1と合わせてSP総額は100になる
+- Trial 2初回clearで第2層を解放し、地底設備枠を8マスまで拡張。初回clear storyを表示する
+- 追加覚醒、特別item、称号は付与しない。再clearでSP・地底layer・storyは重複しない
 
 ## Enemy stats and AI
 
@@ -81,22 +83,24 @@
 
 | # | Enemy | XP | 欠片 | Drop profile | IL | 平均round（戦/護/祝/自） |
 |---:|---|---:|---:|---|---:|---:|
-| 1 | 煤牙の斥候 | 1,800 | 180 | shallow 55% | 55–66 | 6.58 / 4.49 / 5.01 / 10.93 |
-| 2 | 嘲炎の道化 | 2,000 | 200 | shallow 55% | 56–67 | 7.46 / 4.54 / 7.03 / 14.82 |
-| 3 | 鉄鎖の獄犬 | 2,200 | 220 | shallow 55% | 58–69 | 8.35 / 5.47 / 8.06 / 18.33 |
-| 4 | 不寝番の石翼 | 2,500 | 250 | middle 65% | 60–72 | 12.14 / 7.94 / 9.41 / 26.20 |
-| 5 | 赤角の破城兵 | 3,200 | 320 | middle 65% | 62–74 | 15.35 / 9.01 / 19.11 / 41.54 |
-| 6 | 弔鐘の司祭 | 3,500 | 350 | middle 65% | 64–76 | 10.48 / 8.09 / 21.05 / 26.20 |
-| 7 | 蠱惑の蛇姫 | 3,800 | 380 | middle 65% | 66–78 | 11.34 / 8.26 / 13.97 / 25.03 |
-| 8 | 夜宴の血侯 | 4,500 | 450 | deep 80% | 68–82 | 13.00 / 8.07 / 18.52 / 30.79 |
-| 9 | 誓約喰らいの黒騎士 | 5,500 | 550 | deep 80% | 72–86 | 14.44 / 14.67 / 19.36 / 32.84 |
-| 10 | 首なき断罪卿 | 7,500 | 900 | deep 80% | 76–90 | 23.97 / 15.41 / 32.28 / 46.34 |
+| 1 | 煤牙の斥候 | 250 | 65 | shallow 55% | 55–66 | 6.58 / 4.49 / 5.01 / 10.93 |
+| 2 | 嘲炎の道化 | 260 | 68 | shallow 55% | 56–67 | 7.46 / 4.54 / 7.03 / 14.82 |
+| 3 | 鉄鎖の獄犬 | 270 | 70 | shallow 55% | 58–69 | 8.35 / 5.47 / 8.06 / 18.33 |
+| 4 | 不寝番の石翼 | 280 | 72 | middle 65% | 60–72 | 12.14 / 7.94 / 9.41 / 26.20 |
+| 5 | 赤角の破城兵 | 290 | 75 | middle 65% | 62–74 | 13.72 / 9.01 / 19.11 / 41.54 |
+| 6 | 弔鐘の司祭 | 300 | 78 | middle 65% | 64–76 | 10.48 / 8.09 / 21.05 / 26.20 |
+| 7 | 蠱惑の蛇姫 | 320 | 82 | middle 65% | 66–78 | 11.34 / 8.26 / 13.97 / 25.03 |
+| 8 | 夜宴の血侯 | 350 | 88 | deep 80% | 68–82 | 12.96 / 8.07 / 18.52 / 30.79 |
+| 9 | 誓約喰らいの黒騎士 | 400 | 95 | deep 80% | 72–86 | 13.53 / 14.67 / 19.36 / 32.84 |
+| 10 | 首なき断罪卿 | 2,000 | 540 | deep 80% | 76–90 | 23.93 / 15.41 / 32.28 / 46.34 |
 
 Rarity weightはshallow=`65/25/9/1`、middle=`50/32/15/3`、deep=`35/35/24/6`（common/uncommon/rare/epic）。10戦clear時の期待drop数は6.65個、内訳はcommon 3.2125、uncommon 2.0845、rare 1.1145、epic 0.2385、drop時の期待ILは約70.83である。
 
-累積報酬は3戦でXP6,000・期待drop 1.65個、5戦でXP11,700・2.95個、7戦でXP19,000・4.25個、9戦でXP29,000・5.85個、全clearでXP36,500・欠片3,800・6.65個。深部ほどXP、drop率、IL、rarityが上がるため、battle 1だけで最高装備を完成できない。
+累積報酬は3戦でXP780・欠片203・期待drop 1.65個、5戦でXP1,350・欠片350・2.95個、7戦でXP1,970・欠片510・4.25個、9戦でXP2,720・欠片693・5.85個、全clearでXP4,720・欠片1,233・6.65個。深部ほどXP、drop率、IL、rarityが上がるため、battle 1だけで最高装備を完成できない。
 
-黒晶洞のencounter weightによる名目期待XPは全勝でも240.25 / battleである。黒晶虫の99% complete guardと100round上限による勝率63.40%も含めると、十分高Lvで他enemyへ全勝する場合は約235.13 / battleとなる。Trial 2 battle 1のXP1,800はその約7.66倍で、ILも55–66まで伸びるため、浅層撤退farmは黒晶洞から先へ進む育成手段として成立する。
+黒晶洞のencounter weightによる名目期待値はXP240.25・欠片61.53 / battleである。黒晶虫の99% complete guardと100round上限による勝率63.40%も含めると、十分高Lvで他enemyへ全勝する場合のXPは約235.13 / battleとなる。Trial 2は9戦撤退までの平均がXP302.22・欠片77.00で黒晶洞の約1.25倍、全10戦clearの平均がXP472・欠片123.3で約2倍となる。
+
+装備の売値はtier別例外を足さず、既存のIL共通式で決める。category weightを加味した黒晶洞産の条件付き平均は約236.5 G / drop、魔窟産は序盤約456 G、boss帯約784 G / dropであり、高IL装備の価値だけで約1.9–3.3倍の売値差がつく。
 
 ## 200-seed result
 
@@ -104,8 +108,8 @@ Rarity weightはshallow=`65/25/9/1`、middle=`50/32/15/3`、deep=`35/35/24/6`（
 
 | Build | Lv | clear | Boss到達 | 平均round | clear時final HP |
 |---|---:|---:|---:|---:|---:|
-| 戦技・修羅の血脈 | 150 | 17.0% | 97.5% | 122.13 | 1,039.35 |
-| 戦技・修羅の血脈 | 180 | 72.5% | 100% | 107.90 | 1,592.66 |
+| 戦技・修羅の血脈 | 150 | 17.0% | 97.5% | 119.53 | 1,074.53 |
+| 戦技・修羅の血脈 | 180 | 72.5% | 100% | 106.62 | 1,622.00 |
 | 護身・城塞撃 | 150 | 100% | 100% | 85.94 | 6,825.00 |
 | 護身・城塞撃 | 180 | 100% | 100% | 74.89 | 7,905.00 |
 | 祝福・裁きの天光 | 150 | 100% | 100% | 153.78 | 2,230.53 |
@@ -113,7 +117,7 @@ Rarity weightはshallow=`65/25/9/1`、middle=`50/32/15/3`、deep=`35/35/24/6`（
 | 自由・無相の一撃 | 150 | 100% | 100% | 272.99 | 2,835.24 |
 | 自由・無相の一撃 | 180 | 100% | 100% | 237.39 | 4,564.47 |
 
-Lv150戦技の敗北はbattle 8が5 / 200、bossが161 / 195到達で、道中farmは成立している。Lv180で72.5%まで上がり、低Lvhard gateではなくlevel・装備・skill・AIで改善できる開始帯から安定帯への勾配を残した。護身は最速かつ安全、祝福は遅いが安定、自由は非常に遅い代わりに自己回復で完走するという差が出た。
+Lv150戦技の敗北はbattle 8が5 / 200、boss到達195 / 200のうちboss敗北が161で、道中farmは成立している。修羅の血脈への発動時初撃追加により、clear率とboss到達率を変えずに平均roundは122.13から119.53へ短縮し、clear時final HPは1,039.35から1,074.53へ微増した。Lv180で72.5%まで上がり、低Lvhard gateではなくlevel・装備・skill・AIで改善できる開始帯から安定帯への勾配を残した。護身は最速かつ安全、祝福は遅いが安定、自由は非常に遅い代わりに自己回復で完走するという差が出た。
 
 default AIはHP20%以下で覚醒するため、ほとんどdamageを受けない護身と自己回復を優先する祝福では新奥義を使用しなかった。これは奥義選択の不具合ではなくAI条件の結果であり、戦闘間にcustom AIを変更すれば使用できる。新奥義4種の効果自体は個別deterministic regressionで確認する。
 
@@ -136,14 +140,15 @@ Lv150の回復率比較は次のとおり。
 - `underground_profiles.awakening_technique_key`をnullableで追加し、growth pathと選択可能keyの組合せをDB CHECKで保護するforward-only migrationを1本追加
 - NULLはlegacy fallback、再振りもNULLへ戻すためbackfill不要
 - IL上限はexisting generated equipment systemを60から90へ拡張。60以下のanchor・seed出力を維持し、70/80/90 anchorと`obsidian_cavern`表示名だけを追加
+- Trial 2産のgenerated equipmentは「魔窟の～」series。accessoryは主能力に応じて生命・武力・技巧・精神・敏捷の5種類の護符名を表示する
 - generator identityは既存入力の意味と出力を変えないdeterministic domain extensionとして維持。owned equipment schema、inventory、装備slot、snapshot形式に第二systemやdata migrationを追加しない
 
-Trial 2全clearの初回meta rewardだけがOwner未決である。現実装は0 SP・0 layer・storyなし・特別itemなし・称号なしでfail closedする。
+Trial 2の初回clearは、SP40、第2層解放、Owner支給のstoryまで確定済みである。特別item・称号・追加覚醒報酬はない。
 
 ## Reproduction
 
 ```powershell
-php artisan underground:balance --manifest=config/underground/balance/trial2-v1.json --count=200 --commit-sha=f35d232c69e2662e6b08e8565853277c2dc173d7
+php artisan underground:balance --manifest=config/underground/balance/trial2-v1.json --count=200 --commit-sha=e332c4dec36f1b9124ba2961c2b01a41ad10c356
 ```
 
 release/3.6.0、main、production、OCI、production DB、Owner管理handoffには未反映である。
