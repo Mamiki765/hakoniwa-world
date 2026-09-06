@@ -59,6 +59,10 @@ $payload['monster_definitions'][] = [
     ],
     'display_order' => 750,
 ];
+$payload['monster_system']['item_drop']['monster_tables']['nyowamiya'] = [
+    'rarity_weights' => ['novice' => 40, 'regular' => 40, 'cursed' => 20],
+    'level_cap_percent' => 100,
+];
 
 $payload['monster_system']['natural_spawn']['population_tiers'][] = [
     'minimum_population' => 500000,

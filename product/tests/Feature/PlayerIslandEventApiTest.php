@@ -787,6 +787,15 @@ class PlayerIslandEventApiTest extends TestCase
             'firing_nation_name' => $firing->name, 'target_nation_name' => $target->name,
             'missile_key' => 'pp_missile', 'effect' => 'ship_sunk', 'x' => 19, 'y' => 15,
         ]);
+        $this->audit('missile.impact', $target, $target, 'public', 2, [
+            'firing_nation_name' => $firing->name, 'target_nation_name' => $target->name,
+            'missile_key' => 'missile', 'effect' => 'facility_scale_damaged', 'x' => 20, 'y' => 16,
+        ]);
+        $this->audit('missile.impact', $target, $target, 'public', 2, [
+            'firing_nation_name' => $firing->name, 'target_nation_name' => $target->name,
+            'missile_key' => 'land_destruction_missile', 'effect' => 'facility_scale_land_damaged',
+            'x' => 21, 'y' => 17,
+        ]);
         $this->audit('missile.ineffective_aggregated', $firing, $firing, 'public', 2, [
             'nation_name' => $firing->name, 'command_key' => 'pp_missile',
             'queue_item_id' => 88, 'ineffective_impacts' => 8,
@@ -816,6 +825,9 @@ class PlayerIslandEventApiTest extends TestCase
                 ['x' => 17, 'y' => 13, 'effect' => 'secretary_intercepted', 'meaningful' => false],
                 ['x' => 18, 'y' => 14, 'effect' => 'ship_damaged', 'meaningful' => true],
                 ['x' => 19, 'y' => 15, 'effect' => 'ship_sunk', 'meaningful' => true],
+                ['x' => 20, 'y' => 16, 'effect' => 'facility_scale_damaged', 'meaningful' => true],
+                ['x' => 21, 'y' => 17, 'effect' => 'facility_scale_land_damaged', 'meaningful' => true],
+                ['x' => 22, 'y' => 18, 'effect' => 'facility_scale_ineffective', 'meaningful' => false],
             ],
         ]);
 
@@ -827,6 +839,8 @@ class PlayerIslandEventApiTest extends TestCase
         $this->assertContains('被弾島(13,9)に発射島のPPミサイルが着弾し、土地を焼け跡にしました。', $publicMessages);
         $this->assertContains('被弾島(18,14)に発射島のPPミサイルが着弾し、船に損傷を与えました。', $publicMessages);
         $this->assertContains('被弾島(19,15)に発射島のPPミサイルが着弾し、船を撃沈しました。', $publicMessages);
+        $this->assertContains('被弾島(20,16)に発射島のミサイルが着弾し、施設の規模を減少させました。', $publicMessages);
+        $this->assertContains('被弾島(21,17)に発射島の陸地破壊弾が着弾し、施設の規模を減少させました。', $publicMessages);
         $this->assertTrue(collect($publicMessages)->contains(
             static fn (string $message): bool => str_contains($message, 'PPミサイルのうち8発は効果がありませんでした。'),
         ));
@@ -860,13 +874,17 @@ class PlayerIslandEventApiTest extends TestCase
         $this->assertStringContainsString('(17,13): 最終防衛ラインに迎撃されました', $ownerMessages);
         $this->assertStringContainsString('(18,14): 船に損傷を与えました', $ownerMessages);
         $this->assertStringContainsString('(19,15): 船を撃沈しました', $ownerMessages);
+        $this->assertStringContainsString('(20,16): 施設の規模を減少させました', $ownerMessages);
+        $this->assertStringContainsString('(21,17): 施設の規模を減少させました', $ownerMessages);
+        $this->assertStringContainsString('(22,18): 施設の規模へ被害を与えられませんでした', $ownerMessages);
+        $this->assertStringNotContainsString('着弾結果が記録されました', $ownerMessages);
         $this->assertSame(1, substr_count($ownerMessages, '怪獣がいた荒地は焦土化しました'));
         $ownerTypes = collect($ownerResponse->json('data.groups.0.events'))->pluck('type');
         $this->assertFalse($ownerTypes->contains('missile.launched'));
         $this->assertSame(1, $ownerTypes->filter(
             static fn (string $type): bool => $type === 'missile.ineffective_aggregated',
         )->count());
-        $this->assertSame(1, $ownerTypes->filter(
+        $this->assertSame(2, $ownerTypes->filter(
             static fn (string $type): bool => $type === 'missile.ineffective_impact',
         )->count());
         $this->assertStringNotContainsString('PPミサイルのうち8発は効果がありませんでした。', $ownerMessages);

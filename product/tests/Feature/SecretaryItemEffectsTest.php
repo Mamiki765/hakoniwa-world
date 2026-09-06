@@ -941,6 +941,33 @@ final class SecretaryItemEffectsTest extends TestCase
         }
     }
 
+    public function test_nyowamiya_kill_uses_the_v21_secretary_item_drop_path_once(): void
+    {
+        $world = $this->lightweightWorld();
+        [$user, $nation] = $this->nation($world, 'ニョワミヤ戦利品国');
+        $ruleset = $this->switchToItemRuleset($world);
+        $world = $world->fresh();
+        $cell = $this->ownedNonCapitalCell($nation);
+        $monster = $this->monster($world, $ruleset, $cell, 1, 'nyowamiya');
+        $context = $this->context($world, hash('sha256', 'nyowamiya secretary item drop'), [$nation->id]);
+
+        $result = app(MonsterDamageService::class)->applyDamage(
+            $monster,
+            1,
+            'monster_missile',
+            $nation,
+            null,
+            $cell,
+            $context,
+        );
+
+        $this->assertSame('killed', $result->status);
+        $this->assertSame(1, $user->secretary->itemInstances()
+            ->where('grant_key', "monster-drop:v1:{$monster->id}:{$nation->id}")->count());
+        $this->assertSame(1, DB::table('audit_events')->where('event_type', 'monster.item_drop_received')
+            ->where('nation_id', $nation->id)->count());
+    }
+
     public function test_auction_delivery_may_overfill_inventory_but_further_drops_wait_until_usage_returns_below_capacity(): void
     {
         $world = $this->lightweightWorld();

@@ -2383,6 +2383,8 @@ final class PlayerIslandEventService
             'water_facility_destroyed' => '水上施設を破壊しました',
             'ship_damaged' => '船に損傷を与えました',
             'ship_sunk' => '船を撃沈しました',
+            'facility_scale_damaged', 'facility_scale_land_damaged' => '施設の規模を減少させました',
+            'facility_scale_ineffective' => '施設の規模へ被害を与えられませんでした',
             'land_scorched' => '土地を焼け跡にしました',
             'terrain_destroyed' => '陸地を破壊しました',
             'out_of_bounds_sea' => '狙点外の海へ落下し効果はありませんでした',
