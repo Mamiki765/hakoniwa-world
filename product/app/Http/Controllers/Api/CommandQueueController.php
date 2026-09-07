@@ -350,6 +350,7 @@ final class CommandQueueController extends Controller
             'command_key' => ['required', 'string', 'max:64'],
             'target_x' => ['sometimes', 'nullable', 'integer'],
             'target_y' => ['sometimes', 'nullable', 'integer'],
+            'target_ship_id' => ['sometimes', 'nullable', 'integer', 'min:1'],
             'target_layer' => ['sometimes', 'nullable', 'integer', 'min:1'],
             'target_slot_index' => ['sometimes', 'nullable', 'integer', 'between:0,3'],
             'request_key' => ['required', 'uuid'],
@@ -381,6 +382,7 @@ final class CommandQueueController extends Controller
                 quantityProvided: $request->exists('quantity'),
                 targetLayer: $validated['target_layer'] ?? null,
                 targetSlotIndex: $validated['target_slot_index'] ?? null,
+                targetShipId: $validated['target_ship_id'] ?? null,
             );
 
             return response()->json(['data' => [

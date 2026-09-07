@@ -189,6 +189,61 @@ describe('command plan workspace', () => {
         expect(wrapper.find('[aria-label="選択中の自国Ship操作"] form').exists()).toBe(false);
     });
 
+    it('keeps the selected Ship identity frozen while confirming a scuttle command', async () => {
+        const selectedShip = {
+            ...selected,
+            terrain: 'sea',
+            terrain_name: '海',
+            display_name: '漁船',
+            ship: {
+                id: 9,
+                key: 'fishing',
+                name: '漁船',
+                asset_key: 'ship.fishing',
+                current_hp: 1,
+                max_hp: 1,
+                public_state: 'active',
+                owner_nation: { nation_number: 1, name: '操作国' },
+                is_owner: true,
+                heading: null,
+                version: 1,
+            },
+        } satisfies MapCell;
+        const scuttle = definition({
+            key: 'scuttle_ship',
+            name: '廃船',
+            confirmation_message: '選択中の船を廃船にします。',
+        });
+        const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+            if (init?.method === 'POST') return jsonResponse({ queue: commandQueue(2) }, 201);
+
+            return jsonResponse(String(input).includes('command-definitions')
+                ? catalog([scuttle])
+                : commandQueue());
+        });
+        vi.stubGlobal('fetch', fetchMock);
+        const wrapper = mount(CommandQueuePanel, {
+            props: { nationId: 1, mapSpaceId: 2, selected: selectedShip },
+        });
+        await flushPromises();
+
+        await wrapper.get('.command-grid button').trigger('click');
+        await wrapper.setProps({
+            selected: { ...selectedShip, ship: { ...selectedShip.ship, id: 10 } },
+        });
+        await flushPromises();
+        await wrapper.get('.command-modal .danger-action').trigger('click');
+        await flushPromises();
+
+        const post = fetchMock.mock.calls.find(([, init]) => init?.method === 'POST');
+        expect(JSON.parse(String(post?.[1]?.body))).toMatchObject({
+            command_key: 'scuttle_ship',
+            target_x: 8,
+            target_y: 7,
+            target_ship_id: 9,
+        });
+    });
+
     it('shows twenty slots and inserts a command at the selected row', async () => {
         let serverQueue = commandQueue();
         const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {

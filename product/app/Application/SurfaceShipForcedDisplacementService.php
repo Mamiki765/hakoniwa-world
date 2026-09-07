@@ -117,21 +117,19 @@ final class SurfaceShipForcedDisplacementService
                     <=> [$rightDistance, $right->x, $right->y, $right->id];
             })
             ->values();
-        $port = $ports->first();
-        if (! $port instanceof MapCell) {
-            return null;
-        }
-        $portCoordinate = new GridCoordinate($port->x, $port->y);
-        foreach ($settings['port_search_distances'] as $distance) {
-            $candidate = $this->randomCandidate(
-                $context,
-                $ship,
-                $this->candidates($space, $portCoordinate->ring($distance), (int) $origin->id),
-                'port',
-                (int) $settings['random_stream_version'],
-            );
-            if ($candidate instanceof MapCell) {
-                return $candidate;
+        foreach ($ports as $port) {
+            $portCoordinate = new GridCoordinate($port->x, $port->y);
+            foreach ($settings['port_search_distances'] as $distance) {
+                $candidate = $this->randomCandidate(
+                    $context,
+                    $ship,
+                    $this->candidates($space, $portCoordinate->ring($distance), (int) $origin->id),
+                    'port',
+                    (int) $settings['random_stream_version'],
+                );
+                if ($candidate instanceof MapCell) {
+                    return $candidate;
+                }
             }
         }
 

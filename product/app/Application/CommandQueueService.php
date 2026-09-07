@@ -89,8 +89,9 @@ final class CommandQueueService
         bool $quantityProvided = false,
         ?int $targetLayer = null,
         ?int $targetSlotIndex = null,
+        ?int $targetShipId = null,
     ): array {
-        return DB::transaction(function () use ($user, $nation, $mapSpace, $commandKey, $targetX, $targetY, $targetLayer, $targetSlotIndex, $requestKey, $expectedVersion, $quantity, $parameters, $position, $quantityProvided): array {
+        return DB::transaction(function () use ($user, $nation, $mapSpace, $commandKey, $targetX, $targetY, $targetLayer, $targetSlotIndex, $targetShipId, $requestKey, $expectedVersion, $quantity, $parameters, $position, $quantityProvided): array {
             $this->membership($user, $nation);
             $this->assertMapSpace($nation, $mapSpace);
             $world = $this->lockWorldForQueue($nation);
@@ -157,10 +158,12 @@ final class CommandQueueService
                 if ($requestDefinition instanceof CommandDefinition
                     && $requestDefinition->key === 'scuttle_ship') {
                     $shipId = $duplicate->parameters['ship_id'] ?? null;
-                    if (! is_int($shipId)) {
+                    if (! is_int($shipId) || $targetShipId !== $shipId) {
                         throw new CommandRequestConflictException;
                     }
                     $parameters = ['ship_id' => $shipId];
+                } elseif ($targetShipId !== null) {
+                    throw new CommandRequestConflictException;
                 }
                 if ($requestDefinition->target_type === 'underground_slot') {
                     if ($targetX !== null || $targetY !== null || ! is_int($targetLayer) || ! is_int($targetSlotIndex)
@@ -208,6 +211,10 @@ final class CommandQueueService
             }
             $definition ??= $undergroundDefinition;
 
+            if ($definition->key !== 'scuttle_ship' && $targetShipId !== null) {
+                throw new PlayerFacingCommandException('このcommandへShip IDを指定することはできません。');
+            }
+
             $quantity = DevelopmentPlanQuantity::normalize($quantity, true);
             if ($definition instanceof UndergroundCommandDefinition) {
                 if ($quantity !== 1 || $parameters !== []) {
@@ -243,8 +250,7 @@ final class CommandQueueService
                     $parameters = $this->bindScuttleShipTarget(
                         $lockedNation,
                         $mapSpace,
-                        $targetX,
-                        $targetY,
+                        $targetShipId,
                     );
                 }
             }
@@ -1837,14 +1843,15 @@ final class CommandQueueService
     }
 
     /** @return array{ship_id: int} */
-    private function bindScuttleShipTarget(Nation $nation, MapSpace $mapSpace, int $x, int $y): array
+    private function bindScuttleShipTarget(Nation $nation, MapSpace $mapSpace, ?int $targetShipId): array
     {
-        $cell = $this->targetCell($mapSpace, $x, $y);
         $ship = Ship::query()
+            ->whereKey($targetShipId)
             ->where('world_id', $nation->world_id)
             ->where('nation_id', $nation->id)
-            ->where('map_cell_id', $cell->id)
             ->where('state', Ship::STATE_ACTIVE)
+            ->whereNotNull('map_cell_id')
+            ->whereHas('cell', static fn ($query) => $query->where('map_space_id', $mapSpace->id))
             ->lockForUpdate()
             ->first(['id']);
         if (! $ship instanceof Ship) {

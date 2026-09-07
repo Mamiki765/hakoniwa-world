@@ -19,6 +19,7 @@ use App\Models\NationCommandQueueItem;
 use App\Models\NationMembership;
 use App\Models\NationResourceSalePolicy;
 use App\Models\ResourceDefinition;
+use App\Models\Ship;
 use App\Models\TerrainDefinition;
 use App\Models\User;
 use App\Models\World;
@@ -2173,6 +2174,66 @@ class CommandQueueAndSalePolicyTest extends TestCase
         )->assertOk()->json('data.commands'))->firstWhere('key', 'build_farm');
         $this->assertSame('executable_after_queue', $farm['execution_preview_status']);
         $this->assertContains('予約済みcommand後は実行可能です。', $farm['execution_warnings']);
+    }
+
+    public function test_scuttle_registration_binds_the_selected_ship_id_instead_of_a_stale_coordinate_occupant(): void
+    {
+        [$owner, $nation, $mapSpace] = $this->nation('廃船同一性国');
+        $cells = MapCell::query()->where('map_space_id', $mapSpace->id)->orderBy('id')->limit(2)->get();
+        $this->assertCount(2, $cells);
+        $state = app(MapCellStateService::class);
+        $sea = TerrainDefinition::query()->where('key', 'sea')->firstOrFail();
+        foreach ($cells as $cell) {
+            $state->setFacility($cell, null);
+            $state->transitionTerrain($cell, $sea);
+            $cell->owner_nation_id = null;
+            $cell->save();
+        }
+        [$staleTarget, $selectedShipCell] = $cells->all();
+        $shipAttributes = [
+            'world_id' => $nation->world_id,
+            'ruleset_version_id' => $nation->world()->valueOrFail('ruleset_version_id'),
+            'nation_id' => $nation->id,
+            'ship_type_key' => 'fishing',
+            'current_hp' => 1,
+            'max_hp' => 1,
+            'heading' => null,
+            'state' => Ship::STATE_ACTIVE,
+            'version' => 1,
+        ];
+        $selectedShip = Ship::query()->create([...$shipAttributes, 'map_cell_id' => $selectedShipCell->id]);
+        $newOccupant = Ship::query()->create([...$shipAttributes, 'map_cell_id' => $staleTarget->id]);
+        $requestKey = (string) Str::uuid();
+        $path = "/api/v1/nations/{$nation->id}/map-spaces/{$mapSpace->id}/command-queue";
+
+        $this->actingAs($owner)->postJson($path, [
+            'command_key' => 'scuttle_ship',
+            'target_x' => $staleTarget->x,
+            'target_y' => $staleTarget->y,
+            'request_key' => (string) Str::uuid(),
+            'expected_version' => 1,
+        ])->assertUnprocessable()
+            ->assertJsonPath('code', 'command_rejected');
+
+        $response = $this->actingAs($owner)->postJson($path, [
+            'command_key' => 'scuttle_ship',
+            'target_x' => $staleTarget->x,
+            'target_y' => $staleTarget->y,
+            'target_ship_id' => $selectedShip->id,
+            'request_key' => $requestKey,
+            'expected_version' => 1,
+        ])->assertCreated();
+
+        $response->assertJsonPath('data.queue.items.0.parameters.ship_id', $selectedShip->id);
+        $this->assertNotSame($newOccupant->id, $response->json('data.queue.items.0.parameters.ship_id'));
+        $this->postJson($path, [
+            'command_key' => 'scuttle_ship',
+            'target_x' => $staleTarget->x,
+            'target_y' => $staleTarget->y,
+            'target_ship_id' => $newOccupant->id,
+            'request_key' => $requestKey,
+            'expected_version' => 2,
+        ])->assertConflict();
     }
 
     public function test_queue_preview_and_registration_allow_settlements_but_reject_capital_overbuild(): void

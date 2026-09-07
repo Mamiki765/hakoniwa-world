@@ -9,6 +9,7 @@ use App\Application\KarmaTurnService;
 use App\Application\NationCreationService;
 use App\Application\NationLifecycleService;
 use App\Application\PlayerIslandEventService;
+use App\Application\SurfaceShipForcedDisplacementService;
 use App\Application\Underground\UndergroundProfileService;
 use App\Domain\Map\GridCoordinate;
 use App\Domain\Map\MapCellStateService;
@@ -2118,6 +2119,7 @@ class DomesticCommandExecutionTest extends TestCase
             targetY: $target->y,
             requestKey: $scuttleRequestKey,
             expectedVersion: (int) $failed['queue']->version,
+            targetShipId: $ship->id,
         );
         $this->assertSame(['ship_id' => $ship->id], $scuttle['item']->parameters);
         $duplicate = $service->add(
@@ -2129,6 +2131,7 @@ class DomesticCommandExecutionTest extends TestCase
             targetY: $target->y,
             requestKey: $scuttleRequestKey,
             expectedVersion: 999,
+            targetShipId: $ship->id,
         );
         $this->assertTrue($duplicate['duplicate']);
         $this->assertSame($scuttle['item']->id, $duplicate['item']->id);
@@ -2253,6 +2256,87 @@ class DomesticCommandExecutionTest extends TestCase
             $recoveryEnded['exit_trigger'],
             $recoveryEnded['crime_points'],
             $recoveryEnded['queue_item_id'],
+        ]);
+    }
+
+    public function test_forced_displacement_uses_the_next_port_when_the_nearest_port_has_no_valid_sea(): void
+    {
+        $world = $this->lightweightWorld();
+        [, $nation] = $this->createNation($world, '別港退避国');
+        $space = $this->surfaceMapSpace($world);
+        $origin = $this->remoteWaterTarget($space);
+        $originCoordinate = new GridCoordinate($origin->x, $origin->y);
+        $portDirection = $origin->x <= intdiv($space->min_x + $space->max_x, 2) ? 1 : -1;
+        $nearestPortCoordinate = new GridCoordinate($origin->x + (4 * $portDirection), $origin->y);
+        $fallbackPortCoordinate = new GridCoordinate($origin->x + (10 * $portDirection), $origin->y);
+
+        foreach ($originCoordinate->ring(1) as $coordinate) {
+            $this->setCellState($this->cellAt($space, $coordinate->x, $coordinate->y), 'shallow', null);
+        }
+        foreach ([$nearestPortCoordinate, $fallbackPortCoordinate] as $portCoordinate) {
+            foreach ([1, 2] as $distance) {
+                foreach ($portCoordinate->ring($distance) as $coordinate) {
+                    $this->setCellState($this->cellAt($space, $coordinate->x, $coordinate->y), 'shallow', null);
+                }
+            }
+        }
+
+        $fallbackDestinationCoordinate = $fallbackPortCoordinate->ring(1)[0];
+        $fallbackDestination = $this->cellAt(
+            $space,
+            $fallbackDestinationCoordinate->x,
+            $fallbackDestinationCoordinate->y,
+        );
+        $this->setCellState($fallbackDestination, 'sea', null);
+
+        foreach ([$nearestPortCoordinate, $fallbackPortCoordinate] as $portCoordinate) {
+            $port = $this->cellAt($space, $portCoordinate->x, $portCoordinate->y);
+            $this->setCellState($port, 'plain', $nation->id);
+            $port = $port->fresh(['terrain', 'facility']);
+            app(MapCellStateService::class)->setFacility(
+                $port,
+                FacilityDefinition::query()->where('key', 'port')->firstOrFail(),
+            );
+            $port->save();
+        }
+
+        $ship = Ship::query()->create([
+            'world_id' => $world->id,
+            'ruleset_version_id' => $world->ruleset_version_id,
+            'nation_id' => $nation->id,
+            'map_cell_id' => $origin->id,
+            'ship_type_key' => 'exploration',
+            'current_hp' => 2,
+            'max_hp' => 2,
+            'heading' => null,
+            'state' => Ship::STATE_ACTIVE,
+            'version' => 1,
+        ]);
+        $context = $this->context(
+            $world,
+            [$nation->id],
+            hash('sha256', 'forced displacement fallback port'),
+        );
+
+        app(SurfaceShipForcedDisplacementService::class)->displace(
+            $context,
+            $origin,
+            $nation,
+            'test',
+            0,
+        );
+
+        $this->assertSame([
+            Ship::STATE_ACTIVE, $fallbackDestination->id, 2,
+        ], [
+            $ship->fresh()->state, $ship->fresh()->map_cell_id, $ship->fresh()->version,
+        ]);
+        $displaced = $this->eventMetadataForSubject('ship.forced_displaced', $ship->id);
+        $this->assertSame([
+            'port', $fallbackDestination->x, $fallbackDestination->y, 0, false,
+        ], [
+            $displaced['source'], $displaced['x'], $displaced['y'],
+            $displaced['oil_consumed'], $displaced['normal_event_consumed'],
         ]);
     }
 

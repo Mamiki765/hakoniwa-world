@@ -30,6 +30,7 @@ interface QueueContext {
 interface FrozenCommandContext extends QueueContext {
     targetX: number | null;
     targetY: number | null;
+    targetShipId: number | null;
     targetLayer: number | null;
     targetSlotIndex: number | null;
     position: number;
@@ -238,6 +239,7 @@ function freezeCommandContext(): FrozenCommandContext {
         mapSpaceId: props.mapSpaceId,
         targetX: selected?.x ?? null,
         targetY: selected?.y ?? null,
+        targetShipId: selected?.ship?.is_owner === true ? selected.ship.id : null,
         targetLayer: underground?.layer ?? null,
         targetSlotIndex: underground?.slot_index ?? null,
         position: selectedPosition.value,
@@ -385,6 +387,7 @@ async function addCommand(
                 command_key: definition.key,
                 target_x: definition.target_type === 'cell' ? frozen.targetX : null,
                 target_y: definition.target_type === 'cell' ? frozen.targetY : null,
+                ...(definition.key === 'scuttle_ship' ? { target_ship_id: frozen.targetShipId } : {}),
                 target_layer: definition.target_type === 'underground_slot' ? frozen.targetLayer : null,
                 target_slot_index: definition.target_type === 'underground_slot' ? frozen.targetSlotIndex : null,
                 position: submittedPosition,
