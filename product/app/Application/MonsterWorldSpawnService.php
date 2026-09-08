@@ -82,8 +82,13 @@ final class MonsterWorldSpawnService
             return $metrics;
         }
 
+        $shipOccupancyEnabled = is_array($context->ruleset->settings['surface_ships'] ?? null);
+        $relations = ['terrain', 'facility'];
+        if ($shipOccupancyEnabled) {
+            $relations[] = 'ship';
+        }
         $surfaceCells = MapCell::query()->where('map_space_id', $space->id)
-            ->with(['terrain', 'facility', 'ship'])->orderBy('id')->lockForUpdate()->get();
+            ->with($relations)->orderBy('id')->lockForUpdate()->get();
         $blockedByLand = [];
         $minimumDistance = (int) $settings['minimum_land_distance'];
         foreach ($surfaceCells as $cell) {
@@ -98,12 +103,12 @@ final class MonsterWorldSpawnService
                 ->pluck('map_cell_id')->map(static fn ($id): int => (int) $id)->all(),
             true,
         );
-        $candidates = $surfaceCells->filter(function (MapCell $cell) use ($context, $settings, $blockedByLand, $occupiedCellIds): bool {
+        $candidates = $surfaceCells->filter(function (MapCell $cell) use ($context, $settings, $blockedByLand, $occupiedCellIds, $shipOccupancyEnabled): bool {
             if (! in_array($cell->terrain->key, $settings['terrain_keys'], true)
                 || $cell->owner_nation_id !== null
                 || $cell->population !== 0
                 || $cell->facility_definition_id !== null
-                || $cell->ship !== null
+                || ($shipOccupancyEnabled && $cell->ship !== null)
                 || isset($occupiedCellIds[$cell->id])) {
                 return false;
             }
