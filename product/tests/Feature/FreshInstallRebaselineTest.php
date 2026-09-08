@@ -70,6 +70,8 @@ final class FreshInstallRebaselineTest extends TestCase
 
     private const V21_MIGRATION = '2026_09_06_020000_publish_v21_3_7_0_release';
 
+    private const AUCTION_ITEM_HISTORY_MIGRATION = '2026_09_08_000000_preserve_completed_auction_item_history';
+
     public function test_empty_postgresql_uses_direct_current_schema_and_v21_catalog_baseline(): void
     {
         config(['hakoniwa' => require config_path('hakoniwa.php')]);
@@ -89,7 +91,7 @@ final class FreshInstallRebaselineTest extends TestCase
         $this->assertSame(30, CommandDefinition::query()->where('ruleset_version_id', $ruleset->id)->count());
         $this->assertSame(3, ProductionDefinition::query()->where('ruleset_version_id', $ruleset->id)->count());
         $this->assertSame(11, MonsterDefinition::query()->where('ruleset_version_id', $ruleset->id)->count());
-        $this->assertSame(64, DB::table('migrations')->count());
+        $this->assertSame(65, DB::table('migrations')->count());
         $this->assertDatabaseHas('migrations', [
             'migration' => '2026_08_22_000000_rebaseline_ver_2_4_install_and_upgrade',
         ]);
@@ -205,6 +207,7 @@ final class FreshInstallRebaselineTest extends TestCase
         $this->assertTrue(Schema::hasColumn('secretary_item_instances', 'is_escrowed'));
         $this->assertTrue(Schema::hasColumn('nations', 'population_high_water'));
         $this->assertTrue(Schema::hasTable('auction_listings'));
+        $this->assertTrue(Schema::hasColumn('auction_listings', 'original_secretary_item_instance_id'));
         $this->assertTrue(Schema::hasTable('auction_bids'));
         $this->assertTrue(Schema::hasTable('underground_profiles'));
         $this->assertTrue(Schema::hasColumn('underground_profiles', 'unlocked_area_layers'));
@@ -373,6 +376,19 @@ SQL);
         $this->assertSame($auctionForeignKeys, DB::table('pg_constraint')
             ->where('contype', 'f')->whereIn('conname', $auctionForeignKeys)
             ->orderBy('conname')->pluck('conname')->all());
+        $itemHistoryForeignKey = DB::selectOne(<<<'SQL'
+SELECT confdeltype
+FROM pg_constraint
+WHERE conname = 'auction_listings_secretary_item_instance_id_foreign'
+SQL);
+        $this->assertSame('n', $itemHistoryForeignKey->confdeltype);
+        $itemProductCheck = DB::selectOne(<<<'SQL'
+SELECT pg_get_constraintdef(oid) AS definition
+FROM pg_constraint
+WHERE conname = 'auction_listings_product_check'
+SQL);
+        $this->assertStringContainsString('original_secretary_item_instance_id', $itemProductCheck->definition);
+        $this->assertStringContainsString("(status)::text <> 'active'::text", $itemProductCheck->definition);
         $integrityTriggers = [
             'monster_instance_world_ruleset_guard',
             'nation_command_queue_items_world_ruleset_match',
@@ -1680,6 +1696,7 @@ SQL);
 
     private function returnDatabaseToExact350Source(): void
     {
+        $this->returnAuctionItemHistoryToPre380Source();
         RulesetVersion::query()->where('key', Ver370RulesetUpgrade::TARGET_KEY)->delete();
         $v20Settings = require config_path('hakoniwa/rulesets/hakoniwa-2s-plus-v20.php');
         config([
@@ -1720,6 +1737,50 @@ SQL);
             $table->dropColumn('awakening_technique_key');
         });
         DB::table('migrations')->where('migration', self::AWAKENING_TECHNIQUE_MIGRATION)->delete();
+    }
+
+    private function returnAuctionItemHistoryToPre380Source(): void
+    {
+        if (! Schema::hasColumn('auction_listings', 'original_secretary_item_instance_id')) {
+            return;
+        }
+        DB::statement(<<<'SQL'
+ALTER TABLE auction_listings
+  DROP CONSTRAINT auction_listings_secretary_item_instance_id_foreign,
+  DROP CONSTRAINT auction_listings_product_check,
+  ADD CONSTRAINT auction_listings_product_check CHECK (
+    (
+      product_type = 'resource'
+      AND resource_definition_id IS NOT NULL
+      AND secretary_item_instance_id IS NULL
+      AND item_key IS NULL
+      AND item_level IS NULL
+      AND quantity IS NOT NULL
+      AND quantity > 0
+    )
+    OR
+    (
+      product_type = 'item'
+      AND resource_definition_id IS NULL
+      AND quantity IS NULL
+      AND item_key IS NOT NULL
+      AND item_level IS NOT NULL
+      AND item_level > 0
+      AND (
+        (seller_type = 'nation' AND secretary_item_instance_id IS NOT NULL)
+        OR (seller_type = 'hakoniwa_federation' AND secretary_item_instance_id IS NULL)
+      )
+    )
+  ),
+  ADD CONSTRAINT auction_listings_secretary_item_instance_id_foreign
+    FOREIGN KEY (secretary_item_instance_id)
+    REFERENCES secretary_item_instances(id)
+    ON DELETE RESTRICT
+SQL);
+        Schema::table('auction_listings', function (Blueprint $table): void {
+            $table->dropColumn('original_secretary_item_instance_id');
+        });
+        DB::table('migrations')->where('migration', self::AUCTION_ITEM_HISTORY_MIGRATION)->delete();
     }
 
     private function returnPortCatalogToPre350Source(): void
@@ -1866,6 +1927,7 @@ SQL);
                 self::AWAKENING_TECHNIQUE_MIGRATION,
                 self::RECOLLECTION_MIGRATION,
                 self::V21_MIGRATION,
+                self::AUCTION_ITEM_HISTORY_MIGRATION,
             ], true),
         ));
     }

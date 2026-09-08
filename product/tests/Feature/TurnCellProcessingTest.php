@@ -22,6 +22,9 @@ use App\Models\CommandDefinition;
 use App\Models\FacilityDefinition;
 use App\Models\MapCell;
 use App\Models\MapSpace;
+use App\Models\MonsterDefinition;
+use App\Models\MonsterInstance;
+use App\Models\MonsterOccupancy;
 use App\Models\Nation;
 use App\Models\NationCommandQueue;
 use App\Models\NationCommandQueueItem;
@@ -614,6 +617,90 @@ class TurnCellProcessingTest extends TestCase
             ->whereRaw("metadata->>'turn_run_id' = ?", [(string) $commandRun->id])->count());
     }
 
+    public function test_nyowamiya_prepass_tramples_rank_two_facility_without_repopulating_its_occupied_cell(): void
+    {
+        $world = $this->lightweightWorld();
+        $user = User::factory()->create();
+        $nation = app(NationCreationService::class)->create($user, $world, 'ニョワミヤ村発生国', 'ニョワミヤ村発生島主');
+        $ruleset = $world->rulesetVersion()->firstOrFail();
+        $settings = $ruleset->settings;
+        $settings['turn_processing']['settlement']['appearance_probability'] = [
+            'numerator' => 1,
+            'denominator' => 1,
+        ];
+        $ruleset->update(['settings' => $settings]);
+        $capital = $nation->capital()->firstOrFail()->cell()->with(['terrain', 'facility'])->firstOrFail();
+        [$origin, $destination] = $this->sequentialCandidates($nation, $capital);
+        $this->mutateCell($origin, 'wasteland', null, 0);
+        $this->mutateCell($destination, 'plain', 'farm', 0);
+        $destination->fresh()->update(['facility_scale' => 2]);
+        $space = MapSpace::query()->where('world_id', $world->id)->where('key', 'surface')->firstOrFail();
+        $settlementNeighborCoordinate = collect((new GridCoordinate($destination->x, $destination->y))->neighborsWithin(
+            $space->min_x,
+            $space->max_x,
+            $space->min_y,
+            $space->max_y,
+        ))->first(fn (GridCoordinate $coordinate): bool => ! (
+            ($coordinate->x === $origin->x && $coordinate->y === $origin->y)
+            || ($coordinate->x === $capital->x && $coordinate->y === $capital->y)
+        ));
+        $this->assertInstanceOf(GridCoordinate::class, $settlementNeighborCoordinate);
+        $settlementNeighbor = MapCell::query()->where('map_space_id', $space->id)
+            ->where('x', $settlementNeighborCoordinate->x)
+            ->where('y', $settlementNeighborCoordinate->y)
+            ->firstOrFail();
+        $settlementNeighbor->update(['owner_nation_id' => $nation->id]);
+        $this->mutateCell($settlementNeighbor, 'plain', 'farm', 0);
+
+        $definition = MonsterDefinition::query()
+            ->where('ruleset_version_id', $ruleset->id)
+            ->where('key', 'nyowamiya')
+            ->firstOrFail();
+        $monster = MonsterInstance::query()->create([
+            'world_id' => $world->id,
+            'monster_definition_id' => $definition->id,
+            'current_hp' => 1,
+            'spawned_max_hp' => 1,
+            'state' => 'alive',
+            'spawned_target_turn' => 1,
+            'version' => 1,
+        ]);
+        MonsterOccupancy::query()->create([
+            'monster_instance_id' => $monster->id,
+            'map_cell_id' => $origin->id,
+        ]);
+        $direction = collect(range(0, 5))->first(
+            function (int $candidate) use ($origin, $destination): bool {
+                $neighbor = (new GridCoordinate($origin->x, $origin->y))->neighbor($candidate);
+
+                return $neighbor->x === $destination->x && $neighbor->y === $destination->y;
+            },
+        );
+        $this->assertIsInt($direction);
+        $seed = $this->seedForNyoMovementAndSettlement($monster->id, $direction);
+        [$context] = $this->context(
+            $world,
+            $nation,
+            [$origin->id, $destination->id, $settlementNeighbor->id],
+            $seed,
+            ruleset: $ruleset,
+        );
+
+        $result = app(CompleteTurnEngine::class)->execute('process_cells', $context);
+
+        $destination = $destination->fresh(['terrain', 'facility']);
+        $this->assertSame($destination->id, $monster->fresh()->occupancy()->value('map_cell_id'));
+        $this->assertSame('plain', $destination->terrain->key);
+        $this->assertNull($destination->facility_definition_id);
+        $this->assertNull($destination->facility_scale);
+        $this->assertSame(0, $destination->population);
+        $this->assertSame(0, $result->metrics['settlements_appeared']);
+        $this->assertSame(1, $result->metrics['monster_actions']);
+        $this->assertSame(1, $result->metrics['monster_moves']);
+        $this->assertSame(1, $result->metrics['cells_trampled']);
+        $this->assertSame(0, DB::table('audit_events')->where('event_type', 'settlement.appeared')->count());
+    }
+
     public function test_demographic_skills_raise_noncapital_limits_add_natural_growth_and_normalize_over_cap_population_without_queries(): void
     {
         $world = $this->lightweightWorld();
@@ -1096,6 +1183,24 @@ class TurnCellProcessingTest extends TestCase
         }
 
         $this->fail('Unable to find the settlement propagation draw sequence.');
+    }
+
+    private function seedForNyoMovementAndSettlement(int $monsterId, int $direction): string
+    {
+        foreach (range(0, 100_000) as $candidate) {
+            $seed = hash('sha256', "nyowamiya-settlement:{$candidate}");
+            $movement = (new TurnRandomStreamFactory($seed))->stream(
+                TurnRandomStreamFactory::monsterMovement($monsterId, 1),
+            );
+            $settlement = (new TurnRandomStreamFactory($seed))->stream(
+                TurnRandomStreamFactory::SETTLEMENT_APPEARANCE,
+            );
+            if ($movement->integer(0, 5) === $direction && $settlement->integer(0, 99) < 20) {
+                return $seed;
+            }
+        }
+
+        $this->fail('Unable to find deterministic Nyo movement and settlement draws.');
     }
 
     /** @param list<int> $expected */

@@ -1486,7 +1486,13 @@ describe('application lobby and island entry', () => {
 
     it('shows the unnamed Secretary story with the default name and switches permanently to the skill view after naming', async () => {
         window.history.replaceState({}, '', '/underground');
-        let secretary = unnamedSecretaryFixture;
+        let secretary = structuredClone(unnamedSecretaryFixture);
+        Object.assign(secretary.inventory.items[1]!, {
+            key: 'old_bow',
+            name: '古びた弓',
+            level: 1,
+        });
+        vi.spyOn(window, 'confirm').mockReturnValue(true);
         const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
             const path = String(input);
             const lobby = publicResponse(path);
@@ -1546,6 +1552,18 @@ describe('application lobby and island entry', () => {
                 return response({ ...secretary.profile, name: secretary.name, is_owner: true });
             }
             if (path === '/api/v1/me/secretary?world_id=1') return response(secretary);
+            if (path === '/api/v1/me/secretary/items/22/sell' && init?.method === 'POST') {
+                secretary = {
+                    ...secretary,
+                    inventory: {
+                        ...secretary.inventory,
+                        used: 1,
+                        items: secretary.inventory.items.filter((item) => item.id !== 22),
+                    },
+                };
+
+                return response({ secretary, nation: { ...ownerNationFixture, money: 200 } });
+            }
             if (path === '/api/v1/me/underground') {
                 return response({
                     stage: 'not_started', secretary_name: 'エメラルド', combat_level: 1,
@@ -1663,6 +1681,17 @@ describe('application lobby and island entry', () => {
         expect(wrapper.get('.secretary-warehouse').text()).toContain('貴金属が使われた豪華な指輪');
         expect(wrapper.get('.item-flavor').classes()).toContain('item-flavor');
         expect(secretaryGetCount()).toBe(beforeTabSwitch);
+        const sameNameSaleButtons = wrapper.findAll('.secretary-item-sell');
+        expect(sameNameSaleButtons).toHaveLength(2);
+        await sameNameSaleButtons[1]!.trigger('click');
+        await flushPromises();
+        const itemSaleRequest = fetchMock.mock.calls.find(([path, init]) => (
+            String(path) === '/api/v1/me/secretary/items/22/sell' && init?.method === 'POST'
+        ));
+        expect(itemSaleRequest).toBeDefined();
+        expect(JSON.parse(String(itemSaleRequest?.[1]?.body))).toEqual({ world_id: 1 });
+        expect(wrapper.findAll('.secretary-warehouse > li')).toHaveLength(1);
+        expect(wrapper.get('.secretary-warehouse > li').text()).toContain('slot 1 に装備中');
 
         await wrapper.findAll('.site-header nav button')
             .find((button) => button.text() === 'オプション')!.trigger('click');

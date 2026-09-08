@@ -881,6 +881,82 @@ final class TradingPostApiTest extends TestCase
         $this->assertDatabaseHas('audit_events', ['event_type' => 'trading_post.npc_listed']);
     }
 
+    public function test_completed_player_item_history_allows_only_the_returned_or_delivered_instance_to_be_sold_once(): void
+    {
+        $world = $this->lightweightWorld();
+        [$seller, $sellerNation] = $this->ownerAndNation($world, '履歴売島', 1_000);
+        [$buyer, $buyerNation] = $this->ownerAndNation($world, '履歴買島', 1_000);
+        $sellerSecretary = $seller->secretary()->sole();
+        $items = collect([
+            'cancelled' => 'cancelled',
+            'sold' => 'sold',
+            'expired' => 'expired',
+        ])->map(fn (string $suffix) => $sellerSecretary->itemInstances()->create([
+            'item_key' => SecretaryItemCatalog::RING,
+            'level' => 1,
+            'equipped_slot' => null,
+            'grant_key' => "test:completed-listing-sale:{$suffix}",
+            'obtained_at' => now(),
+        ]));
+
+        $listingIds = [];
+        foreach ($items as $status => $item) {
+            $listingIds[$status] = $this->actingAs($seller)->postJson($this->listingUrl($sellerNation), [
+                'product_type' => 'item', 'item_instance_id' => $item->id,
+                'start_price' => 100, 'duration_turns' => 3, 'auto_relist' => false,
+            ])->assertCreated()->json('data.id');
+        }
+
+        $this->actingAs($seller)->deleteJson(
+            $this->listingUrl($sellerNation).'/'.$listingIds['cancelled'],
+        )->assertOk();
+        $this->actingAs($buyer)->postJson(
+            $this->bidUrl($buyerNation, $listingIds['sold']),
+            ['amount' => 100],
+        )->assertOk();
+        app(TradingPostTurnService::class)->execute($this->context(
+            $world,
+            4,
+            [$sellerNation->id, $buyerNation->id],
+            'completed-item-history-sale',
+        ));
+
+        $this->assertSame(AuctionListing::STATUS_CANCELLED, AuctionListing::query()->findOrFail($listingIds['cancelled'])->status);
+        $this->assertSame(AuctionListing::STATUS_SOLD, AuctionListing::query()->findOrFail($listingIds['sold'])->status);
+        $this->assertSame(AuctionListing::STATUS_EXPIRED, AuctionListing::query()->findOrFail($listingIds['expired'])->status);
+        $this->assertSame($buyer->secretary()->valueOrFail('id'), $items['sold']->fresh()->secretary_id);
+
+        $sellerMoneyBefore = (int) $sellerNation->fresh()->money;
+        $buyerMoneyBefore = (int) $buyerNation->fresh()->money;
+        foreach ([
+            [$seller, $items['cancelled']],
+            [$buyer, $items['sold']],
+            [$seller, $items['expired']],
+        ] as [$owner, $item]) {
+            $this->actingAs($owner)->postJson("/api/v1/me/secretary/items/{$item->id}/sell", [
+                'world_id' => $world->id,
+            ])->assertOk();
+            $this->assertDatabaseMissing('secretary_item_instances', ['id' => $item->id]);
+        }
+
+        $this->assertSame($sellerMoneyBefore + 200, (int) $sellerNation->fresh()->money);
+        $this->assertSame($buyerMoneyBefore + 100, (int) $buyerNation->fresh()->money);
+        $this->assertSame(3, DB::table('audit_events')->where('event_type', 'secretary.item_sold')->count());
+        foreach ($listingIds as $status => $listingId) {
+            $listing = AuctionListing::query()->findOrFail($listingId);
+            $this->assertNull($listing->secretary_item_instance_id, $status);
+            $this->assertSame($items[$status]->id, $listing->original_secretary_item_instance_id, $status);
+            $this->assertSame(SecretaryItemCatalog::RING, $listing->item_key, $status);
+            $this->assertSame(1, $listing->item_level, $status);
+        }
+
+        $this->actingAs($buyer)->postJson("/api/v1/me/secretary/items/{$items['sold']->id}/sell", [
+            'world_id' => $world->id,
+        ])->assertUnprocessable();
+        $this->assertSame($buyerMoneyBefore + 100, (int) $buyerNation->fresh()->money);
+        $this->assertSame(3, DB::table('audit_events')->where('event_type', 'secretary.item_sold')->count());
+    }
+
     /** @return array{User, Nation} */
     private function ownerAndNation(World $world, string $name, int $money = 1_000): array
     {

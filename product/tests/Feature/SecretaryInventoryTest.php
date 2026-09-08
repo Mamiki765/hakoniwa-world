@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Application\NationCreationService;
 use App\Application\SecretaryItemGrantService;
+use App\Application\SecretaryItemSaleService;
 use App\Application\SecretaryService;
 use App\Domain\Economy\NationCapacityResolver;
 use App\Domain\Secretary\SecretaryItemCatalog;
@@ -300,6 +301,91 @@ final class SecretaryInventoryTest extends TestCase
         $this->assertSame($moneyCapacity, $nation->fresh()->money);
         $this->assertSame($beforeVersion, $secretary->fresh()->equipment_version);
         $this->assertSame(3, SecretaryItemInstance::query()->whereIn('id', [$equipped->id, $escrowed->id, $capacity->id])->count());
+        $this->assertSame(0, DB::table('audit_events')->where('event_type', 'secretary.item_sold')->count());
+    }
+
+    public function test_fixed_item_sale_uses_the_posted_instance_when_an_identical_item_is_equipped(): void
+    {
+        $world = $this->lightweightWorld();
+        $user = User::factory()->create();
+        $nation = app(NationCreationService::class)->create($user, $world, '同名個体島', '同名個体島主');
+        $secretary = $user->secretary()->sole();
+        $equipped = $secretary->itemInstances()->create([
+            'item_key' => SecretaryItemCatalog::INORA_BRACELET,
+            'level' => 1,
+            'equipped_slot' => 2,
+            'is_escrowed' => false,
+            'grant_key' => 'test:fixed-sale:same-equipped',
+            'obtained_at' => now(),
+        ]);
+        $sellable = $secretary->itemInstances()->create([
+            'item_key' => SecretaryItemCatalog::INORA_BRACELET,
+            'level' => 1,
+            'equipped_slot' => null,
+            'is_escrowed' => false,
+            'grant_key' => 'test:fixed-sale:same-sellable',
+            'obtained_at' => now(),
+        ]);
+        $beforeMoney = (int) $nation->money;
+
+        $this->actingAs($user)->postJson("/api/v1/me/secretary/items/{$sellable->id}/sell", [
+            'world_id' => $world->id,
+        ])->assertOk();
+
+        $this->assertDatabaseHas('secretary_item_instances', [
+            'id' => $equipped->id,
+            'equipped_slot' => 2,
+        ]);
+        $this->assertDatabaseMissing('secretary_item_instances', ['id' => $sellable->id]);
+        $this->assertSame($beforeMoney + 100, (int) $nation->fresh()->money);
+    }
+
+    public function test_fixed_item_sale_rolls_back_money_item_and_audit_when_audit_insert_fails(): void
+    {
+        $world = $this->lightweightWorld();
+        $user = User::factory()->create();
+        $nation = app(NationCreationService::class)->create($user, $world, '売却原子性島', '売却原子性島主');
+        $secretary = $user->secretary()->sole();
+        $item = $secretary->itemInstances()->create([
+            'item_key' => SecretaryItemCatalog::RING,
+            'level' => 1,
+            'equipped_slot' => null,
+            'is_escrowed' => false,
+            'grant_key' => 'test:fixed-sale:atomicity',
+            'obtained_at' => now(),
+        ]);
+        $beforeMoney = (int) $nation->money;
+        DB::unprepared(<<<'SQL'
+CREATE FUNCTION reject_secretary_item_sale_audit() RETURNS trigger AS $$
+BEGIN
+    IF NEW.event_type = 'secretary.item_sold' THEN
+        RAISE EXCEPTION 'injected item sale audit failure';
+    END IF;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+CREATE TRIGGER reject_secretary_item_sale_audit
+BEFORE INSERT ON audit_events
+FOR EACH ROW EXECUTE FUNCTION reject_secretary_item_sale_audit();
+SQL);
+
+        try {
+            app(SecretaryItemSaleService::class)->sell($user, $world->id, $item->id);
+            $this->fail('Expected injected item sale audit failure.');
+        } catch (QueryException $exception) {
+            $this->assertStringContainsString('injected item sale audit failure', $exception->getMessage());
+        } finally {
+            DB::unprepared(<<<'SQL'
+DROP TRIGGER IF EXISTS reject_secretary_item_sale_audit ON audit_events;
+DROP FUNCTION IF EXISTS reject_secretary_item_sale_audit();
+SQL);
+        }
+
+        $this->assertSame($beforeMoney, (int) $nation->fresh()->money);
+        $this->assertDatabaseHas('secretary_item_instances', [
+            'id' => $item->id,
+            'secretary_id' => $secretary->id,
+        ]);
         $this->assertSame(0, DB::table('audit_events')->where('event_type', 'secretary.item_sold')->count());
     }
 

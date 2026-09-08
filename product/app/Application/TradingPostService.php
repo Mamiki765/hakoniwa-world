@@ -238,6 +238,7 @@ final class TradingPostService
                 'seller_nation_id' => $lockedNation->id,
                 'product_type' => 'item',
                 'secretary_item_instance_id' => $lockedItem->id,
+                'original_secretary_item_instance_id' => $lockedItem->id,
                 'item_key' => $lockedItem->item_key,
                 'item_level' => $lockedItem->level,
                 'start_price' => $startPrice,

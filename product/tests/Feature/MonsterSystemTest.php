@@ -376,12 +376,9 @@ class MonsterSystemTest extends TestCase
         $origin = $this->safeInteriorCell($space, $world);
         $originCoordinate = new GridCoordinate($origin->x, $origin->y);
         $protectedCoordinate = $originCoordinate->neighbor(0);
-        $fallbackCoordinate = $originCoordinate->neighbor(1);
         $protected = $this->cellAt($space, $protectedCoordinate->x, $protectedCoordinate->y);
-        $fallback = $this->cellAt($space, $fallbackCoordinate->x, $fallbackCoordinate->y);
         $this->setCell($origin, 'sea', null, null, 0);
         $this->setCell($protected, 'sea', 'seabed_base', $nation->id, 0);
-        $this->setCell($fallback, 'plain', null, null, 1_234);
         $monster = $this->createMonster($world, $ruleset, $origin, 'aoi_inora', 2);
         $ship = Ship::query()->create([
             'world_id' => $world->id,
@@ -395,7 +392,7 @@ class MonsterSystemTest extends TestCase
             'state' => Ship::STATE_ACTIVE,
             'version' => 1,
         ]);
-        $seedLabel = $this->movementSeedForDirections($monster, [0, 1]);
+        $seedLabel = $this->movementSeedForDirections($monster, [0, 0, 0]);
         [$movementContext] = $this->context($world, $ruleset, 2, $seedLabel, [$nation->id]);
         $capital = $nation->capital()->firstOrFail();
         $movementContext->state->setNationLifecycleSnapshot($nation->id, [
@@ -426,20 +423,26 @@ class MonsterSystemTest extends TestCase
             ships: $shipBatch,
         ));
 
-        $this->assertSame($fallback->id, (int) MonsterOccupancy::query()
+        $this->assertSame($origin->id, (int) MonsterOccupancy::query()
             ->where('monster_instance_id', $monster->id)->value('map_cell_id'));
-        $this->assertSame(1, $batch->metrics()['monster_moves']);
-        $this->assertSame(Ship::STATE_REMOVED, $ship->fresh()->state);
-        $this->assertSame('monster_collision', $ship->fresh()->removal_reason);
-        $this->assertNull($shipBatch->shipAt((int) $protected->id));
+        $this->assertSame(0, $batch->metrics()['monster_moves']);
+        $unchangedMonster = $monster->fresh();
+        $this->assertSame(2, $unchangedMonster->current_hp);
+        $this->assertSame('alive', $unchangedMonster->state);
+        $this->assertSame(1, $unchangedMonster->version);
+        $protectedShip = $ship->fresh();
+        $this->assertSame(Ship::STATE_ACTIVE, $protectedShip->state);
+        $this->assertNull($protectedShip->removal_reason);
+        $this->assertSame($protected->id, $protectedShip->map_cell_id);
+        $this->assertSame(1, $protectedShip->current_hp);
+        $this->assertSame(1, $protectedShip->version);
+        $this->assertSame($ship->id, $shipBatch->shipAt((int) $protected->id)?->id);
+        $this->assertSame(0, DB::table('audit_events')->where('event_type', 'ship.sunk')->count());
         $this->assertSame('seabed_base', $protected->fresh()->facility()->value('key'));
         $this->assertSame($nation->id, $protected->fresh()->owner_nation_id);
-        $this->assertSame(0, $fallback->fresh()->population);
-        $this->assertSame('sea', $fallback->fresh()->terrain()->value('key'));
         $this->assertDatabaseHas('audit_events', [
-            'event_type' => 'monster.trampled',
-            'x' => $fallback->x,
-            'y' => $fallback->y,
+            'event_type' => 'monster.stayed',
+            'metadata->reason' => 'no_candidate',
         ]);
     }
 

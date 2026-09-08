@@ -14,6 +14,7 @@ use App\Domain\Facility\FacilityRankPolicy;
 use App\Domain\Map\GridCoordinate;
 use App\Domain\Map\MapCellStateService;
 use App\Domain\Map\NationLandAreaCalculator;
+use App\Domain\Monster\MonsterTurnBatch;
 use App\Domain\Secretary\SecretaryDemographicPolicy;
 use App\Domain\Secretary\SecretaryItemGameplayContract;
 use App\Domain\Secretary\SecretaryProductionBonus;
@@ -671,7 +672,13 @@ final class CompleteTurnEngine
 
                 continue;
             }
-            if (! $famine && $this->appearSettlement($context, $space, $cell, $cellsByCoordinate)) {
+            if (! $famine && $this->appearSettlement(
+                $context,
+                $space,
+                $cell,
+                $cellsByCoordinate,
+                $monsterBatch,
+            )) {
                 $metrics['settlements_appeared']++;
             }
         }
@@ -1509,10 +1516,12 @@ final class CompleteTurnEngine
         MapSpace $space,
         MapCell $cell,
         array $cellsByCoordinate,
+        MonsterTurnBatch $monsters,
     ): bool {
         $rules = $context->ruleset->settings['turn_processing']['settlement'];
         if ($cell->terrain->key !== $rules['eligible_terrain_key']
-            || $cell->facility_definition_id !== null || $cell->population !== 0) {
+            || $cell->facility_definition_id !== null || $cell->population !== 0
+            || $monsters->occupancyAt((int) $cell->id) !== null) {
             return false;
         }
         $probability = $rules['appearance_probability'];

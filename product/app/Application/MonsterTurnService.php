@@ -206,6 +206,9 @@ final class MonsterTurnService
                 || in_array($facilityKey, $movement['blocked_facility_keys'] ?? [], true))) {
                 continue;
             }
+            if ($this->nationProtection->protects($context, $destination->x, $destination->y)) {
+                continue;
+            }
             $ship = $ships?->shipAt((int) $destination->id);
             if ($ships === null) {
                 $this->shipRemoval->sinkAtCell($context, $destination, 'monster_collision', [
@@ -220,9 +223,6 @@ final class MonsterTurnService
                 if ($removed !== null) {
                     $ships->forget($ship, (int) $destination->id);
                 }
-            }
-            if ($this->nationProtection->protects($context, $destination->x, $destination->y)) {
-                continue;
             }
             if ($isDefense) {
                 $this->defenseSelfDestruct(

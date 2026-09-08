@@ -15,6 +15,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * @property string $product_type
  * @property int|null $resource_definition_id
  * @property int|null $secretary_item_instance_id
+ * @property int|null $original_secretary_item_instance_id
  * @property string|null $item_key
  * @property int|null $item_level
  * @property int|null $quantity
@@ -48,7 +49,7 @@ final class AuctionListing extends Model
 
     protected $fillable = [
         'world_id', 'seller_type', 'seller_nation_id', 'product_type', 'resource_definition_id',
-        'secretary_item_instance_id', 'item_key', 'item_level', 'quantity', 'start_price',
+        'secretary_item_instance_id', 'original_secretary_item_instance_id', 'item_key', 'item_level', 'quantity', 'start_price',
         'current_price', 'highest_bidder_nation_id', 'bid_count', 'duration_turns', 'started_turn',
         'ends_turn', 'auto_relist', 'relist_count', 'status', 'completed_turn',
     ];
