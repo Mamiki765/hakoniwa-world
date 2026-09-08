@@ -197,6 +197,7 @@ XML);
         $projectRoot = dirname(__DIR__, 2);
         $manager = new ParallelTestDatabaseManager($projectRoot);
         $manifest = $manager->prepare(1);
+        $evidenceDirectory = $manager->evidenceDirectory($manifest);
 
         try {
             $shard = $manager->shard($manifest, 0);
@@ -204,6 +205,9 @@ XML);
             $protectedBefore = $this->protectedDatabaseStates($pdo);
 
             $this->assertNotNull($shard);
+            $this->assertNotNull($evidenceDirectory);
+            $this->assertDirectoryExists(dirname($evidenceDirectory));
+            $this->assertDirectoryDoesNotExist($evidenceDirectory);
             $this->assertTrue(ParallelTestDatabaseManager::isSafeDatabaseName($shard['database']));
             $this->assertTrue($this->databaseExists($pdo, $shard['database']));
             unlink($shard['configuration']);

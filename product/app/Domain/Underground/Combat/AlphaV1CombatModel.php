@@ -216,7 +216,10 @@ final readonly class AlphaV1CombatModel
         return false;
     }
 
-    /** @param array<string, mixed> $snapshot */
+    /**
+     * @param  array<string, mixed>  $snapshot
+     * @return array<string, mixed>
+     */
     private function partyPlayerSnapshot(array $snapshot): array
     {
         if (($snapshot['ai_mode'] ?? null) !== 'default'
@@ -1424,12 +1427,12 @@ final readonly class AlphaV1CombatModel
                 if ($targets === []) {
                     continue;
                 }
-                $targetIds = array_values(array_map(
+                $targetIds = array_map(
                     static fn (BuildCombatState $state): string => $state->combatantId,
                     $targets,
-                ));
+                );
 
-                return [$targetIds[0] ?? null, $targetIds];
+                return [$targetIds[0], $targetIds];
             }
         }
 
@@ -1441,6 +1444,7 @@ final readonly class AlphaV1CombatModel
      * @param  array<string, int|null>  $metrics
      * @param  array<string, int>  $actionUsage
      * @param  list<array<string, mixed>>  $actionLog
+     * @param  list<string>  $targetIds
      */
     private function recordAiDecision(
         BuildCombatState $actor,
@@ -1485,6 +1489,7 @@ final readonly class AlphaV1CombatModel
      * @param  array<string, int>  $actionUsage
      * @param  list<array<string, int>>  $mpHistory
      * @param  list<array<string, mixed>>  $actionLog
+     * @param  list<string>  $targetIds
      */
     private function applySkillEffect(
         AlphaV1BuildCatalog $catalog,
@@ -1607,7 +1612,10 @@ final readonly class AlphaV1CombatModel
         };
     }
 
-    /** @param list<array<string, mixed>> $actionLog */
+    /**
+     * @param  list<array<string, mixed>>  $actionLog
+     * @param  list<string>  $targetIds
+     */
     private function applyTaunt(
         BuildCombatState $source,
         BuildCombatState $target,
@@ -1653,6 +1661,7 @@ final readonly class AlphaV1CombatModel
      * @param  array<string, int|null>  $metrics
      * @param  array<string, int>  $actionUsage
      * @param  list<array<string, mixed>>  $actionLog
+     * @param  list<string>  $targetIds
      */
     private function applyDamage(
         BuildCombatState $actor,
@@ -1941,6 +1950,7 @@ final readonly class AlphaV1CombatModel
      * @param  array<string, mixed>  $effect
      * @param  array<string, int|null>  $metrics
      * @param  list<array<string, mixed>>  $actionLog
+     * @param  list<string>  $targetIds
      */
     private function applyHeal(
         BuildCombatState $source,
@@ -1989,6 +1999,7 @@ final readonly class AlphaV1CombatModel
     /**
      * @param  array<string, mixed>  $effect
      * @param  list<array<string, mixed>>  $actionLog
+     * @param  list<string>  $targetIds
      */
     private function applyBarrier(
         BuildCombatState $source,
@@ -2035,6 +2046,7 @@ final readonly class AlphaV1CombatModel
 
     /**
      * @param  list<array<string, mixed>>  $actionLog
+     * @param  list<string>  $targetIds
      */
     private function applyStatus(
         AlphaV1BuildCatalog $catalog,
@@ -2206,6 +2218,7 @@ final readonly class AlphaV1CombatModel
     /**
      * @param  array<string, mixed>  $effect
      * @param  list<array<string, mixed>>  $actionLog
+     * @param  list<string>  $targetIds
      */
     private function removeStatuses(
         BuildCombatState $source,
@@ -2752,7 +2765,7 @@ final readonly class AlphaV1CombatModel
         $techniqueTargetIds = is_array($techniqueLog['target_ids'] ?? null)
             ? array_values(array_filter(
                 $techniqueLog['target_ids'],
-                static fn (mixed $targetId): bool => is_string($targetId) && $targetId !== '',
+                static fn (string $targetId): bool => $targetId !== '',
             ))
             : [$enemy->combatantId];
         $actionLog[] = $techniqueLog;
@@ -3226,7 +3239,10 @@ final readonly class AlphaV1CombatModel
         return in_array($type, array_column($effects, 'type'), true);
     }
 
-    /** @param list<array<string, mixed>> $actionLog */
+    /**
+     * @param  list<array<string, mixed>>  $actionLog
+     * @param  list<string>  $targetIds
+     */
     private function grantRoleStack(
         BuildCombatState $state,
         string $key,
@@ -3305,6 +3321,7 @@ final readonly class AlphaV1CombatModel
     }
 
     /**
+     * @param  list<string>  $targetIds
      * @return array<string, mixed>
      */
     private function logRow(
@@ -3351,7 +3368,7 @@ final readonly class AlphaV1CombatModel
             $row['team'] = $actor->side;
             $row['target_id'] = $targetState?->combatantId;
             $row['target_ids'] = $targetIds !== []
-                ? array_values($targetIds)
+                ? $targetIds
                 : ($targetState instanceof BuildCombatState ? [$targetState->combatantId] : []);
         }
 

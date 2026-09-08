@@ -697,7 +697,7 @@ function isStatePair(value: StateEnvelope | null | undefined): value is RoundSta
         && 'player' in value
         && 'enemy' in value;
 }
-function hasStateEnvelope(value: StateEnvelope | null | undefined): value is StateEnvelope {
+function hasStateEnvelope(value: unknown): value is StateEnvelope {
     return value !== null
         && value !== undefined
         && typeof value === 'object'

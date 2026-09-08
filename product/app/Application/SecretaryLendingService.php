@@ -89,12 +89,10 @@ final readonly class SecretaryLendingService
             }
             $equipped = [];
             foreach ($equipment as $item) {
-                if (is_array($item)) {
-                    $equipped[] = implode(' ', array_filter([
-                        is_string($item['name'] ?? null) ? $item['name'] : null,
-                        is_int($item['item_level'] ?? null) ? 'IL'.$item['item_level'] : null,
-                    ]));
-                }
+                $equipped[] = implode(' ', array_filter([
+                    is_string($item['name'] ?? null) ? $item['name'] : null,
+                    is_int($item['item_level'] ?? null) ? 'IL'.$item['item_level'] : null,
+                ]));
             }
             $awakeningUnlocked = $profile->trialProgresses->contains(
                 fn (UndergroundTrialProgress $progress): bool => $progress->trial_key === $this->runtimeCatalog->firstTrialKey()

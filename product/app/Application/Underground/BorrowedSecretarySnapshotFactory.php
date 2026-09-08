@@ -68,10 +68,8 @@ final readonly class BorrowedSecretarySnapshotFactory
         $sourceSnapshot['equipment'] = $originalEquipment;
         $sourceCacheMatches = $cache !== null
             && $cache->build_identity === self::BUILD_CACHE_IDENTITY
-            && is_string($cache->source_fingerprint)
             && hash_equals($cache->source_fingerprint, $sourceFingerprint);
-        $sourceSnapshotNeedsWrite = ! $sourceCacheMatches
-            || $this->cachedSourceEquipment($cache, $sourceFingerprint) === null;
+        $sourceSnapshotNeedsWrite = $this->cachedSourceEquipment($cache, $sourceFingerprint) === null;
 
         $originalLevel = $sourceSnapshot['original_combat_level'];
         if (! is_int($originalLevel) || $originalLevel < 1) {
@@ -168,7 +166,7 @@ final readonly class BorrowedSecretarySnapshotFactory
             }
         }
 
-        if (! is_array($definition) || ! is_int($definition['max_hp'] ?? null)
+        if (! is_int($definition['max_hp'] ?? null)
             || ! is_array($definition['player_snapshot'] ?? null)
             || ! is_array($definition['active_skills'] ?? null)
             || ! is_array($definition['ai'] ?? null)) {
@@ -369,9 +367,7 @@ final readonly class BorrowedSecretarySnapshotFactory
     ): ?array {
         if ($cache === null
             || $cache->build_identity !== self::BUILD_CACHE_IDENTITY
-            || ! is_string($cache->source_fingerprint)
-            || ! hash_equals($cache->source_fingerprint, $sourceFingerprint)
-            || ! is_array($cache->source_snapshot)) {
+            || ! hash_equals($cache->source_fingerprint, $sourceFingerprint)) {
             return null;
         }
         $equipment = $cache->source_snapshot['equipment'] ?? null;
@@ -394,10 +390,14 @@ final readonly class BorrowedSecretarySnapshotFactory
             }
         }
 
-        return array_values($equipment);
+        return $equipment;
     }
 
-    /** @param array<string, mixed> $source */
+    /**
+     * @param  array<string, mixed>  $source
+     * @param  list<array<string, mixed>>  $equipment
+     * @param  array<string, mixed>  $projectionCache
+     */
     private function persistCache(
         Secretary $secretary,
         array $source,
@@ -433,7 +433,10 @@ final readonly class BorrowedSecretarySnapshotFactory
         );
     }
 
-    /** @return array<string, mixed> */
+    /**
+     * @param  array<string, mixed>|null  $cache
+     * @return array<string, mixed>
+     */
     private function normalizedProjectionCache(?array $cache): array
     {
         if (! is_array($cache)
@@ -457,7 +460,10 @@ final readonly class BorrowedSecretarySnapshotFactory
         ];
     }
 
-    /** @param array<string, mixed> $cache */
+    /**
+     * @param  array<string, mixed>  $cache
+     * @return array<string, mixed>|null
+     */
     private function cachedProjection(array $cache, string $key): ?array
     {
         $projection = $cache['projections'][$key] ?? null;
@@ -607,7 +613,10 @@ final readonly class BorrowedSecretarySnapshotFactory
         return $definition;
     }
 
-    /** @param array<string, mixed> $definition */
+    /**
+     * @param  array<string, mixed>  $definition
+     * @return array<string, mixed>
+     */
     private function validatedEffectiveEquipment(array $definition): array
     {
         if (! is_int($definition['max_hp'] ?? null)
@@ -637,7 +646,10 @@ final readonly class BorrowedSecretarySnapshotFactory
         ]);
     }
 
-    /** @param array<string, mixed> $definition */
+    /**
+     * @param  array<string, mixed>  $definition
+     * @return array<string, mixed>
+     */
     private function normalizedCombatDefinition(array $definition): array
     {
         $definition['progression_stats'] = $this->orderedStats($definition['progression_stats'] ?? null);
@@ -673,7 +685,7 @@ final readonly class BorrowedSecretarySnapshotFactory
         ]);
     }
 
-    /** @param mixed $stats @return array<string, int> */
+    /** @return array<string, int> */
     private function orderedStats(mixed $stats): array
     {
         if (! is_array($stats)) {
@@ -693,7 +705,7 @@ final readonly class BorrowedSecretarySnapshotFactory
         return $ordered;
     }
 
-    /** @param mixed $rules @return list<array<string, mixed>> */
+    /** @return list<array<string, mixed>> */
     private function normalizedAiRules(mixed $rules): array
     {
         if (! is_array($rules) || ! array_is_list($rules)) {
@@ -743,7 +755,10 @@ final readonly class BorrowedSecretarySnapshotFactory
         return $normalized;
     }
 
-    /** @param array<string, mixed> $definition @return array<string, mixed> */
+    /**
+     * @param  array<string, mixed>  $definition
+     * @return array<string, mixed>
+     */
     private function normalizedItemDefinition(array $definition): array
     {
         $definition['stats'] = $this->orderedStats($definition['stats'] ?? null);
@@ -780,7 +795,11 @@ final readonly class BorrowedSecretarySnapshotFactory
         ]);
     }
 
-    /** @param array<string, mixed> $source @param list<string> $preferred */
+    /**
+     * @param  array<string, mixed>  $source
+     * @param  list<string>  $preferred
+     * @return array<string, mixed>
+     */
     private function orderedKeys(array $source, array $preferred): array
     {
         $ordered = [];
@@ -805,7 +824,10 @@ final readonly class BorrowedSecretarySnapshotFactory
         }
     }
 
-    /** @param array<string, mixed> $definition */
+    /**
+     * @param  array<string, mixed>  $definition
+     * @return array<string, mixed>
+     */
     private function serializableDefinition(array $definition): array
     {
         $keys = [
@@ -832,7 +854,7 @@ final readonly class BorrowedSecretarySnapshotFactory
     }
 
     /**
-     * @param  array<string, mixed>  $itemLevels
+     * @param  array<array-key, mixed>  $itemLevels
      * @return array<string, int>
      */
     private function validatedLeaderEquipmentItemLevels(array $itemLevels): array
@@ -1020,7 +1042,10 @@ final readonly class BorrowedSecretarySnapshotFactory
         return $canonical;
     }
 
-    /** @param array<mixed, mixed> $map */
+    /**
+     * @param  array<mixed, mixed>  $map
+     * @return array<mixed, mixed>
+     */
     private function boundedMap(array $map, int $limit): array
     {
         if (count($map) <= $limit) {

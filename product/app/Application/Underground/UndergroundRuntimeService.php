@@ -2165,7 +2165,6 @@ STORY;
     {
         $secretary = $profile->secretary;
         if ((int) ($expected['profile_id'] ?? 0) !== (int) $profile->id
-            || ! $secretary instanceof Secretary
             || (int) ($expected['secretary_id'] ?? 0) !== (int) $secretary->id
             || (int) ($expected['combat_level'] ?? 0) !== (int) $profile->combat_level) {
             return false;

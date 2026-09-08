@@ -55,7 +55,6 @@ function select(slot: ImageSlot, event: Event): void {
 
 async function save(slot: ImageSlot): Promise<void> {
     const file = files.value[slot] ?? null;
-    const current = image(slot);
     if ((!file && !hasEditableImage(slot)) || saving.value) return;
     saving.value = slot; error.value = '';
     try {

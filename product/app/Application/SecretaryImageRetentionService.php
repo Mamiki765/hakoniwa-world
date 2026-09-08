@@ -347,11 +347,14 @@ final readonly class SecretaryImageRetentionService
             $log = $battle->relationLoaded('log')
                 ? $battle->getRelation('log')
                 : $battle->log()->first();
-            if (! $log instanceof UndergroundBattleLog
-                || ! ($log->expires_at instanceof DateTimeInterface)) {
+            if (! $log instanceof UndergroundBattleLog) {
                 throw new \RuntimeException('Battle image retention requires an action log expiration.');
             }
-            $until = Carbon::instance($log->expires_at);
+            $expiresAt = $log->getAttribute('expires_at');
+            if (! $expiresAt instanceof DateTimeInterface) {
+                throw new \RuntimeException('Battle image retention requires an action log expiration.');
+            }
+            $until = Carbon::instance($expiresAt);
         }
         if ($until->lessThanOrEqualTo(Carbon::now())) {
             throw new \InvalidArgumentException('Battle image retention lease must be in the future.');

@@ -9,6 +9,7 @@ final class PriorityCombatAi
     ) {}
 
     /**
+     * @param  list<BuildCombatState>  $allies
      * @return array{type: 'normal_attack'|'defend'|'skill'|'awakening', key: string|null, reason: string, fallback: bool, mp_blocked: bool, next_rule_index: int}
      */
     public function select(
@@ -134,6 +135,7 @@ final class PriorityCombatAi
 
     /**
      * @param  list<mixed>  $conditions
+     * @param  list<BuildCombatState>  $allies
      */
     private function conditionsPass(
         array $conditions,
@@ -152,7 +154,10 @@ final class PriorityCombatAi
         return true;
     }
 
-    /** @param list<mixed> $conditions */
+    /**
+     * @param  list<mixed>  $conditions
+     * @param  list<BuildCombatState>  $allies
+     */
     private function otherwiseMatchingRuleIsBlockedByMp(
         array $conditions,
         BuildCombatState $actor,
@@ -187,7 +192,10 @@ final class PriorityCombatAi
         return $blocked;
     }
 
-    /** @param array<string, mixed> $condition */
+    /**
+     * @param  array<string, mixed>  $condition
+     * @param  list<BuildCombatState>  $allies
+     */
     private function conditionPasses(
         array $condition,
         BuildCombatState $actor,

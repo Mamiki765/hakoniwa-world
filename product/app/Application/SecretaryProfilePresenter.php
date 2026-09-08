@@ -200,7 +200,10 @@ final readonly class SecretaryProfilePresenter
         return $snapshot;
     }
 
-    /** @param array<string, mixed> $references */
+    /**
+     * @param  array<string, mixed>  $references
+     * @return array<string, mixed>
+     */
     private function filterSavedImageReferences(array $references, ?User $viewer): array
     {
         foreach ($references as $key => $reference) {

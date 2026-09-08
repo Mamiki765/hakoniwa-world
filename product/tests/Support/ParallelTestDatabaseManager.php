@@ -61,6 +61,7 @@ final class ParallelTestDatabaseManager
         }
 
         $settings = $this->databaseSettings();
+        $this->ensureEvidenceRootDirectory();
         $token = $requestedToken ?? bin2hex(random_bytes(4));
         $runDirectory = $this->workspaceDirectory.'/phpunit-parallel-'.$token;
         $evidenceDirectory = $this->evidenceRootDirectory.'/phpunit-parallel-'.$token;
@@ -404,6 +405,32 @@ final class ParallelTestDatabaseManager
             'username' => $username,
             'password' => $password === false ? '' : $password,
         ];
+    }
+
+    private function ensureEvidenceRootDirectory(): void
+    {
+        if (is_link($this->workspaceDirectory)
+            || (file_exists($this->workspaceDirectory) && ! is_dir($this->workspaceDirectory))
+            || (! is_dir($this->workspaceDirectory) && ! mkdir($this->workspaceDirectory, 0700, true))) {
+            throw new RuntimeException('Unable to create the parallel test workspace root safely.');
+        }
+        $resolvedWorkspace = realpath($this->workspaceDirectory);
+        if ($resolvedWorkspace === false
+            || TestShardPlanner::normalizePath($resolvedWorkspace) !== $this->workspaceDirectory) {
+            throw new RuntimeException('Parallel test workspace root failed its safety validation.');
+        }
+
+        if (is_link($this->evidenceRootDirectory)
+            || (file_exists($this->evidenceRootDirectory) && ! is_dir($this->evidenceRootDirectory))
+            || (! is_dir($this->evidenceRootDirectory) && ! mkdir($this->evidenceRootDirectory, 0700))) {
+            throw new RuntimeException('Unable to create the parallel test evidence root safely.');
+        }
+        $resolvedEvidenceRoot = realpath($this->evidenceRootDirectory);
+        if ($resolvedEvidenceRoot === false
+            || TestShardPlanner::normalizePath($resolvedEvidenceRoot) !== $this->evidenceRootDirectory
+            || TestShardPlanner::normalizePath(dirname($resolvedEvidenceRoot)) !== $this->workspaceDirectory) {
+            throw new RuntimeException('Parallel test evidence root failed its safety validation.');
+        }
     }
 
     /** @param array{host: string, port: string, username: string, password: string} $settings */
