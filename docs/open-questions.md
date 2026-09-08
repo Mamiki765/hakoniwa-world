@@ -16,7 +16,7 @@
 | missile / commands / combat | B-03、B-05、B-12、B-13 | Capital operational damage、防壁・占領抵抗、またはv12のdistance 2休眠保護を変更する将来combatを実装する前に停止する。ver 2.4.0のKARMA/recoveryはADR-0015で決定済み。 |
 | lifecycle / automatic turn operations | T-02 | ver 2.4.0はADR-0014/ADR-0015によりdormant/recoveryを専用Jobではなくofficial Turn開始/終端へ統合する。将来専用scheduler/batchへ変更する前に停止し、production cronと手動retry境界はD-02を維持する。 |
 | public release | — | RELEASE-01、AUTH-05、B-14、D-03、D-04、D-05、D-07はPR23 owner decisionで決定済み。 |
-| Underground 3.0.0 / post-release | UG-04/UG-05 | E-01/UG-01〜03によりpure combat、Secretary-owned persistence/runtime、正式intro、通常探索、growth/STP、有限SPとplayer Skill Tree、案内人の部屋と複合再振りまで実装済み。Nation-owned facility・surface bridgeはUG-04で決定済み。party・marketはUG-05で停止する。 |
+| Underground 3.0.0 / post-release | UG-04/UG-05 | E-01/UG-01〜03によりpure combat、Secretary-owned persistence/runtime、正式intro、通常探索、growth/STP、有限SPとplayer Skill Tree、案内人の部屋と複合再振りまで実装済み。Nation-owned facility・surface bridgeはUG-04、party boundaryはUG-05で決定済み。marketはUG-05で停止する。 |
 | post-MVP deferred | AUTH-06〜AUTH-09、B-08、D-06、D-08、C-02、C-04、E-02、E-04〜E-09 | 別のowner-approved roadmapまで実装しない。 |
 
 ## Decided architecture
@@ -259,7 +259,7 @@
 ### E-01 地下
 
 - Status: Decided
-- Implemented: Partially; application `3.4.0`までに正式intro・契約・4 growth path・通常探索・growth/STP・有限SP・player Skill Tree、Trial 1・覚醒、Nation-owned施設とread-only surface bridge、正式equipment・装備Shop・アクセサリー3枠・500枠宝物庫、浅層と黒晶洞、Item Lv・rarity・affix・generated drop、案内人の部屋と複合再振り、条件指定型の宝物庫まとめ売り、Secretaryごとのcustom AI、battle単位のnormalized rule/hash snapshot、作戦編集画面を実装済み。party、marketは未実装。
+- Implemented: Partially; application `3.8.0`までに正式intro・契約・4 growth path・通常探索・growth/STP・有限SP・player Skill Tree、Trial 1/2・覚醒、Nation-owned施設とread-only surface bridge、正式equipment・装備Shop・アクセサリー3枠・500枠宝物庫、浅層と黒晶洞、Item Lv・rarity・affix・generated drop、案内人の部屋と複合再振り、条件指定型の宝物庫まとめ売り、Secretaryごとのcustom AI、battle単位のnormalized rule/hash snapshot、作戦編集画面、非同期borrowed Secretary partyを実装済み。marketは未実装。
 - Decision: 地下roadmapを`release/3.0.0-alpha`として開始し、Turn非依存の任意side gameをmodular monolith内の独立domainとして育てる。後続releaseもSecretary-owned progression、canonical combat、versioned content identity、request idempotencyを再利用し、Surface RulesetやWorld Turnへ地下戦闘runtimeを混在させない。
 - Decision record: `docs/roadmap/3.0.0-alpha-underground.md`、`docs/architecture/underground-combat-laboratory.md`
 
@@ -288,7 +288,7 @@
 - Application `3.3.0` respec contract: 案内人の部屋から、SP全返却・active slot解除・STP全返却・成長方針再選択を一つのtransactionで行う。費用は現在Combat Lv × 10 Gを手持ち欠片だけから支払い、24時間に1回とする。Lv/XP、装備、Trial clear、覚醒、解禁、intro履歴は維持し、current HPは新max HPを超える場合だけ下方clampする。active Trial中は拒否し、UUID idempotencyとprofile lockで二重決済を防ぐ。
 - Application `3.3.0` bulk sale contract: 宝物庫のItem Lv・rarity・category・canonical weapon style条件をserver側で解決し、装備中itemと通常売却不可itemを除外した具体的item集合とcanonical価格をpreviewする。confirmはpreviewしたIDと価格だけを再検証し、追加取得itemを含めず、全件validation後の同一transactionでdeleteと手持ち欠片creditを行う。UUID idempotencyとprofile lockでretry・concurrent requestの二重creditを防ぐ。
 - Application `3.4.0` custom AI contract: Secretaryごとに有効設定は1つ、`null`はdefault preset、`[]`はcustom empty、最大16 rules・各rule最大2 AND条件、empty conditionはalways、jumpはforward-onlyとする。成立actionが現在使用不能なら次ruleへ進み、全rule後だけcanonicalな習得済みattackから通常攻撃へdeterministic fallbackする。覚醒は通常actionを消費せずdefault presetのHP 20%条件から起動する。Trial中の変更はbattle間だけ許可し、battle snapshotへ実使用normalized rules全文とSHA-256を固定する。Underground combat identityは`secretary-underground-alpha-v3`、Surface Rulesetは`hakoniwa-2s-plus-v19`を維持する。
-- Remaining boundary: Trial 2以降、unique、enhancement、enchant、manual combat、party、marketはcustom AI scopeへ含めない。production deploy / migrationは別Owner gateとする。
+- Remaining boundary: Trial 3以降、unique、enhancement、enchant、manual combat、companion、marketはcustom AI scopeへ含めない。production deploy / migrationは別Owner gateとする。
 - Decision record: `docs/roadmap/3.0.0-alpha-underground.md`、`docs/architecture/underground-combat-laboratory.md`
 
 ### UG-04 Nation-owned facility・surface bridge
@@ -301,10 +301,11 @@
 
 ### UG-05 party・market
 
-- Status: Open
-- Required before: 借用秘書、複数人party、または地底marketの最初の実装
-- Open decision: party snapshot/同時利用/報酬配分、market transaction、不正対策を決める。UG-04のNation-owned facility・surface bridge決定をparty/marketへ拡張しない。
-- Options: 早期頭打ちの段階式、逓減curve、限定utility/cosmetic中心を比較し、非参加playerへ不可逆な不利益を作らない。
+- Status: Decided (party boundary only)
+- Required before: 地底marketの最初の実装
+- Decision: partyは自分のSecretary 1人に、公開・貸出可能な他UserのSecretaryを最大3人まで加えた最大4 actorとする。actorは表示名ではなく`team`と`combatant_id`で結び、Trialは従来どおりsoloを維持する。借用snapshotとLeader level capはbattle開始時に固定し、貸出側へ戦闘状態を書き戻さない。探索のenemy数と通常報酬を別authorityとし、通常報酬はLeaderだけ、貸出報酬は決着したborrowed参加10回ごとにskip ticket 1枚、canonical dayあたり100枚までとする。Boss人数補正は`none`またはcontent-authored tableとする。skipはcontent別に管理し、狩場はactual combat win 50回で1回1枚、Trialはactual full clear 5周で1周10枚を解禁する。skipはcombat・cooldown・貸出参加を発生させず、通常勝利と共通のrepeatable reward settlementだけをsettleし、first-clear等のone-time stateを再発させない。総clear数には加えるが、解禁用actual countへは加えない。
+- Boundary: 過去の1対1 battle logを再計算・書換えず、party presentationはv3として分離する。companion育成、market transactionと不正対策は別decisionとして扱う。UG-04のNation-owned facility・surface bridge決定をparty/marketへ拡張しない。
+- Deferred: companion framework、market transaction、market不正対策。
 - Decision record: `docs/roadmap/3.0.0-alpha-underground.md`
 
 ## Monster/combat gates

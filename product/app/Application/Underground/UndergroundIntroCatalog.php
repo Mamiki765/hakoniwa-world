@@ -34,6 +34,50 @@ final class UndergroundIntroCatalog
         return $recollections;
     }
 
+    /** @return list<array{key: string, text: string}> */
+    public function guideBanter(): array
+    {
+        $banter = $this->data()['guide_banter'] ?? null;
+        if (! is_array($banter) || ! array_is_list($banter) || $banter === []) {
+            throw new RuntimeException('Underground guide banter configuration is invalid.');
+        }
+        $result = [];
+        foreach ($banter as $entry) {
+            if (! is_array($entry)
+                || ! is_string($entry['key'] ?? null) || $entry['key'] === ''
+                || ! is_string($entry['text'] ?? null) || $entry['text'] === '') {
+                throw new RuntimeException('Underground guide banter configuration is invalid.');
+            }
+            $result[] = ['key' => $entry['key'], 'text' => $entry['text']];
+        }
+
+        return $result;
+    }
+
+    /** @return array{key: string, text: string} */
+    public function randomGuideBanter(): array
+    {
+        $banter = $this->guideBanter();
+
+        return $banter[array_rand($banter)];
+    }
+
+    /** @return array{key: string, text: string} */
+    public function stableGuideBanter(string $selectionKey): array
+    {
+        if ($selectionKey === '') {
+            throw new RuntimeException('Underground guide banter selection key is invalid.');
+        }
+        $banter = $this->guideBanter();
+        $digest = hash('sha256', $selectionKey, true);
+        $number = unpack('N', substr($digest, 0, 4));
+        if (! is_array($number) || ! is_int($number[1] ?? null)) {
+            throw new RuntimeException('Underground guide banter selection failed.');
+        }
+
+        return $banter[$number[1] % count($banter)];
+    }
+
     /**
      * @return array{
      *   activity_type: string, activity_key: string, encounter_key: string, display_name: string,

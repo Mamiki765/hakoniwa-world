@@ -2,6 +2,7 @@
 
 namespace App\Application\Underground;
 
+use App\Application\SecretaryLendingService;
 use App\Domain\Underground\Combat\AlphaV1CombatModel;
 use App\Domain\Underground\Combat\AlphaV1CombatRules;
 use App\Domain\Underground\Combat\CombatResult;
@@ -50,6 +51,7 @@ final readonly class UndergroundIntroService
         private UndergroundEquipmentLoadoutResolver $equipmentLoadout,
         private UndergroundAwakening $awakening,
         private PriorityCombatAiConfiguration $aiConfiguration,
+        private SecretaryLendingService $lending,
     ) {}
 
     /** @return array<string, mixed> */
@@ -1502,6 +1504,9 @@ final readonly class UndergroundIntroService
             'passive_modifiers' => $skillBuild['passive_modifiers'] ?? [],
             'ai' => $aiState,
             'shopkeeper_name' => $intro?->shopkeeper_name,
+            'guide_banter' => $this->catalog->stableGuideBanter(
+                'secretary:'.$secretary->id.':'.now()->format('Y-m-d'),
+            ),
             'true_name_branch' => $intro?->branch_identity === 'true_name',
             'tutorial_projection' => [
                 'stats' => ['vitality' => 10, 'might' => 10, 'finesse' => 10, 'spirit' => 10, 'agility' => 10],
@@ -1524,6 +1529,11 @@ final readonly class UndergroundIntroService
             'awakening' => $awakeningState,
             'recollections' => $recollectionState,
             'battle' => $battle instanceof UndergroundBattle ? $this->projectBattle($battle, true) : null,
+            'lending' => $stage === UndergroundIntroStage::UNDERGROUND_OPEN
+                && $profile instanceof UndergroundProfile
+                && $profile->growth_path_key !== null
+                    ? $this->lending->state($secretary->user, $secretary)
+                    : null,
         ];
     }
 

@@ -6,6 +6,8 @@ import UndergroundAiEditor from './UndergroundAiEditor.vue';
 import UndergroundCombatantCard from './UndergroundCombatantCard.vue';
 import UndergroundEquipmentShop from './UndergroundEquipmentShop.vue';
 import UndergroundEquipmentVault from './UndergroundEquipmentVault.vue';
+import UndergroundPartyBuilder, { type PartyCandidate } from './UndergroundPartyBuilder.vue';
+import UndergroundPartyBattleCards from './UndergroundPartyBattleCards.vue';
 import type { EquipmentItem, EquipmentSlot } from './EquipmentItemCard.vue';
 import type { UndergroundAiConfiguration } from './undergroundAi';
 
@@ -38,6 +40,7 @@ interface RoundAction {
     complete_guarded?: boolean;
     agility_combo_hits?: number | null;
     lines?: string[];
+    important?: boolean;
 }
 
 interface RoundState {
@@ -72,6 +75,12 @@ interface CombatRound {
 interface Battle {
     id: string;
     context: 'tutorial' | 'scripted_loss' | 'playtest' | 'exploration' | 'trial';
+    party?: {
+        members: Array<PartyBattleMember>;
+        enemies?: Array<PartyBattleMember>;
+    } | null;
+    presentation_log_version?: number;
+    portrait_events?: Array<{ type: 'start' | 'awakening' | 'final'; combatant_id: string; round?: number; event_id?: string }>;
     player_display_name?: string;
     encounter_name: string;
     build_name?: string;
@@ -124,6 +133,16 @@ interface Battle {
     } | null;
 }
 
+interface PartyBattleMember {
+    team: 'player' | 'enemy';
+    combatant_id: string;
+    display_name: string;
+    icon_url?: string | null;
+    portrait_url?: string | null;
+    state?: RoundState;
+    awakening_state?: 'ready' | 'awakened' | null;
+}
+
 interface HuntingGround {
     key: string;
     name: string;
@@ -131,6 +150,29 @@ interface HuntingGround {
     unlock_condition: string | null;
     item_level_min: number;
     item_level_max: number;
+    skip: SkipProgress;
+}
+
+interface SkipProgress {
+    actual_clear_count: number;
+    total_clear_count: number;
+    actual_clears_required: number;
+    unlocked: boolean;
+    ticket_cost: number;
+}
+
+interface SkipResult {
+    id: string;
+    duplicate: boolean;
+    content_type: 'hunting_ground' | 'trial';
+    content_key: string;
+    ticket_cost: number;
+    xp_awarded: number;
+    shards_awarded: number;
+    combat_level_before: number;
+    combat_level_after: number;
+    rewards: { drops?: Array<{ status: string }> };
+    settled_at: string;
 }
 
 interface TrialRun {
@@ -158,6 +200,7 @@ interface TrialOption {
     locked: boolean;
     unlock_condition: string | null;
     first_cleared: boolean;
+    skip: SkipProgress;
 }
 
 interface AwakeningTechnique {
@@ -345,6 +388,7 @@ interface UndergroundState {
     active_slots: Array<ActiveSkill | null>;
     passive_modifiers: Record<string, number | boolean | string>;
     shopkeeper_name: string | null;
+    guide_banter?: { key: string; text: string } | null;
     true_name_branch: boolean;
     tutorial_projection: {
         stats: Record<'vitality' | 'might' | 'finesse' | 'spirit' | 'agility', number>;
@@ -362,6 +406,13 @@ interface UndergroundState {
     recollections?: RecollectionState;
     ai?: UndergroundAiConfiguration | null;
     battle: Battle | null;
+    party_candidates?: PartyCandidate[];
+    party_member_ids?: number[];
+    lending?: {
+        settings: { is_public: boolean; is_available: boolean; battle_portrait_preference?: 'full_body' | 'bust' };
+        candidates: PartyCandidate[];
+        ticket_balance: number;
+    } | null;
 }
 
 interface EquipmentSummary {
@@ -412,6 +463,12 @@ const shopkeeperName = ref('');
 const battles = ref<Battle[]>([]);
 const recentBattles = computed(() => battles.value.slice(0, 5));
 const selectedBattle = ref<Battle | null>(null);
+const selectedPartyMemberIds = ref<number[]>([]);
+const detailVisible = ref(true);
+const detailPreferenceKey = 'hakoniwa.underground.battle-detail-visible';
+const lastScrolledBattleId = ref<string | null>(null);
+const lendingPublic = ref(false);
+const lendingAvailable = ref(true);
 const selectedBuild = ref('');
 const selectedEnemy = ref('');
 const bankOpen = ref(false);
@@ -419,6 +476,8 @@ const bankAmount = ref<number | null>(1000);
 const selectedHuntingGroundKey = ref('shallow_caves');
 const pendingExplorationRequest = ref<PendingExplorationRequest | null>(null);
 const pendingTrialRequest = ref<PendingTrialRequest | null>(null);
+const pendingSkipRequest = ref<PendingMutation | null>(null);
+const lastSkipResult = ref<SkipResult | null>(null);
 const pendingInnRequestId = ref<string | null>(null);
 const pendingBankMutation = ref<PendingBankMutation | null>(null);
 const statusOpen = ref(false);
@@ -447,6 +506,9 @@ const cooldownNowMs = ref(Date.now());
 let cooldownTimer: ReturnType<typeof window.setInterval> | null = null;
 let huntingGroundPreferenceHydrated = false;
 const currentBattle = computed(() => selectedBattle.value ?? state.value?.battle ?? null);
+const partyCandidates = computed(() => state.value?.lending?.candidates ?? state.value?.party_candidates ?? []);
+const partySelectedIds = computed(() => state.value?.party_member_ids ?? selectedPartyMemberIds.value);
+const skipTicketBalance = computed(() => state.value?.lending?.ticket_balance ?? null);
 const recollectionEntries = computed(() => state.value?.recollections?.entries ?? []);
 const selectedRecollection = computed(() => recollectionEntries.value.find((entry) => entry.key === selectedRecollectionKey.value) ?? null);
 const seriousTalkScene = computed(() => {
@@ -467,6 +529,13 @@ const trialOptions = computed<TrialOption[]>(() => {
         locked: false,
         unlock_condition: null,
         first_cleared: trial.first_cleared,
+        skip: {
+            actual_clear_count: 0,
+            total_clear_count: 0,
+            actual_clears_required: 5,
+            unlocked: false,
+            ticket_cost: 10,
+        },
     }];
 });
 const repeatableExplorationGroundKey = computed(() => {
@@ -502,6 +571,10 @@ const currentPlayerDisplayName = computed(() => currentBattle.value
     ? playerDisplayName(currentBattle.value)
     : state.value?.secretary_name ?? '秘書');
 const currentStructuredRounds = computed(() => currentBattle.value ? structuredRounds(currentBattle.value) : []);
+const currentPartyActors = computed(() => {
+    const party = currentBattle.value?.party;
+    return party ? [...party.members, ...(party.enemies ?? [])] : [];
+});
 const finalBattleState = computed(() => [...currentStructuredRounds.value]
     .reverse()
     .find((round) => round.end_state !== null)?.end_state ?? null);
@@ -585,6 +658,11 @@ watch(() => state.value?.playtest, (playtest) => {
     selectedBuild.value = playtest.default_build_key;
     selectedEnemy.value ||= playtest.enemies[0]?.key ?? '';
 }, { immediate: true });
+watch(() => state.value?.lending?.settings, (settings) => {
+    if (!settings) return;
+    lendingPublic.value = settings.is_public;
+    lendingAvailable.value = settings.is_available;
+}, { deep: true, immediate: true });
 
 watch(() => state.value?.active_slots, (slots) => {
     if (!slots || pendingLoadoutMutation.value) return;
@@ -827,6 +905,36 @@ async function showBattle(battle: Battle): Promise<void> {
     }
 }
 
+function togglePartyMember(candidate: PartyCandidate): void {
+    const current = [...partySelectedIds.value];
+    // A secretary can only occur once in a party, and the owner's secretary is
+    // never a valid borrowed slot. The server remains authoritative on submit.
+    if (candidate.source === 'borrowed_secretary' && partyCandidates.value.some((item) => (
+        item.source === 'self' && item.secretary_id === candidate.secretary_id && current.includes(item.secretary_id)
+    ))) return;
+    const index = current.indexOf(candidate.secretary_id);
+    if (index >= 0) current.splice(index, 1);
+    else if (current.length < 3) current.push(candidate.secretary_id);
+    selectedPartyMemberIds.value = current;
+}
+
+function toggleBattleDetails(): void {
+    detailVisible.value = !detailVisible.value;
+    try { window.localStorage.setItem(detailPreferenceKey, String(detailVisible.value)); } catch { /* optional */ }
+}
+
+async function saveLendingSettings(): Promise<void> {
+    if (busy.value) return;
+    await mutate('/api/v1/me/underground/lending', { is_public: lendingPublic.value, is_available: lendingAvailable.value }, requestId(), 'PUT');
+}
+
+watch(() => currentBattle.value?.id, async (battleId) => {
+    if (!battleId || battleId === lastScrolledBattleId.value) return;
+    lastScrolledBattleId.value = battleId;
+    await nextTick();
+    document.getElementById('underground-battle-start')?.scrollIntoView?.({ behavior: 'smooth', block: 'start' });
+});
+
 async function runPlaytest(): Promise<void> {
     if (busy.value || !selectedBuild.value || !selectedEnemy.value) return;
     innRested.value = false;
@@ -870,6 +978,7 @@ async function runExplore(huntingGroundKey: string, intentKey = 'selected-ground
             body: JSON.stringify({
                 request_id: pending.requestId,
                 hunting_ground_key: pending.huntingGroundKey,
+                borrowed_secretary_ids: partySelectedIds.value,
             }),
         });
         await refresh(false);
@@ -887,6 +996,44 @@ async function runSelectedExploration(): Promise<void> {
     const groundKey = selectedHuntingGround.value?.key;
     if (!groundKey) return;
     await runExplore(groundKey);
+}
+
+async function runSkip(contentType: 'hunting_ground' | 'trial', contentKey: string): Promise<void> {
+    if (busy.value) return;
+    const fingerprint = `${contentType}:${contentKey}`;
+    const pending = pendingSkipRequest.value?.fingerprint === fingerprint
+        ? pendingSkipRequest.value
+        : { fingerprint, requestId: requestId() };
+    pendingSkipRequest.value = pending;
+    busy.value = true;
+    error.value = '';
+    try {
+        const path = contentType === 'hunting_ground'
+            ? '/api/v1/me/underground/skip/hunting-ground'
+            : '/api/v1/me/underground/skip/trial';
+        const key = contentType === 'hunting_ground'
+            ? { hunting_ground_key: contentKey }
+            : { trial_key: contentKey };
+        lastSkipResult.value = await api<SkipResult>(path, {
+            method: 'POST',
+            body: JSON.stringify({ request_id: pending.requestId, ...key }),
+        });
+        pendingSkipRequest.value = null;
+        await refresh(false);
+    } catch (caught) {
+        if (caught instanceof ApiError && caught.status === 409) await refresh(false);
+        error.value = caught instanceof Error ? caught.message : 'skipを実行できませんでした。';
+    } finally {
+        busy.value = false;
+    }
+}
+
+function skipDisabled(progress: SkipProgress, contentLocked = false): boolean {
+    return busy.value
+        || contentLocked
+        || Boolean(state.value?.trial?.active_run)
+        || !progress.unlocked
+        || (skipTicketBalance.value ?? 0) < progress.ticket_cost;
 }
 
 async function repeatCurrentExploration(): Promise<void> {
@@ -1276,6 +1423,13 @@ function actionHighlight(action: RoundAction): string | null {
     return null;
 }
 
+function isImportantAction(action: RoundAction): boolean {
+    return action.important === true || action.type === 'awakening' || action.type === 'awakening_technique'
+        || action.type === 'warning' || action.type === 'phase_transition'
+        || action.type === 'damage' && Boolean(action.critical)
+        || action.type === 'victory' || action.type === 'defeat';
+}
+
 function simpleActionNarrative(action: SimpleAction, battle: Battle): string {
     const actor = action.actor_name ?? actorName(action.side, battle);
     const target = action.target_name ?? targetName(action.side, battle);
@@ -1308,6 +1462,10 @@ function applyAiMutation(result: unknown): void {
 }
 
 onMounted(() => {
+    try {
+        const saved = window.localStorage.getItem(detailPreferenceKey);
+        if (saved === 'true' || saved === 'false') detailVisible.value = saved === 'true';
+    } catch { /* optional */ }
     cooldownTimer = window.setInterval(() => { cooldownNowMs.value = Date.now(); }, 1_000);
     void enter();
 });
@@ -1329,14 +1487,32 @@ onUnmounted(() => {
                     <h1>{{ currentBattle.encounter_name }}</h1>
                     <p v-if="currentBattle.build_name">{{ currentBattle.build_name }}で戦闘を開始した。</p>
                     <p v-else>{{ currentPlayerDisplayName }}は戦闘を開始した。</p>
+                    <button type="button" class="underground-battle-detail-toggle" :aria-pressed="detailVisible" @click="toggleBattleDetails">
+                        戦闘詳細を{{ detailVisible ? '隠す' : '表示' }}
+                    </button>
                     <a class="underground-log-jump" href="#underground-battle-result">末尾へ</a>
                 </header>
+
+                <UndergroundPartyBattleCards
+                    v-if="currentPartyActors.length > 0"
+                    :actors="currentPartyActors"
+                    :portrait-events="currentBattle.portrait_events"
+                    portrait-event-type="start"
+                />
 
                 <div class="underground-rounds">
                     <p v-if="currentBattle.detail_message" class="status">{{ currentBattle.detail_message }}</p>
                     <article v-for="round in currentStructuredRounds" :key="round.round" class="underground-round">
                         <h2>第{{ round.round }}ラウンド 開始</h2>
-                        <section v-if="round.start_state" class="underground-round-start" :aria-label="`第${round.round}ラウンド開始時の状態`">
+                        <UndergroundPartyBattleCards
+                            v-if="currentPartyActors.length > 0"
+                            :actors="currentPartyActors"
+                            :portrait-events="currentBattle.portrait_events"
+                            :show-cards="false"
+                            portrait-event-type="awakening"
+                            :portrait-round="round.round"
+                        />
+                        <section v-if="round.start_state && currentPartyActors.length === 0" class="underground-round-start" :aria-label="`第${round.round}ラウンド開始時の状態`">
                             <div class="underground-matchup-grid">
                                 <UndergroundCombatantCard
                                     :name="currentPlayerDisplayName"
@@ -1349,9 +1525,10 @@ onUnmounted(() => {
                             </div>
                         </section>
                         <h3 class="underground-round-action-heading">第{{ round.round }}ラウンド 行動</h3>
-                        <ul class="underground-action-log">
+                        <ul class="underground-action-log" :class="{ 'is-detail-hidden': !detailVisible }">
                             <li
                                 v-for="(group, index) in actionGroups(round.actions)"
+                                v-show="detailVisible || isImportantAction(group.action)"
                                 :key="index"
                                 :class="actionTone(group.action)"
                                 :data-action-type="group.action.type"
@@ -1370,7 +1547,7 @@ onUnmounted(() => {
                                 </div>
                             </li>
                         </ul>
-                        <details v-if="!round.start_state && round.end_state" class="underground-round-state">
+                        <details v-if="!round.start_state && round.end_state && currentPartyActors.length === 0" class="underground-round-state">
                             <summary>ラウンド{{ round.round }}終了時の状態</summary>
                             <div class="underground-matchup-grid">
                                 <UndergroundCombatantCard :name="currentPlayerDisplayName" side="player" :state="round.end_state.player" />
@@ -1393,7 +1570,14 @@ onUnmounted(() => {
                 <footer id="underground-battle-result" class="underground-battle-result">
                     <p class="eyebrow">戦闘終了</p>
                     <h2>{{ battleResultLabel(currentBattle.result) }}</h2>
-                    <section v-if="finalBattleState" class="underground-matchup underground-final-state" aria-labelledby="underground-final-state-title">
+                    <UndergroundPartyBattleCards
+                        v-if="currentPartyActors.length > 0"
+                        :actors="currentPartyActors"
+                        :portrait-events="currentBattle.portrait_events"
+                        :show-cards="false"
+                        portrait-event-type="final"
+                    />
+                    <section v-if="finalBattleState && currentPartyActors.length === 0" class="underground-matchup underground-final-state" aria-labelledby="underground-final-state-title">
                         <div class="underground-matchup-heading">
                             <h3 id="underground-final-state-title">戦闘中の最終状態</h3>
                         </div>
@@ -1429,7 +1613,7 @@ onUnmounted(() => {
                         <span>戦闘Lv {{ currentBattle.combat_level_before }} → {{ currentBattle.combat_level_after }}</span>
                         <span>未使用STP +{{ currentBattle.stp_awarded ?? 0 }}（合計 {{ currentBattle.unspent_stp_after ?? 0 }}）</span>
                     </div>
-                    <details v-if="currentBattle.summary" class="underground-combat-details">
+                    <details v-if="currentBattle.summary && detailVisible" class="underground-combat-details">
                         <summary>戦闘詳細</summary>
                         <dl class="underground-combat-summary">
                             <div v-for="(value, key) in visibleSummary(currentBattle.summary)" :key="key"><dt>{{ summaryLabel(key) }}</dt><dd>{{ summaryValue(key, value) }}</dd></div>
@@ -1753,10 +1937,29 @@ onUnmounted(() => {
                 </section>
 
                 <section class="underground-action-pane" aria-labelledby="underground-guide-title">
+                    <UndergroundPartyBuilder
+                        v-if="partyCandidates.length > 0"
+                        :candidates="partyCandidates"
+                        :selected-ids="partySelectedIds"
+                        :disabled="busy || Boolean(state.trial?.active_run)"
+                        @toggle="togglePartyMember"
+                    />
+                    <section v-if="state.lending" class="underground-lending-settings" aria-labelledby="underground-lending-title">
+                        <h2 id="underground-lending-title">秘書の貸出</h2>
+                        <label><input v-model="lendingPublic" type="checkbox" :disabled="busy"> 他のプレイヤーに公開</label>
+                        <label><input v-model="lendingAvailable" type="checkbox" :disabled="busy"> 貸出可能</label>
+                        <button type="button" :disabled="busy" @click="saveLendingSettings">貸出設定を保存</button>
+                    </section>
+                    <section v-if="skipTicketBalance !== null" class="underground-skip-ticket-balance" aria-label="スキップチケット">
+                        <h2>スキップチケット</h2>
+                        <p><strong>{{ skipTicketBalance }}</strong> 枚</p>
+                        <small>貸出報酬。消費機能はありません。</small>
+                    </section>
                     <section class="underground-shop">
                         <p class="eyebrow">案内人 / ショップ</p>
                         <h2 id="underground-guide-title">{{ state.shopkeeper_name }}</h2>
                         <p>{{ shopGreeting }}</p>
+                        <p v-if="state.guide_banter" class="underground-guide-banter">{{ state.guide_banter.text }}</p>
                         <p v-if="innRested" class="underground-inn-result" role="status">（HPが全回復しました）</p>
                         <div class="underground-shop-entries">
                             <button type="button" :disabled="busy || innResting || Boolean(state.trial?.active_run)" @click="restAtInn">{{ innResting ? '休憩中…' : '宿で休む（10G）' }}<small>{{ state.trial?.active_run ? '封印の地から帰還後に利用できます' : innResting ? '案内人が準備しています' : 'HPを全回復' }}</small></button>
@@ -1821,6 +2024,26 @@ onUnmounted(() => {
                                 <small v-else>{{ trial.first_cleared ? 'clear済み・再挑戦可' : `${trial.total_battles}連戦` }}</small>
                             </button>
                         </div>
+                        <section v-if="skipTicketBalance !== null" class="underground-skip-panel" aria-labelledby="underground-skip-title">
+                            <header>
+                                <h3 id="underground-skip-title">skip ticket</h3>
+                                <strong>所持 {{ skipTicketBalance }}枚</strong>
+                            </header>
+                            <p>実戦で解禁したcontentを、combat・待ち時間・cooldownなしでclearします。</p>
+                            <ul>
+                                <li v-for="ground in state.hunting_grounds ?? []" :key="`skip-ground:${ground.key}`">
+                                    <span><strong>{{ ground.name }}</strong><small>実戦 {{ ground.skip.actual_clear_count }} / {{ ground.skip.actual_clears_required }}勝・総clear {{ ground.skip.total_clear_count }}</small></span>
+                                    <button type="button" :disabled="skipDisabled(ground.skip, ground.locked)" @click="runSkip('hunting_ground', ground.key)">{{ ground.skip.ticket_cost }}枚でskip</button>
+                                </li>
+                                <li v-for="trial in trialOptions" :key="`skip-trial:${trial.key}`">
+                                    <span><strong>{{ trial.label }}</strong><small>実戦 {{ trial.skip.actual_clear_count }} / {{ trial.skip.actual_clears_required }}周・総clear {{ trial.skip.total_clear_count }}</small></span>
+                                    <button type="button" :disabled="skipDisabled(trial.skip, trial.locked)" @click="runSkip('trial', trial.key)">{{ trial.skip.ticket_cost }}枚で1周skip</button>
+                                </li>
+                            </ul>
+                            <p v-if="lastSkipResult" class="underground-skip-result" role="status">
+                                skip完了: XP {{ lastSkipResult.xp_awarded }} / G {{ lastSkipResult.shards_awarded }} / ticket -{{ lastSkipResult.ticket_cost }}
+                            </p>
+                        </section>
                         <button v-if="state.trial?.active_run" class="button secondary" type="button" :disabled="busy" @click="withdrawTrial">封印の地から帰還する</button>
                     </section>
                     <section v-if="state.playtest" class="underground-playtest" aria-labelledby="underground-playtest-title">

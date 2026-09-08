@@ -8,8 +8,10 @@ use App\Application\LegacyInspiredInitialIslandGenerator;
 use App\Application\MonsterRemovalService;
 use App\Application\Underground\AtomicUndergroundCombat;
 use App\Application\Underground\AtomicUndergroundExplorationCombat;
+use App\Application\Underground\AtomicUndergroundPartyCombat;
 use App\Application\Underground\CanonicalUndergroundCombat;
 use App\Application\Underground\CanonicalUndergroundExplorationCombat;
+use App\Application\Underground\CanonicalUndergroundPartyCombat;
 use App\Console\ProductionDestructiveDatabaseCommandGuard;
 use App\Domain\Map\ChunkCoordinateService;
 use App\Domain\Nation\UserMembershipMutationLock;
@@ -45,6 +47,10 @@ class AppServiceProvider extends ServiceProvider
         $this->app->bind(
             AtomicUndergroundExplorationCombat::class,
             CanonicalUndergroundExplorationCombat::class,
+        );
+        $this->app->bind(
+            AtomicUndergroundPartyCombat::class,
+            CanonicalUndergroundPartyCombat::class,
         );
         // MonsterTurnService and its disaster resolver must mutate one shared
         // turn-local occupancy index during defense self-destruct blasts.

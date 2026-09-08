@@ -83,6 +83,8 @@ Route::prefix('api/v1')->middleware(['auth', PrivateApiResponse::class])->group(
     Route::post('/me/secretary/name', [SecretaryController::class, 'name']);
     Route::patch('/me/secretary/name', [SecretaryController::class, 'rename']);
     Route::patch('/me/secretary/profile', [SecretaryController::class, 'updateProfile']);
+    Route::post('/me/secretary/images/{slot}', [SecretaryController::class, 'storeImageSlot']);
+    Route::patch('/me/secretary/portrait-preference', [SecretaryController::class, 'updatePortraitPreference']);
     Route::post('/me/secretary/main-image', [SecretaryController::class, 'storeMainImage']);
     Route::patch('/me/secretary/main-image', [SecretaryController::class, 'updateMainImageMetadata']);
     Route::patch('/me/secretary/image-preferences', [SecretaryController::class, 'updateImagePreferences']);
@@ -100,6 +102,9 @@ Route::prefix('api/v1')->middleware(['auth', PrivateApiResponse::class])->group(
         Route::post('/respec', [UndergroundIntroController::class, 'respec']);
         Route::get('/main', [UndergroundIntroController::class, 'main']);
         Route::post('/explore', [UndergroundIntroController::class, 'explore']);
+        Route::post('/skip/hunting-ground', [UndergroundIntroController::class, 'skipHuntingGround']);
+        Route::post('/skip/trial', [UndergroundIntroController::class, 'skipTrial']);
+        Route::put('/lending', [UndergroundIntroController::class, 'updateLending']);
         Route::post('/trial/start', [UndergroundIntroController::class, 'startTrial']);
         Route::post('/trial/fight', [UndergroundIntroController::class, 'fightTrial']);
         Route::post('/trial/withdraw', [UndergroundIntroController::class, 'withdrawTrial']);

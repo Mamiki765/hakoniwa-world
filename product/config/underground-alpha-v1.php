@@ -157,6 +157,7 @@ return [
                 'content_identity' => 'secretary-underground-exploration-alpha-v1',
                 'name' => '浅い洞窟',
                 'required_trial_key' => null,
+                'enemy_count_by_party_size' => [1 => 1, 2 => 2, 3 => 3, 4 => 4],
                 'item_level_min' => 5,
                 'item_level_max' => 30,
                 'encounters' => [
@@ -251,6 +252,7 @@ return [
                 'content_identity' => 'secretary-underground-black-crystal-cave-alpha-v1',
                 'name' => '黒晶洞',
                 'required_trial_key' => 'trial_01',
+                'enemy_count_by_party_size' => [1 => 1, 2 => 2, 3 => 3, 4 => 4],
                 'item_level_min' => 30,
                 'item_level_max' => 60,
                 'encounters' => [

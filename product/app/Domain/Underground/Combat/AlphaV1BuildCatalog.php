@@ -196,6 +196,10 @@ final readonly class AlphaV1BuildCatalog
                 if (! is_array($effect) || ! in_array($effect['type'] ?? null, $effectTypes, true)) {
                     throw new InvalidArgumentException("Underground alpha-v1 skill [{$key}] has an invalid effect.");
                 }
+                if (isset($effect['target_scope'])
+                    && ! in_array($effect['target_scope'], ['single_enemy', 'all_enemies', 'single_ally', 'all_allies', 'self'], true)) {
+                    throw new InvalidArgumentException("Underground alpha-v1 skill [{$key}] has an invalid target scope.");
+                }
                 if ($effect['type'] === 'damage'
                     && ($effect['target_max_hp_bps'] ?? 0) > 0
                     && ! is_array($effect['source_cap_coefficients'] ?? null)) {

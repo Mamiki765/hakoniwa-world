@@ -14,6 +14,9 @@ final class UndergroundTrialStartRequest extends FormRequest
     /** @return array<string, list<mixed>> */
     public function rules(): array
     {
-        return ['trial_key' => ['sometimes', 'string', 'in:trial_01,trial_02']];
+        return [
+            'trial_key' => ['sometimes', 'string', 'in:trial_01,trial_02'],
+            'borrowed_secretary_ids' => ['prohibited'],
+        ];
     }
 }

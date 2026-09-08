@@ -53,6 +53,8 @@ export interface Secretary {
 export interface SecretaryProfile {
     id: number;
     name: string | null;
+    nickname?: string | null;
+    battle_display_name?: string;
     is_owner: boolean;
     domestic_level: number;
     secretary_level: number;
@@ -68,6 +70,8 @@ export interface SecretaryProfile {
         creation_method_label: string | null;
         credit: string | null;
     };
+    images?: SecretaryImageSlots;
+    portrait_preference?: 'full_body' | 'bust';
     editable_image_metadata: {
         creation_method: 'self_made' | 'ai_generated' | 'commissioned_or_permitted' | 'other';
         credit: string | null;
@@ -85,6 +89,17 @@ export interface SecretaryProfile {
         category_limits: SecretaryEquipmentCategoryLimit[];
     };
 }
+
+export interface SecretaryImageSlot {
+    slot: 'icon' | 'bust' | 'full_body' | 'awakening_icon' | 'awakening_bust' | 'awakening_full_body';
+    url: string | null;
+    display: 'uploaded' | 'silhouette' | 'peridot' | 'none';
+    creation_method: 'self_made' | 'ai_generated' | 'commissioned_or_permitted' | 'other' | null;
+    creation_method_label?: string | null;
+    credit: string | null;
+}
+
+export type SecretaryImageSlots = Record<SecretaryImageSlot['slot'], SecretaryImageSlot>;
 
 export interface SecretaryEquipmentCategoryLimit {
     category: string;

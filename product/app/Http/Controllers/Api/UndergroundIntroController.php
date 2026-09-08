@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Application\SecretaryLendingService;
 use App\Application\Underground\UndergroundIntroService;
 use App\Application\Underground\UndergroundPlaytestService;
 use App\Application\Underground\UndergroundRuntimeException;
@@ -17,11 +18,14 @@ use App\Http\Requests\RespecUndergroundProfileRequest;
 use App\Http\Requests\SelectUndergroundGrowthPathRequest;
 use App\Http\Requests\UndergroundBankTransferRequest;
 use App\Http\Requests\UndergroundExploreRequest;
+use App\Http\Requests\UndergroundHuntingGroundSkipRequest;
 use App\Http\Requests\UndergroundIntroMutationRequest;
 use App\Http\Requests\UndergroundPlaytestRequest;
 use App\Http\Requests\UndergroundTrialFightRequest;
 use App\Http\Requests\UndergroundTrialRunRequest;
+use App\Http\Requests\UndergroundTrialSkipRequest;
 use App\Http\Requests\UndergroundTrialStartRequest;
+use App\Http\Requests\UpdateSecretaryLendingRequest;
 use App\Http\Requests\UpdateUndergroundActiveLoadoutRequest;
 use App\Http\Requests\UpdateUndergroundAiConfigurationRequest;
 use App\Http\Requests\UpdateUndergroundAwakeningMessageRequest;
@@ -171,9 +175,58 @@ final class UndergroundIntroController extends Controller
                 array_key_exists('hunting_ground_key', $validated)
                     ? (string) $validated['hunting_ground_key']
                     : null,
+                is_array($validated['borrowed_secretary_ids'] ?? null)
+                    ? array_map('intval', $validated['borrowed_secretary_ids'])
+                    : [],
             );
 
             return $service->projectExplorationBattle($result['battle']);
+        });
+    }
+
+    public function skipHuntingGround(
+        UndergroundHuntingGroundSkipRequest $request,
+        UndergroundRuntimeService $service,
+    ): JsonResponse {
+        return $this->respond(function () use ($request, $service): array {
+            $result = $service->skipHuntingGround(
+                $request->user(),
+                $request->string('request_id')->value(),
+                $request->string('hunting_ground_key')->value(),
+            );
+
+            return $service->projectSkipSettlement($result['settlement'], $result['duplicate']);
+        });
+    }
+
+    public function skipTrial(
+        UndergroundTrialSkipRequest $request,
+        UndergroundRuntimeService $service,
+    ): JsonResponse {
+        return $this->respond(function () use ($request, $service): array {
+            $result = $service->skipTrial(
+                $request->user(),
+                $request->string('request_id')->value(),
+                $request->string('trial_key')->value(),
+            );
+
+            return $service->projectSkipSettlement($result['settlement'], $result['duplicate']);
+        });
+    }
+
+    public function updateLending(
+        UpdateSecretaryLendingRequest $request,
+        SecretaryLendingService $service,
+        UndergroundIntroService $intro,
+    ): JsonResponse {
+        return $this->respond(function () use ($request, $service, $intro): array {
+            $service->update(
+                $request->user(),
+                $request->boolean('is_public'),
+                $request->boolean('is_available'),
+            );
+
+            return $intro->state($request->user());
         });
     }
 

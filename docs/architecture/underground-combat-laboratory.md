@@ -2,9 +2,17 @@
 
 ## Authority and scope
 
-この文書は`secretary-underground-alpha-v0` combat laboratoryからapplication `3.3.0`の正式runtime、Trial 1・覚醒、装備Shop・宝物庫、アクセサリー3枠、浅層・黒晶洞とgenerated equipment drop、再振り・宝物庫一括売却、およびapplication `3.4.0`のcustom AIまでを扱うcurrent task-specific architecture authorityである。manual combat、Trial 2以降、unique、enhancement、enchant、party、marketは定義しない。
+この文書は`secretary-underground-alpha-v0` combat laboratoryから正式runtime、Trial、覚醒、装備、探索、custom AI、およびapplication `3.8.0`のparty combatまでを扱うcurrent task-specific architecture authorityである。manual combat、unique、enhancement、enchant、market、companion育成は定義しない。
 
-current repository releaseのapplication versionは`3.5.0`である。surface Ruleset `hakoniwa-2s-plus-v20`とUnderground laboratory/runtime identityは別物であり、custom AIのためにSurface Rulesetを更新していない。profile、run、history、intro/growth/skill/equipment/AI stateとpure build snapshotはpublished Ruleset、World、Nation、MapCell、TurnRun、Turn RNGへ依存しない。current combat、exploration、equipment、AI identityと追加contractは本文後半のrelease-specific節を正本とし、過去PR単位の節は各導入時点の境界として読む。
+### Party boundary (Owner decision)
+
+Partyは自分のSecretary 1人と、公開・貸出可能な他UserのSecretary最大3人からなる最大4 actorである。同じSecretaryの重複とself borrowを拒否し、`team`と`combatant_id`を分離する。貸出は非同期で、開始時snapshotを以後の貸出側profile変更から独立させ、貸出側へHP・MP・覚醒その他の戦闘状態を書き戻さない。借用memberのcombat level上限は開始時Leader本人のcombat level、装備数値のitem level上限は開始時Leaderの対応装備slotとする。貸出側buildの解決結果はsource fingerprint付きcacheへ保存し、Lv・STP・skill・AI・覚醒・装備等が変わった時だけlazy再構成する。battle開始時はLeader上限の適用とviewer consentに応じた画像解決だけを行い、そのbattleのsnapshotを固定する。
+
+Trial 1/2はsoloのままとする。探索のenemy数はcontentごとのparty-size table、報酬は従来の1 encounter authorityとして別にauthorする。PT Bossは`none`またはparty-size別HP・攻撃倍率tableだけを受け、engineへ人数式を埋め込まない。通常攻略報酬はLeader側だけ、貸出報酬は決着済みbattleとborrowed memberの組をidempotent identityとして10参加ごとにskip ticket 1枚、canonical dayごとに100枚を上限とする。skipは狩場ごとのactual win 50回で1枚消費、Trialごとのactual full clear 5周で10枚消費を解禁し、combatやcooldown、貸出参加を発生させずcanonical repeatable reward settlementだけを再利用する。skip clearは総clear数へ加えるが、解禁用actual countへは加えない。
+
+party battle UIは操作主体の`PARTY`を上段、`ENEMY`を下段へ分離する。compact cardはicon、battle display name、色付きHP、MP current value、覚醒barを表示し、MPの固定上限値と覚醒の内部数値は繰り返し表示しない。覚醒barは満了待機を`Ready`、発動中を`Awaken!`として区別する。iconは1:1、bustとfull bodyは通常・覚醒とも3:4で、覚醒画像がなければ対応する通常画像へfallbackする。各画像の制作方法と権利・creditはslotごとに保存する。
+
+current repository releaseのapplication versionは`3.8.0`である。surface Ruleset `hakoniwa-2s-plus-v21`とUnderground laboratory/runtime identityは別物であり、partyのためにSurface Rulesetを更新していない。profile、run、history、intro/growth/skill/equipment/AI stateとpure build snapshotはpublished Ruleset、World、Nation、MapCell、TurnRun、Turn RNGへ依存しない。current combat、exploration、equipment、AI identityと追加contractは本文後半のrelease-specific節を正本とし、過去PR単位の節は各導入時点の境界として読む。
 
 ## Modular-monolith boundary
 
@@ -278,7 +286,7 @@ growth pathとSkill Treeは直交する。growth pathは自然成長、Skill Tre
 
 祝福treeの「輝石循環」は既存`mp_restore` effectとpriority AIを使うlocal content deltaで、専用engineを持たない。MP cost 0、cooldown 7、restore 3,000、cap 10,000とし、緊急域で使用可能なhealを先、低MP時のcycleを後に評価する。10,000-seed reportはMP exhaustion、healのMP-block、emergency heal availability、cycle usage/effective restore、overflow、終端MP、round分布を観測する。
 
-`secretary-underground-targeting-alpha-v1`は`taunt`（挑発）をbattle-durationのtarget-selection modifierとして定義する。盾撃・闘志破砕・不屈反攻のauthoringと、`fighting_spirit_enabled`を持つactorの独立counterは、damage effectより先またはdamage結果と独立してenemyへ挑発sourceを記録するため、evasion/complete guardでdamage 0でも成立する。後発sourceが上書きし、将来selectorは明示targetingなしの敵対single-targetだけに適用し、sourceがtarget不能ならnormal selectionへfallbackする。明示random/lowest-HP/role/marked/scripted/ignore-taunt、self、area targetingを上書きせず、control resistanceやduration tickへ流用しない。current canonical engineは1v1のためtarget結果を変えず、round snapshotとeffect logにsource actor、scope、duration、override policyを保存する。party selectorはUG-04のOpen gateに残す。
+`secretary-underground-targeting-alpha-v1`は`taunt`（挑発）をbattle-durationのtarget-selection modifierとして定義する。盾撃・闘志破砕・不屈反攻のauthoringと、`fighting_spirit_enabled`を持つactorの独立counterは、damage effectより先またはdamage結果と独立してenemyへ挑発sourceを記録するため、evasion/complete guardでdamage 0でも成立する。後発sourceが上書きし、partyでは明示targetingなしの敵対single-targetだけに有効なsource `combatant_id`を優先し、sourceが戦闘不能ならnormal selectionへfallbackする。明示random/lowest-HP/role/marked/scripted/ignore-taunt、self、area targetingを上書きせず、control resistanceやduration tickへ流用しない。既存1v1ではtarget結果を変えず、round snapshotとeffect logにsource actor、scope、duration、override policyを保存する。
 
 PR108の軽量浅層観測は、各growth/buildについてLv1 full HPとLv20 full HPを分離し、別にHP持越しの連続探索を1本観測する。Lv1の相対分類は地底鼠・洞窟蟲・腐食スライムをattritionのある雑魚、再生肉塊・狂信者を消耗後に危険な厄介枠、迷い人の影を明確な強敵とし、輝石虫はbonus enemyのため比較対象外とする。win rateは固定契約にせず、enemy categoryの順序、role差、異常な必勝・必敗、MP economyを読む。
 

@@ -141,6 +141,68 @@ final class UndergroundRuntimeCatalog
     }
 
     /**
+     * Resolve content-authored party boss scaling without embedding a formula in the engine.
+     *
+     * @param  array<string, mixed>  $scaling
+     * @return array{mode: 'none'|'table', hp_bps: int, attack_bps: int}
+     */
+    public function resolvePartyBossScaling(array $scaling, int $partySize): array
+    {
+        if ($partySize < 1 || $partySize > 4 || ! isset($scaling['mode'])) {
+            throw new InvalidArgumentException('Underground party boss scaling is invalid.');
+        }
+        if ($scaling['mode'] === 'none') {
+            return ['mode' => 'none', 'hp_bps' => 10_000, 'attack_bps' => 10_000];
+        }
+        if ($scaling['mode'] !== 'table'
+            || ! is_array($scaling['hp_bps'] ?? null)
+            || ! is_array($scaling['attack_bps'] ?? null)
+            || array_keys($scaling['hp_bps']) !== [1, 2, 3, 4]
+            || array_keys($scaling['attack_bps']) !== [1, 2, 3, 4]) {
+            throw new InvalidArgumentException('Underground party boss scaling table is invalid.');
+        }
+        foreach ([$scaling['hp_bps'], $scaling['attack_bps']] as $table) {
+            foreach ($table as $multiplier) {
+                if (! is_int($multiplier) || $multiplier < 1) {
+                    throw new InvalidArgumentException('Underground party boss scaling table is invalid.');
+                }
+            }
+        }
+
+        return [
+            'mode' => 'table',
+            'hp_bps' => $scaling['hp_bps'][$partySize],
+            'attack_bps' => $scaling['attack_bps'][$partySize],
+        ];
+    }
+
+    /** @return array{identity: string, content_type: 'hunting_ground'|'trial', actual_clears_required: int, ticket_cost: int} */
+    public function skipPolicy(string $contentType): array
+    {
+        if (! in_array($contentType, ['hunting_ground', 'trial'], true)) {
+            throw new InvalidArgumentException('Unknown Underground skip content type.');
+        }
+        $skip = $this->data()['skip'] ?? null;
+        $identity = is_array($skip) ? ($skip['identity'] ?? null) : null;
+        $policy = is_array($skip) ? ($skip[$contentType] ?? null) : null;
+        $expectedRequired = $contentType === 'hunting_ground' ? 50 : 5;
+        $expectedCost = $contentType === 'hunting_ground' ? 1 : 10;
+        if (! is_string($identity) || $identity === '' || mb_strlen($identity) > 100
+            || ! is_array($policy)
+            || ($policy['actual_clears_required'] ?? null) !== $expectedRequired
+            || ($policy['ticket_cost'] ?? null) !== $expectedCost) {
+            throw new RuntimeException('Underground skip policy is invalid.');
+        }
+
+        return [
+            'identity' => $identity,
+            'content_type' => $contentType,
+            'actual_clears_required' => $expectedRequired,
+            'ticket_cost' => $expectedCost,
+        ];
+    }
+
+    /**
      * @return array{
      *   label: string,
      *   content_identity: string,

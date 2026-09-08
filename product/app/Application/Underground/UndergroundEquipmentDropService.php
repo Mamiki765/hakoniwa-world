@@ -6,6 +6,8 @@ use App\Domain\Underground\Combat\UndergroundRandom;
 use App\Models\UndergroundBattle;
 use App\Models\UndergroundOwnedEquipment;
 use App\Models\UndergroundProfile;
+use App\Models\UndergroundSkipSettlement;
+use Carbon\CarbonInterface;
 use Illuminate\Support\Carbon;
 use RuntimeException;
 
@@ -84,6 +86,47 @@ final readonly class UndergroundEquipmentDropService
     }
 
     /**
+     * @param  array<string, mixed>  $reward
+     * @return array<string, mixed>
+     */
+    public function settleSkippedVictory(
+        UndergroundProfile $profile,
+        UndergroundSkipSettlement $settlement,
+        string $tierKey,
+        array $reward,
+        int $rewardSeed,
+        int $rewardIndex,
+    ): array {
+        if (! $settlement->exists
+            || $settlement->underground_profile_id !== $profile->id
+            || $rewardIndex < 1
+            || $rewardIndex > 10) {
+            throw new RuntimeException('Underground equipment drop settlement requires a persisted skip settlement.');
+        }
+        $drop = $this->rollForTier(
+            $tierKey,
+            $reward,
+            $rewardSeed,
+            implode(':', [
+                $this->playerCatalog->explorationDropConfig()['identity'],
+                'skip',
+                $settlement->content_type,
+                $settlement->content_key,
+                $settlement->request_id,
+                $rewardIndex,
+            ]),
+        );
+
+        return $this->settleGeneratedSkipDrop(
+            $profile,
+            $settlement,
+            $rewardIndex,
+            $drop,
+            'skip-drop:'.$settlement->id.':'.$rewardIndex,
+        );
+    }
+
+    /**
      * @param  array<string, mixed>  $drop
      * @return array<string, mixed>
      */
@@ -97,6 +140,56 @@ final readonly class UndergroundEquipmentDropService
             return $drop;
         }
 
+        return $this->persistGeneratedDrop(
+            $profile,
+            $drop,
+            $grantKey,
+            $battle->id,
+            null,
+            null,
+            $battle->finished_at ?? Carbon::now(),
+        );
+    }
+
+    /**
+     * @param  array<string, mixed>  $drop
+     * @return array<string, mixed>
+     */
+    private function settleGeneratedSkipDrop(
+        UndergroundProfile $profile,
+        UndergroundSkipSettlement $settlement,
+        int $rewardIndex,
+        array $drop,
+        string $grantKey,
+    ): array {
+        if ($drop['status'] === 'none') {
+            return $drop;
+        }
+
+        return $this->persistGeneratedDrop(
+            $profile,
+            $drop,
+            $grantKey,
+            null,
+            $settlement->id,
+            $rewardIndex,
+            $settlement->settled_at ?? Carbon::now(),
+        );
+    }
+
+    /**
+     * @param  array<string, mixed>  $drop
+     * @return array<string, mixed>
+     */
+    private function persistGeneratedDrop(
+        UndergroundProfile $profile,
+        array $drop,
+        string $grantKey,
+        ?int $sourceBattleId,
+        ?int $sourceSkipSettlementId,
+        ?int $sourceRewardIndex,
+        CarbonInterface $acquiredAt,
+    ): array {
         $payload = $drop['payload'] ?? null;
         if (! is_array($payload)) {
             throw new RuntimeException('Underground generated drop payload is missing.');
@@ -122,8 +215,10 @@ final readonly class UndergroundEquipmentDropService
             'instance_identity' => $payload['instance_identity'],
             'generator_identity' => $payload['generator_identity'],
             'generated_payload' => $payload,
-            'source_battle_id' => $battle->id,
-            'acquired_at' => $battle->finished_at ?? Carbon::now(),
+            'source_battle_id' => $sourceBattleId,
+            'source_skip_settlement_id' => $sourceSkipSettlementId,
+            'source_reward_index' => $sourceRewardIndex,
+            'acquired_at' => $acquiredAt,
         ]);
 
         return [

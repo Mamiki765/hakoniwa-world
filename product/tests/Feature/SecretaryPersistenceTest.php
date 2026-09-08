@@ -4,8 +4,10 @@ namespace Tests\Feature;
 
 use App\Application\NationAbandonmentService;
 use App\Application\NationCreationService;
+use App\Application\SecretaryProfilePresenter;
 use App\Domain\Secretary\SecretarySkillCatalog;
 use App\Models\Secretary;
+use App\Models\SecretaryImage;
 use App\Models\SecretarySkill;
 use App\Models\UndergroundProfile;
 use App\Models\User;
@@ -482,9 +484,94 @@ final class SecretaryPersistenceTest extends TestCase
             ->assertJsonPath('data.main_image.url', null);
     }
 
+    public function test_nickname_is_limited_and_profile_presenter_exposes_canonical_compact_name(): void
+    {
+        $world = $this->lightweightWorld();
+        $owner = User::factory()->create();
+        app(NationCreationService::class)->create($owner, $world, '愛称島', '愛称主');
+        $this->actingAs($owner)->postJson('/api/v1/me/secretary/name', ['name' => '正式名称七文字'])->assertOk();
+        $this->actingAs($owner)->patchJson('/api/v1/me/secretary/profile', [
+            'biography' => '', 'nickname' => '1234567',
+        ])->assertUnprocessable()->assertJsonValidationErrors('nickname');
+        $this->actingAs($owner)->patchJson('/api/v1/me/secretary/profile', [
+            'biography' => '', 'nickname' => '123456',
+        ])->assertOk()->assertJsonPath('data.nickname', '123456')->assertJsonPath('data.battle_display_name', '123456');
+        $this->actingAs($owner)->patchJson('/api/v1/me/secretary/profile', [
+            'biography' => '', 'nickname' => null,
+        ])->assertOk()->assertJsonPath('data.battle_display_name', '正式名称七…');
+    }
+
+    public function test_secretary_image_slots_have_independent_credit_and_aspect_contract(): void
+    {
+        Storage::fake('secretary_images');
+        $world = $this->lightweightWorld();
+        $owner = User::factory()->create();
+        app(NationCreationService::class)->create($owner, $world, '画像slot島', '画像slot主');
+        $this->actingAs($owner)->postJson('/api/v1/me/secretary/name', ['name' => '画像slot秘書'])->assertOk();
+
+        $slots = [
+            'icon' => 'icon-credit',
+            'bust' => 'bust-credit',
+            'full_body' => 'full-credit',
+            'awakening_icon' => 'awakening-icon-credit',
+            'awakening_bust' => 'awakening-bust-credit',
+            'awakening_full_body' => 'awakening-full-credit',
+        ];
+        foreach ($slots as $slot => $credit) {
+            $square = str_ends_with($slot, 'icon');
+            $this->actingAs($owner)->post('/api/v1/me/secretary/images/'.$slot, [
+                'image' => UploadedFile::fake()->createWithContent($slot.'.png', $square ? $this->png() : $this->portraitPng()),
+                'creation_method' => 'self_made', 'credit' => $credit,
+            ], ['Accept' => 'application/json'])->assertOk()
+                ->assertJsonPath('data.images.'.$slot.'.credit', $credit);
+        }
+        $this->actingAs($owner)->post('/api/v1/me/secretary/images/bust', [
+            'image' => UploadedFile::fake()->createWithContent('square.png', $this->png()),
+            'creation_method' => 'self_made', 'credit' => 'bad-ratio',
+        ], ['Accept' => 'application/json'])->assertUnprocessable()->assertJsonValidationErrors('image');
+        $this->actingAs($owner)->post('/api/v1/me/secretary/images/icon', [
+            'image' => UploadedFile::fake()->createWithContent('missing-credit.png', $this->png()),
+            'creation_method' => 'self_made', 'credit' => '',
+        ], ['Accept' => 'application/json'])->assertUnprocessable()->assertJsonValidationErrors('credit');
+        $secretary = $owner->secretary()->firstOrFail();
+        $this->assertSame(array_keys($slots), SecretaryImage::query()
+            ->where('secretary_id', $secretary->id)
+            ->orderByRaw("array_position(ARRAY['icon','bust','full_body','awakening_icon','awakening_bust','awakening_full_body']::varchar[], slot)")
+            ->pluck('slot')->all());
+        $this->assertSame('icon-credit', SecretaryImage::query()->where('secretary_id', $secretary->id)->where('slot', 'icon')->value('credit'));
+        $this->assertSame('awakening-icon-credit', SecretaryImage::query()->where('secretary_id', $secretary->id)->where('slot', 'awakening_icon')->value('credit'));
+    }
+
+    public function test_portrait_preference_and_awakening_resolvers_fallback_to_legacy_main_image(): void
+    {
+        Storage::fake('secretary_images');
+        $this->installSecretaryFallbackAssets('silhouette.png');
+        $world = $this->lightweightWorld();
+        $owner = User::factory()->create();
+        app(NationCreationService::class)->create($owner, $world, 'portrait島', 'portrait主');
+        $this->actingAs($owner)->postJson('/api/v1/me/secretary/name', ['name' => 'portrait秘書'])->assertOk();
+        $secretary = $owner->secretary()->firstOrFail()->fresh(['images', 'user']);
+        $presenter = app(SecretaryProfilePresenter::class);
+        $this->assertSame('silhouette', $presenter->resolveLargeImage($secretary, $owner)['display']);
+        $this->actingAs($owner)->post('/api/v1/me/secretary/main-image', [
+            'image' => UploadedFile::fake()->createWithContent('legacy.png', $this->png()),
+            'creation_method' => 'self_made', 'credit' => 'legacy-credit',
+        ], ['Accept' => 'application/json'])->assertOk();
+        $secretary = $owner->secretary()->firstOrFail()->fresh(['images', 'user']);
+        $this->assertSame('uploaded', $presenter->resolveLargeImage($secretary, $owner)['display']);
+        $this->assertSame('uploaded', $presenter->resolveLargeImage($secretary, $owner, true)['display']);
+        $this->actingAs($owner)->patchJson('/api/v1/me/secretary/portrait-preference', ['portrait_preference' => 'bust'])
+            ->assertOk()->assertJsonPath('data.portrait_preference', 'bust');
+    }
+
     private function png(): string
     {
         return base64_decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=', true) ?: '';
+    }
+
+    private function portraitPng(): string
+    {
+        return base64_decode('iVBORw0KGgoAAAANSUhEUgAAAAMAAAAECAYAAABLLYUHAAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAAAJcEhZcwAADsMAAA7DAcdvqGQAAAAQSURBVBhXY2BgYPjPQBoAADAEAQBsu4qiAAAAAElFTkSuQmCC', true) ?: '';
     }
 
     private function installSecretaryFallbackAssets(string ...$filenames): void

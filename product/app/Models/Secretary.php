@@ -15,6 +15,8 @@ use Illuminate\Support\Carbon;
  * @property int $equipment_version
  * @property int $monster_experience
  * @property string|null $name
+ * @property string|null $nickname
+ * @property string $portrait_preference
  * @property Carbon|null $named_at
  * @property string $profile_biography
  * @property string|null $main_image_path
@@ -30,7 +32,7 @@ use Illuminate\Support\Carbon;
 final class Secretary extends Model
 {
     protected $fillable = [
-        'user_id', 'name', 'named_at', 'profile_biography', 'main_image_path',
+        'user_id', 'name', 'nickname', 'portrait_preference', 'named_at', 'profile_biography', 'main_image_path',
         'main_image_mime_type', 'main_image_creation_method', 'main_image_credit',
         'main_image_updated_at', 'monster_experience',
     ];
@@ -67,5 +69,11 @@ final class Secretary extends Model
     public function undergroundProfile(): HasOne
     {
         return $this->hasOne(UndergroundProfile::class);
+    }
+
+    /** @return HasMany<SecretaryImage, $this> */
+    public function images(): HasMany
+    {
+        return $this->hasMany(SecretaryImage::class);
     }
 }

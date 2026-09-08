@@ -37,6 +37,21 @@ return [
             'encounters' => ['stone_shell', 'gloom_herald'],
         ],
     ],
+    // Party boss definitions are intentionally absent until a concrete boss is authored.
+    'party_boss_scaling_profiles' => [
+        'none' => ['mode' => 'none'],
+    ],
+    'skip' => [
+        'identity' => 'secretary-underground-skip-v1',
+        'hunting_ground' => [
+            'actual_clears_required' => 50,
+            'ticket_cost' => 1,
+        ],
+        'trial' => [
+            'actual_clears_required' => 5,
+            'ticket_cost' => 10,
+        ],
+    ],
     'trials' => [
         'trial_01' => [
             'label' => '地下に眠る古代遺跡',

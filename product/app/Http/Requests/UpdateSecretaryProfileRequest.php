@@ -12,6 +12,7 @@ final class UpdateSecretaryProfileRequest extends FormRequest
     {
         return [
             'biography' => ['present', 'nullable', 'string', 'max:1000', new PlainText],
+            'nickname' => ['sometimes', 'nullable', 'string', 'max:6', new PlainText],
         ];
     }
 }

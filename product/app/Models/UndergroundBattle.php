@@ -36,7 +36,7 @@ use Illuminate\Support\Carbon;
  * @property int $private_seed
  * @property array<string, mixed> $snapshot
  * @property Carbon $started_at
- * @property Carbon $finished_at
+ * @property Carbon|null $finished_at
  * @property Carbon $created_at
  * @property Carbon $updated_at
  * @property-read UndergroundProfile $profile
@@ -61,7 +61,7 @@ final class UndergroundBattle extends Model
     public const RESULT_WITHDRAWAL = 'withdrawal';
 
     protected $fillable = [
-        'underground_profile_id', 'request_id', 'request_fingerprint', 'runtime_identity', 'activity_type', 'activity_key',
+        'underground_profile_id', 'underground_party_id', 'request_id', 'request_fingerprint', 'runtime_identity', 'activity_type', 'activity_key',
         'encounter_key', 'trial_run_key', 'trial_battle_index', 'result', 'rounds',
         'damage_dealt', 'damage_received', 'healing_done', 'xp_awarded', 'shard_delta',
         'combat_level_before', 'combat_level_after', 'combat_xp_before', 'combat_xp_after',
@@ -75,6 +75,7 @@ final class UndergroundBattle extends Model
     {
         return [
             'underground_profile_id' => 'integer',
+            'underground_party_id' => 'integer',
             'trial_battle_index' => 'integer',
             'rounds' => 'integer',
             'damage_dealt' => 'integer',

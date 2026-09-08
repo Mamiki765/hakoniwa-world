@@ -17,6 +17,7 @@ final class UndergroundTrialFightRequest extends FormRequest
         return [
             'run_key' => ['required', 'uuid'],
             'request_id' => ['required', 'uuid'],
+            'borrowed_secretary_ids' => ['prohibited'],
         ];
     }
 }

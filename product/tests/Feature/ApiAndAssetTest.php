@@ -14,6 +14,7 @@ use App\Models\MapSpace;
 use App\Models\Nation;
 use App\Models\NationResource;
 use App\Models\ResourceDefinition;
+use App\Models\Ship;
 use App\Models\TerrainDefinition;
 use App\Models\User;
 use App\Services\AssetManifestResolver;
@@ -201,6 +202,26 @@ class ApiAndAssetTest extends TestCase
         );
         $oilCell->save();
 
+        $shipCells = MapCell::query()->where('map_space_id', $mapSpace->id)
+            ->whereNull('owner_nation_id')->whereNull('facility_definition_id')
+            ->whereHas('terrain', fn ($query) => $query->where('key', 'sea'))
+            ->orderBy('id')->limit(3)->get();
+        $this->assertCount(3, $shipCells);
+        foreach ([['fishing', 1], ['tourist', 2], ['exploration', 2]] as $index => [$type, $maxHp]) {
+            Ship::query()->create([
+                'world_id' => $world->id,
+                'ruleset_version_id' => $world->ruleset_version_id,
+                'nation_id' => $nationModel->id,
+                'map_cell_id' => $shipCells[$index]->id,
+                'ship_type_key' => $type,
+                'current_hp' => $maxHp,
+                'max_hp' => $maxHp,
+                'heading' => null,
+                'state' => Ship::STATE_ACTIVE,
+                'version' => 1,
+            ]);
+        }
+
         $forecast = $this->actingAs($user)->getJson('/api/v1/me/nation')->assertOk()
             ->assertJsonPath('data.id', $nation['id'])
             ->assertJsonPath('data.farm_capacity_people', 10_000)
@@ -215,6 +236,8 @@ class ApiAndAssetTest extends TestCase
             ->assertJsonPath('data.resource_forecast.rows.1.consumption', 0)
             ->assertJsonPath('data.resource_forecast.rows.2.production', 2_207)
             ->assertJsonPath('data.resource_forecast.rows.3.production', 500)
+            ->assertJsonPath('data.resource_forecast.rows.3.consumption', 4)
+            ->assertJsonPath('data.resource_forecast.rows.3.delta', 496)
             ->assertJsonPath('data.resource_forecast.rows.3.holding', 123)
             ->assertJsonPath('data.resource_forecast.food_holding_note', '食料の所持は小麦換算です。')
             ->assertJsonPath('data.resource_forecast.workforce.status', 'saturation')
@@ -265,7 +288,8 @@ class ApiAndAssetTest extends TestCase
         ]);
         $this->actingAs($user)->getJson('/api/v1/me/nation')->assertOk()
             ->assertJsonPath('data.resource_forecast.rows.1.consumption', 0)
-            ->assertJsonPath('data.resource_forecast.rows.2.consumption', 0);
+            ->assertJsonPath('data.resource_forecast.rows.2.consumption', 0)
+            ->assertJsonPath('data.resource_forecast.rows.3.consumption', 0);
         $nationModel->update([
             'state' => 'active',
             'state_reason' => null,

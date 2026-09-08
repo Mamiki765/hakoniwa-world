@@ -20,6 +20,330 @@ final readonly class AlphaV1CombatModel
     ) {}
 
     /**
+     * Party entrypoint.  This is intentionally a thin adapter around the same
+     * BuildCombatState/AI/effect methods used by the solo model; solo callers
+     * never enter this path and therefore retain their historical RNG/log.
+     *
+     * @param  list<array<string,mixed>>  $playerSnapshots
+     * @param  list<string>  $enemyKeys
+     */
+    public function fightPartySnapshots(
+        AlphaV1BuildCatalog $catalog,
+        array $playerSnapshots,
+        array $enemyKeys,
+        int $seed,
+        int $maxRounds,
+        int $naturalRecovery,
+    ): PartyCombatResult {
+        if ($playerSnapshots === [] || count($playerSnapshots) > 4 || $enemyKeys === []
+            || $seed < 0 || $seed > 2_147_483_647 || $maxRounds < 1 || $maxRounds > 200
+            || $naturalRecovery < 0 || $naturalRecovery > AlphaV1CombatRules::MAX_MP) {
+            throw new InvalidArgumentException('Underground party combat input is invalid.');
+        }
+
+        $players = [];
+        foreach ($playerSnapshots as $index => $snapshot) {
+            $state = $this->runtimePlayerState($catalog, $snapshot);
+            $combatantId = $snapshot['combatant_id'] ?? null;
+            if (! is_string($combatantId) || $combatantId === '' || isset($players[$combatantId])) {
+                throw new InvalidArgumentException('Underground player combatant identity is invalid.');
+            }
+            $state->combatantId = $combatantId;
+            $memberNaturalRecovery = $snapshot['natural_recovery'] ?? $naturalRecovery;
+            if (! is_int($memberNaturalRecovery)
+                || $memberNaturalRecovery < 0
+                || $memberNaturalRecovery > AlphaV1CombatRules::MAX_MP) {
+                throw new InvalidArgumentException('Underground party member natural recovery is invalid.');
+            }
+            $state->flags['party_natural_recovery'] = $memberNaturalRecovery;
+            $players[$combatantId] = $state;
+        }
+
+        $enemies = [];
+        foreach ($enemyKeys as $enemyIndex => $key) {
+            if ($key === '') {
+                throw new InvalidArgumentException('Underground enemy combatant identity is invalid.');
+            }
+            $state = $this->enemyState($catalog, $key, 10_000);
+            $state->combatantId = 'enemy:'.($enemyIndex + 1);
+            if (isset($players[$state->combatantId]) || isset($enemies[$state->combatantId])) {
+                throw new InvalidArgumentException('Underground party combatant IDs must be unique.');
+            }
+            $enemies[$state->combatantId] = $state;
+        }
+
+        $random = new UndergroundRandom($seed);
+        $metrics = $this->partyMetrics();
+        $initialStates = [];
+        foreach ([...$players, ...$enemies] as $state) {
+            $initialStates[$state->combatantId] = $this->partyStateSnapshot($state);
+        }
+        $usage = ['normal_attack' => 0, 'defend' => 0, 'ai_fallback' => 0, 'action_skipped' => 0, 'counter' => 0];
+        foreach ($players as $player) {
+            foreach ($player->skills as $skillKey) {
+                $usage[$skillKey] = 0;
+            }
+        }
+        $statusUptime = [];
+        $mpHistory = [];
+        $logs = [];
+        $combatants = [...$players, ...$enemies];
+        $completedRounds = $this->orchestrator->run(
+            $maxRounds,
+            fn (): bool => $this->partyTeamAlive($players) && $this->partyTeamAlive($enemies),
+            function (int $round) use ($catalog, $combatants, $random, $naturalRecovery, &$metrics, &$mpHistory, &$logs): void {
+                foreach ($combatants as $state) {
+                    if (! $state->alive()) {
+                        continue;
+                    }
+                    $state->tickCooldowns();
+                    $offset = count($logs);
+                    if ($state->side === 'enemy') {
+                        $this->applyPhaseTransition($catalog, $state, $random, $round, $logs);
+                        $this->applyRoundStartStatus($catalog, $state, $random, $round, $logs);
+                    }
+                    $this->changeMp(
+                        $state,
+                        $state->side === 'player'
+                            ? (int) ($state->flags['party_natural_recovery'] ?? $naturalRecovery)
+                            : $naturalRecovery,
+                        0,
+                        $round,
+                        'natural',
+                        $metrics,
+                        $mpHistory,
+                        $logs,
+                        $state->side === 'player',
+                    );
+                    $this->annotatePartyLogs($logs, $offset, $state, $state, [$state->combatantId]);
+                }
+            },
+            fn (int $round): array => array_map(
+                static fn (BuildCombatState $state): string => $state->combatantId,
+                $this->partyTurnOrder(array_values($combatants), $random, $round),
+            ),
+            function (string $actorId, int $round) use ($catalog, $combatants, $players, $enemies, $random, &$metrics, &$usage, &$mpHistory, &$logs): void {
+                $actor = $combatants[$actorId];
+                if (! $actor->alive()) {
+                    return;
+                }
+                $target = $actor->side === 'player'
+                    ? $this->firstAlivePartyTarget($enemies)
+                    : $this->enemyPartyTarget($actor, $players);
+                if (! $target instanceof BuildCombatState) {
+                    return;
+                }
+                $offset = count($logs);
+                $this->executeTurn(
+                    $catalog,
+                    $actor,
+                    $target,
+                    $random,
+                    $round,
+                    $metrics,
+                    $usage,
+                    $mpHistory,
+                    $logs,
+                    $actor->side === 'player' ? array_values($players) : array_values($enemies),
+                    $actor->side === 'player' ? array_values($enemies) : array_values($players),
+                );
+                $this->annotatePartyLogs($logs, $offset, $actor, $target, [$target->combatantId]);
+                if ($actor->side === 'enemy' && $this->damagedPlayerDuringAction($logs, $offset)) {
+                    $this->gainAwakeningGauge($target, UndergroundAwakening::DAMAGING_ENEMY_ACTION_GAIN);
+                }
+            },
+            function (int $round) use ($catalog, $combatants, $players, $enemies, &$metrics, &$statusUptime, &$logs): void {
+                foreach ($combatants as $state) {
+                    $opponents = $state->side === 'player' ? $enemies : $players;
+                    $opponent = $this->firstAlivePartyTarget($opponents) ?? reset($opponents);
+                    $offset = count($logs);
+                    $this->processRoundEnd($catalog, $state, $opponent, $round, $metrics, $statusUptime, $logs);
+                    if ($state->side === 'player') {
+                        $this->gainAwakeningGauge($state, UndergroundAwakening::ROUND_GAIN);
+                        $this->advanceAwakeningGuardRound($state, $round, $logs);
+                        $this->advanceAwakeningLifestealRound($state, $round, $logs);
+                    }
+                    $this->annotatePartyLogs($logs, $offset, $state, $opponent, [$opponent->combatantId]);
+                }
+                $logs[] = [
+                    'kind' => 'round_end',
+                    'round' => $round,
+                    'team' => 'system',
+                    'actor_id' => 'system',
+                    'target_id' => null,
+                    'target_ids' => [],
+                    'action' => 'round_end',
+                    'combatants' => $this->partyStateSnapshots(array_values($combatants)),
+                ];
+            },
+        );
+
+        $winner = ! $this->partyTeamAlive($players)
+            ? 'enemy'
+            : (! $this->partyTeamAlive($enemies) ? 'player' : 'stalemate');
+        $finalStates = $this->partyStateSnapshots(array_values([...$players, ...$enemies]));
+        $awakenings = [];
+        foreach ($players as $player) {
+            $awakenings[$player->combatantId] = $this->partyAwakeningSnapshot($player);
+        }
+
+        return new PartyCombatResult(
+            $winner,
+            $completedRounds,
+            $logs,
+            $initialStates,
+            $finalStates,
+            $metrics,
+            $awakenings,
+        );
+    }
+
+    /** @return array<string,int|null> */
+    private function partyMetrics(): array
+    {
+        return ['damage_dealt' => 0, 'damage_received' => 0, 'effective_healing' => 0, 'damage_prevented' => 0, 'mp_spent' => 0, 'mp_natural_recovery' => 0, 'mp_skill_recovery' => 0, 'mp_overflow' => 0, 'mp_exhaustion_round' => null, 'skill_unavailable_due_to_mp' => 0, 'emergency_heal_opportunities' => 0, 'emergency_heal_available' => 0, 'emergency_heal_blocked_by_mp' => 0, 'crystal_cycle_recovery' => 0];
+    }
+
+    /** @param array<string, BuildCombatState> $team */
+    private function partyTeamAlive(array $team): bool
+    {
+        foreach ($team as $state) {
+            if ($state->alive()) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * @param  list<BuildCombatState>  $states
+     * @return list<BuildCombatState>
+     */
+    private function partyTurnOrder(array $states, UndergroundRandom $random, int $round): array
+    {
+        $rows = [];
+        foreach ($states as $state) {
+            $rows[] = [
+                'state' => $state,
+                'initiative' => $this->initiative($state),
+                'tie' => $random->integer(
+                    "alpha-v1:party-initiative:round:{$round}:{$state->combatantId}",
+                    0,
+                    2_147_483_647,
+                ),
+            ];
+        }
+        usort($rows, static function (array $left, array $right): int {
+            return [$right['initiative'], $right['tie'], $right['state']->combatantId]
+                <=> [$left['initiative'], $left['tie'], $left['state']->combatantId];
+        });
+
+        return array_map(static fn (array $row): BuildCombatState => $row['state'], $rows);
+    }
+
+    /** @param array<string, BuildCombatState> $targets */
+    private function firstAlivePartyTarget(array $targets): ?BuildCombatState
+    {
+        foreach ($targets as $target) {
+            if ($target->alive()) {
+                return $target;
+            }
+        }
+
+        return null;
+    }
+
+    /** @param array<string, BuildCombatState> $players */
+    private function enemyPartyTarget(BuildCombatState $enemy, array $players): ?BuildCombatState
+    {
+        $sourceCombatantId = $enemy->taunt['source_combatant_id'] ?? null;
+        if (is_string($sourceCombatantId)
+            && isset($players[$sourceCombatantId])
+            && $players[$sourceCombatantId]->alive()) {
+            return $players[$sourceCombatantId];
+        }
+
+        return $this->firstAlivePartyTarget($players);
+    }
+
+    /**
+     * @param  list<BuildCombatState>  $states
+     * @return array<string, array<string, mixed>>
+     */
+    private function partyStateSnapshots(array $states): array
+    {
+        $snapshots = [];
+        foreach ($states as $state) {
+            $snapshots[$state->combatantId] = $this->partyStateSnapshot($state);
+        }
+
+        return $snapshots;
+    }
+
+    /** @return array<string, mixed> */
+    private function partyStateSnapshot(BuildCombatState $state): array
+    {
+        return [
+            'team' => $state->side,
+            'combatant_id' => $state->combatantId,
+            'label' => $state->label,
+            ...$this->stateSnapshot($state),
+        ];
+    }
+
+    /** @return array<string, mixed> */
+    private function partyAwakeningSnapshot(BuildCombatState $player): array
+    {
+        return [
+            'identity' => UndergroundAwakening::IDENTITY,
+            'unlocked' => $player->awakeningUnlocked,
+            'gauge_before' => $player->awakeningGaugeBefore,
+            'gauge_after' => $player->awakeningGauge,
+            'gauge_gained' => $player->awakeningGaugeGained,
+            'triggered' => $player->awakened,
+            'normal_max_hp' => $player->normalMaxHp,
+            'final_max_hp' => $player->maxHp,
+            'normal_stats' => $player->normalStats,
+            'final_stats' => $player->stats,
+            'technique' => $player->awakeningTechniqueKey !== null
+                ? array_merge($this->awakening->technique(
+                    $this->growthPathForTechnique($player),
+                    $player->awakeningTechniqueKey,
+                ), ['used' => $player->awakeningTechniqueUsed])
+                : null,
+        ];
+    }
+
+    /**
+     * @param  list<array<string, mixed>>  $logs
+     * @param  list<string>  $defaultTargetIds
+     */
+    private function annotatePartyLogs(
+        array &$logs,
+        int $offset,
+        BuildCombatState $actingState,
+        BuildCombatState $defaultTarget,
+        array $defaultTargetIds,
+    ): void {
+        for ($index = $offset, $count = count($logs); $index < $count; $index++) {
+            if (($logs[$index]['kind'] ?? null) === 'round_end') {
+                continue;
+            }
+            $rowSide = $logs[$index]['side'] ?? $actingState->side;
+            $rowTargetSide = $logs[$index]['target_side'] ?? $rowSide;
+            $rowActor = $rowSide === $actingState->side ? $actingState : $defaultTarget;
+            $rowTarget = $rowTargetSide === $rowActor->side
+                ? $rowActor
+                : ($rowActor === $actingState ? $defaultTarget : $actingState);
+            $logs[$index]['team'] ??= $rowActor->side;
+            $logs[$index]['actor_id'] ??= $rowActor->combatantId;
+            $logs[$index]['target_id'] ??= $rowTarget->combatantId;
+            $logs[$index]['target_ids'] ??= $defaultTargetIds;
+        }
+    }
+
+    /**
      * @param  array<string, mixed>  $equipmentOverrides
      */
     public function fight(
@@ -417,6 +741,11 @@ final readonly class AlphaV1CombatModel
             throw new InvalidArgumentException('Underground alpha-v1 runtime current HP is invalid.');
         }
         $state->hp = $currentHp;
+        $healingTargetScope = $snapshot['party_healing_target_scope'] ?? 'self';
+        if (! in_array($healingTargetScope, ['self', 'single_ally'], true)) {
+            throw new InvalidArgumentException('Underground party healing target scope is invalid.');
+        }
+        $state->flags['party_healing_target_scope'] = $healingTargetScope;
         $awakening = $snapshot['awakening'] ?? null;
         if ($awakening !== null) {
             if (! is_array($awakening)
@@ -685,6 +1014,8 @@ final readonly class AlphaV1CombatModel
      * @param  array<string, int>  $actionUsage
      * @param  list<array<string, int>>  $mpHistory
      * @param  list<array<string, mixed>>  $actionLog
+     * @param  list<BuildCombatState>  $partyAllies
+     * @param  list<BuildCombatState>  $partyEnemies
      */
     private function executeTurn(
         AlphaV1BuildCatalog $catalog,
@@ -696,6 +1027,8 @@ final readonly class AlphaV1CombatModel
         array &$actionUsage,
         array &$mpHistory,
         array &$actionLog,
+        array $partyAllies = [],
+        array $partyEnemies = [],
     ): void {
         $nextRuleIndex = 0;
         if ($actor->side === 'player' && ! $actor->awakened) {
@@ -726,6 +1059,8 @@ final readonly class AlphaV1CombatModel
                 $actionUsage,
                 $mpHistory,
                 $actionLog,
+                $partyAllies,
+                $partyEnemies,
             )) {
             return;
         }
@@ -763,6 +1098,8 @@ final readonly class AlphaV1CombatModel
                 $actionUsage,
                 $mpHistory,
                 $actionLog,
+                $partyAllies,
+                $partyEnemies,
             )) {
                 return;
             }
@@ -781,18 +1118,30 @@ final readonly class AlphaV1CombatModel
                 $actionUsage['normal_attack']++;
             }
             $agilityComboHits = $this->agilityComboHits($actor, $target, $random, $round, 'normal_attack');
-            $this->applyDamage(
-                $actor,
-                $target,
-                $actor->normalAttack,
-                $random,
-                $round,
-                'normal_attack',
-                $metrics,
-                $actionUsage,
-                $actionLog,
-                $agilityComboHits,
-            );
+            $targets = $this->partyEffectTargets($actor->normalAttack, $actor, $target, $partyAllies, $partyEnemies);
+            $targetIds = array_map(static fn (BuildCombatState $state): string => $state->combatantId, $targets);
+            foreach ($targets as $index => $effectTarget) {
+                $offset = count($actionLog);
+                $this->applyDamage(
+                    $actor,
+                    $effectTarget,
+                    $actor->normalAttack,
+                    $random,
+                    $round,
+                    'normal_attack',
+                    $metrics,
+                    $actionUsage,
+                    $actionLog,
+                    $agilityComboHits,
+                    $index === 0,
+                );
+                if ($partyAllies !== [] || $partyEnemies !== []) {
+                    $this->annotatePartyLogs($actionLog, $offset, $actor, $effectTarget, $targetIds);
+                    for ($logIndex = $offset, $count = count($actionLog); $logIndex < $count; $logIndex++) {
+                        $actionLog[$logIndex]['target_scope'] = $this->partyTargetScope($actor->normalAttack, $actor);
+                    }
+                }
+            }
 
             return;
         }
@@ -818,24 +1167,43 @@ final readonly class AlphaV1CombatModel
             : 1;
         $agilityComboPending = $agilityComboHits > 1;
         foreach ($skill['effects'] as $effect) {
-            if (! $actor->alive() || ! $target->alive()) {
+            if (! $actor->alive()
+                || ($partyAllies === [] && $partyEnemies === [] && ! $target->alive())) {
                 break;
             }
-            $this->applySkillEffect(
-                $catalog,
-                $actor,
-                $target,
-                $effect,
-                $random,
-                $round,
-                $skillKey,
-                $metrics,
-                $actionUsage,
-                $mpHistory,
-                $actionLog,
-                $agilityComboHits,
-                $agilityComboPending,
-            );
+            $targets = $this->partyEffectTargets($effect, $actor, $target, $partyAllies, $partyEnemies);
+            $targetIds = array_map(static fn (BuildCombatState $state): string => $state->combatantId, $targets);
+            foreach ($targets as $index => $effectTarget) {
+                if (! $effectTarget->alive()) {
+                    continue;
+                }
+                $offset = count($actionLog);
+                $effectForTarget = $effect;
+                $effectForTarget['target'] = $effectTarget === $actor ? 'self' : 'enemy';
+                $this->applySkillEffect(
+                    $catalog,
+                    $actor,
+                    $effectTarget,
+                    $effectForTarget,
+                    $random,
+                    $round,
+                    $skillKey,
+                    $metrics,
+                    $actionUsage,
+                    $mpHistory,
+                    $actionLog,
+                    $agilityComboHits,
+                    $agilityComboPending && $index === 0,
+                );
+                if ($partyAllies !== [] || $partyEnemies !== []) {
+                    $this->annotatePartyLogs($actionLog, $offset, $actor, $effectTarget, $targetIds);
+                    for ($logIndex = $offset, $count = count($actionLog); $logIndex < $count; $logIndex++) {
+                        $actionLog[$logIndex]['target_id'] = $effectTarget->combatantId;
+                        $actionLog[$logIndex]['target_ids'] = $targetIds;
+                        $actionLog[$logIndex]['target_scope'] = $this->partyTargetScope($effect, $actor);
+                    }
+                }
+            }
             if (($effect['type'] ?? null) === 'damage') {
                 $agilityComboPending = false;
             }
@@ -843,6 +1211,67 @@ final readonly class AlphaV1CombatModel
         if (($skill['grace_on_use'] ?? false) === true && ($actor->modifiers['grace_enabled'] ?? false) === true) {
             $this->grantRoleStack($actor, 'grace', $catalog->balanceInt('role_stack_cap'), $round, $actionLog);
         }
+    }
+
+    /**
+     * Resolve the target envelope only for party calls. Solo calls retain their
+     * historical target object and therefore their exact result/RNG contract.
+     *
+     * @param  array<string, mixed>  $effect
+     * @param  list<BuildCombatState>  $partyAllies
+     * @param  list<BuildCombatState>  $partyEnemies
+     * @return list<BuildCombatState>
+     */
+    private function partyEffectTargets(
+        array $effect,
+        BuildCombatState $actor,
+        BuildCombatState $target,
+        array $partyAllies,
+        array $partyEnemies,
+    ): array {
+        if ($partyAllies === [] && $partyEnemies === []) {
+            return [($effect['target'] ?? 'enemy') === 'self' ? $actor : $target];
+        }
+        $scope = $this->partyTargetScope($effect, $actor);
+
+        return match ($scope) {
+            'self' => [$actor],
+            'single_ally' => [$this->lowestHpRatioTarget($partyAllies) ?? $actor],
+            'all_allies' => array_values(array_filter($partyAllies, static fn (BuildCombatState $state): bool => $state->alive())),
+            'all_enemies' => array_values(array_filter($partyEnemies, static fn (BuildCombatState $state): bool => $state->alive())),
+            default => [$target],
+        };
+    }
+
+    /** @param array<string, mixed> $effect */
+    private function partyTargetScope(array $effect, BuildCombatState $actor): string
+    {
+        $scope = $effect['target_scope'] ?? (($effect['target'] ?? 'enemy') === 'self' ? 'self' : 'single_enemy');
+        if (($effect['type'] ?? null) === 'heal' && $scope === 'self') {
+            $scope = $actor->flags['party_healing_target_scope'] ?? 'self';
+        }
+        if (! in_array($scope, ['single_enemy', 'all_enemies', 'single_ally', 'all_allies', 'self'], true)) {
+            throw new InvalidArgumentException('Underground party target scope is invalid.');
+        }
+
+        return $scope;
+    }
+
+    /** @param list<BuildCombatState> $targets */
+    private function lowestHpRatioTarget(array $targets): ?BuildCombatState
+    {
+        $selected = null;
+        foreach ($targets as $target) {
+            if (! $target->alive()) {
+                continue;
+            }
+            if (! $selected instanceof BuildCombatState
+                || $target->hp * $selected->maxHp < $selected->hp * $target->maxHp) {
+                $selected = $target;
+            }
+        }
+
+        return $selected;
     }
 
     /**
@@ -969,6 +1398,9 @@ final readonly class AlphaV1CombatModel
             'source_key' => $source->key,
             'applied_round' => $round,
         ];
+        if ($source->combatantId !== $source->key) {
+            $target->taunt['source_combatant_id'] = $source->combatantId;
+        }
         $row = $this->logRow(
             $round,
             $source,
@@ -1075,7 +1507,7 @@ final readonly class AlphaV1CombatModel
                     max(0, $this->scaledProbabilityContribution($actor, 'finesse', 2_000)
                         + (int) ($actor->modifiers['critical_chance_bps'] ?? 0)),
                 );
-                $critical = $random->integer("alpha-v1:critical:{$actor->key}:{$actionKey}:{$hit}", 1, 10_000)
+                $critical = $random->integer("alpha-v1:critical:{$actor->combatantId}:{$actionKey}:{$hit}", 1, 10_000)
                     <= $criticalChance;
                 if ($critical) {
                     $rawDamage = intdiv(
@@ -1084,11 +1516,11 @@ final readonly class AlphaV1CombatModel
                     );
                 }
             }
-            $variance = $random->integer("alpha-v1:variance:{$actor->key}:{$actionKey}:{$hit}", 95, 105);
+            $variance = $random->integer("alpha-v1:variance:{$actor->combatantId}:{$actionKey}:{$hit}", 95, 105);
             $preMitigation = max(1, intdiv($rawDamage * $variance, 100));
             $completeGuardChance = max(0, (int) ($target->modifiers['complete_guard_chance_bps'] ?? 0));
             if ($completeGuardChance > 0
-                && $random->integer("alpha-v1:complete-guard:{$target->key}:{$actionKey}:{$hit}", 1, 10_000)
+                && $random->integer("alpha-v1:complete-guard:{$target->combatantId}:{$actionKey}:{$hit}", 1, 10_000)
                     <= $completeGuardChance) {
                 $actionLog[] = $this->logRow(
                     $round,
@@ -1113,7 +1545,7 @@ final readonly class AlphaV1CombatModel
                     (int) ($target->modifiers['evasion_bps'] ?? 0),
                 );
             if (($effect['dodgeable'] ?? true) === true
-                && $random->integer("alpha-v1:evasion:{$target->key}:{$actionKey}:{$hit}", 1, 10_000) <= $evasion) {
+                && $random->integer("alpha-v1:evasion:{$target->combatantId}:{$actionKey}:{$hit}", 1, 10_000) <= $evasion) {
                 if ($target->side === 'player') {
                     $metrics['damage_prevented'] += min(
                         $target->hp + $target->barrier,
@@ -1142,7 +1574,7 @@ final readonly class AlphaV1CombatModel
                 $guardBps -= $guardReduction;
                 $parryChance = max(0, (int) ($target->modifiers['parry_bps'] ?? 0));
                 $parried = $parryChance > 0
-                    && $random->integer("alpha-v1:parry:{$target->key}:{$actionKey}:{$hit}", 1, 10_000)
+                    && $random->integer("alpha-v1:parry:{$target->combatantId}:{$actionKey}:{$hit}", 1, 10_000)
                         <= min(5_000, $parryChance);
                 if ($parried) {
                     $guardBps = intdiv($guardBps * 6_000, 10_000);
@@ -1335,7 +1767,7 @@ final readonly class AlphaV1CombatModel
             (int) ($definition['application_chance_bps'] ?? 10_000)
             + (int) ($source->modifiers['status_potency_bps'] ?? 0),
         ));
-        if (! $force && $random->integer("alpha-v1:status:{$source->key}:{$actionKey}:{$statusKey}", 1, 10_000) > $chance) {
+        if (! $force && $random->integer("alpha-v1:status:{$source->combatantId}:{$actionKey}:{$statusKey}", 1, 10_000) > $chance) {
             $actionLog[] = $this->logRow(
                 $round,
                 $source,
@@ -1607,7 +2039,7 @@ final readonly class AlphaV1CombatModel
                     $this->scaledProbabilityContribution($state, 'agility', 2_000),
                 );
                 $chance = intdiv($chance * (10_000 - $resistance), 10_000);
-                if ($random->integer("alpha-v1:impairment:{$state->key}:{$key}:{$round}", 1, 10_000) <= $chance) {
+                if ($random->integer("alpha-v1:impairment:{$state->combatantId}:{$key}:{$round}", 1, 10_000) <= $chance) {
                     unset($state->statuses[$key]);
 
                     return true;
@@ -1884,6 +2316,8 @@ final readonly class AlphaV1CombatModel
      * @param  array<string, int>  $actionUsage
      * @param  list<array<string, int>>  $mpHistory
      * @param  list<array<string, mixed>>  $actionLog
+     * @param  list<BuildCombatState>  $partyAllies
+     * @param  list<BuildCombatState>  $partyEnemies
      */
     private function useAwakeningTechnique(
         BuildCombatState $player,
@@ -1894,6 +2328,8 @@ final readonly class AlphaV1CombatModel
         array &$actionUsage,
         array &$mpHistory,
         array &$actionLog,
+        array $partyAllies = [],
+        array $partyEnemies = [],
     ): bool {
         if (! $player->awakened || $player->awakeningTechniqueUsed || $player->awakeningTechniqueKey === null) {
             return false;
@@ -1903,7 +2339,9 @@ final readonly class AlphaV1CombatModel
         $techniqueKey = $technique['key'];
         $cooldownsInUse = count(array_filter($player->cooldowns, static fn (int $remaining): bool => $remaining > 0));
         $shouldUse = match ($techniqueKey) {
-            'life_requiem' => ($player->hp * 10_000) <= ($player->maxHp * UndergroundAwakening::BLESSING_USE_HP_BPS),
+            'life_requiem' => ($partyAllies !== []
+                    && count(array_filter($partyAllies, static fn (BuildCombatState $state): bool => ! $state->alive())) > 0)
+                || ($player->hp * 10_000) <= ($player->maxHp * UndergroundAwakening::BLESSING_USE_HP_BPS),
             'limitless_reprise' => ($player->mp * 10_000) <= (AlphaV1CombatRules::MAX_MP * UndergroundAwakening::FREE_USE_MP_BPS)
                 || $cooldownsInUse >= UndergroundAwakening::FREE_USE_COOLDOWN_COUNT,
             default => $enemy->boss || ($enemy->hp * 100) > ($enemy->maxHp * 15),
@@ -1914,7 +2352,7 @@ final readonly class AlphaV1CombatModel
 
         $player->awakeningTechniqueUsed = true;
         $actionUsage['awakening_technique'] = ($actionUsage['awakening_technique'] ?? 0) + 1;
-        $actionLog[] = [
+        $techniqueLog = [
             'kind' => 'awakening_technique',
             'round' => $round,
             'side' => 'player',
@@ -1927,6 +2365,27 @@ final readonly class AlphaV1CombatModel
             'message' => $technique['name'],
             'consumes_action' => $technique['consumes_action'],
         ];
+        if ($partyAllies !== [] || $partyEnemies !== []) {
+            $techniqueLog['actor_id'] = $player->combatantId;
+            $techniqueLog['team'] = 'player';
+            $techniqueLog['target_ids'] = match ($techniqueKey) {
+                'absolute_aegis' => array_values(array_map(
+                    static fn (BuildCombatState $state): string => $state->combatantId,
+                    array_filter($partyAllies, static fn (BuildCombatState $state): bool => $state->alive()),
+                )),
+                'life_requiem' => array_map(
+                    static fn (BuildCombatState $state): string => $state->combatantId,
+                    $partyAllies,
+                ),
+                'decisive_heavenrend' => array_values(array_map(
+                    static fn (BuildCombatState $state): string => $state->combatantId,
+                    array_filter($partyEnemies, static fn (BuildCombatState $state): bool => $state->alive()),
+                )),
+                default => [$enemy->combatantId],
+            };
+            $techniqueLog['target_id'] = $techniqueLog['target_ids'][0] ?? null;
+        }
+        $actionLog[] = $techniqueLog;
 
         if ($techniqueKey === 'decisive_heavenrend') {
             $agilityComboHits = $this->agilityComboHits(
@@ -1958,6 +2417,42 @@ final readonly class AlphaV1CombatModel
                 $actionLog,
                 $agilityComboHits,
             );
+            foreach ($partyEnemies as $secondaryEnemy) {
+                if ($secondaryEnemy === $enemy
+                    || ! $secondaryEnemy->alive()) {
+                    continue;
+                }
+                $offset = count($actionLog);
+                $this->applyDamage(
+                    $player,
+                    $secondaryEnemy,
+                    [
+                        'category' => 'physical',
+                        'potency_bps' => intdiv(UndergroundAwakening::MARTIAL_POTENCY_BPS, 2),
+                        'stat_coefficients' => ['might' => 8_000, 'finesse' => 2_000],
+                        'weapon_coefficient_bps' => 15_000,
+                        'fixed' => 0,
+                        'target_max_hp_bps' => 0,
+                        'can_crit' => true,
+                        'dodgeable' => false,
+                        'hits' => 1,
+                    ],
+                    $random,
+                    $round,
+                    $techniqueKey,
+                    $metrics,
+                    $actionUsage,
+                    $actionLog,
+                    $agilityComboHits,
+                );
+                $this->annotatePartyLogs(
+                    $actionLog,
+                    $offset,
+                    $player,
+                    $secondaryEnemy,
+                    [$secondaryEnemy->combatantId],
+                );
+            }
         } elseif ($techniqueKey === 'shura_bloodline') {
             $player->awakeningLifestealRoundsRemaining = UndergroundAwakening::BLOODLINE_DURATION_ROUNDS - 1;
             $player->awakeningLifestealAppliedRound = $round;
@@ -1991,8 +2486,13 @@ final readonly class AlphaV1CombatModel
                 $agilityComboHits,
             );
         } elseif ($techniqueKey === 'absolute_aegis') {
-            $player->awakeningGuardRoundsRemaining = UndergroundAwakening::GUARDIAN_DURATION_ROUNDS;
-            $player->awakeningGuardAppliedRound = $round;
+            $allies = $partyAllies !== [] ? $partyAllies : [$player];
+            foreach ($allies as $ally) {
+                if ($ally->alive()) {
+                    $ally->awakeningGuardRoundsRemaining = UndergroundAwakening::GUARDIAN_DURATION_ROUNDS;
+                    $ally->awakeningGuardAppliedRound = $round;
+                }
+            }
         } elseif ($techniqueKey === 'fortress_strike') {
             $agilityComboHits = $this->agilityComboHits(
                 $player,
@@ -2035,17 +2535,31 @@ final readonly class AlphaV1CombatModel
                 targetSide: 'player',
             );
         } elseif ($techniqueKey === 'life_requiem') {
-            $effective = $this->healExact($player, $player->maxHp, $metrics);
-            $actionLog[] = $this->logRow(
-                $round,
-                $player,
-                $techniqueKey,
-                -$effective,
-                false,
-                false,
-                effectType: 'recovery',
-                targetSide: 'player',
-            );
+            $allies = $partyAllies !== [] ? $partyAllies : [$player];
+            foreach ($allies as $ally) {
+                $wasDefeated = ! $ally->alive();
+                $reviveHp = intdiv($ally->maxHp * UndergroundAwakening::BLESSING_REVIVE_HP_BPS, 10_000);
+                $effective = $this->healExact($ally, $reviveHp, $metrics);
+                $row = $this->logRow(
+                    $round,
+                    $player,
+                    $techniqueKey,
+                    -$effective,
+                    false,
+                    false,
+                    effectType: 'recovery',
+                    targetSide: 'player',
+                );
+                if ($partyAllies !== []) {
+                    $row['actor_id'] = $player->combatantId;
+                    $row['target_id'] = $ally->combatantId;
+                    $row['target_ids'] = [$ally->combatantId];
+                    $row['team'] = 'player';
+                    $row['revived'] = $wasDefeated && $effective > 0;
+                    $row['revive_hp_bps'] = UndergroundAwakening::BLESSING_REVIVE_HP_BPS;
+                }
+                $actionLog[] = $row;
+            }
         } elseif ($techniqueKey === 'judgment_light') {
             $agilityComboHits = $this->agilityComboHits(
                 $player,
@@ -2260,7 +2774,7 @@ final readonly class AlphaV1CombatModel
         }
 
         $roll = $random->integer(
-            "alpha-v1:agility-combo:{$actor->key}:{$actionKey}:round:{$round}",
+            "alpha-v1:agility-combo:{$actor->combatantId}:{$actionKey}:round:{$round}",
             1,
             10_000,
         );

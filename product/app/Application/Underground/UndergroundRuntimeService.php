@@ -2,6 +2,8 @@
 
 namespace App\Application\Underground;
 
+use App\Application\SecretaryProfilePresenter;
+use App\Application\VisitorCodeAllocator;
 use App\Domain\Underground\Area\UndergroundAreaCapacity;
 use App\Domain\Underground\Combat\AlphaV1CombatRules;
 use App\Domain\Underground\Combat\BuildCombatResult;
@@ -10,18 +12,26 @@ use App\Domain\Underground\Combat\UndergroundRandom;
 use App\Domain\Underground\Intro\UndergroundIntroStage;
 use App\Domain\Underground\Progression\UndergroundCombatProgression;
 use App\Models\Secretary;
+use App\Models\SecretaryImage;
+use App\Models\SecretaryLendingSetting;
 use App\Models\UndergroundBattle;
 use App\Models\UndergroundBattleLog;
+use App\Models\UndergroundContentClearProgress;
 use App\Models\UndergroundIntroProgress;
 use App\Models\UndergroundIntroRequest;
+use App\Models\UndergroundOwnedEquipment;
 use App\Models\UndergroundProfile;
+use App\Models\UndergroundSkillAllocation;
+use App\Models\UndergroundSkipSettlement;
 use App\Models\UndergroundTrialProgress;
 use App\Models\UndergroundTrialRun;
 use App\Models\User;
+use App\Models\UserSkipTicketBalance;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
+use RuntimeException;
 
 final readonly class UndergroundRuntimeService
 {
@@ -97,6 +107,7 @@ STORY;
     public function __construct(
         private UndergroundRuntimeCatalog $catalog,
         private AtomicUndergroundExplorationCombat $explorationCombat,
+        private AtomicUndergroundPartyCombat $partyCombat,
         private UndergroundCombatProgression $progression,
         private UndergroundBattleSeed $battleSeed,
         private UndergroundAlphaV1PlayerCatalog $alphaV1Catalog,
@@ -105,20 +116,48 @@ STORY;
         private UndergroundEquipmentLoadoutResolver $equipmentLoadout,
         private UndergroundEquipmentDropService $equipmentDrops,
         private UndergroundAwakening $awakening,
+        private BorrowedSecretarySnapshotFactory $borrowedSnapshots,
+        private UndergroundLendingRewardService $lendingRewards,
+        private UndergroundPartyBattleProjector $partyProjector,
+        private SecretaryProfilePresenter $secretaryPresenter,
+        private VisitorCodeAllocator $visitorCodes,
     ) {}
 
-    /** @return array{battle: UndergroundBattle, duplicate: bool} */
-    public function explore(User $user, string $requestId, ?string $huntingGroundKey = null): array
-    {
+    /**
+     * @param  list<int>  $borrowedSecretaryIds
+     * @return array{battle: UndergroundBattle, duplicate: bool}
+     */
+    public function explore(
+        User $user,
+        string $requestId,
+        ?string $huntingGroundKey = null,
+        array $borrowedSecretaryIds = [],
+    ): array {
         $this->assertRequestId($requestId);
+        if (count($borrowedSecretaryIds) > 3
+            || count($borrowedSecretaryIds) !== count(array_unique($borrowedSecretaryIds))) {
+            throw new UndergroundRuntimeException(
+                'underground_party_invalid',
+                '借りる秘書は重複なしで3人まで選んでください。',
+            );
+        }
+        foreach ($borrowedSecretaryIds as $secretaryId) {
+            if ($secretaryId < 1) {
+                throw new UndergroundRuntimeException('underground_party_invalid', 'PT編成を確認してください。');
+            }
+        }
         $huntingGroundKey ??= $this->alphaV1Catalog->explorationHuntingGroundKey();
         $huntingGround = $this->alphaV1Catalog->explorationHuntingGround($huntingGroundKey);
-        $fingerprint = $this->fingerprint([
+        $fingerprintPayload = [
             'activity_type' => 'exploration',
             'activity_key' => $huntingGroundKey,
             'exploration_identity' => $this->alphaV1Catalog->explorationIdentity(),
             'content_identity' => $huntingGround['content_identity'],
-        ]);
+        ];
+        if ($borrowedSecretaryIds !== []) {
+            $fingerprintPayload['borrowed_secretary_ids'] = $borrowedSecretaryIds;
+        }
+        $fingerprint = $this->fingerprint($fingerprintPayload);
 
         return DB::transaction(function () use (
             $user,
@@ -126,6 +165,7 @@ STORY;
             $fingerprint,
             $huntingGroundKey,
             $huntingGround,
+            $borrowedSecretaryIds,
         ): array {
             $profile = $this->lockedProfileForUser($user);
             $this->assertExplorationUnlocked($profile);
@@ -147,6 +187,9 @@ STORY;
                 );
             }
             $this->assertCooldownElapsed($profile);
+            $borrowed = $borrowedSecretaryIds === []
+                ? []
+                : $this->lockedBorrowedProfiles($user, $profile->secretary, $borrowedSecretaryIds);
             $seed = $this->battleSeed->forRequest(
                 $profile->id,
                 $requestId,
@@ -163,16 +206,256 @@ STORY;
             );
 
             return [
-                'battle' => $this->resolveAndSettleExplorationBattle(
-                    $profile,
-                    $requestId,
-                    $fingerprint,
-                    $huntingGroundKey,
-                    $encounterKey,
-                    $seed,
-                ),
+                'battle' => $borrowed === []
+                    ? $this->resolveAndSettleExplorationBattle(
+                        $profile,
+                        $requestId,
+                        $fingerprint,
+                        $huntingGroundKey,
+                        $encounterKey,
+                        $seed,
+                    )
+                    : $this->resolveAndSettlePartyExplorationBattle(
+                        $profile,
+                        $requestId,
+                        $fingerprint,
+                        $huntingGroundKey,
+                        $encounterKey,
+                        $seed,
+                        $borrowed,
+                    ),
                 'duplicate' => false,
             ];
+        }, 3);
+    }
+
+    /** @return array{settlement: UndergroundSkipSettlement, duplicate: bool} */
+    public function skipHuntingGround(User $user, string $requestId, string $huntingGroundKey): array
+    {
+        $this->assertRequestId($requestId);
+        $huntingGround = $this->alphaV1Catalog->explorationHuntingGround($huntingGroundKey);
+        $policy = $this->catalog->skipPolicy('hunting_ground');
+        $fingerprint = $this->fingerprint([
+            'operation' => 'skip',
+            'skip_identity' => $policy['identity'],
+            'content_type' => 'hunting_ground',
+            'content_key' => $huntingGroundKey,
+            'content_identity' => $huntingGround['content_identity'],
+        ]);
+
+        return DB::transaction(function () use (
+            $user,
+            $requestId,
+            $huntingGroundKey,
+            $huntingGround,
+            $policy,
+            $fingerprint,
+        ): array {
+            $profile = $this->lockedProfileForUser($user);
+            $this->assertExplorationUnlocked($profile);
+            $this->assertHuntingGroundUnlocked($profile, $huntingGround);
+            $duplicate = $this->duplicateSkipSettlement($profile, $requestId, $fingerprint);
+            if ($duplicate instanceof UndergroundSkipSettlement) {
+                return ['settlement' => $duplicate, 'duplicate' => true];
+            }
+            $this->assertSkipRequestIdentityAvailable($profile, $requestId);
+            if ($this->lockedActiveTrialRun($profile) instanceof UndergroundTrialRun) {
+                throw new UndergroundRuntimeException(
+                    'underground_trial_active',
+                    '封印の地から帰還してから狩場skipを使用してください。',
+                );
+            }
+            $progress = $this->lockedContentProgress($profile, 'hunting_ground', $huntingGroundKey);
+            $this->assertSkipUnlocked($progress, $policy['actual_clears_required']);
+            $balance = $this->lockedSkipTicketBalance($user);
+            $this->assertSkipTicketBalance($balance, $policy['ticket_cost']);
+            $seed = $this->battleSeed->forRequest(
+                $profile->id,
+                $requestId,
+                $policy['identity'].':'.$huntingGround['content_identity'],
+            );
+            $random = new UndergroundRandom($seed);
+            $encounterKey = $this->alphaV1Catalog->weightedExplorationEncounter(
+                $random->integer('runtime:encounter:'.$huntingGroundKey, 1, 10_000),
+                $huntingGroundKey,
+            );
+            $encounter = $this->alphaV1Catalog->explorationEncounter($encounterKey, $huntingGroundKey);
+            $reward = $this->applyRepeatableReward($profile, $encounter['xp'], $encounter['shards']);
+            $profile->save();
+            $settledAt = Carbon::now();
+            $settlement = UndergroundSkipSettlement::query()->create([
+                'underground_profile_id' => $profile->id,
+                'user_id' => $user->id,
+                'request_id' => $requestId,
+                'request_fingerprint' => $fingerprint,
+                'skip_identity' => $policy['identity'],
+                'content_type' => 'hunting_ground',
+                'content_key' => $huntingGroundKey,
+                'content_identity' => $huntingGround['content_identity'],
+                'ticket_cost' => $policy['ticket_cost'],
+                'xp_awarded' => $encounter['xp'],
+                'shard_awarded' => $encounter['shards'],
+                'combat_level_before' => $reward['combat_level_before'],
+                'combat_level_after' => $reward['combat_level_after'],
+                'combat_xp_before' => $reward['combat_xp_before'],
+                'combat_xp_after' => $reward['combat_xp_after'],
+                'shard_balance_before' => $reward['shard_balance_before'],
+                'shard_balance_after' => $reward['shard_balance_after'],
+                'private_seed' => $seed,
+                'reward_snapshot' => [
+                    'encounters' => [[
+                        'index' => 1,
+                        'key' => $encounterKey,
+                        'xp' => $encounter['xp'],
+                        'shards' => $encounter['shards'],
+                    ]],
+                    'stp_awarded' => $reward['stp_awarded'],
+                    'drops' => [['status' => 'pending']],
+                ],
+                'settled_at' => $settledAt,
+            ]);
+            $this->consumeSkipTickets($balance, $settlement, $policy['ticket_cost']);
+            $snapshot = $settlement->reward_snapshot;
+            $snapshot['drops'] = [$this->equipmentDrops->settleSkippedVictory(
+                $profile,
+                $settlement,
+                $huntingGroundKey,
+                $encounter,
+                $seed,
+                1,
+            )];
+            $settlement->reward_snapshot = $snapshot;
+            $settlement->save();
+            $progress->total_clear_count++;
+            $progress->save();
+
+            return ['settlement' => $settlement->refresh(), 'duplicate' => false];
+        }, 3);
+    }
+
+    /** @return array{settlement: UndergroundSkipSettlement, duplicate: bool} */
+    public function skipTrial(User $user, string $requestId, string $trialKey): array
+    {
+        $this->assertRequestId($requestId);
+        $trial = $this->catalog->trial($trialKey);
+        $policy = $this->catalog->skipPolicy('trial');
+        $fingerprint = $this->fingerprint([
+            'operation' => 'skip',
+            'skip_identity' => $policy['identity'],
+            'content_type' => 'trial',
+            'content_key' => $trialKey,
+            'content_identity' => $trial['content_identity'],
+        ]);
+
+        return DB::transaction(function () use (
+            $user,
+            $requestId,
+            $trialKey,
+            $trial,
+            $policy,
+            $fingerprint,
+        ): array {
+            $profile = $this->lockedProfileForUser($user);
+            $this->assertExplorationUnlocked($profile);
+            $this->reconcileTrialProgresses($profile);
+            $trialProgress = UndergroundTrialProgress::query()
+                ->where('underground_profile_id', $profile->id)
+                ->where('trial_key', $trialKey)
+                ->lockForUpdate()
+                ->first();
+            if (! $trialProgress instanceof UndergroundTrialProgress) {
+                throw new UndergroundRuntimeException('underground_trial_locked', 'この封印の地はまだ解禁されていません。');
+            }
+            $duplicate = $this->duplicateSkipSettlement($profile, $requestId, $fingerprint);
+            if ($duplicate instanceof UndergroundSkipSettlement) {
+                return ['settlement' => $duplicate, 'duplicate' => true];
+            }
+            $this->assertSkipRequestIdentityAvailable($profile, $requestId);
+            if ($this->lockedActiveTrialRun($profile) instanceof UndergroundTrialRun) {
+                throw new UndergroundRuntimeException(
+                    'underground_trial_active',
+                    '進行中の封印の地から帰還してから周回skipを使用してください。',
+                );
+            }
+            $progress = $this->lockedContentProgress($profile, 'trial', $trialKey);
+            $this->assertSkipUnlocked($progress, $policy['actual_clears_required']);
+            $balance = $this->lockedSkipTicketBalance($user);
+            $this->assertSkipTicketBalance($balance, $policy['ticket_cost']);
+            $seed = $this->battleSeed->forRequest(
+                $profile->id,
+                $requestId,
+                $policy['identity'].':'.$trial['content_identity'],
+            );
+            $xp = array_sum(array_column($trial['rewards'], 'xp'));
+            $shards = array_sum(array_column($trial['rewards'], 'shards'));
+            $reward = $this->applyRepeatableReward($profile, $xp, $shards);
+            $profile->save();
+            $settledAt = Carbon::now();
+            $encounters = [];
+            foreach ($trial['encounters'] as $index => $encounterKey) {
+                $entry = $trial['rewards'][$index];
+                $encounters[] = [
+                    'index' => $index + 1,
+                    'key' => $encounterKey,
+                    'xp' => $entry['xp'],
+                    'shards' => $entry['shards'],
+                ];
+            }
+            $settlement = UndergroundSkipSettlement::query()->create([
+                'underground_profile_id' => $profile->id,
+                'user_id' => $user->id,
+                'request_id' => $requestId,
+                'request_fingerprint' => $fingerprint,
+                'skip_identity' => $policy['identity'],
+                'content_type' => 'trial',
+                'content_key' => $trialKey,
+                'content_identity' => $trial['content_identity'],
+                'ticket_cost' => $policy['ticket_cost'],
+                'xp_awarded' => $xp,
+                'shard_awarded' => $shards,
+                'combat_level_before' => $reward['combat_level_before'],
+                'combat_level_after' => $reward['combat_level_after'],
+                'combat_xp_before' => $reward['combat_xp_before'],
+                'combat_xp_after' => $reward['combat_xp_after'],
+                'shard_balance_before' => $reward['shard_balance_before'],
+                'shard_balance_after' => $reward['shard_balance_after'],
+                'private_seed' => $seed,
+                'reward_snapshot' => [
+                    'encounters' => $encounters,
+                    'stp_awarded' => $reward['stp_awarded'],
+                    'drops' => [],
+                ],
+                'settled_at' => $settledAt,
+            ]);
+            $this->consumeSkipTickets($balance, $settlement, $policy['ticket_cost']);
+            $dropTierKey = $trial['drop_tier_key'];
+            $drops = [];
+            if (is_string($dropTierKey)) {
+                foreach ($trial['rewards'] as $index => $entry) {
+                    $rewardIndex = $index + 1;
+                    $rewardSeed = $this->battleSeed->forRequest(
+                        $profile->id,
+                        $requestId,
+                        $policy['identity'].':'.$trial['content_identity'].':reward:'.$rewardIndex,
+                    );
+                    $drops[] = $this->equipmentDrops->settleSkippedVictory(
+                        $profile,
+                        $settlement,
+                        $dropTierKey,
+                        $entry,
+                        $rewardSeed,
+                        $rewardIndex,
+                    );
+                }
+            }
+            $snapshot = $settlement->reward_snapshot;
+            $snapshot['drops'] = $drops;
+            $settlement->reward_snapshot = $snapshot;
+            $settlement->save();
+            $progress->total_clear_count++;
+            $progress->save();
+
+            return ['settlement' => $settlement->refresh(), 'duplicate' => false];
         }, 3);
     }
 
@@ -406,6 +689,24 @@ STORY;
     }
 
     /** @return array<string, mixed> */
+    public function projectSkipSettlement(UndergroundSkipSettlement $settlement, bool $duplicate): array
+    {
+        return [
+            'id' => $settlement->request_id,
+            'duplicate' => $duplicate,
+            'content_type' => $settlement->content_type,
+            'content_key' => $settlement->content_key,
+            'ticket_cost' => $settlement->ticket_cost,
+            'xp_awarded' => $settlement->xp_awarded,
+            'shards_awarded' => $settlement->shard_awarded,
+            'combat_level_before' => $settlement->combat_level_before,
+            'combat_level_after' => $settlement->combat_level_after,
+            'rewards' => $settlement->reward_snapshot,
+            'settled_at' => $settlement->settled_at->toAtomString(),
+        ];
+    }
+
+    /** @return array<string, mixed> */
     public function projectHuntingGroundState(UndergroundProfile $profile): array
     {
         $clearedTrials = UndergroundTrialProgress::query()
@@ -413,9 +714,22 @@ STORY;
             ->whereNotNull('first_cleared_at')
             ->pluck('trial_key')
             ->all();
-        $grounds = array_map(static function (array $ground) use ($clearedTrials): array {
+        $progresses = UndergroundContentClearProgress::query()
+            ->where('underground_profile_id', $profile->id)
+            ->where('content_type', 'hunting_ground')
+            ->get()
+            ->keyBy('content_key');
+        $skipPolicy = $this->catalog->skipPolicy('hunting_ground');
+        $grounds = array_map(static function (array $ground) use ($clearedTrials, $progresses, $skipPolicy): array {
             $requiredTrial = $ground['required_trial_key'];
             $locked = is_string($requiredTrial) && ! in_array($requiredTrial, $clearedTrials, true);
+            $progress = $progresses->get($ground['key']);
+            $actualClears = $progress instanceof UndergroundContentClearProgress
+                ? $progress->actual_clear_count
+                : 0;
+            $totalClears = $progress instanceof UndergroundContentClearProgress
+                ? $progress->total_clear_count
+                : 0;
 
             return [
                 'key' => $ground['key'],
@@ -426,6 +740,13 @@ STORY;
                     : null,
                 'item_level_min' => $ground['item_level_min'],
                 'item_level_max' => $ground['item_level_max'],
+                'skip' => [
+                    'actual_clear_count' => $actualClears,
+                    'total_clear_count' => $totalClears,
+                    'actual_clears_required' => $skipPolicy['actual_clears_required'],
+                    'unlocked' => $actualClears >= $skipPolicy['actual_clears_required'],
+                    'ticket_cost' => $skipPolicy['ticket_cost'],
+                ],
             ];
         }, $this->alphaV1Catalog->explorationHuntingGrounds());
 
@@ -450,6 +771,12 @@ STORY;
                 ->where('underground_profile_id', $lockedProfile->id)
                 ->get()
                 ->keyBy('trial_key');
+            $clearProgresses = UndergroundContentClearProgress::query()
+                ->where('underground_profile_id', $lockedProfile->id)
+                ->where('content_type', 'trial')
+                ->get()
+                ->keyBy('content_key');
+            $skipPolicy = $this->catalog->skipPolicy('trial');
             $run = UndergroundTrialRun::query()
                 ->where('underground_profile_id', $lockedProfile->id)
                 ->where('status', UndergroundTrialRun::STATUS_ACTIVE)
@@ -471,6 +798,13 @@ STORY;
                     || $requiredTrialKey === null
                     || ($requiredProgress instanceof UndergroundTrialProgress
                         && $requiredProgress->first_cleared_at !== null);
+                $clearProgress = $clearProgresses->get($trialKey);
+                $actualClears = $clearProgress instanceof UndergroundContentClearProgress
+                    ? $clearProgress->actual_clear_count
+                    : 0;
+                $totalClears = $clearProgress instanceof UndergroundContentClearProgress
+                    ? $clearProgress->total_clear_count
+                    : 0;
                 $trials[] = [
                     'key' => $trialKey,
                     'label' => $trial['label'],
@@ -480,6 +814,13 @@ STORY;
                         ? '試練1を初回clear'
                         : null,
                     'first_cleared' => $progress?->first_cleared_at !== null,
+                    'skip' => [
+                        'actual_clear_count' => $actualClears,
+                        'total_clear_count' => $totalClears,
+                        'actual_clears_required' => $skipPolicy['actual_clears_required'],
+                        'unlocked' => $actualClears >= $skipPolicy['actual_clears_required'],
+                        'ticket_cost' => $skipPolicy['ticket_cost'],
+                    ],
                 ];
             }
             $firstProgress = $progresses->get($firstTrialKey);
@@ -507,12 +848,28 @@ STORY;
             ? $battle->getRelation('log')
             : null;
         $presentationLogVersion = $snapshot['presentation_log_version'] ?? null;
-        $hasPresentationLog = in_array($presentationLogVersion, [1, UndergroundAlphaV1BattleProjector::PRESENTATION_LOG_VERSION], true)
+        $hasPresentationLog = in_array($presentationLogVersion, [
+            1,
+            UndergroundAlphaV1BattleProjector::PRESENTATION_LOG_VERSION,
+            UndergroundPartyBattleProjector::PRESENTATION_LOG_VERSION,
+        ], true)
             && $log instanceof UndergroundBattleLog;
+        $partySnapshot = $presentationLogVersion === UndergroundPartyBattleProjector::PRESENTATION_LOG_VERSION
+            && is_array($snapshot['party'] ?? null)
+                ? $snapshot['party']
+                : null;
+        $party = $partySnapshot !== null
+            ? $this->projectPartyPresentation($partySnapshot, $summary)
+            : null;
 
         return [
             'id' => $battle->request_id,
             'context' => $context,
+            'presentation_log_version' => $presentationLogVersion,
+            'party' => $party,
+            'portrait_events' => $party !== null && is_array($snapshot['portrait_events'] ?? null)
+                ? $snapshot['portrait_events']
+                : [],
             'player_display_name' => is_string($snapshot['player_display_name'] ?? null)
                 ? $snapshot['player_display_name']
                 : '秘書',
@@ -537,7 +894,10 @@ STORY;
             'summary' => $summary,
             'initial_state' => $withRounds
                 && $hasPresentationLog
-                && $presentationLogVersion === UndergroundAlphaV1BattleProjector::PRESENTATION_LOG_VERSION
+                && in_array($presentationLogVersion, [
+                    UndergroundAlphaV1BattleProjector::PRESENTATION_LOG_VERSION,
+                    UndergroundPartyBattleProjector::PRESENTATION_LOG_VERSION,
+                ], true)
                 && is_array($snapshot['initial_state'] ?? null)
                     ? $snapshot['initial_state']
                     : null,
@@ -580,6 +940,63 @@ STORY;
                 && is_string($snapshot['challenge_intro'] ?? null)
                     ? $snapshot['challenge_intro']
                     : null,
+        ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $party
+     * @param  array<string, mixed>  $summary
+     * @return array<string, mixed>
+     */
+    private function projectPartyPresentation(array $party, array $summary): array
+    {
+        $members = is_array($party['members'] ?? null) ? $party['members'] : [];
+        $finalStates = is_array($summary['final_state'] ?? null) ? $summary['final_state'] : [];
+        $players = [];
+        $enemies = [];
+        foreach ($members as $combatantId => $member) {
+            if (! is_string($combatantId) || ! is_array($member)) {
+                continue;
+            }
+            $state = is_array($finalStates[$combatantId] ?? null)
+                ? $finalStates[$combatantId]
+                : null;
+            $images = is_array($member['image_references'] ?? null) ? $member['image_references'] : [];
+            $compactKey = ($state['awakened'] ?? false) === true ? 'awakening_compact' : 'compact';
+            $icon = is_array($images[$compactKey] ?? null)
+                ? $images[$compactKey]
+                : (is_array($images['compact'] ?? null) ? $images['compact'] : []);
+            $portrait = is_array($images['normal'] ?? null) ? $images['normal'] : [];
+            $team = ($member['team'] ?? null) === 'enemy' ? 'enemy' : 'player';
+            $row = [
+                'team' => $team,
+                'combatant_id' => $combatantId,
+                'display_name' => is_string($member['display_name'] ?? null)
+                    ? $member['display_name']
+                    : (is_string($member['label'] ?? null) ? $member['label'] : $combatantId),
+                'icon_url' => is_string($icon['url'] ?? null) ? $icon['url'] : null,
+                'portrait_url' => is_string($portrait['url'] ?? null) ? $portrait['url'] : null,
+                'state' => $state,
+                'awakening_state' => ($state['awakened'] ?? false) === true
+                    ? 'awakened'
+                    : (($state['awakening_unlocked'] ?? false) === true
+                        && ($state['awakening_gauge'] ?? 0) >= UndergroundAwakening::GAUGE_MAX
+                            ? 'ready'
+                            : null),
+            ];
+            if ($team === 'player') {
+                $players[] = $row;
+            } else {
+                $enemies[] = $row;
+            }
+        }
+
+        return [
+            'party_id' => $party['party_id'] ?? null,
+            'party_size' => $party['party_size'] ?? count($players),
+            'enemy_count' => $party['enemy_count'] ?? count($enemies),
+            'members' => $players,
+            'enemies' => $enemies,
         ];
     }
 
@@ -719,16 +1136,9 @@ STORY;
             UndergroundBattle::RESULT_DEFEAT => intdiv($profile->shard_balance, 2) - $profile->shard_balance,
             default => 0,
         };
-        $profile->combat_xp += $xpAwarded;
-        $profile->shard_balance += $shardDelta;
-        $curve = $this->catalog->xpCurve();
-        $profile->combat_level = $this->progression->levelAfterXp(
-            $profile->combat_level,
-            $profile->combat_xp,
-            $curve['first_level_cost'],
-            $curve['cost_increment_per_level'],
-        );
-        $stpAwarded = $this->settleLevelStp($profile, $levelBefore);
+        $rewardSettlement = $this->applyRepeatableReward($profile, $xpAwarded, $shardDelta);
+        $curve = $rewardSettlement['xp_curve'];
+        $stpAwarded = $rewardSettlement['stp_awarded'];
         $maxHpAfter = $this->alphaV1Catalog->currentMaxHp(
             $profile->growth_path_key,
             $profile->combat_level,
@@ -846,8 +1256,381 @@ STORY;
             'actions' => $projection['rounds'],
             'expires_at' => $finishedAt->copy()->addHours($this->catalog->battleLogRetentionHours()),
         ]);
+        if ($resultType === UndergroundBattle::RESULT_VICTORY) {
+            $this->recordActualContentClear($profile, 'hunting_ground', $huntingGroundKey);
+        }
 
         return $battle->load('log');
+    }
+
+    /**
+     * @param  list<array{secretary: Secretary, profile: UndergroundProfile, awakening_unlocked: bool}>  $borrowed
+     */
+    private function resolveAndSettlePartyExplorationBattle(
+        UndergroundProfile $profile,
+        string $requestId,
+        string $fingerprint,
+        string $huntingGroundKey,
+        string $encounterKey,
+        int $seed,
+        array $borrowed,
+    ): UndergroundBattle {
+        $huntingGround = $this->alphaV1Catalog->explorationHuntingGround($huntingGroundKey);
+        $encounter = $this->alphaV1Catalog->explorationEncounter($encounterKey, $huntingGroundKey);
+        $secretary = $profile->secretary;
+        if (! is_string($secretary->name) || $secretary->name === ''
+            || ! is_string($profile->growth_path_key)) {
+            throw new UndergroundRuntimeException('underground_party_invalid', 'PT戦闘の開始状態を解決できません。');
+        }
+        $secretary->loadMissing('user');
+        $leader = $secretary->user;
+        $leaderGameId = $this->visitorCodes->allocate($leader);
+        $leaderImages = SecretaryImage::query()
+            ->where('secretary_id', $secretary->id)
+            ->orderBy('id')
+            ->lockForUpdate()
+            ->get();
+        $secretary->setRelation('images', $leaderImages);
+
+        $leaderLevel = $profile->combat_level;
+        $leaderEquipment = $this->equipmentLoadout->combatLoadout($profile);
+        $maxHpBefore = $this->alphaV1Catalog->currentMaxHp(
+            $profile->growth_path_key,
+            $leaderLevel,
+            $profile->allocatedStp(),
+            $leaderEquipment,
+        );
+        $currentHpBefore = min($profile->current_hp ?? $maxHpBefore, $maxHpBefore);
+        $leaderDisplayName = $this->secretaryPresenter->battleDisplayName($secretary);
+        $leaderDefinition = $this->alphaV1Catalog->explorationCombatDefinition(
+            $profile->growth_path_key,
+            $leaderLevel,
+            $profile->allocatedStp(),
+            $leaderEquipment,
+            $leaderDisplayName,
+            $currentHpBefore,
+            $profile->skillAllocationMap(),
+            $profile->custom_ai_rules,
+        );
+        $leaderAwakeningUnlocked = $this->awakeningUnlocked($profile);
+        $leaderAwakening = $this->awakeningSnapshot($profile, $leaderAwakeningUnlocked, $secretary->name);
+        $leaderCombatantId = 'secretary:'.$secretary->id;
+        $leaderDefinition['player_snapshot']['combatant_id'] = $leaderCombatantId;
+        $leaderDefinition['player_snapshot']['natural_recovery'] = $this->alphaV1Catalog
+            ->growthPath($profile->growth_path_key)['natural_recovery'];
+        $leaderDefinition['player_snapshot']['awakening'] = $leaderAwakening;
+        $leaderSnapshot = [
+            'team' => 'player',
+            'combatant_id' => $leaderCombatantId,
+            'source_type' => 'self',
+            'source' => [
+                'secretary_id' => $secretary->id,
+                'owner_game_id' => $leaderGameId,
+            ],
+            'formal_name' => $secretary->name,
+            'display_name' => $leaderDisplayName,
+            'original_combat_level' => $leaderLevel,
+            'effective_combat_level' => $leaderLevel,
+            'equipment_sync' => [
+                'authority' => 'leader_equipped_slot_item_level',
+                'leader_item_levels' => $this->equipmentItemLevelsBySlot($leaderEquipment),
+            ],
+            'growth_path_key' => $profile->growth_path_key,
+            'growth_path_identity' => $profile->growth_path_identity,
+            'original_allocated_stp' => $profile->allocatedStp(),
+            'effective_allocated_stp' => $profile->allocatedStp(),
+            'original_equipment' => $leaderDefinition['equipment'],
+            'effective_equipment' => $leaderDefinition['equipment'],
+            'active_skills' => $leaderDefinition['active_skills'],
+            'ai' => $leaderDefinition['ai'],
+            'awakening' => $leaderAwakening,
+            'image_references' => [
+                'compact' => $this->secretaryPresenter->resolveCompactImage($secretary, $leader),
+                'awakening_compact' => $this->secretaryPresenter->resolveCompactImage($secretary, $leader, true),
+                'normal' => $this->secretaryPresenter->resolveLargeImage($secretary, $leader),
+                'awakening' => $this->secretaryPresenter->resolveLargeImage($secretary, $leader, true),
+            ],
+            'player_snapshot' => $leaderDefinition['player_snapshot'],
+        ];
+
+        $memberSnapshots = [$leaderCombatantId => $leaderSnapshot];
+        $memberRows = [[
+            'source_type' => 'self',
+            'secretary_id' => $secretary->id,
+            'source_owner_user_id' => $leader->id,
+            'combatant_id' => $leaderCombatantId,
+            'original_level' => $leaderLevel,
+            'effective_level' => $leaderLevel,
+            'snapshot' => $leaderSnapshot,
+        ]];
+        $playerSnapshots = [$leaderDefinition['player_snapshot']];
+        foreach ($borrowed as $context) {
+            $borrowedSecretary = $context['secretary'];
+            $borrowedProfile = $context['profile'];
+            $snapshot = $this->borrowedSnapshots->create(
+                $borrowedSecretary,
+                $borrowedProfile,
+                $leaderLevel,
+                $this->equipmentItemLevelsBySlot($leaderEquipment),
+                $leader,
+                $context['awakening_unlocked'],
+            );
+            $combatantId = 'borrowed:'.$borrowedSecretary->id;
+            $snapshot['team'] = 'player';
+            $snapshot['combatant_id'] = $combatantId;
+            $snapshot['source_type'] = 'borrowed_secretary';
+            $snapshot['player_snapshot']['combatant_id'] = $combatantId;
+            $memberSnapshots[$combatantId] = $snapshot;
+            $playerSnapshots[] = $snapshot['player_snapshot'];
+            $memberRows[] = [
+                'source_type' => 'borrowed_secretary',
+                'secretary_id' => $borrowedSecretary->id,
+                'source_owner_user_id' => $borrowedSecretary->user_id,
+                'combatant_id' => $combatantId,
+                'original_level' => $snapshot['original_combat_level'],
+                'effective_level' => $snapshot['effective_combat_level'],
+                'snapshot' => $snapshot,
+            ];
+        }
+
+        $partySize = count($playerSnapshots);
+        $enemyCount = $this->alphaV1Catalog->explorationEnemyCountForPartySize($huntingGroundKey, $partySize);
+        $enemyKeys = array_fill(0, $enemyCount, $encounterKey);
+        $combatCatalog = $this->alphaV1Catalog->explorationCatalog();
+        $enemyDefinition = $combatCatalog->enemy($encounterKey);
+        $encounterLabel = $enemyDefinition['label'] ?? $encounter['label'];
+        for ($index = 1; $index <= $enemyCount; $index++) {
+            $enemyId = 'enemy:'.$index;
+            $memberSnapshots[$enemyId] = [
+                'team' => 'enemy',
+                'combatant_id' => $enemyId,
+                'display_name' => $encounterLabel,
+                'image_references' => ['compact' => null, 'normal' => null, 'awakening' => null],
+            ];
+        }
+        $partySnapshot = [
+            'schema_version' => 1,
+            'content_identity' => $huntingGround['content_identity'],
+            'leader_combat_level' => $leaderLevel,
+            'leader_equipment_item_levels' => $this->equipmentItemLevelsBySlot($leaderEquipment),
+            'party_size' => $partySize,
+            'enemy_count' => $enemyCount,
+            'enemy_count_authority' => 'content_party_size_table',
+            'reward_authority' => [
+                'mode' => 'single_encounter',
+                'encounter_key' => $encounterKey,
+                'multiplied_by_enemy_count' => false,
+            ],
+        ];
+        $party = $this->lendingRewards->createSnapshot(
+            $leader,
+            $secretary,
+            UndergroundBattle::ACTIVITY_EXPLORATION,
+            $huntingGroundKey,
+            $huntingGround['content_identity'],
+            $leaderLevel,
+            $partySnapshot,
+            $memberRows,
+        );
+
+        $maxRounds = $this->alphaV1Catalog->explorationMaxRounds();
+        $naturalRecovery = (int) $this->alphaV1Catalog->growthPath($profile->growth_path_key)['natural_recovery'];
+        $startedAt = Carbon::now();
+        $result = $this->partyCombat->fight(
+            $combatCatalog,
+            $playerSnapshots,
+            $enemyKeys,
+            $seed,
+            $maxRounds,
+            $naturalRecovery,
+        );
+        $finishedAt = Carbon::now();
+        $resultType = match ($result->winner) {
+            'player' => UndergroundBattle::RESULT_VICTORY,
+            'enemy' => UndergroundBattle::RESULT_DEFEAT,
+            default => UndergroundBattle::RESULT_WITHDRAWAL,
+        };
+        $leaderFinalState = $result->finalStates[$leaderCombatantId] ?? null;
+        $leaderFinalAwakening = $result->awakening[$leaderCombatantId] ?? null;
+        if (! is_array($leaderFinalState)
+            || ! is_int($leaderFinalState['hp'] ?? null)
+            || ! is_array($leaderFinalAwakening)
+            || ! is_int($leaderFinalAwakening['gauge_after'] ?? null)) {
+            throw new UndergroundRuntimeException('underground_party_result_invalid', 'PT戦闘結果を解決できません。');
+        }
+
+        $levelBefore = $profile->combat_level;
+        $xpBefore = $profile->combat_xp;
+        $shardsBefore = $profile->shard_balance;
+        $unspentStpBefore = $profile->unspent_stp;
+        $xpAwarded = match ($resultType) {
+            UndergroundBattle::RESULT_VICTORY => $encounter['xp'],
+            UndergroundBattle::RESULT_WITHDRAWAL => intdiv($encounter['xp'], 4),
+            default => 0,
+        };
+        $shardDelta = match ($resultType) {
+            UndergroundBattle::RESULT_VICTORY => $encounter['shards'],
+            UndergroundBattle::RESULT_DEFEAT => intdiv($profile->shard_balance, 2) - $profile->shard_balance,
+            default => 0,
+        };
+        $rewardSettlement = $this->applyRepeatableReward($profile, $xpAwarded, $shardDelta);
+        $curve = $rewardSettlement['xp_curve'];
+        $stpAwarded = $rewardSettlement['stp_awarded'];
+        $maxHpAfter = $this->alphaV1Catalog->currentMaxHp(
+            $profile->growth_path_key,
+            $profile->combat_level,
+            $profile->allocatedStp(),
+            $leaderEquipment,
+        );
+        $profile->current_hp = $resultType === UndergroundBattle::RESULT_DEFEAT
+            ? $maxHpAfter
+            : min(max(1, $leaderFinalState['hp']), $maxHpAfter);
+        $profile->awakening_gauge = $leaderFinalAwakening['gauge_after'];
+        $profile->next_battle_at = $finishedAt->copy()->addSeconds($this->catalog->cooldownSeconds());
+        $profile->save();
+
+        $projection = $this->partyProjector->project($result, $memberSnapshots);
+        $projection['summary']['result'] = $resultType;
+        $battle = UndergroundBattle::query()->create([
+            'underground_profile_id' => $profile->id,
+            'underground_party_id' => $party->id,
+            'request_id' => $requestId,
+            'request_fingerprint' => $fingerprint,
+            'runtime_identity' => $this->alphaV1Catalog->explorationIdentity(),
+            'activity_type' => UndergroundBattle::ACTIVITY_EXPLORATION,
+            'activity_key' => $huntingGroundKey,
+            'encounter_key' => $encounterKey,
+            'trial_run_key' => null,
+            'trial_battle_index' => null,
+            'result' => $resultType,
+            'rounds' => $result->rounds,
+            'damage_dealt' => (int) ($result->metrics['damage_dealt'] ?? 0),
+            'damage_received' => (int) ($result->metrics['damage_received'] ?? 0),
+            'healing_done' => (int) ($result->metrics['effective_healing'] ?? 0),
+            'xp_awarded' => $xpAwarded,
+            'shard_delta' => $shardDelta,
+            'combat_level_before' => $levelBefore,
+            'combat_level_after' => $profile->combat_level,
+            'combat_xp_before' => $xpBefore,
+            'combat_xp_after' => $profile->combat_xp,
+            'shard_balance_before' => $shardsBefore,
+            'shard_balance_after' => $profile->shard_balance,
+            'private_seed' => $seed,
+            'snapshot' => [
+                'exploration_identity' => $this->alphaV1Catalog->explorationIdentity(),
+                'hunting_ground' => [
+                    'key' => $huntingGround['key'],
+                    'name' => $huntingGround['name'],
+                    'content_identity' => $huntingGround['content_identity'],
+                    'item_level_min' => $huntingGround['item_level_min'],
+                    'item_level_max' => $huntingGround['item_level_max'],
+                ],
+                'combat_rules_identity' => AlphaV1CombatRules::IDENTITY,
+                'player_display_name' => $leaderDisplayName,
+                'encounter_display_name' => $enemyCount === 1
+                    ? $encounter['label']
+                    : $encounter['label'].' ×'.$enemyCount,
+                'presentation_log_version' => UndergroundPartyBattleProjector::PRESENTATION_LOG_VERSION,
+                'initial_state' => $projection['initial_state'],
+                'summary' => $projection['summary'],
+                'portrait_events' => $projection['portrait_events'],
+                'party' => [
+                    ...$partySnapshot,
+                    'party_id' => $party->id,
+                    'members' => $memberSnapshots,
+                ],
+                'growth_path_key' => $profile->growth_path_key,
+                'growth_path_identity' => $profile->growth_path_identity,
+                'progression_stats' => $leaderDefinition['progression_stats'],
+                'combat_stats' => $leaderDefinition['combat_stats'],
+                'allocated_stp' => $leaderSnapshot['effective_allocated_stp'],
+                'equipment' => $leaderDefinition['equipment'],
+                'skill_tree_identity' => $profile->skill_tree_identity,
+                'targeting_contract_identity' => $this->alphaV1Catalog->targetingIdentity(),
+                'encounter' => [
+                    'key' => $encounterKey,
+                    'weight_bps' => $encounter['weight'],
+                    'xp_reward' => $encounter['xp'],
+                    'shard_reward' => $encounter['shards'],
+                    'reward_multiplied_by_enemy_count' => false,
+                ],
+                'xp_curve' => $curve,
+                'max_rounds' => $maxRounds,
+                'battle_start_mp' => AlphaV1CombatRules::MAX_MP,
+                'unspent_stp_before' => $unspentStpBefore,
+                'unspent_stp_after' => $profile->unspent_stp,
+                'stp_awarded' => $stpAwarded,
+                'current_hp_before' => $currentHpBefore,
+                'max_hp_before' => $maxHpBefore,
+                'current_hp_after' => $profile->current_hp,
+                'max_hp_after' => $maxHpAfter,
+                'banked_shard_balance' => $profile->banked_shard_balance,
+                'awakening' => $leaderFinalAwakening,
+                'party_awakening' => $result->awakening,
+                'drop' => [
+                    'identity' => $this->alphaV1Catalog->explorationDropConfig()['identity'],
+                    'status' => 'pending',
+                ],
+            ],
+            'started_at' => $startedAt,
+            'finished_at' => $finishedAt,
+        ]);
+        $snapshot = $battle->snapshot;
+        $snapshot['drop'] = $resultType === UndergroundBattle::RESULT_VICTORY
+            ? $this->equipmentDrops->settleVictory(
+                $profile,
+                $battle,
+                $huntingGroundKey,
+                $encounter,
+                $seed,
+            )
+            : [
+                'identity' => $this->alphaV1Catalog->explorationDropConfig()['identity'],
+                'status' => 'ineligible',
+            ];
+        $battle->snapshot = $snapshot;
+        $battle->save();
+        UndergroundBattleLog::query()->create([
+            'underground_battle_id' => $battle->id,
+            'actions' => $projection['rounds'],
+            'expires_at' => $finishedAt->copy()->addHours($this->catalog->battleLogRetentionHours()),
+        ]);
+        $this->lendingRewards->settle($battle, $party);
+        if ($resultType === UndergroundBattle::RESULT_VICTORY) {
+            $this->recordActualContentClear($profile, 'hunting_ground', $huntingGroundKey);
+        }
+
+        return $battle->load('log');
+    }
+
+    /**
+     * @param  array<string, mixed>  $equipment
+     * @return array<string, int>
+     */
+    private function equipmentItemLevelsBySlot(array $equipment): array
+    {
+        $items = $equipment['items'] ?? null;
+        if (! is_array($items) || ! array_is_list($items)) {
+            throw new RuntimeException('Underground equipment item-level snapshot is invalid.');
+        }
+        $levels = [];
+        foreach ($items as $item) {
+            $slot = is_array($item) ? ($item['equipped_slot'] ?? null) : null;
+            $itemLevel = is_array($item) ? ($item['item_level'] ?? null) : null;
+            if (! is_string($slot)
+                || ! in_array($slot, UndergroundEquipmentCatalog::EQUIPPED_SLOTS, true)
+                || ! is_int($itemLevel)
+                || $itemLevel < 1
+                || isset($levels[$slot])) {
+                throw new RuntimeException('Underground equipment item-level snapshot is invalid.');
+            }
+            $levels[$slot] = $itemLevel;
+        }
+        if (! isset($levels['weapon'])) {
+            throw new RuntimeException('Underground equipment item-level snapshot requires a weapon.');
+        }
+
+        return $levels;
     }
 
     /**
@@ -966,16 +1749,9 @@ STORY;
             UndergroundBattle::RESULT_DEFEAT => intdiv($profile->shard_balance, 2) - $profile->shard_balance,
             default => 0,
         };
-        $profile->combat_xp += $xpAwarded;
-        $profile->shard_balance += $shardDelta;
-        $curve = $this->catalog->xpCurve();
-        $profile->combat_level = $this->progression->levelAfterXp(
-            $profile->combat_level,
-            $profile->combat_xp,
-            $curve['first_level_cost'],
-            $curve['cost_increment_per_level'],
-        );
-        $stpAwarded = $this->settleLevelStp($profile, $levelBefore);
+        $rewardSettlement = $this->applyRepeatableReward($profile, $xpAwarded, $shardDelta);
+        $curve = $rewardSettlement['xp_curve'];
+        $stpAwarded = $rewardSettlement['stp_awarded'];
         $maxHpAfter = $this->alphaV1Catalog->currentMaxHp(
             $profile->growth_path_key,
             $profile->combat_level,
@@ -1147,6 +1923,9 @@ STORY;
             'actions' => $projection['rounds'],
             'expires_at' => $finishedAt->copy()->addHours($this->catalog->battleLogRetentionHours()),
         ]);
+        if ($resultType === UndergroundBattle::RESULT_VICTORY && $isTrialBoss) {
+            $this->recordActualContentClear($profile, 'trial', $trialRun->trial_key);
+        }
 
         return $battle->load('log');
     }
@@ -1298,6 +2077,129 @@ STORY;
         }
 
         return $profile;
+    }
+
+    /**
+     * @param  list<int>  $secretaryIds
+     * @return list<array{secretary: Secretary, profile: UndergroundProfile, awakening_unlocked: bool}>
+     */
+    private function lockedBorrowedProfiles(
+        User $leader,
+        Secretary $leaderSecretary,
+        array $secretaryIds,
+    ): array {
+        if (in_array((int) $leaderSecretary->id, $secretaryIds, true)) {
+            throw new UndergroundRuntimeException(
+                'underground_party_self_borrow',
+                '自分の秘書をborrow枠へ入れることはできません。',
+            );
+        }
+        $lockOrder = $secretaryIds;
+        sort($lockOrder, SORT_NUMERIC);
+        /** @var Collection<int, Secretary> $secretaries */
+        $secretaries = Secretary::query()
+            ->whereIn('id', $lockOrder)
+            ->orderBy('id')
+            ->lockForUpdate()
+            ->get();
+        if ($secretaries->count() !== count($secretaryIds)) {
+            throw new UndergroundRuntimeException('underground_party_member_unavailable', '選んだ秘書は現在借りられません。');
+        }
+        $secretaries->load('user');
+        foreach ($secretaries as $secretary) {
+            if ((int) $secretary->user_id === (int) $leader->id
+                || ! is_string($secretary->name)
+                || $secretary->name === ''
+                || ! is_string($secretary->user->visitor_code)) {
+                throw new UndergroundRuntimeException('underground_party_member_unavailable', '選んだ秘書は現在借りられません。');
+            }
+        }
+
+        $settings = SecretaryLendingSetting::query()
+            ->whereIn('secretary_id', $lockOrder)
+            ->orderBy('secretary_id')
+            ->lockForUpdate()
+            ->get()
+            ->keyBy('secretary_id');
+        foreach ($lockOrder as $secretaryId) {
+            $setting = $settings->get($secretaryId);
+            if (! $setting instanceof SecretaryLendingSetting
+                || ! $setting->is_public
+                || ! $setting->is_available) {
+                throw new UndergroundRuntimeException('underground_party_member_unavailable', '選んだ秘書は現在借りられません。');
+            }
+        }
+
+        /** @var Collection<int, UndergroundProfile> $profiles */
+        $profiles = UndergroundProfile::query()
+            ->whereIn('secretary_id', $lockOrder)
+            ->orderBy('secretary_id')
+            ->lockForUpdate()
+            ->get();
+        if ($profiles->count() !== count($secretaryIds)) {
+            throw new UndergroundRuntimeException('underground_party_member_unavailable', '選んだ秘書は現在借りられません。');
+        }
+        foreach ($profiles as $profile) {
+            if (! is_string($profile->growth_path_key)
+                || $profile->underground_contract_completed_at === null) {
+                throw new UndergroundRuntimeException('underground_party_member_unavailable', '選んだ秘書は現在借りられません。');
+            }
+        }
+
+        $profileIds = $profiles->pluck('id')->map(static fn (mixed $id): int => (int) $id)->all();
+        $equipment = UndergroundOwnedEquipment::query()
+            ->whereIn('underground_profile_id', $profileIds)
+            ->orderBy('underground_profile_id')
+            ->orderBy('id')
+            ->lockForUpdate()
+            ->get();
+        $skills = UndergroundSkillAllocation::query()
+            ->whereIn('underground_profile_id', $profileIds)
+            ->orderBy('underground_profile_id')
+            ->orderBy('id')
+            ->lockForUpdate()
+            ->get();
+        $images = SecretaryImage::query()
+            ->whereIn('secretary_id', $lockOrder)
+            ->orderBy('secretary_id')
+            ->orderBy('id')
+            ->lockForUpdate()
+            ->get();
+        foreach ($profiles as $profile) {
+            $profile->setRelation(
+                'ownedEquipment',
+                new Collection($equipment->where('underground_profile_id', $profile->id)->values()->all()),
+            );
+            $profile->setRelation(
+                'skillAllocations',
+                new Collection($skills->where('underground_profile_id', $profile->id)->values()->all()),
+            );
+        }
+        foreach ($secretaries as $secretary) {
+            $secretary->setRelation(
+                'images',
+                new Collection($images->where('secretary_id', $secretary->id)->values()->all()),
+            );
+        }
+
+        $bySecretary = $secretaries->keyBy('id');
+        $profilesBySecretary = $profiles->keyBy('secretary_id');
+        $result = [];
+        foreach ($secretaryIds as $secretaryId) {
+            $secretary = $bySecretary->get($secretaryId);
+            $profile = $profilesBySecretary->get($secretaryId);
+            if (! $secretary instanceof Secretary || ! $profile instanceof UndergroundProfile) {
+                throw new UndergroundRuntimeException('underground_party_member_unavailable', '選んだ秘書は現在借りられません。');
+            }
+            $profile->setRelation('secretary', $secretary);
+            $result[] = [
+                'secretary' => $secretary,
+                'profile' => $profile,
+                'awakening_unlocked' => $this->awakeningUnlocked($profile),
+            ];
+        }
+
+        return $result;
     }
 
     private function lockedActiveTrialRun(UndergroundProfile $profile): ?UndergroundTrialRun
@@ -1461,6 +2363,177 @@ STORY;
         }
     }
 
+    private function duplicateSkipSettlement(
+        UndergroundProfile $profile,
+        string $requestId,
+        string $fingerprint,
+    ): ?UndergroundSkipSettlement {
+        $settlement = UndergroundSkipSettlement::query()
+            ->where('underground_profile_id', $profile->id)
+            ->where('request_id', $requestId)
+            ->lockForUpdate()
+            ->first();
+        if (! $settlement instanceof UndergroundSkipSettlement) {
+            return null;
+        }
+        if (! hash_equals($settlement->request_fingerprint, $fingerprint)) {
+            throw new UndergroundRuntimeException(
+                'underground_request_conflict',
+                '同じrequest IDが別の操作に使用されています。',
+            );
+        }
+
+        return $settlement;
+    }
+
+    private function assertSkipRequestIdentityAvailable(UndergroundProfile $profile, string $requestId): void
+    {
+        $this->assertRequestNotUsedByIntro($profile, $requestId);
+        if (UndergroundBattle::query()
+            ->where('underground_profile_id', $profile->id)
+            ->where('request_id', $requestId)
+            ->lockForUpdate()
+            ->exists()) {
+            throw new UndergroundRuntimeException(
+                'underground_request_conflict',
+                '同じrequest IDが別の戦闘に使用されています。',
+            );
+        }
+    }
+
+    private function lockedContentProgress(
+        UndergroundProfile $profile,
+        string $contentType,
+        string $contentKey,
+    ): UndergroundContentClearProgress {
+        UndergroundContentClearProgress::query()->firstOrCreate([
+            'underground_profile_id' => $profile->id,
+            'content_type' => $contentType,
+            'content_key' => $contentKey,
+        ], [
+            'actual_clear_count' => 0,
+            'total_clear_count' => 0,
+        ]);
+
+        return UndergroundContentClearProgress::query()
+            ->where('underground_profile_id', $profile->id)
+            ->where('content_type', $contentType)
+            ->where('content_key', $contentKey)
+            ->lockForUpdate()
+            ->firstOrFail();
+    }
+
+    private function recordActualContentClear(
+        UndergroundProfile $profile,
+        string $contentType,
+        string $contentKey,
+    ): void {
+        $progress = $this->lockedContentProgress($profile, $contentType, $contentKey);
+        $progress->actual_clear_count++;
+        $progress->total_clear_count++;
+        $progress->save();
+    }
+
+    private function assertSkipUnlocked(UndergroundContentClearProgress $progress, int $required): void
+    {
+        if ($progress->actual_clear_count < $required) {
+            throw new UndergroundRuntimeException(
+                'underground_skip_locked',
+                "実戦clearが{$required}回に達すると、このcontentでskipを使用できます。",
+            );
+        }
+    }
+
+    private function lockedSkipTicketBalance(User $user): UserSkipTicketBalance
+    {
+        UserSkipTicketBalance::query()->firstOrCreate(['user_id' => $user->id], ['balance' => 0]);
+
+        return UserSkipTicketBalance::query()->where('user_id', $user->id)->lockForUpdate()->firstOrFail();
+    }
+
+    private function assertSkipTicketBalance(UserSkipTicketBalance $balance, int $cost): void
+    {
+        if ($balance->balance < $cost) {
+            throw new UndergroundRuntimeException(
+                'underground_skip_ticket_insufficient',
+                "skip ticketが{$cost}枚必要です。",
+            );
+        }
+    }
+
+    private function consumeSkipTickets(
+        UserSkipTicketBalance $balance,
+        UndergroundSkipSettlement $settlement,
+        int $cost,
+    ): void {
+        $before = $balance->balance;
+        $balance->balance -= $cost;
+        $balance->save();
+        $now = Carbon::now();
+        DB::table('user_skip_ticket_ledger')->insert([
+            'user_id' => $balance->user_id,
+            'underground_battle_id' => null,
+            'underground_party_member_id' => null,
+            'underground_skip_settlement_id' => $settlement->id,
+            'entry_key' => 'skip-consume:'.$settlement->id,
+            'delta' => -$cost,
+            'balance_before' => $before,
+            'balance_after' => $balance->balance,
+            'canonical_day' => $now->toDateString(),
+            'metadata' => json_encode([
+                'skip_identity' => $settlement->skip_identity,
+                'content_type' => $settlement->content_type,
+                'content_key' => $settlement->content_key,
+                'request_id' => $settlement->request_id,
+            ], JSON_THROW_ON_ERROR),
+            'created_at' => $now,
+            'updated_at' => $now,
+        ]);
+    }
+
+    /**
+     * @return array{
+     *   combat_level_before: int,
+     *   combat_level_after: int,
+     *   combat_xp_before: int,
+     *   combat_xp_after: int,
+     *   shard_balance_before: int,
+     *   shard_balance_after: int,
+     *   stp_awarded: int,
+     *   xp_curve: array{first_level_cost: int, cost_increment_per_level: int}
+     * }
+     */
+    private function applyRepeatableReward(
+        UndergroundProfile $profile,
+        int $xpAwarded,
+        int $shardDelta,
+    ): array {
+        $levelBefore = $profile->combat_level;
+        $xpBefore = $profile->combat_xp;
+        $shardsBefore = $profile->shard_balance;
+        $profile->combat_xp += $xpAwarded;
+        $profile->shard_balance += $shardDelta;
+        $curve = $this->catalog->xpCurve();
+        $profile->combat_level = $this->progression->levelAfterXp(
+            $profile->combat_level,
+            $profile->combat_xp,
+            $curve['first_level_cost'],
+            $curve['cost_increment_per_level'],
+        );
+        $stpAwarded = $this->settleLevelStp($profile, $levelBefore);
+
+        return [
+            'combat_level_before' => $levelBefore,
+            'combat_level_after' => $profile->combat_level,
+            'combat_xp_before' => $xpBefore,
+            'combat_xp_after' => $profile->combat_xp,
+            'shard_balance_before' => $shardsBefore,
+            'shard_balance_after' => $profile->shard_balance,
+            'stp_awarded' => $stpAwarded,
+            'xp_curve' => $curve,
+        ];
+    }
+
     private function settleLevelStp(UndergroundProfile $profile, int $levelBefore): int
     {
         if ($profile->combat_level <= $levelBefore || $profile->growth_path_key === null) {
@@ -1537,7 +2610,7 @@ STORY;
         return $result->awakening;
     }
 
-    /** @param array<string, string> $intent */
+    /** @param array<string, string|list<int>> $intent */
     private function fingerprint(array $intent): string
     {
         ksort($intent);

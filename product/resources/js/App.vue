@@ -12,6 +12,7 @@ import SalePolicyPanel from './components/SalePolicyPanel.vue';
 import SecretaryEquipmentModal from './components/SecretaryEquipmentModal.vue';
 import TradingPostPanel from './components/TradingPostPanel.vue';
 import UndergroundPanel from './components/UndergroundPanel.vue';
+import SecretaryImageSlotsEditor from './components/SecretaryImageSlotsEditor.vue';
 import UndergroundSurfaceMapView from './components/UndergroundSurfaceMap.vue';
 import { formatExactMoney } from './formatters/money';
 import { useMapState } from './state/mapState';
@@ -72,6 +73,7 @@ const secretarySection = ref<SecretarySection>('main');
 const viewedSecretaryProfile = ref<SecretaryProfile | null>(null);
 const viewedSecretaryWorldId = ref<number | null>(null);
 const secretaryBiography = ref('');
+const secretaryNickname = ref('');
 const secretaryProfileErrors = ref<Record<string, string>>({});
 const secretaryImageModalOpen = ref(false);
 const secretaryImageFile = ref<File | null>(null);
@@ -879,6 +881,7 @@ function setViewedSecretaryProfile(profile: SecretaryProfile, worldId: number | 
     viewedSecretaryProfile.value = profile;
     viewedSecretaryWorldId.value = worldId;
     secretaryBiography.value = profile.biography;
+    secretaryNickname.value = profile.nickname ?? '';
 }
 
 function setOwnedSecretaryProfile(value: Secretary): void {
@@ -924,7 +927,7 @@ async function updateSecretaryBiography(): Promise<void> {
     try {
         const profile = await api<SecretaryProfile>('/api/v1/me/secretary/profile', {
             method: 'PATCH',
-            body: JSON.stringify({ biography: secretaryBiography.value }),
+            body: JSON.stringify({ biography: secretaryBiography.value, nickname: secretaryNickname.value }),
         });
         setViewedSecretaryProfile(profile, viewedSecretaryWorldId.value);
         await reloadViewedSecretaryProfile();
@@ -2085,6 +2088,9 @@ async function abandonNation(): Promise<void> {
                         <section class="secretary-biography" aria-labelledby="secretary-biography-title">
                             <h3 id="secretary-biography-title">経歴</h3>
                             <form v-if="viewedSecretaryProfile.is_owner" @submit.prevent="updateSecretaryBiography">
+                                <label for="secretary-nickname">愛称（任意・6文字）</label>
+                                <input id="secretary-nickname" v-model="secretaryNickname" maxlength="6" autocomplete="off" aria-describedby="secretary-nickname-error">
+                                <span v-if="secretaryProfileErrors.nickname" id="secretary-nickname-error" class="field-error" role="alert">{{ secretaryProfileErrors.nickname }}</span>
                                 <textarea v-model="secretaryBiography" maxlength="1000" rows="10" aria-describedby="secretary-biography-count secretary-biography-error"></textarea>
                                 <small id="secretary-biography-count">{{ secretaryBiography.length }} / 1000文字。改行のみ表示へ反映します。</small>
                                 <span v-if="secretaryProfileErrors.biography" id="secretary-biography-error" class="field-error" role="alert">{{ secretaryProfileErrors.biography }}</span>
@@ -2113,6 +2119,12 @@ async function abandonNation(): Promise<void> {
                             </li>
                         </ol>
                     </section>
+                    <SecretaryImageSlotsEditor
+                        v-if="viewedSecretaryProfile.is_owner && viewedSecretaryProfile.images"
+                        :profile="viewedSecretaryProfile"
+                        :disabled="busy"
+                        @updated="setViewedSecretaryProfile($event, viewedSecretaryWorldId)"
+                    />
                 </section>
                 <section v-else-if="secretarySection === 'skills' && secretary" id="secretary-panel-skills" role="tabpanel" aria-labelledby="secretary-tab-skills">
                     <h3 class="secretary-section-title">パッシブスキル</h3>

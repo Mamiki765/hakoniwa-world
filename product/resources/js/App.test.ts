@@ -2438,10 +2438,12 @@ describe('application lobby and island entry', () => {
         const changedGroundPayload = JSON.parse(String(explorationRequests[1]?.[1]?.body)) as {
             request_id: string;
             hunting_ground_key: string;
+            borrowed_secretary_ids: number[];
         };
         expect(changedGroundPayload).toEqual({
             request_id: expect.any(String),
             hunting_ground_key: 'black_crystal_cave',
+            borrowed_secretary_ids: [],
         });
         expect(changedGroundPayload.request_id).not.toBe(failedExplorationPayload.request_id);
         const explorationLog = wrapper.get('.underground-battle-log').text();
@@ -2468,10 +2470,12 @@ describe('application lobby and island entry', () => {
         const repeatPayload = JSON.parse(String(repeatedExplorationRequests[2]?.[1]?.body)) as {
             request_id: string;
             hunting_ground_key: string;
+            borrowed_secretary_ids: number[];
         };
         expect(repeatPayload).toEqual({
             request_id: expect.any(String),
             hunting_ground_key: 'black_crystal_cave',
+            borrowed_secretary_ids: [],
         });
         expect(repeatPayload.request_id).not.toBe(changedGroundPayload.request_id);
         expect(JSON.parse(String(repeatedExplorationRequests[3]?.[1]?.body))).toEqual(repeatPayload);

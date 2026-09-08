@@ -30,6 +30,9 @@ foreach ($tables as $table) {
     $columns = [];
 
     foreach (preg_split('/\R/u', $table[2]) ?: [] as $line) {
+        if (! str_starts_with($line, '    ')) {
+            continue;
+        }
         $line = trim($line, " \t\n\r\0\x0B,");
 
         if ($line === '') {
@@ -40,7 +43,7 @@ foreach ($tables as $table) {
         }
 
         if (preg_match(
-            '/^"?([a-z][a-z0-9_]*)"? (bigint|integer|smallint|boolean|character varying\(\d+\)|character\(\d+\)|text|jsonb|uuid|numeric\(\d+,\d+\)|timestamp\(\d+\) (?:with|without) time zone)(?: |$)/',
+            '/^"?([a-z][a-z0-9_]*)"? (bigint|integer|smallint|boolean|character varying\(\d+\)|character\(\d+\)|text|jsonb|uuid|date|numeric\(\d+,\d+\)|timestamp\(\d+\) (?:with|without) time zone)(?: |$)/',
             $line,
             $column,
         ) !== 1) {
@@ -55,6 +58,7 @@ foreach ($tables as $table) {
             $column[2] === 'text' => 'TEXT',
             $column[2] === 'jsonb' => 'JSON',
             $column[2] === 'uuid' => 'CHAR(36)',
+            $column[2] === 'date' => 'DATE',
             str_starts_with($column[2], 'character varying') => strtoupper(str_replace('character varying', 'varchar', $column[2])),
             str_starts_with($column[2], 'character') => strtoupper(str_replace('character', 'char', $column[2])),
             str_starts_with($column[2], 'numeric') => strtoupper(str_replace('numeric', 'decimal', $column[2])),

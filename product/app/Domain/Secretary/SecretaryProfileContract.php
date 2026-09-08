@@ -10,6 +10,12 @@ final class SecretaryProfileContract
 
     public const MAX_CREDIT_LENGTH = 160;
 
+    public const MAX_NICKNAME_LENGTH = 6;
+
+    public const IMAGE_SLOTS = [
+        'icon', 'bust', 'full_body', 'awakening_icon', 'awakening_bust', 'awakening_full_body',
+    ];
+
     /** @var array<string, string> */
     public const CREATION_METHODS = [
         'self_made' => '自作',
@@ -61,6 +67,28 @@ final class SecretaryProfileContract
     {
         if (! array_key_exists($value, self::FALLBACKS)) {
             throw new DomainException('秘書画像のfallback設定を確認してください。');
+        }
+
+        return $value;
+    }
+
+    public function nickname(?string $value): ?string
+    {
+        if ($value === null || $value === '') {
+            return null;
+        }
+        $this->assertPlainText($value, false);
+        if (mb_strlen($value) > self::MAX_NICKNAME_LENGTH) {
+            throw new DomainException('愛称は6文字以内で入力してください。');
+        }
+
+        return $value;
+    }
+
+    public function portraitPreference(string $value): string
+    {
+        if (! in_array($value, ['full_body', 'bust'], true)) {
+            throw new DomainException('戦闘portrait設定を確認してください。');
         }
 
         return $value;

@@ -28,6 +28,8 @@ final class UndergroundAwakening
 
     public const BLESSING_USE_HP_BPS = 4_500;
 
+    public const BLESSING_REVIVE_HP_BPS = 10_000;
+
     public const FREE_USE_MP_BPS = 5_000;
 
     public const FREE_USE_COOLDOWN_COUNT = 2;
@@ -91,7 +93,7 @@ final class UndergroundAwakening
             'blessing_green' => [[
                 'key' => 'life_requiem',
                 'name' => '生命讃歌',
-                'summary' => 'current soloでは自身のHPを全回復する。MPは回復しない。',
+                'summary' => '味方全員のHPを全回復し、戦闘不能者をHP100%で復活する。MPは回復しない。',
                 'consumes_action' => true,
             ], [
                 'key' => 'judgment_light',

@@ -2,8 +2,10 @@
 
 namespace Tests\Underground\Feature;
 
+use App\Application\SecretaryLendingService;
 use App\Application\Underground\AtomicUndergroundCombat;
 use App\Application\Underground\AtomicUndergroundExplorationCombat;
+use App\Application\Underground\AtomicUndergroundPartyCombat;
 use App\Application\Underground\CanonicalUndergroundCombat;
 use App\Application\Underground\CanonicalUndergroundExplorationCombat;
 use App\Application\Underground\UndergroundAlphaV1PlayerCatalog;
@@ -16,15 +18,19 @@ use App\Domain\Underground\Combat\AlphaV1BuildCatalog;
 use App\Domain\Underground\Combat\AlphaV1CombatRules;
 use App\Domain\Underground\Combat\BuildCombatResult;
 use App\Domain\Underground\Combat\CombatResult;
+use App\Domain\Underground\Combat\PartyCombatResult;
 use App\Domain\Underground\Combat\PriorityCombatAiConfiguration;
 use App\Domain\Underground\Combat\UndergroundAwakening;
 use App\Domain\Underground\Combat\UndergroundCombatRules;
 use App\Models\Secretary;
+use App\Models\SecretaryLendingParticipation;
+use App\Models\SecretaryLendingSetting;
 use App\Models\UndergroundBattle;
 use App\Models\UndergroundBattleLog;
 use App\Models\UndergroundIntroProgress;
 use App\Models\UndergroundIntroRequest;
 use App\Models\UndergroundOwnedEquipment;
+use App\Models\UndergroundParty;
 use App\Models\UndergroundProfile;
 use App\Models\UndergroundSkillAllocation;
 use App\Models\UndergroundTrialProgress;
@@ -1171,6 +1177,75 @@ final class UndergroundRuntimeTest extends TestCase
             ->exists());
     }
 
+    public function test_party_exploration_pins_borrowed_snapshot_keeps_owner_state_and_settles_one_reward_authority(): void
+    {
+        Carbon::setTestNow('2026-09-08 12:00:00+09:00');
+        [$leader, $leaderSecretary] = $this->secretaryUser();
+        $leader->forceFill(['visitor_code' => 'PTYLEAD1'])->save();
+        $leaderProfile = $this->unlockExploration($leaderSecretary);
+        [$owner, $borrowedSecretary] = $this->secretaryUser();
+        $owner->forceFill(['visitor_code' => 'PTYLEND1'])->save();
+        $borrowedProfile = $this->unlockExploration($borrowedSecretary, growthPathKey: 'blessing_green');
+        $borrowedProfile->update(['combat_level' => 120, 'unspent_stp' => 595]);
+        app(UndergroundStarterEquipmentService::class)->reconcile($borrowedProfile->refresh());
+        app(SecretaryLendingService::class)->update($owner, true, true);
+        $borrowedBefore = $borrowedProfile->refresh()->only([
+            'combat_level', 'combat_xp', 'shard_balance', 'current_hp', 'awakening_gauge', 'custom_ai_rules',
+        ]);
+        $partyCombat = new ScriptedUndergroundPartyCombat(0);
+        $this->app->instance(AtomicUndergroundPartyCombat::class, $partyCombat);
+        $runtime = app(UndergroundRuntimeService::class);
+        $requestId = (string) Str::uuid();
+
+        $result = $runtime->explore($leader, $requestId, null, [$borrowedSecretary->id]);
+        $battle = $result['battle'];
+        $snapshot = $battle->snapshot;
+
+        $this->assertFalse($result['duplicate']);
+        $this->assertSame(UndergroundBattle::RESULT_VICTORY, $battle->result);
+        $this->assertSame(2, $snapshot['party']['party_size']);
+        $this->assertSame(2, $snapshot['party']['enemy_count']);
+        $this->assertFalse($snapshot['party']['reward_authority']['multiplied_by_enemy_count']);
+        $this->assertCount(2, $partyCombat->calls[0]['enemy_keys']);
+        $this->assertSame([$snapshot['encounter']['xp_reward'], $snapshot['encounter']['shard_reward']], [
+            $battle->xp_awarded,
+            $battle->shard_delta,
+        ]);
+        $borrowedMember = $snapshot['party']['members']['borrowed:'.$borrowedSecretary->id];
+        $this->assertSame(0, $snapshot['summary']['final_state']['secretary:'.$leaderSecretary->id]['hp']);
+        $this->assertSame(1, $leaderProfile->refresh()->current_hp);
+        $this->assertSame(120, $borrowedMember['original_combat_level']);
+        $this->assertSame($leaderProfile->combat_level, $borrowedMember['effective_combat_level']);
+        $this->assertSame($borrowedBefore, $borrowedProfile->refresh()->only(array_keys($borrowedBefore)));
+        $this->assertSame(1, SecretaryLendingParticipation::query()->where('owner_user_id', $owner->id)->count());
+        $this->assertSame(1, UndergroundParty::query()->count());
+        $this->assertSame(3, $snapshot['presentation_log_version']);
+
+        $borrowedSecretary->update(['name' => 'Changed after battle']);
+        $borrowedProfile->refresh()->update(['combat_level' => 121, 'unspent_stp' => 600]);
+        SecretaryLendingSetting::query()->where('secretary_id', $borrowedSecretary->id)->update(['is_available' => false]);
+        $duplicate = $runtime->explore($leader, $requestId, null, [$borrowedSecretary->id]);
+        $this->assertTrue($duplicate['duplicate']);
+        $this->assertEquals($battle->fresh()->snapshot, $duplicate['battle']->snapshot);
+        $this->assertSame(1, SecretaryLendingParticipation::query()->count());
+        $this->assertSame(1, count($partyCombat->calls));
+    }
+
+    public function test_trial_start_and_fight_reject_borrowed_members_before_runtime_execution(): void
+    {
+        $user = User::factory()->create();
+
+        $this->actingAs($user)->postJson('/api/v1/me/underground/trial/start', [
+            'trial_key' => 'trial_01',
+            'borrowed_secretary_ids' => [42],
+        ])->assertUnprocessable()->assertJsonValidationErrors('borrowed_secretary_ids');
+        $this->actingAs($user)->postJson('/api/v1/me/underground/trial/fight', [
+            'run_key' => (string) Str::uuid(),
+            'request_id' => (string) Str::uuid(),
+            'borrowed_secretary_ids' => [42],
+        ])->assertUnprocessable()->assertJsonValidationErrors('borrowed_secretary_ids');
+    }
+
     /** @return array{User, Secretary} */
     private function secretaryUser(): array
     {
@@ -1491,6 +1566,83 @@ final class ScriptedUndergroundExplorationCombat implements AtomicUndergroundExp
                 'final_stats' => [],
                 'technique' => $technique,
             ],
+        );
+    }
+}
+
+final class ScriptedUndergroundPartyCombat implements AtomicUndergroundPartyCombat
+{
+    /** @var list<array{player_snapshots: array<int, array<string, mixed>>, enemy_keys: list<string>}> */
+    public array $calls = [];
+
+    public function __construct(private readonly ?int $leaderRemainingHp = null) {}
+
+    public function fight(
+        AlphaV1BuildCatalog $catalog,
+        array $playerSnapshots,
+        array $enemyKeys,
+        int $seed,
+        int $maxRounds,
+        int $naturalRecovery,
+    ): PartyCombatResult {
+        $this->calls[] = ['player_snapshots' => $playerSnapshots, 'enemy_keys' => $enemyKeys];
+        $initial = [];
+        $final = [];
+        $awakening = [];
+        foreach ($playerSnapshots as $snapshot) {
+            $id = (string) $snapshot['combatant_id'];
+            $maxHp = max(1, (int) ($snapshot['current_hp'] ?? 100));
+            $state = [
+                'team' => 'player',
+                'combatant_id' => $id,
+                'label' => (string) $snapshot['label'],
+                'hp' => $maxHp,
+                'max_hp' => $maxHp,
+                'mp' => AlphaV1CombatRules::MAX_MP,
+                'awakening_unlocked' => (bool) ($snapshot['awakening']['unlocked'] ?? false),
+                'awakening_gauge' => (int) ($snapshot['awakening']['gauge'] ?? 0),
+                'awakening_gauge_max' => UndergroundAwakening::GAUGE_MAX,
+                'awakened' => false,
+            ];
+            $initial[$id] = $state;
+            $final[$id] = $state;
+            $awakening[$id] = [
+                'gauge_after' => $state['awakening_gauge'],
+                'triggered' => false,
+            ];
+        }
+        $leaderId = (string) $playerSnapshots[0]['combatant_id'];
+        if ($this->leaderRemainingHp !== null) {
+            $final[$leaderId]['hp'] = $this->leaderRemainingHp;
+        }
+        foreach ($enemyKeys as $index => $enemyKey) {
+            $id = 'enemy:'.($index + 1);
+            $initial[$id] = ['team' => 'enemy', 'combatant_id' => $id, 'label' => $enemyKey, 'hp' => 10, 'max_hp' => 10, 'mp' => 0];
+            $final[$id] = ['team' => 'enemy', 'combatant_id' => $id, 'label' => $enemyKey, 'hp' => 0, 'max_hp' => 10, 'mp' => 0];
+        }
+        $enemyId = 'enemy:1';
+        $actionLog = [
+            [
+                'kind' => 'effect', 'effect_type' => 'damage', 'round' => 1,
+                'team' => 'player', 'side' => 'player', 'actor_id' => $leaderId,
+                'target_id' => $enemyId, 'target_ids' => [$enemyId],
+                'action' => 'normal_attack', 'amount' => 10,
+            ],
+            [
+                'kind' => 'round_end', 'round' => 1, 'team' => 'system',
+                'actor_id' => 'system', 'target_id' => null, 'target_ids' => [],
+                'combatants' => $final,
+            ],
+        ];
+
+        return new PartyCombatResult(
+            'player',
+            1,
+            $actionLog,
+            $initial,
+            $final,
+            ['damage_dealt' => 10, 'damage_received' => 0, 'effective_healing' => 0],
+            $awakening,
         );
     }
 }

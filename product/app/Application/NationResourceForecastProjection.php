@@ -8,10 +8,12 @@ use App\Domain\Economy\UnderseaCityMaintenancePlanner;
 use App\Domain\Facility\FacilityCapacityService;
 use App\Domain\Facility\FacilityRankPolicy;
 use App\Domain\Nation\NationLifecyclePrepareStateResolver;
+use App\Domain\Ship\SurfaceShipCatalog;
 use App\Models\FacilityDefinition;
 use App\Models\Nation;
 use App\Models\NationResource;
 use App\Models\ResourceDefinition;
+use App\Models\Ship;
 use DomainException;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\DB;
@@ -27,6 +29,7 @@ final class NationResourceForecastProjection
         private readonly NationLifecyclePrepareStateResolver $prepareState,
         private readonly UndergroundFacilityBenefits $undergroundBenefits,
         private readonly NationQueuedMeaningfulActivityQuery $meaningfulActivity,
+        private readonly SurfaceShipCatalog $surfaceShips,
     ) {}
 
     /**
@@ -166,6 +169,9 @@ final class NationResourceForecastProjection
                 ? $underseaCityCellIds
                 : [],
         );
+        $shipOilConsumption = $effectiveNationState === 'active'
+            ? $this->shipOilConsumption($nation, $ruleset->settings)
+            : 0;
 
         $wheat = $this->balance($balancesByKey, 'wheat');
         $foodHolding = 0;
@@ -197,7 +203,7 @@ final class NationResourceForecastProjection
                 $economy['minerals_production'],
                 $maintenance['minerals_consumed'],
             ),
-            $this->resourceRow($balancesByKey, 'oil', $economy['oil_production']),
+            $this->resourceRow($balancesByKey, 'oil', $economy['oil_production'], $shipOilConsumption),
         ];
         $population = $economy['population'];
         $demand = $economy['total_workforce_demand'];
@@ -302,5 +308,36 @@ final class NationResourceForecastProjection
         }
 
         return (int) $raw;
+    }
+
+    /** @param array<string, mixed> $settings */
+    private function shipOilConsumption(Nation $nation, array $settings): int
+    {
+        $counts = Ship::query()
+            ->where('world_id', $nation->world_id)
+            ->where('nation_id', $nation->id)
+            ->where('state', Ship::STATE_ACTIVE)
+            ->selectRaw('ship_type_key, COUNT(*) AS ship_count')
+            ->groupBy('ship_type_key')
+            ->get();
+        if ($counts->isEmpty()) {
+            return 0;
+        }
+
+        $oilByShipType = [];
+        foreach ($this->surfaceShips->definitions($settings) as $definition) {
+            $oilByShipType[$definition->key] = $definition->movementOilUnits;
+        }
+
+        $consumption = 0;
+        foreach ($counts as $count) {
+            $shipTypeKey = $count->ship_type_key;
+            if (! array_key_exists($shipTypeKey, $oilByShipType)) {
+                throw new DomainException('Active Surface Ship has an unavailable definition.');
+            }
+            $consumption += (int) $count->getAttribute('ship_count') * $oilByShipType[$shipTypeKey];
+        }
+
+        return $consumption;
     }
 }

@@ -4,6 +4,9 @@ namespace App\Domain\Underground\Combat;
 
 final class BuildCombatState
 {
+    /** Stable party identity; solo remains equal to the historical key. */
+    public string $combatantId;
+
     public int $hp;
 
     public int $mp = AlphaV1CombatRules::MAX_MP;
@@ -12,7 +15,7 @@ final class BuildCombatState
 
     public bool $guarding = false;
 
-    /** @var array{source_side: 'player'|'enemy', source_key: string, applied_round: int}|null */
+    /** @var array{source_side: 'player'|'enemy', source_key: string, source_combatant_id?: string, applied_round: int}|null */
     public ?array $taunt = null;
 
     /** @var array<string, int> */
@@ -103,6 +106,7 @@ final class BuildCombatState
         public readonly ?array $phaseTransition,
         public readonly array $normalAttack,
     ) {
+        $this->combatantId = $key;
         $this->hp = $maxHp;
         $this->normalMaxHp = $maxHp;
         $this->normalStats = $stats;

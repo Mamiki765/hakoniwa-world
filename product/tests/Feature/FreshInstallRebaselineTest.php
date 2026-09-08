@@ -72,6 +72,14 @@ final class FreshInstallRebaselineTest extends TestCase
 
     private const AUCTION_ITEM_HISTORY_MIGRATION = '2026_09_08_000000_preserve_completed_auction_item_history';
 
+    private const SECRETARY_PARTY_PROFILE_MIGRATION = '2026_09_08_010000_add_secretary_nickname_and_image_slots';
+
+    private const PARTY_LENDING_MIGRATION = '2026_09_08_100000_add_underground_party_lending_persistence';
+
+    private const UNDERGROUND_SKIP_MIGRATION = '2026_09_08_110000_add_underground_skip_consumption';
+
+    private const SECRETARY_LENDING_BUILD_CACHE_MIGRATION = '2026_09_08_120000_add_secretary_lending_build_cache';
+
     public function test_empty_postgresql_uses_direct_current_schema_and_v21_catalog_baseline(): void
     {
         config(['hakoniwa' => require config_path('hakoniwa.php')]);
@@ -80,7 +88,7 @@ final class FreshInstallRebaselineTest extends TestCase
         app(RulesetPublisher::class)->publish($current);
         $ruleset = RulesetVersion::query()->where('key', 'hakoniwa-2s-plus-v21')->sole();
 
-        $this->assertSame('3.7.3', config('hakoniwa.application_version'));
+        $this->assertSame('3.8.0', config('hakoniwa.application_version'));
         $this->assertSame(['hakoniwa-2s-plus-v21'], array_keys(config('hakoniwa.published_rulesets')));
         $this->assertSame('hakoniwa-2s-plus-v21', $ruleset->key);
         $this->assertSame(21, $ruleset->version);
@@ -91,7 +99,7 @@ final class FreshInstallRebaselineTest extends TestCase
         $this->assertSame(30, CommandDefinition::query()->where('ruleset_version_id', $ruleset->id)->count());
         $this->assertSame(3, ProductionDefinition::query()->where('ruleset_version_id', $ruleset->id)->count());
         $this->assertSame(11, MonsterDefinition::query()->where('ruleset_version_id', $ruleset->id)->count());
-        $this->assertSame(65, DB::table('migrations')->count());
+        $this->assertSame(69, DB::table('migrations')->count());
         $this->assertDatabaseHas('migrations', [
             'migration' => '2026_08_22_000000_rebaseline_ver_2_4_install_and_upgrade',
         ]);
@@ -146,6 +154,10 @@ final class FreshInstallRebaselineTest extends TestCase
         $this->assertDatabaseHas('migrations', [
             'migration' => '2026_09_06_020000_publish_v21_3_7_0_release',
         ]);
+        $this->assertDatabaseHas('migrations', ['migration' => self::SECRETARY_PARTY_PROFILE_MIGRATION]);
+        $this->assertDatabaseHas('migrations', ['migration' => self::PARTY_LENDING_MIGRATION]);
+        $this->assertDatabaseHas('migrations', ['migration' => self::UNDERGROUND_SKIP_MIGRATION]);
+        $this->assertDatabaseHas('migrations', ['migration' => self::SECRETARY_LENDING_BUILD_CACHE_MIGRATION]);
         $this->assertTrue(Schema::hasColumn('underground_profiles', 'awakening_technique_key'));
         $this->assertSame(0, DB::table('migrations')->whereIn('migration', [
             '2026_09_04_000000_publish_v20_and_repair_water_ownership',
@@ -201,6 +213,8 @@ final class FreshInstallRebaselineTest extends TestCase
         $this->assertCount(13, $ruleset->settings['secretary']['items']);
         $this->assertTrue(Schema::hasColumn('nations', 'karma'));
         $this->assertTrue(Schema::hasColumn('secretaries', 'profile_biography'));
+        $this->assertTrue(Schema::hasColumn('secretaries', 'nickname'));
+        $this->assertTrue(Schema::hasColumn('secretaries', 'portrait_preference'));
         $this->assertTrue(Schema::hasColumn('users', 'show_ai_generated_secretary_images'));
         $this->assertTrue(Schema::hasColumn('secretaries', 'monster_experience'));
         $this->assertTrue(Schema::hasColumn('monster_definitions', 'experience_per_damage'));
@@ -208,6 +222,22 @@ final class FreshInstallRebaselineTest extends TestCase
         $this->assertTrue(Schema::hasColumn('nations', 'population_high_water'));
         $this->assertTrue(Schema::hasTable('auction_listings'));
         $this->assertTrue(Schema::hasColumn('auction_listings', 'original_secretary_item_instance_id'));
+        $this->assertTrue(Schema::hasColumn('underground_battles', 'underground_party_id'));
+        foreach ([
+            'secretary_images',
+            'secretary_lending_settings',
+            'underground_parties',
+            'underground_party_members',
+            'secretary_lending_participations',
+            'secretary_lending_daily_rewards',
+            'user_skip_ticket_balances',
+            'user_skip_ticket_ledger',
+            'underground_content_clear_progress',
+            'underground_skip_settlements',
+            'secretary_lending_build_snapshots',
+        ] as $table) {
+            $this->assertTrue(Schema::hasTable($table));
+        }
         $this->assertTrue(Schema::hasTable('auction_bids'));
         $this->assertTrue(Schema::hasTable('underground_profiles'));
         $this->assertTrue(Schema::hasColumn('underground_profiles', 'unlocked_area_layers'));
@@ -1506,7 +1536,17 @@ SQL);
         $snapshot = [];
         foreach ($tables as $table) {
             $rows = DB::table($table)->orderBy('id')->get()->map(
-                static fn (object $row): array => (array) $row,
+                static function (object $row) use ($table): array {
+                    $values = (array) $row;
+                    if ($table === 'secretaries') {
+                        unset($values['nickname'], $values['portrait_preference']);
+                    }
+                    if ($table === 'auction_listings') {
+                        unset($values['original_secretary_item_instance_id']);
+                    }
+
+                    return $values;
+                },
             )->all();
             $snapshot[$table] = hash(
                 'sha256',
@@ -1696,6 +1736,7 @@ SQL);
 
     private function returnDatabaseToExact350Source(): void
     {
+        $this->returnPartyPersistenceToPre380Source();
         $this->returnAuctionItemHistoryToPre380Source();
         RulesetVersion::query()->where('key', Ver370RulesetUpgrade::TARGET_KEY)->delete();
         $v20Settings = require config_path('hakoniwa/rulesets/hakoniwa-2s-plus-v20.php');
@@ -1737,6 +1778,86 @@ SQL);
             $table->dropColumn('awakening_technique_key');
         });
         DB::table('migrations')->where('migration', self::AWAKENING_TECHNIQUE_MIGRATION)->delete();
+    }
+
+    private function returnPartyPersistenceToPre380Source(): void
+    {
+        if (Schema::hasColumn('underground_owned_equipment', 'source_skip_settlement_id')) {
+            DB::statement('ALTER TABLE underground_owned_equipment DROP CONSTRAINT underground_owned_equipment_instance_check');
+            Schema::table('underground_owned_equipment', function (Blueprint $table): void {
+                $table->dropForeign(['source_skip_settlement_id']);
+                $table->dropUnique('underground_equipment_source_skip_reward_unique');
+                $table->dropColumn(['source_skip_settlement_id', 'source_reward_index']);
+            });
+            DB::statement(<<<'SQL'
+ALTER TABLE underground_owned_equipment
+  ADD CONSTRAINT underground_owned_equipment_instance_check
+  CHECK (
+    (
+      instance_kind = 'fixed'
+      AND instance_identity IS NULL
+      AND generator_identity IS NULL
+      AND generated_payload IS NULL
+      AND source_battle_id IS NULL
+    )
+    OR
+    (
+      instance_kind = 'generated'
+      AND instance_identity IS NOT NULL
+      AND generator_identity IS NOT NULL
+      AND generated_payload IS NOT NULL
+      AND source_battle_id IS NOT NULL
+      AND grant_key IS NOT NULL
+    )
+  )
+SQL);
+        }
+        if (Schema::hasColumn('user_skip_ticket_ledger', 'underground_skip_settlement_id')) {
+            Schema::table('user_skip_ticket_ledger', function (Blueprint $table): void {
+                $table->dropForeign(['underground_skip_settlement_id']);
+                $table->dropUnique('user_skip_ticket_ledger_skip_unique');
+                $table->dropColumn('underground_skip_settlement_id');
+            });
+        }
+        foreach ([
+            'secretary_lending_build_snapshots',
+            'underground_content_clear_progress',
+            'underground_skip_settlements',
+        ] as $table) {
+            Schema::dropIfExists($table);
+        }
+        if (Schema::hasColumn('underground_battles', 'underground_party_id')) {
+            Schema::table('underground_battles', function (Blueprint $table): void {
+                $table->dropForeign(['underground_party_id']);
+                $table->dropUnique(['underground_party_id']);
+                $table->dropColumn('underground_party_id');
+            });
+        }
+        foreach ([
+            'user_skip_ticket_ledger',
+            'secretary_lending_participations',
+            'secretary_lending_daily_rewards',
+            'user_skip_ticket_balances',
+            'underground_party_members',
+            'secretary_lending_settings',
+            'underground_parties',
+            'secretary_images',
+        ] as $table) {
+            Schema::dropIfExists($table);
+        }
+        if (Schema::hasColumn('secretaries', 'nickname')) {
+            DB::statement('ALTER TABLE secretaries DROP CONSTRAINT secretaries_nickname_check');
+            DB::statement('ALTER TABLE secretaries DROP CONSTRAINT secretaries_portrait_preference_check');
+            Schema::table('secretaries', function (Blueprint $table): void {
+                $table->dropColumn(['nickname', 'portrait_preference']);
+            });
+        }
+        DB::table('migrations')->whereIn('migration', [
+            self::SECRETARY_PARTY_PROFILE_MIGRATION,
+            self::PARTY_LENDING_MIGRATION,
+            self::UNDERGROUND_SKIP_MIGRATION,
+            self::SECRETARY_LENDING_BUILD_CACHE_MIGRATION,
+        ])->delete();
     }
 
     private function returnAuctionItemHistoryToPre380Source(): void
@@ -1928,6 +2049,10 @@ SQL);
                 self::RECOLLECTION_MIGRATION,
                 self::V21_MIGRATION,
                 self::AUCTION_ITEM_HISTORY_MIGRATION,
+                self::SECRETARY_PARTY_PROFILE_MIGRATION,
+                self::PARTY_LENDING_MIGRATION,
+                self::UNDERGROUND_SKIP_MIGRATION,
+                self::SECRETARY_LENDING_BUILD_CACHE_MIGRATION,
             ], true),
         ));
     }

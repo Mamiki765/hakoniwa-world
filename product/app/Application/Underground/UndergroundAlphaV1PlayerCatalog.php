@@ -6,6 +6,7 @@ use App\Domain\Underground\Combat\AlphaV1BuildCatalog;
 use App\Domain\Underground\Combat\AlphaV1CombatRules;
 use App\Domain\Underground\Combat\PriorityCombatAiConfiguration;
 use App\Domain\Underground\Combat\UndergroundBuildValidator;
+use InvalidArgumentException;
 use JsonException;
 use RuntimeException;
 
@@ -255,6 +256,7 @@ final readonly class UndergroundAlphaV1PlayerCatalog
      *   content_identity: string,
      *   name: string,
      *   required_trial_key: string|null,
+     *   enemy_count_by_party_size: array{1:int,2:int,3:int,4:int},
      *   item_level_min: int,
      *   item_level_max: int
      * }>
@@ -286,6 +288,7 @@ final readonly class UndergroundAlphaV1PlayerCatalog
      *   content_identity: string,
      *   name: string,
      *   required_trial_key: string|null,
+     *   enemy_count_by_party_size: array{1:int,2:int,3:int,4:int},
      *   item_level_min: int,
      *   item_level_max: int
      * }
@@ -302,6 +305,15 @@ final readonly class UndergroundAlphaV1PlayerCatalog
             'underground_hunting_ground_not_supported',
             '狩場を確認してください。',
         );
+    }
+
+    public function explorationEnemyCountForPartySize(string $huntingGroundKey, int $partySize): int
+    {
+        if ($partySize < 1 || $partySize > 4) {
+            throw new InvalidArgumentException('Underground party size must be between one and four.');
+        }
+
+        return $this->explorationHuntingGround($huntingGroundKey)['enemy_count_by_party_size'][$partySize];
     }
 
     public function explorationMaxRounds(): int
@@ -809,6 +821,9 @@ final readonly class UndergroundAlphaV1PlayerCatalog
                 'modifiers' => $skillBuild['passive_modifiers'],
                 'equipment' => $equipment,
                 'current_hp' => $currentHp,
+                'party_healing_target_scope' => $growthPathKey === 'blessing_green'
+                    ? 'single_ally'
+                    : 'self',
             ],
             'progression_stats' => $progressionStats,
             'combat_stats' => $combatStats,
@@ -1047,6 +1062,7 @@ final readonly class UndergroundAlphaV1PlayerCatalog
      *   content_identity: string,
      *   name: string,
      *   required_trial_key: string|null,
+     *   enemy_count_by_party_size: array{1:int,2:int,3:int,4:int},
      *   item_level_min: int,
      *   item_level_max: int
      * }
@@ -1054,6 +1070,7 @@ final readonly class UndergroundAlphaV1PlayerCatalog
     private function validatedHuntingGround(string $key, array $ground): array
     {
         $requiredTrial = $ground['required_trial_key'] ?? null;
+        $enemyCounts = $ground['enemy_count_by_party_size'] ?? null;
         if ($key === ''
             || ! is_string($ground['content_identity'] ?? null) || $ground['content_identity'] === ''
             || ! is_string($ground['name'] ?? null) || $ground['name'] === ''
@@ -1062,7 +1079,9 @@ final readonly class UndergroundAlphaV1PlayerCatalog
             || ! is_int($ground['item_level_max'] ?? null)
             || $ground['item_level_max'] < $ground['item_level_min']
             || $ground['item_level_max'] > $this->equipmentCatalog->generatorItemLevelMax()
-            || ! is_array($ground['encounters'] ?? null) || $ground['encounters'] === []) {
+            || ! is_array($ground['encounters'] ?? null) || $ground['encounters'] === []
+            || ! is_array($enemyCounts) || array_keys($enemyCounts) !== [1, 2, 3, 4]
+            || array_filter($enemyCounts, static fn (mixed $count): bool => ! is_int($count) || $count < 1) !== []) {
             throw new RuntimeException("Underground hunting ground [{$key}] is invalid.");
         }
 
@@ -1071,6 +1090,7 @@ final readonly class UndergroundAlphaV1PlayerCatalog
             'content_identity' => $ground['content_identity'],
             'name' => $ground['name'],
             'required_trial_key' => $requiredTrial,
+            'enemy_count_by_party_size' => $enemyCounts,
             'item_level_min' => $ground['item_level_min'],
             'item_level_max' => $ground['item_level_max'],
         ];
