@@ -1,24 +1,34 @@
 <script setup lang="ts">
 import { computed } from 'vue';
 
-interface State { hp: number; max_hp: number; mp: number; awakening_gauge?: number; awakening_gauge_max?: number; awakened?: boolean; }
-interface Actor { team: 'player' | 'enemy'; combatant_id: string; display_name: string; icon_url?: string | null; portrait_url?: string | null; state?: State; awakening_state?: 'ready' | 'awakened' | null; }
+interface State { hp: number; max_hp: number; mp: number; awakening_gauge?: number; awakening_gauge_max?: number; awakening_unlocked?: boolean; awakened?: boolean; }
+interface ActorImageReferences {
+    compact?: ImageReference | null;
+    awakening_compact?: ImageReference | null;
+    normal?: ImageReference | null;
+    awakening?: ImageReference | null;
+}
+interface Actor { team: 'player' | 'enemy'; combatant_id: string; display_name: string; icon_url?: string | null; portrait_url?: string | null; image_references?: ActorImageReferences | null; state?: State; awakening_state?: 'ready' | 'awakened' | null; awakening_unlocked?: boolean; }
 interface ImageReference { url?: string | null; credit?: string | null; creation_method_label?: string | null; }
 interface PortraitEvent {
     type: 'start' | 'awakening' | 'final';
     round?: number;
     combatant_id: string;
     event_id?: string;
+    state?: State | null;
     image_ref?: ImageReference | null;
     image_refs?: { normal?: ImageReference | null; awakening?: ImageReference | null };
 }
 const props = withDefaults(defineProps<{
     actors: Actor[];
+    // A party actor carries immutable display data. Boundary states are passed
+    // separately so a final state can never leak into the opening card.
+    stateById?: Record<string, State | null> | null;
     portraitEvents?: PortraitEvent[];
     showCards?: boolean;
     portraitEventType?: PortraitEvent['type'] | null;
     portraitRound?: number | null;
-}>(), { portraitEvents: () => [], showCards: true, portraitEventType: null, portraitRound: null });
+}>(), { stateById: undefined, portraitEvents: () => [], showCards: true, portraitEventType: null, portraitRound: null });
 const teamGroups = computed(() => [
     { key: 'player' as const, label: 'PARTY', actors: props.actors.filter((actor) => actor.team === 'player') },
     { key: 'enemy' as const, label: 'ENEMY', actors: props.actors.filter((actor) => actor.team === 'enemy') },
@@ -34,25 +44,81 @@ const visiblePortraitEvents = computed(() => {
     return [...events.values()];
 });
 const actorFor = (event: PortraitEvent): Actor | undefined => props.actors.find((actor) => actor.combatant_id === event.combatant_id);
+const iconFor = (actor: Actor): string | null => {
+    const references = actor.image_references;
+    const state = stateFor(actor);
+    const awakened = state?.awakened === true || (state === null && actor.awakening_state === 'awakened');
+    const selected = awakened ? references?.awakening_compact : references?.compact;
+
+    return selected?.url ?? actor.icon_url ?? null;
+};
 const eventImage = (event: PortraitEvent): string | null => {
     const selected = event.image_ref
         ?? (event.type === 'awakening' ? event.image_refs?.awakening : event.image_refs?.normal);
-    return selected?.url ?? actorFor(event)?.portrait_url ?? null;
+    const actor = actorFor(event);
+    const actorReference = event.type === 'awakening'
+        ? actor?.image_references?.awakening
+        : actor?.image_references?.normal;
+
+    return selected?.url ?? actorReference?.url ?? actor?.portrait_url ?? null;
 };
 const eventLabel = (event: PortraitEvent): string => actorFor(event)?.display_name ?? event.combatant_id;
+const eventState = (event: PortraitEvent): State | null => {
+    if (event.state !== undefined) return event.state;
+    if (props.stateById !== undefined) return props.stateById?.[event.combatant_id] ?? null;
+
+    return actorFor(event)?.state ?? null;
+};
+const eventAwakeningLabel = (event: PortraitEvent): string => {
+    const state = eventState(event);
+    if (!state) return '';
+    if (state.awakened) return 'Awaken!';
+    if (state.awakening_unlocked && state.awakening_gauge_max
+        && (state.awakening_gauge ?? 0) >= state.awakening_gauge_max) return 'Ready';
+
+    return '';
+};
 const eventCredit = (event: PortraitEvent): string | null => {
     const selected = event.image_ref
         ?? (event.type === 'awakening' ? event.image_refs?.awakening : event.image_refs?.normal);
     return selected?.credit ?? null;
 };
-const hpPercent = (actor: Actor) => actor.state && actor.state.max_hp > 0 ? Math.max(0, Math.min(100, Math.round(actor.state.hp / actor.state.max_hp * 100))) : 0;
-const gaugePercent = (actor: Actor) => actor.state && actor.state.awakening_gauge_max ? Math.round((actor.state.awakening_gauge ?? 0) / actor.state.awakening_gauge_max * 100) : 0;
-const awakeningLabel = (actor: Actor): string => actor.awakening_state === 'awakened' || actor.state?.awakened
-    ? 'Awaken!'
-    : actor.awakening_state === 'ready' ? 'Ready' : '';
-const awakeningState = (actor: Actor): 'charging' | 'ready' | 'awakened' => actor.awakening_state === 'awakened' || actor.state?.awakened
-    ? 'awakened'
-    : actor.awakening_state === 'ready' ? 'ready' : 'charging';
+const stateFor = (actor: Actor): State | null => {
+    if (props.stateById !== undefined) return props.stateById?.[actor.combatant_id] ?? null;
+
+    return actor.state ?? null;
+};
+const awakeningVisible = (actor: Actor): boolean => {
+    const state = stateFor(actor);
+
+    return actor.team === 'player'
+        && (state !== null
+            ? state.awakening_unlocked === true || state.awakened === true || actor.awakening_state === 'ready' || actor.awakening_state === 'awakened'
+            : actor.awakening_unlocked === true);
+};
+const hpPercentFor = (actor: Actor): number => {
+    const state = stateFor(actor);
+
+    return state && state.max_hp > 0 ? Math.max(0, Math.min(100, Math.round(state.hp / state.max_hp * 100))) : 0;
+};
+const gaugePercentFor = (actor: Actor): number => {
+    const state = stateFor(actor);
+
+    return state && state.awakening_gauge_max ? Math.round((state.awakening_gauge ?? 0) / state.awakening_gauge_max * 100) : 0;
+};
+const awakeningLabelFor = (actor: Actor): string => {
+    const state = stateFor(actor);
+    if (state) {
+        return state.awakened ? 'Awaken!' : state.awakening_gauge_max && (state.awakening_gauge ?? 0) >= state.awakening_gauge_max ? 'Ready' : '';
+    }
+
+    return actor.awakening_state === 'awakened' ? 'Awaken!' : actor.awakening_state === 'ready' ? 'Ready' : '';
+};
+const awakeningStateFor = (actor: Actor): 'charging' | 'ready' | 'awakened' => {
+    const label = awakeningLabelFor(actor);
+
+    return label === 'Awaken!' ? 'awakened' : label === 'Ready' ? 'ready' : 'charging';
+};
 </script>
 <template>
     <div v-if="showCards" class="underground-party-teams">
@@ -63,14 +129,14 @@ const awakeningState = (actor: Actor): 'charging' | 'ready' | 'awakened' => acto
             </header>
             <div class="underground-party-battle-cards">
                 <article v-for="actor in group.actors" :key="actor.combatant_id" class="underground-party-battle-card" :data-team="actor.team" :data-combatant-id="actor.combatant_id">
-                    <img v-if="actor.icon_url" :src="actor.icon_url" :alt="`${actor.display_name}のアイコン`" class="underground-party-icon">
+                    <img v-if="iconFor(actor)" :src="iconFor(actor)!" :alt="`${actor.display_name}のアイコン`" class="underground-party-icon">
                     <span v-else class="underground-party-icon underground-party-icon-fallback" aria-hidden="true">{{ actor.team === 'enemy' ? '敵' : '秘' }}</span>
                     <div class="underground-party-battle-card-body">
                         <strong>{{ actor.display_name }}</strong>
-                        <template v-if="actor.state">
-                            <label><span>HP</span><span class="underground-party-meter is-hp"><progress :max="actor.state.max_hp" :value="actor.state.hp" :aria-label="`HP ${actor.state.hp}/${actor.state.max_hp}、${hpPercent(actor)}%`" /><span>{{ actor.state.hp }}/{{ actor.state.max_hp }}</span></span></label>
-                            <label><span>MP</span><span class="underground-party-meter is-mp"><progress max="10000" :value="actor.state.mp" :aria-label="`MP ${actor.state.mp}`" /><span>{{ actor.state.mp }}</span></span></label>
-                            <label v-if="actor.state.awakening_gauge_max"><span>覚醒</span><span class="underground-party-meter is-awakening" :data-state="awakeningState(actor)"><progress :max="actor.state.awakening_gauge_max" :value="actor.state.awakening_gauge ?? 0" :aria-label="`覚醒ゲージ ${gaugePercent(actor)}%、${awakeningLabel(actor) || '蓄積中'}`" /><span>{{ awakeningLabel(actor) }}</span></span></label>
+                        <template v-if="stateFor(actor)">
+                            <label><span>HP</span><span class="underground-party-meter is-hp" :class="{ 'is-long': `${stateFor(actor)!.hp}/${stateFor(actor)!.max_hp}`.length > 11 }"><progress :max="stateFor(actor)!.max_hp" :value="stateFor(actor)!.hp" :aria-label="`HP ${stateFor(actor)!.hp}/${stateFor(actor)!.max_hp}、${hpPercentFor(actor)}%`" /><span><span>{{ stateFor(actor)!.hp }}</span><span>/{{ stateFor(actor)!.max_hp }}</span></span></span></label>
+                            <label><span>MP</span><span class="underground-party-meter is-mp"><progress max="10000" :value="stateFor(actor)!.mp" :aria-label="`MP ${stateFor(actor)!.mp}`" /><span>{{ stateFor(actor)!.mp }}</span></span></label>
+                            <label v-if="awakeningVisible(actor) && stateFor(actor)!.awakening_gauge_max"><span>覚醒</span><span class="underground-party-meter is-awakening" :data-state="awakeningStateFor(actor)"><progress :max="stateFor(actor)!.awakening_gauge_max" :value="stateFor(actor)!.awakening_gauge ?? 0" :aria-label="`覚醒ゲージ ${gaugePercentFor(actor)}%、${awakeningLabelFor(actor) || '蓄積中'}`" /><span>{{ awakeningLabelFor(actor) }}</span></span></label>
                         </template>
                     </div>
                 </article>
@@ -82,6 +148,9 @@ const awakeningState = (actor: Actor): 'charging' | 'ready' | 'awakened' => acto
             <img v-if="eventImage(event)" :src="eventImage(event)!" :alt="`${eventLabel(event)}の戦闘画像`" class="underground-party-large-art">
             <figcaption>
                 {{ event.type === 'start' ? '戦闘開始' : event.type === 'awakening' ? '覚醒' : '戦闘終了' }}・{{ eventLabel(event) }}
+                <small v-if="eventState(event)" class="underground-party-portrait-state">
+                    HP {{ eventState(event)?.hp }}/{{ eventState(event)?.max_hp }}・MP {{ eventState(event)?.mp }}<template v-if="eventAwakeningLabel(event)">・{{ eventAwakeningLabel(event) }}</template>
+                </small>
                 <small v-if="eventCredit(event)">画像：{{ eventCredit(event) }}</small>
             </figcaption>
         </figure>

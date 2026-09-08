@@ -2,9 +2,11 @@
 
 namespace Tests\Underground\Feature;
 
+use App\Application\SecretaryLendingService;
 use App\Application\Underground\UndergroundIntroService;
 use App\Application\Underground\UndergroundProfileService;
 use App\Models\Secretary;
+use App\Models\SecretaryLendingParticipation;
 use App\Models\UndergroundBattle;
 use App\Models\UndergroundBattleLog;
 use App\Models\UndergroundIntroProgress;
@@ -112,6 +114,67 @@ final class PostgresUndergroundRuntimeConcurrencyTest extends TestCase
             $battle->finished_at->getTimestamp() + 10,
             $persistedProfile->next_battle_at->getTimestamp(),
         );
+    }
+
+    public function test_reciprocal_party_borrowing_completes_without_a_lock_cycle(): void
+    {
+        [$firstLeader, $firstSecretary] = $this->partyFixture('R07A001A');
+        [$secondLeader, $secondSecretary] = $this->partyFixture('R07B001B');
+
+        $results = $this->runConcurrentPartyOperations([
+            [
+                'user_id' => $firstLeader->id,
+                'operation' => 'explore',
+                'hunting_ground_key' => 'shallow_caves',
+                'borrowed_secretary_ids' => [$secondSecretary->id],
+                'force_victory_drop' => true,
+                'request_id' => (string) Str::uuid(),
+            ],
+            [
+                'user_id' => $secondLeader->id,
+                'operation' => 'explore',
+                'hunting_ground_key' => 'shallow_caves',
+                'borrowed_secretary_ids' => [$firstSecretary->id],
+                'force_victory_drop' => true,
+                'request_id' => (string) Str::uuid(),
+            ],
+        ]);
+
+        $this->assertSame(['ok', 'ok'], array_column($results, 'status'));
+        $this->assertSame(1, SecretaryLendingParticipation::query()
+            ->where('owner_user_id', $firstLeader->id)->count());
+        $this->assertSame(1, SecretaryLendingParticipation::query()
+            ->where('owner_user_id', $secondLeader->id)->count());
+    }
+
+    public function test_two_leaders_can_use_the_same_borrowed_secretary_concurrently(): void
+    {
+        [$lender, $borrowedSecretary] = $this->partyFixture('R07L001L');
+        [$firstLeader] = $this->partyFixture('R07C001C');
+        [$secondLeader] = $this->partyFixture('R07D001D');
+
+        $results = $this->runConcurrentPartyOperations([
+            [
+                'user_id' => $firstLeader->id,
+                'operation' => 'explore',
+                'hunting_ground_key' => 'shallow_caves',
+                'borrowed_secretary_ids' => [$borrowedSecretary->id],
+                'force_victory_drop' => true,
+                'request_id' => (string) Str::uuid(),
+            ],
+            [
+                'user_id' => $secondLeader->id,
+                'operation' => 'explore',
+                'hunting_ground_key' => 'shallow_caves',
+                'borrowed_secretary_ids' => [$borrowedSecretary->id],
+                'force_victory_drop' => true,
+                'request_id' => (string) Str::uuid(),
+            ],
+        ]);
+
+        $this->assertSame(['ok', 'ok'], array_column($results, 'status'));
+        $this->assertSame(2, SecretaryLendingParticipation::query()
+            ->where('owner_user_id', $lender->id)->count());
     }
 
     public function test_concurrent_bank_withdrawals_cannot_duplicate_banked_shards(): void
@@ -537,6 +600,17 @@ final class PostgresUndergroundRuntimeConcurrencyTest extends TestCase
         $intro->advance($user, (string) Str::uuid(), 'growth_path_story_complete');
     }
 
+    /** @return array{User, Secretary, UndergroundProfile} */
+    private function partyFixture(string $visitorCode): array
+    {
+        [$user, $secretary, $profile] = $this->undergroundFixture();
+        $user->forceFill(['visitor_code' => $visitorCode])->save();
+        $this->openExploration($user, $secretary);
+        app(SecretaryLendingService::class)->update($user, true, true);
+
+        return [$user, $secretary, $profile->refresh()];
+    }
+
     /** @return list<array<string, mixed>> */
     private function runConcurrentExplore(User $user, Secretary $secretary, string $requestId): array
     {
@@ -548,6 +622,59 @@ final class PostgresUndergroundRuntimeConcurrencyTest extends TestCase
         ];
 
         return $this->runConcurrentOperations($user, $secretary, [$payload, $payload]);
+    }
+
+    /**
+     * @param  list<array<string, mixed>>  $payloads
+     * @return list<array<string, mixed>>
+     */
+    private function runConcurrentPartyOperations(array $payloads): array
+    {
+        $this->assertCount(2, $payloads);
+        $directory = sys_get_temp_dir().'/underground-runtime-party-'.Str::uuid();
+        $goPath = $directory.'/go';
+        $operationGoPath = $directory.'/operation-go';
+        $workers = [];
+        $this->assertTrue(mkdir($directory, 0700, true));
+
+        try {
+            foreach ([0, 1] as $index) {
+                $workers[] = $this->startWorker(
+                    $directory,
+                    (string) $index,
+                    array_merge($payloads[$index], ['operation_go_path' => $operationGoPath]),
+                    $goPath,
+                );
+            }
+            $this->waitForFiles([
+                $directory.'/ready-0',
+                $directory.'/ready-1',
+            ]);
+            file_put_contents($goPath, 'go', LOCK_EX);
+            $this->waitForFiles([
+                $directory.'/database-0',
+                $directory.'/database-1',
+            ]);
+            file_put_contents($operationGoPath, 'go', LOCK_EX);
+
+            return [
+                $this->finishWorker($workers[0]),
+                $this->finishWorker($workers[1]),
+            ];
+        } finally {
+            foreach ($workers as &$worker) {
+                $this->terminateWorker($worker);
+            }
+            unset($worker);
+            foreach (glob($directory.'/*') ?: [] as $path) {
+                if (is_file($path)) {
+                    unlink($path);
+                }
+            }
+            if (is_dir($directory)) {
+                rmdir($directory);
+            }
+        }
     }
 
     /**

@@ -23,6 +23,7 @@ const props = defineProps<{
     side: 'player' | 'enemy';
     state: CombatantState;
     imageUrl?: string | null;
+    compact?: boolean;
 }>();
 
 const visibleStatuses = computed(() => props.state.statuses.filter((status) => status.remaining > 0 || status.stacks > 0));
@@ -35,8 +36,8 @@ const awakeningPercent = computed(() => Math.round((awakeningGauge.value / awake
 </script>
 
 <template>
-    <article class="underground-matchup-card" :class="{ 'has-portrait': imageUrl }" :data-side="side">
-        <div v-if="imageUrl" class="underground-matchup-portrait">
+    <article class="underground-matchup-card" :class="{ 'has-portrait': imageUrl && !compact, 'is-compact': compact }" :data-side="side">
+        <div v-if="imageUrl && !compact" class="underground-matchup-portrait">
             <img :src="imageUrl" :alt="`${name}の登録画像`">
         </div>
         <div class="underground-matchup-content">
@@ -49,8 +50,8 @@ const awakeningPercent = computed(() => Math.round((awakeningGauge.value / awake
                     <progress class="hp" :max="state.max_hp" :value="state.hp" :aria-label="`HP ${state.hp}/${state.max_hp}、${healthPercent}%`" />
                 </label>
                 <label>
-                    <span><strong>MP {{ state.mp.toLocaleString() }}</strong><small class="visually-hidden">/ 10,000</small></span>
-                    <progress class="mp" max="10000" :value="state.mp" :aria-label="`MP ${state.mp}/10000`" />
+                    <span><strong>MP {{ state.mp.toLocaleString() }}</strong></span>
+                    <progress class="mp" max="10000" :value="state.mp" :aria-label="`MP ${state.mp}`" />
                 </label>
             </div>
             <div
@@ -58,7 +59,7 @@ const awakeningPercent = computed(() => Math.round((awakeningGauge.value / awake
                 class="underground-combatant-awakening"
                 :data-full="awakeningGauge >= awakeningMaximum"
             >
-                <span>覚醒ゲージ</span>
+                <span>覚醒ゲージ <strong v-if="state.awakened">Awaken!</strong><strong v-else-if="awakeningGauge >= awakeningMaximum">Ready</strong></span>
                 <progress :max="awakeningMaximum" :value="awakeningGauge" aria-label="覚醒ゲージ" :aria-valuetext="`${awakeningPercent}%`" />
             </div>
             <ul v-if="state.barrier > 0 || visibleStatuses.length > 0 || state.role_stacks.fighting_spirit > 0 || state.role_stacks.grace > 0 || state.awakened || (state.awakening_guard_rounds_remaining ?? 0) > 0 || (state.awakening_lifesteal_rounds_remaining ?? 0) > 0 || state.taunt" class="underground-active-state" aria-label="有効な状態">
@@ -69,7 +70,7 @@ const awakeningPercent = computed(() => Math.round((awakeningGauge.value / awake
                 <li v-if="state.role_stacks.fighting_spirit > 0">闘志 {{ state.role_stacks.fighting_spirit }}</li>
                 <li v-if="state.role_stacks.grace > 0">恩寵 {{ state.role_stacks.grace }}</li>
                 <li v-if="state.taunt">{{ state.taunt.label ?? '挑発' }}<template v-if="state.taunt.remaining"> 残{{ state.taunt.remaining }}</template></li>
-                <li v-if="state.awakened">覚醒中</li>
+                <li v-if="state.awakened">Awaken!</li>
                 <li v-if="(state.awakening_guard_rounds_remaining ?? 0) > 0">覚醒防御 残{{ state.awakening_guard_rounds_remaining }}</li>
                 <li v-if="(state.awakening_lifesteal_rounds_remaining ?? 0) > 0">修羅の血脈 残{{ state.awakening_lifesteal_rounds_remaining }}</li>
             </ul>

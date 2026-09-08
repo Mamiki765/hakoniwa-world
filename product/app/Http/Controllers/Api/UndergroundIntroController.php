@@ -30,6 +30,7 @@ use App\Http\Requests\UpdateUndergroundActiveLoadoutRequest;
 use App\Http\Requests\UpdateUndergroundAiConfigurationRequest;
 use App\Http\Requests\UpdateUndergroundAwakeningMessageRequest;
 use App\Http\Requests\UpdateUndergroundAwakeningTechniqueRequest;
+use App\Models\Secretary;
 use DomainException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -45,6 +46,18 @@ final class UndergroundIntroController extends Controller
     public function surfaceMap(Request $request, UndergroundSurfaceMapProjection $projection): JsonResponse
     {
         return response()->json(['data' => $projection->forUser($request->user())]);
+    }
+
+    public function lendingCandidates(Request $request, SecretaryLendingService $service): JsonResponse
+    {
+        $request->validate(['after_id' => ['sometimes', 'integer', 'min:0']]);
+        $secretaryId = Secretary::query()->where('user_id', $request->user()->id)->value('id');
+        $candidates = $service->publicCandidates($request->user(), $secretaryId === null ? null : (int) $secretaryId, $request->integer('after_id'));
+
+        return response()->json(['data' => [
+            'candidates' => $candidates,
+            'next_after_id' => count($candidates) === 20 ? $candidates[19]['secretary_id'] : null,
+        ]]);
     }
 
     public function enter(

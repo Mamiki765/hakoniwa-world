@@ -48,13 +48,13 @@ final readonly class SecretaryLendingService
     }
 
     /** @return list<array<string,mixed>> */
-    public function publicCandidates(User $viewer, ?int $excludeSecretaryId = null): array
+    public function publicCandidates(User $viewer, ?int $excludeSecretaryId = null, int $afterId = 0): array
     {
         $query = Secretary::query()->with([
             'user',
             'images',
             'undergroundProfile.skillAllocations',
-            'undergroundProfile.ownedEquipment',
+            'undergroundProfile.ownedEquipment' => fn ($query) => $query->whereNotNull('equipped_slot'),
             'undergroundProfile.trialProgresses',
         ])
             ->join('secretary_lending_settings', 'secretaries.id', '=', 'secretary_lending_settings.secretary_id')
@@ -62,13 +62,17 @@ final readonly class SecretaryLendingService
             ->where('secretary_lending_settings.is_available', true)
             ->whereNotNull('secretaries.name')
             ->whereNotNull('secretaries.named_at')
+            ->whereHas('user', fn ($query) => $query->whereNotNull('visitor_code')->where('visitor_code', '<>', ''))
+            ->where('secretaries.id', '>', $afterId)
+            ->whereHas('undergroundProfile', fn ($query) => $query
+                ->whereNotNull('growth_path_key')->whereNotNull('underground_contract_completed_at'))
             ->select('secretaries.*');
         if ($excludeSecretaryId !== null) {
             $query->where('secretaries.id', '<>', $excludeSecretaryId);
         }
 
         $candidates = [];
-        foreach ($query->orderBy('secretaries.id')->get() as $secretary) {
+        foreach ($query->orderBy('secretaries.id')->limit(20)->get() as $secretary) {
             $profile = $secretary->undergroundProfile;
             if (! $profile instanceof UndergroundProfile
                 || ! is_string($profile->growth_path_key)
@@ -77,12 +81,14 @@ final readonly class SecretaryLendingService
                 continue;
             }
             try {
-                $equipment = $this->equipmentLoadout->summary($profile);
+                $equipment = $profile->ownedEquipment->map(
+                    fn ($item): array => $this->equipmentLoadout->projectOwned($item),
+                )->all();
             } catch (\RuntimeException) {
                 continue;
             }
             $equipped = [];
-            foreach ($equipment['equipped'] as $item) {
+            foreach ($equipment as $item) {
                 if (is_array($item)) {
                     $equipped[] = implode(' ', array_filter([
                         is_string($item['name'] ?? null) ? $item['name'] : null,
@@ -133,7 +139,7 @@ final readonly class SecretaryLendingService
                 'is_public' => (bool) $settings->is_public,
                 'is_available' => (bool) $settings->is_available,
             ],
-            'candidates' => $this->publicCandidates($user, $secretary->id),
+            'candidates' => [],
             'ticket_balance' => $this->ticketBalance($user),
         ];
     }

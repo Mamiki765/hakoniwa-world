@@ -2,53 +2,55 @@
 
 namespace Tests\Underground\Unit;
 
-use App\Application\Underground\UndergroundAlphaV1BattleProjector;
 use App\Application\Underground\UndergroundPartyBattleProjector;
-use App\Domain\Underground\Combat\PartyCombatResult;
 use PHPUnit\Framework\TestCase;
+use Tests\Underground\Fixtures\PartyPresentationFixture;
 
 final class UndergroundPartyBattleProjectorTest extends TestCase
 {
-    public function test_v3_groups_rounds_preserves_actor_identity_and_emits_compact_portrait_events(): void
+    public function test_real_engine_states_and_actions_reach_the_presentation_without_reinterpretation(): void
     {
-        $result = new PartyCombatResult(
-            'player',
-            1,
-            [
-                ['round' => 1, 'kind' => 'action', 'actor_id' => 'secretary:1', 'target_id' => 'enemy:1', 'target_ids' => ['enemy:1'], 'team' => 'player', 'type' => 'damage', 'amount' => 10],
-                ['round' => 1, 'kind' => 'awakening', 'actor_id' => 'secretary:1', 'target_id' => null, 'target_ids' => [], 'team' => 'player'],
-                ['round' => 1, 'kind' => 'round_end', 'team' => 'system', 'combatants' => [
-                    'secretary:1' => ['combatant_id' => 'secretary:1', 'team' => 'player', 'hp' => 90],
-                    'enemy:1' => ['combatant_id' => 'enemy:1', 'team' => 'enemy', 'hp' => 0],
-                ]],
-            ],
-            ['secretary:1' => ['combatant_id' => 'secretary:1', 'team' => 'player', 'hp' => 100]],
-            ['secretary:1' => ['combatant_id' => 'secretary:1', 'team' => 'player', 'hp' => 90]],
-            ['damage_dealt' => 10],
+        $fixture = PartyPresentationFixture::create();
+        $result = $fixture['result'];
+        $projected = (new UndergroundPartyBattleProjector)->project(
+            $result, $fixture['member_snapshots'], $fixture['catalog'],
         );
-        $projected = (new UndergroundPartyBattleProjector)->project($result, [
-            'secretary:1' => ['team' => 'player', 'display_name' => '秘書', 'image_references' => ['compact' => 'c.webp', 'normal' => 'n.webp', 'awakening' => 'a.webp']],
-            'enemy:1' => ['team' => 'enemy', 'label' => '敵', 'image_references' => []],
-        ]);
 
         self::assertSame(3, $projected['version']);
-        self::assertSame('secretary:1', $projected['rounds'][0]['actions'][0]['actor_id']);
-        self::assertSame(['enemy:1'], $projected['rounds'][0]['actions'][0]['target_ids']);
-        self::assertTrue($projected['rounds'][0]['actions'][1]['important']);
-        self::assertCount(3, $projected['portrait_events']);
-        self::assertSame(['compact' => 'c.webp', 'normal' => 'n.webp', 'awakening' => 'a.webp'], $projected['portrait_events'][1]['image_refs']);
-        self::assertSame('a.webp', $projected['portrait_events'][1]['image_ref']);
-        self::assertSame(1, $projected['portrait_events'][1]['round']);
-        self::assertSame('a.webp', $projected['portrait_events'][2]['image_ref']);
-        self::assertSame(['start', 'awakening', 'final'], array_column(
-            array_values(array_filter($projected['portrait_events'], static fn (array $event): bool => $event['combatant_id'] === 'secretary:1')),
-            'type',
-        ));
-    }
+        foreach ($result->initialStates as $id => $state) {
+            self::assertSame($state['hp'], $projected['initial_state'][$id]['hp']);
+            self::assertSame($state['hp'], $projected['rounds'][0]['start_state'][$id]['hp']);
+            self::assertSame($result->finalStates[$id]['hp'], $projected['summary']['final_state'][$id]['hp']);
+        }
+        self::assertNotSame($result->initialStates['secretary:1']['hp'], $result->finalStates['secretary:1']['hp']);
+        $actions = array_merge(...array_column($projected['rounds'], 'actions'));
+        $decisions = array_values(array_filter($actions, static fn (array $row): bool => $row['kind'] === 'decision'));
+        self::assertNotEmpty($decisions);
+        foreach ($decisions as $decision) {
+            self::assertNotSame('decision', $decision['label']);
+            self::assertNotSame($decision['action_key'], $decision['label']);
+            self::assertNotEmpty($decision['actor_id']);
+            self::assertNotEmpty($decision['action_id']);
+        }
+        $costs = array_values(array_filter($actions, static fn (array $row): bool => $row['type'] === 'mp_cost'));
+        self::assertNotEmpty($costs);
+        foreach ($costs as $cost) {
+            self::assertContains($cost['action_id'], array_column($decisions, 'action_id'));
+        }
+        $revivals = array_values(array_filter($actions, static fn (array $row): bool => $row['kind'] === 'revival'));
+        self::assertNotEmpty($revivals);
+        self::assertSame('borrowed:2', $revivals[0]['actor_id']);
+        self::assertSame('secretary:1', $revivals[0]['target_id']);
+        self::assertSame('Leader', $revivals[0]['target_name']);
+        self::assertTrue($revivals[0]['important']);
+        self::assertSame(['Leaderが復活した！'], $revivals[0]['lines']);
 
-    public function test_v3_addition_does_not_reinterpret_legacy_presentation_versions(): void
-    {
-        self::assertSame(2, UndergroundAlphaV1BattleProjector::PRESENTATION_LOG_VERSION);
-        self::assertSame(3, UndergroundPartyBattleProjector::PRESENTATION_LOG_VERSION);
+        $portraits = array_values(array_filter($projected['portrait_events'], static fn (array $event): bool => $event['combatant_id'] === 'borrowed:2'));
+        self::assertSame(['start', 'awakening', 'final'], array_column($portraits, 'type'));
+        self::assertFalse($portraits[0]['state']['awakened']);
+        self::assertTrue($portraits[1]['state']['awakened']);
+        self::assertSame($result->finalStates['borrowed:2'], $portraits[2]['state']);
+        $awakenings = array_values(array_filter($actions, static fn (array $row): bool => $row['kind'] === 'awakening'));
+        self::assertSame(['覚醒する。'], $awakenings[0]['lines']);
     }
 }

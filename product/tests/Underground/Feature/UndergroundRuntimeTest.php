@@ -1231,6 +1231,31 @@ final class UndergroundRuntimeTest extends TestCase
         $this->assertSame(1, count($partyCombat->calls));
     }
 
+    public function test_saved_solo_v1_and_v2_logs_keep_their_names_actions_and_states_without_recombat(): void
+    {
+        [$user, $secretary] = $this->secretaryUser();
+        $this->unlockExploration($secretary);
+        [$runtime, , $combat] = $this->runtimeWithOutcomes(['player']);
+        $run = $runtime->startTrial($user, 'trial_01');
+        $battle = $runtime->fightTrial($user, $run->run_key, (string) Str::uuid())['battle'];
+        $savedRounds = $battle->log->actions;
+        $savedName = $battle->snapshot['player_display_name'];
+        $this->assertNotEmpty($savedRounds);
+        $secretary->update(['name' => '今の名前', 'nickname' => '今']);
+        foreach ([1, 2] as $version) {
+            $snapshot = $battle->snapshot;
+            $snapshot['presentation_log_version'] = $version;
+            unset($snapshot['player_image_references']);
+            $battle->update(['snapshot' => $snapshot]);
+            $projected = $runtime->projectTrialBattle($battle->fresh()->load('log'));
+            $this->assertSame($savedName, $projected['player_display_name']);
+            $this->assertSame($savedRounds, $projected['rounds']);
+            $this->assertNull($projected['player_image_references']);
+            $this->assertNull($projected['party']);
+        }
+        $this->assertCount(1, $combat->calls);
+    }
+
     public function test_trial_start_and_fight_reject_borrowed_members_before_runtime_execution(): void
     {
         $user = User::factory()->create();

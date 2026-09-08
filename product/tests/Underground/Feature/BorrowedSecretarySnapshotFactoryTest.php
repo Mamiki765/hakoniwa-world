@@ -2,10 +2,16 @@
 
 namespace Tests\Underground\Feature;
 
+use App\Application\SecretaryProfilePresenter;
 use App\Application\Underground\BorrowedSecretarySnapshotFactory;
+use App\Application\Underground\UndergroundAlphaV1PlayerCatalog;
+use App\Application\Underground\UndergroundEquipmentCatalog;
+use App\Application\Underground\UndergroundEquipmentLoadoutResolver;
 use App\Application\Underground\UndergroundProfileService;
 use App\Application\Underground\UndergroundRuntimeEquipmentGenerator;
 use App\Application\Underground\UndergroundStarterEquipmentService;
+use App\Domain\Underground\Combat\PriorityCombatAiConfiguration;
+use App\Domain\Underground\Combat\UndergroundAwakening;
 use App\Models\Secretary;
 use App\Models\SecretaryLendingBuildSnapshot;
 use App\Models\UndergroundBattle;
@@ -158,7 +164,9 @@ final class BorrowedSecretarySnapshotFactoryTest extends TestCase
         ]);
         $before = $item->fresh()->toArray();
 
-        $snapshot = app(BorrowedSecretarySnapshotFactory::class)->create(
+        $projectionCalls = [];
+        $factory = $this->instrumentedFactory($projectionCalls);
+        $snapshot = $factory->create(
             $secretary->fresh(['user', 'images']),
             $profile->fresh(),
             3,
@@ -166,6 +174,20 @@ final class BorrowedSecretarySnapshotFactoryTest extends TestCase
             $user,
             false,
         );
+        $firstProjectionCalls = $projectionCalls;
+        $this->assertSame(1, $firstProjectionCalls['equipment_generator'] ?? 0);
+        $this->assertSame(1, $firstProjectionCalls['combat_loadout'] ?? 0);
+        $this->assertSame(1, $firstProjectionCalls['combat_definition'] ?? 0);
+
+        $factory->create(
+            $secretary->fresh(['user', 'images']),
+            $profile->fresh(),
+            3,
+            ['weapon' => 3],
+            $user,
+            false,
+        );
+        $this->assertSame($firstProjectionCalls, $projectionCalls);
 
         $this->assertCount(2, $snapshot['original_equipment']);
         $this->assertSame(6, $snapshot['original_equipment'][0]['payload']['item_level']);
@@ -180,7 +202,7 @@ final class BorrowedSecretarySnapshotFactoryTest extends TestCase
         $this->assertLessThan($generated['weapon_power'], $snapshot['effective_equipment']['weapon_power']);
         $this->assertSame($before, $item->fresh()->toArray());
 
-        $slotSynced = app(BorrowedSecretarySnapshotFactory::class)->create(
+        $slotSynced = $factory->create(
             $secretary->fresh(['user', 'images']),
             $profile->fresh(),
             3,
@@ -192,8 +214,11 @@ final class BorrowedSecretarySnapshotFactoryTest extends TestCase
             ->firstWhere('equipped_slot', 'armor');
         $this->assertIsArray($effectiveArmor);
         $this->assertSame(2, $effectiveArmor['item_level']);
+        $this->assertSame(2, $projectionCalls['equipment_generator']);
+        $this->assertSame(2, $projectionCalls['combat_definition']);
 
         $cache = SecretaryLendingBuildSnapshot::query()->where('secretary_id', $secretary->id)->sole();
+        $this->assertCount(2, $cache->refresh()->projection_cache['slots']);
         $cachedFingerprint = $cache->source_fingerprint;
         $replacement = app(UndergroundRuntimeEquipmentGenerator::class)->generate(
             5,
@@ -222,6 +247,85 @@ final class BorrowedSecretarySnapshotFactoryTest extends TestCase
         $this->assertNotSame($cachedFingerprint, $cache->refresh()->source_fingerprint);
     }
 
+    public function test_display_and_resource_changes_reuse_the_numeric_projection(): void
+    {
+        $user = User::factory()->create();
+        $user->forceFill(['visitor_code' => 'BORROW03'])->save();
+        $secretary = Secretary::query()->create([
+            'user_id' => $user->id,
+            'name' => 'Display changes lender',
+            'named_at' => Carbon::now(),
+        ]);
+        $profile = app(UndergroundProfileService::class)->ensureForSecretary($secretary);
+        $profile->update([
+            'underground_contract_completed_at' => Carbon::now()->subMinute(),
+            'growth_path_key' => 'martial_red',
+            'growth_path_identity' => 'secretary-underground-growth-alpha-v1',
+            'growth_path_selected_at' => Carbon::now(),
+            'combat_level' => 6,
+            'allocated_might_stp' => 20,
+            'current_hp' => 999999,
+            'unspent_stp' => 5,
+            'skill_points_total' => 20,
+            'skill_points_unspent' => 20,
+            'skill_tree_identity' => 'secretary-underground-skill-tree-alpha-v1',
+        ]);
+        app(UndergroundStarterEquipmentService::class)->reconcile($profile->fresh());
+
+        $projectionCalls = [];
+        $factory = $this->instrumentedFactory($projectionCalls);
+        $first = $factory->create(
+            $secretary->fresh(['user', 'images']),
+            $profile->fresh(),
+            3,
+            ['weapon' => 3],
+            $user,
+            false,
+        );
+        $cache = SecretaryLendingBuildSnapshot::query()->where('secretary_id', $secretary->id)->sole();
+        $projectionCache = $cache->projection_cache;
+        $sourceFingerprint = $cache->source_fingerprint;
+        $firstProjectionCalls = $projectionCalls;
+        $this->assertIsArray($projectionCache);
+
+        $secretary->update(['nickname' => '新表示']);
+        $profile->update([
+            'current_hp' => 1,
+            'awakening_message' => '別の覚醒演出',
+        ]);
+        $second = $factory->create(
+            $secretary->fresh(['user', 'images']),
+            $profile->fresh(),
+            3,
+            ['weapon' => 3],
+            $user,
+            false,
+        );
+
+        $this->assertSame('新表示', $second['display_name']);
+        $this->assertSame(1, $second['resources']['effective_current_hp']);
+        $this->assertSame($first['effective_equipment'], $second['effective_equipment']);
+        $this->assertSame($projectionCache, $cache->refresh()->projection_cache);
+        $this->assertSame($sourceFingerprint, $cache->refresh()->source_fingerprint);
+        $this->assertSame('別の覚醒演出', $second['awakening']['message']);
+        $this->assertSame($firstProjectionCalls, $projectionCalls);
+
+        $profile->update(['custom_ai_rules' => []]);
+        $third = $factory->create(
+            $secretary->fresh(['user', 'images']),
+            $profile->fresh(),
+            3,
+            ['weapon' => 3],
+            $user,
+            false,
+        );
+        $this->assertSame([], $third['ai']['rules']);
+        $this->assertSame('custom', $third['player_snapshot']['ai_mode']);
+        $this->assertSame($second['effective_equipment'], $third['effective_equipment']);
+        $this->assertSame($projectionCache['slots'], $cache->refresh()->projection_cache['slots']);
+        $this->assertSame($firstProjectionCalls, $projectionCalls);
+    }
+
     private function sourceBattle(UndergroundProfile $profile): UndergroundBattle
     {
         return UndergroundBattle::query()->create([
@@ -248,5 +352,22 @@ final class BorrowedSecretarySnapshotFactoryTest extends TestCase
             'started_at' => Carbon::now(),
             'finished_at' => Carbon::now(),
         ]);
+    }
+
+    /** @param array<string, int> $calls */
+    private function instrumentedFactory(array &$calls): BorrowedSecretarySnapshotFactory
+    {
+        return new BorrowedSecretarySnapshotFactory(
+            app(UndergroundAlphaV1PlayerCatalog::class),
+            app(UndergroundEquipmentCatalog::class),
+            app(UndergroundEquipmentLoadoutResolver::class),
+            app(UndergroundRuntimeEquipmentGenerator::class),
+            app(SecretaryProfilePresenter::class),
+            app(UndergroundAwakening::class),
+            app(PriorityCombatAiConfiguration::class),
+            static function (string $operation) use (&$calls): void {
+                $calls[$operation] = ($calls[$operation] ?? 0) + 1;
+            },
+        );
     }
 }

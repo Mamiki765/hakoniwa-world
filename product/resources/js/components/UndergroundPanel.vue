@@ -8,6 +8,7 @@ import UndergroundEquipmentShop from './UndergroundEquipmentShop.vue';
 import UndergroundEquipmentVault from './UndergroundEquipmentVault.vue';
 import UndergroundPartyBuilder, { type PartyCandidate } from './UndergroundPartyBuilder.vue';
 import UndergroundPartyBattleCards from './UndergroundPartyBattleCards.vue';
+import { shouldReleasePendingExplorationRequest } from './undergroundExplorationPending';
 import type { EquipmentItem, EquipmentSlot } from './EquipmentItemCard.vue';
 import type { UndergroundAiConfiguration } from './undergroundAi';
 
@@ -28,8 +29,20 @@ interface SimpleAction {
 interface RoundAction {
     type: string;
     side: string;
+    kind?: string;
+    action?: string;
+    action_key?: string;
+    effect_type?: string;
+    action_id?: string | null;
+    actor_id?: string | null;
+    target_id?: string | null;
+    target_ids?: string[];
     actor_name?: string;
     target_name?: string | null;
+    target_names?: string[];
+    skill_name?: string | null;
+    skill_label?: string | null;
+    action_label?: string | null;
     label: string;
     amount?: number;
     critical?: boolean;
@@ -40,6 +53,8 @@ interface RoundAction {
     complete_guarded?: boolean;
     agility_combo_hits?: number | null;
     lines?: string[];
+    revived?: boolean;
+    revive_hp_bps?: number | null;
     important?: boolean;
 }
 
@@ -65,11 +80,27 @@ interface RoundStatePair {
     enemy: RoundState;
 }
 
+type StateEnvelope = RoundStatePair | Record<string, RoundState>;
+
+interface ImageReference {
+    url?: string | null;
+    credit?: string | null;
+    creation_method_label?: string | null;
+}
+
+interface ImageReferences {
+    compact?: ImageReference | null;
+    awakening_compact?: ImageReference | null;
+    normal?: ImageReference | null;
+    awakening?: ImageReference | null;
+}
+
 interface CombatRound {
     round: number;
     actions: RoundAction[];
-    start_state?: RoundStatePair | null;
-    end_state: RoundStatePair | null;
+    start_state?: StateEnvelope | null;
+    end_state: StateEnvelope | null;
+    state_timing?: 'battle_start' | 'previous_round_end' | string;
 }
 
 interface Battle {
@@ -80,7 +111,15 @@ interface Battle {
         enemies?: Array<PartyBattleMember>;
     } | null;
     presentation_log_version?: number;
-    portrait_events?: Array<{ type: 'start' | 'awakening' | 'final'; combatant_id: string; round?: number; event_id?: string }>;
+    portrait_events?: Array<{
+        type: 'start' | 'awakening' | 'final';
+        combatant_id: string;
+        round?: number;
+        event_id?: string;
+        state?: RoundState | null;
+        image_ref?: ImageReference | null;
+        image_refs?: { compact?: ImageReference | null; normal?: ImageReference | null; awakening?: ImageReference | null };
+    }>;
     player_display_name?: string;
     encounter_name: string;
     build_name?: string;
@@ -95,8 +134,9 @@ interface Battle {
     unspent_stp_after?: number;
     detail_available: boolean;
     actions?: SimpleAction[] | CombatRound[] | null;
-    summary?: Record<string, boolean | number | string> | null;
-    initial_state?: RoundStatePair | null;
+    summary?: Record<string, unknown> | null;
+    initial_state?: StateEnvelope | null;
+    player_image_references?: ImageReferences | null;
     rewards?: { xp: number; shards: number; g?: number; drops?: unknown[] };
     detail_message?: string | null;
     trial_run_key?: string | null;
@@ -139,6 +179,7 @@ interface PartyBattleMember {
     display_name: string;
     icon_url?: string | null;
     portrait_url?: string | null;
+    image_references?: ImageReferences | null;
     state?: RoundState;
     awakening_state?: 'ready' | 'awakened' | null;
 }
@@ -171,8 +212,25 @@ interface SkipResult {
     shards_awarded: number;
     combat_level_before: number;
     combat_level_after: number;
-    rewards: { drops?: Array<{ status: string }> };
+    rewards?: {
+        drops?: SkipDrop[];
+        [key: string]: unknown;
+    };
+    ticket_balance?: number;
+    remaining_ticket_balance?: number;
     settled_at: string;
+}
+
+interface SkipDrop {
+    status: 'none' | 'ineligible' | 'granted' | 'vault_full' | string;
+    quantity?: number;
+    count?: number;
+    item?: {
+        name?: string | null;
+        item_level?: number | null;
+        rarity_label?: string | null;
+        affixes?: Array<{ label?: string | null }>;
+    } | null;
 }
 
 interface TrialRun {
@@ -354,6 +412,12 @@ interface PendingExplorationRequest {
     requestId: string;
     huntingGroundKey: string;
     intentKey: string;
+    borrowedSecretaryIds: number[];
+}
+
+interface LendingCandidatesPage {
+    candidates: PartyCandidate[];
+    next_after_id: number | null;
 }
 
 interface UndergroundState {
@@ -469,12 +533,20 @@ const detailPreferenceKey = 'hakoniwa.underground.battle-detail-visible';
 const lastScrolledBattleId = ref<string | null>(null);
 const lendingPublic = ref(false);
 const lendingAvailable = ref(true);
+const partySelectionHydrated = ref(false);
 const selectedBuild = ref('');
 const selectedEnemy = ref('');
 const bankOpen = ref(false);
 const bankAmount = ref<number | null>(1000);
 const selectedHuntingGroundKey = ref('shallow_caves');
 const pendingExplorationRequest = ref<PendingExplorationRequest | null>(null);
+const partyCandidateSearchOpen = ref(false);
+const partyCandidateLoading = ref(false);
+const partyCandidateLoadedOnce = ref(false);
+const partyCandidateSearchComplete = ref(false);
+const partyCandidateNextAfterId = ref<number | null>(null);
+const loadedPartyCandidates = ref<PartyCandidate[]>([]);
+const knownPartyCandidates = ref(new Map<string, PartyCandidate>());
 const pendingTrialRequest = ref<PendingTrialRequest | null>(null);
 const pendingSkipRequest = ref<PendingMutation | null>(null);
 const lastSkipResult = ref<SkipResult | null>(null);
@@ -506,8 +578,55 @@ const cooldownNowMs = ref(Date.now());
 let cooldownTimer: ReturnType<typeof window.setInterval> | null = null;
 let huntingGroundPreferenceHydrated = false;
 const currentBattle = computed(() => selectedBattle.value ?? state.value?.battle ?? null);
-const partyCandidates = computed(() => state.value?.lending?.candidates ?? state.value?.party_candidates ?? []);
-const partySelectedIds = computed(() => state.value?.party_member_ids ?? selectedPartyMemberIds.value);
+const partySelectedIds = computed(() => selectedPartyMemberIds.value);
+const statePartyCandidates = computed(() => [
+    ...(state.value?.lending?.candidates ?? []),
+    ...(state.value?.party_candidates ?? []),
+]);
+const partyCandidates = computed<PartyCandidate[]>(() => {
+    const rows = new Map<string, PartyCandidate>();
+    for (const candidate of [...statePartyCandidates.value, ...loadedPartyCandidates.value]) {
+        rows.set(`${candidate.source}:${candidate.secretary_id}`, candidate);
+    }
+    const loadedBorrowedIds = new Set(
+        loadedPartyCandidates.value
+            .filter((candidate) => candidate.source === 'borrowed_secretary')
+            .map((candidate) => candidate.secretary_id),
+    );
+    for (const secretaryId of partySelectedIds.value) {
+        const selected = [...rows.values()].find((candidate) => candidate.secretary_id === secretaryId);
+        if (selected) {
+            if (partyCandidateSearchComplete.value
+                && selected.source === 'borrowed_secretary'
+                && !loadedBorrowedIds.has(selected.secretary_id)) {
+                rows.set(`${selected.source}:${selected.secretary_id}`, { ...selected, available: false });
+            }
+            continue;
+        }
+        const known = [...knownPartyCandidates.value.values()].find((candidate) => candidate.secretary_id === secretaryId);
+        const unavailable: PartyCandidate = known ?? {
+            secretary_id: secretaryId,
+            source: 'borrowed_secretary',
+            display_name: null,
+            combat_level: null,
+            available: false,
+        };
+        rows.set(`${unavailable.source}:${unavailable.secretary_id}`, { ...unavailable, available: false });
+    }
+
+    return [...rows.values()];
+});
+const availableBorrowedCandidates = computed(() => partyCandidates.value.filter((candidate) => candidate.source === 'borrowed_secretary'
+    && candidate.available
+    && !partySelectedIds.value.includes(candidate.secretary_id)));
+
+function rememberPartyCandidates(candidates: PartyCandidate[]): void {
+    for (const candidate of candidates) {
+        knownPartyCandidates.value.set(`${candidate.source}:${candidate.secretary_id}`, candidate);
+    }
+}
+
+watch(statePartyCandidates, (candidates) => rememberPartyCandidates(candidates), { deep: true, immediate: true });
 const skipTicketBalance = computed(() => state.value?.lending?.ticket_balance ?? null);
 const recollectionEntries = computed(() => state.value?.recollections?.entries ?? []);
 const selectedRecollection = computed(() => recollectionEntries.value.find((entry) => entry.key === selectedRecollectionKey.value) ?? null);
@@ -571,13 +690,38 @@ const currentPlayerDisplayName = computed(() => currentBattle.value
     ? playerDisplayName(currentBattle.value)
     : state.value?.secretary_name ?? '秘書');
 const currentStructuredRounds = computed(() => currentBattle.value ? structuredRounds(currentBattle.value) : []);
+function isStatePair(value: StateEnvelope | null | undefined): value is RoundStatePair {
+    return value !== null
+        && value !== undefined
+        && typeof value === 'object'
+        && 'player' in value
+        && 'enemy' in value;
+}
+function hasStateEnvelope(value: StateEnvelope | null | undefined): value is StateEnvelope {
+    return value !== null
+        && value !== undefined
+        && typeof value === 'object'
+        && Object.keys(value).length > 0;
+}
+function partyStateMap(value: StateEnvelope | null | undefined): Record<string, RoundState> | null {
+    return hasStateEnvelope(value) && !isStatePair(value) ? value : null;
+}
+function soloState(value: StateEnvelope | null | undefined, side: 'player' | 'enemy'): RoundState | null {
+    return isStatePair(value) ? value[side] : null;
+}
 const currentPartyActors = computed(() => {
     const party = currentBattle.value?.party;
     return party ? [...party.members, ...(party.enemies ?? [])] : [];
 });
-const finalBattleState = computed(() => [...currentStructuredRounds.value]
-    .reverse()
-    .find((round) => round.end_state !== null)?.end_state ?? null);
+const finalBattleState = computed<StateEnvelope | null>(() => {
+    const summaryFinalState = currentBattle.value?.summary?.final_state;
+    if (hasStateEnvelope(summaryFinalState)) return summaryFinalState;
+    const roundState = [...currentStructuredRounds.value]
+        .reverse()
+        .find((round) => hasStateEnvelope(round.end_state))?.end_state;
+    if (hasStateEnvelope(roundState)) return roundState;
+    return null;
+});
 const growthEnding = computed(() => state.value?.growth_path?.key === 'free_black'
     ? stories.growth_ending.free_black
     : stories.growth_ending.default);
@@ -664,6 +808,12 @@ watch(() => state.value?.lending?.settings, (settings) => {
     lendingAvailable.value = settings.is_available;
 }, { deep: true, immediate: true });
 
+watch(() => state.value?.party_member_ids, (ids) => {
+    if (!ids || partySelectionHydrated.value) return;
+    selectedPartyMemberIds.value = [...ids];
+    partySelectionHydrated.value = true;
+}, { immediate: true });
+
 watch(() => state.value?.active_slots, (slots) => {
     if (!slots || pendingLoadoutMutation.value) return;
     loadoutDraft.value = slots.map((slot) => slot?.key ?? null);
@@ -699,9 +849,6 @@ watch(() => state.value?.hunting_grounds, (grounds) => {
     const nextKey = unlocked.some((ground) => ground.key === preferredKey)
         ? preferredKey
         : unlocked.find((ground) => ground.key === 'shallow_caves')?.key ?? unlocked[0]?.key ?? 'shallow_caves';
-    if (pendingExplorationRequest.value?.huntingGroundKey !== nextKey) {
-        pendingExplorationRequest.value = null;
-    }
     selectedHuntingGroundKey.value = nextKey;
     try {
         window.localStorage.setItem(huntingGroundPreferenceKey, nextKey);
@@ -716,7 +863,6 @@ function requestId(): string {
 
 function selectHuntingGround(key: string): void {
     if (!unlockedHuntingGrounds.value.some((ground) => ground.key === key)) return;
-    if (selectedHuntingGroundKey.value !== key) pendingExplorationRequest.value = null;
     selectedHuntingGroundKey.value = key;
     try {
         window.localStorage.setItem(huntingGroundPreferenceKey, key);
@@ -905,6 +1051,48 @@ async function showBattle(battle: Battle): Promise<void> {
     }
 }
 
+async function loadPartyCandidates(reset = false): Promise<void> {
+    if (partyCandidateLoading.value) return;
+    if (!reset && partyCandidateLoadedOnce.value && partyCandidateNextAfterId.value === null) return;
+    if (reset) {
+        loadedPartyCandidates.value = [];
+        partyCandidateNextAfterId.value = null;
+        partyCandidateSearchComplete.value = false;
+        partyCandidateLoadedOnce.value = false;
+    }
+    partyCandidateLoading.value = true;
+    error.value = '';
+    try {
+        const afterId = reset ? null : partyCandidateNextAfterId.value;
+        const query = afterId === null ? '' : `?after_id=${encodeURIComponent(String(afterId))}`;
+        const page = await api<LendingCandidatesPage>(`/api/v1/me/underground/lending/candidates${query}`);
+        rememberPartyCandidates(page.candidates ?? []);
+        const merged = new Map<string, PartyCandidate>();
+        for (const candidate of [...loadedPartyCandidates.value, ...(page.candidates ?? [])]) {
+            merged.set(`${candidate.source}:${candidate.secretary_id}`, candidate);
+        }
+        loadedPartyCandidates.value = [...merged.values()];
+        partyCandidateLoadedOnce.value = true;
+        partyCandidateNextAfterId.value = page.next_after_id ?? null;
+        partyCandidateSearchComplete.value = partyCandidateNextAfterId.value === null;
+    } catch (caught) {
+        error.value = caught instanceof Error ? caught.message : '貸出候補を読み込めませんでした。';
+    } finally {
+        partyCandidateLoading.value = false;
+    }
+}
+
+async function togglePartyCandidateSearch(): Promise<void> {
+    partyCandidateSearchOpen.value = !partyCandidateSearchOpen.value;
+    if (partyCandidateSearchOpen.value) {
+        await loadPartyCandidates(true);
+    }
+}
+
+async function loadMorePartyCandidates(): Promise<void> {
+    await loadPartyCandidates(false);
+}
+
 function togglePartyMember(candidate: PartyCandidate): void {
     const current = [...partySelectedIds.value];
     // A secretary can only occur once in a party, and the owner's secretary is
@@ -961,13 +1149,14 @@ async function runExplore(huntingGroundKey: string, intentKey = 'selected-ground
     if (busy.value) return;
     innRested.value = false;
     const currentPending = pendingExplorationRequest.value;
-    const pending = currentPending?.huntingGroundKey === huntingGroundKey
-        && currentPending.intentKey === intentKey
-        ? currentPending
-        : {
+    // Keep the whole intent (including borrowed IDs) until the server result is
+    // recovered. A party change while a response is in flight must not mutate
+    // the payload that a retry reuses.
+    const pending = currentPending ?? {
         requestId: requestId(),
         huntingGroundKey,
         intentKey,
+        borrowedSecretaryIds: [...partySelectedIds.value],
     };
     pendingExplorationRequest.value = pending;
     busy.value = true;
@@ -978,7 +1167,7 @@ async function runExplore(huntingGroundKey: string, intentKey = 'selected-ground
             body: JSON.stringify({
                 request_id: pending.requestId,
                 hunting_ground_key: pending.huntingGroundKey,
-                borrowed_secretary_ids: partySelectedIds.value,
+                borrowed_secretary_ids: [...pending.borrowedSecretaryIds],
             }),
         });
         await refresh(false);
@@ -986,6 +1175,7 @@ async function runExplore(huntingGroundKey: string, intentKey = 'selected-ground
         pendingExplorationRequest.value = null;
     } catch (caught) {
         if (caught instanceof ApiError && caught.status === 409) await refresh(false);
+        if (shouldReleasePendingExplorationRequest(caught)) pendingExplorationRequest.value = null;
         error.value = caught instanceof Error ? caught.message : '周囲を探索できませんでした。';
     } finally {
         busy.value = false;
@@ -1034,6 +1224,29 @@ function skipDisabled(progress: SkipProgress, contentLocked = false): boolean {
         || Boolean(state.value?.trial?.active_run)
         || !progress.unlocked
         || (skipTicketBalance.value ?? 0) < progress.ticket_cost;
+}
+
+function skipDrops(result: SkipResult): SkipDrop[] {
+    return Array.isArray(result.rewards?.drops) ? result.rewards.drops : [];
+}
+
+function skipDropText(drop: SkipDrop): string {
+    const name = drop.item?.name ?? '装備drop';
+    const quantity = drop.quantity ?? drop.count ?? (drop.item ? 1 : null);
+    const quantityText = quantity !== null && quantity !== undefined ? ` ×${quantity}` : '';
+    if (drop.status === 'granted') return `獲得: ${name}${quantityText}`;
+    if (drop.status === 'vault_full') return `取り逃し: ${name}${quantityText}（宝物庫が満杯）`;
+    if (drop.status === 'none') return '装備drop: なし';
+    if (drop.status === 'ineligible') return `装備drop: ${name}${quantityText}（対象外）`;
+
+    return `装備drop: ${name}${quantityText}（${drop.status}）`;
+}
+
+function skipRemainingTickets(result: SkipResult): number {
+    return result.ticket_balance
+        ?? result.remaining_ticket_balance
+        ?? skipTicketBalance.value
+        ?? 0;
 }
 
 async function repeatCurrentExploration(): Promise<void> {
@@ -1306,8 +1519,11 @@ function summaryValue(key: string, value: boolean | number | string): boolean | 
     return key === 'result' ? battleResultLabel(String(value) as Battle['result']) : value;
 }
 
-function visibleSummary(summary: Record<string, boolean | number | string>): Record<string, boolean | number | string> {
-    return Object.fromEntries(Object.entries(summary).filter(([key]) => !hiddenSummaryKeys.has(key)));
+function visibleSummary(summary: Record<string, unknown>): Record<string, boolean | number | string> {
+    const entries = Object.entries(summary).filter(([key, value]) => !hiddenSummaryKeys.has(key)
+        && (typeof value === 'boolean' || typeof value === 'number' || typeof value === 'string'));
+
+    return Object.fromEntries(entries) as Record<string, boolean | number | string>;
 }
 
 function simpleActions(battle: Battle): SimpleAction[] {
@@ -1321,6 +1537,34 @@ function simpleRoundNumbers(battle: Battle): number[] {
 
 function playerDisplayName(battle: Battle): string {
     return battle.player_display_name ?? state.value?.secretary_name ?? '秘書';
+}
+
+function imageUrl(reference: ImageReference | string | null | undefined): string | null {
+    if (typeof reference === 'string') return reference;
+
+    return reference?.url ?? null;
+}
+
+function battlePlayerImageUrl(battle: Battle, awakened = false): string | null {
+    const references = battle.player_image_references;
+    if (!references) return null;
+
+    return awakened
+        ? imageUrl(references.awakening) ?? imageUrl(references.normal)
+        : imageUrl(references.normal);
+}
+
+function roundHasAwakening(round: CombatRound): boolean {
+    return round.actions.some((action) => action.type === 'awakening'
+        || action.type === 'awakening_technique'
+        || action.kind === 'awakening'
+        || action.kind === 'awakening_technique');
+}
+
+function roundStartLabel(round: CombatRound): string {
+    return round.round === 1 || round.state_timing === 'battle_start'
+        ? `第${round.round}ラウンド 開始時`
+        : `第${round.round}ラウンド（前ラウンド終了時）`;
 }
 
 function actorName(side: string, battle: Battle): string {
@@ -1337,37 +1581,118 @@ function targetName(side: string, battle: Battle): string {
         : playerDisplayName(battle);
 }
 
+const fallbackActionLabels: Record<string, string> = {
+    normal_attack: '通常攻撃',
+    defend: '防御',
+    counter: '反撃',
+    self_regeneration: '自己再生',
+    lifesteal: '吸血',
+    complete_guard: '完全防御',
+    taunt: '挑発',
+    awakening: '覚醒',
+    decisive_heavenrend: '天断一閃',
+    absolute_aegis: '絶対護界',
+    life_requiem: '生命讃歌',
+    limitless_reprise: '無窮再演',
+    shura_bloodline: '修羅の血脈',
+    fortress_strike: '城塞撃',
+    judgment_light: '裁きの天光',
+    formless_strike: '無相の一撃',
+};
+
+function actionKey(action: RoundAction): string | null {
+    const key = action.action_key ?? action.action;
+
+    return typeof key === 'string' && key !== '' ? key : null;
+}
+
+function actionLabel(action: RoundAction): string {
+    const key = actionKey(action);
+    const raw = action.skill_name ?? action.skill_label ?? action.action_label ?? action.label;
+    const normalized = typeof raw === 'string' ? raw.trim() : '';
+    const isInternal = normalized === ''
+        || normalized === 'action'
+        || normalized === 'decision'
+        || (key !== null && normalized === key);
+
+    return isInternal
+        ? (key !== null ? fallbackActionLabels[key] ?? 'スキル' : '戦闘行動')
+        : normalized;
+}
+
+function battlePartyMembers(battle: Battle): PartyBattleMember[] {
+    const party = battle.party;
+
+    return party ? [...party.members, ...(party.enemies ?? [])] : [];
+}
+
+function battleActorNameById(battle: Battle, combatantId: string): string | null {
+    const actor = battlePartyMembers(battle).find((member) => member.combatant_id === combatantId);
+
+    return actor?.display_name ?? null;
+}
+
+function actionActorName(action: RoundAction, battle: Battle): string {
+    return (action.actor_id ? battleActorNameById(battle, action.actor_id) : null)
+        ?? action.actor_name
+        ?? actorName(action.side, battle);
+}
+
+function actionTargetNames(action: RoundAction, battle: Battle): string[] {
+    const ids = action.target_ids?.filter((id) => id !== '')
+        ?? (action.target_id ? [action.target_id] : []);
+    const byId = ids.map((id) => battleActorNameById(battle, id) ?? id);
+    const explicit = action.target_names?.filter((name) => name !== '') ?? [];
+    const fallback = action.target_name ? [action.target_name] : [];
+    const names = byId.length > 0 ? byId : explicit.length > 0 ? explicit : fallback;
+
+    return [...new Set(names)];
+}
+
+function actionTargetsText(action: RoundAction, battle: Battle): string {
+    const names = actionTargetNames(action, battle);
+
+    return names.length > 0 ? names.join('、') : targetName(action.side, battle);
+}
+
 function actionNarrative(action: RoundAction, battle: Battle): string {
-    const actor = action.actor_name ?? actorName(action.side, battle);
-    const target = action.target_name ?? targetName(action.side, battle);
+    const actor = actionActorName(action, battle);
+    const target = actionTargetsText(action, battle);
     const amount = action.amount ?? 0;
+    const revival = action.revived === true || action.kind === 'revival' || action.type === 'revival';
+    if (revival) {
+        const hp = action.revive_hp_bps !== undefined && action.revive_hp_bps !== null
+            ? `（HP ${Math.round(action.revive_hp_bps / 100)}%）`
+            : '';
+        return `${actor}の「${actionLabel(action)}」。${target}が復活した！${hp}`;
+    }
     if (action.lines && action.lines.length > 0) return action.lines.join('\n');
     if (action.type === 'warning' || action.type === 'phase_transition') return action.label;
-    if (action.type === 'action' || action.type === 'decision') return `${actor}は「${action.label}」を使用した。`;
+    if (action.type === 'action' || action.type === 'decision' || action.kind === 'decision') return `${actor}は「${actionLabel(action)}」を使用した。`;
     if (action.type === 'mp_cost') return `${actor}はMPを${amount}消費した。`;
     if (action.type === 'mp_recovery') return `${actor}はMPを${amount}回復した。`;
     if (action.type === 'counter') return `${actor}の反撃。${target}に${amount}ダメージ。`;
     if (action.type === 'guard') return `${actor}は防御態勢を取った。`;
-    if (action.type === 'barrier') return `${actor}は「${action.label}」で障壁を${amount}得た。`;
-    if (action.type === 'recovery') return `${actor}は「${action.label}」でHPを${amount}回復した。`;
+    if (action.type === 'barrier') return `${actor}は「${actionLabel(action)}」で障壁を${amount}得た。`;
+    if (action.type === 'recovery') return `${actor}は「${actionLabel(action)}」で${target}のHPを${amount}回復した。`;
     if (action.type === 'role_stack_gain' || action.type === 'role_stack_spent') {
-        const role = withoutActionPrefix(action.label, action.type === 'role_stack_gain' ? '増加:' : '消費:');
+        const role = withoutActionPrefix(actionLabel(action), action.type === 'role_stack_gain' ? '増加:' : '消費:');
         return `${actor}の${role}が${amount}${action.type === 'role_stack_gain' ? '増加' : '消費'}した。`;
     }
-    if (action.type === 'status_applied') return `${target}に${withoutActionPrefix(action.label, '付与:')}が付与された。`;
-    if (action.type === 'status_expired') return `${actor}の${withoutActionPrefix(action.label, '消滅:')}が消滅した。`;
-    if (action.type === 'status_resisted') return `${target}は${withoutActionPrefix(action.label, '抵抗:')}を防いだ。`;
+    if (action.type === 'status_applied') return `${target}に${withoutActionPrefix(actionLabel(action), '付与:')}が付与された。`;
+    if (action.type === 'status_expired') return `${actor}の${withoutActionPrefix(actionLabel(action), '消滅:')}が消滅した。`;
+    if (action.type === 'status_resisted') return `${target}は${withoutActionPrefix(actionLabel(action), '抵抗:')}を防いだ。`;
     if (action.type === 'status_removed') return `${actor}は状態効果を${amount}個解除した。`;
     if (action.type === 'damage') {
         const qualifiers = [action.critical ? '会心' : '', action.guarded ? '防御' : '', action.parried ? '受け流し' : '']
             .filter(Boolean).join('・');
-        if (action.complete_guarded) return `${actor}の「${action.label}」。${target}は完全防御し、HPダメージは0。`;
-        if (action.evaded) return `${actor}の「${action.label}」。${target}は回避した。`;
+        if (action.complete_guarded) return `${actor}の「${actionLabel(action)}」。${target}は完全防御し、HPダメージは0。`;
+        if (action.evaded) return `${actor}の「${actionLabel(action)}」。${target}は回避した。`;
         const damage = amount > 0 ? `${target}に${amount}ダメージ。` : `${target}のHPダメージは0。`;
         const barrier = action.barrier_absorbed ? `障壁が${action.barrier_absorbed}吸収。` : '';
-        return `${actor}の「${action.label}」。${qualifiers ? `${qualifiers}。` : ''}${damage}${barrier}`;
+        return `${actor}の「${actionLabel(action)}」。${qualifiers ? `${qualifiers}。` : ''}${damage}${barrier}`;
     }
-    return `${actor}に「${action.label}」の効果。`;
+    return `${actor}に「${actionLabel(action)}」の効果。`;
 }
 
 function withoutActionPrefix(label: string, prefix: string): string {
@@ -1377,6 +1702,7 @@ function withoutActionPrefix(label: string, prefix: string): string {
 function actionTone(action: RoundAction): string {
     if (action.type === 'warning' || action.type === 'phase_transition') return 'is-warning';
     if (action.type === 'awakening' || action.type === 'awakening_technique') return 'is-awakening';
+    if (action.kind === 'revival' || action.type === 'revival' || action.revived === true) return 'is-recovery';
     if (action.type === 'mp_recovery') return 'is-support';
     if (action.type === 'recovery' || action.type === 'barrier') return 'is-recovery';
     if (action.critical) return 'is-critical';
@@ -1389,19 +1715,26 @@ function actionTone(action: RoundAction): string {
 // Counterattacks, ongoing effects and ambiguous historical rows retain source order.
 function actionGroups(actions: RoundAction[]): Array<{ action: RoundAction; source: RoundAction[]; cost: number | null }> {
     const groups: Array<{ action: RoundAction; source: RoundAction[]; cost: number | null }> = [];
+    const sameActor = (left: RoundAction, right: RoundAction): boolean => {
+        if (left.action_id && right.action_id) return left.action_id === right.action_id;
+        if (left.actor_id && right.actor_id) return left.actor_id === right.actor_id;
+
+        return left.side === right.side && left.actor_name === right.actor_name;
+    };
+    const sameLabel = (left: RoundAction, right: RoundAction): boolean => actionLabel(left) === actionLabel(right);
     for (let index = 0; index < actions.length; index++) {
         const declaration = actions[index]!;
         const cost = actions[index + 1];
         let effectIndex = index + 2;
         while (actions[effectIndex] && ['role_stack_gain', 'role_stack_spent'].includes(actions[effectIndex]!.type)
-            && actions[effectIndex]!.side === declaration.side && actions[effectIndex]!.actor_name === declaration.actor_name) effectIndex++;
+            && sameActor(actions[effectIndex]!, declaration)) effectIndex++;
         const effect = actions[effectIndex];
-        if (declaration.type === 'action' && declaration.actor_name
+        if ((declaration.type === 'action' || declaration.kind === 'decision')
             && cost?.type === 'mp_cost' && cost.amount !== undefined
-            && cost.side === declaration.side && cost.actor_name === declaration.actor_name
+            && sameActor(cost, declaration)
             && effect && ['damage', 'recovery', 'barrier'].includes(effect.type)
-            && effect.side === declaration.side && effect.actor_name === declaration.actor_name
-            && effect.label === declaration.label) {
+            && sameActor(effect, declaration)
+            && sameLabel(effect, declaration)) {
             groups.push({ action: effect, source: actions.slice(index, effectIndex + 1), cost: cost.amount });
             index = effectIndex;
         } else {
@@ -1413,6 +1746,7 @@ function actionGroups(actions: RoundAction[]): Array<{ action: RoundAction; sour
 
 function actionHighlight(action: RoundAction): string | null {
     if (action.type === 'awakening' || action.type === 'awakening_technique') return '覚醒';
+    if (action.kind === 'revival' || action.type === 'revival' || action.revived === true) return '蘇生';
     if (action.critical) return '会心';
     if (action.type === 'mp_recovery') return 'MP回復';
     if (action.type === 'recovery') return '回復';
@@ -1425,6 +1759,7 @@ function actionHighlight(action: RoundAction): string | null {
 
 function isImportantAction(action: RoundAction): boolean {
     return action.important === true || action.type === 'awakening' || action.type === 'awakening_technique'
+        || action.kind === 'revival' || action.type === 'revival' || action.revived === true
         || action.type === 'warning' || action.type === 'phase_transition'
         || action.type === 'damage' && Boolean(action.critical)
         || action.type === 'victory' || action.type === 'defeat';
@@ -1496,33 +1831,67 @@ onUnmounted(() => {
                 <UndergroundPartyBattleCards
                     v-if="currentPartyActors.length > 0"
                     :actors="currentPartyActors"
+                    :state-by-id="partyStateMap(currentBattle.initial_state)"
                     :portrait-events="currentBattle.portrait_events"
                     portrait-event-type="start"
                 />
 
+                <section
+                    v-if="currentPartyActors.length === 0 && soloState(currentBattle.initial_state, 'player') && soloState(currentBattle.initial_state, 'enemy')"
+                    class="underground-round-start underground-solo-battle-start"
+                    aria-label="戦闘開始時の状態"
+                >
+                    <div class="underground-matchup-grid">
+                        <UndergroundCombatantCard
+                            :name="currentPlayerDisplayName"
+                            side="player"
+                            :state="soloState(currentBattle.initial_state, 'player')!"
+                            :image-url="battlePlayerImageUrl(currentBattle)"
+                        />
+                        <span class="underground-matchup-versus" aria-hidden="true">VS</span>
+                        <UndergroundCombatantCard
+                            :name="currentBattle.encounter_name"
+                            side="enemy"
+                            :state="soloState(currentBattle.initial_state, 'enemy')!"
+                        />
+                    </div>
+                </section>
+
                 <div class="underground-rounds">
                     <p v-if="currentBattle.detail_message" class="status">{{ currentBattle.detail_message }}</p>
                     <article v-for="round in currentStructuredRounds" :key="round.round" class="underground-round">
-                        <h2>第{{ round.round }}ラウンド 開始</h2>
+                        <h2>{{ roundStartLabel(round) }}</h2>
                         <UndergroundPartyBattleCards
                             v-if="currentPartyActors.length > 0"
                             :actors="currentPartyActors"
                             :portrait-events="currentBattle.portrait_events"
-                            :show-cards="false"
+                            :state-by-id="partyStateMap(round.start_state)"
                             portrait-event-type="awakening"
                             :portrait-round="round.round"
                         />
-                        <section v-if="round.start_state && currentPartyActors.length === 0" class="underground-round-start" :aria-label="`第${round.round}ラウンド開始時の状態`">
+                        <section v-if="soloState(round.start_state, 'player') && soloState(round.start_state, 'enemy') && currentPartyActors.length === 0" class="underground-round-start" :aria-label="`第${round.round}ラウンド開始時の状態`">
                             <div class="underground-matchup-grid">
                                 <UndergroundCombatantCard
                                     :name="currentPlayerDisplayName"
                                     side="player"
-                                    :state="round.start_state.player"
-                                    :image-url="secretaryImageUrl"
+                                    :state="soloState(round.start_state, 'player')!"
+                                    compact
                                 />
                                 <span class="underground-matchup-versus" aria-hidden="true">VS</span>
-                                <UndergroundCombatantCard :name="currentBattle.encounter_name" side="enemy" :state="round.start_state.enemy" />
+                                <UndergroundCombatantCard :name="currentBattle.encounter_name" side="enemy" :state="soloState(round.start_state, 'enemy')!" compact />
                             </div>
+                        </section>
+                        <section
+                            v-if="currentPartyActors.length === 0 && roundHasAwakening(round) && (soloState(round.end_state, 'player') ?? soloState(round.start_state, 'player'))"
+                            class="underground-solo-awakening-art"
+                            aria-label="覚醒時の状態"
+                        >
+                            <UndergroundCombatantCard
+                                :name="currentPlayerDisplayName"
+                                side="player"
+                                :state="(soloState(round.end_state, 'player') ?? soloState(round.start_state, 'player'))!"
+                                :image-url="battlePlayerImageUrl(currentBattle, true)"
+                            />
                         </section>
                         <h3 class="underground-round-action-heading">第{{ round.round }}ラウンド 行動</h3>
                         <ul class="underground-action-log" :class="{ 'is-detail-hidden': !detailVisible }">
@@ -1547,11 +1916,11 @@ onUnmounted(() => {
                                 </div>
                             </li>
                         </ul>
-                        <details v-if="!round.start_state && round.end_state && currentPartyActors.length === 0" class="underground-round-state">
+                        <details v-if="!round.start_state && soloState(round.end_state, 'player') && soloState(round.end_state, 'enemy') && currentPartyActors.length === 0" class="underground-round-state">
                             <summary>ラウンド{{ round.round }}終了時の状態</summary>
                             <div class="underground-matchup-grid">
-                                <UndergroundCombatantCard :name="currentPlayerDisplayName" side="player" :state="round.end_state.player" />
-                                <UndergroundCombatantCard :name="currentBattle.encounter_name" side="enemy" :state="round.end_state.enemy" />
+                                <UndergroundCombatantCard :name="currentPlayerDisplayName" side="player" :state="soloState(round.end_state, 'player')!" compact />
+                                <UndergroundCombatantCard :name="currentBattle.encounter_name" side="enemy" :state="soloState(round.end_state, 'enemy')!" compact />
                             </div>
                         </details>
                     </article>
@@ -1573,11 +1942,11 @@ onUnmounted(() => {
                     <UndergroundPartyBattleCards
                         v-if="currentPartyActors.length > 0"
                         :actors="currentPartyActors"
+                        :state-by-id="partyStateMap(finalBattleState)"
                         :portrait-events="currentBattle.portrait_events"
-                        :show-cards="false"
                         portrait-event-type="final"
                     />
-                    <section v-if="finalBattleState && currentPartyActors.length === 0" class="underground-matchup underground-final-state" aria-labelledby="underground-final-state-title">
+                    <section v-if="soloState(finalBattleState, 'player') && soloState(finalBattleState, 'enemy') && currentPartyActors.length === 0" class="underground-matchup underground-final-state" aria-labelledby="underground-final-state-title">
                         <div class="underground-matchup-heading">
                             <h3 id="underground-final-state-title">戦闘中の最終状態</h3>
                         </div>
@@ -1585,11 +1954,11 @@ onUnmounted(() => {
                             <UndergroundCombatantCard
                                 :name="currentPlayerDisplayName"
                                 side="player"
-                                :state="finalBattleState.player"
-                                :image-url="secretaryImageUrl"
+                                :state="soloState(finalBattleState, 'player')!"
+                                :image-url="battlePlayerImageUrl(currentBattle, soloState(finalBattleState, 'player')?.awakened === true)"
                             />
                             <span class="underground-matchup-versus" aria-hidden="true">VS</span>
-                            <UndergroundCombatantCard :name="currentBattle.encounter_name" side="enemy" :state="finalBattleState.enemy" />
+                            <UndergroundCombatantCard :name="currentBattle.encounter_name" side="enemy" :state="soloState(finalBattleState, 'enemy')!" />
                         </div>
                     </section>
                     <p v-if="currentBattle.hunting_ground">狩場: {{ currentBattle.hunting_ground.name }}</p>
@@ -1938,12 +2307,30 @@ onUnmounted(() => {
 
                 <section class="underground-action-pane" aria-labelledby="underground-guide-title">
                     <UndergroundPartyBuilder
-                        v-if="partyCandidates.length > 0"
                         :candidates="partyCandidates"
                         :selected-ids="partySelectedIds"
+                        :leader-combat-level="state.combat_level"
+                        :show-candidate-list="partyCandidateSearchOpen"
                         :disabled="busy || Boolean(state.trial?.active_run)"
                         @toggle="togglePartyMember"
                     />
+                    <section class="underground-party-browser" aria-label="貸出秘書を探す">
+                        <button type="button" :disabled="busy || Boolean(state.trial?.active_run)" @click="togglePartyCandidateSearch">
+                            {{ partyCandidateSearchOpen ? '貸出候補を閉じる' : '貸出秘書を探す' }}
+                        </button>
+                        <p v-if="partyCandidateSearchOpen && partyCandidateLoading" class="status">貸出候補を読み込んでいます。</p>
+                        <button
+                            v-if="partyCandidateSearchOpen && partyCandidateLoadedOnce && partyCandidateNextAfterId !== null"
+                            type="button"
+                            :disabled="partyCandidateLoading"
+                            @click="loadMorePartyCandidates"
+                        >
+                            さらに表示
+                        </button>
+                        <p v-if="partyCandidateSearchOpen && partyCandidateSearchComplete && availableBorrowedCandidates.length === 0" class="underground-party-empty">
+                            現在、貸出可能な秘書はいません。
+                        </p>
+                    </section>
                     <section v-if="state.lending" class="underground-lending-settings" aria-labelledby="underground-lending-title">
                         <h2 id="underground-lending-title">秘書の貸出</h2>
                         <label><input v-model="lendingPublic" type="checkbox" :disabled="busy"> 他のプレイヤーに公開</label>
@@ -1953,7 +2340,7 @@ onUnmounted(() => {
                     <section v-if="skipTicketBalance !== null" class="underground-skip-ticket-balance" aria-label="スキップチケット">
                         <h2>スキップチケット</h2>
                         <p><strong>{{ skipTicketBalance }}</strong> 枚</p>
-                        <small>貸出報酬。消費機能はありません。</small>
+                        <small>貸出報酬などで獲得。解禁済み狩場は1枚、試練1周（10連戦）は10枚でskipできます。</small>
                     </section>
                     <section class="underground-shop">
                         <p class="eyebrow">案内人 / ショップ</p>
@@ -1983,6 +2370,9 @@ onUnmounted(() => {
                     </section>
                     <section class="underground-adventure" aria-labelledby="underground-adventure-title">
                         <h2 id="underground-adventure-title">冒険</h2>
+                        <p v-if="pendingExplorationRequest" class="underground-pending-request" role="status">
+                            前回の探索結果を確認中です。編成を変えても、同じ同行者で結果を再確認します。
+                        </p>
                         <div class="underground-entries">
                             <div class="underground-explore-picker">
                                 <button
@@ -2029,7 +2419,7 @@ onUnmounted(() => {
                                 <h3 id="underground-skip-title">skip ticket</h3>
                                 <strong>所持 {{ skipTicketBalance }}枚</strong>
                             </header>
-                            <p>実戦で解禁したcontentを、combat・待ち時間・cooldownなしでclearします。</p>
+                            <p>実戦50勝の狩場は1枚、実戦5周clearの試練は1周10枚で、combat・待ち時間・cooldownなしに通常の反復報酬を受け取れます。</p>
                             <ul>
                                 <li v-for="ground in state.hunting_grounds ?? []" :key="`skip-ground:${ground.key}`">
                                     <span><strong>{{ ground.name }}</strong><small>実戦 {{ ground.skip.actual_clear_count }} / {{ ground.skip.actual_clears_required }}勝・総clear {{ ground.skip.total_clear_count }}</small></span>
@@ -2041,7 +2431,11 @@ onUnmounted(() => {
                                 </li>
                             </ul>
                             <p v-if="lastSkipResult" class="underground-skip-result" role="status">
-                                skip完了: XP {{ lastSkipResult.xp_awarded }} / G {{ lastSkipResult.shards_awarded }} / ticket -{{ lastSkipResult.ticket_cost }}
+                                skip完了<span v-if="lastSkipResult.duplicate">（前回の結果を再表示）</span>: XP {{ lastSkipResult.xp_awarded }} / G {{ lastSkipResult.shards_awarded }} / ticket -{{ lastSkipResult.ticket_cost }}（残り {{ skipRemainingTickets(lastSkipResult) }}枚）
+                                <template v-if="skipDrops(lastSkipResult).length > 0">
+                                    <span class="underground-skip-drop-list">{{ skipDrops(lastSkipResult).map((drop) => skipDropText(drop)).join('／') }}</span>
+                                </template>
+                                <span v-else class="underground-skip-drop-list">装備drop: なし</span>
                             </p>
                         </section>
                         <button v-if="state.trial?.active_run" class="button secondary" type="button" :disabled="busy" @click="withdrawTrial">封印の地から帰還する</button>

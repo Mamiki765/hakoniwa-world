@@ -370,8 +370,15 @@ main { width: min(1560px, 100%); margin: 0 auto; padding: clamp(16px, 3vw, 46px)
 .underground-party-builder, .underground-skip-ticket-balance { display: grid; gap: .55rem; padding: .8rem; border: 1px solid var(--line); border-radius: 10px; background: var(--paper); }
 .underground-party-builder > header { display: flex; align-items: baseline; justify-content: space-between; gap: 1rem; }
 .underground-party-builder h2, .underground-party-builder p { margin: 0; }
+.underground-party-builder h3 { margin: .2rem 0 0; font-size: .8rem; }
 .underground-party-count { color: var(--muted); font-weight: 800; }
 .underground-party-note { color: var(--muted); font-size: .78rem; }
+.underground-party-selected, .underground-party-available { display: grid; gap: .4rem; }
+.underground-party-browser { display: flex; flex-wrap: wrap; align-items: center; gap: .45rem; }
+.underground-party-browser button { min-height: 2.4rem; }
+.underground-party-candidate-hint, .underground-party-empty { margin: 0; color: var(--muted); font-size: .74rem; }
+.underground-party-candidate.is-unavailable { border-color: color-mix(in srgb, var(--coral) 55%, var(--line)); opacity: .82; }
+.underground-party-candidate:disabled { cursor: not-allowed; }
 .underground-party-candidates { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .45rem; }
 .underground-party-candidate { display: grid; grid-template-columns: 2.5rem minmax(0, 1fr); gap: .55rem; align-items: center; min-width: 0; padding: .45rem; border: 1px solid var(--line); background: var(--input-surface); color: var(--ink); text-align: left; }
 .underground-party-candidate.is-selected { border-color: #3d6fb4; box-shadow: inset 0 0 0 2px #3d6fb4; }
@@ -388,6 +395,7 @@ main { width: min(1560px, 100%); margin: 0 auto; padding: clamp(16px, 3vw, 46px)
 .underground-skip-panel li { padding-top: .45rem; border-top: 1px solid rgba(255, 255, 255, .1); }
 .underground-skip-panel li span, .underground-skip-panel li small { display: block; }
 .underground-skip-result { color: #a9e6b1; }
+.underground-skip-drop-list { display: block; margin-top: .25rem; }
 .underground-party-teams { display: grid; gap: 1rem; padding: .8rem 0; }
 .underground-party-team { display: grid; gap: .45rem; }
 .underground-party-team-heading { display: flex; align-items: baseline; justify-content: space-between; gap: .75rem; padding-bottom: .25rem; border-bottom: 1px solid var(--line); }
@@ -402,9 +410,11 @@ main { width: min(1560px, 100%); margin: 0 auto; padding: clamp(16px, 3vw, 46px)
 .underground-party-portrait-event { display: grid; gap: .25rem; margin: 0; min-width: 0; }
 .underground-party-portrait-event figcaption { color: var(--muted); font-size: .68rem; overflow-wrap: anywhere; }
 .underground-party-portrait-event figcaption small { display: block; }
-.underground-party-battle-card-body label { display: grid; grid-template-columns: 2.5rem minmax(0, 1fr); gap: .25rem; align-items: center; font-size: .65rem; }
-.underground-party-meter { position: relative; display: grid; min-width: 0; }
-.underground-party-meter progress { width: 100%; height: 1rem; overflow: hidden; border: 0; appearance: none; background: var(--line); }
+.underground-party-battle-card-body label { display: grid; grid-template-columns: 2em minmax(0, 1fr); gap: .2em; align-items: center; font-size: .85em; }
+.underground-party-meter { position: relative; display: grid; min-width: 0; min-height: 1.5em; }
+.underground-party-meter.is-long { min-height: 2.5em; }
+.underground-party-battle-card-body label:has(.underground-party-meter.is-long) { grid-template-columns: minmax(0, 1fr); gap: .1em; }
+.underground-party-meter progress { width: 100%; height: 100%; min-height: 1.5em; overflow: hidden; border: 0; appearance: none; background: var(--line); }
 .underground-party-meter progress::-webkit-progress-bar { background: var(--line); }
 .underground-party-meter.is-hp progress::-webkit-progress-value { background: #c94b4b; }
 .underground-party-meter.is-hp progress::-moz-progress-bar { background: #c94b4b; }
@@ -414,7 +424,7 @@ main { width: min(1560px, 100%); margin: 0 auto; padding: clamp(16px, 3vw, 46px)
 .underground-party-meter.is-awakening progress::-moz-progress-bar { background: #c9a227; }
 .underground-party-meter.is-awakening[data-state="awakened"] progress::-webkit-progress-value { background: #a65ac2; }
 .underground-party-meter.is-awakening[data-state="awakened"] progress::-moz-progress-bar { background: #a65ac2; }
-.underground-party-meter > span { position: absolute; inset: 0; display: grid; place-items: center; color: var(--ink); font-size: .58rem; font-variant-numeric: tabular-nums; line-height: 1; text-shadow: 0 1px 1px var(--panel); pointer-events: none; }
+.underground-party-meter > span { position: absolute; inset: 0; display: flex; flex-wrap: wrap; align-content: center; justify-content: center; align-items: center; color: var(--ink); font-size: 1em; font-variant-numeric: tabular-nums; line-height: 1.15; text-shadow: 0 1px 1px var(--panel); pointer-events: none; }
 .underground-party-battle-card-body small { color: var(--muted); font-size: .6rem; overflow-wrap: anywhere; }
 .underground-party-meter.is-awakening[data-state="ready"] > span { color: #463500; font-weight: 900; text-shadow: 0 1px 0 #f8e79d; }
 .underground-party-meter.is-awakening[data-state="awakened"] > span { color: #fff; font-weight: 900; text-shadow: 0 1px 1px #3d1749; }
@@ -437,6 +447,7 @@ main { width: min(1560px, 100%); margin: 0 auto; padding: clamp(16px, 3vw, 46px)
 .underground-matchup-grid { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); align-items: stretch; gap: .65rem; }
 .underground-matchup-versus { align-self: center; color: var(--muted); font-size: .72rem; font-weight: 950; letter-spacing: .08em; }
 .underground-matchup-card { display: grid; grid-template-columns: minmax(0, 1fr); gap: .75rem; min-width: 0; padding: .8rem; border: 1px solid var(--line); border-top: 4px solid #3d6fb4; background: var(--input-surface); box-shadow: 0 8px 24px rgba(18, 63, 73, .08); }
+.underground-matchup-card.is-compact { padding: .6rem; box-shadow: none; }
 .underground-matchup-card.has-portrait { grid-template-columns: 8rem minmax(0, 1fr); }
 .underground-battle-opening h1 { font-size: 1.15rem; }
 .underground-round-state { margin-top: .6rem; }
@@ -463,6 +474,8 @@ main { width: min(1560px, 100%); margin: 0 auto; padding: clamp(16px, 3vw, 46px)
 .underground-combatant-awakening[data-full="true"] progress::-moz-progress-bar { background: #c9a227; }
 .underground-active-state { display: flex; flex-wrap: wrap; gap: .3rem; margin: 0; padding: 0; list-style: none; }
 .underground-active-state li { padding: 2px 6px; border: 1px solid var(--line); border-radius: 999px; background: var(--paper-deep); color: var(--ink); font-size: .62rem; font-weight: 750; }
+.underground-solo-awakening-art { margin-top: .6rem; }
+.underground-pending-request { margin: .4rem 0; padding: .55rem .7rem; border-left: 3px solid var(--coral); background: color-mix(in srgb, var(--input-surface) 88%, var(--coral) 12%); color: var(--muted); font-size: .78rem; }
 .underground-rounds { display: grid; gap: 0; }
 .underground-round { padding: 1.25rem 0; border-bottom: 1px solid var(--line); }
 .underground-round h2 { margin: 0 0 .75rem; font-size: 1.1rem; }
@@ -1379,7 +1392,8 @@ main { width: min(1560px, 100%); margin: 0 auto; padding: clamp(16px, 3vw, 46px)
 }
 
 @media (max-width: 520px) {
-    .underground-party-battle-cards, .underground-party-portrait-events, .secretary-image-slots-grid { grid-template-columns: 1fr; }
+    .underground-party-battle-cards, .secretary-image-slots-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .underground-party-portrait-events { grid-template-columns: 1fr; }
 }
 
 @media (prefers-reduced-motion: reduce) {

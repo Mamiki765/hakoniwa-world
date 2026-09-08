@@ -18,6 +18,7 @@ use App\Http\Requests\NameSecretaryRequest;
 use App\Http\Requests\StoreSecretaryImageRequest;
 use App\Http\Requests\StoreSecretaryMainImageRequest;
 use App\Http\Requests\UpdateSecretaryEquipmentRequest;
+use App\Http\Requests\UpdateSecretaryImageMetadataRequest;
 use App\Http\Requests\UpdateSecretaryImagePreferencesRequest;
 use App\Http\Requests\UpdateSecretaryMainImageMetadataRequest;
 use App\Http\Requests\UpdateSecretaryPortraitPreferenceRequest;
@@ -230,6 +231,26 @@ final class SecretaryController extends Controller
         }
         try {
             $secretary = $service->replaceImage($request->user(), $slot, $image, $request->string('creation_method')->value(), $request->string('credit')->value() ?: null);
+        } catch (DomainException $exception) {
+            throw ValidationException::withMessages(['image' => $exception->getMessage()]);
+        }
+
+        return response()->json(['data' => $presenter->present($secretary, $request->user())]);
+    }
+
+    public function updateImageSlotMetadata(
+        UpdateSecretaryImageMetadataRequest $request,
+        string $slot,
+        SecretaryProfileService $service,
+        SecretaryProfilePresenter $presenter,
+    ): JsonResponse {
+        try {
+            $secretary = $service->updateImageSlotMetadata(
+                $request->user(),
+                $slot,
+                $request->string('creation_method')->value(),
+                $request->string('credit')->value() ?: null,
+            );
         } catch (DomainException $exception) {
             throw ValidationException::withMessages(['image' => $exception->getMessage()]);
         }

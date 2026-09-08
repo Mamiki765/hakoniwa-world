@@ -4,16 +4,20 @@ namespace Tests\Feature;
 
 use App\Application\NationAbandonmentService;
 use App\Application\NationCreationService;
+use App\Application\SecretaryImageRetentionService;
 use App\Application\SecretaryProfilePresenter;
 use App\Domain\Secretary\SecretarySkillCatalog;
 use App\Models\Secretary;
 use App\Models\SecretaryImage;
 use App\Models\SecretarySkill;
+use App\Models\UndergroundBattle;
+use App\Models\UndergroundBattleLog;
 use App\Models\UndergroundProfile;
 use App\Models\User;
 use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
@@ -484,6 +488,137 @@ final class SecretaryPersistenceTest extends TestCase
             ->assertJsonPath('data.main_image.url', null);
     }
 
+    public function test_saved_battle_image_lease_survives_replacement_until_retention_expiry_and_preserves_credit(): void
+    {
+        Storage::fake('secretary_images');
+        $world = $this->lightweightWorld();
+        $owner = User::factory()->create();
+        app(NationCreationService::class)->create($owner, $world, '画像lease島', '画像lease島主');
+        $this->actingAs($owner)->postJson('/api/v1/me/secretary/name', ['name' => '画像lease秘書'])->assertOk();
+
+        $this->actingAs($owner)->post('/api/v1/me/secretary/main-image', [
+            'image' => UploadedFile::fake()->createWithContent('lease-old.png', $this->png()),
+            'creation_method' => 'self_made',
+            'credit' => 'Lease credit',
+        ], ['Accept' => 'application/json'])->assertOk();
+        $secretary = $owner->secretary()->firstOrFail()->fresh(['images', 'user', 'undergroundProfile']);
+        $oldPath = (string) $secretary->main_image_path;
+        $savedReference = app(SecretaryProfilePresenter::class)->resolveLargeImage($secretary, $owner);
+        $this->assertSame('Lease credit', $savedReference['credit']);
+        Storage::disk('secretary_images')->assertExists($oldPath);
+
+        $profile = $secretary->undergroundProfile
+            ?? UndergroundProfile::query()->firstOrCreate(['secretary_id' => $secretary->id]);
+        $expiresAt = Carbon::now()->addHour();
+        $requestId = (string) Str::uuid();
+        $retention = app(SecretaryImageRetentionService::class);
+        $reservationKey = $retention->reservationKey($profile->id, $requestId);
+        $snapshot = ['player_image_references' => ['normal' => $savedReference]];
+        $this->assertNotSame($reservationKey, $retention->reservationKey($profile->id + 1, $requestId));
+        $this->assertSame(1, $retention->reserveSnapshotImages($reservationKey, $snapshot, $expiresAt));
+        $this->assertTrue($retention->isRetained($oldPath));
+        $battle = UndergroundBattle::query()->create([
+            'underground_profile_id' => $profile->id,
+            'request_id' => $requestId,
+            'request_fingerprint' => str_repeat('a', 64),
+            'runtime_identity' => 'secretary-image-retention-test',
+            'activity_type' => UndergroundBattle::ACTIVITY_EXPLORATION,
+            'activity_key' => 'shallow_caves',
+            'encounter_key' => 'giant_rat',
+            'result' => UndergroundBattle::RESULT_VICTORY,
+            'rounds' => 1,
+            'damage_dealt' => 1,
+            'damage_received' => 0,
+            'healing_done' => 0,
+            'xp_awarded' => 1,
+            'shard_delta' => 0,
+            'combat_level_before' => 1,
+            'combat_level_after' => 1,
+            'combat_xp_before' => 0,
+            'combat_xp_after' => 0,
+            'shard_balance_before' => 0,
+            'shard_balance_after' => 0,
+            'private_seed' => 1,
+            'snapshot' => [
+                'player_image_references' => ['normal' => $savedReference],
+            ],
+            'started_at' => Carbon::now(),
+            'finished_at' => Carbon::now(),
+        ]);
+        UndergroundBattleLog::query()->create([
+            'underground_battle_id' => $battle->id,
+            'actions' => [],
+            'expires_at' => $expiresAt,
+        ]);
+        $retention = app(SecretaryImageRetentionService::class);
+        $this->assertSame(1, $retention->retainSnapshotImages($battle, $battle->snapshot));
+        $this->assertDatabaseHas('underground_battle_image_references', [
+            'reference_key' => $reservationKey, 'underground_battle_id' => $battle->id, 'path' => $oldPath,
+        ]);
+        $this->assertSame(0, $retention->reserveSnapshotImages($reservationKey, $snapshot, $expiresAt));
+        $this->assertTrue($retention->isRetained($oldPath, $expiresAt->copy()->subSecond()));
+
+        $this->actingAs($owner)->post('/api/v1/me/secretary/main-image', [
+            'image' => UploadedFile::fake()->createWithContent('lease-new.png', $this->png()),
+            'creation_method' => 'self_made',
+            'credit' => 'New lease credit',
+        ], ['Accept' => 'application/json'])->assertOk();
+        Storage::disk('secretary_images')->assertExists($oldPath);
+        $this->assertSame('Lease credit', $battle->fresh()->snapshot['player_image_references']['normal']['credit']);
+
+        $this->assertSame(1, $retention->pruneExpired(1000, $expiresAt->copy()->addSecond()));
+        $this->assertFalse($retention->isRetained($oldPath, $expiresAt->copy()->addSecond()));
+        Storage::disk('secretary_images')->assertMissing($oldPath);
+    }
+
+    public function test_saved_ai_image_keeps_credit_but_uses_current_viewer_visibility_on_history(): void
+    {
+        Storage::fake('secretary_images');
+        $world = $this->lightweightWorld();
+        $owner = User::factory()->create();
+        app(NationCreationService::class)->create($owner, $world, '画像history島', '画像history島主');
+        $this->actingAs($owner)->postJson('/api/v1/me/secretary/name', ['name' => '画像history秘書'])->assertOk();
+        $owner->forceFill([
+            'show_ai_generated_secretary_images' => true,
+            'secretary_image_fallback' => 'silhouette',
+        ])->save();
+        $this->actingAs($owner->refresh())->post('/api/v1/me/secretary/main-image', [
+            'image' => UploadedFile::fake()->createWithContent('history-ai.png', $this->png()),
+            'creation_method' => 'ai_generated',
+            'credit' => 'History AI credit',
+        ], ['Accept' => 'application/json'])->assertOk();
+
+        $secretary = $owner->secretary()->firstOrFail()->fresh(['images', 'user']);
+        $presenter = app(SecretaryProfilePresenter::class);
+        $savedReference = $presenter->resolveLargeImage($secretary, $owner);
+        $this->assertSame('uploaded', $savedReference['display']);
+        $this->assertSame('History AI credit', $savedReference['credit']);
+        $snapshot = [
+            'player_image_references' => ['normal' => $savedReference],
+            'party' => [
+                'members' => [
+                    'secretary:'.$secretary->id => ['image_references' => ['normal' => $savedReference]],
+                ],
+            ],
+            'portrait_events' => [[
+                'image_ref' => $savedReference,
+                'image_refs' => ['normal' => $savedReference],
+            ]],
+        ];
+
+        $visible = $presenter->filterSavedBattleImages($snapshot, $owner->refresh());
+        $this->assertSame('uploaded', $visible['player_image_references']['normal']['display']);
+        $this->assertSame('History AI credit', $visible['player_image_references']['normal']['credit']);
+
+        $owner->forceFill(['show_ai_generated_secretary_images' => false])->save();
+        $hidden = $presenter->filterSavedBattleImages($snapshot, $owner->refresh());
+        $this->assertSame('none', $hidden['player_image_references']['normal']['display']);
+        $this->assertNull($hidden['player_image_references']['normal']['url']);
+        $this->assertSame('none', $hidden['party']['members']['secretary:'.$secretary->id]['image_references']['normal']['display']);
+        $this->assertSame('none', $hidden['portrait_events'][0]['image_ref']['display']);
+        $this->assertSame('History AI credit', $snapshot['player_image_references']['normal']['credit']);
+    }
+
     public function test_nickname_is_limited_and_profile_presenter_exposes_canonical_compact_name(): void
     {
         $world = $this->lightweightWorld();
@@ -542,6 +677,70 @@ final class SecretaryPersistenceTest extends TestCase
         $this->assertSame('awakening-icon-credit', SecretaryImage::query()->where('secretary_id', $secretary->id)->where('slot', 'awakening_icon')->value('credit'));
     }
 
+    public function test_secretary_image_slot_metadata_can_be_updated_without_replacing_the_file(): void
+    {
+        Storage::fake('secretary_images');
+        $world = $this->lightweightWorld();
+        $owner = User::factory()->create();
+        app(NationCreationService::class)->create($owner, $world, '画像metadata島', '画像metadata主');
+        $this->actingAs($owner)->postJson('/api/v1/me/secretary/name', ['name' => '画像metadata秘書'])->assertOk();
+
+        $this->actingAs($owner)->post('/api/v1/me/secretary/images/icon', [
+            'image' => UploadedFile::fake()->createWithContent('icon.png', $this->png()),
+            'creation_method' => 'self_made',
+            'credit' => 'Initial credit',
+        ], ['Accept' => 'application/json'])->assertOk();
+        $secretary = $owner->secretary()->firstOrFail();
+        $path = SecretaryImage::query()->where('secretary_id', $secretary->id)->where('slot', 'icon')->value('path');
+
+        $this->actingAs($owner)->patchJson('/api/v1/me/secretary/images/icon', [
+            'creation_method' => 'commissioned_or_permitted',
+            'credit' => 'Updated credit',
+        ])->assertOk()
+            ->assertJsonPath('data.images.icon.creation_method', 'commissioned_or_permitted')
+            ->assertJsonPath('data.images.icon.credit', 'Updated credit');
+
+        $this->assertSame($path, SecretaryImage::query()->where('secretary_id', $secretary->id)->where('slot', 'icon')->value('path'));
+    }
+
+    public function test_owner_can_edit_hidden_ai_slot_metadata_without_exposing_edit_fields_to_public_viewers(): void
+    {
+        Storage::fake('secretary_images');
+        $world = $this->lightweightWorld();
+        $owner = User::factory()->create();
+        app(NationCreationService::class)->create($owner, $world, '非表示画像島', '非表示画像主');
+        $this->actingAs($owner)->postJson('/api/v1/me/secretary/name', ['name' => '非表示画像秘書'])->assertOk();
+        $owner->forceFill([
+            'show_ai_generated_secretary_images' => false,
+            'secretary_image_fallback' => 'silhouette',
+        ])->save();
+
+        $this->actingAs($owner->refresh())->post('/api/v1/me/secretary/images/icon', [
+            'image' => UploadedFile::fake()->createWithContent('hidden-icon.png', $this->png()),
+            'creation_method' => 'ai_generated',
+            'credit' => 'Hidden icon credit',
+        ], ['Accept' => 'application/json'])->assertOk()
+            ->assertJsonPath('data.images.icon.display', 'none')
+            ->assertJsonPath('data.images.icon.editable_metadata.creation_method', 'ai_generated')
+            ->assertJsonPath('data.images.icon.editable_metadata.credit', 'Hidden icon credit')
+            ->assertJsonPath('data.images.icon.source', 'slot');
+
+        $this->actingAs($owner->refresh())->patchJson('/api/v1/me/secretary/images/icon', [
+            'creation_method' => 'commissioned_or_permitted',
+            'credit' => 'Updated hidden icon credit',
+        ])->assertOk()
+            ->assertJsonPath('data.images.icon.display', 'uploaded')
+            ->assertJsonPath('data.images.icon.editable_metadata.creation_method', 'commissioned_or_permitted')
+            ->assertJsonPath('data.images.icon.editable_metadata.credit', 'Updated hidden icon credit');
+
+        auth()->logout();
+        $secretary = $owner->secretary()->firstOrFail();
+        $this->getJson('/api/v1/secretaries/'.$secretary->id.'?world_id='.$world->id)
+            ->assertOk()
+            ->assertJsonPath('data.images.icon.display', 'uploaded')
+            ->assertJsonMissingPath('data.images.icon.editable_metadata');
+    }
+
     public function test_portrait_preference_and_awakening_resolvers_fallback_to_legacy_main_image(): void
     {
         Storage::fake('secretary_images');
@@ -550,6 +749,10 @@ final class SecretaryPersistenceTest extends TestCase
         $owner = User::factory()->create();
         app(NationCreationService::class)->create($owner, $world, 'portrait島', 'portrait主');
         $this->actingAs($owner)->postJson('/api/v1/me/secretary/name', ['name' => 'portrait秘書'])->assertOk();
+        $owner->forceFill([
+            'show_ai_generated_secretary_images' => true,
+            'secretary_image_fallback' => 'silhouette',
+        ])->save();
         $secretary = $owner->secretary()->firstOrFail()->fresh(['images', 'user']);
         $presenter = app(SecretaryProfilePresenter::class);
         $this->assertSame('silhouette', $presenter->resolveLargeImage($secretary, $owner)['display']);

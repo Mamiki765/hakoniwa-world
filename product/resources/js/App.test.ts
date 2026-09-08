@@ -1484,14 +1484,47 @@ describe('application lobby and island entry', () => {
         expect(summaryCallCount()).toBe(4);
     });
 
+    it('sells only the unequipped instance of two equal-level bracelets', async () => {
+        const secretary = structuredClone(unnamedSecretaryFixture);
+        Object.assign(secretary, { name: '秘書', named_at: '2026-09-09T00:00:00Z', header_label: '秘書' });
+        for (const item of secretary.inventory.items) {
+            Object.assign(item, { key: 'inora_bracelet', name: 'いのらの腕輪', level: 1, category: 'accessory' });
+        }
+        vi.spyOn(window, 'confirm').mockReturnValue(true);
+        const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+            const path = String(input);
+            const lobby = publicResponse(path);
+            if (lobby !== null) return lobby;
+            if (path === '/api/v1/me') return response({ id: 1, display_name: 'Owner', providers: [] });
+            if (path === '/api/v1/me/nation') return response(ownerNationFixture);
+            if (path === '/api/v1/me/secretary?world_id=1') return response(secretary);
+            if (path === '/api/v1/me/secretary/items/22/sell' && init?.method === 'POST') {
+                secretary.inventory.items = secretary.inventory.items.filter((item) => item.id !== 22);
+                secretary.inventory.used = 1;
+                return response({ secretary, nation: ownerNationFixture });
+            }
+            return response(null, 404);
+        });
+        vi.stubGlobal('fetch', fetchMock);
+        const wrapper = mount(App);
+        await flushPromises();
+        await wrapper.findAll('.site-header nav button').find((button) => button.text() === '秘書')!.trigger('click');
+        await flushPromises();
+        await wrapper.findAll('[role="tab"]').find((tab) => tab.text() === '倉庫')!.trigger('click');
+        const rows = wrapper.findAll('.secretary-warehouse > li');
+        expect(rows).toHaveLength(2);
+        await rows[1]!.get('.secretary-item-sell').trigger('click');
+        await flushPromises();
+        expect(fetchMock.mock.calls.filter(([path, init]) => String(path).endsWith('/sell') && init?.method === 'POST')
+            .map(([path]) => path)).toEqual(['/api/v1/me/secretary/items/22/sell']);
+        expect(wrapper.findAll('.secretary-warehouse > li')).toHaveLength(1);
+        expect(wrapper.get('.secretary-warehouse > li').text()).toContain('slot 1 に装備中');
+        wrapper.unmount();
+    });
+
     it('shows the unnamed Secretary story with the default name and switches permanently to the skill view after naming', async () => {
         window.history.replaceState({}, '', '/underground');
         let secretary = structuredClone(unnamedSecretaryFixture);
-        Object.assign(secretary.inventory.items[1]!, {
-            key: 'old_bow',
-            name: '古びた弓',
-            level: 1,
-        });
         vi.spyOn(window, 'confirm').mockReturnValue(true);
         const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
             const path = String(input);
@@ -1552,18 +1585,6 @@ describe('application lobby and island entry', () => {
                 return response({ ...secretary.profile, name: secretary.name, is_owner: true });
             }
             if (path === '/api/v1/me/secretary?world_id=1') return response(secretary);
-            if (path === '/api/v1/me/secretary/items/22/sell' && init?.method === 'POST') {
-                secretary = {
-                    ...secretary,
-                    inventory: {
-                        ...secretary.inventory,
-                        used: 1,
-                        items: secretary.inventory.items.filter((item) => item.id !== 22),
-                    },
-                };
-
-                return response({ secretary, nation: { ...ownerNationFixture, money: 200 } });
-            }
             if (path === '/api/v1/me/underground') {
                 return response({
                     stage: 'not_started', secretary_name: 'エメラルド', combat_level: 1,
@@ -1681,17 +1702,6 @@ describe('application lobby and island entry', () => {
         expect(wrapper.get('.secretary-warehouse').text()).toContain('貴金属が使われた豪華な指輪');
         expect(wrapper.get('.item-flavor').classes()).toContain('item-flavor');
         expect(secretaryGetCount()).toBe(beforeTabSwitch);
-        const sameNameSaleButtons = wrapper.findAll('.secretary-item-sell');
-        expect(sameNameSaleButtons).toHaveLength(2);
-        await sameNameSaleButtons[1]!.trigger('click');
-        await flushPromises();
-        const itemSaleRequest = fetchMock.mock.calls.find(([path, init]) => (
-            String(path) === '/api/v1/me/secretary/items/22/sell' && init?.method === 'POST'
-        ));
-        expect(itemSaleRequest).toBeDefined();
-        expect(JSON.parse(String(itemSaleRequest?.[1]?.body))).toEqual({ world_id: 1 });
-        expect(wrapper.findAll('.secretary-warehouse > li')).toHaveLength(1);
-        expect(wrapper.get('.secretary-warehouse > li').text()).toContain('slot 1 に装備中');
 
         await wrapper.findAll('.site-header nav button')
             .find((button) => button.text() === 'オプション')!.trigger('click');
@@ -2151,9 +2161,9 @@ describe('application lobby and island entry', () => {
                 explorationAttempts++;
                 openState = {
                     ...openState,
-                    next_battle_at: explorationAttempts === 2
-                        ? null
-                        : new Date(Date.now() + 10_000).toISOString(),
+                    next_battle_at: explorationAttempts === 3
+                        ? new Date(Date.now() + 10_000).toISOString()
+                        : null,
                 };
                 if (explorationAttempts === 1 || explorationAttempts === 3) {
                     throw new TypeError('Explore response lost');
@@ -2435,7 +2445,24 @@ describe('application lobby and island entry', () => {
             String(path) === '/api/v1/me/underground/explore' && init?.method === 'POST'
         ));
         expect(explorationRequests).toHaveLength(2);
-        const changedGroundPayload = JSON.parse(String(explorationRequests[1]?.[1]?.body)) as {
+        const recoveredPayload = JSON.parse(String(explorationRequests[1]?.[1]?.body)) as {
+            request_id: string;
+            hunting_ground_key: string;
+            borrowed_secretary_ids: number[];
+        };
+        expect(recoveredPayload).toEqual({
+            request_id: failedExplorationPayload.request_id,
+            hunting_ground_key: 'shallow_caves',
+            borrowed_secretary_ids: [],
+        });
+        await wrapper.get('.underground-battle-back').trigger('click');
+        await wrapper.get('.underground-explore-button').trigger('click');
+        await flushPromises();
+        const changedGroundRequests = fetchMock.mock.calls.filter(([path, init]) => (
+            String(path) === '/api/v1/me/underground/explore' && init?.method === 'POST'
+        ));
+        expect(changedGroundRequests).toHaveLength(3);
+        const changedGroundPayload = JSON.parse(String(changedGroundRequests[2]?.[1]?.body)) as {
             request_id: string;
             hunting_ground_key: string;
             borrowed_secretary_ids: number[];
@@ -2466,8 +2493,8 @@ describe('application lobby and island entry', () => {
         const repeatedExplorationRequests = fetchMock.mock.calls.filter(([path, init]) => (
             String(path) === '/api/v1/me/underground/explore' && init?.method === 'POST'
         ));
-        expect(repeatedExplorationRequests).toHaveLength(4);
-        const repeatPayload = JSON.parse(String(repeatedExplorationRequests[2]?.[1]?.body)) as {
+        expect(repeatedExplorationRequests).toHaveLength(5);
+        const repeatPayload = JSON.parse(String(repeatedExplorationRequests[3]?.[1]?.body)) as {
             request_id: string;
             hunting_ground_key: string;
             borrowed_secretary_ids: number[];
@@ -2478,7 +2505,7 @@ describe('application lobby and island entry', () => {
             borrowed_secretary_ids: [],
         });
         expect(repeatPayload.request_id).not.toBe(changedGroundPayload.request_id);
-        expect(JSON.parse(String(repeatedExplorationRequests[3]?.[1]?.body))).toEqual(repeatPayload);
+        expect(JSON.parse(String(repeatedExplorationRequests[4]?.[1]?.body))).toEqual(repeatPayload);
         await wrapper.get('.underground-battle-back').trigger('click');
         expect(wrapper.get<HTMLSelectElement>('.underground-ground-selector').element.value).toBe('black_crystal_cave');
         const exploreButton = wrapper.get('.underground-explore-button');
@@ -2596,14 +2623,14 @@ describe('application lobby and island entry', () => {
             '過去のペリドットは「治癒祈祷」を使用した。',
             '過去のペリドットはMPを1146消費した。',
             '過去のペリドットの恩寵が1増加した。',
-            '過去のペリドットは「治癒祈祷」でHPを84回復した。',
+            '過去のペリドットは「治癒祈祷」で過去のペリドットのHPを84回復した。',
         ]);
         expect(firstRoundLog.get('[data-action-type="counter"]').text()).toContain('7ダメージ');
         expect(firstRoundLog.get('.is-support').text()).toContain('MPを3000回復');
         expect(firstRoundLog.get('.is-support').text()).not.toContain('自然');
         expect(wrapper.findAll('.underground-round')).toHaveLength(2);
         expect(wrapper.findAll('.underground-round')[0]!.text()).toContain('第1ラウンド 開始');
-        expect(wrapper.findAll('.underground-round')[1]!.text()).toContain('第2ラウンド 開始');
+        expect(wrapper.findAll('.underground-round')[1]!.text()).toContain('第2ラウンド（前ラウンド終了時）');
         expect(wrapper.findAll('.underground-round')[1]!.text()).toContain('深層追跡者に出血が付与された。');
         expect(wrapper.findAll('.underground-round')[1]!.text()).toContain('過去のペリドットは鈍足を防いだ。');
         expect(wrapper.findAll('.underground-final-state .underground-matchup-card')[0]!.get('h2').text()).toBe('過去のペリドット');
@@ -2781,7 +2808,7 @@ describe('application lobby and island entry', () => {
         expect(wrapper.get('.underground-combat-summary').text()).not.toContain('awakening_triggered');
         expect(wrapper.get('.underground-round-start .underground-combatant-awakening').attributes('data-full')).toBe('true');
         expect(wrapper.get<HTMLProgressElement>('.underground-final-state .underground-combatant-awakening progress').element.value).toBe(0);
-        expect(wrapper.get('.underground-final-state').text()).toContain('覚醒中');
+        expect(wrapper.get('.underground-final-state').text()).toContain('Awaken!');
     });
 
     it('returns to the Secretary when a concurrent escape already advanced the persisted stage', async () => {

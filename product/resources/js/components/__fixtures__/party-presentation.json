@@ -1,0 +1,1942 @@
+{
+    "id": "party-presentation-fixture",
+    "context": "exploration",
+    "presentation_log_version": 3,
+    "party": {
+        "party_id": "fixture-party",
+        "party_size": 4,
+        "enemy_count": 1,
+        "members": [
+            {
+                "team": "player",
+                "combatant_id": "secretary:1",
+                "display_name": "Leader",
+                "icon_url": "/fixtures/leader.webp",
+                "portrait_url": "/fixtures/leader-bust.webp",
+                "image_references": {
+                    "compact": {
+                        "display": "uploaded",
+                        "url": "/fixtures/leader.webp",
+                        "path": "fixtures/leader.webp",
+                        "creation_method": "fixture",
+                        "creation_method_label": "テスト用fixture",
+                        "credit": "Hakoniwa fixture credit"
+                    },
+                    "awakening_compact": {
+                        "display": "uploaded",
+                        "url": "/fixtures/awakening-leader.webp",
+                        "path": "fixtures/awakening-leader.webp",
+                        "creation_method": "fixture",
+                        "creation_method_label": "テスト用fixture",
+                        "credit": "Hakoniwa fixture credit"
+                    },
+                    "normal": {
+                        "display": "uploaded",
+                        "url": "/fixtures/leader-bust.webp",
+                        "path": "fixtures/leader-bust.webp",
+                        "creation_method": "fixture",
+                        "creation_method_label": "テスト用fixture",
+                        "credit": "Hakoniwa fixture credit"
+                    },
+                    "awakening": {
+                        "display": "uploaded",
+                        "url": "/fixtures/awakening-leader-bust.webp",
+                        "path": "fixtures/awakening-leader-bust.webp",
+                        "creation_method": "fixture",
+                        "creation_method_label": "テスト用fixture",
+                        "credit": "Hakoniwa fixture credit"
+                    }
+                },
+                "state": null,
+                "awakening_state": null
+            },
+            {
+                "team": "player",
+                "combatant_id": "borrowed:2",
+                "display_name": "Healer",
+                "icon_url": "/fixtures/healer.webp",
+                "portrait_url": "/fixtures/healer-bust.webp",
+                "image_references": {
+                    "compact": {
+                        "display": "uploaded",
+                        "url": "/fixtures/healer.webp",
+                        "path": "fixtures/healer.webp",
+                        "creation_method": "fixture",
+                        "creation_method_label": "テスト用fixture",
+                        "credit": "Hakoniwa fixture credit"
+                    },
+                    "awakening_compact": {
+                        "display": "uploaded",
+                        "url": "/fixtures/awakening-healer.webp",
+                        "path": "fixtures/awakening-healer.webp",
+                        "creation_method": "fixture",
+                        "creation_method_label": "テスト用fixture",
+                        "credit": "Hakoniwa fixture credit"
+                    },
+                    "normal": {
+                        "display": "uploaded",
+                        "url": "/fixtures/healer-bust.webp",
+                        "path": "fixtures/healer-bust.webp",
+                        "creation_method": "fixture",
+                        "creation_method_label": "テスト用fixture",
+                        "credit": "Hakoniwa fixture credit"
+                    },
+                    "awakening": {
+                        "display": "uploaded",
+                        "url": "/fixtures/awakening-healer-bust.webp",
+                        "path": "fixtures/awakening-healer-bust.webp",
+                        "creation_method": "fixture",
+                        "creation_method_label": "テスト用fixture",
+                        "credit": "Hakoniwa fixture credit"
+                    }
+                },
+                "state": null,
+                "awakening_state": null
+            },
+            {
+                "team": "player",
+                "combatant_id": "secretary:3",
+                "display_name": "Attacker",
+                "icon_url": "/fixtures/attacker.webp",
+                "portrait_url": "/fixtures/attacker-bust.webp",
+                "image_references": {
+                    "compact": {
+                        "display": "uploaded",
+                        "url": "/fixtures/attacker.webp",
+                        "path": "fixtures/attacker.webp",
+                        "creation_method": "fixture",
+                        "creation_method_label": "テスト用fixture",
+                        "credit": "Hakoniwa fixture credit"
+                    },
+                    "awakening_compact": {
+                        "display": "uploaded",
+                        "url": "/fixtures/awakening-attacker.webp",
+                        "path": "fixtures/awakening-attacker.webp",
+                        "creation_method": "fixture",
+                        "creation_method_label": "テスト用fixture",
+                        "credit": "Hakoniwa fixture credit"
+                    },
+                    "normal": {
+                        "display": "uploaded",
+                        "url": "/fixtures/attacker-bust.webp",
+                        "path": "fixtures/attacker-bust.webp",
+                        "creation_method": "fixture",
+                        "creation_method_label": "テスト用fixture",
+                        "credit": "Hakoniwa fixture credit"
+                    },
+                    "awakening": {
+                        "display": "uploaded",
+                        "url": "/fixtures/awakening-attacker-bust.webp",
+                        "path": "fixtures/awakening-attacker-bust.webp",
+                        "creation_method": "fixture",
+                        "creation_method_label": "テスト用fixture",
+                        "credit": "Hakoniwa fixture credit"
+                    }
+                },
+                "state": null,
+                "awakening_state": null
+            },
+            {
+                "team": "player",
+                "combatant_id": "borrowed:4",
+                "display_name": "Support",
+                "icon_url": "/fixtures/support.webp",
+                "portrait_url": "/fixtures/support-bust.webp",
+                "image_references": {
+                    "compact": {
+                        "display": "uploaded",
+                        "url": "/fixtures/support.webp",
+                        "path": "fixtures/support.webp",
+                        "creation_method": "fixture",
+                        "creation_method_label": "テスト用fixture",
+                        "credit": "Hakoniwa fixture credit"
+                    },
+                    "awakening_compact": {
+                        "display": "uploaded",
+                        "url": "/fixtures/awakening-support.webp",
+                        "path": "fixtures/awakening-support.webp",
+                        "creation_method": "fixture",
+                        "creation_method_label": "テスト用fixture",
+                        "credit": "Hakoniwa fixture credit"
+                    },
+                    "normal": {
+                        "display": "uploaded",
+                        "url": "/fixtures/support-bust.webp",
+                        "path": "fixtures/support-bust.webp",
+                        "creation_method": "fixture",
+                        "creation_method_label": "テスト用fixture",
+                        "credit": "Hakoniwa fixture credit"
+                    },
+                    "awakening": {
+                        "display": "uploaded",
+                        "url": "/fixtures/awakening-support-bust.webp",
+                        "path": "fixtures/awakening-support-bust.webp",
+                        "creation_method": "fixture",
+                        "creation_method_label": "テスト用fixture",
+                        "credit": "Hakoniwa fixture credit"
+                    }
+                },
+                "state": null,
+                "awakening_state": null
+            }
+        ],
+        "enemies": [
+            {
+                "team": "enemy",
+                "combatant_id": "enemy:1",
+                "display_name": "PT表示試験体",
+                "icon_url": null,
+                "portrait_url": null,
+                "image_references": [],
+                "state": null,
+                "awakening_state": null
+            }
+        ]
+    },
+    "portrait_events": [
+        {
+            "combatant_id": "secretary:1",
+            "type": "start",
+            "round": 1,
+            "state": {
+                "combatant_id": "secretary:1",
+                "team": "player",
+                "label": "secretary:1",
+                "hp": 1,
+                "max_hp": 1148,
+                "mp": 10000,
+                "barrier": 0,
+                "taunt": null,
+                "statuses": [],
+                "cooldowns": [],
+                "role_stacks": {
+                    "fighting_spirit": 0,
+                    "grace": 0
+                },
+                "awakened": false,
+                "awakening_technique_used": false,
+                "awakening_guard_rounds_remaining": 0,
+                "awakening_guard_applied_round": null,
+                "awakening_lifesteal_rounds_remaining": 0,
+                "awakening_lifesteal_applied_round": null,
+                "awakening_unlocked": false,
+                "awakening_gauge": 0,
+                "awakening_gauge_max": 1000
+            },
+            "image_ref": {
+                "display": "uploaded",
+                "url": "/fixtures/leader-bust.webp",
+                "path": "fixtures/leader-bust.webp",
+                "creation_method": "fixture",
+                "creation_method_label": "テスト用fixture",
+                "credit": "Hakoniwa fixture credit"
+            },
+            "image_refs": {
+                "compact": {
+                    "display": "uploaded",
+                    "url": "/fixtures/leader.webp",
+                    "path": "fixtures/leader.webp",
+                    "creation_method": "fixture",
+                    "creation_method_label": "テスト用fixture",
+                    "credit": "Hakoniwa fixture credit"
+                },
+                "normal": {
+                    "display": "uploaded",
+                    "url": "/fixtures/leader-bust.webp",
+                    "path": "fixtures/leader-bust.webp",
+                    "creation_method": "fixture",
+                    "creation_method_label": "テスト用fixture",
+                    "credit": "Hakoniwa fixture credit"
+                },
+                "awakening": {
+                    "display": "uploaded",
+                    "url": "/fixtures/awakening-leader-bust.webp",
+                    "path": "fixtures/awakening-leader-bust.webp",
+                    "creation_method": "fixture",
+                    "creation_method_label": "テスト用fixture",
+                    "credit": "Hakoniwa fixture credit"
+                }
+            }
+        },
+        {
+            "combatant_id": "secretary:1",
+            "type": "final",
+            "round": 1,
+            "state": {
+                "team": "player",
+                "combatant_id": "secretary:1",
+                "label": "secretary:1",
+                "hp": 1148,
+                "max_hp": 1148,
+                "mp": 10000,
+                "barrier": 0,
+                "taunt": null,
+                "statuses": [],
+                "cooldowns": [],
+                "role_stacks": {
+                    "fighting_spirit": 0,
+                    "grace": 0
+                },
+                "awakened": false,
+                "awakening_technique_used": false,
+                "awakening_guard_rounds_remaining": 0,
+                "awakening_guard_applied_round": null,
+                "awakening_lifesteal_rounds_remaining": 0,
+                "awakening_lifesteal_applied_round": null,
+                "awakening_unlocked": false,
+                "awakening_gauge": 0,
+                "awakening_gauge_max": 1000
+            },
+            "image_ref": {
+                "display": "uploaded",
+                "url": "/fixtures/leader-bust.webp",
+                "path": "fixtures/leader-bust.webp",
+                "creation_method": "fixture",
+                "creation_method_label": "テスト用fixture",
+                "credit": "Hakoniwa fixture credit"
+            },
+            "image_refs": {
+                "compact": {
+                    "display": "uploaded",
+                    "url": "/fixtures/leader.webp",
+                    "path": "fixtures/leader.webp",
+                    "creation_method": "fixture",
+                    "creation_method_label": "テスト用fixture",
+                    "credit": "Hakoniwa fixture credit"
+                },
+                "normal": {
+                    "display": "uploaded",
+                    "url": "/fixtures/leader-bust.webp",
+                    "path": "fixtures/leader-bust.webp",
+                    "creation_method": "fixture",
+                    "creation_method_label": "テスト用fixture",
+                    "credit": "Hakoniwa fixture credit"
+                },
+                "awakening": {
+                    "display": "uploaded",
+                    "url": "/fixtures/awakening-leader-bust.webp",
+                    "path": "fixtures/awakening-leader-bust.webp",
+                    "creation_method": "fixture",
+                    "creation_method_label": "テスト用fixture",
+                    "credit": "Hakoniwa fixture credit"
+                }
+            }
+        },
+        {
+            "combatant_id": "borrowed:2",
+            "type": "start",
+            "round": 1,
+            "state": {
+                "combatant_id": "borrowed:2",
+                "team": "player",
+                "label": "borrowed:2",
+                "hp": 100,
+                "max_hp": 1148,
+                "mp": 10000,
+                "barrier": 0,
+                "taunt": null,
+                "statuses": [],
+                "cooldowns": [],
+                "role_stacks": {
+                    "fighting_spirit": 0,
+                    "grace": 0
+                },
+                "awakened": false,
+                "awakening_technique_used": false,
+                "awakening_guard_rounds_remaining": 0,
+                "awakening_guard_applied_round": null,
+                "awakening_lifesteal_rounds_remaining": 0,
+                "awakening_lifesteal_applied_round": null,
+                "awakening_unlocked": true,
+                "awakening_gauge": 1000,
+                "awakening_gauge_max": 1000
+            },
+            "image_ref": {
+                "display": "uploaded",
+                "url": "/fixtures/healer-bust.webp",
+                "path": "fixtures/healer-bust.webp",
+                "creation_method": "fixture",
+                "creation_method_label": "テスト用fixture",
+                "credit": "Hakoniwa fixture credit"
+            },
+            "image_refs": {
+                "compact": {
+                    "display": "uploaded",
+                    "url": "/fixtures/healer.webp",
+                    "path": "fixtures/healer.webp",
+                    "creation_method": "fixture",
+                    "creation_method_label": "テスト用fixture",
+                    "credit": "Hakoniwa fixture credit"
+                },
+                "normal": {
+                    "display": "uploaded",
+                    "url": "/fixtures/healer-bust.webp",
+                    "path": "fixtures/healer-bust.webp",
+                    "creation_method": "fixture",
+                    "creation_method_label": "テスト用fixture",
+                    "credit": "Hakoniwa fixture credit"
+                },
+                "awakening": {
+                    "display": "uploaded",
+                    "url": "/fixtures/awakening-healer-bust.webp",
+                    "path": "fixtures/awakening-healer-bust.webp",
+                    "creation_method": "fixture",
+                    "creation_method_label": "テスト用fixture",
+                    "credit": "Hakoniwa fixture credit"
+                }
+            }
+        },
+        {
+            "combatant_id": "borrowed:2",
+            "type": "awakening",
+            "round": 1,
+            "state": {
+                "hp": 1388,
+                "max_hp": 1388,
+                "mp": 10000,
+                "barrier": 0,
+                "taunt": null,
+                "statuses": [],
+                "cooldowns": [],
+                "role_stacks": {
+                    "fighting_spirit": 0,
+                    "grace": 0
+                },
+                "awakened": true,
+                "awakening_technique_used": false,
+                "awakening_guard_rounds_remaining": 0,
+                "awakening_guard_applied_round": null,
+                "awakening_lifesteal_rounds_remaining": 0,
+                "awakening_lifesteal_applied_round": null,
+                "awakening_unlocked": true,
+                "awakening_gauge": 0,
+                "awakening_gauge_max": 1000
+            },
+            "image_ref": {
+                "display": "uploaded",
+                "url": "/fixtures/awakening-healer-bust.webp",
+                "path": "fixtures/awakening-healer-bust.webp",
+                "creation_method": "fixture",
+                "creation_method_label": "テスト用fixture",
+                "credit": "Hakoniwa fixture credit"
+            },
+            "image_refs": {
+                "compact": {
+                    "display": "uploaded",
+                    "url": "/fixtures/healer.webp",
+                    "path": "fixtures/healer.webp",
+                    "creation_method": "fixture",
+                    "creation_method_label": "テスト用fixture",
+                    "credit": "Hakoniwa fixture credit"
+                },
+                "normal": {
+                    "display": "uploaded",
+                    "url": "/fixtures/healer-bust.webp",
+                    "path": "fixtures/healer-bust.webp",
+                    "creation_method": "fixture",
+                    "creation_method_label": "テスト用fixture",
+                    "credit": "Hakoniwa fixture credit"
+                },
+                "awakening": {
+                    "display": "uploaded",
+                    "url": "/fixtures/awakening-healer-bust.webp",
+                    "path": "fixtures/awakening-healer-bust.webp",
+                    "creation_method": "fixture",
+                    "creation_method_label": "テスト用fixture",
+                    "credit": "Hakoniwa fixture credit"
+                }
+            }
+        },
+        {
+            "combatant_id": "borrowed:2",
+            "type": "final",
+            "round": 1,
+            "state": {
+                "team": "player",
+                "combatant_id": "borrowed:2",
+                "label": "borrowed:2",
+                "hp": 1388,
+                "max_hp": 1388,
+                "mp": 10000,
+                "barrier": 0,
+                "taunt": null,
+                "statuses": [],
+                "cooldowns": [],
+                "role_stacks": {
+                    "fighting_spirit": 0,
+                    "grace": 0
+                },
+                "awakened": true,
+                "awakening_technique_used": true,
+                "awakening_guard_rounds_remaining": 0,
+                "awakening_guard_applied_round": null,
+                "awakening_lifesteal_rounds_remaining": 0,
+                "awakening_lifesteal_applied_round": null,
+                "awakening_unlocked": true,
+                "awakening_gauge": 0,
+                "awakening_gauge_max": 1000
+            },
+            "image_ref": {
+                "display": "uploaded",
+                "url": "/fixtures/awakening-healer-bust.webp",
+                "path": "fixtures/awakening-healer-bust.webp",
+                "creation_method": "fixture",
+                "creation_method_label": "テスト用fixture",
+                "credit": "Hakoniwa fixture credit"
+            },
+            "image_refs": {
+                "compact": {
+                    "display": "uploaded",
+                    "url": "/fixtures/healer.webp",
+                    "path": "fixtures/healer.webp",
+                    "creation_method": "fixture",
+                    "creation_method_label": "テスト用fixture",
+                    "credit": "Hakoniwa fixture credit"
+                },
+                "normal": {
+                    "display": "uploaded",
+                    "url": "/fixtures/healer-bust.webp",
+                    "path": "fixtures/healer-bust.webp",
+                    "creation_method": "fixture",
+                    "creation_method_label": "テスト用fixture",
+                    "credit": "Hakoniwa fixture credit"
+                },
+                "awakening": {
+                    "display": "uploaded",
+                    "url": "/fixtures/awakening-healer-bust.webp",
+                    "path": "fixtures/awakening-healer-bust.webp",
+                    "creation_method": "fixture",
+                    "creation_method_label": "テスト用fixture",
+                    "credit": "Hakoniwa fixture credit"
+                }
+            }
+        },
+        {
+            "combatant_id": "secretary:3",
+            "type": "start",
+            "round": 1,
+            "state": {
+                "combatant_id": "secretary:3",
+                "team": "player",
+                "label": "secretary:3",
+                "hp": 1000,
+                "max_hp": 1148,
+                "mp": 10000,
+                "barrier": 0,
+                "taunt": null,
+                "statuses": [],
+                "cooldowns": {
+                    "holy_bolt": 0
+                },
+                "role_stacks": {
+                    "fighting_spirit": 0,
+                    "grace": 0
+                },
+                "awakened": false,
+                "awakening_technique_used": false,
+                "awakening_guard_rounds_remaining": 0,
+                "awakening_guard_applied_round": null,
+                "awakening_lifesteal_rounds_remaining": 0,
+                "awakening_lifesteal_applied_round": null,
+                "awakening_unlocked": false,
+                "awakening_gauge": 0,
+                "awakening_gauge_max": 1000
+            },
+            "image_ref": {
+                "display": "uploaded",
+                "url": "/fixtures/attacker-bust.webp",
+                "path": "fixtures/attacker-bust.webp",
+                "creation_method": "fixture",
+                "creation_method_label": "テスト用fixture",
+                "credit": "Hakoniwa fixture credit"
+            },
+            "image_refs": {
+                "compact": {
+                    "display": "uploaded",
+                    "url": "/fixtures/attacker.webp",
+                    "path": "fixtures/attacker.webp",
+                    "creation_method": "fixture",
+                    "creation_method_label": "テスト用fixture",
+                    "credit": "Hakoniwa fixture credit"
+                },
+                "normal": {
+                    "display": "uploaded",
+                    "url": "/fixtures/attacker-bust.webp",
+                    "path": "fixtures/attacker-bust.webp",
+                    "creation_method": "fixture",
+                    "creation_method_label": "テスト用fixture",
+                    "credit": "Hakoniwa fixture credit"
+                },
+                "awakening": {
+                    "display": "uploaded",
+                    "url": "/fixtures/awakening-attacker-bust.webp",
+                    "path": "fixtures/awakening-attacker-bust.webp",
+                    "creation_method": "fixture",
+                    "creation_method_label": "テスト用fixture",
+                    "credit": "Hakoniwa fixture credit"
+                }
+            }
+        },
+        {
+            "combatant_id": "secretary:3",
+            "type": "final",
+            "round": 1,
+            "state": {
+                "team": "player",
+                "combatant_id": "secretary:3",
+                "label": "secretary:3",
+                "hp": 1148,
+                "max_hp": 1148,
+                "mp": 9400,
+                "barrier": 0,
+                "taunt": null,
+                "statuses": [],
+                "cooldowns": {
+                    "holy_bolt": 0
+                },
+                "role_stacks": {
+                    "fighting_spirit": 0,
+                    "grace": 0
+                },
+                "awakened": false,
+                "awakening_technique_used": false,
+                "awakening_guard_rounds_remaining": 0,
+                "awakening_guard_applied_round": null,
+                "awakening_lifesteal_rounds_remaining": 0,
+                "awakening_lifesteal_applied_round": null,
+                "awakening_unlocked": false,
+                "awakening_gauge": 0,
+                "awakening_gauge_max": 1000
+            },
+            "image_ref": {
+                "display": "uploaded",
+                "url": "/fixtures/attacker-bust.webp",
+                "path": "fixtures/attacker-bust.webp",
+                "creation_method": "fixture",
+                "creation_method_label": "テスト用fixture",
+                "credit": "Hakoniwa fixture credit"
+            },
+            "image_refs": {
+                "compact": {
+                    "display": "uploaded",
+                    "url": "/fixtures/attacker.webp",
+                    "path": "fixtures/attacker.webp",
+                    "creation_method": "fixture",
+                    "creation_method_label": "テスト用fixture",
+                    "credit": "Hakoniwa fixture credit"
+                },
+                "normal": {
+                    "display": "uploaded",
+                    "url": "/fixtures/attacker-bust.webp",
+                    "path": "fixtures/attacker-bust.webp",
+                    "creation_method": "fixture",
+                    "creation_method_label": "テスト用fixture",
+                    "credit": "Hakoniwa fixture credit"
+                },
+                "awakening": {
+                    "display": "uploaded",
+                    "url": "/fixtures/awakening-attacker-bust.webp",
+                    "path": "fixtures/awakening-attacker-bust.webp",
+                    "creation_method": "fixture",
+                    "creation_method_label": "テスト用fixture",
+                    "credit": "Hakoniwa fixture credit"
+                }
+            }
+        },
+        {
+            "combatant_id": "borrowed:4",
+            "type": "start",
+            "round": 1,
+            "state": {
+                "combatant_id": "borrowed:4",
+                "team": "player",
+                "label": "borrowed:4",
+                "hp": 1000,
+                "max_hp": 1148,
+                "mp": 10000,
+                "barrier": 0,
+                "taunt": null,
+                "statuses": [],
+                "cooldowns": [],
+                "role_stacks": {
+                    "fighting_spirit": 0,
+                    "grace": 0
+                },
+                "awakened": false,
+                "awakening_technique_used": false,
+                "awakening_guard_rounds_remaining": 0,
+                "awakening_guard_applied_round": null,
+                "awakening_lifesteal_rounds_remaining": 0,
+                "awakening_lifesteal_applied_round": null,
+                "awakening_unlocked": false,
+                "awakening_gauge": 0,
+                "awakening_gauge_max": 1000
+            },
+            "image_ref": {
+                "display": "uploaded",
+                "url": "/fixtures/support-bust.webp",
+                "path": "fixtures/support-bust.webp",
+                "creation_method": "fixture",
+                "creation_method_label": "テスト用fixture",
+                "credit": "Hakoniwa fixture credit"
+            },
+            "image_refs": {
+                "compact": {
+                    "display": "uploaded",
+                    "url": "/fixtures/support.webp",
+                    "path": "fixtures/support.webp",
+                    "creation_method": "fixture",
+                    "creation_method_label": "テスト用fixture",
+                    "credit": "Hakoniwa fixture credit"
+                },
+                "normal": {
+                    "display": "uploaded",
+                    "url": "/fixtures/support-bust.webp",
+                    "path": "fixtures/support-bust.webp",
+                    "creation_method": "fixture",
+                    "creation_method_label": "テスト用fixture",
+                    "credit": "Hakoniwa fixture credit"
+                },
+                "awakening": {
+                    "display": "uploaded",
+                    "url": "/fixtures/awakening-support-bust.webp",
+                    "path": "fixtures/awakening-support-bust.webp",
+                    "creation_method": "fixture",
+                    "creation_method_label": "テスト用fixture",
+                    "credit": "Hakoniwa fixture credit"
+                }
+            }
+        },
+        {
+            "combatant_id": "borrowed:4",
+            "type": "final",
+            "round": 1,
+            "state": {
+                "team": "player",
+                "combatant_id": "borrowed:4",
+                "label": "borrowed:4",
+                "hp": 1148,
+                "max_hp": 1148,
+                "mp": 10000,
+                "barrier": 0,
+                "taunt": null,
+                "statuses": [],
+                "cooldowns": [],
+                "role_stacks": {
+                    "fighting_spirit": 0,
+                    "grace": 0
+                },
+                "awakened": false,
+                "awakening_technique_used": false,
+                "awakening_guard_rounds_remaining": 0,
+                "awakening_guard_applied_round": null,
+                "awakening_lifesteal_rounds_remaining": 0,
+                "awakening_lifesteal_applied_round": null,
+                "awakening_unlocked": false,
+                "awakening_gauge": 0,
+                "awakening_gauge_max": 1000
+            },
+            "image_ref": {
+                "display": "uploaded",
+                "url": "/fixtures/support-bust.webp",
+                "path": "fixtures/support-bust.webp",
+                "creation_method": "fixture",
+                "creation_method_label": "テスト用fixture",
+                "credit": "Hakoniwa fixture credit"
+            },
+            "image_refs": {
+                "compact": {
+                    "display": "uploaded",
+                    "url": "/fixtures/support.webp",
+                    "path": "fixtures/support.webp",
+                    "creation_method": "fixture",
+                    "creation_method_label": "テスト用fixture",
+                    "credit": "Hakoniwa fixture credit"
+                },
+                "normal": {
+                    "display": "uploaded",
+                    "url": "/fixtures/support-bust.webp",
+                    "path": "fixtures/support-bust.webp",
+                    "creation_method": "fixture",
+                    "creation_method_label": "テスト用fixture",
+                    "credit": "Hakoniwa fixture credit"
+                },
+                "awakening": {
+                    "display": "uploaded",
+                    "url": "/fixtures/awakening-support-bust.webp",
+                    "path": "fixtures/awakening-support-bust.webp",
+                    "creation_method": "fixture",
+                    "creation_method_label": "テスト用fixture",
+                    "credit": "Hakoniwa fixture credit"
+                }
+            }
+        }
+    ],
+    "player_display_name": "Leader",
+    "encounter_name": "PT表示試験体",
+    "result": "stalemate",
+    "rounds": [
+        {
+            "round": 1,
+            "actions": [
+                {
+                    "kind": "decision",
+                    "round": 1,
+                    "side": "enemy",
+                    "action": "decision",
+                    "action_key": "normal_attack",
+                    "reason": "priority_rule_0",
+                    "fallback": false,
+                    "mp_blocked": false,
+                    "action_id": "round:1:enemy:1:decision:0",
+                    "actor_id": "enemy:1",
+                    "team": "enemy",
+                    "target_id": "secretary:1",
+                    "target_ids": [
+                        "secretary:1"
+                    ],
+                    "type": "action",
+                    "label": "通常攻撃",
+                    "actor_name": "PT表示試験体",
+                    "target_name": "Leader",
+                    "important": false
+                },
+                {
+                    "kind": "effect",
+                    "effect_type": "damage",
+                    "round": 1,
+                    "side": "enemy",
+                    "target_side": "player",
+                    "action": "normal_attack",
+                    "amount": 123769,
+                    "critical": false,
+                    "evaded": false,
+                    "guarded": false,
+                    "parried": false,
+                    "barrier_absorbed": 0,
+                    "complete_guarded": false,
+                    "actor_hp": 100000000,
+                    "actor_mp": 10000,
+                    "action_id": "round:1:enemy:1:decision:0",
+                    "actor_id": "enemy:1",
+                    "team": "enemy",
+                    "target_id": "secretary:1",
+                    "target_ids": [
+                        "secretary:1"
+                    ],
+                    "target_scope": "single_enemy",
+                    "type": "damage",
+                    "label": "通常攻撃",
+                    "actor_name": "PT表示試験体",
+                    "target_name": "Leader",
+                    "important": false
+                },
+                {
+                    "kind": "decision",
+                    "round": 1,
+                    "side": "player",
+                    "action": "decision",
+                    "action_key": "awakening",
+                    "reason": "priority_rule_0",
+                    "fallback": false,
+                    "mp_blocked": false,
+                    "action_id": "round:1:borrowed:2:decision:0",
+                    "actor_id": "borrowed:2",
+                    "team": "player",
+                    "target_id": "borrowed:2",
+                    "target_ids": [
+                        "borrowed:2"
+                    ],
+                    "type": "action",
+                    "label": "覚醒",
+                    "actor_name": "Healer",
+                    "target_name": "Healer",
+                    "important": false
+                },
+                {
+                    "kind": "awakening",
+                    "round": 1,
+                    "side": "player",
+                    "target_side": "player",
+                    "action": "awakening",
+                    "effect_type": "awakening",
+                    "amount": 0,
+                    "message": "覚醒する。",
+                    "normal_stats": {
+                        "vitality": 101,
+                        "might": 41,
+                        "finesse": 2,
+                        "spirit": 41,
+                        "agility": 201
+                    },
+                    "awakened_stats": {
+                        "vitality": 131,
+                        "might": 53,
+                        "finesse": 2,
+                        "spirit": 53,
+                        "agility": 261
+                    },
+                    "normal_max_hp": 1148,
+                    "awakened_max_hp": 1388,
+                    "action_id": "round:1:borrowed:2:decision:0",
+                    "actor_id": "borrowed:2",
+                    "team": "player",
+                    "target_id": "borrowed:2",
+                    "target_ids": [
+                        "borrowed:2"
+                    ],
+                    "state": {
+                        "hp": 1388,
+                        "max_hp": 1388,
+                        "mp": 10000,
+                        "barrier": 0,
+                        "taunt": null,
+                        "statuses": [],
+                        "cooldowns": [],
+                        "role_stacks": {
+                            "fighting_spirit": 0,
+                            "grace": 0
+                        },
+                        "awakened": true,
+                        "awakening_technique_used": false,
+                        "awakening_guard_rounds_remaining": 0,
+                        "awakening_guard_applied_round": null,
+                        "awakening_lifesteal_rounds_remaining": 0,
+                        "awakening_lifesteal_applied_round": null,
+                        "awakening_unlocked": true,
+                        "awakening_gauge": 0,
+                        "awakening_gauge_max": 1000
+                    },
+                    "type": "awakening",
+                    "label": "覚醒する。",
+                    "actor_name": "Healer",
+                    "target_name": "Healer",
+                    "important": true,
+                    "lines": [
+                        "覚醒する。"
+                    ]
+                },
+                {
+                    "kind": "awakening_technique",
+                    "round": 1,
+                    "side": "player",
+                    "target_side": "player",
+                    "action": "life_requiem",
+                    "effect_type": "awakening_technique",
+                    "amount": 0,
+                    "message": "生命讃歌",
+                    "consumes_action": true,
+                    "action_id": "round:1:borrowed:2:decision:0",
+                    "actor_id": "borrowed:2",
+                    "team": "player",
+                    "target_ids": [
+                        "secretary:1",
+                        "borrowed:2",
+                        "secretary:3",
+                        "borrowed:4"
+                    ],
+                    "target_id": "secretary:1",
+                    "type": "awakening_technique",
+                    "label": "生命讃歌",
+                    "actor_name": "Healer",
+                    "target_name": "Leader",
+                    "important": true
+                },
+                {
+                    "kind": "revival",
+                    "effect_type": "revival",
+                    "round": 1,
+                    "side": "player",
+                    "target_side": "player",
+                    "action": "life_requiem",
+                    "amount": -1148,
+                    "critical": false,
+                    "evaded": false,
+                    "guarded": false,
+                    "parried": false,
+                    "barrier_absorbed": 0,
+                    "complete_guarded": false,
+                    "actor_hp": 1388,
+                    "actor_mp": 10000,
+                    "action_id": "round:1:borrowed:2:decision:0",
+                    "actor_id": "borrowed:2",
+                    "team": "player",
+                    "target_id": "secretary:1",
+                    "target_ids": [
+                        "secretary:1"
+                    ],
+                    "revived": true,
+                    "revive_hp_bps": 10000,
+                    "type": "revival",
+                    "label": "蘇生",
+                    "actor_name": "Healer",
+                    "target_name": "Leader",
+                    "important": true,
+                    "lines": [
+                        "Leaderが復活した！"
+                    ]
+                },
+                {
+                    "kind": "effect",
+                    "effect_type": "recovery",
+                    "round": 1,
+                    "side": "player",
+                    "target_side": "player",
+                    "action": "life_requiem",
+                    "amount": 0,
+                    "critical": false,
+                    "evaded": false,
+                    "guarded": false,
+                    "parried": false,
+                    "barrier_absorbed": 0,
+                    "complete_guarded": false,
+                    "actor_hp": 1388,
+                    "actor_mp": 10000,
+                    "action_id": "round:1:borrowed:2:decision:0",
+                    "actor_id": "borrowed:2",
+                    "team": "player",
+                    "target_id": "borrowed:2",
+                    "target_ids": [
+                        "borrowed:2"
+                    ],
+                    "revived": false,
+                    "revive_hp_bps": 10000,
+                    "type": "recovery",
+                    "label": "生命讃歌",
+                    "actor_name": "Healer",
+                    "target_name": "Healer",
+                    "important": false
+                },
+                {
+                    "kind": "effect",
+                    "effect_type": "recovery",
+                    "round": 1,
+                    "side": "player",
+                    "target_side": "player",
+                    "action": "life_requiem",
+                    "amount": 148,
+                    "critical": false,
+                    "evaded": false,
+                    "guarded": false,
+                    "parried": false,
+                    "barrier_absorbed": 0,
+                    "complete_guarded": false,
+                    "actor_hp": 1388,
+                    "actor_mp": 10000,
+                    "action_id": "round:1:borrowed:2:decision:0",
+                    "actor_id": "borrowed:2",
+                    "team": "player",
+                    "target_id": "secretary:3",
+                    "target_ids": [
+                        "secretary:3"
+                    ],
+                    "revived": false,
+                    "revive_hp_bps": 10000,
+                    "type": "recovery",
+                    "label": "生命讃歌",
+                    "actor_name": "Healer",
+                    "target_name": "Attacker",
+                    "important": false
+                },
+                {
+                    "kind": "effect",
+                    "effect_type": "recovery",
+                    "round": 1,
+                    "side": "player",
+                    "target_side": "player",
+                    "action": "life_requiem",
+                    "amount": 148,
+                    "critical": false,
+                    "evaded": false,
+                    "guarded": false,
+                    "parried": false,
+                    "barrier_absorbed": 0,
+                    "complete_guarded": false,
+                    "actor_hp": 1388,
+                    "actor_mp": 10000,
+                    "action_id": "round:1:borrowed:2:decision:0",
+                    "actor_id": "borrowed:2",
+                    "team": "player",
+                    "target_id": "borrowed:4",
+                    "target_ids": [
+                        "borrowed:4"
+                    ],
+                    "revived": false,
+                    "revive_hp_bps": 10000,
+                    "type": "recovery",
+                    "label": "生命讃歌",
+                    "actor_name": "Healer",
+                    "target_name": "Support",
+                    "important": false
+                },
+                {
+                    "kind": "decision",
+                    "round": 1,
+                    "side": "player",
+                    "action": "decision",
+                    "action_key": "defend",
+                    "reason": "priority_rule_0",
+                    "fallback": false,
+                    "mp_blocked": false,
+                    "action_id": "round:1:secretary:1:decision:1",
+                    "actor_id": "secretary:1",
+                    "team": "player",
+                    "target_id": "secretary:1",
+                    "target_ids": [
+                        "secretary:1"
+                    ],
+                    "type": "action",
+                    "label": "防御",
+                    "actor_name": "Leader",
+                    "target_name": "Leader",
+                    "important": false
+                },
+                {
+                    "kind": "effect",
+                    "effect_type": "guard",
+                    "round": 1,
+                    "side": "player",
+                    "target_side": "player",
+                    "action": "defend",
+                    "amount": 0,
+                    "critical": false,
+                    "evaded": false,
+                    "guarded": false,
+                    "parried": false,
+                    "barrier_absorbed": 0,
+                    "complete_guarded": false,
+                    "actor_hp": 1148,
+                    "actor_mp": 10000,
+                    "action_id": "round:1:secretary:1:decision:1",
+                    "actor_id": "secretary:1",
+                    "team": "player",
+                    "target_id": "secretary:1",
+                    "target_ids": [
+                        "secretary:1"
+                    ],
+                    "type": "guard",
+                    "label": "防御",
+                    "actor_name": "Leader",
+                    "target_name": "Leader",
+                    "important": false
+                },
+                {
+                    "kind": "decision",
+                    "round": 1,
+                    "side": "player",
+                    "action": "decision",
+                    "action_key": "normal_attack",
+                    "reason": "priority_rule_0",
+                    "fallback": false,
+                    "mp_blocked": false,
+                    "action_id": "round:1:borrowed:4:decision:1",
+                    "actor_id": "borrowed:4",
+                    "team": "player",
+                    "target_id": "enemy:1",
+                    "target_ids": [
+                        "enemy:1"
+                    ],
+                    "type": "action",
+                    "label": "通常攻撃",
+                    "actor_name": "Support",
+                    "target_name": "PT表示試験体",
+                    "important": false
+                },
+                {
+                    "kind": "effect",
+                    "effect_type": "damage",
+                    "round": 1,
+                    "side": "player",
+                    "target_side": "enemy",
+                    "action": "normal_attack",
+                    "amount": 17,
+                    "critical": false,
+                    "evaded": false,
+                    "guarded": false,
+                    "parried": false,
+                    "barrier_absorbed": 0,
+                    "complete_guarded": false,
+                    "actor_hp": 1148,
+                    "actor_mp": 10000,
+                    "action_id": "round:1:borrowed:4:decision:1",
+                    "actor_id": "borrowed:4",
+                    "team": "player",
+                    "target_id": "enemy:1",
+                    "target_ids": [
+                        "enemy:1"
+                    ],
+                    "target_scope": "single_enemy",
+                    "type": "damage",
+                    "label": "通常攻撃",
+                    "actor_name": "Support",
+                    "target_name": "PT表示試験体",
+                    "important": false
+                },
+                {
+                    "kind": "decision",
+                    "round": 1,
+                    "side": "player",
+                    "action": "decision",
+                    "action_key": "holy_bolt",
+                    "reason": "priority_rule_0",
+                    "fallback": false,
+                    "mp_blocked": false,
+                    "action_id": "round:1:secretary:3:decision:1",
+                    "actor_id": "secretary:3",
+                    "team": "player",
+                    "target_id": "enemy:1",
+                    "target_ids": [
+                        "enemy:1"
+                    ],
+                    "type": "action",
+                    "label": "聖晶弾",
+                    "actor_name": "Attacker",
+                    "target_name": "PT表示試験体",
+                    "important": false
+                },
+                {
+                    "kind": "effect",
+                    "effect_type": "mp_cost",
+                    "round": 1,
+                    "side": "player",
+                    "target_side": "player",
+                    "action": "mp_cost",
+                    "amount": 700,
+                    "critical": false,
+                    "evaded": false,
+                    "guarded": false,
+                    "parried": false,
+                    "barrier_absorbed": 0,
+                    "complete_guarded": false,
+                    "actor_hp": 1148,
+                    "actor_mp": 9300,
+                    "action_id": "round:1:secretary:3:decision:1",
+                    "actor_id": "secretary:3",
+                    "team": "player",
+                    "target_id": "secretary:3",
+                    "target_ids": [
+                        "secretary:3"
+                    ],
+                    "type": "mp_cost",
+                    "label": "MP消費",
+                    "actor_name": "Attacker",
+                    "target_name": "Attacker",
+                    "important": false
+                },
+                {
+                    "kind": "effect",
+                    "effect_type": "damage",
+                    "round": 1,
+                    "side": "player",
+                    "target_side": "enemy",
+                    "action": "holy_bolt",
+                    "amount": 31,
+                    "critical": false,
+                    "evaded": false,
+                    "guarded": false,
+                    "parried": false,
+                    "barrier_absorbed": 0,
+                    "complete_guarded": false,
+                    "actor_hp": 1148,
+                    "actor_mp": 9300,
+                    "action_id": "round:1:secretary:3:decision:1",
+                    "actor_id": "secretary:3",
+                    "team": "player",
+                    "target_id": "enemy:1",
+                    "target_ids": [
+                        "enemy:1"
+                    ],
+                    "target_scope": "single_enemy",
+                    "type": "damage",
+                    "label": "聖晶弾",
+                    "actor_name": "Attacker",
+                    "target_name": "PT表示試験体",
+                    "important": false
+                },
+                {
+                    "kind": "effect",
+                    "effect_type": "mp_recovery",
+                    "round": 1,
+                    "side": "player",
+                    "target_side": "player",
+                    "action": "mp_recovery",
+                    "amount": 100,
+                    "critical": false,
+                    "evaded": false,
+                    "guarded": false,
+                    "parried": false,
+                    "barrier_absorbed": 0,
+                    "complete_guarded": false,
+                    "actor_hp": 1148,
+                    "actor_mp": 9400,
+                    "action_id": "round:1:secretary:3:decision:1",
+                    "actor_id": "secretary:3",
+                    "team": "player",
+                    "target_id": "secretary:3",
+                    "target_ids": [
+                        "secretary:3"
+                    ],
+                    "target_scope": "self",
+                    "type": "mp_recovery",
+                    "label": "MP回復",
+                    "actor_name": "Attacker",
+                    "target_name": "Attacker",
+                    "important": false
+                }
+            ],
+            "start_state": {
+                "secretary:1": {
+                    "combatant_id": "secretary:1",
+                    "team": "player",
+                    "label": "secretary:1",
+                    "hp": 1,
+                    "max_hp": 1148,
+                    "mp": 10000,
+                    "barrier": 0,
+                    "taunt": null,
+                    "statuses": [],
+                    "cooldowns": [],
+                    "role_stacks": {
+                        "fighting_spirit": 0,
+                        "grace": 0
+                    },
+                    "awakened": false,
+                    "awakening_technique_used": false,
+                    "awakening_guard_rounds_remaining": 0,
+                    "awakening_guard_applied_round": null,
+                    "awakening_lifesteal_rounds_remaining": 0,
+                    "awakening_lifesteal_applied_round": null,
+                    "awakening_unlocked": false,
+                    "awakening_gauge": 0,
+                    "awakening_gauge_max": 1000
+                },
+                "borrowed:2": {
+                    "combatant_id": "borrowed:2",
+                    "team": "player",
+                    "label": "borrowed:2",
+                    "hp": 100,
+                    "max_hp": 1148,
+                    "mp": 10000,
+                    "barrier": 0,
+                    "taunt": null,
+                    "statuses": [],
+                    "cooldowns": [],
+                    "role_stacks": {
+                        "fighting_spirit": 0,
+                        "grace": 0
+                    },
+                    "awakened": false,
+                    "awakening_technique_used": false,
+                    "awakening_guard_rounds_remaining": 0,
+                    "awakening_guard_applied_round": null,
+                    "awakening_lifesteal_rounds_remaining": 0,
+                    "awakening_lifesteal_applied_round": null,
+                    "awakening_unlocked": true,
+                    "awakening_gauge": 1000,
+                    "awakening_gauge_max": 1000
+                },
+                "secretary:3": {
+                    "combatant_id": "secretary:3",
+                    "team": "player",
+                    "label": "secretary:3",
+                    "hp": 1000,
+                    "max_hp": 1148,
+                    "mp": 10000,
+                    "barrier": 0,
+                    "taunt": null,
+                    "statuses": [],
+                    "cooldowns": {
+                        "holy_bolt": 0
+                    },
+                    "role_stacks": {
+                        "fighting_spirit": 0,
+                        "grace": 0
+                    },
+                    "awakened": false,
+                    "awakening_technique_used": false,
+                    "awakening_guard_rounds_remaining": 0,
+                    "awakening_guard_applied_round": null,
+                    "awakening_lifesteal_rounds_remaining": 0,
+                    "awakening_lifesteal_applied_round": null,
+                    "awakening_unlocked": false,
+                    "awakening_gauge": 0,
+                    "awakening_gauge_max": 1000
+                },
+                "borrowed:4": {
+                    "combatant_id": "borrowed:4",
+                    "team": "player",
+                    "label": "borrowed:4",
+                    "hp": 1000,
+                    "max_hp": 1148,
+                    "mp": 10000,
+                    "barrier": 0,
+                    "taunt": null,
+                    "statuses": [],
+                    "cooldowns": [],
+                    "role_stacks": {
+                        "fighting_spirit": 0,
+                        "grace": 0
+                    },
+                    "awakened": false,
+                    "awakening_technique_used": false,
+                    "awakening_guard_rounds_remaining": 0,
+                    "awakening_guard_applied_round": null,
+                    "awakening_lifesteal_rounds_remaining": 0,
+                    "awakening_lifesteal_applied_round": null,
+                    "awakening_unlocked": false,
+                    "awakening_gauge": 0,
+                    "awakening_gauge_max": 1000
+                },
+                "enemy:1": {
+                    "combatant_id": "enemy:1",
+                    "team": "enemy",
+                    "label": "PT表示試験体",
+                    "hp": 100000000,
+                    "max_hp": 100000000,
+                    "mp": 10000,
+                    "barrier": 0,
+                    "taunt": null,
+                    "statuses": [],
+                    "cooldowns": [],
+                    "role_stacks": {
+                        "fighting_spirit": 0,
+                        "grace": 0
+                    },
+                    "awakened": false,
+                    "awakening_technique_used": false,
+                    "awakening_guard_rounds_remaining": 0,
+                    "awakening_guard_applied_round": null,
+                    "awakening_lifesteal_rounds_remaining": 0,
+                    "awakening_lifesteal_applied_round": null,
+                    "awakening_unlocked": false,
+                    "awakening_gauge": 0,
+                    "awakening_gauge_max": 1000
+                }
+            },
+            "end_state": {
+                "secretary:1": {
+                    "combatant_id": "secretary:1",
+                    "team": "player",
+                    "label": "secretary:1",
+                    "hp": 1148,
+                    "max_hp": 1148,
+                    "mp": 10000,
+                    "barrier": 0,
+                    "taunt": null,
+                    "statuses": [],
+                    "cooldowns": [],
+                    "role_stacks": {
+                        "fighting_spirit": 0,
+                        "grace": 0
+                    },
+                    "awakened": false,
+                    "awakening_technique_used": false,
+                    "awakening_guard_rounds_remaining": 0,
+                    "awakening_guard_applied_round": null,
+                    "awakening_lifesteal_rounds_remaining": 0,
+                    "awakening_lifesteal_applied_round": null,
+                    "awakening_unlocked": false,
+                    "awakening_gauge": 0,
+                    "awakening_gauge_max": 1000
+                },
+                "borrowed:2": {
+                    "combatant_id": "borrowed:2",
+                    "team": "player",
+                    "label": "borrowed:2",
+                    "hp": 1388,
+                    "max_hp": 1388,
+                    "mp": 10000,
+                    "barrier": 0,
+                    "taunt": null,
+                    "statuses": [],
+                    "cooldowns": [],
+                    "role_stacks": {
+                        "fighting_spirit": 0,
+                        "grace": 0
+                    },
+                    "awakened": true,
+                    "awakening_technique_used": true,
+                    "awakening_guard_rounds_remaining": 0,
+                    "awakening_guard_applied_round": null,
+                    "awakening_lifesteal_rounds_remaining": 0,
+                    "awakening_lifesteal_applied_round": null,
+                    "awakening_unlocked": true,
+                    "awakening_gauge": 0,
+                    "awakening_gauge_max": 1000
+                },
+                "secretary:3": {
+                    "combatant_id": "secretary:3",
+                    "team": "player",
+                    "label": "secretary:3",
+                    "hp": 1148,
+                    "max_hp": 1148,
+                    "mp": 9400,
+                    "barrier": 0,
+                    "taunt": null,
+                    "statuses": [],
+                    "cooldowns": {
+                        "holy_bolt": 0
+                    },
+                    "role_stacks": {
+                        "fighting_spirit": 0,
+                        "grace": 0
+                    },
+                    "awakened": false,
+                    "awakening_technique_used": false,
+                    "awakening_guard_rounds_remaining": 0,
+                    "awakening_guard_applied_round": null,
+                    "awakening_lifesteal_rounds_remaining": 0,
+                    "awakening_lifesteal_applied_round": null,
+                    "awakening_unlocked": false,
+                    "awakening_gauge": 0,
+                    "awakening_gauge_max": 1000
+                },
+                "borrowed:4": {
+                    "combatant_id": "borrowed:4",
+                    "team": "player",
+                    "label": "borrowed:4",
+                    "hp": 1148,
+                    "max_hp": 1148,
+                    "mp": 10000,
+                    "barrier": 0,
+                    "taunt": null,
+                    "statuses": [],
+                    "cooldowns": [],
+                    "role_stacks": {
+                        "fighting_spirit": 0,
+                        "grace": 0
+                    },
+                    "awakened": false,
+                    "awakening_technique_used": false,
+                    "awakening_guard_rounds_remaining": 0,
+                    "awakening_guard_applied_round": null,
+                    "awakening_lifesteal_rounds_remaining": 0,
+                    "awakening_lifesteal_applied_round": null,
+                    "awakening_unlocked": false,
+                    "awakening_gauge": 0,
+                    "awakening_gauge_max": 1000
+                },
+                "enemy:1": {
+                    "combatant_id": "enemy:1",
+                    "team": "enemy",
+                    "label": "PT表示試験体",
+                    "hp": 99999952,
+                    "max_hp": 100000000,
+                    "mp": 10000,
+                    "barrier": 0,
+                    "taunt": null,
+                    "statuses": [],
+                    "cooldowns": [],
+                    "role_stacks": {
+                        "fighting_spirit": 0,
+                        "grace": 0
+                    },
+                    "awakened": false,
+                    "awakening_technique_used": false,
+                    "awakening_guard_rounds_remaining": 0,
+                    "awakening_guard_applied_round": null,
+                    "awakening_lifesteal_rounds_remaining": 0,
+                    "awakening_lifesteal_applied_round": null,
+                    "awakening_unlocked": false,
+                    "awakening_gauge": 0,
+                    "awakening_gauge_max": 1000
+                }
+            },
+            "state_timing": "battle_start"
+        }
+    ],
+    "rounds_count": 1,
+    "xp_awarded": 0,
+    "shard_delta": 0,
+    "detail_available": true,
+    "summary": {
+        "winner": "stalemate",
+        "rounds": 1,
+        "metrics": {
+            "damage_dealt": 48,
+            "damage_received": 1,
+            "effective_healing": 1444,
+            "damage_prevented": 0,
+            "mp_spent": 700,
+            "mp_natural_recovery": 0,
+            "mp_skill_recovery": 100,
+            "mp_overflow": 0,
+            "mp_exhaustion_round": null,
+            "skill_unavailable_due_to_mp": 0,
+            "emergency_heal_opportunities": 0,
+            "emergency_heal_available": 0,
+            "emergency_heal_blocked_by_mp": 0,
+            "crystal_cycle_recovery": 0
+        },
+        "awakening": {
+            "secretary:1": {
+                "identity": "secretary-underground-awakening-v2",
+                "unlocked": false,
+                "gauge_before": 0,
+                "gauge_after": 0,
+                "gauge_gained": 0,
+                "triggered": false,
+                "normal_max_hp": 1148,
+                "final_max_hp": 1148,
+                "normal_stats": {
+                    "vitality": 101,
+                    "might": 41,
+                    "finesse": 2,
+                    "spirit": 41,
+                    "agility": 201
+                },
+                "final_stats": {
+                    "vitality": 101,
+                    "might": 41,
+                    "finesse": 2,
+                    "spirit": 41,
+                    "agility": 201
+                },
+                "technique": null
+            },
+            "borrowed:2": {
+                "identity": "secretary-underground-awakening-v2",
+                "unlocked": true,
+                "gauge_before": 1000,
+                "gauge_after": 0,
+                "gauge_gained": 0,
+                "triggered": true,
+                "normal_max_hp": 1148,
+                "final_max_hp": 1388,
+                "normal_stats": {
+                    "vitality": 101,
+                    "might": 41,
+                    "finesse": 2,
+                    "spirit": 41,
+                    "agility": 201
+                },
+                "final_stats": {
+                    "vitality": 131,
+                    "might": 53,
+                    "finesse": 2,
+                    "spirit": 53,
+                    "agility": 261
+                },
+                "technique": {
+                    "key": "life_requiem",
+                    "name": "生命讃歌",
+                    "summary": "味方全員のHPを全回復し、戦闘不能者をHP100%で復活する。MPは回復しない。",
+                    "consumes_action": true,
+                    "used": true
+                }
+            },
+            "secretary:3": {
+                "identity": "secretary-underground-awakening-v2",
+                "unlocked": false,
+                "gauge_before": 0,
+                "gauge_after": 0,
+                "gauge_gained": 0,
+                "triggered": false,
+                "normal_max_hp": 1148,
+                "final_max_hp": 1148,
+                "normal_stats": {
+                    "vitality": 101,
+                    "might": 41,
+                    "finesse": 2,
+                    "spirit": 41,
+                    "agility": 201
+                },
+                "final_stats": {
+                    "vitality": 101,
+                    "might": 41,
+                    "finesse": 2,
+                    "spirit": 41,
+                    "agility": 201
+                },
+                "technique": null
+            },
+            "borrowed:4": {
+                "identity": "secretary-underground-awakening-v2",
+                "unlocked": false,
+                "gauge_before": 0,
+                "gauge_after": 0,
+                "gauge_gained": 0,
+                "triggered": false,
+                "normal_max_hp": 1148,
+                "final_max_hp": 1148,
+                "normal_stats": {
+                    "vitality": 101,
+                    "might": 41,
+                    "finesse": 2,
+                    "spirit": 41,
+                    "agility": 201
+                },
+                "final_stats": {
+                    "vitality": 101,
+                    "might": 41,
+                    "finesse": 2,
+                    "spirit": 41,
+                    "agility": 201
+                },
+                "technique": null
+            }
+        },
+        "final_state": {
+            "secretary:1": {
+                "combatant_id": "secretary:1",
+                "team": "player",
+                "label": "secretary:1",
+                "hp": 1148,
+                "max_hp": 1148,
+                "mp": 10000,
+                "barrier": 0,
+                "taunt": null,
+                "statuses": [],
+                "cooldowns": [],
+                "role_stacks": {
+                    "fighting_spirit": 0,
+                    "grace": 0
+                },
+                "awakened": false,
+                "awakening_technique_used": false,
+                "awakening_guard_rounds_remaining": 0,
+                "awakening_guard_applied_round": null,
+                "awakening_lifesteal_rounds_remaining": 0,
+                "awakening_lifesteal_applied_round": null,
+                "awakening_unlocked": false,
+                "awakening_gauge": 0,
+                "awakening_gauge_max": 1000
+            },
+            "borrowed:2": {
+                "combatant_id": "borrowed:2",
+                "team": "player",
+                "label": "borrowed:2",
+                "hp": 1388,
+                "max_hp": 1388,
+                "mp": 10000,
+                "barrier": 0,
+                "taunt": null,
+                "statuses": [],
+                "cooldowns": [],
+                "role_stacks": {
+                    "fighting_spirit": 0,
+                    "grace": 0
+                },
+                "awakened": true,
+                "awakening_technique_used": true,
+                "awakening_guard_rounds_remaining": 0,
+                "awakening_guard_applied_round": null,
+                "awakening_lifesteal_rounds_remaining": 0,
+                "awakening_lifesteal_applied_round": null,
+                "awakening_unlocked": true,
+                "awakening_gauge": 0,
+                "awakening_gauge_max": 1000
+            },
+            "secretary:3": {
+                "combatant_id": "secretary:3",
+                "team": "player",
+                "label": "secretary:3",
+                "hp": 1148,
+                "max_hp": 1148,
+                "mp": 9400,
+                "barrier": 0,
+                "taunt": null,
+                "statuses": [],
+                "cooldowns": {
+                    "holy_bolt": 0
+                },
+                "role_stacks": {
+                    "fighting_spirit": 0,
+                    "grace": 0
+                },
+                "awakened": false,
+                "awakening_technique_used": false,
+                "awakening_guard_rounds_remaining": 0,
+                "awakening_guard_applied_round": null,
+                "awakening_lifesteal_rounds_remaining": 0,
+                "awakening_lifesteal_applied_round": null,
+                "awakening_unlocked": false,
+                "awakening_gauge": 0,
+                "awakening_gauge_max": 1000
+            },
+            "borrowed:4": {
+                "combatant_id": "borrowed:4",
+                "team": "player",
+                "label": "borrowed:4",
+                "hp": 1148,
+                "max_hp": 1148,
+                "mp": 10000,
+                "barrier": 0,
+                "taunt": null,
+                "statuses": [],
+                "cooldowns": [],
+                "role_stacks": {
+                    "fighting_spirit": 0,
+                    "grace": 0
+                },
+                "awakened": false,
+                "awakening_technique_used": false,
+                "awakening_guard_rounds_remaining": 0,
+                "awakening_guard_applied_round": null,
+                "awakening_lifesteal_rounds_remaining": 0,
+                "awakening_lifesteal_applied_round": null,
+                "awakening_unlocked": false,
+                "awakening_gauge": 0,
+                "awakening_gauge_max": 1000
+            },
+            "enemy:1": {
+                "combatant_id": "enemy:1",
+                "team": "enemy",
+                "label": "PT表示試験体",
+                "hp": 99999952,
+                "max_hp": 100000000,
+                "mp": 10000,
+                "barrier": 0,
+                "taunt": null,
+                "statuses": [],
+                "cooldowns": [],
+                "role_stacks": {
+                    "fighting_spirit": 0,
+                    "grace": 0
+                },
+                "awakened": false,
+                "awakening_technique_used": false,
+                "awakening_guard_rounds_remaining": 0,
+                "awakening_guard_applied_round": null,
+                "awakening_lifesteal_rounds_remaining": 0,
+                "awakening_lifesteal_applied_round": null,
+                "awakening_unlocked": false,
+                "awakening_gauge": 0,
+                "awakening_gauge_max": 1000
+            }
+        }
+    },
+    "initial_state": {
+        "secretary:1": {
+            "combatant_id": "secretary:1",
+            "team": "player",
+            "label": "secretary:1",
+            "hp": 1,
+            "max_hp": 1148,
+            "mp": 10000,
+            "barrier": 0,
+            "taunt": null,
+            "statuses": [],
+            "cooldowns": [],
+            "role_stacks": {
+                "fighting_spirit": 0,
+                "grace": 0
+            },
+            "awakened": false,
+            "awakening_technique_used": false,
+            "awakening_guard_rounds_remaining": 0,
+            "awakening_guard_applied_round": null,
+            "awakening_lifesteal_rounds_remaining": 0,
+            "awakening_lifesteal_applied_round": null,
+            "awakening_unlocked": false,
+            "awakening_gauge": 0,
+            "awakening_gauge_max": 1000
+        },
+        "borrowed:2": {
+            "combatant_id": "borrowed:2",
+            "team": "player",
+            "label": "borrowed:2",
+            "hp": 100,
+            "max_hp": 1148,
+            "mp": 10000,
+            "barrier": 0,
+            "taunt": null,
+            "statuses": [],
+            "cooldowns": [],
+            "role_stacks": {
+                "fighting_spirit": 0,
+                "grace": 0
+            },
+            "awakened": false,
+            "awakening_technique_used": false,
+            "awakening_guard_rounds_remaining": 0,
+            "awakening_guard_applied_round": null,
+            "awakening_lifesteal_rounds_remaining": 0,
+            "awakening_lifesteal_applied_round": null,
+            "awakening_unlocked": true,
+            "awakening_gauge": 1000,
+            "awakening_gauge_max": 1000
+        },
+        "secretary:3": {
+            "combatant_id": "secretary:3",
+            "team": "player",
+            "label": "secretary:3",
+            "hp": 1000,
+            "max_hp": 1148,
+            "mp": 10000,
+            "barrier": 0,
+            "taunt": null,
+            "statuses": [],
+            "cooldowns": {
+                "holy_bolt": 0
+            },
+            "role_stacks": {
+                "fighting_spirit": 0,
+                "grace": 0
+            },
+            "awakened": false,
+            "awakening_technique_used": false,
+            "awakening_guard_rounds_remaining": 0,
+            "awakening_guard_applied_round": null,
+            "awakening_lifesteal_rounds_remaining": 0,
+            "awakening_lifesteal_applied_round": null,
+            "awakening_unlocked": false,
+            "awakening_gauge": 0,
+            "awakening_gauge_max": 1000
+        },
+        "borrowed:4": {
+            "combatant_id": "borrowed:4",
+            "team": "player",
+            "label": "borrowed:4",
+            "hp": 1000,
+            "max_hp": 1148,
+            "mp": 10000,
+            "barrier": 0,
+            "taunt": null,
+            "statuses": [],
+            "cooldowns": [],
+            "role_stacks": {
+                "fighting_spirit": 0,
+                "grace": 0
+            },
+            "awakened": false,
+            "awakening_technique_used": false,
+            "awakening_guard_rounds_remaining": 0,
+            "awakening_guard_applied_round": null,
+            "awakening_lifesteal_rounds_remaining": 0,
+            "awakening_lifesteal_applied_round": null,
+            "awakening_unlocked": false,
+            "awakening_gauge": 0,
+            "awakening_gauge_max": 1000
+        },
+        "enemy:1": {
+            "combatant_id": "enemy:1",
+            "team": "enemy",
+            "label": "PT表示試験体",
+            "hp": 100000000,
+            "max_hp": 100000000,
+            "mp": 10000,
+            "barrier": 0,
+            "taunt": null,
+            "statuses": [],
+            "cooldowns": [],
+            "role_stacks": {
+                "fighting_spirit": 0,
+                "grace": 0
+            },
+            "awakened": false,
+            "awakening_technique_used": false,
+            "awakening_guard_rounds_remaining": 0,
+            "awakening_guard_applied_round": null,
+            "awakening_lifesteal_rounds_remaining": 0,
+            "awakening_lifesteal_applied_round": null,
+            "awakening_unlocked": false,
+            "awakening_gauge": 0,
+            "awakening_gauge_max": 1000
+        }
+    },
+    "rewards": {
+        "xp": 0,
+        "shards": 0
+    }
+}

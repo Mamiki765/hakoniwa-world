@@ -2,6 +2,7 @@
 
 namespace App\Application\Underground;
 
+use App\Application\SecretaryImageRetentionService;
 use App\Application\SecretaryProfilePresenter;
 use App\Application\VisitorCodeAllocator;
 use App\Domain\Underground\Area\UndergroundAreaCapacity;
@@ -121,6 +122,7 @@ STORY;
         private UndergroundPartyBattleProjector $partyProjector,
         private SecretaryProfilePresenter $secretaryPresenter,
         private VisitorCodeAllocator $visitorCodes,
+        private SecretaryImageRetentionService $imageRetention,
     ) {}
 
     /**
@@ -159,74 +161,113 @@ STORY;
         }
         $fingerprint = $this->fingerprint($fingerprintPayload);
 
-        return DB::transaction(function () use (
-            $user,
-            $requestId,
-            $fingerprint,
-            $huntingGroundKey,
-            $huntingGround,
-            $borrowedSecretaryIds,
-        ): array {
-            $profile = $this->lockedProfileForUser($user);
-            $this->assertExplorationUnlocked($profile);
-            $this->assertHuntingGroundUnlocked($profile, $huntingGround);
-            $this->assertRequestNotUsedByIntro($profile, $requestId);
-            $duplicate = $this->duplicateBattle(
-                $profile,
-                $requestId,
-                $fingerprint,
-                $huntingGroundKey,
-            );
-            if ($duplicate instanceof UndergroundBattle) {
-                return ['battle' => $duplicate, 'duplicate' => true];
-            }
-            if ($this->lockedActiveTrialRun($profile) instanceof UndergroundTrialRun) {
-                throw new UndergroundRuntimeException(
-                    'underground_trial_active',
-                    '封印の地を継続するか、明示的に帰還してから通常探索を行ってください。',
+        /*
+         * Borrowed source rows are prepared before the leader transaction.  A
+         * reciprocal party (A borrows B while B borrows A) must never hold A's
+         * leader rows while waiting for B's source rows.  The preparation
+         * transaction also freezes the source data used by the battle and
+         * releases all source locks before combat starts.
+         */
+        $attempt = 0;
+        do {
+            /** @var array{secretary_id:int, profile_id:int, combat_level:int, equipment_item_levels:array<string,int>}|null $leaderSyncInputs */
+            $leaderSyncInputs = null;
+            $preparedBorrowed = [];
+            $hasExistingRequest = $borrowedSecretaryIds !== []
+                && $this->explorationRequestExists($user, $requestId);
+            if ($borrowedSecretaryIds !== [] && ! $hasExistingRequest) {
+                $leaderSyncInputs = $this->partyLeaderSyncInputs($user);
+                $preparedBorrowed = $this->prepareBorrowedPartySnapshots(
+                    $user,
+                    $requestId,
+                    $leaderSyncInputs,
+                    $borrowedSecretaryIds,
                 );
             }
-            $this->assertCooldownElapsed($profile);
-            $borrowed = $borrowedSecretaryIds === []
-                ? []
-                : $this->lockedBorrowedProfiles($user, $profile->secretary, $borrowedSecretaryIds);
-            $seed = $this->battleSeed->forRequest(
-                $profile->id,
-                $requestId,
-                $huntingGround['content_identity'],
-            );
-            $random = new UndergroundRandom($seed);
-            $encounterKey = $this->alphaV1Catalog->weightedExplorationEncounter(
-                $random->integer(
-                    'runtime:encounter:'.$huntingGroundKey,
-                    1,
-                    10_000,
-                ),
-                $huntingGroundKey,
-            );
 
-            return [
-                'battle' => $borrowed === []
-                    ? $this->resolveAndSettleExplorationBattle(
+            try {
+                return DB::transaction(function () use (
+                    $user,
+                    $requestId,
+                    $fingerprint,
+                    $huntingGroundKey,
+                    $huntingGround,
+                    $borrowedSecretaryIds,
+                    $leaderSyncInputs,
+                    $preparedBorrowed,
+                ): array {
+                    $profile = $this->lockedProfileForUser($user);
+                    $this->assertExplorationUnlocked($profile);
+                    $this->assertHuntingGroundUnlocked($profile, $huntingGround);
+                    $this->assertRequestNotUsedByIntro($profile, $requestId);
+                    $duplicate = $this->duplicateBattle(
                         $profile,
                         $requestId,
                         $fingerprint,
                         $huntingGroundKey,
-                        $encounterKey,
-                        $seed,
-                    )
-                    : $this->resolveAndSettlePartyExplorationBattle(
-                        $profile,
+                    );
+                    if ($duplicate instanceof UndergroundBattle) {
+                        return ['battle' => $duplicate, 'duplicate' => true];
+                    }
+                    if ($borrowedSecretaryIds !== []) {
+                        if ($leaderSyncInputs === null
+                            || ! $this->partyLeaderSyncInputsMatch($profile, $leaderSyncInputs)) {
+                            throw new UndergroundRuntimeException(
+                                'underground_party_leader_changed',
+                                'Leaderの戦闘状態が変わったため、PTを再準備します。',
+                            );
+                        }
+                    }
+                    if ($this->lockedActiveTrialRun($profile) instanceof UndergroundTrialRun) {
+                        throw new UndergroundRuntimeException(
+                            'underground_trial_active',
+                            '封印の地を継続するか、明示的に帰還してから通常探索を行ってください。',
+                        );
+                    }
+                    $this->assertCooldownElapsed($profile);
+                    $seed = $this->battleSeed->forRequest(
+                        $profile->id,
                         $requestId,
-                        $fingerprint,
+                        $huntingGround['content_identity'],
+                    );
+                    $random = new UndergroundRandom($seed);
+                    $encounterKey = $this->alphaV1Catalog->weightedExplorationEncounter(
+                        $random->integer(
+                            'runtime:encounter:'.$huntingGroundKey,
+                            1,
+                            10_000,
+                        ),
                         $huntingGroundKey,
-                        $encounterKey,
-                        $seed,
-                        $borrowed,
-                    ),
-                'duplicate' => false,
-            ];
-        }, 3);
+                    );
+
+                    return [
+                        'battle' => $borrowedSecretaryIds === []
+                            ? $this->resolveAndSettleExplorationBattle(
+                                $profile,
+                                $requestId,
+                                $fingerprint,
+                                $huntingGroundKey,
+                                $encounterKey,
+                                $seed,
+                            )
+                            : $this->resolveAndSettlePartyExplorationBattle(
+                                $profile,
+                                $requestId,
+                                $fingerprint,
+                                $huntingGroundKey,
+                                $encounterKey,
+                                $seed,
+                                $preparedBorrowed,
+                            ),
+                        'duplicate' => false,
+                    ];
+                }, 3);
+            } catch (UndergroundRuntimeException $exception) {
+                if ($exception->errorCode !== 'underground_party_leader_changed' || ++$attempt >= 3) {
+                    throw $exception;
+                }
+            }
+        } while (true);
     }
 
     /** @return array{settlement: UndergroundSkipSettlement, duplicate: bool} */
@@ -658,7 +699,10 @@ STORY;
 
     public function pruneExpiredBattleLogs(): int
     {
-        return UndergroundBattleLog::query()->where('expires_at', '<=', Carbon::now())->delete();
+        $deleted = UndergroundBattleLog::query()->where('expires_at', '<=', Carbon::now())->delete();
+        $this->imageRetention->pruneExpired();
+
+        return $deleted;
     }
 
     /** @return array<string, mixed> */
@@ -842,7 +886,10 @@ STORY;
         string $context,
         bool $withRounds,
     ): array {
-        $snapshot = $battle->snapshot;
+        $snapshot = $this->secretaryPresenter->filterSavedBattleImages(
+            $battle->snapshot,
+            $battle->profile->secretary->user,
+        );
         $summary = is_array($snapshot['summary'] ?? null) ? $snapshot['summary'] : [];
         $log = $battle->relationLoaded('log') && $battle->getRelation('log') instanceof UndergroundBattleLog
             ? $battle->getRelation('log')
@@ -859,7 +906,7 @@ STORY;
                 ? $snapshot['party']
                 : null;
         $party = $partySnapshot !== null
-            ? $this->projectPartyPresentation($partySnapshot, $summary)
+            ? $this->projectPartyPresentation($partySnapshot)
             : null;
 
         return [
@@ -873,6 +920,8 @@ STORY;
             'player_display_name' => is_string($snapshot['player_display_name'] ?? null)
                 ? $snapshot['player_display_name']
                 : '秘書',
+            'player_image_references' => is_array($snapshot['player_image_references'] ?? null)
+                ? $snapshot['player_image_references'] : null,
             'encounter_name' => is_string($snapshot['encounter_display_name'] ?? null)
                 ? $snapshot['encounter_display_name']
                 : '地下の敵',
@@ -945,27 +994,19 @@ STORY;
 
     /**
      * @param  array<string, mixed>  $party
-     * @param  array<string, mixed>  $summary
      * @return array<string, mixed>
      */
-    private function projectPartyPresentation(array $party, array $summary): array
+    private function projectPartyPresentation(array $party): array
     {
         $members = is_array($party['members'] ?? null) ? $party['members'] : [];
-        $finalStates = is_array($summary['final_state'] ?? null) ? $summary['final_state'] : [];
         $players = [];
         $enemies = [];
         foreach ($members as $combatantId => $member) {
             if (! is_string($combatantId) || ! is_array($member)) {
                 continue;
             }
-            $state = is_array($finalStates[$combatantId] ?? null)
-                ? $finalStates[$combatantId]
-                : null;
             $images = is_array($member['image_references'] ?? null) ? $member['image_references'] : [];
-            $compactKey = ($state['awakened'] ?? false) === true ? 'awakening_compact' : 'compact';
-            $icon = is_array($images[$compactKey] ?? null)
-                ? $images[$compactKey]
-                : (is_array($images['compact'] ?? null) ? $images['compact'] : []);
+            $icon = is_array($images['compact'] ?? null) ? $images['compact'] : [];
             $portrait = is_array($images['normal'] ?? null) ? $images['normal'] : [];
             $team = ($member['team'] ?? null) === 'enemy' ? 'enemy' : 'player';
             $row = [
@@ -976,13 +1017,9 @@ STORY;
                     : (is_string($member['label'] ?? null) ? $member['label'] : $combatantId),
                 'icon_url' => is_string($icon['url'] ?? null) ? $icon['url'] : null,
                 'portrait_url' => is_string($portrait['url'] ?? null) ? $portrait['url'] : null,
-                'state' => $state,
-                'awakening_state' => ($state['awakened'] ?? false) === true
-                    ? 'awakened'
-                    : (($state['awakening_unlocked'] ?? false) === true
-                        && ($state['awakening_gauge'] ?? 0) >= UndergroundAwakening::GAUGE_MAX
-                            ? 'ready'
-                            : null),
+                'image_references' => $images,
+                'state' => null,
+                'awakening_state' => null,
             ];
             if ($team === 'player') {
                 $players[] = $row;
@@ -997,6 +1034,19 @@ STORY;
             'enemy_count' => $party['enemy_count'] ?? count($enemies),
             'members' => $players,
             'enemies' => $enemies,
+        ];
+    }
+
+    /** @return array<string, mixed> */
+    private function battleImageReferences(Secretary $secretary): array
+    {
+        $secretary->loadMissing(['user', 'images']);
+
+        return [
+            'compact' => $this->secretaryPresenter->resolveCompactImage($secretary, $secretary->user),
+            'awakening_compact' => $this->secretaryPresenter->resolveCompactImage($secretary, $secretary->user, true),
+            'normal' => $this->secretaryPresenter->resolveLargeImage($secretary, $secretary->user),
+            'awakening' => $this->secretaryPresenter->resolveLargeImage($secretary, $secretary->user, true),
         ];
     }
 
@@ -1155,7 +1205,7 @@ STORY;
         $projection = $this->alphaV1Projector->project(
             $result,
             $definition['catalog'],
-            $secretary->name,
+            $this->secretaryPresenter->battleDisplayName($secretary),
             $encounter['label'],
         );
         $projection['summary']['result'] = $resultType;
@@ -1194,7 +1244,8 @@ STORY;
                 ],
                 'combat_rules_identity' => $result->rulesIdentity,
                 'ai' => $definition['ai'],
-                'player_display_name' => $secretary->name,
+                'player_display_name' => $this->secretaryPresenter->battleDisplayName($secretary),
+                'player_image_references' => $this->battleImageReferences($secretary),
                 'encounter_display_name' => $encounter['label'],
                 'presentation_log_version' => UndergroundAlphaV1BattleProjector::PRESENTATION_LOG_VERSION,
                 'initial_state' => $projection['initial_state'],
@@ -1256,6 +1307,7 @@ STORY;
             'actions' => $projection['rounds'],
             'expires_at' => $finishedAt->copy()->addHours($this->catalog->battleLogRetentionHours()),
         ]);
+        $this->imageRetention->retainSnapshotImages($battle, $battle->snapshot);
         if ($resultType === UndergroundBattle::RESULT_VICTORY) {
             $this->recordActualContentClear($profile, 'hunting_ground', $huntingGroundKey);
         }
@@ -1264,7 +1316,7 @@ STORY;
     }
 
     /**
-     * @param  list<array{secretary: Secretary, profile: UndergroundProfile, awakening_unlocked: bool}>  $borrowed
+     * @param  list<array{secretary_id:int, source_owner_user_id:int, snapshot:array<string,mixed>}>  $borrowed
      */
     private function resolveAndSettlePartyExplorationBattle(
         UndergroundProfile $profile,
@@ -1365,17 +1417,9 @@ STORY;
         ]];
         $playerSnapshots = [$leaderDefinition['player_snapshot']];
         foreach ($borrowed as $context) {
-            $borrowedSecretary = $context['secretary'];
-            $borrowedProfile = $context['profile'];
-            $snapshot = $this->borrowedSnapshots->create(
-                $borrowedSecretary,
-                $borrowedProfile,
-                $leaderLevel,
-                $this->equipmentItemLevelsBySlot($leaderEquipment),
-                $leader,
-                $context['awakening_unlocked'],
-            );
-            $combatantId = 'borrowed:'.$borrowedSecretary->id;
+            $snapshot = $context['snapshot'];
+            $borrowedSecretaryId = $context['secretary_id'];
+            $combatantId = 'borrowed:'.$borrowedSecretaryId;
             $snapshot['team'] = 'player';
             $snapshot['combatant_id'] = $combatantId;
             $snapshot['source_type'] = 'borrowed_secretary';
@@ -1384,8 +1428,8 @@ STORY;
             $playerSnapshots[] = $snapshot['player_snapshot'];
             $memberRows[] = [
                 'source_type' => 'borrowed_secretary',
-                'secretary_id' => $borrowedSecretary->id,
-                'source_owner_user_id' => $borrowedSecretary->user_id,
+                'secretary_id' => $borrowedSecretaryId,
+                'source_owner_user_id' => $context['source_owner_user_id'],
                 'combatant_id' => $combatantId,
                 'original_level' => $snapshot['original_combat_level'],
                 'effective_level' => $snapshot['effective_combat_level'],
@@ -1489,7 +1533,7 @@ STORY;
         $profile->next_battle_at = $finishedAt->copy()->addSeconds($this->catalog->cooldownSeconds());
         $profile->save();
 
-        $projection = $this->partyProjector->project($result, $memberSnapshots);
+        $projection = $this->partyProjector->project($result, $memberSnapshots, $leaderDefinition['catalog']);
         $projection['summary']['result'] = $resultType;
         $battle = UndergroundBattle::query()->create([
             'underground_profile_id' => $profile->id,
@@ -1595,6 +1639,7 @@ STORY;
             'actions' => $projection['rounds'],
             'expires_at' => $finishedAt->copy()->addHours($this->catalog->battleLogRetentionHours()),
         ]);
+        $this->imageRetention->retainSnapshotImages($battle, $battle->snapshot);
         $this->lendingRewards->settle($battle, $party);
         if ($resultType === UndergroundBattle::RESULT_VICTORY) {
             $this->recordActualContentClear($profile, 'hunting_ground', $huntingGroundKey);
@@ -1783,7 +1828,7 @@ STORY;
         $projection = $this->alphaV1Projector->project(
             $result,
             $definition['catalog'],
-            $secretary->name,
+            $this->secretaryPresenter->battleDisplayName($secretary),
             $encounterLabel,
         );
         if ($trialRun->trial_key === 'trial_01' && $isTrialBoss && $result->rounds >= 20) {
@@ -1852,7 +1897,8 @@ STORY;
                 'trial_content_identity' => $trial['content_identity'],
                 'combat_rules_identity' => $result->rulesIdentity,
                 'ai' => $definition['ai'],
-                'player_display_name' => $secretary->name,
+                'player_display_name' => $this->secretaryPresenter->battleDisplayName($secretary),
+                'player_image_references' => $this->battleImageReferences($secretary),
                 'encounter_display_name' => $encounterLabel,
                 'presentation_log_version' => UndergroundAlphaV1BattleProjector::PRESENTATION_LOG_VERSION,
                 'initial_state' => $projection['initial_state'],
@@ -1923,6 +1969,7 @@ STORY;
             'actions' => $projection['rounds'],
             'expires_at' => $finishedAt->copy()->addHours($this->catalog->battleLogRetentionHours()),
         ]);
+        $this->imageRetention->retainSnapshotImages($battle, $battle->snapshot);
         if ($resultType === UndergroundBattle::RESULT_VICTORY && $isTrialBoss) {
             $this->recordActualContentClear($profile, 'trial', $trialRun->trial_key);
         }
@@ -2054,11 +2101,134 @@ STORY;
         }
     }
 
+    /**
+     * Check for a previously persisted request without taking the leader lock.
+     * This keeps retries idempotent even if a selected lender was disabled
+     * after the original battle had already settled.
+     */
+    private function explorationRequestExists(User $user, string $requestId): bool
+    {
+        $secretaryId = Secretary::query()
+            ->where('user_id', $user->id)
+            ->value('id');
+        if (! is_int($secretaryId) && ! is_numeric($secretaryId)) {
+            return false;
+        }
+        $profileId = UndergroundProfile::query()
+            ->where('secretary_id', (int) $secretaryId)
+            ->value('id');
+        if (! is_int($profileId) && ! is_numeric($profileId)) {
+            return false;
+        }
+
+        return UndergroundBattle::query()
+            ->where('underground_profile_id', (int) $profileId)
+            ->where('request_id', $requestId)
+            ->exists();
+    }
+
+    /**
+     * @return array{secretary_id:int, profile_id:int, combat_level:int, equipment_item_levels:array<string,int>}
+     */
+    private function partyLeaderSyncInputs(User $user): array
+    {
+        $secretary = Secretary::query()->where('user_id', $user->id)->first();
+        if (! $secretary instanceof Secretary) {
+            throw new UndergroundRuntimeException(
+                'underground_secretary_missing',
+                '秘書がまだ作成されていません。',
+            );
+        }
+        $profile = UndergroundProfile::query()->where('secretary_id', $secretary->id)->first();
+        if (! $profile instanceof UndergroundProfile || ! is_string($profile->growth_path_key)) {
+            throw new UndergroundRuntimeException(
+                'underground_exploration_locked',
+                '周囲の探索はまだ解禁されていません。',
+            );
+        }
+        $equipment = $this->equipmentLoadout->combatLoadout($profile);
+        $itemLevels = $this->equipmentItemLevelsBySlot($equipment);
+        ksort($itemLevels);
+
+        return [
+            'secretary_id' => (int) $secretary->id,
+            'profile_id' => (int) $profile->id,
+            'combat_level' => (int) $profile->combat_level,
+            'equipment_item_levels' => $itemLevels,
+        ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $expected
+     */
+    private function partyLeaderSyncInputsMatch(UndergroundProfile $profile, array $expected): bool
+    {
+        $secretary = $profile->secretary;
+        if ((int) ($expected['profile_id'] ?? 0) !== (int) $profile->id
+            || ! $secretary instanceof Secretary
+            || (int) ($expected['secretary_id'] ?? 0) !== (int) $secretary->id
+            || (int) ($expected['combat_level'] ?? 0) !== (int) $profile->combat_level) {
+            return false;
+        }
+        $equipment = $this->equipmentLoadout->combatLoadout($profile);
+        $itemLevels = $this->equipmentItemLevelsBySlot($equipment);
+        ksort($itemLevels);
+
+        return ($expected['equipment_item_levels'] ?? null) === $itemLevels;
+    }
+
+    /**
+     * Prepare borrowed snapshots in a short transaction. The returned
+     * payload contains only detached source data needed by the combat
+     * transaction; no borrowed Eloquent row is used after this method returns.
+     *
+     * @param  array{secretary_id:int, profile_id:int, combat_level:int, equipment_item_levels:array<string,int>}  $leaderSyncInputs
+     * @param  list<int>  $secretaryIds
+     * @return list<array{secretary_id:int, source_owner_user_id:int, snapshot:array<string,mixed>}>
+     */
+    private function prepareBorrowedPartySnapshots(
+        User $leader,
+        string $requestId,
+        array $leaderSyncInputs,
+        array $secretaryIds,
+    ): array {
+        return DB::transaction(function () use ($leader, $requestId, $leaderSyncInputs, $secretaryIds): array {
+            $borrowed = $this->lockedBorrowedProfiles(
+                $leader,
+                $leaderSyncInputs['secretary_id'],
+                $secretaryIds,
+            );
+            $prepared = [];
+            foreach ($borrowed as $context) {
+                $snapshot = $this->borrowedSnapshots->create(
+                    $context['secretary'],
+                    $context['profile'],
+                    $leaderSyncInputs['combat_level'],
+                    $leaderSyncInputs['equipment_item_levels'],
+                    $leader,
+                    $context['awakening_unlocked'],
+                );
+                $prepared[] = [
+                    'secretary_id' => (int) $context['secretary']->id,
+                    'source_owner_user_id' => (int) $context['secretary']->user_id,
+                    'snapshot' => $snapshot,
+                ];
+            }
+            $this->imageRetention->reserveBattleImages(
+                $this->imageRetention->reservationKey($leaderSyncInputs['profile_id'], $requestId),
+                $prepared,
+                Carbon::now()->addHours($this->catalog->battleLogRetentionHours()),
+            );
+
+            return $prepared;
+        }, 3);
+    }
+
     private function lockedProfileForUser(User $user): UndergroundProfile
     {
         $secretary = Secretary::query()
             ->where('user_id', $user->id)
-            ->lockForUpdate()
+            ->lock('for no key update')
             ->first();
         if (! $secretary instanceof Secretary) {
             throw new UndergroundRuntimeException(
@@ -2085,10 +2255,10 @@ STORY;
      */
     private function lockedBorrowedProfiles(
         User $leader,
-        Secretary $leaderSecretary,
+        int $leaderSecretaryId,
         array $secretaryIds,
     ): array {
-        if (in_array((int) $leaderSecretary->id, $secretaryIds, true)) {
+        if (in_array($leaderSecretaryId, $secretaryIds, true)) {
             throw new UndergroundRuntimeException(
                 'underground_party_self_borrow',
                 '自分の秘書をborrow枠へ入れることはできません。',
@@ -2149,6 +2319,7 @@ STORY;
         $profileIds = $profiles->pluck('id')->map(static fn (mixed $id): int => (int) $id)->all();
         $equipment = UndergroundOwnedEquipment::query()
             ->whereIn('underground_profile_id', $profileIds)
+            ->whereNotNull('equipped_slot')
             ->orderBy('underground_profile_id')
             ->orderBy('id')
             ->lockForUpdate()

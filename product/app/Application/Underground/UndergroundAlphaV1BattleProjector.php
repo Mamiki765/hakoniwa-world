@@ -242,7 +242,7 @@ final class UndergroundAlphaV1BattleProjector
         ];
     }
 
-    private function actionLabel(string $action, AlphaV1BuildCatalog $catalog): string
+    public function actionLabel(string $action, AlphaV1BuildCatalog $catalog): string
     {
         $plain = [
             'normal_attack' => '通常攻撃',

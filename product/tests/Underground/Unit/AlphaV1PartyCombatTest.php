@@ -141,6 +141,21 @@ final class AlphaV1PartyCombatTest extends TestCase
         self::assertSame('borrowed:2', $healerLog['actor_id']);
         self::assertSame('secretary:1', $healerLog['target_id']);
         self::assertSame('single_ally', $healerLog['target_scope']);
+        self::assertIsString($healerLog['action_id'] ?? null);
+        $healerDecision = collect($healerResult->actionLog)->first(
+            static fn (array $row): bool => ($row['kind'] ?? null) === 'decision'
+                && ($row['actor_id'] ?? null) === 'borrowed:2'
+                && ($row['action_key'] ?? null) === 'mending_prayer',
+        );
+        self::assertIsArray($healerDecision);
+        self::assertSame('secretary:1', $healerDecision['target_id']);
+        self::assertSame($healerDecision['action_id'], $healerLog['action_id']);
+        $healerCost = collect($healerResult->actionLog)->first(
+            static fn (array $row): bool => ($row['effect_type'] ?? null) === 'mp_cost'
+                && ($row['actor_id'] ?? null) === 'borrowed:2',
+        );
+        self::assertIsArray($healerCost);
+        self::assertSame($healerDecision['action_id'], $healerCost['action_id']);
 
         $attacker = $this->player('secretary:3', currentHp: 1);
         $attacker['active_skills'] = ['mending_prayer'];
@@ -166,6 +181,47 @@ final class AlphaV1PartyCombatTest extends TestCase
         self::assertSame('self', $attackerLog['target_scope']);
     }
 
+    public function test_standard_party_healer_uses_ally_hp_condition_when_own_hp_is_high(): void
+    {
+        $catalog = $this->catalog(enemyHp: 1_000_000, enemyPower: 1, enemyAgility: 1);
+        $healer = $this->player('borrowed:2', currentHp: 1_100);
+        $healer['active_skills'] = ['mending_prayer'];
+        $healer['ai_mode'] = 'default';
+        $healer['party_healing_target_scope'] = 'single_ally';
+        $healer['ai_rules'] = [[
+            'conditions' => [
+                ['type' => 'own_hp_lte', 'percent' => 55],
+                ['type' => 'skill_ready', 'skill' => 'mending_prayer'],
+            ],
+            'action' => 'skill:mending_prayer',
+        ], [
+            'conditions' => [['type' => 'always']],
+            'action' => 'normal_attack',
+        ]];
+        $result = $this->model()->fightPartySnapshots(
+            $catalog,
+            [$this->player('secretary:1', currentHp: 1), $healer],
+            ['party_target'],
+            387,
+            1,
+            0,
+        );
+
+        $decision = collect($result->actionLog)->first(
+            static fn (array $row): bool => ($row['kind'] ?? null) === 'decision'
+                && ($row['actor_id'] ?? null) === 'borrowed:2',
+        );
+        self::assertIsArray($decision);
+        self::assertSame('mending_prayer', $decision['action_key']);
+        self::assertSame('secretary:1', $decision['target_id']);
+        $recovery = collect($result->actionLog)->first(
+            static fn (array $row): bool => ($row['action'] ?? null) === 'mending_prayer'
+                && ($row['effect_type'] ?? null) === 'recovery',
+        );
+        self::assertIsArray($recovery);
+        self::assertSame('secretary:1', $recovery['target_id']);
+    }
+
     public function test_healer_awakening_revives_every_defeated_ally_at_full_hp(): void
     {
         $catalog = $this->catalog(enemyHp: 10_000_000, enemyPower: 500_000, enemyAgility: 1_000);
@@ -183,10 +239,12 @@ final class AlphaV1PartyCombatTest extends TestCase
 
         $revive = collect($result->actionLog)->first(
             static fn (array $row): bool => ($row['action'] ?? null) === 'life_requiem'
-                && ($row['effect_type'] ?? null) === 'recovery'
+                && ($row['kind'] ?? null) === 'revival'
+                && ($row['effect_type'] ?? null) === 'revival'
                 && ($row['target_id'] ?? null) === 'secretary:1',
         );
         self::assertIsArray($revive);
+        self::assertSame('revival', $revive['kind']);
         self::assertTrue($revive['revived']);
         self::assertSame(10_000, $revive['revive_hp_bps']);
         self::assertSame(
@@ -195,8 +253,49 @@ final class AlphaV1PartyCombatTest extends TestCase
         );
     }
 
-    private function catalog(int $enemyHp, int $enemyPower, int $enemyAgility, bool $enemyAoe = false): AlphaV1BuildCatalog
+    public function test_party_counter_and_lifesteal_keep_their_actual_target_identity_and_action_id(): void
     {
+        $catalog = $this->catalog(
+            enemyHp: 10_000_000,
+            enemyPower: 1,
+            enemyAgility: 1,
+            enemyCounter: true,
+        );
+        $result = $this->model()->fightPartySnapshots(
+            $catalog,
+            [$this->player('secretary:1', modifiers: ['lifesteal_bps' => 5_000])],
+            ['party_target'],
+            386,
+            2,
+            0,
+        );
+
+        $counter = collect($result->actionLog)->first(
+            static fn (array $row): bool => ($row['effect_type'] ?? null) === 'counter',
+        );
+        self::assertIsArray($counter);
+        self::assertSame('enemy:1', $counter['actor_id']);
+        self::assertSame('secretary:1', $counter['target_id']);
+        self::assertSame(['secretary:1'], $counter['target_ids']);
+        self::assertIsString($counter['action_id'] ?? null);
+
+        $lifesteal = collect($result->actionLog)->first(
+            static fn (array $row): bool => ($row['action'] ?? null) === 'lifesteal',
+        );
+        self::assertIsArray($lifesteal);
+        self::assertSame('secretary:1', $lifesteal['actor_id']);
+        self::assertSame('secretary:1', $lifesteal['target_id']);
+        self::assertSame(['secretary:1'], $lifesteal['target_ids']);
+        self::assertIsString($lifesteal['action_id'] ?? null);
+    }
+
+    private function catalog(
+        int $enemyHp,
+        int $enemyPower,
+        int $enemyAgility,
+        bool $enemyAoe = false,
+        bool $enemyCounter = false,
+    ): AlphaV1BuildCatalog {
         $contents = file_get_contents(dirname(__DIR__, 3).'/config/underground/balance/foundation-v1.json');
         self::assertIsString($contents);
         $manifest = json_decode($contents, true, flags: JSON_THROW_ON_ERROR);
@@ -227,12 +326,14 @@ final class AlphaV1PartyCombatTest extends TestCase
                 'dodgeable' => false,
                 'hits' => 1,
             ],
-            'skills' => $enemyAoe ? ['party_wave'] : [],
+            'skills' => $enemyCounter ? ['counter_stance'] : ($enemyAoe ? ['party_wave'] : []),
             'ai_rules' => [[
                 'conditions' => [['type' => 'always']],
-                'action' => $enemyAoe ? 'skill:party_wave' : 'normal_attack',
+                'action' => $enemyCounter
+                    ? 'skill:counter_stance'
+                    : ($enemyAoe ? 'skill:party_wave' : 'normal_attack'),
             ]],
-            'modifiers' => [],
+            'modifiers' => $enemyCounter ? ['counter_power_bps' => 5_000] : [],
         ];
         if ($enemyAoe) {
             $manifest['skills']['party_wave'] = [
@@ -264,6 +365,7 @@ final class AlphaV1PartyCombatTest extends TestCase
         int $currentHp = 1,
         bool $awakening = false,
         bool $defend = false,
+        array $modifiers = [],
     ): array {
         $configuration = require dirname(__DIR__, 3).'/config/underground-alpha-v1.php';
         $rules = $awakening
@@ -280,7 +382,7 @@ final class AlphaV1PartyCombatTest extends TestCase
             'stats' => ['vitality' => 100, 'might' => 40, 'finesse' => 1, 'spirit' => 40, 'agility' => 200],
             'active_skills' => [],
             'ai_rules' => $rules,
-            'modifiers' => [],
+            'modifiers' => $modifiers,
             'equipment' => $configuration['exploration']['starter_weapon'],
             'current_hp' => $currentHp,
             'natural_recovery' => 0,

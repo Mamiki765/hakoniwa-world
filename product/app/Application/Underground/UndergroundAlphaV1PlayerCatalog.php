@@ -818,6 +818,7 @@ final readonly class UndergroundAlphaV1PlayerCatalog
                 'stats' => $progressionStats,
                 'active_skills' => $skillBuild['active_skills'],
                 'ai_rules' => $ai['rules'],
+                'ai_mode' => $customAiRules === null ? 'default' : 'custom',
                 'modifiers' => $skillBuild['passive_modifiers'],
                 'equipment' => $equipment,
                 'current_hp' => $currentHp,

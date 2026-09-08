@@ -212,7 +212,7 @@ final class UndergroundBuildValidator
         }
         $conditionTypes = [
             'always', 'own_hp_lte', 'own_hp_gte', 'own_mp_lte', 'own_mp_gte',
-            'enemy_hp_lte', 'self_has_status', 'self_lacks_status', 'enemy_has_status',
+            'enemy_hp_lte', 'ally_hp_lte', 'self_has_status', 'self_lacks_status', 'enemy_has_status',
             'enemy_lacks_status', 'status_stacks_gte', 'role_stacks_gte', 'enemy_telegraph', 'skill_ready',
             'round_gte', 'round_modulo',
         ];

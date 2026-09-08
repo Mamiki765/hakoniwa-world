@@ -93,10 +93,16 @@ export interface SecretaryProfile {
 export interface SecretaryImageSlot {
     slot: 'icon' | 'bust' | 'full_body' | 'awakening_icon' | 'awakening_bust' | 'awakening_full_body';
     url: string | null;
+    source?: 'slot' | 'legacy_main';
     display: 'uploaded' | 'silhouette' | 'peridot' | 'none';
     creation_method: 'self_made' | 'ai_generated' | 'commissioned_or_permitted' | 'other' | null;
     creation_method_label?: string | null;
     credit: string | null;
+    editable_metadata?: {
+        creation_method: 'self_made' | 'ai_generated' | 'commissioned_or_permitted' | 'other' | null;
+        creation_method_label?: string | null;
+        credit: string | null;
+    };
 }
 
 export type SecretaryImageSlots = Record<SecretaryImageSlot['slot'], SecretaryImageSlot>;

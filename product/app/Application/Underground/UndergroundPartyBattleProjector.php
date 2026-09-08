@@ -2,6 +2,7 @@
 
 namespace App\Application\Underground;
 
+use App\Domain\Underground\Combat\AlphaV1BuildCatalog;
 use App\Domain\Underground\Combat\PartyCombatResult;
 
 /** Presentation-only projection for the party battle envelope (v3). */
@@ -13,11 +14,12 @@ final class UndergroundPartyBattleProjector
      * @param  array<string, array<string, mixed>>  $memberSnapshots  keyed by combatant ID
      * @return array{version: int, initial_state: array<string,mixed>, summary: array<string,mixed>, rounds: list<array<string,mixed>>, portrait_events: list<array<string,mixed>>}
      */
-    public function project(PartyCombatResult $result, array $memberSnapshots): array
+    public function project(PartyCombatResult $result, array $memberSnapshots, AlphaV1BuildCatalog $catalog): array
     {
         $initial = $this->states($result->initialStates, $memberSnapshots);
         $rounds = [];
         $awakeningRounds = [];
+        $awakeningStates = [];
         foreach ($result->actionLog as $row) {
             $round = (int) ($row['round'] ?? 0);
             if ($round < 1) {
@@ -36,10 +38,22 @@ final class UndergroundPartyBattleProjector
             if (in_array($kind, ['awakening', 'awakening_technique'], true)
                 && is_string($row['actor_id'] ?? null)) {
                 $awakeningRounds[$row['actor_id']] ??= $round;
+                if ($kind === 'awakening' && is_array($row['state'] ?? null)) {
+                    $awakeningStates[$row['actor_id']] = $row['state'];
+                }
             }
-            $rounds[$round]['actions'][] = $this->action($row, $kind, $memberSnapshots);
+            $rounds[$round]['actions'][] = $this->action($row, $kind, $memberSnapshots, $catalog);
         }
         ksort($rounds);
+        $previousBoundary = $initial;
+        foreach ($rounds as &$round) {
+            $round['start_state'] = $previousBoundary;
+            $round['state_timing'] = $round['round'] === 1 ? 'battle_start' : 'previous_round_end';
+            if ($round['end_state'] !== []) {
+                $previousBoundary = $round['end_state'];
+            }
+        }
+        unset($round);
 
         return [
             'version' => self::PRESENTATION_LOG_VERSION,
@@ -52,7 +66,7 @@ final class UndergroundPartyBattleProjector
                 'final_state' => $this->states($result->finalStates, $memberSnapshots),
             ],
             'rounds' => array_values($rounds),
-            'portrait_events' => $this->portraits($memberSnapshots, $awakeningRounds, $result->rounds),
+            'portrait_events' => $this->portraits($memberSnapshots, $awakeningRounds, $result->rounds, $initial, $result->finalStates, $awakeningStates),
         ];
     }
 
@@ -86,19 +100,20 @@ final class UndergroundPartyBattleProjector
      * @param  array<string, array<string, mixed>>  $members
      * @return array<string, mixed>
      */
-    private function action(array $row, string $kind, array $members): array
+    private function action(array $row, string $kind, array $members, AlphaV1BuildCatalog $catalog): array
     {
         $action = $row;
         $action['kind'] = $kind;
         $action['type'] = is_string($row['effect_type'] ?? null)
             ? $row['effect_type']
-            : $kind;
+            : ($kind === 'decision' ? 'action' : ((int) ($row['amount'] ?? 0) < 0 ? 'recovery' : $kind));
         $action['side'] = is_string($row['team'] ?? null)
             ? $row['team']
             : (is_string($row['side'] ?? null) ? $row['side'] : 'system');
+        $actionKey = $kind === 'decision' ? ($row['action_key'] ?? '') : ($row['action'] ?? '');
         $action['label'] = is_string($row['message'] ?? null)
             ? $row['message']
-            : (is_string($row['action'] ?? null) ? $row['action'] : $kind);
+            : (new UndergroundAlphaV1BattleProjector)->actionLabel((string) $actionKey, $catalog);
         $actorId = is_string($row['actor_id'] ?? null) ? $row['actor_id'] : null;
         $targetId = is_string($row['target_id'] ?? null) ? $row['target_id'] : null;
         $action['actor_name'] = $actorId !== null && is_array($members[$actorId] ?? null)
@@ -110,7 +125,14 @@ final class UndergroundPartyBattleProjector
         if (in_array($action['type'], ['recovery', 'mp_recovery'], true)) {
             $action['amount'] = abs((int) ($row['amount'] ?? 0));
         }
-        $action['important'] = $kind === 'result' || in_array($kind, ['awakening', 'awakening_technique'], true);
+        $action['important'] = in_array($kind, ['result', 'awakening', 'awakening_technique', 'revival'], true);
+        if ($kind === 'awakening' && is_string($row['message'] ?? null)) {
+            $action['lines'] = [$row['message']];
+        }
+        if ($kind === 'revival') {
+            $action['label'] = '蘇生';
+            $action['lines'] = [($action['target_name'] ?? '味方').'が復活した！'];
+        }
         foreach (['actor_id', 'target_id', 'team'] as $key) {
             if (array_key_exists($key, $row) && ! is_string($row[$key]) && $row[$key] !== null) {
                 $action[$key] = (string) $row[$key];
@@ -126,9 +148,12 @@ final class UndergroundPartyBattleProjector
     /**
      * @param  array<string, array<string, mixed>>  $members
      * @param  array<string, int>  $awakeningRounds
+     * @param  array<string, array<string, mixed>>  $initial
+     * @param  array<string, array<string, mixed>>  $final
+     * @param  array<string, array<string, mixed>>  $awakenings
      * @return list<array<string, mixed>>
      */
-    private function portraits(array $members, array $awakeningRounds, int $finalRound): array
+    private function portraits(array $members, array $awakeningRounds, int $finalRound, array $initial, array $final, array $awakenings): array
     {
         $events = [];
         foreach ($members as $id => $member) {
@@ -138,11 +163,11 @@ final class UndergroundPartyBattleProjector
             $refs = is_array($member['image_references'] ?? null) ? $member['image_references'] : [];
             $normal = $refs['normal'] ?? null;
             $awakened = $refs['awakening'] ?? $normal;
-            $events[] = ['combatant_id' => $id, 'type' => 'start', 'round' => 1, 'image_ref' => $normal, 'image_refs' => $this->refs($refs)];
+            $events[] = ['combatant_id' => $id, 'type' => 'start', 'round' => 1, 'state' => $initial[$id] ?? null, 'image_ref' => $normal, 'image_refs' => $this->refs($refs)];
             if (isset($awakeningRounds[$id])) {
-                $events[] = ['combatant_id' => $id, 'type' => 'awakening', 'round' => $awakeningRounds[$id], 'image_ref' => $awakened, 'image_refs' => $this->refs($refs)];
+                $events[] = ['combatant_id' => $id, 'type' => 'awakening', 'round' => $awakeningRounds[$id], 'state' => $awakenings[$id] ?? null, 'image_ref' => $awakened, 'image_refs' => $this->refs($refs)];
             }
-            $events[] = ['combatant_id' => $id, 'type' => 'final', 'round' => $finalRound, 'image_ref' => isset($awakeningRounds[$id]) ? $awakened : $normal, 'image_refs' => $this->refs($refs)];
+            $events[] = ['combatant_id' => $id, 'type' => 'final', 'round' => $finalRound, 'state' => $final[$id] ?? null, 'image_ref' => ($final[$id]['awakened'] ?? false) ? $awakened : $normal, 'image_refs' => $this->refs($refs)];
         }
 
         return $events;

@@ -17,6 +17,7 @@ final class PriorityCombatAi
         AlphaV1BuildCatalog $catalog,
         int $round,
         int $startRuleIndex = 0,
+        array $allies = [],
     ): array {
         if ($startRuleIndex < 0 || $startRuleIndex > count($actor->aiRules)) {
             throw new \InvalidArgumentException('Underground AI rule cursor is invalid.');
@@ -32,10 +33,11 @@ final class PriorityCombatAi
                 $enemy,
                 $catalog,
                 $round,
+                $allies,
             )) {
                 $mpBlocked = true;
             }
-            if (! is_array($conditions) || ! $this->conditionsPass($conditions, $actor, $enemy, $catalog, $round)) {
+            if (! is_array($conditions) || ! $this->conditionsPass($conditions, $actor, $enemy, $catalog, $round, $allies)) {
                 $index++;
 
                 continue;
@@ -139,9 +141,10 @@ final class PriorityCombatAi
         BuildCombatState $enemy,
         AlphaV1BuildCatalog $catalog,
         int $round,
+        array $allies = [],
     ): bool {
         foreach ($conditions as $condition) {
-            if (! is_array($condition) || ! $this->conditionPasses($condition, $actor, $enemy, $catalog, $round)) {
+            if (! is_array($condition) || ! $this->conditionPasses($condition, $actor, $enemy, $catalog, $round, $allies)) {
                 return false;
             }
         }
@@ -156,6 +159,7 @@ final class PriorityCombatAi
         BuildCombatState $enemy,
         AlphaV1BuildCatalog $catalog,
         int $round,
+        array $allies = [],
     ): bool {
         $blocked = false;
         foreach ($conditions as $condition) {
@@ -163,7 +167,7 @@ final class PriorityCombatAi
                 return false;
             }
             if (($condition['type'] ?? null) !== 'skill_ready') {
-                if (! $this->conditionPasses($condition, $actor, $enemy, $catalog, $round)) {
+                if (! $this->conditionPasses($condition, $actor, $enemy, $catalog, $round, $allies)) {
                     return false;
                 }
 
@@ -190,6 +194,7 @@ final class PriorityCombatAi
         BuildCombatState $enemy,
         AlphaV1BuildCatalog $catalog,
         int $round,
+        array $allies = [],
     ): bool {
         $type = $condition['type'] ?? null;
         $percent = $condition['percent'] ?? null;
@@ -203,6 +208,7 @@ final class PriorityCombatAi
             'own_mp_lte' => is_int($percent) && $actor->mp * 100 <= AlphaV1CombatRules::MAX_MP * $percent,
             'own_mp_gte' => is_int($percent) && $actor->mp * 100 >= AlphaV1CombatRules::MAX_MP * $percent,
             'enemy_hp_lte' => is_int($percent) && $enemy->hp * 100 <= $enemy->maxHp * $percent,
+            'ally_hp_lte' => is_int($percent) && $this->allyPercentageAtOrBelow($actor, $allies, $percent),
             'self_has_status' => is_string($status) && $actor->hasStatus($status),
             'self_lacks_status' => is_string($status) && ! $actor->hasStatus($status),
             'enemy_has_status' => is_string($status) && $enemy->hasStatus($status),
@@ -222,6 +228,27 @@ final class PriorityCombatAi
                 && $round % $condition['modulo'] === $condition['equals'],
             default => false,
         };
+    }
+
+    /**
+     * Party-only healer predicate. The actor is deliberately excluded so a
+     * standard healer rule does not become a self-heal rule in disguise.
+     *
+     * @param  list<BuildCombatState>  $allies
+     */
+    private function allyPercentageAtOrBelow(BuildCombatState $actor, array $allies, int $percent): bool
+    {
+        foreach ($allies as $ally) {
+            if ($ally === $actor || ! $ally->alive()) {
+                continue;
+            }
+
+            if ($ally->hp * 100 <= $ally->maxHp * $percent) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**

@@ -20,6 +20,7 @@ final readonly class SecretaryProfileService
     public function __construct(
         private SecretaryProfileContract $contract,
         private WebImageUploadService $images,
+        private SecretaryImageRetentionService $imageRetention,
     ) {}
 
     public function updateBiography(User $user, string $biography, ?string $nickname = null, bool $nicknameProvided = false): Secretary
@@ -78,6 +79,42 @@ final readonly class SecretaryProfileService
         }
 
         return $secretary;
+    }
+
+    public function updateImageSlotMetadata(
+        User $user,
+        string $slot,
+        string $creationMethod,
+        ?string $credit,
+    ): Secretary {
+        if (! in_array($slot, SecretaryProfileContract::IMAGE_SLOTS, true)) {
+            throw new \DomainException('画像slotを確認してください。');
+        }
+        $creationMethod = $this->contract->creationMethod($creationMethod);
+        $credit = $this->contract->credit($credit);
+        if ($credit === null) {
+            throw new \DomainException('画像ごとに作者・権利表記を入力してください。');
+        }
+
+        return DB::transaction(function () use ($user, $slot, $creationMethod, $credit): Secretary {
+            $secretary = $this->lockSecretary($user);
+            $image = $secretary->images()->where('slot', $slot)->lockForUpdate()->first();
+            if (! $image instanceof SecretaryImage) {
+                throw new \DomainException('metadataを更新できる画像slotがありません。');
+            }
+            $image->update([
+                'creation_method' => $creationMethod,
+                'credit' => $credit,
+                'updated_at' => now(),
+            ]);
+            $this->audit($user, $secretary, 'secretary.image_slot_metadata_updated', [
+                'slot' => $slot,
+                'creation_method' => $creationMethod,
+                'has_credit' => true,
+            ]);
+
+            return $secretary->load(['skills', 'itemInstances', 'images']);
+        }, 3);
     }
 
     public function updatePortraitPreference(User $user, string $preference): Secretary
@@ -233,7 +270,8 @@ final readonly class SecretaryProfileService
         ?string $slot = null,
     ): void {
         if (Secretary::query()->where('main_image_path', $path)->exists()
-            || SecretaryImage::query()->where('path', $path)->exists()) {
+            || SecretaryImage::query()->where('path', $path)->exists()
+            || $this->imageRetention->isRetained($path)) {
             return;
         }
         try {

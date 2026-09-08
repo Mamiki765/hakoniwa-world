@@ -2062,7 +2062,7 @@ async function abandonNation(): Promise<void> {
                                     </div>
                                 </details>
                             </div>
-                            <button v-if="viewedSecretaryProfile.is_owner" class="button secondary" type="button" @click="openSecretaryImageModal">画像を変更</button>
+                            <button v-if="viewedSecretaryProfile.is_owner" class="button secondary" type="button" @click="openSecretaryImageModal">旧メイン画像（fallback）を変更</button>
                         </div>
                         <section class="secretary-profile-summary" aria-label="秘書基本情報">
                             <dl>
@@ -2314,14 +2314,14 @@ async function abandonNation(): Promise<void> {
     <div v-if="secretaryImageModalOpen" class="modal-backdrop" @click.self="closeSecretaryImageModal">
         <section class="secretary-profile-modal" role="dialog" aria-modal="true" aria-labelledby="secretary-image-modal-title">
             <header>
-                <h2 id="secretary-image-modal-title">メイン画像</h2>
+                <h2 id="secretary-image-modal-title">旧メイン画像（fallback）</h2>
                 <button type="button" aria-label="閉じる" :disabled="busy" @click="closeSecretaryImageModal">×</button>
             </header>
             <form @submit.prevent="submitSecretaryImage">
                 <label>
                     新しい画像
                     <input ref="secretaryImageInput" type="file" accept="image/png,image/jpeg,image/webp,image/gif" :required="viewedSecretaryProfile?.editable_image_metadata === null" :disabled="busy" @change="selectSecretaryImage">
-                    <small>PNG / JPEG / WebP / GIF、最大10MB。公開枠では3:4で表示します。</small>
+                    <small>PNG / JPEG / WebP / GIF、最大10MB。6枠のfull bodyが未登録のときにfallbackとして表示します。6枠への個別登録はプロフィールの「画像6スロット」を使用してください。</small>
                     <span v-if="secretaryImageErrors.image" class="field-error" role="alert">{{ secretaryImageErrors.image }}</span>
                 </label>
                 <label>
@@ -2339,7 +2339,7 @@ async function abandonNation(): Promise<void> {
                     <input v-model="secretaryImageCredit" maxlength="160" :disabled="busy">
                     <span v-if="secretaryImageErrors.credit" class="field-error" role="alert">{{ secretaryImageErrors.credit }}</span>
                 </label>
-                <p v-if="secretaryImageFile && viewedSecretaryProfile?.editable_image_metadata" class="field-hint">保存すると旧メイン画像は削除され、最新の1枚だけが残ります。</p>
+                <p v-if="viewedSecretaryProfile?.editable_image_metadata" class="field-hint">これは旧メイン画像のfallback設定です。6枠の画像・制作方法・作者・権利表記はプロフィールの「画像6スロット」で個別に管理します。</p>
                 <div class="modal-actions">
                     <button type="button" :disabled="busy" @click="closeSecretaryImageModal">キャンセル</button>
                     <button class="button primary" type="submit" :disabled="busy">{{ secretaryImageFile ? '画像を保存' : 'metadataを保存' }}</button>

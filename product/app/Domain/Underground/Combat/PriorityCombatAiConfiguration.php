@@ -160,6 +160,7 @@ final readonly class PriorityCombatAiConfiguration
                 ['key' => 'own_mp_lte', 'label' => '自分のMPが指定%以下', 'value_kind' => 'percent'],
                 ['key' => 'own_mp_gte', 'label' => '自分のMPが指定%以上', 'value_kind' => 'percent'],
                 ['key' => 'enemy_hp_lte', 'label' => '敵のHPが指定%以下', 'value_kind' => 'percent'],
+                ['key' => 'ally_hp_lte', 'label' => '味方のHPが指定%以下', 'value_kind' => 'percent'],
                 ['key' => 'self_has_status', 'label' => '自分に指定状態がある', 'value_kind' => 'status'],
                 ['key' => 'self_lacks_status', 'label' => '自分に指定状態がない', 'value_kind' => 'status'],
                 ['key' => 'enemy_has_status', 'label' => '敵に指定状態がある', 'value_kind' => 'status'],
@@ -229,7 +230,7 @@ final readonly class PriorityCombatAiConfiguration
         $normalized = ['type' => $type];
         $allowedKeys = ['type'];
 
-        if (in_array($type, ['own_hp_lte', 'own_hp_gte', 'own_mp_lte', 'own_mp_gte', 'enemy_hp_lte'], true)) {
+        if (in_array($type, ['own_hp_lte', 'own_hp_gte', 'own_mp_lte', 'own_mp_gte', 'enemy_hp_lte', 'ally_hp_lte'], true)) {
             $allowedKeys[] = 'percent';
             $percent = $condition['percent'] ?? null;
             if (! is_int($percent) || $percent < 0 || $percent > 100) {

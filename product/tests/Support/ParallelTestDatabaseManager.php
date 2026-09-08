@@ -20,6 +20,8 @@ final class ParallelTestDatabaseManager
 
     private readonly string $workspaceDirectory;
 
+    private readonly string $evidenceRootDirectory;
+
     public function __construct(string $projectRoot, string $configurationPath = 'phpunit.xml')
     {
         $resolvedRoot = realpath($projectRoot);
@@ -30,6 +32,7 @@ final class ParallelTestDatabaseManager
         $this->projectRoot = TestShardPlanner::normalizePath($resolvedRoot);
         $this->configurationPath = $this->projectRoot.'/'.TestShardPlanner::normalizePath($configurationPath);
         $this->workspaceDirectory = $this->projectRoot.'/storage/framework/testing';
+        $this->evidenceRootDirectory = $this->workspaceDirectory.'/test-evidence';
     }
 
     public function prepare(int $shardTotal, ?string $requestedToken = null): string
@@ -60,6 +63,7 @@ final class ParallelTestDatabaseManager
         $settings = $this->databaseSettings();
         $token = $requestedToken ?? bin2hex(random_bytes(4));
         $runDirectory = $this->workspaceDirectory.'/phpunit-parallel-'.$token;
+        $evidenceDirectory = $this->evidenceRootDirectory.'/phpunit-parallel-'.$token;
         if (file_exists($runDirectory) || is_link($runDirectory) || ! mkdir($runDirectory, 0700, true)) {
             throw new RuntimeException("Unable to create parallel test workspace [{$runDirectory}].");
         }
@@ -77,12 +81,17 @@ final class ParallelTestDatabaseManager
                 $database = self::databaseName($token, $index);
                 $configuration = $runDirectory.'/phpunit-'.sprintf('%02d', $index + 1).'.xml';
                 $log = $runDirectory.'/phpunit-'.sprintf('%02d', $index + 1).'.log';
+                $evidenceLog = $evidenceDirectory.'/phpunit-'.sprintf('%02d', $index + 1).'.log';
+                $junit = $evidenceDirectory.'/phpunit-'.sprintf('%02d', $index + 1).'.junit.xml';
                 $this->writeTemporaryConfiguration($configuration, $database);
                 $manifestShards[] = [
                     'index' => $index,
                     'database' => $database,
                     'configuration' => $configuration,
                     'log' => $log,
+                    'evidence_log' => $evidenceLog,
+                    'junit' => $junit,
+                    'test_file_count' => count($files),
                 ];
             }
 
@@ -90,6 +99,7 @@ final class ParallelTestDatabaseManager
             $payload = json_encode([
                 'token' => $token,
                 'directory' => $runDirectory,
+                'evidence_directory' => $evidenceDirectory,
                 'shard_total' => $shardTotal,
                 'discovered_count' => count($discovered),
                 'shards' => $manifestShards,
@@ -124,7 +134,7 @@ final class ParallelTestDatabaseManager
         }
     }
 
-    /** @return array{configuration: string, database: string, log: string}|null */
+    /** @return array{configuration: string, database: string, log: string, evidence_log?: string, junit?: string}|null */
     public function shard(string $manifestPath, int $index): ?array
     {
         $manifest = $this->loadAndValidateManifest($manifestPath);
@@ -133,15 +143,29 @@ final class ParallelTestDatabaseManager
                 if (! is_file($shard['configuration'])
                     || is_link($shard['configuration'])
                     || is_link($shard['log'])
-                    || (file_exists($shard['log']) && ! is_file($shard['log']))) {
+                    || (file_exists($shard['log']) && ! is_file($shard['log']))
+                    || (isset($shard['evidence_log'])
+                        && (is_link($shard['evidence_log'])
+                            || (file_exists($shard['evidence_log']) && ! is_file($shard['evidence_log']))))
+                    || (isset($shard['junit'])
+                        && (is_link($shard['junit'])
+                            || (file_exists($shard['junit']) && ! is_file($shard['junit']))))) {
                     throw new RuntimeException('Parallel test shard files failed their safety validation.');
                 }
 
-                return [
+                $result = [
                     'configuration' => $shard['configuration'],
                     'database' => $shard['database'],
                     'log' => $shard['log'],
                 ];
+                if (isset($shard['evidence_log'])) {
+                    $result['evidence_log'] = $shard['evidence_log'];
+                }
+                if (isset($shard['junit'])) {
+                    $result['junit'] = $shard['junit'];
+                }
+
+                return $result;
             }
         }
 
@@ -172,6 +196,13 @@ final class ParallelTestDatabaseManager
         $this->removeDirectory($manifest['directory']);
     }
 
+    public function evidenceDirectory(string $manifestPath): ?string
+    {
+        $manifest = $this->loadAndValidateManifest($manifestPath);
+
+        return $manifest['evidence_directory'] ?? null;
+    }
+
     public static function databaseName(string $token, int $zeroBasedIndex): string
     {
         if (preg_match('/^[a-f0-9]{8}$/', $token) !== 1 || $zeroBasedIndex < 0 || $zeroBasedIndex > 63) {
@@ -190,9 +221,10 @@ final class ParallelTestDatabaseManager
      * @return array{
      *     token: string,
      *     directory: string,
+     *     evidence_directory?: string,
      *     shard_total: int,
      *     discovered_count: int,
-     *     shards: list<array{index: int, database: string, configuration: string, log: string}>
+     *     shards: list<array{index: int, database: string, configuration: string, log: string, evidence_log?: string, junit?: string, test_file_count?: int}>
      * }
      */
     private function loadAndValidateManifest(string $manifestPath): array
@@ -215,15 +247,23 @@ final class ParallelTestDatabaseManager
 
         $token = $decoded['token'] ?? null;
         $directory = isset($decoded['directory']) ? TestShardPlanner::normalizePath((string) $decoded['directory']) : null;
+        $evidenceDirectory = isset($decoded['evidence_directory'])
+            ? TestShardPlanner::normalizePath((string) $decoded['evidence_directory'])
+            : null;
         $shardTotal = $decoded['shard_total'] ?? null;
         $discoveredCount = $decoded['discovered_count'] ?? null;
         $shards = $decoded['shards'] ?? null;
         $expectedDirectory = dirname($resolvedManifest);
+        $expectedEvidenceDirectory = is_string($token)
+            ? $this->evidenceRootDirectory.'/phpunit-parallel-'.$token
+            : null;
 
         if (! is_string($token)
             || preg_match('/^[a-f0-9]{8}$/', $token) !== 1
             || $directory !== $expectedDirectory
             || basename($directory) !== 'phpunit-parallel-'.$token
+            || ($evidenceDirectory !== null
+                && $evidenceDirectory !== $expectedEvidenceDirectory)
             || ! is_int($shardTotal)
             || $shardTotal < 1
             || $shardTotal > 64
@@ -247,6 +287,13 @@ final class ParallelTestDatabaseManager
                 ? TestShardPlanner::normalizePath((string) $shard['configuration'])
                 : null;
             $log = isset($shard['log']) ? TestShardPlanner::normalizePath((string) $shard['log']) : null;
+            $evidenceLog = isset($shard['evidence_log'])
+                ? TestShardPlanner::normalizePath((string) $shard['evidence_log'])
+                : null;
+            $junit = isset($shard['junit'])
+                ? TestShardPlanner::normalizePath((string) $shard['junit'])
+                : null;
+            $testFileCount = $shard['test_file_count'] ?? null;
 
             if (! is_int($index)
                 || $index < 0
@@ -259,6 +306,15 @@ final class ParallelTestDatabaseManager
                 || ! is_string($log)
                 || dirname($log) !== $directory
                 || basename($log) !== 'phpunit-'.sprintf('%02d', $index + 1).'.log'
+                || ($evidenceDirectory === null && ($evidenceLog !== null || $junit !== null))
+                || ($evidenceDirectory !== null
+                    && ($evidenceLog === null
+                        || dirname($evidenceLog) !== $evidenceDirectory
+                        || basename($evidenceLog) !== 'phpunit-'.sprintf('%02d', $index + 1).'.log'
+                        || $junit === null
+                        || dirname($junit) !== $evidenceDirectory
+                        || basename($junit) !== 'phpunit-'.sprintf('%02d', $index + 1).'.junit.xml'))
+                || ($testFileCount !== null && (! is_int($testFileCount) || $testFileCount < 0))
                 || isset($seenIndexes[$index])
                 || isset($seenDatabases[$database])) {
                 throw new RuntimeException('Parallel test manifest failed its database safety validation.');
@@ -266,16 +322,31 @@ final class ParallelTestDatabaseManager
 
             $seenIndexes[$index] = true;
             $seenDatabases[$database] = true;
-            $validatedShards[] = compact('index', 'database', 'configuration', 'log');
+            $validatedShard = compact('index', 'database', 'configuration', 'log');
+            if ($evidenceLog !== null) {
+                $validatedShard['evidence_log'] = $evidenceLog;
+            }
+            if ($junit !== null) {
+                $validatedShard['junit'] = $junit;
+            }
+            if ($testFileCount !== null) {
+                $validatedShard['test_file_count'] = $testFileCount;
+            }
+            $validatedShards[] = $validatedShard;
         }
 
-        return [
+        $result = [
             'token' => $token,
             'directory' => $directory,
             'shard_total' => $shardTotal,
             'discovered_count' => $discoveredCount,
             'shards' => $validatedShards,
         ];
+        if ($evidenceDirectory !== null) {
+            $result['evidence_directory'] = $evidenceDirectory;
+        }
+
+        return $result;
     }
 
     /**

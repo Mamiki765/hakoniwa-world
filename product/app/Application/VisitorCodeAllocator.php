@@ -15,7 +15,10 @@ final class VisitorCodeAllocator
     public function allocate(User $user): string
     {
         return DB::transaction(function () use ($user): string {
-            $lockedUser = User::query()->whereKey($user->id)->lockForUpdate()->firstOrFail();
+            // Keep user identity writes serialized while allowing a concurrent
+            // party member FK to take a KEY SHARE lock on the same user. This
+            // avoids a reciprocal-party cycle during lending settlement.
+            $lockedUser = User::query()->whereKey($user->id)->lock('for no key update')->firstOrFail();
             if (is_string($lockedUser->visitor_code) && $lockedUser->visitor_code !== '') {
                 return $lockedUser->visitor_code;
             }

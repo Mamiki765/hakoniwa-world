@@ -43,12 +43,14 @@ use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 use RuntimeException;
 use Tests\Concerns\CreatesTestWorlds;
+use Tests\Concerns\RestoresPre380Schema;
 use Tests\TestCase;
 
 final class FreshInstallRebaselineTest extends TestCase
 {
     use CreatesTestWorlds;
     use RefreshDatabase;
+    use RestoresPre380Schema;
 
     /** @var list<string> */
     private const UNDERGROUND_RELEASE_TABLES = [
@@ -99,7 +101,7 @@ final class FreshInstallRebaselineTest extends TestCase
         $this->assertSame(30, CommandDefinition::query()->where('ruleset_version_id', $ruleset->id)->count());
         $this->assertSame(3, ProductionDefinition::query()->where('ruleset_version_id', $ruleset->id)->count());
         $this->assertSame(11, MonsterDefinition::query()->where('ruleset_version_id', $ruleset->id)->count());
-        $this->assertSame(69, DB::table('migrations')->count());
+        $this->assertSame(71, DB::table('migrations')->count());
         $this->assertDatabaseHas('migrations', [
             'migration' => '2026_08_22_000000_rebaseline_ver_2_4_install_and_upgrade',
         ]);
@@ -1778,130 +1780,6 @@ SQL);
             $table->dropColumn('awakening_technique_key');
         });
         DB::table('migrations')->where('migration', self::AWAKENING_TECHNIQUE_MIGRATION)->delete();
-    }
-
-    private function returnPartyPersistenceToPre380Source(): void
-    {
-        if (Schema::hasColumn('underground_owned_equipment', 'source_skip_settlement_id')) {
-            DB::statement('ALTER TABLE underground_owned_equipment DROP CONSTRAINT underground_owned_equipment_instance_check');
-            Schema::table('underground_owned_equipment', function (Blueprint $table): void {
-                $table->dropForeign(['source_skip_settlement_id']);
-                $table->dropUnique('underground_equipment_source_skip_reward_unique');
-                $table->dropColumn(['source_skip_settlement_id', 'source_reward_index']);
-            });
-            DB::statement(<<<'SQL'
-ALTER TABLE underground_owned_equipment
-  ADD CONSTRAINT underground_owned_equipment_instance_check
-  CHECK (
-    (
-      instance_kind = 'fixed'
-      AND instance_identity IS NULL
-      AND generator_identity IS NULL
-      AND generated_payload IS NULL
-      AND source_battle_id IS NULL
-    )
-    OR
-    (
-      instance_kind = 'generated'
-      AND instance_identity IS NOT NULL
-      AND generator_identity IS NOT NULL
-      AND generated_payload IS NOT NULL
-      AND source_battle_id IS NOT NULL
-      AND grant_key IS NOT NULL
-    )
-  )
-SQL);
-        }
-        if (Schema::hasColumn('user_skip_ticket_ledger', 'underground_skip_settlement_id')) {
-            Schema::table('user_skip_ticket_ledger', function (Blueprint $table): void {
-                $table->dropForeign(['underground_skip_settlement_id']);
-                $table->dropUnique('user_skip_ticket_ledger_skip_unique');
-                $table->dropColumn('underground_skip_settlement_id');
-            });
-        }
-        foreach ([
-            'secretary_lending_build_snapshots',
-            'underground_content_clear_progress',
-            'underground_skip_settlements',
-        ] as $table) {
-            Schema::dropIfExists($table);
-        }
-        if (Schema::hasColumn('underground_battles', 'underground_party_id')) {
-            Schema::table('underground_battles', function (Blueprint $table): void {
-                $table->dropForeign(['underground_party_id']);
-                $table->dropUnique(['underground_party_id']);
-                $table->dropColumn('underground_party_id');
-            });
-        }
-        foreach ([
-            'user_skip_ticket_ledger',
-            'secretary_lending_participations',
-            'secretary_lending_daily_rewards',
-            'user_skip_ticket_balances',
-            'underground_party_members',
-            'secretary_lending_settings',
-            'underground_parties',
-            'secretary_images',
-        ] as $table) {
-            Schema::dropIfExists($table);
-        }
-        if (Schema::hasColumn('secretaries', 'nickname')) {
-            DB::statement('ALTER TABLE secretaries DROP CONSTRAINT secretaries_nickname_check');
-            DB::statement('ALTER TABLE secretaries DROP CONSTRAINT secretaries_portrait_preference_check');
-            Schema::table('secretaries', function (Blueprint $table): void {
-                $table->dropColumn(['nickname', 'portrait_preference']);
-            });
-        }
-        DB::table('migrations')->whereIn('migration', [
-            self::SECRETARY_PARTY_PROFILE_MIGRATION,
-            self::PARTY_LENDING_MIGRATION,
-            self::UNDERGROUND_SKIP_MIGRATION,
-            self::SECRETARY_LENDING_BUILD_CACHE_MIGRATION,
-        ])->delete();
-    }
-
-    private function returnAuctionItemHistoryToPre380Source(): void
-    {
-        if (! Schema::hasColumn('auction_listings', 'original_secretary_item_instance_id')) {
-            return;
-        }
-        DB::statement(<<<'SQL'
-ALTER TABLE auction_listings
-  DROP CONSTRAINT auction_listings_secretary_item_instance_id_foreign,
-  DROP CONSTRAINT auction_listings_product_check,
-  ADD CONSTRAINT auction_listings_product_check CHECK (
-    (
-      product_type = 'resource'
-      AND resource_definition_id IS NOT NULL
-      AND secretary_item_instance_id IS NULL
-      AND item_key IS NULL
-      AND item_level IS NULL
-      AND quantity IS NOT NULL
-      AND quantity > 0
-    )
-    OR
-    (
-      product_type = 'item'
-      AND resource_definition_id IS NULL
-      AND quantity IS NULL
-      AND item_key IS NOT NULL
-      AND item_level IS NOT NULL
-      AND item_level > 0
-      AND (
-        (seller_type = 'nation' AND secretary_item_instance_id IS NOT NULL)
-        OR (seller_type = 'hakoniwa_federation' AND secretary_item_instance_id IS NULL)
-      )
-    )
-  ),
-  ADD CONSTRAINT auction_listings_secretary_item_instance_id_foreign
-    FOREIGN KEY (secretary_item_instance_id)
-    REFERENCES secretary_item_instances(id)
-    ON DELETE RESTRICT
-SQL);
-        Schema::table('auction_listings', function (Blueprint $table): void {
-            $table->dropColumn('original_secretary_item_instance_id');
-        });
-        DB::table('migrations')->where('migration', self::AUCTION_ITEM_HISTORY_MIGRATION)->delete();
     }
 
     private function returnPortCatalogToPre350Source(): void

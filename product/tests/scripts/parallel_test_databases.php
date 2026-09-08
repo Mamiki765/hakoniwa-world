@@ -9,7 +9,8 @@ require dirname(__DIR__, 2).'/vendor/autoload.php';
 $usage = static function (): never {
     fwrite(STDERR, "Usage:\n");
     fwrite(STDERR, "  php tests/scripts/parallel_test_databases.php prepare <shard-total> [8-hex-token]\n");
-    fwrite(STDERR, "  php tests/scripts/parallel_test_databases.php shard <manifest> <zero-based-index> <configuration|log|database>\n");
+    fwrite(STDERR, "  php tests/scripts/parallel_test_databases.php shard <manifest> <zero-based-index> <configuration|log|database|evidence_log|junit>\n");
+    fwrite(STDERR, "  php tests/scripts/parallel_test_databases.php evidence <manifest> directory\n");
     fwrite(STDERR, "  php tests/scripts/parallel_test_databases.php cleanup <manifest>\n");
     exit(2);
 };
@@ -39,7 +40,7 @@ try {
         if ($manifest === null
             || $index === null
             || preg_match('/^(0|[1-9][0-9]*)$/', $index) !== 1
-            || ! in_array($field, ['configuration', 'log', 'database'], true)) {
+            || ! in_array($field, ['configuration', 'log', 'database', 'evidence_log', 'junit'], true)) {
             $usage();
         }
 
@@ -49,6 +50,22 @@ try {
         }
 
         echo $shard[$field]."\n";
+        exit(0);
+    }
+
+    if ($command === 'evidence') {
+        $manifest = $argv[2] ?? null;
+        $field = $argv[3] ?? null;
+        if ($manifest === null || $field !== 'directory') {
+            $usage();
+        }
+
+        $directory = $manager->evidenceDirectory($manifest);
+        if ($directory === null) {
+            exit(3);
+        }
+
+        echo $directory."\n";
         exit(0);
     }
 

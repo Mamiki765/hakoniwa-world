@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Support\Carbon;
 
@@ -106,5 +107,11 @@ final class UndergroundBattle extends Model
     public function log(): HasOne
     {
         return $this->hasOne(UndergroundBattleLog::class, 'underground_battle_id');
+    }
+
+    /** @return HasMany<UndergroundBattleImageReference, $this> */
+    public function imageReferences(): HasMany
+    {
+        return $this->hasMany(UndergroundBattleImageReference::class, 'underground_battle_id');
     }
 }

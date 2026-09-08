@@ -2,151 +2,97 @@
 
 namespace Tests\Feature;
 
-use App\Models\Secretary;
+use App\Application\NationCreationService;
+use App\Models\AuctionListing;
+use App\Models\UndergroundBattle;
 use App\Models\UndergroundProfile;
 use App\Models\User;
-use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Str;
+use Tests\Concerns\CreatesTestWorlds;
+use Tests\Concerns\RestoresPre380Schema;
 use Tests\TestCase;
 
 final class Release380MigrationTest extends TestCase
 {
+    use CreatesTestWorlds;
     use RefreshDatabase;
+    use RestoresPre380Schema;
 
-    public function test_exact_3_7_3_schema_upgrades_forward_without_rewriting_existing_secretary_or_profile(): void
+    public function test_exact_3_7_3_schema_upgrades_with_listing_history_and_actual_content_counts(): void
     {
+        $world = $this->lightweightWorld();
         $user = User::factory()->create();
-        $secretary = Secretary::query()->create([
-            'user_id' => $user->id,
-            'name' => '既存秘書',
-            'named_at' => now(),
+        $nation = app(NationCreationService::class)->create($user, $world, '移行島', '島主');
+        $secretary = $user->secretary()->firstOrFail();
+        $secretary->update(['name' => '既存秘書', 'named_at' => now()]);
+        $profile = UndergroundProfile::query()->firstOrCreate(['secretary_id' => $secretary->id]);
+        $before = $profile->refresh()->getRawOriginal();
+        $item = $secretary->itemInstances()->create([
+            'item_key' => 'inora_bracelet', 'level' => 1, 'equipped_slot' => null,
+            'grant_key' => 'upgrade:history', 'obtained_at' => now(),
         ]);
-        $profile = UndergroundProfile::query()->create(['secretary_id' => $secretary->id]);
-        $secretaryBefore = DB::table('secretaries')->where('id', $secretary->id)
-            ->first(['id', 'user_id', 'name', 'named_at', 'profile_biography']);
-        $profileBefore = DB::table('underground_profiles')->where('id', $profile->id)->first();
 
-        $this->returnToExact373Schema();
-
+        $this->returnPartyPersistenceToPre380Source();
+        $this->returnAuctionItemHistoryToPre380Source();
+        $this->assertFalse(Schema::hasColumn('auction_listings', 'original_secretary_item_instance_id'));
         $this->assertFalse(Schema::hasColumn('secretaries', 'nickname'));
-        $this->assertFalse(Schema::hasColumn('underground_battles', 'underground_party_id'));
         $this->assertFalse(Schema::hasTable('underground_parties'));
-        $this->artisan('migrate', [
-            '--path' => 'database/migrations/2026_09_08_010000_add_secretary_nickname_and_image_slots.php',
-            '--force' => true,
-            '--no-interaction' => true,
-        ])->assertSuccessful();
-        $this->artisan('migrate', [
-            '--path' => 'database/migrations/2026_09_08_100000_add_underground_party_lending_persistence.php',
-            '--force' => true,
-            '--no-interaction' => true,
-        ])->assertSuccessful();
-        $this->artisan('migrate', [
-            '--path' => 'database/migrations/2026_09_08_110000_add_underground_skip_consumption.php',
-            '--force' => true,
-            '--no-interaction' => true,
-        ])->assertSuccessful();
-        $this->artisan('migrate', [
-            '--path' => 'database/migrations/2026_09_08_120000_add_secretary_lending_build_cache.php',
-            '--force' => true,
-            '--no-interaction' => true,
-        ])->assertSuccessful();
+        $listing = AuctionListing::query()->create([
+            'world_id' => $world->id, 'seller_type' => 'nation', 'seller_nation_id' => $nation->id,
+            'product_type' => 'item', 'secretary_item_instance_id' => $item->id,
+            'item_key' => $item->item_key, 'item_level' => 1, 'start_price' => 100,
+            'duration_turns' => 3, 'started_turn' => 0, 'ends_turn' => 3,
+            'auto_relist' => false, 'status' => 'cancelled', 'completed_turn' => 0,
+        ]);
+        foreach (['shallow_caves' => 50, 'black_crystal_cave' => 1, 'trial_01' => 5] as $key => $count) {
+            for ($index = 0; $index < $count; $index++) {
+                $trial = $key === 'trial_01';
+                UndergroundBattle::query()->create([
+                    'underground_profile_id' => $profile->id, 'request_id' => (string) Str::uuid(),
+                    'request_fingerprint' => str_repeat('a', 64), 'runtime_identity' => 'historical-3.7.3',
+                    'activity_type' => $trial ? 'trial' : 'exploration', 'activity_key' => $key,
+                    'encounter_key' => 'giant_rat', 'result' => 'victory', 'rounds' => 1,
+                    'trial_run_key' => $trial ? (string) Str::uuid() : null,
+                    'trial_battle_index' => $trial ? 10 : null,
+                    'damage_dealt' => 1, 'damage_received' => 0, 'healing_done' => 0,
+                    'combat_level_before' => 1, 'combat_level_after' => 1,
+                    'combat_xp_before' => 0, 'combat_xp_after' => 0,
+                    'shard_balance_before' => 0, 'shard_balance_after' => 0,
+                    'private_seed' => 1, 'snapshot' => $trial ? ['trial_status' => 'cleared'] : [],
+                    'started_at' => now()->subDay(), 'finished_at' => now()->subDay(),
+                ]);
+            }
+        }
+        $historicalBattles = DB::table('underground_battles')->orderBy('id')->get()->toArray();
 
-        $this->assertTrue(Schema::hasColumn('secretaries', 'nickname'));
-        $this->assertTrue(Schema::hasColumn('secretaries', 'portrait_preference'));
-        $this->assertTrue(Schema::hasColumn('underground_battles', 'underground_party_id'));
-        foreach ([
-            'secretary_images', 'underground_parties', 'underground_party_members',
-            'secretary_lending_settings', 'secretary_lending_participations',
-            'secretary_lending_daily_rewards', 'user_skip_ticket_balances',
-            'user_skip_ticket_ledger', 'underground_content_clear_progress',
-            'underground_skip_settlements', 'secretary_lending_build_snapshots',
-        ] as $table) {
-            $this->assertTrue(Schema::hasTable($table));
-            $this->assertDatabaseCount($table, 0);
-        }
-        $this->assertEquals($secretaryBefore, DB::table('secretaries')->where('id', $secretary->id)
-            ->first(['id', 'user_id', 'name', 'named_at', 'profile_biography']));
-        $this->assertNull(Secretary::query()->findOrFail($secretary->id)->nickname);
-        $this->assertSame('full_body', Secretary::query()->findOrFail($secretary->id)->portrait_preference);
-        $this->assertEquals($profileBefore, DB::table('underground_profiles')->where('id', $profile->id)->first());
-    }
+        // Execute all actual forward migrations, including review fixes, without a hand-written ledger.
+        $this->artisan('migrate', ['--force' => true, '--no-interaction' => true])->assertSuccessful();
 
-    private function returnToExact373Schema(): void
-    {
-        if (Schema::hasColumn('underground_owned_equipment', 'source_skip_settlement_id')) {
-            DB::statement('ALTER TABLE underground_owned_equipment DROP CONSTRAINT underground_owned_equipment_instance_check');
-            Schema::table('underground_owned_equipment', function (Blueprint $table): void {
-                $table->dropForeign(['source_skip_settlement_id']);
-                $table->dropUnique('underground_equipment_source_skip_reward_unique');
-                $table->dropColumn(['source_skip_settlement_id', 'source_reward_index']);
-            });
-            DB::statement(<<<'SQL'
-ALTER TABLE underground_owned_equipment
-  ADD CONSTRAINT underground_owned_equipment_instance_check
-  CHECK (
-    (
-      instance_kind = 'fixed'
-      AND instance_identity IS NULL
-      AND generator_identity IS NULL
-      AND generated_payload IS NULL
-      AND source_battle_id IS NULL
-    )
-    OR
-    (
-      instance_kind = 'generated'
-      AND instance_identity IS NOT NULL
-      AND generator_identity IS NOT NULL
-      AND generated_payload IS NOT NULL
-      AND source_battle_id IS NOT NULL
-      AND grant_key IS NOT NULL
-    )
-  )
-SQL);
+        $this->assertDatabaseHas('auction_listings', [
+            'id' => $listing->id, 'original_secretary_item_instance_id' => $item->id, 'status' => 'cancelled',
+        ]);
+        $item->delete();
+        $this->assertDatabaseHas('auction_listings', [
+            'id' => $listing->id, 'original_secretary_item_instance_id' => $item->id,
+            'secretary_item_instance_id' => null,
+        ]);
+        foreach (['shallow_caves' => 50, 'black_crystal_cave' => 1, 'trial_01' => 5] as $key => $count) {
+            $this->assertDatabaseHas('underground_content_clear_progress', [
+                'underground_profile_id' => $profile->id, 'content_key' => $key,
+                'actual_clear_count' => $count, 'total_clear_count' => $count,
+            ]);
         }
-        if (Schema::hasColumn('user_skip_ticket_ledger', 'underground_skip_settlement_id')) {
-            Schema::table('user_skip_ticket_ledger', function (Blueprint $table): void {
-                $table->dropForeign(['underground_skip_settlement_id']);
-                $table->dropUnique('user_skip_ticket_ledger_skip_unique');
-                $table->dropColumn('underground_skip_settlement_id');
-            });
+        foreach ($historicalBattles as $battle) {
+            $after = DB::table('underground_battles')->where('id', $battle->id)->first();
+            unset($after->underground_party_id);
+            $this->assertEquals($battle, $after);
         }
-        foreach ([
-            'secretary_lending_build_snapshots',
-            'underground_content_clear_progress',
-            'underground_skip_settlements',
-        ] as $table) {
-            Schema::dropIfExists($table);
-        }
-        Schema::table('underground_battles', function (Blueprint $table): void {
-            $table->dropForeign(['underground_party_id']);
-            $table->dropUnique(['underground_party_id']);
-            $table->dropColumn('underground_party_id');
-        });
-        foreach ([
-            'user_skip_ticket_ledger',
-            'secretary_lending_participations',
-            'secretary_lending_daily_rewards',
-            'user_skip_ticket_balances',
-            'underground_party_members',
-            'secretary_lending_settings',
-            'underground_parties',
-            'secretary_images',
-        ] as $table) {
-            Schema::drop($table);
-        }
-        DB::statement('ALTER TABLE secretaries DROP CONSTRAINT secretaries_nickname_check');
-        DB::statement('ALTER TABLE secretaries DROP CONSTRAINT secretaries_portrait_preference_check');
-        Schema::table('secretaries', function (Blueprint $table): void {
-            $table->dropColumn(['nickname', 'portrait_preference']);
-        });
-        DB::table('migrations')->whereIn('migration', [
-            '2026_09_08_010000_add_secretary_nickname_and_image_slots',
-            '2026_09_08_100000_add_underground_party_lending_persistence',
-            '2026_09_08_110000_add_underground_skip_consumption',
-            '2026_09_08_120000_add_secretary_lending_build_cache',
-        ])->delete();
+        $this->assertSame($before, $profile->fresh()->getRawOriginal());
+        $this->assertSame('既存秘書', $secretary->fresh()->name);
+        $this->assertNull($secretary->fresh()->nickname);
+        $this->assertSame('full_body', $secretary->fresh()->portrait_preference);
     }
 }

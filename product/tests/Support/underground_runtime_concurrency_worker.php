@@ -29,6 +29,16 @@ try {
 
     $backend = DB::selectOne('SELECT pg_backend_pid() AS pid');
     file_put_contents($databasePath, (string) $backend->pid, LOCK_EX);
+    $operationGoPath = $payload['operation_go_path'] ?? null;
+    if (is_string($operationGoPath) && $operationGoPath !== '') {
+        $operationDeadline = microtime(true) + 10;
+        while (! is_file($operationGoPath)) {
+            if (microtime(true) >= $operationDeadline) {
+                throw new RuntimeException('Underground runtime worker operation barrier timed out.');
+            }
+            usleep(10_000);
+        }
+    }
 
     $user = User::query()->findOrFail((int) $payload['user_id']);
     if (($payload['force_victory_drop'] ?? false) === true) {
@@ -221,6 +231,9 @@ try {
             $user,
             (string) $payload['request_id'],
             isset($payload['hunting_ground_key']) ? (string) $payload['hunting_ground_key'] : null,
+            is_array($payload['borrowed_secretary_ids'] ?? null)
+                ? array_map('intval', $payload['borrowed_secretary_ids'])
+                : [],
         );
         $battle = $result['battle'];
         if (! $battle instanceof UndergroundBattle) {
