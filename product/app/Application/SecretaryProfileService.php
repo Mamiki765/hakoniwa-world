@@ -23,20 +23,31 @@ final readonly class SecretaryProfileService
         private SecretaryImageRetentionService $imageRetention,
     ) {}
 
-    public function updateBiography(User $user, string $biography, ?string $nickname = null, bool $nicknameProvided = false): Secretary
-    {
-        $biography = $this->contract->biography($biography);
-        $nickname = $this->contract->nickname($nickname);
+    public function updateBiography(
+        User $user,
+        string $biography,
+        ?string $nickname = null,
+        bool $nicknameProvided = false,
+        bool $biographyProvided = true,
+    ): Secretary {
+        $biography = $biographyProvided ? $this->contract->biography($biography) : '';
+        $nickname = $nicknameProvided ? $this->contract->nickname($nickname) : null;
 
-        return DB::transaction(function () use ($user, $biography, $nickname, $nicknameProvided): Secretary {
+        return DB::transaction(function () use ($user, $biography, $nickname, $nicknameProvided, $biographyProvided): Secretary {
             $secretary = $this->lockSecretary($user);
-            $values = ['profile_biography' => $biography];
+            $values = [];
+            if ($biographyProvided) {
+                $values['profile_biography'] = $biography;
+            }
             if ($nicknameProvided) {
                 $values['nickname'] = $nickname;
             }
-            $secretary->update($values);
+            if ($values !== []) {
+                $secretary->update($values);
+            }
             $this->audit($user, $secretary, 'secretary.profile_updated', [
-                'biography_length' => mb_strlen($biography),
+                'biography_updated' => $biographyProvided,
+                'biography_length' => $biographyProvided ? mb_strlen($biography) : null,
                 'nickname_updated' => $nicknameProvided,
                 'nickname_length' => $nicknameProvided && $nickname !== null ? mb_strlen($nickname) : null,
             ]);
@@ -60,6 +71,15 @@ final readonly class SecretaryProfileService
                 $secretary = $this->lockSecretary($user);
                 $existing = $secretary->images()->where('slot', $slot)->lockForUpdate()->first();
                 $oldPath = $existing?->path;
+                if ($slot === 'full_body' && $secretary->main_image_path === $oldPath) {
+                    $secretary->update([
+                        'main_image_path' => null,
+                        'main_image_mime_type' => null,
+                        'main_image_creation_method' => null,
+                        'main_image_credit' => null,
+                        'main_image_updated_at' => null,
+                    ]);
+                }
                 SecretaryImage::query()->updateOrCreate(
                     ['secretary_id' => $secretary->id, 'slot' => $slot],
                     [...$stored, 'creation_method' => $creationMethod, 'credit' => $credit, 'updated_at' => now()],
@@ -117,6 +137,40 @@ final readonly class SecretaryProfileService
         }, 3);
     }
 
+    public function deleteImageSlot(User $user, string $slot): Secretary
+    {
+        if (! in_array($slot, SecretaryProfileContract::IMAGE_SLOTS, true)) {
+            throw new \DomainException('画像の種類を確認してください。');
+        }
+        $oldPath = null;
+        $secretary = DB::transaction(function () use ($user, $slot, &$oldPath): Secretary {
+            $secretary = $this->lockSecretary($user);
+            $image = $secretary->images()->where('slot', $slot)->lockForUpdate()->first();
+            if (! $image instanceof SecretaryImage) {
+                throw new \DomainException('削除できる画像がありません。');
+            }
+            $oldPath = $image->path;
+            $image->delete();
+            if ($slot === 'full_body' && $secretary->main_image_path === $oldPath) {
+                $secretary->update([
+                    'main_image_path' => null,
+                    'main_image_mime_type' => null,
+                    'main_image_creation_method' => null,
+                    'main_image_credit' => null,
+                    'main_image_updated_at' => null,
+                ]);
+            }
+            $this->audit($user, $secretary, 'secretary.image_slot_deleted', ['slot' => $slot]);
+
+            return $secretary->load(['skills', 'itemInstances', 'images']);
+        }, 3);
+        if (is_string($oldPath)) {
+            $this->deleteImageIfUnreferenced($oldPath, $secretary, null, $slot);
+        }
+
+        return $secretary;
+    }
+
     public function updatePortraitPreference(User $user, string $preference): Secretary
     {
         $preference = $this->contract->portraitPreference($preference);
@@ -144,81 +198,6 @@ final readonly class SecretaryProfileService
         if (($square && $width !== $height) || (! $square && $width * 4 !== $height * 3)) {
             throw new \DomainException($square ? 'icon画像は1:1で指定してください。' : 'portrait画像は3:4で指定してください。');
         }
-    }
-
-    public function replaceMainImage(
-        User $user,
-        UploadedFile $image,
-        string $creationMethod,
-        ?string $credit,
-    ): Secretary {
-        $creationMethod = $this->contract->creationMethod($creationMethod);
-        $credit = $this->contract->credit($credit);
-        $stored = $this->images->store($image, self::IMAGE_DISK);
-        $oldPath = null;
-
-        try {
-            $secretary = DB::transaction(function () use (
-                $user,
-                $creationMethod,
-                $credit,
-                $stored,
-                &$oldPath,
-            ): Secretary {
-                $secretary = $this->lockSecretary($user);
-                $oldPath = $secretary->main_image_path;
-                $secretary->update([
-                    'main_image_path' => $stored['path'],
-                    'main_image_mime_type' => $stored['mime_type'],
-                    'main_image_creation_method' => $creationMethod,
-                    'main_image_credit' => $credit,
-                    'main_image_updated_at' => now(),
-                ]);
-                $this->audit($user, $secretary, 'secretary.main_image_replaced', [
-                    'creation_method' => $creationMethod,
-                    'has_credit' => $credit !== null,
-                    'replaced_existing' => $oldPath !== null,
-                ]);
-
-                return $secretary->load(['skills', 'itemInstances']);
-            }, 3);
-        } catch (Throwable $exception) {
-            $this->deleteImageIfUnreferenced($stored['path']);
-
-            throw $exception;
-        }
-
-        if (is_string($oldPath) && $oldPath !== $stored['path']) {
-            $this->deleteImageIfUnreferenced($oldPath, $secretary, $stored['path']);
-        }
-
-        return $secretary;
-    }
-
-    public function updateMainImageMetadata(
-        User $user,
-        string $creationMethod,
-        ?string $credit,
-    ): Secretary {
-        $creationMethod = $this->contract->creationMethod($creationMethod);
-        $credit = $this->contract->credit($credit);
-
-        return DB::transaction(function () use ($user, $creationMethod, $credit): Secretary {
-            $secretary = $this->lockSecretary($user);
-            if ($secretary->main_image_path === null) {
-                throw new SecretaryNotFoundException('metadataを更新できるメイン画像がありません。');
-            }
-            $secretary->update([
-                'main_image_creation_method' => $creationMethod,
-                'main_image_credit' => $credit,
-            ]);
-            $this->audit($user, $secretary, 'secretary.main_image_metadata_updated', [
-                'creation_method' => $creationMethod,
-                'has_credit' => $credit !== null,
-            ]);
-
-            return $secretary->load(['skills', 'itemInstances']);
-        }, 3);
     }
 
     public function updateImagePreferences(User $user, bool $showAiImages, string $fallback): User

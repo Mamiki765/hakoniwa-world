@@ -37,14 +37,8 @@ final readonly class SecretaryProfilePresenter
         }
         $level = (int) $skillRows->sum('level');
         $isOwner = $viewer instanceof User && (int) $viewer->id === (int) $secretary->user_id;
-        $targetOwner = $secretary->user;
         $viewerPreferencesConfigured = $this->viewerPreferencesConfigured($viewer);
-        $image = $this->image(
-            $secretary,
-            $viewer,
-            $viewerPreferencesConfigured,
-            $targetOwner->secretary_image_fallback,
-        );
+        $image = $this->resolveLargeImage($secretary, $viewer);
         $equipment = $this->items->present($secretary, $projection)['equipment'];
 
         return [
@@ -63,10 +57,7 @@ final readonly class SecretaryProfilePresenter
             'biography' => $secretary->profile_biography,
             'main_image' => $image,
             'images' => $this->images($secretary, $viewer, $viewerPreferencesConfigured, $isOwner),
-            'editable_image_metadata' => $isOwner && $secretary->main_image_path !== null ? [
-                'creation_method' => $secretary->main_image_creation_method,
-                'credit' => $secretary->main_image_credit,
-            ] : null,
+            'editable_image_metadata' => null,
             'viewer_preferences' => [
                 'configured' => $viewerPreferencesConfigured,
                 'show_ai_generated_images' => $viewerPreferencesConfigured
@@ -245,25 +236,6 @@ final readonly class SecretaryProfilePresenter
         $result = [];
         foreach (SecretaryProfileContract::IMAGE_SLOTS as $slot) {
             $row = $rows->get($slot);
-            if (! $row instanceof SecretaryImage && $slot === 'full_body' && $secretary->main_image_path !== null) {
-                $entry = [
-                    'slot' => $slot,
-                    ...$this->image($secretary, $viewer, $configured, $secretary->user->secretary_image_fallback),
-                ];
-                if ($includeInternalPath && ($entry['display'] ?? null) === 'uploaded') {
-                    $entry['path'] = $secretary->main_image_path;
-                }
-                if ($isOwner) {
-                    $entry['source'] = 'legacy_main';
-                    $entry['editable_metadata'] = $this->editableImageMetadata(
-                        $secretary->main_image_creation_method,
-                        $secretary->main_image_credit,
-                    );
-                }
-                $result[$slot] = $entry;
-
-                continue;
-            }
             $image = $row instanceof SecretaryImage
                 ? $this->slotImage($row, $viewer, $configured)
                 : $this->noImage();
@@ -307,34 +279,6 @@ final readonly class SecretaryProfilePresenter
             'creation_method' => $row->creation_method,
             'creation_method_label' => SecretaryProfileContract::CREATION_METHODS[$row->creation_method] ?? null,
             'credit' => $row->credit,
-        ];
-    }
-
-    /** @return array<string, mixed> */
-    private function image(
-        Secretary $secretary,
-        ?User $viewer,
-        bool $viewerPreferencesConfigured,
-        ?string $targetOwnerFallback,
-    ): array {
-        if ($secretary->main_image_path === null) {
-            return $viewerPreferencesConfigured && $viewer?->show_ai_generated_secretary_images === true
-                ? $this->fallbackImage((string) $targetOwnerFallback)
-                : $this->noImage();
-        }
-        if ($secretary->main_image_creation_method === 'ai_generated'
-            && (! $viewerPreferencesConfigured || $viewer?->show_ai_generated_secretary_images !== true)) {
-            return $this->noImage();
-        }
-
-        $baseUrl = rtrim((string) config('hakoniwa.secretary_profile.image_base_url'), '/');
-
-        return [
-            'display' => 'uploaded',
-            'url' => $baseUrl.'/'.rawurlencode($secretary->main_image_path),
-            'creation_method' => $secretary->main_image_creation_method,
-            'creation_method_label' => SecretaryProfileContract::CREATION_METHODS[$secretary->main_image_creation_method] ?? null,
-            'credit' => $secretary->main_image_credit,
         ];
     }
 

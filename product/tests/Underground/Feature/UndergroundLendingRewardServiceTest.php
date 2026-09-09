@@ -74,7 +74,7 @@ final class UndergroundLendingRewardServiceTest extends TestCase
             'skill_tree_identity' => 'secretary-underground-skill-tree-alpha-v1',
         ]);
         app(UndergroundStarterEquipmentService::class)->reconcile($profile->fresh());
-        app(SecretaryLendingService::class)->update($owner, true, true);
+        app(SecretaryLendingService::class)->update($owner, true);
         $candidate = app(SecretaryLendingService::class)->publicCandidates($owner);
         $this->assertCount(1, $candidate);
         $this->assertArrayNotHasKey('user_id', $candidate[0]);

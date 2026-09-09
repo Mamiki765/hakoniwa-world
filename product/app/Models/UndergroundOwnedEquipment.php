@@ -19,6 +19,7 @@ use Illuminate\Support\Carbon;
  * @property array<string, mixed>|null $generated_payload
  * @property int|null $source_battle_id
  * @property int|null $source_skip_settlement_id
+ * @property int|null $source_skip_batch_id
  * @property int|null $source_reward_index
  * @property Carbon $acquired_at
  * @property-read UndergroundProfile $profile
@@ -31,7 +32,7 @@ final class UndergroundOwnedEquipment extends Model
         'underground_profile_id', 'definition_key', 'catalog_identity',
         'equipped_slot', 'grant_key', 'instance_kind', 'instance_identity',
         'generator_identity', 'generated_payload', 'source_battle_id',
-        'source_skip_settlement_id', 'source_reward_index', 'acquired_at',
+        'source_skip_settlement_id', 'source_skip_batch_id', 'source_reward_index', 'acquired_at',
     ];
 
     protected function casts(): array
@@ -40,6 +41,7 @@ final class UndergroundOwnedEquipment extends Model
             'underground_profile_id' => 'integer',
             'source_battle_id' => 'integer',
             'source_skip_settlement_id' => 'integer',
+            'source_skip_batch_id' => 'integer',
             'source_reward_index' => 'integer',
             'generated_payload' => 'array',
             'acquired_at' => 'immutable_datetime',

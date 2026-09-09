@@ -68,19 +68,13 @@ const announcementBody = ref('');
 const announcementErrors = ref<Record<string, string>>({});
 const nation = ref<Nation | null>(null);
 const secretary = ref<Secretary | null>(null);
-type SecretarySection = 'main' | 'skills' | 'equipment' | 'warehouse';
+type SecretarySection = 'main' | 'skills' | 'equipment' | 'warehouse' | 'settings';
 const secretarySection = ref<SecretarySection>('main');
 const viewedSecretaryProfile = ref<SecretaryProfile | null>(null);
 const viewedSecretaryWorldId = ref<number | null>(null);
 const secretaryBiography = ref('');
 const secretaryNickname = ref('');
 const secretaryProfileErrors = ref<Record<string, string>>({});
-const secretaryImageModalOpen = ref(false);
-const secretaryImageFile = ref<File | null>(null);
-const secretaryImageInput = ref<HTMLInputElement | null>(null);
-const secretaryImageCreationMethod = ref<'self_made' | 'ai_generated' | 'commissioned_or_permitted' | 'other'>('self_made');
-const secretaryImageCredit = ref('');
-const secretaryImageErrors = ref<Record<string, string>>({});
 const secretaryPreferencesModalOpen = ref(false);
 const secretaryShowAiImages = ref(true);
 const secretaryImageFallback = ref<'silhouette' | 'peridot'>('silhouette');
@@ -136,13 +130,14 @@ function redirectFromUnavailableUnderground(): void {
 }
 
 const secretaryTabOrder = computed<SecretarySection[]>(() => viewedSecretaryProfile.value?.is_owner
-    ? ['main', 'skills', 'equipment', 'warehouse']
+    ? ['main', 'skills', 'equipment', 'warehouse', 'settings']
     : ['main']);
 const secretaryTabIds = {
     main: 'secretary-tab-main',
     skills: 'secretary-tab-skills',
     equipment: 'secretary-tab-equipment',
     warehouse: 'secretary-tab-warehouse',
+    settings: 'secretary-tab-settings',
 } as const;
 
 async function handleSecretaryTabKeydown(event: KeyboardEvent): Promise<void> {
@@ -882,6 +877,7 @@ function setViewedSecretaryProfile(profile: SecretaryProfile, worldId: number | 
     viewedSecretaryWorldId.value = worldId;
     secretaryBiography.value = profile.biography;
     secretaryNickname.value = profile.nickname ?? '';
+    if (profile.is_owner) profileSecretaryName.value = profile.name ?? '';
 }
 
 function setOwnedSecretaryProfile(value: Secretary): void {
@@ -927,7 +923,7 @@ async function updateSecretaryBiography(): Promise<void> {
     try {
         const profile = await api<SecretaryProfile>('/api/v1/me/secretary/profile', {
             method: 'PATCH',
-            body: JSON.stringify({ biography: secretaryBiography.value, nickname: secretaryNickname.value }),
+            body: JSON.stringify({ biography: secretaryBiography.value }),
         });
         setViewedSecretaryProfile(profile, viewedSecretaryWorldId.value);
         await reloadViewedSecretaryProfile();
@@ -941,63 +937,21 @@ async function updateSecretaryBiography(): Promise<void> {
     }
 }
 
-function openSecretaryImageModal(): void {
-    const metadata = viewedSecretaryProfile.value?.editable_image_metadata;
-    secretaryImageFile.value = null;
-    if (secretaryImageInput.value !== null) secretaryImageInput.value.value = '';
-    secretaryImageCreationMethod.value = metadata?.creation_method ?? 'self_made';
-    secretaryImageCredit.value = metadata?.credit ?? '';
-    secretaryImageErrors.value = {};
-    secretaryImageModalOpen.value = true;
-}
-
-function closeSecretaryImageModal(): void {
-    if (busy.value) return;
-    secretaryImageModalOpen.value = false;
-    secretaryImageFile.value = null;
-}
-
-function selectSecretaryImage(event: Event): void {
-    secretaryImageFile.value = (event.target as HTMLInputElement).files?.[0] ?? null;
-}
-
-async function submitSecretaryImage(): Promise<void> {
-    const profile = viewedSecretaryProfile.value;
-    if (profile?.is_owner !== true) return;
-    if (secretaryImageFile.value === null && profile.editable_image_metadata === null) {
-        secretaryImageErrors.value = { image: '画像を選択してください。' };
-        return;
-    }
+async function updateSecretaryNickname(): Promise<void> {
+    if (viewedSecretaryProfile.value?.is_owner !== true) return;
     busy.value = true;
-    secretaryImageErrors.value = {};
+    secretaryProfileErrors.value = {};
     try {
-        let committed: SecretaryProfile;
-        if (secretaryImageFile.value !== null) {
-            const formData = new FormData();
-            formData.append('image', secretaryImageFile.value);
-            formData.append('creation_method', secretaryImageCreationMethod.value);
-            formData.append('credit', secretaryImageCredit.value);
-            committed = await api<SecretaryProfile>('/api/v1/me/secretary/main-image', {
-                method: 'POST',
-                body: formData,
-            });
-        } else {
-            committed = await api<SecretaryProfile>('/api/v1/me/secretary/main-image', {
-                method: 'PATCH',
-                body: JSON.stringify({
-                    creation_method: secretaryImageCreationMethod.value,
-                    credit: secretaryImageCredit.value,
-                }),
-            });
-        }
-        setViewedSecretaryProfile(committed, viewedSecretaryWorldId.value);
+        const profile = await api<SecretaryProfile>('/api/v1/me/secretary/profile', {
+            method: 'PATCH',
+            body: JSON.stringify({ nickname: secretaryNickname.value }),
+        });
+        setViewedSecretaryProfile(profile, viewedSecretaryWorldId.value);
         await reloadViewedSecretaryProfile();
-        busy.value = false;
-        closeSecretaryImageModal();
     } catch (error) {
-        secretaryImageErrors.value = validationErrors(error);
-        if (Object.keys(secretaryImageErrors.value).length === 0) {
-            message.value = error instanceof Error ? error.message : 'メイン画像を保存できませんでした。';
+        secretaryProfileErrors.value = validationErrors(error);
+        if (Object.keys(secretaryProfileErrors.value).length === 0) {
+            message.value = error instanceof Error ? error.message : '愛称を保存できませんでした。';
         }
     } finally {
         busy.value = false;
@@ -2031,16 +1985,17 @@ async function abandonNation(): Promise<void> {
                 </form>
             </template>
             <template v-else-if="viewedSecretaryProfile">
-                <h2 class="secretary-name">{{ viewedSecretaryProfile.name }}</h2>
+                <h2 class="secretary-name">{{ viewedSecretaryProfile.battle_display_name }}</h2>
                 <nav class="secretary-tabs" role="tablist" aria-label="秘書メニュー">
                     <button id="secretary-tab-main" type="button" role="tab" aria-controls="secretary-panel-main" :aria-selected="secretarySection === 'main'" :tabindex="secretarySection === 'main' ? 0 : -1" @click="secretarySection = 'main'" @keydown="handleSecretaryTabKeydown">メイン</button>
                     <button v-if="viewedSecretaryProfile.is_owner" id="secretary-tab-skills" type="button" role="tab" aria-controls="secretary-panel-skills" :aria-selected="secretarySection === 'skills'" :tabindex="secretarySection === 'skills' ? 0 : -1" @click="secretarySection = 'skills'" @keydown="handleSecretaryTabKeydown">熟練度</button>
                     <button v-if="viewedSecretaryProfile.is_owner" id="secretary-tab-equipment" type="button" role="tab" aria-controls="secretary-panel-equipment" :aria-selected="secretarySection === 'equipment'" :tabindex="secretarySection === 'equipment' ? 0 : -1" @click="secretarySection = 'equipment'" @keydown="handleSecretaryTabKeydown">装備</button>
                     <button v-if="viewedSecretaryProfile.is_owner" id="secretary-tab-warehouse" type="button" role="tab" aria-controls="secretary-panel-warehouse" :aria-selected="secretarySection === 'warehouse'" :tabindex="secretarySection === 'warehouse' ? 0 : -1" @click="secretarySection = 'warehouse'" @keydown="handleSecretaryTabKeydown">倉庫</button>
+                    <button v-if="viewedSecretaryProfile.is_owner" id="secretary-tab-settings" type="button" role="tab" aria-controls="secretary-panel-settings" :aria-selected="secretarySection === 'settings'" :tabindex="secretarySection === 'settings' ? 0 : -1" @click="secretarySection = 'settings'" @keydown="handleSecretaryTabKeydown">設定</button>
                 </nav>
                 <section v-if="secretarySection === 'main'" id="secretary-panel-main" role="tabpanel" aria-labelledby="secretary-tab-main" class="secretary-main-profile">
                     <div v-if="!viewedSecretaryProfile.viewer_preferences.configured" class="secretary-image-preference-notice">
-                        <span>秘書画像設定が未設定です</span>
+                        <span>画像表示設定が未設定です</span>
                         <button v-if="viewedSecretaryProfile.viewer_preferences.can_update" type="button" @click="openSecretaryPreferencesModal">設定する</button>
                         <span v-else>（ログインすると設定できます）</span>
                     </div>
@@ -2058,11 +2013,10 @@ async function abandonNation(): Promise<void> {
                                     <div>
                                         <strong>画像について</strong>
                                         <p>制作方法：{{ viewedSecretaryProfile.main_image.creation_method_label }}</p>
-                                        <p>作者・権利表記：{{ viewedSecretaryProfile.main_image.credit || '記載なし' }}</p>
+                                        <p v-if="viewedSecretaryProfile.main_image.credit">作者・権利表記：{{ viewedSecretaryProfile.main_image.credit }}</p>
                                     </div>
                                 </details>
                             </div>
-                            <button v-if="viewedSecretaryProfile.is_owner" class="button secondary" type="button" @click="openSecretaryImageModal">旧メイン画像（fallback）を変更</button>
                         </div>
                         <section class="secretary-profile-summary" aria-label="秘書基本情報">
                             <dl>
@@ -2079,7 +2033,7 @@ async function abandonNation(): Promise<void> {
                                 type="button"
                                 @click="openSecretaryPreferencesModal"
                             >
-                                画像設定
+                                画像表示設定
                             </button>
                             <div v-if="viewedSecretaryProfile.is_owner && secretary?.name" class="secretary-underground-entry">
                                 <button class="button primary" type="button" @click="openUnderground">地下へ</button>
@@ -2088,9 +2042,6 @@ async function abandonNation(): Promise<void> {
                         <section class="secretary-biography" aria-labelledby="secretary-biography-title">
                             <h3 id="secretary-biography-title">経歴</h3>
                             <form v-if="viewedSecretaryProfile.is_owner" @submit.prevent="updateSecretaryBiography">
-                                <label for="secretary-nickname">愛称（任意・6文字）</label>
-                                <input id="secretary-nickname" v-model="secretaryNickname" maxlength="6" autocomplete="off" aria-describedby="secretary-nickname-error">
-                                <span v-if="secretaryProfileErrors.nickname" id="secretary-nickname-error" class="field-error" role="alert">{{ secretaryProfileErrors.nickname }}</span>
                                 <textarea v-model="secretaryBiography" maxlength="1000" rows="10" aria-describedby="secretary-biography-count secretary-biography-error"></textarea>
                                 <small id="secretary-biography-count">{{ secretaryBiography.length }} / 1000文字。改行のみ表示へ反映します。</small>
                                 <span v-if="secretaryProfileErrors.biography" id="secretary-biography-error" class="field-error" role="alert">{{ secretaryProfileErrors.biography }}</span>
@@ -2119,12 +2070,6 @@ async function abandonNation(): Promise<void> {
                             </li>
                         </ol>
                     </section>
-                    <SecretaryImageSlotsEditor
-                        v-if="viewedSecretaryProfile.is_owner && viewedSecretaryProfile.images"
-                        :profile="viewedSecretaryProfile"
-                        :disabled="busy"
-                        @updated="setViewedSecretaryProfile($event, viewedSecretaryWorldId)"
-                    />
                 </section>
                 <section v-else-if="secretarySection === 'skills' && secretary" id="secretary-panel-skills" role="tabpanel" aria-labelledby="secretary-tab-skills">
                     <h3 class="secretary-section-title">パッシブスキル</h3>
@@ -2154,7 +2099,7 @@ async function abandonNation(): Promise<void> {
                         <li v-for="limit in secretary.equipment.category_limits" :key="limit.category">{{ limit.label }}・{{ limit.maximum_equipped }}個まで</li>
                     </ul>
                 </section>
-                <section v-else-if="secretary" id="secretary-panel-warehouse" role="tabpanel" aria-labelledby="secretary-tab-warehouse">
+                <section v-else-if="secretarySection === 'warehouse' && secretary" id="secretary-panel-warehouse" role="tabpanel" aria-labelledby="secretary-tab-warehouse">
                     <h3 class="secretary-section-title">倉庫 {{ secretary.inventory.used }} / {{ secretary.inventory.capacity }}</h3>
                     <ul class="secretary-warehouse">
                         <li v-for="item in secretary.inventory.items" :key="item.id">
@@ -2168,6 +2113,33 @@ async function abandonNation(): Promise<void> {
                         </li>
                     </ul>
                     <p v-if="secretary.inventory.items.length === 0" class="empty-state">倉庫は空です。</p>
+                </section>
+                <section v-else-if="secretarySection === 'settings' && viewedSecretaryProfile.is_owner" id="secretary-panel-settings" role="tabpanel" aria-labelledby="secretary-tab-settings" class="secretary-settings">
+                    <section class="secretary-basic-settings" aria-labelledby="secretary-basic-settings-title">
+                        <h3 id="secretary-basic-settings-title" class="secretary-section-title">基本設定</h3>
+                        <form class="profile-form secretary-rename-form" @submit.prevent="renameProfileSecretary">
+                            <label>
+                                名前
+                                <input v-model="profileSecretaryName" minlength="1" maxlength="30" required autocomplete="off" aria-describedby="profile-secretary-help profile-secretary-error">
+                                <small id="profile-secretary-help" class="field-hint">1〜30文字。過去のログに保存された名前は変わりません。</small>
+                                <span v-if="profileSecretaryErrors.name" id="profile-secretary-error" class="field-error" role="alert">{{ profileSecretaryErrors.name }}</span>
+                            </label>
+                            <button class="button primary" type="submit" :disabled="busy">名前を保存</button>
+                        </form>
+                        <form class="profile-form" @submit.prevent="updateSecretaryNickname">
+                            <label for="secretary-nickname">愛称（任意）</label>
+                            <input id="secretary-nickname" v-model="secretaryNickname" maxlength="6" autocomplete="off" aria-describedby="secretary-nickname-help secretary-nickname-error">
+                            <small id="secretary-nickname-help" class="field-hint">最大6文字。設定すると秘書画面と戦闘で名前より優先して表示します。</small>
+                            <span v-if="secretaryProfileErrors.nickname" id="secretary-nickname-error" class="field-error" role="alert">{{ secretaryProfileErrors.nickname }}</span>
+                            <button class="button primary" type="submit" :disabled="busy">愛称を保存</button>
+                        </form>
+                    </section>
+                    <SecretaryImageSlotsEditor
+                        v-if="viewedSecretaryProfile.images"
+                        :profile="viewedSecretaryProfile"
+                        :disabled="busy"
+                        @updated="setViewedSecretaryProfile($event, viewedSecretaryWorldId)"
+                    />
                 </section>
             </template>
         </section>
@@ -2230,18 +2202,6 @@ async function abandonNation(): Promise<void> {
                     <div class="profile-actions">
                         <button class="button primary" type="submit" :disabled="busy">保存</button>
                         <button type="button" :disabled="busy" @click="openOwnIsland">キャンセル</button>
-                    </div>
-                </form>
-                <form v-if="secretary?.name !== null" class="profile-form secretary-rename-form" @submit.prevent="renameProfileSecretary">
-                    <h2>秘書プロフィール</h2>
-                    <label>
-                        秘書名
-                        <input v-model="profileSecretaryName" minlength="1" maxlength="30" required autocomplete="off" aria-describedby="profile-secretary-help profile-secretary-error">
-                        <small id="profile-secretary-help" class="field-hint">1〜30文字。何度でも変更できます。過去のログの名前は変わりません。</small>
-                        <span v-if="profileSecretaryErrors.name" id="profile-secretary-error" class="field-error" role="alert">{{ profileSecretaryErrors.name }}</span>
-                    </label>
-                    <div class="profile-actions">
-                        <button class="button primary" type="submit" :disabled="busy">秘書名を保存</button>
                     </div>
                 </form>
                 <section class="danger-zone" aria-labelledby="danger-zone-title">
@@ -2311,47 +2271,10 @@ async function abandonNation(): Promise<void> {
         </section>
     </main>
 
-    <div v-if="secretaryImageModalOpen" class="modal-backdrop" @click.self="closeSecretaryImageModal">
-        <section class="secretary-profile-modal" role="dialog" aria-modal="true" aria-labelledby="secretary-image-modal-title">
-            <header>
-                <h2 id="secretary-image-modal-title">旧メイン画像（fallback）</h2>
-                <button type="button" aria-label="閉じる" :disabled="busy" @click="closeSecretaryImageModal">×</button>
-            </header>
-            <form @submit.prevent="submitSecretaryImage">
-                <label>
-                    新しい画像
-                    <input ref="secretaryImageInput" type="file" accept="image/png,image/jpeg,image/webp,image/gif" :required="viewedSecretaryProfile?.editable_image_metadata === null" :disabled="busy" @change="selectSecretaryImage">
-                    <small>PNG / JPEG / WebP / GIF、最大10MB。6枠のfull bodyが未登録のときにfallbackとして表示します。6枠への個別登録はプロフィールの「画像6スロット」を使用してください。</small>
-                    <span v-if="secretaryImageErrors.image" class="field-error" role="alert">{{ secretaryImageErrors.image }}</span>
-                </label>
-                <label>
-                    制作方法
-                    <select v-model="secretaryImageCreationMethod" :disabled="busy">
-                        <option value="self_made">自作</option>
-                        <option value="ai_generated">AI生成</option>
-                        <option value="commissioned_or_permitted">依頼・使用許諾済み</option>
-                        <option value="other">その他</option>
-                    </select>
-                    <span v-if="secretaryImageErrors.creation_method" class="field-error" role="alert">{{ secretaryImageErrors.creation_method }}</span>
-                </label>
-                <label>
-                    作者・権利表記（任意）
-                    <input v-model="secretaryImageCredit" maxlength="160" :disabled="busy">
-                    <span v-if="secretaryImageErrors.credit" class="field-error" role="alert">{{ secretaryImageErrors.credit }}</span>
-                </label>
-                <p v-if="viewedSecretaryProfile?.editable_image_metadata" class="field-hint">これは旧メイン画像のfallback設定です。6枠の画像・制作方法・作者・権利表記はプロフィールの「画像6スロット」で個別に管理します。</p>
-                <div class="modal-actions">
-                    <button type="button" :disabled="busy" @click="closeSecretaryImageModal">キャンセル</button>
-                    <button class="button primary" type="submit" :disabled="busy">{{ secretaryImageFile ? '画像を保存' : 'metadataを保存' }}</button>
-                </div>
-            </form>
-        </section>
-    </div>
-
     <div v-if="secretaryPreferencesModalOpen" class="modal-backdrop" @click.self="closeSecretaryPreferencesModal">
         <section class="secretary-profile-modal" role="dialog" aria-modal="true" aria-labelledby="secretary-preferences-modal-title">
             <header>
-                <h2 id="secretary-preferences-modal-title">秘書画像設定</h2>
+                <h2 id="secretary-preferences-modal-title">画像表示設定</h2>
                 <button type="button" aria-label="閉じる" :disabled="busy" @click="closeSecretaryPreferencesModal">×</button>
             </header>
             <form @submit.prevent="saveSecretaryImagePreferences">

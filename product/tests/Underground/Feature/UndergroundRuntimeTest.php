@@ -1188,7 +1188,7 @@ final class UndergroundRuntimeTest extends TestCase
         $borrowedProfile = $this->unlockExploration($borrowedSecretary, growthPathKey: 'blessing_green');
         $borrowedProfile->update(['combat_level' => 120, 'unspent_stp' => 595]);
         app(UndergroundStarterEquipmentService::class)->reconcile($borrowedProfile->refresh());
-        app(SecretaryLendingService::class)->update($owner, true, true);
+        app(SecretaryLendingService::class)->update($owner, true);
         $borrowedBefore = $borrowedProfile->refresh()->only([
             'combat_level', 'combat_xp', 'shard_balance', 'current_hp', 'awakening_gauge', 'custom_ai_rules',
         ]);

@@ -34,16 +34,16 @@ final readonly class SecretaryLendingService
             ?? new SecretaryLendingSetting(['secretary_id' => $secretary->id, 'is_public' => false, 'is_available' => true]);
     }
 
-    public function update(User $user, bool $isPublic, bool $isAvailable): SecretaryLendingSetting
+    public function update(User $user, bool $isLendable): SecretaryLendingSetting
     {
-        return DB::transaction(function () use ($user, $isPublic, $isAvailable): SecretaryLendingSetting {
+        return DB::transaction(function () use ($user, $isLendable): SecretaryLendingSetting {
             $secretary = Secretary::query()->where('user_id', $user->id)->lockForUpdate()->firstOrFail();
             $this->visitorCodes->allocate($user);
             DB::table('secretary_lending_settings')->insertOrIgnore([
                 'secretary_id' => $secretary->id, 'is_public' => false, 'is_available' => true,
             ]);
             $setting = SecretaryLendingSetting::query()->where('secretary_id', $secretary->id)->lockForUpdate()->firstOrFail();
-            $setting->update(['is_public' => $isPublic, 'is_available' => $isAvailable]);
+            $setting->update(['is_public' => $isLendable, 'is_available' => $isLendable]);
 
             return $setting;
         }, 3);
@@ -149,11 +149,13 @@ final readonly class SecretaryLendingService
     public function state(User $user, Secretary $secretary): array
     {
         $settings = $this->settings($user);
+        $isLendable = (bool) $settings->is_public && (bool) $settings->is_available;
 
         return [
             'settings' => [
-                'is_public' => (bool) $settings->is_public,
-                'is_available' => (bool) $settings->is_available,
+                'is_lendable' => $isLendable,
+                'is_public' => $isLendable,
+                'is_available' => $isLendable,
             ],
             'candidates' => [],
             'ticket_balance' => $this->ticketBalance($user),

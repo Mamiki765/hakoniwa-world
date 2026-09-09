@@ -203,6 +203,16 @@ final class UndergroundIntroController extends Controller
         UndergroundRuntimeService $service,
     ): JsonResponse {
         return $this->respond(function () use ($request, $service): array {
+            if ($request->has('execution_count')) {
+                $result = $service->bulkSkipHuntingGround(
+                    $request->user(),
+                    $request->string('request_id')->value(),
+                    $request->string('hunting_ground_key')->value(),
+                    $request->integer('execution_count'),
+                );
+
+                return $service->projectSkipBatch($result['batch'], $result['duplicate']);
+            }
             $result = $service->skipHuntingGround(
                 $request->user(),
                 $request->string('request_id')->value(),
@@ -218,6 +228,16 @@ final class UndergroundIntroController extends Controller
         UndergroundRuntimeService $service,
     ): JsonResponse {
         return $this->respond(function () use ($request, $service): array {
+            if ($request->has('execution_count')) {
+                $result = $service->bulkSkipTrial(
+                    $request->user(),
+                    $request->string('request_id')->value(),
+                    $request->string('trial_key')->value(),
+                    $request->integer('execution_count'),
+                );
+
+                return $service->projectSkipBatch($result['batch'], $result['duplicate']);
+            }
             $result = $service->skipTrial(
                 $request->user(),
                 $request->string('request_id')->value(),
@@ -236,8 +256,7 @@ final class UndergroundIntroController extends Controller
         return $this->respond(function () use ($request, $service, $intro): array {
             $service->update(
                 $request->user(),
-                $request->boolean('is_public'),
-                $request->boolean('is_available'),
+                $request->boolean('is_lendable'),
             );
 
             return $intro->state($request->user());

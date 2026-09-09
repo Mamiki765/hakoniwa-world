@@ -6,6 +6,7 @@ use App\Domain\Underground\Combat\UndergroundRandom;
 use App\Models\UndergroundBattle;
 use App\Models\UndergroundOwnedEquipment;
 use App\Models\UndergroundProfile;
+use App\Models\UndergroundSkipBatch;
 use App\Models\UndergroundSkipSettlement;
 use Carbon\CarbonInterface;
 use Illuminate\Support\Carbon;
@@ -127,6 +128,53 @@ final readonly class UndergroundEquipmentDropService
     }
 
     /**
+     * @param  array<string, mixed>  $reward
+     * @return array<string, mixed>
+     */
+    public function settleBulkSkippedVictory(
+        UndergroundProfile $profile,
+        UndergroundSkipBatch $batch,
+        string $tierKey,
+        array $reward,
+        int $rewardSeed,
+        int $rewardIndex,
+    ): array {
+        if (! $batch->exists
+            || $batch->underground_profile_id !== $profile->id
+            || $rewardIndex < 1) {
+            throw new RuntimeException('Underground equipment drop settlement requires a persisted bulk skip.');
+        }
+        $drop = $this->rollForTier(
+            $tierKey,
+            $reward,
+            $rewardSeed,
+            implode(':', [
+                $this->playerCatalog->explorationDropConfig()['identity'],
+                'bulk-skip',
+                $batch->content_type,
+                $batch->content_key,
+                $batch->request_id,
+                $rewardIndex,
+            ]),
+        );
+
+        if ($drop['status'] === 'none') {
+            return $drop;
+        }
+
+        return $this->persistGeneratedDrop(
+            $profile,
+            $drop,
+            'bulk-skip-drop:'.$batch->id.':'.$rewardIndex,
+            null,
+            null,
+            $batch->id,
+            $rewardIndex,
+            $batch->settled_at ?? Carbon::now(),
+        );
+    }
+
+    /**
      * @param  array<string, mixed>  $drop
      * @return array<string, mixed>
      */
@@ -145,6 +193,7 @@ final readonly class UndergroundEquipmentDropService
             $drop,
             $grantKey,
             $battle->id,
+            null,
             null,
             null,
             $battle->finished_at ?? Carbon::now(),
@@ -172,6 +221,7 @@ final readonly class UndergroundEquipmentDropService
             $grantKey,
             null,
             $settlement->id,
+            null,
             $rewardIndex,
             $settlement->settled_at ?? Carbon::now(),
         );
@@ -187,6 +237,7 @@ final readonly class UndergroundEquipmentDropService
         string $grantKey,
         ?int $sourceBattleId,
         ?int $sourceSkipSettlementId,
+        ?int $sourceSkipBatchId,
         ?int $sourceRewardIndex,
         CarbonInterface $acquiredAt,
     ): array {
@@ -217,6 +268,7 @@ final readonly class UndergroundEquipmentDropService
             'generated_payload' => $payload,
             'source_battle_id' => $sourceBattleId,
             'source_skip_settlement_id' => $sourceSkipSettlementId,
+            'source_skip_batch_id' => $sourceSkipBatchId,
             'source_reward_index' => $sourceRewardIndex,
             'acquired_at' => $acquiredAt,
         ]);

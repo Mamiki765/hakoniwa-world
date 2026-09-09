@@ -16,11 +16,9 @@ use App\Domain\Secretary\SecretaryNotFoundException;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\NameSecretaryRequest;
 use App\Http\Requests\StoreSecretaryImageRequest;
-use App\Http\Requests\StoreSecretaryMainImageRequest;
 use App\Http\Requests\UpdateSecretaryEquipmentRequest;
 use App\Http\Requests\UpdateSecretaryImageMetadataRequest;
 use App\Http\Requests\UpdateSecretaryImagePreferencesRequest;
-use App\Http\Requests\UpdateSecretaryMainImageMetadataRequest;
 use App\Http\Requests\UpdateSecretaryPortraitPreferenceRequest;
 use App\Http\Requests\UpdateSecretaryProfileRequest;
 use App\Http\Resources\NationResource;
@@ -206,17 +204,22 @@ final class SecretaryController extends Controller
         SecretaryProfileService $service,
         SecretaryProfilePresenter $presenter,
     ): JsonResponse {
+        if (! $request->exists('biography') && ! $request->exists('nickname')) {
+            throw ValidationException::withMessages(['biography' => '変更内容を入力してください。']);
+        }
         try {
             $secretary = $service->updateBiography(
                 $request->user(),
                 $request->string('biography')->value(),
-                $request->has('nickname') ? $request->input('nickname') : null,
-                $request->has('nickname'),
+                $request->exists('nickname') ? $request->input('nickname') : null,
+                $request->exists('nickname'),
+                $request->exists('biography'),
             );
         } catch (SecretaryNotFoundException $exception) {
             return $this->secretaryNotFound($exception);
         } catch (DomainException $exception) {
-            throw ValidationException::withMessages(['biography' => $exception->getMessage()]);
+            $field = $request->exists('nickname') && ! $request->exists('biography') ? 'nickname' : 'biography';
+            throw ValidationException::withMessages([$field => $exception->getMessage()]);
         }
 
         return response()->json(['data' => $presenter->present($secretary, $request->user())]);
@@ -258,6 +261,21 @@ final class SecretaryController extends Controller
         return response()->json(['data' => $presenter->present($secretary, $request->user())]);
     }
 
+    public function deleteImageSlot(
+        Request $request,
+        string $slot,
+        SecretaryProfileService $service,
+        SecretaryProfilePresenter $presenter,
+    ): JsonResponse {
+        try {
+            $secretary = $service->deleteImageSlot($request->user(), $slot);
+        } catch (DomainException $exception) {
+            throw ValidationException::withMessages(['image' => $exception->getMessage()]);
+        }
+
+        return response()->json(['data' => $presenter->present($secretary, $request->user())]);
+    }
+
     public function updatePortraitPreference(
         UpdateSecretaryPortraitPreferenceRequest $request,
         SecretaryProfileService $service,
@@ -267,51 +285,6 @@ final class SecretaryController extends Controller
             $secretary = $service->updatePortraitPreference($request->user(), $request->string('portrait_preference')->value());
         } catch (DomainException $exception) {
             throw ValidationException::withMessages(['portrait_preference' => $exception->getMessage()]);
-        }
-
-        return response()->json(['data' => $presenter->present($secretary, $request->user())]);
-    }
-
-    public function storeMainImage(
-        StoreSecretaryMainImageRequest $request,
-        SecretaryProfileService $service,
-        SecretaryProfilePresenter $presenter,
-    ): JsonResponse {
-        $image = $request->file('image');
-        if (! $image instanceof UploadedFile) {
-            throw ValidationException::withMessages(['image' => '画像を選択してください。']);
-        }
-        try {
-            $secretary = $service->replaceMainImage(
-                $request->user(),
-                $image,
-                $request->string('creation_method')->value(),
-                $request->string('credit')->value() ?: null,
-            );
-        } catch (SecretaryNotFoundException $exception) {
-            return $this->secretaryNotFound($exception);
-        } catch (DomainException $exception) {
-            throw ValidationException::withMessages(['image' => $exception->getMessage()]);
-        }
-
-        return response()->json(['data' => $presenter->present($secretary, $request->user())]);
-    }
-
-    public function updateMainImageMetadata(
-        UpdateSecretaryMainImageMetadataRequest $request,
-        SecretaryProfileService $service,
-        SecretaryProfilePresenter $presenter,
-    ): JsonResponse {
-        try {
-            $secretary = $service->updateMainImageMetadata(
-                $request->user(),
-                $request->string('creation_method')->value(),
-                $request->string('credit')->value() ?: null,
-            );
-        } catch (SecretaryNotFoundException $exception) {
-            return $this->secretaryNotFound($exception);
-        } catch (DomainException $exception) {
-            throw ValidationException::withMessages(['creation_method' => $exception->getMessage()]);
         }
 
         return response()->json(['data' => $presenter->present($secretary, $request->user())]);

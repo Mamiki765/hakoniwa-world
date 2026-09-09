@@ -86,6 +86,8 @@ final class FreshInstallRebaselineTest extends TestCase
 
     private const UNDERGROUND_BATTLE_IMAGE_REFERENCES_MIGRATION = '2026_09_09_010000_add_underground_battle_image_references';
 
+    private const VER_381_MIGRATION = '2026_09_09_020000_prepare_3_8_1_ui_and_bulk_skip';
+
     public function test_empty_postgresql_uses_direct_current_schema_and_v21_catalog_baseline(): void
     {
         config(['hakoniwa' => require config_path('hakoniwa.php')]);
@@ -94,7 +96,7 @@ final class FreshInstallRebaselineTest extends TestCase
         app(RulesetPublisher::class)->publish($current);
         $ruleset = RulesetVersion::query()->where('key', 'hakoniwa-2s-plus-v21')->sole();
 
-        $this->assertSame('3.8.0', config('hakoniwa.application_version'));
+        $this->assertSame('3.8.1', config('hakoniwa.application_version'));
         $this->assertSame(['hakoniwa-2s-plus-v21'], array_keys(config('hakoniwa.published_rulesets')));
         $this->assertSame('hakoniwa-2s-plus-v21', $ruleset->key);
         $this->assertSame(21, $ruleset->version);
@@ -105,7 +107,7 @@ final class FreshInstallRebaselineTest extends TestCase
         $this->assertSame(30, CommandDefinition::query()->where('ruleset_version_id', $ruleset->id)->count());
         $this->assertSame(3, ProductionDefinition::query()->where('ruleset_version_id', $ruleset->id)->count());
         $this->assertSame(11, MonsterDefinition::query()->where('ruleset_version_id', $ruleset->id)->count());
-        $this->assertSame(71, DB::table('migrations')->count());
+        $this->assertSame(72, DB::table('migrations')->count());
         $this->assertDatabaseHas('migrations', [
             'migration' => '2026_08_22_000000_rebaseline_ver_2_4_install_and_upgrade',
         ]);
@@ -164,6 +166,7 @@ final class FreshInstallRebaselineTest extends TestCase
         $this->assertDatabaseHas('migrations', ['migration' => self::PARTY_LENDING_MIGRATION]);
         $this->assertDatabaseHas('migrations', ['migration' => self::UNDERGROUND_SKIP_MIGRATION]);
         $this->assertDatabaseHas('migrations', ['migration' => self::SECRETARY_LENDING_BUILD_CACHE_MIGRATION]);
+        $this->assertDatabaseHas('migrations', ['migration' => self::VER_381_MIGRATION]);
         $this->assertTrue(Schema::hasColumn('underground_profiles', 'awakening_technique_key'));
         $this->assertSame(0, DB::table('migrations')->whereIn('migration', [
             '2026_09_04_000000_publish_v20_and_repair_water_ownership',
@@ -229,6 +232,8 @@ final class FreshInstallRebaselineTest extends TestCase
         $this->assertTrue(Schema::hasTable('auction_listings'));
         $this->assertTrue(Schema::hasColumn('auction_listings', 'original_secretary_item_instance_id'));
         $this->assertTrue(Schema::hasColumn('underground_battles', 'underground_party_id'));
+        $this->assertTrue(Schema::hasColumn('user_skip_ticket_ledger', 'underground_skip_batch_id'));
+        $this->assertTrue(Schema::hasColumn('underground_owned_equipment', 'source_skip_batch_id'));
         foreach ([
             'secretary_images',
             'secretary_lending_settings',
@@ -240,6 +245,7 @@ final class FreshInstallRebaselineTest extends TestCase
             'user_skip_ticket_ledger',
             'underground_content_clear_progress',
             'underground_skip_settlements',
+            'underground_skip_batches',
             'secretary_lending_build_snapshots',
         ] as $table) {
             $this->assertTrue(Schema::hasTable($table));
@@ -1937,6 +1943,7 @@ SQL);
                 self::SECRETARY_LENDING_BUILD_CACHE_MIGRATION,
                 self::SECRETARY_LENDING_BUILD_CACHE_EXTENSION_MIGRATION,
                 self::UNDERGROUND_BATTLE_IMAGE_REFERENCES_MIGRATION,
+                self::VER_381_MIGRATION,
             ], true),
         ));
     }

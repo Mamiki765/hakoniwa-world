@@ -52,7 +52,7 @@ const iconFor = (actor: Actor): string | null => {
 
     return selected?.url ?? actor.icon_url ?? null;
 };
-const eventImage = (event: PortraitEvent): string | null => {
+const eventReference = (event: PortraitEvent): ImageReference | null => {
     const selected = event.image_ref
         ?? (event.type === 'awakening' ? event.image_refs?.awakening : event.image_refs?.normal);
     const actor = actorFor(event);
@@ -60,7 +60,12 @@ const eventImage = (event: PortraitEvent): string | null => {
         ? actor?.image_references?.awakening
         : actor?.image_references?.normal;
 
-    return selected?.url ?? actorReference?.url ?? actor?.portrait_url ?? null;
+    return selected ?? actorReference ?? null;
+};
+const eventImage = (event: PortraitEvent): string | null => {
+    const actor = actorFor(event);
+
+    return eventReference(event)?.url ?? actor?.portrait_url ?? null;
 };
 const eventLabel = (event: PortraitEvent): string => actorFor(event)?.display_name ?? event.combatant_id;
 const eventState = (event: PortraitEvent): State | null => {
@@ -73,15 +78,24 @@ const eventAwakeningLabel = (event: PortraitEvent): string => {
     const state = eventState(event);
     if (!state) return '';
     if (state.awakened) return 'Awaken!';
+    if (actorFor(event)?.awakening_state === 'ready') return 'Ready';
     if (state.awakening_unlocked && state.awakening_gauge_max
         && (state.awakening_gauge ?? 0) >= state.awakening_gauge_max) return 'Ready';
 
     return '';
 };
-const eventCredit = (event: PortraitEvent): string | null => {
-    const selected = event.image_ref
-        ?? (event.type === 'awakening' ? event.image_refs?.awakening : event.image_refs?.normal);
-    return selected?.credit ?? null;
+const eventCredit = (event: PortraitEvent): string | null => eventReference(event)?.credit ?? null;
+const eventCreationMethod = (event: PortraitEvent): string | null => eventReference(event)?.creation_method_label ?? null;
+const eventHasImageInfo = (event: PortraitEvent): boolean => eventCredit(event) !== null || eventCreationMethod(event) !== null;
+const eventAwakeningStateText = (event: PortraitEvent): string => {
+    const state = eventState(event);
+    if (!state || (!state.awakening_unlocked && !state.awakened && state.awakening_gauge === undefined && state.awakening_gauge_max === undefined)) return '';
+    const label = eventAwakeningLabel(event);
+    const gauge = state.awakening_gauge_max
+        ? `${state.awakening_gauge ?? 0}/${state.awakening_gauge_max}`
+        : '';
+
+    return [label || (state.awakened ? '覚醒中' : '蓄積中'), gauge].filter(Boolean).join(' ');
 };
 const stateFor = (actor: Actor): State | null => {
     if (props.stateById !== undefined) return props.stateById?.[actor.combatant_id] ?? null;
@@ -145,13 +159,18 @@ const awakeningStateFor = (actor: Actor): 'charging' | 'ready' | 'awakened' => {
     </div>
     <div v-if="visiblePortraitEvents.length" class="underground-party-portrait-events" aria-label="戦闘画像">
         <figure v-for="event in visiblePortraitEvents" :key="eventKey(event)" class="underground-party-portrait-event">
-            <img v-if="eventImage(event)" :src="eventImage(event)!" :alt="`${eventLabel(event)}の戦闘画像`" class="underground-party-large-art">
+            <div class="underground-party-portrait-media">
+                <img v-if="eventImage(event)" :src="eventImage(event)!" :alt="`${eventLabel(event)}の戦闘画像`" class="underground-party-large-art">
+                <details v-if="eventHasImageInfo(event)" class="underground-party-image-info">
+                    <summary :aria-label="`${eventLabel(event)}の画像情報`">ⓘ</summary>
+                    <div><p v-if="eventCreationMethod(event)">制作方法：{{ eventCreationMethod(event) }}</p><p v-if="eventCredit(event)">作者・権利表記：{{ eventCredit(event) }}</p></div>
+                </details>
+            </div>
             <figcaption>
                 {{ event.type === 'start' ? '戦闘開始' : event.type === 'awakening' ? '覚醒' : '戦闘終了' }}・{{ eventLabel(event) }}
                 <small v-if="eventState(event)" class="underground-party-portrait-state">
-                    HP {{ eventState(event)?.hp }}/{{ eventState(event)?.max_hp }}・MP {{ eventState(event)?.mp }}<template v-if="eventAwakeningLabel(event)">・{{ eventAwakeningLabel(event) }}</template>
+                    HP {{ eventState(event)?.hp }}/{{ eventState(event)?.max_hp }}・MP {{ eventState(event)?.mp }}<template v-if="eventAwakeningStateText(event)">・覚醒 {{ eventAwakeningStateText(event) }}</template>
                 </small>
-                <small v-if="eventCredit(event)">画像：{{ eventCredit(event) }}</small>
             </figcaption>
         </figure>
     </div>

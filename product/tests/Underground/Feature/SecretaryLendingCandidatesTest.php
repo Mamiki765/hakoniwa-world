@@ -31,7 +31,7 @@ final class SecretaryLendingCandidatesTest extends TestCase
             'skill_tree_identity' => 'secretary-underground-skill-tree-alpha-v1',
         ]);
         $service = app(SecretaryLendingService::class);
-        $service->update($owner, true, true);
+        $service->update($owner, true);
         DB::enableQueryLog();
         DB::flushQueryLog();
 
@@ -48,6 +48,43 @@ final class SecretaryLendingCandidatesTest extends TestCase
             }
         }
         DB::disableQueryLog();
+    }
+
+    public function test_mismatched_legacy_flags_project_as_off_and_one_setting_synchronizes_both_columns(): void
+    {
+        $owner = User::factory()->create();
+        $owner->forceFill(['visitor_code' => 'MISMATCH'])->save();
+        $secretary = Secretary::query()->create([
+            'user_id' => $owner->id,
+            'name' => '貸出設定秘書',
+            'named_at' => now(),
+        ]);
+        SecretaryLendingSetting::query()->create([
+            'secretary_id' => $secretary->id,
+            'is_public' => true,
+            'is_available' => false,
+        ]);
+        $service = app(SecretaryLendingService::class);
+
+        $this->assertSame([
+            'is_lendable' => false,
+            'is_public' => false,
+            'is_available' => false,
+        ], $service->state($owner, $secretary)['settings']);
+
+        $service->update($owner, true);
+        $this->assertDatabaseHas('secretary_lending_settings', [
+            'secretary_id' => $secretary->id,
+            'is_public' => true,
+            'is_available' => true,
+        ]);
+
+        $service->update($owner, false);
+        $this->assertDatabaseHas('secretary_lending_settings', [
+            'secretary_id' => $secretary->id,
+            'is_public' => false,
+            'is_available' => false,
+        ]);
     }
 
     public function test_projection_failure_keeps_a_monotonic_cursor_to_later_candidates(): void

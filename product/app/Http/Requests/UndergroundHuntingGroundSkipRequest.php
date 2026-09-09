@@ -17,6 +17,7 @@ final class UndergroundHuntingGroundSkipRequest extends FormRequest
         return [
             'request_id' => ['required', 'uuid'],
             'hunting_ground_key' => ['required', 'string', 'max:64'],
+            'execution_count' => ['sometimes', 'integer', 'min:1'],
             'borrowed_secretary_ids' => ['prohibited'],
         ];
     }

@@ -175,10 +175,15 @@ describe('Underground party presentation controls', () => {
             party_member_ids: [42],
             lending: { settings: { is_public: false, is_available: true }, candidates: [], ticket_balance: 0 },
         });
-        vi.stubGlobal('fetch', vi.fn((input: RequestInfo | URL) => {
+        const lendingRequests: Array<Record<string, unknown>> = [];
+        vi.stubGlobal('fetch', vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
             const path = String(input);
             if (path.startsWith('/api/v1/me/underground/lending/candidates')) {
                 return Promise.resolve(response({ candidates: [], next_after_id: null }));
+            }
+            if (path === '/api/v1/me/underground/lending' && init?.method === 'PUT') {
+                lendingRequests.push(JSON.parse(String(init.body)) as Record<string, unknown>);
+                return Promise.resolve(response(state));
             }
             if (path.endsWith('/api/v1/me/underground/battles')) return Promise.resolve(response([]));
 
@@ -187,6 +192,7 @@ describe('Underground party presentation controls', () => {
 
         const wrapper = mount(UndergroundPanel, { attachTo: document.body });
         await flushPromises();
+        await wrapper.get('.underground-main-navigation button:nth-child(4)').trigger('click');
         await wrapper.get('.underground-party-browser button').trigger('click');
         await flushPromises();
 
@@ -195,6 +201,14 @@ describe('Underground party presentation controls', () => {
         expect(selected.attributes('disabled')).toBeUndefined();
         await selected.trigger('click');
         expect(wrapper.get('.underground-party-count').text()).toBe('1 / 4人');
+        expect(wrapper.get<HTMLInputElement>('.underground-lending-settings input').element.checked).toBe(false);
+        await wrapper.get('.underground-lending-settings input').setValue(true);
+        await wrapper.get('.underground-lending-settings button').trigger('click');
+        await flushPromises();
+        expect(lendingRequests).toHaveLength(1);
+        expect(lendingRequests[0]?.is_lendable).toBe(true);
+        expect(lendingRequests[0]).not.toHaveProperty('is_public');
+        expect(lendingRequests[0]).not.toHaveProperty('is_available');
         wrapper.unmount();
     });
 
@@ -207,9 +221,10 @@ describe('Underground party presentation controls', () => {
             duplicate: false,
             content_type: 'hunting_ground',
             content_key: 'shallow_caves',
-            ticket_cost: 1,
-            xp_awarded: 12,
-            shards_awarded: 4,
+            execution_count: 2,
+            ticket_cost: 2,
+            xp_awarded: 24,
+            shards_awarded: 8,
             combat_level_before: 20,
             combat_level_after: 20,
             rewards: {
@@ -218,12 +233,16 @@ describe('Underground party presentation controls', () => {
                     { status: 'vault_full', quantity: 1, item: { name: '黒晶の盾', item_level: 20, rarity_label: 'Epic', affixes: [] } },
                 ],
             },
-            ticket_balance: 4,
+            ticket_balance: 3,
             settled_at: '2026-09-09T00:00:00Z',
         };
-        vi.stubGlobal('fetch', vi.fn((input: RequestInfo | URL) => {
+        const skipRequests: Array<Record<string, unknown>> = [];
+        vi.stubGlobal('fetch', vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
             const path = String(input);
-            if (path === '/api/v1/me/underground/skip/hunting-ground') return Promise.resolve(response(skipResult));
+            if (path === '/api/v1/me/underground/skip/hunting-ground') {
+                skipRequests.push(JSON.parse(String(init?.body ?? '{}')) as Record<string, unknown>);
+                return Promise.resolve(response(skipResult));
+            }
             if (path.endsWith('/api/v1/me/underground/battles')) return Promise.resolve(response([]));
 
             return Promise.resolve(response(state));
@@ -231,13 +250,78 @@ describe('Underground party presentation controls', () => {
 
         const wrapper = mount(UndergroundPanel, { attachTo: document.body });
         await flushPromises();
-        await wrapper.get('.underground-skip-panel li button').trigger('click');
+        await wrapper.get('.underground-skip-entry button').trigger('click');
+        await wrapper.get('.underground-skip-category .underground-skip-shortcuts button').trigger('click');
         await flushPromises();
 
         const result = wrapper.get('.underground-skip-result');
+        expect(skipRequests).toHaveLength(1);
+        expect(skipRequests[0]?.execution_count).toBe(2);
+        expect(result.text()).toContain('浅い洞窟を2回スキップしました');
         expect(result.text()).toContain('獲得: 銀の短剣 ×1');
         expect(result.text()).toContain('取り逃し: 黒晶の盾 ×1（宝物庫が満杯）');
-        expect(result.text()).toContain('残り 4枚');
+        expect(result.text()).toContain('残りticket3枚');
+        wrapper.unmount();
+    });
+
+    it('keeps hunting grounds and trials separate and calculates 50 and 100 percent bulk shortcuts', async () => {
+        const state = openState({
+            trial: {
+                key: 'trial_01',
+                label: '黒曜石の魔窟',
+                total_battles: 10,
+                first_cleared: true,
+                active_run: null,
+                trials: [{
+                    key: 'trial_01',
+                    label: '黒曜石の魔窟',
+                    total_battles: 10,
+                    locked: false,
+                    unlock_condition: null,
+                    first_cleared: true,
+                    skip: { actual_clear_count: 5, total_clear_count: 5, actual_clears_required: 5, unlocked: true, ticket_cost: 10 },
+                }],
+            },
+            lending: { settings: { is_lendable: false, is_public: false, is_available: false }, candidates: [], ticket_balance: 100 },
+        });
+        const requests: Array<Record<string, unknown>> = [];
+        vi.stubGlobal('fetch', vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+            const path = String(input);
+            if (path === '/api/v1/me/underground/skip/trial') {
+                requests.push(JSON.parse(String(init?.body ?? '{}')) as Record<string, unknown>);
+                return Promise.resolve(response({
+                    id: 'trial-skip', duplicate: false, content_type: 'trial', content_key: 'trial_01', execution_count: 10,
+                    ticket_cost: 100, xp_awarded: 1000, shards_awarded: 500, combat_level_before: 20, combat_level_after: 21,
+                    rewards: { equipment_granted_count: 0, vault_full_count: 0, drops: [], ticket_balance_after: 0 },
+                    settled_at: '2026-09-09T00:00:00Z',
+                }));
+            }
+            if (path.endsWith('/api/v1/me/underground/battles')) return Promise.resolve(response([]));
+
+            return Promise.resolve(response(state));
+        }));
+
+        const wrapper = mount(UndergroundPanel, { attachTo: document.body });
+        await flushPromises();
+        const adventureSections = wrapper.findAll('.underground-adventure-block');
+        expect(adventureSections).toHaveLength(2);
+        expect(adventureSections[0]!.get('h3').text()).toBe('狩場');
+        expect(adventureSections[1]!.get('h3').text()).toBe('試練');
+
+        await wrapper.get('.underground-skip-entry button').trigger('click');
+        const categories = wrapper.findAll('.underground-skip-category');
+        expect(categories).toHaveLength(2);
+        expect(categories[0]!.text()).toContain('50%使用（50回）');
+        expect(categories[0]!.text()).toContain('100%使用（100回）');
+        expect(categories[1]!.text()).toContain('50%使用（5周）');
+        expect(categories[1]!.text()).toContain('100%使用（10周）');
+        await categories[1]!.findAll('.underground-skip-shortcuts button')[1]!.trigger('click');
+        await flushPromises();
+
+        expect(requests).toHaveLength(1);
+        expect(requests[0]?.execution_count).toBe(10);
+        expect(requests[0]?.trial_key).toBe('trial_01');
+        expect(wrapper.get('.underground-skip-result').text()).toContain('黒曜石の魔窟を10周スキップしました');
         wrapper.unmount();
     });
 
@@ -265,15 +349,19 @@ describe('Underground party presentation controls', () => {
 
         const wrapper = mount(UndergroundPanel, { attachTo: document.body });
         await flushPromises();
+        await wrapper.get('.underground-main-navigation button:nth-child(4)').trigger('click');
         await wrapper.get('.underground-party-browser button').trigger('click');
         await flushPromises();
         await wrapper.get('button[aria-label="A秘書をPTに追加"]').trigger('click');
+        await wrapper.get('.underground-main-navigation button:first-child').trigger('click');
         await wrapper.get('.underground-explore-button').trigger('click');
         await flushPromises();
         expect(wrapper.get('.underground-pending-request').text()).toContain('同じ同行者');
 
+        await wrapper.get('.underground-main-navigation button:nth-child(4)').trigger('click');
         await wrapper.get('button[aria-label="A秘書をPTから解除"]').trigger('click');
         await wrapper.get('button[aria-label="B秘書をPTに追加"]').trigger('click');
+        await wrapper.get('.underground-main-navigation button:first-child').trigger('click');
         await wrapper.get('.underground-explore-button').trigger('click');
         await flushPromises();
         expect(wrapper.find('.underground-pending-request').exists()).toBe(false);

@@ -23,6 +23,7 @@ use App\Models\UndergroundIntroRequest;
 use App\Models\UndergroundOwnedEquipment;
 use App\Models\UndergroundProfile;
 use App\Models\UndergroundSkillAllocation;
+use App\Models\UndergroundSkipBatch;
 use App\Models\UndergroundSkipSettlement;
 use App\Models\UndergroundTrialProgress;
 use App\Models\UndergroundTrialRun;
@@ -500,6 +501,288 @@ STORY;
         }, 3);
     }
 
+    /** @return array{batch: UndergroundSkipBatch, duplicate: bool} */
+    public function bulkSkipHuntingGround(
+        User $user,
+        string $requestId,
+        string $huntingGroundKey,
+        int $executionCount,
+    ): array {
+        $this->assertRequestId($requestId);
+        $this->assertBulkSkipExecutionCount($executionCount);
+        $huntingGround = $this->alphaV1Catalog->explorationHuntingGround($huntingGroundKey);
+        $policy = $this->catalog->skipPolicy('hunting_ground');
+        $fingerprint = $this->fingerprint([
+            'operation' => 'bulk_skip',
+            'skip_identity' => $policy['identity'],
+            'content_type' => 'hunting_ground',
+            'content_key' => $huntingGroundKey,
+            'content_identity' => $huntingGround['content_identity'],
+            'execution_count' => $executionCount,
+        ]);
+
+        return DB::transaction(function () use (
+            $user,
+            $requestId,
+            $huntingGroundKey,
+            $huntingGround,
+            $policy,
+            $executionCount,
+            $fingerprint,
+        ): array {
+            $profile = $this->lockedProfileForUser($user);
+            $this->assertExplorationUnlocked($profile);
+            $this->assertHuntingGroundUnlocked($profile, $huntingGround);
+            $duplicate = $this->duplicateSkipBatch($profile, $requestId, $fingerprint);
+            if ($duplicate instanceof UndergroundSkipBatch) {
+                return ['batch' => $duplicate, 'duplicate' => true];
+            }
+            $this->assertSkipRequestIdentityAvailable($profile, $requestId);
+            if ($this->lockedActiveTrialRun($profile) instanceof UndergroundTrialRun) {
+                throw new UndergroundRuntimeException(
+                    'underground_trial_active',
+                    '封印の地から帰還してから狩場skipを使用してください。',
+                );
+            }
+            $progress = $this->lockedContentProgress($profile, 'hunting_ground', $huntingGroundKey);
+            $this->assertSkipUnlocked($progress, $policy['actual_clears_required']);
+            $ticketCost = $this->bulkSkipTicketCost($policy['ticket_cost'], $executionCount);
+            $balance = $this->lockedSkipTicketBalance($user);
+            $this->assertSkipTicketBalance($balance, $ticketCost);
+
+            $levelBefore = $profile->combat_level;
+            $xpBefore = $profile->combat_xp;
+            $shardsBefore = $profile->shard_balance;
+            $xpAwarded = 0;
+            $shardsAwarded = 0;
+            $stpAwarded = 0;
+            $encounterCounts = [];
+            $encounterSnapshots = [];
+            $executions = [];
+            for ($execution = 1; $execution <= $executionCount; $execution++) {
+                $seed = $this->battleSeed->forRequest(
+                    $profile->id,
+                    $requestId,
+                    $policy['identity'].':'.$huntingGround['content_identity'].':bulk-execution:'.$execution,
+                );
+                $random = new UndergroundRandom($seed);
+                $encounterKey = $this->alphaV1Catalog->weightedExplorationEncounter(
+                    $random->integer('runtime:encounter:'.$huntingGroundKey, 1, 10_000),
+                    $huntingGroundKey,
+                );
+                $encounter = $this->alphaV1Catalog->explorationEncounter($encounterKey, $huntingGroundKey);
+                $reward = $this->applyRepeatableReward($profile, $encounter['xp'], $encounter['shards']);
+                $xpAwarded += $encounter['xp'];
+                $shardsAwarded += $encounter['shards'];
+                $stpAwarded += $reward['stp_awarded'];
+                $encounterCounts[$encounterKey] = ($encounterCounts[$encounterKey] ?? 0) + 1;
+                $encounterSnapshots[] = [
+                    'index' => $execution,
+                    'key' => $encounterKey,
+                    'xp' => $encounter['xp'],
+                    'shards' => $encounter['shards'],
+                ];
+                $executions[] = [$encounter, $seed];
+            }
+            $profile->save();
+            $settledAt = Carbon::now();
+            $batch = UndergroundSkipBatch::query()->create([
+                'underground_profile_id' => $profile->id,
+                'user_id' => $user->id,
+                'request_id' => $requestId,
+                'request_fingerprint' => $fingerprint,
+                'skip_identity' => $policy['identity'],
+                'content_type' => 'hunting_ground',
+                'content_key' => $huntingGroundKey,
+                'content_identity' => $huntingGround['content_identity'],
+                'execution_count' => $executionCount,
+                'ticket_cost' => $ticketCost,
+                'xp_awarded' => $xpAwarded,
+                'shard_awarded' => $shardsAwarded,
+                'combat_level_before' => $levelBefore,
+                'combat_level_after' => $profile->combat_level,
+                'combat_xp_before' => $xpBefore,
+                'combat_xp_after' => $profile->combat_xp,
+                'shard_balance_before' => $shardsBefore,
+                'shard_balance_after' => $profile->shard_balance,
+                'reward_snapshot' => ['drops' => [['status' => 'pending']]],
+                'settled_at' => $settledAt,
+            ]);
+            $ticketBalanceAfter = $this->consumeBulkSkipTickets($balance, $batch, $ticketCost);
+            $drops = [];
+            $equipmentGranted = 0;
+            $vaultFull = 0;
+            foreach ($executions as $index => [$encounter, $seed]) {
+                $drop = $this->equipmentDrops->settleBulkSkippedVictory(
+                    $profile,
+                    $batch,
+                    $huntingGroundKey,
+                    $encounter,
+                    $seed,
+                    $index + 1,
+                );
+                if ($drop['status'] === 'granted') {
+                    $equipmentGranted++;
+                    $drops[] = $drop;
+                } elseif ($drop['status'] === 'vault_full') {
+                    $vaultFull++;
+                }
+            }
+            $batch->reward_snapshot = [
+                'encounters' => $encounterSnapshots,
+                'encounter_counts' => $encounterCounts,
+                'stp_awarded' => $stpAwarded,
+                'equipment_granted_count' => $equipmentGranted,
+                'vault_full_count' => $vaultFull,
+                'drops' => $drops,
+                'ticket_balance_after' => $ticketBalanceAfter,
+            ];
+            $batch->save();
+            $progress->total_clear_count += $executionCount;
+            $progress->save();
+
+            return ['batch' => $batch->refresh(), 'duplicate' => false];
+        }, 3);
+    }
+
+    /** @return array{batch: UndergroundSkipBatch, duplicate: bool} */
+    public function bulkSkipTrial(
+        User $user,
+        string $requestId,
+        string $trialKey,
+        int $executionCount,
+    ): array {
+        $this->assertRequestId($requestId);
+        $this->assertBulkSkipExecutionCount($executionCount);
+        $trial = $this->catalog->trial($trialKey);
+        $policy = $this->catalog->skipPolicy('trial');
+        $fingerprint = $this->fingerprint([
+            'operation' => 'bulk_skip',
+            'skip_identity' => $policy['identity'],
+            'content_type' => 'trial',
+            'content_key' => $trialKey,
+            'content_identity' => $trial['content_identity'],
+            'execution_count' => $executionCount,
+        ]);
+
+        return DB::transaction(function () use (
+            $user,
+            $requestId,
+            $trialKey,
+            $trial,
+            $policy,
+            $executionCount,
+            $fingerprint,
+        ): array {
+            $profile = $this->lockedProfileForUser($user);
+            $this->assertExplorationUnlocked($profile);
+            $this->reconcileTrialProgresses($profile);
+            $trialProgress = UndergroundTrialProgress::query()
+                ->where('underground_profile_id', $profile->id)
+                ->where('trial_key', $trialKey)
+                ->lockForUpdate()
+                ->first();
+            if (! $trialProgress instanceof UndergroundTrialProgress) {
+                throw new UndergroundRuntimeException('underground_trial_locked', 'この封印の地はまだ解禁されていません。');
+            }
+            $duplicate = $this->duplicateSkipBatch($profile, $requestId, $fingerprint);
+            if ($duplicate instanceof UndergroundSkipBatch) {
+                return ['batch' => $duplicate, 'duplicate' => true];
+            }
+            $this->assertSkipRequestIdentityAvailable($profile, $requestId);
+            if ($this->lockedActiveTrialRun($profile) instanceof UndergroundTrialRun) {
+                throw new UndergroundRuntimeException(
+                    'underground_trial_active',
+                    '進行中の封印の地から帰還してから周回skipを使用してください。',
+                );
+            }
+            $progress = $this->lockedContentProgress($profile, 'trial', $trialKey);
+            $this->assertSkipUnlocked($progress, $policy['actual_clears_required']);
+            $ticketCost = $this->bulkSkipTicketCost($policy['ticket_cost'], $executionCount);
+            $balance = $this->lockedSkipTicketBalance($user);
+            $this->assertSkipTicketBalance($balance, $ticketCost);
+
+            $levelBefore = $profile->combat_level;
+            $xpBefore = $profile->combat_xp;
+            $shardsBefore = $profile->shard_balance;
+            $xpPerRun = array_sum(array_column($trial['rewards'], 'xp'));
+            $shardsPerRun = array_sum(array_column($trial['rewards'], 'shards'));
+            $stpAwarded = 0;
+            for ($execution = 1; $execution <= $executionCount; $execution++) {
+                $reward = $this->applyRepeatableReward($profile, $xpPerRun, $shardsPerRun);
+                $stpAwarded += $reward['stp_awarded'];
+            }
+            $profile->save();
+            $settledAt = Carbon::now();
+            $batch = UndergroundSkipBatch::query()->create([
+                'underground_profile_id' => $profile->id,
+                'user_id' => $user->id,
+                'request_id' => $requestId,
+                'request_fingerprint' => $fingerprint,
+                'skip_identity' => $policy['identity'],
+                'content_type' => 'trial',
+                'content_key' => $trialKey,
+                'content_identity' => $trial['content_identity'],
+                'execution_count' => $executionCount,
+                'ticket_cost' => $ticketCost,
+                'xp_awarded' => $xpPerRun * $executionCount,
+                'shard_awarded' => $shardsPerRun * $executionCount,
+                'combat_level_before' => $levelBefore,
+                'combat_level_after' => $profile->combat_level,
+                'combat_xp_before' => $xpBefore,
+                'combat_xp_after' => $profile->combat_xp,
+                'shard_balance_before' => $shardsBefore,
+                'shard_balance_after' => $profile->shard_balance,
+                'reward_snapshot' => ['drops' => [['status' => 'pending']]],
+                'settled_at' => $settledAt,
+            ]);
+            $ticketBalanceAfter = $this->consumeBulkSkipTickets($balance, $batch, $ticketCost);
+            $dropTierKey = $trial['drop_tier_key'];
+            $drops = [];
+            $equipmentGranted = 0;
+            $vaultFull = 0;
+            if (is_string($dropTierKey)) {
+                $rewardsPerRun = count($trial['rewards']);
+                for ($execution = 1; $execution <= $executionCount; $execution++) {
+                    foreach ($trial['rewards'] as $index => $entry) {
+                        $rewardIndex = (($execution - 1) * $rewardsPerRun) + $index + 1;
+                        $rewardSeed = $this->battleSeed->forRequest(
+                            $profile->id,
+                            $requestId,
+                            $policy['identity'].':'.$trial['content_identity'].':bulk-reward:'.$rewardIndex,
+                        );
+                        $drop = $this->equipmentDrops->settleBulkSkippedVictory(
+                            $profile,
+                            $batch,
+                            $dropTierKey,
+                            $entry,
+                            $rewardSeed,
+                            $rewardIndex,
+                        );
+                        if ($drop['status'] === 'granted') {
+                            $equipmentGranted++;
+                            $drops[] = $drop;
+                        } elseif ($drop['status'] === 'vault_full') {
+                            $vaultFull++;
+                        }
+                    }
+                }
+            }
+            $batch->reward_snapshot = [
+                'stp_awarded' => $stpAwarded,
+                'equipment_granted_count' => $equipmentGranted,
+                'vault_full_count' => $vaultFull,
+                'drops' => $drops,
+                'ticket_balance_after' => $ticketBalanceAfter,
+            ];
+            $batch->save();
+            $progress->total_clear_count += $executionCount;
+            $progress->save();
+
+            return ['batch' => $batch->refresh(), 'duplicate' => false];
+        }, 3);
+    }
+
     public function startTrial(User $user, string $trialKey): UndergroundTrialRun
     {
         $trial = $this->catalog->trial($trialKey);
@@ -747,6 +1030,25 @@ STORY;
             'combat_level_after' => $settlement->combat_level_after,
             'rewards' => $settlement->reward_snapshot,
             'settled_at' => $settlement->settled_at->toAtomString(),
+        ];
+    }
+
+    /** @return array<string, mixed> */
+    public function projectSkipBatch(UndergroundSkipBatch $batch, bool $duplicate): array
+    {
+        return [
+            'id' => $batch->request_id,
+            'duplicate' => $duplicate,
+            'content_type' => $batch->content_type,
+            'content_key' => $batch->content_key,
+            'execution_count' => $batch->execution_count,
+            'ticket_cost' => $batch->ticket_cost,
+            'xp_awarded' => $batch->xp_awarded,
+            'shards_awarded' => $batch->shard_awarded,
+            'combat_level_before' => $batch->combat_level_before,
+            'combat_level_after' => $batch->combat_level_after,
+            'rewards' => $batch->reward_snapshot,
+            'settled_at' => $batch->settled_at->toAtomString(),
         ];
     }
 
@@ -2559,6 +2861,29 @@ STORY;
         return $settlement;
     }
 
+    private function duplicateSkipBatch(
+        UndergroundProfile $profile,
+        string $requestId,
+        string $fingerprint,
+    ): ?UndergroundSkipBatch {
+        $batch = UndergroundSkipBatch::query()
+            ->where('underground_profile_id', $profile->id)
+            ->where('request_id', $requestId)
+            ->lockForUpdate()
+            ->first();
+        if (! $batch instanceof UndergroundSkipBatch) {
+            return null;
+        }
+        if (! hash_equals($batch->request_fingerprint, $fingerprint)) {
+            throw new UndergroundRuntimeException(
+                'underground_request_conflict',
+                '同じrequest IDが別の操作に使用されています。',
+            );
+        }
+
+        return $batch;
+    }
+
     private function assertSkipRequestIdentityAvailable(UndergroundProfile $profile, string $requestId): void
     {
         $this->assertRequestNotUsedByIntro($profile, $requestId);
@@ -2572,6 +2897,43 @@ STORY;
                 '同じrequest IDが別の戦闘に使用されています。',
             );
         }
+        if (UndergroundSkipSettlement::query()
+            ->where('underground_profile_id', $profile->id)
+            ->where('request_id', $requestId)
+            ->lockForUpdate()
+            ->exists()
+            || UndergroundSkipBatch::query()
+                ->where('underground_profile_id', $profile->id)
+                ->where('request_id', $requestId)
+                ->lockForUpdate()
+                ->exists()) {
+            throw new UndergroundRuntimeException(
+                'underground_request_conflict',
+                '同じrequest IDが別のskip操作に使用されています。',
+            );
+        }
+    }
+
+    private function assertBulkSkipExecutionCount(int $executionCount): void
+    {
+        if ($executionCount < 1) {
+            throw new UndergroundRuntimeException(
+                'underground_skip_count_invalid',
+                'skip回数は1回以上で指定してください。',
+            );
+        }
+    }
+
+    private function bulkSkipTicketCost(int $unitCost, int $executionCount): int
+    {
+        if ($unitCost < 1 || $executionCount > intdiv(PHP_INT_MAX, $unitCost)) {
+            throw new UndergroundRuntimeException(
+                'underground_skip_count_invalid',
+                'skip回数を確認してください。',
+            );
+        }
+
+        return $unitCost * $executionCount;
     }
 
     private function lockedContentProgress(
@@ -2662,6 +3024,40 @@ STORY;
             'created_at' => $now,
             'updated_at' => $now,
         ]);
+    }
+
+    private function consumeBulkSkipTickets(
+        UserSkipTicketBalance $balance,
+        UndergroundSkipBatch $batch,
+        int $cost,
+    ): int {
+        $before = $balance->balance;
+        $balance->balance -= $cost;
+        $balance->save();
+        $now = Carbon::now();
+        DB::table('user_skip_ticket_ledger')->insert([
+            'user_id' => $balance->user_id,
+            'underground_battle_id' => null,
+            'underground_party_member_id' => null,
+            'underground_skip_settlement_id' => null,
+            'underground_skip_batch_id' => $batch->id,
+            'entry_key' => 'bulk-skip-consume:'.$batch->id,
+            'delta' => -$cost,
+            'balance_before' => $before,
+            'balance_after' => $balance->balance,
+            'canonical_day' => $now->toDateString(),
+            'metadata' => json_encode([
+                'skip_identity' => $batch->skip_identity,
+                'content_type' => $batch->content_type,
+                'content_key' => $batch->content_key,
+                'request_id' => $batch->request_id,
+                'execution_count' => $batch->execution_count,
+            ], JSON_THROW_ON_ERROR),
+            'created_at' => $now,
+            'updated_at' => $now,
+        ]);
+
+        return $balance->balance;
     }
 
     /**

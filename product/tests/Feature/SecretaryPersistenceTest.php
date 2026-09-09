@@ -362,7 +362,7 @@ final class SecretaryPersistenceTest extends TestCase
             ->assertJsonPath('data.main_image.url', null);
     }
 
-    public function test_main_image_reuses_safe_upload_boundary_replaces_the_old_file_and_honors_ai_suppression(): void
+    public function test_full_body_slot_reuses_safe_upload_boundary_replaces_the_old_file_and_honors_ai_suppression(): void
     {
         Storage::fake('secretary_images');
         $world = $this->lightweightWorld();
@@ -371,7 +371,7 @@ final class SecretaryPersistenceTest extends TestCase
         $this->actingAs($owner)->postJson('/api/v1/me/secretary/name', ['name' => '画像秘書'])->assertOk();
         $secretary = $owner->secretary()->firstOrFail();
 
-        $this->actingAs($owner)->post('/api/v1/me/secretary/main-image', [
+        $this->actingAs($owner)->post('/api/v1/me/secretary/images/full_body', [
             'image' => UploadedFile::fake()->createWithContent(
                 'dangerous.svg',
                 '<svg xmlns="http://www.w3.org/2000/svg"></svg>',
@@ -381,15 +381,15 @@ final class SecretaryPersistenceTest extends TestCase
             ->assertUnprocessable()->assertJsonValidationErrors('image');
         Storage::disk('secretary_images')->assertDirectoryEmpty('/');
 
-        $this->actingAs($owner)->post('/api/v1/me/secretary/main-image', [
-            'image' => UploadedFile::fake()->createWithContent('first-original-name.png', $this->png()),
+        $this->actingAs($owner)->post('/api/v1/me/secretary/images/full_body', [
+            'image' => UploadedFile::fake()->createWithContent('first-original-name.png', $this->portraitPng()),
             'creation_method' => 'self_made',
             'credit' => 'Owner / all rights reserved',
         ], ['Accept' => 'application/json'])
             ->assertOk()
             ->assertJsonPath('data.main_image.display', 'uploaded')
-            ->assertJsonPath('data.editable_image_metadata.creation_method', 'self_made');
-        $firstPath = (string) $secretary->fresh()->main_image_path;
+            ->assertJsonPath('data.images.full_body.editable_metadata.creation_method', 'self_made');
+        $firstPath = (string) SecretaryImage::query()->where('secretary_id', $secretary->id)->where('slot', 'full_body')->value('path');
         $this->assertMatchesRegularExpression('/\A[0-9a-f]{64}\.png\z/', $firstPath);
         $this->assertStringNotContainsString('first-original-name', $firstPath);
         Storage::disk('secretary_images')->assertExists($firstPath);
@@ -400,7 +400,7 @@ final class SecretaryPersistenceTest extends TestCase
             ->assertJsonPath('data.viewer_preferences.configured', false)
             ->assertJsonPath('data.main_image.display', 'uploaded')
             ->assertJsonPath('data.main_image.creation_method_label', '自作');
-        $this->actingAs($owner)->patchJson('/api/v1/me/secretary/main-image', [
+        $this->actingAs($owner)->patchJson('/api/v1/me/secretary/images/full_body', [
             'creation_method' => 'commissioned_or_permitted',
             'credit' => 'Commissioned artist',
         ])->assertOk()
@@ -421,14 +421,14 @@ final class SecretaryPersistenceTest extends TestCase
             ->assertJsonPath('data.profile.main_image.display', 'uploaded')
             ->assertJsonPath('data.profile.main_image.creation_method_label', '依頼・使用許諾済み');
 
-        $this->actingAs($owner)->post('/api/v1/me/secretary/main-image', [
-            'image' => UploadedFile::fake()->createWithContent('second.png', $this->png()),
+        $this->actingAs($owner)->post('/api/v1/me/secretary/images/full_body', [
+            'image' => UploadedFile::fake()->createWithContent('second.png', $this->portraitPng()),
             'creation_method' => 'self_made',
             'credit' => 'Second owner image',
         ], ['Accept' => 'application/json'])->assertOk()
             ->assertJsonPath('data.main_image.display', 'uploaded')
-            ->assertJsonPath('data.editable_image_metadata.creation_method', 'self_made');
-        $secondPath = (string) $secretary->fresh()->main_image_path;
+            ->assertJsonPath('data.images.full_body.editable_metadata.creation_method', 'self_made');
+        $secondPath = (string) SecretaryImage::query()->where('secretary_id', $secretary->id)->where('slot', 'full_body')->value('path');
         $this->assertNotSame($firstPath, $secondPath);
         Storage::disk('secretary_images')->assertMissing($firstPath);
         Storage::disk('secretary_images')->assertExists($secondPath);
@@ -441,23 +441,24 @@ final class SecretaryPersistenceTest extends TestCase
         Storage::shouldReceive('disk')->with('secretary_images')->andReturn($failingDisk);
         Log::spy();
 
-        $this->actingAs($owner)->post('/api/v1/me/secretary/main-image', [
-            'image' => UploadedFile::fake()->createWithContent('third.png', $this->png()),
+        $this->actingAs($owner)->post('/api/v1/me/secretary/images/full_body', [
+            'image' => UploadedFile::fake()->createWithContent('third.png', $this->portraitPng()),
             'creation_method' => 'ai_generated',
             'credit' => 'Generated for this profile',
         ], ['Accept' => 'application/json'])->assertOk()
             ->assertJsonPath('data.main_image.display', 'none')
-            ->assertJsonPath('data.editable_image_metadata.creation_method', 'ai_generated');
-        $thirdPath = (string) $secretary->fresh()->main_image_path;
+            ->assertJsonPath('data.images.full_body.editable_metadata.creation_method', 'ai_generated');
+        $thirdPath = (string) SecretaryImage::query()->where('secretary_id', $secretary->id)->where('slot', 'full_body')->value('path');
         $this->assertNotSame($secondPath, $thirdPath);
         $this->assertTrue($disk->exists($secondPath));
         $this->assertTrue($disk->exists($thirdPath));
         $this->assertCount(2, $disk->allFiles('/'));
         Log::shouldHaveReceived('error')->once()->with(
-            'Secretary main image replacement left an orphaned previous file.',
+            'Secretary image replacement left an orphaned previous file.',
             Mockery::on(fn (array $context): bool => $context['secretary_id'] === $secretary->id
                 && $context['old_path'] === $secondPath
                 && $context['current_path'] === $thirdPath
+                && $context['slot'] === 'full_body'
                 && $context['exception_class'] === RuntimeException::class),
         );
 
@@ -465,7 +466,7 @@ final class SecretaryPersistenceTest extends TestCase
             ->assertOk()
             ->assertJsonPath('data.profile.main_image.display', 'none')
             ->assertJsonPath('data.profile.main_image.url', null)
-            ->assertJsonPath('data.profile.editable_image_metadata.creation_method', 'ai_generated');
+            ->assertJsonPath('data.profile.images.full_body.editable_metadata.creation_method', 'ai_generated');
 
         $viewer = User::factory()->create();
         $this->actingAs($viewer)->patchJson('/api/v1/me/secretary/image-preferences', [
@@ -496,13 +497,13 @@ final class SecretaryPersistenceTest extends TestCase
         app(NationCreationService::class)->create($owner, $world, '画像lease島', '画像lease島主');
         $this->actingAs($owner)->postJson('/api/v1/me/secretary/name', ['name' => '画像lease秘書'])->assertOk();
 
-        $this->actingAs($owner)->post('/api/v1/me/secretary/main-image', [
-            'image' => UploadedFile::fake()->createWithContent('lease-old.png', $this->png()),
+        $this->actingAs($owner)->post('/api/v1/me/secretary/images/full_body', [
+            'image' => UploadedFile::fake()->createWithContent('lease-old.png', $this->portraitPng()),
             'creation_method' => 'self_made',
             'credit' => 'Lease credit',
         ], ['Accept' => 'application/json'])->assertOk();
         $secretary = $owner->secretary()->firstOrFail()->fresh(['images', 'user', 'undergroundProfile']);
-        $oldPath = (string) $secretary->main_image_path;
+        $oldPath = (string) $secretary->images->firstWhere('slot', 'full_body')?->path;
         $savedReference = app(SecretaryProfilePresenter::class)->resolveLargeImage($secretary, $owner);
         $this->assertSame('Lease credit', $savedReference['credit']);
         Storage::disk('secretary_images')->assertExists($oldPath);
@@ -558,8 +559,8 @@ final class SecretaryPersistenceTest extends TestCase
         $this->assertSame(0, $retention->reserveSnapshotImages($reservationKey, $snapshot, $expiresAt));
         $this->assertTrue($retention->isRetained($oldPath, $expiresAt->copy()->subSecond()));
 
-        $this->actingAs($owner)->post('/api/v1/me/secretary/main-image', [
-            'image' => UploadedFile::fake()->createWithContent('lease-new.png', $this->png()),
+        $this->actingAs($owner)->post('/api/v1/me/secretary/images/full_body', [
+            'image' => UploadedFile::fake()->createWithContent('lease-new.png', $this->portraitPng()),
             'creation_method' => 'self_made',
             'credit' => 'New lease credit',
         ], ['Accept' => 'application/json'])->assertOk();
@@ -582,8 +583,8 @@ final class SecretaryPersistenceTest extends TestCase
             'show_ai_generated_secretary_images' => true,
             'secretary_image_fallback' => 'silhouette',
         ])->save();
-        $this->actingAs($owner->refresh())->post('/api/v1/me/secretary/main-image', [
-            'image' => UploadedFile::fake()->createWithContent('history-ai.png', $this->png()),
+        $this->actingAs($owner->refresh())->post('/api/v1/me/secretary/images/full_body', [
+            'image' => UploadedFile::fake()->createWithContent('history-ai.png', $this->portraitPng()),
             'creation_method' => 'ai_generated',
             'credit' => 'History AI credit',
         ], ['Accept' => 'application/json'])->assertOk();
@@ -626,14 +627,22 @@ final class SecretaryPersistenceTest extends TestCase
         app(NationCreationService::class)->create($owner, $world, '愛称島', '愛称主');
         $this->actingAs($owner)->postJson('/api/v1/me/secretary/name', ['name' => '正式名称七文字'])->assertOk();
         $this->actingAs($owner)->patchJson('/api/v1/me/secretary/profile', [
-            'biography' => '', 'nickname' => '1234567',
+            'biography' => '設定タブから愛称を変えても残る経歴',
+        ])->assertOk();
+        $this->actingAs($owner)->patchJson('/api/v1/me/secretary/profile', [
+            'nickname' => '1234567',
         ])->assertUnprocessable()->assertJsonValidationErrors('nickname');
         $this->actingAs($owner)->patchJson('/api/v1/me/secretary/profile', [
-            'biography' => '', 'nickname' => '123456',
-        ])->assertOk()->assertJsonPath('data.nickname', '123456')->assertJsonPath('data.battle_display_name', '123456');
+            'nickname' => '123456',
+        ])->assertOk()
+            ->assertJsonPath('data.nickname', '123456')
+            ->assertJsonPath('data.battle_display_name', '123456')
+            ->assertJsonPath('data.biography', '設定タブから愛称を変えても残る経歴');
         $this->actingAs($owner)->patchJson('/api/v1/me/secretary/profile', [
-            'biography' => '', 'nickname' => null,
-        ])->assertOk()->assertJsonPath('data.battle_display_name', '正式名称七…');
+            'nickname' => null,
+        ])->assertOk()
+            ->assertJsonPath('data.battle_display_name', '正式名称七…')
+            ->assertJsonPath('data.biography', '設定タブから愛称を変えても残る経歴');
     }
 
     public function test_secretary_image_slots_have_independent_credit_and_aspect_contract(): void
@@ -703,6 +712,38 @@ final class SecretaryPersistenceTest extends TestCase
         $this->assertSame($path, SecretaryImage::query()->where('secretary_id', $secretary->id)->where('slot', 'icon')->value('path'));
     }
 
+    public function test_owner_can_delete_a_registered_image_slot(): void
+    {
+        Storage::fake('secretary_images');
+        $world = $this->lightweightWorld();
+        $owner = User::factory()->create();
+        app(NationCreationService::class)->create($owner, $world, '画像削除島', '画像削除主');
+        $this->actingAs($owner)->postJson('/api/v1/me/secretary/name', ['name' => '画像削除秘書'])->assertOk();
+        $this->actingAs($owner)->post('/api/v1/me/secretary/images/icon', [
+            'image' => UploadedFile::fake()->createWithContent('icon.png', $this->png()),
+            'creation_method' => 'self_made',
+            'credit' => 'Delete test credit',
+        ], ['Accept' => 'application/json'])->assertOk();
+        $secretary = $owner->secretary()->firstOrFail();
+        $path = (string) SecretaryImage::query()
+            ->where('secretary_id', $secretary->id)
+            ->where('slot', 'icon')
+            ->value('path');
+
+        $this->actingAs($owner)->deleteJson('/api/v1/me/secretary/images/icon')
+            ->assertOk()
+            ->assertJsonPath('data.images.icon.display', 'none')
+            ->assertJsonPath('data.images.icon.url', null);
+
+        $this->assertDatabaseMissing('secretary_images', ['secretary_id' => $secretary->id, 'slot' => 'icon']);
+        $this->assertDatabaseHas('audit_events', [
+            'actor_user_id' => $owner->id,
+            'event_type' => 'secretary.image_slot_deleted',
+            'subject_id' => $secretary->id,
+        ]);
+        Storage::disk('secretary_images')->assertMissing($path);
+    }
+
     public function test_owner_can_edit_hidden_ai_slot_metadata_without_exposing_edit_fields_to_public_viewers(): void
     {
         Storage::fake('secretary_images');
@@ -741,7 +782,7 @@ final class SecretaryPersistenceTest extends TestCase
             ->assertJsonMissingPath('data.images.icon.editable_metadata');
     }
 
-    public function test_portrait_preference_and_awakening_resolvers_fallback_to_legacy_main_image(): void
+    public function test_portrait_preference_and_awakening_resolvers_fallback_to_registered_bust(): void
     {
         Storage::fake('secretary_images');
         $this->installSecretaryFallbackAssets('silhouette.png');
@@ -756,13 +797,17 @@ final class SecretaryPersistenceTest extends TestCase
         $secretary = $owner->secretary()->firstOrFail()->fresh(['images', 'user']);
         $presenter = app(SecretaryProfilePresenter::class);
         $this->assertSame('silhouette', $presenter->resolveLargeImage($secretary, $owner)['display']);
-        $this->actingAs($owner)->post('/api/v1/me/secretary/main-image', [
-            'image' => UploadedFile::fake()->createWithContent('legacy.png', $this->png()),
-            'creation_method' => 'self_made', 'credit' => 'legacy-credit',
+        $this->actingAs($owner)->post('/api/v1/me/secretary/images/bust', [
+            'image' => UploadedFile::fake()->createWithContent('bust.png', $this->portraitPng()),
+            'creation_method' => 'self_made', 'credit' => 'bust-credit',
         ], ['Accept' => 'application/json'])->assertOk();
         $secretary = $owner->secretary()->firstOrFail()->fresh(['images', 'user']);
-        $this->assertSame('uploaded', $presenter->resolveLargeImage($secretary, $owner)['display']);
-        $this->assertSame('uploaded', $presenter->resolveLargeImage($secretary, $owner, true)['display']);
+        $normal = $presenter->resolveLargeImage($secretary, $owner);
+        $awakening = $presenter->resolveLargeImage($secretary, $owner, true);
+        $this->assertSame('uploaded', $normal['display']);
+        $this->assertSame('bust', $normal['slot']);
+        $this->assertSame($normal['url'], $awakening['url']);
+        $this->assertSame('bust-credit', $awakening['credit']);
         $this->actingAs($owner)->patchJson('/api/v1/me/secretary/portrait-preference', ['portrait_preference' => 'bust'])
             ->assertOk()->assertJsonPath('data.portrait_preference', 'bust');
     }

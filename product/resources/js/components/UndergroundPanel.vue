@@ -207,6 +207,7 @@ interface SkipResult {
     duplicate: boolean;
     content_type: 'hunting_ground' | 'trial';
     content_key: string;
+    execution_count?: number;
     ticket_cost: number;
     xp_awarded: number;
     shards_awarded: number;
@@ -214,6 +215,9 @@ interface SkipResult {
     combat_level_after: number;
     rewards?: {
         drops?: SkipDrop[];
+        equipment_granted_count?: number;
+        vault_full_count?: number;
+        ticket_balance_after?: number;
         [key: string]: unknown;
     };
     ticket_balance?: number;
@@ -479,7 +483,7 @@ interface UndergroundState {
     party_candidates?: PartyCandidate[];
     party_member_ids?: number[];
     lending?: {
-        settings: { is_public: boolean; is_available: boolean; battle_portrait_preference?: 'full_body' | 'bust' };
+        settings: { is_lendable?: boolean; is_public: boolean; is_available: boolean; battle_portrait_preference?: 'full_body' | 'bust' };
         candidates: PartyCandidate[];
         ticket_balance: number;
     } | null;
@@ -537,14 +541,14 @@ const selectedPartyMemberIds = ref<number[]>([]);
 const detailVisible = ref(true);
 const detailPreferenceKey = 'hakoniwa.underground.battle-detail-visible';
 const lastScrolledBattleId = ref<string | null>(null);
-const lendingPublic = ref(false);
-const lendingAvailable = ref(true);
+const lendingEnabled = ref(false);
 const partySelectionHydrated = ref(false);
 const selectedBuild = ref('');
 const selectedEnemy = ref('');
 const bankOpen = ref(false);
 const bankAmount = ref<number | null>(1000);
 const selectedHuntingGroundKey = ref('shallow_caves');
+const selectedTrialKey = ref('trial_01');
 const pendingExplorationRequest = ref<PendingExplorationRequest | null>(null);
 const partyCandidateSearchOpen = ref(false);
 const partyCandidateLoading = ref(false);
@@ -556,6 +560,7 @@ const knownPartyCandidates = ref(new Map<string, PartyCandidate>());
 const pendingTrialRequest = ref<PendingTrialRequest | null>(null);
 const pendingSkipRequest = ref<PendingMutation | null>(null);
 const lastSkipResult = ref<SkipResult | null>(null);
+const skipModalOpen = ref(false);
 const pendingInnRequestId = ref<string | null>(null);
 const pendingBankMutation = ref<PendingBankMutation | null>(null);
 const statusOpen = ref(false);
@@ -572,7 +577,7 @@ const pendingAwakeningMessageMutation = ref<PendingMutation | null>(null);
 const pendingAwakeningTechniqueMutation = ref<PendingMutation | null>(null);
 const awakeningMessageDraft = ref('');
 const awakeningTechniqueDraft = ref<string | null>(null);
-const equipmentView = ref<'main' | 'shop' | 'guide' | 'ai' | 'vault'>('main');
+const equipmentView = ref<'main' | 'shop' | 'guide' | 'ai' | 'vault' | 'party'>('main');
 const guideMode = ref<'basic' | 'conversation' | 'recollections' | 'serious_talk' | 'respec'>('basic');
 const selectedGuideBanter = ref<GuideBanterEntry | null>(null);
 const selectedRecollectionKey = ref<string | null>(null);
@@ -664,6 +669,10 @@ const trialOptions = computed<TrialOption[]>(() => {
         },
     }];
 });
+const unlockedTrialOptions = computed(() => trialOptions.value.filter((trial) => !trial.locked));
+const selectedTrial = computed(() => unlockedTrialOptions.value.find((trial) => trial.key === selectedTrialKey.value)
+    ?? unlockedTrialOptions.value[0]
+    ?? null);
 const repeatableExplorationGroundKey = computed(() => {
     const battle = currentBattle.value;
     if (battle?.context !== 'exploration' || !battle.hunting_ground) return null;
@@ -811,8 +820,18 @@ watch(() => state.value?.playtest, (playtest) => {
 }, { immediate: true });
 watch(() => state.value?.lending?.settings, (settings) => {
     if (!settings) return;
-    lendingPublic.value = settings.is_public;
-    lendingAvailable.value = settings.is_available;
+    lendingEnabled.value = settings.is_lendable ?? (settings.is_public && settings.is_available);
+}, { deep: true, immediate: true });
+
+watch(trialOptions, (trials) => {
+    const activeKey = state.value?.trial?.active_run?.key;
+    if (activeKey && trials.some((trial) => trial.key === activeKey)) {
+        selectedTrialKey.value = activeKey;
+        return;
+    }
+    if (!trials.some((trial) => trial.key === selectedTrialKey.value && !trial.locked)) {
+        selectedTrialKey.value = trials.find((trial) => !trial.locked)?.key ?? trials[0]?.key ?? 'trial_01';
+    }
 }, { deep: true, immediate: true });
 
 watch(() => state.value?.party_member_ids, (ids) => {
@@ -1128,7 +1147,7 @@ function toggleBattleDetails(): void {
 
 async function saveLendingSettings(): Promise<void> {
     if (busy.value) return;
-    await mutate('/api/v1/me/underground/lending', { is_public: lendingPublic.value, is_available: lendingAvailable.value }, requestId(), 'PUT');
+    await mutate('/api/v1/me/underground/lending', { is_lendable: lendingEnabled.value }, requestId(), 'PUT');
 }
 
 watch(() => currentBattle.value?.id, async (battleId) => {
@@ -1203,9 +1222,10 @@ async function runSelectedExploration(): Promise<void> {
     await runExplore(groundKey);
 }
 
-async function runSkip(contentType: 'hunting_ground' | 'trial', contentKey: string): Promise<void> {
+async function runSkip(contentType: 'hunting_ground' | 'trial', contentKey: string, executionCount: number): Promise<void> {
     if (busy.value) return;
-    const fingerprint = `${contentType}:${contentKey}`;
+    if (!Number.isInteger(executionCount) || executionCount < 1) return;
+    const fingerprint = `${contentType}:${contentKey}:${executionCount}`;
     const pending = pendingSkipRequest.value?.fingerprint === fingerprint
         ? pendingSkipRequest.value
         : { fingerprint, requestId: requestId() };
@@ -1221,7 +1241,7 @@ async function runSkip(contentType: 'hunting_ground' | 'trial', contentKey: stri
             : { trial_key: contentKey };
         lastSkipResult.value = await api<SkipResult>(path, {
             method: 'POST',
-            body: JSON.stringify({ request_id: pending.requestId, ...key }),
+            body: JSON.stringify({ request_id: pending.requestId, execution_count: executionCount, ...key }),
         });
         pendingSkipRequest.value = null;
         await refresh(false);
@@ -1241,6 +1261,14 @@ function skipDisabled(progress: SkipProgress, contentLocked = false): boolean {
         || (skipTicketBalance.value ?? 0) < progress.ticket_cost;
 }
 
+function maximumSkipExecutions(progress: SkipProgress): number {
+    return Math.floor((skipTicketBalance.value ?? 0) / progress.ticket_cost);
+}
+
+function shortcutSkipExecutions(progress: SkipProgress, fraction: 0.5 | 1): number {
+    return Math.floor(((skipTicketBalance.value ?? 0) * fraction) / progress.ticket_cost);
+}
+
 function skipDrops(result: SkipResult): SkipDrop[] {
     return Array.isArray(result.rewards?.drops) ? result.rewards.drops : [];
 }
@@ -1257,8 +1285,17 @@ function skipDropText(drop: SkipDrop): string {
     return `装備drop: ${name}${quantityText}（${drop.status}）`;
 }
 
+function skipContentLabel(result: SkipResult): string {
+    if (result.content_type === 'hunting_ground') {
+        return state.value?.hunting_grounds?.find((ground) => ground.key === result.content_key)?.name ?? result.content_key;
+    }
+
+    return trialOptions.value.find((trial) => trial.key === result.content_key)?.label ?? result.content_key;
+}
+
 function skipRemainingTickets(result: SkipResult): number {
-    return result.ticket_balance
+    return result.rewards?.ticket_balance_after
+        ?? result.ticket_balance
         ?? result.remaining_ticket_balance
         ?? skipTicketBalance.value
         ?? 0;
@@ -2111,6 +2148,7 @@ onUnmounted(() => {
                 <button type="button" :aria-current="equipmentView === 'main' ? 'page' : undefined" @click="equipmentView = 'main'">地下メイン</button>
                 <button type="button" :aria-current="equipmentView === 'shop' ? 'page' : undefined" @click="equipmentView = 'shop'">装備ショップ</button>
                 <button type="button" :aria-current="equipmentView === 'guide' ? 'page' : undefined" @click="openGuide()">案内人の部屋</button>
+                <button type="button" :aria-current="equipmentView === 'party' ? 'page' : undefined" @click="equipmentView = 'party'">PT設定</button>
                 <button type="button" :aria-current="equipmentView === 'ai' ? 'page' : undefined" :disabled="!state.ai" @click="equipmentView = 'ai'">作戦設定</button>
                 <button type="button" :aria-current="equipmentView === 'vault' ? 'page' : undefined" @click="equipmentView = 'vault'">宝物庫</button>
             </nav>
@@ -2268,6 +2306,34 @@ onUnmounted(() => {
                     </template>
                 </section>
             </section>
+            <section v-else-if="equipmentView === 'party'" class="underground-party-settings-page" aria-labelledby="underground-party-settings-title">
+                <header>
+                    <div><p class="eyebrow">Party Settings</p><h1 id="underground-party-settings-title">PT設定</h1></div>
+                    <strong>{{ 1 + partySelectedIds.length }} / 4</strong>
+                </header>
+                <p>Leaderは自分の秘書です。同行者として他プレイヤーの秘書を最大3人まで選べます。試練はソロ専用ですが、保存中のPT編成は消えません。</p>
+                <UndergroundPartyBuilder
+                    :candidates="partyCandidates"
+                    :selected-ids="partySelectedIds"
+                    :leader-combat-level="state.combat_level"
+                    :show-candidate-list="partyCandidateSearchOpen"
+                    :disabled="busy || Boolean(state.trial?.active_run)"
+                    @toggle="togglePartyMember"
+                />
+                <section class="underground-party-browser" aria-label="貸出秘書を探す">
+                    <button type="button" :disabled="busy || Boolean(state.trial?.active_run)" @click="togglePartyCandidateSearch">
+                        {{ partyCandidateSearchOpen ? '貸出候補を閉じる' : '貸出秘書を探す' }}
+                    </button>
+                    <p v-if="partyCandidateSearchOpen && partyCandidateLoading" class="status">貸出候補を読み込んでいます。</p>
+                    <button v-if="partyCandidateSearchOpen && partyCandidateLoadedOnce && partyCandidateNextAfterId !== null" type="button" :disabled="partyCandidateLoading" @click="loadMorePartyCandidates">さらに表示</button>
+                    <p v-if="partyCandidateSearchOpen && partyCandidateSearchComplete && availableBorrowedCandidates.length === 0" class="underground-party-empty">現在、貸出可能な秘書はいません。</p>
+                </section>
+                <section v-if="state.lending" class="underground-lending-settings" aria-labelledby="underground-lending-title">
+                    <h2 id="underground-lending-title">自分の秘書の貸出設定</h2>
+                    <label><input v-model="lendingEnabled" type="checkbox" :disabled="busy"> 他のプレイヤーに秘書を貸し出す</label>
+                    <button type="button" :disabled="busy" @click="saveLendingSettings">貸出設定を保存</button>
+                </section>
+            </section>
             <UndergroundAiEditor
                 v-else-if="equipmentView === 'ai' && state.ai"
                 :configuration="state.ai"
@@ -2321,42 +2387,10 @@ onUnmounted(() => {
                 </section>
 
                 <section class="underground-action-pane" aria-labelledby="underground-guide-title">
-                    <UndergroundPartyBuilder
-                        :candidates="partyCandidates"
-                        :selected-ids="partySelectedIds"
-                        :leader-combat-level="state.combat_level"
-                        :show-candidate-list="partyCandidateSearchOpen"
-                        :disabled="busy || Boolean(state.trial?.active_run)"
-                        @toggle="togglePartyMember"
-                    />
-                    <section class="underground-party-browser" aria-label="貸出秘書を探す">
-                        <button type="button" :disabled="busy || Boolean(state.trial?.active_run)" @click="togglePartyCandidateSearch">
-                            {{ partyCandidateSearchOpen ? '貸出候補を閉じる' : '貸出秘書を探す' }}
-                        </button>
-                        <p v-if="partyCandidateSearchOpen && partyCandidateLoading" class="status">貸出候補を読み込んでいます。</p>
-                        <button
-                            v-if="partyCandidateSearchOpen && partyCandidateLoadedOnce && partyCandidateNextAfterId !== null"
-                            type="button"
-                            :disabled="partyCandidateLoading"
-                            @click="loadMorePartyCandidates"
-                        >
-                            さらに表示
-                        </button>
-                        <p v-if="partyCandidateSearchOpen && partyCandidateSearchComplete && availableBorrowedCandidates.length === 0" class="underground-party-empty">
-                            現在、貸出可能な秘書はいません。
-                        </p>
-                    </section>
-                    <section v-if="state.lending" class="underground-lending-settings" aria-labelledby="underground-lending-title">
-                        <h2 id="underground-lending-title">秘書の貸出</h2>
-                        <label><input v-model="lendingPublic" type="checkbox" :disabled="busy"> 他のプレイヤーに公開</label>
-                        <label><input v-model="lendingAvailable" type="checkbox" :disabled="busy"> 貸出可能</label>
-                        <button type="button" :disabled="busy" @click="saveLendingSettings">貸出設定を保存</button>
-                    </section>
-                    <section v-if="skipTicketBalance !== null" class="underground-skip-ticket-balance" aria-label="スキップチケット">
-                        <h2>スキップチケット</h2>
-                        <p><strong>{{ skipTicketBalance }}</strong> 枚</p>
-                        <small>貸出報酬などで獲得。解禁済み狩場は1枚、試練1周（10連戦）は10枚でskipできます。</small>
-                    </section>
+                    <div class="underground-party-compact-status">
+                        <span>PT {{ 1 + partySelectedIds.length }} / 4</span>
+                        <button type="button" @click="equipmentView = 'party'">PT設定</button>
+                    </div>
                     <section class="underground-shop">
                         <p class="eyebrow">案内人 / ショップ</p>
                         <h2 id="underground-guide-title">{{ state.shopkeeper_name }}</h2>
@@ -2383,75 +2417,38 @@ onUnmounted(() => {
                         </form>
                     </section>
                     <section class="underground-adventure" aria-labelledby="underground-adventure-title">
-                        <h2 id="underground-adventure-title">冒険</h2>
+                        <header class="underground-adventure-heading">
+                            <h2 id="underground-adventure-title">冒険</h2>
+                            <div v-if="skipTicketBalance !== null" class="underground-skip-entry">
+                                <span>🎫 所持 {{ skipTicketBalance }}枚</span>
+                                <button type="button" :disabled="busy" @click="skipModalOpen = true">スキップ使用</button>
+                            </div>
+                        </header>
                         <p v-if="pendingExplorationRequest" class="underground-pending-request" role="status">
                             前回の探索結果を確認中です。編成を変えても、同じ同行者で結果を再確認します。
                         </p>
-                        <div class="underground-entries">
-                            <div class="underground-explore-picker">
-                                <button
-                                    class="underground-explore-button"
-                                    type="button"
-                                    :disabled="busy || exploreCooldownSeconds > 0 || Boolean(state.trial?.active_run) || !selectedHuntingGround"
-                                    @click="runSelectedExploration"
-                                >
-                                    周囲を探索
-                                    <small>{{ selectedHuntingGround?.name ?? '浅い洞窟' }}</small>
-                                    <small v-if="exploreCooldownSeconds > 0">あと{{ exploreCooldownSeconds }}秒</small>
-                                </button>
-                                <template v-if="unlockedHuntingGrounds.length > 1">
-                                    <select
-                                        class="underground-ground-selector"
-                                        aria-label="狩場を選択"
-                                        :value="selectedHuntingGroundKey"
-                                        :disabled="busy || Boolean(state.trial?.active_run)"
-                                        @change="changeHuntingGround"
-                                    >
-                                        <option v-for="ground in unlockedHuntingGrounds" :key="ground.key" :value="ground.key">{{ ground.name }}</option>
-                                    </select>
-                                    <span class="underground-ground-chevron" aria-hidden="true">▼</span>
-                                </template>
-                            </div>
-                            <button
-                                v-for="trial in trialOptions"
-                                :key="trial.key"
-                                class="underground-trial-entry"
-                                type="button"
-                                :disabled="busy || exploreCooldownSeconds > 0 || trial.locked || Boolean(state.trial?.active_run && state.trial.active_run.key !== trial.key)"
-                                @click="runTrial(trial.key)"
-                            >
-                                封印の地
-                                <small>{{ trial.label }}</small>
-                                <small v-if="exploreCooldownSeconds > 0">あと{{ exploreCooldownSeconds }}秒</small>
-                                <small v-else-if="state.trial?.active_run?.key === trial.key">{{ state.trial.active_run.next_battle_index }}/{{ state.trial.active_run.total_battles }}戦目</small>
-                                <small v-else-if="trial.locked">{{ trial.unlock_condition ?? '未解禁' }}</small>
-                                <small v-else>{{ trial.first_cleared ? 'clear済み・再挑戦可' : `${trial.total_battles}連戦` }}</small>
-                            </button>
+                        <div class="underground-adventure-sections underground-entries">
+                            <section class="underground-adventure-block" aria-labelledby="underground-hunting-ground-title">
+                                <h3 id="underground-hunting-ground-title">狩場</h3>
+                                <select class="underground-ground-selector" aria-label="狩場を選択" :value="selectedHuntingGroundKey" :disabled="busy || Boolean(state.trial?.active_run)" @change="changeHuntingGround">
+                                    <option v-for="ground in unlockedHuntingGrounds" :key="ground.key" :value="ground.key">{{ ground.name }}</option>
+                                </select>
+                                <button class="button primary underground-explore-button" type="button" :disabled="busy || exploreCooldownSeconds > 0 || Boolean(state.trial?.active_run) || !selectedHuntingGround" @click="runSelectedExploration">探索する</button>
+                                <small v-if="exploreCooldownSeconds > 0">次の出発まであと{{ exploreCooldownSeconds }}秒</small>
+                                <small v-else-if="state.trial?.active_run">進行中の試練から帰還すると探索できます。</small>
+                                <small v-else>現在のPT {{ 1 + partySelectedIds.length }} / 4で出発します。</small>
+                            </section>
+                            <section class="underground-adventure-block" aria-labelledby="underground-trial-title">
+                                <h3 id="underground-trial-title">試練</h3>
+                                <select v-model="selectedTrialKey" aria-label="試練を選択" :disabled="busy || Boolean(state.trial?.active_run)">
+                                    <option v-for="trial in unlockedTrialOptions" :key="trial.key" :value="trial.key">{{ trial.label }}</option>
+                                </select>
+                                <button class="button primary underground-trial-entry" type="button" :disabled="busy || exploreCooldownSeconds > 0 || !selectedTrial || Boolean(state.trial?.active_run && state.trial.active_run.key !== selectedTrial.key)" @click="runTrial(selectedTrial?.key)">{{ state.trial?.active_run ? '次の戦闘へ' : '試練を開始' }}</button>
+                                <small v-if="state.trial?.active_run">進行中：{{ state.trial.active_run.next_battle_index }} / {{ state.trial.active_run.total_battles }}戦目</small>
+                                <small v-else-if="selectedTrial">{{ selectedTrial.total_battles }}連戦・ソロ専用・{{ selectedTrial.first_cleared ? 'clear済み' : '未clear' }}</small>
+                                <small v-else>解禁済みの試練はありません。</small>
+                            </section>
                         </div>
-                        <section v-if="skipTicketBalance !== null" class="underground-skip-panel" aria-labelledby="underground-skip-title">
-                            <header>
-                                <h3 id="underground-skip-title">skip ticket</h3>
-                                <strong>所持 {{ skipTicketBalance }}枚</strong>
-                            </header>
-                            <p>実戦50勝の狩場は1枚、実戦5周clearの試練は1周10枚で、combat・待ち時間・cooldownなしに通常の反復報酬を受け取れます。</p>
-                            <ul>
-                                <li v-for="ground in state.hunting_grounds ?? []" :key="`skip-ground:${ground.key}`">
-                                    <span><strong>{{ ground.name }}</strong><small>実戦 {{ ground.skip.actual_clear_count }} / {{ ground.skip.actual_clears_required }}勝・総clear {{ ground.skip.total_clear_count }}</small></span>
-                                    <button type="button" :disabled="skipDisabled(ground.skip, ground.locked)" @click="runSkip('hunting_ground', ground.key)">{{ ground.skip.ticket_cost }}枚でskip</button>
-                                </li>
-                                <li v-for="trial in trialOptions" :key="`skip-trial:${trial.key}`">
-                                    <span><strong>{{ trial.label }}</strong><small>実戦 {{ trial.skip.actual_clear_count }} / {{ trial.skip.actual_clears_required }}周・総clear {{ trial.skip.total_clear_count }}</small></span>
-                                    <button type="button" :disabled="skipDisabled(trial.skip, trial.locked)" @click="runSkip('trial', trial.key)">{{ trial.skip.ticket_cost }}枚で1周skip</button>
-                                </li>
-                            </ul>
-                            <p v-if="lastSkipResult" class="underground-skip-result" role="status">
-                                skip完了<span v-if="lastSkipResult.duplicate">（前回の結果を再表示）</span>: XP {{ lastSkipResult.xp_awarded }} / G {{ lastSkipResult.shards_awarded }} / ticket -{{ lastSkipResult.ticket_cost }}（残り {{ skipRemainingTickets(lastSkipResult) }}枚）
-                                <template v-if="skipDrops(lastSkipResult).length > 0">
-                                    <span class="underground-skip-drop-list">{{ skipDrops(lastSkipResult).map((drop) => skipDropText(drop)).join('／') }}</span>
-                                </template>
-                                <span v-else class="underground-skip-drop-list">装備drop: なし</span>
-                            </p>
-                        </section>
                         <button v-if="state.trial?.active_run" class="button secondary" type="button" :disabled="busy" @click="withdrawTrial">封印の地から帰還する</button>
                     </section>
                     <section v-if="state.playtest" class="underground-playtest" aria-labelledby="underground-playtest-title">
@@ -2468,6 +2465,70 @@ onUnmounted(() => {
                         <h2 id="underground-history-title">戦闘履歴</h2>
                         <ul><li v-for="battle in recentBattles" :key="battle.id"><button type="button" @click="showBattle(battle)">{{ battle.encounter_name }} / {{ battleRoundCount(battle) }}ラウンド</button></li></ul>
                     </section>
+                </section>
+            </div>
+
+            <div v-if="skipModalOpen" class="modal-backdrop" @click.self="!busy && (skipModalOpen = false)">
+                <section class="underground-skip-dialog" role="dialog" aria-modal="true" aria-labelledby="underground-skip-dialog-title">
+                    <header>
+                        <div><p class="eyebrow">Skip Ticket</p><h2 id="underground-skip-dialog-title">スキップを使用</h2></div>
+                        <div><strong>🎫 {{ skipTicketBalance ?? 0 }}枚</strong><button type="button" aria-label="閉じる" :disabled="busy" @click="skipModalOpen = false">×</button></div>
+                    </header>
+                    <section class="underground-skip-category" aria-labelledby="underground-skip-ground-title">
+                        <h3 id="underground-skip-ground-title">狩場</h3>
+                        <label>対象
+                            <select :value="selectedHuntingGroundKey" :disabled="busy" @change="changeHuntingGround">
+                                <option v-for="ground in unlockedHuntingGrounds" :key="`modal-ground:${ground.key}`" :value="ground.key">{{ ground.name }}</option>
+                            </select>
+                        </label>
+                        <template v-if="selectedHuntingGround">
+                            <p>1回 = {{ selectedHuntingGround.skip.ticket_cost }}枚・実戦 {{ selectedHuntingGround.skip.actual_clear_count }} / {{ selectedHuntingGround.skip.actual_clears_required }}勝</p>
+                            <p v-if="!selectedHuntingGround.skip.unlocked" class="field-hint">実戦clearがあと{{ selectedHuntingGround.skip.actual_clears_required - selectedHuntingGround.skip.actual_clear_count }}回必要です。</p>
+                            <div class="underground-skip-shortcuts">
+                                <button type="button" :disabled="skipDisabled(selectedHuntingGround.skip) || shortcutSkipExecutions(selectedHuntingGround.skip, 0.5) < 1" @click="runSkip('hunting_ground', selectedHuntingGround.key, shortcutSkipExecutions(selectedHuntingGround.skip, 0.5))">50%使用（{{ shortcutSkipExecutions(selectedHuntingGround.skip, 0.5) }}回）</button>
+                                <button type="button" :disabled="skipDisabled(selectedHuntingGround.skip) || maximumSkipExecutions(selectedHuntingGround.skip) < 1" @click="runSkip('hunting_ground', selectedHuntingGround.key, maximumSkipExecutions(selectedHuntingGround.skip))">100%使用（{{ maximumSkipExecutions(selectedHuntingGround.skip) }}回）</button>
+                            </div>
+                        </template>
+                        <ul v-if="(state.hunting_grounds ?? []).some((ground) => ground.locked)" class="underground-skip-locked-list">
+                            <li v-for="ground in (state.hunting_grounds ?? []).filter((item) => item.locked)" :key="`locked-ground:${ground.key}`">{{ ground.name }}：{{ ground.unlock_condition ?? '未解禁' }}</li>
+                        </ul>
+                    </section>
+                    <section class="underground-skip-category" aria-labelledby="underground-skip-trial-title">
+                        <h3 id="underground-skip-trial-title">試練</h3>
+                        <label>対象
+                            <select v-model="selectedTrialKey" :disabled="busy">
+                                <option v-for="trial in unlockedTrialOptions" :key="`modal-trial:${trial.key}`" :value="trial.key">{{ trial.label }}</option>
+                            </select>
+                        </label>
+                        <template v-if="selectedTrial">
+                            <p>1周（{{ selectedTrial.total_battles }}連戦）= {{ selectedTrial.skip.ticket_cost }}枚・実戦 {{ selectedTrial.skip.actual_clear_count }} / {{ selectedTrial.skip.actual_clears_required }}周</p>
+                            <p v-if="!selectedTrial.skip.unlocked" class="field-hint">実戦clearがあと{{ selectedTrial.skip.actual_clears_required - selectedTrial.skip.actual_clear_count }}周必要です。</p>
+                            <div class="underground-skip-shortcuts">
+                                <button type="button" :disabled="skipDisabled(selectedTrial.skip) || shortcutSkipExecutions(selectedTrial.skip, 0.5) < 1" @click="runSkip('trial', selectedTrial.key, shortcutSkipExecutions(selectedTrial.skip, 0.5))">50%使用（{{ shortcutSkipExecutions(selectedTrial.skip, 0.5) }}周）</button>
+                                <button type="button" :disabled="skipDisabled(selectedTrial.skip) || maximumSkipExecutions(selectedTrial.skip) < 1" @click="runSkip('trial', selectedTrial.key, maximumSkipExecutions(selectedTrial.skip))">100%使用（{{ maximumSkipExecutions(selectedTrial.skip) }}周）</button>
+                            </div>
+                        </template>
+                        <ul v-if="trialOptions.some((trial) => trial.locked)" class="underground-skip-locked-list">
+                            <li v-for="trial in trialOptions.filter((item) => item.locked)" :key="`locked-trial:${trial.key}`">{{ trial.label }}：{{ trial.unlock_condition ?? '未解禁' }}</li>
+                        </ul>
+                    </section>
+                    <article v-if="lastSkipResult" class="underground-skip-result" role="status">
+                        <h3>{{ skipContentLabel(lastSkipResult) }}を{{ lastSkipResult.execution_count ?? 1 }}{{ lastSkipResult.content_type === 'trial' ? '周' : '回' }}スキップしました</h3>
+                        <p v-if="lastSkipResult.duplicate">通信再送のため、前回確定した同じ結果を表示しています。</p>
+                        <dl>
+                            <div><dt>消費</dt><dd>{{ lastSkipResult.ticket_cost }}枚</dd></div>
+                            <div><dt>EXP</dt><dd>+{{ lastSkipResult.xp_awarded }}</dd></div>
+                            <div><dt>欠片</dt><dd>+{{ lastSkipResult.shards_awarded }}G</dd></div>
+                            <div><dt>Lv</dt><dd>{{ lastSkipResult.combat_level_before }} → {{ lastSkipResult.combat_level_after }}</dd></div>
+                            <div><dt>装備獲得</dt><dd>{{ lastSkipResult.rewards?.equipment_granted_count ?? skipDrops(lastSkipResult).filter((drop) => drop.status === 'granted').length }}個</dd></div>
+                            <div><dt>取り逃し</dt><dd>{{ lastSkipResult.rewards?.vault_full_count ?? skipDrops(lastSkipResult).filter((drop) => drop.status === 'vault_full').length }}個（宝物庫満杯）</dd></div>
+                            <div><dt>残りticket</dt><dd>{{ skipRemainingTickets(lastSkipResult) }}枚</dd></div>
+                        </dl>
+                        <details v-if="skipDrops(lastSkipResult).length > 0">
+                            <summary>獲得装備の詳細</summary>
+                            <ul><li v-for="(drop, index) in skipDrops(lastSkipResult)" :key="index">{{ skipDropText(drop) }}</li></ul>
+                        </details>
+                    </article>
                 </section>
             </div>
 

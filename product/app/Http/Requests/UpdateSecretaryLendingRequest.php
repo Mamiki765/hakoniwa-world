@@ -15,8 +15,7 @@ final class UpdateSecretaryLendingRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'is_public' => ['required', 'boolean'],
-            'is_available' => ['required', 'boolean'],
+            'is_lendable' => ['required', 'boolean'],
         ];
     }
 }

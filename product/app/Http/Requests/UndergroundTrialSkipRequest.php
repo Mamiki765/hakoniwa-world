@@ -17,6 +17,7 @@ final class UndergroundTrialSkipRequest extends FormRequest
         return [
             'request_id' => ['required', 'uuid'],
             'trial_key' => ['required', 'string', 'in:trial_01,trial_02'],
+            'execution_count' => ['sometimes', 'integer', 'min:1'],
             'borrowed_secretary_ids' => ['prohibited'],
         ];
     }

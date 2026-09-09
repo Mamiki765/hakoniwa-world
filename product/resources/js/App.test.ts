@@ -122,6 +122,9 @@ const unnamedSecretaryFixture: Secretary = {
     profile: {
         id: 11,
         name: null,
+        nickname: null,
+        battle_display_name: '？？？',
+        portrait_preference: 'full_body',
         is_owner: true,
         domestic_level: 1,
         secretary_level: 1,
@@ -132,6 +135,14 @@ const unnamedSecretaryFixture: Secretary = {
         biography: '',
         main_image: {
             display: 'none', url: null, creation_method: null, creation_method_label: null, credit: null,
+        },
+        images: {
+            icon: { slot: 'icon', display: 'none', url: null, creation_method: null, creation_method_label: null, credit: null },
+            bust: { slot: 'bust', display: 'none', url: null, creation_method: null, creation_method_label: null, credit: null },
+            full_body: { slot: 'full_body', display: 'none', url: null, creation_method: null, creation_method_label: null, credit: null },
+            awakening_icon: { slot: 'awakening_icon', display: 'none', url: null, creation_method: null, creation_method_label: null, credit: null },
+            awakening_bust: { slot: 'awakening_bust', display: 'none', url: null, creation_method: null, creation_method_label: null, credit: null },
+            awakening_full_body: { slot: 'awakening_full_body', display: 'none', url: null, creation_method: null, creation_method_label: null, credit: null },
         },
         editable_image_metadata: null,
         viewer_preferences: {
@@ -1541,21 +1552,33 @@ describe('application lobby and island entry', () => {
                     name: body.name,
                     named_at: '2026-08-16T15:00:00+09:00',
                     header_label: body.name,
+                    profile: { ...secretary.profile, name: body.name, battle_display_name: body.name },
                 };
 
                 return response(secretary);
             }
             if (path === '/api/v1/me/secretary/name' && init?.method === 'PATCH') {
                 const body = JSON.parse(String(init.body)) as { name: string };
-                secretary = { ...secretary, name: body.name, header_label: body.name };
+                secretary = {
+                    ...secretary,
+                    name: body.name,
+                    header_label: body.name,
+                    profile: { ...secretary.profile, name: body.name, battle_display_name: body.name },
+                };
 
                 return response(secretary);
             }
             if (path === '/api/v1/me/secretary/profile' && init?.method === 'PATCH') {
-                const body = JSON.parse(String(init.body)) as { biography: string };
+                const body = JSON.parse(String(init.body)) as { biography?: string; nickname?: string | null };
+                const nickname = Object.hasOwn(body, 'nickname') ? (body.nickname || null) : secretary.profile.nickname;
                 secretary = {
                     ...secretary,
-                    profile: { ...secretary.profile, biography: body.biography },
+                    profile: {
+                        ...secretary.profile,
+                        biography: body.biography ?? secretary.profile.biography,
+                        nickname,
+                        battle_display_name: nickname ?? secretary.name ?? '？？？',
+                    },
                 };
 
                 return response({ ...secretary.profile, name: secretary.name, is_owner: true });
@@ -1642,7 +1665,7 @@ describe('application lobby and island entry', () => {
         expect(wrapper.get('.secretary-main-profile').text()).toContain('資金・食糧最大+1%');
         expect(wrapper.get('.secretary-main-profile').text()).toContain('討伐経験値0');
         expect(wrapper.get('.secretary-no-image').text()).toBe('No image');
-        expect(wrapper.get('.secretary-image-preference-notice').text()).toContain('秘書画像設定が未設定です');
+        expect(wrapper.get('.secretary-image-preference-notice').text()).toContain('画像表示設定が未設定です');
         await wrapper.get('.secretary-image-preference-notice button').trigger('click');
         expect(wrapper.get('.secretary-profile-modal').text()).toContain('閲覧するAI生成画像');
         expect(wrapper.get('.secretary-profile-modal').text()).toContain('自分の秘書が画像未設定のとき');
@@ -1661,7 +1684,7 @@ describe('application lobby and island entry', () => {
         expect(fetchMock.mock.calls.some(([path]) => String(path) === '/api/v1/secretaries/11?world_id=1')).toBe(true);
         expect(wrapper.get<HTMLTextAreaElement>('.secretary-biography textarea').element.value).toBe('更新した経歴');
         const initialTabs = wrapper.findAll('[role="tab"]');
-        expect(initialTabs.map((tab) => tab.text())).toEqual(['メイン', '熟練度', '装備', '倉庫']);
+        expect(initialTabs.map((tab) => tab.text())).toEqual(['メイン', '熟練度', '装備', '倉庫', '設定']);
         await initialTabs[1]!.trigger('click');
         expect(wrapper.get('.secretary-section-title').text()).toBe('パッシブスキル');
         const skillRows = wrapper.findAll('.secretary-skill');
@@ -1682,7 +1705,7 @@ describe('application lobby and island entry', () => {
         const secretaryGetCount = () => fetchMock.mock.calls.filter(([path]) => String(path) === '/api/v1/me/secretary?world_id=1').length;
         const beforeTabSwitch = secretaryGetCount();
         const tabs = wrapper.findAll('[role="tab"]');
-        expect(tabs.map((tab) => tab.text())).toEqual(['メイン', '熟練度', '装備', '倉庫']);
+        expect(tabs.map((tab) => tab.text())).toEqual(['メイン', '熟練度', '装備', '倉庫', '設定']);
         expect(tabs[1]!.attributes('aria-selected')).toBe('true');
         await tabs[1]!.trigger('keydown', { key: 'ArrowRight' });
         expect(wrapper.findAll('[role="tab"]')[2]!.attributes('aria-selected')).toBe('true');
@@ -1703,8 +1726,10 @@ describe('application lobby and island entry', () => {
         expect(wrapper.get('.item-flavor').classes()).toContain('item-flavor');
         expect(secretaryGetCount()).toBe(beforeTabSwitch);
 
-        await wrapper.findAll('.site-header nav button')
-            .find((button) => button.text() === 'オプション')!.trigger('click');
+        await wrapper.findAll('[role="tab"]')[3]!.trigger('keydown', { key: 'End' });
+        expect(wrapper.findAll('[role="tab"]')[4]!.attributes('aria-selected')).toBe('true');
+        expect(wrapper.get('.secretary-settings').text()).toContain('基本設定');
+        expect(wrapper.findAll('.secretary-settings .secretary-image-slot')).toHaveLength(6);
         expect(wrapper.get<HTMLInputElement>('.secretary-rename-form input').element.value).toBe('ペリドット');
         await wrapper.get('.secretary-rename-form input').setValue('エメラルド');
         await wrapper.get('.secretary-rename-form').trigger('submit');
@@ -1715,6 +1740,16 @@ describe('application lobby and island entry', () => {
         expect(JSON.parse(String(renameRequest?.[1]?.body))).toEqual({ name: 'エメラルド' });
         expect(wrapper.text()).toContain('秘書の名前を「エメラルド」に変更しました。');
         expect(wrapper.findAll('.site-header nav button').some((button) => button.text() === 'エメラルド')).toBe(true);
+        await wrapper.get('#secretary-nickname').setValue('エメ');
+        await wrapper.findAll('.secretary-basic-settings form')[1]!.trigger('submit');
+        await flushPromises();
+        const nicknameRequests = fetchMock.mock.calls.filter(([path, init]) => (
+            String(path) === '/api/v1/me/secretary/profile' && init?.method === 'PATCH'
+        ));
+        expect(JSON.parse(String(nicknameRequests.at(-1)?.[1]?.body))).toEqual({ nickname: 'エメ' });
+        expect(wrapper.get('.secretary-name').text()).toBe('エメ');
+        await wrapper.findAll('.site-header nav button').find((button) => button.text() === 'オプション')!.trigger('click');
+        expect(wrapper.find('.secretary-rename-form').exists()).toBe(false);
         await wrapper.findAll('.site-header nav button')
             .find((button) => button.text() === 'エメラルド')!.trigger('click');
         await flushPromises();
@@ -2299,13 +2334,13 @@ describe('application lobby and island entry', () => {
         expect(wrapper.get('#underground-guide-title').find('b').exists()).toBe(false);
         expect(wrapper.findAll('.underground-entries button')).toHaveLength(2);
         expect(wrapper.get('.underground-explore-button').attributes('disabled')).toBeUndefined();
-        expect(wrapper.get('.underground-explore-button').text()).toContain('周囲を探索');
-        expect(wrapper.get('.underground-explore-button').text()).toContain('浅い洞窟');
-        expect(wrapper.find('.underground-ground-selector').exists()).toBe(false);
+        expect(wrapper.get('.underground-explore-button').text()).toContain('探索する');
+        expect(wrapper.get<HTMLSelectElement>('.underground-ground-selector').element.value).toBe('shallow_caves');
+        expect(wrapper.get('.underground-ground-selector').text()).toContain('浅い洞窟');
         expect(window.localStorage.getItem('hakoniwa.underground.selected-hunting-ground')).toBe('shallow_caves');
         expect(wrapper.get('.underground-trial-entry').attributes('disabled')).toBeUndefined();
-        expect(wrapper.get('.underground-trial-entry').text()).toContain('封印の地');
-        expect(wrapper.get('.underground-trial-entry').text()).toContain('地下に眠る古代遺跡');
+        expect(wrapper.get('.underground-trial-entry').text()).toContain('試練を開始');
+        expect(wrapper.get('select[aria-label="試練を選択"]').text()).toContain('地下に眠る古代遺跡');
         await wrapper.get('.underground-trial-entry').trigger('click');
         await flushPromises();
         expect(wrapper.get('[role="alert"]').text()).toContain('Trial response lost');
@@ -2348,7 +2383,7 @@ describe('application lobby and island entry', () => {
         expect(wrapper.findAll('.underground-ground-selector option').map((option) => option.text()))
             .toEqual(['浅い洞窟', '黒晶洞']);
         await wrapper.get<HTMLSelectElement>('.underground-ground-selector').setValue('black_crystal_cave');
-        expect(wrapper.get('.underground-explore-button').text()).toContain('黒晶洞');
+        expect(wrapper.get<HTMLSelectElement>('.underground-ground-selector').element.selectedOptions[0]?.text).toBe('黒晶洞');
         expect(window.localStorage.getItem('hakoniwa.underground.selected-hunting-ground')).toBe('black_crystal_cave');
         await wrapper.get('.underground-trial-entry').trigger('click');
         await flushPromises();
@@ -2510,7 +2545,7 @@ describe('application lobby and island entry', () => {
         expect(wrapper.get<HTMLSelectElement>('.underground-ground-selector').element.value).toBe('black_crystal_cave');
         const exploreButton = wrapper.get('.underground-explore-button');
         expect(exploreButton.attributes('disabled')).toBeDefined();
-        expect(exploreButton.text()).toMatch(/あと(?:9|10)秒/);
+        expect(exploreButton.element.parentElement?.textContent).toMatch(/あと(?:9|10)秒/);
         expect(wrapper.get('.underground-shop').text()).toContain('あなたのコンビニ、箱庭ダンジョン店です！');
         expect(wrapper.findAll('.underground-shop-entries button')).toHaveLength(4);
         expect(wrapper.findAll('.underground-shop-entries button').map((button) => button.attributes('disabled') !== undefined))
@@ -2646,7 +2681,7 @@ describe('application lobby and island entry', () => {
         await flushPromises();
         expect(restoredWrapper.get<HTMLSelectElement>('.underground-ground-selector').element.value)
             .toBe('black_crystal_cave');
-        expect(restoredWrapper.get('.underground-explore-button').text()).toContain('黒晶洞');
+        expect(restoredWrapper.get<HTMLSelectElement>('.underground-ground-selector').element.selectedOptions[0]?.text).toBe('黒晶洞');
         restoredWrapper.unmount();
     });
 
@@ -3046,10 +3081,9 @@ describe('application lobby and island entry', () => {
         const adventureButtons = wrapper.findAll('.underground-entries button');
         expect(adventureButtons).toHaveLength(2);
         expect(adventureButtons[0]?.attributes('disabled')).toBeUndefined();
-        expect(adventureButtons[0]?.text()).toContain('周囲を探索');
-        expect(adventureButtons[0]?.text()).toContain('浅い洞窟');
-        expect(wrapper.find('.underground-ground-selector').exists()).toBe(false);
-        expect(adventureButtons[1]?.text()).toContain('封印の地');
+        expect(adventureButtons[0]?.text()).toContain('探索する');
+        expect(wrapper.get('.underground-ground-selector').text()).toContain('浅い洞窟');
+        expect(adventureButtons[1]?.text()).toContain('試練を開始');
         expect(stage).toBe('underground_open');
     });
 
@@ -3163,6 +3197,8 @@ describe('application lobby and island entry', () => {
                 serverSecretary.name = body.name;
                 serverSecretary.named_at = '2026-08-16T15:00:00+09:00';
                 serverSecretary.header_label = body.name;
+                serverSecretary.profile.name = body.name;
+                serverSecretary.profile.battle_display_name = body.name;
 
                 return response(serverSecretary);
             }
@@ -3170,6 +3206,8 @@ describe('application lobby and island entry', () => {
                 const body = JSON.parse(String(init.body)) as { name: string };
                 serverSecretary.name = body.name;
                 serverSecretary.header_label = body.name;
+                serverSecretary.profile.name = body.name;
+                serverSecretary.profile.battle_display_name = body.name;
 
                 return response(serverSecretary);
             }
@@ -3190,8 +3228,7 @@ describe('application lobby and island entry', () => {
         expect(wrapper.text()).toContain('秘書は「ペリドット」と命名されましたが、最新の効果表示を読み込めませんでした。');
         expect(wrapper.text()).not.toContain('Secretaryを命名できませんでした。');
 
-        await wrapper.findAll('.site-header nav button')
-            .find((button) => button.text() === 'オプション')!.trigger('click');
+        await wrapper.findAll('[role="tab"]').find((tab) => tab.text() === '設定')!.trigger('click');
         await wrapper.get('.secretary-rename-form input').setValue('エメラルド');
         await wrapper.get('.secretary-rename-form').trigger('submit');
         await flushPromises();

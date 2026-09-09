@@ -606,7 +606,7 @@ final class PostgresUndergroundRuntimeConcurrencyTest extends TestCase
         [$user, $secretary, $profile] = $this->undergroundFixture();
         $user->forceFill(['visitor_code' => $visitorCode])->save();
         $this->openExploration($user, $secretary);
-        app(SecretaryLendingService::class)->update($user, true, true);
+        app(SecretaryLendingService::class)->update($user, true);
 
         return [$user, $secretary, $profile->refresh()];
     }

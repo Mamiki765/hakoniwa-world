@@ -14,6 +14,13 @@ trait RestoresPre380Schema
         Schema::dropIfExists('underground_battle_image_references');
         if (Schema::hasColumn('underground_owned_equipment', 'source_skip_settlement_id')) {
             DB::statement('ALTER TABLE underground_owned_equipment DROP CONSTRAINT underground_owned_equipment_instance_check');
+            if (Schema::hasColumn('underground_owned_equipment', 'source_skip_batch_id')) {
+                Schema::table('underground_owned_equipment', function (Blueprint $table): void {
+                    $table->dropForeign(['source_skip_batch_id']);
+                    $table->dropUnique('underground_equipment_source_skip_batch_reward_unique');
+                    $table->dropColumn('source_skip_batch_id');
+                });
+            }
             Schema::table('underground_owned_equipment', function (Blueprint $table): void {
                 $table->dropForeign(['source_skip_settlement_id']);
                 $table->dropUnique('underground_equipment_source_skip_reward_unique');
@@ -42,6 +49,13 @@ ALTER TABLE underground_owned_equipment
   )
 SQL);
         }
+        if (Schema::hasColumn('user_skip_ticket_ledger', 'underground_skip_batch_id')) {
+            Schema::table('user_skip_ticket_ledger', function (Blueprint $table): void {
+                $table->dropForeign(['underground_skip_batch_id']);
+                $table->dropUnique('user_skip_ticket_ledger_skip_batch_unique');
+                $table->dropColumn('underground_skip_batch_id');
+            });
+        }
         if (Schema::hasColumn('user_skip_ticket_ledger', 'underground_skip_settlement_id')) {
             Schema::table('user_skip_ticket_ledger', function (Blueprint $table): void {
                 $table->dropForeign(['underground_skip_settlement_id']);
@@ -50,6 +64,7 @@ SQL);
             });
         }
         foreach ([
+            'underground_skip_batches',
             'secretary_lending_build_snapshots',
             'underground_content_clear_progress',
             'underground_skip_settlements',
@@ -85,6 +100,7 @@ SQL);
         DB::table('migrations')->whereIn('migration', [
             '2026_09_09_000000_extend_secretary_lending_build_cache',
             '2026_09_09_010000_add_underground_battle_image_references',
+            '2026_09_09_020000_prepare_3_8_1_ui_and_bulk_skip',
             '2026_09_08_010000_add_secretary_nickname_and_image_slots',
             '2026_09_08_100000_add_underground_party_lending_persistence',
             '2026_09_08_110000_add_underground_skip_consumption',

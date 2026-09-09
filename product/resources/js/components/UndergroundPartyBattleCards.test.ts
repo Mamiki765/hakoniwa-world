@@ -16,7 +16,7 @@ describe('Underground party battle cards', () => {
         expect(wrapper.text()).toContain('Ready');
         expect(wrapper.text()).toContain('5/10');
         expect(wrapper.text()).not.toContain('2/10000');
-        expect(wrapper.text()).not.toContain('10000/10000');
+        expect(wrapper.text()).toContain('覚醒 Ready 10000/10000');
         expect(wrapper.text()).not.toContain('secretary:1');
     });
 
@@ -41,7 +41,7 @@ describe('Underground party battle cards', () => {
         expect(wrapper.findAll('.underground-party-large-art')).toHaveLength(2);
     });
 
-    it('projects awakening art only into its recorded round and keeps credit visible', () => {
+    it('projects awakening art only into its recorded round and reveals saved credit from the info control', async () => {
         const wrapper = mount(UndergroundPartyBattleCards, { props: {
             actors: [{ team: 'player', combatant_id: 'secretary:1', display_name: '自分' }],
             showCards: false,
@@ -49,11 +49,18 @@ describe('Underground party battle cards', () => {
             portraitRound: 3,
             portraitEvents: [
                 { type: 'awakening', round: 2, combatant_id: 'secretary:1', image_ref: { url: '/old' } },
-                { type: 'awakening', round: 3, combatant_id: 'secretary:1', image_ref: { url: '/current', credit: 'Owner credit' } },
+                { type: 'awakening', round: 3, combatant_id: 'secretary:1', image_ref: { url: '/current', creation_method_label: '自作', credit: 'Owner credit' } },
             ],
         } });
         expect(wrapper.find('.underground-party-teams').exists()).toBe(false);
         expect(wrapper.findAll('.underground-party-large-art')).toHaveLength(1);
+        expect(wrapper.text()).not.toContain('画像：©');
+        const info = wrapper.get('.underground-party-image-info');
+        expect(info.attributes('open')).toBeUndefined();
+        expect(info.get('summary').text()).toBe('ⓘ');
+        await info.get('summary').trigger('click');
+        expect(info.attributes('open')).toBeDefined();
+        expect(info.text()).toContain('制作方法：自作');
         expect(wrapper.text()).toContain('Owner credit');
     });
 });

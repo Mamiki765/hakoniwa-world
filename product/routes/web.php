@@ -85,9 +85,8 @@ Route::prefix('api/v1')->middleware(['auth', PrivateApiResponse::class])->group(
     Route::patch('/me/secretary/profile', [SecretaryController::class, 'updateProfile']);
     Route::post('/me/secretary/images/{slot}', [SecretaryController::class, 'storeImageSlot']);
     Route::patch('/me/secretary/images/{slot}', [SecretaryController::class, 'updateImageSlotMetadata']);
+    Route::delete('/me/secretary/images/{slot}', [SecretaryController::class, 'deleteImageSlot']);
     Route::patch('/me/secretary/portrait-preference', [SecretaryController::class, 'updatePortraitPreference']);
-    Route::post('/me/secretary/main-image', [SecretaryController::class, 'storeMainImage']);
-    Route::patch('/me/secretary/main-image', [SecretaryController::class, 'updateMainImageMetadata']);
     Route::patch('/me/secretary/image-preferences', [SecretaryController::class, 'updateImagePreferences']);
     Route::prefix('/me/underground')->middleware('throttle:60,1')->group(function (): void {
         Route::get('/', [UndergroundIntroController::class, 'show']);
