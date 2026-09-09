@@ -24,11 +24,11 @@ final class AdminGuideConversationTopicController extends Controller
     public function store(Request $request, GuideConversationUnlockCatalog $unlocks): JsonResponse
     {
         $values = $request->validate($this->rules($unlocks));
-        $topic = GuideConversationTopic::query()->create([
-            ...$values,
-            'created_by_user_id' => $request->user()->id,
-            'updated_by_user_id' => $request->user()->id,
-        ]);
+        $topic = new GuideConversationTopic;
+        $topic->fill($values);
+        $topic->created_by_user_id = $request->user()->id;
+        $topic->updated_by_user_id = $request->user()->id;
+        $topic->save();
 
         return response()->json(['data' => $topic], 201);
     }
@@ -38,10 +38,9 @@ final class AdminGuideConversationTopicController extends Controller
         GuideConversationTopic $guideConversationTopic,
         GuideConversationUnlockCatalog $unlocks,
     ): JsonResponse {
-        $guideConversationTopic->update([
-            ...$request->validate($this->rules($unlocks)),
-            'updated_by_user_id' => $request->user()->id,
-        ]);
+        $guideConversationTopic->fill($request->validate($this->rules($unlocks)));
+        $guideConversationTopic->updated_by_user_id = $request->user()->id;
+        $guideConversationTopic->save();
 
         return response()->json(['data' => $guideConversationTopic->refresh()]);
     }

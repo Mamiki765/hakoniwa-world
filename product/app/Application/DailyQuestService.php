@@ -72,15 +72,16 @@ final readonly class DailyQuestService
             ->where('canonical_day', $day)
             ->where('quest_key', $questKey)
             ->first();
+        $hasProgress = $progress instanceof UserDailyQuestProgress;
 
         return [
             'key' => $questKey,
             'label' => $label,
             'canonical_day' => $day,
-            'progress' => (int) ($progress?->progress ?? 0),
+            'progress' => $hasProgress ? (int) $progress->progress : 0,
             'target' => $target,
-            'paradox_awarded' => (int) ($progress?->paradox_awarded ?? 0),
-            'completed' => $progress?->completed_at !== null,
+            'paradox_awarded' => $hasProgress ? (int) $progress->paradox_awarded : 0,
+            'completed' => $hasProgress && $progress->completed_at !== null,
             'completed_now' => false,
             'paradox_balance' => $this->paradox->balanceFor($userId),
         ];

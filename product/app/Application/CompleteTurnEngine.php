@@ -976,7 +976,9 @@ final class CompleteTurnEngine
                         ->where('resource_definition_id', $resource->id)
                         ->lockForUpdate()
                         ->first(['policy', 'keep_amount']);
-                    $policy = $storedPolicy?->policy ?? $settings['default_sale_policy'];
+                    $policy = $storedPolicy instanceof NationResourceSalePolicy
+                        ? $storedPolicy->policy
+                        : $settings['default_sale_policy'];
                     if (! SalePolicy::isSupported($policy)) {
                         throw new DomainException("Stored sale policy for {$resource->key} is invalid.");
                     }

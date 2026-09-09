@@ -78,7 +78,7 @@ final class CommandQueueService
 
     /**
      * @param  array<string, mixed>  $parameters
-     * @return array{queue: NationCommandQueue, item: NationCommandQueueItem, duplicate: bool}
+     * @return array{queue: NationCommandQueue, item: NationCommandQueueItem, duplicate: bool, daily_quest: array<string, int|string|bool>}
      */
     public function add(
         User $user,
@@ -739,7 +739,7 @@ final class CommandQueueService
     }
 
     /**
-     * @return array{queue: NationCommandQueue, inserted_count: int, truncated_count: int, candidate_count: int, duplicate: bool}
+     * @return array{queue: NationCommandQueue, inserted_count: int, truncated_count: int, candidate_count: int, duplicate: bool, daily_quest: array<string, int|string|bool>|null}
      */
     public function bulkInsert(
         User $user,
@@ -1761,6 +1761,7 @@ final class CommandQueueService
      * Other future-plan state remains subject to the existing execution-time
      * revalidation contract.
      *
+     * @param  array{terrain_key: string, facility_key: string|null, owner_nation_id: int|null}  $projectedState
      * @param  array<string, mixed>  $rulesetSettings
      */
     private function assertFacilityExpansionRegistration(
@@ -1803,7 +1804,6 @@ final class CommandQueueService
     }
 
     /**
-     * @param  array{terrain_key: string, facility_key: string|null, owner_nation_id: int|null}  $projectedState
      * @param  array<string, mixed>  $rulesetSettings
      */
     private function assertCentralFacilityLimit(

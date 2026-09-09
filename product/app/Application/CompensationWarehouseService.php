@@ -35,7 +35,7 @@ final readonly class CompensationWarehouseService
     ) {}
 
     /**
-     * @param  array<string, int>  $assets
+     * @param  array<string, mixed>  $assets
      * @return array{grant: CompensationGrant, duplicate: bool}
      */
     public function createGrant(
@@ -293,7 +293,7 @@ final readonly class CompensationWarehouseService
         return ResourceDefinition::query()->where('key', $resourceKey)->firstOrFail();
     }
 
-    /** @param array<string, int> $assets
+    /** @param array<string, mixed> $assets
      * @return array<string, int>
      */
     private function normalizedAssets(array $assets): array

@@ -41,7 +41,7 @@ final readonly class CentralFacilityDamageService
             return null;
         }
         $before = $cell->facility_scale;
-        if (! is_string($facilityKey) || ! is_int($before) || $before < 1 || $before > 90) {
+        if (! is_int($before) || $before < 1 || $before > 90) {
             throw new DomainException('A central facility has invalid persisted level data.');
         }
         if ($levelLoss < 1) {
