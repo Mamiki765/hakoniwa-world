@@ -158,16 +158,22 @@ final class UndergroundRuntimeEquipmentGeneratorTest extends TestCase
         $this->assertSame(36, $dagger['base']['weapon_power']);
     }
 
-    public function test_item_level_one_and_ninety_are_valid_but_outside_boundary_is_rejected(): void
+    public function test_item_level_one_through_one_hundred_twenty_is_valid_but_outside_boundary_is_rejected(): void
     {
         $first = $this->generate(1, 'shallow_caves', 'common', 'weapon', 'dagger', null, 0);
-        $last = $this->generate(90, 'obsidian_cavern', 'common', 'weapon', 'dagger', null, 0);
+        $formerLast = $this->generate(90, 'obsidian_cavern', 'common', 'weapon', 'dagger', null, 0);
+        $kingdomFirst = $this->generate(91, 'shining_kingdom', 'common', 'weapon', 'dagger', null, 0);
+        $last = $this->generate(120, 'shining_kingdom', 'common', 'weapon', 'dagger', null, 0);
 
         $this->assertSame(1, $first['item_level']);
-        $this->assertSame(90, $last['item_level']);
-        $this->assertSame('魔窟の短剣', $last['name']);
+        $this->assertSame(90, $formerLast['item_level']);
+        $this->assertSame('魔窟の短剣', $formerLast['name']);
+        $this->assertSame(91, $kingdomFirst['item_level']);
+        $this->assertSame('王都の短剣', $kingdomFirst['name']);
+        $this->assertSame(120, $last['item_level']);
+        $this->assertSame('王都の短剣', $last['name']);
 
-        foreach ([0, 91] as $itemLevel) {
+        foreach ([0, 121] as $itemLevel) {
             try {
                 $this->generate($itemLevel, 'shallow_caves', 'common', 'weapon', 'dagger', null, 0);
                 $this->fail("Item Lv {$itemLevel} should be rejected.");
