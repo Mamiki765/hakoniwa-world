@@ -967,6 +967,7 @@ describe('application lobby and island entry', () => {
             if (path === '/api/v1/secretaries/11?world_id=1') return response({
                 ...unnamedSecretaryFixture.profile,
                 name: '公開秘書',
+                battle_display_name: '公開秘書',
                 is_owner: false,
                 combat_level: 7,
                 biography: "公開経歴1行目\n公開経歴2行目",
@@ -4057,8 +4058,8 @@ describe('Underground equipment navigation', () => {
         await wrapper.get('input[aria-label="生命の今回の配分"]').setValue(2);
         expect(wrapper.get('.underground-progression-panel .button.primary').text()).toBe('2 STPを一括確定');
         expect(wrapper.findAll('.underground-main-navigation button').map((button) => button.text()))
-            .toEqual(['地下メイン', '装備ショップ', '案内人の部屋', '作戦設定', '宝物庫']);
-        await wrapper.findAll('.underground-main-navigation button')[3]!.trigger('click');
+            .toEqual(['地下メイン', '装備ショップ', '案内人の部屋', 'PT設定', '作戦設定', '宝物庫']);
+        await wrapper.findAll('.underground-main-navigation button')[4]!.trigger('click');
         expect(wrapper.get('.underground-ai-editor').text()).toContain('初期設定を表示しています');
         await wrapper.findAll('.underground-main-navigation button')[2]!.trigger('click');
         expect(wrapper.get('.underground-guide-room-greeting').text()).toBe('案内人「あら、どうしたんですか？」');
