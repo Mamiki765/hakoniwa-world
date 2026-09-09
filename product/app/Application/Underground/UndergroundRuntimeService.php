@@ -3179,7 +3179,7 @@ STORY;
         return $result->awakening;
     }
 
-    /** @param array<string, string|list<int>> $intent */
+    /** @param array<string, int|string|list<int>> $intent */
     private function fingerprint(array $intent): string
     {
         ksort($intent);
