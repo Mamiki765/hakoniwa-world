@@ -408,6 +408,11 @@ interface RecollectionState {
     serious_talk: SeriousTalk | null;
 }
 
+interface GuideBanterEntry {
+    key: string;
+    text: string;
+}
+
 interface PendingExplorationRequest {
     requestId: string;
     huntingGroundKey: string;
@@ -452,7 +457,8 @@ interface UndergroundState {
     active_slots: Array<ActiveSkill | null>;
     passive_modifiers: Record<string, number | boolean | string>;
     shopkeeper_name: string | null;
-    guide_banter?: { key: string; text: string } | null;
+    guide_banter?: GuideBanterEntry | null;
+    guide_banter_entries?: GuideBanterEntry[];
     true_name_branch: boolean;
     tutorial_projection: {
         stats: Record<'vitality' | 'might' | 'finesse' | 'spirit' | 'agility', number>;
@@ -568,6 +574,7 @@ const awakeningMessageDraft = ref('');
 const awakeningTechniqueDraft = ref<string | null>(null);
 const equipmentView = ref<'main' | 'shop' | 'guide' | 'ai' | 'vault'>('main');
 const guideMode = ref<'basic' | 'conversation' | 'recollections' | 'serious_talk' | 'respec'>('basic');
+const selectedGuideBanter = ref<GuideBanterEntry | null>(null);
 const selectedRecollectionKey = ref<string | null>(null);
 const seriousTalkSceneKey = ref('root');
 const selectedRespecPathKey = ref<string | null>(null);
@@ -942,6 +949,14 @@ function openGuide(mode: 'basic' | 'conversation' | 'recollections' | 'serious_t
         selectedRespecPathKey.value = null;
         respecConfirmOpen.value = false;
     }
+}
+
+function startGuideConversation(): void {
+    const entries = state.value?.guide_banter_entries ?? [];
+    selectedGuideBanter.value = entries.length > 0
+        ? entries[Math.floor(Math.random() * entries.length)] ?? entries[0] ?? null
+        : state.value?.guide_banter ?? null;
+    guideMode.value = 'conversation';
 }
 
 function openRecollections(): void {
@@ -2113,7 +2128,7 @@ onUnmounted(() => {
                     <button
                         type="button"
                         :aria-pressed="guideMode === 'conversation'"
-                        @click="guideMode = 'conversation'"
+                        @click="startGuideConversation"
                     >
                         少しお話がしたい
                     </button>
@@ -2142,7 +2157,7 @@ onUnmounted(() => {
                         再振りをしたい
                     </button>
                 </div>
-                <p v-if="guideMode === 'conversation'" class="underground-guide-conversation">「あ、あー……話題が思い浮かんだらまた来てちょうだいな？」</p>
+                <p v-if="guideMode === 'conversation' && selectedGuideBanter" class="underground-guide-conversation">{{ selectedGuideBanter.text }}</p>
                 <section v-else-if="guideMode === 'recollections'" class="underground-guide-recollections" aria-labelledby="underground-recollections-title">
                     <header>
                         <p class="eyebrow">Recollections</p>
@@ -2346,7 +2361,6 @@ onUnmounted(() => {
                         <p class="eyebrow">案内人 / ショップ</p>
                         <h2 id="underground-guide-title">{{ state.shopkeeper_name }}</h2>
                         <p>{{ shopGreeting }}</p>
-                        <p v-if="state.guide_banter" class="underground-guide-banter">{{ state.guide_banter.text }}</p>
                         <p v-if="innRested" class="underground-inn-result" role="status">（HPが全回復しました）</p>
                         <div class="underground-shop-entries">
                             <button type="button" :disabled="busy || innResting || Boolean(state.trial?.active_run)" @click="restAtInn">{{ innResting ? '休憩中…' : '宿で休む（10G）' }}<small>{{ state.trial?.active_run ? '封印の地から帰還後に利用できます' : innResting ? '案内人が準備しています' : 'HPを全回復' }}</small></button>

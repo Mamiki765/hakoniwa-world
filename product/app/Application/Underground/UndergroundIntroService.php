@@ -1507,6 +1507,7 @@ final readonly class UndergroundIntroService
             'guide_banter' => $this->catalog->stableGuideBanter(
                 'secretary:'.$secretary->id.':'.now()->format('Y-m-d'),
             ),
+            'guide_banter_entries' => $this->catalog->guideBanter(),
             'true_name_branch' => $intro?->branch_identity === 'true_name',
             'tutorial_projection' => [
                 'stats' => ['vitality' => 10, 'might' => 10, 'finesse' => 10, 'spirit' => 10, 'agility' => 10],

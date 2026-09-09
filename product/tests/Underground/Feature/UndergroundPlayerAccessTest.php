@@ -606,13 +606,18 @@ final class UndergroundPlayerAccessTest extends TestCase
         $this->advance($user, 'growth_path_story_complete')->assertJsonPath('data.stage', 'underground_open');
         $nextBattleAt = Carbon::now()->addSeconds(10)->startOfSecond();
         $selectedProfile->update(['next_battle_at' => $nextBattleAt]);
-        $this->actingAs($user)->getJson('/api/v1/me/underground/main')
+        $main = $this->actingAs($user)->getJson('/api/v1/me/underground/main')
             ->assertOk()
             ->assertJsonPath('data.shopkeeper_name', 'ダミー店員')
             ->assertJsonPath('data.combat_level', 1)
             ->assertJsonPath('data.combat_xp', 5)
             ->assertJsonPath('data.next_battle_at', $nextBattleAt->toAtomString())
             ->assertJsonPath('data.playtest.default_build_key', 'pure_attacker');
+        $this->assertGreaterThan(1, count($main->json('data.guide_banter_entries')));
+        $this->assertSame(
+            app(UndergroundIntroCatalog::class)->guideBanter(),
+            $main->json('data.guide_banter_entries'),
+        );
         $originalEnvironment = config('app.env');
         config(['app.env' => 'production']);
         $this->actingAs($user)->getJson('/api/v1/me/underground/main')

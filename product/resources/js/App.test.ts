@@ -3835,6 +3835,11 @@ describe('Underground equipment navigation', () => {
             equipment_summary: { used: 1, capacity: 500, equipped: { weapon: null, armor: null, accessory: null } },
             skill_points_total: 20, skill_points_unspent: 5, skill_points_spent: 15, skill_tree_identity: 'tree-v1',
             skill_trees: skillTrees, active_slots: [null, null, null, null, null], passive_modifiers: {}, shopkeeper_name: '案内人',
+            guide_banter: { key: 'quiet_room', text: '……静かですね。こういう日も、嫌いではありませんよ。' },
+            guide_banter_entries: [
+                { key: 'quiet_room', text: '……静かですね。こういう日も、嫌いではありませんよ。' },
+                { key: 'old_map', text: '地図は読めても、心までは読めないものです。' },
+            ],
             true_name_branch: false, tutorial_projection: { stats: paths[0]!.stats, weapon: 'starter knife' },
             contract_completed: true, growth_paths: null, growth_path: paths[0]!, playtest: null,
             default_hunting_ground_key: null, hunting_grounds: [],
@@ -3994,8 +3999,14 @@ describe('Underground equipment navigation', () => {
             return response(null, 404);
         });
         vi.stubGlobal('fetch', fetchMock);
+        const random = vi.spyOn(Math, 'random')
+            .mockReturnValueOnce(0)
+            .mockReturnValueOnce(0.99);
         const wrapper = mount(UndergroundPanel);
         await flushPromises();
+
+        expect(wrapper.find('.underground-guide-banter').exists()).toBe(false);
+        expect(wrapper.text()).not.toContain('……静かですね。こういう日も、嫌いではありませんよ。');
 
         await wrapper.findAll('.underground-character-actions button')[1]!.trigger('click');
         await wrapper.get('#underground-active-loadout select').setValue('quick_cut');
@@ -4018,7 +4029,12 @@ describe('Underground equipment navigation', () => {
             .find((button) => button.text() === label)!;
         await guideAction('少しお話がしたい').trigger('click');
         expect(wrapper.get('.underground-guide-conversation').text())
-            .toBe('「あ、あー……話題が思い浮かんだらまた来てちょうだいな？」');
+            .toBe('……静かですね。こういう日も、嫌いではありませんよ。');
+        await guideAction('少しお話がしたい').trigger('click');
+        expect(wrapper.get('.underground-guide-conversation').text())
+            .toBe('地図は読めても、心までは読めないものです。');
+        expect(wrapper.text()).not.toContain('「あ、あー……話題が思い浮かんだらまた来てちょうだいな？」');
+        random.mockRestore();
         expect(wrapper.findAll('.underground-guide-actions > button').map((button) => button.text()))
             .not.toContain('過去について問う');
         await guideAction('過去のイベントを振り返る').trigger('click');
