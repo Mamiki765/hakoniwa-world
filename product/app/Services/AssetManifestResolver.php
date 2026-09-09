@@ -31,6 +31,8 @@ final class AssetManifestResolver
         'tile.seabed_base' => 'seabed-base.png',
         'tile.undersea_city' => 'undersea-city.gif',
         'tile.port' => 'port.gif',
+        'tile.central_bank' => 'central-bank.gif',
+        'tile.central_granary' => 'central-granary.gif',
         'tile.monument' => 'monument.png',
         'tile.decoy' => 'land10.gif',
         'ship.fishing' => 'ship-fishing.gif',

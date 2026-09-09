@@ -147,6 +147,62 @@ class MonsterSystemTest extends TestCase
         $this->assertNotSame('aoi_inora', $spawned->definition->key);
     }
 
+    public function test_natural_spawn_applies_summed_central_facility_levels_with_an_independent_fractional_hp_draw(): void
+    {
+        [$world, $nation, $ruleset, $space] = $this->worldAndNation('中央怪獣補正国');
+        $this->prepareSettlement($nation, 400_000);
+        $centralCells = MapCell::query()->where('owner_nation_id', $nation->id)
+            ->whereNull('facility_definition_id')
+            ->whereHas('terrain', fn ($query) => $query->where('key', 'plain'))
+            ->orderBy('id')->take(2)->get();
+        $this->assertCount(2, $centralCells);
+        $this->setCell($centralCells[0], 'plain', 'central_bank', $nation->id, 0);
+        $this->setCell($centralCells[1], 'plain', 'central_granary', $nation->id, 0);
+        $centralCells[0]->update(['facility_scale' => 20]);
+        $centralCells[1]->update(['facility_scale' => 30]);
+
+        MonsterDefinition::query()->where('ruleset_version_id', $ruleset->id)
+            ->where('key', 'inora')->update(['base_hp' => 3, 'hp_variation' => 0]);
+        $settings = $ruleset->settings;
+        $settings['monster_system']['natural_spawn']['population_tiers'] = [[
+            'minimum_population' => 0,
+            'monster_keys' => ['inora'],
+        ]];
+        $settings['monster_system']['natural_spawn']['probability_per_land_cell'] = [
+            'numerator' => 10_000,
+            'denominator' => 10_000,
+        ];
+        $settings['monster_system']['natural_spawn']['maximum_probability_numerator'] = 10_000;
+        $ruleset->settings = $settings;
+
+        $seedLabel = null;
+        foreach (range(0, 10_000) as $candidate) {
+            $label = "central-hp-fraction-{$candidate}";
+            $draw = (new TurnRandomStreamFactory(hash('sha256', $label)))->stream(
+                TurnRandomStreamFactory::monsterSpawn($nation->id, 'hp_fraction', 1),
+            )->integer(1, 100);
+            if ($draw <= 50) {
+                $seedLabel = $label;
+                break;
+            }
+        }
+        $this->assertNotNull($seedLabel);
+        [$context] = $this->context($world, $ruleset, 2, $seedLabel, [$nation->id]);
+
+        $metrics = app(MonsterSpawnService::class)->spawnNatural($context, $space);
+
+        $this->assertSame(1, $metrics['monsters_spawned']);
+        $monster = MonsterInstance::query()->with('definition')->sole();
+        $this->assertSame('inora', $monster->definition->key);
+        $this->assertSame(5, $monster->current_hp);
+        $this->assertSame(5, $monster->spawned_max_hp);
+        $metadata = DB::table('audit_events')->where('event_type', 'monster.spawned')->value('metadata');
+        $metadata = json_decode((string) $metadata, true, 512, JSON_THROW_ON_ERROR);
+        $this->assertSame(3, $metadata['base_random_hp']);
+        $this->assertSame(50, $metadata['central_facility_level_total']);
+        $this->assertSame(5, $metadata['initial_hp']);
+    }
+
     public function test_natural_spawn_supports_all_authored_definitions_without_adding_non_pool_species_or_changing_the_type_draw(): void
     {
         [$world, $nation, $ruleset, $space] = $this->worldAndNation('十種自然発生国');

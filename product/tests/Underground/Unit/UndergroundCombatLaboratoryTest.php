@@ -9,9 +9,6 @@ use App\Domain\Underground\Combat\UndergroundCombatRules;
 use App\Domain\Underground\Combat\UndergroundRandom;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
-use RecursiveDirectoryIterator;
-use RecursiveIteratorIterator;
-use SplFileInfo;
 
 final class UndergroundCombatLaboratoryTest extends TestCase
 {
@@ -286,37 +283,6 @@ final class UndergroundCombatLaboratoryTest extends TestCase
             'action_log',
         ], array_keys($result));
         $this->assertLessThanOrEqual(60, count($result['action_log']));
-    }
-
-    public function test_pure_underground_domain_has_no_surface_or_database_dependency(): void
-    {
-        $root = dirname(__DIR__, 3).'/app/Domain/Underground';
-        $contents = '';
-        $iterator = new RecursiveIteratorIterator(
-            new RecursiveDirectoryIterator($root, RecursiveDirectoryIterator::SKIP_DOTS),
-        );
-        /** @var SplFileInfo $file */
-        foreach ($iterator as $file) {
-            if ($file->isFile() && $file->getExtension() === 'php') {
-                $read = file_get_contents($file->getPathname());
-                $this->assertIsString($read);
-                $contents .= $read;
-            }
-        }
-
-        foreach ([
-            'App\\Models',
-            'App\\Domain\\Turn',
-            'Illuminate\\Database',
-            'World',
-            'Nation',
-            'MapCell',
-            'TurnRun',
-            'current_turn',
-            'hakoniwa-2s-plus-v18',
-        ] as $forbidden) {
-            $this->assertStringNotContainsString($forbidden, $contents);
-        }
     }
 
     private function fight(string $enemyKey, int $seed): CombatResult

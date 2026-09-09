@@ -9,7 +9,7 @@ final class SyntheticHistoricalRulesetSnapshot
     /** @param (callable(array<string, mixed>): array<string, mixed>)|null $mutate */
     public static function create(string $key, int $version, ?callable $mutate = null): RulesetVersion
     {
-        $settings = CurrentRulesetFixture::withIdentity($key, $version);
+        $settings = HistoricalRulesetFixture::withIdentity($key, $version);
         if ($mutate !== null) {
             $settings = $mutate($settings);
         }

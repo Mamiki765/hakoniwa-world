@@ -194,7 +194,10 @@ final class UndergroundIntroController extends Controller
                     : [],
             );
 
-            return $service->projectExplorationBattle($result['battle']);
+            return [
+                ...$service->projectExplorationBattle($result['battle']),
+                'daily_quest' => $result['daily_quest'],
+            ];
         });
     }
 
@@ -211,7 +214,10 @@ final class UndergroundIntroController extends Controller
                     $request->integer('execution_count'),
                 );
 
-                return $service->projectSkipBatch($result['batch'], $result['duplicate']);
+                return [
+                    ...$service->projectSkipBatch($result['batch'], $result['duplicate']),
+                    'daily_quest' => $result['daily_quest'],
+                ];
             }
             $result = $service->skipHuntingGround(
                 $request->user(),
@@ -219,7 +225,10 @@ final class UndergroundIntroController extends Controller
                 $request->string('hunting_ground_key')->value(),
             );
 
-            return $service->projectSkipSettlement($result['settlement'], $result['duplicate']);
+            return [
+                ...$service->projectSkipSettlement($result['settlement'], $result['duplicate']),
+                'daily_quest' => $result['daily_quest'],
+            ];
         });
     }
 
@@ -236,7 +245,10 @@ final class UndergroundIntroController extends Controller
                     $request->integer('execution_count'),
                 );
 
-                return $service->projectSkipBatch($result['batch'], $result['duplicate']);
+                return [
+                    ...$service->projectSkipBatch($result['batch'], $result['duplicate']),
+                    'daily_quest' => $result['daily_quest'],
+                ];
             }
             $result = $service->skipTrial(
                 $request->user(),
@@ -244,7 +256,10 @@ final class UndergroundIntroController extends Controller
                 $request->string('trial_key')->value(),
             );
 
-            return $service->projectSkipSettlement($result['settlement'], $result['duplicate']);
+            return [
+                ...$service->projectSkipSettlement($result['settlement'], $result['duplicate']),
+                'daily_quest' => $result['daily_quest'],
+            ];
         });
     }
 
@@ -288,7 +303,10 @@ final class UndergroundIntroController extends Controller
                 $request->string('request_id')->value(),
             );
 
-            return $service->projectTrialBattle($result['battle']);
+            return [
+                ...$service->projectTrialBattle($result['battle']),
+                'daily_quest' => $result['daily_quest'],
+            ];
         });
     }
 

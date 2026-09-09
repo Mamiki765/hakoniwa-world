@@ -2351,7 +2351,7 @@ class CommandAndMissileTest extends TestCase
     public function test_current_explicit_targeting_preserves_v2_own_foreign_neutral_and_unowned_sea_contract(): void
     {
         [$world, $user, $firing, $foreign] = $this->combatants();
-        $this->assertSame('hakoniwa-2s-plus-v22', $world->rulesetVersion()->value('key'));
+        $this->assertSame('hakoniwa-2s-plus-v23', $world->rulesetVersion()->value('key'));
         $firing->update(['money' => 10_000]);
         $space = $this->surfaceMapSpace($world);
         $base = $this->missileBase($firing);
@@ -4975,6 +4975,112 @@ class CommandAndMissileTest extends TestCase
         $this->assertSame(1, $karma['impact_category_points']);
         $this->assertSame(1, $karma['crime_points']);
         $this->assertSame(1, (int) $firing->fresh()->karma);
+    }
+
+    #[DataProvider('ordinaryMissileKeys')]
+    public function test_v23_central_facility_resists_normal_pp_and_spp_missiles(string $missileKey): void
+    {
+        [$world, $firingUser, $firing, $target] = $this->combatants("central-resistance-{$missileKey}");
+        $firing->update(['money' => 9_999, 'karma' => 0]);
+        DB::table('secretary_skills')->where('skill_key', SecretarySkillCatalog::FINAL_DEFENSE_LINE)
+            ->update(['level' => 0, 'experience' => 0]);
+        $space = $this->surfaceMapSpace($world);
+        $base = $this->missileBase($firing);
+        $cell = MapCell::query()->where('owner_nation_id', $target->id)
+            ->whereKeyNot($target->capital()->value('map_cell_id'))
+            ->whereNull('facility_definition_id')
+            ->whereHas('terrain', fn ($query) => $query->where('key', 'plain'))
+            ->with(['terrain', 'facility', 'ownerNation'])->firstOrFail();
+        app(MapCellStateService::class)->setFacility(
+            $cell,
+            FacilityDefinition::query()->where('key', 'central_bank')->firstOrFail(),
+            scale: 12,
+            maximumScale: 90,
+        );
+        $cell->save();
+        $beforeVersion = (int) $cell->version;
+        $item = $this->queue(app(CommandQueueService::class), $firingUser, $firing, $space, $missileKey, $cell);
+        $deviationRadius = match ($missileKey) {
+            'missile' => 2,
+            'pp_missile' => 1,
+            'spp_missile' => 0,
+        };
+        $seed = $this->seedForImpactIndex($item, $cell, $deviationRadius, $cell);
+
+        $this->resolveKarmaLaunchWithBoundaryMutation(
+            $world,
+            $firing,
+            $target,
+            $item,
+            [$base],
+            2,
+            static function (): void {},
+            $seed,
+        );
+
+        $after = $cell->fresh(['terrain', 'facility']);
+        $this->assertSame('central_bank', $after->facility?->key, $missileKey);
+        $this->assertSame(12, $after->facility_scale, $missileKey);
+        $this->assertSame('plain', $after->terrain->key, $missileKey);
+        $this->assertSame($beforeVersion, (int) $after->version, $missileKey);
+        $detail = json_decode((string) DB::table('audit_events')->where('event_type', 'missile.launch_detail')
+            ->whereRaw("metadata->>'queue_item_id' = ?", [(string) $item->id])->value('metadata'), true, 512, JSON_THROW_ON_ERROR);
+        $impact = $detail['impacts'][0];
+        $this->assertSame('central_facility_resisted', $impact['effect'], $missileKey);
+        $this->assertSame(0, (int) $firing->fresh()->karma, $missileKey);
+    }
+
+    public function test_v23_land_destruction_missile_reduces_level_one_central_facility_to_shallow(): void
+    {
+        [$world, $firingUser, $firing, $target] = $this->combatants('central-land-destruction');
+        $firing->update(['money' => 9_999, 'karma' => 0]);
+        DB::table('secretary_skills')->where('skill_key', SecretarySkillCatalog::FINAL_DEFENSE_LINE)
+            ->update(['level' => 0, 'experience' => 0]);
+        $space = $this->surfaceMapSpace($world);
+        $base = $this->missileBase($firing);
+        $cell = MapCell::query()->where('owner_nation_id', $target->id)
+            ->whereKeyNot($target->capital()->value('map_cell_id'))
+            ->whereNull('facility_definition_id')
+            ->whereHas('terrain', fn ($query) => $query->where('key', 'plain'))
+            ->with(['terrain', 'facility', 'ownerNation'])->firstOrFail();
+        app(MapCellStateService::class)->setFacility(
+            $cell,
+            FacilityDefinition::query()->where('key', 'central_granary')->firstOrFail(),
+            scale: 1,
+            maximumScale: 90,
+        );
+        $cell->save();
+        $item = $this->queue(
+            app(CommandQueueService::class),
+            $firingUser,
+            $firing,
+            $space,
+            'land_destruction_missile',
+            $cell,
+        );
+
+        $this->resolveKarmaLaunchWithBoundaryMutation(
+            $world,
+            $firing,
+            $target,
+            $item,
+            [$base],
+            2,
+            static function (): void {},
+            $this->seedForImpactIndex($item, $cell, 2, $cell),
+        );
+
+        $after = $cell->fresh(['terrain', 'facility']);
+        $this->assertNull($after->facility_definition_id);
+        $this->assertNull($after->facility_scale);
+        $this->assertSame('shallow', $after->terrain->key);
+        $this->assertNull($after->owner_nation_id);
+        $detail = json_decode((string) DB::table('audit_events')->where('event_type', 'missile.launch_detail')
+            ->whereRaw("metadata->>'queue_item_id' = ?", [(string) $item->id])->value('metadata'), true, 512, JSON_THROW_ON_ERROR);
+        $impact = $detail['impacts'][0];
+        $this->assertSame('terrain_destroyed', $impact['effect']);
+        $this->assertSame('central_granary', $impact['removed_facility_key']);
+        $this->assertSame(1, $impact['scale_loss']);
     }
 
     public function test_v21_rank_two_land_facility_damage_preserves_cell_and_adds_three_karma_points(): void

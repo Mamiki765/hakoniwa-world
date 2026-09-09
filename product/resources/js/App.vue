@@ -4,6 +4,7 @@ import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
 import { ApiError, api, apiEnvelope } from './api/client';
 import CellDetails from './components/CellDetails.vue';
 import CommandQueuePanel from './components/CommandQueuePanel.vue';
+import GuideConversationTopicAdmin from './components/GuideConversationTopicAdmin.vue';
 import HexMap from './components/HexMap.vue';
 import IslandEventLog from './components/IslandEventLog.vue';
 import MessageBoard from './components/MessageBoard.vue';
@@ -19,7 +20,11 @@ import { useMapState } from './state/mapState';
 import type {
     Announcement,
     CommandQueue,
+    CompensationClaimResult,
+    CompensationGrant,
     CurrentUser,
+    DailyLoginReward,
+    DailyQuestProgress,
     InquiryDetail,
     InquirySubmission,
     InquirySummary,
@@ -101,9 +106,14 @@ const inquiryConfirmation = ref<InquirySubmission | null>(null);
 const previewNation = ref<PublicNationDetail | null>(null);
 const mapSpace = ref<MapSpace | null>(null);
 const authoritativeCommandQueue = ref<CommandQueue | null>(null);
+const compensationGrants = ref<CompensationGrant[]>([]);
+const compensationModalOpen = ref(false);
+const compensationLoading = ref(false);
+const compensationClaimingId = ref<number | null>(null);
+const compensationError = ref('');
 const undergroundSurfaceMap = ref<UndergroundSurfaceMap | null>(null);
 const selectedUndergroundSlot = ref<UndergroundFacilityTarget | null>(null);
-const page = ref<'home' | 'announcements' | 'inquiry' | 'admin-inquiries' | 'island' | 'preview' | 'resources' | 'trading-post' | 'secretary' | 'underground' | 'options' | 'account' | 'credits'>(
+const page = ref<'home' | 'announcements' | 'inquiry' | 'admin-inquiries' | 'guide-topics' | 'island' | 'preview' | 'resources' | 'trading-post' | 'secretary' | 'underground' | 'options' | 'account' | 'credits'>(
     window.location.pathname === '/credits'
         ? 'credits'
         : (window.location.pathname === '/underground' ? 'underground' : 'home'),
@@ -174,6 +184,12 @@ const secretaryName = ref('ペリドット');
 const secretaryErrors = ref<Record<string, string>>({});
 const busy = ref(true);
 const message = ref('');
+interface RewardToast { id: number; text: string }
+const activeRewardToast = ref<RewardToast | null>(null);
+const pendingRewardToasts: RewardToast[] = [];
+let rewardToastSequence = 0;
+let rewardToastTimer: ReturnType<typeof setTimeout> | null = null;
+let rewardToastExitTimer: ReturnType<typeof setTimeout> | null = null;
 const clockNow = ref(Date.now());
 let clockTimer: ReturnType<typeof setInterval> | null = null;
 let summaryDeadlineTimer: ReturnType<typeof setTimeout> | null = null;
@@ -244,6 +260,12 @@ function formatFacilityScale(population: number): string {
     return population === 0 ? '保有せず' : `${population.toLocaleString('ja-JP')}人`;
 }
 
+function formatCompensationItem(item: CompensationGrant['items'][number], amount = item.remaining_amount): string {
+    return item.asset_key === 'money'
+        ? formatExactMoney(amount)
+        : `${amount.toLocaleString('ja-JP')}${item.unit}`;
+}
+
 function formatAnnouncementDate(value: string): string {
     return new Intl.DateTimeFormat('ja-JP', {
         dateStyle: 'medium',
@@ -278,6 +300,7 @@ onMounted(async () => {
     await loadPublicLobby();
     try {
         user.value = await api<CurrentUser>('/api/v1/me');
+        await claimDailyLogin();
         nation.value = await api<Nation | null>('/api/v1/me/nation');
         if (page.value === 'options' && nation.value !== null) {
             profileOwnerName.value = nation.value.owner_name;
@@ -303,11 +326,147 @@ onMounted(async () => {
     }
 });
 
+async function claimDailyLogin(): Promise<void> {
+    if (user.value === null) return;
+    try {
+        const reward = await api<DailyLoginReward>('/api/v1/me/daily-login', { method: 'POST' });
+        user.value = { ...user.value, paradox: reward.paradox };
+        if (reward.awarded_now) {
+            showRewardToast(`ログイン報酬: 輝石${reward.paradox_awarded}Pdとスキップチケット${reward.skip_tickets_awarded}枚を受け取りました。`);
+        }
+    } catch {
+        // Authentication remains usable even if this idempotent reward mutation must be retried later.
+    }
+}
+
+async function recordDevelopmentOpened(): Promise<void> {
+    if (user.value === null) return;
+    try {
+        const quest = await api<DailyQuestProgress>('/api/v1/me/daily-quests/development-opened', { method: 'POST' });
+        user.value = {
+            ...user.value,
+            paradox: { ...user.value.paradox, balance: quest.paradox_balance },
+        };
+        if (quest.completed_now) {
+            showRewardToast(`デイリークエスト「${quest.label}」達成: 輝石${quest.paradox_awarded}Pdを受け取りました。`);
+        }
+    } catch {
+        // Opening the development screen must not depend on reward notification delivery.
+    }
+}
+
+function showRewardToast(text: string): void {
+    const toast = { id: ++rewardToastSequence, text };
+    if (activeRewardToast.value !== null || rewardToastExitTimer !== null) {
+        pendingRewardToasts.push(toast);
+        return;
+    }
+    activateRewardToast(toast);
+}
+
+function activateRewardToast(toast: RewardToast): void {
+    activeRewardToast.value = toast;
+    if (rewardToastTimer !== null) clearTimeout(rewardToastTimer);
+    rewardToastTimer = setTimeout(dismissRewardToast, 5_000);
+}
+
+function dismissRewardToast(): void {
+    if (rewardToastTimer !== null) clearTimeout(rewardToastTimer);
+    rewardToastTimer = null;
+    if (activeRewardToast.value === null) return;
+    activeRewardToast.value = null;
+    if (rewardToastExitTimer !== null) clearTimeout(rewardToastExitTimer);
+    rewardToastExitTimer = setTimeout(() => {
+        rewardToastExitTimer = null;
+        const next = pendingRewardToasts.shift();
+        if (next !== undefined) activateRewardToast(next);
+    }, 250);
+}
+
+function handleDailyQuestProgress(quest: DailyQuestProgress): void {
+    if (user.value !== null) {
+        user.value = {
+            ...user.value,
+            paradox: { ...user.value.paradox, balance: quest.paradox_balance },
+        };
+    }
+    if (quest.completed_now) {
+        showRewardToast(`デイリークエスト「${quest.label}」達成: 輝石${quest.paradox_awarded}Pdを受け取りました。`);
+    }
+}
+
+async function loadCompensationGrants(): Promise<void> {
+    const currentNation = nation.value;
+    if (currentNation === null) {
+        compensationGrants.value = [];
+        compensationModalOpen.value = false;
+        return;
+    }
+    compensationLoading.value = true;
+    compensationError.value = '';
+    try {
+        compensationGrants.value = await api<CompensationGrant[]>(
+            `/api/v1/nations/${currentNation.id}/compensation-grants`,
+        );
+        if (compensationGrants.value.length === 0) compensationModalOpen.value = false;
+    } catch (error) {
+        compensationError.value = error instanceof Error ? error.message : '配布倉庫を読み込めませんでした。';
+    } finally {
+        compensationLoading.value = false;
+    }
+}
+
+function openCompensationWarehouse(): void {
+    compensationError.value = '';
+    compensationModalOpen.value = true;
+}
+
+function closeCompensationWarehouse(): void {
+    if (compensationClaimingId.value !== null) return;
+    compensationModalOpen.value = false;
+    compensationError.value = '';
+}
+
+async function claimCompensation(grant: CompensationGrant): Promise<void> {
+    const currentNation = nation.value;
+    if (currentNation === null || compensationClaimingId.value !== null) return;
+    compensationClaimingId.value = grant.id;
+    compensationError.value = '';
+    try {
+        const result = await api<CompensationClaimResult>(
+            `/api/v1/nations/${currentNation.id}/compensation-grants/${grant.id}/claim`,
+            {
+                method: 'POST',
+                body: JSON.stringify({ request_id: crypto.randomUUID() }),
+            },
+        );
+        const labels = result.applied_now.flatMap((applied) => {
+            if (applied.applied < 1) return [];
+            const item = grant.items.find((candidate) => candidate.asset_key === applied.asset_key);
+            return item === undefined ? [] : [`${item.label}${formatCompensationItem(item, applied.applied)}`];
+        });
+        showRewardToast(labels.length > 0
+            ? `配布倉庫から${labels.join('、')}を受け取りました。`
+            : '現在の所持上限まで受取済みです。残りは配布倉庫に保管されています。');
+        await Promise.all([
+            refreshMyNation(),
+            loadCompensationGrants(),
+            api<CurrentUser>('/api/v1/me').then((refreshedUser) => { user.value = refreshedUser; }),
+        ]);
+    } catch (error) {
+        compensationError.value = error instanceof Error ? error.message : '配布を受け取れませんでした。';
+    } finally {
+        compensationClaimingId.value = null;
+    }
+}
+
 onUnmounted(() => {
     window.removeEventListener('popstate', syncPageFromHistory);
     if (clockTimer !== null) clearInterval(clockTimer);
     if (summaryDeadlineTimer !== null) clearTimeout(summaryDeadlineTimer);
     if (summaryRetryTimer !== null) clearTimeout(summaryRetryTimer);
+    if (rewardToastTimer !== null) clearTimeout(rewardToastTimer);
+    if (rewardToastExitTimer !== null) clearTimeout(rewardToastExitTimer);
     stopSummaryFallbackPolling();
 });
 
@@ -818,6 +977,8 @@ async function openOwnIsland(): Promise<void> {
         if (mapSpace.value !== null) {
             await map.loadAround(mapSpace.value, currentNation.capital.x, currentNation.capital.y, { kind: 'private' });
             page.value = 'island';
+            await loadCompensationGrants();
+            await recordDevelopmentOpened();
         }
     } catch (error) {
         message.value = error instanceof Error ? error.message : '自島を読み込めませんでした。';
@@ -846,6 +1007,8 @@ async function openPreview(nationId: number): Promise<void> {
             previewMapRequestSource(detail.id),
         );
         page.value = 'preview';
+        await nextTick();
+        window.scrollTo({ top: 0, left: 0, behavior: 'auto' });
     } catch (error) {
         message.value = error instanceof Error ? error.message : '島previewを読み込めませんでした。';
     } finally {
@@ -1497,6 +1660,14 @@ async function abandonNation(): Promise<void> {
                 <button type="button" @click="openAdminInquiries(1)">すべて見る</button>
             </section>
 
+            <section v-if="user?.can_manage_guide_topics" class="inquiry-window" aria-labelledby="guide-topic-heading">
+                <div class="section-heading">
+                    <div><p class="eyebrow">GUIDE CONVERSATIONS</p><h2 id="guide-topic-heading">案内人の会話</h2></div>
+                    <button type="button" @click="page = 'guide-topics'">会話を管理</button>
+                </div>
+                <p>「少しお話をする」に表示する話題と選択肢を登録します。</p>
+            </section>
+
             <div class="lobby-grid">
                 <section class="ranking-card">
                     <div class="section-heading">
@@ -1692,6 +1863,11 @@ async function abandonNation(): Promise<void> {
             </template>
         </section>
 
+        <GuideConversationTopicAdmin
+            v-else-if="user?.can_manage_guide_topics && page === 'guide-topics'"
+            @close="page = 'home'"
+        />
+
         <section v-else-if="page === 'announcements'" class="announcement-page panel">
             <div class="section-heading">
                 <div><p class="eyebrow">ANNOUNCEMENTS</p><h1>お知らせ</h1></div>
@@ -1822,6 +1998,16 @@ async function abandonNation(): Promise<void> {
                     </div>
                 </details>
             </header>
+            <button
+                v-if="compensationGrants.length > 0"
+                class="compensation-banner"
+                type="button"
+                @click="openCompensationWarehouse"
+            >
+                <span aria-hidden="true">🎁</span>
+                <span><strong>配布倉庫に受取可能な品があります</strong><small>{{ compensationGrants.length }}件の配布内容を確認する</small></span>
+                <span aria-hidden="true">›</span>
+            </button>
             <div class="island-workspace-region">
                 <nav class="workspace-jump" aria-label="開発ワークスペース内の移動">
                     <button type="button" aria-controls="island-development-workspace" @click="scrollIslandWorkspaceTo('.command-panel')">セル・コマンド</button>
@@ -1845,6 +2031,7 @@ async function abandonNation(): Promise<void> {
                             :nation-state="nation.state"
                             @queue="authoritativeCommandQueue = $event"
                             @ship="map.updateSelectedShip"
+                            @daily-quest="handleDailyQuestProgress"
                         />
                         <div class="map-column">
                             <HexMap
@@ -1966,8 +2153,10 @@ async function abandonNation(): Promise<void> {
 
         <UndergroundPanel
             v-else-if="page === 'underground' && user && secretary?.name"
+            :user-id="user.id"
             :secretary-image-url="viewedSecretaryProfile?.main_image.url ?? null"
             @return-to-secretary="returnFromUnderground"
+            @daily-quest="handleDailyQuestProgress"
         />
 
         <section v-else-if="page === 'secretary' && (viewedSecretaryProfile || secretary)" class="panel secretary-panel">
@@ -2270,6 +2459,53 @@ async function abandonNation(): Promise<void> {
             <p>原作GIFは本リポジトリとDocker imageに含まれません。未配置時はCSS fallbackを表示します。</p>
         </section>
     </main>
+
+    <div v-if="compensationModalOpen && nation" class="modal-backdrop" @click.self="closeCompensationWarehouse">
+        <section class="compensation-modal" role="dialog" aria-modal="true" aria-labelledby="compensation-modal-title">
+            <header>
+                <div>
+                    <p class="eyebrow">DISTRIBUTION WAREHOUSE</p>
+                    <h2 id="compensation-modal-title">配布倉庫</h2>
+                </div>
+                <button type="button" aria-label="閉じる" :disabled="compensationClaimingId !== null" @click="closeCompensationWarehouse">×</button>
+            </header>
+            <p class="compensation-lead">運営から届いた資源を受け取れます。所持上限を超える分は倉庫に残ります。</p>
+            <p v-if="compensationError" class="field-error" role="alert">{{ compensationError }}</p>
+            <p v-if="compensationLoading" class="empty-state">配布内容を確認しています…</p>
+            <article v-for="grant in compensationGrants" :key="grant.id" class="compensation-grant">
+                <p class="compensation-reason">{{ grant.reason }}</p>
+                <dl>
+                    <div v-for="item in grant.items.filter((candidate) => candidate.remaining_amount > 0)" :key="item.asset_key">
+                        <dt>{{ item.label }}</dt>
+                        <dd>{{ formatCompensationItem(item) }}</dd>
+                    </div>
+                </dl>
+                <button
+                    class="button primary"
+                    type="button"
+                    :disabled="compensationClaimingId !== null"
+                    @click="claimCompensation(grant)"
+                >
+                    {{ compensationClaimingId === grant.id ? '受取中…' : '受け取る' }}
+                </button>
+            </article>
+        </section>
+    </div>
+
+    <Transition name="reward-toast">
+        <section
+            v-if="activeRewardToast"
+            :key="activeRewardToast.id"
+            class="reward-toast"
+            role="status"
+            aria-live="polite"
+            aria-atomic="true"
+        >
+            <span class="reward-toast-mark" aria-hidden="true">✓</span>
+            <p>{{ activeRewardToast.text }}</p>
+            <button type="button" aria-label="通知を閉じる" @click="dismissRewardToast">×</button>
+        </section>
+    </Transition>
 
     <div v-if="secretaryPreferencesModalOpen" class="modal-backdrop" @click.self="closeSecretaryPreferencesModal">
         <section class="secretary-profile-modal" role="dialog" aria-modal="true" aria-labelledby="secretary-preferences-modal-title">

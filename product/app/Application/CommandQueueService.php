@@ -53,6 +53,11 @@ final class CommandQueueService
         'build_farm' => 'farm',
         'build_factory' => 'factory',
         'build_mine' => 'mine',
+        'build_fast_farm' => 'farm',
+        'build_fast_factory' => 'factory',
+        'build_fast_mine' => 'mine',
+        'build_central_bank' => 'central_bank',
+        'build_central_granary' => 'central_granary',
     ];
 
     public function __construct(
@@ -68,6 +73,7 @@ final class CommandQueueService
         private readonly UndergroundCommandCatalog $undergroundCommands,
         private readonly QueuedCommandDefinitionResolver $queuedCommandDefinitions,
         private readonly FacilityRankPolicy $facilityRanks,
+        private readonly DailyQuestService $dailyQuests,
     ) {}
 
     /**
@@ -194,7 +200,12 @@ final class CommandQueueService
                     throw new CommandRequestConflictException;
                 }
 
-                return ['queue' => $queue, 'item' => $duplicate, 'duplicate' => true];
+                return [
+                    'queue' => $queue,
+                    'item' => $duplicate,
+                    'duplicate' => true,
+                    'daily_quest' => $this->dailyQuests->currentStatus($user->id, DailyQuestService::COMMAND_REGISTERED),
+                ];
             }
 
             $definition = CommandDefinition::query()
@@ -338,6 +349,12 @@ final class CommandQueueService
                         $mapSpace,
                         $projectionMemo,
                     );
+                    $this->assertCentralFacilityLimit(
+                        $definition,
+                        $target,
+                        $ruleset->settings,
+                        $lockedNation,
+                    );
                 }
                 $ownerOverbuildEffect = OwnerFacilityOverbuildPolicy::effectForState(
                     $definition,
@@ -457,7 +474,12 @@ final class CommandQueueService
                 'request_ruleset_version_id' => $ruleset->id,
             ], static fn (mixed $value): bool => $value !== null));
 
-            return ['queue' => $queue, 'item' => $item, 'duplicate' => false];
+            return [
+                'queue' => $queue,
+                'item' => $item,
+                'duplicate' => false,
+                'daily_quest' => $this->dailyQuests->recordCommandRegistered($user->id, 'item:'.$item->id),
+            ];
         }, 3);
     }
 
@@ -759,12 +781,17 @@ final class CommandQueueService
                 ->where('request_key', $requestKey)
                 ->first(['candidate_count', 'inserted_count', 'truncated_count']);
             if ($completedRequest !== null) {
+                $insertedCount = (int) $completedRequest->inserted_count;
+
                 return [
                     'queue' => $queue,
-                    'inserted_count' => (int) $completedRequest->inserted_count,
+                    'inserted_count' => $insertedCount,
                     'truncated_count' => (int) $completedRequest->truncated_count,
                     'candidate_count' => (int) $completedRequest->candidate_count,
                     'duplicate' => true,
+                    'daily_quest' => $insertedCount > 0
+                        ? $this->dailyQuests->currentStatus($user->id, DailyQuestService::COMMAND_REGISTERED)
+                        : null,
                 ];
             }
             if (NationCommandQueueItem::query()->where('nation_command_queue_id', $queue->id)
@@ -775,6 +802,7 @@ final class CommandQueueService
                     'truncated_count' => 0,
                     'candidate_count' => 0,
                     'duplicate' => true,
+                    'daily_quest' => null,
                 ];
             }
             $this->assertVersion($queue, $expectedVersion);
@@ -836,6 +864,7 @@ final class CommandQueueService
                     'truncated_count' => 0,
                     'candidate_count' => 0,
                     'duplicate' => false,
+                    'daily_quest' => null,
                 ];
             }
 
@@ -941,6 +970,9 @@ final class CommandQueueService
                 'truncated_count' => count($dropped),
                 'candidate_count' => count($candidates),
                 'duplicate' => false,
+                'daily_quest' => $insertedCount > 0
+                    ? $this->dailyQuests->recordCommandRegistered($user->id, 'bulk:'.$queue->id.':'.$requestKey)
+                    : null,
             ];
         }, 3);
     }
@@ -1458,17 +1490,14 @@ final class CommandQueueService
             && $facilityKey === $definition->result_facility_key
             && $cell->facility?->key === $facilityKey) {
             $rulesetSettings ??= $this->rulesetSettingsForMapSpace($mapSpace);
-            $rankContract = $this->facilityRanks->contract($rulesetSettings, $facilityKey);
-            if ($rankContract !== null && ! is_int($cell->facility_scale)) {
+            if (! is_int($cell->facility_scale)) {
                 throw new PlayerFacingCommandException('施設の規模情報が不完全です。');
             }
-            if ($rankContract !== null) {
-                $maximumScale = $this->facilityRanks->maximumScale($rulesetSettings, $cell->facility);
-                if ($cell->facility_scale >= $maximumScale) {
-                    throw new PlayerFacingCommandException('施設の規模が上限に達しています。');
-                }
-                $facilityExpansion = true;
+            $maximumScale = $this->facilityRanks->maximumScale($rulesetSettings, $cell->facility);
+            if ($cell->facility_scale >= $maximumScale) {
+                throw new PlayerFacingCommandException('施設の規模が上限に達しています。');
             }
+            $facilityExpansion = true;
         }
         if (SettlementOverbuildPolicy::protectsCapital($definition->key, $facilityKey)) {
             throw new PlayerFacingCommandException('首都を通常建設commandで上書きすることはできません。');
@@ -1732,7 +1761,6 @@ final class CommandQueueService
      * Other future-plan state remains subject to the existing execution-time
      * revalidation contract.
      *
-     * @param  array{terrain_key: string, facility_key: string|null, owner_nation_id: int|null}  $projectedState
      * @param  array<string, mixed>  $rulesetSettings
      */
     private function assertFacilityExpansionRegistration(
@@ -1765,16 +1793,41 @@ final class CommandQueueService
         if (! $facility instanceof FacilityDefinition) {
             throw new PlayerFacingCommandException('施設定義が不完全です。');
         }
-        $rankContract = $this->facilityRanks->contract($rulesetSettings, $facility->key);
-        if ($rankContract === null) {
-            return;
-        }
         if (! is_int($target->facility_scale)) {
             throw new PlayerFacingCommandException('施設の規模情報が不完全です。');
         }
         $maximumScale = $this->facilityRanks->maximumScale($rulesetSettings, $facility);
         if ($target->facility_scale >= $maximumScale) {
             throw new PlayerFacingCommandException('施設の規模が上限に達しています。');
+        }
+    }
+
+    /**
+     * @param  array{terrain_key: string, facility_key: string|null, owner_nation_id: int|null}  $projectedState
+     * @param  array<string, mixed>  $rulesetSettings
+     */
+    private function assertCentralFacilityLimit(
+        CommandDefinition $definition,
+        MapCell $target,
+        array $rulesetSettings,
+        Nation $nation,
+    ): void {
+        $facilityKey = $definition->result_facility_key;
+        $contract = is_string($facilityKey)
+            ? ($rulesetSettings['central_facilities']['definitions'][$facilityKey] ?? null)
+            : null;
+        if (! is_array($contract)) {
+            return;
+        }
+        if (($contract['maximum_per_nation'] ?? null) !== 1) {
+            throw new DomainException("Central facility {$facilityKey} has an invalid Nation limit.");
+        }
+        if (MapCell::query()
+            ->where('owner_nation_id', $nation->id)
+            ->where('id', '<>', $target->id)
+            ->whereHas('facility', fn ($query) => $query->where('key', $facilityKey))
+            ->exists()) {
+            throw new PlayerFacingCommandException('中央施設は1島に同じ種類を1個だけ建設できます。');
         }
     }
 

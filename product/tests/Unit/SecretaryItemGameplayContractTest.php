@@ -93,17 +93,6 @@ final class SecretaryItemGameplayContractTest extends TestCase
         $this->assertSame($drop['monster_tables']['king_inora'], $drop['monster_tables']['nyowamiya']);
     }
 
-    public function test_v20_monster_drop_table_remains_valid_without_nyowamiya(): void
-    {
-        $settings = require config_path('hakoniwa/rulesets/hakoniwa-2s-plus-v20.php');
-        $contract = app(SecretaryMonsterDropContract::class);
-
-        $contract->validate($settings);
-
-        $this->assertArrayNotHasKey('nyowamiya', $settings['monster_system']['item_drop']['monster_tables']);
-        $this->assertNull($contract->table($settings, 'nyowamiya'));
-    }
-
     public function test_current_contract_validates_and_resolves_exact_player_text(): void
     {
         $settings = CurrentRulesetFixture::settings();
@@ -138,48 +127,6 @@ final class SecretaryItemGameplayContractTest extends TestCase
         $this->assertSame(
             'secretary_item:old_bow:nation:7:target:v1',
             TurnRandomStreamFactory::secretaryOldBow(7, 'target', 1),
-        );
-    }
-
-    public function test_final_v16_reuses_novice_defaults_and_resolves_the_seven_new_item_effects(): void
-    {
-        $settings = require config_path('hakoniwa/rulesets/hakoniwa-2s-plus-v16.php');
-        $contract = app(SecretaryItemGameplayContract::class);
-        $catalog = app(SecretaryItemCatalog::class);
-
-        $contract->validate($settings);
-        $this->assertSame(['accessory', 'bow', 'clothing'], array_keys($settings['secretary']['item_categories']));
-        $this->assertSame(99, $catalog->maximumEquipped('accessory'));
-        $this->assertSame(1, $catalog->maximumEquipped('clothing'));
-        $this->assertSame(1, $catalog->sameItemMaximum(SecretaryItemCatalog::RING));
-        $this->assertSame(1, $catalog->sameItemMaximum(SecretaryItemCatalog::VAULT_KEY));
-        $this->assertCount(9, $settings['secretary']['items']);
-        foreach ($settings['secretary']['items'] as $item) {
-            $this->assertArrayNotHasKey('same_item_max_equipped', $item);
-        }
-        $this->assertSame(
-            '秘書本人が経験値を得る際、10%の確率でその獲得経験値を2倍にする。',
-            $contract->effectText($settings, SecretaryItemCatalog::SECRETARY_SUIT, 10),
-        );
-        $this->assertArrayNotHasKey(
-            'excluded_skill_keys',
-            $settings['secretary']['items'][SecretaryItemCatalog::SECRETARY_SUIT]['effects'][0],
-        );
-        $this->assertSame(
-            '自島の通常怪獣自然出現率 +50%',
-            $contract->effectText($settings, SecretaryItemCatalog::INORA_BRACELET, 5),
-        );
-        $this->assertSame(
-            '食料最大値 +2%',
-            $contract->effectText($settings, SecretaryItemCatalog::FULLNESS_HERB, 1),
-        );
-        $this->assertSame(
-            '食料最大値 +6%',
-            $contract->effectText($settings, SecretaryItemCatalog::FULLNESS_HERB, 3),
-        );
-        $this->assertSame(
-            'secretary_item:secretary_suit:nation:7:monster_experience:v1',
-            TurnRandomStreamFactory::secretaryExperience(7, 'monster_experience', 1),
         );
     }
 

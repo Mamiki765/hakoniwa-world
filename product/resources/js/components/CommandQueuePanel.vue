@@ -7,9 +7,11 @@ import type {
     CommandDefinition,
     CommandQueue,
     CommandQueueItem,
+    DailyQuestProgress,
     EffectivePlanSlot,
     MapCell,
     Nation,
+    ParadoxBalance,
     ShipOverlay,
     UndergroundFacilityTarget,
 } from '../types';
@@ -47,9 +49,12 @@ const props = defineProps<{
 const emit = defineEmits<{
     queue: [queue: CommandQueue];
     ship: [ship: ShipOverlay];
+    dailyQuest: [quest: DailyQuestProgress];
 }>();
 
 const definitions = ref<CommandDefinition[]>([]);
+const paradox = ref<ParadoxBalance | null>(null);
+const activeCommandGroup = ref<'normal' | 'paradox'>('normal');
 const quantityContract = ref({
     type: 'integer' as const,
     minimum: 1,
@@ -89,7 +94,9 @@ let refreshRequestedAfterMutation = false;
 let disposed = false;
 
 const basePath = (nationId = props.nationId, mapSpaceId = props.mapSpaceId) => `/api/v1/nations/${nationId}/map-spaces/${mapSpaceId}`;
-const applicableDefinitions = computed(() => definitions.value.filter((definition) => definition.applicable));
+const applicableDefinitions = computed(() => definitions.value.filter(
+    (definition) => definition.applicable && (definition.command_group ?? 'normal') === activeCommandGroup.value,
+));
 const pendingQuantityIsValid = computed(() => quantityIsValid(pendingQuantity.value));
 const editingQuantityIsValid = computed(() => quantityIsValid(editingQuantity.value));
 const pendingCostMoney = computed(() => {
@@ -200,6 +207,8 @@ async function refresh(): Promise<void> {
 
         if (generation !== refreshGeneration) return;
         definitions.value = nextDefinitions.commands;
+        paradox.value = nextDefinitions.paradox ?? null;
+        if (underground !== null) activeCommandGroup.value = 'normal';
         quantityContract.value = nextDefinitions.quantity_contract;
         applyServerQueue(nextQueue);
     } catch (error) {
@@ -283,6 +292,7 @@ async function bulkInsert(action: 'clear_all' | 'level_all' | 'reclaim_clear_all
             inserted_count: number;
             truncated_count: number;
             candidate_count: number;
+            daily_quest: DailyQuestProgress | null;
         }>(`${basePath()}/command-queue/bulk`, {
             method: 'POST',
             body: JSON.stringify({
@@ -297,6 +307,7 @@ async function bulkInsert(action: 'clear_all' | 'level_all' | 'reclaim_clear_all
             return;
         }
         applyServerQueue(result.queue);
+        if (result.daily_quest?.completed_now === true) emit('dailyQuest', result.daily_quest);
         commandStatus.value = result.truncated_count > 0
             ? { kind: 'success', text: `${result.inserted_count}件を登録し、31件目以降の${result.truncated_count}件を末尾から切り捨てました` }
             : { kind: 'success', text: `${result.inserted_count}件を登録しました` };
@@ -381,7 +392,7 @@ async function addCommand(
     beginMutation();
 
     try {
-        const result = await api<{ queue: CommandQueue }>(`${path}/command-queue`, {
+        const result = await api<{ queue: CommandQueue; daily_quest?: DailyQuestProgress | null }>(`${path}/command-queue`, {
             method: 'POST',
             body: JSON.stringify({
                 command_key: definition.key,
@@ -403,6 +414,7 @@ async function addCommand(
         }
         selectedItemId.value = null;
         applyServerQueue(result.queue);
+        if (result.daily_quest?.completed_now === true) emit('dailyQuest', result.daily_quest);
         if (selectedPosition.value === submittedPosition) {
             selectedPosition.value = clampPosition(submittedPosition + 1, result.queue.limit);
         }
@@ -712,6 +724,30 @@ onBeforeUnmount(() => {
                 </section>
                 <section class="available-commands">
                     <h3>適用できるコマンド</h3>
+                    <div v-if="!selectedUnderground" class="command-group-tabs" role="tablist" aria-label="コマンド種別">
+                        <button
+                            type="button"
+                            role="tab"
+                            :aria-selected="activeCommandGroup === 'normal'"
+                            :class="{ active: activeCommandGroup === 'normal' }"
+                            @click="activeCommandGroup = 'normal'"
+                        >
+                            通常
+                        </button>
+                        <button
+                            type="button"
+                            role="tab"
+                            :aria-selected="activeCommandGroup === 'paradox'"
+                            :class="{ active: activeCommandGroup === 'paradox' }"
+                            @click="activeCommandGroup = 'paradox'"
+                        >
+                            輝石
+                        </button>
+                    </div>
+                    <aside v-if="!selectedUnderground && activeCommandGroup === 'paradox' && paradox" class="paradox-balance" aria-label="輝石残高">
+                        <strong>{{ paradox.name }}: {{ paradox.balance.toLocaleString() }} {{ paradox.unit }}</strong>
+                        <p>{{ paradox.description }}</p>
+                    </aside>
                     <p
                         class="command-status"
                         :class="`command-status--${commandStatus.kind}`"
@@ -737,9 +773,11 @@ onBeforeUnmount(() => {
                                 >{{ definition.command_suffix }}</span>
                             </strong>
                             <span>{{ formatExactMoney(definition.cost_money) }}</span>
+                            <span v-if="(definition.cost_paradox ?? 0) > 0">{{ definition.cost_paradox }} Pd</span>
                             <span class="turn-cost-badge">{{ definition.consumes_turn ? '1ターン' : 'ターン消費なし' }}</span>
                             <span v-if="definition.initial_facility_capacity">初期 {{ definition.initial_facility_capacity.formatted }}</span>
                             <span v-if="definition.shortfall_money > 0" class="shortfall">資金が{{ formatExactMoney(definition.shortfall_money) }}不足</span>
+                            <span v-if="(definition.shortfall_paradox ?? 0) > 0" class="shortfall">輝石が{{ definition.shortfall_paradox }} Pd不足</span>
                             <span v-if="definition.execution_warnings.length" class="shortfall">注意事項あり</span>
                         </button>
                     </div>
@@ -860,6 +898,7 @@ onBeforeUnmount(() => {
                 </p>
                 <form @submit.prevent="addPendingCommand">
                     <p v-for="warning in pendingDefinition.execution_warnings" :key="warning" class="shortfall">{{ warning }}</p>
+                    <p v-if="(pendingDefinition.cost_paradox ?? 0) > 0" class="selector-cost">必要な輝石 {{ pendingDefinition.cost_paradox }} Pd</p>
                     <section v-if="pendingNeedsConfirmation" aria-label="最新計画の再確認">
                         <p>入力と対象は保持しています。最新の計画を確認してください（この位置へ挿入します）。</p>
                         <ol>

@@ -355,6 +355,56 @@ class LandSubsidenceTurnTest extends TestCase
         $this->assertSame($nation->id, $capital->owner_nation_id);
     }
 
+    public function test_v23_land_subsidence_reduces_a_coastal_central_facility_by_five_without_revealing_it_publicly(): void
+    {
+        [$world, $nation, $ruleset, $space, $owner] = $this->worldAndNation();
+        $this->resetSurface($space);
+        $cells = MapCell::query()->where('map_space_id', $space->id)->orderBy('id')->limit(101)->get();
+        foreach ($cells as $cell) {
+            $this->setCell($cell, 'plain', null, $nation->id, 0);
+        }
+        $central = $this->cellAt($space, 0, 0);
+        $this->setCell($central, 'plain', 'central_bank', $nation->id, 0);
+        $central = $central->fresh(['terrain', 'facility']);
+        $central->facility_scale = 8;
+        $central->save();
+        [$context, $run] = $this->context($world, $ruleset, hash('sha256', 'v23-central-subsidence'));
+
+        $metrics = app(DisasterTurnService::class)->executeGlobal($context);
+
+        $after = $central->fresh(['terrain', 'facility']);
+        $this->assertSame(1, $metrics['land_subsidence_central_facilities_damaged']);
+        $this->assertSame(3, $after->facility_scale);
+        $this->assertSame('central_bank', $after->facility?->key);
+        $this->assertSame('plain', $after->terrain->key);
+        $this->assertSame($nation->id, $after->owner_nation_id);
+        $damage = DB::table('audit_events')->where('event_type', 'facility.partially_damaged')
+            ->whereRaw("metadata->>'turn_run_id' = ?", [(string) $run->id])->sole();
+        $this->assertSame('private', $damage->visibility);
+        $this->assertSame($nation->id, (int) $damage->nation_id);
+        $metadata = json_decode((string) $damage->metadata, true, 512, JSON_THROW_ON_ERROR);
+        $this->assertSame('land_subsidence', $metadata['source_key']);
+        $this->assertSame(5, $metadata['scale_loss']);
+
+        $world->update(['current_turn' => 2]);
+        $ownerEvents = $this->actingAs($owner)->getJson("/api/v1/nations/{$nation->id}/events")
+            ->assertOk()
+            ->json('data.groups.0.events');
+        $this->assertContains(
+            '沈下試験国(0,0)の中央銀行が地盤沈下により損傷し、Lv8からLv3へ低下しました。',
+            array_column($ownerEvents, 'message'),
+        );
+
+        $publicGroups = $this->getJson("/api/v1/public/worlds/{$world->id}/events")
+            ->assertOk()
+            ->json('data.groups');
+        $publicMessages = collect($publicGroups)
+            ->flatMap(static fn (array $group): array => array_column($group['events'], 'message'));
+        $this->assertFalse($publicMessages->contains(
+            static fn (string $message): bool => str_contains($message, '中央銀行'),
+        ));
+    }
+
     public function test_production_60_by_60_world_runs_the_integrated_land_subsidence_phase(): void
     {
         [$world, $nation, $ruleset, $space] = $this->worldAndNation(WorldGenerationProfile::Production);

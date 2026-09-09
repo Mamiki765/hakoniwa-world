@@ -365,7 +365,7 @@ class ApiAndAssetTest extends TestCase
         $otherResponse = $this->actingAs($other)->getJson("/api/v1/nations/{$nation['id']}")->assertOk();
         $otherResponse->assertJsonPath('data.owner_name', 'API島主')
             ->assertJsonPath('data.comment', '公開プロフィール')
-            ->assertJsonPath('data.money_display', '約62,000億円')
+            ->assertJsonPath('data.money_display', '約6.2兆円')
             ->assertJsonPath('data.food_total_tons', 10_250)
             ->assertJsonPath('data.farm_capacity_people', 10_000)
             ->assertJsonPath('data.factory_capacity_people', 30_000)

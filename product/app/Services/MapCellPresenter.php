@@ -63,10 +63,16 @@ final class MapCellPresenter
                 : $this->facility($visibleState['facility_key']));
         $ship = $this->ship($cell, $viewerNationId);
         $displayDefinition = $facility ?? $terrain;
+        $centralPresentation = $facility !== null
+            && $facility->key === $cell->facility?->key
+            && $cell->facility_scale !== null
+            ? $this->centralFacilityPresentation($rulesetSettings, $facility, (int) $cell->facility_scale)
+            : null;
         $facilityPresentation = $facility !== null
             && $facility->key === $cell->facility?->key
             && $facility->scale_unit_people !== null
             && $cell->facility_scale !== null
+            && $centralPresentation === null
             ? $this->facilityRanks->presentation($rulesetSettings, $facility, (int) $cell->facility_scale)
             : null;
         $displayAssetKey = $ship['asset_key'] ?? ($facility?->key === 'monument' && $cell->monumentDefinition !== null
@@ -74,7 +80,7 @@ final class MapCellPresenter
             : ($facilityPresentation['asset_key'] ?? $displayDefinition->asset_key));
         $displayName = $ship['name'] ?? ($facility?->key === 'monument' && $cell->monumentDefinition !== null
             ? $cell->monumentDefinition->name
-            : ($facilityPresentation['name'] ?? $displayDefinition->name));
+            : ($centralPresentation['name'] ?? $facilityPresentation['name'] ?? $displayDefinition->name));
         $layers = $this->assets->resolveLayers($displayAssetKey, $displayName, theme: $theme);
         if ($facilityPresentation !== null
             && ! $layers['completed']['available']
@@ -91,6 +97,7 @@ final class MapCellPresenter
             $seaAreaName,
             $rulesetSettings,
             $facilityPresentation,
+            $centralPresentation,
         );
         $monster = $this->monster($cell, $currentTurn, $neutralizeOwnership);
 
@@ -102,7 +109,7 @@ final class MapCellPresenter
             'facility' => $facility?->key,
             'facility_name' => $facility?->key === 'monument'
                 ? $displayName
-                : ($facilityPresentation['name'] ?? $facility?->name),
+                : ($centralPresentation['name'] ?? $facilityPresentation['name'] ?? $facility?->name),
             'display_name' => $displayName,
             'sea_area_name' => $seaAreaName,
             'owner_nation_id' => $visibleState['owner_nation_id'],
@@ -241,6 +248,7 @@ final class MapCellPresenter
     /**
      * @param  array<string, mixed>  $rulesetSettings
      * @param  array<string, mixed>|null  $facilityPresentation
+     * @param  array{name:string, level:int, maximum_level:int}|null  $centralPresentation
      * @return array<int, array{key: string, label: string, value: int|string, unit: string|null, formatted: string, visibility: string}>
      */
     private function details(
@@ -250,6 +258,7 @@ final class MapCellPresenter
         string $seaAreaName,
         array $rulesetSettings,
         ?array $facilityPresentation,
+        ?array $centralPresentation,
     ): array {
         if ($isDisguised) {
             return [$this->detail('sea_area', '海域', $seaAreaName, null, $seaAreaName, 'public')];
@@ -272,13 +281,18 @@ final class MapCellPresenter
         }
 
         $facility = $cell->facility;
-        if ($facility?->scale_unit_people !== null && $cell->facility_scale !== null) {
+        if ($facility?->scale_unit_people !== null && $cell->facility_scale !== null && $centralPresentation === null) {
             $capacity = $this->capacities->capacityPeople(
                 $facility,
                 $cell->facility_scale,
                 $this->facilityRanks->maximumScale($rulesetSettings, $facility),
             );
             $details[] = $this->detail('facility_capacity', '規模', $capacity, '人', number_format($capacity).'人規模', 'public');
+        }
+        if ($centralPresentation !== null) {
+            $level = $centralPresentation['level'];
+            $maximum = $centralPresentation['maximum_level'];
+            $details[] = $this->detail('facility_level', 'Lv', $level, null, "Lv{$level}/{$maximum}", 'public');
         }
         if ($facilityPresentation !== null) {
             $rank = (int) $facilityPresentation['rank'];
@@ -308,6 +322,28 @@ final class MapCellPresenter
         }
 
         return $details;
+    }
+
+    /**
+     * @param  array<string, mixed>  $rulesetSettings
+     * @return array{name:string, level:int, maximum_level:int}|null
+     */
+    private function centralFacilityPresentation(array $rulesetSettings, FacilityDefinition $facility, int $level): ?array
+    {
+        $definition = $rulesetSettings['central_facilities']['definitions'][$facility->key] ?? null;
+        if (! is_array($definition) || ($definition['facility_key'] ?? null) !== $facility->key) {
+            return null;
+        }
+        $maximum = $facility->maximum_scale;
+        if (! is_int($maximum) || $level < 1 || $level > $maximum) {
+            return null;
+        }
+
+        return [
+            'name' => $facility->name.' Lv'.$level,
+            'level' => $level,
+            'maximum_level' => $maximum,
+        ];
     }
 
     /** @return array{key: string, label: string, value: int|string, unit: string|null, formatted: string, visibility: string} */

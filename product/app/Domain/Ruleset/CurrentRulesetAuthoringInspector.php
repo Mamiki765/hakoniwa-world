@@ -29,6 +29,9 @@ final class CurrentRulesetAuthoringInspector
     /** @var list<string> */
     private const V21_ADDITIONAL_DOMAIN_FILES = ['facility-ranks.php'];
 
+    /** @var list<string> */
+    private const V23_ADDITIONAL_DOMAIN_FILES = ['central-facilities.php'];
+
     /** @var array<string, string> */
     private const V17_DOMAIN_OVERRIDES = [
         'world-and-map.php' => 'v17/world-and-map.php',
@@ -83,6 +86,16 @@ final class CurrentRulesetAuthoringInspector
         'secretary.php' => 'v22/secretary.php',
     ];
 
+    /** @var array<string, string> */
+    private const V23_DOMAIN_OVERRIDES = [
+        ...self::V22_DOMAIN_OVERRIDES,
+        'world-and-map.php' => 'v23/world-and-map.php',
+        'facilities.php' => 'v23/facilities.php',
+        'commands-and-production.php' => 'v23/commands-and-production.php',
+        'central-facilities.php' => 'v23/central-facilities.php',
+        'monsters-and-military.php' => 'v23/monsters-and-military.php',
+    ];
+
     private const CLASSIFICATIONS = ['behavior', 'data', 'flavor'];
 
     /**
@@ -92,14 +105,21 @@ final class CurrentRulesetAuthoringInspector
     public function inspect(array $publishedPayload): array
     {
         $rulesetKey = $publishedPayload['key'] ?? null;
-        if (! in_array($rulesetKey, ['hakoniwa-2s-plus-v16', 'hakoniwa-2s-plus-v17', 'hakoniwa-2s-plus-v18', 'hakoniwa-2s-plus-v19', 'hakoniwa-2s-plus-v20', 'hakoniwa-2s-plus-v21', 'hakoniwa-2s-plus-v22'], true)) {
-            throw new DomainException('Ruleset authoring inspection supports only immutable v16 through v21 and the current v22 draft.');
+        if (! in_array($rulesetKey, ['hakoniwa-2s-plus-v16', 'hakoniwa-2s-plus-v17', 'hakoniwa-2s-plus-v18', 'hakoniwa-2s-plus-v19', 'hakoniwa-2s-plus-v20', 'hakoniwa-2s-plus-v21', 'hakoniwa-2s-plus-v22', 'hakoniwa-2s-plus-v23'], true)) {
+            throw new DomainException('Ruleset authoring inspection supports only immutable v16 through v22 and the current v23 draft.');
         }
         $authoredLeaves = [];
         $classifiedPaths = [];
         $counts = array_fill_keys(self::CLASSIFICATIONS, 0);
 
         $domainFiles = match ($rulesetKey) {
+            'hakoniwa-2s-plus-v23' => [
+                ...self::DOMAIN_FILES,
+                ...self::V19_ADDITIONAL_DOMAIN_FILES,
+                ...self::V20_ADDITIONAL_DOMAIN_FILES,
+                ...self::V21_ADDITIONAL_DOMAIN_FILES,
+                ...self::V23_ADDITIONAL_DOMAIN_FILES,
+            ],
             'hakoniwa-2s-plus-v21', 'hakoniwa-2s-plus-v22' => [
                 ...self::DOMAIN_FILES,
                 ...self::V19_ADDITIONAL_DOMAIN_FILES,
@@ -116,6 +136,7 @@ final class CurrentRulesetAuthoringInspector
         };
         foreach ($domainFiles as $file) {
             $relativePath = match ($rulesetKey) {
+                'hakoniwa-2s-plus-v23' => self::V23_DOMAIN_OVERRIDES[$file] ?? 'current/'.$file,
                 'hakoniwa-2s-plus-v22' => self::V22_DOMAIN_OVERRIDES[$file] ?? 'current/'.$file,
                 'hakoniwa-2s-plus-v21' => self::V21_DOMAIN_OVERRIDES[$file] ?? 'current/'.$file,
                 'hakoniwa-2s-plus-v20' => self::V20_DOMAIN_OVERRIDES[$file] ?? 'current/'.$file,

@@ -104,6 +104,11 @@ final class MonsterSpawnService
                 $populationEligibleNationIds,
                 $rankTwoCondition['facility_keys'],
             );
+        $centralFacilityLevels = $this->centralFacilityLevels(
+            $context,
+            $space,
+            $populationEligibleNationIds,
+        );
         $settlementKeys = $system['settlement_facility_keys'] ?? [];
         $cells = MapCell::query()
             ->where('map_space_id', $space->id)
@@ -199,6 +204,14 @@ final class MonsterSpawnService
             $hp = $definition->base_hp + $context->random->stream(
                 TurnRandomStreamFactory::monsterSpawn($nation->id, 'hp', $streamVersion),
             )->integer(0, $definition->hp_variation);
+            $baseRandomHp = $hp;
+            $centralLevel = $centralFacilityLevels[$nation->id] ?? 0;
+            $hp = $this->applyCentralFacilityHpBonus(
+                $context,
+                (int) $nation->id,
+                $hp,
+                $centralLevel,
+            );
 
             $beforeFacility = $cell->facility?->key;
             $beforePopulation = $cell->population;
@@ -229,6 +242,8 @@ final class MonsterSpawnService
                 'x' => $cell->x,
                 'y' => $cell->y,
                 'initial_hp' => $hp,
+                'base_random_hp' => $baseRandomHp,
+                'central_facility_level_total' => $centralLevel,
                 'removed_facility_key' => $beforeFacility,
                 'before_population' => $beforePopulation,
                 'after_population' => 0,
@@ -424,5 +439,83 @@ final class MonsterSpawnService
         }
 
         return $rankTwoNationIds;
+    }
+
+    /**
+     * @param  list<int>  $nationIds
+     * @return array<int, int>
+     */
+    private function centralFacilityLevels(TurnContext $context, MapSpace $space, array $nationIds): array
+    {
+        $contract = $context->ruleset->settings['central_facilities']['natural_monster_hp'] ?? null;
+        if ($contract === null) {
+            return [];
+        }
+        if (! is_array($contract)
+            || ($contract['facility_keys'] ?? null) !== ['central_bank', 'central_granary']
+            || ($contract['level_aggregation'] ?? null) !== 'sum') {
+            throw new DomainException('The active Ruleset has an invalid central-facility monster HP contract.');
+        }
+
+        $levels = [];
+        $seen = [];
+        $cells = MapCell::query()
+            ->where('map_space_id', $space->id)
+            ->whereIn('owner_nation_id', $nationIds)
+            ->whereHas('facility', fn ($query) => $query->whereIn('key', $contract['facility_keys']))
+            ->with('facility')
+            ->orderBy('id')
+            ->lockForUpdate()
+            ->get();
+        foreach ($cells as $cell) {
+            $nationId = $cell->owner_nation_id;
+            $facilityKey = $cell->facility?->key;
+            $level = $cell->facility_scale;
+            if (! is_int($nationId) || ! is_string($facilityKey) || ! is_int($level) || $level < 1 || $level > 90) {
+                throw new DomainException('A central facility has invalid persisted level data.');
+            }
+            $identity = $nationId.':'.$facilityKey;
+            if (isset($seen[$identity])) {
+                throw new DomainException('A Nation has duplicate central facilities of one type.');
+            }
+            $seen[$identity] = true;
+            $levels[$nationId] = ($levels[$nationId] ?? 0) + $level;
+        }
+
+        return $levels;
+    }
+
+    private function applyCentralFacilityHpBonus(
+        TurnContext $context,
+        int $nationId,
+        int $baseHp,
+        int $level,
+    ): int {
+        if ($level === 0) {
+            return $baseHp;
+        }
+        $contract = $context->ruleset->settings['central_facilities']['natural_monster_hp'] ?? null;
+        if (! is_array($contract)
+            || ($contract['percent_per_level'] ?? null) !== 1
+            || ($contract['rounding'] ?? null) !== 'independent_fractional_draw'
+            || ($contract['draw_denominator'] ?? null) !== 100
+            || ! is_int($contract['stream_version'] ?? null)) {
+            throw new DomainException('The active Ruleset has invalid central-facility monster HP arithmetic.');
+        }
+        $numerator = $baseHp * (100 + $level);
+        $hp = intdiv($numerator, 100);
+        $remainder = $numerator % 100;
+        if ($remainder > 0) {
+            $draw = $context->random->stream(TurnRandomStreamFactory::monsterSpawn(
+                $nationId,
+                'hp_fraction',
+                $contract['stream_version'],
+            ))->integer(1, 100);
+            if ($draw <= $remainder) {
+                $hp++;
+            }
+        }
+
+        return $hp;
     }
 }

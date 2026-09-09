@@ -975,12 +975,12 @@ final class CompleteTurnEngine
                         ->where('nation_id', $nation->id)
                         ->where('resource_definition_id', $resource->id)
                         ->lockForUpdate()
-                        ->value('policy');
-                    $policy = $storedPolicy ?? $settings['default_sale_policy'];
+                        ->first(['policy', 'keep_amount']);
+                    $policy = $storedPolicy?->policy ?? $settings['default_sale_policy'];
                     if (! SalePolicy::isSupported($policy)) {
                         throw new DomainException("Stored sale policy for {$resource->key} is invalid.");
                     }
-                    if ($policy === SalePolicy::Stockpile->value) {
+                    if ($resource->tradable) {
                         $rate = $this->inventorySaleRate($settings['inventory_sale_rates'], $resourceKey);
                         $quote = $this->salePlanner->plan(
                             $overflow,
@@ -996,7 +996,7 @@ final class CompleteTurnEngine
                             $this->events->record($context, 'resource.automatic_sale', $nation, [
                                 'resource_key' => $resourceKey,
                                 'policy' => $policy,
-                                'keep_amount' => null,
+                                'keep_amount' => $storedPolicy?->keep_amount,
                                 'before' => $before,
                                 'requested' => $overflow,
                                 'sold' => $quote->inventorySold,

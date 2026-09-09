@@ -13,13 +13,6 @@ return [
             'リカ・サキュバス',
         ],
     ],
-    // Display-only remarks. This catalog is intentionally outside combat data;
-    // adding or reordering a remark must not alter any battle seed or result.
-    'guide_banter' => [
-        ['key' => 'quiet_room', 'text' => '……静かですね。こういう日も、嫌いではありませんよ。'],
-        ['key' => 'old_map', 'text' => '地図は読めても、心までは読めないものです。'],
-        ['key' => 'small_pause', 'text' => '少し休んだら、また自分の速さで進めばいいんです。'],
-    ],
     'recollections' => [
         'identity' => 'secretary-underground-recollections-owner-v1',
         'past' => [

@@ -176,7 +176,7 @@ final class TurnRandomStreamFactory
     public static function monsterSpawn(int $nationId, string $purpose, int $streamVersion): string
     {
         if ($nationId < 1 || $streamVersion < 1
-            || ! in_array($purpose, ['trigger', 'candidate', 'type', 'hp'], true)) {
+            || ! in_array($purpose, ['trigger', 'candidate', 'type', 'hp', 'hp_fraction'], true)) {
             throw new InvalidArgumentException('Monster-spawn stream identity is invalid.');
         }
 

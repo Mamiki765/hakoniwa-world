@@ -2,6 +2,7 @@
 
 namespace App\Application\Underground;
 
+use App\Application\DailyQuestService;
 use App\Application\SecretaryImageRetentionService;
 use App\Application\SecretaryProfilePresenter;
 use App\Application\VisitorCodeAllocator;
@@ -37,6 +38,8 @@ use RuntimeException;
 
 final readonly class UndergroundRuntimeService
 {
+    public const MAX_BULK_SKIP_EXECUTIONS = 1_000;
+
     private const TRIAL_ONE_FIRST_CLEAR_STORY_TITLE = '●封印の解放';
 
     private const TRIAL_TWO_FIRST_CLEAR_STORY_TITLE = 'デュラハンの撃破と案内人';
@@ -124,11 +127,12 @@ STORY;
         private SecretaryProfilePresenter $secretaryPresenter,
         private VisitorCodeAllocator $visitorCodes,
         private SecretaryImageRetentionService $imageRetention,
+        private DailyQuestService $dailyQuests,
     ) {}
 
     /**
      * @param  list<int>  $borrowedSecretaryIds
-     * @return array{battle: UndergroundBattle, duplicate: bool}
+     * @return array{battle: UndergroundBattle, duplicate: bool, daily_quest: array<string, int|string|bool>}
      */
     public function explore(
         User $user,
@@ -208,7 +212,14 @@ STORY;
                         $huntingGroundKey,
                     );
                     if ($duplicate instanceof UndergroundBattle) {
-                        return ['battle' => $duplicate, 'duplicate' => true];
+                        return [
+                            'battle' => $duplicate,
+                            'duplicate' => true,
+                            'daily_quest' => $this->dailyQuests->currentStatus(
+                                $user->id,
+                                DailyQuestService::UNDERGROUND_BATTLES,
+                            ),
+                        ];
                     }
                     if ($borrowedSecretaryIds !== []) {
                         if ($leaderSyncInputs === null
@@ -241,8 +252,7 @@ STORY;
                         $huntingGroundKey,
                     );
 
-                    return [
-                        'battle' => $borrowedSecretaryIds === []
+                    $battle = $borrowedSecretaryIds === []
                             ? $this->resolveAndSettleExplorationBattle(
                                 $profile,
                                 $requestId,
@@ -259,8 +269,16 @@ STORY;
                                 $encounterKey,
                                 $seed,
                                 $preparedBorrowed,
-                            ),
+                            );
+
+                    return [
+                        'battle' => $battle,
                         'duplicate' => false,
+                        'daily_quest' => $this->dailyQuests->recordUndergroundBattles(
+                            $user->id,
+                            1,
+                            'battle:'.$battle->id,
+                        ),
                     ];
                 }, 3);
             } catch (UndergroundRuntimeException $exception) {
@@ -271,7 +289,7 @@ STORY;
         } while (true);
     }
 
-    /** @return array{settlement: UndergroundSkipSettlement, duplicate: bool} */
+    /** @return array{settlement: UndergroundSkipSettlement, duplicate: bool, daily_quest: array<string, int|string|bool>} */
     public function skipHuntingGround(User $user, string $requestId, string $huntingGroundKey): array
     {
         $this->assertRequestId($requestId);
@@ -298,7 +316,14 @@ STORY;
             $this->assertHuntingGroundUnlocked($profile, $huntingGround);
             $duplicate = $this->duplicateSkipSettlement($profile, $requestId, $fingerprint);
             if ($duplicate instanceof UndergroundSkipSettlement) {
-                return ['settlement' => $duplicate, 'duplicate' => true];
+                return [
+                    'settlement' => $duplicate,
+                    'duplicate' => true,
+                    'daily_quest' => $this->dailyQuests->currentStatus(
+                        $user->id,
+                        DailyQuestService::UNDERGROUND_BATTLES,
+                    ),
+                ];
             }
             $this->assertSkipRequestIdentityAvailable($profile, $requestId);
             if ($this->lockedActiveTrialRun($profile) instanceof UndergroundTrialRun) {
@@ -371,11 +396,19 @@ STORY;
             $progress->total_clear_count++;
             $progress->save();
 
-            return ['settlement' => $settlement->refresh(), 'duplicate' => false];
+            return [
+                'settlement' => $settlement->refresh(),
+                'duplicate' => false,
+                'daily_quest' => $this->dailyQuests->recordUndergroundBattles(
+                    $user->id,
+                    1,
+                    'skip-settlement:'.$settlement->id,
+                ),
+            ];
         }, 3);
     }
 
-    /** @return array{settlement: UndergroundSkipSettlement, duplicate: bool} */
+    /** @return array{settlement: UndergroundSkipSettlement, duplicate: bool, daily_quest: array<string, int|string|bool>} */
     public function skipTrial(User $user, string $requestId, string $trialKey): array
     {
         $this->assertRequestId($requestId);
@@ -410,7 +443,14 @@ STORY;
             }
             $duplicate = $this->duplicateSkipSettlement($profile, $requestId, $fingerprint);
             if ($duplicate instanceof UndergroundSkipSettlement) {
-                return ['settlement' => $duplicate, 'duplicate' => true];
+                return [
+                    'settlement' => $duplicate,
+                    'duplicate' => true,
+                    'daily_quest' => $this->dailyQuests->currentStatus(
+                        $user->id,
+                        DailyQuestService::UNDERGROUND_BATTLES,
+                    ),
+                ];
             }
             $this->assertSkipRequestIdentityAvailable($profile, $requestId);
             if ($this->lockedActiveTrialRun($profile) instanceof UndergroundTrialRun) {
@@ -497,11 +537,19 @@ STORY;
             $progress->total_clear_count++;
             $progress->save();
 
-            return ['settlement' => $settlement->refresh(), 'duplicate' => false];
+            return [
+                'settlement' => $settlement->refresh(),
+                'duplicate' => false,
+                'daily_quest' => $this->dailyQuests->recordUndergroundBattles(
+                    $user->id,
+                    10,
+                    'skip-settlement:'.$settlement->id,
+                ),
+            ];
         }, 3);
     }
 
-    /** @return array{batch: UndergroundSkipBatch, duplicate: bool} */
+    /** @return array{batch: UndergroundSkipBatch, duplicate: bool, daily_quest: array<string, int|string|bool>} */
     public function bulkSkipHuntingGround(
         User $user,
         string $requestId,
@@ -535,7 +583,14 @@ STORY;
             $this->assertHuntingGroundUnlocked($profile, $huntingGround);
             $duplicate = $this->duplicateSkipBatch($profile, $requestId, $fingerprint);
             if ($duplicate instanceof UndergroundSkipBatch) {
-                return ['batch' => $duplicate, 'duplicate' => true];
+                return [
+                    'batch' => $duplicate,
+                    'duplicate' => true,
+                    'daily_quest' => $this->dailyQuests->currentStatus(
+                        $user->id,
+                        DailyQuestService::UNDERGROUND_BATTLES,
+                    ),
+                ];
             }
             $this->assertSkipRequestIdentityAvailable($profile, $requestId);
             if ($this->lockedActiveTrialRun($profile) instanceof UndergroundTrialRun) {
@@ -644,11 +699,19 @@ STORY;
             $progress->total_clear_count += $executionCount;
             $progress->save();
 
-            return ['batch' => $batch->refresh(), 'duplicate' => false];
+            return [
+                'batch' => $batch->refresh(),
+                'duplicate' => false,
+                'daily_quest' => $this->dailyQuests->recordUndergroundBattles(
+                    $user->id,
+                    $executionCount,
+                    'skip-batch:'.$batch->id,
+                ),
+            ];
         }, 3);
     }
 
-    /** @return array{batch: UndergroundSkipBatch, duplicate: bool} */
+    /** @return array{batch: UndergroundSkipBatch, duplicate: bool, daily_quest: array<string, int|string|bool>} */
     public function bulkSkipTrial(
         User $user,
         string $requestId,
@@ -690,7 +753,14 @@ STORY;
             }
             $duplicate = $this->duplicateSkipBatch($profile, $requestId, $fingerprint);
             if ($duplicate instanceof UndergroundSkipBatch) {
-                return ['batch' => $duplicate, 'duplicate' => true];
+                return [
+                    'batch' => $duplicate,
+                    'duplicate' => true,
+                    'daily_quest' => $this->dailyQuests->currentStatus(
+                        $user->id,
+                        DailyQuestService::UNDERGROUND_BATTLES,
+                    ),
+                ];
             }
             $this->assertSkipRequestIdentityAvailable($profile, $requestId);
             if ($this->lockedActiveTrialRun($profile) instanceof UndergroundTrialRun) {
@@ -785,7 +855,15 @@ STORY;
             $progress->total_clear_count += $executionCount;
             $progress->save();
 
-            return ['batch' => $batch->refresh(), 'duplicate' => false];
+            return [
+                'batch' => $batch->refresh(),
+                'duplicate' => false,
+                'daily_quest' => $this->dailyQuests->recordUndergroundBattles(
+                    $user->id,
+                    10 * $executionCount,
+                    'skip-batch:'.$batch->id,
+                ),
+            ];
         }, 3);
     }
 
@@ -842,7 +920,7 @@ STORY;
         }, 3);
     }
 
-    /** @return array{battle: UndergroundBattle, duplicate: bool} */
+    /** @return array{battle: UndergroundBattle, duplicate: bool, daily_quest: array<string, int|string|bool>} */
     public function fightTrial(User $user, string $runKey, string $requestId): array
     {
         $this->assertRequestId($runKey);
@@ -857,7 +935,14 @@ STORY;
             $this->assertRequestNotUsedByIntro($profile, $requestId);
             $duplicate = $this->duplicateTrialBattle($profile, $requestId, $runKey);
             if ($duplicate instanceof UndergroundBattle) {
-                return ['battle' => $duplicate, 'duplicate' => true];
+                return [
+                    'battle' => $duplicate,
+                    'duplicate' => true,
+                    'daily_quest' => $this->dailyQuests->currentStatus(
+                        $user->id,
+                        DailyQuestService::UNDERGROUND_BATTLES,
+                    ),
+                ];
             }
 
             $run = UndergroundTrialRun::query()
@@ -885,19 +970,26 @@ STORY;
             }
             $seed = $this->battleSeed->forRequest($profile->id, $requestId, $trial['content_identity']);
 
+            $battle = $this->resolveAndSettleTrialBattle(
+                $profile,
+                $requestId,
+                $fingerprint,
+                $trial,
+                $encounterKey,
+                $seed,
+                $run,
+                $battleIndex,
+                $battleIndex === count($trial['encounters']),
+            );
+
             return [
-                'battle' => $this->resolveAndSettleTrialBattle(
-                    $profile,
-                    $requestId,
-                    $fingerprint,
-                    $trial,
-                    $encounterKey,
-                    $seed,
-                    $run,
-                    $battleIndex,
-                    $battleIndex === count($trial['encounters']),
-                ),
+                'battle' => $battle,
                 'duplicate' => false,
+                'daily_quest' => $this->dailyQuests->recordUndergroundBattles(
+                    $user->id,
+                    1,
+                    'battle:'.$battle->id,
+                ),
             ];
         }, 3);
     }
@@ -2922,10 +3014,10 @@ STORY;
 
     private function assertBulkSkipExecutionCount(int $executionCount): void
     {
-        if ($executionCount < 1) {
+        if ($executionCount < 1 || $executionCount > self::MAX_BULK_SKIP_EXECUTIONS) {
             throw new UndergroundRuntimeException(
                 'underground_skip_count_invalid',
-                'skip回数は1回以上で指定してください。',
+                'skip回数は1回以上1,000回以下で指定してください。',
             );
         }
     }

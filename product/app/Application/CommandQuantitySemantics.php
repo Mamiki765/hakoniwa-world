@@ -19,6 +19,8 @@ final class CommandQuantitySemantics
     /** @var list<string> */
     private const QUANTITY_COMMAND_KEYS = [
         'build_farm', 'build_factory', 'build_mine',
+        'build_fast_farm', 'build_fast_factory', 'build_fast_mine',
+        'build_central_bank', 'build_central_granary',
         'missile', 'pp_missile', 'land_destruction_missile', 'spp_missile',
     ];
 

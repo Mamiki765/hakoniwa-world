@@ -199,6 +199,47 @@ final class CapacityBoundedAssetService
         }, 1);
     }
 
+    public function creditResource(
+        Nation $nation,
+        ResourceDefinition $resource,
+        int $requested,
+        ?RulesetVersion $ruleset = null,
+    ): CapacityAdditionResult {
+        if ($resource->category === 'food' || ! $resource->storable) {
+            throw new DomainException('Resource capacity can only credit a storable non-food resource.');
+        }
+
+        return DB::transaction(function () use ($nation, $resource, $requested, $ruleset): CapacityAdditionResult {
+            $lockedNation = Nation::query()->whereKey($nation->id)->lockForUpdate()->firstOrFail();
+            $capacity = $this->capacities->resolve($lockedNation, $ruleset)->resource($resource->key);
+            if (! is_int($capacity)) {
+                throw new DomainException("Resource {$resource->key} has no authored storage capacity.");
+            }
+            $balance = NationResource::query()->firstOrCreate([
+                'nation_id' => $lockedNation->id,
+                'resource_definition_id' => $resource->id,
+            ], ['amount' => 0]);
+            if (! $balance->wasRecentlyCreated) {
+                $balance = NationResource::query()->whereKey($balance->id)->lockForUpdate()->firstOrFail();
+            }
+            $before = (int) $balance->amount;
+            $escrowed = $this->escrowedResources($lockedNation)[$resource->id] ?? 0;
+            $usage = $this->addition->calculate($before + $escrowed, $requested, $capacity);
+            if ($usage->applied > 0) {
+                $balance->increment('amount', $usage->applied);
+            }
+
+            return new CapacityAdditionResult(
+                before: $before,
+                requested: $requested,
+                applied: $usage->applied,
+                overflow: $usage->overflow,
+                after: $before + $usage->applied,
+                capacity: $capacity,
+            );
+        }, 1);
+    }
+
     /**
      * Credits one turn's farm production before nutrition is consumed.
      *

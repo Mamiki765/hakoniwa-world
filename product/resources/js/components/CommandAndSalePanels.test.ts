@@ -22,11 +22,12 @@ const selected: MapCell = {
 };
 
 const definition = (overrides: Partial<CommandDefinition> = {}): CommandDefinition => ({
-    key: 'land_clear', name: '整地', description: '平地にします。', cost_money: 5,
+    key: 'land_clear', name: '整地', description: '平地にします。', cost_money: 5, cost_paradox: 0,
+    command_group: 'normal',
     consumes_turn: true,
     target_type: 'cell', quantity_semantics: 'unused', quantity_default: 1, quantity_options: [], parameters: {},
     execution_phase: 'terrain', initial_facility_capacity: null,
-    applicable: true, available: true, shortfall_money: 0, unavailable_reason: null,
+    applicable: true, available: true, shortfall_money: 0, shortfall_paradox: 0, unavailable_reason: null,
     execution_preview_status: 'currently_executable', execution_warnings: [],
     ...overrides,
 });
@@ -54,6 +55,7 @@ function commandQueue(version = 1, items: CommandQueueItem[] = [], limit = 20): 
 
 const catalog = (commands: CommandDefinition[]): CommandCatalog => ({
     commands,
+    paradox: null,
     quantity_contract: {
         type: 'integer',
         minimum: 1,

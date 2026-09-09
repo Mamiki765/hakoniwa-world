@@ -89,6 +89,7 @@ final class MissileImpactResolver
         private readonly SurfaceShipCatalog $surfaceShips,
         private readonly SurfaceShipRemovalService $shipRemoval,
         private readonly FacilityScaleDamageService $facilityScaleDamage,
+        private readonly CentralFacilityDamageService $centralFacilityDamage,
     ) {}
 
     /** @param array<string, MapCell>|null $surfaceCellsByCoordinate */
@@ -1209,6 +1210,9 @@ final class MissileImpactResolver
             && in_array($missileKey, $defenseResistance['ineffective_missile_keys'] ?? [], true)) {
             return [...$base, 'effect' => 'defense_resisted'];
         }
+        if ($this->centralFacilityResistsMissile($context, $cell, $missileKey)) {
+            return [...$base, 'effect' => 'central_facility_resisted'];
+        }
 
         $occupancy = MonsterOccupancy::query()->where('map_cell_id', $cell->id)
             ->with('monster.definition')->lockForUpdate()->first();
@@ -1516,6 +1520,60 @@ final class MissileImpactResolver
             'monster.removed_by_terrain_event',
             ['terrain_event_key' => 'terrain_destruction_missile', 'hardening_ignored' => true],
         );
+        $centralContract = $this->centralFacilityMissileContract($context);
+        $centralDamage = $centralContract === null ? null : $this->centralFacilityDamage->apply(
+            $context,
+            $cell,
+            $centralContract['land_destruction_level_loss'],
+            FacilityRankPolicy::LAND_DESTRUCTION,
+            $centralContract['land_destruction_missile_key'],
+            ['monster_removed' => $monsterRemoved],
+        );
+        if ($centralDamage !== null) {
+            $this->recordMeaningfulImpact(
+                $context,
+                $firingNation,
+                $cell,
+                'land_destruction_missile',
+                $centralDamage['destroyed']
+                    ? 'terrain_destroyed'
+                    : 'facility_scale_land_damaged',
+                [
+                    'facility_key' => $centralDamage['facility_key'],
+                    'before_scale' => $centralDamage['before_scale'],
+                    'after_scale' => $centralDamage['after_scale'],
+                    'scale_loss' => $centralDamage['scale_loss'],
+                    'from_terrain_key' => $beforeTerrain,
+                    'to_terrain_key' => $centralDamage['to_terrain_key'],
+                    'monster_removed' => $monsterRemoved,
+                    'removed_facility_key' => $centralDamage['destroyed']
+                        ? $centralDamage['facility_key']
+                        : null,
+                ],
+                $targetNationId,
+                $targetNationName,
+            );
+
+            return [
+                ...$base,
+                'meaningful' => true,
+                'effect' => $centralDamage['destroyed']
+                    ? 'terrain_destroyed'
+                    : 'facility_scale_land_damaged',
+                'target_nation_id' => $targetNationId,
+                'target_nation_name' => $targetNationName,
+                'facility_key' => $centralDamage['facility_key'],
+                'before_scale' => $centralDamage['before_scale'],
+                'after_scale' => $centralDamage['after_scale'],
+                'scale_loss' => $centralDamage['scale_loss'],
+                'from_terrain_key' => $beforeTerrain,
+                'to_terrain_key' => $centralDamage['to_terrain_key'],
+                'monster_removed' => $monsterRemoved,
+                'removed_facility_key' => $centralDamage['destroyed']
+                    ? $centralDamage['facility_key']
+                    : null,
+            ];
+        }
         $facilityDamage = $this->facilityScaleDamage->apply(
             $context,
             $cell,
@@ -1602,6 +1660,38 @@ final class MissileImpactResolver
             'removed_facility_key' => $beforeFacility, 'before_population' => $beforePopulation,
             'after_population' => 0, 'monster_removed' => $monsterRemoved, 'refugees' => 0,
         ];
+    }
+
+    private function centralFacilityResistsMissile(
+        TurnContext $context,
+        MapCell $cell,
+        string $missileKey,
+    ): bool {
+        $contract = $this->centralFacilityMissileContract($context);
+
+        return $contract !== null
+            && in_array($cell->facility?->key, $contract['facility_keys'], true)
+            && in_array($missileKey, $contract['ineffective_missile_keys'], true);
+    }
+
+    /**
+     * @return array{facility_keys: list<string>, ineffective_missile_keys: list<string>, land_destruction_missile_key: string, land_destruction_level_loss: int}|null
+     */
+    private function centralFacilityMissileContract(TurnContext $context): ?array
+    {
+        $contract = $context->ruleset->settings['central_facilities']['missile_resistance'] ?? null;
+        if ($contract === null) {
+            return null;
+        }
+        if (! is_array($contract)
+            || ($contract['facility_keys'] ?? null) !== ['central_bank', 'central_granary']
+            || ($contract['ineffective_missile_keys'] ?? null) !== ['missile', 'pp_missile', 'spp_missile']
+            || ($contract['land_destruction_missile_key'] ?? null) !== 'land_destruction_missile'
+            || ($contract['land_destruction_level_loss'] ?? null) !== 1) {
+            throw new DomainException('The active Ruleset has an invalid central-facility missile contract.');
+        }
+
+        return $contract;
     }
 
     /**

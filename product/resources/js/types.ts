@@ -7,9 +7,88 @@ export interface UserIdentity {
 export interface CurrentUser {
     id: number;
     display_name: string;
+    paradox: ParadoxBalance;
     can_manage_announcements: boolean;
     can_manage_inquiries: boolean;
+    can_manage_guide_topics: boolean;
     providers: UserIdentity[];
+}
+
+export interface GuideConversationTopic {
+    id: number;
+    initial_line: string;
+    choice_1: string;
+    reply_1: string;
+    choice_2: string | null;
+    reply_2: string | null;
+    choice_3: string | null;
+    reply_3: string | null;
+    unlock_key: string;
+    enabled: boolean;
+}
+
+export interface GuideConversationTopicIndex {
+    topics: GuideConversationTopic[];
+    unlock_options: Array<{ key: string; label: string }>;
+}
+
+export interface ParadoxBalance {
+    name: '輝石';
+    unit: 'Pd';
+    description: string;
+    balance: number;
+}
+
+export interface DailyLoginReward {
+    awarded_now: boolean;
+    canonical_day: string;
+    paradox_awarded: number;
+    skip_tickets_awarded: number;
+    paradox: ParadoxBalance;
+    skip_ticket_balance: number;
+}
+
+export interface DailyQuestProgress {
+    key: 'development_opened' | 'underground_battles' | 'command_registered';
+    label: string;
+    canonical_day: string;
+    progress: number;
+    target: number;
+    paradox_awarded: number;
+    completed: boolean;
+    completed_now: boolean;
+    paradox_balance: number;
+}
+
+export type CompensationAssetKey = 'money' | 'wheat' | 'fish' | 'meat' | 'oil' | 'paradox' | 'skip_ticket' | 'underground_g';
+
+export interface CompensationGrantItem {
+    asset_key: CompensationAssetKey;
+    label: string;
+    unit: string;
+    amount: number;
+    claimed_amount: number;
+    remaining_amount: number;
+}
+
+export interface CompensationGrant {
+    id: number;
+    grant_key: string;
+    reason: string;
+    status: 'pending' | 'partial' | 'claimed';
+    claimed_at: string | null;
+    items: CompensationGrantItem[];
+}
+
+export interface CompensationClaimResult {
+    grant: CompensationGrant;
+    applied_now: Array<{
+        asset_key: CompensationAssetKey;
+        applied: number;
+        remaining: number;
+    }>;
+    already_claimed: boolean;
+    duplicate: boolean;
 }
 
 export interface SecretarySkill {
@@ -699,6 +778,8 @@ export interface CommandDefinition {
         default?: number;
     }>;
     cost_money: number;
+    cost_paradox: number;
+    command_group: 'normal' | 'paradox';
     consumes_turn: boolean;
     execution_phase: string;
     initial_facility_capacity: null | {
@@ -714,6 +795,7 @@ export interface CommandDefinition {
     applicable: boolean;
     available: boolean;
     shortfall_money: number;
+    shortfall_paradox: number;
     unavailable_reason: string | null;
     execution_preview_status: 'target_required' | 'currently_executable' | 'currently_unavailable' | 'executable_after_queue';
     execution_warnings: string[];
@@ -730,6 +812,7 @@ export interface DevelopmentPlanQuantityContract {
 export interface CommandCatalog {
     commands: CommandDefinition[];
     quantity_contract: DevelopmentPlanQuantityContract;
+    paradox: ParadoxBalance | null;
 }
 
 export interface CommandQueueItem {

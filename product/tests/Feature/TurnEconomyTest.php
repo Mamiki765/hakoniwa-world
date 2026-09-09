@@ -530,24 +530,33 @@ class TurnEconomyTest extends TestCase
         Nation::query()->whereKey($nation->id)->update(['money' => 0]);
         $this->setResources($nation, ['industrial_goods' => 10_001_000, 'minerals' => 0]);
         [$saleBeforeCapacityContext, $saleBeforeCapacityRun] = $this->context($world, $nation);
-        $engine->execute('resource_sales', $saleBeforeCapacityContext);
         $engine->execute('enforce_capacities', $saleBeforeCapacityContext);
         $saleBeforeCapacity = $this->event(
             $saleBeforeCapacityRun, 'resource.automatic_sale', 'industrial_goods',
         );
-        $postSaleOverflow = $this->event(
-            $saleBeforeCapacityRun, 'capacity.overflow', 'industrial_goods',
+        $this->assertSame('keep_amount', $saleBeforeCapacity['policy']);
+        $this->assertSame(10_000_000, $saleBeforeCapacity['keep_amount']);
+        $this->assertSame(2_000, $saleBeforeCapacity['requested']);
+        $this->assertSame(2_000, $saleBeforeCapacity['sold']);
+        $this->assertSame(9_999_000, $saleBeforeCapacity['after']);
+        $this->assertSame(2, $nation->fresh()->money);
+        $this->assertSame(0, DB::table('audit_events')->where('event_type', 'capacity.overflow')
+            ->whereRaw("metadata->>'turn_run_id' = ?", [(string) $saleBeforeCapacityRun->id])
+            ->whereRaw("metadata->>'resource_key' = 'industrial_goods'")->count());
+
+        $this->setPolicy($nation, 'industrial_goods', 'sell_all', null);
+        Nation::query()->whereKey($nation->id)->update(['money' => 0]);
+        $this->setResources($nation, ['industrial_goods' => 10_001_000]);
+        [$sellAllOverflowContext, $sellAllOverflowRun] = $this->context($world, $nation);
+        $engine->execute('enforce_capacities', $sellAllOverflowContext);
+        $sellAllOverflowSale = $this->event(
+            $sellAllOverflowRun, 'resource.automatic_sale', 'industrial_goods',
         );
-        $this->assertSame(1_000, $saleBeforeCapacity['sold']);
-        $this->assertSame(10_000_000, $saleBeforeCapacity['after']);
-        $this->assertSame(1_000, $postSaleOverflow['overflow']);
-        $this->assertSame(9_999_000, $postSaleOverflow['after']);
-        $this->assertSame(1, $nation->fresh()->money);
-        $this->assertLessThan(
-            $postSaleOverflow['_event_id'],
-            $saleBeforeCapacity['_event_id'],
-            'Automatic sale must be recorded before resource capacity overflow.',
-        );
+        $this->assertSame('sell_all', $sellAllOverflowSale['policy']);
+        $this->assertSame(2_000, $sellAllOverflowSale['requested']);
+        $this->assertSame(2_000, $sellAllOverflowSale['sold']);
+        $this->assertSame(9_999_000, $this->resourceAmount($nation, 'industrial_goods'));
+        $this->assertSame(2, $nation->fresh()->money);
 
         $this->setPolicy($nation, 'industrial_goods', 'stockpile', null);
         $this->setPolicy($nation, 'minerals', 'stockpile', null);

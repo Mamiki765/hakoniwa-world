@@ -6,6 +6,7 @@ enum CommandFailureReason: string
 {
     case InsufficientFunds = 'insufficient_funds';
     case InsufficientResource = 'insufficient_resource';
+    case InsufficientParadox = 'insufficient_paradox';
     case InsufficientPopulation = 'insufficient_population';
     case PopulationExists = 'population_exists';
     case InvalidTerrain = 'invalid_terrain';
@@ -21,6 +22,7 @@ enum CommandFailureReason: string
     case FacilityExists = 'facility_exists';
     case InvalidFacility = 'invalid_facility';
     case InvalidFacilityScale = 'invalid_facility_scale';
+    case FacilityLimitReached = 'facility_limit_reached';
     case CapitalProtected = 'capital_protected';
     case NoTarget = 'no_target';
     case InvalidTargetNation = 'invalid_target_nation';

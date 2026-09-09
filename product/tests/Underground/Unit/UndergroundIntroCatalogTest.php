@@ -7,20 +7,24 @@ use Tests\TestCase;
 
 final class UndergroundIntroCatalogTest extends TestCase
 {
-    public function test_guide_banter_is_a_valid_display_only_catalog(): void
+    public function test_intro_catalog_remains_the_versioned_story_and_recollection_source(): void
     {
         $catalog = app(UndergroundIntroCatalog::class);
-        $entries = $catalog->guideBanter();
-        $selected = $catalog->randomGuideBanter();
 
-        $this->assertNotEmpty($entries);
-        $this->assertContains($selected, $entries);
-        $this->assertSame(['key', 'text'], array_keys($selected));
-        $this->assertNotSame('', $selected['text']);
-        $this->assertSame(
-            $catalog->stableGuideBanter('secretary:19:2026-09-08'),
-            $catalog->stableGuideBanter('secretary:19:2026-09-08'),
-        );
-        $this->assertContains($catalog->stableGuideBanter('secretary:19:2026-09-08'), $entries);
+        $this->assertNotSame('', $catalog->identity());
+        $this->assertArrayHasKey('identity', $catalog->recollections());
+        $this->assertArrayHasKey('past', $catalog->recollections());
+        $this->assertArrayHasKey('serious_talk', $catalog->recollections());
+        $this->assertSame('案内人', $catalog->normalizeShopkeeperName('  案内人  '));
+    }
+
+    public function test_guide_conversation_topics_are_not_embedded_in_the_intro_catalog(): void
+    {
+        $catalog = app(UndergroundIntroCatalog::class);
+
+        $this->assertArrayNotHasKey('guide_banter', config('underground-intro'));
+        $this->assertFalse(method_exists($catalog, 'guideBanter'));
+        $this->assertFalse(method_exists($catalog, 'randomGuideBanter'));
+        $this->assertFalse(method_exists($catalog, 'stableGuideBanter'));
     }
 }

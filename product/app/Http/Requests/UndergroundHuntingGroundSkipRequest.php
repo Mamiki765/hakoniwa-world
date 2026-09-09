@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests;
 
+use App\Application\Underground\UndergroundRuntimeService;
 use Illuminate\Foundation\Http\FormRequest;
 
 final class UndergroundHuntingGroundSkipRequest extends FormRequest
@@ -17,7 +18,12 @@ final class UndergroundHuntingGroundSkipRequest extends FormRequest
         return [
             'request_id' => ['required', 'uuid'],
             'hunting_ground_key' => ['required', 'string', 'max:64'],
-            'execution_count' => ['sometimes', 'integer', 'min:1'],
+            'execution_count' => [
+                'sometimes',
+                'integer',
+                'min:1',
+                'max:'.UndergroundRuntimeService::MAX_BULK_SKIP_EXECUTIONS,
+            ],
             'borrowed_secretary_ids' => ['prohibited'],
         ];
     }

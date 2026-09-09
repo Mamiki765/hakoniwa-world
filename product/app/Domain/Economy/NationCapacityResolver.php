@@ -62,6 +62,10 @@ final class NationCapacityResolver
             throw new DomainException('Capacity modifier semantics are deferred until E-04 is decided.');
         }
 
+        [$centralMoney, $centralFood] = $this->centralCapacityBonuses($nation, $ruleset);
+        $baseMoney = $this->checkedAdd($baseMoney, $centralMoney, 'money');
+        $baseFood = $this->checkedAdd($baseFood, $centralFood, 'food');
+
         $expectedSkillCount = null;
         $secretaryBonus = $ruleset->settings['secretary']['capacity_bonus'] ?? null;
         if ($secretaryBonus !== null) {
@@ -175,5 +179,65 @@ final class NationCapacityResolver
         }
 
         return intdiv($numerator, $denominator);
+    }
+
+    /** @return array{int, int} */
+    private function centralCapacityBonuses(Nation $nation, RulesetVersion $ruleset): array
+    {
+        $definitions = $ruleset->settings['central_facilities']['definitions'] ?? null;
+        if ($definitions === null) {
+            return [0, 0];
+        }
+        if (! is_array($definitions) || array_is_list($definitions)) {
+            throw new DomainException('Published central facility capacity settings are invalid.');
+        }
+
+        $rows = DB::table('map_cells as cell')
+            ->join('facility_definitions as facility', 'facility.id', '=', 'cell.facility_definition_id')
+            ->where('cell.owner_nation_id', $nation->id)
+            ->whereIn('facility.key', array_keys($definitions))
+            ->orderBy('facility.key')
+            ->get(['facility.key', 'cell.facility_scale']);
+        $counts = [];
+        $money = 0;
+        $food = 0;
+        foreach ($rows as $row) {
+            $facilityKey = (string) $row->key;
+            $contract = $definitions[$facilityKey] ?? null;
+            $authoredFacility = $ruleset->settings['facility_definitions'][$facilityKey] ?? null;
+            if (! is_array($contract) || ! is_array($authoredFacility)
+                || ($contract['facility_key'] ?? null) !== $facilityKey
+                || ($contract['maximum_per_nation'] ?? null) !== 1
+                || ! is_int($contract['capacity_per_level'] ?? null)
+                || $contract['capacity_per_level'] < 1
+                || ! is_int($authoredFacility['maximum_scale'] ?? null)) {
+                throw new DomainException("Published central facility {$facilityKey} settings are invalid.");
+            }
+            $counts[$facilityKey] = ($counts[$facilityKey] ?? 0) + 1;
+            if ($counts[$facilityKey] > 1) {
+                throw new DomainException("Nation has more than one {$facilityKey} facility.");
+            }
+            $level = $row->facility_scale;
+            if (! is_int($level) || $level < 1 || $level > $authoredFacility['maximum_scale']) {
+                throw new DomainException("Central facility {$facilityKey} has an invalid level.");
+            }
+            $bonus = $level * $contract['capacity_per_level'];
+            match ($contract['capacity_kind'] ?? null) {
+                'money' => $money = $this->checkedAdd($money, $bonus, 'central money bonus'),
+                'food_tons' => $food = $this->checkedAdd($food, $bonus, 'central food bonus'),
+                default => throw new DomainException("Central facility {$facilityKey} has an invalid capacity kind."),
+            };
+        }
+
+        return [$money, $food];
+    }
+
+    private function checkedAdd(int $left, int $right, string $label): int
+    {
+        if ($right > PHP_INT_MAX - $left) {
+            throw new DomainException("Resolved {$label} capacity would overflow.");
+        }
+
+        return $left + $right;
     }
 }

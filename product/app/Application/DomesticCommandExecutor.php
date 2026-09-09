@@ -50,7 +50,11 @@ use Illuminate\Support\Facades\DB;
 final class DomesticCommandExecutor
 {
     /** @var list<string> */
-    private const QUANTITY_COMMANDS = ['build_farm', 'build_factory', 'build_mine'];
+    private const QUANTITY_COMMANDS = [
+        'build_farm', 'build_factory', 'build_mine',
+        'build_fast_farm', 'build_fast_factory', 'build_fast_mine',
+        'build_central_bank', 'build_central_granary',
+    ];
 
     /** @var list<string> */
     private const CAPITAL_DESTRUCTIVE_COMMANDS = ['land_clear', 'land_level', 'excavate', 'territory_abandon'];
@@ -81,6 +85,7 @@ final class DomesticCommandExecutor
         private readonly SurfaceShipBuildService $surfaceShipBuild,
         private readonly SurfaceShipForcedDisplacementService $surfaceShipDisplacement,
         private readonly FacilityRankPolicy $facilityRanks,
+        private readonly ParadoxBalanceService $paradox,
     ) {}
 
     /**
@@ -161,7 +166,7 @@ final class DomesticCommandExecutor
                         ),
                     ];
                     $executionCost = $definition->cost_money;
-                    $this->deductCostAndResources($nation, $definition, $executionCost);
+                    $this->deductCostAndResources($nation, $item, $definition, $executionCost);
                     $this->undergroundFacilities->execute(
                         $nation,
                         $definition,
@@ -195,7 +200,7 @@ final class DomesticCommandExecutor
                     $cell = $cellQuery->lockForUpdate()->with(['terrain', 'facility'])->firstOrFail();
                     $before = $this->cellSnapshot($cell);
                     $executionCost = $this->executionCost($nation, $item, $definition, $cell);
-                    $this->deductCostAndResources($nation, $definition, $executionCost);
+                    $this->deductCostAndResources($nation, $item, $definition, $executionCost);
                     $meaningfulActivity = $this->apply(
                         $context,
                         $nation,
@@ -259,6 +264,7 @@ final class DomesticCommandExecutor
                     'nation_id' => $nation->id,
                     'command_key' => $definition->key,
                     'cost_money' => $executionCost,
+                    'cost_paradox' => $definition instanceof CommandDefinition ? $this->paradoxCost($definition) : 0,
                     'dispatch_selector' => $dispatchOption?->selector,
                     'monster_key' => $dispatchOption?->monsterDefinitionKey,
                     'consumes_turn' => $consumedTurn,
@@ -324,9 +330,9 @@ final class DomesticCommandExecutor
             return;
         }
         $skillKey = match ($commandKey) {
-            'build_farm' => SecretarySkillCatalog::AGRICULTURAL_POLICY,
-            'build_factory' => SecretarySkillCatalog::SPECIALTY_DEVELOPMENT,
-            'build_mine' => SecretarySkillCatalog::GOLD_VEIN_SURVEY,
+            'build_farm', 'build_fast_farm' => SecretarySkillCatalog::AGRICULTURAL_POLICY,
+            'build_factory', 'build_fast_factory' => SecretarySkillCatalog::SPECIALTY_DEVELOPMENT,
+            'build_mine', 'build_fast_mine' => SecretarySkillCatalog::GOLD_VEIN_SURVEY,
             'logging', 'plant_forest' => SecretarySkillCatalog::FOREST_MANAGEMENT,
             default => null,
         };
@@ -506,11 +512,8 @@ final class DomesticCommandExecutor
                     || $facility->maximum_scale === null) {
                     return ['reason' => CommandFailureReason::InvalidFacilityScale, 'observed' => $observed];
                 }
-                $rankContract = $this->facilityRanks->contract($context->ruleset->settings, $facility->key);
-                $maximumScale = $rankContract === null
-                    ? null
-                    : $this->facilityRanks->maximumScale($context->ruleset->settings, $facility);
-                if ($maximumScale !== null && $cell->facility_scale >= $maximumScale) {
+                $maximumScale = $this->facilityRanks->maximumScale($context->ruleset->settings, $facility);
+                if ($cell->facility_scale >= $maximumScale) {
                     return ['reason' => CommandFailureReason::InvalidFacilityScale, 'observed' => $observed];
                 }
             }
@@ -553,6 +556,9 @@ final class DomesticCommandExecutor
                 return ['reason' => CommandFailureReason::FacilityExists, 'observed' => $observed];
             }
         }
+        if ($this->hasOtherCentralFacility($context, $nation, $definition, $cell)) {
+            return ['reason' => CommandFailureReason::FacilityLimitReached, 'observed' => $observed];
+        }
         $requiredMoney = $definition->cost_money;
         if ($definition->key === 'monster_dispatch'
             && ($definition->metadata['quantity_selects_catalog'] ?? null) === MonsterDispatchOptionResolver::CATALOG) {
@@ -572,6 +578,20 @@ final class DomesticCommandExecutor
                 ->value('amount');
             if ((int) $amount < $required) {
                 return ['reason' => CommandFailureReason::InsufficientResource, 'observed' => $observed];
+            }
+        }
+        $paradoxCost = $this->paradoxCost($definition);
+        if ($paradoxCost > 0) {
+            $membership = NationMembership::query()
+                ->whereKey($item->queued_by_membership_id)
+                ->where('nation_id', $nation->id)
+                ->lockForUpdate()
+                ->first();
+            if (! $membership instanceof NationMembership) {
+                return ['reason' => CommandFailureReason::InvalidParameter, 'observed' => $observed];
+            }
+            if ($this->paradox->balanceForUpdate((int) $membership->user_id) < $paradoxCost) {
+                return ['reason' => CommandFailureReason::InsufficientParadox, 'observed' => $observed];
             }
         }
 
@@ -770,6 +790,40 @@ final class DomesticCommandExecutor
             && $cell->facility?->key === $definition->result_facility_key;
     }
 
+    private function paradoxCost(CommandDefinition $definition): int
+    {
+        $cost = $definition->metadata['cost_paradox'] ?? 0;
+        if (! is_int($cost) || $cost < 0) {
+            throw new DomainException("Command {$definition->key} has invalid Paradox cost metadata.");
+        }
+
+        return $cost;
+    }
+
+    private function hasOtherCentralFacility(
+        TurnContext $context,
+        Nation $nation,
+        CommandDefinition $definition,
+        MapCell $target,
+    ): bool {
+        $facilityKey = $definition->result_facility_key;
+        $contract = is_string($facilityKey)
+            ? ($context->ruleset->settings['central_facilities']['definitions'][$facilityKey] ?? null)
+            : null;
+        if (! is_array($contract)) {
+            return false;
+        }
+        if (($contract['maximum_per_nation'] ?? null) !== 1) {
+            throw new DomainException("Central facility {$facilityKey} has an invalid Nation limit.");
+        }
+
+        return MapCell::query()
+            ->where('owner_nation_id', $nation->id)
+            ->where('id', '<>', $target->id)
+            ->whereHas('facility', fn ($query) => $query->where('key', $facilityKey))
+            ->exists();
+    }
+
     private function executionCost(
         Nation $nation,
         NationCommandQueueItem $item,
@@ -803,9 +857,37 @@ final class DomesticCommandExecutor
 
     private function deductCostAndResources(
         Nation $nation,
+        NationCommandQueueItem $item,
         CommandDefinition|UndergroundCommandDefinition $definition,
         int $executionCost,
     ): void {
+        if ($definition instanceof CommandDefinition) {
+            $paradoxCost = $this->paradoxCost($definition);
+            if ($paradoxCost > 0) {
+                $membership = NationMembership::query()
+                    ->whereKey($item->queued_by_membership_id)
+                    ->where('nation_id', $nation->id)
+                    ->lockForUpdate()
+                    ->firstOrFail();
+                $executionNumber = (int) $item->paradox_execution_count + 1;
+                $debit = $this->paradox->debit(
+                    (int) $membership->user_id,
+                    $paradoxCost,
+                    'command:'.$item->id.':execution:'.$executionNumber,
+                    'command',
+                    metadata: [
+                        'nation_id' => $nation->id,
+                        'queue_item_id' => $item->id,
+                        'command_key' => $definition->key,
+                        'execution_number' => $executionNumber,
+                    ],
+                );
+                if ($debit === null || $debit['duplicate']) {
+                    throw new DomainException('Command Paradox validation changed while the World transaction was locked.');
+                }
+                $item->update(['paradox_execution_count' => $executionNumber]);
+            }
+        }
         if ((int) $nation->money < $executionCost) {
             throw new DomainException('Command money validation changed while the World transaction was locked.');
         }
@@ -944,7 +1026,9 @@ final class DomesticCommandExecutor
                 'mountain' => 'wasteland',
                 default => 'shallow',
             },
-            'build_farm', 'build_factory', 'build_mine' => null,
+            'build_farm', 'build_factory', 'build_mine',
+            'build_fast_farm', 'build_fast_factory', 'build_fast_mine',
+            'build_central_bank', 'build_central_granary' => null,
             default => $definition->result_facility_key !== null
                 ? null
                 : ($definition->result_terrain_key
@@ -1048,11 +1132,12 @@ final class DomesticCommandExecutor
         $context->state->markMapChunkChanged($cell->map_chunk_id);
         $constructionVisibility = in_array(
             $definition->key,
-            ['build_missile_base', 'build_seabed_base', 'build_undersea_city', 'build_decoy'],
+            ['build_missile_base', 'build_seabed_base', 'build_undersea_city', 'build_decoy', 'build_central_bank', 'build_central_granary'],
             true,
         ) ? 'private' : 'nation';
         $this->events->record($context, $expanded ? 'facility.expanded' : 'facility.constructed', $cell, [
             'nation_id' => $nation->id,
+            'nation_name' => $nation->name,
             'command_key' => $definition->key,
             'facility_key' => $facilityKey,
             'before_scale' => $beforeScale,
@@ -1291,10 +1376,23 @@ final class DomesticCommandExecutor
 
             return;
         }
+        if (in_array($definition->key, ['build_central_bank', 'build_central_granary'], true)) {
+            if (! $expanded) {
+                $this->events->record($context, 'command.forest_planted_public', $nation, [
+                    'nation_id' => $nation->id,
+                    'nation_name' => $nation->name,
+                ], 'public');
+            }
+
+            return;
+        }
         if (in_array($definition->key, [
             'build_farm',
             'build_factory',
             'build_mine',
+            'build_fast_farm',
+            'build_fast_factory',
+            'build_fast_mine',
             'build_defense_facility',
             'build_port',
             'build_monument',

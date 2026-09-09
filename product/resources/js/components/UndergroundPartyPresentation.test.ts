@@ -212,6 +212,45 @@ describe('Underground party presentation controls', () => {
         wrapper.unmount();
     });
 
+    it('keeps the selected party across underground page remounts for the same user', async () => {
+        const candidate = {
+            secretary_id: 42,
+            source: 'borrowed_secretary' as const,
+            display_name: '保存する秘書',
+            combat_level: 18,
+            available: true,
+        };
+        const state = openState({
+            party_member_ids: undefined,
+            lending: { settings: { is_public: false, is_available: true }, candidates: [], ticket_balance: 0 },
+        });
+        vi.stubGlobal('fetch', vi.fn((input: RequestInfo | URL) => {
+            const path = String(input);
+            if (path.startsWith('/api/v1/me/underground/lending/candidates')) {
+                return Promise.resolve(response({ candidates: [candidate], next_after_id: null }));
+            }
+            if (path.endsWith('/api/v1/me/underground/battles')) return Promise.resolve(response([]));
+
+            return Promise.resolve(response(state));
+        }));
+
+        const wrapper = mount(UndergroundPanel, { attachTo: document.body, props: { userId: 7 } });
+        await flushPromises();
+        await wrapper.get('.underground-main-navigation button:nth-child(4)').trigger('click');
+        await wrapper.get('.underground-party-browser button').trigger('click');
+        await flushPromises();
+        await wrapper.get('button[aria-label="保存する秘書をPTに追加"]').trigger('click');
+        expect(window.localStorage.getItem('hakoniwa.underground.party-member-ids.7')).toBe('[42]');
+        wrapper.unmount();
+
+        const restored = mount(UndergroundPanel, { attachTo: document.body, props: { userId: 7 } });
+        await flushPromises();
+        await restored.get('.underground-main-navigation button:nth-child(4)').trigger('click');
+        expect(restored.get('.underground-party-count').text()).toBe('2 / 4人');
+        expect(restored.get('button[aria-label="選択中の秘書をPTから解除"]')).toBeTruthy();
+        restored.unmount();
+    });
+
     it('shows every skip drop outcome, including an item lost to a full vault', async () => {
         const state = openState({
             lending: { settings: { is_public: false, is_available: true }, candidates: [], ticket_balance: 5 },
@@ -282,7 +321,7 @@ describe('Underground party presentation controls', () => {
                     skip: { actual_clear_count: 5, total_clear_count: 5, actual_clears_required: 5, unlocked: true, ticket_cost: 10 },
                 }],
             },
-            lending: { settings: { is_lendable: false, is_public: false, is_available: false }, candidates: [], ticket_balance: 100 },
+            lending: { settings: { is_lendable: false, is_public: false, is_available: false }, candidates: [], ticket_balance: 20_000 },
         });
         const requests: Array<Record<string, unknown>> = [];
         vi.stubGlobal('fetch', vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
@@ -290,9 +329,9 @@ describe('Underground party presentation controls', () => {
             if (path === '/api/v1/me/underground/skip/trial') {
                 requests.push(JSON.parse(String(init?.body ?? '{}')) as Record<string, unknown>);
                 return Promise.resolve(response({
-                    id: 'trial-skip', duplicate: false, content_type: 'trial', content_key: 'trial_01', execution_count: 10,
-                    ticket_cost: 100, xp_awarded: 1000, shards_awarded: 500, combat_level_before: 20, combat_level_after: 21,
-                    rewards: { equipment_granted_count: 0, vault_full_count: 0, drops: [], ticket_balance_after: 0 },
+                    id: 'trial-skip', duplicate: false, content_type: 'trial', content_key: 'trial_01', execution_count: 1000,
+                    ticket_cost: 10_000, xp_awarded: 100_000, shards_awarded: 50_000, combat_level_before: 20, combat_level_after: 21,
+                    rewards: { equipment_granted_count: 0, vault_full_count: 0, drops: [], ticket_balance_after: 10_000 },
                     settled_at: '2026-09-09T00:00:00Z',
                 }));
             }
@@ -311,26 +350,28 @@ describe('Underground party presentation controls', () => {
         await wrapper.get('.underground-skip-entry button').trigger('click');
         const categories = wrapper.findAll('.underground-skip-category');
         expect(categories).toHaveLength(2);
-        expect(categories[0]!.text()).toContain('50%使用（50回）');
-        expect(categories[0]!.text()).toContain('100%使用（100回）');
-        expect(categories[1]!.text()).toContain('50%使用（5周）');
-        expect(categories[1]!.text()).toContain('100%使用（10周）');
+        expect(categories[0]!.text()).toContain('50%使用（500回）');
+        expect(categories[0]!.text()).toContain('100%使用（1000回）');
+        expect(categories[1]!.text()).toContain('50%使用（500周）');
+        expect(categories[1]!.text()).toContain('100%使用（1000周）');
         await categories[1]!.findAll('.underground-skip-shortcuts button')[1]!.trigger('click');
         await flushPromises();
 
         expect(requests).toHaveLength(1);
-        expect(requests[0]?.execution_count).toBe(10);
+        expect(requests[0]?.execution_count).toBe(1000);
         expect(requests[0]?.trial_key).toBe('trial_01');
-        expect(wrapper.get('.underground-skip-result').text()).toContain('黒曜石の魔窟を10周スキップしました');
+        expect(wrapper.get('.underground-skip-result').text()).toContain('黒曜石の魔窟を1000周スキップしました');
         wrapper.unmount();
     });
 
     it('keeps an active trial target independent from the skip-modal trial selector', async () => {
+        window.localStorage.setItem('hakoniwa.underground.party-member-ids.7', '[42]');
         const activeRun = {
             key: 'trial_02', label: '二つ目の封印の地', run_key: 'active-trial-02',
             status: 'active', next_battle_index: 4, total_battles: 10,
         };
         const state = openState({
+            party_member_ids: undefined,
             trial: {
                 key: 'trial_02', label: '二つ目の封印の地', total_battles: 10, first_cleared: false,
                 active_run: activeRun,
@@ -359,7 +400,7 @@ describe('Underground party presentation controls', () => {
             return Promise.resolve(response(state));
         }));
 
-        const wrapper = mount(UndergroundPanel, { attachTo: document.body });
+        const wrapper = mount(UndergroundPanel, { attachTo: document.body, props: { userId: 7 } });
         await flushPromises();
         const activeTrialSelect = wrapper.get<HTMLSelectElement>('select[aria-label="試練を選択"]');
         expect(activeTrialSelect.element.value).toBe('trial_02');
@@ -378,6 +419,8 @@ describe('Underground party presentation controls', () => {
         expect(requests).toHaveLength(1);
         expect(requests[0]?.path).toBe('/api/v1/me/underground/trial/fight');
         expect(requests[0]?.body.run_key).toBe('active-trial-02');
+        expect(requests[0]?.body).not.toHaveProperty('borrowed_secretary_ids');
+        expect(window.localStorage.getItem('hakoniwa.underground.party-member-ids.7')).toBe('[42]');
         wrapper.unmount();
     });
 
@@ -413,6 +456,10 @@ describe('Underground party presentation controls', () => {
 
         expect(wrapper.get('.underground-skip-dialog').isVisible()).toBe(true);
         expect(wrapper.get('.underground-skip-error').text()).toBe('スキップ通信に失敗しました。');
+        expect(wrapper.get('.underground-skip-pending').text()).toContain('同じ対象・回数で再試行');
+        const otherShortcut = wrapper.findAll('.underground-skip-category')[0]!.findAll('.underground-skip-shortcuts button')[1]!;
+        expect(shortcut.attributes('disabled')).toBeUndefined();
+        expect(otherShortcut.attributes('disabled')).toBeDefined();
         await shortcut.trigger('click');
         await flushPromises();
 
@@ -420,6 +467,47 @@ describe('Underground party presentation controls', () => {
         expect(requests[1]?.request_id).toBe(requests[0]?.request_id);
         expect(wrapper.find('.underground-skip-error').exists()).toBe(false);
         expect(wrapper.get('.underground-skip-result').text()).toContain('浅い洞窟を2回スキップしました');
+        wrapper.unmount();
+    });
+
+    it('clears a stale confirmed result before reporting a new skip failure', async () => {
+        const state = openState({
+            lending: { settings: { is_lendable: false, is_public: false, is_available: false }, candidates: [], ticket_balance: 6 },
+        });
+        let skipRequests = 0;
+        vi.stubGlobal('fetch', vi.fn((input: RequestInfo | URL) => {
+            const path = String(input);
+            if (path === '/api/v1/me/underground/skip/hunting-ground') {
+                skipRequests += 1;
+                if (skipRequests > 1) return Promise.reject(new Error('新しいskipの通信に失敗しました。'));
+
+                return Promise.resolve(response({
+                    id: 'previous-skip', duplicate: false, content_type: 'hunting_ground', content_key: 'shallow_caves', execution_count: 3,
+                    ticket_cost: 3, xp_awarded: 30, shards_awarded: 6, combat_level_before: 20, combat_level_after: 20,
+                    rewards: { equipment_granted_count: 0, vault_full_count: 0, drops: [], ticket_balance_after: 3 },
+                    settled_at: '2026-09-09T00:00:00Z',
+                }));
+            }
+            if (path.endsWith('/api/v1/me/underground/battles')) return Promise.resolve(response([]));
+
+            return Promise.resolve(response(state));
+        }));
+
+        const wrapper = mount(UndergroundPanel, { attachTo: document.body });
+        await flushPromises();
+        await wrapper.get('.underground-skip-entry button').trigger('click');
+        let shortcuts = wrapper.findAll('.underground-skip-category')[0]!.findAll('.underground-skip-shortcuts button');
+        await shortcuts[0]!.trigger('click');
+        await flushPromises();
+        expect(wrapper.find('.underground-skip-result').exists()).toBe(true);
+
+        shortcuts = wrapper.findAll('.underground-skip-category')[0]!.findAll('.underground-skip-shortcuts button');
+        await shortcuts[1]!.trigger('click');
+        await flushPromises();
+
+        expect(skipRequests).toBe(2);
+        expect(wrapper.find('.underground-skip-result').exists()).toBe(false);
+        expect(wrapper.get('.underground-skip-error').text()).toBe('新しいskipの通信に失敗しました。');
         wrapper.unmount();
     });
 

@@ -6,6 +6,7 @@ use App\Application\CommandQuantitySemantics;
 use App\Application\CommandQueueService;
 use App\Application\LegacyCommandQueueOrder;
 use App\Application\NationCommandTargetService;
+use App\Application\ParadoxBalanceService;
 use App\Application\SurfaceVisibilityService;
 use App\Application\Underground\UndergroundFacilityService;
 use App\Domain\Command\CommandQueueLimit;
@@ -49,6 +50,7 @@ final class CommandQueueController extends Controller
         SurfaceVisibilityService $visibility,
         UndergroundFacilityService $undergroundFacilities,
         UndergroundCommandCatalog $undergroundCommands,
+        ParadoxBalanceService $paradox,
     ): JsonResponse {
         try {
             $queue = $service->queueFor($request->user(), $nation, $mapSpace);
@@ -108,12 +110,15 @@ final class CommandQueueController extends Controller
                                 'quantity_default' => 1,
                                 'quantity_options' => [],
                                 'cost_money' => $definition->cost_money,
+                                'cost_paradox' => 0,
+                                'command_group' => 'normal',
                                 'consumes_turn' => (bool) ($definition->metadata['consumes_turn'] ?? true),
                                 'execution_phase' => 'underground_facility',
                                 'initial_facility_capacity' => null,
                                 'applicable' => true,
                                 'available' => $unavailableReason === null,
                                 'shortfall_money' => $shortfall,
+                                'shortfall_paradox' => 0,
                                 'unavailable_reason' => $unavailableReason,
                                 'execution_preview_status' => $warnings === []
                                     ? 'currently_executable'
@@ -131,6 +136,7 @@ final class CommandQueueController extends Controller
                 return response()->json(['data' => [
                     'commands' => $commands,
                     'quantity_contract' => $quantityContract,
+                    'paradox' => null,
                 ]]);
             }
             $cell = null;
@@ -182,8 +188,10 @@ final class CommandQueueController extends Controller
                 ->whereIn('key', $definitions->pluck('result_facility_key')->filter()->unique()->values())
                 ->get()
                 ->keyBy('key');
+            $paradoxPresentation = $paradox->presentFor($request->user()->id);
+            $paradoxBalance = $paradoxPresentation['balance'];
             $definitions = $definitions
-                ->map(function (CommandDefinition $definition) use ($cell, $nation, $mapSpace, $service, $capacities, $queue, $position, $nationTargetOptions, $monsterDispatchTargetOptions, $projected, $resultFacilities, $visibleState, $projectionMemo, $rulesetSettings): array {
+                ->map(function (CommandDefinition $definition) use ($cell, $nation, $mapSpace, $service, $capacities, $queue, $position, $nationTargetOptions, $monsterDispatchTargetOptions, $projected, $resultFacilities, $visibleState, $projectionMemo, $rulesetSettings, $paradoxBalance): array {
                     $ownerOverbuildEffect = $projected === null
                         ? null
                         : $service->projectedOwnerOverbuildEffect($definition, $nation, $projected);
@@ -250,6 +258,8 @@ final class CommandQueueController extends Controller
                     $initialCapacity = $resultFacility?->initial_scale === null
                         ? null
                         : $capacities->describe($resultFacility, $capacities->initialScale($resultFacility));
+                    $isCentralFacility = $definition->result_facility_key !== null
+                        && isset($rulesetSettings['central_facilities']['definitions'][$definition->result_facility_key]);
                     $requiresNationTarget = $this->nationTargets->requiresTarget($definition)
                         || $ownerOverbuildEffect === 'monument_flight';
                     $presentedTargetOptions = $ownerOverbuildEffect === 'monument_flight'
@@ -266,6 +276,11 @@ final class CommandQueueController extends Controller
                     $applicable = ($definition->target_type === 'nation' || $cell !== null)
                         && (! $requiresNationTarget || $presentedTargetOptions !== []);
                     $shortfall = max(0, $definition->cost_money - $nation->money);
+                    $paradoxCost = $definition->metadata['cost_paradox'] ?? 0;
+                    if (! is_int($paradoxCost) || $paradoxCost < 0) {
+                        throw new DomainException("Command {$definition->key} has invalid Paradox cost metadata.");
+                    }
+                    $paradoxShortfall = max(0, $paradoxCost - $paradoxBalance);
                     $warnings = [];
                     if ($projectedExecutable) {
                         $warnings[] = '予約済みcommand後は実行可能です。';
@@ -274,6 +289,9 @@ final class CommandQueueController extends Controller
                     }
                     if ($shortfall > 0) {
                         $warnings[] = '現在の資金では実行できません。';
+                    }
+                    if ($paradoxShortfall > 0) {
+                        $warnings[] = '現在の輝石では実行できません。';
                     }
 
                     return [
@@ -293,16 +311,23 @@ final class CommandQueueController extends Controller
                         'quantity_default' => $this->quantitySemantics->presentationDefault($definition),
                         'quantity_options' => $this->quantitySemantics->options($definition),
                         'cost_money' => $definition->cost_money,
+                        'cost_paradox' => $paradoxCost,
+                        'command_group' => ($definition->metadata['command_group'] ?? 'normal') === 'paradox'
+                            ? 'paradox'
+                            : 'normal',
                         'consumes_turn' => (bool) ($definition->metadata['consumes_turn'] ?? true),
                         'execution_phase' => $definition->execution_phase,
                         'initial_facility_capacity' => $initialCapacity === null ? null : [
                             ...$initialCapacity,
                             'facility_key' => (string) $definition->result_facility_key,
-                            'formatted' => number_format($initialCapacity['capacity_people']).'人規模',
+                            'formatted' => $isCentralFacility
+                                ? 'Lv '.number_format($initialCapacity['facility_scale']).'/'.number_format((int) $resultFacility->maximum_scale)
+                                : number_format($initialCapacity['capacity_people']).'人規模',
                         ],
                         'applicable' => $applicable,
                         'available' => $applicable,
                         'shortfall_money' => $shortfall,
+                        'shortfall_paradox' => $paradoxShortfall,
                         'unavailable_reason' => ! $applicable
                             ? ($requiresNationTarget ? '選択可能な対象島がありません。' : '対象セルを選択してください。')
                             : null,
@@ -325,6 +350,7 @@ final class CommandQueueController extends Controller
             return response()->json(['data' => [
                 'commands' => $definitions,
                 'quantity_contract' => $quantityContract,
+                'paradox' => $paradoxPresentation,
             ]]);
         } catch (DomainException $exception) {
             return $this->domainError($exception);
@@ -389,6 +415,7 @@ final class CommandQueueController extends Controller
                 'queue' => $this->serializeQueue($this->loadQueue($result['queue']), $service),
                 'item_id' => $result['item']->id,
                 'duplicate' => $result['duplicate'],
+                'daily_quest' => $result['daily_quest'],
                 'message' => $result['duplicate']
                     ? '同じ開発計画は登録済みです。'
                     : '開発計画に登録されました。実行時に資金・資源・地形・施設・所有権・怪獣占有を再確認します。',
@@ -449,6 +476,7 @@ final class CommandQueueController extends Controller
                 'truncated_count' => $result['truncated_count'],
                 'candidate_count' => $result['candidate_count'],
                 'duplicate' => $result['duplicate'],
+                'daily_quest' => $result['daily_quest'],
             ]]);
         } catch (DomainException $exception) {
             return $this->domainError($exception);

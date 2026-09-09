@@ -1,9 +1,13 @@
 <?php
 
+use App\Http\Controllers\Api\AdminGuideConversationTopicController;
 use App\Http\Controllers\Api\AdminInquiryController;
 use App\Http\Controllers\Api\AnnouncementController;
 use App\Http\Controllers\Api\ApiController;
 use App\Http\Controllers\Api\CommandQueueController;
+use App\Http\Controllers\Api\CompensationWarehouseController;
+use App\Http\Controllers\Api\DailyRewardController;
+use App\Http\Controllers\Api\GuideConversationController;
 use App\Http\Controllers\Api\InquiryController;
 use App\Http\Controllers\Api\MessageBoardController;
 use App\Http\Controllers\Api\NationAbandonmentController;
@@ -70,6 +74,10 @@ Route::prefix('api/v1/admin')
         Route::post('/announcements', [AnnouncementController::class, 'store']);
         Route::patch('/announcements/{announcement}', [AnnouncementController::class, 'update']);
         Route::delete('/announcements/{announcement}', [AnnouncementController::class, 'destroy']);
+        Route::get('/guide-conversation-topics', [AdminGuideConversationTopicController::class, 'index']);
+        Route::post('/guide-conversation-topics', [AdminGuideConversationTopicController::class, 'store']);
+        Route::patch('/guide-conversation-topics/{guideConversationTopic}', [AdminGuideConversationTopicController::class, 'update']);
+        Route::delete('/guide-conversation-topics/{guideConversationTopic}', [AdminGuideConversationTopicController::class, 'destroy']);
     });
 
 Route::get('/api/v1/nations/{nation}/message-board', [MessageBoardController::class, 'show'])
@@ -79,6 +87,9 @@ Route::get('/api/v1/secretaries/{secretary}', [SecretaryController::class, 'publ
 
 Route::prefix('api/v1')->middleware(['auth', PrivateApiResponse::class])->group(function (): void {
     Route::get('/me', [ApiController::class, 'me']);
+    Route::post('/me/daily-login', [DailyRewardController::class, 'login'])->middleware('throttle:30,1');
+    Route::post('/me/daily-quests/development-opened', [DailyRewardController::class, 'developmentOpened'])
+        ->middleware('throttle:30,1');
     Route::get('/me/secretary', [SecretaryController::class, 'show']);
     Route::post('/me/secretary/name', [SecretaryController::class, 'name']);
     Route::patch('/me/secretary/name', [SecretaryController::class, 'rename']);
@@ -97,6 +108,9 @@ Route::prefix('api/v1')->middleware(['auth', PrivateApiResponse::class])->group(
         Route::post('/shopkeeper/name', [UndergroundIntroController::class, 'nameShopkeeper']);
         Route::post('/scripted-loss', [UndergroundIntroController::class, 'scriptedLoss']);
         Route::post('/recollections/read', [UndergroundIntroController::class, 'completeRecollection']);
+        Route::post('/guide-conversation/start', [GuideConversationController::class, 'start']);
+        Route::post('/guide-conversation/reply', [GuideConversationController::class, 'reply']);
+        Route::post('/guide-conversation/punch', [GuideConversationController::class, 'punch']);
         Route::post('/contract', [UndergroundIntroController::class, 'contract']);
         Route::post('/growth-path', [UndergroundIntroController::class, 'growthPath']);
         Route::post('/respec', [UndergroundIntroController::class, 'respec']);
@@ -153,6 +167,8 @@ Route::prefix('api/v1')->middleware(['auth', PrivateApiResponse::class])->group(
     Route::post('/nations/{nation}/abandon', [NationAbandonmentController::class, 'store']);
     Route::post('/nations/{nation}/dormancy', [NationDormancyController::class, 'store']);
     Route::get('/me/nation', [ApiController::class, 'myNation']);
+    Route::get('/nations/{nation}/compensation-grants', [CompensationWarehouseController::class, 'index']);
+    Route::post('/nations/{nation}/compensation-grants/{compensationGrant}/claim', [CompensationWarehouseController::class, 'claim']);
     Route::get('/nations/{nation}/events', [PlayerEventController::class, 'index']);
     Route::get('/nations/{nation}/map-spaces/{mapSpace}/command-definitions', [CommandQueueController::class, 'definitions']);
     Route::get('/nations/{nation}/map-spaces/{mapSpace}/command-queue', [CommandQueueController::class, 'index']);

@@ -25,7 +25,7 @@ final class UndergroundSkipSettlementTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_hunting_ground_skip_consumes_one_ticket_and_only_increments_total(): void
+    public function test_hunting_ground_skip_consumes_once_retries_idempotently_and_only_increments_total(): void
     {
         [$user, $profile] = $this->readyProfile();
         UndergroundContentClearProgress::query()->create([
@@ -33,26 +33,18 @@ final class UndergroundSkipSettlementTest extends TestCase
             'content_key' => 'shallow_caves', 'actual_clear_count' => 50, 'total_clear_count' => 50,
         ]);
         UserSkipTicketBalance::query()->create(['user_id' => $user->id, 'balance' => 1]);
-        $result = app(UndergroundRuntimeService::class)->skipHuntingGround($user, (string) Str::uuid(), 'shallow_caves');
+        $request = (string) Str::uuid();
+        $runtime = app(UndergroundRuntimeService::class);
+        $result = $runtime->skipHuntingGround($user, $request, 'shallow_caves');
+        $retry = $runtime->skipHuntingGround($user, $request, 'shallow_caves');
         $progress = UndergroundContentClearProgress::query()->where('underground_profile_id', $profile->id)->firstOrFail();
         $this->assertSame(50, $progress->actual_clear_count);
         $this->assertSame(51, $progress->total_clear_count);
         $this->assertSame(0, UserSkipTicketBalance::query()->where('user_id', $user->id)->value('balance'));
         $this->assertSame(1, $result['settlement']->ticket_cost);
-    }
-
-    public function test_skip_retry_is_idempotent_and_does_not_count_as_actual_clear(): void
-    {
-        [$user, $profile] = $this->readyProfile();
-        UndergroundContentClearProgress::query()->create(['underground_profile_id' => $profile->id, 'content_type' => 'hunting_ground', 'content_key' => 'shallow_caves', 'actual_clear_count' => 50, 'total_clear_count' => 50]);
-        UserSkipTicketBalance::query()->create(['user_id' => $user->id, 'balance' => 1]);
-        $request = (string) Str::uuid();
-        $runtime = app(UndergroundRuntimeService::class);
-        $runtime->skipHuntingGround($user, $request, 'shallow_caves');
-        $retry = $runtime->skipHuntingGround($user, $request, 'shallow_caves');
+        $this->assertSame(1, $result['daily_quest']['progress']);
+        $this->assertFalse($result['daily_quest']['completed_now']);
         $this->assertTrue($retry['duplicate']);
-        $this->assertSame(50, UndergroundContentClearProgress::query()->where('underground_profile_id', $profile->id)->value('actual_clear_count'));
-        $this->assertSame(51, UndergroundContentClearProgress::query()->where('underground_profile_id', $profile->id)->value('total_clear_count'));
         $this->assertDatabaseCount('underground_skip_settlements', 1);
         $this->assertDatabaseCount('user_skip_ticket_ledger', 1);
     }
@@ -133,6 +125,9 @@ final class UndergroundSkipSettlementTest extends TestCase
         $this->assertEquals($trialProgress->first_cleared_at, $trialProgress->refresh()->first_cleared_at);
         $this->assertCount(10, $result['settlement']->reward_snapshot['encounters']);
         $this->assertSame([], $result['settlement']->reward_snapshot['drops']);
+        $this->assertSame(10, $result['daily_quest']['progress']);
+        $this->assertTrue($result['daily_quest']['completed_now']);
+        $this->assertSame(5, $result['daily_quest']['paradox_balance']);
     }
 
     public function test_trial_skip_remains_locked_at_four_actual_clears_without_consuming_or_rewarding(): void
@@ -204,6 +199,10 @@ final class UndergroundSkipSettlementTest extends TestCase
         $this->assertDatabaseCount('user_skip_ticket_ledger', 1);
         $this->assertSame(50, UndergroundOwnedEquipment::query()->where('source_skip_batch_id', $batch->id)->count());
         $this->assertSame(50, UndergroundOwnedEquipment::query()->where('source_skip_batch_id', $batch->id)->distinct('source_reward_index')->count('source_reward_index'));
+        $this->assertSame(10, $result['daily_quest']['progress']);
+        $this->assertTrue($result['daily_quest']['completed_now']);
+        $this->assertFalse($retry['daily_quest']['completed_now']);
+        $this->assertDatabaseCount('user_daily_quest_activities', 1);
 
         try {
             $runtime->bulkSkipHuntingGround($user, $requestId, 'shallow_caves', 51);
@@ -278,6 +277,27 @@ final class UndergroundSkipSettlementTest extends TestCase
         $this->assertDatabaseCount('underground_skip_batches', 1);
         $this->assertDatabaseCount('user_skip_ticket_ledger', 1);
         $this->assertSame(2, UserSkipTicketBalance::query()->where('user_id', $user->id)->value('balance'));
+    }
+
+    public function test_bulk_skip_http_requests_reject_more_than_the_bounded_execution_limit(): void
+    {
+        [$user] = $this->readyProfile();
+        $executionCount = UndergroundRuntimeService::MAX_BULK_SKIP_EXECUTIONS + 1;
+
+        $this->actingAs($user)->postJson('/api/v1/me/underground/skip/hunting-ground', [
+            'request_id' => (string) Str::uuid(),
+            'hunting_ground_key' => 'shallow_caves',
+            'execution_count' => $executionCount,
+        ])->assertUnprocessable()->assertJsonValidationErrors('execution_count');
+
+        $this->actingAs($user)->postJson('/api/v1/me/underground/skip/trial', [
+            'request_id' => (string) Str::uuid(),
+            'trial_key' => 'trial_01',
+            'execution_count' => $executionCount,
+        ])->assertUnprocessable()->assertJsonValidationErrors('execution_count');
+
+        $this->assertDatabaseCount('underground_skip_batches', 0);
+        $this->assertDatabaseCount('user_skip_ticket_ledger', 0);
     }
 
     public function test_bulk_trial_skip_preserves_actual_and_first_clear_contracts(): void

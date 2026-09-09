@@ -11,6 +11,9 @@ import UndergroundPartyBattleCards from './UndergroundPartyBattleCards.vue';
 import { shouldReleasePendingExplorationRequest } from './undergroundExplorationPending';
 import type { EquipmentItem, EquipmentSlot } from './EquipmentItemCard.vue';
 import type { UndergroundAiConfiguration } from './undergroundAi';
+import type { DailyQuestProgress } from '../types';
+
+const maximumBulkSkipExecutions = 1000;
 
 type Stage = 'not_started' | 'initial_descent' | 'tutorial_ready' | 'escape_pending'
     | 'returned_after_tutorial' | 'shopkeeper_encounter' | 'shopkeeper_naming'
@@ -171,6 +174,7 @@ interface Battle {
             affixes: Array<{ key: string; label: string; target: string; value: number }>;
         };
     } | null;
+    daily_quest?: DailyQuestProgress;
 }
 
 interface PartyBattleMember {
@@ -223,6 +227,7 @@ interface SkipResult {
     ticket_balance?: number;
     remaining_ticket_balance?: number;
     settled_at: string;
+    daily_quest?: DailyQuestProgress;
 }
 
 interface SkipDrop {
@@ -412,9 +417,20 @@ interface RecollectionState {
     serious_talk: SeriousTalk | null;
 }
 
-interface GuideBanterEntry {
-    key: string;
-    text: string;
+interface GuideConversationStart {
+    topic_id: number;
+    initial_line: string;
+    choices: Array<{ position: number; text: string }>;
+}
+
+interface GuideConversationReply {
+    topic_id: number;
+    position: number;
+    reply_line: string;
+}
+
+interface GuideConversationPunch {
+    punch_line: string;
 }
 
 interface PendingExplorationRequest {
@@ -461,8 +477,6 @@ interface UndergroundState {
     active_slots: Array<ActiveSkill | null>;
     passive_modifiers: Record<string, number | boolean | string>;
     shopkeeper_name: string | null;
-    guide_banter?: GuideBanterEntry | null;
-    guide_banter_entries?: GuideBanterEntry[];
     true_name_branch: boolean;
     tutorial_projection: {
         stats: Record<'vitality' | 'might' | 'finesse' | 'spirit' | 'agility', number>;
@@ -528,8 +542,11 @@ const equipmentSlotLabels: Record<EquipmentSlot, string> = {
 };
 const huntingGroundPreferenceKey = 'hakoniwa.underground.selected-hunting-ground';
 function equipmentSlotLabel(slot: EquipmentSlot): string { return equipmentSlotLabels[slot]; }
-const props = defineProps<{ secretaryImageUrl?: string | null }>();
-const emit = defineEmits<{ returnToSecretary: [] }>();
+const props = defineProps<{ secretaryImageUrl?: string | null; userId?: number }>();
+const emit = defineEmits<{
+    returnToSecretary: [];
+    dailyQuest: [quest: DailyQuestProgress];
+}>();
 const state = ref<UndergroundState | null>(null);
 const busy = ref(false);
 const error = ref('');
@@ -543,6 +560,7 @@ const detailPreferenceKey = 'hakoniwa.underground.battle-detail-visible';
 const lastScrolledBattleId = ref<string | null>(null);
 const lendingEnabled = ref(false);
 const partySelectionHydrated = ref(false);
+const partySelectionPreferenceKey = computed(() => `hakoniwa.underground.party-member-ids.${props.userId ?? 'default'}`);
 const selectedBuild = ref('');
 const selectedEnemy = ref('');
 const bankOpen = ref(false);
@@ -581,7 +599,9 @@ const awakeningMessageDraft = ref('');
 const awakeningTechniqueDraft = ref<string | null>(null);
 const equipmentView = ref<'main' | 'shop' | 'guide' | 'ai' | 'vault' | 'party'>('main');
 const guideMode = ref<'basic' | 'conversation' | 'recollections' | 'serious_talk' | 'respec'>('basic');
-const selectedGuideBanter = ref<GuideBanterEntry | null>(null);
+const guideConversation = ref<GuideConversationStart | null>(null);
+const guideConversationLine = ref('');
+const guideConversationPhase = ref<'topic' | 'reply' | 'punch'>('topic');
 const selectedRecollectionKey = ref<string | null>(null);
 const seriousTalkSceneKey = ref('root');
 const selectedRespecPathKey = ref<string | null>(null);
@@ -845,11 +865,30 @@ watch(trialOptions, (trials) => {
     }
 }, { deep: true, immediate: true });
 
-watch(() => state.value?.party_member_ids, (ids) => {
-    if (!ids || partySelectionHydrated.value) return;
-    selectedPartyMemberIds.value = [...ids];
+watch(state, (current) => {
+    if (!current || partySelectionHydrated.value) return;
+    const authoritativeIds = current.party_member_ids;
+    if (authoritativeIds) {
+        selectedPartyMemberIds.value = [...authoritativeIds];
+    } else {
+        try {
+            const stored = JSON.parse(window.localStorage.getItem(partySelectionPreferenceKey.value) ?? '[]');
+            if (Array.isArray(stored)) {
+                selectedPartyMemberIds.value = [...new Set(stored.filter((id): id is number => (
+                    Number.isInteger(id) && id > 0
+                )))].slice(0, 3);
+            }
+        } catch {
+            selectedPartyMemberIds.value = [];
+        }
+    }
     partySelectionHydrated.value = true;
 }, { immediate: true });
+
+watch(selectedPartyMemberIds, (ids) => {
+    if (!partySelectionHydrated.value) return;
+    try { window.localStorage.setItem(partySelectionPreferenceKey.value, JSON.stringify(ids)); } catch { /* optional */ }
+}, { deep: true });
 
 watch(() => state.value?.active_slots, (slots) => {
     if (!slots || pendingLoadoutMutation.value) return;
@@ -972,6 +1011,7 @@ async function chooseGrowthPath(key: string): Promise<void> {
 function openGuide(mode: 'basic' | 'conversation' | 'recollections' | 'serious_talk' | 'respec' = 'basic'): void {
     equipmentView.value = 'guide';
     guideMode.value = mode;
+    if (mode !== 'conversation') resetGuideConversation();
     if (mode === 'serious_talk') {
         seriousTalkSceneKey.value = state.value?.recollections?.serious_talk?.initial_scene ?? 'root';
     }
@@ -981,12 +1021,71 @@ function openGuide(mode: 'basic' | 'conversation' | 'recollections' | 'serious_t
     }
 }
 
-function startGuideConversation(): void {
-    const entries = state.value?.guide_banter_entries ?? [];
-    selectedGuideBanter.value = entries.length > 0
-        ? entries[Math.floor(Math.random() * entries.length)] ?? entries[0] ?? null
-        : state.value?.guide_banter ?? null;
+async function startGuideConversation(): Promise<void> {
+    if (busy.value) return;
+    busy.value = true;
+    error.value = '';
     guideMode.value = 'conversation';
+    resetGuideConversation();
+    try {
+        const topic = await api<GuideConversationStart>('/api/v1/me/underground/guide-conversation/start', {
+            method: 'POST',
+        });
+        guideConversation.value = topic;
+        guideConversationLine.value = topic.initial_line;
+        guideConversationPhase.value = 'topic';
+    } catch (caught) {
+        error.value = caught instanceof Error ? caught.message : '案内人との会話を始められませんでした。';
+    } finally {
+        busy.value = false;
+    }
+}
+
+async function chooseGuideConversationReply(position: number): Promise<void> {
+    const topic = guideConversation.value;
+    if (busy.value || topic === null || guideConversationPhase.value !== 'topic') return;
+    busy.value = true;
+    error.value = '';
+    try {
+        const result = await api<GuideConversationReply>('/api/v1/me/underground/guide-conversation/reply', {
+            method: 'POST',
+            body: JSON.stringify({ topic_id: topic.topic_id, position }),
+        });
+        guideConversationLine.value = result.reply_line;
+        guideConversationPhase.value = 'reply';
+    } catch (caught) {
+        error.value = caught instanceof Error ? caught.message : '案内人へ返答できませんでした。';
+    } finally {
+        busy.value = false;
+    }
+}
+
+async function punchGuide(): Promise<void> {
+    if (busy.value || guideConversation.value === null || guideConversationPhase.value === 'reply') return;
+    busy.value = true;
+    error.value = '';
+    try {
+        const result = await api<GuideConversationPunch>('/api/v1/me/underground/guide-conversation/punch', {
+            method: 'POST',
+        });
+        guideConversationLine.value = result.punch_line;
+        guideConversationPhase.value = 'punch';
+    } catch (caught) {
+        error.value = caught instanceof Error ? caught.message : 'げんこつできませんでした。';
+    } finally {
+        busy.value = false;
+    }
+}
+
+function stopGuideConversation(): void {
+    resetGuideConversation();
+    guideMode.value = 'basic';
+}
+
+function resetGuideConversation(): void {
+    guideConversation.value = null;
+    guideConversationLine.value = '';
+    guideConversationPhase.value = 'topic';
 }
 
 function openRecollections(): void {
@@ -1215,6 +1314,7 @@ async function runExplore(huntingGroundKey: string, intentKey = 'selected-ground
                 borrowed_secretary_ids: [...pending.borrowedSecretaryIds],
             }),
         });
+        showDailyQuestCompletion(battle.daily_quest);
         await refresh(false);
         selectedBattle.value = battle;
         pendingExplorationRequest.value = null;
@@ -1235,15 +1335,19 @@ async function runSelectedExploration(): Promise<void> {
 
 async function runSkip(contentType: 'hunting_ground' | 'trial', contentKey: string, executionCount: number): Promise<void> {
     if (busy.value) return;
-    if (!Number.isInteger(executionCount) || executionCount < 1) return;
+    if (!Number.isInteger(executionCount) || executionCount < 1 || executionCount > maximumBulkSkipExecutions) return;
     const fingerprint = `${contentType}:${contentKey}:${executionCount}`;
-    const pending = pendingSkipRequest.value?.fingerprint === fingerprint
-        ? pendingSkipRequest.value
-        : { fingerprint, requestId: requestId() };
+    const currentPending = pendingSkipRequest.value;
+    lastSkipResult.value = null;
+    skipError.value = '';
+    if (currentPending && currentPending.fingerprint !== fingerprint) {
+        skipError.value = '結果が不明なskipを同じ内容で再試行してから、別のskipを開始してください。';
+        return;
+    }
+    const pending = currentPending ?? { fingerprint, requestId: requestId() };
     pendingSkipRequest.value = pending;
     busy.value = true;
     error.value = '';
-    skipError.value = '';
     try {
         const path = contentType === 'hunting_ground'
             ? '/api/v1/me/underground/skip/hunting-ground'
@@ -1255,6 +1359,7 @@ async function runSkip(contentType: 'hunting_ground' | 'trial', contentKey: stri
             method: 'POST',
             body: JSON.stringify({ request_id: pending.requestId, execution_count: executionCount, ...key }),
         });
+        showDailyQuestCompletion(result.daily_quest);
         lastSkipResult.value = result;
         pendingSkipRequest.value = null;
         const confirmedTicketBalance = result.rewards?.ticket_balance_after;
@@ -1291,11 +1396,23 @@ function skipDisabled(progress: SkipProgress, contentLocked = false): boolean {
 }
 
 function maximumSkipExecutions(progress: SkipProgress): number {
-    return Math.floor((skipTicketBalance.value ?? 0) / progress.ticket_cost);
+    return Math.min(
+        maximumBulkSkipExecutions,
+        Math.floor((skipTicketBalance.value ?? 0) / progress.ticket_cost),
+    );
 }
 
 function shortcutSkipExecutions(progress: SkipProgress, fraction: 0.5 | 1): number {
-    return Math.floor(((skipTicketBalance.value ?? 0) * fraction) / progress.ticket_cost);
+    return Math.floor(maximumSkipExecutions(progress) * fraction);
+}
+
+function skipIntentBlocked(
+    contentType: 'hunting_ground' | 'trial',
+    contentKey: string,
+    executionCount: number,
+): boolean {
+    const pending = pendingSkipRequest.value;
+    return pending !== null && pending.fingerprint !== `${contentType}:${contentKey}:${executionCount}`;
 }
 
 function skipDrops(result: SkipResult): SkipDrop[] {
@@ -1330,6 +1447,11 @@ function skipRemainingTickets(result: SkipResult): number {
         ?? 0;
 }
 
+function showDailyQuestCompletion(quest: DailyQuestProgress | undefined): void {
+    if (quest?.completed_now !== true) return;
+    emit('dailyQuest', quest);
+}
+
 async function repeatCurrentExploration(): Promise<void> {
     const battle = currentBattle.value;
     const groundKey = repeatableExplorationGroundKey.value;
@@ -1361,6 +1483,7 @@ async function runTrial(trialKey?: string): Promise<void> {
             method: 'POST',
             body: JSON.stringify({ run_key: pending.runKey, request_id: pending.requestId }),
         });
+        showDailyQuestCompletion(battle.daily_quest);
         await refresh(false);
         selectedBattle.value = battle;
         pendingTrialRequest.value = null;
@@ -2197,7 +2320,7 @@ onUnmounted(() => {
                         :aria-pressed="guideMode === 'conversation'"
                         @click="startGuideConversation"
                     >
-                        少しお話がしたい
+                        少しお話をする
                     </button>
                     <button
                         v-if="state.recollections?.available"
@@ -2224,7 +2347,34 @@ onUnmounted(() => {
                         再振りをしたい
                     </button>
                 </div>
-                <p v-if="guideMode === 'conversation' && selectedGuideBanter" class="underground-guide-conversation">{{ selectedGuideBanter.text }}</p>
+                <section
+                    v-if="guideMode === 'conversation' && guideConversation"
+                    class="underground-guide-conversation"
+                    aria-live="polite"
+                >
+                    <p class="underground-guide-conversation-line">
+                        <template v-if="guideConversationPhase === 'punch'">{{ state.shopkeeper_name ?? '案内人' }}{{ guideConversationLine }}</template>
+                        <template v-else>{{ state.shopkeeper_name ?? '案内人' }}「{{ guideConversationLine }}」</template>
+                    </p>
+                    <div v-if="guideConversationPhase === 'topic'" class="underground-guide-conversation-choices">
+                        <button
+                            v-for="choice in guideConversation.choices"
+                            :key="choice.position"
+                            type="button"
+                            :disabled="busy"
+                            @click="chooseGuideConversationReply(choice.position)"
+                        >
+                            {{ choice.text }}
+                        </button>
+                        <button class="underground-guide-punch" type="button" :disabled="busy" @click="punchGuide">げんこつ</button>
+                    </div>
+                    <div v-else-if="guideConversationPhase === 'punch'" class="underground-guide-conversation-choices">
+                        <button class="underground-guide-punch" type="button" :disabled="busy" @click="punchGuide">もう一度げんこつ</button>
+                        <button type="button" :disabled="busy" @click="stopGuideConversation">やめる</button>
+                    </div>
+                    <button v-else type="button" :disabled="busy" @click="stopGuideConversation">話をやめる</button>
+                </section>
+                <p v-else-if="guideMode === 'conversation'" class="underground-guide-conversation">{{ busy ? '話題を選んでいます…' : '話題がまだ登録されていません。' }}</p>
                 <section v-else-if="guideMode === 'recollections'" class="underground-guide-recollections" aria-labelledby="underground-recollections-title">
                     <header>
                         <p class="eyebrow">Recollections</p>
@@ -2504,6 +2654,8 @@ onUnmounted(() => {
                         <div><strong>🎫 {{ skipTicketBalance ?? 0 }}枚</strong><button type="button" aria-label="閉じる" :disabled="busy" @click="skipModalOpen = false">×</button></div>
                     </header>
                     <p v-if="skipError" class="status error underground-skip-error" role="alert">{{ skipError }}</p>
+                    <p v-if="pendingSkipRequest" class="status underground-skip-pending" role="status">結果が不明なskipがあります。同じ対象・回数で再試行してください。</p>
+                    <p class="field-hint">1回の操作で使える上限は1,000回（試練は1,000周）です。</p>
                     <section class="underground-skip-category" aria-labelledby="underground-skip-ground-title">
                         <h3 id="underground-skip-ground-title">狩場</h3>
                         <label>対象
@@ -2515,8 +2667,8 @@ onUnmounted(() => {
                             <p>1回 = {{ selectedHuntingGround.skip.ticket_cost }}枚・実戦 {{ selectedHuntingGround.skip.actual_clear_count }} / {{ selectedHuntingGround.skip.actual_clears_required }}勝</p>
                             <p v-if="!selectedHuntingGround.skip.unlocked" class="field-hint">実戦clearがあと{{ selectedHuntingGround.skip.actual_clears_required - selectedHuntingGround.skip.actual_clear_count }}回必要です。</p>
                             <div class="underground-skip-shortcuts">
-                                <button type="button" :disabled="skipDisabled(selectedHuntingGround.skip) || shortcutSkipExecutions(selectedHuntingGround.skip, 0.5) < 1" @click="runSkip('hunting_ground', selectedHuntingGround.key, shortcutSkipExecutions(selectedHuntingGround.skip, 0.5))">50%使用（{{ shortcutSkipExecutions(selectedHuntingGround.skip, 0.5) }}回）</button>
-                                <button type="button" :disabled="skipDisabled(selectedHuntingGround.skip) || maximumSkipExecutions(selectedHuntingGround.skip) < 1" @click="runSkip('hunting_ground', selectedHuntingGround.key, maximumSkipExecutions(selectedHuntingGround.skip))">100%使用（{{ maximumSkipExecutions(selectedHuntingGround.skip) }}回）</button>
+                                <button type="button" :disabled="skipDisabled(selectedHuntingGround.skip) || shortcutSkipExecutions(selectedHuntingGround.skip, 0.5) < 1 || skipIntentBlocked('hunting_ground', selectedHuntingGround.key, shortcutSkipExecutions(selectedHuntingGround.skip, 0.5))" @click="runSkip('hunting_ground', selectedHuntingGround.key, shortcutSkipExecutions(selectedHuntingGround.skip, 0.5))">50%使用（{{ shortcutSkipExecutions(selectedHuntingGround.skip, 0.5) }}回）</button>
+                                <button type="button" :disabled="skipDisabled(selectedHuntingGround.skip) || maximumSkipExecutions(selectedHuntingGround.skip) < 1 || skipIntentBlocked('hunting_ground', selectedHuntingGround.key, maximumSkipExecutions(selectedHuntingGround.skip))" @click="runSkip('hunting_ground', selectedHuntingGround.key, maximumSkipExecutions(selectedHuntingGround.skip))">100%使用（{{ maximumSkipExecutions(selectedHuntingGround.skip) }}回）</button>
                             </div>
                         </template>
                         <ul v-if="(state.hunting_grounds ?? []).some((ground) => ground.locked)" class="underground-skip-locked-list">
@@ -2534,8 +2686,8 @@ onUnmounted(() => {
                             <p>1周（{{ selectedSkipTrial.total_battles }}連戦）= {{ selectedSkipTrial.skip.ticket_cost }}枚・実戦 {{ selectedSkipTrial.skip.actual_clear_count }} / {{ selectedSkipTrial.skip.actual_clears_required }}周</p>
                             <p v-if="!selectedSkipTrial.skip.unlocked" class="field-hint">実戦clearがあと{{ selectedSkipTrial.skip.actual_clears_required - selectedSkipTrial.skip.actual_clear_count }}周必要です。</p>
                             <div class="underground-skip-shortcuts">
-                                <button type="button" :disabled="skipDisabled(selectedSkipTrial.skip) || shortcutSkipExecutions(selectedSkipTrial.skip, 0.5) < 1" @click="runSkip('trial', selectedSkipTrial.key, shortcutSkipExecutions(selectedSkipTrial.skip, 0.5))">50%使用（{{ shortcutSkipExecutions(selectedSkipTrial.skip, 0.5) }}周）</button>
-                                <button type="button" :disabled="skipDisabled(selectedSkipTrial.skip) || maximumSkipExecutions(selectedSkipTrial.skip) < 1" @click="runSkip('trial', selectedSkipTrial.key, maximumSkipExecutions(selectedSkipTrial.skip))">100%使用（{{ maximumSkipExecutions(selectedSkipTrial.skip) }}周）</button>
+                                <button type="button" :disabled="skipDisabled(selectedSkipTrial.skip) || shortcutSkipExecutions(selectedSkipTrial.skip, 0.5) < 1 || skipIntentBlocked('trial', selectedSkipTrial.key, shortcutSkipExecutions(selectedSkipTrial.skip, 0.5))" @click="runSkip('trial', selectedSkipTrial.key, shortcutSkipExecutions(selectedSkipTrial.skip, 0.5))">50%使用（{{ shortcutSkipExecutions(selectedSkipTrial.skip, 0.5) }}周）</button>
+                                <button type="button" :disabled="skipDisabled(selectedSkipTrial.skip) || maximumSkipExecutions(selectedSkipTrial.skip) < 1 || skipIntentBlocked('trial', selectedSkipTrial.key, maximumSkipExecutions(selectedSkipTrial.skip))" @click="runSkip('trial', selectedSkipTrial.key, maximumSkipExecutions(selectedSkipTrial.skip))">100%使用（{{ maximumSkipExecutions(selectedSkipTrial.skip) }}周）</button>
                             </div>
                         </template>
                         <ul v-if="trialOptions.some((trial) => trial.locked)" class="underground-skip-locked-list">

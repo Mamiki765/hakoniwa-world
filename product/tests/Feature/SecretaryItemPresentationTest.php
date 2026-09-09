@@ -14,7 +14,7 @@ use App\Models\World;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Tests\Concerns\CreatesTestWorlds;
-use Tests\Support\CurrentRulesetFixture;
+use Tests\Support\HistoricalRulesetFixture;
 use Tests\TestCase;
 
 final class SecretaryItemPresentationTest extends TestCase
@@ -25,7 +25,7 @@ final class SecretaryItemPresentationTest extends TestCase
     public function test_item_effect_projection_is_explicit_owned_world_scoped_and_never_falls_back(): void
     {
         $historicalNoEffectsWorld = $this->lightweightWorld();
-        $historicalNoEffectsSettings = CurrentRulesetFixture::withIdentity('historical-no-item-effects-v10', 10);
+        $historicalNoEffectsSettings = HistoricalRulesetFixture::withIdentity('historical-no-item-effects-v10', 10);
         unset(
             $historicalNoEffectsSettings['secretary']['item_rarities'],
             $historicalNoEffectsSettings['secretary']['item_categories'],
@@ -225,7 +225,7 @@ final class SecretaryItemPresentationTest extends TestCase
     /** @return array<string, mixed> */
     private function historicalSecretaryItemSettings(): array
     {
-        $settings = CurrentRulesetFixture::withIdentity('historical-secretary-item-snapshot-v15', 15);
+        $settings = HistoricalRulesetFixture::withIdentity('historical-secretary-item-snapshot-v15', 15);
         $oldBow = $settings['secretary']['items']['old_bow'];
         unset($oldBow['rarity'], $oldBow['tradable'], $oldBow['npc_tradable']);
         $oldBow['same_item_max_equipped'] = 1;

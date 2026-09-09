@@ -37,6 +37,7 @@ final class PlayerIslandEventService
         'disaster.cell_damaged',
         'capital.disaster_damaged',
         'fire.damaged',
+        'facility.partially_damaged',
         'fire.undersea_city_destroyed',
         'oil.income',
         'oil.depleted',
@@ -1129,6 +1130,22 @@ final class PlayerIslandEventService
     private function publicFacilityPartialDamageMessage(array $metadata): string
     {
         $facilityKey = $metadata['facility_key'] ?? null;
+        if (in_array($facilityKey, ['central_bank', 'central_granary'], true)) {
+            $message = sprintf(
+                '%s(%s,%s)の%sが%sにより損傷し、Lv%sからLv%sへ低下しました。',
+                is_string($metadata['nation_name'] ?? null) ? $metadata['nation_name'] : '自国',
+                number_format($this->integer($metadata, 'x')),
+                number_format($this->integer($metadata, 'y')),
+                $this->facilityLabel($facilityKey),
+                $this->facilityPartialDamageCause($metadata),
+                number_format($this->integer($metadata, 'before_scale')),
+                number_format($this->integer($metadata, 'after_scale')),
+            );
+
+            return ($metadata['facility_destroyed'] ?? false) === true
+                ? $message.'施設は失われ、浅瀬になりました。'
+                : $message;
+        }
         $facility = $this->integer($metadata, 'rank_before') === 2
             ? match ($facilityKey) {
                 'farm' => '大農場',
@@ -1166,7 +1183,7 @@ final class PlayerIslandEventService
         }
 
         $sourceKey = $metadata['source_key'] ?? null;
-        if (in_array($sourceKey, ['meteor_shower', 'huge_meteor'], true)) {
+        if (in_array($sourceKey, ['tsunami', 'meteor_shower', 'huge_meteor', 'land_subsidence'], true)) {
             return $this->disasterLabel($sourceKey);
         }
         if (in_array($sourceKey, [
@@ -1201,6 +1218,30 @@ final class PlayerIslandEventService
 
         return $message.sprintf(
             '（規模 %s → %s）',
+            number_format($this->integer($metadata, 'before_scale')),
+            number_format($this->integer($metadata, 'facility_scale')),
+        );
+    }
+
+    /** @param array<string, mixed> $metadata */
+    private function facilityExpandedMessage(array $metadata): string
+    {
+        $facilityKey = $metadata['facility_key'] ?? null;
+        if (in_array($facilityKey, ['central_bank', 'central_granary'], true)) {
+            return sprintf(
+                '%s(%s,%s)で%s整備が行われました。（Lv %s → %s）',
+                is_string($metadata['nation_name'] ?? null) ? $metadata['nation_name'] : '自国',
+                number_format($this->integer($metadata, 'x')),
+                number_format($this->integer($metadata, 'y')),
+                $this->facilityLabel($facilityKey),
+                number_format($this->integer($metadata, 'before_scale')),
+                number_format($this->integer($metadata, 'facility_scale')),
+            );
+        }
+
+        return sprintf(
+            '%sを増築しました（規模 %s → %s）。',
+            $this->facilityLabel($facilityKey),
             number_format($this->integer($metadata, 'before_scale')),
             number_format($this->integer($metadata, 'facility_scale')),
         );
@@ -1348,12 +1389,7 @@ final class PlayerIslandEventService
                 $this->terrainLabel($metadata['to_terrain_key'] ?? null),
             ),
             'facility.constructed' => $this->facilityLabel($metadata['facility_key'] ?? null).'を建設しました。',
-            'facility.expanded' => sprintf(
-                '%sを増築しました（規模 %s → %s）。',
-                $this->facilityLabel($metadata['facility_key'] ?? null),
-                number_format($this->integer($metadata, 'before_scale')),
-                number_format($this->integer($metadata, 'facility_scale')),
-            ),
+            'facility.expanded' => $this->facilityExpandedMessage($metadata),
             'command.buried_treasure' => $this->buriedTreasureMessage($metadata),
             'command.seabed_oil_search' => $this->seabedOilSearchMessage($metadata),
             'command.land_level_earthquake' => sprintf(
@@ -1385,6 +1421,7 @@ final class PlayerIslandEventService
                 '%sにあった海底都市は火災により消滅しました。',
                 $this->privateCellLocation($metadata),
             ),
+            'facility.partially_damaged' => $this->publicFacilityPartialDamageMessage($metadata),
             'oil.income' => $this->oilIncomeMessage($metadata),
             'oil.depleted' => '海底油田が枯渇し、中立の深海へ戻りました。',
             'settlement.appeared' => sprintf(
@@ -1731,6 +1768,7 @@ final class PlayerIslandEventService
         $reason = match ($failureReason) {
             'insufficient_funds', 'insufficient_money' => '資金不足のため実行できませんでした。',
             'insufficient_resource', 'insufficient_resources' => '必要な資源が不足しているため実行できませんでした。',
+            'insufficient_paradox' => '輝石が不足しているため実行できませんでした。',
             'insufficient_population' => '首都人口が不足しているため実行できませんでした。',
             'population_exists' => '人口が存在するため実行できませんでした。',
             'missing_adjacent_territory', 'no_adjacent_owned_land' => '隣接する自国領地がないため実行できませんでした。',
@@ -1751,10 +1789,11 @@ final class PlayerIslandEventService
             'ship_capacity_reached' => '選択した船種の保有上限に達しているため実行できませんでした。',
             'no_ship_spawn_cell' => '港から2hex以内に船を配置できる深海がないため実行できませんでした。',
             'invalid_facility', 'invalid_facility_scale' => '必要な施設の状態ではないため実行できませんでした。',
+            'facility_limit_reached' => 'この島には同じ中央施設が既にあるため実行できませんでした。',
             'invalid_terrain' => match ($metadata['command_key'] ?? null) {
-                'build_farm' => '農場建設可能な平地ではありませんでした。',
-                'build_factory' => '工場建設可能な平地ではありませんでした。',
-                'build_mine' => '採掘場建設可能な山ではありませんでした。',
+                'build_farm', 'build_fast_farm' => '農場建設可能な平地ではありませんでした。',
+                'build_factory', 'build_fast_factory' => '工場建設可能な平地ではありませんでした。',
+                'build_mine', 'build_fast_mine' => '採掘場建設可能な山ではありませんでした。',
                 'reclaim' => '埋め立て可能な海または浅瀬ではありませんでした。',
                 default => "{$command}を実行可能な地形ではありませんでした。",
             },
@@ -2533,6 +2572,8 @@ final class PlayerIslandEventService
             'undersea_city' => '海底都市',
             'monument' => '記念碑',
             'decoy' => 'ハリボテ',
+            'central_bank' => '中央銀行',
+            'central_granary' => '中央穀倉',
             default => $fallback,
         };
     }

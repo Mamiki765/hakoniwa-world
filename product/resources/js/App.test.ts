@@ -260,6 +260,9 @@ beforeEach(() => {
     document.documentElement.dataset.theme = 'system';
     document.cookie = 'hakoniwa_theme=; Path=/; Max-Age=0; SameSite=Lax';
     window.localStorage.removeItem('hakoniwa.underground.selected-hunting-ground');
+    for (const key of Object.keys(window.localStorage)) {
+        if (key.startsWith('hakoniwa.underground.party-member-ids.')) window.localStorage.removeItem(key);
+    }
     const meta = document.createElement('meta');
     meta.name = 'hakoniwa-application-version';
     meta.content = '3.0.0';
@@ -270,6 +273,9 @@ afterEach(() => {
     document.documentElement.dataset.theme = 'system';
     document.cookie = 'hakoniwa_theme=; Path=/; Max-Age=0; SameSite=Lax';
     window.localStorage.removeItem('hakoniwa.underground.selected-hunting-ground');
+    for (const key of Object.keys(window.localStorage)) {
+        if (key.startsWith('hakoniwa.underground.party-member-ids.')) window.localStorage.removeItem(key);
+    }
     document.querySelector('meta[name="hakoniwa-application-version"]')?.remove();
     vi.unstubAllGlobals();
     vi.useRealTimers();
@@ -944,6 +950,7 @@ describe('application lobby and island entry', () => {
     });
 
     it('opens a guest preview through public-only endpoints', async () => {
+        const scrollTo = vi.spyOn(window, 'scrollTo').mockImplementation(() => undefined);
         const monsterKillStats = Array.from({ length: 11 }, (_, index) => ({
             key: `monster_${index}`,
             name: `怪獣${index}`,
@@ -984,6 +991,7 @@ describe('application lobby and island entry', () => {
 
         await wrapper.find('.ranking-card tbody button').trigger('click');
         await flushPromises();
+        expect(scrollTo).toHaveBeenCalledWith({ top: 0, left: 0, behavior: 'auto' });
         expect(wrapper.text()).toContain('PUBLIC ISLAND PREVIEW');
         expect(wrapper.text()).toContain('人口・面積・推定資金・食料合計・施設規模');
         expect(wrapper.find('.preview-heading').text()).toContain('人口1,000人');
@@ -1123,6 +1131,101 @@ describe('application lobby and island entry', () => {
         expect(listingForm.findAll('select').every((control) => control.attributes('disabled') !== undefined)).toBe(true);
         expect(listingForm.get('button').attributes('disabled')).toBeDefined();
         expect(fetchMock).toHaveBeenCalledTimes(1);
+    });
+
+    it('shows the themed compensation banner and claims a warehouse grant from its modal', async () => {
+        let claimed = false;
+        const grant = {
+            id: 41,
+            grant_key: 'incident-test-owner-1',
+            reason: '今回のお詫びです。',
+            status: 'pending' as const,
+            claimed_at: null,
+            items: [
+                { asset_key: 'money' as const, label: '資金', unit: '億円', amount: 1234, claimed_amount: 0, remaining_amount: 1234 },
+                { asset_key: 'skip_ticket' as const, label: 'スキップチケット', unit: '枚', amount: 1000, claimed_amount: 0, remaining_amount: 1000 },
+            ],
+        };
+        const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+            const path = String(input);
+            const lobby = publicResponse(path);
+            if (lobby !== null) return lobby;
+            if (path === '/api/v1/me') return response({
+                id: 1,
+                display_name: 'Owner',
+                paradox: { name: '輝石', unit: 'Pd', description: '説明', balance: 0 },
+                can_manage_announcements: false,
+                can_manage_inquiries: false,
+                providers: [],
+            });
+            if (path === '/api/v1/me/daily-login') return response({
+                awarded_now: false, canonical_day: '2026-09-09', paradox_awarded: 0, skip_tickets_awarded: 0,
+                paradox: { name: '輝石', unit: 'Pd', description: '説明', balance: 0 }, skip_ticket_balance: 0,
+            });
+            if (path === '/api/v1/me/nation') return response(ownerNationFixture);
+            if (path === '/api/v1/me/secretary?world_id=1') return response(null);
+            if (path === '/api/v1/worlds/1/map-spaces') return response([{
+                id: 2, world_id: 1, key: 'surface', name: '地上', bounds_revision: 'bounds-0-59',
+                bounds: { min_x: 0, max_x: 59, min_y: 0, max_y: 59 },
+            }]);
+            if (path === '/api/v1/me/underground/surface-map') return response(null);
+            if (path.includes('/api/v1/map-spaces/2/chunks/')) return response(emptyChunk);
+            if (path === '/api/v1/nations/3/compensation-grants') return response(claimed ? [] : [grant]);
+            if (path === '/api/v1/nations/3/compensation-grants/41/claim' && init?.method === 'POST') {
+                claimed = true;
+                return response({
+                    grant: { ...grant, status: 'claimed', claimed_at: '2026-09-09T12:00:00+09:00' },
+                    applied_now: [
+                        { asset_key: 'money', applied: 1234, remaining: 0 },
+                        { asset_key: 'skip_ticket', applied: 1000, remaining: 0 },
+                    ],
+                    already_claimed: false,
+                    duplicate: false,
+                });
+            }
+            if (path === '/api/v1/me/daily-quests/development-opened') return response({
+                key: 'development_opened', label: '開発画面を開く', canonical_day: '2026-09-09', progress: 1,
+                target: 1, paradox_awarded: 0, completed: true, completed_now: false, paradox_balance: 0,
+            });
+            if (path.includes('command-definitions')) return response({
+                commands: [], paradox: { name: '輝石', unit: 'Pd', description: '説明', balance: 0 },
+                quantity_contract: { type: 'integer', minimum: 1, maximum: 99, default: 1, quick_presets: [1, 5, 10, 25, 50, 99] },
+            });
+            if (path.includes('command-queue')) return response({
+                version: 1, limit: 20, explicit_count: 0, items: [],
+                plan: Array.from({ length: 20 }, (_, index) => ({
+                    position: index + 1, kind: 'automatic_finance', editable: false, command_name: '資金繰り', quantity: null,
+                })),
+            });
+            if (path === '/api/v1/nations/3/events?page=1') return response({
+                groups: [], page: 1, anchor_turn: 1, turn_range: { start: 1, end: 1 },
+                turns_per_page: 12, has_newer_page: false, has_older_page: false,
+            });
+
+            return response(null, 404);
+        });
+        vi.stubGlobal('fetch', fetchMock);
+        const wrapper = mount(App);
+        await flushPromises();
+
+        await wrapper.findAll('.site-header nav button').find((button) => button.text() === '自島へ')!.trigger('click');
+        await flushPromises();
+        expect(wrapper.get('.compensation-banner').text()).toContain('1件の配布内容を確認する');
+        await wrapper.get('.compensation-banner').trigger('click');
+        expect(wrapper.get('.compensation-modal').attributes('aria-modal')).toBe('true');
+        expect(wrapper.get('.compensation-modal').text()).toContain('今回のお詫びです。');
+        expect(wrapper.get('.compensation-modal').text()).toContain('資金1,234億円');
+        expect(wrapper.get('.compensation-modal').text()).toContain('スキップチケット1,000枚');
+
+        await wrapper.get('.compensation-grant .button.primary').trigger('click');
+        await flushPromises();
+        expect(JSON.parse(String(fetchMock.mock.calls.find(([path]) => String(path).endsWith('/41/claim'))?.[1]?.body)))
+            .toEqual({ request_id: expect.any(String) });
+        expect(wrapper.get('.reward-toast').text()).toContain('資金1,234億円');
+        expect(wrapper.get('.reward-toast').text()).toContain('スキップチケット1,000枚');
+        expect(wrapper.find('.compensation-banner').exists()).toBe(false);
+        expect(wrapper.find('.compensation-modal').exists()).toBe(false);
+        wrapper.unmount();
     });
 
     it('shows exact owner HUD data without refetching resources per selected cell', async () => {
@@ -3873,11 +3976,6 @@ describe('Underground equipment navigation', () => {
             equipment_summary: { used: 1, capacity: 500, equipped: { weapon: null, armor: null, accessory: null } },
             skill_points_total: 20, skill_points_unspent: 5, skill_points_spent: 15, skill_tree_identity: 'tree-v1',
             skill_trees: skillTrees, active_slots: [null, null, null, null, null], passive_modifiers: {}, shopkeeper_name: '案内人',
-            guide_banter: { key: 'quiet_room', text: '……静かですね。こういう日も、嫌いではありませんよ。' },
-            guide_banter_entries: [
-                { key: 'quiet_room', text: '……静かですね。こういう日も、嫌いではありませんよ。' },
-                { key: 'old_map', text: '地図は読めても、心までは読めないものです。' },
-            ],
             true_name_branch: false, tutorial_projection: { stats: paths[0]!.stats, weapon: 'starter knife' },
             contract_completed: true, growth_paths: null, growth_path: paths[0]!, playtest: null,
             default_hunting_ground_key: null, hunting_grounds: [],
@@ -4034,17 +4132,28 @@ describe('Underground equipment navigation', () => {
                 if (!respecCommitted) throw new TypeError('Loadout response lost');
                 return response(openState);
             }
+            if (path === '/api/v1/me/underground/guide-conversation/start' && init?.method === 'POST') {
+                return response({
+                    topic_id: 42,
+                    initial_line: 'DBから選んだ話題',
+                    choices: [
+                        { position: 1, text: '返事をする' },
+                        { position: 2, text: '別の返事' },
+                    ],
+                });
+            }
+            if (path === '/api/v1/me/underground/guide-conversation/reply' && init?.method === 'POST') {
+                const payload = JSON.parse(String(init.body)) as { topic_id: number; position: number };
+                return response({ topic_id: payload.topic_id, position: payload.position, reply_line: '選択への返答' });
+            }
+            if (path === '/api/v1/me/underground/guide-conversation/punch' && init?.method === 'POST') {
+                return response({ punch_line: '「いぎゃっ！？」' });
+            }
             return response(null, 404);
         });
         vi.stubGlobal('fetch', fetchMock);
-        const random = vi.spyOn(Math, 'random')
-            .mockReturnValueOnce(0)
-            .mockReturnValueOnce(0.99);
         const wrapper = mount(UndergroundPanel);
         await flushPromises();
-
-        expect(wrapper.find('.underground-guide-banter').exists()).toBe(false);
-        expect(wrapper.text()).not.toContain('……静かですね。こういう日も、嫌いではありませんよ。');
 
         await wrapper.findAll('.underground-character-actions button')[1]!.trigger('click');
         await wrapper.get('#underground-active-loadout select').setValue('quick_cut');
@@ -4065,14 +4174,26 @@ describe('Underground equipment navigation', () => {
         expect(wrapper.get('.underground-guide-room-greeting').text()).toBe('案内人「あら、どうしたんですか？」');
         const guideAction = (label: string) => wrapper.findAll('.underground-guide-actions > button')
             .find((button) => button.text() === label)!;
-        await guideAction('少しお話がしたい').trigger('click');
-        expect(wrapper.get('.underground-guide-conversation').text())
-            .toBe('……静かですね。こういう日も、嫌いではありませんよ。');
-        await guideAction('少しお話がしたい').trigger('click');
-        expect(wrapper.get('.underground-guide-conversation').text())
-            .toBe('地図は読めても、心までは読めないものです。');
-        expect(wrapper.text()).not.toContain('「あ、あー……話題が思い浮かんだらまた来てちょうだいな？」');
-        random.mockRestore();
+        await guideAction('少しお話をする').trigger('click');
+        await flushPromises();
+        expect(wrapper.get('.underground-guide-conversation').text()).toContain('案内人「DBから選んだ話題」');
+        expect(wrapper.get('.underground-guide-conversation').text()).toContain('返事をする');
+        expect(wrapper.get('.underground-guide-conversation').text()).toContain('げんこつ');
+        await wrapper.findAll('.underground-guide-conversation-choices button')
+            .find((button) => button.text() === 'げんこつ')!.trigger('click');
+        await flushPromises();
+        expect(wrapper.get('.underground-guide-conversation').text()).toContain('案内人「いぎゃっ！？」');
+        expect(wrapper.get('.underground-guide-conversation').text()).toContain('もう一度げんこつ');
+        await wrapper.findAll('.underground-guide-conversation-choices button')
+            .find((button) => button.text() === 'やめる')!.trigger('click');
+        expect(wrapper.find('.underground-guide-conversation').exists()).toBe(false);
+        await guideAction('少しお話をする').trigger('click');
+        await flushPromises();
+        await wrapper.findAll('.underground-guide-conversation-choices button')
+            .find((button) => button.text() === '返事をする')!.trigger('click');
+        await flushPromises();
+        expect(wrapper.get('.underground-guide-conversation').text()).toContain('案内人「選択への返答」');
+        expect(wrapper.get('.underground-guide-conversation').text()).toContain('話をやめる');
         expect(wrapper.findAll('.underground-guide-actions > button').map((button) => button.text()))
             .not.toContain('過去について問う');
         await guideAction('過去のイベントを振り返る').trigger('click');

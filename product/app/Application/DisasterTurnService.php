@@ -33,6 +33,7 @@ final class DisasterTurnService
         private readonly SurfaceShipRemovalService $shipRemoval,
         private readonly FacilityRankPolicy $facilityRanks,
         private readonly FacilityScaleDamageService $facilityScaleDamage,
+        private readonly CentralFacilityDamageService $centralFacilityDamage,
     ) {}
 
     /** @return array<string, int> */
@@ -48,6 +49,7 @@ final class DisasterTurnService
             'land_subsidence_changed_to_shallow' => 0,
             'land_subsidence_protected_mountains' => 0,
             'land_subsidence_capitals_damaged' => 0,
+            'land_subsidence_central_facilities_damaged' => 0,
             'land_subsidence_affected_chunks' => 0,
             'eligible_spawn_nations' => 0,
             'spawn_draws' => 0,
@@ -148,12 +150,14 @@ final class DisasterTurnService
         $metrics['executed_disasters'] += $subsidence['triggered_nations'];
         $metrics['damaged_cells'] += $subsidence['changed_to_sea']
             + $subsidence['changed_to_shallow']
-            + $subsidence['capitals_damaged'];
+            + $subsidence['capitals_damaged']
+            + $subsidence['central_facilities_damaged'];
         $metrics['land_subsidence_nations'] = $subsidence['triggered_nations'];
         $metrics['land_subsidence_changed_to_sea'] = $subsidence['changed_to_sea'];
         $metrics['land_subsidence_changed_to_shallow'] = $subsidence['changed_to_shallow'];
         $metrics['land_subsidence_protected_mountains'] = $subsidence['protected_mountains'];
         $metrics['land_subsidence_capitals_damaged'] = $subsidence['capitals_damaged'];
+        $metrics['land_subsidence_central_facilities_damaged'] = $subsidence['central_facilities_damaged'];
         $metrics['land_subsidence_affected_chunks'] = $subsidence['affected_chunks'];
 
         foreach ($this->monsterWorldSpawn->spawn($context, $space) as $key => $value) {
@@ -174,6 +178,7 @@ final class DisasterTurnService
      *     changed_to_shallow: int,
      *     protected_mountains: int,
      *     capitals_damaged: int,
+     *     central_facilities_damaged: int,
      *     affected_chunks: int
      * }
      */
@@ -190,6 +195,7 @@ final class DisasterTurnService
             'changed_to_shallow' => 0,
             'protected_mountains' => 0,
             'capitals_damaged' => 0,
+            'central_facilities_damaged' => 0,
             'affected_chunks' => 0,
         ];
         if (! $settings['enabled']) {
@@ -205,7 +211,7 @@ final class DisasterTurnService
             $context->world,
             $nations->pluck('id')->map(static fn ($id): int => (int) $id)->all(),
         );
-        /** @var array<int, array{nation: Nation, owned_land_cells: int, threshold: int, draw: int, to_sea: array<int, true>, to_shallow: array<int, true>, protected_mountains: array<int, true>, capitals: array<int, true>}> $plans */
+        /** @var array<int, array{nation: Nation, owned_land_cells: int, threshold: int, draw: int, to_sea: array<int, true>, to_shallow: array<int, true>, protected_mountains: array<int, true>, capitals: array<int, true>, central_facilities: array<int, true>}> $plans */
         $plans = [];
         foreach ($nations as $nation) {
             $ownedLandCells = $landByNation[$nation->id] ?? 0;
@@ -230,6 +236,7 @@ final class DisasterTurnService
                 'to_shallow' => [],
                 'protected_mountains' => [],
                 'capitals' => [],
+                'central_facilities' => [],
             ];
         }
         if ($plans === []) {
@@ -287,7 +294,9 @@ final class DisasterTurnService
                 if (! $coastal) {
                     continue;
                 }
-                if ($cellSnapshot['terrain_key'] === 'mountain') {
+                if (in_array($cellSnapshot['facility_key'], ['central_bank', 'central_granary'], true)) {
+                    $plan['central_facilities'][$cellSnapshot['id']] = true;
+                } elseif ($cellSnapshot['terrain_key'] === 'mountain') {
                     $plan['protected_mountains'][$cellSnapshot['id']] = true;
                 } elseif ($cellSnapshot['facility_key'] === 'capital') {
                     $plan['capitals'][$cellSnapshot['id']] = true;
@@ -310,10 +319,13 @@ final class DisasterTurnService
         $changedToShallow = 0;
         $protectedMountains = 0;
         $capitalsDamaged = 0;
+        $centralFacilitiesDamaged = 0;
         /** @var array<int, int> $changedToSeaByNation */
         $changedToSeaByNation = [];
         /** @var array<int, int> $changedToShallowByNation */
         $changedToShallowByNation = [];
+        /** @var array<int, int> $centralFacilitiesDamagedByNation */
+        $centralFacilitiesDamagedByNation = [];
         /** @var array<int, array<int, true>> $affectedChunkIdsByNation */
         $affectedChunkIdsByNation = [];
         /** @var array<int, true> $affectedChunks */
@@ -347,6 +359,21 @@ final class DisasterTurnService
         $capitalDamageByNation = [];
         foreach ($plans as $nationId => $plan) {
             $protectedMountains += count($plan['protected_mountains']);
+            $centralCellIds = array_keys($plan['central_facilities']);
+            sort($centralCellIds, SORT_NUMERIC);
+            foreach ($centralCellIds as $cellId) {
+                if ($this->applyCentralFacilityDisasterDamage(
+                    $context,
+                    $cellsById[$cellId],
+                    'land_subsidence',
+                ) === true) {
+                    $centralFacilitiesDamaged++;
+                    $centralFacilitiesDamagedByNation[$nationId] = ($centralFacilitiesDamagedByNation[$nationId] ?? 0) + 1;
+                    $chunkId = (int) $cellsById[$cellId]->map_chunk_id;
+                    $affectedChunks[$chunkId] = true;
+                    $affectedChunkIdsByNation[$nationId][$chunkId] = true;
+                }
+            }
             $landCellIds = array_keys($plan['to_shallow']);
             sort($landCellIds, SORT_NUMERIC);
             foreach ($landCellIds as $cellId) {
@@ -398,6 +425,7 @@ final class DisasterTurnService
                 'changed_to_shallow_count' => $changedToShallowByNation[$nationId] ?? 0,
                 'protected_mountain_count' => count($plan['protected_mountains']),
                 'capital_damage' => $capitalDamageByNation[$nationId] ?? [],
+                'central_facility_damage_count' => $centralFacilitiesDamagedByNation[$nationId] ?? 0,
                 'affected_chunk_count' => count($affectedChunkIdsByNation[$nationId] ?? []),
                 'draw' => $plan['draw'],
                 'numerator' => $settings['probability']['numerator'],
@@ -412,6 +440,7 @@ final class DisasterTurnService
             'changed_to_shallow' => $changedToShallow,
             'protected_mountains' => $protectedMountains,
             'capitals_damaged' => $capitalsDamaged,
+            'central_facilities_damaged' => $centralFacilitiesDamaged,
             'affected_chunks' => count($affectedChunks),
         ];
     }
@@ -483,7 +512,7 @@ final class DisasterTurnService
 
         $protection = $unprotectedSeaFacility ? 0 : $this->adjacentProtectionCount(
             $cell,
-            $settings['protection_facility_keys'],
+            $this->forestProtectionFacilityKeys($context, 'fire', $settings['protection_facility_keys']),
             $cellIndex,
         );
         if ($protection > 0) {
@@ -633,7 +662,9 @@ final class DisasterTurnService
         $damaged = 0;
         foreach ($center->radius($settings['radius']) as $coordinate) {
             $cell = $this->cellAt($space, $coordinate, $cellIndex);
-            if ($cell === null || ! $this->isMutable($cell, $cellIndex) || ! $this->isTsunamiTarget($cell, $settings)) {
+            if ($cell === null || ! $this->isMutable($cell, $cellIndex)
+                || (! $this->isTsunamiTarget($cell, $settings)
+                    && ! $this->centralFacilityDamage->isCentral($context, $cell))) {
                 continue;
             }
             if ($this->monsterRemoval->hasAtCell($context, $cell->id)) {
@@ -646,6 +677,12 @@ final class DisasterTurnService
                 continue;
             }
             if ($this->nationProtection->protectsFromDisaster($context, $cell->x, $cell->y)) {
+                continue;
+            }
+            $centralDamage = $this->applyCentralFacilityDisasterDamage($context, $cell, 'tsunami');
+            if ($centralDamage !== null) {
+                $damaged += $centralDamage ? 1 : 0;
+
                 continue;
             }
             if ($this->isCapital($cell)) {
@@ -683,7 +720,11 @@ final class DisasterTurnService
             if ($this->monsterRemoval->hasAtCell($context, $cell->id)) {
                 continue;
             }
-            $protection = $this->adjacentProtectionCount($cell, $settings['protection_facility_keys'], $cellIndex);
+            $protection = $this->adjacentProtectionCount(
+                $cell,
+                $this->forestProtectionFacilityKeys($context, 'typhoon', $settings['protection_facility_keys']),
+                $cellIndex,
+            );
             $draw = $context->random->stream(TurnRandomStreamFactory::GLOBAL_TYPHOON_EFFECT)
                 ->integer(0, $settings['internal_denominator'] - 1);
             $threshold = $settings['base_damage_threshold'];
@@ -749,7 +790,15 @@ final class DisasterTurnService
                         || in_array($cell->facility?->key, $settings['seabed_facility_keys'], true);
                     $monsterRemoved = false;
                     $facilityDamage = null;
-                    if ($landTarget && in_array($cell->facility?->key, ['farm', 'factory', 'mine'], true)) {
+                    $centralDamage = $this->applyCentralFacilityDisasterDamage(
+                        $context,
+                        $cell,
+                        'meteor_shower',
+                        metadata: ['center_x' => $center->x, 'center_y' => $center->y],
+                    );
+                    if ($centralDamage !== null) {
+                        $damaged += ($centralDamage || $shipRemoved) ? 1 : 0;
+                    } elseif ($landTarget && in_array($cell->facility?->key, ['farm', 'factory', 'mine'], true)) {
                         $monsterRemoved = $this->removeMonsterForTerrainEvent($context, $cell, 'meteor_shower');
                         $facilityDamage = $this->facilityScaleDamage->apply(
                             $context,
@@ -764,7 +813,9 @@ final class DisasterTurnService
                             ],
                         );
                     }
-                    if ($facilityDamage !== null && $facilityDamage['scale_loss'] > 0) {
+                    if ($centralDamage !== null) {
+                        // The central-facility path above has already resolved this impact.
+                    } elseif ($facilityDamage !== null && $facilityDamage['scale_loss'] > 0) {
                         $damaged++;
                     } elseif ($cell->terrain->key === 'shallow') {
                         if ($this->changeCell(
@@ -841,6 +892,18 @@ final class DisasterTurnService
             }
             if ($this->nationProtection->protectsFromDisaster($context, $cell->x, $cell->y)) {
                 $damaged += $shipRemoved ? 1 : 0;
+
+                continue;
+            }
+            $centralDamage = $this->applyCentralFacilityDisasterDamage(
+                $context,
+                $cell,
+                'huge_meteor',
+                $distance,
+                ['center_x' => $center->x, 'center_y' => $center->y, ...$eventMetadata],
+            );
+            if ($centralDamage !== null) {
+                $damaged += ($centralDamage || $shipRemoved) ? 1 : 0;
 
                 continue;
             }
@@ -968,6 +1031,13 @@ final class DisasterTurnService
             ) !== null;
             if ($this->nationProtection->protectsFromDisaster($context, $centerCell->x, $centerCell->y)) {
                 $damaged += $shipRemoved ? 1 : 0;
+            } elseif (($centralDamage = $this->applyCentralFacilityDisasterDamage(
+                $context,
+                $centerCell,
+                'eruption',
+                0,
+            )) !== null) {
+                $damaged += ($centralDamage || $shipRemoved) ? 1 : 0;
             } elseif ($this->isCapital($centerCell)) {
                 $this->damageCapital($context, $centerCell, 'eruption', 'eruption_center');
                 $damaged++;
@@ -998,6 +1068,18 @@ final class DisasterTurnService
             ) !== null;
             if ($this->nationProtection->protectsFromDisaster($context, $cell->x, $cell->y)) {
                 $damaged += $shipRemoved ? 1 : 0;
+
+                continue;
+            }
+            $centralDamage = $this->applyCentralFacilityDisasterDamage(
+                $context,
+                $cell,
+                'eruption',
+                1,
+                ['direction' => $direction],
+            );
+            if ($centralDamage !== null) {
+                $damaged += ($centralDamage || $shipRemoved) ? 1 : 0;
 
                 continue;
             }
@@ -1097,6 +1179,31 @@ final class DisasterTurnService
     }
 
     /**
+     * @param  list<string>  $baseFacilityKeys
+     * @return list<string>
+     */
+    private function forestProtectionFacilityKeys(
+        TurnContext $context,
+        string $disasterKey,
+        array $baseFacilityKeys,
+    ): array {
+        $contract = $context->ruleset->settings['central_facilities']['forest_equivalent_protection'] ?? null;
+        if ($contract === null) {
+            return $baseFacilityKeys;
+        }
+        if (! is_array($contract)
+            || ($contract['facility_keys'] ?? null) !== ['central_bank', 'central_granary']
+            || ($contract['disaster_keys'] ?? null) !== ['fire', 'typhoon']) {
+            throw new DomainException('The active Ruleset has an invalid central-facility forest-protection contract.');
+        }
+        if (! in_array($disasterKey, $contract['disaster_keys'], true)) {
+            return $baseFacilityKeys;
+        }
+
+        return array_values(array_unique([...$baseFacilityKeys, ...$contract['facility_keys']]));
+    }
+
+    /**
      * @param  array<string, mixed>  $extra
      * @return array{before_population: int, after_population: int, damage_percent: int}
      */
@@ -1185,6 +1292,9 @@ final class DisasterTurnService
         if ($this->nationProtection->protectsFromDisaster($context, $cell->x, $cell->y)) {
             return false;
         }
+        if ($this->centralFacilityDamage->isCentral($context, $cell)) {
+            return false;
+        }
         $beforeTerrain = $cell->terrain->key;
         $beforeFacility = $cell->facility?->key;
         $beforeOwner = $cell->owner_nation_id;
@@ -1220,6 +1330,79 @@ final class DisasterTurnService
         ], $visibility);
 
         return true;
+    }
+
+    /**
+     * Returns null for a non-central cell, true when level damage was applied,
+     * and false when the central facility is protected from this damage shape.
+     *
+     * @param  array<string, mixed>  $metadata
+     */
+    private function applyCentralFacilityDisasterDamage(
+        TurnContext $context,
+        MapCell $cell,
+        string $disasterKey,
+        ?int $ringDistance = null,
+        array $metadata = [],
+    ): ?bool {
+        if (! $this->centralFacilityDamage->isCentral($context, $cell)) {
+            return null;
+        }
+        $contract = $this->centralFacilityDisasterContract($context);
+        if (in_array($disasterKey, $contract['immune_disaster_keys'], true)) {
+            return false;
+        }
+        $levelLoss = match (true) {
+            $disasterKey === 'tsunami' => $contract['tsunami_level_loss'],
+            $disasterKey === 'meteor_shower' => $contract['meteor_shower_level_loss'],
+            $disasterKey === 'huge_meteor' && $ringDistance === 0 => $contract['huge_meteor_center_level_loss'],
+            $disasterKey === 'huge_meteor' && $ringDistance === 1 => $contract['huge_meteor_ring_one_level_loss'],
+            $disasterKey === 'huge_meteor' && $ringDistance === 2 => $contract['huge_meteor_ring_two_level_loss'],
+            $disasterKey === 'eruption' && $ringDistance === 0 => $contract['eruption_center_level_loss'],
+            $disasterKey === 'eruption' && $ringDistance === 1 => $contract['eruption_ring_one_level_loss'],
+            $disasterKey === 'land_subsidence' => $contract['land_subsidence_level_loss'],
+            default => null,
+        };
+        if ($levelLoss === null) {
+            return false;
+        }
+        $damage = $this->centralFacilityDamage->apply(
+            $context,
+            $cell,
+            $levelLoss,
+            $disasterKey,
+            $disasterKey,
+            [
+                'disaster_key' => $disasterKey,
+                'ring_distance' => $ringDistance,
+                ...$metadata,
+            ],
+        );
+
+        return $damage !== null && $damage['scale_loss'] > 0;
+    }
+
+    /**
+     * @return array{facility_keys: list<string>, tsunami_level_loss: int, meteor_shower_level_loss: int, huge_meteor_center_level_loss: int, huge_meteor_ring_one_level_loss: int, huge_meteor_ring_two_level_loss: int, eruption_center_level_loss: int, eruption_ring_one_level_loss: int, land_subsidence_level_loss: int, immune_disaster_keys: list<string>}
+     */
+    private function centralFacilityDisasterContract(TurnContext $context): array
+    {
+        $contract = $context->ruleset->settings['central_facilities']['disaster_damage'] ?? null;
+        if (! is_array($contract)
+            || ($contract['facility_keys'] ?? null) !== ['central_bank', 'central_granary']
+            || ($contract['tsunami_level_loss'] ?? null) !== 1
+            || ($contract['meteor_shower_level_loss'] ?? null) !== 5
+            || ($contract['huge_meteor_center_level_loss'] ?? null) !== 20
+            || ($contract['huge_meteor_ring_one_level_loss'] ?? null) !== 5
+            || ($contract['huge_meteor_ring_two_level_loss'] ?? null) !== 1
+            || ($contract['eruption_center_level_loss'] ?? null) !== 5
+            || ($contract['eruption_ring_one_level_loss'] ?? null) !== 1
+            || ($contract['land_subsidence_level_loss'] ?? null) !== 5
+            || ($contract['immune_disaster_keys'] ?? null) !== ['earthquake']) {
+            throw new DomainException('The active Ruleset has an invalid central-facility disaster contract.');
+        }
+
+        return $contract;
     }
 
     private function removeMonsterForTerrainEvent(

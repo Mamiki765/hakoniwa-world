@@ -13,11 +13,11 @@ use Tests\TestCase;
 
 final class MonsterFoundationContractTest extends TestCase
 {
-    public function test_current_fixture_has_the_exact_ten_species_and_no_new_natural_spawn_members(): void
+    public function test_current_fixture_has_the_exact_eleven_species_and_rank_two_spawn_contract(): void
     {
         $settings = $this->authoringSettings();
 
-        $this->assertSame(10, app(RulesetAuthoringValidator::class)->validate($settings)['monsters']);
+        $this->assertSame(11, app(RulesetAuthoringValidator::class)->validate($settings)['monsters']);
         $this->assertSame([
             'mecha_inora',
             'mecha_inora_zero',
@@ -29,16 +29,18 @@ final class MonsterFoundationContractTest extends TestCase
             'inora_ghost',
             'whale',
             'king_inora',
+            'nyowamiya',
         ], array_column($settings['monster_definitions'], 'key'));
-        $this->assertSame([0, 50, 100, 200, 300, 400, 450, 500, 600, 700],
+        $this->assertSame([0, 50, 100, 200, 300, 400, 450, 500, 600, 700, 750],
             array_column($settings['monster_definitions'], 'display_order'));
         $poolKeys = array_merge(...array_column(
             $settings['monster_system']['natural_spawn']['population_tiers'],
             'monster_keys',
         ));
-        $this->assertNotContains('mecha_inora_zero', $poolKeys);
+        $this->assertContains('mecha_inora_zero', $poolKeys);
+        $this->assertContains('nyowamiya', $poolKeys);
         $this->assertNotContains('aoi_inora', $poolKeys);
-        foreach (array_slice($settings['monster_definitions'], 0, 10) as $definition) {
+        foreach ($settings['monster_definitions'] as $definition) {
             if (in_array($definition['key'], ['mecha_inora_zero', 'aoi_inora'], true)) {
                 $this->assertArrayNotHasKey('kind', $definition['source_metadata']);
                 $this->assertArrayNotHasKey('skill_code', $definition['source_metadata']);
@@ -67,7 +69,7 @@ final class MonsterFoundationContractTest extends TestCase
 
     public function test_authoring_rejects_monster_values_that_the_database_constraints_reject(): void
     {
-        foreach ([['hp_variation', 19], ['natural_spawn_tier', 4]] as [$field, $value]) {
+        foreach ([['hp_variation', 19], ['natural_spawn_tier', 5]] as [$field, $value]) {
             $settings = $this->authoringSettings();
             $settings['monster_definitions'][0][$field] = $value;
 

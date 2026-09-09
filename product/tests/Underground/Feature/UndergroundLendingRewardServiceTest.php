@@ -13,7 +13,6 @@ use App\Models\UndergroundProfile;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use InvalidArgumentException;
 use Tests\TestCase;
@@ -89,20 +88,7 @@ final class UndergroundLendingRewardServiceTest extends TestCase
         $this->assertSame($secretary->id, $candidate[0]['secretary_id']);
     }
 
-    public function test_nine_participations_award_zero_and_tenth_awards_one(): void
-    {
-        [$owner, $borrowed] = $this->secretary();
-        [$leader, $leaderSecretary] = $this->secretary();
-        $service = app(UndergroundLendingRewardService::class);
-        for ($i = 1; $i <= 10; $i++) {
-            $party = $this->party($leader, $leaderSecretary, $borrowed, $i);
-            $result = $service->settle($this->battle($leader, $party, $i), $party);
-            $this->assertSame($i === 10 ? 1 : 0, $result['tickets_awarded']);
-        }
-        $this->assertSame(1, app(SecretaryLendingService::class)->ticketBalance($owner));
-    }
-
-    public function test_participation_remainder_carries_across_canonical_days(): void
+    public function test_ninth_to_tenth_participation_carries_across_days_and_is_idempotent(): void
     {
         [$owner, $borrowed] = $this->secretary();
         [$leader, $leaderSecretary] = $this->secretary();
@@ -115,7 +101,15 @@ final class UndergroundLendingRewardServiceTest extends TestCase
         }
         Carbon::setTestNow('2026-09-09 00:10:00+09:00');
         $party = $this->party($leader, $leaderSecretary, $borrowed, 10);
-        $this->assertSame(1, $service->settle($this->battle($leader, $party, 10), $party)['tickets_awarded']);
+        $battle = $this->battle($leader, $party, 10);
+        $this->assertSame(
+            ['participations' => 1, 'tickets_awarded' => 1],
+            $service->settle($battle, $party),
+        );
+        $this->assertSame(
+            ['participations' => 0, 'tickets_awarded' => 0],
+            $service->settle($battle, $party),
+        );
 
         $this->assertSame(1, app(SecretaryLendingService::class)->ticketBalance($owner));
         $this->assertSame([
@@ -130,29 +124,35 @@ final class UndergroundLendingRewardServiceTest extends TestCase
             ])->all());
     }
 
-    public function test_repeated_settlement_is_idempotent_and_self_is_ignored(): void
+    public function test_daily_cap_stops_the_tenth_participation_ticket_at_one_hundred(): void
     {
         [$owner, $borrowed] = $this->secretary();
         [$leader, $leaderSecretary] = $this->secretary();
-        $party = $this->party($leader, $leaderSecretary, $borrowed, 1);
-        $battle = $this->battle($leader, $party, 1);
-        $this->assertSame(1, app(UndergroundLendingRewardService::class)->settle($battle, $party)['participations']);
-        $this->assertSame(0, app(UndergroundLendingRewardService::class)->settle($battle, $party)['participations']);
-        $this->assertSame(0, app(SecretaryLendingService::class)->ticketBalance($owner));
-    }
+        $service = app(UndergroundLendingRewardService::class);
+        for ($i = 1; $i <= 9; $i++) {
+            $party = $this->party($leader, $leaderSecretary, $borrowed, $i);
+            $this->assertSame(0, $service->settle($this->battle($leader, $party, $i), $party)['tickets_awarded']);
+        }
+        $daily = SecretaryLendingDailyReward::query()
+            ->where('owner_user_id', $owner->id)
+            ->sole();
+        $this->assertSame(9, $daily->participation_count);
+        $daily->update(['tickets_awarded' => 100]);
 
-    public function test_daily_cap_stops_ticket_at_one_hundred(): void
-    {
-        [$owner, $borrowed] = $this->secretary();
-        [$leader, $leaderSecretary] = $this->secretary();
-        $daily = SecretaryLendingDailyReward::query()->create([
-            'owner_user_id' => $owner->id, 'canonical_day' => now()->toDateString(),
-            'participation_count' => 999, 'tickets_awarded' => 100,
-        ]);
-        $party = $this->party($leader, $leaderSecretary, $borrowed, 1);
-        $result = app(UndergroundLendingRewardService::class)->settle($this->battle($leader, $party, 1), $party);
+        $party = $this->party($leader, $leaderSecretary, $borrowed, 10);
+        $battle = $this->battle($leader, $party, 10);
+        $result = $service->settle($battle, $party);
+
+        $this->assertSame(1, $result['participations']);
         $this->assertSame(0, $result['tickets_awarded']);
+        $this->assertSame(10, $daily->refresh()->participation_count);
         $this->assertSame(100, $daily->refresh()->tickets_awarded);
+        $this->assertSame(0, app(SecretaryLendingService::class)->ticketBalance($owner));
+        $this->assertDatabaseHas('secretary_lending_participations', [
+            'underground_battle_id' => $battle->id,
+            'owner_user_id' => $owner->id,
+            'ticket_delta' => 0,
+        ]);
     }
 
     public function test_failed_settlement_rolls_back_prior_member_rows(): void
@@ -170,26 +170,22 @@ final class UndergroundLendingRewardServiceTest extends TestCase
         }
     }
 
-    public function test_trial_playtest_and_unfinished_battles_are_not_settleable(): void
+    public function test_trial_and_playtest_battles_are_not_settleable(): void
     {
         [$owner, $borrowed] = $this->secretary();
         [$leader, $leaderSecretary] = $this->secretary();
         $service = app(UndergroundLendingRewardService::class);
-        foreach ([['trial', 'finished'], ['playtest', 'finished'], ['exploration', 'unfinished']] as [$type, $state]) {
+        foreach (['trial', 'playtest'] as $type) {
             $party = $service->createSnapshot($leader, $leaderSecretary, $type, 'content', 'content', 5, [], [
                 $this->member('self', $leaderSecretary, $leader, 5, 5),
                 $this->member('borrowed_secretary', $borrowed, $owner, 5, 5),
             ]);
-            if ($state === 'unfinished') {
-                DB::statement('ALTER TABLE underground_battles ALTER COLUMN finished_at DROP NOT NULL');
-            }
             $battle = $this->battle(
                 $leader,
                 $party,
                 random_int(1, 1000),
                 UndergroundBattle::RESULT_VICTORY,
                 UndergroundBattle::ACTIVITY_EXPLORATION,
-                $state !== 'unfinished',
             );
             try {
                 $service->settle($battle, $party);

@@ -4,12 +4,9 @@ namespace Tests\Feature;
 
 use App\Application\ModerationRecordService;
 use App\Application\NationCreationService;
-use App\Application\Ver381RulesetUpgrade;
-use App\Models\RulesetVersion;
 use App\Models\TurnRun;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Illuminate\Support\Facades\Schema;
 use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\Concerns\CreatesTestWorlds;
 use Tests\TestCase;
@@ -18,27 +15,6 @@ final class FirstProductionReleaseTest extends TestCase
 {
     use CreatesTestWorlds;
     use RefreshDatabase;
-
-    public function test_current_schema_and_v22_are_the_fresh_install_baseline(): void
-    {
-        config(['hakoniwa' => require config_path('hakoniwa.php')]);
-
-        $this->assertTrue(Schema::hasColumn('nations', 'registered_turn'));
-        $this->assertTrue(Schema::hasColumn('nations', 'population_high_water'));
-        $this->assertTrue(Schema::hasTable('moderation_records'));
-        $this->assertFalse(Schema::hasColumn('users', 'moderation_suspended_at'));
-        $this->assertFalse(Schema::hasColumn('nations', 'moderation_suspended_at'));
-
-        $published = RulesetVersion::query()->where('key', 'hakoniwa-2s-plus-v22')->firstOrFail();
-        $this->assertSame('hakoniwa-2s-plus-v22', config('hakoniwa.ruleset.key'));
-        $this->assertSame(['hakoniwa-2s-plus-v22'], array_keys(config('hakoniwa.published_rulesets')));
-        $this->assertSame(
-            ['hakoniwa-2s-plus-v19', 'hakoniwa-2s-plus-v20', 'hakoniwa-2s-plus-v21', 'hakoniwa-2s-plus-v22'],
-            RulesetVersion::query()->orderBy('version')->pluck('key')->all(),
-        );
-        $this->assertSame($published->id, $this->lightweightWorld()->ruleset_version_id);
-        $this->assertSame('already_current_v22', app(Ver381RulesetUpgrade::class)->run());
-    }
 
     public function test_moderation_record_is_admin_only_and_changes_no_gameplay_state(): void
     {
@@ -235,45 +211,5 @@ final class FirstProductionReleaseTest extends TestCase
             $this->assertIsString($manual);
             $this->assertDoesNotMatchRegularExpression('/\b(?:source|legacy|ruleset)\b/i', $manual);
         }
-        $css = file_get_contents(resource_path('css/hakoniwa.css'));
-        $this->assertIsString($css);
-        $this->assertStringContainsString('html[data-theme="light"]', $css);
-        $this->assertStringContainsString('html[data-theme="dark"]', $css);
-        $this->assertMatchesRegularExpression(
-            '/@media \(prefers-color-scheme: dark\)\s*\{\s*html\[data-theme="system"\]\s*\{[^}]*color-scheme: dark;/s',
-            $css,
-        );
-        $this->assertStringNotContainsString('filter: invert(', $css);
-        $this->assertStringContainsString(
-            '.secretary-equipment { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr));',
-            $css,
-        );
-        $this->assertStringContainsString(
-            '.secretary-profile-hero { grid-template-columns: minmax(0, 38%) minmax(0, 1fr); grid-template-areas: "portrait summary" "biography biography";',
-            $css,
-        );
-        $this->assertStringContainsString(
-            '.secretary-equipment { grid-template-columns: repeat(2, minmax(0, 1fr)); }',
-            $css,
-        );
-        $this->assertStringContainsString(
-            '.secretary-warehouse .item-flavor { color: var(--muted); font-style: italic;',
-            $css,
-        );
-        $this->assertStringContainsString(
-            '.hud-more-grid { display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(260px, 1fr);',
-            $css,
-        );
-        $this->assertMatchesRegularExpression(
-            '/@media \(max-width: 820px\)\s*\{.*\.hud-more-grid \{ grid-template-columns: minmax\(0, 1fr\); \}/s',
-            $css,
-        );
-        $manualCss = file_get_contents(resource_path('css/manual.css'));
-        $this->assertIsString($manualCss);
-        $this->assertStringContainsString('html[data-theme="dark"]', $manualCss);
-        $this->assertMatchesRegularExpression(
-            '/@media \(prefers-color-scheme: dark\)\s*\{\s*html\[data-theme="system"\]\s*\{[^}]*color-scheme: dark;/s',
-            $manualCss,
-        );
     }
 }

@@ -5,6 +5,7 @@ namespace Tests\Underground\Feature;
 use App\Application\SecretaryLendingService;
 use App\Application\Underground\UndergroundIntroService;
 use App\Application\Underground\UndergroundProfileService;
+use App\Application\Underground\UndergroundStarterEquipmentService;
 use App\Models\Secretary;
 use App\Models\SecretaryLendingParticipation;
 use App\Models\UndergroundBattle;
@@ -586,18 +587,50 @@ final class PostgresUndergroundRuntimeConcurrencyTest extends TestCase
     private function openExploration(User $user, Secretary $secretary): void
     {
         $secretary->update(['name' => '探索秘書', 'named_at' => now()]);
-        $intro = app(UndergroundIntroService::class);
-        $intro->enter($user, (string) Str::uuid());
-        $intro->advance($user, (string) Str::uuid(), 'initial_story_complete');
-        $intro->tutorial($user, (string) Str::uuid());
-        $intro->advance($user, (string) Str::uuid(), 'escape_complete');
-        $intro->enter($user, (string) Str::uuid());
-        $intro->advance($user, (string) Str::uuid(), 'shopkeeper_encounter_complete');
-        $intro->nameShopkeeper($user, (string) Str::uuid(), '案内係');
-        $intro->advance($user, (string) Str::uuid(), 'shop_explanation_complete');
-        $intro->contract($user, (string) Str::uuid());
-        $intro->selectGrowthPath($user, (string) Str::uuid(), 'martial_red');
-        $intro->advance($user, (string) Str::uuid(), 'growth_path_story_complete');
+        $profile = app(UndergroundProfileService::class)->ensureForSecretary($secretary);
+        $profile->update([
+            'underground_contract_completed_at' => now()->subMinute(),
+            'growth_path_key' => 'martial_red',
+            'growth_path_identity' => 'secretary-underground-growth-alpha-v1',
+            'growth_path_selected_at' => now(),
+            'skill_points_total' => 20,
+            'skill_points_unspent' => 20,
+            'skill_tree_identity' => 'secretary-underground-skill-tree-alpha-v1',
+            'unspent_stp' => 0,
+        ]);
+        app(UndergroundStarterEquipmentService::class)->reconcile($profile->fresh());
+        $tutorial = UndergroundBattle::query()->create([
+            'underground_profile_id' => $profile->id,
+            'request_id' => (string) Str::uuid(),
+            'request_fingerprint' => hash('sha256', 'concurrency-ready-profile:'.$user->id),
+            'runtime_identity' => 'concurrency-ready-profile-v1',
+            'activity_type' => 'tutorial',
+            'activity_key' => 'tutorial',
+            'encounter_key' => 'giant_rat',
+            'result' => 'victory',
+            'rounds' => 1,
+            'damage_dealt' => 1,
+            'damage_received' => 0,
+            'healing_done' => 0,
+            'combat_level_before' => 1,
+            'combat_level_after' => 1,
+            'combat_xp_before' => 0,
+            'combat_xp_after' => 0,
+            'shard_balance_before' => 0,
+            'shard_balance_after' => 0,
+            'private_seed' => 1,
+            'snapshot' => [],
+            'started_at' => now()->subHour(),
+            'finished_at' => now()->subHour(),
+        ]);
+        UndergroundIntroProgress::query()->create([
+            'underground_profile_id' => $profile->id,
+            'stage' => 'underground_open',
+            'shopkeeper_name' => '案内係',
+            'special_loss_required' => false,
+            'branch_identity' => 'normal',
+            'tutorial_battle_id' => $tutorial->id,
+        ]);
     }
 
     /** @return array{User, Secretary, UndergroundProfile} */

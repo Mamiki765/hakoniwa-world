@@ -8,9 +8,11 @@ use App\Application\DomesticCommandExecutor;
 use App\Application\KarmaTurnService;
 use App\Application\NationCreationService;
 use App\Application\NationLifecycleService;
+use App\Application\ParadoxBalanceService;
 use App\Application\PlayerIslandEventService;
 use App\Application\SurfaceShipForcedDisplacementService;
 use App\Application\Underground\UndergroundProfileService;
+use App\Domain\Economy\NationCapacityResolver;
 use App\Domain\Map\GridCoordinate;
 use App\Domain\Map\MapCellStateService;
 use App\Domain\Turn\TurnContext;
@@ -674,6 +676,128 @@ class DomesticCommandExecutionTest extends TestCase
         });
         $this->assertFalse($landLevelEvent['consumes_turn']);
         $this->assertArrayNotHasKey('earthquake', $landLevelEvent);
+    }
+
+    public function test_fast_commands_debit_paradox_per_execution_and_continue_until_a_normal_command_consumes_the_turn(): void
+    {
+        $world = $this->lightweightWorld();
+        [$user, $nation] = $this->createNation($world, '高速開発島');
+        $nation->update(['money' => 10_000]);
+        app(ParadoxBalanceService::class)->credit(
+            $user->id,
+            40,
+            'test:fast-command-credit:'.$user->id,
+            'compensation',
+        );
+        $space = $this->surfaceMapSpace($world);
+        $targets = MapCell::query()->where('owner_nation_id', $nation->id)
+            ->whereNull('facility_definition_id')
+            ->whereHas('terrain', fn ($query) => $query->where('key', 'plain'))
+            ->orderBy('id')->take(2)->get();
+        $this->assertCount(2, $targets);
+
+        $fast = $this->queue($user, $nation, $space, 'build_fast_farm', $targets[0], 2, 1);
+        $normal = $this->queue($user, $nation, $space, 'build_factory', $targets[1], 1, 2);
+
+        $result = app(DomesticCommandExecutor::class)->execute($this->context(
+            $world,
+            [$nation->id],
+            hash('sha256', 'fast-command-turnless-chain'),
+        ));
+
+        $this->assertSame([3, 0, 1], [
+            $result['successes'],
+            $result['failures'],
+            $result['quantity_decrements'],
+        ]);
+        $this->assertSame('farm', $targets[0]->fresh()->facility()->value('key'));
+        $this->assertSame(12, $targets[0]->fresh()->facility_scale);
+        $this->assertSame('factory', $targets[1]->fresh()->facility()->value('key'));
+        $this->assertSame('completed', $fast->fresh()->status);
+        $this->assertSame(2, $fast->fresh()->paradox_execution_count);
+        $this->assertSame('completed', $normal->fresh()->status);
+        $this->assertSame(9_700, (int) $nation->fresh()->money);
+        $this->assertSame(0, app(ParadoxBalanceService::class)->balanceFor($user->id));
+        $this->assertSame(2, DB::table('user_paradox_ledger')->where('source_kind', 'command')->count());
+
+        $successes = DB::table('audit_events')->where('event_type', 'command.success')
+            ->orderBy('id')->pluck('metadata')->map(static function (mixed $metadata): array {
+                return json_decode((string) $metadata, true, 512, JSON_THROW_ON_ERROR);
+            })->all();
+        $this->assertSame(
+            ['build_fast_farm', 'build_fast_farm', 'build_factory'],
+            array_column($successes, 'command_key'),
+        );
+        $this->assertSame([false, false, true], array_column($successes, 'consumes_turn'));
+        $this->assertSame([20, 20, 0], array_column($successes, 'cost_paradox'));
+    }
+
+    public function test_central_facilities_build_expand_raise_capacities_and_enforce_one_per_kind_and_level_ninety(): void
+    {
+        $world = $this->lightweightWorld();
+        [$user, $nation] = $this->createNation($world, 'ナム孤島');
+        $nation->update(['money' => 50_000]);
+        $space = $this->surfaceMapSpace($world);
+        $targets = MapCell::query()->where('owner_nation_id', $nation->id)
+            ->whereNull('facility_definition_id')
+            ->whereHas('terrain', fn ($query) => $query->where('key', 'plain'))
+            ->orderBy('id')->take(3)->get();
+        $this->assertCount(3, $targets);
+        $capacities = app(NationCapacityResolver::class);
+        $base = $capacities->resolve($nation);
+
+        $bank = $this->queue($user, $nation, $space, 'build_central_bank', $targets[0], 2, 1);
+        $duplicateBank = $this->queue($user, $nation, $space, 'build_central_bank', $targets[1], 1, 2);
+        $granary = $this->queue($user, $nation, $space, 'build_central_granary', $targets[2], 1, 3);
+        $executor = app(DomesticCommandExecutor::class);
+        $context = $this->context($world, [$nation->id], hash('sha256', 'central-facility-build-expand'));
+
+        $first = $executor->execute($context);
+        $this->assertSame([1, 0, 1], [$first['successes'], $first['failures'], $first['quantity_decrements']]);
+        $this->assertSame(1, $targets[0]->fresh()->facility_scale);
+        $second = $executor->execute($context);
+        $this->assertSame([1, 0], [$second['successes'], $second['failures']]);
+        $this->assertSame(2, $targets[0]->fresh()->facility_scale);
+        $third = $executor->execute($context);
+        $this->assertSame([1, 1], [$third['successes'], $third['failures']]);
+
+        $this->assertSame('completed', $bank->fresh()->status);
+        $this->assertSame('facility_limit_reached', $duplicateBank->fresh()->failure_code);
+        $this->assertSame('completed', $granary->fresh()->status);
+        $this->assertSame('central_bank', $targets[0]->fresh()->facility()->value('key'));
+        $this->assertSame('central_granary', $targets[2]->fresh()->facility()->value('key'));
+        $this->assertSame(20_003, (int) $nation->fresh()->money);
+
+        $raised = $capacities->resolve($nation->fresh());
+        // The central base addition participates in the existing 1% Secretary
+        // capacity multiplier, just like the original base capacity.
+        $this->assertSame($base->money + 2_020, $raised->money);
+        $this->assertSame($base->foodTons + 101_000, $raised->foodTons);
+
+        $events = app(PlayerIslandEventService::class);
+        $publicMessages = collect($events->publicNationPage($nation->fresh(), 1, 2)['groups'])
+            ->flatMap(static fn (array $group): array => $group['events'])->pluck('message')->all();
+        $ownerMessages = collect($events->ownerPage($nation->fresh(), 1, 2)['groups'])
+            ->flatMap(static fn (array $group): array => $group['events'])->pluck('message')->all();
+        $this->assertContains('こころなしか、ナム孤島のどこかで森が増えた気がします。', $publicMessages);
+        $this->assertContains(
+            sprintf(
+                'ナム孤島(%d,%d)で中央銀行整備が行われました。（Lv 1 → 2）',
+                $targets[0]->x,
+                $targets[0]->y,
+            ),
+            $ownerMessages,
+        );
+
+        $targets[0]->update(['facility_scale' => 90]);
+        $moneyBeforeMaximumAttempt = (int) $nation->fresh()->money;
+        $maximum = $this->queue($user, $nation, $space, 'build_central_bank', $targets[0], 1, 1);
+        $atMaximum = $executor->execute($context);
+        $this->assertSame([0, 1], [$atMaximum['successes'], $atMaximum['failures']]);
+        $this->assertSame(1, $atMaximum['automatic_finance']);
+        $this->assertSame('invalid_facility_scale', $maximum->fresh()->failure_code);
+        $this->assertSame(90, $targets[0]->fresh()->facility_scale);
+        $this->assertSame($moneyBeforeMaximumAttempt + 10, (int) $nation->fresh()->money);
     }
 
     public function test_public_facility_log_uses_actual_scale_snapshots_for_construction_expansion_and_maximum(): void

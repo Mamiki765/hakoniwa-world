@@ -1504,10 +1504,6 @@ final readonly class UndergroundIntroService
             'passive_modifiers' => $skillBuild['passive_modifiers'] ?? [],
             'ai' => $aiState,
             'shopkeeper_name' => $intro?->shopkeeper_name,
-            'guide_banter' => $this->catalog->stableGuideBanter(
-                'secretary:'.$secretary->id.':'.now()->format('Y-m-d'),
-            ),
-            'guide_banter_entries' => $this->catalog->guideBanter(),
             'true_name_branch' => $intro?->branch_identity === 'true_name',
             'tutorial_projection' => [
                 'stats' => ['vitality' => 10, 'might' => 10, 'finesse' => 10, 'spirit' => 10, 'agility' => 10],
