@@ -5,7 +5,7 @@ import UndergroundPartyBattleCards from './UndergroundPartyBattleCards.vue';
 describe('Underground party battle cards', () => {
     it('uses icon for normal actors and portrait only for selected large-art events', () => {
         const wrapper = mount(UndergroundPartyBattleCards, { props: { actors: [
-            { team: 'player', combatant_id: 'secretary:1', display_name: '自分', icon_url: '/icon', portrait_url: '/portrait', state: { hp: 5, max_hp: 10, mp: 2, awakening_gauge: 10000, awakening_gauge_max: 10000 }, awakening_state: 'ready' },
+            { team: 'player', combatant_id: 'secretary:1', display_name: '自分', icon_url: '/icon', portrait_url: '/portrait', state: { hp: 5, max_hp: 10, mp: 2, awakening_unlocked: true, awakening_gauge: 1000, awakening_gauge_max: 1000 }, awakening_state: 'ready' },
             { team: 'enemy', combatant_id: 'enemy:1', display_name: '敵', icon_url: '/enemy-icon', portrait_url: '/enemy-portrait', state: { hp: 10, max_hp: 10, mp: 0 } },
         ], portraitEvents: [{ type: 'start', round: 1, combatant_id: 'secretary:1' }], portraitEventType: 'start' } });
         expect(wrapper.findAll('.underground-party-large-art')).toHaveLength(1);
@@ -16,7 +16,9 @@ describe('Underground party battle cards', () => {
         expect(wrapper.text()).toContain('Ready');
         expect(wrapper.text()).toContain('5/10');
         expect(wrapper.text()).not.toContain('2/10000');
-        expect(wrapper.text()).toContain('覚醒 Ready 10000/10000');
+        expect(wrapper.get('.underground-party-portrait-awakening').text()).toContain('覚醒Ready');
+        expect(wrapper.get('.underground-party-portrait-awakening progress').attributes('aria-label')).toBe('覚醒ゲージ 100%、Ready');
+        expect(wrapper.text()).not.toContain('1000/1000');
         expect(wrapper.text()).not.toContain('secretary:1');
     });
 
@@ -26,6 +28,30 @@ describe('Underground party battle cards', () => {
         ] } });
         expect(wrapper.text()).toContain('Awaken!');
         expect(wrapper.text()).not.toContain('8500/10000');
+    });
+
+    it('renders the saved portrait-event gauge instead of current actor state and hides a locked gauge', () => {
+        const wrapper = mount(UndergroundPartyBattleCards, { props: {
+            actors: [
+                { team: 'player', combatant_id: 'secretary:1', display_name: '自分', state: { hp: 10, max_hp: 10, mp: 2, awakening_unlocked: true, awakening_gauge: 0, awakening_gauge_max: 1000, awakened: true }, awakening_state: 'awakened' },
+                { team: 'player', combatant_id: 'secretary:2', display_name: '同行者', state: { hp: 10, max_hp: 10, mp: 2, awakening_unlocked: true, awakening_gauge: 1000, awakening_gauge_max: 1000 }, awakening_state: 'ready' },
+            ],
+            portraitEvents: [
+                { type: 'start', round: 1, combatant_id: 'secretary:1', state: { hp: 8, max_hp: 10, mp: 1, awakening_unlocked: true, awakening_gauge: 400, awakening_gauge_max: 1000, awakened: false } },
+                { type: 'start', round: 1, combatant_id: 'secretary:2', state: { hp: 9, max_hp: 10, mp: 2, awakening_unlocked: false, awakening_gauge: 0, awakening_gauge_max: 1000, awakened: false } },
+            ],
+            portraitEventType: 'start',
+        } });
+
+        const eventGauges = wrapper.findAll('.underground-party-portrait-awakening');
+        expect(eventGauges).toHaveLength(1);
+        expect(eventGauges[0]!.text()).toContain('覚醒蓄積中');
+        expect(eventGauges[0]!.get<HTMLProgressElement>('progress').element.value).toBe(400);
+        expect(eventGauges[0]!.get('progress').attributes('max')).toBe('1000');
+        expect(eventGauges[0]!.get('progress').attributes('aria-label')).toBe('覚醒ゲージ 40%、蓄積中');
+        expect(eventGauges[0]!.text()).not.toContain('400/1000');
+        expect(eventGauges[0]!.text()).not.toContain('Awaken!');
+        expect(eventGauges[0]!.text()).not.toContain('Ready');
     });
 
     it('renders each server portrait event once by event identity', () => {

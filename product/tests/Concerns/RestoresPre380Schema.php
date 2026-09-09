@@ -50,6 +50,7 @@ ALTER TABLE underground_owned_equipment
 SQL);
         }
         if (Schema::hasColumn('user_skip_ticket_ledger', 'underground_skip_batch_id')) {
+            DB::statement('ALTER TABLE user_skip_ticket_ledger DROP CONSTRAINT IF EXISTS user_skip_ticket_ledger_skip_source_check');
             Schema::table('user_skip_ticket_ledger', function (Blueprint $table): void {
                 $table->dropForeign(['underground_skip_batch_id']);
                 $table->dropUnique('user_skip_ticket_ledger_skip_batch_unique');
@@ -96,6 +97,20 @@ SQL);
             Schema::table('secretaries', function (Blueprint $table): void {
                 $table->dropColumn(['nickname', 'portrait_preference']);
             });
+        }
+        $v21 = DB::table('ruleset_versions')->where('key', 'hakoniwa-2s-plus-v21')->first(['id']);
+        $v22 = DB::table('ruleset_versions')->where('key', 'hakoniwa-2s-plus-v22')->first(['id']);
+        if ($v21 !== null && $v22 !== null) {
+            DB::table('worlds')->where('ruleset_version_id', $v22->id)->update([
+                'ruleset_version_id' => $v21->id,
+                'updated_at' => now(),
+            ]);
+            DB::table('ruleset_versions')->where('id', $v22->id)->delete();
+            $settings = require config_path('hakoniwa/rulesets/hakoniwa-2s-plus-v21.php');
+            config([
+                'hakoniwa.ruleset' => $settings,
+                'hakoniwa.published_rulesets' => [$settings['key'] => $settings],
+            ]);
         }
         DB::table('migrations')->whereIn('migration', [
             '2026_09_09_000000_extend_secretary_lending_build_cache',

@@ -76,6 +76,13 @@ final class CurrentRulesetAuthoringInspector
         'facility-ranks.php' => 'v21/facility-ranks.php',
     ];
 
+    /** @var array<string, string> */
+    private const V22_DOMAIN_OVERRIDES = [
+        ...self::V21_DOMAIN_OVERRIDES,
+        'world-and-map.php' => 'v22/world-and-map.php',
+        'secretary.php' => 'v22/secretary.php',
+    ];
+
     private const CLASSIFICATIONS = ['behavior', 'data', 'flavor'];
 
     /**
@@ -85,15 +92,15 @@ final class CurrentRulesetAuthoringInspector
     public function inspect(array $publishedPayload): array
     {
         $rulesetKey = $publishedPayload['key'] ?? null;
-        if (! in_array($rulesetKey, ['hakoniwa-2s-plus-v16', 'hakoniwa-2s-plus-v17', 'hakoniwa-2s-plus-v18', 'hakoniwa-2s-plus-v19', 'hakoniwa-2s-plus-v20', 'hakoniwa-2s-plus-v21'], true)) {
-            throw new DomainException('Ruleset authoring inspection supports only immutable v16 through v20 and the current v21 draft.');
+        if (! in_array($rulesetKey, ['hakoniwa-2s-plus-v16', 'hakoniwa-2s-plus-v17', 'hakoniwa-2s-plus-v18', 'hakoniwa-2s-plus-v19', 'hakoniwa-2s-plus-v20', 'hakoniwa-2s-plus-v21', 'hakoniwa-2s-plus-v22'], true)) {
+            throw new DomainException('Ruleset authoring inspection supports only immutable v16 through v21 and the current v22 draft.');
         }
         $authoredLeaves = [];
         $classifiedPaths = [];
         $counts = array_fill_keys(self::CLASSIFICATIONS, 0);
 
         $domainFiles = match ($rulesetKey) {
-            'hakoniwa-2s-plus-v21' => [
+            'hakoniwa-2s-plus-v21', 'hakoniwa-2s-plus-v22' => [
                 ...self::DOMAIN_FILES,
                 ...self::V19_ADDITIONAL_DOMAIN_FILES,
                 ...self::V20_ADDITIONAL_DOMAIN_FILES,
@@ -109,6 +116,7 @@ final class CurrentRulesetAuthoringInspector
         };
         foreach ($domainFiles as $file) {
             $relativePath = match ($rulesetKey) {
+                'hakoniwa-2s-plus-v22' => self::V22_DOMAIN_OVERRIDES[$file] ?? 'current/'.$file,
                 'hakoniwa-2s-plus-v21' => self::V21_DOMAIN_OVERRIDES[$file] ?? 'current/'.$file,
                 'hakoniwa-2s-plus-v20' => self::V20_DOMAIN_OVERRIDES[$file] ?? 'current/'.$file,
                 'hakoniwa-2s-plus-v19' => self::V19_DOMAIN_OVERRIDES[$file] ?? 'current/'.$file,

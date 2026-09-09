@@ -13,6 +13,7 @@ use App\Application\Ver280UnderseaCityRulesetUpgrade;
 use App\Application\Ver310RulesetUpgrade;
 use App\Application\Ver350RulesetUpgrade;
 use App\Application\Ver370RulesetUpgrade;
+use App\Application\Ver381RulesetUpgrade;
 use App\Domain\Secretary\SecretarySkillCatalog;
 use App\Domain\Secretary\SecretarySkillProgression;
 use App\Domain\World\WorldGenerationProfile;
@@ -88,18 +89,18 @@ final class FreshInstallRebaselineTest extends TestCase
 
     private const VER_381_MIGRATION = '2026_09_09_020000_prepare_3_8_1_ui_and_bulk_skip';
 
-    public function test_empty_postgresql_uses_direct_current_schema_and_v21_catalog_baseline(): void
+    public function test_empty_postgresql_uses_direct_current_schema_and_v22_catalog_baseline(): void
     {
         config(['hakoniwa' => require config_path('hakoniwa.php')]);
         $current = config('hakoniwa.ruleset');
         app(CurrentCatalogInstaller::class)->install($current);
         app(RulesetPublisher::class)->publish($current);
-        $ruleset = RulesetVersion::query()->where('key', 'hakoniwa-2s-plus-v21')->sole();
+        $ruleset = RulesetVersion::query()->where('key', 'hakoniwa-2s-plus-v22')->sole();
 
         $this->assertSame('3.8.1', config('hakoniwa.application_version'));
-        $this->assertSame(['hakoniwa-2s-plus-v21'], array_keys(config('hakoniwa.published_rulesets')));
-        $this->assertSame('hakoniwa-2s-plus-v21', $ruleset->key);
-        $this->assertSame(21, $ruleset->version);
+        $this->assertSame(['hakoniwa-2s-plus-v22'], array_keys(config('hakoniwa.published_rulesets')));
+        $this->assertSame('hakoniwa-2s-plus-v22', $ruleset->key);
+        $this->assertSame(22, $ruleset->version);
         $this->assertDatabaseHas('ruleset_versions', [
             'key' => Ver350RulesetUpgrade::SOURCE_KEY,
             'version' => Ver350RulesetUpgrade::SOURCE_VERSION,
@@ -1750,6 +1751,7 @@ SQL);
     {
         $this->returnPartyPersistenceToPre380Source();
         $this->returnAuctionItemHistoryToPre380Source();
+        RulesetVersion::query()->where('key', Ver381RulesetUpgrade::TARGET_KEY)->delete();
         RulesetVersion::query()->where('key', Ver370RulesetUpgrade::TARGET_KEY)->delete();
         $v20Settings = require config_path('hakoniwa/rulesets/hakoniwa-2s-plus-v20.php');
         config([

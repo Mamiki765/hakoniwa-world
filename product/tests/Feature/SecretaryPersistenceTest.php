@@ -638,11 +638,15 @@ final class SecretaryPersistenceTest extends TestCase
             ->assertJsonPath('data.nickname', '123456')
             ->assertJsonPath('data.battle_display_name', '123456')
             ->assertJsonPath('data.biography', '設定タブから愛称を変えても残る経歴');
+        $this->actingAs($owner)->getJson('/api/v1/me/secretary')->assertOk()
+            ->assertJsonPath('data.header_label', '123456');
         $this->actingAs($owner)->patchJson('/api/v1/me/secretary/profile', [
             'nickname' => null,
         ])->assertOk()
             ->assertJsonPath('data.battle_display_name', '正式名称七…')
             ->assertJsonPath('data.biography', '設定タブから愛称を変えても残る経歴');
+        $this->actingAs($owner)->getJson('/api/v1/me/secretary')->assertOk()
+            ->assertJsonPath('data.header_label', '正式名称七…');
     }
 
     public function test_secretary_image_slots_have_independent_credit_and_aspect_contract(): void

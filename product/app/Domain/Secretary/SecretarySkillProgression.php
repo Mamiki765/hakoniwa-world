@@ -35,12 +35,20 @@ final class SecretarySkillProgression
             return (1 + $triangular) * $multiplier;
         }
         $levelBasis = match ($basis) {
+            'next_level_linear' => $currentLevel + 1,
             'next_level_squared' => $currentLevel + 1,
             'current_level_squared' => $currentLevel,
             default => throw new DomainException('Secretary skill level requirement basis is invalid.'),
         };
         if ($levelBasis < 1) {
             throw new DomainException('Secretary skill level requirement cannot resolve to zero.');
+        }
+        if ($basis === 'next_level_linear') {
+            if ($levelBasis > intdiv(PHP_INT_MAX, $multiplier)) {
+                throw new DomainException('Secretary skill level requirement exceeds the supported integer range.');
+            }
+
+            return $levelBasis * $multiplier;
         }
         if ($levelBasis > intdiv(PHP_INT_MAX, $levelBasis)
             || $levelBasis * $levelBasis > intdiv(PHP_INT_MAX, $multiplier)) {

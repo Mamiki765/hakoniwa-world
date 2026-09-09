@@ -420,14 +420,16 @@ main { width: min(1560px, 100%); margin: 0 auto; padding: clamp(16px, 3vw, 46px)
 .underground-party-large-art { width: 100%; aspect-ratio: 3 / 4; object-fit: contain; background: var(--paper-deep); }
 .underground-party-portrait-media { position: relative; min-width: 0; }
 .underground-party-image-info { position: absolute; right: .3rem; bottom: .3rem; z-index: 2; }
+.underground-party-image-info[open] { z-index: 20; }
 .underground-party-image-info summary { display: grid; width: 1.65rem; height: 1.65rem; place-items: center; border: 1px solid rgb(255 255 255 / 70%); border-radius: 50%; background: rgb(19 37 44 / 82%); color: white; cursor: pointer; font-size: .75rem; font-weight: 900; list-style: none; }
 .underground-party-image-info summary::-webkit-details-marker { display: none; }
-.underground-party-image-info > div { position: absolute; right: 0; bottom: 2rem; width: min(15rem, calc(100vw - 2rem)); padding: .55rem; border: 1px solid var(--line); background: var(--paper); color: var(--ink); box-shadow: 0 8px 24px rgb(0 0 0 / 24%); font-size: .68rem; }
+.underground-party-image-info > div { position: fixed; top: 50%; left: 50%; width: min(15rem, calc(100vw - 2rem)); max-height: calc(100dvh - 2rem); overflow: auto; transform: translate(-50%, -50%); padding: .55rem; border: 1px solid var(--line); background: var(--paper); color: var(--ink); box-shadow: 0 8px 24px rgb(0 0 0 / 24%); font-size: .68rem; }
 .underground-party-image-info p { margin: .2rem 0; overflow-wrap: anywhere; }
 .underground-party-portrait-events { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: .55rem; }
 .underground-party-portrait-event { display: grid; gap: .25rem; margin: 0; min-width: 0; }
 .underground-party-portrait-event figcaption { color: var(--muted); font-size: .68rem; overflow-wrap: anywhere; }
 .underground-party-portrait-event figcaption small { display: block; }
+.underground-party-portrait-awakening { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: .2em; align-items: center; margin-top: .15rem; }
 .underground-party-battle-card-body label { display: grid; grid-template-columns: 2em minmax(0, 1fr); gap: .2em; align-items: center; font-size: .85em; }
 .underground-party-meter { position: relative; display: grid; min-width: 0; min-height: 1.5em; }
 .underground-party-meter.is-long { min-height: 2.5em; }

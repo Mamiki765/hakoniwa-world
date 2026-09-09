@@ -138,6 +138,7 @@ final readonly class UndergroundEquipmentDropService
         array $reward,
         int $rewardSeed,
         int $rewardIndex,
+        bool $vaultCapacityAvailable,
     ): array {
         if (! $batch->exists
             || $batch->underground_profile_id !== $profile->id
@@ -161,6 +162,18 @@ final readonly class UndergroundEquipmentDropService
         if ($drop['status'] === 'none') {
             return $drop;
         }
+        if (! $vaultCapacityAvailable) {
+            $payload = $drop['payload'] ?? null;
+            if (! is_array($payload)) {
+                throw new RuntimeException('Underground generated drop payload is missing.');
+            }
+
+            return [
+                'identity' => $drop['identity'],
+                'status' => 'vault_full',
+                'item' => $this->itemSummary($payload),
+            ];
+        }
 
         return $this->persistGeneratedDrop(
             $profile,
@@ -171,7 +184,17 @@ final readonly class UndergroundEquipmentDropService
             $batch->id,
             $rewardIndex,
             $batch->settled_at ?? Carbon::now(),
+            false,
         );
+    }
+
+    public function remainingVaultCapacity(UndergroundProfile $profile): int
+    {
+        $used = UndergroundOwnedEquipment::query()
+            ->where('underground_profile_id', $profile->id)
+            ->count();
+
+        return max(0, $this->equipmentCatalog->vaultCapacity() - $used);
     }
 
     /**
@@ -240,15 +263,13 @@ final readonly class UndergroundEquipmentDropService
         ?int $sourceSkipBatchId,
         ?int $sourceRewardIndex,
         CarbonInterface $acquiredAt,
+        bool $checkVaultCapacity = true,
     ): array {
         $payload = $drop['payload'] ?? null;
         if (! is_array($payload)) {
             throw new RuntimeException('Underground generated drop payload is missing.');
         }
-        $used = UndergroundOwnedEquipment::query()
-            ->where('underground_profile_id', $profile->id)
-            ->count();
-        if ($used >= $this->equipmentCatalog->vaultCapacity()) {
+        if ($checkVaultCapacity && $this->remainingVaultCapacity($profile) < 1) {
             return [
                 'identity' => $drop['identity'],
                 'status' => 'vault_full',

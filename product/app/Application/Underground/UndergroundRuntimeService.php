@@ -612,6 +612,7 @@ STORY;
             $drops = [];
             $equipmentGranted = 0;
             $vaultFull = 0;
+            $remainingVaultSlots = $this->equipmentDrops->remainingVaultCapacity($profile);
             foreach ($executions as $index => [$encounter, $seed]) {
                 $drop = $this->equipmentDrops->settleBulkSkippedVictory(
                     $profile,
@@ -620,9 +621,11 @@ STORY;
                     $encounter,
                     $seed,
                     $index + 1,
+                    $remainingVaultSlots > 0,
                 );
                 if ($drop['status'] === 'granted') {
                     $equipmentGranted++;
+                    $remainingVaultSlots--;
                     $drops[] = $drop;
                 } elseif ($drop['status'] === 'vault_full') {
                     $vaultFull++;
@@ -742,6 +745,7 @@ STORY;
             $equipmentGranted = 0;
             $vaultFull = 0;
             if (is_string($dropTierKey)) {
+                $remainingVaultSlots = $this->equipmentDrops->remainingVaultCapacity($profile);
                 $rewardsPerRun = count($trial['rewards']);
                 for ($execution = 1; $execution <= $executionCount; $execution++) {
                     foreach ($trial['rewards'] as $index => $entry) {
@@ -758,9 +762,11 @@ STORY;
                             $entry,
                             $rewardSeed,
                             $rewardIndex,
+                            $remainingVaultSlots > 0,
                         );
                         if ($drop['status'] === 'granted') {
                             $equipmentGranted++;
+                            $remainingVaultSlots--;
                             $drops[] = $drop;
                         } elseif ($drop['status'] === 'vault_full') {
                             $vaultFull++;

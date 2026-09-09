@@ -15,8 +15,8 @@ class RulesetAuthoringValidatorTest extends TestCase
         $settings = config('hakoniwa.ruleset');
 
         $summary = $validator->validate($settings);
-        $this->assertSame('hakoniwa-2s-plus-v21', $summary['key']);
-        $this->assertSame(21, $summary['version']);
+        $this->assertSame('hakoniwa-2s-plus-v22', $summary['key']);
+        $this->assertSame(22, $summary['version']);
         $this->assertSame(count($settings['command_definitions']), $summary['commands']);
     }
 

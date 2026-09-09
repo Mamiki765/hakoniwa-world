@@ -1,5 +1,6 @@
 <?php
 
+use App\Application\Ver381RulesetUpgrade;
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\DB;
@@ -167,12 +168,14 @@ ALTER TABLE underground_owned_equipment
     )
   )
 SQL);
+
+        app(Ver381RulesetUpgrade::class)->run();
     }
 
     public function down(): void
     {
         throw new RuntimeException(
-            'The 3.8.1 Secretary image and Underground bulk-skip migration is forward-only.',
+            'The 3.8.1 Secretary image, Underground bulk-skip, and Ruleset v22 migration is forward-only.',
         );
     }
 };

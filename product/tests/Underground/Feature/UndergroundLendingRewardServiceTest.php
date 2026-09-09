@@ -12,6 +12,7 @@ use App\Models\UndergroundParty;
 use App\Models\UndergroundProfile;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use InvalidArgumentException;
@@ -20,6 +21,12 @@ use Tests\TestCase;
 final class UndergroundLendingRewardServiceTest extends TestCase
 {
     use RefreshDatabase;
+
+    protected function tearDown(): void
+    {
+        Carbon::setTestNow();
+        parent::tearDown();
+    }
 
     public function test_snapshot_rejects_more_than_four_members(): void
     {
@@ -93,6 +100,34 @@ final class UndergroundLendingRewardServiceTest extends TestCase
             $this->assertSame($i === 10 ? 1 : 0, $result['tickets_awarded']);
         }
         $this->assertSame(1, app(SecretaryLendingService::class)->ticketBalance($owner));
+    }
+
+    public function test_participation_remainder_carries_across_canonical_days(): void
+    {
+        [$owner, $borrowed] = $this->secretary();
+        [$leader, $leaderSecretary] = $this->secretary();
+        $service = app(UndergroundLendingRewardService::class);
+
+        Carbon::setTestNow('2026-09-08 23:50:00+09:00');
+        for ($i = 1; $i <= 9; $i++) {
+            $party = $this->party($leader, $leaderSecretary, $borrowed, $i);
+            $this->assertSame(0, $service->settle($this->battle($leader, $party, $i), $party)['tickets_awarded']);
+        }
+        Carbon::setTestNow('2026-09-09 00:10:00+09:00');
+        $party = $this->party($leader, $leaderSecretary, $borrowed, 10);
+        $this->assertSame(1, $service->settle($this->battle($leader, $party, 10), $party)['tickets_awarded']);
+
+        $this->assertSame(1, app(SecretaryLendingService::class)->ticketBalance($owner));
+        $this->assertSame([
+            ['canonical_day' => '2026-09-08', 'participation_count' => 9, 'tickets_awarded' => 0],
+            ['canonical_day' => '2026-09-09', 'participation_count' => 1, 'tickets_awarded' => 1],
+        ], SecretaryLendingDailyReward::query()->where('owner_user_id', $owner->id)
+            ->orderBy('canonical_day')->get(['canonical_day', 'participation_count', 'tickets_awarded'])
+            ->map(fn (SecretaryLendingDailyReward $reward): array => [
+                'canonical_day' => $reward->canonical_day->toDateString(),
+                'participation_count' => $reward->participation_count,
+                'tickets_awarded' => $reward->tickets_awarded,
+            ])->all());
     }
 
     public function test_repeated_settlement_is_idempotent_and_self_is_ignored(): void

@@ -325,6 +325,140 @@ describe('Underground party presentation controls', () => {
         wrapper.unmount();
     });
 
+    it('keeps an active trial target independent from the skip-modal trial selector', async () => {
+        const activeRun = {
+            key: 'trial_02', label: '二つ目の封印の地', run_key: 'active-trial-02',
+            status: 'active', next_battle_index: 4, total_battles: 10,
+        };
+        const state = openState({
+            trial: {
+                key: 'trial_02', label: '二つ目の封印の地', total_battles: 10, first_cleared: false,
+                active_run: activeRun,
+                trials: [
+                    { key: 'trial_01', label: '一つ目の封印の地', total_battles: 10, locked: false, unlock_condition: null, first_cleared: true, skip: { actual_clear_count: 5, total_clear_count: 5, actual_clears_required: 5, unlocked: true, ticket_cost: 10 } },
+                    { key: 'trial_02', label: '二つ目の封印の地', total_battles: 10, locked: false, unlock_condition: null, first_cleared: false, skip: { actual_clear_count: 0, total_clear_count: 0, actual_clears_required: 5, unlocked: false, ticket_cost: 10 } },
+                ],
+            },
+            lending: { settings: { is_lendable: false, is_public: false, is_available: false }, candidates: [], ticket_balance: 100 },
+        });
+        const requests: Array<{ path: string; body: Record<string, unknown> }> = [];
+        vi.stubGlobal('fetch', vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+            const path = String(input);
+            if (path === '/api/v1/me/underground/trial/fight' && init?.method === 'POST') {
+                requests.push({ path, body: JSON.parse(String(init.body)) as Record<string, unknown> });
+                return Promise.resolve(response({
+                    ...smallBattle('trial-02-battle-4'), context: 'trial', trial_run_key: activeRun.run_key,
+                    trial_battle_index: 4, trial_total_battles: 10, trial_status: 'active', trial_next_battle_index: 5,
+                }));
+            }
+            if (path === '/api/v1/me/underground/trial/start' && init?.method === 'POST') {
+                requests.push({ path, body: JSON.parse(String(init.body)) as Record<string, unknown> });
+            }
+            if (path.endsWith('/api/v1/me/underground/battles')) return Promise.resolve(response([]));
+
+            return Promise.resolve(response(state));
+        }));
+
+        const wrapper = mount(UndergroundPanel, { attachTo: document.body });
+        await flushPromises();
+        const activeTrialSelect = wrapper.get<HTMLSelectElement>('select[aria-label="試練を選択"]');
+        expect(activeTrialSelect.element.value).toBe('trial_02');
+        expect(wrapper.get('.underground-trial-entry').attributes('disabled')).toBeUndefined();
+
+        await wrapper.get('.underground-skip-entry button').trigger('click');
+        await wrapper.get<HTMLSelectElement>('select[aria-label="スキップする試練を選択"]').setValue('trial_01');
+        await wrapper.get('.underground-skip-dialog button[aria-label="閉じる"]').trigger('click');
+
+        expect(activeTrialSelect.element.value).toBe('trial_02');
+        expect(requests).toHaveLength(0);
+        expect(wrapper.get('.underground-skip-entry').text()).toContain('所持 100枚');
+        await wrapper.get('.underground-trial-entry').trigger('click');
+        await flushPromises();
+
+        expect(requests).toHaveLength(1);
+        expect(requests[0]?.path).toBe('/api/v1/me/underground/trial/fight');
+        expect(requests[0]?.body.run_key).toBe('active-trial-02');
+        wrapper.unmount();
+    });
+
+    it('keeps a network skip failure inside the modal and retries with the same request id', async () => {
+        const state = openState({
+            lending: { settings: { is_lendable: false, is_public: false, is_available: false }, candidates: [], ticket_balance: 4 },
+        });
+        const requests: Array<Record<string, unknown>> = [];
+        vi.stubGlobal('fetch', vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+            const path = String(input);
+            if (path === '/api/v1/me/underground/skip/hunting-ground') {
+                requests.push(JSON.parse(String(init?.body ?? '{}')) as Record<string, unknown>);
+                if (requests.length === 1) return Promise.reject(new Error('スキップ通信に失敗しました。'));
+
+                return Promise.resolve(response({
+                    id: 'retry-safe-skip', duplicate: true, content_type: 'hunting_ground', content_key: 'shallow_caves', execution_count: 2,
+                    ticket_cost: 2, xp_awarded: 20, shards_awarded: 4, combat_level_before: 20, combat_level_after: 20,
+                    rewards: { equipment_granted_count: 0, vault_full_count: 0, drops: [], ticket_balance_after: 2 },
+                    settled_at: '2026-09-09T00:00:00Z',
+                }));
+            }
+            if (path.endsWith('/api/v1/me/underground/battles')) return Promise.resolve(response([]));
+
+            return Promise.resolve(response(state));
+        }));
+
+        const wrapper = mount(UndergroundPanel, { attachTo: document.body });
+        await flushPromises();
+        await wrapper.get('.underground-skip-entry button').trigger('click');
+        const shortcut = wrapper.findAll('.underground-skip-category')[0]!.findAll('.underground-skip-shortcuts button')[0]!;
+        await shortcut.trigger('click');
+        await flushPromises();
+
+        expect(wrapper.get('.underground-skip-dialog').isVisible()).toBe(true);
+        expect(wrapper.get('.underground-skip-error').text()).toBe('スキップ通信に失敗しました。');
+        await shortcut.trigger('click');
+        await flushPromises();
+
+        expect(requests).toHaveLength(2);
+        expect(requests[1]?.request_id).toBe(requests[0]?.request_id);
+        expect(wrapper.find('.underground-skip-error').exists()).toBe(false);
+        expect(wrapper.get('.underground-skip-result').text()).toContain('浅い洞窟を2回スキップしました');
+        wrapper.unmount();
+    });
+
+    it('preserves the original 409 skip reason when the recovery refresh also fails', async () => {
+        const state = openState({
+            lending: { settings: { is_lendable: false, is_public: false, is_available: false }, candidates: [], ticket_balance: 4 },
+        });
+        let stateReads = 0;
+        vi.stubGlobal('fetch', vi.fn((input: RequestInfo | URL) => {
+            const path = String(input);
+            if (path === '/api/v1/me/underground') {
+                stateReads++;
+                return stateReads === 1
+                    ? Promise.resolve(response(state))
+                    : Promise.reject(new Error('状態の再読込にも失敗しました。'));
+            }
+            if (path === '/api/v1/me/underground/skip/hunting-ground') {
+                return Promise.resolve(new Response(JSON.stringify({
+                    message: '同じrequest idの確定内容と一致しません。',
+                    code: 'underground_request_conflict',
+                }), { status: 409, headers: { 'Content-Type': 'application/json' } }));
+            }
+            if (path.endsWith('/api/v1/me/underground/battles')) return Promise.resolve(response([]));
+
+            return Promise.resolve(response(state));
+        }));
+
+        const wrapper = mount(UndergroundPanel, { attachTo: document.body });
+        await flushPromises();
+        await wrapper.get('.underground-skip-entry button').trigger('click');
+        await wrapper.findAll('.underground-skip-category')[0]!.findAll('.underground-skip-shortcuts button')[0]!.trigger('click');
+        await flushPromises();
+
+        expect(wrapper.get('.underground-skip-dialog').isVisible()).toBe(true);
+        expect(wrapper.get('.underground-skip-error').text()).toBe('同じrequest idの確定内容と一致しません。');
+        expect(wrapper.get('.underground-skip-error').text()).not.toContain('再読込');
+        wrapper.unmount();
+    });
+
     it('recovers a lost A response with A payload, then starts a new B request', async () => {
         const candidateA = { secretary_id: 2, source: 'borrowed_secretary' as const, display_name: 'A秘書', combat_level: 30, available: true };
         const candidateB = { secretary_id: 3, source: 'borrowed_secretary' as const, display_name: 'B秘書', combat_level: 30, available: true };

@@ -88,4 +88,22 @@ final class SecretarySkillProgressionTest extends TestCase
             'levels_gained' => 2,
         ], $progression->advance($definition, 1, 0, 500));
     }
+
+    public function test_ship_operations_uses_next_level_times_one_hundred_and_carries_remainder(): void
+    {
+        $definition = ['level_requirement' => [
+            'basis' => 'next_level_linear',
+            'multiplier' => 100,
+        ]];
+        $progression = new SecretarySkillProgression;
+
+        $this->assertSame(100, $progression->requiredExperience($definition, 0));
+        $this->assertSame(200, $progression->requiredExperience($definition, 1));
+        $this->assertSame(300, $progression->requiredExperience($definition, 2));
+        $this->assertSame([
+            'level' => 3,
+            'experience' => 50,
+            'levels_gained' => 3,
+        ], $progression->advance($definition, 0, 0, 650));
+    }
 }

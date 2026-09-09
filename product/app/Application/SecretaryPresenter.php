@@ -51,7 +51,7 @@ final class SecretaryPresenter
             'id' => $secretary->id,
             'name' => $secretary->name,
             'named_at' => $secretary->named_at?->toIso8601String(),
-            'header_label' => $secretary->name ?? '？？？',
+            'header_label' => $this->profiles->battleDisplayName($secretary),
             'profile' => $this->profiles->present($secretary, $viewer, $projection),
             'skills' => $skills,
             ...$this->items->present($secretary, $projection),

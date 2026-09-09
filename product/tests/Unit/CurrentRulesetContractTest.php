@@ -21,6 +21,8 @@ final class CurrentRulesetContractTest extends TestCase
 
     private const V21_CHECKSUM = '2d7187deae540cb06dd066770272d42734a95d93fe9e18d41d99d40ae9e4e964';
 
+    private const V22_CHECKSUM = '4f3289fe5d9066d1d3025b976b9531dd0780868e8b4166f1f4eb2cf3fc7998bb';
+
     /** @var array{domains: int, leaves: int, behavior: int, data: int, flavor: int} */
     private const V16_COVERAGE = [
         'domains' => 10,
@@ -30,7 +32,7 @@ final class CurrentRulesetContractTest extends TestCase
         'flavor' => 176,
     ];
 
-    public function test_normal_config_loads_v21_while_preserving_the_explicit_v16_through_v20_contracts(): void
+    public function test_normal_config_loads_v22_while_preserving_the_explicit_v16_through_v21_contracts(): void
     {
         $normalConfig = require config_path('hakoniwa.php');
         $current = $normalConfig['ruleset'];
@@ -39,16 +41,17 @@ final class CurrentRulesetContractTest extends TestCase
         $v18 = require config_path('hakoniwa/rulesets/hakoniwa-2s-plus-v18.php');
         $v19 = require config_path('hakoniwa/rulesets/hakoniwa-2s-plus-v19.php');
         $v20 = require config_path('hakoniwa/rulesets/hakoniwa-2s-plus-v20.php');
+        $v21 = require config_path('hakoniwa/rulesets/hakoniwa-2s-plus-v21.php');
         $source = file_get_contents(config_path('hakoniwa/rulesets/hakoniwa-2s-plus-v16.php'));
 
         $this->assertIsString($source);
         $this->assertSame(10, substr_count($source, "require __DIR__.'/current/"));
         $this->assertLessThan(100, substr_count($source, "\n"));
-        $this->assertSame(['hakoniwa-2s-plus-v21'], array_keys($normalConfig['published_rulesets']));
-        $this->assertSame($current, $normalConfig['published_rulesets']['hakoniwa-2s-plus-v21']);
+        $this->assertSame(['hakoniwa-2s-plus-v22'], array_keys($normalConfig['published_rulesets']));
+        $this->assertSame($current, $normalConfig['published_rulesets']['hakoniwa-2s-plus-v22']);
         $this->assertSame($current['secretary'], $normalConfig['current_catalogs']['secretary']);
-        $this->assertSame('hakoniwa-2s-plus-v21', $current['key']);
-        $this->assertSame(21, $current['version']);
+        $this->assertSame('hakoniwa-2s-plus-v22', $current['key']);
+        $this->assertSame(22, $current['version']);
         $this->assertArrayNotHasKey('behavior', $current);
         $this->assertArrayNotHasKey('data', $current);
         $this->assertArrayNotHasKey('flavor', $current);
@@ -57,7 +60,12 @@ final class CurrentRulesetContractTest extends TestCase
         $this->assertSame(self::V18_CHECKSUM, $this->checksum($v18));
         $this->assertSame(self::V19_CHECKSUM, $this->checksum($v19));
         $this->assertSame(self::V20_CHECKSUM, $this->checksum($v20));
-        $this->assertSame(self::V21_CHECKSUM, $this->checksum($current));
+        $this->assertSame(self::V21_CHECKSUM, $this->checksum($v21));
+        $this->assertSame(self::V22_CHECKSUM, $this->checksum($current));
+        $this->assertSame([
+            'basis' => 'next_level_linear',
+            'multiplier' => 100,
+        ], $current['secretary']['skills']['ship_operations']['level_requirement']);
         $v18UnderseaCity = collect($v18['command_definitions'])->firstWhere('key', 'build_undersea_city');
         $v19UnderseaCity = collect($v19['command_definitions'])->firstWhere('key', 'build_undersea_city');
         $v20UnderseaCity = collect($current['command_definitions'])->firstWhere('key', 'build_undersea_city');
@@ -147,8 +155,8 @@ final class CurrentRulesetContractTest extends TestCase
         );
 
         $summary = app(RulesetAuthoringValidator::class)->validate($current);
-        $this->assertSame('hakoniwa-2s-plus-v21', $summary['key']);
-        $this->assertSame(21, $summary['version']);
+        $this->assertSame('hakoniwa-2s-plus-v22', $summary['key']);
+        $this->assertSame(22, $summary['version']);
         $this->assertSame(count($current['command_definitions']), $summary['commands']);
         $this->assertSame(count($current['production_definitions']), $summary['production']);
     }

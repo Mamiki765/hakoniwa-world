@@ -549,6 +549,7 @@ const bankOpen = ref(false);
 const bankAmount = ref<number | null>(1000);
 const selectedHuntingGroundKey = ref('shallow_caves');
 const selectedTrialKey = ref('trial_01');
+const selectedSkipTrialKey = ref('trial_01');
 const pendingExplorationRequest = ref<PendingExplorationRequest | null>(null);
 const partyCandidateSearchOpen = ref(false);
 const partyCandidateLoading = ref(false);
@@ -561,6 +562,7 @@ const pendingTrialRequest = ref<PendingTrialRequest | null>(null);
 const pendingSkipRequest = ref<PendingMutation | null>(null);
 const lastSkipResult = ref<SkipResult | null>(null);
 const skipModalOpen = ref(false);
+const skipError = ref('');
 const pendingInnRequestId = ref<string | null>(null);
 const pendingBankMutation = ref<PendingBankMutation | null>(null);
 const statusOpen = ref(false);
@@ -670,7 +672,15 @@ const trialOptions = computed<TrialOption[]>(() => {
     }];
 });
 const unlockedTrialOptions = computed(() => trialOptions.value.filter((trial) => !trial.locked));
-const selectedTrial = computed(() => unlockedTrialOptions.value.find((trial) => trial.key === selectedTrialKey.value)
+const selectedTrial = computed(() => {
+    const activeKey = state.value?.trial?.active_run?.key;
+
+    return unlockedTrialOptions.value.find((trial) => trial.key === activeKey)
+        ?? unlockedTrialOptions.value.find((trial) => trial.key === selectedTrialKey.value)
+        ?? unlockedTrialOptions.value[0]
+        ?? null;
+});
+const selectedSkipTrial = computed(() => unlockedTrialOptions.value.find((trial) => trial.key === selectedSkipTrialKey.value)
     ?? unlockedTrialOptions.value[0]
     ?? null);
 const repeatableExplorationGroundKey = computed(() => {
@@ -827,10 +837,11 @@ watch(trialOptions, (trials) => {
     const activeKey = state.value?.trial?.active_run?.key;
     if (activeKey && trials.some((trial) => trial.key === activeKey)) {
         selectedTrialKey.value = activeKey;
-        return;
-    }
-    if (!trials.some((trial) => trial.key === selectedTrialKey.value && !trial.locked)) {
+    } else if (!trials.some((trial) => trial.key === selectedTrialKey.value && !trial.locked)) {
         selectedTrialKey.value = trials.find((trial) => !trial.locked)?.key ?? trials[0]?.key ?? 'trial_01';
+    }
+    if (!trials.some((trial) => trial.key === selectedSkipTrialKey.value && !trial.locked)) {
+        selectedSkipTrialKey.value = trials.find((trial) => !trial.locked)?.key ?? trials[0]?.key ?? 'trial_01';
     }
 }, { deep: true, immediate: true });
 
@@ -1232,6 +1243,7 @@ async function runSkip(contentType: 'hunting_ground' | 'trial', contentKey: stri
     pendingSkipRequest.value = pending;
     busy.value = true;
     error.value = '';
+    skipError.value = '';
     try {
         const path = contentType === 'hunting_ground'
             ? '/api/v1/me/underground/skip/hunting-ground'
@@ -1246,8 +1258,16 @@ async function runSkip(contentType: 'hunting_ground' | 'trial', contentKey: stri
         pendingSkipRequest.value = null;
         await refresh(false);
     } catch (caught) {
-        if (caught instanceof ApiError && caught.status === 409) await refresh(false);
-        error.value = caught instanceof Error ? caught.message : 'skipを実行できませんでした。';
+        const message = caught instanceof Error ? caught.message : 'skipを実行できませんでした。';
+        if (caught instanceof ApiError && caught.status === 409) {
+            try {
+                await refresh(false);
+            } catch {
+                // Keep the original settlement failure visible. A refresh error
+                // must not hide the reason why the retry-safe request failed.
+            }
+        }
+        skipError.value = message;
     } finally {
         busy.value = false;
     }
@@ -2474,6 +2494,7 @@ onUnmounted(() => {
                         <div><p class="eyebrow">Skip Ticket</p><h2 id="underground-skip-dialog-title">スキップを使用</h2></div>
                         <div><strong>🎫 {{ skipTicketBalance ?? 0 }}枚</strong><button type="button" aria-label="閉じる" :disabled="busy" @click="skipModalOpen = false">×</button></div>
                     </header>
+                    <p v-if="skipError" class="status error underground-skip-error" role="alert">{{ skipError }}</p>
                     <section class="underground-skip-category" aria-labelledby="underground-skip-ground-title">
                         <h3 id="underground-skip-ground-title">狩場</h3>
                         <label>対象
@@ -2496,16 +2517,16 @@ onUnmounted(() => {
                     <section class="underground-skip-category" aria-labelledby="underground-skip-trial-title">
                         <h3 id="underground-skip-trial-title">試練</h3>
                         <label>対象
-                            <select v-model="selectedTrialKey" :disabled="busy">
+                            <select v-model="selectedSkipTrialKey" aria-label="スキップする試練を選択" :disabled="busy">
                                 <option v-for="trial in unlockedTrialOptions" :key="`modal-trial:${trial.key}`" :value="trial.key">{{ trial.label }}</option>
                             </select>
                         </label>
-                        <template v-if="selectedTrial">
-                            <p>1周（{{ selectedTrial.total_battles }}連戦）= {{ selectedTrial.skip.ticket_cost }}枚・実戦 {{ selectedTrial.skip.actual_clear_count }} / {{ selectedTrial.skip.actual_clears_required }}周</p>
-                            <p v-if="!selectedTrial.skip.unlocked" class="field-hint">実戦clearがあと{{ selectedTrial.skip.actual_clears_required - selectedTrial.skip.actual_clear_count }}周必要です。</p>
+                        <template v-if="selectedSkipTrial">
+                            <p>1周（{{ selectedSkipTrial.total_battles }}連戦）= {{ selectedSkipTrial.skip.ticket_cost }}枚・実戦 {{ selectedSkipTrial.skip.actual_clear_count }} / {{ selectedSkipTrial.skip.actual_clears_required }}周</p>
+                            <p v-if="!selectedSkipTrial.skip.unlocked" class="field-hint">実戦clearがあと{{ selectedSkipTrial.skip.actual_clears_required - selectedSkipTrial.skip.actual_clear_count }}周必要です。</p>
                             <div class="underground-skip-shortcuts">
-                                <button type="button" :disabled="skipDisabled(selectedTrial.skip) || shortcutSkipExecutions(selectedTrial.skip, 0.5) < 1" @click="runSkip('trial', selectedTrial.key, shortcutSkipExecutions(selectedTrial.skip, 0.5))">50%使用（{{ shortcutSkipExecutions(selectedTrial.skip, 0.5) }}周）</button>
-                                <button type="button" :disabled="skipDisabled(selectedTrial.skip) || maximumSkipExecutions(selectedTrial.skip) < 1" @click="runSkip('trial', selectedTrial.key, maximumSkipExecutions(selectedTrial.skip))">100%使用（{{ maximumSkipExecutions(selectedTrial.skip) }}周）</button>
+                                <button type="button" :disabled="skipDisabled(selectedSkipTrial.skip) || shortcutSkipExecutions(selectedSkipTrial.skip, 0.5) < 1" @click="runSkip('trial', selectedSkipTrial.key, shortcutSkipExecutions(selectedSkipTrial.skip, 0.5))">50%使用（{{ shortcutSkipExecutions(selectedSkipTrial.skip, 0.5) }}周）</button>
+                                <button type="button" :disabled="skipDisabled(selectedSkipTrial.skip) || maximumSkipExecutions(selectedSkipTrial.skip) < 1" @click="runSkip('trial', selectedSkipTrial.key, maximumSkipExecutions(selectedSkipTrial.skip))">100%使用（{{ maximumSkipExecutions(selectedSkipTrial.skip) }}周）</button>
                             </div>
                         </template>
                         <ul v-if="trialOptions.some((trial) => trial.locked)" class="underground-skip-locked-list">

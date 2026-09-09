@@ -120,6 +120,19 @@ final class UndergroundLendingRewardService
                 if ($existing instanceof SecretaryLendingParticipation) {
                     continue;
                 }
+                // This balance row is the per-owner serialization point even
+                // when the current participation does not award a ticket. It
+                // keeps the cross-day remainder exact at the date boundary.
+                DB::table('user_skip_ticket_balances')->insertOrIgnore([
+                    'user_id' => $member->source_owner_user_id, 'balance' => 0,
+                    'created_at' => $when, 'updated_at' => $when,
+                ]);
+                $balance = UserSkipTicketBalance::query()
+                    ->where('user_id', $member->source_owner_user_id)->firstOrFail();
+                $balance = UserSkipTicketBalance::query()->whereKey($balance->id)->lockForUpdate()->firstOrFail();
+                $priorParticipationCount = SecretaryLendingParticipation::query()
+                    ->where('owner_user_id', $member->source_owner_user_id)
+                    ->count();
                 $participation = SecretaryLendingParticipation::query()->create([
                     'underground_battle_id' => $lockedBattle->id,
                     'underground_party_member_id' => $member->id,
@@ -141,18 +154,11 @@ final class UndergroundLendingRewardService
                 $daily = SecretaryLendingDailyReward::query()->whereKey($daily->id)->lockForUpdate()->firstOrFail();
                 $beforeCount = (int) $daily->participation_count;
                 $daily->participation_count = $beforeCount + 1;
-                $thresholdTickets = intdiv($daily->participation_count, self::PARTICIPATIONS_PER_TICKET)
-                    - intdiv($beforeCount, self::PARTICIPATIONS_PER_TICKET);
+                $thresholdTickets = intdiv($priorParticipationCount + 1, self::PARTICIPATIONS_PER_TICKET)
+                    - intdiv($priorParticipationCount, self::PARTICIPATIONS_PER_TICKET);
                 $available = max(0, self::DAILY_TICKET_CAP - (int) $daily->tickets_awarded);
                 $ticketDelta = min($thresholdTickets, $available);
                 if ($ticketDelta > 0) {
-                    DB::table('user_skip_ticket_balances')->insertOrIgnore([
-                        'user_id' => $member->source_owner_user_id, 'balance' => 0,
-                        'created_at' => $when, 'updated_at' => $when,
-                    ]);
-                    $balance = UserSkipTicketBalance::query()
-                        ->where('user_id', $member->source_owner_user_id)->firstOrFail();
-                    $balance = UserSkipTicketBalance::query()->whereKey($balance->id)->lockForUpdate()->firstOrFail();
                     $balanceBefore = (int) $balance->balance;
                     $balance->balance += $ticketDelta;
                     $balance->save();

@@ -74,29 +74,41 @@ const eventState = (event: PortraitEvent): State | null => {
 
     return actorFor(event)?.state ?? null;
 };
-const eventAwakeningLabel = (event: PortraitEvent): string => {
+const eventAwakeningVisible = (event: PortraitEvent): boolean => {
     const state = eventState(event);
-    if (!state) return '';
-    if (state.awakened) return 'Awaken!';
-    if (actorFor(event)?.awakening_state === 'ready') return 'Ready';
-    if (state.awakening_unlocked && state.awakening_gauge_max
-        && (state.awakening_gauge ?? 0) >= state.awakening_gauge_max) return 'Ready';
 
-    return '';
+    return state?.awakening_unlocked === true || state?.awakened === true;
+};
+const eventAwakeningMaximum = (event: PortraitEvent): number => {
+    const maximum = eventState(event)?.awakening_gauge_max ?? 0;
+
+    return maximum > 0 ? maximum : 0;
+};
+const eventAwakeningGauge = (event: PortraitEvent): number => {
+    const maximum = eventAwakeningMaximum(event);
+
+    return Math.max(0, Math.min(maximum, eventState(event)?.awakening_gauge ?? 0));
+};
+const eventAwakeningPercent = (event: PortraitEvent): number => {
+    const maximum = eventAwakeningMaximum(event);
+
+    return maximum > 0 ? Math.round(eventAwakeningGauge(event) / maximum * 100) : 0;
+};
+const eventAwakeningState = (event: PortraitEvent): 'charging' | 'ready' | 'awakened' => {
+    const state = eventState(event);
+    if (state?.awakened) return 'awakened';
+    if (eventAwakeningMaximum(event) > 0 && eventAwakeningGauge(event) >= eventAwakeningMaximum(event)) return 'ready';
+
+    return 'charging';
+};
+const eventAwakeningLabel = (event: PortraitEvent): string => {
+    const awakeningState = eventAwakeningState(event);
+
+    return awakeningState === 'awakened' ? 'Awaken!' : awakeningState === 'ready' ? 'Ready' : '蓄積中';
 };
 const eventCredit = (event: PortraitEvent): string | null => eventReference(event)?.credit ?? null;
 const eventCreationMethod = (event: PortraitEvent): string | null => eventReference(event)?.creation_method_label ?? null;
 const eventHasImageInfo = (event: PortraitEvent): boolean => eventCredit(event) !== null || eventCreationMethod(event) !== null;
-const eventAwakeningStateText = (event: PortraitEvent): string => {
-    const state = eventState(event);
-    if (!state || (!state.awakening_unlocked && !state.awakened && state.awakening_gauge === undefined && state.awakening_gauge_max === undefined)) return '';
-    const label = eventAwakeningLabel(event);
-    const gauge = state.awakening_gauge_max
-        ? `${state.awakening_gauge ?? 0}/${state.awakening_gauge_max}`
-        : '';
-
-    return [label || (state.awakened ? '覚醒中' : '蓄積中'), gauge].filter(Boolean).join(' ');
-};
 const stateFor = (actor: Actor): State | null => {
     if (props.stateById !== undefined) return props.stateById?.[actor.combatant_id] ?? null;
 
@@ -169,7 +181,14 @@ const awakeningStateFor = (actor: Actor): 'charging' | 'ready' | 'awakened' => {
             <figcaption>
                 {{ event.type === 'start' ? '戦闘開始' : event.type === 'awakening' ? '覚醒' : '戦闘終了' }}・{{ eventLabel(event) }}
                 <small v-if="eventState(event)" class="underground-party-portrait-state">
-                    HP {{ eventState(event)?.hp }}/{{ eventState(event)?.max_hp }}・MP {{ eventState(event)?.mp }}<template v-if="eventAwakeningStateText(event)">・覚醒 {{ eventAwakeningStateText(event) }}</template>
+                    <span>HP {{ eventState(event)?.hp }}/{{ eventState(event)?.max_hp }}・MP {{ eventState(event)?.mp }}</span>
+                    <span v-if="eventAwakeningVisible(event) && eventAwakeningMaximum(event)" class="underground-party-portrait-awakening">
+                        <span>覚醒</span>
+                        <span class="underground-party-meter is-awakening" :data-state="eventAwakeningState(event)">
+                            <progress :max="eventAwakeningMaximum(event)" :value="eventAwakeningGauge(event)" :aria-label="`覚醒ゲージ ${eventAwakeningPercent(event)}%、${eventAwakeningLabel(event)}`" />
+                            <span>{{ eventAwakeningLabel(event) }}</span>
+                        </span>
+                    </span>
                 </small>
             </figcaption>
         </figure>

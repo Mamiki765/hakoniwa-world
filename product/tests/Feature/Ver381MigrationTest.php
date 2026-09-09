@@ -2,17 +2,22 @@
 
 namespace Tests\Feature;
 
+use App\Application\NationCreationService;
+use App\Models\RulesetVersion;
 use App\Models\Secretary;
 use App\Models\SecretaryImage;
+use App\Models\SecretarySkill;
 use App\Models\User;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
+use Tests\Concerns\CreatesTestWorlds;
 use Tests\TestCase;
 
 final class Ver381MigrationTest extends TestCase
 {
+    use CreatesTestWorlds;
     use RefreshDatabase;
 
     private const MIGRATION = '2026_09_09_020000_prepare_3_8_1_ui_and_bulk_skip';
@@ -38,6 +43,12 @@ final class Ver381MigrationTest extends TestCase
             'mime_type' => 'image/webp',
             'creation_method' => 'self_made',
             'credit' => 'same-file-bust',
+        ]);
+        SecretarySkill::query()->create([
+            'secretary_id' => $legacy->id,
+            'skill_key' => 'ship_operations',
+            'level' => 0,
+            'experience' => 650,
         ]);
         $currentOwner = User::factory()->create();
         $current = Secretary::query()->create([
@@ -77,8 +88,40 @@ final class Ver381MigrationTest extends TestCase
         $this->assertTrue(Schema::hasTable('underground_skip_batches'));
         $this->assertTrue(Schema::hasColumn('user_skip_ticket_ledger', 'underground_skip_batch_id'));
         $this->assertTrue(Schema::hasColumn('underground_owned_equipment', 'source_skip_batch_id'));
-        $this->assertSame($rulesetCount, DB::table('ruleset_versions')->count());
+        $this->assertSame(3, $legacy->skills()->where('skill_key', 'ship_operations')->value('level'));
+        $this->assertSame(50, $legacy->skills()->where('skill_key', 'ship_operations')->value('experience'));
+        $this->assertSame($rulesetCount + 1, DB::table('ruleset_versions')->count());
+        $this->assertDatabaseHas('ruleset_versions', [
+            'key' => 'hakoniwa-2s-plus-v22',
+            'version' => 22,
+        ]);
         $this->assertDatabaseHas('migrations', ['migration' => self::MIGRATION]);
+    }
+
+    public function test_exact_v21_world_upgrades_atomically_and_rebases_ship_operations_progression(): void
+    {
+        $world = $this->lightweightWorld();
+        $this->returnSchemaToExact380Source();
+        $owner = User::factory()->create();
+        app(NationCreationService::class)->create($owner, $world->fresh(), '移行島', '移行主');
+        $skill = $owner->secretary()->firstOrFail()->skills()
+            ->where('skill_key', 'ship_operations')->firstOrFail();
+        $skill->update(['level' => 1, 'experience' => 550]);
+
+        $this->artisan('migrate', [
+            '--path' => 'database/migrations/'.self::MIGRATION.'.php',
+            '--force' => true,
+            '--no-interaction' => true,
+        ])->assertSuccessful();
+
+        $this->assertSame('hakoniwa-2s-plus-v22', $world->fresh()->rulesetVersion()->value('key'));
+        $this->assertSame(3, $skill->fresh()->level);
+        $this->assertSame(50, $skill->fresh()->experience);
+        $this->assertDatabaseHas('audit_events', [
+            'world_id' => $world->id,
+            'event_type' => 'ruleset.v22_activated',
+            'visibility' => 'admin',
+        ]);
     }
 
     private function returnSchemaToExact380Source(): void
@@ -137,6 +180,20 @@ SQL);
         Schema::table('secretary_images', function (Blueprint $table): void {
             $table->unique('path');
         });
+        $v21 = require config_path('hakoniwa/rulesets/hakoniwa-2s-plus-v21.php');
+        config([
+            'hakoniwa.ruleset' => $v21,
+            'hakoniwa.published_rulesets' => [$v21['key'] => $v21],
+        ]);
+        $v21Row = RulesetVersion::query()->where('key', 'hakoniwa-2s-plus-v21')->sole();
+        $v22Row = RulesetVersion::query()->where('key', 'hakoniwa-2s-plus-v22')->first();
+        if ($v22Row instanceof RulesetVersion) {
+            DB::table('worlds')->where('ruleset_version_id', $v22Row->id)->update([
+                'ruleset_version_id' => $v21Row->id,
+                'updated_at' => now(),
+            ]);
+            $v22Row->delete();
+        }
         DB::table('migrations')->where('migration', self::MIGRATION)->delete();
     }
 }
