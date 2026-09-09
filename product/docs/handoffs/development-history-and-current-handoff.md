@@ -1,48 +1,50 @@
 # hakoniwa-world 開発経緯・現行引継ぎ
 
-> 更新日: **2026-09-07 JST**。Owner提供の2026-09-06版と、その後の本チャットのOwner決定・Codex実機報告・GitHub Support返信に基づく更新案。
-> 対象: `Mamiki765/hakoniwa-world`
-> 最新production報告: **3.7.2 / `daa31ca01d929ffa231241021c2bef9ad7bdb14d`**。Ownerがdeployを承認し、Codexが完了を報告した。Web版ChatGPTによる本番への独立照会ではない。
-> Surface Ruleset: **v21**（3.7.0移行報告）。Underground combat **v3**ほかの継承identityは1.3参照。今回、実機の全identity・migration ledgerを再取得していない。
-> GitHubアカウント停止中。最新のGitHub `main`・PR #153最終merge SHAは今回再確認できていない。**本番SHA、bareのref、PCのHEAD、GitHubのmainを同一と決めつけない。**
->
-> 本書はOwnerとWeb版ChatGPTが管理する。Codex / implementation agentは原則read-only。Ownerがhandoff編集そのものを明示的に依頼した場合だけ編集する。MCPはread-onlyのままとし、更新MarkdownはOwnerがCodexへ手渡す。
+> 更新日：**2026-09-09 JST**。本チャットのOwner決定、Web ChatGPTの固定SHAレビュー、Codexの検証報告、Hakoniwa MCPの実読出しを区別して整理。
+> 対象：`Mamiki765/hakoniwa-world`
+> 独立確認したproduction：**3.7.3 / `368eadf919b599f104e1cbc35d3d8604733f5284`**。2026-09-09 10:16:34 JST生成のsanitized snapshot、binding=bound、Web/DB healthy。
+> OCI共有の3.8.0候補：**`offline/release/3.8.0` → `9b509680cc1b5e4abcdd86392d87bb61abe031f1`**。基点`690c685…`までのsource reviewに加え、雑談接続の追加4ファイルも独立source reviewでP0/P1/P2なし。full CI完了報告は**基点690c685**のもの。MCPのexact-SHA記録はUNKNOWN。
+> `offline/main`は**`368eadf919b599f104e1cbc35d3d8604733f5284`**。candidate、production、main、後続docs-only commitを混同しない。
+> 最終仕上げ：**雑談接続は9b509680で共有・source review済み。Owner指定のプレイヤーマニュアル更新はまだ共有差分なし**。新HEADのfocused検証結果も確認対象。最終仕上げの独立レビューでP0/P1/P2がなければデプロイまで進めるOwner承認あり。
+> GitHubはsuspendの手動審査中という引継ぎ。復旧確認なし。当面はOCI bareの`offline/*`とMCPを共有経路にする。
+> 本書はOwnerとWeb版ChatGPTが管理する。CodexはOwnerがhandoff編集を明示依頼した場合だけ更新する。今回の反映はその個別依頼。MCPはread-onlyのまま。
 
 # 0. 読み方と、今回の重要な更新
 
-作業開始時は利用可能なremote、対象branch、exact HEAD、未commit差分を確認する。ここに書かれたSHAへ未確認でresetしない。実装値は対象SHAのcode / schema / effective Ruleset、release scopeと未決事項はOwnerの最新明示指示を確認する。報告ベースの項目を、次のChatGPTが自分で実機確認した結果として語り直さない。
+最初に現在のrefをresolveし、以後のcode・diff・testsは同じ40桁SHAへ固定する。本書の過去SHAへ勝手にresetしない。Owner決定、実装済み、Codex報告、Web独立確認、未決案を区別し、古いcheckpointを現在の状態へ戻さない。
 
-**3.6.0では技巧・会心・敏捷・精神魔法・自然成長を再設計していない。** 防具IL由来の技巧抵抗R、魔力昇華、five-stat mean会心率、自然敏捷成長などは不採用のまま。旧handoffの6.6や研究candidateを次の実装指示として復活させない。
+**直近の入口は1.1、1.14〜1.16、2.6、6.8〜6.10、7.4〜7.7、8章。** 3.6.0以前の詳細は必要時だけ[2026-09-05版](archive/development-history-and-current-handoff-2026-09-05.md)を参照する。
 
-3.6.0のTrial 2・追加覚醒奥義・戦闘UIに続き、**3.7.0でランク2施設、ニョワミヤ、零式の自然出現条件、回想、地底ヘッダー導線**を追加した経緯がある。3.7.1を経て、3.7.2は秘書の出会い／回想に関するストーリーデータ置き場の分離を主とする更新として、本番deploy完了報告を受けた。
+3.7.3で廃船対象Ship identityと強制退避の別自国港探索を修正し、本番反映済み。3.8.0候補は地上アイテム売却／怪獣回帰修正、最大4人の非同期PT、貸出と能力同期、スキップチケット、愛称・画像6枠、戦闘表示等を実装している。**「PT未実装」「専用覚醒画像未実装」「チケットの消費用途未定」は現在の候補には当てはまらない。**
 
-直近の優先課題は**GitHub停止中の開発・独立レビュー経路の引継ぎ**。OCI bare経由の転送と本番deployは成立済み。MCPのGit readerとTunnelは実機疎通済みとの報告があり、別ChatGPTチャットで`get_status`成功が報告された。**ChatGPTから実際のGit SHA・本文・diffを取得できた証拠は、まだ本チャットへ共有されていない。** 次のMCP対応チャットは7.4～7.7と8章から始める。
+案内人の雑談は`690c685…`時点でショップ欄へ表示されるだけで、部屋のボタンはplaceholderだった。**後続9b509680で「少しお話がしたい」へ接続し、押すたびにcatalogから選ぶよう修正済み**。Ownerが許可した会話ガチャであり、日単位固定に戻さない。マニュアル更新・新HEADの検証結果・本番反映とは別に記録する。
 
-3.6.0以前の詳細は[2026-09-05版](archive/development-history-and-current-handoff-2026-09-05.md)を必要時だけ参照する。このarchiveは提供版に保存済みと記載されたものを継承し、今回新たに作成したものではない。#149未merge、Trial 2未実装など当時の状態を現在へ持ち越さない。
-
-地上経営・産業連鎖の相談は継続候補だが、電力・第三次産業・PD等を実装済みにしない。**ターン数圧縮は作らない**という後発Owner決定を優先する。参考作品の[箱庭RA Final Edition設計レビュー](../../../docs/reference-analysis/hako-ra-final-edition-design-review.md)は分析・提案であり、全採用の承認ではない。
+3.6.0で不採用とした技巧・会心・魔力昇華・自然成長の大改造は復活させない。地上の産業連鎖、地上用上位レアリティの道具、第三狩場、称号・Maria連携は別の相談候補。案があることを実装scopeへの承認に読み替えない。
 
 # 1. 現在地
 
 ## 1.1 GitHub・CI・production
 
-| 項目 | 現在の扱い・確認根拠 |
-| --- | --- |
-| production | **3.7.2**。Owner承認後のCodex deploy完了報告 |
-| production SHA | **`daa31ca01d929ffa231241021c2bef9ad7bdb14d`** |
-| 直前の3.7.1基点 | `f718f548b0f9958f6488a1fbfd8d206ce76b14de`。bare初期化・転送検証にも使用 |
-| 3.7.2差分 | 10ファイル、追加160行／削除248行との報告 |
-| 3.7.2検証 | frontend 160 tests、ローカルPHP回帰5件成功。公開ページ3.7.2表示・HTTP 200・`/up` 200 |
-| 3.7.2 migration | 変更なしとの報告。暗号化バックアップ検証済み、旧image保持 |
-| 保持したもの | 既存`origin`・upstream、DBコンテナ、MCP。3.7.2 deployで変更していないとの報告 |
-| GitHub | `Mamiki765`停止中、Supportへ用途説明を返信済み。復旧完了の報告はまだない |
-| PR #153 | 3.7.0の実装PR、branch `codex/3.7.0`。後続の本番更新は報告済みだが、最終PR HEAD・merge SHA・Quality runは今回未再取得 |
-| OCI bare | `/home/ubuntu/git/hakoniwa-world.git`、第二remote `oci-offline` |
-| bareの`offline/main` | 2026-09-07 JST、CodexがSSHで`rev-parse refs/heads/offline/main`を実読出しし、文書反映前は`daa31ca01d929ffa231241021c2bef9ad7bdb14d`と確認。本番checkoutも同SHA。今回のdocs-only push後は別SHAへ進むため、次のMCPで再resolveする |
+| 項目 | 状態・根拠 |
+|---|---|
+| production | **3.7.3 / `368eadf919b599f104e1cbc35d3d8604733f5284`**。MCPの保存済み本番snapshotで確認 |
+| production観測 | 2026-09-09 10:16:34 JST生成、10:20:38 JST取得。Web/DB healthy、Turn 414、unresolvedなし |
+| production Ruleset | `hakoniwa-2s-plus-v21` / ID 36 |
+| production migration | pending 0。**3.7.3稼働環境についての値で、3.8.0のmigration適用済みを意味しない** |
+| OCI `offline/main` | `368eadf919b599f104e1cbc35d3d8604733f5284` |
+| OCI `offline/release/3.8.0` | **`9b509680cc1b5e4abcdd86392d87bb61abe031f1`** |
+| 開発branch | `release/3.8.0`。PCの未push差分はMCPだけでは読めない |
+| 3.8.0 source review | `690c685…`でPASS、新規P0〜P3なし。さらに`9b509680…`の雑談接続差分4ファイルもP0/P1/P2なし。限界は1.14参照 |
+| 3.8.0 full CI | **690c685**について全suite PASSというCodex報告あり。9b509680の全suite成功へ読み替えない。1.15参照 |
+| MCP CI evidence | exact SHA要求に対し`UNKNOWN / record_unavailable_or_invalid`。FAILとも独立確認済みPASSとも言わない |
+| 最終仕上げ | 雑談接続は9b509680で共有済み。マニュアル変更は未共有、新HEADのfocused検証結果は未取得 |
+| deployment gate | 最終仕上げの独立レビューでP0/P1/P2なしならdeployまで進めるOwner承認。完了記録はまだない |
+| GitHub | `Mamiki765` suspendの手動審査という引継ぎ。復旧の確認なし |
+| 共有経路 | `origin`は保持、第二remote `oci-offline` → `/home/ubuntu/git/hakoniwa-world.git` |
 
-**ローカル回帰成功を「3.7.2のGitHub Quality全件成功」と書き換えない。** また、3.7.2の本番deployは既にOwnerが許可して完了報告を受けている。古い「3.7.2は未承認・未deploy」という会話を復活させない。
+PR #150のmerge `382c838edc5c92c33302b2895eeb394e45cc58ec`、最終HEAD `5a32331ca9da2083c1ada2d353ac6990ee6f9ae0`、Quality `34012796576`成功は3.6.0の履歴。後続3.8.0の検証を代替しない。
 
-PR #150について提供版が記録していた履歴は、merge日時2026-09-06 14:16:31 JST、最終HEAD `5a32331ca9da2083c1ada2d353ac6990ee6f9ae0`、merge `382c838edc5c92c33302b2895eeb394e45cc58ec`、Quality `34012796576`成功。両treeは`de720796a623cb62e49f41c138163487c2a4c933`。これは3.6.0の証拠であり、現在の3.7.2の検証を代替しない。
+productionが更新された後は、実際のdeployed SHA・version・binding・migration結果を追記する。mainを進めたこと、buildが成功したこと、handoffをcommitしたことだけではdeploy完了としない。
 
 ## 1.2 直近releaseの履歴
 
@@ -62,17 +64,22 @@ PR #150について提供版が記録していた履歴は、merge日時2026-09-
 | #153 | 3.7.0 ランク2・ニョワミヤ・回想・UI | `codex/3.7.0`。最終merge SHAは今回未確認 |
 | PR番号未確認 | 3.7.1 本番／bare初期化の基点 | `f718f548b0f9958f6488a1fbfd8d206ce76b14de`。実機報告 |
 | GitHub外の本番反映 | 3.7.2 秘書ストーリーデータの分離等 | `daa31ca01d929ffa231241021c2bef9ad7bdb14d`。実機deploy報告 |
+| GitHub外の本番反映 | 3.7.3 廃船identity・強制退避の全自国港fallback | `368eadf919b599f104e1cbc35d3d8604733f5284`。Owner deploy報告と後続production snapshot確認 |
+| OCI release候補 | 3.8.0 バグ修正・PT／貸出・スキップ・画像／表示 | `690c6858125870982ec95578a11d11ccd3525e66`。source review＋full CI報告あり |
+| OCI最終仕上げ | 3.8.0 案内人雑談ボタンの接続 | `9b509680cc1b5e4abcdd86392d87bb61abe031f1`。追加source review済み、manualは未反映 |
 
 \#149は`5bad2cd`再レビュー後にhandoff commit `b30fee8`を追加し、同HEADのQuality成功を確認してmergeした経緯がある。当時の未merge記述を現在へ持ち越さない。
 
 ## 1.3 現在のidentity
 
 ```text
-application_version: 3.7.2
+production application_version: 3.7.3
+reviewed candidate application_version: 3.8.0
 Surface Ruleset: hakoniwa-2s-plus-v21
 Underground combat: secretary-underground-alpha-v3
 awakening: secretary-underground-awakening-v2
-presentation_log_version: 2
+solo presentation_log_version: 2
+party presentation_log_version: 3
 Trial 1: secretary-underground-trial-01-v2
 Trial 2: secretary-underground-trial-02-v1
 exploration: secretary-underground-exploration-alpha-v2
@@ -83,7 +90,7 @@ shop equipment: secretary-underground-shop-equipment-alpha-v2
 generated equipment: secretary-underground-drop-equipment-alpha-v1
 ```
 
-applicationとSurfaceは後続報告で更新した。Underground各identityは提供された3.6.0版からの継承値で、今回3.7.2のcodeから再抽出していない。基礎戦闘・成長の再設計を採用したとの報告はない。identity自体が必要な作業では、同一SHAのconfigとoverrideを読み直す。
+applicationとSurfaceは1.1の観測値。solo v2とparty v3の表示を区別する。Undergroundの他の継承identityは、作業に必要な場合に同一SHAのconfig・catalog・overrideから確認する。古い保存装備やbattleを現在定義で再生成する許可ではない。
 
 3.6.0ではSurface v20を維持し、**3.7.0でv21へ移行した**。IL90までの装備拡張は既存入力の出力を保つdomain extensionとしてgenerator identityを維持した経緯がある。将来変更時もidentityが不要という一般規則にはしない。
 
@@ -107,6 +114,22 @@ migration checkpoint時の成功報告は、fresh baseline 2 tests / 152 asserti
 
 本番操作前にはactual checkout / application / Ruleset / migration ledger / 未解決Turnを別途確認する。cronは未解決Turnを自動retryしない。新コードのmigrationは、実際に新コードを使う実行環境で行う。旧稼働コンテナへ`exec`しただけで新migrationが見えていると仮定しない。backup・manual retry・restoreはcurrent runbookとOwner gateに従う。
 
+### 3.8.0候補のforward migration
+
+`368eadf… → 690c685…`には次の7本がある。最終follow-upの「migration変更なし」は追加差分だけの説明であり、**3.8.0全体がmigration不要という意味ではない**。
+
+- `2026_09_08_000000_preserve_completed_auction_item_history.php`
+- `2026_09_08_010000_add_secretary_nickname_and_image_slots.php`
+- `2026_09_08_100000_add_underground_party_lending_persistence.php`
+- `2026_09_08_110000_add_underground_skip_consumption.php`
+- `2026_09_08_120000_add_secretary_lending_build_cache.php`
+- `2026_09_09_000000_extend_secretary_lending_build_cache.php`
+- `2026_09_09_010000_add_underground_battle_image_references.php`
+
+いずれも`product/database/migrations/`。今回の候補ではschema dumpの作り直しや新Surface Ruleset世代は行っていない。fresh installとsupported 3.7.3 upgradeのテストを持つ。productionへは実際のdeploy時に新コードのmigrationを適用する。
+
+3.7.3への最初の更新時に`config/hakoniwa.php: Permission denied`で起動に失敗し、Ownerが3.7.2へ戻した経緯がある。その後、既存deploy手順をOCI offline mainへ向けた更新で稼働した。**最初の権限不良の根本原因はこのチャットでは確定していない**。3.7.3アプリロジックの欠陥やDB破損と断定しない。既存の動く手順を理由なく巨大化せず、build・権限・image・migration・Web復帰の実確認を行う。
+
 ## 1.5 既存Ship契約の要点
 
 - ShipはNation-ownedのWorld actor。Monster、秘書itemとは別。1cellに最大1隻。
@@ -128,22 +151,23 @@ migration checkpoint時の成功報告は、fresh baseline 2 tests / 152 asserti
 
 ## 1.7 既知残件・現在の扱い
 
-| 項目 | 状態 / 次の扱い |
-| --- | --- |
-| 廃船の表示対象と登録対象の同一性 | 提供版の残件を継承。後続修正済みかは未確認。調べる際は同一Ship ID / intent境界を確認 |
-| 強制退避の別自国港探索 | **Owner採用決定済み**。最寄り不可なら別の自国港も探す。後続の実装完了は本更新では確認できていない |
-| 漁獲overflow損失の実測・補填 | 本番audit調査・支払い完了の新報告なし。修正deployと補填を混同しない |
-| 「地底」ヘッダー | 3.7.0の実装報告とOwnerスクリーンショットあり。将来要望から除外。未命名時は名付け側へ誘導 |
-| ランク2・ニョワミヤ・零式自然出現 | 3.7.0の実装範囲。1.11～1.12参照 |
-| 回想の全文表示 | 2.5のOwner契約を維持。3.7.2でstoryデータ分離のdeploy報告あり。最終本文の全文一致はこの更新で未独立確認 |
-| マニュアル全面改稿 | 13章のZIP・プレビュー・反映指示を作成済み。最終配信への全章反映は未独立確認。6.8参照 |
-| OCI Git代替経路 | 構築・転送検証済み。3.7.2本番deployにも到達。7.3参照 |
-| MCP / Tunnel | Phase 1・Tunnel起動・別チャットの`get_status`成功報告あり。次はChat側でGit本文・diffの実読出し |
-| 地上HQアイテム | 3.7.0では見送り。案の存在を入手・装備可能の根拠にしない |
-| 産業・電力・第三次産業・PD | 設計候補。基礎三施設のランク2実装と分離する |
-| 32×32素材制作 | Skill作成／アップロードの話は進展したが、実素材を使うpixel-perfectな一連の成功は未確認。6.4参照 |
-
-別港探索は隣接valid sea優先を維持し、その後の自国港候補を既存の距離・座標・ID順で順次調べる小さな変更案がある。採用決定を再び未決に戻さず、未確認のコードを実装済みとも書かない。
+| 項目 | 状態／次の扱い |
+|---|---|
+| 廃船対象のShip identity | 3.7.3で修正・本番反映済み。未解決P2へ戻さない |
+| 強制退避の別自国港探索 | 3.7.3で修正・本番反映済み。隣接valid sea優先→既存順序の自国港を順に確認 |
+| 交易履歴付き地上アイテムの直接売却 | 3.8.0候補で修正、productionへの反映は1.1に従う。INQの観測限界は1.16参照 |
+| ニョワミヤの占有マスへの村発生 | 3.8.0候補で修正。踏み荒らされた施設の全損は正しい |
+| 保護セルへ移動しない怪獣が船だけ沈める | 3.8.0候補で修正。保護判定を沈没より先に行う |
+| 3.8.0既往レビュー指摘 | `690c685…`までの追加レビューで修正確認。古いR01〜R15や後続4件を無条件で再登録しない |
+| 雑談ボタンとcatalogの接続 | **9b509680で修正・共有、追加独立source reviewでP0/P1/P2なし**。1.14・6.8参照 |
+| プレイヤーマニュアル3.8.0追従 | 最終仕上げとして依頼済み。Owner指定の内容だけ既存の文体・粒度へ統合 |
+| 漁獲overflow損失の実測・補填 | 支払い完了の新報告なし。バグ修正deployと補填を混同しない |
+| MCP / Tunnel | 1.3.0、13 tools、4 repo読取allowlist。初期接続工事へ戻さない |
+| MCPの3.8.0 CI記録 | UNKNOWN。既存のlocal証拠共有で補う課題であり、それだけで全suite再実行やMCP増築を始めない |
+| ランク2・地底ヘッダー・回想 | 既存実装。現在の未実装候補へ戻さない |
+| 地上HQ／アーティファクト、上位産業 | アイデア相談。個別仕様・数値・実装scopeは未承認 |
+| 第三狩場・試練3・実PT Boss | 将来設計。試練3はかなり先に保留 |
+| 素材制作／自前仲間育成／称号・Maria連携 | 別の将来候補。今回releaseの必須残件にしない |
 
 ## 1.8 PR #150のレビューと測定（3.6.0の履歴）
 
@@ -226,6 +250,68 @@ GIFは後半のPR確認報告で`Land702.gif`、`KLand47.gif`、`land19.gif`へ�
 
 PR #153の途中HEADでは、部分被害イベント`facility.partially_damaged`のOwner／公開島ログ接続漏れ、回想のための全試練戦闘履歴取得、現在のgrowth pathで導入回想の過去分岐が変わる点が指摘された。その後も複数の修正・レビューが進んだため、**古いHEADへの指摘を無条件に現在の未解決P2へ再登録しない**。最終的な修正確認を求められたときだけ現行経路を確認し、解消済みとも未解消とも根拠なく断定しない。
 
+## 1.14 3.8.0の独立レビューと、残る最終仕上げ
+
+本チャットでのレビュー履歴は次のとおり。690c685までの結果を継承し、handoff作成中にpushされた9b509680の4ファイルを追加確認した。過去の全source・全suiteを再検査した報告ではない。
+
+| Reviewed HEAD | 比較基点・確認範囲 | 当時の結論 |
+|---|---|---|
+| `9f2449640f510b57130f8d144c0ef5a5b588b90b` | 3.7.3から95変更ファイル。途中の`f4925b9…`に1ファイルの追加差分を足して確認 | P2 13件、P3 2件。差分外にtestログ保持P3 |
+| `7598d0a79d836e94e0cc1eb07647182486728e61` | `9f244964…`から55変更ファイル | 前回修正を確認。新たにP2 2件、P3 2件 |
+| `690c6858125870982ec95578a11d11ccd3525e66` | `7598d0a…`から19変更ファイル | **source review PASS、新規P0/P1/P2/P3なし** |
+| `9b509680cc1b5e4abcdd86392d87bb61abe031f1` | `690c685…`から4変更ファイル、157 diff行の可読変更部と関連source/test | **追加source review PASS、新規P0/P1/P2なし**。テスト実行・manual反映・deploy確認ではない |
+
+最終4件は、ヒーラー本人を回復判定から除外していた問題、clean環境のevidence親directory未作成、cleanupより先のfinal PASS記録、投影成功件数に依存した貸出cursor。`690c685…`で修正確認済み。
+
+R01〜R15では、戦闘状態の時点、実engineログとUIの接続、actor/target identity、標準ヒーラー、同期済みcache、候補一覧負荷、相互借用lock、画像保持・閲覧設定、無効メンバー解除、再送intent、ソロ大絵反復、スキップ結果、古い表示を扱った。古い指摘の名前だけから修正前のコードへ戻ったと判断しない。
+
+レビューは固定SHAのsource・diff・関連testsが中心。部分redactionがあるファイルは不可視部分まで読んだことにしない。Web ChatGPT自身が本番操作やfull PHPUnit、実ブラウザの全操作を実行したという主張ではない。
+
+**source review PASSと3.8.0の機能要件を全部満たしたことは同義ではない。** 690c685までの案内人会話は、catalog→ショップ欄には接続済みだが、部屋のボタンには未接続だった。この接続漏れを9b509680で修正した。今後も部品・関数が存在することだけで、実際のUI操作まで完成したと推測しない。
+
+最後に依頼した作業は、雑談接続＋Ownerが編集・指定したマニュアル更新。現在の共有HEADは`9b509680…`で、雑談接続部分の独立sourceレビューは済んだ。**この差分にはmanual変更がなく、後続focused検証の結果もMCP記録からは取得できていない。** 既存の実行結果・残りのmanual差分を確認する。さらにcodeが進んだ場合は9b509680からの追加差分だけをレビューする。
+
+**最終仕上げにP0/P1/P2がなければ既存手順でデプロイまで進めるOwner承認あり。** P3やUIの好みは分け、勝手に新しい必須gateを増やさない。雑談の接続済み判定を、manualも完了・新HEADのfull CIも完了・本番反映も完了という判定へ広げない。
+
+`docs/operations/release-3.8.0-review-fix-checkpoint.md`は2026-09-09 08:15時点の`READY_FOR_SOL_VALIDATION`記録で、対象implementationは`785afc14…`。そこにある「full suite未実行」は当時のcheckpointであり、後述する`690c685…`の完了報告を無効にしない。
+
+## 1.15 3.8.0の検証証拠
+
+Codexはexact candidate `690c6858125870982ec95578a11d11ccd3525e66`について次を報告した。
+
+| 検証 | Codex完了報告 |
+|---|---|
+| focused PHPUnit | 40 tests / 374 assertions PASS |
+| related Vitest | 5 tests PASS |
+| full PHPUnit | 1,037 tests / 20,345 assertions、failure/error 0 |
+| shard | 16/16 PASS |
+| local evidence token | `837e965c` |
+| final evidence | `run passed / exit 0`、authoritativeなrun行は1行 |
+| PHPStan | 408/408、No errors |
+| full frontend Vitest | 19 files / 179 tests PASS |
+| ESLint / Typecheck / Production build / Pint | PASS |
+
+一方、MCPの`ci_get_record`およびworkspace summaryでは`690c685…`の記録は`UNKNOWN / record_unavailable_or_invalid`。後続`9b509680…`のworkspace summaryも同じUNKNOWN。期待先は`release-evidence/<SHA>/ci-result.json`。**上表はOwnerが共有したCodex報告であり、MCPでraw全証拠まで独立取得した結果ではない。** 要求SHAが応答のtested_sha欄に入っているだけでテスト実行の証明としない。
+
+証拠が必要なら既存runのSHA・終了コード・JUnit・log・dependency情報を共有する。記録がMCPから読めないことだけを理由に1,037件をやり直したり、readerを増築したりしない。
+
+後続9b509680にはPHP/TSの接続処理と、API候補一覧・ボタン連続押下・ショップ非表示のテスト変更がある。テストsourceは読んだが、その実行結果は今回未取得。既に実行していれば結果を共有し、なければ対象のcatalog/projection/frontend接続テストとlint/typecheckを必要範囲で確認する。**新HEAD全体のfull suiteを実行していない場合は、基点full PASS＋後続focused PASSとして正直に記録**し、旧SHAの全件結果を新SHAへ付け替えない。
+
+## 1.16 INQ-000005 / INQ-000006：売却障害の調査と修正
+
+player出品を落札した地上アイテムの直接売却で、終了済み`auction_listings`のFKが個体削除を拒否することをlocal再現した。`SQLSTATE[23001]`、制約`auction_listings_secretary_item_instance_id_foreign`。取得元が交易だったというOwner・報告者の情報が調査の手掛かりとなったが、NPC商品とplayer落札品は区別する。
+
+3.8.0では現存個体FKを`ON DELETE SET NULL`にし、元個体IDを非FKの`original_secretary_item_instance_id`へ保存・backfillする。active player出品では現物必須、終了済み履歴のみNULLを許容。装備中・active escrow・古びた弓・資金上限等の正規拒否は維持する。指定個体のみ削除し、資金／個体／auditは同じtransaction、再送で二重入金しない。
+
+対象限定診断の観測は2026-09-08 13:02〜13:04 JSTの過去snapshot。
+
+- INQ-000005：Nation 19 → Secretary 19。item 61は`inora_bracelet` Lv1・未装備／非escrow・終了済み交易履歴あり。item 81は同品Lv1・slot 2装備中。item 61はFK不具合へ到達し、item 81の装備中拒否は正しい。
+- INQ-000006：Nation 13 → Secretary 13。item 35は`elf_bow` Lv2・観測時active escrow。item 118は同品Lv2・未装備／非escrow・終了済み交易履歴あり。前者はescrow拒否、後者はFK不具合へ到達する状態だった。
+
+当時実際にPOSTされた個体ID・HTTP応答・SQLSTATEは保持ログから確定できなかった。**「同名を装備すると別個体まで必ずロックされる」「外したら売れたという報告までFKだけで完全に説明できた」とは断定しない。** SQLSTATEはlocal再現値。診断snapshotは期限付きであり、現在も同じ装備／出品状態とは限らない。
+
+case IDは`INQ-000005-20260908`、`INQ-000005-item-61`、`INQ-000005-item-81`、`INQ-000006-20260908`、`INQ-000006-item-35`、`INQ-000006-item-118`。失効時は必要な対象だけ再exportする。MCPからDB売却・装備変更・補填を行うものではない。
+
 # 2. 地下RPGの継承契約と3.6.0
 
 ## 2.1 Trial 1
@@ -294,7 +380,51 @@ Trial進行とlayer権利はSecretary-owned、施設はNation-owned。同じ秘�
 
 「地底」ヘッダーは追加済みの扱い。未命名なら地下APIへ進まず、`？？？`の名付け導線へ誘導する。これは秘書の出会い本文を省く許可ではない。
 
-案内人の本名分岐・抱き締める等はOwner原稿を正本とする。**夢の女王戦・PT・魔剣グラムはruntimeへ入れない**。将来戦闘の構想と台詞は`docs/future-systems/guide-dream-queen-battle.md`へ保存する作業報告がある。没話は没話として分離する。
+案内人の本名分岐・抱き締める等はOwner原稿を正本とする。
+
+夢の女王戦・魔剣グラムは将来候補のまま。**PT基盤自体は後続3.8.0で採用・実装したため、古い3.7.0時点の除外を継承しない。** 夢の女王等の構想は`docs/future-systems/guide-dream-queen-battle.md`に保存する作業報告があるが、実Bossの実装承認とは別。没話・提案・Owner原稿を区別する。
+
+## 2.6 3.8.0：PT・貸出・画像・スキップのOwner契約
+
+### 目的と編成
+
+目的は**他プレイヤーの秘書を見せ合うこと、後発支援、自分の秘書を主役にすること**。Leaderは自分の秘書1人、同行は他人の公開秘書を最大3人、合計4人。開始者が編成し、保存AIで自動戦闘する非同期PT。貸出元Ownerの同時操作は要求しない。
+
+貸出は非排他。**同じフルールを何人のプレイヤーが同時に借りてもよい。** 同一PT内の同じ秘書の重複だけ禁止する。`is_available`はOwnerの貸出許可で、busy／世界で1人限定の予約状態ではない。
+
+既存狩場は人数と同数の敵（1〜4体）。敵数を増やすだけでEXP・G・dropを人数倍しない。Trial 1/2はソロ専用。PT Bossの`none`または人数別HP／攻撃倍率tableを受ける構造はあるが、実Boss・倍率は未追加。将来のリカ戦は人数補正なしというOwner方針。自前の仲間を育てる仕組みは次段階候補で、初期PTに実装済みとはしない。
+
+### 能力同期と周回負荷
+
+本体はLeaderのcombat Lv、装備は**Leaderの対応slotのIL**を上限にする。狩場の要求Lv／ILへ合わせるものではない。低い貸出元を上方同期せず、Leaderが空けているslotの装備性能は借りない。sourceの個体・装備・ビルドを保存データ上で書き換えない。
+
+自然成長とSTPはeffective Lvへ調整し、STP配分の比率を保つ。Skill／使用枠／AI／Growth Path等の個性は保持する。generated装備の原本identity・quality・affix・seedを尊重し、戦闘値だけ同期。fixed装備の戦闘値は対応する既存definitionから得る。具体的な生成契約は同SHAのfactory/catalogを読む。
+
+**10秒周回で毎戦装備を再生成しない。** `690c685…`までに貸出原本と同期済みprojectionのcacheを実装。source build、Leader Lv／slot IL、計算世代をキーに使い、愛称・現在HP・覚醒台詞だけで数値を作り直さない。重い数値計算と表示・行動設定の更新を混同しない。
+
+開始時に各memberの戦闘用データ、AI、覚醒技・フレーバー、愛称、画像／creditを固定する。将来の台詞やスキル特殊演出も開始時の取得経路へ追加できるようにする。timer、詳細開閉、再表示、round進行で貸出元を再計算しない。戦闘結果のHP／MP／覚醒を貸出元本人へ書き戻さない。
+
+### 回復と覚醒
+
+タンク／アタッカー系の自己回復はself-only。祝福型の回復は本人を含む生存味方へ使用でき、単体味方回復はHP率の最も低い対象を選ぶ。標準AIも本人込みで判定する。custom AIの「自分のHP」条件を勝手に別の意味へ変えない。
+
+生命讃歌はPT全員を対象に、生存者を全回復、戦闘不能者を**HP100%で蘇生**する。味方のMP回復や状態異常解除を無断で付け足さない。発動者自身の覚醒activationに伴うHP／MP全回復とは別の効果である。天断一閃は主対象の通常威力を維持し、他の敵へ50%の副対象倍率を使う。敵ごとの防御等を無視して最終damageが必ず半分になるという意味ではない。
+
+### 貸出報酬とスキップ
+
+貸出先の実戦参加10回ごとに持ち主へスキップチケット1枚、持ち主単位で1日最大100枚。同じ秘書の複数利用者分も正当に集計し、同一battle再送・再表示で二重加算しない。通常のEXP・drop・進行は開始者へ帰属する。
+
+各狩場は実戦50勝でスキップ解禁、1回1枚。各試練は実戦5周完走で解禁、**10連戦1周をまとめて10枚**で完了する。戦闘・待ち時間なしで通常の反復報酬を得る。初回SP・物語・layer解放は再取得せず、スキップを実戦解禁数や貸出参加へ加算しない。装備dropと宝物庫満杯の取り逃しは結果に表示する。
+
+### 愛称・画像・見せ方
+
+正式名30文字は維持し、別に最大6文字の愛称を登録できる。短い表示は愛称優先、なければ正式名、長い場合は先頭5文字＋「…」。正式名そのものは変えない。
+
+通常／覚醒それぞれにアイコン1:1、バストアップ3:4、全身3:4の計6枠。画像ごとに制作方法・作者／権利表記を管理する。全身優先を基本にバスト優先も選べ、覚醒画像がなければ通常側へfallbackする。画像切り抜きUIは後回し。
+
+大絵は各人の開始・覚醒・終了を基本にし、通常roundへ同じ全身絵を反復しない。PARTYが上、ENEMYが下。名前とHP／MP／覚醒を小型カードで見比べ、ゲージへ文字を重ねる。ReadyとAwaken!を分け、外枠を勝手に発光させない。スマホの通常カードは2×2を意識する。
+
+新しいbattle IDで上端へ移動し、再表示・詳細開閉で何度も飛ばさない。詳細を省略しても覚醒・蘇生・結果・報酬は確認できるようにする。保存画像はbattle logの保持期限まで参照を保護し、現在の閲覧者のAI画像設定も適用する。旧v1/v2 logを現在の能力から再計算しない。
 
 # 3. 装備・敏捷・資源
 
@@ -326,7 +456,9 @@ current Surface resource definitionsには小麦、魚、怪獣肉、工業品�
 
 custom AIはplayer保存済み設定を使い、既定AIを新ダンジョン専用に無言で差し替えない。覚醒HP条件の変更だけでも攻略時間や発動率は変わるため、比較報告へ明記する。
 
-一つのexecuteTurnに覚醒activation・奥義・通常行動が含まれる場合がある。技の宣言、MP cost、効果、反撃、継続効果、自然回復を混同しない。PT、manual combat、万能action frameworkは未実装。
+一つのexecuteTurnに覚醒activation・奥義・通常行動が含まれる場合がある。技の宣言、MP cost、効果、反撃、継続効果、自然回復を混同しない。
+
+PT基盤とparty presentation v3は3.8.0候補で実装済み。manual combat、万能action frameworkは今回scope外。partyログではaction_idとactor/target IDを使って宣言・MP cost・直接効果・反撃・吸収・蘇生を結び付ける。実engine出力をprojectorとfrontendへ通すfixtureを使い、双方で別々の架空shapeを作って成功扱いしない。
 
 # 6. 表示の現在地と、次に相談するもの
 
@@ -336,7 +468,7 @@ custom AIはplayer保存済み設定を使い、既定AIを新ダンジョン専
 
 途中の状態カードを折り畳まず、末尾の分析統計を「戦闘詳細」にまとめて初期closed。「末尾へ」を維持。覚醒gauge満タンと覚醒中を区別する。内部0～1000を生の数値として見せず、barを基本にし、アクセシビリティ上の値はpercentageで伝える。fill以外のcard背景／外枠を勝手に発光させない。
 
-専用覚醒portraitの登録・歴史的画像snapshot機構まで実装済みとは扱わない。stateの覚醒中表示と登録画像の表示を区別する。
+この節前半は3.6.0で導入した表示の履歴。3.8.0では2.6の画像6枠・履歴参照・compactなPT／ソロ表示へ拡張した。旧版の「専用覚醒portrait未実装」は解除する。詳細省略modeを追加しても、状態を別の時点へすり替えたり、保存済みlogを再計算したりしない。
 
 ## 6.2 旧ログを変えない
 
@@ -347,6 +479,8 @@ presentation v2は新battleのinitial\_stateとround boundary等の投影を追�
 Ownerの意図は「箱庭がメインなので、地上の島経営を豊かにする」。限られた土地、とくに100マスを意識した島づくりの中で、一マスの生産能力・役割・防災を育て、空間を有効利用する。100マスをWorldの絶対面積上限へ読み替えない。
 
 基礎の農場・工場・採掘場は人口と土地を基盤にし、追加の燃料等を必須にしない方向。将来の別系統の上位施設は、追加の労働人口ではなく基礎資源を利用する案。**今回の「大農場」等は基礎施設の規模拡張であり、人口不要の自動工場ではない。**
+
+今回Ownerが改めて示した表現は**「人口は農場と工場、採掘場に使う」**。基礎三施設の生産と、基礎資源を消費する将来の上位産業を分ける方針として保持する。食品加工場・商業・発電・研究・物流・造船・観光等は候補が出ただけで、最初に何を入れるか、入出力・費用・数値は未決。ChatGPTの仮の消費量／売上をOwner確定値にしない。
 
 **ターン数圧縮は作らない。** 成熟した施設が災害で全損せず規模を失って残る方向は採用し、ランク2として具体化した。PD（輝石／パラドックス）、電力、加工、第三次産業、複数マス合体などの案は将来候補。以前の「20PD＋3倍資金で整備を時短」や整備量増幅案を、そのまま次の確定仕様へ復活させない。
 
@@ -369,7 +503,11 @@ Ownerは荒地・平地・海等の実画像をSkillの`assets/`へ同梱した�
 
 ## 6.5 ほかの将来候補
 
-NPC海賊、船修理、第三狩場以降、Unique、enchant／装備強化、案内人再戦、専用覚醒画像、PT、manual combat、marketは必要になった時にOwner gateで検討する。Trial 2はこの一覧から除く（3.6.0で実装済み）。
+NPC海賊、船修理、第三狩場以降、Unique、enchant／装備強化、自前仲間育成、案内人再戦、実PT Boss、manual combat、地底装備marketは別scope。Trial 2、PT基盤、専用覚醒画像6枠、スキップ消費は候補側で実装済みのためこの未実装一覧へ戻さない。
+
+地上の秘書itemと地底装備は別体系。地上用レギュラー／ハイクオリティ／アーティファクトを増やす案では、産業を強くする遺物や遊び方を変える便利道具を相談した。魔法の白旗、食品加工・発電と組み合わせる宝物、移築道具などの名前や効果案があるが、個別の採用・数値・入手方法・実装releaseは未確定。現行catalog／装備枠を確認してから相談する。
+
+船舶運営技能の必要EXPは、**各LvUPごとに100、200、300、400…と増える形式**をOwnerが指定した。技能固有効果は未決定。これは今回会話での方針で、`690c685…`の技能定義から曲線を再確認した記録ではない。未確認のまま変更済みやdeploy済みと書かず、必要なときに`ship_operations`の定義を確認する。他技能に必要EXP表がないmanualへ、この技能だけ数値を長々追加しない。
 
 ## 6.6 技巧・成長研究の結論：今回不採用
 
@@ -383,9 +521,9 @@ NPC海賊、船修理、第三狩場以降、Unique、enchant／装備強化、�
 
 ## 6.7 行動ログ形式：実装済みと未実装
 
-presentation\_log\_version=2、初期状態、round開始／終了、覚醒gauge表示は#150で実装済み。旧6.7にあった汎用action\_id／parent\_action\_id／source等の全提案が実装されたわけではない。
+solo presentation v2を維持し、3.8.0のPTはv3。initial／round boundary／finalを分離する。party action_id、actor_id、target_id、target_idsによって宣言・MP cost・結果を関連付け、反撃・吸収の本当の対象を一括上書きしない。
 
-MP costと効果の所属をより明確にする将来改善は、必要な保存情報だけで行う。v2という番号だけを根拠に、全行動を再生できる完全traceが存在すると判断しない。
+これをもって旧案の汎用parent_action_id／万能trace／全行動再生が完成したとはしない。旧v1/v2は保存済み情報の範囲で表示し、新しいデータがない部分を現在のprofileやゼロで埋めない。
 
 ## 6.8 プレイヤーマニュアル全面改稿
 
@@ -396,6 +534,59 @@ OwnerはMVP時代の未実装宣言・古い経験値説明・特定アイテム
 **プレイヤーが遊び方を調べられる説明書にする。内部仕様と全例外の百科事典にしない。** 主要施設や2S＋固有機能は個別に説明し、個別アイテムの細部はゲーム内効果欄へ委ねる。大枠と重要な単位・受取先・費用・解禁条件が現行と整合することを重視し、依頼のない25項目全監査や延々としたP2レビューを再開しない。明白な相違はその箇所だけ実装で確認する。
 
 特に怪獣の実HP damage EXP／基地EXP／秘書討伐EXP／撃破報酬／地底Combat EXP、地上と地底の通貨・装備、STPとSP、試練途中帰還を分離する。futureの地上HQ・夢の女王・グラムを混ぜない。既存URL互換は保ちながら用途別の目次へ接続する方針。
+
+### 3.8.0の最終マニュアル更新
+
+`690c685…`には既存の`product/docs/manual/`13ファイルがあり、3.8.0のPT／貸出／スキップ追記はまだない。`690c685… → 9b509680…`にもmanual変更はない。主な更新候補は`underground.md`、`combat.md`、`secretary.md`。新ページや全面改稿は不要。
+
+Ownerが検閲・編集したA〜Jの内容を、指定された範囲だけ既存節へ統合する。仕様の全転記ではなく、既存manualの文体と粒度を優先する。解禁条件・消費・上限・solo制限・同期など必要な情報は残し、内部class・DB・cache・lock・snapshotの解説は入れない。Owner未選択項目を勝手に全採用したり、書くために未実装機能を足したりしない。
+
+船舶運営だけ100／200／300／400の必要EXP表を追加しない。他の技能と同程度の説明なら現状の「船の成功航行で育つ／固有効果は準備中」を維持してよい。正式名はフルネーム、愛称は可愛い呼び名という意図も、説明書から浮かない文章へ整える。
+
+案内人の雑談は個々の話題を列挙せず、**休憩中で時に少し酔った案内人と他愛のない話ができ、豆知識が聞けることもある**程度。物語の答え、裏設定、台詞全文をmanualへ載せない。
+
+#### 雑談接続漏れの履歴と、9b509680の修正
+
+**修正前**の`690c685…`の具体的な状態：
+
+- `product/config/underground-intro.php`の`guide_banter`には3件の短い台詞がある。
+- `UndergroundIntroCatalog`が読み、`UndergroundIntroService`が日単位のstable selectionで1件返す。
+- `UndergroundPanel.vue`の通常ショップ欄にその台詞を自動表示する。
+- 部屋の「少しお話がしたい」は`guideMode='conversation'`へ切り替えるだけで、「話題が思い浮かんだら…」という固定placeholderを表示する。
+
+**9b509680で共有・追加source review済みの修正**：`UndergroundIntroService`が`guide_banter_entries`でcatalogの一覧を渡し、`UndergroundPanel::startGuideConversation()`がボタン押下ごとにクライアント側で1件選ぶ。ショップ欄の自動表示と固定placeholderは削除した。新API・DB・戦闘乱数への接続はない。
+
+既存の日単位`guide_banter`は後方互換fallbackとして残るが、現行APIの候補一覧を利用する会話を日単位には制限しない。Ownerは連打による会話ガチャを許可した。日単位固定や「全部を見せない制限」を独断で復活させない。既存の台詞3件自体はこのcommitで増えていない。
+
+今後も既存catalogを正本とする。新DB、永続会話履歴、新しいstory解禁、戦闘乱数との共有は不要。台詞の追加採用はOwnerが決める。
+
+`App.test.ts`では実ボタンを2回押し、異なるcatalog台詞を表示し、ショップへ自動表示しないことを確認するtestを追加。`UndergroundPlayerAccessTest.php`ではAPIの一覧とcatalogの一致を確認する。**source上の接続・回帰testの存在は確認済みだが、新HEADのfocused実行結果は未取得**。実際の完了報告へ結果を添える。
+
+Web版ChatGPTは原稿・独立確認を担い、read-only MCPからrepositoryを書き換えない。OwnerがCodexへ渡して反映する方式。manualのみの差分を理由に全PHPUnitを再実行せず、雑談コード差分は該当テストと分けて検証する。
+
+## 6.9 第三狩場「輝きの王国」・試練3の構想
+
+第三層は黒い輝石の底の巨大空洞へつながり、魔王が滅ぼした人間の王国の城下町が美しく残る。中世〜近世ファンタジーの街が輝石に覆われ、埋もれている。Owner提示の画像は雰囲気の参考で、描かれた敵をそのまま第三層の確定編成にするものではない。
+
+アンデッドは腐敗死体ではなく**輝石から再生された人間**で、操り人形のよう。王都を守る兵士、高位魔術師などを出したい。既存より敵種を倍程度へ増やす意向があるが、ChatGPTが作った敵16案は未採用の提案。
+
+Ownerの編成案は通常敵をランダムに混成し、PTでヒーラー3体など偏った組合せでも仕様とすること。敵ヒーラーは人数を見た単純AIで、単独なら自己回復、2体以上なら威力半減の全体回復を行う構想。行動の細部・倍率全体・出現数とPT人数の厳密な関係は、実装着手時に詰める。
+
+レアエネミーは遭遇の最初に判定し、当選した場合は全枠をレア編成にする意向。通常編成へ一部だけ混ぜ、倒し切れず100round撤退のEXP1/4になるような事故を避けたい。具体的な確率・敵定義・報酬は未決。
+
+古い「Lv90想定」を達成条件として固定せず、Lv50台で突破した現playerのbuild／装備／AIも対象限定のread-only診断で確認し、第三層以降の強さを考えたいというOwner方針。過去コンテンツを無断で弱体／強化しない。**試練3「王城」はかなり先に保留**し、他コンテンツを十分遊んでようやく挑める高難度、勇者のアンデッドが多数いる場所を想定する。
+
+世界観は、東の神・規律・祈りによって勇者が生まれる人の世界と、西の魔王・欲望・淘汰の魔の世界、大山脈、その世界の果てにある大いなる滝を背にした人間の王都というOwner原案。魔の王女が故郷を離れ、人間社会の腐敗や聖女の幽閉を見ながら居場所と和平を求めた裏設定がある。**人の王が王女へ何をしたかは未確定**で、ChatGPTの考察を正史へ採用した記録はない。東西表記など原稿内の未整理部分も、Agentが勝手に補完・訂正しない。
+
+過去に渡した提案MDは`hakoniwa-kingdom-of-radiance-design.md`。チャット成果物であり、repositoryへ保存済みとは未確認。必要時はOwner提供の現物を読む。第三層の設定や画像をマニュアル更新・3.8.0最終仕上げへ混ぜない。
+
+## 6.10 称号・実績とMariachang連携の構想
+
+Ownerは、秘書名の上へ小さく「農業大好き」のような付け替え可能な称号を表示し、箱庭実績で称号を解禁する案を示した。箱庭で取った実績をMaria側へも追加し、Discordサーバー「雨宿り」にそのDiscord User IDが参加している場合に通知したい。
+
+実績／称号の保存主体、条件、報酬、既存実績との対応、Discord連携・再送・通知の方式はまだ実装scopeとして確定していない。ChatGPTの署名付きeventやSecretary-owned称号案は設計提案であって、Owner採用済みの技術仕様ではない。
+
+MCPの複数repo読取はこの連携調査に有用だが、DB共有・write権限追加・双方向同期を承認した話ではない。必要時に`hakoniwa-world`と`mariachang`の各refを個別SHAへ固定して既存実装を調べる。
 
 # 7. Test / review / GitHub停止中の運用
 
@@ -410,6 +601,10 @@ OwnerはMVP時代の未実装宣言・古い経験値説明・特定アイテム
 - P0/P1/P2は実際に到達する条件・影響・対象行を示す。好み、過剰設計、非現実的な異常値だけの指摘は増やさない。必要な証拠が読めない場合は検証範囲不足を明記し、無条件PASSにしない。
 - subagentは限定調査・機械作業・focused test。Owner意図、release境界、migration、統合、production判断は主担当が保持する。
 - 一releaseのSurface追加は原則一世代。merge、deploy、OCI変更、本番DB、補填、handoff編集は許可を混同しない。過去の承認を将来作業へ自動拡張しない。
+- Web版ChatGPTの利用回数とCodexの作業コストを意識する。今回のように実装整理／判断と重い検証を分ける運用を認め、成功済み全suiteを各小変更で回し直さない。実際に使っていないsubagent／modelで検証したと報告しない。
+- test軽量化は、実engine→projector→UIの整合、軽い入力検証用fixtureの分離、supported upgrade準備の共有、shard時間と証拠保存を優先する。transaction rollback、個体identity、二重報酬、権限、DB分離の必要な回帰まで無差別に削らない。
+- release差分の指摘、差分外の横断残件、UIの提案を分ける。今回Ownerのdeploy条件はP0/P1/P2なし。好みのP3だけで勝手にreleaseを止める基準を増やさない。
+- 原稿・プロンプト・MDを求められたときに画像生成しない。同じ用途のファイルを別名で二重納品しない。
 
 ## 7.2 GitHub停止とSupport対応
 
@@ -434,56 +629,55 @@ PCと本番に第二remoteを追加し、3.7.1の同一SHAで転送・fetch・�
 
 bareは受取場所で、本番working treeへの直接push・push即deployは採用しない。`offline/main`の最新値は実読出しで確認する。bareのbranch進行と稼働中のproduction SHAは別であり、candidateやdocs-only commitを受け取ってもdeploy済みにはならない。
 
-2026-09-07 JST、Codexが実機の`hooks/pre-receive`を読取確認した。許可範囲は`refs/heads/offline/*`と新規`refs/tags/offline/*`。ref削除と既存tagの更新を拒否する。今回の文書反映先は既存`offline/main`であり、新branchやtagを作らない。将来も実際の許可refを確認し、force／mirror pushや保護設定の無断変更はしない。
+2026-09-07 JST、Codexが実機の`hooks/pre-receive`を読取確認した。許可範囲は`refs/heads/offline/*`と新規`refs/tags/offline/*`。ref削除と既存tagの更新を拒否する。将来も実際の許可refを確認し、force／mirror pushや保護設定の無断変更はしない。
+
+その文書反映先の限定は2026-09-07時点の個別作業の記録。現在のapplication作業は`release/3.8.0` → OCI `offline/release/3.8.0`。最新handoffもまずその作業差分を保全して反映する。最終レビュー後、既存のoffline/main昇格・deploy手順を使う場合は、実際に進めたSHAを記録する。未レビュー差分を混ぜたmain昇格やforce更新はしない。
 
 通常deployは現在の実Compose・image・mount・backup手順を確認し、GitHub不通を理由に全面変更しない。ローカルbuild＋image転送は比較案であって必須決定ではない。「本番をCI runnerにしない」は開発中の全テスト反復を移さないという意味で、既存deploy build中の検査を無条件に禁止したものではない。DB rollback可とは仮定せず、forward migration後の旧コード互換性を分ける。
 
 OwnerはOCI週次backup・1か月保管を用意している。新規bare・MCP・秘密設定までその対象に含まれるか、off-host性・復元可能性は別途確認する。PCにもGit履歴がある。bundleは履歴保全に使えるが、未commitファイル・外部画像・秘密設定・hooksを含むバックアップとは区別する。
 
-Mariachang等も`/home/ubuntu/git/<repo>.git`へ拡張したい要望があるが、**箱庭以外のbare作成完了は未報告**。GitHub復旧後は双方をfetchして履歴を比較し、同じcommit SHAのまま復旧用branchへ送り、通常の保護ルールで統合する。mainをforce更新せず、稼働時の過去SHAも書き換えない。
+Owner経由のCodex報告で、追加bareの作成は完了している：`/home/ubuntu/git/Mariachang.git`（default master）、`maria-board.git`（main）、`pbw-love-memo.git`（master）。初回全ref mirror、fsck、non-FF／ref削除拒否、push object検査、source不変を確認したとの報告。`ubuntu:ubuntu`／0700。これは本更新でhost上の全設定を再監査した結果ではない。
 
-## 7.4 Hakoniwa MCP Phase 1：実機完了報告
+Mariachangの既存未追跡`scripts/`はbareに含まれず、週次OCIバックアップだけが保護という報告。勝手にcommit・archiveしていない。GitHub復旧後は双方の履歴を比較し、同じcommit SHAを維持して通常の保護ルールで統合する。
 
-配置`/home/ubuntu/apps/hakoniwa-mcp`、Compose `compose.yml`、project／serviceとも`hakoniwa-mcp`。Streamable HTTP・stateless JSON、endpoint `http://127.0.0.1:8000/mcp`。MCP本体は認証なしでloopbackへbindする構成。**このことを一般公開URLで無認証運用してよいという許可にしない。**
+## 7.4 Hakoniwa MCP：現在は1.3.0、13 tools、4 repo
 
-bareを`/repos/hakoniwa-world.git`へread-only bind mountし、実機`RW=false`確認。非root、root filesystemもread-only、CPU／メモリ制限。server-side allowlistは`hakoniwa-world`のみ。
+2026-09-09の`get_status`／workspace応答で、runtime **1.3.0 / schema 4 / 13 tools**、build fingerprint `sha256:bf74f2f71b710a70d9230a928f0332a0c372e31a3cd96b51b252f844e920b002`を確認した。
 
-**ツールはGit読取5個＋既存`get_status`の計6個。**
+allowlistは`hakoniwa-world`、`mariachang`、`maria-board`、`pbw-love-memo`。**toolへ渡すMariachangのrepo名は小文字`mariachang`**。host bare名の大文字と混同しない。
 
-| tool | 引数 | 主な返却内容 |
-| --- | --- | --- |
-| `get_status` | なし | 既存の接続確認情報 |
-| `repo_resolve_ref` | `repo, ref` | requested ref、解決済み40桁commit SHA |
-| `repo_commit` | `repo, ref` | SHA、parents、author／committer、subject、tree |
-| `repo_changed_files` | `repo, base, head` | 両SHA、変更ファイル名／status、省略有無 |
-| `repo_diff` | `repo, base, head, path?` | 両SHA、unified diff、省略理由 |
-| `repo_read_file` | `repo, ref, path` | SHA、path、本文、サイズ |
+| tool群 | 用途 |
+|---|---|
+| `get_status`, `workspace_status` | runtime世代・能力、repo/application/production/CI/handoffの出典別要約 |
+| `repo_refs`, `repo_resolve_ref`, `repo_commit` | branch/tag一覧、commit SHA固定、metadata |
+| `repo_changed_files`, `repo_diff`, `repo_read_file` | 固定SHA差分と本文。行／文字継続、変更一覧cursorを利用 |
+| `repo_list_directory`, `repo_search_text` | tracked directory一覧とliteral検索 |
+| `production_status` | hostが生成したsanitizedな本番snapshotを読む |
+| `production_diagnostic` | 保存済みの対象限定caseを固定profileで読む |
+| `ci_get_record` | 要求exact SHAのsanitized CI記録を読む。別SHAへ代替しない |
 
-引数は文字列、`path?`だけ省略／null可との報告。`repo_diff`は**指定baseとheadの直接比較**。merge-baseを使う三点diffだと仮定しない。refを最初にcommit SHAへ固定し、以降は同じSHAで読む。専用review-session APIは提案のみで必須でも実装済みでもない。
+返却capは1 MiB。大きなファイルを元sizeだけで諦めず、`has_more`と`next_start_line/column`、cursorを見て必要部分の続きを読む。秘密path・binary・symlink・submodule等の拒否、通常source内の秘密値部分redactionを維持する。伏字の中身を復元したり、filterを回避して取得したりしない。
 
-安全境界：通常のtracked fileのみ。symlink・submodule・binary・パス脱出・秘密パス・既知の秘密値形式を拒否。任意shell、Git write、checkout／fetch、Docker／DB／本番操作のtoolはない。
+**初期6 tool／64 KiBは過去のMCP Phase 1仕様**。それを現在値として接続工事をやり直さない。ChatGPTへ見えているschemaとruntimeのcapabilitiesに差がある場合は、使えるtool定義と実呼出しを確認する。runtimeが新しいという理由だけで、未取得のtoolを呼べたことにしない。
 
-上限：ファイル本文64 KiB、返却JSON64 KiB、変更一覧200件、差分20ファイル。`truncated`／`omitted`を明示する。巨大ファイルの行範囲読取やページング引数はこのschemaにはない。上限で読めない関連箇所を、読んだものとして扱わず、限定抜粋・添付等が必要なことを報告する。
+MCPはread-only。任意shell／SQL、Git write、checkout変更、deploy、DB write、Turn操作、Docker socket、DB credentialは渡さない。PC側CodexにOwnerが許可したOCI操作権限と、Web側MCPの権限は別である。MCP本体・Tunnelの構築は成立済み。
 
-成功報告：安全性test 12件、実HTTP MCP Clientでinitialize・tools/list・全6ツール、README読取、394byte diff、非commit・任意repo・`.env`・パス脱出の拒否。bare全refs／HEAD不変、本番checkout・origin・Web・DB不変。変更はMCPコンテナ側。退避先は`/home/ubuntu/apps/hakoniwa-mcp-phase1.3yivKZ/original/`。
+application release refとMCP用review refは別。MCPコード／設計資料が同じrepositoryの`tools/hakoniwa-mcp/`等へ入っていても、別review branch上のruntime SHAをapplicationのtested/deployed SHAと同一視しない。
 
-## 7.5 TunnelとChatGPT：接続確認の到達点
+## 7.5 本番snapshotと対象限定DB診断
 
-Codexの実機報告ではTunnelは**起動済み**。`healthz`／`readyz`とも200、サービス稼働・再起動回数0・起動時自動起動設定済み。本番Web・DB・Gitは変更なし。秘密値表示・モデルAPI呼出し・自動reviewなし。古い「clientダウンロードだけ許可、まだ起動禁止」の段階へ戻さない。
+MCP 1.2.1 infrastructureについて、Owner経由でDB role／schema／exporter／runtime適用完了の報告を受けた。**「Gate 2未適用」「秘密credential入力待ち」へ戻さない。** 現在のMCP表示は1.3.0で、複数repo対応が後続している。
 
-Tunnel ID・API keyはOwnerがTermiusの`configure-tunnel.sh`経由で非表示入力し、root限定ファイルへ保存した経緯がある。鍵・token・設定値をhandoffやチャットへ転記しない。APIキーの存在やTunnel疎通を、モデルAPIの課金実行・特定Proモデル対応・無料利用保証の証拠にしない。
+診断は`production DB → hostの固定query exporter → sanitized case snapshot → MCPのread-only読取`。MCPからDBへ直接SELECTする仕組みではない。caseなし／期限切れはunknown・unavailableとして扱う。全player scanを既定にしない。
 
-ChatGPT側ではDeveloper modeで`Hakoniwa MCP`を作成し、接続「Tunnel」、MCP側認証「認証なし」を選んだ。旧チャットではDeveloper MCP非対応のエラーが出たと報告され、別チャットで次の結果が出たとOwnerが共有した。
+1.2.1完了報告では、`hakoniwa_diag_owner`はNOLOGIN・passwordなし、`hakoniwa_diag_exporter`は専用LOGIN。schema `hakoniwa_diagnostic`、内部view12、固定SECURITY DEFINER/STABLE function12、owner列SELECT96、exporter EXECUTE12、read-only settings5。exporterのbase table／内部view直接SELECTは拒否し、MCPにcredentialを渡していない。**これらのACL件数はCodex報告を継承したもので、本更新で全権限を再照会した結果ではない。**
 
-```text
-project: hakoniwa-world
-status: MCP connection test successful
-mode: read-only
-```
+診断profileは`item_sale`、`turn_audit`、`secretary`。itemの個体／装備／escrow／交易履歴、対象Turn/audit、対象秘書のLv・EXP・スキル・装備・地下profile等に使う。raw audit JSON、秘密値、メール/IP等を出さず、問い合わせ対象のゲーム内IDは必要な範囲で維持する。
 
-**これは別チャットの`get_status`成功報告であり、bareの最新SHA・ソース本文・diffを取得した証明ではない。** このhandoffを作成しているチャットからはGitを実読出ししていない。新しいMCP対応チャットで`repo_resolve_ref`→固定SHAの`repo_read_file`→小さな`repo_diff`まで実行すれば、レビュー経路の確認ができる。
+production authorityはcheckout HEADだけでなく、canonical bindingのgeneration・deployed SHA・image・application version。snapshotの生成前後で一致を確認する設計。古いsnapshotやmixedを現在値と断定しない。MCPのpending migration 0は、そのsnapshotの稼働コードについての値。
 
-アプリがinstalled／enabled、`@`の名前が入力できる、Skillをアップロードできることと、その会話・モデルで実行できることは区別する。旧チャットの失敗を全Project／全モバイルの一律非対応と一般化せず、実際の呼出結果で判断する。不要な再接続設定やサーバー再構築を始めない。
+INQ対象caseは1.16参照。今後のバランス検討も、Ownerが許可した対象の状態をread-onlyで確認するところから始める。診断できることはデータ補填・装備変更・balance変更の許可ではない。
 
 ## 7.6 独立レビューSkillと手動の復路
 
@@ -493,7 +687,9 @@ Ownerはレビュー結果をMarkdownで受け取り、手動でCodexへ渡す�
 
 期待する手順は、base/headをSHA固定→変更一覧→diff→必要な関連runtime／tests→P0/P1/P2の実害評価→Markdown。実装・handoff変更・deployはレビューに含めない。全テストを読んだだけで実行済みと書かない。Skill不使用でも同じ手順を指示で適用できる。
 
-出力には`Base`、`Reviewed commit`、`Verdict: PASS / HOLD`、findingごとの根拠と最小修正方向、実際に読んだ範囲と検証限界を入れる。未読の重要箇所がある場合はHOLDの理由を明記する。修正後は新SHAへの追加レビューとし、既存findingの修正確認と新規回帰を分け、好みだけの新指摘で往復を継続しない。
+レビュー出力は`Base`、`Reviewed commit`、`Release diff verdict: PASS / FINDINGS / NOT_REVIEWED`、findingの到達条件・影響・根拠・最小修正方向、coverageと取得不能／filtered範囲を記録する。全page未読など重要な確認不足を無条件PASSにしない。
+
+`Cross-cutting findings`はrelease差分外の残件として別に出す。UI提案もseverity付きバグと分離する。修正後は固定した新SHAへの追加diffを確認し、前の全repositoryを理由なく再読しない。
 
 ## 7.7 handoffを次のChatへ渡す経路
 
@@ -508,16 +704,17 @@ MCP対応Chatが固定SHAのcodeを読む
 
 MCPへwrite権限を追加しなくてもよい。反映前でも、更新MDを新チャットへ添付すれば文脈を引き継げる。読めないチャットの中だけに最新情報を閉じ込めない。
 
-この更新案の作成はrepo編集・commit・push・deployではない。Codexへ反映を依頼するときは、手元のhandoffとの差分を先に確認し、既存の新しい記述を上書きしない。**docs-only commitでbareのHEADが進んでも、本番3.7.2のdeploy SHAをその新SHAへ改ざんしない。** 現在のデータと、デプロイの履歴を別々に記録する。
+更新案の作成自体はrepo編集・commit・push・deployではない。Codexは既存の新しい記述と作業差分を保全して反映する。docs-only commitで共有refが進んでも、**productionには実際にdeployしたapplication SHAを記録する**。handoff commitとruntime tested SHAを一致させるためだけの全CI再実行はしない。
 
-旧Projectメモの「GitHubをコード本体の優先元とする」は通常時の方針。停止中はOwnerが構築したOCI bare／MCPをソース経路とし、復旧後に再同期する。ただしMCPは現在箱庭用だけ。Mariachang対応を実装済みとしない。
+旧Projectメモの「GitHub優先」「MCPは箱庭だけ」は、停止前・複数repo対応前の記録。現在はOwnerが用意したOCI bareとMCPを使う。復旧後の再同期は別作業とし、他repoの変更・deploy許可まで自動的に広げない。
 
 # 8. 次のagentが最初に行うこと
 
-1. **最新の報告済み本番は3.7.2 / `daa31ca01d929ffa231241021c2bef9ad7bdb14d`**。3.6.0／3.7.1へ戻す・3.7.2のdeploy許可を取り直す作業から始めない。GitHub復旧は未報告として扱う。
-2. `Hakoniwa MCP`の実行可能なチャットでtool定義を取得し、`get_status`を実行する。成功したら`repo_resolve_ref(repo="hakoniwa-world", ref="offline/main")`で現在SHAを取得する。名前だけで利用済みとしない。
-3. そのSHAの`repo_commit`と`repo_read_file`でcanonical handoffを読む。まだ古いhandoffなら、本添付版を更新案として併用し、最新報告を捨てない。任意のbranch名や存在未確認のrefを推測しない。
-4. 接続確認には3.7.1の`f718f548b0f9958f6488a1fbfd8d206ce76b14de`と3.7.2の`daa31ca01d929ffa231241021c2bef9ad7bdb14d`の存在を確認し、変更一覧から実在する小さなファイルを選んでdiff／本文を取得する。これは疎通試験であり、依頼なしにrelease全体の再レビューを始めない。
-5. 読めたSHA・ファイル・diffと、上限等で読めなかった範囲を報告する。`get_status`だけの成功から「コードレビュー可能確認済み」と飛躍しない。重要な対象が読めなければ添付等の最小代替を使う。
-6. 実作業は`AGENTS.md`、`docs/README.md`、`docs/open-questions.md`からtask固有のcurrent codeへ進む。1.7～1.9の船・補填残件、2.5の回想契約、6.3～6.8の将来案／素材／マニュアルを混同しない。全歴史資料を最初から読まない。
-7. 技巧・自然成長の現状維持、ターン圧縮なし、地上HQ・夢の女王・グラム未採用を守る。Secret／tokenを出力せず、reviewはread-only。production・Git書込み・handoff反映はそれぞれOwner許可を確認し、完了時には実際の証拠と引継ぎ用Markdownを返す。
+1. `get_status`で実接続とruntime能力を確認する。最新観測はMCP 1.3.0／schema 4／13 toolsだが、現在応答を優先する。MCPはread-only。
+2. `offline/main`と`offline/release/3.8.0`を別々にresolveする。記録上はmain=`368eadf…`、release=`9b509680…`。違えば進んだ内容を確認し、古いSHAへ戻さない。
+3. 最新handoffがあるrefを選び、その**解決済み40桁SHA**から本書を読む。mainだけが古くreleaseに最新文書がある可能性を見落とさない。以後のcode／diff／testsも同じSHAへ固定する。
+4. `workspace_status`または`production_status`で本番を別途確認する。最終観測は3.7.3だが、Ownerの条件付き承認により既に3.8.0へ更新されている可能性がある。deploy済みを未承認へ戻したり、ref更新だけでdeploy済みにしたりしない。
+5. 最優先は最終仕上げの完了報告。`690c685…`のfull CI報告と、雑談接続`9b509680…`の追加source reviewでP0/P1/P2なしを基点にする。manualはこの共有差分に含まれていないため、反映状況と新HEADのfocused結果を確認する。さらに進んだ差分の独立レビューにもP0/P1/P2がなければ、承認範囲の既存deploy手順へ進める方針。
+6. CIはreviewed／tested／deployed／handoffのSHAを分ける。MCP recordがUNKNOWNなら既存local evidenceの所在を確認し、FAILやPASSへ推測変換しない。後続差分が小さいことだけで旧full結果を新SHAのfull結果にしないが、証拠共有のためだけに全suiteを反復しない。
+7. 次の相談は地上産業、船舶運営、地上用秘書item、第三層、称号・Maria連携など。Owner方針は6.3・6.5・6.9・6.10。提案を実装決定へ補完しない。足りない細かな案はOwnerに改めて説明してもらう。
+8. 実装は主にPC側Codex、Web版ChatGPTは相談・原稿・独立レビュー。handoff編集はOwnerの個別許可時だけ。画像生成、MCP工事、補填、Turn操作、全履歴の再監査を依頼なしで始めない。
