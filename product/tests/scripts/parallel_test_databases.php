@@ -12,6 +12,7 @@ $usage = static function (): never {
     fwrite(STDERR, "  php tests/scripts/parallel_test_databases.php shard <manifest> <zero-based-index> <configuration|log|database|evidence_log|junit>\n");
     fwrite(STDERR, "  php tests/scripts/parallel_test_databases.php evidence <manifest> directory\n");
     fwrite(STDERR, "  php tests/scripts/parallel_test_databases.php cleanup <manifest>\n");
+    fwrite(STDERR, "  php tests/scripts/parallel_test_databases.php finalize <8-hex-token> <test-exit-code> <cleanup-exit-code> <discovered-test-files>\n");
     exit(2);
 };
 
@@ -76,6 +77,29 @@ try {
         }
 
         $manager->cleanup($manifest);
+        exit(0);
+    }
+
+    if ($command === 'finalize') {
+        $token = $argv[2] ?? null;
+        $testExitCode = $argv[3] ?? null;
+        $cleanupExitCode = $argv[4] ?? null;
+        $discoveredTestFiles = $argv[5] ?? null;
+        if ($token === null || preg_match('/^[a-f0-9]{8}$/', $token) !== 1
+            || $testExitCode === null || preg_match('/^(0|[1-9][0-9]{0,2})$/', $testExitCode) !== 1
+            || (int) $testExitCode > 255
+            || $cleanupExitCode === null || preg_match('/^(0|[1-9][0-9]{0,2})$/', $cleanupExitCode) !== 1
+            || (int) $cleanupExitCode > 255
+            || $discoveredTestFiles === null || preg_match('/^(0|[1-9][0-9]*)$/', $discoveredTestFiles) !== 1) {
+            $usage();
+        }
+
+        echo $manager->finalizeEvidence(
+            $token,
+            (int) $testExitCode,
+            (int) $cleanupExitCode,
+            (int) $discoveredTestFiles,
+        )."\n";
         exit(0);
     }
 

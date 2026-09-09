@@ -221,6 +221,93 @@ XML);
         $this->assertSame($protectedBefore, $this->protectedDatabaseStates($pdo));
     }
 
+    public function test_prepare_creates_the_fixed_evidence_root_from_a_clean_testing_directory(): void
+    {
+        $root = $this->createFixtureRoot();
+        mkdir($root.'/storage/framework/testing', 0700, true);
+        file_put_contents($root.'/storage/framework/testing/.gitignore', "*\n!.gitignore\n");
+        mkdir($root.'/tests/Unit', 0700, true);
+        file_put_contents($root.'/tests/Unit/DummyTest.php', "<?php\n");
+        file_put_contents($root.'/phpunit.xml', <<<'XML'
+<?xml version="1.0" encoding="UTF-8"?>
+<phpunit>
+    <testsuites>
+        <testsuite name="Unit"><directory>tests/Unit</directory></testsuite>
+    </testsuites>
+    <php>
+        <ini name="memory_limit" value="512M"/>
+        <env name="APP_ENV" value="testing" force="true"/>
+        <env name="DB_CONNECTION" value="pgsql" force="true"/>
+        <env name="DB_HOST" value="hakoniwa-postgres" force="true"/>
+        <env name="DB_PORT" value="5432" force="true"/>
+        <env name="DB_DATABASE" value="hakoniwa_test" force="true"/>
+        <env name="DB_USERNAME" value="hakoniwa"/>
+    </php>
+</phpunit>
+XML);
+        $manager = new ParallelTestDatabaseManager($root);
+        $manifest = $manager->prepare(1, bin2hex(random_bytes(4)));
+
+        try {
+            $evidenceDirectory = $manager->evidenceDirectory($manifest);
+            $this->assertNotNull($evidenceDirectory);
+            $evidenceRoot = dirname($evidenceDirectory);
+            $this->assertDirectoryExists($evidenceRoot);
+            $this->assertFalse(is_link($evidenceRoot));
+            $this->assertSame(0700, fileperms($evidenceRoot) & 0777);
+            $this->assertDirectoryDoesNotExist($evidenceDirectory);
+        } finally {
+            if (is_file($manifest)) {
+                $manager->cleanup($manifest);
+            }
+        }
+    }
+
+    #[DataProvider('finalEvidenceStatusProvider')]
+    public function test_final_evidence_status_includes_cleanup_and_is_recorded_once(
+        int $testExitCode,
+        int $cleanupExitCode,
+        int $expectedExitCode,
+        string $expectedStatus,
+    ): void {
+        $root = $this->createFixtureRoot();
+        $token = bin2hex(random_bytes(4));
+        $evidenceDirectory = $root.'/storage/framework/testing/test-evidence/phpunit-parallel-'.$token;
+        mkdir($evidenceDirectory, 0700, true);
+        $metadata = $evidenceDirectory.'/run.tsv';
+        file_put_contents($metadata, "schema\thakoniwa.parallel-test-evidence.v1\n");
+        $manager = new ParallelTestDatabaseManager($root);
+
+        $this->assertSame(
+            $expectedExitCode,
+            $manager->finalizeEvidence($token, $testExitCode, $cleanupExitCode, 113),
+        );
+        $runLines = array_values(array_filter(
+            file($metadata, FILE_IGNORE_NEW_LINES) ?: [],
+            static fn (string $line): bool => str_starts_with($line, "run\t"),
+        ));
+        $this->assertSame([
+            "run\t-\t{$expectedStatus}\t{$expectedExitCode}\t-\t113\t-\t-\t-",
+        ], $runLines);
+
+        try {
+            $manager->finalizeEvidence($token, $testExitCode, $cleanupExitCode, 113);
+            $this->fail('Final run evidence must be recorded only once.');
+        } catch (RuntimeException $exception) {
+            $this->assertStringContainsString('already recorded', $exception->getMessage());
+        }
+    }
+
+    /** @return array<string, array{int, int, int, string}> */
+    public static function finalEvidenceStatusProvider(): array
+    {
+        return [
+            'test pass and cleanup pass' => [0, 0, 0, 'passed'],
+            'test pass and cleanup fail' => [0, 1, 1, 'failed'],
+            'shard fail and cleanup pass' => [1, 0, 1, 'failed'],
+        ];
+    }
+
     /**
      * @return array{ParallelTestDatabaseManager, string, array<string, mixed>, string}
      */

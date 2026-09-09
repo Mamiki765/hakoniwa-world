@@ -216,7 +216,7 @@ final class PriorityCombatAi
             'own_mp_lte' => is_int($percent) && $actor->mp * 100 <= AlphaV1CombatRules::MAX_MP * $percent,
             'own_mp_gte' => is_int($percent) && $actor->mp * 100 >= AlphaV1CombatRules::MAX_MP * $percent,
             'enemy_hp_lte' => is_int($percent) && $enemy->hp * 100 <= $enemy->maxHp * $percent,
-            'ally_hp_lte' => is_int($percent) && $this->allyPercentageAtOrBelow($actor, $allies, $percent),
+            'ally_hp_lte' => is_int($percent) && $this->allyPercentageAtOrBelow($allies, $percent),
             'self_has_status' => is_string($status) && $actor->hasStatus($status),
             'self_lacks_status' => is_string($status) && ! $actor->hasStatus($status),
             'enemy_has_status' => is_string($status) && $enemy->hasStatus($status),
@@ -238,16 +238,11 @@ final class PriorityCombatAi
         };
     }
 
-    /**
-     * Party-only healer predicate. The actor is deliberately excluded so a
-     * standard healer rule does not become a self-heal rule in disguise.
-     *
-     * @param  list<BuildCombatState>  $allies
-     */
-    private function allyPercentageAtOrBelow(BuildCombatState $actor, array $allies, int $percent): bool
+    /** @param  list<BuildCombatState>  $allies */
+    private function allyPercentageAtOrBelow(array $allies, int $percent): bool
     {
         foreach ($allies as $ally) {
-            if ($ally === $actor || ! $ally->alive()) {
+            if (! $ally->alive()) {
                 continue;
             }
 

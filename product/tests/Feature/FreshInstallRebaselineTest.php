@@ -82,6 +82,10 @@ final class FreshInstallRebaselineTest extends TestCase
 
     private const SECRETARY_LENDING_BUILD_CACHE_MIGRATION = '2026_09_08_120000_add_secretary_lending_build_cache';
 
+    private const SECRETARY_LENDING_BUILD_CACHE_EXTENSION_MIGRATION = '2026_09_09_000000_extend_secretary_lending_build_cache';
+
+    private const UNDERGROUND_BATTLE_IMAGE_REFERENCES_MIGRATION = '2026_09_09_010000_add_underground_battle_image_references';
+
     public function test_empty_postgresql_uses_direct_current_schema_and_v21_catalog_baseline(): void
     {
         config(['hakoniwa' => require config_path('hakoniwa.php')]);
@@ -1931,6 +1935,8 @@ SQL);
                 self::PARTY_LENDING_MIGRATION,
                 self::UNDERGROUND_SKIP_MIGRATION,
                 self::SECRETARY_LENDING_BUILD_CACHE_MIGRATION,
+                self::SECRETARY_LENDING_BUILD_CACHE_EXTENSION_MIGRATION,
+                self::UNDERGROUND_BATTLE_IMAGE_REFERENCES_MIGRATION,
             ], true),
         ));
     }

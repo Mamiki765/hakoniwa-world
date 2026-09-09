@@ -52,12 +52,13 @@ final class UndergroundIntroController extends Controller
     {
         $request->validate(['after_id' => ['sometimes', 'integer', 'min:0']]);
         $secretaryId = Secretary::query()->where('user_id', $request->user()->id)->value('id');
-        $candidates = $service->publicCandidates($request->user(), $secretaryId === null ? null : (int) $secretaryId, $request->integer('after_id'));
+        $page = $service->publicCandidatePage(
+            $request->user(),
+            $secretaryId === null ? null : (int) $secretaryId,
+            $request->integer('after_id'),
+        );
 
-        return response()->json(['data' => [
-            'candidates' => $candidates,
-            'next_after_id' => count($candidates) === 20 ? $candidates[19]['secretary_id'] : null,
-        ]]);
+        return response()->json(['data' => $page]);
     }
 
     public function enter(

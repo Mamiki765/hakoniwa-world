@@ -332,7 +332,7 @@ final class UndergroundRuntimeTest extends TestCase
         $this->assertIsArray($awakeningEvent);
         $this->assertSame([
             '魔力がRuntime secretaryの全身を駆け巡る――！',
-            'Runtime secretaryは覚醒した！',
+            'Runti…は覚醒した！',
             'HP/MPが全回復した！',
             '生命・武力・技巧・精神・敏捷が30%上昇した！',
         ], $awakeningEvent['lines']);

@@ -131,20 +131,23 @@ cleanup() {
                     exit_code=1
                 fi
             done
-            evidence_status="failed"
-            if ((exit_code == 0)); then
-                evidence_status="passed"
-            fi
-            if ! append_evidence_line run - "$evidence_status" "$exit_code" - "$discovered_test_files" - - -; then
-                echo "Unable to finalize PHPUnit run evidence." >&2
-                exit_code=1
-            fi
         fi
 
+        cleanup_exit_code=0
         if ! php tests/scripts/parallel_test_databases.php cleanup "$manifest"; then
             echo "Safe test database cleanup failed. Retry with:" >&2
             echo "php tests/scripts/parallel_test_databases.php cleanup $manifest" >&2
+            cleanup_exit_code=1
+        fi
+
+        final_exit_code=""
+        if ! final_exit_code="$(php tests/scripts/parallel_test_databases.php finalize \
+            "$run_token" "$exit_code" "$cleanup_exit_code" "$discovered_test_files")" \
+            || [[ ! "$final_exit_code" =~ ^[01]$ ]]; then
+            echo "Unable to finalize PHPUnit run evidence." >&2
             exit_code=1
+        else
+            exit_code="$final_exit_code"
         fi
     fi
 

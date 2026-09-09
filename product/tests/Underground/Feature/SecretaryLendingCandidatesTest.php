@@ -5,6 +5,8 @@ namespace Tests\Underground\Feature;
 use App\Application\SecretaryLendingService;
 use App\Application\Underground\UndergroundProfileService;
 use App\Models\Secretary;
+use App\Models\SecretaryLendingSetting;
+use App\Models\UndergroundOwnedEquipment;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
@@ -46,5 +48,64 @@ final class SecretaryLendingCandidatesTest extends TestCase
             }
         }
         DB::disableQueryLog();
+    }
+
+    public function test_projection_failure_keeps_a_monotonic_cursor_to_later_candidates(): void
+    {
+        $viewer = User::factory()->create();
+        $self = Secretary::query()->create(['user_id' => $viewer->id, 'name' => '開始者', 'named_at' => now()]);
+        $service = app(SecretaryLendingService::class);
+        $secretaryIds = [];
+        $corruptSecretaryId = null;
+
+        for ($index = 1; $index <= 21; $index++) {
+            $owner = User::factory()->create();
+            $owner->forceFill(['visitor_code' => sprintf('LEND%04d', $index)])->save();
+            $secretary = Secretary::query()->create([
+                'user_id' => $owner->id,
+                'name' => '貸出秘書'.$index,
+                'named_at' => now(),
+            ]);
+            $profile = app(UndergroundProfileService::class)->ensureForSecretary($secretary);
+            $profile->update([
+                'growth_path_key' => 'martial_red',
+                'underground_contract_completed_at' => now(),
+                'growth_path_identity' => 'secretary-underground-growth-alpha-v1',
+                'growth_path_selected_at' => now(),
+                'skill_points_total' => 20,
+                'skill_points_unspent' => 20,
+                'skill_tree_identity' => 'secretary-underground-skill-tree-alpha-v1',
+            ]);
+            SecretaryLendingSetting::query()->create([
+                'secretary_id' => $secretary->id,
+                'is_public' => true,
+                'is_available' => true,
+            ]);
+            $secretaryIds[] = $secretary->id;
+
+            if ($index === 10) {
+                UndergroundOwnedEquipment::query()->create([
+                    'underground_profile_id' => $profile->id,
+                    'definition_key' => 'projection_failure_fixture',
+                    'catalog_identity' => 'unsupported-pagination-fixture',
+                    'equipped_slot' => 'weapon',
+                    'grant_key' => 'pagination-projection-failure',
+                    'instance_kind' => 'fixed',
+                    'acquired_at' => now(),
+                ]);
+                $corruptSecretaryId = $secretary->id;
+            }
+        }
+
+        $first = $service->publicCandidatePage($viewer, $self->id);
+        $this->assertCount(19, $first['candidates']);
+        $this->assertTrue($first['has_more']);
+        $this->assertSame($secretaryIds[19], $first['next_after_id']);
+        $this->assertNotContains($corruptSecretaryId, array_column($first['candidates'], 'secretary_id'));
+
+        $second = $service->publicCandidatePage($viewer, $self->id, (int) $first['next_after_id']);
+        $this->assertSame([$secretaryIds[20]], array_column($second['candidates'], 'secretary_id'));
+        $this->assertFalse($second['has_more']);
+        $this->assertNull($second['next_after_id']);
     }
 }

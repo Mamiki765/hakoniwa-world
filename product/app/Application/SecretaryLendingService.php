@@ -16,6 +16,8 @@ use Illuminate\Support\Facades\DB;
 
 final readonly class SecretaryLendingService
 {
+    private const CANDIDATE_PAGE_SIZE = 20;
+
     public function __construct(
         private SecretaryProfilePresenter $presenter,
         private UndergroundEquipmentLoadoutResolver $equipmentLoadout,
@@ -50,6 +52,14 @@ final readonly class SecretaryLendingService
     /** @return list<array<string,mixed>> */
     public function publicCandidates(User $viewer, ?int $excludeSecretaryId = null, int $afterId = 0): array
     {
+        return $this->publicCandidatePage($viewer, $excludeSecretaryId, $afterId)['candidates'];
+    }
+
+    /**
+     * @return array{candidates:list<array<string,mixed>>, next_after_id:int|null, has_more:bool}
+     */
+    public function publicCandidatePage(User $viewer, ?int $excludeSecretaryId = null, int $afterId = 0): array
+    {
         $query = Secretary::query()->with([
             'user',
             'images',
@@ -71,8 +81,12 @@ final readonly class SecretaryLendingService
             $query->where('secretaries.id', '<>', $excludeSecretaryId);
         }
 
+        $sourceRows = $query->orderBy('secretaries.id')->limit(self::CANDIDATE_PAGE_SIZE + 1)->get();
+        $hasMore = $sourceRows->count() > self::CANDIDATE_PAGE_SIZE;
+        $scannedRows = $sourceRows->take(self::CANDIDATE_PAGE_SIZE);
+        $lastScanned = $scannedRows->last();
         $candidates = [];
-        foreach ($query->orderBy('secretaries.id')->limit(20)->get() as $secretary) {
+        foreach ($scannedRows as $secretary) {
             $profile = $secretary->undergroundProfile;
             if (! $profile instanceof UndergroundProfile
                 || ! is_string($profile->growth_path_key)
@@ -119,7 +133,11 @@ final readonly class SecretaryLendingService
             ];
         }
 
-        return $candidates;
+        return [
+            'candidates' => $candidates,
+            'next_after_id' => $hasMore && $lastScanned instanceof Secretary ? (int) $lastScanned->id : null,
+            'has_more' => $hasMore,
+        ];
     }
 
     public function ticketBalance(User $user): int

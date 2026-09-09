@@ -2132,30 +2132,33 @@ STORY;
      */
     private function partyLeaderSyncInputs(User $user): array
     {
-        $secretary = Secretary::query()->where('user_id', $user->id)->first();
-        if (! $secretary instanceof Secretary) {
-            throw new UndergroundRuntimeException(
-                'underground_secretary_missing',
-                '秘書がまだ作成されていません。',
-            );
-        }
-        $profile = UndergroundProfile::query()->where('secretary_id', $secretary->id)->first();
-        if (! $profile instanceof UndergroundProfile || ! is_string($profile->growth_path_key)) {
-            throw new UndergroundRuntimeException(
-                'underground_exploration_locked',
-                '周囲の探索はまだ解禁されていません。',
-            );
-        }
-        $equipment = $this->equipmentLoadout->combatLoadout($profile);
-        $itemLevels = $this->equipmentItemLevelsBySlot($equipment);
-        ksort($itemLevels);
+        return DB::transaction(function () use ($user): array {
+            $secretary = Secretary::query()->where('user_id', $user->id)->lockForUpdate()->first();
+            if (! $secretary instanceof Secretary) {
+                throw new UndergroundRuntimeException(
+                    'underground_secretary_missing',
+                    '秘書がまだ作成されていません。',
+                );
+            }
+            $profile = UndergroundProfile::query()->where('secretary_id', $secretary->id)->lockForUpdate()->first();
+            if (! $profile instanceof UndergroundProfile || ! is_string($profile->growth_path_key)) {
+                throw new UndergroundRuntimeException(
+                    'underground_exploration_locked',
+                    '周囲の探索はまだ解禁されていません。',
+                );
+            }
+            $this->starterEquipment->reconcile($profile);
+            $equipment = $this->equipmentLoadout->combatLoadout($profile);
+            $itemLevels = $this->equipmentItemLevelsBySlot($equipment);
+            ksort($itemLevels);
 
-        return [
-            'secretary_id' => (int) $secretary->id,
-            'profile_id' => (int) $profile->id,
-            'combat_level' => (int) $profile->combat_level,
-            'equipment_item_levels' => $itemLevels,
-        ];
+            return [
+                'secretary_id' => (int) $secretary->id,
+                'profile_id' => (int) $profile->id,
+                'combat_level' => (int) $profile->combat_level,
+                'equipment_item_levels' => $itemLevels,
+            ];
+        }, 3);
     }
 
     /**

@@ -204,6 +204,60 @@ final class ParallelTestDatabaseManager
         return $manifest['evidence_directory'] ?? null;
     }
 
+    public function finalizeEvidence(
+        string $token,
+        int $testExitCode,
+        int $cleanupExitCode,
+        int $discoveredTestFiles,
+    ): int {
+        if (preg_match('/^[a-f0-9]{8}$/', $token) !== 1
+            || $testExitCode < 0 || $testExitCode > 255
+            || $cleanupExitCode < 0 || $cleanupExitCode > 255
+            || $discoveredTestFiles < 0) {
+            throw new InvalidArgumentException('Parallel test evidence finalization input is invalid.');
+        }
+
+        $this->ensureEvidenceRootDirectory();
+        $evidenceDirectory = $this->evidenceRootDirectory.'/phpunit-parallel-'.$token;
+        $resolvedDirectory = realpath($evidenceDirectory);
+        if ($resolvedDirectory === false
+            || is_link($evidenceDirectory)
+            || TestShardPlanner::normalizePath($resolvedDirectory) !== $evidenceDirectory
+            || TestShardPlanner::normalizePath(dirname($resolvedDirectory)) !== $this->evidenceRootDirectory) {
+            throw new RuntimeException('Parallel test evidence directory failed its safety validation.');
+        }
+        $metadata = $evidenceDirectory.'/run.tsv';
+        if (! is_file($metadata) || is_link($metadata)) {
+            throw new RuntimeException('Parallel test evidence metadata failed its safety validation.');
+        }
+
+        $finalExitCode = $testExitCode === 0 && $cleanupExitCode === 0 ? 0 : 1;
+        $status = $finalExitCode === 0 ? 'passed' : 'failed';
+        $handle = fopen($metadata, 'r+b');
+        if ($handle === false) {
+            throw new RuntimeException('Unable to open parallel test evidence metadata.');
+        }
+        try {
+            if (! flock($handle, LOCK_EX)) {
+                throw new RuntimeException('Unable to lock parallel test evidence metadata.');
+            }
+            $contents = stream_get_contents($handle);
+            if (! is_string($contents) || preg_match('/^run\t/m', $contents) === 1) {
+                throw new RuntimeException('Parallel test final evidence was already recorded or is unreadable.');
+            }
+            if (fseek($handle, 0, SEEK_END) !== 0
+                || fwrite($handle, "run\t-\t{$status}\t{$finalExitCode}\t-\t{$discoveredTestFiles}\t-\t-\t-\n") === false
+                || ! fflush($handle)) {
+                throw new RuntimeException('Unable to finalize parallel test evidence metadata.');
+            }
+        } finally {
+            flock($handle, LOCK_UN);
+            fclose($handle);
+        }
+
+        return $finalExitCode;
+    }
+
     public static function databaseName(string $token, int $zeroBasedIndex): string
     {
         if (preg_match('/^[a-f0-9]{8}$/', $token) !== 1 || $zeroBasedIndex < 0 || $zeroBasedIndex > 63) {
@@ -391,11 +445,11 @@ final class ParallelTestDatabaseManager
             throw new RuntimeException('Canonical phpunit.xml no longer enforces memory_limit=512M.');
         }
 
-        $host = (string) ($values['DB_HOST'] ?? '');
-        $port = (string) ($values['DB_PORT'] ?? '');
+        $host = (string) $values['DB_HOST'];
+        $port = (string) $values['DB_PORT'];
         $username = (string) ($values['DB_USERNAME'] ?? '');
         $password = getenv('DB_PASSWORD');
-        if ($host === '' || preg_match('/^[0-9]{1,5}$/', $port) !== 1 || $username === '') {
+        if (preg_match('/^[0-9]{1,5}$/', $port) !== 1 || $username === '') {
             throw new RuntimeException('Canonical phpunit.xml is missing safe PostgreSQL connection settings.');
         }
 

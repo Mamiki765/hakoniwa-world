@@ -2304,7 +2304,7 @@ final class UndergroundPlayerAccessTest extends TestCase
         $first = $this->actingAs($user)->postJson('/api/v1/me/underground/explore', $payload)
             ->assertOk()
             ->assertJsonPath('data.context', 'exploration')
-            ->assertJsonPath('data.player_display_name', 'Exploration secretary')
+            ->assertJsonPath('data.player_display_name', 'Explo…')
             ->assertJsonPath('data.id', $requestId)
             ->assertJsonPath('data.hunting_ground.key', 'shallow_caves')
             ->assertJsonPath('data.hunting_ground.name', '浅い洞窟')
@@ -2364,12 +2364,12 @@ final class UndergroundPlayerAccessTest extends TestCase
         $this->actingAs($user)->getJson('/api/v1/me/underground/battles')
             ->assertOk()
             ->assertJsonPath('data.0.context', 'exploration')
-            ->assertJsonPath('data.0.player_display_name', 'Exploration secretary')
+            ->assertJsonPath('data.0.player_display_name', 'Explo…')
             ->assertJsonPath('data.0.rounds', null);
         $this->actingAs($user)->getJson("/api/v1/me/underground/battles/{$requestId}")
             ->assertOk()
             ->assertJsonPath('data.context', 'exploration')
-            ->assertJsonPath('data.player_display_name', 'Exploration secretary');
+            ->assertJsonPath('data.player_display_name', 'Explo…');
         $this->actingAs($user)->postJson('/api/v1/me/underground/playtest', [
             'request_id' => $requestId,
             'build_key' => 'pure_attacker',
