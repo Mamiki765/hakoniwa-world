@@ -1447,6 +1447,18 @@ function shortcutSkipExecutions(progress: SkipProgress, fraction: 0.5 | 1): numb
     return Math.floor(maximumSkipExecutions(progress) * fraction);
 }
 
+function maximumHuntingGroundSkipExecutions(ground: HuntingGround): number {
+    const keyLimit = ground.entry_key_cost > 0
+        ? Math.floor(ground.key_balance / ground.entry_key_cost)
+        : maximumBulkSkipExecutions;
+
+    return Math.min(maximumSkipExecutions(ground.skip), keyLimit);
+}
+
+function shortcutHuntingGroundSkipExecutions(ground: HuntingGround, fraction: 0.5 | 1): number {
+    return Math.floor(maximumHuntingGroundSkipExecutions(ground) * fraction);
+}
+
 function skipIntentBlocked(
     contentType: 'hunting_ground' | 'trial',
     contentKey: string,
@@ -2209,7 +2221,7 @@ onUnmounted(() => {
                     <p v-if="currentBattle.hunting_ground">狩場: {{ currentBattle.hunting_ground.name }}</p>
                     <p>{{ battleRoundCount(currentBattle) }}ラウンドで決着。</p>
                     <p>経験値 +{{ currentBattle.xp_awarded }}・輝石の欠片 {{ currentBattle.shard_delta >= 0 ? '+' : '' }}{{ currentBattle.shard_delta }}G<span v-if="currentBattle.context === 'playtest'">・ドロップなし</span></p>
-                    <p v-if="currentBattle.treasure?.found" class="underground-equipment-drop" role="status">財宝を見つけた！ 輝石の欠片 +{{ currentBattle.treasure.total_g }}G</p>
+                    <p v-if="currentBattle.treasure?.found" class="underground-equipment-drop" role="status">財宝を見つけた！ ×{{ currentBattle.treasure.multiplier }}</p>
                     <p v-if="(currentBattle.shining_kingdom_key?.awarded ?? 0) > 0" class="underground-equipment-drop" role="status">輝きの王国の鍵 +{{ currentBattle.shining_kingdom_key?.awarded }}</p>
                     <p v-if="currentBattle.drop?.status === 'granted' && currentBattle.drop.item" class="underground-equipment-drop" role="status">
                         装備drop: {{ currentBattle.drop.item.rarity_label }}・Item Lv {{ currentBattle.drop.item.item_level }}・{{ currentBattle.drop.item.name }}
@@ -2725,8 +2737,8 @@ onUnmounted(() => {
                             <p v-if="selectedSkipHuntingGround.entry_key_cost > 0">さらに鍵{{ selectedSkipHuntingGround.entry_key_cost }}個 / 回（所持 {{ selectedSkipHuntingGround.key_balance }}個）</p>
                             <p v-if="!selectedSkipHuntingGround.skip.unlocked" class="field-hint">実戦clearがあと{{ selectedSkipHuntingGround.skip.actual_clears_required - selectedSkipHuntingGround.skip.actual_clear_count }}回必要です。</p>
                             <div class="underground-skip-shortcuts">
-                                <button type="button" :disabled="selectedSkipHuntingGround.disabled || skipDisabled(selectedSkipHuntingGround.skip) || shortcutSkipExecutions(selectedSkipHuntingGround.skip, 0.5) < 1 || skipIntentBlocked('hunting_ground', selectedSkipHuntingGround.key, shortcutSkipExecutions(selectedSkipHuntingGround.skip, 0.5))" @click="runSkip('hunting_ground', selectedSkipHuntingGround.key, shortcutSkipExecutions(selectedSkipHuntingGround.skip, 0.5))">50%使用（{{ shortcutSkipExecutions(selectedSkipHuntingGround.skip, 0.5) }}回）</button>
-                                <button type="button" :disabled="selectedSkipHuntingGround.disabled || skipDisabled(selectedSkipHuntingGround.skip) || maximumSkipExecutions(selectedSkipHuntingGround.skip) < 1 || skipIntentBlocked('hunting_ground', selectedSkipHuntingGround.key, maximumSkipExecutions(selectedSkipHuntingGround.skip))" @click="runSkip('hunting_ground', selectedSkipHuntingGround.key, maximumSkipExecutions(selectedSkipHuntingGround.skip))">100%使用（{{ maximumSkipExecutions(selectedSkipHuntingGround.skip) }}回）</button>
+                                <button type="button" :disabled="selectedSkipHuntingGround.disabled || skipDisabled(selectedSkipHuntingGround.skip) || shortcutHuntingGroundSkipExecutions(selectedSkipHuntingGround, 0.5) < 1 || skipIntentBlocked('hunting_ground', selectedSkipHuntingGround.key, shortcutHuntingGroundSkipExecutions(selectedSkipHuntingGround, 0.5))" @click="runSkip('hunting_ground', selectedSkipHuntingGround.key, shortcutHuntingGroundSkipExecutions(selectedSkipHuntingGround, 0.5))">50%使用（{{ shortcutHuntingGroundSkipExecutions(selectedSkipHuntingGround, 0.5) }}回）</button>
+                                <button type="button" :disabled="selectedSkipHuntingGround.disabled || skipDisabled(selectedSkipHuntingGround.skip) || maximumHuntingGroundSkipExecutions(selectedSkipHuntingGround) < 1 || skipIntentBlocked('hunting_ground', selectedSkipHuntingGround.key, maximumHuntingGroundSkipExecutions(selectedSkipHuntingGround))" @click="runSkip('hunting_ground', selectedSkipHuntingGround.key, maximumHuntingGroundSkipExecutions(selectedSkipHuntingGround))">100%使用（{{ maximumHuntingGroundSkipExecutions(selectedSkipHuntingGround) }}回）</button>
                             </div>
                         </template>
                         <ul v-if="(state.hunting_grounds ?? []).some((ground) => ground.locked)" class="underground-skip-locked-list">

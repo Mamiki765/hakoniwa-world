@@ -68,7 +68,7 @@ $shiningKingdomEncounters = [
 ];
 $shiningNobleEncounter = [
     'label' => '輝衣の宮廷貴族', 'xp' => 4200, 'shards' => 400,
-    'drop_profile' => 'shining_kingdom_rare', 'item_level_min' => 120, 'item_level_max' => 120,
+    'drop_profile' => 'shining_kingdom', 'item_level_min' => 120, 'item_level_max' => 120,
     'enemy' => $kingdomEnemy(
         '輝衣の宮廷貴族',
         ['vitality' => 55, 'might' => 5, 'finesse' => 10, 'spirit' => 25, 'agility' => 5],
@@ -216,10 +216,6 @@ return [
                 'shining_kingdom' => [
                     'presence_bps' => 2610,
                     'rarity_weights' => ['common' => 8429, 'uncommon' => 1149, 'rare' => 383, 'epic' => 39],
-                ],
-                'shining_kingdom_rare' => [
-                    'presence_bps' => 10000,
-                    'rarity_weights' => ['common' => 0, 'uncommon' => 6000, 'rare' => 3500, 'epic' => 500],
                 ],
                 'shining_kingdom_vault' => [
                     'presence_bps' => 10000,
@@ -472,7 +468,7 @@ return [
                 'item_level_max' => 120,
                 'rare_encounter' => ['key' => 'shining_court_noble', 'chance_bps' => 100, 'encounter' => $shiningNobleEncounter],
                 'entry_key_cost' => 1,
-                'vault_base_g' => 220,
+                'vault_base_g' => 222,
                 'treasure_multiplier' => 20,
                 'forced_drop_profile' => 'shining_kingdom_vault',
                 'drop_tier_key' => 'shining_kingdom',

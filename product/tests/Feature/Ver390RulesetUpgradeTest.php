@@ -30,7 +30,12 @@ final class Ver390RulesetUpgradeTest extends TestCase
     use CreatesTestWorlds;
     use RefreshDatabase;
 
-    private const MIGRATION = '2026_09_09_030000_add_surface_paradox_and_daily_rewards';
+    private const MIGRATIONS = [
+        '2026_09_09_030000_add_surface_paradox_and_daily_rewards',
+        '2026_09_09_040000_add_compensation_warehouse',
+        '2026_09_09_050000_add_guide_conversation_topics',
+        '2026_09_09_060000_add_shining_kingdom_key_balance',
+    ];
 
     public function test_exact_v22_world_upgrades_to_v23_and_can_be_rerun(): void
     {
@@ -107,14 +112,21 @@ final class Ver390RulesetUpgradeTest extends TestCase
         $secretaryBefore = (array) DB::table('secretaries')->where('user_id', $user->id)->sole();
         $skillsBefore = DB::table('secretary_skills')->where('secretary_id', $secretaryBefore['id'])
             ->orderBy('id')->get()->map(fn ($row): array => (array) $row)->all();
+        $legacyUndergroundProfileId = DB::table('underground_profiles')->insertGetId([
+            'secretary_id' => $secretaryBefore['id'],
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
         $requestRulesetId = $queued->request_ruleset_version_id;
         $requestFingerprint = $queued->request_fingerprint;
 
-        $this->artisan('migrate', [
-            '--path' => 'database/migrations/'.self::MIGRATION.'.php',
-            '--force' => true,
-            '--no-interaction' => true,
-        ])->assertSuccessful();
+        foreach (self::MIGRATIONS as $migration) {
+            $this->artisan('migrate', [
+                '--path' => "database/migrations/{$migration}.php",
+                '--force' => true,
+                '--no-interaction' => true,
+            ])->assertSuccessful();
+        }
 
         $target = RulesetVersion::query()->where('key', Ver390RulesetUpgrade::TARGET_KEY)->sole();
         $this->assertSame($target->id, $world->fresh()->ruleset_version_id);
@@ -133,6 +145,22 @@ final class Ver390RulesetUpgradeTest extends TestCase
         $this->assertSame($secretaryBefore, (array) DB::table('secretaries')->where('user_id', $user->id)->sole());
         $this->assertSame($skillsBefore, DB::table('secretary_skills')->where('secretary_id', $secretaryBefore['id'])
             ->orderBy('id')->get()->map(fn ($row): array => (array) $row)->all());
+        foreach (self::MIGRATIONS as $migration) {
+            $this->assertDatabaseHas('migrations', ['migration' => $migration]);
+        }
+        foreach ([
+            'compensation_grants',
+            'compensation_grant_items',
+            'compensation_grant_claims',
+            'guide_conversation_topics',
+            'secretary_guide_conversation_totals',
+        ] as $table) {
+            $this->assertTrue(Schema::hasTable($table), "Missing v3.9 upgrade table {$table}.");
+        }
+        $this->assertTrue(Schema::hasColumn('underground_profiles', 'shining_kingdom_key_balance'));
+        $this->assertSame(0, (int) DB::table('underground_profiles')
+            ->where('id', $legacyUndergroundProfileId)
+            ->value('shining_kingdom_key_balance'));
         $this->assertDatabaseHas('facility_definitions', ['key' => 'central_bank', 'asset_key' => 'tile.central_bank']);
         $this->assertDatabaseHas('facility_definitions', ['key' => 'central_granary', 'asset_key' => 'tile.central_granary']);
         $this->assertDatabaseHas('audit_events', [
@@ -222,7 +250,7 @@ SQL);
         $this->returnSchemaToExact390Source();
 
         $this->artisan('migrate', [
-            '--path' => 'database/migrations/'.self::MIGRATION.'.php',
+            '--path' => 'database/migrations/'.self::MIGRATIONS[0].'.php',
             '--force' => true,
             '--no-interaction' => true,
         ])->assertSuccessful();
@@ -242,6 +270,16 @@ SQL);
 
     private function returnSchemaToExact390Source(): void
     {
+        if (Schema::hasColumn('underground_profiles', 'shining_kingdom_key_balance')) {
+            Schema::table('underground_profiles', function (Blueprint $table): void {
+                $table->dropColumn('shining_kingdom_key_balance');
+            });
+        }
+        Schema::dropIfExists('secretary_guide_conversation_totals');
+        Schema::dropIfExists('guide_conversation_topics');
+        Schema::dropIfExists('compensation_grant_claims');
+        Schema::dropIfExists('compensation_grant_items');
+        Schema::dropIfExists('compensation_grants');
         Schema::dropIfExists('user_daily_quest_activities');
         Schema::dropIfExists('user_daily_quest_progress');
         Schema::dropIfExists('user_daily_login_claims');
@@ -268,7 +306,7 @@ SQL);
             $v23Row->delete();
         }
         FacilityDefinition::query()->whereIn('key', ['central_bank', 'central_granary'])->delete();
-        DB::table('migrations')->where('migration', self::MIGRATION)->delete();
+        DB::table('migrations')->whereIn('migration', self::MIGRATIONS)->delete();
     }
 
     private function commandItem(

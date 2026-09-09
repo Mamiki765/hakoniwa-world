@@ -106,7 +106,12 @@ final class UndergroundExplorationDropTest extends TestCase
             $grounds['shining_kingdom']['item_level_max'],
             $grounds['shining_kingdom']['required_trial_key'],
         ]);
-        $this->assertSame([1, 220, 20, 'shining_kingdom_vault'], [
+        $this->assertSame(['shining_kingdom', 120, 120], [
+            $grounds['shining_kingdom']['rare_encounter']['encounter']['drop_profile'],
+            $grounds['shining_kingdom']['rare_encounter']['encounter']['item_level_min'],
+            $grounds['shining_kingdom']['rare_encounter']['encounter']['item_level_max'],
+        ]);
+        $this->assertSame([1, 222, 20, 'shining_kingdom_vault'], [
             $grounds['shining_kingdom_vault']['entry_key_cost'],
             $grounds['shining_kingdom_vault']['vault_base_g'],
             $grounds['shining_kingdom_vault']['treasure_multiplier'],
@@ -158,10 +163,6 @@ final class UndergroundExplorationDropTest extends TestCase
             'shining_kingdom' => [
                 'presence_bps' => 2610,
                 'rarity_weights' => ['common' => 8429, 'uncommon' => 1149, 'rare' => 383, 'epic' => 39],
-            ],
-            'shining_kingdom_rare' => [
-                'presence_bps' => 10_000,
-                'rarity_weights' => ['common' => 0, 'uncommon' => 6000, 'rare' => 3500, 'epic' => 500],
             ],
             'shining_kingdom_vault' => [
                 'presence_bps' => 10_000,

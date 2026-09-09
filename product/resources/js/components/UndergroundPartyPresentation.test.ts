@@ -119,9 +119,10 @@ describe('Underground party presentation controls', () => {
                 end_state: null,
             }],
             xp_awarded: 36,
-            shard_delta: 10,
+            shard_delta: 4_440,
             detail_available: true,
-            rewards: { xp: 36, shards: 10 },
+            rewards: { xp: 36, shards: 4_440 },
+            treasure: { found: true, base_g: 222, multiplier: 20, total_g: 4_440 },
             party: { members: [], enemies: [] },
         };
         vi.stubGlobal('fetch', vi.fn((input: RequestInfo | URL) => (
@@ -137,7 +138,11 @@ describe('Underground party presentation controls', () => {
         await wrapper.get('.underground-battle-detail-toggle').trigger('click');
         expect(wrapper.get('[data-action-type="damage"]').attributes('style')).toContain('display: none');
         expect(wrapper.get('[data-action-type="awakening"]').attributes('style') ?? '').not.toContain('display: none');
-        expect(wrapper.get('.underground-battle-result').text()).toContain('勝利');
+        const resultText = wrapper.get('.underground-battle-result').text();
+        expect(resultText).toContain('勝利');
+        expect(resultText).toContain('輝石の欠片 +4440G');
+        expect(resultText).toContain('財宝を見つけた！ ×20');
+        expect(resultText.match(/4440G/g)).toHaveLength(1);
         expect(window.localStorage.getItem('hakoniwa.underground.battle-detail-visible')).toBe('false');
 
         vi.advanceTimersByTime(3_000);
@@ -323,14 +328,14 @@ describe('Underground party presentation controls', () => {
                     name: '輝きの王国の宝物庫',
                     kind: 'vault',
                     locked: false,
-                    disabled: true,
-                    unavailable_reason: '輝きの王国の鍵が必要',
+                    disabled: false,
+                    unavailable_reason: null,
                     unlock_condition: null,
                     item_level_min: 91,
                     item_level_max: 120,
-                    key_balance: 0,
+                    key_balance: 10,
                     entry_key_cost: 1,
-                    skip: { actual_clear_count: 0, total_clear_count: 0, actual_clears_required: 50, unlocked: false, ticket_cost: 1 },
+                    skip: { actual_clear_count: 50, total_clear_count: 50, actual_clears_required: 50, unlocked: true, ticket_cost: 1 },
                 },
             ],
             trial: {
@@ -354,6 +359,15 @@ describe('Underground party presentation controls', () => {
         const requests: Array<Record<string, unknown>> = [];
         vi.stubGlobal('fetch', vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
             const path = String(input);
+            if (path === '/api/v1/me/underground/skip/hunting-ground') {
+                requests.push(JSON.parse(String(init?.body ?? '{}')) as Record<string, unknown>);
+                return Promise.resolve(response({
+                    id: 'vault-skip', duplicate: false, content_type: 'hunting_ground', content_key: 'shining_kingdom_vault', execution_count: 10,
+                    ticket_cost: 10, xp_awarded: 8_000, shards_awarded: 2_220, combat_level_before: 20, combat_level_after: 20,
+                    rewards: { equipment_granted_count: 10, vault_full_count: 0, drops: [], ticket_balance_after: 19_990 },
+                    settled_at: '2026-09-09T00:00:00Z',
+                }));
+            }
             if (path === '/api/v1/me/underground/skip/trial') {
                 requests.push(JSON.parse(String(init?.body ?? '{}')) as Record<string, unknown>);
                 return Promise.resolve(response({
@@ -375,8 +389,8 @@ describe('Underground party presentation controls', () => {
         expect(adventureSections[0]!.get('h3').text()).toBe('狩場');
         expect(adventureSections[1]!.get('h3').text()).toBe('試練');
         expect(adventureSections[2]!.get('h3').text()).toBe('宝物庫');
-        expect(adventureSections[2]!.text()).toContain('輝きの王国の鍵が必要');
-        expect(adventureSections[2]!.get('button').attributes('disabled')).toBeDefined();
+        expect(adventureSections[2]!.text()).toContain('鍵 10個');
+        expect(adventureSections[2]!.get('button').attributes('disabled')).toBeUndefined();
 
         await wrapper.get('.underground-skip-entry button').trigger('click');
         const categories = wrapper.findAll('.underground-skip-category');
@@ -385,12 +399,21 @@ describe('Underground party presentation controls', () => {
         expect(categories[0]!.text()).toContain('100%使用（1000回）');
         expect(categories[1]!.text()).toContain('50%使用（500周）');
         expect(categories[1]!.text()).toContain('100%使用（1000周）');
-        await categories[1]!.findAll('.underground-skip-shortcuts button')[1]!.trigger('click');
+        await categories[0]!.get('select').setValue('shining_kingdom_vault');
+        expect(categories[0]!.text()).toContain('50%使用（5回）');
+        expect(categories[0]!.text()).toContain('100%使用（10回）');
+        await categories[0]!.findAll('.underground-skip-shortcuts button')[1]!.trigger('click');
         await flushPromises();
 
         expect(requests).toHaveLength(1);
-        expect(requests[0]?.execution_count).toBe(1000);
-        expect(requests[0]?.trial_key).toBe('trial_01');
+        expect(requests[0]?.execution_count).toBe(10);
+        expect(requests[0]?.hunting_ground_key).toBe('shining_kingdom_vault');
+        await categories[1]!.findAll('.underground-skip-shortcuts button')[1]!.trigger('click');
+        await flushPromises();
+
+        expect(requests).toHaveLength(2);
+        expect(requests[1]?.execution_count).toBe(1000);
+        expect(requests[1]?.trial_key).toBe('trial_01');
         expect(wrapper.get('.underground-skip-result').text()).toContain('黒曜石の魔窟を1000周スキップしました');
         wrapper.unmount();
     });

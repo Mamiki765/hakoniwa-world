@@ -1041,7 +1041,6 @@ final readonly class UndergroundAlphaV1PlayerCatalog
             'elite',
             'rare',
             'shining_kingdom',
-            'shining_kingdom_rare',
             'shining_kingdom_vault',
             'trial2_shallow',
             'trial2_middle',
