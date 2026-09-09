@@ -398,22 +398,18 @@ final class TurnRuntimePerformanceTest extends TestCase
     private function expandedWorld(int $expectedCells): World
     {
         $world = app(OceanWorldGenerator::class)->initialize(WorldGenerationProfile::Production);
-        $service = app(WorldExpansionService::class);
-        $steps = [
-            [new MapBounds(0, 59, 0, 59, 16), new MapBounds(0, 63, 0, 63, 16), 4_096],
-            [new MapBounds(0, 63, 0, 63, 16), new MapBounds(-16, 63, 0, 63, 16), 5_120],
-            [new MapBounds(-16, 63, 0, 63, 16), new MapBounds(-16, 63, 0, 79, 16), 6_400],
-            [new MapBounds(-16, 63, 0, 79, 16), new MapBounds(-16, 79, 0, 79, 16), 7_680],
-            [new MapBounds(-16, 79, 0, 79, 16), new MapBounds(-16, 79, -16, 79, 16), 9_216],
-        ];
-        foreach ($steps as [$before, $target, $cellCount]) {
-            $service->expand($world->fresh(), $before, $target);
-            if ($cellCount === $expectedCells) {
-                return $world->fresh();
-            }
-        }
+        $target = match ($expectedCells) {
+            4_096 => new MapBounds(0, 63, 0, 63, 16),
+            9_216 => new MapBounds(-16, 79, -16, 79, 16),
+            default => $this->fail("Unsupported expanded World cell count {$expectedCells}."),
+        };
+        app(WorldExpansionService::class)->expand(
+            $world->fresh(),
+            new MapBounds(0, 59, 0, 59, 16),
+            $target,
+        );
 
-        $this->fail("Unsupported expanded World cell count {$expectedCells}.");
+        return $world->fresh();
     }
 
     private function processCellProfileWorld(int $expectedCells, string $fixture): World

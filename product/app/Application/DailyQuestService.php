@@ -115,6 +115,9 @@ final readonly class DailyQuestService
             if ((int) $progress->target !== $target) {
                 throw new DomainException('Daily quest target changed within a canonical day.');
             }
+            if ($progress->completed_at !== null) {
+                return $this->presentProgress($progress, $questKey, $label, $day, false);
+            }
 
             $inserted = DB::table('user_daily_quest_activities')->insertOrIgnore([
                 'user_id' => $userId,
@@ -126,7 +129,7 @@ final readonly class DailyQuestService
                 'updated_at' => $when,
             ]);
             $completedNow = false;
-            if ($inserted === 1 && $progress->completed_at === null) {
+            if ($inserted === 1) {
                 $progress->progress = min($target, (int) $progress->progress + $amount);
                 if ((int) $progress->progress === $target) {
                     $this->paradox->credit(
@@ -144,18 +147,29 @@ final readonly class DailyQuestService
                 $progress->save();
             }
 
-            return [
-                'key' => $questKey,
-                'label' => $label,
-                'canonical_day' => $day,
-                'progress' => (int) $progress->progress,
-                'target' => $target,
-                'paradox_awarded' => (int) $progress->paradox_awarded,
-                'completed' => $progress->completed_at !== null,
-                'completed_now' => $completedNow,
-                'paradox_balance' => $this->paradox->balanceFor($userId),
-            ];
+            return $this->presentProgress($progress, $questKey, $label, $day, $completedNow);
         }, 3);
+    }
+
+    /** @return array<string, int|string|bool> */
+    private function presentProgress(
+        UserDailyQuestProgress $progress,
+        string $questKey,
+        string $label,
+        string $day,
+        bool $completedNow,
+    ): array {
+        return [
+            'key' => $questKey,
+            'label' => $label,
+            'canonical_day' => $day,
+            'progress' => (int) $progress->progress,
+            'target' => (int) $progress->target,
+            'paradox_awarded' => (int) $progress->paradox_awarded,
+            'completed' => $progress->completed_at !== null,
+            'completed_now' => $completedNow,
+            'paradox_balance' => $this->paradox->balanceFor((int) $progress->user_id),
+        ];
     }
 
     /** @return array{int, string} */

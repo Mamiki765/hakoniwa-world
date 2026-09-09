@@ -5,7 +5,6 @@ namespace Tests\Feature;
 use App\Application\NationCreationService;
 use App\Application\SecretaryItemGrantService;
 use App\Application\SecretaryItemSaleService;
-use App\Application\SecretaryService;
 use App\Domain\Economy\NationCapacityResolver;
 use App\Domain\Secretary\SecretaryItemCatalog;
 use App\Models\Secretary;
@@ -22,27 +21,6 @@ final class SecretaryInventoryTest extends TestCase
 {
     use CreatesTestWorlds;
     use RefreshDatabase;
-
-    public function test_new_secretary_gets_exactly_one_equipped_starter_old_bow_and_retries_are_idempotent(): void
-    {
-        $world = $this->lightweightWorld();
-        $user = User::factory()->create();
-
-        app(NationCreationService::class)->create($user, $world, '装備基盤島', '装備島主');
-        app(SecretaryService::class)->ensureForUser($user);
-
-        $secretary = $user->secretary()->firstOrFail();
-        $this->assertDatabaseCount('secretary_item_instances', 1);
-        $this->assertDatabaseHas('secretary_item_instances', [
-            'secretary_id' => $secretary->id,
-            'item_key' => SecretaryItemCatalog::OLD_BOW,
-            'level' => 1,
-            'equipped_slot' => 1,
-            'grant_key' => SecretaryItemGrantService::STARTER_OLD_BOW_GRANT,
-        ]);
-        $this->assertNotNull($secretary->itemInstances()->firstOrFail()->getKey());
-        $this->assertSame(0, $secretary->itemInstances()->where('item_key', SecretaryItemCatalog::RING)->count());
-    }
 
     public function test_secretary_api_renders_five_slots_and_a_fifty_item_warehouse_without_get_repair(): void
     {

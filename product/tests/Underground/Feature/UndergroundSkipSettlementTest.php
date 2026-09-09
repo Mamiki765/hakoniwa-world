@@ -243,6 +243,51 @@ final class UndergroundSkipSettlementTest extends TestCase
         $this->assertDatabaseCount('user_skip_ticket_ledger', 0);
     }
 
+    public function test_vault_bulk_skip_requires_every_key_and_replays_without_double_consumption(): void
+    {
+        [$user, $profile] = $this->readyProfile();
+        UndergroundTrialProgress::query()->create([
+            'underground_profile_id' => $profile->id,
+            'trial_key' => 'trial_02',
+            'unlocked_at' => Carbon::now()->subDay(),
+            'first_cleared_at' => Carbon::now()->subDay(),
+        ]);
+        UndergroundContentClearProgress::query()->create([
+            'underground_profile_id' => $profile->id,
+            'content_type' => 'hunting_ground',
+            'content_key' => 'shining_kingdom_vault',
+            'actual_clear_count' => 50,
+            'total_clear_count' => 50,
+        ]);
+        UserSkipTicketBalance::query()->create(['user_id' => $user->id, 'balance' => 3]);
+        $profile->update(['shining_kingdom_key_balance' => 2]);
+        $runtime = app(UndergroundRuntimeService::class);
+
+        try {
+            $runtime->bulkSkipHuntingGround($user, (string) Str::uuid(), 'shining_kingdom_vault', 3);
+            $this->fail('A vault bulk skip must reserve every entry key atomically.');
+        } catch (UndergroundRuntimeException $exception) {
+            $this->assertSame('underground_shining_kingdom_key_insufficient', $exception->errorCode);
+        }
+        $this->assertSame(2, $profile->refresh()->shining_kingdom_key_balance);
+        $this->assertSame(3, UserSkipTicketBalance::query()->where('user_id', $user->id)->value('balance'));
+        $this->assertDatabaseCount('underground_skip_batches', 0);
+
+        $profile->update(['shining_kingdom_key_balance' => 3]);
+        $requestId = (string) Str::uuid();
+        $first = $runtime->bulkSkipHuntingGround($user, $requestId, 'shining_kingdom_vault', 3);
+        $retry = $runtime->bulkSkipHuntingGround($user, $requestId, 'shining_kingdom_vault', 3);
+        $this->assertFalse($first['duplicate']);
+        $this->assertTrue($retry['duplicate']);
+        $this->assertSame(0, $profile->refresh()->shining_kingdom_key_balance);
+        $this->assertSame(0, UserSkipTicketBalance::query()->where('user_id', $user->id)->value('balance'));
+        $this->assertSame(3, $first['batch']->reward_snapshot['equipment_granted_count']);
+        $this->assertSame(3, UndergroundOwnedEquipment::query()
+            ->where('source_skip_batch_id', $first['batch']->id)
+            ->count());
+        $this->assertDatabaseCount('underground_skip_batches', 1);
+    }
+
     public function test_bulk_skip_http_request_returns_one_aggregate_and_replays_it_without_double_settlement(): void
     {
         [$user, $profile] = $this->readyProfile();

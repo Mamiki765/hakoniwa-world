@@ -3,6 +3,8 @@
 namespace App\Application;
 
 use App\Domain\Economy\CapacityBoundedAssetService;
+use App\Domain\Ruleset\CurrentRulesetGuard;
+use App\Domain\World\WorldMutationLock;
 use App\Models\CompensationGrant;
 use App\Models\CompensationGrantItem;
 use App\Models\Nation;
@@ -12,6 +14,7 @@ use App\Models\RulesetVersion;
 use App\Models\UndergroundProfile;
 use App\Models\User;
 use App\Models\UserSkipTicketBalance;
+use App\Models\World;
 use DomainException;
 use Illuminate\Support\Facades\DB;
 
@@ -32,6 +35,9 @@ final readonly class CompensationWarehouseService
     public function __construct(
         private CapacityBoundedAssetService $boundedAssets,
         private ParadoxBalanceService $paradox,
+        private WorldMutationLock $worldMutationLock,
+        private CurrentRulesetGuard $rulesetGuard,
+        private NextProductionTurnRunGuard $turnRunGuard,
     ) {}
 
     /**
@@ -115,80 +121,148 @@ final readonly class CompensationWarehouseService
     /** @return array<string, mixed> */
     public function claim(User $user, Nation $nation, CompensationGrant $grant, string $requestKey): array
     {
-        return DB::transaction(function () use ($user, $nation, $grant, $requestKey): array {
-            $existing = DB::table('compensation_grant_claims')
-                ->where('request_key', $requestKey)->lockForUpdate()->first();
+        $world = World::query()->findOrFail($nation->world_id);
+        $claimLockKey = 'hakoniwa.compensation.claim.request.'.$requestKey;
+        $this->acquireClaimRequestLock($claimLockKey);
+
+        try {
+            $existing = $this->storedClaimResult($user, $grant, $requestKey);
             if ($existing !== null) {
-                if ((int) $existing->compensation_grant_id !== $grant->id
-                    || (int) $existing->user_id !== $user->id) {
-                    throw new DomainException('Compensation claim request key conflict.');
-                }
-                $result = json_decode((string) $existing->result, true, 512, JSON_THROW_ON_ERROR);
-                if (! is_array($result)) {
-                    throw new DomainException('Stored compensation claim result is invalid.');
-                }
-
-                return [...$result, 'duplicate' => true];
+                return $existing;
             }
 
-            $lockedGrant = CompensationGrant::query()->whereKey($grant->id)
-                ->with(['items' => fn ($query) => $query->orderBy('id')])
-                ->lockForUpdate()->firstOrFail();
-            $lockedNation = Nation::query()->whereKey($nation->id)->lockForUpdate()->firstOrFail();
-            $this->assertGrantRecipient($user, $lockedNation, $lockedGrant);
-            if ($lockedGrant->status === CompensationGrant::STATUS_CLAIMED) {
-                return [
-                    'grant' => $this->present($lockedGrant),
-                    'applied_now' => [],
-                    'already_claimed' => true,
-                    'duplicate' => false,
-                ];
-            }
+            $this->worldMutationLock->acquire($world);
+            try {
+                return DB::transaction(function () use ($user, $nation, $grant, $requestKey, $world): array {
+                    $lockedWorld = World::query()->whereKey($world->id)->lockForUpdate()->firstOrFail();
+                    $ruleset = $lockedWorld->rulesetVersion()->firstOrFail();
+                    $this->rulesetGuard->assertMutable($lockedWorld, $ruleset);
+                    $this->turnRunGuard->assertClear($lockedWorld);
 
-            $ruleset = $lockedNation->world()->firstOrFail()->rulesetVersion()->firstOrFail();
-            $appliedNow = [];
-            foreach ($lockedGrant->items as $item) {
-                $remaining = $item->amount - $item->claimed_amount;
-                if ($remaining < 1) {
-                    continue;
-                }
-                $applied = $this->creditAsset($user, $lockedNation, $item, $remaining, $ruleset);
-                if ($applied < 0 || $applied > $remaining) {
-                    throw new DomainException('Compensation claim applied an invalid amount.');
-                }
-                if ($applied > 0) {
-                    $item->increment('claimed_amount', $applied);
-                }
-                $appliedNow[] = [
-                    'asset_key' => $item->asset_key,
-                    'applied' => $applied,
-                    'remaining' => $remaining - $applied,
-                ];
-            }
+                    $lockedNation = Nation::query()
+                        ->whereKey($nation->id)
+                        ->where('world_id', $lockedWorld->id)
+                        ->lockForUpdate()
+                        ->firstOrFail();
+                    $lockedGrant = CompensationGrant::query()->whereKey($grant->id)
+                        ->with(['items' => fn ($query) => $query->orderBy('id')])
+                        ->lockForUpdate()->firstOrFail();
+                    $this->assertGrantRecipient($user, $lockedNation, $lockedGrant);
+                    if ($lockedGrant->status === CompensationGrant::STATUS_CLAIMED) {
+                        return [
+                            'grant' => $this->present($lockedGrant),
+                            'applied_now' => [],
+                            'already_claimed' => true,
+                            'duplicate' => false,
+                        ];
+                    }
 
-            $lockedGrant->load('items');
-            $complete = $lockedGrant->items->every(
-                static fn (CompensationGrantItem $item): bool => $item->claimed_amount === $item->amount,
-            );
-            $lockedGrant->fill([
-                'status' => $complete ? CompensationGrant::STATUS_CLAIMED : CompensationGrant::STATUS_PARTIAL,
-                'claimed_at' => $complete ? now() : null,
-            ])->save();
-            $result = [
-                'grant' => $this->present($lockedGrant->fresh('items')),
-                'applied_now' => $appliedNow,
-                'already_claimed' => false,
-            ];
-            DB::table('compensation_grant_claims')->insert([
-                'compensation_grant_id' => $lockedGrant->id,
+                    $this->lockUserAssetsInCanonicalOrder($user, $lockedGrant);
+                    $appliedNow = [];
+                    foreach ($lockedGrant->items as $item) {
+                        $remaining = $item->amount - $item->claimed_amount;
+                        if ($remaining < 1) {
+                            continue;
+                        }
+                        $applied = $this->creditAsset($user, $lockedNation, $item, $remaining, $ruleset);
+                        if ($applied < 0 || $applied > $remaining) {
+                            throw new DomainException('Compensation claim applied an invalid amount.');
+                        }
+                        if ($applied > 0) {
+                            $item->increment('claimed_amount', $applied);
+                        }
+                        $appliedNow[] = [
+                            'asset_key' => $item->asset_key,
+                            'applied' => $applied,
+                            'remaining' => $remaining - $applied,
+                        ];
+                    }
+
+                    $lockedGrant->load('items');
+                    $complete = $lockedGrant->items->every(
+                        static fn (CompensationGrantItem $item): bool => $item->claimed_amount === $item->amount,
+                    );
+                    $lockedGrant->fill([
+                        'status' => $complete ? CompensationGrant::STATUS_CLAIMED : CompensationGrant::STATUS_PARTIAL,
+                        'claimed_at' => $complete ? now() : null,
+                    ])->save();
+                    $result = [
+                        'grant' => $this->present($lockedGrant->fresh('items')),
+                        'applied_now' => $appliedNow,
+                        'already_claimed' => false,
+                    ];
+                    DB::table('compensation_grant_claims')->insert([
+                        'compensation_grant_id' => $lockedGrant->id,
+                        'user_id' => $user->id,
+                        'request_key' => $requestKey,
+                        'result' => json_encode($result, JSON_THROW_ON_ERROR),
+                        'created_at' => now(),
+                    ]);
+
+                    return [...$result, 'duplicate' => false];
+                }, 3);
+            } finally {
+                $this->worldMutationLock->release($world);
+            }
+        } finally {
+            $this->releaseClaimRequestLock($claimLockKey);
+        }
+    }
+
+    /** @return array<string, mixed>|null */
+    private function storedClaimResult(User $user, CompensationGrant $grant, string $requestKey): ?array
+    {
+        $existing = DB::table('compensation_grant_claims')->where('request_key', $requestKey)->first();
+        if ($existing === null) {
+            return null;
+        }
+        if ((int) $existing->compensation_grant_id !== $grant->id
+            || (int) $existing->user_id !== $user->id) {
+            throw new DomainException('Compensation claim request key conflict.');
+        }
+        $result = json_decode((string) $existing->result, true, 512, JSON_THROW_ON_ERROR);
+        if (! is_array($result)) {
+            throw new DomainException('Stored compensation claim result is invalid.');
+        }
+
+        return [...$result, 'duplicate' => true];
+    }
+
+    private function acquireClaimRequestLock(string $key): void
+    {
+        if (DB::connection()->getDriverName() !== 'pgsql') {
+            throw new DomainException('Compensation claim mutation requires PostgreSQL advisory locks.');
+        }
+        DB::selectOne('SELECT pg_advisory_lock(hashtextextended(?, 0))', [$key]);
+    }
+
+    private function releaseClaimRequestLock(string $key): void
+    {
+        DB::selectOne('SELECT pg_advisory_unlock(hashtextextended(?, 0)) AS released', [$key]);
+    }
+
+    private function lockUserAssetsInCanonicalOrder(User $user, CompensationGrant $grant): void
+    {
+        $assetKeys = $grant->items->pluck('asset_key');
+        if ($assetKeys->contains('underground_g')) {
+            UndergroundProfile::query()
+                ->whereHas('secretary', fn ($query) => $query->where('user_id', $user->id))
+                ->lockForUpdate()
+                ->first();
+        }
+        if ($assetKeys->contains('skip_ticket')) {
+            $when = now();
+            DB::table('user_skip_ticket_balances')->insertOrIgnore([
                 'user_id' => $user->id,
-                'request_key' => $requestKey,
-                'result' => json_encode($result, JSON_THROW_ON_ERROR),
-                'created_at' => now(),
+                'balance' => 0,
+                'created_at' => $when,
+                'updated_at' => $when,
             ]);
-
-            return [...$result, 'duplicate' => false];
-        }, 3);
+            UserSkipTicketBalance::query()->where('user_id', $user->id)->lockForUpdate()->firstOrFail();
+        }
+        if ($assetKeys->contains('paradox')) {
+            $this->paradox->balanceForUpdate($user->id);
+        }
     }
 
     private function creditAsset(
@@ -328,7 +402,16 @@ final readonly class CompensationWarehouseService
 
     private function assertGrantRecipient(User $user, Nation $nation, CompensationGrant $grant): void
     {
-        $this->assertRecipient($user, $nation);
+        $ownerMembership = NationMembership::query()
+            ->where('user_id', $user->id)
+            ->where('nation_id', $nation->id)
+            ->where('world_id', $nation->world_id)
+            ->where('role', 'owner')
+            ->lockForUpdate()
+            ->first(['id']);
+        if (! $ownerMembership instanceof NationMembership) {
+            throw new DomainException('Only the target Nation owner can access compensation grants.');
+        }
         if ($grant->nation_id !== $nation->id
             || $grant->world_id !== $nation->world_id
             || $grant->recipient_user_id !== $user->id) {

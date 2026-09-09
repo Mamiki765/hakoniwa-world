@@ -343,9 +343,9 @@ final class UndergroundRuntimeEquipmentGenerator
     private function sellPrice(string $category, int $itemLevel, int $sellPriceBps): int
     {
         $anchors = match ($category) {
-            'weapon' => [1 => 120, 10 => 360, 20 => 1_000, 40 => 3_000, 60 => 6_000, 90 => 12_000],
-            'armor' => [1 => 100, 10 => 300, 20 => 900, 40 => 2_700, 60 => 5_400, 90 => 10_800],
-            'accessory' => [1 => 60, 10 => 180, 20 => 600, 40 => 1_800, 60 => 3_600, 90 => 7_200],
+            'weapon' => [1 => 120, 10 => 360, 20 => 1_000, 40 => 3_000, 60 => 6_000, 90 => 12_000, 120 => 18_000],
+            'armor' => [1 => 100, 10 => 300, 20 => 900, 40 => 2_700, 60 => 5_400, 90 => 10_800, 120 => 16_200],
+            'accessory' => [1 => 60, 10 => 180, 20 => 600, 40 => 1_800, 60 => 3_600, 90 => 7_200, 120 => 10_800],
             default => throw new RuntimeException('Underground generated equipment category is invalid.'),
         };
         $buyEquivalent = $this->interpolate($anchors, $itemLevel);

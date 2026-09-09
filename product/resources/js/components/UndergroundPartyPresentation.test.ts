@@ -305,6 +305,34 @@ describe('Underground party presentation controls', () => {
 
     it('keeps hunting grounds and trials separate and calculates 50 and 100 percent bulk shortcuts', async () => {
         const state = openState({
+            hunting_grounds: [
+                {
+                    key: 'shallow_caves',
+                    name: '浅い洞窟',
+                    kind: 'hunting_ground',
+                    locked: false,
+                    disabled: false,
+                    unavailable_reason: null,
+                    unlock_condition: null,
+                    item_level_min: 1,
+                    item_level_max: 10,
+                    skip: { actual_clear_count: 50, total_clear_count: 50, actual_clears_required: 50, unlocked: true, ticket_cost: 1 },
+                },
+                {
+                    key: 'shining_kingdom_vault',
+                    name: '輝きの王国の宝物庫',
+                    kind: 'vault',
+                    locked: false,
+                    disabled: true,
+                    unavailable_reason: '輝きの王国の鍵が必要',
+                    unlock_condition: null,
+                    item_level_min: 91,
+                    item_level_max: 120,
+                    key_balance: 0,
+                    entry_key_cost: 1,
+                    skip: { actual_clear_count: 0, total_clear_count: 0, actual_clears_required: 50, unlocked: false, ticket_cost: 1 },
+                },
+            ],
             trial: {
                 key: 'trial_01',
                 label: '黒曜石の魔窟',
@@ -343,9 +371,12 @@ describe('Underground party presentation controls', () => {
         const wrapper = mount(UndergroundPanel, { attachTo: document.body });
         await flushPromises();
         const adventureSections = wrapper.findAll('.underground-adventure-block');
-        expect(adventureSections).toHaveLength(2);
+        expect(adventureSections).toHaveLength(3);
         expect(adventureSections[0]!.get('h3').text()).toBe('狩場');
         expect(adventureSections[1]!.get('h3').text()).toBe('試練');
+        expect(adventureSections[2]!.get('h3').text()).toBe('宝物庫');
+        expect(adventureSections[2]!.text()).toContain('輝きの王国の鍵が必要');
+        expect(adventureSections[2]!.get('button').attributes('disabled')).toBeDefined();
 
         await wrapper.get('.underground-skip-entry button').trigger('click');
         const categories = wrapper.findAll('.underground-skip-category');
@@ -424,11 +455,15 @@ describe('Underground party presentation controls', () => {
         wrapper.unmount();
     });
 
-    it('keeps a network skip failure inside the modal and retries with the same request id', async () => {
+    it('recovers an ambiguous skip with the original payload after a normal exploration refreshes tickets to zero', async () => {
         const state = openState({
             lending: { settings: { is_lendable: false, is_public: false, is_available: false }, candidates: [], ticket_balance: 4 },
         });
+        const zeroTicketState = openState({
+            lending: { settings: { is_lendable: false, is_public: false, is_available: false }, candidates: [], ticket_balance: 0 },
+        });
         const requests: Array<Record<string, unknown>> = [];
+        let explored = false;
         vi.stubGlobal('fetch', vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
             const path = String(input);
             if (path === '/api/v1/me/underground/skip/hunting-ground') {
@@ -442,9 +477,14 @@ describe('Underground party presentation controls', () => {
                     settled_at: '2026-09-09T00:00:00Z',
                 }));
             }
+            if (path === '/api/v1/me/underground/explore' && init?.method === 'POST') {
+                explored = true;
+                return Promise.resolve(response(smallBattle('ordinary-exploration')));
+            }
+            if (path === '/api/v1/me/underground') return Promise.resolve(response(explored ? zeroTicketState : state));
             if (path.endsWith('/api/v1/me/underground/battles')) return Promise.resolve(response([]));
 
-            return Promise.resolve(response(state));
+            return Promise.resolve(response(explored ? zeroTicketState : state));
         }));
 
         const wrapper = mount(UndergroundPanel, { attachTo: document.body });
@@ -456,15 +496,27 @@ describe('Underground party presentation controls', () => {
 
         expect(wrapper.get('.underground-skip-dialog').isVisible()).toBe(true);
         expect(wrapper.get('.underground-skip-error').text()).toBe('スキップ通信に失敗しました。');
-        expect(wrapper.get('.underground-skip-pending').text()).toContain('同じ対象・回数で再試行');
+        expect(wrapper.get('.underground-skip-pending').text()).toContain('前回と同じ内容を再確認');
         const otherShortcut = wrapper.findAll('.underground-skip-category')[0]!.findAll('.underground-skip-shortcuts button')[1]!;
         expect(shortcut.attributes('disabled')).toBeUndefined();
         expect(otherShortcut.attributes('disabled')).toBeDefined();
-        await shortcut.trigger('click');
+
+        await wrapper.get('.underground-skip-dialog button[aria-label="閉じる"]').trigger('click');
+        await wrapper.get('.underground-explore-button').trigger('click');
+        await flushPromises();
+        await wrapper.get('.underground-battle-back').trigger('click');
+        await wrapper.get('.underground-skip-entry button').trigger('click');
+        const refreshedShortcuts = wrapper.findAll('.underground-skip-category')[0]!.findAll('.underground-skip-shortcuts button');
+        expect(wrapper.get('.underground-skip-dialog').text()).toContain('🎫 0枚');
+        expect(refreshedShortcuts.every((button) => button.attributes('disabled') !== undefined)).toBe(true);
+        expect(wrapper.get('.underground-skip-retry').attributes('disabled')).toBeUndefined();
+        await wrapper.get('.underground-skip-retry').trigger('click');
         await flushPromises();
 
         expect(requests).toHaveLength(2);
         expect(requests[1]?.request_id).toBe(requests[0]?.request_id);
+        expect(requests[1]?.execution_count).toBe(2);
+        expect(requests[1]?.hunting_ground_key).toBe('shallow_caves');
         expect(wrapper.find('.underground-skip-error').exists()).toBe(false);
         expect(wrapper.get('.underground-skip-result').text()).toContain('浅い洞窟を2回スキップしました');
         wrapper.unmount();

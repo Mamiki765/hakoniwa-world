@@ -10,6 +10,25 @@ use InvalidArgumentException;
 use JsonException;
 use RuntimeException;
 
+/**
+ * @phpstan-type ExplorationHuntingGround array{
+ *     key: string,
+ *     content_identity: string,
+ *     name: string,
+ *     kind: 'hunting_ground'|'vault',
+ *     required_trial_key: string|null,
+ *     enemy_count_by_party_size: array{1:int,2:int,3:int,4:int},
+ *     item_level_min: int,
+ *     item_level_max: int,
+ *     rare_encounter: array{key:string,chance_bps:int,encounter:array<string,mixed>}|null,
+ *     key_reward: array{normal_chance_bps:int,rare_quantity:int}|null,
+ *     entry_key_cost: int,
+ *     vault_base_g: int|null,
+ *     treasure_multiplier: int|null,
+ *     forced_drop_profile: string|null,
+ *     drop_tier_key: string
+ * }
+ */
 final readonly class UndergroundAlphaV1PlayerCatalog
 {
     public function __construct(
@@ -250,17 +269,7 @@ final readonly class UndergroundAlphaV1PlayerCatalog
         return $this->string($this->explorationConfig(), 'default_hunting_ground_key');
     }
 
-    /**
-     * @return list<array{
-     *   key: string,
-     *   content_identity: string,
-     *   name: string,
-     *   required_trial_key: string|null,
-     *   enemy_count_by_party_size: array{1:int,2:int,3:int,4:int},
-     *   item_level_min: int,
-     *   item_level_max: int
-     * }>
-     */
+    /** @return list<ExplorationHuntingGround> */
     public function explorationHuntingGrounds(): array
     {
         $configured = $this->explorationConfig()['grounds'];
@@ -282,17 +291,7 @@ final readonly class UndergroundAlphaV1PlayerCatalog
         return $grounds;
     }
 
-    /**
-     * @return array{
-     *   key: string,
-     *   content_identity: string,
-     *   name: string,
-     *   required_trial_key: string|null,
-     *   enemy_count_by_party_size: array{1:int,2:int,3:int,4:int},
-     *   item_level_min: int,
-     *   item_level_max: int
-     * }
-     */
+    /** @return ExplorationHuntingGround */
     public function explorationHuntingGround(string $key): array
     {
         foreach ($this->explorationHuntingGrounds() as $ground) {
@@ -550,7 +549,8 @@ final readonly class UndergroundAlphaV1PlayerCatalog
                 || ! is_int($entry['weight'] ?? null) || $entry['weight'] < 1
                 || ! is_int($entry['xp'] ?? null) || $entry['xp'] < 0
                 || ! is_int($entry['shards'] ?? null) || $entry['shards'] < 0
-                || ! in_array($entry['drop_profile'] ?? null, ['standard', 'elite', 'rare'], true)
+                || ! is_string($entry['drop_profile'] ?? null)
+                || ! array_key_exists($entry['drop_profile'], $this->explorationDropConfig()['profiles'])
                 || ! is_int($entry['item_level_min'] ?? null) || $entry['item_level_min'] < 1
                 || ! is_int($entry['item_level_max'] ?? null)
                 || $entry['item_level_max'] < $entry['item_level_min']
@@ -600,6 +600,22 @@ final readonly class UndergroundAlphaV1PlayerCatalog
                 return $encounter;
             }
         }
+        $ground = $this->configuredHuntingGround($huntingGroundKey ?? $this->explorationHuntingGroundKey());
+        $rare = $ground['rare_encounter'] ?? null;
+        if (is_array($rare) && ($rare['key'] ?? null) === $key && is_array($rare['encounter'] ?? null)) {
+            $encounter = $rare['encounter'];
+
+            return [
+                'key' => $key,
+                'label' => $encounter['label'],
+                'weight' => 0,
+                'xp' => $encounter['xp'],
+                'shards' => $encounter['shards'],
+                'drop_profile' => $encounter['drop_profile'],
+                'item_level_min' => $encounter['item_level_min'],
+                'item_level_max' => $encounter['item_level_max'],
+            ];
+        }
 
         throw new UndergroundRuntimeException('underground_encounter_not_supported', '探索先の敵を解決できません。');
     }
@@ -628,11 +644,26 @@ final readonly class UndergroundAlphaV1PlayerCatalog
                 throw new RuntimeException('Underground exploration enemy catalog is invalid.');
             }
             foreach ($ground['encounters'] as $key => $entry) {
-                if (! is_string($key) || ! is_array($entry) || ! is_array($entry['enemy'] ?? null)
-                    || array_key_exists($key, $manifest['enemies'])) {
+                if (! is_string($key) || ! is_array($entry) || ! is_array($entry['enemy'] ?? null)) {
                     throw new RuntimeException('Underground exploration enemy catalog is invalid.');
                 }
+                if (array_key_exists($key, $manifest['enemies'])) {
+                    if ($manifest['enemies'][$key] !== $entry['enemy']) {
+                        throw new RuntimeException('Underground exploration enemy catalog is invalid.');
+                    }
+
+                    continue;
+                }
                 $manifest['enemies'][$key] = $entry['enemy'];
+            }
+            $rare = $ground['rare_encounter'] ?? null;
+            if (is_array($rare) && is_string($rare['key'] ?? null) && is_array($rare['encounter']['enemy'] ?? null)) {
+                $key = $rare['key'];
+                $enemy = $rare['encounter']['enemy'];
+                if (array_key_exists($key, $manifest['enemies']) && $manifest['enemies'][$key] !== $enemy) {
+                    throw new RuntimeException('Underground rare exploration enemy catalog is invalid.');
+                }
+                $manifest['enemies'][$key] = $enemy;
             }
         }
 
@@ -1009,6 +1040,9 @@ final readonly class UndergroundAlphaV1PlayerCatalog
             'standard',
             'elite',
             'rare',
+            'shining_kingdom',
+            'shining_kingdom_rare',
+            'shining_kingdom_vault',
             'trial2_shallow',
             'trial2_middle',
             'trial2_deep',
@@ -1058,20 +1092,20 @@ final readonly class UndergroundAlphaV1PlayerCatalog
 
     /**
      * @param  array<string, mixed>  $ground
-     * @return array{
-     *   key: string,
-     *   content_identity: string,
-     *   name: string,
-     *   required_trial_key: string|null,
-     *   enemy_count_by_party_size: array{1:int,2:int,3:int,4:int},
-     *   item_level_min: int,
-     *   item_level_max: int
-     * }
+     * @return ExplorationHuntingGround
      */
     private function validatedHuntingGround(string $key, array $ground): array
     {
         $requiredTrial = $ground['required_trial_key'] ?? null;
         $enemyCounts = $ground['enemy_count_by_party_size'] ?? null;
+        $kind = $ground['kind'] ?? 'hunting_ground';
+        $rare = $ground['rare_encounter'] ?? null;
+        $entryKeyCost = $ground['entry_key_cost'] ?? 0;
+        $vaultBaseG = $ground['vault_base_g'] ?? null;
+        $treasureMultiplier = $ground['treasure_multiplier'] ?? null;
+        $forcedDropProfile = $ground['forced_drop_profile'] ?? null;
+        $dropTierKey = $ground['drop_tier_key'] ?? $key;
+        $keyReward = $ground['key_reward'] ?? null;
         if ($key === ''
             || ! is_string($ground['content_identity'] ?? null) || $ground['content_identity'] === ''
             || ! is_string($ground['name'] ?? null) || $ground['name'] === ''
@@ -1082,7 +1116,21 @@ final readonly class UndergroundAlphaV1PlayerCatalog
             || $ground['item_level_max'] > $this->equipmentCatalog->generatorItemLevelMax()
             || ! is_array($ground['encounters'] ?? null) || $ground['encounters'] === []
             || ! is_array($enemyCounts) || array_keys($enemyCounts) !== [1, 2, 3, 4]
-            || array_filter($enemyCounts, static fn (mixed $count): bool => ! is_int($count) || $count < 1) !== []) {
+            || array_filter($enemyCounts, static fn (mixed $count): bool => ! is_int($count) || $count < 1) !== []
+            || ! in_array($kind, ['hunting_ground', 'vault'], true)
+            || ! is_int($entryKeyCost) || $entryKeyCost < 0
+            || ! is_string($dropTierKey) || $dropTierKey === ''
+            || ($kind === 'vault' && ($entryKeyCost !== 1 || ! is_int($vaultBaseG) || $vaultBaseG < 0
+                || ! is_int($treasureMultiplier) || $treasureMultiplier !== 20
+                || ! is_string($forcedDropProfile)
+                || ! array_key_exists($forcedDropProfile, $this->explorationDropConfig()['profiles'])))
+            || ($rare !== null && (! is_array($rare) || ! is_string($rare['key'] ?? null)
+                || ! is_int($rare['chance_bps'] ?? null) || $rare['chance_bps'] < 1 || $rare['chance_bps'] > 10_000
+                || ! is_array($rare['encounter'] ?? null)))
+            || ($keyReward !== null && (! is_array($keyReward)
+                || ! is_int($keyReward['normal_chance_bps'] ?? null)
+                || $keyReward['normal_chance_bps'] < 0 || $keyReward['normal_chance_bps'] > 10_000
+                || ! is_int($keyReward['rare_quantity'] ?? null) || $keyReward['rare_quantity'] < 0))) {
             throw new RuntimeException("Underground hunting ground [{$key}] is invalid.");
         }
 
@@ -1090,10 +1138,18 @@ final readonly class UndergroundAlphaV1PlayerCatalog
             'key' => $key,
             'content_identity' => $ground['content_identity'],
             'name' => $ground['name'],
+            'kind' => $kind,
             'required_trial_key' => $requiredTrial,
             'enemy_count_by_party_size' => $enemyCounts,
             'item_level_min' => $ground['item_level_min'],
             'item_level_max' => $ground['item_level_max'],
+            'rare_encounter' => $rare,
+            'key_reward' => $keyReward,
+            'entry_key_cost' => $entryKeyCost,
+            'vault_base_g' => $vaultBaseG,
+            'treasure_multiplier' => $treasureMultiplier,
+            'forced_drop_profile' => $forcedDropProfile,
+            'drop_tier_key' => $dropTierKey,
         ];
     }
 

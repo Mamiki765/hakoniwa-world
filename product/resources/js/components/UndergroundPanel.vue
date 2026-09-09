@@ -174,6 +174,8 @@ interface Battle {
             affixes: Array<{ key: string; label: string; target: string; value: number }>;
         };
     } | null;
+    treasure?: { found: boolean; base_g: number; multiplier: number; total_g: number } | null;
+    shining_kingdom_key?: { balance_before: number; entry_cost?: number; awarded: number; balance_after: number } | null;
     daily_quest?: DailyQuestProgress;
 }
 
@@ -191,8 +193,13 @@ interface PartyBattleMember {
 interface HuntingGround {
     key: string;
     name: string;
+    kind: 'hunting_ground' | 'vault';
     locked: boolean;
     unlock_condition: string | null;
+    entry_key_cost: number;
+    key_balance: number;
+    disabled: boolean;
+    unavailable_reason: string | null;
     item_level_min: number;
     item_level_max: number;
     skip: SkipProgress;
@@ -376,6 +383,12 @@ interface ActiveSkill {
 interface PendingMutation {
     fingerprint: string;
     requestId: string;
+}
+
+interface PendingSkipRequest extends PendingMutation {
+    contentType: 'hunting_ground' | 'trial';
+    contentKey: string;
+    executionCount: number;
 }
 
 interface RecollectionEntry {
@@ -566,6 +579,7 @@ const selectedEnemy = ref('');
 const bankOpen = ref(false);
 const bankAmount = ref<number | null>(1000);
 const selectedHuntingGroundKey = ref('shallow_caves');
+const selectedSkipHuntingGroundKey = ref('shallow_caves');
 const selectedTrialKey = ref('trial_01');
 const selectedSkipTrialKey = ref('trial_01');
 const pendingExplorationRequest = ref<PendingExplorationRequest | null>(null);
@@ -577,7 +591,7 @@ const partyCandidateNextAfterId = ref<number | null>(null);
 const loadedPartyCandidates = ref<PartyCandidate[]>([]);
 const knownPartyCandidates = ref(new Map<string, PartyCandidate>());
 const pendingTrialRequest = ref<PendingTrialRequest | null>(null);
-const pendingSkipRequest = ref<PendingMutation | null>(null);
+const pendingSkipRequest = ref<PendingSkipRequest | null>(null);
 const lastSkipResult = ref<SkipResult | null>(null);
 const skipModalOpen = ref(false);
 const skipError = ref('');
@@ -670,8 +684,14 @@ const seriousTalkScene = computed(() => {
 });
 const unlockedHuntingGrounds = computed(() => (state.value?.hunting_grounds ?? [])
     .filter((ground) => !ground.locked));
-const selectedHuntingGround = computed(() => unlockedHuntingGrounds.value
+const ordinaryHuntingGrounds = computed(() => unlockedHuntingGrounds.value
+    .filter((ground) => ground.kind !== 'vault'));
+const selectedHuntingGround = computed(() => ordinaryHuntingGrounds.value
     .find((ground) => ground.key === selectedHuntingGroundKey.value) ?? null);
+const selectedSkipHuntingGround = computed(() => unlockedHuntingGrounds.value
+    .find((ground) => ground.key === selectedSkipHuntingGroundKey.value) ?? unlockedHuntingGrounds.value[0] ?? null);
+const shiningKingdomVault = computed(() => unlockedHuntingGrounds.value
+    .find((ground) => ground.kind === 'vault') ?? null);
 const trialOptions = computed<TrialOption[]>(() => {
     const trial = state.value?.trial;
     if (!trial) return [];
@@ -912,7 +932,7 @@ watch(() => state.value?.awakening, (awakening) => {
 
 watch(() => state.value?.hunting_grounds, (grounds) => {
     if (!grounds) return;
-    const unlocked = grounds.filter((ground) => !ground.locked);
+    const unlocked = grounds.filter((ground) => !ground.locked && ground.kind !== 'vault');
     let preferredKey = selectedHuntingGroundKey.value;
     if (!huntingGroundPreferenceHydrated) {
         try {
@@ -938,7 +958,7 @@ function requestId(): string {
 }
 
 function selectHuntingGround(key: string): void {
-    if (!unlockedHuntingGrounds.value.some((ground) => ground.key === key)) return;
+    if (!ordinaryHuntingGrounds.value.some((ground) => ground.key === key)) return;
     selectedHuntingGroundKey.value = key;
     try {
         window.localStorage.setItem(huntingGroundPreferenceKey, key);
@@ -949,6 +969,14 @@ function selectHuntingGround(key: string): void {
 
 function changeHuntingGround(event: Event): void {
     if (event.target instanceof HTMLSelectElement) selectHuntingGround(event.target.value);
+}
+
+function changeSkipHuntingGround(event: Event): void {
+    const target = event.target;
+    if (!(target instanceof HTMLSelectElement)) return;
+    if (unlockedHuntingGrounds.value.some((ground) => ground.key === target.value)) {
+        selectedSkipHuntingGroundKey.value = target.value;
+    }
 }
 
 async function refresh(returnIfTutorialAlreadyFinished = true): Promise<void> {
@@ -1061,7 +1089,7 @@ async function chooseGuideConversationReply(position: number): Promise<void> {
 }
 
 async function punchGuide(): Promise<void> {
-    if (busy.value || guideConversation.value === null || guideConversationPhase.value === 'reply') return;
+    if (busy.value || guideConversation.value === null) return;
     busy.value = true;
     error.value = '';
     try {
@@ -1344,20 +1372,32 @@ async function runSkip(contentType: 'hunting_ground' | 'trial', contentKey: stri
         skipError.value = '結果が不明なskipを同じ内容で再試行してから、別のskipを開始してください。';
         return;
     }
-    const pending = currentPending ?? { fingerprint, requestId: requestId() };
+    const pending = currentPending ?? { fingerprint, requestId: requestId(), contentType, contentKey, executionCount };
     pendingSkipRequest.value = pending;
+    await executePendingSkip(pending);
+}
+
+async function retryPendingSkip(): Promise<void> {
+    const pending = pendingSkipRequest.value;
+    if (busy.value || pending === null) return;
+    lastSkipResult.value = null;
+    skipError.value = '';
+    await executePendingSkip(pending);
+}
+
+async function executePendingSkip(pending: PendingSkipRequest): Promise<void> {
     busy.value = true;
     error.value = '';
     try {
-        const path = contentType === 'hunting_ground'
+        const path = pending.contentType === 'hunting_ground'
             ? '/api/v1/me/underground/skip/hunting-ground'
             : '/api/v1/me/underground/skip/trial';
-        const key = contentType === 'hunting_ground'
-            ? { hunting_ground_key: contentKey }
-            : { trial_key: contentKey };
+        const key = pending.contentType === 'hunting_ground'
+            ? { hunting_ground_key: pending.contentKey }
+            : { trial_key: pending.contentKey };
         const result = await api<SkipResult>(path, {
             method: 'POST',
-            body: JSON.stringify({ request_id: pending.requestId, execution_count: executionCount, ...key }),
+            body: JSON.stringify({ request_id: pending.requestId, execution_count: pending.executionCount, ...key }),
         });
         showDailyQuestCompletion(result.daily_quest);
         lastSkipResult.value = result;
@@ -1374,6 +1414,7 @@ async function runSkip(contentType: 'hunting_ground' | 'trial', contentKey: stri
     } catch (caught) {
         const message = caught instanceof Error ? caught.message : 'skipを実行できませんでした。';
         if (caught instanceof ApiError && caught.status === 409) {
+            pendingSkipRequest.value = null;
             try {
                 await refresh(false);
             } catch {
@@ -2168,6 +2209,8 @@ onUnmounted(() => {
                     <p v-if="currentBattle.hunting_ground">狩場: {{ currentBattle.hunting_ground.name }}</p>
                     <p>{{ battleRoundCount(currentBattle) }}ラウンドで決着。</p>
                     <p>経験値 +{{ currentBattle.xp_awarded }}・輝石の欠片 {{ currentBattle.shard_delta >= 0 ? '+' : '' }}{{ currentBattle.shard_delta }}G<span v-if="currentBattle.context === 'playtest'">・ドロップなし</span></p>
+                    <p v-if="currentBattle.treasure?.found" class="underground-equipment-drop" role="status">財宝を見つけた！ 輝石の欠片 +{{ currentBattle.treasure.total_g }}G</p>
+                    <p v-if="(currentBattle.shining_kingdom_key?.awarded ?? 0) > 0" class="underground-equipment-drop" role="status">輝きの王国の鍵 +{{ currentBattle.shining_kingdom_key?.awarded }}</p>
                     <p v-if="currentBattle.drop?.status === 'granted' && currentBattle.drop.item" class="underground-equipment-drop" role="status">
                         装備drop: {{ currentBattle.drop.item.rarity_label }}・Item Lv {{ currentBattle.drop.item.item_level }}・{{ currentBattle.drop.item.name }}
                         <span v-if="currentBattle.drop.item.affixes.length > 0">（{{ currentBattle.drop.item.affixes.map((affix) => affix.label).join('、') }}）</span>
@@ -2372,7 +2415,10 @@ onUnmounted(() => {
                         <button class="underground-guide-punch" type="button" :disabled="busy" @click="punchGuide">もう一度げんこつ</button>
                         <button type="button" :disabled="busy" @click="stopGuideConversation">やめる</button>
                     </div>
-                    <button v-else type="button" :disabled="busy" @click="stopGuideConversation">話をやめる</button>
+                    <div v-else class="underground-guide-conversation-choices">
+                        <button class="underground-guide-punch" type="button" :disabled="busy" @click="punchGuide">げんこつ</button>
+                        <button type="button" :disabled="busy" @click="stopGuideConversation">話をやめる</button>
+                    </div>
                 </section>
                 <p v-else-if="guideMode === 'conversation'" class="underground-guide-conversation">{{ busy ? '話題を選んでいます…' : '話題がまだ登録されていません。' }}</p>
                 <section v-else-if="guideMode === 'recollections'" class="underground-guide-recollections" aria-labelledby="underground-recollections-title">
@@ -2610,7 +2656,7 @@ onUnmounted(() => {
                             <section class="underground-adventure-block" aria-labelledby="underground-hunting-ground-title">
                                 <h3 id="underground-hunting-ground-title">狩場</h3>
                                 <select class="underground-ground-selector" aria-label="狩場を選択" :value="selectedHuntingGroundKey" :disabled="busy || Boolean(state.trial?.active_run)" @change="changeHuntingGround">
-                                    <option v-for="ground in unlockedHuntingGrounds" :key="ground.key" :value="ground.key">{{ ground.name }}</option>
+                                    <option v-for="ground in ordinaryHuntingGrounds" :key="ground.key" :value="ground.key">{{ ground.name }}</option>
                                 </select>
                                 <button class="button primary underground-explore-button" type="button" :disabled="busy || exploreCooldownSeconds > 0 || Boolean(state.trial?.active_run) || !selectedHuntingGround" @click="runSelectedExploration">探索する</button>
                                 <small v-if="exploreCooldownSeconds > 0">次の出発まであと{{ exploreCooldownSeconds }}秒</small>
@@ -2626,6 +2672,14 @@ onUnmounted(() => {
                                 <small v-if="state.trial?.active_run">進行中：{{ state.trial.active_run.next_battle_index }} / {{ state.trial.active_run.total_battles }}戦目</small>
                                 <small v-else-if="selectedTrial">{{ selectedTrial.total_battles }}連戦・ソロ専用・{{ selectedTrial.first_cleared ? 'clear済み' : '未clear' }}</small>
                                 <small v-else>解禁済みの試練はありません。</small>
+                            </section>
+                            <section class="underground-adventure-block" aria-labelledby="underground-vault-title">
+                                <h3 id="underground-vault-title">宝物庫</h3>
+                                <strong>{{ shiningKingdomVault?.name ?? '未解禁' }}</strong>
+                                <button class="button primary" type="button" :disabled="busy || exploreCooldownSeconds > 0 || Boolean(state.trial?.active_run) || !shiningKingdomVault || shiningKingdomVault.disabled" @click="shiningKingdomVault && runExplore(shiningKingdomVault.key, 'shining-kingdom-vault')">挑戦する</button>
+                                <small v-if="shiningKingdomVault?.disabled">{{ shiningKingdomVault.unavailable_reason }}</small>
+                                <small v-else-if="shiningKingdomVault">鍵 {{ shiningKingdomVault.key_balance }}個・1回につき{{ shiningKingdomVault.entry_key_cost }}個消費</small>
+                                <small v-else>試練2を初回clearすると解禁されます。</small>
                             </section>
                         </div>
                         <button v-if="state.trial?.active_run" class="button secondary" type="button" :disabled="busy" @click="withdrawTrial">封印の地から帰還する</button>
@@ -2654,21 +2708,25 @@ onUnmounted(() => {
                         <div><strong>🎫 {{ skipTicketBalance ?? 0 }}枚</strong><button type="button" aria-label="閉じる" :disabled="busy" @click="skipModalOpen = false">×</button></div>
                     </header>
                     <p v-if="skipError" class="status error underground-skip-error" role="alert">{{ skipError }}</p>
-                    <p v-if="pendingSkipRequest" class="status underground-skip-pending" role="status">結果が不明なskipがあります。同じ対象・回数で再試行してください。</p>
+                    <div v-if="pendingSkipRequest" class="status underground-skip-pending" role="status">
+                        <p>結果が不明なskipがあります。残高表示にかかわらず、前回と同じ内容を再確認できます。</p>
+                        <button class="underground-skip-retry" type="button" :disabled="busy" @click="retryPendingSkip">前回のskip結果を再確認する</button>
+                    </div>
                     <p class="field-hint">1回の操作で使える上限は1,000回（試練は1,000周）です。</p>
                     <section class="underground-skip-category" aria-labelledby="underground-skip-ground-title">
                         <h3 id="underground-skip-ground-title">狩場</h3>
                         <label>対象
-                            <select :value="selectedHuntingGroundKey" :disabled="busy" @change="changeHuntingGround">
+                            <select :value="selectedSkipHuntingGroundKey" :disabled="busy" @change="changeSkipHuntingGround">
                                 <option v-for="ground in unlockedHuntingGrounds" :key="`modal-ground:${ground.key}`" :value="ground.key">{{ ground.name }}</option>
                             </select>
                         </label>
-                        <template v-if="selectedHuntingGround">
-                            <p>1回 = {{ selectedHuntingGround.skip.ticket_cost }}枚・実戦 {{ selectedHuntingGround.skip.actual_clear_count }} / {{ selectedHuntingGround.skip.actual_clears_required }}勝</p>
-                            <p v-if="!selectedHuntingGround.skip.unlocked" class="field-hint">実戦clearがあと{{ selectedHuntingGround.skip.actual_clears_required - selectedHuntingGround.skip.actual_clear_count }}回必要です。</p>
+                        <template v-if="selectedSkipHuntingGround">
+                            <p>1回 = {{ selectedSkipHuntingGround.skip.ticket_cost }}枚・実戦 {{ selectedSkipHuntingGround.skip.actual_clear_count }} / {{ selectedSkipHuntingGround.skip.actual_clears_required }}勝</p>
+                            <p v-if="selectedSkipHuntingGround.entry_key_cost > 0">さらに鍵{{ selectedSkipHuntingGround.entry_key_cost }}個 / 回（所持 {{ selectedSkipHuntingGround.key_balance }}個）</p>
+                            <p v-if="!selectedSkipHuntingGround.skip.unlocked" class="field-hint">実戦clearがあと{{ selectedSkipHuntingGround.skip.actual_clears_required - selectedSkipHuntingGround.skip.actual_clear_count }}回必要です。</p>
                             <div class="underground-skip-shortcuts">
-                                <button type="button" :disabled="skipDisabled(selectedHuntingGround.skip) || shortcutSkipExecutions(selectedHuntingGround.skip, 0.5) < 1 || skipIntentBlocked('hunting_ground', selectedHuntingGround.key, shortcutSkipExecutions(selectedHuntingGround.skip, 0.5))" @click="runSkip('hunting_ground', selectedHuntingGround.key, shortcutSkipExecutions(selectedHuntingGround.skip, 0.5))">50%使用（{{ shortcutSkipExecutions(selectedHuntingGround.skip, 0.5) }}回）</button>
-                                <button type="button" :disabled="skipDisabled(selectedHuntingGround.skip) || maximumSkipExecutions(selectedHuntingGround.skip) < 1 || skipIntentBlocked('hunting_ground', selectedHuntingGround.key, maximumSkipExecutions(selectedHuntingGround.skip))" @click="runSkip('hunting_ground', selectedHuntingGround.key, maximumSkipExecutions(selectedHuntingGround.skip))">100%使用（{{ maximumSkipExecutions(selectedHuntingGround.skip) }}回）</button>
+                                <button type="button" :disabled="selectedSkipHuntingGround.disabled || skipDisabled(selectedSkipHuntingGround.skip) || shortcutSkipExecutions(selectedSkipHuntingGround.skip, 0.5) < 1 || skipIntentBlocked('hunting_ground', selectedSkipHuntingGround.key, shortcutSkipExecutions(selectedSkipHuntingGround.skip, 0.5))" @click="runSkip('hunting_ground', selectedSkipHuntingGround.key, shortcutSkipExecutions(selectedSkipHuntingGround.skip, 0.5))">50%使用（{{ shortcutSkipExecutions(selectedSkipHuntingGround.skip, 0.5) }}回）</button>
+                                <button type="button" :disabled="selectedSkipHuntingGround.disabled || skipDisabled(selectedSkipHuntingGround.skip) || maximumSkipExecutions(selectedSkipHuntingGround.skip) < 1 || skipIntentBlocked('hunting_ground', selectedSkipHuntingGround.key, maximumSkipExecutions(selectedSkipHuntingGround.skip))" @click="runSkip('hunting_ground', selectedSkipHuntingGround.key, maximumSkipExecutions(selectedSkipHuntingGround.skip))">100%使用（{{ maximumSkipExecutions(selectedSkipHuntingGround.skip) }}回）</button>
                             </div>
                         </template>
                         <ul v-if="(state.hunting_grounds ?? []).some((ground) => ground.locked)" class="underground-skip-locked-list">

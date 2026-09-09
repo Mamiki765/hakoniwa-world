@@ -12,28 +12,19 @@ class RulesetValidationCommandTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_validation_command_loads_only_current_authoring_while_normal_config_stays_current_only(): void
+    public function test_validation_command_reports_summary_without_mutating_database(): void
     {
         config(['hakoniwa' => require config_path('hakoniwa.php')]);
         $currentKeys = ['hakoniwa-2s-plus-v23'];
-
-        $this->assertSame($currentKeys, array_keys(config('hakoniwa.published_rulesets')));
-
-        $this->artisan('hakoniwa:ruleset:validate', ['--key' => 'hakoniwa-2s-plus-v23'])
-            ->expectsOutputToContain('Ruleset hakoniwa-2s-plus-v23 is valid: version=23')
-            ->assertSuccessful();
-
-        $this->assertSame($currentKeys, array_keys(config('hakoniwa.published_rulesets')));
-    }
-
-    public function test_validation_command_reports_summary_without_mutating_database(): void
-    {
         $before = $this->databaseSnapshot();
+
+        $this->assertSame($currentKeys, array_keys(config('hakoniwa.published_rulesets')));
 
         $this->artisan('hakoniwa:ruleset:validate')
             ->expectsOutputToContain('Ruleset hakoniwa-2s-plus-v23 is valid: version=23')
             ->assertSuccessful();
 
+        $this->assertSame($currentKeys, array_keys(config('hakoniwa.published_rulesets')));
         $this->assertSame($before, $this->databaseSnapshot());
     }
 

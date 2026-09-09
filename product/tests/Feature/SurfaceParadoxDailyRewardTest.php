@@ -106,6 +106,10 @@ final class SurfaceParadoxDailyRewardTest extends TestCase
         $this->assertSame(10, $six['progress']);
         $this->assertTrue($six['completed_now']);
         $this->assertSame(10, $six['paradox_balance']);
+        $afterCompletion = $quests->recordUndergroundBattles($user->id, 1, 'test-battle-group-c');
+        $this->assertSame(10, $afterCompletion['progress']);
+        $this->assertFalse($afterCompletion['completed_now']);
+        $this->assertDatabaseCount('user_daily_quest_activities', 3);
 
         $command = $quests->recordCommandRegistered($user->id, 'item:123');
         $this->assertSame(DailyQuestService::COMMAND_REGISTERED, $command['key']);

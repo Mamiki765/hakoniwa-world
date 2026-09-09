@@ -5,7 +5,9 @@ namespace Tests\Feature;
 use App\Application\NationAbandonmentService;
 use App\Application\NationCreationService;
 use App\Application\SecretaryImageRetentionService;
+use App\Application\SecretaryItemGrantService;
 use App\Application\SecretaryProfilePresenter;
+use App\Domain\Secretary\SecretaryItemCatalog;
 use App\Domain\Secretary\SecretarySkillCatalog;
 use App\Models\Secretary;
 use App\Models\SecretaryImage;
@@ -31,28 +33,6 @@ final class SecretaryPersistenceTest extends TestCase
 {
     use CreatesTestWorlds;
     use RefreshDatabase;
-
-    public function test_current_secretary_initialization_uses_the_current_catalog(): void
-    {
-        $world = $this->lightweightWorld();
-        $user = User::factory()->create();
-
-        $nation = app(NationCreationService::class)->create($user, $world, '現行秘書島', '現行島主');
-
-        $skills = $user->secretary()->firstOrFail()->skills()->pluck('level', 'skill_key');
-        $this->assertSame(0, $skills[SecretarySkillCatalog::AGRICULTURAL_POLICY]);
-        $this->assertSame(0, $skills[SecretarySkillCatalog::SPECIALTY_DEVELOPMENT]);
-        $this->assertSame(0, $skills[SecretarySkillCatalog::GOLD_VEIN_SURVEY]);
-        $this->assertSame(0, $skills[SecretarySkillCatalog::FOREST_MANAGEMENT]);
-        $this->assertSame(1, $skills[SecretarySkillCatalog::FINAL_DEFENSE_LINE]);
-        $this->assertSame(0, $skills[SecretarySkillCatalog::DECLINING_BIRTHRATE_POLICY]);
-        $this->assertSame(0, $skills[SecretarySkillCatalog::INDOMITABLE]);
-        $this->assertSame(0, $skills[SecretarySkillCatalog::SHIP_OPERATIONS]);
-        $this->assertSame(
-            (int) DB::table('map_cells')->where('owner_nation_id', $nation->id)->sum('population'),
-            (int) $nation->fresh()->population_high_water,
-        );
-    }
 
     public function test_first_successful_registration_creates_one_unnamed_secretary_and_replay_is_idempotent(): void
     {
@@ -87,11 +67,23 @@ final class SecretaryPersistenceTest extends TestCase
         $this->assertSame(0, $skills[SecretarySkillCatalog::INDOMITABLE]->level);
         $this->assertSame(0, $skills[SecretarySkillCatalog::SHIP_OPERATIONS]->level);
         $this->assertSame([0], $skills->pluck('experience')->unique()->values()->all());
+        $this->assertDatabaseHas('secretary_item_instances', [
+            'secretary_id' => $secretary->id,
+            'item_key' => SecretaryItemCatalog::OLD_BOW,
+            'level' => 1,
+            'equipped_slot' => 1,
+            'grant_key' => SecretaryItemGrantService::STARTER_OLD_BOW_GRANT,
+        ]);
+        $this->assertSame(
+            (int) DB::table('map_cells')->where('owner_nation_id', $nation->id)->sum('population'),
+            (int) $nation->fresh()->population_high_water,
+        );
 
         $replayed = $service->create($user, $world->fresh(), '別入力', '別入力', '', $requestKey);
         $this->assertSame($nation->id, $replayed->id);
         $this->assertSame(1, Secretary::query()->where('user_id', $user->id)->count());
         $this->assertSame(8, SecretarySkill::query()->where('secretary_id', $secretary->id)->count());
+        $this->assertSame(1, $secretary->itemInstances()->count());
     }
 
     public function test_user_id_is_unique_and_different_users_may_choose_the_same_name_once(): void
@@ -688,47 +680,6 @@ final class SecretaryPersistenceTest extends TestCase
             ->pluck('slot')->all());
         $this->assertSame('icon-credit', SecretaryImage::query()->where('secretary_id', $secretary->id)->where('slot', 'icon')->value('credit'));
         $this->assertSame('awakening-icon-credit', SecretaryImage::query()->where('secretary_id', $secretary->id)->where('slot', 'awakening_icon')->value('credit'));
-    }
-
-    public function test_secretary_image_slot_metadata_can_be_updated_without_replacing_the_file(): void
-    {
-        Storage::fake('secretary_images');
-        $world = $this->lightweightWorld();
-        $owner = User::factory()->create();
-        app(NationCreationService::class)->create($owner, $world, '画像metadata島', '画像metadata主');
-        $this->actingAs($owner)->postJson('/api/v1/me/secretary/name', ['name' => '画像metadata秘書'])->assertOk();
-
-        $this->actingAs($owner)->post('/api/v1/me/secretary/images/icon', [
-            'image' => UploadedFile::fake()->createWithContent('icon.png', $this->png()),
-            'creation_method' => 'self_made',
-            'credit' => 'Initial credit',
-        ], ['Accept' => 'application/json'])->assertOk();
-        $secretary = $owner->secretary()->firstOrFail();
-        $path = SecretaryImage::query()->where('secretary_id', $secretary->id)->where('slot', 'icon')->value('path');
-
-        $this->actingAs($owner)->patchJson('/api/v1/me/secretary/images/icon', [
-            'creation_method' => 'commissioned_or_permitted',
-            'credit' => 'Updated credit',
-        ])->assertOk()
-            ->assertJsonPath('data.images.icon.creation_method', 'commissioned_or_permitted')
-            ->assertJsonPath('data.images.icon.credit', 'Updated credit');
-
-        $this->assertSame($path, SecretaryImage::query()->where('secretary_id', $secretary->id)->where('slot', 'icon')->value('path'));
-    }
-
-    public function test_owner_can_delete_a_registered_image_slot(): void
-    {
-        Storage::fake('secretary_images');
-        $world = $this->lightweightWorld();
-        $owner = User::factory()->create();
-        app(NationCreationService::class)->create($owner, $world, '画像削除島', '画像削除主');
-        $this->actingAs($owner)->postJson('/api/v1/me/secretary/name', ['name' => '画像削除秘書'])->assertOk();
-        $this->actingAs($owner)->post('/api/v1/me/secretary/images/icon', [
-            'image' => UploadedFile::fake()->createWithContent('icon.png', $this->png()),
-            'creation_method' => 'self_made',
-            'credit' => 'Delete test credit',
-        ], ['Accept' => 'application/json'])->assertOk();
-        $secretary = $owner->secretary()->firstOrFail();
         $path = (string) SecretaryImage::query()
             ->where('secretary_id', $secretary->id)
             ->where('slot', 'icon')

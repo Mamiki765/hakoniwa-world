@@ -42,7 +42,9 @@ final class UndergroundAlphaV1BattleProjector
                     'side' => $this->side($side),
                     'actor_name' => $this->displayName($side, $playerDisplayName, $enemyDisplayName),
                     'target_name' => null,
-                    'label' => $this->actionLabel($actionKey, $catalog),
+                    'label' => ($row['reason'] ?? null) === 'outrage_chance'
+                        ? '無礼者！'
+                        : $this->actionLabel($actionKey, $catalog),
                 ];
 
                 continue;

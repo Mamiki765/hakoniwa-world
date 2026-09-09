@@ -1133,8 +1133,10 @@ describe('application lobby and island entry', () => {
         expect(fetchMock).toHaveBeenCalledTimes(1);
     });
 
-    it('shows the themed compensation banner and claims a warehouse grant from its modal', async () => {
+    it('retries an ambiguous compensation claim with the same request id and keeps refresh failure separate from settlement', async () => {
+        vi.useFakeTimers();
         let claimed = false;
+        let claimAttempts = 0;
         const grant = {
             id: 41,
             grant_key: 'incident-test-owner-1',
@@ -1150,19 +1152,25 @@ describe('application lobby and island entry', () => {
             const path = String(input);
             const lobby = publicResponse(path);
             if (lobby !== null) return lobby;
-            if (path === '/api/v1/me') return response({
+            if (path === '/api/v1/me') {
+                if (claimAttempts >= 2) throw new TypeError('account refresh failed');
+                return response({
                 id: 1,
                 display_name: 'Owner',
                 paradox: { name: '輝石', unit: 'Pd', description: '説明', balance: 0 },
                 can_manage_announcements: false,
                 can_manage_inquiries: false,
                 providers: [],
-            });
+                });
+            }
             if (path === '/api/v1/me/daily-login') return response({
                 awarded_now: false, canonical_day: '2026-09-09', paradox_awarded: 0, skip_tickets_awarded: 0,
                 paradox: { name: '輝石', unit: 'Pd', description: '説明', balance: 0 }, skip_ticket_balance: 0,
             });
-            if (path === '/api/v1/me/nation') return response(ownerNationFixture);
+            if (path === '/api/v1/me/nation') {
+                if (claimAttempts >= 2) throw new TypeError('nation refresh failed');
+                return response(ownerNationFixture);
+            }
             if (path === '/api/v1/me/secretary?world_id=1') return response(null);
             if (path === '/api/v1/worlds/1/map-spaces') return response([{
                 id: 2, world_id: 1, key: 'surface', name: '地上', bounds_revision: 'bounds-0-59',
@@ -1170,9 +1178,14 @@ describe('application lobby and island entry', () => {
             }]);
             if (path === '/api/v1/me/underground/surface-map') return response(null);
             if (path.includes('/api/v1/map-spaces/2/chunks/')) return response(emptyChunk);
-            if (path === '/api/v1/nations/3/compensation-grants') return response(claimed ? [] : [grant]);
+            if (path === '/api/v1/nations/3/compensation-grants') {
+                if (claimAttempts >= 2) throw new TypeError('warehouse refresh failed');
+                return response(claimed ? [] : [grant]);
+            }
             if (path === '/api/v1/nations/3/compensation-grants/41/claim' && init?.method === 'POST') {
+                claimAttempts++;
                 claimed = true;
+                if (claimAttempts === 1) throw new TypeError('claim response lost');
                 return response({
                     grant: { ...grant, status: 'claimed', claimed_at: '2026-09-09T12:00:00+09:00' },
                     applied_now: [
@@ -1180,7 +1193,7 @@ describe('application lobby and island entry', () => {
                         { asset_key: 'skip_ticket', applied: 1000, remaining: 0 },
                     ],
                     already_claimed: false,
-                    duplicate: false,
+                    duplicate: true,
                 });
             }
             if (path === '/api/v1/me/daily-quests/development-opened') return response({
@@ -1219,12 +1232,24 @@ describe('application lobby and island entry', () => {
 
         await wrapper.get('.compensation-grant .button.primary').trigger('click');
         await flushPromises();
-        expect(JSON.parse(String(fetchMock.mock.calls.find(([path]) => String(path).endsWith('/41/claim'))?.[1]?.body)))
-            .toEqual({ request_id: expect.any(String) });
+        expect(wrapper.get('.compensation-modal').text()).toContain('claim response lost');
+        expect(wrapper.get('.compensation-grant .button.primary').text()).toBe('受取結果を再確認する');
+        await wrapper.get('.compensation-grant .button.primary').trigger('click');
+        await flushPromises();
+
+        const claimBodies = fetchMock.mock.calls
+            .filter(([path]) => String(path).endsWith('/41/claim'))
+            .map(([, init]) => JSON.parse(String(init?.body)) as { request_id: string });
+        expect(claimBodies).toHaveLength(2);
+        expect(claimBodies[0]?.request_id).toEqual(expect.any(String));
+        expect(claimBodies[1]?.request_id).toBe(claimBodies[0]?.request_id);
         expect(wrapper.get('.reward-toast').text()).toContain('資金1,234億円');
         expect(wrapper.get('.reward-toast').text()).toContain('スキップチケット1,000枚');
         expect(wrapper.find('.compensation-banner').exists()).toBe(false);
         expect(wrapper.find('.compensation-modal').exists()).toBe(false);
+        await vi.advanceTimersByTimeAsync(5_250);
+        await flushPromises();
+        expect(wrapper.get('.reward-toast').text()).toContain('配布は受取済みですが、最新表示を更新できませんでした。');
         wrapper.unmount();
     });
 
@@ -4193,7 +4218,12 @@ describe('Underground equipment navigation', () => {
             .find((button) => button.text() === '返事をする')!.trigger('click');
         await flushPromises();
         expect(wrapper.get('.underground-guide-conversation').text()).toContain('案内人「選択への返答」');
+        expect(wrapper.get('.underground-guide-conversation').text()).toContain('げんこつ');
         expect(wrapper.get('.underground-guide-conversation').text()).toContain('話をやめる');
+        await wrapper.findAll('.underground-guide-conversation-choices button')
+            .find((button) => button.text() === 'げんこつ')!.trigger('click');
+        await flushPromises();
+        expect(wrapper.get('.underground-guide-conversation').text()).toContain('案内人「いぎゃっ！？」');
         expect(wrapper.findAll('.underground-guide-actions > button').map((button) => button.text()))
             .not.toContain('過去について問う');
         await guideAction('過去のイベントを振り返る').trigger('click');

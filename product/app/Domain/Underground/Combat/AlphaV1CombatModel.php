@@ -891,6 +891,10 @@ final readonly class AlphaV1CombatModel
         if (! is_int($completeGuardChance) || $completeGuardChance < 0 || $completeGuardChance > 10_000) {
             throw new InvalidArgumentException("Underground alpha-v1 enemy [{$enemyKey}] complete guard trait is invalid.");
         }
+        $outrageChance = $modifiers['outrage_chance_bps'] ?? 0;
+        if (! is_int($outrageChance) || $outrageChance < 0 || $outrageChance > 10_000) {
+            throw new InvalidArgumentException("Underground alpha-v1 enemy [{$enemyKey}] outrage trait is invalid.");
+        }
         $roundStartStatusKey = $modifiers['round_start_status_key'] ?? null;
         if ($roundStartStatusKey !== null) {
             if (! is_string($roundStartStatusKey) || $roundStartStatusKey === '') {
@@ -1144,6 +1148,24 @@ final readonly class AlphaV1CombatModel
 
         while (true) {
             $action = $this->ai->select($actor, $target, $catalog, $round, $nextRuleIndex, $partyAllies);
+            $outrageChance = (int) ($actor->modifiers['outrage_chance_bps'] ?? 0);
+            if ($actor->side === 'enemy'
+                && $outrageChance > 0
+                && $this->ai->skillAvailable($actor, $catalog, 'pressure_heavy')
+                && $random->integer(
+                    "alpha-v1:outrage:{$actor->combatantId}:{$round}",
+                    1,
+                    10_000,
+                ) <= $outrageChance) {
+                $action = [
+                    'type' => 'skill',
+                    'key' => 'pressure_heavy',
+                    'reason' => 'outrage_chance',
+                    'fallback' => false,
+                    'mp_blocked' => false,
+                    'next_rule_index' => count($actor->aiRules),
+                ];
+            }
             $actionId = $partyMode ? $this->partyActionId($actor, $round, $decisionIndex++) : null;
             [$decisionTargetId, $decisionTargetIds] = $this->decisionTargets(
                 $action,

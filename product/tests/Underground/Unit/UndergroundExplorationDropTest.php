@@ -26,7 +26,12 @@ final class UndergroundExplorationDropTest extends TestCase
     {
         $catalog = app(UndergroundAlphaV1PlayerCatalog::class);
         $grounds = collect($catalog->explorationHuntingGrounds())->keyBy('key');
-        $this->assertSame(['shallow_caves', 'black_crystal_cave'], $grounds->keys()->all());
+        $this->assertSame([
+            'shallow_caves',
+            'black_crystal_cave',
+            'shining_kingdom',
+            'shining_kingdom_vault',
+        ], $grounds->keys()->all());
         $this->assertSame('secretary-underground-exploration-alpha-v1', $grounds['shallow_caves']['content_identity']);
         $this->assertSame('trial_01', $grounds['black_crystal_cave']['required_trial_key']);
         $this->assertSame([30, 60], [
@@ -75,6 +80,39 @@ final class UndergroundExplorationDropTest extends TestCase
             $black->where('drop_profile', 'rare')->sum('weight'),
         ]);
 
+        $kingdom = collect($catalog->explorationEncounters('shining_kingdom'))->keyBy('key');
+        $this->assertCount(14, $kingdom);
+        $normal = $kingdom->reject(static fn (array $encounter, string $key): bool => in_array(
+            $key,
+            ['kingdom_duelist', 'kingdom_archmage'],
+            true,
+        ));
+        $strong = $kingdom->only(['kingdom_duelist', 'kingdom_archmage']);
+        $this->assertSame(9200, $normal->sum('weight'));
+        $this->assertEqualsWithDelta(801.4, $normal->sum(
+            static fn (array $encounter): int => $encounter['weight'] * $encounter['xp'],
+        ) / 9200, 0.0001);
+        $this->assertEqualsWithDelta(218.1714, $normal->sum(
+            static fn (array $encounter): int => $encounter['weight'] * $encounter['shards'],
+        ) / 9200, 0.0001);
+        $this->assertEqualsWithDelta(914, $strong->sum(
+            static fn (array $encounter): int => $encounter['weight'] * $encounter['xp'],
+        ) / 800, 0.0001);
+        $this->assertEqualsWithDelta(248.5, $strong->sum(
+            static fn (array $encounter): int => $encounter['weight'] * $encounter['shards'],
+        ) / 800, 0.0001);
+        $this->assertSame([91, 120, 'trial_02'], [
+            $grounds['shining_kingdom']['item_level_min'],
+            $grounds['shining_kingdom']['item_level_max'],
+            $grounds['shining_kingdom']['required_trial_key'],
+        ]);
+        $this->assertSame([1, 220, 20, 'shining_kingdom_vault'], [
+            $grounds['shining_kingdom_vault']['entry_key_cost'],
+            $grounds['shining_kingdom_vault']['vault_base_g'],
+            $grounds['shining_kingdom_vault']['treasure_multiplier'],
+            $grounds['shining_kingdom_vault']['forced_drop_profile'],
+        ]);
+
         $blackConfig = config('underground-alpha-v1.exploration.grounds.black_crystal_cave.encounters');
         $this->assertIsArray($blackConfig);
         $this->assertSame([
@@ -116,6 +154,18 @@ final class UndergroundExplorationDropTest extends TestCase
             'rare' => [
                 'presence_bps' => 10_000,
                 'rarity_weights' => ['common' => 5000, 'uncommon' => 3000, 'rare' => 1500, 'epic' => 500],
+            ],
+            'shining_kingdom' => [
+                'presence_bps' => 2610,
+                'rarity_weights' => ['common' => 8429, 'uncommon' => 1149, 'rare' => 383, 'epic' => 39],
+            ],
+            'shining_kingdom_rare' => [
+                'presence_bps' => 10_000,
+                'rarity_weights' => ['common' => 0, 'uncommon' => 6000, 'rare' => 3500, 'epic' => 500],
+            ],
+            'shining_kingdom_vault' => [
+                'presence_bps' => 10_000,
+                'rarity_weights' => ['common' => 0, 'uncommon' => 7317, 'rare' => 2439, 'epic' => 244],
             ],
             'trial2_shallow' => [
                 'presence_bps' => 5500,

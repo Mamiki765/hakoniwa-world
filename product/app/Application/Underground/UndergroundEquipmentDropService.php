@@ -30,6 +30,7 @@ final readonly class UndergroundEquipmentDropService
         string $huntingGroundKey,
         array $encounter,
         int $battleSeed,
+        ?string $dropTierKey = null,
     ): array {
         if (! $battle->exists
             || $battle->underground_profile_id !== $profile->id
@@ -39,8 +40,9 @@ final readonly class UndergroundEquipmentDropService
             throw new RuntimeException('Underground equipment drop settlement requires a persisted exploration victory.');
         }
 
-        $drop = $this->roll(
-            $huntingGroundKey,
+        $this->playerCatalog->explorationHuntingGround($huntingGroundKey);
+        $drop = $this->rollForTier(
+            $dropTierKey ?? $huntingGroundKey,
             $encounter,
             $battleSeed,
             implode(':', [

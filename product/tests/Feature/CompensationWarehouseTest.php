@@ -9,6 +9,7 @@ use App\Domain\Economy\NationCapacityResolver;
 use App\Models\Nation;
 use App\Models\NationResource;
 use App\Models\Secretary;
+use App\Models\TurnRun;
 use App\Models\User;
 use App\Models\UserSkipTicketBalance;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -158,6 +159,57 @@ final class CompensationWarehouseTest extends TestCase
             'amount' => 10,
             'claimed_amount' => 2,
         ]);
+    }
+
+    public function test_claim_is_rejected_while_the_next_production_turn_is_unresolved_and_the_same_request_can_retry(): void
+    {
+        [$user, $nation] = $this->registeredNation('配布Turn待機島');
+        $nation->update(['money' => 0]);
+        $grant = app(CompensationWarehouseService::class)->createGrant(
+            $nation,
+            'incident-2026-09-09-turn-guard',
+            'test-operator',
+            'Turn境界確認配布',
+            ['money' => 25],
+        )['grant'];
+        $world = $nation->world()->firstOrFail();
+        $run = TurnRun::query()->create([
+            'world_id' => $world->id,
+            'target_turn' => $world->current_turn + 1,
+            'ruleset_version_id' => $world->ruleset_version_id,
+            'random_seed' => str_repeat('c', 64),
+            'source' => 'manual',
+            'is_dry_run' => false,
+            'status' => TurnRun::STATUS_PENDING,
+            'attempt_count' => 1,
+            'pipeline' => [],
+            'phase_results' => [],
+            'failure_context' => [],
+        ]);
+        $requestId = (string) Str::uuid();
+
+        $this->actingAs($user)->postJson(
+            "/api/v1/nations/{$nation->id}/compensation-grants/{$grant->id}/claim",
+            ['request_id' => $requestId],
+        )->assertConflict()->assertJsonPath('code', 'compensation_claim_failed');
+
+        $this->assertSame(0, (int) $nation->fresh()->money);
+        $this->assertSame('pending', $grant->fresh()->status);
+        $this->assertDatabaseHas('compensation_grant_items', [
+            'compensation_grant_id' => $grant->id,
+            'claimed_amount' => 0,
+        ]);
+        $this->assertDatabaseCount('compensation_grant_claims', 0);
+
+        $run->update(['status' => TurnRun::STATUS_COMPLETED, 'completed_at' => now()]);
+        $this->actingAs($user)->postJson(
+            "/api/v1/nations/{$nation->id}/compensation-grants/{$grant->id}/claim",
+            ['request_id' => $requestId],
+        )->assertOk()
+            ->assertJsonPath('data.grant.status', 'claimed')
+            ->assertJsonPath('data.duplicate', false);
+        $this->assertSame(25, (int) $nation->fresh()->money);
+        $this->assertDatabaseCount('compensation_grant_claims', 1);
     }
 
     /** @return array{User, Nation} */

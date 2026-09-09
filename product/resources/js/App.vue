@@ -110,6 +110,7 @@ const compensationGrants = ref<CompensationGrant[]>([]);
 const compensationModalOpen = ref(false);
 const compensationLoading = ref(false);
 const compensationClaimingId = ref<number | null>(null);
+const pendingCompensationClaim = ref<{ grantId: number; requestId: string } | null>(null);
 const compensationError = ref('');
 const undergroundSurfaceMap = ref<UndergroundSurfaceMap | null>(null);
 const selectedUndergroundSlot = ref<UndergroundFacilityTarget | null>(null);
@@ -430,6 +431,13 @@ function closeCompensationWarehouse(): void {
 async function claimCompensation(grant: CompensationGrant): Promise<void> {
     const currentNation = nation.value;
     if (currentNation === null || compensationClaimingId.value !== null) return;
+    const currentPending = pendingCompensationClaim.value;
+    if (currentPending !== null && currentPending.grantId !== grant.id) {
+        compensationError.value = '結果が不明な配布を再確認してから、別の配布を受け取ってください。';
+        return;
+    }
+    const pending = currentPending ?? { grantId: grant.id, requestId: crypto.randomUUID() };
+    pendingCompensationClaim.value = pending;
     compensationClaimingId.value = grant.id;
     compensationError.value = '';
     try {
@@ -437,9 +445,18 @@ async function claimCompensation(grant: CompensationGrant): Promise<void> {
             `/api/v1/nations/${currentNation.id}/compensation-grants/${grant.id}/claim`,
             {
                 method: 'POST',
-                body: JSON.stringify({ request_id: crypto.randomUUID() }),
+                body: JSON.stringify({ request_id: pending.requestId }),
             },
         );
+        pendingCompensationClaim.value = null;
+        compensationGrants.value = compensationGrants.value.flatMap((candidate) => {
+            if (candidate.id !== grant.id) return [candidate];
+            return result.grant.status === 'claimed'
+                || result.grant.items.every((item) => item.remaining_amount < 1)
+                ? []
+                : [result.grant];
+        });
+        if (compensationGrants.value.length === 0) compensationModalOpen.value = false;
         const labels = result.applied_now.flatMap((applied) => {
             if (applied.applied < 1) return [];
             const item = grant.items.find((candidate) => candidate.asset_key === applied.asset_key);
@@ -448,12 +465,23 @@ async function claimCompensation(grant: CompensationGrant): Promise<void> {
         showRewardToast(labels.length > 0
             ? `配布倉庫から${labels.join('、')}を受け取りました。`
             : '現在の所持上限まで受取済みです。残りは配布倉庫に保管されています。');
-        await Promise.all([
-            refreshMyNation(),
-            loadCompensationGrants(),
+        const requestGeneration = nationStateGeneration;
+        const refreshes = await Promise.allSettled([
+            api<Nation | null>('/api/v1/me/nation').then((refreshedNation) => {
+                if (requestGeneration === nationStateGeneration) nation.value = refreshedNation;
+            }),
+            api<CompensationGrant[]>(`/api/v1/nations/${currentNation.id}/compensation-grants`).then((grants) => {
+                compensationGrants.value = grants;
+                if (grants.length === 0) compensationModalOpen.value = false;
+            }),
             api<CurrentUser>('/api/v1/me').then((refreshedUser) => { user.value = refreshedUser; }),
         ]);
+        if (refreshes.some((refresh) => refresh.status === 'rejected')) {
+            compensationError.value = '配布は受取済みですが、最新表示を更新できませんでした。';
+            showRewardToast(compensationError.value);
+        }
     } catch (error) {
+        if (error instanceof ApiError) pendingCompensationClaim.value = null;
         compensationError.value = error instanceof Error ? error.message : '配布を受け取れませんでした。';
     } finally {
         compensationClaimingId.value = null;
@@ -2483,10 +2511,14 @@ async function abandonNation(): Promise<void> {
                 <button
                     class="button primary"
                     type="button"
-                    :disabled="compensationClaimingId !== null"
+                    :disabled="compensationClaimingId !== null || (pendingCompensationClaim !== null && pendingCompensationClaim.grantId !== grant.id)"
                     @click="claimCompensation(grant)"
                 >
-                    {{ compensationClaimingId === grant.id ? '受取中…' : '受け取る' }}
+                    {{ compensationClaimingId === grant.id
+                        ? '受取中…'
+                        : pendingCompensationClaim?.grantId === grant.id
+                            ? '受取結果を再確認する'
+                            : '受け取る' }}
                 </button>
             </article>
         </section>

@@ -1,5 +1,83 @@
 <?php
 
+$kingdomEnemy = static function (
+    string $label,
+    array $stats,
+    int $maxHp,
+    int $physicalDefense,
+    int $magicalDefense,
+    int $weaponPower,
+    string $category = 'physical',
+    array $skills = [],
+    array $aiRules = [],
+    array $modifiers = [],
+    int $normalPotencyBps = 7_000,
+): array {
+    $primaryStat = $category === 'miracle' ? 'spirit' : 'might';
+
+    return [
+        'label' => $label,
+        'boss' => false,
+        'base_stats' => $stats,
+        'max_hp' => $maxHp,
+        'physical_defense' => $physicalDefense,
+        'magical_defense' => $magicalDefense,
+        'weapon_power' => $weaponPower,
+        'normal_attack' => [
+            'type' => 'damage', 'category' => $category, 'potency_bps' => $normalPotencyBps,
+            'stat_coefficients' => [$primaryStat => 10_000], 'weapon_coefficient_bps' => 10_000,
+            'fixed' => 0, 'target_max_hp_bps' => 0, 'can_crit' => false, 'dodgeable' => true, 'hits' => 1,
+        ],
+        'skills' => $skills,
+        'ai_rules' => $aiRules === []
+            ? [['conditions' => [['type' => 'always']], 'action' => 'normal_attack']]
+            : $aiRules,
+        'modifiers' => $modifiers,
+    ];
+};
+
+$attack = [['conditions' => [['type' => 'always']], 'action' => 'normal_attack']];
+$guardThenAttack = [
+    ['conditions' => [['type' => 'round_modulo', 'modulo' => 4, 'equals' => 0]], 'action' => 'defend'],
+    ...$attack,
+];
+$telegraphThenHeavy = [
+    ['conditions' => [['type' => 'self_has_status', 'status' => 'telegraph']], 'action' => 'skill:pressure_heavy'],
+    ['conditions' => [['type' => 'round_modulo', 'modulo' => 3, 'equals' => 2]], 'action' => 'skill:enemy_telegraph'],
+    ...$attack,
+];
+$healer = [
+    ['conditions' => [['type' => 'own_hp_lte', 'percent' => 55]], 'action' => 'skill:mending_prayer'],
+    ['conditions' => [['type' => 'always']], 'action' => 'skill:holy_bolt'],
+];
+$shiningKingdomEncounters = [
+    'kingdom_gate_shield' => ['label' => '城門の盾兵', 'weight' => 900, 'xp' => 650, 'shards' => 175, 'drop_profile' => 'shining_kingdom', 'item_level_min' => 91, 'item_level_max' => 100, 'enemy' => $kingdomEnemy('城門の盾兵', ['vitality' => 40, 'might' => 26, 'finesse' => 8, 'spirit' => 16, 'agility' => 10], 7500, 450, 340, 1440, aiRules: $guardThenAttack)],
+    'kingdom_guard' => ['label' => '王都の衛兵', 'weight' => 900, 'xp' => 680, 'shards' => 185, 'drop_profile' => 'shining_kingdom', 'item_level_min' => 91, 'item_level_max' => 100, 'enemy' => $kingdomEnemy('王都の衛兵', ['vitality' => 28, 'might' => 34, 'finesse' => 18, 'spirit' => 10, 'agility' => 10], 6000, 350, 310, 1620, aiRules: $guardThenAttack)],
+    'kingdom_crossbow' => ['label' => '城壁の弩兵', 'weight' => 900, 'xp' => 710, 'shards' => 195, 'drop_profile' => 'shining_kingdom', 'item_level_min' => 91, 'item_level_max' => 100, 'enemy' => $kingdomEnemy('城壁の弩兵', ['vitality' => 18, 'might' => 28, 'finesse' => 38, 'spirit' => 6, 'agility' => 10], 5000, 290, 280, 2070, aiRules: $guardThenAttack)],
+    'kingdom_healer' => ['label' => '王城の施療師', 'weight' => 900, 'xp' => 740, 'shards' => 205, 'drop_profile' => 'shining_kingdom', 'item_level_min' => 91, 'item_level_max' => 100, 'enemy' => $kingdomEnemy('王城の施療師', ['vitality' => 18, 'might' => 6, 'finesse' => 16, 'spirit' => 50, 'agility' => 10], 5300, 300, 380, 1620, 'miracle', ['mending_prayer', 'holy_bolt'], $healer)],
+    'kingdom_ice_mage' => ['label' => '宮廷の氷術師', 'weight' => 900, 'xp' => 770, 'shards' => 215, 'drop_profile' => 'shining_kingdom', 'item_level_min' => 91, 'item_level_max' => 100, 'enemy' => $kingdomEnemy('宮廷の氷術師', ['vitality' => 18, 'might' => 5, 'finesse' => 17, 'spirit' => 50, 'agility' => 10], 5600, 300, 410, 1710, 'miracle', ['holy_bolt'], $guardThenAttack)],
+    'kingdom_drummer' => ['label' => '王旗の鼓手', 'weight' => 900, 'xp' => 800, 'shards' => 225, 'drop_profile' => 'shining_kingdom', 'item_level_min' => 91, 'item_level_max' => 100, 'enemy' => $kingdomEnemy('王旗の鼓手', ['vitality' => 25, 'might' => 30, 'finesse' => 20, 'spirit' => 15, 'agility' => 10], 5500, 310, 310, 1530)],
+    'kingdom_lancer' => ['label' => '王都の槍兵', 'weight' => 634, 'xp' => 835, 'shards' => 230, 'drop_profile' => 'shining_kingdom', 'item_level_min' => 101, 'item_level_max' => 110, 'enemy' => $kingdomEnemy('王都の槍兵', ['vitality' => 24, 'might' => 40, 'finesse' => 18, 'spirit' => 8, 'agility' => 10], 5400, 310, 290, 1890, skills: ['pressure_heavy', 'enemy_telegraph'], aiRules: $telegraphThenHeavy)],
+    'kingdom_executioner' => ['label' => '王国の執行官', 'weight' => 634, 'xp' => 865, 'shards' => 235, 'drop_profile' => 'shining_kingdom', 'item_level_min' => 101, 'item_level_max' => 110, 'enemy' => $kingdomEnemy('王国の執行官', ['vitality' => 26, 'might' => 42, 'finesse' => 12, 'spirit' => 10, 'agility' => 10], 5700, 330, 310, 1980, skills: ['pressure_heavy', 'enemy_telegraph'], aiRules: $telegraphThenHeavy)],
+    'kingdom_barrier_mage' => ['label' => '宮廷の結界師', 'weight' => 633, 'xp' => 895, 'shards' => 240, 'drop_profile' => 'shining_kingdom', 'item_level_min' => 101, 'item_level_max' => 110, 'enemy' => $kingdomEnemy('宮廷の結界師', ['vitality' => 25, 'might' => 5, 'finesse' => 10, 'spirit' => 50, 'agility' => 10], 6400, 310, 430, 1530, 'miracle', ['holy_bolt'], $guardThenAttack)],
+    'kingdom_priest' => ['label' => '聖堂の司祭', 'weight' => 633, 'xp' => 925, 'shards' => 245, 'drop_profile' => 'shining_kingdom', 'item_level_min' => 101, 'item_level_max' => 110, 'enemy' => $kingdomEnemy('聖堂の司祭', ['vitality' => 20, 'might' => 5, 'finesse' => 15, 'spirit' => 50, 'agility' => 10], 5700, 290, 440, 1620, 'miracle', ['mending_prayer', 'holy_bolt'], $healer)],
+    'kingdom_musketeer' => ['label' => '王立銃士', 'weight' => 633, 'xp' => 955, 'shards' => 250, 'drop_profile' => 'shining_kingdom', 'item_level_min' => 101, 'item_level_max' => 110, 'enemy' => $kingdomEnemy('王立銃士', ['vitality' => 18, 'might' => 28, 'finesse' => 44, 'spirit' => 4, 'agility' => 6], 5100, 300, 290, 2250, skills: ['pressure_heavy', 'enemy_telegraph'], aiRules: $telegraphThenHeavy)],
+    'kingdom_fire_mage' => ['label' => '宮廷の火術師', 'weight' => 633, 'xp' => 985, 'shards' => 264, 'drop_profile' => 'shining_kingdom', 'item_level_min' => 101, 'item_level_max' => 110, 'enemy' => $kingdomEnemy('宮廷の火術師', ['vitality' => 16, 'might' => 4, 'finesse' => 16, 'spirit' => 54, 'agility' => 10], 5200, 270, 390, 1890, 'miracle', ['holy_bolt'], $attack)],
+    'kingdom_duelist' => ['label' => '近衛の決闘士', 'weight' => 400, 'xp' => 890, 'shards' => 244, 'drop_profile' => 'shining_kingdom', 'item_level_min' => 111, 'item_level_max' => 119, 'enemy' => $kingdomEnemy('近衛の決闘士', ['vitality' => 24, 'might' => 48, 'finesse' => 18, 'spirit' => 5, 'agility' => 5], 6500, 350, 330, 2880, skills: ['counter_stance', 'pressure_heavy', 'enemy_telegraph'], aiRules: [['conditions' => [['type' => 'self_lacks_status', 'status' => 'aegis']], 'action' => 'skill:counter_stance'], ...$telegraphThenHeavy])],
+    'kingdom_archmage' => ['label' => '宮廷の大魔術師', 'weight' => 400, 'xp' => 938, 'shards' => 253, 'drop_profile' => 'shining_kingdom', 'item_level_min' => 111, 'item_level_max' => 119, 'enemy' => $kingdomEnemy('宮廷の大魔術師', ['vitality' => 20, 'might' => 4, 'finesse' => 10, 'spirit' => 60, 'agility' => 6], 6800, 320, 480, 2430, 'miracle', ['radiant_judgment', 'enemy_telegraph'], [['conditions' => [['type' => 'round_modulo', 'modulo' => 3, 'equals' => 2]], 'action' => 'skill:enemy_telegraph'], ['conditions' => [['type' => 'self_has_status', 'status' => 'telegraph']], 'action' => 'skill:radiant_judgment'], ...$attack])],
+];
+$shiningNobleEncounter = [
+    'label' => '輝衣の宮廷貴族', 'xp' => 4200, 'shards' => 400,
+    'drop_profile' => 'shining_kingdom_rare', 'item_level_min' => 120, 'item_level_max' => 120,
+    'enemy' => $kingdomEnemy(
+        '輝衣の宮廷貴族',
+        ['vitality' => 55, 'might' => 5, 'finesse' => 10, 'spirit' => 25, 'agility' => 5],
+        25_000, 700, 700, 5_000, skills: ['pressure_heavy'],
+        aiRules: [['conditions' => [['type' => 'always']], 'action' => 'defend']],
+        modifiers: ['outrage_chance_bps' => 100], normalPotencyBps: 100,
+    ),
+];
+
 return [
     'schema_version' => 1,
     'growth_identity' => 'secretary-underground-growth-alpha-v1',
@@ -134,6 +212,18 @@ return [
                 'rare' => [
                     'presence_bps' => 10000,
                     'rarity_weights' => ['common' => 5000, 'uncommon' => 3000, 'rare' => 1500, 'epic' => 500],
+                ],
+                'shining_kingdom' => [
+                    'presence_bps' => 2610,
+                    'rarity_weights' => ['common' => 8429, 'uncommon' => 1149, 'rare' => 383, 'epic' => 39],
+                ],
+                'shining_kingdom_rare' => [
+                    'presence_bps' => 10000,
+                    'rarity_weights' => ['common' => 0, 'uncommon' => 6000, 'rare' => 3500, 'epic' => 500],
+                ],
+                'shining_kingdom_vault' => [
+                    'presence_bps' => 10000,
+                    'rarity_weights' => ['common' => 0, 'uncommon' => 7317, 'rare' => 2439, 'epic' => 244],
                 ],
                 'trial2_shallow' => [
                     'presence_bps' => 5500,
@@ -359,6 +449,34 @@ return [
                         ],
                     ],
                 ],
+            ],
+            'shining_kingdom' => [
+                'content_identity' => 'secretary-underground-shining-kingdom-v1',
+                'name' => '輝きの王国',
+                'kind' => 'hunting_ground',
+                'required_trial_key' => 'trial_02',
+                'enemy_count_by_party_size' => [1 => 1, 2 => 2, 3 => 3, 4 => 4],
+                'item_level_min' => 91,
+                'item_level_max' => 120,
+                'rare_encounter' => ['key' => 'shining_court_noble', 'chance_bps' => 100, 'encounter' => $shiningNobleEncounter],
+                'key_reward' => ['normal_chance_bps' => 670, 'rare_quantity' => 1],
+                'encounters' => $shiningKingdomEncounters,
+            ],
+            'shining_kingdom_vault' => [
+                'content_identity' => 'secretary-underground-shining-kingdom-vault-v1',
+                'name' => '輝きの王国の宝物庫',
+                'kind' => 'vault',
+                'required_trial_key' => 'trial_02',
+                'enemy_count_by_party_size' => [1 => 1, 2 => 2, 3 => 3, 4 => 4],
+                'item_level_min' => 91,
+                'item_level_max' => 120,
+                'rare_encounter' => ['key' => 'shining_court_noble', 'chance_bps' => 100, 'encounter' => $shiningNobleEncounter],
+                'entry_key_cost' => 1,
+                'vault_base_g' => 220,
+                'treasure_multiplier' => 20,
+                'forced_drop_profile' => 'shining_kingdom_vault',
+                'drop_tier_key' => 'shining_kingdom',
+                'encounters' => $shiningKingdomEncounters,
             ],
         ],
     ],

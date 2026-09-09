@@ -22,42 +22,46 @@ final readonly class DailyLoginRewardService
     public function claim(User $user): array
     {
         return DB::transaction(function () use ($user): array {
-            $lockedUser = User::query()->whereKey($user->id)->lockForUpdate()->firstOrFail();
+            $userId = (int) $user->id;
             $when = now();
             $timezone = (string) config('hakoniwa.turn_schedule.timezone', 'Asia/Tokyo');
             $day = $when->copy()->setTimezone($timezone)->toDateString();
+
+            // Underground settlement locks profile, then tickets, then Pd. Keep
+            // every multi-asset reward on the same suffix and do not hold a
+            // User FOR UPDATE lock that conflicts with ledger foreign keys.
+            DB::table('user_skip_ticket_balances')->insertOrIgnore([
+                'user_id' => $userId,
+                'balance' => 0,
+                'created_at' => $when,
+                'updated_at' => $when,
+            ]);
+            $tickets = UserSkipTicketBalance::query()->where('user_id', $userId)->lockForUpdate()->firstOrFail();
             $existing = UserDailyLoginClaim::query()
-                ->where('user_id', $lockedUser->id)
+                ->where('user_id', $userId)
                 ->where('canonical_day', $day)
                 ->lockForUpdate()
                 ->first();
             if ($existing instanceof UserDailyLoginClaim) {
-                return $this->present($lockedUser->id, $day, false, 0, 0);
+                return $this->present($userId, $day, false, 0, 0);
             }
 
-            $paradoxEntryKey = 'daily-login:'.$lockedUser->id.':'.$day;
+            $paradoxEntryKey = 'daily-login:'.$userId.':'.$day;
             $this->paradox->credit(
-                $lockedUser->id,
+                $userId,
                 self::PARADOX_REWARD,
                 $paradoxEntryKey,
                 'daily_login',
                 $day,
             );
 
-            DB::table('user_skip_ticket_balances')->insertOrIgnore([
-                'user_id' => $lockedUser->id,
-                'balance' => 0,
-                'created_at' => $when,
-                'updated_at' => $when,
-            ]);
-            $tickets = UserSkipTicketBalance::query()->where('user_id', $lockedUser->id)->lockForUpdate()->firstOrFail();
             $before = (int) $tickets->balance;
             if ($before > 4_294_967_295 - self::SKIP_TICKET_REWARD) {
                 throw new DomainException('Skip ticket balance would overflow.');
             }
             $tickets->fill(['balance' => $before + self::SKIP_TICKET_REWARD])->save();
             DB::table('user_skip_ticket_ledger')->insert([
-                'user_id' => $lockedUser->id,
+                'user_id' => $userId,
                 'underground_battle_id' => null,
                 'underground_party_member_id' => null,
                 'underground_skip_settlement_id' => null,
@@ -72,7 +76,7 @@ final readonly class DailyLoginRewardService
                 'updated_at' => $when,
             ]);
             UserDailyLoginClaim::query()->create([
-                'user_id' => $lockedUser->id,
+                'user_id' => $userId,
                 'canonical_day' => $day,
                 'paradox_awarded' => self::PARADOX_REWARD,
                 'skip_tickets_awarded' => self::SKIP_TICKET_REWARD,
@@ -80,7 +84,7 @@ final readonly class DailyLoginRewardService
             ]);
 
             return $this->present(
-                $lockedUser->id,
+                $userId,
                 $day,
                 true,
                 self::PARADOX_REWARD,

@@ -576,6 +576,55 @@ final class UndergroundCombatBuildTest extends TestCase
         $this->assertSame(5, $evaded->damagePrevented);
     }
 
+    public function test_shining_court_noble_defends_unless_its_one_percent_outrage_triggers(): void
+    {
+        [$manifest] = $this->catalog();
+        $configuration = require dirname(__DIR__, 3).'/config/underground-alpha-v1.php';
+        $noble = $configuration['exploration']['grounds']['shining_kingdom']['rare_encounter']['encounter']['enemy'];
+        $manifest['enemies']['shining_court_noble'] = $noble;
+        $catalog = new AlphaV1BuildCatalog($manifest);
+        $outrageSeed = null;
+        $calmSeed = null;
+        foreach (range(0, 10_000) as $seed) {
+            $roll = (new UndergroundRandom($seed))->integer(
+                'alpha-v1:outrage:shining_court_noble:1',
+                1,
+                10_000,
+            );
+            $outrageSeed ??= $roll <= 100 ? $seed : null;
+            $calmSeed ??= $roll > 100 ? $seed : null;
+            if ($outrageSeed !== null && $calmSeed !== null) {
+                break;
+            }
+        }
+        $this->assertIsInt($outrageSeed);
+        $this->assertIsInt($calmSeed);
+
+        $outrage = $this->model()->fight(
+            $catalog,
+            'balanced',
+            'shining_court_noble',
+            'early',
+            $outrageSeed,
+            1,
+        );
+        $calm = $this->model()->fight(
+            $catalog,
+            'balanced',
+            'shining_court_noble',
+            'early',
+            $calmSeed,
+            1,
+        );
+        $outrageAction = collect($outrage->actionLog)->firstWhere('side', 'enemy');
+        $calmAction = collect($calm->actionLog)->firstWhere('side', 'enemy');
+        $this->assertSame(['pressure_heavy', 'outrage_chance'], [
+            $outrageAction['action_key'] ?? null,
+            $outrageAction['reason'] ?? null,
+        ]);
+        $this->assertSame('defend', $calmAction['action_key'] ?? null);
+    }
+
     public function test_heal_barrier_and_source_capped_periodic_damage_use_deterministic_status_timing(): void
     {
         [$manifest, $catalog] = $this->catalog();

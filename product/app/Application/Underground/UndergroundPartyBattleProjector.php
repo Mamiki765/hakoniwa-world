@@ -114,6 +114,9 @@ final class UndergroundPartyBattleProjector
         $action['label'] = is_string($row['message'] ?? null)
             ? $row['message']
             : (new UndergroundAlphaV1BattleProjector)->actionLabel((string) $actionKey, $catalog);
+        if (($row['reason'] ?? null) === 'outrage_chance') {
+            $action['label'] = '無礼者！';
+        }
         $actorId = is_string($row['actor_id'] ?? null) ? $row['actor_id'] : null;
         $targetId = is_string($row['target_id'] ?? null) ? $row['target_id'] : null;
         $action['actor_name'] = $actorId !== null && is_array($members[$actorId] ?? null)

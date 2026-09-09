@@ -1724,6 +1724,10 @@ class CommandAndMissileTest extends TestCase
             ->whereRaw("metadata->>'queue_item_id' = ?", [(string) $centerItem->id])->value('metadata'), true, 512, JSON_THROW_ON_ERROR);
         $this->assertSame('defense_resisted', $centerDetail['impacts'][0]['effect']);
         $this->assertSame(0, $centerContext->state->finalDefenseInterceptionsUsed($targetNation->id));
+        $this->assertSame([
+            $targetNation->id => [SecretarySkillCatalog::FINAL_DEFENSE_LINE => 1],
+        ], $centerContext->state->pendingSecretaryExperience());
+        $this->assertSame(0, DB::table('audit_events')->where('event_type', 'secretary.missile_intercepted')->count());
         $this->assertSame(1, DB::table('audit_events')->where('event_type', 'missile.defense_intercepted')->count());
 
         // radius 3 and a radius-1 decoy do not defend; only then may Secretary run.
@@ -2020,56 +2024,6 @@ class CommandAndMissileTest extends TestCase
         ));
     }
 
-    public function test_ordinary_defense_resolves_before_secretary_but_still_awards_arrival_xp(): void
-    {
-        [$world, $firingUser, $firing, $target] = $this->combatants();
-        $space = $this->surfaceMapSpace($world);
-        $base = $this->missileBase($firing);
-        $cell = MapCell::query()->where('owner_nation_id', $target->id)
-            ->whereKeyNot($target->capital()->value('map_cell_id'))
-            ->whereNull('facility_definition_id')->firstOrFail();
-        app(MapCellStateService::class)->transitionTerrain(
-            $cell,
-            TerrainDefinition::query()->where('key', 'plain')->firstOrFail(),
-        );
-        app(MapCellStateService::class)->setFacility(
-            $cell,
-            FacilityDefinition::query()->where('key', 'defense')->firstOrFail(),
-        );
-        $cell->population = 0;
-        $cell->save();
-        $item = $this->queue(
-            app(CommandQueueService::class),
-            $firingUser,
-            $firing,
-            $space,
-            'spp_missile',
-            $cell->fresh(['terrain', 'facility', 'ownerNation']),
-        );
-        $context = $this->context(
-            $world,
-            2,
-            hash('sha256', 'ordinary defense before Secretary'),
-            [$firing->id, $target->id],
-        );
-        app(SecretaryTurnService::class)->loadAttemptSnapshots($context, [$firing->id, $target->id]);
-
-        $this->resolveMissile($context, $base);
-
-        $detail = json_decode((string) DB::table('audit_events')->where('event_type', 'missile.launch_detail')
-            ->whereRaw("metadata->>'queue_item_id' = ?", [(string) $item->id])->value('metadata'),
-            true,
-            512,
-            JSON_THROW_ON_ERROR,
-        );
-        $this->assertSame('defense_resisted', $detail['impacts'][0]['effect']);
-        $this->assertSame(0, $context->state->finalDefenseInterceptionsUsed($target->id));
-        $this->assertSame([
-            $target->id => [SecretarySkillCatalog::FINAL_DEFENSE_LINE => 1],
-        ], $context->state->pendingSecretaryExperience());
-        $this->assertSame(0, DB::table('audit_events')->where('event_type', 'secretary.missile_intercepted')->count());
-    }
-
     public function test_self_fired_collateral_and_monster_cells_both_award_xp_but_only_eligible_cell_is_intercepted(): void
     {
         [$world, $firingUser, $firing, $target] = $this->combatants();
@@ -2220,7 +2174,7 @@ class CommandAndMissileTest extends TestCase
         ));
     }
 
-    public function test_destroyed_base_zero_shot_missile_keeps_idle_counter_without_automatic_finance(): void
+    public function test_zero_shot_missile_paths_keep_idle_counter_without_automatic_finance(): void
     {
         [$world, $user, $firing, $target] = $this->combatants();
         $firing->update(['idle_counter' => 4]);
@@ -2254,16 +2208,19 @@ class CommandAndMissileTest extends TestCase
             'missile_shots_fired' => 0,
             'idle_counter_finalized' => true,
         ], $context->state->nationActivity($firing->id));
-    }
 
-    public function test_insufficient_funds_at_base_processing_keeps_idle_counter_for_zero_shots(): void
-    {
-        [$world, $user, $firing, $target] = $this->combatants();
-        $firing->update(['idle_counter' => 3]);
+        // A still-existing base that runs out of money reaches the same
+        // zero-shot settlement through a distinct launch-failure branch.
+        app(MapCellStateService::class)->setFacility(
+            $base,
+            FacilityDefinition::query()->where('key', 'missile_base')->firstOrFail(),
+        );
+        $base->save();
+        $firing->update(['money' => 1_000, 'idle_counter' => 3]);
         $space = $this->surfaceMapSpace($world);
         $base = $this->missileBase($firing);
         $capital = $target->capital()->firstOrFail()->cell()->firstOrFail();
-        $this->queue(app(CommandQueueService::class), $user, $firing, $space, 'spp_missile', $capital);
+        $fundsItem = $this->queue(app(CommandQueueService::class), $user, $firing, $space, 'spp_missile', $capital);
         $context = $this->context($world, 2, hash('sha256', 'missile funds exhausted'), [$firing->id]);
 
         app(DomesticCommandExecutor::class)->execute($context);
@@ -2272,8 +2229,34 @@ class CommandAndMissileTest extends TestCase
 
         $this->assertSame(0, $result['shots_fired']);
         $this->assertSame(3, $firing->fresh()->idle_counter);
-        $this->assertSame(1, DB::table('audit_events')->where('event_type', 'missile.launch_failed')->count());
+        $this->assertSame(1, DB::table('audit_events')->where('event_type', 'missile.launch_failed')
+            ->whereRaw("metadata->>'queue_item_id' = ?", [(string) $fundsItem->id])->count());
         $this->assertSame(0, DB::table('audit_events')->where('event_type', 'nation.idle_counter_changed')
+            ->where('nation_id', $firing->id)->count());
+
+        // A failed normal command before a destroyed-base intent must not
+        // finalize idle activity twice.
+        $firing->update(['money' => 1_000, 'idle_counter' => 5]);
+        $space = $this->surfaceMapSpace($world);
+        $base = $this->missileBase($firing);
+        $forest = MapCell::query()->where('owner_nation_id', $firing->id)
+            ->whereHas('terrain', fn ($query) => $query->where('key', 'forest'))->firstOrFail();
+        $capital = $target->capital()->firstOrFail()->cell()->firstOrFail();
+        $failed = $this->queue(app(CommandQueueService::class), $user, $firing, $space, 'build_farm', $forest, 1, 1);
+        $this->queue(app(CommandQueueService::class), $user, $firing, $space, 'spp_missile', $capital, 1, 2);
+        $context = $this->context($world, 2, hash('sha256', 'failed normal and zero shot missile'), [$firing->id]);
+
+        $development = app(DomesticCommandExecutor::class)->execute($context);
+        $this->assertSame(1, $development['failures']);
+        $this->assertSame('failed', $failed->fresh()->status);
+        app(MapCellStateService::class)->setFacility($base, null);
+        $base->save();
+        $this->processRegisteredMissiles($context, [$base]);
+
+        $this->assertSame(5, $firing->fresh()->idle_counter);
+        $this->assertSame(0, DB::table('audit_events')->where('event_type', 'nation.idle_counter_changed')
+            ->where('nation_id', $firing->id)->count());
+        $this->assertSame(0, DB::table('audit_events')->where('event_type', 'command.automatic_finance')
             ->where('nation_id', $firing->id)->count());
     }
 
@@ -2434,32 +2417,6 @@ class CommandAndMissileTest extends TestCase
         $this->assertSame(1, DB::table('audit_events')->where('event_type', 'nation.idle_counter_changed')
             ->where('nation_id', $firing->id)->count());
         $this->assertSame(1, $context->state->nationActivity($firing->id)['missile_shots_fired']);
-    }
-
-    public function test_zero_shot_missile_after_failed_normal_command_does_not_double_update_idle_counter(): void
-    {
-        [$world, $user, $firing, $target] = $this->combatants();
-        $firing->update(['idle_counter' => 5]);
-        $space = $this->surfaceMapSpace($world);
-        $base = $this->missileBase($firing);
-        $forest = MapCell::query()->where('owner_nation_id', $firing->id)
-            ->whereHas('terrain', fn ($query) => $query->where('key', 'forest'))->firstOrFail();
-        $capital = $target->capital()->firstOrFail()->cell()->firstOrFail();
-        $failed = $this->queue(app(CommandQueueService::class), $user, $firing, $space, 'build_farm', $forest, 1, 1);
-        $this->queue(app(CommandQueueService::class), $user, $firing, $space, 'spp_missile', $capital, 1, 2);
-        $context = $this->context($world, 2, hash('sha256', 'failed normal and zero shot missile'), [$firing->id]);
-
-        $development = app(DomesticCommandExecutor::class)->execute($context);
-        $this->assertSame(1, $development['failures']);
-        $this->assertSame('failed', $failed->fresh()->status);
-        app(MapCellStateService::class)->setFacility($base, null);
-        $base->save();
-        $this->processRegisteredMissiles($context, [$base]);
-
-        $this->assertSame(5, $firing->fresh()->idle_counter);
-        $this->assertSame(0, DB::table('audit_events')->where('event_type', 'nation.idle_counter_changed')
-            ->where('nation_id', $firing->id)->count());
-        $this->assertSame(0, DB::table('audit_events')->where('event_type', 'command.automatic_finance')->count());
     }
 
     public function test_empty_queue_automatic_finance_increments_idle_counter_once_per_target_turn(): void
@@ -2844,7 +2801,7 @@ class CommandAndMissileTest extends TestCase
         $this->assertSame($farmImpact['base_crime_points'], $farmImpact['final_crime_points']);
     }
 
-    public function test_normal_missile_at_minimum_capital_is_private_no_op_and_publicly_aggregated(): void
+    public function test_normal_and_land_destruction_missiles_keep_a_minimum_capital_as_a_complete_no_op(): void
     {
         [$world, $firingUser, $firing, $target] = $this->combatants();
         $space = $this->surfaceMapSpace($world);
@@ -2879,6 +2836,54 @@ class CommandAndMissileTest extends TestCase
         $this->assertSame($capital->x, $detail['impacts'][0]['x']);
         $this->assertSame($capital->y, $detail['impacts'][0]['y']);
         $this->assertSame('capital_at_minimum', $detail['impacts'][0]['effect']);
+
+        // Land destruction keeps the same no-op persistence contract while
+        // retaining its own refugee and Capital identity guarantees.
+        [$world, $firingUser, $firing, $target] = $this->combatants('・陸破壊');
+        $space = $this->surfaceMapSpace($world);
+        $base = $this->missileBase($firing);
+        $capital = $target->capital()->firstOrFail()->cell()->with(['terrain', 'facility'])->firstOrFail();
+        $minimum = $world->rulesetVersion()->firstOrFail()->settings['capital_minimum_population'];
+        $this->assertIsInt($minimum);
+        $capital->update(['population' => $minimum]);
+        $capital = $capital->fresh(['terrain', 'facility']);
+        $snapshot = $capital->only([
+            'terrain_definition_id', 'facility_definition_id', 'owner_nation_id', 'population', 'version',
+        ]);
+        $capitalIdentity = $target->capital()->value('map_cell_id');
+        $chunkVersion = (int) DB::table('map_chunks')->where('id', $capital->map_chunk_id)->value('version');
+        $item = $this->queue(
+            app(CommandQueueService::class),
+            $firingUser,
+            $firing,
+            $space,
+            'land_destruction_missile',
+            $capital,
+        );
+        $seed = $this->seedForImpactIndex($item, $capital, 2, $capital);
+        $context = $this->context($world, 2, $seed, [$firing->id, $target->id]);
+
+        $metrics = $this->resolveMissile($context, $base);
+
+        $this->assertSame($snapshot, $capital->fresh()->only(array_keys($snapshot)));
+        $this->assertSame($capitalIdentity, $target->capital()->value('map_cell_id'));
+        $this->assertSame($chunkVersion, (int) DB::table('map_chunks')->where('id', $capital->map_chunk_id)->value('version'));
+        $this->assertSame([], $metrics['changed_cell_ids']);
+        $this->assertSame([], $context->state->changedMapChunkIds());
+        $this->assertSame(0, $metrics['meaningful_impacts']);
+        $this->assertSame(1, $metrics['ineffective_impacts']);
+        $this->assertSame(0, DB::table('audit_events')->where('event_type', 'missile.impact')->count());
+        $aggregate = DB::table('audit_events')->where('event_type', 'missile.ineffective_aggregated')
+            ->orderByDesc('id')->firstOrFail();
+        $aggregateMetadata = json_decode((string) $aggregate->metadata, true, 512, JSON_THROW_ON_ERROR);
+        $this->assertSame(1, $aggregateMetadata['ineffective_impacts']);
+        $this->assertSame(0, DB::table('audit_events')->whereIn('event_type', ['refugee_generated', 'refugee_received'])->count());
+        $detail = json_decode((string) DB::table('audit_events')->where('event_type', 'missile.launch_detail')
+            ->whereRaw("metadata->>'queue_item_id' = ?", [(string) $item->id])->value('metadata'), true, 512, JSON_THROW_ON_ERROR);
+        $this->assertSame($capital->x, $detail['impacts'][0]['x']);
+        $this->assertSame($capital->y, $detail['impacts'][0]['y']);
+        $this->assertSame('capital_at_minimum', $detail['impacts'][0]['effect']);
+        $this->assertSame(0, $detail['impacts'][0]['refugees']);
     }
 
     public function test_actual_land_impact_is_returned_by_map_api_as_the_scorched_tile(): void
@@ -3260,54 +3265,6 @@ class CommandAndMissileTest extends TestCase
         );
     }
 
-    public function test_land_destruction_missile_at_minimum_capital_is_a_complete_no_op(): void
-    {
-        [$world, $firingUser, $firing, $target] = $this->combatants();
-        $space = $this->surfaceMapSpace($world);
-        $base = $this->missileBase($firing);
-        $capital = $target->capital()->firstOrFail()->cell()->with(['terrain', 'facility'])->firstOrFail();
-        $minimum = $world->rulesetVersion()->firstOrFail()->settings['capital_minimum_population'];
-        $this->assertIsInt($minimum);
-        $capital->update(['population' => $minimum]);
-        $capital = $capital->fresh(['terrain', 'facility']);
-        $snapshot = $capital->only([
-            'terrain_definition_id', 'facility_definition_id', 'owner_nation_id', 'population', 'version',
-        ]);
-        $capitalIdentity = $target->capital()->value('map_cell_id');
-        $chunkVersion = (int) DB::table('map_chunks')->where('id', $capital->map_chunk_id)->value('version');
-        $item = $this->queue(
-            app(CommandQueueService::class),
-            $firingUser,
-            $firing,
-            $space,
-            'land_destruction_missile',
-            $capital,
-        );
-        $seed = $this->seedForImpactIndex($item, $capital, 2, $capital);
-        $context = $this->context($world, 2, $seed, [$firing->id, $target->id]);
-
-        $metrics = $this->resolveMissile($context, $base);
-
-        $this->assertSame($snapshot, $capital->fresh()->only(array_keys($snapshot)));
-        $this->assertSame($capitalIdentity, $target->capital()->value('map_cell_id'));
-        $this->assertSame($chunkVersion, (int) DB::table('map_chunks')->where('id', $capital->map_chunk_id)->value('version'));
-        $this->assertSame([], $metrics['changed_cell_ids']);
-        $this->assertSame([], $context->state->changedMapChunkIds());
-        $this->assertSame(0, $metrics['meaningful_impacts']);
-        $this->assertSame(1, $metrics['ineffective_impacts']);
-        $this->assertSame(0, DB::table('audit_events')->where('event_type', 'missile.impact')->count());
-        $aggregate = DB::table('audit_events')->where('event_type', 'missile.ineffective_aggregated')->firstOrFail();
-        $aggregateMetadata = json_decode((string) $aggregate->metadata, true, 512, JSON_THROW_ON_ERROR);
-        $this->assertSame(1, $aggregateMetadata['ineffective_impacts']);
-        $this->assertSame(0, DB::table('audit_events')->whereIn('event_type', ['refugee_generated', 'refugee_received'])->count());
-        $detail = json_decode((string) DB::table('audit_events')->where('event_type', 'missile.launch_detail')
-            ->whereRaw("metadata->>'queue_item_id' = ?", [(string) $item->id])->value('metadata'), true, 512, JSON_THROW_ON_ERROR);
-        $this->assertSame($capital->x, $detail['impacts'][0]['x']);
-        $this->assertSame($capital->y, $detail['impacts'][0]['y']);
-        $this->assertSame('capital_at_minimum', $detail['impacts'][0]['effect']);
-        $this->assertSame(0, $detail['impacts'][0]['refugees']);
-    }
-
     public function test_multiple_minimum_capital_impacts_are_aggregated_once_per_launch(): void
     {
         [$world, $firingUser, $firing, $target] = $this->combatants();
@@ -3656,34 +3613,31 @@ class CommandAndMissileTest extends TestCase
             'ペリドット海域',
             collect($public['details'])->firstWhere('key', 'sea_area')['value'] ?? null,
         );
-    }
 
-    public function test_land_missile_base_also_gains_h2_plus_settlement_experience(): void
-    {
-        [$world, $firingUser, $firing, $target] = $this->combatants();
-        $space = $this->surfaceMapSpace($world);
-        $base = $this->missileBase($firing);
-        $base->update(['facility_experience' => 49]);
-        $settlement = MapCell::query()->where('owner_nation_id', $target->id)
-            ->whereKeyNot($target->capital()->value('map_cell_id'))->firstOrFail();
+        $landBase = $this->missileBase($firing);
+        $landBase->update(['facility_experience' => 49]);
+        $landSettlement = MapCell::query()->where('owner_nation_id', $target->id)
+            ->whereKeyNot($target->capital()->value('map_cell_id'))
+            ->whereKeyNot($settlement->id)
+            ->firstOrFail();
         app(MapCellStateService::class)->transitionTerrain(
-            $settlement,
+            $landSettlement,
             TerrainDefinition::query()->where('key', 'plain')->firstOrFail(),
         );
         app(MapCellStateService::class)->setFacility(
-            $settlement,
+            $landSettlement,
             FacilityDefinition::query()->where('key', 'town')->firstOrFail(),
         );
-        $settlement->population = 2_000;
-        $settlement->save();
-        $this->queue(app(CommandQueueService::class), $firingUser, $firing, $space, 'spp_missile', $settlement);
+        $landSettlement->population = 2_000;
+        $landSettlement->save();
+        $this->queue(app(CommandQueueService::class), $firingUser, $firing, $space, 'spp_missile', $landSettlement);
 
         $this->resolveMissile(
             $this->context($world, 2, hash('sha256', 'land-base town experience'), [$firing->id, $target->id]),
-            $base->fresh(['terrain', 'facility']),
+            $landBase->fresh(['terrain', 'facility']),
         );
 
-        $this->assertSame(50, $base->fresh()->facility_experience);
+        $this->assertSame(50, $landBase->fresh()->facility_experience);
     }
 
     public function test_seabed_settlement_experience_rolls_back_and_same_seed_retry_applies_once(): void

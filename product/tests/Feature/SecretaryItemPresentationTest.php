@@ -14,7 +14,6 @@ use App\Models\World;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Tests\Concerns\CreatesTestWorlds;
-use Tests\Support\HistoricalRulesetFixture;
 use Tests\TestCase;
 
 final class SecretaryItemPresentationTest extends TestCase
@@ -25,7 +24,7 @@ final class SecretaryItemPresentationTest extends TestCase
     public function test_item_effect_projection_is_explicit_owned_world_scoped_and_never_falls_back(): void
     {
         $historicalNoEffectsWorld = $this->lightweightWorld();
-        $historicalNoEffectsSettings = HistoricalRulesetFixture::withIdentity('historical-no-item-effects-v10', 10);
+        $historicalNoEffectsSettings = $this->historicalRuleset('historical-no-item-effects-v10', 10);
         unset(
             $historicalNoEffectsSettings['secretary']['item_rarities'],
             $historicalNoEffectsSettings['secretary']['item_categories'],
@@ -225,7 +224,7 @@ final class SecretaryItemPresentationTest extends TestCase
     /** @return array<string, mixed> */
     private function historicalSecretaryItemSettings(): array
     {
-        $settings = HistoricalRulesetFixture::withIdentity('historical-secretary-item-snapshot-v15', 15);
+        $settings = $this->historicalRuleset('historical-secretary-item-snapshot-v15', 15);
         $oldBow = $settings['secretary']['items']['old_bow'];
         unset($oldBow['rarity'], $oldBow['tradable'], $oldBow['npc_tradable']);
         $oldBow['same_item_max_equipped'] = 1;
@@ -242,6 +241,17 @@ final class SecretaryItemPresentationTest extends TestCase
             'old_bow' => $oldBow,
             'ring' => $ring,
         ];
+
+        return $settings;
+    }
+
+    /** @return array<string, mixed> */
+    private function historicalRuleset(string $key, int $version): array
+    {
+        /** @var array<string, mixed> $settings */
+        $settings = require config_path('hakoniwa/rulesets/hakoniwa-2s-plus-v16.php');
+        $settings['key'] = $key;
+        $settings['version'] = $version;
 
         return $settings;
     }

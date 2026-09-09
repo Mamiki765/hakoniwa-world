@@ -237,20 +237,27 @@ STORY;
                         );
                     }
                     $this->assertCooldownElapsed($profile);
+                    $keyBalanceBefore = $profile->shining_kingdom_key_balance;
+                    $this->consumeExplorationEntryKey($profile, $huntingGround);
                     $seed = $this->battleSeed->forRequest(
                         $profile->id,
                         $requestId,
                         $huntingGround['content_identity'],
                     );
                     $random = new UndergroundRandom($seed);
-                    $encounterKey = $this->alphaV1Catalog->weightedExplorationEncounter(
-                        $random->integer(
-                            'runtime:encounter:'.$huntingGroundKey,
-                            1,
-                            10_000,
-                        ),
+                    $encounterKeys = $this->drawExplorationEncounterKeys(
                         $huntingGroundKey,
+                        1 + count($borrowedSecretaryIds),
+                        $random,
                     );
+                    $encounterKey = $encounterKeys[0];
+                    if ($huntingGround['kind'] === 'vault' && count($encounterKeys) > 1) {
+                        $encounterKey = $encounterKeys[$random->integer(
+                            'runtime:vault-reward-source',
+                            0,
+                            count($encounterKeys) - 1,
+                        )];
+                    }
 
                     $battle = $borrowedSecretaryIds === []
                             ? $this->resolveAndSettleExplorationBattle(
@@ -260,14 +267,17 @@ STORY;
                                 $huntingGroundKey,
                                 $encounterKey,
                                 $seed,
+                                $keyBalanceBefore,
                             )
                             : $this->resolveAndSettlePartyExplorationBattle(
                                 $profile,
                                 $requestId,
                                 $fingerprint,
                                 $huntingGroundKey,
+                                $encounterKeys,
                                 $encounterKey,
                                 $seed,
+                                $keyBalanceBefore,
                                 $preparedBorrowed,
                             );
 
@@ -336,18 +346,19 @@ STORY;
             $this->assertSkipUnlocked($progress, $policy['actual_clears_required']);
             $balance = $this->lockedSkipTicketBalance($user);
             $this->assertSkipTicketBalance($balance, $policy['ticket_cost']);
+            $keyBalanceBefore = $profile->shining_kingdom_key_balance;
+            $this->consumeExplorationEntryKey($profile, $huntingGround);
             $seed = $this->battleSeed->forRequest(
                 $profile->id,
                 $requestId,
                 $policy['identity'].':'.$huntingGround['content_identity'],
             );
             $random = new UndergroundRandom($seed);
-            $encounterKey = $this->alphaV1Catalog->weightedExplorationEncounter(
-                $random->integer('runtime:encounter:'.$huntingGroundKey, 1, 10_000),
-                $huntingGroundKey,
-            );
+            $encounterKey = $this->drawExplorationEncounterKeys($huntingGroundKey, 1, $random)[0];
             $encounter = $this->alphaV1Catalog->explorationEncounter($encounterKey, $huntingGroundKey);
-            $reward = $this->applyRepeatableReward($profile, $encounter['xp'], $encounter['shards']);
+            $victoryReward = $this->explorationVictoryReward($huntingGround, $encounterKey, $encounter, $seed, true);
+            $reward = $this->applyRepeatableReward($profile, $encounter['xp'], $victoryReward['shards']);
+            $profile->shining_kingdom_key_balance += $victoryReward['keys'];
             $profile->save();
             $settledAt = Carbon::now();
             $settlement = UndergroundSkipSettlement::query()->create([
@@ -361,7 +372,7 @@ STORY;
                 'content_identity' => $huntingGround['content_identity'],
                 'ticket_cost' => $policy['ticket_cost'],
                 'xp_awarded' => $encounter['xp'],
-                'shard_awarded' => $encounter['shards'],
+                'shard_awarded' => $victoryReward['shards'],
                 'combat_level_before' => $reward['combat_level_before'],
                 'combat_level_after' => $reward['combat_level_after'],
                 'combat_xp_before' => $reward['combat_xp_before'],
@@ -374,20 +385,31 @@ STORY;
                         'index' => 1,
                         'key' => $encounterKey,
                         'xp' => $encounter['xp'],
-                        'shards' => $encounter['shards'],
+                        'shards' => $victoryReward['shards'],
                     ]],
                     'stp_awarded' => $reward['stp_awarded'],
+                    'shining_kingdom_key' => [
+                        'balance_before' => $keyBalanceBefore,
+                        'entry_cost' => $huntingGround['entry_key_cost'],
+                        'awarded' => $victoryReward['keys'],
+                        'balance_after' => $profile->shining_kingdom_key_balance,
+                    ],
+                    'treasure' => $victoryReward['treasure'],
                     'drops' => [['status' => 'pending']],
                 ],
                 'settled_at' => $settledAt,
             ]);
             $this->consumeSkipTickets($balance, $settlement, $policy['ticket_cost']);
             $snapshot = $settlement->reward_snapshot;
+            $dropEncounter = $encounter;
+            if (is_string($huntingGround['forced_drop_profile'] ?? null)) {
+                $dropEncounter['drop_profile'] = $huntingGround['forced_drop_profile'];
+            }
             $snapshot['drops'] = [$this->equipmentDrops->settleSkippedVictory(
                 $profile,
                 $settlement,
-                $huntingGroundKey,
-                $encounter,
+                $huntingGround['drop_tier_key'],
+                $dropEncounter,
                 $seed,
                 1,
             )];
@@ -604,6 +626,8 @@ STORY;
             $ticketCost = $this->bulkSkipTicketCost($policy['ticket_cost'], $executionCount);
             $balance = $this->lockedSkipTicketBalance($user);
             $this->assertSkipTicketBalance($balance, $ticketCost);
+            $keyBalanceBefore = $profile->shining_kingdom_key_balance;
+            $this->consumeExplorationEntryKey($profile, $huntingGround, $executionCount);
 
             $levelBefore = $profile->combat_level;
             $xpBefore = $profile->combat_xp;
@@ -621,23 +645,28 @@ STORY;
                     $policy['identity'].':'.$huntingGround['content_identity'].':bulk-execution:'.$execution,
                 );
                 $random = new UndergroundRandom($seed);
-                $encounterKey = $this->alphaV1Catalog->weightedExplorationEncounter(
-                    $random->integer('runtime:encounter:'.$huntingGroundKey, 1, 10_000),
-                    $huntingGroundKey,
-                );
+                $encounterKey = $this->drawExplorationEncounterKeys($huntingGroundKey, 1, $random)[0];
                 $encounter = $this->alphaV1Catalog->explorationEncounter($encounterKey, $huntingGroundKey);
-                $reward = $this->applyRepeatableReward($profile, $encounter['xp'], $encounter['shards']);
+                $victoryReward = $this->explorationVictoryReward($huntingGround, $encounterKey, $encounter, $seed, true);
+                $reward = $this->applyRepeatableReward($profile, $encounter['xp'], $victoryReward['shards']);
+                $profile->shining_kingdom_key_balance += $victoryReward['keys'];
                 $xpAwarded += $encounter['xp'];
-                $shardsAwarded += $encounter['shards'];
+                $shardsAwarded += $victoryReward['shards'];
                 $stpAwarded += $reward['stp_awarded'];
                 $encounterCounts[$encounterKey] = ($encounterCounts[$encounterKey] ?? 0) + 1;
                 $encounterSnapshots[] = [
                     'index' => $execution,
                     'key' => $encounterKey,
                     'xp' => $encounter['xp'],
-                    'shards' => $encounter['shards'],
+                    'shards' => $victoryReward['shards'],
+                    'keys' => $victoryReward['keys'],
+                    'treasure' => $victoryReward['treasure'],
                 ];
-                $executions[] = [$encounter, $seed];
+                $dropEncounter = $encounter;
+                if (is_string($huntingGround['forced_drop_profile'] ?? null)) {
+                    $dropEncounter['drop_profile'] = $huntingGround['forced_drop_profile'];
+                }
+                $executions[] = [$dropEncounter, $seed];
             }
             $profile->save();
             $settledAt = Carbon::now();
@@ -672,7 +701,7 @@ STORY;
                 $drop = $this->equipmentDrops->settleBulkSkippedVictory(
                     $profile,
                     $batch,
-                    $huntingGroundKey,
+                    $huntingGround['drop_tier_key'],
                     $encounter,
                     $seed,
                     $index + 1,
@@ -694,6 +723,11 @@ STORY;
                 'vault_full_count' => $vaultFull,
                 'drops' => $drops,
                 'ticket_balance_after' => $ticketBalanceAfter,
+                'shining_kingdom_key' => [
+                    'balance_before' => $keyBalanceBefore,
+                    'entry_cost_total' => $huntingGround['entry_key_cost'] * $executionCount,
+                    'balance_after' => $profile->shining_kingdom_key_balance,
+                ],
             ];
             $batch->save();
             $progress->total_clear_count += $executionCount;
@@ -1164,9 +1198,11 @@ STORY;
             ->get()
             ->keyBy('content_key');
         $skipPolicy = $this->catalog->skipPolicy('hunting_ground');
-        $grounds = array_map(static function (array $ground) use ($clearedTrials, $progresses, $skipPolicy): array {
+        $grounds = array_map(function (array $ground) use ($clearedTrials, $progresses, $skipPolicy, $profile): array {
             $requiredTrial = $ground['required_trial_key'];
             $locked = is_string($requiredTrial) && ! in_array($requiredTrial, $clearedTrials, true);
+            $entryKeyCost = $ground['entry_key_cost'];
+            $keyUnavailable = ! $locked && $entryKeyCost > $profile->shining_kingdom_key_balance;
             $progress = $progresses->get($ground['key']);
             $actualClears = $progress instanceof UndergroundContentClearProgress
                 ? $progress->actual_clear_count
@@ -1178,10 +1214,17 @@ STORY;
             return [
                 'key' => $ground['key'],
                 'name' => $ground['name'],
+                'kind' => $ground['kind'],
                 'locked' => $locked,
-                'unlock_condition' => $requiredTrial === 'trial_01'
-                    ? '試練1を初回clear'
-                    : null,
+                'unlock_condition' => match ($requiredTrial) {
+                    'trial_01' => '試練1を初回clear',
+                    'trial_02' => '試練2を初回clear',
+                    default => null,
+                },
+                'entry_key_cost' => $entryKeyCost,
+                'key_balance' => $profile->shining_kingdom_key_balance,
+                'disabled' => $keyUnavailable,
+                'unavailable_reason' => $keyUnavailable ? '輝きの王国の鍵が必要' : null,
                 'item_level_min' => $ground['item_level_min'],
                 'item_level_max' => $ground['item_level_max'],
                 'skip' => [
@@ -1364,6 +1407,10 @@ STORY;
                     ? $snapshot['hunting_ground']
                     : null,
             'drop' => is_array($snapshot['drop'] ?? null) ? $snapshot['drop'] : null,
+            'treasure' => is_array($snapshot['treasure'] ?? null) ? $snapshot['treasure'] : null,
+            'shining_kingdom_key' => is_array($snapshot['shining_kingdom_key'] ?? null)
+                ? $snapshot['shining_kingdom_key']
+                : null,
             'trial_key' => $context === UndergroundBattle::ACTIVITY_TRIAL ? $battle->activity_key : null,
             'trial_run_key' => $context === UndergroundBattle::ACTIVITY_TRIAL ? $battle->trial_run_key : null,
             'trial_battle_index' => $context === UndergroundBattle::ACTIVITY_TRIAL
@@ -1507,6 +1554,7 @@ STORY;
         string $huntingGroundKey,
         string $encounterKey,
         int $seed,
+        int $keyBalanceBefore,
     ): UndergroundBattle {
         $huntingGround = $this->alphaV1Catalog->explorationHuntingGround($huntingGroundKey);
         $encounter = $this->alphaV1Catalog->explorationEncounter($encounterKey, $huntingGroundKey);
@@ -1576,17 +1624,25 @@ STORY;
         $xpBefore = $profile->combat_xp;
         $shardsBefore = $profile->shard_balance;
         $unspentStpBefore = $profile->unspent_stp;
+        $victoryReward = $this->explorationVictoryReward(
+            $huntingGround,
+            $encounterKey,
+            $encounter,
+            $seed,
+            $resultType === UndergroundBattle::RESULT_VICTORY,
+        );
         $xpAwarded = match ($resultType) {
             UndergroundBattle::RESULT_VICTORY => $encounter['xp'],
             UndergroundBattle::RESULT_WITHDRAWAL => intdiv($encounter['xp'], 4),
             default => 0,
         };
         $shardDelta = match ($resultType) {
-            UndergroundBattle::RESULT_VICTORY => $encounter['shards'],
+            UndergroundBattle::RESULT_VICTORY => $victoryReward['shards'],
             UndergroundBattle::RESULT_DEFEAT => intdiv($profile->shard_balance, 2) - $profile->shard_balance,
             default => 0,
         };
         $rewardSettlement = $this->applyRepeatableReward($profile, $xpAwarded, $shardDelta);
+        $profile->shining_kingdom_key_balance += $victoryReward['keys'];
         $curve = $rewardSettlement['xp_curve'];
         $stpAwarded = $rewardSettlement['stp_awarded'];
         $maxHpAfter = $this->alphaV1Catalog->currentMaxHp(
@@ -1678,6 +1734,13 @@ STORY;
                 'current_hp_after' => $profile->current_hp,
                 'max_hp_after' => $maxHpAfter,
                 'banked_shard_balance' => $profile->banked_shard_balance,
+                'shining_kingdom_key' => [
+                    'balance_before' => $keyBalanceBefore,
+                    'entry_cost' => $huntingGround['entry_key_cost'],
+                    'awarded' => $victoryReward['keys'],
+                    'balance_after' => $profile->shining_kingdom_key_balance,
+                ],
+                'treasure' => $victoryReward['treasure'],
                 'awakening' => $result->awakening,
                 'drop' => [
                     'identity' => $this->alphaV1Catalog->explorationDropConfig()['identity'],
@@ -1688,13 +1751,18 @@ STORY;
             'finished_at' => $finishedAt,
         ]);
         $snapshot = $battle->snapshot;
+        $dropEncounter = $encounter;
+        if (is_string($huntingGround['forced_drop_profile'] ?? null)) {
+            $dropEncounter['drop_profile'] = $huntingGround['forced_drop_profile'];
+        }
         $snapshot['drop'] = $resultType === UndergroundBattle::RESULT_VICTORY
             ? $this->equipmentDrops->settleVictory(
                 $profile,
                 $battle,
                 $huntingGroundKey,
-                $encounter,
+                $dropEncounter,
                 $seed,
+                $huntingGround['drop_tier_key'],
             )
             : [
                 'identity' => $this->alphaV1Catalog->explorationDropConfig()['identity'],
@@ -1716,6 +1784,7 @@ STORY;
     }
 
     /**
+     * @param  list<string>  $encounterKeys
      * @param  list<array{secretary_id:int, source_owner_user_id:int, snapshot:array<string,mixed>}>  $borrowed
      */
     private function resolveAndSettlePartyExplorationBattle(
@@ -1723,8 +1792,10 @@ STORY;
         string $requestId,
         string $fingerprint,
         string $huntingGroundKey,
+        array $encounterKeys,
         string $encounterKey,
         int $seed,
+        int $keyBalanceBefore,
         array $borrowed,
     ): UndergroundBattle {
         $huntingGround = $this->alphaV1Catalog->explorationHuntingGround($huntingGroundKey);
@@ -1839,11 +1910,18 @@ STORY;
 
         $partySize = count($playerSnapshots);
         $enemyCount = $this->alphaV1Catalog->explorationEnemyCountForPartySize($huntingGroundKey, $partySize);
-        $enemyKeys = array_fill(0, $enemyCount, $encounterKey);
+        if (count($encounterKeys) !== $enemyCount) {
+            throw new UndergroundRuntimeException('underground_party_invalid', '敵編成を解決できません。');
+        }
+        $enemyKeys = $encounterKeys;
         $combatCatalog = $this->alphaV1Catalog->explorationCatalog();
-        $enemyDefinition = $combatCatalog->enemy($encounterKey);
-        $encounterLabel = $enemyDefinition['label'] ?? $encounter['label'];
+        $enemyLabels = [];
         for ($index = 1; $index <= $enemyCount; $index++) {
+            $enemyKey = $enemyKeys[$index - 1];
+            $enemyDefinition = $combatCatalog->enemy($enemyKey);
+            $enemyEncounter = $this->alphaV1Catalog->explorationEncounter($enemyKey, $huntingGroundKey);
+            $encounterLabel = $enemyDefinition['label'] ?? $enemyEncounter['label'];
+            $enemyLabels[] = $encounterLabel;
             $enemyId = 'enemy:'.$index;
             $memberSnapshots[$enemyId] = [
                 'team' => 'enemy',
@@ -1863,6 +1941,7 @@ STORY;
             'reward_authority' => [
                 'mode' => 'single_encounter',
                 'encounter_key' => $encounterKey,
+                'enemy_keys' => $enemyKeys,
                 'multiplied_by_enemy_count' => false,
             ],
         ];
@@ -1907,17 +1986,25 @@ STORY;
         $xpBefore = $profile->combat_xp;
         $shardsBefore = $profile->shard_balance;
         $unspentStpBefore = $profile->unspent_stp;
+        $victoryReward = $this->explorationVictoryReward(
+            $huntingGround,
+            $encounterKey,
+            $encounter,
+            $seed,
+            $resultType === UndergroundBattle::RESULT_VICTORY,
+        );
         $xpAwarded = match ($resultType) {
             UndergroundBattle::RESULT_VICTORY => $encounter['xp'],
             UndergroundBattle::RESULT_WITHDRAWAL => intdiv($encounter['xp'], 4),
             default => 0,
         };
         $shardDelta = match ($resultType) {
-            UndergroundBattle::RESULT_VICTORY => $encounter['shards'],
+            UndergroundBattle::RESULT_VICTORY => $victoryReward['shards'],
             UndergroundBattle::RESULT_DEFEAT => intdiv($profile->shard_balance, 2) - $profile->shard_balance,
             default => 0,
         };
         $rewardSettlement = $this->applyRepeatableReward($profile, $xpAwarded, $shardDelta);
+        $profile->shining_kingdom_key_balance += $victoryReward['keys'];
         $curve = $rewardSettlement['xp_curve'];
         $stpAwarded = $rewardSettlement['stp_awarded'];
         $maxHpAfter = $this->alphaV1Catalog->currentMaxHp(
@@ -1971,9 +2058,9 @@ STORY;
                 ],
                 'combat_rules_identity' => AlphaV1CombatRules::IDENTITY,
                 'player_display_name' => $leaderDisplayName,
-                'encounter_display_name' => $enemyCount === 1
-                    ? $encounter['label']
-                    : $encounter['label'].' ×'.$enemyCount,
+                'encounter_display_name' => count(array_unique($enemyLabels)) === 1
+                    ? $enemyLabels[0].($enemyCount === 1 ? '' : ' ×'.$enemyCount)
+                    : implode('・', $enemyLabels),
                 'presentation_log_version' => UndergroundPartyBattleProjector::PRESENTATION_LOG_VERSION,
                 'initial_state' => $projection['initial_state'],
                 'summary' => $projection['summary'],
@@ -1993,6 +2080,7 @@ STORY;
                 'targeting_contract_identity' => $this->alphaV1Catalog->targetingIdentity(),
                 'encounter' => [
                     'key' => $encounterKey,
+                    'enemy_keys' => $enemyKeys,
                     'weight_bps' => $encounter['weight'],
                     'xp_reward' => $encounter['xp'],
                     'shard_reward' => $encounter['shards'],
@@ -2009,6 +2097,13 @@ STORY;
                 'current_hp_after' => $profile->current_hp,
                 'max_hp_after' => $maxHpAfter,
                 'banked_shard_balance' => $profile->banked_shard_balance,
+                'shining_kingdom_key' => [
+                    'balance_before' => $keyBalanceBefore,
+                    'entry_cost' => $huntingGround['entry_key_cost'],
+                    'awarded' => $victoryReward['keys'],
+                    'balance_after' => $profile->shining_kingdom_key_balance,
+                ],
+                'treasure' => $victoryReward['treasure'],
                 'awakening' => $leaderFinalAwakening,
                 'party_awakening' => $result->awakening,
                 'drop' => [
@@ -2020,13 +2115,18 @@ STORY;
             'finished_at' => $finishedAt,
         ]);
         $snapshot = $battle->snapshot;
+        $dropEncounter = $encounter;
+        if (is_string($huntingGround['forced_drop_profile'] ?? null)) {
+            $dropEncounter['drop_profile'] = $huntingGround['forced_drop_profile'];
+        }
         $snapshot['drop'] = $resultType === UndergroundBattle::RESULT_VICTORY
             ? $this->equipmentDrops->settleVictory(
                 $profile,
                 $battle,
                 $huntingGroundKey,
-                $encounter,
+                $dropEncounter,
                 $seed,
+                $huntingGround['drop_tier_key'],
             )
             : [
                 'identity' => $this->alphaV1Catalog->explorationDropConfig()['identity'],
@@ -2874,6 +2974,103 @@ STORY;
         return $battle->load([
             'log' => fn ($query) => $query->where('expires_at', '>', Carbon::now()),
         ]);
+    }
+
+    /** @return list<string> */
+    private function drawExplorationEncounterKeys(
+        string $huntingGroundKey,
+        int $partySize,
+        UndergroundRandom $random,
+    ): array {
+        $ground = $this->alphaV1Catalog->explorationHuntingGround($huntingGroundKey);
+        $enemyCount = $this->alphaV1Catalog->explorationEnemyCountForPartySize($huntingGroundKey, $partySize);
+        $rare = $ground['rare_encounter'] ?? null;
+        if (is_array($rare)
+            && $random->integer('runtime:rare-encounter:'.$huntingGroundKey, 1, 10_000) <= $rare['chance_bps']) {
+            return array_fill(0, $enemyCount, $rare['key']);
+        }
+        $first = $this->alphaV1Catalog->weightedExplorationEncounter(
+            $random->integer('runtime:encounter:'.$huntingGroundKey, 1, 10_000),
+            $huntingGroundKey,
+        );
+        if ($rare === null) {
+            return array_fill(0, $enemyCount, $first);
+        }
+        $keys = [$first];
+        for ($index = 1; $index < $enemyCount; $index++) {
+            $keys[] = $this->alphaV1Catalog->weightedExplorationEncounter(
+                $random->integer('runtime:encounter:'.$huntingGroundKey.':slot:'.$index, 1, 10_000),
+                $huntingGroundKey,
+            );
+        }
+
+        return $keys;
+    }
+
+    /** @param array<string, mixed> $huntingGround */
+    private function consumeExplorationEntryKey(
+        UndergroundProfile $profile,
+        array $huntingGround,
+        int $executionCount = 1,
+    ): void {
+        $cost = $huntingGround['entry_key_cost'] ?? 0;
+        if (! is_int($cost) || $cost < 0 || $executionCount < 1) {
+            throw new RuntimeException('Underground exploration entry key cost is invalid.');
+        }
+        if ($cost > intdiv(PHP_INT_MAX, $executionCount)) {
+            throw new RuntimeException('Underground exploration entry key cost overflowed.');
+        }
+        $totalCost = $cost * $executionCount;
+        if ($profile->shining_kingdom_key_balance < $totalCost) {
+            throw new UndergroundRuntimeException(
+                'underground_shining_kingdom_key_insufficient',
+                '輝きの王国の鍵が必要です。',
+            );
+        }
+        $profile->shining_kingdom_key_balance -= $totalCost;
+    }
+
+    /**
+     * @param  array<string, mixed>  $huntingGround
+     * @param  array<string, mixed>  $encounter
+     * @return array{shards:int,keys:int,treasure:array{found:bool,base_g:int,multiplier:int,total_g:int}}
+     */
+    private function explorationVictoryReward(
+        array $huntingGround,
+        string $encounterKey,
+        array $encounter,
+        int $seed,
+        bool $victory,
+    ): array {
+        if (! $victory) {
+            return ['shards' => 0, 'keys' => 0, 'treasure' => ['found' => false, 'base_g' => 0, 'multiplier' => 1, 'total_g' => 0]];
+        }
+        $random = new UndergroundRandom($seed);
+        $baseG = ($huntingGround['kind'] ?? 'hunting_ground') === 'vault'
+            ? (int) $huntingGround['vault_base_g']
+            : (int) $encounter['shards'];
+        $treasure = false;
+        $multiplier = 1;
+        if (($huntingGround['kind'] ?? null) === 'vault') {
+            $rarityRoll = $random->integer('drop:rarity', 1, 10_000);
+            $treasure = $rarityRoll > 7_317;
+            $multiplier = $treasure ? (int) $huntingGround['treasure_multiplier'] : 1;
+        }
+        $keys = 0;
+        $keyReward = $huntingGround['key_reward'] ?? null;
+        if (is_array($keyReward)) {
+            $rare = $huntingGround['rare_encounter'] ?? null;
+            $keys = is_array($rare) && ($rare['key'] ?? null) === $encounterKey
+                ? (int) $keyReward['rare_quantity']
+                : ($random->integer('reward:shining-kingdom-key', 1, 10_000) <= $keyReward['normal_chance_bps'] ? 1 : 0);
+        }
+        $totalG = $baseG * $multiplier;
+
+        return [
+            'shards' => $totalG,
+            'keys' => $keys,
+            'treasure' => ['found' => $treasure, 'base_g' => $baseG, 'multiplier' => $multiplier, 'total_g' => $totalG],
+        ];
     }
 
     private function assertExplorationUnlocked(UndergroundProfile $profile): void

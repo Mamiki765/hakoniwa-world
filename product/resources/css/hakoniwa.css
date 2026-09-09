@@ -447,7 +447,7 @@ html[data-theme="dark"] .compensation-banner, html[data-theme="dark"] .compensat
 .underground-party-settings-page > header h1, .underground-party-settings-page > header p, .underground-party-settings-page > p { margin: 0; }
 .underground-adventure-heading, .underground-skip-entry { display: flex; align-items: center; justify-content: space-between; gap: .7rem; }
 .underground-skip-entry { font-size: .78rem; font-weight: 850; }
-.underground-adventure-sections { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .7rem; }
+.underground-adventure-sections { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: .7rem; }
 .underground-adventure-block { display: grid; align-content: start; gap: .55rem; padding: .75rem; border: 1px solid var(--line); background: var(--paper); }
 .underground-adventure-block h3, .underground-adventure-block small { margin: 0; }
 .underground-adventure-block small { color: var(--muted); }

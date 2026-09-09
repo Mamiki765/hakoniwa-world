@@ -987,6 +987,57 @@ final class UndergroundRuntimeTest extends TestCase
         $this->assertSame(1, count($combat->calls));
     }
 
+    public function test_shining_kingdom_and_vault_share_combat_but_keep_key_and_reward_contracts(): void
+    {
+        Carbon::setTestNow('2026-09-10 06:00:00+09:00');
+        config([
+            'underground-alpha-v1.exploration.grounds.shining_kingdom.rare_encounter.chance_bps' => 1,
+            'underground-alpha-v1.exploration.grounds.shining_kingdom.key_reward.normal_chance_bps' => 10_000,
+            'underground-alpha-v1.exploration.grounds.shining_kingdom_vault.rare_encounter.chance_bps' => 1,
+        ]);
+        [$user, $secretary] = $this->secretaryUser();
+        $profile = $this->unlockExploration($secretary);
+        UndergroundTrialProgress::query()->create([
+            'underground_profile_id' => $profile->id,
+            'trial_key' => 'trial_02',
+            'unlocked_at' => Carbon::now(),
+            'first_cleared_at' => Carbon::now(),
+        ]);
+        [$runtime] = $this->runtimeWithOutcomes(['player', 'player', 'enemy']);
+
+        $state = collect($runtime->projectHuntingGroundState($profile->refresh())['grounds'])->keyBy('key');
+        $this->assertFalse($state['shining_kingdom']['locked']);
+        $this->assertSame('vault', $state['shining_kingdom_vault']['kind']);
+        $this->assertTrue($state['shining_kingdom_vault']['disabled']);
+        $this->assertSame('輝きの王国の鍵が必要', $state['shining_kingdom_vault']['unavailable_reason']);
+
+        $kingdom = $runtime->explore($user, (string) Str::uuid(), 'shining_kingdom')['battle'];
+        $this->assertSame(1, $profile->refresh()->shining_kingdom_key_balance);
+        $this->assertSame(0, $kingdom->snapshot['shining_kingdom_key']['balance_before']);
+        $this->assertSame(0, $kingdom->snapshot['shining_kingdom_key']['entry_cost']);
+        $this->assertSame(1, $kingdom->snapshot['shining_kingdom_key']['awarded']);
+        $this->assertSame(UndergroundBattle::RESULT_VICTORY, $kingdom->result);
+
+        Carbon::setTestNow(Carbon::now()->addSeconds(10));
+        $vault = $runtime->explore($user, (string) Str::uuid(), 'shining_kingdom_vault')['battle'];
+        $this->assertSame(0, $profile->refresh()->shining_kingdom_key_balance);
+        $this->assertSame(1, $vault->snapshot['shining_kingdom_key']['balance_before']);
+        $this->assertSame(1, $vault->snapshot['shining_kingdom_key']['entry_cost']);
+        $this->assertSame('granted', $vault->snapshot['drop']['status']);
+        $this->assertContains($vault->snapshot['drop']['item']['rarity'], ['uncommon', 'rare', 'epic']);
+        $this->assertSame($vault->snapshot['treasure'], $runtime->projectExplorationBattle($vault)['treasure']);
+
+        $profile->refresh()->update(['shining_kingdom_key_balance' => 1]);
+        Carbon::setTestNow(Carbon::now()->addSeconds(10));
+        $requestId = (string) Str::uuid();
+        $defeat = $runtime->explore($user, $requestId, 'shining_kingdom_vault')['battle'];
+        $retry = $runtime->explore($user, $requestId, 'shining_kingdom_vault');
+        $this->assertSame(UndergroundBattle::RESULT_DEFEAT, $defeat->result);
+        $this->assertSame(0, $profile->refresh()->shining_kingdom_key_balance);
+        $this->assertSame('ineligible', $defeat->snapshot['drop']['status']);
+        $this->assertTrue($retry['duplicate']);
+    }
+
     public function test_trial_two_is_unlocked_by_trial_one_clear_without_a_level_gate(): void
     {
         Carbon::setTestNow('2026-09-06 09:00:00+09:00');
