@@ -59,6 +59,19 @@ function trackPointerCapture(element: Element): { captured: number[]; released: 
 }
 
 describe('staggered square-image map', () => {
+    it('keeps the coordinates on the tooltip title without a dedicated coordinate line', async () => {
+        const cell = mapCell({ x: 1, y: -1, display_name: '海底油田' });
+        const wrapper = mount(HexMap, { props: {
+            cells: [cell], selected: null, capital: { x: 0, y: 0 }, bounds: { min_x: 0, max_x: 59, min_y: -1, max_y: 59 },
+            loading: false, error: null, emptyChunks: [],
+        } });
+
+        await wrapper.get('.map-cell').trigger('mouseenter');
+
+        expect(wrapper.get('.cell-tooltip strong').text()).toBe('海底油田 (1,-1)');
+        expect(wrapper.findAll('.cell-tooltip span').map((line) => line.text())).not.toContain('座標 x=1, y=-1');
+    });
+
     it('shows only matching queued commands below the sea-area line in position order without scanning an API', async () => {
         const cell = mapCell({
             x: 4,
@@ -139,10 +152,10 @@ describe('staggered square-image map', () => {
         expect(tiles[1]!.find('img').exists()).toBe(false);
         expect(tiles[1]!.find('.tile-label').text()).toBe('森');
         await tiles[0]!.trigger('mouseenter');
-        expect(wrapper.find('.cell-tooltip').text()).toContain('座標 x=0, y=0');
+        expect(wrapper.find('.cell-tooltip strong').text()).toBe('漁船 (0,0)');
+        expect(wrapper.find('.cell-tooltip').text()).not.toContain('座標');
         expect(wrapper.find('.cell-tooltip').text()).toContain('人口');
-        expect(wrapper.findAll('.cell-tooltip span').map((line) => line.text()).slice(0, 6)).toEqual([
-            '座標 x=0, y=0',
+        expect(wrapper.findAll('.cell-tooltip span').map((line) => line.text()).slice(0, 5)).toEqual([
             '船の所有者: 船主国 (N4)',
             'HP: 1/1',
             '地形: 海',

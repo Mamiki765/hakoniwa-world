@@ -94,7 +94,6 @@ const tooltipDetails = computed(() => {
     }
 
     return [
-        `座標 x=${cell.x}, y=${cell.y}`,
         ...(cell.ship == null ? [] : [
             `船の所有者: ${cell.ship.owner_nation.name} (N${cell.ship.owner_nation.nation_number})`,
             `HP: ${cell.ship.current_hp}/${cell.ship.max_hp}`,
@@ -448,7 +447,7 @@ function markAssetFailed(cell: MapCell): void {
                 :style="{ left: `${tooltipPosition.x}px`, top: `${tooltipPosition.y}px` }"
                 role="tooltip"
             >
-                <strong>{{ tooltipCell.display_name }}</strong>
+                <strong>{{ tooltipCell.display_name }} ({{ tooltipCell.x }},{{ tooltipCell.y }})</strong>
                 <span v-for="line in tooltipDetails" :key="line">{{ line }}</span>
             </div>
         </div>

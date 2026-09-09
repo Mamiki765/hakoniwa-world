@@ -423,6 +423,53 @@ describe('Underground party presentation controls', () => {
         wrapper.unmount();
     });
 
+    it('keeps a confirmed skip result when refreshing the latest state fails', async () => {
+        const state = openState({
+            lending: { settings: { is_lendable: false, is_public: false, is_available: false }, candidates: [], ticket_balance: 2 },
+        });
+        const skipRequests: Array<Record<string, unknown>> = [];
+        let stateRequests = 0;
+        vi.stubGlobal('fetch', vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+            const path = String(input);
+            if (path === '/api/v1/me/underground/skip/hunting-ground') {
+                skipRequests.push(JSON.parse(String(init?.body ?? '{}')) as Record<string, unknown>);
+
+                return Promise.resolve(response({
+                    id: 'confirmed-skip', duplicate: false, content_type: 'hunting_ground', content_key: 'shallow_caves', execution_count: 1,
+                    ticket_cost: 1, xp_awarded: 10, shards_awarded: 2, combat_level_before: 20, combat_level_after: 20,
+                    rewards: { equipment_granted_count: 0, vault_full_count: 0, drops: [], ticket_balance_after: 0 },
+                    settled_at: '2026-09-09T00:00:00Z',
+                }));
+            }
+            if (path === '/api/v1/me/underground') {
+                stateRequests += 1;
+                if (stateRequests > 1) return Promise.reject(new Error('最新状態の取得に失敗しました。'));
+
+                return Promise.resolve(response(state));
+            }
+            if (path.endsWith('/api/v1/me/underground/battles')) return Promise.resolve(response([]));
+
+            return Promise.resolve(response(state));
+        }));
+
+        const wrapper = mount(UndergroundPanel, { attachTo: document.body });
+        await flushPromises();
+        await wrapper.get('.underground-skip-entry button').trigger('click');
+        const shortcut = wrapper.findAll('.underground-skip-category')[0]!.findAll('.underground-skip-shortcuts button')[0]!;
+        await shortcut.trigger('click');
+        await flushPromises();
+
+        expect(skipRequests).toHaveLength(1);
+        expect(wrapper.get('.underground-skip-result').text()).toContain('浅い洞窟を1回スキップしました');
+        expect(wrapper.get('.underground-skip-error').text()).toContain('skipは完了しました');
+        expect(wrapper.get('.underground-skip-dialog').text()).toContain('🎫 0枚');
+        expect(shortcut.attributes('disabled')).toBeDefined();
+        await shortcut.trigger('click');
+        await flushPromises();
+        expect(skipRequests).toHaveLength(1);
+        wrapper.unmount();
+    });
+
     it('preserves the original 409 skip reason when the recovery refresh also fails', async () => {
         const state = openState({
             lending: { settings: { is_lendable: false, is_public: false, is_available: false }, candidates: [], ticket_balance: 4 },

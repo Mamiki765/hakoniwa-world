@@ -1251,12 +1251,21 @@ async function runSkip(contentType: 'hunting_ground' | 'trial', contentKey: stri
         const key = contentType === 'hunting_ground'
             ? { hunting_ground_key: contentKey }
             : { trial_key: contentKey };
-        lastSkipResult.value = await api<SkipResult>(path, {
+        const result = await api<SkipResult>(path, {
             method: 'POST',
             body: JSON.stringify({ request_id: pending.requestId, execution_count: executionCount, ...key }),
         });
+        lastSkipResult.value = result;
         pendingSkipRequest.value = null;
-        await refresh(false);
+        const confirmedTicketBalance = result.rewards?.ticket_balance_after;
+        if (state.value?.lending && typeof confirmedTicketBalance === 'number') {
+            state.value.lending.ticket_balance = confirmedTicketBalance;
+        }
+        try {
+            await refresh(false);
+        } catch {
+            skipError.value = 'skipは完了しましたが、最新状態を取得できませんでした。表示中の残高は確定済みの結果です。';
+        }
     } catch (caught) {
         const message = caught instanceof Error ? caught.message : 'skipを実行できませんでした。';
         if (caught instanceof ApiError && caught.status === 409) {
