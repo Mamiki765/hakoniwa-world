@@ -30,12 +30,13 @@ final class UndergroundPersistenceTest extends TestCase
         $second = $service->ensureForSecretary($secretary);
 
         $this->assertSame($first->id, $second->id);
-        $this->assertSame([0, 1, 0, 0, 0, null, null, null, null, null, null, null, 0, 0, 0, 0, 0, 0, 0, 0, null, 0, null, null], [
+        $this->assertSame([0, 1, 0, 0, 0, 0, null, null, null, null, null, null, null, 0, 0, 0, 0, 0, 0, 0, 0, null, 0, null, null], [
             $first->unlocked_area_layers,
             $first->combat_level,
             $first->combat_xp,
             $first->shard_balance,
             $first->banked_shard_balance,
+            $first->shining_kingdom_key_balance,
             $first->current_hp,
             $first->next_battle_at,
             $first->underground_contract_completed_at,
@@ -84,6 +85,7 @@ final class UndergroundPersistenceTest extends TestCase
             'next_battle_at',
             'secretary_id',
             'shard_balance',
+            'shining_kingdom_key_balance',
             'skill_points_total',
             'skill_points_unspent',
             'skill_tree_identity',
