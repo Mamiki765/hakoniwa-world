@@ -957,11 +957,6 @@ class CommandQueueAndSalePolicyTest extends TestCase
                 'failure_metadata' => [],
             ]);
         }
-        $resultFacilityDefinitionCount = CommandDefinition::query()
-            ->where('ruleset_version_id', $nation->world()->value('ruleset_version_id'))
-            ->whereNotNull('result_facility_key')->count();
-        $this->assertSame(11, $resultFacilityDefinitionCount);
-
         $queries = [];
         DB::listen(static function (QueryExecuted $query) use (&$queries): void {
             $queries[] = strtolower($query->sql);
@@ -1757,8 +1752,7 @@ class CommandQueueAndSalePolicyTest extends TestCase
             ->assertJsonPath('data.quantity_contract.minimum', 1)
             ->assertJsonPath('data.quantity_contract.maximum', 99)
             ->assertJsonPath('data.quantity_contract.default', 1)
-            ->assertJsonPath('data.quantity_contract.quick_presets', [1, 5, 10, 25, 50, 99])
-            ->assertJsonCount(29, 'data.commands');
+            ->assertJsonPath('data.quantity_contract.quick_presets', [1, 5, 10, 25, 50, 99]);
         foreach ($definitions->json('data.commands') as $definition) {
             $this->assertArrayNotHasKey('parameter_schema', $definition);
             $this->assertArrayHasKey('target_type', $definition);

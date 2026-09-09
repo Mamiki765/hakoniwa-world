@@ -6,9 +6,76 @@ use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
-/** Shared reversal of unreleased 3.8 additions for supported-source fixtures only. */
+/** Shared reversal of post-source additions for supported upgrade fixtures only. */
 trait RestoresPre380Schema
 {
+    private function return390PersistenceToPre390Source(): void
+    {
+        Schema::dropIfExists('secretary_guide_conversation_totals');
+        Schema::dropIfExists('guide_conversation_topics');
+        Schema::dropIfExists('compensation_grant_claims');
+        Schema::dropIfExists('compensation_grant_items');
+        Schema::dropIfExists('compensation_grants');
+        Schema::dropIfExists('user_daily_quest_activities');
+        Schema::dropIfExists('user_daily_quest_progress');
+        Schema::dropIfExists('user_daily_login_claims');
+        Schema::dropIfExists('user_paradox_ledger');
+        Schema::dropIfExists('user_paradox_balances');
+        if (Schema::hasColumn('nation_command_queue_items', 'paradox_execution_count')) {
+            Schema::table('nation_command_queue_items', function (Blueprint $table): void {
+                $table->dropColumn('paradox_execution_count');
+            });
+        }
+
+        $v22 = DB::table('ruleset_versions')->where('key', 'hakoniwa-2s-plus-v22')->first(['id']);
+        $v23 = DB::table('ruleset_versions')->where('key', 'hakoniwa-2s-plus-v23')->first(['id']);
+        if ($v22 !== null && $v23 !== null) {
+            DB::table('worlds')->where('ruleset_version_id', $v23->id)->update([
+                'ruleset_version_id' => $v22->id,
+                'updated_at' => now(),
+            ]);
+            DB::table('ruleset_versions')->where('id', $v23->id)->delete();
+        }
+        DB::table('facility_definitions')
+            ->whereIn('key', ['central_bank', 'central_granary'])
+            ->delete();
+        $settings = require config_path('hakoniwa/rulesets/hakoniwa-2s-plus-v22.php');
+        config([
+            'hakoniwa.ruleset' => $settings,
+            'hakoniwa.published_rulesets' => [$settings['key'] => $settings],
+        ]);
+        DB::table('migrations')->whereIn('migration', [
+            '2026_09_09_030000_add_surface_paradox_and_daily_rewards',
+            '2026_09_09_040000_add_compensation_warehouse',
+            '2026_09_09_050000_add_guide_conversation_topics',
+        ])->delete();
+        DB::unprepared(<<<'SQL'
+CREATE OR REPLACE FUNCTION validate_monster_instance_world_ruleset()
+RETURNS trigger
+LANGUAGE plpgsql
+AS $$
+DECLARE
+    world_ruleset bigint;
+    definition_ruleset bigint;
+    definition_min_hp integer;
+    definition_max_hp integer;
+BEGIN
+    SELECT ruleset_version_id INTO world_ruleset FROM worlds WHERE id = NEW.world_id;
+    SELECT ruleset_version_id, base_hp, base_hp + hp_variation
+      INTO definition_ruleset, definition_min_hp, definition_max_hp
+      FROM monster_definitions WHERE id = NEW.monster_definition_id;
+    IF world_ruleset IS NULL OR definition_ruleset IS NULL OR world_ruleset <> definition_ruleset THEN
+        RAISE EXCEPTION 'monster definition must belong to the World current ruleset';
+    END IF;
+    IF NEW.spawned_max_hp < definition_min_hp OR NEW.spawned_max_hp > definition_max_hp THEN
+        RAISE EXCEPTION 'spawned monster HP is outside its definition range';
+    END IF;
+    RETURN NEW;
+END;
+$$;
+SQL);
+    }
+
     private function returnPartyPersistenceToPre380Source(): void
     {
         Schema::dropIfExists('underground_battle_image_references');

@@ -13,12 +13,14 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Tests\Concerns\CreatesTestWorlds;
+use Tests\Concerns\RestoresPre380Schema;
 use Tests\TestCase;
 
 final class Ver381MigrationTest extends TestCase
 {
     use CreatesTestWorlds;
     use RefreshDatabase;
+    use RestoresPre380Schema;
 
     private const MIGRATION = '2026_09_09_020000_prepare_3_8_1_ui_and_bulk_skip';
 
@@ -126,6 +128,7 @@ final class Ver381MigrationTest extends TestCase
 
     private function returnSchemaToExact380Source(): void
     {
+        $this->return390PersistenceToPre390Source();
         DB::statement('ALTER TABLE underground_owned_equipment DROP CONSTRAINT underground_owned_equipment_instance_check');
         Schema::table('underground_owned_equipment', function (Blueprint $table): void {
             $table->dropForeign(['source_skip_batch_id']);

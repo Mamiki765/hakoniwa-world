@@ -35,6 +35,7 @@ final class Release380MigrationTest extends TestCase
             'grant_key' => 'upgrade:history', 'obtained_at' => now(),
         ]);
 
+        $this->return390PersistenceToPre390Source();
         $this->returnPartyPersistenceToPre380Source();
         $this->returnAuctionItemHistoryToPre380Source();
         $this->assertFalse(Schema::hasColumn('auction_listings', 'original_secretary_item_instance_id'));
@@ -70,6 +71,11 @@ final class Release380MigrationTest extends TestCase
 
         // Execute all actual forward migrations, including review fixes, without a hand-written ledger.
         $this->artisan('migrate', ['--force' => true, '--no-interaction' => true])->assertSuccessful();
+
+        $this->assertSame('hakoniwa-2s-plus-v23', $world->fresh()->rulesetVersion()->value('key'));
+        $this->assertTrue(Schema::hasTable('user_paradox_balances'));
+        $this->assertTrue(Schema::hasTable('compensation_grants'));
+        $this->assertTrue(Schema::hasTable('guide_conversation_topics'));
 
         $this->assertDatabaseHas('auction_listings', [
             'id' => $listing->id, 'original_secretary_item_instance_id' => $item->id, 'status' => 'cancelled',
