@@ -13,6 +13,7 @@ const DEFINITIVE_EXPLORATION_CONFLICTS = new Set([
     'underground_party_leader_changed',
     'underground_exploration_locked',
     'underground_hunting_ground_locked',
+    'underground_shining_kingdom_key_insufficient',
     'underground_trial_active',
     'underground_battle_cooldown',
     'underground_secretary_missing',

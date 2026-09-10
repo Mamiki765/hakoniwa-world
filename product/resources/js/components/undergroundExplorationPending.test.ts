@@ -5,6 +5,7 @@ describe('pending exploration request recovery', () => {
     it('releases the frozen request after validation or a definitive party conflict', () => {
         expect(shouldReleasePendingExplorationRequest({ status: 422 })).toBe(true);
         expect(shouldReleasePendingExplorationRequest({ status: 409, code: 'underground_party_member_unavailable' })).toBe(true);
+        expect(shouldReleasePendingExplorationRequest({ status: 409, code: 'underground_shining_kingdom_key_insufficient' })).toBe(true);
     });
 
     it('retains the request for unknown, transport, and request-id conflicts', () => {
