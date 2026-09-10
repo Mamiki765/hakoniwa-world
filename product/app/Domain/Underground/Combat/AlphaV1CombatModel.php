@@ -163,7 +163,7 @@ final readonly class AlphaV1CombatModel
                         $this->advanceAwakeningGuardRound($state, $round, $logs);
                         $this->advanceAwakeningLifestealRound($state, $round, $logs);
                     }
-                    $this->annotatePartyLogs($logs, $offset, $state, $opponent, [$opponent->combatantId]);
+                    $this->annotatePartyLogs($logs, $offset, $state, $state, [$state->combatantId]);
                 }
                 $logs[] = [
                     'kind' => 'round_end',

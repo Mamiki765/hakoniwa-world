@@ -358,6 +358,34 @@ final class AlphaV1PartyCombatTest extends TestCase
         self::assertIsString($lifesteal['action_id'] ?? null);
     }
 
+    public function test_round_end_self_regeneration_keeps_the_acting_combatant_as_its_party_target(): void
+    {
+        $catalog = $this->catalog(enemyHp: 10_000_000, enemyPower: 1, enemyAgility: 1);
+        $regenerator = $this->player(
+            'secretary:1',
+            currentHp: 100,
+            defend: true,
+            modifiers: ['self_regeneration_target_hp_bps' => 1_000],
+        );
+        $result = $this->model()->fightPartySnapshots(
+            $catalog,
+            [$regenerator, $this->player('borrowed:2', currentHp: 100, defend: true)],
+            ['party_target'],
+            390,
+            1,
+            0,
+        );
+
+        $regeneration = collect($result->actionLog)->first(
+            static fn (array $row): bool => ($row['actor_id'] ?? null) === 'secretary:1'
+                && ($row['action'] ?? null) === 'self_regeneration',
+        );
+        self::assertIsArray($regeneration);
+        self::assertSame('secretary:1', $regeneration['target_id']);
+        self::assertSame(['secretary:1'], $regeneration['target_ids']);
+        self::assertGreaterThan(0, -$regeneration['amount']);
+    }
+
     private function catalog(
         int $enemyHp,
         int $enemyPower,

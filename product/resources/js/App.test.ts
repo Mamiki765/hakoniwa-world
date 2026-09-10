@@ -2461,7 +2461,7 @@ describe('application lobby and island entry', () => {
         expect(wrapper.get('.underground-equipment').text()).toContain('武器鉄の長剣');
         expect(wrapper.get('#underground-guide-title').text()).toContain('<b>店員</b>');
         expect(wrapper.get('#underground-guide-title').find('b').exists()).toBe(false);
-        expect(wrapper.findAll('.underground-entries button')).toHaveLength(2);
+        expect(wrapper.findAll('.underground-entries button')).toHaveLength(3);
         expect(wrapper.get('.underground-explore-button').attributes('disabled')).toBeUndefined();
         expect(wrapper.get('.underground-explore-button').text()).toContain('探索する');
         expect(wrapper.get<HTMLSelectElement>('.underground-ground-selector').element.value).toBe('shallow_caves');
@@ -3208,7 +3208,7 @@ describe('application lobby and island entry', () => {
         expect(wrapper.get('.underground-summary').text()).toContain('MP10000 / 10000');
         expect(wrapper.get('.underground-growth-summary').text()).toContain('自然回復 300 MP / ラウンド');
         const adventureButtons = wrapper.findAll('.underground-entries button');
-        expect(adventureButtons).toHaveLength(2);
+        expect(adventureButtons).toHaveLength(3);
         expect(adventureButtons[0]?.attributes('disabled')).toBeUndefined();
         expect(adventureButtons[0]?.text()).toContain('探索する');
         expect(wrapper.get('.underground-ground-selector').text()).toContain('浅い洞窟');

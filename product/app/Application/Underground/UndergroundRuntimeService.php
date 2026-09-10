@@ -1800,6 +1800,10 @@ STORY;
     ): UndergroundBattle {
         $huntingGround = $this->alphaV1Catalog->explorationHuntingGround($huntingGroundKey);
         $encounter = $this->alphaV1Catalog->explorationEncounter($encounterKey, $huntingGroundKey);
+        $averagedReward = $this->averagedExplorationEncounterReward($encounterKeys, $huntingGroundKey);
+        $baseShardReward = $huntingGround['kind'] === 'vault'
+            ? (int) $huntingGround['vault_base_g']
+            : $averagedReward['shards'];
         $secretary = $profile->secretary;
         if (! is_string($secretary->name) || $secretary->name === ''
             || ! is_string($profile->growth_path_key)) {
@@ -1939,9 +1943,11 @@ STORY;
             'enemy_count' => $enemyCount,
             'enemy_count_authority' => 'content_party_size_table',
             'reward_authority' => [
-                'mode' => 'single_encounter',
+                'mode' => 'enemy_average',
                 'encounter_key' => $encounterKey,
                 'enemy_keys' => $enemyKeys,
+                'xp' => $averagedReward['xp'],
+                'base_shards' => $baseShardReward,
                 'multiplied_by_enemy_count' => false,
             ],
         ];
@@ -1992,10 +1998,11 @@ STORY;
             $encounter,
             $seed,
             $resultType === UndergroundBattle::RESULT_VICTORY,
+            $baseShardReward,
         );
         $xpAwarded = match ($resultType) {
-            UndergroundBattle::RESULT_VICTORY => $encounter['xp'],
-            UndergroundBattle::RESULT_WITHDRAWAL => intdiv($encounter['xp'], 4),
+            UndergroundBattle::RESULT_VICTORY => $averagedReward['xp'],
+            UndergroundBattle::RESULT_WITHDRAWAL => intdiv($averagedReward['xp'], 4),
             default => 0,
         };
         $shardDelta = match ($resultType) {
@@ -2082,8 +2089,8 @@ STORY;
                     'key' => $encounterKey,
                     'enemy_keys' => $enemyKeys,
                     'weight_bps' => $encounter['weight'],
-                    'xp_reward' => $encounter['xp'],
-                    'shard_reward' => $encounter['shards'],
+                    'xp_reward' => $averagedReward['xp'],
+                    'shard_reward' => $baseShardReward,
                     'reward_multiplied_by_enemy_count' => false,
                 ],
                 'xp_curve' => $curve,
@@ -2993,18 +3000,72 @@ STORY;
             $random->integer('runtime:encounter:'.$huntingGroundKey, 1, 10_000),
             $huntingGroundKey,
         );
-        if ($rare === null) {
+        $firstEncounter = $this->alphaV1Catalog->explorationEncounter($first, $huntingGroundKey);
+        if ($rare === null && $firstEncounter['drop_profile'] === 'rare') {
             return array_fill(0, $enemyCount, $first);
         }
+        $normalEncounters = $rare === null
+            ? array_values(array_filter(
+                $this->alphaV1Catalog->explorationEncounters($huntingGroundKey),
+                static fn (array $encounter): bool => $encounter['drop_profile'] !== 'rare',
+            ))
+            : null;
+        $normalWeight = $normalEncounters === null
+            ? 10_000
+            : array_sum(array_column($normalEncounters, 'weight'));
         $keys = [$first];
         for ($index = 1; $index < $enemyCount; $index++) {
-            $keys[] = $this->alphaV1Catalog->weightedExplorationEncounter(
-                $random->integer('runtime:encounter:'.$huntingGroundKey.':slot:'.$index, 1, 10_000),
-                $huntingGroundKey,
+            $roll = $random->integer(
+                'runtime:encounter:'.$huntingGroundKey.':slot:'.$index,
+                1,
+                $normalWeight,
             );
+            $keys[] = $normalEncounters === null
+                ? $this->alphaV1Catalog->weightedExplorationEncounter($roll, $huntingGroundKey)
+                : $this->weightedEncounterKey($normalEncounters, $roll);
         }
 
         return $keys;
+    }
+
+    /**
+     * @param  list<array{key:string,weight:int}>  $encounters
+     */
+    private function weightedEncounterKey(array $encounters, int $roll): string
+    {
+        $upper = 0;
+        foreach ($encounters as $encounter) {
+            $upper += $encounter['weight'];
+            if ($roll <= $upper) {
+                return $encounter['key'];
+            }
+        }
+
+        throw new RuntimeException('Underground normal encounter weights are invalid.');
+    }
+
+    /**
+     * @param  list<string>  $encounterKeys
+     * @return array{xp:int,shards:int}
+     */
+    private function averagedExplorationEncounterReward(array $encounterKeys, string $huntingGroundKey): array
+    {
+        if ($encounterKeys === []) {
+            throw new RuntimeException('Underground party encounter reward cannot be empty.');
+        }
+        $xp = 0;
+        $shards = 0;
+        foreach ($encounterKeys as $encounterKey) {
+            $encounter = $this->alphaV1Catalog->explorationEncounter($encounterKey, $huntingGroundKey);
+            $xp += $encounter['xp'];
+            $shards += $encounter['shards'];
+        }
+        $count = count($encounterKeys);
+
+        return [
+            'xp' => intdiv($xp + intdiv($count, 2), $count),
+            'shards' => intdiv($shards + intdiv($count, 2), $count),
+        ];
     }
 
     /** @param array<string, mixed> $huntingGround */
@@ -3041,6 +3102,7 @@ STORY;
         array $encounter,
         int $seed,
         bool $victory,
+        ?int $baseGOverride = null,
     ): array {
         if (! $victory) {
             return ['shards' => 0, 'keys' => 0, 'treasure' => ['found' => false, 'base_g' => 0, 'multiplier' => 1, 'total_g' => 0]];
@@ -3048,7 +3110,7 @@ STORY;
         $random = new UndergroundRandom($seed);
         $baseG = ($huntingGround['kind'] ?? 'hunting_ground') === 'vault'
             ? (int) $huntingGround['vault_base_g']
-            : (int) $encounter['shards'];
+            : ($baseGOverride ?? (int) $encounter['shards']);
         $treasure = false;
         $multiplier = 1;
         if (($huntingGround['kind'] ?? null) === 'vault') {

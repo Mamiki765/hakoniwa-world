@@ -9,6 +9,7 @@ use App\Application\Underground\AtomicUndergroundPartyCombat;
 use App\Application\Underground\CanonicalUndergroundCombat;
 use App\Application\Underground\CanonicalUndergroundExplorationCombat;
 use App\Application\Underground\UndergroundAlphaV1PlayerCatalog;
+use App\Application\Underground\UndergroundBattleSeed;
 use App\Application\Underground\UndergroundProfileService;
 use App\Application\Underground\UndergroundRuntimeException;
 use App\Application\Underground\UndergroundRuntimeService;
@@ -22,6 +23,7 @@ use App\Domain\Underground\Combat\PartyCombatResult;
 use App\Domain\Underground\Combat\PriorityCombatAiConfiguration;
 use App\Domain\Underground\Combat\UndergroundAwakening;
 use App\Domain\Underground\Combat\UndergroundCombatRules;
+use App\Domain\Underground\Combat\UndergroundRandom;
 use App\Models\Secretary;
 use App\Models\SecretaryLendingParticipation;
 use App\Models\SecretaryLendingSetting;
@@ -1280,6 +1282,132 @@ final class UndergroundRuntimeTest extends TestCase
         $this->assertEquals($battle->fresh()->snapshot, $duplicate['battle']->snapshot);
         $this->assertSame(1, SecretaryLendingParticipation::query()->count());
         $this->assertSame(1, count($partyCombat->calls));
+    }
+
+    public function test_party_exploration_draws_normal_slots_independently_averages_rewards_and_groups_rare_enemies(): void
+    {
+        Carbon::setTestNow('2026-09-10 20:00:00+09:00');
+        $rat = config('underground-alpha-v1.exploration.grounds.shallow_caves.encounters.subterranean_rat');
+        $bat = config('underground-alpha-v1.exploration.grounds.shallow_caves.encounters.cave_vermin');
+        $rare = config('underground-alpha-v1.exploration.grounds.shallow_caves.encounters.crystal_bug');
+        $explicitRare = config('underground-alpha-v1.exploration.grounds.shining_kingdom.rare_encounter');
+        $this->assertIsArray($rat);
+        $this->assertIsArray($bat);
+        $this->assertIsArray($rare);
+        $this->assertIsArray($explicitRare);
+        $rat['weight'] = 5_000;
+        $rat['xp'] = 100;
+        $rat['shards'] = 20;
+        $bat['weight'] = 5_000;
+        $bat['xp'] = 105;
+        $bat['shards'] = 25;
+        config(['underground-alpha-v1.exploration.grounds.shallow_caves.encounters' => [
+            'subterranean_rat' => $rat,
+            'cave_vermin' => $bat,
+        ]]);
+
+        [$leader, $leaderSecretary] = $this->secretaryUser();
+        $leader->forceFill(['visitor_code' => 'PTYAVG00'])->save();
+        $leaderProfile = $this->unlockExploration($leaderSecretary);
+        $borrowedSecretaryIds = [];
+        for ($index = 1; $index <= 3; $index++) {
+            [$owner, $borrowedSecretary] = $this->secretaryUser();
+            $owner->forceFill(['visitor_code' => sprintf('PTYAVG%02d', $index)])->save();
+            $borrowedProfile = $this->unlockExploration($borrowedSecretary);
+            app(UndergroundStarterEquipmentService::class)->reconcile($borrowedProfile);
+            app(SecretaryLendingService::class)->update($owner, true);
+            $borrowedSecretaryIds[] = $borrowedSecretary->id;
+        }
+        $partyCombat = new ScriptedUndergroundPartyCombat;
+        $this->app->instance(AtomicUndergroundPartyCombat::class, $partyCombat);
+        $runtime = app(UndergroundRuntimeService::class);
+        $requestId = null;
+        $expectedEnemyKeys = [];
+        $contentIdentity = (string) config('underground-alpha-v1.exploration.grounds.shallow_caves.content_identity');
+        for ($candidate = 1; $candidate <= 100; $candidate++) {
+            $candidateRequestId = sprintf('00000000-0000-4000-8000-%012d', $candidate);
+            $seed = app(UndergroundBattleSeed::class)->forRequest(
+                $leaderProfile->id,
+                $candidateRequestId,
+                $contentIdentity,
+            );
+            $random = new UndergroundRandom($seed);
+            $rolls = [
+                $random->integer('runtime:encounter:shallow_caves', 1, 10_000),
+                $random->integer('runtime:encounter:shallow_caves:slot:1', 1, 10_000),
+                $random->integer('runtime:encounter:shallow_caves:slot:2', 1, 10_000),
+                $random->integer('runtime:encounter:shallow_caves:slot:3', 1, 10_000),
+            ];
+            $candidateEnemyKeys = array_map(
+                static fn (int $roll): string => $roll <= 5_000 ? 'subterranean_rat' : 'cave_vermin',
+                $rolls,
+            );
+            if (count(array_unique($candidateEnemyKeys)) > 1) {
+                $requestId = $candidateRequestId;
+                $expectedEnemyKeys = $candidateEnemyKeys;
+                break;
+            }
+        }
+        $this->assertIsString($requestId);
+
+        $battle = $runtime->explore($leader, $requestId, null, $borrowedSecretaryIds)['battle'];
+        $enemyRewards = [
+            'subterranean_rat' => ['xp' => 100, 'shards' => 20],
+            'cave_vermin' => ['xp' => 105, 'shards' => 25],
+        ];
+        $expectedXp = intdiv(array_sum(array_map(
+            static fn (string $key): int => $enemyRewards[$key]['xp'],
+            $expectedEnemyKeys,
+        )) + 2, 4);
+        $expectedShards = intdiv(array_sum(array_map(
+            static fn (string $key): int => $enemyRewards[$key]['shards'],
+            $expectedEnemyKeys,
+        )) + 2, 4);
+
+        $this->assertSame($expectedEnemyKeys, $partyCombat->calls[0]['enemy_keys']);
+        $this->assertSame('enemy_average', $battle->snapshot['party']['reward_authority']['mode']);
+        $this->assertSame([$expectedXp, $expectedShards], [$battle->xp_awarded, $battle->shard_delta]);
+        $this->assertSame(
+            [$expectedXp, $expectedShards],
+            [$battle->snapshot['encounter']['xp_reward'], $battle->snapshot['encounter']['shard_reward']],
+        );
+
+        Carbon::setTestNow(Carbon::now()->addSeconds(10));
+        $rare['weight'] = 10_000;
+        config(['underground-alpha-v1.exploration.grounds.shallow_caves.encounters' => [
+            'crystal_bug' => $rare,
+        ]]);
+        $rareBattle = $runtime->explore(
+            $leader,
+            (string) Str::uuid(),
+            null,
+            $borrowedSecretaryIds,
+        )['battle'];
+
+        $this->assertSame(array_fill(0, 4, 'crystal_bug'), $partyCombat->calls[1]['enemy_keys']);
+        $this->assertSame([$rare['xp'], $rare['shards']], [$rareBattle->xp_awarded, $rareBattle->shard_delta]);
+
+        Carbon::setTestNow(Carbon::now()->addSeconds(10));
+        $explicitRare['chance_bps'] = 10_000;
+        config([
+            'underground-alpha-v1.exploration.grounds.shallow_caves.encounters' => [
+                'subterranean_rat' => $rat,
+                'cave_vermin' => $bat,
+            ],
+            'underground-alpha-v1.exploration.grounds.shallow_caves.rare_encounter' => $explicitRare,
+        ]);
+        $explicitRareBattle = $runtime->explore(
+            $leader,
+            (string) Str::uuid(),
+            null,
+            $borrowedSecretaryIds,
+        )['battle'];
+
+        $this->assertSame(array_fill(0, 4, 'shining_court_noble'), $partyCombat->calls[2]['enemy_keys']);
+        $this->assertSame(
+            [$explicitRare['encounter']['xp'], $explicitRare['encounter']['shards']],
+            [$explicitRareBattle->xp_awarded, $explicitRareBattle->shard_delta],
+        );
     }
 
     public function test_saved_solo_v1_and_v2_logs_keep_their_names_actions_and_states_without_recombat(): void
