@@ -1,13 +1,323 @@
 # hakoniwa-world 開発経緯・現行引継ぎ
 
-> 更新日：**2026-09-09 JST**。本チャットのOwner決定、Web ChatGPTの固定SHAレビュー、Codexの検証報告、Hakoniwa MCPの実読出しを区別して整理。
-> 対象：`Mamiki765/hakoniwa-world`
-> 独立確認したproduction：**3.7.3 / `368eadf919b599f104e1cbc35d3d8604733f5284`**。2026-09-09 10:16:34 JST生成のsanitized snapshot、binding=bound、Web/DB healthy。
-> OCI共有の3.8.0候補：**`offline/release/3.8.0` → `9b509680cc1b5e4abcdd86392d87bb61abe031f1`**。基点`690c685…`までのsource reviewに加え、雑談接続の追加4ファイルも独立source reviewでP0/P1/P2なし。full CI完了報告は**基点690c685**のもの。MCPのexact-SHA記録はUNKNOWN。
-> `offline/main`は**`368eadf919b599f104e1cbc35d3d8604733f5284`**。candidate、production、main、後続docs-only commitを混同しない。
-> 最終仕上げ：**雑談接続は9b509680で共有・source review済み。Owner指定のプレイヤーマニュアル更新はまだ共有差分なし**。新HEADのfocused検証結果も確認対象。最終仕上げの独立レビューでP0/P1/P2がなければデプロイまで進めるOwner承認あり。
-> GitHubはsuspendの手動審査中という引継ぎ。復旧確認なし。当面はOCI bareの`offline/*`とMCPを共有経路にする。
-> 本書はOwnerとWeb版ChatGPTが管理する。CodexはOwnerがhandoff編集を明示依頼した場合だけ更新する。今回の反映はその個別依頼。MCPはread-onlyのまま。
+> 作成日：2026-09-10 JST。対象：`Mamiki765/hakoniwa-world`。
+> **2026-09-10追記：旧本文の現在地と矛盾する部分は、本書冒頭のΔ1〜Δ10を優先する。本文反映のcommit・push状態は実際のGit情報で確認する。**
+> Ownerの告知原文、実機ログ、MCPの本番観測、固定SHAの実装、過去チャットのレビュー報告を分けて記録する。
+> この文書を作成しただけでrepositoryの編集・commit・push・deploy・追加配布を行ったことにはならない。
+
+## Δ1. 最初に読む現在地
+
+**3.9.0は「まだ狩場3を実装していない候補」ではない。狩場3・宝物庫を含むコードがOCI offline/mainへ入り、本番DBはv23へ移行済み。石油補填と公開配布は倉庫登録まで実行済み。中央施設画像の配置と、サーバーでの手修正の共有状態確認が夜の残作業。**
+
+| 項目 | 確認済みの状態／観測限界 |
+|---|---|
+| GitHub | Owner報告でアカウント凍結・利用不能が継続。復旧確認なし。GitHubのfetch・push・PR・Actionsを前提に進めない |
+| 共有経路 | OCI bare repositoryと`oci-offline` remote、`offline/*` refs、read-only Hakoniwa MCP |
+| `offline/main` | `539894d6896d1d40e48fbaaadb6576f7e76dec4b`。今回MCPで再確認 |
+| `offline/release/3.9.0` | 同じ`539894d6896d1d40e48fbaaadb6576f7e76dec4b`。今回MCPで再確認 |
+| merge工程 | 上記OCI refs間の差分なし。追加mergeやGitHub側への同期を未完了必須作業にしない |
+| 本番checkout | MCP snapshotでは`539894d6896d1d40e48fbaaadb6576f7e76dec4b`。作業ツリーの2行修正はこのSHAに含まれない可能性がある |
+| 本番観測日時 | snapshot生成 **2026-09-10 13:32:30 JST**（`2026-09-10T04:32:30Z`） |
+| World／Turn | `shared-world`／**427**。snapshot時点で未解決Turnなし |
+| 本番Ruleset | **`hakoniwa-2s-plus-v23`、ruleset_version_id=38** |
+| migration | **pending_count=0 / current** |
+| health | **Web healthy / DB healthy** |
+| 稼働image | `sha256:b5f1b0b47bf27889dfdfe6268331b581d046148a49a62238be0758051b3c0269` |
+| 本番のSHA binding | `deployed_sha=null`、`application_version=null`、deployment statusは`unknown`。checkout SHAと稼働imageの厳密一致を確認済みとは言わない |
+| 実装のversion | 上記固定SHAの`product/config/hakoniwa.php`はapplication **3.9.0**／current Ruleset **v23** |
+| 配布 | OwnerのSQL出力で**29 grantの登録済み**を確認。詳しくはΔ3。まだ「配布コマンドをこれから実行」と案内しない |
+| 中央施設の画像 | **現時点で画像なしはOwner承知の仕様。夜に追加予定**。実装未完やDB破損扱いにしない |
+
+旧handoff冒頭にある「production 3.7.3 / v21」「offline/main=368eadf」「3.8.0候補」「第三狩場は未実装」は、この時点の現在地ではない。過去の証拠として残すが、その版へreset・再deployしない。
+
+## Δ2. 本番更新とサーバー手修正の経緯
+
+### 更新時の停止はbuild段階だった
+
+OwnerはOCI Ubuntu／Docker Compose環境から、`oci-offline`の`offline/main`を取り込む更新手順を実行した。GitHubは使用していない。
+
+最初の更新は、`docker compose build hakoniwa-web`内のVitestで止まった。失敗箇所は`product/resources/js/App.test.ts`の既存2箇所で、地下入口ボタンが狩場・試練・宝物庫の3個になったのに、期待値が2個のままだった。
+
+この最初の失敗ログには`stop web`／`migrate`工程が出ておらず、`ERROR: build failed. Production web was not stopped.`で終了した。その実行については、本番Web停止・migration実行によるDB変更は起きていない。
+
+### OwnerがOCI checkoutで直した2行
+
+対象：`/home/ubuntu/apps/hakoniwa-world/product/resources/js/App.test.ts`
+
+```diff
+- expect(wrapper.findAll('.underground-entries button')).toHaveLength(2);
++ expect(wrapper.findAll('.underground-entries button')).toHaveLength(3);
+
+- expect(adventureButtons).toHaveLength(2);
++ expect(adventureButtons).toHaveLength(3);
+```
+
+OwnerのPython実行で置換成功。`git diff`で差分表示を確認した。ホストでの`npm test`は`vitest: not found`だったため、ホストへ依存を追加せずCompose build内で確認する案内に切り替えた。
+
+**この2行のcommit・offline push完了ログは、このチャットにはない。** MCPで読める共有refsはまだ`539894d`。夜はサーバーの`git status`／該当`git diff`を読み、手修正を消さずに共有へ取り込む。新しいbuild成功ログ全文・deploy全工程ログは未提示だが、その後に補填コマンドが実行でき、最新snapshotでv23／pending 0／新image／healthyを確認している。
+
+当初のdeployスクリプトを「migration失敗後も新imageを必ず起こせば安全」という一般runbookへ昇格させない。今回確認できた最初の失敗はbuild時であり、DB migration失敗時の挙動を実証したものではない。
+
+### レビュー・検証証拠の扱い
+
+前チャットでの5件の指摘は、宝物庫skipの鍵数上限、3.8.1→3.9のforward-upgrade保証、貴族の装備drop率、宝物庫base G、財宝Gの二重表示。`43bee1b`までに修正確認したというレビュー記録がある。`539894d`は地下鍵列の既存期待値追従で、application／migrationを変えない差分だった。
+
+最終4-shardはWindows再起動で中断した経緯があり、`539894d`全4-shard完了を示すログはこの会話では未提示。直前のshard 1／2／4はPASS、shard 3の鍵列期待値1件はfocused PASSというOwner提示報告。MCPの同SHA CI evidenceは今回も`UNKNOWN / record_unavailable_or_invalid`。これらをexact-SHA全項目PASSへ読み替えない。
+
+この引継ぎではテスト変更一覧・件数を再掲しない。確認不足を理由にserial fullを自動再実行したり、GitHub Actionsを起動したりしない。追加確認は影響範囲とOwner判断で決める。
+
+## Δ3. 石油補填・配布倉庫――登録済み、再配布禁止
+
+### 対象incidentは石油
+
+**今回処理したのは、石油在庫上限超過時の売却漏れである。船・漁獲・`ship.moved`・3.5.2の魚overflowとは別件。古いhandoffの漁船incidentへすり替えない。**
+
+3.8.1の`enforceCapacities()`では、stockpile以外の方針で上限を超えた在庫について、容量処理時の売却を試さず破棄するケースがあった。3.9.0では売却可能な資源なら売却方針にかかわらず超過分の売却を試み、資金の収容上限を守る。
+
+Ownerは12:42 JST以降に本番auditを再集計した。採用した基準は、同ターンの資金使用量（escrow込み）と資金上限を用い、「本来売却できた石油分だけ」を補填するもの。石油1万バレル＝2億円。
+
+```text
+money_headroom = max(0, money_capacity - money_in_use)
+oil_that_should_have_sold = min(discarded_oil, floor(money_headroom / 2))
+compensation_money = oil_that_should_have_sold * 2
+```
+
+これはOwnerが提示・採用した本番SQL結果の記録。ここで全auditを独立再取得した、あるいはSQLの省略部分まで確認したという意味ではない。
+
+| Turn | nation_id | 島 | 破棄石油（万バレル） | 当時の資金空き（億円） | 採用補填（億円） |
+|---:|---:|---|---:|---:|---:|
+| 408 | 1 | ナム孤島 | 232 | 9,919 | 464 |
+| 410 | 24 | アペイロン島 | 498 | 11,432 | 996 |
+| 411 | 24 | アペイロン島 | 498 | 11,509 | 996 |
+| 412 | 24 | アペイロン島 | 498 | 11,584 | 996 |
+| 413 | 1 | ナム孤島 | 2,045 | 10,319 | 4,090 |
+| 413 | 24 | アペイロン島 | 498 | 11,655 | 996 |
+| 414 | 24 | アペイロン島 | 498 | 11,724 | 996 |
+| 416 | 1 | ナム孤島 | 324 | 13,119 | 648 |
+| 418 | 1 | ナム孤島 | 1,467 | 13,120 | 2,934 |
+| 420 | 1 | ナム孤島 | 1,363 | 13,319 | 2,726 |
+| 426 | 24 | アペイロン島 | 392 | 0 | 0 |
+| 427 | 24 | アペイロン島 | 498 | 0 | 0 |
+
+採用額は**ナム孤島10,862億円、アペイロン島4,980億円、合計15,842億円**。前回のナム8,136億円からTurn 420分2,726億円が増えている。426・427のアペイロンは当時の資金上限が満杯だったため、今回基準では追加0円。
+
+### 実行済みのgrant
+
+| grant ID | 対象 | 資産・量 | 固定grant key |
+|---:|---|---|---|
+| 1 | ナム孤島（N1） | `money=10862` | `oil-overflow-compensation-through-turn-427-n1` |
+| 2 | ナム孤島（N1） | `skip_ticket=1000` | `v3.9.0-skip-ticket-1000-n1` |
+| 3 | ナム孤島（N1） | `paradox=100` | `v3.9.0-paradox-100-n1` |
+| 4 | アペイロン島（N24） | `money=4980` | `oil-overflow-compensation-through-turn-427-n24` |
+| 5〜29 | N2〜N26の各島 | 各`paradox=100` | `v3.9.0-paradox-100-n{nation_id}` |
+
+配布時にowner membershipを持つ26島すべてへ100Pd、これとは別に石油補填2件とナムのチケット1件。**合計29 grant**。全島分のPd合計は2,600Pd。
+
+Ownerの最終SQLでは全29件が`pending`、各`claimed_amount=0`。これはその照会時点の状態で、後の受取状況までは確認していない。**「倉庫登録済み」と「プレイヤーの手持ちへ受取済み」は区別する。**
+
+最初の全島配布は、パイプのwhile内で`docker compose exec`が標準入力を消費した可能性が高く、N1で止まった。内側へ`</dev/null`を追加して再実行し、N1は`already_exists`、N2〜N26は`created`となった。DB一覧で26島分を確認したため、配布漏れは解消済み。Ownerの「自分にしか配っていない管理人みたい」という発言は、この初回配布ミスのことだった。
+
+再実行しなくてよい。固有keyを新しくして同じ金額を配り直さない。同じkeyでも対象・operator・reason・資産が違えば衝突するため、理由文を整えて無条件に再送もしない。追加損失が判明した場合は、427までの登録済み範囲と分離して差額だけを別途承認する。
+
+## Δ4. 3.8.1を飛ばして古い状態へ戻さないための補足
+
+旧repository handoffは3.8.0候補で止まっているため、3.8.1の到達点も短く保持する。基準SHAは`8de7774f72c2977d8fc0a9f7126f864d2d144919`。
+
+3.8.1では秘書Owner用「設定」タブへ名前・愛称・画像6枠・立ち絵優先を集約し、表示名優先順位を統一。旧main画像UIを廃止、full_body未登録時の旧画像移行とbust fallbackに対応した。旧画像creditのNULLは勝手に補完せず保持する。
+
+PT設定の収納・貸出toggle化、スマホPT立ち絵4列とHP／MP／覚醒bar・画像ⓘ、狩場／試練の区分、まとめskipと50%／100%操作、HexMap tooltip形式の変更も3.8.1側の到達点。船舶運用EXPの100・200・300…と、貸出参加10回の端数日跨ぎ維持、Ruleset v22を含む。これらを3.9.0の未実装や再実装TODOに戻さない。
+
+## Δ5. 3.9.0の実装到達点
+
+以下は主に固定SHA `539894d` のソース確認に基づく。告知文の表現と異なる点はΔ6へ分離した。
+
+### 地上：輝石・日次報酬・高速建設
+
+輝石の単位は**Pd（Paradox、ペリドットではない）**。ユーザー単位で保持する専用通貨で、地下の「輝石の欠片G」や島間取引資源とは別。他人への売却・譲渡用途はない。「課金石のようなポジション」はOwnerの説明であり、現金購入や課金決済の実装を意味しない。
+
+ログイン報酬は日本時間の日付ごとに1回、**10Pd＋スキップチケット50枚**。デイリーは「開発画面を開く」「地下で10戦する」「コマンドを登録する」の3種で各5Pd。すべて達成すればログイン分込み25Pd／日。地下戦数には通常探索・試練とskipを含み、試練1周skipは10戦分。達成時に自動付与し、トースト通知する。
+
+コマンド一覧に「通常／輝石」タブ、Pd残高・必要量・不足量を追加。高速農場は100億＋20Pd、高速工場は300億＋20Pd、高速採掘場は1,000億＋20Pd。通常の施設の建設・整備で、実行1回ごとに費用が必要。コマンド登録時に即建設する機能ではなく、既存ターン処理内でターン消費なしとして連続処理できる。通常建設に対応する秘書技能EXPも付く。
+
+### 地上：中央銀行・中央穀倉
+
+両方とも平地に建設し、建設・1回の整備は9,999億円、1ターン。初期Lv1、整備ごとLv+1、最大90。同種は1島1個、銀行と穀倉はそれぞれ持てる。
+
+銀行は1Lvにつき資金の基礎上限+1,000億円、穀倉は食料の基礎上限+100,000トン。基礎上限への加算後に既存の秘書・アイテム補正を適用する。利息収入や食料生産を追加する施設ではない。
+
+他島には森に偽装され、初回建設の公開ログも植林扱い。所有者には施設名とLvを表示する。画像参照名は`central-bank.gif`と`central-granary.gif`。Ownerの画像を夜に配置する予定で、画像未配置は既知。
+
+自然発生怪獣のHPは**銀行Lv＋穀倉Lvの合計に対し1Lvあたり+1%**。両方Lv90なら合計+180%。端数HPは確率丸め。中央施設マスへ怪獣は移動しない。自然発生HP補正を派遣怪獣や既存怪獣の一律強化へ拡大解釈しない。
+
+中央施設は周囲の火災・台風に森相当の保護を与える。地震による被害なし。通常／PP／SPPミサイルは無効、地形破壊弾はLv-1。津波-1、隕石-5、巨大隕石は中心-20／距離1-5／距離2-1、噴火は中心-5／周囲-1、地盤沈下-5。Lv0で施設は消失し、マスは中立の浅瀬になる。
+
+### 地下：狩場3「輝きの王国」
+
+試練2の初回クリアで解禁。**非レア14種＝一般12＋強敵2、レア1種**。強敵は近衛の決闘士・宮廷の大魔術師。1〜4人PTに対して1〜4敵、非レア戦は枠ごとに抽選する。ソロでも敵4体に固定する仕様ではない。
+
+レアは**輝衣の宮廷貴族**。先に1%でレア戦を判定し、当たったら敵全枠が貴族。非レアと混ぜない。HP25,000で防御主体、1%の激怒抽選で「無礼者！」の強攻撃。EXP4,200、狩場でのG400。レアだから装備が確定drop・高レア率になるわけではない。
+
+王都／宮廷／近衛の装備シリーズを追加。狩場3の生成ILは**91〜120**、貴族由来は120。既存の能力・売価曲線を120まで延長する。体防具は現在「王都の胸当て」で、精神系ローブとの分離はこのSHAには実装されていない。
+
+狩場3の装備dropはレギュラー約22%、HQ約3%、AF約1%、Relic約0.1%（既存の整数抽選に変換しているため近似値）。通常戦勝利で6.7%、貴族戦勝利で確定1個の「輝きの王国の鍵」。4体の貴族でも勝利報酬の鍵は4個ではなく1個。鍵は既存狩場1・2には追加していない。
+
+### 地下：輝きの王国の宝物庫
+
+試練2初回クリア後の別入口。入場1回につき王国の鍵1個を消費し、敗北・撤退で返却しない。敵は王国と同じ、1%で貴族全枠のレア戦もある。PT時は出現敵からランダム1体を報酬元に選び、敵数分の報酬へ増やさない。
+
+勝利時にHQ以上の装備を確定抽選。HQ／AF／Relicの比率は3:1:0.1（整数化後73.17%／24.39%／2.44%）。基本222G、AF以上なら財宝が確定し20倍の4,440Gになる。「基本Gにさらに20倍分を加算」ではなく、合計が20倍。財宝表示は「財宝を見つけた！ ×20」。宝物庫から鍵を再dropしない。
+
+狩場3と宝物庫はそれぞれの実戦50勝でskipを解禁。宝物庫skipは1回につきチケット1枚＋鍵1個。通常狩場の50勝だけで宝物庫skipが解禁するわけではない。
+
+### 地下：skip・PT・会話
+
+まとめskipは1操作最大1,000回、試練は1,000周。50%／100%は、その回に処理できる上限を基準とする。宝物庫ではチケットと鍵の双方を見て最大数を決める。通信結果不明時は元の内容・回数・request IDを保持して結果を再確認し、別内容のskipを重ねない。
+
+通常探索とskipの狩場選択を分離。PT選択はユーザー別にブラウザへ保持する。試練のソロ専用は維持であり、試練PT化は行っていない。
+
+案内人の部屋の「少しお話をする」は、DBの有効・解禁済み話題からランダム1件を選び、1〜3選択肢から返答する形式へ変更した。常時または各試練初回クリアの解禁条件を付けられる。話題の繰り返しあり、回想へ自動登録しない。げんこつは選択肢時／返答後に利用でき、反応12種、繰り返し可能。話題開始・返答・げんこつの秘書別累計は内部記録で、現時点で新たな報酬・実績を付ける仕様ではない。
+
+管理者TOPに話題作成・編集・削除・表示停止・解禁条件の管理画面を追加。Ownerは告知原文で**話題0→7**と記載している。本番話題7件のDB確認は今回行っていないため、これはOwner記述として保持する。ソースのmigration自体は話題文をseedしない。
+
+### 配布倉庫・不具合修正・表示
+
+運営から届いた配布を開発画面のリンクからモーダルで受け取る。何も届いていなければリンクは出さない。資金・小麦・魚・怪獣肉・石油・Pd・スキップチケット・地下の手持ちGに対応。容量制限のある資産は入る分だけ受け取り、残りを倉庫へ保持する。受取済みと通信後の表示更新失敗を分け、再送で二重決済しない。
+
+石油等の容量超過売却漏れを修正。資金の公開概算は10,000億以上を「約1兆円」「約1.3兆円」等へ変更。自島の正確な所持金そのものを丸める変更ではない。他島previewを開く際に画面上部へスクロールする処理も追加。
+
+### Ruleset・migration
+
+Surface Ruleset v22→v23。追加migrationは`product/database/migrations/`の次の4本で、適用済みmigrationを統合・削除しない。
+
+```text
+2026_09_09_030000_add_surface_paradox_and_daily_rewards.php
+2026_09_09_040000_add_compensation_warehouse.php
+2026_09_09_050000_add_guide_conversation_topics.php
+2026_09_09_060000_add_shining_kingdom_key_balance.php
+```
+
+queued command等の現行definitionをstable keyで移行し、依頼時provenance・完了履歴・船・秘書等を維持するforward-only移行。本番snapshotはpending 0。再度fresh／seed／旧版復元を行う理由にはしない。
+
+## Δ6. 告知原文と実装の照合メモ――勝手に修正しない
+
+Ownerの告知文はΔ9に原文保存した。次の差は、原文を黙って書き換えずに引き継ぐ。
+
+| 箇所 | Owner原文 | 固定SHAで読める実装／区別 |
+|---|---|---|
+| 中央穀倉の最大容量 | 9,999,999トン | 基礎値は`999900`、Lv90加算は9,000,000なので、補正前は**9,999,900トン**。99トンの差がある |
+| 中央施設の「+10%」 | それぞれ上限+10% | 正確にはLvごと銀行+1,000億／穀倉+100,000tの固定加算。現上限へ毎回1.1倍を掛ける複利ではない |
+| 王都シリーズIL | IL90〜120 | 新狩場3のdrop範囲は**IL91〜120**。従来範囲も含む装備生成器全体は1〜120 |
+| 会話ボタン名 | 「少しお話がしたい」 | 新UI文字列は「**少しお話をする**」。原文の見出しはOwner表現として保存 |
+| 会話0→7／酔っ払った案内人 | Owner告知の説明 | 話題数・具体的台詞の本番DB読出しは未実施。Owner記述でありsourceだけの確認ではない |
+| 告知の掲載状態 | 原稿提示あり | ゲーム内お知らせへ投稿完了したという証拠は未提示。自動投稿しない |
+
+数値差を見つけたことは、新たなRuleset変更・migration・テスト追加への承認ではない。必要な照合だけOwnerへ提示する。中央施設画像がない件は意図どおりで、夜の作業へ回す。
+
+## Δ7. 夜に行う作業／次のチャットの開始点
+
+1. このMDを古いrepository handoffより先に読む。必要な最新状態はMCPで確認し、GitHub利用再開を前提にしない。
+2. サーバー手修正の`App.test.ts`2行が未commit／未共有か確認し、既存作業を消さずに記録・共有する。コード変更を増やす指示ではない。
+3. Owner用意の中央銀行・中央穀倉画像を、現行の外部asset配置規約に従って置く。参照ファイル名は`central-bank.gif`／`central-granary.gif`。実際の配置先・公開URLを確認してから操作し、古い冬tileパスを推測流用しない。
+4. 本差分を`product/docs/handoffs/development-history-and-current-handoff.md`へ反映する。添付patchは冒頭更新＋優先差分の追加方式。適用前に差分確認し、既に本文が変わっていれば機械適用を中止して内容を統合する。
+5. Owner原稿の照合メモを確認し、告知はOwnerが作成・投稿する。ログイン報酬・デイリー・高速建設など、原稿にない実装もΔ5で保持する。
+
+**石油補填・100Pd・ナム1,000チケットは再実行しない。** 受取状況の確認が必要ならread-onlyで見る。旧frontend期待値修正を理由に全テスト・serial・CIを無断で回し直さない。merge／deploy／追加補填も、このMDを読むだけで実行許可が出たとは扱わない。
+
+handoffはOwnerとWeb版ChatGPTが管理し、Codexは通常read-only。今夜その反映をCodexへ任せる場合だけOwnerが個別に明示する。MCP自体はread-onlyなので、ここからremoteへ直接書き込んだとは主張しない。
+
+## Δ8. 保持する将来案（今回の実装完了条件にしない）
+
+試練3は先送り。王城に勇者が多数いる高難度領域というOwnerコンセプトは残すが、現時点で試練3は未実装。
+
+地下G／輝石の欠片を数万から大量に投入できるコンテンツを次の相談候補として保持する。ILやエンチャントとは別軸の装備鍛錬、追加ステータス・攻撃力強化等はアイデアで、方式・倍率・料金・実装versionは未確定。「1,000万Gでリカちゃん像」は採用決定ではない。
+
+体防具の胸当て／精神系ローブ分離、案内人によるエリア解説・箱庭豆知識も将来候補。現在の一般会話や既存装備を勝手に大規模改造しない。
+
+## Δ9. Owner告知原文（投稿完了の記録ではない）
+
+以下は2026-09-10のOwner原文。Δ6の指摘を反映した改稿ではない。告知として何を採用・省略するかはOwnerが決める。
+
+````text
+【地上】
+○新資源『輝石』を追加しました。
+　課金石のようなポジションです。
+　単位はPd。ペリドットではなくパラドックス。
+　強い施設やコマンドの使用に使うことができる貴重な資源です。
+　他人に売ったり渡したりできません。
+
+○『中央銀行』『中央穀倉』を追加しました。
+　資金の保有上限を増やす施設です。それぞれ資金、食料の上限が+10%されます。最大90段階で99999億、9999999トンになります(秘書のレベルは乗算でかかります)
+　首都に次ぐ最強の施設です。よく考えておきましょう。
+
+    *  建設費はそれぞれ 9,999億円。
+    * 初期Lv1、同じ施設への同コマンドで Lv+1、最大 Lv90。
+    * 1島につき同種は1個だけ。
+    * 中央銀行：1Lvにつき資金上限+1,000億円。
+    * 中央穀倉：1Lvにつき食料上限+100,000トン。
+    * 他島からは森に偽装される。初回建設時の公開イベントも植林として見える。所有者には「中央銀行 Lv○」「中央穀倉 Lv○」および Lv○/90 を表示。
+    * 中央銀行・中央穀倉の合計Lvに応じて、その島へ自然発生する怪獣のHPが1Lvにつき+1%。銀行Lv20＋穀倉Lv30なら+50%。
+    * 怪獣は中央施設のマスへ移動できない。
+    * 周囲の火災・台風保護判定では森と同等の保護施設として扱う。
+    * 地震の被害を受けない。
+    * 災害によるLv減少は、津波-1、隕石-5、巨大隕石中心-20／1hex-5／2hex-1、噴火中心-5／周囲-1、地盤沈下-5。
+    * Lvが0になると施設消滅、マスは浅瀬になる。
+    * 通常ミサイル・PP・SPPは中央施設には無効。
+    * 地形破壊弾は命中ごとにLv-1。
+
+画像はないのは仕様です。夜にでも追加します
+
+【地下】
+●狩場3「輝きの王国」追加
+「14人もここまで来るなんて、あなたたちも暇なんですね」
+
+●王都シリーズ装備追加(IL90〜120)
+
+●新エリア「宝物庫」を追加。
+狩場で手に入るアイテム「鍵」を使用すると侵入できます。
+ハイクオリティ以上が確定で入手できます。
+
+●「少しお話がしたい」を正式実装(0 → 7)
+酔っ払った案内人と話ができます。
+むかついたらぶん殴れます。いくらでも。
+今は世間話しかしませんが、将来はエリアの解説や箱庭豆知識を教えてくれるかもしれません……
+
+
+【その他】
+●「配布倉庫」の追加
+運営から何か特別な配布があるときに使用する倉庫です。
+
+●石油の周りの重篤なバグの修正
+上限を超えた石油が売られず破棄されるバグを修正しました。
+該当する2島には該当資金が配布倉庫に補填されます。
+````
+
+## Δ10. 根拠と、この差分の適用範囲
+
+- **実機ログ**：本チャットにOwnerが貼付したbuild失敗、App.test.ts置換・git diff、石油補填SQL 12行、grant作成結果、最終29行の倉庫一覧。記録時点と後日の実際の受取を区別する。
+- **今回のMCP再確認**：`get_status`、`repo_commit(offline/main)`、`repo_commit(offline/release/3.9.0)`、`production_status`、`ci_get_record(539894d...)`。本番snapshotの生成時刻はΔ1。MCP 1.3.0／13 tools／read-only。
+- **元handoff**：`539894d...:product/docs/handoffs/development-history-and-current-handoff.md`、blob `04c793ce150f8ce9220bdea33886c05632e0c478`。冒頭の現在地は3.7.3／3.8.0候補のままなので、今回差分で上書きする。旧本文は履歴として保持。
+- **ソース根拠**：以下はこの会話内で読み取った固定SHA `539894d6896d1d40e48fbaaadb6576f7e76dec4b` のファイル。新しい全域レビューや本番操作を実行したという意味ではない。
+
+| 根拠ファイル（`product/`以下） | 主に裏付ける内容 |
+|---|---|
+| `config/hakoniwa.php` | application 3.9.0、Ruleset v23 |
+| `app/Application/DailyLoginRewardService.php`、`DailyQuestService.php`、`ParadoxBalanceService.php` | 日次報酬、3クエスト、Pdの単位とユーザー残高 |
+| `config/hakoniwa/rulesets/v23/commands-and-production.php`、`facilities.php`、`central-facilities.php`、`monsters-and-military.php` | 5コマンド、施設費用・Lv・容量・偽装・防護・怪獣HP |
+| `config/hakoniwa/rulesets/current/economy-and-resources.php:157-158`、`app/Domain/Economy/NationCapacityResolver.php` | 基礎上限と施設加算→既存補正の順序 |
+| `app/Application/CompleteTurnEngine.php:929-1069` | 売却可能資源の容量超過売却とaudit |
+| `config/underground-alpha-v1.php`、`config/underground-equipment.php` | 狩場3、貴族、宝物庫、drop率、IL、装備名 |
+| `app/Application/Underground/UndergroundRuntimeService.php`、`app/Domain/Underground/Combat/AlphaV1CombatModel.php` | 敵編成、鍵、skip、財宝、貴族の激怒行動 |
+| `app/Application/Underground/GuideConversationService.php`、`GuideConversationUnlockCatalog.php` | 会話・解禁・げんこつ12種・累計 |
+| `app/Application/CompensationWarehouseService.php`、`app/Console/Commands/CreateCompensationGrant.php` | 配布登録、重複判定、上限付き受取 |
+| `resources/js/App.vue`、`components/UndergroundPanel.vue`、`components/CommandQueuePanel.vue`、`components/GuideConversationTopicAdmin.vue` | 配布倉庫、日次通知、PT保持、skip再確認、会話管理 |
+| `app/Services/AssetManifestResolver.php` | 中央施設のGIF参照名 |
+| `app/Support/MoneyFormatter.php`、`resources/js/formatters/money.ts` | 公開概算の兆円表示 |
+
+この差分は古い記録をなかったことにはしない。**最新到達点と履歴を分離して、次のチャットが未merge・未deploy・未実装・未配布の状態へ巻き戻らないための更新**である。
+
+---
+
+> **以下の第0〜8章は2026-09-09版を保持した履歴。** 3.7.3本番／3.8.0候補という現在地・未配布・第三狩場未実装等の記載は、冒頭の2026-09-10差分で更新されている。古いcheckpointへのresetや未実施扱いをしない。個別仕様・過去の判断根拠が必要なときに参照する。
 
 # 0. 読み方と、今回の重要な更新
 
