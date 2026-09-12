@@ -14,7 +14,7 @@
 | 正本remote | Forgejo `https://git.pbwlove.com/Mamiki765/hakoniwa-world.git` |
 | 基準main | `e2578829a5090ff71399ddcd7ce1cce12e1eba5a`。作業開始時と2026-09-12の再fetch時に`origin/main`で一致を確認 |
 | 作業branch | `release/3.9.2`。Forgejoへpush済み |
-| 実装HEAD | `e27d57b121eff3fcd5a05d4a07411d5944dcb6a1`（handoff更新commitを除く実装・検証追従の先端） |
+| 実装HEAD | `5e2a9238ec8393b65fe569a5724cf02382ee9d3c`（handoff更新commitを除く実装・review追従の先端） |
 | Ruleset | production使用済みv23を変更せず、3.9.2のsemantic changeを1世代だけ上げたv24へ統合 |
 | Forgejo PR | `https://git.pbwlove.com/Mamiki765/hakoniwa-world/pulls/1` |
 | 未実施 | merge、production deploy、production DB操作、補填再実行 |
@@ -29,6 +29,7 @@
 | `81560c7` | 貸出固定装備、天断一閃表示、任意回数skip、地底PT AI対象、中央施設の集落上書き、v24 migrationとmanual更新 |
 | `e632391` | 新規島の中立自然地形利用、船の安全退避、領土感化の安全面積上限、関連architecture/manual/test |
 | `e27d57b` | release checkpointで判明したv24追従漏れfixture・expectationの修正 |
+| `5e2a923` | reviewで判明した地底PT AIの条件対象修正、低価値なショップ総数固定の削除、manual節順の修正 |
 
 完了したruntime変更は次のとおり。
 
@@ -54,6 +55,9 @@
 - 追加した新規島・船・領土感化domainは27 tests／247 assertions／`135.645s`。v24 contractは12 tests／73 assertions／`47.519s`、migration・fresh install・world initializationは12 tests／164 assertions／`66.089s`。
 - frontendは20 files／194 tests／`7.60s`、typecheck・lint・buildはPASS。PHPStanは429 filesでerrorなし。Pint、Ruleset validator、open-question validatorもPASS。
 - Docker production image buildはPASS。production build stageは`npm run build`だけを実行し、test・lint・typecheckは独立した検証として残した。
+- `5e2a923`のreview追従は、party combat 12 tests／104 assertionsと`App.test.ts` 44 testsをfocusedでPASS確認し、変更PHPのPintと変更TSのESLintもPASSした。
+
+repository-wide PHPUnitは同条件の変更前baselineを取得していないため、suite全体の短縮幅は未確認。以下のshard時間は各workerの個別経過時間であり、その合計や最大値を利用者のwall-clock待ち時間とは扱わない。
 
 `e632391`で116 filesを4 shardに分け、repository-wide PHPUnit 1,033 testsをcheckpoint実行した。shard 1は338 tests／4,554 assertions／`21:02.607`で3 failures、shard 2は258／8,824／`12:12.184`で1 failure、shard 3は188／1,884／`9:26.162`で1 failure、shard 4は249／5,018／`15:42.589`でPASSだった。失敗した5 testsはいずれもv24化後の古いversion・schema expectation、または新しい正規条件と矛盾するfixtureで、runtime defectではなかった。`e27d57b`で修正し、該当filesをfocusedでPASS確認した。
 
