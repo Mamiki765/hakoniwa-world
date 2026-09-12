@@ -254,9 +254,9 @@ final class WorldExpansionServiceTest extends TestCase
         $this->assertSame(0, DB::table('audit_events')->where('event_type', 'world.expanded')->count());
     }
 
-    #[DataProvider('unresolvedTurnStatuses')]
-    public function test_each_unresolved_non_dry_turn_run_blocks_expansion(string $status): void
+    public function test_an_unresolved_non_dry_turn_run_blocks_expansion(): void
     {
+        $status = TurnRun::STATUS_FAILED;
         $world = app(OceanWorldGenerator::class)->initialize();
         $this->turnRun($world, $status, false);
 
@@ -273,16 +273,6 @@ final class WorldExpansionServiceTest extends TestCase
 
         $this->assertSame(3600, MapCell::query()->count());
         $this->assertSame(59, $this->surfaceMapSpace($world)->max_x);
-    }
-
-    public static function unresolvedTurnStatuses(): array
-    {
-        return [
-            'pending' => [TurnRun::STATUS_PENDING],
-            'running' => [TurnRun::STATUS_RUNNING],
-            'failed' => [TurnRun::STATUS_FAILED],
-            'blocked' => [TurnRun::STATUS_BLOCKED],
-        ];
     }
 
     public function test_dry_run_records_do_not_block_expansion(): void

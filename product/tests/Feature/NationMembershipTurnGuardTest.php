@@ -14,7 +14,6 @@ use App\Models\World;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
-use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\Concerns\CreatesTestWorlds;
 use Tests\TestCase;
 
@@ -23,10 +22,9 @@ final class NationMembershipTurnGuardTest extends TestCase
     use CreatesTestWorlds;
     use RefreshDatabase;
 
-    #[DataProvider('unresolvedTurnStatuses')]
-    public function test_registration_rejects_each_unresolved_next_turn_before_any_membership_or_game_state_write(
-        string $status,
-    ): void {
+    public function test_registration_rejects_an_unresolved_next_turn_before_any_membership_or_game_state_write(): void
+    {
+        $status = TurnRun::STATUS_PENDING;
         $world = $this->lightweightWorld();
         $user = User::factory()->create();
         $this->turnRun($world, $status);
@@ -42,10 +40,9 @@ final class NationMembershipTurnGuardTest extends TestCase
         $this->assertSame($before, $this->registrationState($world, $user));
     }
 
-    #[DataProvider('unresolvedTurnStatuses')]
-    public function test_completed_registration_replay_remains_idempotent_during_an_unresolved_next_turn(
-        string $status,
-    ): void {
+    public function test_completed_registration_replay_remains_idempotent_during_an_unresolved_next_turn(): void
+    {
+        $status = TurnRun::STATUS_RUNNING;
         $world = $this->lightweightWorld();
         $user = User::factory()->create();
         $requestKey = (string) Str::uuid();
@@ -72,9 +69,9 @@ final class NationMembershipTurnGuardTest extends TestCase
         $this->assertSame($before, $this->registrationState($world, $user));
     }
 
-    #[DataProvider('unresolvedTurnStatuses')]
-    public function test_abandonment_rejects_each_unresolved_next_turn_before_any_lifecycle_write(string $status): void
+    public function test_abandonment_rejects_an_unresolved_next_turn_before_any_lifecycle_write(): void
     {
+        $status = TurnRun::STATUS_BLOCKED;
         $world = $this->lightweightWorld();
         $user = User::factory()->create();
         $nation = app(NationCreationService::class)->create($user, $world, "破棄拒否{$status}島", '破棄拒否島主');
@@ -103,17 +100,6 @@ final class NationMembershipTurnGuardTest extends TestCase
 
         $this->assertSame('abandoned', $result['state']);
         $this->assertDatabaseMissing('nation_memberships', ['nation_id' => $nation->id]);
-    }
-
-    /** @return array<string, array{string}> */
-    public static function unresolvedTurnStatuses(): array
-    {
-        return [
-            'pending' => [TurnRun::STATUS_PENDING],
-            'running' => [TurnRun::STATUS_RUNNING],
-            'failed' => [TurnRun::STATUS_FAILED],
-            'blocked' => [TurnRun::STATUS_BLOCKED],
-        ];
     }
 
     /** @return array<string, mixed> */

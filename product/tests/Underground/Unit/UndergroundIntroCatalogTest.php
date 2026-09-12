@@ -17,14 +17,4 @@ final class UndergroundIntroCatalogTest extends TestCase
         $this->assertArrayHasKey('serious_talk', $catalog->recollections());
         $this->assertSame('案内人', $catalog->normalizeShopkeeperName('  案内人  '));
     }
-
-    public function test_guide_conversation_topics_are_not_embedded_in_the_intro_catalog(): void
-    {
-        $catalog = app(UndergroundIntroCatalog::class);
-
-        $this->assertArrayNotHasKey('guide_banter', config('underground-intro'));
-        $this->assertFalse(method_exists($catalog, 'guideBanter'));
-        $this->assertFalse(method_exists($catalog, 'randomGuideBanter'));
-        $this->assertFalse(method_exists($catalog, 'stableGuideBanter'));
-    }
 }

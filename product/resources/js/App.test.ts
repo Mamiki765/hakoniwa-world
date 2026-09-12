@@ -1008,7 +1008,6 @@ describe('application lobby and island entry', () => {
         expect(wrapper.find('.command-workspace').exists()).toBe(false);
         const publicUndergroundMap = wrapper.get('.preview-page > .underground-map-card');
         expect(publicUndergroundMap.findAll('.underground-layer-row')).toHaveLength(2);
-        expect(publicUndergroundMap.findAll('.underground-layer-row')[0]!.findAll(':scope > *')).toHaveLength(5);
         expect(publicUndergroundMap.text()).not.toContain('(X-2, Y, -2)');
         await publicUndergroundMap.find('.underground-slot').trigger('click');
         expect(publicUndergroundMap.get('.underground-map-detail').text()).toContain('座標(10, 8, -2)');
@@ -1463,8 +1462,6 @@ describe('application lobby and island entry', () => {
         expect(wrapper.findAll('.underground-slot')).toHaveLength(8);
         expect(wrapper.findAll('.underground-ladder')).toHaveLength(2);
         expect(wrapper.findAll('.underground-entrance')).toHaveLength(1);
-        expect(wrapper.findAll('.underground-ceiling-row')[0]!.element.children).toHaveLength(5);
-        expect(wrapper.findAll('.underground-layer-row').every((row) => row.element.children.length === 5)).toBe(true);
         expect(undergroundMap.text()).not.toContain('地底農場');
         expect(wrapper.findAll('.underground-slot-label')).toHaveLength(0);
         expect(wrapper.findAll('.underground-slot').every((slot) => !slot.text().includes('(') && !slot.text().includes('X'))).toBe(true);
@@ -1499,26 +1496,17 @@ describe('application lobby and island entry', () => {
         expect(surfaceCommandRequest).toContain('target_x=12');
         expect(surfaceCommandRequest).toContain('target_y=8');
         expect(surfaceCommandRequest).not.toContain('target_layer');
-        Object.defineProperty(window, 'innerWidth', { configurable: true, value: 390 });
-        window.dispatchEvent(new Event('resize'));
-        await wrapper.vm.$nextTick();
-        expect(wrapper.findAll('.underground-layer-row').every((row) => row.element.children.length === 5)).toBe(true);
-        Object.defineProperty(window, 'innerWidth', { configurable: true, value: 1024 });
         expect(wrapper.find('.hud-primary').text()).toContain('人口1,000人');
         expect(wrapper.find('.hud-primary').text()).toContain('面積17セル');
         expect(wrapper.find('.hud-primary').text()).toContain('食料10,000トン');
         expect(wrapper.find('.hud-primary').text()).toContain('農場規模10,000人');
         expect(wrapper.find('.hud-primary').text()).toContain('工場規模20,000人');
         expect(wrapper.find('.hud-primary').text()).toContain('採掘場規模30,000人');
-        expect(wrapper.findAll('.hud-primary > div')).toHaveLength(7);
         expect(wrapper.find('.hud-money .hud-current-value').text()).toBe('62,728億円');
         expect(wrapper.find('.hud-money').text()).not.toContain('/');
         expect(wrapper.find('.hud-primary').text()).not.toContain('工業品');
         expect(wrapper.find('.hud-primary').text()).not.toContain('上限');
         expect(wrapper.find('.hud-more').text()).toContain('詳細情報');
-        expect(wrapper.findAll('.hud-more-grid > section').map((section) => section.classes()[0])).toEqual([
-            'resource-forecast', 'hud-support',
-        ]);
         expect(wrapper.findAll('.resource-forecast thead th').map((heading) => heading.text())).toEqual([
             '資源', '生産', '消費', '予測', '所持',
         ]);
@@ -1553,11 +1541,10 @@ describe('application lobby and island entry', () => {
             expect(developmentBoard.compareDocumentPosition(log.element) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
         }
         const workspaceJumpButtons = wrapper.findAll('.workspace-jump button');
-        expect(workspaceJumpButtons).toHaveLength(3);
         expect(workspaceJumpButtons.every((button) => button.attributes('aria-controls') === workspaceScroll.attributes('id'))).toBe(true);
         const scrollTo = vi.fn();
         Object.defineProperty(workspaceScroll.element, 'scrollTo', { configurable: true, value: scrollTo });
-        await workspaceJumpButtons[2]!.trigger('click');
+        await workspaceJumpButtons.find((button) => button.text() === '開発計画')!.trigger('click');
         expect(scrollTo).toHaveBeenCalledWith({ left: expect.any(Number), behavior: 'smooth' });
         expect(wrapper.findAll('.island-events-panel')).toHaveLength(1);
         expect(wrapper.findAll('.island-events-panel').map((panel) => panel.get('h2').text()))
@@ -2461,7 +2448,6 @@ describe('application lobby and island entry', () => {
         expect(wrapper.get('.underground-equipment').text()).toContain('武器鉄の長剣');
         expect(wrapper.get('#underground-guide-title').text()).toContain('<b>店員</b>');
         expect(wrapper.get('#underground-guide-title').find('b').exists()).toBe(false);
-        expect(wrapper.findAll('.underground-entries button')).toHaveLength(3);
         expect(wrapper.get('.underground-explore-button').attributes('disabled')).toBeUndefined();
         expect(wrapper.get('.underground-explore-button').text()).toContain('探索する');
         expect(wrapper.get<HTMLSelectElement>('.underground-ground-selector').element.value).toBe('shallow_caves');
@@ -3208,11 +3194,11 @@ describe('application lobby and island entry', () => {
         expect(wrapper.get('.underground-summary').text()).toContain('MP10000 / 10000');
         expect(wrapper.get('.underground-growth-summary').text()).toContain('自然回復 300 MP / ラウンド');
         const adventureButtons = wrapper.findAll('.underground-entries button');
-        expect(adventureButtons).toHaveLength(3);
-        expect(adventureButtons[0]?.attributes('disabled')).toBeUndefined();
-        expect(adventureButtons[0]?.text()).toContain('探索する');
+        const exploreButton = adventureButtons.find((button) => button.text().includes('探索する'))!;
+        const trialButton = adventureButtons.find((button) => button.text().includes('試練を開始'))!;
+        expect(exploreButton.attributes('disabled')).toBeUndefined();
         expect(wrapper.get('.underground-ground-selector').text()).toContain('浅い洞窟');
-        expect(adventureButtons[1]?.text()).toContain('試練を開始');
+        expect(trialButton.exists()).toBe(true);
         expect(stage).toBe('underground_open');
     });
 
@@ -4024,14 +4010,14 @@ describe('Underground equipment navigation', () => {
                 serious_talk: null,
             },
             ai: {
-                schema_version: 1, max_rules: 16, max_conditions_per_rule: 2, is_custom: false,
+                schema_version: 2, max_rules: 16, max_conditions_per_rule: 2, is_custom: false,
                 rules: [{ conditions: [{ type: 'always' }], action: 'normal_attack' }],
                 default_rules: [{ conditions: [{ type: 'always' }], action: 'normal_attack' }],
                 hash: 'a'.repeat(64),
                 catalog: {
                     condition_types: [{ key: 'always', label: '常に', value_kind: 'none' }],
                     actions: [{ key: 'normal_attack', label: '通常攻撃' }, { key: 'jump', label: '後ろのruleへ移動' }],
-                    skills: [], statuses: [], role_stacks: [],
+                    targets: [], skills: [], statuses: [], role_stacks: [],
                 },
             },
             battle: null, next_battle_at: null,

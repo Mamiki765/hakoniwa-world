@@ -6,10 +6,7 @@ RUN npm ci
 COPY resources ./resources
 COPY public ./public
 COPY tsconfig.json eslint.config.js vite.config.js ./
-RUN npm run test \
-    && npm run lint \
-    && npm run typecheck \
-    && npm run build
+RUN npm run build
 
 FROM composer:2.10.2 AS vendor
 

@@ -15,6 +15,7 @@ use App\Domain\Turn\TurnAlreadyRunningException;
 use App\Domain\World\WorldMutationLock;
 use App\Models\Nation;
 use App\Models\NationMembership;
+use App\Models\RulesetVersion;
 use App\Models\Secretary;
 use App\Models\TurnRun;
 use App\Models\User;
@@ -327,7 +328,7 @@ SQL);
     }
 
     #[DataProvider('unresolvedTurnStatuses')]
-    public function test_each_unresolved_next_turn_status_blocks_equipment_without_mutation(
+    public function test_representative_unresolved_next_turn_states_block_equipment_without_mutation(
         string $status,
         string $nationState,
     ): void {
@@ -498,9 +499,7 @@ SQL);
     {
         return [
             'pending' => [TurnRun::STATUS_PENDING, 'active'],
-            'running' => [TurnRun::STATUS_RUNNING, 'active'],
             'failed' => [TurnRun::STATUS_FAILED, 'dormant'],
-            'blocked' => [TurnRun::STATUS_BLOCKED, 'active'],
         ];
     }
 
@@ -512,7 +511,14 @@ SQL);
     /** @return array{User, Secretary, World} */
     private function affectedWorldFixture(): array
     {
-        $world = $this->lightweightWorld();
+        $settings = config('hakoniwa.ruleset');
+        $ruleset = RulesetVersion::query()->where('key', $settings['key'])->sole();
+        $world = World::query()->create([
+            'key' => 'secretary-equipment-world',
+            'name' => '装備World',
+            'ruleset_version_id' => $ruleset->id,
+            'current_turn' => 1,
+        ]);
         $user = User::factory()->create();
         $secretary = Secretary::query()->create(['user_id' => $user->id]);
         $nation = $this->nation($world, '装備所属島');

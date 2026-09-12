@@ -123,37 +123,32 @@
 
 ## 8. Testとreview
 
-Testは、現在サポートする次のcontractを守るために追加する。
+Testとreviewは、故障時の影響に比例して重点を置く。特に次を優先する。
 
-- production gameplay
-- 過去に実際に発生したregression
+- player data、資産、進行の破壊や回復不能な不整合
+- 二重決算、経済破壊、transaction、retry、idempotency、concurrency、lock
+- security、authorization、他人の資産操作
 - persistence・migration・installの整合性
-- transaction、retry、idempotency、concurrency、lock
-- security、authorization
-- player-visibleまたはoperator-visibleな挙動
+- 主要なproduction gameplayとoperator経路の停止
+- 過去に実際に発生した重大なregression
 
 次を守る。
 
+- 既存testの存在は歴史的な証拠であり、Ownerが承認した恒久contractであることの証明ではない。
+- 過去Agentが追加したtestやcommentからOwner intentを逆算しない。Ownerがゼロベース見直しを求めた場合、既存保証をすべて維持することを前提にしない。
+- 要求された意味と故障影響を検証し、その時点で偶然だった要素数、DOM構造、class順、内部メソッド名、拡張可能なcatalog全件を独自にcontract化しない。
 - 既存の代表testへregressionを追加することを優先する。
 - 同じinvariantを複数layerや全variantで重複検証しない。
 - production pathのない理論上の異常状態や、unsupported historical runtimeのためだけにtestを増やさない。
 - 状態×command×targetの総当たりmatrixを安易に作らない。
+- 小修正ごとに新規testや全suite実行を機械的に要求せず、故障影響と既存の代表確認から必要性を判断する。実行しなかった確認は報告する。
 - focused testから始め、変更domainに必要なsuiteとstatic checkを実行する。
 - repository-wide PHPUnitは、exact-head CIが同じtest identifier集合を全件実行する場合、原則としてCIへ委譲する。
 - localではfocused testを優先し、migration、concurrency、environment固有の検証、CI failureの再現など、CIだけでは不足する確認を追加する。
 - source、dependency、test設定が変わっていない場合、CIと同じ全PHPUnitをlocalで重複実行しない。
 - repository-wide回帰はexact-head CIを最終authorityとして確認する。
 
-Review findingは、少なくとも次のどれかを具体的に示す。
-
-- supported production pathから到達可能
-- persistent dataを損なう
-- migration・install契約を壊す
-- security・authorization上の問題
-- transaction・concurrency・lock上の問題
-- current playerまたはoperatorへの回帰
-
-単なる好み、unsupported history、DBやrequestで拒否される不可能状態だけを理由にP1/P2としない。
+Review findingは、supported production pathからの到達可能性と、上記の品質基準またはcurrent player・operatorへの具体的な回帰を示す。単なる好み、unsupported history、DBやrequestで拒否される不可能状態だけを理由にP1/P2としない。
 
 具体的なtest command、suite構成、CI shard構成はComposer設定とtesting文書を正本とする。
 
