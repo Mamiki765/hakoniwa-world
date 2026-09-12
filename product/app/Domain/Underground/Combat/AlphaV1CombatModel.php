@@ -1077,7 +1077,7 @@ final readonly class AlphaV1CombatModel
         $decisionIndex = 0;
         $awakeningActionId = null;
         if ($actor->side === 'player' && ! $actor->awakened) {
-            $candidate = $this->ai->select($actor, $target, $catalog, $round, 0, $partyAllies);
+            $candidate = $this->ai->select($actor, $target, $catalog, $round, 0, $partyAllies, $partyEnemies);
             if ($candidate['type'] === 'awakening') {
                 $awakeningActionId = $partyMode
                     ? $this->partyActionId($actor, $round, $decisionIndex++)
@@ -1147,7 +1147,7 @@ final readonly class AlphaV1CombatModel
         }
 
         while (true) {
-            $action = $this->ai->select($actor, $target, $catalog, $round, $nextRuleIndex, $partyAllies);
+            $action = $this->ai->select($actor, $target, $catalog, $round, $nextRuleIndex, $partyAllies, $partyEnemies);
             $outrageChance = (int) ($actor->modifiers['outrage_chance_bps'] ?? 0);
             if ($actor->side === 'enemy'
                 && $outrageChance > 0
@@ -1160,12 +1160,14 @@ final readonly class AlphaV1CombatModel
                 $action = [
                     'type' => 'skill',
                     'key' => 'pressure_heavy',
+                    'target_id' => null,
                     'reason' => 'outrage_chance',
                     'fallback' => false,
                     'mp_blocked' => false,
                     'next_rule_index' => count($actor->aiRules),
                 ];
             }
+            $target = $this->selectedActionTarget($action, $target, $partyAllies, $partyEnemies);
             $actionId = $partyMode ? $this->partyActionId($actor, $round, $decisionIndex++) : null;
             [$decisionTargetId, $decisionTargetIds] = $this->decisionTargets(
                 $action,
@@ -1235,9 +1237,9 @@ final readonly class AlphaV1CombatModel
             }
             $agilityComboHits = $this->agilityComboHits($actor, $target, $random, $round, 'normal_attack');
             $targets = $this->partyEffectTargets($actor->normalAttack, $actor, $target, $partyAllies, $partyEnemies);
-            $targetIds = array_map(static fn (BuildCombatState $state): string => $state->combatantId, $targets);
             foreach ($targets as $index => $effectTarget) {
                 $offset = count($actionLog);
+                $effectTargetIds = [$effectTarget->combatantId];
                 $this->applyDamage(
                     $actor,
                     $effectTarget,
@@ -1250,11 +1252,11 @@ final readonly class AlphaV1CombatModel
                     $actionLog,
                     $agilityComboHits,
                     $index === 0,
-                    $targetIds,
+                    $effectTargetIds,
                     $actionId,
                 );
                 if ($partyAllies !== [] || $partyEnemies !== []) {
-                    $this->annotatePartyLogs($actionLog, $offset, $actor, $effectTarget, $targetIds);
+                    $this->annotatePartyLogs($actionLog, $offset, $actor, $effectTarget, $effectTargetIds);
                     for ($logIndex = $offset, $count = count($actionLog); $logIndex < $count; $logIndex++) {
                         $actionLog[$logIndex]['target_scope'] ??= $this->partyTargetScope($actor->normalAttack, $actor);
                     }
@@ -1302,12 +1304,12 @@ final readonly class AlphaV1CombatModel
                 break;
             }
             $targets = $this->partyEffectTargets($effect, $actor, $target, $partyAllies, $partyEnemies);
-            $targetIds = array_map(static fn (BuildCombatState $state): string => $state->combatantId, $targets);
             foreach ($targets as $index => $effectTarget) {
                 if (! $effectTarget->alive()) {
                     continue;
                 }
                 $offset = count($actionLog);
+                $effectTargetIds = [$effectTarget->combatantId];
                 $effectForTarget = $effect;
                 $effectForTarget['target'] = $effectTarget === $actor ? 'self' : 'enemy';
                 $this->applySkillEffect(
@@ -1324,11 +1326,11 @@ final readonly class AlphaV1CombatModel
                     $actionLog,
                     $agilityComboHits,
                     $agilityComboPending && $index === 0,
-                    $targetIds,
+                    $effectTargetIds,
                     $actionId,
                 );
                 if ($partyAllies !== [] || $partyEnemies !== []) {
-                    $this->annotatePartyLogs($actionLog, $offset, $actor, $effectTarget, $targetIds);
+                    $this->annotatePartyLogs($actionLog, $offset, $actor, $effectTarget, $effectTargetIds);
                     for ($logIndex = $offset, $count = count($actionLog); $logIndex < $count; $logIndex++) {
                         $actionLog[$logIndex]['target_scope'] ??= $this->partyTargetScope($effect, $actor);
                     }
@@ -1380,6 +1382,30 @@ final readonly class AlphaV1CombatModel
             'all_enemies' => array_values(array_filter($partyEnemies, static fn (BuildCombatState $state): bool => $state->alive())),
             default => [$target],
         };
+    }
+
+    /**
+     * @param  array<string, mixed>  $action
+     * @param  list<BuildCombatState>  $partyAllies
+     * @param  list<BuildCombatState>  $partyEnemies
+     */
+    private function selectedActionTarget(
+        array $action,
+        BuildCombatState $current,
+        array $partyAllies,
+        array $partyEnemies,
+    ): BuildCombatState {
+        $targetId = $action['target_id'] ?? null;
+        if (! is_string($targetId)) {
+            return $current;
+        }
+        foreach ([...$partyAllies, ...$partyEnemies] as $candidate) {
+            if ($candidate->combatantId === $targetId && $candidate->alive()) {
+                return $candidate;
+            }
+        }
+
+        return $current;
     }
 
     /** @param array<string, mixed> $effect */
@@ -1462,7 +1488,7 @@ final readonly class AlphaV1CombatModel
     }
 
     /**
-     * @param  array{type: 'normal_attack'|'defend'|'skill'|'awakening', key: string|null, reason: string, fallback: bool, mp_blocked: bool, next_rule_index: int}  $action
+     * @param  array{type: 'normal_attack'|'defend'|'skill'|'awakening', key: string|null, target_id?: string|null, reason: string, fallback: bool, mp_blocked: bool, next_rule_index: int}  $action
      * @param  array<string, int|null>  $metrics
      * @param  array<string, int>  $actionUsage
      * @param  list<array<string, mixed>>  $actionLog
@@ -2822,7 +2848,7 @@ final readonly class AlphaV1CombatModel
                 $actionLog,
                 $agilityComboHits,
                 showAgilityCombo: true,
-                targetIds: $techniqueTargetIds,
+                targetIds: [$enemy->combatantId],
                 actionId: $actionId,
             );
             foreach ($partyEnemies as $secondaryEnemy) {
@@ -2853,7 +2879,7 @@ final readonly class AlphaV1CombatModel
                     $actionLog,
                     $agilityComboHits,
                     showAgilityCombo: true,
-                    targetIds: $techniqueTargetIds,
+                    targetIds: [$secondaryEnemy->combatantId],
                     actionId: $actionId,
                 );
                 $this->annotatePartyLogs(

@@ -37,6 +37,9 @@ final class AlphaV1PartyCombatTest extends TestCase
                 && ($row['effect_type'] ?? null) === 'damage')
             ->groupBy('target_id');
         self::assertSame(['enemy:1', 'enemy:2'], $damage->keys()->all());
+        foreach ($damage as $targetId => $rows) {
+            self::assertSame([[strval($targetId)]], $rows->pluck('target_ids')->unique()->values()->all());
+        }
         self::assertSame($damage['enemy:1']->count(), $damage['enemy:2']->count());
         self::assertGreaterThan(0, $damage['enemy:1']->sum('amount'));
         self::assertGreaterThan(0, $damage['enemy:2']->sum('amount'));
@@ -106,8 +109,8 @@ final class AlphaV1PartyCombatTest extends TestCase
         );
         self::assertSame(['secretary:1', 'borrowed:2'], $damage->pluck('target_id')->all());
         self::assertSame([
-            ['secretary:1', 'borrowed:2'],
-            ['secretary:1', 'borrowed:2'],
+            ['secretary:1'],
+            ['borrowed:2'],
         ], $damage->pluck('target_ids')->all());
         self::assertSame(['all_enemies', 'all_enemies'], $damage->pluck('target_scope')->all());
         self::assertSame(0, $result->finalStates['secretary:1']['hp']);
@@ -121,8 +124,12 @@ final class AlphaV1PartyCombatTest extends TestCase
         $healer = $this->player('borrowed:2', currentHp: 100);
         $healer['active_skills'] = ['mending_prayer'];
         $healer['ai_rules'] = [[
-            'conditions' => [['type' => 'always']],
+            'conditions' => [['type' => 'ally_hp_lte', 'percent' => 50]],
             'action' => 'skill:mending_prayer',
+            'target' => 'lowest_hp_ally',
+        ], [
+            'conditions' => [['type' => 'always']],
+            'action' => 'normal_attack',
         ]];
         $healer['party_healing_target_scope'] = 'single_ally';
         $healerResult = $this->model()->fightPartySnapshots(
@@ -179,6 +186,75 @@ final class AlphaV1PartyCombatTest extends TestCase
         self::assertIsArray($attackerLog);
         self::assertSame('secretary:3', $attackerLog['target_id']);
         self::assertSame('self', $attackerLog['target_scope']);
+    }
+
+    public function test_untaunted_target_rules_bind_taunts_and_enemy_attacks_and_skip_when_no_candidate_remains(): void
+    {
+        $catalog = $this->catalog(enemyHp: 1_000_000, enemyPower: 1, enemyAgility: 1);
+        $firstTank = $this->player('secretary:1', currentHp: 1);
+        $firstTank['stats']['agility'] = 400;
+        $firstTank['active_skills'] = ['bulwark_strike'];
+        $firstTank['ai_rules'] = [[
+            'conditions' => [['type' => 'always']],
+            'action' => 'skill:bulwark_strike',
+        ]];
+        $secondTank = $this->player('borrowed:2', currentHp: 1_000);
+        $secondTank['stats']['agility'] = 300;
+        $secondTank['active_skills'] = ['bulwark_strike'];
+        $secondTank['ai_rules'] = [[
+            'conditions' => [['type' => 'always']],
+            'action' => 'skill:bulwark_strike',
+            'target' => 'untaunted_enemy',
+        ], [
+            'conditions' => [['type' => 'always']],
+            'action' => 'normal_attack',
+            'target' => 'untaunted_enemy',
+        ]];
+        $fallback = $this->player('borrowed:3', currentHp: 1_000);
+        $fallback['stats']['agility'] = 200;
+        $fallback['ai_rules'] = [[
+            'conditions' => [['type' => 'always']],
+            'action' => 'normal_attack',
+            'target' => 'untaunted_enemy',
+        ], [
+            'conditions' => [['type' => 'always']],
+            'action' => 'defend',
+        ]];
+
+        $result = $this->model()->fightPartySnapshots(
+            $catalog,
+            [$firstTank, $secondTank, $fallback],
+            ['party_target', 'party_target'],
+            390,
+            2,
+            0,
+        );
+
+        $taunts = collect($result->actionLog)
+            ->filter(static fn (array $row): bool => ($row['effect_type'] ?? null) === 'taunt_applied');
+        self::assertSame(['enemy:1'], $taunts->where('actor_id', 'secretary:1')->pluck('target_id')->all());
+        self::assertSame(['enemy:2'], $taunts->where('actor_id', 'borrowed:2')->pluck('target_id')->all());
+        $enemyDamage = collect($result->actionLog)
+            ->filter(static fn (array $row): bool => ($row['effect_type'] ?? null) === 'damage'
+                && ($row['round'] ?? null) === 1
+                && str_starts_with((string) ($row['actor_id'] ?? ''), 'enemy:'))
+            ->mapWithKeys(static fn (array $row): array => [$row['actor_id'] => $row['target_id']]);
+        self::assertSame('secretary:1', $enemyDamage['enemy:1']);
+        self::assertSame('borrowed:2', $enemyDamage['enemy:2']);
+        $secondRoundTarget = collect($result->actionLog)->first(
+            static fn (array $row): bool => ($row['kind'] ?? null) === 'decision'
+                && ($row['round'] ?? null) === 2
+                && ($row['actor_id'] ?? null) === 'borrowed:2',
+        );
+        self::assertIsArray($secondRoundTarget);
+        self::assertSame('normal_attack', $secondRoundTarget['action_key']);
+        self::assertSame('enemy:1', $secondRoundTarget['target_id']);
+        $fallbackDecision = collect($result->actionLog)->first(
+            static fn (array $row): bool => ($row['kind'] ?? null) === 'decision'
+                && ($row['actor_id'] ?? null) === 'borrowed:3',
+        );
+        self::assertIsArray($fallbackDecision);
+        self::assertSame('defend', $fallbackDecision['action_key']);
     }
 
     public function test_standard_party_healer_uses_ally_hp_condition_when_own_hp_is_high(): void

@@ -10,7 +10,8 @@ final class PriorityCombatAi
 
     /**
      * @param  list<BuildCombatState>  $allies
-     * @return array{type: 'normal_attack'|'defend'|'skill'|'awakening', key: string|null, reason: string, fallback: bool, mp_blocked: bool, next_rule_index: int}
+     * @param  list<BuildCombatState>  $enemies
+     * @return array{type: 'normal_attack'|'defend'|'skill'|'awakening', key: string|null, target_id: string|null, reason: string, fallback: bool, mp_blocked: bool, next_rule_index: int}
      */
     public function select(
         BuildCombatState $actor,
@@ -19,6 +20,7 @@ final class PriorityCombatAi
         int $round,
         int $startRuleIndex = 0,
         array $allies = [],
+        array $enemies = [],
     ): array {
         if ($startRuleIndex < 0 || $startRuleIndex > count($actor->aiRules)) {
             throw new \InvalidArgumentException('Underground AI rule cursor is invalid.');
@@ -27,25 +29,47 @@ final class PriorityCombatAi
         $index = $startRuleIndex;
         while ($index < count($actor->aiRules)) {
             $rule = $actor->aiRules[$index];
-            $conditions = $rule['conditions'] ?? [];
-            if (is_array($conditions) && $this->otherwiseMatchingRuleIsBlockedByMp(
-                $conditions,
+            $action = $rule['action'] ?? null;
+            if (! is_string($action)) {
+                return $this->fallback($actor, $catalog, 'invalid_action', $mpBlocked);
+            }
+            $ruleTargets = $this->ruleTargets(
+                $rule['target'] ?? null,
+                $action,
                 $actor,
                 $enemy,
-                $catalog,
-                $round,
                 $allies,
-            )) {
-                $mpBlocked = true;
-            }
-            if (! is_array($conditions) || ! $this->conditionsPass($conditions, $actor, $enemy, $catalog, $round, $allies)) {
+                $enemies,
+            );
+            if ($ruleTargets === []) {
                 $index++;
 
                 continue;
             }
-            $action = $rule['action'] ?? null;
-            if (! is_string($action)) {
-                return $this->fallback($actor, $catalog, 'invalid_action', $mpBlocked);
+            $conditions = $rule['conditions'] ?? [];
+            $ruleTarget = null;
+            if (is_array($conditions)) {
+                foreach ($ruleTargets as $candidate) {
+                    if ($this->otherwiseMatchingRuleIsBlockedByMp(
+                        $conditions,
+                        $actor,
+                        $candidate,
+                        $catalog,
+                        $round,
+                        $allies,
+                    )) {
+                        $mpBlocked = true;
+                    }
+                    if ($this->conditionsPass($conditions, $actor, $candidate, $catalog, $round, $allies)) {
+                        $ruleTarget = $candidate;
+                        break;
+                    }
+                }
+            }
+            if (! $ruleTarget instanceof BuildCombatState) {
+                $index++;
+
+                continue;
             }
             if ($action === 'jump') {
                 $jumpTo = $rule['jump_to'] ?? null;
@@ -60,6 +84,7 @@ final class PriorityCombatAi
                 return [
                     'type' => $action,
                     'key' => null,
+                    'target_id' => $ruleTarget->combatantId,
                     'reason' => 'priority_rule_'.$index,
                     'fallback' => false,
                     'mp_blocked' => $mpBlocked,
@@ -74,6 +99,7 @@ final class PriorityCombatAi
                     return [
                         'type' => 'awakening',
                         'key' => null,
+                        'target_id' => $ruleTarget->combatantId,
                         'reason' => 'priority_rule_'.$index,
                         'fallback' => false,
                         'mp_blocked' => $mpBlocked,
@@ -90,6 +116,7 @@ final class PriorityCombatAi
                     return [
                         'type' => 'skill',
                         'key' => $skillKey,
+                        'target_id' => $ruleTarget->combatantId,
                         'reason' => 'priority_rule_'.$index,
                         'fallback' => false,
                         'mp_blocked' => $mpBlocked,
@@ -111,6 +138,89 @@ final class PriorityCombatAi
         }
 
         return $this->fallback($actor, $catalog, 'no_rule_matched', $mpBlocked);
+    }
+
+    /**
+     * @param  list<BuildCombatState>  $allies
+     * @param  list<BuildCombatState>  $enemies
+     * @return list<BuildCombatState>
+     */
+    private function ruleTargets(
+        mixed $selector,
+        string $action,
+        BuildCombatState $actor,
+        BuildCombatState $currentEnemy,
+        array $allies,
+        array $enemies,
+    ): array {
+        if ($selector === null) {
+            return [$currentEnemy];
+        }
+        if ($selector === 'lowest_hp_ally') {
+            if ($action !== 'skill:mending_prayer'
+                || ($actor->flags['party_healing_target_scope'] ?? 'self') !== 'single_ally') {
+                return [];
+            }
+            $target = $this->lowestHpRatioTarget($allies !== [] ? $allies : [$actor]);
+
+            return $target instanceof BuildCombatState ? [$target] : [];
+        }
+        if ($selector === 'untaunted_enemy') {
+            $candidates = [];
+            foreach ($enemies !== [] ? $enemies : [$currentEnemy] as $enemy) {
+                if ($enemy->alive() && ! $this->hasEffectiveTaunt($enemy, $allies !== [] ? $allies : [$actor])) {
+                    $candidates[] = $enemy;
+                }
+            }
+
+            return $candidates;
+        }
+
+        return [];
+    }
+
+    /** @param list<BuildCombatState> $targets */
+    private function lowestHpRatioTarget(array $targets): ?BuildCombatState
+    {
+        $selected = null;
+        foreach ($targets as $target) {
+            if (! $target->alive()) {
+                continue;
+            }
+            if (! $selected instanceof BuildCombatState
+                || $target->hp * $selected->maxHp < $selected->hp * $target->maxHp) {
+                $selected = $target;
+            }
+        }
+
+        return $selected;
+    }
+
+    /** @param list<BuildCombatState> $allies */
+    private function hasEffectiveTaunt(BuildCombatState $enemy, array $allies): bool
+    {
+        $sourceCombatantId = $enemy->taunt['source_combatant_id'] ?? null;
+        if (is_string($sourceCombatantId)) {
+            foreach ($allies as $ally) {
+                if ($ally->combatantId === $sourceCombatantId) {
+                    return $ally->alive();
+                }
+            }
+
+            return false;
+        }
+
+        $sourceKey = $enemy->taunt['source_key'] ?? null;
+        if (! is_string($sourceKey)) {
+            return false;
+        }
+        foreach ($allies as $ally) {
+            if ($ally->key === $sourceKey && $ally->alive()) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     public function skillAvailable(BuildCombatState $actor, AlphaV1BuildCatalog $catalog, string $skillKey): bool
@@ -255,7 +365,7 @@ final class PriorityCombatAi
     }
 
     /**
-     * @return array{type: 'normal_attack'|'skill', key: string|null, reason: string, fallback: true, mp_blocked: bool, next_rule_index: int}
+     * @return array{type: 'normal_attack'|'skill', key: string|null, target_id: null, reason: string, fallback: true, mp_blocked: bool, next_rule_index: int}
      */
     private function fallback(
         BuildCombatState $actor,
@@ -275,6 +385,7 @@ final class PriorityCombatAi
                     return [
                         'type' => 'skill',
                         'key' => $skillKey,
+                        'target_id' => null,
                         'reason' => $reason,
                         'fallback' => true,
                         'mp_blocked' => $mpBlocked,
@@ -291,6 +402,7 @@ final class PriorityCombatAi
         return [
             'type' => 'normal_attack',
             'key' => null,
+            'target_id' => null,
             'reason' => $reason,
             'fallback' => true,
             'mp_blocked' => $mpBlocked,

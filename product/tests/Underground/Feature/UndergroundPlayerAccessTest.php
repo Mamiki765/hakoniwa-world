@@ -2539,7 +2539,7 @@ final class UndergroundPlayerAccessTest extends TestCase
 
         $default = $this->actingAs($user)->getJson('/api/v1/me/underground/main')
             ->assertOk()
-            ->assertJsonPath('data.ai.schema_version', 1)
+            ->assertJsonPath('data.ai.schema_version', 2)
             ->assertJsonPath('data.ai.max_rules', 16)
             ->assertJsonPath('data.ai.max_conditions_per_rule', 2)
             ->assertJsonPath('data.ai.is_custom', false)
@@ -2548,7 +2548,8 @@ final class UndergroundPlayerAccessTest extends TestCase
             ->assertJsonPath('data.ai.rules.0.action', 'awakening')
             ->assertJsonPath('data.ai.rules.2.action', 'defend')
             ->assertJsonPath('data.ai.rules.3.action', 'normal_attack')
-            ->assertJsonCount(16, 'data.ai.catalog.skills');
+            ->assertJsonPath('data.ai.catalog.targets.0.key', 'lowest_hp_ally')
+            ->assertJsonPath('data.ai.catalog.targets.1.key', 'untaunted_enemy');
         $this->assertMatchesRegularExpression('/\A[a-f0-9]{64}\z/', $default->json('data.ai.hash'));
         $this->assertSame($default->json('data.ai.default_rules'), $default->json('data.ai.rules'));
 
@@ -2556,7 +2557,7 @@ final class UndergroundPlayerAccessTest extends TestCase
         $payload = [
             'request_id' => $requestId,
             'rules' => [
-                ['conditions' => [], 'action' => 'skill:executioner_cut'],
+                ['conditions' => [], 'action' => 'skill:executioner_cut', 'target' => 'untaunted_enemy'],
                 [
                     'conditions' => [['percent' => 50, 'type' => 'own_hp_lte']],
                     'action' => 'jump',
@@ -2577,6 +2578,7 @@ final class UndergroundPlayerAccessTest extends TestCase
             ->assertJsonPath('data.ai.is_custom', true)
             ->assertJsonPath('data.ai.rules.0.conditions.0.type', 'always')
             ->assertJsonPath('data.ai.rules.0.action', 'skill:executioner_cut')
+            ->assertJsonPath('data.ai.rules.0.target', 'untaunted_enemy')
             ->assertJsonPath('data.ai.rules.1.jump_to', 3);
         $equivalentPayload = $payload;
         $equivalentPayload['rules'][3]['conditions'] = array_reverse(

@@ -2233,15 +2233,25 @@ class CommandQueueAndSalePolicyTest extends TestCase
     public function test_queue_preview_and_registration_allow_settlements_but_reject_capital_overbuild(): void
     {
         [$owner, $nation, $mapSpace] = $this->nation('集落予約国');
+        $nation->update(['money' => 20_000]);
         $capital = $nation->capital()->firstOrFail()->cell()->with(['terrain', 'facility'])->firstOrFail();
         $target = MapCell::query()->where('owner_nation_id', $nation->id)
             ->whereKeyNot($capital->id)->whereHas('terrain', fn ($query) => $query->where('key', 'plain'))
+            ->orderBy('id')->firstOrFail();
+        $centralTarget = MapCell::query()->where('owner_nation_id', $nation->id)
+            ->whereKeyNot($capital->id)->whereKeyNot($target->id)
+            ->whereHas('terrain', fn ($query) => $query->where('key', 'plain'))
             ->orderBy('id')->firstOrFail();
         app(MapCellStateService::class)->setFacility(
             $target,
             FacilityDefinition::query()->where('key', 'village')->firstOrFail(),
         );
         $target->update(['population' => 1_234]);
+        app(MapCellStateService::class)->setFacility(
+            $centralTarget,
+            FacilityDefinition::query()->where('key', 'town')->firstOrFail(),
+        );
+        $centralTarget->update(['population' => 4_567]);
         $base = "/api/v1/nations/{$nation->id}/map-spaces/{$mapSpace->id}";
 
         $farm = collect($this->actingAs($owner)->getJson(
@@ -2257,6 +2267,18 @@ class CommandQueueAndSalePolicyTest extends TestCase
             'expected_version' => 1,
         ])->assertCreated();
 
+        $centralBank = collect($this->getJson(
+            "{$base}/command-definitions?target_x={$centralTarget->x}&target_y={$centralTarget->y}",
+        )->assertOk()->json('data.commands'))->firstWhere('key', 'build_central_bank');
+        $this->assertSame('currently_executable', $centralBank['execution_preview_status']);
+        $this->postJson("{$base}/command-queue", [
+            'command_key' => 'build_central_bank',
+            'target_x' => $centralTarget->x,
+            'target_y' => $centralTarget->y,
+            'request_key' => (string) Str::uuid(),
+            'expected_version' => 2,
+        ])->assertCreated();
+
         $capitalFarm = collect($this->getJson(
             "{$base}/command-definitions?target_x={$capital->x}&target_y={$capital->y}",
         )->assertOk()->json('data.commands'))->firstWhere('key', 'build_farm');
@@ -2267,10 +2289,15 @@ class CommandQueueAndSalePolicyTest extends TestCase
             'target_x' => $capital->x,
             'target_y' => $capital->y,
             'request_key' => (string) Str::uuid(),
-            'expected_version' => 2,
+            'expected_version' => 3,
         ])->assertUnprocessable()
             ->assertJsonPath('code', 'command_rejected')
             ->assertJsonPath('errors.command.0', '首都を通常建設commandで上書きすることはできません。');
+
+        $capitalBank = collect($this->getJson(
+            "{$base}/command-definitions?target_x={$capital->x}&target_y={$capital->y}",
+        )->assertOk()->json('data.commands'))->firstWhere('key', 'build_central_bank');
+        $this->assertSame('currently_unavailable', $capitalBank['execution_preview_status']);
     }
 
     public function test_port_preview_requires_both_coastal_neighbors_and_queue_retry_is_idempotent(): void

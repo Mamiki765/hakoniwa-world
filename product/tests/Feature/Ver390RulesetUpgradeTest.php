@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Application\NationCreationService;
 use App\Application\Ver390RulesetUpgrade;
+use App\Application\Ver392RulesetUpgrade;
 use App\Models\FacilityDefinition;
 use App\Models\MapCell;
 use App\Models\MonsterDefinition;
@@ -37,7 +38,9 @@ final class Ver390RulesetUpgradeTest extends TestCase
         '2026_09_09_060000_add_shining_kingdom_key_balance',
     ];
 
-    public function test_exact_v22_world_upgrades_to_v23_and_can_be_rerun(): void
+    private const VER392_MIGRATION = '2026_09_12_000000_publish_v24_3_9_2_release';
+
+    public function test_exact_v22_world_upgrades_through_v23_to_v24_without_losing_live_or_historical_state(): void
     {
         $this->returnSchemaToExact390Source();
         $sourceSettings = require config_path('hakoniwa/rulesets/hakoniwa-2s-plus-v22.php');
@@ -170,6 +173,36 @@ final class Ver390RulesetUpgradeTest extends TestCase
         ]);
         $this->assertSame('already_current_v23', app(Ver390RulesetUpgrade::class)->run());
         $this->assertSame(1, DB::table('audit_events')->where('event_type', 'ruleset.v23_activated')->count());
+
+        $v23Payload = $target->settings;
+        $this->artisan('migrate', [
+            '--path' => 'database/migrations/'.self::VER392_MIGRATION.'.php',
+            '--force' => true,
+            '--no-interaction' => true,
+        ])->assertSuccessful();
+
+        $v24 = RulesetVersion::query()->where('key', Ver392RulesetUpgrade::TARGET_KEY)->sole();
+        $this->assertSame($v24->id, $world->fresh()->ruleset_version_id);
+        $this->assertSame($v23Payload, $target->fresh()->settings);
+        $this->assertSame($v24->id, $queued->fresh()->definition()->value('ruleset_version_id'));
+        $this->assertSame('land_clear', $queued->fresh()->definition()->value('key'));
+        $this->assertSame($requestRulesetId, $queued->fresh()->request_ruleset_version_id);
+        $this->assertSame($requestFingerprint, $queued->fresh()->request_fingerprint);
+        $this->assertSame($terminalBefore, (array) DB::table('nation_command_queue_items')->find($terminal->id));
+        $this->assertSame($v24->id, $aliveMonster->fresh()->definition()->value('ruleset_version_id'));
+        $this->assertSame($historicalMonsterBefore, (array) DB::table('monster_instances')->find($historicalMonster->id));
+        $this->assertSame($v24->id, $killStat->fresh()->definition()->value('ruleset_version_id'));
+        $this->assertSame($shipBefore, (array) DB::table('ships')->find($ship->id));
+        $this->assertSame($secretaryBefore, (array) DB::table('secretaries')->where('user_id', $user->id)->sole());
+        $this->assertSame($skillsBefore, DB::table('secretary_skills')->where('secretary_id', $secretaryBefore['id'])
+            ->orderBy('id')->get()->map(fn ($row): array => (array) $row)->all());
+        $this->assertDatabaseHas('audit_events', [
+            'world_id' => $world->id,
+            'event_type' => 'ruleset.v24_activated',
+            'visibility' => 'admin',
+        ]);
+        $this->assertSame('already_current_v24', app(Ver392RulesetUpgrade::class)->run());
+        $this->assertSame(1, DB::table('audit_events')->where('event_type', 'ruleset.v24_activated')->count());
     }
 
     public function test_v22_to_v23_rolls_back_after_a_failure_during_world_activation(): void
@@ -270,6 +303,17 @@ SQL);
 
     private function returnSchemaToExact390Source(): void
     {
+        $v24Row = RulesetVersion::query()->where('key', Ver392RulesetUpgrade::TARGET_KEY)->first();
+        if ($v24Row instanceof RulesetVersion) {
+            DB::table('worlds')->where('ruleset_version_id', $v24Row->id)->update([
+                'ruleset_version_id' => RulesetVersion::query()
+                    ->where('key', Ver392RulesetUpgrade::SOURCE_KEY)->valueOrFail('id'),
+                'updated_at' => now(),
+            ]);
+            $v24Row->delete();
+        }
+        DB::table('migrations')->where('migration', self::VER392_MIGRATION)->delete();
+
         if (Schema::hasColumn('underground_profiles', 'shining_kingdom_key_balance')) {
             Schema::table('underground_profiles', function (Blueprint $table): void {
                 $table->dropColumn('shining_kingdom_key_balance');

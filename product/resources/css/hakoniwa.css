@@ -483,6 +483,9 @@ html[data-theme="dark"] .compensation-banner, html[data-theme="dark"] .compensat
 .underground-skip-category label { display: grid; gap: .25rem; font-weight: 800; }
 .underground-skip-category select { min-height: 2.6rem; padding: .45rem .55rem; border: 1px solid var(--input-border); background: var(--paper); color: var(--ink); font: inherit; }
 .underground-skip-shortcuts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .55rem; }
+.underground-skip-custom { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: end; gap: .55rem; }
+.underground-skip-custom input { min-height: 2.6rem; width: 100%; padding: .45rem .55rem; border: 1px solid var(--input-border); background: var(--paper); color: var(--ink); font: inherit; }
+.underground-skip-plan { color: var(--muted); font-size: .75rem; }
 .underground-skip-locked-list { margin: 0; padding-left: 1.2rem; color: var(--muted); font-size: .75rem; }
 .underground-skip-result { display: grid; gap: .55rem; margin-top: .9rem; padding: .8rem; border: 1px solid #7eb28b; background: color-mix(in srgb, var(--paper) 88%, #7eb28b 12%); }
 .underground-skip-result h3, .underground-skip-result p { margin: 0; }
@@ -1515,7 +1518,7 @@ html[data-theme="dark"] .compensation-banner, html[data-theme="dark"] .compensat
     .underground-party-portrait-events { gap: .25rem; }
     .underground-party-portrait-event figcaption { font-size: .58rem; }
     .underground-party-portrait-state { line-height: 1.25; }
-    .underground-skip-shortcuts, .underground-skip-result dl { grid-template-columns: 1fr; }
+    .underground-skip-shortcuts, .underground-skip-custom, .underground-skip-result dl { grid-template-columns: 1fr; }
 }
 
 @media (prefers-reduced-motion: reduce) {

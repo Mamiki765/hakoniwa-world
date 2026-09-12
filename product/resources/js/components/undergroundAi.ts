@@ -12,13 +12,15 @@ export interface UndergroundAiCondition {
 export interface UndergroundAiRule {
     conditions: UndergroundAiCondition[];
     action: string;
+    target?: string;
     jump_to?: number;
 }
 
 export interface UndergroundAiCatalog {
     condition_types: Array<{ key: string; label: string; value_kind: string }>;
     actions: Array<{ key: string; label: string }>;
-    skills: Array<{ key: string; label: string; summary: string }>;
+    targets: Array<{ key: string; label: string }>;
+    skills: Array<{ key: string; label: string; summary: string; target_selectors: string[] }>;
     statuses: Array<{ key: string; label: string; max_stacks: number }>;
     role_stacks: Array<{ key: string; label: string; max_stacks: number }>;
 }

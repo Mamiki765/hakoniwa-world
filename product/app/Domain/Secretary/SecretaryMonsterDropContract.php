@@ -14,6 +14,7 @@ final class SecretaryMonsterDropContract
         'hakoniwa-2s-plus-v21',
         'hakoniwa-2s-plus-v22',
         'hakoniwa-2s-plus-v23',
+        'hakoniwa-2s-plus-v24',
     ];
 
     /** @var list<string> */
@@ -164,7 +165,7 @@ final class SecretaryMonsterDropContract
      */
     private function eligibleMonsters(array $settings): array
     {
-        return in_array($settings['key'] ?? null, ['hakoniwa-2s-plus-v21', 'hakoniwa-2s-plus-v22', 'hakoniwa-2s-plus-v23'], true)
+        return in_array($settings['key'] ?? null, ['hakoniwa-2s-plus-v21', 'hakoniwa-2s-plus-v22', 'hakoniwa-2s-plus-v23', 'hakoniwa-2s-plus-v24'], true)
             ? [...self::ELIGIBLE_MONSTERS, 'nyowamiya']
             : self::ELIGIBLE_MONSTERS;
     }

@@ -44,13 +44,25 @@ final class BorrowedSecretarySnapshotFactoryTest extends TestCase
             'skill_tree_identity' => 'secretary-underground-skill-tree-alpha-v1',
         ]);
         app(UndergroundStarterEquipmentService::class)->reconcile($profile->fresh());
+        UndergroundOwnedEquipment::query()
+            ->where('underground_profile_id', $profile->id)
+            ->where('equipped_slot', 'weapon')
+            ->update(['definition_key' => 'iron_dagger', 'grant_key' => null]);
+        UndergroundOwnedEquipment::query()->create([
+            'underground_profile_id' => $profile->id,
+            'definition_key' => 'spirit_accessory_rank_3',
+            'catalog_identity' => app(UndergroundEquipmentCatalog::class)->identity(),
+            'equipped_slot' => 'accessory_1',
+            'instance_kind' => 'fixed',
+            'acquired_at' => Carbon::now(),
+        ]);
         $before = $profile->fresh()->toArray();
 
         $snapshot = app(BorrowedSecretarySnapshotFactory::class)->create(
             $secretary->fresh(['user', 'images']),
             $profile->fresh(),
             3,
-            ['weapon' => 3],
+            ['weapon' => 3, 'accessory_1' => 10],
             $user,
             false,
         );
@@ -64,23 +76,44 @@ final class BorrowedSecretarySnapshotFactoryTest extends TestCase
         $this->assertLessThan(999999, $snapshot['resources']['effective_current_hp']);
         $this->assertArrayNotHasKey('email', $snapshot['source']);
         $this->assertSame($before, $profile->fresh()->toArray());
+        $effectiveItems = collect($snapshot['effective_equipment']['items'])->keyBy('equipped_slot');
+        $this->assertSame('iron_dagger', $effectiveItems['weapon']['key']);
+        $this->assertSame('spirit_accessory_rank_2', $effectiveItems['accessory_1']['key']);
+        $this->assertSame(2, $snapshot['effective_equipment']['stats']['spirit']);
+        $this->assertSame(0, $snapshot['effective_equipment']['stats']['vitality']);
 
         $uncapped = app(BorrowedSecretarySnapshotFactory::class)->create(
             $secretary->fresh(['user', 'images']),
             $profile->fresh(),
             99,
-            ['weapon' => 99],
+            ['weapon' => 99, 'accessory_1' => 99],
             $user,
             false,
         );
         $this->assertSame(6, $uncapped['effective_combat_level']);
+        $uncappedItems = collect($uncapped['effective_equipment']['items'])->keyBy('equipped_slot');
+        $this->assertSame('iron_dagger', $uncappedItems['weapon']['key']);
+        $this->assertSame('spirit_accessory_rank_3', $uncappedItems['accessory_1']['key']);
         $cache = SecretaryLendingBuildSnapshot::query()->where('secretary_id', $secretary->id)->sole();
+        $this->assertSame(2, $cache->projection_cache['schema_version']);
+        $staleProjectionCache = $cache->projection_cache;
+        $staleProjectionCache['schema_version'] = 1;
+        $cache->update(['projection_cache' => $staleProjectionCache]);
+        app(BorrowedSecretarySnapshotFactory::class)->create(
+            $secretary->fresh(['user', 'images']),
+            $profile->fresh(),
+            99,
+            ['weapon' => 99, 'accessory_1' => 99],
+            $user,
+            false,
+        );
+        $this->assertSame(2, $cache->refresh()->projection_cache['schema_version']);
         $cachedFingerprint = $cache->source_fingerprint;
         app(BorrowedSecretarySnapshotFactory::class)->create(
             $secretary->fresh(['user', 'images']),
             $profile->fresh(),
             99,
-            ['weapon' => 99],
+            ['weapon' => 99, 'accessory_1' => 99],
             $user,
             false,
         );
@@ -90,7 +123,7 @@ final class BorrowedSecretarySnapshotFactoryTest extends TestCase
             $secretary->fresh(['user', 'images']),
             $profile->fresh(),
             99,
-            ['weapon' => 99],
+            ['weapon' => 99, 'accessory_1' => 99],
             $user,
             false,
         );
@@ -310,7 +343,12 @@ final class BorrowedSecretarySnapshotFactoryTest extends TestCase
         $this->assertSame('別の覚醒演出', $second['awakening']['message']);
         $this->assertSame($firstProjectionCalls, $projectionCalls);
 
-        $profile->update(['custom_ai_rules' => []]);
+        $customAiRules = [[
+            'conditions' => [['type' => 'always']],
+            'action' => 'normal_attack',
+            'target' => 'untaunted_enemy',
+        ]];
+        $profile->update(['custom_ai_rules' => $customAiRules]);
         $third = $factory->create(
             $secretary->fresh(['user', 'images']),
             $profile->fresh(),
@@ -319,7 +357,7 @@ final class BorrowedSecretarySnapshotFactoryTest extends TestCase
             $user,
             false,
         );
-        $this->assertSame([], $third['ai']['rules']);
+        $this->assertSame($customAiRules, $third['ai']['rules']);
         $this->assertSame('custom', $third['player_snapshot']['ai_mode']);
         $this->assertSame($second['effective_equipment'], $third['effective_equipment']);
         $this->assertSame($projectionCache['slots'], $cache->refresh()->projection_cache['slots']);

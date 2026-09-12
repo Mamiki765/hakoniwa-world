@@ -743,6 +743,17 @@ class DomesticCommandExecutionTest extends TestCase
             ->whereHas('terrain', fn ($query) => $query->where('key', 'plain'))
             ->orderBy('id')->take(3)->get();
         $this->assertCount(3, $targets);
+        $state = app(MapCellStateService::class);
+        $state->setFacility(
+            $targets[0],
+            FacilityDefinition::query()->where('key', 'village')->firstOrFail(),
+        );
+        $targets[0]->update(['population' => 1_234]);
+        $state->setFacility(
+            $targets[2],
+            FacilityDefinition::query()->where('key', 'city')->firstOrFail(),
+        );
+        $targets[2]->update(['population' => 9_876]);
         $capacities = app(NationCapacityResolver::class);
         $base = $capacities->resolve($nation);
 
@@ -766,6 +777,7 @@ class DomesticCommandExecutionTest extends TestCase
         $this->assertSame('completed', $granary->fresh()->status);
         $this->assertSame('central_bank', $targets[0]->fresh()->facility()->value('key'));
         $this->assertSame('central_granary', $targets[2]->fresh()->facility()->value('key'));
+        $this->assertSame([0, 0], [$targets[0]->fresh()->population, $targets[2]->fresh()->population]);
         $this->assertSame(20_003, (int) $nation->fresh()->money);
 
         $raised = $capacities->resolve($nation->fresh());

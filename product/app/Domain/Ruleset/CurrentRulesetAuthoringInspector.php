@@ -96,6 +96,13 @@ final class CurrentRulesetAuthoringInspector
         'monsters-and-military.php' => 'v23/monsters-and-military.php',
     ];
 
+    /** @var array<string, string> */
+    private const V24_DOMAIN_OVERRIDES = [
+        ...self::V23_DOMAIN_OVERRIDES,
+        'world-and-map.php' => 'v24/world-and-map.php',
+        'commands-and-production.php' => 'v24/commands-and-production.php',
+    ];
+
     private const CLASSIFICATIONS = ['behavior', 'data', 'flavor'];
 
     /**
@@ -105,15 +112,15 @@ final class CurrentRulesetAuthoringInspector
     public function inspect(array $publishedPayload): array
     {
         $rulesetKey = $publishedPayload['key'] ?? null;
-        if (! in_array($rulesetKey, ['hakoniwa-2s-plus-v16', 'hakoniwa-2s-plus-v17', 'hakoniwa-2s-plus-v18', 'hakoniwa-2s-plus-v19', 'hakoniwa-2s-plus-v20', 'hakoniwa-2s-plus-v21', 'hakoniwa-2s-plus-v22', 'hakoniwa-2s-plus-v23'], true)) {
-            throw new DomainException('Ruleset authoring inspection supports only immutable v16 through v22 and the current v23 draft.');
+        if (! in_array($rulesetKey, ['hakoniwa-2s-plus-v16', 'hakoniwa-2s-plus-v17', 'hakoniwa-2s-plus-v18', 'hakoniwa-2s-plus-v19', 'hakoniwa-2s-plus-v20', 'hakoniwa-2s-plus-v21', 'hakoniwa-2s-plus-v22', 'hakoniwa-2s-plus-v23', 'hakoniwa-2s-plus-v24'], true)) {
+            throw new DomainException('Ruleset authoring inspection supports only immutable v16 through v23 and the current v24 draft.');
         }
         $authoredLeaves = [];
         $classifiedPaths = [];
         $counts = array_fill_keys(self::CLASSIFICATIONS, 0);
 
         $domainFiles = match ($rulesetKey) {
-            'hakoniwa-2s-plus-v23' => [
+            'hakoniwa-2s-plus-v23', 'hakoniwa-2s-plus-v24' => [
                 ...self::DOMAIN_FILES,
                 ...self::V19_ADDITIONAL_DOMAIN_FILES,
                 ...self::V20_ADDITIONAL_DOMAIN_FILES,
@@ -136,6 +143,7 @@ final class CurrentRulesetAuthoringInspector
         };
         foreach ($domainFiles as $file) {
             $relativePath = match ($rulesetKey) {
+                'hakoniwa-2s-plus-v24' => self::V24_DOMAIN_OVERRIDES[$file] ?? 'current/'.$file,
                 'hakoniwa-2s-plus-v23' => self::V23_DOMAIN_OVERRIDES[$file] ?? 'current/'.$file,
                 'hakoniwa-2s-plus-v22' => self::V22_DOMAIN_OVERRIDES[$file] ?? 'current/'.$file,
                 'hakoniwa-2s-plus-v21' => self::V21_DOMAIN_OVERRIDES[$file] ?? 'current/'.$file,

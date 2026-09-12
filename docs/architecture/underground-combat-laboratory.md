@@ -2,21 +2,21 @@
 
 ## Authority and scope
 
-この文書は`secretary-underground-alpha-v0` combat laboratoryから正式runtime、Trial、覚醒、装備、探索、custom AI、およびapplication `3.8.0`のparty combatまでを扱うcurrent task-specific architecture authorityである。manual combat、unique、enhancement、enchant、market、companion育成は定義しない。
+この文書は`secretary-underground-alpha-v0` combat laboratoryから正式runtime、Trial、覚醒、装備、探索、custom AI、およびapplication `3.9.2`のparty combatまでを扱うcurrent task-specific architecture authorityである。manual combat、unique、enhancement、enchant、market、companion育成は定義しない。
 
 ### Party boundary (Owner decision)
 
 Partyは自分のSecretary 1人と、公開・貸出可能な他UserのSecretary最大3人からなる最大4 actorである。同じPT内のSecretary重複とself borrowを拒否し、`team`と`combatant_id`を分離する。同じ貸出秘書は複数の開始者が同時に利用できる。貸出元の読取と数値projection準備は短いtransactionで完了させ、戦闘中は原本のlockを保持しない。開始時snapshotは以後の貸出側profile変更から独立し、貸出側へHP・MP・覚醒その他の戦闘状態を書き戻さない。
 
-借用memberのcombat level上限は開始時Leader本人のcombat level、装備item level上限はLeaderの対応slotとする。同期済み数値projectionは原本の数値依存入力・Leader上限・計算identityで再利用し、slotごとの装備projectionも再利用する。現在HP・覚醒ゲージ・名前・画像・credit・演出文の変更だけでは装備を再生成しない。AI・Skill変更は次battleへ反映する。通常state取得では公開候補を読まず、編成一覧を開いた際のページング取得だけが候補の装備中5枠を読む。
+借用memberのcombat level上限は開始時Leader本人のcombat level、装備item level上限はLeaderの対応slotとする。対応slotの原装備が上限IL以内なら同じ装備identityを保持し、固定装備の主能力はその装備定義から投影する。上限を超えるgenerated装備だけを上限ILへ再生成する。同期済み数値projectionは原本の数値依存入力・Leader上限・計算identityで再利用し、slotごとの装備projectionも再利用する。projection schema変更時は旧cacheを再計算する。現在HP・覚醒ゲージ・名前・画像・credit・演出文の変更だけでは装備を再生成しない。AI・Skill変更は次battleへ反映する。通常state取得では公開候補を読まず、編成一覧を開いた際のページング取得だけが候補の装備中5枠を読む。
 
 表示用のactor metadataとinitial／round境界／final stateを分離する。round startを保存していない場合は前round終了の時点だと明示する。大画像はsolo・Trial・PTとも開始／覚醒／終了に限定する。画像metadataはbattle当時のものを保存し、現在のviewer設定を返却時に適用する。画像ファイルの保持は詳細logの保持期間と結び付け、差し替え時に全battle JSONを走査しない。
 
-Trial 1/2はsoloのままとする。探索のenemy数はcontentごとのparty-size table、報酬は従来の1 encounter authorityとして別にauthorする。PT Bossは`none`またはparty-size別HP・攻撃倍率tableだけを受け、engineへ人数式を埋め込まない。通常攻略報酬はLeader側だけ、貸出報酬は決着済みbattleとborrowed memberの組をidempotent identityとして10参加ごとにskip ticket 1枚、canonical dayごとに100枚を上限とする。skipは狩場ごとのactual win 50回で1枚消費、Trialごとのactual full clear 5周で10枚消費を解禁し、combatやcooldown、貸出参加を発生させずcanonical repeatable reward settlementだけを再利用する。skip clearは総clear数へ加えるが、解禁用actual countへは加えない。
+Trial 1/2はsoloのままとする。探索のenemy数はcontentごとのparty-size table、報酬は従来の1 encounter authorityとして別にauthorする。PT Bossは`none`またはparty-size別HP・攻撃倍率tableだけを受け、engineへ人数式を埋め込まない。通常攻略報酬はLeader側だけ、貸出報酬は決着済みbattleとborrowed memberの組をidempotent identityとして10参加ごとにskip ticket 1枚、canonical dayごとに100枚を上限とする。skipは狩場ごとのactual win 50回で1枚消費、Trialごとのactual full clear 5周で10枚消費を解禁し、combatやcooldown、貸出参加を発生させずcanonical repeatable reward settlementだけを再利用する。UIは50%・100%に加え、既存`execution_count`へ1からその時点の実行可能上限まで（1 request最大1,000）を渡す任意回数・周回数を提供する。skip clearは総clear数へ加えるが、解禁用actual countへは加えない。
 
 party battle UIは操作主体の`PARTY`を上段、`ENEMY`を下段へ分離する。compact cardはicon、battle display name、色付きHP、MP current value、覚醒barを表示し、MPの固定上限値と覚醒の内部数値は繰り返し表示しない。覚醒barは満了待機を`Ready`、発動中を`Awaken!`として区別する。iconは1:1、bustとfull bodyは通常・覚醒とも3:4で、覚醒画像がなければ対応する通常画像へfallbackする。各画像の制作方法と権利・creditはslotごとに保存する。
 
-current repository releaseのapplication versionは`3.8.0`である。surface Ruleset `hakoniwa-2s-plus-v21`とUnderground laboratory/runtime identityは別物であり、partyのためにSurface Rulesetを更新していない。profile、run、history、intro/growth/skill/equipment/AI stateとpure build snapshotはpublished Ruleset、World、Nation、MapCell、TurnRun、Turn RNGへ依存しない。current combat、exploration、equipment、AI identityと追加contractは本文後半のrelease-specific節を正本とし、過去PR単位の節は各導入時点の境界として読む。
+current repository releaseのapplication versionは`3.9.2`、surface Rulesetは`hakoniwa-2s-plus-v24`である。v24は中央銀行・中央穀倉を自国の村・町・都市へ建てられるようにする地上側の修正だけを持ち、immutable v23は変更しない。Underground laboratory/runtime identityとは別物であり、profile、run、history、intro/growth/skill/equipment/AI stateとpure build snapshotはpublished Ruleset、World、Nation、MapCell、TurnRun、Turn RNGへ依存しない。current combat、exploration、equipment、AI identityと追加contractは本文後半のrelease-specific節を正本とし、過去PR単位の節は各導入時点の境界として読む。
 
 ## Modular-monolith boundary
 
@@ -331,3 +331,11 @@ default presetは従来のbuilt-in AIの意図した挙動を最大16 rules・�
 各battleは開始時に実際に使用するnormalized AI rules全文と、そのcanonical JSONに対するSHA-256 hashをsnapshotへ固定する。Trial進行中もbattle間の設定変更を許可し、次に生成するbattleだけが新設定を使用する。既に生成・保存されたbattle snapshot、projection、replayは後日のprofile設定へ再依存しない。このsnapshot/input semantics変更のためUnderground combat identityを`secretary-underground-alpha-v3`へ更新するが、Surface Rulesetは`hakoniwa-2s-plus-v19`を維持する。
 
 `2026_09_03_020000_add_underground_custom_ai.php`はapplication 3.3.0から3.4.0へのappend-only forward migrationである。既存profileは`null`から開始してdefault presetを使用し、過去battle rowのbackfillやv1/v2 snapshotの書き換えは行わない。player UIはserver-provided catalogだけを選択肢として表示し、defaultへの復帰、defaultの複製、custom empty、rule追加・削除・並べ替え、最大2条件、forward-only jumpを区別して保存する。
+
+## application 3.9.2 party target selection
+
+custom AI ruleは、対応する行動に限ってoptionalな`target`を持てる。3.9.2で追加するselectorは、単体味方回復能力を持つ`mending_prayer`向けの`lowest_hp_ally`と、敵単体行動向けの`untaunted_enemy`だけである。対象指定は既存actionの対象能力を増やさず、self・全体・覚醒奥義やenemy通常攻撃のtarget方式を変更しない。旧ruleのように`target`がなければ従来の対象選択を維持する。
+
+候補はbattle stateのstable orderから決定し、最低HP割合は生存味方だけ、未挑発敵は生存敵のうち有効な挑発sourceを持たないものだけを対象とする。挑発sourceが欠落または戦闘不能なら未挑発として扱う。対象候補が存在しないruleは実行不能として次のruleへ進み、候補選択と実際のaction targetを同じ`combatant_id`で結ぶ。自由文AIや汎用target DSLは導入しない。
+
+天断一閃の宣言eventは生存敵全体を対象として保持するが、各damage/effect行の`target_ids`は実際に解決した一体だけを記録する。damage式、主対象・副対象倍率、報酬、settlementは変更しない。

@@ -325,7 +325,7 @@ final class CommandQueueService
                 $this->undergroundFacilities->assertProjectedCommand($definition, $projectedFacility);
             } else {
                 $target = $this->targetCell($mapSpace, $targetX, $targetY);
-                if (SettlementOverbuildPolicy::protectsCapital($definition->key, $target->facility?->key)) {
+                if (SettlementOverbuildPolicy::protectsCapital($definition->key, $target->facility?->key, $definition->metadata)) {
                     throw new PlayerFacingCommandException('首都を通常建設commandで上書きすることはできません。');
                 }
                 $projectionMemo = new SurfaceCommandProjectionMemo;
@@ -1170,11 +1170,11 @@ final class CommandQueueService
         if (! in_array($state['terrain_key'], $definition->target_terrain_keys, true)) {
             return false;
         }
-        if (SettlementOverbuildPolicy::protectsCapital($definition->key, $state['facility_key'])) {
+        if (SettlementOverbuildPolicy::protectsCapital($definition->key, $state['facility_key'], $definition->metadata)) {
             return false;
         }
         if ($definition->requires_empty_facility && $state['facility_key'] !== null
-            && ! SettlementOverbuildPolicy::allows($definition->key, $state['facility_key'])
+            && ! SettlementOverbuildPolicy::allows($definition->key, $state['facility_key'], $definition->metadata)
             && $this->projectedOwnerOverbuildEffect($definition, $nation, $state) === null) {
             return false;
         }
@@ -1499,11 +1499,11 @@ final class CommandQueueService
             }
             $facilityExpansion = true;
         }
-        if (SettlementOverbuildPolicy::protectsCapital($definition->key, $facilityKey)) {
+        if (SettlementOverbuildPolicy::protectsCapital($definition->key, $facilityKey, $definition->metadata)) {
             throw new PlayerFacingCommandException('首都を通常建設commandで上書きすることはできません。');
         }
         if ($definition->requires_empty_facility && $facilityKey !== null
-            && ! SettlementOverbuildPolicy::allows($definition->key, $facilityKey)
+            && ! SettlementOverbuildPolicy::allows($definition->key, $facilityKey, $definition->metadata)
             && ! $facilityExpansion
             && $ownerOverbuildEffect === null) {
             throw new PlayerFacingCommandException('施設のあるcellにはこのcommandをqueueへ追加できません。');

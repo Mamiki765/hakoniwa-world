@@ -464,7 +464,7 @@ final class DomesticCommandExecutor
             && in_array($definition->key, self::CAPITAL_DESTRUCTIVE_COMMANDS, true)) {
             return ['reason' => CommandFailureReason::CapitalProtected, 'observed' => $observed];
         }
-        if (SettlementOverbuildPolicy::protectsCapital($definition->key, $cell->facility?->key)) {
+        if (SettlementOverbuildPolicy::protectsCapital($definition->key, $cell->facility?->key, $definition->metadata)) {
             return ['reason' => CommandFailureReason::CapitalProtected, 'observed' => $observed];
         }
         if ($definition->key === 'reclaim') {
@@ -500,7 +500,7 @@ final class DomesticCommandExecutor
         if ($definition->requires_empty_facility && $cell->facility_definition_id !== null) {
             $matchingQuantityFacility = $this->isMatchingQuantityFacility($definition, $cell);
             if (! $matchingQuantityFacility
-                && ! SettlementOverbuildPolicy::allows($definition->key, $cell->facility?->key)
+                && ! SettlementOverbuildPolicy::allows($definition->key, $cell->facility?->key, $definition->metadata)
                 && $ownerOverbuildEffect === null) {
                 return ['reason' => CommandFailureReason::FacilityExists, 'observed' => $observed];
             }

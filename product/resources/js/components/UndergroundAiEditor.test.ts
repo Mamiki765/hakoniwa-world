@@ -9,7 +9,7 @@ const response = (data: unknown, status = 200): Response => new Response(JSON.st
 });
 
 const configuration = (overrides: Partial<UndergroundAiConfiguration> = {}): UndergroundAiConfiguration => ({
-    schema_version: 1,
+    schema_version: 2,
     max_rules: 16,
     max_conditions_per_rule: 2,
     is_custom: false,
@@ -39,9 +39,13 @@ const configuration = (overrides: Partial<UndergroundAiConfiguration> = {}): Und
             { key: 'awakening', label: '覚醒' },
             { key: 'jump', label: '後ろのruleへ移動' },
         ],
+        targets: [
+            { key: 'lowest_hp_ally', label: 'HP割合が最も低い生存味方' },
+            { key: 'untaunted_enemy', label: '有効な挑発を受けていない敵' },
+        ],
         skills: [
-            { key: 'learned_cut', label: '習得済みの斬撃', summary: 'test' },
-            { key: 'future_blast', label: '未習得の砲撃', summary: 'test' },
+            { key: 'learned_cut', label: '習得済みの斬撃', summary: 'test', target_selectors: ['untaunted_enemy'] },
+            { key: 'future_blast', label: '未習得の砲撃', summary: 'test', target_selectors: ['untaunted_enemy'] },
         ],
         statuses: [
             { key: 'bleed', label: '出血', max_stacks: 3 },
@@ -147,6 +151,7 @@ describe('Underground AI editor', () => {
 
         await wrapper.findAll('.underground-ai-mode-actions button')[1]!.trigger('click');
         await wrapper.get('select[aria-label="Rule 1 action"]').setValue('skill:future_blast');
+        await wrapper.get('select[aria-label="Rule 1 target"]').setValue('untaunted_enemy');
         await wrapper.get('.underground-ai-save-actions .button.primary').trigger('click');
         await flushPromises();
         expect(wrapper.get('[role="alert"]').text()).toContain('AI response lost');
@@ -156,7 +161,7 @@ describe('Underground AI editor', () => {
         expect(payloads).toHaveLength(2);
         expect(payloads[0]).toEqual(payloads[1]);
         expect(payloads[0]!.rules).toEqual([
-            { conditions: [{ type: 'own_hp_lte', percent: 20 }], action: 'skill:future_blast' },
+            { conditions: [{ type: 'own_hp_lte', percent: 20 }], action: 'skill:future_blast', target: 'untaunted_enemy' },
             { conditions: [{ type: 'always' }], action: 'normal_attack' },
         ]);
         expect(wrapper.emitted('updated')).toHaveLength(1);

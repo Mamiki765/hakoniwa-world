@@ -15,7 +15,7 @@ final class PriorityCombatAiConfigurationTest extends TestCase
         $configuration = new PriorityCombatAiConfiguration;
         $catalog = $this->catalog();
         $rules = $configuration->normalizeRules([
-            ['action' => 'skill:executioner_cut', 'conditions' => []],
+            ['action' => 'skill:executioner_cut', 'conditions' => [], 'target' => 'untaunted_enemy'],
             [
                 'jump_to' => 3,
                 'action' => 'jump',
@@ -25,7 +25,7 @@ final class PriorityCombatAiConfigurationTest extends TestCase
         ], $catalog);
 
         $this->assertSame([
-            ['conditions' => [['type' => 'always']], 'action' => 'skill:executioner_cut'],
+            ['conditions' => [['type' => 'always']], 'action' => 'skill:executioner_cut', 'target' => 'untaunted_enemy'],
             [
                 'conditions' => [['type' => 'own_hp_lte', 'percent' => 50]],
                 'action' => 'jump',
@@ -160,6 +160,16 @@ final class PriorityCombatAiConfigurationTest extends TestCase
             'action' => 'defend',
             'note' => 'ignored fields must not enter the snapshot identity',
         ]]];
+        yield 'target incompatible with defend' => [[[
+            'conditions' => [],
+            'action' => 'defend',
+            'target' => 'untaunted_enemy',
+        ]]];
+        yield 'ally target incompatible with normal attack' => [[[
+            'conditions' => [],
+            'action' => 'normal_attack',
+            'target' => 'lowest_hp_ally',
+        ]]];
         yield 'impossible percent' => [[[
             'conditions' => [['type' => 'own_hp_lte', 'percent' => 101]],
             'action' => 'defend',
@@ -174,10 +184,13 @@ final class PriorityCombatAiConfigurationTest extends TestCase
     {
         $catalog = (new PriorityCombatAiConfiguration)->editorCatalog($this->catalog());
 
-        $this->assertCount(16, $catalog['skills']);
-        $this->assertSame('precision_cut', $catalog['skills'][0]['key']);
-        $this->assertSame('radiant_judgment', $catalog['skills'][15]['key']);
-        $this->assertNotContains('enemy_telegraph', array_column($catalog['skills'], 'key'));
+        $skillKeys = array_column($catalog['skills'], 'key');
+        $this->assertContains('precision_cut', $skillKeys);
+        $this->assertContains('mending_prayer', $skillKeys);
+        $this->assertNotContains('enemy_telegraph', $skillKeys);
+        $skills = collect($catalog['skills'])->keyBy('key');
+        $this->assertSame(['lowest_hp_ally'], $skills['mending_prayer']['target_selectors']);
+        $this->assertContains('untaunted_enemy', $skills['precision_cut']['target_selectors']);
     }
 
     private function catalog(): AlphaV1BuildCatalog

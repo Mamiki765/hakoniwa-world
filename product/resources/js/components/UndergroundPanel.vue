@@ -582,6 +582,8 @@ const selectedHuntingGroundKey = ref('shallow_caves');
 const selectedSkipHuntingGroundKey = ref('shallow_caves');
 const selectedTrialKey = ref('trial_01');
 const selectedSkipTrialKey = ref('trial_01');
+const customHuntingGroundSkipCount = ref('');
+const customTrialSkipCount = ref('');
 const pendingExplorationRequest = ref<PendingExplorationRequest | null>(null);
 const partyCandidateSearchOpen = ref(false);
 const partyCandidateLoading = ref(false);
@@ -1457,6 +1459,29 @@ function maximumHuntingGroundSkipExecutions(ground: HuntingGround): number {
 
 function shortcutHuntingGroundSkipExecutions(ground: HuntingGround, fraction: 0.5 | 1): number {
     return Math.floor(maximumHuntingGroundSkipExecutions(ground) * fraction);
+}
+
+function customSkipExecutions(value: string, maximum: number): number | null {
+    if (!/^\d+$/.test(value)) return null;
+    const count = Number(value);
+
+    return Number.isSafeInteger(count) && count >= 1 && count <= maximum ? count : null;
+}
+
+function plannedSkipCost(value: string, maximum: number, unitCost: number): number {
+    return (customSkipExecutions(value, maximum) ?? 0) * unitCost;
+}
+
+async function runCustomHuntingGroundSkip(ground: HuntingGround): Promise<void> {
+    const count = customSkipExecutions(customHuntingGroundSkipCount.value, maximumHuntingGroundSkipExecutions(ground));
+    if (count === null) return;
+    await runSkip('hunting_ground', ground.key, count);
+}
+
+async function runCustomTrialSkip(trial: TrialOption): Promise<void> {
+    const count = customSkipExecutions(customTrialSkipCount.value, maximumSkipExecutions(trial.skip));
+    if (count === null) return;
+    await runSkip('trial', trial.key, count);
 }
 
 function skipIntentBlocked(
@@ -2740,6 +2765,13 @@ onUnmounted(() => {
                                 <button type="button" :disabled="selectedSkipHuntingGround.disabled || skipDisabled(selectedSkipHuntingGround.skip) || shortcutHuntingGroundSkipExecutions(selectedSkipHuntingGround, 0.5) < 1 || skipIntentBlocked('hunting_ground', selectedSkipHuntingGround.key, shortcutHuntingGroundSkipExecutions(selectedSkipHuntingGround, 0.5))" @click="runSkip('hunting_ground', selectedSkipHuntingGround.key, shortcutHuntingGroundSkipExecutions(selectedSkipHuntingGround, 0.5))">50%使用（{{ shortcutHuntingGroundSkipExecutions(selectedSkipHuntingGround, 0.5) }}回）</button>
                                 <button type="button" :disabled="selectedSkipHuntingGround.disabled || skipDisabled(selectedSkipHuntingGround.skip) || maximumHuntingGroundSkipExecutions(selectedSkipHuntingGround) < 1 || skipIntentBlocked('hunting_ground', selectedSkipHuntingGround.key, maximumHuntingGroundSkipExecutions(selectedSkipHuntingGround))" @click="runSkip('hunting_ground', selectedSkipHuntingGround.key, maximumHuntingGroundSkipExecutions(selectedSkipHuntingGround))">100%使用（{{ maximumHuntingGroundSkipExecutions(selectedSkipHuntingGround) }}回）</button>
                             </div>
+                            <div class="underground-skip-custom">
+                                <label>任意回数
+                                    <input v-model="customHuntingGroundSkipCount" inputmode="numeric" type="number" min="1" :max="maximumHuntingGroundSkipExecutions(selectedSkipHuntingGround)" step="1" :disabled="selectedSkipHuntingGround.disabled || skipDisabled(selectedSkipHuntingGround.skip)">
+                                </label>
+                                <button type="button" :disabled="customSkipExecutions(customHuntingGroundSkipCount, maximumHuntingGroundSkipExecutions(selectedSkipHuntingGround)) === null || selectedSkipHuntingGround.disabled || skipDisabled(selectedSkipHuntingGround.skip) || skipIntentBlocked('hunting_ground', selectedSkipHuntingGround.key, customSkipExecutions(customHuntingGroundSkipCount, maximumHuntingGroundSkipExecutions(selectedSkipHuntingGround)) ?? 0)" @click="runCustomHuntingGroundSkip(selectedSkipHuntingGround)">指定回数を使用</button>
+                            </div>
+                            <p v-if="customSkipExecutions(customHuntingGroundSkipCount, maximumHuntingGroundSkipExecutions(selectedSkipHuntingGround)) !== null" class="underground-skip-plan">予定消費：🎫 {{ plannedSkipCost(customHuntingGroundSkipCount, maximumHuntingGroundSkipExecutions(selectedSkipHuntingGround), selectedSkipHuntingGround.skip.ticket_cost) }}枚<span v-if="selectedSkipHuntingGround.entry_key_cost > 0">・鍵 {{ plannedSkipCost(customHuntingGroundSkipCount, maximumHuntingGroundSkipExecutions(selectedSkipHuntingGround), selectedSkipHuntingGround.entry_key_cost) }}個</span></p>
                         </template>
                         <ul v-if="(state.hunting_grounds ?? []).some((ground) => ground.locked)" class="underground-skip-locked-list">
                             <li v-for="ground in (state.hunting_grounds ?? []).filter((item) => item.locked)" :key="`locked-ground:${ground.key}`">{{ ground.name }}：{{ ground.unlock_condition ?? '未解禁' }}</li>
@@ -2759,6 +2791,13 @@ onUnmounted(() => {
                                 <button type="button" :disabled="skipDisabled(selectedSkipTrial.skip) || shortcutSkipExecutions(selectedSkipTrial.skip, 0.5) < 1 || skipIntentBlocked('trial', selectedSkipTrial.key, shortcutSkipExecutions(selectedSkipTrial.skip, 0.5))" @click="runSkip('trial', selectedSkipTrial.key, shortcutSkipExecutions(selectedSkipTrial.skip, 0.5))">50%使用（{{ shortcutSkipExecutions(selectedSkipTrial.skip, 0.5) }}周）</button>
                                 <button type="button" :disabled="skipDisabled(selectedSkipTrial.skip) || maximumSkipExecutions(selectedSkipTrial.skip) < 1 || skipIntentBlocked('trial', selectedSkipTrial.key, maximumSkipExecutions(selectedSkipTrial.skip))" @click="runSkip('trial', selectedSkipTrial.key, maximumSkipExecutions(selectedSkipTrial.skip))">100%使用（{{ maximumSkipExecutions(selectedSkipTrial.skip) }}周）</button>
                             </div>
+                            <div class="underground-skip-custom">
+                                <label>任意周回数
+                                    <input v-model="customTrialSkipCount" inputmode="numeric" type="number" min="1" :max="maximumSkipExecutions(selectedSkipTrial.skip)" step="1" :disabled="skipDisabled(selectedSkipTrial.skip)">
+                                </label>
+                                <button type="button" :disabled="customSkipExecutions(customTrialSkipCount, maximumSkipExecutions(selectedSkipTrial.skip)) === null || skipDisabled(selectedSkipTrial.skip) || skipIntentBlocked('trial', selectedSkipTrial.key, customSkipExecutions(customTrialSkipCount, maximumSkipExecutions(selectedSkipTrial.skip)) ?? 0)" @click="runCustomTrialSkip(selectedSkipTrial)">指定周回数を使用</button>
+                            </div>
+                            <p v-if="customSkipExecutions(customTrialSkipCount, maximumSkipExecutions(selectedSkipTrial.skip)) !== null" class="underground-skip-plan">予定消費：🎫 {{ plannedSkipCost(customTrialSkipCount, maximumSkipExecutions(selectedSkipTrial.skip), selectedSkipTrial.skip.ticket_cost) }}枚</p>
                         </template>
                         <ul v-if="trialOptions.some((trial) => trial.locked)" class="underground-skip-locked-list">
                             <li v-for="trial in trialOptions.filter((item) => item.locked)" :key="`locked-trial:${trial.key}`">{{ trial.label }}：{{ trial.unlock_condition ?? '未解禁' }}</li>

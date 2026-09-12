@@ -64,6 +64,8 @@ final class SecretaryItemGameplayContract
 
     private const V23_RULESET_KEY = 'hakoniwa-2s-plus-v23';
 
+    private const V24_RULESET_KEY = 'hakoniwa-2s-plus-v24';
+
     public function __construct(private readonly SecretaryItemCatalog $catalog) {}
 
     /** @param array<string, mixed> $settings */
@@ -92,8 +94,8 @@ final class SecretaryItemGameplayContract
         }
 
         $rulesetKey = $settings['key'] ?? null;
-        $formal = in_array($rulesetKey, [self::V16_RULESET_KEY, self::V17_RULESET_KEY, self::V18_RULESET_KEY, self::V19_RULESET_KEY, self::V20_RULESET_KEY, self::V21_RULESET_KEY, self::V22_RULESET_KEY, self::V23_RULESET_KEY], true);
-        $v17 = in_array($rulesetKey, [self::V17_RULESET_KEY, self::V18_RULESET_KEY, self::V19_RULESET_KEY, self::V20_RULESET_KEY, self::V21_RULESET_KEY, self::V22_RULESET_KEY, self::V23_RULESET_KEY], true);
+        $formal = in_array($rulesetKey, [self::V16_RULESET_KEY, self::V17_RULESET_KEY, self::V18_RULESET_KEY, self::V19_RULESET_KEY, self::V20_RULESET_KEY, self::V21_RULESET_KEY, self::V22_RULESET_KEY, self::V23_RULESET_KEY, self::V24_RULESET_KEY], true);
+        $v17 = in_array($rulesetKey, [self::V17_RULESET_KEY, self::V18_RULESET_KEY, self::V19_RULESET_KEY, self::V20_RULESET_KEY, self::V21_RULESET_KEY, self::V22_RULESET_KEY, self::V23_RULESET_KEY, self::V24_RULESET_KEY], true);
         $secretary = $this->map($settings['secretary'] ?? null, 'ruleset.secretary');
         if ($formal) {
             $rarities = $this->map($secretary['item_rarities'] ?? null, 'ruleset.secretary.item_rarities');
@@ -563,7 +565,7 @@ final class SecretaryItemGameplayContract
     private function catalogDefinitions(mixed $rulesetKey): array
     {
         $definitions = $this->catalog->definitions();
-        if (in_array($rulesetKey, [self::V17_RULESET_KEY, self::V18_RULESET_KEY, self::V19_RULESET_KEY, self::V20_RULESET_KEY, self::V21_RULESET_KEY, self::V22_RULESET_KEY, self::V23_RULESET_KEY], true)) {
+        if (in_array($rulesetKey, [self::V17_RULESET_KEY, self::V18_RULESET_KEY, self::V19_RULESET_KEY, self::V20_RULESET_KEY, self::V21_RULESET_KEY, self::V22_RULESET_KEY, self::V23_RULESET_KEY, self::V24_RULESET_KEY], true)) {
             return $definitions;
         }
         if ($rulesetKey !== self::V16_RULESET_KEY) {

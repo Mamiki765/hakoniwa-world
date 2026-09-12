@@ -259,7 +259,7 @@
 ### E-01 地下
 
 - Status: Decided
-- Implemented: Partially; application `3.8.0`までに正式intro・契約・4 growth path・通常探索・growth/STP・有限SP・player Skill Tree、Trial 1/2・覚醒、Nation-owned施設とread-only surface bridge、正式equipment・装備Shop・アクセサリー3枠・500枠宝物庫、浅層と黒晶洞、Item Lv・rarity・affix・generated drop、案内人の部屋と複合再振り、条件指定型の宝物庫まとめ売り、Secretaryごとのcustom AI、battle単位のnormalized rule/hash snapshot、作戦編集画面、非同期borrowed Secretary partyを実装済み。marketは未実装。
+- Implemented: Partially; application `3.9.2`までに正式intro・契約・4 growth path・通常探索・growth/STP・有限SP・player Skill Tree、Trial 1/2・覚醒、Nation-owned施設とread-only surface bridge、正式equipment・装備Shop・アクセサリー3枠・500枠宝物庫、浅層・黒晶洞・輝きの王国と戦闘用宝物庫、Item Lv・rarity・affix・generated drop、案内人の部屋と複合再振り、条件指定型の宝物庫まとめ売り、Secretaryごとのcustom AI、battle単位のnormalized rule/hash snapshot、作戦編集画面、非同期borrowed Secretary partyを実装済み。marketは未実装。
 - Decision: 地下roadmapを`release/3.0.0-alpha`として開始し、Turn非依存の任意side gameをmodular monolith内の独立domainとして育てる。後続releaseもSecretary-owned progression、canonical combat、versioned content identity、request idempotencyを再利用し、Surface RulesetやWorld Turnへ地下戦闘runtimeを混在させない。
 - Decision record: `docs/roadmap/3.0.0-alpha-underground.md`、`docs/architecture/underground-combat-laboratory.md`
 
@@ -304,7 +304,7 @@
 - Status: Open
 - Required before: 地底marketの最初の実装
 - Open decision: 地底marketのtransactionと不正対策をOwnerが決定する。
-- Decision: partyは自分のSecretary 1人に、公開・貸出可能な他UserのSecretaryを最大3人まで加えた最大4 actorとする。actorは表示名ではなく`team`と`combatant_id`で結び、Trialは従来どおりsoloを維持する。借用snapshotとLeader level capはbattle開始時に固定し、貸出側へ戦闘状態を書き戻さない。探索のenemy数と通常報酬を別authorityとし、通常報酬はLeaderだけ、貸出報酬は決着したborrowed参加10回ごとにskip ticket 1枚、canonical dayあたり100枚までとする。Boss人数補正は`none`またはcontent-authored tableとする。skipはcontent別に管理し、狩場はactual combat win 50回で1回1枚、Trialはactual full clear 5周で1周10枚を解禁する。skipはcombat・cooldown・貸出参加を発生させず、通常勝利と共通のrepeatable reward settlementだけをsettleし、first-clear等のone-time stateを再発させない。総clear数には加えるが、解禁用actual countへは加えない。
+- Decision: partyは自分のSecretary 1人に、公開・貸出可能な他UserのSecretaryを最大3人まで加えた最大4 actorとする。actorは表示名ではなく`team`と`combatant_id`で結び、Trialは従来どおりsoloを維持する。借用snapshotとLeader level capはbattle開始時に固定し、貸出側へ戦闘状態を書き戻さない。探索のenemy数と通常報酬を別authorityとし、通常報酬はLeaderだけ、貸出報酬は決着したborrowed参加10回ごとにskip ticket 1枚、canonical dayあたり100枚までとする。Boss人数補正は`none`またはcontent-authored tableとする。skipはcontent別に管理し、狩場はactual combat win 50回で1回1枚、Trialはactual full clear 5周で1周10枚を解禁する。skipはcombat・cooldown・貸出参加を発生させず、通常勝利と共通のrepeatable reward settlementだけをsettleし、first-clear等のone-time stateを再発させない。既存`execution_count`を使う一操作最大1,000回の任意回数・周回数も同じ決算経路を使う。総clear数には加えるが、解禁用actual countへは加えない。対応するplayer actionだけ、最低HP割合の生存味方または有効な挑発を受けていない敵をstable orderで選べる。候補がなければ次ruleへ進み、対象省略時とenemy通常攻撃のtarget方式は従来どおりとする。
 - Boundary: 過去の1対1 battle logを再計算・書換えず、party presentationはv3として分離する。companion育成、market transactionと不正対策は別decisionとして扱う。UG-04のNation-owned facility・surface bridge決定をparty/marketへ拡張しない。
 - Deferred: companion framework、market transaction、market不正対策。
 - Decision record: `docs/roadmap/3.0.0-alpha-underground.md`

@@ -7,7 +7,7 @@ use JsonException;
 
 final readonly class PriorityCombatAiConfiguration
 {
-    public const SCHEMA_VERSION = 1;
+    public const SCHEMA_VERSION = 2;
 
     public const MAX_CONDITIONS_PER_RULE = 2;
 
@@ -68,6 +68,16 @@ final readonly class PriorityCombatAiConfiguration
                 }
             } elseif (! in_array($action, ['normal_attack', 'defend', 'awakening'], true)) {
                 throw new InvalidArgumentException("AI rule [{$index}] action is invalid.");
+            }
+
+            if (array_key_exists('target', $rule)) {
+                $target = $rule['target'];
+                if (! is_string($target)
+                    || ! in_array($target, $this->targetSelectorsForAction($action, $catalog), true)) {
+                    throw new InvalidArgumentException("AI rule [{$index}] target is invalid for its action.");
+                }
+                $allowedRuleKeys[] = 'target';
+                $normalizedRule['target'] = $target;
             }
 
             if (array_diff(array_keys($rule), $allowedRuleKeys) !== []) {
@@ -131,7 +141,8 @@ final readonly class PriorityCombatAiConfiguration
      * @return array{
      *   condition_types: list<array{key: string, label: string, value_kind: string}>,
      *   actions: list<array{key: string, label: string}>,
-     *   skills: list<array{key: string, label: string, summary: string}>,
+     *   targets: list<array{key: string, label: string}>,
+     *   skills: list<array{key: string, label: string, summary: string, target_selectors: list<string>}>,
      *   statuses: list<array{key: string, label: string, max_stacks: int}>,
      *   role_stacks: list<array{key: string, label: string, max_stacks: int}>
      * }
@@ -178,6 +189,10 @@ final readonly class PriorityCombatAiConfiguration
                 ['key' => 'awakening', 'label' => '覚醒'],
                 ['key' => 'jump', 'label' => '後ろのruleへ移動'],
             ],
+            'targets' => [
+                ['key' => 'lowest_hp_ally', 'label' => 'HP割合が最も低い生存味方'],
+                ['key' => 'untaunted_enemy', 'label' => '有効な挑発を受けていない敵'],
+            ],
             'skills' => $this->playerSkills($catalog),
             'statuses' => $statuses,
             'role_stacks' => [
@@ -187,7 +202,7 @@ final readonly class PriorityCombatAiConfiguration
         ];
     }
 
-    /** @return list<array{key: string, label: string, summary: string}> */
+    /** @return list<array{key: string, label: string, summary: string, target_selectors: list<string>}> */
     public function playerSkills(AlphaV1BuildCatalog $catalog): array
     {
         $skills = [];
@@ -206,12 +221,42 @@ final readonly class PriorityCombatAiConfiguration
                 if (! is_string($skillKey) || ! is_string($label) || ! is_string($summary)) {
                     throw new InvalidArgumentException('AI player skill catalog is invalid.');
                 }
-                $catalog->skill($skillKey);
-                $skills[] = ['key' => $skillKey, 'label' => $label, 'summary' => $summary];
+                $skills[] = [
+                    'key' => $skillKey,
+                    'label' => $label,
+                    'summary' => $summary,
+                    'target_selectors' => $this->targetSelectorsForAction('skill:'.$skillKey, $catalog),
+                ];
             }
         }
 
         return $skills;
+    }
+
+    /** @return list<'lowest_hp_ally'|'untaunted_enemy'> */
+    public function targetSelectorsForAction(string $action, AlphaV1BuildCatalog $catalog): array
+    {
+        if ($action === 'normal_attack') {
+            return ['untaunted_enemy'];
+        }
+        if (! str_starts_with($action, 'skill:')) {
+            return [];
+        }
+
+        $skillKey = substr($action, 6);
+        $skill = $catalog->skill($skillKey);
+        if ($skillKey === 'mending_prayer') {
+            return ['lowest_hp_ally'];
+        }
+        foreach ($skill['effects'] as $effect) {
+            if (is_array($effect)
+                && ($effect['target'] ?? 'enemy') === 'enemy'
+                && ($effect['target_scope'] ?? 'single_enemy') === 'single_enemy') {
+                return ['untaunted_enemy'];
+            }
+        }
+
+        return [];
     }
 
     /**

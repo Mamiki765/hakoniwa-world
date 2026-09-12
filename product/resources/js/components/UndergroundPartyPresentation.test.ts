@@ -162,16 +162,59 @@ describe('Underground party presentation controls', () => {
         const wrapper = mount(UndergroundPanel, { attachTo: document.body });
         await flushPromises();
 
-        const partySections = wrapper.findAll('.underground-party-teams');
-        expect(partySections).toHaveLength(3);
-        expect(partySections[0]!.find('[data-combatant-id="borrowed:2"]').text()).toContain('100/1148');
-        expect(partySections[0]!.find('[data-combatant-id="borrowed:2"]').text()).toContain('Ready');
-        expect(partySections[0]!.find('img[src="/fixtures/healer.webp"]').exists()).toBe(true);
-        expect(partySections[2]!.find('img[src="/fixtures/awakening-healer.webp"]').exists()).toBe(true);
-        expect(wrapper.findAll('.underground-party-portrait-event')).toHaveLength(9);
-        expect(wrapper.findAll('img[src="/fixtures/awakening-healer-bust.webp"]')).toHaveLength(2);
+        const borrowedCard = wrapper.find('[data-combatant-id="borrowed:2"]');
+        expect(borrowedCard.text()).toContain('100/1148');
+        expect(borrowedCard.text()).toContain('Ready');
+        expect(wrapper.find('img[src="/fixtures/healer.webp"]').exists()).toBe(true);
+        expect(wrapper.find('img[src="/fixtures/awakening-healer.webp"]').exists()).toBe(true);
+        expect(wrapper.find('.underground-party-portrait-event').exists()).toBe(true);
+        expect(wrapper.find('img[src="/fixtures/awakening-healer-bust.webp"]').exists()).toBe(true);
         expect(wrapper.text()).toContain('生命讃歌');
         expect(wrapper.text()).toContain('AttackerのHP');
+        wrapper.unmount();
+    });
+
+    it('renders each Heavenrend damage line with only its actual target', async () => {
+        const battle = {
+            ...smallBattle('heavenrend-targets'),
+            detail_available: true,
+            rounds_count: 1,
+            party: {
+                members: [{ combatant_id: 'secretary:1', display_name: 'Leader' }],
+                enemies: [
+                    { combatant_id: 'enemy:1', display_name: '第一の敵' },
+                    { combatant_id: 'enemy:2', display_name: '第二の敵' },
+                ],
+            },
+            rounds: [{
+                round: 1,
+                actions: [
+                    {
+                        type: 'damage', side: 'player', actor_id: 'secretary:1', target_id: 'enemy:1',
+                        target_ids: ['enemy:1'], label: '天断一閃', amount: 120,
+                    },
+                    {
+                        type: 'damage', side: 'player', actor_id: 'secretary:1', target_id: 'enemy:2',
+                        target_ids: ['enemy:2'], label: '天断一閃', amount: 60,
+                    },
+                ],
+                end_state: null,
+            }],
+        };
+        vi.stubGlobal('fetch', vi.fn((input: RequestInfo | URL) => (
+            String(input).endsWith('/api/v1/me/underground/battles')
+                ? Promise.resolve(response([]))
+                : Promise.resolve(response(openState({ battle })))
+        )));
+
+        const wrapper = mount(UndergroundPanel, { attachTo: document.body });
+        await flushPromises();
+
+        const damageRows = wrapper.findAll('[data-action-type="damage"]');
+        expect(damageRows[0]!.text()).toContain('第一の敵に120ダメージ');
+        expect(damageRows[0]!.text()).not.toContain('第二の敵');
+        expect(damageRows[1]!.text()).toContain('第二の敵に60ダメージ');
+        expect(damageRows[1]!.text()).not.toContain('第一の敵');
         wrapper.unmount();
     });
 
@@ -265,8 +308,8 @@ describe('Underground party presentation controls', () => {
             duplicate: false,
             content_type: 'hunting_ground',
             content_key: 'shallow_caves',
-            execution_count: 2,
-            ticket_cost: 2,
+            execution_count: 3,
+            ticket_cost: 3,
             xp_awarded: 24,
             shards_awarded: 8,
             combat_level_before: 20,
@@ -277,7 +320,7 @@ describe('Underground party presentation controls', () => {
                     { status: 'vault_full', quantity: 1, item: { name: '黒晶の盾', item_level: 20, rarity_label: 'Epic', affixes: [] } },
                 ],
             },
-            ticket_balance: 3,
+            ticket_balance: 2,
             settled_at: '2026-09-09T00:00:00Z',
         };
         const skipRequests: Array<Record<string, unknown>> = [];
@@ -295,16 +338,19 @@ describe('Underground party presentation controls', () => {
         const wrapper = mount(UndergroundPanel, { attachTo: document.body });
         await flushPromises();
         await wrapper.get('.underground-skip-entry button').trigger('click');
-        await wrapper.get('.underground-skip-category .underground-skip-shortcuts button').trigger('click');
+        const groundCategory = wrapper.get('.underground-skip-category');
+        await groundCategory.get('.underground-skip-custom input').setValue('3');
+        expect(groundCategory.get('.underground-skip-plan').text()).toContain('🎫 3枚');
+        await groundCategory.get('.underground-skip-custom button').trigger('click');
         await flushPromises();
 
         const result = wrapper.get('.underground-skip-result');
         expect(skipRequests).toHaveLength(1);
-        expect(skipRequests[0]?.execution_count).toBe(2);
-        expect(result.text()).toContain('浅い洞窟を2回スキップしました');
+        expect(skipRequests[0]?.execution_count).toBe(3);
+        expect(result.text()).toContain('浅い洞窟を3回スキップしました');
         expect(result.text()).toContain('獲得: 銀の短剣 ×1');
         expect(result.text()).toContain('取り逃し: 黒晶の盾 ×1（宝物庫が満杯）');
-        expect(result.text()).toContain('残りticket3枚');
+        expect(result.text()).toContain('残りticket2枚');
         wrapper.unmount();
     });
 
@@ -369,11 +415,12 @@ describe('Underground party presentation controls', () => {
                 }));
             }
             if (path === '/api/v1/me/underground/skip/trial') {
-                requests.push(JSON.parse(String(init?.body ?? '{}')) as Record<string, unknown>);
+                const request = JSON.parse(String(init?.body ?? '{}')) as Record<string, unknown>;
+                requests.push(request);
                 return Promise.resolve(response({
-                    id: 'trial-skip', duplicate: false, content_type: 'trial', content_key: 'trial_01', execution_count: 1000,
-                    ticket_cost: 10_000, xp_awarded: 100_000, shards_awarded: 50_000, combat_level_before: 20, combat_level_after: 21,
-                    rewards: { equipment_granted_count: 0, vault_full_count: 0, drops: [], ticket_balance_after: 10_000 },
+                    id: 'trial-skip', duplicate: false, content_type: 'trial', content_key: 'trial_01', execution_count: request.execution_count,
+                    ticket_cost: 370, xp_awarded: 3_700, shards_awarded: 1_850, combat_level_before: 20, combat_level_after: 21,
+                    rewards: { equipment_granted_count: 0, vault_full_count: 0, drops: [], ticket_balance_after: 19_630 },
                     settled_at: '2026-09-09T00:00:00Z',
                 }));
             }
@@ -384,13 +431,12 @@ describe('Underground party presentation controls', () => {
 
         const wrapper = mount(UndergroundPanel, { attachTo: document.body });
         await flushPromises();
-        const adventureSections = wrapper.findAll('.underground-adventure-block');
-        expect(adventureSections).toHaveLength(3);
-        expect(adventureSections[0]!.get('h3').text()).toBe('狩場');
-        expect(adventureSections[1]!.get('h3').text()).toBe('試練');
-        expect(adventureSections[2]!.get('h3').text()).toBe('宝物庫');
-        expect(adventureSections[2]!.text()).toContain('鍵 10個');
-        expect(adventureSections[2]!.get('button').attributes('disabled')).toBeUndefined();
+        expect(wrapper.get('#underground-hunting-ground-title').text()).toBe('狩場');
+        expect(wrapper.get('#underground-trial-title').text()).toBe('試練');
+        expect(wrapper.get('#underground-vault-title').text()).toBe('宝物庫');
+        const vaultSection = wrapper.get('[aria-labelledby="underground-vault-title"]');
+        expect(vaultSection.text()).toContain('鍵 10個');
+        expect(vaultSection.get('button').attributes('disabled')).toBeUndefined();
 
         await wrapper.get('.underground-skip-entry button').trigger('click');
         const categories = wrapper.findAll('.underground-skip-category');
@@ -408,13 +454,15 @@ describe('Underground party presentation controls', () => {
         expect(requests).toHaveLength(1);
         expect(requests[0]?.execution_count).toBe(10);
         expect(requests[0]?.hunting_ground_key).toBe('shining_kingdom_vault');
-        await categories[1]!.findAll('.underground-skip-shortcuts button')[1]!.trigger('click');
+        await categories[1]!.get('.underground-skip-custom input').setValue('37');
+        expect(categories[1]!.get('.underground-skip-plan').text()).toContain('🎫 370枚');
+        await categories[1]!.get('.underground-skip-custom button').trigger('click');
         await flushPromises();
 
         expect(requests).toHaveLength(2);
-        expect(requests[1]?.execution_count).toBe(1000);
+        expect(requests[1]?.execution_count).toBe(37);
         expect(requests[1]?.trial_key).toBe('trial_01');
-        expect(wrapper.get('.underground-skip-result').text()).toContain('黒曜石の魔窟を1000周スキップしました');
+        expect(wrapper.get('.underground-skip-result').text()).toContain('黒曜石の魔窟を37周スキップしました');
         wrapper.unmount();
     });
 

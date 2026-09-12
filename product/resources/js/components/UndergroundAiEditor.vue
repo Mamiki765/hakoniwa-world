@@ -11,6 +11,7 @@ interface DraftRule {
     id: string;
     conditions: UndergroundAiCondition[];
     action: string;
+    target: string;
     jumpTargetId: string | null;
 }
 
@@ -39,6 +40,7 @@ function makeDrafts(rules: UndergroundAiRule[]): DraftRule[] {
         id: `ai-rule-${nextDraftId++}`,
         conditions: rule.conditions.map(copyCondition),
         action: rule.action,
+        target: rule.target ?? '',
         jumpTargetId: null,
     }));
     rules.forEach((rule, index) => {
@@ -65,6 +67,7 @@ function payloadRules(): UndergroundAiRule[] {
             conditions: rule.conditions.map(copyCondition),
             action: rule.action,
         };
+        if (rule.target !== '') payload.target = rule.target;
         if (rule.action === 'jump') {
             const targetIndex = draftRules.value.findIndex((candidate) => candidate.id === rule.jumpTargetId);
             if (targetIndex <= index) throw new Error(`${index + 1}番目の移動先は後ろのruleを選んでください。`);
@@ -111,6 +114,7 @@ function addRule(): void {
         id: `ai-rule-${nextDraftId++}`,
         conditions: [{ type: 'always' }],
         action: 'normal_attack',
+        target: '',
         jumpTargetId: null,
     });
     edited();
@@ -210,7 +214,25 @@ function changeAction(rule: DraftRule, index: number): void {
     } else {
         rule.jumpTargetId = null;
     }
+    if (!targetOptions(rule).some((target) => target.key === rule.target)) {
+        rule.target = '';
+    }
     edited();
+}
+
+function targetOptions(rule: DraftRule): Array<{ key: string; label: string }> {
+    let selectors: string[] = [];
+    if (rule.action === 'normal_attack') {
+        selectors = ['untaunted_enemy'];
+    } else if (rule.action.startsWith('skill:')) {
+        selectors = props.configuration.catalog.skills
+            .find((skill) => `skill:${skill.key}` === rule.action)?.target_selectors ?? [];
+    }
+
+    return [
+        { key: '', label: '指定なし' },
+        ...props.configuration.catalog.targets.filter((target) => selectors.includes(target.key)),
+    ];
 }
 
 function statusMaximum(key: string | undefined): number {
@@ -300,6 +322,7 @@ async function save(): Promise<void> {
 
         <div class="underground-ai-notes">
             <p>成立したruleのactionがMP・cooldown・装備・習得状態などで使えない場合は、次のruleへ進みます。</p>
+            <p>対象候補がいないruleも次へ進みます。</p>
             <p>最後まで実行できない場合は、使用可能な習得済み攻撃skill、なければ通常攻撃を必ず使います。</p>
             <p>作戦の変更は次に始まる戦闘から有効です。進行中・保存済みの戦闘内容は変わりません。</p>
         </div>
@@ -382,6 +405,11 @@ async function save(): Promise<void> {
                     <select v-if="rule.action === 'jump'" v-model="rule.jumpTargetId" :aria-label="`Rule ${ruleIndex + 1}の移動先`" @change="edited">
                         <option v-for="target in draftRules.slice(ruleIndex + 1)" :key="target.id" :value="target.id">Rule {{ draftRules.indexOf(target) + 1 }}</option>
                     </select>
+                    <label v-if="targetOptions(rule).length > 1">対象
+                        <select v-model="rule.target" :aria-label="`Rule ${ruleIndex + 1} target`" @change="edited">
+                            <option v-for="target in targetOptions(rule)" :key="target.key" :value="target.key">{{ target.label }}</option>
+                        </select>
+                    </label>
                 </fieldset>
             </li>
         </ol>

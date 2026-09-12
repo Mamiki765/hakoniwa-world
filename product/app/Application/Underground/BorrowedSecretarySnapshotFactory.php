@@ -23,7 +23,7 @@ final readonly class BorrowedSecretarySnapshotFactory
 
     private const PROJECTION_CACHE_IDENTITY = 'secretary-lending-build-projection-v1';
 
-    private const PROJECTION_CACHE_SCHEMA_VERSION = 1;
+    private const PROJECTION_CACHE_SCHEMA_VERSION = 2;
 
     public function __construct(
         private UndergroundAlphaV1PlayerCatalog $players,
@@ -742,6 +742,12 @@ final readonly class BorrowedSecretarySnapshotFactory
                 $conditions[] = $this->orderedKeys($condition, $conditionKeys);
             }
             $ruleKeys = ['conditions', 'action'];
+            if (array_key_exists('target', $rule)) {
+                if (! in_array($rule['target'], ['lowest_hp_ally', 'untaunted_enemy'], true)) {
+                    throw new RuntimeException('Borrowed Secretary AI rule target projection is invalid.');
+                }
+                $ruleKeys[] = 'target';
+            }
             if ($rule['action'] === 'jump') {
                 $ruleKeys[] = 'jump_to';
             }
@@ -970,6 +976,9 @@ final readonly class BorrowedSecretarySnapshotFactory
 
             return $effective;
         }
+        if ($originalLevel <= $itemLevelCap) {
+            return $definition;
+        }
         $originalMainStat = ($definition['category'] ?? null) === 'accessory'
             ? $this->mainStat($definition)
             : null;
@@ -989,8 +998,11 @@ final readonly class BorrowedSecretarySnapshotFactory
     /** @param array<string, mixed> $definition */
     private function mainStat(array $definition): ?string
     {
+        $stats = is_array($definition['source'] ?? null)
+            ? ($definition['base']['stats'] ?? [])
+            : ($definition['stats'] ?? []);
         foreach (AlphaV1CombatRules::STATS as $stat) {
-            if (($definition['base']['stats'][$stat] ?? 0) > 0) {
+            if (($stats[$stat] ?? 0) > 0) {
                 return $stat;
             }
         }

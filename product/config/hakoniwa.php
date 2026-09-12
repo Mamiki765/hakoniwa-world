@@ -1,9 +1,9 @@
 <?php
 
-$currentRuleset = require __DIR__.'/hakoniwa/rulesets/hakoniwa-2s-plus-v23.php';
+$currentRuleset = require __DIR__.'/hakoniwa/rulesets/hakoniwa-2s-plus-v24.php';
 
 return [
-    'application_version' => '3.9.1',
+    'application_version' => '3.9.2',
     'ruleset' => $currentRuleset,
     'published_rulesets' => [$currentRuleset['key'] => $currentRuleset],
     'current_catalogs' => [
