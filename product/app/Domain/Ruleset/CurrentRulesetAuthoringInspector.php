@@ -101,6 +101,7 @@ final class CurrentRulesetAuthoringInspector
         ...self::V23_DOMAIN_OVERRIDES,
         'world-and-map.php' => 'v24/world-and-map.php',
         'commands-and-production.php' => 'v24/commands-and-production.php',
+        'turn-pipeline.php' => 'v24/turn-pipeline.php',
     ];
 
     private const CLASSIFICATIONS = ['behavior', 'data', 'flavor'];

@@ -35,7 +35,7 @@ MVPではサーバーによる自動配置を採用する。利用者の座標�
 
 最低条件の候補は次の通り。
 
-- 首都セルが建設可能な地形、または安全に造成可能。
+- 予約範囲がRulesetで許可した中立自然地形だけで、所有者・施設・人口がない。
 - 初期Territoryの候補範囲が他国Territoryと重ならない。
 - 他国Capitalから`capital_min_distance = 12`以上。
 - 他国所有地、予約地、禁止地、イベント専用地と重ならない。
@@ -44,7 +44,7 @@ MVPではサーバーによる自動配置を採用する。利用者の座標�
 
 距離はADR-0003のHexCoordinate.distanceToを使う。四角い配列上のEuclidean距離、odd-qのcolumn・row、UI pixel距離で代用しない。
 
-Capitalを建設可能とする地形、初期Territoryへ水域・建設不能地形を含めるか、最低限の発展可能セル数、同点候補のscoreは国家作成実装前に決める。
+Ruleset v24では海・浅瀬・荒地・山を造成可能な予約地形とし、平地・森へは広げない。初期Territoryは生成後のdistance 2以内の陸地19 cellsだけとする。
 
 ## 探索方式の候補
 
@@ -146,12 +146,12 @@ PR19では登録入力に公開用の`owner_name`（必須、1–30文字）と`
 
 登録後はNation ownerだけが`PATCH /api/v1/nations/{nation}/profile`で島主名と一言コメントを変更できる。変更はWorldとNationをlockし、最新ruleset Worldだけを対象にして、変更前後・変更field・actor user IDを`nation.profile_updated`へ記録する。同値更新は保存もaudit eventも作らない。過去ruleset Worldの更新は`reset_required`で拒否する。
 
-候補は中心からdistance 5以内の91セルが生成済みの海・無所有・施設なしで、他Capitalから12以上離れる地点だけとする。最も近い既存Capitalまでの距離を最大化し、y/xで安定tie-breakする。現在は先頭候補を使用するが、serviceの結果を上位3候補へ拡張できる。
+Ruleset v24の候補は中心からdistance 5以内の91セルが生成済みの海・浅瀬・荒地・山、無所有、施設なし、人口0で、全ての既存Capitalから12以上離れる地点だけとする。最も近い既存Capitalまでの距離を最大化し、y/xで安定tie-breakする。上位3候補について初期島をplanし、生成後に航行不能となる船を同じ予約範囲内の空き深海へ重複なく退避できる最初の候補を使用する。生成後も海に残る船は動かさず、退避不能な候補では船を沈めない。
 
-候補が0件の場合だけ、同じ`WorldMutationLock`と登録transaction内でcurrent signed boundsから
+候補が0件の場合、または有限候補の全てで船を安全退避できない場合だけ、同じ`WorldMutationLock`と登録transaction内でcurrent signed boundsから
 `LEFT → UP → RIGHT → DOWN`の次の1chunk帯を導出し、`WorldExpansionService`によるcoverage検証済み
 拡張後に候補を一度だけ再取得する。64×64からの最初の結果は`-16..63 × 0..63`であり、4 chunks・
 1,024 cellsを追加する。60×60の場合は64×64のpartial chunks補完だけでは成功扱いにせず、同一の
 原子的拡張で最初のLEFT帯まで追加する。rotation専用DB stateは持たず、正規sequenceとして解釈
-できないbounds、または一度の拡張後も候補0件なら推測・追加拡張せず全処理をrollbackする。
+できないbounds、または一度の拡張後も安全な候補がなければ推測・追加拡張せず全処理をrollbackする。島生成と船退避は同じ登録transactionにあり、後続失敗時に船だけの移動を残さない。
 - Status: Deferred / Required before: MVP後 — 放棄Territory再利用、World運用上限と新World作成、`abandoned`からの再入植。旧`sunken_archived`語彙はADR-0004のhistorical provenanceだけに残す。

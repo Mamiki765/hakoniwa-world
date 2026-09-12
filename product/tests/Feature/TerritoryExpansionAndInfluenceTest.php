@@ -7,6 +7,7 @@ use App\Application\NationCreationService;
 use App\Application\PlayerIslandEventService;
 use App\Application\TerritoryInfluenceService;
 use App\Domain\Map\GridCoordinate;
+use App\Domain\Map\NationLandAreaCalculator;
 use App\Domain\Turn\TurnContext;
 use App\Domain\Turn\TurnRandomStreamFactory;
 use App\Domain\Turn\TurnState;
@@ -504,6 +505,37 @@ final class TerritoryExpansionAndInfluenceTest extends TestCase
         $this->assertSame(1, $protectedResult['mutations']);
         $this->assertSame($first->id, $protectedTarget->fresh()->owner_nation_id);
         $this->assertSame($second->id, $outsideTarget->fresh()->owner_nation_id);
+    }
+
+    public function test_influence_reaches_but_does_not_exceed_the_current_subsidence_safe_land_limit(): void
+    {
+        [$world, $space, , $first, $second] = $this->worldAndNations();
+        $this->resetSurface($space, [$first, $second]);
+        [$left, $middle, $right] = $this->remoteLine($space, [$first, $second]);
+        $this->setCell($left, 'forest', $first->id);
+        $this->setCell($middle, 'forest', $first->id);
+        $this->setCell($right, 'plain', $second->id);
+
+        $context = $this->context(
+            $world,
+            [$first->id, $second->id],
+            $this->seedForDirections([
+                $this->directionFrom($middle, $right),
+                $this->directionFrom($left, $middle),
+            ]),
+        );
+        $settings = $context->ruleset->settings;
+        $settings['turn_processing']['disasters']['land_subsidence']['base_safe_land_cells'] = 3;
+        $context->ruleset->settings = $settings;
+        $context->state->setSurfaceCellIds($this->surfaceOrder($space, [$middle->id, $left->id]));
+
+        $result = app(TerritoryInfluenceService::class)->execute($context);
+
+        $this->assertSame(2, $result['direction_draws']);
+        $this->assertSame(1, $result['mutations']);
+        $this->assertSame($second->id, $middle->fresh()->owner_nation_id);
+        $this->assertSame($first->id, $left->fresh()->owner_nation_id);
+        $this->assertSame(3, app(NationLandAreaCalculator::class)->forNation($second));
     }
 
     /** @return array{World, MapSpace, User, Nation, Nation} */

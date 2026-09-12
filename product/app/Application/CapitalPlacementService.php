@@ -17,7 +17,21 @@ final class CapitalPlacementService
         $radius = (int) $rules['initial_island_reservation_radius'];
         $minimumDistance = (int) $rules['minimum_capital_distance'];
         $requiredCells = 1 + 3 * $radius * ($radius + 1);
-        $shipExclusion = Schema::hasTable('ships') ? <<<'SQL'
+        $placement = $rules['initial_island_placement'] ?? null;
+        if ($placement === null) {
+            $reservationTerrainKeys = ['sea'];
+            $relocateShips = false;
+        } elseif (is_array($placement)
+            && count($placement) === 2
+            && ($placement['reservation_terrain_keys'] ?? null) === ['sea', 'shallow', 'wasteland', 'mountain']
+            && ($placement['ship_relocation'] ?? null) === 'final_empty_sea_within_reservation') {
+            $reservationTerrainKeys = $placement['reservation_terrain_keys'];
+            $relocateShips = true;
+        } else {
+            throw new DomainException('The active Ruleset has no supported initial-island placement contract.');
+        }
+        $terrainPlaceholders = implode(', ', array_fill(0, count($reservationTerrainKeys), '?'));
+        $shipExclusion = ! $relocateShips && Schema::hasTable('ships') ? <<<'SQL'
                   AND NOT EXISTS (
                     SELECT 1
                     FROM ships surface_ship
@@ -54,9 +68,10 @@ final class CapitalPlacementService
             WHERE candidate.map_space_id = ?
               AND candidate.x BETWEEN ? AND ?
               AND candidate.y BETWEEN ? AND ?
-              AND candidate_terrain.key = 'sea'
+              AND candidate_terrain.key IN ({$terrainPlaceholders})
               AND candidate.owner_nation_id IS NULL
               AND candidate.facility_definition_id IS NULL
+              AND candidate.population = 0
               AND (
                 SELECT COUNT(*)
                 FROM map_cells surrounding
@@ -75,9 +90,10 @@ final class CapitalPlacementService
                         - (candidate.cube_x + candidate.cube_y)
                     )
                   ) <= ?
-                  AND surrounding_terrain.key = 'sea'
+                  AND surrounding_terrain.key IN ({$terrainPlaceholders})
                   AND surrounding.owner_nation_id IS NULL
                   AND surrounding.facility_definition_id IS NULL
+                  AND surrounding.population = 0
             {$shipExclusion}
               ) = ?
               AND NOT EXISTS (
@@ -105,8 +121,10 @@ final class CapitalPlacementService
             $mapSpace->world_id, $mapSpace->id,
             $mapSpace->min_x + $radius, $mapSpace->max_x - $radius,
             $mapSpace->min_y + $radius, $mapSpace->max_y - $radius,
+            ...$reservationTerrainKeys,
             $radius, $radius, $radius, $radius,
-            $radius, $requiredCells, $mapSpace->world_id, $minimumDistance, $limit,
+            $radius, ...$reservationTerrainKeys,
+            $requiredCells, $mapSpace->world_id, $minimumDistance, $limit,
         ]);
 
         return array_map(

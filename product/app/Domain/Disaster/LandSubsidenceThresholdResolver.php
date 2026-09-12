@@ -15,8 +15,8 @@ final class LandSubsidenceThresholdResolver
             throw new DomainException('The active ruleset has an invalid land-subsidence safe-land threshold.');
         }
 
-        // The Nation parameter is the intentional extension boundary for future
-        // Nation/item effects. PR18 returns only the immutable ruleset base value.
+        // The Nation parameter is the intentional extension boundary for possible
+        // future Nation-specific effects. The current contract uses the Ruleset base.
         return $base;
     }
 }

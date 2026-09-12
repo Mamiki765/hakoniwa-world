@@ -10,7 +10,7 @@ use Tests\TestCase;
 
 final class CurrentRulesetContractTest extends TestCase
 {
-    private const V24_CHECKSUM = 'f3c8dc81ab88bab4e4d812fea5498eb140b6c44162afd78d522a56baad325f28';
+    private const V24_CHECKSUM = 'a7c021756a4daff6ed8b769dffb69b830a345a322b04d919801ff2eb2aa27c92';
 
     public function test_normal_config_loads_and_validates_the_v24_contract(): void
     {
@@ -142,6 +142,14 @@ final class CurrentRulesetContractTest extends TestCase
         $this->assertSame([true, true], collect($current['command_definitions'])
             ->whereIn('key', ['build_central_bank', 'build_central_granary'])
             ->pluck('metadata.settlement_overbuild')->values()->all());
+        $this->assertSame([
+            'reservation_terrain_keys' => ['sea', 'shallow', 'wasteland', 'mountain'],
+            'ship_relocation' => 'final_empty_sea_within_reservation',
+        ], $current['initial_island_placement']);
+        $this->assertSame(
+            'land_subsidence_safe_land_cells',
+            $current['turn_processing']['territory_influence']['acquisition_land_limit'],
+        );
 
         $summary = app(RulesetAuthoringValidator::class)->validate($current);
         $this->assertSame('hakoniwa-2s-plus-v24', $summary['key']);

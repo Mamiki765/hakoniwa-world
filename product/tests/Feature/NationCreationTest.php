@@ -15,6 +15,7 @@ use App\Models\NationCapital;
 use App\Models\NationResource;
 use App\Models\ResourceDefinition;
 use App\Models\Ship;
+use App\Models\TerrainDefinition;
 use App\Models\User;
 use DomainException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -88,23 +89,46 @@ class NationCreationTest extends TestCase
         $this->assertSame('sea', MapCell::query()->where('x', 20)->where('y', 20)->firstOrFail()->terrain()->value('key'));
     }
 
-    public function test_second_nation_does_not_overlap_and_capitals_are_at_least_twelve_apart(): void
+    public function test_second_nation_accepts_neutral_nature_relocates_affected_ships_and_preserves_distance(): void
     {
         $world = $this->lightweightWorld();
         $service = app(NationCreationService::class);
         $first = $service->create(User::factory()->create(), $world, '第一国', '試験島主');
         $space = MapSpace::query()->where('world_id', $world->id)->where('key', 'surface')->firstOrFail();
         $blockedCenter = app(CapitalPlacementService::class)->candidates($space, 1)[0];
-        $blockedCell = MapCell::query()
+        $centerCell = MapCell::query()
             ->where('map_space_id', $space->id)
             ->where('x', $blockedCenter->x)
             ->where('y', $blockedCenter->y)
             ->firstOrFail();
-        $ship = Ship::query()->create([
+        $innerCell = MapCell::query()
+            ->where('map_space_id', $space->id)
+            ->where('x', $blockedCenter->neighbor(GridCoordinate::EAST)->x)
+            ->where('y', $blockedCenter->neighbor(GridCoordinate::EAST)->y)
+            ->firstOrFail();
+        $naturalCells = [];
+        foreach (array_combine(['shallow', 'wasteland', 'mountain'], array_slice($blockedCenter->ring(5), 0, 3)) as $terrain => $coordinate) {
+            $cell = MapCell::query()->where('map_space_id', $space->id)
+                ->where('x', $coordinate->x)->where('y', $coordinate->y)->firstOrFail();
+            $cell->update([
+                'terrain_definition_id' => TerrainDefinition::query()->where('key', $terrain)->valueOrFail('id'),
+            ]);
+            $naturalCells[$terrain] = $cell;
+        }
+        $safeOutsideCell = collect($blockedCenter->ring(6))
+            ->map(fn (GridCoordinate $coordinate): ?MapCell => MapCell::query()
+                ->where('map_space_id', $space->id)
+                ->where('x', $coordinate->x)->where('y', $coordinate->y)->first())
+            ->first(fn (?MapCell $cell): bool => $cell instanceof MapCell
+                && $cell->terrain()->value('key') === 'sea');
+        if (! $safeOutsideCell instanceof MapCell) {
+            $this->fail('No safe Ship cell outside the initial-island reservation is available.');
+        }
+        $createShip = fn (MapCell $cell): Ship => Ship::query()->create([
             'world_id' => $world->id,
             'ruleset_version_id' => $world->ruleset_version_id,
             'nation_id' => $first->id,
-            'map_cell_id' => $blockedCell->id,
+            'map_cell_id' => $cell->id,
             'ship_type_key' => 'fishing',
             'current_hp' => 1,
             'max_hp' => 1,
@@ -112,6 +136,14 @@ class NationCreationTest extends TestCase
             'state' => Ship::STATE_ACTIVE,
             'version' => 1,
         ]);
+        $centerShip = $createShip($centerCell);
+        $innerShip = $createShip($innerCell);
+        $safeShip = $createShip($safeOutsideCell);
+        $resourcesBefore = $first->resourceBalances()->pluck('amount', 'resource_definition_id')->all();
+        $karmaBefore = (int) $first->karma;
+
+        $candidate = app(CapitalPlacementService::class)->candidates($space, 1)[0];
+        $this->assertSame([$blockedCenter->x, $blockedCenter->y], [$candidate->x, $candidate->y]);
         $second = $service->create(User::factory()->create(), $world, '第二国', '試験島主');
         $a = new GridCoordinate($first->capital->x, $first->capital->y);
         $b = new GridCoordinate($second->capital->x, $second->capital->y);
@@ -120,8 +152,27 @@ class NationCreationTest extends TestCase
         $this->assertSame(2, $second->nation_number);
         $this->assertGreaterThanOrEqual(12, $a->distanceTo($b));
         $this->assertNotSame($first->capital->map_cell_id, $second->capital->map_cell_id);
-        $this->assertNotSame($blockedCell->id, $second->capital->map_cell_id);
-        $this->assertSame($blockedCell->id, $ship->fresh()->map_cell_id);
+        $this->assertSame($centerCell->id, $second->capital->map_cell_id);
+        $relocatedCellIds = [$centerShip->fresh()->map_cell_id, $innerShip->fresh()->map_cell_id];
+        $this->assertCount(2, array_unique($relocatedCellIds));
+        foreach ([$centerShip, $innerShip] as $ship) {
+            $this->assertSame(2, $ship->fresh()->version);
+            $this->assertSame('sea', $ship->fresh()->cell()->firstOrFail()->terrain()->value('key'));
+            $this->assertLessThanOrEqual(5, $blockedCenter->distanceTo(new GridCoordinate(
+                $ship->fresh()->cell()->valueOrFail('x'),
+                $ship->fresh()->cell()->valueOrFail('y'),
+            )));
+        }
+        $this->assertSame($safeOutsideCell->id, $safeShip->fresh()->map_cell_id);
+        $this->assertSame(1, $safeShip->fresh()->version);
+        foreach ($naturalCells as $terrain => $cell) {
+            $this->assertSame($terrain, $cell->fresh()->terrain()->value('key'));
+            $this->assertNull($cell->fresh()->owner_nation_id);
+        }
+        $this->assertSame($resourcesBefore, $first->fresh()->resourceBalances()->pluck('amount', 'resource_definition_id')->all());
+        $this->assertSame($karmaBefore, (int) $first->fresh()->karma);
+        $this->assertDatabaseMissing('audit_events', ['event_type' => 'ship.moved']);
+        $this->assertDatabaseMissing('audit_events', ['event_type' => 'ship.forced_displaced']);
         $this->assertSame(38, MapCell::query()->whereNotNull('owner_nation_id')->count());
     }
 
@@ -161,23 +212,52 @@ class NationCreationTest extends TestCase
     public function test_generator_failure_rolls_back_nation_island_capital_membership_and_request(): void
     {
         $world = $this->lightweightWorld();
-        $this->app->bind(InitialIslandGenerator::class, fn () => new class implements InitialIslandGenerator
+        $service = app(NationCreationService::class);
+        $incumbent = $service->create(User::factory()->create(), $world, '既存国', '既存島主');
+        $space = MapSpace::query()->where('world_id', $world->id)->where('key', 'surface')->firstOrFail();
+        $center = app(CapitalPlacementService::class)->candidates($space, 1)[0];
+        $origin = MapCell::query()->where('map_space_id', $space->id)
+            ->where('x', $center->x)->where('y', $center->y)->firstOrFail();
+        $ship = Ship::query()->create([
+            'world_id' => $world->id,
+            'ruleset_version_id' => $world->ruleset_version_id,
+            'nation_id' => $incumbent->id,
+            'map_cell_id' => $origin->id,
+            'ship_type_key' => 'fishing',
+            'current_hp' => 1,
+            'max_hp' => 1,
+            'heading' => null,
+            'state' => Ship::STATE_ACTIVE,
+            'version' => 1,
+        ]);
+        $before = [
+            'nations' => Nation::query()->count(),
+            'capitals' => NationCapital::query()->count(),
+            'resources' => NationResource::query()->count(),
+            'memberships' => DB::table('nation_memberships')->count(),
+            'requests' => DB::table('nation_creation_requests')->count(),
+            'population' => MapCell::query()->sum('population'),
+        ];
+        $realGenerator = app(InitialIslandGenerator::class);
+        $this->app->bind(InitialIslandGenerator::class, fn () => new class($realGenerator) implements InitialIslandGenerator
         {
+            public function __construct(private readonly InitialIslandGenerator $inner) {}
+
             public function plan(MapSpace $mapSpace, Nation $nation, GridCoordinate $center, string $seed): InitialIslandPlan
             {
-                MapCell::query()->where('map_space_id', $mapSpace->id)->where('x', $center->x)->where('y', $center->y)->update(['population' => 999]);
-                throw new RuntimeException('injected island failure');
+                return $this->inner->plan($mapSpace, $nation, $center, $seed);
             }
 
             public function apply(InitialIslandPlan $plan, MapSpace $mapSpace, Nation $nation): NationCapital
             {
-                throw new RuntimeException('unreachable island apply');
+                $this->inner->apply($plan, $mapSpace, $nation);
+                throw new RuntimeException('injected failure after island and Ship writes');
             }
 
             public function generate(MapSpace $mapSpace, Nation $nation, GridCoordinate $center, string $seed): NationCapital
             {
-                MapCell::query()->where('map_space_id', $mapSpace->id)->where('x', $center->x)->where('y', $center->y)->update(['population' => 999]);
-                throw new RuntimeException('injected island failure');
+                $this->inner->generate($mapSpace, $nation, $center, $seed);
+                throw new RuntimeException('injected failure after island and Ship writes');
             }
         });
 
@@ -185,12 +265,14 @@ class NationCreationTest extends TestCase
             app(NationCreationService::class)->create(User::factory()->create(), $world, '失敗国', '試験島主');
             $this->fail('Expected island failure.');
         } catch (RuntimeException) {
-            $this->assertSame(0, Nation::query()->count());
-            $this->assertSame(0, NationCapital::query()->count());
-            $this->assertSame(0, NationResource::query()->count());
-            $this->assertSame(0, DB::table('nation_memberships')->count());
-            $this->assertSame(0, DB::table('nation_creation_requests')->count());
-            $this->assertSame(0, MapCell::query()->where('population', '>', 0)->count());
+            $this->assertSame($before['nations'], Nation::query()->count());
+            $this->assertSame($before['capitals'], NationCapital::query()->count());
+            $this->assertSame($before['resources'], NationResource::query()->count());
+            $this->assertSame($before['memberships'], DB::table('nation_memberships')->count());
+            $this->assertSame($before['requests'], DB::table('nation_creation_requests')->count());
+            $this->assertSame($before['population'], MapCell::query()->sum('population'));
+            $this->assertSame($origin->id, $ship->fresh()->map_cell_id);
+            $this->assertSame(1, $ship->fresh()->version);
         }
     }
 

@@ -316,6 +316,18 @@ final class RulesetAuthoringValidator
                 ."{$maximumReservationRadius} so the initial bounds contain a Capital candidate.",
             );
         }
+        if ($authoredKey === self::FORMAL_V24_KEY) {
+            if (($settings['initial_island_placement'] ?? null) !== [
+                'reservation_terrain_keys' => ['sea', 'shallow', 'wasteland', 'mountain'],
+                'ship_relocation' => 'final_empty_sea_within_reservation',
+            ]) {
+                throw new DomainException('The v24 initial-island placement contract is invalid.');
+            }
+            if (($settings['turn_processing']['territory_influence']['acquisition_land_limit'] ?? null)
+                !== 'land_subsidence_safe_land_cells') {
+                throw new DomainException('The v24 territory-influence land limit is invalid.');
+            }
+        }
         $maximumCapitalDistance = $this->maximumCapitalDistance(
             $xMin,
             $xMax,

@@ -3,12 +3,15 @@
 namespace App\Application;
 
 use App\Domain\Map\GridCoordinate;
+use App\Domain\Nation\NationPlacementUnavailableException;
 use App\Domain\World\DeterministicRandom;
 use App\Models\FacilityDefinition;
 use App\Models\MapCell;
 use App\Models\MapSpace;
+use App\Models\MonsterOccupancy;
 use App\Models\Nation;
 use App\Models\NationCapital;
+use App\Models\Ship;
 use App\Models\TerrainDefinition;
 use DomainException;
 use Illuminate\Support\Collection;
@@ -36,6 +39,23 @@ final class LegacyInspiredInitialIslandGenerator implements InitialIslandGenerat
         $random = new DeterministicRandom($seed);
         $reservation = $center->radius($rules['initial_island_reservation_radius']);
         $terrainIds = TerrainDefinition::query()->pluck('id', 'key');
+        $placement = $rules['initial_island_placement'] ?? null;
+        if ($placement === null) {
+            $reservationTerrainKeys = ['sea'];
+            $relocateShips = false;
+        } elseif (is_array($placement)
+            && count($placement) === 2
+            && ($placement['reservation_terrain_keys'] ?? null) === ['sea', 'shallow', 'wasteland', 'mountain']
+            && ($placement['ship_relocation'] ?? null) === 'final_empty_sea_within_reservation') {
+            $reservationTerrainKeys = $placement['reservation_terrain_keys'];
+            $relocateShips = true;
+        } else {
+            throw new DomainException('The active Ruleset has no supported initial-island placement contract.');
+        }
+        $reservationTerrainIds = array_map(
+            static fn (string $key): int => (int) $terrainIds[$key],
+            $reservationTerrainKeys,
+        );
         $lockedCells = MapCell::query()
             ->where('map_space_id', $mapSpace->id)
             ->where(function ($query) use ($reservation): void {
@@ -55,9 +75,10 @@ final class LegacyInspiredInitialIslandGenerator implements InitialIslandGenerat
         }
 
         foreach ($cells as $cell) {
-            if ((int) $cell->terrain_definition_id !== (int) $terrainIds['sea']
+            if (! in_array((int) $cell->terrain_definition_id, $reservationTerrainIds, true)
                 || $cell->owner_nation_id !== null
-                || $cell->facility_definition_id !== null) {
+                || $cell->facility_definition_id !== null
+                || (int) $cell->population !== 0) {
                 throw new DomainException('選択された海域はすでに使用されています。');
             }
         }
@@ -170,6 +191,13 @@ final class LegacyInspiredInitialIslandGenerator implements InitialIslandGenerat
             $random,
         );
 
+        $shipRelocations = $this->planShipRelocations(
+            $mapSpace,
+            $cells,
+            (int) $terrainIds['sea'],
+            $relocateShips,
+        );
+
         $changedChunks = [];
         $cellPrestates = [];
         $cellWrites = [];
@@ -182,6 +210,14 @@ final class LegacyInspiredInitialIslandGenerator implements InitialIslandGenerat
                 $cellPrestates[$cell->id] = $this->plannedAttributes($lockedCell);
                 $cellWrites[$cell->id] = $this->plannedAttributes($cell);
             }
+        }
+        foreach ($shipRelocations as $relocation) {
+            /** @var MapCell $origin */
+            $origin = $cells->firstWhere('id', $relocation['from_cell_id']);
+            /** @var MapCell $destination */
+            $destination = $cells->firstWhere('id', $relocation['to_cell_id']);
+            $changedChunks[$origin->map_chunk_id] = true;
+            $changedChunks[$destination->map_chunk_id] = true;
         }
         ksort($cellWrites, SORT_NUMERIC);
         $changedCellIds = array_map(static fn ($id): int => (int) $id, array_keys($cellWrites));
@@ -200,6 +236,7 @@ final class LegacyInspiredInitialIslandGenerator implements InitialIslandGenerat
             cellWrites: $cellWrites,
             changedChunkIds: $changedChunkIds,
             capitalCellId: $capitalCell->id,
+            shipRelocations: $shipRelocations,
         );
     }
 
@@ -210,6 +247,7 @@ final class LegacyInspiredInitialIslandGenerator implements InitialIslandGenerat
             || $plan->rulesetVersionId !== $rulesetId) {
             throw new DomainException('Initial-island plan does not match the locked Nation and ruleset.');
         }
+        $this->applyShipRelocations($plan, $mapSpace, $nation);
         $cells = MapCell::query()->whereIn('id', $plan->changedCellIds)
             ->orderBy('id')->lockForUpdate()->get()->keyBy('id');
         if ($cells->count() !== count($plan->changedCellIds)) {
@@ -243,6 +281,131 @@ final class LegacyInspiredInitialIslandGenerator implements InitialIslandGenerat
         ]);
 
         return $capital;
+    }
+
+    /**
+     * @param  Collection<string, MapCell>  $cells
+     * @return list<array{ship_id: int, from_cell_id: int, to_cell_id: int, version: int}>
+     */
+    private function planShipRelocations(
+        MapSpace $mapSpace,
+        Collection $cells,
+        int $seaTerrainId,
+        bool $enabled,
+    ): array {
+        $cellIds = $cells->pluck('id')->map(static fn ($id): int => (int) $id)->all();
+        $ships = Ship::query()
+            ->where('world_id', $mapSpace->world_id)
+            ->whereIn('map_cell_id', $cellIds)
+            ->where('state', Ship::STATE_ACTIVE)
+            ->orderBy('id')
+            ->lockForUpdate()
+            ->get();
+        if ($ships->isEmpty()) {
+            return [];
+        }
+        if (! $enabled) {
+            throw new DomainException('選択された海域はすでに使用されています。');
+        }
+
+        $monsterCellIds = MonsterOccupancy::query()
+            ->whereIn('map_cell_id', $cellIds)
+            ->pluck('map_cell_id')
+            ->mapWithKeys(static fn ($cellId): array => [(int) $cellId => true])
+            ->all();
+        $occupiedCellIds = $ships->mapWithKeys(
+            static fn (Ship $ship): array => [(int) $ship->map_cell_id => true],
+        )->all();
+        $relocations = [];
+        foreach ($ships as $ship) {
+            /** @var MapCell|null $origin */
+            $origin = $cells->firstWhere('id', $ship->map_cell_id);
+            if (! $origin instanceof MapCell) {
+                throw new DomainException('Initial-island Ship origin is outside the locked reservation.');
+            }
+            if ((int) $origin->terrain_definition_id === $seaTerrainId
+                && $origin->facility_definition_id === null) {
+                continue;
+            }
+
+            $originCoordinate = new GridCoordinate($origin->x, $origin->y);
+            $destination = $cells
+                ->filter(static fn (MapCell $cell): bool => (int) $cell->terrain_definition_id === $seaTerrainId
+                    && $cell->owner_nation_id === null
+                    && $cell->facility_definition_id === null
+                    && (int) $cell->population === 0
+                    && ! isset($occupiedCellIds[$cell->id])
+                    && ! isset($monsterCellIds[$cell->id]))
+                ->sort(static function (MapCell $left, MapCell $right) use ($originCoordinate): int {
+                    $leftDistance = $originCoordinate->distanceTo(new GridCoordinate($left->x, $left->y));
+                    $rightDistance = $originCoordinate->distanceTo(new GridCoordinate($right->x, $right->y));
+
+                    return [$leftDistance, $left->y, $left->x, $left->id]
+                        <=> [$rightDistance, $right->y, $right->x, $right->id];
+                })
+                ->first();
+            if (! $destination instanceof MapCell) {
+                throw new NationPlacementUnavailableException(
+                    '初期島生成に巻き込まれる船を安全な海へ退避できません。',
+                );
+            }
+
+            $occupiedCellIds[$destination->id] = true;
+            $relocations[] = [
+                'ship_id' => (int) $ship->id,
+                'from_cell_id' => (int) $origin->id,
+                'to_cell_id' => (int) $destination->id,
+                'version' => (int) $ship->version,
+            ];
+        }
+
+        return $relocations;
+    }
+
+    private function applyShipRelocations(InitialIslandPlan $plan, MapSpace $mapSpace, Nation $nation): void
+    {
+        if ($plan->shipRelocations === []) {
+            return;
+        }
+        $shipIds = array_column($plan->shipRelocations, 'ship_id');
+        $destinationIds = array_column($plan->shipRelocations, 'to_cell_id');
+        if (count(array_unique($shipIds)) !== count($shipIds)
+            || count(array_unique($destinationIds)) !== count($destinationIds)) {
+            throw new DomainException('Initial-island Ship relocation plan is not unique.');
+        }
+
+        $ships = Ship::query()->whereIn('id', $shipIds)->orderBy('id')->lockForUpdate()->get()->keyBy('id');
+        $destinations = MapCell::query()->whereIn('id', $destinationIds)
+            ->with('terrain')->orderBy('id')->lockForUpdate()->get()->keyBy('id');
+        if ($ships->count() !== count($shipIds) || $destinations->count() !== count($destinationIds)
+            || MonsterOccupancy::query()->whereIn('map_cell_id', $destinationIds)->exists()
+            || Ship::query()->whereIn('map_cell_id', $destinationIds)
+                ->where('state', Ship::STATE_ACTIVE)->whereNotIn('id', $shipIds)->exists()
+            || $ships->pluck('map_cell_id')->intersect($destinationIds)->isNotEmpty()) {
+            throw new DomainException('Initial-island Ship relocation preconditions changed.');
+        }
+
+        foreach ($plan->shipRelocations as $relocation) {
+            /** @var Ship|null $ship */
+            $ship = $ships->get($relocation['ship_id']);
+            /** @var MapCell|null $destination */
+            $destination = $destinations->get($relocation['to_cell_id']);
+            if (! $ship instanceof Ship || ! $destination instanceof MapCell
+                || (int) $ship->world_id !== (int) $nation->world_id
+                || $ship->state !== Ship::STATE_ACTIVE
+                || (int) $ship->map_cell_id !== $relocation['from_cell_id']
+                || (int) $ship->version !== $relocation['version']
+                || (int) $destination->map_space_id !== (int) $mapSpace->id
+                || $destination->terrain->key !== 'sea'
+                || $destination->owner_nation_id !== null
+                || $destination->facility_definition_id !== null
+                || (int) $destination->population !== 0) {
+                throw new DomainException('Initial-island Ship relocation preconditions changed.');
+            }
+            $ship->map_cell_id = $destination->id;
+            $ship->version++;
+            $ship->save();
+        }
     }
 
     /** @return array<string, int|string|null> */

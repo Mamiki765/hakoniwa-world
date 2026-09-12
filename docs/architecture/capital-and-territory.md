@@ -110,6 +110,10 @@ randomized sequential cell processingで、所有者がいる人口0・施設な
 
 中立地はownerがnullのセルであり、海・荒地などterrainとは別概念とする。ADR-0014に従い、dormant Capital distance 2以内はowner変更を禁止し、範囲外は通常のterritory契約を適用する。abandoned cleanupは残存領土を海へ戻し、過去履歴を残す。
 
+Ruleset v24の領土感化は、取得側Nationの現在陸地面積が`LandSubsidenceThresholdResolver`の安全面積未満である場合だけ陸地を取得する。取得して安全面積ちょうどになる変更は許可し、到達後または既に超過している場合の追加取得は行わない。面積は同じphase内の成功した取得・喪失ごとに更新し、セル処理順、一方向だけの抽選、失敗時に再抽選しない契約を維持する。
+
+この上限は取得側だけに適用し、上限のNationが土地を失わない保護にはしない。超過済み領土の削除、手動の領土拡張・埋め立て、地盤沈下の発生条件も変更しない。resolverはNationを入力に持つため、将来のNation別安全面積は同じ境界で拡張できる。
+
 ## 防壁都市の比較
 
 | 方式 | 効果 | 評価 |
@@ -129,6 +133,7 @@ randomized sequential cell processingで、所有者がいる人口0・施設な
 - 変更元・変更先nationが同じworldに存在する。
 - 1セルの所有権変更は1turn内で最終結果を1つに決定する。
 - 競合影響へsimultaneous resolutionを暗黙に導入しない。source-derivedなrandom cell orderの逐次因果を前提に、exact algorithmとtie handlingはB-07で決める。
+- 自動取得は取得側の現在陸地面積と地盤沈下の安全面積を同じresolverで比較し、安全面積を超える取得を行わない。
 - 変更時にchunk version、国家領土集計、domain eventを同時更新する。
 
 ## 国家の存続と休眠

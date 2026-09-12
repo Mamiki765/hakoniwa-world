@@ -75,6 +75,10 @@ transaction内で外部HTTP通信、通知送信、長時間の外部I/Oを行�
 
 現時点では部分commitやphase checkpointを実装しない。途中commitだけを追加すると、攻撃だけ成功して収支が戻るなどの半端状態を生む。分割を再検討するときはphase_runの入力hash、出力hash、再開条件、公開境界が必要である。
 
+## 領土感化の面積境界
+
+`resolve_territory_influence`は共有surface cell順を逐次処理し、成功したowner変更を直後のcellから観測できる。Ruleset v24では、開始時のsurface集合からNation別陸地面積を一度集計し、陸地の取得・喪失ごとに処理中の値を更新する。取得側が地盤沈下の安全面積以上ならその変更を行わず、方向を引き直さない。安全面積は地盤沈下と同じNation-aware resolverから得て、領土感化側へ固定値や別算式を持たせない。
+
 ## 外部障害
 
 Discord webhook、メール、分析基盤はturn transaction内で呼ばない。通知内容をoutbox_messagesへ保存してcommitし、別workerが指数backoff、最大試行、dead-letter状態で配送する。通知失敗は管理画面に表示するが、世界を停止しない。

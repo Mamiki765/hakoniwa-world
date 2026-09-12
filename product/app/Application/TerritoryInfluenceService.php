@@ -4,7 +4,9 @@ namespace App\Application;
 
 use App\Domain\Command\CapitalCorePolicy;
 use App\Domain\Command\TerritoryInfluencePolicy;
+use App\Domain\Disaster\LandSubsidenceThresholdResolver;
 use App\Domain\Map\GridCoordinate;
+use App\Domain\Map\NationLandAreaCalculator;
 use App\Domain\Nation\NationProtectionPolicy;
 use App\Domain\Turn\TurnContext;
 use App\Domain\Turn\TurnRandomStreamFactory;
@@ -25,6 +27,8 @@ final class TerritoryInfluenceService
         private readonly CapitalCorePolicy $capitalCores,
         private readonly TurnEventRecorder $events,
         private readonly NationProtectionPolicy $nationProtection,
+        private readonly NationLandAreaCalculator $landArea,
+        private readonly LandSubsidenceThresholdResolver $subsidenceThreshold,
     ) {}
 
     /**
@@ -78,7 +82,7 @@ final class TerritoryInfluenceService
             ->whereIn('state', $targetStates)
             ->orderBy('id')
             ->lockForUpdate()
-            ->get(['id', 'name', 'state']);
+            ->get();
         $targetNationIds = $targetNations->mapWithKeys(
             static fn (Nation $nation): array => [(int) $nation->id => true],
         )->all();
@@ -89,6 +93,16 @@ final class TerritoryInfluenceService
         $targetNationNames = $targetNations->mapWithKeys(
             static fn (Nation $nation): array => [(int) $nation->id => $nation->name],
         )->all();
+        $landLimit = $settings['acquisition_land_limit'] ?? null;
+        if ($landLimit !== null && $landLimit !== 'land_subsidence_safe_land_cells') {
+            throw new DomainException('Territory influence has an unsupported acquisition land limit.');
+        }
+        $landCellsByNation = $this->landArea->byNation($cells);
+        $safeLandCellsByNation = $landLimit === null
+            ? []
+            : $targetNations->mapWithKeys(fn (Nation $nation): array => [
+                (int) $nation->id => $this->subsidenceThreshold->resolve($context->ruleset, $nation),
+            ])->all();
         $capitals = NationCapital::query()
             ->whereIn('nation_id', array_keys($targetNationIds))
             ->orderBy('nation_id')
@@ -197,10 +211,19 @@ final class TerritoryInfluenceService
             if ($this->nationProtection->protects($context, $target->x, $target->y)) {
                 continue;
             }
+            $landTransfer = $this->landArea->isLand($target);
+            if ($landLimit !== null && $landTransfer
+                && ($landCellsByNation[$newOwnerNationId] ?? 0) >= $safeLandCellsByNation[$newOwnerNationId]) {
+                continue;
+            }
 
             $oldOwnerNationId = $targetOwnerNationId;
             $target->owner_nation_id = $newOwnerNationId;
             $target->version++;
+            if ($landTransfer) {
+                $landCellsByNation[$oldOwnerNationId] = ($landCellsByNation[$oldOwnerNationId] ?? 0) - 1;
+                $landCellsByNation[$newOwnerNationId] = ($landCellsByNation[$newOwnerNationId] ?? 0) + 1;
+            }
             $mutations[] = [
                 'id' => (int) $target->id,
                 'owner_nation_id' => $newOwnerNationId,

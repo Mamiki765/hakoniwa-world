@@ -41,7 +41,7 @@
 
 - Status: Decided
 - Implemented: Yes
-- Decision: serverが安全な空き地点へ自動配置し、同時登録をtransactionとlockで直列化する。
+- Decision: serverが安全な空き地点へ自動配置し、同時登録をtransactionとlockで直列化する。Ruleset v24では所有者・施設・人口のない中立の海・浅瀬・荒地・山を候補にでき、生成後に航行不能になる船は空き深海へ無償退避する。退避不能な候補は使わず、登録失敗時は船移動もrollbackする。
 - Decision record: `docs/architecture/registration-and-world-expansion.md`
 
 ### A-05 初期領土と首都間距離
@@ -134,7 +134,7 @@
 
 - Status: Decided
 - Implemented: Yes
-- Decision: distance 5以内の91 cellsが生成済みの海・無所有・施設なしで、Capital間距離12以上の候補を使う。既存Capitalから遠い順、同値はy/x昇順とする。
+- Decision: Ruleset v24ではdistance 5以内の91 cellsが生成済みの海・浅瀬・荒地・山、無所有、施設なし、人口0で、全ての既存Capitalから距離12以上の候補を使う。既存Capitalから遠い順、同値はy/x昇順とし、上位3候補を有限評価して船を安全退避できる最初の候補を採用する。
 - Decision record: `docs/architecture/registration-and-world-expansion.md`
 
 ### C-01 地図描画方式
@@ -197,7 +197,7 @@
 
 - Status: Decided
 - Implemented: Yes
-- Decision: active Nationごとに所有陸地101 cells以上で2/100を独立判定し、World事前snapshotから海岸変化を確定する。
+- Decision: active Nationごとに有効な安全面積を超えた場合に2/100を独立判定し、World事前snapshotから海岸変化を確定する。現行の基礎安全面積は100 cellsで、resolverは将来のNation別補正を受けられる境界を持つ。
 - Decision record: `product/docs/land-subsidence-audit-pr18.md`
 
 ### T-01 乱数seedと再現方式
@@ -379,7 +379,7 @@
 
 - Status: Decided
 - Implemented: Yes
-- Decision: `hakoniwa-2s-plus-v3`ではactive Nation間だけを対象に、共有surface cell shuffle順で各対象cellを1回訪問し、6方向から1方向だけを専用乱数streamで選ぶ。失敗時の再抽選は行わず、成功したowner変更は即時反映して後続cellから観測できる。`territory_expand`は従来の中立陸地取得に加え、隣接自領がある別active Nation所有のwasteland/scorchedだけを取得できる。各active NationのCapitalからhex distance 2以内は他Nationへのownership transferを禁止するが、core内cellは外側へのinfluence sourceとして通常どおり機能する。neutral、dormant、sunken、monster occupancyは今回のinfluence対象にしない。v1/v2 payloadと既存semanticsは変更しない。
+- Decision: `hakoniwa-2s-plus-v3`ではactive Nation間だけを対象に、共有surface cell shuffle順で各対象cellを1回訪問し、6方向から1方向だけを専用乱数streamで選ぶ。失敗時の再抽選は行わず、成功したowner変更は即時反映して後続cellから観測できる。`territory_expand`は従来の中立陸地取得に加え、隣接自領がある別active Nation所有のwasteland/scorchedだけを取得できる。各active NationのCapitalからhex distance 2以内は他Nationへのownership transferを禁止するが、core内cellは外側へのinfluence sourceとして通常どおり機能する。neutral、dormant、sunken、monster occupancyは今回のinfluence対象にしない。Ruleset v24では取得側の現在陸地面積が地盤沈下の安全面積以上なら自動取得せず、同一phase内の取得・喪失を逐次反映する。上限側が土地を失う処理、手動拡張、抽選順は変更しない。
 - Remaining Open/Deferred: 防壁都市・占領抵抗はB-05、dormant territory占領はB-12、dormant Capital保護はB-13、報復・反撃は別roadmapの判断を維持する。
 - Decision record: `product/docs/territory-expansion-influence-ver-1.4.0.md`、`docs/reference-analysis/hakoniwa-2plus-world-map.md`
 

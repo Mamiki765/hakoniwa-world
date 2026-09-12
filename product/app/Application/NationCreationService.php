@@ -2,6 +2,7 @@
 
 namespace App\Application;
 
+use App\Domain\Map\GridCoordinate;
 use App\Domain\Monster\MonsterBehaviorResolver;
 use App\Domain\Nation\NationCreationConflictException;
 use App\Domain\Nation\NationNameConflictException;
@@ -136,7 +137,8 @@ final class NationCreationService
                         'created_at' => now(), 'updated_at' => now(),
                     ]);
 
-                    $candidates = $this->placement->candidates($mapSpace, 1);
+                    $expandedForPlacement = false;
+                    $candidates = $this->placement->candidates($mapSpace);
                     if ($candidates === []) {
                         $before = $mapSpace->currentBounds();
                         $target = $this->expansionPlanner->nextBounds($before);
@@ -147,17 +149,15 @@ final class NationCreationService
                             $user,
                             'nation_registration_capacity',
                         );
-                        $candidates = $this->placement->candidates($mapSpace->fresh(), 1);
+                        $expandedForPlacement = true;
+                        $mapSpace = $mapSpace->fresh();
+                        $candidates = $this->placement->candidates($mapSpace);
                         if ($candidates === []) {
                             throw new NationPlacementUnavailableException(
                                 'Worldを1chunk拡張しても初期島候補が生成されませんでした。登録処理を中止します。',
                             );
                         }
                     }
-                    $center = $candidates[0];
-                    DB::table('nation_creation_requests')->where('request_key', $requestKey)->update([
-                        'reserved_x' => $center->x, 'reserved_y' => $center->y, 'updated_at' => now(),
-                    ]);
 
                     $initialIdleCounter = $rules['nation_lifecycle']['initial_idle_counter'] ?? null;
                     if (! is_int($initialIdleCounter) || $initialIdleCounter < 0) {
@@ -173,7 +173,35 @@ final class NationCreationService
                         'idle_counter' => $initialIdleCounter,
                     ]);
                     $this->resources->initialize($nation);
-                    $islandPlan = $this->islands->plan($mapSpace, $nation, $center, $seed);
+                    $islandSelection = $this->firstSafeIslandPlan($mapSpace, $nation, $candidates, $seed);
+                    if ($islandSelection === null && ! $expandedForPlacement) {
+                        $before = $mapSpace->currentBounds();
+                        $target = $this->expansionPlanner->nextBounds($before);
+                        $mapSpace = $this->expansion->expandWithinCurrentMutation(
+                            $world,
+                            $before,
+                            $target,
+                            $user,
+                            'nation_registration_capacity',
+                        );
+                        $expandedForPlacement = true;
+                        $mapSpace = $mapSpace->fresh();
+                        $islandSelection = $this->firstSafeIslandPlan(
+                            $mapSpace,
+                            $nation,
+                            $this->placement->candidates($mapSpace),
+                            $seed,
+                        );
+                    }
+                    if ($islandSelection === null) {
+                        throw new NationPlacementUnavailableException(
+                            '初期島と船の安全な配置候補がありません。登録処理を中止します。',
+                        );
+                    }
+                    [$center, $islandPlan] = $islandSelection;
+                    DB::table('nation_creation_requests')->where('request_key', $requestKey)->update([
+                        'reserved_x' => $center->x, 'reserved_y' => $center->y, 'updated_at' => now(),
+                    ]);
                     $occupancies = MonsterOccupancy::query()
                         ->whereIn('map_cell_id', $islandPlan->changedCellIds)
                         ->with(['monster.definition', 'cell'])
@@ -271,5 +299,26 @@ final class NationCreationService
         } finally {
             $this->membershipMutationLock->release($user);
         }
+    }
+
+    /**
+     * @param  list<GridCoordinate>  $candidates
+     * @return array{0: GridCoordinate, 1: InitialIslandPlan}|null
+     */
+    private function firstSafeIslandPlan(
+        MapSpace $mapSpace,
+        Nation $nation,
+        array $candidates,
+        string $seed,
+    ): ?array {
+        foreach ($candidates as $center) {
+            try {
+                return [$center, $this->islands->plan($mapSpace, $nation, $center, $seed)];
+            } catch (NationPlacementUnavailableException) {
+                continue;
+            }
+        }
+
+        return null;
     }
 }
