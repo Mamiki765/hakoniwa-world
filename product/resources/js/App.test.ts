@@ -2662,10 +2662,11 @@ describe('application lobby and island entry', () => {
         expect(exploreButton.attributes('disabled')).toBeDefined();
         expect(exploreButton.element.parentElement?.textContent).toMatch(/あと(?:9|10)秒/);
         expect(wrapper.get('.underground-shop').text()).toContain('あなたのコンビニ、箱庭ダンジョン店です！');
-        expect(wrapper.findAll('.underground-shop-entries button')).toHaveLength(4);
-        expect(wrapper.findAll('.underground-shop-entries button').map((button) => button.attributes('disabled') !== undefined))
-            .toEqual([false, false, false, false]);
-        await wrapper.findAll('.underground-shop-entries button')[0]!.trigger('click');
+        const innButton = wrapper.findAll('.underground-shop > .underground-shop-entries button')
+            .find((button) => button.text().includes('宿で休む'));
+        expect(innButton).toBeDefined();
+        expect(innButton!.attributes('disabled')).toBeUndefined();
+        await innButton!.trigger('click');
         await flushPromises();
         expect(wrapper.get('[role="alert"]').text()).toContain('Inn response lost');
         expect(wrapper.get('.underground-summary').text()).toContain('HP321 / 660');
@@ -2674,9 +2675,9 @@ describe('application lobby and island entry', () => {
         ));
         expect(failedInnRequests).toHaveLength(1);
         const failedInnPayload = JSON.parse(String(failedInnRequests[0]?.[1]?.body)) as { request_id: string };
-        await wrapper.findAll('.underground-shop-entries button')[0]!.trigger('click');
-        expect(wrapper.findAll('.underground-shop-entries button')[0]!.attributes('disabled')).toBeDefined();
-        expect(wrapper.findAll('.underground-shop-entries button')[0]!.text()).toContain('休憩中…');
+        await innButton!.trigger('click');
+        expect(innButton!.attributes('disabled')).toBeDefined();
+        expect(innButton!.text()).toContain('休憩中…');
         releaseInnRetry();
         await flushPromises();
         expect(wrapper.get('.underground-summary').text()).toContain('HP660 / 660');
@@ -2692,7 +2693,10 @@ describe('application lobby and island entry', () => {
         expect(JSON.parse(String(innRequests[1]?.[1]?.body))).toEqual({
             request_id: failedInnPayload.request_id,
         });
-        await wrapper.findAll('.underground-shop > .underground-shop-entries button')[2]!.trigger('click');
+        const bankButton = wrapper.findAll('.underground-shop > .underground-shop-entries button')
+            .find((button) => button.text().includes('銀行'));
+        expect(bankButton).toBeDefined();
+        await bankButton!.trigger('click');
         expect(wrapper.get('.underground-bank').text()).toContain('手持ち: 2340 G');
         expect(wrapper.get('.underground-bank').text()).toContain('預金: 5000 G');
         await wrapper.get('#underground-bank-amount').setValue('2000');

@@ -5,6 +5,7 @@ namespace Tests\Underground\Unit;
 use App\Domain\Underground\Combat\AlphaV1BuildCatalog;
 use App\Domain\Underground\Combat\AlphaV1CombatModel;
 use App\Domain\Underground\Combat\AlphaV1CombatRules;
+use App\Domain\Underground\Combat\BuildCombatState;
 use App\Domain\Underground\Combat\CanonicalCombatOrchestrator;
 use App\Domain\Underground\Combat\DeterministicEquipmentGenerator;
 use App\Domain\Underground\Combat\PriorityCombatAi;
@@ -186,6 +187,53 @@ final class AlphaV1PartyCombatTest extends TestCase
         self::assertIsArray($attackerLog);
         self::assertSame('secretary:3', $attackerLog['target_id']);
         self::assertSame('self', $attackerLog['target_scope']);
+    }
+
+    public function test_ally_targeting_keeps_enemy_conditions_bound_to_the_current_enemy(): void
+    {
+        $catalog = $this->catalog(enemyHp: 100, enemyPower: 1, enemyAgility: 1);
+        $healer = $this->combatState(
+            'player',
+            'borrowed:2',
+            100,
+            ['mending_prayer'],
+            [[
+                'conditions' => [
+                    ['type' => 'enemy_telegraph'],
+                    ['type' => 'ally_hp_lte', 'percent' => 50],
+                    ['type' => 'skill_ready', 'skill' => 'mending_prayer'],
+                ],
+                'action' => 'skill:mending_prayer',
+                'target' => 'lowest_hp_ally',
+            ], [
+                'conditions' => [['type' => 'always']],
+                'action' => 'normal_attack',
+            ]],
+        );
+        $healer->flags['party_healing_target_scope'] = 'single_ally';
+        $ally = $this->combatState('player', 'secretary:1', 10);
+        $enemy = $this->combatState('enemy', 'enemy:1', 100);
+        $enemy->statuses['telegraph'] = [
+            'key' => 'telegraph',
+            'disposition' => 'buff',
+            'remaining' => 1,
+            'applied_round' => 1,
+            'stacks' => 1,
+            'effects' => [],
+            'control' => false,
+            'dispellable' => true,
+        ];
+        $ai = new PriorityCombatAi;
+
+        $decision = $ai->select($healer, $enemy, $catalog, 1, allies: [$healer, $ally], enemies: [$enemy]);
+        self::assertSame('skill', $decision['type']);
+        self::assertSame('mending_prayer', $decision['key']);
+        self::assertSame('secretary:1', $decision['target_id']);
+
+        $healer->mp = 0;
+        $blockedDecision = $ai->select($healer, $enemy, $catalog, 1, allies: [$healer, $ally], enemies: [$enemy]);
+        self::assertSame('normal_attack', $blockedDecision['type']);
+        self::assertTrue($blockedDecision['mp_blocked']);
     }
 
     public function test_untaunted_target_rules_bind_taunts_and_enemy_attacks_and_skip_when_no_candidate_remains(): void
@@ -570,6 +618,40 @@ final class AlphaV1PartyCombatTest extends TestCase
                 'technique_key' => 'decisive_heavenrend',
             ],
         ];
+    }
+
+    /**
+     * @param  'player'|'enemy'  $side
+     * @param  list<string>  $skills
+     * @param  list<array<string, mixed>>  $aiRules
+     */
+    private function combatState(
+        string $side,
+        string $combatantId,
+        int $hp,
+        array $skills = [],
+        array $aiRules = [],
+    ): BuildCombatState {
+        $state = new BuildCombatState(
+            $side,
+            $combatantId,
+            $combatantId,
+            false,
+            100,
+            ['vitality' => 1, 'might' => 1, 'finesse' => 1, 'spirit' => 1, 'agility' => 1],
+            0,
+            0,
+            1,
+            1,
+            $skills,
+            $aiRules,
+            [],
+            null,
+            [],
+        );
+        $state->hp = $hp;
+
+        return $state;
     }
 
     private function model(): AlphaV1CombatModel

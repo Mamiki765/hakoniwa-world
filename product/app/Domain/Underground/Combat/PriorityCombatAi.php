@@ -33,8 +33,9 @@ final class PriorityCombatAi
             if (! is_string($action)) {
                 return $this->fallback($actor, $catalog, 'invalid_action', $mpBlocked);
             }
+            $targetSelector = $rule['target'] ?? null;
             $ruleTargets = $this->ruleTargets(
-                $rule['target'] ?? null,
+                $targetSelector,
                 $action,
                 $actor,
                 $enemy,
@@ -50,17 +51,18 @@ final class PriorityCombatAi
             $ruleTarget = null;
             if (is_array($conditions)) {
                 foreach ($ruleTargets as $candidate) {
+                    $conditionEnemy = $targetSelector === 'untaunted_enemy' ? $candidate : $enemy;
                     if ($this->otherwiseMatchingRuleIsBlockedByMp(
                         $conditions,
                         $actor,
-                        $candidate,
+                        $conditionEnemy,
                         $catalog,
                         $round,
                         $allies,
                     )) {
                         $mpBlocked = true;
                     }
-                    if ($this->conditionsPass($conditions, $actor, $candidate, $catalog, $round, $allies)) {
+                    if ($this->conditionsPass($conditions, $actor, $conditionEnemy, $catalog, $round, $allies)) {
                         $ruleTarget = $candidate;
                         break;
                     }
