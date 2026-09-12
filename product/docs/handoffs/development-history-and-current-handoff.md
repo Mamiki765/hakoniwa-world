@@ -5,6 +5,65 @@
 > Ownerの告知原文、実機ログ、MCPの本番観測、固定SHAの実装、過去チャットのレビュー報告を分けて記録する。
 > この文書を作成しただけでrepositoryの編集・commit・push・deploy・追加配布を行ったことにはならない。
 
+## Δ0. 3.9.2整理・テスト再設計（2026-09-12 JST）
+
+### 現在地とref
+
+| 項目 | 状態 |
+|---|---|
+| 正本remote | Forgejo `https://git.pbwlove.com/Mamiki765/hakoniwa-world.git` |
+| 基準main | `e2578829a5090ff71399ddcd7ce1cce12e1eba5a`。作業開始時と2026-09-12の再fetch時に`origin/main`で一致を確認 |
+| 作業branch | `release/3.9.2`。Forgejoへpush済み |
+| 実装HEAD | `e27d57b121eff3fcd5a05d4a07411d5944dcb6a1`（handoff更新commitを除く実装・検証追従の先端） |
+| Ruleset | production使用済みv23を変更せず、3.9.2のsemantic changeを1世代だけ上げたv24へ統合 |
+| Forgejo PR | `https://git.pbwlove.com/Mamiki765/hakoniwa-world/pulls/1` |
+| 未実施 | merge、production deploy、production DB操作、補填再実行 |
+
+この節を3.9.2作業の現在地として旧本文より優先する。旧本文の3.9.0時点の状態・事故記録・本番観測はhistorical evidenceとして残すが、3.9.2の未実装一覧へ読み替えない。
+
+### 有限なcommitと完了内容
+
+| commit | 内容 |
+|---|---|
+| `eb1b6d8` | 低価値testと重複fixtureの削減、Docker buildとfrontend検証の分離、AGENTS.mdの恒久的test/review方針整理 |
+| `81560c7` | 貸出固定装備、天断一閃表示、任意回数skip、地底PT AI対象、中央施設の集落上書き、v24 migrationとmanual更新 |
+| `e632391` | 新規島の中立自然地形利用、船の安全退避、領土感化の安全面積上限、関連architecture/manual/test |
+| `e27d57b` | release checkpointで判明したv24追従漏れfixture・expectationの修正 |
+
+完了したruntime変更は次のとおり。
+
+- 貸出固定装備は貸出元の主能力を保持し、同IL装備も保持対象にした。borrowed projection cacheをschema 2へ更新した。
+- 天断一閃の個別damage/effect行は、各行で実際に作用した対象を表示する。damage式・報酬は変更していない。
+- 狩場・宝物庫は任意回数、試練は任意周回数を指定できる。既存`execution_count`、request ID、決算・retry経路を再利用する。
+- 地底PT AIのHP条件と挑発条件を、実際のaction target選択へ結び付けた。専用の自由言語や汎用AI基盤は追加していない。
+- 中央銀行・中央穀倉は、村・町・都市を初回建設で上書きできる。v24の既存settlement overbuild policyへ統合し、v23は不変とした。
+- 新規島は、所有者・施設・人口のない中立の海・浅瀬・荒地・山を予約候補にできる。平地・森は広げず、全首都間の最低hex距離12と予約半径5を維持する。
+- 初期島generatorも同じ条件で既存自然地形へ必要範囲だけ上書きし、領土外の中立地や世界外枠を削除しない。
+- 初期島生成後に非海面となる船だけを、生成後も航行可能な重複しない空き海へtransaction内で退避する。退避不能候補は採用せず、燃料・漁獲・報酬・技能EXP・KARMAを発生させない。
+- 領土感化は取得側の現在陸地面積と既存の地盤沈下上限resolverを使い、上限を超える取得をそのセルで拒否する。同一phase内の取得・喪失を逐次反映し、再抽選や既存領土の削除は行わない。
+- 現在の安全面積は既存Ruleset値だが、判定側へ固定値を複製していない。resolverは島を受け取る境界のため、将来もし島ごとの上限突破を採用しても領土感化側の別算式を増やさず拡張できる。島別突破自体は今回実装していない。
+
+### Test再設計と確認証拠
+
+既存testの存在を保持理由にせず、Ownerが要求した意味とproductionでの故障影響から再評価した。偶然の入口総数、内部配列全体、同一invariantの多層重複を削除・縮小した。必要な保証は、データ・決算・権限・主要経路・migration・retry・idempotency・concurrencyと、今回変更したplayer-visible behaviorへ寄せた。
+
+- Secretary Equipmentの該当4 casesは、fixture縮小により`21.259s`から`13.827s`（約35%短縮）。
+- 共通guard subsetは、重複を整理して20 tests／`94.44s`から6 tests／`33.94s`（約64%短縮、約60.5秒削減）。
+- First Productionの重複確認は2 tests／18 assertions／`12.75s`へ集約した。
+- ゲーム側の先行focused確認は65 tests／1,793 assertions／`175.31s`。
+- 追加した新規島・船・領土感化domainは27 tests／247 assertions／`135.645s`。v24 contractは12 tests／73 assertions／`47.519s`、migration・fresh install・world initializationは12 tests／164 assertions／`66.089s`。
+- frontendは20 files／194 tests／`7.60s`、typecheck・lint・buildはPASS。PHPStanは429 filesでerrorなし。Pint、Ruleset validator、open-question validatorもPASS。
+- Docker production image buildはPASS。production build stageは`npm run build`だけを実行し、test・lint・typecheckは独立した検証として残した。
+
+`e632391`で116 filesを4 shardに分け、repository-wide PHPUnit 1,033 testsをcheckpoint実行した。shard 1は338 tests／4,554 assertions／`21:02.607`で3 failures、shard 2は258／8,824／`12:12.184`で1 failure、shard 3は188／1,884／`9:26.162`で1 failure、shard 4は249／5,018／`15:42.589`でPASSだった。失敗した5 testsはいずれもv24化後の古いversion・schema expectation、または新しい正規条件と矛盾するfixtureで、runtime defectではなかった。`e27d57b`で修正し、該当filesをfocusedでPASS確認した。
+
+このfixture追従だけを理由にrepository-wide全件を最初から再実行していない。したがって、`e27d57b`のexact HEADについて「全PHPUnit PASS」とは記録しない。細かな修正ごとに全suiteを繰り返さず、focused確認とrelease checkpointを分ける方針を維持する。
+
+### 残作業とOwner境界
+
+- Forgejo PR #1のreview後、merge、production deploy、production DB操作はOwnerの明示指示が必要。
+- 今回採用した仕様の実装上のOwner判断残りはない。将来の島別地盤沈下上限突破は今回のscope外であり、採用を確定していない。
+
 ## Δ1. 最初に読む現在地
 
 **3.9.0は「まだ狩場3を実装していない候補」ではない。狩場3・宝物庫を含むコードがOCI offline/mainへ入り、本番DBはv23へ移行済み。石油補填と公開配布は倉庫登録まで実行済み。中央施設画像の配置と、サーバーでの手修正の共有状態確認が夜の残作業。**
