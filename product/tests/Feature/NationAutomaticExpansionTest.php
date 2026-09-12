@@ -51,8 +51,8 @@ final class NationAutomaticExpansionTest extends TestCase
     {
         $world = app(OceanWorldGenerator::class)->initialize();
         $space = $this->space($world->id);
-        $wastelandId = TerrainDefinition::query()->where('key', 'wasteland')->valueOrFail('id');
-        MapCell::query()->where('map_space_id', $space->id)->update(['terrain_definition_id' => $wastelandId]);
+        $plainId = TerrainDefinition::query()->where('key', 'plain')->valueOrFail('id');
+        MapCell::query()->where('map_space_id', $space->id)->update(['terrain_definition_id' => $plainId]);
         $this->assertSame([], app(CapitalPlacementService::class)->candidates($space->fresh(), 1));
 
         DB::beginTransaction();
@@ -85,7 +85,7 @@ final class NationAutomaticExpansionTest extends TestCase
             new MapBounds(0, 63, 0, 63, 16),
         );
         DB::table('audit_events')->whereIn('event_type', ['world.expanded', 'world.expanded_public'])->delete();
-        MapCell::query()->where('map_space_id', $space->id)->update(['terrain_definition_id' => $wastelandId]);
+        MapCell::query()->where('map_space_id', $space->id)->update(['terrain_definition_id' => $plainId]);
         $this->assertSame([], app(CapitalPlacementService::class)->candidates($space->fresh(), 1));
         $existing = $this->rawCells($space);
         $beforeRevision = $space->boundsRevision();
@@ -156,7 +156,7 @@ final class NationAutomaticExpansionTest extends TestCase
             protected function afterCellsGenerated(MapSpace $mapSpace, int $inserted): void
             {
                 MapCell::query()->where('map_space_id', $mapSpace->id)->where('x', '<', 0)->update([
-                    'terrain_definition_id' => TerrainDefinition::query()->where('key', 'wasteland')->valueOrFail('id'),
+                    'terrain_definition_id' => TerrainDefinition::query()->where('key', 'plain')->valueOrFail('id'),
                 ]);
             }
         });

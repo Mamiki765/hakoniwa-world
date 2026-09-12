@@ -77,6 +77,10 @@ final class TerritoryInfluencePerformanceTest extends TestCase
         }
 
         $ruleset = $world->rulesetVersion()->firstOrFail();
+        $settings = $ruleset->settings;
+        $settings['turn_processing']['disasters']['land_subsidence']['base_safe_land_cells']
+            = count($surfaceCellIds);
+        $ruleset->settings = $settings;
         $run = TurnRun::query()->create([
             'world_id' => $world->id,
             'target_turn' => 2,

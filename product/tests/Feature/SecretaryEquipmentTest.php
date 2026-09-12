@@ -35,6 +35,7 @@ final class SecretaryEquipmentTest extends TestCase
     public function test_api_equips_unequips_noops_and_rejects_stale_versions(): void
     {
         $world = $this->lightweightWorld();
+        $worldRulesetVersion = (int) $world->rulesetVersion()->valueOrFail('version');
         $user = User::factory()->create();
         app(NationCreationService::class)->create($user, $world, '装備API島', '装備API島主');
         $secretary = $user->secretary()->firstOrFail();
@@ -59,7 +60,7 @@ final class SecretaryEquipmentTest extends TestCase
             ->assertJsonPath('data.effect_context.source', 'owned_world')
             ->assertJsonPath('data.effect_context.world_id', $world->id)
             ->assertJsonPath('data.effect_context.ruleset_version_id', $world->ruleset_version_id)
-            ->assertJsonPath('data.effect_context.ruleset_version', 23)
+            ->assertJsonPath('data.effect_context.ruleset_version', $worldRulesetVersion)
             ->assertJsonPath('data.items.0.effect_text', '10%の確率で、自領の地上にいる怪獣に1ダメージを与える。');
 
         $unownedWorld = World::query()->create([
@@ -110,6 +111,7 @@ final class SecretaryEquipmentTest extends TestCase
     public function test_recovery_and_dormant_owner_can_view_item_effects_and_change_equipment(): void
     {
         $world = $this->lightweightWorld();
+        $worldRulesetVersion = (int) $world->rulesetVersion()->valueOrFail('version');
         $user = User::factory()->create();
         $nation = app(NationCreationService::class)->create($user, $world, '休戦装備島', '休戦装備島主');
         $nation->update([
@@ -124,12 +126,12 @@ final class SecretaryEquipmentTest extends TestCase
         $this->actingAs($user)->getJson("/api/v1/me/secretary?world_id={$world->id}")
             ->assertOk()
             ->assertJsonPath('data.effect_context.world_id', $world->id)
-            ->assertJsonPath('data.effect_context.ruleset_version', 23);
+            ->assertJsonPath('data.effect_context.ruleset_version', $worldRulesetVersion);
         $this->actingAs($user)->getJson("/api/v1/me/secretary/equipment/1/options?world_id={$world->id}")
             ->assertOk()
             ->assertJsonPath('data.current_item.id', $bow->id)
             ->assertJsonPath('data.effect_context.world_id', $world->id)
-            ->assertJsonPath('data.effect_context.ruleset_version', 23);
+            ->assertJsonPath('data.effect_context.ruleset_version', $worldRulesetVersion);
 
         $nation->update([
             'state' => 'dormant',
@@ -140,12 +142,12 @@ final class SecretaryEquipmentTest extends TestCase
         $this->actingAs($user)->getJson("/api/v1/me/secretary?world_id={$world->id}")
             ->assertOk()
             ->assertJsonPath('data.effect_context.world_id', $world->id)
-            ->assertJsonPath('data.effect_context.ruleset_version', 23);
+            ->assertJsonPath('data.effect_context.ruleset_version', $worldRulesetVersion);
         $this->actingAs($user)->getJson("/api/v1/me/secretary/equipment/1/options?world_id={$world->id}")
             ->assertOk()
             ->assertJsonPath('data.current_item.id', $bow->id)
             ->assertJsonPath('data.effect_context.world_id', $world->id)
-            ->assertJsonPath('data.effect_context.ruleset_version', 23);
+            ->assertJsonPath('data.effect_context.ruleset_version', $worldRulesetVersion);
 
         $this->actingAs($user)->putJson('/api/v1/me/secretary/equipment/1', [
             'item_id' => null,

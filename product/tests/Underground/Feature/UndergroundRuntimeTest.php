@@ -145,7 +145,7 @@ final class UndergroundRuntimeTest extends TestCase
         $defaultRequestId = (string) Str::uuid();
         $defaultBattle = $runtime->fightTrial($user, $run->run_key, $defaultRequestId)['battle'];
         $defaultAi = $defaultBattle->snapshot['ai'];
-        $this->assertSame(1, $defaultAi['schema_version']);
+        $this->assertSame(2, $defaultAi['schema_version']);
         $this->assertSame('awakening', $defaultAi['rules'][0]['action']);
         $this->assertSame($configuration->hash($defaultAi['rules']), $defaultAi['hash']);
         $this->assertSame($defaultAi['rules'], $combat->calls[0]['player_snapshot']['ai_rules']);
