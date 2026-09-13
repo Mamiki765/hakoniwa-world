@@ -153,6 +153,15 @@ final class UndergroundAwakening
             return false;
         }
 
+        return $this->forceActivate($player, $rules);
+    }
+
+    /** The guide duel alone bypasses the normal unlock/gauge conditions. */
+    public function forceActivate(BuildCombatState $player, AlphaV1CombatRules $rules): bool
+    {
+        if ($player->awakened) {
+            return false;
+        }
         foreach (AlphaV1CombatRules::STATS as $stat) {
             $player->stats[$stat] = $this->awakenedStat($player->normalStats[$stat]);
         }

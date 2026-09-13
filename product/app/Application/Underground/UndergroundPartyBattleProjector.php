@@ -128,7 +128,7 @@ final class UndergroundPartyBattleProjector
         if (in_array($action['type'], ['recovery', 'mp_recovery', 'barrier'], true)) {
             $action['amount'] = abs((int) ($row['amount'] ?? 0));
         }
-        $action['important'] = in_array($kind, ['result', 'awakening', 'awakening_technique', 'revival'], true);
+        $action['important'] = in_array($kind, ['result', 'awakening', 'awakening_technique', 'revival', 'narration'], true);
         if ($kind === 'awakening' && is_string($row['message'] ?? null)) {
             $action['lines'] = [$row['message']];
         }

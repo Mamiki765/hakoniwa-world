@@ -21,6 +21,9 @@ use RuntimeException;
 final readonly class UndergroundEquipmentService
 {
     /** @var list<string> */
+    public const VAULT_SORT_KEYS = ['newest', 'oldest', 'item_level', 'category'];
+
+    /** @var list<string> */
     public const BULK_SELL_RARITY_KEYS = [
         'novice', 'regular', 'high_quality', 'artifact', 'relic', 'unique',
     ];
@@ -89,13 +92,17 @@ final readonly class UndergroundEquipmentService
     }
 
     /** @return array<string, mixed> */
-    public function vault(User $user, int $page): array
+    public function vault(User $user, int $page, string $sort = 'newest'): array
     {
         if ($page < 1) {
             throw new UndergroundRuntimeException('underground_vault_page_invalid', '宝物庫のpageを確認してください。');
         }
 
-        return $this->withLockedOpenProfile($user, function (UndergroundProfile $profile) use ($page): array {
+        if (! in_array($sort, self::VAULT_SORT_KEYS, true)) {
+            throw new UndergroundRuntimeException('underground_vault_sort_invalid', '宝物庫の並び順を確認してください。');
+        }
+
+        return $this->withLockedOpenProfile($user, function (UndergroundProfile $profile) use ($page, $sort): array {
             $perPage = $this->catalog->pageSize();
             $total = UndergroundOwnedEquipment::query()
                 ->where('underground_profile_id', $profile->id)
@@ -106,21 +113,38 @@ final readonly class UndergroundEquipmentService
             }
             $items = UndergroundOwnedEquipment::query()
                 ->where('underground_profile_id', $profile->id)
-                ->orderByRaw('equipped_slot IS NULL')
-                ->orderBy('equipped_slot')
                 ->orderByDesc('acquired_at')
                 ->orderByDesc('id')
-                ->forPage($page, $perPage)
                 ->get()
                 ->map(fn (UndergroundOwnedEquipment $row): array => $this->loadout->projectOwned($row))
                 ->values()
                 ->all();
+            // Resolve fixed and generated definitions through the same catalog before pagination.
+            $slotOrder = array_flip(UndergroundEquipmentCatalog::EQUIPPED_SLOTS);
+            $categoryOrder = array_flip(self::BULK_SELL_CATEGORY_KEYS);
+            $priority = static fn (array $item): array => [
+                $slotOrder[$item['equipped_slot'] ?? ''] ?? count($slotOrder),
+                $sort === 'category' ? $categoryOrder[$item['category']] : 0,
+                in_array($sort, ['item_level', 'category'], true) ? -$item['item_level'] : 0,
+            ];
+            usort($items, static function (array $left, array $right) use ($priority, $sort): int {
+                $primary = $priority($left) <=> $priority($right);
+                if ($primary !== 0) {
+                    return $primary;
+                }
+
+                $newest = [$right['acquired_at'], $right['id']] <=> [$left['acquired_at'], $left['id']];
+
+                return $sort === 'oldest' ? -$newest : $newest;
+            });
+            $items = array_slice($items, ($page - 1) * $perPage, $perPage);
 
             return [
                 ...$this->loadout->summary($profile),
                 'catalog_identity' => $this->catalog->identity(),
                 'bulk_sell_options' => $this->bulkSellOptions(),
                 'items' => $items,
+                'sort' => $sort,
                 'page' => $page,
                 'per_page' => $perPage,
                 'last_page' => $lastPage,
@@ -410,6 +434,9 @@ final readonly class UndergroundEquipmentService
                     $definition = $this->loadout->definitionForRow($item);
                 } catch (RuntimeException) {
                     throw new UndergroundRuntimeException('underground_equipment_identity_invalid', '装備のidentityを確認できません。');
+                }
+                if (($definition['equippable'] ?? true) !== true) {
+                    throw new UndergroundRuntimeException('underground_equipment_not_equippable', 'この記念品は装備できません。');
                 }
                 $slot = $definition['category'] === 'accessory'
                     ? ($targetSlot ?? 'accessory_1')

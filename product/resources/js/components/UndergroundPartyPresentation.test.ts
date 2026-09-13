@@ -93,6 +93,52 @@ const smallBattle = (id: string): Record<string, unknown> => ({
 });
 
 describe('Underground party presentation controls', () => {
+    it('opens the optional guide duel without recollections and retries the same solo request', async () => {
+        const duel = { unlocked: true, won: false, challenge_lines: ['挑戦の会話'], accept_lines: [], cancel_lines: ['キャンセルの会話'], rematch_lines: ['再戦の会話'], solo_rematch_lines: ['へし折ってやるわ'] };
+        const payloads: Array<Record<string, unknown>> = [];
+        const battle = { ...smallBattle('duel'), context: 'guide_duel', encounter_name: '夢の女王', duel_dialogue: ['良き夢のあらんことを'] };
+        vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+            const path = String(input);
+            if (path.endsWith('/guide-duel')) {
+                payloads.push(JSON.parse(String(init?.body)));
+                if (payloads.length === 1) throw new TypeError('network lost');
+                duel.won = true;
+                return response(battle);
+            }
+            return response(path.endsWith('/battles') ? [] : openState({ guide_duel: duel }));
+        }));
+        const wrapper = mount(UndergroundPanel, { attachTo: document.body });
+        const click = async (text: string) => {
+            const button = wrapper.findAll('button').find((candidate) => candidate.text().includes(text));
+            expect(button).toBeDefined();
+            await button!.trigger('click');
+            await flushPromises();
+        };
+        await flushPromises();
+        await click('案内人');
+        await click('真剣な話');
+        await click('勝負を挑む');
+        expect(wrapper.text()).toContain('挑戦の会話');
+        await click('やめておく');
+        expect(wrapper.text()).toContain('キャンセルの会話');
+        expect(payloads).toHaveLength(0);
+        await click('戻る');
+        await click('真剣な話');
+        await click('勝負を挑む');
+        await click('それでも構わない');
+        await click('決闘の結果を再確認する');
+        expect(payloads).toHaveLength(2);
+        expect(payloads[1]).toEqual(payloads[0]);
+        expect(payloads[0]?.borrowed_secretary_ids).toEqual([]);
+        expect(wrapper.text()).toContain('良き夢のあらんことを');
+        await click('地下メインへ戻る');
+        await click('案内人');
+        await click('真剣な話');
+        await click('勝負を挑む');
+        expect(wrapper.text()).toContain('へし折ってやるわ');
+        wrapper.unmount();
+    });
+
     afterEach(() => {
         vi.useRealTimers();
         vi.unstubAllGlobals();

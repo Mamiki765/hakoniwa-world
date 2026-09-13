@@ -88,6 +88,7 @@ final class BuildCombatState
      * @param  array<string, int|bool|string>  $modifiers
      * @param  array{round: int, status: string, message: string}|null  $phaseTransition
      * @param  array<string, mixed>  $normalAttack
+     * @param  array<string, mixed>|null  $guideDuel
      */
     public function __construct(
         public readonly string $side,
@@ -105,6 +106,7 @@ final class BuildCombatState
         public readonly array $modifiers,
         public readonly ?array $phaseTransition,
         public readonly array $normalAttack,
+        public readonly ?array $guideDuel = null,
     ) {
         $this->combatantId = $key;
         $this->hp = $maxHp;

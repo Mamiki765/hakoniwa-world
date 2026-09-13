@@ -926,6 +926,7 @@ final readonly class UndergroundIntroService
                 UndergroundBattle::ACTIVITY_TUTORIAL,
                 UndergroundBattle::ACTIVITY_STORY,
                 UndergroundBattle::ACTIVITY_PLAYTEST,
+                UndergroundBattle::ACTIVITY_GUIDE_DUEL,
                 UndergroundBattle::ACTIVITY_EXPLORATION,
                 UndergroundBattle::ACTIVITY_TRIAL,
             ])
@@ -957,6 +958,7 @@ final readonly class UndergroundIntroService
                     UndergroundBattle::ACTIVITY_TUTORIAL,
                     UndergroundBattle::ACTIVITY_STORY,
                     UndergroundBattle::ACTIVITY_PLAYTEST,
+                    UndergroundBattle::ACTIVITY_GUIDE_DUEL,
                     UndergroundBattle::ACTIVITY_EXPLORATION,
                     UndergroundBattle::ACTIVITY_TRIAL,
                 ])
@@ -1575,6 +1577,8 @@ final readonly class UndergroundIntroService
             'trial' => $trialState,
             'awakening' => $awakeningState,
             'recollections' => $recollectionState,
+            'guide_duel' => $stage === UndergroundIntroStage::UNDERGROUND_OPEN && $profile instanceof UndergroundProfile
+                ? $this->runtime->projectGuideDuelState($profile) : null,
             'battle' => $battle instanceof UndergroundBattle ? $this->projectBattle($battle, true) : null,
             'lending' => $stage === UndergroundIntroStage::UNDERGROUND_OPEN
                 && $profile instanceof UndergroundProfile
@@ -2020,6 +2024,9 @@ final readonly class UndergroundIntroService
     /** @return array<string, mixed> */
     private function projectBattle(UndergroundBattle $battle, bool $withActions): array
     {
+        if ($battle->activity_type === UndergroundBattle::ACTIVITY_GUIDE_DUEL) {
+            return $this->runtime->projectGuideDuel($battle, $withActions);
+        }
         if ($battle->activity_type === UndergroundBattle::ACTIVITY_PLAYTEST) {
             return $this->playtest->projectBattle($battle, $withActions);
         }

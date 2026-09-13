@@ -213,7 +213,7 @@ final class UndergroundEquipmentCatalog
             }
             $this->assertDefinition($definition, ($entry['instance_identity'] ?? null) !== null);
             $expectedCategory = str_starts_with($slot, 'accessory_') ? 'accessory' : $slot;
-            if ($definition['category'] !== $expectedCategory) {
+            if ($definition['category'] !== $expectedCategory || ($definition['equippable'] ?? true) !== true) {
                 throw new RuntimeException('Underground equipped slot is incompatible.');
             }
             $bySlot[$slot] = $entry;
@@ -297,8 +297,9 @@ final class UndergroundEquipmentCatalog
             || ($category !== 'weapon' && $style !== null)
             || ! is_int($definition['rank'] ?? null) || $definition['rank'] < 0 || $definition['rank'] > 4
             || ! is_int($definition['item_level'] ?? null) || $definition['item_level'] < 1
-            || $definition['item_level'] > $this->generatorItemLevelMax()
-            || ! in_array($rarity, ['common', 'uncommon', 'rare', 'epic'], true)
+            || (($generated || ($definition['equippable'] ?? true) !== false) && $definition['item_level'] > $this->generatorItemLevelMax())
+            || (! in_array($rarity, ['common', 'uncommon', 'rare', 'epic'], true)
+                && ! (! $generated && ($definition['equippable'] ?? true) === false && $rarity === 'unique'))
             || ! is_string($definition['rarity_label'] ?? null) || $definition['rarity_label'] === ''
             || (! is_null($definition['buy_price'] ?? null) && (! is_int($definition['buy_price']) || $definition['buy_price'] < 1))
             || ! is_bool($definition['shop_sold'] ?? null)
@@ -352,7 +353,7 @@ final class UndergroundEquipmentCatalog
         if ($definition['shop_sold'] === true && $definition['buy_price'] === null) {
             throw new RuntimeException('Underground shop equipment price is missing.');
         }
-        if (! $generated && ($rarity !== 'common'
+        if (! $generated && (($rarity !== 'common' && ($definition['equippable'] ?? true) !== false)
             || $definition['modifiers'] !== []
             || $definition['affixes'] !== [])) {
             throw new RuntimeException('Fixed Underground equipment must remain Novice without affixes.');

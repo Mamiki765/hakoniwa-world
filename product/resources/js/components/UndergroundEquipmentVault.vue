@@ -59,6 +59,7 @@ const loading = ref(true);
 const error = ref('');
 const pending = ref<{ fingerprint: string; requestId: string } | null>(null);
 const accessoryTargetSlot = ref<AccessorySlot>('accessory_1');
+const sortOrder = ref('newest');
 const bulkSellOptions = ref<BulkSellOptions | null>(null);
 const selectedRarityKeys = ref<string[]>([]);
 const selectedCategoryKeys = ref<string[]>([]);
@@ -208,7 +209,7 @@ async function loadVault(page = vault.value?.page ?? 1): Promise<void> {
     loading.value = true;
     error.value = '';
     try {
-        const next = await api<VaultResponse>(`/api/v1/me/underground/equipment/vault?page=${page}`);
+        const next = await api<VaultResponse>(`/api/v1/me/underground/equipment/vault?page=${page}&sort=${sortOrder.value}`);
         vault.value = next;
         syncBulkSellOptions(next.bulk_sell_options);
     } catch (caught) {
@@ -444,7 +445,18 @@ onMounted(() => { void loadVault(); });
                 <p v-else-if="!bulkPreviewCanConfirm" class="status error" role="alert">売却候補を確認できません。プレビューをやり直してください。</p>
                 <button class="button primary underground-bulk-confirm-trigger" type="button" :disabled="!bulkPreviewCanConfirm || bulkFilterDisabled" @click="openBulkConfirmation">売却内容を確認する</button>
             </section>
-            <div class="underground-vault-toolbar"><p>全{{ vault.total }}件・1ページ{{ vault.per_page }}件</p><div><button v-if="vault.page > 1" class="button secondary" type="button" :disabled="loading" @click="loadVault(vault.page - 1)">前へ</button><span> {{ vault.page }} / {{ vault.last_page }} </span><button v-if="vault.page < vault.last_page" class="button secondary" type="button" :disabled="loading" @click="loadVault(vault.page + 1)">次へ</button></div></div>
+            <div class="underground-vault-toolbar">
+                <p>全{{ vault.total }}件・1ページ{{ vault.per_page }}件</p>
+                <label>並び順
+                    <select v-model="sortOrder" :disabled="loading || busy" @change="loadVault(1)">
+                        <option value="newest">入手が新しい順</option>
+                        <option value="oldest">入手が古い順</option>
+                        <option value="item_level">Item Lvが高い順</option>
+                        <option value="category">武器・防具・アクセサリー順</option>
+                    </select>
+                </label>
+                <div><button v-if="vault.page > 1" class="button secondary" type="button" :disabled="loading" @click="loadVault(vault.page - 1)">前へ</button><span> {{ vault.page }} / {{ vault.last_page }} </span><button v-if="vault.page < vault.last_page" class="button secondary" type="button" :disabled="loading" @click="loadVault(vault.page + 1)">次へ</button></div>
+            </div>
             <div class="underground-equipment-card-grid underground-vault-items">
                 <EquipmentItemCard v-for="(item, index) in vault.items" :key="itemKey(item, index)" :item="item" mode="vault" :disabled="busy || item.equipped_slot !== null" @action="mutate('equip', item, selectedSlotFor(item))">
                     <template #status>

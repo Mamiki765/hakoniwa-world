@@ -15,6 +15,67 @@ use PHPUnit\Framework\TestCase;
 
 final class AlphaV1PartyCombatTest extends TestCase
 {
+    public function test_guide_duel_forces_every_member_to_full_awakening_before_the_opening_ultimate(): void
+    {
+        $manifest = $this->catalog(1, 1, 1)->manifest();
+        $configuration = require dirname(__DIR__, 3).'/config/underground-alpha-v1.php';
+        $manifest['enemies']['dream_queen'] = $configuration['guide_duel']['enemy'];
+        $players = [$this->player('secretary:1'), $this->player('borrowed:2', currentHp: 0)];
+        foreach ($players as &$player) {
+            $player['stats']['vitality'] = 100_000;
+            $player['stats']['agility'] = 1_000;
+            $player['stats']['might'] = 3_000;
+        }
+        unset($player);
+        $result = $this->model()->fightPartySnapshots(new AlphaV1BuildCatalog($manifest), $players, ['dream_queen'], 4100, 2, 0);
+        $rows = collect($result->actionLog);
+        $awakenings = $rows->where('kind', 'awakening');
+        self::assertCount(2, $awakenings);
+        foreach ($awakenings as $row) {
+            self::assertSame($row['state']['max_hp'], $row['state']['hp']);
+            self::assertSame(AlphaV1CombatRules::MAX_MP, $row['state']['mp']);
+        }
+        $opening = $rows->where('action_id', 'guide-duel:1:opening')->where('effect_type', 'damage');
+        self::assertGreaterThanOrEqual(30, $opening->count());
+        self::assertLessThanOrEqual(50, $opening->count());
+        self::assertCount(1, $opening->pluck('target_id')->unique());
+        self::assertLessThan($opening->keys()->first(), $awakenings->keys()->last());
+        self::assertGreaterThan($opening->keys()->last(), $rows->where('kind', 'awakening_technique')->keys()->first());
+        $regeneration = $rows->firstWhere('action', 'guide_regeneration');
+        self::assertSame('enemy:1', $regeneration['actor_id']);
+        self::assertSame('enemy:1', $regeneration['target_id']);
+        self::assertSame(-1254, $regeneration['amount']);
+    }
+
+    public function test_guide_duel_survives_a_lethal_multihit_action_then_interrupts_once_and_can_die(): void
+    {
+        $manifest = $this->catalog(1, 1, 1)->manifest();
+        $configuration = require dirname(__DIR__, 3).'/config/underground-alpha-v1.php';
+        $enemy = $configuration['guide_duel']['enemy'];
+        $enemy['max_hp'] = 1000;
+        $enemy['guide_duel']['heal_per_round'] = 0;
+        $manifest['enemies']['dream_queen'] = $enemy;
+        $player = $this->player('secretary:1');
+        $player['stats']['vitality'] = 100_000;
+        $player['stats']['might'] = 100_000;
+        $player['stats']['agility'] = 10_000;
+        $player['awakening']['technique_key'] = 'absolute_aegis';
+        $player['awakening']['growth_path'] = 'guardianship_blue';
+        $player['active_skills'] = ['dagger_flurry'];
+        $player['ai_rules'] = [['conditions' => [['type' => 'always']], 'action' => 'skill:dagger_flurry']];
+        $result = $this->model()->fightPartySnapshots(new AlphaV1BuildCatalog($manifest), [$player], ['dream_queen'], 4100, 4, 0);
+        self::assertSame('player', $result->winner);
+        $rows = collect($result->actionLog);
+        $ultimateActions = $rows->where('action', 'guide_ultimate')->pluck('action_id')->unique()->values()->all();
+        self::assertSame(['guide-duel:1:opening', 'guide-duel:2:threshold'], $ultimateActions);
+        $trigger = $rows->where('round', 2)->where('action', 'dagger_flurry')->where('effect_type', 'damage');
+        self::assertGreaterThan(1, $trigger->count());
+        $second = $rows->where('action_id', 'guide-duel:2:threshold')->where('effect_type', 'damage');
+        self::assertGreaterThan($trigger->keys()->last(), $second->keys()->first());
+        self::assertSame(1, $second->first()['actor_hp']);
+        self::assertSame(0, $result->finalStates['enemy:1']['hp']);
+    }
+
     public function test_heavenrend_logs_multi_enemy_identity_with_full_primary_and_half_secondary_potency(): void
     {
         $catalog = $this->catalog(enemyHp: 10_000_000, enemyPower: 1, enemyAgility: 1);

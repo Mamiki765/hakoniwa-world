@@ -93,6 +93,13 @@ foreach ($accessories as $stat => $series) {
 }
 
 $legacyDefinitions = $definitions;
+$definitions['demon_sword_gram'] = [
+    ...$definition('demon_sword_gram', '魔剣グラム', 'weapon', 'longsword', 0, 1254, null,
+        0, 0, 0, 0, $stats(), false, false),
+    'rarity' => 'unique', 'rarity_label' => 'ユニーク', 'equippable' => false,
+    'commemorative_effects' => ['生命アップ', '武力アップ', '光輝（被回復アップ）', '毎ターンHP・MP回復', '被クリティカル率低下'],
+    'description' => '夢の女王との決闘の記念品。装備・売却不可。所持による能力効果はありません。',
+];
 $trial1Key = 'trial_01';
 $definitions['black_crystal_dagger'] = $definition(
     'black_crystal_dagger', '黒晶の短剣', 'weapon', 'dagger', 4, 40, 3_000,

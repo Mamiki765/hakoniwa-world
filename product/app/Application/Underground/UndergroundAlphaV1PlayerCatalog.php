@@ -671,6 +671,26 @@ final readonly class UndergroundAlphaV1PlayerCatalog
         return new AlphaV1BuildCatalog($manifest);
     }
 
+    /** @return array<string, mixed> */
+    public function guideDuel(): array
+    {
+        $definition = $this->data()['guide_duel'] ?? null;
+        if (! is_array($definition) || ($definition['identity'] ?? null) !== 'secretary-underground-guide-duel-v1') {
+            throw new RuntimeException('Guide duel definition is missing.');
+        }
+
+        return $definition;
+    }
+
+    public function guideDuelCatalog(): AlphaV1BuildCatalog
+    {
+        $manifest = $this->explorationCatalog()->manifest();
+        $duel = $this->guideDuel();
+        $manifest['enemies'][$duel['key']] = $duel['enemy'];
+
+        return new AlphaV1BuildCatalog($manifest);
+    }
+
     public function trialCatalog(string $trialKey): AlphaV1BuildCatalog
     {
         $manifestPath = match ($trialKey) {

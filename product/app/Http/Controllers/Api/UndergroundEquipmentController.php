@@ -13,6 +13,7 @@ use App\Http\Requests\SellUndergroundEquipmentRequest;
 use App\Http\Requests\UnequipUndergroundEquipmentRequest;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
 
 final class UndergroundEquipmentController extends Controller
 {
@@ -23,9 +24,12 @@ final class UndergroundEquipmentController extends Controller
 
     public function vault(Request $request, UndergroundEquipmentService $service): JsonResponse
     {
+        $request->validate(['sort' => ['sometimes', 'string', Rule::in(UndergroundEquipmentService::VAULT_SORT_KEYS)]]);
+
         return $this->respond(fn (): array => $service->vault(
             $request->user(),
             $request->integer('page', 1),
+            $request->string('sort', 'newest')->value(),
         ));
     }
 

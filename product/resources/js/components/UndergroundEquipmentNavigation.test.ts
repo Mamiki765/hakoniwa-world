@@ -49,6 +49,46 @@ afterEach(() => {
 });
 
 describe('Underground equipment navigation', () => {
+    it('resets to page one when sorting and preserves the selected sort during pagination', async () => {
+        const paths: string[] = [];
+        vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+            paths.push(String(input));
+            const params = new URL(String(input), 'http://localhost').searchParams;
+            return response({ catalog_identity: 'test-catalog', used: 60, capacity: 500, equipped,
+                items: [item()], page: Number(params.get('page')), per_page: 50, last_page: 2, total: 60 });
+        }));
+        const wrapper = mount(UndergroundEquipmentVault);
+        await flushPromises();
+        await wrapper.get('.underground-vault-toolbar button:last-child').trigger('click');
+        await flushPromises();
+        await wrapper.get('.underground-vault-toolbar select').setValue('item_level');
+        await flushPromises();
+        expect(paths.at(-1)).toBe('/api/v1/me/underground/equipment/vault?page=1&sort=item_level');
+        await wrapper.get('.underground-vault-toolbar button:last-child').trigger('click');
+        await flushPromises();
+        expect(paths.at(-1)).toBe('/api/v1/me/underground/equipment/vault?page=2&sort=item_level');
+        wrapper.unmount();
+    });
+
+    it('shows the commemorative Gram without equip or sell actions', async () => {
+        const gram = item({ key: 'demon_sword_gram', name: '魔剣グラム', category: 'weapon', weapon_style: 'longsword',
+            item_level: 1254, rarity: 'unique', rarity_label: 'ユニーク', instance_kind: 'fixed',
+            sellable: false, equippable: false, sell_price: 0,
+            description: '装備不可。所持による能力効果はありません。', commemorative_effects: ['生命アップ', '光輝（被回復アップ）'] });
+        vi.stubGlobal('fetch', vi.fn(async () => response({ catalog_identity: 'test-catalog', used: 1, capacity: 500,
+            equipped, items: [gram], page: 1, per_page: 50, last_page: 1, total: 1 })));
+        const wrapper = mount(UndergroundEquipmentVault);
+        await flushPromises();
+        const card = wrapper.get('.underground-equipment-card');
+        expect(card.text()).toContain('魔剣グラム');
+        expect(card.text()).toContain('1254');
+        expect(card.text()).toContain('装備不可');
+        expect(card.text()).toContain('売却不可');
+        expect(card.text()).toContain('光輝（被回復アップ）');
+        expect(card.findAll('button')).toHaveLength(0);
+        wrapper.unmount();
+    });
+
     it('shows five slots and sends the selected accessory target slot', async () => {
         const equipPayloads: Array<Record<string, unknown>> = [];
         const accessory = item();
@@ -145,8 +185,8 @@ describe('Underground equipment navigation', () => {
         await wrapper.get('.underground-vault-toolbar button:last-child').trigger('click');
         await flushPromises();
         expect(vaultPaths).toEqual([
-            '/api/v1/me/underground/equipment/vault?page=1',
-            '/api/v1/me/underground/equipment/vault?page=2',
+            '/api/v1/me/underground/equipment/vault?page=1&sort=newest',
+            '/api/v1/me/underground/equipment/vault?page=2&sort=newest',
         ]);
 
         await wrapper.get('input[type="number"]').setValue('30');
@@ -191,7 +231,7 @@ describe('Underground equipment navigation', () => {
         expect(wrapper.find('.underground-bulk-confirm-dialog').exists()).toBe(false);
         expect(wrapper.find('.underground-bulk-sale-preview').exists()).toBe(false);
         expect(vaultLoads).toBe(3);
-        expect(vaultPaths.at(-1)).toBe('/api/v1/me/underground/equipment/vault?page=1');
+        expect(vaultPaths.at(-1)).toBe('/api/v1/me/underground/equipment/vault?page=1&sort=newest');
         expect(wrapper.emitted('updated')).toHaveLength(1);
         wrapper.unmount();
     });
@@ -204,7 +244,7 @@ describe('Underground equipment navigation', () => {
             weapon_styles: ['stale', 'dagger'],
         }));
         const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
-            if (String(input) === '/api/v1/me/underground/equipment/vault?page=1') {
+            if (String(input) === '/api/v1/me/underground/equipment/vault?page=1&sort=newest') {
                 return response({
                     catalog_identity: 'test-catalog', used: 1, capacity: 500, equipped,
                     items: [item()], page: 1, per_page: 50, last_page: 1, total: 1,

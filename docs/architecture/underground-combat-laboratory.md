@@ -92,6 +92,14 @@ alpha-v1はpure immutable manifest/snapshot/validator/simulatorであり、DB、
 
 current combat identityは`secretary-underground-alpha-v5`、skill tree identityは`secretary-underground-skill-tree-alpha-v2`。3.9.3のv4から3.10.0の技能・MP・会心・対象選択・持続回復・蘇生・行動継続へ更新する。`AlphaV1*`と`foundation-v1.json`は既存canonical implementation lineageであり、file名からpersisted identityを推測しない。過去battleの保存済みsummary/detailの再取得は保持し、旧戦闘engineの並行運用や過去勝敗の再計算は行わない。SP移行は3.10.0のforward migrationを正本とする。
 
+### 任意決闘「夢の女王」
+
+Application 4.1.0では、輝きの王国解禁後に案内人へ挑む任意決闘を追加する。定義は既存`underground-alpha-v1.php`の`guide_duel`、content identityは`secretary-underground-guide-duel-v1`。参加者数にかかわらず固定能力の敵1体と戦う。既存のPT snapshot準備・pure combat・projector・battle historyをsoloにも再利用し、導入の`true_name_story_battle`は変更しない。
+
+戦闘開始時に参加者全員を通常の覚醒効果で強制覚醒・全回復し、女王の開幕奥義を味方の行動より先に実行する。25%以下への初回到達を戦闘内で保持し、その攻撃action終了後に2回目を割り込ませる。追加hit等も2回目奥義の実行まではHP1で耐え、実行開始で保護を解除する。攻撃・障壁吸収・反撃・回復などの計算はcanonical combat内で行う。女王の通常手番は開幕奥義に置き換え、2 round目以降に通常攻撃か全体攻撃を使う。round末の固定回復は最大HPを超えない。
+
+決闘は無料で、通常探索のcooldown・HP・覚醒・通貨・経験値・貸出参加回数を更新しない。勝敗・会話・編成・内容identityはbattleへ保存し、同じUUIDは保存済み結果を返す。初勝利はSecretary-ownedの既存content clear progressとprofile lockで管理し、固定記念品「魔剣グラム」を同一transactionで1個付与する。APIとcombat loadoutで装備を拒否し、既存の売却不可判定を利用する。能力説明は表示専用で所持効果を持たない。詳細・Owner決定・release境界は`product/docs/releases/4.1.0-guide-duel.md`を参照。
+
 ### Alpha-v1 damage and recovery order
 
 alpha-v1は`attack - defense`を使わず、次の順序を固定する。

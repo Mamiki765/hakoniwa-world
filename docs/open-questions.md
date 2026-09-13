@@ -316,6 +316,14 @@
 - Implementation: party actionの実際のdamage記録を対象者別に集約する。multi-hitでも各playerにつき1回。被害のないplayerへは加算しない。soloの既存付与単位を維持する。
 - Decision record: `docs/architecture/underground-combat-laboratory.md`
 
+### UG-07 案内人との任意決闘
+
+- Status: Decided
+- Owner decision (2026-09-14): 輝きの王国解禁後にsolo／レンタルPTで無料挑戦する。夢の女王はHP351400・毎round1254回復。開幕に味方全員を強制覚醒・全回復し、女王の奥義を先行する。初めて25%以下になった行動の終了時に2回目の奥義を割り込ませ、それまではHP1で耐える。以後は通常どおり撃破できる。
+- Settlement: 決闘前のHP・MP・覚醒を保持し、EXP・G・通常drop・貸出参加報酬・日課進行を与えない。LeaderのSecretaryごとの初勝利で装備・売却不可の記念品を一度だけ付与する。所持効果はない。
+- Scope: 通常の戦闘、導入の既存story battle、unique装備効果の一般実装は変更しない。
+- Decision record: `product/docs/releases/4.1.0-guide-duel.md`
+
 ## Monster/combat gates
 
 ### MONSTER-01 怪獣actorとoccupancy

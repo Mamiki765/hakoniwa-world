@@ -1811,6 +1811,45 @@ final class UndergroundPlayerAccessTest extends TestCase
             ->assertConflict()->assertJsonPath('code', 'underground_vault_page_invalid');
     }
 
+    public function test_vault_sort_keeps_equipped_slot_order_and_sorts_across_pages(): void
+    {
+        [$user, $secretary] = $this->secretaryUser('Vault sorting');
+        $profile = $this->openEquipmentProfile($secretary);
+        $this->actingAs($user)->getJson('/api/v1/me/underground/main')->assertOk();
+        foreach (['accessory_3' => 'finesse_accessory_rank_1', 'armor' => 'leather_armor',
+            'accessory_1' => 'vitality_accessory_rank_1', 'accessory_2' => 'might_accessory_rank_1'] as $slot => $key) {
+            UndergroundOwnedEquipment::query()->create([
+                'underground_profile_id' => $profile->id, 'definition_key' => $key,
+                'catalog_identity' => 'secretary-underground-shop-equipment-alpha-v2', 'equipped_slot' => $slot,
+                'instance_kind' => 'fixed', 'acquired_at' => Carbon::now(),
+            ]);
+        }
+        $count = config('underground-equipment.page_size') + 1;
+        for ($index = 1; $index <= $count; $index++) {
+            $generated = app(UndergroundRuntimeEquipmentGenerator::class)->generate(
+                $index, 'shallow_caves', 'common', 'armor', null, null, $index, 'vault-sort-'.$index,
+            );
+            UndergroundOwnedEquipment::query()->create([
+                'underground_profile_id' => $profile->id, 'definition_key' => $generated['key'],
+                'catalog_identity' => 'secretary-underground-shop-equipment-alpha-v2', 'equipped_slot' => null,
+                'instance_kind' => 'generated', 'instance_identity' => $generated['instance_identity'],
+                'generator_identity' => $generated['generator_identity'], 'generated_payload' => $generated,
+                'grant_key' => 'vault-sort-'.$index,
+                'source_battle_id' => $this->tutorialBattle($profile)->id,
+                'acquired_at' => Carbon::now()->subMinutes($index),
+            ]);
+        }
+        $first = $this->actingAs($user)->getJson('/api/v1/me/underground/equipment/vault?sort=item_level')->assertOk()->json('data');
+        $this->assertSame(['weapon', 'armor', 'accessory_1', 'accessory_2', 'accessory_3'], array_column(array_slice($first['items'], 0, 5), 'equipped_slot'));
+        $second = $this->actingAs($user)->getJson('/api/v1/me/underground/equipment/vault?sort=item_level&page=2')->assertOk()->json('data');
+        $items = [...array_slice($first['items'], 5), ...$second['items']];
+        $this->assertSame(range($count, 1), array_column($items, 'item_level'));
+        $this->assertCount($count, array_unique(array_column($items, 'id')));
+        $newest = $this->actingAs($user)->getJson('/api/v1/me/underground/equipment/vault')->assertOk()->json('data.items');
+        $this->assertSame(1, $newest[5]['item_level']);
+        $this->actingAs($user)->getJson('/api/v1/me/underground/equipment/vault?sort[]=newest')->assertUnprocessable();
+    }
+
     public function test_bulk_sale_previews_canonical_filters_and_atomically_sells_only_the_quoted_items(): void
     {
         [$user, $secretary] = $this->secretaryUser('Bulk sale secretary');

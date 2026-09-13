@@ -140,6 +140,22 @@ STORY;
         ?string $huntingGroundKey = null,
         array $borrowedSecretaryIds = [],
     ): array {
+        return $this->runExplorationRequest($user, $requestId, $huntingGroundKey, $borrowedSecretaryIds);
+    }
+
+    /** @param list<int> $borrowedSecretaryIds
+     * @return array{battle: UndergroundBattle, duplicate: bool, daily_quest: array<string,int|string|bool>}
+     */
+    public function challengeGuide(User $user, string $requestId, array $borrowedSecretaryIds = []): array
+    {
+        return $this->runExplorationRequest($user, $requestId, $this->alphaV1Catalog->guideDuel()['required_ground'], $borrowedSecretaryIds, true);
+    }
+
+    /** @param list<int> $borrowedSecretaryIds
+     * @return array{battle: UndergroundBattle, duplicate: bool, daily_quest: array<string,int|string|bool>}
+     */
+    private function runExplorationRequest(User $user, string $requestId, ?string $huntingGroundKey, array $borrowedSecretaryIds, bool $guideDuel = false): array
+    {
         $this->assertRequestId($requestId);
         if (count($borrowedSecretaryIds) > 3
             || count($borrowedSecretaryIds) !== count(array_unique($borrowedSecretaryIds))) {
@@ -156,11 +172,15 @@ STORY;
         $huntingGroundKey ??= $this->alphaV1Catalog->explorationHuntingGroundKey();
         $huntingGround = $this->alphaV1Catalog->explorationHuntingGround($huntingGroundKey);
         $fingerprintPayload = [
-            'activity_type' => 'exploration',
+            'activity_type' => $guideDuel ? UndergroundBattle::ACTIVITY_GUIDE_DUEL : 'exploration',
+            'guide_duel_identity' => $guideDuel ? $this->alphaV1Catalog->guideDuel()['identity'] : null,
             'activity_key' => $huntingGroundKey,
             'exploration_identity' => $this->alphaV1Catalog->explorationIdentity(),
             'content_identity' => $huntingGround['content_identity'],
         ];
+        if (! $guideDuel) {
+            unset($fingerprintPayload['guide_duel_identity']);
+        }
         if ($borrowedSecretaryIds !== []) {
             $fingerprintPayload['borrowed_secretary_ids'] = $borrowedSecretaryIds;
         }
@@ -200,6 +220,7 @@ STORY;
                     $borrowedSecretaryIds,
                     $leaderSyncInputs,
                     $preparedBorrowed,
+                    $guideDuel,
                 ): array {
                     $profile = $this->lockedProfileForUser($user);
                     $this->assertExplorationUnlocked($profile);
@@ -222,7 +243,7 @@ STORY;
                         ];
                     }
                     $this->assertSkillRebuildCompleted($profile);
-                    if ($borrowedSecretaryIds !== array_column($profile->rental_party, 'secretary_id')) {
+                    if ((! $guideDuel || $borrowedSecretaryIds !== []) && $borrowedSecretaryIds !== array_column($profile->rental_party, 'secretary_id')) {
                         throw new UndergroundRuntimeException('underground_rental_party_changed', 'レンタル編成を確定してから出発してください。');
                     }
                     if ($borrowedSecretaryIds !== []) {
@@ -239,6 +260,13 @@ STORY;
                             'underground_trial_active',
                             '封印の地を継続するか、明示的に帰還してから通常探索を行ってください。',
                         );
+                    }
+                    if ($guideDuel) {
+                        return [
+                            'battle' => $this->resolveAndSettleGuideDuel($profile, $requestId, $fingerprint, $preparedBorrowed),
+                            'duplicate' => false,
+                            'daily_quest' => $this->dailyQuests->currentStatus($user->id, DailyQuestService::UNDERGROUND_BATTLES),
+                        ];
                     }
                     $this->assertCooldownElapsed($profile);
                     $keyBalanceBefore = $profile->shining_kingdom_key_balance;
@@ -1138,6 +1166,28 @@ STORY;
     }
 
     /** @return array<string, mixed> */
+    public function projectGuideDuel(UndergroundBattle $battle, bool $withRounds = true): array
+    {
+        return $this->projectAlphaV1Battle($battle, UndergroundBattle::ACTIVITY_GUIDE_DUEL, $withRounds);
+    }
+
+    /** @return array<string, mixed> */
+    public function projectGuideDuelState(UndergroundProfile $profile): array
+    {
+        $duel = $this->alphaV1Catalog->guideDuel();
+        $ground = $this->alphaV1Catalog->explorationHuntingGround($duel['required_ground']);
+        $unlocked = UndergroundTrialProgress::query()->where('underground_profile_id', $profile->id)
+            ->where('trial_key', $ground['required_trial_key'])->whereNotNull('first_cleared_at')->exists();
+        $won = UndergroundContentClearProgress::query()->where('underground_profile_id', $profile->id)
+            ->where('content_type', UndergroundBattle::ACTIVITY_GUIDE_DUEL)->where('content_key', $duel['key'])
+            ->where('actual_clear_count', '>', 0)->exists();
+
+        return ['unlocked' => $unlocked, 'won' => $won, 'challenge_lines' => $duel['challenge_lines'],
+            'accept_lines' => $duel['accept_lines'], 'cancel_lines' => $duel['cancel_lines'],
+            'rematch_lines' => $duel['rematch_lines'], 'solo_rematch_lines' => $duel['solo_rematch_lines']];
+    }
+
+    /** @return array<string, mixed> */
     public function projectTrialRun(UndergroundTrialRun $run): array
     {
         $trial = $this->catalog->trial($run->trial_key);
@@ -1407,6 +1457,7 @@ STORY;
                 : null,
             'finished_at' => $battle->finished_at->toAtomString(),
             'rewards' => ['xp' => $battle->xp_awarded, 'shards' => $battle->shard_delta],
+            'duel_dialogue' => $context === UndergroundBattle::ACTIVITY_GUIDE_DUEL ? ($snapshot['duel_dialogue'] ?? []) : null,
             'hunting_ground' => $context === UndergroundBattle::ACTIVITY_EXPLORATION
                 && is_array($snapshot['hunting_ground'] ?? null)
                     ? $snapshot['hunting_ground']
@@ -1437,7 +1488,7 @@ STORY;
             'awakening' => is_array($snapshot['awakening'] ?? null)
                 ? $snapshot['awakening']
                 : null,
-            'challenge_intro' => $context === UndergroundBattle::ACTIVITY_TRIAL
+            'challenge_intro' => in_array($context, [UndergroundBattle::ACTIVITY_TRIAL, UndergroundBattle::ACTIVITY_GUIDE_DUEL], true)
                 && is_string($snapshot['challenge_intro'] ?? null)
                     ? $snapshot['challenge_intro']
                     : null,
@@ -1789,26 +1840,13 @@ STORY;
     }
 
     /**
-     * @param  list<string>  $encounterKeys
-     * @param  list<array{secretary_id:int, source_owner_user_id:int, snapshot:array<string,mixed>}>  $borrowed
+     * Freeze the same member inputs for exploration and the guide duel.
+     *
+     * @param  list<array<string, mixed>>  $borrowed
+     * @return array{Secretary, User, int, array<string,mixed>, int, int, string, array<string,mixed>, string, array<string,mixed>, array<string,array<string,mixed>>, list<array<string,mixed>>, list<array<string,mixed>>}
      */
-    private function resolveAndSettlePartyExplorationBattle(
-        UndergroundProfile $profile,
-        string $requestId,
-        string $fingerprint,
-        string $huntingGroundKey,
-        array $encounterKeys,
-        string $encounterKey,
-        int $seed,
-        int $keyBalanceBefore,
-        array $borrowed,
-    ): UndergroundBattle {
-        $huntingGround = $this->alphaV1Catalog->explorationHuntingGround($huntingGroundKey);
-        $encounter = $this->alphaV1Catalog->explorationEncounter($encounterKey, $huntingGroundKey);
-        $averagedReward = $this->averagedExplorationEncounterReward($encounterKeys, $huntingGroundKey);
-        $baseShardReward = $huntingGround['kind'] === 'vault'
-            ? (int) $huntingGround['vault_base_g']
-            : $averagedReward['shards'];
+    private function partyCombatInputs(UndergroundProfile $profile, array $borrowed): array
+    {
         $secretary = $profile->secretary;
         if (! is_string($secretary->name) || $secretary->name === ''
             || ! is_string($profile->growth_path_key)) {
@@ -1927,6 +1965,102 @@ STORY;
                 'snapshot' => $snapshot,
             ];
         }
+
+        return [$secretary, $leader, $leaderLevel, $leaderEquipment, $maxHpBefore, $currentHpBefore, $leaderDisplayName, $leaderDefinition, $leaderCombatantId, $leaderSnapshot, $memberSnapshots, $memberRows, $playerSnapshots];
+    }
+
+    /** @param list<array<string, mixed>> $borrowed */
+    private function resolveAndSettleGuideDuel(UndergroundProfile $profile, string $requestId, string $fingerprint, array $borrowed): UndergroundBattle
+    {
+        [$secretary, $leader, $leaderLevel, $leaderEquipment, $maxHpBefore, $currentHpBefore, $leaderDisplayName,
+            $leaderDefinition, $leaderCombatantId, $leaderSnapshot, $memberSnapshots, $memberRows, $playerSnapshots]
+            = $this->partyCombatInputs($profile, $borrowed);
+        $duel = $this->alphaV1Catalog->guideDuel();
+        $combatCatalog = $this->alphaV1Catalog->guideDuelCatalog();
+        $memberSnapshots['enemy:1'] = ['team' => 'enemy', 'combatant_id' => 'enemy:1', 'display_name' => $duel['enemy']['label'],
+            'image_references' => ['compact' => null, 'normal' => null, 'awakening' => null]];
+        $partySnapshot = ['schema_version' => 1, 'content_identity' => $duel['identity'], 'party_size' => count($playerSnapshots),
+            'enemy_count' => 1, 'enemy_count_authority' => 'fixed', 'leader_combat_level' => $leaderLevel,
+            'leader_equipment_item_levels' => $this->equipmentItemLevelsBySlot($leaderEquipment),
+            'reward_authority' => ['mode' => 'leader_first_victory_only']];
+        $party = $this->lendingRewards->createSnapshot($leader, $secretary, UndergroundBattle::ACTIVITY_GUIDE_DUEL,
+            $duel['key'], $duel['identity'], $leaderLevel, $partySnapshot, $memberRows);
+        $seed = $this->battleSeed->forRequest($profile->id, $requestId, $duel['identity']);
+        $startedAt = Carbon::now();
+        $result = $this->partyCombat->fight($combatCatalog, $playerSnapshots, [$duel['key']], $seed,
+            $this->alphaV1Catalog->explorationMaxRounds(), (int) $this->alphaV1Catalog->growthPath($profile->growth_path_key)['natural_recovery']);
+        $finishedAt = Carbon::now();
+        $resultType = $result->winner === 'player' ? UndergroundBattle::RESULT_VICTORY : UndergroundBattle::RESULT_DEFEAT;
+        $projection = $this->partyProjector->project($result, $memberSnapshots, $combatCatalog);
+        $projection['summary']['result'] = $resultType;
+        $progress = $this->lockedContentProgress($profile, UndergroundBattle::ACTIVITY_GUIDE_DUEL, $duel['key']);
+        $firstVictory = $resultType === UndergroundBattle::RESULT_VICTORY && $progress->actual_clear_count === 0;
+        $dialogue = $resultType === UndergroundBattle::RESULT_VICTORY
+            ? [...$duel['victory_lines'], ...$duel[$firstVictory ? 'first_victory_lines' : 'repeat_victory_lines']]
+            : $duel['defeat_lines'];
+        $battle = UndergroundBattle::query()->create([
+            'underground_profile_id' => $profile->id, 'underground_party_id' => $party->id,
+            'request_id' => $requestId, 'request_fingerprint' => $fingerprint, 'runtime_identity' => $duel['identity'],
+            'activity_type' => UndergroundBattle::ACTIVITY_GUIDE_DUEL, 'activity_key' => $duel['key'], 'encounter_key' => $duel['key'],
+            'result' => $resultType, 'rounds' => $result->rounds,
+            'damage_dealt' => (int) ($result->metrics['damage_dealt'] ?? 0), 'damage_received' => (int) ($result->metrics['damage_received'] ?? 0),
+            'healing_done' => (int) ($result->metrics['effective_healing'] ?? 0), 'xp_awarded' => 0, 'shard_delta' => 0,
+            'combat_level_before' => $leaderLevel, 'combat_level_after' => $leaderLevel,
+            'combat_xp_before' => $profile->combat_xp, 'combat_xp_after' => $profile->combat_xp,
+            'shard_balance_before' => $profile->shard_balance, 'shard_balance_after' => $profile->shard_balance, 'private_seed' => $seed,
+            'snapshot' => ['content_identity' => $duel['identity'], 'combat_rules_identity' => AlphaV1CombatRules::IDENTITY,
+                'player_display_name' => $leaderDisplayName, 'encounter_display_name' => $duel['enemy']['label'],
+                'presentation_log_version' => UndergroundPartyBattleProjector::PRESENTATION_LOG_VERSION,
+                'initial_state' => $projection['initial_state'], 'summary' => $projection['summary'], 'portrait_events' => $projection['portrait_events'],
+                'party' => [...$partySnapshot, 'party_id' => $party->id, 'members' => $memberSnapshots],
+                'encounter' => ['key' => $duel['key'], 'enemy_keys' => [$duel['key']], 'definition' => $duel['enemy']],
+                'current_hp_before' => $currentHpBefore, 'current_hp_after' => $currentHpBefore, 'max_hp_after' => $maxHpBefore,
+                'party_awakening' => $result->awakening, 'awakening' => $result->awakening[$leaderCombatantId] ?? null,
+                'duel_dialogue' => $dialogue, 'challenge_intro' => implode("\n", $duel['accept_lines']),
+                'first_victory' => $firstVictory, 'resources_restored' => true],
+            'started_at' => $startedAt, 'finished_at' => $finishedAt,
+        ]);
+        if ($firstVictory) {
+            $item = UndergroundOwnedEquipment::query()->firstOrCreate([
+                'underground_profile_id' => $profile->id, 'definition_key' => $duel['reward_key'], 'instance_kind' => 'fixed',
+            ], ['catalog_identity' => app(UndergroundEquipmentCatalog::class)->identity(), 'equipped_slot' => null, 'acquired_at' => $finishedAt]);
+            $snapshot = $battle->snapshot;
+            $snapshot['drop'] = ['status' => 'granted', 'item' => $this->equipmentLoadout->projectOwned($item)];
+            $battle->snapshot = $snapshot;
+            $battle->save();
+        }
+        if ($resultType === UndergroundBattle::RESULT_VICTORY) {
+            $this->recordActualContentClear($profile, UndergroundBattle::ACTIVITY_GUIDE_DUEL, $duel['key']);
+        }
+        UndergroundBattleLog::query()->create(['underground_battle_id' => $battle->id, 'actions' => $projection['rounds'],
+            'expires_at' => $finishedAt->copy()->addHours($this->catalog->battleLogRetentionHours())]);
+        $this->imageRetention->retainSnapshotImages($battle, $battle->snapshot);
+
+        return $battle->load('log');
+    }
+
+    /**
+     * @param  list<string>  $encounterKeys
+     * @param  list<array{secretary_id:int, source_owner_user_id:int, snapshot:array<string,mixed>}>  $borrowed
+     */
+    private function resolveAndSettlePartyExplorationBattle(
+        UndergroundProfile $profile,
+        string $requestId,
+        string $fingerprint,
+        string $huntingGroundKey,
+        array $encounterKeys,
+        string $encounterKey,
+        int $seed,
+        int $keyBalanceBefore,
+        array $borrowed,
+    ): UndergroundBattle {
+        $huntingGround = $this->alphaV1Catalog->explorationHuntingGround($huntingGroundKey);
+        $encounter = $this->alphaV1Catalog->explorationEncounter($encounterKey, $huntingGroundKey);
+        $averagedReward = $this->averagedExplorationEncounterReward($encounterKeys, $huntingGroundKey);
+        $baseShardReward = $huntingGround['kind'] === 'vault'
+            ? (int) $huntingGround['vault_base_g']
+            : $averagedReward['shards'];
+        [$secretary, $leader, $leaderLevel, $leaderEquipment, $maxHpBefore, $currentHpBefore, $leaderDisplayName, $leaderDefinition, $leaderCombatantId, $leaderSnapshot, $memberSnapshots, $memberRows, $playerSnapshots] = $this->partyCombatInputs($profile, $borrowed);
 
         $partySize = count($playerSnapshots);
         $enemyCount = $this->alphaV1Catalog->explorationEnemyCountForPartySize($huntingGroundKey, $partySize);

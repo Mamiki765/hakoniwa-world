@@ -110,7 +110,7 @@ interface CombatRound {
 
 interface Battle {
     id: string;
-    context: 'tutorial' | 'scripted_loss' | 'playtest' | 'exploration' | 'trial';
+    context: 'tutorial' | 'scripted_loss' | 'playtest' | 'exploration' | 'trial' | 'guide_duel';
     party?: {
         members: Array<PartyBattleMember>;
         enemies?: Array<PartyBattleMember>;
@@ -156,6 +156,7 @@ interface Battle {
         system_messages: string[];
     } | null;
     challenge_intro?: string | null;
+    duel_dialogue?: string[] | null;
     hunting_ground?: {
         key: string;
         name: string;
@@ -171,7 +172,7 @@ interface Battle {
             name: string;
             category: 'weapon' | 'armor' | 'accessory';
             item_level: number;
-            rarity: 'common' | 'uncommon' | 'rare' | 'epic';
+            rarity: 'common' | 'uncommon' | 'rare' | 'epic' | 'unique';
             rarity_label: string;
             affixes: Array<{ key: string; label: string; target: string; value: number }>;
         };
@@ -481,6 +482,7 @@ interface UndergroundState {
     trial: TrialState | null;
     awakening: AwakeningState | null;
     recollections?: RecollectionState;
+    guide_duel?: { unlocked: boolean; won: boolean; challenge_lines: string[]; accept_lines: string[]; cancel_lines: string[]; rematch_lines: string[]; solo_rematch_lines: string[] } | null;
     ai?: UndergroundAiConfiguration | null;
     battle: Battle | null;
     party_candidates?: PartyCandidate[];
@@ -588,7 +590,17 @@ const pendingAwakeningTechniqueMutation = ref<PendingMutation | null>(null);
 const awakeningMessageDraft = ref('');
 const awakeningTechniqueDraft = ref<string | null>(null);
 const equipmentView = ref<'main' | 'shop' | 'guide' | 'ai' | 'vault' | 'party'>('main');
-const guideMode = ref<'basic' | 'conversation' | 'recollections' | 'serious_talk' | 'respec'>('basic');
+const guideMode = ref<'basic' | 'conversation' | 'recollections' | 'serious_talk' | 'respec' | 'guide_duel'>('basic');
+const guideDuelWithParty = ref(true);
+const guideDuelCancelled = ref(false);
+const pendingGuideDuel = ref<{ requestId: string; borrowedSecretaryIds: number[] } | null>(null);
+const guideDuelLines = computed(() => {
+    const duel = state.value?.guide_duel;
+    if (!duel) return [];
+    if (guideDuelCancelled.value) return duel.cancel_lines;
+    if (!duel.won) return duel.challenge_lines;
+    return guideDuelWithParty.value && confirmedPartyIds.value.length > 0 ? duel.rematch_lines : duel.solo_rematch_lines;
+});
 const guideConversation = ref<GuideConversationStart | null>(null);
 const guideConversationLine = ref('');
 const guideConversationPhase = ref<'topic' | 'reply' | 'punch'>('topic');
@@ -1112,9 +1124,29 @@ async function completeRecollection(entry: RecollectionEntry): Promise<void> {
 }
 
 function openSeriousTalk(): void {
-    if (state.value?.recollections?.serious_talk === null
-        || state.value?.recollections?.serious_talk === undefined) return;
+    if (!state.value?.recollections?.serious_talk && !state.value?.guide_duel?.unlocked) return;
     openGuide('serious_talk');
+}
+
+async function runGuideDuel(): Promise<void> {
+    if (busy.value || !state.value?.guide_duel?.unlocked) return;
+    const pending = pendingGuideDuel.value ?? { requestId: requestId(), borrowedSecretaryIds: guideDuelWithParty.value ? [...confirmedPartyIds.value] : [] };
+    pendingGuideDuel.value = pending;
+    busy.value = true;
+    error.value = '';
+    try {
+        const battle = await api<Battle>('/api/v1/me/underground/guide-duel', {
+            method: 'POST', body: JSON.stringify({ request_id: pending.requestId, borrowed_secretary_ids: pending.borrowedSecretaryIds }),
+        });
+        await refresh(false);
+        selectedBattle.value = battle;
+        pendingGuideDuel.value = null;
+    } catch (caught) {
+        if (shouldReleasePendingExplorationRequest(caught)) pendingGuideDuel.value = null;
+        error.value = caught instanceof Error ? caught.message : '決闘の結果を確認できませんでした。';
+    } finally {
+        busy.value = false;
+    }
 }
 
 function chooseSeriousTalk(choice: SeriousTalkChoice): void {
@@ -2238,6 +2270,10 @@ onUnmounted(() => {
                         <p v-for="message in currentBattle.first_clear_story.system_messages" :key="message">{{ message }}</p>
                     </div>
                 </section>
+                <section v-if="currentBattle.context === 'guide_duel'" class="underground-first-clear-story" aria-label="決闘の結末">
+                    <p v-for="(line, index) in currentBattle.duel_dialogue ?? []" :key="index">{{ line }}</p>
+                    <p>決闘前のHP・MP・覚醒状態に戻りました。経験値・Gの増減はありません。</p>
+                </section>
             </section>
 
             <div v-if="state.stage === 'escape_pending'" class="underground-story underground-after-battle">
@@ -2368,7 +2404,7 @@ onUnmounted(() => {
                         過去のイベントを振り返る
                     </button>
                     <button
-                        v-if="state.recollections?.serious_talk"
+                        v-if="state.recollections?.serious_talk || state.guide_duel?.unlocked"
                         type="button"
                         :aria-pressed="guideMode === 'serious_talk'"
                         @click="openSeriousTalk"
@@ -2456,15 +2492,29 @@ onUnmounted(() => {
                     </article>
                     <p v-else class="underground-guide-conversation">読める記録を選んでください。</p>
                 </section>
-                <section v-else-if="guideMode === 'serious_talk' && state.recollections?.serious_talk && seriousTalkScene" class="underground-guide-serious-talk" aria-labelledby="underground-serious-talk-title">
+                <section v-else-if="guideMode === 'serious_talk' && (seriousTalkScene || state.guide_duel?.unlocked)" class="underground-guide-serious-talk" aria-labelledby="underground-serious-talk-title">
                     <header>
-                        <h2 id="underground-serious-talk-title">{{ state.recollections.serious_talk.title }}</h2>
+                        <h2 id="underground-serious-talk-title">{{ state.recollections?.serious_talk?.title ?? '案内人に真剣な話をする' }}</h2>
                     </header>
                     <div class="underground-story">
-                        <p v-for="(line, index) in seriousTalkScene.lines" :key="`${seriousTalkSceneKey}-${index}`">{{ line }}</p>
+                        <p v-for="(line, index) in seriousTalkScene?.lines ?? []" :key="`${seriousTalkSceneKey}-${index}`">{{ line }}</p>
                     </div>
                     <div class="underground-guide-actions underground-serious-talk-actions">
-                        <button v-for="choice in seriousTalkScene.choices" :key="choice.key" type="button" @click="chooseSeriousTalk(choice)">{{ choice.label }}</button>
+                        <button v-for="choice in seriousTalkScene?.choices ?? []" :key="choice.key" type="button" @click="chooseSeriousTalk(choice)">{{ choice.label }}</button>
+                        <button v-if="state.guide_duel?.unlocked" type="button" @click="guideMode = 'guide_duel'; guideDuelCancelled = false">勝負を挑む</button>
+                    </div>
+                </section>
+                <section v-else-if="guideMode === 'guide_duel' && state.guide_duel?.unlocked" class="underground-guide-serious-talk" aria-label="夢の女王との決闘">
+                    <h2>夢の女王との決闘</h2>
+                    <label v-if="confirmedPartyIds.length > 0 && !guideDuelCancelled"><input v-model="guideDuelWithParty" type="checkbox" :disabled="busy || pendingGuideDuel !== null">確定済みのレンタルPTで挑む</label>
+                    <p v-for="(line, index) in guideDuelLines" :key="index">{{ line }}</p>
+                    <p>無料で挑戦できます。決闘後はHP・MP・覚醒が挑戦前の状態に戻り、敗北ペナルティはありません。</p>
+                    <div class="underground-guide-actions">
+                        <template v-if="!guideDuelCancelled">
+                            <button type="button" :disabled="busy || Boolean(state.trial?.active_run) || state.skill_rebuild_required" @click="runGuideDuel">{{ pendingGuideDuel ? '決闘の結果を再確認する' : 'それでも構わない' }}</button>
+                            <button type="button" :disabled="busy" @click="guideDuelCancelled = true">やめておく</button>
+                        </template>
+                        <button v-else type="button" @click="openSeriousTalk">戻る</button>
                     </div>
                 </section>
                 <section v-else-if="guideMode === 'respec'" class="underground-respec-panel" aria-labelledby="underground-respec-title">

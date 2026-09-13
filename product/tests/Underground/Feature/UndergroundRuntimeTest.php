@@ -10,6 +10,7 @@ use App\Application\Underground\CanonicalUndergroundCombat;
 use App\Application\Underground\CanonicalUndergroundExplorationCombat;
 use App\Application\Underground\UndergroundAlphaV1PlayerCatalog;
 use App\Application\Underground\UndergroundBattleSeed;
+use App\Application\Underground\UndergroundEquipmentService;
 use App\Application\Underground\UndergroundIntroService;
 use App\Application\Underground\UndergroundProfileService;
 use App\Application\Underground\UndergroundRuntimeException;
@@ -49,6 +50,89 @@ use Tests\TestCase;
 final class UndergroundRuntimeTest extends TestCase
 {
     use RefreshDatabase;
+
+    public function test_guide_duel_preserves_both_owners_and_rental_resources_and_grants_gram_once(): void
+    {
+        [$leader, $secretary] = $this->secretaryUser();
+        $leader->forceFill(['visitor_code' => 'DUELSELF'])->save();
+        $profile = $this->unlockExploration($secretary);
+        UndergroundTrialProgress::query()->create([
+            'underground_profile_id' => $profile->id, 'trial_key' => 'trial_02',
+            'unlocked_at' => Carbon::now(), 'first_cleared_at' => Carbon::now(),
+        ]);
+        [$owner, $borrowed] = $this->secretaryUser();
+        $owner->forceFill(['visitor_code' => 'DUELLEND'])->save();
+        $borrowedProfile = $this->unlockExploration($borrowed, growthPathKey: 'blessing_green');
+        app(UndergroundStarterEquipmentService::class)->reconcile($borrowedProfile);
+        app(SecretaryLendingService::class)->update($owner, true);
+        app(UndergroundIntroService::class)->updateRentalParty($leader, (string) Str::uuid(), [$borrowed->id]);
+        $profile->refresh()->update(['current_hp' => 1, 'awakening_gauge' => 120, 'shard_balance' => 0,
+            'next_battle_at' => Carbon::now()->addHour()]);
+        $resources = ['combat_level', 'combat_xp', 'shard_balance', 'current_hp', 'awakening_gauge', 'next_battle_at', 'rental_party', 'shining_kingdom_key_balance'];
+        $before = $profile->refresh()->only($resources);
+        $ownerBefore = $borrowedProfile->refresh()->only($resources);
+        $combat = new ScriptedUndergroundPartyCombat(0, 0, 0);
+        $this->app->instance(AtomicUndergroundPartyCombat::class, $combat);
+        $runtime = app(UndergroundRuntimeService::class);
+        $requestId = (string) Str::uuid();
+        $battle = $runtime->challengeGuide($leader, $requestId, [$borrowed->id])['battle'];
+        $this->assertSame('guide_duel', $battle->activity_type);
+        $this->assertSame(['dream_queen'], $combat->calls[0]['enemy_keys']);
+        $this->assertCount(2, $combat->calls[0]['player_snapshots']);
+        $this->assertEquals($before, $profile->refresh()->only($resources));
+        $this->assertEquals($ownerBefore, $borrowedProfile->refresh()->only($resources));
+        $this->assertSame(0, SecretaryLendingParticipation::query()->count());
+        $this->assertSame(0, $battle->xp_awarded);
+        $this->assertSame(0, $battle->shard_delta);
+        $item = $battle->snapshot['drop']['item'];
+        $this->assertSame('demon_sword_gram', $item['key']);
+        $this->assertFalse($item['equippable']);
+        $this->assertFalse($item['sellable']);
+        $this->assertSame(1254, $item['item_level']);
+        $this->assertContains('「良き夢のあらんことを」', $runtime->projectGuideDuel($battle)['duel_dialogue']);
+        SecretaryLendingSetting::query()->where('secretary_id', $borrowed->id)->update(['is_available' => false]);
+        $retry = $runtime->challengeGuide($leader, $requestId, [$borrowed->id]);
+        $this->assertTrue($retry['duplicate']);
+        $this->assertSame($battle->id, $retry['battle']->id);
+        $this->assertCount(1, $combat->calls);
+        $repeat = $runtime->challengeGuide($leader, (string) Str::uuid(), [])['battle'];
+        $this->assertFalse($repeat->snapshot['first_victory']);
+        $this->assertContains('「……ふむ、すでに持ってましたか」', $repeat->snapshot['duel_dialogue']);
+        $this->assertSame(1, UndergroundOwnedEquipment::query()->where('definition_key', 'demon_sword_gram')->count());
+        $this->assertEquals($before, $profile->refresh()->only($resources));
+        $equipment = app(UndergroundEquipmentService::class);
+        $this->assertRuntimeError('underground_equipment_not_equippable', fn () => $equipment->equip($leader, (string) Str::uuid(), $item['id']));
+        $this->assertRuntimeError('underground_equipment_not_sellable', fn () => $equipment->sell($leader, (string) Str::uuid(), $item['id']));
+        $this->actingAs($leader)->postJson('/api/v1/me/underground/guide-duel', [
+            'request_id' => $requestId, 'borrowed_secretary_ids' => [$borrowed->id],
+        ])->assertOk()->assertJsonPath('data.context', 'guide_duel');
+        $this->actingAs($owner)->getJson('/api/v1/me/underground/battles/'.$battle->request_id)->assertNotFound();
+    }
+
+    public function test_guide_duel_requires_kingdom_unlock_and_real_defeat_costs_nothing(): void
+    {
+        [$user, $secretary] = $this->secretaryUser();
+        $user->forceFill(['visitor_code' => 'DUELLOSS'])->save();
+        $profile = $this->unlockExploration($secretary);
+        $runtime = app(UndergroundRuntimeService::class);
+        $this->assertFalse($runtime->projectGuideDuelState($profile)['unlocked']);
+        $this->assertRuntimeError('underground_hunting_ground_locked', fn () => $runtime->challengeGuide($user, (string) Str::uuid()));
+        UndergroundTrialProgress::query()->create([
+            'underground_profile_id' => $profile->id, 'trial_key' => 'trial_02',
+            'unlocked_at' => Carbon::now(), 'first_cleared_at' => Carbon::now(),
+        ]);
+        $profile->update(['current_hp' => 1, 'awakening_gauge' => 120]);
+        $battle = $runtime->challengeGuide($user, (string) Str::uuid())['battle'];
+        $this->assertSame('defeat', $battle->result);
+        $this->assertSame([
+            '「……これでいいでしょう」', '「ふふ、やはり戦うのは楽しいものですね」',
+            '「ええ。本当は好きなんですよ、私、戦うの」', '「起きれますか？手当してあげますよ」',
+        ], $runtime->projectGuideDuel($battle)['duel_dialogue']);
+        $this->assertSame(1, $profile->refresh()->current_hp);
+        $this->assertSame(120, $profile->awakening_gauge);
+        $this->assertSame(0, UndergroundOwnedEquipment::query()->where('definition_key', 'demon_sword_gram')->count());
+        $this->assertFalse($runtime->projectGuideDuelState($profile)['won']);
+    }
 
     protected function tearDown(): void
     {

@@ -38,6 +38,10 @@ export interface EquipmentItem {
     locked?: boolean;
     unlock_requirement?: string | null;
     effect_text?: string | null;
+    equippable?: boolean;
+    sellable?: boolean;
+    description?: string;
+    commemorative_effects?: string[];
     acquired_at?: string;
 }
 
@@ -118,7 +122,7 @@ function affixValue(affix: EquipmentAffix): string {
         </header>
         <dl class="underground-equipment-card-stats">
             <div><dt>Item Lv</dt><dd>{{ item.item_level }}</dd></div>
-            <div v-if="item.category === 'weapon'"><dt>武器力</dt><dd>{{ item.weapon_power }}</dd></div>
+            <div v-if="item.category === 'weapon' && item.equippable !== false"><dt>武器力</dt><dd>{{ item.weapon_power }}</dd></div>
             <div v-if="item.physical_defense > 0"><dt>物防</dt><dd>{{ item.physical_defense }}</dd></div>
             <div v-if="item.magical_defense > 0"><dt>魔防</dt><dd>{{ item.magical_defense }}</dd></div>
             <div v-if="item.max_hp > 0"><dt>最大HP</dt><dd>+{{ item.max_hp }}</dd></div>
@@ -130,12 +134,17 @@ function affixValue(affix: EquipmentAffix): string {
             </li>
         </ul>
         <p v-if="item.effect_text" class="underground-equipment-card-effect">{{ item.effect_text }}</p>
+        <ul v-if="item.commemorative_effects?.length" class="underground-equipment-card-affixes" aria-label="記念品の説明">
+            <li v-for="effect in item.commemorative_effects" :key="effect">{{ effect }}</li>
+        </ul>
+        <p v-if="item.description" class="underground-equipment-card-effect">{{ item.description }}</p>
         <footer class="underground-equipment-card-footer">
             <slot name="status"></slot>
             <slot name="price">
-                <span v-if="mode === 'owned'">売却価格 {{ item.sell_price.toLocaleString('ja-JP') }}G</span>
+                <span v-if="item.sellable === false">売却不可</span>
+                <span v-else-if="mode === 'owned'">売却価格 {{ item.sell_price.toLocaleString('ja-JP') }}G</span>
             </slot>
-            <button v-if="$slots.action" class="button secondary" type="button" :disabled="disabled" @click="emit('action')">
+            <button v-if="$slots.action && item.equippable !== false" class="button secondary" type="button" :disabled="disabled" @click="emit('action')">
                 <slot name="action"></slot>
             </button>
         </footer>

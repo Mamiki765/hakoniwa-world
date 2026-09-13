@@ -88,10 +88,25 @@ final readonly class AlphaV1CombatModel
         $mpHistory = [];
         $logs = [];
         $combatants = [...$players, ...$enemies];
+        $guide = null;
+        foreach ($enemies as $enemy) {
+            if ($enemy->guideDuel !== null) {
+                if (count($enemies) !== 1) {
+                    throw new InvalidArgumentException('The guide duel requires exactly one enemy.');
+                }
+                $guide = $enemy;
+                $this->guideDuelNarration($guide, 1, $guide->guideDuel['opening_lines'], $players, $logs);
+                foreach ($players as $player) {
+                    $player->awakeningUnlocked = true;
+                    $player->awakeningTechniqueKey ??= $this->awakening->defaultTechniqueKey((string) $player->flags['awakening_growth_path']);
+                    $this->activateAwakening($player, 1, $logs, 'guide:forced:'.$player->combatantId, true);
+                }
+            }
+        }
         $completedRounds = $this->orchestrator->run(
             $maxRounds,
             fn (): bool => $this->partyTeamAlive($players) && $this->partyTeamAlive($enemies),
-            function (int $round) use ($catalog, $combatants, $random, $naturalRecovery, &$metrics, &$mpHistory, &$logs): void {
+            function (int $round) use ($catalog, $combatants, $players, $enemies, $guide, $random, $naturalRecovery, &$metrics, &$usage, &$mpHistory, &$logs): void {
                 foreach ($combatants as $state) {
                     if (! $state->alive()) {
                         continue;
@@ -117,6 +132,10 @@ final readonly class AlphaV1CombatModel
                     );
                     $this->annotatePartyLogs($logs, $offset, $state, $state, [$state->combatantId]);
                 }
+                if ($round === 1 && $guide !== null) {
+                    $this->executeGuideDuelAttack($guide, $players, $random, $round, $metrics, $usage, $logs, 'opening');
+                    $this->interruptGuideDuel($enemies, $players, $random, $round, $metrics, $usage, $logs);
+                }
             },
             fn (int $round): array => array_map(
                 static fn (BuildCombatState $state): string => $state->combatantId,
@@ -125,6 +144,14 @@ final readonly class AlphaV1CombatModel
             function (string $actorId, int $round) use ($catalog, $combatants, $players, $enemies, $random, &$metrics, &$usage, &$mpHistory, &$logs): void {
                 $actor = $combatants[$actorId];
                 if (! $actor->alive()) {
+                    return;
+                }
+                if ($actor->guideDuel !== null) {
+                    if ($round > 1) {
+                        $this->executeGuideDuelAttack($actor, $players, $random, $round, $metrics, $usage, $logs);
+                        $this->interruptGuideDuel($enemies, $players, $random, $round, $metrics, $usage, $logs);
+                    }
+
                     return;
                 }
                 $target = $actor->side === 'player'
@@ -148,6 +175,7 @@ final readonly class AlphaV1CombatModel
                     $actor->side === 'player' ? array_values($enemies) : array_values($players),
                 );
                 $this->annotatePartyLogs($logs, $offset, $actor, $target, [$target->combatantId]);
+                $this->interruptGuideDuel($enemies, $players, $random, $round, $metrics, $usage, $logs);
                 if ($actor->side === 'enemy') {
                     $damaged = [];
                     foreach (array_slice($logs, $offset) as $row) {
@@ -166,7 +194,7 @@ final readonly class AlphaV1CombatModel
                     }
                 }
             },
-            function (int $round) use ($catalog, $combatants, $players, $enemies, &$metrics, &$statusUptime, &$logs, &$mpHistory): void {
+            function (int $round) use ($catalog, $combatants, $players, $enemies, $random, &$metrics, &$usage, &$statusUptime, &$logs, &$mpHistory): void {
                 foreach ($combatants as $state) {
                     $opponents = $state->side === 'player' ? $enemies : $players;
                     $opponent = $this->firstAlivePartyTarget($opponents) ?? reset($opponents);
@@ -178,6 +206,15 @@ final readonly class AlphaV1CombatModel
                         $this->advanceAwakeningLifestealRound($state, $round, $logs);
                     }
                     $this->annotatePartyLogs($logs, $offset, $state, $state, [$state->combatantId]);
+                    $this->interruptGuideDuel($enemies, $players, $random, $round, $metrics, $usage, $logs);
+                    if ($state->guideDuel !== null && $state->alive() && $this->partyTeamAlive($players)) {
+                        $amount = min($state->maxHp - $state->hp, (int) $state->guideDuel['heal_per_round']);
+                        $state->hp += $amount;
+                        $row = $this->logRow($round, $state, 'guide_regeneration', -$amount, false, false,
+                            effectType: 'recovery', actionId: 'guide-duel:'.$round.':regeneration', targetState: $state, targetIds: [$state->combatantId]);
+                        $row['message'] = '自動回復';
+                        $logs[] = $row;
+                    }
                 }
                 $logs[] = [
                     'kind' => 'round_end',
@@ -195,6 +232,9 @@ final readonly class AlphaV1CombatModel
         $winner = ! $this->partyTeamAlive($players)
             ? 'enemy'
             : (! $this->partyTeamAlive($enemies) ? 'player' : 'stalemate');
+        if ($guide !== null && ! $guide->alive()) {
+            $this->guideDuelNarration($guide, $completedRounds, [$guide->guideDuel['defeated_line']], $players, $logs);
+        }
         $finalStates = $this->partyStateSnapshots(array_values([...$players, ...$enemies]));
         $awakenings = [];
         foreach ($players as $player) {
@@ -970,6 +1010,7 @@ final readonly class AlphaV1CombatModel
             $modifiers,
             $phaseTransition,
             is_array($enemy['normal_attack']) ? $enemy['normal_attack'] : [],
+            is_array($enemy['guide_duel'] ?? null) ? $enemy['guide_duel'] : null,
         );
     }
 
@@ -1445,6 +1486,9 @@ final readonly class AlphaV1CombatModel
                 $actor,
                 [$actor->combatantId],
             );
+        }
+        if ($actor->side === 'player') {
+            $this->interruptGuideDuel($partyEnemies, $partyAllies, $random, $round, $metrics, $actionUsage, $actionLog);
         }
     }
 
@@ -2659,6 +2703,11 @@ final readonly class AlphaV1CombatModel
         $target->barrier -= $barrierAbsorbed;
         $reportedDamage = $damage - $barrierAbsorbed;
         $hpDamage = min($target->hp, $reportedDamage);
+        if ($target->guideDuel !== null && ! ($target->flags['guide_second_used'] ?? false)
+            && ($target->hp - $hpDamage) * 100 <= $target->maxHp * (int) $target->guideDuel['threshold_percent']) {
+            $target->flags['guide_second_pending'] = true;
+            $hpDamage = min($hpDamage, max(0, $target->hp - 1));
+        }
         $target->hp -= $hpDamage;
 
         if ($sourceIsPlayer) {
@@ -2863,8 +2912,9 @@ final readonly class AlphaV1CombatModel
         int $round,
         array &$actionLog,
         ?string $actionId = null,
+        bool $forced = false,
     ): bool {
-        if (! $this->awakening->tryActivate($player, $this->rules)) {
+        if (! ($forced ? $this->awakening->forceActivate($player, $this->rules) : $this->awakening->tryActivate($player, $this->rules))) {
             return false;
         }
         $row = [
@@ -2892,6 +2942,83 @@ final readonly class AlphaV1CombatModel
         $actionLog[] = $row;
 
         return true;
+    }
+
+    /** @param array<array-key, BuildCombatState> $enemies
+     * @param  array<array-key, BuildCombatState>  $players
+     * @param  array<string, int|null>  $metrics
+     * @param  array<string, int>  $usage
+     * @param  list<array<string, mixed>>  $logs
+     */
+    private function interruptGuideDuel(array $enemies, array $players, UndergroundRandom $random, int $round, array &$metrics, array &$usage, array &$logs): void
+    {
+        foreach ($enemies as $enemy) {
+            if ($enemy->guideDuel !== null && $enemy->alive() && $this->partyTeamAlive($players)
+                && ($enemy->flags['guide_second_pending'] ?? false) && ! ($enemy->flags['guide_second_used'] ?? false)) {
+                $enemy->flags['guide_second_used'] = true;
+                $this->executeGuideDuelAttack($enemy, $players, $random, $round, $metrics, $usage, $logs, 'threshold');
+            }
+        }
+    }
+
+    /** @param array<array-key, BuildCombatState> $players
+     * @param  array<string, int|null>  $metrics
+     * @param  array<string, int>  $usage
+     * @param  list<array<string, mixed>>  $logs
+     */
+    private function executeGuideDuelAttack(BuildCombatState $guide, array $players, UndergroundRandom $random, int $round, array &$metrics, array &$usage, array &$logs, ?string $ultimate = null): void
+    {
+        $definition = $guide->guideDuel;
+        if ($definition === null) {
+            throw new InvalidArgumentException('Guide duel attack requires its content definition.');
+        }
+        if ($ultimate === null && $this->actionImpaired($guide, $random, $round)) {
+            $offset = count($logs);
+            $logs[] = $this->logRow($round, $guide, 'action_impaired', 0, false, false);
+            $this->annotatePartyLogs($logs, $offset, $guide, $guide, [$guide->combatantId]);
+
+            return;
+        }
+        $area = $ultimate === null && $random->integer('guide-duel:area', 1, 10000) <= $definition['area_chance_bps'];
+        $action = $ultimate !== null ? 'guide_ultimate' : ($area ? 'guide_milky_way' : 'normal_attack');
+        $actionId = 'guide-duel:'.$round.':'.($ultimate ?? 'regular');
+        $effect = $guide->normalAttack;
+        $hits = $ultimate !== null ? $random->integer('guide-duel:ultimate-hits', $definition['ultimate_min_hits'], $definition['ultimate_max_hits']) : 1;
+        $effect['hits'] = $hits;
+        $effect['potency_bps'] = $ultimate !== null ? $definition['ultimate_potency_bps'] : ($area ? $definition['area_potency_bps'] : $effect['potency_bps']);
+        $label = $ultimate !== null ? $definition['ultimate_name'] : ($area ? $definition['area_name'] : '通常攻撃');
+        if ($ultimate !== null) {
+            $this->guideDuelNarration($guide, $round, [$definition[$ultimate === 'opening' ? 'ultimate_opening_line' : 'ultimate_threshold_line'],
+                $definition['ultimate_description'], $hits.'連続ヒット！'], $players, $logs);
+        } elseif ($area) {
+            $line = $definition['area_lines'][$random->integer('guide-duel:area-line', 0, count($definition['area_lines']) - 1)];
+            $this->guideDuelNarration($guide, $round, [$line, $definition['area_description']], $players, $logs);
+        }
+        $targets = $area ? array_values(array_filter($players, static fn (BuildCombatState $p): bool => $p->alive()))
+            : array_filter([$this->enemyPartyTarget($guide, array_values($players), $random, $actionId)]);
+        foreach ($targets as $target) {
+            $offset = count($logs);
+            $this->applyDamage($guide, $target, $effect, $random, $round, $action, $metrics, $usage, $logs,
+                targetIds: [$target->combatantId], actionId: $actionId);
+            $this->annotatePartyLogs($logs, $offset, $guide, $target, [$target->combatantId]);
+            for ($index = $offset, $count = count($logs); $index < $count; $index++) {
+                if (($logs[$index]['action'] ?? null) === $action) {
+                    $logs[$index]['message'] = $label;
+                }
+            }
+        }
+    }
+
+    /** @param list<string> $lines
+     * @param  array<array-key, BuildCombatState>  $players
+     * @param  list<array<string, mixed>>  $logs
+     */
+    private function guideDuelNarration(BuildCombatState $guide, int $round, array $lines, array $players, array &$logs): void
+    {
+        $leader = reset($players);
+        $logs[] = ['kind' => 'narration', 'effect_type' => 'narration', 'round' => $round,
+            'team' => 'enemy', 'actor_id' => $guide->combatantId, 'action' => 'guide_duel',
+            'lines' => array_map(static fn (string $line): string => str_replace('○○', $leader->label, $line), $lines)];
     }
 
     private function gainAwakeningGauge(BuildCombatState $player, int $gain): void

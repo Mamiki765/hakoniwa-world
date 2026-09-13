@@ -202,6 +202,16 @@ final class UndergroundIntroController extends Controller
         });
     }
 
+    public function challengeGuide(UndergroundExploreRequest $request, UndergroundRuntimeService $service): JsonResponse
+    {
+        return $this->respond(function () use ($request, $service): array {
+            $ids = $request->validated()['borrowed_secretary_ids'] ?? [];
+            $result = $service->challengeGuide($request->user(), $request->string('request_id')->value(), array_map('intval', $ids));
+
+            return $service->projectGuideDuel($result['battle']);
+        });
+    }
+
     public function skipHuntingGround(
         UndergroundHuntingGroundSkipRequest $request,
         UndergroundRuntimeService $service,
