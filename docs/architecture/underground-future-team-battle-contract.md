@@ -23,10 +23,12 @@ their historical single-enemy/self result. `single_ally` uses the living ally wi
 ratio, with stable party order as the tie-breaker. This is the content extension point for a
 future PT Boss's area actions; no concrete Boss or scaling value is authored in 3.8.0.
 
-For recovery skills, tank and attacker builds keep `self` targeting. A healer build using the
-current `blessing_green` growth path may resolve the same recovery effect as `single_ally` and
-therefore heal the lowest-HP living party member. The Blessing awakening remains the separate
-one-shot `all_allies` recovery and 100% revival contract below.
+Party healing belongs to the authored skill/effect, not to a growth path or class. A Secretary
+using `mending_prayer` may heal the lowest-HP living party member regardless of whether their
+growth path is Martial, Guardianship, Blessing, or Free. `renewing_guard`, `crystal_aegis`, and
+other self-only skills remain `self`; acquiring a Blessing growth path does not redirect them.
+The Blessing awakening remains the separate one-shot `all_allies` recovery and 100% revival
+contract below.
 
 Direct references to the Secretary and current enemy in today's 1v1 implementation are an
 implementation result, not a narrower semantic contract.

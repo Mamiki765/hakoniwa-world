@@ -158,7 +158,7 @@ final class AlphaV1PartyCombatTest extends TestCase
         self::assertSame('enemy', $result->winner);
     }
 
-    public function test_healer_targets_the_lowest_hp_ally_while_non_healer_healing_remains_self_only(): void
+    public function test_mending_prayer_targets_the_lowest_hp_ally_while_renewing_guard_remains_self_only(): void
     {
         $catalog = $this->catalog(enemyHp: 1_000_000, enemyPower: 1, enemyAgility: 1);
         $healer = $this->player('borrowed:2', currentHp: 100);
@@ -171,7 +171,6 @@ final class AlphaV1PartyCombatTest extends TestCase
             'conditions' => [['type' => 'always']],
             'action' => 'normal_attack',
         ]];
-        $healer['party_healing_target_scope'] = 'single_ally';
         $healerResult = $this->model()->fightPartySnapshots(
             $catalog,
             [$this->player('secretary:1', currentHp: 1, defend: true), $healer],
@@ -204,28 +203,34 @@ final class AlphaV1PartyCombatTest extends TestCase
         self::assertIsArray($healerCost);
         self::assertSame($healerDecision['action_id'], $healerCost['action_id']);
 
-        $attacker = $this->player('secretary:3', currentHp: 1);
-        $attacker['active_skills'] = ['mending_prayer'];
-        $attacker['ai_rules'] = [[
+        $guard = $this->player('secretary:3', currentHp: 100);
+        $guard['active_skills'] = ['renewing_guard'];
+        $guard['ai_rules'] = [[
             'conditions' => [['type' => 'always']],
-            'action' => 'skill:mending_prayer',
+            'action' => 'skill:renewing_guard',
         ]];
-        $attacker['party_healing_target_scope'] = 'self';
-        $attackerResult = $this->model()->fightPartySnapshots(
+        $guardResult = $this->model()->fightPartySnapshots(
             $catalog,
-            [$attacker, $this->player('borrowed:4', currentHp: 1, defend: true)],
+            [$guard, $this->player('borrowed:4', currentHp: 1, defend: true)],
             ['party_target'],
             384,
             1,
             0,
         );
-        $attackerLog = collect($attackerResult->actionLog)->first(
-            static fn (array $row): bool => ($row['action'] ?? null) === 'mending_prayer'
+        $guardRecovery = collect($guardResult->actionLog)->first(
+            static fn (array $row): bool => ($row['action'] ?? null) === 'renewing_guard'
                 && ($row['effect_type'] ?? null) === 'recovery',
         );
-        self::assertIsArray($attackerLog);
-        self::assertSame('secretary:3', $attackerLog['target_id']);
-        self::assertSame('self', $attackerLog['target_scope']);
+        $guardBarrier = collect($guardResult->actionLog)->first(
+            static fn (array $row): bool => ($row['action'] ?? null) === 'renewing_guard'
+                && ($row['effect_type'] ?? null) === 'barrier',
+        );
+        self::assertIsArray($guardRecovery);
+        self::assertIsArray($guardBarrier);
+        self::assertSame('secretary:3', $guardRecovery['target_id']);
+        self::assertSame('self', $guardRecovery['target_scope']);
+        self::assertSame('secretary:3', $guardBarrier['target_id']);
+        self::assertSame('self', $guardBarrier['target_scope']);
     }
 
     public function test_ally_targeting_keeps_enemy_conditions_bound_to_the_current_enemy(): void
@@ -249,7 +254,6 @@ final class AlphaV1PartyCombatTest extends TestCase
                 'action' => 'normal_attack',
             ]],
         );
-        $healer->flags['party_healing_target_scope'] = 'single_ally';
         $ally = $this->combatState('player', 'secretary:1', 10);
         $enemy = $this->combatState('enemy', 'enemy:1', 100);
         $enemy->statuses['telegraph'] = [
@@ -273,6 +277,35 @@ final class AlphaV1PartyCombatTest extends TestCase
         $blockedDecision = $ai->select($healer, $enemy, $catalog, 1, allies: [$healer, $ally], enemies: [$enemy]);
         self::assertSame('normal_attack', $blockedDecision['type']);
         self::assertTrue($blockedDecision['mp_blocked']);
+    }
+
+    public function test_solo_ally_hp_condition_includes_the_actor_for_saved_party_healing_rules(): void
+    {
+        $catalog = $this->catalog(enemyHp: 100, enemyPower: 1, enemyAgility: 1);
+        $healer = $this->combatState(
+            'player',
+            'secretary:1',
+            10,
+            ['mending_prayer'],
+            [[
+                'conditions' => [['type' => 'ally_hp_lte', 'percent' => 50]],
+                'action' => 'skill:mending_prayer',
+                'target' => 'lowest_hp_ally',
+            ], [
+                'conditions' => [['type' => 'always']],
+                'action' => 'normal_attack',
+            ]],
+        );
+        $enemy = $this->combatState('enemy', 'enemy:1', 100);
+        $ai = new PriorityCombatAi;
+
+        $lowHp = $ai->select($healer, $enemy, $catalog, 1);
+        self::assertSame('mending_prayer', $lowHp['key']);
+        self::assertSame('secretary:1', $lowHp['target_id']);
+
+        $healer->hp = 60;
+        $healthy = $ai->select($healer, $enemy, $catalog, 1);
+        self::assertSame('normal_attack', $healthy['type']);
     }
 
     public function test_untaunted_target_rules_bind_taunts_and_enemy_attacks_and_skip_when_no_candidate_remains(): void
@@ -358,7 +391,6 @@ final class AlphaV1PartyCombatTest extends TestCase
         $healer = $this->player('borrowed:2', currentHp: 1_100);
         $healer['active_skills'] = ['mending_prayer'];
         $healer['ai_mode'] = 'default';
-        $healer['party_healing_target_scope'] = 'single_ally';
         $healer['ai_rules'] = [[
             'conditions' => [
                 ['type' => 'own_hp_lte', 'percent' => 55],
@@ -399,7 +431,6 @@ final class AlphaV1PartyCombatTest extends TestCase
         $healer = $this->player('borrowed:2', currentHp: 1);
         $healer['active_skills'] = ['mending_prayer'];
         $healer['ai_mode'] = 'default';
-        $healer['party_healing_target_scope'] = 'single_ally';
         $healer['ai_rules'] = [[
             'conditions' => [
                 ['type' => 'own_hp_lte', 'percent' => 55],
@@ -434,7 +465,6 @@ final class AlphaV1PartyCombatTest extends TestCase
         $healer = $this->player('borrowed:2', currentHp: 1_100);
         $healer['active_skills'] = ['mending_prayer'];
         $healer['ai_mode'] = 'default';
-        $healer['party_healing_target_scope'] = 'single_ally';
         $healer['ai_rules'] = [[
             'conditions' => [
                 ['type' => 'own_hp_lte', 'percent' => 55],

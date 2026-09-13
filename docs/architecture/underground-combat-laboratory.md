@@ -336,6 +336,8 @@ default presetは従来のbuilt-in AIの意図した挙動を最大16 rules・�
 
 custom AI ruleは、対応する行動に限ってoptionalな`target`を持てる。3.9.2で追加するselectorは、単体味方回復能力を持つ`mending_prayer`向けの`lowest_hp_ally`と、敵単体行動向けの`untaunted_enemy`だけである。対象指定は既存actionの対象能力を増やさず、self・全体・覚醒奥義やenemy通常攻撃のtarget方式を変更しない。旧ruleのように`target`がなければ従来の対象選択を維持する。
 
+`mending_prayer`の単体味方回復能力は祝福growth pathや固定classではなく、祝福Skill Treeで取得する当該skillのeffectに属する。growth pathとSkill Treeは直交するため、戦技・護身・祝福・自由のどのgrowth pathでも、`mending_prayer`を取得・装備していればPT味方を回復できる。`renewing_guard`、`crystal_aegis`等のself-only skillはgrowth pathにかかわらずselfを維持する。custom AIのtarget validationとdefault AIの味方HP条件化も、growth pathではなくactionのauthoring済みtarget capabilityを参照する。soloで`ally_hp_lte`を評価するときは本人を味方候補に含め、PT用に保存した回復ruleを同じ意味で利用できる。
+
 候補はbattle stateのstable orderから決定し、最低HP割合は生存味方だけ、未挑発敵は生存敵のうち有効な挑発sourceを持たないものだけを対象とする。挑発sourceが欠落または戦闘不能なら未挑発として扱う。対象候補が存在しないruleは実行不能として次のruleへ進み、候補選択と実際のaction targetを同じ`combatant_id`で結ぶ。自由文AIや汎用target DSLは導入しない。
 
 天断一閃の宣言eventは生存敵全体を対象として保持するが、各damage/effect行の`target_ids`は実際に解決した一体だけを記録する。damage式、主対象・副対象倍率、報酬、settlementは変更しない。

@@ -39,6 +39,7 @@ final class PriorityCombatAi
                 $action,
                 $actor,
                 $enemy,
+                $catalog,
                 $allies,
                 $enemies,
             );
@@ -155,6 +156,7 @@ final class PriorityCombatAi
         string $action,
         BuildCombatState $actor,
         BuildCombatState $currentEnemy,
+        AlphaV1BuildCatalog $catalog,
         array $allies,
         array $enemies,
     ): array {
@@ -162,8 +164,11 @@ final class PriorityCombatAi
             return [$currentEnemy];
         }
         if ($selector === 'lowest_hp_ally') {
-            if ($action !== 'skill:mending_prayer'
-                || ($actor->flags['party_healing_target_scope'] ?? 'self') !== 'single_ally') {
+            if (! in_array(
+                'lowest_hp_ally',
+                $this->configuration->targetSelectorsForAction($action, $catalog),
+                true,
+            )) {
                 return [];
             }
             $target = $this->lowestHpRatioTarget($allies !== [] ? $allies : [$actor]);
@@ -331,7 +336,8 @@ final class PriorityCombatAi
             'own_mp_lte' => is_int($percent) && $actor->mp * 100 <= AlphaV1CombatRules::MAX_MP * $percent,
             'own_mp_gte' => is_int($percent) && $actor->mp * 100 >= AlphaV1CombatRules::MAX_MP * $percent,
             'enemy_hp_lte' => is_int($percent) && $enemy->hp * 100 <= $enemy->maxHp * $percent,
-            'ally_hp_lte' => is_int($percent) && $this->allyPercentageAtOrBelow($allies, $percent),
+            'ally_hp_lte' => is_int($percent)
+                && $this->allyPercentageAtOrBelow($allies !== [] ? $allies : [$actor], $percent),
             'self_has_status' => is_string($status) && $actor->hasStatus($status),
             'self_lacks_status' => is_string($status) && ! $actor->hasStatus($status),
             'enemy_has_status' => is_string($status) && $enemy->hasStatus($status),

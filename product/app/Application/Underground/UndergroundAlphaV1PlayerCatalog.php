@@ -853,9 +853,6 @@ final readonly class UndergroundAlphaV1PlayerCatalog
                 'modifiers' => $skillBuild['passive_modifiers'],
                 'equipment' => $equipment,
                 'current_hp' => $currentHp,
-                'party_healing_target_scope' => $growthPathKey === 'blessing_green'
-                    ? 'single_ally'
-                    : 'self',
             ],
             'progression_stats' => $progressionStats,
             'combat_stats' => $combatStats,
