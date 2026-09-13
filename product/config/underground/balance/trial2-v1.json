@@ -4,7 +4,7 @@
     "trial_generation": 2,
     "trial_key": "trial_02",
     "trial_identity": "underground-trial-02-simulation-v1",
-    "combat_identity": "secretary-underground-alpha-v3",
+    "combat_identity": "secretary-underground-alpha-v4",
     "seed_strategy_identity": "trial-sequence-common-random-v1",
     "seed_range": {"start": 0, "count": 200},
     "max_rounds": 100,

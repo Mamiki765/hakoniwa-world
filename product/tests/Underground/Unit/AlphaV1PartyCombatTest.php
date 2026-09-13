@@ -58,10 +58,17 @@ final class AlphaV1PartyCombatTest extends TestCase
     public function test_winner_uses_team_survival_instead_of_leader_survival(): void
     {
         $catalog = $this->catalog(enemyHp: 1_000_000, enemyPower: 500_000, enemyAgility: 1_000);
+        $leader = $this->player('secretary:1', currentHp: 1);
+        $leader['stats']['agility'] = 2_000;
+        $leader['active_skills'] = ['bulwark_strike'];
+        $leader['ai_rules'] = [[
+            'conditions' => [['type' => 'always']],
+            'action' => 'skill:bulwark_strike',
+        ]];
         $result = $this->model()->fightPartySnapshots(
             $catalog,
             [
-                $this->player('secretary:1', currentHp: 1, defend: true),
+                $leader,
                 $this->player('borrowed:2', currentHp: 1, defend: true),
             ],
             ['party_target'],
@@ -77,7 +84,7 @@ final class AlphaV1PartyCombatTest extends TestCase
         $defeat = $this->model()->fightPartySnapshots(
             $catalog,
             [
-                $this->player('secretary:1', currentHp: 1, defend: true),
+                $leader,
                 $this->player('borrowed:2', currentHp: 1, defend: true),
             ],
             ['party_target'],
@@ -88,13 +95,45 @@ final class AlphaV1PartyCombatTest extends TestCase
         self::assertSame('enemy', $defeat->winner);
     }
 
+    public function test_untaunted_enemy_single_targets_are_retry_stable_and_can_reach_multiple_living_members(): void
+    {
+        $catalog = $this->catalog(enemyHp: 1_000_000, enemyPower: 1, enemyAgility: 1_000);
+        $fight = fn (int $seed) => $this->model()->fightPartySnapshots(
+            $catalog,
+            [
+                $this->player('secretary:1', currentHp: 1_000, defend: true),
+                $this->player('borrowed:2', currentHp: 1_000, defend: true),
+            ],
+            ['party_target'],
+            $seed,
+            8,
+            0,
+        );
+        $targets = static fn ($result): array => collect($result->actionLog)
+            ->filter(static fn (array $row): bool => ($row['actor_id'] ?? null) === 'enemy:1'
+                && ($row['effect_type'] ?? null) === 'damage')
+            ->pluck('target_id')
+            ->all();
+
+        $first = $targets($fight(383));
+        self::assertSame($first, $targets($fight(383)));
+        self::assertCount(2, array_unique($first));
+    }
+
     public function test_content_authored_all_enemy_scope_hits_each_opposing_combatant_with_explicit_ids(): void
     {
         $catalog = $this->catalog(enemyHp: 1_000_000, enemyPower: 500_000, enemyAgility: 1_000, enemyAoe: true);
+        $taunter = $this->player('secretary:1', currentHp: 1);
+        $taunter['stats']['agility'] = 2_000;
+        $taunter['active_skills'] = ['bulwark_strike'];
+        $taunter['ai_rules'] = [[
+            'conditions' => [['type' => 'always']],
+            'action' => 'skill:bulwark_strike',
+        ]];
         $result = $this->model()->fightPartySnapshots(
             $catalog,
             [
-                $this->player('secretary:1', currentHp: 1, defend: true),
+                $taunter,
                 $this->player('borrowed:2', currentHp: 1, defend: true),
             ],
             ['party_target'],
@@ -119,7 +158,7 @@ final class AlphaV1PartyCombatTest extends TestCase
         self::assertSame('enemy', $result->winner);
     }
 
-    public function test_healer_targets_the_lowest_hp_ally_while_non_healer_healing_remains_self_only(): void
+    public function test_mending_prayer_targets_the_lowest_hp_ally_while_renewing_guard_remains_self_only(): void
     {
         $catalog = $this->catalog(enemyHp: 1_000_000, enemyPower: 1, enemyAgility: 1);
         $healer = $this->player('borrowed:2', currentHp: 100);
@@ -132,7 +171,6 @@ final class AlphaV1PartyCombatTest extends TestCase
             'conditions' => [['type' => 'always']],
             'action' => 'normal_attack',
         ]];
-        $healer['party_healing_target_scope'] = 'single_ally';
         $healerResult = $this->model()->fightPartySnapshots(
             $catalog,
             [$this->player('secretary:1', currentHp: 1, defend: true), $healer],
@@ -165,28 +203,34 @@ final class AlphaV1PartyCombatTest extends TestCase
         self::assertIsArray($healerCost);
         self::assertSame($healerDecision['action_id'], $healerCost['action_id']);
 
-        $attacker = $this->player('secretary:3', currentHp: 1);
-        $attacker['active_skills'] = ['mending_prayer'];
-        $attacker['ai_rules'] = [[
+        $guard = $this->player('secretary:3', currentHp: 100);
+        $guard['active_skills'] = ['renewing_guard'];
+        $guard['ai_rules'] = [[
             'conditions' => [['type' => 'always']],
-            'action' => 'skill:mending_prayer',
+            'action' => 'skill:renewing_guard',
         ]];
-        $attacker['party_healing_target_scope'] = 'self';
-        $attackerResult = $this->model()->fightPartySnapshots(
+        $guardResult = $this->model()->fightPartySnapshots(
             $catalog,
-            [$attacker, $this->player('borrowed:4', currentHp: 1, defend: true)],
+            [$guard, $this->player('borrowed:4', currentHp: 1, defend: true)],
             ['party_target'],
             384,
             1,
             0,
         );
-        $attackerLog = collect($attackerResult->actionLog)->first(
-            static fn (array $row): bool => ($row['action'] ?? null) === 'mending_prayer'
+        $guardRecovery = collect($guardResult->actionLog)->first(
+            static fn (array $row): bool => ($row['action'] ?? null) === 'renewing_guard'
                 && ($row['effect_type'] ?? null) === 'recovery',
         );
-        self::assertIsArray($attackerLog);
-        self::assertSame('secretary:3', $attackerLog['target_id']);
-        self::assertSame('self', $attackerLog['target_scope']);
+        $guardBarrier = collect($guardResult->actionLog)->first(
+            static fn (array $row): bool => ($row['action'] ?? null) === 'renewing_guard'
+                && ($row['effect_type'] ?? null) === 'barrier',
+        );
+        self::assertIsArray($guardRecovery);
+        self::assertIsArray($guardBarrier);
+        self::assertSame('secretary:3', $guardRecovery['target_id']);
+        self::assertSame('self', $guardRecovery['target_scope']);
+        self::assertSame('secretary:3', $guardBarrier['target_id']);
+        self::assertSame('self', $guardBarrier['target_scope']);
     }
 
     public function test_ally_targeting_keeps_enemy_conditions_bound_to_the_current_enemy(): void
@@ -210,7 +254,6 @@ final class AlphaV1PartyCombatTest extends TestCase
                 'action' => 'normal_attack',
             ]],
         );
-        $healer->flags['party_healing_target_scope'] = 'single_ally';
         $ally = $this->combatState('player', 'secretary:1', 10);
         $enemy = $this->combatState('enemy', 'enemy:1', 100);
         $enemy->statuses['telegraph'] = [
@@ -234,6 +277,35 @@ final class AlphaV1PartyCombatTest extends TestCase
         $blockedDecision = $ai->select($healer, $enemy, $catalog, 1, allies: [$healer, $ally], enemies: [$enemy]);
         self::assertSame('normal_attack', $blockedDecision['type']);
         self::assertTrue($blockedDecision['mp_blocked']);
+    }
+
+    public function test_solo_ally_hp_condition_includes_the_actor_for_saved_party_healing_rules(): void
+    {
+        $catalog = $this->catalog(enemyHp: 100, enemyPower: 1, enemyAgility: 1);
+        $healer = $this->combatState(
+            'player',
+            'secretary:1',
+            10,
+            ['mending_prayer'],
+            [[
+                'conditions' => [['type' => 'ally_hp_lte', 'percent' => 50]],
+                'action' => 'skill:mending_prayer',
+                'target' => 'lowest_hp_ally',
+            ], [
+                'conditions' => [['type' => 'always']],
+                'action' => 'normal_attack',
+            ]],
+        );
+        $enemy = $this->combatState('enemy', 'enemy:1', 100);
+        $ai = new PriorityCombatAi;
+
+        $lowHp = $ai->select($healer, $enemy, $catalog, 1);
+        self::assertSame('mending_prayer', $lowHp['key']);
+        self::assertSame('secretary:1', $lowHp['target_id']);
+
+        $healer->hp = 60;
+        $healthy = $ai->select($healer, $enemy, $catalog, 1);
+        self::assertSame('normal_attack', $healthy['type']);
     }
 
     public function test_untaunted_target_rules_bind_taunts_and_enemy_attacks_and_skip_when_no_candidate_remains(): void
@@ -289,6 +361,14 @@ final class AlphaV1PartyCombatTest extends TestCase
             ->mapWithKeys(static fn (array $row): array => [$row['actor_id'] => $row['target_id']]);
         self::assertSame('secretary:1', $enemyDamage['enemy:1']);
         self::assertSame('borrowed:2', $enemyDamage['enemy:2']);
+        $deadTaunterFallback = collect($result->actionLog)->first(
+            static fn (array $row): bool => ($row['effect_type'] ?? null) === 'damage'
+                && ($row['round'] ?? null) === 2
+                && ($row['actor_id'] ?? null) === 'enemy:1',
+        );
+        self::assertIsArray($deadTaunterFallback);
+        self::assertNotSame('secretary:1', $deadTaunterFallback['target_id']);
+        self::assertContains($deadTaunterFallback['target_id'], ['borrowed:2', 'borrowed:3']);
         $secondRoundTarget = collect($result->actionLog)->first(
             static fn (array $row): bool => ($row['kind'] ?? null) === 'decision'
                 && ($row['round'] ?? null) === 2
@@ -311,7 +391,6 @@ final class AlphaV1PartyCombatTest extends TestCase
         $healer = $this->player('borrowed:2', currentHp: 1_100);
         $healer['active_skills'] = ['mending_prayer'];
         $healer['ai_mode'] = 'default';
-        $healer['party_healing_target_scope'] = 'single_ally';
         $healer['ai_rules'] = [[
             'conditions' => [
                 ['type' => 'own_hp_lte', 'percent' => 55],
@@ -352,7 +431,6 @@ final class AlphaV1PartyCombatTest extends TestCase
         $healer = $this->player('borrowed:2', currentHp: 1);
         $healer['active_skills'] = ['mending_prayer'];
         $healer['ai_mode'] = 'default';
-        $healer['party_healing_target_scope'] = 'single_ally';
         $healer['ai_rules'] = [[
             'conditions' => [
                 ['type' => 'own_hp_lte', 'percent' => 55],
@@ -387,7 +465,6 @@ final class AlphaV1PartyCombatTest extends TestCase
         $healer = $this->player('borrowed:2', currentHp: 1_100);
         $healer['active_skills'] = ['mending_prayer'];
         $healer['ai_mode'] = 'default';
-        $healer['party_healing_target_scope'] = 'single_ally';
         $healer['ai_rules'] = [[
             'conditions' => [
                 ['type' => 'own_hp_lte', 'percent' => 55],
@@ -421,9 +498,16 @@ final class AlphaV1PartyCombatTest extends TestCase
         $healer = $this->player('borrowed:2', currentHp: 1, awakening: true);
         $healer['awakening']['growth_path'] = 'blessing_green';
         $healer['awakening']['technique_key'] = 'life_requiem';
+        $leader = $this->player('secretary:1', currentHp: 1);
+        $leader['stats']['agility'] = 2_000;
+        $leader['active_skills'] = ['bulwark_strike'];
+        $leader['ai_rules'] = [[
+            'conditions' => [['type' => 'always']],
+            'action' => 'skill:bulwark_strike',
+        ]];
         $result = $this->model()->fightPartySnapshots(
             $catalog,
-            [$this->player('secretary:1', currentHp: 1, defend: true), $healer],
+            [$leader, $healer],
             ['party_target'],
             385,
             1,

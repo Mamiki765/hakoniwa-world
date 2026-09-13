@@ -44,9 +44,11 @@ final class LegacyInspiredInitialIslandGenerator implements InitialIslandGenerat
             $reservationTerrainKeys = ['sea'];
             $relocateShips = false;
         } elseif (is_array($placement)
-            && count($placement) === 2
             && ($placement['reservation_terrain_keys'] ?? null) === ['sea', 'shallow', 'wasteland', 'mountain']
-            && ($placement['ship_relocation'] ?? null) === 'final_empty_sea_within_reservation') {
+            && ($placement['ship_relocation'] ?? null) === 'final_empty_sea_within_reservation'
+            && ((! array_key_exists('candidate_evaluation', $placement) && count($placement) === 2)
+                || (count($placement) === 3
+                    && ($placement['candidate_evaluation'] ?? null) === 'stable_batched_until_safe'))) {
             $reservationTerrainKeys = $placement['reservation_terrain_keys'];
             $relocateShips = true;
         } else {

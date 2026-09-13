@@ -74,6 +74,7 @@ final class BorrowedSecretarySnapshotFactoryTest extends TestCase
         $this->assertSame(999999, $snapshot['resources']['original_current_hp']);
         $this->assertSame($snapshot['player_snapshot']['current_hp'], $snapshot['resources']['effective_current_hp']);
         $this->assertLessThan(999999, $snapshot['resources']['effective_current_hp']);
+        $this->assertArrayNotHasKey('party_healing_target_scope', $snapshot['player_snapshot']);
         $this->assertArrayNotHasKey('email', $snapshot['source']);
         $this->assertSame($before, $profile->fresh()->toArray());
         $effectiveItems = collect($snapshot['effective_equipment']['items'])->keyBy('equipped_slot');

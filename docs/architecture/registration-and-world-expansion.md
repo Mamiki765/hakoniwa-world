@@ -22,8 +22,8 @@ MVPではサーバーによる自動配置を採用する。利用者の座標�
 1. 入力を検証する。Nation名、表示設定、参加World、利用規約同意など。
 2. `(user_id, world_id)`とclient request IDに対応するregistration requestまたは同等の冪等keyを確保する。
 3. transaction開始前に共通`WorldMutationLock`を取得し、transaction内でWorld rowをlockして、同じUserが同じWorldにNationを持たないこととWorldの状態を再確認する。
-4. 現在の地上生成境界内から、ruleset条件を満たすCapital候補をサーバーが探索する。
-5. 候補がなければ、`chunk_size = 16`に整列した必要最小のWorld拡張計画を作る。
+4. 現在の地上生成境界内から、ruleset条件を満たすCapital候補を安定順・bounded batchで探索し、安全な初期島planが見つかるまで順に評価する。
+5. 現在のWorld内の候補を全て評価しても安全なplanがなければ、`chunk_size = 16`に整列した必要最小のWorld拡張計画を作る。
 6. 拡張後の地形を決定的seedで生成し、候補を再探索する。
 7. 候補をtransaction内で予約またはlockし、距離・Territory非重複・地形条件を再検証する。
 8. Nation、Capital、初期Territoryを作る。
@@ -44,7 +44,7 @@ MVPではサーバーによる自動配置を採用する。利用者の座標�
 
 距離はADR-0003のHexCoordinate.distanceToを使う。四角い配列上のEuclidean距離、odd-qのcolumn・row、UI pixel距離で代用しない。
 
-Ruleset v24では海・浅瀬・荒地・山を造成可能な予約地形とし、平地・森へは広げない。初期Territoryは生成後のdistance 2以内の陸地19 cellsだけとする。
+Ruleset v25では海・浅瀬・荒地・山を造成可能な予約地形とし、平地・森へは広げない。初期Territoryは生成後のdistance 2以内の陸地19 cellsだけとする。
 
 ## 探索方式の候補
 
@@ -146,11 +146,11 @@ PR19では登録入力に公開用の`owner_name`（必須、1–30文字）と`
 
 登録後はNation ownerだけが`PATCH /api/v1/nations/{nation}/profile`で島主名と一言コメントを変更できる。変更はWorldとNationをlockし、最新ruleset Worldだけを対象にして、変更前後・変更field・actor user IDを`nation.profile_updated`へ記録する。同値更新は保存もaudit eventも作らない。過去ruleset Worldの更新は`reset_required`で拒否する。
 
-Ruleset v24の候補は中心からdistance 5以内の91セルが生成済みの海・浅瀬・荒地・山、無所有、施設なし、人口0で、全ての既存Capitalから12以上離れる地点だけとする。最も近い既存Capitalまでの距離を最大化し、y/xで安定tie-breakする。上位3候補について初期島をplanし、生成後に航行不能となる船を同じ予約範囲内の空き深海へ重複なく退避できる最初の候補を使用する。生成後も海に残る船は動かさず、退避不能な候補では船を沈めない。
+Ruleset v25の候補は中心からdistance 5以内の91セルが生成済みの海・浅瀬・荒地・山、無所有、施設なし、人口0で、全ての既存Capitalから12以上離れる地点だけとする。最も近い既存Capitalまでの距離を最大化し、y/xで安定tie-breakする。この安定順を保ったままbounded batchで候補を読み、安全な初期島planが見つかった時点で停止する。生成後に航行不能となる船を同じ予約範囲内の空き深海へ重複なく退避できない候補、または初期島の変更対象cellに`island_creation_displaceable = false`の怪獣がいる候補だけをskipし、次候補へ進む。生成後も海に残る船は動かさず、退避不能な候補では船を沈めず、通常怪獣も消さない。`island_creation_displaceable = true`の怪獣は従来どおり最終採用planの適用時だけ無報酬で処理する。候補の固定件数はgameplay contractにしない。
 
-候補が0件の場合、または有限候補の全てで船を安全退避できない場合だけ、同じ`WorldMutationLock`と登録transaction内でcurrent signed boundsから
+現在のWorld内の候補を全て評価しても安全なplanがない場合だけ、同じ`WorldMutationLock`と登録transaction内でcurrent signed boundsから
 `LEFT → UP → RIGHT → DOWN`の次の1chunk帯を導出し、`WorldExpansionService`によるcoverage検証済み
-拡張後に候補を一度だけ再取得する。64×64からの最初の結果は`-16..63 × 0..63`であり、4 chunks・
+拡張後に同じbounded探索を一度だけ行う。64×64からの最初の結果は`-16..63 × 0..63`であり、4 chunks・
 1,024 cellsを追加する。60×60の場合は64×64のpartial chunks補完だけでは成功扱いにせず、同一の
 原子的拡張で最初のLEFT帯まで追加する。rotation専用DB stateは持たず、正規sequenceとして解釈
 できないbounds、または一度の拡張後も安全な候補がなければ推測・追加拡張せず全処理をrollbackする。島生成と船退避は同じ登録transactionにあり、後続失敗時に船だけの移動を残さない。

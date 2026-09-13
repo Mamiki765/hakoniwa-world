@@ -11,8 +11,11 @@ use Illuminate\Support\Facades\Schema;
 final class CapitalPlacementService
 {
     /** @return list<GridCoordinate> */
-    public function candidates(MapSpace $mapSpace, int $limit = 3): array
+    public function candidates(MapSpace $mapSpace, int $limit, int $offset = 0): array
     {
+        if ($limit < 1 || $offset < 0) {
+            throw new DomainException('Initial-island candidate pagination is invalid.');
+        }
         $rules = $mapSpace->world()->firstOrFail()->rulesetVersion()->firstOrFail()->settings;
         $radius = (int) $rules['initial_island_reservation_radius'];
         $minimumDistance = (int) $rules['minimum_capital_distance'];
@@ -22,9 +25,11 @@ final class CapitalPlacementService
             $reservationTerrainKeys = ['sea'];
             $relocateShips = false;
         } elseif (is_array($placement)
-            && count($placement) === 2
             && ($placement['reservation_terrain_keys'] ?? null) === ['sea', 'shallow', 'wasteland', 'mountain']
-            && ($placement['ship_relocation'] ?? null) === 'final_empty_sea_within_reservation') {
+            && ($placement['ship_relocation'] ?? null) === 'final_empty_sea_within_reservation'
+            && ((! array_key_exists('candidate_evaluation', $placement) && count($placement) === 2)
+                || (count($placement) === 3
+                    && ($placement['candidate_evaluation'] ?? null) === 'stable_batched_until_safe'))) {
             $reservationTerrainKeys = $placement['reservation_terrain_keys'];
             $relocateShips = true;
         } else {
@@ -114,7 +119,7 @@ final class CapitalPlacementService
                   ) < ?
               )
             ORDER BY nearest_capital DESC, candidate.y ASC, candidate.x ASC
-            LIMIT ?
+            LIMIT ? OFFSET ?
             SQL;
 
         $rows = DB::select($sql, [
@@ -124,7 +129,7 @@ final class CapitalPlacementService
             ...$reservationTerrainKeys,
             $radius, $radius, $radius, $radius,
             $radius, ...$reservationTerrainKeys,
-            $requiredCells, $mapSpace->world_id, $minimumDistance, $limit,
+            $requiredCells, $mapSpace->world_id, $minimumDistance, $limit, $offset,
         ]);
 
         return array_map(

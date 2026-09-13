@@ -117,6 +117,20 @@ class TileAssetTest extends TestCase
         }
     }
 
+    public function test_all_monument_variants_share_the_original_monument_gif(): void
+    {
+        $this->writeGif('monument0.gif');
+        $resolver = app(AssetManifestResolver::class);
+
+        foreach (['tile.monument', 'tile.monument.peace', 'tile.monument.prosperity', 'tile.monument.victory'] as $assetKey) {
+            $asset = $resolver->resolve($assetKey, '記念碑');
+
+            $this->assertTrue($asset['available'], $assetKey);
+            $this->assertStringContainsString('/monument0.gif?v=', (string) $asset['url']);
+            $this->assertSame('monument0.gif', $resolver->filenameForAssetKey($assetKey));
+        }
+    }
+
     public function test_themed_assets_use_only_allowlisted_external_files_and_fall_back_safely(): void
     {
         mkdir($this->assetDirectory.DIRECTORY_SEPARATOR.'snow', 0777, true);
@@ -127,7 +141,7 @@ class TileAssetTest extends TestCase
             'hakoniwa.assets.themes.peridot' => 'peridot',
             'hakoniwa.assets.themes.underground' => 'underground',
         ]);
-        foreach (['land0.gif', 'land1.gif', 'capital.gif', 'monument.png'] as $filename) {
+        foreach (['land0.gif', 'land1.gif', 'capital.gif', 'monument0.gif'] as $filename) {
             $this->writeGif($filename);
         }
         foreach (['snow/land1.gif', 'snow/monument0.gif'] as $filename) {

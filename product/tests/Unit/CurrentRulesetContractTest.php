@@ -10,22 +10,22 @@ use Tests\TestCase;
 
 final class CurrentRulesetContractTest extends TestCase
 {
-    private const V24_CHECKSUM = 'a7c021756a4daff6ed8b769dffb69b830a345a322b04d919801ff2eb2aa27c92';
+    private const V25_CHECKSUM = 'c03af0ca57f167207740ad5bc5e201568335b9c45d417c0c865440a9548967de';
 
-    public function test_normal_config_loads_and_validates_the_v24_contract(): void
+    public function test_normal_config_loads_and_validates_the_v25_contract(): void
     {
         $normalConfig = require config_path('hakoniwa.php');
         $current = $normalConfig['ruleset'];
 
-        $this->assertSame(['hakoniwa-2s-plus-v24'], array_keys($normalConfig['published_rulesets']));
-        $this->assertSame($current, $normalConfig['published_rulesets']['hakoniwa-2s-plus-v24']);
+        $this->assertSame(['hakoniwa-2s-plus-v25'], array_keys($normalConfig['published_rulesets']));
+        $this->assertSame($current, $normalConfig['published_rulesets']['hakoniwa-2s-plus-v25']);
         $this->assertSame($current['secretary'], $normalConfig['current_catalogs']['secretary']);
-        $this->assertSame('hakoniwa-2s-plus-v24', $current['key']);
-        $this->assertSame(24, $current['version']);
+        $this->assertSame('hakoniwa-2s-plus-v25', $current['key']);
+        $this->assertSame(25, $current['version']);
         $this->assertArrayNotHasKey('behavior', $current);
         $this->assertArrayNotHasKey('data', $current);
         $this->assertArrayNotHasKey('flavor', $current);
-        $this->assertSame(self::V24_CHECKSUM, $this->checksum($current));
+        $this->assertSame(self::V25_CHECKSUM, $this->checksum($current));
         $this->assertSame([
             'basis' => 'next_level_linear',
             'multiplier' => 100,
@@ -145,6 +145,7 @@ final class CurrentRulesetContractTest extends TestCase
         $this->assertSame([
             'reservation_terrain_keys' => ['sea', 'shallow', 'wasteland', 'mountain'],
             'ship_relocation' => 'final_empty_sea_within_reservation',
+            'candidate_evaluation' => 'stable_batched_until_safe',
         ], $current['initial_island_placement']);
         $this->assertSame(
             'land_subsidence_safe_land_cells',
@@ -152,8 +153,8 @@ final class CurrentRulesetContractTest extends TestCase
         );
 
         $summary = app(RulesetAuthoringValidator::class)->validate($current);
-        $this->assertSame('hakoniwa-2s-plus-v24', $summary['key']);
-        $this->assertSame(24, $summary['version']);
+        $this->assertSame('hakoniwa-2s-plus-v25', $summary['key']);
+        $this->assertSame(25, $summary['version']);
         $this->assertSame(count($current['command_definitions']), $summary['commands']);
         $this->assertSame(count($current['production_definitions']), $summary['production']);
     }
@@ -205,7 +206,7 @@ final class CurrentRulesetContractTest extends TestCase
             app(CurrentRulesetAuthoringInspector::class)->inspect($current),
             app(CurrentRulesetAuthoringInspector::class)->inspect($withAdditionalEmptyContainer),
         );
-        $this->assertSame(self::V24_CHECKSUM, $this->checksum($current));
+        $this->assertSame(self::V25_CHECKSUM, $this->checksum($current));
         $this->assertNotSame($this->checksum($current), $this->checksum($withAdditionalEmptyContainer));
     }
 

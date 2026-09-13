@@ -2236,6 +2236,41 @@ final class UndergroundPlayerAccessTest extends TestCase
         }
     }
 
+    public function test_mending_prayer_ally_targeting_is_available_for_every_growth_path(): void
+    {
+        $catalog = app(UndergroundAlphaV1PlayerCatalog::class);
+        $equipment = config('underground-alpha-v1.exploration.starter_weapon');
+        $this->assertIsArray($equipment);
+        $allocations = [
+            'miracle_holy_bolt' => ['rank' => 1, 'active_slot' => null],
+            'miracle_mending_prayer' => ['rank' => 1, 'active_slot' => 1],
+        ];
+        $customAi = [[
+            'conditions' => [['type' => 'ally_hp_lte', 'percent' => 50]],
+            'action' => 'skill:mending_prayer',
+            'target' => 'lowest_hp_ally',
+        ], [
+            'conditions' => [['type' => 'always']],
+            'action' => 'normal_attack',
+        ]];
+
+        foreach (['martial_red', 'guardianship_blue', 'blessing_green', 'free_black'] as $growthPath) {
+            $definition = $catalog->explorationCombatDefinition(
+                $growthPath,
+                1,
+                ['vitality' => 0, 'might' => 0, 'finesse' => 0, 'spirit' => 0, 'agility' => 0],
+                $equipment,
+                '回復対象試験の秘書',
+                skillAllocations: $allocations,
+                customAiRules: $customAi,
+            );
+
+            $this->assertContains('mending_prayer', $definition['active_skills'], $growthPath);
+            $this->assertSame('lowest_hp_ally', $definition['player_snapshot']['ai_rules'][0]['target'], $growthPath);
+            $this->assertArrayNotHasKey('party_healing_target_scope', $definition['player_snapshot'], $growthPath);
+        }
+    }
+
     public function test_normal_exploration_uses_owned_growth_snapshot_rewards_history_and_cross_operation_idempotency(): void
     {
         Carbon::setTestNow('2026-08-30 12:00:00+09:00');

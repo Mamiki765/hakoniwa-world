@@ -686,7 +686,7 @@ final class C4NewMonstersTest extends TestCase
         $this->assertSame(false, $this->eventMetadata('monster.island_creation_displaced')['rewards_granted']);
     }
 
-    public function test_initial_island_fails_closed_for_an_ordinary_monster_on_a_changed_cell(): void
+    public function test_initial_island_skips_an_ordinary_monster_candidate_without_removing_it(): void
     {
         [$world, $ruleset] = $this->v11World();
         $space = $this->surfaceMapSpace($world);
@@ -695,15 +695,16 @@ final class C4NewMonstersTest extends TestCase
             ->where('x', $center->x)->where('y', $center->y)->with(['terrain', 'facility'])->firstOrFail();
         $ordinary = $this->monster($world, $ruleset, $cell, 'inora', 1);
 
-        try {
-            app(NationCreationService::class)->create(User::factory()->create(), $world, '拒否国', '拒否主');
-            $this->fail('An ordinary monster on a changed cell must block island creation.');
-        } catch (DomainException) {
-            $this->addToAssertionCount(1);
-        }
+        $boundsRevision = $space->boundsRevision();
+        $nation = app(NationCreationService::class)->create(User::factory()->create(), $world, '回避国', '回避主');
 
         $this->assertSame('alive', $ordinary->fresh()->state);
-        $this->assertSame(0, Nation::query()->count());
+        $this->assertSame($cell->id, $ordinary->fresh()->occupancy()->value('map_cell_id'));
+        $this->assertNotSame([$center->x, $center->y], [$nation->capital->x, $nation->capital->y]);
+        $this->assertSame($boundsRevision, $space->fresh()->boundsRevision());
+        $this->assertSame(0, DB::table('audit_events')->where('event_type', 'world.expanded')->count());
+        $this->assertSame(0, DB::table('audit_events')->where('event_type', 'monster.island_creation_displaced')->count());
+        $this->assertSame(0, NationMonsterKillStat::query()->count());
     }
 
     public function test_initial_island_leaves_aoi_on_a_reserved_but_unchanged_cell_alive(): void

@@ -11,7 +11,7 @@ final class PriorityCombatAi
     /**
      * @param  list<BuildCombatState>  $allies
      * @param  list<BuildCombatState>  $enemies
-     * @return array{type: 'normal_attack'|'defend'|'skill'|'awakening', key: string|null, target_id: string|null, reason: string, fallback: bool, mp_blocked: bool, next_rule_index: int}
+     * @return array{type: 'normal_attack'|'defend'|'skill'|'awakening', key: string|null, target_id: string|null, target_explicit: bool, reason: string, fallback: bool, mp_blocked: bool, next_rule_index: int}
      */
     public function select(
         BuildCombatState $actor,
@@ -39,6 +39,7 @@ final class PriorityCombatAi
                 $action,
                 $actor,
                 $enemy,
+                $catalog,
                 $allies,
                 $enemies,
             );
@@ -87,6 +88,7 @@ final class PriorityCombatAi
                     'type' => $action,
                     'key' => null,
                     'target_id' => $ruleTarget->combatantId,
+                    'target_explicit' => $targetSelector !== null,
                     'reason' => 'priority_rule_'.$index,
                     'fallback' => false,
                     'mp_blocked' => $mpBlocked,
@@ -102,6 +104,7 @@ final class PriorityCombatAi
                         'type' => 'awakening',
                         'key' => null,
                         'target_id' => $ruleTarget->combatantId,
+                        'target_explicit' => $targetSelector !== null,
                         'reason' => 'priority_rule_'.$index,
                         'fallback' => false,
                         'mp_blocked' => $mpBlocked,
@@ -119,6 +122,7 @@ final class PriorityCombatAi
                         'type' => 'skill',
                         'key' => $skillKey,
                         'target_id' => $ruleTarget->combatantId,
+                        'target_explicit' => $targetSelector !== null,
                         'reason' => 'priority_rule_'.$index,
                         'fallback' => false,
                         'mp_blocked' => $mpBlocked,
@@ -152,6 +156,7 @@ final class PriorityCombatAi
         string $action,
         BuildCombatState $actor,
         BuildCombatState $currentEnemy,
+        AlphaV1BuildCatalog $catalog,
         array $allies,
         array $enemies,
     ): array {
@@ -159,8 +164,11 @@ final class PriorityCombatAi
             return [$currentEnemy];
         }
         if ($selector === 'lowest_hp_ally') {
-            if ($action !== 'skill:mending_prayer'
-                || ($actor->flags['party_healing_target_scope'] ?? 'self') !== 'single_ally') {
+            if (! in_array(
+                'lowest_hp_ally',
+                $this->configuration->targetSelectorsForAction($action, $catalog),
+                true,
+            )) {
                 return [];
             }
             $target = $this->lowestHpRatioTarget($allies !== [] ? $allies : [$actor]);
@@ -328,7 +336,8 @@ final class PriorityCombatAi
             'own_mp_lte' => is_int($percent) && $actor->mp * 100 <= AlphaV1CombatRules::MAX_MP * $percent,
             'own_mp_gte' => is_int($percent) && $actor->mp * 100 >= AlphaV1CombatRules::MAX_MP * $percent,
             'enemy_hp_lte' => is_int($percent) && $enemy->hp * 100 <= $enemy->maxHp * $percent,
-            'ally_hp_lte' => is_int($percent) && $this->allyPercentageAtOrBelow($allies, $percent),
+            'ally_hp_lte' => is_int($percent)
+                && $this->allyPercentageAtOrBelow($allies !== [] ? $allies : [$actor], $percent),
             'self_has_status' => is_string($status) && $actor->hasStatus($status),
             'self_lacks_status' => is_string($status) && ! $actor->hasStatus($status),
             'enemy_has_status' => is_string($status) && $enemy->hasStatus($status),
@@ -367,7 +376,7 @@ final class PriorityCombatAi
     }
 
     /**
-     * @return array{type: 'normal_attack'|'skill', key: string|null, target_id: null, reason: string, fallback: true, mp_blocked: bool, next_rule_index: int}
+     * @return array{type: 'normal_attack'|'skill', key: string|null, target_id: null, target_explicit: false, reason: string, fallback: true, mp_blocked: bool, next_rule_index: int}
      */
     private function fallback(
         BuildCombatState $actor,
@@ -388,6 +397,7 @@ final class PriorityCombatAi
                         'type' => 'skill',
                         'key' => $skillKey,
                         'target_id' => null,
+                        'target_explicit' => false,
                         'reason' => $reason,
                         'fallback' => true,
                         'mp_blocked' => $mpBlocked,
@@ -405,6 +415,7 @@ final class PriorityCombatAi
             'type' => 'normal_attack',
             'key' => null,
             'target_id' => null,
+            'target_explicit' => false,
             'reason' => $reason,
             'fallback' => true,
             'mp_blocked' => $mpBlocked,

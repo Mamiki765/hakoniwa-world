@@ -245,10 +245,12 @@ final readonly class PriorityCombatAiConfiguration
 
         $skillKey = substr($action, 6);
         $skill = $catalog->skill($skillKey);
-        if ($skillKey === 'mending_prayer') {
-            return ['lowest_hp_ally'];
-        }
         foreach ($skill['effects'] as $effect) {
+            if (is_array($effect)
+                && ($effect['type'] ?? null) === 'heal'
+                && ($effect['target_scope'] ?? null) === 'single_ally') {
+                return ['lowest_hp_ally'];
+            }
             if (is_array($effect)
                 && ($effect['target'] ?? 'enemy') === 'enemy'
                 && ($effect['target_scope'] ?? 'single_enemy') === 'single_enemy') {

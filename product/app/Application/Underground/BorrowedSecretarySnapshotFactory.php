@@ -663,6 +663,7 @@ final readonly class BorrowedSecretarySnapshotFactory
         if (! is_array($playerSnapshot)) {
             throw new RuntimeException('Borrowed Secretary combat definition player snapshot is invalid.');
         }
+        unset($playerSnapshot['party_healing_target_scope']);
         $playerSnapshot['stats'] = $this->orderedStats($playerSnapshot['stats'] ?? null);
         $playerSnapshot['ai_rules'] = $this->normalizedAiRules($playerSnapshot['ai_rules'] ?? null);
         $playerEquipment = $playerSnapshot['equipment'] ?? null;
@@ -672,7 +673,7 @@ final readonly class BorrowedSecretarySnapshotFactory
         $playerSnapshot['equipment'] = $this->validatedEffectiveEquipment($playerEquipment);
         $definition['player_snapshot'] = $this->orderedKeys($playerSnapshot, [
             'key', 'label', 'stats', 'active_skills', 'ai_rules', 'ai_mode', 'modifiers',
-            'equipment', 'current_hp', 'party_healing_target_scope',
+            'equipment', 'current_hp',
         ]);
         if (is_array($definition['ai'] ?? null)) {
             $definition['ai']['rules'] = $this->normalizedAiRules($definition['ai']['rules'] ?? null);

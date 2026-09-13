@@ -43,7 +43,7 @@ final readonly class AlphaV1CombatModel
 
         $players = [];
         foreach ($playerSnapshots as $index => $snapshot) {
-            $state = $this->runtimePlayerState($catalog, $this->partyPlayerSnapshot($snapshot));
+            $state = $this->runtimePlayerState($catalog, $this->partyPlayerSnapshot($snapshot, $catalog));
             $combatantId = $snapshot['combatant_id'] ?? null;
             if (! is_string($combatantId) || $combatantId === '' || isset($players[$combatantId])) {
                 throw new InvalidArgumentException('Underground player combatant identity is invalid.');
@@ -129,7 +129,7 @@ final readonly class AlphaV1CombatModel
                 }
                 $target = $actor->side === 'player'
                     ? $this->firstAlivePartyTarget($enemies)
-                    : $this->enemyPartyTarget($actor, $players);
+                    : $this->firstAlivePartyTarget($players);
                 if (! $target instanceof BuildCombatState) {
                     return;
                 }
@@ -220,10 +220,14 @@ final readonly class AlphaV1CombatModel
      * @param  array<string, mixed>  $snapshot
      * @return array<string, mixed>
      */
-    private function partyPlayerSnapshot(array $snapshot): array
+    private function partyPlayerSnapshot(array $snapshot, AlphaV1BuildCatalog $catalog): array
     {
         if (($snapshot['ai_mode'] ?? null) !== 'default'
-            || ($snapshot['party_healing_target_scope'] ?? null) !== 'single_ally'
+            || ! in_array(
+                'lowest_hp_ally',
+                $this->aiConfiguration->targetSelectorsForAction('skill:mending_prayer', $catalog),
+                true,
+            )
             || ! is_array($snapshot['ai_rules'] ?? null)) {
             return $snapshot;
         }
@@ -292,17 +296,35 @@ final readonly class AlphaV1CombatModel
         return null;
     }
 
-    /** @param array<string, BuildCombatState> $players */
-    private function enemyPartyTarget(BuildCombatState $enemy, array $players): ?BuildCombatState
-    {
+    /** @param list<BuildCombatState> $players */
+    private function enemyPartyTarget(
+        BuildCombatState $enemy,
+        array $players,
+        UndergroundRandom $random,
+        string $actionId,
+    ): ?BuildCombatState {
         $sourceCombatantId = $enemy->taunt['source_combatant_id'] ?? null;
-        if (is_string($sourceCombatantId)
-            && isset($players[$sourceCombatantId])
-            && $players[$sourceCombatantId]->alive()) {
-            return $players[$sourceCombatantId];
+        if (is_string($sourceCombatantId)) {
+            foreach ($players as $player) {
+                if ($player->combatantId === $sourceCombatantId && $player->alive()) {
+                    return $player;
+                }
+            }
         }
 
-        return $this->firstAlivePartyTarget($players);
+        $living = array_values(array_filter(
+            $players,
+            static fn (BuildCombatState $player): bool => $player->alive(),
+        ));
+        if (count($living) < 2) {
+            return $living[0] ?? null;
+        }
+
+        return $living[$random->integer(
+            "alpha-v1:party-enemy-target:{$actionId}",
+            0,
+            count($living) - 1,
+        )];
     }
 
     /**
@@ -779,11 +801,6 @@ final readonly class AlphaV1CombatModel
             throw new InvalidArgumentException('Underground alpha-v1 runtime current HP is invalid.');
         }
         $state->hp = $currentHp;
-        $healingTargetScope = $snapshot['party_healing_target_scope'] ?? 'self';
-        if (! in_array($healingTargetScope, ['self', 'single_ally'], true)) {
-            throw new InvalidArgumentException('Underground party healing target scope is invalid.');
-        }
-        $state->flags['party_healing_target_scope'] = $healingTargetScope;
         $awakening = $snapshot['awakening'] ?? null;
         if ($awakening !== null) {
             if (! is_array($awakening)
@@ -1062,7 +1079,7 @@ final readonly class AlphaV1CombatModel
     private function executeTurn(
         AlphaV1BuildCatalog $catalog,
         BuildCombatState $actor,
-        BuildCombatState $target,
+        BuildCombatState &$target,
         UndergroundRandom $random,
         int $round,
         array &$metrics,
@@ -1161,14 +1178,22 @@ final readonly class AlphaV1CombatModel
                     'type' => 'skill',
                     'key' => 'pressure_heavy',
                     'target_id' => null,
+                    'target_explicit' => false,
                     'reason' => 'outrage_chance',
                     'fallback' => false,
                     'mp_blocked' => false,
                     'next_rule_index' => count($actor->aiRules),
                 ];
             }
-            $target = $this->selectedActionTarget($action, $target, $partyAllies, $partyEnemies);
             $actionId = $partyMode ? $this->partyActionId($actor, $round, $decisionIndex++) : null;
+            $target = $this->selectedActionTarget($action, $target, $partyAllies, $partyEnemies);
+            if ($actor->side === 'enemy'
+                && $partyMode
+                && $action['target_explicit'] === false
+                && $actionId !== null
+                && $this->usesSingleHostilePartyTarget($action, $actor, $catalog)) {
+                $target = $this->enemyPartyTarget($actor, $partyEnemies, $random, $actionId) ?? $target;
+            }
             [$decisionTargetId, $decisionTargetIds] = $this->decisionTargets(
                 $action,
                 $actor,
@@ -1258,7 +1283,7 @@ final readonly class AlphaV1CombatModel
                 if ($partyAllies !== [] || $partyEnemies !== []) {
                     $this->annotatePartyLogs($actionLog, $offset, $actor, $effectTarget, $effectTargetIds);
                     for ($logIndex = $offset, $count = count($actionLog); $logIndex < $count; $logIndex++) {
-                        $actionLog[$logIndex]['target_scope'] ??= $this->partyTargetScope($actor->normalAttack, $actor);
+                        $actionLog[$logIndex]['target_scope'] ??= $this->partyTargetScope($actor->normalAttack);
                     }
                 }
             }
@@ -1332,7 +1357,7 @@ final readonly class AlphaV1CombatModel
                 if ($partyAllies !== [] || $partyEnemies !== []) {
                     $this->annotatePartyLogs($actionLog, $offset, $actor, $effectTarget, $effectTargetIds);
                     for ($logIndex = $offset, $count = count($actionLog); $logIndex < $count; $logIndex++) {
-                        $actionLog[$logIndex]['target_scope'] ??= $this->partyTargetScope($effect, $actor);
+                        $actionLog[$logIndex]['target_scope'] ??= $this->partyTargetScope($effect);
                     }
                 }
             }
@@ -1373,7 +1398,7 @@ final readonly class AlphaV1CombatModel
         if ($partyAllies === [] && $partyEnemies === []) {
             return [($effect['target'] ?? 'enemy') === 'self' ? $actor : $target];
         }
-        $scope = $this->partyTargetScope($effect, $actor);
+        $scope = $this->partyTargetScope($effect);
 
         return match ($scope) {
             'self' => [$actor],
@@ -1408,13 +1433,31 @@ final readonly class AlphaV1CombatModel
         return $current;
     }
 
+    /** @param array<string, mixed> $action */
+    private function usesSingleHostilePartyTarget(
+        array $action,
+        BuildCombatState $actor,
+        AlphaV1BuildCatalog $catalog,
+    ): bool {
+        if (($action['type'] ?? null) === 'normal_attack') {
+            return $this->partyTargetScope($actor->normalAttack) === 'single_enemy';
+        }
+        if (($action['type'] ?? null) !== 'skill' || ! is_string($action['key'] ?? null)) {
+            return false;
+        }
+        foreach ($catalog->skill($action['key'])['effects'] as $effect) {
+            if ($this->partyTargetScope($effect) === 'single_enemy') {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     /** @param array<string, mixed> $effect */
-    private function partyTargetScope(array $effect, BuildCombatState $actor): string
+    private function partyTargetScope(array $effect): string
     {
         $scope = $effect['target_scope'] ?? (($effect['target'] ?? 'enemy') === 'self' ? 'self' : 'single_enemy');
-        if (($effect['type'] ?? null) === 'heal' && $scope === 'self') {
-            $scope = $actor->flags['party_healing_target_scope'] ?? 'self';
-        }
         if (! in_array($scope, ['single_enemy', 'all_enemies', 'single_ally', 'all_allies', 'self'], true)) {
             throw new InvalidArgumentException('Underground party target scope is invalid.');
         }
@@ -1488,7 +1531,7 @@ final readonly class AlphaV1CombatModel
     }
 
     /**
-     * @param  array{type: 'normal_attack'|'defend'|'skill'|'awakening', key: string|null, target_id?: string|null, reason: string, fallback: bool, mp_blocked: bool, next_rule_index: int}  $action
+     * @param  array{type: 'normal_attack'|'defend'|'skill'|'awakening', key: string|null, target_id: string|null, target_explicit: bool, reason: string, fallback: bool, mp_blocked: bool, next_rule_index: int}  $action
      * @param  array<string, int|null>  $metrics
      * @param  array<string, int>  $actionUsage
      * @param  list<array<string, mixed>>  $actionLog
