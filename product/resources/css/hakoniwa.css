@@ -327,13 +327,29 @@ html[data-theme="dark"] .compensation-banner, html[data-theme="dark"] .compensat
 .announcement-article { margin-top: 28px; }
 .announcement-article h2 { margin-bottom: 6px; font-size: 1.65rem; }
 .announcement-body { margin-top: 28px; line-height: 1.9; overflow-wrap: anywhere; white-space: pre-wrap; }
+.announcement-markdown { white-space: normal; }
+.announcement-markdown > :first-child { margin-top: 0; }
+.announcement-markdown h1, .announcement-markdown h2, .announcement-markdown h3 { margin: 1.4em 0 .5em; line-height: 1.4; }
+.announcement-markdown h1 { font-size: 1.6rem; }
+.announcement-markdown h2 { font-size: 1.35rem; }
+.announcement-markdown h3 { font-size: 1.15rem; }
+.announcement-markdown ul, .announcement-markdown ol { padding-left: 1.6em; }
+.announcement-markdown blockquote { margin: 1em 0; padding: .2em 1em; border-left: 3px solid var(--line); color: var(--muted); }
+.announcement-markdown pre { overflow-x: auto; padding: 12px; background: var(--input-surface); }
+.announcement-markdown code { overflow-wrap: anywhere; }
+.announcement-markdown img { max-width: 100%; height: auto; }
+.announcement-markdown table { display: block; max-width: 100%; overflow-x: auto; border-collapse: collapse; }
+.announcement-markdown th, .announcement-markdown td { padding: .4em .7em; border: 1px solid var(--line); }
+.announcement-preview { min-width: 0; padding: 20px; border: 1px solid var(--line); }
+.announcement-format-help { margin: 0; color: var(--muted); font-size: .85rem; }
+.announcement-format-help summary { cursor: pointer; }
 .announcement-actions, .announcement-pager { display: flex; align-items: center; justify-content: flex-end; gap: 10px; }
 .announcement-actions .danger { color: var(--danger-strong); border-color: var(--danger); }
 .announcement-pager { justify-content: space-between; margin-top: 24px; }
 .announcement-pager button:disabled { opacity: .45; cursor: not-allowed; }
 .announcement-form { display: grid; gap: 18px; margin-top: 28px; }
 .announcement-form label { display: grid; gap: 7px; font-weight: 800; }
-.announcement-form input, .announcement-form textarea { width: 100%; padding: 10px 12px; border: 1px solid var(--input-border); background: var(--input-surface); color: var(--ink); font: inherit; }
+.announcement-form input, .announcement-form textarea, .announcement-form select { width: 100%; padding: 10px 12px; border: 1px solid var(--input-border); background: var(--input-surface); color: var(--ink); font: inherit; }
 .announcement-form textarea { resize: vertical; }
 .ranking-card, .events-card { min-width: 0; padding: 22px; border: 1px solid var(--line); background: var(--paper); box-shadow: var(--shadow); }
 .section-heading, .plan-heading { display: flex; align-items: start; justify-content: space-between; gap: 12px; }

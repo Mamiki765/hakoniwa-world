@@ -72,6 +72,7 @@ Route::prefix('api/v1/admin')
         Route::get('/inquiries/{inquiryId}', [AdminInquiryController::class, 'show'])
             ->whereNumber('inquiryId');
         Route::post('/announcements', [AnnouncementController::class, 'store']);
+        Route::post('/announcements/preview', [AnnouncementController::class, 'preview']);
         Route::patch('/announcements/{announcement}', [AnnouncementController::class, 'update']);
         Route::delete('/announcements/{announcement}', [AnnouncementController::class, 'destroy']);
         Route::get('/guide-conversation-topics', [AdminGuideConversationTopicController::class, 'index']);

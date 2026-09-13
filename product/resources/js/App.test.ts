@@ -866,6 +866,7 @@ describe('application lobby and island entry', () => {
     it('allows only a capability-bearing user to create edit and delete announcements', async () => {
         let article = {
             id: 8, title: '新規記事', body: '本文',
+            body_format: 'plain_text', body_html: null as string | null,
             created_at: '2026-08-09T10:30:00+09:00', updated_at: '2026-08-09T10:30:00+09:00',
         };
         const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -876,8 +877,12 @@ describe('application lobby and island entry', () => {
             if (path === '/api/v1/me') return response({ id: 1, display_name: 'Admin', can_manage_announcements: true, providers: [] });
             if (path === '/api/v1/me/nation') return response(null);
             if (path === '/api/v1/public/announcements?page=1') return response([article]);
+            if (path === '/api/v1/admin/announcements/preview') {
+                return response({ body_html: '<p><strong>一行目</strong><br />二行目</p>' });
+            }
             if (path === '/api/v1/admin/announcements' && init?.method === 'POST') {
                 article = { ...article, ...JSON.parse(String(init.body)) as { title: string; body: string } };
+                article.body_html = '<p><strong>一行目</strong><br />二行目</p>';
                 return response(article, 201);
             }
             if (path === '/api/v1/admin/announcements/8' && init?.method === 'PATCH') {
@@ -897,18 +902,32 @@ describe('application lobby and island entry', () => {
         const create = wrapper.findAll('.announcement-actions button').find((button) => button.text() === '新規作成')!;
         await create.trigger('click');
         await wrapper.find('.announcement-form input').setValue('作成した記事');
-        await wrapper.find('.announcement-form textarea').setValue('一行目\n二行目');
+        expect(wrapper.get<HTMLSelectElement>('.announcement-form select').element.value).toBe('markdown');
+        await wrapper.find('.announcement-form textarea').setValue('**一行目**\n二行目');
+        await wrapper.findAll('.announcement-actions button').find(button => button.text() === 'プレビュー')!.trigger('click');
+        await flushPromises();
+        expect(wrapper.get('.announcement-preview strong').text()).toBe('一行目');
+        expect(fetchMock.mock.calls.some(([path, init]) => String(path) === '/api/v1/admin/announcements' && init?.method === 'POST')).toBe(false);
+        await wrapper.find('.announcement-form textarea').setValue('修正中');
+        expect(wrapper.find('.announcement-preview').exists()).toBe(false);
+        await wrapper.find('.announcement-form textarea').setValue('**一行目**\n二行目');
         await wrapper.find('.announcement-form').trigger('submit');
         await flushPromises();
         const post = fetchMock.mock.calls.find(([path, init]) => String(path) === '/api/v1/admin/announcements' && init?.method === 'POST');
-        expect(JSON.parse(String(post?.[1]?.body))).toEqual({ title: '作成した記事', body: '一行目\n二行目' });
+        expect(JSON.parse(String(post?.[1]?.body))).toEqual({ title: '作成した記事', body: '**一行目**\n二行目', body_format: 'markdown' });
+        expect(wrapper.get('.announcement-article strong').text()).toBe('一行目');
 
         const edit = wrapper.findAll('.announcement-actions button').find((button) => button.text() === '編集')!;
         await edit.trigger('click');
+        expect(wrapper.get<HTMLTextAreaElement>('.announcement-form textarea').element.value).toBe('**一行目**\n二行目');
+        expect(wrapper.get<HTMLSelectElement>('.announcement-form select').element.value).toBe('markdown');
         await wrapper.find('.announcement-form input').setValue('編集した記事');
+        await wrapper.find('.announcement-form select').setValue('plain_text');
         await wrapper.find('.announcement-form').trigger('submit');
         await flushPromises();
         expect(fetchMock.mock.calls.some(([path, init]) => String(path).endsWith('/admin/announcements/8') && init?.method === 'PATCH')).toBe(true);
+        expect(wrapper.get('.announcement-body').text()).toContain('**一行目**');
+        expect(wrapper.find('.announcement-body strong').exists()).toBe(false);
 
         const remove = wrapper.findAll('.announcement-actions button').find((button) => button.text() === '削除')!;
         await remove.trigger('click');

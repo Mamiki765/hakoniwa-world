@@ -47,13 +47,15 @@ final class AnnouncementApiTest extends TestCase
     {
         $announcement = Announcement::query()->create([
             'title' => 'Maintenance',
-            'body' => "First line\nSecond line",
+            'body' => "**First line**\n- Second line",
         ]);
 
         $response = $this->getJson("/api/v1/public/announcements/{$announcement->id}")
             ->assertOk()
             ->assertJsonPath('data.title', 'Maintenance')
-            ->assertJsonPath('data.body', "First line\nSecond line")
+            ->assertJsonPath('data.body', "**First line**\n- Second line")
+            ->assertJsonPath('data.body_format', 'plain_text')
+            ->assertJsonPath('data.body_html', null)
             ->assertJsonStructure(['data' => ['id', 'title', 'body', 'created_at', 'updated_at']]);
 
         $this->assertStringNotContainsString('discord', $response->getContent());
@@ -74,6 +76,40 @@ final class AnnouncementApiTest extends TestCase
             ->assertJsonPath('meta.last_page', 2)
             ->assertJsonPath('meta.per_page', 10)
             ->assertJsonPath('meta.total', 20);
+    }
+
+    public function test_markdown_preview_and_public_article_share_safe_rendering_and_keep_source_for_editing(): void
+    {
+        config(['hakoniwa.admin.discord_user_id' => 'stable-admin-id']);
+        $admin = $this->identityUser('discord', 'stable-admin-id', 'Operator');
+        $body = "**開始**\n次の行\n\n## 更新\n\n- 攻撃\n- 回復\n\n~~旧~~\n\n[手順](https://example.com)\n\n<script>alert(1)</script>\n\n[危険](javascript:alert%281%29)\n\n<img src=x onerror=alert(1)>";
+        $payload = ['body' => $body, 'body_format' => 'markdown'];
+        $html = $this->actingAs($admin)->postJson('/api/v1/admin/announcements/preview', $payload)
+            ->assertOk()->json('data.body_html');
+        $this->assertDatabaseCount('announcements', 0);
+        $this->assertStringContainsString('<strong>開始</strong><br />', $html);
+        $this->assertStringContainsString('<h2>更新</h2>', $html);
+        $this->assertStringContainsString('<li>回復</li>', $html);
+        $this->assertStringContainsString('<del>旧</del>', $html);
+        $this->assertStringContainsString('href="https://example.com"', $html);
+        $this->assertStringNotContainsString('<script', $html);
+        $this->assertStringNotContainsString('onerror=', $html);
+        $this->assertStringNotContainsString('href="javascript:', $html);
+
+        $created = $this->actingAs($admin)->postJson('/api/v1/admin/announcements', ['title' => '更新', ...$payload])
+            ->assertCreated()->assertJsonPath('data.body', $body)->assertJsonPath('data.body_html', $html)->json('data');
+        $this->getJson("/api/v1/public/announcements/{$created['id']}")
+            ->assertOk()->assertJsonPath('data.body_html', $html);
+        // Existing clients may omit the format during an edit: retain the article's format.
+        $this->actingAs($admin)->patchJson("/api/v1/admin/announcements/{$created['id']}", [
+            'title' => '編集', 'body' => '**保存**',
+        ])->assertOk()->assertJsonPath('data.body_format', 'markdown');
+        $this->actingAs($admin)->patchJson("/api/v1/admin/announcements/{$created['id']}", [
+            'title' => '編集', 'body' => '**保存**', 'body_format' => 'plain_text',
+        ])->assertOk()->assertJsonPath('data.body_html', null)->assertJsonPath('data.body', '**保存**');
+        $this->actingAs($admin)->postJson('/api/v1/admin/announcements/preview', [
+            'body' => '本文', 'body_format' => 'html',
+        ])->assertUnprocessable()->assertJsonValidationErrors(['body_format']);
     }
 
     public function test_configured_discord_identity_can_create_update_and_soft_delete(): void
@@ -102,9 +138,11 @@ final class AnnouncementApiTest extends TestCase
         config(['hakoniwa.admin.discord_user_id' => 'stable-admin-id']);
         $payload = ['title' => 'No', 'body' => 'Not authorized'];
         $this->postJson('/api/v1/admin/announcements', $payload)->assertForbidden();
+        $this->postJson('/api/v1/admin/announcements/preview', $payload)->assertForbidden();
 
         $sameName = $this->identityUser('discord', 'different-id', 'Operator');
         $this->actingAs($sameName)->postJson('/api/v1/admin/announcements', $payload)->assertForbidden();
+        $this->actingAs($sameName)->postJson('/api/v1/admin/announcements/preview', $payload)->assertForbidden();
 
         $sameIdDifferentProvider = $this->identityUser('google', 'stable-admin-id', 'Operator');
         $this->actingAs($sameIdDifferentProvider)->postJson('/api/v1/admin/announcements', $payload)

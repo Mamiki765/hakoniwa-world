@@ -1529,8 +1529,17 @@ final class UndergroundRuntimeTest extends TestCase
             unset($unchanged[$key]);
         }
         DB::statement('ALTER TABLE underground_profiles DROP COLUMN skill_rebuild_required, DROP COLUMN rental_party');
+        DB::statement('ALTER TABLE announcements DROP COLUMN body_format');
+        $announcementId = DB::table('announcements')->insertGetId([
+            'title' => '旧記事', 'body' => "**装飾ではない文章**\n- 以前の告知",
+            'created_at' => '2026-09-01 12:34:56', 'updated_at' => '2026-09-01 12:34:56',
+        ]);
+        $announcementBefore = (array) DB::table('announcements')->where('id', $announcementId)->sole();
         $migration = require database_path('migrations/2026_09_13_000000_rebuild_underground_skills_and_store_rental_party.php');
         $migration->up();
+        $announcementAfter = (array) DB::table('announcements')->where('id', $announcementId)->sole();
+        $this->assertSame('plain_text', $announcementAfter['body_format']);
+        $this->assertSame($announcementBefore, array_intersect_key($announcementAfter, $announcementBefore));
         $profile->refresh();
         $this->assertSame($unchanged, array_intersect_key($profile->getAttributes(), $unchanged));
         $this->assertSame([60, 60, true], [$profile->skill_points_total, $profile->skill_points_unspent, $profile->skill_rebuild_required]);

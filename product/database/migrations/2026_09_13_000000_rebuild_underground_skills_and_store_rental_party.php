@@ -1,7 +1,9 @@
 <?php
 
 use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
 {
@@ -9,6 +11,10 @@ return new class extends Migration
 
     public function up(): void
     {
+        Schema::table('announcements', function (Blueprint $table): void {
+            $table->enum('body_format', ['plain_text', 'markdown'])->default('plain_text');
+        });
+
         DB::statement(<<<'SQL'
 ALTER TABLE underground_profiles
   ADD COLUMN skill_rebuild_required boolean NOT NULL DEFAULT false,
@@ -51,6 +57,6 @@ SQL);
 
     public function down(): void
     {
-        throw new RuntimeException('The 3.10.0 skill refund is forward-only; restore the verified pre-migration backup.');
+        throw new RuntimeException('The 3.10.0 release migration is forward-only; restore the verified pre-migration backup.');
     }
 };

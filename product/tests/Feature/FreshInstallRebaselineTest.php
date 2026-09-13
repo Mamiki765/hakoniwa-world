@@ -62,6 +62,10 @@ final class FreshInstallRebaselineTest extends TestCase
         $this->assertDatabaseHas('migrations', [
             'migration' => '2026_09_13_000000_publish_v25_3_9_3_release',
         ]);
+        $this->assertDatabaseHas('migrations', [
+            'migration' => '2026_09_13_000000_rebuild_underground_skills_and_store_rental_party',
+        ]);
+        $this->assertTrue(Schema::hasColumn('announcements', 'body_format'));
         foreach ([
             'user_paradox_balances',
             'user_paradox_ledger',

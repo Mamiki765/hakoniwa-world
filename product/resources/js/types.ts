@@ -333,6 +333,8 @@ export interface Announcement {
     id: number;
     title: string;
     body: string;
+    body_format: 'plain_text' | 'markdown';
+    body_html: string | null;
     created_at: string;
     updated_at: string;
 }
