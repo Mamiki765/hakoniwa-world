@@ -186,8 +186,10 @@ final class UndergroundCombatBuildTest extends TestCase
         $this->assertSame([], $high->abnormalState);
 
         $unreducedCounter = $manifest;
+        // Keep this reduction probe above the one-damage floor regardless of release balance coefficients.
+        $unreducedCounter['skills']['counter_stance']['equipped_modifiers']['counter_power_bps'] = 2_500;
         $unreducedCounter['enemies']['crystal_warden']['modifiers']['damage_taken_reduction_bps'] = 0;
-        $reducedCounter = $manifest;
+        $reducedCounter = $unreducedCounter;
         $reducedCounter['enemies']['crystal_warden']['modifiers']['damage_taken_reduction_bps'] = 5_000;
         $counterDamage = function (array $candidate): int {
             $result = $this->model()->fight(

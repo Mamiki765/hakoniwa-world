@@ -566,6 +566,25 @@ final class AlphaV1PartyCombatTest extends TestCase
         self::assertIsString($lifesteal['action_id'] ?? null);
     }
 
+    public function test_counter_stance_counters_each_attacker_once_per_round_even_against_multiple_hits(): void
+    {
+        $manifest = $this->catalog(10_000_000, 1, 1)->manifest();
+        $manifest['enemies']['party_target']['normal_attack']['hits'] = 3;
+        $manifest['enemies']['party_target']['normal_attack']['stat_coefficients'] = [];
+        $manifest['enemies']['party_target']['normal_attack']['fixed'] = 1;
+        $manifest['skills']['counter_stance']['effects'][1]['fixed'] = 100_000;
+        $catalog = new AlphaV1BuildCatalog($manifest);
+        $player = $this->player('secretary:1', currentHp: 1000);
+        $player['active_skills'] = ['counter_stance'];
+        $player['ai_rules'] = [['conditions' => [['type' => 'always']], 'action' => 'skill:counter_stance']];
+        $result = $this->model()->fightPartySnapshots($catalog, [$player], array_fill(0, 4, 'party_target'), 3100, 2, 0);
+        $counters = collect($result->actionLog)->where('actor_id', 'secretary:1')->where('effect_type', 'counter');
+        foreach ([1, 2] as $round) {
+            self::assertSame(4, $counters->where('round', $round)->count());
+            self::assertSame(['enemy:1', 'enemy:2', 'enemy:3', 'enemy:4'], $counters->where('round', $round)->pluck('target_id')->sort()->values()->all());
+        }
+    }
+
     public function test_round_end_self_regeneration_keeps_the_acting_combatant_as_its_party_target(): void
     {
         $catalog = $this->catalog(enemyHp: 10_000_000, enemyPower: 1, enemyAgility: 1);
@@ -592,6 +611,49 @@ final class AlphaV1PartyCombatTest extends TestCase
         self::assertSame('secretary:1', $regeneration['target_id']);
         self::assertSame(['secretary:1'], $regeneration['target_ids']);
         self::assertGreaterThan(0, -$regeneration['amount']);
+    }
+
+    public function test_critical_scaling_uses_the_damage_category_primary_stat(): void
+    {
+        $catalog = $this->catalog(10_000_000, 1, 1);
+        foreach (['precision_cut' => 'spirit', 'holy_bolt' => 'might'] as $skill => $unrelatedStat) {
+            $samples = [];
+            foreach ([40, 4000] as $unrelatedValue) {
+                $player = $this->player('secretary:1', currentHp: 1000);
+                $player['stats']['finesse'] = 40;
+                $player['stats'][$unrelatedStat] = $unrelatedValue;
+                $player['active_skills'] = [$skill];
+                $player['ai_rules'] = [
+                    ['conditions' => [['type' => 'always']], 'action' => 'skill:'.$skill],
+                    ['conditions' => [['type' => 'always']], 'action' => 'defend'],
+                ];
+                $result = $this->model()->fightPartySnapshots($catalog, [$player], ['party_target'], 3100, 20, 1000);
+                $samples[] = collect($result->actionLog)->where('actor_id', 'secretary:1')->where('action', $skill)->where('effect_type', 'damage')->pluck('amount')->all();
+            }
+            self::assertNotEmpty($samples[0]);
+            self::assertSame($samples[0], $samples[1]);
+        }
+    }
+
+    public function test_guardian_critical_scaling_uses_the_same_vitality_and_might_mix_as_the_attack(): void
+    {
+        $manifest = $this->catalog(10_000_000, 1, 1)->manifest();
+        $manifest['enemies']['party_target']['normal_attack']['stat_coefficients'] = [];
+        $manifest['enemies']['party_target']['normal_attack']['fixed'] = 1;
+        $catalog = new AlphaV1BuildCatalog($manifest);
+        $samples = [];
+        foreach ([[100, 100], [40, 140]] as [$vitality, $might]) {
+            $player = $this->player('secretary:1', currentHp: 100);
+            $player['stats']['vitality'] = $vitality;
+            $player['stats']['might'] = $might;
+            $player['stats']['finesse'] = 40;
+            $player['active_skills'] = ['shield_bash'];
+            $player['ai_rules'] = [['conditions' => [['type' => 'always']], 'action' => 'skill:shield_bash']];
+            $result = $this->model()->fightPartySnapshots($catalog, [$player], ['party_target'], 3100, 20, 0);
+            $samples[] = collect($result->actionLog)->where('actor_id', 'secretary:1')->where('action', 'shield_bash')->where('effect_type', 'damage')->pluck('amount')->all();
+        }
+        self::assertCount(20, $samples[0]);
+        self::assertSame($samples[0], $samples[1]);
     }
 
     public function test_additional_strike_uses_a_slot_and_cooldown_but_preserves_the_regular_action_with_any_weapon(): void

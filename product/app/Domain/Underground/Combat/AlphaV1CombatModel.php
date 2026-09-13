@@ -1910,8 +1910,14 @@ final readonly class AlphaV1CombatModel
 
             $critical = false;
             if (($effect['can_crit'] ?? false) === true) {
+                $criticalPrimary = $category === 'miracle' ? $actor->stat('spirit') : $actor->stat('might');
+                if ($category === 'physical' && ($coefficients['vitality'] ?? 0) > 0) {
+                    // Guardian attacks use both stats for power; increasing either must not reduce critical scaling disproportionately.
+                    $criticalPrimary = $this->rules->weightedStats($this->currentStats($actor),
+                        array_intersect_key($coefficients, ['vitality' => true, 'might' => true]));
+                }
                 $criticalProfile = $this->rules->criticalProfile($actor->stat('finesse'),
-                    max($actor->stat('might'), $actor->stat('spirit')));
+                    $criticalPrimary);
                 $criticalChance = min(
                     AlphaV1CombatRules::CRITICAL_CHANCE_CAP_BPS,
                     max(0, $criticalProfile['chance_bps']
@@ -2590,11 +2596,14 @@ final readonly class AlphaV1CombatModel
         ?string $actionId = null,
     ): void {
         $powerBps = max(0, (int) ($defender->modifiers['counter_power_bps'] ?? 0));
-        if ($powerBps === 0 || ($defender->flags['counter_round'] ?? null) === $round
+        $counterKey = ($defender->modifiers['counter_per_attacker'] ?? false) === true
+            ? 'counter_round:'.$attacker->combatantId
+            : 'counter_round';
+        if ($powerBps === 0 || ($defender->flags[$counterKey] ?? null) === $round
             || ! $defender->alive() || ! $attacker->alive()) {
             return;
         }
-        $defender->flags['counter_round'] = $round;
+        $defender->flags[$counterKey] = $round;
         $effectivePower = intdiv(
             (($defender->stat('vitality') * 6) + ($defender->stat('might') * 4)) * $powerBps,
             10_000,

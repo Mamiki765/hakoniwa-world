@@ -213,7 +213,7 @@ final readonly class AlphaV1BuildCatalog
                 foreach ($skill['equipped_modifiers'] as $modifier => $value) {
                     $valid = match ($modifier) {
                         'counter_power_bps' => is_int($value) && $value >= 0 && $value <= 10_000,
-                        'fighting_spirit_enabled' => is_bool($value),
+                        'fighting_spirit_enabled', 'counter_per_attacker' => is_bool($value),
                         default => false,
                     };
                     if (! $valid) {
