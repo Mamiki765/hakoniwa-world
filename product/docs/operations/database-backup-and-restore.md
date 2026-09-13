@@ -61,6 +61,8 @@ ver 1.3.2はgameplay、public API contract、ruleset、database schema、World/N
 
 すべての手順はproduction hostの`root`で実行する。passphrase file、staging、lock、log、root crontab、Docker socketへ必要な権限を持たせるためである。passphraseの値をshell、cron、log、environment dumpへ出力しない。
 
+database dumpは全tableのschemaとdataを含むPostgreSQL custom archiveとし、archive内圧縮に`zstd:9`を使う。容量対策のためにgameplay、request identity、event、audit、戦闘履歴のtable dataを除外しない。`pg_restore`はcustom archive内の圧縮方式を自動判別するため、復元手順と暗号化形式は変更しない。
+
 VMのInstance Principalには`OBJECT_CREATE`、`OBJECT_INSPECT`、`OBJECT_READ`だけを付与する。`OBJECT_OVERWRITE`と`OBJECT_DELETE`は付与しない。wrapperも`--no-overwrite`を指定し、既存objectを成功扱いしない。30日後の削除はbucket lifecycle policyが行い、VMへdelete権限を追加しない。bucketはprivateのままとする。
 
 continuous WAL archive、point-in-time recovery、RPO 15分以内は別の公開後改善とする。backup retentionを理由にapplication data、event、audit recordを削除しない。

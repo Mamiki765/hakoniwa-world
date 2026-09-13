@@ -442,6 +442,7 @@ pass 'pre-existing final symlink fails before Docker without changing the link t
 same_second="${test_root}/same-second"
 run_canonical_create "${same_second}" >"${same_second}-first.out" 2>&1 \
     || fail_test 'first same-second backup creation failed'
+assert_output "${same_second}/docker.log" '--compress=zstd:9'
 same_second_file="${same_second}/staging/${collision_name}"
 same_second_before="$(file_sha256 "${same_second_file}")"
 if run_canonical_create "${same_second}" >"${same_second}-second.out" 2>&1; then

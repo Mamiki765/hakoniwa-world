@@ -35,7 +35,7 @@ trap 'if [[ -n "${temporary}" ]]; then rm -f -- "${temporary}"; fi' EXIT
 cd -- "${HAKONIWA_PROJECT_DIR}"
 
 docker compose exec -T hakoniwa-postgres \
-    pg_dump --username="${user}" --dbname="${database}" --format=custom --no-owner --no-acl \
+    pg_dump --username="${user}" --dbname="${database}" --format=custom --compress=zstd:9 --no-owner --no-acl \
     | openssl enc -aes-256-cbc -salt -pbkdf2 -iter 200000 \
         -pass "file:${HAKONIWA_BACKUP_PASSPHRASE_FILE}" \
         -out "${temporary}"
