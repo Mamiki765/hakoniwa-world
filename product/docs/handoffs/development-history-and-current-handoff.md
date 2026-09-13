@@ -14,7 +14,7 @@
 | 正本remote | Forgejo `https://git.pbwlove.com/Mamiki765/hakoniwa-world.git` |
 | 基準main | `86bf561fd91de24f8b3c199ecf1de0cf201baa60`。作業開始時にfetchした`origin/main`と一致し、3.9.2 merge済みであることを確認 |
 | 作業branch | `release/3.9.3` |
-| 実装HEAD | `bc281658d2569ff94e9bc83e88ebd951a6e17698` |
+| 実装HEAD | `35ede05d3c0b3d41bdc63a1568c561aa8f0b8955`。handoff更新commitを除く3.9.3実装先端 |
 | Application / Ruleset | candidate application `3.9.3`。production使用済みv24を変更せず、地上behavior changeを1世代だけ上げた`hakoniwa-2s-plus-v25`へ統合 |
 | Underground combat | enemy単体target semantics変更のためcurrent identityを`secretary-underground-alpha-v4`へ更新。v3以前のsnapshotは変更しない |
 | 未実施 | merge、production deploy、production DB操作、補填操作、repository-wide PHPUnit |
@@ -38,26 +38,32 @@
 | PT敵単体target | `OWNER-DECIDED` / `IMPLEMENTED` | 生存中の有効な挑発sourceを優先し、なければ生存PT memberからexisting battle RNGで決定的に1人を選ぶ。実際に単体敵対targetが必要なactionだけ一度抽選し、damage・effect・logで共有する。self、AoE、明示target、round-endは通常target抽選を消費しない |
 | 新規島候補探索 | `OWNER-DECIDED` / `IMPLEMENTED` | 既存の安定順を保ってbounded batchで全候補を順に評価し、安全なplanが既存World内にある限り拡張しない。固定候補数はgameplay contractにしない |
 | 通常怪獣のいる候補 | `OWNER-DECIDED` / `IMPLEMENTED` | 初期島の変更対象cellに非退避怪獣がいる候補だけをskipし、次の候補を試す。通常怪獣を削除せず、明示的に退避可能な怪獣は最終採用planだけ従来どおり処理する |
+| PT回復target | `OWNER-DECIDED` / `IMPLEMENTED` | 他者回復能力はgrowth pathやclassではなくskill/effectに属する。どのgrowth pathでも祝福Skill Treeの`mending_prayer`を取得・装備すれば最低HP割合の生存味方を回復できる。`renewing_guard`等のself-only skillはselfを維持する。soloの`ally_hp_lte`は本人を含む |
+| 記念碑asset | `OWNER-DECIDED` / `IMPLEMENTED` | 通常・平和・繁栄・戦勝の全記念碑asset keyを外部asset directoryの`monument0.gif`へ解決する。種類別PNGは要求しない |
 | 敵AoEと覚醒ゲージ | `OPEN` / 未実装 | 現行party pathは、複数playerが被damageしてもbase target一人へだけ被damage由来ゲージを加算し得る。party AoEの受給者を定めたOwner decisionは確認できず、延期扱いにもしない |
 | AoE覚醒ゲージ案 | `ASSISTANT-PROPOSAL` | 実際にdamageまたはbarrier damageを受けた各playerへ、そのenemy actionにつき各人最大1回を推奨する。Owner決定前にcontract化しない |
 
 平地・森の候補化、World縮小・座標/chunk/indexの大規模再設計、generic AI target DSLは3.9.3の`OUT OF SCOPE`であり、今回の実装へ混ぜていない。これは将来の恒久禁止や`OWNER-DEFERRED`を意味しない。
 
-原因は二点だった。party combatはenemy actorのaction種別を決める前に`firstAlivePartyTarget($players)`をbase targetとして固定していた。Nation登録は`CapitalPlacementService::candidates()`の既定上限3件だけを取得し、通常怪獣の拒否も候補選択後のapply段階だったため、4件目以降の安全候補へ継続できなかった。
+主な原因は三点だった。party combatはenemy actorのaction種別を決める前に`firstAlivePartyTarget($players)`をbase targetとして固定していた。Nation登録は`CapitalPlacementService::candidates()`の既定上限3件だけを取得し、通常怪獣の拒否も候補選択後のapply段階だったため、4件目以降の安全候補へ継続できなかった。PT回復はactor全体の`party_healing_target_scope`をgrowth pathから作り、すべてのself healへ上書きしていたため、直交するgrowth pathとSkill Treeを混同していた。
 
 v25 migrationはexact v24 shared-worldだけをforward upgradeし、queued command definition、alive monster definition、kill statをstable keyでrebindする。terminal command、request provenance、historical monster、ship、Secretary、Secretary Skill、Turn runを保護し、同じWorld mutation lockとtransactionを維持する。Nation作成、船退避、島生成も引き続き同じtransactionにあり、候補skipや失敗でpartial writeを残さない。
 
 ### Focused確認
 
-- party combat: `AlphaV1PartyCombatTest` 13 tests / 111 assertions / `0.34s` PASS。同seedのtarget列一致、複数memberへの分散可能性、挑発、死亡source fallback、AoEを挑発者へ縮退しないことを代表確認。
+- party combat / AI: `AlphaV1PartyCombatTest`と`PriorityCombatAiConfigurationTest` 31 tests / 259 assertions / `0.53s` PASS。同seedのtarget列一致、複数memberへの分散可能性、挑発、死亡source fallback、AoEを挑発者へ縮退しないことに加え、治癒祈祷の味方target、自己再生のself固定、soloの味方HP条件を代表確認。
+- growth path直交: 4 growth pathすべてで祝福Skill Treeの治癒祈祷と`lowest_hp_ally` custom ruleを利用できるfeature test 1 test / 13 assertions / `12.66s` PASS。貸出projectionから旧actor-wide回復scopeを除く確認は1 test / 21 assertions / `12.53s` PASS。
+- 記念碑asset: 全4 asset keyが`monument0.gif`を共有する`TileAssetTest` 8 tests / 163 assertions / `35.89s` PASS。
 - island continuation: 最初のbounded batchを越えて17件目のsafe candidateを採用するtest 1 test / 4 assertions / `10.15s` PASS。既存Worldを拡張しないことも確認。
 - monster candidate: 退避可能怪獣、通常怪獣candidate skip、変更対象外怪獣の3 tests / 15 assertions / `14.585s` PASS。通常怪獣、kill stat、報酬auditを残さないことを確認。
 - island failure/expansion: ship退避不能候補、generator失敗rollback、候補枯渇時の1回拡張を含む4 tests / 80 assertions / `65.270s` PASS。
 - Ruleset v25 authoring/validation: 14 tests / 81 assertions / `46.596s` PASS。
 - exact v22→v23→v24→v25 upgrade: 1 test / 84 assertions / `29.06s` PASS。fresh installとWorld initializationは6 tests / 89 assertions / `26.65s` PASS。
-- static/style: PHPStan 430 filesでerrorなし。Pint 667 files PASS。open-question validatorは84 IDsを検証してPASS。`git diff --check` PASS。
+- static/style: review追従後のPHPStan 430 filesでerrorなし、変更PHP 8 filesのPint PASS。先行checkpointのPint 667 filesとopen-question validator 84 IDsもPASS。`git diff --check` PASS。
 
-repository-wide PHPUnitは小修正ごとに全件を繰り返さない方針に従い未実行。3.9.3 exact HEADのrelease checkpointはpush後のCIへ委譲する。scope内の差分確認で追加のP0/P1/P2相当は見つかっていない。
+独立レビューは`c38c83cf6e15d4923e43d9ff0c385f4c109027dd`を対象にPR #2 comment #12へ記録され、soloの`ally_hp_lte`とactor-wide回復scopeの不整合を指摘した。Owner clarificationをcomment #13で追記し、growth pathではなく祝福Skill Treeの治癒祈祷が他者回復能力を持つcurrent decisionとして本節へ反映した。MCP改善要望はゲームrepositoryの実装scopeへ混ぜず、別の提案文書として扱う。
+
+repository-wide PHPUnitは小修正ごとに全件を繰り返さない方針に従い未実行。3.9.3 exact HEADのrelease checkpointはpush後のCIへ委譲する。独立レビューで見つかった上記P2は修正済みで、確認範囲に追加のP0/P1/P2相当は見つかっていない。
 
 ## Δ0. 3.9.2整理・テスト再設計（2026-09-12 JST）
 
