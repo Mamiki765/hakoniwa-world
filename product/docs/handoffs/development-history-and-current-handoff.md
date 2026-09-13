@@ -1,9 +1,63 @@
 # hakoniwa-world 開発経緯・現行引継ぎ
 
 > 作成日：2026-09-10 JST。対象：`Mamiki765/hakoniwa-world`。
-> **2026-09-10追記：旧本文の現在地と矛盾する部分は、本書冒頭のΔ1〜Δ10を優先する。本文反映のcommit・push状態は実際のGit情報で確認する。**
+> **2026-09-13追記：旧本文の現在地と矛盾する部分は、直後の「3.9.3 hotfix候補」を最優先し、次にΔ0、Δ1〜Δ10の順で読む。本文反映のcommit・push状態は実際のGit情報で確認する。**
 > Ownerの告知原文、実機ログ、MCPの本番観測、固定SHAの実装、過去チャットのレビュー報告を分けて記録する。
 > この文書を作成しただけでrepositoryの編集・commit・push・deploy・追加配布を行ったことにはならない。
+
+## 現在地：3.9.3 hotfix候補（2026-09-13 JST）
+
+### Refとrelease境界
+
+| 項目 | 状態 |
+|---|---|
+| 正本remote | Forgejo `https://git.pbwlove.com/Mamiki765/hakoniwa-world.git` |
+| 基準main | `86bf561fd91de24f8b3c199ecf1de0cf201baa60`。作業開始時にfetchした`origin/main`と一致し、3.9.2 merge済みであることを確認 |
+| 作業branch | `release/3.9.3` |
+| 実装HEAD | `bc281658d2569ff94e9bc83e88ebd951a6e17698` |
+| Application / Ruleset | candidate application `3.9.3`。production使用済みv24を変更せず、地上behavior changeを1世代だけ上げた`hakoniwa-2s-plus-v25`へ統合 |
+| Underground combat | enemy単体target semantics変更のためcurrent identityを`secretary-underground-alpha-v4`へ更新。v3以前のsnapshotは変更しない |
+| 未実施 | merge、production deploy、production DB操作、補填操作、repository-wide PHPUnit |
+
+この節を3.9.3候補のcurrent authorityとして旧節より優先する。3.9.2以前の記録は当時のhistorical evidenceであり、現在の未決事項やrelease状態へ読み替えない。
+
+### 状態語彙
+
+- `OWNER-DECIDED`: Ownerが要求する意味を確定済み。実装済みかどうかとは分ける。
+- `OWNER-DEFERRED`: Ownerが明示的に延期した項目だけに使う。方式未決や未実装だけでは該当しない。
+- `OPEN`: Owner判断がまだ必要で、延期済みではない。
+- `ASSISTANT-PROPOSAL`: Assistant/Codexの提案であり、Owner decisionやcurrent contractではない。
+- `IMPLEMENTED`: 現在のcodeへ入った状態を示す。これ自体をOwner decisionの根拠にはしない。
+
+`OPEN = OWNER-DEFERRED`ではない。Ownerが具体方式を決めていない項目を、Assistant判断で「今回は別件」「次versionへ延期済み」と扱わない。
+
+### 3.9.3の判断と実装
+
+| 対象 | 状態 | Current contract |
+|---|---|---|
+| PT敵単体target | `OWNER-DECIDED` / `IMPLEMENTED` | 生存中の有効な挑発sourceを優先し、なければ生存PT memberからexisting battle RNGで決定的に1人を選ぶ。実際に単体敵対targetが必要なactionだけ一度抽選し、damage・effect・logで共有する。self、AoE、明示target、round-endは通常target抽選を消費しない |
+| 新規島候補探索 | `OWNER-DECIDED` / `IMPLEMENTED` | 既存の安定順を保ってbounded batchで全候補を順に評価し、安全なplanが既存World内にある限り拡張しない。固定候補数はgameplay contractにしない |
+| 通常怪獣のいる候補 | `OWNER-DECIDED` / `IMPLEMENTED` | 初期島の変更対象cellに非退避怪獣がいる候補だけをskipし、次の候補を試す。通常怪獣を削除せず、明示的に退避可能な怪獣は最終採用planだけ従来どおり処理する |
+| 敵AoEと覚醒ゲージ | `OPEN` / 未実装 | 現行party pathは、複数playerが被damageしてもbase target一人へだけ被damage由来ゲージを加算し得る。party AoEの受給者を定めたOwner decisionは確認できず、延期扱いにもしない |
+| AoE覚醒ゲージ案 | `ASSISTANT-PROPOSAL` | 実際にdamageまたはbarrier damageを受けた各playerへ、そのenemy actionにつき各人最大1回を推奨する。Owner決定前にcontract化しない |
+
+平地・森の候補化、World縮小・座標/chunk/indexの大規模再設計、generic AI target DSLは3.9.3の`OUT OF SCOPE`であり、今回の実装へ混ぜていない。これは将来の恒久禁止や`OWNER-DEFERRED`を意味しない。
+
+原因は二点だった。party combatはenemy actorのaction種別を決める前に`firstAlivePartyTarget($players)`をbase targetとして固定していた。Nation登録は`CapitalPlacementService::candidates()`の既定上限3件だけを取得し、通常怪獣の拒否も候補選択後のapply段階だったため、4件目以降の安全候補へ継続できなかった。
+
+v25 migrationはexact v24 shared-worldだけをforward upgradeし、queued command definition、alive monster definition、kill statをstable keyでrebindする。terminal command、request provenance、historical monster、ship、Secretary、Secretary Skill、Turn runを保護し、同じWorld mutation lockとtransactionを維持する。Nation作成、船退避、島生成も引き続き同じtransactionにあり、候補skipや失敗でpartial writeを残さない。
+
+### Focused確認
+
+- party combat: `AlphaV1PartyCombatTest` 13 tests / 111 assertions / `0.34s` PASS。同seedのtarget列一致、複数memberへの分散可能性、挑発、死亡source fallback、AoEを挑発者へ縮退しないことを代表確認。
+- island continuation: 最初のbounded batchを越えて17件目のsafe candidateを採用するtest 1 test / 4 assertions / `10.15s` PASS。既存Worldを拡張しないことも確認。
+- monster candidate: 退避可能怪獣、通常怪獣candidate skip、変更対象外怪獣の3 tests / 15 assertions / `14.585s` PASS。通常怪獣、kill stat、報酬auditを残さないことを確認。
+- island failure/expansion: ship退避不能候補、generator失敗rollback、候補枯渇時の1回拡張を含む4 tests / 80 assertions / `65.270s` PASS。
+- Ruleset v25 authoring/validation: 14 tests / 81 assertions / `46.596s` PASS。
+- exact v22→v23→v24→v25 upgrade: 1 test / 84 assertions / `29.06s` PASS。fresh installとWorld initializationは6 tests / 89 assertions / `26.65s` PASS。
+- static/style: PHPStan 430 filesでerrorなし。Pint 667 files PASS。open-question validatorは84 IDsを検証してPASS。`git diff --check` PASS。
+
+repository-wide PHPUnitは小修正ごとに全件を繰り返さない方針に従い未実行。3.9.3 exact HEADのrelease checkpointはpush後のCIへ委譲する。scope内の差分確認で追加のP0/P1/P2相当は見つかっていない。
 
 ## Δ0. 3.9.2整理・テスト再設計（2026-09-12 JST）
 

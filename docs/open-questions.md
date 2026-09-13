@@ -16,7 +16,7 @@
 | missile / commands / combat | B-03、B-05、B-12、B-13 | Capital operational damage、防壁・占領抵抗、またはv12のdistance 2休眠保護を変更する将来combatを実装する前に停止する。ver 2.4.0のKARMA/recoveryはADR-0015で決定済み。 |
 | lifecycle / automatic turn operations | T-02 | ver 2.4.0はADR-0014/ADR-0015によりdormant/recoveryを専用Jobではなくofficial Turn開始/終端へ統合する。将来専用scheduler/batchへ変更する前に停止し、production cronと手動retry境界はD-02を維持する。 |
 | public release | — | RELEASE-01、AUTH-05、B-14、D-03、D-04、D-05、D-07はPR23 owner decisionで決定済み。 |
-| Underground 3.0.0 / post-release | UG-05 | E-01/UG-01〜04によりpure combat、Secretary-owned persistence/runtime、正式intro、通常探索、growth/STP、有限SPとplayer Skill Tree、案内人の部屋と複合再振り、Nation-owned facility・surface bridgeまで実装済み。party boundaryはUG-05で決定済み。marketはUG-05で停止する。 |
+| Underground 3.0.0 / post-release | UG-05、UG-06 | E-01/UG-01〜04によりpure combat、Secretary-owned persistence/runtime、正式intro、通常探索、growth/STP、有限SPとplayer Skill Tree、案内人の部屋と複合再振り、Nation-owned facility・surface bridgeまで実装済み。party boundaryはUG-05で決定済み。marketはUG-05、party敵AoEの被damage覚醒ゲージ変更はUG-06で停止する。 |
 | post-MVP deferred | AUTH-06〜AUTH-09、B-08、D-06、D-08、C-02、C-04、E-02、E-04〜E-09 | 別のowner-approved roadmapまで実装しない。 |
 
 ## Decided architecture
@@ -41,7 +41,7 @@
 
 - Status: Decided
 - Implemented: Yes
-- Decision: serverが安全な空き地点へ自動配置し、同時登録をtransactionとlockで直列化する。Ruleset v24では所有者・施設・人口のない中立の海・浅瀬・荒地・山を候補にでき、生成後に航行不能になる船は空き深海へ無償退避する。退避不能な候補は使わず、登録失敗時は船移動もrollbackする。
+- Decision: serverが安全な空き地点へ自動配置し、同時登録をtransactionとlockで直列化する。Ruleset v25では所有者・施設・人口のない中立の海・浅瀬・荒地・山を候補にでき、生成後に航行不能になる船は空き深海へ無償退避する。安定順の候補をbounded batchで安全なplanが見つかるまで評価し、退避不能または通常怪獣を変更対象へ巻き込む候補だけを棄却する。既存World内の候補を尽くす前に拡張せず、登録失敗時は船移動を含む全変更をrollbackする。
 - Decision record: `docs/architecture/registration-and-world-expansion.md`
 
 ### A-05 初期領土と首都間距離
@@ -134,7 +134,7 @@
 
 - Status: Decided
 - Implemented: Yes
-- Decision: Ruleset v24ではdistance 5以内の91 cellsが生成済みの海・浅瀬・荒地・山、無所有、施設なし、人口0で、全ての既存Capitalから距離12以上の候補を使う。既存Capitalから遠い順、同値はy/x昇順とし、上位3候補を有限評価して船を安全退避できる最初の候補を採用する。
+- Decision: Ruleset v25ではdistance 5以内の91 cellsが生成済みの海・浅瀬・荒地・山、無所有、施設なし、人口0で、全ての既存Capitalから距離12以上の候補を使う。既存Capitalから遠い順、同値はy/x昇順を維持し、bounded batchで順に評価する。船を安全退避できない候補または通常怪獣を初期島の変更対象へ巻き込む候補はskipし、既存World内の全候補を尽くした場合だけ従来の1回World拡張へ進む。候補件数自体はgameplay contractにしない。
 - Decision record: `docs/architecture/registration-and-world-expansion.md`
 
 ### C-01 地図描画方式
@@ -304,10 +304,20 @@
 - Status: Open
 - Required before: 地底marketの最初の実装
 - Open decision: 地底marketのtransactionと不正対策をOwnerが決定する。
-- Decision: partyは自分のSecretary 1人に、公開・貸出可能な他UserのSecretaryを最大3人まで加えた最大4 actorとする。actorは表示名ではなく`team`と`combatant_id`で結び、Trialは従来どおりsoloを維持する。借用snapshotとLeader level capはbattle開始時に固定し、貸出側へ戦闘状態を書き戻さない。探索のenemy数と通常報酬を別authorityとし、通常報酬はLeaderだけ、貸出報酬は決着したborrowed参加10回ごとにskip ticket 1枚、canonical dayあたり100枚までとする。Boss人数補正は`none`またはcontent-authored tableとする。skipはcontent別に管理し、狩場はactual combat win 50回で1回1枚、Trialはactual full clear 5周で1周10枚を解禁する。skipはcombat・cooldown・貸出参加を発生させず、通常勝利と共通のrepeatable reward settlementだけをsettleし、first-clear等のone-time stateを再発させない。既存`execution_count`を使う一操作最大1,000回の任意回数・周回数も同じ決算経路を使う。総clear数には加えるが、解禁用actual countへは加えない。対応するplayer actionだけ、最低HP割合の生存味方または有効な挑発を受けていない敵をstable orderで選べる。候補がなければ次ruleへ進み、対象省略時とenemy通常攻撃のtarget方式は従来どおりとする。
+- Decision: partyは自分のSecretary 1人に、公開・貸出可能な他UserのSecretaryを最大3人まで加えた最大4 actorとする。actorは表示名ではなく`team`と`combatant_id`で結び、Trialは従来どおりsoloを維持する。借用snapshotとLeader level capはbattle開始時に固定し、貸出側へ戦闘状態を書き戻さない。探索のenemy数と通常報酬を別authorityとし、通常報酬はLeaderだけ、貸出報酬は決着したborrowed参加10回ごとにskip ticket 1枚、canonical dayあたり100枚までとする。Boss人数補正は`none`またはcontent-authored tableとする。skipはcontent別に管理し、狩場はactual combat win 50回で1回1枚、Trialはactual full clear 5周で1周10枚を解禁する。skipはcombat・cooldown・貸出参加を発生させず、通常勝利と共通のrepeatable reward settlementだけをsettleし、first-clear等のone-time stateを再発させない。既存`execution_count`を使う一操作最大1,000回の任意回数・周回数も同じ決算経路を使う。総clear数には加えるが、解禁用actual countへは加えない。対応するplayer actionだけ、最低HP割合の生存味方または有効な挑発を受けていない敵をstable orderで選べる。候補がなければ次ruleへ進む。application 3.9.3では敵の単体敵対actionは、生存中の有効な挑発sourceを優先し、それがなければ生存playerからbattle RNGで決定的に1人を選ぶ。実targetはactionごとに一度だけ決め、damage・effect・logで再抽選しない。self、全体、明示target、round-endはこの抽選を消費しない。
 - Boundary: 過去の1対1 battle logを再計算・書換えず、party presentationはv3として分離する。companion育成、market transactionと不正対策は別decisionとして扱う。UG-04のNation-owned facility・surface bridge決定をparty/marketへ拡張しない。
 - Deferred: companion framework、market transaction、market不正対策。
 - Decision record: `docs/roadmap/3.0.0-alpha-underground.md`
+
+### UG-06 party敵AoEと覚醒ゲージ
+
+- Status: Open
+- Required before: party敵AoEの被damage由来覚醒ゲージ付与先を変更する実装
+- Open decision: 被damage由来覚醒ゲージをbase target一人だけへ付与し続けるか、実際に被damageした各playerへaction単位で付与するかをOwnerが決定する。
+- Current behavior: 敵の全体攻撃で複数playerが実damageまたはbarrier damageを受けても、party pathはaction中にplayer被damageが一件でもあればbase target一人へだけ加算する。
+- Assistant proposal: 実際にdamageまたはbarrier damageを受けた各playerへ、そのenemy actionにつき最大1回ずつ加算する。soloの「multi-hitでも1 action 1回」は各playerについて維持する。
+- Boundary: Owner decisionが得られるまで実装しない。`Open`であり、次versionへ`Deferred`された事項ではない。
+- Decision record: `docs/architecture/underground-combat-laboratory.md`
 
 ## Monster/combat gates
 
@@ -379,7 +389,7 @@
 
 - Status: Decided
 - Implemented: Yes
-- Decision: `hakoniwa-2s-plus-v3`ではactive Nation間だけを対象に、共有surface cell shuffle順で各対象cellを1回訪問し、6方向から1方向だけを専用乱数streamで選ぶ。失敗時の再抽選は行わず、成功したowner変更は即時反映して後続cellから観測できる。`territory_expand`は従来の中立陸地取得に加え、隣接自領がある別active Nation所有のwasteland/scorchedだけを取得できる。各active NationのCapitalからhex distance 2以内は他Nationへのownership transferを禁止するが、core内cellは外側へのinfluence sourceとして通常どおり機能する。neutral、dormant、sunken、monster occupancyは今回のinfluence対象にしない。Ruleset v24では取得側の現在陸地面積が地盤沈下の安全面積以上なら自動取得せず、同一phase内の取得・喪失を逐次反映する。上限側が土地を失う処理、手動拡張、抽選順は変更しない。
+- Decision: `hakoniwa-2s-plus-v3`ではactive Nation間だけを対象に、共有surface cell shuffle順で各対象cellを1回訪問し、6方向から1方向だけを専用乱数streamで選ぶ。失敗時の再抽選は行わず、成功したowner変更は即時反映して後続cellから観測できる。`territory_expand`は従来の中立陸地取得に加え、隣接自領がある別active Nation所有のwasteland/scorchedだけを取得できる。各active NationのCapitalからhex distance 2以内は他Nationへのownership transferを禁止するが、core内cellは外側へのinfluence sourceとして通常どおり機能する。neutral、dormant、sunken、monster occupancyは今回のinfluence対象にしない。Ruleset v24以降では取得側の現在陸地面積が地盤沈下の安全面積以上なら自動取得せず、同一phase内の取得・喪失を逐次反映する。上限側が土地を失う処理、手動拡張、抽選順は変更しない。
 - Remaining Open/Deferred: 防壁都市・占領抵抗はB-05、dormant territory占領はB-12、dormant Capital保護はB-13、報復・反撃は別roadmapの判断を維持する。
 - Decision record: `product/docs/territory-expansion-influence-ver-1.4.0.md`、`docs/reference-analysis/hakoniwa-2plus-world-map.md`
 

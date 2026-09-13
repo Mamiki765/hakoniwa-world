@@ -19,9 +19,9 @@
 
 ## Capital placement
 
-Ruleset v24の候補は、reservation radius 5 の91 cellsが全て未所有・施設なし・人口0で、地形が海・浅瀬・荒地・山のいずれかであり、既存 Capital から distance 12 以上の地点に限る。平地・森は候補へ広げない。Capital距離はNation stateで絞らず、地図に残る全Capitalを対象とする。距離は ADR-0003 の x/y 方式を使い、候補探索 SQL の cube 成分は計算式内部だけに閉じる。
+Ruleset v25の候補は、reservation radius 5 の91 cellsが全て未所有・施設なし・人口0で、地形が海・浅瀬・荒地・山のいずれかであり、既存 Capital から distance 12 以上の地点に限る。平地・森は候補へ広げない。Capital距離はNation stateで絞らず、地図に残る全Capitalを対象とする。距離は ADR-0003 の x/y 方式を使い、候補探索 SQL の cube 成分は計算式内部だけに閉じる。
 
-候補に船がいても探索段階では除外しない。上位3候補を有限に評価し、初期島生成後も航行可能な空き海へ船を退避できない候補だけを棄却する。3候補とも使えない場合は既存の1回だけのWorld拡張を行い、無制限に候補探索や拡張を繰り返さない。
+候補に船がいても探索段階では除外しない。既存Capitalからの距離、y、xによる安定順を維持したbounded batchで候補を評価し、初期島生成後も航行可能な空き海へ船を退避できない候補、または通常怪獣を初期島の変更対象へ巻き込む候補だけを棄却する。安全なplanが見つかればそこで停止し、現在のWorld内の全候補を尽くした場合だけ既存の1回World拡張を行う。候補数を固定contractにせず、無制限にWorld拡張を繰り返さない。
 
 ## Initial island
 
@@ -44,7 +44,7 @@ growth後に中立・施設なしの浅瀬が3未満なら、reservation内で�
 
 ## Failure behavior
 
-World 初期化と Nation 作成はそれぞれ transaction で囲む。途中失敗時は cell、chunk、nation、capital、membership、resource、creation request、audit、船の移動を部分的に残さない。安全な船の退避先がない候補は島を適用せず、別の有限候補へ進む。
+World 初期化と Nation 作成はそれぞれ transaction で囲む。途中失敗時は cell、chunk、nation、capital、membership、resource、creation request、audit、船の移動を部分的に残さない。安全な船の退避先がない候補または通常怪獣を変更対象へ巻き込む候補は島を適用せず、同じ安定順の次候補へ進む。
 
 ## Existing-world transition
 

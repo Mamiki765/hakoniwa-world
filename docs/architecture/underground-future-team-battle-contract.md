@@ -15,6 +15,8 @@ paths. Display names are presentation only; actions use `team`, `actor_id`, `tar
 - `all_allies`: every actor on the source's side, including the source.
 - `defeated_allies`: allied actors whose battle HP is zero and which are eligible for revival.
 
+Application 3.9.3では、enemyの単体敵対actionが`primary_enemy`を必要とする時だけ実targetを決定する。有効かつ生存中の挑発sourceを優先し、それがなければ生存playerからexisting battle RNGで決定的に1人を選ぶ。同じactionのdamage、effect、logはその一度の選択を共有し、self、全体、明示target、round-endは通常target抽選を消費しない。全体攻撃は挑発source一人へ縮退しない。
+
 Party-capable content effects may declare the narrow `target_scope` values `single_enemy`,
 `all_enemies`, `single_ally`, `all_allies`, or `self`. Existing effects omit the field and keep
 their historical single-enemy/self result. `single_ally` uses the living ally with the lowest HP
