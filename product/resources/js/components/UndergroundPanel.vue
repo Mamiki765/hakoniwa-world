@@ -591,7 +591,6 @@ const awakeningMessageDraft = ref('');
 const awakeningTechniqueDraft = ref<string | null>(null);
 const equipmentView = ref<'main' | 'shop' | 'guide' | 'ai' | 'vault' | 'party'>('main');
 const guideMode = ref<'basic' | 'conversation' | 'recollections' | 'serious_talk' | 'respec' | 'guide_duel'>('basic');
-const guideDuelWithParty = ref(true);
 const guideDuelCancelled = ref(false);
 const pendingGuideDuel = ref<{ requestId: string; borrowedSecretaryIds: number[] } | null>(null);
 const guideDuelLines = computed(() => {
@@ -599,7 +598,8 @@ const guideDuelLines = computed(() => {
     if (!duel) return [];
     if (guideDuelCancelled.value) return duel.cancel_lines;
     if (!duel.won) return duel.challenge_lines;
-    return guideDuelWithParty.value && confirmedPartyIds.value.length > 0 ? duel.rematch_lines : duel.solo_rematch_lines;
+    const partyIds = pendingGuideDuel.value?.borrowedSecretaryIds ?? confirmedPartyIds.value;
+    return partyIds.length > 0 ? duel.rematch_lines : duel.solo_rematch_lines;
 });
 const guideConversation = ref<GuideConversationStart | null>(null);
 const guideConversationLine = ref('');
@@ -672,6 +672,14 @@ const selectedRecollection = computed(() => recollectionEntries.value.find((entr
 const seriousTalkScene = computed(() => {
     const talk = state.value?.recollections?.serious_talk;
     return talk?.scenes[seriousTalkSceneKey.value] ?? null;
+});
+const seriousTalkChoices = computed<SeriousTalkChoice[]>(() => {
+    const choices = [...(seriousTalkScene.value?.choices ?? [{ key: 'leave', label: '戻る', next: 'guide' }])];
+    if (seriousTalkSceneKey.value === 'root' && state.value?.guide_duel?.unlocked) {
+        const leaveIndex = choices.findIndex((choice) => choice.next === 'guide');
+        choices.splice(leaveIndex < 0 ? choices.length : leaveIndex, 0, { key: 'guide_duel', label: '勝負を挑む', next: 'guide_duel' });
+    }
+    return choices;
 });
 const unlockedHuntingGrounds = computed(() => (state.value?.hunting_grounds ?? [])
     .filter((ground) => !ground.locked));
@@ -1130,7 +1138,7 @@ function openSeriousTalk(): void {
 
 async function runGuideDuel(): Promise<void> {
     if (busy.value || !state.value?.guide_duel?.unlocked) return;
-    const pending = pendingGuideDuel.value ?? { requestId: requestId(), borrowedSecretaryIds: guideDuelWithParty.value ? [...confirmedPartyIds.value] : [] };
+    const pending = pendingGuideDuel.value ?? { requestId: requestId(), borrowedSecretaryIds: [...confirmedPartyIds.value] };
     pendingGuideDuel.value = pending;
     busy.value = true;
     error.value = '';
@@ -1150,8 +1158,12 @@ async function runGuideDuel(): Promise<void> {
 }
 
 function chooseSeriousTalk(choice: SeriousTalkChoice): void {
-    const scene = seriousTalkScene.value;
-    if (!scene || !scene.choices.some((candidate) => candidate.key === choice.key && candidate.next === choice.next)) {
+    if (!seriousTalkChoices.value.some((candidate) => candidate.key === choice.key && candidate.next === choice.next)) {
+        return;
+    }
+    if (choice.next === 'guide_duel') {
+        guideMode.value = 'guide_duel';
+        guideDuelCancelled.value = false;
         return;
     }
     if (choice.next === 'guide') {
@@ -1944,7 +1956,12 @@ function actionNarrative(action: RoundAction, battle: Battle): string {
     if (action.type === 'mp_recovery') return `${actor}はMPを${amount}回復した。`;
     if (action.type === 'counter') return `${actor}の反撃。${target}に${amount}ダメージ。`;
     if (action.type === 'guard') return `${actor}は防御態勢を取った。`;
-    if (action.type === 'barrier') return `${actor}は「${actionLabel(action)}」で障壁を${amount}得た。`;
+    if (action.type === 'barrier') {
+        const recipient = actionTargetNames(action, battle).join('、') || actor;
+        return recipient === actor
+            ? `${actor}は「${actionLabel(action)}」で障壁を${amount}得た。`
+            : `${actor}の「${actionLabel(action)}」で${recipient}は障壁を${amount}得た。`;
+    }
     if (action.type === 'recovery') return `${actor}は「${actionLabel(action)}」で${target}のHPを${amount}回復した。`;
     if (action.type === 'role_stack_gain' || action.type === 'role_stack_spent') {
         const role = withoutActionPrefix(actionLabel(action), action.type === 'role_stack_gain' ? '増加:' : '消費:');
@@ -2382,7 +2399,6 @@ onUnmounted(() => {
             <section v-else-if="equipmentView === 'guide'" class="underground-guide-room" aria-labelledby="underground-guide-room-title">
                 <header class="underground-guide-room-heading">
                     <div>
-                        <p class="eyebrow">Underground Guide Room</p>
                         <h1 id="underground-guide-room-title">案内人の部屋</h1>
                     </div>
                     <p class="underground-guide-room-greeting">{{ state.shopkeeper_name ?? '案内人' }}「あら、どうしたんですか？」</p>
@@ -2453,7 +2469,6 @@ onUnmounted(() => {
                 <p v-else-if="guideMode === 'conversation'" class="underground-guide-conversation">{{ busy ? '話題を選んでいます…' : '話題がまだ登録されていません。' }}</p>
                 <section v-else-if="guideMode === 'recollections'" class="underground-guide-recollections" aria-labelledby="underground-recollections-title">
                     <header>
-                        <p class="eyebrow">Recollections</p>
                         <h2 id="underground-recollections-title">過去のイベントを振り返る</h2>
                     </header>
                     <p v-if="!state.recollections?.past_available" class="underground-guide-conversation">
@@ -2500,13 +2515,11 @@ onUnmounted(() => {
                         <p v-for="(line, index) in seriousTalkScene?.lines ?? []" :key="`${seriousTalkSceneKey}-${index}`">{{ line }}</p>
                     </div>
                     <div class="underground-guide-actions underground-serious-talk-actions">
-                        <button v-for="choice in seriousTalkScene?.choices ?? []" :key="choice.key" type="button" @click="chooseSeriousTalk(choice)">{{ choice.label }}</button>
-                        <button v-if="state.guide_duel?.unlocked" type="button" @click="guideMode = 'guide_duel'; guideDuelCancelled = false">勝負を挑む</button>
+                        <button v-for="choice in seriousTalkChoices" :key="choice.key" type="button" @click="chooseSeriousTalk(choice)">{{ choice.label }}</button>
                     </div>
                 </section>
                 <section v-else-if="guideMode === 'guide_duel' && state.guide_duel?.unlocked" class="underground-guide-serious-talk" aria-label="夢の女王との決闘">
                     <h2>夢の女王との決闘</h2>
-                    <label v-if="confirmedPartyIds.length > 0 && !guideDuelCancelled"><input v-model="guideDuelWithParty" type="checkbox" :disabled="busy || pendingGuideDuel !== null">確定済みのレンタルPTで挑む</label>
                     <p v-for="(line, index) in guideDuelLines" :key="index">{{ line }}</p>
                     <p>無料で挑戦できます。決闘後はHP・MP・覚醒が挑戦前の状態に戻り、敗北ペナルティはありません。</p>
                     <div class="underground-guide-actions">
@@ -2520,7 +2533,6 @@ onUnmounted(() => {
                 <section v-else-if="guideMode === 'respec'" class="underground-respec-panel" aria-labelledby="underground-respec-title">
                     <header>
                         <div>
-                            <p class="eyebrow">Growth Reconfiguration</p>
                             <h2 id="underground-respec-title">再振り</h2>
                         </div>
                         <p v-if="state.respec">手持ち {{ state.shard_balance }} G</p>
@@ -2577,7 +2589,7 @@ onUnmounted(() => {
             </section>
             <section v-else-if="equipmentView === 'party'" class="underground-party-settings-page" aria-labelledby="underground-party-settings-title">
                 <header>
-                    <div><p class="eyebrow">Party Settings</p><h1 id="underground-party-settings-title">PT設定</h1></div>
+                    <div><h1 id="underground-party-settings-title">PT設定</h1></div>
                     <strong>{{ 1 + partySelectedIds.length }} / 4</strong>
                 </header>
                 <p>Leaderは自分の秘書です。同行者として他プレイヤーの秘書を最大3人まで選べます。試練はソロ専用ですが、保存中のPT編成は消えません。</p>
@@ -2627,7 +2639,7 @@ onUnmounted(() => {
                     <div class="underground-character-header">
                         <img v-if="props.secretaryImageUrl" :src="props.secretaryImageUrl" :alt="`${state.secretary_name}の画像`">
                         <div v-else class="underground-portrait-placeholder">No image</div>
-                        <div><p class="eyebrow">Underground</p><h1 id="underground-character-title">{{ state.secretary_name }}</h1></div>
+                        <div><h1 id="underground-character-title">{{ state.secretary_name }}</h1></div>
                     </div>
                     <dl class="underground-summary">
                         <div><dt>戦闘Lv</dt><dd>{{ state.combat_level }}</dd></div>
@@ -2760,7 +2772,7 @@ onUnmounted(() => {
             <div v-if="skipModalOpen" class="modal-backdrop" @click.self="!busy && (skipModalOpen = false)">
                 <section class="underground-skip-dialog" role="dialog" aria-modal="true" aria-labelledby="underground-skip-dialog-title">
                     <header>
-                        <div><p class="eyebrow">Skip Ticket</p><h2 id="underground-skip-dialog-title">スキップを使用</h2></div>
+                        <div><h2 id="underground-skip-dialog-title">スキップを使用</h2></div>
                         <div><strong>🎫 {{ skipTicketBalance ?? 0 }}枚</strong><button type="button" aria-label="閉じる" :disabled="busy" @click="skipModalOpen = false">×</button></div>
                     </header>
                     <p v-if="skipError" class="status error underground-skip-error" role="alert">{{ skipError }}</p>
@@ -2844,7 +2856,7 @@ onUnmounted(() => {
 
             <section v-if="statusOpen && state.status_breakdown" class="underground-progression-panel" aria-labelledby="underground-status-title">
                 <header>
-                    <div><p class="eyebrow">Character Growth</p><h2 id="underground-status-title">ステータス</h2></div>
+                    <div><h2 id="underground-status-title">ステータス</h2></div>
                     <p>未使用STP {{ state.unspent_stp }} / 仮配分後 {{ stpDraftRemaining }}</p>
                 </header>
                 <div class="underground-table-scroll">
@@ -2869,7 +2881,7 @@ onUnmounted(() => {
 
             <section v-if="skillsOpen && state.skill_trees" class="underground-progression-panel" aria-labelledby="underground-skills-title">
                 <header>
-                    <div><p class="eyebrow">Finite Skill Points</p><h2 id="underground-skills-title">Skill Tree</h2></div>
+                    <div><h2 id="underground-skills-title">Skill Tree</h2></div>
                     <div class="underground-skill-header-actions">
                         <p>SP {{ state.skill_points_unspent }} / {{ state.skill_points_total }}（使用済み {{ state.skill_points_spent }}）</p>
                         <button class="underground-skill-jump" type="button" @click="focusActiveLoadout">アクティブスキル設定へ</button>
@@ -2900,7 +2912,7 @@ onUnmounted(() => {
 
                 <section v-if="state.awakening?.unlocked && state.awakening.technique" class="underground-awakening-settings" aria-labelledby="underground-awakening-settings-title">
                     <header>
-                        <div><p class="eyebrow">Awakening</p><h3 id="underground-awakening-settings-title">覚醒奥義設定</h3></div>
+                        <div><h3 id="underground-awakening-settings-title">覚醒奥義設定</h3></div>
                         <strong>覚醒中に1度だけ使用可能</strong>
                     </header>
                     <p>戦闘へ持ち込む奥義を一つ選びます。戦闘と戦闘の間はいつでも変更できます。</p>

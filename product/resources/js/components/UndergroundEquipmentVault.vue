@@ -51,6 +51,14 @@ interface BulkSellPreferences {
 }
 
 const bulkSellPreferenceKey = 'hakoniwa.underground.vault.bulk-sell-preferences';
+const sortPreferenceKey = 'hakoniwa.underground.vault.sort';
+const sortOptions = [
+    { key: 'newest', label: '入手が新しい順' },
+    { key: 'oldest', label: '入手が古い順' },
+    { key: 'item_level', label: 'Item Lvが高い順' },
+    { key: 'rarity', label: 'レア度が高い順' },
+    { key: 'category', label: '武器・防具・アクセサリー順' },
+];
 
 const emit = defineEmits<{ updated: [value: MutationResponse] }>();
 const vault = ref<VaultResponse | null>(null);
@@ -59,7 +67,7 @@ const loading = ref(true);
 const error = ref('');
 const pending = ref<{ fingerprint: string; requestId: string } | null>(null);
 const accessoryTargetSlot = ref<AccessorySlot>('accessory_1');
-const sortOrder = ref('newest');
+const sortOrder = ref(readSortPreference());
 const bulkSellOptions = ref<BulkSellOptions | null>(null);
 const selectedRarityKeys = ref<string[]>([]);
 const selectedCategoryKeys = ref<string[]>([]);
@@ -124,6 +132,24 @@ function normalizeBulkOptions(options: BulkSellOptions | undefined): BulkSellOpt
         categories: normalizeBulkOptionList(options.categories),
         weapon_styles: normalizeBulkOptionList(options.weapon_styles),
     };
+}
+
+function readSortPreference(): string {
+    try {
+        const stored = window.localStorage.getItem(sortPreferenceKey);
+        return sortOptions.find((option) => option.key === stored)?.key ?? 'newest';
+    } catch {
+        return 'newest';
+    }
+}
+
+function changeSortOrder(): void {
+    try {
+        window.localStorage.setItem(sortPreferenceKey, sortOrder.value);
+    } catch {
+        // Storage may be unavailable; sorting still works for this visit.
+    }
+    void loadVault(1);
 }
 
 function readBulkPreferences(): BulkSellPreferences | null {
@@ -372,7 +398,7 @@ onMounted(() => { void loadVault(); });
 <template>
     <section class="underground-equipment-screen" aria-labelledby="underground-equipment-vault-title">
         <header class="underground-equipment-screen-heading">
-            <div><p class="eyebrow">Underground Equipment</p><h1 id="underground-equipment-vault-title">宝物庫</h1><p>所有アイテムを確認し、武器1つ・防具1つ・アクセサリー3枠まで装備できます。</p></div>
+            <div><h1 id="underground-equipment-vault-title">宝物庫</h1><p>所有アイテムを確認し、武器1つ・防具1つ・アクセサリー3枠まで装備できます。</p></div>
             <div v-if="vault" class="underground-vault-capacity"><strong>{{ vault.used }} / {{ vault.capacity }}</strong><span>使用中 / 容量</span></div>
         </header>
         <p v-if="loading" class="status" role="status">宝物庫を読み込んでいます…</p>
@@ -448,11 +474,8 @@ onMounted(() => { void loadVault(); });
             <div class="underground-vault-toolbar">
                 <p>全{{ vault.total }}件・1ページ{{ vault.per_page }}件</p>
                 <label>並び順
-                    <select v-model="sortOrder" :disabled="loading || busy" @change="loadVault(1)">
-                        <option value="newest">入手が新しい順</option>
-                        <option value="oldest">入手が古い順</option>
-                        <option value="item_level">Item Lvが高い順</option>
-                        <option value="category">武器・防具・アクセサリー順</option>
+                    <select v-model="sortOrder" :disabled="loading || busy" @change="changeSortOrder">
+                        <option v-for="option in sortOptions" :key="option.key" :value="option.key">{{ option.label }}</option>
                     </select>
                 </label>
                 <div><button v-if="vault.page > 1" class="button secondary" type="button" :disabled="loading" @click="loadVault(vault.page - 1)">前へ</button><span> {{ vault.page }} / {{ vault.last_page }} </span><button v-if="vault.page < vault.last_page" class="button secondary" type="button" :disabled="loading" @click="loadVault(vault.page + 1)">次へ</button></div>

@@ -45,11 +45,12 @@ const equipped = {
 afterEach(() => {
     vi.unstubAllGlobals();
     window.localStorage.removeItem('hakoniwa.underground.vault.bulk-sell-preferences');
+    window.localStorage.removeItem('hakoniwa.underground.vault.sort');
     document.body.replaceChildren();
 });
 
 describe('Underground equipment navigation', () => {
-    it('resets to page one when sorting and preserves the selected sort during pagination', async () => {
+    it('resets to page one when sorting and restores the chosen rarity sort on reopening', async () => {
         const paths: string[] = [];
         vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
             paths.push(String(input));
@@ -67,7 +68,43 @@ describe('Underground equipment navigation', () => {
         await wrapper.get('.underground-vault-toolbar button:last-child').trigger('click');
         await flushPromises();
         expect(paths.at(-1)).toBe('/api/v1/me/underground/equipment/vault?page=2&sort=item_level');
+        await wrapper.get('.underground-vault-toolbar select').setValue('rarity');
+        await flushPromises();
+        expect(paths.at(-1)).toBe('/api/v1/me/underground/equipment/vault?page=1&sort=rarity');
         wrapper.unmount();
+        const reopened = mount(UndergroundEquipmentVault);
+        await flushPromises();
+        expect(paths.at(-1)).toBe('/api/v1/me/underground/equipment/vault?page=1&sort=rarity');
+        expect(reopened.get<HTMLSelectElement>('.underground-vault-toolbar select').element.value).toBe('rarity');
+        reopened.unmount();
+    });
+
+    it('falls back to the default sort if the saved value is invalid or storage is unavailable', async () => {
+        const paths: string[] = [];
+        vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+            paths.push(String(input));
+            return response({ catalog_identity: 'test-catalog', used: 1, capacity: 500, equipped,
+                items: [item()], page: 1, per_page: 50, last_page: 1, total: 1 });
+        }));
+        window.localStorage.setItem('hakoniwa.underground.vault.sort', 'unsupported');
+        const invalid = mount(UndergroundEquipmentVault);
+        await flushPromises();
+        expect(paths.at(-1)).toBe('/api/v1/me/underground/equipment/vault?page=1&sort=newest');
+        invalid.unmount();
+        const getItem = vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => { throw new Error('storage blocked'); });
+        const setItem = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => { throw new Error('storage blocked'); });
+        try {
+            const blocked = mount(UndergroundEquipmentVault);
+            await flushPromises();
+            expect(paths.at(-1)).toBe('/api/v1/me/underground/equipment/vault?page=1&sort=newest');
+            await blocked.get('.underground-vault-toolbar select').setValue('rarity');
+            await flushPromises();
+            expect(paths.at(-1)).toBe('/api/v1/me/underground/equipment/vault?page=1&sort=rarity');
+            blocked.unmount();
+        } finally {
+            getItem.mockRestore();
+            setItem.mockRestore();
+        }
     });
 
     it('shows the commemorative Gram without equip or sell actions', async () => {

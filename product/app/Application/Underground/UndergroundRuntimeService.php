@@ -243,7 +243,7 @@ STORY;
                         ];
                     }
                     $this->assertSkillRebuildCompleted($profile);
-                    if ((! $guideDuel || $borrowedSecretaryIds !== []) && $borrowedSecretaryIds !== array_column($profile->rental_party, 'secretary_id')) {
+                    if ($borrowedSecretaryIds !== array_column($profile->rental_party, 'secretary_id')) {
                         throw new UndergroundRuntimeException('underground_rental_party_changed', 'レンタル編成を確定してから出発してください。');
                     }
                     if ($borrowedSecretaryIds !== []) {

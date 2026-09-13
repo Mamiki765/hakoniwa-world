@@ -1825,11 +1825,13 @@ final class UndergroundPlayerAccessTest extends TestCase
             ]);
         }
         $count = config('underground-equipment.page_size') + 1;
+        $rarityIds = ['common' => [], 'uncommon' => [], 'rare' => [], 'epic' => []];
         for ($index = 1; $index <= $count; $index++) {
+            $rarity = array_keys($rarityIds)[($index - 1) % 4];
             $generated = app(UndergroundRuntimeEquipmentGenerator::class)->generate(
-                $index, 'shallow_caves', 'common', 'armor', null, null, $index, 'vault-sort-'.$index,
+                $index, 'shallow_caves', $rarity, 'armor', null, null, $index, 'vault-sort-'.$index,
             );
-            UndergroundOwnedEquipment::query()->create([
+            $owned = UndergroundOwnedEquipment::query()->create([
                 'underground_profile_id' => $profile->id, 'definition_key' => $generated['key'],
                 'catalog_identity' => 'secretary-underground-shop-equipment-alpha-v2', 'equipped_slot' => null,
                 'instance_kind' => 'generated', 'instance_identity' => $generated['instance_identity'],
@@ -1838,6 +1840,7 @@ final class UndergroundPlayerAccessTest extends TestCase
                 'source_battle_id' => $this->tutorialBattle($profile)->id,
                 'acquired_at' => Carbon::now()->subMinutes($index),
             ]);
+            $rarityIds[$rarity][] = $owned->id;
         }
         $first = $this->actingAs($user)->getJson('/api/v1/me/underground/equipment/vault?sort=item_level')->assertOk()->json('data');
         $this->assertSame(['weapon', 'armor', 'accessory_1', 'accessory_2', 'accessory_3'], array_column(array_slice($first['items'], 0, 5), 'equipped_slot'));
@@ -1847,6 +1850,23 @@ final class UndergroundPlayerAccessTest extends TestCase
         $this->assertCount($count, array_unique(array_column($items, 'id')));
         $newest = $this->actingAs($user)->getJson('/api/v1/me/underground/equipment/vault')->assertOk()->json('data.items');
         $this->assertSame(1, $newest[5]['item_level']);
+        $fixedIds = [];
+        foreach (['leather_armor', 'demon_sword_gram'] as $key) {
+            $fixedIds[$key] = UndergroundOwnedEquipment::query()->create([
+                'underground_profile_id' => $profile->id, 'definition_key' => $key,
+                'catalog_identity' => 'secretary-underground-shop-equipment-alpha-v2',
+                'instance_kind' => 'fixed', 'acquired_at' => Carbon::now(),
+            ])->id;
+        }
+        $rareFirst = $this->actingAs($user)->getJson('/api/v1/me/underground/equipment/vault?sort=rarity')->assertOk()->json('data.items');
+        $rareSecond = $this->actingAs($user)->getJson('/api/v1/me/underground/equipment/vault?sort=rarity&page=2')->assertOk()->json('data.items');
+        $this->assertSame(['weapon', 'armor', 'accessory_1', 'accessory_2', 'accessory_3'], array_column(array_slice($rareFirst, 0, 5), 'equipped_slot'));
+        $this->assertSame([
+            $fixedIds['demon_sword_gram'],
+            ...array_reverse($rarityIds['epic']), ...array_reverse($rarityIds['rare']),
+            ...array_reverse($rarityIds['uncommon']), ...array_reverse($rarityIds['common']),
+            $fixedIds['leather_armor'],
+        ], array_column([...array_slice($rareFirst, 5), ...$rareSecond], 'id'));
         $this->actingAs($user)->getJson('/api/v1/me/underground/equipment/vault?sort[]=newest')->assertUnprocessable();
     }
 
@@ -2883,11 +2903,13 @@ final class UndergroundPlayerAccessTest extends TestCase
         $this->assertSame([
             'それでも教えて欲しい',
             'あなたについて知ることが私の夢だと伝える',
+            '彼女に自分がつけた名前を呼ぶ',
             '立ち去る',
         ], array_column($talkScenes['true_name']['choices'], 'label'));
         $this->assertSame([
             'true_name_branch',
             'true_name_reveal',
+            'true_name_named',
             'root',
         ], array_column($talkScenes['true_name']['choices'], 'next'));
         $this->assertSame([
@@ -2895,13 +2917,12 @@ final class UndergroundPlayerAccessTest extends TestCase
             '「ええ、はい。　偶然一致していたのです！　なんと奇跡的な一致でしょうね♪ いひひ♪」',
         ], $talkScenes['true_name_branch']['lines']);
         $this->assertSame([
-            '彼女に自分がつけた名前を呼ぶ',
             '立ち去る',
         ], array_column($talkScenes['true_name_branch']['choices'], 'label'));
-        $this->assertSame('root', $talkScenes['true_name_branch']['choices'][1]['next']);
+        $this->assertSame('root', $talkScenes['true_name_branch']['choices'][0]['next']);
         $this->assertSame(['「………………」', '「リカ。」'], $talkScenes['true_name_reveal']['lines']);
-        $this->assertSame('true_name_named', $talkScenes['true_name_reveal']['choices'][0]['next']);
-        $this->assertSame('true_name', $talkScenes['true_name_reveal']['choices'][2]['next']);
+        $this->assertSame(['leave', 'back'], array_column($talkScenes['true_name_reveal']['choices'], 'key'));
+        $this->assertSame('true_name', $talkScenes['true_name_reveal']['choices'][1]['next']);
         $this->assertSame(['「そう。それでいい。」'], $talkScenes['true_name_named']['lines']);
         $this->assertSame('true_name', $talkScenes['true_name_named']['choices'][0]['next']);
         $this->assertSame(['はじめに戻る'], array_column($talkScenes['embrace_more']['choices'], 'label'));

@@ -112,6 +112,7 @@ return [
                     'choices' => [
                         ['key' => 'ask_again', 'label' => 'それでも教えて欲しい', 'next' => 'true_name_branch'],
                         ['key' => 'tell_dream', 'label' => 'あなたについて知ることが私の夢だと伝える', 'next' => 'true_name_reveal'],
+                        ['key' => 'call_name', 'label' => '彼女に自分がつけた名前を呼ぶ', 'next' => 'true_name_named'],
                         ['key' => 'leave', 'label' => '立ち去る', 'next' => 'root'],
                     ],
                 ],
@@ -130,14 +131,12 @@ return [
                         '「RIKA the Succubus……リカ＝サキュバス。おお、さむい、さむい」',
                     ],
                     'choices' => [
-                        ['key' => 'call_name', 'label' => '彼女に自分がつけた名前を呼ぶ', 'next' => 'true_name_named'],
                         ['key' => 'leave', 'label' => '立ち去る', 'next' => 'root'],
                     ],
                 ],
                 'true_name_reveal' => [
                     'lines' => ['「………………」', '「リカ。」'],
                     'choices' => [
-                        ['key' => 'call_name', 'label' => '彼女に自分がつけた名前を呼ぶ', 'next' => 'true_name_named'],
                         ['key' => 'leave', 'label' => '立ち去る', 'next' => 'root'],
                         ['key' => 'back', 'label' => '本名を聞いた後の選択に戻る', 'next' => 'true_name'],
                     ],

@@ -21,7 +21,7 @@ use RuntimeException;
 final readonly class UndergroundEquipmentService
 {
     /** @var list<string> */
-    public const VAULT_SORT_KEYS = ['newest', 'oldest', 'item_level', 'category'];
+    public const VAULT_SORT_KEYS = ['newest', 'oldest', 'item_level', 'rarity', 'category'];
 
     /** @var list<string> */
     public const BULK_SELL_RARITY_KEYS = [
@@ -122,10 +122,12 @@ final readonly class UndergroundEquipmentService
             // Resolve fixed and generated definitions through the same catalog before pagination.
             $slotOrder = array_flip(UndergroundEquipmentCatalog::EQUIPPED_SLOTS);
             $categoryOrder = array_flip(self::BULK_SELL_CATEGORY_KEYS);
-            $priority = static fn (array $item): array => [
+            $rarityOrder = array_flip(self::BULK_SELL_RARITY_KEYS);
+            $priority = fn (array $item): array => [
                 $slotOrder[$item['equipped_slot'] ?? ''] ?? count($slotOrder),
                 $sort === 'category' ? $categoryOrder[$item['category']] : 0,
-                in_array($sort, ['item_level', 'category'], true) ? -$item['item_level'] : 0,
+                $sort === 'rarity' ? -$rarityOrder[$this->rarityKey($item)] : 0,
+                in_array($sort, ['item_level', 'rarity', 'category'], true) ? -$item['item_level'] : 0,
             ];
             usort($items, static function (array $left, array $right) use ($priority, $sort): int {
                 $primary = $priority($left) <=> $priority($right);
@@ -758,7 +760,7 @@ final readonly class UndergroundEquipmentService
         if ($itemLevelMax !== null && $item['item_level'] > $itemLevelMax) {
             return false;
         }
-        if (! in_array($this->bulkSellRarityKey($item), $rarities, true)
+        if (! in_array($this->rarityKey($item), $rarities, true)
             || ! in_array($item['category'], $categories, true)) {
             return false;
         }
@@ -768,8 +770,11 @@ final readonly class UndergroundEquipmentService
     }
 
     /** @param array<string, mixed> $item */
-    private function bulkSellRarityKey(array $item): string
+    private function rarityKey(array $item): string
     {
+        if (($item['rarity'] ?? null) === 'unique') {
+            return 'unique';
+        }
         if (($item['instance_kind'] ?? null) === 'fixed') {
             return 'novice';
         }

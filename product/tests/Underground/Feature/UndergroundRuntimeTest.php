@@ -95,11 +95,14 @@ final class UndergroundRuntimeTest extends TestCase
         $this->assertTrue($retry['duplicate']);
         $this->assertSame($battle->id, $retry['battle']->id);
         $this->assertCount(1, $combat->calls);
+        $this->assertRuntimeError('underground_rental_party_changed', fn () => $runtime->challengeGuide($leader, (string) Str::uuid(), []));
+        app(UndergroundIntroService::class)->updateRentalParty($leader, (string) Str::uuid(), []);
+        $beforeSolo = $profile->refresh()->only($resources);
         $repeat = $runtime->challengeGuide($leader, (string) Str::uuid(), [])['battle'];
         $this->assertFalse($repeat->snapshot['first_victory']);
         $this->assertContains('「……ふむ、すでに持ってましたか」', $repeat->snapshot['duel_dialogue']);
         $this->assertSame(1, UndergroundOwnedEquipment::query()->where('definition_key', 'demon_sword_gram')->count());
-        $this->assertEquals($before, $profile->refresh()->only($resources));
+        $this->assertEquals($beforeSolo, $profile->refresh()->only($resources));
         $equipment = app(UndergroundEquipmentService::class);
         $this->assertRuntimeError('underground_equipment_not_equippable', fn () => $equipment->equip($leader, (string) Str::uuid(), $item['id']));
         $this->assertRuntimeError('underground_equipment_not_sellable', fn () => $equipment->sell($leader, (string) Str::uuid(), $item['id']));

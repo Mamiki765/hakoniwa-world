@@ -136,6 +136,60 @@ describe('Underground party presentation controls', () => {
         await click('真剣な話');
         await click('勝負を挑む');
         expect(wrapper.text()).toContain('へし折ってやるわ');
+        expect(wrapper.text()).not.toContain('再戦の会話');
+        wrapper.unmount();
+    });
+
+    it('offers a duel only before leaving the root scene and uses the confirmed party for a won rematch', async () => {
+        const rootChoices = [
+            { key: 'true_name', label: '本名を聞く', next: 'true_name' },
+            { key: 'embrace', label: '抱き締める', next: 'embrace' },
+            { key: 'leave', label: '戻る', next: 'guide' },
+        ];
+        const back = [{ key: 'back', label: 'はじめに戻る', next: 'root' }];
+        const payloads: Array<Record<string, unknown>> = [];
+        const state = openState({
+            rental_party: [{ secretary_id: 42, display_name: '仲間', current_hp: 100, max_hp: 100, awakening_gauge: 0 }],
+            guide_duel: { unlocked: true, won: true, challenge_lines: ['初戦'], cancel_lines: [],
+                rematch_lines: ['第二形態・第三形態の会話'], solo_rematch_lines: ['ソロ再戦の会話'] },
+            recollections: { entries: [], serious_talk: { title: '案内人に真剣な話をする', initial_scene: 'root', scenes: {
+                root: { lines: ['「まだ、何か？」'], choices: rootChoices },
+                true_name: { lines: ['本名の会話'], choices: back },
+                embrace: { lines: ['抱擁の会話'], choices: back },
+            } } },
+        });
+        vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+            const path = String(input);
+            if (path.endsWith('/guide-duel')) {
+                payloads.push(JSON.parse(String(init?.body)));
+                return response({ ...smallBattle('party-duel'), context: 'guide_duel' });
+            }
+            return response(path.endsWith('/battles') ? [] : state);
+        }));
+        const wrapper = mount(UndergroundPanel, { attachTo: document.body });
+        const click = async (text: string) => {
+            await wrapper.findAll('button').find((button) => button.text().includes(text))!.trigger('click');
+            await flushPromises();
+        };
+        const choices = () => wrapper.findAll('.underground-serious-talk-actions button').map((button) => button.text());
+        await flushPromises();
+        await click('案内人');
+        await click('真剣な話');
+        expect(choices()).toEqual(['本名を聞く', '抱き締める', '勝負を挑む', '戻る']);
+        await click('本名を聞く');
+        expect(choices()).not.toContain('勝負を挑む');
+        await click('はじめに戻る');
+        await click('抱き締める');
+        expect(choices()).not.toContain('勝負を挑む');
+        await click('はじめに戻る');
+        await click('勝負を挑む');
+        const duel = wrapper.get('[aria-label="夢の女王との決闘"]');
+        expect(duel.text()).toContain('第二形態・第三形態の会話');
+        expect(duel.text()).not.toContain('ソロ再戦の会話');
+        expect(duel.find('input').exists()).toBe(false);
+        expect(duel.findAll('button').map((button) => button.text())).toEqual(['それでも構わない', 'やめておく']);
+        await click('それでも構わない');
+        expect(payloads[0]?.borrowed_secretary_ids).toEqual([42]);
         wrapper.unmount();
     });
 
@@ -227,7 +281,7 @@ describe('Underground party presentation controls', () => {
             detail_available: true,
             rounds_count: 1,
             party: {
-                members: [{ combatant_id: 'secretary:1', display_name: 'レイ' }],
+                members: [{ combatant_id: 'secretary:1', display_name: 'レイ' }, { combatant_id: 'borrowed:2', display_name: '護衛' }],
                 enemies: [
                     { combatant_id: 'enemy:1', display_name: '第一の敵' },
                     { combatant_id: 'enemy:2', display_name: '第二の敵' },
@@ -248,6 +302,10 @@ describe('Underground party presentation controls', () => {
                         type: 'barrier', side: 'player', actor_id: 'secretary:1', actor_name: 'レイ',
                         target_id: 'secretary:1', label: 'プロテクション', amount: 922,
                     },
+                    {
+                        type: 'barrier', side: 'player', actor_id: 'borrowed:2',
+                        target_id: 'secretary:1', label: '護法陣', amount: 9267,
+                    },
                 ],
                 end_state: null,
             }],
@@ -267,6 +325,7 @@ describe('Underground party presentation controls', () => {
         expect(damageRows[1]!.text()).toContain('第二の敵に60ダメージ');
         expect(damageRows[1]!.text()).not.toContain('第一の敵');
         expect(wrapper.get('[data-action-type="barrier"]').text()).toContain('レイは「プロテクション」で障壁を922得た。');
+        expect(wrapper.findAll('[data-action-type="barrier"]')[1]!.text()).toContain('護衛の「護法陣」でレイは障壁を9267得た。');
         wrapper.unmount();
     });
 
