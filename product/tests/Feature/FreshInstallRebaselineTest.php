@@ -8,7 +8,7 @@ use App\Application\NationCreationService;
 use App\Application\OceanWorldGenerator;
 use App\Application\RulesetPublisher;
 use App\Application\TurnRunner;
-use App\Application\Ver392RulesetUpgrade;
+use App\Application\Ver393RulesetUpgrade;
 use App\Domain\Secretary\SecretarySkillCatalog;
 use App\Domain\World\WorldGenerationProfile;
 use App\Models\CommandDefinition;
@@ -34,21 +34,21 @@ final class FreshInstallRebaselineTest extends TestCase
     use CreatesTestWorlds;
     use RefreshDatabase;
 
-    public function test_current_postgresql_schema_and_v24_catalog_are_installed(): void
+    public function test_current_postgresql_schema_and_v25_catalog_are_installed(): void
     {
         config(['hakoniwa' => require config_path('hakoniwa.php')]);
         $current = config('hakoniwa.ruleset');
         app(CurrentCatalogInstaller::class)->install($current);
         app(RulesetPublisher::class)->publish($current);
-        $ruleset = RulesetVersion::query()->where('key', Ver392RulesetUpgrade::TARGET_KEY)->sole();
+        $ruleset = RulesetVersion::query()->where('key', Ver393RulesetUpgrade::TARGET_KEY)->sole();
 
-        $this->assertSame('3.9.2', config('hakoniwa.application_version'));
-        $this->assertSame([Ver392RulesetUpgrade::TARGET_KEY], array_keys(config('hakoniwa.published_rulesets')));
-        $this->assertSame(Ver392RulesetUpgrade::TARGET_KEY, $ruleset->key);
-        $this->assertSame(Ver392RulesetUpgrade::TARGET_VERSION, $ruleset->version);
+        $this->assertSame('3.9.3', config('hakoniwa.application_version'));
+        $this->assertSame([Ver393RulesetUpgrade::TARGET_KEY], array_keys(config('hakoniwa.published_rulesets')));
+        $this->assertSame(Ver393RulesetUpgrade::TARGET_KEY, $ruleset->key);
+        $this->assertSame(Ver393RulesetUpgrade::TARGET_VERSION, $ruleset->version);
         $this->assertDatabaseHas('ruleset_versions', [
-            'key' => Ver392RulesetUpgrade::SOURCE_KEY,
-            'version' => Ver392RulesetUpgrade::SOURCE_VERSION,
+            'key' => Ver393RulesetUpgrade::SOURCE_KEY,
+            'version' => Ver393RulesetUpgrade::SOURCE_VERSION,
         ]);
         $this->assertSame(35, CommandDefinition::query()->where('ruleset_version_id', $ruleset->id)->count());
         $this->assertSame(3, ProductionDefinition::query()->where('ruleset_version_id', $ruleset->id)->count());
@@ -58,6 +58,9 @@ final class FreshInstallRebaselineTest extends TestCase
         ]);
         $this->assertDatabaseHas('migrations', [
             'migration' => '2026_09_12_000000_publish_v24_3_9_2_release',
+        ]);
+        $this->assertDatabaseHas('migrations', [
+            'migration' => '2026_09_13_000000_publish_v25_3_9_3_release',
         ]);
         foreach ([
             'user_paradox_balances',

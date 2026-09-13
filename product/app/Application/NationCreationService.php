@@ -25,6 +25,8 @@ use Illuminate\Support\Str;
 
 final class NationCreationService
 {
+    private const PLACEMENT_CANDIDATE_BATCH_SIZE = 16;
+
     public function __construct(
         private readonly CapitalPlacementService $placement,
         private readonly InitialIslandGenerator $islands,
@@ -137,28 +139,6 @@ final class NationCreationService
                         'created_at' => now(), 'updated_at' => now(),
                     ]);
 
-                    $expandedForPlacement = false;
-                    $candidates = $this->placement->candidates($mapSpace);
-                    if ($candidates === []) {
-                        $before = $mapSpace->currentBounds();
-                        $target = $this->expansionPlanner->nextBounds($before);
-                        $mapSpace = $this->expansion->expandWithinCurrentMutation(
-                            $world,
-                            $before,
-                            $target,
-                            $user,
-                            'nation_registration_capacity',
-                        );
-                        $expandedForPlacement = true;
-                        $mapSpace = $mapSpace->fresh();
-                        $candidates = $this->placement->candidates($mapSpace);
-                        if ($candidates === []) {
-                            throw new NationPlacementUnavailableException(
-                                'Worldを1chunk拡張しても初期島候補が生成されませんでした。登録処理を中止します。',
-                            );
-                        }
-                    }
-
                     $initialIdleCounter = $rules['nation_lifecycle']['initial_idle_counter'] ?? null;
                     if (! is_int($initialIdleCounter) || $initialIdleCounter < 0) {
                         throw new \DomainException('The current Ruleset has an invalid initial Nation idle counter.');
@@ -173,8 +153,8 @@ final class NationCreationService
                         'idle_counter' => $initialIdleCounter,
                     ]);
                     $this->resources->initialize($nation);
-                    $islandSelection = $this->firstSafeIslandPlan($mapSpace, $nation, $candidates, $seed);
-                    if ($islandSelection === null && ! $expandedForPlacement) {
+                    $islandSelection = $this->firstSafeIslandPlan($mapSpace, $nation, $seed);
+                    if ($islandSelection === null) {
                         $before = $mapSpace->currentBounds();
                         $target = $this->expansionPlanner->nextBounds($before);
                         $mapSpace = $this->expansion->expandWithinCurrentMutation(
@@ -184,18 +164,12 @@ final class NationCreationService
                             $user,
                             'nation_registration_capacity',
                         );
-                        $expandedForPlacement = true;
                         $mapSpace = $mapSpace->fresh();
-                        $islandSelection = $this->firstSafeIslandPlan(
-                            $mapSpace,
-                            $nation,
-                            $this->placement->candidates($mapSpace),
-                            $seed,
-                        );
+                        $islandSelection = $this->firstSafeIslandPlan($mapSpace, $nation, $seed);
                     }
                     if ($islandSelection === null) {
                         throw new NationPlacementUnavailableException(
-                            '初期島と船の安全な配置候補がありません。登録処理を中止します。',
+                            'Worldを1chunk拡張しても安全な初期島候補がありません。登録処理を中止します。',
                         );
                     }
                     [$center, $islandPlan] = $islandSelection;
@@ -253,7 +227,7 @@ final class NationCreationService
                         ]);
                     }
                     $this->islands->apply($islandPlan, $mapSpace, $nation);
-                    if (in_array($rules['key'] ?? null, ['hakoniwa-2s-plus-v17', 'hakoniwa-2s-plus-v18', 'hakoniwa-2s-plus-v19', 'hakoniwa-2s-plus-v20', 'hakoniwa-2s-plus-v21', 'hakoniwa-2s-plus-v22', 'hakoniwa-2s-plus-v23', 'hakoniwa-2s-plus-v24'], true)) {
+                    if (in_array($rules['key'] ?? null, ['hakoniwa-2s-plus-v17', 'hakoniwa-2s-plus-v18', 'hakoniwa-2s-plus-v19', 'hakoniwa-2s-plus-v20', 'hakoniwa-2s-plus-v21', 'hakoniwa-2s-plus-v22', 'hakoniwa-2s-plus-v23', 'hakoniwa-2s-plus-v24', 'hakoniwa-2s-plus-v25'], true)) {
                         $nation->population_high_water = (int) $mapSpace->cells()
                             ->where('owner_nation_id', $nation->id)
                             ->sum('population');
@@ -302,23 +276,53 @@ final class NationCreationService
     }
 
     /**
-     * @param  list<GridCoordinate>  $candidates
      * @return array{0: GridCoordinate, 1: InitialIslandPlan}|null
      */
     private function firstSafeIslandPlan(
         MapSpace $mapSpace,
         Nation $nation,
-        array $candidates,
         string $seed,
     ): ?array {
-        foreach ($candidates as $center) {
-            try {
-                return [$center, $this->islands->plan($mapSpace, $nation, $center, $seed)];
-            } catch (NationPlacementUnavailableException) {
-                continue;
+        $offset = 0;
+        do {
+            $candidates = $this->placement->candidates(
+                $mapSpace,
+                self::PLACEMENT_CANDIDATE_BATCH_SIZE,
+                $offset,
+            );
+            foreach ($candidates as $center) {
+                try {
+                    $plan = $this->islands->plan($mapSpace, $nation, $center, $seed);
+                } catch (NationPlacementUnavailableException) {
+                    continue;
+                }
+                if ($this->hasUndisplaceableMonster($plan)) {
+                    continue;
+                }
+
+                return [$center, $plan];
+            }
+            $offset += count($candidates);
+        } while (count($candidates) === self::PLACEMENT_CANDIDATE_BATCH_SIZE);
+
+        return null;
+    }
+
+    private function hasUndisplaceableMonster(InitialIslandPlan $plan): bool
+    {
+        $occupancies = MonsterOccupancy::query()
+            ->whereIn('map_cell_id', $plan->changedCellIds)
+            ->with('monster.definition')
+            ->orderBy('id')
+            ->lockForUpdate()
+            ->get();
+        foreach ($occupancies as $occupancy) {
+            if (! $this->monsterBehaviors->forDefinition($occupancy->monster->definition)
+                ->islandCreationDisplaceable) {
+                return true;
             }
         }
 
-        return null;
+        return false;
     }
 }

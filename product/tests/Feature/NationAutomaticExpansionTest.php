@@ -3,17 +3,22 @@
 namespace Tests\Feature;
 
 use App\Application\CapitalPlacementService;
+use App\Application\InitialIslandGenerator;
+use App\Application\InitialIslandPlan;
 use App\Application\MapSpaceCoveragePreflight;
 use App\Application\NationCreationService;
 use App\Application\OceanWorldGenerator;
 use App\Application\WorldExpansionService;
 use App\Domain\Map\ChunkCoordinateService;
+use App\Domain\Map\GridCoordinate;
+use App\Domain\Nation\NationPlacementUnavailableException;
 use App\Domain\Ruleset\CurrentRulesetGuard;
 use App\Domain\World\MapBounds;
 use App\Domain\World\WorldMutationLock;
 use App\Models\MapCell;
 use App\Models\MapSpace;
 use App\Models\Nation;
+use App\Models\NationCapital;
 use App\Models\TerrainDefinition;
 use App\Models\User;
 use DomainException;
@@ -45,6 +50,57 @@ final class NationAutomaticExpansionTest extends TestCase
         $this->assertSame($beforeRevision, $space->fresh()->boundsRevision());
         $this->assertSame(0, DB::table('audit_events')->where('event_type', 'world.expanded')->count());
         $this->assertSame(0, DB::table('audit_events')->where('event_type', 'world.expanded_public')->count());
+    }
+
+    public function test_registration_continues_past_three_unsafe_candidates_and_across_a_batch_before_expanding(): void
+    {
+        $world = $this->lightweightWorld();
+        $space = $this->space($world->id);
+        $candidates = app(CapitalPlacementService::class)->candidates($space, 17);
+        $this->assertCount(17, $candidates);
+        $rejected = collect(array_slice($candidates, 0, 16))->mapWithKeys(
+            static fn (GridCoordinate $coordinate): array => [$coordinate->x.':'.$coordinate->y => true],
+        )->all();
+        $realGenerator = app(InitialIslandGenerator::class);
+        $this->app->bind(InitialIslandGenerator::class, fn () => new class($realGenerator, $rejected) implements InitialIslandGenerator
+        {
+            /** @param array<string, bool> $rejected */
+            public function __construct(
+                private readonly InitialIslandGenerator $inner,
+                private readonly array $rejected,
+            ) {}
+
+            public function plan(MapSpace $mapSpace, Nation $nation, GridCoordinate $center, string $seed): InitialIslandPlan
+            {
+                if (isset($this->rejected[$center->x.':'.$center->y])) {
+                    throw new NationPlacementUnavailableException('injected unsafe candidate');
+                }
+
+                return $this->inner->plan($mapSpace, $nation, $center, $seed);
+            }
+
+            public function apply(InitialIslandPlan $plan, MapSpace $mapSpace, Nation $nation): NationCapital
+            {
+                return $this->inner->apply($plan, $mapSpace, $nation);
+            }
+
+            public function generate(MapSpace $mapSpace, Nation $nation, GridCoordinate $center, string $seed): NationCapital
+            {
+                return $this->inner->generate($mapSpace, $nation, $center, $seed);
+            }
+        });
+        $beforeRevision = $space->boundsRevision();
+
+        $nation = app(NationCreationService::class)->create(
+            User::factory()->create(),
+            $world,
+            '第四候補国',
+            '第四候補島主',
+        );
+
+        $this->assertSame([$candidates[16]->x, $candidates[16]->y], [$nation->capital->x, $nation->capital->y]);
+        $this->assertSame($beforeRevision, $space->fresh()->boundsRevision());
+        $this->assertSame(0, DB::table('audit_events')->where('event_type', 'world.expanded')->count());
     }
 
     public function test_zero_candidates_expand_once_retry_idempotently_and_fail_closed_after_one_attempt(): void

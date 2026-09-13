@@ -58,10 +58,17 @@ final class AlphaV1PartyCombatTest extends TestCase
     public function test_winner_uses_team_survival_instead_of_leader_survival(): void
     {
         $catalog = $this->catalog(enemyHp: 1_000_000, enemyPower: 500_000, enemyAgility: 1_000);
+        $leader = $this->player('secretary:1', currentHp: 1);
+        $leader['stats']['agility'] = 2_000;
+        $leader['active_skills'] = ['bulwark_strike'];
+        $leader['ai_rules'] = [[
+            'conditions' => [['type' => 'always']],
+            'action' => 'skill:bulwark_strike',
+        ]];
         $result = $this->model()->fightPartySnapshots(
             $catalog,
             [
-                $this->player('secretary:1', currentHp: 1, defend: true),
+                $leader,
                 $this->player('borrowed:2', currentHp: 1, defend: true),
             ],
             ['party_target'],
@@ -77,7 +84,7 @@ final class AlphaV1PartyCombatTest extends TestCase
         $defeat = $this->model()->fightPartySnapshots(
             $catalog,
             [
-                $this->player('secretary:1', currentHp: 1, defend: true),
+                $leader,
                 $this->player('borrowed:2', currentHp: 1, defend: true),
             ],
             ['party_target'],
@@ -88,13 +95,45 @@ final class AlphaV1PartyCombatTest extends TestCase
         self::assertSame('enemy', $defeat->winner);
     }
 
+    public function test_untaunted_enemy_single_targets_are_retry_stable_and_can_reach_multiple_living_members(): void
+    {
+        $catalog = $this->catalog(enemyHp: 1_000_000, enemyPower: 1, enemyAgility: 1_000);
+        $fight = fn (int $seed) => $this->model()->fightPartySnapshots(
+            $catalog,
+            [
+                $this->player('secretary:1', currentHp: 1_000, defend: true),
+                $this->player('borrowed:2', currentHp: 1_000, defend: true),
+            ],
+            ['party_target'],
+            $seed,
+            8,
+            0,
+        );
+        $targets = static fn ($result): array => collect($result->actionLog)
+            ->filter(static fn (array $row): bool => ($row['actor_id'] ?? null) === 'enemy:1'
+                && ($row['effect_type'] ?? null) === 'damage')
+            ->pluck('target_id')
+            ->all();
+
+        $first = $targets($fight(383));
+        self::assertSame($first, $targets($fight(383)));
+        self::assertCount(2, array_unique($first));
+    }
+
     public function test_content_authored_all_enemy_scope_hits_each_opposing_combatant_with_explicit_ids(): void
     {
         $catalog = $this->catalog(enemyHp: 1_000_000, enemyPower: 500_000, enemyAgility: 1_000, enemyAoe: true);
+        $taunter = $this->player('secretary:1', currentHp: 1);
+        $taunter['stats']['agility'] = 2_000;
+        $taunter['active_skills'] = ['bulwark_strike'];
+        $taunter['ai_rules'] = [[
+            'conditions' => [['type' => 'always']],
+            'action' => 'skill:bulwark_strike',
+        ]];
         $result = $this->model()->fightPartySnapshots(
             $catalog,
             [
-                $this->player('secretary:1', currentHp: 1, defend: true),
+                $taunter,
                 $this->player('borrowed:2', currentHp: 1, defend: true),
             ],
             ['party_target'],
@@ -289,6 +328,14 @@ final class AlphaV1PartyCombatTest extends TestCase
             ->mapWithKeys(static fn (array $row): array => [$row['actor_id'] => $row['target_id']]);
         self::assertSame('secretary:1', $enemyDamage['enemy:1']);
         self::assertSame('borrowed:2', $enemyDamage['enemy:2']);
+        $deadTaunterFallback = collect($result->actionLog)->first(
+            static fn (array $row): bool => ($row['effect_type'] ?? null) === 'damage'
+                && ($row['round'] ?? null) === 2
+                && ($row['actor_id'] ?? null) === 'enemy:1',
+        );
+        self::assertIsArray($deadTaunterFallback);
+        self::assertNotSame('secretary:1', $deadTaunterFallback['target_id']);
+        self::assertContains($deadTaunterFallback['target_id'], ['borrowed:2', 'borrowed:3']);
         $secondRoundTarget = collect($result->actionLog)->first(
             static fn (array $row): bool => ($row['kind'] ?? null) === 'decision'
                 && ($row['round'] ?? null) === 2
@@ -421,9 +468,16 @@ final class AlphaV1PartyCombatTest extends TestCase
         $healer = $this->player('borrowed:2', currentHp: 1, awakening: true);
         $healer['awakening']['growth_path'] = 'blessing_green';
         $healer['awakening']['technique_key'] = 'life_requiem';
+        $leader = $this->player('secretary:1', currentHp: 1);
+        $leader['stats']['agility'] = 2_000;
+        $leader['active_skills'] = ['bulwark_strike'];
+        $leader['ai_rules'] = [[
+            'conditions' => [['type' => 'always']],
+            'action' => 'skill:bulwark_strike',
+        ]];
         $result = $this->model()->fightPartySnapshots(
             $catalog,
-            [$this->player('secretary:1', currentHp: 1, defend: true), $healer],
+            [$leader, $healer],
             ['party_target'],
             385,
             1,

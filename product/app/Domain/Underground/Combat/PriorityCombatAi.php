@@ -11,7 +11,7 @@ final class PriorityCombatAi
     /**
      * @param  list<BuildCombatState>  $allies
      * @param  list<BuildCombatState>  $enemies
-     * @return array{type: 'normal_attack'|'defend'|'skill'|'awakening', key: string|null, target_id: string|null, reason: string, fallback: bool, mp_blocked: bool, next_rule_index: int}
+     * @return array{type: 'normal_attack'|'defend'|'skill'|'awakening', key: string|null, target_id: string|null, target_explicit: bool, reason: string, fallback: bool, mp_blocked: bool, next_rule_index: int}
      */
     public function select(
         BuildCombatState $actor,
@@ -87,6 +87,7 @@ final class PriorityCombatAi
                     'type' => $action,
                     'key' => null,
                     'target_id' => $ruleTarget->combatantId,
+                    'target_explicit' => $targetSelector !== null,
                     'reason' => 'priority_rule_'.$index,
                     'fallback' => false,
                     'mp_blocked' => $mpBlocked,
@@ -102,6 +103,7 @@ final class PriorityCombatAi
                         'type' => 'awakening',
                         'key' => null,
                         'target_id' => $ruleTarget->combatantId,
+                        'target_explicit' => $targetSelector !== null,
                         'reason' => 'priority_rule_'.$index,
                         'fallback' => false,
                         'mp_blocked' => $mpBlocked,
@@ -119,6 +121,7 @@ final class PriorityCombatAi
                         'type' => 'skill',
                         'key' => $skillKey,
                         'target_id' => $ruleTarget->combatantId,
+                        'target_explicit' => $targetSelector !== null,
                         'reason' => 'priority_rule_'.$index,
                         'fallback' => false,
                         'mp_blocked' => $mpBlocked,
@@ -367,7 +370,7 @@ final class PriorityCombatAi
     }
 
     /**
-     * @return array{type: 'normal_attack'|'skill', key: string|null, target_id: null, reason: string, fallback: true, mp_blocked: bool, next_rule_index: int}
+     * @return array{type: 'normal_attack'|'skill', key: string|null, target_id: null, target_explicit: false, reason: string, fallback: true, mp_blocked: bool, next_rule_index: int}
      */
     private function fallback(
         BuildCombatState $actor,
@@ -388,6 +391,7 @@ final class PriorityCombatAi
                         'type' => 'skill',
                         'key' => $skillKey,
                         'target_id' => null,
+                        'target_explicit' => false,
                         'reason' => $reason,
                         'fallback' => true,
                         'mp_blocked' => $mpBlocked,
@@ -405,6 +409,7 @@ final class PriorityCombatAi
             'type' => 'normal_attack',
             'key' => null,
             'target_id' => null,
+            'target_explicit' => false,
             'reason' => $reason,
             'fallback' => true,
             'mp_blocked' => $mpBlocked,
