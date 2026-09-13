@@ -3,11 +3,30 @@
 namespace Tests\Underground\Unit;
 
 use App\Application\Underground\UndergroundPartyBattleProjector;
+use App\Domain\Underground\Combat\PartyCombatResult;
 use PHPUnit\Framework\TestCase;
 use Tests\Underground\Fixtures\PartyPresentationFixture;
 
 final class UndergroundPartyBattleProjectorTest extends TestCase
 {
+    public function test_barrier_gain_is_positive_for_display_without_changing_the_internal_log(): void
+    {
+        $fixture = PartyPresentationFixture::create();
+        $row = ['round' => 1, 'effect_type' => 'barrier', 'action' => 'crystal_aegis',
+            'amount' => -922, 'team' => 'player', 'actor_id' => 'secretary:1', 'target_id' => 'secretary:1'];
+        $result = new PartyCombatResult('player', 1, [$row], [], []);
+        $members = $fixture['member_snapshots'];
+        $members['secretary:1']['display_name'] = 'レイ';
+        $projected = (new UndergroundPartyBattleProjector)->project($result, $members, $fixture['catalog']);
+        $action = $projected['rounds'][0]['actions'][0];
+
+        self::assertSame(-922, $result->actionLog[0]['amount']);
+        self::assertSame('barrier', $action['type']);
+        self::assertSame(922, $action['amount']);
+        self::assertSame('プロテクション', $action['label']);
+        self::assertSame('レイ', $action['actor_name']);
+    }
+
     public function test_real_engine_states_and_actions_reach_the_presentation_without_reinterpretation(): void
     {
         $fixture = PartyPresentationFixture::create();

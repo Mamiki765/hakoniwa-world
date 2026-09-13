@@ -3,6 +3,23 @@ import { describe, expect, it } from 'vitest';
 import UndergroundPartyBattleCards from './UndergroundPartyBattleCards.vue';
 
 describe('Underground party battle cards', () => {
+    it('shows each boundary barrier separately from HP in cards and portrait events', async () => {
+        const state = { hp: 6220, max_hp: 8000, mp: 10000, barrier: 754 };
+        const wrapper = mount(UndergroundPartyBattleCards, { props: {
+            actors: [{ team: 'player', combatant_id: 'secretary:1', display_name: '秘書', state: { ...state, barrier: 9999 } }],
+            stateById: { 'secretary:1': state },
+            portraitEvents: [{ type: 'start', combatant_id: 'secretary:1', state: { ...state, barrier: 922 } }],
+        } });
+        const hp = wrapper.get('.underground-party-meter.is-hp');
+        expect(hp.text()).toBe('6220 +754/8000');
+        expect(hp.get('progress').attributes('value')).toBe('6220');
+        expect(hp.get('progress').attributes('max')).toBe('8000');
+        expect(wrapper.get('.underground-party-portrait-state').text()).toContain('HP 6220 +922/8000');
+        await wrapper.setProps({ stateById: { 'secretary:1': { ...state, barrier: 0 } } });
+        expect(hp.text()).toBe('6220/8000');
+        expect(wrapper.text()).not.toContain('+9999');
+    });
+
     it('uses icon for normal actors and portrait only for selected large-art events', () => {
         const wrapper = mount(UndergroundPartyBattleCards, { props: { actors: [
             { team: 'player', combatant_id: 'secretary:1', display_name: '自分', icon_url: '/icon', portrait_url: '/portrait', state: { hp: 5, max_hp: 10, mp: 2, awakening_unlocked: true, awakening_gauge: 1000, awakening_gauge_max: 1000 }, awakening_state: 'ready' },

@@ -125,7 +125,7 @@ final class UndergroundPartyBattleProjector
         $action['target_name'] = $targetId !== null && is_array($members[$targetId] ?? null)
             ? ($members[$targetId]['display_name'] ?? $members[$targetId]['label'] ?? null)
             : null;
-        if (in_array($action['type'], ['recovery', 'mp_recovery'], true)) {
+        if (in_array($action['type'], ['recovery', 'mp_recovery', 'barrier'], true)) {
             $action['amount'] = abs((int) ($row['amount'] ?? 0));
         }
         $action['important'] = in_array($kind, ['result', 'awakening', 'awakening_technique', 'revival'], true);

@@ -46,7 +46,7 @@ const awakeningPercent = computed(() => Math.round((awakeningGauge.value / awake
             </header>
             <div class="underground-vitals underground-matchup-vitals">
                 <label>
-                    <span><strong>HP {{ state.hp.toLocaleString() }}</strong><small>/ {{ state.max_hp.toLocaleString() }}</small></span>
+                    <span><strong>HP {{ state.hp.toLocaleString() }}<template v-if="state.barrier > 0"> +{{ state.barrier.toLocaleString() }}</template></strong><small>/ {{ state.max_hp.toLocaleString() }}</small></span>
                     <progress class="hp" :max="state.max_hp" :value="state.hp" :aria-label="`HP ${state.hp}/${state.max_hp}、${healthPercent}%`" />
                 </label>
                 <label>

@@ -175,13 +175,13 @@ describe('Underground party presentation controls', () => {
         wrapper.unmount();
     });
 
-    it('renders each Heavenrend damage line with only its actual target', async () => {
+    it('renders each damage target and the normalized barrier gain in the party narrative', async () => {
         const battle = {
             ...smallBattle('heavenrend-targets'),
             detail_available: true,
             rounds_count: 1,
             party: {
-                members: [{ combatant_id: 'secretary:1', display_name: 'Leader' }],
+                members: [{ combatant_id: 'secretary:1', display_name: 'レイ' }],
                 enemies: [
                     { combatant_id: 'enemy:1', display_name: '第一の敵' },
                     { combatant_id: 'enemy:2', display_name: '第二の敵' },
@@ -197,6 +197,10 @@ describe('Underground party presentation controls', () => {
                     {
                         type: 'damage', side: 'player', actor_id: 'secretary:1', target_id: 'enemy:2',
                         target_ids: ['enemy:2'], label: '天断一閃', amount: 60,
+                    },
+                    {
+                        type: 'barrier', side: 'player', actor_id: 'secretary:1', actor_name: 'レイ',
+                        target_id: 'secretary:1', label: 'プロテクション', amount: 922,
                     },
                 ],
                 end_state: null,
@@ -216,6 +220,7 @@ describe('Underground party presentation controls', () => {
         expect(damageRows[0]!.text()).not.toContain('第二の敵');
         expect(damageRows[1]!.text()).toContain('第二の敵に60ダメージ');
         expect(damageRows[1]!.text()).not.toContain('第一の敵');
+        expect(wrapper.get('[data-action-type="barrier"]').text()).toContain('レイは「プロテクション」で障壁を922得た。');
         wrapper.unmount();
     });
 

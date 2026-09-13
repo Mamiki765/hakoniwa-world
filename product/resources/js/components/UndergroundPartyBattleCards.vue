@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue';
 
-interface State { hp: number; max_hp: number; mp: number; awakening_gauge?: number; awakening_gauge_max?: number; awakening_unlocked?: boolean; awakened?: boolean; }
+interface State { hp: number; max_hp: number; mp: number; barrier?: number; awakening_gauge?: number; awakening_gauge_max?: number; awakening_unlocked?: boolean; awakened?: boolean; }
 interface ActorImageReferences {
     compact?: ImageReference | null;
     awakening_compact?: ImageReference | null;
@@ -160,7 +160,7 @@ const awakeningStateFor = (actor: Actor): 'charging' | 'ready' | 'awakened' => {
                     <div class="underground-party-battle-card-body">
                         <strong>{{ actor.display_name }}</strong>
                         <template v-if="stateFor(actor)">
-                            <label><span>HP</span><span class="underground-party-meter is-hp" :class="{ 'is-long': `${stateFor(actor)!.hp}/${stateFor(actor)!.max_hp}`.length > 11 }"><progress :max="stateFor(actor)!.max_hp" :value="stateFor(actor)!.hp" :aria-label="`HP ${stateFor(actor)!.hp}/${stateFor(actor)!.max_hp}、${hpPercentFor(actor)}%`" /><span><span>{{ stateFor(actor)!.hp }}</span><span>/{{ stateFor(actor)!.max_hp }}</span></span></span></label>
+                            <label><span>HP</span><span class="underground-party-meter is-hp" :class="{ 'is-long': `${stateFor(actor)!.hp}${(stateFor(actor)!.barrier ?? 0) > 0 ? ` +${stateFor(actor)!.barrier}` : ''}/${stateFor(actor)!.max_hp}`.length > 11 }"><progress :max="stateFor(actor)!.max_hp" :value="stateFor(actor)!.hp" :aria-label="`HP ${stateFor(actor)!.hp}/${stateFor(actor)!.max_hp}、${hpPercentFor(actor)}%`" /><span><span>{{ stateFor(actor)!.hp }}</span><span v-if="(stateFor(actor)!.barrier ?? 0) > 0"> +{{ stateFor(actor)!.barrier }}</span><span>/{{ stateFor(actor)!.max_hp }}</span></span></span></label>
                             <label><span>MP</span><span class="underground-party-meter is-mp"><progress max="10000" :value="stateFor(actor)!.mp" :aria-label="`MP ${stateFor(actor)!.mp}`" /><span>{{ stateFor(actor)!.mp }}</span></span></label>
                             <label v-if="awakeningVisible(actor) && stateFor(actor)!.awakening_gauge_max"><span>覚醒</span><span class="underground-party-meter is-awakening" :data-state="awakeningStateFor(actor)"><progress :max="stateFor(actor)!.awakening_gauge_max" :value="stateFor(actor)!.awakening_gauge ?? 0" :aria-label="`覚醒ゲージ ${gaugePercentFor(actor)}%、${awakeningLabelFor(actor) || '蓄積中'}`" /><span>{{ awakeningLabelFor(actor) }}</span></span></label>
                         </template>
@@ -181,7 +181,7 @@ const awakeningStateFor = (actor: Actor): 'charging' | 'ready' | 'awakened' => {
             <figcaption>
                 {{ event.type === 'start' ? '戦闘開始' : event.type === 'awakening' ? '覚醒' : '戦闘終了' }}・{{ eventLabel(event) }}
                 <small v-if="eventState(event)" class="underground-party-portrait-state">
-                    <span>HP {{ eventState(event)?.hp }}/{{ eventState(event)?.max_hp }}・MP {{ eventState(event)?.mp }}</span>
+                    <span>HP {{ eventState(event)?.hp }}<template v-if="(eventState(event)?.barrier ?? 0) > 0"> +{{ eventState(event)?.barrier }}</template>/{{ eventState(event)?.max_hp }}・MP {{ eventState(event)?.mp }}</span>
                     <span v-if="eventAwakeningVisible(event) && eventAwakeningMaximum(event)" class="underground-party-portrait-awakening">
                         <span>覚醒</span>
                         <span class="underground-party-meter is-awakening" :data-state="eventAwakeningState(event)">

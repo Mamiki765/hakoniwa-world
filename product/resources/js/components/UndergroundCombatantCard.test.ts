@@ -3,6 +3,17 @@ import { describe, expect, it } from 'vitest';
 import UndergroundCombatantCard from './UndergroundCombatantCard.vue';
 
 describe('Underground combatant card', () => {
+    it('shows the current barrier beside HP without changing the HP meter', async () => {
+        const state = { hp: 6220, max_hp: 8000, mp: 10000, barrier: 754, statuses: [], role_stacks: { fighting_spirit: 0, grace: 0 } };
+        const wrapper = mount(UndergroundCombatantCard, { props: { name: '秘書', side: 'player', state } });
+        const hp = wrapper.get('.underground-matchup-vitals label');
+        expect(hp.text()).toBe('HP 6,220 +754/ 8,000');
+        expect(hp.get('progress').attributes('value')).toBe('6220');
+        expect(hp.get('progress').attributes('max')).toBe('8000');
+        await wrapper.setProps({ state: { ...state, barrier: 0 } });
+        expect(hp.text()).toBe('HP 6,220/ 8,000');
+    });
+
     it('keeps awakening progress visual while exposing only its percentage to assistive technology', () => {
         const wrapper = mount(UndergroundCombatantCard, {
             props: {
