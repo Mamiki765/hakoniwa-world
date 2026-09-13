@@ -29,7 +29,8 @@
 - rootの設定・文書・CIは、依頼された作業に直接必要な場合だけ変更する。
 - 一つのPRへ無関係な機能、広範なrefactor、別systemの仕様変更を混ぜない。
 - 必要な変更が当初の小さな境界を超える場合、実装を続ける前にOwnerへ報告する。
-- merge、production deploy、OCI操作、production DB操作はOwnerの明示許可なしに行わない。
+- Ownerが使用を認めたrepositoryでは、作業branchの作成・commit・push、初回PR作成、PR title/body更新、review comment投稿、review修正のcommit・再pushを通常の開発作業として進める。review可能な状態までの反復更新に個別のOwner確認は不要であり、使用可能なForgejo・GitHubで権限を分けない。migration fileを作業branchで作成・commit・pushすることも同様に扱う。
+- mainへの直接commit/push、PR merge、production deploy、production DB操作・migration適用、OCI上のproduction変更、production user dataへの補填・変更はOwnerの明示許可なしに行わない。
 
 ---
 
@@ -143,6 +144,7 @@ Testとreviewは、故障時の影響に比例して重点を置く。特に次�
 - 状態×command×targetの総当たりmatrixを安易に作らない。
 - 小修正ごとに新規testや全suite実行を機械的に要求せず、故障影響と既存の代表確認から必要性を判断する。実行しなかった確認は報告する。
 - focused testから始め、変更domainに必要なsuiteとstatic checkを実行する。
+- push/PRの権限とCIコスト管理を分離する。pushごとに高コストCIが動く環境では無意味な細切れpushを避け、小修正ごとにrepository-wide CIを機械的に再要求しない。Owner管理のForgejoなど高コストCIが自動起動しない環境では、push回数を節約するためにreview用の共有・更新を止めない。
 - repository-wide PHPUnitは、exact-head CIが同じtest identifier集合を全件実行する場合、原則としてCIへ委譲する。
 - localではfocused testを優先し、migration、concurrency、environment固有の検証、CI failureの再現など、CIだけでは不足する確認を追加する。
 - source、dependency、test設定が変わっていない場合、CIと同じ全PHPUnitをlocalで重複実行しない。
