@@ -75,7 +75,8 @@ final readonly class SecretaryLendingService
             ->whereHas('user', fn ($query) => $query->whereNotNull('visitor_code')->where('visitor_code', '<>', ''))
             ->where('secretaries.id', '>', $afterId)
             ->whereHas('undergroundProfile', fn ($query) => $query
-                ->whereNotNull('growth_path_key')->whereNotNull('underground_contract_completed_at'))
+                ->whereNotNull('growth_path_key')->whereNotNull('underground_contract_completed_at')
+                ->where('skill_rebuild_required', false))
             ->select('secretaries.*');
         if ($excludeSecretaryId !== null) {
             $query->where('secretaries.id', '<>', $excludeSecretaryId);

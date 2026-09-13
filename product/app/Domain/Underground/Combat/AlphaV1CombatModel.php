@@ -43,7 +43,7 @@ final readonly class AlphaV1CombatModel
 
         $players = [];
         foreach ($playerSnapshots as $index => $snapshot) {
-            $state = $this->runtimePlayerState($catalog, $this->partyPlayerSnapshot($snapshot, $catalog));
+            $state = $this->runtimePlayerState($catalog, $this->partyPlayerSnapshot($snapshot, $catalog), true);
             $combatantId = $snapshot['combatant_id'] ?? null;
             if (! is_string($combatantId) || $combatantId === '' || isset($players[$combatantId])) {
                 throw new InvalidArgumentException('Underground player combatant identity is invalid.');
@@ -148,16 +148,30 @@ final readonly class AlphaV1CombatModel
                     $actor->side === 'player' ? array_values($enemies) : array_values($players),
                 );
                 $this->annotatePartyLogs($logs, $offset, $actor, $target, [$target->combatantId]);
-                if ($actor->side === 'enemy' && $this->damagedPlayerDuringAction($logs, $offset)) {
-                    $this->gainAwakeningGauge($target, UndergroundAwakening::DAMAGING_ENEMY_ACTION_GAIN);
+                if ($actor->side === 'enemy') {
+                    $damaged = [];
+                    foreach (array_slice($logs, $offset) as $row) {
+                        if (($row['side'] ?? null) === 'enemy'
+                            && ($row['target_side'] ?? null) === 'player'
+                            && ($row['effect_type'] ?? null) === 'damage'
+                            && ((int) ($row['amount'] ?? 0) > 0 || (int) ($row['barrier_absorbed'] ?? 0) > 0)
+                            && is_string($row['target_id'] ?? null)) {
+                            $damaged[$row['target_id']] = true;
+                        }
+                    }
+                    foreach ($players as $playerId => $player) {
+                        if (isset($damaged[$playerId])) {
+                            $this->gainAwakeningGauge($player, UndergroundAwakening::DAMAGING_ENEMY_ACTION_GAIN);
+                        }
+                    }
                 }
             },
-            function (int $round) use ($catalog, $combatants, $players, $enemies, &$metrics, &$statusUptime, &$logs): void {
+            function (int $round) use ($catalog, $combatants, $players, $enemies, &$metrics, &$statusUptime, &$logs, &$mpHistory): void {
                 foreach ($combatants as $state) {
                     $opponents = $state->side === 'player' ? $enemies : $players;
                     $opponent = $this->firstAlivePartyTarget($opponents) ?? reset($opponents);
                     $offset = count($logs);
-                    $this->processRoundEnd($catalog, $state, $opponent, $round, $metrics, $statusUptime, $logs);
+                    $this->processRoundEnd($catalog, $state, $opponent, $round, $metrics, $statusUptime, $logs, $mpHistory);
                     if ($state->side === 'player') {
                         $this->gainAwakeningGauge($state, UndergroundAwakening::ROUND_GAIN);
                         $this->advanceAwakeningGuardRound($state, $round, $logs);
@@ -284,7 +298,7 @@ final readonly class AlphaV1CombatModel
         return array_map(static fn (array $row): BuildCombatState => $row['state'], $rows);
     }
 
-    /** @param array<string, BuildCombatState> $targets */
+    /** @param array<array-key, BuildCombatState> $targets */
     private function firstAlivePartyTarget(array $targets): ?BuildCombatState
     {
         foreach ($targets as $target) {
@@ -607,9 +621,10 @@ final readonly class AlphaV1CombatModel
                 &$metrics,
                 &$statusUptime,
                 &$actionLog,
+                &$mpHistory,
             ): void {
-                $this->processRoundEnd($catalog, $player, $enemy, $round, $metrics, $statusUptime, $actionLog);
-                $this->processRoundEnd($catalog, $enemy, $player, $round, $metrics, $statusUptime, $actionLog);
+                $this->processRoundEnd($catalog, $player, $enemy, $round, $metrics, $statusUptime, $actionLog, $mpHistory);
+                $this->processRoundEnd($catalog, $enemy, $player, $round, $metrics, $statusUptime, $actionLog, $mpHistory);
                 $this->gainAwakeningGauge($player, UndergroundAwakening::ROUND_GAIN);
                 $this->advanceAwakeningGuardRound($player, $round, $actionLog);
                 $this->advanceAwakeningLifestealRound($player, $round, $actionLog);
@@ -685,7 +700,7 @@ final readonly class AlphaV1CombatModel
     }
 
     /** @param array<string, mixed> $snapshot */
-    private function runtimePlayerState(AlphaV1BuildCatalog $catalog, array $snapshot): BuildCombatState
+    private function runtimePlayerState(AlphaV1BuildCatalog $catalog, array $snapshot, bool $allowDefeated = false): BuildCombatState
     {
         $key = $snapshot['key'] ?? null;
         $label = $snapshot['label'] ?? null;
@@ -792,12 +807,12 @@ final readonly class AlphaV1CombatModel
             $equipment['weapon_power'],
             $skills,
             $aiRules,
-            $modifiers,
+            $this->skillModifiers($catalog, $skills, $modifiers),
             null,
             $catalog->manifest()['normal_attack'],
         );
         $currentHp = $snapshot['current_hp'] ?? $state->maxHp;
-        if (! is_int($currentHp) || $currentHp < 1 || $currentHp > $state->maxHp) {
+        if (! is_int($currentHp) || $currentHp < ($allowDefeated ? 0 : 1) || $currentHp > $state->maxHp) {
             throw new InvalidArgumentException('Underground alpha-v1 runtime current HP is invalid.');
         }
         $state->hp = $currentHp;
@@ -881,7 +896,7 @@ final readonly class AlphaV1CombatModel
             max(1, $equipment['weapon_power']),
             $build['active_skills'],
             $build['ai_rules'],
-            $modifiers,
+            $this->skillModifiers($catalog, $build['active_skills'], $modifiers),
             null,
             $catalog->manifest()['normal_attack'],
         );
@@ -1213,6 +1228,21 @@ final readonly class AlphaV1CombatModel
                 $decisionTargetId,
                 $decisionTargetIds,
             );
+            if ($action['type'] === 'skill' && is_string($action['key'])
+                && ($catalog->skill($action['key'])['consumes_action'] ?? true) === false) {
+                $this->executeSkill($catalog, $actor, $target, $action['key'], $random, $round,
+                    $metrics, $actionUsage, $mpHistory, $actionLog, $partyAllies, $partyEnemies, $actionId);
+                if (! $actor->alive()) {
+                    return;
+                }
+                $target = $partyEnemies !== [] ? ($this->firstAlivePartyTarget($partyEnemies) ?? $target) : $target;
+                if (! $target->alive()) {
+                    return;
+                }
+                $nextRuleIndex = $action['next_rule_index'];
+
+                continue;
+            }
             if ($action['type'] !== 'awakening') {
                 break;
             }
@@ -1295,7 +1325,42 @@ final readonly class AlphaV1CombatModel
         if (! is_string($skillKey) || ! $this->ai->skillAvailable($actor, $catalog, $skillKey)) {
             throw new InvalidArgumentException('Underground alpha-v1 AI selected an unavailable skill.');
         }
+        $this->executeSkill($catalog, $actor, $target, $skillKey, $random, $round,
+            $metrics, $actionUsage, $mpHistory, $actionLog, $partyAllies, $partyEnemies, $actionId);
+    }
+
+    /**
+     * @param  array<string, int|null>  $metrics
+     * @param  array<string, int>  $actionUsage
+     * @param  list<array<string, int>>  $mpHistory
+     * @param  list<array<string, mixed>>  $actionLog
+     * @param  list<BuildCombatState>  $partyAllies
+     * @param  list<BuildCombatState>  $partyEnemies
+     */
+    private function executeSkill(
+        AlphaV1BuildCatalog $catalog,
+        BuildCombatState $actor,
+        BuildCombatState $target,
+        string $skillKey,
+        UndergroundRandom $random,
+        int $round,
+        array &$metrics,
+        array &$actionUsage,
+        array &$mpHistory,
+        array &$actionLog,
+        array $partyAllies,
+        array $partyEnemies,
+        ?string $actionId,
+    ): void {
         $skill = $catalog->skill($skillKey);
+        $actor->flags['effective_heal_action'] = false;
+        $healingCost = (int) ($skill['required_healing_actions'] ?? 0);
+        if ($healingCost > 0) {
+            $actor->roleStacks['grace'] -= $healingCost;
+            $actionLog[] = $this->logRow($round, $actor, 'role_stack_spent:grace', $healingCost, false, false,
+                effectType: 'role_stack_spent', actionId: $actionId, targetState: $actor,
+                targetIds: [$actor->combatantId]);
+        }
         $cost = $this->ai->effectiveCost($actor, (int) $skill['mp_cost']);
         $this->changeMp(
             $actor,
@@ -1330,7 +1395,10 @@ final readonly class AlphaV1CombatModel
             }
             $targets = $this->partyEffectTargets($effect, $actor, $target, $partyAllies, $partyEnemies);
             foreach ($targets as $index => $effectTarget) {
-                if (! $effectTarget->alive()) {
+                if (! $actor->alive()) {
+                    break;
+                }
+                if (! $effectTarget->alive() && ($effect['type'] ?? null) !== 'revive') {
                     continue;
                 }
                 $offset = count($actionLog);
@@ -1365,7 +1433,8 @@ final readonly class AlphaV1CombatModel
                 $agilityComboPending = false;
             }
         }
-        if (($skill['grace_on_use'] ?? false) === true && ($actor->modifiers['grace_enabled'] ?? false) === true) {
+        if (($actor->flags['effective_heal_action'] ?? false) === true
+            && in_array('heart_of_mercy', $actor->skills, true)) {
             $this->grantRoleStack(
                 $actor,
                 'grace',
@@ -1402,10 +1471,15 @@ final readonly class AlphaV1CombatModel
 
         return match ($scope) {
             'self' => [$actor],
-            'single_ally' => [$this->lowestHpRatioTarget($partyAllies) ?? $actor],
+            'single_ally' => [$target->side === $actor->side && $target->alive()
+                ? $target : ($this->lowestHpRatioTarget($partyAllies) ?? $actor)],
+            'fallen_ally' => array_slice(array_values(array_filter($partyAllies,
+                static fn (BuildCombatState $state): bool => ! $state->alive())), 0, 1),
             'all_allies' => array_values(array_filter($partyAllies, static fn (BuildCombatState $state): bool => $state->alive())),
             'all_enemies' => array_values(array_filter($partyEnemies, static fn (BuildCombatState $state): bool => $state->alive())),
-            default => [$target],
+            default => $target->side !== $actor->side ? [$target]
+                : array_slice(array_values(array_filter($partyEnemies,
+                    static fn (BuildCombatState $state): bool => $state->alive())), 0, 1),
         };
     }
 
@@ -1425,7 +1499,7 @@ final readonly class AlphaV1CombatModel
             return $current;
         }
         foreach ([...$partyAllies, ...$partyEnemies] as $candidate) {
-            if ($candidate->combatantId === $targetId && $candidate->alive()) {
+            if ($candidate->combatantId === $targetId) {
                 return $candidate;
             }
         }
@@ -1458,7 +1532,7 @@ final readonly class AlphaV1CombatModel
     private function partyTargetScope(array $effect): string
     {
         $scope = $effect['target_scope'] ?? (($effect['target'] ?? 'enemy') === 'self' ? 'self' : 'single_enemy');
-        if (! in_array($scope, ['single_enemy', 'all_enemies', 'single_ally', 'all_allies', 'self'], true)) {
+        if (! in_array($scope, ['single_enemy', 'all_enemies', 'single_ally', 'fallen_ally', 'all_allies', 'self'], true)) {
             throw new InvalidArgumentException('Underground party target scope is invalid.');
         }
 
@@ -1627,6 +1701,8 @@ final readonly class AlphaV1CombatModel
                 $targetIds,
                 $actionId,
             ),
+            'revive' => $this->reviveAlly($actor, $effectTarget, $effect, $round, $skillKey,
+                $metrics, $actionLog, $actionId),
             'barrier' => $this->applyBarrier(
                 $actor,
                 $effectTarget,
@@ -1834,16 +1910,18 @@ final readonly class AlphaV1CombatModel
 
             $critical = false;
             if (($effect['can_crit'] ?? false) === true) {
+                $criticalProfile = $this->rules->criticalProfile($actor->stat('finesse'),
+                    max($actor->stat('might'), $actor->stat('spirit')));
                 $criticalChance = min(
                     AlphaV1CombatRules::CRITICAL_CHANCE_CAP_BPS,
-                    max(0, $this->scaledProbabilityContribution($actor, 'finesse', 2_000)
+                    max(0, $criticalProfile['chance_bps']
                         + (int) ($actor->modifiers['critical_chance_bps'] ?? 0)),
                 );
                 $critical = $random->integer("alpha-v1:critical:{$actor->combatantId}:{$actionKey}:{$hit}", 1, 10_000)
                     <= $criticalChance;
                 if ($critical) {
                     $rawDamage = intdiv(
-                        $rawDamage * (15_000 + (int) ($actor->modifiers['critical_damage_bps'] ?? 0)),
+                        $rawDamage * ($criticalProfile['damage_bps'] + (int) ($actor->modifiers['critical_damage_bps'] ?? 0)),
                         10_000,
                     );
                 }
@@ -2041,6 +2119,36 @@ final readonly class AlphaV1CombatModel
      * @param  array<string, mixed>  $effect
      * @param  array<string, int|null>  $metrics
      * @param  list<array<string, mixed>>  $actionLog
+     */
+    private function reviveAlly(
+        BuildCombatState $source,
+        BuildCombatState $target,
+        array $effect,
+        int $round,
+        string $actionKey,
+        array &$metrics,
+        array &$actionLog,
+        ?string $actionId,
+    ): void {
+        if ($target->alive() || $target->side !== $source->side) {
+            return;
+        }
+        $fraction = (int) $effect['revive_hp_bps'];
+        $effective = $this->healExact($target, max(1, intdiv($target->maxHp * $fraction, 10_000)), $metrics);
+        $source->flags['effective_heal_action'] = $effective > 0;
+        $row = $this->logRow($round, $source, $actionKey, -$effective, false, false,
+            effectType: 'revival', targetSide: $target->side, actionId: $actionId,
+            targetState: $target, targetIds: [$target->combatantId]);
+        $row['kind'] = 'revival';
+        $row['revived'] = $effective > 0;
+        $row['revive_hp_bps'] = $fraction;
+        $actionLog[] = $row;
+    }
+
+    /**
+     * @param  array<string, mixed>  $effect
+     * @param  array<string, int|null>  $metrics
+     * @param  list<array<string, mixed>>  $actionLog
      * @param  list<string>  $targetIds
      */
     private function applyHeal(
@@ -2057,17 +2165,8 @@ final readonly class AlphaV1CombatModel
         $amount = $this->recoveryAmount($source, $target, $effect);
         $amount = intdiv($amount * (10_000 + (int) ($source->modifiers['healing_bps'] ?? 0)), 10_000);
         $effective = $this->healExact($target, $amount, $metrics);
-        if ($effective > 0 && $source->side === 'player' && ($source->modifiers['grace_enabled'] ?? false) === true) {
-            $this->grantRoleStack(
-                $source,
-                'grace',
-                5,
-                $round,
-                $actionLog,
-                $actionId,
-                $target,
-                $targetIds,
-            );
+        if ($effective > 0 && $source->side === 'player') {
+            $source->flags['effective_heal_action'] = true;
             if (($source->modifiers['graceful_focus'] ?? false) === true) {
                 $source->flags['graceful_focus'] = true;
             }
@@ -2366,6 +2465,7 @@ final readonly class AlphaV1CombatModel
      * @param  array<string, int|null>  $metrics
      * @param  array<string, int>  $statusUptime
      * @param  list<array<string, mixed>>  $actionLog
+     * @param  list<array<string, int>>  $mpHistory
      */
     private function processRoundEnd(
         AlphaV1BuildCatalog $catalog,
@@ -2375,6 +2475,7 @@ final readonly class AlphaV1CombatModel
         array &$metrics,
         array &$statusUptime,
         array &$actionLog,
+        array &$mpHistory,
     ): void {
         foreach ($state->statuses as $key => &$status) {
             $statusUptime[$state->side.':'.$key] = ($statusUptime[$state->side.':'.$key] ?? 0) + 1;
@@ -2407,6 +2508,10 @@ final readonly class AlphaV1CombatModel
                         barrierAbsorbed: $settled['barrier_absorbed'],
                         effectType: 'damage',
                     );
+                } elseif (($effect['type'] ?? null) === 'periodic_mp_restore' && $state->alive()) {
+                    $this->changeMp($state, max(0, (int) ($effect['amount'] ?? 0)), 0,
+                        $round, 'skill_recovery', $metrics, $mpHistory, $actionLog,
+                        $state->side === 'player', $key);
                 } elseif (($effect['type'] ?? null) === 'periodic_heal' && $state->alive()) {
                     $amount = max(1, intdiv(
                         max(1, (int) ($effect['tick_value'] ?? 1))
@@ -2671,8 +2776,23 @@ final readonly class AlphaV1CombatModel
     }
 
     /**
-     * @param  array<string, int|bool|string>  $base
-     * @param  array<string, int>  $delta
+     * @param  list<string>  $skills
+     * @param  array<string, int|bool|string>  $modifiers
+     * @return array<string, int|bool|string>
+     */
+    private function skillModifiers(AlphaV1BuildCatalog $catalog, array $skills, array $modifiers): array
+    {
+        foreach ($skills as $skillKey) {
+            foreach ($catalog->skill($skillKey)['equipped_modifiers'] ?? [] as $key => $value) {
+                $modifiers[$key] = $value;
+            }
+        }
+
+        return $modifiers;
+    }
+
+    /** @param array<string, int|bool|string> $base
+     * @param  array<string, int|bool|string>  $delta
      * @return array<string, int|bool|string>
      */
     private function addModifiers(array $base, array $delta): array

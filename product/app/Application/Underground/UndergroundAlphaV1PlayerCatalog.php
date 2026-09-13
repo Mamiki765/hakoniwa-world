@@ -203,6 +203,7 @@ final readonly class UndergroundAlphaV1PlayerCatalog
                     'skill_key' => $skill === null ? null : $node['skill_key'],
                     'mp_cost' => $skill['mp_cost'] ?? null,
                     'cooldown' => $skill['cooldown'] ?? null,
+                    'consumes_action' => $skill['consumes_action'] ?? true,
                     'required_weapon_styles' => $skill['required_weapon_styles'] ?? [],
                     'recommended_stats' => $skill === null
                         ? null

@@ -1996,7 +1996,7 @@ describe('application lobby and island entry', () => {
                 agility: { baseline: 10, natural_growth: 0, allocated_stp: 0, equipment: 1, final: 11 },
             },
             skill_points_total: 20, skill_points_unspent: 20, skill_points_spent: 0,
-            skill_tree_identity: 'secretary-underground-skill-tree-alpha-v1',
+            skill_tree_identity: 'secretary-underground-skill-tree-alpha-v2',
             skill_trees: [{ key: 'martial', label: '戦技', invested_points: 6, full_points: 100, nodes: [{
                     key: 'martial_dagger_flurry', label: '短剣乱舞', summary: '短剣・細剣で3回攻撃し、出血を狙う。',
                     type: 'active', rank: 1, max_rank: 1, point_cost: 6, invested_points_required: 15,
@@ -2551,26 +2551,17 @@ describe('application lobby and island entry', () => {
         expect(wrapper.find('#underground-active-loadout').exists()).toBe(true);
         await wrapper.get('.underground-skill-jump').trigger('click');
         expect(document.activeElement).toBe(wrapper.get('#underground-loadout-title').element);
-        expect(wrapper.findAll('.underground-tree-tabs [role="tab"]')).toHaveLength(3);
-        expect(wrapper.get('#underground-tree-panel-martial').attributes('data-mobile-active')).toBe('true');
-        await wrapper.get('#underground-tree-tab-miracle').trigger('click');
-        expect(wrapper.get('#underground-tree-panel-martial').attributes('data-mobile-active')).toBe('false');
-        expect(wrapper.get('#underground-tree-panel-miracle').attributes('data-mobile-active')).toBe('true');
-        expect(wrapper.get('.underground-tree-grid').text()).toContain('戦技');
-        expect(wrapper.get('.underground-tree-grid').text()).toContain('護身');
-        expect(wrapper.get('.underground-tree-grid').text()).toContain('祝福');
-        expect(wrapper.findAll('#underground-tree-panel-miracle .underground-skill-node')
-            .map((node) => node.get('strong').text()))
-            .toEqual(['聖晶弾', '治癒祈祷', '精神導路', '輝石循環']);
-        expect(wrapper.get('#underground-tree-panel-miracle .underground-skill-node').text()).toContain('聖晶弾');
-        expect(wrapper.findAll('#underground-tree-panel-miracle .underground-skill-dependency').map((node) => node.text()))
-            .toEqual(['依存： 精神 / 技巧', '依存： 精神', '依存： ー']);
-        expect(wrapper.findAll('#underground-tree-panel-miracle .underground-skill-node')[2]!
-            .find('.underground-skill-dependency').exists()).toBe(false);
-        await wrapper.get('#underground-tree-panel-miracle .underground-skill-node button').trigger('click');
+        expect(wrapper.get('#skill-tab-martial').attributes('aria-selected')).toBe('true');
+        await wrapper.get('#skill-tab-miracle').trigger('click');
+        expect(wrapper.get('#skill-tab-miracle').attributes('aria-selected')).toBe('true');
+        expect(wrapper.find('#skill-panel-martial').exists()).toBe(false);
+        await wrapper.get('#skill-node-miracle_mending_prayer').trigger('click');
+        expect(wrapper.get('.skill-detail').text()).toContain('前提');
+        expect(wrapper.get('.skill-detail button').attributes('disabled')).toBeDefined();
+        await wrapper.get('#skill-node-miracle_holy_bolt').trigger('click');
+        expect(wrapper.get('.skill-detail').text()).toContain('精神');
+        await wrapper.get('.skill-detail button').trigger('click');
         await flushPromises();
-        expect(wrapper.get('.underground-active-skill-notes').text()).toContain('必要武器: 短剣 / 細身剣');
-        expect(wrapper.get('.underground-active-skill-notes').text()).toContain('現在の武器では使用できません');
         await wrapper.get('.underground-loadout-grid select').setValue('holy_bolt');
         await wrapper.get('.underground-active-loadout .button.primary').trigger('click');
         await flushPromises();
@@ -2820,7 +2811,7 @@ describe('application lobby and island entry', () => {
             current_stats: growthPath.stats, combat_stats: growthPath.stats, status_breakdown: null,
             equipment: null, equipment_summary: null,
             skill_points_total: 20, skill_points_unspent: 20, skill_points_spent: 0,
-            skill_tree_identity: 'secretary-underground-skill-tree-alpha-v1', skill_trees: [],
+            skill_tree_identity: 'secretary-underground-skill-tree-alpha-v2', skill_trees: [],
             active_slots: [null, null, null, null, null], passive_modifiers: {},
             shopkeeper_name: '案内係', true_name_branch: false,
             tutorial_projection: { stats: growthPath.stats, weapon: 'starter knife' },
@@ -4175,7 +4166,8 @@ describe('Underground equipment navigation', () => {
         await wrapper.get('#underground-active-loadout .button.primary').trigger('click');
         await flushPromises();
         expect(wrapper.get('[role="alert"]').text()).toContain('Loadout response lost');
-        await wrapper.get('.underground-skill-node button').trigger('click');
+        await wrapper.get('#skill-node-guard_training').trigger('click');
+        await wrapper.get('.skill-detail button').trigger('click');
         await flushPromises();
         expect(wrapper.get('[role="alert"]').text()).toContain('Skill response lost');
         await wrapper.findAll('.underground-character-actions button')[0]!.trigger('click');
@@ -4279,15 +4271,17 @@ describe('Underground equipment navigation', () => {
         expect((wrapper.get('input[aria-label="生命の今回の配分"]').element as HTMLInputElement).value).toBe('0');
         expect(wrapper.get('.underground-progression-panel .button.primary').attributes('disabled')).toBeDefined();
         expect((wrapper.get('#underground-active-loadout select').element as HTMLSelectElement).value).not.toBe('quick_cut');
-        const passiveNode = wrapper.findAll('.underground-skill-node')
+        const passiveNode = wrapper.findAll('.skill-node')
             .find((node) => node.text().includes('防御の心得'))!;
-        await passiveNode.get('button').trigger('click');
+        await passiveNode.trigger('click');
+        await wrapper.get('.skill-detail button').trigger('click');
         await flushPromises();
         expect(skillPayloads).toHaveLength(2);
         expect(skillPayloads[1]!.request_id).not.toBe(skillPayloads[0]!.request_id);
-        const activeNode = wrapper.findAll('.underground-skill-node')
+        const activeNode = wrapper.findAll('.skill-node')
             .find((node) => node.text().includes('早業'))!;
-        await activeNode.get('button').trigger('click');
+        await activeNode.trigger('click');
+        await wrapper.get('.skill-detail button').trigger('click');
         await flushPromises();
         await wrapper.get('#underground-active-loadout select').setValue('quick_cut');
         await wrapper.get('#underground-active-loadout .button.primary').trigger('click');

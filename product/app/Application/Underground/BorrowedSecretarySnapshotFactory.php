@@ -210,6 +210,7 @@ final readonly class BorrowedSecretarySnapshotFactory
             'resources' => [
                 'original_current_hp' => $originalCurrentHp,
                 'effective_current_hp' => $effectiveCurrentHp,
+                'effective_max_hp' => $definition['max_hp'],
                 'battle_start_mp' => AlphaV1CombatRules::MAX_MP,
             ],
             'original_equipment' => $originalEquipment,

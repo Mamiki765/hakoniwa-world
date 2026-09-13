@@ -177,13 +177,17 @@ final readonly class AlphaV1BuildCatalog
                     || ! in_array($effect['type'] ?? null, AlphaV1CombatRules::STATUS_EFFECT_TYPES, true)) {
                     throw new InvalidArgumentException("Underground alpha-v1 status [{$key}] has an invalid effect.");
                 }
+                if ($effect['type'] === 'periodic_mp_restore'
+                    && (! is_int($effect['amount'] ?? null) || $effect['amount'] < 1)) {
+                    throw new InvalidArgumentException("Underground status [{$key}] has invalid MP recovery.");
+                }
             }
         }
     }
 
     private function assertSkillDefinitions(): void
     {
-        $effectTypes = ['damage', 'heal', 'barrier', 'apply_status', 'cleanse', 'dispel', 'mp_restore', 'telegraph', 'taunt'];
+        $effectTypes = ['damage', 'heal', 'revive', 'barrier', 'apply_status', 'cleanse', 'dispel', 'mp_restore', 'telegraph', 'taunt'];
         foreach ($this->manifest['skills'] as $key => $skill) {
             if (! is_string($key) || ! is_array($skill)
                 || ! is_int($skill['mp_cost'] ?? null) || $skill['mp_cost'] < 0
@@ -192,12 +196,42 @@ final readonly class AlphaV1BuildCatalog
                 || $skill['effects'] === []) {
                 throw new InvalidArgumentException("Underground alpha-v1 skill [{$key}] is invalid.");
             }
+            if (array_key_exists('consumes_action', $skill)
+                && (! is_bool($skill['consumes_action'])
+                    || ($skill['consumes_action'] === false && $skill['cooldown'] < 2))) {
+                throw new InvalidArgumentException("Underground skill [{$key}] needs a cooldown for an additional action.");
+            }
+            if (isset($skill['required_healing_actions'])
+                && (! is_int($skill['required_healing_actions']) || $skill['required_healing_actions'] < 1
+                    || $skill['required_healing_actions'] > $this->balanceInt('role_stack_cap'))) {
+                throw new InvalidArgumentException("Underground skill [{$key}] has an invalid healing requirement.");
+            }
+            if (isset($skill['equipped_modifiers'])) {
+                if (! is_array($skill['equipped_modifiers'])) {
+                    throw new InvalidArgumentException("Underground skill [{$key}] has invalid equipped modifiers.");
+                }
+                foreach ($skill['equipped_modifiers'] as $modifier => $value) {
+                    $valid = match ($modifier) {
+                        'counter_power_bps' => is_int($value) && $value >= 0 && $value <= 10_000,
+                        'fighting_spirit_enabled' => is_bool($value),
+                        default => false,
+                    };
+                    if (! $valid) {
+                        throw new InvalidArgumentException("Underground skill [{$key}] has an unsupported equipped modifier.");
+                    }
+                }
+            }
+            if (isset($skill['required_fighting_spirit'])
+                && (! is_int($skill['required_fighting_spirit']) || $skill['required_fighting_spirit'] < 1
+                    || $skill['required_fighting_spirit'] > $this->balanceInt('role_stack_cap'))) {
+                throw new InvalidArgumentException("Underground skill [{$key}] has an invalid fighting spirit requirement.");
+            }
             foreach ($skill['effects'] as $effect) {
                 if (! is_array($effect) || ! in_array($effect['type'] ?? null, $effectTypes, true)) {
                     throw new InvalidArgumentException("Underground alpha-v1 skill [{$key}] has an invalid effect.");
                 }
                 if (isset($effect['target_scope'])
-                    && ! in_array($effect['target_scope'], ['single_enemy', 'all_enemies', 'single_ally', 'all_allies', 'self'], true)) {
+                    && ! in_array($effect['target_scope'], ['single_enemy', 'all_enemies', 'single_ally', 'fallen_ally', 'all_allies', 'self'], true)) {
                     throw new InvalidArgumentException("Underground alpha-v1 skill [{$key}] has an invalid target scope.");
                 }
                 if ($effect['type'] === 'damage'
@@ -209,6 +243,12 @@ final readonly class AlphaV1BuildCatalog
                 }
                 if ($effect['type'] === 'taunt' && ($effect['target'] ?? null) !== 'enemy') {
                     throw new InvalidArgumentException("Underground alpha-v1 taunt [{$key}] must target the enemy.");
+                }
+                if ($effect['type'] === 'revive'
+                    && (($effect['target_scope'] ?? null) !== 'fallen_ally'
+                        || ! is_int($effect['revive_hp_bps'] ?? null)
+                        || $effect['revive_hp_bps'] < 1 || $effect['revive_hp_bps'] >= 10_000)) {
+                    throw new InvalidArgumentException("Underground skill [{$key}] has an invalid single revival.");
                 }
             }
         }

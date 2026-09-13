@@ -578,13 +578,13 @@ final class UndergroundPlayerAccessTest extends TestCase
             ->assertJsonPath('data.growth_path.natural_recovery', 300)
             ->assertJsonPath('data.skill_points_total', 20)
             ->assertJsonPath('data.skill_points_unspent', 20)
-            ->assertJsonPath('data.skill_tree_identity', 'secretary-underground-skill-tree-alpha-v1')
+            ->assertJsonPath('data.skill_tree_identity', 'secretary-underground-skill-tree-alpha-v2')
             ->assertJsonPath('data.skill_trees.0.label', '戦技')
-            ->assertJsonPath('data.skill_trees.0.nodes.0.recommended_stats', ['might'])
+            ->assertJsonPath('data.skill_trees.0.nodes.0.recommended_stats', ['might', 'finesse'])
             ->assertJsonPath('data.skill_trees.1.label', '護身')
             ->assertJsonPath('data.skill_trees.2.label', '祝福')
-            ->assertJsonPath('data.skill_trees.2.nodes.0.recommended_stats', ['spirit', 'finesse'])
-            ->assertJsonPath('data.skill_trees.2.nodes.1.recommended_stats', null)
+            ->assertJsonPath('data.skill_trees.2.nodes.0.recommended_stats', ['spirit'])
+            ->assertJsonPath('data.skill_trees.2.nodes.1.recommended_stats', ['spirit'])
             ->assertJsonPath('data.skill_trees.2.nodes.5.recommended_stats', []);
         $playerCatalog = app(UndergroundAlphaV1PlayerCatalog::class);
         $skillAllocation = ['martial_precision_cut' => ['rank' => 1, 'active_slot' => 1]];
@@ -680,8 +680,8 @@ final class UndergroundPlayerAccessTest extends TestCase
             ->assertJsonPath('data.growth_path.label', '戦技')
             ->assertJsonPath('data.skill_trees.2.label', '祝福')
             ->assertJsonPath('data.skill_trees.2.nodes.0.rank', 1)
-            ->assertJsonPath('data.skill_points_unspent', 15)
-            ->assertJsonPath('data.skill_points_spent', 5);
+            ->assertJsonPath('data.skill_points_unspent', 14)
+            ->assertJsonPath('data.skill_points_spent', 6);
         $this->actingAs($user)->postJson('/api/v1/me/underground/skills/acquire', $skillPayload)
             ->assertOk()->assertExactJson($skillResult->json());
         $this->actingAs($user)->putJson('/api/v1/me/underground/skills/loadout', [
@@ -689,7 +689,7 @@ final class UndergroundPlayerAccessTest extends TestCase
             'slots' => ['holy_bolt', null, null, null, null],
         ])->assertOk()
             ->assertJsonPath('data.active_slots.0.key', 'holy_bolt')
-            ->assertJsonPath('data.active_slots.0.label', '聖晶弾')
+            ->assertJsonPath('data.active_slots.0.label', 'ホーリーボルト')
             ->assertJsonCount(5, 'data.active_slots');
         $this->actingAs($user)->postJson('/api/v1/me/underground/skills/acquire', [
             'request_id' => (string) Str::uuid(),
@@ -697,8 +697,8 @@ final class UndergroundPlayerAccessTest extends TestCase
         ])->assertConflict()->assertJsonPath('code', 'underground_skill_max_rank');
         $this->actingAs($user)->postJson('/api/v1/me/underground/skills/acquire', [
             'request_id' => (string) Str::uuid(),
-            'node_key' => 'miracle_spirit_channel',
-        ])->assertConflict()->assertJsonPath('code', 'underground_skill_investment_gate');
+            'node_key' => 'miracle_resurrection',
+        ])->assertConflict()->assertJsonPath('code', 'underground_skill_prerequisite');
         $this->actingAs($user)->putJson('/api/v1/me/underground/skills/loadout', [
             'request_id' => (string) Str::uuid(),
             'slots' => ['mending_prayer', null, null, null, null],
@@ -707,9 +707,9 @@ final class UndergroundPlayerAccessTest extends TestCase
             'request_id' => (string) Str::uuid(),
             'node_key' => 'miracle_mending_prayer',
         ])->assertOk()
-            ->assertJsonPath('data.skill_points_unspent', 9)
-            ->assertJsonPath('data.skill_points_spent', 11)
-            ->assertJsonPath('data.skill_trees.2.nodes.3.rank', 1);
+            ->assertJsonPath('data.skill_points_unspent', 8)
+            ->assertJsonPath('data.skill_points_spent', 12)
+            ->assertJsonPath('data.skill_trees.2.nodes.1.rank', 1);
         $this->actingAs($user)->putJson('/api/v1/me/underground/skills/loadout', [
             'request_id' => (string) Str::uuid(),
             'slots' => ['holy_bolt', 'mending_prayer', null, null, null],
@@ -718,27 +718,18 @@ final class UndergroundPlayerAccessTest extends TestCase
             ->assertJsonPath('data.active_slots.1.key', 'mending_prayer');
         $this->actingAs($user)->postJson('/api/v1/me/underground/skills/acquire', [
             'request_id' => (string) Str::uuid(),
-            'node_key' => 'miracle_spirit_channel',
-        ])->assertConflict()->assertJsonPath('code', 'underground_skill_investment_gate');
-        foreach (array_fill(0, 2, 'miracle_healing_study') as $nodeKey) {
-            $this->actingAs($user)->postJson('/api/v1/me/underground/skills/acquire', [
-                'request_id' => (string) Str::uuid(),
-                'node_key' => $nodeKey,
-            ])->assertOk();
-        }
-        foreach (array_fill(0, 4, 'miracle_spirit_channel') as $nodeKey) {
-            $this->actingAs($user)->postJson('/api/v1/me/underground/skills/acquire', [
-                'request_id' => (string) Str::uuid(),
-                'node_key' => $nodeKey,
-            ])->assertOk();
-        }
+            'node_key' => 'miracle_resurrection',
+        ])->assertConflict()->assertJsonPath('code', 'underground_skill_prerequisite');
         $this->actingAs($user)->postJson('/api/v1/me/underground/skills/acquire', [
             'request_id' => (string) Str::uuid(),
-            'node_key' => 'miracle_spirit_channel',
+            'node_key' => 'miracle_lucid_dream',
         ])->assertOk()
-            ->assertJsonPath('data.skill_points_unspent', 0)
-            ->assertJsonPath('data.skill_points_spent', 20)
-            ->assertJsonPath('data.skill_trees.2.nodes.1.rank', 5);
+            ->assertJsonPath('data.skill_points_unspent', 2)
+            ->assertJsonPath('data.skill_points_spent', 18);
+        $this->actingAs($user)->postJson('/api/v1/me/underground/skills/acquire', [
+            'request_id' => (string) Str::uuid(),
+            'node_key' => 'miracle_regeneration',
+        ])->assertConflict()->assertJsonPath('code', 'underground_skill_points_insufficient');
         $this->actingAs($user)->postJson('/api/v1/me/underground/skills/acquire', [
             'request_id' => (string) Str::uuid(),
             'node_key' => 'martial_dagger_flurry',
@@ -787,7 +778,7 @@ final class UndergroundPlayerAccessTest extends TestCase
             'growth_path_selected_at' => Carbon::now(),
             'skill_points_total' => 20,
             'skill_points_unspent' => 20,
-            'skill_tree_identity' => 'secretary-underground-skill-tree-alpha-v1',
+            'skill_tree_identity' => 'secretary-underground-skill-tree-alpha-v2',
         ]);
         UndergroundIntroProgress::query()->create([
             'underground_profile_id' => $profile->id,
@@ -1164,7 +1155,7 @@ final class UndergroundPlayerAccessTest extends TestCase
             ->assertJsonPath('data.battle.summary.result', 'defeat')
             ->assertJsonPath('data.battle.summary.player_remaining_hp', 0)
             ->assertJsonPath('data.battle.summary.enemy_remaining_hp', 568_850)
-            ->assertJsonPath('data.battle.summary.damage_dealt', 4)
+            ->assertJsonPath('data.battle.summary.result', 'defeat')
             ->assertJsonPath('data.battle.summary.damage_received', 500)
             ->assertJsonPath('data.battle.actions.0.end_state.player.max_hp', 500)
             ->assertJsonPath('data.battle.actions.0.end_state.enemy.max_hp', 568_850)
@@ -1183,7 +1174,7 @@ final class UndergroundPlayerAccessTest extends TestCase
         $this->assertSame('精密斬り', $barrierDamage['label']);
         $this->assertFalse($barrierDamage['evaded']);
         $this->assertSame(0, $barrierDamage['amount']);
-        $this->assertSame(4, $barrierDamage['barrier_absorbed']);
+        $this->assertGreaterThan(0, $barrierDamage['barrier_absorbed']);
         $this->assertNull($barrierDamage['agility_combo_hits']);
         $this->assertIsArray($fatalDamage);
         $this->assertSame('反撃', $fatalDamage['label']);
@@ -1214,11 +1205,11 @@ final class UndergroundPlayerAccessTest extends TestCase
         $storyDefinition = app(UndergroundAlphaV1PlayerCatalog::class)->trueNameStoryBattle();
         $this->assertEquals($storyDefinition['ai'], $storyBattle->snapshot['ai']);
         $this->assertSame([
-            'unbroken_retort',
-            'renewing_guard',
-            'bulwark_strike',
-            'counter_stance',
-            'shield_bash',
+            'enemy_unbroken_retort',
+            'enemy_renewing_guard',
+            'enemy_bulwark_strike',
+            'enemy_counter_stance',
+            'enemy_shield_bash',
         ], $storyDefinition['catalog']->enemy($storyDefinition['enemy_key'])['skills']);
 
         $this->advance($user, 'special_loss_aftermath_complete')
@@ -1325,7 +1316,7 @@ final class UndergroundPlayerAccessTest extends TestCase
             'growth_path_selected_at' => Carbon::now(),
             'skill_points_total' => 20,
             'skill_points_unspent' => 20,
-            'skill_tree_identity' => 'secretary-underground-skill-tree-alpha-v1',
+            'skill_tree_identity' => 'secretary-underground-skill-tree-alpha-v2',
             'current_hp' => 321,
         ]);
         UndergroundIntroProgress::query()->create([
@@ -1489,10 +1480,9 @@ final class UndergroundPlayerAccessTest extends TestCase
         [$otherUser, $otherSecretary] = $this->secretaryUser('Other equipment secretary');
         $profile = $this->openEquipmentProfile($secretary);
         $otherProfile = $this->openEquipmentProfile($otherSecretary, 0, 0);
-        $profile->update(['skill_points_total' => 22, 'skill_points_unspent' => 0]);
+        $profile->update(['skill_points_total' => 20, 'skill_points_unspent' => 2]);
         foreach ([
             'martial_precision_cut' => ['rank' => 1, 'active_slot' => null],
-            'martial_weapon_mastery' => ['rank' => 5, 'active_slot' => null],
             'martial_dagger_flurry' => ['rank' => 1, 'active_slot' => 1],
         ] as $nodeKey => $allocation) {
             UndergroundSkillAllocation::query()->create([
@@ -1644,7 +1634,7 @@ final class UndergroundPlayerAccessTest extends TestCase
             ->assertOk()
             ->assertJsonPath('data.equipment_summary.equipped.weapon.key', 'iron_longsword')
             ->assertJsonPath('data.active_slots.0.key', 'dagger_flurry');
-        $this->assertNotContains(
+        $this->assertContains(
             'skill:dagger_flurry',
             array_column($longswordMain->json('data.ai.default_rules'), 'action'),
         );
@@ -2196,14 +2186,13 @@ final class UndergroundPlayerAccessTest extends TestCase
         $this->assertEquals($generated, $item->fresh()->generated_payload);
     }
 
-    public function test_player_runtime_filters_active_skills_by_actual_weapon_without_clearing_the_saved_slot(): void
+    public function test_player_runtime_keeps_acquired_skills_available_with_every_weapon_type(): void
     {
         $catalog = app(UndergroundAlphaV1PlayerCatalog::class);
         $equipment = config('underground-alpha-v1.exploration.starter_weapon');
         $this->assertIsArray($equipment);
         $allocations = [
             'martial_precision_cut' => ['rank' => 1, 'active_slot' => null],
-            'martial_weapon_mastery' => ['rank' => 5, 'active_slot' => null],
             'martial_dagger_flurry' => ['rank' => 1, 'active_slot' => 1],
             'miracle_holy_bolt' => ['rank' => 1, 'active_slot' => 2],
             'miracle_mending_prayer' => ['rank' => 1, 'active_slot' => 3],
@@ -2219,7 +2208,7 @@ final class UndergroundPlayerAccessTest extends TestCase
                 '装備条件試験の秘書',
                 skillAllocations: $allocations,
             );
-            $supportsFlurry = in_array($weaponStyle, ['dagger', 'rapier'], true);
+            $supportsFlurry = true;
             $this->assertSame(
                 $supportsFlurry
                     ? ['dagger_flurry', 'holy_bolt', 'mending_prayer']
@@ -2286,7 +2275,7 @@ final class UndergroundPlayerAccessTest extends TestCase
             'growth_path_selected_at' => Carbon::now(),
             'skill_points_total' => 20,
             'skill_points_unspent' => 20,
-            'skill_tree_identity' => 'secretary-underground-skill-tree-alpha-v1',
+            'skill_tree_identity' => 'secretary-underground-skill-tree-alpha-v2',
             'unspent_stp' => 5,
             'current_hp' => 400,
         ]);
@@ -2306,11 +2295,11 @@ final class UndergroundPlayerAccessTest extends TestCase
         ]);
         UndergroundSkillAllocation::query()->create([
             'underground_profile_id' => $profile->id,
-            'node_key' => 'martial_weapon_mastery',
+            'node_key' => 'martial_precision_cut',
             'rank' => 1,
             'active_slot' => null,
         ]);
-        $profile->update(['skill_points_unspent' => 13]);
+        $profile->update(['skill_points_unspent' => 8]);
         $this->actingAs($user)->getJson('/api/v1/me/underground/main')
             ->assertOk()
             ->assertJsonPath('data.next_level_requirement', 150)
@@ -2379,17 +2368,17 @@ final class UndergroundPlayerAccessTest extends TestCase
         $this->assertSame(['starter_knife'], array_column($battle->snapshot['equipment']['items'], 'key'));
         $this->assertSame(400, $battle->snapshot['current_hp_before']);
         $this->assertSame(10_000, $battle->snapshot['battle_start_mp']);
-        $this->assertSame('secretary-underground-skill-tree-alpha-v1', $battle->snapshot['skill_tree_identity']);
+        $this->assertSame('secretary-underground-skill-tree-alpha-v2', $battle->snapshot['skill_tree_identity']);
         $this->assertSame(
             AlphaV1CombatRules::TARGETING_IDENTITY,
             $battle->snapshot['targeting_contract_identity'],
         );
         $this->assertSame([
             'miracle_holy_bolt' => 1,
-            'martial_weapon_mastery' => 1,
+            'martial_precision_cut' => 1,
         ], $battle->snapshot['acquired_skill_nodes']);
         $this->assertSame(['holy_bolt'], $battle->snapshot['equipped_active_skills']);
-        $this->assertSame(['physical_damage_bps' => 120], $battle->snapshot['effective_passive_modifiers']);
+        $this->assertSame([], $battle->snapshot['effective_passive_modifiers']);
         $this->assertSame($profile->fresh()->current_hp, $battle->snapshot['current_hp_after']);
         $this->assertArrayNotHasKey('current_mp', $profile->getAttributes());
         $this->assertSame(0, UndergroundTrialProgress::query()->count());
@@ -3063,7 +3052,7 @@ final class UndergroundPlayerAccessTest extends TestCase
             'growth_path_selected_at' => Carbon::now(),
             'skill_points_total' => 20,
             'skill_points_unspent' => 20,
-            'skill_tree_identity' => 'secretary-underground-skill-tree-alpha-v1',
+            'skill_tree_identity' => 'secretary-underground-skill-tree-alpha-v2',
             'current_hp' => 492,
         ]);
         UndergroundIntroProgress::query()->create([

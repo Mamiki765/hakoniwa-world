@@ -16,7 +16,7 @@
 | missile / commands / combat | B-03、B-05、B-12、B-13 | Capital operational damage、防壁・占領抵抗、またはv12のdistance 2休眠保護を変更する将来combatを実装する前に停止する。ver 2.4.0のKARMA/recoveryはADR-0015で決定済み。 |
 | lifecycle / automatic turn operations | T-02 | ver 2.4.0はADR-0014/ADR-0015によりdormant/recoveryを専用Jobではなくofficial Turn開始/終端へ統合する。将来専用scheduler/batchへ変更する前に停止し、production cronと手動retry境界はD-02を維持する。 |
 | public release | — | RELEASE-01、AUTH-05、B-14、D-03、D-04、D-05、D-07はPR23 owner decisionで決定済み。 |
-| Underground 3.0.0 / post-release | UG-05、UG-06 | E-01/UG-01〜04によりpure combat、Secretary-owned persistence/runtime、正式intro、通常探索、growth/STP、有限SPとplayer Skill Tree、案内人の部屋と複合再振り、Nation-owned facility・surface bridgeまで実装済み。party boundaryはUG-05で決定済み。marketはUG-05、party敵AoEの被damage覚醒ゲージ変更はUG-06で停止する。 |
+| Underground 3.0.0 / post-release | UG-05 | E-01/UG-01〜04によりpure combat、Secretary-owned persistence/runtime、正式intro、通常探索、growth/STP、有限SPとplayer Skill Tree、案内人の部屋と複合再振り、Nation-owned facility・surface bridgeまで実装済み。party boundaryはUG-05、party敵AoEの被damage覚醒ゲージはUG-06で決定済み。marketはUG-05で停止する。 |
 | post-MVP deferred | AUTH-06〜AUTH-09、B-08、D-06、D-08、C-02、C-04、E-02、E-04〜E-09 | 別のowner-approved roadmapまで実装しない。 |
 
 ## Decided architecture
@@ -311,12 +311,9 @@
 
 ### UG-06 party敵AoEと覚醒ゲージ
 
-- Status: Open
-- Required before: party敵AoEの被damage由来覚醒ゲージ付与先を変更する実装
-- Open decision: 被damage由来覚醒ゲージをbase target一人だけへ付与し続けるか、実際に被damageした各playerへaction単位で付与するかをOwnerが決定する。
-- Current behavior: 敵の全体攻撃で複数playerが実damageまたはbarrier damageを受けても、party pathはaction中にplayer被damageが一件でもあればbase target一人へだけ加算する。
-- Assistant proposal: 実際にdamageまたはbarrier damageを受けた各playerへ、そのenemy actionにつき最大1回ずつ加算する。soloの「multi-hitでも1 action 1回」は各playerについて維持する。
-- Boundary: Owner decisionが得られるまで実装しない。`Open`であり、次versionへ`Deferred`された事項ではない。
+- Status: Decided
+- Owner decision (2026-09-13): 実ダメージまたはバリアダメージを受けた各人に、その敵行動につき最大1回加算する。
+- Implementation: party actionの実際のdamage記録を対象者別に集約する。multi-hitでも各playerにつき1回。被害のないplayerへは加算しない。soloの既存付与単位を維持する。
 - Decision record: `docs/architecture/underground-combat-laboratory.md`
 
 ## Monster/combat gates

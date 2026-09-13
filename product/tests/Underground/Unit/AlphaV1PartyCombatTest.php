@@ -57,7 +57,7 @@ final class AlphaV1PartyCombatTest extends TestCase
 
     public function test_winner_uses_team_survival_instead_of_leader_survival(): void
     {
-        $catalog = $this->catalog(enemyHp: 1_000_000, enemyPower: 500_000, enemyAgility: 1_000);
+        $catalog = $this->catalog(enemyHp: 1_000_000, enemyPower: 500_000, enemyAgility: 1_000, enemyBoss: true);
         $leader = $this->player('secretary:1', currentHp: 1);
         $leader['stats']['agility'] = 2_000;
         $leader['active_skills'] = ['bulwark_strike'];
@@ -310,7 +310,7 @@ final class AlphaV1PartyCombatTest extends TestCase
 
     public function test_untaunted_target_rules_bind_taunts_and_enemy_attacks_and_skip_when_no_candidate_remains(): void
     {
-        $catalog = $this->catalog(enemyHp: 1_000_000, enemyPower: 1, enemyAgility: 1);
+        $catalog = $this->catalog(enemyHp: 1_000_000, enemyPower: 1, enemyAgility: 1, enemyBoss: true);
         $firstTank = $this->player('secretary:1', currentHp: 1);
         $firstTank['stats']['agility'] = 400;
         $firstTank['active_skills'] = ['bulwark_strike'];
@@ -494,7 +494,7 @@ final class AlphaV1PartyCombatTest extends TestCase
 
     public function test_healer_awakening_revives_every_defeated_ally_at_full_hp(): void
     {
-        $catalog = $this->catalog(enemyHp: 10_000_000, enemyPower: 500_000, enemyAgility: 1_000);
+        $catalog = $this->catalog(enemyHp: 10_000_000, enemyPower: 500_000, enemyAgility: 1_000, enemyBoss: true);
         $healer = $this->player('borrowed:2', currentHp: 1, awakening: true);
         $healer['awakening']['growth_path'] = 'blessing_green';
         $healer['awakening']['technique_key'] = 'life_requiem';
@@ -594,12 +594,95 @@ final class AlphaV1PartyCombatTest extends TestCase
         self::assertGreaterThan(0, -$regeneration['amount']);
     }
 
+    public function test_additional_strike_uses_a_slot_and_cooldown_but_preserves_the_regular_action_with_any_weapon(): void
+    {
+        $catalog = $this->catalog(10_000_000, 1, 1);
+        $player = $this->player('secretary:1', currentHp: 1000);
+        $player['equipment']['weapon_style'] = 'crystal_staff';
+        $player['active_skills'] = ['quick_stab'];
+        $player['ai_rules'] = [
+            ['conditions' => [['type' => 'always']], 'action' => 'skill:quick_stab'],
+            ['conditions' => [['type' => 'always']], 'action' => 'normal_attack'],
+        ];
+        $result = $this->model()->fightPartySnapshots($catalog, [$player], ['party_target'], 3100, 4, 0);
+        $decisions = collect($result->actionLog)->where('kind', 'decision')->where('actor_id', 'secretary:1');
+        self::assertSame(2, $decisions->where('action_key', 'quick_stab')->count());
+        self::assertSame(4, $decisions->where('action_key', 'normal_attack')->count());
+    }
+
+    public function test_single_revival_selects_a_fallen_ally_and_does_not_repeat_on_a_living_target(): void
+    {
+        $catalog = $this->catalog(10_000_000, 1, 1);
+        $player = $this->player('secretary:1', currentHp: 1000);
+        $player['active_skills'] = ['resurrection', 'heart_of_mercy'];
+        $player['ai_rules'] = [
+            ['conditions' => [['type' => 'always']], 'action' => 'skill:resurrection'],
+            ['conditions' => [['type' => 'always']], 'action' => 'defend'],
+        ];
+        $result = $this->model()->fightPartySnapshots($catalog,
+            [$player, $this->player('borrowed:2', currentHp: 0, defend: true)], ['party_target'], 3100, 5, 0);
+        self::assertSame(1, collect($result->actionLog)->where('kind', 'decision')->where('action_key', 'resurrection')->count());
+        $revival = collect($result->actionLog)->firstWhere('kind', 'revival');
+        self::assertSame('borrowed:2', $revival['target_id']);
+        self::assertSame(3000, $revival['revive_hp_bps']);
+        self::assertGreaterThan(0, $result->finalStates['borrowed:2']['hp']);
+        self::assertSame(1, $result->finalStates['secretary:1']['role_stacks']['grace']);
+    }
+
+    public function test_party_aoe_grants_each_damaged_member_one_action_of_awakening_gain(): void
+    {
+        $manifest = $this->catalog(10_000_000, 1, 1, enemyAoe: true)->manifest();
+        $manifest['skills']['party_wave']['effects'][0]['hits'] = 3;
+        $catalog = new AlphaV1BuildCatalog($manifest);
+        $players = [];
+        foreach (['secretary:1', 'borrowed:2'] as $id) {
+            $player = $this->player($id, currentHp: 1000, awakening: true, defend: true);
+            $player['awakening']['gauge'] = 0;
+            $player['ai_rules'] = [['conditions' => [['type' => 'always']], 'action' => 'defend']];
+            if ($id === 'borrowed:2') {
+                $player['active_skills'] = ['crystal_aegis'];
+                $player['ai_rules'] = [['conditions' => [['type' => 'always']], 'action' => 'skill:crystal_aegis']];
+            }
+            $players[] = $player;
+        }
+        $result = $this->model()->fightPartySnapshots($catalog, $players, ['party_target'], 3100, 1, 0);
+        self::assertGreaterThan(0, collect($result->actionLog)->where('actor_id', 'enemy:1')->sum('barrier_absorbed'));
+        foreach (['secretary:1', 'borrowed:2'] as $id) {
+            self::assertSame(UndergroundAwakening::ROUND_GAIN + UndergroundAwakening::DAMAGING_ENEMY_ACTION_GAIN,
+                $result->awakening[$id]['gauge_after']);
+        }
+    }
+
+    public function test_effective_healing_actions_charge_mercy_but_periodic_ticks_do_not(): void
+    {
+        $catalog = $this->catalog(10_000_000, 1, 1);
+        $healer = $this->player('secretary:1', currentHp: 1000);
+        $healer['active_skills'] = ['heart_of_mercy', 'resurrection', 'regeneration', 'mending_prayer', 'lucid_dream'];
+        $healer['ai_rules'] = array_map(static fn (string $skill): array => [
+            'conditions' => [['type' => 'always']], 'action' => 'skill:'.$skill,
+        ], $healer['active_skills']);
+        $result = $this->model()->fightPartySnapshots($catalog,
+            [$healer, $this->player('borrowed:2', currentHp: 0, defend: true), $this->player('borrowed:3', currentHp: 500, defend: true)],
+            ['party_target'], 3100, 8, 0);
+        $actions = collect($result->actionLog)->where('actor_id', 'secretary:1');
+        $effectiveActions = $actions->filter(static fn (array $row): bool => in_array($row['effect_type'] ?? null, ['recovery', 'revival'], true) && $row['amount'] < 0)
+            ->pluck('action_id')->unique()->count();
+        $spent = $actions->where('action', 'role_stack_spent:grace')->sum('amount');
+        self::assertGreaterThan(0, $spent);
+        self::assertSame($effectiveActions, $spent + $result->finalStates['secretary:1']['role_stacks']['grace']);
+        self::assertNotEmpty(collect($result->actionLog)->where('action', 'periodic_heal:regeneration')->all());
+        $mercy = $actions->first(static fn (array $row): bool => ($row['kind'] ?? null) === 'decision' && ($row['action_key'] ?? null) === 'heart_of_mercy');
+        self::assertIsArray($mercy);
+        self::assertGreaterThanOrEqual(4, $mercy['round']);
+    }
+
     private function catalog(
         int $enemyHp,
         int $enemyPower,
         int $enemyAgility,
         bool $enemyAoe = false,
         bool $enemyCounter = false,
+        bool $enemyBoss = false,
     ): AlphaV1BuildCatalog {
         $contents = file_get_contents(dirname(__DIR__, 3).'/config/underground/balance/foundation-v1.json');
         self::assertIsString($contents);
@@ -607,7 +690,7 @@ final class AlphaV1PartyCombatTest extends TestCase
         self::assertIsArray($manifest);
         $manifest['enemies']['party_target'] = [
             'label' => 'PT試験体',
-            'boss' => false,
+            'boss' => $enemyBoss,
             'base_stats' => [
                 'vitality' => 10,
                 'might' => 80,

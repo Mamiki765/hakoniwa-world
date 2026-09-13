@@ -9,7 +9,7 @@ final class AlphaV1CombatRules
     // Reserve 100x BPS headroom for downstream stat, HP, damage, and status products.
     private const LEVEL_SCALE_INTEGER_HEADROOM = 1_000_000;
 
-    public const IDENTITY = 'secretary-underground-alpha-v4';
+    public const IDENTITY = 'secretary-underground-alpha-v5';
 
     public const SIMULATOR_VERSION = 'underground-build-balance-alpha-v2';
 
@@ -69,6 +69,7 @@ final class AlphaV1CombatRules
     public const STATUS_EFFECT_TYPES = [
         'periodic_damage',
         'periodic_heal',
+        'periodic_mp_restore',
         'stat_modifier',
         'damage_dealt_modifier',
         'damage_taken_modifier',
@@ -153,6 +154,17 @@ final class AlphaV1CombatRules
     public function defenseReference(int $scaleBps): int
     {
         return max(1, $this->scaledCombatValue(100, $scaleBps));
+    }
+
+    /** @return array{chance_bps: int, damage_bps: int} */
+    public function criticalProfile(int $finesse, int $primary): array
+    {
+        $share = intdiv(max(0, $finesse) * 10_000, max(1, $finesse + $primary));
+
+        return [
+            'chance_bps' => 500 + intdiv($share * 4_500, 10_000),
+            'damage_bps' => 15_000 + intdiv($share * 30_000, 10_000),
+        ];
     }
 
     /**

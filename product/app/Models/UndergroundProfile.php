@@ -34,6 +34,8 @@ use Illuminate\Support\Carbon;
  * @property int $skill_points_total
  * @property int $skill_points_unspent
  * @property string|null $skill_tree_identity
+ * @property bool $skill_rebuild_required
+ * @property list<array{secretary_id:int, display_name:string, current_hp:int, max_hp:int, awakening_gauge:int}> $rental_party
  * @property int $awakening_gauge
  * @property string|null $awakening_message
  * @property string|null $awakening_technique_key
@@ -60,6 +62,7 @@ final class UndergroundProfile extends Model
         'unspent_stp', 'allocated_vitality_stp', 'allocated_might_stp', 'allocated_finesse_stp',
         'allocated_spirit_stp', 'allocated_agility_stp',
         'skill_points_total', 'skill_points_unspent', 'skill_tree_identity',
+        'skill_rebuild_required', 'rental_party',
         'awakening_gauge', 'awakening_message', 'awakening_technique_key', 'custom_ai_rules',
     ];
 
@@ -85,6 +88,8 @@ final class UndergroundProfile extends Model
             'allocated_agility_stp' => 'integer',
             'skill_points_total' => 'integer',
             'skill_points_unspent' => 'integer',
+            'skill_rebuild_required' => 'boolean',
+            'rental_party' => 'array',
             'awakening_gauge' => 'integer',
             'custom_ai_rules' => 'array',
         ];

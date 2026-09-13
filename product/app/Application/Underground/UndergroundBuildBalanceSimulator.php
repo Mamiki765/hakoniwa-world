@@ -181,7 +181,10 @@ final readonly class UndergroundBuildBalanceSimulator
             'item_level_and_point_budget' => [
                 'tiers' => $manifest['tiers'],
                 'point_budget' => $catalog->balanceInt('build_point_budget'),
-                'full_tree_points' => $catalog->balanceInt('full_tree_points'),
+                'full_tree_points' => array_map(static fn (array $tree): int => array_sum(array_map(
+                    static fn (array $node): int => $node['max_rank'] * $node['point_cost_per_rank'],
+                    $tree['nodes'],
+                )), $manifest['skill_trees']),
                 'all_tree_points' => $catalog->balanceInt('all_tree_points'),
             ],
             'selected_mp_natural_recovery' => $catalog->balanceInt('mp_natural_recovery'),

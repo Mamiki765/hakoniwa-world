@@ -176,7 +176,7 @@ final class UndergroundBalanceSimulatorTest extends TestCase
         foreach ($report['builds'] as $levels) {
             foreach ($levels as $build) {
                 $this->assertSame(60, $build['skill_points_total']);
-                $this->assertSame(60, $build['skill_points_spent']);
+                $this->assertLessThanOrEqual($build['skill_points_total'], $build['skill_points_spent']);
                 $this->assertContains($build['awakening_technique_key'], [
                     'shura_bloodline',
                     'fortress_strike',

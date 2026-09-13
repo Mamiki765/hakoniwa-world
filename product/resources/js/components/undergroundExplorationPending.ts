@@ -8,6 +8,8 @@
  */
 const DEFINITIVE_EXPLORATION_CONFLICTS = new Set([
     'underground_party_invalid',
+    'underground_rental_party_changed',
+    'underground_skill_rebuild_required',
     'underground_party_self_borrow',
     'underground_party_member_unavailable',
     'underground_party_leader_changed',

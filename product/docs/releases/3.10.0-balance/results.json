@@ -1,0 +1,2267 @@
+{
+  "kind": "synthetic_measurements_not_production_replay",
+  "baseline_sha": "87452d06cd54e07dfde33f90e4174e5d37197045",
+  "seed_start": 31000,
+  "seed_count": 32,
+  "dummy_rounds": 200,
+  "old_dummy": [
+    {
+      "tree": "martial",
+      "level": 30,
+      "sp_budget": 20,
+      "spent": 20,
+      "dpr": 73.70343749999999,
+      "normal_attacks": 84,
+      "mp_blocked": 84,
+      "final_mp_min": 100,
+      "final_mp_max": 100
+    },
+    {
+      "tree": "martial",
+      "level": 60,
+      "sp_budget": 60,
+      "spent": 58,
+      "dpr": 144.0653125,
+      "normal_attacks": 89,
+      "mp_blocked": 187,
+      "final_mp_min": 350,
+      "final_mp_max": 350
+    },
+    {
+      "tree": "martial",
+      "level": 90,
+      "sp_budget": 100,
+      "spent": 100,
+      "dpr": 222.2837499999999,
+      "normal_attacks": 90,
+      "mp_blocked": 192,
+      "final_mp_min": 160,
+      "final_mp_max": 160
+    },
+    {
+      "tree": "guardianship",
+      "level": 30,
+      "sp_budget": 20,
+      "spent": 20,
+      "dpr": 48.23015625,
+      "normal_attacks": 101,
+      "mp_blocked": 101,
+      "final_mp_min": 400,
+      "final_mp_max": 400
+    },
+    {
+      "tree": "guardianship",
+      "level": 60,
+      "sp_budget": 60,
+      "spent": 58,
+      "dpr": 35.724375,
+      "normal_attacks": 123,
+      "mp_blocked": 125,
+      "final_mp_min": 300,
+      "final_mp_max": 300
+    },
+    {
+      "tree": "guardianship",
+      "level": 90,
+      "sp_budget": 100,
+      "spent": 100,
+      "dpr": 52.476406250000004,
+      "normal_attacks": 123,
+      "mp_blocked": 125,
+      "final_mp_min": 300,
+      "final_mp_max": 300
+    },
+    {
+      "tree": "miracle",
+      "level": 30,
+      "sp_budget": 20,
+      "spent": 20,
+      "dpr": 65.88999999999999,
+      "normal_attacks": 84,
+      "mp_blocked": 84,
+      "final_mp_min": 100,
+      "final_mp_max": 100
+    },
+    {
+      "tree": "miracle",
+      "level": 60,
+      "sp_budget": 60,
+      "spent": 58,
+      "dpr": 172.27875,
+      "normal_attacks": 0,
+      "mp_blocked": 0,
+      "final_mp_min": 6052,
+      "final_mp_max": 6052
+    },
+    {
+      "tree": "miracle",
+      "level": 90,
+      "sp_budget": 100,
+      "spent": 100,
+      "dpr": 301.669375,
+      "normal_attacks": 2,
+      "mp_blocked": 49,
+      "final_mp_min": 1972,
+      "final_mp_max": 1972
+    }
+  ],
+  "new_dummy": [
+    {
+      "tree": "martial",
+      "level": 30,
+      "sp_budget": 20,
+      "spent": 18,
+      "dpr": 183.26453125,
+      "normal_attacks": 0,
+      "mp_blocked": 0,
+      "final_mp_min": 10000,
+      "final_mp_max": 10000,
+      "late_dpr": 184.19
+    },
+    {
+      "tree": "martial",
+      "level": 60,
+      "sp_budget": 60,
+      "spent": 60,
+      "dpr": 351.66453125,
+      "normal_attacks": 0,
+      "mp_blocked": 0,
+      "final_mp_min": 10000,
+      "final_mp_max": 10000,
+      "late_dpr": 352.26
+    },
+    {
+      "tree": "martial",
+      "level": 90,
+      "sp_budget": 100,
+      "spent": 72,
+      "dpr": 503.12281250000007,
+      "normal_attacks": 40,
+      "mp_blocked": 0,
+      "final_mp_min": 10000,
+      "final_mp_max": 10000,
+      "late_dpr": 498.08
+    },
+    {
+      "tree": "guardianship",
+      "level": 30,
+      "sp_budget": 20,
+      "spent": 18,
+      "dpr": 118.24828124999996,
+      "normal_attacks": 0,
+      "mp_blocked": 0,
+      "final_mp_min": 10000,
+      "final_mp_max": 10000,
+      "late_dpr": 121.02
+    },
+    {
+      "tree": "guardianship",
+      "level": 60,
+      "sp_budget": 60,
+      "spent": 48,
+      "dpr": 234.8596875,
+      "normal_attacks": 0,
+      "mp_blocked": 0,
+      "final_mp_min": 10000,
+      "final_mp_max": 10000,
+      "late_dpr": 238.69
+    },
+    {
+      "tree": "guardianship",
+      "level": 90,
+      "sp_budget": 100,
+      "spent": 72,
+      "dpr": 346.6606249999999,
+      "normal_attacks": 0,
+      "mp_blocked": 0,
+      "final_mp_min": 10000,
+      "final_mp_max": 10000,
+      "late_dpr": 352.32
+    },
+    {
+      "tree": "miracle",
+      "level": 30,
+      "sp_budget": 20,
+      "spent": 18,
+      "dpr": 137.434375,
+      "normal_attacks": 0,
+      "mp_blocked": 0,
+      "final_mp_min": 8500,
+      "final_mp_max": 8500,
+      "late_dpr": 136.43
+    },
+    {
+      "tree": "miracle",
+      "level": 60,
+      "sp_budget": 60,
+      "spent": 60,
+      "dpr": 292.34421875,
+      "normal_attacks": 0,
+      "mp_blocked": 0,
+      "final_mp_min": 6400,
+      "final_mp_max": 6400,
+      "late_dpr": 292.65
+    },
+    {
+      "tree": "miracle",
+      "level": 90,
+      "sp_budget": 100,
+      "spent": 60,
+      "dpr": 426.8759375,
+      "normal_attacks": 0,
+      "mp_blocked": 0,
+      "final_mp_min": 6400,
+      "final_mp_max": 6400,
+      "late_dpr": 427.76
+    }
+  ],
+  "old_pve_trial": {
+    "kind": "synthetic_matched_comparison",
+    "variant": "old",
+    "combat_identity": "secretary-underground-alpha-v4",
+    "seed_start": 31000,
+    "seed_count": 32,
+    "pve": [
+      {
+        "tree": "martial",
+        "level": 30,
+        "sp_budget": 20,
+        "ground": "shallow_caves",
+        "enemies": [
+          {
+            "enemy": "subterranean_rat",
+            "wins": 32,
+            "mean_rounds": 1.78125,
+            "abnormal": 0
+          },
+          {
+            "enemy": "cave_vermin",
+            "wins": 32,
+            "mean_rounds": 2,
+            "abnormal": 0
+          },
+          {
+            "enemy": "corrosive_slime",
+            "wins": 32,
+            "mean_rounds": 3.5,
+            "abnormal": 0
+          },
+          {
+            "enemy": "regenerating_mass",
+            "wins": 32,
+            "mean_rounds": 3.125,
+            "abnormal": 0
+          },
+          {
+            "enemy": "fanatic",
+            "wins": 32,
+            "mean_rounds": 3.75,
+            "abnormal": 0
+          },
+          {
+            "enemy": "lost_shadow",
+            "wins": 32,
+            "mean_rounds": 7.40625,
+            "abnormal": 0
+          },
+          {
+            "enemy": "crystal_bug",
+            "wins": 19,
+            "mean_rounds": 64.5,
+            "abnormal": 0
+          }
+        ]
+      },
+      {
+        "tree": "martial",
+        "level": 60,
+        "sp_budget": 60,
+        "ground": "black_crystal_cave",
+        "enemies": [
+          {
+            "enemy": "black_crystal_bat",
+            "wins": 32,
+            "mean_rounds": 4.875,
+            "abnormal": 0
+          },
+          {
+            "enemy": "black_crystal_beast",
+            "wins": 32,
+            "mean_rounds": 6.1875,
+            "abnormal": 0
+          },
+          {
+            "enemy": "crystal_shell_bug",
+            "wins": 32,
+            "mean_rounds": 8.71875,
+            "abnormal": 0
+          },
+          {
+            "enemy": "black_crystal_mage",
+            "wins": 32,
+            "mean_rounds": 5.34375,
+            "abnormal": 0
+          },
+          {
+            "enemy": "crystal_berserker",
+            "wins": 32,
+            "mean_rounds": 12.09375,
+            "abnormal": 0
+          },
+          {
+            "enemy": "black_crystal_regenerator",
+            "wins": 32,
+            "mean_rounds": 12.5,
+            "abnormal": 0
+          },
+          {
+            "enemy": "black_crystal_warden",
+            "wins": 32,
+            "mean_rounds": 22.75,
+            "abnormal": 0
+          },
+          {
+            "enemy": "black_crystal_bug",
+            "wins": 32,
+            "mean_rounds": 3.5,
+            "abnormal": 0
+          }
+        ]
+      },
+      {
+        "tree": "martial",
+        "level": 90,
+        "sp_budget": 100,
+        "ground": "shining_kingdom",
+        "enemies": [
+          {
+            "enemy": "kingdom_gate_shield",
+            "wins": 0,
+            "mean_rounds": 18.5625,
+            "abnormal": 0
+          },
+          {
+            "enemy": "kingdom_guard",
+            "wins": 0,
+            "mean_rounds": 16.1875,
+            "abnormal": 0
+          },
+          {
+            "enemy": "kingdom_crossbow",
+            "wins": 0,
+            "mean_rounds": 12.53125,
+            "abnormal": 0
+          },
+          {
+            "enemy": "kingdom_healer",
+            "wins": 0,
+            "mean_rounds": 11.5625,
+            "abnormal": 0
+          },
+          {
+            "enemy": "kingdom_ice_mage",
+            "wins": 0,
+            "mean_rounds": 15.3125,
+            "abnormal": 0
+          },
+          {
+            "enemy": "kingdom_drummer",
+            "wins": 0,
+            "mean_rounds": 13.25,
+            "abnormal": 0
+          },
+          {
+            "enemy": "kingdom_lancer",
+            "wins": 0,
+            "mean_rounds": 11.65625,
+            "abnormal": 0
+          },
+          {
+            "enemy": "kingdom_executioner",
+            "wins": 0,
+            "mean_rounds": 11.53125,
+            "abnormal": 0
+          },
+          {
+            "enemy": "kingdom_barrier_mage",
+            "wins": 0,
+            "mean_rounds": 16.96875,
+            "abnormal": 0
+          },
+          {
+            "enemy": "kingdom_priest",
+            "wins": 0,
+            "mean_rounds": 11,
+            "abnormal": 0
+          },
+          {
+            "enemy": "kingdom_musketeer",
+            "wins": 0,
+            "mean_rounds": 10.90625,
+            "abnormal": 0
+          },
+          {
+            "enemy": "kingdom_fire_mage",
+            "wins": 0,
+            "mean_rounds": 10.96875,
+            "abnormal": 0
+          },
+          {
+            "enemy": "kingdom_duelist",
+            "wins": 0,
+            "mean_rounds": 14.53125,
+            "abnormal": 0
+          },
+          {
+            "enemy": "kingdom_archmage",
+            "wins": 0,
+            "mean_rounds": 8.4375,
+            "abnormal": 0
+          },
+          {
+            "enemy": "shining_court_noble",
+            "wins": 0,
+            "mean_rounds": 96.46875,
+            "abnormal": 0
+          }
+        ]
+      },
+      {
+        "tree": "guardianship",
+        "level": 30,
+        "sp_budget": 20,
+        "ground": "shallow_caves",
+        "enemies": [
+          {
+            "enemy": "subterranean_rat",
+            "wins": 32,
+            "mean_rounds": 2.40625,
+            "abnormal": 0
+          },
+          {
+            "enemy": "cave_vermin",
+            "wins": 32,
+            "mean_rounds": 3.15625,
+            "abnormal": 0
+          },
+          {
+            "enemy": "corrosive_slime",
+            "wins": 32,
+            "mean_rounds": 4.9375,
+            "abnormal": 0
+          },
+          {
+            "enemy": "regenerating_mass",
+            "wins": 32,
+            "mean_rounds": 4.9375,
+            "abnormal": 0
+          },
+          {
+            "enemy": "fanatic",
+            "wins": 32,
+            "mean_rounds": 4.75,
+            "abnormal": 0
+          },
+          {
+            "enemy": "lost_shadow",
+            "wins": 32,
+            "mean_rounds": 11.3125,
+            "abnormal": 0
+          },
+          {
+            "enemy": "crystal_bug",
+            "wins": 21,
+            "mean_rounds": 62,
+            "abnormal": 0
+          }
+        ]
+      },
+      {
+        "tree": "guardianship",
+        "level": 60,
+        "sp_budget": 60,
+        "ground": "black_crystal_cave",
+        "enemies": [
+          {
+            "enemy": "black_crystal_bat",
+            "wins": 32,
+            "mean_rounds": 3.03125,
+            "abnormal": 0
+          },
+          {
+            "enemy": "black_crystal_beast",
+            "wins": 32,
+            "mean_rounds": 4.625,
+            "abnormal": 0
+          },
+          {
+            "enemy": "crystal_shell_bug",
+            "wins": 32,
+            "mean_rounds": 5,
+            "abnormal": 0
+          },
+          {
+            "enemy": "black_crystal_mage",
+            "wins": 32,
+            "mean_rounds": 3,
+            "abnormal": 0
+          },
+          {
+            "enemy": "crystal_berserker",
+            "wins": 32,
+            "mean_rounds": 7.0625,
+            "abnormal": 0
+          },
+          {
+            "enemy": "black_crystal_regenerator",
+            "wins": 32,
+            "mean_rounds": 7.3125,
+            "abnormal": 0
+          },
+          {
+            "enemy": "black_crystal_warden",
+            "wins": 32,
+            "mean_rounds": 12.6875,
+            "abnormal": 0
+          },
+          {
+            "enemy": "black_crystal_bug",
+            "wins": 32,
+            "mean_rounds": 1,
+            "abnormal": 0
+          }
+        ]
+      },
+      {
+        "tree": "guardianship",
+        "level": 90,
+        "sp_budget": 100,
+        "ground": "shining_kingdom",
+        "enemies": [
+          {
+            "enemy": "kingdom_gate_shield",
+            "wins": 32,
+            "mean_rounds": 20.15625,
+            "abnormal": 0
+          },
+          {
+            "enemy": "kingdom_guard",
+            "wins": 32,
+            "mean_rounds": 15.84375,
+            "abnormal": 0
+          },
+          {
+            "enemy": "kingdom_crossbow",
+            "wins": 32,
+            "mean_rounds": 12.40625,
+            "abnormal": 0
+          },
+          {
+            "enemy": "kingdom_healer",
+            "wins": 32,
+            "mean_rounds": 21.84375,
+            "abnormal": 0
+          },
+          {
+            "enemy": "kingdom_ice_mage",
+            "wins": 32,
+            "mean_rounds": 14.375,
+            "abnormal": 0
+          },
+          {
+            "enemy": "kingdom_drummer",
+            "wins": 32,
+            "mean_rounds": 11.3125,
+            "abnormal": 0
+          },
+          {
+            "enemy": "kingdom_lancer",
+            "wins": 32,
+            "mean_rounds": 15.1875,
+            "abnormal": 0
+          },
+          {
+            "enemy": "kingdom_executioner",
+            "wins": 32,
+            "mean_rounds": 16.1875,
+            "abnormal": 0
+          },
+          {
+            "enemy": "kingdom_barrier_mage",
+            "wins": 32,
+            "mean_rounds": 16.65625,
+            "abnormal": 0
+          },
+          {
+            "enemy": "kingdom_priest",
+            "wins": 32,
+            "mean_rounds": 22.21875,
+            "abnormal": 0
+          },
+          {
+            "enemy": "kingdom_musketeer",
+            "wins": 32,
+            "mean_rounds": 16.21875,
+            "abnormal": 0
+          },
+          {
+            "enemy": "kingdom_fire_mage",
+            "wins": 32,
+            "mean_rounds": 9.78125,
+            "abnormal": 0
+          },
+          {
+            "enemy": "kingdom_duelist",
+            "wins": 29,
+            "mean_rounds": 59.625,
+            "abnormal": 0
+          },
+          {
+            "enemy": "kingdom_archmage",
+            "wins": 32,
+            "mean_rounds": 20.875,
+            "abnormal": 0
+          },
+          {
+            "enemy": "shining_court_noble",
+            "wins": 0,
+            "mean_rounds": 100,
+            "abnormal": 0
+          }
+        ]
+      },
+      {
+        "tree": "miracle",
+        "level": 30,
+        "sp_budget": 20,
+        "ground": "shallow_caves",
+        "enemies": [
+          {
+            "enemy": "subterranean_rat",
+            "wins": 32,
+            "mean_rounds": 2.09375,
+            "abnormal": 0
+          },
+          {
+            "enemy": "cave_vermin",
+            "wins": 32,
+            "mean_rounds": 2.03125,
+            "abnormal": 0
+          },
+          {
+            "enemy": "corrosive_slime",
+            "wins": 32,
+            "mean_rounds": 2.90625,
+            "abnormal": 0
+          },
+          {
+            "enemy": "regenerating_mass",
+            "wins": 32,
+            "mean_rounds": 2.84375,
+            "abnormal": 0
+          },
+          {
+            "enemy": "fanatic",
+            "wins": 32,
+            "mean_rounds": 4.125,
+            "abnormal": 0
+          },
+          {
+            "enemy": "lost_shadow",
+            "wins": 32,
+            "mean_rounds": 6.65625,
+            "abnormal": 0
+          },
+          {
+            "enemy": "crystal_bug",
+            "wins": 21,
+            "mean_rounds": 58.625,
+            "abnormal": 0
+          }
+        ]
+      },
+      {
+        "tree": "miracle",
+        "level": 60,
+        "sp_budget": 60,
+        "ground": "black_crystal_cave",
+        "enemies": [
+          {
+            "enemy": "black_crystal_bat",
+            "wins": 32,
+            "mean_rounds": 5.03125,
+            "abnormal": 0
+          },
+          {
+            "enemy": "black_crystal_beast",
+            "wins": 32,
+            "mean_rounds": 5.5625,
+            "abnormal": 0
+          },
+          {
+            "enemy": "crystal_shell_bug",
+            "wins": 32,
+            "mean_rounds": 6.9375,
+            "abnormal": 0
+          },
+          {
+            "enemy": "black_crystal_mage",
+            "wins": 32,
+            "mean_rounds": 7.15625,
+            "abnormal": 0
+          },
+          {
+            "enemy": "crystal_berserker",
+            "wins": 32,
+            "mean_rounds": 11.9375,
+            "abnormal": 0
+          },
+          {
+            "enemy": "black_crystal_regenerator",
+            "wins": 32,
+            "mean_rounds": 13.0625,
+            "abnormal": 0
+          },
+          {
+            "enemy": "black_crystal_warden",
+            "wins": 32,
+            "mean_rounds": 26.875,
+            "abnormal": 0
+          },
+          {
+            "enemy": "black_crystal_bug",
+            "wins": 19,
+            "mean_rounds": 69.65625,
+            "abnormal": 0
+          }
+        ]
+      },
+      {
+        "tree": "miracle",
+        "level": 90,
+        "sp_budget": 100,
+        "ground": "shining_kingdom",
+        "enemies": [
+          {
+            "enemy": "kingdom_gate_shield",
+            "wins": 32,
+            "mean_rounds": 33.46875,
+            "abnormal": 0
+          },
+          {
+            "enemy": "kingdom_guard",
+            "wins": 32,
+            "mean_rounds": 26.4375,
+            "abnormal": 0
+          },
+          {
+            "enemy": "kingdom_crossbow",
+            "wins": 32,
+            "mean_rounds": 20.5625,
+            "abnormal": 0
+          },
+          {
+            "enemy": "kingdom_healer",
+            "wins": 32,
+            "mean_rounds": 33.0625,
+            "abnormal": 0
+          },
+          {
+            "enemy": "kingdom_ice_mage",
+            "wins": 32,
+            "mean_rounds": 25.03125,
+            "abnormal": 0
+          },
+          {
+            "enemy": "kingdom_drummer",
+            "wins": 32,
+            "mean_rounds": 24.625,
+            "abnormal": 0
+          },
+          {
+            "enemy": "kingdom_lancer",
+            "wins": 32,
+            "mean_rounds": 44.78125,
+            "abnormal": 0
+          },
+          {
+            "enemy": "kingdom_executioner",
+            "wins": 32,
+            "mean_rounds": 49.8125,
+            "abnormal": 0
+          },
+          {
+            "enemy": "kingdom_barrier_mage",
+            "wins": 32,
+            "mean_rounds": 28.40625,
+            "abnormal": 0
+          },
+          {
+            "enemy": "kingdom_priest",
+            "wins": 32,
+            "mean_rounds": 36.09375,
+            "abnormal": 0
+          },
+          {
+            "enemy": "kingdom_musketeer",
+            "wins": 32,
+            "mean_rounds": 43.4375,
+            "abnormal": 0
+          },
+          {
+            "enemy": "kingdom_fire_mage",
+            "wins": 32,
+            "mean_rounds": 23.90625,
+            "abnormal": 0
+          },
+          {
+            "enemy": "kingdom_duelist",
+            "wins": 0,
+            "mean_rounds": 100,
+            "abnormal": 0
+          },
+          {
+            "enemy": "kingdom_archmage",
+            "wins": 0,
+            "mean_rounds": 100,
+            "abnormal": 0
+          },
+          {
+            "enemy": "shining_court_noble",
+            "wins": 27,
+            "mean_rounds": 89.625,
+            "abnormal": 0
+          }
+        ]
+      }
+    ],
+    "trials": [
+      {
+        "generation": 1,
+        "build": "martial_red",
+        "level": 30,
+        "wins": 30,
+        "abnormal": 0,
+        "mean_rounds": 104.09375
+      },
+      {
+        "generation": 1,
+        "build": "martial_red",
+        "level": 35,
+        "wins": 32,
+        "abnormal": 0,
+        "mean_rounds": 93.15625
+      },
+      {
+        "generation": 1,
+        "build": "guardianship_blue",
+        "level": 30,
+        "wins": 26,
+        "abnormal": 0,
+        "mean_rounds": 161.1875
+      },
+      {
+        "generation": 1,
+        "build": "guardianship_blue",
+        "level": 35,
+        "wins": 32,
+        "abnormal": 0,
+        "mean_rounds": 145.375
+      },
+      {
+        "generation": 1,
+        "build": "blessing_green",
+        "level": 30,
+        "wins": 21,
+        "abnormal": 0,
+        "mean_rounds": 116.75
+      },
+      {
+        "generation": 1,
+        "build": "blessing_green",
+        "level": 35,
+        "wins": 32,
+        "abnormal": 0,
+        "mean_rounds": 101.34375
+      },
+      {
+        "generation": 1,
+        "build": "free_black",
+        "level": 30,
+        "wins": 18,
+        "abnormal": 0,
+        "mean_rounds": 136.40625
+      },
+      {
+        "generation": 1,
+        "build": "free_black",
+        "level": 35,
+        "wins": 32,
+        "abnormal": 0,
+        "mean_rounds": 116.78125
+      },
+      {
+        "generation": 2,
+        "build": "martial_red",
+        "level": 150,
+        "wins": 5,
+        "abnormal": 0,
+        "mean_rounds": 120.78125
+      },
+      {
+        "generation": 2,
+        "build": "martial_red",
+        "level": 180,
+        "wins": 25,
+        "abnormal": 0,
+        "mean_rounds": 106.875
+      },
+      {
+        "generation": 2,
+        "build": "guardianship_blue",
+        "level": 150,
+        "wins": 32,
+        "abnormal": 0,
+        "mean_rounds": 86.71875
+      },
+      {
+        "generation": 2,
+        "build": "guardianship_blue",
+        "level": 180,
+        "wins": 32,
+        "abnormal": 0,
+        "mean_rounds": 75.65625
+      },
+      {
+        "generation": 2,
+        "build": "blessing_green",
+        "level": 150,
+        "wins": 32,
+        "abnormal": 0,
+        "mean_rounds": 153.34375
+      },
+      {
+        "generation": 2,
+        "build": "blessing_green",
+        "level": 180,
+        "wins": 32,
+        "abnormal": 0,
+        "mean_rounds": 116.84375
+      },
+      {
+        "generation": 2,
+        "build": "free_black",
+        "level": 150,
+        "wins": 32,
+        "abnormal": 0,
+        "mean_rounds": 273.375
+      },
+      {
+        "generation": 2,
+        "build": "free_black",
+        "level": 180,
+        "wins": 32,
+        "abnormal": 0,
+        "mean_rounds": 238.6875
+      }
+    ]
+  },
+  "new_pve_trial": {
+    "kind": "synthetic_matched_comparison",
+    "variant": "new",
+    "combat_identity": "secretary-underground-alpha-v5",
+    "seed_start": 31000,
+    "seed_count": 32,
+    "pve": [
+      {
+        "tree": "martial",
+        "level": 30,
+        "sp_budget": 20,
+        "ground": "shallow_caves",
+        "enemies": [
+          {
+            "enemy": "subterranean_rat",
+            "wins": 32,
+            "mean_rounds": 1.125,
+            "abnormal": 0
+          },
+          {
+            "enemy": "cave_vermin",
+            "wins": 32,
+            "mean_rounds": 1.75,
+            "abnormal": 0
+          },
+          {
+            "enemy": "corrosive_slime",
+            "wins": 32,
+            "mean_rounds": 2.4375,
+            "abnormal": 0
+          },
+          {
+            "enemy": "regenerating_mass",
+            "wins": 32,
+            "mean_rounds": 2.4375,
+            "abnormal": 0
+          },
+          {
+            "enemy": "fanatic",
+            "wins": 32,
+            "mean_rounds": 2.0625,
+            "abnormal": 0
+          },
+          {
+            "enemy": "lost_shadow",
+            "wins": 32,
+            "mean_rounds": 4.875,
+            "abnormal": 0
+          },
+          {
+            "enemy": "crystal_bug",
+            "wins": 32,
+            "mean_rounds": 2.40625,
+            "abnormal": 0
+          }
+        ]
+      },
+      {
+        "tree": "martial",
+        "level": 60,
+        "sp_budget": 60,
+        "ground": "black_crystal_cave",
+        "enemies": [
+          {
+            "enemy": "black_crystal_bat",
+            "wins": 32,
+            "mean_rounds": 2.8125,
+            "abnormal": 0
+          },
+          {
+            "enemy": "black_crystal_beast",
+            "wins": 32,
+            "mean_rounds": 3.6875,
+            "abnormal": 0
+          },
+          {
+            "enemy": "crystal_shell_bug",
+            "wins": 32,
+            "mean_rounds": 5.375,
+            "abnormal": 0
+          },
+          {
+            "enemy": "black_crystal_mage",
+            "wins": 32,
+            "mean_rounds": 3.28125,
+            "abnormal": 0
+          },
+          {
+            "enemy": "crystal_berserker",
+            "wins": 32,
+            "mean_rounds": 7,
+            "abnormal": 0
+          },
+          {
+            "enemy": "black_crystal_regenerator",
+            "wins": 32,
+            "mean_rounds": 7.5,
+            "abnormal": 0
+          },
+          {
+            "enemy": "black_crystal_warden",
+            "wins": 32,
+            "mean_rounds": 12.96875,
+            "abnormal": 0
+          },
+          {
+            "enemy": "black_crystal_bug",
+            "wins": 32,
+            "mean_rounds": 3.5,
+            "abnormal": 0
+          }
+        ]
+      },
+      {
+        "tree": "martial",
+        "level": 90,
+        "sp_budget": 100,
+        "ground": "shining_kingdom",
+        "enemies": [
+          {
+            "enemy": "kingdom_gate_shield",
+            "wins": 8,
+            "mean_rounds": 16.59375,
+            "abnormal": 0
+          },
+          {
+            "enemy": "kingdom_guard",
+            "wins": 22,
+            "mean_rounds": 12.40625,
+            "abnormal": 0
+          },
+          {
+            "enemy": "kingdom_crossbow",
+            "wins": 15,
+            "mean_rounds": 10.40625,
+            "abnormal": 0
+          },
+          {
+            "enemy": "kingdom_healer",
+            "wins": 10,
+            "mean_rounds": 10.9375,
+            "abnormal": 0
+          },
+          {
+            "enemy": "kingdom_ice_mage",
+            "wins": 20,
+            "mean_rounds": 11.8125,
+            "abnormal": 0
+          },
+          {
+            "enemy": "kingdom_drummer",
+            "wins": 17,
+            "mean_rounds": 11.40625,
+            "abnormal": 0
+          },
+          {
+            "enemy": "kingdom_lancer",
+            "wins": 2,
+            "mean_rounds": 11.34375,
+            "abnormal": 0
+          },
+          {
+            "enemy": "kingdom_executioner",
+            "wins": 2,
+            "mean_rounds": 11.28125,
+            "abnormal": 0
+          },
+          {
+            "enemy": "kingdom_barrier_mage",
+            "wins": 22,
+            "mean_rounds": 13.15625,
+            "abnormal": 0
+          },
+          {
+            "enemy": "kingdom_priest",
+            "wins": 4,
+            "mean_rounds": 12.09375,
+            "abnormal": 0
+          },
+          {
+            "enemy": "kingdom_musketeer",
+            "wins": 3,
+            "mean_rounds": 10.6875,
+            "abnormal": 0
+          },
+          {
+            "enemy": "kingdom_fire_mage",
+            "wins": 11,
+            "mean_rounds": 9.625,
+            "abnormal": 0
+          },
+          {
+            "enemy": "kingdom_duelist",
+            "wins": 1,
+            "mean_rounds": 14.375,
+            "abnormal": 0
+          },
+          {
+            "enemy": "kingdom_archmage",
+            "wins": 0,
+            "mean_rounds": 8.1875,
+            "abnormal": 0
+          },
+          {
+            "enemy": "shining_court_noble",
+            "wins": 29,
+            "mean_rounds": 49.875,
+            "abnormal": 0
+          }
+        ]
+      },
+      {
+        "tree": "guardianship",
+        "level": 30,
+        "sp_budget": 20,
+        "ground": "shallow_caves",
+        "enemies": [
+          {
+            "enemy": "subterranean_rat",
+            "wins": 32,
+            "mean_rounds": 2.125,
+            "abnormal": 0
+          },
+          {
+            "enemy": "cave_vermin",
+            "wins": 32,
+            "mean_rounds": 2.09375,
+            "abnormal": 0
+          },
+          {
+            "enemy": "corrosive_slime",
+            "wins": 32,
+            "mean_rounds": 2.75,
+            "abnormal": 0
+          },
+          {
+            "enemy": "regenerating_mass",
+            "wins": 32,
+            "mean_rounds": 2.75,
+            "abnormal": 0
+          },
+          {
+            "enemy": "fanatic",
+            "wins": 32,
+            "mean_rounds": 4.90625,
+            "abnormal": 0
+          },
+          {
+            "enemy": "lost_shadow",
+            "wins": 32,
+            "mean_rounds": 5.5625,
+            "abnormal": 0
+          },
+          {
+            "enemy": "crystal_bug",
+            "wins": 32,
+            "mean_rounds": 1,
+            "abnormal": 0
+          }
+        ]
+      },
+      {
+        "tree": "guardianship",
+        "level": 60,
+        "sp_budget": 60,
+        "ground": "black_crystal_cave",
+        "enemies": [
+          {
+            "enemy": "black_crystal_bat",
+            "wins": 32,
+            "mean_rounds": 4.25,
+            "abnormal": 0
+          },
+          {
+            "enemy": "black_crystal_beast",
+            "wins": 32,
+            "mean_rounds": 4.84375,
+            "abnormal": 0
+          },
+          {
+            "enemy": "crystal_shell_bug",
+            "wins": 32,
+            "mean_rounds": 6.46875,
+            "abnormal": 0
+          },
+          {
+            "enemy": "black_crystal_mage",
+            "wins": 32,
+            "mean_rounds": 4.15625,
+            "abnormal": 0
+          },
+          {
+            "enemy": "crystal_berserker",
+            "wins": 32,
+            "mean_rounds": 7.65625,
+            "abnormal": 0
+          },
+          {
+            "enemy": "black_crystal_regenerator",
+            "wins": 32,
+            "mean_rounds": 9.28125,
+            "abnormal": 0
+          },
+          {
+            "enemy": "black_crystal_warden",
+            "wins": 32,
+            "mean_rounds": 16.84375,
+            "abnormal": 0
+          },
+          {
+            "enemy": "black_crystal_bug",
+            "wins": 32,
+            "mean_rounds": 1,
+            "abnormal": 0
+          }
+        ]
+      },
+      {
+        "tree": "guardianship",
+        "level": 90,
+        "sp_budget": 100,
+        "ground": "shining_kingdom",
+        "enemies": [
+          {
+            "enemy": "kingdom_gate_shield",
+            "wins": 32,
+            "mean_rounds": 18.875,
+            "abnormal": 0
+          },
+          {
+            "enemy": "kingdom_guard",
+            "wins": 32,
+            "mean_rounds": 15.59375,
+            "abnormal": 0
+          },
+          {
+            "enemy": "kingdom_crossbow",
+            "wins": 32,
+            "mean_rounds": 12.78125,
+            "abnormal": 0
+          },
+          {
+            "enemy": "kingdom_healer",
+            "wins": 32,
+            "mean_rounds": 17.46875,
+            "abnormal": 0
+          },
+          {
+            "enemy": "kingdom_ice_mage",
+            "wins": 32,
+            "mean_rounds": 14.46875,
+            "abnormal": 0
+          },
+          {
+            "enemy": "kingdom_drummer",
+            "wins": 32,
+            "mean_rounds": 13.6875,
+            "abnormal": 0
+          },
+          {
+            "enemy": "kingdom_lancer",
+            "wins": 32,
+            "mean_rounds": 18.71875,
+            "abnormal": 0
+          },
+          {
+            "enemy": "kingdom_executioner",
+            "wins": 32,
+            "mean_rounds": 19.90625,
+            "abnormal": 0
+          },
+          {
+            "enemy": "kingdom_barrier_mage",
+            "wins": 32,
+            "mean_rounds": 16.625,
+            "abnormal": 0
+          },
+          {
+            "enemy": "kingdom_priest",
+            "wins": 32,
+            "mean_rounds": 18.53125,
+            "abnormal": 0
+          },
+          {
+            "enemy": "kingdom_musketeer",
+            "wins": 32,
+            "mean_rounds": 17.1875,
+            "abnormal": 0
+          },
+          {
+            "enemy": "kingdom_fire_mage",
+            "wins": 32,
+            "mean_rounds": 11.96875,
+            "abnormal": 0
+          },
+          {
+            "enemy": "kingdom_duelist",
+            "wins": 32,
+            "mean_rounds": 35.21875,
+            "abnormal": 0
+          },
+          {
+            "enemy": "kingdom_archmage",
+            "wins": 1,
+            "mean_rounds": 99.96875,
+            "abnormal": 0
+          },
+          {
+            "enemy": "shining_court_noble",
+            "wins": 32,
+            "mean_rounds": 76.15625,
+            "abnormal": 0
+          }
+        ]
+      },
+      {
+        "tree": "miracle",
+        "level": 30,
+        "sp_budget": 20,
+        "ground": "shallow_caves",
+        "enemies": [
+          {
+            "enemy": "subterranean_rat",
+            "wins": 32,
+            "mean_rounds": 1.09375,
+            "abnormal": 0
+          },
+          {
+            "enemy": "cave_vermin",
+            "wins": 32,
+            "mean_rounds": 2.03125,
+            "abnormal": 0
+          },
+          {
+            "enemy": "corrosive_slime",
+            "wins": 32,
+            "mean_rounds": 1.9375,
+            "abnormal": 0
+          },
+          {
+            "enemy": "regenerating_mass",
+            "wins": 32,
+            "mean_rounds": 1.9375,
+            "abnormal": 0
+          },
+          {
+            "enemy": "fanatic",
+            "wins": 32,
+            "mean_rounds": 2.78125,
+            "abnormal": 0
+          },
+          {
+            "enemy": "lost_shadow",
+            "wins": 32,
+            "mean_rounds": 4.78125,
+            "abnormal": 0
+          },
+          {
+            "enemy": "crystal_bug",
+            "wins": 22,
+            "mean_rounds": 58.25,
+            "abnormal": 0
+          }
+        ]
+      },
+      {
+        "tree": "miracle",
+        "level": 60,
+        "sp_budget": 60,
+        "ground": "black_crystal_cave",
+        "enemies": [
+          {
+            "enemy": "black_crystal_bat",
+            "wins": 32,
+            "mean_rounds": 2.9375,
+            "abnormal": 0
+          },
+          {
+            "enemy": "black_crystal_beast",
+            "wins": 32,
+            "mean_rounds": 3.625,
+            "abnormal": 0
+          },
+          {
+            "enemy": "crystal_shell_bug",
+            "wins": 32,
+            "mean_rounds": 3.875,
+            "abnormal": 0
+          },
+          {
+            "enemy": "black_crystal_mage",
+            "wins": 32,
+            "mean_rounds": 3.875,
+            "abnormal": 0
+          },
+          {
+            "enemy": "crystal_berserker",
+            "wins": 32,
+            "mean_rounds": 6.34375,
+            "abnormal": 0
+          },
+          {
+            "enemy": "black_crystal_regenerator",
+            "wins": 32,
+            "mean_rounds": 7.78125,
+            "abnormal": 0
+          },
+          {
+            "enemy": "black_crystal_warden",
+            "wins": 32,
+            "mean_rounds": 15.5625,
+            "abnormal": 0
+          },
+          {
+            "enemy": "black_crystal_bug",
+            "wins": 18,
+            "mean_rounds": 73.34375,
+            "abnormal": 0
+          }
+        ]
+      },
+      {
+        "tree": "miracle",
+        "level": 90,
+        "sp_budget": 100,
+        "ground": "shining_kingdom",
+        "enemies": [
+          {
+            "enemy": "kingdom_gate_shield",
+            "wins": 32,
+            "mean_rounds": 21.9375,
+            "abnormal": 0
+          },
+          {
+            "enemy": "kingdom_guard",
+            "wins": 32,
+            "mean_rounds": 17.96875,
+            "abnormal": 0
+          },
+          {
+            "enemy": "kingdom_crossbow",
+            "wins": 32,
+            "mean_rounds": 14.9375,
+            "abnormal": 0
+          },
+          {
+            "enemy": "kingdom_healer",
+            "wins": 32,
+            "mean_rounds": 21.0625,
+            "abnormal": 0
+          },
+          {
+            "enemy": "kingdom_ice_mage",
+            "wins": 32,
+            "mean_rounds": 16.65625,
+            "abnormal": 0
+          },
+          {
+            "enemy": "kingdom_drummer",
+            "wins": 32,
+            "mean_rounds": 16.78125,
+            "abnormal": 0
+          },
+          {
+            "enemy": "kingdom_lancer",
+            "wins": 32,
+            "mean_rounds": 24.21875,
+            "abnormal": 0
+          },
+          {
+            "enemy": "kingdom_executioner",
+            "wins": 32,
+            "mean_rounds": 27.46875,
+            "abnormal": 0
+          },
+          {
+            "enemy": "kingdom_barrier_mage",
+            "wins": 32,
+            "mean_rounds": 19.34375,
+            "abnormal": 0
+          },
+          {
+            "enemy": "kingdom_priest",
+            "wins": 32,
+            "mean_rounds": 22.6875,
+            "abnormal": 0
+          },
+          {
+            "enemy": "kingdom_musketeer",
+            "wins": 32,
+            "mean_rounds": 23.75,
+            "abnormal": 0
+          },
+          {
+            "enemy": "kingdom_fire_mage",
+            "wins": 32,
+            "mean_rounds": 16.75,
+            "abnormal": 0
+          },
+          {
+            "enemy": "kingdom_duelist",
+            "wins": 32,
+            "mean_rounds": 50.71875,
+            "abnormal": 0
+          },
+          {
+            "enemy": "kingdom_archmage",
+            "wins": 6,
+            "mean_rounds": 91.875,
+            "abnormal": 0
+          },
+          {
+            "enemy": "shining_court_noble",
+            "wins": 32,
+            "mean_rounds": 62.09375,
+            "abnormal": 0
+          }
+        ]
+      }
+    ],
+    "trials": [
+      {
+        "generation": 1,
+        "build": "martial_red",
+        "level": 30,
+        "wins": 32,
+        "abnormal": 0,
+        "mean_rounds": 60.84375
+      },
+      {
+        "generation": 1,
+        "build": "martial_red",
+        "level": 35,
+        "wins": 32,
+        "abnormal": 0,
+        "mean_rounds": 56.46875
+      },
+      {
+        "generation": 1,
+        "build": "guardianship_blue",
+        "level": 30,
+        "wins": 32,
+        "abnormal": 0,
+        "mean_rounds": 80.46875
+      },
+      {
+        "generation": 1,
+        "build": "guardianship_blue",
+        "level": 35,
+        "wins": 32,
+        "abnormal": 0,
+        "mean_rounds": 74.3125
+      },
+      {
+        "generation": 1,
+        "build": "blessing_green",
+        "level": 30,
+        "wins": 32,
+        "abnormal": 0,
+        "mean_rounds": 71.75
+      },
+      {
+        "generation": 1,
+        "build": "blessing_green",
+        "level": 35,
+        "wins": 32,
+        "abnormal": 0,
+        "mean_rounds": 64.6875
+      },
+      {
+        "generation": 1,
+        "build": "free_black",
+        "level": 30,
+        "wins": 32,
+        "abnormal": 0,
+        "mean_rounds": 95.78125
+      },
+      {
+        "generation": 1,
+        "build": "free_black",
+        "level": 35,
+        "wins": 32,
+        "abnormal": 0,
+        "mean_rounds": 87.1875
+      },
+      {
+        "generation": 2,
+        "build": "martial_red",
+        "level": 150,
+        "wins": 32,
+        "abnormal": 0,
+        "mean_rounds": 76.46875
+      },
+      {
+        "generation": 2,
+        "build": "martial_red",
+        "level": 180,
+        "wins": 32,
+        "abnormal": 0,
+        "mean_rounds": 67.78125
+      },
+      {
+        "generation": 2,
+        "build": "guardianship_blue",
+        "level": 150,
+        "wins": 32,
+        "abnormal": 0,
+        "mean_rounds": 113.21875
+      },
+      {
+        "generation": 2,
+        "build": "guardianship_blue",
+        "level": 180,
+        "wins": 32,
+        "abnormal": 0,
+        "mean_rounds": 96.78125
+      },
+      {
+        "generation": 2,
+        "build": "blessing_green",
+        "level": 150,
+        "wins": 32,
+        "abnormal": 0,
+        "mean_rounds": 83.375
+      },
+      {
+        "generation": 2,
+        "build": "blessing_green",
+        "level": 180,
+        "wins": 32,
+        "abnormal": 0,
+        "mean_rounds": 68.1875
+      },
+      {
+        "generation": 2,
+        "build": "free_black",
+        "level": 150,
+        "wins": 32,
+        "abnormal": 0,
+        "mean_rounds": 128.53125
+      },
+      {
+        "generation": 2,
+        "build": "free_black",
+        "level": 180,
+        "wins": 32,
+        "abnormal": 0,
+        "mean_rounds": 101.625
+      }
+    ]
+  },
+  "old_finesse": [
+    {
+      "level": 30,
+      "finesse_share_percent": 0,
+      "single": {
+        "mean": 119.33203125,
+        "p10": 90,
+        "p50": 136,
+        "p90": 149,
+        "max": 150
+      },
+      "total_20_turns": {
+        "mean": 2119.515625,
+        "p10": 2043,
+        "p50": 2113,
+        "p90": 2200,
+        "max": 2275
+      },
+      "damage_threshold": 2431,
+      "threshold_crossings": 0,
+      "seeds": 256
+    },
+    {
+      "level": 30,
+      "finesse_share_percent": 30,
+      "single": {
+        "mean": 96.91015625,
+        "p10": 67,
+        "p50": 103,
+        "p90": 113,
+        "max": 170
+      },
+      "total_20_turns": {
+        "mean": 1725.1796875,
+        "p10": 1627,
+        "p50": 1711,
+        "p90": 1838,
+        "max": 2003
+      },
+      "damage_threshold": 2431,
+      "threshold_crossings": 0,
+      "seeds": 256
+    },
+    {
+      "level": 30,
+      "finesse_share_percent": 50,
+      "single": {
+        "mean": 80.046875,
+        "p10": 53,
+        "p50": 81,
+        "p90": 123,
+        "max": 132
+      },
+      "total_20_turns": {
+        "mean": 1409.234375,
+        "p10": 1322,
+        "p50": 1401,
+        "p90": 1516,
+        "max": 1715
+      },
+      "damage_threshold": 2431,
+      "threshold_crossings": 0,
+      "seeds": 256
+    },
+    {
+      "level": 1000,
+      "finesse_share_percent": 0,
+      "single": {
+        "mean": 3001.2265625,
+        "p10": 2879,
+        "p50": 2999,
+        "p90": 3149,
+        "max": 3149
+      },
+      "total_20_turns": {
+        "mean": 60000.21484375,
+        "p10": 59410,
+        "p50": 59980,
+        "p90": 60580,
+        "max": 61795
+      },
+      "damage_threshold": 68732,
+      "threshold_crossings": 0,
+      "seeds": 256
+    },
+    {
+      "level": 1000,
+      "finesse_share_percent": 30,
+      "single": {
+        "mean": 2920.09375,
+        "p10": 2182,
+        "p50": 3240,
+        "p90": 3510,
+        "max": 3543
+      },
+      "total_20_turns": {
+        "mean": 58149.28125,
+        "p10": 54534,
+        "p50": 58101,
+        "p90": 61675,
+        "max": 64939
+      },
+      "damage_threshold": 68732,
+      "threshold_crossings": 0,
+      "seeds": 256
+    },
+    {
+      "level": 1000,
+      "finesse_share_percent": 50,
+      "single": {
+        "mean": 2271.09375,
+        "p10": 1697,
+        "p50": 2520,
+        "p90": 2730,
+        "max": 2756
+      },
+      "total_20_turns": {
+        "mean": 45225.80078125,
+        "p10": 42415,
+        "p50": 45189,
+        "p90": 47968,
+        "max": 50507
+      },
+      "damage_threshold": 68732,
+      "threshold_crossings": 0,
+      "seeds": 256
+    }
+  ],
+  "new_finesse": [
+    {
+      "level": 30,
+      "finesse_share_percent": 0,
+      "single": {
+        "mean": 123.703125,
+        "p10": 90,
+        "p50": 137,
+        "p90": 150,
+        "max": 227
+      },
+      "total_20_turns": {
+        "mean": 2170.08203125,
+        "p10": 2081,
+        "p50": 2166,
+        "p90": 2274,
+        "max": 2372
+      },
+      "damage_threshold": 2431,
+      "threshold_crossings": 0,
+      "seeds": 256
+    },
+    {
+      "level": 30,
+      "finesse_share_percent": 30,
+      "single": {
+        "mean": 110.4296875,
+        "p10": 67,
+        "p50": 104,
+        "p90": 174,
+        "max": 272
+      },
+      "total_20_turns": {
+        "mean": 1979.8828125,
+        "p10": 1755,
+        "p50": 1951,
+        "p90": 2272,
+        "max": 2745
+      },
+      "damage_threshold": 2431,
+      "threshold_crossings": 5,
+      "seeds": 256
+    },
+    {
+      "level": 30,
+      "finesse_share_percent": 50,
+      "single": {
+        "mean": 107.55859375,
+        "p10": 53,
+        "p50": 82,
+        "p90": 246,
+        "max": 264
+      },
+      "total_20_turns": {
+        "mean": 1873.0703125,
+        "p10": 1556,
+        "p50": 1834,
+        "p90": 2216,
+        "max": 2676
+      },
+      "damage_threshold": 2431,
+      "threshold_crossings": 10,
+      "seeds": 256
+    },
+    {
+      "level": 1000,
+      "finesse_share_percent": 0,
+      "single": {
+        "mean": 3107.703125,
+        "p10": 2879,
+        "p50": 2999,
+        "p90": 3149,
+        "max": 4725
+      },
+      "total_20_turns": {
+        "mean": 61367.55859375,
+        "p10": 59710,
+        "p50": 61316,
+        "p90": 63177,
+        "max": 66344
+      },
+      "damage_threshold": 68732,
+      "threshold_crossings": 0,
+      "seeds": 256
+    },
+    {
+      "level": 1000,
+      "finesse_share_percent": 30,
+      "single": {
+        "mean": 2766.01171875,
+        "p10": 2160,
+        "p50": 2272,
+        "p90": 5292,
+        "max": 5670
+      },
+      "total_20_turns": {
+        "mean": 56044.9375,
+        "p10": 50934,
+        "p50": 54837,
+        "p90": 63652,
+        "max": 77051
+      },
+      "damage_threshold": 68732,
+      "threshold_crossings": 2,
+      "seeds": 256
+    },
+    {
+      "level": 1000,
+      "finesse_share_percent": 50,
+      "single": {
+        "mean": 2689.453125,
+        "p10": 1680,
+        "p50": 1802,
+        "p90": 5302,
+        "max": 5512
+      },
+      "total_20_turns": {
+        "mean": 53073.41796875,
+        "p10": 45267,
+        "p50": 52582,
+        "p90": 62592,
+        "max": 77572
+      },
+      "damage_threshold": 68732,
+      "threshold_crossings": 9,
+      "seeds": 256
+    }
+  ],
+  "finesse_thresholds": {
+    "30": 2431,
+    "1000": 68732
+  },
+  "counter_fixture": [
+    {
+      "counter_power": 600,
+      "tree": "martial",
+      "level": 30,
+      "dpr": 224.06593750000005,
+      "counter_count": 0,
+      "survivors": 32
+    },
+    {
+      "counter_power": 600,
+      "tree": "martial",
+      "level": 60,
+      "dpr": 369.18031249999996,
+      "counter_count": 0,
+      "survivors": 32
+    },
+    {
+      "counter_power": 600,
+      "tree": "martial",
+      "level": 90,
+      "dpr": 508.16906250000005,
+      "counter_count": 0,
+      "survivors": 32
+    },
+    {
+      "counter_power": 600,
+      "tree": "guardianship",
+      "level": 30,
+      "dpr": 223.01718750000003,
+      "counter_count": 100,
+      "survivors": 32
+    },
+    {
+      "counter_power": 600,
+      "tree": "guardianship",
+      "level": 60,
+      "dpr": 310.20031250000005,
+      "counter_count": 100,
+      "survivors": 32
+    },
+    {
+      "counter_power": 600,
+      "tree": "guardianship",
+      "level": 90,
+      "dpr": 502.80250000000007,
+      "counter_count": 100,
+      "survivors": 32
+    },
+    {
+      "counter_power": 600,
+      "tree": "miracle",
+      "level": 30,
+      "dpr": 212.404375,
+      "counter_count": 0,
+      "survivors": 32
+    },
+    {
+      "counter_power": 600,
+      "tree": "miracle",
+      "level": 60,
+      "dpr": 292.04281249999997,
+      "counter_count": 0,
+      "survivors": 32
+    },
+    {
+      "counter_power": 600,
+      "tree": "miracle",
+      "level": 90,
+      "dpr": 425.99250000000006,
+      "counter_count": 0,
+      "survivors": 32
+    }
+  ],
+  "party": [
+    {
+      "case": "1v3",
+      "wins": 32,
+      "seeds": 32,
+      "mean_rounds": 11.34375,
+      "abnormal": 0,
+      "effective_healing": 0,
+      "action_usage": {
+        "normal_attack": 638,
+        "quick_stab": 137,
+        "armor_break_strike": 131,
+        "whirlwind": 117,
+        "sweeping_cut": 109
+      },
+      "enemies": [
+        "black_crystal_bat",
+        "black_crystal_beast",
+        "crystal_shell_bug"
+      ],
+      "budgets": {
+        "martial": 54,
+        "guardianship": 54,
+        "miracle": 60
+      }
+    },
+    {
+      "case": "3v1",
+      "wins": 32,
+      "seeds": 32,
+      "mean_rounds": 1.71875,
+      "abnormal": 0,
+      "effective_healing": 0,
+      "action_usage": {
+        "normal_attack": 55,
+        "quick_stab": 32,
+        "armor_break_strike": 32,
+        "rallying_cry": 26,
+        "holy_lance": 32,
+        "whirlwind": 21,
+        "counter_stance": 2,
+        "holy_bolt": 2,
+        "sweeping_cut": 1
+      },
+      "enemies": [
+        "black_crystal_bat"
+      ],
+      "budgets": {
+        "martial": 54,
+        "guardianship": 54,
+        "miracle": 60
+      }
+    },
+    {
+      "case": "3v3",
+      "wins": 32,
+      "seeds": 32,
+      "mean_rounds": 4.0625,
+      "abnormal": 0,
+      "effective_healing": 0,
+      "action_usage": {
+        "normal_attack": 251,
+        "quick_stab": 64,
+        "armor_break_strike": 64,
+        "rallying_cry": 32,
+        "holy_lance": 61,
+        "whirlwind": 34,
+        "holy_bolt": 64,
+        "counter_stance": 32,
+        "sweeping_cut": 32,
+        "sundering_shield": 32,
+        "shield_bash": 25
+      },
+      "enemies": [
+        "black_crystal_bat",
+        "black_crystal_beast",
+        "crystal_shell_bug"
+      ],
+      "budgets": {
+        "martial": 54,
+        "guardianship": 54,
+        "miracle": 60
+      }
+    }
+  ],
+  "emergency": [
+    {
+      "fixed_damage": 700,
+      "with_mp_supply": true,
+      "healer_spent": 78,
+      "seeds": 32,
+      "wins": 32,
+      "losses": 0,
+      "stalemates": 0,
+      "mean_rounds": 82.625,
+      "healer_survivors": 32,
+      "mean_party_survivors": 3,
+      "mean_effective_healing": 22300.375,
+      "mean_revivals": 1,
+      "mean_mp_blocked": 0,
+      "mean_mana_recover_actions": 4.59375,
+      "mean_mercy_actions": 8,
+      "mean_mercy_damage": 14730.3125,
+      "mean_healer_normal_attacks": 44.4375,
+      "mean_final_mp": 5946.875,
+      "invalid_resources": 0
+    },
+    {
+      "fixed_damage": 700,
+      "with_mp_supply": false,
+      "healer_spent": 78,
+      "seeds": 32,
+      "wins": 32,
+      "losses": 0,
+      "stalemates": 0,
+      "mean_rounds": 136.4375,
+      "healer_survivors": 16,
+      "mean_party_survivors": 1.5,
+      "mean_effective_healing": 20265.125,
+      "mean_revivals": 1,
+      "mean_mp_blocked": 57.21875,
+      "mean_mana_recover_actions": 0,
+      "mean_mercy_actions": 4.3125,
+      "mean_mercy_damage": 7928.21875,
+      "mean_healer_normal_attacks": 52.4375,
+      "mean_final_mp": 846.875,
+      "invalid_resources": 0
+    },
+    {
+      "fixed_damage": 1400,
+      "with_mp_supply": true,
+      "healer_spent": 78,
+      "seeds": 32,
+      "wins": 32,
+      "losses": 0,
+      "stalemates": 0,
+      "mean_rounds": 133.09375,
+      "healer_survivors": 13,
+      "mean_party_survivors": 1.8125,
+      "mean_effective_healing": 26882.46875,
+      "mean_revivals": 2.1875,
+      "mean_mp_blocked": 2.71875,
+      "mean_mana_recover_actions": 7.375,
+      "mean_mercy_actions": 7.90625,
+      "mean_mercy_damage": 14373.375,
+      "mean_healer_normal_attacks": 1.1875,
+      "mean_final_mp": 3353.125,
+      "invalid_resources": 0
+    },
+    {
+      "fixed_damage": 1400,
+      "with_mp_supply": false,
+      "healer_spent": 78,
+      "seeds": 32,
+      "wins": 32,
+      "losses": 0,
+      "stalemates": 0,
+      "mean_rounds": 183.15625,
+      "healer_survivors": 0,
+      "mean_party_survivors": 1,
+      "mean_effective_healing": 9461.875,
+      "mean_revivals": 1,
+      "mean_mp_blocked": 14.1875,
+      "mean_mana_recover_actions": 0,
+      "mean_mercy_actions": 1.5,
+      "mean_mercy_damage": 2645.15625,
+      "mean_healer_normal_attacks": 10.9375,
+      "mean_final_mp": 1034.375,
+      "invalid_resources": 0
+    },
+    {
+      "fixed_damage": 2800,
+      "with_mp_supply": true,
+      "healer_spent": 78,
+      "seeds": 32,
+      "wins": 0,
+      "losses": 8,
+      "stalemates": 24,
+      "mean_rounds": 197.71875,
+      "healer_survivors": 0,
+      "mean_party_survivors": 0.75,
+      "mean_effective_healing": 1976.5,
+      "mean_revivals": 0.5,
+      "mean_mp_blocked": 0,
+      "mean_mana_recover_actions": 0,
+      "mean_mercy_actions": 0,
+      "mean_mercy_damage": 0,
+      "mean_healer_normal_attacks": 0,
+      "mean_final_mp": 7050,
+      "invalid_resources": 0
+    },
+    {
+      "fixed_damage": 2800,
+      "with_mp_supply": false,
+      "healer_spent": 78,
+      "seeds": 32,
+      "wins": 0,
+      "losses": 8,
+      "stalemates": 24,
+      "mean_rounds": 197.71875,
+      "healer_survivors": 0,
+      "mean_party_survivors": 0.75,
+      "mean_effective_healing": 1976.5,
+      "mean_revivals": 0.5,
+      "mean_mp_blocked": 0,
+      "mean_mana_recover_actions": 0,
+      "mean_mercy_actions": 0,
+      "mean_mercy_damage": 0,
+      "mean_healer_normal_attacks": 0,
+      "mean_final_mp": 7050,
+      "invalid_resources": 0
+    }
+  ]
+}

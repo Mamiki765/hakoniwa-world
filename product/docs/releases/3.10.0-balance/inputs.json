@@ -1,0 +1,4955 @@
+{
+  "kind": "synthetic_runtime_snapshots",
+  "baseline_sha": "87452d06cd54e07dfde33f90e4174e5d37197045",
+  "old": [
+    {
+      "tree": "martial",
+      "level": 30,
+      "sp_budget": 20,
+      "spent": 20,
+      "allocations": {
+        "martial_precision_cut": {
+          "rank": 1,
+          "active_slot": 1
+        },
+        "martial_weapon_mastery": {
+          "rank": 5,
+          "active_slot": null
+        },
+        "martial_critical_training": {
+          "rank": 2,
+          "active_slot": null
+        }
+      },
+      "snapshot": {
+        "key": "secretary_runtime",
+        "label": "martial",
+        "stats": {
+          "vitality": 76,
+          "might": 208,
+          "finesse": 59,
+          "spirit": 37,
+          "agility": 10
+        },
+        "active_skills": [
+          "precision_cut"
+        ],
+        "ai_rules": [
+          {
+            "conditions": [
+              {
+                "type": "own_hp_lte",
+                "percent": 20
+              }
+            ],
+            "action": "awakening"
+          },
+          {
+            "conditions": [
+              {
+                "type": "enemy_telegraph"
+              }
+            ],
+            "action": "defend"
+          },
+          {
+            "conditions": [
+              {
+                "type": "own_hp_lte",
+                "percent": 20
+              }
+            ],
+            "action": "defend"
+          },
+          {
+            "conditions": [
+              {
+                "type": "always"
+              }
+            ],
+            "action": "skill:precision_cut"
+          },
+          {
+            "conditions": [
+              {
+                "type": "always"
+              }
+            ],
+            "action": "normal_attack"
+          }
+        ],
+        "ai_mode": "default",
+        "modifiers": {
+          "physical_damage_bps": 600,
+          "critical_chance_bps": 200
+        },
+        "equipment": {
+          "key": "generated:obsidian_cavern:dagger",
+          "label": "魔窟の短剣",
+          "catalog_identity": "secretary-underground-shop-equipment-alpha-v2",
+          "item_level": 30,
+          "rarity": "uncommon",
+          "weapon_style": "dagger",
+          "weapon_power": 80,
+          "physical_defense": 86,
+          "magical_defense": 74,
+          "max_hp": 273,
+          "stats": {
+            "vitality": 4,
+            "might": 17,
+            "finesse": 21,
+            "spirit": 0,
+            "agility": 9
+          },
+          "modifiers": {
+            "healing_bps": 269,
+            "physical_damage_bps": 124
+          },
+          "affixes": [
+            {
+              "item_key": "generated:obsidian_cavern:dagger",
+              "key": "finesse",
+              "label": "技巧アップ",
+              "kind": "stat",
+              "target": "finesse",
+              "value": 4,
+              "quality_bps": 9921,
+              "standard_value": 4
+            },
+            {
+              "item_key": "generated:obsidian_cavern:dagger",
+              "key": "max_hp",
+              "label": "最大HPアップ",
+              "kind": "base",
+              "target": "max_hp",
+              "value": 63,
+              "quality_bps": 8941,
+              "standard_value": 70
+            },
+            {
+              "item_key": "generated:obsidian_cavern:armor",
+              "key": "finesse",
+              "label": "技巧アップ",
+              "kind": "stat",
+              "target": "finesse",
+              "value": 4,
+              "quality_bps": 9686,
+              "standard_value": 4
+            },
+            {
+              "item_key": "generated:obsidian_cavern:armor",
+              "key": "healing_bps",
+              "label": "治癒力アップ",
+              "kind": "modifier",
+              "target": "healing_bps",
+              "value": 269,
+              "quality_bps": 9913,
+              "raw_value": 210,
+              "item_level_bps": 12900
+            },
+            {
+              "item_key": "generated:obsidian_cavern:accessory",
+              "key": "magical_defense",
+              "label": "魔法防御アップ",
+              "kind": "base",
+              "target": "magical_defense",
+              "value": 3,
+              "quality_bps": 8035,
+              "standard_value": 8
+            },
+            {
+              "item_key": "generated:obsidian_cavern:accessory",
+              "key": "physical_damage_bps",
+              "label": "物理攻撃力アップ",
+              "kind": "modifier",
+              "target": "physical_damage_bps",
+              "value": 124,
+              "quality_bps": 9080,
+              "raw_value": 212,
+              "item_level_bps": 12900
+            },
+            {
+              "item_key": "generated:obsidian_cavern:accessory",
+              "key": "might",
+              "label": "筋力アップ",
+              "kind": "stat",
+              "target": "might",
+              "value": 2,
+              "quality_bps": 8572,
+              "standard_value": 4
+            }
+          ],
+          "unique_effect": null,
+          "items": [
+            {
+              "key": "generated:obsidian_cavern:dagger",
+              "name": "魔窟の短剣",
+              "category": "weapon",
+              "equipped_slot": "weapon",
+              "rank": 0,
+              "item_level": 30,
+              "rarity": "uncommon",
+              "catalog_identity": "secretary-underground-drop-equipment-alpha-v1",
+              "instance_identity": "3028d3eb53d4e707ad34d53a98298faeb9cf382d4f245e5a8b17357f544644ce"
+            },
+            {
+              "key": "generated:obsidian_cavern:armor",
+              "name": "魔窟の胸当て",
+              "category": "armor",
+              "equipped_slot": "armor",
+              "rank": 0,
+              "item_level": 30,
+              "rarity": "uncommon",
+              "catalog_identity": "secretary-underground-drop-equipment-alpha-v1",
+              "instance_identity": "09de04b511d1bb3c63824d2708bf15ac7be46b1ee5d056291604a50fb80d4829"
+            },
+            {
+              "key": "generated:obsidian_cavern:accessory",
+              "name": "魔窟の武力護符",
+              "category": "accessory",
+              "equipped_slot": "accessory_1",
+              "rank": 0,
+              "item_level": 30,
+              "rarity": "uncommon",
+              "catalog_identity": "secretary-underground-drop-equipment-alpha-v1",
+              "instance_identity": "5a7eae49a41315dade198cfe10804c0ae3ec13cd38f11fd2cc0eb8a1e36c377e"
+            },
+            {
+              "key": "generated:obsidian_cavern:accessory",
+              "name": "魔窟の武力護符",
+              "category": "accessory",
+              "equipped_slot": "accessory_2",
+              "rank": 0,
+              "item_level": 30,
+              "rarity": "uncommon",
+              "catalog_identity": "secretary-underground-drop-equipment-alpha-v1",
+              "instance_identity": "f4be334eb44748bc4e1e77ab5e821dd375c94488665e100a6cc8ec6e472250d4"
+            },
+            {
+              "key": "generated:obsidian_cavern:accessory",
+              "name": "魔窟の武力護符",
+              "category": "accessory",
+              "equipped_slot": "accessory_3",
+              "rank": 0,
+              "item_level": 30,
+              "rarity": "uncommon",
+              "catalog_identity": "secretary-underground-drop-equipment-alpha-v1",
+              "instance_identity": "cafb11b009e64e4ff2e9b44c01a96fe7bf21c81c233f86a6c10701c474728a8e"
+            }
+          ]
+        },
+        "current_hp": 1253
+      }
+    },
+    {
+      "tree": "martial",
+      "level": 60,
+      "sp_budget": 60,
+      "spent": 58,
+      "allocations": {
+        "martial_precision_cut": {
+          "rank": 1,
+          "active_slot": 3
+        },
+        "martial_weapon_mastery": {
+          "rank": 5,
+          "active_slot": null
+        },
+        "martial_critical_training": {
+          "rank": 5,
+          "active_slot": null
+        },
+        "martial_dagger_flurry": {
+          "rank": 1,
+          "active_slot": 2
+        },
+        "martial_tempo": {
+          "rank": 5,
+          "active_slot": null
+        },
+        "martial_armor_break": {
+          "rank": 1,
+          "active_slot": 1
+        },
+        "martial_blood_return": {
+          "rank": 2,
+          "active_slot": null
+        }
+      },
+      "snapshot": {
+        "key": "secretary_runtime",
+        "label": "martial",
+        "stats": {
+          "vitality": 136,
+          "might": 388,
+          "finesse": 89,
+          "spirit": 67,
+          "agility": 10
+        },
+        "active_skills": [
+          "armor_break_strike",
+          "dagger_flurry",
+          "precision_cut"
+        ],
+        "ai_rules": [
+          {
+            "conditions": [
+              {
+                "type": "own_hp_lte",
+                "percent": 20
+              }
+            ],
+            "action": "awakening"
+          },
+          {
+            "conditions": [
+              {
+                "type": "enemy_telegraph"
+              }
+            ],
+            "action": "defend"
+          },
+          {
+            "conditions": [
+              {
+                "type": "own_hp_lte",
+                "percent": 20
+              }
+            ],
+            "action": "defend"
+          },
+          {
+            "conditions": [
+              {
+                "type": "always"
+              }
+            ],
+            "action": "skill:armor_break_strike"
+          },
+          {
+            "conditions": [
+              {
+                "type": "always"
+              }
+            ],
+            "action": "skill:dagger_flurry"
+          },
+          {
+            "conditions": [
+              {
+                "type": "always"
+              }
+            ],
+            "action": "skill:precision_cut"
+          },
+          {
+            "conditions": [
+              {
+                "type": "always"
+              }
+            ],
+            "action": "normal_attack"
+          }
+        ],
+        "ai_mode": "default",
+        "modifiers": {
+          "physical_damage_bps": 600,
+          "critical_chance_bps": 500,
+          "mp_cost_reduction_bps": 500,
+          "lifesteal_bps": 240
+        },
+        "equipment": {
+          "key": "generated:obsidian_cavern:dagger",
+          "label": "魔窟の短剣",
+          "catalog_identity": "secretary-underground-shop-equipment-alpha-v2",
+          "item_level": 60,
+          "rarity": "uncommon",
+          "weapon_style": "dagger",
+          "weapon_power": 140,
+          "physical_defense": 220,
+          "magical_defense": 186,
+          "max_hp": 666,
+          "stats": {
+            "vitality": 7,
+            "might": 39,
+            "finesse": 34,
+            "spirit": 0,
+            "agility": 13
+          },
+          "modifiers": {
+            "healing_bps": 331,
+            "physical_damage_bps": 153
+          },
+          "affixes": [
+            {
+              "item_key": "generated:obsidian_cavern:dagger",
+              "key": "finesse",
+              "label": "技巧アップ",
+              "kind": "stat",
+              "target": "finesse",
+              "value": 7,
+              "quality_bps": 9921,
+              "standard_value": 7
+            },
+            {
+              "item_key": "generated:obsidian_cavern:dagger",
+              "key": "max_hp",
+              "label": "最大HPアップ",
+              "kind": "base",
+              "target": "max_hp",
+              "value": 116,
+              "quality_bps": 8941,
+              "standard_value": 130
+            },
+            {
+              "item_key": "generated:obsidian_cavern:armor",
+              "key": "finesse",
+              "label": "技巧アップ",
+              "kind": "stat",
+              "target": "finesse",
+              "value": 7,
+              "quality_bps": 9686,
+              "standard_value": 7
+            },
+            {
+              "item_key": "generated:obsidian_cavern:armor",
+              "key": "healing_bps",
+              "label": "治癒力アップ",
+              "kind": "modifier",
+              "target": "healing_bps",
+              "value": 331,
+              "quality_bps": 9913,
+              "raw_value": 210,
+              "item_level_bps": 15900
+            },
+            {
+              "item_key": "generated:obsidian_cavern:accessory",
+              "key": "magical_defense",
+              "label": "魔法防御アップ",
+              "kind": "base",
+              "target": "magical_defense",
+              "value": 6,
+              "quality_bps": 8035,
+              "standard_value": 14
+            },
+            {
+              "item_key": "generated:obsidian_cavern:accessory",
+              "key": "physical_damage_bps",
+              "label": "物理攻撃力アップ",
+              "kind": "modifier",
+              "target": "physical_damage_bps",
+              "value": 153,
+              "quality_bps": 9080,
+              "raw_value": 212,
+              "item_level_bps": 15900
+            },
+            {
+              "item_key": "generated:obsidian_cavern:accessory",
+              "key": "might",
+              "label": "筋力アップ",
+              "kind": "stat",
+              "target": "might",
+              "value": 3,
+              "quality_bps": 8572,
+              "standard_value": 7
+            }
+          ],
+          "unique_effect": null,
+          "items": [
+            {
+              "key": "generated:obsidian_cavern:dagger",
+              "name": "魔窟の短剣",
+              "category": "weapon",
+              "equipped_slot": "weapon",
+              "rank": 0,
+              "item_level": 60,
+              "rarity": "uncommon",
+              "catalog_identity": "secretary-underground-drop-equipment-alpha-v1",
+              "instance_identity": "5dcd7dbd9db9e7375fb9dd6ee9d7e33ae99856d1dc8376e661b82cc719389e86"
+            },
+            {
+              "key": "generated:obsidian_cavern:armor",
+              "name": "魔窟の胸当て",
+              "category": "armor",
+              "equipped_slot": "armor",
+              "rank": 0,
+              "item_level": 60,
+              "rarity": "uncommon",
+              "catalog_identity": "secretary-underground-drop-equipment-alpha-v1",
+              "instance_identity": "5d7e0514d385b561d73028ce637dab2a9007c11cabd002c4bc2f5fe0844605f2"
+            },
+            {
+              "key": "generated:obsidian_cavern:accessory",
+              "name": "魔窟の武力護符",
+              "category": "accessory",
+              "equipped_slot": "accessory_1",
+              "rank": 0,
+              "item_level": 60,
+              "rarity": "uncommon",
+              "catalog_identity": "secretary-underground-drop-equipment-alpha-v1",
+              "instance_identity": "3dddbfecf3ce046ec170fc1d79c8d3f511bf1cf9a349dcbdbd4b6073a6fc95c8"
+            },
+            {
+              "key": "generated:obsidian_cavern:accessory",
+              "name": "魔窟の武力護符",
+              "category": "accessory",
+              "equipped_slot": "accessory_2",
+              "rank": 0,
+              "item_level": 60,
+              "rarity": "uncommon",
+              "catalog_identity": "secretary-underground-drop-equipment-alpha-v1",
+              "instance_identity": "8f36a23f49e8ff5b2a9a27c154890b77618c0f1e62686d62944d1a6bdf110445"
+            },
+            {
+              "key": "generated:obsidian_cavern:accessory",
+              "name": "魔窟の武力護符",
+              "category": "accessory",
+              "equipped_slot": "accessory_3",
+              "rank": 0,
+              "item_level": 60,
+              "rarity": "uncommon",
+              "catalog_identity": "secretary-underground-drop-equipment-alpha-v1",
+              "instance_identity": "2377adda6807fe52147a9cb83737931a44417807c7b97895c97d2571dc43b453"
+            }
+          ]
+        },
+        "current_hp": 2150
+      }
+    },
+    {
+      "tree": "martial",
+      "level": 90,
+      "sp_budget": 100,
+      "spent": 100,
+      "allocations": {
+        "martial_precision_cut": {
+          "rank": 1,
+          "active_slot": 5
+        },
+        "martial_weapon_mastery": {
+          "rank": 5,
+          "active_slot": null
+        },
+        "martial_critical_training": {
+          "rank": 5,
+          "active_slot": null
+        },
+        "martial_dagger_flurry": {
+          "rank": 1,
+          "active_slot": 4
+        },
+        "martial_tempo": {
+          "rank": 5,
+          "active_slot": null
+        },
+        "martial_armor_break": {
+          "rank": 1,
+          "active_slot": 3
+        },
+        "martial_blood_return": {
+          "rank": 3,
+          "active_slot": null
+        },
+        "martial_severing_bleed": {
+          "rank": 1,
+          "active_slot": 2
+        },
+        "martial_last_stand": {
+          "rank": 4,
+          "active_slot": null
+        },
+        "martial_executioner": {
+          "rank": 1,
+          "active_slot": 1
+        }
+      },
+      "snapshot": {
+        "key": "secretary_runtime",
+        "label": "martial",
+        "stats": {
+          "vitality": 196,
+          "might": 568,
+          "finesse": 119,
+          "spirit": 97,
+          "agility": 10
+        },
+        "active_skills": [
+          "executioner_cut",
+          "severing_bleed",
+          "armor_break_strike",
+          "dagger_flurry",
+          "precision_cut"
+        ],
+        "ai_rules": [
+          {
+            "conditions": [
+              {
+                "type": "own_hp_lte",
+                "percent": 20
+              }
+            ],
+            "action": "awakening"
+          },
+          {
+            "conditions": [
+              {
+                "type": "enemy_telegraph"
+              }
+            ],
+            "action": "defend"
+          },
+          {
+            "conditions": [
+              {
+                "type": "own_hp_lte",
+                "percent": 20
+              }
+            ],
+            "action": "defend"
+          },
+          {
+            "conditions": [
+              {
+                "type": "enemy_hp_lte",
+                "percent": 35
+              }
+            ],
+            "action": "skill:executioner_cut"
+          },
+          {
+            "conditions": [
+              {
+                "type": "always"
+              }
+            ],
+            "action": "skill:armor_break_strike"
+          },
+          {
+            "conditions": [
+              {
+                "type": "always"
+              }
+            ],
+            "action": "skill:severing_bleed"
+          },
+          {
+            "conditions": [
+              {
+                "type": "always"
+              }
+            ],
+            "action": "skill:dagger_flurry"
+          },
+          {
+            "conditions": [
+              {
+                "type": "always"
+              }
+            ],
+            "action": "skill:precision_cut"
+          },
+          {
+            "conditions": [
+              {
+                "type": "always"
+              }
+            ],
+            "action": "normal_attack"
+          }
+        ],
+        "ai_mode": "default",
+        "modifiers": {
+          "physical_damage_bps": 600,
+          "critical_chance_bps": 500,
+          "mp_cost_reduction_bps": 500,
+          "lifesteal_bps": 360,
+          "all_damage_bps": 320
+        },
+        "equipment": {
+          "key": "generated:obsidian_cavern:dagger",
+          "label": "魔窟の短剣",
+          "catalog_identity": "secretary-underground-shop-equipment-alpha-v2",
+          "item_level": 90,
+          "rarity": "uncommon",
+          "weapon_style": "dagger",
+          "weapon_power": 200,
+          "physical_defense": 370,
+          "magical_defense": 308,
+          "max_hp": 1095,
+          "stats": {
+            "vitality": 10,
+            "might": 67,
+            "finesse": 46,
+            "spirit": 0,
+            "agility": 18
+          },
+          "modifiers": {
+            "healing_bps": 393,
+            "physical_damage_bps": 182
+          },
+          "affixes": [
+            {
+              "item_key": "generated:obsidian_cavern:dagger",
+              "key": "finesse",
+              "label": "技巧アップ",
+              "kind": "stat",
+              "target": "finesse",
+              "value": 10,
+              "quality_bps": 9921,
+              "standard_value": 10
+            },
+            {
+              "item_key": "generated:obsidian_cavern:dagger",
+              "key": "max_hp",
+              "label": "最大HPアップ",
+              "kind": "base",
+              "target": "max_hp",
+              "value": 170,
+              "quality_bps": 8941,
+              "standard_value": 190
+            },
+            {
+              "item_key": "generated:obsidian_cavern:armor",
+              "key": "finesse",
+              "label": "技巧アップ",
+              "kind": "stat",
+              "target": "finesse",
+              "value": 10,
+              "quality_bps": 9686,
+              "standard_value": 10
+            },
+            {
+              "item_key": "generated:obsidian_cavern:armor",
+              "key": "healing_bps",
+              "label": "治癒力アップ",
+              "kind": "modifier",
+              "target": "healing_bps",
+              "value": 393,
+              "quality_bps": 9913,
+              "raw_value": 210,
+              "item_level_bps": 18900
+            },
+            {
+              "item_key": "generated:obsidian_cavern:accessory",
+              "key": "magical_defense",
+              "label": "魔法防御アップ",
+              "kind": "base",
+              "target": "magical_defense",
+              "value": 8,
+              "quality_bps": 8035,
+              "standard_value": 20
+            },
+            {
+              "item_key": "generated:obsidian_cavern:accessory",
+              "key": "physical_damage_bps",
+              "label": "物理攻撃力アップ",
+              "kind": "modifier",
+              "target": "physical_damage_bps",
+              "value": 182,
+              "quality_bps": 9080,
+              "raw_value": 212,
+              "item_level_bps": 18900
+            },
+            {
+              "item_key": "generated:obsidian_cavern:accessory",
+              "key": "might",
+              "label": "筋力アップ",
+              "kind": "stat",
+              "target": "might",
+              "value": 4,
+              "quality_bps": 8572,
+              "standard_value": 10
+            }
+          ],
+          "unique_effect": null,
+          "items": [
+            {
+              "key": "generated:obsidian_cavern:dagger",
+              "name": "魔窟の短剣",
+              "category": "weapon",
+              "equipped_slot": "weapon",
+              "rank": 0,
+              "item_level": 90,
+              "rarity": "uncommon",
+              "catalog_identity": "secretary-underground-drop-equipment-alpha-v1",
+              "instance_identity": "3225de90c0ccbe7a68d6610a1ecfb5011b78bfc5a7b58ee8bcd5b64ef9ca4799"
+            },
+            {
+              "key": "generated:obsidian_cavern:armor",
+              "name": "魔窟の胸当て",
+              "category": "armor",
+              "equipped_slot": "armor",
+              "rank": 0,
+              "item_level": 90,
+              "rarity": "uncommon",
+              "catalog_identity": "secretary-underground-drop-equipment-alpha-v1",
+              "instance_identity": "fdccb400e9a8264cab5282e5442db1c14b7dee80127ecedd658dcf95a98018f3"
+            },
+            {
+              "key": "generated:obsidian_cavern:accessory",
+              "name": "魔窟の武力護符",
+              "category": "accessory",
+              "equipped_slot": "accessory_1",
+              "rank": 0,
+              "item_level": 90,
+              "rarity": "uncommon",
+              "catalog_identity": "secretary-underground-drop-equipment-alpha-v1",
+              "instance_identity": "e8dc1ae35c096fe1256d970744458e97ad2f354b55129589226b6101f59f89fc"
+            },
+            {
+              "key": "generated:obsidian_cavern:accessory",
+              "name": "魔窟の武力護符",
+              "category": "accessory",
+              "equipped_slot": "accessory_2",
+              "rank": 0,
+              "item_level": 90,
+              "rarity": "uncommon",
+              "catalog_identity": "secretary-underground-drop-equipment-alpha-v1",
+              "instance_identity": "264455842b7e82f808612f5394d617d2d41cecfd99a4246964a76666afa7a6ee"
+            },
+            {
+              "key": "generated:obsidian_cavern:accessory",
+              "name": "魔窟の武力護符",
+              "category": "accessory",
+              "equipped_slot": "accessory_3",
+              "rank": 0,
+              "item_level": 90,
+              "rarity": "uncommon",
+              "catalog_identity": "secretary-underground-drop-equipment-alpha-v1",
+              "instance_identity": "53097c00ed0d875817dfc5e348cc404bebadb63aea10d6f1b7fa147224b087b2"
+            }
+          ]
+        },
+        "current_hp": 3083
+      }
+    },
+    {
+      "tree": "guardianship",
+      "level": 30,
+      "sp_budget": 20,
+      "spent": 20,
+      "allocations": {
+        "guardianship_shield_bash": {
+          "rank": 1,
+          "active_slot": 1
+        },
+        "guardianship_vital_core": {
+          "rank": 5,
+          "active_slot": null
+        },
+        "guardianship_guard_training": {
+          "rank": 2,
+          "active_slot": null
+        }
+      },
+      "snapshot": {
+        "key": "secretary_runtime",
+        "label": "guardianship",
+        "stats": {
+          "vitality": 243,
+          "might": 51,
+          "finesse": 39,
+          "spirit": 45,
+          "agility": 12
+        },
+        "active_skills": [
+          "shield_bash"
+        ],
+        "ai_rules": [
+          {
+            "conditions": [
+              {
+                "type": "own_hp_lte",
+                "percent": 20
+              }
+            ],
+            "action": "awakening"
+          },
+          {
+            "conditions": [
+              {
+                "type": "enemy_telegraph"
+              }
+            ],
+            "action": "defend"
+          },
+          {
+            "conditions": [
+              {
+                "type": "own_hp_lte",
+                "percent": 20
+              }
+            ],
+            "action": "defend"
+          },
+          {
+            "conditions": [
+              {
+                "type": "always"
+              }
+            ],
+            "action": "skill:shield_bash"
+          },
+          {
+            "conditions": [
+              {
+                "type": "always"
+              }
+            ],
+            "action": "normal_attack"
+          }
+        ],
+        "ai_mode": "default",
+        "modifiers": {
+          "damage_taken_reduction_bps": 500,
+          "guard_reduction_bps": 200,
+          "parry_bps": 280
+        },
+        "equipment": {
+          "key": "generated:obsidian_cavern:longsword",
+          "label": "魔窟の長剣",
+          "catalog_identity": "secretary-underground-shop-equipment-alpha-v2",
+          "item_level": 30,
+          "rarity": "uncommon",
+          "weapon_style": "longsword",
+          "weapon_power": 82,
+          "physical_defense": 106,
+          "magical_defense": 74,
+          "max_hp": 273,
+          "stats": {
+            "vitality": 32,
+            "might": 10,
+            "finesse": 8,
+            "spirit": 0,
+            "agility": 0
+          },
+          "modifiers": {
+            "healing_bps": 269,
+            "physical_damage_bps": 124
+          },
+          "affixes": [
+            {
+              "item_key": "generated:obsidian_cavern:longsword",
+              "key": "finesse",
+              "label": "技巧アップ",
+              "kind": "stat",
+              "target": "finesse",
+              "value": 4,
+              "quality_bps": 9921,
+              "standard_value": 4
+            },
+            {
+              "item_key": "generated:obsidian_cavern:longsword",
+              "key": "max_hp",
+              "label": "最大HPアップ",
+              "kind": "base",
+              "target": "max_hp",
+              "value": 63,
+              "quality_bps": 8941,
+              "standard_value": 70
+            },
+            {
+              "item_key": "generated:obsidian_cavern:armor",
+              "key": "finesse",
+              "label": "技巧アップ",
+              "kind": "stat",
+              "target": "finesse",
+              "value": 4,
+              "quality_bps": 9686,
+              "standard_value": 4
+            },
+            {
+              "item_key": "generated:obsidian_cavern:armor",
+              "key": "healing_bps",
+              "label": "治癒力アップ",
+              "kind": "modifier",
+              "target": "healing_bps",
+              "value": 269,
+              "quality_bps": 9913,
+              "raw_value": 210,
+              "item_level_bps": 12900
+            },
+            {
+              "item_key": "generated:obsidian_cavern:accessory",
+              "key": "magical_defense",
+              "label": "魔法防御アップ",
+              "kind": "base",
+              "target": "magical_defense",
+              "value": 3,
+              "quality_bps": 8035,
+              "standard_value": 8
+            },
+            {
+              "item_key": "generated:obsidian_cavern:accessory",
+              "key": "physical_damage_bps",
+              "label": "物理攻撃力アップ",
+              "kind": "modifier",
+              "target": "physical_damage_bps",
+              "value": 124,
+              "quality_bps": 9080,
+              "raw_value": 212,
+              "item_level_bps": 12900
+            },
+            {
+              "item_key": "generated:obsidian_cavern:accessory",
+              "key": "might",
+              "label": "筋力アップ",
+              "kind": "stat",
+              "target": "might",
+              "value": 2,
+              "quality_bps": 8572,
+              "standard_value": 4
+            }
+          ],
+          "unique_effect": null,
+          "items": [
+            {
+              "key": "generated:obsidian_cavern:longsword",
+              "name": "魔窟の長剣",
+              "category": "weapon",
+              "equipped_slot": "weapon",
+              "rank": 0,
+              "item_level": 30,
+              "rarity": "uncommon",
+              "catalog_identity": "secretary-underground-drop-equipment-alpha-v1",
+              "instance_identity": "8b306c816e06a23fa15c0c10437d9dcd3ae9c965f242a49cb7ea7f1d09900fda"
+            },
+            {
+              "key": "generated:obsidian_cavern:armor",
+              "name": "魔窟の胸当て",
+              "category": "armor",
+              "equipped_slot": "armor",
+              "rank": 0,
+              "item_level": 30,
+              "rarity": "uncommon",
+              "catalog_identity": "secretary-underground-drop-equipment-alpha-v1",
+              "instance_identity": "1a0f8405f54b6c2042b71a1097dab6217b47d8460babd08b5f256eddf95e4425"
+            },
+            {
+              "key": "generated:obsidian_cavern:accessory",
+              "name": "魔窟の生命護符",
+              "category": "accessory",
+              "equipped_slot": "accessory_1",
+              "rank": 0,
+              "item_level": 30,
+              "rarity": "uncommon",
+              "catalog_identity": "secretary-underground-drop-equipment-alpha-v1",
+              "instance_identity": "db3c7cba23d1ab95d24e6c3df0343639097a49cc56f605e4feb2ae9defb292e8"
+            },
+            {
+              "key": "generated:obsidian_cavern:accessory",
+              "name": "魔窟の生命護符",
+              "category": "accessory",
+              "equipped_slot": "accessory_2",
+              "rank": 0,
+              "item_level": 30,
+              "rarity": "uncommon",
+              "catalog_identity": "secretary-underground-drop-equipment-alpha-v1",
+              "instance_identity": "9bdf36b71b64645c271cfe93d37f9c440a206c000f2b415bbf3e83b3d9c41118"
+            },
+            {
+              "key": "generated:obsidian_cavern:accessory",
+              "name": "魔窟の生命護符",
+              "category": "accessory",
+              "equipped_slot": "accessory_3",
+              "rank": 0,
+              "item_level": 30,
+              "rarity": "uncommon",
+              "catalog_identity": "secretary-underground-drop-equipment-alpha-v1",
+              "instance_identity": "7bcd23eb587ea5215eea15723eeaa40c8873f2d371cba790793f5ff4cf7cee04"
+            }
+          ]
+        },
+        "current_hp": 2813
+      }
+    },
+    {
+      "tree": "guardianship",
+      "level": 60,
+      "sp_budget": 60,
+      "spent": 58,
+      "allocations": {
+        "guardianship_shield_bash": {
+          "rank": 1,
+          "active_slot": 2
+        },
+        "guardianship_vital_core": {
+          "rank": 5,
+          "active_slot": null
+        },
+        "guardianship_guard_training": {
+          "rank": 5,
+          "active_slot": null
+        },
+        "guardianship_counter_stance": {
+          "rank": 1,
+          "active_slot": 3
+        },
+        "guardianship_fighting_spirit": {
+          "rank": 5,
+          "active_slot": null
+        },
+        "guardianship_bulwark_strike": {
+          "rank": 1,
+          "active_slot": 1
+        },
+        "guardianship_regeneration": {
+          "rank": 2,
+          "active_slot": null
+        }
+      },
+      "snapshot": {
+        "key": "secretary_runtime",
+        "label": "guardianship",
+        "stats": {
+          "vitality": 453,
+          "might": 81,
+          "finesse": 69,
+          "spirit": 75,
+          "agility": 12
+        },
+        "active_skills": [
+          "bulwark_strike",
+          "shield_bash",
+          "counter_stance"
+        ],
+        "ai_rules": [
+          {
+            "conditions": [
+              {
+                "type": "own_hp_lte",
+                "percent": 20
+              }
+            ],
+            "action": "awakening"
+          },
+          {
+            "conditions": [
+              {
+                "type": "enemy_telegraph"
+              }
+            ],
+            "action": "defend"
+          },
+          {
+            "conditions": [
+              {
+                "type": "own_hp_lte",
+                "percent": 20
+              }
+            ],
+            "action": "defend"
+          },
+          {
+            "conditions": [
+              {
+                "type": "self_lacks_status",
+                "status": "aegis"
+              }
+            ],
+            "action": "skill:counter_stance"
+          },
+          {
+            "conditions": [
+              {
+                "type": "always"
+              }
+            ],
+            "action": "skill:bulwark_strike"
+          },
+          {
+            "conditions": [
+              {
+                "type": "always"
+              }
+            ],
+            "action": "skill:shield_bash"
+          },
+          {
+            "conditions": [
+              {
+                "type": "always"
+              }
+            ],
+            "action": "normal_attack"
+          }
+        ],
+        "ai_mode": "default",
+        "modifiers": {
+          "damage_taken_reduction_bps": 500,
+          "guard_reduction_bps": 500,
+          "parry_bps": 700,
+          "fighting_spirit_enabled": true,
+          "counter_power_bps": 3400,
+          "self_regeneration_target_hp_bps": 90
+        },
+        "equipment": {
+          "key": "generated:obsidian_cavern:longsword",
+          "label": "魔窟の長剣",
+          "catalog_identity": "secretary-underground-shop-equipment-alpha-v2",
+          "item_level": 60,
+          "rarity": "uncommon",
+          "weapon_style": "longsword",
+          "weapon_power": 142,
+          "physical_defense": 260,
+          "magical_defense": 186,
+          "max_hp": 666,
+          "stats": {
+            "vitality": 63,
+            "might": 15,
+            "finesse": 14,
+            "spirit": 0,
+            "agility": 0
+          },
+          "modifiers": {
+            "healing_bps": 331,
+            "physical_damage_bps": 153
+          },
+          "affixes": [
+            {
+              "item_key": "generated:obsidian_cavern:longsword",
+              "key": "finesse",
+              "label": "技巧アップ",
+              "kind": "stat",
+              "target": "finesse",
+              "value": 7,
+              "quality_bps": 9921,
+              "standard_value": 7
+            },
+            {
+              "item_key": "generated:obsidian_cavern:longsword",
+              "key": "max_hp",
+              "label": "最大HPアップ",
+              "kind": "base",
+              "target": "max_hp",
+              "value": 116,
+              "quality_bps": 8941,
+              "standard_value": 130
+            },
+            {
+              "item_key": "generated:obsidian_cavern:armor",
+              "key": "finesse",
+              "label": "技巧アップ",
+              "kind": "stat",
+              "target": "finesse",
+              "value": 7,
+              "quality_bps": 9686,
+              "standard_value": 7
+            },
+            {
+              "item_key": "generated:obsidian_cavern:armor",
+              "key": "healing_bps",
+              "label": "治癒力アップ",
+              "kind": "modifier",
+              "target": "healing_bps",
+              "value": 331,
+              "quality_bps": 9913,
+              "raw_value": 210,
+              "item_level_bps": 15900
+            },
+            {
+              "item_key": "generated:obsidian_cavern:accessory",
+              "key": "magical_defense",
+              "label": "魔法防御アップ",
+              "kind": "base",
+              "target": "magical_defense",
+              "value": 6,
+              "quality_bps": 8035,
+              "standard_value": 14
+            },
+            {
+              "item_key": "generated:obsidian_cavern:accessory",
+              "key": "physical_damage_bps",
+              "label": "物理攻撃力アップ",
+              "kind": "modifier",
+              "target": "physical_damage_bps",
+              "value": 153,
+              "quality_bps": 9080,
+              "raw_value": 212,
+              "item_level_bps": 15900
+            },
+            {
+              "item_key": "generated:obsidian_cavern:accessory",
+              "key": "might",
+              "label": "筋力アップ",
+              "kind": "stat",
+              "target": "might",
+              "value": 3,
+              "quality_bps": 8572,
+              "standard_value": 7
+            }
+          ],
+          "unique_effect": null,
+          "items": [
+            {
+              "key": "generated:obsidian_cavern:longsword",
+              "name": "魔窟の長剣",
+              "category": "weapon",
+              "equipped_slot": "weapon",
+              "rank": 0,
+              "item_level": 60,
+              "rarity": "uncommon",
+              "catalog_identity": "secretary-underground-drop-equipment-alpha-v1",
+              "instance_identity": "287213d5774d1b7adbc24d21c7ff157a6fe2633a079f8ffc7d179929275be94e"
+            },
+            {
+              "key": "generated:obsidian_cavern:armor",
+              "name": "魔窟の胸当て",
+              "category": "armor",
+              "equipped_slot": "armor",
+              "rank": 0,
+              "item_level": 60,
+              "rarity": "uncommon",
+              "catalog_identity": "secretary-underground-drop-equipment-alpha-v1",
+              "instance_identity": "65cb98ed24609eaf17b8b13b2adcf20d15c150bf8c412e657bee5ba2116c9b3a"
+            },
+            {
+              "key": "generated:obsidian_cavern:accessory",
+              "name": "魔窟の生命護符",
+              "category": "accessory",
+              "equipped_slot": "accessory_1",
+              "rank": 0,
+              "item_level": 60,
+              "rarity": "uncommon",
+              "catalog_identity": "secretary-underground-drop-equipment-alpha-v1",
+              "instance_identity": "f6ca92cf08652af2c557d3af4edfe43081696ecfd116756d56ac0ff04f91a245"
+            },
+            {
+              "key": "generated:obsidian_cavern:accessory",
+              "name": "魔窟の生命護符",
+              "category": "accessory",
+              "equipped_slot": "accessory_2",
+              "rank": 0,
+              "item_level": 60,
+              "rarity": "uncommon",
+              "catalog_identity": "secretary-underground-drop-equipment-alpha-v1",
+              "instance_identity": "309ee5c6c6b867458e75cf5a5152dd4bca23ce3f5a4e8e5000c401b60b77d5de"
+            },
+            {
+              "key": "generated:obsidian_cavern:accessory",
+              "name": "魔窟の生命護符",
+              "category": "accessory",
+              "equipped_slot": "accessory_3",
+              "rank": 0,
+              "item_level": 60,
+              "rarity": "uncommon",
+              "catalog_identity": "secretary-underground-drop-equipment-alpha-v1",
+              "instance_identity": "b9c12f9029d991e4715f42322d23b233bfcdaaffe2dcf83c7d1bd43ab09a362d"
+            }
+          ]
+        },
+        "current_hp": 5134
+      }
+    },
+    {
+      "tree": "guardianship",
+      "level": 90,
+      "sp_budget": 100,
+      "spent": 100,
+      "allocations": {
+        "guardianship_shield_bash": {
+          "rank": 1,
+          "active_slot": 3
+        },
+        "guardianship_vital_core": {
+          "rank": 5,
+          "active_slot": null
+        },
+        "guardianship_guard_training": {
+          "rank": 5,
+          "active_slot": null
+        },
+        "guardianship_counter_stance": {
+          "rank": 1,
+          "active_slot": 5
+        },
+        "guardianship_fighting_spirit": {
+          "rank": 5,
+          "active_slot": null
+        },
+        "guardianship_bulwark_strike": {
+          "rank": 1,
+          "active_slot": 2
+        },
+        "guardianship_regeneration": {
+          "rank": 3,
+          "active_slot": null
+        },
+        "guardianship_renewing_guard": {
+          "rank": 1,
+          "active_slot": 4
+        },
+        "guardianship_unbroken": {
+          "rank": 4,
+          "active_slot": null
+        },
+        "guardianship_retort": {
+          "rank": 1,
+          "active_slot": 1
+        }
+      },
+      "snapshot": {
+        "key": "secretary_runtime",
+        "label": "guardianship",
+        "stats": {
+          "vitality": 663,
+          "might": 111,
+          "finesse": 99,
+          "spirit": 105,
+          "agility": 12
+        },
+        "active_skills": [
+          "unbroken_retort",
+          "bulwark_strike",
+          "shield_bash",
+          "renewing_guard",
+          "counter_stance"
+        ],
+        "ai_rules": [
+          {
+            "conditions": [
+              {
+                "type": "own_hp_lte",
+                "percent": 20
+              }
+            ],
+            "action": "awakening"
+          },
+          {
+            "conditions": [
+              {
+                "type": "own_hp_lte",
+                "percent": 55
+              }
+            ],
+            "action": "skill:renewing_guard"
+          },
+          {
+            "conditions": [
+              {
+                "type": "enemy_telegraph"
+              }
+            ],
+            "action": "defend"
+          },
+          {
+            "conditions": [
+              {
+                "type": "own_hp_lte",
+                "percent": 20
+              }
+            ],
+            "action": "defend"
+          },
+          {
+            "conditions": [
+              {
+                "type": "role_stacks_gte",
+                "status": "fighting_spirit",
+                "stacks": 1
+              }
+            ],
+            "action": "skill:unbroken_retort"
+          },
+          {
+            "conditions": [
+              {
+                "type": "self_lacks_status",
+                "status": "aegis"
+              }
+            ],
+            "action": "skill:counter_stance"
+          },
+          {
+            "conditions": [
+              {
+                "type": "always"
+              }
+            ],
+            "action": "skill:bulwark_strike"
+          },
+          {
+            "conditions": [
+              {
+                "type": "always"
+              }
+            ],
+            "action": "skill:shield_bash"
+          },
+          {
+            "conditions": [
+              {
+                "type": "always"
+              }
+            ],
+            "action": "normal_attack"
+          }
+        ],
+        "ai_mode": "default",
+        "modifiers": {
+          "damage_taken_reduction_bps": 820,
+          "guard_reduction_bps": 500,
+          "parry_bps": 700,
+          "fighting_spirit_enabled": true,
+          "counter_power_bps": 3400,
+          "self_regeneration_target_hp_bps": 135,
+          "status_potency_bps": 160
+        },
+        "equipment": {
+          "key": "generated:obsidian_cavern:longsword",
+          "label": "魔窟の長剣",
+          "catalog_identity": "secretary-underground-shop-equipment-alpha-v2",
+          "item_level": 90,
+          "rarity": "uncommon",
+          "weapon_style": "longsword",
+          "weapon_power": 202,
+          "physical_defense": 434,
+          "magical_defense": 308,
+          "max_hp": 1095,
+          "stats": {
+            "vitality": 99,
+            "might": 21,
+            "finesse": 20,
+            "spirit": 0,
+            "agility": 0
+          },
+          "modifiers": {
+            "healing_bps": 393,
+            "physical_damage_bps": 182
+          },
+          "affixes": [
+            {
+              "item_key": "generated:obsidian_cavern:longsword",
+              "key": "finesse",
+              "label": "技巧アップ",
+              "kind": "stat",
+              "target": "finesse",
+              "value": 10,
+              "quality_bps": 9921,
+              "standard_value": 10
+            },
+            {
+              "item_key": "generated:obsidian_cavern:longsword",
+              "key": "max_hp",
+              "label": "最大HPアップ",
+              "kind": "base",
+              "target": "max_hp",
+              "value": 170,
+              "quality_bps": 8941,
+              "standard_value": 190
+            },
+            {
+              "item_key": "generated:obsidian_cavern:armor",
+              "key": "finesse",
+              "label": "技巧アップ",
+              "kind": "stat",
+              "target": "finesse",
+              "value": 10,
+              "quality_bps": 9686,
+              "standard_value": 10
+            },
+            {
+              "item_key": "generated:obsidian_cavern:armor",
+              "key": "healing_bps",
+              "label": "治癒力アップ",
+              "kind": "modifier",
+              "target": "healing_bps",
+              "value": 393,
+              "quality_bps": 9913,
+              "raw_value": 210,
+              "item_level_bps": 18900
+            },
+            {
+              "item_key": "generated:obsidian_cavern:accessory",
+              "key": "magical_defense",
+              "label": "魔法防御アップ",
+              "kind": "base",
+              "target": "magical_defense",
+              "value": 8,
+              "quality_bps": 8035,
+              "standard_value": 20
+            },
+            {
+              "item_key": "generated:obsidian_cavern:accessory",
+              "key": "physical_damage_bps",
+              "label": "物理攻撃力アップ",
+              "kind": "modifier",
+              "target": "physical_damage_bps",
+              "value": 182,
+              "quality_bps": 9080,
+              "raw_value": 212,
+              "item_level_bps": 18900
+            },
+            {
+              "item_key": "generated:obsidian_cavern:accessory",
+              "key": "might",
+              "label": "筋力アップ",
+              "kind": "stat",
+              "target": "might",
+              "value": 4,
+              "quality_bps": 8572,
+              "standard_value": 10
+            }
+          ],
+          "unique_effect": null,
+          "items": [
+            {
+              "key": "generated:obsidian_cavern:longsword",
+              "name": "魔窟の長剣",
+              "category": "weapon",
+              "equipped_slot": "weapon",
+              "rank": 0,
+              "item_level": 90,
+              "rarity": "uncommon",
+              "catalog_identity": "secretary-underground-drop-equipment-alpha-v1",
+              "instance_identity": "75eccd1489ceedefad84dc7bbf6955864f7776e5cfcf0bf78e211be3d9fa6598"
+            },
+            {
+              "key": "generated:obsidian_cavern:armor",
+              "name": "魔窟の胸当て",
+              "category": "armor",
+              "equipped_slot": "armor",
+              "rank": 0,
+              "item_level": 90,
+              "rarity": "uncommon",
+              "catalog_identity": "secretary-underground-drop-equipment-alpha-v1",
+              "instance_identity": "07ac286dfc5b12f7345db169d577748cf94319db0e95a638991fbebb99957303"
+            },
+            {
+              "key": "generated:obsidian_cavern:accessory",
+              "name": "魔窟の生命護符",
+              "category": "accessory",
+              "equipped_slot": "accessory_1",
+              "rank": 0,
+              "item_level": 90,
+              "rarity": "uncommon",
+              "catalog_identity": "secretary-underground-drop-equipment-alpha-v1",
+              "instance_identity": "238d769156d161b92772793a5d7ef30566980fc319e0e4e00c4d3d7e08e9757b"
+            },
+            {
+              "key": "generated:obsidian_cavern:accessory",
+              "name": "魔窟の生命護符",
+              "category": "accessory",
+              "equipped_slot": "accessory_2",
+              "rank": 0,
+              "item_level": 90,
+              "rarity": "uncommon",
+              "catalog_identity": "secretary-underground-drop-equipment-alpha-v1",
+              "instance_identity": "ec94b6de2e300ca84b260f89b47e371e74b615d78eda91e784f5ef164b771796"
+            },
+            {
+              "key": "generated:obsidian_cavern:accessory",
+              "name": "魔窟の生命護符",
+              "category": "accessory",
+              "equipped_slot": "accessory_3",
+              "rank": 0,
+              "item_level": 90,
+              "rarity": "uncommon",
+              "catalog_identity": "secretary-underground-drop-equipment-alpha-v1",
+              "instance_identity": "b97395dfa5f6cd9ba80c2381b13c1f2c2cba3f0d719a7408c27074401d1b1a98"
+            }
+          ]
+        },
+        "current_hp": 7531
+      }
+    },
+    {
+      "tree": "miracle",
+      "level": 30,
+      "sp_budget": 20,
+      "spent": 20,
+      "allocations": {
+        "miracle_holy_bolt": {
+          "rank": 1,
+          "active_slot": 1
+        },
+        "miracle_mending_prayer": {
+          "rank": 1,
+          "active_slot": 2
+        },
+        "miracle_healing_study": {
+          "rank": 4,
+          "active_slot": null
+        },
+        "miracle_spirit_channel": {
+          "rank": 1,
+          "active_slot": null
+        }
+      },
+      "snapshot": {
+        "key": "secretary_runtime",
+        "label": "miracle",
+        "stats": {
+          "vitality": 80,
+          "might": 37,
+          "finesse": 45,
+          "spirit": 216,
+          "agility": 12
+        },
+        "active_skills": [
+          "holy_bolt",
+          "mending_prayer"
+        ],
+        "ai_rules": [
+          {
+            "conditions": [
+              {
+                "type": "own_hp_lte",
+                "percent": 20
+              }
+            ],
+            "action": "awakening"
+          },
+          {
+            "conditions": [
+              {
+                "type": "own_hp_lte",
+                "percent": 55
+              }
+            ],
+            "action": "skill:mending_prayer"
+          },
+          {
+            "conditions": [
+              {
+                "type": "enemy_telegraph"
+              }
+            ],
+            "action": "defend"
+          },
+          {
+            "conditions": [
+              {
+                "type": "own_hp_lte",
+                "percent": 20
+              }
+            ],
+            "action": "defend"
+          },
+          {
+            "conditions": [
+              {
+                "type": "always"
+              }
+            ],
+            "action": "skill:holy_bolt"
+          },
+          {
+            "conditions": [
+              {
+                "type": "always"
+              }
+            ],
+            "action": "normal_attack"
+          }
+        ],
+        "ai_mode": "default",
+        "modifiers": {
+          "healing_bps": 600,
+          "miracle_damage_bps": 120
+        },
+        "equipment": {
+          "key": "generated:obsidian_cavern:crystal_staff",
+          "label": "魔窟の杖",
+          "catalog_identity": "secretary-underground-shop-equipment-alpha-v2",
+          "item_level": 30,
+          "rarity": "uncommon",
+          "weapon_style": "crystal_staff",
+          "weapon_power": 70,
+          "physical_defense": 86,
+          "magical_defense": 74,
+          "max_hp": 273,
+          "stats": {
+            "vitality": 4,
+            "might": 2,
+            "finesse": 12,
+            "spirit": 32,
+            "agility": 0
+          },
+          "modifiers": {
+            "healing_bps": 269,
+            "physical_damage_bps": 124
+          },
+          "affixes": [
+            {
+              "item_key": "generated:obsidian_cavern:crystal_staff",
+              "key": "finesse",
+              "label": "技巧アップ",
+              "kind": "stat",
+              "target": "finesse",
+              "value": 4,
+              "quality_bps": 9921,
+              "standard_value": 4
+            },
+            {
+              "item_key": "generated:obsidian_cavern:crystal_staff",
+              "key": "max_hp",
+              "label": "最大HPアップ",
+              "kind": "base",
+              "target": "max_hp",
+              "value": 63,
+              "quality_bps": 8941,
+              "standard_value": 70
+            },
+            {
+              "item_key": "generated:obsidian_cavern:armor",
+              "key": "finesse",
+              "label": "技巧アップ",
+              "kind": "stat",
+              "target": "finesse",
+              "value": 4,
+              "quality_bps": 9686,
+              "standard_value": 4
+            },
+            {
+              "item_key": "generated:obsidian_cavern:armor",
+              "key": "healing_bps",
+              "label": "治癒力アップ",
+              "kind": "modifier",
+              "target": "healing_bps",
+              "value": 269,
+              "quality_bps": 9913,
+              "raw_value": 210,
+              "item_level_bps": 12900
+            },
+            {
+              "item_key": "generated:obsidian_cavern:accessory",
+              "key": "magical_defense",
+              "label": "魔法防御アップ",
+              "kind": "base",
+              "target": "magical_defense",
+              "value": 3,
+              "quality_bps": 8035,
+              "standard_value": 8
+            },
+            {
+              "item_key": "generated:obsidian_cavern:accessory",
+              "key": "physical_damage_bps",
+              "label": "物理攻撃力アップ",
+              "kind": "modifier",
+              "target": "physical_damage_bps",
+              "value": 124,
+              "quality_bps": 9080,
+              "raw_value": 212,
+              "item_level_bps": 12900
+            },
+            {
+              "item_key": "generated:obsidian_cavern:accessory",
+              "key": "might",
+              "label": "筋力アップ",
+              "kind": "stat",
+              "target": "might",
+              "value": 2,
+              "quality_bps": 8572,
+              "standard_value": 4
+            }
+          ],
+          "unique_effect": null,
+          "items": [
+            {
+              "key": "generated:obsidian_cavern:crystal_staff",
+              "name": "魔窟の杖",
+              "category": "weapon",
+              "equipped_slot": "weapon",
+              "rank": 0,
+              "item_level": 30,
+              "rarity": "uncommon",
+              "catalog_identity": "secretary-underground-drop-equipment-alpha-v1",
+              "instance_identity": "9068ef1df119b34c067ab378a0242d9e614fb2029c855c98b78685127059dedc"
+            },
+            {
+              "key": "generated:obsidian_cavern:armor",
+              "name": "魔窟の胸当て",
+              "category": "armor",
+              "equipped_slot": "armor",
+              "rank": 0,
+              "item_level": 30,
+              "rarity": "uncommon",
+              "catalog_identity": "secretary-underground-drop-equipment-alpha-v1",
+              "instance_identity": "372255d64fb2d941f805ffadd1b5ab9f15ed54555fc0fbc6619a23cd7605a47e"
+            },
+            {
+              "key": "generated:obsidian_cavern:accessory",
+              "name": "魔窟の精神護符",
+              "category": "accessory",
+              "equipped_slot": "accessory_1",
+              "rank": 0,
+              "item_level": 30,
+              "rarity": "uncommon",
+              "catalog_identity": "secretary-underground-drop-equipment-alpha-v1",
+              "instance_identity": "44dd6d3be5e573432c6e2e4143561fe62c9faf4aedca1a1cf65eb995268ec025"
+            },
+            {
+              "key": "generated:obsidian_cavern:accessory",
+              "name": "魔窟の精神護符",
+              "category": "accessory",
+              "equipped_slot": "accessory_2",
+              "rank": 0,
+              "item_level": 30,
+              "rarity": "uncommon",
+              "catalog_identity": "secretary-underground-drop-equipment-alpha-v1",
+              "instance_identity": "7e3c3149b2f8091cc8494bc9a110b112b3130f0fad44f1934deaca5f9fa06d8e"
+            },
+            {
+              "key": "generated:obsidian_cavern:accessory",
+              "name": "魔窟の精神護符",
+              "category": "accessory",
+              "equipped_slot": "accessory_3",
+              "rank": 0,
+              "item_level": 30,
+              "rarity": "uncommon",
+              "catalog_identity": "secretary-underground-drop-equipment-alpha-v1",
+              "instance_identity": "2985b500024a852a8a381116fd730782fe183c27d6c2001e4e352e365743eef4"
+            }
+          ]
+        },
+        "current_hp": 1285
+      }
+    },
+    {
+      "tree": "miracle",
+      "level": 60,
+      "sp_budget": 60,
+      "spent": 58,
+      "allocations": {
+        "miracle_holy_bolt": {
+          "rank": 1,
+          "active_slot": 1
+        },
+        "miracle_mending_prayer": {
+          "rank": 1,
+          "active_slot": 2
+        },
+        "miracle_healing_study": {
+          "rank": 5,
+          "active_slot": null
+        },
+        "miracle_spirit_channel": {
+          "rank": 5,
+          "active_slot": null
+        },
+        "miracle_grace_core": {
+          "rank": 5,
+          "active_slot": null
+        },
+        "miracle_crystal_cycle": {
+          "rank": 1,
+          "active_slot": 3
+        },
+        "miracle_crystal_aegis": {
+          "rank": 1,
+          "active_slot": 4
+        },
+        "miracle_aegis_mastery": {
+          "rank": 2,
+          "active_slot": null
+        }
+      },
+      "snapshot": {
+        "key": "secretary_runtime",
+        "label": "miracle",
+        "stats": {
+          "vitality": 140,
+          "might": 67,
+          "finesse": 75,
+          "spirit": 396,
+          "agility": 12
+        },
+        "active_skills": [
+          "holy_bolt",
+          "mending_prayer",
+          "crystal_cycle",
+          "crystal_aegis"
+        ],
+        "ai_rules": [
+          {
+            "conditions": [
+              {
+                "type": "own_hp_lte",
+                "percent": 20
+              }
+            ],
+            "action": "awakening"
+          },
+          {
+            "conditions": [
+              {
+                "type": "own_hp_lte",
+                "percent": 55
+              }
+            ],
+            "action": "skill:mending_prayer"
+          },
+          {
+            "conditions": [
+              {
+                "type": "enemy_telegraph"
+              }
+            ],
+            "action": "defend"
+          },
+          {
+            "conditions": [
+              {
+                "type": "own_hp_lte",
+                "percent": 20
+              }
+            ],
+            "action": "defend"
+          },
+          {
+            "conditions": [
+              {
+                "type": "own_mp_lte",
+                "percent": 35
+              }
+            ],
+            "action": "skill:crystal_cycle"
+          },
+          {
+            "conditions": [
+              {
+                "type": "own_hp_lte",
+                "percent": 70
+              }
+            ],
+            "action": "skill:crystal_aegis"
+          },
+          {
+            "conditions": [
+              {
+                "type": "always"
+              }
+            ],
+            "action": "skill:holy_bolt"
+          },
+          {
+            "conditions": [
+              {
+                "type": "always"
+              }
+            ],
+            "action": "normal_attack"
+          }
+        ],
+        "ai_mode": "default",
+        "modifiers": {
+          "healing_bps": 750,
+          "miracle_damage_bps": 600,
+          "grace_enabled": true,
+          "mp_cost_reduction_bps": 450,
+          "barrier_bps": 360
+        },
+        "equipment": {
+          "key": "generated:obsidian_cavern:crystal_staff",
+          "label": "魔窟の杖",
+          "catalog_identity": "secretary-underground-shop-equipment-alpha-v2",
+          "item_level": 60,
+          "rarity": "uncommon",
+          "weapon_style": "crystal_staff",
+          "weapon_power": 124,
+          "physical_defense": 220,
+          "magical_defense": 186,
+          "max_hp": 666,
+          "stats": {
+            "vitality": 7,
+            "might": 3,
+            "finesse": 21,
+            "spirit": 63,
+            "agility": 0
+          },
+          "modifiers": {
+            "healing_bps": 331,
+            "physical_damage_bps": 153
+          },
+          "affixes": [
+            {
+              "item_key": "generated:obsidian_cavern:crystal_staff",
+              "key": "finesse",
+              "label": "技巧アップ",
+              "kind": "stat",
+              "target": "finesse",
+              "value": 7,
+              "quality_bps": 9921,
+              "standard_value": 7
+            },
+            {
+              "item_key": "generated:obsidian_cavern:crystal_staff",
+              "key": "max_hp",
+              "label": "最大HPアップ",
+              "kind": "base",
+              "target": "max_hp",
+              "value": 116,
+              "quality_bps": 8941,
+              "standard_value": 130
+            },
+            {
+              "item_key": "generated:obsidian_cavern:armor",
+              "key": "finesse",
+              "label": "技巧アップ",
+              "kind": "stat",
+              "target": "finesse",
+              "value": 7,
+              "quality_bps": 9686,
+              "standard_value": 7
+            },
+            {
+              "item_key": "generated:obsidian_cavern:armor",
+              "key": "healing_bps",
+              "label": "治癒力アップ",
+              "kind": "modifier",
+              "target": "healing_bps",
+              "value": 331,
+              "quality_bps": 9913,
+              "raw_value": 210,
+              "item_level_bps": 15900
+            },
+            {
+              "item_key": "generated:obsidian_cavern:accessory",
+              "key": "magical_defense",
+              "label": "魔法防御アップ",
+              "kind": "base",
+              "target": "magical_defense",
+              "value": 6,
+              "quality_bps": 8035,
+              "standard_value": 14
+            },
+            {
+              "item_key": "generated:obsidian_cavern:accessory",
+              "key": "physical_damage_bps",
+              "label": "物理攻撃力アップ",
+              "kind": "modifier",
+              "target": "physical_damage_bps",
+              "value": 153,
+              "quality_bps": 9080,
+              "raw_value": 212,
+              "item_level_bps": 15900
+            },
+            {
+              "item_key": "generated:obsidian_cavern:accessory",
+              "key": "might",
+              "label": "筋力アップ",
+              "kind": "stat",
+              "target": "might",
+              "value": 3,
+              "quality_bps": 8572,
+              "standard_value": 7
+            }
+          ],
+          "unique_effect": null,
+          "items": [
+            {
+              "key": "generated:obsidian_cavern:crystal_staff",
+              "name": "魔窟の杖",
+              "category": "weapon",
+              "equipped_slot": "weapon",
+              "rank": 0,
+              "item_level": 60,
+              "rarity": "uncommon",
+              "catalog_identity": "secretary-underground-drop-equipment-alpha-v1",
+              "instance_identity": "7b8ab2c514f1318267ec10f63f85ecd0bc52eaeb42a9c3aebb679b202ebb05e3"
+            },
+            {
+              "key": "generated:obsidian_cavern:armor",
+              "name": "魔窟の胸当て",
+              "category": "armor",
+              "equipped_slot": "armor",
+              "rank": 0,
+              "item_level": 60,
+              "rarity": "uncommon",
+              "catalog_identity": "secretary-underground-drop-equipment-alpha-v1",
+              "instance_identity": "e477735ffc9009d1ec40e70f3985e93fed72ee3aa1f129ca018571cb5e85a7b0"
+            },
+            {
+              "key": "generated:obsidian_cavern:accessory",
+              "name": "魔窟の精神護符",
+              "category": "accessory",
+              "equipped_slot": "accessory_1",
+              "rank": 0,
+              "item_level": 60,
+              "rarity": "uncommon",
+              "catalog_identity": "secretary-underground-drop-equipment-alpha-v1",
+              "instance_identity": "f98c5e71ee819122eee3dabfefba7ded22695789a55125f6bd05b4741127ebf8"
+            },
+            {
+              "key": "generated:obsidian_cavern:accessory",
+              "name": "魔窟の精神護符",
+              "category": "accessory",
+              "equipped_slot": "accessory_2",
+              "rank": 0,
+              "item_level": 60,
+              "rarity": "uncommon",
+              "catalog_identity": "secretary-underground-drop-equipment-alpha-v1",
+              "instance_identity": "17f47efbb3ec8d690ff6c2a71b41f62777467543c66d514951e99cdc55666d1d"
+            },
+            {
+              "key": "generated:obsidian_cavern:accessory",
+              "name": "魔窟の精神護符",
+              "category": "accessory",
+              "equipped_slot": "accessory_3",
+              "rank": 0,
+              "item_level": 60,
+              "rarity": "uncommon",
+              "catalog_identity": "secretary-underground-drop-equipment-alpha-v1",
+              "instance_identity": "deea19162c4711f1b91bf66d0046c82ac5088ce8579be779f20ff4dcd12cc534"
+            }
+          ]
+        },
+        "current_hp": 2182
+      }
+    },
+    {
+      "tree": "miracle",
+      "level": 90,
+      "sp_budget": 100,
+      "spent": 100,
+      "allocations": {
+        "miracle_holy_bolt": {
+          "rank": 1,
+          "active_slot": 2
+        },
+        "miracle_mending_prayer": {
+          "rank": 1,
+          "active_slot": 3
+        },
+        "miracle_healing_study": {
+          "rank": 5,
+          "active_slot": null
+        },
+        "miracle_spirit_channel": {
+          "rank": 5,
+          "active_slot": null
+        },
+        "miracle_grace_core": {
+          "rank": 5,
+          "active_slot": null
+        },
+        "miracle_crystal_cycle": {
+          "rank": 1,
+          "active_slot": 4
+        },
+        "miracle_crystal_aegis": {
+          "rank": 1,
+          "active_slot": 5
+        },
+        "miracle_aegis_mastery": {
+          "rank": 3,
+          "active_slot": null
+        },
+        "miracle_cleansing_wave": {
+          "rank": 1,
+          "active_slot": null
+        },
+        "miracle_apotheosis": {
+          "rank": 4,
+          "active_slot": null
+        },
+        "miracle_radiant_judgment": {
+          "rank": 1,
+          "active_slot": 1
+        }
+      },
+      "snapshot": {
+        "key": "secretary_runtime",
+        "label": "miracle",
+        "stats": {
+          "vitality": 200,
+          "might": 97,
+          "finesse": 105,
+          "spirit": 576,
+          "agility": 12
+        },
+        "active_skills": [
+          "radiant_judgment",
+          "holy_bolt",
+          "mending_prayer",
+          "crystal_cycle",
+          "crystal_aegis"
+        ],
+        "ai_rules": [
+          {
+            "conditions": [
+              {
+                "type": "own_hp_lte",
+                "percent": 20
+              }
+            ],
+            "action": "awakening"
+          },
+          {
+            "conditions": [
+              {
+                "type": "own_hp_lte",
+                "percent": 55
+              }
+            ],
+            "action": "skill:mending_prayer"
+          },
+          {
+            "conditions": [
+              {
+                "type": "enemy_telegraph"
+              }
+            ],
+            "action": "defend"
+          },
+          {
+            "conditions": [
+              {
+                "type": "own_hp_lte",
+                "percent": 20
+              }
+            ],
+            "action": "defend"
+          },
+          {
+            "conditions": [
+              {
+                "type": "own_mp_lte",
+                "percent": 35
+              }
+            ],
+            "action": "skill:crystal_cycle"
+          },
+          {
+            "conditions": [
+              {
+                "type": "own_hp_lte",
+                "percent": 70
+              }
+            ],
+            "action": "skill:crystal_aegis"
+          },
+          {
+            "conditions": [
+              {
+                "type": "always"
+              }
+            ],
+            "action": "skill:radiant_judgment"
+          },
+          {
+            "conditions": [
+              {
+                "type": "always"
+              }
+            ],
+            "action": "skill:holy_bolt"
+          },
+          {
+            "conditions": [
+              {
+                "type": "always"
+              }
+            ],
+            "action": "normal_attack"
+          }
+        ],
+        "ai_mode": "default",
+        "modifiers": {
+          "healing_bps": 750,
+          "miracle_damage_bps": 600,
+          "grace_enabled": true,
+          "mp_cost_reduction_bps": 450,
+          "barrier_bps": 540,
+          "apotheosis_period_rounds": 5,
+          "apotheosis_bonus_bps": 2800
+        },
+        "equipment": {
+          "key": "generated:obsidian_cavern:crystal_staff",
+          "label": "魔窟の杖",
+          "catalog_identity": "secretary-underground-shop-equipment-alpha-v2",
+          "item_level": 90,
+          "rarity": "uncommon",
+          "weapon_style": "crystal_staff",
+          "weapon_power": 178,
+          "physical_defense": 370,
+          "magical_defense": 308,
+          "max_hp": 1095,
+          "stats": {
+            "vitality": 10,
+            "might": 4,
+            "finesse": 30,
+            "spirit": 101,
+            "agility": 0
+          },
+          "modifiers": {
+            "healing_bps": 393,
+            "physical_damage_bps": 182
+          },
+          "affixes": [
+            {
+              "item_key": "generated:obsidian_cavern:crystal_staff",
+              "key": "finesse",
+              "label": "技巧アップ",
+              "kind": "stat",
+              "target": "finesse",
+              "value": 10,
+              "quality_bps": 9921,
+              "standard_value": 10
+            },
+            {
+              "item_key": "generated:obsidian_cavern:crystal_staff",
+              "key": "max_hp",
+              "label": "最大HPアップ",
+              "kind": "base",
+              "target": "max_hp",
+              "value": 170,
+              "quality_bps": 8941,
+              "standard_value": 190
+            },
+            {
+              "item_key": "generated:obsidian_cavern:armor",
+              "key": "finesse",
+              "label": "技巧アップ",
+              "kind": "stat",
+              "target": "finesse",
+              "value": 10,
+              "quality_bps": 9686,
+              "standard_value": 10
+            },
+            {
+              "item_key": "generated:obsidian_cavern:armor",
+              "key": "healing_bps",
+              "label": "治癒力アップ",
+              "kind": "modifier",
+              "target": "healing_bps",
+              "value": 393,
+              "quality_bps": 9913,
+              "raw_value": 210,
+              "item_level_bps": 18900
+            },
+            {
+              "item_key": "generated:obsidian_cavern:accessory",
+              "key": "magical_defense",
+              "label": "魔法防御アップ",
+              "kind": "base",
+              "target": "magical_defense",
+              "value": 8,
+              "quality_bps": 8035,
+              "standard_value": 20
+            },
+            {
+              "item_key": "generated:obsidian_cavern:accessory",
+              "key": "physical_damage_bps",
+              "label": "物理攻撃力アップ",
+              "kind": "modifier",
+              "target": "physical_damage_bps",
+              "value": 182,
+              "quality_bps": 9080,
+              "raw_value": 212,
+              "item_level_bps": 18900
+            },
+            {
+              "item_key": "generated:obsidian_cavern:accessory",
+              "key": "might",
+              "label": "筋力アップ",
+              "kind": "stat",
+              "target": "might",
+              "value": 4,
+              "quality_bps": 8572,
+              "standard_value": 10
+            }
+          ],
+          "unique_effect": null,
+          "items": [
+            {
+              "key": "generated:obsidian_cavern:crystal_staff",
+              "name": "魔窟の杖",
+              "category": "weapon",
+              "equipped_slot": "weapon",
+              "rank": 0,
+              "item_level": 90,
+              "rarity": "uncommon",
+              "catalog_identity": "secretary-underground-drop-equipment-alpha-v1",
+              "instance_identity": "5cbe7bfba5c74cb6e95213810310e998ecd17236241dc89cefc7268187607c53"
+            },
+            {
+              "key": "generated:obsidian_cavern:armor",
+              "name": "魔窟の胸当て",
+              "category": "armor",
+              "equipped_slot": "armor",
+              "rank": 0,
+              "item_level": 90,
+              "rarity": "uncommon",
+              "catalog_identity": "secretary-underground-drop-equipment-alpha-v1",
+              "instance_identity": "89309863ebb1692231bb693cb944eb2b00fde24ed757122d6d58e44c57ac07c8"
+            },
+            {
+              "key": "generated:obsidian_cavern:accessory",
+              "name": "魔窟の精神護符",
+              "category": "accessory",
+              "equipped_slot": "accessory_1",
+              "rank": 0,
+              "item_level": 90,
+              "rarity": "uncommon",
+              "catalog_identity": "secretary-underground-drop-equipment-alpha-v1",
+              "instance_identity": "bd78e318b4ff7976b66d106b71bebf67036b3a38061504ebcc5b32e293d4ae62"
+            },
+            {
+              "key": "generated:obsidian_cavern:accessory",
+              "name": "魔窟の精神護符",
+              "category": "accessory",
+              "equipped_slot": "accessory_2",
+              "rank": 0,
+              "item_level": 90,
+              "rarity": "uncommon",
+              "catalog_identity": "secretary-underground-drop-equipment-alpha-v1",
+              "instance_identity": "f17f3f5d86efe5443d5a382a88b27066973399b5192659b6ad153c17bf391941"
+            },
+            {
+              "key": "generated:obsidian_cavern:accessory",
+              "name": "魔窟の精神護符",
+              "category": "accessory",
+              "equipped_slot": "accessory_3",
+              "rank": 0,
+              "item_level": 90,
+              "rarity": "uncommon",
+              "catalog_identity": "secretary-underground-drop-equipment-alpha-v1",
+              "instance_identity": "af2f87592bceb98de7bef323190983279c3d82e492573fcc485aa1c2cb890d49"
+            }
+          ]
+        },
+        "current_hp": 3115
+      }
+    }
+  ],
+  "new": [
+    {
+      "tree": "martial",
+      "level": 30,
+      "sp_budget": 20,
+      "spent": 18,
+      "allocations": {
+        "martial_precision_cut": {
+          "rank": 1,
+          "active_slot": 1
+        },
+        "martial_dagger_flurry": {
+          "rank": 1,
+          "active_slot": 2
+        }
+      },
+      "snapshot": {
+        "key": "secretary_runtime",
+        "label": "martial",
+        "stats": {
+          "vitality": 76,
+          "might": 208,
+          "finesse": 59,
+          "spirit": 37,
+          "agility": 10
+        },
+        "active_skills": [
+          "precision_cut",
+          "dagger_flurry"
+        ],
+        "ai_rules": [
+          {
+            "conditions": [
+              {
+                "type": "own_hp_lte",
+                "percent": 20
+              }
+            ],
+            "action": "awakening"
+          },
+          {
+            "conditions": [
+              {
+                "type": "enemy_telegraph"
+              }
+            ],
+            "action": "defend"
+          },
+          {
+            "conditions": [
+              {
+                "type": "own_hp_lte",
+                "percent": 20
+              }
+            ],
+            "action": "defend"
+          },
+          {
+            "conditions": [
+              {
+                "type": "always"
+              }
+            ],
+            "action": "skill:dagger_flurry"
+          },
+          {
+            "conditions": [
+              {
+                "type": "always"
+              }
+            ],
+            "action": "skill:precision_cut"
+          },
+          {
+            "conditions": [
+              {
+                "type": "always"
+              }
+            ],
+            "action": "normal_attack"
+          }
+        ],
+        "ai_mode": "default",
+        "modifiers": [],
+        "equipment": {
+          "key": "generated:obsidian_cavern:dagger",
+          "label": "魔窟の短剣",
+          "catalog_identity": "secretary-underground-shop-equipment-alpha-v2",
+          "item_level": 30,
+          "rarity": "uncommon",
+          "weapon_style": "dagger",
+          "weapon_power": 80,
+          "physical_defense": 86,
+          "magical_defense": 74,
+          "max_hp": 273,
+          "stats": {
+            "vitality": 4,
+            "might": 17,
+            "finesse": 21,
+            "spirit": 0,
+            "agility": 9
+          },
+          "modifiers": {
+            "healing_bps": 269,
+            "physical_damage_bps": 124
+          },
+          "affixes": [
+            {
+              "item_key": "generated:obsidian_cavern:dagger",
+              "key": "finesse",
+              "label": "技巧アップ",
+              "kind": "stat",
+              "target": "finesse",
+              "value": 4,
+              "quality_bps": 9921,
+              "standard_value": 4
+            },
+            {
+              "item_key": "generated:obsidian_cavern:dagger",
+              "key": "max_hp",
+              "label": "最大HPアップ",
+              "kind": "base",
+              "target": "max_hp",
+              "value": 63,
+              "quality_bps": 8941,
+              "standard_value": 70
+            },
+            {
+              "item_key": "generated:obsidian_cavern:armor",
+              "key": "finesse",
+              "label": "技巧アップ",
+              "kind": "stat",
+              "target": "finesse",
+              "value": 4,
+              "quality_bps": 9686,
+              "standard_value": 4
+            },
+            {
+              "item_key": "generated:obsidian_cavern:armor",
+              "key": "healing_bps",
+              "label": "治癒力アップ",
+              "kind": "modifier",
+              "target": "healing_bps",
+              "value": 269,
+              "quality_bps": 9913,
+              "raw_value": 210,
+              "item_level_bps": 12900
+            },
+            {
+              "item_key": "generated:obsidian_cavern:accessory",
+              "key": "magical_defense",
+              "label": "魔法防御アップ",
+              "kind": "base",
+              "target": "magical_defense",
+              "value": 3,
+              "quality_bps": 8035,
+              "standard_value": 8
+            },
+            {
+              "item_key": "generated:obsidian_cavern:accessory",
+              "key": "physical_damage_bps",
+              "label": "物理攻撃力アップ",
+              "kind": "modifier",
+              "target": "physical_damage_bps",
+              "value": 124,
+              "quality_bps": 9080,
+              "raw_value": 212,
+              "item_level_bps": 12900
+            },
+            {
+              "item_key": "generated:obsidian_cavern:accessory",
+              "key": "might",
+              "label": "筋力アップ",
+              "kind": "stat",
+              "target": "might",
+              "value": 2,
+              "quality_bps": 8572,
+              "standard_value": 4
+            }
+          ],
+          "unique_effect": null,
+          "items": [
+            {
+              "key": "generated:obsidian_cavern:dagger",
+              "name": "魔窟の短剣",
+              "category": "weapon",
+              "equipped_slot": "weapon",
+              "rank": 0,
+              "item_level": 30,
+              "rarity": "uncommon",
+              "catalog_identity": "secretary-underground-drop-equipment-alpha-v1",
+              "instance_identity": "3028d3eb53d4e707ad34d53a98298faeb9cf382d4f245e5a8b17357f544644ce"
+            },
+            {
+              "key": "generated:obsidian_cavern:armor",
+              "name": "魔窟の胸当て",
+              "category": "armor",
+              "equipped_slot": "armor",
+              "rank": 0,
+              "item_level": 30,
+              "rarity": "uncommon",
+              "catalog_identity": "secretary-underground-drop-equipment-alpha-v1",
+              "instance_identity": "09de04b511d1bb3c63824d2708bf15ac7be46b1ee5d056291604a50fb80d4829"
+            },
+            {
+              "key": "generated:obsidian_cavern:accessory",
+              "name": "魔窟の武力護符",
+              "category": "accessory",
+              "equipped_slot": "accessory_1",
+              "rank": 0,
+              "item_level": 30,
+              "rarity": "uncommon",
+              "catalog_identity": "secretary-underground-drop-equipment-alpha-v1",
+              "instance_identity": "5a7eae49a41315dade198cfe10804c0ae3ec13cd38f11fd2cc0eb8a1e36c377e"
+            },
+            {
+              "key": "generated:obsidian_cavern:accessory",
+              "name": "魔窟の武力護符",
+              "category": "accessory",
+              "equipped_slot": "accessory_2",
+              "rank": 0,
+              "item_level": 30,
+              "rarity": "uncommon",
+              "catalog_identity": "secretary-underground-drop-equipment-alpha-v1",
+              "instance_identity": "f4be334eb44748bc4e1e77ab5e821dd375c94488665e100a6cc8ec6e472250d4"
+            },
+            {
+              "key": "generated:obsidian_cavern:accessory",
+              "name": "魔窟の武力護符",
+              "category": "accessory",
+              "equipped_slot": "accessory_3",
+              "rank": 0,
+              "item_level": 30,
+              "rarity": "uncommon",
+              "catalog_identity": "secretary-underground-drop-equipment-alpha-v1",
+              "instance_identity": "cafb11b009e64e4ff2e9b44c01a96fe7bf21c81c233f86a6c10701c474728a8e"
+            }
+          ]
+        },
+        "current_hp": 1253
+      }
+    },
+    {
+      "tree": "martial",
+      "level": 60,
+      "sp_budget": 60,
+      "spent": 60,
+      "allocations": {
+        "martial_precision_cut": {
+          "rank": 1,
+          "active_slot": 1
+        },
+        "martial_dagger_flurry": {
+          "rank": 1,
+          "active_slot": 2
+        },
+        "martial_armor_break": {
+          "rank": 1,
+          "active_slot": 3
+        },
+        "martial_severing_bleed": {
+          "rank": 1,
+          "active_slot": 4
+        },
+        "martial_quick_stab": {
+          "rank": 1,
+          "active_slot": 5
+        }
+      },
+      "snapshot": {
+        "key": "secretary_runtime",
+        "label": "martial",
+        "stats": {
+          "vitality": 136,
+          "might": 388,
+          "finesse": 89,
+          "spirit": 67,
+          "agility": 10
+        },
+        "active_skills": [
+          "precision_cut",
+          "dagger_flurry",
+          "armor_break_strike",
+          "severing_bleed",
+          "quick_stab"
+        ],
+        "ai_rules": [
+          {
+            "conditions": [
+              {
+                "type": "own_hp_lte",
+                "percent": 20
+              }
+            ],
+            "action": "awakening"
+          },
+          {
+            "conditions": [
+              {
+                "type": "enemy_telegraph"
+              }
+            ],
+            "action": "defend"
+          },
+          {
+            "conditions": [
+              {
+                "type": "own_hp_lte",
+                "percent": 20
+              }
+            ],
+            "action": "defend"
+          },
+          {
+            "conditions": [
+              {
+                "type": "always"
+              }
+            ],
+            "action": "skill:quick_stab"
+          },
+          {
+            "conditions": [
+              {
+                "type": "always"
+              }
+            ],
+            "action": "skill:armor_break_strike"
+          },
+          {
+            "conditions": [
+              {
+                "type": "always"
+              }
+            ],
+            "action": "skill:severing_bleed"
+          },
+          {
+            "conditions": [
+              {
+                "type": "always"
+              }
+            ],
+            "action": "skill:dagger_flurry"
+          },
+          {
+            "conditions": [
+              {
+                "type": "always"
+              }
+            ],
+            "action": "skill:precision_cut"
+          },
+          {
+            "conditions": [
+              {
+                "type": "always"
+              }
+            ],
+            "action": "normal_attack"
+          }
+        ],
+        "ai_mode": "default",
+        "modifiers": [],
+        "equipment": {
+          "key": "generated:obsidian_cavern:dagger",
+          "label": "魔窟の短剣",
+          "catalog_identity": "secretary-underground-shop-equipment-alpha-v2",
+          "item_level": 60,
+          "rarity": "uncommon",
+          "weapon_style": "dagger",
+          "weapon_power": 140,
+          "physical_defense": 220,
+          "magical_defense": 186,
+          "max_hp": 666,
+          "stats": {
+            "vitality": 7,
+            "might": 39,
+            "finesse": 34,
+            "spirit": 0,
+            "agility": 13
+          },
+          "modifiers": {
+            "healing_bps": 331,
+            "physical_damage_bps": 153
+          },
+          "affixes": [
+            {
+              "item_key": "generated:obsidian_cavern:dagger",
+              "key": "finesse",
+              "label": "技巧アップ",
+              "kind": "stat",
+              "target": "finesse",
+              "value": 7,
+              "quality_bps": 9921,
+              "standard_value": 7
+            },
+            {
+              "item_key": "generated:obsidian_cavern:dagger",
+              "key": "max_hp",
+              "label": "最大HPアップ",
+              "kind": "base",
+              "target": "max_hp",
+              "value": 116,
+              "quality_bps": 8941,
+              "standard_value": 130
+            },
+            {
+              "item_key": "generated:obsidian_cavern:armor",
+              "key": "finesse",
+              "label": "技巧アップ",
+              "kind": "stat",
+              "target": "finesse",
+              "value": 7,
+              "quality_bps": 9686,
+              "standard_value": 7
+            },
+            {
+              "item_key": "generated:obsidian_cavern:armor",
+              "key": "healing_bps",
+              "label": "治癒力アップ",
+              "kind": "modifier",
+              "target": "healing_bps",
+              "value": 331,
+              "quality_bps": 9913,
+              "raw_value": 210,
+              "item_level_bps": 15900
+            },
+            {
+              "item_key": "generated:obsidian_cavern:accessory",
+              "key": "magical_defense",
+              "label": "魔法防御アップ",
+              "kind": "base",
+              "target": "magical_defense",
+              "value": 6,
+              "quality_bps": 8035,
+              "standard_value": 14
+            },
+            {
+              "item_key": "generated:obsidian_cavern:accessory",
+              "key": "physical_damage_bps",
+              "label": "物理攻撃力アップ",
+              "kind": "modifier",
+              "target": "physical_damage_bps",
+              "value": 153,
+              "quality_bps": 9080,
+              "raw_value": 212,
+              "item_level_bps": 15900
+            },
+            {
+              "item_key": "generated:obsidian_cavern:accessory",
+              "key": "might",
+              "label": "筋力アップ",
+              "kind": "stat",
+              "target": "might",
+              "value": 3,
+              "quality_bps": 8572,
+              "standard_value": 7
+            }
+          ],
+          "unique_effect": null,
+          "items": [
+            {
+              "key": "generated:obsidian_cavern:dagger",
+              "name": "魔窟の短剣",
+              "category": "weapon",
+              "equipped_slot": "weapon",
+              "rank": 0,
+              "item_level": 60,
+              "rarity": "uncommon",
+              "catalog_identity": "secretary-underground-drop-equipment-alpha-v1",
+              "instance_identity": "5dcd7dbd9db9e7375fb9dd6ee9d7e33ae99856d1dc8376e661b82cc719389e86"
+            },
+            {
+              "key": "generated:obsidian_cavern:armor",
+              "name": "魔窟の胸当て",
+              "category": "armor",
+              "equipped_slot": "armor",
+              "rank": 0,
+              "item_level": 60,
+              "rarity": "uncommon",
+              "catalog_identity": "secretary-underground-drop-equipment-alpha-v1",
+              "instance_identity": "5d7e0514d385b561d73028ce637dab2a9007c11cabd002c4bc2f5fe0844605f2"
+            },
+            {
+              "key": "generated:obsidian_cavern:accessory",
+              "name": "魔窟の武力護符",
+              "category": "accessory",
+              "equipped_slot": "accessory_1",
+              "rank": 0,
+              "item_level": 60,
+              "rarity": "uncommon",
+              "catalog_identity": "secretary-underground-drop-equipment-alpha-v1",
+              "instance_identity": "3dddbfecf3ce046ec170fc1d79c8d3f511bf1cf9a349dcbdbd4b6073a6fc95c8"
+            },
+            {
+              "key": "generated:obsidian_cavern:accessory",
+              "name": "魔窟の武力護符",
+              "category": "accessory",
+              "equipped_slot": "accessory_2",
+              "rank": 0,
+              "item_level": 60,
+              "rarity": "uncommon",
+              "catalog_identity": "secretary-underground-drop-equipment-alpha-v1",
+              "instance_identity": "8f36a23f49e8ff5b2a9a27c154890b77618c0f1e62686d62944d1a6bdf110445"
+            },
+            {
+              "key": "generated:obsidian_cavern:accessory",
+              "name": "魔窟の武力護符",
+              "category": "accessory",
+              "equipped_slot": "accessory_3",
+              "rank": 0,
+              "item_level": 60,
+              "rarity": "uncommon",
+              "catalog_identity": "secretary-underground-drop-equipment-alpha-v1",
+              "instance_identity": "2377adda6807fe52147a9cb83737931a44417807c7b97895c97d2571dc43b453"
+            }
+          ]
+        },
+        "current_hp": 2150
+      }
+    },
+    {
+      "tree": "martial",
+      "level": 90,
+      "sp_budget": 100,
+      "spent": 72,
+      "allocations": {
+        "martial_precision_cut": {
+          "rank": 1,
+          "active_slot": 1
+        },
+        "martial_armor_break": {
+          "rank": 1,
+          "active_slot": 2
+        },
+        "martial_iaido_cut": {
+          "rank": 1,
+          "active_slot": 3
+        },
+        "martial_executioner": {
+          "rank": 1,
+          "active_slot": 4
+        },
+        "martial_quick_stab": {
+          "rank": 1,
+          "active_slot": 5
+        }
+      },
+      "snapshot": {
+        "key": "secretary_runtime",
+        "label": "martial",
+        "stats": {
+          "vitality": 196,
+          "might": 568,
+          "finesse": 119,
+          "spirit": 97,
+          "agility": 10
+        },
+        "active_skills": [
+          "precision_cut",
+          "armor_break_strike",
+          "iaido_cut",
+          "executioner_cut",
+          "quick_stab"
+        ],
+        "ai_rules": [
+          {
+            "conditions": [
+              {
+                "type": "own_hp_lte",
+                "percent": 20
+              }
+            ],
+            "action": "awakening"
+          },
+          {
+            "conditions": [
+              {
+                "type": "enemy_telegraph"
+              }
+            ],
+            "action": "defend"
+          },
+          {
+            "conditions": [
+              {
+                "type": "own_hp_lte",
+                "percent": 20
+              }
+            ],
+            "action": "defend"
+          },
+          {
+            "conditions": [
+              {
+                "type": "always"
+              }
+            ],
+            "action": "skill:quick_stab"
+          },
+          {
+            "conditions": [
+              {
+                "type": "always"
+              }
+            ],
+            "action": "skill:executioner_cut"
+          },
+          {
+            "conditions": [
+              {
+                "type": "always"
+              }
+            ],
+            "action": "skill:iaido_cut"
+          },
+          {
+            "conditions": [
+              {
+                "type": "always"
+              }
+            ],
+            "action": "skill:armor_break_strike"
+          },
+          {
+            "conditions": [
+              {
+                "type": "always"
+              }
+            ],
+            "action": "skill:precision_cut"
+          },
+          {
+            "conditions": [
+              {
+                "type": "always"
+              }
+            ],
+            "action": "normal_attack"
+          }
+        ],
+        "ai_mode": "default",
+        "modifiers": [],
+        "equipment": {
+          "key": "generated:obsidian_cavern:dagger",
+          "label": "魔窟の短剣",
+          "catalog_identity": "secretary-underground-shop-equipment-alpha-v2",
+          "item_level": 90,
+          "rarity": "uncommon",
+          "weapon_style": "dagger",
+          "weapon_power": 200,
+          "physical_defense": 370,
+          "magical_defense": 308,
+          "max_hp": 1095,
+          "stats": {
+            "vitality": 10,
+            "might": 67,
+            "finesse": 46,
+            "spirit": 0,
+            "agility": 18
+          },
+          "modifiers": {
+            "healing_bps": 393,
+            "physical_damage_bps": 182
+          },
+          "affixes": [
+            {
+              "item_key": "generated:obsidian_cavern:dagger",
+              "key": "finesse",
+              "label": "技巧アップ",
+              "kind": "stat",
+              "target": "finesse",
+              "value": 10,
+              "quality_bps": 9921,
+              "standard_value": 10
+            },
+            {
+              "item_key": "generated:obsidian_cavern:dagger",
+              "key": "max_hp",
+              "label": "最大HPアップ",
+              "kind": "base",
+              "target": "max_hp",
+              "value": 170,
+              "quality_bps": 8941,
+              "standard_value": 190
+            },
+            {
+              "item_key": "generated:obsidian_cavern:armor",
+              "key": "finesse",
+              "label": "技巧アップ",
+              "kind": "stat",
+              "target": "finesse",
+              "value": 10,
+              "quality_bps": 9686,
+              "standard_value": 10
+            },
+            {
+              "item_key": "generated:obsidian_cavern:armor",
+              "key": "healing_bps",
+              "label": "治癒力アップ",
+              "kind": "modifier",
+              "target": "healing_bps",
+              "value": 393,
+              "quality_bps": 9913,
+              "raw_value": 210,
+              "item_level_bps": 18900
+            },
+            {
+              "item_key": "generated:obsidian_cavern:accessory",
+              "key": "magical_defense",
+              "label": "魔法防御アップ",
+              "kind": "base",
+              "target": "magical_defense",
+              "value": 8,
+              "quality_bps": 8035,
+              "standard_value": 20
+            },
+            {
+              "item_key": "generated:obsidian_cavern:accessory",
+              "key": "physical_damage_bps",
+              "label": "物理攻撃力アップ",
+              "kind": "modifier",
+              "target": "physical_damage_bps",
+              "value": 182,
+              "quality_bps": 9080,
+              "raw_value": 212,
+              "item_level_bps": 18900
+            },
+            {
+              "item_key": "generated:obsidian_cavern:accessory",
+              "key": "might",
+              "label": "筋力アップ",
+              "kind": "stat",
+              "target": "might",
+              "value": 4,
+              "quality_bps": 8572,
+              "standard_value": 10
+            }
+          ],
+          "unique_effect": null,
+          "items": [
+            {
+              "key": "generated:obsidian_cavern:dagger",
+              "name": "魔窟の短剣",
+              "category": "weapon",
+              "equipped_slot": "weapon",
+              "rank": 0,
+              "item_level": 90,
+              "rarity": "uncommon",
+              "catalog_identity": "secretary-underground-drop-equipment-alpha-v1",
+              "instance_identity": "3225de90c0ccbe7a68d6610a1ecfb5011b78bfc5a7b58ee8bcd5b64ef9ca4799"
+            },
+            {
+              "key": "generated:obsidian_cavern:armor",
+              "name": "魔窟の胸当て",
+              "category": "armor",
+              "equipped_slot": "armor",
+              "rank": 0,
+              "item_level": 90,
+              "rarity": "uncommon",
+              "catalog_identity": "secretary-underground-drop-equipment-alpha-v1",
+              "instance_identity": "fdccb400e9a8264cab5282e5442db1c14b7dee80127ecedd658dcf95a98018f3"
+            },
+            {
+              "key": "generated:obsidian_cavern:accessory",
+              "name": "魔窟の武力護符",
+              "category": "accessory",
+              "equipped_slot": "accessory_1",
+              "rank": 0,
+              "item_level": 90,
+              "rarity": "uncommon",
+              "catalog_identity": "secretary-underground-drop-equipment-alpha-v1",
+              "instance_identity": "e8dc1ae35c096fe1256d970744458e97ad2f354b55129589226b6101f59f89fc"
+            },
+            {
+              "key": "generated:obsidian_cavern:accessory",
+              "name": "魔窟の武力護符",
+              "category": "accessory",
+              "equipped_slot": "accessory_2",
+              "rank": 0,
+              "item_level": 90,
+              "rarity": "uncommon",
+              "catalog_identity": "secretary-underground-drop-equipment-alpha-v1",
+              "instance_identity": "264455842b7e82f808612f5394d617d2d41cecfd99a4246964a76666afa7a6ee"
+            },
+            {
+              "key": "generated:obsidian_cavern:accessory",
+              "name": "魔窟の武力護符",
+              "category": "accessory",
+              "equipped_slot": "accessory_3",
+              "rank": 0,
+              "item_level": 90,
+              "rarity": "uncommon",
+              "catalog_identity": "secretary-underground-drop-equipment-alpha-v1",
+              "instance_identity": "53097c00ed0d875817dfc5e348cc404bebadb63aea10d6f1b7fa147224b087b2"
+            }
+          ]
+        },
+        "current_hp": 3083
+      }
+    },
+    {
+      "tree": "guardianship",
+      "level": 30,
+      "sp_budget": 20,
+      "spent": 18,
+      "allocations": {
+        "guardianship_shield_bash": {
+          "rank": 1,
+          "active_slot": 1
+        },
+        "guardianship_counter_stance": {
+          "rank": 1,
+          "active_slot": 2
+        }
+      },
+      "snapshot": {
+        "key": "secretary_runtime",
+        "label": "guardianship",
+        "stats": {
+          "vitality": 243,
+          "might": 51,
+          "finesse": 39,
+          "spirit": 45,
+          "agility": 12
+        },
+        "active_skills": [
+          "shield_bash",
+          "counter_stance"
+        ],
+        "ai_rules": [
+          {
+            "conditions": [
+              {
+                "type": "own_hp_lte",
+                "percent": 20
+              }
+            ],
+            "action": "awakening"
+          },
+          {
+            "conditions": [
+              {
+                "type": "enemy_telegraph"
+              }
+            ],
+            "action": "defend"
+          },
+          {
+            "conditions": [
+              {
+                "type": "own_hp_lte",
+                "percent": 20
+              }
+            ],
+            "action": "defend"
+          },
+          {
+            "conditions": [
+              {
+                "type": "self_lacks_status",
+                "status": "aegis"
+              }
+            ],
+            "action": "skill:counter_stance"
+          },
+          {
+            "conditions": [
+              {
+                "type": "always"
+              }
+            ],
+            "action": "skill:shield_bash"
+          },
+          {
+            "conditions": [
+              {
+                "type": "always"
+              }
+            ],
+            "action": "normal_attack"
+          }
+        ],
+        "ai_mode": "default",
+        "modifiers": [],
+        "equipment": {
+          "key": "generated:obsidian_cavern:longsword",
+          "label": "魔窟の長剣",
+          "catalog_identity": "secretary-underground-shop-equipment-alpha-v2",
+          "item_level": 30,
+          "rarity": "uncommon",
+          "weapon_style": "longsword",
+          "weapon_power": 82,
+          "physical_defense": 106,
+          "magical_defense": 74,
+          "max_hp": 273,
+          "stats": {
+            "vitality": 32,
+            "might": 10,
+            "finesse": 8,
+            "spirit": 0,
+            "agility": 0
+          },
+          "modifiers": {
+            "healing_bps": 269,
+            "physical_damage_bps": 124
+          },
+          "affixes": [
+            {
+              "item_key": "generated:obsidian_cavern:longsword",
+              "key": "finesse",
+              "label": "技巧アップ",
+              "kind": "stat",
+              "target": "finesse",
+              "value": 4,
+              "quality_bps": 9921,
+              "standard_value": 4
+            },
+            {
+              "item_key": "generated:obsidian_cavern:longsword",
+              "key": "max_hp",
+              "label": "最大HPアップ",
+              "kind": "base",
+              "target": "max_hp",
+              "value": 63,
+              "quality_bps": 8941,
+              "standard_value": 70
+            },
+            {
+              "item_key": "generated:obsidian_cavern:armor",
+              "key": "finesse",
+              "label": "技巧アップ",
+              "kind": "stat",
+              "target": "finesse",
+              "value": 4,
+              "quality_bps": 9686,
+              "standard_value": 4
+            },
+            {
+              "item_key": "generated:obsidian_cavern:armor",
+              "key": "healing_bps",
+              "label": "治癒力アップ",
+              "kind": "modifier",
+              "target": "healing_bps",
+              "value": 269,
+              "quality_bps": 9913,
+              "raw_value": 210,
+              "item_level_bps": 12900
+            },
+            {
+              "item_key": "generated:obsidian_cavern:accessory",
+              "key": "magical_defense",
+              "label": "魔法防御アップ",
+              "kind": "base",
+              "target": "magical_defense",
+              "value": 3,
+              "quality_bps": 8035,
+              "standard_value": 8
+            },
+            {
+              "item_key": "generated:obsidian_cavern:accessory",
+              "key": "physical_damage_bps",
+              "label": "物理攻撃力アップ",
+              "kind": "modifier",
+              "target": "physical_damage_bps",
+              "value": 124,
+              "quality_bps": 9080,
+              "raw_value": 212,
+              "item_level_bps": 12900
+            },
+            {
+              "item_key": "generated:obsidian_cavern:accessory",
+              "key": "might",
+              "label": "筋力アップ",
+              "kind": "stat",
+              "target": "might",
+              "value": 2,
+              "quality_bps": 8572,
+              "standard_value": 4
+            }
+          ],
+          "unique_effect": null,
+          "items": [
+            {
+              "key": "generated:obsidian_cavern:longsword",
+              "name": "魔窟の長剣",
+              "category": "weapon",
+              "equipped_slot": "weapon",
+              "rank": 0,
+              "item_level": 30,
+              "rarity": "uncommon",
+              "catalog_identity": "secretary-underground-drop-equipment-alpha-v1",
+              "instance_identity": "8b306c816e06a23fa15c0c10437d9dcd3ae9c965f242a49cb7ea7f1d09900fda"
+            },
+            {
+              "key": "generated:obsidian_cavern:armor",
+              "name": "魔窟の胸当て",
+              "category": "armor",
+              "equipped_slot": "armor",
+              "rank": 0,
+              "item_level": 30,
+              "rarity": "uncommon",
+              "catalog_identity": "secretary-underground-drop-equipment-alpha-v1",
+              "instance_identity": "1a0f8405f54b6c2042b71a1097dab6217b47d8460babd08b5f256eddf95e4425"
+            },
+            {
+              "key": "generated:obsidian_cavern:accessory",
+              "name": "魔窟の生命護符",
+              "category": "accessory",
+              "equipped_slot": "accessory_1",
+              "rank": 0,
+              "item_level": 30,
+              "rarity": "uncommon",
+              "catalog_identity": "secretary-underground-drop-equipment-alpha-v1",
+              "instance_identity": "db3c7cba23d1ab95d24e6c3df0343639097a49cc56f605e4feb2ae9defb292e8"
+            },
+            {
+              "key": "generated:obsidian_cavern:accessory",
+              "name": "魔窟の生命護符",
+              "category": "accessory",
+              "equipped_slot": "accessory_2",
+              "rank": 0,
+              "item_level": 30,
+              "rarity": "uncommon",
+              "catalog_identity": "secretary-underground-drop-equipment-alpha-v1",
+              "instance_identity": "9bdf36b71b64645c271cfe93d37f9c440a206c000f2b415bbf3e83b3d9c41118"
+            },
+            {
+              "key": "generated:obsidian_cavern:accessory",
+              "name": "魔窟の生命護符",
+              "category": "accessory",
+              "equipped_slot": "accessory_3",
+              "rank": 0,
+              "item_level": 30,
+              "rarity": "uncommon",
+              "catalog_identity": "secretary-underground-drop-equipment-alpha-v1",
+              "instance_identity": "7bcd23eb587ea5215eea15723eeaa40c8873f2d371cba790793f5ff4cf7cee04"
+            }
+          ]
+        },
+        "current_hp": 2813
+      }
+    },
+    {
+      "tree": "guardianship",
+      "level": 60,
+      "sp_budget": 60,
+      "spent": 48,
+      "allocations": {
+        "guardianship_shield_bash": {
+          "rank": 1,
+          "active_slot": 1
+        },
+        "guardianship_counter_stance": {
+          "rank": 1,
+          "active_slot": 2
+        },
+        "guardianship_renewing_guard": {
+          "rank": 1,
+          "active_slot": 3
+        },
+        "guardianship_bulwark_strike": {
+          "rank": 1,
+          "active_slot": 4
+        }
+      },
+      "snapshot": {
+        "key": "secretary_runtime",
+        "label": "guardianship",
+        "stats": {
+          "vitality": 453,
+          "might": 81,
+          "finesse": 69,
+          "spirit": 75,
+          "agility": 12
+        },
+        "active_skills": [
+          "shield_bash",
+          "counter_stance",
+          "renewing_guard",
+          "bulwark_strike"
+        ],
+        "ai_rules": [
+          {
+            "conditions": [
+              {
+                "type": "own_hp_lte",
+                "percent": 20
+              }
+            ],
+            "action": "awakening"
+          },
+          {
+            "conditions": [
+              {
+                "type": "own_hp_lte",
+                "percent": 55
+              }
+            ],
+            "action": "skill:renewing_guard"
+          },
+          {
+            "conditions": [
+              {
+                "type": "enemy_telegraph"
+              }
+            ],
+            "action": "defend"
+          },
+          {
+            "conditions": [
+              {
+                "type": "own_hp_lte",
+                "percent": 20
+              }
+            ],
+            "action": "defend"
+          },
+          {
+            "conditions": [
+              {
+                "type": "self_lacks_status",
+                "status": "aegis"
+              }
+            ],
+            "action": "skill:counter_stance"
+          },
+          {
+            "conditions": [
+              {
+                "type": "always"
+              }
+            ],
+            "action": "skill:bulwark_strike"
+          },
+          {
+            "conditions": [
+              {
+                "type": "always"
+              }
+            ],
+            "action": "skill:shield_bash"
+          },
+          {
+            "conditions": [
+              {
+                "type": "always"
+              }
+            ],
+            "action": "normal_attack"
+          }
+        ],
+        "ai_mode": "default",
+        "modifiers": [],
+        "equipment": {
+          "key": "generated:obsidian_cavern:longsword",
+          "label": "魔窟の長剣",
+          "catalog_identity": "secretary-underground-shop-equipment-alpha-v2",
+          "item_level": 60,
+          "rarity": "uncommon",
+          "weapon_style": "longsword",
+          "weapon_power": 142,
+          "physical_defense": 260,
+          "magical_defense": 186,
+          "max_hp": 666,
+          "stats": {
+            "vitality": 63,
+            "might": 15,
+            "finesse": 14,
+            "spirit": 0,
+            "agility": 0
+          },
+          "modifiers": {
+            "healing_bps": 331,
+            "physical_damage_bps": 153
+          },
+          "affixes": [
+            {
+              "item_key": "generated:obsidian_cavern:longsword",
+              "key": "finesse",
+              "label": "技巧アップ",
+              "kind": "stat",
+              "target": "finesse",
+              "value": 7,
+              "quality_bps": 9921,
+              "standard_value": 7
+            },
+            {
+              "item_key": "generated:obsidian_cavern:longsword",
+              "key": "max_hp",
+              "label": "最大HPアップ",
+              "kind": "base",
+              "target": "max_hp",
+              "value": 116,
+              "quality_bps": 8941,
+              "standard_value": 130
+            },
+            {
+              "item_key": "generated:obsidian_cavern:armor",
+              "key": "finesse",
+              "label": "技巧アップ",
+              "kind": "stat",
+              "target": "finesse",
+              "value": 7,
+              "quality_bps": 9686,
+              "standard_value": 7
+            },
+            {
+              "item_key": "generated:obsidian_cavern:armor",
+              "key": "healing_bps",
+              "label": "治癒力アップ",
+              "kind": "modifier",
+              "target": "healing_bps",
+              "value": 331,
+              "quality_bps": 9913,
+              "raw_value": 210,
+              "item_level_bps": 15900
+            },
+            {
+              "item_key": "generated:obsidian_cavern:accessory",
+              "key": "magical_defense",
+              "label": "魔法防御アップ",
+              "kind": "base",
+              "target": "magical_defense",
+              "value": 6,
+              "quality_bps": 8035,
+              "standard_value": 14
+            },
+            {
+              "item_key": "generated:obsidian_cavern:accessory",
+              "key": "physical_damage_bps",
+              "label": "物理攻撃力アップ",
+              "kind": "modifier",
+              "target": "physical_damage_bps",
+              "value": 153,
+              "quality_bps": 9080,
+              "raw_value": 212,
+              "item_level_bps": 15900
+            },
+            {
+              "item_key": "generated:obsidian_cavern:accessory",
+              "key": "might",
+              "label": "筋力アップ",
+              "kind": "stat",
+              "target": "might",
+              "value": 3,
+              "quality_bps": 8572,
+              "standard_value": 7
+            }
+          ],
+          "unique_effect": null,
+          "items": [
+            {
+              "key": "generated:obsidian_cavern:longsword",
+              "name": "魔窟の長剣",
+              "category": "weapon",
+              "equipped_slot": "weapon",
+              "rank": 0,
+              "item_level": 60,
+              "rarity": "uncommon",
+              "catalog_identity": "secretary-underground-drop-equipment-alpha-v1",
+              "instance_identity": "287213d5774d1b7adbc24d21c7ff157a6fe2633a079f8ffc7d179929275be94e"
+            },
+            {
+              "key": "generated:obsidian_cavern:armor",
+              "name": "魔窟の胸当て",
+              "category": "armor",
+              "equipped_slot": "armor",
+              "rank": 0,
+              "item_level": 60,
+              "rarity": "uncommon",
+              "catalog_identity": "secretary-underground-drop-equipment-alpha-v1",
+              "instance_identity": "65cb98ed24609eaf17b8b13b2adcf20d15c150bf8c412e657bee5ba2116c9b3a"
+            },
+            {
+              "key": "generated:obsidian_cavern:accessory",
+              "name": "魔窟の生命護符",
+              "category": "accessory",
+              "equipped_slot": "accessory_1",
+              "rank": 0,
+              "item_level": 60,
+              "rarity": "uncommon",
+              "catalog_identity": "secretary-underground-drop-equipment-alpha-v1",
+              "instance_identity": "f6ca92cf08652af2c557d3af4edfe43081696ecfd116756d56ac0ff04f91a245"
+            },
+            {
+              "key": "generated:obsidian_cavern:accessory",
+              "name": "魔窟の生命護符",
+              "category": "accessory",
+              "equipped_slot": "accessory_2",
+              "rank": 0,
+              "item_level": 60,
+              "rarity": "uncommon",
+              "catalog_identity": "secretary-underground-drop-equipment-alpha-v1",
+              "instance_identity": "309ee5c6c6b867458e75cf5a5152dd4bca23ce3f5a4e8e5000c401b60b77d5de"
+            },
+            {
+              "key": "generated:obsidian_cavern:accessory",
+              "name": "魔窟の生命護符",
+              "category": "accessory",
+              "equipped_slot": "accessory_3",
+              "rank": 0,
+              "item_level": 60,
+              "rarity": "uncommon",
+              "catalog_identity": "secretary-underground-drop-equipment-alpha-v1",
+              "instance_identity": "b9c12f9029d991e4715f42322d23b233bfcdaaffe2dcf83c7d1bd43ab09a362d"
+            }
+          ]
+        },
+        "current_hp": 5134
+      }
+    },
+    {
+      "tree": "guardianship",
+      "level": 90,
+      "sp_budget": 100,
+      "spent": 72,
+      "allocations": {
+        "guardianship_shield_bash": {
+          "rank": 1,
+          "active_slot": 1
+        },
+        "guardianship_counter_stance": {
+          "rank": 1,
+          "active_slot": 2
+        },
+        "guardianship_renewing_guard": {
+          "rank": 1,
+          "active_slot": 3
+        },
+        "guardianship_bulwark_strike": {
+          "rank": 1,
+          "active_slot": 4
+        },
+        "guardianship_retort": {
+          "rank": 1,
+          "active_slot": 5
+        }
+      },
+      "snapshot": {
+        "key": "secretary_runtime",
+        "label": "guardianship",
+        "stats": {
+          "vitality": 663,
+          "might": 111,
+          "finesse": 99,
+          "spirit": 105,
+          "agility": 12
+        },
+        "active_skills": [
+          "shield_bash",
+          "counter_stance",
+          "renewing_guard",
+          "bulwark_strike",
+          "unbroken_retort"
+        ],
+        "ai_rules": [
+          {
+            "conditions": [
+              {
+                "type": "own_hp_lte",
+                "percent": 20
+              }
+            ],
+            "action": "awakening"
+          },
+          {
+            "conditions": [
+              {
+                "type": "own_hp_lte",
+                "percent": 55
+              }
+            ],
+            "action": "skill:renewing_guard"
+          },
+          {
+            "conditions": [
+              {
+                "type": "enemy_telegraph"
+              }
+            ],
+            "action": "defend"
+          },
+          {
+            "conditions": [
+              {
+                "type": "own_hp_lte",
+                "percent": 20
+              }
+            ],
+            "action": "defend"
+          },
+          {
+            "conditions": [
+              {
+                "type": "self_lacks_status",
+                "status": "aegis"
+              }
+            ],
+            "action": "skill:counter_stance"
+          },
+          {
+            "conditions": [
+              {
+                "type": "always"
+              }
+            ],
+            "action": "skill:unbroken_retort"
+          },
+          {
+            "conditions": [
+              {
+                "type": "always"
+              }
+            ],
+            "action": "skill:bulwark_strike"
+          },
+          {
+            "conditions": [
+              {
+                "type": "always"
+              }
+            ],
+            "action": "skill:shield_bash"
+          },
+          {
+            "conditions": [
+              {
+                "type": "always"
+              }
+            ],
+            "action": "normal_attack"
+          }
+        ],
+        "ai_mode": "default",
+        "modifiers": [],
+        "equipment": {
+          "key": "generated:obsidian_cavern:longsword",
+          "label": "魔窟の長剣",
+          "catalog_identity": "secretary-underground-shop-equipment-alpha-v2",
+          "item_level": 90,
+          "rarity": "uncommon",
+          "weapon_style": "longsword",
+          "weapon_power": 202,
+          "physical_defense": 434,
+          "magical_defense": 308,
+          "max_hp": 1095,
+          "stats": {
+            "vitality": 99,
+            "might": 21,
+            "finesse": 20,
+            "spirit": 0,
+            "agility": 0
+          },
+          "modifiers": {
+            "healing_bps": 393,
+            "physical_damage_bps": 182
+          },
+          "affixes": [
+            {
+              "item_key": "generated:obsidian_cavern:longsword",
+              "key": "finesse",
+              "label": "技巧アップ",
+              "kind": "stat",
+              "target": "finesse",
+              "value": 10,
+              "quality_bps": 9921,
+              "standard_value": 10
+            },
+            {
+              "item_key": "generated:obsidian_cavern:longsword",
+              "key": "max_hp",
+              "label": "最大HPアップ",
+              "kind": "base",
+              "target": "max_hp",
+              "value": 170,
+              "quality_bps": 8941,
+              "standard_value": 190
+            },
+            {
+              "item_key": "generated:obsidian_cavern:armor",
+              "key": "finesse",
+              "label": "技巧アップ",
+              "kind": "stat",
+              "target": "finesse",
+              "value": 10,
+              "quality_bps": 9686,
+              "standard_value": 10
+            },
+            {
+              "item_key": "generated:obsidian_cavern:armor",
+              "key": "healing_bps",
+              "label": "治癒力アップ",
+              "kind": "modifier",
+              "target": "healing_bps",
+              "value": 393,
+              "quality_bps": 9913,
+              "raw_value": 210,
+              "item_level_bps": 18900
+            },
+            {
+              "item_key": "generated:obsidian_cavern:accessory",
+              "key": "magical_defense",
+              "label": "魔法防御アップ",
+              "kind": "base",
+              "target": "magical_defense",
+              "value": 8,
+              "quality_bps": 8035,
+              "standard_value": 20
+            },
+            {
+              "item_key": "generated:obsidian_cavern:accessory",
+              "key": "physical_damage_bps",
+              "label": "物理攻撃力アップ",
+              "kind": "modifier",
+              "target": "physical_damage_bps",
+              "value": 182,
+              "quality_bps": 9080,
+              "raw_value": 212,
+              "item_level_bps": 18900
+            },
+            {
+              "item_key": "generated:obsidian_cavern:accessory",
+              "key": "might",
+              "label": "筋力アップ",
+              "kind": "stat",
+              "target": "might",
+              "value": 4,
+              "quality_bps": 8572,
+              "standard_value": 10
+            }
+          ],
+          "unique_effect": null,
+          "items": [
+            {
+              "key": "generated:obsidian_cavern:longsword",
+              "name": "魔窟の長剣",
+              "category": "weapon",
+              "equipped_slot": "weapon",
+              "rank": 0,
+              "item_level": 90,
+              "rarity": "uncommon",
+              "catalog_identity": "secretary-underground-drop-equipment-alpha-v1",
+              "instance_identity": "75eccd1489ceedefad84dc7bbf6955864f7776e5cfcf0bf78e211be3d9fa6598"
+            },
+            {
+              "key": "generated:obsidian_cavern:armor",
+              "name": "魔窟の胸当て",
+              "category": "armor",
+              "equipped_slot": "armor",
+              "rank": 0,
+              "item_level": 90,
+              "rarity": "uncommon",
+              "catalog_identity": "secretary-underground-drop-equipment-alpha-v1",
+              "instance_identity": "07ac286dfc5b12f7345db169d577748cf94319db0e95a638991fbebb99957303"
+            },
+            {
+              "key": "generated:obsidian_cavern:accessory",
+              "name": "魔窟の生命護符",
+              "category": "accessory",
+              "equipped_slot": "accessory_1",
+              "rank": 0,
+              "item_level": 90,
+              "rarity": "uncommon",
+              "catalog_identity": "secretary-underground-drop-equipment-alpha-v1",
+              "instance_identity": "238d769156d161b92772793a5d7ef30566980fc319e0e4e00c4d3d7e08e9757b"
+            },
+            {
+              "key": "generated:obsidian_cavern:accessory",
+              "name": "魔窟の生命護符",
+              "category": "accessory",
+              "equipped_slot": "accessory_2",
+              "rank": 0,
+              "item_level": 90,
+              "rarity": "uncommon",
+              "catalog_identity": "secretary-underground-drop-equipment-alpha-v1",
+              "instance_identity": "ec94b6de2e300ca84b260f89b47e371e74b615d78eda91e784f5ef164b771796"
+            },
+            {
+              "key": "generated:obsidian_cavern:accessory",
+              "name": "魔窟の生命護符",
+              "category": "accessory",
+              "equipped_slot": "accessory_3",
+              "rank": 0,
+              "item_level": 90,
+              "rarity": "uncommon",
+              "catalog_identity": "secretary-underground-drop-equipment-alpha-v1",
+              "instance_identity": "b97395dfa5f6cd9ba80c2381b13c1f2c2cba3f0d719a7408c27074401d1b1a98"
+            }
+          ]
+        },
+        "current_hp": 7531
+      }
+    },
+    {
+      "tree": "miracle",
+      "level": 30,
+      "sp_budget": 20,
+      "spent": 18,
+      "allocations": {
+        "miracle_holy_bolt": {
+          "rank": 1,
+          "active_slot": 1
+        },
+        "miracle_mending_prayer": {
+          "rank": 1,
+          "active_slot": 2
+        },
+        "miracle_lucid_dream": {
+          "rank": 1,
+          "active_slot": 3
+        }
+      },
+      "snapshot": {
+        "key": "secretary_runtime",
+        "label": "miracle",
+        "stats": {
+          "vitality": 80,
+          "might": 37,
+          "finesse": 45,
+          "spirit": 216,
+          "agility": 12
+        },
+        "active_skills": [
+          "holy_bolt",
+          "mending_prayer",
+          "lucid_dream"
+        ],
+        "ai_rules": [
+          {
+            "conditions": [
+              {
+                "type": "own_hp_lte",
+                "percent": 20
+              }
+            ],
+            "action": "awakening"
+          },
+          {
+            "conditions": [
+              {
+                "type": "ally_hp_lte",
+                "percent": 55
+              }
+            ],
+            "action": "skill:mending_prayer"
+          },
+          {
+            "conditions": [
+              {
+                "type": "enemy_telegraph"
+              }
+            ],
+            "action": "defend"
+          },
+          {
+            "conditions": [
+              {
+                "type": "own_hp_lte",
+                "percent": 20
+              }
+            ],
+            "action": "defend"
+          },
+          {
+            "conditions": [
+              {
+                "type": "own_mp_lte",
+                "percent": 75
+              },
+              {
+                "type": "self_lacks_status",
+                "status": "lucid_recovery"
+              }
+            ],
+            "action": "skill:lucid_dream"
+          },
+          {
+            "conditions": [
+              {
+                "type": "always"
+              }
+            ],
+            "action": "skill:holy_bolt"
+          },
+          {
+            "conditions": [
+              {
+                "type": "always"
+              }
+            ],
+            "action": "normal_attack"
+          }
+        ],
+        "ai_mode": "default",
+        "modifiers": [],
+        "equipment": {
+          "key": "generated:obsidian_cavern:crystal_staff",
+          "label": "魔窟の杖",
+          "catalog_identity": "secretary-underground-shop-equipment-alpha-v2",
+          "item_level": 30,
+          "rarity": "uncommon",
+          "weapon_style": "crystal_staff",
+          "weapon_power": 70,
+          "physical_defense": 86,
+          "magical_defense": 74,
+          "max_hp": 273,
+          "stats": {
+            "vitality": 4,
+            "might": 2,
+            "finesse": 12,
+            "spirit": 32,
+            "agility": 0
+          },
+          "modifiers": {
+            "healing_bps": 269,
+            "physical_damage_bps": 124
+          },
+          "affixes": [
+            {
+              "item_key": "generated:obsidian_cavern:crystal_staff",
+              "key": "finesse",
+              "label": "技巧アップ",
+              "kind": "stat",
+              "target": "finesse",
+              "value": 4,
+              "quality_bps": 9921,
+              "standard_value": 4
+            },
+            {
+              "item_key": "generated:obsidian_cavern:crystal_staff",
+              "key": "max_hp",
+              "label": "最大HPアップ",
+              "kind": "base",
+              "target": "max_hp",
+              "value": 63,
+              "quality_bps": 8941,
+              "standard_value": 70
+            },
+            {
+              "item_key": "generated:obsidian_cavern:armor",
+              "key": "finesse",
+              "label": "技巧アップ",
+              "kind": "stat",
+              "target": "finesse",
+              "value": 4,
+              "quality_bps": 9686,
+              "standard_value": 4
+            },
+            {
+              "item_key": "generated:obsidian_cavern:armor",
+              "key": "healing_bps",
+              "label": "治癒力アップ",
+              "kind": "modifier",
+              "target": "healing_bps",
+              "value": 269,
+              "quality_bps": 9913,
+              "raw_value": 210,
+              "item_level_bps": 12900
+            },
+            {
+              "item_key": "generated:obsidian_cavern:accessory",
+              "key": "magical_defense",
+              "label": "魔法防御アップ",
+              "kind": "base",
+              "target": "magical_defense",
+              "value": 3,
+              "quality_bps": 8035,
+              "standard_value": 8
+            },
+            {
+              "item_key": "generated:obsidian_cavern:accessory",
+              "key": "physical_damage_bps",
+              "label": "物理攻撃力アップ",
+              "kind": "modifier",
+              "target": "physical_damage_bps",
+              "value": 124,
+              "quality_bps": 9080,
+              "raw_value": 212,
+              "item_level_bps": 12900
+            },
+            {
+              "item_key": "generated:obsidian_cavern:accessory",
+              "key": "might",
+              "label": "筋力アップ",
+              "kind": "stat",
+              "target": "might",
+              "value": 2,
+              "quality_bps": 8572,
+              "standard_value": 4
+            }
+          ],
+          "unique_effect": null,
+          "items": [
+            {
+              "key": "generated:obsidian_cavern:crystal_staff",
+              "name": "魔窟の杖",
+              "category": "weapon",
+              "equipped_slot": "weapon",
+              "rank": 0,
+              "item_level": 30,
+              "rarity": "uncommon",
+              "catalog_identity": "secretary-underground-drop-equipment-alpha-v1",
+              "instance_identity": "9068ef1df119b34c067ab378a0242d9e614fb2029c855c98b78685127059dedc"
+            },
+            {
+              "key": "generated:obsidian_cavern:armor",
+              "name": "魔窟の胸当て",
+              "category": "armor",
+              "equipped_slot": "armor",
+              "rank": 0,
+              "item_level": 30,
+              "rarity": "uncommon",
+              "catalog_identity": "secretary-underground-drop-equipment-alpha-v1",
+              "instance_identity": "372255d64fb2d941f805ffadd1b5ab9f15ed54555fc0fbc6619a23cd7605a47e"
+            },
+            {
+              "key": "generated:obsidian_cavern:accessory",
+              "name": "魔窟の精神護符",
+              "category": "accessory",
+              "equipped_slot": "accessory_1",
+              "rank": 0,
+              "item_level": 30,
+              "rarity": "uncommon",
+              "catalog_identity": "secretary-underground-drop-equipment-alpha-v1",
+              "instance_identity": "44dd6d3be5e573432c6e2e4143561fe62c9faf4aedca1a1cf65eb995268ec025"
+            },
+            {
+              "key": "generated:obsidian_cavern:accessory",
+              "name": "魔窟の精神護符",
+              "category": "accessory",
+              "equipped_slot": "accessory_2",
+              "rank": 0,
+              "item_level": 30,
+              "rarity": "uncommon",
+              "catalog_identity": "secretary-underground-drop-equipment-alpha-v1",
+              "instance_identity": "7e3c3149b2f8091cc8494bc9a110b112b3130f0fad44f1934deaca5f9fa06d8e"
+            },
+            {
+              "key": "generated:obsidian_cavern:accessory",
+              "name": "魔窟の精神護符",
+              "category": "accessory",
+              "equipped_slot": "accessory_3",
+              "rank": 0,
+              "item_level": 30,
+              "rarity": "uncommon",
+              "catalog_identity": "secretary-underground-drop-equipment-alpha-v1",
+              "instance_identity": "2985b500024a852a8a381116fd730782fe183c27d6c2001e4e352e365743eef4"
+            }
+          ]
+        },
+        "current_hp": 1285
+      }
+    },
+    {
+      "tree": "miracle",
+      "level": 60,
+      "sp_budget": 60,
+      "spent": 60,
+      "allocations": {
+        "miracle_holy_bolt": {
+          "rank": 1,
+          "active_slot": 1
+        },
+        "miracle_mending_prayer": {
+          "rank": 1,
+          "active_slot": 2
+        },
+        "miracle_lucid_dream": {
+          "rank": 1,
+          "active_slot": 3
+        },
+        "miracle_holy_nova": {
+          "rank": 1,
+          "active_slot": null
+        },
+        "miracle_holy_lance": {
+          "rank": 1,
+          "active_slot": 4
+        },
+        "miracle_regeneration": {
+          "rank": 1,
+          "active_slot": 5
+        }
+      },
+      "snapshot": {
+        "key": "secretary_runtime",
+        "label": "miracle",
+        "stats": {
+          "vitality": 140,
+          "might": 67,
+          "finesse": 75,
+          "spirit": 396,
+          "agility": 12
+        },
+        "active_skills": [
+          "holy_bolt",
+          "mending_prayer",
+          "lucid_dream",
+          "holy_lance",
+          "regeneration"
+        ],
+        "ai_rules": [
+          {
+            "conditions": [
+              {
+                "type": "own_hp_lte",
+                "percent": 20
+              }
+            ],
+            "action": "awakening"
+          },
+          {
+            "conditions": [
+              {
+                "type": "ally_hp_lte",
+                "percent": 55
+              }
+            ],
+            "action": "skill:mending_prayer"
+          },
+          {
+            "conditions": [
+              {
+                "type": "enemy_telegraph"
+              }
+            ],
+            "action": "defend"
+          },
+          {
+            "conditions": [
+              {
+                "type": "own_hp_lte",
+                "percent": 20
+              }
+            ],
+            "action": "defend"
+          },
+          {
+            "conditions": [
+              {
+                "type": "own_mp_lte",
+                "percent": 75
+              },
+              {
+                "type": "self_lacks_status",
+                "status": "lucid_recovery"
+              }
+            ],
+            "action": "skill:lucid_dream"
+          },
+          {
+            "conditions": [
+              {
+                "type": "ally_hp_lte",
+                "percent": 80
+              }
+            ],
+            "action": "skill:regeneration"
+          },
+          {
+            "conditions": [
+              {
+                "type": "always"
+              }
+            ],
+            "action": "skill:holy_lance"
+          },
+          {
+            "conditions": [
+              {
+                "type": "always"
+              }
+            ],
+            "action": "skill:holy_bolt"
+          },
+          {
+            "conditions": [
+              {
+                "type": "always"
+              }
+            ],
+            "action": "normal_attack"
+          }
+        ],
+        "ai_mode": "default",
+        "modifiers": [],
+        "equipment": {
+          "key": "generated:obsidian_cavern:crystal_staff",
+          "label": "魔窟の杖",
+          "catalog_identity": "secretary-underground-shop-equipment-alpha-v2",
+          "item_level": 60,
+          "rarity": "uncommon",
+          "weapon_style": "crystal_staff",
+          "weapon_power": 124,
+          "physical_defense": 220,
+          "magical_defense": 186,
+          "max_hp": 666,
+          "stats": {
+            "vitality": 7,
+            "might": 3,
+            "finesse": 21,
+            "spirit": 63,
+            "agility": 0
+          },
+          "modifiers": {
+            "healing_bps": 331,
+            "physical_damage_bps": 153
+          },
+          "affixes": [
+            {
+              "item_key": "generated:obsidian_cavern:crystal_staff",
+              "key": "finesse",
+              "label": "技巧アップ",
+              "kind": "stat",
+              "target": "finesse",
+              "value": 7,
+              "quality_bps": 9921,
+              "standard_value": 7
+            },
+            {
+              "item_key": "generated:obsidian_cavern:crystal_staff",
+              "key": "max_hp",
+              "label": "最大HPアップ",
+              "kind": "base",
+              "target": "max_hp",
+              "value": 116,
+              "quality_bps": 8941,
+              "standard_value": 130
+            },
+            {
+              "item_key": "generated:obsidian_cavern:armor",
+              "key": "finesse",
+              "label": "技巧アップ",
+              "kind": "stat",
+              "target": "finesse",
+              "value": 7,
+              "quality_bps": 9686,
+              "standard_value": 7
+            },
+            {
+              "item_key": "generated:obsidian_cavern:armor",
+              "key": "healing_bps",
+              "label": "治癒力アップ",
+              "kind": "modifier",
+              "target": "healing_bps",
+              "value": 331,
+              "quality_bps": 9913,
+              "raw_value": 210,
+              "item_level_bps": 15900
+            },
+            {
+              "item_key": "generated:obsidian_cavern:accessory",
+              "key": "magical_defense",
+              "label": "魔法防御アップ",
+              "kind": "base",
+              "target": "magical_defense",
+              "value": 6,
+              "quality_bps": 8035,
+              "standard_value": 14
+            },
+            {
+              "item_key": "generated:obsidian_cavern:accessory",
+              "key": "physical_damage_bps",
+              "label": "物理攻撃力アップ",
+              "kind": "modifier",
+              "target": "physical_damage_bps",
+              "value": 153,
+              "quality_bps": 9080,
+              "raw_value": 212,
+              "item_level_bps": 15900
+            },
+            {
+              "item_key": "generated:obsidian_cavern:accessory",
+              "key": "might",
+              "label": "筋力アップ",
+              "kind": "stat",
+              "target": "might",
+              "value": 3,
+              "quality_bps": 8572,
+              "standard_value": 7
+            }
+          ],
+          "unique_effect": null,
+          "items": [
+            {
+              "key": "generated:obsidian_cavern:crystal_staff",
+              "name": "魔窟の杖",
+              "category": "weapon",
+              "equipped_slot": "weapon",
+              "rank": 0,
+              "item_level": 60,
+              "rarity": "uncommon",
+              "catalog_identity": "secretary-underground-drop-equipment-alpha-v1",
+              "instance_identity": "7b8ab2c514f1318267ec10f63f85ecd0bc52eaeb42a9c3aebb679b202ebb05e3"
+            },
+            {
+              "key": "generated:obsidian_cavern:armor",
+              "name": "魔窟の胸当て",
+              "category": "armor",
+              "equipped_slot": "armor",
+              "rank": 0,
+              "item_level": 60,
+              "rarity": "uncommon",
+              "catalog_identity": "secretary-underground-drop-equipment-alpha-v1",
+              "instance_identity": "e477735ffc9009d1ec40e70f3985e93fed72ee3aa1f129ca018571cb5e85a7b0"
+            },
+            {
+              "key": "generated:obsidian_cavern:accessory",
+              "name": "魔窟の精神護符",
+              "category": "accessory",
+              "equipped_slot": "accessory_1",
+              "rank": 0,
+              "item_level": 60,
+              "rarity": "uncommon",
+              "catalog_identity": "secretary-underground-drop-equipment-alpha-v1",
+              "instance_identity": "f98c5e71ee819122eee3dabfefba7ded22695789a55125f6bd05b4741127ebf8"
+            },
+            {
+              "key": "generated:obsidian_cavern:accessory",
+              "name": "魔窟の精神護符",
+              "category": "accessory",
+              "equipped_slot": "accessory_2",
+              "rank": 0,
+              "item_level": 60,
+              "rarity": "uncommon",
+              "catalog_identity": "secretary-underground-drop-equipment-alpha-v1",
+              "instance_identity": "17f47efbb3ec8d690ff6c2a71b41f62777467543c66d514951e99cdc55666d1d"
+            },
+            {
+              "key": "generated:obsidian_cavern:accessory",
+              "name": "魔窟の精神護符",
+              "category": "accessory",
+              "equipped_slot": "accessory_3",
+              "rank": 0,
+              "item_level": 60,
+              "rarity": "uncommon",
+              "catalog_identity": "secretary-underground-drop-equipment-alpha-v1",
+              "instance_identity": "deea19162c4711f1b91bf66d0046c82ac5088ce8579be779f20ff4dcd12cc534"
+            }
+          ]
+        },
+        "current_hp": 2182
+      }
+    },
+    {
+      "tree": "miracle",
+      "level": 90,
+      "sp_budget": 100,
+      "spent": 60,
+      "allocations": {
+        "miracle_holy_bolt": {
+          "rank": 1,
+          "active_slot": 1
+        },
+        "miracle_mending_prayer": {
+          "rank": 1,
+          "active_slot": 2
+        },
+        "miracle_lucid_dream": {
+          "rank": 1,
+          "active_slot": 3
+        },
+        "miracle_holy_nova": {
+          "rank": 1,
+          "active_slot": null
+        },
+        "miracle_holy_lance": {
+          "rank": 1,
+          "active_slot": 4
+        },
+        "miracle_regeneration": {
+          "rank": 1,
+          "active_slot": 5
+        }
+      },
+      "snapshot": {
+        "key": "secretary_runtime",
+        "label": "miracle",
+        "stats": {
+          "vitality": 200,
+          "might": 97,
+          "finesse": 105,
+          "spirit": 576,
+          "agility": 12
+        },
+        "active_skills": [
+          "holy_bolt",
+          "mending_prayer",
+          "lucid_dream",
+          "holy_lance",
+          "regeneration"
+        ],
+        "ai_rules": [
+          {
+            "conditions": [
+              {
+                "type": "own_hp_lte",
+                "percent": 20
+              }
+            ],
+            "action": "awakening"
+          },
+          {
+            "conditions": [
+              {
+                "type": "ally_hp_lte",
+                "percent": 55
+              }
+            ],
+            "action": "skill:mending_prayer"
+          },
+          {
+            "conditions": [
+              {
+                "type": "enemy_telegraph"
+              }
+            ],
+            "action": "defend"
+          },
+          {
+            "conditions": [
+              {
+                "type": "own_hp_lte",
+                "percent": 20
+              }
+            ],
+            "action": "defend"
+          },
+          {
+            "conditions": [
+              {
+                "type": "own_mp_lte",
+                "percent": 75
+              },
+              {
+                "type": "self_lacks_status",
+                "status": "lucid_recovery"
+              }
+            ],
+            "action": "skill:lucid_dream"
+          },
+          {
+            "conditions": [
+              {
+                "type": "ally_hp_lte",
+                "percent": 80
+              }
+            ],
+            "action": "skill:regeneration"
+          },
+          {
+            "conditions": [
+              {
+                "type": "always"
+              }
+            ],
+            "action": "skill:holy_lance"
+          },
+          {
+            "conditions": [
+              {
+                "type": "always"
+              }
+            ],
+            "action": "skill:holy_bolt"
+          },
+          {
+            "conditions": [
+              {
+                "type": "always"
+              }
+            ],
+            "action": "normal_attack"
+          }
+        ],
+        "ai_mode": "default",
+        "modifiers": [],
+        "equipment": {
+          "key": "generated:obsidian_cavern:crystal_staff",
+          "label": "魔窟の杖",
+          "catalog_identity": "secretary-underground-shop-equipment-alpha-v2",
+          "item_level": 90,
+          "rarity": "uncommon",
+          "weapon_style": "crystal_staff",
+          "weapon_power": 178,
+          "physical_defense": 370,
+          "magical_defense": 308,
+          "max_hp": 1095,
+          "stats": {
+            "vitality": 10,
+            "might": 4,
+            "finesse": 30,
+            "spirit": 101,
+            "agility": 0
+          },
+          "modifiers": {
+            "healing_bps": 393,
+            "physical_damage_bps": 182
+          },
+          "affixes": [
+            {
+              "item_key": "generated:obsidian_cavern:crystal_staff",
+              "key": "finesse",
+              "label": "技巧アップ",
+              "kind": "stat",
+              "target": "finesse",
+              "value": 10,
+              "quality_bps": 9921,
+              "standard_value": 10
+            },
+            {
+              "item_key": "generated:obsidian_cavern:crystal_staff",
+              "key": "max_hp",
+              "label": "最大HPアップ",
+              "kind": "base",
+              "target": "max_hp",
+              "value": 170,
+              "quality_bps": 8941,
+              "standard_value": 190
+            },
+            {
+              "item_key": "generated:obsidian_cavern:armor",
+              "key": "finesse",
+              "label": "技巧アップ",
+              "kind": "stat",
+              "target": "finesse",
+              "value": 10,
+              "quality_bps": 9686,
+              "standard_value": 10
+            },
+            {
+              "item_key": "generated:obsidian_cavern:armor",
+              "key": "healing_bps",
+              "label": "治癒力アップ",
+              "kind": "modifier",
+              "target": "healing_bps",
+              "value": 393,
+              "quality_bps": 9913,
+              "raw_value": 210,
+              "item_level_bps": 18900
+            },
+            {
+              "item_key": "generated:obsidian_cavern:accessory",
+              "key": "magical_defense",
+              "label": "魔法防御アップ",
+              "kind": "base",
+              "target": "magical_defense",
+              "value": 8,
+              "quality_bps": 8035,
+              "standard_value": 20
+            },
+            {
+              "item_key": "generated:obsidian_cavern:accessory",
+              "key": "physical_damage_bps",
+              "label": "物理攻撃力アップ",
+              "kind": "modifier",
+              "target": "physical_damage_bps",
+              "value": 182,
+              "quality_bps": 9080,
+              "raw_value": 212,
+              "item_level_bps": 18900
+            },
+            {
+              "item_key": "generated:obsidian_cavern:accessory",
+              "key": "might",
+              "label": "筋力アップ",
+              "kind": "stat",
+              "target": "might",
+              "value": 4,
+              "quality_bps": 8572,
+              "standard_value": 10
+            }
+          ],
+          "unique_effect": null,
+          "items": [
+            {
+              "key": "generated:obsidian_cavern:crystal_staff",
+              "name": "魔窟の杖",
+              "category": "weapon",
+              "equipped_slot": "weapon",
+              "rank": 0,
+              "item_level": 90,
+              "rarity": "uncommon",
+              "catalog_identity": "secretary-underground-drop-equipment-alpha-v1",
+              "instance_identity": "5cbe7bfba5c74cb6e95213810310e998ecd17236241dc89cefc7268187607c53"
+            },
+            {
+              "key": "generated:obsidian_cavern:armor",
+              "name": "魔窟の胸当て",
+              "category": "armor",
+              "equipped_slot": "armor",
+              "rank": 0,
+              "item_level": 90,
+              "rarity": "uncommon",
+              "catalog_identity": "secretary-underground-drop-equipment-alpha-v1",
+              "instance_identity": "89309863ebb1692231bb693cb944eb2b00fde24ed757122d6d58e44c57ac07c8"
+            },
+            {
+              "key": "generated:obsidian_cavern:accessory",
+              "name": "魔窟の精神護符",
+              "category": "accessory",
+              "equipped_slot": "accessory_1",
+              "rank": 0,
+              "item_level": 90,
+              "rarity": "uncommon",
+              "catalog_identity": "secretary-underground-drop-equipment-alpha-v1",
+              "instance_identity": "bd78e318b4ff7976b66d106b71bebf67036b3a38061504ebcc5b32e293d4ae62"
+            },
+            {
+              "key": "generated:obsidian_cavern:accessory",
+              "name": "魔窟の精神護符",
+              "category": "accessory",
+              "equipped_slot": "accessory_2",
+              "rank": 0,
+              "item_level": 90,
+              "rarity": "uncommon",
+              "catalog_identity": "secretary-underground-drop-equipment-alpha-v1",
+              "instance_identity": "f17f3f5d86efe5443d5a382a88b27066973399b5192659b6ad153c17bf391941"
+            },
+            {
+              "key": "generated:obsidian_cavern:accessory",
+              "name": "魔窟の精神護符",
+              "category": "accessory",
+              "equipped_slot": "accessory_3",
+              "rank": 0,
+              "item_level": 90,
+              "rarity": "uncommon",
+              "catalog_identity": "secretary-underground-drop-equipment-alpha-v1",
+              "instance_identity": "af2f87592bceb98de7bef323190983279c3d82e492573fcc485aa1c2cb890d49"
+            }
+          ]
+        },
+        "current_hp": 3115
+      }
+    }
+  ]
+}

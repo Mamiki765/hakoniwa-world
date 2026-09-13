@@ -2,7 +2,7 @@
     "schema_version": 1,
     "simulation_type": "trial_sequence",
     "trial_identity": "underground-trial-01-simulation-v1",
-    "combat_identity": "secretary-underground-alpha-v4",
+    "combat_identity": "secretary-underground-alpha-v5",
     "seed_strategy_identity": "trial-sequence-common-random-v1",
     "seed_range": {"start": 0, "count": 1000},
     "max_rounds": 100,
@@ -20,8 +20,7 @@
             "stp_weights_bps": {"vitality": 1500, "might": 5500, "finesse": 2000, "spirit": 0, "agility": 1000},
             "skill_allocations": {
                 "martial_precision_cut": {"rank": 1, "active_slot": 1},
-                "martial_weapon_mastery": {"rank": 5, "active_slot": null},
-                "martial_critical_training": {"rank": 2, "active_slot": null}
+                "martial_dagger_flurry": {"rank": 1, "active_slot": 2}
             },
             "equipment_keys": ["polished_steel_dagger", "iron_breastplate", "might_accessory_rank_3"]
         },
@@ -31,8 +30,7 @@
             "stp_weights_bps": {"vitality": 500, "might": 7000, "finesse": 1500, "spirit": 0, "agility": 1000},
             "skill_allocations": {
                 "guardianship_shield_bash": {"rank": 1, "active_slot": 1},
-                "martial_weapon_mastery": {"rank": 5, "active_slot": null},
-                "martial_critical_training": {"rank": 2, "active_slot": null}
+                "guardianship_counter_stance": {"rank": 1, "active_slot": 2}
             },
             "equipment_keys": ["reinforced_longsword", "iron_breastplate", "might_accessory_rank_3"]
         },
@@ -43,7 +41,7 @@
             "skill_allocations": {
                 "miracle_holy_bolt": {"rank": 1, "active_slot": 1},
                 "miracle_mending_prayer": {"rank": 1, "active_slot": 2},
-                "miracle_healing_study": {"rank": 4, "active_slot": null}
+                "miracle_lucid_dream": {"rank": 1, "active_slot": 3}
             },
             "equipment_keys": ["iron_core_crystal_staff", "iron_breastplate", "spirit_accessory_rank_3"]
         },
@@ -54,8 +52,7 @@
             "skill_allocations": {
                 "martial_precision_cut": {"rank": 1, "active_slot": 1},
                 "miracle_holy_bolt": {"rank": 1, "active_slot": 2},
-                "miracle_mending_prayer": {"rank": 1, "active_slot": 3},
-                "miracle_healing_study": {"rank": 1, "active_slot": null}
+                "miracle_mending_prayer": {"rank": 1, "active_slot": 3}
             },
             "equipment_keys": ["steel_rapier", "iron_breastplate", "finesse_accessory_rank_3"]
         },
@@ -65,8 +62,8 @@
             "stp_weights_bps": {"vitality": 2000, "might": 8000, "finesse": 0, "spirit": 0, "agility": 0},
             "skill_allocations": {
                 "martial_precision_cut": {"rank": 1, "active_slot": 1},
-                "martial_weapon_mastery": {"rank": 5, "active_slot": null},
-                "martial_critical_training": {"rank": 2, "active_slot": null}
+                "miracle_holy_bolt": {"rank": 1, "active_slot": 2},
+                "miracle_mending_prayer": {"rank": 1, "active_slot": 3}
             },
             "equipment_keys": ["steel_rapier", "iron_breastplate", "might_accessory_rank_3"]
         },
@@ -76,8 +73,8 @@
             "stp_weights_bps": {"vitality": 3000, "might": 7000, "finesse": 0, "spirit": 0, "agility": 0},
             "skill_allocations": {
                 "martial_precision_cut": {"rank": 1, "active_slot": 1},
-                "martial_weapon_mastery": {"rank": 5, "active_slot": null},
-                "martial_critical_training": {"rank": 2, "active_slot": null}
+                "miracle_holy_bolt": {"rank": 1, "active_slot": 2},
+                "miracle_mending_prayer": {"rank": 1, "active_slot": 3}
             },
             "equipment_keys": ["steel_rapier", "iron_breastplate", "might_accessory_rank_3"]
         },
@@ -87,8 +84,8 @@
             "stp_weights_bps": {"vitality": 2000, "might": 7000, "finesse": 0, "spirit": 0, "agility": 1000},
             "skill_allocations": {
                 "martial_precision_cut": {"rank": 1, "active_slot": 1},
-                "martial_weapon_mastery": {"rank": 5, "active_slot": null},
-                "martial_critical_training": {"rank": 2, "active_slot": null}
+                "miracle_holy_bolt": {"rank": 1, "active_slot": 2},
+                "miracle_mending_prayer": {"rank": 1, "active_slot": 3}
             },
             "equipment_keys": ["steel_rapier", "iron_breastplate", "might_accessory_rank_3"]
         },
@@ -97,9 +94,9 @@
             "growth_path": "free_black",
             "stp_weights_bps": {"vitality": 2000, "might": 0, "finesse": 0, "spirit": 8000, "agility": 0},
             "skill_allocations": {
-                "miracle_holy_bolt": {"rank": 1, "active_slot": 1},
-                "miracle_mending_prayer": {"rank": 1, "active_slot": 2},
-                "miracle_healing_study": {"rank": 4, "active_slot": null}
+                "martial_precision_cut": {"rank": 1, "active_slot": 1},
+                "miracle_holy_bolt": {"rank": 1, "active_slot": 2},
+                "miracle_mending_prayer": {"rank": 1, "active_slot": 3}
             },
             "equipment_keys": ["iron_core_crystal_staff", "iron_breastplate", "spirit_accessory_rank_3"]
         },
@@ -108,9 +105,9 @@
             "growth_path": "free_black",
             "stp_weights_bps": {"vitality": 3000, "might": 0, "finesse": 0, "spirit": 7000, "agility": 0},
             "skill_allocations": {
-                "miracle_holy_bolt": {"rank": 1, "active_slot": 1},
-                "miracle_mending_prayer": {"rank": 1, "active_slot": 2},
-                "miracle_healing_study": {"rank": 4, "active_slot": null}
+                "martial_precision_cut": {"rank": 1, "active_slot": 1},
+                "miracle_holy_bolt": {"rank": 1, "active_slot": 2},
+                "miracle_mending_prayer": {"rank": 1, "active_slot": 3}
             },
             "equipment_keys": ["iron_core_crystal_staff", "iron_breastplate", "spirit_accessory_rank_3"]
         },
@@ -119,9 +116,9 @@
             "growth_path": "free_black",
             "stp_weights_bps": {"vitality": 2000, "might": 0, "finesse": 0, "spirit": 7000, "agility": 1000},
             "skill_allocations": {
-                "miracle_holy_bolt": {"rank": 1, "active_slot": 1},
-                "miracle_mending_prayer": {"rank": 1, "active_slot": 2},
-                "miracle_healing_study": {"rank": 4, "active_slot": null}
+                "martial_precision_cut": {"rank": 1, "active_slot": 1},
+                "miracle_holy_bolt": {"rank": 1, "active_slot": 2},
+                "miracle_mending_prayer": {"rank": 1, "active_slot": 3}
             },
             "equipment_keys": ["iron_core_crystal_staff", "iron_breastplate", "spirit_accessory_rank_3"]
         },
@@ -132,7 +129,7 @@
             "skill_allocations": {
                 "miracle_holy_bolt": {"rank": 1, "active_slot": 1},
                 "miracle_mending_prayer": {"rank": 1, "active_slot": 2},
-                "miracle_healing_study": {"rank": 4, "active_slot": null}
+                "miracle_lucid_dream": {"rank": 1, "active_slot": 3}
             },
             "equipment_keys": ["iron_core_crystal_staff", "iron_breastplate", "spirit_accessory_rank_3"]
         }

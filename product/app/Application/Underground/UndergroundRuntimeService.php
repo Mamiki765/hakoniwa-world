@@ -221,6 +221,10 @@ STORY;
                             ),
                         ];
                     }
+                    $this->assertSkillRebuildCompleted($profile);
+                    if ($borrowedSecretaryIds !== array_column($profile->rental_party, 'secretary_id')) {
+                        throw new UndergroundRuntimeException('underground_rental_party_changed', 'レンタル編成を確定してから出発してください。');
+                    }
                     if ($borrowedSecretaryIds !== []) {
                         if ($leaderSyncInputs === null
                             || ! $this->partyLeaderSyncInputsMatch($profile, $leaderSyncInputs)) {
@@ -993,6 +997,7 @@ STORY;
             }
             $trial = $this->catalog->trial($run->trial_key);
             $run = $this->reconcileActiveTrialContent($run, $trial['content_identity']);
+            $this->assertSkillRebuildCompleted($profile);
             $this->assertCooldownElapsed($profile);
             $battleIndex = $run->next_battle_index;
             $encounterKey = $trial['encounters'][$battleIndex - 1] ?? null;
@@ -1899,6 +1904,17 @@ STORY;
             $snapshot['combatant_id'] = $combatantId;
             $snapshot['source_type'] = 'borrowed_secretary';
             $snapshot['player_snapshot']['combatant_id'] = $combatantId;
+            $rental = collect($profile->rental_party)->firstWhere('secretary_id', $borrowedSecretaryId);
+            if (! is_array($rental)) {
+                throw new UndergroundRuntimeException('underground_rental_party_changed', 'レンタル編成を確認してください。');
+            }
+            $maxHp = (int) $snapshot['resources']['effective_max_hp'];
+            $hp = $this->rescaleRentalHp($rental['current_hp'], $rental['max_hp'], $maxHp);
+            $snapshot['resources']['effective_current_hp'] = $hp;
+            $snapshot['resources']['authority'] = 'borrower_rental_party';
+            $snapshot['player_snapshot']['current_hp'] = $hp;
+            $snapshot['awakening']['gauge'] = $rental['awakening_gauge'];
+            $snapshot['player_snapshot']['awakening']['gauge'] = $rental['awakening_gauge'];
             $memberSnapshots[$combatantId] = $snapshot;
             $playerSnapshots[] = $snapshot['player_snapshot'];
             $memberRows[] = [
@@ -2024,6 +2040,18 @@ STORY;
             ? $maxHpAfter
             : min(max(1, $leaderFinalState['hp']), $maxHpAfter);
         $profile->awakening_gauge = $leaderFinalAwakening['gauge_after'];
+        $rentalMembers = $profile->rental_party;
+        foreach ($rentalMembers as &$rental) {
+            $id = 'borrowed:'.$rental['secretary_id'];
+            $final = $result->finalStates[$id];
+            $normalMaxHp = (int) $memberSnapshots[$id]['resources']['effective_max_hp'];
+            $rental['current_hp'] = $this->rescaleRentalHp($final['hp'], $final['max_hp'], $normalMaxHp);
+            $rental['max_hp'] = $normalMaxHp;
+            $rental['awakening_gauge'] = $result->awakening[$id]['gauge_after'];
+            $rental['display_name'] = $memberSnapshots[$id]['display_name'];
+        }
+        unset($rental);
+        $profile->rental_party = $rentalMembers;
         $profile->next_battle_at = $finishedAt->copy()->addSeconds($this->catalog->cooldownSeconds());
         $profile->save();
 
@@ -2700,8 +2728,9 @@ STORY;
         string $requestId,
         array $leaderSyncInputs,
         array $secretaryIds,
+        bool $reserveImages = true,
     ): array {
-        return DB::transaction(function () use ($leader, $requestId, $leaderSyncInputs, $secretaryIds): array {
+        return DB::transaction(function () use ($leader, $requestId, $leaderSyncInputs, $secretaryIds, $reserveImages): array {
             $borrowed = $this->lockedBorrowedProfiles(
                 $leader,
                 $leaderSyncInputs['secretary_id'],
@@ -2723,14 +2752,58 @@ STORY;
                     'snapshot' => $snapshot,
                 ];
             }
-            $this->imageRetention->reserveBattleImages(
-                $this->imageRetention->reservationKey($leaderSyncInputs['profile_id'], $requestId),
-                $prepared,
-                Carbon::now()->addHours($this->catalog->battleLogRetentionHours()),
-            );
+            if ($reserveImages) {
+                $this->imageRetention->reserveBattleImages(
+                    $this->imageRetention->reservationKey($leaderSyncInputs['profile_id'], $requestId),
+                    $prepared,
+                    Carbon::now()->addHours($this->catalog->battleLogRetentionHours()),
+                );
+            }
 
             return $prepared;
         }, 3);
+    }
+
+    /**
+     * @param  list<int>  $secretaryIds
+     * @return array{leader:array<string,mixed>, members:list<array{secretary_id:int,display_name:string,current_hp:int,max_hp:int,awakening_gauge:int}>}
+     */
+    public function prepareRentalParty(User $user, array $secretaryIds): array
+    {
+        $leader = $this->partyLeaderSyncInputs($user);
+        $borrowed = $this->prepareBorrowedPartySnapshots($user, '', $leader, $secretaryIds, false);
+        $members = [];
+        foreach ($borrowed as $context) {
+            $snapshot = $context['snapshot'];
+            $maxHp = (int) $snapshot['resources']['effective_max_hp'];
+            $members[] = [
+                'secretary_id' => $context['secretary_id'],
+                'display_name' => $snapshot['display_name'],
+                'current_hp' => $maxHp,
+                'max_hp' => $maxHp,
+                'awakening_gauge' => 0,
+            ];
+        }
+
+        return ['leader' => $leader, 'members' => $members];
+    }
+
+    /** @param array<string,mixed> $expected */
+    public function rentalPartyLeaderMatches(UndergroundProfile $profile, array $expected): bool
+    {
+        return $this->partyLeaderSyncInputsMatch($profile, $expected);
+    }
+
+    private function rescaleRentalHp(int $hp, int $oldMaxHp, int $newMaxHp): int
+    {
+        return $hp <= 0 ? 0 : max(1, min($newMaxHp, (int) floor($hp / max(1, $oldMaxHp) * $newMaxHp)));
+    }
+
+    private function assertSkillRebuildCompleted(UndergroundProfile $profile): void
+    {
+        if ($profile->skill_rebuild_required) {
+            throw new UndergroundRuntimeException('underground_skill_rebuild_required', 'SPを全返還しました。技能を選び直し、装備する技を保存してから戦闘を再開してください。');
+        }
     }
 
     private function lockedProfileForUser(User $user): UndergroundProfile
@@ -2820,6 +2893,7 @@ STORY;
         }
         foreach ($profiles as $profile) {
             if (! is_string($profile->growth_path_key)
+                || $profile->skill_rebuild_required
                 || $profile->underground_contract_completed_at === null) {
                 throw new UndergroundRuntimeException('underground_party_member_unavailable', '選んだ秘書は現在借りられません。');
             }

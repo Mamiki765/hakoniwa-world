@@ -121,6 +121,8 @@ final class PostgresUndergroundRuntimeConcurrencyTest extends TestCase
     {
         [$firstLeader, $firstSecretary] = $this->partyFixture('R07A001A');
         [$secondLeader, $secondSecretary] = $this->partyFixture('R07B001B');
+        app(UndergroundIntroService::class)->updateRentalParty($firstLeader, (string) Str::uuid(), [$secondSecretary->id]);
+        app(UndergroundIntroService::class)->updateRentalParty($secondLeader, (string) Str::uuid(), [$firstSecretary->id]);
 
         $results = $this->runConcurrentPartyOperations([
             [
@@ -153,6 +155,8 @@ final class PostgresUndergroundRuntimeConcurrencyTest extends TestCase
         [$lender, $borrowedSecretary] = $this->partyFixture('R07L001L');
         [$firstLeader] = $this->partyFixture('R07C001C');
         [$secondLeader] = $this->partyFixture('R07D001D');
+        app(UndergroundIntroService::class)->updateRentalParty($firstLeader, (string) Str::uuid(), [$borrowedSecretary->id]);
+        app(UndergroundIntroService::class)->updateRentalParty($secondLeader, (string) Str::uuid(), [$borrowedSecretary->id]);
 
         $results = $this->runConcurrentPartyOperations([
             [
@@ -569,7 +573,7 @@ final class PostgresUndergroundRuntimeConcurrencyTest extends TestCase
         sort($skillStatuses);
         $this->assertSame(['conflict', 'ok'], $skillStatuses);
         $profile->refresh();
-        $this->assertSame(15, $profile->skill_points_unspent);
+        $this->assertSame(14, $profile->skill_points_unspent);
         $this->assertSame(1, $profile->skillAllocations()->where('node_key', 'miracle_holy_bolt')->sole()->rank);
     }
 
@@ -595,7 +599,7 @@ final class PostgresUndergroundRuntimeConcurrencyTest extends TestCase
             'growth_path_selected_at' => now(),
             'skill_points_total' => 20,
             'skill_points_unspent' => 20,
-            'skill_tree_identity' => 'secretary-underground-skill-tree-alpha-v1',
+            'skill_tree_identity' => 'secretary-underground-skill-tree-alpha-v2',
             'unspent_stp' => 0,
         ]);
         app(UndergroundStarterEquipmentService::class)->reconcile($profile->fresh());

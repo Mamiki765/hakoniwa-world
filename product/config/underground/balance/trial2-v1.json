@@ -4,7 +4,7 @@
     "trial_generation": 2,
     "trial_key": "trial_02",
     "trial_identity": "underground-trial-02-simulation-v1",
-    "combat_identity": "secretary-underground-alpha-v4",
+    "combat_identity": "secretary-underground-alpha-v5",
     "seed_strategy_identity": "trial-sequence-common-random-v1",
     "seed_range": {"start": 0, "count": 200},
     "max_rounds": 100,
@@ -23,12 +23,10 @@
             "stp_weights_bps": {"vitality": 2500, "might": 4500, "finesse": 2000, "spirit": 0, "agility": 1000},
             "skill_allocations": {
                 "martial_precision_cut": {"rank": 1, "active_slot": 1},
-                "martial_weapon_mastery": {"rank": 5, "active_slot": null},
-                "martial_critical_training": {"rank": 4, "active_slot": null},
                 "martial_dagger_flurry": {"rank": 1, "active_slot": 2},
-                "martial_tempo": {"rank": 5, "active_slot": null},
                 "martial_armor_break": {"rank": 1, "active_slot": 3},
-                "martial_blood_return": {"rank": 3, "active_slot": null}
+                "martial_severing_bleed": {"rank": 1, "active_slot": 4},
+                "martial_quick_stab": {"rank": 1, "active_slot": 5}
             },
             "awakening_technique_key": "shura_bloodline",
             "generated_equipment": [
@@ -43,12 +41,9 @@
             "stp_weights_bps": {"vitality": 5000, "might": 2500, "finesse": 0, "spirit": 1500, "agility": 1000},
             "skill_allocations": {
                 "guardianship_shield_bash": {"rank": 1, "active_slot": 1},
-                "guardianship_vital_core": {"rank": 4, "active_slot": null},
-                "guardianship_guard_training": {"rank": 5, "active_slot": null},
                 "guardianship_counter_stance": {"rank": 1, "active_slot": 2},
-                "guardianship_fighting_spirit": {"rank": 5, "active_slot": null},
-                "guardianship_bulwark_strike": {"rank": 1, "active_slot": 3},
-                "guardianship_regeneration": {"rank": 3, "active_slot": null}
+                "guardianship_renewing_guard": {"rank": 1, "active_slot": 3},
+                "guardianship_bulwark_strike": {"rank": 1, "active_slot": 4}
             },
             "awakening_technique_key": "fortress_strike",
             "generated_equipment": [
@@ -63,14 +58,11 @@
             "stp_weights_bps": {"vitality": 2000, "might": 0, "finesse": 1000, "spirit": 6000, "agility": 1000},
             "skill_allocations": {
                 "miracle_holy_bolt": {"rank": 1, "active_slot": 1},
-                "miracle_healing_study": {"rank": 5, "active_slot": null},
                 "miracle_mending_prayer": {"rank": 1, "active_slot": 2},
-                "miracle_spirit_channel": {"rank": 5, "active_slot": null},
-                "miracle_grace_core": {"rank": 5, "active_slot": null},
-                "miracle_crystal_cycle": {"rank": 1, "active_slot": 3},
-                "miracle_crystal_aegis": {"rank": 1, "active_slot": 4},
-                "miracle_aegis_mastery": {"rank": 2, "active_slot": null},
-                "martial_weapon_mastery": {"rank": 1, "active_slot": null}
+                "miracle_lucid_dream": {"rank": 1, "active_slot": 3},
+                "miracle_holy_nova": {"rank": 1, "active_slot": null},
+                "miracle_holy_lance": {"rank": 1, "active_slot": 4},
+                "miracle_regeneration": {"rank": 1, "active_slot": 5}
             },
             "awakening_technique_key": "judgment_light",
             "generated_equipment": [
@@ -85,14 +77,10 @@
             "stp_weights_bps": {"vitality": 1500, "might": 2500, "finesse": 3500, "spirit": 1500, "agility": 1000},
             "skill_allocations": {
                 "martial_precision_cut": {"rank": 1, "active_slot": 1},
-                "martial_weapon_mastery": {"rank": 5, "active_slot": null},
-                "martial_critical_training": {"rank": 4, "active_slot": null},
-                "martial_dagger_flurry": {"rank": 1, "active_slot": null},
-                "miracle_holy_bolt": {"rank": 1, "active_slot": 2},
-                "miracle_healing_study": {"rank": 4, "active_slot": null},
-                "miracle_mending_prayer": {"rank": 1, "active_slot": 3},
-                "miracle_spirit_channel": {"rank": 5, "active_slot": null},
-                "miracle_grace_core": {"rank": 3, "active_slot": null}
+                "martial_quick_stab": {"rank": 1, "active_slot": 2},
+                "guardianship_shield_bash": {"rank": 1, "active_slot": 3},
+                "miracle_mending_prayer": {"rank": 1, "active_slot": 4},
+                "miracle_lucid_dream": {"rank": 1, "active_slot": 5}
             },
             "awakening_technique_key": "formless_strike",
             "generated_equipment": [

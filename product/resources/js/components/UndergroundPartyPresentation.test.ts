@@ -63,6 +63,7 @@ const openState = (overrides: Record<string, unknown> = {}): Record<string, unkn
     battle: null,
     party_candidates: [],
     party_member_ids: [],
+    rental_party: [],
     lending: {
         settings: { is_public: false, is_available: true },
         candidates: [],
@@ -220,7 +221,7 @@ describe('Underground party presentation controls', () => {
 
     it('keeps a selected unavailable secretary visible and removable when the candidate page is empty', async () => {
         const state = openState({
-            party_member_ids: [42],
+            rental_party: [{ secretary_id: 42, display_name: '選択中の秘書', current_hp: 50, max_hp: 100, awakening_gauge: 120 }],
             lending: { settings: { is_public: false, is_available: true }, candidates: [], ticket_balance: 0 },
         });
         const lendingRequests: Array<Record<string, unknown>> = [];
@@ -260,7 +261,7 @@ describe('Underground party presentation controls', () => {
         wrapper.unmount();
     });
 
-    it('keeps the selected party across underground page remounts for the same user', async () => {
+    it('persists a confirmed rental on the server and restores it without resetting resources', async () => {
         const candidate = {
             secretary_id: 42,
             source: 'borrowed_secretary' as const,
@@ -272,8 +273,13 @@ describe('Underground party presentation controls', () => {
             party_member_ids: undefined,
             lending: { settings: { is_public: false, is_available: true }, candidates: [], ticket_balance: 0 },
         });
-        vi.stubGlobal('fetch', vi.fn((input: RequestInfo | URL) => {
+        vi.stubGlobal('fetch', vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
             const path = String(input);
+            if (path === '/api/v1/me/underground/rental-party' && init?.method === 'PUT') {
+                expect(JSON.parse(String(init.body)).borrowed_secretary_ids).toEqual([42]);
+                state.rental_party = [{ secretary_id: 42, display_name: candidate.display_name, current_hp: 100, max_hp: 100, awakening_gauge: 0 }];
+                return Promise.resolve(response(state));
+            }
             if (path.startsWith('/api/v1/me/underground/lending/candidates')) {
                 return Promise.resolve(response({ candidates: [candidate], next_after_id: null }));
             }
@@ -288,7 +294,10 @@ describe('Underground party presentation controls', () => {
         await wrapper.get('.underground-party-browser button').trigger('click');
         await flushPromises();
         await wrapper.get('button[aria-label="保存する秘書をPTに追加"]').trigger('click');
-        expect(window.localStorage.getItem('hakoniwa.underground.party-member-ids.7')).toBe('[42]');
+        expect(state.rental_party).toEqual([]);
+        await wrapper.findAll('button').find(button => button.text() === 'レンタルを確定・更新')!.trigger('click');
+        await flushPromises();
+        state.rental_party = [{ secretary_id: 42, display_name: candidate.display_name, current_hp: 50, max_hp: 100, awakening_gauge: 120 }];
         wrapper.unmount();
 
         const restored = mount(UndergroundPanel, { attachTo: document.body, props: { userId: 7 } });
@@ -296,6 +305,7 @@ describe('Underground party presentation controls', () => {
         await restored.get('.underground-main-navigation button:nth-child(4)').trigger('click');
         expect(restored.get('.underground-party-count').text()).toBe('2 / 4人');
         expect(restored.get('button[aria-label="選択中の秘書をPTから解除"]')).toBeTruthy();
+        expect(restored.get('[aria-label="現在のレンタル状態"]').text()).toContain('HP 50 / 100・覚醒 120');
         restored.unmount();
     });
 
@@ -724,6 +734,11 @@ describe('Underground party presentation controls', () => {
         const requests: Array<Record<string, unknown>> = [];
         vi.stubGlobal('fetch', vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
             const path = String(input);
+            if (path === '/api/v1/me/underground/rental-party' && init?.method === 'PUT') {
+                const ids = JSON.parse(String(init.body)).borrowed_secretary_ids as number[];
+                state.rental_party = ids.map(id => ({ secretary_id: id, display_name: id === 2 ? 'A秘書' : 'B秘書', current_hp: 100, max_hp: 100, awakening_gauge: 0 }));
+                return Promise.resolve(response(state));
+            }
             if (path === '/api/v1/me/underground/explore') {
                 const body = JSON.parse(String(init?.body ?? '{}')) as Record<string, unknown>;
                 requests.push(body);
@@ -745,6 +760,8 @@ describe('Underground party presentation controls', () => {
         await wrapper.get('.underground-party-browser button').trigger('click');
         await flushPromises();
         await wrapper.get('button[aria-label="A秘書をPTに追加"]').trigger('click');
+        await wrapper.findAll('button').find(button => button.text() === 'レンタルを確定・更新')!.trigger('click');
+        await flushPromises();
         await wrapper.get('.underground-main-navigation button:first-child').trigger('click');
         await wrapper.get('.underground-explore-button').trigger('click');
         await flushPromises();
@@ -753,11 +770,17 @@ describe('Underground party presentation controls', () => {
         await wrapper.get('.underground-main-navigation button:nth-child(4)').trigger('click');
         await wrapper.get('button[aria-label="A秘書をPTから解除"]').trigger('click');
         await wrapper.get('button[aria-label="B秘書をPTに追加"]').trigger('click');
+        expect(wrapper.findAll('button').find(button => button.text() === 'レンタルを確定・更新')!.attributes('disabled')).toBeDefined();
         await wrapper.get('.underground-main-navigation button:first-child').trigger('click');
         await wrapper.get('.underground-explore-button').trigger('click');
         await flushPromises();
         expect(wrapper.find('.underground-pending-request').exists()).toBe(false);
-        await wrapper.get('.underground-exploration-repeat').trigger('click');
+        await wrapper.get('.underground-battle-back').trigger('click');
+        await wrapper.get('.underground-main-navigation button:nth-child(4)').trigger('click');
+        await wrapper.findAll('button').find(button => button.text() === 'レンタルを確定・更新')!.trigger('click');
+        await flushPromises();
+        await wrapper.get('.underground-main-navigation button:first-child').trigger('click');
+        await wrapper.get('.underground-explore-button').trigger('click');
         await flushPromises();
 
         expect(requests).toHaveLength(3);

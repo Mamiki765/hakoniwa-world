@@ -28,7 +28,7 @@ final class SecretaryLendingCandidatesTest extends TestCase
             'growth_path_key' => 'martial_red', 'underground_contract_completed_at' => now(),
             'growth_path_identity' => 'secretary-underground-growth-alpha-v1', 'growth_path_selected_at' => now(),
             'skill_points_total' => 20, 'skill_points_unspent' => 20,
-            'skill_tree_identity' => 'secretary-underground-skill-tree-alpha-v1',
+            'skill_tree_identity' => 'secretary-underground-skill-tree-alpha-v2',
         ]);
         $service = app(SecretaryLendingService::class);
         $service->update($owner, true);
@@ -111,7 +111,7 @@ final class SecretaryLendingCandidatesTest extends TestCase
                 'growth_path_selected_at' => now(),
                 'skill_points_total' => 20,
                 'skill_points_unspent' => 20,
-                'skill_tree_identity' => 'secretary-underground-skill-tree-alpha-v1',
+                'skill_tree_identity' => 'secretary-underground-skill-tree-alpha-v2',
             ]);
             SecretaryLendingSetting::query()->create([
                 'secretary_id' => $secretary->id,

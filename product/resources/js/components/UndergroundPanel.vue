@@ -3,6 +3,8 @@ import stories from '../../stories/intro.json';
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
 import { ApiError, api } from '../api/client';
 import UndergroundAiEditor from './UndergroundAiEditor.vue';
+import UndergroundSkillTree from './UndergroundSkillTree.vue';
+import type { UndergroundSkillTree as SkillTree } from './undergroundSkills';
 import UndergroundCombatantCard from './UndergroundCombatantCard.vue';
 import UndergroundEquipmentShop from './UndergroundEquipmentShop.vue';
 import UndergroundEquipmentVault from './UndergroundEquipmentVault.vue';
@@ -343,34 +345,6 @@ interface PendingTrialRequest {
 
 type StatKey = 'vitality' | 'might' | 'finesse' | 'spirit' | 'agility';
 
-interface SkillNode {
-    key: string;
-    label: string;
-    summary: string;
-    type: 'active' | 'passive';
-    rank: number;
-    max_rank: number;
-    point_cost: number;
-    invested_points_required: number;
-    prerequisite: string | null;
-    can_acquire: boolean;
-    unavailable_reason: string | null;
-    skill_key: string | null;
-    mp_cost: number | null;
-    cooldown: number | null;
-    required_weapon_styles: string[];
-    recommended_stats: StatKey[] | null;
-    active_slot: number | null;
-}
-
-interface SkillTree {
-    key: string;
-    label: string;
-    invested_points: number;
-    full_points: number;
-    nodes: SkillNode[];
-}
-
 interface ActiveSkill {
     key: string;
     label: string;
@@ -486,6 +460,8 @@ interface UndergroundState {
     skill_points_unspent: number;
     skill_points_spent: number;
     skill_tree_identity: string | null;
+    skill_rebuild_required?: boolean;
+    rental_party?: Array<{ secretary_id: number; display_name: string; current_hp: number; max_hp: number; awakening_gauge: number }>;
     skill_trees: SkillTree[] | null;
     active_slots: Array<ActiveSkill | null>;
     passive_modifiers: Record<string, number | boolean | string>;
@@ -573,7 +549,6 @@ const detailPreferenceKey = 'hakoniwa.underground.battle-detail-visible';
 const lastScrolledBattleId = ref<string | null>(null);
 const lendingEnabled = ref(false);
 const partySelectionHydrated = ref(false);
-const partySelectionPreferenceKey = computed(() => `hakoniwa.underground.party-member-ids.${props.userId ?? 'default'}`);
 const selectedBuild = ref('');
 const selectedEnemy = ref('');
 const bankOpen = ref(false);
@@ -601,7 +576,6 @@ const pendingInnRequestId = ref<string | null>(null);
 const pendingBankMutation = ref<PendingBankMutation | null>(null);
 const statusOpen = ref(false);
 const skillsOpen = ref(false);
-const activeSkillTreeKey = ref('martial');
 const innResting = ref(false);
 const innRested = ref(false);
 const stpDraft = ref<Record<StatKey, number>>({ vitality: 0, might: 0, finesse: 0, spirit: 0, agility: 0 });
@@ -629,6 +603,9 @@ let cooldownTimer: ReturnType<typeof window.setInterval> | null = null;
 let huntingGroundPreferenceHydrated = false;
 const currentBattle = computed(() => selectedBattle.value ?? state.value?.battle ?? null);
 const partySelectedIds = computed(() => selectedPartyMemberIds.value);
+const pendingRentalMutation = ref<PendingMutation | null>(null);
+const confirmedPartyIds = computed(() => (state.value?.rental_party ?? []).map((member) => member.secretary_id));
+const rentalDraftChanged = computed(() => JSON.stringify(partySelectedIds.value) !== JSON.stringify(confirmedPartyIds.value));
 const statePartyCandidates = computed(() => [
     ...(state.value?.lending?.candidates ?? []),
     ...(state.value?.party_candidates ?? []),
@@ -889,37 +866,13 @@ watch(trialOptions, (trials) => {
 
 watch(state, (current) => {
     if (!current || partySelectionHydrated.value) return;
-    const authoritativeIds = current.party_member_ids;
-    if (authoritativeIds) {
-        selectedPartyMemberIds.value = [...authoritativeIds];
-    } else {
-        try {
-            const stored = JSON.parse(window.localStorage.getItem(partySelectionPreferenceKey.value) ?? '[]');
-            if (Array.isArray(stored)) {
-                selectedPartyMemberIds.value = [...new Set(stored.filter((id): id is number => (
-                    Number.isInteger(id) && id > 0
-                )))].slice(0, 3);
-            }
-        } catch {
-            selectedPartyMemberIds.value = [];
-        }
-    }
+    selectedPartyMemberIds.value = (current.rental_party ?? []).map((member) => member.secretary_id);
     partySelectionHydrated.value = true;
 }, { immediate: true });
-
-watch(selectedPartyMemberIds, (ids) => {
-    if (!partySelectionHydrated.value) return;
-    try { window.localStorage.setItem(partySelectionPreferenceKey.value, JSON.stringify(ids)); } catch { /* optional */ }
-}, { deep: true });
 
 watch(() => state.value?.active_slots, (slots) => {
     if (!slots || pendingLoadoutMutation.value) return;
     loadoutDraft.value = slots.map((slot) => slot?.key ?? null);
-}, { deep: true, immediate: true });
-
-watch(() => state.value?.skill_trees, (trees) => {
-    if (!trees || trees.some((tree) => tree.key === activeSkillTreeKey.value)) return;
-    activeSkillTreeKey.value = trees[0]?.key ?? 'martial';
 }, { deep: true, immediate: true });
 
 watch(() => state.value?.awakening, (awakening) => {
@@ -1285,6 +1238,19 @@ function toggleBattleDetails(): void {
     try { window.localStorage.setItem(detailPreferenceKey, String(detailVisible.value)); } catch { /* optional */ }
 }
 
+async function saveRentalParty(): Promise<void> {
+    if (busy.value || pendingExplorationRequest.value) return;
+    const ids = [...partySelectedIds.value];
+    const fingerprint = JSON.stringify(ids);
+    const pending = pendingRentalMutation.value?.fingerprint === fingerprint
+        ? pendingRentalMutation.value : { fingerprint, requestId: requestId() };
+    pendingRentalMutation.value = pending;
+    if (await mutate('/api/v1/me/underground/rental-party', { borrowed_secretary_ids: ids }, pending.requestId, 'PUT')) {
+        pendingRentalMutation.value = null;
+        selectedPartyMemberIds.value = [...confirmedPartyIds.value];
+    }
+}
+
 async function saveLendingSettings(): Promise<void> {
     if (busy.value) return;
     await mutate('/api/v1/me/underground/lending', { is_lendable: lendingEnabled.value }, requestId(), 'PUT');
@@ -1323,6 +1289,11 @@ async function runExplore(huntingGroundKey: string, intentKey = 'selected-ground
     if (busy.value) return;
     innRested.value = false;
     const currentPending = pendingExplorationRequest.value;
+    if (state.value?.skill_rebuild_required && !currentPending) {
+        error.value = 'SPを全返還しました。技を選び直し、装備枠を保存してください。';
+        skillsOpen.value = true;
+        return;
+    }
     // Keep the whole intent (including borrowed IDs) until the server result is
     // recovered. A party change while a response is in flight must not mutate
     // the payload that a retry reuses.
@@ -1330,7 +1301,7 @@ async function runExplore(huntingGroundKey: string, intentKey = 'selected-ground
         requestId: requestId(),
         huntingGroundKey,
         intentKey,
-        borrowedSecretaryIds: [...partySelectedIds.value],
+        borrowedSecretaryIds: [...confirmedPartyIds.value],
     };
     pendingExplorationRequest.value = pending;
     busy.value = true;
@@ -1539,6 +1510,11 @@ async function repeatCurrentExploration(): Promise<void> {
 }
 
 async function runTrial(trialKey?: string): Promise<void> {
+    if (state.value?.skill_rebuild_required && !pendingTrialRequest.value) {
+        error.value = 'SPを全返還しました。技を選び直し、装備枠を保存してください。';
+        skillsOpen.value = true;
+        return;
+    }
     if (busy.value || !state.value?.trial) return;
     innRested.value = false;
     busy.value = true;
@@ -1720,21 +1696,6 @@ async function saveAwakeningTechnique(): Promise<void> {
     }
 }
 
-function nodeLabel(nodeKey: string | null): string {
-    if (!nodeKey) return 'なし';
-    return (state.value?.skill_trees ?? [])
-        .flatMap((tree) => tree.nodes)
-        .find((node) => node.key === nodeKey)?.label ?? '前提skill';
-}
-
-function orderedSkillNodes(nodes: SkillNode[]): SkillNode[] {
-    return nodes
-        .map((node, index) => ({ node, index }))
-        .sort((left, right) => left.node.invested_points_required - right.node.invested_points_required
-            || left.index - right.index)
-        .map(({ node }) => node);
-}
-
 function loadoutChoiceDisabled(skillKey: string, slotIndex: number): boolean {
     return loadoutDraft.value.some((equipped, index) => index !== slotIndex && equipped === skillKey);
 }
@@ -1745,10 +1706,6 @@ function weaponStyleLabel(style: string): string {
 
 function requiredWeaponText(styles: string[]): string {
     return `必要武器: ${styles.map(weaponStyleLabel).join(' / ')}`;
-}
-
-function recommendedStatsText(stats: StatKey[]): string {
-    return stats.length === 0 ? 'ー' : stats.map((stat) => statLabels[stat]).join(' / ');
 }
 
 function activeSkillWeaponIncompatible(skill: Pick<ActiveSkill, 'required_weapon_styles'>): boolean {
@@ -2574,6 +2531,11 @@ onUnmounted(() => {
                     <strong>{{ 1 + partySelectedIds.length }} / 4</strong>
                 </header>
                 <p>Leaderは自分の秘書です。同行者として他プレイヤーの秘書を最大3人まで選べます。試練はソロ専用ですが、保存中のPT編成は消えません。</p>
+                <p>レンタル更新時に同行者全員のHPが満タン、覚醒が0になります。その後は戦闘間で持ち越し、宿屋ではHPだけが全回復します。</p>
+                <ul v-if="state.rental_party?.length" aria-label="現在のレンタル状態">
+                    <li v-for="member in state.rental_party" :key="member.secretary_id">{{ member.display_name }}：HP {{ member.current_hp }} / {{ member.max_hp }}・覚醒 {{ member.awakening_gauge }}</li>
+                </ul>
+                <p v-if="rentalDraftChanged" role="status">編成はまだ確定していません。出発時は保存済みの編成を使います。</p>
                 <UndergroundPartyBuilder
                     :candidates="partyCandidates"
                     :selected-ids="partySelectedIds"
@@ -2582,6 +2544,8 @@ onUnmounted(() => {
                     :disabled="busy || Boolean(state.trial?.active_run)"
                     @toggle="togglePartyMember"
                 />
+                <button class="button primary" type="button" :disabled="busy || Boolean(pendingExplorationRequest) || Boolean(state.trial?.active_run)" @click="saveRentalParty">レンタルを確定・更新</button>
+                <p v-if="pendingExplorationRequest" role="status">結果が未確認の探索があります。結果を確認してからレンタルを更新してください。</p>
                 <section class="underground-party-browser" aria-label="貸出秘書を探す">
                     <button type="button" :disabled="busy || Boolean(state.trial?.active_run)" @click="togglePartyCandidateSearch">
                         {{ partyCandidateSearchOpen ? '貸出候補を閉じる' : '貸出秘書を探す' }}
@@ -2604,6 +2568,11 @@ onUnmounted(() => {
             <UndergroundEquipmentVault v-else-if="equipmentView === 'vault'" @updated="applyEquipmentMutation" />
 
             <div v-else class="underground-main-layout">
+                <section v-if="state.skill_rebuild_required" class="underground-progression-panel" role="status">
+                    <h2>SPを全返還しました</h2>
+                    <p>技とAIの構成を見直せます。技能を選び直し、アクティブスキルの枠を保存すると戦闘を再開できます。返還に費用や待ち時間はありません。</p>
+                    <button type="button" @click="skillsOpen = true">技を選び直す</button>
+                </section>
                 <section class="underground-character-pane" aria-labelledby="underground-character-title">
                     <div class="underground-character-header">
                         <img v-if="props.secretaryImageUrl" :src="props.secretaryImageUrl" :alt="`${state.secretary_name}の画像`">
@@ -2857,49 +2826,7 @@ onUnmounted(() => {
                     </div>
                 </header>
                 <p class="underground-progression-note">SPを消費することでスキルを習得できます。</p>
-                <div class="underground-tree-tabs" role="tablist" aria-label="Skill Tree系統">
-                    <button
-                        v-for="tree in state.skill_trees"
-                        :id="`underground-tree-tab-${tree.key}`"
-                        :key="tree.key"
-                        type="button"
-                        role="tab"
-                        :aria-controls="`underground-tree-panel-${tree.key}`"
-                        :aria-selected="activeSkillTreeKey === tree.key"
-                        @click="activeSkillTreeKey = tree.key"
-                    >
-                        {{ tree.label }}
-                    </button>
-                </div>
-                <div class="underground-tree-grid">
-                    <article
-                        v-for="tree in state.skill_trees"
-                        :id="`underground-tree-panel-${tree.key}`"
-                        :key="tree.key"
-                        class="underground-skill-tree"
-                        :aria-labelledby="`underground-tree-tab-${tree.key}`"
-                        :data-mobile-active="activeSkillTreeKey === tree.key"
-                    >
-                        <header><h3>{{ tree.label }}</h3><span>{{ tree.invested_points }} / {{ tree.full_points }} SP</span></header>
-                        <ol>
-                            <li v-for="node in orderedSkillNodes(tree.nodes)" :key="node.key" class="underground-skill-node" :data-acquired="node.rank > 0">
-                                <div class="underground-skill-node-heading"><strong>{{ node.label }}</strong><span>{{ node.type === 'active' ? 'active' : 'passive' }} {{ node.rank }} / {{ node.max_rank }}</span></div>
-                                <p>{{ node.summary }}</p>
-                                <dl>
-                                    <div><dt>SP cost</dt><dd>{{ node.point_cost }}</dd></div>
-                                    <div><dt>前提</dt><dd>{{ nodeLabel(node.prerequisite) }}</dd></div>
-                                    <div><dt>tree投資</dt><dd>{{ node.invested_points_required }} SP</dd></div>
-                                    <div v-if="node.type === 'active'"><dt>MP / CD</dt><dd>{{ node.mp_cost }} / {{ node.cooldown }}R</dd></div>
-                                    <div v-if="node.required_weapon_styles.length > 0"><dt>武器条件</dt><dd>{{ node.required_weapon_styles.join('・') }}</dd></div>
-                                </dl>
-                                <p v-if="node.type === 'active' && node.recommended_stats !== null" class="underground-skill-dependency">依存： {{ recommendedStatsText(node.recommended_stats) }}</p>
-                                <p v-if="!node.can_acquire && node.rank < node.max_rank" class="underground-node-unavailable">{{ node.unavailable_reason }}</p>
-                                <p v-else-if="node.rank >= node.max_rank" class="underground-node-complete">取得済み</p>
-                                <button v-else type="button" :disabled="busy" @click="acquireSkill(node.key)">取得する</button>
-                            </li>
-                        </ol>
-                    </article>
-                </div>
+                <UndergroundSkillTree :trees="state.skill_trees" :busy="busy" @acquire="acquireSkill" @equip="focusActiveLoadout" />
 
                 <section id="underground-active-loadout" class="underground-active-loadout" aria-labelledby="underground-loadout-title">
                     <header><div><h3 id="underground-loadout-title" tabindex="-1">Active Skill</h3><p>取得済みskillを最大5個まで装備します。</p></div><p>基本行動: 通常攻撃 / 防御（常時利用可能）</p></header>

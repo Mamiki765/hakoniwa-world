@@ -18,7 +18,7 @@ paths. Display names are presentation only; actions use `team`, `actor_id`, `tar
 Application 3.9.3では、enemyの単体敵対actionが`primary_enemy`を必要とする時だけ実targetを決定する。有効かつ生存中の挑発sourceを優先し、それがなければ生存playerからexisting battle RNGで決定的に1人を選ぶ。同じactionのdamage、effect、logはその一度の選択を共有し、self、全体、明示target、round-endは通常target抽選を消費しない。全体攻撃は挑発source一人へ縮退しない。
 
 Party-capable content effects may declare the narrow `target_scope` values `single_enemy`,
-`all_enemies`, `single_ally`, `all_allies`, or `self`. Existing effects omit the field and keep
+`all_enemies`, `single_ally`, `fallen_ally`, `all_allies`, or `self`. Existing effects omit the field and keep
 their historical single-enemy/self result. `single_ally` uses the living ally with the lowest HP
 ratio, with stable party order as the tie-breaker. This is the content extension point for a
 future PT Boss's area actions; no concrete Boss or scaling value is authored in 3.8.0.
@@ -56,3 +56,7 @@ formula, or an independent target-selector DSL.
 4. Free remains strictly `self`-targeted.
 5. Party action logs retain actor and target identity; team survival decides the result.
 6. Historical solo regressions remain unchanged and are not recalculated as party logs.
+
+## 3.10.0 additions
+
+単体蘇生のfallen_allyはHP0の味方を対象とする。単体回復・保護・解除の明示target selectorを尊重し、自己効果と敵への挑発は別に解決する。借用HP0はbattle開始時も0を保持する。敵のAoE被弾による覚醒は、実HPまたはbarrier damageを受けた各actorへ1敵actionにつき最大1回。詳細は[combat architecture](underground-combat-laboratory.md#application-3100-skill-rebuild-and-rental-resources)を正本とする。

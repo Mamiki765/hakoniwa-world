@@ -30,6 +30,7 @@ use App\Http\Requests\UpdateUndergroundActiveLoadoutRequest;
 use App\Http\Requests\UpdateUndergroundAiConfigurationRequest;
 use App\Http\Requests\UpdateUndergroundAwakeningMessageRequest;
 use App\Http\Requests\UpdateUndergroundAwakeningTechniqueRequest;
+use App\Http\Requests\UpdateUndergroundRentalPartyRequest;
 use App\Models\Secretary;
 use DomainException;
 use Illuminate\Http\JsonResponse;
@@ -261,6 +262,17 @@ final class UndergroundIntroController extends Controller
                 'daily_quest' => $result['daily_quest'],
             ];
         });
+    }
+
+    public function updateRentalParty(
+        UpdateUndergroundRentalPartyRequest $request,
+        UndergroundIntroService $service,
+    ): JsonResponse {
+        return $this->respond(fn (): array => $service->updateRentalParty(
+            $request->user(),
+            $request->string('request_id')->value(),
+            array_map('intval', $request->validated('borrowed_secretary_ids')),
+        ));
     }
 
     public function updateLending(

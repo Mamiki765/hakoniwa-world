@@ -119,6 +119,7 @@ Route::prefix('api/v1')->middleware(['auth', PrivateApiResponse::class])->group(
         Route::post('/skip/hunting-ground', [UndergroundIntroController::class, 'skipHuntingGround']);
         Route::post('/skip/trial', [UndergroundIntroController::class, 'skipTrial']);
         Route::put('/lending', [UndergroundIntroController::class, 'updateLending']);
+        Route::put('/rental-party', [UndergroundIntroController::class, 'updateRentalParty']);
         Route::get('/lending/candidates', [UndergroundIntroController::class, 'lendingCandidates']);
         Route::post('/trial/start', [UndergroundIntroController::class, 'startTrial']);
         Route::post('/trial/fight', [UndergroundIntroController::class, 'fightTrial']);

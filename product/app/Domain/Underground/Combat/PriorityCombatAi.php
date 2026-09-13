@@ -160,6 +160,28 @@ final class PriorityCombatAi
         array $allies,
         array $enemies,
     ): array {
+        if ($selector === null && str_starts_with($action, 'skill:')) {
+            $effects = $catalog->skill(substr($action, 6))['effects'];
+            if (in_array('revive', array_column($effects, 'type'), true)) {
+                $selector = 'fallen_ally';
+            } elseif (in_array('single_ally', array_column($effects, 'target_scope'), true)) {
+                $selector = 'lowest_hp_ally';
+            }
+        }
+        if ($selector === 'fallen_ally') {
+            return array_slice(array_values(array_filter(
+                $allies,
+                static fn (BuildCombatState $ally): bool => ! $ally->alive(),
+            )), 0, 1);
+        }
+        if ($selector === 'debuffed_ally') {
+            $candidates = array_values(array_filter($allies !== [] ? $allies : [$actor],
+                static fn (BuildCombatState $ally): bool => $ally->alive()
+                    && count(array_filter($ally->statuses, static fn (array $status): bool => $status['disposition'] === 'debuff' && $status['dispellable'])) > 0));
+            $target = $this->lowestHpRatioTarget($candidates);
+
+            return $target === null ? [] : [$target];
+        }
         if ($selector === null) {
             return [$currentEnemy];
         }
@@ -171,7 +193,18 @@ final class PriorityCombatAi
             )) {
                 return [];
             }
-            $target = $this->lowestHpRatioTarget($allies !== [] ? $allies : [$actor]);
+            $candidates = $allies !== [] ? $allies : [$actor];
+            if (str_starts_with($action, 'skill:')) {
+                foreach ($catalog->skill(substr($action, 6))['effects'] as $effect) {
+                    if (($effect['type'] ?? null) === 'apply_status'
+                        && in_array('periodic_heal', array_column($catalog->status($effect['status'])['effects'], 'type'), true)) {
+                        $candidates = array_values(array_filter($candidates,
+                            static fn (BuildCombatState $ally): bool => $ally->hp < $ally->maxHp
+                                && ! $ally->hasStatus($effect['status'])));
+                    }
+                }
+            }
+            $target = $this->lowestHpRatioTarget($candidates);
 
             return $target instanceof BuildCombatState ? [$target] : [];
         }
@@ -240,7 +273,9 @@ final class PriorityCombatAi
         }
         $skill = $catalog->skill($skillKey);
 
-        return $actor->mp >= $this->effectiveCost($actor, (int) ($skill['mp_cost'] ?? 0));
+        return $actor->mp >= $this->effectiveCost($actor, (int) ($skill['mp_cost'] ?? 0))
+            && $actor->roleStack('grace') >= (int) ($skill['required_healing_actions'] ?? 0)
+            && $actor->roleStack('fighting_spirit') >= (int) ($skill['required_fighting_spirit'] ?? 0);
     }
 
     public function effectiveCost(BuildCombatState $actor, int $cost): int

@@ -192,12 +192,14 @@ final readonly class PriorityCombatAiConfiguration
             'targets' => [
                 ['key' => 'lowest_hp_ally', 'label' => 'HP割合が最も低い生存味方'],
                 ['key' => 'untaunted_enemy', 'label' => '有効な挑発を受けていない敵'],
+                ['key' => 'fallen_ally', 'label' => '戦闘不能の味方'],
+                ['key' => 'debuffed_ally', 'label' => '解除可能な弱体効果を受けた味方'],
             ],
             'skills' => $this->playerSkills($catalog),
             'statuses' => $statuses,
             'role_stacks' => [
                 ['key' => 'fighting_spirit', 'label' => '闘志', 'max_stacks' => 5],
-                ['key' => 'grace', 'label' => '恩寵', 'max_stacks' => 5],
+                ['key' => 'grace', 'label' => '回復恩寵', 'max_stacks' => 5],
             ],
         ];
     }
@@ -233,7 +235,7 @@ final readonly class PriorityCombatAiConfiguration
         return $skills;
     }
 
-    /** @return list<'lowest_hp_ally'|'untaunted_enemy'> */
+    /** @return list<'lowest_hp_ally'|'untaunted_enemy'|'fallen_ally'|'debuffed_ally'> */
     public function targetSelectorsForAction(string $action, AlphaV1BuildCatalog $catalog): array
     {
         if ($action === 'normal_attack') {
@@ -245,20 +247,27 @@ final readonly class PriorityCombatAiConfiguration
 
         $skillKey = substr($action, 6);
         $skill = $catalog->skill($skillKey);
+        if (in_array('cleanse', array_column($skill['effects'], 'type'), true)
+            && in_array('single_ally', array_column($skill['effects'], 'target_scope'), true)) {
+            return ['debuffed_ally', 'lowest_hp_ally'];
+        }
+        $selectors = [];
         foreach ($skill['effects'] as $effect) {
+            if (($effect['target_scope'] ?? null) === 'fallen_ally') {
+                return ['fallen_ally'];
+            }
             if (is_array($effect)
-                && ($effect['type'] ?? null) === 'heal'
                 && ($effect['target_scope'] ?? null) === 'single_ally') {
                 return ['lowest_hp_ally'];
             }
             if (is_array($effect)
                 && ($effect['target'] ?? 'enemy') === 'enemy'
                 && ($effect['target_scope'] ?? 'single_enemy') === 'single_enemy') {
-                return ['untaunted_enemy'];
+                $selectors = ['untaunted_enemy'];
             }
         }
 
-        return [];
+        return $selectors;
     }
 
     /**

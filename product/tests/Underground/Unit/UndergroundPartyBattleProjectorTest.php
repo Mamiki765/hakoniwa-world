@@ -40,10 +40,11 @@ final class UndergroundPartyBattleProjectorTest extends TestCase
         $revivals = array_values(array_filter($actions, static fn (array $row): bool => $row['kind'] === 'revival'));
         self::assertNotEmpty($revivals);
         self::assertSame('borrowed:2', $revivals[0]['actor_id']);
-        self::assertSame('secretary:1', $revivals[0]['target_id']);
-        self::assertSame('Leader', $revivals[0]['target_name']);
+        $rawRevival = array_values(array_filter($result->actionLog, static fn (array $row): bool => ($row['kind'] ?? null) === 'revival'))[0];
+        self::assertSame($rawRevival['target_id'], $revivals[0]['target_id']);
+        self::assertSame($fixture['member_snapshots'][$rawRevival['target_id']]['display_name'], $revivals[0]['target_name']);
         self::assertTrue($revivals[0]['important']);
-        self::assertSame(['Leaderが復活した！'], $revivals[0]['lines']);
+        self::assertSame([$revivals[0]['target_name'].'が復活した！'], $revivals[0]['lines']);
 
         $portraits = array_values(array_filter($projected['portrait_events'], static fn (array $event): bool => $event['combatant_id'] === 'borrowed:2'));
         self::assertSame(['start', 'awakening', 'final'], array_column($portraits, 'type'));

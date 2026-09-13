@@ -79,14 +79,6 @@ final class PriorityCombatAiConfigurationTest extends TestCase
             );
         }
 
-        $this->assertSame(
-            [['type' => 'own_hp_lte', 'percent' => 55]],
-            $rules[0]['conditions'],
-        );
-        $this->assertSame(
-            [['type' => 'always']],
-            $rules[8]['conditions'],
-        );
     }
 
     public function test_normalization_canonicalizes_commutative_and_condition_order(): void

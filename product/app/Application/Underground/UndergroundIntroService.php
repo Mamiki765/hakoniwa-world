@@ -447,6 +447,44 @@ final readonly class UndergroundIntroService
         });
     }
 
+    /**
+     * @param  array<mixed>  $secretaryIds
+     * @return array<string, mixed>
+     */
+    public function updateRentalParty(User $user, string $requestId, array $secretaryIds): array
+    {
+        if (! Str::isUuid($requestId) || ! array_is_list($secretaryIds)
+            || count($secretaryIds) > 3 || count(array_unique($secretaryIds)) !== count($secretaryIds)
+            || count(array_filter($secretaryIds, static fn (mixed $id): bool => ! is_int($id) || $id < 1)) > 0) {
+            throw new UndergroundRuntimeException('underground_party_invalid', 'レンタルする秘書を確認してください。');
+        }
+        /** @var list<int> $secretaryIds */
+        // Retry the recorded mutation without consulting sources that may since be unavailable.
+        $existing = UndergroundIntroRequest::query()
+            ->whereHas('profile.secretary', fn ($query) => $query->where('user_id', $user->id))
+            ->where('request_id', $requestId)->exists();
+        $attempt = 0;
+        do {
+            $prepared = $existing ? null : $this->runtime->prepareRentalParty($user, $secretaryIds);
+            try {
+                return $this->mutate($user, $requestId, 'rental_party', [
+                    'borrowed_secretary_ids' => $secretaryIds,
+                ], function (Secretary $secretary, UndergroundProfile $profile, UndergroundIntroProgress $intro) use ($prepared): void {
+                    $this->assertGrowthUnlocked($profile, $intro);
+                    if ($prepared === null || ! $this->runtime->rentalPartyLeaderMatches($profile, $prepared['leader'])) {
+                        throw new UndergroundRuntimeException('underground_party_leader_changed', 'PTの能力を再確認します。');
+                    }
+                    $profile->rental_party = $prepared['members'];
+                    $profile->save();
+                });
+            } catch (UndergroundRuntimeException $exception) {
+                if ($exception->errorCode !== 'underground_party_leader_changed' || ++$attempt >= 3) {
+                    throw $exception;
+                }
+            }
+        } while (true);
+    }
+
     /** @return array<string, mixed> */
     public function restAtInn(User $user, string $requestId): array
     {
@@ -481,6 +519,12 @@ final readonly class UndergroundIntroService
                 $profile->allocatedStp(),
                 $this->equipmentLoadout->combatLoadout($profile),
             );
+            $members = $profile->rental_party;
+            foreach ($members as &$member) {
+                $member['current_hp'] = $member['max_hp'];
+            }
+            unset($member);
+            $profile->rental_party = $members;
             $profile->save();
         });
     }
@@ -730,6 +774,10 @@ final readonly class UndergroundIntroService
                         ->update(['active_slot' => $index + 1]);
                 }
             }
+            // Saving the loadout is the explicit acknowledgement of the refund.
+            // An intentionally empty loadout remains a valid normal-attack build.
+            $profile->skill_rebuild_required = false;
+            $profile->save();
         });
     }
 
@@ -1499,6 +1547,8 @@ final readonly class UndergroundIntroService
                 ? $profile->skill_points_total - $profile->skill_points_unspent
                 : 0,
             'skill_tree_identity' => $profile?->skill_tree_identity,
+            'skill_rebuild_required' => $profile->skill_rebuild_required ?? false,
+            'rental_party' => $profile->rental_party ?? [],
             'skill_trees' => $skillTrees,
             'active_slots' => $activeSlots,
             'passive_modifiers' => $skillBuild['passive_modifiers'] ?? [],

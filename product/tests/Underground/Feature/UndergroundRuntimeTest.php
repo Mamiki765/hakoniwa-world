@@ -10,6 +10,7 @@ use App\Application\Underground\CanonicalUndergroundCombat;
 use App\Application\Underground\CanonicalUndergroundExplorationCombat;
 use App\Application\Underground\UndergroundAlphaV1PlayerCatalog;
 use App\Application\Underground\UndergroundBattleSeed;
+use App\Application\Underground\UndergroundIntroService;
 use App\Application\Underground\UndergroundProfileService;
 use App\Application\Underground\UndergroundRuntimeException;
 use App\Application\Underground\UndergroundRuntimeService;
@@ -1250,6 +1251,7 @@ final class UndergroundRuntimeTest extends TestCase
         $runtime = app(UndergroundRuntimeService::class);
         $requestId = (string) Str::uuid();
 
+        app(UndergroundIntroService::class)->updateRentalParty($leader, (string) Str::uuid(), [$borrowedSecretary->id]);
         $result = $runtime->explore($leader, $requestId, null, [$borrowedSecretary->id]);
         $battle = $result['battle'];
         $snapshot = $battle->snapshot;
@@ -1350,6 +1352,7 @@ final class UndergroundRuntimeTest extends TestCase
         }
         $this->assertIsString($requestId);
 
+        app(UndergroundIntroService::class)->updateRentalParty($leader, (string) Str::uuid(), $borrowedSecretaryIds);
         $battle = $runtime->explore($leader, $requestId, null, $borrowedSecretaryIds)['battle'];
         $enemyRewards = [
             'subterranean_rat' => ['xp' => 100, 'shards' => 20],
@@ -1450,6 +1453,101 @@ final class UndergroundRuntimeTest extends TestCase
         ])->assertUnprocessable()->assertJsonValidationErrors('borrowed_secretary_ids');
     }
 
+    public function test_rental_resources_persist_only_for_borrower_and_only_explicit_update_resets_awakening(): void
+    {
+        [$leader, $secretary] = $this->secretaryUser();
+        $leader->forceFill(['visitor_code' => 'RENTLEAD'])->save();
+        $profile = $this->unlockExploration($secretary);
+        $profile->update(['shard_balance' => 500]);
+        [$owner, $borrowed] = $this->secretaryUser();
+        $owner->forceFill(['visitor_code' => 'RENTLEND'])->save();
+        $source = $this->unlockExploration($borrowed, growthPathKey: 'blessing_green');
+        $source->update(['combat_level' => 20, 'unspent_stp' => 95, 'current_hp' => 3, 'awakening_gauge' => 980]);
+        app(UndergroundRuntimeService::class)->startTrial($owner, 'trial_01');
+        UndergroundTrialProgress::query()->where('underground_profile_id', $source->id)
+            ->where('trial_key', 'trial_01')->update(['first_cleared_at' => Carbon::now()]);
+        app(SecretaryLendingService::class)->update($owner, true);
+        $combat = new ScriptedUndergroundPartyCombat(borrowedRemainingHp: 0, borrowedGauge: 120);
+        $this->app->instance(AtomicUndergroundPartyCombat::class, $combat);
+        $intro = app(UndergroundIntroService::class);
+        $runtime = app(UndergroundRuntimeService::class);
+        $rentId = (string) Str::uuid();
+        $state = $intro->updateRentalParty($leader, $rentId, [$borrowed->id]);
+        $initial = $state['rental_party'][0];
+        $this->assertGreaterThan(3, $initial['current_hp']);
+        $this->assertSame($initial['max_hp'], $initial['current_hp']);
+        $this->assertSame(0, $initial['awakening_gauge']);
+        $halfHp = intdiv($initial['max_hp'], 2);
+        $profile->update(['combat_level' => 2, 'unspent_stp' => 5, 'rental_party' => [[...$initial, 'current_hp' => $halfHp]]]);
+        $recalculatedMax = $runtime->prepareRentalParty($leader, [$borrowed->id])['members'][0]['max_hp'];
+        $this->assertGreaterThan($initial['max_hp'], $recalculatedMax);
+        $requestId = (string) Str::uuid();
+        $runtime->explore($leader, $requestId, null, [$borrowed->id]);
+        $this->assertSame((int) floor($halfHp / $initial['max_hp'] * $recalculatedMax), $combat->calls[0]['player_snapshots'][1]['current_hp']);
+        $rental = $profile->refresh()->rental_party[0];
+        $this->assertSame([0, 120], [$rental['current_hp'], $rental['awakening_gauge']]);
+        $this->assertSame($rental, $intro->state($leader)['rental_party'][0]);
+        $this->assertSame($rental, $intro->updateRentalParty($leader, $rentId, [$borrowed->id])['rental_party'][0]);
+        $this->assertTrue($runtime->explore($leader, $requestId, null, [$borrowed->id])['duplicate']);
+        $this->assertSame($rental, $profile->refresh()->rental_party[0]);
+        $profile->update(['next_battle_at' => Carbon::now()->subSecond()]);
+        $runtime->explore($leader, (string) Str::uuid(), null, [$borrowed->id]);
+        $this->assertSame(0, $combat->calls[1]['player_snapshots'][1]['current_hp']);
+        $this->assertSame(120, $combat->calls[1]['player_snapshots'][1]['awakening']['gauge']);
+        $rested = $intro->restAtInn($leader, (string) Str::uuid())['rental_party'][0];
+        $this->assertSame($rested['max_hp'], $rested['current_hp']);
+        $this->assertSame(120, $rested['awakening_gauge']);
+        $renewed = $intro->updateRentalParty($leader, (string) Str::uuid(), [$borrowed->id])['rental_party'][0];
+        $this->assertSame($renewed['max_hp'], $renewed['current_hp']);
+        $this->assertSame(0, $renewed['awakening_gauge']);
+        $this->assertTrue($runtime->explore($leader, $requestId, null, [$borrowed->id])['duplicate']);
+        $this->assertSame($renewed, $profile->refresh()->rental_party[0]);
+        $this->assertSame([3, 980], [$source->refresh()->current_hp, $source->awakening_gauge]);
+        SecretaryLendingSetting::query()->where('secretary_id', $borrowed->id)->update(['is_available' => false]);
+        $this->assertSame($renewed, $intro->updateRentalParty($leader, $rentId, [$borrowed->id])['rental_party'][0]);
+    }
+
+    public function test_skill_refund_preserves_earned_progress_and_historical_retry_until_loadout_is_saved(): void
+    {
+        [$user, $secretary] = $this->secretaryUser();
+        $profile = $this->unlockExploration($secretary);
+        [$runtime] = $this->runtimeWithOutcomes(['player']);
+        $run = $runtime->startTrial($user, 'trial_01');
+        $requestId = (string) Str::uuid();
+        $battle = $runtime->fightTrial($user, $run->run_key, $requestId)['battle'];
+        $profile->refresh()->update([
+            'skill_tree_identity' => 'secretary-underground-skill-tree-alpha-v1',
+            'skill_points_total' => 60, 'skill_points_unspent' => 48,
+            'custom_ai_rules' => [['action' => 'skill:radiant_judgment', 'conditions' => []]],
+        ]);
+        UndergroundSkillAllocation::query()->create([
+            'underground_profile_id' => $profile->id, 'tree_key' => 'martial',
+            'node_key' => 'martial_precision_cut', 'rank' => 1, 'active_slot' => 1,
+        ]);
+        $unchanged = $profile->getAttributes();
+        foreach (['skill_tree_identity', 'skill_points_unspent', 'custom_ai_rules', 'skill_rebuild_required', 'rental_party'] as $key) {
+            unset($unchanged[$key]);
+        }
+        DB::statement('ALTER TABLE underground_profiles DROP COLUMN skill_rebuild_required, DROP COLUMN rental_party');
+        $migration = require database_path('migrations/2026_09_13_000000_rebuild_underground_skills_and_store_rental_party.php');
+        $migration->up();
+        $profile->refresh();
+        $this->assertSame($unchanged, array_intersect_key($profile->getAttributes(), $unchanged));
+        $this->assertSame([60, 60, true], [$profile->skill_points_total, $profile->skill_points_unspent, $profile->skill_rebuild_required]);
+        $this->assertNull($profile->custom_ai_rules);
+        $this->assertSame(0, $profile->skillAllocations()->count());
+        $this->assertEquals($battle->snapshot, $runtime->fightTrial($user, $run->run_key, $requestId)['battle']->snapshot);
+        $this->assertRuntimeError('underground_skill_rebuild_required', fn () => $runtime->fightTrial($user, $run->run_key, (string) Str::uuid()));
+        $intro = app(UndergroundIntroService::class);
+        $intro->acquireSkillNode($user, (string) Str::uuid(), 'miracle_holy_bolt');
+        $intro->acquireSkillNode($user, (string) Str::uuid(), 'miracle_mending_prayer');
+        $this->assertTrue($profile->refresh()->skill_rebuild_required);
+        $intro->updateActiveLoadout($user, (string) Str::uuid(), ['holy_bolt', 'mending_prayer', null, null, null]);
+        $this->assertFalse($profile->refresh()->skill_rebuild_required);
+        $this->assertSame(48, $profile->skill_points_unspent);
+        $this->assertSame(2, $run->refresh()->next_battle_index);
+    }
+
     /** @return array{User, Secretary} */
     private function secretaryUser(): array
     {
@@ -1516,7 +1614,7 @@ final class UndergroundRuntimeTest extends TestCase
             'growth_path_selected_at' => Carbon::now(),
             'skill_points_total' => 20,
             'skill_points_unspent' => 20,
-            'skill_tree_identity' => 'secretary-underground-skill-tree-alpha-v1',
+            'skill_tree_identity' => config('underground-alpha-v1.skill_tree_identity'),
             'unspent_stp' => ($profile->combat_level - 1) * ($growthPathKey === 'free_black' ? 6 : 5),
         ]);
         $tutorial = UndergroundBattle::query()->create([
@@ -1779,7 +1877,11 @@ final class ScriptedUndergroundPartyCombat implements AtomicUndergroundPartyComb
     /** @var list<array{player_snapshots: array<int, array<string, mixed>>, enemy_keys: list<string>}> */
     public array $calls = [];
 
-    public function __construct(private readonly ?int $leaderRemainingHp = null) {}
+    public function __construct(
+        private readonly ?int $leaderRemainingHp = null,
+        private readonly ?int $borrowedRemainingHp = null,
+        private readonly ?int $borrowedGauge = null,
+    ) {}
 
     public function fight(
         AlphaV1BuildCatalog $catalog,
@@ -1814,6 +1916,13 @@ final class ScriptedUndergroundPartyCombat implements AtomicUndergroundPartyComb
                 'gauge_after' => $state['awakening_gauge'],
                 'triggered' => false,
             ];
+        }
+        foreach ($playerSnapshots as $snapshot) {
+            $id = (string) $snapshot['combatant_id'];
+            if (str_starts_with($id, 'borrowed:')) {
+                $final[$id]['hp'] = $this->borrowedRemainingHp ?? $final[$id]['hp'];
+                $awakening[$id]['gauge_after'] = $this->borrowedGauge ?? $awakening[$id]['gauge_after'];
+            }
         }
         $leaderId = (string) $playerSnapshots[0]['combatant_id'];
         if ($this->leaderRemainingHp !== null) {

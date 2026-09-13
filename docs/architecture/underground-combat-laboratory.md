@@ -2,7 +2,7 @@
 
 ## Authority and scope
 
-この文書は`secretary-underground-alpha-v0` combat laboratoryから正式runtime、Trial、覚醒、装備、探索、custom AI、およびapplication `3.9.3`のparty combatまでを扱うcurrent task-specific architecture authorityである。manual combat、unique、enhancement、enchant、market、companion育成は定義しない。
+この文書は`secretary-underground-alpha-v0` combat laboratoryから正式runtime、Trial、覚醒、装備、探索、custom AI、およびapplication `3.10.0`のskill rebuild・party rentalまでを扱うcurrent task-specific architecture authorityである。manual combat、unique、enhancement、enchant、market、companion育成は定義しない。
 
 ### Party boundary (Owner decision)
 
@@ -16,7 +16,7 @@ Trial 1/2はsoloのままとする。探索のenemy数はcontentごとのparty-s
 
 party battle UIは操作主体の`PARTY`を上段、`ENEMY`を下段へ分離する。compact cardはicon、battle display name、色付きHP、MP current value、覚醒barを表示し、MPの固定上限値と覚醒の内部数値は繰り返し表示しない。覚醒barは満了待機を`Ready`、発動中を`Awaken!`として区別する。iconは1:1、bustとfull bodyは通常・覚醒とも3:4で、覚醒画像がなければ対応する通常画像へfallbackする。各画像の制作方法と権利・creditはslotごとに保存する。
 
-current repository candidate releaseのapplication versionは`3.9.3`、surface Rulesetは`hakoniwa-2s-plus-v25`である。v25はv24の地上契約を保ち、新規島候補を安定順のbounded batchで安全なplanまで評価するbehaviorを追加する。immutable v24は変更しない。Underground laboratory/runtime identityとは別物であり、profile、run、history、intro/growth/skill/equipment/AI stateとpure build snapshotはpublished Ruleset、World、Nation、MapCell、TurnRun、Turn RNGへ依存しない。current combat、exploration、equipment、AI identityと追加contractは本文後半のrelease-specific節を正本とし、過去PR単位の節は各導入時点の境界として読む。
+current repository candidate releaseのapplication versionは`3.10.0`、surface Rulesetは`hakoniwa-2s-plus-v25`である。v25はv24の地上契約を保ち、新規島候補を安定順のbounded batchで安全なplanまで評価するbehaviorを追加する。immutable v24は変更しない。Underground laboratory/runtime identityとは別物であり、profile、run、history、intro/growth/skill/equipment/AI stateとpure build snapshotはpublished Ruleset、World、Nation、MapCell、TurnRun、Turn RNGへ依存しない。current combat、exploration、equipment、AI identityと追加contractは本文後半のrelease-specific節を正本とし、過去PR単位の節は各導入時点の境界として読む。
 
 ## Modular-monolith boundary
 
@@ -90,7 +90,7 @@ alpha-v1はpure immutable manifest/snapshot/validator/simulatorであり、DB、
 
 敏捷comboはactionごとに1回だけ2・3・4連続ヒットを抽選し、通常のcritical・variance・防御・guard等を解決したpost-mitigation damageへ最終倍率を掛ける。action、damage event、critical、status、覚醒ゲージ、native multi-hit数は追加せず、native multi-hitにも同じaction単位のcombo結果を使う。logはnative damage行を増やさず、回避または完全防御ではない最初のdamage行に補助表示用hit数を1回だけ持つ。
 
-custom AI導入時のcombat identityは`secretary-underground-alpha-v3`であった。application 3.9.3でparty敵単体targetの決定方法が変わるため、current active combat identityは`secretary-underground-alpha-v4`とする。`AlphaV1*`のclass名と`foundation-v1.json`等のfile名は既存canonical implementation lineageであり、persisted identityのauthorityには使わない。新規結果はv4をsnapshot/reportへ保存し、既存v1/v2/v3 battle snapshotはhistorical recordとしてそのまま投影・replayできるためmigrationは行わず、parallel combat engineも追加しない。
+current combat identityは`secretary-underground-alpha-v5`、skill tree identityは`secretary-underground-skill-tree-alpha-v2`。3.9.3のv4から3.10.0の技能・MP・会心・対象選択・持続回復・蘇生・行動継続へ更新する。`AlphaV1*`と`foundation-v1.json`は既存canonical implementation lineageであり、file名からpersisted identityを推測しない。過去battleの保存済みsummary/detailの再取得は保持し、旧戦闘engineの並行運用や過去勝敗の再計算は行わない。SP移行は3.10.0のforward migrationを正本とする。
 
 ### Alpha-v1 damage and recovery order
 
@@ -112,9 +112,9 @@ damage prevention metricはHP clamp前のpost-mitigation damageを基準にし�
 
 ### Trees, points, active slots, and role stacks
 
-skill treeは`martial`（戦技）、`guardianship`（護身）、`miracle`（祝福）の3つで、固定classやbalanced専用treeはない。player-facing labelだけを祝福へ統一し、既存manifest/combat/node identityの`miracle` / `miracle_*`は維持する。各treeの全node最大rankはexactly 100 points、全treeは300 points、representative final budgetは120 pointsである。同tree内prerequisite、max rank、tree投資済み15 / 35 / 60 / 85 points gateをvalidatorが確認する。最大5 active skillに加え、通常攻撃と防御はslot外である。weapon styleはdagger、rapier、shield、crystal staffをauthoringし、styleとtreeを固定classとして結合しない。
+skill treeは`martial`（戦技）、`guardianship`（護身）、`miracle`（祝福）の3つで、固定classやbalanced専用treeはない。player-facing labelだけを祝福へ統一し、既存manifest/combat/node identityの`miracle` / `miracle_*`は維持する。取得費の合計は戦技138、護身126、祝福138 SP。すべてactive・rank 1で、微増passiveと投入SPゲートを撤去する。前提は同tree内の技のみ。初期20 SP、Trial 1/2初回clearで各40 SPを得る現行獲得経路を維持し、既得SPを全返還する。5 active枠に加え通常攻撃・防御はslot外。すべてのplayer skillで武器種制限を設けず、growth pathと取得可能なtreeも独立する。数値は3.10.0の調整案でありOwner固定値ではない。laboratoryの120 SP fixtureはruntime獲得上限の意味ではない。
 
-`fighting_spirit`（闘志）は実際にguard/parry/barrier吸収が発生した時だけ最大5 stackまで得る。攻撃されていない防御では増えない。`grace`（恩寵）はeffective healing、実際のcleanse、barrier吸収、または明示されたholy actionだけから得る。overhealだけでは増えない。いずれも通常combat flow内のstatus/role stackであり、variant専用engineを持たない。
+`fighting_spirit`（闘志）は鏡陣を装備し、実際にguard/parry/barrier吸収が発生したときに最大5まで得る。攻撃されていない防御では増えない。反撃は1round1回まで。`grace`（回復恩寵）はハート・オブ・マーシー装備中、通常skillで実効HP回復または蘇生を行った1 actionにつき1（最大5）。1 action内の複数回復は重複せず、HoTのtick・空回復・障壁・解除だけ・覚醒時全回復・覚醒奥義では増えない。ハート・オブ・マーシーは3以上のときだけ使用でき、3を消費する。いずれもcanonical combat flow内のrole stackであり、別engineを持たない。
 
 ### Status and boss policy
 
@@ -348,10 +348,20 @@ custom AI ruleは、対応する行動に限ってoptionalな`target`を持て�
 
 party内の敵が単体の敵対actionを実行する場合、生存中の有効な挑発sourceがあればそのplayerをtargetにし、なければ生存playerからexisting battle RNG contractで決定的に1人を選ぶ。後発挑発による上書き、source死亡時の通常targetへのfallback、全体攻撃を一人へ吸わせない契約は維持する。
 
-actionとscopeが確定し、実際に単体敵対targetが必要だと判明した時点で一actionにつき一度だけ抽選する。同じtargetをAI decision、damage、effect、logへ再利用し、行ごとに再抽選しない。self、全体のみのaction、明示targetを持つaction、action impairment、round-end処理では通常target抽選を消費しない。このsemantic changeによりcurrent combat identityを`secretary-underground-alpha-v4`とし、v3以前のsnapshotはhistorical recordとして変更しない。
+actionとscopeが確定し、実際に単体敵対targetが必要だと判明した時点で一actionにつき一度だけ抽選する。同じtargetをAI decision、damage、effect、logへ再利用し、行ごとに再抽選しない。self、全体のみのaction、明示targetを持つaction、action impairment、round-end処理では通常target抽選を消費しない。この導入時のsemantic changeによりcombat identityを`secretary-underground-alpha-v4`とし、v3以前のsnapshotはhistorical recordとして変更しない。
 
-### OPEN: enemy AoEの被damage覚醒ゲージ
+### 3.10.0 Owner decision: enemy AoEの被damage覚醒ゲージ
 
-現行party pathは、enemy action中にplayerへのdamageまたはbarrier damageが一件でも記録されると、actionのbase target一人へ覚醒ゲージを一度加算する。したがってAoEで複数playerが被damageしても全員には加算されない。soloの「enemyの1 actionがmulti-hitでも覚醒ゲージ加算は1回」というcontractは確認できるが、party AoEの受給者を定めたOwner decisionはcurrent architecture、handoff、実装から確認できない。この項目は`OPEN`であり、Owner指示による`DEFERRED`ではないため、3.9.3では変更しない。
+敵の1 action中に実HP damageまたはbarrier damageを受けたplayerそれぞれへ、最大1回ずつ加算する。複数hitは同じactorへ重複加算せず、回避・無傷だけのactorへは加算しない。soloの加算単位も維持する。Ownerが2026-09-13に決定したUG-06を実装する。
 
-`ASSISTANT-PROPOSAL`は、そのactionで実際にdamageまたはbarrier damageを受けた各playerへ、各人につき最大1回加算する方法である。これならsolo contractを各playerへ自然に拡張できるが、Owner decisionが得られるまではcurrent contractへ昇格しない。
+## application 3.10.0 skill rebuild and rental resources
+
+3ツリーの簡易一覧は[release skill list](../../product/docs/releases/3.10.0-skill-list.md)、取得費・比較・検証条件は[release notes](../../product/docs/releases/3.10.0-underground-rebuild.md)を参照する。倍率・技数・名称は今後も調整対象である。
+
+物理攻撃はMP 0とCT、魔法はMP消費と能動MP回復を主な管理軸にする。ルーセントドリームは使用roundの次から6回、round endにMPを回復する。自然回復は従来300のまま。瞬突は5枠の1枠を使い、CT中は選べない。使用後は同じactorの次AI ruleから続行し、通常actionを1回残す。途中の敵死亡で生存敵へ向き直り、反撃死では行動を終了する。
+
+single_allyは生存味方のHP割合で選ぶ。持続回復は既に同じ効果を持つ味方を避ける。fallen_allyは戦闘不能者のみ、debuffed_allyは解除可能な弱体を持つ生存者のみ。自己回復・味方保護と敵への挑発はeffectごとに別targetを解決する。HoTは付与者の精神と対象の最大HPからtick量を付与時にsnapshotする。単体蘇生は30% HP、従来の生命讃歌の全員全回復蘇生とは別の技である。
+
+技能移行は旧skill identityのprofileに対してallocationsを削除、unspentをtotalへ再設定、custom AIを解除し、skill_rebuild_requiredを立てる。Lv・XP・STP・成長方針・装備・通貨・進行中の試練・過去結果・覚醒・再振り待ちを変更しない。新しい戦闘は装備枠を明示保存するまで止めるが、完了済みrequestの再取得は先に解決する。意図した通常攻撃構成として空の装備枠を保存することも許す。進行中の試練でも技能を再取得・保存でき、既存checkpointから再開できる。貸出元が未設定なら候補から除外し、既存編成からの新規借用も拒否する。既存battle snapshotや貸出参加履歴は保持する。
+
+PUT rental-partyで編成を明示確定したとき、借用全員をHP満タン・覚醒0にする。空配列はレンタル解除。UUIDとpayloadをcanonical intro requestで記録し、同じrequest再送でリセットを繰り返さない。更新以後のHP・覚醒は借り手profileのrental_partyへ保存し、他の借り手や貸出元へ書き戻さない。戦闘で借用者がHP0になっても0を持ち越す。宿屋はHPだけを全回復する。能力再計算時はHP割合をfloorで再設定し、0は0、生存者は最低1を保つ。状態取得・能力再計算・戦闘再送では覚醒をリセットしない。編成候補の選択と確定をUIで区別し、結果不明の探索がある間は確定を止める。source snapshot準備はLeader lockの外で行い、Leaderの同期条件変更をlock内で検出した場合だけ再準備する。
