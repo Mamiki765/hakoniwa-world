@@ -1,33 +1,34 @@
-# hakoniwa-world 現在地・独立レビュー引継ぎ
+# hakoniwa-world 現在地・hotfix引継ぎ
 
-更新日：2026-09-14 JST。OwnerからWeb版ChatGPTへ「PRレビュー、handoff更新コミット、関連横断レビュー」の依頼を受けて更新する。
+更新日：2026-09-14 JST。4.1.2 hotfix候補の実装に合わせて更新する。
 
-本書の対象は4.0.0までの到達点とForgejo PR #6の4.1.0候補。対象範囲の現在地は本書を先に読み、[旧統合handoff](development-history-and-current-handoff.md)の「3.9.3 hotfix候補」「3.9.0現在地」等へ戻さない。旧本文は過去の判断・事故・配布記録として、削除・整形せず保持している。詳細仕様の正本は固定SHAのcode・release文書・Owner補足である。
+本書の現在地は4.1.1 productionと4.1.2 hotfix候補。4.1.0までの記録は過去の判断として下に保持する。詳細仕様の正本は固定SHAのcode・release文書・Owner補足である。
 
 ## 1. 固定refと現在地
 
 | 項目 | 確認結果 |
 |---|---|
 | 正本remote | Forgejo `https://git.pbwlove.com/Mamiki765/hakoniwa-world.git` |
-| main | `319ea20165a7e7e111749c4f5d9f337f1045a1a0`。`product/config/hakoniwa.php`のapplication versionは4.0.0 |
-| 対象PR | #6 `feat: 4.1.0 夢の女王との決闘・宝物庫ソート・障壁表示` |
-| 作業branch | `release/4.1.0` |
-| PR base | `319ea20165a7e7e111749c4f5d9f337f1045a1a0` |
-| 初回レビューHEAD | `3c7cc5434b811aeea1e848c2b2f19503d3fe7e47` |
-| 今回独立レビュー済み実装HEAD | `a9150caa94ccfc1034b3152a0ff24597d07e24fd` |
-| レビュー記録 | 初回#52、Owner訂正#53、実装自己確認#55、今回独立再レビュー#56（formal review ID 4） |
-| 判定 | 今回確認した修正差分・関連横断で新規P0/P1/P2なし。ソースレビュー上のmerge blockerなし |
-| 未実施 | PR #6 merge、4.1.0 deploy・本番migration、production data変更。この引継ぎcommitは文書のみであり、本番反映ではない |
+| main / hotfix base | `764beb4cfb595e293a067368cef87993253cd9f1`。application versionは4.1.1 |
+| 作業branch | `hotfix/4.1.2` |
+| 変更 | Turn finalizeのSecretary本体lockを`FOR NO KEY UPDATE`へ変更し、Underground party memberのFK参照と共存させる |
+| regression | PostgreSQLの別workerでTurn flush、party snapshot、同じSecretaryへの並行更新を競合させる |
+| schema / Ruleset | migrationなし、Ruleset変更なし |
+| 未実施 | merge、deploy、production DB・Turn操作 |
 
-この文書を追加するcommitのSHAは自己参照で記入せず、PR HEADを再解決する。実装検証対象の`a9150ca…`と文書追加後HEADを区別し、その差分が文書だけであることを確認する。#55の自己検証を独立レビューとして扱わない。
-
-PR #5 `hotfix/4.0.1` / `dd4b6c9ac9b91f66d181089fad0a00e51a72f14c` は、PR本文で#6へ統合済みと明記されている。照会時点ではopen・未merge。取り込み先は#6であり、#5を別途merge/deployする必要はない。
+hotfixのcommit SHAは自己参照で記入せず、ForgejoのPR HEADを再解決する。
 
 ## 2. 本番観測の範囲
 
-MCP `production_status`の生成時刻は2026-09-14 11:29:28 JST（02:29:28Z）。Web/DB healthy、Turn474、未解決Turnなし、Surface Ruleset v25 / ID40、稼働checkoutについてpending migration 0。checkoutはmainの`319ea20…`、imageは`sha256:df328acdb3a834966cee0fdd94ab4c4ee58a15287d26266d4dd8579c9348baa7`。
+Owner提供のincident記録では、Turn478 attempt 1が`finalize_turn`中のPostgreSQL `40P01`で失敗した。Turn側のSecretary batch `FOR UPDATE`と、地下PT snapshot側の`underground_party_members.secretary_id` FK参照が、Leaderと借用Secretaryを逆順に待っていた。Ownerは同じTurn・Ruleset・seedでmanual retryしたattempt 2の完了と、`current_turn=478`を確認済みで、追加recoveryは不要である。
 
-ただし`deployed_sha`と`application_version`はnull、deployment statusはunknown。checkoutのversionを稼働imageの厳密な証明に読み替えない。pending 0も、未mergeのPR #6 migrationが適用済みという意味ではない。本レビューではread-only snapshot以外の本番操作をしていない。
+4.1.2作業ではproduction状態を再照会・変更していない。上記はOwner提供記録であり、このbranchの検証は隔離したPostgreSQL test DBだけで行う。
+
+### 2.1 4.1.2のlock contract
+
+`SecretaryTurnService::flushExperience()`がSecretary本体で更新するのはnon-keyの`monster_experience`である。`FOR NO KEY UPDATE`は他のwriterを直列化したままFKの`KEY SHARE`と共存するため、lost update防止を維持しつつ今回のcycleを切る。Secretary skill EXPは別tableを従来どおり`FOR UPDATE`する。Underground側のsnapshot・profile・equipment・skill整合性、4.1.1のお問い合わせlock修正、manual retry契約は変更しない。
+
+中央銀行・中央穀倉は、ともに既存の`ordinary` quantity経路を使用する。同じセルでは1Turnごとにquantityを1減らして新設から増設へ進み、別セルの同種2施設目は既存の1Nation 1施設制限で拒否される。現行contractで意図を満たすため、この調査によるcode変更は行わない。
 
 ## 3. 4.0.0までの到達点
 
@@ -93,7 +94,7 @@ PT projectorのbarrier amountは表示時に正数へ変換。solo/PTのHP数値
 
 ## 6. 次に進めるとき
 
-PR #6はOwnerのmerge判断待ち。HEADを再解決し、今回のレビュー後にruntime変更があればその差分を確認する。文書追加だけなら、それを理由に全suiteを回し直さない。merge/deploy/本番migrationは今回許可されていない。
+`hotfix/4.1.2`はForgejo PRで独立レビュー待ちまで進める。レビュー時はPR HEADを再解決し、`764beb4…`との差分とexact-head validationを確認する。merge、deploy、production migration・data・Turn操作は今回許可されていない。
 
 push/初回PR/修正PR/レビュー投稿は承認済みrepositoryの通常作業として個別確認不要。GitHubかForgejoかで権限を分けず、CIコスト管理は別扱い。現在のForgejoへのpushを、以前のGitHub CI反復の事情で止めない。実行環境側の送信先承認で止まる場合は、その層の制限とOwner方針を区別して報告する。
 

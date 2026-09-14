@@ -210,7 +210,9 @@ final class SecretaryTurnService
         }
         $secretaryIds = array_values(array_unique($secretaryIds));
         $secretaries = Secretary::query()->whereIn('id', $secretaryIds)
-            ->orderBy('id')->lockForUpdate()->get()->keyBy('id');
+            // Only non-key columns are updated here. Keep concurrent writers serialized
+            // without blocking party-member foreign-key references to these rows.
+            ->orderBy('id')->lock('for no key update')->get()->keyBy('id');
         if ($secretaries->count() !== count($secretaryIds)) {
             throw new DomainException('A snapshotted Secretary disappeared before the final experience flush.');
         }

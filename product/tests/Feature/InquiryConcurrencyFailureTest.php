@@ -3,7 +3,9 @@
 namespace Tests\Feature;
 
 use App\Application\NationCreationService;
+use App\Domain\Secretary\SecretarySkillCatalog;
 use App\Models\Inquiry;
+use App\Models\TurnRun;
 use App\Models\UndergroundParty;
 use App\Models\UndergroundProfile;
 use App\Models\User;
@@ -69,6 +71,99 @@ final class InquiryConcurrencyFailureTest extends TestCase
             $this->assertSame($world->current_turn + 1, $world->fresh()->current_turn);
             $this->assertSame(2, $party->members()->count());
             $this->assertSame(1, Inquiry::query()->where('submission_key', $fixture['submission_key'])->count());
+        } finally {
+            $this->stopWorkers($workers);
+        }
+    }
+
+    public function test_turn_secretary_flush_and_party_snapshot_complete_without_lost_updates(): void
+    {
+        $this->requirePostgres();
+        $world = $this->lightweightWorld();
+        $borrowedOwner = User::factory()->create();
+        $leader = User::factory()->create();
+        $borrowedNation = app(NationCreationService::class)->create(
+            $borrowedOwner,
+            $world,
+            'Borrowed island',
+            'Borrowed owner',
+        );
+        $leaderNation = app(NationCreationService::class)->create(
+            $leader,
+            $world->fresh(),
+            'Leader island',
+            'Leader owner',
+        );
+        $borrowed = $borrowedOwner->secretary()->firstOrFail();
+        $leaderSecretary = $leader->secretary()->firstOrFail();
+        $this->assertLessThan($leaderSecretary->id, $borrowed->id);
+        $leaderProfile = UndergroundProfile::query()->firstOrCreate(['secretary_id' => $leaderSecretary->id]);
+        $ruleset = $world->rulesetVersion()->firstOrFail();
+        $run = TurnRun::query()->create([
+            'world_id' => $world->id,
+            'target_turn' => $world->current_turn + 1,
+            'ruleset_version_id' => $ruleset->id,
+            'random_seed' => hash('sha256', 'turn-party-snapshot-concurrency'),
+            'source' => 'manual',
+            'is_dry_run' => true,
+            'status' => TurnRun::STATUS_DRY_RUN,
+            'attempt_count' => 1,
+            'pipeline' => [],
+            'phase_results' => [],
+            'failure_context' => [],
+        ]);
+        $turnMonsterAward = 7;
+        $concurrentMonsterAward = 11;
+        $fixture = [
+            'world_id' => $world->id,
+            'turn_run_id' => $run->id,
+            'borrowed_nation_id' => $borrowedNation->id,
+            'leader_nation_id' => $leaderNation->id,
+            'borrowed_secretary_id' => $borrowed->id,
+            'borrowed_owner_user_id' => $borrowedOwner->id,
+            'leader_secretary_id' => $leaderSecretary->id,
+            'leader_profile_id' => $leaderProfile->id,
+            'skill_key' => SecretarySkillCatalog::AGRICULTURAL_POLICY,
+            'turn_monster_award' => $turnMonsterAward,
+            'concurrent_monster_award' => $concurrentMonsterAward,
+        ];
+        $borrowedMonsterBefore = (int) $borrowed->monster_experience;
+        $leaderMonsterBefore = (int) $leaderSecretary->monster_experience;
+        $workers = [];
+        try {
+            $workers['party'] = $this->startWorker('party_snapshot', $fixture);
+            $this->assertTrue($this->readWorkerEvent($workers['party'])['ready']);
+            $workers['turn'] = $this->startWorker('turn_flush', $fixture);
+            $this->assertTrue($this->readWorkerEvent($workers['turn'])['ready']);
+            $this->continueWorker($workers['turn']);
+            $this->waitForBlock($workers['turn']['pid'], $workers['party']['pid']);
+
+            // The Turn query already owns the lower borrowed Secretary row while it waits for the leader.
+            $workers['writer'] = $this->startWorker('secretary_update', $fixture);
+            $this->waitForBlock($workers['writer']['pid'], $workers['turn']['pid']);
+            $this->continueWorker($workers['party']);
+
+            $results = array_map(fn (array $worker): array => $this->readWorkerEvent($worker), $workers);
+            $this->assertSame(
+                ['party' => 'ok', 'turn' => 'ok', 'writer' => 'ok'],
+                array_map(fn (array $result): string => $result['status'], $results),
+                json_encode($results, JSON_THROW_ON_ERROR),
+            );
+            $this->assertSame(2, $results['turn']['metrics']['skills_changed']);
+            $this->assertSame(2, $results['turn']['metrics']['monster_experience_secretaries_changed']);
+            $party = UndergroundParty::query()->findOrFail($results['party']['party_id']);
+            $this->assertSame(
+                [$leaderSecretary->id, $borrowed->id],
+                $party->members()->orderBy('id')->pluck('secretary_id')->map(fn (mixed $id): int => (int) $id)->all(),
+            );
+            $this->assertSame(
+                $borrowedMonsterBefore + $turnMonsterAward + $concurrentMonsterAward,
+                (int) $borrowed->fresh()->monster_experience,
+            );
+            $this->assertSame(
+                $leaderMonsterBefore + $turnMonsterAward,
+                (int) $leaderSecretary->fresh()->monster_experience,
+            );
         } finally {
             $this->stopWorkers($workers);
         }
