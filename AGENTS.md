@@ -90,7 +90,7 @@
 - release開始時にOwner確認済みproduction Rulesetを`N`とする。semantic changeが不要なら、そのreleaseは`N`を維持する。
 - 1 releaseで導入してよい新Rulesetは原則`N+1`の1世代までとする。Ownerの明示承認なしに2世代以上増やさない。
 - release未完了中の追加機能、追加PR、stabilizationは同じ`N+1` draftへ統合し、feature、PR、migration単位で`N+2`以降を作らない。
-- 2世代以上が必要だと判断した場合は実装を止め、理由と選択肢をOwnerへ報告して明示決定を得る。
+- 2世代以上が必要だと判断した場合は実装を止め、理由と選択肢をOwnerへ提示する。
 - Ruleset version budgetはsubagentにも継承し、subagent判断で追加世代を作らせない。
 - versioning上の制約を避けるため、Ruleset外に第二のdefinition authority、第二のcatalog、第二の設定体系を作らない。
 - UIやtarget contextを分離する必要があっても、version authorityまで自動的に分離したと解釈しない。
@@ -159,7 +159,7 @@ Review findingは、supported production pathからの到達可能性と、上�
 
 ## 9. Subagent
 
-- boundedで低riskな調査、機械的編集、focused failure調査、独立regression確認はsubagentへ委譲してよい。
+- boundedで低riskな調査、機械的編集、focused failure調査、文書整合確認、独立regression確認はsubagentへ委譲してよい。
 - 利用可能な場合、Lunaをこの種の作業の既定subagentとして使用してよい。
 - architecture、Owner intent、Ruleset・migration境界、production安全、cross-cutting integration、最終review判断はmain agentが保持する。
 - subagentはOwner contractを再解釈、拡張、迂回してはならない。
