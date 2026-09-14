@@ -38,6 +38,7 @@
 
 作業開始時は、依頼内容に必要な範囲で次を確認する。
 
+- `product/docs/handoffs/current-status.md`（存在する場合は先に読み、記載された適用範囲では旧統合handoffより優先する）
 - `product/docs/handoffs/development-history-and-current-handoff.md`
 - `docs/README.md`
 - `docs/open-questions.md`
@@ -158,7 +159,7 @@ Review findingは、supported production pathからの到達可能性と、上�
 
 ## 9. Subagent
 
-- boundedで低riskな調査、機械的編集、focused failure調査、文書整合確認、独立regression確認はsubagentへ委譲してよい。
+- boundedで低riskな調査、機械的編集、focused failure調査、独立regression確認はsubagentへ委譲してよい。
 - 利用可能な場合、Lunaをこの種の作業の既定subagentとして使用してよい。
 - architecture、Owner intent、Ruleset・migration境界、production安全、cross-cutting integration、最終review判断はmain agentが保持する。
 - subagentはOwner contractを再解釈、拡張、迂回してはならない。
