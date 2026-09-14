@@ -105,7 +105,8 @@ EXPECTED_STATUSES = {
     "UG-03": "Decided",
     "UG-04": "Decided",
     "UG-05": "Open",
-    "UG-06": "Open",
+    "UG-06": "Decided",
+    "UG-07": "Decided",
 }
 
 
