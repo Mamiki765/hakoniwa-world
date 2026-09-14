@@ -37,7 +37,8 @@ final class InquirySubmissionService
                 $attachment,
                 &$storedPath,
             ): array {
-                $lockedUser = User::query()->whereKey($user->id)->lockForUpdate()->firstOrFail();
+                // Serialize submissions without blocking foreign-key references from party history.
+                $lockedUser = User::query()->whereKey($user->id)->lock('for no key update')->firstOrFail();
                 $existing = Inquiry::query()
                     ->where('user_id', $lockedUser->id)
                     ->where('submission_key', $submissionKey)
