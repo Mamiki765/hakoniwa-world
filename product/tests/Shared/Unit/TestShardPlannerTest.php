@@ -184,6 +184,14 @@ final class TestShardPlannerTest extends TestCase
   </testsuite>
 </testsuites>
 XML);
+        file_put_contents($evidence.'/phpunit-01-standard.junit.xml', <<<'XML'
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuites>
+  <testsuite>
+    <testcase name="duplicate-profile-output" file="/var/www/html/tests/Unit/ATest.php" time="999"/>
+  </testsuite>
+</testsuites>
+XML);
         $focusedEvidence = $root.'/storage/framework/testing/test-evidence/phpunit-parallel-fedcba98';
         mkdir($focusedEvidence, 0777, true);
         file_put_contents($focusedEvidence.'/run.tsv', "schema\ttest\nselection_mode\tfocused\nrun\t-\tpassed\t0\t-\t2\t-\t-\t-\n");

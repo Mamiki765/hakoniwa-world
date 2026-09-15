@@ -1,6 +1,6 @@
 # テストをゼロベースで組み直す設計図
 
-Status: Phase 0a～Phase 5を`release/4.2.0`で実装・focused確認済み。Phase 6の最終Full4だけ未実施。[Phase 0a・1記録](test-suite-phase01-implementation.md)、[Phase 2記録](test-suite-phase02-implementation.md)、[Phase 3記録](test-suite-phase03-implementation.md)、[Phase 4記録](test-suite-phase04-implementation.md)、[Phase 5記録](test-suite-phase05-implementation.md)を参照。
+Status: Phase 0a～Phase 6を`release/4.2.0`で実装・確認済み。[Phase 0a・1記録](test-suite-phase01-implementation.md)、[Phase 2記録](test-suite-phase02-implementation.md)、[Phase 3記録](test-suite-phase03-implementation.md)、[Phase 4記録](test-suite-phase04-implementation.md)、[Phase 5記録](test-suite-phase05-implementation.md)、[Phase 6記録](test-suite-phase06-verification.md)を参照。
 
 以下の棚卸しはmain `00182bd`に固定した**設計baseline**。実装後の件数・確認結果と区別する。
 
@@ -18,7 +18,7 @@ Status: Phase 0a～Phase 5を`release/4.2.0`で実装・focused確認済み。Ph
 - UIで許可しない極端値や、DBを直接改竄して21億を入れた状態のためのテストは削減する。
 - マップは繰り返し生成せず、独立性を保ちながら再利用する。
 - ローカル4 shardでFull／地上（箱庭）／地底（RPG）を選べる構成を設計する。
-- usageのリセットを行わない。Ownerの継続指示によりPhase 0a～5とdraft PR更新まで実施し、Phase 6の最終確認を残す。
+- usageのリセットを行わない。Ownerの継続指示によりPhase 0a～6とdraft PR更新まで実施した。
 
 ## 現時点の主要な判断
 

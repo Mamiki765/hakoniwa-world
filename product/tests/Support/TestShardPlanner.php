@@ -291,7 +291,7 @@ final class TestShardPlanner
                 && ($selection[1] ?? null) !== 'scope') {
                 continue;
             }
-            $junitPaths = glob($directory.'/*.junit.xml') ?: [];
+            $junitPaths = glob($directory.'/phpunit-[0-9][0-9].junit.xml') ?: [];
             sort($junitPaths, SORT_STRING);
             $candidate = $this->timingWeightsFromJunit(array_keys($wanted), $junitPaths);
             $added = false;

@@ -36,6 +36,6 @@ PHPUnit discoveryは117 filesから121 filesへ変わった。2つの巨大PHP f
 - 上記runのfixture別結果はすべてPASSし、executed / uniqueは111 / 111。再利用mapは各worker1回、合計4回だった。
 - Appの分割3 filesは44 testsをPASSした。分割対象のESLintとfrontend typecheckをPASSした。
 - tests全147 PHP filesのPintをPASSした。
-- 最終Full4、frontend全件、lint/typecheck/buildはPhase 6でexact implementation treeに対して1回実行する。
+- 最終Full4、frontend全件、lint/typecheck/buildの結果は[Phase 6記録](test-suite-phase06-verification.md)へ分離した。
 
 確認終了時の`hakoniwa_parallel_%_test`は0件だった。
