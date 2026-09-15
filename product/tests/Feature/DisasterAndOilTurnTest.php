@@ -37,12 +37,14 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use RuntimeException;
 use Tests\Concerns\CreatesTestWorlds;
+use Tests\Concerns\UsesIndividualTestWorld;
 use Tests\TestCase;
 
 class DisasterAndOilTurnTest extends TestCase
 {
     use CreatesTestWorlds;
     use RefreshDatabase;
+    use UsesIndividualTestWorld;
 
     /** @var list<string> */
     private const GLOBAL_KEYS = [

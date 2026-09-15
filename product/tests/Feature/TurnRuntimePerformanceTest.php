@@ -41,12 +41,14 @@ use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Str;
 use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\Concerns\CreatesTestWorlds;
+use Tests\Concerns\UsesIndividualTestWorld;
 use Tests\TestCase;
 
 final class TurnRuntimePerformanceTest extends TestCase
 {
     use CreatesTestWorlds;
     use RefreshDatabase;
+    use UsesIndividualTestWorld;
 
     #[DataProvider('expandedWorldProfiles')]
     public function test_expanded_empty_world_turn_has_bounded_phase_queries(

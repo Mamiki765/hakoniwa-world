@@ -18,11 +18,13 @@ use App\Models\User;
 use Illuminate\Database\Events\QueryExecuted;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
+use Tests\Concerns\UsesIndividualTestWorld;
 use Tests\TestCase;
 
 final class TerritoryInfluencePerformanceTest extends TestCase
 {
     use RefreshDatabase;
+    use UsesIndividualTestWorld;
 
     public function test_production_60_by_60_influence_pass_has_bounded_queries_and_runtime(): void
     {

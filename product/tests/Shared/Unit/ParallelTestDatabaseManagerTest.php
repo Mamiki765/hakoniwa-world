@@ -207,6 +207,14 @@ XML);
 
             $this->assertNotNull($shard);
             $this->assertSame('full', $manifestPayload['scope']);
+            $this->assertStringEndsWith(
+                '/phpunit-01-reusable_surface.junit.xml',
+                (string) $manager->fixtureArtifact($manifest, 0, 'reusable_surface', 'junit'),
+            );
+            $this->assertStringEndsWith(
+                '/phpunit-01-individual.fixture.tsv',
+                (string) $manager->fixtureArtifact($manifest, 0, 'individual', 'fixture_metrics'),
+            );
             $this->assertNotNull($evidenceDirectory);
             $this->assertDirectoryExists(dirname($evidenceDirectory));
             $this->assertDirectoryDoesNotExist($evidenceDirectory);

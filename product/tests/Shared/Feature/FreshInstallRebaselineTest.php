@@ -27,12 +27,14 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 use Tests\Concerns\CreatesTestWorlds;
+use Tests\Concerns\UsesIndividualTestWorld;
 use Tests\TestCase;
 
 final class FreshInstallRebaselineTest extends TestCase
 {
     use CreatesTestWorlds;
     use RefreshDatabase;
+    use UsesIndividualTestWorld;
 
     public function test_current_postgresql_schema_and_v25_catalog_are_installed(): void
     {

@@ -22,16 +22,14 @@ use App\Models\ResourceDefinition;
 use App\Models\TurnRun;
 use App\Models\User;
 use App\Models\World;
-use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use RuntimeException;
-use Tests\Concerns\CreatesTestWorlds;
+use Tests\Concerns\UsesReusableSurfaceWorld;
 use Tests\TestCase;
 
 final class TradingPostApiTest extends TestCase
 {
-    use CreatesTestWorlds;
-    use RefreshDatabase;
+    use UsesReusableSurfaceWorld;
 
     public function test_resource_listing_escrows_immediately_enforces_limits_and_returns_on_zero_bid_cancel(): void
     {

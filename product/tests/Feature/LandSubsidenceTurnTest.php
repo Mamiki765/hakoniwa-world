@@ -25,11 +25,13 @@ use App\Models\World;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use RuntimeException;
+use Tests\Concerns\UsesIndividualTestWorld;
 use Tests\TestCase;
 
 class LandSubsidenceTurnTest extends TestCase
 {
     use RefreshDatabase;
+    use UsesIndividualTestWorld;
 
     public function test_land_area_definition_is_shared_by_private_public_and_eligibility_paths(): void
     {

@@ -108,6 +108,7 @@ declare -a child_logs=()
 declare -a child_evidence_logs=()
 declare -a child_junits=()
 declare -a child_completion_markers=()
+declare -a child_profile_plans=()
 declare -a child_started_epochs=()
 declare -a child_end_epochs=()
 declare -a child_test_file_counts=()
@@ -115,6 +116,13 @@ declare -a child_test_counts=()
 declare -a child_exit_codes=()
 declare -a child_durations=()
 declare -a child_recorded=()
+fixture_profiles=(standard reusable_surface individual)
+declare -A fixture_file_counts=()
+declare -A fixture_logs=()
+declare -A fixture_evidence_logs=()
+declare -A fixture_junits=()
+declare -A fixture_metrics=()
+declare -A fixture_completion_markers=()
 
 append_evidence_line() {
     if [[ -z "$evidence_metadata" ]]; then
@@ -164,6 +172,13 @@ cleanup() {
             fi
             if [[ -f "${child_logs[$index]}" ]] && ! cp -- "${child_logs[$index]}" "${child_evidence_logs[$index]}"; then
                 echo "Unable to preserve PHPUnit shard log: ${child_evidence_logs[$index]}" >&2
+                exit_code=1
+            fi
+        done
+        for key in "${!fixture_logs[@]}"; do
+            if [[ -f "${fixture_logs[$key]}" ]] \
+                && ! cp -- "${fixture_logs[$key]}" "${fixture_evidence_logs[$key]}"; then
+                echo "Unable to preserve PHPUnit fixture log: ${fixture_evidence_logs[$key]}" >&2
                 exit_code=1
             fi
         done
@@ -285,11 +300,30 @@ for ((index = 0; index < shard_total; index++)); do
     log="$(php tests/scripts/parallel_test_databases.php shard "$manifest" "$index" log)"
     evidence_log="$(php tests/scripts/parallel_test_databases.php shard "$manifest" "$index" evidence_log)"
     junit="$(php tests/scripts/parallel_test_databases.php shard "$manifest" "$index" junit)"
+    profile_plan="${configuration%.xml}.profiles.tsv"
+    php tests/scripts/test_shards.php profiles "$shard_total" "$index" "$scope" >"$profile_plan"
+    if [[ "$(wc -l < "$profile_plan")" -ne "${#test_files[@]}" ]]; then
+        echo "Fixture profile plan does not cover shard $index exactly once." >&2
+        exit 1
+    fi
+    for profile in "${fixture_profiles[@]}"; do
+        key="$index:$profile"
+        fixture_file_counts[$key]="$(awk -F '\t' -v selected="$profile" '$1 == selected { count++ } END { print count + 0 }' "$profile_plan")"
+        if [[ "${fixture_file_counts[$key]}" == "0" ]]; then
+            continue
+        fi
+        fixture_logs[$key]="$(php tests/scripts/parallel_test_databases.php fixture "$manifest" "$index" "$profile" log)"
+        fixture_evidence_logs[$key]="$(php tests/scripts/parallel_test_databases.php fixture "$manifest" "$index" "$profile" evidence_log)"
+        fixture_junits[$key]="$(php tests/scripts/parallel_test_databases.php fixture "$manifest" "$index" "$profile" junit)"
+        fixture_metrics[$key]="$(php tests/scripts/parallel_test_databases.php fixture "$manifest" "$index" "$profile" fixture_metrics)"
+        fixture_completion_markers[$key]="$(php tests/scripts/parallel_test_databases.php fixture "$manifest" "$index" "$profile" completion)"
+    done
     printf 'Starting shard %02d/%02d with %d files.\n' "$((index + 1))" "$shard_total" "${#test_files[@]}"
     child_started_epochs[$index]="$(date +%s)"
     child_logs[$index]="$log"
     child_evidence_logs[$index]="$evidence_log"
     child_junits[$index]="$junit"
+    child_profile_plans[$index]="$profile_plan"
     completion_marker="${log}.completed"
     child_completion_markers[$index]="$completion_marker"
     child_test_file_counts[$index]="${#test_files[@]}"
@@ -303,16 +337,73 @@ for ((index = 0; index < shard_total; index++)); do
         }
         trap on_child_signal INT TERM
 
+        : >"$log"
         child_exit_code=0
-        APP_ENV=testing DB_CONNECTION=pgsql DB_DATABASE="$database" \
-        php -d memory_limit=512M vendor/bin/phpunit \
-            --configuration "$configuration" \
-            --colors=never \
-            --log-junit "$junit" \
-            "${phpunit_arguments[@]}" \
-            "${test_files[@]}" >"$log" 2>&1 &
-        child_pid=$!
-        wait "$child_pid" || child_exit_code=$?
+        profile_junit_inputs=()
+        for profile in "${fixture_profiles[@]}"; do
+            profile_files=()
+            mapfile -t profile_files < <(awk -F '\t' -v selected="$profile" '$1 == selected { print $2 }' "$profile_plan")
+            if ((${#profile_files[@]} == 0)); then
+                continue
+            fi
+            key="$index:$profile"
+            profile_log="${fixture_logs[$key]}"
+            profile_junit="${fixture_junits[$key]}"
+            profile_metrics="${fixture_metrics[$key]}"
+            profile_completion="${fixture_completion_markers[$key]}"
+            if ((${#phpunit_arguments[@]} != 0)); then
+                list_exit_code=0
+                HAKONIWA_TEST_FIXTURE_PROFILE="$profile" \
+                APP_ENV=testing DB_CONNECTION=pgsql DB_DATABASE="$database" \
+                php -d memory_limit=512M vendor/bin/phpunit \
+                    --configuration "$configuration" \
+                    --list-tests \
+                    --colors=never \
+                    "${phpunit_arguments[@]}" \
+                    "${profile_files[@]}" >"$profile_log" 2>&1 || list_exit_code=$?
+                if ((list_exit_code != 0)); then
+                    printf '%d\t0\tfailed\n' "$list_exit_code" >"$profile_completion" 2>/dev/null || true
+                    printf '\n===== Fixture %s list failure =====\n' "$profile" >>"$log"
+                    cat "$profile_log" >>"$log"
+                    child_exit_code="$list_exit_code"
+                    break
+                fi
+                matching_identifier_count="$(sed -n '/^ - /p' "$profile_log" | wc -l)"
+                if ((matching_identifier_count == 0)); then
+                    printf '0\t0\tfiltered\n' >"$profile_completion" 2>/dev/null || true
+                    continue
+                fi
+            fi
+            profile_started_epoch="$(date +%s)"
+            profile_exit_code=0
+            HAKONIWA_TEST_FIXTURE_PROFILE="$profile" \
+            HAKONIWA_TEST_FIXTURE_METRICS="$profile_metrics" \
+            APP_ENV=testing DB_CONNECTION=pgsql DB_DATABASE="$database" \
+            php -d memory_limit=512M vendor/bin/phpunit \
+                --configuration "$configuration" \
+                --colors=never \
+                --log-junit "$profile_junit" \
+                "${phpunit_arguments[@]}" \
+                "${profile_files[@]}" >"$profile_log" 2>&1 &
+            child_pid=$!
+            wait "$child_pid" || profile_exit_code=$?
+            profile_duration="$(( $(date +%s) - profile_started_epoch ))"
+            printf '%d\t%d\tcompleted\n' "$profile_exit_code" "$profile_duration" >"$profile_completion" 2>/dev/null || true
+            printf '\n===== Fixture %s =====\n' "$profile" >>"$log"
+            cat "$profile_log" >>"$log"
+            profile_junit_inputs+=("$profile_junit")
+            if ((profile_exit_code != 0)); then
+                child_exit_code="$profile_exit_code"
+                break
+            fi
+        done
+        if ((${#profile_junit_inputs[@]} == 0)); then
+            if ! php tests/scripts/merge_junit.php "$junit"; then
+                child_exit_code=1
+            fi
+        elif ! php tests/scripts/merge_junit.php "$junit" "${profile_junit_inputs[@]}"; then
+            child_exit_code=1
+        fi
         printf '%s\n' "$(date +%s)" >"$completion_marker" 2>/dev/null || true
         exit "$child_exit_code"
     ) &
@@ -348,6 +439,55 @@ for ((index = 0; index < shard_total; index++)); do
         echo "Unable to preserve PHPUnit shard log: ${child_evidence_logs[$index]}" >&2
         failed=1
     fi
+    for profile in "${fixture_profiles[@]}"; do
+        key="$index:$profile"
+        if [[ "${fixture_file_counts[$key]:-0}" == "0" ]]; then
+            continue
+        fi
+        profile_status="aborted"
+        profile_exit_code="unknown"
+        profile_duration="unknown"
+        if [[ -f "${fixture_completion_markers[$key]}" ]]; then
+            profile_completion_status=""
+            IFS=$'\t' read -r profile_exit_code profile_duration profile_completion_status \
+                <"${fixture_completion_markers[$key]}" || true
+            if [[ "$profile_completion_status" == "filtered" ]]; then
+                profile_status="filtered"
+            elif [[ "$profile_exit_code" == "0" ]]; then
+                profile_status="passed"
+            elif [[ "$profile_exit_code" =~ ^[0-9]+$ ]]; then
+                profile_status="failed"
+            fi
+        fi
+        if [[ -f "${fixture_logs[$key]}" ]] \
+            && ! cp -- "${fixture_logs[$key]}" "${fixture_evidence_logs[$key]}"; then
+            echo "Unable to preserve PHPUnit fixture log: ${fixture_evidence_logs[$key]}" >&2
+            failed=1
+        fi
+        profile_test_count="$(php -r '
+            $document = new DOMDocument;
+            if (! $document->load($argv[1], LIBXML_NONET)) {
+                exit;
+            }
+            echo (new DOMXPath($document))->query("//testcase")?->length ?? 0;
+        ' "${fixture_junits[$key]}" 2>/dev/null || true)"
+        if [[ "$profile_status" == "filtered" ]]; then
+            profile_test_count=0
+        elif [[ ! "$profile_test_count" =~ ^[0-9]+$ ]]; then
+            profile_test_count="unknown"
+        fi
+        append_evidence_line \
+            "fixture:$profile" "$index" "$profile_status" "$profile_exit_code" "$profile_duration" \
+            "${fixture_file_counts[$key]}" "$profile_test_count" \
+            "$(basename "${fixture_evidence_logs[$key]}")" "$(basename "${fixture_junits[$key]}")"
+        if [[ -f "${fixture_metrics[$key]}" ]]; then
+            map_generation_count="$(sed -n 's/^map_generation_count\t//p' "${fixture_metrics[$key]}")"
+            map_generation_seconds="$(sed -n 's/^map_generation_seconds\t//p' "${fixture_metrics[$key]}")"
+            printf 'fixture_metric\t%d\t%s\t%s\t%s\n' \
+                "$index" "$profile" "${map_generation_count:-unknown}" "${map_generation_seconds:-unknown}" \
+                >>"$evidence_metadata"
+        fi
+    done
     child_exit_codes[$index]="$shard_exit_code"
     child_durations[$index]="$duration_seconds"
     child_test_counts[$index]="$(php -r '
@@ -390,6 +530,7 @@ identifier_summary="$(php -r '
     echo count($identifiers)."\t".count(array_unique($identifiers))."\t".hash("sha256", implode("\n", $identifiers));
 ' "${child_junits[@]}" 2>/dev/null || true)"
 if [[ "$identifier_summary" =~ ^([0-9]+)$'\t'([0-9]+)$'\t'([0-9a-f]{64})$ ]]; then
+    executed_test_identifier_count="${BASH_REMATCH[1]}"
     printf 'executed_test_identifiers\t%s\n' "${BASH_REMATCH[1]}" >>"$evidence_metadata"
     printf 'unique_test_identifiers\t%s\n' "${BASH_REMATCH[2]}" >>"$evidence_metadata"
     printf 'executed_test_identifiers_sha256\t%s\n' "${BASH_REMATCH[3]}" >>"$evidence_metadata"
@@ -397,6 +538,11 @@ else
     printf 'executed_test_identifiers\tunknown\n' >>"$evidence_metadata"
     printf 'unique_test_identifiers\tunknown\n' >>"$evidence_metadata"
     printf 'executed_test_identifiers_sha256\tunknown\n' >>"$evidence_metadata"
+fi
+
+if ((${#phpunit_arguments[@]} != 0)) && [[ "${executed_test_identifier_count:-0}" == "0" ]]; then
+    echo 'Focused PHPUnit selection matched no test identifiers.' >&2
+    failed=1
 fi
 
 if ((failed != 0)); then

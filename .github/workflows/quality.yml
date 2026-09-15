@@ -233,7 +233,21 @@ jobs:
             echo "Shard is empty; no PHPUnit process is required."
             exit 0
           fi
-          php -d memory_limit=512M vendor/bin/phpunit --colors=never "${test_files[@]}"
+          profile_plan="$(mktemp)"
+          fixture_metrics="$(mktemp)"
+          trap 'rm -f -- "$profile_plan" "$fixture_metrics"' EXIT
+          php tests/scripts/test_shards.php profiles "$SHARD_TOTAL" "$SHARD_INDEX" full >"$profile_plan"
+          for profile in standard reusable_surface individual; do
+            profile_files=()
+            mapfile -t profile_files < <(awk -F '\t' -v selected="$profile" '$1 == selected { print $2 }' "$profile_plan")
+            if ((${#profile_files[@]} == 0)); then
+              continue
+            fi
+            echo "Running fixture profile: $profile (${#profile_files[@]} files)"
+            HAKONIWA_TEST_FIXTURE_PROFILE="$profile" \
+            HAKONIWA_TEST_FIXTURE_METRICS="$fixture_metrics" \
+              php -d memory_limit=512M vendor/bin/phpunit --colors=never "${profile_files[@]}"
+          done
 
   backend:
     name: backend

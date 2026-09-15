@@ -35,17 +35,15 @@ use App\Models\TerrainDefinition;
 use App\Models\User;
 use DomainException;
 use Illuminate\Database\QueryException;
-use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
-use Tests\Concerns\CreatesTestWorlds;
+use Tests\Concerns\UsesReusableSurfaceWorld;
 use Tests\Support\SyntheticHistoricalRulesetSnapshot;
 use Tests\TestCase;
 
 final class NationAbandonmentTest extends TestCase
 {
-    use CreatesTestWorlds;
-    use RefreshDatabase;
+    use UsesReusableSurfaceWorld;
 
     public function test_only_the_owner_with_the_exact_locked_name_can_abandon_once(): void
     {

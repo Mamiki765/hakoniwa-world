@@ -20,17 +20,15 @@ use App\Models\TerrainDefinition;
 use App\Models\TurnRun;
 use App\Models\UndergroundTrialProgress;
 use App\Models\User;
-use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
-use Tests\Concerns\CreatesTestWorlds;
+use Tests\Concerns\UsesReusableSurfaceWorld;
 use Tests\TestCase;
 
 final class NationDormancyTest extends TestCase
 {
-    use CreatesTestWorlds;
-    use RefreshDatabase;
+    use UsesReusableSurfaceWorld;
 
     public function test_manual_dormancy_is_owner_only_validated_and_uses_exact_one_and_seven_day_boundaries(): void
     {

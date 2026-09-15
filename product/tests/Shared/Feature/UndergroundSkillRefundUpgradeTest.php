@@ -21,11 +21,13 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
+use Tests\Concerns\UsesIndividualTestWorld;
 use Tests\TestCase;
 
 final class UndergroundSkillRefundUpgradeTest extends TestCase
 {
     use RefreshDatabase;
+    use UsesIndividualTestWorld;
 
     public function test_skill_refund_preserves_earned_progress_and_historical_retry_until_loadout_is_saved(): void
     {

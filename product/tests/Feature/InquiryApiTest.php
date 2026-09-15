@@ -7,20 +7,18 @@ use App\Domain\Inquiry\InquiryCategoryCatalog;
 use App\Models\AuthIdentity;
 use App\Models\Inquiry;
 use App\Models\User;
-use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Routing\Middleware\ThrottleRequests;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
-use Tests\Concerns\CreatesTestWorlds;
+use Tests\Concerns\UsesReusableSurfaceWorld;
 use Tests\TestCase;
 
 final class InquiryApiTest extends TestCase
 {
-    use CreatesTestWorlds;
-    use RefreshDatabase;
+    use UsesReusableSurfaceWorld;
 
     public function test_category_catalog_contains_exactly_the_five_owner_approved_categories(): void
     {

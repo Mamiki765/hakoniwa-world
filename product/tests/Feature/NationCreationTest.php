@@ -18,16 +18,14 @@ use App\Models\Ship;
 use App\Models\TerrainDefinition;
 use App\Models\User;
 use DomainException;
-use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use RuntimeException;
-use Tests\Concerns\CreatesTestWorlds;
+use Tests\Concerns\UsesReusableSurfaceWorld;
 use Tests\TestCase;
 
 class NationCreationTest extends TestCase
 {
-    use CreatesTestWorlds;
-    use RefreshDatabase;
+    use UsesReusableSurfaceWorld;
 
     public function test_nation_creation_generates_legacy_inspired_island_capital_and_territory(): void
     {

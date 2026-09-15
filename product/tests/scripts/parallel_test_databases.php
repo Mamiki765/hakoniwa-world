@@ -11,6 +11,7 @@ $usage = static function (): never {
     fwrite(STDERR, "Usage:\n");
     fwrite(STDERR, "  php tests/scripts/parallel_test_databases.php prepare <shard-total> <full|surface|underground> [8-hex-token]\n");
     fwrite(STDERR, "  php tests/scripts/parallel_test_databases.php shard <manifest> <zero-based-index> <configuration|log|database|evidence_log|junit>\n");
+    fwrite(STDERR, "  php tests/scripts/parallel_test_databases.php fixture <manifest> <zero-based-index> <standard|reusable_surface|individual> <log|completion|evidence_log|junit|fixture_metrics>\n");
     fwrite(STDERR, "  php tests/scripts/parallel_test_databases.php evidence <manifest> directory\n");
     fwrite(STDERR, "  php tests/scripts/parallel_test_databases.php cleanup <manifest>\n");
     fwrite(STDERR, "  php tests/scripts/parallel_test_databases.php finalize <8-hex-token> <test-exit-code> <cleanup-exit-code> <discovered-test-files>\n");
@@ -73,6 +74,27 @@ try {
         }
 
         echo $directory."\n";
+        exit(0);
+    }
+
+    if ($command === 'fixture') {
+        $manifest = $argv[2] ?? null;
+        $index = $argv[3] ?? null;
+        $profile = $argv[4] ?? null;
+        $field = $argv[5] ?? null;
+        if ($manifest === null
+            || $index === null
+            || preg_match('/^(0|[1-9][0-9]*)$/', $index) !== 1
+            || $profile === null
+            || $field === null) {
+            $usage();
+        }
+
+        $artifact = $manager->fixtureArtifact($manifest, (int) $index, $profile, $field);
+        if ($artifact === null) {
+            exit(3);
+        }
+        echo $artifact."\n";
         exit(0);
     }
 

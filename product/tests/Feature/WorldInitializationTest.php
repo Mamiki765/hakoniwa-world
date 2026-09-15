@@ -20,11 +20,13 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use RuntimeException;
+use Tests\Concerns\UsesIndividualTestWorld;
 use Tests\TestCase;
 
 class WorldInitializationTest extends TestCase
 {
     use RefreshDatabase;
+    use UsesIndividualTestWorld;
 
     public function test_world_initializes_as_3600_unowned_ocean_cells_and_is_idempotent(): void
     {

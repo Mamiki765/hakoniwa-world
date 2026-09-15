@@ -11,6 +11,7 @@ $usage = static function (): never {
     fwrite(STDERR, "  php tests/scripts/test_shards.php verify <shard-total> [full|surface|underground]\n");
     fwrite(STDERR, "  php tests/scripts/test_shards.php describe <shard-total> <zero-based-index> [full|surface|underground]\n");
     fwrite(STDERR, "  php tests/scripts/test_shards.php files <shard-total> <zero-based-index> [full|surface|underground]\n");
+    fwrite(STDERR, "  php tests/scripts/test_shards.php profiles <shard-total> <zero-based-index> [full|surface|underground]\n");
     exit(2);
 };
 
@@ -60,6 +61,9 @@ try {
         foreach ($report['shard_file_counts'] as $index => $fileCount) {
             echo sprintf("shard %02d/%02d assigned files: %d\n", $index + 1, $shardTotal, $fileCount);
         }
+        foreach ($planner->groupByFixtureProfile($discovered) as $profile => $files) {
+            echo "fixture {$profile} files: ".count($files)."\n";
+        }
         echo "union count: {$report['union_count']}\n";
         echo "duplicate count: {$report['duplicate_count']}\n";
         echo "missing count: {$report['missing_count']}\n";
@@ -67,7 +71,7 @@ try {
         exit(0);
     }
 
-    if ($command !== 'describe' && $command !== 'files') {
+    if ($command !== 'describe' && $command !== 'files' && $command !== 'profiles') {
         $usage();
     }
 
@@ -79,10 +83,22 @@ try {
         echo sprintf("shard index: %d (%02d/%02d)\n", $index, $index + 1, $shardTotal);
         echo "shard total: {$shardTotal}\n";
         echo 'assigned file count: '.count($assigned)."\n";
+        foreach ($planner->groupByFixtureProfile($assigned) as $profile => $files) {
+            echo "fixture {$profile} files: ".count($files)."\n";
+        }
         echo "total discovered files: {$report['discovered_count']}\n";
         echo "assigned files:\n";
         foreach ($assigned as $file) {
             echo "  - {$file}\n";
+        }
+        exit(0);
+    }
+
+    if ($command === 'profiles') {
+        foreach ($planner->groupByFixtureProfile($assigned) as $profile => $files) {
+            foreach ($files as $file) {
+                echo $profile."\t".$file."\n";
+            }
         }
         exit(0);
     }

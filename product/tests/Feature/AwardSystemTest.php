@@ -19,17 +19,15 @@ use App\Models\User;
 use App\Models\World;
 use DomainException;
 use Illuminate\Database\QueryException;
-use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
 use RuntimeException;
-use Tests\Concerns\CreatesTestWorlds;
+use Tests\Concerns\UsesReusableSurfaceWorld;
 use Tests\TestCase;
 
 class AwardSystemTest extends TestCase
 {
-    use CreatesTestWorlds;
-    use RefreshDatabase;
+    use UsesReusableSurfaceWorld;
 
     public function test_owner_approved_condition_series_grant_one_unowned_tier_per_series_and_turn(): void
     {

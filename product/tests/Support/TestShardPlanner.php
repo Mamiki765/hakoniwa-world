@@ -20,6 +20,9 @@ final class TestShardPlanner
         'underground' => ['Shared', 'Underground'],
     ];
 
+    /** @var list<string> */
+    private const FIXTURE_PROFILES = ['standard', 'reusable_surface', 'individual'];
+
     private readonly string $projectRoot;
 
     private readonly string $configurationPath;
@@ -139,6 +142,52 @@ final class TestShardPlanner
     }
 
     /**
+     * @param  list<string>  $files
+     * @return array<string, list<string>>
+     */
+    public function groupByFixtureProfile(array $files): array
+    {
+        $groups = array_fill_keys(self::FIXTURE_PROFILES, []);
+        foreach ($files as $file) {
+            $normalized = self::normalizePath($file);
+            $groups[$this->fixtureProfile($normalized)][] = $normalized;
+        }
+        foreach ($groups as &$group) {
+            sort($group, SORT_STRING);
+        }
+
+        return $groups;
+    }
+
+    public function fixtureProfile(string $file): string
+    {
+        $path = $this->resolvePath($file, $this->projectRoot);
+        if (! is_file($path)) {
+            throw new RuntimeException("Test file [{$file}] does not exist.");
+        }
+        $relativePath = $this->relativePath($path);
+        $contents = file_get_contents($path);
+        if (! is_string($contents)) {
+            throw new RuntimeException("Test file [{$relativePath}] is unreadable.");
+        }
+
+        $usedTraits = $this->usedTraits($contents);
+        $reusable = in_array('UsesReusableSurfaceWorld', $usedTraits, true);
+        $individual = array_intersect(
+            ['UsesIndividualTestWorld', 'UsesForwardOnlyDatabaseMigrations'],
+            $usedTraits,
+        ) !== [];
+        if ($reusable && $individual) {
+            throw new RuntimeException("Test file [{$relativePath}] declares conflicting fixture profiles.");
+        }
+        if ($reusable) {
+            return 'reusable_surface';
+        }
+
+        return $individual ? 'individual' : 'standard';
+    }
+
+    /**
      * @param  list<string>  $discovered
      * @param  array<int, list<string>>  $shards
      * @return array{
@@ -231,6 +280,18 @@ final class TestShardPlanner
         return $normalized;
     }
 
+    public static function normalizeFixtureProfile(string $profile): string
+    {
+        $normalized = strtolower(trim($profile));
+        if (! in_array($normalized, self::FIXTURE_PROFILES, true)) {
+            throw new InvalidArgumentException(
+                "Test fixture profile [{$profile}] is invalid; expected standard, reusable_surface, or individual.",
+            );
+        }
+
+        return $normalized;
+    }
+
     public static function normalizePath(string $path): string
     {
         $normalized = str_replace('\\', '/', trim($path));
@@ -282,5 +343,62 @@ final class TestShardPlanner
         }
 
         return self::normalizePath($baseDirectory.'/'.$normalized);
+    }
+
+    /** @return list<string> */
+    private function usedTraits(string $contents): array
+    {
+        $tokens = token_get_all($contents);
+        $braceDepth = 0;
+        $classDepth = null;
+        $waitingForClassBrace = false;
+        $traits = [];
+
+        for ($index = 0, $count = count($tokens); $index < $count; $index++) {
+            $token = $tokens[$index];
+            if (is_array($token) && $token[0] === T_CLASS) {
+                $waitingForClassBrace = true;
+
+                continue;
+            }
+            if ($token === '{') {
+                $braceDepth++;
+                if ($waitingForClassBrace) {
+                    $classDepth = $braceDepth;
+                    $waitingForClassBrace = false;
+                }
+
+                continue;
+            }
+            if ($token === '}') {
+                if ($classDepth === $braceDepth) {
+                    $classDepth = null;
+                }
+                $braceDepth--;
+
+                continue;
+            }
+            if (! is_array($token) || $token[0] !== T_USE || $classDepth !== $braceDepth) {
+                continue;
+            }
+
+            $declaration = '';
+            for ($index++; $index < $count; $index++) {
+                $part = $tokens[$index];
+                $text = is_array($part) ? $part[1] : $part;
+                if ($text === ';' || $text === '{') {
+                    break;
+                }
+                $declaration .= $text;
+            }
+            foreach (explode(',', $declaration) as $trait) {
+                $trait = trim($trait);
+                if ($trait !== '') {
+                    $traits[] = basename(str_replace('\\', '/', $trait));
+                }
+            }
+        }
+
+        return array_values(array_unique($traits));
     }
 }

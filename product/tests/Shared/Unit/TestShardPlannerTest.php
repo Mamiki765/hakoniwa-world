@@ -24,10 +24,13 @@ final class TestShardPlannerTest extends TestCase
     {
         $root = $this->createFixtureProject();
         $this->write($root.'/tests/Shared/CommonContractTest.php');
-        $this->write($root.'/tests/Unit/ZedTest.php');
+        $this->write($root.'/tests/Unit/ZedTest.php', "<?php\nclass ZedTest { use UsesReusableSurfaceWorld; }\n");
         $this->write($root.'/tests/Feature/ShipSystemTest.php');
         $this->write($root.'/tests/Feature/Helper.php');
-        $this->write($root.'/tests/Underground/CrystalPathTest.php');
+        $this->write(
+            $root.'/tests/Underground/CrystalPathTest.php',
+            "<?php\nclass CrystalPathTest { use UsesForwardOnlyDatabaseMigrations; }\n",
+        );
 
         $planner = new TestShardPlanner($root);
 
@@ -48,6 +51,14 @@ final class TestShardPlannerTest extends TestCase
             'tests/Shared/CommonContractTest.php',
             'tests/Underground/CrystalPathTest.php',
         ], $planner->discover('underground'));
+        $this->assertSame([
+            'standard' => [
+                'tests/Feature/ShipSystemTest.php',
+                'tests/Shared/CommonContractTest.php',
+            ],
+            'reusable_surface' => ['tests/Unit/ZedTest.php'],
+            'individual' => ['tests/Underground/CrystalPathTest.php'],
+        ], $planner->groupByFixtureProfile($full));
     }
 
     public function test_assignment_is_deterministic_normalized_and_complete(): void
@@ -164,6 +175,12 @@ final class TestShardPlannerTest extends TestCase
             array_intersect($surface, $underground),
             static fn (string $file): bool => ! str_starts_with($file, 'tests/Shared/'),
         ));
+        $profiles = $planner->groupByFixtureProfile($full);
+        $profileUnion = array_merge(...array_values($profiles));
+        sort($profileUnion, SORT_STRING);
+        $this->assertSame($full, $profileUnion);
+        $this->assertContains('tests/Feature/DomesticCommandExecutionTest.php', $profiles['reusable_surface']);
+        $this->assertNotEmpty($profiles['individual']);
         foreach (['full', 'surface', 'underground'] as $scope) {
             $report = $planner->verify(4, $scope);
             $this->assertSame($report['discovered_count'], $report['union_count']);
@@ -225,9 +242,9 @@ XML);
         return $root;
     }
 
-    private function write(string $path): void
+    private function write(string $path, string $contents = "<?php\n"): void
     {
-        file_put_contents($path, "<?php\n");
+        file_put_contents($path, $contents);
     }
 
     private function removeDirectory(string $directory): void

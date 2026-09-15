@@ -175,6 +175,36 @@ final class ParallelTestDatabaseManager
         return null;
     }
 
+    public function fixtureArtifact(
+        string $manifestPath,
+        int $index,
+        string $profile,
+        string $field,
+    ): ?string {
+        $profile = TestShardPlanner::normalizeFixtureProfile($profile);
+        $shard = $this->shard($manifestPath, $index);
+        if ($shard === null) {
+            return null;
+        }
+
+        $stem = 'phpunit-'.sprintf('%02d', $index + 1).'-'.$profile;
+
+        return match ($field) {
+            'log' => dirname($shard['log']).'/'.$stem.'.log',
+            'completion' => dirname($shard['log']).'/'.$stem.'.completed',
+            'evidence_log' => isset($shard['evidence_log'])
+                ? dirname($shard['evidence_log']).'/'.$stem.'.log'
+                : null,
+            'junit' => isset($shard['junit'])
+                ? dirname($shard['junit']).'/'.$stem.'.junit.xml'
+                : null,
+            'fixture_metrics' => isset($shard['junit'])
+                ? dirname($shard['junit']).'/'.$stem.'.fixture.tsv'
+                : null,
+            default => throw new InvalidArgumentException("Parallel test fixture artifact field [{$field}] is invalid."),
+        };
+    }
+
     public function cleanup(string $manifestPath): void
     {
         $manifest = $this->loadAndValidateManifest($manifestPath);

@@ -1,6 +1,6 @@
 # テストをゼロベースで組み直す設計図
 
-Status: Phase 0a・Phase 1・Phase 2を`release/4.2.0`で実装・focused確認済み。[Phase 0a・1記録](test-suite-phase01-implementation.md)と[Phase 2記録](test-suite-phase02-implementation.md)を参照。Phase 3以降は未実装。
+Status: Phase 0a・Phase 1・Phase 2・Phase 3を`release/4.2.0`で実装・focused確認済み。[Phase 0a・1記録](test-suite-phase01-implementation.md)、[Phase 2記録](test-suite-phase02-implementation.md)、[Phase 3記録](test-suite-phase03-implementation.md)を参照。Phase 4以降は未実装。
 
 以下の棚卸しはmain `00182bd`に固定した**設計baseline**。実装後の件数・確認結果と区別する。
 

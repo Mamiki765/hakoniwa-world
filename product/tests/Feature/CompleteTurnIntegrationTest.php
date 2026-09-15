@@ -36,12 +36,14 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use RuntimeException;
 use Tests\Concerns\CreatesTestWorlds;
+use Tests\Concerns\UsesIndividualTestWorld;
 use Tests\TestCase;
 
 class CompleteTurnIntegrationTest extends TestCase
 {
     use CreatesTestWorlds;
     use RefreshDatabase;
+    use UsesIndividualTestWorld;
 
     public function test_realistic_multi_nation_3600_cell_world_commits_the_complete_non_combat_turn_atomically(): void
     {

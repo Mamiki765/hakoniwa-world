@@ -42,12 +42,14 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Tests\Concerns\CreatesTestWorlds;
+use Tests\Concerns\UsesIndividualTestWorld;
 use Tests\TestCase;
 
 class TurnCellProcessingTest extends TestCase
 {
     use CreatesTestWorlds;
     use RefreshDatabase;
+    use UsesIndividualTestWorld;
 
     public function test_surface_ship_cell_event_moves_once_settles_rewards_and_applies_fuel_and_lifecycle_rules(): void
     {

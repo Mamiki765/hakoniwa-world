@@ -10,11 +10,13 @@ use App\Models\ResourceDefinition;
 use App\Models\RulesetVersion;
 use DomainException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Tests\Concerns\UsesIndividualTestWorld;
 use Tests\TestCase;
 
 class RulesetImmutabilityTest extends TestCase
 {
     use RefreshDatabase;
+    use UsesIndividualTestWorld;
 
     public function test_current_publisher_reuses_the_exact_payload_and_rejects_snapshot_drift(): void
     {
