@@ -321,10 +321,13 @@ final class TestShardPlanner
         string $scope = 'full',
         ?string $evidenceRoot = null,
         array $metadata = [],
+        bool $useHistoricalTiming = true,
     ): array {
         $scope = self::normalizeScope($scope);
         $files = $this->discover($scope);
-        $historical = $this->historicalTiming($files, $evidenceRoot);
+        $historical = $useHistoricalTiming
+            ? $this->historicalTiming($files, $evidenceRoot)
+            : ['weights' => [], 'sources' => []];
         $resolved = $this->resolveWeights($files, $historical['weights']);
         $shards = $this->assign($files, $shardTotal, $historical['weights']);
         $report = $this->coverageReport($files, $shards);
@@ -343,6 +346,8 @@ final class TestShardPlanner
             'schema' => 'hakoniwa.test-shard-plan.v1',
             'created_at' => gmdate('c'),
             'scope' => $scope,
+            'selection_mode' => 'scope',
+            'scope_discovered' => $files,
             'shard_total' => $shardTotal,
             'strategy' => $resolved['strategy'],
             'source_tree_sha256' => $metadata['source_tree_sha256'] ?? 'unknown',
@@ -386,10 +391,27 @@ final class TestShardPlanner
             throw new RuntimeException('Test shard plan schema is invalid.');
         }
         $scope = self::normalizeScope($decoded['scope']);
+        $selectionMode = $decoded['selection_mode'] ?? 'scope';
+        if (! in_array($selectionMode, ['scope', 'focused'], true)) {
+            throw new RuntimeException('Test shard plan selection mode is invalid.');
+        }
         $discovered = array_map(self::normalizePath(...), $decoded['discovered']);
         $current = $this->discover($scope);
-        if ($discovered !== $current || count($decoded['shards']) !== $decoded['shard_total']) {
+        $scopeDiscovered = array_map(
+            self::normalizePath(...),
+            $decoded['scope_discovered'] ?? $decoded['discovered'],
+        );
+        if ($scopeDiscovered !== $current || count($decoded['shards']) !== $decoded['shard_total']) {
             throw new RuntimeException('Test shard plan does not match current discovery.');
+        }
+        if ($selectionMode === 'scope' && $discovered !== $current) {
+            throw new RuntimeException('Scope test shard plan does not cover current discovery.');
+        }
+        if ($selectionMode === 'focused'
+            && ($discovered === []
+                || count($discovered) !== count(array_unique($discovered))
+                || array_diff($discovered, $current) !== [])) {
+            throw new RuntimeException('Focused test shard plan is not a non-empty subset of current discovery.');
         }
         $shards = [];
         foreach ($decoded['shards'] as $index => $files) {
@@ -398,14 +420,94 @@ final class TestShardPlanner
             }
             $shards[(int) $index] = array_map(self::normalizePath(...), $files);
         }
-        $report = $this->coverageReport($current, $shards);
+        $report = $this->coverageReport($discovered, $shards);
         if ($report['duplicate_count'] !== 0 || $report['missing_count'] !== 0 || $report['unexpected_count'] !== 0) {
             throw new RuntimeException('Test shard plan coverage is incomplete or overlapping.');
         }
         $decoded['discovered'] = $discovered;
+        $decoded['scope_discovered'] = $scopeDiscovered;
+        $decoded['selection_mode'] = $selectionMode;
         $decoded['shards'] = $shards;
 
         return $decoded;
+    }
+
+    /**
+     * @param  array<string, mixed>  $plan
+     * @return array<string, mixed>
+     */
+    public function focusRunPlan(array $plan, string $listTestsXmlPath): array
+    {
+        if (($plan['selection_mode'] ?? 'scope') !== 'scope'
+            || ! is_array($plan['discovered'] ?? null)
+            || ! is_array($plan['shards'] ?? null)) {
+            throw new RuntimeException('Only a validated scope plan can be focused.');
+        }
+        if (! is_file($listTestsXmlPath) || is_link($listTestsXmlPath)) {
+            throw new RuntimeException("Focused PHPUnit list [{$listTestsXmlPath}] does not exist or is unsafe.");
+        }
+
+        $document = new DOMDocument;
+        $previous = libxml_use_internal_errors(true);
+        $loaded = $document->load($listTestsXmlPath, LIBXML_NONET);
+        libxml_clear_errors();
+        libxml_use_internal_errors($previous);
+        if (! $loaded) {
+            throw new RuntimeException('Focused PHPUnit list is not valid XML.');
+        }
+
+        $xpath = new DOMXPath($document);
+        $selectedFiles = [];
+        $selectedIdentifiers = [];
+        foreach ($xpath->query('//*[local-name()="testClass"]') ?: [] as $testClass) {
+            if (! $testClass instanceof DOMElement) {
+                continue;
+            }
+            $file = $this->relativePath($testClass->getAttribute('file'));
+            $selectedFiles[$file] = true;
+            foreach ($xpath->query('./*[local-name()="testMethod"]', $testClass) ?: [] as $testMethod) {
+                if ($testMethod instanceof DOMElement && $testMethod->getAttribute('id') !== '') {
+                    $selectedIdentifiers[$testMethod->getAttribute('id')] = true;
+                }
+            }
+        }
+        if ($selectedIdentifiers === []) {
+            throw new RuntimeException('Focused PHPUnit selection matched no test identifiers.');
+        }
+
+        $allowed = array_fill_keys(array_map(self::normalizePath(...), $plan['discovered']), true);
+        $unexpected = array_values(array_diff(array_keys($selectedFiles), array_keys($allowed)));
+        if ($unexpected !== []) {
+            throw new RuntimeException('Focused PHPUnit selection escaped the requested scope: '.implode(', ', $unexpected));
+        }
+
+        $selected = array_keys($selectedFiles);
+        sort($selected, SORT_STRING);
+        $selectedLookup = array_fill_keys($selected, true);
+        $focusedShards = [];
+        foreach ($plan['shards'] as $index => $files) {
+            $focusedShards[(int) $index] = array_values(array_filter(
+                array_map(self::normalizePath(...), $files),
+                static fn (string $file): bool => isset($selectedLookup[$file]),
+            ));
+        }
+
+        $focused = $plan;
+        $focused['selection_mode'] = 'focused';
+        $focused['scope_discovered'] = array_values(array_map(self::normalizePath(...), $plan['discovered']));
+        $focused['discovered'] = $selected;
+        $focused['shards'] = $focusedShards;
+        $focused['selected_test_identifier_count'] = count($selectedIdentifiers);
+        $focused['weights'] = array_intersect_key($plan['weights'] ?? [], $selectedLookup);
+        $focused['weight_sources'] = array_intersect_key($plan['weight_sources'] ?? [], $selectedLookup);
+        foreach ($focusedShards as $index => $files) {
+            $focused['predicted_seconds'][$index] = array_sum(array_map(
+                static fn (string $file): float => (float) ($focused['weights'][$file] ?? 0.0),
+                $files,
+            ));
+        }
+
+        return $focused;
     }
 
     /** @return array<int, list<string>> */

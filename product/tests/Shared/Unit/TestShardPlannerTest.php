@@ -5,6 +5,8 @@ namespace Tests\Shared\Unit;
 use InvalidArgumentException;
 use PHPUnit\Framework\TestCase;
 use RuntimeException;
+use Tests\Support\PhpunitSelection;
+use Tests\Support\ReusableSurfaceTemplateFingerprint;
 use Tests\Support\TestShardPlanner;
 
 final class TestShardPlannerTest extends TestCase
@@ -223,6 +225,121 @@ XML);
         $this->expectException(RuntimeException::class);
         $this->expectExceptionMessage('does not match current discovery');
         $planner->loadRunPlan($planPath);
+    }
+
+    public function test_phpunit_arguments_distinguish_real_selection_from_display_options_and_remove_test_inputs(): void
+    {
+        $this->assertSame([
+            'selection_mode' => 'scope',
+            'has_test_inputs' => false,
+            'passthrough' => ['--colors=always', '--debug', '--columns', 'max'],
+        ], PhpunitSelection::classify(['--colors=always', '--debug', '--columns', 'max']));
+        $this->assertSame([
+            'selection_mode' => 'focused',
+            'has_test_inputs' => false,
+            'passthrough' => ['--filter', 'selected method'],
+        ], PhpunitSelection::classify(['--filter', 'selected method']));
+        $this->assertSame([
+            'selection_mode' => 'focused',
+            'has_test_inputs' => true,
+            'passthrough' => ['--filter=selected method', '--colors=never'],
+        ], PhpunitSelection::classify([
+            '--filter=selected method',
+            'tests/Feature/SelectedTest.php',
+            '--colors=never',
+        ]));
+    }
+
+    public function test_focused_plan_keeps_only_listed_files_across_fixture_profiles_and_preserves_shards(): void
+    {
+        $root = $this->createFixtureProject();
+        $this->write($root.'/tests/Feature/StandardSelectedTest.php');
+        $this->write($root.'/tests/Feature/StandardSkippedTest.php');
+        $this->write(
+            $root.'/tests/Unit/ReusableSelectedTest.php',
+            "<?php\nclass ReusableSelectedTest { use UsesReusableSurfaceWorld; }\n",
+        );
+        $this->write(
+            $root.'/tests/Underground/IndividualSelectedTest.php',
+            "<?php\nclass IndividualSelectedTest { use UsesForwardOnlyDatabaseMigrations; }\n",
+        );
+        $planner = new TestShardPlanner($root);
+        $scopePlan = $planner->createRunPlan(2);
+        $list = $root.'/list-tests.xml';
+        file_put_contents($list, sprintf(<<<'XML'
+<?xml version="1.0"?>
+<testSuite>
+ <tests>
+  <testClass name="StandardSelectedTest" file="%s"><testMethod id="StandardSelectedTest::test_one"/></testClass>
+  <testClass name="ReusableSelectedTest" file="%s"><testMethod id="ReusableSelectedTest::test_one"/></testClass>
+  <testClass name="IndividualSelectedTest" file="%s"><testMethod id="IndividualSelectedTest::test_one"/></testClass>
+ </tests>
+</testSuite>
+XML,
+            $root.'/tests/Feature/StandardSelectedTest.php',
+            $root.'/tests/Unit/ReusableSelectedTest.php',
+            $root.'/tests/Underground/IndividualSelectedTest.php',
+        ));
+
+        $focused = $planner->focusRunPlan($scopePlan, $list);
+        $focusedPath = $root.'/focused-plan.json';
+        $planner->writeRunPlan($focusedPath, $focused);
+        $loaded = $planner->loadRunPlan($focusedPath);
+
+        $this->assertSame('focused', $loaded['selection_mode']);
+        $this->assertSame(3, $loaded['selected_test_identifier_count']);
+        $this->assertSame([
+            'tests/Feature/StandardSelectedTest.php',
+            'tests/Underground/IndividualSelectedTest.php',
+            'tests/Unit/ReusableSelectedTest.php',
+        ], $loaded['discovered']);
+        $this->assertSame($scopePlan['shard_total'], count($loaded['shards']));
+        $this->assertSame([
+            'standard' => ['tests/Feature/StandardSelectedTest.php'],
+            'reusable_surface' => ['tests/Unit/ReusableSelectedTest.php'],
+            'individual' => ['tests/Underground/IndividualSelectedTest.php'],
+        ], $planner->groupByFixtureProfile($loaded['discovered']));
+    }
+
+    public function test_focused_plan_rejects_zero_identifiers_before_database_preparation(): void
+    {
+        $root = $this->createFixtureProject();
+        $this->write($root.'/tests/Feature/SelectedTest.php');
+        $list = $root.'/empty-list-tests.xml';
+        file_put_contents($list, '<?xml version="1.0"?><testSuite><tests/></testSuite>');
+
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage('matched no test identifiers');
+
+        (new TestShardPlanner($root))->focusRunPlan(
+            (new TestShardPlanner($root))->createRunPlan(1),
+            $list,
+        );
+    }
+
+    public function test_reusable_surface_fingerprint_tracks_fixture_inputs_but_not_unrelated_test_bodies(): void
+    {
+        $root = $this->createFixtureProject();
+        mkdir($root.'/database/migrations', 0777, true);
+        mkdir($root.'/tests/Concerns', 0777, true);
+        $this->write($root.'/database/migrations/fixture.php', "<?php\nreturn 'first';\n");
+        $this->write($root.'/tests/Concerns/ReusableFixture.php', "<?php\nreturn 'fixture';\n");
+        $fingerprint = new ReusableSurfaceTemplateFingerprint($root, [
+            'database/migrations',
+            'tests/Concerns/ReusableFixture.php',
+        ]);
+        $runtime = ['php_version' => '8.5.8', 'postgres_server_version' => '18.4'];
+        $first = $fingerprint->calculate($runtime);
+
+        $this->write($root.'/tests/Feature/UnrelatedTest.php', "<?php\nreturn 'changed test body';\n");
+        $this->assertSame($first, $fingerprint->calculate($runtime));
+
+        $this->write($root.'/database/migrations/fixture.php', "<?php\nreturn 'second';\n");
+        $this->assertNotSame($first['fingerprint'], $fingerprint->calculate($runtime)['fingerprint']);
+        $this->assertNotSame(
+            $first['fingerprint'],
+            $fingerprint->calculate([...$runtime, 'postgres_server_version' => '18.5'])['fingerprint'],
+        );
     }
 
     public function test_coverage_report_exposes_duplicates_missing_and_unexpected_files(): void

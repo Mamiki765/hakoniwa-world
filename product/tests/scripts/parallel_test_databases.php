@@ -13,6 +13,7 @@ $usage = static function (): never {
     fwrite(STDERR, "  php tests/scripts/parallel_test_databases.php shard <manifest> <zero-based-index> <configuration|log|database|evidence_log|junit>\n");
     fwrite(STDERR, "  php tests/scripts/parallel_test_databases.php fixture <manifest> <zero-based-index> <standard|reusable_surface|individual> <log|completion|evidence_log|junit|fixture_metrics>\n");
     fwrite(STDERR, "  php tests/scripts/parallel_test_databases.php evidence <manifest> directory\n");
+    fwrite(STDERR, "  php tests/scripts/parallel_test_databases.php template <manifest>\n");
     fwrite(STDERR, "  php tests/scripts/parallel_test_databases.php cleanup <manifest>\n");
     fwrite(STDERR, "  php tests/scripts/parallel_test_databases.php finalize <8-hex-token> <test-exit-code> <cleanup-exit-code> <discovered-test-files>\n");
     exit(2);
@@ -38,15 +39,31 @@ try {
         }
         $planPath = $argv[5] ?? null;
         $plannedShards = null;
+        $plannedDiscovered = null;
+        $useReusableSurfaceTemplate = false;
         if ($planPath !== null) {
-            $plan = (new TestShardPlanner(dirname(__DIR__, 2)))->loadRunPlan($planPath);
+            $planner = new TestShardPlanner(dirname(__DIR__, 2));
+            $plan = $planner->loadRunPlan($planPath);
             if ($plan['scope'] !== $scope || $plan['shard_total'] !== (int) $total) {
                 throw new RuntimeException('Database preparation plan does not match the requested scope or worker count.');
             }
             $plannedShards = $plan['shards'];
+            $plannedDiscovered = $plan['discovered'];
+            $profiles = $planner->groupByFixtureProfile($plannedDiscovered);
+            $useReusableSurfaceTemplate = $plan['selection_mode'] === 'focused'
+                && $profiles['reusable_surface'] !== []
+                && $profiles['standard'] === []
+                && $profiles['individual'] === [];
         }
 
-        echo $manager->prepare((int) $total, $scope, $token, $plannedShards)."\n";
+        echo $manager->prepare(
+            (int) $total,
+            $scope,
+            $token,
+            $plannedShards,
+            $plannedDiscovered,
+            $useReusableSurfaceTemplate,
+        )."\n";
         exit(0);
     }
 
@@ -83,6 +100,32 @@ try {
         }
 
         echo $directory."\n";
+        exit(0);
+    }
+
+    if ($command === 'template') {
+        $manifest = $argv[2] ?? null;
+        if ($manifest === null || isset($argv[3])) {
+            $usage();
+        }
+        $template = $manager->reusableSurfaceTemplate($manifest);
+        if ($template === null) {
+            echo "enabled: no\n";
+            exit(0);
+        }
+        echo "enabled: yes\n";
+        echo 'fingerprint: '.$template['fingerprint']."\n";
+        echo 'database: '.$template['database']."\n";
+        echo 'cache_hit: '.($template['cache_hit'] ? 'yes' : 'no')."\n";
+        echo 'input_count: '.$template['input_count']."\n";
+        echo 'inputs_sha256: '.$template['inputs_sha256']."\n";
+        echo 'build_database: '.($template['build_database'] ?? '-')."\n";
+        echo 'build_seconds: '.sprintf('%.6f', $template['build_seconds'])."\n";
+        echo 'build_migration_seconds: '.sprintf('%.6f', $template['build_migration_seconds'])."\n";
+        echo 'build_map_generation_count: '.$template['build_map_generation_count']."\n";
+        echo 'build_map_generation_seconds: '.sprintf('%.6f', $template['build_map_generation_seconds'])."\n";
+        echo 'build_log: '.($template['build_log'] ?? '-')."\n";
+        echo 'build_metrics: '.($template['build_metrics'] ?? '-')."\n";
         exit(0);
     }
 
