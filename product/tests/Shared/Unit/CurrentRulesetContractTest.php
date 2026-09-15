@@ -1,6 +1,6 @@
 <?php
 
-namespace Tests\Unit;
+namespace Tests\Shared\Unit;
 
 use App\Domain\Ruleset\CurrentRulesetAuthoringInspector;
 use App\Domain\Ruleset\RulesetAuthoringValidator;

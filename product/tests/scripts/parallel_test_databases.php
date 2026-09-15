@@ -3,12 +3,13 @@
 declare(strict_types=1);
 
 use Tests\Support\ParallelTestDatabaseManager;
+use Tests\Support\TestShardPlanner;
 
 require dirname(__DIR__, 2).'/vendor/autoload.php';
 
 $usage = static function (): never {
     fwrite(STDERR, "Usage:\n");
-    fwrite(STDERR, "  php tests/scripts/parallel_test_databases.php prepare <shard-total> [8-hex-token]\n");
+    fwrite(STDERR, "  php tests/scripts/parallel_test_databases.php prepare <shard-total> <full|surface|underground> [8-hex-token]\n");
     fwrite(STDERR, "  php tests/scripts/parallel_test_databases.php shard <manifest> <zero-based-index> <configuration|log|database|evidence_log|junit>\n");
     fwrite(STDERR, "  php tests/scripts/parallel_test_databases.php evidence <manifest> directory\n");
     fwrite(STDERR, "  php tests/scripts/parallel_test_databases.php cleanup <manifest>\n");
@@ -25,12 +26,17 @@ try {
         if ($total === null || preg_match('/^[1-9][0-9]*$/', $total) !== 1) {
             $usage();
         }
-        $token = $argv[3] ?? null;
+        $scope = $argv[3] ?? null;
+        if ($scope === null) {
+            $usage();
+        }
+        $scope = TestShardPlanner::normalizeScope($scope);
+        $token = $argv[4] ?? null;
         if ($token !== null && preg_match('/^[a-f0-9]{8}$/', $token) !== 1) {
             $usage();
         }
 
-        echo $manager->prepare((int) $total, $token)."\n";
+        echo $manager->prepare((int) $total, $scope, $token)."\n";
         exit(0);
     }
 

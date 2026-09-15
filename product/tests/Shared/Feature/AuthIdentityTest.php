@@ -1,6 +1,6 @@
 <?php
 
-namespace Tests\Feature;
+namespace Tests\Shared\Feature;
 
 use App\Application\AuthIdentityService;
 use App\Application\ExternalIdentityData;

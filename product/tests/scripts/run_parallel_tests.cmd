@@ -3,11 +3,13 @@ setlocal
 
 set "shard_total=%~1"
 if "%shard_total%"=="" set "shard_total=4"
+set "scope=%~2"
+if "%scope%"=="" set "scope=full"
 
 pushd "%~dp0\..\..\.." || exit /b 1
 docker compose -f compose.yml -f compose.development.yml up -d hakoniwa-dev
 if errorlevel 1 goto failed
-docker compose -f compose.yml -f compose.development.yml exec -T hakoniwa-dev bash tests/scripts/run_parallel_tests.sh "%shard_total%"
+docker compose -f compose.yml -f compose.development.yml exec -T hakoniwa-dev bash tests/scripts/run_parallel_tests.sh "%shard_total%" "%scope%"
 set "test_exit_code=%errorlevel%"
 popd
 

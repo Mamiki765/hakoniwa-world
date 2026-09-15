@@ -1,6 +1,6 @@
 <?php
 
-namespace Tests\Unit;
+namespace Tests\Shared\Unit;
 
 use InvalidArgumentException;
 use PDO;
@@ -194,10 +194,11 @@ XML);
 
     public function test_cleanup_drops_only_the_generated_database_when_its_configuration_is_missing(): void
     {
-        $projectRoot = dirname(__DIR__, 2);
+        $projectRoot = dirname(__DIR__, 3);
         $manager = new ParallelTestDatabaseManager($projectRoot);
         $manifest = $manager->prepare(1);
         $evidenceDirectory = $manager->evidenceDirectory($manifest);
+        $manifestPayload = json_decode((string) file_get_contents($manifest), true, flags: JSON_THROW_ON_ERROR);
 
         try {
             $shard = $manager->shard($manifest, 0);
@@ -205,6 +206,7 @@ XML);
             $protectedBefore = $this->protectedDatabaseStates($pdo);
 
             $this->assertNotNull($shard);
+            $this->assertSame('full', $manifestPayload['scope']);
             $this->assertNotNull($evidenceDirectory);
             $this->assertDirectoryExists(dirname($evidenceDirectory));
             $this->assertDirectoryDoesNotExist($evidenceDirectory);
@@ -246,7 +248,7 @@ XML);
 </phpunit>
 XML);
         $manager = new ParallelTestDatabaseManager($root);
-        $manifest = $manager->prepare(1, bin2hex(random_bytes(4)));
+        $manifest = $manager->prepare(1, 'full', bin2hex(random_bytes(4)));
 
         try {
             $evidenceDirectory = $manager->evidenceDirectory($manifest);

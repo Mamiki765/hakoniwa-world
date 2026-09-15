@@ -35,8 +35,9 @@ final class ParallelTestDatabaseManager
         $this->evidenceRootDirectory = $this->workspaceDirectory.'/test-evidence';
     }
 
-    public function prepare(int $shardTotal, ?string $requestedToken = null): string
+    public function prepare(int $shardTotal, string $scope = 'full', ?string $requestedToken = null): string
     {
+        $scope = TestShardPlanner::normalizeScope($scope);
         if ($shardTotal < 1 || $shardTotal > 64) {
             throw new InvalidArgumentException('Local shard total must be in the range 1..64.');
         }
@@ -49,7 +50,7 @@ final class ParallelTestDatabaseManager
         }
 
         $planner = new TestShardPlanner($this->projectRoot, $this->configurationPath);
-        $discovered = $planner->discover();
+        $discovered = $planner->discover($scope);
         $shards = $planner->assign($discovered, $shardTotal);
         $report = $planner->coverageReport($discovered, $shards);
         if ($report['duplicate_count'] !== 0 || $report['missing_count'] !== 0 || $report['unexpected_count'] !== 0) {
@@ -101,6 +102,7 @@ final class ParallelTestDatabaseManager
                 'token' => $token,
                 'directory' => $runDirectory,
                 'evidence_directory' => $evidenceDirectory,
+                'scope' => $scope,
                 'shard_total' => $shardTotal,
                 'discovered_count' => count($discovered),
                 'shards' => $manifestShards,
@@ -277,6 +279,7 @@ final class ParallelTestDatabaseManager
      *     token: string,
      *     directory: string,
      *     evidence_directory?: string,
+     *     scope?: string,
      *     shard_total: int,
      *     discovered_count: int,
      *     shards: list<array{index: int, database: string, configuration: string, log: string, evidence_log?: string, junit?: string, test_file_count?: int}>
@@ -305,6 +308,7 @@ final class ParallelTestDatabaseManager
         $evidenceDirectory = isset($decoded['evidence_directory'])
             ? TestShardPlanner::normalizePath((string) $decoded['evidence_directory'])
             : null;
+        $scope = $decoded['scope'] ?? 'full';
         $shardTotal = $decoded['shard_total'] ?? null;
         $discoveredCount = $decoded['discovered_count'] ?? null;
         $shards = $decoded['shards'] ?? null;
@@ -319,6 +323,8 @@ final class ParallelTestDatabaseManager
             || basename($directory) !== 'phpunit-parallel-'.$token
             || ($evidenceDirectory !== null
                 && $evidenceDirectory !== $expectedEvidenceDirectory)
+            || ! is_string($scope)
+            || TestShardPlanner::normalizeScope($scope) !== $scope
             || ! is_int($shardTotal)
             || $shardTotal < 1
             || $shardTotal > 64
@@ -393,6 +399,7 @@ final class ParallelTestDatabaseManager
         $result = [
             'token' => $token,
             'directory' => $directory,
+            'scope' => $scope,
             'shard_total' => $shardTotal,
             'discovered_count' => $discoveredCount,
             'shards' => $validatedShards,

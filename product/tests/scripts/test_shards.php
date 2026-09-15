@@ -8,9 +8,9 @@ require dirname(__DIR__, 2).'/vendor/autoload.php';
 
 $usage = static function (): never {
     fwrite(STDERR, "Usage:\n");
-    fwrite(STDERR, "  php tests/scripts/test_shards.php verify <shard-total>\n");
-    fwrite(STDERR, "  php tests/scripts/test_shards.php describe <shard-total> <zero-based-index>\n");
-    fwrite(STDERR, "  php tests/scripts/test_shards.php files <shard-total> <zero-based-index>\n");
+    fwrite(STDERR, "  php tests/scripts/test_shards.php verify <shard-total> [full|surface|underground]\n");
+    fwrite(STDERR, "  php tests/scripts/test_shards.php describe <shard-total> <zero-based-index> [full|surface|underground]\n");
+    fwrite(STDERR, "  php tests/scripts/test_shards.php files <shard-total> <zero-based-index> [full|surface|underground]\n");
     exit(2);
 };
 
@@ -41,9 +41,11 @@ $indexInteger = static function (?string $value, int $shardTotal) use ($usage): 
 try {
     $command = $argv[1] ?? null;
     $shardTotal = $positiveInteger($argv[2] ?? null, 'Shard total');
+    $scopeArgument = $command === 'verify' ? ($argv[3] ?? 'full') : ($argv[4] ?? 'full');
+    $scope = TestShardPlanner::normalizeScope($scopeArgument);
     $projectRoot = dirname(__DIR__, 2);
     $planner = new TestShardPlanner($projectRoot);
-    $discovered = $planner->discover();
+    $discovered = $planner->discover($scope);
     $shards = $planner->assign($discovered, $shardTotal);
     $report = $planner->coverageReport($discovered, $shards);
 
@@ -52,6 +54,7 @@ try {
     }
 
     if ($command === 'verify') {
+        echo "scope: {$scope}\n";
         echo "total discovered files: {$report['discovered_count']}\n";
         echo "shard count: {$report['shard_count']}\n";
         foreach ($report['shard_file_counts'] as $index => $fileCount) {
@@ -72,6 +75,7 @@ try {
     $assigned = $shards[$index];
 
     if ($command === 'describe') {
+        echo "scope: {$scope}\n";
         echo sprintf("shard index: %d (%02d/%02d)\n", $index, $index + 1, $shardTotal);
         echo "shard total: {$shardTotal}\n";
         echo 'assigned file count: '.count($assigned)."\n";

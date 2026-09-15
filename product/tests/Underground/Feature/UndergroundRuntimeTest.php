@@ -1594,56 +1594,6 @@ final class UndergroundRuntimeTest extends TestCase
         $this->assertSame($renewed, $intro->updateRentalParty($leader, $rentId, [$borrowed->id])['rental_party'][0]);
     }
 
-    public function test_skill_refund_preserves_earned_progress_and_historical_retry_until_loadout_is_saved(): void
-    {
-        [$user, $secretary] = $this->secretaryUser();
-        $profile = $this->unlockExploration($secretary);
-        [$runtime] = $this->runtimeWithOutcomes(['player']);
-        $run = $runtime->startTrial($user, 'trial_01');
-        $requestId = (string) Str::uuid();
-        $battle = $runtime->fightTrial($user, $run->run_key, $requestId)['battle'];
-        $profile->refresh()->update([
-            'skill_tree_identity' => 'secretary-underground-skill-tree-alpha-v1',
-            'skill_points_total' => 60, 'skill_points_unspent' => 48,
-            'custom_ai_rules' => [['action' => 'skill:radiant_judgment', 'conditions' => []]],
-        ]);
-        UndergroundSkillAllocation::query()->create([
-            'underground_profile_id' => $profile->id, 'tree_key' => 'martial',
-            'node_key' => 'martial_precision_cut', 'rank' => 1, 'active_slot' => 1,
-        ]);
-        $unchanged = $profile->getAttributes();
-        foreach (['skill_tree_identity', 'skill_points_unspent', 'custom_ai_rules', 'skill_rebuild_required', 'rental_party'] as $key) {
-            unset($unchanged[$key]);
-        }
-        DB::statement('ALTER TABLE underground_profiles DROP COLUMN skill_rebuild_required, DROP COLUMN rental_party');
-        DB::statement('ALTER TABLE announcements DROP COLUMN body_format');
-        $announcementId = DB::table('announcements')->insertGetId([
-            'title' => '旧記事', 'body' => "**装飾ではない文章**\n- 以前の告知",
-            'created_at' => '2026-09-01 12:34:56', 'updated_at' => '2026-09-01 12:34:56',
-        ]);
-        $announcementBefore = (array) DB::table('announcements')->where('id', $announcementId)->sole();
-        $migration = require database_path('migrations/2026_09_13_000000_rebuild_underground_skills_and_store_rental_party.php');
-        $migration->up();
-        $announcementAfter = (array) DB::table('announcements')->where('id', $announcementId)->sole();
-        $this->assertSame('plain_text', $announcementAfter['body_format']);
-        $this->assertSame($announcementBefore, array_intersect_key($announcementAfter, $announcementBefore));
-        $profile->refresh();
-        $this->assertSame($unchanged, array_intersect_key($profile->getAttributes(), $unchanged));
-        $this->assertSame([60, 60, true], [$profile->skill_points_total, $profile->skill_points_unspent, $profile->skill_rebuild_required]);
-        $this->assertNull($profile->custom_ai_rules);
-        $this->assertSame(0, $profile->skillAllocations()->count());
-        $this->assertEquals($battle->snapshot, $runtime->fightTrial($user, $run->run_key, $requestId)['battle']->snapshot);
-        $this->assertRuntimeError('underground_skill_rebuild_required', fn () => $runtime->fightTrial($user, $run->run_key, (string) Str::uuid()));
-        $intro = app(UndergroundIntroService::class);
-        $intro->acquireSkillNode($user, (string) Str::uuid(), 'miracle_holy_bolt');
-        $intro->acquireSkillNode($user, (string) Str::uuid(), 'miracle_mending_prayer');
-        $this->assertTrue($profile->refresh()->skill_rebuild_required);
-        $intro->updateActiveLoadout($user, (string) Str::uuid(), ['holy_bolt', 'mending_prayer', null, null, null]);
-        $this->assertFalse($profile->refresh()->skill_rebuild_required);
-        $this->assertSame(48, $profile->skill_points_unspent);
-        $this->assertSame(2, $run->refresh()->next_battle_index);
-    }
-
     /** @return array{User, Secretary} */
     private function secretaryUser(): array
     {

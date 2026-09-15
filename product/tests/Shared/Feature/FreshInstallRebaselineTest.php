@@ -1,6 +1,6 @@
 <?php
 
-namespace Tests\Feature;
+namespace Tests\Shared\Feature;
 
 use App\Application\CommandQueueService;
 use App\Application\CurrentCatalogInstaller;

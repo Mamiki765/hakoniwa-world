@@ -13,6 +13,13 @@ use SplFileInfo;
 
 final class TestShardPlanner
 {
+    /** @var array<string, list<string>> */
+    private const SCOPE_SUITES = [
+        'full' => ['Shared', 'Unit', 'Feature', 'Underground'],
+        'surface' => ['Shared', 'Unit', 'Feature'],
+        'underground' => ['Shared', 'Underground'],
+    ];
+
     private readonly string $projectRoot;
 
     private readonly string $configurationPath;
@@ -29,50 +36,72 @@ final class TestShardPlanner
     }
 
     /** @return list<string> */
-    public function discover(): array
+    public function discover(string $scope = 'full'): array
     {
+        $scope = self::normalizeScope($scope);
         $document = $this->loadConfiguration();
         $xpath = new DOMXPath($document);
         $files = [];
+        $selectedSuites = array_fill_keys(self::SCOPE_SUITES[$scope], true);
 
-        foreach ($xpath->query('/phpunit/testsuites/testsuite/directory') ?: [] as $directoryNode) {
-            if (! $directoryNode instanceof DOMElement) {
+        foreach ($xpath->query('/phpunit/testsuites/testsuite') ?: [] as $suiteNode) {
+            if (! $suiteNode instanceof DOMElement) {
                 continue;
             }
 
-            $directory = $this->resolvePath(trim($directoryNode->textContent), dirname($this->configurationPath));
-            if (! is_dir($directory)) {
-                throw new RuntimeException("PHPUnit test directory [{$directory}] does not exist.");
+            $suiteName = $suiteNode->getAttribute('name');
+            if (! in_array($suiteName, self::SCOPE_SUITES['full'], true)) {
+                throw new RuntimeException("PHPUnit test suite [{$suiteName}] has no canonical scope.");
+            }
+            if (! isset($selectedSuites[$suiteName])) {
+                continue;
             }
 
-            $suffix = $directoryNode->getAttribute('suffix') ?: 'Test.php';
-            $iterator = new RecursiveIteratorIterator(
-                new RecursiveDirectoryIterator($directory, RecursiveDirectoryIterator::SKIP_DOTS),
-            );
+            foreach ($xpath->query('./directory', $suiteNode) ?: [] as $directoryNode) {
+                if (! $directoryNode instanceof DOMElement) {
+                    continue;
+                }
 
-            /** @var SplFileInfo $file */
-            foreach ($iterator as $file) {
-                if ($file->isFile() && str_ends_with($file->getFilename(), $suffix)) {
-                    $relativePath = $this->relativePath($file->getPathname());
-                    $files[$relativePath] = true;
+                $directory = $this->resolvePath(trim($directoryNode->textContent), dirname($this->configurationPath));
+                if (! is_dir($directory)) {
+                    throw new RuntimeException("PHPUnit test directory [{$directory}] does not exist.");
+                }
+
+                $suffix = $directoryNode->getAttribute('suffix') ?: 'Test.php';
+                $iterator = new RecursiveIteratorIterator(
+                    new RecursiveDirectoryIterator($directory, RecursiveDirectoryIterator::SKIP_DOTS),
+                );
+
+                /** @var SplFileInfo $file */
+                foreach ($iterator as $file) {
+                    if ($file->isFile() && str_ends_with($file->getFilename(), $suffix)) {
+                        $relativePath = $this->relativePath($file->getPathname());
+                        if (isset($files[$relativePath])) {
+                            throw new RuntimeException("PHPUnit suites select test file [{$relativePath}] more than once.");
+                        }
+                        $files[$relativePath] = true;
+                    }
                 }
             }
-        }
 
-        foreach ($xpath->query('/phpunit/testsuites/testsuite/file') ?: [] as $fileNode) {
-            $file = $this->resolvePath(trim($fileNode->textContent), dirname($this->configurationPath));
-            if (! is_file($file)) {
-                throw new RuntimeException("PHPUnit test file [{$file}] does not exist.");
+            foreach ($xpath->query('./file', $suiteNode) ?: [] as $fileNode) {
+                $file = $this->resolvePath(trim($fileNode->textContent), dirname($this->configurationPath));
+                if (! is_file($file)) {
+                    throw new RuntimeException("PHPUnit test file [{$file}] does not exist.");
+                }
+
+                $relativePath = $this->relativePath($file);
+                if (isset($files[$relativePath])) {
+                    throw new RuntimeException("PHPUnit suites select test file [{$relativePath}] more than once.");
+                }
+                $files[$relativePath] = true;
             }
-
-            $relativePath = $this->relativePath($file);
-            $files[$relativePath] = true;
         }
 
         $discovered = array_keys($files);
         sort($discovered, SORT_STRING);
         if ($discovered === []) {
-            throw new RuntimeException('PHPUnit test discovery returned no test files.');
+            throw new RuntimeException("PHPUnit [{$scope}] test discovery returned no test files.");
         }
 
         return $discovered;
@@ -104,9 +133,9 @@ final class TestShardPlanner
     }
 
     /** @return array<int, list<string>> */
-    public function plan(int $shardTotal): array
+    public function plan(int $shardTotal, string $scope = 'full'): array
     {
-        return $this->assign($this->discover(), $shardTotal);
+        return $this->assign($this->discover($scope), $shardTotal);
     }
 
     /**
@@ -175,9 +204,9 @@ final class TestShardPlanner
      *     unexpected: list<string>
      * }
      */
-    public function verify(int $shardTotal): array
+    public function verify(int $shardTotal, string $scope = 'full'): array
     {
-        $discovered = $this->discover();
+        $discovered = $this->discover($scope);
         $report = $this->coverageReport($discovered, $this->assign($discovered, $shardTotal));
 
         if ($report['duplicate_count'] !== 0 || $report['missing_count'] !== 0 || $report['unexpected_count'] !== 0) {
@@ -185,6 +214,21 @@ final class TestShardPlanner
         }
 
         return $report;
+    }
+
+    public static function normalizeScope(string $scope): string
+    {
+        $normalized = strtolower(trim($scope));
+        if ($normalized === 'all') {
+            return 'full';
+        }
+        if (! isset(self::SCOPE_SUITES[$normalized])) {
+            throw new InvalidArgumentException(
+                "Test scope [{$scope}] is invalid; expected full, surface, or underground.",
+            );
+        }
+
+        return $normalized;
     }
 
     public static function normalizePath(string $path): string

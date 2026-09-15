@@ -152,9 +152,9 @@ jobs:
       - name: Run static analysis on the complete application
         run: composer analyse
       - name: Validate complete 16-shard assignment
-        run: php tests/scripts/test_shards.php verify 16
+        run: php tests/scripts/test_shards.php verify 16 full
       - name: Verify serial and sharded test identifiers
-        run: bash tests/scripts/verify_test_identifier_equivalence.sh 16
+        run: bash tests/scripts/verify_test_identifier_equivalence.sh 16 full
 
   phpunit:
     name: PHPUnit ${{ matrix.display }}/${{ needs.phpunit-plan.outputs.total }}
@@ -219,12 +219,12 @@ jobs:
           done < <(tar --zstd -tf vendor.tar.zst)
           tar --zstd -xf vendor.tar.zst
       - name: Verify complete shard coverage
-        run: php tests/scripts/test_shards.php verify "$SHARD_TOTAL"
+        run: php tests/scripts/test_shards.php verify "$SHARD_TOTAL" full
       - name: Describe assigned tests
-        run: php tests/scripts/test_shards.php describe "$SHARD_TOTAL" "$SHARD_INDEX"
+        run: php tests/scripts/test_shards.php describe "$SHARD_TOTAL" "$SHARD_INDEX" full
       - name: Run assigned PostgreSQL tests
         run: |
-          assigned_output="$(php tests/scripts/test_shards.php files "$SHARD_TOTAL" "$SHARD_INDEX")"
+          assigned_output="$(php tests/scripts/test_shards.php files "$SHARD_TOTAL" "$SHARD_INDEX" full)"
           test_files=()
           if [[ -n "$assigned_output" ]]; then
             mapfile -t test_files <<<"$assigned_output"

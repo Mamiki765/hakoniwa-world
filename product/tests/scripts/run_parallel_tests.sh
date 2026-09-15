@@ -8,6 +8,14 @@ if [[ ! "$shard_total" =~ ^[1-9][0-9]*$ ]] || ((shard_total > 64)); then
     exit 2
 fi
 
+scope_argument="${2:-full}"
+if (($# >= 2)); then
+    shift 2
+elif (($# == 1)); then
+    shift
+fi
+phpunit_arguments=("$@")
+
 manifest=""
 evidence_directory=""
 evidence_metadata=""
@@ -52,6 +60,48 @@ composer_json_sha="$(sha256_of composer.json)"
 composer_lock_sha="$(sha256_of composer.lock)"
 package_json_sha="$(sha256_of package.json)"
 package_lock_sha="$(sha256_of package-lock.json)"
+source_tree_sha="$(php -r '
+    $roots = [
+        "app", "bootstrap/app.php", "bootstrap/providers.php", "config", "database",
+        "resources", "routes", "tests", "artisan", "phpunit.xml", "phpstan.neon",
+        "composer.json", "composer.lock", "package.json", "package-lock.json",
+    ];
+    $files = [];
+    foreach ($roots as $root) {
+        if (is_file($root)) {
+            $files[] = $root;
+            continue;
+        }
+        if (! is_dir($root)) {
+            continue;
+        }
+        $iterator = new RecursiveIteratorIterator(
+            new RecursiveDirectoryIterator($root, RecursiveDirectoryIterator::SKIP_DOTS),
+        );
+        foreach ($iterator as $file) {
+            if ($file->isFile()) {
+                $files[] = str_replace(DIRECTORY_SEPARATOR, "/", $file->getPathname());
+            }
+        }
+    }
+    sort($files, SORT_STRING);
+    $hash = hash_init("sha256");
+    foreach ($files as $file) {
+        hash_update($hash, $file."\0".(hash_file("sha256", $file) ?: "unknown")."\n");
+    }
+    echo hash_final($hash);
+' 2>/dev/null || true)"
+if [[ ! "$source_tree_sha" =~ ^[0-9a-f]{64}$ ]]; then
+    source_tree_sha="unknown"
+fi
+working_tree_dirty="unknown"
+if git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+    if [[ -n "$(git status --porcelain --untracked-files=all 2>/dev/null)" ]]; then
+        working_tree_dirty="true"
+    else
+        working_tree_dirty="false"
+    fi
+fi
 
 declare -a child_pids=()
 declare -a child_logs=()
@@ -158,14 +208,19 @@ trap cleanup EXIT
 trap 'exit 130' INT TERM
 
 php artisan config:clear --ansi
-shard_report="$(php tests/scripts/test_shards.php verify "$shard_total")"
+shard_report="$(php tests/scripts/test_shards.php verify "$shard_total" "$scope_argument")"
+scope="$(printf '%s\n' "$shard_report" | sed -n 's/^scope: \(full\|surface\|underground\)$/\1/p' | head -n 1)"
+if [[ -z "$scope" ]]; then
+    echo 'Unable to determine normalized test scope.' >&2
+    exit 1
+fi
 discovered_test_files="$(printf '%s\n' "$shard_report" | sed -n 's/^total discovered files: \([0-9][0-9]*\)$/\1/p' | head -n 1)"
 if [[ ! "$discovered_test_files" =~ ^[0-9]+$ ]]; then
     discovered_test_files=0
 fi
 run_token="$(php -r 'echo bin2hex(random_bytes(4));')"
 manifest="storage/framework/testing/phpunit-parallel-$run_token/manifest.json"
-php tests/scripts/parallel_test_databases.php prepare "$shard_total" "$run_token"
+php tests/scripts/parallel_test_databases.php prepare "$shard_total" "$scope" "$run_token"
 echo "Parallel test manifest: $manifest"
 evidence_directory="$(php tests/scripts/parallel_test_databases.php evidence "$manifest" directory)"
 echo "Parallel test evidence: $evidence_directory"
@@ -176,11 +231,22 @@ if [[ -e "$evidence_directory" || -L "$evidence_directory" || ! -d "$(dirname "$
 fi
 mkdir -p -- "$evidence_directory"
 chmod 700 "$evidence_directory"
+selected_test_files="$(php tests/scripts/test_shards.php files 1 0 "$scope")"
+selected_test_files_sha256="$(printf '%s\n' "$selected_test_files" | php -r 'echo hash("sha256", stream_get_contents(STDIN));')"
+selection_mode="scope"
+if ((${#phpunit_arguments[@]} != 0)); then
+    selection_mode="focused"
+fi
 if ! {
     printf 'schema\thakoniwa.parallel-test-evidence.v1\n'
     printf 'run_token\t%s\n' "$run_token"
     printf 'started_at\t%s\n' "$run_started_at"
     printf 'tested_sha\t%s\n' "$tested_sha"
+    printf 'working_tree_dirty\t%s\n' "$working_tree_dirty"
+    printf 'source_tree_sha256\t%s\n' "$source_tree_sha"
+    printf 'scope\t%s\n' "$scope"
+    printf 'selection_mode\t%s\n' "$selection_mode"
+    printf 'selected_test_files_sha256\t%s\n' "$selected_test_files_sha256"
     printf 'php_version\t%s\n' "$php_version"
     printf 'composer_json_sha256\t%s\n' "$composer_json_sha"
     printf 'composer_lock_sha256\t%s\n' "$composer_lock_sha"
@@ -195,17 +261,24 @@ if ! {
     exit 1
 fi
 
+assignment_metadata="$evidence_directory/assignment.tsv"
+printf 'shard_index\ttest_file\n' >"$assignment_metadata"
+
 for ((index = 0; index < shard_total; index++)); do
-    test_file_output="$(php tests/scripts/test_shards.php files "$shard_total" "$index")"
+    test_file_output="$(php tests/scripts/test_shards.php files "$shard_total" "$index" "$scope")"
     test_files=()
     if [[ -n "$test_file_output" ]]; then
         mapfile -t test_files <<<"$test_file_output"
     fi
     if ((${#test_files[@]} == 0)); then
+        printf '%d\t-\n' "$index" >>"$assignment_metadata"
         append_evidence_line shard "$index" skipped 0 0 0 0 - -
         printf 'Shard %02d/%02d is empty; no PHPUnit process started.\n' "$((index + 1))" "$shard_total"
         continue
     fi
+    for test_file in "${test_files[@]}"; do
+        printf '%d\t%s\n' "$index" "$test_file" >>"$assignment_metadata"
+    done
 
     configuration="$(php tests/scripts/parallel_test_databases.php shard "$manifest" "$index" configuration)"
     database="$(php tests/scripts/parallel_test_databases.php shard "$manifest" "$index" database)"
@@ -236,6 +309,7 @@ for ((index = 0; index < shard_total; index++)); do
             --configuration "$configuration" \
             --colors=never \
             --log-junit "$junit" \
+            "${phpunit_arguments[@]}" \
             "${test_files[@]}" >"$log" 2>&1 &
         child_pid=$!
         wait "$child_pid" || child_exit_code=$?
@@ -282,13 +356,7 @@ for ((index = 0; index < shard_total; index++)); do
             exit;
         }
         $xpath = new DOMXPath($document);
-        $total = 0;
-        foreach ($xpath->query("//testsuite[not(.//testsuite)]") ?: [] as $node) {
-            if ($node instanceof DOMElement && preg_match("/^[0-9]+$/", $node->getAttribute("tests")) === 1) {
-                $total += (int) $node->getAttribute("tests");
-            }
-        }
-        echo $total;
+        echo $xpath->query("//testcase")?->length ?? 0;
     ' "${child_junits[$index]}" 2>/dev/null || true)"
     if [[ ! "${child_test_counts[$index]}" =~ ^[0-9]+$ ]]; then
         child_test_counts[$index]=""
@@ -302,6 +370,34 @@ for ((index = 0; index < shard_total; index++)); do
     printf '\n===== PHPUnit shard %02d/%02d =====\n' "$((index + 1))" "$shard_total"
     cat "$log"
 done
+
+identifier_summary="$(php -r '
+    $identifiers = [];
+    foreach (array_slice($argv, 1) as $path) {
+        $document = new DOMDocument;
+        if (! $document->load($path, LIBXML_NONET)) {
+            fwrite(STDERR, "Unable to read JUnit identifier source: {$path}\n");
+            exit(1);
+        }
+        $xpath = new DOMXPath($document);
+        foreach ($xpath->query("//testcase") ?: [] as $testcase) {
+            if ($testcase instanceof DOMElement) {
+                $identifiers[] = $testcase->getAttribute("class")."::".$testcase->getAttribute("name");
+            }
+        }
+    }
+    sort($identifiers, SORT_STRING);
+    echo count($identifiers)."\t".count(array_unique($identifiers))."\t".hash("sha256", implode("\n", $identifiers));
+' "${child_junits[@]}" 2>/dev/null || true)"
+if [[ "$identifier_summary" =~ ^([0-9]+)$'\t'([0-9]+)$'\t'([0-9a-f]{64})$ ]]; then
+    printf 'executed_test_identifiers\t%s\n' "${BASH_REMATCH[1]}" >>"$evidence_metadata"
+    printf 'unique_test_identifiers\t%s\n' "${BASH_REMATCH[2]}" >>"$evidence_metadata"
+    printf 'executed_test_identifiers_sha256\t%s\n' "${BASH_REMATCH[3]}" >>"$evidence_metadata"
+else
+    printf 'executed_test_identifiers\tunknown\n' >>"$evidence_metadata"
+    printf 'unique_test_identifiers\tunknown\n' >>"$evidence_metadata"
+    printf 'executed_test_identifiers_sha256\tunknown\n' >>"$evidence_metadata"
+fi
 
 if ((failed != 0)); then
     echo "One or more PHPUnit shards failed." >&2

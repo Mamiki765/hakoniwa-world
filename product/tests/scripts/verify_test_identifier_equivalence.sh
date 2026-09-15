@@ -7,6 +7,7 @@ if [[ ! "$shard_total" =~ ^[1-9][0-9]*$ ]]; then
     echo "Shard total must be a positive integer." >&2
     exit 2
 fi
+scope="${2:-full}"
 
 temporary_directory="$(mktemp -d)"
 cleanup() {
@@ -19,11 +20,21 @@ list_tests() {
         | sed -n '/^ - /s/^ - //p'
 }
 
-list_tests | sort > "$temporary_directory/serial"
+selected_output="$(php tests/scripts/test_shards.php files 1 0 "$scope")"
+selected_files=()
+if [[ -n "$selected_output" ]]; then
+    mapfile -t selected_files <<<"$selected_output"
+fi
+if ((${#selected_files[@]} == 0)); then
+    echo "PHPUnit [$scope] file discovery returned zero files." >&2
+    exit 1
+fi
+
+list_tests "${selected_files[@]}" | sort > "$temporary_directory/serial"
 : > "$temporary_directory/assigned"
 
 for ((index = 0; index < shard_total; index++)); do
-    assigned_output="$(php tests/scripts/test_shards.php files "$shard_total" "$index")"
+    assigned_output="$(php tests/scripts/test_shards.php files "$shard_total" "$index" "$scope")"
     assigned_files=()
     if [[ -n "$assigned_output" ]]; then
         mapfile -t assigned_files <<<"$assigned_output"
