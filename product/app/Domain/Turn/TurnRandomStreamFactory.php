@@ -258,13 +258,13 @@ final class TurnRandomStreamFactory
         return self::PIRATE_ATTACK_PREFIX.$shipId.':'.$purpose.':v'.$streamVersion;
     }
 
-    public static function treasureReveal(int $treasureId, int $nationId, int $streamVersion): string
+    public static function treasureCellReveal(int $mapCellId, int $nationId, int $streamVersion): string
     {
-        if ($treasureId < 1 || $nationId < 1 || $streamVersion < 1) {
-            throw new InvalidArgumentException('Buried Treasure reveal stream identity is invalid.');
+        if ($mapCellId < 1 || $nationId < 1 || $streamVersion < 1) {
+            throw new InvalidArgumentException('Buried Treasure cell reveal stream identity is invalid.');
         }
 
-        return self::TREASURE_REVEAL_PREFIX.$treasureId.':nation:'.$nationId.':v'.$streamVersion;
+        return self::TREASURE_REVEAL_PREFIX.$mapCellId.':nation:'.$nationId.':v'.$streamVersion;
     }
 
     public static function naturalTreasure(int $opportunity, string $purpose, int $streamVersion): string

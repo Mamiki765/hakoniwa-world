@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Application\BuriedTreasureRevealResolver;
 use App\Application\BuriedTreasureService;
 use App\Application\MapChunkService;
 use App\Application\NationCreationService;
@@ -25,6 +26,7 @@ use App\Models\Ship;
 use App\Models\TurnRun;
 use App\Models\User;
 use App\Models\World;
+use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Support\Facades\DB;
 use Tests\Concerns\UsesReusableSurfaceWorld;
 use Tests\TestCase;
@@ -133,6 +135,85 @@ final class OceanLoopTest extends TestCase
         $this->assertSame(
             [SecretaryItemCatalog::RARITY_HIGH_QUALITY, 1500],
             [$ticket->resolved_rarity, $ticket->resolved_fixed_sale_price_money],
+        );
+    }
+
+    public function test_remote_buried_treasure_reveal_is_drawn_once_per_cell(): void
+    {
+        $world = $this->lightweightWorld();
+        $viewer = app(NationCreationService::class)->create(
+            User::factory()->create(),
+            $world,
+            '遠隔発見国',
+            '遠隔発見島主',
+        );
+        $space = $this->surfaceMapSpace($world);
+        $cell = $this->remoteSea($space, [$viewer->id]);
+        $otherCell = $this->remoteSea($space, [$viewer->id], [$cell->id]);
+        $context = $this->context($world, [$viewer->id], 2, 'buried-treasure-cell-reveal');
+        $settings = $context->ruleset->settings['ocean_loop']['buried_treasure'];
+        $probability = $settings['remote_reveal_probability'];
+        $streamVersion = $settings['stream_version'];
+        $this->assertSame(['numerator' => 1, 'denominator' => 5], $probability);
+
+        $seed = collect(range(0, 100))
+            ->map(static fn (int $candidate): string => hash(
+                'sha256',
+                'ocean-cell-reveal-regression-'.$candidate,
+            ))
+            ->first(static function (string $candidate) use ($viewer, $probability, $streamVersion): bool {
+                $legacyRandom = new TurnRandomStreamFactory($candidate);
+                $firstDraw = $legacyRandom->stream(
+                    'map_projection:buried_treasure:101:nation:'.$viewer->id.':v'.$streamVersion,
+                )->integer(0, $probability['denominator'] - 1);
+                $secondDraw = $legacyRandom->stream(
+                    'map_projection:buried_treasure:102:nation:'.$viewer->id.':v'.$streamVersion,
+                )->integer(0, $probability['denominator'] - 1);
+
+                return $firstDraw >= $probability['numerator']
+                    && $secondDraw < $probability['numerator'];
+            });
+        $this->assertIsString($seed, 'A deterministic seed exposing the old per-treasure draw must exist.');
+
+        $context->run->update([
+            'random_seed' => $seed,
+            'is_dry_run' => false,
+            'status' => TurnRun::STATUS_COMPLETED,
+            'completed_at' => now(),
+        ]);
+        $world->update(['current_turn' => 2]);
+
+        $first = new BuriedTreasure;
+        $first->forceFill(['id' => 101, 'map_cell_id' => $cell->id]);
+        $second = new BuriedTreasure;
+        $second->forceFill(['id' => 102, 'map_cell_id' => $cell->id]);
+        $resolver = app(BuriedTreasureRevealResolver::class);
+        $singleResult = $resolver->remoteVisibleCellIds(
+            $world->fresh(),
+            $viewer->id,
+            new EloquentCollection([$first]),
+            $settings,
+        );
+        $multipleResult = $resolver->remoteVisibleCellIds(
+            $world->fresh(),
+            $viewer->id,
+            new EloquentCollection([$first, $second]),
+            $settings,
+        );
+
+        $this->assertSame($singleResult, $multipleResult);
+        $this->assertSame(
+            $singleResult,
+            $resolver->remoteVisibleCellIds(
+                $world->fresh(),
+                $viewer->id,
+                new EloquentCollection([$first]),
+                $settings,
+            ),
+        );
+        $this->assertNotSame(
+            TurnRandomStreamFactory::treasureCellReveal($cell->id, $viewer->id, $streamVersion),
+            TurnRandomStreamFactory::treasureCellReveal($otherCell->id, $viewer->id, $streamVersion),
         );
     }
 

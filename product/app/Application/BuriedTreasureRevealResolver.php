@@ -52,14 +52,19 @@ final class BuriedTreasureRevealResolver
 
         $random = new TurnRandomStreamFactory($run->random_seed);
         $visible = [];
-        foreach ($treasures as $treasure) {
-            $draw = $random->stream(TurnRandomStreamFactory::treasureReveal(
-                (int) $treasure->id,
+        $cellIds = $treasures->pluck('map_cell_id')
+            ->map(static fn ($cellId): int => (int) $cellId)
+            ->unique()
+            ->sort()
+            ->values();
+        foreach ($cellIds as $cellId) {
+            $draw = $random->stream(TurnRandomStreamFactory::treasureCellReveal(
+                $cellId,
                 $viewerNationId,
                 $streamVersion,
             ))->integer(0, $probability['denominator'] - 1);
             if ($draw < $probability['numerator']) {
-                $visible[(int) $treasure->map_cell_id] = true;
+                $visible[$cellId] = true;
             }
         }
 
