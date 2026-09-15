@@ -8,6 +8,8 @@ use App\Domain\Map\NationLandAreaCalculator;
 use App\Domain\Monster\MonsterBehaviorResolver;
 use App\Domain\Monster\MonsterSpawnSource;
 use App\Domain\Nation\NationProtectionPolicy;
+use App\Domain\Secretary\SecretaryItemEffectAggregator;
+use App\Domain\Secretary\SecretaryItemGameplayContract;
 use App\Domain\Turn\TurnContext;
 use App\Domain\Turn\TurnRandomStreamFactory;
 use App\Models\MapCell;
@@ -29,6 +31,7 @@ final class MonsterWorldSpawnService
         private readonly MapCellStateService $cells,
         private readonly TurnEventRecorder $events,
         private readonly NationProtectionPolicy $nationProtection,
+        private readonly SecretaryItemEffectAggregator $secretaryItems,
     ) {}
 
     /** @return array<string, int> */
@@ -82,6 +85,47 @@ final class MonsterWorldSpawnService
             return $metrics;
         }
 
+        $nearshore = ($settings['stream_version'] ?? null) === 2;
+        $targetNationId = null;
+        if ($nearshore) {
+            $populationRows = MapCell::query()->where('map_space_id', $space->id)
+                ->whereIn('owner_nation_id', $activeNationIds)
+                ->selectRaw('owner_nation_id, SUM(population) AS aggregate')->groupBy('owner_nation_id')
+                ->pluck('aggregate', 'owner_nation_id');
+            $landByNation = $this->landArea->forNationIds($context->world, $activeNationIds);
+            $weights = [];
+            foreach ($activeNationIds as $nationId) {
+                if ((int) ($populationRows[$nationId] ?? 0) < (int) $settings['minimum_nation_population']) {
+                    continue;
+                }
+                $itemPercent = $this->secretaryItems->snapshotPercentage(
+                    $context->state,
+                    $nationId,
+                    SecretaryItemGameplayContract::NATURAL_MONSTER_SPAWN_PERCENT,
+                    'normal_nation_natural_spawn',
+                );
+                $weight = (int) ($landByNation[$nationId] ?? 0) * max(0, 100 + $itemPercent);
+                if ($weight > 0) {
+                    $weights[$nationId] = $weight;
+                }
+            }
+            if ($weights === []) {
+                $metrics['world_sea_spawn_blocked_no_candidate'] = 1;
+
+                return $metrics;
+            }
+            $weightDraw = $context->random->stream(TurnRandomStreamFactory::monsterWorldSpawn(
+                'target_nation', (int) $settings['stream_version'],
+            ))->integer(1, array_sum($weights));
+            foreach ($weights as $nationId => $weight) {
+                $weightDraw -= $weight;
+                if ($weightDraw <= 0) {
+                    $targetNationId = $nationId;
+                    break;
+                }
+            }
+        }
+
         $shipOccupancyEnabled = is_array($context->ruleset->settings['surface_ships'] ?? null);
         $relations = ['terrain', 'facility'];
         if ($shipOccupancyEnabled) {
@@ -89,10 +133,19 @@ final class MonsterWorldSpawnService
         }
         $surfaceCells = MapCell::query()->where('map_space_id', $space->id)
             ->with($relations)->orderBy('id')->lockForUpdate()->get();
+        $landCells = $surfaceCells->filter(fn (MapCell $cell): bool => $this->landArea->isLand($cell));
+        $selectedLand = $nearshore
+            ? $landCells->where('owner_nation_id', $targetNationId)->values()
+            : collect();
+        $otherLand = $nearshore
+            ? $landCells->filter(
+                static fn (MapCell $cell): bool => (int) ($cell->owner_nation_id ?? 0) !== $targetNationId,
+            )->values()
+            : collect();
         $blockedByLand = [];
-        $minimumDistance = (int) $settings['minimum_land_distance'];
-        foreach ($surfaceCells as $cell) {
-            if ($this->landArea->isLand($cell)) {
+        if (! $nearshore) {
+            $minimumDistance = (int) $settings['minimum_land_distance'];
+            foreach ($landCells as $cell) {
                 foreach ((new GridCoordinate($cell->x, $cell->y))->radius($minimumDistance - 1) as $blocked) {
                     $blockedByLand[$blocked->x.':'.$blocked->y] = true;
                 }
@@ -103,7 +156,10 @@ final class MonsterWorldSpawnService
                 ->pluck('map_cell_id')->map(static fn ($id): int => (int) $id)->all(),
             true,
         );
-        $candidates = $surfaceCells->filter(function (MapCell $cell) use ($context, $settings, $blockedByLand, $occupiedCellIds, $shipOccupancyEnabled): bool {
+        $candidates = $surfaceCells->filter(function (MapCell $cell) use (
+            $context, $settings, $blockedByLand, $occupiedCellIds, $shipOccupancyEnabled,
+            $nearshore, $selectedLand, $otherLand,
+        ): bool {
             if (! in_array($cell->terrain->key, $settings['terrain_keys'], true)
                 || $cell->owner_nation_id !== null
                 || $cell->population !== 0
@@ -116,7 +172,21 @@ final class MonsterWorldSpawnService
                 return false;
             }
 
-            return ! isset($blockedByLand[$cell->x.':'.$cell->y]);
+            if (! $nearshore) {
+                return ! isset($blockedByLand[$cell->x.':'.$cell->y]);
+            }
+            $coordinate = new GridCoordinate((int) $cell->x, (int) $cell->y);
+            $selectedDistance = $selectedLand->min(fn (MapCell $land): int => $coordinate->distanceTo(
+                new GridCoordinate((int) $land->x, (int) $land->y),
+            ));
+            if ($selectedDistance !== (int) $settings['exact_owned_land_distance']) {
+                return false;
+            }
+            $otherDistance = $otherLand->isEmpty() ? null : $otherLand->min(fn (MapCell $land): int => $coordinate->distanceTo(
+                new GridCoordinate((int) $land->x, (int) $land->y),
+            ));
+
+            return $otherDistance === null || $otherDistance > (int) $settings['other_land_exclusion_distance'];
         })->values();
         $metrics['world_sea_spawn_candidates'] = $candidates->count();
         if ($candidates->isEmpty()) {
@@ -167,6 +237,7 @@ final class MonsterWorldSpawnService
             'to_terrain_key' => 'sea',
             'spawn_source' => MonsterSpawnSource::WorldAoiDisaster->value,
             'owner_preserved' => false,
+            'target_nation_id' => $targetNationId,
         ]);
         $metrics['world_sea_monsters_spawned'] = 1;
 

@@ -33,6 +33,7 @@ function chunkFromPath(path: string, state: MapChunk['state'] = 'generated'): Ma
         owner_nation_number: null,
         owner_name: null,
         within_viewer_visibility: false,
+        buried_treasure_visible: false,
         details: [],
         monster: null,
         asset: { key: 'tile.plain', url: null, available: false, fallback_label: '平', fallback_style: 'tile-plain' },

@@ -26,6 +26,7 @@ final class SecretaryItemGameplayContractTest extends TestCase
             'novice' => ['key' => 'novice', 'name' => 'ノービス', 'fixed_sale_price_money' => 100],
             'regular' => ['key' => 'regular', 'name' => 'レギュラー', 'fixed_sale_price_money' => 500],
             'cursed' => ['key' => 'cursed', 'name' => 'カースド', 'fixed_sale_price_money' => 1],
+            'high_quality' => ['key' => 'high_quality', 'name' => 'ハイクオリティ', 'fixed_sale_price_money' => 1500],
         ], $catalog->rarities());
         foreach ([SecretaryItemCatalog::ELF_BOW, SecretaryItemCatalog::LONGSHOT_BOW, SecretaryItemCatalog::MECHANICAL_BOW] as $itemKey) {
             $definition = $catalog->definition($itemKey);
@@ -48,6 +49,12 @@ final class SecretaryItemGameplayContractTest extends TestCase
         $this->assertFalse($oldBow['tradable']);
         $this->assertFalse($oldBow['npc_tradable']);
         $this->assertSame(100, $oldBow['fixed_sale_price_money']);
+        $dokidoki = $catalog->definition(SecretaryItemCatalog::DOKIDOKI_TICKET);
+        $this->assertSame(['ticket', 'high_quality', 1500], [
+            $dokidoki['category'],
+            $dokidoki['rarity'],
+            $dokidoki['fixed_sale_price_money'],
+        ]);
         $this->assertSame(
             [SecretarySkillCatalog::DECLINING_BIRTHRATE_POLICY],
             $settings['secretary']['items'][SecretaryItemCatalog::SECRETARY_SUIT]['effects'][0]['excluded_skill_keys'],

@@ -708,7 +708,7 @@ export interface MonsterOverlay {
 
 export interface ShipOverlay {
     id: number;
-    key: 'fishing' | 'tourist' | 'exploration' | 'pirate' | 'treasure';
+    key: 'fishing' | 'tourist' | 'exploration' | 'pirate' | 'treasure' | 'warship';
     name: string;
     asset_key: string;
     current_hp: number;
@@ -732,6 +732,7 @@ export interface MapCell {
     owner_nation_number: number | null;
     owner_name: string | null;
     within_viewer_visibility: boolean;
+    buried_treasure_visible: boolean;
     details: MapCellDetail[];
     ship?: ShipOverlay | null;
     monster: MonsterOverlay | null;

@@ -41,7 +41,7 @@ final class FreshInstallRebaselineTest extends TestCase
         app(RulesetPublisher::class)->publish($current);
         $ruleset = RulesetVersion::query()->where('key', Ver420RulesetUpgrade::TARGET_KEY)->sole();
 
-        $this->assertSame('4.1.2', config('hakoniwa.application_version'));
+        $this->assertSame('4.2.0', config('hakoniwa.application_version'));
         $this->assertSame([Ver420RulesetUpgrade::TARGET_KEY], array_keys(config('hakoniwa.published_rulesets')));
         $this->assertSame(Ver420RulesetUpgrade::TARGET_KEY, $ruleset->key);
         $this->assertSame(Ver420RulesetUpgrade::TARGET_VERSION, $ruleset->version);
@@ -64,12 +64,18 @@ final class FreshInstallRebaselineTest extends TestCase
         $this->assertDatabaseHas('migrations', [
             'migration' => '2026_09_15_000000_enable_npc_surface_ships',
         ]);
+        $this->assertDatabaseHas('migrations', [
+            'migration' => '2026_09_15_010000_add_ocean_loop',
+        ]);
         $nationIdColumn = DB::selectOne(<<<'SQL'
 SELECT is_nullable
   FROM information_schema.columns
  WHERE table_schema = current_schema() AND table_name = 'ships' AND column_name = 'nation_id'
 SQL);
         $this->assertSame('YES', $nationIdColumn?->is_nullable);
+        $this->assertTrue(Schema::hasColumn('ships', 'population'));
+        $this->assertTrue(Schema::hasTable('buried_treasures'));
+        $this->assertTrue(Schema::hasTable('buried_treasure_reveals'));
         $this->assertTrue(Schema::hasColumn('announcements', 'body_format'));
         foreach ([
             'user_paradox_balances',

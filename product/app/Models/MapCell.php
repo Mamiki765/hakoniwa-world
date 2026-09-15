@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Support\Carbon;
 
@@ -87,5 +88,11 @@ class MapCell extends Model
     public function ship(): HasOne
     {
         return $this->hasOne(Ship::class, 'map_cell_id')->where('state', Ship::STATE_ACTIVE);
+    }
+
+    /** @return HasMany<BuriedTreasure, $this> */
+    public function buriedTreasures(): HasMany
+    {
+        return $this->hasMany(BuriedTreasure::class, 'map_cell_id');
     }
 }

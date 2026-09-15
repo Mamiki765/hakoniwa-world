@@ -3,6 +3,7 @@
 namespace App\Application;
 
 use App\Domain\Map\GridCoordinate;
+use App\Models\BuriedTreasure;
 use App\Models\MapCell;
 use App\Models\MapSpace;
 use App\Models\NationCapital;
@@ -59,6 +60,22 @@ final class MapChunkService
         $theme = is_string($lifecycle['dormant_visual_theme'] ?? null)
             ? $lifecycle['dormant_visual_theme'] : null;
         $visibleCoordinates = $this->visibility->visibleCoordinates($mapSpace, $cells, $viewerNationId);
+        $treasureCellIds = [];
+        if ($viewerNationId !== null && $cells->isNotEmpty()) {
+            $visibleCellIds = $cells->filter(static fn (MapCell $cell): bool => isset(
+                $visibleCoordinates[$cell->x.':'.$cell->y],
+            ))->modelKeys();
+            $treasureCellIds = BuriedTreasure::query()
+                ->where('world_id', $mapSpace->world_id)
+                ->whereIn('map_cell_id', $cells->modelKeys())
+                ->where('state', BuriedTreasure::STATE_ACTIVE)
+                ->where(function ($query) use ($visibleCellIds, $viewerNationId, $currentTurn): void {
+                    $query->whereIn('map_cell_id', $visibleCellIds)
+                        ->orWhereHas('reveals', fn ($reveal) => $reveal
+                            ->where('nation_id', $viewerNationId)->where('turn', $currentTurn));
+                })
+                ->pluck('map_cell_id')->mapWithKeys(static fn ($id): array => [(int) $id => true])->all();
+        }
         $dormantCapitals = NationCapital::query()
             ->join('nations', 'nations.id', '=', 'nation_capitals.nation_id')
             ->where('nations.world_id', $mapSpace->world_id)->where('nations.state', 'dormant')
@@ -72,6 +89,7 @@ final class MapChunkService
                 ? $theme : null,
             isset($visibleCoordinates[$cell->x.':'.$cell->y]),
             $rulesetSettings,
+            isset($treasureCellIds[$cell->id]),
         ))->values();
         $representationVersion = hash('sha256', json_encode($presentedCells, JSON_THROW_ON_ERROR));
 

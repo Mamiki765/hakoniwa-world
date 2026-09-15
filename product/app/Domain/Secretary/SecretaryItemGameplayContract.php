@@ -100,13 +100,15 @@ final class SecretaryItemGameplayContract
         $rulesetKey = $settings['key'] ?? null;
         $formal = in_array($rulesetKey, [self::V16_RULESET_KEY, self::V17_RULESET_KEY, self::V18_RULESET_KEY, self::V19_RULESET_KEY, self::V20_RULESET_KEY, self::V21_RULESET_KEY, self::V22_RULESET_KEY, self::V23_RULESET_KEY, self::V24_RULESET_KEY, self::V25_RULESET_KEY, self::V26_RULESET_KEY], true);
         $v17 = in_array($rulesetKey, [self::V17_RULESET_KEY, self::V18_RULESET_KEY, self::V19_RULESET_KEY, self::V20_RULESET_KEY, self::V21_RULESET_KEY, self::V22_RULESET_KEY, self::V23_RULESET_KEY, self::V24_RULESET_KEY, self::V25_RULESET_KEY, self::V26_RULESET_KEY], true);
+        $v26 = $rulesetKey === self::V26_RULESET_KEY;
         $secretary = $this->map($settings['secretary'] ?? null, 'ruleset.secretary');
         if ($formal) {
             $rarities = $this->map($secretary['item_rarities'] ?? null, 'ruleset.secretary.item_rarities');
             $this->exactDefinitionKeys(
                 $rarities,
                 $v17
-                    ? [SecretaryItemCatalog::RARITY_NOVICE, SecretaryItemCatalog::RARITY_REGULAR, SecretaryItemCatalog::RARITY_CURSED]
+                    ? [SecretaryItemCatalog::RARITY_NOVICE, SecretaryItemCatalog::RARITY_REGULAR, SecretaryItemCatalog::RARITY_CURSED,
+                        ...($v26 ? [SecretaryItemCatalog::RARITY_HIGH_QUALITY] : [])]
                     : [SecretaryItemCatalog::RARITY_NOVICE],
                 'ruleset.secretary.item_rarities',
             );
@@ -127,7 +129,9 @@ final class SecretaryItemGameplayContract
 
         $categories = $this->map($secretary['item_categories'] ?? null, 'ruleset.secretary.item_categories');
         $items = $this->map($secretary['items'] ?? null, 'ruleset.secretary.items');
-        $expectedCategories = $formal ? ['accessory', 'bow', 'clothing'] : ['bow', 'ring'];
+        $expectedCategories = $formal
+            ? ['accessory', 'bow', 'clothing', ...($v26 ? ['ticket'] : [])]
+            : ['bow', 'ring'];
         $catalogDefinitions = $this->catalogDefinitions($rulesetKey);
         $expectedItems = $formal
             ? array_keys($catalogDefinitions)
@@ -143,7 +147,7 @@ final class SecretaryItemGameplayContract
                 ? $this->catalog->maximumEquipped($categoryKey)
                 : ($categoryKey === 'bow' ? 1 : 5);
             if (($category['key'] ?? null) !== $categoryKey
-                || $this->integer($category['max_equipped'] ?? null, "{$path}.max_equipped", 1) !== $expectedMaximum) {
+                || $this->integer($category['max_equipped'] ?? null, "{$path}.max_equipped", $v26 ? 0 : 1) !== $expectedMaximum) {
                 throw new DomainException("{$path} differs from the supported equipment catalog.");
             }
         }
@@ -181,7 +185,10 @@ final class SecretaryItemGameplayContract
             }
 
             $effects = $this->list($item['effects'] ?? null, "{$path}.effects");
-            $expectedEffectCount = $itemKey === SecretaryItemCatalog::COLLAR ? 2 : 1;
+            $expectedEffectCount = in_array($itemKey, [
+                SecretaryItemCatalog::WAKUWAKU_TICKET,
+                SecretaryItemCatalog::DOKIDOKI_TICKET,
+            ], true) ? 0 : ($itemKey === SecretaryItemCatalog::COLLAR ? 2 : 1);
             if (count($effects) !== $expectedEffectCount) {
                 throw new DomainException("{$path}.effects has an invalid effect count.");
             }
@@ -569,7 +576,12 @@ final class SecretaryItemGameplayContract
     private function catalogDefinitions(mixed $rulesetKey): array
     {
         $definitions = $this->catalog->definitions();
-        if (in_array($rulesetKey, [self::V17_RULESET_KEY, self::V18_RULESET_KEY, self::V19_RULESET_KEY, self::V20_RULESET_KEY, self::V21_RULESET_KEY, self::V22_RULESET_KEY, self::V23_RULESET_KEY, self::V24_RULESET_KEY, self::V25_RULESET_KEY, self::V26_RULESET_KEY], true)) {
+        if ($rulesetKey === self::V26_RULESET_KEY) {
+            return $definitions;
+        }
+        if (in_array($rulesetKey, [self::V17_RULESET_KEY, self::V18_RULESET_KEY, self::V19_RULESET_KEY, self::V20_RULESET_KEY, self::V21_RULESET_KEY, self::V22_RULESET_KEY, self::V23_RULESET_KEY, self::V24_RULESET_KEY, self::V25_RULESET_KEY], true)) {
+            unset($definitions[SecretaryItemCatalog::WAKUWAKU_TICKET], $definitions[SecretaryItemCatalog::DOKIDOKI_TICKET]);
+
             return $definitions;
         }
         if ($rulesetKey !== self::V16_RULESET_KEY) {

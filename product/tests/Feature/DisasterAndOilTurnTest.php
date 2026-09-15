@@ -17,6 +17,7 @@ use App\Domain\Turn\TurnContext;
 use App\Domain\Turn\TurnRandomStreamFactory;
 use App\Domain\Turn\TurnState;
 use App\Domain\World\MapBounds;
+use App\Models\BuriedTreasure;
 use App\Models\CommandDefinition;
 use App\Models\FacilityDefinition;
 use App\Models\MapCell;
@@ -219,6 +220,15 @@ class DisasterAndOilTurnTest extends TestCase
             $this->assertSame($center->x, $metadata['center_x']);
             $this->assertSame($center->y, $metadata['center_y']);
         }
+        $this->assertSame([
+            ['source' => 'meteor', 'item_key' => 'wakuwaku_ticket'],
+            ['source' => 'huge_meteor', 'item_key' => 'dokidoki_ticket'],
+        ], BuriedTreasure::query()->orderBy('id')->get()->map(static fn (BuriedTreasure $treasure): array => [
+            'source' => $treasure->source,
+            'item_key' => $treasure->reward_snapshot['item_key'],
+        ])->all());
+        $this->assertSame(2, DB::table('audit_events')->where('event_type', 'buried_treasure.created')
+            ->where('visibility', 'public')->count());
     }
 
     public function test_eruption_sinks_a_dormant_nation_ship_before_mutating_its_cell(): void
@@ -1250,6 +1260,14 @@ class DisasterAndOilTurnTest extends TestCase
             $settings['turn_processing']['disasters']['meteor_shower']['continuation_probability'] = [
                 'numerator' => 0, 'denominator' => 1,
             ];
+            if (is_array($settings['ocean_loop']['npc_ship_spawn']['probability'] ?? null)) {
+                $settings['ocean_loop']['npc_ship_spawn']['probability'] = ['numerator' => 0, 'denominator' => 1];
+            }
+            if (is_array($settings['ocean_loop']['buried_treasure']['natural_spawn']['probability'] ?? null)) {
+                $settings['ocean_loop']['buried_treasure']['natural_spawn']['probability'] = [
+                    'numerator' => 0, 'denominator' => 1,
+                ];
+            }
         });
     }
 

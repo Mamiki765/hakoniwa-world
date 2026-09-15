@@ -32,6 +32,9 @@ final class CurrentRulesetAuthoringInspector
     /** @var list<string> */
     private const V23_ADDITIONAL_DOMAIN_FILES = ['central-facilities.php'];
 
+    /** @var list<string> */
+    private const V26_ADDITIONAL_DOMAIN_FILES = ['ocean-loop.php'];
+
     /** @var array<string, string> */
     private const V17_DOMAIN_OVERRIDES = [
         'world-and-map.php' => 'v17/world-and-map.php',
@@ -115,6 +118,9 @@ final class CurrentRulesetAuthoringInspector
         ...self::V25_DOMAIN_OVERRIDES,
         'world-and-map.php' => 'v26/world-and-map.php',
         'surface-ships.php' => 'v26/surface-ships.php',
+        'secretary.php' => 'v26/secretary.php',
+        'monsters-and-military.php' => 'v26/monsters-and-military.php',
+        'ocean-loop.php' => 'v26/ocean-loop.php',
     ];
 
     private const CLASSIFICATIONS = ['behavior', 'data', 'flavor'];
@@ -134,7 +140,15 @@ final class CurrentRulesetAuthoringInspector
         $counts = array_fill_keys(self::CLASSIFICATIONS, 0);
 
         $domainFiles = match ($rulesetKey) {
-            'hakoniwa-2s-plus-v23', 'hakoniwa-2s-plus-v24', 'hakoniwa-2s-plus-v25', 'hakoniwa-2s-plus-v26' => [
+            'hakoniwa-2s-plus-v26' => [
+                ...self::DOMAIN_FILES,
+                ...self::V19_ADDITIONAL_DOMAIN_FILES,
+                ...self::V20_ADDITIONAL_DOMAIN_FILES,
+                ...self::V21_ADDITIONAL_DOMAIN_FILES,
+                ...self::V23_ADDITIONAL_DOMAIN_FILES,
+                ...self::V26_ADDITIONAL_DOMAIN_FILES,
+            ],
+            'hakoniwa-2s-plus-v23', 'hakoniwa-2s-plus-v24', 'hakoniwa-2s-plus-v25' => [
                 ...self::DOMAIN_FILES,
                 ...self::V19_ADDITIONAL_DOMAIN_FILES,
                 ...self::V20_ADDITIONAL_DOMAIN_FILES,

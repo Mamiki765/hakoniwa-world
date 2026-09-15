@@ -18,6 +18,8 @@ final readonly class SurfaceShipDefinition
         public int $movementRewardResourceUnits,
         public int $movementRewardMoney,
         public int $visibilityRadius,
+        public string $movementMode,
+        public string $combatRole,
     ) {}
 
     /** @return array{value: int, key: string, label: string, cost_money: int} */

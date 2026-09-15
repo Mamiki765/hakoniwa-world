@@ -70,7 +70,7 @@ export const undergroundAsset = (key: string, fallbackLabel: string): AssetDescr
 export const surfaceCellFixture: MapCell = {
     x: 12, y: 8, terrain: 'plain', terrain_name: '平地', facility: null, facility_name: null,
     display_name: '平地', owner_nation_id: 3, owner_nation_number: 1, owner_name: '自島',
-    within_viewer_visibility: false, details: [], monster: null,
+    within_viewer_visibility: false, buried_treasure_visible: false, details: [], monster: null,
     asset: undergroundAsset('tile.plain', '平'), overlays: [], aria_label: '平地 (12, 8)', version: 1, updated_at: null,
 };
 const undergroundOffsets: UndergroundSurfaceMapSlot['offset_x'][] = [-2, -1, 1, 2];

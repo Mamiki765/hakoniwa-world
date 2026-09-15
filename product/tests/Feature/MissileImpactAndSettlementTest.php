@@ -16,6 +16,7 @@ use App\Domain\Facility\MissileBaseRules;
 use App\Domain\Map\GridCoordinate;
 use App\Domain\Map\MapCellStateService;
 use App\Domain\Secretary\SecretarySkillCatalog;
+use App\Models\BuriedTreasure;
 use App\Models\FacilityDefinition;
 use App\Models\MapCell;
 use App\Models\MonsterOccupancy;
@@ -1348,6 +1349,60 @@ final class MissileImpactAndSettlementTest extends CommandAndMissileTestCase
             static fn (string $message): bool => str_contains($message, '観光船がミサイル攻撃により')
                 && str_contains($message, '沈没しました'),
         ));
+    }
+
+    public function test_normal_missile_sinks_a_pirate_through_the_canonical_impact_path(): void
+    {
+        [$world, $firingUser, $firing] = $this->combatants('NPC船');
+        $space = $this->surfaceMapSpace($world);
+        $base = $this->missileBase($firing);
+        $base->update(['facility_experience' => 0]);
+        $firing->update(['money' => 9_999]);
+        MapCell::query()->whereHas('facility', fn ($query) => $query->where('key', 'defense'))
+            ->with('facility')->get()->each(function (MapCell $defense): void {
+                app(MapCellStateService::class)->setFacility($defense, null);
+                $defense->save();
+            });
+        $cell = MapCell::query()->where('map_space_id', $space->id)
+            ->whereNull('owner_nation_id')->whereNull('facility_definition_id')->where('population', 0)
+            ->whereDoesntHave('ship')->whereDoesntHave('monsterOccupancy')
+            ->whereHas('terrain', fn ($query) => $query->where('key', 'sea'))
+            ->orderBy('id')->firstOrFail();
+        $pirate = Ship::query()->create([
+            'world_id' => $world->id,
+            'ruleset_version_id' => $world->ruleset_version_id,
+            'nation_id' => null,
+            'map_cell_id' => $cell->id,
+            'ship_type_key' => 'pirate',
+            'current_hp' => 1,
+            'max_hp' => 3,
+            'population' => 8_000,
+            'heading' => null,
+            'state' => Ship::STATE_ACTIVE,
+            'version' => 1,
+        ]);
+        $populationBefore = (int) MapCell::query()->where('owner_nation_id', $firing->id)->sum('population');
+        $ruleset = $world->rulesetVersion()->firstOrFail();
+        $settings = $ruleset->settings;
+        $settings['military']['missiles']['missile']['deviation_radius'] = 0;
+        $ruleset->update(['settings' => $settings]);
+        $this->queue(app(CommandQueueService::class), $firingUser, $firing, $space, 'missile', $cell);
+
+        $metrics = $this->resolveMissile(
+            $this->context($world, 2, hash('sha256', 'canonical NPC Ship missile impact'), [$firing->id]),
+            $base,
+        );
+
+        $this->assertSame(1, $metrics['meaningful_impacts']);
+        $this->assertSame(Ship::STATE_REMOVED, $pirate->fresh()->state);
+        $this->assertSame(4, $base->fresh()->facility_experience);
+        $this->assertSame($populationBefore + 4_000, (int) MapCell::query()
+            ->where('owner_nation_id', $firing->id)->sum('population'));
+        $treasure = BuriedTreasure::query()->where('map_cell_id', $cell->id)
+            ->where('state', BuriedTreasure::STATE_ACTIVE)->sole();
+        $this->assertSame('pirate_sink', $treasure->source);
+        $this->assertSame(1, DB::table('audit_events')->where('event_type', 'buried_treasure.created')
+            ->where('visibility', 'public')->count());
     }
 
     public function test_ordinary_missiles_still_destroy_other_owned_water_facilities(): void

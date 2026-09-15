@@ -99,6 +99,7 @@ final class PlayerIslandEventService
         'command.food_aid_public',
         'command.territory_expanded',
         'territory.influenced',
+        'buried_treasure.created',
         'disaster.triggered',
         'land_subsidence.triggered',
         'disaster.cell_damaged',
@@ -762,6 +763,7 @@ final class PlayerIslandEventService
                 $y,
                 $metadata['new_owner_nation_name'] ?? $nation,
             ),
+            'buried_treasure.created' => $this->publicBuriedTreasureCreatedMessage($metadata),
             'disaster.triggered' => $this->publicDisasterMessage($metadata),
             'land_subsidence.triggered' => $nation === '島'
                 ? '地盤沈下が発生しました。'
@@ -969,6 +971,25 @@ final class PlayerIslandEventService
     }
 
     /** @param array<string, mixed> $metadata */
+    private function publicBuriedTreasureCreatedMessage(array $metadata): string
+    {
+        $x = $this->publicCoordinate($metadata, 'x');
+        $y = $this->publicCoordinate($metadata, 'y');
+        $item = ($metadata['item_key'] ?? null) === 'dokidoki_ticket'
+            ? 'ドキドキチケット'
+            : 'わくわくチケット';
+        $source = match ($metadata['source'] ?? null) {
+            'pirate_sink' => '海賊船が沈み',
+            'treasure_ship_sink' => '宝船が沈み',
+            'meteor' => '隕石が落下し',
+            'huge_meteor' => '巨大隕石が落下し',
+            default => '海上で何かが起こり',
+        };
+
+        return "{$source}、({$x},{$y})に{$item}の埋蔵宝が残されました。";
+    }
+
+    /** @param array<string, mixed> $metadata */
     private function publicDisasterMessage(array $metadata): string
     {
         $x = $this->publicCoordinate($metadata, 'center_x');
@@ -1026,6 +1047,7 @@ final class PlayerIslandEventService
             'command.territory_expanded', 'territory.influenced' => [
                 'nation_name', 'old_owner_nation_name', 'new_owner_nation_name', 'x', 'y',
             ],
+            'buried_treasure.created' => ['source', 'item_key', 'x', 'y'],
             'disaster.triggered' => ['disaster_key', 'center_x', 'center_y'],
             'disaster.cell_damaged', 'fire.damaged' => [
                 'nation_name', 'x', 'y', 'disaster_key', 'from_terrain_key',

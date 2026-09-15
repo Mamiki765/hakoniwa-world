@@ -34,6 +34,9 @@ final class DisasterTurnService
         private readonly FacilityRankPolicy $facilityRanks,
         private readonly FacilityScaleDamageService $facilityScaleDamage,
         private readonly CentralFacilityDamageService $centralFacilityDamage,
+        private readonly WorldDisasterOpportunityService $worldOpportunities,
+        private readonly NpcShipSpawnService $npcShipSpawn,
+        private readonly BuriedTreasureService $buriedTreasures,
     ) {}
 
     /** @return array<string, int> */
@@ -69,31 +72,17 @@ final class DisasterTurnService
             'eruption' => [TurnRandomStreamFactory::GLOBAL_ERUPTION_TRIGGER, TurnRandomStreamFactory::GLOBAL_ERUPTION_CENTER],
         ];
 
-        $chunkCount = $space->currentBounds()->chunkCount();
-        $scaleNumerator = 16 * $chunkCount;
-        $fullOpportunities = intdiv($scaleNumerator, 225);
-        $fractionalNumerator = $scaleNumerator % 225;
-
         foreach ($definitions as $key => [$triggerLabel, $centerLabel]) {
             $settings = $rules[$key];
-            $opportunities = $fullOpportunities;
-            $fractionalGateDraw = null;
-            if ($fractionalNumerator > 0) {
-                $fractionalGateDraw = $context->random
-                    ->stream(TurnRandomStreamFactory::worldDisasterAreaFraction($key))
-                    ->integer(0, 224);
-                if ($fractionalGateDraw < $fractionalNumerator) {
-                    $opportunities++;
-                }
-            }
+            $worldOpportunity = $this->worldOpportunities->resolve($context, $space, $key);
 
-            for ($opportunity = 1; $opportunity <= $opportunities; $opportunity++) {
+            for ($opportunity = 1; $opportunity <= $worldOpportunity['count']; $opportunity++) {
                 $trigger = $this->probabilityDraw($context, $settings['probability'], $triggerLabel);
                 if (! $trigger['success']) {
                     continue;
                 }
                 $center = $this->center($context, $space, $settings['center_padding'], $centerLabel);
-                $isFractional = $opportunity > $fullOpportunities;
+                $isFractional = $opportunity > $worldOpportunity['full'];
                 $this->events->record($context, 'disaster.triggered', $context->world, [
                     'disaster_key' => $key,
                     'center_x' => $center->x,
@@ -101,13 +90,13 @@ final class DisasterTurnService
                     'draw' => $trigger['draw'],
                     'numerator' => $settings['probability']['numerator'],
                     'denominator' => $settings['probability']['denominator'],
-                    'world_chunk_count' => $chunkCount,
-                    'world_scale_numerator' => $scaleNumerator,
+                    'world_chunk_count' => $worldOpportunity['chunk_count'],
+                    'world_scale_numerator' => $worldOpportunity['scale_numerator'],
                     'world_scale_denominator' => 225,
                     'world_opportunity_index' => $opportunity,
                     'world_opportunity_kind' => $isFractional ? 'fractional' : 'integer',
-                    'world_fractional_gate_draw' => $isFractional ? $fractionalGateDraw : null,
-                    'world_fractional_gate_numerator' => $fractionalNumerator,
+                    'world_fractional_gate_draw' => $isFractional ? $worldOpportunity['fractional_draw'] : null,
+                    'world_fractional_gate_numerator' => $worldOpportunity['fractional_numerator'],
                 ]);
                 $metrics['executed_disasters']++;
                 $cellIndex ??= $this->newMutableCellIndex($context);
@@ -135,6 +124,7 @@ final class DisasterTurnService
                         $center,
                         $settings,
                         cellIndex: $cellIndex,
+                        createBuriedTreasure: true,
                     ),
                     'eruption' => $this->eruption($context, $space, $center, $settings, $cellIndex),
                 };
@@ -161,6 +151,12 @@ final class DisasterTurnService
         $metrics['land_subsidence_affected_chunks'] = $subsidence['affected_chunks'];
 
         foreach ($this->monsterWorldSpawn->spawn($context, $space) as $key => $value) {
+            $metrics[$key] = $value;
+        }
+        foreach ($this->npcShipSpawn->spawn($context, $space) as $key => $value) {
+            $metrics[$key] = $value;
+        }
+        foreach ($this->buriedTreasures->spawnNatural($context, $space) as $key => $value) {
             $metrics[$key] = $value;
         }
         foreach ($this->monsterSpawn->spawnNatural($context, $space) as $key => $value) {
@@ -769,6 +765,8 @@ final class DisasterTurnService
         do {
             $coordinate = $coordinates[$stream->integer(0, count($coordinates) - 1)];
             $cell = $this->cellAt($space, $coordinate, $cellIndex);
+            $createTreasure = $cell !== null && $this->isMutable($cell, $cellIndex)
+                && ! $this->nationProtection->protectsFromDisaster($context, $cell->x, $cell->y);
             if ($cell !== null && $this->isMutable($cell, $cellIndex)) {
                 $shipRemoved = $this->shipRemoval->sinkLockedAtCell(
                     $context,
@@ -847,6 +845,9 @@ final class DisasterTurnService
                     }
                 }
             }
+            if ($createTreasure) {
+                $this->buriedTreasures->create($context, $cell, 'meteor', false);
+            }
             $continuation = $settings['continuation_probability'];
             $continueDraw = $stream->integer(0, $continuation['denominator'] - 1);
         } while ($continueDraw < $continuation['numerator']);
@@ -867,6 +868,7 @@ final class DisasterTurnService
         array $eventMetadata = [],
         ?DisasterMutableCellIndex $cellIndex = null,
         ?SurfaceShipTurnBatch $shipBatch = null,
+        bool $createBuriedTreasure = false,
     ): int {
         $damaged = 0;
         $ships = $shipBatch === null
@@ -1005,6 +1007,13 @@ final class DisasterTurnService
                 );
             }
             $damaged += ($changed || $monsterRemoved || $shipRemoved) ? 1 : 0;
+        }
+
+        if ($createBuriedTreasure) {
+            $centerCell = $this->cellAt($space, $center, $cellIndex);
+            if ($centerCell instanceof MapCell) {
+                $this->buriedTreasures->create($context, $centerCell, 'huge_meteor', true);
+            }
         }
 
         return $damaged;

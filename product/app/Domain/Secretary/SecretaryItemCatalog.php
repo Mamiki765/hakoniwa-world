@@ -32,17 +32,24 @@ class SecretaryItemCatalog
 
     public const FULLNESS_HERB = 'fullness_herb';
 
+    public const WAKUWAKU_TICKET = 'wakuwaku_ticket';
+
+    public const DOKIDOKI_TICKET = 'dokidoki_ticket';
+
     public const RARITY_NOVICE = 'novice';
 
     public const RARITY_REGULAR = 'regular';
 
     public const RARITY_CURSED = 'cursed';
 
+    public const RARITY_HIGH_QUALITY = 'high_quality';
+
     /** @var array<string, array{label: string, fixed_sale_price_money: int}> */
     private const RARITIES = [
         self::RARITY_NOVICE => ['label' => 'ノービス', 'fixed_sale_price_money' => 100],
         self::RARITY_REGULAR => ['label' => 'レギュラー', 'fixed_sale_price_money' => 500],
         self::RARITY_CURSED => ['label' => 'カースド', 'fixed_sale_price_money' => 1],
+        self::RARITY_HIGH_QUALITY => ['label' => 'ハイクオリティ', 'fixed_sale_price_money' => 1500],
     ];
 
     private const DEFAULT_SAME_ITEM_MAX_EQUIPPED = 1;
@@ -52,6 +59,7 @@ class SecretaryItemCatalog
         'accessory' => ['label' => 'アクセサリー', 'maximum_equipped' => 99, 'display_limit' => false],
         'bow' => ['label' => '弓', 'maximum_equipped' => 1, 'display_limit' => true],
         'clothing' => ['label' => '衣服', 'maximum_equipped' => 1, 'display_limit' => true],
+        'ticket' => ['label' => 'チケット', 'maximum_equipped' => 0, 'display_limit' => false],
     ];
 
     /**
@@ -289,6 +297,34 @@ class SecretaryItemCatalog
                 'max_level' => 10,
                 'name' => '満腹草',
                 'flavor_text' => '万病に効くとされていた薬草は、後の時代にて消化に良い酵素が含まれていると判明した。消化は免疫力、医食同源である。',
+                'unique_per_secretary' => false,
+            ],
+            self::WAKUWAKU_TICKET => [
+                'key' => self::WAKUWAKU_TICKET,
+                'category' => 'ticket',
+                'category_label' => self::CATEGORIES['ticket']['label'],
+                'category_max_equipped' => self::CATEGORIES['ticket']['maximum_equipped'],
+                'rarity' => self::RARITY_REGULAR,
+                'rarity_label' => 'レギュラー',
+                'tradable' => true,
+                'npc_tradable' => false,
+                'max_level' => 1,
+                'name' => 'わくわくチケット',
+                'flavor_text' => '海や空から届いた、小さな宝箱を開けるためのチケット。',
+                'unique_per_secretary' => false,
+            ],
+            self::DOKIDOKI_TICKET => [
+                'key' => self::DOKIDOKI_TICKET,
+                'category' => 'ticket',
+                'category_label' => self::CATEGORIES['ticket']['label'],
+                'category_max_equipped' => self::CATEGORIES['ticket']['maximum_equipped'],
+                'rarity' => self::RARITY_HIGH_QUALITY,
+                'rarity_label' => 'ハイクオリティ',
+                'tradable' => true,
+                'npc_tradable' => false,
+                'max_level' => 1,
+                'name' => 'ドキドキチケット',
+                'flavor_text' => '宝船や巨大隕石から見つかる、特別な宝箱を開けるためのチケット。',
                 'unique_per_secretary' => false,
             ],
         ];
