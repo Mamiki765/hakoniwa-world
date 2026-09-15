@@ -1,0 +1,305 @@
+{
+  "from_sha": "671752244d7a2d28e87a42fdd80592c9c51398cd",
+  "to_sha": "00182bd0eaee52f34194c7b40bc5e98712108718",
+  "verified_remote": "origin/main",
+  "captured_at": "2026-09-15T04:17:21.172Z",
+  "old_files": 116,
+  "new_files": 116,
+  "old_identifiers": 1039,
+  "new_identifiers": 1058,
+  "added_identifiers": [
+    "Tests\\Feature\\AnnouncementApiTest::test_markdown_preview_and_public_article_share_safe_rendering_and_keep_source_for_editing",
+    "Tests\\Feature\\InquiryConcurrencyFailureTest::test_inquiry_and_party_foreign_keys_complete_while_turn_waits_for_secretary",
+    "Tests\\Feature\\InquiryConcurrencyFailureTest::test_turn_secretary_flush_and_party_snapshot_complete_without_lost_updates",
+    "Tests\\Feature\\InquiryConcurrencyFailureTest::test_same_submission_serializes_and_stores_only_one_attachment",
+    "Tests\\Underground\\Feature\\UndergroundPlayerAccessTest::test_vault_sort_keeps_equipped_slot_order_and_sorts_across_pages",
+    "Tests\\Underground\\Feature\\UndergroundPlayerAccessTest::test_player_runtime_keeps_acquired_skills_available_with_every_weapon_type",
+    "Tests\\Underground\\Feature\\UndergroundRuntimeTest::test_guide_duel_preserves_both_owners_and_rental_resources_and_grants_gram_once",
+    "Tests\\Underground\\Feature\\UndergroundRuntimeTest::test_guide_duel_requires_kingdom_unlock_and_real_defeat_costs_nothing",
+    "Tests\\Underground\\Feature\\UndergroundRuntimeTest::test_rental_resources_persist_only_for_borrower_and_only_explicit_update_resets_awakening",
+    "Tests\\Underground\\Feature\\UndergroundRuntimeTest::test_skill_refund_preserves_earned_progress_and_historical_retry_until_loadout_is_saved",
+    "Tests\\Underground\\Unit\\AlphaV1PartyCombatTest::test_guide_duel_forces_every_member_to_full_awakening_before_the_opening_ultimate",
+    "Tests\\Underground\\Unit\\AlphaV1PartyCombatTest::test_guide_duel_survives_a_lethal_multihit_action_then_interrupts_once_and_can_die",
+    "Tests\\Underground\\Unit\\AlphaV1PartyCombatTest::test_counter_stance_counters_each_attacker_once_per_round_even_against_multiple_hits",
+    "Tests\\Underground\\Unit\\AlphaV1PartyCombatTest::test_critical_scaling_uses_the_damage_category_primary_stat",
+    "Tests\\Underground\\Unit\\AlphaV1PartyCombatTest::test_guardian_critical_scaling_uses_the_same_vitality_and_might_mix_as_the_attack",
+    "Tests\\Underground\\Unit\\AlphaV1PartyCombatTest::test_additional_strike_uses_a_slot_and_cooldown_but_preserves_the_regular_action_with_any_weapon",
+    "Tests\\Underground\\Unit\\AlphaV1PartyCombatTest::test_single_revival_selects_a_fallen_ally_and_does_not_repeat_on_a_living_target",
+    "Tests\\Underground\\Unit\\AlphaV1PartyCombatTest::test_party_aoe_grants_each_damaged_member_one_action_of_awakening_gain",
+    "Tests\\Underground\\Unit\\AlphaV1PartyCombatTest::test_effective_healing_actions_charge_mercy_but_periodic_ticks_do_not",
+    "Tests\\Underground\\Unit\\UndergroundPartyBattleProjectorTest::test_barrier_gain_is_positive_for_display_without_changing_the_internal_log"
+  ],
+  "removed_identifiers": [
+    "Tests\\Underground\\Feature\\UndergroundPlayerAccessTest::test_player_runtime_filters_active_skills_by_actual_weapon_without_clearing_the_saved_slot"
+  ],
+  "unchanged_file_count": 99,
+  "changed_test_files": [
+    {
+      "file": "product/tests/Feature/AnnouncementApiTest.php",
+      "class": "Tests\\Feature\\AnnouncementApiTest",
+      "before_identifiers": 6,
+      "after_identifiers": 7,
+      "added_methods": [
+        "test_markdown_preview_and_public_article_share_safe_rendering_and_keep_source_for_editing"
+      ],
+      "removed_methods": [],
+      "old_lightweight_call_sites": 0,
+      "new_lightweight_call_sites": 0
+    },
+    {
+      "file": "product/tests/Feature/FreshInstallRebaselineTest.php",
+      "class": "Tests\\Feature\\FreshInstallRebaselineTest",
+      "before_identifiers": 2,
+      "after_identifiers": 2,
+      "added_methods": [],
+      "removed_methods": [],
+      "old_lightweight_call_sites": 0,
+      "new_lightweight_call_sites": 0
+    },
+    {
+      "file": "product/tests/Feature/InquiryApiTest.php",
+      "class": "Tests\\Feature\\InquiryApiTest",
+      "before_identifiers": 8,
+      "after_identifiers": 8,
+      "added_methods": [],
+      "removed_methods": [],
+      "old_lightweight_call_sites": 8,
+      "new_lightweight_call_sites": 8
+    },
+    {
+      "file": "product/tests/Feature/InquiryConcurrencyFailureTest.php",
+      "class": "Tests\\Feature\\InquiryConcurrencyFailureTest",
+      "before_identifiers": 1,
+      "after_identifiers": 4,
+      "added_methods": [
+        "test_inquiry_and_party_foreign_keys_complete_while_turn_waits_for_secretary",
+        "test_turn_secretary_flush_and_party_snapshot_complete_without_lost_updates",
+        "test_same_submission_serializes_and_stores_only_one_attachment"
+      ],
+      "removed_methods": [],
+      "old_lightweight_call_sites": 1,
+      "new_lightweight_call_sites": 4
+    },
+    {
+      "file": "product/tests/Underground/Feature/BorrowedSecretarySnapshotFactoryTest.php",
+      "class": "Tests\\Underground\\Feature\\BorrowedSecretarySnapshotFactoryTest",
+      "before_identifiers": 3,
+      "after_identifiers": 3,
+      "added_methods": [],
+      "removed_methods": [],
+      "old_lightweight_call_sites": 0,
+      "new_lightweight_call_sites": 0
+    },
+    {
+      "file": "product/tests/Underground/Feature/PostgresUndergroundRuntimeConcurrencyTest.php",
+      "class": "Tests\\Underground\\Feature\\PostgresUndergroundRuntimeConcurrencyTest",
+      "before_identifiers": 10,
+      "after_identifiers": 10,
+      "added_methods": [],
+      "removed_methods": [],
+      "old_lightweight_call_sites": 0,
+      "new_lightweight_call_sites": 0
+    },
+    {
+      "file": "product/tests/Underground/Feature/SecretaryLendingCandidatesTest.php",
+      "class": "Tests\\Underground\\Feature\\SecretaryLendingCandidatesTest",
+      "before_identifiers": 3,
+      "after_identifiers": 3,
+      "added_methods": [],
+      "removed_methods": [],
+      "old_lightweight_call_sites": 0,
+      "new_lightweight_call_sites": 0
+    },
+    {
+      "file": "product/tests/Underground/Feature/UndergroundLendingRewardServiceTest.php",
+      "class": "Tests\\Underground\\Feature\\UndergroundLendingRewardServiceTest",
+      "before_identifiers": 8,
+      "after_identifiers": 8,
+      "added_methods": [],
+      "removed_methods": [],
+      "old_lightweight_call_sites": 0,
+      "new_lightweight_call_sites": 0
+    },
+    {
+      "file": "product/tests/Underground/Feature/UndergroundPersistenceTest.php",
+      "class": "Tests\\Underground\\Feature\\UndergroundPersistenceTest",
+      "before_identifiers": 4,
+      "after_identifiers": 4,
+      "added_methods": [],
+      "removed_methods": [],
+      "old_lightweight_call_sites": 0,
+      "new_lightweight_call_sites": 0
+    },
+    {
+      "file": "product/tests/Underground/Feature/UndergroundPlayerAccessTest.php",
+      "class": "Tests\\Underground\\Feature\\UndergroundPlayerAccessTest",
+      "before_identifiers": 27,
+      "after_identifiers": 28,
+      "added_methods": [
+        "test_vault_sort_keeps_equipped_slot_order_and_sorts_across_pages",
+        "test_player_runtime_keeps_acquired_skills_available_with_every_weapon_type"
+      ],
+      "removed_methods": [
+        "test_player_runtime_filters_active_skills_by_actual_weapon_without_clearing_the_saved_slot"
+      ],
+      "old_lightweight_call_sites": 2,
+      "new_lightweight_call_sites": 2
+    },
+    {
+      "file": "product/tests/Underground/Feature/UndergroundRuntimeTest.php",
+      "class": "Tests\\Underground\\Feature\\UndergroundRuntimeTest",
+      "before_identifiers": 26,
+      "after_identifiers": 30,
+      "added_methods": [
+        "test_guide_duel_preserves_both_owners_and_rental_resources_and_grants_gram_once",
+        "test_guide_duel_requires_kingdom_unlock_and_real_defeat_costs_nothing",
+        "test_rental_resources_persist_only_for_borrower_and_only_explicit_update_resets_awakening",
+        "test_skill_refund_preserves_earned_progress_and_historical_retry_until_loadout_is_saved"
+      ],
+      "removed_methods": [],
+      "old_lightweight_call_sites": 0,
+      "new_lightweight_call_sites": 0
+    },
+    {
+      "file": "product/tests/Underground/Feature/UndergroundSkipSettlementTest.php",
+      "class": "Tests\\Underground\\Feature\\UndergroundSkipSettlementTest",
+      "before_identifiers": 11,
+      "after_identifiers": 11,
+      "added_methods": [],
+      "removed_methods": [],
+      "old_lightweight_call_sites": 0,
+      "new_lightweight_call_sites": 0
+    },
+    {
+      "file": "product/tests/Underground/Unit/AlphaV1PartyCombatTest.php",
+      "class": "Tests\\Underground\\Unit\\AlphaV1PartyCombatTest",
+      "before_identifiers": 14,
+      "after_identifiers": 23,
+      "added_methods": [
+        "test_guide_duel_forces_every_member_to_full_awakening_before_the_opening_ultimate",
+        "test_guide_duel_survives_a_lethal_multihit_action_then_interrupts_once_and_can_die",
+        "test_counter_stance_counters_each_attacker_once_per_round_even_against_multiple_hits",
+        "test_critical_scaling_uses_the_damage_category_primary_stat",
+        "test_guardian_critical_scaling_uses_the_same_vitality_and_might_mix_as_the_attack",
+        "test_additional_strike_uses_a_slot_and_cooldown_but_preserves_the_regular_action_with_any_weapon",
+        "test_single_revival_selects_a_fallen_ally_and_does_not_repeat_on_a_living_target",
+        "test_party_aoe_grants_each_damaged_member_one_action_of_awakening_gain",
+        "test_effective_healing_actions_charge_mercy_but_periodic_ticks_do_not"
+      ],
+      "removed_methods": [],
+      "old_lightweight_call_sites": 0,
+      "new_lightweight_call_sites": 0
+    },
+    {
+      "file": "product/tests/Underground/Unit/PriorityCombatAiConfigurationTest.php",
+      "class": "Tests\\Underground\\Unit\\PriorityCombatAiConfigurationTest",
+      "before_identifiers": 17,
+      "after_identifiers": 17,
+      "added_methods": [],
+      "removed_methods": [],
+      "old_lightweight_call_sites": 0,
+      "new_lightweight_call_sites": 0
+    },
+    {
+      "file": "product/tests/Underground/Unit/UndergroundBalanceSimulatorTest.php",
+      "class": "Tests\\Underground\\Unit\\UndergroundBalanceSimulatorTest",
+      "before_identifiers": 17,
+      "after_identifiers": 17,
+      "added_methods": [],
+      "removed_methods": [],
+      "old_lightweight_call_sites": 0,
+      "new_lightweight_call_sites": 0
+    },
+    {
+      "file": "product/tests/Underground/Unit/UndergroundCombatBuildTest.php",
+      "class": "Tests\\Underground\\Unit\\UndergroundCombatBuildTest",
+      "before_identifiers": 35,
+      "after_identifiers": 35,
+      "added_methods": [],
+      "removed_methods": [],
+      "old_lightweight_call_sites": 0,
+      "new_lightweight_call_sites": 0
+    },
+    {
+      "file": "product/tests/Underground/Unit/UndergroundPartyBattleProjectorTest.php",
+      "class": "Tests\\Underground\\Unit\\UndergroundPartyBattleProjectorTest",
+      "before_identifiers": 1,
+      "after_identifiers": 2,
+      "added_methods": [
+        "test_barrier_gain_is_positive_for_display_without_changing_the_internal_log"
+      ],
+      "removed_methods": [],
+      "old_lightweight_call_sites": 0,
+      "new_lightweight_call_sites": 0
+    }
+  ],
+  "frontend": [
+    {
+      "file": "product/resources/js/App.test.ts",
+      "lines": 4313,
+      "source_changed": true,
+      "old_static_declarations": 42,
+      "new_static_declarations": 42,
+      "added_titles": [],
+      "removed_titles": []
+    },
+    {
+      "file": "product/resources/js/components/UndergroundCombatantCard.test.ts",
+      "lines": 45,
+      "source_changed": true,
+      "old_static_declarations": 1,
+      "new_static_declarations": 2,
+      "added_titles": [
+        "shows the current barrier beside HP without changing the HP meter"
+      ],
+      "removed_titles": []
+    },
+    {
+      "file": "product/resources/js/components/UndergroundEquipmentNavigation.test.ts",
+      "lines": 355,
+      "source_changed": true,
+      "old_static_declarations": 4,
+      "new_static_declarations": 7,
+      "added_titles": [
+        "resets to page one when sorting and restores the chosen rarity sort on reopening",
+        "falls back to the default sort if the saved value is invalid or storage is unavailable",
+        "shows the commemorative Gram without equip or sell actions"
+      ],
+      "removed_titles": []
+    },
+    {
+      "file": "product/resources/js/components/UndergroundPartyBattleCards.test.ts",
+      "lines": 110,
+      "source_changed": true,
+      "old_static_declarations": 5,
+      "new_static_declarations": 6,
+      "added_titles": [
+        "shows each boundary barrier separately from HP in cards and portrait events"
+      ],
+      "removed_titles": []
+    },
+    {
+      "file": "product/resources/js/components/UndergroundPartyPresentation.test.ts",
+      "lines": 903,
+      "source_changed": true,
+      "old_static_declarations": 13,
+      "new_static_declarations": 15,
+      "added_titles": [
+        "opens the optional guide duel without recollections and retries the same solo request",
+        "offers a duel only before leaving the root scene and uses the confirmed party for a won rematch",
+        "renders each damage target and the normalized barrier gain in the party narrative",
+        "persists a confirmed rental on the server and restores it without resetting resources"
+      ],
+      "removed_titles": [
+        "renders each Heavenrend damage line with only its actual target",
+        "keeps the selected party across underground page remounts for the same user"
+      ]
+    }
+  ],
+  "limitations": [
+    "Compared LF-normalized source against the saved old checkout; newline conversion alone is not a changed test.",
+    "Unchanged test source can still be affected by changed runtime/config; this is a delta design review, not a passing test claim.",
+    "PHPUnit test identifiers were enumerated in a network-disabled disposable container. Test bodies and DB operations were not executed.",
+    "Frontend counts describe literal it/test declarations only, not an executed Vitest count."
+  ]
+}

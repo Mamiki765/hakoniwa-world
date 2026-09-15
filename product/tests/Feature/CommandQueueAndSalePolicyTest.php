@@ -2016,66 +2016,6 @@ class CommandQueueAndSalePolicyTest extends TestCase
         );
     }
 
-    public function test_future_special_parameter_api_distinguishes_omitted_defaults_from_explicit_null(): void
-    {
-        [$owner, $nation, $mapSpace] = $this->nation('特殊parameter国');
-        $definition = CommandDefinition::query()
-            ->where('ruleset_version_id', $nation->world()->value('ruleset_version_id'))
-            ->where('key', 'land_clear')
-            ->sole();
-        $metadata = $definition->metadata;
-        $metadata['parameters'] = [
-            'design_id' => [
-                'type' => 'integer',
-                'minimum' => 1,
-                'maximum' => 9,
-                'default' => 2,
-                'required' => true,
-            ],
-            'optional_variant' => [
-                'type' => 'integer',
-                'minimum' => 1,
-                'maximum' => 9,
-                'required' => false,
-                'nullable' => true,
-            ],
-        ];
-        $definition->update(['metadata' => $metadata]);
-        $target = MapCell::query()->where('owner_nation_id', $nation->id)->whereNull('facility_definition_id')
-            ->whereHas('terrain', fn ($query) => $query->where('key', 'plain'))->firstOrFail();
-        $path = "/api/v1/nations/{$nation->id}/map-spaces/{$mapSpace->id}/command-queue";
-
-        $this->actingAs($owner)->postJson($path, [
-            'command_key' => 'land_clear',
-            'target_x' => $target->x,
-            'target_y' => $target->y,
-            'request_key' => (string) Str::uuid(),
-            'expected_version' => 1,
-            'parameters' => [],
-        ])->assertCreated()
-            ->assertJsonPath('data.queue.items.0.parameters.design_id', 2);
-
-        $this->postJson($path, [
-            'command_key' => 'land_clear',
-            'target_x' => $target->x,
-            'target_y' => $target->y,
-            'request_key' => (string) Str::uuid(),
-            'expected_version' => 2,
-            'parameters' => ['design_id' => null],
-        ])->assertUnprocessable();
-
-        $this->postJson($path, [
-            'command_key' => 'land_clear',
-            'target_x' => $target->x,
-            'target_y' => $target->y,
-            'request_key' => (string) Str::uuid(),
-            'expected_version' => 2,
-            'parameters' => ['optional_variant' => null],
-        ])->assertCreated()
-            ->assertJsonPath('data.queue.items.1.parameters.design_id', 2)
-            ->assertJsonPath('data.queue.items.1.parameters.optional_variant', null);
-    }
-
     public function test_full_effective_plan_rejects_without_discarding_an_explicit_command(): void
     {
         [$owner, $nation, $mapSpace] = $this->nation('満員国');

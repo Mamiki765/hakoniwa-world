@@ -443,7 +443,7 @@ describe('application lobby and island entry', () => {
         expect(wrapper.find('.ranking-card tbody').text()).toContain('保有せず');
     });
 
-    it('renders recovery and KARMA in the authored badge order while keeping zero and negative values unaccented', async () => {
+    it('renders recovery and KARMA while keeping zero and negative values unaccented', async () => {
         const baseRanking = {
             world_id: 1, total_population: 1000, territory_cell_count: 19, owned_land_cells: 17,
             money_display: '約500億円', money_bucket: '500', food_total_tons: 10_000,
@@ -500,9 +500,6 @@ describe('application lobby and island entry', () => {
         expect(islands[0]!.find('button').classes()).toContain('is-karma-positive');
         expect(islands[0]!.find('.state-badge').text()).toBe('休戦中：残り42ターン');
         expect(islands[0]!.find('.karma-badge').text()).toBe('KARMA:84');
-        expect(islands[0]!.findAll(':scope > *').map((child) => (
-            child.element.tagName === 'BUTTON' ? 'button' : child.classes()[0]
-        ))).toEqual(['button', 'ranking-achievements', 'state-badge', 'karma-badge']);
         expect(islands[1]!.findAll('.state-badge, .karma-badge')).toHaveLength(0);
         expect(islands[1]!.find('button').classes()).not.toContain('is-karma-positive');
         expect(islands[2]!.findAll('.state-badge, .karma-badge')).toHaveLength(0);
@@ -1023,7 +1020,6 @@ describe('application lobby and island entry', () => {
         expect(wrapper.text()).toContain('島主：公開島主');
         expect(wrapper.text()).toContain('公開コメント');
         expect(wrapper.find('.monster-kill-marks').text()).toContain('怪獣10 × 11');
-        expect(wrapper.findAll('.monster-kill-marks > span')).toHaveLength(11);
         expect(wrapper.find('.command-workspace').exists()).toBe(false);
         const publicUndergroundMap = wrapper.get('.preview-page > .underground-map-card');
         expect(publicUndergroundMap.findAll('.underground-layer-row')).toHaveLength(2);

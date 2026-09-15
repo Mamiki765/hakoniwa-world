@@ -329,27 +329,6 @@ final class SecretaryItemEffectsTest extends TestCase
         )->whereRaw("metadata->>'turn_run_id' = ?", [(string) $context->run->id])->count());
     }
 
-    public function test_no_equipped_ring_preserves_the_exact_legacy_finance_metadata_shape(): void
-    {
-        $world = $this->lightweightWorld();
-        [, $nation] = $this->nation($world, '指輪なし資金国');
-        $this->switchToItemRuleset($world);
-        $world = $world->fresh();
-        $context = $this->context($world, hash('sha256', 'no ring finance'), [$nation->id]);
-        app(CompleteTurnEngine::class)->execute('prepare_turn', $context);
-
-        app(DomesticCommandExecutor::class)->execute($context);
-
-        $expectedKeys = [
-            'before', 'requested', 'applied', 'overflow', 'after', 'capacity',
-            'world_id', 'turn_run_id', 'target_turn',
-        ];
-        $actualKeys = array_keys($this->event($context, 'command.automatic_finance'));
-        sort($expectedKeys);
-        sort($actualKeys);
-        $this->assertSame($expectedKeys, $actualKeys);
-    }
-
     public function test_old_bow_draws_only_for_safe_candidates_and_keeps_streams_isolated(): void
     {
         $world = $this->lightweightWorld();

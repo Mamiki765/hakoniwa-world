@@ -1,0 +1,405 @@
+{
+  "captured_at": "2026-09-15T03:48:50.075Z",
+  "head": "671752244d7a2d28e87a42fdd80592c9c51398cd",
+  "branch": "codex/backup-zstd-compression",
+  "test_files": 116,
+  "declared_methods": 902,
+  "enumerated_identifiers": 1039,
+  "unique_identifiers": 1039,
+  "scopes": [
+    {
+      "scope": "surface",
+      "files": 97,
+      "methods": 709,
+      "identifiers": 832
+    },
+    {
+      "scope": "underground",
+      "files": 19,
+      "methods": 193,
+      "identifiers": 207
+    }
+  ],
+  "lifecycle": [
+    {
+      "lifecycle": "RefreshDatabase",
+      "files": 72
+    },
+    {
+      "lifecycle": "forward_migrations",
+      "files": 9
+    },
+    {
+      "lifecycle": "app",
+      "files": 15
+    },
+    {
+      "lifecycle": "pure",
+      "files": 20
+    }
+  ],
+  "lightweight_call_sites": 268,
+  "lightweight_using_files": 56,
+  "generator_initialize_call_sites": 40,
+  "nation_creation_call_sites": 161,
+  "frontend_files": [
+    {
+      "file": "product/resources/js/App.test.ts",
+      "lines": 4300
+    },
+    {
+      "file": "product/resources/js/components/CellDetails.test.ts",
+      "lines": 141
+    },
+    {
+      "file": "product/resources/js/components/CommandAndSalePanels.test.ts",
+      "lines": 1282
+    },
+    {
+      "file": "product/resources/js/components/GuideConversationTopicAdmin.test.ts",
+      "lines": 116
+    },
+    {
+      "file": "product/resources/js/components/HexMap.test.ts",
+      "lines": 479
+    },
+    {
+      "file": "product/resources/js/components/IslandEventLog.test.ts",
+      "lines": 119
+    },
+    {
+      "file": "product/resources/js/components/MessageBoard.test.ts",
+      "lines": 312
+    },
+    {
+      "file": "product/resources/js/components/RankingAchievements.test.ts",
+      "lines": 136
+    },
+    {
+      "file": "product/resources/js/components/SecretaryEquipmentModal.test.ts",
+      "lines": 117
+    },
+    {
+      "file": "product/resources/js/components/SecretaryImageSlotsEditor.test.ts",
+      "lines": 111
+    },
+    {
+      "file": "product/resources/js/components/UndergroundAiEditor.test.ts",
+      "lines": 257
+    },
+    {
+      "file": "product/resources/js/components/UndergroundCombatantCard.test.ts",
+      "lines": 34
+    },
+    {
+      "file": "product/resources/js/components/UndergroundEquipmentNavigation.test.ts",
+      "lines": 278
+    },
+    {
+      "file": "product/resources/js/components/undergroundExplorationPending.test.ts",
+      "lines": 18
+    },
+    {
+      "file": "product/resources/js/components/UndergroundPartyBattleCards.test.ts",
+      "lines": 93
+    },
+    {
+      "file": "product/resources/js/components/UndergroundPartyBuilder.test.ts",
+      "lines": 27
+    },
+    {
+      "file": "product/resources/js/components/UndergroundPartyPresentation.test.ts",
+      "lines": 770
+    },
+    {
+      "file": "product/resources/js/formatters/money.test.ts",
+      "lines": 22
+    },
+    {
+      "file": "product/resources/js/map/projection.test.ts",
+      "lines": 61
+    },
+    {
+      "file": "product/resources/js/state/mapState.test.ts",
+      "lines": 213
+    }
+  ],
+  "history": [
+    {
+      "token": "ca5dd215",
+      "metadata": "schema\thakoniwa.parallel-test-evidence.v1\nrun_token\tca5dd215\nstarted_at\t2026-09-12T13:49:31Z\ntested_sha\te632391521084557be45e01a94d06db432040ac6\nphp_version\t8.5.8\ncomposer_json_sha256\t7627f2dc0328fe70095262f15ef53c6ee41052d6b55cd63e60ba23e7241374ef\ncomposer_lock_sha256\t9e5f38fb63afefa8bd8f51ec85b40bbf19e721c05a4b4f7e7b80636b43a4344d\npackage_json_sha256\t857f36e627a76d65f368b988ed8b3c6acd54ddfdc67934d77910c759d5b5a199\npackage_lock_sha256\t73bd4732a142bd6706c1d212f9c695f0df2144bf95f35cd245c6bce857106470\nartifact_directory\tstorage/framework/testing/test-evidence/phpunit-parallel-ca5dd215\nshard_total\t4\ndiscovered_test_files\t116\nevent\tindex\tstatus\texit_code\tduration_seconds\ttest_file_count\ttest_count\tlog\tjunit\nshard\t0\tfailed\t1\t1263\t29\t306\tphpunit-01.log\tphpunit-01.junit.xml\nshard\t1\tfailed\t1\t733\t29\t232\tphpunit-02.log\tphpunit-02.junit.xml\nshard\t2\tfailed\t1\t567\t29\t164\tphpunit-03.log\tphpunit-03.junit.xml\nshard\t3\tpassed\t0\t943\t29\t160\tphpunit-04.log\tphpunit-04.junit.xml\nrun\t-\tfailed\t1\t-\t116\t-\t-\t-\n",
+      "testcases": 1033,
+      "total_case_seconds": 3503.345,
+      "top_classes": [
+        {
+          "name": "Tests\\Feature\\CommandAndMissileTest",
+          "file": "product/tests/Feature/CommandAndMissileTest.php",
+          "cases": 75,
+          "seconds": 339.296
+        },
+        {
+          "name": "Tests\\Feature\\CommandQueueAndSalePolicyTest",
+          "file": "product/tests/Feature/CommandQueueAndSalePolicyTest.php",
+          "cases": 41,
+          "seconds": 163.86
+        },
+        {
+          "name": "Tests\\Feature\\TurnRuntimePerformanceTest",
+          "file": "product/tests/Feature/TurnRuntimePerformanceTest.php",
+          "cases": 20,
+          "seconds": 129.799
+        },
+        {
+          "name": "Tests\\Feature\\DomesticCommandExecutionTest",
+          "file": "product/tests/Feature/DomesticCommandExecutionTest.php",
+          "cases": 33,
+          "seconds": 128.041
+        },
+        {
+          "name": "Tests\\Underground\\Feature\\PostgresUndergroundRuntimeConcurrencyTest",
+          "file": "product/tests/Underground/Feature/PostgresUndergroundRuntimeConcurrencyTest.php",
+          "cases": 10,
+          "seconds": 125.602
+        },
+        {
+          "name": "Tests\\Feature\\MonsterSystemTest",
+          "file": "product/tests/Feature/MonsterSystemTest.php",
+          "cases": 34,
+          "seconds": 124.734
+        },
+        {
+          "name": "Tests\\Feature\\DisasterAndOilTurnTest",
+          "file": "product/tests/Feature/DisasterAndOilTurnTest.php",
+          "cases": 26,
+          "seconds": 105.319
+        },
+        {
+          "name": "Tests\\Underground\\Feature\\UndergroundPlayerAccessTest",
+          "file": "product/tests/Underground/Feature/UndergroundPlayerAccessTest.php",
+          "cases": 26,
+          "seconds": 84.096
+        },
+        {
+          "name": "Tests\\Feature\\MessageBoardIntegrityTest",
+          "file": "product/tests/Feature/MessageBoardIntegrityTest.php",
+          "cases": 8,
+          "seconds": 82.78
+        },
+        {
+          "name": "Tests\\Feature\\TerritoryExpansionAndInfluenceTest",
+          "file": "product/tests/Feature/TerritoryExpansionAndInfluenceTest.php",
+          "cases": 22,
+          "seconds": 76.489
+        },
+        {
+          "name": "Tests\\Underground\\Feature\\UndergroundRuntimeTest",
+          "file": "product/tests/Underground/Feature/UndergroundRuntimeTest.php",
+          "cases": 26,
+          "seconds": 75.869
+        },
+        {
+          "name": "Tests\\Feature\\PostgresSecretaryEquipmentConcurrencyTest",
+          "file": "product/tests/Feature/PostgresSecretaryEquipmentConcurrencyTest.php",
+          "cases": 5,
+          "seconds": 73.61
+        },
+        {
+          "name": "Tests\\Feature\\SecretaryItemEffectsTest",
+          "file": "product/tests/Feature/SecretaryItemEffectsTest.php",
+          "cases": 19,
+          "seconds": 72.969
+        },
+        {
+          "name": "Tests\\Feature\\C4NewMonstersTest",
+          "file": "product/tests/Feature/C4NewMonstersTest.php",
+          "cases": 18,
+          "seconds": 72.775
+        },
+        {
+          "name": "Tests\\Feature\\PlayerIslandEventApiTest",
+          "file": "product/tests/Feature/PlayerIslandEventApiTest.php",
+          "cases": 17,
+          "seconds": 60.626
+        },
+        {
+          "name": "Tests\\Unit\\TurnRandomStreamTest",
+          "file": "product/tests/Unit/TurnRandomStreamTest.php",
+          "cases": 19,
+          "seconds": 54.633
+        },
+        {
+          "name": "Tests\\Underground\\Unit\\UndergroundBalanceSimulatorTest",
+          "file": "product/tests/Underground/Unit/UndergroundBalanceSimulatorTest.php",
+          "cases": 17,
+          "seconds": 48.198
+        },
+        {
+          "name": "Tests\\Unit\\SecretaryItemGameplayContractTest",
+          "file": "product/tests/Unit/SecretaryItemGameplayContractTest.php",
+          "cases": 15,
+          "seconds": 48.113
+        },
+        {
+          "name": "Tests\\Feature\\LandSubsidenceTurnTest",
+          "file": "product/tests/Feature/LandSubsidenceTurnTest.php",
+          "cases": 9,
+          "seconds": 46.414
+        },
+        {
+          "name": "Tests\\Feature\\WorldExpansionServiceTest",
+          "file": "product/tests/Feature/WorldExpansionServiceTest.php",
+          "cases": 10,
+          "seconds": 45.703
+        }
+      ]
+    },
+    {
+      "token": "f2a64992",
+      "metadata": "schema\thakoniwa.parallel-test-evidence.v1\nrun_token\tf2a64992\nstarted_at\t2026-09-10T10:57:30Z\ntested_sha\tunknown\nphp_version\t8.5.8\ncomposer_json_sha256\t7627f2dc0328fe70095262f15ef53c6ee41052d6b55cd63e60ba23e7241374ef\ncomposer_lock_sha256\t9e5f38fb63afefa8bd8f51ec85b40bbf19e721c05a4b4f7e7b80636b43a4344d\npackage_json_sha256\t857f36e627a76d65f368b988ed8b3c6acd54ddfdc67934d77910c759d5b5a199\npackage_lock_sha256\t73bd4732a142bd6706c1d212f9c695f0df2144bf95f35cd245c6bce857106470\nartifact_directory\tstorage/framework/testing/test-evidence/phpunit-parallel-f2a64992\nshard_total\t4\ndiscovered_test_files\t115\nevent\tindex\tstatus\texit_code\tduration_seconds\ttest_file_count\ttest_count\tlog\tjunit\nshard\t0\tpassed\t0\t1111\t29\t319\tphpunit-01.log\tphpunit-01.junit.xml\nshard\t1\tpassed\t0\t589\t29\t236\tphpunit-02.log\tphpunit-02.junit.xml\nshard\t2\tpassed\t0\t481\t29\t172\tphpunit-03.log\tphpunit-03.junit.xml\nshard\t3\tpassed\t0\t735\t28\t148\tphpunit-04.log\tphpunit-04.junit.xml\nrun\t-\tpassed\t0\t-\t115\t-\t-\t-\n",
+      "testcases": 1048,
+      "total_case_seconds": 2913.649,
+      "top_classes": [
+        {
+          "name": "Tests\\Feature\\CommandAndMissileTest",
+          "file": "product/tests/Feature/CommandAndMissileTest.php",
+          "cases": 75,
+          "seconds": 265.829
+        },
+        {
+          "name": "Tests\\Feature\\CommandQueueAndSalePolicyTest",
+          "file": "product/tests/Feature/CommandQueueAndSalePolicyTest.php",
+          "cases": 41,
+          "seconds": 127.632
+        },
+        {
+          "name": "Tests\\Feature\\TurnRuntimePerformanceTest",
+          "file": "product/tests/Feature/TurnRuntimePerformanceTest.php",
+          "cases": 20,
+          "seconds": 121.36
+        },
+        {
+          "name": "Tests\\Feature\\DomesticCommandExecutionTest",
+          "file": "product/tests/Feature/DomesticCommandExecutionTest.php",
+          "cases": 33,
+          "seconds": 100.737
+        },
+        {
+          "name": "Tests\\Underground\\Feature\\PostgresUndergroundRuntimeConcurrencyTest",
+          "file": "product/tests/Underground/Feature/PostgresUndergroundRuntimeConcurrencyTest.php",
+          "cases": 10,
+          "seconds": 98.001
+        },
+        {
+          "name": "Tests\\Feature\\MonsterSystemTest",
+          "file": "product/tests/Feature/MonsterSystemTest.php",
+          "cases": 34,
+          "seconds": 97.284
+        },
+        {
+          "name": "Tests\\Feature\\DisasterAndOilTurnTest",
+          "file": "product/tests/Feature/DisasterAndOilTurnTest.php",
+          "cases": 26,
+          "seconds": 82.945
+        },
+        {
+          "name": "Tests\\Underground\\Feature\\UndergroundPlayerAccessTest",
+          "file": "product/tests/Underground/Feature/UndergroundPlayerAccessTest.php",
+          "cases": 26,
+          "seconds": 73.55
+        },
+        {
+          "name": "Tests\\Underground\\Feature\\UndergroundRuntimeTest",
+          "file": "product/tests/Underground/Feature/UndergroundRuntimeTest.php",
+          "cases": 26,
+          "seconds": 71.069
+        },
+        {
+          "name": "Tests\\Feature\\TerritoryExpansionAndInfluenceTest",
+          "file": "product/tests/Feature/TerritoryExpansionAndInfluenceTest.php",
+          "cases": 21,
+          "seconds": 67.224
+        },
+        {
+          "name": "Tests\\Feature\\MessageBoardIntegrityTest",
+          "file": "product/tests/Feature/MessageBoardIntegrityTest.php",
+          "cases": 8,
+          "seconds": 62.553
+        },
+        {
+          "name": "Tests\\Feature\\PostgresSecretaryEquipmentConcurrencyTest",
+          "file": "product/tests/Feature/PostgresSecretaryEquipmentConcurrencyTest.php",
+          "cases": 5,
+          "seconds": 59.971
+        },
+        {
+          "name": "Tests\\Feature\\SecretaryItemEffectsTest",
+          "file": "product/tests/Feature/SecretaryItemEffectsTest.php",
+          "cases": 19,
+          "seconds": 55.847
+        },
+        {
+          "name": "Tests\\Feature\\C4NewMonstersTest",
+          "file": "product/tests/Feature/C4NewMonstersTest.php",
+          "cases": 18,
+          "seconds": 55.778
+        },
+        {
+          "name": "Tests\\Feature\\PlayerIslandEventApiTest",
+          "file": "product/tests/Feature/PlayerIslandEventApiTest.php",
+          "cases": 17,
+          "seconds": 52.38
+        },
+        {
+          "name": "Tests\\Feature\\NationAutomaticExpansionTest",
+          "file": "product/tests/Feature/NationAutomaticExpansionTest.php",
+          "cases": 2,
+          "seconds": 51.265
+        },
+        {
+          "name": "Tests\\Underground\\Unit\\UndergroundBalanceSimulatorTest",
+          "file": "product/tests/Underground/Unit/UndergroundBalanceSimulatorTest.php",
+          "cases": 17,
+          "seconds": 46.398
+        },
+        {
+          "name": "Tests\\Feature\\WorldExpansionServiceTest",
+          "file": "product/tests/Feature/WorldExpansionServiceTest.php",
+          "cases": 13,
+          "seconds": 46.179
+        },
+        {
+          "name": "Tests\\Unit\\TurnRandomStreamTest",
+          "file": "product/tests/Unit/TurnRandomStreamTest.php",
+          "cases": 19,
+          "seconds": 44.778
+        },
+        {
+          "name": "Tests\\Unit\\SecretaryItemGameplayContractTest",
+          "file": "product/tests/Unit/SecretaryItemGameplayContractTest.php",
+          "cases": 15,
+          "seconds": 40.889
+        }
+      ]
+    }
+  ],
+  "limitations": [
+    "No test body was executed for this design. Identifiers were enumerated with current mounted tests and existing development container vendor.",
+    "Historical times do not prove current performance or correctness. Matching method names do not prove unchanged implementations.",
+    "Call-site counts are static textual counts. They exclude indirect helpers and do not represent runtime invocation counts.",
+    "Frontend rows are source files only; dataset-expanded Vitest case counts were not enumerated."
+  ],
+  "enumeration_environment": {
+    "php": "8.5.8",
+    "laravel": "v13.22.0",
+    "phpunit": "12.5.32",
+    "composer_lock_sha256": "9e5f38fb63afefa8bd8f51ec85b40bbf19e721c05a4b4f7e7b80636b43a4344d",
+    "test_bodies_executed": false
+  },
+  "design_validation": {
+    "verified_at": "2026-09-15T03:59:08.188Z",
+    "file_hashes_match": true,
+    "identifier_to_source_mapping": true,
+    "artifact_links_exist": true,
+    "errors": []
+  }
+}

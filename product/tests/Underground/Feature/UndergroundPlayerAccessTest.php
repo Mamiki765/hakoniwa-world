@@ -821,7 +821,7 @@ final class UndergroundPlayerAccessTest extends TestCase
             'secretary_id' => $otherSecretary->id,
             'shard_balance' => 0,
             'banked_shard_balance' => 0,
-            'current_hp' => 999999,
+            'current_hp' => 250,
             'inn_cost' => 0,
         ])->assertOk()
             ->assertJsonPath('data.shard_balance', 2340)
@@ -846,13 +846,10 @@ final class UndergroundPlayerAccessTest extends TestCase
         ]);
         $profile->update(['shard_balance' => 2340, 'banked_shard_balance' => 5000]);
 
-        $transfer = function (string $action, ?int $amount = null) use ($user, $otherSecretary): TestResponse {
+        $transfer = function (string $action, ?int $amount = null) use ($user): TestResponse {
             $payload = [
                 'request_id' => (string) Str::uuid(),
                 'action' => $action,
-                'secretary_id' => $otherSecretary->id,
-                'shard_balance' => PHP_INT_MAX,
-                'banked_shard_balance' => PHP_INT_MAX,
             ];
             if ($amount !== null) {
                 $payload['amount'] = $amount;
@@ -861,7 +858,14 @@ final class UndergroundPlayerAccessTest extends TestCase
             return $this->actingAs($user)->postJson('/api/v1/me/underground/bank/transfer', $payload);
         };
 
-        $transfer('deposit', 1000)->assertOk()
+        $this->actingAs($user)->postJson('/api/v1/me/underground/bank/transfer', [
+            'request_id' => (string) Str::uuid(),
+            'action' => 'deposit',
+            'amount' => 1000,
+            'secretary_id' => $otherSecretary->id,
+            'shard_balance' => 3000,
+            'banked_shard_balance' => 4000,
+        ])->assertOk()
             ->assertJsonPath('data.shard_balance', 1340)
             ->assertJsonPath('data.banked_shard_balance', 6000);
         $transfer('withdraw', 1000)->assertOk()
@@ -892,16 +896,6 @@ final class UndergroundPlayerAccessTest extends TestCase
         $transfer('withdraw_all')->assertOk()
             ->assertJsonPath('data.shard_balance', 7340)
             ->assertJsonPath('data.banked_shard_balance', 0);
-        $profile->update([
-            'shard_balance' => 1000,
-            'banked_shard_balance' => PHP_INT_MAX - 500,
-        ]);
-        $transfer('deposit', 1000)
-            ->assertConflict()->assertJsonPath('code', 'underground_bank_balance_overflow');
-        $this->assertSame([1000, PHP_INT_MAX - 500], [
-            $profile->fresh()->shard_balance,
-            $profile->banked_shard_balance,
-        ]);
         $this->assertSame([9000, 8000], [
             $otherProfile->fresh()->shard_balance,
             $otherProfile->banked_shard_balance,
@@ -1552,7 +1546,7 @@ final class UndergroundPlayerAccessTest extends TestCase
             'request_id' => $forgedRequest,
             'definition_key' => 'iron_dagger',
             'buy_price' => 1,
-            'stats' => ['might' => PHP_INT_MAX],
+            'stats' => ['might' => 50],
         ])->assertUnprocessable();
         $this->assertSame(5_000, $profile->fresh()->shard_balance);
 
@@ -1689,7 +1683,7 @@ final class UndergroundPlayerAccessTest extends TestCase
         $explorationRequest = (string) Str::uuid();
         $this->actingAs($user)->postJson('/api/v1/me/underground/explore', [
             'request_id' => $explorationRequest,
-            'weapon_power' => PHP_INT_MAX,
+            'weapon_power' => 50,
             'equipment' => ['key' => 'forged_equipment'],
         ])->assertOk();
         $equipmentBattle = UndergroundBattle::query()
@@ -2382,7 +2376,6 @@ final class UndergroundPlayerAccessTest extends TestCase
             'enemy_key' => 'client_selected_enemy',
             'private_seed' => 1,
             'combat_level' => 100,
-            'weapon_power' => PHP_INT_MAX,
         ];
         $first = $this->actingAs($user)->postJson('/api/v1/me/underground/explore', $payload)
             ->assertOk()

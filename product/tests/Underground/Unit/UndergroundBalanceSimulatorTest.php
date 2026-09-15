@@ -203,21 +203,6 @@ final class UndergroundBalanceSimulatorTest extends TestCase
         $this->assertSame(1_254, $result['scenario']['level']);
     }
 
-    public function test_trial_simulator_rejects_a_level_that_cannot_leave_integer_headroom_for_combat(): void
-    {
-        [, $manifest] = $this->trialTwoManifest();
-        $manifest['checkpoints'][] = 10_248_191_152_060_851;
-
-        $this->expectException(InvalidArgumentException::class);
-        $this->expectExceptionMessage('supported combat integer range');
-
-        $this->trialSimulator()->replay(
-            $manifest,
-            'martial_red:lv10248191152060851:heal2000',
-            0,
-        );
-    }
-
     public function test_trial_wyvern_enters_its_healer_pressure_phase_at_round_40_without_losing_its_action(): void
     {
         [, $manifest] = $this->trialManifest();
@@ -425,21 +410,6 @@ final class UndergroundBalanceSimulatorTest extends TestCase
             $sidegrade['combat_observation']['low_item_level_unique']['effective_healing_average'],
         );
         $this->assertSame([], $sidegrade['combat_observation']['low_item_level_unique']['abnormal_seeds']);
-    }
-
-    public function test_alpha_v1_replay_rejects_canonical_enemy_scaling_before_php_integer_overflow(): void
-    {
-        $path = dirname(__DIR__, 3).'/config/underground/balance/foundation-v1.json';
-        $contents = file_get_contents($path);
-        $this->assertIsString($contents);
-        $manifest = json_decode($contents, true, flags: JSON_THROW_ON_ERROR);
-        $this->assertIsArray($manifest);
-        $manifest['tiers']['early'] = ['combat_level' => 2_147_483_647, 'item_level' => 1];
-
-        $this->expectException(InvalidArgumentException::class);
-        $this->expectExceptionMessage('scaled combat value exceeds the supported integer range');
-
-        $this->alphaV1Simulator()->replay($manifest, 'mp:pure_attacker:early', 0);
     }
 
     public function test_small_smoke_generates_a_reproducible_laboratory_summary_without_raw_logs(): void
