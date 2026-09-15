@@ -93,6 +93,29 @@ final class TestShardPlannerTest extends TestCase
         $this->assertSame(0, $report['unexpected_count']);
     }
 
+    public function test_selected_test_file_hash_tracks_normalized_paths_and_file_contents(): void
+    {
+        $root = $this->createFixtureProject();
+        $this->write($root.'/tests/Feature/AlphaTest.php', "<?php\nreturn 'alpha';\n");
+        $this->write($root.'/tests/Unit/BetaTest.php', "<?php\nreturn 'beta';\n");
+        $planner = new TestShardPlanner($root);
+
+        $first = $planner->selectedTestFilesSha256([
+            './tests/Unit/BetaTest.php',
+            'tests\\Feature\\AlphaTest.php',
+        ]);
+        $this->assertSame($first, $planner->selectedTestFilesSha256([
+            'tests/Feature/AlphaTest.php',
+            'tests/Unit/BetaTest.php',
+        ]));
+
+        $this->write($root.'/tests/Feature/AlphaTest.php', "<?php\nreturn 'changed alpha';\n");
+        $this->assertNotSame($first, $planner->selectedTestFilesSha256([
+            'tests/Feature/AlphaTest.php',
+            'tests/Unit/BetaTest.php',
+        ]));
+    }
+
     public function test_more_shards_than_files_produce_valid_empty_shards(): void
     {
         $planner = new TestShardPlanner($this->createFixtureProject());
@@ -339,6 +362,10 @@ XML,
         $this->assertNotSame(
             $first['fingerprint'],
             $fingerprint->calculate([...$runtime, 'postgres_server_version' => '18.5'])['fingerprint'],
+        );
+        $this->assertContains(
+            'app/Providers/AppServiceProvider.php',
+            (new ReusableSurfaceTemplateFingerprint(dirname(__DIR__, 3)))->calculate($runtime)['files'],
         );
     }
 

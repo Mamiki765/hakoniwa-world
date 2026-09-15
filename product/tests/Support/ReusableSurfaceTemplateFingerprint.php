@@ -14,6 +14,7 @@ final class ReusableSurfaceTemplateFingerprint
     private const DEFAULT_INPUTS = [
         'bootstrap/app.php',
         'bootstrap/providers.php',
+        'app/Providers/AppServiceProvider.php',
         'composer.lock',
         'phpunit.xml',
         'database/migrations',

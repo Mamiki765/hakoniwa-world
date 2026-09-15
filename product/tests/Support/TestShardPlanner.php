@@ -679,6 +679,35 @@ final class TestShardPlanner
         return rtrim($normalized, '/');
     }
 
+    /** @param list<string> $files */
+    public function selectedTestFilesSha256(array $files): string
+    {
+        $resolved = [];
+        foreach ($files as $file) {
+            $path = $this->resolvePath(self::normalizePath($file), $this->projectRoot);
+            if (! is_file($path) || is_link($path)) {
+                throw new RuntimeException("Selected test file [{$file}] does not exist or is unsafe.");
+            }
+            $relative = $this->relativePath($path);
+            $resolved[$relative] = $path;
+        }
+        if ($resolved === [] || count($resolved) !== count($files)) {
+            throw new RuntimeException('Selected test files must be non-empty and canonically unique.');
+        }
+        ksort($resolved, SORT_STRING);
+
+        $hash = hash_init('sha256');
+        foreach ($resolved as $relative => $path) {
+            $fileHash = hash_file('sha256', $path);
+            if (! is_string($fileHash)) {
+                throw new RuntimeException("Unable to hash selected test file [{$relative}].");
+            }
+            hash_update($hash, $relative."\0".$fileHash."\n");
+        }
+
+        return hash_final($hash);
+    }
+
     private function loadConfiguration(): DOMDocument
     {
         if (! is_file($this->configurationPath)) {

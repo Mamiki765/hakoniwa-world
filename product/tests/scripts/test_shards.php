@@ -14,6 +14,7 @@ $usage = static function (): never {
     fwrite(STDERR, "  php tests/scripts/test_shards.php plan-verify <plan.json>\n");
     fwrite(STDERR, "  php tests/scripts/test_shards.php plan-describe <plan.json> <zero-based-index>\n");
     fwrite(STDERR, "  php tests/scripts/test_shards.php plan-list <plan.json>\n");
+    fwrite(STDERR, "  php tests/scripts/test_shards.php plan-files-sha256 <plan.json>\n");
     fwrite(STDERR, "  php tests/scripts/test_shards.php plan-files <plan.json> <zero-based-index>\n");
     fwrite(STDERR, "  php tests/scripts/test_shards.php plan-profiles <plan.json> <zero-based-index>\n");
     fwrite(STDERR, "  php tests/scripts/test_shards.php verify <shard-total> [full|surface|underground]\n");
@@ -136,7 +137,9 @@ try {
         exit(0);
     }
 
-    if (in_array($command, ['plan-verify', 'plan-describe', 'plan-list', 'plan-files', 'plan-profiles'], true)) {
+    if (in_array($command, [
+        'plan-verify', 'plan-describe', 'plan-list', 'plan-files-sha256', 'plan-files', 'plan-profiles',
+    ], true)) {
         $path = $argv[2] ?? null;
         if ($path === null) {
             $usage();
@@ -153,6 +156,11 @@ try {
             foreach ($plan['discovered'] as $file) {
                 echo $file."\n";
             }
+
+            exit(0);
+        }
+        if ($command === 'plan-files-sha256') {
+            echo $planner->selectedTestFilesSha256($plan['discovered'])."\n";
 
             exit(0);
         }
