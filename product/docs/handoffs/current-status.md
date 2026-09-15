@@ -1,22 +1,35 @@
-# hakoniwa-world 現在地・hotfix引継ぎ
+# hakoniwa-world 現在地・4.2.0引継ぎ
 
-更新日：2026-09-14 JST。4.1.2 hotfix候補の実装に合わせて更新する。
+更新日：2026-09-15 JST。4.2.0 test suite再設計のPhase 2 push時点に合わせて更新する。
 
-本書の現在地は4.1.1 productionと4.1.2 hotfix候補。4.1.0までの記録は過去の判断として下に保持する。詳細仕様の正本は固定SHAのcode・release文書・Owner補足である。
+本書の現在地はmain 4.1.2と`release/4.2.0`のtest suite再設計。4.1.2までのincident・仕様記録は過去の判断と運用contractとして下に保持する。詳細仕様の正本は固定SHAのcode・release文書・Owner補足である。
+
+## 0. 4.2.0 test suite再設計の進行契約
+
+4.2.0の現在の主作業はtest suiteのゼロベース再設計である。Astra Xhighが作成した[設計図](../testing/test-suite-rebuild-plan.md)を正本として、SolがそのPhase順に実装を進めている。OwnerがSolへ渡した作業範囲を優先し、この会話で後から提示された追加条件は作業契約へ盛り込んでいない。repo文書またはOwnerの明示指示へ反映されていない会話上の追加案を、後から必須条件へ昇格させない。
+
+開始時にForgejo mainが`00182bd0eaee52f34194c7b40bc5e98712108718`で遅れていないことを確認し、そこから`release/4.2.0`を作成した。Draft PR #9で継続中で、Phase 2 push時点のHEADは`0e6db357e603f42f92e0f18f4f6549775a600218`である。HEADは今後進むため、作業再開時はPR #9を再解決する。
+
+- Phase 0a：AGENTS §8のtest増殖防止規則を整理。新設・拡張の必要性、重複matrix、確認終了条件を明文化した。
+- Phase 1：Aランク不要保証を削除・縮小。mainの1,058 casesから1,052 casesへ6件純減し、このPhaseでは新規caseを追加していない。focused 68 tests / 2,680 assertions、変更frontend 2件、Pint・ESLintはPASS。
+- Phase 2：Shared / Surface / Undergroundのscopeとdispatcherを実装。Full=Shared+Surface+Underground、Surface=Shared+Surface、Underground=Shared+Undergroundとして、同じplanner/runner/DB manager/evidenceへscopeを通した。Sharedへの移動と既存SP migration caseの分離を行い、scope validationの1 method追加後は117 files / 1,053 cases。Full 1,053、Surface 835、Underground 291のserial/4-shard identifier一致を確認している。
+- Phase 2ではrepository-wide Fullはまだ実行していない。planner/dispatcher/Shared migration等のfocused確認を実施。development image buildはGitHub archive timeoutで完了せず、既存containerでComposer entrypointまで確認した。
+- 次は設計図Phase 3の通常map case用reusable fixture、初回generation、case rollback、独立性とfixture回数・時間の計測。Phase 3以降も設計図の順序を正本とする。
+
+このtest再設計だけを理由にruntime、Ruleset、application schema、production dataを変更しない。merge、deploy、production migration/data/Turn操作は別のOwner許可が必要である。
 
 ## 1. 固定refと現在地
 
 | 項目 | 確認結果 |
 |---|---|
 | 正本remote | Forgejo `https://git.pbwlove.com/Mamiki765/hakoniwa-world.git` |
-| main / hotfix base | `764beb4cfb595e293a067368cef87993253cd9f1`。application versionは4.1.1 |
-| 作業branch | `hotfix/4.1.2` |
-| 変更 | Turn finalizeのSecretary本体lockを`FOR NO KEY UPDATE`へ変更し、Underground party memberのFK参照と共存させる |
-| regression | PostgreSQLの別workerでTurn flush、party snapshot、同じSecretaryへの並行更新を競合させる |
-| schema / Ruleset | migrationなし、Ruleset変更なし |
-| 未実施 | merge、deploy、production DB・Turn操作 |
-
-hotfixのcommit SHAは自己参照で記入せず、ForgejoのPR HEADを再解決する。
+| main / 4.2.0 base | `00182bd0eaee52f34194c7b40bc5e98712108718`。application versionは4.1.2 |
+| 作業branch | `release/4.2.0` |
+| Draft PR | Forgejo PR #9。Phase 2 push時点HEAD `0e6db357e603f42f92e0f18f4f6549775a600218` |
+| 設計正本 | `product/docs/testing/test-suite-rebuild-plan.md`。Astra Xhighが設計し、SolがPhase順に実装中 |
+| 実装済み | Phase 0a、Phase 1、Phase 2 |
+| 次段階 | Phase 3：map再利用fixtureと独立性・生成回数計測 |
+| production | 4.2.0 test作業ではdeploy・production DB・Turn操作を行わない。mainのversionからproduction適用状態を推定しない |
 
 ## 2. 本番観測の範囲
 
@@ -94,8 +107,10 @@ PT projectorのbarrier amountは表示時に正数へ変換。solo/PTのHP数値
 
 ## 6. 次に進めるとき
 
-`hotfix/4.1.2`はForgejo PRで独立レビュー待ちまで進める。レビュー時はPR HEADを再解決し、`764beb4…`との差分とexact-head validationを確認する。merge、deploy、production migration・data・Turn操作は今回許可されていない。
+`release/4.2.0`はDraft PR #9で継続する。再開時はPR HEADを再解決し、[test suite再設計図](../testing/test-suite-rebuild-plan.md)と各Phase implementation記録を先に読む。Phase 2まではpush済みで、次はPhase 3のmap再利用fixture。Phase 2以降の進行でこのhandoff自体が古くなっていれば、設計図とPR HEADの実装記録を優先する。
+
+4.2.0のtest suite再設計はAstra Xhighの設計図をSolが順に実装する作業であり、この会話だけで提案された追加条件を暗黙に混ぜない。Ownerが別途scopeを変更した場合は、その明示指示またはrepo文書を正本として更新する。
 
 push/初回PR/修正PR/レビュー投稿は承認済みrepositoryの通常作業として個別確認不要。GitHubかForgejoかで権限を分けず、CIコスト管理は別扱い。現在のForgejoへのpushを、以前のGitHub CI反復の事情で止めない。実行環境側の送信先承認で止まる場合は、その層の制限とOwner方針を区別して報告する。
 
-`OPEN`は延期済みではない。決定済みの回復scopeや今回の会話位置を再び未決に戻さず、逆にAssistant案をOwner固定仕様として昇格させない。既存testが存在するだけで恒久仕様としない。
+merge、deploy、production migration・data・Turn操作はOwner明示承認なしに行わない。`OPEN`は延期済みではない。決定済み仕様を再び未決に戻さず、逆にAssistant案をOwner固定仕様として昇格させない。既存testが存在するだけで恒久仕様としない。
