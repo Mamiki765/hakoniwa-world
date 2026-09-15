@@ -3,6 +3,7 @@
 namespace App\Application;
 
 use App\Domain\Map\GridCoordinate;
+use App\Models\BuriedTreasure;
 use App\Models\MapCell;
 use App\Models\MapSpace;
 use App\Models\NationCapital;
@@ -14,6 +15,7 @@ final class MapChunkService
     public function __construct(
         private readonly MapCellPresenter $presenter,
         private readonly SurfaceVisibilityService $visibility,
+        private readonly BuriedTreasureRevealResolver $treasureReveals,
     ) {}
 
     /** @return array<string, mixed> */
@@ -59,6 +61,29 @@ final class MapChunkService
         $theme = is_string($lifecycle['dormant_visual_theme'] ?? null)
             ? $lifecycle['dormant_visual_theme'] : null;
         $visibleCoordinates = $this->visibility->visibleCoordinates($mapSpace, $cells, $viewerNationId);
+        $treasureCellIds = [];
+        if ($viewerNationId !== null && $cells->isNotEmpty()) {
+            $visibleCellIds = $cells->filter(static fn (MapCell $cell): bool => isset(
+                $visibleCoordinates[$cell->x.':'.$cell->y],
+            ))->modelKeys();
+            $treasures = BuriedTreasure::query()
+                ->where('world_id', $mapSpace->world_id)
+                ->whereIn('map_cell_id', $cells->modelKeys())
+                ->where('state', BuriedTreasure::STATE_ACTIVE)
+                ->orderBy('id')
+                ->get();
+            $treasureCellIds = $treasures->whereIn('map_cell_id', $visibleCellIds)
+                ->mapWithKeys(static fn (BuriedTreasure $treasure): array => [
+                    (int) $treasure->map_cell_id => true,
+                ])->all();
+            $remoteTreasures = $treasures->whereNotIn('map_cell_id', $visibleCellIds);
+            $treasureCellIds += $this->treasureReveals->remoteVisibleCellIds(
+                $world,
+                $viewerNationId,
+                $remoteTreasures,
+                $rulesetSettings['ocean_loop']['buried_treasure'] ?? [],
+            );
+        }
         $dormantCapitals = NationCapital::query()
             ->join('nations', 'nations.id', '=', 'nation_capitals.nation_id')
             ->where('nations.world_id', $mapSpace->world_id)->where('nations.state', 'dormant')
@@ -72,6 +97,7 @@ final class MapChunkService
                 ? $theme : null,
             isset($visibleCoordinates[$cell->x.':'.$cell->y]),
             $rulesetSettings,
+            isset($treasureCellIds[$cell->id]),
         ))->values();
         $representationVersion = hash('sha256', json_encode($presentedCells, JSON_THROW_ON_ERROR));
 

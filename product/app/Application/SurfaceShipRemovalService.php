@@ -83,7 +83,7 @@ final class SurfaceShipRemovalService
         $ship->save();
         $context->state->markMapChunkChanged($cell->map_chunk_id);
         $this->events->record($context, 'ship.sunk', $ship, [
-            'nation_id' => (int) $ship->nation_id,
+            'nation_id' => $ship->nation_id,
             'ship_id' => (int) $ship->id,
             'ship_type_key' => $ship->ship_type_key,
             'ship_name' => $definition->name,
@@ -91,7 +91,7 @@ final class SurfaceShipRemovalService
             'x' => (int) $cell->x,
             'y' => (int) $cell->y,
             ...$metadata,
-        ], 'nation', 'warning');
+        ], $ship->nation_id === null ? 'public' : 'nation', 'warning');
 
         return $ship;
     }

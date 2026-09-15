@@ -6,7 +6,10 @@
         "build": "vite build",
         "dev": "vite",
         "lint": "eslint resources/js",
-        "test": "vitest run",
+        "test": "npm run test:all",
+        "test:all": "vitest run",
+        "test:surface": "vitest run --project=shared --project=surface",
+        "test:underground": "vitest run --project=shared --project=underground",
         "typecheck": "vue-tsc --noEmit"
     },
     "dependencies": {

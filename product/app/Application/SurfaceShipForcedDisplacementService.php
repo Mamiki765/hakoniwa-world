@@ -52,7 +52,7 @@ final class SurfaceShipForcedDisplacementService
             $source = 'port';
         }
         if (! $destination instanceof MapCell) {
-            $foreign = (int) $actingNation->id !== (int) $ship->nation_id;
+            $foreign = $ship->nation_id !== null && (int) $actingNation->id !== (int) $ship->nation_id;
             $this->removal->sinkLockedAtCell($context, $origin, $ship, 'forced_displacement_failed', [
                 'cause' => $reason,
                 'acting_nation_id' => (int) $actingNation->id,
@@ -77,7 +77,7 @@ final class SurfaceShipForcedDisplacementService
         $context->state->markMapChunkChanged((int) $origin->map_chunk_id);
         $context->state->markMapChunkChanged((int) $destination->map_chunk_id);
         $this->events->record($context, 'ship.forced_displaced', $ship, [
-            'nation_id' => (int) $ship->nation_id,
+            'nation_id' => $ship->nation_id,
             'ship_id' => (int) $ship->id,
             'ship_type_key' => $ship->ship_type_key,
             'cause' => $reason,
@@ -91,7 +91,7 @@ final class SurfaceShipForcedDisplacementService
             'movement_reward' => 0,
             'secretary_experience' => 0,
             'normal_event_consumed' => false,
-        ], 'nation', 'warning');
+        ], $ship->nation_id === null ? 'public' : 'nation', 'warning');
     }
 
     /** @param array<string, mixed> $settings */
@@ -102,6 +102,10 @@ final class SurfaceShipForcedDisplacementService
         Ship $ship,
         array $settings,
     ): ?MapCell {
+        if ($ship->nation_id === null) {
+            return null;
+        }
+
         $originCoordinate = new GridCoordinate($origin->x, $origin->y);
         $ports = MapCell::query()
             ->where('map_space_id', $space->id)

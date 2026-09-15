@@ -90,6 +90,7 @@ final class MissileImpactResolver
         private readonly SurfaceShipRemovalService $shipRemoval,
         private readonly FacilityScaleDamageService $facilityScaleDamage,
         private readonly CentralFacilityDamageService $centralFacilityDamage,
+        private readonly SurfaceShipCombatService $shipCombat,
     ) {}
 
     /** @param array<string, MapCell>|null $surfaceCellsByCoordinate */
@@ -914,7 +915,7 @@ final class MissileImpactResolver
             return $defense;
         }
         if ($intent->definitionKey === 'land_destruction_missile') {
-            return $this->landDestructionImpact($context, $firingNation, $cell, $base);
+            return $this->landDestructionImpact($context, $firingNation, $firingBase, $cell, $base);
         }
 
         return $this->ordinaryImpact(
@@ -1037,6 +1038,7 @@ final class MissileImpactResolver
         array $base,
         string $missileKey,
         Ship $ship,
+        ?MapCell $firingBase = null,
     ): array {
         $settings = $this->shipMissileImpactSettings($context);
         $instantSink = in_array($missileKey, $settings['instant_sink_missile_keys'], true);
@@ -1049,8 +1051,43 @@ final class MissileImpactResolver
         $definition = collect($this->surfaceShips->definitions($context->ruleset->settings))
             ->first(static fn (SurfaceShipDefinition $candidate): bool => $candidate->key === $ship->ship_type_key);
         $owner = $ship->relationLoaded('nation') ? $ship->nation : null;
-        if (! $definition instanceof SurfaceShipDefinition || ! $owner instanceof Nation) {
+        if (! $definition instanceof SurfaceShipDefinition
+            || ($ship->nation_id !== null && ! $owner instanceof Nation)) {
             throw new DomainException('The turn-local Ship impact index is missing canonical Ship data.');
+        }
+        if ($ship->nation_id === null && $firingNation instanceof Nation) {
+            $combat = $this->shipCombat->damage(
+                $context, $cell, $ship, $damage, $firingNation, 'missile', $firingBase,
+            );
+            if ($combat['sunk']) {
+                $this->surfaceShipBatch?->forget($ship, (int) $cell->id);
+            }
+            foreach ($combat['changed_cell_ids'] as $changedCellId) {
+                $this->changedCellIds[$changedCellId] = true;
+            }
+            $this->markCellChanged($context, $cell);
+            $effect = $combat['sunk'] ? 'ship_sunk' : 'ship_damaged';
+            $this->recordMeaningfulImpact($context, $firingNation, $cell, $missileKey, $effect, [
+                'ship_id' => (int) $ship->id,
+                'ship_type_key' => $ship->ship_type_key,
+                'ship_name' => $definition->name,
+                'before_hp' => $combat['before_hp'],
+                'after_hp' => $combat['after_hp'],
+                'damage' => $damage,
+                'underlying_preserved' => true,
+                'firing_base_experience_applied' => $combat['experience'],
+                'refugees' => $combat['refugees'],
+            ]);
+
+            return [
+                ...$base, 'meaningful' => true, 'effect' => $effect,
+                'target_nation_id' => null, 'target_nation_name' => null,
+                'ship_id' => (int) $ship->id, 'ship_type_key' => $ship->ship_type_key,
+                'before_hp' => $combat['before_hp'], 'after_hp' => $combat['after_hp'],
+                'damage' => $damage, 'underlying_preserved' => true,
+                'firing_base_experience_applied' => $combat['experience'],
+                'refugees' => $combat['refugees'],
+            ];
         }
         $beforeHp = (int) $ship->current_hp;
         $sunk = $instantSink || $beforeHp <= $damage;
@@ -1071,7 +1108,7 @@ final class MissileImpactResolver
             $ship->version++;
             $ship->save();
             $this->events->record($context, 'ship.missile_damaged', $ship, [
-                'nation_id' => (int) $ship->nation_id,
+                'nation_id' => $ship->nation_id,
                 'ship_id' => (int) $ship->id,
                 'ship_type_key' => $ship->ship_type_key,
                 'ship_name' => $definition->name,
@@ -1082,7 +1119,7 @@ final class MissileImpactResolver
                 'y' => (int) $cell->y,
                 'damage' => $damage,
                 'current_hp' => (int) $ship->current_hp,
-            ], 'nation', 'warning');
+            ], $ship->nation_id === null ? 'public' : 'nation', 'warning');
         }
         $this->markCellChanged($context, $cell);
         $effect = $sunk ? 'ship_sunk' : 'ship_damaged';
@@ -1102,16 +1139,16 @@ final class MissileImpactResolver
                 'damage' => $damage,
                 'underlying_preserved' => true,
             ],
-            (int) $owner->id,
-            $owner->name,
+            $owner?->id,
+            $owner?->name,
         );
 
         return [
             ...$base,
             'meaningful' => true,
             'effect' => $effect,
-            'target_nation_id' => (int) $owner->id,
-            'target_nation_name' => $owner->name,
+            'target_nation_id' => $owner?->id,
+            'target_nation_name' => $owner?->name,
             'ship_id' => (int) $ship->id,
             'ship_type_key' => $ship->ship_type_key,
             'before_hp' => $beforeHp,
@@ -1193,7 +1230,7 @@ final class MissileImpactResolver
                 return $interception;
             }
 
-            return $this->shipImpact($context, $firingNation, $cell, $base, $missileKey, $ship);
+            return $this->shipImpact($context, $firingNation, $cell, $base, $missileKey, $ship, $firingBase);
         }
         $resistance = $context->ruleset->settings['military']['seabed_base_resistance'] ?? null;
         $resistantFacilityKeys = is_array($resistance)
@@ -1460,6 +1497,7 @@ final class MissileImpactResolver
     private function landDestructionImpact(
         TurnContext $context,
         Nation $firingNation,
+        ?MapCell $firingBase,
         MapCell $cell,
         array $base,
     ): array {
@@ -1482,6 +1520,7 @@ final class MissileImpactResolver
                 $base,
                 'land_destruction_missile',
                 $ship,
+                $firingBase,
             );
         }
         $occupancy = MonsterOccupancy::query()->where('map_cell_id', $cell->id)

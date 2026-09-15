@@ -708,13 +708,13 @@ export interface MonsterOverlay {
 
 export interface ShipOverlay {
     id: number;
-    key: 'fishing' | 'tourist' | 'exploration';
+    key: 'fishing' | 'tourist' | 'exploration' | 'pirate' | 'treasure' | 'warship';
     name: string;
     asset_key: string;
     current_hp: number;
     max_hp: number;
     public_state: 'active';
-    owner_nation: { nation_number: number; name: string };
+    owner_nation: { nation_number: number; name: string } | null;
     is_owner: boolean;
     heading: number | null;
     version: number | null;
@@ -732,6 +732,7 @@ export interface MapCell {
     owner_nation_number: number | null;
     owner_name: string | null;
     within_viewer_visibility: boolean;
+    buried_treasure_visible: boolean;
     details: MapCellDetail[];
     ship?: ShipOverlay | null;
     monster: MonsterOverlay | null;

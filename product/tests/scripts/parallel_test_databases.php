@@ -3,14 +3,17 @@
 declare(strict_types=1);
 
 use Tests\Support\ParallelTestDatabaseManager;
+use Tests\Support\TestShardPlanner;
 
 require dirname(__DIR__, 2).'/vendor/autoload.php';
 
 $usage = static function (): never {
     fwrite(STDERR, "Usage:\n");
-    fwrite(STDERR, "  php tests/scripts/parallel_test_databases.php prepare <shard-total> [8-hex-token]\n");
+    fwrite(STDERR, "  php tests/scripts/parallel_test_databases.php prepare <shard-total> <full|surface|underground> [8-hex-token] [plan.json]\n");
     fwrite(STDERR, "  php tests/scripts/parallel_test_databases.php shard <manifest> <zero-based-index> <configuration|log|database|evidence_log|junit>\n");
+    fwrite(STDERR, "  php tests/scripts/parallel_test_databases.php fixture <manifest> <zero-based-index> <standard|reusable_surface|individual> <log|completion|evidence_log|junit|fixture_metrics>\n");
     fwrite(STDERR, "  php tests/scripts/parallel_test_databases.php evidence <manifest> directory\n");
+    fwrite(STDERR, "  php tests/scripts/parallel_test_databases.php template <manifest>\n");
     fwrite(STDERR, "  php tests/scripts/parallel_test_databases.php cleanup <manifest>\n");
     fwrite(STDERR, "  php tests/scripts/parallel_test_databases.php finalize <8-hex-token> <test-exit-code> <cleanup-exit-code> <discovered-test-files>\n");
     exit(2);
@@ -25,12 +28,42 @@ try {
         if ($total === null || preg_match('/^[1-9][0-9]*$/', $total) !== 1) {
             $usage();
         }
-        $token = $argv[3] ?? null;
+        $scope = $argv[3] ?? null;
+        if ($scope === null) {
+            $usage();
+        }
+        $scope = TestShardPlanner::normalizeScope($scope);
+        $token = $argv[4] ?? null;
         if ($token !== null && preg_match('/^[a-f0-9]{8}$/', $token) !== 1) {
             $usage();
         }
+        $planPath = $argv[5] ?? null;
+        $plannedShards = null;
+        $plannedDiscovered = null;
+        $useReusableSurfaceTemplate = false;
+        if ($planPath !== null) {
+            $planner = new TestShardPlanner(dirname(__DIR__, 2));
+            $plan = $planner->loadRunPlan($planPath);
+            if ($plan['scope'] !== $scope || $plan['shard_total'] !== (int) $total) {
+                throw new RuntimeException('Database preparation plan does not match the requested scope or worker count.');
+            }
+            $plannedShards = $plan['shards'];
+            $plannedDiscovered = $plan['discovered'];
+            $profiles = $planner->groupByFixtureProfile($plannedDiscovered);
+            $useReusableSurfaceTemplate = $plan['selection_mode'] === 'focused'
+                && $profiles['reusable_surface'] !== []
+                && $profiles['standard'] === []
+                && $profiles['individual'] === [];
+        }
 
-        echo $manager->prepare((int) $total, $token)."\n";
+        echo $manager->prepare(
+            (int) $total,
+            $scope,
+            $token,
+            $plannedShards,
+            $plannedDiscovered,
+            $useReusableSurfaceTemplate,
+        )."\n";
         exit(0);
     }
 
@@ -67,6 +100,53 @@ try {
         }
 
         echo $directory."\n";
+        exit(0);
+    }
+
+    if ($command === 'template') {
+        $manifest = $argv[2] ?? null;
+        if ($manifest === null || isset($argv[3])) {
+            $usage();
+        }
+        $template = $manager->reusableSurfaceTemplate($manifest);
+        if ($template === null) {
+            echo "enabled: no\n";
+            exit(0);
+        }
+        echo "enabled: yes\n";
+        echo 'fingerprint: '.$template['fingerprint']."\n";
+        echo 'database: '.$template['database']."\n";
+        echo 'cache_hit: '.($template['cache_hit'] ? 'yes' : 'no')."\n";
+        echo 'input_count: '.$template['input_count']."\n";
+        echo 'inputs_sha256: '.$template['inputs_sha256']."\n";
+        echo 'build_database: '.($template['build_database'] ?? '-')."\n";
+        echo 'build_seconds: '.sprintf('%.6f', $template['build_seconds'])."\n";
+        echo 'build_migration_seconds: '.sprintf('%.6f', $template['build_migration_seconds'])."\n";
+        echo 'build_map_generation_count: '.$template['build_map_generation_count']."\n";
+        echo 'build_map_generation_seconds: '.sprintf('%.6f', $template['build_map_generation_seconds'])."\n";
+        echo 'build_log: '.($template['build_log'] ?? '-')."\n";
+        echo 'build_metrics: '.($template['build_metrics'] ?? '-')."\n";
+        exit(0);
+    }
+
+    if ($command === 'fixture') {
+        $manifest = $argv[2] ?? null;
+        $index = $argv[3] ?? null;
+        $profile = $argv[4] ?? null;
+        $field = $argv[5] ?? null;
+        if ($manifest === null
+            || $index === null
+            || preg_match('/^(0|[1-9][0-9]*)$/', $index) !== 1
+            || $profile === null
+            || $field === null) {
+            $usage();
+        }
+
+        $artifact = $manager->fixtureArtifact($manifest, (int) $index, $profile, $field);
+        if ($artifact === null) {
+            exit(3);
+        }
+        echo $artifact."\n";
         exit(0);
     }
 

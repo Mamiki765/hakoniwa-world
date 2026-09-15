@@ -25,15 +25,13 @@ use App\Models\TurnRun;
 use App\Models\User;
 use App\Models\World;
 use DomainException;
-use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
-use Tests\Concerns\CreatesTestWorlds;
+use Tests\Concerns\UsesReusableSurfaceWorld;
 use Tests\TestCase;
 
 class TurnEconomyTest extends TestCase
 {
-    use CreatesTestWorlds;
-    use RefreshDatabase;
+    use UsesReusableSurfaceWorld;
 
     public function test_underground_farms_and_factories_add_stackable_workforce_capacity_without_free_production(): void
     {

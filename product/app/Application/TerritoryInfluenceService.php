@@ -29,6 +29,7 @@ final class TerritoryInfluenceService
         private readonly NationProtectionPolicy $nationProtection,
         private readonly NationLandAreaCalculator $landArea,
         private readonly LandSubsidenceThresholdResolver $subsidenceThreshold,
+        private readonly BuriedTreasureService $buriedTreasures,
     ) {}
 
     /**
@@ -251,6 +252,13 @@ final class TerritoryInfluenceService
         }
 
         $this->persistMutations($mutations);
+        foreach ($mutations as $mutation) {
+            $cell = $cellsById->get($mutation['id']);
+            $nation = $targetNations->firstWhere('id', $mutation['owner_nation_id']);
+            if ($cell instanceof MapCell && $nation instanceof Nation) {
+                $this->buriedTreasures->collectAtCell($context, $cell, $nation, 'territory_influence');
+            }
+        }
         $this->events->recordMany($context, $pendingEvents, self::PERSISTENCE_BATCH_SIZE);
 
         return $metrics;

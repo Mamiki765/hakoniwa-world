@@ -10,11 +10,12 @@ use Illuminate\Support\Carbon;
  * @property int $id
  * @property int $world_id
  * @property int $ruleset_version_id
- * @property int $nation_id
+ * @property int|null $nation_id
  * @property int|null $map_cell_id
  * @property string $ship_type_key
  * @property int $current_hp
  * @property int $max_hp
+ * @property int|null $population
  * @property int|null $heading
  * @property string $state
  * @property int $version
@@ -22,7 +23,7 @@ use Illuminate\Support\Carbon;
  * @property Carbon|null $removed_at
  * @property-read World $world
  * @property-read RulesetVersion $rulesetVersion
- * @property-read Nation $nation
+ * @property-read Nation|null $nation
  * @property-read MapCell|null $cell
  */
 final class Ship extends Model
@@ -33,7 +34,7 @@ final class Ship extends Model
 
     protected $fillable = [
         'world_id', 'ruleset_version_id', 'nation_id', 'map_cell_id', 'ship_type_key', 'current_hp', 'max_hp',
-        'heading', 'state', 'version', 'removal_reason', 'removed_at',
+        'population', 'heading', 'state', 'version', 'removal_reason', 'removed_at',
     ];
 
     /** @return array<string, string> */
@@ -43,6 +44,7 @@ final class Ship extends Model
             'ruleset_version_id' => 'integer',
             'current_hp' => 'integer',
             'max_hp' => 'integer',
+            'population' => 'integer',
             'heading' => 'integer',
             'version' => 'integer',
             'removed_at' => 'datetime',

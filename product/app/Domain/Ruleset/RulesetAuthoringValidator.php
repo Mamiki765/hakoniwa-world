@@ -57,6 +57,8 @@ final class RulesetAuthoringValidator
 
     private const FORMAL_V25_KEY = 'hakoniwa-2s-plus-v25';
 
+    private const FORMAL_V26_KEY = 'hakoniwa-2s-plus-v26';
+
     private const CURRENT_PUBLISHED_BASELINE_KEY = 'hakoniwa-2s-plus-v10';
 
     private const ARCHITECTURE_CHUNK_SIZE = 16;
@@ -330,17 +332,17 @@ final class RulesetAuthoringValidator
                 throw new DomainException('The v24 territory-influence land limit is invalid.');
             }
         }
-        if ($authoredKey === self::FORMAL_V25_KEY) {
+        if (in_array($authoredKey, [self::FORMAL_V25_KEY, self::FORMAL_V26_KEY], true)) {
             if (($settings['initial_island_placement'] ?? null) !== [
                 'reservation_terrain_keys' => ['sea', 'shallow', 'wasteland', 'mountain'],
                 'ship_relocation' => 'final_empty_sea_within_reservation',
                 'candidate_evaluation' => 'stable_batched_until_safe',
             ]) {
-                throw new DomainException('The v25 initial-island placement contract is invalid.');
+                throw new DomainException('The v25+ initial-island placement contract is invalid.');
             }
             if (($settings['turn_processing']['territory_influence']['acquisition_land_limit'] ?? null)
                 !== 'land_subsidence_safe_land_cells') {
-                throw new DomainException('The v25 territory-influence land limit is invalid.');
+                throw new DomainException('The v25+ territory-influence land limit is invalid.');
             }
         }
         $maximumCapitalDistance = $this->maximumCapitalDistance(
@@ -485,6 +487,7 @@ final class RulesetAuthoringValidator
             23 => self::FORMAL_V23_KEY,
             24 => self::FORMAL_V24_KEY,
             25 => self::FORMAL_V25_KEY,
+            26 => self::FORMAL_V26_KEY,
             default => null,
         };
         if ($expectedKey === null
@@ -511,7 +514,7 @@ final class RulesetAuthoringValidator
 
             return;
         }
-        if (! in_array($authoredKey, [self::FORMAL_V20_KEY, self::FORMAL_V21_KEY, self::FORMAL_V22_KEY, self::FORMAL_V23_KEY, self::FORMAL_V24_KEY, self::FORMAL_V25_KEY], true)) {
+        if (! in_array($authoredKey, [self::FORMAL_V20_KEY, self::FORMAL_V21_KEY, self::FORMAL_V22_KEY, self::FORMAL_V23_KEY, self::FORMAL_V24_KEY, self::FORMAL_V25_KEY, self::FORMAL_V26_KEY], true)) {
             return;
         }
 
@@ -558,45 +561,76 @@ final class RulesetAuthoringValidator
             throw new DomainException('ruleset.surface_ships.missile_impact differs from the Owner-approved v20 contract.');
         }
         $definitions = $this->map($section['definitions'], 'ruleset.surface_ships.definitions');
-        if (array_keys($definitions) !== ['fishing', 'tourist', 'exploration']) {
-            throw new DomainException('ruleset.surface_ships.definitions must contain the exact v20 Ship keys in canonical order.');
-        }
-
-        $expected = [
+        $isV26 = $authoredKey === self::FORMAL_V26_KEY;
+        $expected = $isV26 ? [
+            'fishing' => ['漁船', 'ship.fishing', true, 1, 10, 500, 1, 1, 'fish', 7000, 0, 1, 'heading_or_random', 'none'],
+            'tourist' => ['観光船', 'ship.tourist', true, 2, 20, 1500, 2, 2, null, 0, 20, 1, 'heading_or_random', 'none'],
+            'exploration' => ['探索船', 'ship.exploration', true, 3, 30, 1000, 2, 1, null, 0, 0, 3, 'sparkle_or_random', 'none'],
+            'pirate' => ['海賊船', 'ship.pirate', false, null, 40, 0, 3, 0, null, 0, 0, 1, 'random_drift', 'pirate'],
+            'treasure' => ['宝船', 'ship.treasure', false, null, 50, 0, 1, 0, null, 0, 0, 1, 'random_drift', 'none'],
+            'warship' => ['戦艦', 'ship.warship', true, 4, 60, 3000, 3, 3, null, 0, 0, 5, 'heading_only', 'warship'],
+        ] : [
             'fishing' => ['漁船', 'ship.fishing', 1, 10, 500, 1, 1, 'fish', 7000, 0, 1],
             'tourist' => ['観光船', 'ship.tourist', 2, 20, 1500, 2, 2, null, 0, 20, 1],
             'exploration' => ['探索船', 'ship.exploration', 3, 30, 1000, 2, 1, null, 0, 0, 3],
         ];
+        if (array_keys($definitions) !== array_keys($expected)) {
+            throw new DomainException($isV26
+                ? 'ruleset.surface_ships.definitions must contain the exact v26 Player and NPC Ship keys in canonical order.'
+                : 'ruleset.surface_ships.definitions must contain the exact v20 Ship keys in canonical order.');
+        }
+
         foreach ($definitions as $key => $value) {
             $path = "ruleset.surface_ships.definitions.{$key}";
             $definition = $this->map($value, $path);
-            $this->requireKeys($definition, [
+            $requiredKeys = [
                 'name', 'asset_key', 'build_selector', 'sort_order', 'build_cost_money', 'maximum_hp',
                 'movement_oil_units', 'movement_reward_resource_key',
                 'movement_reward_resource_units', 'movement_reward_money', 'visibility_radius',
-            ], $path);
+            ];
+            if ($isV26) {
+                array_splice($requiredKeys, 2, 0, ['player_buildable']);
+                $requiredKeys[] = 'movement_mode';
+                $requiredKeys[] = 'combat_role';
+            }
+            $this->requireKeys($definition, $requiredKeys, $path);
+            $playerBuildable = $isV26
+                ? $this->boolean($definition['player_buildable'], "{$path}.player_buildable")
+                : true;
+            $buildSelector = $definition['build_selector'];
+            if ($playerBuildable) {
+                $buildSelector = $this->integer($buildSelector, "{$path}.build_selector", 1);
+            } elseif ($buildSelector !== null) {
+                throw new DomainException("{$path}.build_selector must be null for an NPC-only Ship.");
+            }
             $actual = [
                 $this->persistedString($definition['name'], "{$path}.name"),
                 $this->persistedString($definition['asset_key'], "{$path}.asset_key"),
-                $this->integer($definition['build_selector'], "{$path}.build_selector", 1),
+                ...($isV26 ? [$playerBuildable] : []),
+                $buildSelector,
                 $this->integer($definition['sort_order'], "{$path}.sort_order", 1),
-                $this->integer($definition['build_cost_money'], "{$path}.build_cost_money", 1),
+                $this->integer($definition['build_cost_money'], "{$path}.build_cost_money", $playerBuildable ? 1 : 0),
                 $this->integer($definition['maximum_hp'], "{$path}.maximum_hp", 1),
-                $this->integer($definition['movement_oil_units'], "{$path}.movement_oil_units", 1),
+                $this->integer($definition['movement_oil_units'], "{$path}.movement_oil_units", $playerBuildable ? 1 : 0),
                 $definition['movement_reward_resource_key'],
                 $this->integer($definition['movement_reward_resource_units'], "{$path}.movement_reward_resource_units", 0),
                 $this->integer($definition['movement_reward_money'], "{$path}.movement_reward_money", 0),
                 $this->integer($definition['visibility_radius'], "{$path}.visibility_radius", 1),
+                ...($isV26 ? [
+                    $this->persistedString($definition['movement_mode'], "{$path}.movement_mode"),
+                    $this->persistedString($definition['combat_role'], "{$path}.combat_role"),
+                ] : []),
             ];
             if ($definition['movement_reward_resource_key'] !== null) {
-                $actual[7] = $this->reference(
+                $resourceKeyIndex = $isV26 ? 8 : 7;
+                $actual[$resourceKeyIndex] = $this->reference(
                     $definition['movement_reward_resource_key'],
                     $resourceKeys,
                     "{$path}.movement_reward_resource_key",
                 );
             }
             if ($actual !== $expected[$key]) {
-                throw new DomainException("{$path} differs from the Owner-approved v20 Ship contract.");
+                throw new DomainException("{$path} differs from the Owner-approved ".($isV26 ? 'v26' : 'v20').' Ship contract.');
             }
         }
     }
@@ -734,11 +768,11 @@ final class RulesetAuthoringValidator
             }
 
             if ($key === SecretarySkillCatalog::SHIP_OPERATIONS) {
-                $expectedBasis = in_array($authoredKey, [self::FORMAL_V22_KEY, self::FORMAL_V23_KEY, self::FORMAL_V24_KEY, self::FORMAL_V25_KEY], true)
+                $expectedBasis = in_array($authoredKey, [self::FORMAL_V22_KEY, self::FORMAL_V23_KEY, self::FORMAL_V24_KEY, self::FORMAL_V25_KEY, self::FORMAL_V26_KEY], true)
                     ? 'next_level_linear'
                     : 'next_level_squared';
-                $expectedMultiplier = in_array($authoredKey, [self::FORMAL_V22_KEY, self::FORMAL_V23_KEY, self::FORMAL_V24_KEY, self::FORMAL_V25_KEY], true) ? 100 : 65_535;
-                if (! in_array($authoredKey, [self::FORMAL_V20_KEY, self::FORMAL_V21_KEY, self::FORMAL_V22_KEY, self::FORMAL_V23_KEY, self::FORMAL_V24_KEY, self::FORMAL_V25_KEY], true)
+                $expectedMultiplier = in_array($authoredKey, [self::FORMAL_V22_KEY, self::FORMAL_V23_KEY, self::FORMAL_V24_KEY, self::FORMAL_V25_KEY, self::FORMAL_V26_KEY], true) ? 100 : 65_535;
+                if (! in_array($authoredKey, [self::FORMAL_V20_KEY, self::FORMAL_V21_KEY, self::FORMAL_V22_KEY, self::FORMAL_V23_KEY, self::FORMAL_V24_KEY, self::FORMAL_V25_KEY, self::FORMAL_V26_KEY], true)
                     || $initialLevel !== 0
                     || $basis !== $expectedBasis
                     || $multiplier !== $expectedMultiplier
@@ -752,6 +786,22 @@ final class RulesetAuthoringValidator
                         'quantity_multiplier' => false,
                     ]) {
                     throw new DomainException("{$path} does not match the current Ship operations contract.");
+                }
+
+                continue;
+            }
+
+            if ($key === SecretarySkillCatalog::NAVY) {
+                if ($authoredKey !== self::FORMAL_V26_KEY
+                    || $initialLevel !== 0
+                    || $basis !== 'next_level_linear'
+                    || $multiplier !== 30
+                    || $effect !== ['type' => 'placeholder', 'display' => '効果なし']
+                    || $source !== [
+                        'type' => 'successful_warship_hit',
+                        'target_experience' => 'normal_missile_hit_equivalent',
+                    ]) {
+                    throw new DomainException("{$path} does not match the v26 Navy skill contract.");
                 }
 
                 continue;
@@ -783,7 +833,7 @@ final class RulesetAuthoringValidator
         $itemSettings = $settings;
         $itemSettings['key'] = $authoredKey;
         (new SecretaryItemGameplayContract(new SecretaryItemCatalog))->validate($itemSettings);
-        if (in_array($authoredKey, [self::FORMAL_V16_KEY, self::FORMAL_V17_KEY, self::FORMAL_V18_KEY, self::FORMAL_V19_KEY, self::FORMAL_V20_KEY, self::FORMAL_V21_KEY, self::FORMAL_V22_KEY, self::FORMAL_V23_KEY, self::FORMAL_V24_KEY, self::FORMAL_V25_KEY], true)) {
+        if (in_array($authoredKey, [self::FORMAL_V16_KEY, self::FORMAL_V17_KEY, self::FORMAL_V18_KEY, self::FORMAL_V19_KEY, self::FORMAL_V20_KEY, self::FORMAL_V21_KEY, self::FORMAL_V22_KEY, self::FORMAL_V23_KEY, self::FORMAL_V24_KEY, self::FORMAL_V25_KEY, self::FORMAL_V26_KEY], true)) {
             TradingPostRules::fromSettings($settings);
         }
 
@@ -843,10 +893,11 @@ final class RulesetAuthoringValidator
             23 => self::FORMAL_V23_KEY,
             24 => self::FORMAL_V24_KEY,
             25 => self::FORMAL_V25_KEY,
+            26 => self::FORMAL_V26_KEY,
             default => null,
         };
         if ($expectedKey === null || $authoredKey !== $expectedKey || ! $hasLifecycle) {
-            throw new DomainException('The v12-v25 Ruleset identity requires the ver 2.4.0 Nation lifecycle contract.');
+            throw new DomainException('The v12-v26 Ruleset identity requires the ver 2.4.0 Nation lifecycle contract.');
         }
 
         $path = 'ruleset.nation_lifecycle';
@@ -934,10 +985,10 @@ final class RulesetAuthoringValidator
 
             return;
         }
-        if (! in_array($version, [13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25], true)
-            || ! in_array($authoredKey, [self::FORMAL_V13_KEY, self::FORMAL_V14_KEY, self::FORMAL_V15_KEY, self::FORMAL_V16_KEY, self::FORMAL_V17_KEY, self::FORMAL_V18_KEY, self::FORMAL_V19_KEY, self::FORMAL_V20_KEY, self::FORMAL_V21_KEY, self::FORMAL_V22_KEY, self::FORMAL_V23_KEY, self::FORMAL_V24_KEY, self::FORMAL_V25_KEY], true)
+        if (! in_array($version, [13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26], true)
+            || ! in_array($authoredKey, [self::FORMAL_V13_KEY, self::FORMAL_V14_KEY, self::FORMAL_V15_KEY, self::FORMAL_V16_KEY, self::FORMAL_V17_KEY, self::FORMAL_V18_KEY, self::FORMAL_V19_KEY, self::FORMAL_V20_KEY, self::FORMAL_V21_KEY, self::FORMAL_V22_KEY, self::FORMAL_V23_KEY, self::FORMAL_V24_KEY, self::FORMAL_V25_KEY, self::FORMAL_V26_KEY], true)
             || ! is_array($authored)) {
-            throw new DomainException('The v13-v25 Ruleset identity requires the KARMA contract.');
+            throw new DomainException('The v13-v26 Ruleset identity requires the KARMA contract.');
         }
         $expected = [
             'minimum' => -10,
@@ -1261,7 +1312,7 @@ final class RulesetAuthoringValidator
                 }
             }
         }
-        if (in_array($rulesetVersion, [21, 22, 23, 24, 25], true) && $keys !== [
+        if (in_array($rulesetVersion, [21, 22, 23, 24, 25, 26], true) && $keys !== [
             'mecha_inora',
             'mecha_inora_zero',
             'inora',
@@ -1337,7 +1388,7 @@ final class RulesetAuthoringValidator
             if ($tier !== null && $tier > $maximumTier) {
                 throw new DomainException("{$path}.natural_spawn_tier must be at most {$maximumTier}.");
             }
-            if (in_array($rulesetVersion, [21, 22, 23, 24, 25], true)
+            if (in_array($rulesetVersion, [21, 22, 23, 24, 25, 26], true)
                 && in_array($key, ['mecha_inora_zero', 'nyowamiya'], true)
                 && $tier !== 4) {
                 throw new DomainException("{$path}.natural_spawn_tier must be exactly 4 in v21.");
@@ -1388,7 +1439,7 @@ final class RulesetAuthoringValidator
                     $hardenedAsset, $source['kind'], $source['skill_code'], $source['filename']] !== $contract) {
                     throw new DomainException("{$path} differs from the audited Hakoniwa 2+ PR21 contract.");
                 }
-            } elseif (in_array($rulesetVersion, [21, 22, 23, 24, 25], true) && $key === 'nyowamiya') {
+            } elseif (in_array($rulesetVersion, [21, 22, 23, 24, 25, 26], true) && $key === 'nyowamiya') {
                 if (($definition['name'] ?? null) !== '珍獣ニョワミヤ'
                     || ($definition['skill_description'] ?? null) !== 'なんかヘンな怪獣。'
                     || ($source['filename'] ?? null) !== 'monsnyowa.gif'
@@ -1451,7 +1502,7 @@ final class RulesetAuthoringValidator
                     self::TERRAIN_KEYS,
                     "{$path}.movement_terrain_contract.destination_terrain_key",
                 );
-            } elseif (in_array($rulesetVersion, [21, 22, 23, 24, 25], true) && $key === 'nyowamiya') {
+            } elseif (in_array($rulesetVersion, [21, 22, 23, 24, 25, 26], true) && $key === 'nyowamiya') {
                 $expectedNyowamiyaMovement = [
                     'candidate_attempts_per_action' => 3,
                     'blocked_terrain_keys' => ['sea', 'shallow', 'mountain'],
@@ -1468,7 +1519,7 @@ final class RulesetAuthoringValidator
             } else {
                 $this->validateMonsterMovementContract($movement, $facilityKeys, "{$path}.movement_terrain_contract", $rulesetVersion);
             }
-            if (in_array($rulesetVersion, [21, 22, 23, 24, 25], true)) {
+            if (in_array($rulesetVersion, [21, 22, 23, 24, 25, 26], true)) {
                 $expectedTraits = match ($key) {
                     'mecha_inora_zero' => ['自爆'],
                     'dark_inora' => ['二歩移動'],
@@ -1547,7 +1598,7 @@ final class RulesetAuthoringValidator
             [250_000, ['inora', 'sanjira', 'red_inora', 'dark_inora', 'inora_ghost']],
             [400_000, ['inora', 'sanjira', 'red_inora', 'dark_inora', 'inora_ghost', 'whale', 'king_inora']],
         ];
-        if (in_array($rulesetVersion, [21, 22, 23, 24, 25], true)) {
+        if (in_array($rulesetVersion, [21, 22, 23, 24, 25, 26], true)) {
             $expectedTiers[] = [
                 500_000,
                 ['inora', 'sanjira', 'red_inora', 'dark_inora', 'inora_ghost', 'whale', 'king_inora', 'nyowamiya', 'mecha_inora_zero'],
@@ -1569,7 +1620,7 @@ final class RulesetAuthoringValidator
         if (! $extended && $actualTiers !== $expectedTiers) {
             throw new DomainException("{$spawnPath}.population_tiers must match the audited uniform source pools.");
         }
-        if (in_array($rulesetVersion, [21, 22, 23, 24, 25], true) && $actualTiers !== $expectedTiers) {
+        if (in_array($rulesetVersion, [21, 22, 23, 24, 25, 26], true) && $actualTiers !== $expectedTiers) {
             throw new DomainException("{$spawnPath}.population_tiers must match the Owner-approved v21 uniform pools.");
         }
         if ($extended) {
@@ -1586,7 +1637,7 @@ final class RulesetAuthoringValidator
         if ($rulesetVersion < 21 && $rankTwoCondition !== null) {
             throw new DomainException("{$spawnPath}.rank_two_condition requires Ruleset v21.");
         }
-        if (in_array($rulesetVersion, [21, 22, 23, 24, 25], true) && $rankTwoCondition !== [
+        if (in_array($rulesetVersion, [21, 22, 23, 24, 25, 26], true) && $rankTwoCondition !== [
             'facility_keys' => ['farm', 'factory', 'mine'],
             'conditional_monster_keys' => ['nyowamiya', 'mecha_inora_zero'],
             'fallback_monster_keys' => ['inora', 'sanjira', 'red_inora', 'dark_inora', 'inora_ghost', 'whale', 'king_inora'],
@@ -1714,11 +1765,12 @@ final class RulesetAuthoringValidator
             23 => self::FORMAL_V23_KEY,
             24 => self::FORMAL_V24_KEY,
             25 => self::FORMAL_V25_KEY,
+            26 => self::FORMAL_V26_KEY,
             default => null,
         };
         if (($expectedKey !== null && $key !== $expectedKey)
-            || ($expectedKey === null && in_array($key, [self::FORMAL_V11_KEY, self::FORMAL_V12_KEY, self::FORMAL_V13_KEY, self::FORMAL_V14_KEY, self::FORMAL_V15_KEY, self::FORMAL_V16_KEY, self::FORMAL_V17_KEY, self::FORMAL_V18_KEY, self::FORMAL_V19_KEY, self::FORMAL_V20_KEY, self::FORMAL_V21_KEY, self::FORMAL_V22_KEY, self::FORMAL_V23_KEY, self::FORMAL_V24_KEY, self::FORMAL_V25_KEY], true))) {
-            throw new DomainException('The v11-v25 ruleset identity and version must be authored together.');
+            || ($expectedKey === null && in_array($key, [self::FORMAL_V11_KEY, self::FORMAL_V12_KEY, self::FORMAL_V13_KEY, self::FORMAL_V14_KEY, self::FORMAL_V15_KEY, self::FORMAL_V16_KEY, self::FORMAL_V17_KEY, self::FORMAL_V18_KEY, self::FORMAL_V19_KEY, self::FORMAL_V20_KEY, self::FORMAL_V21_KEY, self::FORMAL_V22_KEY, self::FORMAL_V23_KEY, self::FORMAL_V24_KEY, self::FORMAL_V25_KEY, self::FORMAL_V26_KEY], true))) {
+            throw new DomainException('The v11-v26 ruleset identity and version must be authored together.');
         }
 
         return $version >= 11;
@@ -1735,8 +1787,8 @@ final class RulesetAuthoringValidator
         ], true)) {
             return self::CURRENT_PUBLISHED_BASELINE_KEY;
         }
-        if (in_array($version, [12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25], true)
-            && in_array($key, [self::FORMAL_V12_KEY, self::FORMAL_V13_KEY, self::FORMAL_V14_KEY, self::FORMAL_V15_KEY, self::FORMAL_V16_KEY, self::FORMAL_V17_KEY, self::FORMAL_V18_KEY, self::FORMAL_V19_KEY, self::FORMAL_V20_KEY, self::FORMAL_V21_KEY, self::FORMAL_V22_KEY, self::FORMAL_V23_KEY, self::FORMAL_V24_KEY, self::FORMAL_V25_KEY], true)) {
+        if (in_array($version, [12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26], true)
+            && in_array($key, [self::FORMAL_V12_KEY, self::FORMAL_V13_KEY, self::FORMAL_V14_KEY, self::FORMAL_V15_KEY, self::FORMAL_V16_KEY, self::FORMAL_V17_KEY, self::FORMAL_V18_KEY, self::FORMAL_V19_KEY, self::FORMAL_V20_KEY, self::FORMAL_V21_KEY, self::FORMAL_V22_KEY, self::FORMAL_V23_KEY, self::FORMAL_V24_KEY, self::FORMAL_V25_KEY, self::FORMAL_V26_KEY], true)) {
             return self::CURRENT_PUBLISHED_BASELINE_KEY;
         }
 
@@ -2039,7 +2091,7 @@ final class RulesetAuthoringValidator
 
             return;
         }
-        if (! in_array($authoredKey, [self::FORMAL_V23_KEY, self::FORMAL_V24_KEY, self::FORMAL_V25_KEY], true)) {
+        if (! in_array($authoredKey, [self::FORMAL_V23_KEY, self::FORMAL_V24_KEY, self::FORMAL_V25_KEY, self::FORMAL_V26_KEY], true)) {
             return;
         }
 
@@ -2341,8 +2393,8 @@ final class RulesetAuthoringValidator
         if ($authoredRulesetVersion >= 20 && $shipScuttleDefinitions !== 1) {
             throw new DomainException('The v20+ Ruleset requires exactly one scuttle_ship command.');
         }
-        if (in_array($authoredRulesetVersion, [23, 24, 25], true)
-            && in_array($authoredRulesetKey, [self::FORMAL_V23_KEY, self::FORMAL_V24_KEY, self::FORMAL_V25_KEY], true)) {
+        if (in_array($authoredRulesetVersion, [23, 24, 25, 26], true)
+            && in_array($authoredRulesetKey, [self::FORMAL_V23_KEY, self::FORMAL_V24_KEY, self::FORMAL_V25_KEY, self::FORMAL_V26_KEY], true)) {
             $expected = [
                 'build_fast_farm' => ['高速農場建設', '平地', ['plain'], 100, 'plain', 'farm', 55, 'expand_farm'],
                 'build_fast_factory' => ['高速工場建設', '平地', ['plain'], 300, 'plain', 'factory', 65, 'expand_factory'],
@@ -2420,7 +2472,7 @@ final class RulesetAuthoringValidator
 
             return;
         }
-        if (! in_array($authoredRulesetKey, [self::FORMAL_V19_KEY, self::FORMAL_V20_KEY, self::FORMAL_V21_KEY, self::FORMAL_V22_KEY, self::FORMAL_V23_KEY, self::FORMAL_V24_KEY, self::FORMAL_V25_KEY], true)) {
+        if (! in_array($authoredRulesetKey, [self::FORMAL_V19_KEY, self::FORMAL_V20_KEY, self::FORMAL_V21_KEY, self::FORMAL_V22_KEY, self::FORMAL_V23_KEY, self::FORMAL_V24_KEY, self::FORMAL_V25_KEY, self::FORMAL_V26_KEY], true)) {
             return;
         }
 

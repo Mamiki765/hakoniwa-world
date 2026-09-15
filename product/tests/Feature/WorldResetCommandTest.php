@@ -31,11 +31,13 @@ use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use RuntimeException;
+use Tests\Concerns\UsesIndividualTestWorld;
 use Tests\TestCase;
 
 class WorldResetCommandTest extends TestCase
 {
     use RefreshDatabase;
+    use UsesIndividualTestWorld;
 
     public function test_dry_run_and_wrong_confirmation_do_not_change_world(): void
     {

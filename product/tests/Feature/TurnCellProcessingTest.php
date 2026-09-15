@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Application\BuriedTreasureService;
 use App\Application\CompleteTurnEngine;
 use App\Application\DomesticCommandExecutor;
 use App\Application\MonsterTurnService;
@@ -18,6 +19,7 @@ use App\Domain\Turn\TurnContext;
 use App\Domain\Turn\TurnRandomStreamFactory;
 use App\Domain\Turn\TurnState;
 use App\Domain\World\MapBounds;
+use App\Models\BuriedTreasure;
 use App\Models\CommandDefinition;
 use App\Models\FacilityDefinition;
 use App\Models\MapCell;
@@ -42,12 +44,14 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Tests\Concerns\CreatesTestWorlds;
+use Tests\Concerns\UsesIndividualTestWorld;
 use Tests\TestCase;
 
 class TurnCellProcessingTest extends TestCase
 {
     use CreatesTestWorlds;
     use RefreshDatabase;
+    use UsesIndividualTestWorld;
 
     public function test_surface_ship_cell_event_moves_once_settles_rewards_and_applies_fuel_and_lifecycle_rules(): void
     {
@@ -230,6 +234,596 @@ class TurnCellProcessingTest extends TestCase
             $fuelShip->fresh()->map_cell_id,
             (int) NationResource::query()->where('nation_id', $nation->id)
                 ->where('resource_definition_id', $oil->id)->value('amount'),
+        ]);
+    }
+
+    public function test_npc_surface_ships_drift_without_port_oil_reward_or_secretary_experience(): void
+    {
+        $world = $this->lightweightWorld();
+        $user = User::factory()->create();
+        $nation = app(NationCreationService::class)->create($user, $world, 'NPC漂流確認国', 'NPC漂流確認島主');
+        $space = $this->surfaceMapSpace($world);
+        [$pirateOrigin, $pirateDestination, $pirateLater] = $this->eastwardSeaLine($space);
+        [$treasureOrigin, $treasureDestination] = $this->eastwardSeaLine(
+            $space,
+            [$pirateOrigin->id, $pirateDestination->id, $pirateLater->id],
+        );
+        $pirate = Ship::query()->create([
+            'world_id' => $world->id,
+            'ruleset_version_id' => $world->ruleset_version_id,
+            'nation_id' => null,
+            'map_cell_id' => $pirateOrigin->id,
+            'ship_type_key' => 'pirate',
+            'current_hp' => 2,
+            'max_hp' => 3,
+            'population' => 7_500,
+            'heading' => GridCoordinate::WEST,
+            'state' => Ship::STATE_ACTIVE,
+            'version' => 1,
+        ]);
+        $treasure = Ship::query()->create([
+            'world_id' => $world->id,
+            'ruleset_version_id' => $world->ruleset_version_id,
+            'nation_id' => null,
+            'map_cell_id' => $treasureOrigin->id,
+            'ship_type_key' => 'treasure',
+            'current_hp' => 1,
+            'max_hp' => 1,
+            'heading' => null,
+            'state' => Ship::STATE_ACTIVE,
+            'version' => 1,
+        ]);
+        $oil = ResourceDefinition::query()->where('key', 'oil')->firstOrFail();
+        $oilBefore = (int) NationResource::query()->where('nation_id', $nation->id)
+            ->where('resource_definition_id', $oil->id)->value('amount');
+        $moneyBefore = (int) $nation->money;
+        $experienceBefore = (int) $user->secretary()->firstOrFail()->skills()
+            ->where('skill_key', SecretarySkillCatalog::SHIP_OPERATIONS)->value('experience');
+        $this->assertFalse(MapCell::query()->where('owner_nation_id', $nation->id)
+            ->whereHas('facility', fn ($query) => $query->where('key', 'port'))->exists());
+
+        [$context, $run] = $this->context(
+            $world,
+            $nation,
+            [$pirateOrigin->id, $pirateDestination->id, $treasureOrigin->id, $treasureDestination->id],
+            hash('sha256', 'npc ship random drift'),
+        );
+        $ships = app(SurfaceShipTurnService::class);
+        $shipBatch = $ships->load($context, $space);
+        $monsterBatch = app(MonsterTurnService::class)->load($context);
+        foreach ([
+            [$pirateOrigin, $pirateDestination],
+            [$treasureOrigin, $treasureDestination],
+        ] as [$origin, $destination]) {
+            $cells = collect([$origin, $destination])->map(
+                static fn (MapCell $cell): MapCell => $cell->fresh(['terrain', 'facility']),
+            );
+            $ships->processCell(
+                $context,
+                $space,
+                $cells->first(),
+                $cells->mapWithKeys(static fn (MapCell $cell): array => [
+                    $cell->x.':'.$cell->y => $cell,
+                ])->all(),
+                $monsterBatch,
+                $shipBatch,
+            );
+        }
+        app(SecretaryTurnService::class)->flushExperience($context);
+
+        $this->assertSame([$pirateDestination->id, $treasureDestination->id], [
+            $pirate->fresh()->map_cell_id,
+            $treasure->fresh()->map_cell_id,
+        ]);
+        $this->assertSame([2, 2, 0, 0, 0, 0, 0], [
+            $shipBatch->metrics()['ship_events'],
+            $shipBatch->metrics()['ship_moves'],
+            $shipBatch->metrics()['ship_no_port'],
+            $shipBatch->metrics()['ship_fuel_shortages'],
+            $shipBatch->metrics()['ship_oil_consumed'],
+            $shipBatch->metrics()['ship_fish_applied'],
+            $shipBatch->metrics()['ship_secretary_experience'],
+        ]);
+        $this->assertSame([$oilBefore, $moneyBefore, $experienceBefore], [
+            (int) NationResource::query()->where('nation_id', $nation->id)
+                ->where('resource_definition_id', $oil->id)->value('amount'),
+            (int) $nation->fresh()->money,
+            (int) $user->secretary()->firstOrFail()->skills()
+                ->where('skill_key', SecretarySkillCatalog::SHIP_OPERATIONS)->value('experience'),
+        ]);
+        $events = DB::table('audit_events')->where('event_type', 'ship.moved')
+            ->whereIn('subject_id', [$pirate->id, $treasure->id])->orderBy('subject_id')->get();
+        $this->assertCount(2, $events);
+        foreach ($events as $event) {
+            $metadata = json_decode($event->metadata, true, flags: JSON_THROW_ON_ERROR);
+            $this->assertNull($event->nation_id);
+            $this->assertSame('public', $event->visibility);
+            $this->assertSame([null, 0, 0, 0], [
+                $metadata['resource_key'],
+                $metadata['oil_consumed'],
+                $metadata['resource_applied'],
+                $metadata['money_applied'],
+            ]);
+            $this->assertSame($run->id, $metadata['turn_run_id']);
+        }
+    }
+
+    public function test_exploration_ship_chases_a_visible_treasure_and_collects_it_after_moving(): void
+    {
+        $world = $this->lightweightWorld();
+        $user = User::factory()->create();
+        $nation = app(NationCreationService::class)->create($user, $world, '探索国', '探索島主');
+        $space = $this->surfaceMapSpace($world);
+        $port = MapCell::query()->where('owner_nation_id', $nation->id)
+            ->whereNull('facility_definition_id')->firstOrFail();
+        $this->facility($port, 'port', 'plain');
+        [$origin] = $this->eastwardSeaLine($space);
+        $neighbors = collect((new GridCoordinate($origin->x, $origin->y))->neighborsWithin(
+            $space->min_x,
+            $space->max_x,
+            $space->min_y,
+            $space->max_y,
+        ))->map(fn (GridCoordinate $coordinate): ?MapCell => MapCell::query()
+            ->where('map_space_id', $space->id)->where('x', $coordinate->x)->where('y', $coordinate->y)
+            ->whereNull('owner_nation_id')->whereNull('facility_definition_id')->where('population', 0)
+            ->whereDoesntHave('ship')->whereDoesntHave('monsterOccupancy')
+            ->whereHas('terrain', fn ($query) => $query->where('key', 'sea'))
+            ->with(['terrain', 'facility'])->first())->filter()->values();
+        $this->assertGreaterThanOrEqual(2, $neighbors->count());
+        /** @var MapCell $treasureCell */
+        $treasureCell = $neighbors->first();
+        /** @var MapCell $alternative */
+        $alternative = $neighbors->get(1);
+        $ship = Ship::query()->create([
+            'world_id' => $world->id,
+            'ruleset_version_id' => $world->ruleset_version_id,
+            'nation_id' => $nation->id,
+            'map_cell_id' => $origin->id,
+            'ship_type_key' => 'exploration',
+            'current_hp' => 2,
+            'max_hp' => 2,
+            'heading' => null,
+            'state' => Ship::STATE_ACTIVE,
+            'version' => 1,
+        ]);
+        $oil = ResourceDefinition::query()->where('key', 'oil')->firstOrFail();
+        NationResource::query()->updateOrCreate(
+            ['nation_id' => $nation->id, 'resource_definition_id' => $oil->id],
+            ['amount' => 2],
+        );
+        [$context] = $this->context(
+            $world,
+            $nation,
+            [$origin->id, $treasureCell->id, $alternative->id],
+            hash('sha256', 'exploration ship visible treasure'),
+        );
+        $treasure = app(BuriedTreasureService::class)->create(
+            $context,
+            $treasureCell,
+            'natural',
+            false,
+        );
+        $ships = app(SurfaceShipTurnService::class);
+        $shipBatch = $ships->load($context, $space);
+        $monsterBatch = app(MonsterTurnService::class)->load($context);
+        $cells = collect([$origin, $treasureCell, $alternative]);
+
+        $ships->processCell(
+            $context,
+            $space,
+            $origin->fresh(['terrain', 'facility']),
+            $cells->mapWithKeys(static fn (MapCell $cell): array => [
+                $cell->x.':'.$cell->y => $cell->fresh(['terrain', 'facility']),
+            ])->all(),
+            $monsterBatch,
+            $shipBatch,
+        );
+
+        $this->assertSame($treasureCell->id, $ship->fresh()->map_cell_id);
+        $this->assertSame(BuriedTreasure::STATE_COLLECTED, $treasure->fresh()->state);
+        $this->assertSame(1, NationResource::query()->where('nation_id', $nation->id)
+            ->where('resource_definition_id', $oil->id)->value('amount'));
+        $this->assertTrue($user->secretary()->firstOrFail()->itemInstances()
+            ->where('item_key', 'wakuwaku_ticket')->exists());
+    }
+
+    public function test_exploration_ship_ignores_treasure_outside_its_visibility_and_uses_normal_movement(): void
+    {
+        $world = $this->lightweightWorld();
+        $user = User::factory()->create();
+        $nation = app(NationCreationService::class)->create($user, $world, '遠景探索国', '遠景探索島主');
+        $space = $this->surfaceMapSpace($world);
+        $port = MapCell::query()->where('owner_nation_id', $nation->id)
+            ->whereNull('facility_definition_id')->firstOrFail();
+        $this->facility($port, 'port', 'plain');
+        [$origin, $east, $west, $remote] = $this->remoteTreasureRoute($space);
+        $ship = Ship::query()->create([
+            'world_id' => $world->id,
+            'ruleset_version_id' => $world->ruleset_version_id,
+            'nation_id' => $nation->id,
+            'map_cell_id' => $origin->id,
+            'ship_type_key' => 'exploration',
+            'current_hp' => 2,
+            'max_hp' => 2,
+            'heading' => null,
+            'state' => Ship::STATE_ACTIVE,
+            'version' => 1,
+        ]);
+        $oil = ResourceDefinition::query()->where('key', 'oil')->firstOrFail();
+        NationResource::query()->updateOrCreate(
+            ['nation_id' => $nation->id, 'resource_definition_id' => $oil->id],
+            ['amount' => 2],
+        );
+        $seed = $this->seedForFirstDraw(
+            TurnRandomStreamFactory::shipMovement($ship->id, 'candidate', 1),
+            0,
+            1,
+            1,
+        );
+        [$context] = $this->context(
+            $world,
+            $nation,
+            [$origin->id, $east->id, $west->id, $remote->id],
+            $seed,
+        );
+        $treasure = app(BuriedTreasureService::class)->create($context, $remote, 'natural', false);
+        $ships = app(SurfaceShipTurnService::class);
+        $shipBatch = $ships->load($context, $space);
+        $monsterBatch = app(MonsterTurnService::class)->load($context);
+        $cells = collect([$origin, $east, $west, $remote]);
+
+        $ships->processCell(
+            $context,
+            $space,
+            $origin->fresh(['terrain', 'facility']),
+            $cells->mapWithKeys(static fn (MapCell $cell): array => [
+                $cell->x.':'.$cell->y => $cell->fresh(['terrain', 'facility']),
+            ])->all(),
+            $monsterBatch,
+            $shipBatch,
+        );
+
+        $this->assertSame(4, (new GridCoordinate($origin->x, $origin->y))->distanceTo(
+            new GridCoordinate($remote->x, $remote->y),
+        ));
+        $this->assertSame($west->id, $ship->fresh()->map_cell_id);
+        $this->assertSame(BuriedTreasure::STATE_ACTIVE, $treasure->fresh()->state);
+    }
+
+    public function test_pirate_stationary_attack_halves_a_uniformly_eligible_settlement_and_keeps_the_population(): void
+    {
+        $world = $this->lightweightWorld();
+        $user = User::factory()->create();
+        $nation = app(NationCreationService::class)->create($user, $world, '海賊被害国', '海賊被害島主');
+        $space = $this->surfaceMapSpace($world);
+        [$settlement, $origin] = $this->ownedLandWithSeaNeighbor($space, $nation);
+        $this->facility($settlement, 'town', 'plain');
+        $settlement->update(['population' => 10_000]);
+        $pirate = Ship::query()->create([
+            'world_id' => $world->id,
+            'ruleset_version_id' => $world->ruleset_version_id,
+            'nation_id' => null,
+            'map_cell_id' => $origin->id,
+            'ship_type_key' => 'pirate',
+            'current_hp' => 2,
+            'max_hp' => 3,
+            'population' => 7_500,
+            'heading' => null,
+            'state' => Ship::STATE_ACTIVE,
+            'version' => 1,
+        ]);
+        $seed = $this->seedForFirstDraw(
+            TurnRandomStreamFactory::pirateAttack($pirate->id, 'trigger', 1),
+            0,
+            1,
+            0,
+        );
+        [$context] = $this->context($world, $nation, [$origin->id, $settlement->id], $seed);
+        $ships = app(SurfaceShipTurnService::class);
+        $shipBatch = $ships->load($context, $space);
+        $monsterBatch = app(MonsterTurnService::class)->load($context);
+        $cells = collect([$origin, $settlement])->map(
+            static fn (MapCell $cell): MapCell => $cell->fresh(['terrain', 'facility']),
+        );
+
+        $ships->processCell(
+            $context,
+            $space,
+            $cells->first(),
+            $cells->mapWithKeys(static fn (MapCell $cell): array => [
+                $cell->x.':'.$cell->y => $cell,
+            ])->all(),
+            $monsterBatch,
+            $shipBatch,
+        );
+
+        $this->assertSame(5_000, $settlement->fresh()->population);
+        $this->assertSame(12_500, $pirate->fresh()->population);
+        $this->assertSame($origin->id, $pirate->fresh()->map_cell_id);
+        $attack = DB::table('audit_events')->where('event_type', 'ship.pirate_attacked')->sole();
+        $metadata = json_decode($attack->metadata, true, flags: JSON_THROW_ON_ERROR);
+        $this->assertSame('settlement', $metadata['target_type']);
+        $this->assertSame(5_000, $metadata['stolen_population']);
+    }
+
+    public function test_pirate_attack_preserves_the_capital_population_minimum(): void
+    {
+        $world = $this->lightweightWorld();
+        $nation = app(NationCreationService::class)->create(
+            User::factory()->create(),
+            $world,
+            '首都防衛国',
+            '首都防衛島主',
+        );
+        $space = $this->surfaceMapSpace($world);
+        $capital = $nation->capital()->with('cell.terrain', 'cell.facility')->firstOrFail()->cell;
+        $capital->update(['population' => 150]);
+        $originCoordinate = (new GridCoordinate($capital->x, $capital->y))->neighborsWithin(
+            $space->min_x,
+            $space->max_x,
+            $space->min_y,
+            $space->max_y,
+        )[0];
+        $origin = MapCell::query()->where('map_space_id', $space->id)
+            ->where('x', $originCoordinate->x)->where('y', $originCoordinate->y)->firstOrFail();
+        $this->mutateCell($origin, 'sea', null, 0);
+        $origin->update(['owner_nation_id' => null]);
+        $pirate = Ship::query()->create([
+            'world_id' => $world->id,
+            'ruleset_version_id' => $world->ruleset_version_id,
+            'nation_id' => null,
+            'map_cell_id' => $origin->id,
+            'ship_type_key' => 'pirate',
+            'current_hp' => 2,
+            'max_hp' => 3,
+            'population' => 7_500,
+            'heading' => null,
+            'state' => Ship::STATE_ACTIVE,
+            'version' => 1,
+        ]);
+        $seed = $this->seedForFirstDraw(
+            TurnRandomStreamFactory::pirateAttack($pirate->id, 'trigger', 1),
+            0,
+            1,
+            0,
+        );
+        [$context] = $this->context($world, $nation, [$origin->id, $capital->id], $seed);
+        $ships = app(SurfaceShipTurnService::class);
+        $shipBatch = $ships->load($context, $space);
+        $monsterBatch = app(MonsterTurnService::class)->load($context);
+        $cells = collect([$origin, $capital])->map(
+            static fn (MapCell $cell): MapCell => $cell->fresh(['terrain', 'facility']),
+        );
+
+        $ships->processCell(
+            $context,
+            $space,
+            $cells->first(),
+            $cells->mapWithKeys(static fn (MapCell $cell): array => [
+                $cell->x.':'.$cell->y => $cell,
+            ])->all(),
+            $monsterBatch,
+            $shipBatch,
+        );
+
+        $this->assertSame(100, $capital->fresh()->population);
+        $this->assertSame(7_550, $pirate->fresh()->population);
+        $attack = DB::table('audit_events')->where('event_type', 'ship.pirate_attacked')->sole();
+        $metadata = json_decode($attack->metadata, true, flags: JSON_THROW_ON_ERROR);
+        $this->assertSame(50, $metadata['stolen_population']);
+    }
+
+    public function test_stationary_warship_auto_attack_sinks_npc_ship_for_money_navy_exp_and_full_refugees(): void
+    {
+        $world = $this->lightweightWorld();
+        $user = User::factory()->create();
+        $nation = app(NationCreationService::class)->create($user, $world, '海軍国', '海軍島主');
+        $space = $this->surfaceMapSpace($world);
+        $port = MapCell::query()->where('owner_nation_id', $nation->id)
+            ->whereNull('facility_definition_id')->firstOrFail();
+        $this->facility($port, 'port', 'plain');
+        [$origin, $playerCell, $targetCell] = $this->eastwardSeaLine($space);
+        $originCoordinate = new GridCoordinate($origin->x, $origin->y);
+        $treasureCell = MapCell::query()->where('map_space_id', $space->id)
+            ->whereNotIn('id', [$origin->id, $playerCell->id, $targetCell->id])
+            ->whereNull('owner_nation_id')->whereNull('facility_definition_id')->where('population', 0)
+            ->whereDoesntHave('ship')->whereDoesntHave('monsterOccupancy')
+            ->whereHas('terrain', fn ($query) => $query->where('key', 'sea'))
+            ->orderBy('id')->get()->first(static fn (MapCell $cell): bool => $originCoordinate->distanceTo(
+                new GridCoordinate($cell->x, $cell->y),
+            ) <= 5);
+        if (! $treasureCell instanceof MapCell) {
+            $this->fail('Surface test map did not provide a second NPC target within Warship range.');
+        }
+        $warship = Ship::query()->create([
+            'world_id' => $world->id,
+            'ruleset_version_id' => $world->ruleset_version_id,
+            'nation_id' => $nation->id,
+            'map_cell_id' => $origin->id,
+            'ship_type_key' => 'warship',
+            'current_hp' => 3,
+            'max_hp' => 3,
+            'heading' => null,
+            'state' => Ship::STATE_ACTIVE,
+            'version' => 1,
+        ]);
+        $treasureShip = Ship::query()->create([
+            'world_id' => $world->id,
+            'ruleset_version_id' => $world->ruleset_version_id,
+            'nation_id' => null,
+            'map_cell_id' => $treasureCell->id,
+            'ship_type_key' => 'treasure',
+            'current_hp' => 1,
+            'max_hp' => 1,
+            'population' => null,
+            'heading' => null,
+            'state' => Ship::STATE_ACTIVE,
+            'version' => 1,
+        ]);
+        $playerShip = Ship::query()->create([
+            'world_id' => $world->id,
+            'ruleset_version_id' => $world->ruleset_version_id,
+            'nation_id' => $nation->id,
+            'map_cell_id' => $playerCell->id,
+            'ship_type_key' => 'tourist',
+            'current_hp' => 2,
+            'max_hp' => 2,
+            'heading' => null,
+            'state' => Ship::STATE_ACTIVE,
+            'version' => 1,
+        ]);
+        $pirate = Ship::query()->create([
+            'world_id' => $world->id,
+            'ruleset_version_id' => $world->ruleset_version_id,
+            'nation_id' => null,
+            'map_cell_id' => $targetCell->id,
+            'ship_type_key' => 'pirate',
+            'current_hp' => 1,
+            'max_hp' => 3,
+            'population' => 6_000,
+            'heading' => null,
+            'state' => Ship::STATE_ACTIVE,
+            'version' => 1,
+        ]);
+        $oil = ResourceDefinition::query()->where('key', 'oil')->firstOrFail();
+        $oilBefore = (int) NationResource::query()->where('nation_id', $nation->id)
+            ->where('resource_definition_id', $oil->id)->value('amount');
+        $populationBefore = (int) MapCell::query()->where('owner_nation_id', $nation->id)->sum('population');
+        $nation->update(['money' => 100]);
+        [$context] = $this->context(
+            $world,
+            $nation,
+            [$origin->id, $playerCell->id, $targetCell->id, $treasureCell->id],
+            hash('sha256', 'stationary-warship-auto-attack'),
+        );
+        $ships = app(SurfaceShipTurnService::class);
+        $shipBatch = $ships->load($context, $space);
+        $monsterBatch = app(MonsterTurnService::class)->load($context);
+        $cells = collect([$origin, $playerCell, $targetCell, $treasureCell])->map(
+            static fn (MapCell $cell): MapCell => $cell->fresh(['terrain', 'facility']),
+        );
+
+        $ships->processCell(
+            $context,
+            $space,
+            $cells->first(),
+            $cells->mapWithKeys(static fn (MapCell $cell): array => [
+                $cell->x.':'.$cell->y => $cell,
+            ])->all(),
+            $monsterBatch,
+            $shipBatch,
+        );
+        app(SecretaryTurnService::class)->flushExperience($context);
+
+        $this->assertSame(Ship::STATE_REMOVED, $pirate->fresh()->state);
+        $this->assertSame(Ship::STATE_ACTIVE, $treasureShip->fresh()->state);
+        $this->assertSame([Ship::STATE_ACTIVE, 2], [$playerShip->fresh()->state, $playerShip->fresh()->current_hp]);
+        $this->assertSame(80, $nation->fresh()->money);
+        $this->assertSame($populationBefore + 6_000, (int) MapCell::query()
+            ->where('owner_nation_id', $nation->id)->sum('population'));
+        $this->assertSame($oilBefore, (int) NationResource::query()->where('nation_id', $nation->id)
+            ->where('resource_definition_id', $oil->id)->value('amount'));
+        $this->assertSame(3, $user->secretary()->firstOrFail()->skills()
+            ->where('skill_key', SecretarySkillCatalog::NAVY)->value('experience'));
+        $treasure = BuriedTreasure::query()->where('map_cell_id', $targetCell->id)
+            ->where('state', BuriedTreasure::STATE_ACTIVE)->sole();
+        $this->assertSame('pirate_sink', $treasure->source);
+        $this->assertSame('wakuwaku_ticket', $treasure->reward_snapshot['item_key']);
+        $this->assertSame(1, DB::table('audit_events')->where('event_type', 'ship.warship_attacked')->count());
+        $this->assertSame(1, DB::table('audit_events')->where('event_type', 'buried_treasure.created')
+            ->where('visibility', 'public')->count());
+        $this->assertSame($warship->id, DB::table('audit_events')->where('event_type', 'ship.warship_attacked')
+            ->value('subject_id'));
+
+        $nation->update(['money' => 19]);
+        [$poorContext] = $this->context(
+            $world,
+            $nation->fresh(),
+            [$origin->id, $playerCell->id, $treasureCell->id],
+            hash('sha256', 'stationary-warship-insufficient-funds'),
+        );
+        $poorBatch = $ships->load($poorContext, $space);
+        $poorMonsterBatch = app(MonsterTurnService::class)->load($poorContext);
+        $poorCells = collect([$origin, $playerCell, $treasureCell])->map(
+            static fn (MapCell $cell): MapCell => $cell->fresh(['terrain', 'facility']),
+        );
+
+        $ships->processCell(
+            $poorContext,
+            $space,
+            $poorCells->first(),
+            $poorCells->mapWithKeys(static fn (MapCell $cell): array => [
+                $cell->x.':'.$cell->y => $cell,
+            ])->all(),
+            $poorMonsterBatch,
+            $poorBatch,
+        );
+
+        $this->assertSame(19, $nation->fresh()->money);
+        $this->assertSame(Ship::STATE_ACTIVE, $treasureShip->fresh()->state);
+        $this->assertSame(1, DB::table('audit_events')->where('event_type', 'ship.warship_attacked')->count());
+    }
+
+    public function test_warship_refugees_remain_in_turn_local_settlement_before_later_population_growth(): void
+    {
+        $world = $this->lightweightWorld();
+        $nation = app(NationCreationService::class)->create(
+            User::factory()->create(),
+            $world,
+            '難民同期国',
+            '難民同期島主',
+        );
+        $space = $this->surfaceMapSpace($world);
+        $port = MapCell::query()->where('owner_nation_id', $nation->id)
+            ->whereNull('facility_definition_id')->firstOrFail();
+        $this->facility($port, 'port', 'plain');
+        [$warshipCell, $pirateCell] = $this->eastwardSeaLine($space);
+        $capital = $nation->capital()->firstOrFail()->cell()->with(['terrain', 'facility'])->firstOrFail();
+        $capital->update(['population' => 1_000]);
+        Ship::query()->create([
+            'world_id' => $world->id,
+            'ruleset_version_id' => $world->ruleset_version_id,
+            'nation_id' => $nation->id,
+            'map_cell_id' => $warshipCell->id,
+            'ship_type_key' => 'warship',
+            'current_hp' => 3,
+            'max_hp' => 3,
+            'heading' => null,
+            'state' => Ship::STATE_ACTIVE,
+            'version' => 1,
+        ]);
+        Ship::query()->create([
+            'world_id' => $world->id,
+            'ruleset_version_id' => $world->ruleset_version_id,
+            'nation_id' => null,
+            'map_cell_id' => $pirateCell->id,
+            'ship_type_key' => 'pirate',
+            'current_hp' => 1,
+            'max_hp' => 3,
+            'population' => 8_000,
+            'heading' => null,
+            'state' => Ship::STATE_ACTIVE,
+            'version' => 1,
+        ]);
+        $nation->update(['money' => 100]);
+        [$context, $run] = $this->context(
+            $world,
+            $nation,
+            [$warshipCell->id, $pirateCell->id, $capital->id],
+            $this->seedForFirstDraw(TurnRandomStreamFactory::POPULATION_GROWTH, 100, 1_000, 100),
+        );
+        $settings = $context->ruleset->settings;
+        $settings['turn_processing']['disasters']['fire']['probability'] = ['numerator' => 0, 'denominator' => 1];
+        $context->ruleset->settings = $settings;
+
+        $metrics = app(CompleteTurnEngine::class)->execute('process_cells', $context)->metrics;
+
+        $this->assertSame(100, $metrics['population_increased']);
+        $this->assertSame(9_100, $capital->fresh()->population);
+        $this->assertSame(8_000, $this->event($run, 'refugee_received')['received_population']);
+        $this->assertSame([9_000, 9_100], [
+            $this->event($run, 'population.increased')['before'],
+            $this->event($run, 'population.increased')['after'],
         ]);
     }
 
@@ -1079,6 +1673,74 @@ class TurnCellProcessingTest extends TestCase
         }
 
         $this->fail('Surface test map did not provide an empty eastward deep-sea line.');
+    }
+
+    /** @return array{MapCell, MapCell, MapCell, MapCell} */
+    private function remoteTreasureRoute(MapSpace $space): array
+    {
+        $origins = MapCell::query()->where('map_space_id', $space->id)
+            ->whereNull('owner_nation_id')->whereNull('facility_definition_id')
+            ->whereDoesntHave('ship')->whereDoesntHave('monsterOccupancy')
+            ->whereHas('terrain', fn ($query) => $query->where('key', 'sea'))
+            ->orderBy('id')->get();
+        foreach ($origins as $origin) {
+            $coordinate = new GridCoordinate($origin->x, $origin->y);
+            $required = [
+                'east' => $coordinate->neighbor(GridCoordinate::EAST),
+                'west' => $coordinate->neighbor(GridCoordinate::WEST),
+                'remote' => $coordinate->neighbor(GridCoordinate::EAST)
+                    ->neighbor(GridCoordinate::EAST)
+                    ->neighbor(GridCoordinate::EAST)
+                    ->neighbor(GridCoordinate::EAST),
+            ];
+            $cells = MapCell::query()->where('map_space_id', $space->id)
+                ->whereNull('owner_nation_id')->whereNull('facility_definition_id')
+                ->whereDoesntHave('ship')->whereDoesntHave('monsterOccupancy')
+                ->whereHas('terrain', fn ($query) => $query->where('key', 'sea'))
+                ->where(function ($query) use ($required): void {
+                    foreach ($required as $candidate) {
+                        $query->orWhere(fn ($cell) => $cell
+                            ->where('x', $candidate->x)->where('y', $candidate->y));
+                    }
+                })->get()->keyBy(fn (MapCell $cell): string => $cell->x.':'.$cell->y);
+            $east = $cells->get($required['east']->x.':'.$required['east']->y);
+            $west = $cells->get($required['west']->x.':'.$required['west']->y);
+            $remote = $cells->get($required['remote']->x.':'.$required['remote']->y);
+            if ($east instanceof MapCell && $west instanceof MapCell && $remote instanceof MapCell) {
+                return [$origin, $east, $west, $remote];
+            }
+        }
+
+        $this->fail('Surface test map did not provide a remote Treasure route with two movement choices.');
+    }
+
+    /** @return array{MapCell, MapCell} */
+    private function ownedLandWithSeaNeighbor(MapSpace $space, Nation $nation): array
+    {
+        $owned = MapCell::query()->where('map_space_id', $space->id)
+            ->where('owner_nation_id', $nation->id)
+            ->whereHas('terrain', static fn ($query) => $query->where('is_water', false))
+            ->orderBy('id')->get();
+        foreach ($owned as $land) {
+            foreach ((new GridCoordinate($land->x, $land->y))->neighborsWithin(
+                $space->min_x,
+                $space->max_x,
+                $space->min_y,
+                $space->max_y,
+            ) as $coordinate) {
+                $sea = MapCell::query()->where('map_space_id', $space->id)
+                    ->where('x', $coordinate->x)->where('y', $coordinate->y)
+                    ->whereNull('owner_nation_id')->whereNull('facility_definition_id')
+                    ->whereDoesntHave('ship')->whereDoesntHave('monsterOccupancy')
+                    ->whereHas('terrain', static fn ($query) => $query->where('key', 'sea'))
+                    ->first();
+                if ($sea instanceof MapCell) {
+                    return [$land, $sea];
+                }
+            }
+        }
+
+        $this->fail('Surface test map did not provide owned land adjacent to empty deep sea.');
     }
 
     private function mutateCell(MapCell $cell, string $terrainKey, ?string $facilityKey, int $population): void

@@ -45,6 +45,7 @@ final class MapCellPresenter
         ?string $theme = null,
         bool $withinViewerVisibility = false,
         ?array $rulesetSettings = null,
+        bool $buriedTreasureVisible = false,
     ): array {
         $rulesetSettings ??= $this->configuredRulesetSettings();
         $isOwner = $viewerNationId !== null && $viewerNationId === $cell->owner_nation_id;
@@ -81,13 +82,14 @@ final class MapCellPresenter
         $displayName = $ship['name'] ?? ($facility?->key === 'monument' && $cell->monumentDefinition !== null
             ? $cell->monumentDefinition->name
             : ($centralPresentation['name'] ?? $facilityPresentation['name'] ?? $displayDefinition->name));
-        $layers = $this->assets->resolveLayers($displayAssetKey, $displayName, theme: $theme);
+        $overlayAssetKeys = $buriedTreasureVisible ? ['map.buried_treasure.sparkle'] : [];
+        $layers = $this->assets->resolveLayers($displayAssetKey, $displayName, $overlayAssetKeys, $theme);
         if ($facilityPresentation !== null
             && ! $layers['completed']['available']
             && $facility !== null
             && $facility->asset_key !== $displayAssetKey) {
             $displayAssetKey = $facility->asset_key;
-            $layers = $this->assets->resolveLayers($displayAssetKey, $displayName, theme: $theme);
+            $layers = $this->assets->resolveLayers($displayAssetKey, $displayName, $overlayAssetKeys, $theme);
         }
         $seaAreaName = $this->seaAreas->forCoordinate($cell->x, $cell->y);
         $details = $this->details(
@@ -119,6 +121,7 @@ final class MapCellPresenter
             'details' => $details,
             'ship' => $ship,
             'monster' => $monster,
+            'buried_treasure_visible' => $buriedTreasureVisible,
             'asset' => $layers['completed'],
             'overlays' => $layers['overlays'],
             'aria_label' => $this->ariaLabel($cell, $displayName, $ownerNation, $details, $ship, $monster),
@@ -235,7 +238,7 @@ final class MapCellPresenter
             'current_hp' => $ship->current_hp,
             'max_hp' => $ship->max_hp,
             'public_state' => Ship::STATE_ACTIVE,
-            'owner_nation' => [
+            'owner_nation' => $owner === null ? null : [
                 'nation_number' => $owner->nation_number,
                 'name' => $owner->name,
             ],
@@ -367,14 +370,20 @@ final class MapCellPresenter
     ): string {
         $suffix = array_map(static fn (array $detail): string => $detail['label'].' '.$detail['formatted'], $details);
         if ($ship !== null) {
-            $suffix[] = sprintf(
-                '船 %s HP %d/%d 船の所有者 %s N%d',
+            $shipLabel = sprintf(
+                '船 %s HP %d/%d',
                 $ship['name'],
                 $ship['current_hp'],
                 $ship['max_hp'],
-                $ship['owner_nation']['name'],
-                $ship['owner_nation']['nation_number'],
             );
+            if ($ship['owner_nation'] !== null) {
+                $shipLabel .= sprintf(
+                    ' 船の所有者 %s N%d',
+                    $ship['owner_nation']['name'],
+                    $ship['owner_nation']['nation_number'],
+                );
+            }
+            $suffix[] = $shipLabel;
         }
         if ($monster !== null) {
             $suffix[] = sprintf(

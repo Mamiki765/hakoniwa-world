@@ -29,14 +29,29 @@ final class SecretaryItemGrantService
         );
     }
 
+    /** @param array<array-key, mixed>|null $resolvedEconomics */
     public function grant(
         Secretary $secretary,
         string $itemKey,
         int $level,
         ?int $equippedSlot,
         ?string $grantKey,
+        ?array $resolvedEconomics = null,
     ): ?SecretaryItemInstance {
-        $definition = $this->catalog->definition($itemKey);
+        $resolvedRarity = $resolvedEconomics['rarity'] ?? null;
+        $resolvedFixedSalePriceMoney = $resolvedEconomics['fixed_sale_price_money'] ?? null;
+        if (($resolvedEconomics !== null
+                && (count($resolvedEconomics) !== 2
+                    || array_diff(array_keys($resolvedEconomics), ['rarity', 'fixed_sale_price_money']) !== []))
+            || ($resolvedRarity !== null && ! is_string($resolvedRarity))
+            || ($resolvedFixedSalePriceMoney !== null && ! is_int($resolvedFixedSalePriceMoney))) {
+            throw new DomainException('Secretary item resolved economics are invalid.');
+        }
+        $definition = $this->catalog->definitionWithResolvedEconomics(
+            $itemKey,
+            $resolvedRarity,
+            $resolvedFixedSalePriceMoney,
+        );
         if ($level < 1 || $level > $definition['max_level']) {
             throw new DomainException("Invalid level {$level} for Secretary item {$itemKey}.");
         }
@@ -54,12 +69,16 @@ final class SecretaryItemGrantService
             $equippedSlot,
             $grantKey,
             $definition,
+            $resolvedRarity,
+            $resolvedFixedSalePriceMoney,
         ): ?SecretaryItemInstance {
             $locked = Secretary::query()->whereKey($secretary->id)->lockForUpdate()->firstOrFail();
             if ($grantKey !== null) {
                 $existingGrant = $locked->itemInstances()->where('grant_key', $grantKey)->first();
                 if ($existingGrant instanceof SecretaryItemInstance) {
-                    if ($existingGrant->item_key !== $itemKey || $existingGrant->level !== $level) {
+                    if ($existingGrant->item_key !== $itemKey || $existingGrant->level !== $level
+                        || $existingGrant->resolved_rarity !== $resolvedRarity
+                        || $existingGrant->resolved_fixed_sale_price_money !== $resolvedFixedSalePriceMoney) {
                         throw new DomainException("Secretary item grant {$grantKey} was already used for different state.");
                     }
 
@@ -97,6 +116,10 @@ final class SecretaryItemGrantService
                 'level' => $level,
                 'equipped_slot' => $equippedSlot,
                 'grant_key' => $grantKey,
+                ...($resolvedRarity === null ? [] : [
+                    'resolved_rarity' => $resolvedRarity,
+                    'resolved_fixed_sale_price_money' => $resolvedFixedSalePriceMoney,
+                ]),
                 'obtained_at' => now(),
             ]);
         }, 3);

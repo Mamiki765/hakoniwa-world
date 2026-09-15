@@ -86,6 +86,7 @@ final class DomesticCommandExecutor
         private readonly SurfaceShipForcedDisplacementService $surfaceShipDisplacement,
         private readonly FacilityRankPolicy $facilityRanks,
         private readonly ParadoxBalanceService $paradox,
+        private readonly BuriedTreasureService $buriedTreasures,
     ) {}
 
     /**
@@ -2073,6 +2074,7 @@ final class DomesticCommandExecutor
     {
         $cell->owner_nation_id = $nation->id;
         $cell->setRelation('ownerNation', $nation);
+        $this->buriedTreasures->collectAtCell($context, $cell, $nation, 'nation_ownership_acquired');
         if (in_array($nation->id, $context->state->recoveryNationIds(), true)) {
             $context->state->recordRecoveryTerritoryAcquired($nation->id, $cell->x, $cell->y);
         }

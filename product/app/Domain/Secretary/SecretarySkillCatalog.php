@@ -22,6 +22,8 @@ final class SecretarySkillCatalog
 
     public const SHIP_OPERATIONS = 'ship_operations';
 
+    public const NAVY = 'navy';
+
     /** @var list<string> */
     public const V14_KEYS = [
         self::AGRICULTURAL_POLICY,
@@ -50,6 +52,12 @@ final class SecretarySkillCatalog
     public const V20_KEYS = [
         ...self::V17_KEYS,
         self::SHIP_OPERATIONS,
+    ];
+
+    /** @var list<string> */
+    public const V26_KEYS = [
+        ...self::V20_KEYS,
+        self::NAVY,
     ];
 
     /**
@@ -123,6 +131,7 @@ final class SecretarySkillCatalog
         }
 
         return match (true) {
+            $version >= 26 => self::V26_KEYS,
             $version >= 20 => self::V20_KEYS,
             $version >= 17 => self::V17_KEYS,
             $version >= 15 => self::KEYS,

@@ -152,9 +152,9 @@ jobs:
       - name: Run static analysis on the complete application
         run: composer analyse
       - name: Validate complete 16-shard assignment
-        run: php tests/scripts/test_shards.php verify 16
+        run: php tests/scripts/test_shards.php verify 16 full
       - name: Verify serial and sharded test identifiers
-        run: bash tests/scripts/verify_test_identifier_equivalence.sh 16
+        run: bash tests/scripts/verify_test_identifier_equivalence.sh 16 full
 
   phpunit:
     name: PHPUnit ${{ matrix.display }}/${{ needs.phpunit-plan.outputs.total }}
@@ -218,13 +218,18 @@ jobs:
             esac
           done < <(tar --zstd -tf vendor.tar.zst)
           tar --zstd -xf vendor.tar.zst
+      - name: Create fixed shard plan
+        run: |
+          shard_plan="$RUNNER_TEMP/hakoniwa-test-shard-plan.json"
+          php tests/scripts/test_shards.php plan "$SHARD_TOTAL" full "$shard_plan"
+          echo "HAKONIWA_SHARD_PLAN=$shard_plan" >> "$GITHUB_ENV"
       - name: Verify complete shard coverage
-        run: php tests/scripts/test_shards.php verify "$SHARD_TOTAL"
+        run: php tests/scripts/test_shards.php plan-verify "$HAKONIWA_SHARD_PLAN"
       - name: Describe assigned tests
-        run: php tests/scripts/test_shards.php describe "$SHARD_TOTAL" "$SHARD_INDEX"
+        run: php tests/scripts/test_shards.php plan-describe "$HAKONIWA_SHARD_PLAN" "$SHARD_INDEX"
       - name: Run assigned PostgreSQL tests
         run: |
-          assigned_output="$(php tests/scripts/test_shards.php files "$SHARD_TOTAL" "$SHARD_INDEX")"
+          assigned_output="$(php tests/scripts/test_shards.php plan-files "$HAKONIWA_SHARD_PLAN" "$SHARD_INDEX")"
           test_files=()
           if [[ -n "$assigned_output" ]]; then
             mapfile -t test_files <<<"$assigned_output"
@@ -233,7 +238,21 @@ jobs:
             echo "Shard is empty; no PHPUnit process is required."
             exit 0
           fi
-          php -d memory_limit=512M vendor/bin/phpunit --colors=never "${test_files[@]}"
+          profile_plan="$(mktemp)"
+          fixture_metrics="$(mktemp)"
+          trap 'rm -f -- "$profile_plan" "$fixture_metrics"' EXIT
+          php tests/scripts/test_shards.php plan-profiles "$HAKONIWA_SHARD_PLAN" "$SHARD_INDEX" >"$profile_plan"
+          for profile in standard reusable_surface individual; do
+            profile_files=()
+            mapfile -t profile_files < <(awk -F '\t' -v selected="$profile" '$1 == selected { print $2 }' "$profile_plan")
+            if ((${#profile_files[@]} == 0)); then
+              continue
+            fi
+            echo "Running fixture profile: $profile (${#profile_files[@]} files)"
+            HAKONIWA_TEST_FIXTURE_PROFILE="$profile" \
+            HAKONIWA_TEST_FIXTURE_METRICS="$fixture_metrics" \
+              php -d memory_limit=512M vendor/bin/phpunit --colors=never "${profile_files[@]}"
+          done
 
   backend:
     name: backend

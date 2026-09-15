@@ -32,6 +32,9 @@ final class CurrentRulesetAuthoringInspector
     /** @var list<string> */
     private const V23_ADDITIONAL_DOMAIN_FILES = ['central-facilities.php'];
 
+    /** @var list<string> */
+    private const V26_ADDITIONAL_DOMAIN_FILES = ['ocean-loop.php'];
+
     /** @var array<string, string> */
     private const V17_DOMAIN_OVERRIDES = [
         'world-and-map.php' => 'v17/world-and-map.php',
@@ -110,6 +113,16 @@ final class CurrentRulesetAuthoringInspector
         'world-and-map.php' => 'v25/world-and-map.php',
     ];
 
+    /** @var array<string, string> */
+    private const V26_DOMAIN_OVERRIDES = [
+        ...self::V25_DOMAIN_OVERRIDES,
+        'world-and-map.php' => 'v26/world-and-map.php',
+        'surface-ships.php' => 'v26/surface-ships.php',
+        'secretary.php' => 'v26/secretary.php',
+        'monsters-and-military.php' => 'v26/monsters-and-military.php',
+        'ocean-loop.php' => 'v26/ocean-loop.php',
+    ];
+
     private const CLASSIFICATIONS = ['behavior', 'data', 'flavor'];
 
     /**
@@ -119,14 +132,22 @@ final class CurrentRulesetAuthoringInspector
     public function inspect(array $publishedPayload): array
     {
         $rulesetKey = $publishedPayload['key'] ?? null;
-        if (! in_array($rulesetKey, ['hakoniwa-2s-plus-v16', 'hakoniwa-2s-plus-v17', 'hakoniwa-2s-plus-v18', 'hakoniwa-2s-plus-v19', 'hakoniwa-2s-plus-v20', 'hakoniwa-2s-plus-v21', 'hakoniwa-2s-plus-v22', 'hakoniwa-2s-plus-v23', 'hakoniwa-2s-plus-v24', 'hakoniwa-2s-plus-v25'], true)) {
-            throw new DomainException('Ruleset authoring inspection supports only immutable v16 through v24 and the current v25 draft.');
+        if (! in_array($rulesetKey, ['hakoniwa-2s-plus-v16', 'hakoniwa-2s-plus-v17', 'hakoniwa-2s-plus-v18', 'hakoniwa-2s-plus-v19', 'hakoniwa-2s-plus-v20', 'hakoniwa-2s-plus-v21', 'hakoniwa-2s-plus-v22', 'hakoniwa-2s-plus-v23', 'hakoniwa-2s-plus-v24', 'hakoniwa-2s-plus-v25', 'hakoniwa-2s-plus-v26'], true)) {
+            throw new DomainException('Ruleset authoring inspection supports only immutable v16 through v25 and the current v26 draft.');
         }
         $authoredLeaves = [];
         $classifiedPaths = [];
         $counts = array_fill_keys(self::CLASSIFICATIONS, 0);
 
         $domainFiles = match ($rulesetKey) {
+            'hakoniwa-2s-plus-v26' => [
+                ...self::DOMAIN_FILES,
+                ...self::V19_ADDITIONAL_DOMAIN_FILES,
+                ...self::V20_ADDITIONAL_DOMAIN_FILES,
+                ...self::V21_ADDITIONAL_DOMAIN_FILES,
+                ...self::V23_ADDITIONAL_DOMAIN_FILES,
+                ...self::V26_ADDITIONAL_DOMAIN_FILES,
+            ],
             'hakoniwa-2s-plus-v23', 'hakoniwa-2s-plus-v24', 'hakoniwa-2s-plus-v25' => [
                 ...self::DOMAIN_FILES,
                 ...self::V19_ADDITIONAL_DOMAIN_FILES,
@@ -150,6 +171,7 @@ final class CurrentRulesetAuthoringInspector
         };
         foreach ($domainFiles as $file) {
             $relativePath = match ($rulesetKey) {
+                'hakoniwa-2s-plus-v26' => self::V26_DOMAIN_OVERRIDES[$file] ?? 'current/'.$file,
                 'hakoniwa-2s-plus-v25' => self::V25_DOMAIN_OVERRIDES[$file] ?? 'current/'.$file,
                 'hakoniwa-2s-plus-v24' => self::V24_DOMAIN_OVERRIDES[$file] ?? 'current/'.$file,
                 'hakoniwa-2s-plus-v23' => self::V23_DOMAIN_OVERRIDES[$file] ?? 'current/'.$file,

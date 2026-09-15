@@ -14,11 +14,13 @@ use App\Application\MonsterWorldSpawnService;
 use App\Application\NationCreationService;
 use App\Application\PlayerIslandEventService;
 use App\Application\RulesetPublisher;
+use App\Application\SecretaryTurnService;
 use App\Application\SurfaceShipTurnService;
 use App\Domain\Command\CommandRequestConflictException;
 use App\Domain\Map\GridCoordinate;
 use App\Domain\Map\MapCellStateService;
 use App\Domain\Monster\MonsterTurnBatch;
+use App\Domain\Secretary\SecretaryItemCatalog;
 use App\Domain\Ship\SurfaceShipTurnBatch;
 use App\Domain\Turn\TurnContext;
 use App\Domain\Turn\TurnRandomStreamFactory;
@@ -155,27 +157,43 @@ final class C4NewMonstersTest extends TestCase
         $this->assertDatabaseCount('monster_instances', 0);
     }
 
-    public function test_aoi_world_spawn_uses_one_world_draw_stable_water_candidates_and_no_spawn_turn_action(): void
+    public function test_aoi_world_spawn_weights_eligible_nations_then_uses_only_the_selected_nearshore(): void
     {
         [$world, $ruleset] = $this->v11World();
-        $nation = app(NationCreationService::class)->create(User::factory()->create(), $world, '陸地国', '陸地主');
+        $firstUser = User::factory()->create();
+        $nation = app(NationCreationService::class)->create($firstUser, $world, '陸地国', '陸地主');
+        $other = app(NationCreationService::class)->create(
+            User::factory()->create(),
+            $world,
+            '対照国',
+            '対照主',
+        );
         $space = $this->surfaceMapSpace($world);
-        $ownedLand = MapCell::query()->where('owner_nation_id', $nation->id)
-            ->whereHas('terrain', fn ($query) => $query->whereNotIn('key', ['sea', 'shallow']))->count();
-        $landCoordinates = MapCell::query()->where('map_space_id', $space->id)
-            ->whereHas('terrain', fn ($query) => $query->whereNotIn('key', ['sea', 'shallow']))
-            ->orderBy('id')->get(['x', 'y'])->map(
-                static fn (MapCell $cell): GridCoordinate => new GridCoordinate($cell->x, $cell->y),
-            );
+        MapCell::query()->where('map_space_id', $space->id)->whereNull('owner_nation_id')->update([
+            'terrain_definition_id' => TerrainDefinition::query()->where('key', 'sea')->valueOrFail('id'),
+            'facility_definition_id' => null,
+            'population' => 0,
+        ]);
+        $nation->capital()->firstOrFail()->cell()->update(['population' => 100_000]);
+        $other->capital()->firstOrFail()->cell()->update(['population' => 100_000]);
+        $landByNation = collect([$nation, $other])->mapWithKeys(static fn (Nation $candidate): array => [
+            $candidate->id => MapCell::query()->where('owner_nation_id', $candidate->id)
+                ->whereHas('terrain', static fn ($query) => $query->where('is_water', false))->count(),
+        ]);
+        $nationLand = MapCell::query()->where('owner_nation_id', $nation->id)
+            ->whereHas('terrain', static fn ($query) => $query->where('is_water', false))
+            ->get(['x', 'y'])->map(static fn (MapCell $cell): GridCoordinate => new GridCoordinate($cell->x, $cell->y));
+        $otherLand = MapCell::query()->where('owner_nation_id', $other->id)
+            ->whereHas('terrain', static fn ($query) => $query->where('is_water', false))
+            ->get(['x', 'y'])->map(static fn (MapCell $cell): GridCoordinate => new GridCoordinate($cell->x, $cell->y));
         $shipCell = MapCell::query()->where('map_space_id', $space->id)
             ->whereNull('owner_nation_id')->whereNull('facility_definition_id')->where('population', 0)
             ->whereDoesntHave('monsterOccupancy')->whereHas('terrain', fn ($query) => $query->where('key', 'sea'))
-            ->orderBy('id')->get()->first(function (MapCell $cell) use ($landCoordinates): bool {
+            ->orderBy('id')->get()->first(function (MapCell $cell) use ($nationLand, $otherLand): bool {
                 $coordinate = new GridCoordinate($cell->x, $cell->y);
 
-                return $landCoordinates->every(
-                    static fn (GridCoordinate $land): bool => $coordinate->distanceTo($land) >= 4,
-                );
+                return $nationLand->min(static fn (GridCoordinate $land): int => $coordinate->distanceTo($land)) === 4
+                    && $otherLand->min(static fn (GridCoordinate $land): int => $coordinate->distanceTo($land)) > 3;
             });
         $this->assertInstanceOf(MapCell::class, $shipCell);
         $ship = Ship::query()->create([
@@ -190,12 +208,39 @@ final class C4NewMonstersTest extends TestCase
             'state' => Ship::STATE_ACTIVE,
             'version' => 1,
         ]);
-        $seed = $this->seedMatching(static function (string $seed) use ($ownedLand): bool {
-            return (new TurnRandomStreamFactory($seed))->stream(
-                TurnRandomStreamFactory::monsterWorldSpawn('trigger', 1),
-            )->integer(0, 9_999) < $ownedLand;
+        $firstUser->secretary()->firstOrFail()->itemInstances()->create([
+            'item_key' => SecretaryItemCatalog::INORA_BRACELET,
+            'level' => 10,
+            'equipped_slot' => 2,
+            'grant_key' => 'test:aoi-target-weight',
+            'obtained_at' => now(),
+        ]);
+        $firstWeight = (int) $landByNation[$nation->id] * 200;
+        $secondWeight = (int) $landByNation[$other->id] * 100;
+        $unmodifiedFirstWeight = (int) $landByNation[$nation->id] * 100;
+        $unmodifiedTotal = ((int) $landByNation[$nation->id] + (int) $landByNation[$other->id]) * 100;
+        $seed = $this->seedMatching(static function (string $seed) use (
+            $landByNation,
+            $firstWeight,
+            $secondWeight,
+            $unmodifiedFirstWeight,
+            $unmodifiedTotal,
+        ): bool {
+            $random = new TurnRandomStreamFactory($seed);
+            $triggered = $random->stream(
+                TurnRandomStreamFactory::monsterWorldSpawn('trigger', 2),
+            )->integer(0, 9_999) < $landByNation->sum();
+            $weightedDraw = $random->stream(
+                TurnRandomStreamFactory::monsterWorldSpawn('target_nation', 2),
+            )->integer(1, $firstWeight + $secondWeight);
+            $unmodifiedDraw = (new TurnRandomStreamFactory($seed))->stream(
+                TurnRandomStreamFactory::monsterWorldSpawn('target_nation', 2),
+            )->integer(1, $unmodifiedTotal);
+
+            return $triggered && $weightedDraw <= $firstWeight && $unmodifiedDraw > $unmodifiedFirstWeight;
         });
-        $context = $this->contextFromSeed($world, $ruleset, 2, $seed, [$nation->id]);
+        $context = $this->contextFromSeed($world, $ruleset, 2, $seed, [$nation->id, $other->id]);
+        app(SecretaryTurnService::class)->loadAttemptSnapshots($context, [$nation->id, $other->id]);
         app(MonsterRemovalService::class)->beginWorld($context);
 
         $metrics = app(MonsterWorldSpawnService::class)->spawn($context, $space);
@@ -207,10 +252,19 @@ final class C4NewMonstersTest extends TestCase
         $this->assertContains($occupancy->monster->current_hp, [2, 3]);
         $this->assertSame('sea', $occupancy->cell->terrain->key);
         $this->assertNull($occupancy->cell->owner_nation_id);
+        $spawn = new GridCoordinate($occupancy->cell->x, $occupancy->cell->y);
+        $this->assertSame(4, $nationLand->min(
+            static fn (GridCoordinate $land): int => $spawn->distanceTo($land),
+        ));
+        $this->assertGreaterThan(3, $otherLand->min(
+            static fn (GridCoordinate $land): int => $spawn->distanceTo($land),
+        ));
         $this->assertNotSame($shipCell->id, $occupancy->map_cell_id);
         $this->assertSame([$shipCell->id, Ship::STATE_ACTIVE], [$ship->fresh()->map_cell_id, $ship->fresh()->state]);
         $this->assertContains($occupancy->monster->id, $context->state->monsterIdsDeferredFromSpawnTurnMovement());
-        $this->assertSame('world_aoi_disaster', $this->eventMetadata('monster.spawned')['spawn_source']);
+        $spawnMetadata = $this->eventMetadata('monster.spawned');
+        $this->assertSame('world_aoi_disaster', $spawnMetadata['spawn_source']);
+        $this->assertSame($nation->id, $spawnMetadata['target_nation_id']);
         $event = collect(app(PlayerIslandEventService::class)->publicWorldPage($world, 1, 2)['groups'])
             ->flatMap(fn (array $group): array => $group['events'])
             ->firstWhere('type', 'monster.spawned');
@@ -219,6 +273,32 @@ final class C4NewMonstersTest extends TestCase
             $event['message'],
         );
         $this->assertSame(0, app(MonsterTurnService::class)->load($context)->metrics()['monsters_loaded']);
+
+        $exactFour = MapCell::query()->where('map_space_id', $space->id)
+            ->whereNull('owner_nation_id')->whereDoesntHave('ship')->whereDoesntHave('monsterOccupancy')
+            ->orderBy('id')->get(['id', 'x', 'y'])
+            ->filter(static fn (MapCell $cell): bool => $nationLand->min(
+                static fn (GridCoordinate $land): int => (new GridCoordinate($cell->x, $cell->y))->distanceTo($land),
+            ) === 4);
+        $this->assertNotEmpty($exactFour);
+        MapCell::query()->whereIn('id', $exactFour->modelKeys())->update([
+            'terrain_definition_id' => TerrainDefinition::query()->where('key', 'plain')->valueOrFail('id'),
+            'facility_definition_id' => null,
+            'population' => 0,
+        ]);
+        $this->assertTrue(MapCell::query()->where('map_space_id', $space->id)
+            ->whereNull('owner_nation_id')->whereHas('terrain', fn ($query) => $query->where('key', 'sea'))->exists());
+        $blockedContext = $this->contextFromSeed($world, $ruleset, 3, $seed, [$nation->id, $other->id]);
+        app(SecretaryTurnService::class)->loadAttemptSnapshots($blockedContext, [$nation->id, $other->id]);
+        app(MonsterRemovalService::class)->beginWorld($blockedContext);
+
+        $blocked = app(MonsterWorldSpawnService::class)->spawn($blockedContext, $space);
+
+        $this->assertSame([0, 1], [
+            $blocked['world_sea_monsters_spawned'],
+            $blocked['world_sea_spawn_blocked_no_candidate'],
+        ]);
+        $this->assertSame(1, MonsterOccupancy::query()->count());
     }
 
     public function test_aoi_water_movement_normalizes_owned_water_and_emits_affected_nation_event(): void
@@ -667,7 +747,7 @@ final class C4NewMonstersTest extends TestCase
         );
     }
 
-    public function test_initial_island_displaces_only_authored_aoi_on_changed_cells(): void
+    public function test_initial_island_relocates_authored_aoi_on_changed_cells_without_rewards(): void
     {
         [$world, $ruleset] = $this->v11World();
         $space = $this->surfaceMapSpace($world);
@@ -679,11 +759,18 @@ final class C4NewMonstersTest extends TestCase
         $nation = app(NationCreationService::class)->create(User::factory()->create(), $world, '退避国', '退避主');
 
         $this->assertNotNull($nation->capital);
-        $this->assertSame('removed', $aoi->fresh()->state);
-        $this->assertSame('island_creation_displacement', $aoi->fresh()->removal_reason);
+        $this->assertSame('alive', $aoi->fresh()->state);
+        $this->assertNotSame($cell->id, $aoi->fresh()->occupancy()->value('map_cell_id'));
+        $this->assertContains(
+            $aoi->fresh()->occupancy()->firstOrFail()->cell()->valueOrFail('terrain_definition_id'),
+            TerrainDefinition::query()->whereIn('key', ['sea', 'shallow'])->pluck('id')->all(),
+        );
         $audit = DB::table('audit_events')->where('event_type', 'monster.island_creation_displaced')->sole();
         $this->assertSame('admin', $audit->visibility);
-        $this->assertSame(false, $this->eventMetadata('monster.island_creation_displaced')['rewards_granted']);
+        $metadata = $this->eventMetadata('monster.island_creation_displaced');
+        $this->assertTrue($metadata['relocated']);
+        $this->assertFalse($metadata['rewards_granted']);
+        $this->assertSame(0, NationMonsterKillStat::query()->count());
     }
 
     public function test_initial_island_skips_an_ordinary_monster_candidate_without_removing_it(): void

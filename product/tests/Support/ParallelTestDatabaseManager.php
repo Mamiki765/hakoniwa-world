@@ -14,6 +14,12 @@ final class ParallelTestDatabaseManager
 {
     private const DATABASE_PATTERN = '/^hakoniwa_parallel_([a-f0-9]{8})_([0-9]{2})_test$/';
 
+    private const TEMPLATE_DATABASE_PATTERN = '/^hakoniwa_surface_fixture_([a-f0-9]{16})_template$/';
+
+    private const TEMPLATE_BUILD_DATABASE_PATTERN = '/^hakoniwa_surface_fixture_build_([a-f0-9]{8})_test$/';
+
+    private const TEMPLATE_LOCK_KEY = 420_320_042;
+
     private readonly string $projectRoot;
 
     private readonly string $configurationPath;
@@ -35,8 +41,19 @@ final class ParallelTestDatabaseManager
         $this->evidenceRootDirectory = $this->workspaceDirectory.'/test-evidence';
     }
 
-    public function prepare(int $shardTotal, ?string $requestedToken = null): string
-    {
+    /**
+     * @param  array<int, list<string>>|null  $plannedShards
+     * @param  list<string>|null  $plannedDiscovered
+     */
+    public function prepare(
+        int $shardTotal,
+        string $scope = 'full',
+        ?string $requestedToken = null,
+        ?array $plannedShards = null,
+        ?array $plannedDiscovered = null,
+        bool $useReusableSurfaceTemplate = false,
+    ): string {
+        $scope = TestShardPlanner::normalizeScope($scope);
         if ($shardTotal < 1 || $shardTotal > 64) {
             throw new InvalidArgumentException('Local shard total must be in the range 1..64.');
         }
@@ -49,11 +66,35 @@ final class ParallelTestDatabaseManager
         }
 
         $planner = new TestShardPlanner($this->projectRoot, $this->configurationPath);
-        $discovered = $planner->discover();
-        $shards = $planner->assign($discovered, $shardTotal);
-        $report = $planner->coverageReport($discovered, $shards);
+        $discovered = $planner->discover($scope);
+        $selected = $plannedDiscovered === null
+            ? $discovered
+            : array_values(array_map(TestShardPlanner::normalizePath(...), $plannedDiscovered));
+        if ($selected === []
+            || count($selected) !== count(array_unique($selected))
+            || array_diff($selected, $discovered) !== []) {
+            throw new RuntimeException('Refusing to prepare databases for an invalid focused test selection.');
+        }
+        $shards = $plannedShards ?? $planner->assign($selected, $shardTotal);
+        if (count($shards) !== $shardTotal) {
+            throw new RuntimeException('Refusing to prepare databases for a shard plan with the wrong worker count.');
+        }
+        $shards = array_values(array_map(
+            static fn (array $files): array => array_map(TestShardPlanner::normalizePath(...), $files),
+            $shards,
+        ));
+        $report = $planner->coverageReport($selected, $shards);
         if ($report['duplicate_count'] !== 0 || $report['missing_count'] !== 0 || $report['unexpected_count'] !== 0) {
             throw new RuntimeException('Refusing to prepare databases for an incomplete shard plan.');
+        }
+        $profiles = $planner->groupByFixtureProfile($selected);
+        if ($useReusableSurfaceTemplate
+            && ($profiles['reusable_surface'] === []
+                || $profiles['standard'] !== []
+                || $profiles['individual'] !== [])) {
+            throw new RuntimeException(
+                'Reusable surface template cloning is restricted to a focused reusable_surface-only selection.',
+            );
         }
 
         if ($requestedToken !== null && preg_match('/^[a-f0-9]{8}$/', $requestedToken) !== 1) {
@@ -72,6 +113,8 @@ final class ParallelTestDatabaseManager
         $pdo = null;
         $createdDatabases = [];
         $manifestShards = [];
+        $template = null;
+        $templateLockHeld = false;
 
         try {
             foreach ($shards as $index => $files) {
@@ -96,27 +139,61 @@ final class ParallelTestDatabaseManager
                 ];
             }
 
+            $pdo = $this->connect($settings);
+            if ($useReusableSurfaceTemplate) {
+                $this->acquireTemplateLock($pdo);
+                $templateLockHeld = true;
+                $template = $this->ensureReusableSurfaceTemplate($pdo, $settings, $token, $runDirectory);
+            }
+            try {
+                foreach ($manifestShards as $shard) {
+                    if ($template === null) {
+                        $this->createDatabase($pdo, $shard['database']);
+                    } else {
+                        $this->createDatabaseFromTemplate($pdo, $shard['database'], $template['database']);
+                    }
+                    $createdDatabases[] = $shard['database'];
+                }
+                if ($template !== null) {
+                    $this->pruneReusableSurfaceTemplates($pdo, $template['database']);
+                }
+            } finally {
+                if ($templateLockHeld) {
+                    $this->releaseTemplateLock($pdo);
+                    $templateLockHeld = false;
+                }
+            }
+
             $manifest = $runDirectory.'/manifest.json';
-            $payload = json_encode([
+            $manifestPayload = [
                 'token' => $token,
                 'directory' => $runDirectory,
                 'evidence_directory' => $evidenceDirectory,
+                'scope' => $scope,
                 'shard_total' => $shardTotal,
-                'discovered_count' => count($discovered),
+                'discovered_count' => count($selected),
                 'shards' => $manifestShards,
-            ], JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR);
+            ];
+            if ($template !== null) {
+                $manifestPayload['reusable_surface_template'] = $template;
+            }
+            $payload = json_encode(
+                $manifestPayload,
+                JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR,
+            );
             if (file_put_contents($manifest, $payload."\n", LOCK_EX) === false) {
                 throw new RuntimeException("Unable to write parallel test manifest [{$manifest}].");
             }
 
-            $pdo = $this->connect($settings);
-            foreach ($manifestShards as $shard) {
-                $this->createDatabase($pdo, $shard['database']);
-                $createdDatabases[] = $shard['database'];
-            }
-
             return $manifest;
         } catch (Throwable $exception) {
+            if ($templateLockHeld && $pdo instanceof PDO) {
+                try {
+                    $this->releaseTemplateLock($pdo);
+                } catch (Throwable) {
+                    // The original preparation failure remains authoritative.
+                }
+            }
             $cleanupFailures = [];
             foreach ($pdo instanceof PDO ? array_reverse($createdDatabases) : [] as $database) {
                 try {
@@ -173,6 +250,36 @@ final class ParallelTestDatabaseManager
         return null;
     }
 
+    public function fixtureArtifact(
+        string $manifestPath,
+        int $index,
+        string $profile,
+        string $field,
+    ): ?string {
+        $profile = TestShardPlanner::normalizeFixtureProfile($profile);
+        $shard = $this->shard($manifestPath, $index);
+        if ($shard === null) {
+            return null;
+        }
+
+        $stem = 'phpunit-'.sprintf('%02d', $index + 1).'-'.$profile;
+
+        return match ($field) {
+            'log' => dirname($shard['log']).'/'.$stem.'.log',
+            'completion' => dirname($shard['log']).'/'.$stem.'.completed',
+            'evidence_log' => isset($shard['evidence_log'])
+                ? dirname($shard['evidence_log']).'/'.$stem.'.log'
+                : null,
+            'junit' => isset($shard['junit'])
+                ? dirname($shard['junit']).'/'.$stem.'.junit.xml'
+                : null,
+            'fixture_metrics' => isset($shard['junit'])
+                ? dirname($shard['junit']).'/'.$stem.'.fixture.tsv'
+                : null,
+            default => throw new InvalidArgumentException("Parallel test fixture artifact field [{$field}] is invalid."),
+        };
+    }
+
     public function cleanup(string $manifestPath): void
     {
         $manifest = $this->loadAndValidateManifest($manifestPath);
@@ -202,6 +309,14 @@ final class ParallelTestDatabaseManager
         $manifest = $this->loadAndValidateManifest($manifestPath);
 
         return $manifest['evidence_directory'] ?? null;
+    }
+
+    /** @return array<string, mixed>|null */
+    public function reusableSurfaceTemplate(string $manifestPath): ?array
+    {
+        $manifest = $this->loadAndValidateManifest($manifestPath);
+
+        return $manifest['reusable_surface_template'] ?? null;
     }
 
     public function finalizeEvidence(
@@ -272,14 +387,26 @@ final class ParallelTestDatabaseManager
         return preg_match(self::DATABASE_PATTERN, $database) === 1;
     }
 
+    public static function isSafeTemplateDatabaseName(string $database): bool
+    {
+        return preg_match(self::TEMPLATE_DATABASE_PATTERN, $database) === 1;
+    }
+
+    public static function isSafeTemplateBuildDatabaseName(string $database): bool
+    {
+        return preg_match(self::TEMPLATE_BUILD_DATABASE_PATTERN, $database) === 1;
+    }
+
     /**
      * @return array{
      *     token: string,
      *     directory: string,
      *     evidence_directory?: string,
+     *     scope?: string,
      *     shard_total: int,
      *     discovered_count: int,
-     *     shards: list<array{index: int, database: string, configuration: string, log: string, evidence_log?: string, junit?: string, test_file_count?: int}>
+     *     shards: list<array{index: int, database: string, configuration: string, log: string, evidence_log?: string, junit?: string, test_file_count?: int}>,
+     *     reusable_surface_template?: array<string, mixed>
      * }
      */
     private function loadAndValidateManifest(string $manifestPath): array
@@ -305,6 +432,7 @@ final class ParallelTestDatabaseManager
         $evidenceDirectory = isset($decoded['evidence_directory'])
             ? TestShardPlanner::normalizePath((string) $decoded['evidence_directory'])
             : null;
+        $scope = $decoded['scope'] ?? 'full';
         $shardTotal = $decoded['shard_total'] ?? null;
         $discoveredCount = $decoded['discovered_count'] ?? null;
         $shards = $decoded['shards'] ?? null;
@@ -319,6 +447,8 @@ final class ParallelTestDatabaseManager
             || basename($directory) !== 'phpunit-parallel-'.$token
             || ($evidenceDirectory !== null
                 && $evidenceDirectory !== $expectedEvidenceDirectory)
+            || ! is_string($scope)
+            || TestShardPlanner::normalizeScope($scope) !== $scope
             || ! is_int($shardTotal)
             || $shardTotal < 1
             || $shardTotal > 64
@@ -393,6 +523,7 @@ final class ParallelTestDatabaseManager
         $result = [
             'token' => $token,
             'directory' => $directory,
+            'scope' => $scope,
             'shard_total' => $shardTotal,
             'discovered_count' => $discoveredCount,
             'shards' => $validatedShards,
@@ -400,8 +531,89 @@ final class ParallelTestDatabaseManager
         if ($evidenceDirectory !== null) {
             $result['evidence_directory'] = $evidenceDirectory;
         }
+        $template = $this->validateTemplateManifestMetadata(
+            $decoded['reusable_surface_template'] ?? null,
+            $directory,
+        );
+        if ($template !== null) {
+            $result['reusable_surface_template'] = $template;
+        }
 
         return $result;
+    }
+
+    /** @return array<string, mixed>|null */
+    private function validateTemplateManifestMetadata(mixed $raw, string $runDirectory): ?array
+    {
+        if ($raw === null) {
+            return null;
+        }
+        if (! is_array($raw)) {
+            throw new RuntimeException('Parallel test manifest has invalid reusable surface template metadata.');
+        }
+
+        $fingerprint = $raw['fingerprint'] ?? null;
+        $database = $raw['database'] ?? null;
+        $cacheHit = $raw['cache_hit'] ?? null;
+        $inputCount = $raw['input_count'] ?? null;
+        $inputsSha256 = $raw['inputs_sha256'] ?? null;
+        $buildDatabase = $raw['build_database'] ?? null;
+        $buildSeconds = $raw['build_seconds'] ?? null;
+        $buildMigrationSeconds = $raw['build_migration_seconds'] ?? null;
+        $buildMapGenerationCount = $raw['build_map_generation_count'] ?? null;
+        $buildMapGenerationSeconds = $raw['build_map_generation_seconds'] ?? null;
+        $buildLog = isset($raw['build_log']) ? TestShardPlanner::normalizePath((string) $raw['build_log']) : null;
+        $buildMetrics = isset($raw['build_metrics'])
+            ? TestShardPlanner::normalizePath((string) $raw['build_metrics'])
+            : null;
+        $expectedKeys = [
+            'fingerprint', 'database', 'cache_hit', 'input_count', 'inputs_sha256',
+            'build_database', 'build_seconds', 'build_migration_seconds',
+            'build_map_generation_count', 'build_map_generation_seconds', 'build_log', 'build_metrics',
+        ];
+        $validBuildMetrics = is_int($buildMapGenerationCount)
+            && $buildMapGenerationCount >= 0
+            && (is_int($buildSeconds) || is_float($buildSeconds))
+            && $buildSeconds >= 0
+            && (is_int($buildMigrationSeconds) || is_float($buildMigrationSeconds))
+            && $buildMigrationSeconds >= 0
+            && (is_int($buildMapGenerationSeconds) || is_float($buildMapGenerationSeconds))
+            && $buildMapGenerationSeconds >= 0;
+
+        if (count($raw) !== count($expectedKeys)
+            || array_diff(array_keys($raw), $expectedKeys) !== []
+            || ! is_string($fingerprint)
+            || preg_match('/^[a-f0-9]{64}$/', $fingerprint) !== 1
+            || ! is_string($database)
+            || ! self::isSafeTemplateDatabaseName($database)
+            || $database !== self::templateDatabaseName($fingerprint)
+            || ! is_bool($cacheHit)
+            || ! is_int($inputCount)
+            || $inputCount < 1
+            || ! is_string($inputsSha256)
+            || preg_match('/^[a-f0-9]{64}$/', $inputsSha256) !== 1
+            || ! $validBuildMetrics) {
+            throw new RuntimeException('Parallel test manifest has invalid reusable surface template metadata.');
+        }
+
+        if ($cacheHit) {
+            if ($buildDatabase !== null || $buildLog !== null || $buildMetrics !== null
+                || $buildSeconds != 0 || $buildMigrationSeconds != 0
+                || $buildMapGenerationCount !== 0 || $buildMapGenerationSeconds != 0) {
+                throw new RuntimeException('Reusable surface template cache-hit metadata is invalid.');
+            }
+        } elseif (! is_string($buildDatabase)
+            || ! self::isSafeTemplateBuildDatabaseName($buildDatabase)
+            || $buildLog !== $runDirectory.'/reusable-surface-template.log'
+            || $buildMetrics !== $runDirectory.'/reusable-surface-template.fixture.tsv'
+            || $buildMapGenerationCount !== 1) {
+            throw new RuntimeException('Reusable surface template build metadata is invalid.');
+        }
+
+        $raw['build_log'] = $buildLog;
+        $raw['build_metrics'] = $buildMetrics;
+
+        return $raw;
     }
 
     /**
@@ -506,6 +718,299 @@ final class ParallelTestDatabaseManager
         }
     }
 
+    /**
+     * @param  array{host: string, port: string, username: string, password: string}  $settings
+     * @return array<string, mixed>
+     */
+    private function ensureReusableSurfaceTemplate(
+        PDO $pdo,
+        array $settings,
+        string $token,
+        string $runDirectory,
+    ): array {
+        $fingerprintResult = (new ReusableSurfaceTemplateFingerprint($this->projectRoot))->calculate([
+            'php_version' => PHP_VERSION,
+            'postgres_server_version' => (string) $pdo->getAttribute(PDO::ATTR_SERVER_VERSION),
+            'fixture_profile' => 'debug-32x32',
+        ]);
+        $fingerprint = $fingerprintResult['fingerprint'];
+        $templateDatabase = self::templateDatabaseName($fingerprint);
+        $this->dropStaleTemplateBuildDatabases($pdo);
+
+        if ($this->databaseExists($pdo, $templateDatabase)) {
+            try {
+                $this->validateReusableSurfaceTemplate($settings, $templateDatabase, $fingerprint);
+
+                return [
+                    'fingerprint' => $fingerprint,
+                    'database' => $templateDatabase,
+                    'cache_hit' => true,
+                    'input_count' => count($fingerprintResult['files']),
+                    'inputs_sha256' => hash('sha256', implode("\n", $fingerprintResult['files'])),
+                    'build_database' => null,
+                    'build_seconds' => 0.0,
+                    'build_migration_seconds' => 0.0,
+                    'build_map_generation_count' => 0,
+                    'build_map_generation_seconds' => 0.0,
+                    'build_log' => null,
+                    'build_metrics' => null,
+                ];
+            } catch (Throwable) {
+                $this->dropTemplateDatabase($pdo, $templateDatabase);
+            }
+        }
+
+        $buildDatabase = 'hakoniwa_surface_fixture_build_'.$token.'_test';
+        if (! self::isSafeTemplateBuildDatabaseName($buildDatabase)) {
+            throw new RuntimeException('Reusable surface template build database identity is invalid.');
+        }
+        $buildConfiguration = $runDirectory.'/reusable-surface-template.xml';
+        $buildLog = $runDirectory.'/reusable-surface-template.log';
+        $buildMetrics = $runDirectory.'/reusable-surface-template.fixture.tsv';
+        $buildStderr = $runDirectory.'/reusable-surface-template.stderr.log';
+        $buildStartedAt = hrtime(true);
+        $buildCreated = false;
+        $templateCreated = false;
+
+        try {
+            $this->createTemplateBuildDatabase($pdo, $buildDatabase);
+            $buildCreated = true;
+            $this->writeTemporaryConfiguration($buildConfiguration, $buildDatabase);
+            $environment = getenv();
+            if (! is_array($environment)) {
+                $environment = [];
+            }
+            $environment['APP_ENV'] = 'testing';
+            $environment['DB_CONNECTION'] = 'pgsql';
+            $environment['DB_DATABASE'] = $buildDatabase;
+            $environment['HAKONIWA_TEST_FIXTURE_PROFILE'] = 'reusable_surface';
+            $environment['HAKONIWA_TEST_FIXTURE_METRICS'] = $buildMetrics;
+            $environment['HAKONIWA_REUSABLE_SURFACE_TEMPLATE_MODE'] = 'build';
+            $environment['HAKONIWA_REUSABLE_SURFACE_TEMPLATE_FINGERPRINT'] = $fingerprint;
+            $process = proc_open([
+                PHP_BINARY,
+                '-d',
+                'memory_limit=512M',
+                $this->projectRoot.'/vendor/bin/phpunit',
+                '--configuration',
+                $buildConfiguration,
+                '--colors=never',
+                $this->projectRoot.'/tests/Support/ReusableSurfaceTemplateBuilderTest.php',
+            ], [
+                0 => ['file', '/dev/null', 'r'],
+                1 => ['file', $buildLog, 'wb'],
+                2 => ['file', $buildStderr, 'wb'],
+            ], $pipes, $this->projectRoot, $environment);
+            if (! is_resource($process)) {
+                throw new RuntimeException('Unable to start the reusable surface template builder.');
+            }
+            $buildExitCode = proc_close($process);
+            if (is_file($buildStderr)) {
+                $stderr = file_get_contents($buildStderr);
+                if (is_string($stderr) && $stderr !== '') {
+                    file_put_contents($buildLog, "\n".$stderr, FILE_APPEND | LOCK_EX);
+                }
+                unlink($buildStderr);
+            }
+            if ($buildExitCode !== 0) {
+                throw new RuntimeException(
+                    "Reusable surface template builder failed with exit code {$buildExitCode}; see {$buildLog}.",
+                );
+            }
+            $metrics = $this->readFixtureMetrics($buildMetrics);
+            if (($metrics['fixture_available'] ?? null) !== '1'
+                || ($metrics['map_generation_count'] ?? null) !== '1') {
+                throw new RuntimeException('Reusable surface template builder did not produce one verified map baseline.');
+            }
+            $this->validateReusableSurfaceTemplate($settings, $buildDatabase, $fingerprint);
+            $pdo->exec(
+                'ALTER DATABASE '.$this->quoteIdentifier($buildDatabase)
+                .' RENAME TO '.$this->quoteIdentifier($templateDatabase),
+            );
+            $buildCreated = false;
+            $templateCreated = true;
+            $this->validateReusableSurfaceTemplate($settings, $templateDatabase, $fingerprint);
+        } catch (Throwable $exception) {
+            $failedDatabase = $templateCreated
+                ? $templateDatabase
+                : ($buildCreated ? $buildDatabase : null);
+            if ($failedDatabase !== null) {
+                try {
+                    $this->dropTemplateDatabase($pdo, $failedDatabase);
+                } catch (Throwable $cleanupException) {
+                    throw new RuntimeException(
+                        $exception->getMessage().' Template build cleanup also failed: '.$cleanupException->getMessage(),
+                        0,
+                        $exception,
+                    );
+                }
+            }
+
+            throw $exception;
+        } finally {
+            if (is_file($buildStderr)) {
+                unlink($buildStderr);
+            }
+        }
+
+        $metrics = $this->readFixtureMetrics($buildMetrics);
+
+        return [
+            'fingerprint' => $fingerprint,
+            'database' => $templateDatabase,
+            'cache_hit' => false,
+            'input_count' => count($fingerprintResult['files']),
+            'inputs_sha256' => hash('sha256', implode("\n", $fingerprintResult['files'])),
+            'build_database' => $buildDatabase,
+            'build_seconds' => (hrtime(true) - $buildStartedAt) / 1_000_000_000,
+            'build_migration_seconds' => (float) ($metrics['migration_seconds'] ?? 0.0),
+            'build_map_generation_count' => (int) ($metrics['map_generation_count'] ?? 0),
+            'build_map_generation_seconds' => (float) ($metrics['map_generation_seconds'] ?? 0.0),
+            'build_log' => $buildLog,
+            'build_metrics' => $buildMetrics,
+        ];
+    }
+
+    private static function templateDatabaseName(string $fingerprint): string
+    {
+        if (preg_match('/^[a-f0-9]{64}$/', $fingerprint) !== 1) {
+            throw new InvalidArgumentException('Reusable surface template fingerprint is invalid.');
+        }
+
+        return 'hakoniwa_surface_fixture_'.substr($fingerprint, 0, 16).'_template';
+    }
+
+    private function acquireTemplateLock(PDO $pdo): void
+    {
+        $pdo->query('SELECT pg_advisory_lock('.self::TEMPLATE_LOCK_KEY.')')->fetchColumn();
+    }
+
+    private function releaseTemplateLock(PDO $pdo): void
+    {
+        $released = $pdo->query('SELECT pg_advisory_unlock('.self::TEMPLATE_LOCK_KEY.')')->fetchColumn();
+        if ($released !== true) {
+            throw new RuntimeException('Reusable surface template advisory lock was not held.');
+        }
+    }
+
+    private function databaseExists(PDO $pdo, string $database): bool
+    {
+        $statement = $pdo->prepare('SELECT 1 FROM pg_database WHERE datname = :database');
+        $statement->execute(['database' => $database]);
+
+        return $statement->fetchColumn() !== false;
+    }
+
+    private function createTemplateBuildDatabase(PDO $pdo, string $database): void
+    {
+        if (! self::isSafeTemplateBuildDatabaseName($database)) {
+            throw new RuntimeException("Refusing to create unsafe template build database [{$database}].");
+        }
+        $pdo->exec('CREATE DATABASE '.$this->quoteIdentifier($database));
+    }
+
+    private function createDatabaseFromTemplate(PDO $pdo, string $database, string $template): void
+    {
+        if (! self::isSafeDatabaseName($database) || ! self::isSafeTemplateDatabaseName($template)) {
+            throw new RuntimeException('Refusing to clone an unsafe reusable surface template database.');
+        }
+        $pdo->exec(
+            'CREATE DATABASE '.$this->quoteIdentifier($database).' TEMPLATE '.$this->quoteIdentifier($template),
+        );
+    }
+
+    /** @param array{host: string, port: string, username: string, password: string} $settings */
+    private function validateReusableSurfaceTemplate(array $settings, string $database, string $fingerprint): void
+    {
+        if ((! self::isSafeTemplateDatabaseName($database)
+                && ! self::isSafeTemplateBuildDatabaseName($database))
+            || preg_match('/^[a-f0-9]{64}$/', $fingerprint) !== 1) {
+            throw new RuntimeException('Refusing to validate an unsafe reusable surface template database.');
+        }
+        $connection = new PDO(
+            "pgsql:host={$settings['host']};port={$settings['port']};dbname={$database}",
+            $settings['username'],
+            $settings['password'],
+            [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION],
+        );
+        $marker = $connection->query(
+            'SELECT fingerprint, profile, world_key, cell_count '
+            .'FROM hakoniwa_test_fixture_metadata WHERE singleton = 1',
+        )->fetch(PDO::FETCH_ASSOC);
+        if (! is_array($marker)
+            || ! hash_equals($fingerprint, (string) ($marker['fingerprint'] ?? ''))
+            || ($marker['profile'] ?? null) !== 'debug-32x32'
+            || (int) ($marker['cell_count'] ?? 0) !== 1024
+            || ($marker['world_key'] ?? null) !== 'shared-world') {
+            throw new RuntimeException('Reusable surface template marker validation failed.');
+        }
+        $cellCount = (int) $connection->query(
+            'SELECT count(*) FROM map_cells c JOIN map_spaces s ON s.id = c.map_space_id '
+            ."JOIN worlds w ON w.id = s.world_id WHERE w.key = 'shared-world'",
+        )->fetchColumn();
+        $completed = (int) $connection->query(
+            'SELECT count(*) FROM world_generation_runs r JOIN map_spaces s ON s.id = r.map_space_id '
+            ."JOIN worlds w ON w.id = s.world_id WHERE w.key = 'shared-world' AND r.status = 'completed'",
+        )->fetchColumn();
+        if ($cellCount !== 1024 || $completed !== 1) {
+            throw new RuntimeException('Reusable surface template World baseline validation failed.');
+        }
+        $connection = null;
+    }
+
+    /** @return array<string, string> */
+    private function readFixtureMetrics(string $path): array
+    {
+        if (! is_file($path) || is_link($path)) {
+            throw new RuntimeException('Reusable surface template fixture metrics are missing or unsafe.');
+        }
+        $metrics = [];
+        foreach (file($path, FILE_IGNORE_NEW_LINES) ?: [] as $line) {
+            [$key, $value] = array_pad(explode("\t", $line, 2), 2, null);
+            if (is_string($key) && $key !== '' && is_string($value)) {
+                $metrics[$key] = $value;
+            }
+        }
+
+        return $metrics;
+    }
+
+    private function dropStaleTemplateBuildDatabases(PDO $pdo): void
+    {
+        foreach ($pdo->query("SELECT datname FROM pg_database WHERE datname LIKE 'hakoniwa_surface_fixture_build_%'") as $row) {
+            $database = (string) $row['datname'];
+            if (self::isSafeTemplateBuildDatabaseName($database)) {
+                $this->dropTemplateDatabase($pdo, $database);
+            }
+        }
+    }
+
+    private function pruneReusableSurfaceTemplates(PDO $pdo, string $current): void
+    {
+        if (! self::isSafeTemplateDatabaseName($current)) {
+            throw new RuntimeException('Refusing to prune templates without a safe current identity.');
+        }
+        foreach ($pdo->query("SELECT datname FROM pg_database WHERE datname LIKE 'hakoniwa_surface_fixture_%_template'") as $row) {
+            $database = (string) $row['datname'];
+            if ($database !== $current && self::isSafeTemplateDatabaseName($database)) {
+                $this->dropTemplateDatabase($pdo, $database);
+            }
+        }
+    }
+
+    private function dropTemplateDatabase(PDO $pdo, string $database): void
+    {
+        if (! self::isSafeTemplateDatabaseName($database)
+            && ! self::isSafeTemplateBuildDatabaseName($database)) {
+            throw new RuntimeException("Refusing to drop unsafe template database [{$database}].");
+        }
+        $statement = $pdo->prepare(
+            'SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = :database AND pid <> pg_backend_pid()',
+        );
+        $statement->execute(['database' => $database]);
+        $pdo->exec('DROP DATABASE IF EXISTS '.$this->quoteIdentifier($database));
+    }
+
     private function createDatabase(PDO $pdo, string $database): void
     {
         if (! self::isSafeDatabaseName($database)) {
@@ -530,7 +1035,8 @@ final class ParallelTestDatabaseManager
 
     private function writeTemporaryConfiguration(string $destination, string $database): void
     {
-        if (! self::isSafeDatabaseName($database)) {
+        if (! self::isSafeDatabaseName($database)
+            && ! self::isSafeTemplateBuildDatabaseName($database)) {
             throw new RuntimeException("Refusing to configure unsafe database name [{$database}].");
         }
 

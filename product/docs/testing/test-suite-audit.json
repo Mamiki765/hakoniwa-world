@@ -1,0 +1,160 @@
+{
+  "captured_at": "2026-09-15T04:17:21.172Z",
+  "head": "00182bd0eaee52f34194c7b40bc5e98712108718",
+  "branch": "origin/main",
+  "source": "isolated git archive; active worktree remains at 671752244d7a2d28e87a42fdd80592c9c51398cd",
+  "baseline_sha": "671752244d7a2d28e87a42fdd80592c9c51398cd",
+  "baseline_artifacts": "baseline-6717522/",
+  "test_files": 116,
+  "declared_methods": 921,
+  "enumerated_identifiers": 1058,
+  "unique_identifiers": 1058,
+  "scopes": [
+    {
+      "scope": "surface",
+      "files": 97,
+      "methods": 713,
+      "identifiers": 836
+    },
+    {
+      "scope": "underground",
+      "files": 19,
+      "methods": 208,
+      "identifiers": 222
+    }
+  ],
+  "lifecycle": [
+    {
+      "lifecycle": "RefreshDatabase",
+      "files": 72
+    },
+    {
+      "lifecycle": "forward_migrations",
+      "files": 9
+    },
+    {
+      "lifecycle": "app",
+      "files": 15
+    },
+    {
+      "lifecycle": "pure",
+      "files": 20
+    }
+  ],
+  "lightweight_call_sites": 271,
+  "lightweight_using_files": 56,
+  "generator_initialize_call_sites": 40,
+  "nation_creation_call_sites": 165,
+  "frontend_files": [
+    {
+      "file": "product/resources/js/App.test.ts",
+      "lines": 4313
+    },
+    {
+      "file": "product/resources/js/components/CellDetails.test.ts",
+      "lines": 141
+    },
+    {
+      "file": "product/resources/js/components/CommandAndSalePanels.test.ts",
+      "lines": 1282
+    },
+    {
+      "file": "product/resources/js/components/GuideConversationTopicAdmin.test.ts",
+      "lines": 116
+    },
+    {
+      "file": "product/resources/js/components/HexMap.test.ts",
+      "lines": 479
+    },
+    {
+      "file": "product/resources/js/components/IslandEventLog.test.ts",
+      "lines": 119
+    },
+    {
+      "file": "product/resources/js/components/MessageBoard.test.ts",
+      "lines": 312
+    },
+    {
+      "file": "product/resources/js/components/RankingAchievements.test.ts",
+      "lines": 136
+    },
+    {
+      "file": "product/resources/js/components/SecretaryEquipmentModal.test.ts",
+      "lines": 117
+    },
+    {
+      "file": "product/resources/js/components/SecretaryImageSlotsEditor.test.ts",
+      "lines": 111
+    },
+    {
+      "file": "product/resources/js/components/UndergroundAiEditor.test.ts",
+      "lines": 257
+    },
+    {
+      "file": "product/resources/js/components/UndergroundCombatantCard.test.ts",
+      "lines": 45
+    },
+    {
+      "file": "product/resources/js/components/UndergroundEquipmentNavigation.test.ts",
+      "lines": 355
+    },
+    {
+      "file": "product/resources/js/components/undergroundExplorationPending.test.ts",
+      "lines": 18
+    },
+    {
+      "file": "product/resources/js/components/UndergroundPartyBattleCards.test.ts",
+      "lines": 110
+    },
+    {
+      "file": "product/resources/js/components/UndergroundPartyBuilder.test.ts",
+      "lines": 27
+    },
+    {
+      "file": "product/resources/js/components/UndergroundPartyPresentation.test.ts",
+      "lines": 903
+    },
+    {
+      "file": "product/resources/js/formatters/money.test.ts",
+      "lines": 22
+    },
+    {
+      "file": "product/resources/js/map/projection.test.ts",
+      "lines": 61
+    },
+    {
+      "file": "product/resources/js/state/mapState.test.ts",
+      "lines": 213
+    }
+  ],
+  "enumeration_environment": {
+    "php": "8.5.8",
+    "laravel": "v13.22.0",
+    "phpunit": "12.5.32",
+    "composer_lock_sha256": "9e5f38fb63afefa8bd8f51ec85b40bbf19e721c05a4b4f7e7b80636b43a4344d",
+    "test_bodies_executed": false,
+    "image": "sha256:09456a6eb48f5f25aaf29d5d841429dda75fcf3c946b2ef1aedf55a9214b4388",
+    "network": "none"
+  },
+  "changed_test_files": 17,
+  "unchanged_test_files": 99,
+  "added_cases": 20,
+  "removed_cases": 1,
+  "limitations": [
+    "Compared LF-normalized source against the saved old checkout; newline conversion alone is not a changed test.",
+    "Unchanged test source can still be affected by changed runtime/config; this is a delta design review, not a passing test claim.",
+    "PHPUnit test identifiers were enumerated in a network-disabled disposable container. Test bodies and DB operations were not executed.",
+    "Frontend counts describe literal it/test declarations only, not an executed Vitest count."
+  ],
+  "design_validation": {
+    "verified_at": "2026-09-15T04:33:33.429Z",
+    "source_revision": "00182bd0eaee52f34194c7b40bc5e98712108718",
+    "file_hashes_match": true,
+    "pinned_git_blobs_match": true,
+    "identifier_to_source_mapping": true,
+    "baseline_preserved": true,
+    "delta_counts_verified": true,
+    "artifact_links_exist": true,
+    "errors": []
+  }
+}

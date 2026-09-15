@@ -20,11 +20,13 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use RuntimeException;
+use Tests\Concerns\UsesIndividualTestWorld;
 use Tests\TestCase;
 
 class WorldInitializationTest extends TestCase
 {
     use RefreshDatabase;
+    use UsesIndividualTestWorld;
 
     public function test_world_initializes_as_3600_unowned_ocean_cells_and_is_idempotent(): void
     {
@@ -101,7 +103,7 @@ class WorldInitializationTest extends TestCase
         $worldRuleset = $world->rulesetVersion()->firstOrFail();
 
         $this->assertSame($published->id, $worldRuleset->id);
-        $this->assertSame('hakoniwa-2s-plus-v25', $worldRuleset->key);
+        $this->assertSame('hakoniwa-2s-plus-v26', $worldRuleset->key);
         $this->assertSame($settingsFingerprint, hash('sha256', (string) $worldRuleset->getRawOriginal('settings')));
         $this->assertSame(59, $worldRuleset->settings['initial_x_max']);
         $this->assertSame(59, $worldRuleset->settings['initial_y_max']);

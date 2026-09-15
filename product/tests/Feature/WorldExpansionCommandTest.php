@@ -19,12 +19,14 @@ use Illuminate\Support\Facades\DB;
 use Mockery;
 use RuntimeException;
 use Tests\Concerns\CreatesTestWorlds;
+use Tests\Concerns\UsesIndividualTestWorld;
 use Tests\TestCase;
 
 final class WorldExpansionCommandTest extends TestCase
 {
     use CreatesTestWorlds;
     use RefreshDatabase;
+    use UsesIndividualTestWorld;
 
     public function test_dry_run_reports_complete_preflight_without_changing_the_60_by_60_world(): void
     {

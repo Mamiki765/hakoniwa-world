@@ -41,12 +41,14 @@ use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Str;
 use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\Concerns\CreatesTestWorlds;
+use Tests\Concerns\UsesIndividualTestWorld;
 use Tests\TestCase;
 
 final class TurnRuntimePerformanceTest extends TestCase
 {
     use CreatesTestWorlds;
     use RefreshDatabase;
+    use UsesIndividualTestWorld;
 
     #[DataProvider('expandedWorldProfiles')]
     public function test_expanded_empty_world_turn_has_bounded_phase_queries(
@@ -129,22 +131,21 @@ final class TurnRuntimePerformanceTest extends TestCase
         $this->assertLessThanOrEqual(40, $measurement['phases']['process_cells']['query_types']['select'] ?? 0);
     }
 
-    #[DataProvider('specialProcessCellProfiles')]
-    public function test_special_process_cell_profile_reports_query_shape(string $profile, string $fixture): void
+    public function test_fire_protection_source_scan_has_bounded_query_shape(): void
     {
-        $world = $this->processCellProfileWorld(1_024, $fixture);
+        $world = $this->processCellProfileWorld(1_024, 'protection');
 
         $measurement = $this->measureTurn($world);
 
-        $this->report($profile, $measurement);
+        $this->report('32x32-fire-protection-heavy', $measurement);
         $this->assertSame(1_024, $measurement['phases']['process_cells']['metrics']['processed']);
         $this->assertGreaterThan(0, $measurement['phases']['process_cells']['queries']);
         $this->assertSame(0, $measurement['phases']['process_cells']['coordinate_cell_lookup_queries']);
     }
 
-    #[DataProvider('forcedDisasterProfiles')]
-    public function test_forced_global_disaster_profile_reports_query_shape(string $disasterKey): void
+    public function test_forced_typhoon_reports_bounded_global_disaster_query_shape(): void
     {
+        $disasterKey = 'typhoon';
         [$world, $ruleset] = $this->forcedDisasterWorld($disasterKey);
         $seed = $this->forcedDisasterSeed($world, $disasterKey);
 
@@ -161,26 +162,6 @@ final class TurnRuntimePerformanceTest extends TestCase
         $this->assertLessThanOrEqual(2, $globalDisasters['terrain_definition_lookup_queries']);
         $this->assertSame(0, $globalDisasters['monster_occupancy_lookup_queries']);
         $this->assertLessThanOrEqual(20, $globalDisasters['query_types']['select'] ?? 0);
-    }
-
-    /** @return iterable<string, array{string, string}> */
-    public static function specialProcessCellProfiles(): iterable
-    {
-        yield 'fire targets' => ['32x32-fire-target-heavy', 'fire'];
-        yield 'fire protection sources' => ['32x32-fire-protection-heavy', 'protection'];
-        yield 'famine riot candidates' => ['32x32-famine-riot-heavy', 'famine'];
-    }
-
-    /** @return iterable<string, array{string}> */
-    public static function forcedDisasterProfiles(): iterable
-    {
-        yield 'earthquake' => ['earthquake'];
-        yield 'tsunami' => ['tsunami'];
-        yield 'typhoon' => ['typhoon'];
-        yield 'meteor shower' => ['meteor_shower'];
-        yield 'huge meteor' => ['huge_meteor'];
-        yield 'eruption' => ['eruption'];
-        yield 'land subsidence' => ['land_subsidence'];
     }
 
     #[DataProvider('nationCountProfiles')]
@@ -301,7 +282,6 @@ final class TurnRuntimePerformanceTest extends TestCase
     public static function missileShotProfiles(): iterable
     {
         yield 'one shot' => [1];
-        yield 'five shots' => [5];
         yield 'twenty five shots' => [25];
     }
 

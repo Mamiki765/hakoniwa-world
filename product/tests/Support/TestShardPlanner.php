@@ -13,6 +13,16 @@ use SplFileInfo;
 
 final class TestShardPlanner
 {
+    /** @var array<string, list<string>> */
+    private const SCOPE_SUITES = [
+        'full' => ['Shared', 'Unit', 'Feature', 'Underground'],
+        'surface' => ['Shared', 'Unit', 'Feature'],
+        'underground' => ['Shared', 'Underground'],
+    ];
+
+    /** @var list<string> */
+    private const FIXTURE_PROFILES = ['standard', 'reusable_surface', 'individual'];
+
     private readonly string $projectRoot;
 
     private readonly string $configurationPath;
@@ -29,50 +39,72 @@ final class TestShardPlanner
     }
 
     /** @return list<string> */
-    public function discover(): array
+    public function discover(string $scope = 'full'): array
     {
+        $scope = self::normalizeScope($scope);
         $document = $this->loadConfiguration();
         $xpath = new DOMXPath($document);
         $files = [];
+        $selectedSuites = array_fill_keys(self::SCOPE_SUITES[$scope], true);
 
-        foreach ($xpath->query('/phpunit/testsuites/testsuite/directory') ?: [] as $directoryNode) {
-            if (! $directoryNode instanceof DOMElement) {
+        foreach ($xpath->query('/phpunit/testsuites/testsuite') ?: [] as $suiteNode) {
+            if (! $suiteNode instanceof DOMElement) {
                 continue;
             }
 
-            $directory = $this->resolvePath(trim($directoryNode->textContent), dirname($this->configurationPath));
-            if (! is_dir($directory)) {
-                throw new RuntimeException("PHPUnit test directory [{$directory}] does not exist.");
+            $suiteName = $suiteNode->getAttribute('name');
+            if (! in_array($suiteName, self::SCOPE_SUITES['full'], true)) {
+                throw new RuntimeException("PHPUnit test suite [{$suiteName}] has no canonical scope.");
+            }
+            if (! isset($selectedSuites[$suiteName])) {
+                continue;
             }
 
-            $suffix = $directoryNode->getAttribute('suffix') ?: 'Test.php';
-            $iterator = new RecursiveIteratorIterator(
-                new RecursiveDirectoryIterator($directory, RecursiveDirectoryIterator::SKIP_DOTS),
-            );
+            foreach ($xpath->query('./directory', $suiteNode) ?: [] as $directoryNode) {
+                if (! $directoryNode instanceof DOMElement) {
+                    continue;
+                }
 
-            /** @var SplFileInfo $file */
-            foreach ($iterator as $file) {
-                if ($file->isFile() && str_ends_with($file->getFilename(), $suffix)) {
-                    $relativePath = $this->relativePath($file->getPathname());
-                    $files[$relativePath] = true;
+                $directory = $this->resolvePath(trim($directoryNode->textContent), dirname($this->configurationPath));
+                if (! is_dir($directory)) {
+                    throw new RuntimeException("PHPUnit test directory [{$directory}] does not exist.");
+                }
+
+                $suffix = $directoryNode->getAttribute('suffix') ?: 'Test.php';
+                $iterator = new RecursiveIteratorIterator(
+                    new RecursiveDirectoryIterator($directory, RecursiveDirectoryIterator::SKIP_DOTS),
+                );
+
+                /** @var SplFileInfo $file */
+                foreach ($iterator as $file) {
+                    if ($file->isFile() && str_ends_with($file->getFilename(), $suffix)) {
+                        $relativePath = $this->relativePath($file->getPathname());
+                        if (isset($files[$relativePath])) {
+                            throw new RuntimeException("PHPUnit suites select test file [{$relativePath}] more than once.");
+                        }
+                        $files[$relativePath] = true;
+                    }
                 }
             }
-        }
 
-        foreach ($xpath->query('/phpunit/testsuites/testsuite/file') ?: [] as $fileNode) {
-            $file = $this->resolvePath(trim($fileNode->textContent), dirname($this->configurationPath));
-            if (! is_file($file)) {
-                throw new RuntimeException("PHPUnit test file [{$file}] does not exist.");
+            foreach ($xpath->query('./file', $suiteNode) ?: [] as $fileNode) {
+                $file = $this->resolvePath(trim($fileNode->textContent), dirname($this->configurationPath));
+                if (! is_file($file)) {
+                    throw new RuntimeException("PHPUnit test file [{$file}] does not exist.");
+                }
+
+                $relativePath = $this->relativePath($file);
+                if (isset($files[$relativePath])) {
+                    throw new RuntimeException("PHPUnit suites select test file [{$relativePath}] more than once.");
+                }
+                $files[$relativePath] = true;
             }
-
-            $relativePath = $this->relativePath($file);
-            $files[$relativePath] = true;
         }
 
         $discovered = array_keys($files);
         sort($discovered, SORT_STRING);
         if ($discovered === []) {
-            throw new RuntimeException('PHPUnit test discovery returned no test files.');
+            throw new RuntimeException("PHPUnit [{$scope}] test discovery returned no test files.");
         }
 
         return $discovered;
@@ -80,9 +112,10 @@ final class TestShardPlanner
 
     /**
      * @param  list<string>  $files
+     * @param  array<string, float|int>  $weights
      * @return array<int, list<string>>
      */
-    public function assign(array $files, int $shardTotal): array
+    public function assign(array $files, int $shardTotal, array $weights = []): array
     {
         if ($shardTotal < 1) {
             throw new InvalidArgumentException('Shard total must be at least 1.');
@@ -96,6 +129,28 @@ final class TestShardPlanner
         sort($normalized, SORT_STRING);
         $shards = array_fill(0, $shardTotal, []);
 
+        $resolved = $this->resolveWeights($normalized, $weights);
+        if ($resolved['strategy'] === 'lpt') {
+            $loads = array_fill(0, $shardTotal, 0.0);
+            usort($normalized, static function (string $left, string $right) use ($resolved): int {
+                $weightComparison = $resolved['weights'][$right] <=> $resolved['weights'][$left];
+
+                return $weightComparison !== 0 ? $weightComparison : strcmp($left, $right);
+            });
+            foreach ($normalized as $file) {
+                $target = 0;
+                for ($index = 1; $index < $shardTotal; $index++) {
+                    if ($loads[$index] < $loads[$target]) {
+                        $target = $index;
+                    }
+                }
+                $shards[$target][] = $file;
+                $loads[$target] += $resolved['weights'][$file];
+            }
+
+            return $shards;
+        }
+
         foreach ($normalized as $offset => $file) {
             $shards[$offset % $shardTotal][] = $file;
         }
@@ -103,10 +158,408 @@ final class TestShardPlanner
         return $shards;
     }
 
-    /** @return array<int, list<string>> */
-    public function plan(int $shardTotal): array
+    /**
+     * @param  list<string>  $files
+     * @param  array<string, float|int>  $weights
+     * @return array{strategy: 'deterministic_fallback'|'lpt', weights: array<string, float>, sources: array<string, string>}
+     */
+    public function resolveWeights(array $files, array $weights): array
     {
-        return $this->assign($this->discover(), $shardTotal);
+        $normalizedFiles = array_map(self::normalizePath(...), $files);
+        sort($normalizedFiles, SORT_STRING);
+        $provided = [];
+        foreach ($weights as $file => $weight) {
+            $normalized = self::normalizePath((string) $file);
+            if (! in_array($normalized, $normalizedFiles, true)) {
+                continue;
+            }
+            $numeric = (float) $weight;
+            if (! is_finite($numeric) || $numeric <= 0) {
+                throw new InvalidArgumentException("Test timing weight for [{$normalized}] must be positive and finite.");
+            }
+            $provided[$normalized] = $numeric;
+        }
+        if ($provided === []) {
+            return [
+                'strategy' => 'deterministic_fallback',
+                'weights' => array_fill_keys($normalizedFiles, 1.0),
+                'sources' => array_fill_keys($normalizedFiles, 'deterministic_fallback'),
+            ];
+        }
+
+        $byProfile = array_fill_keys(self::FIXTURE_PROFILES, []);
+        foreach ($provided as $file => $weight) {
+            $byProfile[$this->fixtureProfile($file)][] = $weight;
+        }
+        $globalMedian = self::median(array_values($provided));
+        $resolved = [];
+        $sources = [];
+        foreach ($normalizedFiles as $file) {
+            if (isset($provided[$file])) {
+                $resolved[$file] = $provided[$file];
+                $sources[$file] = 'junit';
+
+                continue;
+            }
+            $profileWeights = $byProfile[$this->fixtureProfile($file)];
+            if ($profileWeights !== []) {
+                $resolved[$file] = self::median($profileWeights);
+                $sources[$file] = 'fixture_profile_median';
+            } else {
+                $resolved[$file] = $globalMedian;
+                $sources[$file] = 'global_median';
+            }
+        }
+
+        return ['strategy' => 'lpt', 'weights' => $resolved, 'sources' => $sources];
+    }
+
+    /**
+     * @param  list<string>  $files
+     * @param  list<string>  $junitPaths
+     * @return array<string, float>
+     */
+    public function timingWeightsFromJunit(array $files, array $junitPaths): array
+    {
+        $allowed = array_fill_keys(array_map(self::normalizePath(...), $files), true);
+        $weights = [];
+        foreach ($junitPaths as $junitPath) {
+            if (! is_file($junitPath) || is_link($junitPath)) {
+                continue;
+            }
+            $document = new DOMDocument;
+            $previous = libxml_use_internal_errors(true);
+            $loaded = $document->load($junitPath, LIBXML_NONET);
+            libxml_clear_errors();
+            libxml_use_internal_errors($previous);
+            if (! $loaded) {
+                continue;
+            }
+            $xpath = new DOMXPath($document);
+            foreach ($xpath->query('//testcase[@file][@time]') ?: [] as $testcase) {
+                if (! $testcase instanceof DOMElement) {
+                    continue;
+                }
+                $file = $this->junitRelativePath($testcase->getAttribute('file'));
+                $time = $testcase->getAttribute('time');
+                if (! isset($allowed[$file]) || ! is_numeric($time) || (float) $time < 0) {
+                    continue;
+                }
+                $weights[$file] = ($weights[$file] ?? 0.0) + (float) $time;
+            }
+        }
+        foreach ($weights as $file => $weight) {
+            $weights[$file] = max($weight, 0.000001);
+        }
+        ksort($weights, SORT_STRING);
+
+        return $weights;
+    }
+
+    /**
+     * @param  list<string>  $files
+     * @return array{weights: array<string, float>, sources: list<string>}
+     */
+    public function historicalTiming(array $files, ?string $evidenceRoot = null): array
+    {
+        $root = $evidenceRoot === null
+            ? $this->projectRoot.'/storage/framework/testing/test-evidence'
+            : $this->resolvePath($evidenceRoot, $this->projectRoot);
+        if (! is_dir($root) || is_link($root)) {
+            return ['weights' => [], 'sources' => []];
+        }
+        $directories = array_values(array_filter(
+            glob($root.'/phpunit-parallel-*', GLOB_ONLYDIR) ?: [],
+            static fn (string $directory): bool => ! is_link($directory),
+        ));
+        usort($directories, static function (string $left, string $right): int {
+            $modified = (filemtime($right) ?: 0) <=> (filemtime($left) ?: 0);
+
+            return $modified !== 0 ? $modified : strcmp($right, $left);
+        });
+
+        $weights = [];
+        $sources = [];
+        $wanted = array_fill_keys(array_map(self::normalizePath(...), $files), true);
+        foreach (array_slice($directories, 0, 64) as $directory) {
+            $metadata = $directory.'/run.tsv';
+            $contents = is_file($metadata) && ! is_link($metadata) ? file_get_contents($metadata) : false;
+            if (! is_string($contents) || preg_match('/^run\t-\tpassed\t0\t/m', $contents) !== 1) {
+                continue;
+            }
+            if (preg_match('/^selection_mode\t([^\t\r\n]+)$/m', $contents, $selection) === 1
+                && ($selection[1] ?? null) !== 'scope') {
+                continue;
+            }
+            $junitPaths = glob($directory.'/phpunit-[0-9][0-9].junit.xml') ?: [];
+            sort($junitPaths, SORT_STRING);
+            $candidate = $this->timingWeightsFromJunit(array_keys($wanted), $junitPaths);
+            $added = false;
+            foreach ($candidate as $file => $weight) {
+                if (! isset($weights[$file])) {
+                    $weights[$file] = $weight;
+                    $added = true;
+                }
+            }
+            if ($added) {
+                $sources[] = basename($directory);
+            }
+            if (count($weights) === count($wanted)) {
+                break;
+            }
+        }
+        ksort($weights, SORT_STRING);
+
+        return ['weights' => $weights, 'sources' => $sources];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    public function createRunPlan(
+        int $shardTotal,
+        string $scope = 'full',
+        ?string $evidenceRoot = null,
+        array $metadata = [],
+        bool $useHistoricalTiming = true,
+    ): array {
+        $scope = self::normalizeScope($scope);
+        $files = $this->discover($scope);
+        $historical = $useHistoricalTiming
+            ? $this->historicalTiming($files, $evidenceRoot)
+            : ['weights' => [], 'sources' => []];
+        $resolved = $this->resolveWeights($files, $historical['weights']);
+        $shards = $this->assign($files, $shardTotal, $historical['weights']);
+        $report = $this->coverageReport($files, $shards);
+        if ($report['duplicate_count'] !== 0 || $report['missing_count'] !== 0 || $report['unexpected_count'] !== 0) {
+            throw new RuntimeException('Refusing to create an incomplete test shard plan.');
+        }
+        $predicted = [];
+        foreach ($shards as $index => $shardFiles) {
+            $predicted[$index] = array_sum(array_map(
+                static fn (string $file): float => $resolved['weights'][$file],
+                $shardFiles,
+            ));
+        }
+
+        return [
+            'schema' => 'hakoniwa.test-shard-plan.v1',
+            'created_at' => gmdate('c'),
+            'scope' => $scope,
+            'selection_mode' => 'scope',
+            'scope_discovered' => $files,
+            'shard_total' => $shardTotal,
+            'strategy' => $resolved['strategy'],
+            'source_tree_sha256' => $metadata['source_tree_sha256'] ?? 'unknown',
+            'composer_lock_sha256' => $metadata['composer_lock_sha256'] ?? 'unknown',
+            'discovered' => $files,
+            'shards' => $shards,
+            'weights' => $resolved['weights'],
+            'weight_sources' => $resolved['sources'],
+            'historical_sources' => $historical['sources'],
+            'historical_weight_count' => count($historical['weights']),
+            'predicted_seconds' => $predicted,
+        ];
+    }
+
+    /** @param array<string, mixed> $plan */
+    public function writeRunPlan(string $path, array $plan): void
+    {
+        $directory = dirname($path);
+        if (! is_dir($directory) || is_link($directory) || file_exists($path) || is_link($path)) {
+            throw new RuntimeException("Test shard plan path [{$path}] is unsafe or already exists.");
+        }
+        $encoded = json_encode($plan, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR);
+        if (file_put_contents($path, $encoded."\n", LOCK_EX) === false) {
+            throw new RuntimeException("Unable to write test shard plan [{$path}].");
+        }
+    }
+
+    /** @return array<string, mixed> */
+    public function loadRunPlan(string $path): array
+    {
+        if (! is_file($path) || is_link($path)) {
+            throw new RuntimeException("Test shard plan [{$path}] does not exist or is unsafe.");
+        }
+        $decoded = json_decode((string) file_get_contents($path), true, flags: JSON_THROW_ON_ERROR);
+        if (! is_array($decoded)
+            || ($decoded['schema'] ?? null) !== 'hakoniwa.test-shard-plan.v1'
+            || ! is_string($decoded['scope'] ?? null)
+            || ! is_int($decoded['shard_total'] ?? null)
+            || ! is_array($decoded['discovered'] ?? null)
+            || ! is_array($decoded['shards'] ?? null)) {
+            throw new RuntimeException('Test shard plan schema is invalid.');
+        }
+        $scope = self::normalizeScope($decoded['scope']);
+        $selectionMode = $decoded['selection_mode'] ?? 'scope';
+        if (! in_array($selectionMode, ['scope', 'focused'], true)) {
+            throw new RuntimeException('Test shard plan selection mode is invalid.');
+        }
+        $discovered = array_map(self::normalizePath(...), $decoded['discovered']);
+        $current = $this->discover($scope);
+        $scopeDiscovered = array_map(
+            self::normalizePath(...),
+            $decoded['scope_discovered'] ?? $decoded['discovered'],
+        );
+        if ($scopeDiscovered !== $current || count($decoded['shards']) !== $decoded['shard_total']) {
+            throw new RuntimeException('Test shard plan does not match current discovery.');
+        }
+        if ($selectionMode === 'scope' && $discovered !== $current) {
+            throw new RuntimeException('Scope test shard plan does not cover current discovery.');
+        }
+        if ($selectionMode === 'focused'
+            && ($discovered === []
+                || count($discovered) !== count(array_unique($discovered))
+                || array_diff($discovered, $current) !== [])) {
+            throw new RuntimeException('Focused test shard plan is not a non-empty subset of current discovery.');
+        }
+        $shards = [];
+        foreach ($decoded['shards'] as $index => $files) {
+            if (! is_array($files)) {
+                throw new RuntimeException('Test shard plan assignment is invalid.');
+            }
+            $shards[(int) $index] = array_map(self::normalizePath(...), $files);
+        }
+        $report = $this->coverageReport($discovered, $shards);
+        if ($report['duplicate_count'] !== 0 || $report['missing_count'] !== 0 || $report['unexpected_count'] !== 0) {
+            throw new RuntimeException('Test shard plan coverage is incomplete or overlapping.');
+        }
+        $decoded['discovered'] = $discovered;
+        $decoded['scope_discovered'] = $scopeDiscovered;
+        $decoded['selection_mode'] = $selectionMode;
+        $decoded['shards'] = $shards;
+
+        return $decoded;
+    }
+
+    /**
+     * @param  array<string, mixed>  $plan
+     * @return array<string, mixed>
+     */
+    public function focusRunPlan(array $plan, string $listTestsXmlPath): array
+    {
+        if (($plan['selection_mode'] ?? 'scope') !== 'scope'
+            || ! is_array($plan['discovered'] ?? null)
+            || ! is_array($plan['shards'] ?? null)) {
+            throw new RuntimeException('Only a validated scope plan can be focused.');
+        }
+        if (! is_file($listTestsXmlPath) || is_link($listTestsXmlPath)) {
+            throw new RuntimeException("Focused PHPUnit list [{$listTestsXmlPath}] does not exist or is unsafe.");
+        }
+
+        $document = new DOMDocument;
+        $previous = libxml_use_internal_errors(true);
+        $loaded = $document->load($listTestsXmlPath, LIBXML_NONET);
+        libxml_clear_errors();
+        libxml_use_internal_errors($previous);
+        if (! $loaded) {
+            throw new RuntimeException('Focused PHPUnit list is not valid XML.');
+        }
+
+        $xpath = new DOMXPath($document);
+        $selectedFiles = [];
+        $selectedIdentifiers = [];
+        foreach ($xpath->query('//*[local-name()="testClass"]') ?: [] as $testClass) {
+            if (! $testClass instanceof DOMElement) {
+                continue;
+            }
+            $file = $this->relativePath($testClass->getAttribute('file'));
+            $selectedFiles[$file] = true;
+            foreach ($xpath->query('./*[local-name()="testMethod"]', $testClass) ?: [] as $testMethod) {
+                if ($testMethod instanceof DOMElement && $testMethod->getAttribute('id') !== '') {
+                    $selectedIdentifiers[$testMethod->getAttribute('id')] = true;
+                }
+            }
+        }
+        if ($selectedIdentifiers === []) {
+            throw new RuntimeException('Focused PHPUnit selection matched no test identifiers.');
+        }
+
+        $allowed = array_fill_keys(array_map(self::normalizePath(...), $plan['discovered']), true);
+        $unexpected = array_values(array_diff(array_keys($selectedFiles), array_keys($allowed)));
+        if ($unexpected !== []) {
+            throw new RuntimeException('Focused PHPUnit selection escaped the requested scope: '.implode(', ', $unexpected));
+        }
+
+        $selected = array_keys($selectedFiles);
+        sort($selected, SORT_STRING);
+        $selectedLookup = array_fill_keys($selected, true);
+        $focusedShards = [];
+        foreach ($plan['shards'] as $index => $files) {
+            $focusedShards[(int) $index] = array_values(array_filter(
+                array_map(self::normalizePath(...), $files),
+                static fn (string $file): bool => isset($selectedLookup[$file]),
+            ));
+        }
+
+        $focused = $plan;
+        $focused['selection_mode'] = 'focused';
+        $focused['scope_discovered'] = array_values(array_map(self::normalizePath(...), $plan['discovered']));
+        $focused['discovered'] = $selected;
+        $focused['shards'] = $focusedShards;
+        $focused['selected_test_identifier_count'] = count($selectedIdentifiers);
+        $focused['weights'] = array_intersect_key($plan['weights'] ?? [], $selectedLookup);
+        $focused['weight_sources'] = array_intersect_key($plan['weight_sources'] ?? [], $selectedLookup);
+        foreach ($focusedShards as $index => $files) {
+            $focused['predicted_seconds'][$index] = array_sum(array_map(
+                static fn (string $file): float => (float) ($focused['weights'][$file] ?? 0.0),
+                $files,
+            ));
+        }
+
+        return $focused;
+    }
+
+    /** @return array<int, list<string>> */
+    public function plan(int $shardTotal, string $scope = 'full'): array
+    {
+        return $this->assign($this->discover($scope), $shardTotal);
+    }
+
+    /**
+     * @param  list<string>  $files
+     * @return array<string, list<string>>
+     */
+    public function groupByFixtureProfile(array $files): array
+    {
+        $groups = array_fill_keys(self::FIXTURE_PROFILES, []);
+        foreach ($files as $file) {
+            $normalized = self::normalizePath($file);
+            $groups[$this->fixtureProfile($normalized)][] = $normalized;
+        }
+        foreach ($groups as &$group) {
+            sort($group, SORT_STRING);
+        }
+
+        return $groups;
+    }
+
+    public function fixtureProfile(string $file): string
+    {
+        $path = $this->resolvePath($file, $this->projectRoot);
+        if (! is_file($path)) {
+            throw new RuntimeException("Test file [{$file}] does not exist.");
+        }
+        $relativePath = $this->relativePath($path);
+        $contents = file_get_contents($path);
+        if (! is_string($contents)) {
+            throw new RuntimeException("Test file [{$relativePath}] is unreadable.");
+        }
+
+        $usedTraits = $this->usedTraits($contents);
+        $reusable = in_array('UsesReusableSurfaceWorld', $usedTraits, true);
+        $individual = array_intersect(
+            ['UsesIndividualTestWorld', 'UsesForwardOnlyDatabaseMigrations'],
+            $usedTraits,
+        ) !== [];
+        if ($reusable && $individual) {
+            throw new RuntimeException("Test file [{$relativePath}] declares conflicting fixture profiles.");
+        }
+        if ($reusable) {
+            return 'reusable_surface';
+        }
+
+        return $individual ? 'individual' : 'standard';
     }
 
     /**
@@ -175,9 +628,9 @@ final class TestShardPlanner
      *     unexpected: list<string>
      * }
      */
-    public function verify(int $shardTotal): array
+    public function verify(int $shardTotal, string $scope = 'full'): array
     {
-        $discovered = $this->discover();
+        $discovered = $this->discover($scope);
         $report = $this->coverageReport($discovered, $this->assign($discovered, $shardTotal));
 
         if ($report['duplicate_count'] !== 0 || $report['missing_count'] !== 0 || $report['unexpected_count'] !== 0) {
@@ -185,6 +638,33 @@ final class TestShardPlanner
         }
 
         return $report;
+    }
+
+    public static function normalizeScope(string $scope): string
+    {
+        $normalized = strtolower(trim($scope));
+        if ($normalized === 'all') {
+            return 'full';
+        }
+        if (! isset(self::SCOPE_SUITES[$normalized])) {
+            throw new InvalidArgumentException(
+                "Test scope [{$scope}] is invalid; expected full, surface, or underground.",
+            );
+        }
+
+        return $normalized;
+    }
+
+    public static function normalizeFixtureProfile(string $profile): string
+    {
+        $normalized = strtolower(trim($profile));
+        if (! in_array($normalized, self::FIXTURE_PROFILES, true)) {
+            throw new InvalidArgumentException(
+                "Test fixture profile [{$profile}] is invalid; expected standard, reusable_surface, or individual.",
+            );
+        }
+
+        return $normalized;
     }
 
     public static function normalizePath(string $path): string
@@ -197,6 +677,35 @@ final class TestShardPlanner
         }
 
         return rtrim($normalized, '/');
+    }
+
+    /** @param list<string> $files */
+    public function selectedTestFilesSha256(array $files): string
+    {
+        $resolved = [];
+        foreach ($files as $file) {
+            $path = $this->resolvePath(self::normalizePath($file), $this->projectRoot);
+            if (! is_file($path) || is_link($path)) {
+                throw new RuntimeException("Selected test file [{$file}] does not exist or is unsafe.");
+            }
+            $relative = $this->relativePath($path);
+            $resolved[$relative] = $path;
+        }
+        if ($resolved === [] || count($resolved) !== count($files)) {
+            throw new RuntimeException('Selected test files must be non-empty and canonically unique.');
+        }
+        ksort($resolved, SORT_STRING);
+
+        $hash = hash_init('sha256');
+        foreach ($resolved as $relative => $path) {
+            $fileHash = hash_file('sha256', $path);
+            if (! is_string($fileHash)) {
+                throw new RuntimeException("Unable to hash selected test file [{$relative}].");
+            }
+            hash_update($hash, $relative."\0".$fileHash."\n");
+        }
+
+        return hash_final($hash);
     }
 
     private function loadConfiguration(): DOMDocument
@@ -238,5 +747,89 @@ final class TestShardPlanner
         }
 
         return self::normalizePath($baseDirectory.'/'.$normalized);
+    }
+
+    private function junitRelativePath(string $path): string
+    {
+        $normalized = self::normalizePath($path);
+        $marker = '/tests/';
+        $position = strrpos('/'.$normalized, $marker);
+        if ($position !== false) {
+            return substr('/'.$normalized, $position + 1);
+        }
+
+        return $normalized;
+    }
+
+    /** @param list<float|int> $values */
+    private static function median(array $values): float
+    {
+        if ($values === []) {
+            throw new InvalidArgumentException('Cannot calculate a test timing median from an empty set.');
+        }
+        $values = array_map(static fn (float|int $value): float => (float) $value, $values);
+        sort($values, SORT_NUMERIC);
+        $middle = intdiv(count($values), 2);
+
+        return count($values) % 2 === 1
+            ? $values[$middle]
+            : ($values[$middle - 1] + $values[$middle]) / 2;
+    }
+
+    /** @return list<string> */
+    private function usedTraits(string $contents): array
+    {
+        $tokens = token_get_all($contents);
+        $braceDepth = 0;
+        $classDepth = null;
+        $waitingForClassBrace = false;
+        $traits = [];
+
+        for ($index = 0, $count = count($tokens); $index < $count; $index++) {
+            $token = $tokens[$index];
+            if (is_array($token) && $token[0] === T_CLASS) {
+                $waitingForClassBrace = true;
+
+                continue;
+            }
+            if ($token === '{') {
+                $braceDepth++;
+                if ($waitingForClassBrace) {
+                    $classDepth = $braceDepth;
+                    $waitingForClassBrace = false;
+                }
+
+                continue;
+            }
+            if ($token === '}') {
+                if ($classDepth === $braceDepth) {
+                    $classDepth = null;
+                }
+                $braceDepth--;
+
+                continue;
+            }
+            if (! is_array($token) || $token[0] !== T_USE || $classDepth !== $braceDepth) {
+                continue;
+            }
+
+            $declaration = '';
+            for ($index++; $index < $count; $index++) {
+                $part = $tokens[$index];
+                $text = is_array($part) ? $part[1] : $part;
+                if ($text === ';' || $text === '{') {
+                    break;
+                }
+                $declaration .= $text;
+            }
+            foreach (explode(',', $declaration) as $trait) {
+                $trait = trim($trait);
+                if ($trait !== '') {
+                    $traits[] = basename(str_replace('\\', '/', $trait));
+                }
+            }
+        }
+
+        return array_values(array_unique($traits));
     }
 }

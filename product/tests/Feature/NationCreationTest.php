@@ -8,6 +8,7 @@ use App\Application\InitialIslandPlan;
 use App\Application\NationCreationService;
 use App\Domain\Economy\NationCapacityResolver;
 use App\Domain\Map\GridCoordinate;
+use App\Models\BuriedTreasure;
 use App\Models\MapCell;
 use App\Models\MapSpace;
 use App\Models\Nation;
@@ -18,16 +19,14 @@ use App\Models\Ship;
 use App\Models\TerrainDefinition;
 use App\Models\User;
 use DomainException;
-use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use RuntimeException;
-use Tests\Concerns\CreatesTestWorlds;
+use Tests\Concerns\UsesReusableSurfaceWorld;
 use Tests\TestCase;
 
 class NationCreationTest extends TestCase
 {
-    use CreatesTestWorlds;
-    use RefreshDatabase;
+    use UsesReusableSurfaceWorld;
 
     public function test_nation_creation_generates_legacy_inspired_island_capital_and_territory(): void
     {
@@ -89,7 +88,7 @@ class NationCreationTest extends TestCase
         $this->assertSame('sea', MapCell::query()->where('x', 20)->where('y', 20)->firstOrFail()->terrain()->value('key'));
     }
 
-    public function test_second_nation_accepts_neutral_nature_relocates_affected_ships_and_preserves_distance(): void
+    public function test_second_nation_accepts_neutral_nature_relocates_affected_ships_removes_treasure_and_preserves_distance(): void
     {
         $world = $this->lightweightWorld();
         $service = app(NationCreationService::class);
@@ -105,6 +104,11 @@ class NationCreationTest extends TestCase
             ->where('map_space_id', $space->id)
             ->where('x', $blockedCenter->neighbor(GridCoordinate::EAST)->x)
             ->where('y', $blockedCenter->neighbor(GridCoordinate::EAST)->y)
+            ->firstOrFail();
+        $npcCell = MapCell::query()
+            ->where('map_space_id', $space->id)
+            ->where('x', $blockedCenter->neighbor(GridCoordinate::WEST)->x)
+            ->where('y', $blockedCenter->neighbor(GridCoordinate::WEST)->y)
             ->firstOrFail();
         $naturalCells = [];
         foreach (array_combine(['shallow', 'wasteland', 'mountain'], array_slice($blockedCenter->ring(5), 0, 3)) as $terrain => $coordinate) {
@@ -139,6 +143,32 @@ class NationCreationTest extends TestCase
         $centerShip = $createShip($centerCell);
         $innerShip = $createShip($innerCell);
         $safeShip = $createShip($safeOutsideCell);
+        $npcShip = Ship::query()->create([
+            'world_id' => $world->id,
+            'ruleset_version_id' => $world->ruleset_version_id,
+            'nation_id' => null,
+            'map_cell_id' => $npcCell->id,
+            'ship_type_key' => 'pirate',
+            'current_hp' => 2,
+            'max_hp' => 3,
+            'population' => 7_500,
+            'heading' => null,
+            'state' => Ship::STATE_ACTIVE,
+            'version' => 1,
+        ]);
+        $buriedTreasure = BuriedTreasure::query()->create([
+            'world_id' => $world->id,
+            'map_cell_id' => $centerCell->id,
+            'source' => 'natural',
+            'reward_snapshot' => [
+                'item_key' => 'wakuwaku_ticket',
+                'quantity' => 1,
+                'rarity' => 'regular',
+                'fixed_sale_price_money' => 500,
+            ],
+            'created_turn' => 1,
+            'state' => BuriedTreasure::STATE_ACTIVE,
+        ]);
         $resourcesBefore = $first->resourceBalances()->pluck('amount', 'resource_definition_id')->all();
         $karmaBefore = (int) $first->karma;
 
@@ -163,6 +193,15 @@ class NationCreationTest extends TestCase
                 $ship->fresh()->cell()->valueOrFail('y'),
             )));
         }
+        $this->assertSame(Ship::STATE_ACTIVE, $npcShip->fresh()->state);
+        $this->assertNull($npcShip->fresh()->nation_id);
+        $this->assertNotSame($npcCell->id, $npcShip->fresh()->map_cell_id);
+        $this->assertSame('sea', $npcShip->fresh()->cell()->firstOrFail()->terrain()->value('key'));
+        $this->assertSame([
+            'state' => BuriedTreasure::STATE_REMOVED,
+            'resolution_reason' => 'initial_island_overwrite',
+            'resolved_by_nation_id' => null,
+        ], $buriedTreasure->fresh()->only(['state', 'resolution_reason', 'resolved_by_nation_id']));
         $this->assertSame($safeOutsideCell->id, $safeShip->fresh()->map_cell_id);
         $this->assertSame(1, $safeShip->fresh()->version);
         foreach ($naturalCells as $terrain => $cell) {

@@ -14,6 +14,7 @@ use App\Domain\Turn\TurnAlreadyRunningException;
 use App\Domain\Turn\UnresolvedNextTurnRunException;
 use App\Domain\World\RegistrationWorldExpansionPlanner;
 use App\Domain\World\WorldMutationLock;
+use App\Models\MapCell;
 use App\Models\MapSpace;
 use App\Models\MonsterOccupancy;
 use App\Models\Nation;
@@ -40,6 +41,7 @@ final class NationCreationService
         private readonly SecretaryService $secretaries,
         private readonly MonsterBehaviorResolver $monsterBehaviors,
         private readonly MonsterRemovalService $monsterRemoval,
+        private readonly BuriedTreasureService $buriedTreasures,
     ) {}
 
     public function create(
@@ -176,6 +178,12 @@ final class NationCreationService
                     DB::table('nation_creation_requests')->where('request_key', $requestKey)->update([
                         'reserved_x' => $center->x, 'reserved_y' => $center->y, 'updated_at' => now(),
                     ]);
+                    if (is_array($ruleset->settings['ocean_loop']['buried_treasure'] ?? null)) {
+                        $this->buriedTreasures->removeForInitialIsland(
+                            $islandPlan->changedCellIds,
+                            (int) $world->current_turn,
+                        );
+                    }
                     $occupancies = MonsterOccupancy::query()
                         ->whereIn('map_cell_id', $islandPlan->changedCellIds)
                         ->with(['monster.definition', 'cell'])
@@ -188,10 +196,16 @@ final class NationCreationService
                         if (! $behavior->islandCreationDisplaceable) {
                             throw new \DomainException('初期島の変更セルは退避できない怪獣に占有されています。');
                         }
-                        $this->monsterRemoval->removeForWorldMutation(
-                            $occupancy,
-                            'island_creation_displacement',
-                        );
+                        $originCellId = (int) $occupancy->map_cell_id;
+                        $originX = (int) $occupancy->cell->x;
+                        $originY = (int) $occupancy->cell->y;
+                        $relocated = $this->relocateIslandMonster($mapSpace, $islandPlan, $occupancy);
+                        if (! $relocated) {
+                            $this->monsterRemoval->removeForWorldMutation(
+                                $occupancy,
+                                'island_creation_displacement',
+                            );
+                        }
                         DB::table('audit_events')->insert([
                             'actor_user_id' => $user->id,
                             'world_id' => $world->id,
@@ -213,10 +227,12 @@ final class NationCreationService
                                 'new_nation_name' => $nation->name,
                                 'ruleset_version_id' => $ruleset->id,
                                 'monster_key' => $monster->definition->key,
-                                'map_cell_id' => $occupancy->map_cell_id,
-                                'x' => $occupancy->cell->x,
-                                'y' => $occupancy->cell->y,
-                                'removal_reason' => 'island_creation_displacement',
+                                'map_cell_id' => $originCellId,
+                                'x' => $originX,
+                                'y' => $originY,
+                                'relocated_to_map_cell_id' => $relocated ? (int) $occupancy->map_cell_id : null,
+                                'relocated' => $relocated,
+                                'removal_reason' => $relocated ? null : 'island_creation_displacement',
                                 'rewardless' => true,
                                 'rewards_granted' => false,
                                 'kill_stat_incremented' => false,
@@ -227,7 +243,7 @@ final class NationCreationService
                         ]);
                     }
                     $this->islands->apply($islandPlan, $mapSpace, $nation);
-                    if (in_array($rules['key'] ?? null, ['hakoniwa-2s-plus-v17', 'hakoniwa-2s-plus-v18', 'hakoniwa-2s-plus-v19', 'hakoniwa-2s-plus-v20', 'hakoniwa-2s-plus-v21', 'hakoniwa-2s-plus-v22', 'hakoniwa-2s-plus-v23', 'hakoniwa-2s-plus-v24', 'hakoniwa-2s-plus-v25'], true)) {
+                    if (in_array($rules['key'] ?? null, ['hakoniwa-2s-plus-v17', 'hakoniwa-2s-plus-v18', 'hakoniwa-2s-plus-v19', 'hakoniwa-2s-plus-v20', 'hakoniwa-2s-plus-v21', 'hakoniwa-2s-plus-v22', 'hakoniwa-2s-plus-v23', 'hakoniwa-2s-plus-v24', 'hakoniwa-2s-plus-v25', 'hakoniwa-2s-plus-v26'], true)) {
                         $nation->population_high_water = (int) $mapSpace->cells()
                             ->where('owner_nation_id', $nation->id)
                             ->sum('population');
@@ -324,5 +340,37 @@ final class NationCreationService
         }
 
         return false;
+    }
+
+    private function relocateIslandMonster(
+        MapSpace $mapSpace,
+        InitialIslandPlan $plan,
+        MonsterOccupancy $occupancy,
+    ): bool {
+        $origin = $occupancy->cell;
+        $occupiedIds = MonsterOccupancy::query()->pluck('map_cell_id')->map(static fn ($id): int => (int) $id)->all();
+        $candidate = MapCell::query()->where('map_space_id', $mapSpace->id)
+            ->whereNotIn('id', $plan->changedCellIds)
+            ->whereNotIn('id', $occupiedIds)
+            ->whereNull('owner_nation_id')->where('population', 0)->whereNull('facility_definition_id')
+            ->whereHas('terrain', fn ($query) => $query->whereIn('key', ['sea', 'shallow']))
+            ->whereDoesntHave('ship')
+            ->with('terrain')->orderBy('id')->lockForUpdate()->get()
+            ->sort(static function (MapCell $left, MapCell $right) use ($origin): int {
+                $from = new GridCoordinate((int) $origin->x, (int) $origin->y);
+
+                return [$from->distanceTo(new GridCoordinate($left->x, $left->y)), $left->id]
+                    <=> [$from->distanceTo(new GridCoordinate($right->x, $right->y)), $right->id];
+            })->first();
+        if (! $candidate instanceof MapCell) {
+            return false;
+        }
+        $occupancy->map_cell_id = $candidate->id;
+        $occupancy->save();
+        $occupancy->monster->version++;
+        $occupancy->monster->save();
+        DB::table('map_chunks')->where('id', $candidate->map_chunk_id)->increment('version');
+
+        return true;
     }
 }

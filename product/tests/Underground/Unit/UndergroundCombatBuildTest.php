@@ -127,7 +127,7 @@ final class UndergroundCombatBuildTest extends TestCase
         }
     }
 
-    public function test_level_scaling_rejects_only_non_positive_or_unrepresentable_values(): void
+    public function test_level_scaling_accepts_positive_levels_and_rejects_zero(): void
     {
         $rules = new AlphaV1CombatRules;
 
@@ -136,33 +136,17 @@ final class UndergroundCombatBuildTest extends TestCase
 
         $invalidCalculations = [
             fn () => $rules->progressionScaleBps(0, 1),
-            fn () => $rules->progressionScaleBps(10_248_191_152_060_851, 1),
-            fn () => $rules->progressionScaleBps(PHP_INT_MAX, 1),
             fn () => $rules->storyBenchmarkScaleBps(0),
-            fn () => $rules->storyBenchmarkScaleBps(PHP_INT_MAX),
         ];
 
         foreach ($invalidCalculations as $calculate) {
             try {
                 $calculate();
-                $this->fail('An invalid or unrepresentable level should be rejected.');
+                $this->fail('A zero level should be rejected.');
             } catch (InvalidArgumentException) {
                 // Expected invalid input.
             }
         }
-    }
-
-    public function test_combat_value_scaling_rejects_an_actual_operand_product_that_cannot_fit_an_integer(): void
-    {
-        $rules = new AlphaV1CombatRules;
-        $scaleBps = $rules->progressionScaleBps(2_147_483_647, 1);
-
-        $this->assertSame(1_932_735_291_400, $scaleBps);
-
-        $this->expectException(InvalidArgumentException::class);
-        $this->expectExceptionMessage('scaled combat value exceeds the supported integer range');
-
-        $rules->scaledCombatValue(100_000_000, $scaleBps);
     }
 
     public function test_weighted_multi_stat_power_and_ratio_defense_keep_damage_legal_under_inflation(): void

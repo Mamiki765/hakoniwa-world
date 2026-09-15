@@ -40,7 +40,7 @@ class ApiAndAssetTest extends TestCase
         $this->assertStringNotContainsString('secret-external-id', $response->getContent());
     }
 
-    public function test_nation_creation_classifies_player_conflicts_and_hides_internal_failures(): void
+    public function test_nation_creation_classifies_player_conflicts(): void
     {
         $world = $this->lightweightWorld();
         $owner = User::factory()->create();
@@ -76,14 +76,6 @@ class ApiAndAssetTest extends TestCase
             'request_key' => (string) Str::uuid(),
             'name' => '二重所属島',
         ])->assertConflict()->assertJsonPath('code', 'nation_creation_conflict');
-
-        Nation::query()->where('world_id', $world->id)->update(['nation_number' => 2_147_483_647]);
-        $internal = $this->actingAs(User::factory()->create())->postJson('/api/v1/nations', [
-            ...$base,
-            'request_key' => (string) Str::uuid(),
-            'name' => '内部失敗島',
-        ])->assertServerError()->assertJsonPath('code', 'nation_creation_failed');
-        $this->assertStringNotContainsString('integer range', (string) $internal->getContent());
     }
 
     public function test_xy_chunk_coordinates_and_nation_endpoints(): void

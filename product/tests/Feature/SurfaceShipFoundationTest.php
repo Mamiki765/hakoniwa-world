@@ -4,6 +4,9 @@ namespace Tests\Feature;
 
 use App\Application\NationCreationService;
 use App\Domain\Map\MapCellStateService;
+use App\Domain\Ship\SurfaceShipCatalog;
+use App\Domain\Ship\SurfaceShipDefinition;
+use App\Models\CommandDefinition;
 use App\Models\FacilityDefinition;
 use App\Models\MapCell;
 use App\Models\MonsterDefinition;
@@ -14,6 +17,7 @@ use App\Models\Ship;
 use App\Models\TerrainDefinition;
 use App\Models\User;
 use App\Models\World;
+use App\Services\AssetManifestResolver;
 use App\Services\MapCellPresenter;
 use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -145,6 +149,76 @@ final class SurfaceShipFoundationTest extends TestCase
         $replacement = $this->createShip($world, $nation, $cells[8], 'fishing', 1);
         $this->assertSame(Ship::STATE_REMOVED, $fishing[0]->fresh()->state);
         $this->assertSame(Ship::STATE_ACTIVE, $replacement->state);
+
+        $nation->update(['state' => 'abandoned']);
+        $this->assertConstraintRejects(
+            fn () => $this->createShip($world, $nation, $cells[0], 'exploration', 2),
+            'active Ship newly owned by an abandoned Nation',
+        );
+    }
+
+    public function test_npc_ship_rows_use_only_npc_definitions_and_present_without_a_nation_owner(): void
+    {
+        $world = $this->lightweightWorld();
+        $user = User::factory()->create();
+        $nation = app(NationCreationService::class)->create($user, $world, 'NPC検証国', 'NPC検証島主');
+        $cells = MapCell::query()->where('map_space_id', $this->surfaceMapSpace($world)->id)
+            ->whereNull('owner_nation_id')->whereNull('facility_definition_id')
+            ->whereHas('terrain', fn ($query) => $query->where('key', 'sea'))
+            ->orderBy('id')->limit(4)->get();
+        $this->assertCount(4, $cells);
+
+        $pirate = $this->createNpcShip($world, $cells[0], 'pirate', 2, 3);
+        $treasure = $this->createNpcShip($world, $cells[1], 'treasure', 1, 1);
+        $this->assertNull($pirate->nation);
+        $this->assertNull($treasure->nation);
+
+        $view = app(MapCellPresenter::class)->present($cells[0]->fresh(), $nation->id, 1);
+        $this->assertSame(['pirate', '海賊船', 2, 3, null], [
+            $view['ship']['key'],
+            $view['ship']['name'],
+            $view['ship']['current_hp'],
+            $view['ship']['max_hp'],
+            $view['ship']['owner_nation'],
+        ]);
+        $this->assertStringContainsString('船 海賊船 HP 2/3', $view['aria_label']);
+        $this->assertStringNotContainsString('船の所有者', $view['aria_label']);
+
+        $buildCommand = CommandDefinition::query()
+            ->where('ruleset_version_id', $world->ruleset_version_id)
+            ->where('key', 'build_ship')
+            ->firstOrFail();
+        $this->assertSame(
+            ['fishing', 'tourist', 'exploration', 'warship'],
+            array_map(
+                static fn (SurfaceShipDefinition $definition): string => $definition->key,
+                app(SurfaceShipCatalog::class)->options($buildCommand),
+            ),
+        );
+        $this->assertSame('ship-pirate.gif', app(AssetManifestResolver::class)->filenameForAssetKey('ship.pirate'));
+        $this->assertSame('ship-treasure.gif', app(AssetManifestResolver::class)->filenameForAssetKey('ship.treasure'));
+
+        $this->assertConstraintRejects(
+            fn () => $this->createNpcShip($world, $cells[2], 'fishing', 1, 1),
+            'Player Ship without a Nation',
+        );
+        $this->assertConstraintRejects(
+            fn () => $this->createShip($world, $nation, $cells[2], 'pirate', 3),
+            'NPC-only Ship owned by a Nation',
+        );
+        $this->assertConstraintRejects(
+            fn () => $this->createShip($world, $nation, $cells[0], 'fishing', 1),
+            'Player Ship sharing an NPC Ship cell',
+        );
+
+        $monster = $this->monster($world);
+        $this->assertConstraintRejects(
+            fn () => MonsterOccupancy::query()->create([
+                'monster_instance_id' => $monster->id,
+                'map_cell_id' => $treasure->map_cell_id,
+            ]),
+            'Monster sharing an NPC Ship cell',
+        );
     }
 
     public function test_owner_can_change_active_ship_heading_with_optimistic_version_without_spending_a_turn(): void
@@ -221,6 +295,28 @@ final class SurfaceShipFoundationTest extends TestCase
             'ship_type_key' => $type,
             'current_hp' => $maxHp,
             'max_hp' => $maxHp,
+            'heading' => null,
+            'state' => Ship::STATE_ACTIVE,
+            'version' => 1,
+        ]);
+    }
+
+    private function createNpcShip(
+        World $world,
+        MapCell $cell,
+        string $type,
+        int $currentHp,
+        int $maxHp,
+    ): Ship {
+        return Ship::query()->create([
+            'world_id' => $world->id,
+            'ruleset_version_id' => $world->ruleset_version_id,
+            'nation_id' => null,
+            'map_cell_id' => $cell->id,
+            'ship_type_key' => $type,
+            'current_hp' => $currentHp,
+            'max_hp' => $maxHp,
+            'population' => $type === 'pirate' ? 7_500 : null,
             'heading' => null,
             'state' => Ship::STATE_ACTIVE,
             'version' => 1,
