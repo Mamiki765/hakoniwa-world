@@ -136,22 +136,22 @@ Testとreviewは、故障時の影響に比例して重点を置く。特に次�
 
 次を守る。
 
-- 既存testの存在は歴史的な証拠であり、Ownerが承認した恒久contractであることの証明ではない。
-- 過去Agentが追加したtestやcommentからOwner intentを逆算しない。Ownerがゼロベース見直しを求めた場合、既存保証をすべて維持することを前提にしない。
-- 要求された意味と故障影響を検証し、その時点で偶然だった要素数、DOM構造、class順、内部メソッド名、拡張可能なcatalog全件を独自にcontract化しない。
-- 既存の代表testへregressionを追加することを優先する。
-- 同じinvariantを複数layerや全variantで重複検証しない。
-- production pathのない理論上の異常状態や、unsupported historical runtimeのためだけにtestを増やさない。
-- 状態×command×targetの総当たりmatrixを安易に作らない。
-- 小修正ごとに新規testや全suite実行を機械的に要求せず、故障影響と既存の代表確認から必要性を判断する。実行しなかった確認は報告する。
-- focused testから始め、変更domainに必要なsuiteとstatic checkを実行する。
+- 要求された意味と具体的な故障影響を検証する。既存testやcommentからOwner intentを逆算せず、恒久contractと扱わない。偶然の要素数、DOM構造、class順、内部名、catalog全件を独自に固定しない。
+- testの新設・拡張には、到達可能な操作またはsupported upgrade、具体的な故障、既存の代表確認で検出できない理由が必要である。不安や「念のため」だけで必要性を広げない。新機能も同じ基準で判断し、過去事故の発生は必須条件にしない。
+- その不足がなければtestを追加しない。不足がある場合は既存代表の最小限の拡張・置換を優先し、異なる責務または独立した失敗条件がある場合だけ別caseにする。
+- この基準はfile・methodだけでなく、provider、loop、assertion、別layerでの再検証にも適用する。同じ故障しか検出しない組合せやvariantを増やさない。
+- UIを迂回できる外部入力の認可・安全性、正常操作の境界値、supported upgradeの既存データを、到達不能な異常と混同しない。個々の追加には上記基準を適用し、DB直書きでのみ作る到達不能状態、unsupported history、理論上の整数限界だけのためにtestを増やさない。
+- データ・資産・進行の破壊や重要な実regressionを検出する代表には必要なコストを認める。高影響の分野という理由だけで全異常系を必要扱いしない。sourceの横断確認も全経路へのtest追加義務と解釈しない。
+- 依頼範囲の仕様変更で不要になった保証は削除・置換する。ゼロベース見直しでは既存保証の全維持を前提にしない。不要な保証を削るためだけの代替testは作らず、件数の維持・減少だけを品質の根拠にしない。
+- focusedから変更の影響に必要なtestとstatic checkを選ぶ。必要な確認が通ったら終了し、新たな変更・失敗・具体的な未解消懸念がない限り拡大・反復しない。未実施の確認は報告する。
 - push/PRの権限とCIコスト管理を分離する。pushごとに高コストCIが動く環境では無意味な細切れpushを避け、小修正ごとにrepository-wide CIを機械的に再要求しない。Owner管理のForgejoなど高コストCIが自動起動しない環境では、push回数を節約するためにreview用の共有・更新を止めない。
 - repository-wide PHPUnitは、exact-head CIが同じtest identifier集合を全件実行する場合、原則としてCIへ委譲する。
-- localではfocused testを優先し、migration、concurrency、environment固有の検証、CI failureの再現など、CIだけでは不足する確認を追加する。
+- localでCIを補う確認は、migration、concurrency、環境差、CI failureなどの具体的な不足に限定する。一時調査を恒久testへ残す必要性は別に判断する。
 - source、dependency、test設定が変わっていない場合、CIと同じ全PHPUnitをlocalで重複実行しない。
 - repository-wide回帰はexact-head CIを最終authorityとして確認する。
 
 Review findingは、supported production pathからの到達可能性と、上記の品質基準またはcurrent player・operatorへの具体的な回帰を示す。単なる好み、unsupported history、DBやrequestで拒否される不可能状態だけを理由にP1/P2としない。
+test追加を求めるreviewも、到達経路・故障・既存確認の不足を示す。推測だけの不足を理由にtestを増やさない。
 
 具体的なtest command、suite構成、CI shard構成はComposer設定とtesting文書を正本とする。
 
