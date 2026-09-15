@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use Tests\Support\PhpunitSelection;
 use Tests\Support\TestShardPlanner;
 
 require dirname(__DIR__, 2).'/vendor/autoload.php';
@@ -9,15 +10,19 @@ require dirname(__DIR__, 2).'/vendor/autoload.php';
 $usage = static function (): never {
     fwrite(STDERR, "Usage:\n");
     fwrite(STDERR, "  php tests/scripts/test_shards.php plan <shard-total> <full|surface|underground> <output.json>\n");
+    fwrite(STDERR, "  php tests/scripts/test_shards.php plan-focus <scope-plan.json> <list-tests.xml> <output.json>\n");
     fwrite(STDERR, "  php tests/scripts/test_shards.php plan-verify <plan.json>\n");
     fwrite(STDERR, "  php tests/scripts/test_shards.php plan-describe <plan.json> <zero-based-index>\n");
     fwrite(STDERR, "  php tests/scripts/test_shards.php plan-list <plan.json>\n");
+    fwrite(STDERR, "  php tests/scripts/test_shards.php plan-files-sha256 <plan.json>\n");
     fwrite(STDERR, "  php tests/scripts/test_shards.php plan-files <plan.json> <zero-based-index>\n");
     fwrite(STDERR, "  php tests/scripts/test_shards.php plan-profiles <plan.json> <zero-based-index>\n");
     fwrite(STDERR, "  php tests/scripts/test_shards.php verify <shard-total> [full|surface|underground]\n");
     fwrite(STDERR, "  php tests/scripts/test_shards.php describe <shard-total> <zero-based-index> [full|surface|underground]\n");
     fwrite(STDERR, "  php tests/scripts/test_shards.php files <shard-total> <zero-based-index> [full|surface|underground]\n");
     fwrite(STDERR, "  php tests/scripts/test_shards.php profiles <shard-total> <zero-based-index> [full|surface|underground]\n");
+    fwrite(STDERR, "  php tests/scripts/test_shards.php selection-classify [phpunit arguments ...]\n");
+    fwrite(STDERR, "  php tests/scripts/test_shards.php selection-passthrough [phpunit arguments ...]\n");
     exit(2);
 };
 
@@ -85,6 +90,20 @@ try {
     $projectRoot = dirname(__DIR__, 2);
     $planner = new TestShardPlanner($projectRoot);
 
+    if (in_array($command, ['selection-classify', 'selection-passthrough'], true)) {
+        $selection = PhpunitSelection::classify(array_values(array_slice($argv, 2)));
+        if ($command === 'selection-classify') {
+            echo 'selection_mode: '.$selection['selection_mode']."\n";
+            echo 'has test inputs: '.($selection['has_test_inputs'] ? 'yes' : 'no')."\n";
+        } else {
+            foreach ($selection['passthrough'] as $argument) {
+                echo $argument."\0";
+            }
+        }
+
+        exit(0);
+    }
+
     if ($command === 'plan') {
         $shardTotal = $positiveInteger($argv[2] ?? null, 'Shard total');
         $scope = TestShardPlanner::normalizeScope($argv[3] ?? 'full');
@@ -95,14 +114,32 @@ try {
         $plan = $planner->createRunPlan($shardTotal, $scope, metadata: [
             'source_tree_sha256' => getenv('HAKONIWA_PLAN_SOURCE_TREE_SHA256') ?: 'unknown',
             'composer_lock_sha256' => getenv('HAKONIWA_PLAN_COMPOSER_LOCK_SHA256') ?: 'unknown',
-        ]);
+        ], useHistoricalTiming: getenv('HAKONIWA_PLAN_SKIP_HISTORICAL_TIMING') !== '1');
         $planner->writeRunPlan($output, $plan);
         $printReport($planner, $scope, $plan['discovered'], $plan['shards'], $plan);
 
         exit(0);
     }
 
-    if (in_array($command, ['plan-verify', 'plan-describe', 'plan-list', 'plan-files', 'plan-profiles'], true)) {
+    if ($command === 'plan-focus') {
+        $scopePlanPath = $argv[2] ?? null;
+        $listTestsXmlPath = $argv[3] ?? null;
+        $output = $argv[4] ?? null;
+        if ($scopePlanPath === null || $listTestsXmlPath === null || $output === null) {
+            $usage();
+        }
+        $scopePlan = $planner->loadRunPlan($scopePlanPath);
+        $plan = $planner->focusRunPlan($scopePlan, $listTestsXmlPath);
+        $planner->writeRunPlan($output, $plan);
+        $printReport($planner, $plan['scope'], $plan['discovered'], $plan['shards'], $plan);
+        echo 'selected test identifiers: '.$plan['selected_test_identifier_count']."\n";
+
+        exit(0);
+    }
+
+    if (in_array($command, [
+        'plan-verify', 'plan-describe', 'plan-list', 'plan-files-sha256', 'plan-files', 'plan-profiles',
+    ], true)) {
         $path = $argv[2] ?? null;
         if ($path === null) {
             $usage();
@@ -119,6 +156,11 @@ try {
             foreach ($plan['discovered'] as $file) {
                 echo $file."\n";
             }
+
+            exit(0);
+        }
+        if ($command === 'plan-files-sha256') {
+            echo $planner->selectedTestFilesSha256($plan['discovered'])."\n";
 
             exit(0);
         }

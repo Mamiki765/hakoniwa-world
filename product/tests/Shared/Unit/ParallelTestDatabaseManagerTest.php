@@ -32,6 +32,44 @@ final class ParallelTestDatabaseManagerTest extends TestCase
         $this->assertStringEndsWith('_test', $database);
     }
 
+    public function test_template_database_names_and_manifest_metadata_are_strictly_scoped(): void
+    {
+        $fingerprint = str_repeat('a', 64);
+        $database = 'hakoniwa_surface_fixture_'.substr($fingerprint, 0, 16).'_template';
+        $this->assertTrue(ParallelTestDatabaseManager::isSafeTemplateDatabaseName($database));
+        $this->assertTrue(ParallelTestDatabaseManager::isSafeTemplateBuildDatabaseName(
+            'hakoniwa_surface_fixture_build_0123abcd_test',
+        ));
+        foreach (['hakoniwa', 'hakoniwa_test', $database.';DROP DATABASE hakoniwa'] as $unsafe) {
+            $this->assertFalse(ParallelTestDatabaseManager::isSafeTemplateDatabaseName($unsafe));
+            $this->assertFalse(ParallelTestDatabaseManager::isSafeTemplateBuildDatabaseName($unsafe));
+        }
+
+        [$manager, $manifest, $payload] = $this->createManifestFixture();
+        $payload['reusable_surface_template'] = [
+            'fingerprint' => $fingerprint,
+            'database' => $database,
+            'cache_hit' => true,
+            'input_count' => 1,
+            'inputs_sha256' => str_repeat('b', 64),
+            'build_database' => null,
+            'build_seconds' => 0.0,
+            'build_migration_seconds' => 0.0,
+            'build_map_generation_count' => 0,
+            'build_map_generation_seconds' => 0.0,
+            'build_log' => null,
+            'build_metrics' => null,
+        ];
+        file_put_contents($manifest, json_encode($payload, JSON_THROW_ON_ERROR));
+        $this->assertSame($database, $manager->reusableSurfaceTemplate($manifest)['database'] ?? null);
+
+        $payload['reusable_surface_template']['database'] = 'hakoniwa';
+        file_put_contents($manifest, json_encode($payload, JSON_THROW_ON_ERROR));
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage('invalid reusable surface template metadata');
+        $manager->reusableSurfaceTemplate($manifest);
+    }
+
     #[DataProvider('unsafeDatabaseNameProvider')]
     public function test_production_and_arbitrary_database_names_are_never_safe(string $database): void
     {

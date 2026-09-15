@@ -1,6 +1,6 @@
 # テストをゼロベースで組み直す設計図
 
-Status: Phase 0a～Phase 6を`release/4.2.0`で実装・確認済み。[Phase 0a・1記録](test-suite-phase01-implementation.md)、[Phase 2記録](test-suite-phase02-implementation.md)、[Phase 3記録](test-suite-phase03-implementation.md)、[Phase 4記録](test-suite-phase04-implementation.md)、[Phase 5記録](test-suite-phase05-implementation.md)、[Phase 6記録](test-suite-phase06-verification.md)を参照。
+Status: Phase 0a～Phase 6と通常開発向けfocused反復最適化を`release/4.2.0`で実装・確認済み。[Phase 0a・1記録](test-suite-phase01-implementation.md)、[Phase 2記録](test-suite-phase02-implementation.md)、[Phase 3記録](test-suite-phase03-implementation.md)、[Phase 4記録](test-suite-phase04-implementation.md)、[Phase 5記録](test-suite-phase05-implementation.md)、[Phase 6・focused追補記録](test-suite-phase06-verification.md)を参照。
 
 以下の棚卸しはmain `00182bd`に固定した**設計baseline**。実装後の件数・確認結果と区別する。
 
@@ -180,6 +180,28 @@ workerごとの安全な *_test DB
 - commit/別接続/workerが必要なテストへ外側transactionを付けない。未commit fixtureがworkerに見えず、lockやafterCommitの検証が偽になるため。
 - 通常テストの途中で外側transactionが消えた場合は失敗として中止し、そのworker DBを廃棄する。汚れたbaselineで後続caseを続行しない。
 
+### focused反復の追加最適化
+
+Phase 6後の実測では、同じ`reusable_surface` 1件でもrunner内で39.13秒を要し、map生成は0.27秒にすぎなかった。LPT履歴読込だけの省略は38.47秒で差が小さく、対象選択前の全source hashと毎回のmigrationが主要な反復費用として残った。このため、通常のfocused実行だけ次の最小構成を採用する。
+
+```text
+file / filterをPHPUnitで列挙 → 0件ならDB作成前に失敗
+  ├─ reusable_surfaceだけ: verified Debug32x32 template
+  │    → run専用 hakoniwa_parallel_*_test clone
+  │    → markerと1,024 cellsを再検証
+  │    → case transaction / rollback
+  │    → run cloneをdrop
+  └─ standard / individualとの混在: 従来の空run DBとprofile別初期化
+```
+
+- Full、Surface全件、Underground全件は従来どおりscope全体を固定planへ割り当てる。templateは`selection_mode=focused`かつ選択fileが`reusable_surface`だけの時に限る。
+- focusedでは過去の全suite JUnitをLPT用に読まず、repository全source hashも作らない。代わりに実際の選択identifier、選択file hash、template fingerprint、run DB identityをevidenceへ残す。
+- template fingerprintはmigration/schema、Ruleset/config、catalog install/publish、Debug32x32 generatorとmap coverage、fixture trait/builder/manager、その直接依存model/domain、`composer.lock`、`phpunit.xml`、PHP/PostgreSQL versionを対象にする。無関係なtest本文は含めない。fixture生成依存を追加した時はfingerprint対象も更新する。
+- template生成は用途専用advisory lock内のbuild DBで行い、marker・world・1,024 cells・generation完了を検証してからtemplate名へrenameする。不完全build DBは再利用せず、次回lock取得時に用途限定prefixで回収する。別fingerprintの旧templateはverified currentを確保した後に同じ用途限定prefixでpruneする。
+- clone modeは環境変数だけでmigrationをskipしない。run DB名、完全fingerprint marker、profile、world key、cell数をDBから照合し、clone側の`fixture_available=1`と`map_generation_count=0`を別々に記録する。
+- templateにはgeneratorが書いた`created_at`、`generated_at`、generation完了時刻が残る。これらは空海map baselineの生成記録であり、現行`reusable_surface` caseは現在時刻として解釈しない。時刻依存のrowはcase transaction内で作る。baseline時刻をgameplay入力にするcaseは個別fixtureへ置くか、その時刻contractをfingerprint対象と初期化契約へ明示的に追加する。
+- 永続を許すのは検証済みcurrent template 1個だけで、test接続先にはしない。各runは異なるcloneを使い、正常・失敗・interrupt時とも既存manifest cleanupでcloneをdropする。
+
 ### 再利用に向かないものの扱い
 
 `WorldInitializationTest`、`WorldExpansion*`、`WorldReset*`、`NationAutomaticExpansionTest`、`FreshInstallRebaselineTest`、supported upgrade、`Postgres*`等は先に共有worldへ押し込まない。
@@ -227,6 +249,7 @@ composer test:parallel -- 4 underground
 - 引数順は既存の`4`を保持し、scopeを第2引数に追加。省略は`4 full`。`all`は既存Composer命名とのaliasとして`full`へ正規化する。不正scopeはDB作成前に失敗する。
 - `composer test:surface` / `test:underground` / `test:all`は同じdispatcherの1-worker実行にする。これにより直列でもfixture区分が分離される。`composer test`は`test:all`のaliasを継続。
 - focused実行も同じdispatcherからfile/filterを渡す。再利用fixtureと通常fixtureを生のPHPUnit一発で混在させる操作は許可しない。区分専用の一時config/environmentをfixture側で検証し、案内付きで失敗する。
+- Windows wrapperは第3引数以降をそのままshell runnerへ渡す。wrapper自身の`shift`前にscript directoryを固定し、file/filter追加でrepository root解決が変わらないようにする。
 - Docker wrapper→shell runner→planner→DB manager→実行→evidenceの全段でscopeを渡す。wrapperだけで対象を変え、DB準備や証拠はFullのままにする実装を避ける。
 - filterなどのPHPUnit引数は配列として渡し、shell command文字列へ連結しない。絞った実行の証拠をscope全体PASSとして記録しない。
 
@@ -250,6 +273,7 @@ composer test:parallel -- 4 underground
 - workerは複数fixture区分を直列実行する。区分別JUnit/logを保存し、総和からworkerの結果を構成する。どこかの区分の失敗・未完了・cleanup失敗でrunをPASSにしない。
 - 非空scopeで列挙0件は失敗。4分割のうち空workerは空として記録し、PHPUnitを無引数起動しない。
 - `scope`、HEAD/dirty状態またはtree fingerprint、実行image/vendorのhash、選択identifier集合hash、割当、case結果、process wall time、bootstrap/fixture時間、cleanupを記録する。containerへ渡したSHAだけでbind mount内容まで証明したと扱わない。
+- focused `reusable_surface`ではtemplateの完全fingerprint、入力一覧hash、cache hit、build migration/map時間、template名、run clone名を追加記録する。初回build費用と通常のcache hit時間を混ぜて高速化を判断しない。
 - 最新source/dependencyとdevelopment imageの対応を確認する。`compose.development.yml`はsource/testsをmountするが、Composer設定と依存はimage内にある。Composer script/依存、Dockerfile、その他image内に固定されたファイルが変わった時はbuildし、通常source/test編集では繰り返しbuildしない。
 - interrupt/失敗時も全child終了を確認してからDBを削除する。残存があれば対象manifestとcleanup失敗を表示し、広いprefix削除やproduction DBへのfallbackをしない。
 - CIが利用できる場合は同じplannerと識別子集合を使用する。現在のGitHub Actions利用可否は今回検証していないので、利用可能を前提にローカル設計を止めない。
