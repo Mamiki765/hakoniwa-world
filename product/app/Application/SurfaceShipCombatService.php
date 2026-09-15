@@ -20,7 +20,7 @@ final class SurfaceShipCombatService
         private readonly TurnEventRecorder $events,
     ) {}
 
-    /** @return array{before_hp:int,after_hp:int,sunk:bool,experience:int,refugees:int} */
+    /** @return array{before_hp:int,after_hp:int,sunk:bool,experience:int,refugees:int,changed_cell_ids:list<int>} */
     public function damage(
         TurnContext $context,
         MapCell $cell,
@@ -55,6 +55,7 @@ final class SurfaceShipCombatService
         }
         $sunk = $actualDamage >= $beforeHp;
         $received = 0;
+        $changedCellIds = [];
         if (! $sunk) {
             $ship->current_hp = $beforeHp - $actualDamage;
             $ship->version++;
@@ -81,7 +82,7 @@ final class SurfaceShipCombatService
                     $source === 'missile' ? 'missile_refugee_percent' : 'warship_refugee_percent'
                 ];
                 $generated = intdiv($population * $percent, 100);
-                $received = $this->refugees->receive(
+                $reception = $this->refugees->receive(
                     $context,
                     $attacker,
                     $cell,
@@ -89,6 +90,8 @@ final class SurfaceShipCombatService
                     'pirate_ship_sunk',
                     ['combat_source' => $source, 'pirate_population' => $population, 'percent' => $percent],
                 );
+                $received = $reception['received'];
+                $changedCellIds = $reception['changed_cell_ids'];
             }
         }
         $this->events->record($context, 'ship.combat_hit', $ship, [
@@ -110,6 +113,7 @@ final class SurfaceShipCombatService
             'sunk' => $sunk,
             'experience' => $experience,
             'refugees' => $received,
+            'changed_cell_ids' => $changedCellIds,
         ];
     }
 }

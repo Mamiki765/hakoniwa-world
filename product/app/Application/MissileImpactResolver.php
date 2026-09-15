@@ -1062,6 +1062,9 @@ final class MissileImpactResolver
             if ($combat['sunk']) {
                 $this->surfaceShipBatch?->forget($ship, (int) $cell->id);
             }
+            foreach ($combat['changed_cell_ids'] as $changedCellId) {
+                $this->changedCellIds[$changedCellId] = true;
+            }
             $this->markCellChanged($context, $cell);
             $effect = $combat['sunk'] ? 'ship_sunk' : 'ship_damaged';
             $this->recordMeaningfulImpact($context, $firingNation, $cell, $missileKey, $effect, [

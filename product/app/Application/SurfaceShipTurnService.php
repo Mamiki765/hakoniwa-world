@@ -434,6 +434,12 @@ final class SurfaceShipTurnService
             $result = $this->combat->damage(
                 $context, $target['cell'], $targetShip, (int) $settings['damage'], $nation, 'warship',
             );
+            foreach ($result['changed_cell_ids'] as $changedCellId) {
+                $changedCell = $cellsById->get($changedCellId);
+                if ($changedCell instanceof MapCell) {
+                    $changedCell->refresh()->load(['terrain', 'facility', 'ownerNation']);
+                }
+            }
             if ($result['sunk']) {
                 $ships->forget($targetShip, (int) $target['cell']->id);
             }

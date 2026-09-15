@@ -764,6 +764,69 @@ class TurnCellProcessingTest extends TestCase
         $this->assertSame(1, DB::table('audit_events')->where('event_type', 'ship.warship_attacked')->count());
     }
 
+    public function test_warship_refugees_remain_in_turn_local_settlement_before_later_population_growth(): void
+    {
+        $world = $this->lightweightWorld();
+        $nation = app(NationCreationService::class)->create(
+            User::factory()->create(),
+            $world,
+            '難民同期国',
+            '難民同期島主',
+        );
+        $space = $this->surfaceMapSpace($world);
+        $port = MapCell::query()->where('owner_nation_id', $nation->id)
+            ->whereNull('facility_definition_id')->firstOrFail();
+        $this->facility($port, 'port', 'plain');
+        [$warshipCell, $pirateCell] = $this->eastwardSeaLine($space);
+        $capital = $nation->capital()->firstOrFail()->cell()->with(['terrain', 'facility'])->firstOrFail();
+        $capital->update(['population' => 1_000]);
+        Ship::query()->create([
+            'world_id' => $world->id,
+            'ruleset_version_id' => $world->ruleset_version_id,
+            'nation_id' => $nation->id,
+            'map_cell_id' => $warshipCell->id,
+            'ship_type_key' => 'warship',
+            'current_hp' => 3,
+            'max_hp' => 3,
+            'heading' => null,
+            'state' => Ship::STATE_ACTIVE,
+            'version' => 1,
+        ]);
+        Ship::query()->create([
+            'world_id' => $world->id,
+            'ruleset_version_id' => $world->ruleset_version_id,
+            'nation_id' => null,
+            'map_cell_id' => $pirateCell->id,
+            'ship_type_key' => 'pirate',
+            'current_hp' => 1,
+            'max_hp' => 3,
+            'population' => 8_000,
+            'heading' => null,
+            'state' => Ship::STATE_ACTIVE,
+            'version' => 1,
+        ]);
+        $nation->update(['money' => 100]);
+        [$context, $run] = $this->context(
+            $world,
+            $nation,
+            [$warshipCell->id, $pirateCell->id, $capital->id],
+            $this->seedForFirstDraw(TurnRandomStreamFactory::POPULATION_GROWTH, 100, 1_000, 100),
+        );
+        $settings = $context->ruleset->settings;
+        $settings['turn_processing']['disasters']['fire']['probability'] = ['numerator' => 0, 'denominator' => 1];
+        $context->ruleset->settings = $settings;
+
+        $metrics = app(CompleteTurnEngine::class)->execute('process_cells', $context)->metrics;
+
+        $this->assertSame(100, $metrics['population_increased']);
+        $this->assertSame(9_100, $capital->fresh()->population);
+        $this->assertSame(8_000, $this->event($run, 'refugee_received')['received_population']);
+        $this->assertSame([9_000, 9_100], [
+            $this->event($run, 'population.increased')['before'],
+            $this->event($run, 'population.increased')['after'],
+        ]);
+    }
+
     public function test_sequential_settlement_growth_famine_riot_and_forest_processing(): void
     {
         $world = $this->lightweightWorld();
