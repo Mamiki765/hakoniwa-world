@@ -15,13 +15,13 @@ class RulesetValidationCommandTest extends TestCase
     public function test_validation_command_reports_summary_without_mutating_database(): void
     {
         config(['hakoniwa' => require config_path('hakoniwa.php')]);
-        $currentKeys = ['hakoniwa-2s-plus-v25'];
+        $currentKeys = ['hakoniwa-2s-plus-v26'];
         $before = $this->databaseSnapshot();
 
         $this->assertSame($currentKeys, array_keys(config('hakoniwa.published_rulesets')));
 
         $this->artisan('hakoniwa:ruleset:validate')
-            ->expectsOutputToContain('Ruleset hakoniwa-2s-plus-v25 is valid: version=25')
+            ->expectsOutputToContain('Ruleset hakoniwa-2s-plus-v26 is valid: version=26')
             ->assertSuccessful();
 
         $this->assertSame($currentKeys, array_keys(config('hakoniwa.published_rulesets')));
@@ -33,7 +33,7 @@ class RulesetValidationCommandTest extends TestCase
         $before = $this->databaseSnapshot();
 
         $this->artisan('hakoniwa:ruleset:validate', ['--key' => 'does-not-exist'])
-            ->expectsOutputToContain('does-not-exist is not the current key hakoniwa-2s-plus-v25')
+            ->expectsOutputToContain('does-not-exist is not the current key hakoniwa-2s-plus-v26')
             ->assertFailed();
 
         $this->assertSame($before, $this->databaseSnapshot());

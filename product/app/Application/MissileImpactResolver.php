@@ -1049,7 +1049,8 @@ final class MissileImpactResolver
         $definition = collect($this->surfaceShips->definitions($context->ruleset->settings))
             ->first(static fn (SurfaceShipDefinition $candidate): bool => $candidate->key === $ship->ship_type_key);
         $owner = $ship->relationLoaded('nation') ? $ship->nation : null;
-        if (! $definition instanceof SurfaceShipDefinition || ! $owner instanceof Nation) {
+        if (! $definition instanceof SurfaceShipDefinition
+            || ($ship->nation_id !== null && ! $owner instanceof Nation)) {
             throw new DomainException('The turn-local Ship impact index is missing canonical Ship data.');
         }
         $beforeHp = (int) $ship->current_hp;
@@ -1071,7 +1072,7 @@ final class MissileImpactResolver
             $ship->version++;
             $ship->save();
             $this->events->record($context, 'ship.missile_damaged', $ship, [
-                'nation_id' => (int) $ship->nation_id,
+                'nation_id' => $ship->nation_id,
                 'ship_id' => (int) $ship->id,
                 'ship_type_key' => $ship->ship_type_key,
                 'ship_name' => $definition->name,
@@ -1082,7 +1083,7 @@ final class MissileImpactResolver
                 'y' => (int) $cell->y,
                 'damage' => $damage,
                 'current_hp' => (int) $ship->current_hp,
-            ], 'nation', 'warning');
+            ], $ship->nation_id === null ? 'public' : 'nation', 'warning');
         }
         $this->markCellChanged($context, $cell);
         $effect = $sunk ? 'ship_sunk' : 'ship_damaged';
@@ -1102,16 +1103,16 @@ final class MissileImpactResolver
                 'damage' => $damage,
                 'underlying_preserved' => true,
             ],
-            (int) $owner->id,
-            $owner->name,
+            $owner?->id,
+            $owner?->name,
         );
 
         return [
             ...$base,
             'meaningful' => true,
             'effect' => $effect,
-            'target_nation_id' => (int) $owner->id,
-            'target_nation_name' => $owner->name,
+            'target_nation_id' => $owner?->id,
+            'target_nation_name' => $owner?->name,
             'ship_id' => (int) $ship->id,
             'ship_type_key' => $ship->ship_type_key,
             'before_hp' => $beforeHp,

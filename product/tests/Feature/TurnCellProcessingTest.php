@@ -235,6 +235,116 @@ class TurnCellProcessingTest extends TestCase
         ]);
     }
 
+    public function test_npc_surface_ships_drift_without_port_oil_reward_or_secretary_experience(): void
+    {
+        $world = $this->lightweightWorld();
+        $user = User::factory()->create();
+        $nation = app(NationCreationService::class)->create($user, $world, 'NPC漂流確認国', 'NPC漂流確認島主');
+        $space = $this->surfaceMapSpace($world);
+        [$pirateOrigin, $pirateDestination, $pirateLater] = $this->eastwardSeaLine($space);
+        [$treasureOrigin, $treasureDestination] = $this->eastwardSeaLine(
+            $space,
+            [$pirateOrigin->id, $pirateDestination->id, $pirateLater->id],
+        );
+        $pirate = Ship::query()->create([
+            'world_id' => $world->id,
+            'ruleset_version_id' => $world->ruleset_version_id,
+            'nation_id' => null,
+            'map_cell_id' => $pirateOrigin->id,
+            'ship_type_key' => 'pirate',
+            'current_hp' => 2,
+            'max_hp' => 3,
+            'heading' => GridCoordinate::WEST,
+            'state' => Ship::STATE_ACTIVE,
+            'version' => 1,
+        ]);
+        $treasure = Ship::query()->create([
+            'world_id' => $world->id,
+            'ruleset_version_id' => $world->ruleset_version_id,
+            'nation_id' => null,
+            'map_cell_id' => $treasureOrigin->id,
+            'ship_type_key' => 'treasure',
+            'current_hp' => 1,
+            'max_hp' => 1,
+            'heading' => null,
+            'state' => Ship::STATE_ACTIVE,
+            'version' => 1,
+        ]);
+        $oil = ResourceDefinition::query()->where('key', 'oil')->firstOrFail();
+        $oilBefore = (int) NationResource::query()->where('nation_id', $nation->id)
+            ->where('resource_definition_id', $oil->id)->value('amount');
+        $moneyBefore = (int) $nation->money;
+        $experienceBefore = (int) $user->secretary()->firstOrFail()->skills()
+            ->where('skill_key', SecretarySkillCatalog::SHIP_OPERATIONS)->value('experience');
+        $this->assertFalse(MapCell::query()->where('owner_nation_id', $nation->id)
+            ->whereHas('facility', fn ($query) => $query->where('key', 'port'))->exists());
+
+        [$context, $run] = $this->context(
+            $world,
+            $nation,
+            [$pirateOrigin->id, $pirateDestination->id, $treasureOrigin->id, $treasureDestination->id],
+            hash('sha256', 'npc ship random drift'),
+        );
+        $ships = app(SurfaceShipTurnService::class);
+        $shipBatch = $ships->load($context, $space);
+        $monsterBatch = app(MonsterTurnService::class)->load($context);
+        foreach ([
+            [$pirateOrigin, $pirateDestination],
+            [$treasureOrigin, $treasureDestination],
+        ] as [$origin, $destination]) {
+            $cells = collect([$origin, $destination])->map(
+                static fn (MapCell $cell): MapCell => $cell->fresh(['terrain', 'facility']),
+            );
+            $ships->processCell(
+                $context,
+                $space,
+                $cells->first(),
+                $cells->mapWithKeys(static fn (MapCell $cell): array => [
+                    $cell->x.':'.$cell->y => $cell,
+                ])->all(),
+                $monsterBatch,
+                $shipBatch,
+            );
+        }
+        app(SecretaryTurnService::class)->flushExperience($context);
+
+        $this->assertSame([$pirateDestination->id, $treasureDestination->id], [
+            $pirate->fresh()->map_cell_id,
+            $treasure->fresh()->map_cell_id,
+        ]);
+        $this->assertSame([2, 2, 0, 0, 0, 0, 0], [
+            $shipBatch->metrics()['ship_events'],
+            $shipBatch->metrics()['ship_moves'],
+            $shipBatch->metrics()['ship_no_port'],
+            $shipBatch->metrics()['ship_fuel_shortages'],
+            $shipBatch->metrics()['ship_oil_consumed'],
+            $shipBatch->metrics()['ship_fish_applied'],
+            $shipBatch->metrics()['ship_secretary_experience'],
+        ]);
+        $this->assertSame([$oilBefore, $moneyBefore, $experienceBefore], [
+            (int) NationResource::query()->where('nation_id', $nation->id)
+                ->where('resource_definition_id', $oil->id)->value('amount'),
+            (int) $nation->fresh()->money,
+            (int) $user->secretary()->firstOrFail()->skills()
+                ->where('skill_key', SecretarySkillCatalog::SHIP_OPERATIONS)->value('experience'),
+        ]);
+        $events = DB::table('audit_events')->where('event_type', 'ship.moved')
+            ->whereIn('subject_id', [$pirate->id, $treasure->id])->orderBy('subject_id')->get();
+        $this->assertCount(2, $events);
+        foreach ($events as $event) {
+            $metadata = json_decode($event->metadata, true, flags: JSON_THROW_ON_ERROR);
+            $this->assertNull($event->nation_id);
+            $this->assertSame('public', $event->visibility);
+            $this->assertSame([null, 0, 0, 0], [
+                $metadata['resource_key'],
+                $metadata['oil_consumed'],
+                $metadata['resource_applied'],
+                $metadata['money_applied'],
+            ]);
+            $this->assertSame($run->id, $metadata['turn_run_id']);
+        }
+    }
+
     public function test_sequential_settlement_growth_famine_riot_and_forest_processing(): void
     {
         $world = $this->lightweightWorld();

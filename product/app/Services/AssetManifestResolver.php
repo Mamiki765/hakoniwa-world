@@ -38,6 +38,8 @@ final class AssetManifestResolver
         'ship.fishing' => 'ship-fishing.gif',
         'ship.tourist' => 'ship-tourist.gif',
         'ship.exploration' => 'ship-exploration.gif',
+        'ship.pirate' => 'ship-pirate.gif',
+        'ship.treasure' => 'ship-treasure.gif',
         'tile.monument.peace' => 'monument0.gif',
         'tile.monument.prosperity' => 'monument0.gif',
         'tile.monument.victory' => 'monument0.gif',

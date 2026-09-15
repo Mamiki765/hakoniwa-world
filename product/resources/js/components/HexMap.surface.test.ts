@@ -178,6 +178,32 @@ describe('staggered square-image map', () => {
         expect(wrapper.emitted('select')?.[0]).toEqual([fallback]);
     });
 
+    it('renders an NPC Ship tooltip without an owner line or Nation badge', async () => {
+        const npc = mapCell({
+            display_name: '宝船', terrain: 'sea', terrain_name: '海',
+            owner_nation_id: null, owner_nation_number: null, owner_name: null,
+            ship: {
+                id: 9, key: 'treasure', name: '宝船', asset_key: 'ship.treasure',
+                current_hp: 1, max_hp: 1, public_state: 'active', owner_nation: null,
+                is_owner: false, heading: null, version: null,
+            },
+            asset: { key: 'ship.treasure', url: '/tiles/ship-treasure.gif?v=1-1', available: true, fallback_label: '宝船', fallback_style: 'ship-treasure' },
+            aria_label: 'x 0 y 0 宝船 このマスの所有者 中立 船 宝船 HP 1/1',
+        });
+        const wrapper = mount(HexMap, { props: {
+            cells: [npc], selected: null, capital: { x: 2, y: 2 }, bounds: worldBounds,
+            loading: false, error: null, emptyChunks: [],
+        } });
+        await flushPromises();
+        await wrapper.get('.map-cell').trigger('mouseenter');
+
+        expect(wrapper.find('.map-cell small').exists()).toBe(false);
+        expect(wrapper.get('.cell-tooltip strong').text()).toBe('宝船 (0,0)');
+        expect(wrapper.get('.cell-tooltip').text()).toContain('HP: 1/1');
+        expect(wrapper.get('.cell-tooltip').text()).not.toContain('船の所有者');
+        expect(wrapper.get('.cell-tooltip').text()).not.toMatch(/N\d+/);
+    });
+
     it('does not draw a capital fallback glyph over a working capital image', async () => {
         const capital = mapCell({
             facility: 'capital', facility_name: '首都', display_name: '首都',

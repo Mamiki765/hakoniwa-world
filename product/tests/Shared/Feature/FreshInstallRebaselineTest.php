@@ -8,7 +8,7 @@ use App\Application\NationCreationService;
 use App\Application\OceanWorldGenerator;
 use App\Application\RulesetPublisher;
 use App\Application\TurnRunner;
-use App\Application\Ver393RulesetUpgrade;
+use App\Application\Ver420RulesetUpgrade;
 use App\Domain\Secretary\SecretarySkillCatalog;
 use App\Domain\World\WorldGenerationProfile;
 use App\Models\MapCell;
@@ -33,21 +33,21 @@ final class FreshInstallRebaselineTest extends TestCase
     use RefreshDatabase;
     use UsesIndividualTestWorld;
 
-    public function test_current_postgresql_schema_and_v25_catalog_are_installed(): void
+    public function test_current_postgresql_schema_and_v26_catalog_are_installed(): void
     {
         config(['hakoniwa' => require config_path('hakoniwa.php')]);
         $current = config('hakoniwa.ruleset');
         app(CurrentCatalogInstaller::class)->install($current);
         app(RulesetPublisher::class)->publish($current);
-        $ruleset = RulesetVersion::query()->where('key', Ver393RulesetUpgrade::TARGET_KEY)->sole();
+        $ruleset = RulesetVersion::query()->where('key', Ver420RulesetUpgrade::TARGET_KEY)->sole();
 
         $this->assertSame('4.1.2', config('hakoniwa.application_version'));
-        $this->assertSame([Ver393RulesetUpgrade::TARGET_KEY], array_keys(config('hakoniwa.published_rulesets')));
-        $this->assertSame(Ver393RulesetUpgrade::TARGET_KEY, $ruleset->key);
-        $this->assertSame(Ver393RulesetUpgrade::TARGET_VERSION, $ruleset->version);
+        $this->assertSame([Ver420RulesetUpgrade::TARGET_KEY], array_keys(config('hakoniwa.published_rulesets')));
+        $this->assertSame(Ver420RulesetUpgrade::TARGET_KEY, $ruleset->key);
+        $this->assertSame(Ver420RulesetUpgrade::TARGET_VERSION, $ruleset->version);
         $this->assertDatabaseHas('ruleset_versions', [
-            'key' => Ver393RulesetUpgrade::SOURCE_KEY,
-            'version' => Ver393RulesetUpgrade::SOURCE_VERSION,
+            'key' => Ver420RulesetUpgrade::SOURCE_KEY,
+            'version' => Ver420RulesetUpgrade::SOURCE_VERSION,
         ]);
         $this->assertDatabaseHas('migrations', [
             'migration' => '2026_09_09_030000_add_surface_paradox_and_daily_rewards',
@@ -61,6 +61,15 @@ final class FreshInstallRebaselineTest extends TestCase
         $this->assertDatabaseHas('migrations', [
             'migration' => '2026_09_13_000000_rebuild_underground_skills_and_store_rental_party',
         ]);
+        $this->assertDatabaseHas('migrations', [
+            'migration' => '2026_09_15_000000_enable_npc_surface_ships',
+        ]);
+        $nationIdColumn = DB::selectOne(<<<'SQL'
+SELECT is_nullable
+  FROM information_schema.columns
+ WHERE table_schema = current_schema() AND table_name = 'ships' AND column_name = 'nation_id'
+SQL);
+        $this->assertSame('YES', $nationIdColumn?->is_nullable);
         $this->assertTrue(Schema::hasColumn('announcements', 'body_format'));
         foreach ([
             'user_paradox_balances',
