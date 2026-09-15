@@ -275,8 +275,9 @@ final class SurfaceShipTurnService
         $visible = $this->visibility->visibleCoordinates($space, $allCells, $nationId);
         $treasures = BuriedTreasure::query()->where('world_id', $context->world->id)
             ->where('state', BuriedTreasure::STATE_ACTIVE)->with('cell')->orderBy('id')->get()
-            ->filter(fn (BuriedTreasure $treasure): bool => isset($visible[$treasure->cell->x.':'.$treasure->cell->y])
-                || $treasure->reveals()->where('nation_id', $nationId)->where('turn', $context->targetTurn)->exists())
+            ->filter(fn (BuriedTreasure $treasure): bool => isset(
+                $visible[$treasure->cell->x.':'.$treasure->cell->y],
+            ))
             ->sortBy(fn (BuriedTreasure $treasure): array => [
                 (new GridCoordinate((int) $origin->x, (int) $origin->y))->distanceTo(
                     new GridCoordinate((int) $treasure->cell->x, (int) $treasure->cell->y),
@@ -344,8 +345,12 @@ final class SurfaceShipTurnService
         $stolen = 0;
         if ($target['type'] === 'settlement') {
             $before = (int) $cell->population;
-            $stolen = intdiv($before, 2);
-            $cell->population = $before - $stolen;
+            $minimum = $cell->facility?->key === 'capital'
+                ? min($before, (int) $context->ruleset->settings['capital_minimum_population'])
+                : 0;
+            $after = max($minimum, $before - intdiv($before, 2));
+            $stolen = $before - $after;
+            $cell->population = $after;
             $this->syncSettlementFacility($context, $cell);
             $cell->version++;
             $cell->save();

@@ -427,6 +427,69 @@ class TurnCellProcessingTest extends TestCase
             ->where('item_key', 'wakuwaku_ticket')->exists());
     }
 
+    public function test_exploration_ship_ignores_treasure_outside_its_visibility_and_uses_normal_movement(): void
+    {
+        $world = $this->lightweightWorld();
+        $user = User::factory()->create();
+        $nation = app(NationCreationService::class)->create($user, $world, '遠景探索国', '遠景探索島主');
+        $space = $this->surfaceMapSpace($world);
+        $port = MapCell::query()->where('owner_nation_id', $nation->id)
+            ->whereNull('facility_definition_id')->firstOrFail();
+        $this->facility($port, 'port', 'plain');
+        [$origin, $east, $west, $remote] = $this->remoteTreasureRoute($space);
+        $ship = Ship::query()->create([
+            'world_id' => $world->id,
+            'ruleset_version_id' => $world->ruleset_version_id,
+            'nation_id' => $nation->id,
+            'map_cell_id' => $origin->id,
+            'ship_type_key' => 'exploration',
+            'current_hp' => 2,
+            'max_hp' => 2,
+            'heading' => null,
+            'state' => Ship::STATE_ACTIVE,
+            'version' => 1,
+        ]);
+        $oil = ResourceDefinition::query()->where('key', 'oil')->firstOrFail();
+        NationResource::query()->updateOrCreate(
+            ['nation_id' => $nation->id, 'resource_definition_id' => $oil->id],
+            ['amount' => 2],
+        );
+        $seed = $this->seedForFirstDraw(
+            TurnRandomStreamFactory::shipMovement($ship->id, 'candidate', 1),
+            0,
+            1,
+            1,
+        );
+        [$context] = $this->context(
+            $world,
+            $nation,
+            [$origin->id, $east->id, $west->id, $remote->id],
+            $seed,
+        );
+        $treasure = app(BuriedTreasureService::class)->create($context, $remote, 'natural', false);
+        $ships = app(SurfaceShipTurnService::class);
+        $shipBatch = $ships->load($context, $space);
+        $monsterBatch = app(MonsterTurnService::class)->load($context);
+        $cells = collect([$origin, $east, $west, $remote]);
+
+        $ships->processCell(
+            $context,
+            $space,
+            $origin->fresh(['terrain', 'facility']),
+            $cells->mapWithKeys(static fn (MapCell $cell): array => [
+                $cell->x.':'.$cell->y => $cell->fresh(['terrain', 'facility']),
+            ])->all(),
+            $monsterBatch,
+            $shipBatch,
+        );
+
+        $this->assertSame(4, (new GridCoordinate($origin->x, $origin->y))->distanceTo(
+            new GridCoordinate($remote->x, $remote->y),
+        ));
+        $this->assertSame($west->id, $ship->fresh()->map_cell_id);
+        $this->assertSame(BuriedTreasure::STATE_ACTIVE, $treasure->fresh()->state);
+    }
+
     public function test_pirate_stationary_attack_halves_a_uniformly_eligible_settlement_and_keeps_the_population(): void
     {
         $world = $this->lightweightWorld();
@@ -481,6 +544,73 @@ class TurnCellProcessingTest extends TestCase
         $metadata = json_decode($attack->metadata, true, flags: JSON_THROW_ON_ERROR);
         $this->assertSame('settlement', $metadata['target_type']);
         $this->assertSame(5_000, $metadata['stolen_population']);
+    }
+
+    public function test_pirate_attack_preserves_the_capital_population_minimum(): void
+    {
+        $world = $this->lightweightWorld();
+        $nation = app(NationCreationService::class)->create(
+            User::factory()->create(),
+            $world,
+            '首都防衛国',
+            '首都防衛島主',
+        );
+        $space = $this->surfaceMapSpace($world);
+        $capital = $nation->capital()->with('cell.terrain', 'cell.facility')->firstOrFail()->cell;
+        $capital->update(['population' => 150]);
+        $originCoordinate = (new GridCoordinate($capital->x, $capital->y))->neighborsWithin(
+            $space->min_x,
+            $space->max_x,
+            $space->min_y,
+            $space->max_y,
+        )[0];
+        $origin = MapCell::query()->where('map_space_id', $space->id)
+            ->where('x', $originCoordinate->x)->where('y', $originCoordinate->y)->firstOrFail();
+        $this->mutateCell($origin, 'sea', null, 0);
+        $origin->update(['owner_nation_id' => null]);
+        $pirate = Ship::query()->create([
+            'world_id' => $world->id,
+            'ruleset_version_id' => $world->ruleset_version_id,
+            'nation_id' => null,
+            'map_cell_id' => $origin->id,
+            'ship_type_key' => 'pirate',
+            'current_hp' => 2,
+            'max_hp' => 3,
+            'population' => 7_500,
+            'heading' => null,
+            'state' => Ship::STATE_ACTIVE,
+            'version' => 1,
+        ]);
+        $seed = $this->seedForFirstDraw(
+            TurnRandomStreamFactory::pirateAttack($pirate->id, 'trigger', 1),
+            0,
+            1,
+            0,
+        );
+        [$context] = $this->context($world, $nation, [$origin->id, $capital->id], $seed);
+        $ships = app(SurfaceShipTurnService::class);
+        $shipBatch = $ships->load($context, $space);
+        $monsterBatch = app(MonsterTurnService::class)->load($context);
+        $cells = collect([$origin, $capital])->map(
+            static fn (MapCell $cell): MapCell => $cell->fresh(['terrain', 'facility']),
+        );
+
+        $ships->processCell(
+            $context,
+            $space,
+            $cells->first(),
+            $cells->mapWithKeys(static fn (MapCell $cell): array => [
+                $cell->x.':'.$cell->y => $cell,
+            ])->all(),
+            $monsterBatch,
+            $shipBatch,
+        );
+
+        $this->assertSame(100, $capital->fresh()->population);
+        $this->assertSame(7_550, $pirate->fresh()->population);
+        $attack = DB::table('audit_events')->where('event_type', 'ship.pirate_attacked')->sole();
+        $metadata = json_decode($attack->metadata, true, flags: JSON_THROW_ON_ERROR);
+        $this->assertSame(50, $metadata['stolen_population']);
     }
 
     public function test_stationary_warship_auto_attack_sinks_npc_ship_for_money_navy_exp_and_full_refugees(): void
@@ -1480,6 +1610,45 @@ class TurnCellProcessingTest extends TestCase
         }
 
         $this->fail('Surface test map did not provide an empty eastward deep-sea line.');
+    }
+
+    /** @return array{MapCell, MapCell, MapCell, MapCell} */
+    private function remoteTreasureRoute(MapSpace $space): array
+    {
+        $origins = MapCell::query()->where('map_space_id', $space->id)
+            ->whereNull('owner_nation_id')->whereNull('facility_definition_id')
+            ->whereDoesntHave('ship')->whereDoesntHave('monsterOccupancy')
+            ->whereHas('terrain', fn ($query) => $query->where('key', 'sea'))
+            ->orderBy('id')->get();
+        foreach ($origins as $origin) {
+            $coordinate = new GridCoordinate($origin->x, $origin->y);
+            $required = [
+                'east' => $coordinate->neighbor(GridCoordinate::EAST),
+                'west' => $coordinate->neighbor(GridCoordinate::WEST),
+                'remote' => $coordinate->neighbor(GridCoordinate::EAST)
+                    ->neighbor(GridCoordinate::EAST)
+                    ->neighbor(GridCoordinate::EAST)
+                    ->neighbor(GridCoordinate::EAST),
+            ];
+            $cells = MapCell::query()->where('map_space_id', $space->id)
+                ->whereNull('owner_nation_id')->whereNull('facility_definition_id')
+                ->whereDoesntHave('ship')->whereDoesntHave('monsterOccupancy')
+                ->whereHas('terrain', fn ($query) => $query->where('key', 'sea'))
+                ->where(function ($query) use ($required): void {
+                    foreach ($required as $candidate) {
+                        $query->orWhere(fn ($cell) => $cell
+                            ->where('x', $candidate->x)->where('y', $candidate->y));
+                    }
+                })->get()->keyBy(fn (MapCell $cell): string => $cell->x.':'.$cell->y);
+            $east = $cells->get($required['east']->x.':'.$required['east']->y);
+            $west = $cells->get($required['west']->x.':'.$required['west']->y);
+            $remote = $cells->get($required['remote']->x.':'.$required['remote']->y);
+            if ($east instanceof MapCell && $west instanceof MapCell && $remote instanceof MapCell) {
+                return [$origin, $east, $west, $remote];
+            }
+        }
+
+        $this->fail('Surface test map did not provide a remote Treasure route with two movement choices.');
     }
 
     /** @return array{MapCell, MapCell} */

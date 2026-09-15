@@ -92,7 +92,7 @@ final class TurnRandomStreamFactory
 
     private const PIRATE_ATTACK_PREFIX = 'process_cells:pirate:';
 
-    private const TREASURE_REVEAL_PREFIX = 'finalize_turn:buried_treasure:';
+    private const TREASURE_REVEAL_PREFIX = 'map_projection:buried_treasure:';
 
     private const NATURAL_TREASURE_PREFIX = 'global_disasters:buried_treasure:natural:';
 

@@ -24,6 +24,21 @@ ALTER TABLE ships
   )
 SQL);
 
+        Schema::table('secretary_item_instances', function (Blueprint $table): void {
+            $table->string('resolved_rarity', 32)->nullable();
+            $table->unsignedBigInteger('resolved_fixed_sale_price_money')->nullable();
+        });
+        DB::statement(<<<'SQL'
+ALTER TABLE secretary_item_instances
+  ADD CONSTRAINT secretary_item_instances_resolved_economics_check
+  CHECK (
+    (resolved_rarity IS NULL AND resolved_fixed_sale_price_money IS NULL)
+    OR
+    (resolved_rarity IS NOT NULL AND length(resolved_rarity) > 0
+      AND resolved_fixed_sale_price_money IS NOT NULL AND resolved_fixed_sale_price_money >= 0)
+  )
+SQL);
+
         Schema::create('buried_treasures', function (Blueprint $table): void {
             $table->id();
             $table->foreignId('world_id')->constrained()->cascadeOnDelete();
@@ -93,47 +108,6 @@ $$;
 CREATE TRIGGER buried_treasure_identity_guard
 BEFORE INSERT OR UPDATE ON buried_treasures
 FOR EACH ROW EXECUTE FUNCTION validate_buried_treasure_identity();
-SQL);
-
-        Schema::create('buried_treasure_reveals', function (Blueprint $table): void {
-            $table->id();
-            $table->foreignId('buried_treasure_id')->constrained()->cascadeOnDelete();
-            $table->foreignId('nation_id')->constrained()->cascadeOnDelete();
-            $table->unsignedBigInteger('turn');
-            $table->timestamps();
-            $table->unique(['buried_treasure_id', 'nation_id', 'turn'], 'buried_treasure_reveal_unique');
-            $table->index(['nation_id', 'turn']);
-        });
-        DB::unprepared(<<<'SQL'
-CREATE OR REPLACE FUNCTION validate_buried_treasure_reveal_identity()
-RETURNS trigger
-LANGUAGE plpgsql
-AS $$
-DECLARE
-  treasure_world_id bigint;
-  treasure_created_turn bigint;
-  nation_world_id bigint;
-BEGIN
-  SELECT world_id, created_turn INTO treasure_world_id, treasure_created_turn
-    FROM buried_treasures
-   WHERE id = NEW.buried_treasure_id;
-  SELECT world_id INTO nation_world_id
-    FROM nations
-   WHERE id = NEW.nation_id;
-  IF treasure_world_id IS NULL OR nation_world_id IS NULL OR treasure_world_id <> nation_world_id THEN
-    RAISE EXCEPTION 'Buried Treasure reveal Nation must belong to the Treasure World.';
-  END IF;
-  IF NEW.turn < treasure_created_turn THEN
-    RAISE EXCEPTION 'Buried Treasure cannot be revealed before creation.';
-  END IF;
-
-  RETURN NEW;
-END;
-$$;
-
-CREATE TRIGGER buried_treasure_reveal_identity_guard
-BEFORE INSERT OR UPDATE ON buried_treasure_reveals
-FOR EACH ROW EXECUTE FUNCTION validate_buried_treasure_reveal_identity();
 SQL);
 
         DB::statement('ALTER TABLE secretary_skills DROP CONSTRAINT IF EXISTS secretary_skills_key_check');

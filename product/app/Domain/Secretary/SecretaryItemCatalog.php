@@ -91,6 +91,32 @@ class SecretaryItemCatalog
     }
 
     /**
+     * @return array<string, mixed>
+     */
+    public function definitionWithResolvedEconomics(
+        string $itemKey,
+        ?string $resolvedRarity,
+        ?int $resolvedFixedSalePriceMoney,
+    ): array {
+        $definition = $this->definition($itemKey);
+        if ($resolvedRarity === null && $resolvedFixedSalePriceMoney === null) {
+            return $definition;
+        }
+        if ($resolvedRarity === null || $resolvedRarity === ''
+            || $resolvedFixedSalePriceMoney === null || $resolvedFixedSalePriceMoney < 0
+            || ! isset(self::RARITIES[$resolvedRarity])) {
+            throw new DomainException("Secretary item {$itemKey} has invalid resolved economics.");
+        }
+
+        return [
+            ...$definition,
+            'rarity' => $resolvedRarity,
+            'rarity_label' => self::RARITIES[$resolvedRarity]['label'],
+            'fixed_sale_price_money' => $resolvedFixedSalePriceMoney,
+        ];
+    }
+
+    /**
      * @return array<string, array{
      *   key: string,
      *   category: string,

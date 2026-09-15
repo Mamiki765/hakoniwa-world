@@ -218,19 +218,22 @@ final class SecretaryInventoryTest extends TestCase
         $nation->update(['money' => 1_000]);
         $secretary = $user->secretary()->sole();
         $items = [
-            [SecretaryItemCatalog::RING, 3, 100],
-            [SecretaryItemCatalog::ELF_BOW, 4, 500],
-            [SecretaryItemCatalog::COLLAR, 5, 1],
+            [SecretaryItemCatalog::RING, 3, 100, null],
+            [SecretaryItemCatalog::ELF_BOW, 4, 500, null],
+            [SecretaryItemCatalog::COLLAR, 5, 1, null],
+            [SecretaryItemCatalog::RING, 1, 777, SecretaryItemCatalog::RARITY_HIGH_QUALITY],
         ];
         $expectedMoney = 1_000;
-        foreach ($items as [$itemKey, $level, $price]) {
+        foreach ($items as $index => [$itemKey, $level, $price, $resolvedRarity]) {
             $item = SecretaryItemInstance::query()->create([
                 'secretary_id' => $secretary->id,
                 'item_key' => $itemKey,
                 'level' => $level,
                 'equipped_slot' => null,
                 'is_escrowed' => false,
-                'grant_key' => "test:fixed-sale:{$itemKey}",
+                'grant_key' => "test:fixed-sale:{$index}:{$itemKey}",
+                'resolved_rarity' => $resolvedRarity,
+                'resolved_fixed_sale_price_money' => $resolvedRarity === null ? null : $price,
                 'obtained_at' => now(),
             ]);
             $expectedMoney += $price;
@@ -240,7 +243,7 @@ final class SecretaryInventoryTest extends TestCase
             $this->assertDatabaseMissing('secretary_item_instances', ['id' => $item->id]);
         }
         $this->assertSame($expectedMoney, $nation->fresh()->money);
-        $this->assertSame(3, DB::table('audit_events')->where('event_type', 'secretary.item_sold')
+        $this->assertSame(4, DB::table('audit_events')->where('event_type', 'secretary.item_sold')
             ->where('visibility', 'private')->where('nation_id', $nation->id)->count());
     }
 

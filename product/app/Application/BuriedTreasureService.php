@@ -6,7 +6,6 @@ use App\Domain\Secretary\SecretaryItemCatalog;
 use App\Domain\Turn\TurnContext;
 use App\Domain\Turn\TurnRandomStreamFactory;
 use App\Models\BuriedTreasure;
-use App\Models\BuriedTreasureReveal;
 use App\Models\MapCell;
 use App\Models\MapSpace;
 use App\Models\MonsterOccupancy;
@@ -161,6 +160,10 @@ final class BuriedTreasureService
                     1,
                     null,
                     'buried_treasure:'.$treasure->id.':'.$quantity,
+                    [
+                        'rarity' => (string) $snapshot['rarity'],
+                        'fixed_sale_price_money' => (int) $snapshot['fixed_sale_price_money'],
+                    ],
                 );
                 if ($granted === null) {
                     throw new DomainException('Buried Treasure reward preflight diverged from the locked inventory.');
@@ -198,40 +201,6 @@ final class BuriedTreasureService
         return $treasures->count();
     }
 
-    public function snapshotRemoteReveals(TurnContext $context): int
-    {
-        $settings = $context->ruleset->settings['ocean_loop']['buried_treasure'] ?? null;
-        if (! is_array($settings)) {
-            return 0;
-        }
-        $treasures = BuriedTreasure::query()->where('world_id', $context->world->id)
-            ->where('state', BuriedTreasure::STATE_ACTIVE)->orderBy('id')->lockForUpdate()->get();
-        $nationIds = Nation::query()->where('world_id', $context->world->id)->where('state', 'active')
-            ->orderBy('id')->pluck('id')->map(static fn ($id): int => (int) $id);
-        $created = 0;
-        foreach ($treasures as $treasure) {
-            foreach ($nationIds as $nationId) {
-                $probability = $settings['remote_reveal_probability'];
-                $draw = $context->random->stream(TurnRandomStreamFactory::treasureReveal(
-                    (int) $treasure->id,
-                    $nationId,
-                    (int) $settings['stream_version'],
-                ))->integer(0, (int) $probability['denominator'] - 1);
-                if ($draw >= (int) $probability['numerator']) {
-                    continue;
-                }
-                BuriedTreasureReveal::query()->firstOrCreate([
-                    'buried_treasure_id' => $treasure->id,
-                    'nation_id' => $nationId,
-                    'turn' => $context->targetTurn,
-                ]);
-                $created++;
-            }
-        }
-
-        return $created;
-    }
-
     private function removeLocked(BuriedTreasure $treasure, int $turn, string $reason): void
     {
         $treasure->state = BuriedTreasure::STATE_REMOVED;
@@ -255,13 +224,16 @@ final class BuriedTreasureService
     /** @param array<string, mixed> $snapshot */
     private function validateRewardSnapshot(array $snapshot, bool $premium): void
     {
-        $expected = $premium
-            ? [SecretaryItemCatalog::DOKIDOKI_TICKET, SecretaryItemCatalog::RARITY_HIGH_QUALITY, 1500]
-            : [SecretaryItemCatalog::WAKUWAKU_TICKET, SecretaryItemCatalog::RARITY_REGULAR, 500];
-        if (($snapshot['item_key'] ?? null) !== $expected[0]
-            || ($snapshot['quantity'] ?? null) !== 1
-            || ($snapshot['rarity'] ?? null) !== $expected[1]
-            || ($snapshot['fixed_sale_price_money'] ?? null) !== $expected[2]) {
+        $expectedItemKey = $premium
+            ? SecretaryItemCatalog::DOKIDOKI_TICKET
+            : SecretaryItemCatalog::WAKUWAKU_TICKET;
+        if (($snapshot['item_key'] ?? null) !== $expectedItemKey
+            || ! is_int($snapshot['quantity'] ?? null)
+            || $snapshot['quantity'] < 1
+            || ! is_string($snapshot['rarity'] ?? null)
+            || $snapshot['rarity'] === ''
+            || ! is_int($snapshot['fixed_sale_price_money'] ?? null)
+            || $snapshot['fixed_sale_price_money'] < 0) {
             throw new DomainException('Buried Treasure reward snapshot is invalid.');
         }
     }

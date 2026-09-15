@@ -75,7 +75,9 @@ SQL);
         $this->assertSame('YES', $nationIdColumn?->is_nullable);
         $this->assertTrue(Schema::hasColumn('ships', 'population'));
         $this->assertTrue(Schema::hasTable('buried_treasures'));
-        $this->assertTrue(Schema::hasTable('buried_treasure_reveals'));
+        $this->assertFalse(Schema::hasTable('buried_treasure_reveals'));
+        $this->assertTrue(Schema::hasColumn('secretary_item_instances', 'resolved_rarity'));
+        $this->assertTrue(Schema::hasColumn('secretary_item_instances', 'resolved_fixed_sale_price_money'));
         $this->assertTrue(Schema::hasColumn('announcements', 'body_format'));
         foreach ([
             'user_paradox_balances',

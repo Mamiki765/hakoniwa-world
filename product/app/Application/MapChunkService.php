@@ -15,6 +15,7 @@ final class MapChunkService
     public function __construct(
         private readonly MapCellPresenter $presenter,
         private readonly SurfaceVisibilityService $visibility,
+        private readonly BuriedTreasureRevealResolver $treasureReveals,
     ) {}
 
     /** @return array<string, mixed> */
@@ -65,16 +66,23 @@ final class MapChunkService
             $visibleCellIds = $cells->filter(static fn (MapCell $cell): bool => isset(
                 $visibleCoordinates[$cell->x.':'.$cell->y],
             ))->modelKeys();
-            $treasureCellIds = BuriedTreasure::query()
+            $treasures = BuriedTreasure::query()
                 ->where('world_id', $mapSpace->world_id)
                 ->whereIn('map_cell_id', $cells->modelKeys())
                 ->where('state', BuriedTreasure::STATE_ACTIVE)
-                ->where(function ($query) use ($visibleCellIds, $viewerNationId, $currentTurn): void {
-                    $query->whereIn('map_cell_id', $visibleCellIds)
-                        ->orWhereHas('reveals', fn ($reveal) => $reveal
-                            ->where('nation_id', $viewerNationId)->where('turn', $currentTurn));
-                })
-                ->pluck('map_cell_id')->mapWithKeys(static fn ($id): array => [(int) $id => true])->all();
+                ->orderBy('id')
+                ->get();
+            $treasureCellIds = $treasures->whereIn('map_cell_id', $visibleCellIds)
+                ->mapWithKeys(static fn (BuriedTreasure $treasure): array => [
+                    (int) $treasure->map_cell_id => true,
+                ])->all();
+            $remoteTreasures = $treasures->whereNotIn('map_cell_id', $visibleCellIds);
+            $treasureCellIds += $this->treasureReveals->remoteVisibleCellIds(
+                $world,
+                $viewerNationId,
+                $remoteTreasures,
+                $rulesetSettings['ocean_loop']['buried_treasure'] ?? [],
+            );
         }
         $dormantCapitals = NationCapital::query()
             ->join('nations', 'nations.id', '=', 'nation_capitals.nation_id')

@@ -290,7 +290,9 @@ final class Ver390RulesetUpgradeTest extends TestCase
             'experience' => 0,
         ]);
         $this->assertTrue(Schema::hasTable('buried_treasures'));
-        $this->assertTrue(Schema::hasTable('buried_treasure_reveals'));
+        $this->assertFalse(Schema::hasTable('buried_treasure_reveals'));
+        $this->assertTrue(Schema::hasColumn('secretary_item_instances', 'resolved_rarity'));
+        $this->assertTrue(Schema::hasColumn('secretary_item_instances', 'resolved_fixed_sale_price_money'));
         $this->assertDatabaseHas('migrations', ['migration' => self::OCEAN_LOOP_MIGRATION]);
     }
 
@@ -392,12 +394,17 @@ SQL);
 
     private function returnSchemaToExact390Source(): void
     {
-        Schema::dropIfExists('buried_treasure_reveals');
         Schema::dropIfExists('buried_treasures');
         if (Schema::hasColumn('ships', 'population')) {
             DB::statement('ALTER TABLE ships DROP CONSTRAINT IF EXISTS ships_ocean_population_check');
             Schema::table('ships', function (Blueprint $table): void {
                 $table->dropColumn('population');
+            });
+        }
+        if (Schema::hasColumn('secretary_item_instances', 'resolved_rarity')) {
+            DB::statement('ALTER TABLE secretary_item_instances DROP CONSTRAINT IF EXISTS secretary_item_instances_resolved_economics_check');
+            Schema::table('secretary_item_instances', function (Blueprint $table): void {
+                $table->dropColumn(['resolved_rarity', 'resolved_fixed_sale_price_money']);
             });
         }
         DB::table('secretary_skills')->where('skill_key', 'navy')->delete();

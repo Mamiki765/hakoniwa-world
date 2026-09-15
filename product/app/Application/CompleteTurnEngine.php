@@ -82,7 +82,6 @@ final class CompleteTurnEngine
         private readonly KarmaTurnService $karma,
         private readonly TradingPostTurnService $tradingPost,
         private readonly UndergroundFacilityBenefits $undergroundBenefits,
-        private readonly BuriedTreasureService $buriedTreasures,
     ) {}
 
     public function execute(string $phase, TurnContext $context): TurnPhaseResult
@@ -1127,7 +1126,6 @@ final class CompleteTurnEngine
         $awardMetrics = $this->awards->finalize($context);
         $lifecycleMetrics = $this->nationLifecycle->finalize($context);
         $karmaMetrics = $this->karma->finalize($context);
-        $treasureRevealCount = $this->buriedTreasures->snapshotRemoteReveals($context);
         foreach ($this->summaryRecords($context->state->lifecycleNationIds()) as $nationId => $record) {
             $nation = $record['nation'];
             $start = $context->state->nationStartSummary($nationId);
@@ -1166,7 +1164,6 @@ final class CompleteTurnEngine
             'secretary_population_high_water_increase' => $demographicMetrics['population_high_water_increase'],
             'secretary_net_population_loss' => $demographicMetrics['net_population_loss'],
             'secretary_demographic_nations_awarded' => $demographicMetrics['nations_awarded'],
-            'buried_treasure_remote_reveals' => $treasureRevealCount,
             ...$lifecycleMetrics,
             ...$karmaResultMetrics,
             ...$awardMetrics,

@@ -383,7 +383,11 @@ class SecretaryEquipmentService
         SecretaryItemInstance $item,
         ?SecretaryItemEffectProjection $projection,
     ): array {
-        $definition = $this->catalog->definition($item->item_key);
+        $definition = $this->catalog->definitionWithResolvedEconomics(
+            $item->item_key,
+            $item->resolved_rarity,
+            $item->resolved_fixed_sale_price_money,
+        );
 
         return [
             'id' => $item->id,

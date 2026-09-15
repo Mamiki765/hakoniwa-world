@@ -63,7 +63,12 @@ final class OceanLoopTest extends TestCase
             'denominator' => 1,
         ];
         $context->ruleset->settings = $settings;
-        $this->assertSame(2, app(BuriedTreasureService::class)->snapshotRemoteReveals($context));
+        $context->ruleset->save();
+        $context->run->update([
+            'is_dry_run' => false,
+            'status' => TurnRun::STATUS_COMPLETED,
+            'completed_at' => now(),
+        ]);
         $world->update(['current_turn' => 2]);
 
         $revealed = $this->presentedCell($space, $cell, $second->id);
@@ -72,12 +77,13 @@ final class OceanLoopTest extends TestCase
             ['map.buried_treasure.sparkle'],
             array_column($revealed['overlays'], 'key'),
         );
+        $this->assertSame($revealed, $this->presentedCell($space, $cell, $second->id));
         $publicEvent = collect(app(PlayerIslandEventService::class)->publicWorldPage($world->fresh(), 1, 2)['groups'])
             ->flatMap(static fn (array $group): array => $group['events'])
             ->firstWhere('type', 'buried_treasure.created');
         $this->assertIsArray($publicEvent);
         $this->assertSame(
-            "巨大隕石が落下し、({$cell->x},{$cell->y})にドキドキチケットの埋蔵宝が残されました。",
+            '巨大隕石が落下し、どこかに埋蔵宝が残されたようです。',
             $publicEvent['message'],
         );
 
@@ -114,6 +120,20 @@ final class OceanLoopTest extends TestCase
         $this->assertSame(BuriedTreasure::STATE_ACTIVE, $treasure->fresh()->state);
         $this->assertFalse($secretary->itemInstances()
             ->where('item_key', SecretaryItemCatalog::DOKIDOKI_TICKET)->exists());
+
+        $secretary->itemInstances()->where('item_key', SecretaryItemCatalog::RING)->delete();
+        $this->assertSame(1, app(BuriedTreasureService::class)->collectAtCell(
+            $context,
+            $cell,
+            $first,
+            'exploration_ship',
+        ));
+        $ticket = $secretary->itemInstances()
+            ->where('item_key', SecretaryItemCatalog::DOKIDOKI_TICKET)->sole();
+        $this->assertSame(
+            [SecretaryItemCatalog::RARITY_HIGH_QUALITY, 1500],
+            [$ticket->resolved_rarity, $ticket->resolved_fixed_sale_price_money],
+        );
     }
 
     public function test_npc_ship_world_disaster_selects_an_eligible_nation_then_spawns_near_its_port(): void

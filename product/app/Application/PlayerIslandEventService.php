@@ -973,11 +973,6 @@ final class PlayerIslandEventService
     /** @param array<string, mixed> $metadata */
     private function publicBuriedTreasureCreatedMessage(array $metadata): string
     {
-        $x = $this->publicCoordinate($metadata, 'x');
-        $y = $this->publicCoordinate($metadata, 'y');
-        $item = ($metadata['item_key'] ?? null) === 'dokidoki_ticket'
-            ? 'ドキドキチケット'
-            : 'わくわくチケット';
         $source = match ($metadata['source'] ?? null) {
             'pirate_sink' => '海賊船が沈み',
             'treasure_ship_sink' => '宝船が沈み',
@@ -986,7 +981,7 @@ final class PlayerIslandEventService
             default => '海上で何かが起こり',
         };
 
-        return "{$source}、({$x},{$y})に{$item}の埋蔵宝が残されました。";
+        return "{$source}、どこかに埋蔵宝が残されたようです。";
     }
 
     /** @param array<string, mixed> $metadata */
@@ -1047,7 +1042,7 @@ final class PlayerIslandEventService
             'command.territory_expanded', 'territory.influenced' => [
                 'nation_name', 'old_owner_nation_name', 'new_owner_nation_name', 'x', 'y',
             ],
-            'buried_treasure.created' => ['source', 'item_key', 'x', 'y'],
+            'buried_treasure.created' => ['source'],
             'disaster.triggered' => ['disaster_key', 'center_x', 'center_y'],
             'disaster.cell_damaged', 'fire.damaged' => [
                 'nation_name', 'x', 'y', 'disaster_key', 'from_terrain_key',

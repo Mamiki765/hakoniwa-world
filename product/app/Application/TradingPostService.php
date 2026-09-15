@@ -52,7 +52,7 @@ final class TradingPostService
         $listings = AuctionListing::query()
             ->where('world_id', $world->id)
             ->where('status', AuctionListing::STATUS_ACTIVE)
-            ->with(['sellerNation', 'highestBidderNation', 'resourceDefinition'])
+            ->with(['sellerNation', 'highestBidderNation', 'resourceDefinition', 'secretaryItemInstance'])
             ->orderBy('ends_turn')
             ->orderBy('id')
             ->get();
@@ -89,7 +89,11 @@ final class TradingPostService
         if ($secretary instanceof Secretary) {
             foreach ($secretary->itemInstances()->whereNull('equipped_slot')->where('is_escrowed', false)
                 ->orderBy('obtained_at')->orderBy('id')->get() as $item) {
-                $definition = $this->items->definition($item->item_key);
+                $definition = $this->items->definitionWithResolvedEconomics(
+                    $item->item_key,
+                    $item->resolved_rarity,
+                    $item->resolved_fixed_sale_price_money,
+                );
                 if (! $definition['tradable']) {
                     continue;
                 }
@@ -546,7 +550,13 @@ final class TradingPostService
         array $rulesetSettings,
         array $viewerBidListingIds,
     ): array {
-        $item = $listing->item_key === null ? null : $this->items->definition($listing->item_key);
+        $item = $listing->item_key === null
+            ? null
+            : $this->items->definitionWithResolvedEconomics(
+                $listing->item_key,
+                $listing->secretaryItemInstance?->resolved_rarity,
+                $listing->secretaryItemInstance?->resolved_fixed_sale_price_money,
+            );
         $itemEffectText = $listing->product_type === 'item'
             && $listing->item_key !== null
             && $listing->item_level !== null

@@ -4,7 +4,6 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
-use Illuminate\Database\Eloquent\Relations\HasMany;
 
 /**
  * @property array<string, mixed> $reward_snapshot
@@ -43,11 +42,5 @@ final class BuriedTreasure extends Model
     public function world(): BelongsTo
     {
         return $this->belongsTo(World::class);
-    }
-
-    /** @return HasMany<BuriedTreasureReveal, $this> */
-    public function reveals(): HasMany
-    {
-        return $this->hasMany(BuriedTreasureReveal::class);
     }
 }

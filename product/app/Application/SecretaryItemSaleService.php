@@ -79,7 +79,11 @@ final class SecretaryItemSaleService
                     throw new DomainException('所有していないアイテムは売却できません。');
                 }
 
-                $definition = $this->catalog->definition($item->item_key);
+                $definition = $this->catalog->definitionWithResolvedEconomics(
+                    $item->item_key,
+                    $item->resolved_rarity,
+                    $item->resolved_fixed_sale_price_money,
+                );
                 if ($item->item_key === SecretaryItemCatalog::OLD_BOW) {
                     throw new DomainException(($secretary->name ?? '秘書').'が嫌がっています…');
                 }
@@ -90,7 +94,7 @@ final class SecretaryItemSaleService
                     throw new DomainException('交易場へ出品中のアイテムは売却できません。');
                 }
 
-                $price = $this->catalog->fixedSalePrice($item->item_key);
+                $price = (int) $definition['fixed_sale_price_money'];
                 $capacity = $this->capacities->resolve($lockedNation, $ruleset)->money;
                 $credit = $this->boundedAssets->planMoneyCredit($lockedNation, $price, $capacity);
                 if ($credit->applied !== $price || $credit->overflow !== 0) {
