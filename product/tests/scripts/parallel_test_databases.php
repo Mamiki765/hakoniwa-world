@@ -9,7 +9,7 @@ require dirname(__DIR__, 2).'/vendor/autoload.php';
 
 $usage = static function (): never {
     fwrite(STDERR, "Usage:\n");
-    fwrite(STDERR, "  php tests/scripts/parallel_test_databases.php prepare <shard-total> <full|surface|underground> [8-hex-token]\n");
+    fwrite(STDERR, "  php tests/scripts/parallel_test_databases.php prepare <shard-total> <full|surface|underground> [8-hex-token] [plan.json]\n");
     fwrite(STDERR, "  php tests/scripts/parallel_test_databases.php shard <manifest> <zero-based-index> <configuration|log|database|evidence_log|junit>\n");
     fwrite(STDERR, "  php tests/scripts/parallel_test_databases.php fixture <manifest> <zero-based-index> <standard|reusable_surface|individual> <log|completion|evidence_log|junit|fixture_metrics>\n");
     fwrite(STDERR, "  php tests/scripts/parallel_test_databases.php evidence <manifest> directory\n");
@@ -36,8 +36,17 @@ try {
         if ($token !== null && preg_match('/^[a-f0-9]{8}$/', $token) !== 1) {
             $usage();
         }
+        $planPath = $argv[5] ?? null;
+        $plannedShards = null;
+        if ($planPath !== null) {
+            $plan = (new TestShardPlanner(dirname(__DIR__, 2)))->loadRunPlan($planPath);
+            if ($plan['scope'] !== $scope || $plan['shard_total'] !== (int) $total) {
+                throw new RuntimeException('Database preparation plan does not match the requested scope or worker count.');
+            }
+            $plannedShards = $plan['shards'];
+        }
 
-        echo $manager->prepare((int) $total, $scope, $token)."\n";
+        echo $manager->prepare((int) $total, $scope, $token, $plannedShards)."\n";
         exit(0);
     }
 

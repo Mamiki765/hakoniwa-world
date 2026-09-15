@@ -17,6 +17,7 @@ fi
 phpunit_arguments=("$@")
 
 manifest=""
+plan_file=""
 evidence_directory=""
 evidence_metadata=""
 discovered_test_files=0
@@ -216,6 +217,10 @@ cleanup() {
         fi
     fi
 
+    if [[ -n "$plan_file" && -f "$plan_file" && ! -L "$plan_file" ]]; then
+        rm -- "$plan_file"
+    fi
+
     exit "$exit_code"
 }
 
@@ -223,7 +228,14 @@ trap cleanup EXIT
 trap 'exit 130' INT TERM
 
 php artisan config:clear --ansi
-shard_report="$(php tests/scripts/test_shards.php verify "$shard_total" "$scope_argument")"
+run_token="$(php -r 'echo bin2hex(random_bytes(4));')"
+plan_file="storage/framework/testing/phpunit-parallel-$run_token.plan.json"
+shard_report="$(
+    HAKONIWA_PLAN_SOURCE_TREE_SHA256="$source_tree_sha" \
+    HAKONIWA_PLAN_COMPOSER_LOCK_SHA256="$composer_lock_sha" \
+    php tests/scripts/test_shards.php plan "$shard_total" "$scope_argument" "$plan_file"
+)"
+printf '%s\n' "$shard_report"
 scope="$(printf '%s\n' "$shard_report" | sed -n 's/^scope: \(full\|surface\|underground\)$/\1/p' | head -n 1)"
 if [[ -z "$scope" ]]; then
     echo 'Unable to determine normalized test scope.' >&2
@@ -233,9 +245,8 @@ discovered_test_files="$(printf '%s\n' "$shard_report" | sed -n 's/^total discov
 if [[ ! "$discovered_test_files" =~ ^[0-9]+$ ]]; then
     discovered_test_files=0
 fi
-run_token="$(php -r 'echo bin2hex(random_bytes(4));')"
 manifest="storage/framework/testing/phpunit-parallel-$run_token/manifest.json"
-php tests/scripts/parallel_test_databases.php prepare "$shard_total" "$scope" "$run_token"
+php tests/scripts/parallel_test_databases.php prepare "$shard_total" "$scope" "$run_token" "$plan_file"
 echo "Parallel test manifest: $manifest"
 evidence_directory="$(php tests/scripts/parallel_test_databases.php evidence "$manifest" directory)"
 echo "Parallel test evidence: $evidence_directory"
@@ -246,8 +257,12 @@ if [[ -e "$evidence_directory" || -L "$evidence_directory" || ! -d "$(dirname "$
 fi
 mkdir -p -- "$evidence_directory"
 chmod 700 "$evidence_directory"
-selected_test_files="$(php tests/scripts/test_shards.php files 1 0 "$scope")"
+cp -- "$plan_file" "$evidence_directory/shard-plan.json"
+selected_test_files="$(php tests/scripts/test_shards.php plan-list "$plan_file")"
 selected_test_files_sha256="$(printf '%s\n' "$selected_test_files" | php -r 'echo hash("sha256", stream_get_contents(STDIN));')"
+assignment_strategy="$(printf '%s\n' "$shard_report" | sed -n 's/^assignment strategy: \(.*\)$/\1/p' | head -n 1)"
+historical_timing_files="$(printf '%s\n' "$shard_report" | sed -n 's/^historical timing files: \([0-9][0-9]*\)$/\1/p' | head -n 1)"
+historical_timing_sources="$(printf '%s\n' "$shard_report" | sed -n 's/^historical timing sources: \([0-9][0-9]*\)$/\1/p' | head -n 1)"
 selection_mode="scope"
 if ((${#phpunit_arguments[@]} != 0)); then
     selection_mode="focused"
@@ -262,6 +277,10 @@ if ! {
     printf 'scope\t%s\n' "$scope"
     printf 'selection_mode\t%s\n' "$selection_mode"
     printf 'selected_test_files_sha256\t%s\n' "$selected_test_files_sha256"
+    printf 'assignment_strategy\t%s\n' "$assignment_strategy"
+    printf 'historical_timing_files\t%s\n' "$historical_timing_files"
+    printf 'historical_timing_sources\t%s\n' "$historical_timing_sources"
+    printf 'shard_plan\tshard-plan.json\n'
     printf 'php_version\t%s\n' "$php_version"
     printf 'composer_json_sha256\t%s\n' "$composer_json_sha"
     printf 'composer_lock_sha256\t%s\n' "$composer_lock_sha"
@@ -280,7 +299,7 @@ assignment_metadata="$evidence_directory/assignment.tsv"
 printf 'shard_index\ttest_file\n' >"$assignment_metadata"
 
 for ((index = 0; index < shard_total; index++)); do
-    test_file_output="$(php tests/scripts/test_shards.php files "$shard_total" "$index" "$scope")"
+    test_file_output="$(php tests/scripts/test_shards.php plan-files "$plan_file" "$index")"
     test_files=()
     if [[ -n "$test_file_output" ]]; then
         mapfile -t test_files <<<"$test_file_output"
@@ -301,7 +320,7 @@ for ((index = 0; index < shard_total; index++)); do
     evidence_log="$(php tests/scripts/parallel_test_databases.php shard "$manifest" "$index" evidence_log)"
     junit="$(php tests/scripts/parallel_test_databases.php shard "$manifest" "$index" junit)"
     profile_plan="${configuration%.xml}.profiles.tsv"
-    php tests/scripts/test_shards.php profiles "$shard_total" "$index" "$scope" >"$profile_plan"
+    php tests/scripts/test_shards.php plan-profiles "$plan_file" "$index" >"$profile_plan"
     if [[ "$(wc -l < "$profile_plan")" -ne "${#test_files[@]}" ]]; then
         echo "Fixture profile plan does not cover shard $index exactly once." >&2
         exit 1

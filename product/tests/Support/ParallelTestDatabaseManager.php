@@ -35,8 +35,13 @@ final class ParallelTestDatabaseManager
         $this->evidenceRootDirectory = $this->workspaceDirectory.'/test-evidence';
     }
 
-    public function prepare(int $shardTotal, string $scope = 'full', ?string $requestedToken = null): string
-    {
+    /** @param array<int, list<string>>|null $plannedShards */
+    public function prepare(
+        int $shardTotal,
+        string $scope = 'full',
+        ?string $requestedToken = null,
+        ?array $plannedShards = null,
+    ): string {
         $scope = TestShardPlanner::normalizeScope($scope);
         if ($shardTotal < 1 || $shardTotal > 64) {
             throw new InvalidArgumentException('Local shard total must be in the range 1..64.');
@@ -51,7 +56,14 @@ final class ParallelTestDatabaseManager
 
         $planner = new TestShardPlanner($this->projectRoot, $this->configurationPath);
         $discovered = $planner->discover($scope);
-        $shards = $planner->assign($discovered, $shardTotal);
+        $shards = $plannedShards ?? $planner->assign($discovered, $shardTotal);
+        if (count($shards) !== $shardTotal) {
+            throw new RuntimeException('Refusing to prepare databases for a shard plan with the wrong worker count.');
+        }
+        $shards = array_values(array_map(
+            static fn (array $files): array => array_map(TestShardPlanner::normalizePath(...), $files),
+            $shards,
+        ));
         $report = $planner->coverageReport($discovered, $shards);
         if ($report['duplicate_count'] !== 0 || $report['missing_count'] !== 0 || $report['unexpected_count'] !== 0) {
             throw new RuntimeException('Refusing to prepare databases for an incomplete shard plan.');

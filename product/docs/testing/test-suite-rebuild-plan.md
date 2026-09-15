@@ -1,6 +1,6 @@
 # テストをゼロベースで組み直す設計図
 
-Status: Phase 0a・Phase 1・Phase 2・Phase 3を`release/4.2.0`で実装・focused確認済み。[Phase 0a・1記録](test-suite-phase01-implementation.md)、[Phase 2記録](test-suite-phase02-implementation.md)、[Phase 3記録](test-suite-phase03-implementation.md)を参照。Phase 4以降は未実装。
+Status: Phase 0a～Phase 5を`release/4.2.0`で実装・focused確認済み。Phase 6の最終Full4だけ未実施。[Phase 0a・1記録](test-suite-phase01-implementation.md)、[Phase 2記録](test-suite-phase02-implementation.md)、[Phase 3記録](test-suite-phase03-implementation.md)、[Phase 4記録](test-suite-phase04-implementation.md)、[Phase 5記録](test-suite-phase05-implementation.md)を参照。
 
 以下の棚卸しはmain `00182bd`に固定した**設計baseline**。実装後の件数・確認結果と区別する。
 
@@ -18,7 +18,7 @@ Status: Phase 0a・Phase 1・Phase 2・Phase 3を`release/4.2.0`で実装・focu
 - UIで許可しない極端値や、DBを直接改竄して21億を入れた状態のためのテストは削減する。
 - マップは繰り返し生成せず、独立性を保ちながら再利用する。
 - ローカル4 shardでFull／地上（箱庭）／地底（RPG）を選べる構成を設計する。
-- usageのリセットを行わない。設計に続く今回の実装範囲はPhase 0a・Phase 1とdraft PRまで。
+- usageのリセットを行わない。Ownerの継続指示によりPhase 0a～5とdraft PR更新まで実施し、Phase 6の最終確認を残す。
 
 ## 現時点の主要な判断
 
@@ -100,7 +100,7 @@ HTTPの他人ID差替えは実行可能なauthorization攻撃なので代表を�
 
 ## 3. 具体的な削減・再構成候補
 
-`削除`は設計上の処置。今回は実行していない。`縮小`は残す意味を明記したもの。`到達確認`は実装時に該当runtime/永続履歴を追ってから処置を確定するもの。
+`削除`、`縮小`、`到達確認`は設計時点の処置。実装した結果と残したownerは[Phase 4記録](test-suite-phase04-implementation.md)を正本とする。
 
 | 優先 | 現行箇所 | 処置と残す意味 |
 |---|---|---|
@@ -208,7 +208,7 @@ domainのcanonical配置を使い、`--filter Underground`のようなclass名�
 - 現在の97/19ファイルという分割は移行前の数字。Shared抽出後の期待件数を永久に固定しない。
 - main差分から`InquiryConcurrencyFailureTest`もSharedへ移す。名前がInquiryでも地底partyとTurnのdeadlockを検出するため、地底だけの実行でも必要。workerは既存`tests/Support/inquiry_concurrency_worker.php`を再利用し、各scopeへ同じテストを複製しない。SP還元の既存migration caseもSharedのupgrade担当へ移す。
 
-### 操作インターフェース案（未実装）
+### 実装した操作インターフェース
 
 ```powershell
 # repository root / Windows
@@ -329,7 +329,7 @@ Owner追加目的によりAGENTSの改訂案を含める。handoff、runtime、R
 - 既存containerの過去JUnit/run記録を読んだ。DB作成・migration・テスト本体・production操作を今回実行していない。
 - mainの列挙は既存imageを使うnetwork無効の一時containerで行い、main sourceをread-only mountした。既存依存と一致するlockを確認し、一時containerは終了時に削除した。
 - 設計中にAGENTS、テスト、runtime、handoffを編集していない。ファイル削除、commit、push、usage resetも行っていない。
-- 今回の完了は**設計図の作成**。実装によるcase削減、map生成削減、4 shardの3 scope実行、速度改善の実証は§7の後続工程である。
+- この節は設計調査時点の記録である。実装結果は各Phase記録へ分離し、Phase 6でexact treeのFull4とfrontend/staticを最終確認する。
 
 ## 10. 新しい不要テストを作らせないためのAGENTS監査
 

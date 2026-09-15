@@ -71,10 +71,23 @@ repository-wideのcanonical serial full suiteは`composer test:all`で実行で�
 .\product\tests\scripts\run_parallel_tests.cmd 4 underground
 ```
 
-既定・推奨値は4 shards、scope省略時は`full`である。この開発機での同一suiteの実測はserial 15分41秒、2 shards 9分12秒、4 shards 5分46秒、8 shards 5分09秒だった。8 shardsは最速だが4 shardsとの差は約37秒で、container群の推定ピークメモリは約723 MiBから約1.13 GiBへ増えたため、通常は4、CPU・メモリに余裕があり最短時間を優先するときだけ8を使う。PowerShell wrapperは`hakoniwa-dev`を起動し、bind mountされた現在checkoutのsource/testで既存の`tests/scripts/run_parallel_tests.sh`を呼ぶ。通常の編集ごとのDocker buildや`hakoniwa-web`再作成は行わない。Windows hostへComposerやGNU `xargs -P`を追加する必要はない。source checkoutでComposerとBashを直接利用する環境では`composer test:parallel -- 4 full`も同じrunnerを起動する。parallel runnerはcanonical `phpunit.xml`から選択scopeのtest fileを自動検出し、CIと共通のplannerで各fileを1回だけ割り当てる。各workerは同じ専用DB上で`standard`、`reusable_surface`、`individual`を別PHP processとして順番に実行する。fixture所属はtest classが使うtraitから導出し、通常の地上map testはworker内で一度生成・commitしたDebug32x32 baselineをcase transactionでrollbackしながら再利用する。絞った実行はevidenceで`focused`として区別し、該当0件のworkerは許容するがrun全体の該当0件は失敗する。各workerには`hakoniwa_parallel_<run>_<shard>_test`という固定test-only prefix/suffixの独立DBを作成し、そのDB名だけを強制する一時PHPUnit configを使用する。全worker終了時、失敗時、またはinterrupt時にはchild processを停止してtest DBと一時configを可能な限りcleanupする。cleanupに失敗した場合はproduction DBへfallbackせず、manifestを残して安全なretry commandを表示する。
+既定・推奨値は4 shards、scope省略時は`full`である。serial 15分41秒、2 shards 9分12秒、4 shards 5分46秒、8 shards 5分09秒という値は再設計前の別test集合・別時点の履歴であり、現在の所要時間として扱わない。PowerShell wrapperは`hakoniwa-dev`を起動し、bind mountされた現在checkoutのsource/testで既存の`tests/scripts/run_parallel_tests.sh`を呼ぶ。通常の編集ごとのDocker buildや`hakoniwa-web`再作成は行わない。Windows hostへComposerやGNU `xargs -P`を追加する必要はない。source checkoutでComposerとBashを直接利用する環境では`composer test:parallel -- 4 full`も同じrunnerを起動する。
 
-GitHub Actionsも同じplannerを使用し、Fullの全test fileを独立runner・独立PostgreSQL service上のPHPUnit matrixへ自動配分する。各CI shardでもtrait metadataから3つのfixture profileへ分け、別PHP processで順番に実行する。workflow YAMLへtest file一覧は保持しない。各runはdiscoveryのunion、duplicate、missingを検証し、`backend-static`と全PHPUnit shardsを最終`backend` gateへ集約する。Quality CIはrepository-wide safety netである。
+parallel runnerはcanonical `phpunit.xml`から選択scopeのtest fileを自動検出し、run開始時に固定`shard-plan.json`を作る。過去のscope全件PASS evidenceにあるJUnitのfile別秒数があれば重いfileから最短workerへ割り当てるLPTを使う。Phase 2以前のfocused実行機能がなかったlegacy PASSも入力にできるが、現在の`selection_mode=focused`はfileの一部だけの場合があるため重みに使わない。新規fileは同じfixture profileの中央値、同profileの履歴もなければ全体中央値を使い、timingが1件もなければpath順のdeterministic fallbackを使う。失敗runのtimingは次回配分へ使わない。作成後にdiscoveryが変わったplanは拒否し、run途中で割当を再計算しない。
 
-frontend test、lint、typecheck、production buildは`docker compose build`のNode stageで実行される。既存volumeにtest DBがない場合は、PostgreSQL管理権限を持つ運用者がtest専用DBを追加するか、開発volumeを明示的に再作成する。本番DBをtestに使用しない。
+各workerは同じ専用DB上で`standard`、`reusable_surface`、`individual`を別PHP processとして順番に実行する。fixture所属はtest classが使うtraitから導出し、通常の地上map testはworker内で一度生成・commitしたDebug32x32 baselineをcase transactionでrollbackしながら再利用する。絞った実行はevidenceで`focused`として区別し、該当0件のworkerは許容するがrun全体の該当0件は失敗する。各workerには`hakoniwa_parallel_<run>_<shard>_test`という固定test-only prefix/suffixの独立DBを作成し、そのDB名だけを強制する一時PHPUnit configを使用する。全worker終了時、失敗時、またはinterrupt時にはchild processを停止してtest DBと一時configを可能な限りcleanupする。cleanupに失敗した場合はproduction DBへfallbackせず、manifestを残して安全なretry commandを表示する。evidenceには固定plan、割当方式、timing source数、fixture別結果、実行identifier集合、worker時間、cleanup結果を保存する。
+
+GitHub Actionsも同じplannerを使用し、Fullの全test fileを独立runner・独立PostgreSQL service上のPHPUnit matrixへ自動配分する。各CI shardは実行開始時に固定planを作り、同じplanでcoverage確認・表示・fixture別実行を行う。各CI shardでもtrait metadataから3つのfixture profileへ分け、別PHP processで順番に実行する。workflow YAMLへtest file一覧は保持しない。各runはdiscoveryのunion、duplicate、missingを検証し、`backend-static`と全PHPUnit shardsを最終`backend` gateへ集約する。Quality CIはrepository-wide safety netである。
+
+frontend testは次のdomain別commandを使う。`test:surface`と`test:underground`は共通testを含み、`test:all`は各fileを1回だけ実行する。
+
+```powershell
+cd product
+npm run test:surface
+npm run test:underground
+npm run test:all
+```
+
+frontend lint、typecheck、production buildはそれぞれ`npm run lint`、`npm run typecheck`、`npm run build`で確認する。これらは`docker compose build`のNode stageでも実行される。既存volumeにtest DBがない場合は、PostgreSQL管理権限を持つ運用者がtest専用DBを追加するか、開発volumeを明示的に再作成する。本番DBをtestに使用しない。
 
 OAuth portalの設定は [oauth-setup.md](oauth-setup.md)を参照する。secretなしでもroute、config validation、state、mock callback testを検証できる。

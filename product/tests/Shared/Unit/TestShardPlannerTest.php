@@ -109,6 +109,114 @@ final class TestShardPlannerTest extends TestCase
         $this->assertSame(0, $report['missing_count']);
     }
 
+    public function test_lpt_assigns_heavy_files_first_to_the_lightest_worker_deterministically(): void
+    {
+        $root = $this->createFixtureProject();
+        foreach (['A', 'B', 'C', 'D'] as $name) {
+            $this->write($root."/tests/Unit/{$name}Test.php");
+        }
+        $planner = new TestShardPlanner($root);
+        $files = [
+            'tests/Unit/DTest.php',
+            'tests/Unit/BTest.php',
+            'tests/Unit/ATest.php',
+            'tests/Unit/CTest.php',
+        ];
+        $weights = [
+            'tests/Unit/ATest.php' => 10,
+            'tests/Unit/BTest.php' => 9,
+            'tests/Unit/CTest.php' => 2,
+            'tests/Unit/DTest.php' => 1,
+        ];
+
+        $this->assertSame([
+            0 => ['tests/Unit/ATest.php', 'tests/Unit/DTest.php'],
+            1 => ['tests/Unit/BTest.php', 'tests/Unit/CTest.php'],
+        ], $planner->assign($files, 2, $weights));
+        $this->assertSame(
+            $planner->assign($files, 2, $weights),
+            $planner->assign(array_reverse($files), 2, $weights),
+        );
+    }
+
+    public function test_missing_timing_uses_the_fixture_profile_median_then_the_global_median(): void
+    {
+        $root = $this->createFixtureProject();
+        $this->write($root.'/tests/Unit/ReusableKnownTest.php', "<?php\nclass ReusableKnownTest { use UsesReusableSurfaceWorld; }\n");
+        $this->write($root.'/tests/Unit/ReusableNewTest.php', "<?php\nclass ReusableNewTest { use UsesReusableSurfaceWorld; }\n");
+        $this->write($root.'/tests/Feature/StandardKnownTest.php');
+        $this->write($root.'/tests/Feature/StandardNewTest.php');
+        $this->write($root.'/tests/Underground/IndividualNewTest.php', "<?php\nclass IndividualNewTest { use UsesForwardOnlyDatabaseMigrations; }\n");
+        $planner = new TestShardPlanner($root);
+        $resolved = $planner->resolveWeights([
+            'tests/Unit/ReusableKnownTest.php',
+            'tests/Unit/ReusableNewTest.php',
+            'tests/Feature/StandardKnownTest.php',
+            'tests/Feature/StandardNewTest.php',
+            'tests/Underground/IndividualNewTest.php',
+        ], [
+            'tests/Unit/ReusableKnownTest.php' => 8,
+            'tests/Feature/StandardKnownTest.php' => 2,
+        ]);
+
+        $this->assertSame(8.0, $resolved['weights']['tests/Unit/ReusableNewTest.php']);
+        $this->assertSame('fixture_profile_median', $resolved['sources']['tests/Unit/ReusableNewTest.php']);
+        $this->assertSame(2.0, $resolved['weights']['tests/Feature/StandardNewTest.php']);
+        $this->assertSame('fixture_profile_median', $resolved['sources']['tests/Feature/StandardNewTest.php']);
+        $this->assertSame(5.0, $resolved['weights']['tests/Underground/IndividualNewTest.php']);
+        $this->assertSame('global_median', $resolved['sources']['tests/Underground/IndividualNewTest.php']);
+    }
+
+    public function test_run_plan_reads_only_passed_junit_and_rejects_discovery_changes_after_snapshot(): void
+    {
+        $root = $this->createFixtureProject();
+        $this->write($root.'/tests/Unit/ATest.php');
+        $this->write($root.'/tests/Unit/BTest.php');
+        $evidence = $root.'/storage/framework/testing/test-evidence/phpunit-parallel-0123abcd';
+        mkdir($evidence, 0777, true);
+        file_put_contents($evidence.'/run.tsv', "schema\ttest\nselection_mode\tscope\nrun\t-\tpassed\t0\t-\t2\t-\t-\t-\n");
+        file_put_contents($evidence.'/phpunit-01.junit.xml', <<<'XML'
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuites>
+  <testsuite>
+    <testcase name="one" file="/var/www/html/tests/Unit/ATest.php" time="1.5"/>
+    <testcase name="two" file="/var/www/html/tests/Unit/ATest.php" time="2.5"/>
+  </testsuite>
+</testsuites>
+XML);
+        $focusedEvidence = $root.'/storage/framework/testing/test-evidence/phpunit-parallel-fedcba98';
+        mkdir($focusedEvidence, 0777, true);
+        file_put_contents($focusedEvidence.'/run.tsv', "schema\ttest\nselection_mode\tfocused\nrun\t-\tpassed\t0\t-\t2\t-\t-\t-\n");
+        file_put_contents($focusedEvidence.'/phpunit-01.junit.xml', <<<'XML'
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuites>
+  <testsuite>
+    <testcase name="partial" file="/var/www/html/tests/Unit/BTest.php" time="999"/>
+  </testsuite>
+</testsuites>
+XML);
+        $planner = new TestShardPlanner($root);
+        $plan = $planner->createRunPlan(2, metadata: [
+            'source_tree_sha256' => str_repeat('a', 64),
+            'composer_lock_sha256' => str_repeat('b', 64),
+        ]);
+
+        $this->assertSame('lpt', $plan['strategy']);
+        $this->assertSame(4.0, $plan['weights']['tests/Unit/ATest.php']);
+        $this->assertSame(4.0, $plan['weights']['tests/Unit/BTest.php']);
+        $this->assertSame('fixture_profile_median', $plan['weight_sources']['tests/Unit/BTest.php']);
+        $this->assertSame(['phpunit-parallel-0123abcd'], $plan['historical_sources']);
+        $this->assertSame(str_repeat('a', 64), $plan['source_tree_sha256']);
+        $planPath = $root.'/storage/framework/testing/fixed-plan.json';
+        $planner->writeRunPlan($planPath, $plan);
+        $this->assertSame($plan['shards'], $planner->loadRunPlan($planPath)['shards']);
+
+        $this->write($root.'/tests/Feature/AddedAfterPlanTest.php');
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage('does not match current discovery');
+        $planner->loadRunPlan($planPath);
+    }
+
     public function test_coverage_report_exposes_duplicates_missing_and_unexpected_files(): void
     {
         $planner = new TestShardPlanner($this->createFixtureProject());

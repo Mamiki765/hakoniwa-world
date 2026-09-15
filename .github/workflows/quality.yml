@@ -218,13 +218,18 @@ jobs:
             esac
           done < <(tar --zstd -tf vendor.tar.zst)
           tar --zstd -xf vendor.tar.zst
+      - name: Create fixed shard plan
+        run: |
+          shard_plan="$RUNNER_TEMP/hakoniwa-test-shard-plan.json"
+          php tests/scripts/test_shards.php plan "$SHARD_TOTAL" full "$shard_plan"
+          echo "HAKONIWA_SHARD_PLAN=$shard_plan" >> "$GITHUB_ENV"
       - name: Verify complete shard coverage
-        run: php tests/scripts/test_shards.php verify "$SHARD_TOTAL" full
+        run: php tests/scripts/test_shards.php plan-verify "$HAKONIWA_SHARD_PLAN"
       - name: Describe assigned tests
-        run: php tests/scripts/test_shards.php describe "$SHARD_TOTAL" "$SHARD_INDEX" full
+        run: php tests/scripts/test_shards.php plan-describe "$HAKONIWA_SHARD_PLAN" "$SHARD_INDEX"
       - name: Run assigned PostgreSQL tests
         run: |
-          assigned_output="$(php tests/scripts/test_shards.php files "$SHARD_TOTAL" "$SHARD_INDEX" full)"
+          assigned_output="$(php tests/scripts/test_shards.php plan-files "$HAKONIWA_SHARD_PLAN" "$SHARD_INDEX")"
           test_files=()
           if [[ -n "$assigned_output" ]]; then
             mapfile -t test_files <<<"$assigned_output"
@@ -236,7 +241,7 @@ jobs:
           profile_plan="$(mktemp)"
           fixture_metrics="$(mktemp)"
           trap 'rm -f -- "$profile_plan" "$fixture_metrics"' EXIT
-          php tests/scripts/test_shards.php profiles "$SHARD_TOTAL" "$SHARD_INDEX" full >"$profile_plan"
+          php tests/scripts/test_shards.php plan-profiles "$HAKONIWA_SHARD_PLAN" "$SHARD_INDEX" >"$profile_plan"
           for profile in standard reusable_surface individual; do
             profile_files=()
             mapfile -t profile_files < <(awk -F '\t' -v selected="$profile" '$1 == selected { print $2 }' "$profile_plan")
