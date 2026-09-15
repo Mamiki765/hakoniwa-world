@@ -11,7 +11,7 @@ function mapCell(overrides: Partial<MapCell> = {}): MapCell {
     return {
         x: 0, y: 0, terrain: 'plain', terrain_name: '平地', facility: null, facility_name: null,
         display_name: '平地', owner_nation_id: 18, owner_nation_number: 1, owner_name: '地図国',
-        within_viewer_visibility: false, details: [],
+        within_viewer_visibility: false, buried_treasure_visible: false, details: [],
         monster: null,
         asset: { key: 'tile.plain', url: '/tiles/plain.gif?v=1-1', available: true, fallback_label: '平地', fallback_style: 'tile-plain' },
         overlays: [{ key: 'overlay.selection', url: '/tiles/selection.png?v=1-1', available: true, fallback_label: '', fallback_style: 'overlay-selection' }],

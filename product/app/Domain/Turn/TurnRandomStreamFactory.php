@@ -88,6 +88,14 @@ final class TurnRandomStreamFactory
 
     private const MONSTER_WORLD_SPAWN_PREFIX = 'global_disasters:aoi_inora:';
 
+    private const NPC_SHIP_SPAWN_PREFIX = 'global_disasters:npc_ship:';
+
+    private const PIRATE_ATTACK_PREFIX = 'process_cells:pirate:';
+
+    private const TREASURE_REVEAL_PREFIX = 'map_projection:buried_treasure:';
+
+    private const NATURAL_TREASURE_PREFIX = 'global_disasters:buried_treasure:natural:';
+
     private const MISSILE_IMPACT_PREFIX = 'development_commands:missile:item:';
 
     private const KARMA_SANCTION_PREFIX = 'settle_deferred_effects:karma_sanction:nation:';
@@ -156,7 +164,8 @@ final class TurnRandomStreamFactory
     public static function worldDisasterAreaFraction(string $disasterKey): string
     {
         if (! in_array($disasterKey, [
-            'earthquake', 'tsunami', 'typhoon', 'meteor_shower', 'huge_meteor', 'eruption',
+            'earthquake', 'tsunami', 'typhoon', 'meteor_shower', 'huge_meteor', 'eruption', 'npc_ship',
+            'buried_treasure',
         ], true)) {
             throw new InvalidArgumentException('World-disaster area stream key is invalid.');
         }
@@ -223,11 +232,48 @@ final class TurnRandomStreamFactory
 
     public static function monsterWorldSpawn(string $purpose, int $streamVersion): string
     {
-        if ($streamVersion < 1 || ! in_array($purpose, ['trigger', 'candidate', 'hp'], true)) {
+        if ($streamVersion < 1 || ! in_array($purpose, ['trigger', 'target_nation', 'candidate', 'hp'], true)) {
             throw new InvalidArgumentException('World monster-spawn stream identity is invalid.');
         }
 
         return self::MONSTER_WORLD_SPAWN_PREFIX.$purpose.':v'.$streamVersion;
+    }
+
+    public static function npcShipSpawn(int $opportunity, string $purpose, int $streamVersion): string
+    {
+        if ($opportunity < 1 || $streamVersion < 1
+            || ! in_array($purpose, ['trigger', 'nation', 'port', 'candidate', 'type', 'hp', 'population'], true)) {
+            throw new InvalidArgumentException('NPC Ship spawn stream identity is invalid.');
+        }
+
+        return self::NPC_SHIP_SPAWN_PREFIX.$opportunity.':'.$purpose.':v'.$streamVersion;
+    }
+
+    public static function pirateAttack(int $shipId, string $purpose, int $streamVersion): string
+    {
+        if ($shipId < 1 || $streamVersion < 1 || ! in_array($purpose, ['trigger', 'target'], true)) {
+            throw new InvalidArgumentException('Pirate attack stream identity is invalid.');
+        }
+
+        return self::PIRATE_ATTACK_PREFIX.$shipId.':'.$purpose.':v'.$streamVersion;
+    }
+
+    public static function treasureCellReveal(int $mapCellId, int $nationId, int $streamVersion): string
+    {
+        if ($mapCellId < 1 || $nationId < 1 || $streamVersion < 1) {
+            throw new InvalidArgumentException('Buried Treasure cell reveal stream identity is invalid.');
+        }
+
+        return self::TREASURE_REVEAL_PREFIX.$mapCellId.':nation:'.$nationId.':v'.$streamVersion;
+    }
+
+    public static function naturalTreasure(int $opportunity, string $purpose, int $streamVersion): string
+    {
+        if ($opportunity < 1 || $streamVersion < 1 || ! in_array($purpose, ['trigger', 'candidate'], true)) {
+            throw new InvalidArgumentException('Natural Buried Treasure stream identity is invalid.');
+        }
+
+        return self::NATURAL_TREASURE_PREFIX.$opportunity.':'.$purpose.':v'.$streamVersion;
     }
 
     public static function missileImpact(int $queueItemId): string

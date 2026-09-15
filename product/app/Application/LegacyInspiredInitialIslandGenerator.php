@@ -193,7 +193,7 @@ final class LegacyInspiredInitialIslandGenerator implements InitialIslandGenerat
             $random,
         );
 
-        $shipRelocations = $this->planShipRelocations(
+        [$shipRelocations, $npcShipRemovals] = $this->planShipRelocations(
             $mapSpace,
             $cells,
             (int) $terrainIds['sea'],
@@ -221,6 +221,11 @@ final class LegacyInspiredInitialIslandGenerator implements InitialIslandGenerat
             $changedChunks[$origin->map_chunk_id] = true;
             $changedChunks[$destination->map_chunk_id] = true;
         }
+        foreach ($npcShipRemovals as $removal) {
+            /** @var MapCell $origin */
+            $origin = $cells->firstWhere('id', $removal['from_cell_id']);
+            $changedChunks[$origin->map_chunk_id] = true;
+        }
         ksort($cellWrites, SORT_NUMERIC);
         $changedCellIds = array_map(static fn ($id): int => (int) $id, array_keys($cellWrites));
         $changedChunkIds = array_map(static fn ($id): int => (int) $id, array_keys($changedChunks));
@@ -239,6 +244,7 @@ final class LegacyInspiredInitialIslandGenerator implements InitialIslandGenerat
             changedChunkIds: $changedChunkIds,
             capitalCellId: $capitalCell->id,
             shipRelocations: $shipRelocations,
+            npcShipRemovals: $npcShipRemovals,
         );
     }
 
@@ -287,7 +293,7 @@ final class LegacyInspiredInitialIslandGenerator implements InitialIslandGenerat
 
     /**
      * @param  Collection<string, MapCell>  $cells
-     * @return list<array{ship_id: int, from_cell_id: int, to_cell_id: int, version: int}>
+     * @return array{list<array{ship_id: int, from_cell_id: int, to_cell_id: int, version: int}>, list<array{ship_id: int, from_cell_id: int, version: int}>}
      */
     private function planShipRelocations(
         MapSpace $mapSpace,
@@ -304,7 +310,7 @@ final class LegacyInspiredInitialIslandGenerator implements InitialIslandGenerat
             ->lockForUpdate()
             ->get();
         if ($ships->isEmpty()) {
-            return [];
+            return [[], []];
         }
         if (! $enabled) {
             throw new DomainException('選択された海域はすでに使用されています。');
@@ -319,6 +325,7 @@ final class LegacyInspiredInitialIslandGenerator implements InitialIslandGenerat
             static fn (Ship $ship): array => [(int) $ship->map_cell_id => true],
         )->all();
         $relocations = [];
+        $removals = [];
         foreach ($ships as $ship) {
             /** @var MapCell|null $origin */
             $origin = $cells->firstWhere('id', $ship->map_cell_id);
@@ -347,6 +354,16 @@ final class LegacyInspiredInitialIslandGenerator implements InitialIslandGenerat
                 })
                 ->first();
             if (! $destination instanceof MapCell) {
+                if ($ship->nation_id === null) {
+                    $removals[] = [
+                        'ship_id' => (int) $ship->id,
+                        'from_cell_id' => (int) $origin->id,
+                        'version' => (int) $ship->version,
+                    ];
+                    unset($occupiedCellIds[$origin->id]);
+
+                    continue;
+                }
                 throw new NationPlacementUnavailableException(
                     '初期島生成に巻き込まれる船を安全な海へ退避できません。',
                 );
@@ -361,12 +378,12 @@ final class LegacyInspiredInitialIslandGenerator implements InitialIslandGenerat
             ];
         }
 
-        return $relocations;
+        return [$relocations, $removals];
     }
 
     private function applyShipRelocations(InitialIslandPlan $plan, MapSpace $mapSpace, Nation $nation): void
     {
-        if ($plan->shipRelocations === []) {
+        if ($plan->shipRelocations === [] && $plan->npcShipRemovals === []) {
             return;
         }
         $shipIds = array_column($plan->shipRelocations, 'ship_id');
@@ -405,6 +422,21 @@ final class LegacyInspiredInitialIslandGenerator implements InitialIslandGenerat
                 throw new DomainException('Initial-island Ship relocation preconditions changed.');
             }
             $ship->map_cell_id = $destination->id;
+            $ship->version++;
+            $ship->save();
+        }
+        foreach ($plan->npcShipRemovals as $removal) {
+            $ship = Ship::query()->whereKey($removal['ship_id'])->lockForUpdate()->firstOrFail();
+            if ($ship->nation_id !== null || $ship->state !== Ship::STATE_ACTIVE
+                || (int) $ship->map_cell_id !== $removal['from_cell_id']
+                || (int) $ship->version !== $removal['version']) {
+                throw new DomainException('Initial-island NPC Ship removal preconditions changed.');
+            }
+            $ship->current_hp = 0;
+            $ship->map_cell_id = null;
+            $ship->state = Ship::STATE_REMOVED;
+            $ship->removal_reason = 'initial_island_displacement';
+            $ship->removed_at = now();
             $ship->version++;
             $ship->save();
         }

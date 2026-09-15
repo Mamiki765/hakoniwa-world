@@ -563,11 +563,12 @@ final class RulesetAuthoringValidator
         $definitions = $this->map($section['definitions'], 'ruleset.surface_ships.definitions');
         $isV26 = $authoredKey === self::FORMAL_V26_KEY;
         $expected = $isV26 ? [
-            'fishing' => ['漁船', 'ship.fishing', true, 1, 10, 500, 1, 1, 'fish', 7000, 0, 1],
-            'tourist' => ['観光船', 'ship.tourist', true, 2, 20, 1500, 2, 2, null, 0, 20, 1],
-            'exploration' => ['探索船', 'ship.exploration', true, 3, 30, 1000, 2, 1, null, 0, 0, 3],
-            'pirate' => ['海賊船', 'ship.pirate', false, null, 40, 0, 3, 0, null, 0, 0, 1],
-            'treasure' => ['宝船', 'ship.treasure', false, null, 50, 0, 1, 0, null, 0, 0, 1],
+            'fishing' => ['漁船', 'ship.fishing', true, 1, 10, 500, 1, 1, 'fish', 7000, 0, 1, 'heading_or_random', 'none'],
+            'tourist' => ['観光船', 'ship.tourist', true, 2, 20, 1500, 2, 2, null, 0, 20, 1, 'heading_or_random', 'none'],
+            'exploration' => ['探索船', 'ship.exploration', true, 3, 30, 1000, 2, 1, null, 0, 0, 3, 'sparkle_or_random', 'none'],
+            'pirate' => ['海賊船', 'ship.pirate', false, null, 40, 0, 3, 0, null, 0, 0, 1, 'random_drift', 'pirate'],
+            'treasure' => ['宝船', 'ship.treasure', false, null, 50, 0, 1, 0, null, 0, 0, 1, 'random_drift', 'none'],
+            'warship' => ['戦艦', 'ship.warship', true, 4, 60, 3000, 3, 3, null, 0, 0, 5, 'heading_only', 'warship'],
         ] : [
             'fishing' => ['漁船', 'ship.fishing', 1, 10, 500, 1, 1, 'fish', 7000, 0, 1],
             'tourist' => ['観光船', 'ship.tourist', 2, 20, 1500, 2, 2, null, 0, 20, 1],
@@ -589,6 +590,8 @@ final class RulesetAuthoringValidator
             ];
             if ($isV26) {
                 array_splice($requiredKeys, 2, 0, ['player_buildable']);
+                $requiredKeys[] = 'movement_mode';
+                $requiredKeys[] = 'combat_role';
             }
             $this->requireKeys($definition, $requiredKeys, $path);
             $playerBuildable = $isV26
@@ -613,6 +616,10 @@ final class RulesetAuthoringValidator
                 $this->integer($definition['movement_reward_resource_units'], "{$path}.movement_reward_resource_units", 0),
                 $this->integer($definition['movement_reward_money'], "{$path}.movement_reward_money", 0),
                 $this->integer($definition['visibility_radius'], "{$path}.visibility_radius", 1),
+                ...($isV26 ? [
+                    $this->persistedString($definition['movement_mode'], "{$path}.movement_mode"),
+                    $this->persistedString($definition['combat_role'], "{$path}.combat_role"),
+                ] : []),
             ];
             if ($definition['movement_reward_resource_key'] !== null) {
                 $resourceKeyIndex = $isV26 ? 8 : 7;
@@ -779,6 +786,22 @@ final class RulesetAuthoringValidator
                         'quantity_multiplier' => false,
                     ]) {
                     throw new DomainException("{$path} does not match the current Ship operations contract.");
+                }
+
+                continue;
+            }
+
+            if ($key === SecretarySkillCatalog::NAVY) {
+                if ($authoredKey !== self::FORMAL_V26_KEY
+                    || $initialLevel !== 0
+                    || $basis !== 'next_level_linear'
+                    || $multiplier !== 30
+                    || $effect !== ['type' => 'placeholder', 'display' => '効果なし']
+                    || $source !== [
+                        'type' => 'successful_warship_hit',
+                        'target_experience' => 'normal_missile_hit_equivalent',
+                    ]) {
+                    throw new DomainException("{$path} does not match the v26 Navy skill contract.");
                 }
 
                 continue;

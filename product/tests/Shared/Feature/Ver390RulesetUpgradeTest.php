@@ -46,6 +46,8 @@ final class Ver390RulesetUpgradeTest extends TestCase
 
     private const VER420_MIGRATION = '2026_09_15_000000_enable_npc_surface_ships';
 
+    private const OCEAN_LOOP_MIGRATION = '2026_09_15_010000_add_ocean_loop';
+
     public function test_exact_v22_world_upgrades_through_v23_v24_v25_and_v26_without_losing_live_or_historical_state(): void
     {
         $this->returnSchemaToExact390Source();
@@ -267,6 +269,31 @@ final class Ver390RulesetUpgradeTest extends TestCase
         ]);
         $this->assertSame('already_current_v26', app(Ver420RulesetUpgrade::class)->run());
         $this->assertSame(1, DB::table('audit_events')->where('event_type', 'ruleset.v26_activated')->count());
+
+        $this->artisan('migrate', [
+            '--path' => 'database/migrations/'.self::OCEAN_LOOP_MIGRATION.'.php',
+            '--force' => true,
+            '--no-interaction' => true,
+        ])->assertSuccessful();
+
+        $shipAfterOcean = (array) DB::table('ships')->find($ship->id);
+        $this->assertNull($shipAfterOcean['population']);
+        unset($shipAfterOcean['population']);
+        $this->assertSame($shipBefore, $shipAfterOcean);
+        $this->assertSame($skillsBefore, DB::table('secretary_skills')
+            ->where('secretary_id', $secretaryBefore['id'])->where('skill_key', '!=', 'navy')
+            ->orderBy('id')->get()->map(fn ($row): array => (array) $row)->all());
+        $this->assertDatabaseHas('secretary_skills', [
+            'secretary_id' => $secretaryBefore['id'],
+            'skill_key' => 'navy',
+            'level' => 0,
+            'experience' => 0,
+        ]);
+        $this->assertTrue(Schema::hasTable('buried_treasures'));
+        $this->assertFalse(Schema::hasTable('buried_treasure_reveals'));
+        $this->assertTrue(Schema::hasColumn('secretary_item_instances', 'resolved_rarity'));
+        $this->assertTrue(Schema::hasColumn('secretary_item_instances', 'resolved_fixed_sale_price_money'));
+        $this->assertDatabaseHas('migrations', ['migration' => self::OCEAN_LOOP_MIGRATION]);
     }
 
     public function test_v22_to_v23_rolls_back_after_a_failure_during_world_activation(): void
@@ -367,6 +394,37 @@ SQL);
 
     private function returnSchemaToExact390Source(): void
     {
+        Schema::dropIfExists('buried_treasures');
+        if (Schema::hasColumn('ships', 'population')) {
+            DB::statement('ALTER TABLE ships DROP CONSTRAINT IF EXISTS ships_ocean_population_check');
+            Schema::table('ships', function (Blueprint $table): void {
+                $table->dropColumn('population');
+            });
+        }
+        if (Schema::hasColumn('secretary_item_instances', 'resolved_rarity')) {
+            DB::statement('ALTER TABLE secretary_item_instances DROP CONSTRAINT IF EXISTS secretary_item_instances_resolved_economics_check');
+            Schema::table('secretary_item_instances', function (Blueprint $table): void {
+                $table->dropColumn(['resolved_rarity', 'resolved_fixed_sale_price_money']);
+            });
+        }
+        DB::table('secretary_skills')->where('skill_key', 'navy')->delete();
+        DB::statement('ALTER TABLE secretary_skills DROP CONSTRAINT IF EXISTS secretary_skills_key_check');
+        DB::statement(<<<'SQL'
+ALTER TABLE secretary_skills
+  ADD CONSTRAINT secretary_skills_key_check
+  CHECK (skill_key IN (
+    'agricultural_policy',
+    'specialty_development',
+    'gold_vein_survey',
+    'forest_management',
+    'final_defense_line',
+    'declining_birthrate_policy',
+    'indomitable',
+    'ship_operations'
+  ))
+SQL);
+        DB::table('migrations')->where('migration', self::OCEAN_LOOP_MIGRATION)->delete();
+
         $v26Row = RulesetVersion::query()->where('key', Ver420RulesetUpgrade::TARGET_KEY)->first();
         if ($v26Row instanceof RulesetVersion) {
             DB::table('worlds')->where('ruleset_version_id', $v26Row->id)->update([

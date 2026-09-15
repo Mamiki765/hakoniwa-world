@@ -51,6 +51,13 @@ final class SurfaceShipCatalog
                 movementRewardResourceUnits: $this->nonNegativeInteger($value, 'movement_reward_resource_units'),
                 movementRewardMoney: $this->nonNegativeInteger($value, 'movement_reward_money'),
                 visibilityRadius: $this->positiveInteger($value, 'visibility_radius'),
+                movementMode: $this->enumString(
+                    $value,
+                    'movement_mode',
+                    ['heading_or_random', 'sparkle_or_random', 'heading_only', 'random_drift'],
+                    'heading_or_random',
+                ),
+                combatRole: $this->enumString($value, 'combat_role', ['none', 'pirate', 'warship'], 'none'),
             );
         }
 
@@ -185,6 +192,19 @@ final class SurfaceShipCatalog
         $value = $definition[$field] ?? $default;
         if (! is_bool($value)) {
             throw new DomainException("Surface Ship {$field} must be a boolean.");
+        }
+
+        return $value;
+    }
+
+    /** @param array<string, mixed> $definition
+     * @param  list<string>  $allowed
+     */
+    private function enumString(array $definition, string $field, array $allowed, string $default): string
+    {
+        $value = $definition[$field] ?? $default;
+        if (! is_string($value) || ! in_array($value, $allowed, true)) {
+            throw new DomainException("Surface Ship {$field} is invalid.");
         }
 
         return $value;

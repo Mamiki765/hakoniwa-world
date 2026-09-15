@@ -14,13 +14,16 @@ use Illuminate\Support\Carbon;
  * @property int|null $equipped_slot
  * @property bool $is_escrowed
  * @property string|null $grant_key
+ * @property string|null $resolved_rarity
+ * @property int|null $resolved_fixed_sale_price_money
  * @property Carbon $obtained_at
  * @property-read Secretary $secretary
  */
 final class SecretaryItemInstance extends Model
 {
     protected $fillable = [
-        'secretary_id', 'item_key', 'level', 'equipped_slot', 'is_escrowed', 'grant_key', 'obtained_at',
+        'secretary_id', 'item_key', 'level', 'equipped_slot', 'is_escrowed', 'grant_key',
+        'resolved_rarity', 'resolved_fixed_sale_price_money', 'obtained_at',
     ];
 
     protected function casts(): array
@@ -29,6 +32,7 @@ final class SecretaryItemInstance extends Model
             'level' => 'integer',
             'equipped_slot' => 'integer',
             'is_escrowed' => 'boolean',
+            'resolved_fixed_sale_price_money' => 'integer',
             'obtained_at' => 'immutable_datetime',
         ];
     }

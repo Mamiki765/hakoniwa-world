@@ -70,6 +70,7 @@ final class SecretaryPresenter
             SecretarySkillCatalog::DECLINING_BIRTHRATE_POLICY => $this->birthratePolicyEffect($definition, $level),
             SecretarySkillCatalog::INDOMITABLE => $this->indomitableEffect($definition, $level),
             SecretarySkillCatalog::SHIP_OPERATIONS => '準備中',
+            SecretarySkillCatalog::NAVY => '効果なし',
             default => throw new DomainException("Unknown Secretary skill {$skillKey}."),
         };
     }

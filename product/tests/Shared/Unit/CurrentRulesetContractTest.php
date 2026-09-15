@@ -9,7 +9,7 @@ use Tests\TestCase;
 
 final class CurrentRulesetContractTest extends TestCase
 {
-    private const V26_CHECKSUM = '4d1aa8f1be592bc8f80743ff5d6672909395ad3a4eeef1b88f9fc186c8db1186';
+    private const V26_CHECKSUM = '791ec7754ba794660fff3e27c1b287a481096055cf125d1080a6fe31c6f3d10b';
 
     public function test_normal_config_loads_and_validates_the_v26_identity_and_checksum(): void
     {
@@ -33,7 +33,7 @@ final class CurrentRulesetContractTest extends TestCase
     public function test_current_domain_authoring_classifies_every_scalar_leaf_exactly_once(): void
     {
         $this->assertSame(
-            14,
+            15,
             app(CurrentRulesetAuthoringInspector::class)->inspect(config('hakoniwa.ruleset'))['domains'],
         );
         $coverage = app(CurrentRulesetAuthoringInspector::class)->inspect(config('hakoniwa.ruleset'));

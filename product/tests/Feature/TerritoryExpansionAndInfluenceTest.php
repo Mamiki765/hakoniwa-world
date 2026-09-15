@@ -2,12 +2,14 @@
 
 namespace Tests\Feature;
 
+use App\Application\BuriedTreasureService;
 use App\Application\DomesticCommandExecutor;
 use App\Application\NationCreationService;
 use App\Application\PlayerIslandEventService;
 use App\Application\TerritoryInfluenceService;
 use App\Domain\Map\GridCoordinate;
 use App\Domain\Map\NationLandAreaCalculator;
+use App\Domain\Secretary\SecretaryItemCatalog;
 use App\Domain\Turn\TurnContext;
 use App\Domain\Turn\TurnRandomStreamFactory;
 use App\Domain\Turn\TurnState;
@@ -94,6 +96,43 @@ final class TerritoryExpansionAndInfluenceTest extends TestCase
         yield 'neutral existing wasteland' => [null, 'wasteland'];
         yield 'foreign wasteland' => ['foreign', 'wasteland'];
         yield 'foreign scorched' => ['foreign', 'scorched'];
+    }
+
+    public function test_manual_expansion_collects_buried_treasure_only_after_ownership_changes(): void
+    {
+        [$world, $space, $actorUser, $actor, $foreign] = $this->worldAndNations();
+        [$target, $adjacent] = $this->remotePair($space, [$actor, $foreign]);
+        $this->setCell($adjacent, 'plain', $actor->id);
+        $this->setCell($target, 'wasteland', null);
+        $actor->update(['money' => 1_000]);
+        $creationContext = $this->context(
+            $world,
+            [$actor->id, $foreign->id],
+            hash('sha256', 'territory-treasure-create'),
+        );
+        $treasure = app(BuriedTreasureService::class)->create(
+            $creationContext,
+            $target,
+            'meteor',
+            false,
+        );
+        $itemsBefore = $actorUser->secretary()->firstOrFail()->itemInstances()->count();
+
+        $this->queue($actorUser, $actor, $space, $target);
+        $result = app(DomesticCommandExecutor::class)->execute(
+            $this->context($world, [$actor->id, $foreign->id], hash('sha256', 'territory-treasure-collect')),
+        );
+
+        $this->assertSame(1, $result['successes']);
+        $this->assertSame($actor->id, $target->fresh()->owner_nation_id);
+        $this->assertSame([
+            'state' => 'collected',
+            'resolved_by_nation_id' => $actor->id,
+            'resolution_reason' => 'collected',
+        ], $treasure->fresh()->only(['state', 'resolved_by_nation_id', 'resolution_reason']));
+        $this->assertSame($itemsBefore + 1, $actorUser->secretary()->firstOrFail()->itemInstances()->count());
+        $this->assertTrue($actorUser->secretary()->firstOrFail()->itemInstances()
+            ->where('item_key', SecretaryItemCatalog::WAKUWAKU_TICKET)->exists());
     }
 
     public function test_manual_expansion_preview_projects_a_prior_foreign_wasteland_capture_for_adjacency(): void

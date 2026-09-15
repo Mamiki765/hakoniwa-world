@@ -101,8 +101,22 @@ final class MonsterBehaviorResolver
                 'minimum_land_distance' => 4,
                 'stream_version' => 1,
             ];
-            if ($this->canonicalize($authored['world_spawn'] ?? null) !== $this->canonicalize($expectedSpawn)) {
-                throw new DomainException('Aoi Inora World spawn behavior differs from the approved v11 contract.');
+            $nearshoreSpawn = [
+                'type' => 'world_aoi_disaster',
+                'probability_per_active_owned_land_cell' => ['numerator' => 1, 'denominator' => 10_000],
+                'maximum_probability_numerator' => 10_000,
+                'terrain_keys' => ['sea', 'shallow'],
+                'eligible_nation_state' => 'active',
+                'minimum_nation_population' => 100_000,
+                'target_weight' => 'owned_land_cells_times_natural_monster_spawn_modifier',
+                'exact_owned_land_distance' => 4,
+                'other_land_exclusion_distance' => 3,
+                'stream_version' => 2,
+            ];
+            $actualSpawn = $this->canonicalize($authored['world_spawn'] ?? null);
+            if ($actualSpawn !== $this->canonicalize($expectedSpawn)
+                && $actualSpawn !== $this->canonicalize($nearshoreSpawn)) {
+                throw new DomainException('Aoi Inora World spawn behavior differs from a supported contract.');
             }
         }
         if ($monsterKey === 'nyowamiya') {
