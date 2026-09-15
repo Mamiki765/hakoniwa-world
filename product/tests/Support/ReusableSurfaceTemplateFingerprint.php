@@ -49,6 +49,7 @@ final class ReusableSurfaceTemplateFingerprint
         'app/Domain/TradingPost/TradingPostRules.php',
         'app/Domain/Turn/DeterministicRandomStream.php',
         'app/Domain/Turn/TurnAlreadyRunningException.php',
+        'app/Domain/World/InitialWorldBounds.php',
         'app/Domain/World/MapBounds.php',
         'app/Domain/World/MapSpaceCoverageValidator.php',
         'app/Domain/World/WorldGenerationProfile.php',

@@ -363,10 +363,10 @@ XML,
             $first['fingerprint'],
             $fingerprint->calculate([...$runtime, 'postgres_server_version' => '18.5'])['fingerprint'],
         );
-        $this->assertContains(
-            'app/Providers/AppServiceProvider.php',
-            (new ReusableSurfaceTemplateFingerprint(dirname(__DIR__, 3)))->calculate($runtime)['files'],
-        );
+        $defaultFiles = (new ReusableSurfaceTemplateFingerprint(dirname(__DIR__, 3)))
+            ->calculate($runtime)['files'];
+        $this->assertContains('app/Providers/AppServiceProvider.php', $defaultFiles);
+        $this->assertContains('app/Domain/World/InitialWorldBounds.php', $defaultFiles);
     }
 
     public function test_coverage_report_exposes_duplicates_missing_and_unexpected_files(): void
