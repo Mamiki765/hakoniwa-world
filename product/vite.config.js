@@ -17,6 +17,28 @@ export default defineConfig({
     },
     test: {
         environment: 'jsdom',
-        include: ['resources/js/**/*.test.ts'],
+        projects: [
+            {
+                extends: true,
+                test: {
+                    name: 'shared',
+                    include: ['resources/js/**/*.shared.test.ts'],
+                },
+            },
+            {
+                extends: true,
+                test: {
+                    name: 'surface',
+                    include: ['resources/js/**/*.surface.test.ts'],
+                },
+            },
+            {
+                extends: true,
+                test: {
+                    name: 'underground',
+                    include: ['resources/js/**/*.underground.test.ts'],
+                },
+            },
+        ],
     },
 });

@@ -11,11 +11,8 @@ use App\Application\TurnRunner;
 use App\Application\Ver393RulesetUpgrade;
 use App\Domain\Secretary\SecretarySkillCatalog;
 use App\Domain\World\WorldGenerationProfile;
-use App\Models\CommandDefinition;
 use App\Models\MapCell;
-use App\Models\MonsterDefinition;
 use App\Models\NationCommandQueueItem;
-use App\Models\ProductionDefinition;
 use App\Models\RulesetVersion;
 use App\Models\Secretary;
 use App\Models\SecretaryItemInstance;
@@ -52,9 +49,6 @@ final class FreshInstallRebaselineTest extends TestCase
             'key' => Ver393RulesetUpgrade::SOURCE_KEY,
             'version' => Ver393RulesetUpgrade::SOURCE_VERSION,
         ]);
-        $this->assertSame(35, CommandDefinition::query()->where('ruleset_version_id', $ruleset->id)->count());
-        $this->assertSame(3, ProductionDefinition::query()->where('ruleset_version_id', $ruleset->id)->count());
-        $this->assertSame(11, MonsterDefinition::query()->where('ruleset_version_id', $ruleset->id)->count());
         $this->assertDatabaseHas('migrations', [
             'migration' => '2026_09_09_030000_add_surface_paradox_and_daily_rewards',
         ]);

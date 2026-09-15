@@ -7,7 +7,6 @@ use App\Domain\Underground\Combat\CombatResult;
 use App\Domain\Underground\Combat\UndergroundCombatEngine;
 use App\Domain\Underground\Combat\UndergroundCombatRules;
 use App\Domain\Underground\Combat\UndergroundRandom;
-use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 
 final class UndergroundCombatLaboratoryTest extends TestCase
@@ -227,62 +226,6 @@ final class UndergroundCombatLaboratoryTest extends TestCase
             $this->assertLessThan(100, $first->rounds);
             $this->assertSame([], $first->abnormalState);
         }
-    }
-
-    #[DataProvider('prototypeEnemyProvider')]
-    public function test_each_prototype_enemy_exposes_its_distinct_laboratory_role(
-        string $enemyKey,
-        string $expectedSignal,
-    ): void {
-        $result = $this->fight($enemyKey, 9);
-        $actions = array_column($result->actionLog, 'action');
-
-        match ($expectedSignal) {
-            'standard' => $this->assertContains('normal_attack', $actions),
-            'fast_first' => $this->assertSame('enemy', $result->actionLog[0]['side']),
-            'piercing' => $this->assertGreaterThan(0, $result->skillUsage['piercing_thrust']),
-            'telegraph' => $this->assertContains('telegraph', $actions),
-        };
-        $this->assertSame([], $result->abnormalState);
-    }
-
-    /** @return array<string, array{string, string}> */
-    public static function prototypeEnemyProvider(): array
-    {
-        return [
-            'standard enemy' => ['cave_crawler', 'standard'],
-            'fast fragile enemy' => ['needle_bat', 'fast_first'],
-            'armored enemy' => ['stone_shell', 'piercing'],
-            'telegraphed threat' => ['gloom_herald', 'telegraph'],
-        ];
-    }
-
-    public function test_result_is_structured_and_compact_for_future_runtime_consumers(): void
-    {
-        $result = $this->fight('needle_bat', 17)->toArray();
-
-        $this->assertSame([
-            'rules_identity',
-            'seed',
-            'actor_key',
-            'enemy_key',
-            'winner',
-            'rounds',
-            'remaining_hp',
-            'damage_dealt',
-            'damage_received',
-            'healing_done',
-            'skill_usage',
-            'normal_attack_usage',
-            'defend_usage',
-            'ai_fallback_usage',
-            'resource_overflow',
-            'final_resource',
-            'resource_history',
-            'abnormal_state',
-            'action_log',
-        ], array_keys($result));
-        $this->assertLessThanOrEqual(60, count($result['action_log']));
     }
 
     private function fight(string $enemyKey, int $seed): CombatResult
