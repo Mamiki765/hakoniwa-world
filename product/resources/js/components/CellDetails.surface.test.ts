@@ -50,6 +50,25 @@ describe('viewer-safe cell details', () => {
         expect(wrapper.text().indexOf('船の所有者')).toBeLessThan(wrapper.text().indexOf('このマスの所有者'));
     });
 
+    it('shows an NPC Ship name and HP without inventing an owner Nation', () => {
+        const wrapper = mount(CellDetails, { props: { cell: cell({
+            display_name: '海賊船',
+            terrain: 'sea', terrain_name: '海',
+            owner_nation_id: null, owner_nation_number: null, owner_name: null,
+            ship: {
+                id: 8, key: 'pirate', name: '海賊船', asset_key: 'ship.pirate',
+                current_hp: 2, max_hp: 3, public_state: 'active', owner_nation: null,
+                is_owner: false, heading: null, version: null,
+            },
+        }) } });
+
+        expect(wrapper.get('h3').text()).toBe('海賊船 (3, -2)');
+        expect(wrapper.text()).toContain('HP2/3');
+        expect(wrapper.text()).toContain('このマスの所有者中立');
+        expect(wrapper.text()).not.toContain('船の所有者');
+        expect(wrapper.text()).not.toMatch(/N\d+/);
+    });
+
     it.each([
         ['村', 'village'], ['首都', 'capital'],
     ])('shows settlement population for %s', (name, facility) => {

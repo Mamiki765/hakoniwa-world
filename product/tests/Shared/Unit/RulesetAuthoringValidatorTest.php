@@ -15,8 +15,8 @@ class RulesetAuthoringValidatorTest extends TestCase
         $settings = config('hakoniwa.ruleset');
 
         $summary = $validator->validate($settings);
-        $this->assertSame('hakoniwa-2s-plus-v25', $summary['key']);
-        $this->assertSame(25, $summary['version']);
+        $this->assertSame('hakoniwa-2s-plus-v26', $summary['key']);
+        $this->assertSame(26, $summary['version']);
         $this->assertSame(count($settings['command_definitions']), $summary['commands']);
     }
 
@@ -97,7 +97,7 @@ class RulesetAuthoringValidatorTest extends TestCase
 
                     return $settings;
                 },
-                'ruleset.surface_ships.definitions.fishing differs from the Owner-approved v20 Ship contract',
+                'ruleset.surface_ships.definitions.fishing differs from the Owner-approved v26 Ship contract',
             ],
         ];
     }

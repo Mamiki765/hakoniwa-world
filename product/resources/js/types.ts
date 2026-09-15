@@ -708,13 +708,13 @@ export interface MonsterOverlay {
 
 export interface ShipOverlay {
     id: number;
-    key: 'fishing' | 'tourist' | 'exploration';
+    key: 'fishing' | 'tourist' | 'exploration' | 'pirate' | 'treasure';
     name: string;
     asset_key: string;
     current_hp: number;
     max_hp: number;
     public_state: 'active';
-    owner_nation: { nation_number: number; name: string };
+    owner_nation: { nation_number: number; name: string } | null;
     is_owner: boolean;
     heading: number | null;
     version: number | null;

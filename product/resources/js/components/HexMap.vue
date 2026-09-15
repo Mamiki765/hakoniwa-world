@@ -95,7 +95,9 @@ const tooltipDetails = computed(() => {
 
     return [
         ...(cell.ship == null ? [] : [
-            `船の所有者: ${cell.ship.owner_nation.name} (N${cell.ship.owner_nation.nation_number})`,
+            ...(cell.ship.owner_nation === null ? [] : [
+                `船の所有者: ${cell.ship.owner_nation.name} (N${cell.ship.owner_nation.nation_number})`,
+            ]),
             `HP: ${cell.ship.current_hp}/${cell.ship.max_hp}`,
             `地形: ${cell.terrain_name}`,
         ]),
@@ -421,8 +423,8 @@ function markAssetFailed(cell: MapCell): void {
                         <img v-if="overlay.available && overlay.url" class="tile-overlay" :src="overlay.url" alt="" draggable="false">
                     </template>
                     <span v-if="!assetIsRenderable(item.cell)" class="tile-label">{{ item.cell.facility === 'capital' ? '首' : item.cell.asset.fallback_label.slice(0, 1) }}</span>
-                    <small v-if="item.cell.ship != null || item.cell.owner_nation_number !== null">
-                        N{{ item.cell.ship?.owner_nation.nation_number ?? item.cell.owner_nation_number }}
+                    <small v-if="item.cell.ship?.owner_nation != null || item.cell.owner_nation_number !== null">
+                        N{{ item.cell.ship?.owner_nation?.nation_number ?? item.cell.owner_nation_number }}
                     </small>
                     <span v-if="item.cell.monster" class="monster-overlay" aria-hidden="true">
                         <span class="monster-fallback">{{ item.cell.monster.name.slice(0, 1) }}</span>

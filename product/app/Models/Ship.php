@@ -10,7 +10,7 @@ use Illuminate\Support\Carbon;
  * @property int $id
  * @property int $world_id
  * @property int $ruleset_version_id
- * @property int $nation_id
+ * @property int|null $nation_id
  * @property int|null $map_cell_id
  * @property string $ship_type_key
  * @property int $current_hp
@@ -22,7 +22,7 @@ use Illuminate\Support\Carbon;
  * @property Carbon|null $removed_at
  * @property-read World $world
  * @property-read RulesetVersion $rulesetVersion
- * @property-read Nation $nation
+ * @property-read Nation|null $nation
  * @property-read MapCell|null $cell
  */
 final class Ship extends Model

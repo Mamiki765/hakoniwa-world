@@ -81,7 +81,7 @@ final class SurfaceShipTurnService
         // A port lost later in this phase stops its Nation's Ships from the next turn.
         $portNationIds = MapCell::query()
             ->where('map_space_id', $space->id)
-            ->whereIn('owner_nation_id', $ships->pluck('nation_id')->unique()->values()->all())
+            ->whereIn('owner_nation_id', $ships->pluck('nation_id')->filter()->unique()->values()->all())
             ->whereHas('facility', fn ($query) => $query->where('key', $this->movement['required_port_facility_key']))
             ->pluck('owner_nation_id')->map(static fn (mixed $id): int => (int) $id)->unique()->values()->all();
 
@@ -104,17 +104,26 @@ final class SurfaceShipTurnService
         $context->state->markShipProcessed((int) $ship->id);
         $ships->count('ship_events');
 
-        if ($ship->nation->state !== 'active') {
-            return;
+        $definition = $this->definitions[$ship->ship_type_key]
+            ?? throw new DomainException('Active Ship type is unavailable from the current Ruleset.');
+        $isNpc = $ship->nation_id === null;
+        if ($isNpc === $definition->playerBuildable) {
+            throw new DomainException('Active Ship ownership differs from its Ruleset definition.');
         }
-        if (! $ships->hasPort((int) $ship->nation_id)) {
-            $ships->count('ship_no_port');
+        if (! $isNpc) {
+            $owner = $ship->nation;
+            if (! $owner instanceof Nation || $owner->state !== 'active') {
+                return;
+            }
+            if (! $ships->hasPort((int) $ship->nation_id)) {
+                $ships->count('ship_no_port');
 
-            return;
+                return;
+            }
         }
 
         $candidates = $this->movementCandidates($space, $origin, $cellsByCoordinate, $monsters, $ships);
-        $heading = $ship->heading;
+        $heading = $isNpc ? null : $ship->heading;
         $destination = $heading === null ? null : ($candidates[$heading] ?? null);
         $headingBlocked = $heading !== null && ! $destination instanceof MapCell;
         if ($headingBlocked) {
@@ -139,13 +148,37 @@ final class SurfaceShipTurnService
             return;
         }
 
+        if ($isNpc) {
+            $this->persistMovement($context, $origin, $destination, $ship, $ships);
+            $ships->count('ship_moves');
+            $this->events->record($context, 'ship.moved', $ship, [
+                'ship_id' => (int) $ship->id,
+                'ship_type_key' => $ship->ship_type_key,
+                'ship_name' => $definition->name,
+                'from_x' => (int) $origin->x,
+                'from_y' => (int) $origin->y,
+                'x' => (int) $destination->x,
+                'y' => (int) $destination->y,
+                'heading' => null,
+                'heading_reset' => false,
+                'oil_consumed' => 0,
+                'resource_key' => null,
+                'resource_requested' => 0,
+                'resource_applied' => 0,
+                'resource_overflow' => 0,
+                'money_requested' => 0,
+                'money_applied' => 0,
+                'money_overflow' => 0,
+            ], 'public');
+
+            return;
+        }
+
         $nation = Nation::query()->whereKey($ship->nation_id)->where('state', 'active')->lockForUpdate()->first();
         if (! $nation instanceof Nation) {
             return;
         }
         $oil = $this->lockedBalance($nation, $this->resources[$this->movement['fuel_resource_key']]);
-        $definition = $this->definitions[$ship->ship_type_key]
-            ?? throw new DomainException('Active Ship type is unavailable from the current Ruleset.');
         if ((int) $oil->amount < $definition->movementOilUnits) {
             if ($headingBlocked) {
                 $ship->version++;
@@ -157,13 +190,7 @@ final class SurfaceShipTurnService
         }
 
         $oil->decrement('amount', $definition->movementOilUnits);
-        $fromCellId = (int) $origin->id;
-        $ship->map_cell_id = $destination->id;
-        $ship->version++;
-        $ship->save();
-        $ships->move($ship, $fromCellId, (int) $destination->id);
-        $context->state->markMapChunkChanged((int) $origin->map_chunk_id);
-        $context->state->markMapChunkChanged((int) $destination->map_chunk_id);
+        $this->persistMovement($context, $origin, $destination, $ship, $ships);
 
         $reward = $this->settleReward($context, $nation, $definition);
         $experience = (int) $this->movement['secretary_experience_per_successful_move'];
@@ -195,6 +222,22 @@ final class SurfaceShipTurnService
             'secretary_skill_key' => SecretarySkillCatalog::SHIP_OPERATIONS,
             'secretary_experience_requested' => $experience,
         ], 'nation');
+    }
+
+    private function persistMovement(
+        TurnContext $context,
+        MapCell $origin,
+        MapCell $destination,
+        Ship $ship,
+        SurfaceShipTurnBatch $ships,
+    ): void {
+        $fromCellId = (int) $origin->id;
+        $ship->map_cell_id = $destination->id;
+        $ship->version++;
+        $ship->save();
+        $ships->move($ship, $fromCellId, (int) $destination->id);
+        $context->state->markMapChunkChanged((int) $origin->map_chunk_id);
+        $context->state->markMapChunkChanged((int) $destination->map_chunk_id);
     }
 
     /** @param array<string, MapCell> $cellsByCoordinate

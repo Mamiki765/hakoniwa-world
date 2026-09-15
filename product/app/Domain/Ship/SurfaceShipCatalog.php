@@ -30,15 +30,23 @@ final class SurfaceShipCatalog
             if (! is_string($key) || $key === '' || ! is_array($value)) {
                 throw new DomainException('Surface Ship definition is malformed.');
             }
+            $playerBuildable = $this->boolean($value, 'player_buildable', true);
             $result[] = new SurfaceShipDefinition(
-                selector: $this->positiveInteger($value, 'build_selector'),
+                selector: $playerBuildable
+                    ? $this->positiveInteger($value, 'build_selector')
+                    : $this->nullInteger($value, 'build_selector'),
                 key: $key,
                 name: $this->nonEmptyString($value, 'name'),
                 assetKey: $this->nonEmptyString($value, 'asset_key'),
+                playerBuildable: $playerBuildable,
                 sortOrder: $this->positiveInteger($value, 'sort_order'),
-                buildCostMoney: $this->positiveInteger($value, 'build_cost_money'),
+                buildCostMoney: $playerBuildable
+                    ? $this->positiveInteger($value, 'build_cost_money')
+                    : $this->nonNegativeInteger($value, 'build_cost_money'),
                 maximumHp: $this->positiveInteger($value, 'maximum_hp'),
-                movementOilUnits: $this->positiveInteger($value, 'movement_oil_units'),
+                movementOilUnits: $playerBuildable
+                    ? $this->positiveInteger($value, 'movement_oil_units')
+                    : $this->nonNegativeInteger($value, 'movement_oil_units'),
                 movementRewardResourceKey: $this->nullableString($value, 'movement_reward_resource_key'),
                 movementRewardResourceUnits: $this->nonNegativeInteger($value, 'movement_reward_resource_units'),
                 movementRewardMoney: $this->nonNegativeInteger($value, 'movement_reward_money'),
@@ -48,10 +56,14 @@ final class SurfaceShipCatalog
 
         usort($result, static fn (SurfaceShipDefinition $left, SurfaceShipDefinition $right): int => [$left->sortOrder, $left->selector, $left->key] <=> [$right->sortOrder, $right->selector, $right->key]
         );
-        if (count(array_unique(array_map(
-            static fn (SurfaceShipDefinition $definition): int => $definition->selector,
+        $playerBuildable = array_values(array_filter(
             $result,
-        ))) !== count($result)) {
+            static fn (SurfaceShipDefinition $definition): bool => $definition->playerBuildable,
+        ));
+        if (count(array_unique(array_map(
+            static fn (SurfaceShipDefinition $definition): int => (int) $definition->selector,
+            $playerBuildable,
+        ))) !== count($playerBuildable)) {
             throw new DomainException('Surface Ship build selectors must be unique.');
         }
 
@@ -66,7 +78,10 @@ final class SurfaceShipCatalog
         }
 
         return $this->optionsByRulesetId[$command->ruleset_version_id]
-            ??= $this->definitions($this->settings($command));
+            ??= array_values(array_filter(
+                $this->definitions($this->settings($command)),
+                static fn (SurfaceShipDefinition $definition): bool => $definition->playerBuildable,
+            ));
     }
 
     public function resolve(CommandDefinition $command, int $selector): SurfaceShipDefinition
@@ -162,5 +177,26 @@ final class SurfaceShipCatalog
         }
 
         return $value;
+    }
+
+    /** @param array<string, mixed> $definition */
+    private function boolean(array $definition, string $field, bool $default): bool
+    {
+        $value = $definition[$field] ?? $default;
+        if (! is_bool($value)) {
+            throw new DomainException("Surface Ship {$field} must be a boolean.");
+        }
+
+        return $value;
+    }
+
+    /** @param array<string, mixed> $definition */
+    private function nullInteger(array $definition, string $field): null
+    {
+        if (($definition[$field] ?? null) !== null) {
+            throw new DomainException("NPC-only Surface Ship {$field} must be null.");
+        }
+
+        return null;
     }
 }

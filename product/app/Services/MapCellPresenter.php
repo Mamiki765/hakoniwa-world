@@ -235,7 +235,7 @@ final class MapCellPresenter
             'current_hp' => $ship->current_hp,
             'max_hp' => $ship->max_hp,
             'public_state' => Ship::STATE_ACTIVE,
-            'owner_nation' => [
+            'owner_nation' => $owner === null ? null : [
                 'nation_number' => $owner->nation_number,
                 'name' => $owner->name,
             ],
@@ -367,14 +367,20 @@ final class MapCellPresenter
     ): string {
         $suffix = array_map(static fn (array $detail): string => $detail['label'].' '.$detail['formatted'], $details);
         if ($ship !== null) {
-            $suffix[] = sprintf(
-                '船 %s HP %d/%d 船の所有者 %s N%d',
+            $shipLabel = sprintf(
+                '船 %s HP %d/%d',
                 $ship['name'],
                 $ship['current_hp'],
                 $ship['max_hp'],
-                $ship['owner_nation']['name'],
-                $ship['owner_nation']['nation_number'],
             );
+            if ($ship['owner_nation'] !== null) {
+                $shipLabel .= sprintf(
+                    ' 船の所有者 %s N%d',
+                    $ship['owner_nation']['name'],
+                    $ship['owner_nation']['nation_number'],
+                );
+            }
+            $suffix[] = $shipLabel;
         }
         if ($monster !== null) {
             $suffix[] = sprintf(
