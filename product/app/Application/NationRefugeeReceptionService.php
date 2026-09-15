@@ -20,7 +20,10 @@ final class NationRefugeeReceptionService
         private readonly TurnEventRecorder $events,
     ) {}
 
-    /** @param array<string, mixed> $metadata */
+    /**
+     * @param  array<string, mixed>  $metadata
+     * @return array{received: int, changed_cell_ids: list<int>}
+     */
     public function receive(
         TurnContext $context,
         Nation $recipient,
@@ -28,9 +31,9 @@ final class NationRefugeeReceptionService
         int $generated,
         string $sourceKey,
         array $metadata = [],
-    ): int {
+    ): array {
         if ($generated < 1) {
-            return 0;
+            return ['received' => 0, 'changed_cell_ids' => []];
         }
         $settlementKeys = $context->ruleset->settings['military']['refugees']['settlement_facility_keys'] ?? [];
         $attractionMaximum = $context->ruleset->settings['turn_processing']['settlement']['attraction_maximum_population'];
@@ -47,6 +50,7 @@ final class NationRefugeeReceptionService
             ->with(['terrain', 'facility'])->orderBy('id')->lockForUpdate()->get()
             ->sortByDesc(fn (MapCell $cell): bool => $cell->facility?->key === 'capital');
         $remaining = $generated;
+        $changedCellIds = [];
         foreach ($cells as $cell) {
             $maximum = $cell->facility?->key === 'capital'
                 ? $context->ruleset->settings['capital_growth_maximum_population']
@@ -61,6 +65,7 @@ final class NationRefugeeReceptionService
             $cell->version++;
             $cell->save();
             $context->state->markMapChunkChanged((int) $cell->map_chunk_id);
+            $changedCellIds[] = (int) $cell->id;
             $remaining -= $applied;
             if ($remaining === 0) {
                 break;
@@ -79,7 +84,7 @@ final class NationRefugeeReceptionService
             ...$metadata,
         ], 'nation');
 
-        return $received;
+        return ['received' => $received, 'changed_cell_ids' => $changedCellIds];
     }
 
     private function syncSettlementFacility(TurnContext $context, MapCell $cell): void

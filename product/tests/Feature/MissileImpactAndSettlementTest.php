@@ -1382,6 +1382,8 @@ final class MissileImpactAndSettlementTest extends CommandAndMissileTestCase
             'version' => 1,
         ]);
         $populationBefore = (int) MapCell::query()->where('owner_nation_id', $firing->id)->sum('population');
+        $recipientCellId = (int) MapCell::query()->where('owner_nation_id', $firing->id)
+            ->whereHas('facility', fn ($query) => $query->where('key', 'capital'))->value('id');
         $ruleset = $world->rulesetVersion()->firstOrFail();
         $settings = $ruleset->settings;
         $settings['military']['missiles']['missile']['deviation_radius'] = 0;
@@ -1394,6 +1396,8 @@ final class MissileImpactAndSettlementTest extends CommandAndMissileTestCase
         );
 
         $this->assertSame(1, $metrics['meaningful_impacts']);
+        $this->assertContains($recipientCellId, $metrics['changed_cell_ids']);
+        $this->assertContains((int) $cell->id, $metrics['changed_cell_ids']);
         $this->assertSame(Ship::STATE_REMOVED, $pirate->fresh()->state);
         $this->assertSame(4, $base->fresh()->facility_experience);
         $this->assertSame($populationBefore + 4_000, (int) MapCell::query()
