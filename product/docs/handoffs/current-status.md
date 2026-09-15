@@ -1,116 +1,100 @@
 # hakoniwa-world 現在地・4.2.0引継ぎ
 
-更新日：2026-09-15 JST。4.2.0 test suite再設計のPhase 2 push時点に合わせて更新する。
+更新日：2026-09-16 JST。Ownerの差分レビュー・横断レビュー・handoff更新コミット・マニュアル更新の依頼に基づく。
 
-本書の現在地はmain 4.1.2と`release/4.2.0`のtest suite再設計。4.1.2までのincident・仕様記録は過去の判断と運用contractとして下に保持する。詳細仕様の正本は固定SHAのcode・release文書・Owner補足である。
+**4.2.0は海洋アップデートとテスト基盤の改善で区切る。PR #9は `release/4.2.0 → main` の最終release PRであり、まだマージしない。** 統合HEADの横断レビューでP1 1件・P2 1件が残っている。詳細は[4.2.0最終レビュー](../releases/4.2.0-final-review.md)。
 
-## 0. 4.2.0 test suite再設計の進行契約
+この文書を旧統合handoffより先に読む。以下のHEADはレビューしたcodeの固定点であり、この文書のcommit後も常に最新という意味ではない。再開時はForgejo PR #9のHEADを再解決する。
 
-4.2.0の現在の主作業はtest suiteのゼロベース再設計である。Astra Xhighが作成した[設計図](../testing/test-suite-rebuild-plan.md)を正本として、SolがそのPhase順に実装を進めている。OwnerがSolへ渡した作業範囲を優先し、この会話で後から提示された追加条件は作業契約へ盛り込んでいない。repo文書またはOwnerの明示指示へ反映されていない会話上の追加案を、後から必須条件へ昇格させない。
+## 1. 固定refと作業境界
 
-開始時にForgejo mainが`00182bd0eaee52f34194c7b40bc5e98712108718`で遅れていないことを確認し、そこから`release/4.2.0`を作成した。Draft PR #9で継続中で、Phase 2 push時点のHEADは`0e6db357e603f42f92e0f18f4f6549775a600218`である。HEADは今後進むため、作業再開時はPR #9を再解決する。
-
-- Phase 0a：AGENTS §8のtest増殖防止規則を整理。新設・拡張の必要性、重複matrix、確認終了条件を明文化した。
-- Phase 1：Aランク不要保証を削除・縮小。mainの1,058 casesから1,052 casesへ6件純減し、このPhaseでは新規caseを追加していない。focused 68 tests / 2,680 assertions、変更frontend 2件、Pint・ESLintはPASS。
-- Phase 2：Shared / Surface / Undergroundのscopeとdispatcherを実装。Full=Shared+Surface+Underground、Surface=Shared+Surface、Underground=Shared+Undergroundとして、同じplanner/runner/DB manager/evidenceへscopeを通した。Sharedへの移動と既存SP migration caseの分離を行い、scope validationの1 method追加後は117 files / 1,053 cases。Full 1,053、Surface 835、Underground 291のserial/4-shard identifier一致を確認している。
-- Phase 2ではrepository-wide Fullはまだ実行していない。planner/dispatcher/Shared migration等のfocused確認を実施。development image buildはGitHub archive timeoutで完了せず、既存containerでComposer entrypointまで確認した。
-- 次は設計図Phase 3の通常map case用reusable fixture、初回generation、case rollback、独立性とfixture回数・時間の計測。Phase 3以降も設計図の順序を正本とする。
-
-このtest再設計だけを理由にruntime、Ruleset、application schema、production dataを変更しない。merge、deploy、production migration/data/Turn操作は別のOwner許可が必要である。
-
-## 1. 固定refと現在地
-
-| 項目 | 確認結果 |
+| 項目 | 確認済みの状態 |
 |---|---|
-| 正本remote | Forgejo `https://git.pbwlove.com/Mamiki765/hakoniwa-world.git` |
-| main / 4.2.0 base | `00182bd0eaee52f34194c7b40bc5e98712108718`。application versionは4.1.2 |
-| 作業branch | `release/4.2.0` |
-| Draft PR | Forgejo PR #9。Phase 2 push時点HEAD `0e6db357e603f42f92e0f18f4f6549775a600218` |
-| 設計正本 | `product/docs/testing/test-suite-rebuild-plan.md`。Astra Xhighが設計し、SolがPhase順に実装中 |
-| 実装済み | Phase 0a、Phase 1、Phase 2 |
-| 次段階 | Phase 3：map再利用fixtureと独立性・生成回数計測 |
-| production | 4.2.0 test作業ではdeploy・production DB・Turn操作を行わない。mainのversionからproduction適用状態を推定しない |
+| 正本remote | Forgejo `Mamiki765/hakoniwa-world` |
+| #9 base | `main` / `00182bd0eaee52f34194c7b40bc5e98712108718` |
+| レビューした統合HEAD | `478ea7628577ca48f431c947e4a7c50ab85a2c39` |
+| #9 | head branchは`release/4.2.0`。open・draft・未merge |
+| #11 海洋ループ | reviewed HEAD `4c7a73b07dab0c5d6e8e9a4a4d37bcaad9de52ec`。merge `e85893a206ac4d1fd92e435d4887a907f832af72`でreleaseへ反映済み |
+| #12 focused高速化 | reviewed HEAD `2825c3fb5cfba5c9223c9458593c5403a981c3d5`。merge `478ea7628577ca48f431c947e4a7c50ab85a2c39`でreleaseへ反映済み |
+| application / Surface Ruleset | codeは4.2.0 / `hakoniwa-2s-plus-v26` |
+| production | 今回は再照会・変更なし。releaseへのmergeやcode versionを本番適用済みの証拠にしない |
 
-## 2. 本番観測の範囲
+#9の`mergeable:false`表示だけからtext conflictの原因を断定しない。#11・#12の個別mergeと、#9のmainへのrelease判断を混同しない。
 
-Owner提供のincident記録では、Turn478 attempt 1が`finalize_turn`中のPostgreSQL `40P01`で失敗した。Turn側のSecretary batch `FOR UPDATE`と、地下PT snapshot側の`underground_party_members.secretary_id` FK参照が、Leaderと借用Secretaryを逆順に待っていた。Ownerは同じTurn・Ruleset・seedでmanual retryしたattempt 2の完了と、`current_turn=478`を確認済みで、追加recoveryは不要である。
+## 2. 4.2.0のscope
 
-4.1.2作業ではproduction状態を再照会・変更していない。上記はOwner提供記録であり、このbranchの検証は隔離したPostgreSQL test DBだけで行う。
+含めるものは、海賊船・宝船、戦艦、海軍技能、埋蔵宝、探索船回収、キラッ表示、あおいのら近海化、わくわく／ドキドキチケット、および必要なv26・migration。test suite再設計とfocused反復高速化も同梱する。
 
-### 2.1 4.1.2のlock contract
+**含めないもの**：ログ圧縮、地下battle/member snapshot削減、秘書個室・100,000Gの日記帳・自キャラ統計、地上audit集約、画像lease prune改善、オリジナル記念碑、地下UIの5画面再編、チケット消費効果、AF本体、汎用海戦/PvP/actor framework。
 
-`SecretaryTurnService::flushExperience()`がSecretary本体で更新するのはnon-keyの`monster_experience`である。`FOR NO KEY UPDATE`は他のwriterを直列化したままFKの`KEY SHARE`と共存するため、lost update防止を維持しつつ今回のcycleを切る。Secretary skill EXPは別tableを従来どおり`FOR UPDATE`する。Underground側のsnapshot・profile・equipment・skill整合性、4.1.1のお問い合わせlock修正、manual retry契約は変更しない。
+ログ圧縮等は会話で「将来#13」と呼んだ次版の案件。番号を実装完了・PR作成済みの証拠にせず、4.2.0の完了条件へ戻さない。過去DBの削除・変換・cron変更は別の明示承認が必要で、文書更新から許可を推定しない。
 
-中央銀行・中央穀倉は、ともに既存の`ordinary` quantity経路を使用する。同じセルでは1Turnごとにquantityを1減らして新設から増設へ進み、別セルの同種2施設目は既存の1Nation 1施設制限で拒否される。現行contractで意図を満たすため、この調査によるcode変更は行わない。
+## 3. 海洋のOwner契約と実装到達点
 
-## 3. 4.0.0までの到達点
+- NPC船は`ships.nation_id = null`。ダミーNationやID=0を作らない。Player船の所有・建造制約は維持する。
+- NPC船出現は港保有のactive Nationを先に選ぶ。港の数で抽選回数を増やさず、選んだ港から4～6hexに出現する。10%はWorldの面積換算された各抽選機会の確率であり、各島が毎Turn10%ではない。成功時の種類比率は海賊85／宝船15。
+- 海賊船は出現時HP1～3・最大HP3、人口5,000～10,000。宝船はHP1。両方ランダム漂流し、NPC自身の港・石油・航行報酬・船舶運営EXPを要求しない。
+- 海賊は各Turn50%で半径2内から有効な対象をランダムに1件選ぶ。集落の人口を半減させ実減少を船人口へ加算、首都は100人を下回らせない。Player船には1damage、自分の真下の海底施設には破壊。難民を増やして平和賞を目指す遊びはOwner意図であり、不正養殖として禁止しない。
+- 撃沈した海賊人口から、ミサイルなら50%、戦艦なら100%を難民受入候補にする。人口上限等による未受入分と実受入数を区別する。**受入後のturn-local cell同期は下記F1が未解決。**
+- 戦艦は3,000億円、HP3、移動時石油3万バレル。通常は停止、進路指定時に一Turn最大1hex。自国の港が必要。射程5、最大1発、費用20億円、damage1、着弾ブレなし、防衛施設の迎撃を経由しない。怪獣の硬化は既存damage経路で有効。NPC船・あおいのら・自領の怪獣を自動攻撃し、Player船を自動攻撃しない。
+- 宝船を沈めて宝を得るのは意図した仕様。戦艦の自動攻撃対象から除かない。
+- 戦艦の経験値は秘書の海軍へ。怪獣は実HP damageに応じ、海賊は所持人口に応じ、宝船は7EXP。海軍の次Lv必要EXPは30、60、90…と増える。固有効果は未実装。
+- 宝はterrain/facilityと別のstate。1セルに最大5個、超過時は最古を無報酬で除去。探索船の侵入または領土取得で回収し、所持枠不足なら宝を残す。新規島の上書き対象の宝は無報酬除去し、島破棄・再登録による回収をさせない。
+- 通常宝はわくわくチケット1枚、上位宝はドキドキチケット1枚。わくわくはRegular・500億円、ドキドキは**High Quality・1,500億円**。HQというrarityは実装済みであり「HQを入れない」と言い換えない。チケットを消費する機能はまだない。
+- 宝生成時のitem/quantity/rarity/固定売価をsnapshotし、回収時のitem instanceにも解決済みrarity/売価を保持する。売却・表示・交易場はその経済値を参照する。
+- 通常視界内の宝は常時表示。遠方のキラッはNation×Turn×セルで20%、宝の個数で確率を増やさない。completed TurnRunのseedから再現し、reveal履歴tableを作らない。
+- 遠方キラッはプレイヤー向け表示で、探索船AIへの遠隔座標配信ではない。Owner指定は自船の周囲3マスの宝を自動追跡すること。**他の自国船・領土の視界までAI候補に混ぜるF2が未解決。**
+- 公開落下ログは「海賊船沈没／宝船沈没／隕石等に由来する」というsourceを表示してよい。落下event自体には宝の座標とチケット種類を出さない。別の沈没・災害情報から場所を推測できることはOwner許容済み。
+- あおいのらは人口10万人以上のactive Nationを選び、所有陸地からちょうど4hex、他の陸地から3hex以内を除く候補へ出現する。アイテム補正は対象Nationの選出weightへ反映。候補がなければ遠方へfallbackしない。
+- 新規島生成ではNPC船・退避可能なあおいのらを安全な海へ退避し、退避不能時は無報酬で除去する。Player船は安全退避できない候補を採用しない。
 
-前チャットでPR #4は`f44c57bfca18b96627d48f9f649549b9f1cf2fdc`へfast-forward merge成功が確認され、その後mainのapplication versionは4.0.0へ変更されている。3.10.0名のrelease文書は4.0.0に至る設計・測定の記録であり、別の未公開機能として再実装しない。
+詳しい操作説明は[港と船](../manual/ships.md)、[地上の秘書](../manual/secretary.md)。マニュアルの自船半径3と難民受入の説明はOwner契約を表す公開用原稿であり、F1/F2の実装修正完了を意味しない。公開前に両者を一致させる。
 
-- 地下の戦技・護身・祝福3ツリー、取得後のactive5枠、旧SP割当・custom AI解除と装備保存による再開。成長方針と取得ツリーは別軸で、回復能力はskill/effectに帰属する。
-- 通常combat v5 / skill tree v2。Surface Ruleset v25は維持。未適用だったSP返還・レンタル状態・お知らせbody_formatのschema変更は4.0.0候補内の1本へ統合されたが、適用済みmigrationを今後自由に書き換えてよいという許可ではない。
-- レンタル確定・更新で借用者全員HP全快・覚醒0。その後は借り手側でHP・覚醒を持ち越す。再計算時はHP割合維持、宿はHPだけ回復。貸出公開設定自体を解除したわけではない。
-- 王国の通常12種weapon_powerは旧値の2倍、強敵2種は2.5倍、レア据え置き。共通定義を使用する宝物庫側にも反映される。最終被ダメージの倍率や全ステータス倍率ではない。PTのtarget分散・挑発・回復・範囲技を含む再評価後にOwnerが許容した値なので、旧solo勝率だけへ合わせて戻さない。
-- 木人の基準は100round、200roundはMP持続確認用。旧構成相当の役割感を守り、攻撃枠を増やした構成を一律80%に抑えない。技巧は武力・精神の両方で上振れを確認済み。ここを4.1.0の会話修正で再調整しない。
-- お知らせはplain_text/markdownを区別し、旧記事の形式・日時・本文を保持。Markdownは共通rendererでraw HTMLを除去し、危険リンクを許可しない。プレビューは保存とは別。
+## 4. 統合レビューの残件
 
-お詫びについてOwnerは全島へ輝石300・スキップチケット100という決定と、配布済み表現の告知文を提示した。本レビューでは4.0.0のgrant登録状況を照会していない。未配布と決めつけて再実行せず、必要なら既存grantを先に照合する。旧handoffにある3.9.0の29件登録済み配布も別件であり、再配布しない。
+| ID | 優先度 | 修正すべきこと |
+|---|---|---|
+| F1 | P1 | 海賊船撃沈時の難民受入先を、process_cellsの共有MapCellへ同期する。戦艦とミサイル双方で、後続の人口成長・攻撃に古い人口を使わせない |
+| F2 | P2 | 探索船の自動目的地を自船からの半径3へ制限する。別船や領土が見ている遠方宝を、通常visibilityという理由で追跡しない |
 
-## 4. 4.1.0の確定仕様と修正
+詳細・source行番号・最小の回帰確認は[最終レビュー](../releases/4.2.0-final-review.md)。今回は文書のみを更新し、runtime修正は行っていない。新しい枠組みや全map再読込を追加するのではなく、変更cellの同期と近傍候補の限定として直す。
 
-詳細は[案内人との決闘](../releases/4.1.0-guide-duel.md)を正本とする。元の添付案のHP1,001,254・毎round10,000回復ではなく、その後のOwner決定としてHP351,400・毎round1,254回復が記録されている。差だけを誤実装としない。
+#11の前回レビューでF2を見落とした理由は、remote reveal条件の削除を確認して、通常visibilityがNation全体のunionである点を十分区別しなかったこと。Ownerが3マス条件を撤回したという意味ではない。
 
-### 決闘・記念品
+## 5. Migration・asset・検証
 
-女王は固定1体・固定能力で、PT人数による補正なし。確定済みの通常編成で挑み、決闘専用のPT切替を作らない。無料・通常探索cooldown不使用。開幕はHP0・覚醒未解禁・ゲージ不足も含む全員を全回復・強制覚醒させ、その後に女王の開幕奥義。25%以下到達を記憶して当該actionの残りhit中はHP1を保護し、action終了後に2回目の奥義。それ以降は実ダメージで撃破可能。100round未決着は決闘の敗北扱い。
+移行契約はexact v25→v26。source checksumは`c03af0ca57f167207740ad5bc5e201568335b9c45d417c0c865440a9548967de`、target checksumは`791ec7754ba794660fff3e27c1b287a481096055cf125d1080a6fe31c6f3d10b`。
 
-通常のHP・MP・覚醒・通貨・経験値・探索cooldown・貸出参加・日課へ結果を書き戻さない。決闘履歴・専用clear回数・初勝利記念品は保存する。初勝利はLeader自身のSecretaryごとに判定し、魔剣グラムを1個だけ付与。装備/個別売却/一括売却はserver側でも不可、能力説明は表示のみ・所持効果なし。満杯時の一度限り1個超過はOwner採用済み。通常の購入/drop容量制限は維持する。
+必要な追加migrationは次の2本で、片方だけの適用を完成扱いにしない。
 
-### 会話と隠し台詞――Owner #53と後続の説明を優先
+- `2026_09_15_000000_enable_npc_surface_ships.php`：NPC所有者nullable化・ship identity guard・exact v26 activation。
+- `2026_09_15_010000_add_ocean_loop.php`：ship人口、宝、item解決済み経済値、海軍skill制約とbackfill。
 
-| 状態・選択 | 意図した処理 |
-|---|---|
-| 真剣な話root | 本名を聞く → 抱き締める → 勝負を挑む（解禁時）→ 戻るの順 |
-| 本名を拒まれた直後 | それでも教えて欲しい / あなたについて知ることが私の夢だと伝える / 彼女に自分がつけた名前を呼ぶ / 立ち去るの4択 |
-| それでも教えて欲しい | 既存の名付け時branch_identityにより、付けた名前の応答またはリカ・苗字・魔王・種族の話 |
-| 私の夢だと伝える | 「………………」「リカ。」 |
-| 自分がつけた名前を呼ぶ | 「そう。それでいい。」。本名を明かさせる前の並列選択であり、明かした後の両sceneには重複配置しない |
-| 本名/抱擁などのsubscene | 勝負を挑むを共通ボタンとして出さない |
-| 決闘未勝利 | 何度負けても初挑戦会話。挑戦回数で分岐しない |
-| 勝利済み＋今回PT | 第二形態・第三形態のおふざけ会話 |
-| 勝利済み＋今回ソロ | 上記会話を隠し皮肉会話へ丸ごと差し替える。過去PT勝利を要求しない |
-| やめておく | 取消会話のみで、戦闘・勝利フラグを作らない |
-| 初勝利/再勝利 | 共通勝利会話＋それぞれの追加台詞。初勝利だけグラム。UUID再取得で勝利/記念品を増やさない |
+既存Player船のRuleset provenance、queued request provenance、terminal履歴等は保護対象。実際にproduction使用したsnapshotは不変。未releaseのstabilizationを理由にv27を作らない。本番baseline・未解決Turn・適用結果はdeploy時に別途確認する。
 
-リカは「一人で挑むなんて勇敢」と称賛するのではなく、あえて仲間を連れず来る縛りプレイを見抜いて皮肉る。隠し会話の存在・出し方を公開UI、manual、告知、実績で誘導しない。「初勝利もソロなら不自然」という以前のAssistantの懸念は撤回済み。PT勝利履歴や縛りプレイ意思フラグを追加しない。実際の確定編成を使い、未解決request再送中は送信時の編成を保つ。
+追加assetの正式ファイル名は`ship-pirate.gif`、`ship-treasure.gif`、`ship-warship.gif`、`buried-treasure-sparkle.gif`。source参照は確認したが、外部asset directoryへの実配置・配信・スマホ実画面は今回確認していない。勝手に画像生成・配置・再作成しない。
 
-王国解禁と過去1～5読了の条件は別で、今回変更していない。王国解禁・回想未読了ではrootの選択は決闘＋戻るのみ。既存の本名/抱擁の内容は過去1～5読了後。会話の場所を直すことを、新たな解禁制限を加える指示へ読み替えない。Owner台詞は勝手に改稿しない。
+テスト基盤はPhase 0a～6と#12まで実装済み。「次はPhase 3」へ戻さない。詳細は[設計図](../testing/test-suite-rebuild-plan.md)と[Phase 6・focused追補](../testing/test-suite-phase06-verification.md)。
 
-### 障壁・宝物庫・UI
+- 過去のFull4は`49a632c2ca40ab10ae62182d8e9778c192a65b64`で121 files / 1,034 tests PASS、最長19分42秒。今回HEADの全件PASSへ読み替えず、以前よりFull全体が速いとも主張しない。
+- focusedの39.13秒→8.80秒はPhase 6追補の同一代表の測定。初回template構築や今回の環境の測定と混ぜない。
+- #12はfocusedかつreusable_surfaceのみのとき、検証済みtemplateからrun専用DBをclone。AppServiceProvider・InitialWorldBoundsを含むfingerprint、選択testのpath＋内容hash、既存rollback/cleanupを維持する。
+- 今回の統合HEADでは、MCPでfingerprint代表1 test / 5 assertions PASSを独立確認。DB Feature、browser E2E、production、repository-wide Full/Full CIは実行していない。過去の#11/#12 focused結果は別のSHAの証拠として保持する。
 
-PT projectorのbarrier amountは表示時に正数へ変換。solo/PTのHP数値は障壁がある場合のみ「現在HP +障壁 / 最大HP」。内部ログの符号・HPゲージ計算は維持する。他人への障壁では術者と受給者を区別し、#52の「護衛がレイへ張ったのに護衛が得た」表示も修正済み。
+## 6. 前releaseの判断を巻き戻さない
 
-宝物庫は装備中5枠を武器→防具→アクセサリー1→2→3で先頭固定。未装備は入手の新旧・IL・レア度・種類順、全体をソートしてからページ分割する。選択順はlocalStorageへ保存し、不正値や保存不能時にも操作できる。グラムは固定品でもuniqueとして扱い、売却対象には入れない。
+4.0.0～4.1.2の詳細は、Gitの`478ea7628577ca48f431c947e4a7c50ab85a2c39:product/docs/handoffs/current-status.md` §§2～5、および既存release文書に残っている。旧[統合handoff](development-history-and-current-handoff.md)自体は今回変更しない。そこにある3.9.3以前の現在地・未配布・未実装表示はhistorical evidenceである。
 
-前回列挙した地下画面/宝物庫の英語eyebrowは削除済み。日本語見出し・HP/MP/Lv/IL・Ownerの英語を含む台詞まで一律に変換する依頼ではない。
+継承する重要点：通常地下combat v5 / skill tree v2、取得active5枠、成長方針と回復skillは別軸。レンタル確定・更新は借用者HP全快・覚醒0、その後は借り手側で持越し、再計算はHP割合維持、宿はHPのみ回復。王国の再調整済みbalanceを旧solo勝率へ戻さない。4.0.0等の配布を未配布と推定して再実行しない。
 
-## 5. 独立再レビューの証拠と限界
+[案内人決闘](../releases/4.1.0-guide-duel.md)は通常探索とは別決算。通常HP/MP/覚醒/通貨/EXP/cooldown/貸出参加/日課へ結果を書き戻さず、初勝利グラムは一度だけ、装備・売却不可。女王HP351,400、round回復1,254、25%到達を記憶するaction境界、100round敗北というOwner決定を保持する。
 
-対象`a9150ca…`。前回`3c7cc54…`からの変更12ファイルを確認し、確定編成/同UUID再送、初勝利と報酬、装備禁止・一括売却、通常探索との決算分離、既存combat、migration CHECKの関連経路を横断した。#56へ記録。実装の自己確認だけで完了扱いにしていない。
+決闘の初勝利後ソロ再戦は実際の確定PTの有無で隠し会話へ差し替える。過去PT勝利や「一人で挑む」意思フラグは不要。公開manual・告知・実績で存在や出し方を誘導しない。本名・抱擁等のsubsceneへ挑戦ボタンを増やさず、Owner台詞も改稿しない。王国解禁と回想1～5読了は別条件。
 
-- MCP隔離runnerで決闘2・蘇生1・反撃1・回復恩寵1、5 tests /46 assertions PASS。JUnitのerror/failure/skipは0。stdoutはfiltered。
-- exact-SHA sourceの実PHP combat/projectorをローカル実行。通常の味方障壁について、実Vue文章関数まで通して「護衛の『護法陣』でレイは障壁を9267得た」を確認。
-- 実Vue関数の抽出プローブで再戦12条件、root/subscene8条件、sort保存/不正値/利用不可8条件を確認。実configの会話分岐と、実sort closure/rarityKeyを用いる506件の並べ替え・装備5枠優先・ページ境界も確認。
-- これらは合成の狭い確認であり、Vue全体のmount/browser E2EやDBからの取得を含むFeature testではない。
-- 今回の独立frontend/browser実行は未完了。ローカルnpmはregistry.npmjs.orgのDNS失敗で依存取得不能。以前のMCP runnerのvitest Permission deniedについても解消を確認していない。375px実画面、PostgreSQL migration/concurrency、全suiteの独立再実行は未実施。
-- 実装担当のPHP5件/172assertions、frontend23件、typecheck/lint等は#55の自己検証として別記録。以前の55 tests/661assertions・frontend30件等を最新HEADで全件再実行したとは言わない。
+4.1.2のTurn/地下PT deadlockはSecretary本体の`FOR NO KEY UPDATE`でFKの`KEY SHARE`と共存させた。技能EXP側のwriter直列化は維持する。Owner報告のTurn478 manual retry完了を未解決へ戻さない。今回の資料から新しいproduction recoveryを開始しない。
 
-## 6. 次に進めるとき
+## 7. 再開順と停止条件
 
-`release/4.2.0`はDraft PR #9で継続する。再開時はPR HEADを再解決し、[test suite再設計図](../testing/test-suite-rebuild-plan.md)と各Phase implementation記録を先に読む。Phase 2まではpush済みで、次はPhase 3のmap再利用fixture。Phase 2以降の進行でこのhandoff自体が古くなっていれば、設計図とPR HEADの実装記録を優先する。
+まず#9のHEADを再解決し、F1/F2だけを修正する。実際に変えた境界の代表focusedと必要なstatic確認で止め、Full・Surface全件・Underground全件を自動再実行しない。修正後にこのレビューの残件を更新する。
 
-4.2.0のtest suite再設計はAstra Xhighの設計図をSolが順に実装する作業であり、この会話だけで提案された追加条件を暗黙に混ぜない。Ownerが別途scopeを変更した場合は、その明示指示またはrepo文書を正本として更新する。
-
-push/初回PR/修正PR/レビュー投稿は承認済みrepositoryの通常作業として個別確認不要。GitHubかForgejoかで権限を分けず、CIコスト管理は別扱い。現在のForgejoへのpushを、以前のGitHub CI反復の事情で止めない。実行環境側の送信先承認で止まる場合は、その層の制限とOwner方針を区別して報告する。
-
-merge、deploy、production migration・data・Turn操作はOwner明示承認なしに行わない。`OPEN`は延期済みではない。決定済み仕様を再び未決に戻さず、逆にAssistant案をOwner固定仕様として昇格させない。既存testが存在するだけで恒久仕様としない。
+その後に4.2.0のmigration/asset/source整合を確認し、Ownerの最終release判断を待つ。今回のhandoff・manual commitは、#9のdraft解除・main merge・deploy・migration適用・本番data変更・補填・次版実装の許可ではない。
