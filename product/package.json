@@ -5,6 +5,7 @@
     "scripts": {
         "build": "vite build",
         "dev": "vite",
+        "preview:scenes": "vite --config tools/scene-preview/vite.config.js",
         "lint": "eslint resources/js",
         "test": "npm run test:all",
         "test:all": "vitest run",

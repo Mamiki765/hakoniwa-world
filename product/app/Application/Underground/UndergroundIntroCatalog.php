@@ -18,6 +18,26 @@ final class UndergroundIntroCatalog
             : throw new RuntimeException('Underground intro identity is missing.');
     }
 
+    /** @return array<string, array{name: string, price: int}> */
+    public function residence(): array
+    {
+        $items = $this->data()['residence'] ?? null;
+        if (! is_array($items)) {
+            throw new RuntimeException('Underground residence configuration is missing.');
+        }
+        $result = [];
+        foreach (['villa', 'mirror', 'trophy_shelf'] as $key) {
+            $item = $items[$key] ?? null;
+            if (! is_array($item) || ! is_string($item['name'] ?? null)
+                || ! is_int($item['price'] ?? null) || $item['price'] < 1) {
+                throw new RuntimeException('Underground residence configuration is invalid.');
+            }
+            $result[$key] = ['name' => $item['name'], 'price' => $item['price']];
+        }
+
+        return $result;
+    }
+
     /** @return array<string, mixed> */
     public function recollections(): array
     {

@@ -1,5 +1,11 @@
 <script setup lang="ts">
 import stories from '../../stories/intro.json';
+import loungeStories from '../../stories/lounge.json';
+import UndergroundHome from './UndergroundHome.vue';
+import UndergroundNavigation from './UndergroundNavigation.vue';
+import UndergroundScene from './UndergroundScene.vue';
+import UndergroundResidence from './UndergroundResidence.vue';
+import { undergroundDestinations, type UndergroundDestination, type UndergroundVisuals, type ResidenceState } from './undergroundScenes';
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
 import { ApiError, api } from '../api/client';
 import UndergroundAiEditor from './UndergroundAiEditor.vue';
@@ -434,6 +440,8 @@ interface LendingCandidatesPage {
 }
 
 interface UndergroundState {
+    visuals?: UndergroundVisuals | null;
+    residence?: ResidenceState;
     stage: Stage;
     secretary_name: string;
     combat_level: number;
@@ -540,6 +548,7 @@ const emit = defineEmits<{
 }>();
 const state = ref<UndergroundState | null>(null);
 const busy = ref(false);
+const mutationRejected = ref(false);
 const error = ref('');
 const shopkeeperName = ref('');
 const battles = ref<Battle[]>([]);
@@ -553,7 +562,6 @@ const lendingEnabled = ref(false);
 const partySelectionHydrated = ref(false);
 const selectedBuild = ref('');
 const selectedEnemy = ref('');
-const bankOpen = ref(false);
 const bankAmount = ref<number | null>(1000);
 const selectedHuntingGroundKey = ref('shallow_caves');
 const selectedSkipHuntingGroundKey = ref('shallow_caves');
@@ -576,8 +584,6 @@ const skipModalOpen = ref(false);
 const skipError = ref('');
 const pendingInnRequestId = ref<string | null>(null);
 const pendingBankMutation = ref<PendingBankMutation | null>(null);
-const statusOpen = ref(false);
-const skillsOpen = ref(false);
 const innResting = ref(false);
 const innRested = ref(false);
 const stpDraft = ref<Record<StatKey, number>>({ vitality: 0, might: 0, finesse: 0, spirit: 0, agility: 0 });
@@ -589,7 +595,68 @@ const pendingAwakeningMessageMutation = ref<PendingMutation | null>(null);
 const pendingAwakeningTechniqueMutation = ref<PendingMutation | null>(null);
 const awakeningMessageDraft = ref('');
 const awakeningTechniqueDraft = ref<string | null>(null);
-const equipmentView = ref<'main' | 'shop' | 'guide' | 'ai' | 'vault' | 'party'>('main');
+type View = 'home' | 'adventure' | 'trials' | 'secret' | 'history' | 'playtest' | 'character' | 'status' | 'skills' | 'shop' | 'bank' | 'guide' | 'ai' | 'vault' | 'party' | 'property' | 'villa' | 'recollections' | 'trophies';
+const equipmentView = ref<View>('home');
+const tabs: Record<UndergroundDestination, Array<{ key: View; label: string }>> = {
+    home: [],
+    adventure: [{ key: 'adventure', label: '探索' }, { key: 'trials', label: '試練' }, { key: 'secret', label: '秘密の場所' }, { key: 'history', label: '戦闘履歴' }, { key: 'playtest', label: '力試し' }],
+    character: [{ key: 'character', label: '能力' }, { key: 'status', label: 'STP配分' }, { key: 'skills', label: 'スキル・覚醒' }, { key: 'vault', label: '装備・保管庫' }, { key: 'ai', label: '戦法' }],
+    shop: [{ key: 'shop', label: '装備を買う' }, { key: 'bank', label: '銀行' }, { key: 'guide', label: '案内人と話す' }],
+    exchange: [{ key: 'party', label: 'パーティー' }, { key: 'property', label: '不動産' }],
+    villa: [{ key: 'villa', label: '冒険日誌' }, { key: 'recollections', label: '回想' }, { key: 'trophies', label: 'トロフィー棚' }],
+};
+const currentDestination = computed<UndergroundDestination>(() => undergroundDestinations.find(destination =>
+    destination.key === equipmentView.value || tabs[destination.key].some(tab => tab.key === equipmentView.value))?.key ?? 'home');
+const pageTabs = computed(() => tabs[currentDestination.value].filter(tab => tab.key !== 'playtest' || state.value?.playtest));
+const pageTitle = computed(() => undergroundDestinations.find(destination => destination.key === currentDestination.value)?.label);
+const exchangeGreeting = ref(loungeStories.greetings[0]);
+const loungeReplay = ref<'exchange-1' | 'exchange-2' | 'mirror' | null>(null);
+const activeLoungeEvent = computed(() => {
+    const residence = state.value?.residence;
+    if (!residence) return null;
+    if (loungeReplay.value === 'mirror' || currentDestination.value === 'shop' && residence.mirror_owned && !residence.mirror_event_completed) {
+        return { ...loungeStories.mirror, key: 'mirror', page: 1, scene: 'mirror' };
+    }
+    if (loungeReplay.value?.startsWith('exchange-') || currentDestination.value === 'exchange' && residence.exchange_intro_page < 2) {
+        const page = loungeReplay.value === 'exchange-2' ? 2 : loungeReplay.value === 'exchange-1' ? 1 : residence.exchange_intro_page + 1;
+        return { ...loungeStories.exchange[page - 1]!, key: 'exchange', page, scene: 'exchange-intro' };
+    }
+    return null;
+});
+const pendingLoungeMutation = ref<{ fingerprint: string; requestId: string; path: string; payload: Record<string, string | number> } | null>(null);
+async function loungeMutation(path: string, payload: Record<string, string | number>): Promise<boolean> {
+    if (busy.value) return false;
+    const fingerprint = JSON.stringify({ path, ...payload });
+    if (pendingLoungeMutation.value && pendingLoungeMutation.value.fingerprint !== fingerprint) {
+        error.value = '前の操作の結果を確認してから続けてください。';
+        return false;
+    }
+    const pending = pendingLoungeMutation.value ?? { fingerprint, requestId: requestId(), path, payload };
+    pendingLoungeMutation.value = pending;
+    const success = await mutate('/api/v1/me/underground/' + path, payload, pending.requestId);
+    if (success || mutationRejected.value) pendingLoungeMutation.value = null;
+    return success;
+}
+function navigate(destination: UndergroundDestination): void {
+    loungeReplay.value = null;
+    equipmentView.value = tabs[destination][0]?.key ?? 'home';
+    if (destination === 'exchange') exchangeGreeting.value = loungeStories.greetings[Math.floor(Math.random() * loungeStories.greetings.length)]!;
+}
+function selectTab(view: View): void {
+    loungeReplay.value = null;
+    if (view === 'guide') openGuide();
+    else if (view === 'recollections') {
+        guideMode.value = 'recollections';
+        selectedRecollectionKey.value = null;
+        equipmentView.value = view;
+    } else equipmentView.value = view;
+}
+async function advanceLounge(): Promise<void> {
+    if (loungeReplay.value) { loungeReplay.value = null; return; }
+    const event = activeLoungeEvent.value;
+    if (event) await loungeMutation('events/advance', { event: event.key, page: event.page });
+}
+
 const guideMode = ref<'basic' | 'conversation' | 'recollections' | 'serious_talk' | 'respec' | 'guide_duel'>('basic');
 const guideDuelCancelled = ref(false);
 const pendingGuideDuel = ref<{ requestId: string; borrowedSecretaryIds: number[] } | null>(null);
@@ -667,7 +734,8 @@ function rememberPartyCandidates(candidates: PartyCandidate[]): void {
 
 watch(statePartyCandidates, (candidates) => rememberPartyCandidates(candidates), { deep: true, immediate: true });
 const skipTicketBalance = computed(() => state.value?.lending?.ticket_balance ?? null);
-const recollectionEntries = computed(() => state.value?.recollections?.entries ?? []);
+const recollectionEntries = computed(() => (state.value?.recollections?.entries ?? [])
+    .filter(entry => equipmentView.value === 'recollections' ? entry.experienced : entry.kind === 'past' && !entry.completed));
 const selectedRecollection = computed(() => recollectionEntries.value.find((entry) => entry.key === selectedRecollectionKey.value) ?? null);
 const seriousTalkScene = computed(() => {
     const talk = state.value?.recollections?.serious_talk;
@@ -973,6 +1041,7 @@ async function mutate(
 ): Promise<boolean> {
     if (busy.value) return false;
     busy.value = true;
+    mutationRejected.value = false;
     error.value = '';
     innRested.value = false;
     try {
@@ -995,7 +1064,10 @@ async function mutate(
         }
         return true;
     } catch (caught) {
-        if (caught instanceof ApiError && caught.status === 409) await refresh();
+        mutationRejected.value = caught instanceof ApiError && caught.status >= 400 && caught.status < 500 && caught.status !== 408;
+        if (caught instanceof ApiError && caught.status === 409) {
+            try { await refresh(); } catch { /* Keep the server's rejection visible. */ }
+        }
         error.value = caught instanceof Error ? caught.message : '地下の状態を更新できませんでした。';
         return false;
     } finally {
@@ -1335,7 +1407,7 @@ async function runExplore(huntingGroundKey: string, intentKey = 'selected-ground
     const currentPending = pendingExplorationRequest.value;
     if (state.value?.skill_rebuild_required && !currentPending) {
         error.value = 'SPを全返還しました。技を選び直し、装備枠を保存してください。';
-        skillsOpen.value = true;
+        equipmentView.value = 'skills';
         return;
     }
     // Keep the whole intent (including borrowed IDs) until the server result is
@@ -1556,7 +1628,7 @@ async function repeatCurrentExploration(): Promise<void> {
 async function runTrial(trialKey?: string): Promise<void> {
     if (state.value?.skill_rebuild_required && !pendingTrialRequest.value) {
         error.value = 'SPを全返還しました。技を選び直し、装備枠を保存してください。';
-        skillsOpen.value = true;
+        equipmentView.value = 'skills';
         return;
     }
     if (busy.value || !state.value?.trial) return;
@@ -1649,6 +1721,10 @@ async function runBankAction(action: 'deposit' | 'withdraw' | 'deposit_all' | 'w
 
 function maximumStpDraft(stat: StatKey): number {
     return Math.min(2_147_483_647, stpDraft.value[stat] + stpDraftRemaining.value);
+}
+
+function setStpShare(stat: StatKey, share: 0.5 | 1): void {
+    stpDraft.value = { ...stpDraft.value, [stat]: Math.floor(maximumStpDraft(stat) * share) };
 }
 
 function setStpDraft(stat: StatKey, event: Event): void {
@@ -2098,7 +2174,7 @@ onUnmounted(() => {
 </script>
 
 <template>
-    <section class="panel underground-panel" aria-live="polite">
+    <section class="panel underground-panel" :class="{ 'ug-panel': state?.stage === 'underground_open' && !currentBattle }" aria-live="polite">
         <p v-if="busy && state === null" class="status">地下の状態を確認しています。</p>
         <p v-if="error" class="status error" role="alert">{{ error }}</p>
 
@@ -2386,24 +2462,60 @@ onUnmounted(() => {
         </template>
 
         <template v-else-if="state?.stage === 'underground_open'">
-            <nav class="underground-main-navigation" aria-label="地下メニュー">
-                <button type="button" :aria-current="equipmentView === 'main' ? 'page' : undefined" @click="equipmentView = 'main'">地下メイン</button>
-                <button type="button" :aria-current="equipmentView === 'shop' ? 'page' : undefined" @click="equipmentView = 'shop'">装備ショップ</button>
-                <button type="button" :aria-current="equipmentView === 'guide' ? 'page' : undefined" @click="openGuide()">案内人の部屋</button>
-                <button type="button" :aria-current="equipmentView === 'party' ? 'page' : undefined" @click="equipmentView = 'party'">PT設定</button>
-                <button type="button" :aria-current="equipmentView === 'ai' ? 'page' : undefined" :disabled="!state.ai" @click="equipmentView = 'ai'">作戦設定</button>
-                <button type="button" :aria-current="equipmentView === 'vault' ? 'page' : undefined" @click="equipmentView = 'vault'">宝物庫</button>
-            </nav>
-
-            <UndergroundEquipmentShop v-if="equipmentView === 'shop'" @updated="applyEquipmentMutation" />
-            <section v-else-if="equipmentView === 'guide'" class="underground-guide-room" aria-labelledby="underground-guide-room-title">
-                <header class="underground-guide-room-heading">
-                    <div>
-                        <h1 id="underground-guide-room-title">案内人の部屋</h1>
-                    </div>
-                    <p class="underground-guide-room-greeting">{{ state.shopkeeper_name ?? '案内人' }}「あら、どうしたんですか？」</p>
-                </header>
-                <div class="underground-guide-actions">
+            <div class="ug-shell">
+                <div v-if="pendingLoungeMutation && !busy" class="ug-page-content" role="status">
+                    <p>前の操作の結果を確認してください。</p>
+                    <button type="button" @click="loungeMutation(pendingLoungeMutation.path, pendingLoungeMutation.payload)">前の操作の結果を確認する</button>
+                </div>
+                <header v-if="currentDestination !== 'home'" class="ug-page-heading"><h1>{{ pageTitle }}</h1><span>{{ state.shard_balance.toLocaleString('ja-JP') }} G</span></header>
+                <nav v-if="pageTabs.length && !activeLoungeEvent" class="ug-tabs" aria-label="画面内の切り替え">
+                    <button v-for="tab in pageTabs" :key="tab.key" type="button" :aria-current="equipmentView === tab.key ? 'page' : undefined" @click="selectTab(tab.key)">{{ tab.label }}</button>
+                </nav>
+                <template v-if="activeLoungeEvent">
+                    <UndergroundScene :scene="state.visuals?.scenes[activeLoungeEvent.scene]" :show-ai="state.visuals?.show_ai ?? false" />
+                    <section class="ug-page-content ug-event-story" aria-label="物語">
+                        <p v-for="(line, index) in activeLoungeEvent.body" :key="index">{{ line }}</p>
+                        <button class="ug-primary" type="button" :disabled="busy" @click="advanceLounge">{{ loungeReplay ? '回想に戻る' : activeLoungeEvent.choice }}</button>
+                    </section>
+                </template>
+                <template v-else>
+                    <p v-if="equipmentView === 'home' && innRested" class="ug-home-rest-result" role="status">HPが全回復しました。</p>
+                    <UndergroundHome
+                        v-if="equipmentView === 'home'"
+                        :name="state.visuals?.display_name ?? state.secretary_name" :level="state.combat_level"
+                        :hp="state.current_hp ?? state.growth_path?.max_hp ?? 0" :max-hp="state.growth_path?.max_hp ?? 0"
+                        :awakening="state.awakening?.current" :awakening-max="state.awakening?.maximum"
+                        :shards="state.shard_balance" :banked="state.banked_shard_balance" :tickets="skipTicketBalance ?? 0"
+                        :xp-remaining="state.xp_to_next_level" :growth-path="state.growth_path?.label" :unspent-stp="state.unspent_stp"
+                        :scene="state.visuals?.scenes.home" :portrait="state.visuals?.portrait" :awakened-portrait="state.visuals?.awakened_portrait"
+                        :icon-url="state.visuals?.icon_url"
+                        :show-ai="state.visuals?.show_ai ?? false" :companions="state.rental_party ?? []"
+                        :backgrounds="state.visuals?.home_backgrounds" :background-key="state.visuals?.home_background_key" :busy="busy"
+                        :resting="innResting" :rest-disabled="Boolean(state.trial?.active_run)"
+                        :destination="selectedHuntingGround?.name" :active-trial="state.trial?.active_run ? '挑戦中の試練' : undefined"
+                        :departure-disabled="busy || exploreCooldownSeconds > 0 || state.skill_rebuild_required"
+                        :departure-reason="exploreCooldownSeconds > 0 ? '次の出発まであと' + exploreCooldownSeconds + '秒' : undefined"
+                        @navigate="navigate" @depart="runSelectedExploration" @continue-trial="runTrial(state.trial?.active_run?.key)"
+                        @rest="restAtInn"
+                        @allocate-stp="selectTab('status')"
+                        @background="loungeMutation('home-background', { key: $event })"
+                    />
+                    <template v-else>
+                        <UndergroundScene v-if="['shop', 'exchange', 'villa'].includes(currentDestination)" :scene="state.visuals?.scenes[currentDestination]" :show-ai="state.visuals?.show_ai ?? false" />
+                        <div class="ug-page-content">
+                            <section v-if="state.skill_rebuild_required && currentDestination === 'character'" role="status">
+                                <h2>SPを全返還しました</h2><p>技と戦法を選び直し、アクティブスキルの枠を保存すると戦闘を再開できます。</p>
+                            </section>
+                            <div v-if="currentDestination === 'shop'" class="ug-shop-rest">
+                                <p>{{ shopGreeting }}</p>
+                                <button class="ug-primary" type="button" :disabled="busy || innResting || Boolean(state.trial?.active_run)" @click="restAtInn">{{ innResting ? '休憩中…' : '宿で休む（10G）' }}</button>
+                                <p v-if="innRested" role="status">HPが全回復しました。</p>
+                                <p v-if="state.trial?.active_run" class="ug-muted">封印の地から帰還後に利用できます。</p>
+                            </div>
+                            <p v-if="equipmentView === 'party'" class="ug-exchange-greeting">{{ exchangeGreeting }}</p>
+                            <UndergroundEquipmentShop v-if="equipmentView === 'shop'" @updated="applyEquipmentMutation" />
+            <section v-if="equipmentView === 'guide' || equipmentView === 'recollections' && state.residence?.villa_owned" class="underground-guide-room" aria-label="案内人">
+                <div v-if="equipmentView === 'guide'" class="underground-guide-actions">
                     <button
                         type="button"
                         :aria-pressed="guideMode === 'conversation'"
@@ -2412,12 +2524,12 @@ onUnmounted(() => {
                         少しお話をする
                     </button>
                     <button
-                        v-if="state.recollections?.available"
+                        v-if="state.recollections?.past_available && (state.recollections?.max_completed ?? 0) < 5"
                         type="button"
                         :aria-pressed="guideMode === 'recollections'"
                         @click="openRecollections"
                     >
-                        過去のイベントを振り返る
+                        案内人の過去を聞く
                     </button>
                     <button
                         v-if="state.recollections?.serious_talk || state.guide_duel?.unlocked"
@@ -2502,7 +2614,7 @@ onUnmounted(() => {
                             :disabled="busy || selectedRecollection.locked"
                             @click="completeRecollection(selectedRecollection)"
                         >
-                            この回想を読む
+                            読み終えた
                         </button>
                     </article>
                     <p v-else class="underground-guide-conversation">読める記録を選んでください。</p>
@@ -2587,12 +2699,13 @@ onUnmounted(() => {
                     </template>
                 </section>
             </section>
-            <section v-else-if="equipmentView === 'party'" class="underground-party-settings-page" aria-labelledby="underground-party-settings-title">
+
+            <section v-if="equipmentView === 'party'" class="underground-party-settings-page" aria-labelledby="underground-party-settings-title">
                 <header>
-                    <div><h1 id="underground-party-settings-title">PT設定</h1></div>
+                    <div><h1 id="underground-party-settings-title">パーティー編成</h1></div>
                     <strong>{{ 1 + partySelectedIds.length }} / 4</strong>
                 </header>
-                <p>Leaderは自分の秘書です。同行者として他プレイヤーの秘書を最大3人まで選べます。試練はソロ専用ですが、保存中のPT編成は消えません。</p>
+                <p>自分の秘書がリーダーです。同行者として他プレイヤーの秘書を最大3人まで選べます。試練はソロ専用ですが、保存中のPT編成は消えません。</p>
                 <p>レンタル更新時に同行者全員のHPが満タン、覚醒が0になります。その後は戦闘間で持ち越し、宿屋ではHPだけが全回復します。</p>
                 <ul v-if="state.rental_party?.length" aria-label="現在のレンタル状態">
                     <li v-for="member in state.rental_party" :key="member.secretary_id">{{ member.display_name }}：HP {{ member.current_hp }} / {{ member.max_hp }}・覚醒 {{ member.awakening_gauge }}</li>
@@ -2622,24 +2735,19 @@ onUnmounted(() => {
                     <button type="button" :disabled="busy" @click="saveLendingSettings">貸出設定を保存</button>
                 </section>
             </section>
+
             <UndergroundAiEditor
-                v-else-if="equipmentView === 'ai' && state.ai"
+                v-if="equipmentView === 'ai' && state.ai"
                 :configuration="state.ai"
                 @updated="applyAiMutation"
             />
-            <UndergroundEquipmentVault v-else-if="equipmentView === 'vault'" @updated="applyEquipmentMutation" />
+            <UndergroundEquipmentVault v-if="equipmentView === 'vault'" @updated="applyEquipmentMutation" />
 
-            <div v-else class="underground-main-layout">
-                <section v-if="state.skill_rebuild_required" class="underground-progression-panel" role="status">
-                    <h2>SPを全返還しました</h2>
-                    <p>技とAIの構成を見直せます。技能を選び直し、アクティブスキルの枠を保存すると戦闘を再開できます。返還に費用や待ち時間はありません。</p>
-                    <button type="button" @click="skillsOpen = true">技を選び直す</button>
-                </section>
-                <section class="underground-character-pane" aria-labelledby="underground-character-title">
+
+                <section v-if="equipmentView === 'character'" class="underground-character-pane" aria-labelledby="underground-character-title">
                     <div class="underground-character-header">
-                        <img v-if="props.secretaryImageUrl" :src="props.secretaryImageUrl" :alt="`${state.secretary_name}の画像`">
-                        <div v-else class="underground-portrait-placeholder">No image</div>
-                        <div><h1 id="underground-character-title">{{ state.secretary_name }}</h1></div>
+                        <div><h1 id="underground-character-title">{{ state.visuals?.display_name ?? state.secretary_name }}</h1></div>
+                        <img v-if="state.visuals?.icon_url" :src="state.visuals.icon_url" :alt="`${state.secretary_name}のアイコン`">
                     </div>
                     <dl class="underground-summary">
                         <div><dt>戦闘Lv</dt><dd>{{ state.combat_level }}</dd></div>
@@ -2670,32 +2778,11 @@ onUnmounted(() => {
                         <dl>
                             <div v-for="slot in equipmentSlots" :key="slot"><dt>{{ equipmentSlotLabel(slot) }}</dt><dd>{{ state.equipment_summary?.equipped[slot]?.name ?? '未設定' }}</dd></div>
                         </dl>
-                        <p v-if="state.equipment_summary">宝物庫 {{ state.equipment_summary.used }} / {{ state.equipment_summary.capacity }}</p>
+                        <p v-if="state.equipment_summary">装備保管庫 {{ state.equipment_summary.used }} / {{ state.equipment_summary.capacity }}</p>
                     </section>
-                    <div class="underground-character-actions">
-                        <button type="button" :aria-expanded="statusOpen" @click="statusOpen = !statusOpen">ステータス<small>STP配分</small></button>
-                        <button type="button" :aria-expanded="skillsOpen" @click="skillsOpen = !skillsOpen">Skill Tree<small>SP・active設定</small></button>
-                        <button type="button" :disabled="busy || !state.ai" @click="equipmentView = 'ai'">AI設定<small>作戦を編集</small></button>
-                    </div>
                 </section>
 
-                <section class="underground-action-pane" aria-labelledby="underground-guide-title">
-                    <div class="underground-party-compact-status">
-                        <span>PT {{ 1 + partySelectedIds.length }} / 4</span>
-                        <button type="button" @click="equipmentView = 'party'">PT設定</button>
-                    </div>
-                    <section class="underground-shop">
-                        <p class="eyebrow">案内人 / ショップ</p>
-                        <h2 id="underground-guide-title">{{ state.shopkeeper_name }}</h2>
-                        <p>{{ shopGreeting }}</p>
-                        <p v-if="innRested" class="underground-inn-result" role="status">（HPが全回復しました）</p>
-                        <div class="underground-shop-entries">
-                            <button type="button" :disabled="busy || innResting || Boolean(state.trial?.active_run)" @click="restAtInn">{{ innResting ? '休憩中…' : '宿で休む（10G）' }}<small>{{ state.trial?.active_run ? '封印の地から帰還後に利用できます' : innResting ? '案内人が準備しています' : 'HPを全回復' }}</small></button>
-                            <button type="button" :disabled="busy" @click="equipmentView = 'shop'">装備ショップ<small>武器・防具・アクセサリー</small></button>
-                            <button type="button" :disabled="busy" @click="bankOpen = !bankOpen">銀行<small>預入・引出</small></button>
-                            <button type="button" :disabled="busy" @click="equipmentView = 'vault'">宝物庫<small>所持品・装備変更</small></button>
-                        </div>
-                        <form v-if="bankOpen" class="underground-bank" @submit.prevent>
+                        <form v-if="equipmentView === 'bank'" class="underground-bank" @submit.prevent>
                             <h3>銀行</h3>
                             <p>手持ち: {{ state.shard_balance }} G</p>
                             <p>預金: {{ state.banked_shard_balance }} G</p>
@@ -2708,8 +2795,8 @@ onUnmounted(() => {
                                 <button type="button" :disabled="busy" @click="runBankAction('withdraw_all')">すべて引き出す</button>
                             </div>
                         </form>
-                    </section>
-                    <section class="underground-adventure" aria-labelledby="underground-adventure-title">
+
+                    <section v-if="['adventure', 'trials', 'secret'].includes(equipmentView)" class="underground-adventure" aria-labelledby="underground-adventure-title">
                         <header class="underground-adventure-heading">
                             <h2 id="underground-adventure-title">冒険</h2>
                             <div v-if="skipTicketBalance !== null" class="underground-skip-entry">
@@ -2721,7 +2808,7 @@ onUnmounted(() => {
                             前回の探索結果を確認中です。編成を変えても、同じ同行者で結果を再確認します。
                         </p>
                         <div class="underground-adventure-sections underground-entries">
-                            <section class="underground-adventure-block" aria-labelledby="underground-hunting-ground-title">
+                            <section v-if="equipmentView === 'adventure'" class="underground-adventure-block" aria-labelledby="underground-hunting-ground-title">
                                 <h3 id="underground-hunting-ground-title">狩場</h3>
                                 <select class="underground-ground-selector" aria-label="狩場を選択" :value="selectedHuntingGroundKey" :disabled="busy || Boolean(state.trial?.active_run)" @change="changeHuntingGround">
                                     <option v-for="ground in ordinaryHuntingGrounds" :key="ground.key" :value="ground.key">{{ ground.name }}</option>
@@ -2729,9 +2816,9 @@ onUnmounted(() => {
                                 <button class="button primary underground-explore-button" type="button" :disabled="busy || exploreCooldownSeconds > 0 || Boolean(state.trial?.active_run) || !selectedHuntingGround" @click="runSelectedExploration">探索する</button>
                                 <small v-if="exploreCooldownSeconds > 0">次の出発まであと{{ exploreCooldownSeconds }}秒</small>
                                 <small v-else-if="state.trial?.active_run">進行中の試練から帰還すると探索できます。</small>
-                                <small v-else>現在のPT {{ 1 + partySelectedIds.length }} / 4で出発します。</small>
+                                <small v-else>現在のPT {{ 1 + confirmedPartyIds.length }} / 4で出発します。</small>
                             </section>
-                            <section class="underground-adventure-block" aria-labelledby="underground-trial-title">
+                            <section v-if="equipmentView === 'trials'" class="underground-adventure-block" aria-labelledby="underground-trial-title">
                                 <h3 id="underground-trial-title">試練</h3>
                                 <select v-model="selectedTrialKey" aria-label="試練を選択" :disabled="busy || Boolean(state.trial?.active_run)">
                                     <option v-for="trial in unlockedTrialOptions" :key="trial.key" :value="trial.key">{{ trial.label }}</option>
@@ -2741,8 +2828,8 @@ onUnmounted(() => {
                                 <small v-else-if="selectedTrial">{{ selectedTrial.total_battles }}連戦・ソロ専用・{{ selectedTrial.first_cleared ? 'clear済み' : '未clear' }}</small>
                                 <small v-else>解禁済みの試練はありません。</small>
                             </section>
-                            <section class="underground-adventure-block" aria-labelledby="underground-vault-title">
-                                <h3 id="underground-vault-title">宝物庫</h3>
+                            <section v-if="equipmentView === 'secret'" class="underground-adventure-block" aria-labelledby="underground-vault-title">
+                                <h3 id="underground-vault-title">秘密の場所</h3>
                                 <strong>{{ shiningKingdomVault?.name ?? '未解禁' }}</strong>
                                 <button class="button primary" type="button" :disabled="busy || exploreCooldownSeconds > 0 || Boolean(state.trial?.active_run) || !shiningKingdomVault || shiningKingdomVault.disabled" @click="shiningKingdomVault && runExplore(shiningKingdomVault.key, 'shining-kingdom-vault')">挑戦する</button>
                                 <small v-if="shiningKingdomVault?.disabled">{{ shiningKingdomVault.unavailable_reason }}</small>
@@ -2752,7 +2839,8 @@ onUnmounted(() => {
                         </div>
                         <button v-if="state.trial?.active_run" class="button secondary" type="button" :disabled="busy" @click="withdrawTrial">封印の地から帰還する</button>
                     </section>
-                    <section v-if="state.playtest" class="underground-playtest" aria-labelledby="underground-playtest-title">
+
+                    <section v-if="equipmentView === 'playtest' && state.playtest" class="underground-playtest" aria-labelledby="underground-playtest-title">
                         <h2 id="underground-playtest-title">力試し（α）</h2>
                         <p>{{ state.playtest.notice }}</p>
                         <label for="underground-build">完成形ビルド</label>
@@ -2762,13 +2850,24 @@ onUnmounted(() => {
                         <button class="button primary" type="button" :disabled="busy || !selectedBuild || !selectedEnemy" @click="runPlaytest">戦闘開始</button>
                         <p>報酬なし: XP 0・輝石の欠片 0G・ドロップなし。敗北ペナルティもありません。</p>
                     </section>
-                    <section class="underground-history" aria-labelledby="underground-history-title">
+
+                    <section v-if="equipmentView === 'history'" class="underground-history" aria-labelledby="underground-history-title">
                         <h2 id="underground-history-title">戦闘履歴</h2>
                         <ul><li v-for="battle in recentBattles" :key="battle.id"><button type="button" @click="showBattle(battle)">{{ battle.encounter_name }} / {{ battleRoundCount(battle) }}ラウンド</button></li></ul>
                     </section>
-                </section>
-            </div>
 
+                            <UndergroundResidence v-if="(equipmentView === 'property' || equipmentView === 'villa' || equipmentView === 'trophies') && state.residence" :mode="equipmentView" :residence="state.residence" :busy="busy" :shards="state.shard_balance" @purchase="loungeMutation('residence/purchase', { item: $event })" @property="equipmentView = 'property'" />
+                            <template v-if="equipmentView === 'recollections'">
+                                <p v-if="!state.residence?.villa_owned">別荘を購入すると回想を読めます。</p>
+                                <section v-else class="ug-event-replays" aria-label="交流場と鏡の回想">
+                                    <button v-if="(state.residence.exchange_intro_page ?? 0) >= 1" type="button" @click="loungeReplay = 'exchange-1'">{{ loungeStories.exchange[0]!.title }}</button>
+                                    <button v-if="state.residence.exchange_intro_page >= 2" type="button" @click="loungeReplay = 'exchange-2'">{{ loungeStories.exchange[1]!.title }}</button>
+                                    <button v-if="state.residence.mirror_event_completed" type="button" @click="loungeReplay = 'mirror'">{{ loungeStories.mirror.title }}</button>
+                                </section>
+                            </template>
+                        </div>
+                    </template>
+                </template>
             <div v-if="skipModalOpen" class="modal-backdrop" @click.self="!busy && (skipModalOpen = false)">
                 <section class="underground-skip-dialog" role="dialog" aria-modal="true" aria-labelledby="underground-skip-dialog-title">
                     <header>
@@ -2854,32 +2953,34 @@ onUnmounted(() => {
                 </section>
             </div>
 
-            <section v-if="statusOpen && state.status_breakdown" class="underground-progression-panel" aria-labelledby="underground-status-title">
+            <section v-if="equipmentView === 'status' && state.status_breakdown" class="underground-progression-panel" aria-labelledby="underground-status-title">
                 <header>
                     <div><h2 id="underground-status-title">ステータス</h2></div>
                     <p>未使用STP {{ state.unspent_stp }} / 仮配分後 {{ stpDraftRemaining }}</p>
                 </header>
                 <div class="underground-table-scroll">
                     <table class="underground-status-table">
-                        <thead><tr><th scope="col">能力</th><th scope="col">初期値</th><th scope="col">自然成長</th><th scope="col">確定STP</th><th scope="col">装備</th><th scope="col">最終値</th><th scope="col">今回の配分</th></tr></thead>
+                        <thead><tr><th scope="col">能力</th><th scope="col">現在値<br>（装備なし）</th><th scope="col">今回の配分</th></tr></thead>
                         <tbody>
                             <tr v-for="(label, key) in statLabels" :key="key">
                                 <th scope="row">{{ label }}</th>
-                                <td>{{ state.status_breakdown[key].baseline }}</td>
-                                <td>+{{ state.status_breakdown[key].natural_growth }}</td>
-                                <td>+{{ state.status_breakdown[key].allocated_stp }}</td>
-                                <td>+{{ state.status_breakdown[key].equipment }}</td>
-                                <td>{{ state.status_breakdown[key].final }}</td>
-                                <td class="underground-stp-control"><input type="number" min="0" :max="maximumStpDraft(key)" step="1" inputmode="numeric" :value="stpDraft[key]" :disabled="busy" :aria-label="`${label}の今回の配分`" @input="setStpDraft(key, $event)"></td>
+                                <td>{{ state.status_breakdown[key].baseline + state.status_breakdown[key].natural_growth + state.status_breakdown[key].allocated_stp }}</td>
+                                <td class="underground-stp-control">
+                                    <div class="ug-stp-inputs">
+                                    <button type="button" :disabled="busy" :aria-label="`${label}に残りの50%を配分`" @click="setStpShare(key, 0.5)">50%</button>
+                                    <input type="number" min="0" :max="maximumStpDraft(key)" step="1" inputmode="numeric" :value="stpDraft[key]" :disabled="busy" :aria-label="`${label}の今回の配分`" @input="setStpDraft(key, $event)">
+                                    <button type="button" :disabled="busy" :aria-label="`${label}に残りの100%を配分`" @click="setStpShare(key, 1)">100%</button>
+                                    </div>
+                                </td>
                             </tr>
                         </tbody>
                     </table>
                 </div>
-                <p class="underground-progression-note">確定すると元に戻せません。装備補正とSTPは別々に計算されます。</p>
+                <p class="underground-progression-note">50%・100%は、ほかの能力への仮配分を除いた残りを使います。50%の端数は切り捨てます。最後に一括確定してください。</p>
                 <button class="button primary" type="button" :disabled="busy || stpDraftTotal === 0" @click="confirmStp">{{ stpDraftTotal }} STPを一括確定</button>
             </section>
 
-            <section v-if="skillsOpen && state.skill_trees" class="underground-progression-panel" aria-labelledby="underground-skills-title">
+            <section v-if="equipmentView === 'skills' && state.skill_trees" class="underground-progression-panel" aria-labelledby="underground-skills-title">
                 <header>
                     <div><h2 id="underground-skills-title">Skill Tree</h2></div>
                     <div class="underground-skill-header-actions">
@@ -2888,7 +2989,7 @@ onUnmounted(() => {
                     </div>
                 </header>
                 <p class="underground-progression-note">SPを消費することでスキルを習得できます。</p>
-                <UndergroundSkillTree :trees="state.skill_trees" :busy="busy" @acquire="acquireSkill" @equip="focusActiveLoadout" />
+                <UndergroundSkillTree :trees="state.skill_trees" :busy="busy" :user-id="userId" :growth-path="state.growth_path?.key" @acquire="acquireSkill" @equip="focusActiveLoadout" />
 
                 <section id="underground-active-loadout" class="underground-active-loadout" aria-labelledby="underground-loadout-title">
                     <header><div><h3 id="underground-loadout-title" tabindex="-1">Active Skill</h3><p>取得済みskillを最大5個まで装備します。</p></div><p>基本行動: 通常攻撃 / 防御（常時利用可能）</p></header>
@@ -2960,6 +3061,8 @@ onUnmounted(() => {
                         <button class="button primary" type="button" :disabled="busy || respecUnavailable" @click="confirmRespec">再振りを実行する</button>
                     </footer>
                 </section>
+            </div>
+                <UndergroundNavigation :current="currentDestination" :exchange-discovered="(state.residence?.exchange_intro_page ?? 0) >= 2" @navigate="navigate" />
             </div>
         </template>
     </section>

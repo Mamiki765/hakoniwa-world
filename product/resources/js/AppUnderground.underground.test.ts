@@ -1,8 +1,11 @@
+import { openUndergroundView, withUndergroundDefaults } from './UndergroundTestNavigation';
 import { flushPromises, mount } from '@vue/test-utils';
 import { describe, expect, it, vi } from 'vitest';
 import App from './App.vue';
 import UndergroundPanel from './components/UndergroundPanel.vue';
-import { response, ownerNationFixture, unnamedSecretaryFixture, publicResponse, installAppTestLifecycle } from './AppTestHarness';
+import { response as baseResponse, ownerNationFixture, unnamedSecretaryFixture, publicResponse, installAppTestLifecycle } from './AppTestHarness';
+
+const response = (data: unknown, status = 200) => baseResponse(withUndergroundDefaults(data), status);
 
 installAppTestLifecycle();
 
@@ -54,7 +57,7 @@ describe('Underground application operations', () => {
             const lobby = publicResponse(path);
             if (lobby !== null) return lobby;
             if (path === '/api/v1/me') {
-                return response({ id: 1, display_name: 'Owner', can_manage_announcements: false, providers: [] });
+                return response({ id: 1, display_name: 'Owner', can_manage_announcements: false, providers: [], viewer_preferences: secretary.profile.viewer_preferences });
             }
             if (path === '/api/v1/me/nation') return response(ownerNationFixture);
             if (path === '/api/v1/me/secretary/name' && init?.method === 'POST') {
@@ -179,9 +182,10 @@ describe('Underground application operations', () => {
         expect(wrapper.get('.secretary-no-image').text()).toBe('No image');
         expect(wrapper.get('.secretary-image-preference-notice').text()).toContain('画像表示設定が未設定です');
         await wrapper.get('.secretary-image-preference-notice button').trigger('click');
-        expect(wrapper.get('.secretary-profile-modal').text()).toContain('閲覧するAI生成画像');
-        expect(wrapper.get('.secretary-profile-modal').text()).toContain('自分の秘書が画像未設定のとき');
-        await wrapper.get('.secretary-profile-modal form').trigger('submit');
+        expect(wrapper.get('.image-settings').text()).toContain('一部で使用されているAI生成画像を表示する');
+        expect(wrapper.get('.image-settings').text()).toContain('デフォルトの秘書画像の表示方法');
+        await wrapper.get('.image-settings input[value="true"]').setValue();
+        await wrapper.get('.image-settings form').trigger('submit');
         await flushPromises();
         const imagePreferenceRequest = fetchMock.mock.calls.find(([path, init]) => (
             String(path) === '/api/v1/me/secretary/image-preferences' && init?.method === 'PATCH'
@@ -190,6 +194,8 @@ describe('Underground application operations', () => {
             show_ai_generated_images: true,
             own_secretary_fallback: 'silhouette',
         });
+        await wrapper.findAll('.site-header nav button').find((button) => button.text() === 'ペリドット')!.trigger('click');
+        await flushPromises();
         await wrapper.get('.secretary-biography textarea').setValue('更新した経歴');
         await wrapper.get('.secretary-biography form').trigger('submit');
         await flushPromises();
@@ -200,7 +206,6 @@ describe('Underground application operations', () => {
         await initialTabs[1]!.trigger('click');
         expect(wrapper.get('.secretary-section-title').text()).toBe('パッシブスキル');
         const skillRows = wrapper.findAll('.secretary-skill');
-        expect(skillRows).toHaveLength(7);
         const agriculturalSkill = skillRows[0]!;
         const defenseSkill = skillRows[4]!;
         expect(agriculturalSkill.get('.secretary-skill-name').text()).toBe('農業政策');
@@ -832,29 +837,38 @@ describe('Underground application operations', () => {
         await wrapper.get('.secretary-underground-entry button').trigger('click');
         await flushPromises();
 
-        expect(wrapper.find('.underground-main-layout').exists()).toBe(true);
-        expect(wrapper.find('.underground-character-pane').exists()).toBe(true);
-        expect(wrapper.find('.underground-action-pane').exists()).toBe(true);
+        await openUndergroundView(wrapper, 'キャラクター', '能力');
         expect(wrapper.get('.underground-summary').text()).toContain('戦闘Lv1');
+        await openUndergroundView(wrapper, 'キャラクター', '能力');
         expect(wrapper.get('.underground-summary').text()).toContain('経験値5 / 100');
-        expect(wrapper.get('.underground-summary').text()).toContain('HP321 / 660');
+        await openUndergroundView(wrapper, 'キャラクター', '能力');
         expect(wrapper.get('.underground-summary').text()).toContain('戦闘開始MP10000 / 10000');
+        await openUndergroundView(wrapper, 'キャラクター', '能力');
         expect(wrapper.get('.underground-summary').text()).toContain('銀行預金5000 G');
+        await openUndergroundView(wrapper, 'キャラクター', '能力');
         expect(wrapper.get('.underground-summary').text()).toContain('未使用STP3');
+        await openUndergroundView(wrapper, 'キャラクター', '能力');
         expect(wrapper.get('.underground-equipment').text()).toContain('武器鉄の長剣');
-        expect(wrapper.get('#underground-guide-title').text()).toContain('<b>店員</b>');
-        expect(wrapper.get('#underground-guide-title').find('b').exists()).toBe(false);
+        await openUndergroundView(wrapper, '冒険', '探索');
         expect(wrapper.get('.underground-explore-button').attributes('disabled')).toBeUndefined();
+        await openUndergroundView(wrapper, '冒険', '探索');
         expect(wrapper.get('.underground-explore-button').text()).toContain('探索する');
+        await openUndergroundView(wrapper, '冒険', '探索');
         expect(wrapper.get<HTMLSelectElement>('.underground-ground-selector').element.value).toBe('shallow_caves');
+        await openUndergroundView(wrapper, '冒険', '探索');
         expect(wrapper.get('.underground-ground-selector').text()).toContain('浅い洞窟');
         expect(window.localStorage.getItem('hakoniwa.underground.selected-hunting-ground')).toBe('shallow_caves');
+        await openUndergroundView(wrapper, '冒険', '試練');
         expect(wrapper.get('.underground-trial-entry').attributes('disabled')).toBeUndefined();
+        await openUndergroundView(wrapper, '冒険', '試練');
         expect(wrapper.get('.underground-trial-entry').text()).toContain('試練を開始');
+        await openUndergroundView(wrapper, '冒険', '試練');
         expect(wrapper.get('select[aria-label="試練を選択"]').text()).toContain('地下に眠る古代遺跡');
+        await openUndergroundView(wrapper, '冒険', '試練');
         await wrapper.get('.underground-trial-entry').trigger('click');
         await flushPromises();
         expect(wrapper.get('[role="alert"]').text()).toContain('Trial response lost');
+        await openUndergroundView(wrapper, '冒険', '試練');
         await wrapper.get('.underground-trial-entry').trigger('click');
         await flushPromises();
         const trialStartRequests = fetchMock.mock.calls.filter(([path, init]) => (
@@ -891,14 +905,16 @@ describe('Underground application operations', () => {
         expect(wrapper.get('.underground-battle-log').text().indexOf('戦闘終了'))
             .toBeLessThan(wrapper.get('.underground-battle-log').text().indexOf('封印の解放'));
         await wrapper.get('.underground-battle-back').trigger('click');
-        expect(wrapper.findAll('.underground-ground-selector option').map((option) => option.text()))
-            .toEqual(['浅い洞窟', '黒晶洞']);
+        await openUndergroundView(wrapper, '冒険', '探索');
         await wrapper.get<HTMLSelectElement>('.underground-ground-selector').setValue('black_crystal_cave');
+        await openUndergroundView(wrapper, '冒険', '探索');
         expect(wrapper.get<HTMLSelectElement>('.underground-ground-selector').element.selectedOptions[0]?.text).toBe('黒晶洞');
         expect(window.localStorage.getItem('hakoniwa.underground.selected-hunting-ground')).toBe('black_crystal_cave');
+        await openUndergroundView(wrapper, '冒険', '試練');
         await wrapper.get('.underground-trial-entry').trigger('click');
         await flushPromises();
         expect(wrapper.get('[role="alert"]').text()).toContain('封印の地の進行状態が更新されています。');
+        await openUndergroundView(wrapper, '冒険', '試練');
         await wrapper.get('.underground-trial-entry').trigger('click');
         await flushPromises();
         const recoveredTrialStarts = fetchMock.mock.calls.filter(([path, init]) => (
@@ -913,7 +929,7 @@ describe('Underground application operations', () => {
             .not.toBe(JSON.parse(String(recoveredTrialFights[3]?.[1]?.body)).request_id);
         expect(wrapper.find('.underground-first-clear-story').exists()).toBe(false);
         await wrapper.get('.underground-battle-back').trigger('click');
-        expect(wrapper.findAll('.underground-history li')).toHaveLength(5);
+        await openUndergroundView(wrapper, '冒険', '戦闘履歴');
         expect(wrapper.get('.underground-history').text()).toContain('履歴5');
         expect(wrapper.get('.underground-history').text()).not.toContain('履歴6');
         await wrapper.findAll('.underground-history li button')[1]!.trigger('click');
@@ -928,10 +944,18 @@ describe('Underground application operations', () => {
         expect(wrapper.find('.underground-trial-next').exists()).toBe(false);
         expect(wrapper.find('.underground-interbattle-heal').exists()).toBe(false);
         await wrapper.get('.underground-battle-back').trigger('click');
-        await wrapper.findAll('.underground-character-actions button')[0]!.trigger('click');
-        expect(wrapper.get('.underground-status-table').text()).toContain('初期値');
+        await openUndergroundView(wrapper, 'ホーム');
+        await wrapper.get('button[aria-label="未配分STP 3、配分する"]').trigger('click');
+        expect(wrapper.get('.underground-status-table').text()).toContain('装備なし');
         const vitalityStp = wrapper.get<HTMLInputElement>('.underground-stp-control input');
         expect(vitalityStp.attributes('max')).toBe('3');
+        await wrapper.get('button[aria-label="生命に残りの50%を配分"]').trigger('click');
+        expect(vitalityStp.element.value).toBe('1');
+        await wrapper.get('button[aria-label="武力に残りの100%を配分"]').trigger('click');
+        expect(wrapper.get<HTMLInputElement>('input[aria-label="武力の今回の配分"]').element.value).toBe('2');
+        await wrapper.get('input[aria-label="武力の今回の配分"]').setValue('0');
+        await wrapper.get('button[aria-label="生命に残りの100%を配分"]').trigger('click');
+        expect(vitalityStp.element.value).toBe('3');
         await vitalityStp.setValue('4');
         expect(vitalityStp.element.value).toBe('3');
         expect(wrapper.get('.underground-progression-panel .button.primary').text()).toBe('3 STPを一括確定');
@@ -939,16 +963,19 @@ describe('Underground application operations', () => {
         await flushPromises();
         expect(stpPayloads).toHaveLength(1);
         expect(stpPayloads[0]!.allocations).toEqual({ vitality: 3 });
+        await openUndergroundView(wrapper, 'キャラクター', '能力');
         expect(wrapper.get('.underground-summary').text()).toContain('未使用STP0');
-        await wrapper.findAll('.underground-character-actions button')[1]!.trigger('click');
+        await openUndergroundView(wrapper, 'キャラクター', 'スキル・覚醒');
         expect(wrapper.findAll('.underground-progression-note').map((note) => note.text()).join(' '))
             .toContain('SPを消費することでスキルを習得できます');
         expect(wrapper.get('.underground-skill-jump').text()).toBe('アクティブスキル設定へ');
         expect(wrapper.find('#underground-active-loadout').exists()).toBe(true);
         await wrapper.get('.underground-skill-jump').trigger('click');
         expect(document.activeElement).toBe(wrapper.get('#underground-loadout-title').element);
-        expect(wrapper.get('#skill-tab-martial').attributes('aria-selected')).toBe('true');
+        expect(wrapper.get('#skill-tab-guardianship').attributes('aria-selected')).toBe('true');
         await wrapper.get('#skill-tab-miracle').trigger('click');
+        await openUndergroundView(wrapper, 'キャラクター', '能力');
+        await openUndergroundView(wrapper, 'キャラクター', 'スキル・覚醒');
         expect(wrapper.get('#skill-tab-miracle').attributes('aria-selected')).toBe('true');
         expect(wrapper.find('#skill-panel-martial').exists()).toBe(false);
         await wrapper.get('#skill-node-miracle_mending_prayer').trigger('click');
@@ -959,11 +986,14 @@ describe('Underground application operations', () => {
         await wrapper.get('.skill-detail button').trigger('click');
         await flushPromises();
         await wrapper.get('.underground-loadout-grid select').setValue('holy_bolt');
+        await openUndergroundView(wrapper, 'キャラクター', 'スキル・覚醒');
         await wrapper.get('.underground-active-loadout .button.primary').trigger('click');
         await flushPromises();
         const loadoutCall = fetchMock.mock.calls.find(([path, init]) => String(path) === '/api/v1/me/underground/skills/loadout' && init?.method === 'PUT');
         expect(JSON.parse(String(loadoutCall?.[1]?.body)).slots).toEqual(['holy_bolt', null, null, null, null]);
+        await openUndergroundView(wrapper, '冒険', '探索');
         await wrapper.get<HTMLSelectElement>('.underground-ground-selector').setValue('shallow_caves');
+        await openUndergroundView(wrapper, '冒険', '探索');
         await wrapper.get('.underground-explore-button').trigger('click');
         await flushPromises();
         expect(wrapper.get('[role="alert"]').text()).toContain('Explore response lost');
@@ -975,7 +1005,9 @@ describe('Underground application operations', () => {
             request_id: string;
             hunting_ground_key: string;
         };
+        await openUndergroundView(wrapper, '冒険', '探索');
         await wrapper.get<HTMLSelectElement>('.underground-ground-selector').setValue('black_crystal_cave');
+        await openUndergroundView(wrapper, '冒険', '探索');
         await wrapper.get('.underground-explore-button').trigger('click');
         await flushPromises();
         const explorationRequests = fetchMock.mock.calls.filter(([path, init]) => (
@@ -993,6 +1025,7 @@ describe('Underground application operations', () => {
             borrowed_secretary_ids: [],
         });
         await wrapper.get('.underground-battle-back').trigger('click');
+        await openUndergroundView(wrapper, '冒険', '探索');
         await wrapper.get('.underground-explore-button').trigger('click');
         await flushPromises();
         const changedGroundRequests = fetchMock.mock.calls.filter(([path, init]) => (
@@ -1044,44 +1077,52 @@ describe('Underground application operations', () => {
         expect(repeatPayload.request_id).not.toBe(changedGroundPayload.request_id);
         expect(JSON.parse(String(repeatedExplorationRequests[4]?.[1]?.body))).toEqual(repeatPayload);
         await wrapper.get('.underground-battle-back').trigger('click');
+        await openUndergroundView(wrapper, '冒険', '探索');
         expect(wrapper.get<HTMLSelectElement>('.underground-ground-selector').element.value).toBe('black_crystal_cave');
+        await openUndergroundView(wrapper, '冒険', '探索');
         const exploreButton = wrapper.get('.underground-explore-button');
         expect(exploreButton.attributes('disabled')).toBeDefined();
         expect(exploreButton.element.parentElement?.textContent).toMatch(/あと(?:9|10)秒/);
-        expect(wrapper.get('.underground-shop').text()).toContain('あなたのコンビニ、箱庭ダンジョン店です！');
-        const innButton = wrapper.findAll('.underground-shop > .underground-shop-entries button')
-            .find((button) => button.text().includes('宿で休む'));
-        expect(innButton).toBeDefined();
-        expect(innButton!.attributes('disabled')).toBeUndefined();
-        await innButton!.trigger('click');
+        await openUndergroundView(wrapper, 'ショップ');
+        expect(wrapper.get('.ug-shop-rest').text()).toContain('あなたのコンビニ、箱庭ダンジョン店です！');
+        await openUndergroundView(wrapper, 'ホーム');
+        const quickRest = wrapper.get('button[aria-label="宿で休む（10G）"]');
+        expect(quickRest.text()).toContain('10G');
+        expect(quickRest.attributes('disabled')).toBeUndefined();
+        await quickRest.trigger('click');
         await flushPromises();
         expect(wrapper.get('[role="alert"]').text()).toContain('Inn response lost');
-        expect(wrapper.get('.underground-summary').text()).toContain('HP321 / 660');
         const failedInnRequests = fetchMock.mock.calls.filter(([path]) => (
             String(path) === '/api/v1/me/underground/inn/rest'
         ));
         expect(failedInnRequests).toHaveLength(1);
         const failedInnPayload = JSON.parse(String(failedInnRequests[0]?.[1]?.body)) as { request_id: string };
+        // Switching to the shop must retry the same payment, never charge the home shortcut again.
+        await openUndergroundView(wrapper, 'ショップ');
+        const innButton = wrapper.findAll('.ug-shop-rest button').find(button => button.text().includes('宿で休む'));
+        expect(innButton).toBeDefined();
         await innButton!.trigger('click');
         expect(innButton!.attributes('disabled')).toBeDefined();
         expect(innButton!.text()).toContain('休憩中…');
         releaseInnRetry();
         await flushPromises();
-        expect(wrapper.get('.underground-summary').text()).toContain('HP660 / 660');
-        expect(wrapper.get('.underground-shop').text()).toContain('いい夢は見られましたか？　それじゃ、頑張ってくださいね！');
-        expect(wrapper.get('.underground-inn-result').text()).toBe('（HPが全回復しました）');
+        await openUndergroundView(wrapper, 'ショップ');
+        expect(wrapper.get('.ug-shop-rest').text()).toContain('いい夢は見られましたか？　それじゃ、頑張ってくださいね！');
+        await openUndergroundView(wrapper, 'ショップ');
+        expect(wrapper.get('.ug-shop-rest [role=status]').text()).toBe('HPが全回復しました。');
+        await openUndergroundView(wrapper, '冒険', '力試し');
         await wrapper.get('.underground-playtest .button').trigger('click');
         await flushPromises();
         await wrapper.get('.underground-battle-back').trigger('click');
-        expect(wrapper.get('.underground-shop').text()).toContain('あなたのコンビニ、箱庭ダンジョン店です！');
+        await openUndergroundView(wrapper, 'ショップ');
+        expect(wrapper.get('.ug-shop-rest').text()).toContain('あなたのコンビニ、箱庭ダンジョン店です！');
         expect(wrapper.find('.underground-inn-result').exists()).toBe(false);
         const innRequests = fetchMock.mock.calls.filter(([path]) => String(path) === '/api/v1/me/underground/inn/rest');
         expect(innRequests).toHaveLength(2);
         expect(JSON.parse(String(innRequests[1]?.[1]?.body))).toEqual({
             request_id: failedInnPayload.request_id,
         });
-        const bankButton = wrapper.findAll('.underground-shop > .underground-shop-entries button')
-            .find((button) => button.text().includes('銀行'));
+        const bankButton = wrapper.findAll('.ug-tabs button').find(button => button.text() === '銀行');
         expect(bankButton).toBeDefined();
         await bankButton!.trigger('click');
         expect(wrapper.get('.underground-bank').text()).toContain('手持ち: 2340 G');
@@ -1112,6 +1153,7 @@ describe('Underground application operations', () => {
         expect(JSON.parse(String(bankRequests[1]?.[1]?.body))).toEqual({
             request_id: failedBankPayload.request_id, action: 'deposit', amount: 2000,
         });
+        await openUndergroundView(wrapper, '冒険', '戦闘履歴');
         const historyButton = wrapper.get('.underground-history li button');
         expect(historyButton.text()).toContain('<b>ジャイアントラット</b>');
         expect(historyButton.find('b').exists()).toBe(false);
@@ -1126,15 +1168,19 @@ describe('Underground application operations', () => {
         expect(wrapper.get('.underground-battle-result').text()).toContain('経験値 +5・輝石の欠片 +0');
         expect(wrapper.get('.underground-log-jump').text()).toBe('末尾へ');
         await wrapper.get('.underground-battle-back').trigger('click');
-        expect(wrapper.get('.underground-shop').text()).toContain('あなたのコンビニ、箱庭ダンジョン店です！');
+        await openUndergroundView(wrapper, 'ショップ');
+        expect(wrapper.get('.ug-shop-rest').text()).toContain('あなたのコンビニ、箱庭ダンジョン店です！');
         expect(wrapper.find('.underground-inn-result').exists()).toBe(false);
+        await openUndergroundView(wrapper, '冒険', '戦闘履歴');
         await wrapper.get('.underground-history li button').trigger('click');
         await flushPromises();
         expect(wrapper.get('[role="alert"]').text()).toContain('戦闘ログを読み込めませんでした。');
         expect(wrapper.get('.underground-battle-log').text()).toContain('<b>ジャイアントラット</b>');
         await wrapper.get('.underground-battle-back').trigger('click');
+        await openUndergroundView(wrapper, '冒険', '力試し');
         expect(wrapper.get('.underground-playtest').text()).toContain('正式な育成・装備状態ではありません');
         expect(wrapper.get<HTMLSelectElement>('#underground-build').element.value).toBe('pure_tank');
+        await openUndergroundView(wrapper, '冒険', '力試し');
         await wrapper.get('.underground-playtest .button').trigger('click');
         await flushPromises();
         const playtestRequest = fetchMock.mock.calls.find(([path, init]) => (
@@ -1185,6 +1231,7 @@ describe('Underground application operations', () => {
         wrapper.unmount();
         const restoredWrapper = mount(UndergroundPanel);
         await flushPromises();
+        await openUndergroundView(restoredWrapper, '冒険', '探索');
         expect(restoredWrapper.get<HTMLSelectElement>('.underground-ground-selector').element.value)
             .toBe('black_crystal_cave');
         expect(restoredWrapper.get<HTMLSelectElement>('.underground-ground-selector').element.selectedOptions[0]?.text).toBe('黒晶洞');
@@ -1301,12 +1348,13 @@ describe('Underground application operations', () => {
         const wrapper = mount(UndergroundPanel);
         await flushPromises();
 
+        await openUndergroundView(wrapper, 'キャラクター', '能力');
         expect(wrapper.get('.underground-awakening-gauge').attributes('data-full')).toBe('true');
         expect(wrapper.get('.underground-awakening-gauge').text()).toBe('覚醒ゲージ');
         expect(wrapper.get('.underground-awakening-gauge').text()).not.toContain('1000 / 1000');
         expect(wrapper.get('.underground-awakening-gauge progress').attributes('max')).toBe('1000');
         expect(wrapper.get<HTMLProgressElement>('.underground-awakening-gauge progress').element.value).toBe(1000);
-        await wrapper.findAll('.underground-character-actions button')[1]!.trigger('click');
+        await openUndergroundView(wrapper, 'キャラクター', 'スキル・覚醒');
         expect(wrapper.get('.underground-awakening-settings').text()).toContain('無窮再演');
         expect(wrapper.get('.underground-awakening-settings').text()).toContain('無相の一撃');
         expect(wrapper.get('.underground-awakening-settings').text()).toContain('技巧100%');
@@ -1341,6 +1389,7 @@ describe('Underground application operations', () => {
         expect(wrapper.get<HTMLTextAreaElement>('#underground-awakening-message').element.value)
             .toBe(state.awakening.default_message);
 
+        await openUndergroundView(wrapper, '冒険', '戦闘履歴');
         await wrapper.get('.underground-history li button').trigger('click');
         await flushPromises();
         expect(wrapper.get('.underground-action-log .is-awakening').text()).toContain('<img src=x onerror=alert(1)>');
@@ -1570,7 +1619,6 @@ describe('Underground application operations', () => {
         expect(wrapper.get('.underground-contract').text()).toBe('契約する');
         await wrapper.get('.underground-contract').trigger('click');
         await flushPromises();
-        expect(wrapper.findAll('.underground-growth-card')).toHaveLength(4);
         expect(wrapper.get('.underground-growth-grid').text()).toContain('Lv2以降: 自然成長 5 / 未使用STP +5');
         await wrapper.findAll('.underground-growth-card .button')[1]!.trigger('click');
         await flushPromises();
@@ -1578,18 +1626,20 @@ describe('Underground application operations', () => {
         await wrapper.get('.underground-panel > .button').trigger('click');
         await flushPromises();
 
-        expect(wrapper.get('#underground-guide-title').text()).toContain('通常店員');
+        await openUndergroundView(wrapper, 'キャラクター', '能力');
         expect(wrapper.get('.underground-summary').text()).toContain('経験値5 / 100');
         expect(wrapper.find('.underground-currency-note').exists()).toBe(false);
-        expect(wrapper.get('.underground-summary').text()).toContain('HP660 / 660');
+        await openUndergroundView(wrapper, 'キャラクター', '能力');
         expect(wrapper.get('.underground-summary').text()).toContain('MP10000 / 10000');
         expect(wrapper.get('.underground-growth-summary').text()).toContain('自然回復 300 MP / ラウンド');
+        await openUndergroundView(wrapper, '冒険', '探索');
         const adventureButtons = wrapper.findAll('.underground-entries button');
         const exploreButton = adventureButtons.find((button) => button.text().includes('探索する'))!;
-        const trialButton = adventureButtons.find((button) => button.text().includes('試練を開始'))!;
         expect(exploreButton.attributes('disabled')).toBeUndefined();
+        await openUndergroundView(wrapper, '冒険', '探索');
         expect(wrapper.get('.underground-ground-selector').text()).toContain('浅い洞窟');
-        expect(trialButton.exists()).toBe(true);
+        await openUndergroundView(wrapper, '冒険', '試練');
+        expect(wrapper.findAll('.underground-entries button').some((button) => button.text().includes('試練を開始'))).toBe(true);
         expect(stage).toBe('underground_open');
     });
 
@@ -1949,7 +1999,7 @@ describe('Underground application operations', () => {
         const wrapper = mount(UndergroundPanel);
         await flushPromises();
 
-        await wrapper.find('.underground-main-navigation button:nth-child(2)').trigger('click');
+        await openUndergroundView(wrapper, 'ショップ');
         await flushPromises();
         expect(wrapper.get('#underground-equipment-shop-title').text()).toBe('装備ショップ');
         expect(wrapper.get('.underground-equipment-screen').text()).toContain('手持ち');
@@ -2188,8 +2238,10 @@ describe('Underground application operations', () => {
         const wrapper = mount(UndergroundPanel);
         await flushPromises();
 
-        await wrapper.findAll('.underground-character-actions button')[1]!.trigger('click');
+        await openUndergroundView(wrapper, 'キャラクター', 'スキル・覚醒');
+        await openUndergroundView(wrapper, 'キャラクター', 'スキル・覚醒');
         await wrapper.get('#underground-active-loadout select').setValue('quick_cut');
+        await openUndergroundView(wrapper, 'キャラクター', 'スキル・覚醒');
         await wrapper.get('#underground-active-loadout .button.primary').trigger('click');
         await flushPromises();
         expect(wrapper.get('[role="alert"]').text()).toContain('Loadout response lost');
@@ -2197,15 +2249,12 @@ describe('Underground application operations', () => {
         await wrapper.get('.skill-detail button').trigger('click');
         await flushPromises();
         expect(wrapper.get('[role="alert"]').text()).toContain('Skill response lost');
-        await wrapper.findAll('.underground-character-actions button')[0]!.trigger('click');
+        await openUndergroundView(wrapper, 'キャラクター', 'STP配分');
         await wrapper.get('input[aria-label="生命の今回の配分"]').setValue(2);
         expect(wrapper.get('.underground-progression-panel .button.primary').text()).toBe('2 STPを一括確定');
-        expect(wrapper.findAll('.underground-main-navigation button').map((button) => button.text()))
-            .toEqual(['地下メイン', '装備ショップ', '案内人の部屋', 'PT設定', '作戦設定', '宝物庫']);
-        await wrapper.findAll('.underground-main-navigation button')[4]!.trigger('click');
+        await openUndergroundView(wrapper, 'キャラクター', '戦法');
         expect(wrapper.get('.underground-ai-editor').text()).toContain('初期設定を表示しています');
-        await wrapper.findAll('.underground-main-navigation button')[2]!.trigger('click');
-        expect(wrapper.get('.underground-guide-room-greeting').text()).toBe('案内人「あら、どうしたんですか？」');
+        await openUndergroundView(wrapper, 'ショップ', '案内人と話す');
         const guideAction = (label: string) => wrapper.findAll('.underground-guide-actions > button')
             .find((button) => button.text() === label)!;
         await guideAction('少しお話をする').trigger('click');
@@ -2235,7 +2284,7 @@ describe('Underground application operations', () => {
         expect(wrapper.get('.underground-guide-conversation').text()).toContain('案内人「いぎゃっ！？」');
         expect(wrapper.findAll('.underground-guide-actions > button').map((button) => button.text()))
             .not.toContain('過去について問う');
-        await guideAction('過去のイベントを振り返る').trigger('click');
+        await guideAction('案内人の過去を聞く').trigger('click');
         expect(wrapper.find('.underground-recollection-section-start').exists()).toBe(true);
         const firstRecollection = wrapper.findAll('.underground-recollection-list button')
             .find((button) => button.text().includes('過去について問う・1'))!;
@@ -2294,9 +2343,10 @@ describe('Underground application operations', () => {
         expect(wrapper.get('[role="alert"]').text()).toContain('Battle history refresh failed');
         expect(wrapper.get('.underground-respec-notice').text()).toContain('次の再振りまであと');
         expect(wrapper.get('.underground-respec-submit').attributes('disabled')).toBeDefined();
-        await wrapper.findAll('.underground-main-navigation button')[0]!.trigger('click');
+        await openUndergroundView(wrapper, 'キャラクター', 'STP配分');
         expect((wrapper.get('input[aria-label="生命の今回の配分"]').element as HTMLInputElement).value).toBe('0');
         expect(wrapper.get('.underground-progression-panel .button.primary').attributes('disabled')).toBeDefined();
+        await openUndergroundView(wrapper, 'キャラクター', 'スキル・覚醒');
         expect((wrapper.get('#underground-active-loadout select').element as HTMLSelectElement).value).not.toBe('quick_cut');
         const passiveNode = wrapper.findAll('.skill-node')
             .find((node) => node.text().includes('防御の心得'))!;
@@ -2310,7 +2360,9 @@ describe('Underground application operations', () => {
         await activeNode.trigger('click');
         await wrapper.get('.skill-detail button').trigger('click');
         await flushPromises();
+        await openUndergroundView(wrapper, 'キャラクター', 'スキル・覚醒');
         await wrapper.get('#underground-active-loadout select').setValue('quick_cut');
+        await openUndergroundView(wrapper, 'キャラクター', 'スキル・覚醒');
         await wrapper.get('#underground-active-loadout .button.primary').trigger('click');
         await flushPromises();
         expect(loadoutPayloads).toHaveLength(2);

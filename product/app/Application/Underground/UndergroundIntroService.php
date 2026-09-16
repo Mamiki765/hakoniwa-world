@@ -54,6 +54,7 @@ final readonly class UndergroundIntroService
         private SecretaryLendingService $lending,
         private UndergroundBattleStatisticsProjector $statisticsProjector,
         private UndergroundBattleStorage $battleStorage,
+        private UndergroundScenePresenter $scenes,
     ) {}
 
     /** @return array<string, mixed> */
@@ -115,6 +116,9 @@ final readonly class UndergroundIntroService
                 }
 
                 $completed = (int) $intro->guide_recollection_max_completed;
+                if ($chapter <= $completed && $profile->villa_purchased_at === null) {
+                    throw new UndergroundRuntimeException('underground_villa_required', '既読の回想は別荘の日誌で読み返せます。');
+                }
                 if ($chapter > $completed + 1) {
                     throw new UndergroundRuntimeException(
                         'underground_recollection_sequence_conflict',
@@ -127,6 +131,94 @@ final readonly class UndergroundIntroService
                 }
             },
         );
+    }
+
+    /** @return array<string, mixed> */
+    public function purchaseResidence(User $user, string $requestId, string $itemKey): array
+    {
+        $item = $this->catalog->residence()[$itemKey] ?? null;
+        if ($item === null) {
+            throw new UndergroundRuntimeException('underground_residence_item_invalid', '購入する品物を確認してください。');
+        }
+
+        return $this->mutate($user, $requestId, 'residence_purchase', ['item' => $itemKey], function (
+            Secretary $secretary,
+            UndergroundProfile $profile,
+            UndergroundIntroProgress $intro,
+        ) use ($itemKey, $item): void {
+            $this->assertShopUnlocked($profile, $intro);
+            if ($itemKey !== 'villa' && $profile->villa_purchased_at === null) {
+                throw new UndergroundRuntimeException('underground_villa_required', '別荘の購入後に選べる品物です。');
+            }
+            $column = match ($itemKey) {
+                'villa' => 'villa_purchased_at',
+                'mirror' => 'mirror_purchased_at',
+                'trophy_shelf' => 'trophy_shelf_purchased_at',
+                default => throw new UndergroundRuntimeException('underground_residence_item_invalid', '購入する品物を確認してください。'),
+            };
+            if ($profile->getAttribute($column) !== null) {
+                return;
+            }
+            if ($profile->shard_balance < $item['price']) {
+                throw new UndergroundRuntimeException('underground_residence_insufficient_shards', '手持ちの輝石の欠片が足りません。');
+            }
+            $profile->shard_balance -= $item['price'];
+            $profile->setAttribute($column, Carbon::now());
+            $profile->save();
+        });
+    }
+
+    /** @return array<string, mixed> */
+    public function selectHomeBackground(User $user, string $requestId, string $key): array
+    {
+        return $this->mutate($user, $requestId, 'home_background', ['key' => $key], function (
+            Secretary $secretary,
+            UndergroundProfile $profile,
+            UndergroundIntroProgress $intro,
+        ) use ($key): void {
+            $this->assertShopUnlocked($profile, $intro);
+            $allowed = array_column($this->scenes->homeBackgrounds($profile, true), 'key');
+            if (! in_array($key, $allowed, true)) {
+                throw new UndergroundRuntimeException('underground_background_locked', 'まだ選べない背景です。');
+            }
+            $profile->home_background_key = $key;
+            $profile->save();
+        });
+    }
+
+    /** @return array<string, mixed> */
+    public function advanceLoungeEvent(User $user, string $requestId, string $event, int $page): array
+    {
+        if (! in_array($event, ['exchange', 'mirror'], true)
+            || ! in_array($page, $event === 'exchange' ? [1, 2] : [1], true)) {
+            throw new UndergroundRuntimeException('underground_event_invalid', 'イベントの進行を確認してください。');
+        }
+
+        return $this->mutate($user, $requestId, 'lounge_event', ['event' => $event, 'page' => $page], function (
+            Secretary $secretary,
+            UndergroundProfile $profile,
+            UndergroundIntroProgress $intro,
+        ) use ($event, $page): void {
+            $this->assertShopUnlocked($profile, $intro);
+            if ($event === 'mirror') {
+                if ($profile->mirror_purchased_at === null) {
+                    throw new UndergroundRuntimeException('underground_mirror_required', '透明な鏡をまだ持っていません。');
+                }
+                if ($profile->mirror_event_completed_at === null) {
+                    $profile->mirror_event_completed_at = Carbon::now();
+                    $profile->save();
+                }
+
+                return;
+            }
+            if ($page > $profile->exchange_intro_page + 1) {
+                throw new UndergroundRuntimeException('underground_event_sequence_conflict', '前のページから読み進めてください。');
+            }
+            if ($page > $profile->exchange_intro_page) {
+                $profile->exchange_intro_page = $page;
+                $profile->save();
+            }
+        });
     }
 
     /** @return array<string, mixed>|null */
@@ -1530,6 +1622,15 @@ final readonly class UndergroundIntroService
 
         return [
             'stage' => $stage,
+            'visuals' => $profile instanceof UndergroundProfile ? $this->scenes->forProfile($secretary, $profile) : null,
+            'residence' => [
+                'villa_owned' => $profile?->villa_purchased_at !== null,
+                'mirror_owned' => $profile?->mirror_purchased_at !== null,
+                'trophy_shelf_owned' => $profile?->trophy_shelf_purchased_at !== null,
+                'exchange_intro_page' => (int) ($profile->exchange_intro_page ?? 0),
+                'mirror_event_completed' => $profile?->mirror_event_completed_at !== null,
+                'items' => $this->catalog->residence(),
+            ],
             'secretary_name' => $secretary->name,
             'combat_level' => $profile instanceof UndergroundProfile ? $profile->combat_level : 1,
             'combat_xp' => $profile instanceof UndergroundProfile ? $profile->combat_xp : 0,
@@ -1623,7 +1724,8 @@ final readonly class UndergroundIntroService
 
         $config = $this->catalog->recollections();
         $trialTwoFirstCleared = $this->hasTrialTwoFirstClear($profile);
-        $entries = $this->projectHistoricalRecollections($secretary, $profile, $intro, $config['history']);
+        $canReplay = $profile->villa_purchased_at !== null;
+        $entries = $canReplay ? $this->projectHistoricalRecollections($secretary, $profile, $intro, $config['history']) : [];
         if (! $trialTwoFirstCleared) {
             return [
                 'available' => true,
@@ -1643,6 +1745,9 @@ final readonly class UndergroundIntroService
                 throw new RuntimeException('Underground recollection entry is invalid.');
             }
             $chapter = $past['chapter'];
+            if (! $canReplay && $chapter <= $maxCompleted) {
+                continue;
+            }
             $entry = [
                 'key' => $past['key'],
                 'kind' => 'past',
@@ -1652,7 +1757,7 @@ final readonly class UndergroundIntroService
                 'completed' => $chapter <= $maxCompleted,
                 'locked' => $chapter > $maxCompleted + 1,
             ];
-            if ($chapter <= $maxCompleted) {
+            if ($chapter <= $maxCompleted || $chapter === $maxCompleted + 1) {
                 $entry['body'] = $this->stringList($past['body'] ?? null, 'recollection body');
             }
             $entries[] = $entry;

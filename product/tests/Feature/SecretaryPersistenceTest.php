@@ -742,7 +742,7 @@ final class SecretaryPersistenceTest extends TestCase
     public function test_portrait_preference_and_awakening_resolvers_fallback_to_registered_bust(): void
     {
         Storage::fake('secretary_images');
-        $this->installSecretaryFallbackAssets('silhouette.png');
+        $this->installSecretaryFallbackAssets('silhouette.png', 'peridot.png', 'peridot-full-body.png');
         $world = $this->lightweightWorld();
         $owner = User::factory()->create();
         app(NationCreationService::class)->create($owner, $world, 'portrait島', 'portrait主');
@@ -754,6 +754,13 @@ final class SecretaryPersistenceTest extends TestCase
         $secretary = $owner->secretary()->firstOrFail()->fresh(['images', 'user']);
         $presenter = app(SecretaryProfilePresenter::class);
         $this->assertSame('silhouette', $presenter->resolveLargeImage($secretary, $owner)['display']);
+        $owner->forceFill(['secretary_image_fallback' => 'peridot'])->save();
+        $secretary->setRelation('user', $owner);
+        $this->assertStringContainsString('/peridot/peridot.png?v=', (string) $presenter->resolveCompactImage($secretary, $owner)['url']);
+        $this->assertStringContainsString('/peridot/peridot-full-body.png?v=', (string) $presenter->resolveLargeImage($secretary, $owner)['url']);
+        $owner->forceFill(['show_ai_generated_secretary_images' => false])->save();
+        $this->assertSame('none', $presenter->resolveLargeImage($secretary, $owner)['display']);
+        $owner->forceFill(['show_ai_generated_secretary_images' => true])->save();
         $this->actingAs($owner)->post('/api/v1/me/secretary/images/bust', [
             'image' => UploadedFile::fake()->createWithContent('bust.png', $this->portraitPng()),
             'creation_method' => 'self_made', 'credit' => 'bust-credit',

@@ -2,10 +2,15 @@
 
 namespace App\Services;
 
+use App\Domain\Secretary\SecretaryProfileContract;
 use Illuminate\Support\Facades\Log;
+use JsonException;
 
 final class AssetManifestResolver
 {
+    /** @var array<string, mixed>|null */
+    private ?array $sceneManifest = null;
+
     /** @var array<string, string> */
     private const MANIFEST = [
         'tile.sea' => 'land0.gif',
@@ -110,6 +115,7 @@ final class AssetManifestResolver
     /** @var array<string, string> */
     private const SECRETARY_FALLBACKS = [
         'peridot' => 'peridot.png',
+        'peridot_full_body' => 'peridot-full-body.png',
         'silhouette' => 'silhouette.png',
     ];
 
@@ -171,6 +177,15 @@ final class AssetManifestResolver
 
     public function pathForFilename(string $filename, ?string $theme = null): ?string
     {
+        if (in_array($theme, ['background', 'npc', 'event'], true)) {
+            foreach ($this->sceneAssets() as $asset) {
+                if (($asset['file'] ?? null) === $theme.'/'.$filename) {
+                    return $this->validatedPath($filename, $theme, false);
+                }
+            }
+
+            return null;
+        }
         if ($theme !== null) {
             $directory = config("hakoniwa.assets.themes.{$theme}");
             $allowedFilenames = match ($theme) {
@@ -194,12 +209,20 @@ final class AssetManifestResolver
         return $this->validatedPath($filename);
     }
 
-    public function secretaryFallbackUrl(string $fallback): ?string
+    public function secretaryFallbackUrl(string $fallback, bool $large = false): ?string
     {
         $filename = self::SECRETARY_FALLBACKS[$fallback] ?? null;
         $directory = config('hakoniwa.assets.themes.peridot');
         if ($filename === null || ! is_string($directory)) {
             return null;
+        }
+
+        if ($large && $fallback === 'peridot') {
+            $portraitFilename = self::SECRETARY_FALLBACKS['peridot_full_body'];
+            $portraitPath = $this->validatedSecretaryFallbackPath($portraitFilename, $directory);
+            if ($portraitPath !== null) {
+                return $this->versionedUrl($directory.'/'.$portraitFilename, $portraitPath);
+            }
         }
 
         $path = $this->validatedSecretaryFallbackPath($filename, $directory);
@@ -220,6 +243,7 @@ final class AssetManifestResolver
         return match (strtolower(pathinfo($filename, PATHINFO_EXTENSION))) {
             'png' => 'image/png',
             'webp' => 'image/webp',
+            'jpg', 'jpeg' => 'image/jpeg',
             default => 'image/gif',
         };
     }
@@ -257,7 +281,7 @@ final class AssetManifestResolver
             return null;
         }
 
-        $allowedMimes = ['image/gif', 'image/png', 'image/webp'];
+        $allowedMimes = ['image/gif', 'image/png', 'image/webp', 'image/jpeg'];
         if (! in_array($image['mime'], $allowedMimes, true)) {
             return null;
         }
@@ -281,5 +305,124 @@ final class AssetManifestResolver
         $version = (string) filemtime($path).'-'.(string) filesize($path);
 
         return rtrim((string) config('hakoniwa.assets.base_url'), '/').'/'.$filename.'?v='.rawurlencode($version);
+    }
+
+    /** @return array<string, mixed> */
+    private function readSceneManifest(): array
+    {
+        if ($this->sceneManifest !== null) {
+            return $this->sceneManifest;
+        }
+        $path = rtrim((string) config('hakoniwa.assets.path'), '/\\').DIRECTORY_SEPARATOR.'scene-assets.json';
+        if (! is_file($path) || ! is_readable($path) || filesize($path) > 1048576) {
+            return $this->sceneManifest = [];
+        }
+        try {
+            $contents = file_get_contents($path);
+            $manifest = is_string($contents) ? json_decode($contents, true, 64, JSON_THROW_ON_ERROR) : null;
+        } catch (JsonException) {
+            $manifest = null;
+        }
+
+        return $this->sceneManifest = is_array($manifest) ? $manifest : [];
+    }
+
+    /** @return array<string, array<string, mixed>> */
+    private function sceneAssets(): array
+    {
+        $registered = $this->readSceneManifest()['assets'] ?? [];
+        $assets = [];
+        if (! is_array($registered)) {
+            return [];
+        }
+        foreach ($registered as $id => $asset) {
+            if (! is_string($id) || ! is_array($asset) || ! is_string($asset['file'] ?? null)
+                || preg_match('/\A(background|npc|event)\/[A-Za-z0-9_-]+\.(?:png|webp|jpg|jpeg)\z/', $asset['file']) !== 1
+                || ! is_string($asset['creation_method'] ?? null)
+                || ! array_key_exists($asset['creation_method'], SecretaryProfileContract::CREATION_METHODS)) {
+                continue;
+            }
+            $assets[$id] = $asset;
+        }
+
+        return $assets;
+    }
+
+    /** @return array<string, mixed>|null */
+    private function sceneAsset(mixed $id, bool $showAi): ?array
+    {
+        if (! is_string($id)) {
+            return null;
+        }
+        $asset = $this->sceneAssets()[$id] ?? null;
+        if ($asset === null || (! $showAi && $asset['creation_method'] === 'ai_generated')) {
+            return null;
+        }
+        [$directory, $filename] = explode('/', $asset['file'], 2);
+        $path = $this->validatedPath($filename, $directory, false);
+        if ($path === null) {
+            return null;
+        }
+        $link = $asset['credit_url'] ?? null;
+        $link = is_string($link) && filter_var($link, FILTER_VALIDATE_URL)
+            && in_array(parse_url($link, PHP_URL_SCHEME), ['http', 'https'], true) ? $link : null;
+
+        return [
+            'id' => $id,
+            'url' => $this->versionedUrl($asset['file'], $path),
+            'creation_method' => $asset['creation_method'],
+            'credit' => is_string($asset['credit'] ?? null) ? $asset['credit'] : null,
+            'credit_url' => $link,
+            'show_credit' => ($asset['show_credit'] ?? false) === true,
+        ];
+    }
+
+    /** @return array{x: float, y: float, height: float, pivot_x: float, pivot_y: float, layer: float} */
+    private function scenePlacement(mixed $value): array
+    {
+        $input = is_array($value) ? $value : [];
+        $result = [];
+        foreach (['x' => 65, 'y' => 100, 'height' => 95, 'pivot_x' => 50, 'pivot_y' => 100, 'layer' => 1] as $key => $default) {
+            $number = $input[$key] ?? $default;
+            $result[$key] = is_numeric($number) && is_finite((float) $number)
+                ? max($key === 'height' ? 1.0 : -200.0, min(300.0, (float) $number)) : (float) $default;
+        }
+        $result['layer'] = max(1.0, min(5.0, $result['layer']));
+
+        return $result;
+    }
+
+    /** @return array{background: array<string, mixed>|null, still: array<string, mixed>|null, actors: list<array<string, mixed>>} */
+    public function scene(string $key, bool $showAi, bool $showActors = true): array
+    {
+        $manifest = $this->readSceneManifest();
+        $scenes = $manifest['scenes'] ?? [];
+        $scene = is_array($scenes) && is_array($scenes[$key] ?? null) ? $scenes[$key] : [];
+        $actors = [];
+        if ($showActors && is_array($scene['actors'] ?? null)) {
+            foreach ($scene['actors'] as $index => $actor) {
+                if (! is_array($actor)) {
+                    continue;
+                }
+                $asset = $this->sceneAsset($actor['asset'] ?? null, $showAi);
+                if ($asset === null) {
+                    continue;
+                }
+                $placement = $this->scenePlacement($actor['placement'] ?? null);
+                $actors[] = [
+                    'key' => (string) $index,
+                    'name' => is_string($actor['name'] ?? null) ? $actor['name'] : '',
+                    'asset' => $asset,
+                    'placement' => $placement,
+                    'mobile' => $this->scenePlacement([...$placement, ...(is_array($actor['mobile'] ?? null) ? $actor['mobile'] : [])]),
+                ];
+            }
+        }
+
+        return [
+            'background' => $this->sceneAsset($scene['background'] ?? null, $showAi),
+            'still' => $this->sceneAsset($scene['still'] ?? null, $showAi),
+            'actors' => $actors,
+        ];
     }
 }

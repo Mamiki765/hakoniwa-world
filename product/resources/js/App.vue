@@ -88,9 +88,12 @@ const viewedSecretaryWorldId = ref<number | null>(null);
 const secretaryBiography = ref('');
 const secretaryNickname = ref('');
 const secretaryProfileErrors = ref<Record<string, string>>({});
-const secretaryPreferencesModalOpen = ref(false);
-const secretaryShowAiImages = ref(true);
+const secretaryShowAiImages = ref(false);
 const secretaryImageFallback = ref<'silhouette' | 'peridot'>('silhouette');
+watch(() => user.value?.viewer_preferences, preferences => {
+    secretaryShowAiImages.value = preferences?.show_ai_generated_images === true;
+    secretaryImageFallback.value = preferences?.own_secretary_fallback ?? 'silhouette';
+});
 const secretaryPreferenceErrors = ref<Record<string, string>>({});
 const equipmentModalSlot = ref<number | null>(null);
 const equipmentOptions = ref<SecretaryEquipmentOptions | null>(null);
@@ -1185,16 +1188,8 @@ async function updateSecretaryNickname(): Promise<void> {
     }
 }
 
-function openSecretaryPreferencesModal(): void {
-    const preferences = viewedSecretaryProfile.value?.viewer_preferences;
-    secretaryShowAiImages.value = preferences?.show_ai_generated_images ?? true;
-    secretaryImageFallback.value = preferences?.own_secretary_fallback ?? preferences?.fallback ?? 'silhouette';
-    secretaryPreferenceErrors.value = {};
-    secretaryPreferencesModalOpen.value = true;
-}
-
-function closeSecretaryPreferencesModal(): void {
-    if (!busy.value) secretaryPreferencesModalOpen.value = false;
+function openImageSettings(): void {
+    page.value = 'options';
 }
 
 async function saveSecretaryImagePreferences(): Promise<void> {
@@ -1209,9 +1204,9 @@ async function saveSecretaryImagePreferences(): Promise<void> {
                 own_secretary_fallback: secretaryImageFallback.value,
             }),
         });
-        await reloadViewedSecretaryProfile();
-        busy.value = false;
-        closeSecretaryPreferencesModal();
+        user.value = await api<CurrentUser>('/api/v1/me');
+        if (secretary.value !== null) await loadSecretary();
+        message.value = '画像表示設定を保存しました。';
     } catch (error) {
         secretaryPreferenceErrors.value = validationErrors(error);
         if (Object.keys(secretaryPreferenceErrors.value).length === 0) {
@@ -2274,7 +2269,7 @@ async function abandonNation(): Promise<void> {
                 <section v-if="secretarySection === 'main'" id="secretary-panel-main" role="tabpanel" aria-labelledby="secretary-tab-main" class="secretary-main-profile">
                     <div v-if="!viewedSecretaryProfile.viewer_preferences.configured" class="secretary-image-preference-notice">
                         <span>画像表示設定が未設定です</span>
-                        <button v-if="viewedSecretaryProfile.viewer_preferences.can_update" type="button" @click="openSecretaryPreferencesModal">設定する</button>
+                        <button v-if="viewedSecretaryProfile.viewer_preferences.can_update" type="button" @click="openImageSettings">設定する</button>
                         <span v-else>（ログインすると設定できます）</span>
                     </div>
                     <div class="secretary-profile-hero">
@@ -2309,7 +2304,7 @@ async function abandonNation(): Promise<void> {
                                 v-if="viewedSecretaryProfile.viewer_preferences.can_update && viewedSecretaryProfile.viewer_preferences.configured"
                                 class="secretary-preferences-link"
                                 type="button"
-                                @click="openSecretaryPreferencesModal"
+                                @click="openImageSettings"
                             >
                                 画像表示設定
                             </button>
@@ -2461,6 +2456,27 @@ async function abandonNation(): Promise<void> {
                     </label>
                 </fieldset>
             </section>
+            <section v-if="user" class="options-section image-settings" aria-label="画像表示設定">
+                <h2>画像表示設定</h2>
+            <form @submit.prevent="saveSecretaryImagePreferences">
+                <fieldset>
+                    <legend>一部で使用されているAI生成画像を表示する</legend>
+                    <label><input v-model="secretaryShowAiImages" type="radio" :value="true"> 表示する</label>
+                    <label><input v-model="secretaryShowAiImages" type="radio" :value="false"> 表示しない</label>
+                </fieldset>
+                <fieldset>
+                    <legend>デフォルトの秘書画像の表示方法</legend>
+                    <label><input v-model="secretaryImageFallback" type="radio" value="silhouette"> シルエット表示</label>
+                    <label><input v-model="secretaryImageFallback" type="radio" value="peridot"> イラスト表示</label>
+                </fieldset>
+                <p v-if="secretaryPreferenceErrors.own_secretary_fallback || secretaryPreferenceErrors.fallback || secretaryPreferenceErrors.show_ai_generated_images" class="field-error" role="alert">
+                    {{ secretaryPreferenceErrors.own_secretary_fallback || secretaryPreferenceErrors.fallback || secretaryPreferenceErrors.show_ai_generated_images }}
+                </p>
+                <div class="modal-actions">
+                    <button class="button primary" type="submit" :disabled="busy">画像表示設定を保存</button>
+                </div>
+            </form>
+            </section>
             <section v-if="user && nation" class="options-section profile-settings" aria-labelledby="profile-settings-title">
                 <h2 id="profile-settings-title">プロフィール</h2>
                 <p>N{{ nation.nation_number }} {{ nation.name }}の公開プロフィールです。島名は変更できません。</p>
@@ -2599,34 +2615,6 @@ async function abandonNation(): Promise<void> {
             <button type="button" aria-label="通知を閉じる" @click="dismissRewardToast">×</button>
         </section>
     </Transition>
-
-    <div v-if="secretaryPreferencesModalOpen" class="modal-backdrop" @click.self="closeSecretaryPreferencesModal">
-        <section class="secretary-profile-modal" role="dialog" aria-modal="true" aria-labelledby="secretary-preferences-modal-title">
-            <header>
-                <h2 id="secretary-preferences-modal-title">画像表示設定</h2>
-                <button type="button" aria-label="閉じる" :disabled="busy" @click="closeSecretaryPreferencesModal">×</button>
-            </header>
-            <form @submit.prevent="saveSecretaryImagePreferences">
-                <fieldset>
-                    <legend>閲覧するAI生成画像</legend>
-                    <label><input v-model="secretaryShowAiImages" type="radio" :value="true"> 表示する</label>
-                    <label><input v-model="secretaryShowAiImages" type="radio" :value="false"> 表示しない</label>
-                </fieldset>
-                <fieldset>
-                    <legend>自分の秘書が画像未設定のとき</legend>
-                    <label><input v-model="secretaryImageFallback" type="radio" value="silhouette"> silhouette版</label>
-                    <label><input v-model="secretaryImageFallback" type="radio" value="peridot"> Peridot詳細版</label>
-                </fieldset>
-                <p v-if="secretaryPreferenceErrors.own_secretary_fallback || secretaryPreferenceErrors.fallback || secretaryPreferenceErrors.show_ai_generated_images" class="field-error" role="alert">
-                    {{ secretaryPreferenceErrors.own_secretary_fallback || secretaryPreferenceErrors.fallback || secretaryPreferenceErrors.show_ai_generated_images }}
-                </p>
-                <div class="modal-actions">
-                    <button type="button" :disabled="busy" @click="closeSecretaryPreferencesModal">キャンセル</button>
-                    <button class="button primary" type="submit" :disabled="busy">保存</button>
-                </div>
-            </form>
-        </section>
-    </div>
 
     <SecretaryEquipmentModal
         v-if="equipmentModalSlot !== null"

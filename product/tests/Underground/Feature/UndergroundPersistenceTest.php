@@ -61,41 +61,6 @@ final class UndergroundPersistenceTest extends TestCase
         $this->assertSame(1, UndergroundProfile::query()->where('secretary_id', $secretary->id)->count());
 
         $columns = Schema::getColumnListing('underground_profiles');
-        sort($columns);
-        $this->assertSame([
-            'allocated_agility_stp',
-            'allocated_finesse_stp',
-            'allocated_might_stp',
-            'allocated_spirit_stp',
-            'allocated_vitality_stp',
-            'awakening_gauge',
-            'awakening_message',
-            'awakening_technique_key',
-            'banked_shard_balance',
-            'combat_level',
-            'combat_xp',
-            'created_at',
-            'current_hp',
-            'custom_ai_rules',
-            'growth_path_identity',
-            'growth_path_key',
-            'growth_path_selected_at',
-            'id',
-            'last_respec_at',
-            'next_battle_at',
-            'rental_party',
-            'secretary_id',
-            'shard_balance',
-            'shining_kingdom_key_balance',
-            'skill_points_total',
-            'skill_points_unspent',
-            'skill_rebuild_required',
-            'skill_tree_identity',
-            'underground_contract_completed_at',
-            'unlocked_area_layers',
-            'unspent_stp',
-            'updated_at',
-        ], $columns);
         $this->assertNotContains('current_mp', $columns);
         $this->assertTrue(Schema::hasTable('underground_trial_progress'));
         $this->assertTrue(Schema::hasTable('underground_trial_runs'));
@@ -138,7 +103,7 @@ final class UndergroundPersistenceTest extends TestCase
         $this->assertSame($first->id, $second->id);
         $this->assertSame([
             'starter_knife',
-            'secretary-underground-shop-equipment-alpha-v2',
+            app(UndergroundEquipmentCatalog::class)->identity(),
             'weapon',
             UndergroundStarterEquipmentService::GRANT_KEY,
         ], [

@@ -1,0 +1,32 @@
+# 地底の場面素材
+
+`scene-assets.json` に素材と配置を登録し、画像をタイル配信ルート `/srv/bot-assets/hakoniwa/` の `background/`・`npc/`・`event/` へ置く。既存の `peridot/`・`snow/` と同じ親を使う。画像ファイルを置くだけでは配信せず、manifestに登録した画像だけを解決する。
+
+## ローカルで登録する
+
+1. productで `npm run preview:scenes` を起動し、表示されたURLの `/tools/scene-preview/index.html` を開く。
+2. 表示を「NPC配置」にして「手元の画像で確認・登録」を開く。画像を選び、種類、素材ID、配置先ファイル、場面ID、制作区分、権利表記を入力する。ファイルは端末内のプレビューにだけ使う。
+3. 立ち絵はPCとスマホそれぞれの横位置・足元・高さを%で調整する。「スマホ幅」、Light/Dark、AI画像表示の切替で確認する。イベントスチルは全体を収め、背景は16:9の舞台へ敷く。
+4. 表示された登録用JSONの `assets` と `scenes` の項目をmanifestへ追加する。同じ場面の背景・他の人物などは消さずに併合する。画像を対応するサブフォルダへ追加する。
+5. review後、画像を配信先へ配置してからmanifestを更新する。manifestは1MiB以下。アプリのdeployとは別に素材を更新できる。
+
+例: `npc.aki` は `npc/430-aki.png`、場面 `exchange` の `actors` に配置される。既存のショップ・交流場・鏡プレビューは登録済み素材の確認用で、登録用フォームは「NPC配置」にある。価格・購入権・解禁条件をmanifestへ書かない。
+
+## 制作区分と権利
+
+- `ai_generated`: AI生成。AI非表示時に背景はGit管理の非AI水晶へ差し替え、立ち絵・スチルは表示しない。
+- `commissioned_or_permitted`: 外部委託・使用許諾あり。
+- `self_made`: 人力の自作。
+- `other`: その他の非AI素材。
+
+`credit` は権利表記、任意の `credit_url` はhttp(s)リンク、`show_credit` はi内に載せるかどうか。iは場面に一つで、立ち絵／背景／スチルをまとめる。自キャラと小さい同行者アイコンには付けない。制作区分未指定はローカルプレビューだけで、登録用JSONは生成しない。
+
+提供された案内人・アキ・鏡のイベントスチルは非AI作品。**画像生成への入力・参照・変換に使用しない。** 権利表記はmanifestのOwner指定文言を保持する。水晶プレースホルダーはフリー素材で権利表記・リンク不要。
+
+別荘背景 `background/430-elven-villa.jpg` はOwner採用済みのAI生成画像。輝きの王国の家をアキが補強・修繕したエルフの別荘で、足元に転移魔法陣がある。新規のテキスト指定だけで生成し、委託イラストは参照していない。配信用JPEGは519,770 bytes。`villa` に割り当て、AI OFFでは水晶へ戻る。
+
+画像そのものを加工せず、縦横比を維持して配置する。`placement` がPC設定、`mobile` が舞台の横幅700px以下での上書き。`x` と `y` は画像の基準点位置、`height` は舞台の高さに対する割合。既定の基準点は横中央・足元で、必要なら `pivot_x`・`pivot_y`、重なり順の `layer` を指定する。画像が欠損しても背景は水晶へ戻り、文字・操作は両テーマで読める面に残す。
+
+## デフォルトのペリドット
+
+`peridot/peridot-full-body.png` はOwner提供のデフォルト全身図。配信先は `/srv/bot-assets/hakoniwa/peridot/peridot-full-body.png`。既存の秘書画像resolverに登録してあり、場面manifestへの重複登録は不要。大型表示で選ばれ、小アイコンの `peridot.png` とシルエットの `silhouette.png` は既存ファイルを維持する。画像は加工せず、秘書の既存表示設定に従う。

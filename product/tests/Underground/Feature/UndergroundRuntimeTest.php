@@ -13,6 +13,7 @@ use App\Application\Underground\UndergroundBattleHistoryCompactor;
 use App\Application\Underground\UndergroundBattleSeed;
 use App\Application\Underground\UndergroundEquipmentService;
 use App\Application\Underground\UndergroundIntroService;
+use App\Application\Underground\UndergroundJournalService;
 use App\Application\Underground\UndergroundProfileService;
 use App\Application\Underground\UndergroundRuntimeException;
 use App\Application\Underground\UndergroundRuntimeService;
@@ -100,6 +101,7 @@ final class UndergroundRuntimeTest extends TestCase
         $this->assertRuntimeError('underground_rental_party_changed', fn () => $runtime->challengeGuide($leader, (string) Str::uuid(), []));
         app(UndergroundIntroService::class)->updateRentalParty($leader, (string) Str::uuid(), []);
         $beforeSolo = $profile->refresh()->only($resources);
+        $this->travel(1)->hours();
         $repeat = $runtime->challengeGuide($leader, (string) Str::uuid(), [])['battle'];
         $this->assertFalse($repeat->snapshot['first_victory']);
         $this->assertContains('「……ふむ、すでに持ってましたか」', $repeat->snapshot['duel_dialogue']);
@@ -108,6 +110,13 @@ final class UndergroundRuntimeTest extends TestCase
         $equipment = app(UndergroundEquipmentService::class);
         $this->assertRuntimeError('underground_equipment_not_equippable', fn () => $equipment->equip($leader, (string) Str::uuid(), $item['id']));
         $this->assertRuntimeError('underground_equipment_not_sellable', fn () => $equipment->sell($leader, (string) Str::uuid(), $item['id']));
+        $profile->refresh()->update(['shard_balance' => 600_000]);
+        $intro = app(UndergroundIntroService::class);
+        $intro->purchaseResidence($leader, (string) Str::uuid(), 'villa');
+        $intro->purchaseResidence($leader, (string) Str::uuid(), 'trophy_shelf');
+        $trophies = array_column(app(UndergroundJournalService::class)->forUser($leader)['trophies'], null, 'key');
+        $this->assertSame($battle->finished_at->toIso8601String(), $trophies['dream_queen']['achieved_at']);
+        $this->assertSame('魔剣のレプリカ', $trophies['dream_queen']['name']);
         $this->actingAs($leader)->postJson('/api/v1/me/underground/guide-duel', [
             'request_id' => $requestId, 'borrowed_secretary_ids' => [$borrowed->id],
         ])->assertOk()->assertJsonPath('data.context', 'guide_duel');

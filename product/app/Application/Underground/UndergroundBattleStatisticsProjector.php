@@ -256,11 +256,12 @@ final class UndergroundBattleStatisticsProjector
                         $currentSoloDecisionId = 'solo-decision:'.$soloDecisionSequence;
                         $currentSoloActionKey = $action;
                     }
+                    // Awakening commands are counted by their executed technique event below.
                     if ($action === 'normal_attack') {
                         $selfNormalAttacks++;
                         $selfActionUsage[$action] = ($selfActionUsage[$action] ?? 0) + 1;
                     } elseif (is_string($action)
-                        && ! in_array($action, ['defend', 'awakening', 'action_skipped'], true)) {
+                        && ! in_array($action, ['defend', 'awakening', 'awakening_technique', 'action_skipped'], true)) {
                         $selfSkills++;
                         $selfActionUsage[$action] = ($selfActionUsage[$action] ?? 0) + 1;
                     }

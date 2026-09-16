@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Application\SecretaryLendingService;
 use App\Application\Underground\UndergroundIntroService;
+use App\Application\Underground\UndergroundJournalService;
 use App\Application\Underground\UndergroundPlaytestService;
 use App\Application\Underground\UndergroundRuntimeException;
 use App\Application\Underground\UndergroundRuntimeService;
@@ -47,6 +48,38 @@ final class UndergroundIntroController extends Controller
     public function surfaceMap(Request $request, UndergroundSurfaceMapProjection $projection): JsonResponse
     {
         return response()->json(['data' => $projection->forUser($request->user())]);
+    }
+
+    public function purchaseResidence(UndergroundIntroMutationRequest $request, UndergroundIntroService $service): JsonResponse
+    {
+        $request->validate(['item' => ['required', 'string', 'in:villa,mirror,trophy_shelf']]);
+
+        return $this->respond(fn (): array => $service->purchaseResidence(
+            $request->user(), $request->string('request_id')->value(), $request->string('item')->value(),
+        ));
+    }
+
+    public function advanceLoungeEvent(UndergroundIntroMutationRequest $request, UndergroundIntroService $service): JsonResponse
+    {
+        $request->validate(['event' => ['required', 'string', 'in:exchange,mirror'], 'page' => ['required', 'integer', 'min:1', 'max:2']]);
+
+        return $this->respond(fn (): array => $service->advanceLoungeEvent(
+            $request->user(), $request->string('request_id')->value(), $request->string('event')->value(), $request->integer('page'),
+        ));
+    }
+
+    public function journal(Request $request, UndergroundJournalService $service): JsonResponse
+    {
+        return $this->respond(fn (): array => $service->forUser($request->user()));
+    }
+
+    public function homeBackground(UndergroundIntroMutationRequest $request, UndergroundIntroService $service): JsonResponse
+    {
+        $request->validate(['key' => ['required', 'string', 'max:120']]);
+
+        return $this->respond(fn (): array => $service->selectHomeBackground(
+            $request->user(), $request->string('request_id')->value(), $request->string('key')->value(),
+        ));
     }
 
     public function lendingCandidates(Request $request, SecretaryLendingService $service): JsonResponse

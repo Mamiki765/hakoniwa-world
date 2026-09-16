@@ -18,7 +18,7 @@ final readonly class PriorityCombatAiConfiguration
     public function normalizeRules(array $rules, AlphaV1BuildCatalog $catalog): array
     {
         if (! array_is_list($rules) || count($rules) > AlphaV1CombatRules::AI_RULE_LIMIT) {
-            throw new InvalidArgumentException('AI rules must be a list of at most 16 rules.');
+            throw new InvalidArgumentException('AI rules must be a list of at most '.AlphaV1CombatRules::AI_RULE_LIMIT.' rules.');
         }
 
         $skillKeys = array_fill_keys(array_column($this->playerSkills($catalog), 'key'), true);
@@ -66,7 +66,7 @@ final readonly class PriorityCombatAiConfiguration
                 if ($skillKey === '' || ! isset($skillKeys[$skillKey])) {
                     throw new InvalidArgumentException("AI rule [{$index}] selects an unknown player skill.");
                 }
-            } elseif (! in_array($action, ['normal_attack', 'defend', 'awakening'], true)) {
+            } elseif (! in_array($action, ['normal_attack', 'defend', 'awakening', 'awakening_technique'], true)) {
                 throw new InvalidArgumentException("AI rule [{$index}] action is invalid.");
             }
 
@@ -171,7 +171,7 @@ final readonly class PriorityCombatAiConfiguration
                 ['key' => 'own_mp_lte', 'label' => '自分のMPが指定%以下', 'value_kind' => 'percent'],
                 ['key' => 'own_mp_gte', 'label' => '自分のMPが指定%以上', 'value_kind' => 'percent'],
                 ['key' => 'enemy_hp_lte', 'label' => '敵のHPが指定%以下', 'value_kind' => 'percent'],
-                ['key' => 'ally_hp_lte', 'label' => '味方のHPが指定%以下', 'value_kind' => 'percent'],
+                ['key' => 'ally_hp_lte', 'label' => '味方のHPが指定%以下（0%は戦闘不能）', 'value_kind' => 'percent'],
                 ['key' => 'self_has_status', 'label' => '自分に指定状態がある', 'value_kind' => 'status'],
                 ['key' => 'self_lacks_status', 'label' => '自分に指定状態がない', 'value_kind' => 'status'],
                 ['key' => 'enemy_has_status', 'label' => '敵に指定状態がある', 'value_kind' => 'status'],
@@ -187,6 +187,7 @@ final readonly class PriorityCombatAiConfiguration
                 ['key' => 'normal_attack', 'label' => '通常攻撃'],
                 ['key' => 'defend', 'label' => '防御'],
                 ['key' => 'awakening', 'label' => '覚醒'],
+                ['key' => 'awakening_technique', 'label' => '覚醒技を使用'],
                 ['key' => 'jump', 'label' => '後ろのruleへ移動'],
             ],
             'targets' => [

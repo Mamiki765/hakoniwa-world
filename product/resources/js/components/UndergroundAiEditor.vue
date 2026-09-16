@@ -323,6 +323,7 @@ async function save(): Promise<void> {
         <div class="underground-ai-notes">
             <p>成立したruleのactionがMP・cooldown・装備・習得状態などで使えない場合は、次のruleへ進みます。</p>
             <p>対象候補がいないruleも次へ進みます。</p>
+            <p>「覚醒技を使用」の行を入れると、その条件で覚醒技を使います。行がない場合は従来の自動判断で使用します。</p>
             <p>最後まで実行できない場合は、使用可能な習得済み攻撃skill、なければ通常攻撃を必ず使います。</p>
             <p>作戦の変更は次に始まる戦闘から有効です。進行中・保存済みの戦闘内容は変わりません。</p>
         </div>
@@ -444,7 +445,7 @@ async function save(): Promise<void> {
 .underground-ai-condition input { width: 7rem; }
 .underground-ai-add { justify-self: start; }
 .underground-ai-save-actions { justify-content: flex-end; }
-.warning { color: #b45309; }
+.warning { color: var(--warning); }
 @media (max-width: 720px) {
     .underground-ai-heading { display: grid; }
     .underground-ai-heading dl { min-width: 0; }

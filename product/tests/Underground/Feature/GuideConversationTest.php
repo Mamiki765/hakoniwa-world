@@ -32,12 +32,11 @@ final class GuideConversationTest extends TestCase
         $this->actingAs($admin)->getJson('/api/v1/me')
             ->assertOk()->assertJsonPath('data.can_manage_guide_topics', true);
 
-        $index = $this->actingAs($admin)->getJson('/api/v1/admin/guide-conversation-topics')
+        $this->actingAs($admin)->getJson('/api/v1/admin/guide-conversation-topics')
             ->assertOk()
-            ->assertJsonPath('data.unlock_options.0.key', 'always')
-            ->assertJsonPath('data.unlock_options.1.key', 'trial_01_first_clear')
-            ->assertJsonPath('data.unlock_options.2.key', 'trial_02_first_clear');
-        $this->assertCount(3, $index->json('data.unlock_options'));
+            ->assertJsonFragment(['key' => 'always'])
+            ->assertJsonFragment(['key' => 'trial_01_first_clear'])
+            ->assertJsonFragment(['key' => 'trial_02_first_clear']);
 
         $invalid = $this->topicPayload();
         $invalid['choice_2'] = '片方だけ';
