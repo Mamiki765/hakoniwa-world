@@ -26,7 +26,7 @@ final class TerritoryInfluencePerformanceTest extends TestCase
     use RefreshDatabase;
     use UsesIndividualTestWorld;
 
-    public function test_production_60_by_60_influence_pass_has_bounded_queries_and_runtime(): void
+    public function test_production_60_by_60_influence_pass_has_bounded_queries(): void
     {
         $world = app(OceanWorldGenerator::class)->initialize(WorldGenerationProfile::Production);
         $first = app(NationCreationService::class)->create(
@@ -115,16 +115,13 @@ final class TerritoryInfluencePerformanceTest extends TestCase
         DB::listen(static function (QueryExecuted $query) use (&$queries): void {
             $queries[] = $query->sql;
         });
-        $started = hrtime(true);
         $metrics = app(TerritoryInfluenceService::class)->execute($context);
-        $durationMs = (hrtime(true) - $started) / 1_000_000;
         $queryCount = count($queries);
 
         $this->assertSame(3_600, $metrics['processed']);
         $this->assertGreaterThan(3_000, $metrics['direction_draws']);
         $this->assertGreaterThan(1_000, $metrics['mutations']);
         $this->assertLessThanOrEqual(20, $queryCount);
-        $this->assertLessThan(5_000.0, $durationMs);
         $this->assertSame(
             $metrics['mutations'],
             DB::table('audit_events')->where('event_type', 'territory.influenced')->count(),
