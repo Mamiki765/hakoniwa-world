@@ -1054,6 +1054,11 @@ final class UndergroundRuntimeTest extends TestCase
         $this->assertStringContainsString('"battle_count":2', $statisticsOutput);
         $this->assertStringContainsString('"incomplete_statistics_battle_count":2', $statisticsOutput);
         $this->assertStringContainsString('"self_recorded_battle_count":1', $statisticsOutput);
+        $this->assertStringContainsString('"self_maximum_hit":null', $statisticsOutput);
+        $this->assertStringContainsString(
+            '"self.maximum_hit":{"recorded_battle_count":0,"unknown_battle_count":2,"not_recorded_battle_count":0}',
+            $statisticsOutput,
+        );
     }
 
     public function test_default_runtime_adapter_executes_the_canonical_pure_combat_core(): void
@@ -1079,6 +1084,50 @@ final class UndergroundRuntimeTest extends TestCase
         $this->assertLessThanOrEqual(100, $battle->rounds);
         $this->assertNotEmpty($battle->log?->actions);
         $this->assertSame(AlphaV1CombatRules::IDENTITY, $battle->snapshot['combat_rules_identity']);
+    }
+
+    public function test_statistics_report_streams_all_rows_without_loading_snapshots_or_running_secretary_n_plus_one_queries(): void
+    {
+        Carbon::setTestNow('2026-09-16 13:00:00+09:00');
+        [$user, $secretary] = $this->secretaryUser();
+        $this->unlockExploration($secretary);
+        [$runtime] = $this->runtimeWithOutcomes(['player']);
+        $battle = $runtime->explore($user, (string) Str::uuid())['battle'];
+        $template = $battle->getAttributes();
+        unset($template['id']);
+        $rows = [];
+        for ($index = 0; $index < 1_000; $index++) {
+            $requestId = (string) Str::uuid();
+            $rows[] = [
+                ...$template,
+                'request_id' => $requestId,
+                'request_fingerprint' => hash('sha256', $requestId),
+            ];
+            if (count($rows) === 250) {
+                DB::table('underground_battles')->insert($rows);
+                $rows = [];
+            }
+        }
+
+        $queries = [];
+        DB::listen(static function ($query) use (&$queries): void {
+            $queries[] = $query->sql;
+        });
+        $this->assertSame(0, Artisan::call('underground:statistics'));
+        $this->assertStringContainsString('"battle_count":1001', Artisan::output());
+        $battleQueries = array_values(array_filter(
+            $queries,
+            static fn (string $sql): bool => str_contains($sql, 'underground_battles'),
+        ));
+        $this->assertLessThanOrEqual(5, count($battleQueries));
+        foreach ($battleQueries as $sql) {
+            $this->assertStringNotContainsString('snapshot', $sql);
+            $this->assertStringNotContainsString('underground_battle_logs', $sql);
+        }
+
+        $this->assertSame(1, Artisan::call('underground:statistics', ['--max-rows' => 1_000]));
+        $this->assertStringContainsString('no partial report was emitted', Artisan::output());
+        $this->assertStringNotContainsString('"battle_count"', Artisan::output());
     }
 
     public function test_exploration_drop_grant_is_atomic_replay_safe_and_victory_only(): void
@@ -1458,6 +1507,15 @@ final class UndergroundRuntimeTest extends TestCase
         $this->assertSame(1, SecretaryLendingParticipation::query()->where('owner_user_id', $owner->id)->count());
         $this->assertSame(1, UndergroundParty::query()->count());
         $this->assertSame(3, $snapshot['presentation_log_version']);
+        $this->assertSame(0, Artisan::call('underground:statistics'));
+        $reportRows = array_values(array_filter(array_map(
+            static fn (string $line): mixed => json_decode($line, true),
+            preg_split('/\R/', trim(Artisan::output())) ?: [],
+        ), 'is_array'));
+        $borrowedReport = collect($reportRows)->firstWhere('secretary_id', $borrowedSecretary->id);
+        $this->assertIsArray($borrowedReport);
+        $this->assertSame(0, $borrowedReport['battle_count']);
+        $this->assertSame(1, $borrowedReport['rental_participation_count']);
 
         $borrowedSecretary->update(['name' => 'Changed after battle']);
         $borrowedProfile->refresh()->update(['combat_level' => 121, 'unspent_stp' => 600]);

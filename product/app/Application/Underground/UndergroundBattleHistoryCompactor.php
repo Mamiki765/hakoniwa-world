@@ -14,39 +14,70 @@ final readonly class UndergroundBattleHistoryCompactor
     public function __construct(private UndergroundBattleStorage $storage) {}
 
     /** @return array{candidates:int,battle_bytes:int,member_bytes:int,self_damage_backfillable:int,self_damage_null:int,damage_source_breakdown_null:int,healing_source_breakdown_null:int,oldest_finished_at:string|null,newest_finished_at:string|null} */
-    public function preview(Carbon $cutoff, int $limit): array
+    public function preview(Carbon $cutoff, int $limit, int $batchSize = 100): array
     {
-        $battles = $this->candidates($cutoff)->limit($limit)->get();
+        $batchSize = max(1, min(1_000, $batchSize));
+        $candidateCount = 0;
         $battleBytes = 0;
         $memberBytes = 0;
         $selfDamageBackfillable = 0;
         $selfDamageNull = 0;
-        foreach ($battles as $battle) {
-            $battleBytes += $this->jsonBytes($battle->snapshot);
-            if ($battle->underground_party_id !== null) {
+        $oldest = null;
+        $newest = null;
+        $lastId = 0;
+        while ($candidateCount < $limit) {
+            $battles = $this->candidates($cutoff)
+                ->where('id', '>', $lastId)
+                ->limit(min($batchSize, $limit - $candidateCount))
+                ->get(['id', 'underground_party_id', 'snapshot', 'finished_at']);
+            if ($battles->isEmpty()) {
+                break;
+            }
+            $partyIds = $battles->pluck('underground_party_id')
+                ->filter(static fn (mixed $id): bool => $id !== null)
+                ->map(static fn (mixed $id): int => (int) $id)
+                ->unique()
+                ->values()
+                ->all();
+            $memberBytesByParty = [];
+            if ($partyIds !== []) {
                 foreach (UndergroundPartyMember::query()
-                    ->where('underground_party_id', $battle->underground_party_id)
-                    ->get(['snapshot']) as $member) {
-                    $memberBytes += $this->jsonBytes($member->snapshot);
+                    ->whereIn('underground_party_id', $partyIds)
+                    ->get(['underground_party_id', 'snapshot']) as $member) {
+                    $partyId = (int) $member->underground_party_id;
+                    $memberBytesByParty[$partyId] = ($memberBytesByParty[$partyId] ?? 0)
+                        + $this->jsonBytes($member->snapshot);
                 }
             }
-            if ($battle->underground_party_id === null) {
-                $selfDamageBackfillable++;
-            } else {
-                $selfDamageNull++;
+            foreach ($battles as $battle) {
+                $lastId = (int) $battle->id;
+                $candidateCount++;
+                $battleBytes += $this->jsonBytes($battle->snapshot);
+                if ($battle->underground_party_id === null) {
+                    $selfDamageBackfillable++;
+                } else {
+                    $selfDamageNull++;
+                    $memberBytes += $memberBytesByParty[(int) $battle->underground_party_id] ?? 0;
+                }
+                if ($battle->finished_at !== null) {
+                    $oldest = $oldest === null || $battle->finished_at->isBefore($oldest)
+                        ? $battle->finished_at : $oldest;
+                    $newest = $newest === null || $battle->finished_at->isAfter($newest)
+                        ? $battle->finished_at : $newest;
+                }
             }
         }
 
         return [
-            'candidates' => $battles->count(),
+            'candidates' => $candidateCount,
             'battle_bytes' => $battleBytes,
             'member_bytes' => $memberBytes,
             'self_damage_backfillable' => $selfDamageBackfillable,
             'self_damage_null' => $selfDamageNull,
-            'damage_source_breakdown_null' => $battles->count(),
-            'healing_source_breakdown_null' => $battles->count(),
-            'oldest_finished_at' => $battles->min('finished_at')?->toAtomString(),
-            'newest_finished_at' => $battles->max('finished_at')?->toAtomString(),
+            'damage_source_breakdown_null' => $candidateCount,
+            'healing_source_breakdown_null' => $candidateCount,
+            'oldest_finished_at' => $oldest?->toAtomString(),
+            'newest_finished_at' => $newest?->toAtomString(),
         ];
     }
 
@@ -68,7 +99,7 @@ final readonly class UndergroundBattleHistoryCompactor
 
         while ($result['processed'] < $limit) {
             if (microtime(true) - $started >= $maxSeconds) {
-                $result['stopped_by'] = 'time_limit';
+                $result['stopped_by'] = 'soft_time_budget';
                 break;
             }
             $ids = $this->candidates($cutoff)
@@ -83,7 +114,7 @@ final readonly class UndergroundBattleHistoryCompactor
 
             foreach ($ids as $id) {
                 if (microtime(true) - $started >= $maxSeconds) {
-                    $result['stopped_by'] = 'time_limit';
+                    $result['stopped_by'] = 'soft_time_budget';
                     break 2;
                 }
                 $row = $this->compactOne($id, $cutoff);
@@ -233,6 +264,8 @@ final readonly class UndergroundBattleHistoryCompactor
                 'damage_dealt' => $solo ? $battle->damage_dealt : null,
                 'damage_by_source' => null,
                 'maximum_hit' => null,
+                'maximum_hit_action_key' => null,
+                'maximum_hit_damage_source' => null,
                 'damage_received' => $solo ? $battle->damage_received : null,
                 'effective_healing' => $solo ? $battle->healing_done : null,
                 'effective_healing_received' => $solo ? $battle->healing_done : null,
@@ -241,9 +274,11 @@ final readonly class UndergroundBattleHistoryCompactor
                     ? (int) $summaryMetrics['damage_prevented'] : null,
                 'complete_guard_count' => null,
                 'complete_guard_prevented_damage' => null,
+                'enemy_complete_guard_count' => null,
                 'enemy_defeats' => null,
                 'normal_attacks' => null,
                 'skill_uses' => null,
+                'action_usage' => null,
                 'critical_hits' => null,
                 'mp_spent' => $solo && is_numeric($summary['mp_spent'] ?? null) ? (int) $summary['mp_spent'] : null,
                 'mp_recovered' => $solo

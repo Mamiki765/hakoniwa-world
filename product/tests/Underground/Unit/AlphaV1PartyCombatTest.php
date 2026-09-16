@@ -34,6 +34,10 @@ final class AlphaV1PartyCombatTest extends TestCase
         foreach ($awakenings as $row) {
             self::assertSame($row['state']['max_hp'], $row['state']['hp']);
             self::assertSame(AlphaV1CombatRules::MAX_MP, $row['state']['mp']);
+            self::assertSame(
+                $row['state']['hp'] - $result->initialStates[$row['actor_id']]['hp'],
+                $row['effective_healing'],
+            );
         }
         $opening = $rows->where('action_id', 'guide-duel:1:opening')->where('effect_type', 'damage');
         self::assertGreaterThanOrEqual(30, $opening->count());

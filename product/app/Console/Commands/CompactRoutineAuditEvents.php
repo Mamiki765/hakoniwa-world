@@ -11,8 +11,8 @@ final class CompactRoutineAuditEvents extends Command
 {
     protected $signature = 'audit:compact-routine-events
                             {--cutoff= : Inclusive ISO-8601 occurred-at cutoff}
-                            {--limit=1000 : Maximum completed Turn summaries}
-                            {--max-seconds=30 : Apply time limit}
+                            {--limit=1000 : Maximum summary or unattributed Turn-run groups}
+                            {--max-seconds=30 : Soft apply budget checked between group transactions}
                             {--apply : Persist summary aggregation and delete exact source rows}';
 
     protected $description = 'Dry-run or compact an allowlist of redundant per-cell Turn audit events';
@@ -43,12 +43,16 @@ final class CompactRoutineAuditEvents extends Command
 
         $preview = $compactor->preview($cutoff, $limit);
         $this->line(sprintf(
-            'mode=%s cutoff=%s summary_groups=%d event_rows=%d event_json_bytes=%d by_type=%s',
+            'mode=%s cutoff=%s apply_time_budget=soft_between_groups summary_groups=%d unattributed_groups=%d event_rows=%d event_json_bytes=%d unattributed_forest_rows=%d unattributed_forest_quantity=%d unattributed_reasons=%s by_type=%s',
             (bool) $this->option('apply') ? 'apply' : 'dry-run',
             $cutoff->toAtomString(),
             $preview['summary_groups'],
+            $preview['unattributed_groups'],
             $preview['event_rows'],
             $preview['event_json_bytes'],
+            $preview['unattributed_forest_rows'],
+            $preview['unattributed_forest_quantity'],
+            json_encode($preview['unattributed_by_reason'], JSON_THROW_ON_ERROR),
             json_encode($preview['by_type'], JSON_THROW_ON_ERROR),
         ));
         if (! (bool) $this->option('apply')) {
@@ -59,9 +63,12 @@ final class CompactRoutineAuditEvents extends Command
 
         $result = $compactor->compact($cutoff, $limit, $maxSeconds);
         $this->info(sprintf(
-            'summary_groups=%d event_rows_deleted=%d stopped_by=%s by_type=%s',
+            'summary_groups=%d unattributed_groups=%d event_rows_deleted=%d unattributed_forest_rows=%d unattributed_forest_quantity=%d stopped_by=%s by_type=%s',
             $result['summary_groups'],
+            $result['unattributed_groups'],
             $result['event_rows_deleted'],
+            $result['unattributed_forest_rows'],
+            $result['unattributed_forest_quantity'],
             $result['stopped_by'],
             json_encode($result['by_type'], JSON_THROW_ON_ERROR),
         ));

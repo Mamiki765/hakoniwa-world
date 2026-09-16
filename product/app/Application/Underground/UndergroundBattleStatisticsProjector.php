@@ -21,7 +21,7 @@ final class UndergroundBattleStatisticsProjector
             ? $result->initialState['enemy']
             : [];
 
-        return $this->project(
+        $statistics = $this->project(
             $result->actionLog,
             [
                 'self' => ['team' => 'player', 'combatant_id' => 'self', ...$initialPlayer],
@@ -41,6 +41,8 @@ final class UndergroundBattleStatisticsProjector
             'self',
             false,
         );
+
+        return $statistics;
     }
 
     /**
@@ -53,10 +55,17 @@ final class UndergroundBattleStatisticsProjector
     public function fromScriptedSolo(CombatResult $result): array
     {
         $maximumHit = 0;
+        $maximumHitActionKey = null;
         $minimumHp = $result->playerRemainingHp;
         foreach ($result->actionLog as $row) {
             if (($row['side'] ?? null) === 'player' && is_numeric($row['amount'] ?? null)) {
-                $maximumHit = max($maximumHit, (int) $row['amount']);
+                $damage = max(0, (int) $row['amount']);
+                $actionKey = is_string($row['action'] ?? null) ? $row['action'] : null;
+                if ($damage > $maximumHit
+                    || ($damage === $maximumHit && $this->preferActionKey($actionKey, $maximumHitActionKey))) {
+                    $maximumHit = $damage;
+                    $maximumHitActionKey = $actionKey;
+                }
             }
             if (is_numeric($row['player_hp'] ?? null)) {
                 $minimumHp = min($minimumHp, (int) $row['player_hp']);
@@ -68,6 +77,14 @@ final class UndergroundBattleStatisticsProjector
             'regeneration' => 0, 'revival' => 0, 'awakening' => 0,
         ];
         $knockouts = $result->winner === 'enemy' ? 1 : 0;
+        $actionUsage = ['normal_attack' => max(0, $result->normalAttackUsage)];
+        foreach ($result->skillUsage as $skillKey => $count) {
+            if ($skillKey !== '' && $count > 0) {
+                $actionUsage[$skillKey] = $count;
+            }
+        }
+        $actionUsage = array_filter($actionUsage, static fn (int $count): bool => $count > 0);
+        ksort($actionUsage);
 
         return [
             'source' => 'scripted_solo_summary',
@@ -94,6 +111,8 @@ final class UndergroundBattleStatisticsProjector
                 'damage_dealt' => $result->damageDealt,
                 'damage_by_source' => $damageBySource,
                 'maximum_hit' => $maximumHit,
+                'maximum_hit_action_key' => $maximumHitActionKey,
+                'maximum_hit_damage_source' => $maximumHitActionKey === null ? null : 'direct',
                 'damage_received' => $result->damageReceived,
                 'effective_healing' => $result->healingDone,
                 'effective_healing_received' => $result->healingDone,
@@ -101,9 +120,11 @@ final class UndergroundBattleStatisticsProjector
                 'damage_prevented' => null,
                 'complete_guard_count' => 0,
                 'complete_guard_prevented_damage' => 0,
+                'enemy_complete_guard_count' => 0,
                 'enemy_defeats' => $result->winner === 'player' ? 1 : 0,
                 'normal_attacks' => $result->normalAttackUsage,
                 'skill_uses' => array_sum($result->skillUsage),
+                'action_usage' => $actionUsage,
                 'critical_hits' => 0,
                 'mp_spent' => null,
                 'mp_recovered' => null,
@@ -185,6 +206,7 @@ final class UndergroundBattleStatisticsProjector
         $selfPrevented = 0;
         $selfCompleteGuards = 0;
         $selfCompleteGuardPrevented = 0;
+        $selfEnemyCompleteGuards = 0;
         $selfEnemyDefeats = 0;
         $selfNormalAttacks = 0;
         $selfSkills = 0;
@@ -209,14 +231,41 @@ final class UndergroundBattleStatisticsProjector
             'regeneration' => 0, 'revival' => 0, 'awakening' => 0,
         ];
         $selfHealingBySource = $partyHealingBySource;
+        $selfActionUsage = [];
+        $selfDamageSequences = [];
+        $soloDecisionSequence = 0;
+        $currentSoloDecisionId = null;
+        $currentSoloActionKey = null;
         $issues = [];
         $damageIncomplete = false;
         $healingIncomplete = false;
 
-        foreach ($logs as $row) {
+        foreach ($logs as $logIndex => $row) {
             $effectType = $row['effect_type'] ?? null;
             $actorIsSelf = $this->isSelfActor($row, $leaderCombatantId, $partyMode);
             $targetIsSelf = $this->isSelfTarget($row, $leaderCombatantId, $partyMode);
+            if (($row['kind'] ?? null) === 'decision') {
+                if (! $partyMode) {
+                    $currentSoloDecisionId = null;
+                    $currentSoloActionKey = null;
+                }
+                if ($actorIsSelf) {
+                    $action = $row['action_key'] ?? null;
+                    if (! $partyMode && is_string($action)) {
+                        $soloDecisionSequence++;
+                        $currentSoloDecisionId = 'solo-decision:'.$soloDecisionSequence;
+                        $currentSoloActionKey = $action;
+                    }
+                    if ($action === 'normal_attack') {
+                        $selfNormalAttacks++;
+                        $selfActionUsage[$action] = ($selfActionUsage[$action] ?? 0) + 1;
+                    } elseif (is_string($action)
+                        && ! in_array($action, ['defend', 'awakening', 'action_skipped'], true)) {
+                        $selfSkills++;
+                        $selfActionUsage[$action] = ($selfActionUsage[$action] ?? 0) + 1;
+                    }
+                }
+            }
             if (in_array($effectType, ['damage', 'counter'], true)) {
                 $damageSource = $this->damageSource($row);
                 $damageIssue = $this->damageIssue($row, $damageSource, $partyMode);
@@ -244,12 +293,33 @@ final class UndergroundBattleStatisticsProjector
                     if ($actorIsSelf && $targetSide === 'enemy') {
                         $selfDamage += $effectiveDamage;
                         $selfDamageBySource[$damageSource] += $effectiveDamage;
-                        $selfMaximumHit = max($selfMaximumHit, $effectiveDamage);
+                        if ($damageSource !== 'periodic') {
+                            $sequenceId = $this->damageSequenceId(
+                                $row,
+                                $actorId,
+                                $damageSource,
+                                (int) $logIndex,
+                                $currentSoloDecisionId,
+                            );
+                            $actionKey = is_string($row['action'] ?? null)
+                                ? $row['action']
+                                : ($damageSource === 'direct' ? $currentSoloActionKey : null);
+                            $this->addDamageSequence(
+                                $selfDamageSequences,
+                                $sequenceId,
+                                $actionKey,
+                                $damageSource,
+                                $effectiveDamage,
+                            );
+                        }
                         if (($row['critical'] ?? false) === true && $effectiveDamage > 0) {
                             $selfCriticalHits++;
                         }
                         if ($row['defeated'] === true) {
                             $selfEnemyDefeats++;
+                        }
+                        if (($row['complete_guarded'] ?? false) === true) {
+                            $selfEnemyCompleteGuards++;
                         }
                     }
                     if ($targetIsSelf) {
@@ -276,6 +346,27 @@ final class UndergroundBattleStatisticsProjector
                         if ($row['defeated'] === true) {
                             $partyKnockouts++;
                         }
+                    }
+                }
+            }
+
+            if (($row['kind'] ?? null) === 'awakening') {
+                if (! is_numeric($row['effective_healing'] ?? null)) {
+                    $issues['awakening_healing_missing_effective_amount']
+                        = ($issues['awakening_healing_missing_effective_amount'] ?? 0) + 1;
+                    $healingIncomplete = true;
+                } else {
+                    $effectiveHealing = max(0, (int) $row['effective_healing']);
+                    $actorSide = is_string($row['team'] ?? null)
+                        ? $row['team']
+                        : (is_string($row['side'] ?? null) ? $row['side'] : null);
+                    if ($actorSide === 'player') {
+                        $partyHealingBySource['awakening'] += $effectiveHealing;
+                    }
+                    if ($actorIsSelf) {
+                        $selfHealing += $effectiveHealing;
+                        $selfHealingReceived += $effectiveHealing;
+                        $selfHealingBySource['awakening'] += $effectiveHealing;
                     }
                 }
             }
@@ -329,14 +420,6 @@ final class UndergroundBattleStatisticsProjector
             if ($effectType === 'mp_recovery' && $actorIsSelf) {
                 $selfMpRecovered += max(0, (int) ($row['amount'] ?? 0));
             }
-            if (($row['kind'] ?? null) === 'decision' && $actorIsSelf) {
-                $action = $row['action_key'] ?? null;
-                if ($action === 'normal_attack') {
-                    $selfNormalAttacks++;
-                } elseif (is_string($action) && ! in_array($action, ['defend', 'awakening', 'action_skipped'], true)) {
-                    $selfSkills++;
-                }
-            }
             if (($row['kind'] ?? null) === 'awakening' && $actorIsSelf) {
                 $partyAwakened[$leaderCombatantId] = true;
                 if ($selfAwakeningRound === null) {
@@ -349,6 +432,15 @@ final class UndergroundBattleStatisticsProjector
             }
             if (($row['kind'] ?? null) === 'awakening_technique' && $actorIsSelf) {
                 $selfAwakeningTechniques++;
+                $actionKey = $row['action'] ?? null;
+                if (is_string($actionKey) && $actionKey !== '') {
+                    $selfActionUsage[$actionKey] = ($selfActionUsage[$actionKey] ?? 0) + 1;
+                    if (! $partyMode) {
+                        $soloDecisionSequence++;
+                        $currentSoloDecisionId = 'solo-technique:'.$soloDecisionSequence;
+                        $currentSoloActionKey = $actionKey;
+                    }
+                }
             }
         }
 
@@ -356,6 +448,11 @@ final class UndergroundBattleStatisticsProjector
             ? $awakenings[$leaderCombatantId]
             : [];
         $awakenedAtStart = ($initialLeader['awakened'] ?? false) === true;
+        $maximumDamageSequence = $this->maximumDamageSequence($selfDamageSequences);
+        if ($maximumDamageSequence !== null) {
+            $selfMaximumHit = $maximumDamageSequence['damage'];
+        }
+        ksort($selfActionUsage);
         $partyDamage = $this->metric($metrics, 'damage_dealt');
         $partyReceived = $this->metric($metrics, 'damage_received');
         $partyHealing = $this->metric($metrics, 'effective_healing');
@@ -404,6 +501,12 @@ final class UndergroundBattleStatisticsProjector
                 'damage_dealt' => $damageIncomplete ? null : $selfDamage,
                 'damage_by_source' => $damageIncomplete ? null : $selfDamageBySource,
                 'maximum_hit' => $damageIncomplete ? null : $selfMaximumHit,
+                'maximum_hit_action_key' => $damageIncomplete
+                    ? null
+                    : ($maximumDamageSequence['action_key'] ?? null),
+                'maximum_hit_damage_source' => $damageIncomplete
+                    ? null
+                    : ($maximumDamageSequence['damage_source'] ?? null),
                 'damage_received' => $damageIncomplete ? null : $selfDamageReceived,
                 'effective_healing' => $healingIncomplete ? null : $selfHealing,
                 'effective_healing_received' => $healingIncomplete ? null : $selfHealingReceived,
@@ -411,9 +514,11 @@ final class UndergroundBattleStatisticsProjector
                 'damage_prevented' => $damageIncomplete ? null : $selfPrevented,
                 'complete_guard_count' => $damageIncomplete ? null : $selfCompleteGuards,
                 'complete_guard_prevented_damage' => $damageIncomplete ? null : $selfCompleteGuardPrevented,
+                'enemy_complete_guard_count' => $damageIncomplete ? null : $selfEnemyCompleteGuards,
                 'enemy_defeats' => $damageIncomplete ? null : $selfEnemyDefeats,
                 'normal_attacks' => $selfNormalAttacks,
                 'skill_uses' => $selfSkills,
+                'action_usage' => $selfActionUsage,
                 'critical_hits' => $damageIncomplete ? null : $selfCriticalHits,
                 'mp_spent' => $selfMpSpent,
                 'mp_recovered' => $selfMpRecovered,
@@ -435,17 +540,23 @@ final class UndergroundBattleStatisticsProjector
     /** @param array<string, mixed> $row */
     private function isSelfActor(array $row, string $leaderCombatantId, bool $partyMode): bool
     {
+        if (! $partyMode) {
+            return ($row['team'] ?? $row['side'] ?? null) === 'player';
+        }
+
         return is_string($row['actor_id'] ?? null)
-            ? $row['actor_id'] === $leaderCombatantId
-            : ! $partyMode && ($row['side'] ?? null) === 'player';
+            && $row['actor_id'] === $leaderCombatantId;
     }
 
     /** @param array<string, mixed> $row */
     private function isSelfTarget(array $row, string $leaderCombatantId, bool $partyMode): bool
     {
+        if (! $partyMode) {
+            return ($row['target_side'] ?? null) === 'player';
+        }
+
         return is_string($row['target_id'] ?? null)
-            ? $row['target_id'] === $leaderCombatantId
-            : ! $partyMode && ($row['target_side'] ?? null) === 'player';
+            && $row['target_id'] === $leaderCombatantId;
     }
 
     /** @param array<string, mixed> $row */
@@ -589,9 +700,88 @@ final class UndergroundBattleStatisticsProjector
         string $leaderCombatantId,
         bool $partyMode,
     ): bool {
-        return $combatantId !== null
-            ? $combatantId === $leaderCombatantId
-            : ! $partyMode && $side === 'player';
+        return $partyMode
+            ? $combatantId !== null && $combatantId === $leaderCombatantId
+            : $side === 'player';
+    }
+
+    /** @param array<string, mixed> $row */
+    private function damageSequenceId(
+        array $row,
+        ?string $actorId,
+        string $damageSource,
+        int $logIndex,
+        ?string $currentSoloDecisionId,
+    ): string {
+        $actionId = $row['action_id'] ?? null;
+        if (is_string($actionId) && $actionId !== '') {
+            return ($actorId ?? 'side:'.($row['team'] ?? $row['side'] ?? 'unknown')).'|'.$actionId;
+        }
+        if ($damageSource === 'direct' && $currentSoloDecisionId !== null) {
+            return $currentSoloDecisionId;
+        }
+
+        return 'row:'.$logIndex;
+    }
+
+    /**
+     * @param  array<string, array{damage:int,action_key:string|null,damage_sources:array<string, true>}>  $sequences
+     */
+    private function addDamageSequence(
+        array &$sequences,
+        string $sequenceId,
+        ?string $actionKey,
+        string $damageSource,
+        int $effectiveDamage,
+    ): void {
+        $sequences[$sequenceId] ??= [
+            'damage' => 0,
+            'action_key' => $actionKey,
+            'damage_sources' => [],
+        ];
+        $sequences[$sequenceId]['damage'] += max(0, $effectiveDamage);
+        if ($sequences[$sequenceId]['action_key'] === null && $actionKey !== null) {
+            $sequences[$sequenceId]['action_key'] = $actionKey;
+        }
+        $sequences[$sequenceId]['damage_sources'][$damageSource] = true;
+    }
+
+    /**
+     * @param  array<string, array{damage:int,action_key:string|null,damage_sources:array<string, true>}>  $sequences
+     * @return array{damage:int,action_key:string|null,damage_source:string|null}|null
+     */
+    private function maximumDamageSequence(array $sequences): ?array
+    {
+        $maximum = null;
+        foreach ($sequences as $sequence) {
+            $sources = array_keys($sequence['damage_sources']);
+            sort($sources, SORT_STRING);
+            $candidate = [
+                'damage' => $sequence['damage'],
+                'action_key' => $sequence['action_key'],
+                'damage_source' => count($sources) === 1 ? $sources[0] : null,
+            ];
+            if ($maximum === null
+                || $candidate['damage'] > $maximum['damage']
+                || ($candidate['damage'] === $maximum['damage']
+                    && $this->preferActionKey($candidate['action_key'], $maximum['action_key']))) {
+                $maximum = $candidate;
+            }
+        }
+
+        return $maximum;
+    }
+
+    private function preferActionKey(?string $candidate, ?string $current): bool
+    {
+        if ($candidate === $current) {
+            return false;
+        }
+        if ($candidate === null) {
+            return false;
+        }
+
+        return $current === null || strcmp($candidate, $current) < 0;
     }
 
     /** @param array<string, mixed> $metrics */
