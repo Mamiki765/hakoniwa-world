@@ -788,12 +788,18 @@ final class AlphaV1PartyCombatTest extends TestCase
             [$healer, $this->player('borrowed:2', currentHp: 0, defend: true), $this->player('borrowed:3', currentHp: 500, defend: true)],
             ['party_target'], 3100, 8, 0);
         $actions = collect($result->actionLog)->where('actor_id', 'secretary:1');
-        $effectiveActions = $actions->filter(static fn (array $row): bool => in_array($row['effect_type'] ?? null, ['recovery', 'revival'], true) && $row['amount'] < 0)
+        $effectiveActions = $actions->filter(static fn (array $row): bool => in_array($row['effect_type'] ?? null, ['recovery', 'revival'], true)
+            && ($row['effect_source'] ?? null) !== 'periodic' && $row['amount'] < 0)
             ->pluck('action_id')->unique()->count();
         $spent = $actions->where('action', 'role_stack_spent:grace')->sum('amount');
         self::assertGreaterThan(0, $spent);
         self::assertSame($effectiveActions, $spent + $result->finalStates['secretary:1']['role_stacks']['grace']);
-        self::assertNotEmpty(collect($result->actionLog)->where('action', 'periodic_heal:regeneration')->all());
+        $periodicHealing = collect($result->actionLog)->where('action', 'periodic_heal:regeneration');
+        self::assertNotEmpty($periodicHealing->all());
+        self::assertSame(['periodic', 'regeneration'], [
+            $periodicHealing->first()['effect_source'] ?? null,
+            $periodicHealing->first()['periodic_status_key'] ?? null,
+        ]);
         $mercy = $actions->first(static fn (array $row): bool => ($row['kind'] ?? null) === 'decision' && ($row['action_key'] ?? null) === 'heart_of_mercy');
         self::assertIsArray($mercy);
         self::assertGreaterThanOrEqual(4, $mercy['round']);

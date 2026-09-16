@@ -678,6 +678,10 @@ final class UndergroundCombatBuildTest extends TestCase
         ));
         $this->assertNotEmpty($appliedRounds);
         $this->assertNotEmpty($tickRows);
+        $this->assertSame(['periodic', 'bleed'], [
+            $tickRows[0]['damage_source'] ?? null,
+            $tickRows[0]['periodic_status_key'] ?? null,
+        ]);
         $this->assertGreaterThan(min($appliedRounds), $tickRows[0]['round']);
         $this->assertLessThanOrEqual(60, max(array_column($tickRows, 'amount')));
 

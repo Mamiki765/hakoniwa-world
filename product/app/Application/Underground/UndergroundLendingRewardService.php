@@ -20,9 +20,11 @@ final class UndergroundLendingRewardService
 
     public const PARTICIPATIONS_PER_TICKET = 10;
 
+    public function __construct(private readonly UndergroundBattleStorage $battleStorage) {}
+
     /**
-     * Persists a start-time party snapshot. Member rows must already contain
-     * canonical combat payloads; this service never resolves live Secretary state.
+     * Persists the minimum party identity needed by lending settlement. Combat
+     * inputs remain in the in-memory battle result and are never copied here.
      *
      * @param  array<string, mixed>  $snapshot
      * @param  list<array{source_type:string, secretary_id:int|null, source_owner_user_id:int|null, combatant_id:string, original_level:int, effective_level:int, snapshot:array<string,mixed>}>  $members
@@ -71,6 +73,7 @@ final class UndergroundLendingRewardService
                 'leader_combat_level' => $leaderLevel, 'snapshot' => $snapshot,
             ]);
             foreach ($members as $member) {
+                $member['snapshot'] = $this->battleStorage->compactPartyMemberSnapshot($member['snapshot']);
                 $party->members()->create($member);
             }
 

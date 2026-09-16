@@ -12,6 +12,7 @@ use Illuminate\Support\Carbon;
  * @property int $id
  * @property int $underground_battle_id
  * @property list<array<string, mixed>> $actions
+ * @property array<string, mixed>|null $presentation
  * @property Carbon $expires_at
  * @property Carbon $created_at
  * @property Carbon $updated_at
@@ -19,7 +20,7 @@ use Illuminate\Support\Carbon;
  */
 final class UndergroundBattleLog extends Model
 {
-    protected $fillable = ['underground_battle_id', 'actions', 'expires_at'];
+    protected $fillable = ['underground_battle_id', 'actions', 'presentation', 'expires_at'];
 
     /** @return array<string, string> */
     protected function casts(): array
@@ -27,6 +28,7 @@ final class UndergroundBattleLog extends Model
         return [
             'underground_battle_id' => 'integer',
             'actions' => 'array',
+            'presentation' => 'array',
             'expires_at' => 'immutable_datetime',
         ];
     }

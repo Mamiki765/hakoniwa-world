@@ -238,6 +238,20 @@ final readonly class SecretaryImageRetentionService
         return $deleted;
     }
 
+    /** @return array{count:int,oldest_expires_at:string|null} */
+    public function expiredBacklog(?DateTimeInterface $now = null): array
+    {
+        $at = $now instanceof DateTimeInterface ? Carbon::instance($now) : Carbon::now();
+        $query = DB::table('underground_battle_image_references')
+            ->where('retained_until', '<=', $at);
+        $oldest = (clone $query)->min('retained_until');
+
+        return [
+            'count' => (clone $query)->count(),
+            'oldest_expires_at' => is_string($oldest) ? $oldest : null,
+        ];
+    }
+
     /**
      * @param  array<string, mixed>  $snapshot
      * @return list<array<string, mixed>>

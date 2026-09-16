@@ -26,6 +26,8 @@ use Illuminate\Support\Carbon;
  * @property int $damage_dealt
  * @property int $damage_received
  * @property int $healing_done
+ * @property int|null $statistics_version
+ * @property array<string, mixed>|null $statistics
  * @property int $xp_awarded
  * @property int $shard_delta
  * @property int $combat_level_before
@@ -36,6 +38,8 @@ use Illuminate\Support\Carbon;
  * @property int $shard_balance_after
  * @property int $private_seed
  * @property array<string, mixed> $snapshot
+ * @property int|null $compaction_version
+ * @property Carbon|null $compacted_at
  * @property Carbon $started_at
  * @property Carbon|null $finished_at
  * @property Carbon $created_at
@@ -66,9 +70,9 @@ final class UndergroundBattle extends Model
     protected $fillable = [
         'underground_profile_id', 'underground_party_id', 'request_id', 'request_fingerprint', 'runtime_identity', 'activity_type', 'activity_key',
         'encounter_key', 'trial_run_key', 'trial_battle_index', 'result', 'rounds',
-        'damage_dealt', 'damage_received', 'healing_done', 'xp_awarded', 'shard_delta',
+        'damage_dealt', 'damage_received', 'healing_done', 'statistics_version', 'statistics', 'xp_awarded', 'shard_delta',
         'combat_level_before', 'combat_level_after', 'combat_xp_before', 'combat_xp_after',
-        'shard_balance_before', 'shard_balance_after', 'private_seed', 'snapshot', 'started_at', 'finished_at',
+        'shard_balance_before', 'shard_balance_after', 'private_seed', 'snapshot', 'compaction_version', 'compacted_at', 'started_at', 'finished_at',
     ];
 
     protected $hidden = ['private_seed'];
@@ -84,6 +88,8 @@ final class UndergroundBattle extends Model
             'damage_dealt' => 'integer',
             'damage_received' => 'integer',
             'healing_done' => 'integer',
+            'statistics_version' => 'integer',
+            'statistics' => 'array',
             'xp_awarded' => 'integer',
             'shard_delta' => 'integer',
             'combat_level_before' => 'integer',
@@ -94,6 +100,8 @@ final class UndergroundBattle extends Model
             'shard_balance_after' => 'integer',
             'private_seed' => 'integer',
             'snapshot' => 'array',
+            'compaction_version' => 'integer',
+            'compacted_at' => 'immutable_datetime',
             'started_at' => 'immutable_datetime',
             'finished_at' => 'immutable_datetime',
         ];

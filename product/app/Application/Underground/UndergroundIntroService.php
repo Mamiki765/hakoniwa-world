@@ -52,6 +52,8 @@ final readonly class UndergroundIntroService
         private UndergroundAwakening $awakening,
         private PriorityCombatAiConfiguration $aiConfiguration,
         private SecretaryLendingService $lending,
+        private UndergroundBattleStatisticsProjector $statisticsProjector,
+        private UndergroundBattleStorage $battleStorage,
     ) {}
 
     /** @return array<string, mixed> */
@@ -1207,6 +1209,8 @@ final readonly class UndergroundIntroService
             'damage_dealt' => $result->damageDealt,
             'damage_received' => $result->damageReceived,
             'healing_done' => $result->healingDone,
+            'statistics_version' => UndergroundBattleStatisticsProjector::VERSION,
+            'statistics' => $this->statisticsProjector->fromScriptedSolo($result),
             'xp_awarded' => $battleKey === 'tutorial' ? $definition['xp_reward'] : 0,
             'shard_delta' => 0,
             'combat_level_before' => $before['level'],
@@ -1216,7 +1220,7 @@ final readonly class UndergroundIntroService
             'shard_balance_before' => $before['shards'],
             'shard_balance_after' => $after['shards'],
             'private_seed' => $definition['seed'],
-            'snapshot' => [
+            'snapshot' => $this->battleStorage->compactSnapshot([
                 'story_identity' => $this->catalog->identity(),
                 'combat_rules_identity' => $result->rulesIdentity,
                 'actor' => $definition['actor'],
@@ -1236,7 +1240,9 @@ final readonly class UndergroundIntroService
                 ],
                 'max_rounds' => $definition['max_rounds'],
                 'penalty_policy' => 'none',
-            ],
+            ]),
+            'compaction_version' => UndergroundBattleStorage::COMPACTION_VERSION,
+            'compacted_at' => $finishedAt,
             'started_at' => $startedAt,
             'finished_at' => $finishedAt,
         ]);
@@ -1328,6 +1334,7 @@ final readonly class UndergroundIntroService
             $playerDisplayName,
             'リカ',
         );
+        $detailSnapshot = ['initial_state' => $projection['initial_state']];
         $battle = UndergroundBattle::query()->create([
             'underground_profile_id' => $profile->id,
             'request_id' => $requestId,
@@ -1343,6 +1350,8 @@ final readonly class UndergroundIntroService
             'damage_dealt' => $result->damageDealt,
             'damage_received' => $result->damageReceived,
             'healing_done' => $result->effectiveHealing,
+            'statistics_version' => UndergroundBattleStatisticsProjector::VERSION,
+            'statistics' => $this->statisticsProjector->fromSolo($result),
             'xp_awarded' => 0,
             'shard_delta' => 0,
             'combat_level_before' => $profile->combat_level,
@@ -1352,25 +1361,28 @@ final readonly class UndergroundIntroService
             'shard_balance_before' => $profile->shard_balance,
             'shard_balance_after' => $profile->shard_balance,
             'private_seed' => $definition['seed'],
-            'snapshot' => [
+            'snapshot' => $this->battleStorage->compactSnapshot([
                 'story_identity' => $this->catalog->identity(),
                 'combat_rules_identity' => $result->rulesIdentity,
                 'ai' => $definition['ai'],
                 'encounter_display_name' => 'リカ',
                 'player_display_name' => $playerDisplayName,
                 'presentation_log_version' => UndergroundAlphaV1BattleProjector::PRESENTATION_LOG_VERSION,
-                'initial_state' => $projection['initial_state'],
+                'initial_state' => $detailSnapshot['initial_state'],
                 'enemy_combat_level_equivalent' => $definition['combat_level_equivalent'],
                 'enemy_scale_bps' => $definition['enemy_scale_bps'],
                 'summary' => $projection['summary'],
                 'penalty_policy' => 'none',
-            ],
+            ]),
+            'compaction_version' => UndergroundBattleStorage::COMPACTION_VERSION,
+            'compacted_at' => $finishedAt,
             'started_at' => $startedAt,
             'finished_at' => $finishedAt,
         ]);
         UndergroundBattleLog::query()->create([
             'underground_battle_id' => $battle->id,
             'actions' => $projection['rounds'],
+            'presentation' => $this->battleStorage->detailPresentation($detailSnapshot),
             'expires_at' => $finishedAt->copy()->addHours($this->runtimeCatalog->battleLogRetentionHours()),
         ]);
 
@@ -2037,9 +2049,12 @@ final readonly class UndergroundIntroService
             return $this->runtime->projectTrialBattle($battle, $withActions);
         }
         $snapshot = $battle->snapshot;
+        $log = $this->loadedLog($battle);
+        if ($log instanceof UndergroundBattleLog && is_array($log->presentation)) {
+            $snapshot = array_replace($snapshot, $log->presentation);
+        }
         $displayName = $snapshot['encounter_display_name'] ?? null;
         $playerDisplayName = $snapshot['player_display_name'] ?? null;
-        $log = $this->loadedLog($battle);
 
         return [
             'id' => $battle->request_id,
