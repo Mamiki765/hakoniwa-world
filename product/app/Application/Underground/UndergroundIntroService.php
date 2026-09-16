@@ -147,10 +147,15 @@ final readonly class UndergroundIntroService
             UndergroundIntroProgress $intro,
         ) use ($itemKey, $item): void {
             $this->assertShopUnlocked($profile, $intro);
-            if ($itemKey === 'mirror' && $profile->villa_purchased_at === null) {
+            if ($itemKey !== 'villa' && $profile->villa_purchased_at === null) {
                 throw new UndergroundRuntimeException('underground_villa_required', '別荘の購入後に選べる品物です。');
             }
-            $column = $itemKey === 'villa' ? 'villa_purchased_at' : 'mirror_purchased_at';
+            $column = match ($itemKey) {
+                'villa' => 'villa_purchased_at',
+                'mirror' => 'mirror_purchased_at',
+                'trophy_shelf' => 'trophy_shelf_purchased_at',
+                default => throw new UndergroundRuntimeException('underground_residence_item_invalid', '購入する品物を確認してください。'),
+            };
             if ($profile->getAttribute($column) !== null) {
                 return;
             }
@@ -1621,6 +1626,7 @@ final readonly class UndergroundIntroService
             'residence' => [
                 'villa_owned' => $profile?->villa_purchased_at !== null,
                 'mirror_owned' => $profile?->mirror_purchased_at !== null,
+                'trophy_shelf_owned' => $profile?->trophy_shelf_purchased_at !== null,
                 'exchange_intro_page' => (int) ($profile->exchange_intro_page ?? 0),
                 'mirror_event_completed' => $profile?->mirror_event_completed_at !== null,
                 'items' => $this->catalog->residence(),

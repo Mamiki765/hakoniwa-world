@@ -6,6 +6,7 @@ return [
     'residence' => [
         'villa' => ['name' => '別荘', 'price' => 100000],
         'mirror' => ['name' => '透明な鏡', 'price' => 1000000],
+        'trophy_shelf' => ['name' => 'トロフィー棚', 'price' => 500000],
     ],
     'shopkeeper_name' => [
         'maximum_graphemes' => 20,

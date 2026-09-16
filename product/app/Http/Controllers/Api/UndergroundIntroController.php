@@ -52,7 +52,7 @@ final class UndergroundIntroController extends Controller
 
     public function purchaseResidence(UndergroundIntroMutationRequest $request, UndergroundIntroService $service): JsonResponse
     {
-        $request->validate(['item' => ['required', 'string', 'in:villa,mirror']]);
+        $request->validate(['item' => ['required', 'string', 'in:villa,mirror,trophy_shelf']]);
 
         return $this->respond(fn (): array => $service->purchaseResidence(
             $request->user(), $request->string('request_id')->value(), $request->string('item')->value(),

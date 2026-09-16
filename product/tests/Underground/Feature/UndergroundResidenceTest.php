@@ -6,6 +6,7 @@ use App\Models\SecretaryGuideConversationTotal;
 use App\Models\UndergroundBattle;
 use App\Models\UndergroundTrialProgress;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Str;
 use Tests\Support\UndergroundPlayerAccessTestCase;
@@ -27,7 +28,16 @@ final class UndergroundResidenceTest extends UndergroundPlayerAccessTestCase
     public function test_residence_purchase_and_event_retries_preserve_assets_and_unlock_only_the_owner_journal(): void
     {
         [$user, $secretary] = $this->secretaryUser('別荘の主');
-        $profile = $this->openEquipmentProfile($secretary, 1_100_000);
+        $profile = $this->openEquipmentProfile($secretary, 1_600_000);
+        // Supported upgrade: trial clears can predate the furniture feature.
+        $firstClear = Carbon::parse('2026-09-10T12:34:56+09:00')->utc();
+        UndergroundTrialProgress::query()->create([
+            'underground_profile_id' => $profile->id, 'trial_key' => 'trial_01',
+            'unlocked_at' => $firstClear->copy()->subDay(), 'first_cleared_at' => $firstClear,
+        ]);
+        UndergroundTrialProgress::query()->create([
+            'underground_profile_id' => $profile->id, 'trial_key' => 'trial_02', 'unlocked_at' => $firstClear,
+        ]);
         [$other, $otherSecretary] = $this->secretaryUser('別の秘書');
         $otherProfile = $this->openEquipmentProfile($otherSecretary);
         $this->guideAssetDirectory = storage_path('framework/testing/guide-'.Str::uuid());
@@ -49,16 +59,32 @@ final class UndergroundResidenceTest extends UndergroundPlayerAccessTestCase
         ]);
         $this->actingAs($user)->getJson('/api/v1/me/underground/journal')->assertConflict();
         $post('residence/purchase', ['item' => 'mirror'])->assertConflict();
+        $post('residence/purchase', ['item' => 'trophy_shelf'])->assertConflict();
         $post('events/advance', ['event' => 'exchange', 'page' => 2])->assertConflict();
         $post('events/advance', ['event' => 'exchange', 'page' => 1])->assertOk();
         $post('events/advance', ['event' => 'exchange', 'page' => 2])->assertOk();
         $requestId = (string) Str::uuid();
         $post('residence/purchase', ['item' => 'villa', 'request_id' => $requestId])
-            ->assertOk()->assertJsonPath('data.shard_balance', 1_000_000);
+            ->assertOk()->assertJsonPath('data.shard_balance', 1_500_000);
         $post('residence/purchase', ['item' => 'villa', 'request_id' => $requestId])
-            ->assertOk()->assertJsonPath('data.shard_balance', 1_000_000);
+            ->assertOk()->assertJsonPath('data.shard_balance', 1_500_000);
         $post('residence/purchase', ['item' => 'villa'])
+            ->assertOk()->assertJsonPath('data.shard_balance', 1_500_000);
+        $this->actingAs($user)->getJson('/api/v1/me/underground/journal')->assertOk()->assertJsonPath('data.trophies', []);
+        $shelfRequest = (string) Str::uuid();
+        $post('residence/purchase', ['item' => 'trophy_shelf', 'request_id' => $shelfRequest])
+            ->assertOk()->assertJsonPath('data.residence.trophy_shelf_owned', true)->assertJsonPath('data.shard_balance', 1_000_000);
+        $purchasedAt = $profile->fresh()->trophy_shelf_purchased_at;
+        $post('residence/purchase', ['item' => 'trophy_shelf', 'request_id' => $shelfRequest])
             ->assertOk()->assertJsonPath('data.shard_balance', 1_000_000);
+        $post('residence/purchase', ['item' => 'trophy_shelf'])
+            ->assertOk()->assertJsonPath('data.shard_balance', 1_000_000);
+        $this->assertEquals($purchasedAt, $profile->fresh()->trophy_shelf_purchased_at);
+        $this->actingAs($user)->getJson('/api/v1/me/underground/journal')->assertOk()
+            ->assertJsonPath('data.trophies.0.key', 'trial_01')
+            ->assertJsonPath('data.trophies.0.achieved_at', $firstClear->copy()->utc()->toIso8601String())
+            ->assertJsonMissing(['name' => 'デュラハンの兜'])
+            ->assertJsonMissing(['name' => '魔剣のレプリカ']);
         $post('residence/purchase', ['item' => 'mirror'])
             ->assertOk()->assertJsonPath('data.residence.mirror_owned', true)->assertJsonPath('data.shard_balance', 0);
         $post('events/advance', ['event' => 'mirror', 'page' => 1])
@@ -87,6 +113,7 @@ final class UndergroundResidenceTest extends UndergroundPlayerAccessTestCase
             ->assertJsonPath('data.guide_punch_count', 3);
         $this->actingAs($other)->getJson('/api/v1/me/underground/journal')->assertConflict();
         $this->assertNull($otherProfile->fresh()->villa_purchased_at);
+        $this->assertNull($otherProfile->fresh()->trophy_shelf_purchased_at);
         $this->assertSame(5_000, $profile->fresh()->banked_shard_balance);
     }
 

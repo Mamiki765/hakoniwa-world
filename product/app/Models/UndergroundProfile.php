@@ -27,6 +27,7 @@ use Illuminate\Support\Carbon;
  * @property Carbon|null $last_respec_at
  * @property Carbon|null $villa_purchased_at
  * @property Carbon|null $mirror_purchased_at
+ * @property Carbon|null $trophy_shelf_purchased_at
  * @property int $exchange_intro_page
  * @property Carbon|null $mirror_event_completed_at
  * @property string|null $home_background_key
@@ -70,6 +71,7 @@ final class UndergroundProfile extends Model
         'skill_rebuild_required', 'rental_party',
         'awakening_gauge', 'awakening_message', 'awakening_technique_key', 'custom_ai_rules',
         'villa_purchased_at', 'mirror_purchased_at', 'exchange_intro_page', 'mirror_event_completed_at',
+        'trophy_shelf_purchased_at',
         'home_background_key',
     ];
 
@@ -101,6 +103,7 @@ final class UndergroundProfile extends Model
             'custom_ai_rules' => 'array',
             'villa_purchased_at' => 'immutable_datetime',
             'mirror_purchased_at' => 'immutable_datetime',
+            'trophy_shelf_purchased_at' => 'immutable_datetime',
             'exchange_intro_page' => 'integer',
             'mirror_event_completed_at' => 'immutable_datetime',
         ];

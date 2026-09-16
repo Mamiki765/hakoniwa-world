@@ -122,7 +122,7 @@
 .ug-property-item { position: relative; border: 1px solid var(--line); border-radius: 8px; padding: 20px; display: grid; gap: 16px; }
 .ug-property-item header { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 10px; }
 .ug-property-item h2 { font-size: 1.1rem; }
-.ug-property-item em { font-style: italic; line-height: 1.8; }
+.ug-property-item em { font-style: italic; line-height: 1.8; white-space: pre-line; }
 .ug-property-item button { justify-self: start; }
 .ug-sold-out { color: var(--danger); border: 2px solid currentColor; padding: 3px 12px; transform: rotate(-8deg); justify-self: end; }
 .ug-purchase-confirm { border: 2px solid var(--gold); border-radius: 8px; padding: 18px; }
@@ -131,6 +131,13 @@
 .ug-journal dl > div { display: flex; justify-content: space-between; gap: 12px; padding: 16px 0; border-bottom: 1px solid var(--line); }
 .ug-journal dd { margin: 0; text-align: right; font-variant-numeric: tabular-nums; font-weight: bold; }
 .ug-journal dd small { display: block; font-weight: normal; color: var(--muted); }
+.ug-trophies { display: grid; gap: 16px; }
+.ug-trophies > button { justify-self: start; }
+.ug-trophy-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr)); gap: 16px; list-style: none; margin: 0; padding: 0; }
+.ug-trophy-list li { display: grid; gap: 12px; padding: 20px; border: 1px solid var(--line); border-bottom: 4px solid var(--gold); border-radius: 8px; background: var(--ug-raised); color: var(--ink); }
+.ug-trophy-list h3 { margin: 0; font-size: 1.1rem; }
+.ug-trophy-list p { font-size: .85rem; }
+.ug-trophy-list time { color: var(--muted); font-size: .85rem; font-variant-numeric: tabular-nums; }
 .ug-event-replays { display: flex; gap: 10px; flex-wrap: wrap; padding-top: 16px; }
 .ug-shell > .underground-progression-panel { margin: 20px; }
 .ug-shell .underground-adventure-sections { grid-template-columns: 1fr; }

@@ -26,7 +26,7 @@ final class UndergroundIntroCatalog
             throw new RuntimeException('Underground residence configuration is missing.');
         }
         $result = [];
-        foreach (['villa', 'mirror'] as $key) {
+        foreach (['villa', 'mirror', 'trophy_shelf'] as $key) {
             $item = $items[$key] ?? null;
             if (! is_array($item) || ! is_string($item['name'] ?? null)
                 || ! is_int($item['price'] ?? null) || $item['price'] < 1) {

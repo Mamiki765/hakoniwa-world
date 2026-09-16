@@ -595,7 +595,7 @@ const pendingAwakeningMessageMutation = ref<PendingMutation | null>(null);
 const pendingAwakeningTechniqueMutation = ref<PendingMutation | null>(null);
 const awakeningMessageDraft = ref('');
 const awakeningTechniqueDraft = ref<string | null>(null);
-type View = 'home' | 'adventure' | 'trials' | 'secret' | 'history' | 'playtest' | 'character' | 'status' | 'skills' | 'shop' | 'bank' | 'guide' | 'ai' | 'vault' | 'party' | 'property' | 'villa' | 'recollections';
+type View = 'home' | 'adventure' | 'trials' | 'secret' | 'history' | 'playtest' | 'character' | 'status' | 'skills' | 'shop' | 'bank' | 'guide' | 'ai' | 'vault' | 'party' | 'property' | 'villa' | 'recollections' | 'trophies';
 const equipmentView = ref<View>('home');
 const tabs: Record<UndergroundDestination, Array<{ key: View; label: string }>> = {
     home: [],
@@ -603,7 +603,7 @@ const tabs: Record<UndergroundDestination, Array<{ key: View; label: string }>> 
     character: [{ key: 'character', label: '能力' }, { key: 'status', label: 'STP配分' }, { key: 'skills', label: 'スキル・覚醒' }, { key: 'vault', label: '装備・保管庫' }, { key: 'ai', label: '戦法' }],
     shop: [{ key: 'shop', label: '装備を買う' }, { key: 'bank', label: '銀行' }, { key: 'guide', label: '案内人と話す' }],
     exchange: [{ key: 'party', label: 'パーティー' }, { key: 'property', label: '不動産' }],
-    villa: [{ key: 'villa', label: '冒険日誌' }, { key: 'recollections', label: '回想' }],
+    villa: [{ key: 'villa', label: '冒険日誌' }, { key: 'recollections', label: '回想' }, { key: 'trophies', label: 'トロフィー棚' }],
 };
 const currentDestination = computed<UndergroundDestination>(() => undergroundDestinations.find(destination =>
     destination.key === equipmentView.value || tabs[destination.key].some(tab => tab.key === equipmentView.value))?.key ?? 'home');
@@ -2856,7 +2856,7 @@ onUnmounted(() => {
                         <ul><li v-for="battle in recentBattles" :key="battle.id"><button type="button" @click="showBattle(battle)">{{ battle.encounter_name }} / {{ battleRoundCount(battle) }}ラウンド</button></li></ul>
                     </section>
 
-                            <UndergroundResidence v-if="(equipmentView === 'property' || equipmentView === 'villa') && state.residence" :mode="equipmentView" :residence="state.residence" :busy="busy" :shards="state.shard_balance" @purchase="loungeMutation('residence/purchase', { item: $event })" @property="equipmentView = 'property'" />
+                            <UndergroundResidence v-if="(equipmentView === 'property' || equipmentView === 'villa' || equipmentView === 'trophies') && state.residence" :mode="equipmentView" :residence="state.residence" :busy="busy" :shards="state.shard_balance" @purchase="loungeMutation('residence/purchase', { item: $event })" @property="equipmentView = 'property'" />
                             <template v-if="equipmentView === 'recollections'">
                                 <p v-if="!state.residence?.villa_owned">別荘を購入すると回想を読めます。</p>
                                 <section v-else class="ug-event-replays" aria-label="交流場と鏡の回想">
