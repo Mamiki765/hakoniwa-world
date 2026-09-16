@@ -434,7 +434,8 @@ class DisasterAndOilTurnTest extends TestCase
 
         $this->assertFalse(app(DisasterTurnService::class)->processFire($context, $factory, $cellIndex));
         $this->assertSame('factory', $factory->fresh()->facility()->value('key'));
-        $this->assertSame(1, DB::table('audit_events')->where('event_type', 'fire.prevented')
+        $this->assertSame(1, $context->state->routineSummaryMetrics($nation->id)['fire_protection_checks']);
+        $this->assertSame(0, DB::table('audit_events')->where('event_type', 'fire.prevented')
             ->whereRaw("metadata->>'turn_run_id' = ?", [(string) $run->id])->count());
 
         $states = app(MapCellStateService::class);

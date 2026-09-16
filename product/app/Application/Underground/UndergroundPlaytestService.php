@@ -24,6 +24,8 @@ final readonly class UndergroundPlaytestService
         private UndergroundAlphaV1BattleProjector $projector,
         private UndergroundBattleSeed $battleSeed,
         private UndergroundRuntimeCatalog $runtimeCatalog,
+        private UndergroundBattleStatisticsProjector $statisticsProjector,
+        private UndergroundBattleStorage $battleStorage,
     ) {}
 
     /** @return array<string, mixed> */
@@ -135,6 +137,7 @@ final readonly class UndergroundPlaytestService
                 $secretary->name,
                 $definition['enemy_label'],
             );
+            $detailSnapshot = ['initial_state' => $projection['initial_state']];
             $battle = UndergroundBattle::query()->create([
                 'underground_profile_id' => $profile->id,
                 'request_id' => $requestId,
@@ -154,6 +157,8 @@ final readonly class UndergroundPlaytestService
                 'damage_dealt' => $result->damageDealt,
                 'damage_received' => $result->damageReceived,
                 'healing_done' => $result->effectiveHealing,
+                'statistics_version' => UndergroundBattleStatisticsProjector::VERSION,
+                'statistics' => $this->statisticsProjector->fromSolo($result),
                 'xp_awarded' => 0,
                 'shard_delta' => 0,
                 'combat_level_before' => $profile->combat_level,
@@ -163,7 +168,7 @@ final readonly class UndergroundPlaytestService
                 'shard_balance_before' => $profile->shard_balance,
                 'shard_balance_after' => $profile->shard_balance,
                 'private_seed' => $seed,
-                'snapshot' => [
+                'snapshot' => $this->battleStorage->compactSnapshot([
                     'playtest_identity' => $definition['identity'],
                     'combat_rules_identity' => $result->rulesIdentity,
                     'ai' => $definition['ai'],
@@ -173,17 +178,20 @@ final readonly class UndergroundPlaytestService
                     'build_display_name' => $definition['build_label'],
                     'encounter_display_name' => $definition['enemy_label'],
                     'presentation_log_version' => UndergroundAlphaV1BattleProjector::PRESENTATION_LOG_VERSION,
-                    'initial_state' => $projection['initial_state'],
+                    'initial_state' => $detailSnapshot['initial_state'],
                     'summary' => $projection['summary'],
                     'reward_policy' => 'none',
                     'penalty_policy' => 'none',
-                ],
+                ]),
+                'compaction_version' => UndergroundBattleStorage::COMPACTION_VERSION,
+                'compacted_at' => $finishedAt,
                 'started_at' => $startedAt,
                 'finished_at' => $finishedAt,
             ]);
             UndergroundBattleLog::query()->create([
                 'underground_battle_id' => $battle->id,
                 'actions' => $projection['rounds'],
+                'presentation' => $this->battleStorage->detailPresentation($detailSnapshot),
                 'expires_at' => $finishedAt->copy()->addHours($this->runtimeCatalog->battleLogRetentionHours()),
             ]);
 
@@ -205,10 +213,13 @@ final readonly class UndergroundPlaytestService
     public function projectBattle(UndergroundBattle $battle, bool $withRounds = true): array
     {
         $snapshot = $battle->snapshot;
+        $log = $this->loadedLog($battle);
+        if ($log instanceof UndergroundBattleLog && is_array($log->presentation)) {
+            $snapshot = array_replace($snapshot, $log->presentation);
+        }
         $buildKey = is_string($snapshot['build_key'] ?? null) ? $snapshot['build_key'] : '';
         $enemyKey = is_string($snapshot['enemy_key'] ?? null) ? $snapshot['enemy_key'] : '';
         $summary = is_array($snapshot['summary'] ?? null) ? $snapshot['summary'] : [];
-        $log = $this->loadedLog($battle);
         $presentationLogVersion = $snapshot['presentation_log_version'] ?? null;
         $hasPresentationLog = in_array($presentationLogVersion, [1, UndergroundAlphaV1BattleProjector::PRESENTATION_LOG_VERSION], true)
             && $log instanceof UndergroundBattleLog;

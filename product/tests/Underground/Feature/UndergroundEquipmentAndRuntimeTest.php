@@ -3,8 +3,8 @@
 namespace Tests\Underground\Feature;
 
 use App\Application\Underground\UndergroundAlphaV1PlayerCatalog;
+use App\Application\Underground\UndergroundEquipmentLoadoutResolver;
 use App\Application\Underground\UndergroundRuntimeEquipmentGenerator;
-use App\Domain\Underground\Combat\AlphaV1CombatRules;
 use App\Models\UndergroundBattle;
 use App\Models\UndergroundIntroProgress;
 use App\Models\UndergroundIntroRequest;
@@ -244,21 +244,22 @@ final class UndergroundEquipmentAndRuntimeTest extends UndergroundPlayerAccessTe
         ])->assertOk();
         $equipmentBattle = UndergroundBattle::query()
             ->where('request_id', $explorationRequest)->sole();
-        $this->assertSame('iron_dagger', $equipmentBattle->snapshot['equipment']['key']);
-        $this->assertSame(['dagger_flurry'], $equipmentBattle->snapshot['equipped_active_skills']);
-        $this->assertSame(30, $equipmentBattle->snapshot['equipment']['weapon_power']);
+        $combatLoadout = app(UndergroundEquipmentLoadoutResolver::class)
+            ->combatLoadout($profile->fresh());
+        $this->assertSame('iron_dagger', $combatLoadout['key']);
+        $this->assertSame(30, $combatLoadout['weapon_power']);
         $this->assertSame([12, 9, 20], [
-            $equipmentBattle->snapshot['equipment']['physical_defense'],
-            $equipmentBattle->snapshot['equipment']['magical_defense'],
-            $equipmentBattle->snapshot['equipment']['max_hp'],
+            $combatLoadout['physical_defense'],
+            $combatLoadout['magical_defense'],
+            $combatLoadout['max_hp'],
         ]);
         $this->assertSame(
             ['iron_dagger', 'leather_armor', 'vitality_accessory_rank_1'],
-            array_column($equipmentBattle->snapshot['equipment']['items'], 'key'),
+            array_column($combatLoadout['items'], 'key'),
         );
-        $this->assertEquals([
-            'vitality' => 20, 'might' => 34, 'finesse' => 33, 'spirit' => 8, 'agility' => 12,
-        ], $equipmentBattle->snapshot['combat_stats']);
+        $this->assertArrayNotHasKey('equipment', $equipmentBattle->snapshot);
+        $this->assertArrayNotHasKey('combat_stats', $equipmentBattle->snapshot);
+        $this->assertArrayNotHasKey('equipped_active_skills', $equipmentBattle->snapshot);
         $this->actingAs($user)->postJson("/api/v1/me/underground/equipment/items/{$armor->id}/sell", [
             'request_id' => (string) Str::uuid(),
         ])->assertConflict()->assertJsonPath('code', 'underground_equipment_equipped');
@@ -734,17 +735,19 @@ final class UndergroundEquipmentAndRuntimeTest extends UndergroundPlayerAccessTe
             'request_id' => (string) Str::uuid(),
             'item_id' => $item->id,
         ])->assertOk()->assertJsonPath('data.vault.equipped.armor.instance_identity', $generated['instance_identity']);
+        $combatLoadout = app(UndergroundEquipmentLoadoutResolver::class)
+            ->combatLoadout($profile->fresh());
+        $equippedGenerated = collect($combatLoadout['items'])->firstWhere('equipped_slot', 'armor');
+        $this->assertSame($generated['instance_identity'], $equippedGenerated['instance_identity']);
+        $this->assertEquals($generated['modifiers'], $combatLoadout['modifiers']);
+        $this->assertCount(count($generated['affixes']), $combatLoadout['affixes']);
 
         $exploreRequest = (string) Str::uuid();
         $this->actingAs($user)->postJson('/api/v1/me/underground/explore', [
             'request_id' => $exploreRequest,
         ])->assertOk();
         $battle = UndergroundBattle::query()->where('request_id', $exploreRequest)->sole();
-        $this->assertSame($generated['instance_identity'], collect(
-            $battle->snapshot['equipment']['items'],
-        )->firstWhere('equipped_slot', 'armor')['instance_identity']);
-        $this->assertEquals($generated['modifiers'], $battle->snapshot['equipment']['modifiers']);
-        $this->assertCount(count($generated['affixes']), $battle->snapshot['equipment']['affixes']);
+        $this->assertArrayNotHasKey('equipment', $battle->snapshot);
         $this->assertEquals($generated, $item->fresh()->generated_payload);
     }
 
@@ -908,30 +911,16 @@ final class UndergroundEquipmentAndRuntimeTest extends UndergroundPlayerAccessTe
             $battle->xp_awarded,
             $battle->shard_delta,
         ]);
-        $this->assertEquals(
-            ['vitality' => 19, 'might' => 36, 'finesse' => 31, 'spirit' => 9, 'agility' => 10],
-            $battle->snapshot['progression_stats'],
-        );
-        $this->assertEquals(
-            ['vitality' => 20, 'might' => 37, 'finesse' => 32, 'spirit' => 10, 'agility' => 11],
-            $battle->snapshot['combat_stats'],
-        );
-        $this->assertSame('starter_knife', $battle->snapshot['equipment']['key']);
-        $this->assertSame('secretary-underground-shop-equipment-alpha-v2', $battle->snapshot['equipment']['catalog_identity']);
-        $this->assertSame(['starter_knife'], array_column($battle->snapshot['equipment']['items'], 'key'));
+        $this->assertSame(2, $battle->combat_level_before);
+        foreach ([
+            'progression_stats', 'combat_stats', 'equipment', 'skill_tree_identity',
+            'targeting_contract_identity', 'acquired_skill_nodes', 'equipped_active_skills',
+            'effective_passive_modifiers',
+        ] as $heavySnapshotKey) {
+            $this->assertArrayNotHasKey($heavySnapshotKey, $battle->snapshot);
+        }
         $this->assertSame(400, $battle->snapshot['current_hp_before']);
         $this->assertSame(10_000, $battle->snapshot['battle_start_mp']);
-        $this->assertSame('secretary-underground-skill-tree-alpha-v2', $battle->snapshot['skill_tree_identity']);
-        $this->assertSame(
-            AlphaV1CombatRules::TARGETING_IDENTITY,
-            $battle->snapshot['targeting_contract_identity'],
-        );
-        $this->assertSame([
-            'miracle_holy_bolt' => 1,
-            'martial_precision_cut' => 1,
-        ], $battle->snapshot['acquired_skill_nodes']);
-        $this->assertSame(['holy_bolt'], $battle->snapshot['equipped_active_skills']);
-        $this->assertSame([], $battle->snapshot['effective_passive_modifiers']);
         $this->assertSame($profile->fresh()->current_hp, $battle->snapshot['current_hp_after']);
         $this->assertArrayNotHasKey('current_mp', $profile->getAttributes());
         $this->assertSame(0, UndergroundTrialProgress::query()->count());

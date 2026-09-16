@@ -128,6 +128,8 @@ STORY;
         private VisitorCodeAllocator $visitorCodes,
         private SecretaryImageRetentionService $imageRetention,
         private DailyQuestService $dailyQuests,
+        private UndergroundBattleStatisticsProjector $statisticsProjector,
+        private UndergroundBattleStorage $battleStorage,
     ) {}
 
     /**
@@ -1147,10 +1149,93 @@ STORY;
 
     public function pruneExpiredBattleLogs(): int
     {
-        $deleted = UndergroundBattleLog::query()->where('expires_at', '<=', Carbon::now())->delete();
-        $this->imageRetention->pruneExpired();
+        return $this->pruneExpiredBattleData()['logs_deleted'];
+    }
 
-        return $deleted;
+    /**
+     * @return array{
+     *   logs_deleted:int,image_references_deleted:int,batches:int,stopped_by:string,
+     *   logs_before:int,logs_after:int,oldest_log_before:string|null,oldest_log_after:string|null,
+     *   image_references_before:int,image_references_after:int,oldest_image_before:string|null,oldest_image_after:string|null
+     * }
+     */
+    public function pruneExpiredBattleData(
+        int $batchSize = 1000,
+        int $maxBatches = 20,
+        int $maxSeconds = 30,
+    ): array {
+        if ($batchSize < 1 || $batchSize > 10_000
+            || $maxBatches < 1 || $maxBatches > 1_000
+            || $maxSeconds < 1 || $maxSeconds > 3_600) {
+            throw new \InvalidArgumentException('Underground cleanup boundary is invalid.');
+        }
+        $now = Carbon::now();
+        $logBefore = $this->expiredBattleLogBacklog($now);
+        $imageBefore = $this->imageRetention->expiredBacklog($now);
+        $logsDeleted = 0;
+        $imagesDeleted = 0;
+        $batches = 0;
+        $stoppedBy = 'complete';
+        $started = microtime(true);
+
+        while ($batches < $maxBatches) {
+            if (microtime(true) - $started >= $maxSeconds) {
+                $stoppedBy = 'time_limit';
+                break;
+            }
+            $ids = UndergroundBattleLog::query()
+                ->where('expires_at', '<=', $now)
+                ->orderBy('id')
+                ->limit($batchSize)
+                ->pluck('id');
+            $deleted = $ids->isEmpty()
+                ? 0
+                : UndergroundBattleLog::query()
+                    ->whereIn('id', $ids->all())
+                    ->where('expires_at', '<=', $now)
+                    ->delete();
+            $imageDeleted = $this->imageRetention->pruneExpired($batchSize, $now);
+            $logsDeleted += $deleted;
+            $imagesDeleted += $imageDeleted;
+            $batches++;
+            if ($deleted === 0 && $imageDeleted === 0) {
+                break;
+            }
+        }
+        if ($batches >= $maxBatches
+            && (UndergroundBattleLog::query()->where('expires_at', '<=', $now)->exists()
+                || $this->imageRetention->expiredBacklog($now)['count'] > 0)) {
+            $stoppedBy = 'batch_limit';
+        }
+        $logAfter = $this->expiredBattleLogBacklog($now);
+        $imageAfter = $this->imageRetention->expiredBacklog($now);
+
+        return [
+            'logs_deleted' => $logsDeleted,
+            'image_references_deleted' => $imagesDeleted,
+            'batches' => $batches,
+            'stopped_by' => $stoppedBy,
+            'logs_before' => $logBefore['count'],
+            'logs_after' => $logAfter['count'],
+            'oldest_log_before' => $logBefore['oldest_expires_at'],
+            'oldest_log_after' => $logAfter['oldest_expires_at'],
+            'image_references_before' => $imageBefore['count'],
+            'image_references_after' => $imageAfter['count'],
+            'oldest_image_before' => $imageBefore['oldest_expires_at'],
+            'oldest_image_after' => $imageAfter['oldest_expires_at'],
+        ];
+    }
+
+    /** @return array{count:int,oldest_expires_at:string|null} */
+    private function expiredBattleLogBacklog(Carbon $now): array
+    {
+        $query = UndergroundBattleLog::query()->where('expires_at', '<=', $now);
+        $oldest = (clone $query)->min('expires_at');
+
+        return [
+            'count' => (clone $query)->count(),
+            'oldest_expires_at' => is_string($oldest) ? $oldest : null,
+        ];
     }
 
     /** @return array<string, mixed> */
@@ -1384,14 +1469,18 @@ STORY;
         string $context,
         bool $withRounds,
     ): array {
-        $snapshot = $this->secretaryPresenter->filterSavedBattleImages(
-            $battle->snapshot,
-            $battle->profile->secretary->user,
-        );
-        $summary = is_array($snapshot['summary'] ?? null) ? $snapshot['summary'] : [];
         $log = $battle->relationLoaded('log') && $battle->getRelation('log') instanceof UndergroundBattleLog
             ? $battle->getRelation('log')
             : null;
+        $storedSnapshot = $battle->snapshot;
+        if ($log instanceof UndergroundBattleLog && is_array($log->presentation)) {
+            $storedSnapshot = array_replace($storedSnapshot, $log->presentation);
+        }
+        $snapshot = $this->secretaryPresenter->filterSavedBattleImages(
+            $storedSnapshot,
+            $battle->profile->secretary->user,
+        );
+        $summary = is_array($snapshot['summary'] ?? null) ? $snapshot['summary'] : [];
         $presentationLogVersion = $snapshot['presentation_log_version'] ?? null;
         $hasPresentationLog = in_array($presentationLogVersion, [
             1,
@@ -1721,6 +1810,10 @@ STORY;
             $encounter['label'],
         );
         $projection['summary']['result'] = $resultType;
+        $detailSnapshot = [
+            'initial_state' => $projection['initial_state'],
+            'player_image_references' => $this->battleImageReferences($secretary),
+        ];
         $battle = UndergroundBattle::query()->create([
             'underground_profile_id' => $profile->id,
             'request_id' => $requestId,
@@ -1736,6 +1829,8 @@ STORY;
             'damage_dealt' => $result->damageDealt,
             'damage_received' => $result->damageReceived,
             'healing_done' => $result->effectiveHealing,
+            'statistics_version' => UndergroundBattleStatisticsProjector::VERSION,
+            'statistics' => $this->statisticsProjector->fromSolo($result),
             'xp_awarded' => $xpAwarded,
             'shard_delta' => $shardDelta,
             'combat_level_before' => $levelBefore,
@@ -1745,7 +1840,7 @@ STORY;
             'shard_balance_before' => $shardsBefore,
             'shard_balance_after' => $profile->shard_balance,
             'private_seed' => $seed,
-            'snapshot' => [
+            'snapshot' => $this->battleStorage->compactSnapshot([
                 'exploration_identity' => $this->alphaV1Catalog->explorationIdentity(),
                 'hunting_ground' => [
                     'key' => $huntingGround['key'],
@@ -1757,7 +1852,7 @@ STORY;
                 'combat_rules_identity' => $result->rulesIdentity,
                 'ai' => $definition['ai'],
                 'player_display_name' => $this->secretaryPresenter->battleDisplayName($secretary),
-                'player_image_references' => $this->battleImageReferences($secretary),
+                'player_image_references' => $detailSnapshot['player_image_references'],
                 'encounter_display_name' => $encounter['label'],
                 'presentation_log_version' => UndergroundAlphaV1BattleProjector::PRESENTATION_LOG_VERSION,
                 'initial_state' => $projection['initial_state'],
@@ -1802,7 +1897,9 @@ STORY;
                     'identity' => $this->alphaV1Catalog->explorationDropConfig()['identity'],
                     'status' => 'pending',
                 ],
-            ],
+            ]),
+            'compaction_version' => UndergroundBattleStorage::COMPACTION_VERSION,
+            'compacted_at' => $finishedAt,
             'started_at' => $startedAt,
             'finished_at' => $finishedAt,
         ]);
@@ -1829,9 +1926,10 @@ STORY;
         UndergroundBattleLog::query()->create([
             'underground_battle_id' => $battle->id,
             'actions' => $projection['rounds'],
+            'presentation' => $this->battleStorage->detailPresentation($detailSnapshot),
             'expires_at' => $finishedAt->copy()->addHours($this->catalog->battleLogRetentionHours()),
         ]);
-        $this->imageRetention->retainSnapshotImages($battle, $battle->snapshot);
+        $this->imageRetention->retainSnapshotImages($battle, $detailSnapshot);
         if ($resultType === UndergroundBattle::RESULT_VICTORY) {
             $this->recordActualContentClear($profile, 'hunting_ground', $huntingGroundKey);
         }
@@ -1998,26 +2096,36 @@ STORY;
         $dialogue = $resultType === UndergroundBattle::RESULT_VICTORY
             ? [...$duel['victory_lines'], ...$duel[$firstVictory ? 'first_victory_lines' : 'repeat_victory_lines']]
             : $duel['defeat_lines'];
+        $detailSnapshot = [
+            'initial_state' => $projection['initial_state'],
+            'portrait_events' => $projection['portrait_events'],
+            'party' => [...$partySnapshot, 'party_id' => $party->id, 'members' => $memberSnapshots],
+        ];
         $battle = UndergroundBattle::query()->create([
             'underground_profile_id' => $profile->id, 'underground_party_id' => $party->id,
             'request_id' => $requestId, 'request_fingerprint' => $fingerprint, 'runtime_identity' => $duel['identity'],
             'activity_type' => UndergroundBattle::ACTIVITY_GUIDE_DUEL, 'activity_key' => $duel['key'], 'encounter_key' => $duel['key'],
             'result' => $resultType, 'rounds' => $result->rounds,
             'damage_dealt' => (int) ($result->metrics['damage_dealt'] ?? 0), 'damage_received' => (int) ($result->metrics['damage_received'] ?? 0),
-            'healing_done' => (int) ($result->metrics['effective_healing'] ?? 0), 'xp_awarded' => 0, 'shard_delta' => 0,
+            'healing_done' => (int) ($result->metrics['effective_healing'] ?? 0),
+            'statistics_version' => UndergroundBattleStatisticsProjector::VERSION,
+            'statistics' => $this->statisticsProjector->fromParty($result, $leaderCombatantId),
+            'xp_awarded' => 0, 'shard_delta' => 0,
             'combat_level_before' => $leaderLevel, 'combat_level_after' => $leaderLevel,
             'combat_xp_before' => $profile->combat_xp, 'combat_xp_after' => $profile->combat_xp,
             'shard_balance_before' => $profile->shard_balance, 'shard_balance_after' => $profile->shard_balance, 'private_seed' => $seed,
-            'snapshot' => ['content_identity' => $duel['identity'], 'combat_rules_identity' => AlphaV1CombatRules::IDENTITY,
+            'snapshot' => $this->battleStorage->compactSnapshot(['content_identity' => $duel['identity'], 'combat_rules_identity' => AlphaV1CombatRules::IDENTITY,
                 'player_display_name' => $leaderDisplayName, 'encounter_display_name' => $duel['enemy']['label'],
                 'presentation_log_version' => UndergroundPartyBattleProjector::PRESENTATION_LOG_VERSION,
-                'initial_state' => $projection['initial_state'], 'summary' => $projection['summary'], 'portrait_events' => $projection['portrait_events'],
-                'party' => [...$partySnapshot, 'party_id' => $party->id, 'members' => $memberSnapshots],
+                'initial_state' => $detailSnapshot['initial_state'], 'summary' => $projection['summary'], 'portrait_events' => $detailSnapshot['portrait_events'],
+                'party' => $detailSnapshot['party'],
                 'encounter' => ['key' => $duel['key'], 'enemy_keys' => [$duel['key']], 'definition' => $duel['enemy']],
                 'current_hp_before' => $currentHpBefore, 'current_hp_after' => $currentHpBefore, 'max_hp_after' => $maxHpBefore,
                 'party_awakening' => $result->awakening, 'awakening' => $result->awakening[$leaderCombatantId] ?? null,
                 'duel_dialogue' => $dialogue, 'challenge_intro' => implode("\n", $duel['accept_lines']),
-                'first_victory' => $firstVictory, 'resources_restored' => true],
+                'first_victory' => $firstVictory, 'resources_restored' => true]),
+            'compaction_version' => UndergroundBattleStorage::COMPACTION_VERSION,
+            'compacted_at' => $finishedAt,
             'started_at' => $startedAt, 'finished_at' => $finishedAt,
         ]);
         if ($firstVictory) {
@@ -2033,8 +2141,9 @@ STORY;
             $this->recordActualContentClear($profile, UndergroundBattle::ACTIVITY_GUIDE_DUEL, $duel['key']);
         }
         UndergroundBattleLog::query()->create(['underground_battle_id' => $battle->id, 'actions' => $projection['rounds'],
+            'presentation' => $this->battleStorage->detailPresentation($detailSnapshot),
             'expires_at' => $finishedAt->copy()->addHours($this->catalog->battleLogRetentionHours())]);
-        $this->imageRetention->retainSnapshotImages($battle, $battle->snapshot);
+        $this->imageRetention->retainSnapshotImages($battle, $detailSnapshot);
 
         return $battle->load('log');
     }
@@ -2191,6 +2300,11 @@ STORY;
 
         $projection = $this->partyProjector->project($result, $memberSnapshots, $leaderDefinition['catalog']);
         $projection['summary']['result'] = $resultType;
+        $detailSnapshot = [
+            'initial_state' => $projection['initial_state'],
+            'portrait_events' => $projection['portrait_events'],
+            'party' => [...$partySnapshot, 'party_id' => $party->id, 'members' => $memberSnapshots],
+        ];
         $battle = UndergroundBattle::query()->create([
             'underground_profile_id' => $profile->id,
             'underground_party_id' => $party->id,
@@ -2207,6 +2321,8 @@ STORY;
             'damage_dealt' => (int) ($result->metrics['damage_dealt'] ?? 0),
             'damage_received' => (int) ($result->metrics['damage_received'] ?? 0),
             'healing_done' => (int) ($result->metrics['effective_healing'] ?? 0),
+            'statistics_version' => UndergroundBattleStatisticsProjector::VERSION,
+            'statistics' => $this->statisticsProjector->fromParty($result, $leaderCombatantId),
             'xp_awarded' => $xpAwarded,
             'shard_delta' => $shardDelta,
             'combat_level_before' => $levelBefore,
@@ -2216,7 +2332,7 @@ STORY;
             'shard_balance_before' => $shardsBefore,
             'shard_balance_after' => $profile->shard_balance,
             'private_seed' => $seed,
-            'snapshot' => [
+            'snapshot' => $this->battleStorage->compactSnapshot([
                 'exploration_identity' => $this->alphaV1Catalog->explorationIdentity(),
                 'hunting_ground' => [
                     'key' => $huntingGround['key'],
@@ -2231,14 +2347,10 @@ STORY;
                     ? $enemyLabels[0].($enemyCount === 1 ? '' : ' ×'.$enemyCount)
                     : implode('・', $enemyLabels),
                 'presentation_log_version' => UndergroundPartyBattleProjector::PRESENTATION_LOG_VERSION,
-                'initial_state' => $projection['initial_state'],
+                'initial_state' => $detailSnapshot['initial_state'],
                 'summary' => $projection['summary'],
-                'portrait_events' => $projection['portrait_events'],
-                'party' => [
-                    ...$partySnapshot,
-                    'party_id' => $party->id,
-                    'members' => $memberSnapshots,
-                ],
+                'portrait_events' => $detailSnapshot['portrait_events'],
+                'party' => $detailSnapshot['party'],
                 'growth_path_key' => $profile->growth_path_key,
                 'growth_path_identity' => $profile->growth_path_identity,
                 'progression_stats' => $leaderDefinition['progression_stats'],
@@ -2279,7 +2391,9 @@ STORY;
                     'identity' => $this->alphaV1Catalog->explorationDropConfig()['identity'],
                     'status' => 'pending',
                 ],
-            ],
+            ]),
+            'compaction_version' => UndergroundBattleStorage::COMPACTION_VERSION,
+            'compacted_at' => $finishedAt,
             'started_at' => $startedAt,
             'finished_at' => $finishedAt,
         ]);
@@ -2306,9 +2420,10 @@ STORY;
         UndergroundBattleLog::query()->create([
             'underground_battle_id' => $battle->id,
             'actions' => $projection['rounds'],
+            'presentation' => $this->battleStorage->detailPresentation($detailSnapshot),
             'expires_at' => $finishedAt->copy()->addHours($this->catalog->battleLogRetentionHours()),
         ]);
-        $this->imageRetention->retainSnapshotImages($battle, $battle->snapshot);
+        $this->imageRetention->retainSnapshotImages($battle, $detailSnapshot);
         $this->lendingRewards->settle($battle, $party);
         if ($resultType === UndergroundBattle::RESULT_VICTORY) {
             $this->recordActualContentClear($profile, 'hunting_ground', $huntingGroundKey);
@@ -2538,6 +2653,10 @@ STORY;
             ],
             default => null,
         } : null;
+        $detailSnapshot = [
+            'initial_state' => $projection['initial_state'],
+            'player_image_references' => $this->battleImageReferences($secretary),
+        ];
         $battle = UndergroundBattle::query()->create([
             'underground_profile_id' => $profile->id,
             'request_id' => $requestId,
@@ -2553,6 +2672,8 @@ STORY;
             'damage_dealt' => $result->damageDealt,
             'damage_received' => $result->damageReceived,
             'healing_done' => $result->effectiveHealing,
+            'statistics_version' => UndergroundBattleStatisticsProjector::VERSION,
+            'statistics' => $this->statisticsProjector->fromSolo($result),
             'xp_awarded' => $xpAwarded,
             'shard_delta' => $shardDelta,
             'combat_level_before' => $levelBefore,
@@ -2562,12 +2683,12 @@ STORY;
             'shard_balance_before' => $shardsBefore,
             'shard_balance_after' => $profile->shard_balance,
             'private_seed' => $seed,
-            'snapshot' => [
+            'snapshot' => $this->battleStorage->compactSnapshot([
                 'trial_content_identity' => $trial['content_identity'],
                 'combat_rules_identity' => $result->rulesIdentity,
                 'ai' => $definition['ai'],
                 'player_display_name' => $this->secretaryPresenter->battleDisplayName($secretary),
-                'player_image_references' => $this->battleImageReferences($secretary),
+                'player_image_references' => $detailSnapshot['player_image_references'],
                 'encounter_display_name' => $encounterLabel,
                 'presentation_log_version' => UndergroundAlphaV1BattleProjector::PRESENTATION_LOG_VERSION,
                 'initial_state' => $projection['initial_state'],
@@ -2610,7 +2731,9 @@ STORY;
                     'identity' => $this->alphaV1Catalog->explorationDropConfig()['identity'],
                     'status' => 'pending',
                 ],
-            ],
+            ]),
+            'compaction_version' => UndergroundBattleStorage::COMPACTION_VERSION,
+            'compacted_at' => $finishedAt,
             'started_at' => $startedAt,
             'finished_at' => $finishedAt,
         ]);
@@ -2636,9 +2759,10 @@ STORY;
         UndergroundBattleLog::query()->create([
             'underground_battle_id' => $battle->id,
             'actions' => $projection['rounds'],
+            'presentation' => $this->battleStorage->detailPresentation($detailSnapshot),
             'expires_at' => $finishedAt->copy()->addHours($this->catalog->battleLogRetentionHours()),
         ]);
-        $this->imageRetention->retainSnapshotImages($battle, $battle->snapshot);
+        $this->imageRetention->retainSnapshotImages($battle, $detailSnapshot);
         if ($resultType === UndergroundBattle::RESULT_VICTORY && $isTrialBoss) {
             $this->recordActualContentClear($profile, 'trial', $trialRun->trial_key);
         }

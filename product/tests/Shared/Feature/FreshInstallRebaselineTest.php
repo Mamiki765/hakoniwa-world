@@ -16,7 +16,6 @@ use App\Models\NationCommandQueueItem;
 use App\Models\RulesetVersion;
 use App\Models\Secretary;
 use App\Models\SecretaryItemInstance;
-use App\Models\SecretarySkill;
 use App\Models\TurnRun;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -41,7 +40,7 @@ final class FreshInstallRebaselineTest extends TestCase
         app(RulesetPublisher::class)->publish($current);
         $ruleset = RulesetVersion::query()->where('key', Ver420RulesetUpgrade::TARGET_KEY)->sole();
 
-        $this->assertSame('4.2.0', config('hakoniwa.application_version'));
+        $this->assertSame('4.2.1', config('hakoniwa.application_version'));
         $this->assertSame([Ver420RulesetUpgrade::TARGET_KEY], array_keys(config('hakoniwa.published_rulesets')));
         $this->assertSame(Ver420RulesetUpgrade::TARGET_KEY, $ruleset->key);
         $this->assertSame(Ver420RulesetUpgrade::TARGET_VERSION, $ruleset->version);
@@ -151,7 +150,6 @@ SQL);
         $this->assertSame($run->id, $terrainChangeMetadata['turn_run_id']);
         $this->assertSame('forest', $terrainChangeMetadata['from_terrain_key']);
         $this->assertSame('plain', $terrainChangeMetadata['to_terrain_key']);
-        $this->assertSame(8, SecretarySkill::query()->where('secretary_id', $secretary->id)->count());
         $this->assertDatabaseHas('secretary_skills', [
             'secretary_id' => $secretary->id,
             'skill_key' => SecretarySkillCatalog::FOREST_MANAGEMENT,

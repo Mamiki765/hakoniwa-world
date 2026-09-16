@@ -4,6 +4,7 @@ namespace Tests\Underground\Feature;
 
 use App\Application\Underground\UndergroundAlphaV1BattleProjector;
 use App\Application\Underground\UndergroundAlphaV1PlayerCatalog;
+use App\Application\Underground\UndergroundBattleStorage;
 use App\Application\Underground\UndergroundIntroCatalog;
 use App\Domain\Underground\Combat\AlphaV1CombatRules;
 use App\Models\SecretaryItemInstance;
@@ -77,8 +78,18 @@ final class UndergroundIntroAndPlaytestTest extends UndergroundPlayerAccessTestC
             $profile->next_battle_at,
             $profile->current_hp,
         ]);
-        $this->assertSame('tutorial_starter_knife', $battle->snapshot['actor']['weapon_key']);
+        $this->assertArrayNotHasKey('actor', $battle->snapshot);
+        $this->assertArrayNotHasKey('loadout', $battle->snapshot);
+        $this->assertArrayNotHasKey('enemy', $battle->snapshot);
+        $this->assertSame(UndergroundBattleStorage::COMPACTION_VERSION, $battle->compaction_version);
         $this->assertSame('tutorial_giant_rat', $battle->encounter_key);
+        $this->assertSame('scripted_solo_summary', $battle->statistics['source']);
+        $this->assertSame($battle->damage_dealt, $battle->statistics['self']['damage_dealt']);
+        $this->assertEquals(
+            ['complete' => true, 'issue_count' => 0, 'reasons' => []],
+            $battle->statistics['completeness'],
+        );
+        $this->assertSame($battle->damage_dealt, $battle->statistics['self']['damage_by_source']['direct']);
         $this->assertNotEmpty($battle->log?->actions);
         $this->assertSame(1, UndergroundBattle::query()->count());
         $this->assertSame(1, UndergroundBattleLog::query()->count());
@@ -808,10 +819,17 @@ final class UndergroundIntroAndPlaytestTest extends UndergroundPlayerAccessTestC
         $storyBattle = UndergroundBattle::query()
             ->where('activity_type', UndergroundBattle::ACTIVITY_STORY)->sole();
         $this->assertSame(AlphaV1CombatRules::IDENTITY, $storyBattle->runtime_identity);
+        $this->assertEquals(
+            ['complete' => true, 'issue_count' => 0, 'reasons' => []],
+            $storyBattle->statistics['completeness'],
+        );
         $this->assertSame(1254, $storyBattle->snapshot['enemy_combat_level_equivalent']);
         $this->assertSame(1_137_700, $storyBattle->snapshot['enemy_scale_bps']);
         $storyDefinition = app(UndergroundAlphaV1PlayerCatalog::class)->trueNameStoryBattle();
-        $this->assertEquals($storyDefinition['ai'], $storyBattle->snapshot['ai']);
+        $this->assertArrayNotHasKey('ai', $storyBattle->snapshot);
+        $this->assertArrayNotHasKey('initial_state', $storyBattle->snapshot);
+        $this->assertIsArray($storyBattle->log?->presentation['initial_state']);
+        $this->assertSame(UndergroundBattleStorage::COMPACTION_VERSION, $storyBattle->compaction_version);
         $this->assertSame([
             'enemy_unbroken_retort',
             'enemy_renewing_guard',
@@ -963,12 +981,17 @@ final class UndergroundIntroAndPlaytestTest extends UndergroundPlayerAccessTestC
             UndergroundAlphaV1BattleProjector::PRESENTATION_LOG_VERSION,
             $playtestBattle->snapshot['presentation_log_version'],
         );
-        $this->assertEquals($first->json('data.initial_state'), $playtestBattle->snapshot['initial_state']);
+        $this->assertArrayNotHasKey('initial_state', $playtestBattle->snapshot);
+        $this->assertArrayNotHasKey('ai', $playtestBattle->snapshot);
         $this->assertEquals(
-            app(UndergroundAlphaV1PlayerCatalog::class)
-                ->playtestDefinition($payload['build_key'], $payload['enemy_key'])['ai'],
-            $playtestBattle->snapshot['ai'],
+            $first->json('data.initial_state'),
+            $playtestBattle->log?->presentation['initial_state'],
         );
+        $this->assertEquals(
+            ['complete' => true, 'issue_count' => 0, 'reasons' => []],
+            $playtestBattle->statistics['completeness'],
+        );
+        $this->assertSame(1, $playtestBattle->compaction_version);
         $this->assertTrue($playtestBattle->log?->expires_at->equalTo($playtestBattle->finished_at->addHour()) ?? false);
         $legacySnapshot = $playtestBattle->snapshot;
         $legacySnapshot['presentation_log_version'] = 1;

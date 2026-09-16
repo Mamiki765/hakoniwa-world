@@ -211,8 +211,10 @@ final readonly class AlphaV1CombatModel
                         $amount = min($state->maxHp - $state->hp, (int) $state->guideDuel['heal_per_round']);
                         $state->hp += $amount;
                         $row = $this->logRow($round, $state, 'guide_regeneration', -$amount, false, false,
-                            effectType: 'recovery', actionId: 'guide-duel:'.$round.':regeneration', targetState: $state, targetIds: [$state->combatantId]);
+                            effectType: 'recovery', actionId: 'guide-duel:'.$round.':regeneration',
+                            targetState: $state, targetIds: [$state->combatantId]);
                         $row['message'] = '自動回復';
+                        $row['effect_source'] = 'regeneration';
                         $logs[] = $row;
                     }
                 }
@@ -1982,7 +1984,11 @@ final readonly class AlphaV1CombatModel
             if ($completeGuardChance > 0
                 && $random->integer("alpha-v1:complete-guard:{$target->combatantId}:{$actionKey}:{$hit}", 1, 10_000)
                     <= $completeGuardChance) {
-                $actionLog[] = $this->logRow(
+                $preventedDamage = min(
+                    $target->hp + $target->barrier,
+                    $preMitigation * $agilityComboHits,
+                );
+                $damageRow = $this->logRow(
                     $round,
                     $actor,
                     $actionKey,
@@ -1996,6 +2002,14 @@ final readonly class AlphaV1CombatModel
                     targetState: $target,
                     targetIds: $targetIds,
                 );
+                $damageRow['effective_damage'] = 0;
+                $damageRow['hp_damage'] = 0;
+                $damageRow['prevented_damage'] = 0;
+                $damageRow['complete_guard_prevented_damage'] = $preventedDamage;
+                $damageRow['target_hp_after'] = $target->hp;
+                $damageRow['defeated'] = false;
+                $damageRow['damage_source'] = 'direct';
+                $actionLog[] = $damageRow;
 
                 continue;
             }
@@ -2009,13 +2023,14 @@ final readonly class AlphaV1CombatModel
                 );
             if (($effect['dodgeable'] ?? true) === true
                 && $random->integer("alpha-v1:evasion:{$target->combatantId}:{$actionKey}:{$hit}", 1, 10_000) <= $evasion) {
+                $preventedDamage = min(
+                    $target->hp + $target->barrier,
+                    $preMitigation * $agilityComboHits,
+                );
                 if ($target->side === 'player') {
-                    $metrics['damage_prevented'] += min(
-                        $target->hp + $target->barrier,
-                        $preMitigation * $agilityComboHits,
-                    );
+                    $metrics['damage_prevented'] += $preventedDamage;
                 }
-                $actionLog[] = $this->logRow(
+                $damageRow = $this->logRow(
                     $round,
                     $actor,
                     $actionKey,
@@ -2028,6 +2043,13 @@ final readonly class AlphaV1CombatModel
                     targetState: $target,
                     targetIds: $targetIds,
                 );
+                $damageRow['effective_damage'] = 0;
+                $damageRow['hp_damage'] = 0;
+                $damageRow['prevented_damage'] = $preventedDamage;
+                $damageRow['target_hp_after'] = $target->hp;
+                $damageRow['defeated'] = false;
+                $damageRow['damage_source'] = 'direct';
+                $actionLog[] = $damageRow;
 
                 continue;
             }
@@ -2064,6 +2086,7 @@ final readonly class AlphaV1CombatModel
                 min($absorbableDamage, $preMitigation * $agilityComboHits)
                     - min($absorbableDamage, $postMitigation),
             );
+            $targetWasAlive = $target->alive();
             $settled = $this->settlePostMitigationDamage(
                 $target,
                 $postMitigation,
@@ -2095,6 +2118,12 @@ final readonly class AlphaV1CombatModel
                 targetState: $target,
                 targetIds: $targetIds,
             );
+            $damageRow['effective_damage'] = $hpDamage + $barrierAbsorbed;
+            $damageRow['hp_damage'] = $hpDamage;
+            $damageRow['prevented_damage'] = $preventedByMitigation + $barrierAbsorbed;
+            $damageRow['target_hp_after'] = $target->hp;
+            $damageRow['defeated'] = $targetWasAlive && ! $target->alive();
+            $damageRow['damage_source'] = 'direct';
             if (($effect['report_category'] ?? false) === true) {
                 $damageRow['damage_category'] = $category;
             }
@@ -2158,6 +2187,7 @@ final readonly class AlphaV1CombatModel
                         if ($actionId !== null) {
                             $lifestealRow['target_scope'] = 'self';
                         }
+                        $lifestealRow['effect_source'] = 'lifesteal';
                         $actionLog[] = $lifestealRow;
                     }
                 }
@@ -2192,6 +2222,7 @@ final readonly class AlphaV1CombatModel
         $row['kind'] = 'revival';
         $row['revived'] = $effective > 0;
         $row['revive_hp_bps'] = $fraction;
+        $row['effect_source'] = 'revival';
         $actionLog[] = $row;
     }
 
@@ -2221,7 +2252,7 @@ final readonly class AlphaV1CombatModel
                 $source->flags['graceful_focus'] = true;
             }
         }
-        $actionLog[] = $this->logRow(
+        $row = $this->logRow(
             $round,
             $source,
             $actionKey,
@@ -2234,6 +2265,8 @@ final readonly class AlphaV1CombatModel
             targetState: $target,
             targetIds: $targetIds,
         );
+        $row['effect_source'] = 'direct';
+        $actionLog[] = $row;
     }
 
     /**
@@ -2439,6 +2472,7 @@ final readonly class AlphaV1CombatModel
                 $effect['tick_value'] = max(1, min($percentage, max(1, $cap)));
                 $effect['periodic_multiplier_bps'] = $periodicMultiplierBps;
                 $effect['source_side'] = $source->side;
+                $effect['source_combatant_id'] = $source->combatantId;
             } elseif (($effect['type'] ?? null) === 'periodic_heal') {
                 $effect['tick_value'] = max(1,
                     $this->rules->weightedStats(
@@ -2448,6 +2482,7 @@ final readonly class AlphaV1CombatModel
                 );
                 $effect['periodic_multiplier_bps'] = $periodicMultiplierBps;
                 $effect['source_side'] = $source->side;
+                $effect['source_combatant_id'] = $source->combatantId;
             }
         }
         unset($effect);
@@ -2548,7 +2583,7 @@ final readonly class AlphaV1CombatModel
                         ($effect['source_side'] ?? null) === 'player',
                         $metrics,
                     );
-                    $actionLog[] = $this->logRow(
+                    $row = $this->logRow(
                         $round,
                         $state,
                         'periodic_damage:'.$key,
@@ -2558,6 +2593,18 @@ final readonly class AlphaV1CombatModel
                         barrierAbsorbed: $settled['barrier_absorbed'],
                         effectType: 'damage',
                     );
+                    $row['source_combatant_id'] = $effect['source_combatant_id'] ?? null;
+                    $row['source_side'] = $effect['source_side'] ?? null;
+                    $row['periodic_target_combatant_id'] = $state->combatantId;
+                    $row['periodic_target_side'] = $state->side;
+                    $row['effective_damage'] = $settled['hp_damage'] + $settled['barrier_absorbed'];
+                    $row['hp_damage'] = $settled['hp_damage'];
+                    $row['prevented_damage'] = $settled['barrier_absorbed'];
+                    $row['target_hp_after'] = $state->hp;
+                    $row['defeated'] = $state->hp <= 0;
+                    $row['damage_source'] = 'periodic';
+                    $row['periodic_status_key'] = (string) $key;
+                    $actionLog[] = $row;
                 } elseif (($effect['type'] ?? null) === 'periodic_mp_restore' && $state->alive()) {
                     $this->changeMp($state, max(0, (int) ($effect['amount'] ?? 0)), 0,
                         $round, 'skill_recovery', $metrics, $mpHistory, $actionLog,
@@ -2571,7 +2618,15 @@ final readonly class AlphaV1CombatModel
                         10_000,
                     ));
                     $effective = $this->healExact($state, $amount, $metrics);
-                    $actionLog[] = $this->logRow($round, $state, 'periodic_heal:'.$key, -$effective, false, false, effectType: 'recovery');
+                    $row = $this->logRow($round, $state, 'periodic_heal:'.$key, -$effective,
+                        false, false, effectType: 'recovery');
+                    $row['source_combatant_id'] = $effect['source_combatant_id'] ?? null;
+                    $row['source_side'] = $effect['source_side'] ?? null;
+                    $row['periodic_target_combatant_id'] = $state->combatantId;
+                    $row['periodic_target_side'] = $state->side;
+                    $row['effect_source'] = 'periodic';
+                    $row['periodic_status_key'] = (string) $key;
+                    $actionLog[] = $row;
                 }
             }
             $status['remaining']--;
@@ -2589,7 +2644,14 @@ final readonly class AlphaV1CombatModel
                 $amount = min(intdiv($state->maxHp * $regenerationBps, 10_000), $cap);
                 $effective = $this->healExact($state, $amount, $metrics);
                 if ($effective > 0) {
-                    $actionLog[] = $this->logRow($round, $state, 'self_regeneration', -$effective, false, false, effectType: 'recovery');
+                    $row = $this->logRow($round, $state, 'self_regeneration', -$effective,
+                        false, false, effectType: 'recovery');
+                    $row['effect_source'] = 'regeneration';
+                    $row['actor_id'] = $state->combatantId;
+                    $row['team'] = $state->side;
+                    $row['target_id'] = $state->combatantId;
+                    $row['target_ids'] = [$state->combatantId];
+                    $actionLog[] = $row;
                 }
             }
         }
@@ -2682,6 +2744,12 @@ final readonly class AlphaV1CombatModel
         if ($actionId !== null) {
             $counterRow['target_scope'] = 'single_enemy';
         }
+        $counterRow['effective_damage'] = $settled['hp_damage'] + $settled['barrier_absorbed'];
+        $counterRow['hp_damage'] = $settled['hp_damage'];
+        $counterRow['prevented_damage'] = $settled['barrier_absorbed'];
+        $counterRow['target_hp_after'] = $attacker->hp;
+        $counterRow['defeated'] = $attacker->hp <= 0;
+        $counterRow['damage_source'] = 'counter';
         $actionLog[] = $counterRow;
         if (($defender->modifiers['fighting_spirit_enabled'] ?? false) === true) {
             $this->applyTaunt($defender, $attacker, $round, 'counter', $actionLog, [$attacker->combatantId], $actionId);
@@ -3309,6 +3377,7 @@ final readonly class AlphaV1CombatModel
                 if ($wasDefeated && $effective > 0) {
                     $row['kind'] = 'revival';
                 }
+                $row['effect_source'] = 'awakening';
                 $actionLog[] = $row;
             }
         } elseif ($techniqueKey === 'judgment_light') {

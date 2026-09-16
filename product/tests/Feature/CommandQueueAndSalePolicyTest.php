@@ -2381,6 +2381,7 @@ class CommandQueueAndSalePolicyTest extends TestCase
             ['value' => 1, 'key' => 'fishing', 'label' => '漁船', 'cost_money' => 500],
             ['value' => 2, 'key' => 'tourist', 'label' => '観光船', 'cost_money' => 1500],
             ['value' => 3, 'key' => 'exploration', 'label' => '探索船', 'cost_money' => 1000],
+            ['value' => 4, 'key' => 'warship', 'label' => '戦艦', 'cost_money' => 3000],
         ], $command['quantity_options']);
 
         $path = "{$base}/command-queue";

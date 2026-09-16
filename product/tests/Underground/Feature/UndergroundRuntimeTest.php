@@ -9,6 +9,7 @@ use App\Application\Underground\AtomicUndergroundPartyCombat;
 use App\Application\Underground\CanonicalUndergroundCombat;
 use App\Application\Underground\CanonicalUndergroundExplorationCombat;
 use App\Application\Underground\UndergroundAlphaV1PlayerCatalog;
+use App\Application\Underground\UndergroundBattleHistoryCompactor;
 use App\Application\Underground\UndergroundBattleSeed;
 use App\Application\Underground\UndergroundEquipmentService;
 use App\Application\Underground\UndergroundIntroService;
@@ -42,6 +43,7 @@ use App\Models\UndergroundTrialRun;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use RuntimeException;
@@ -221,7 +223,7 @@ final class UndergroundRuntimeTest extends TestCase
         $this->assertSame($profile->refresh()->current_hp, $boss->snapshot['current_hp_after']);
     }
 
-    public function test_trial_pins_normalized_ai_per_battle_and_applies_changes_only_to_the_next_battle(): void
+    public function test_trial_applies_normalized_ai_to_the_current_battle_without_persisting_the_full_rules(): void
     {
         Carbon::setTestNow('2026-09-03 09:00:00+09:00');
         [$user, $secretary] = $this->secretaryUser();
@@ -232,11 +234,8 @@ final class UndergroundRuntimeTest extends TestCase
 
         $defaultRequestId = (string) Str::uuid();
         $defaultBattle = $runtime->fightTrial($user, $run->run_key, $defaultRequestId)['battle'];
-        $defaultAi = $defaultBattle->snapshot['ai'];
-        $this->assertSame(2, $defaultAi['schema_version']);
-        $this->assertSame('awakening', $defaultAi['rules'][0]['action']);
-        $this->assertSame($configuration->hash($defaultAi['rules']), $defaultAi['hash']);
-        $this->assertSame($defaultAi['rules'], $combat->calls[0]['player_snapshot']['ai_rules']);
+        $this->assertSame('awakening', $combat->calls[0]['player_snapshot']['ai_rules'][0]['action']);
+        $this->assertArrayNotHasKey('ai', $defaultBattle->snapshot);
 
         $unlearnedSkillRules = $configuration->normalizeRules([
             ['conditions' => [], 'action' => 'skill:executioner_cut'],
@@ -246,24 +245,19 @@ final class UndergroundRuntimeTest extends TestCase
             'next_battle_at' => Carbon::now()->subSecond(),
         ]);
         $customBattle = $runtime->fightTrial($user, $run->run_key, (string) Str::uuid())['battle'];
-        $this->assertSame($unlearnedSkillRules, $customBattle->snapshot['ai']['rules']);
-        $this->assertSame(
-            $configuration->hash($unlearnedSkillRules),
-            $customBattle->snapshot['ai']['hash'],
-        );
         $this->assertSame($unlearnedSkillRules, $combat->calls[1]['player_snapshot']['ai_rules']);
+        $this->assertArrayNotHasKey('ai', $customBattle->snapshot);
 
         $profile->refresh()->update([
             'custom_ai_rules' => [],
             'next_battle_at' => Carbon::now()->subSecond(),
         ]);
         $emptyBattle = $runtime->fightTrial($user, $run->run_key, (string) Str::uuid())['battle'];
-        $this->assertSame([], $emptyBattle->snapshot['ai']['rules']);
-        $this->assertSame($configuration->hash([]), $emptyBattle->snapshot['ai']['hash']);
         $this->assertSame([], $combat->calls[2]['player_snapshot']['ai_rules']);
+        $this->assertArrayNotHasKey('ai', $emptyBattle->snapshot);
 
-        $this->assertEquals($defaultAi, $defaultBattle->refresh()->snapshot['ai']);
-        $this->assertEquals($unlearnedSkillRules, $customBattle->refresh()->snapshot['ai']['rules']);
+        $this->assertArrayNotHasKey('ai', $defaultBattle->refresh()->snapshot);
+        $this->assertArrayNotHasKey('ai', $customBattle->refresh()->snapshot);
 
         $legacySnapshot = $defaultBattle->snapshot;
         $legacySnapshot['combat_rules_identity'] = 'secretary-underground-alpha-v2';
@@ -462,10 +456,7 @@ final class UndergroundRuntimeTest extends TestCase
             $victory->snapshot['stp_awarded'],
             $victory->snapshot['unspent_stp_after'],
         ]);
-        $this->assertEquals(
-            ['vitality' => 18, 'might' => 34, 'finesse' => 30, 'spirit' => 8, 'agility' => 10],
-            $victory->snapshot['progression_stats'],
-        );
+        $this->assertArrayNotHasKey('progression_stats', $victory->snapshot);
         $this->assertEquals(
             ['vitality' => 23, 'might' => 44, 'finesse' => 35, 'spirit' => 13, 'agility' => 10],
             app(UndergroundAlphaV1PlayerCatalog::class)->currentStats(
@@ -919,6 +910,15 @@ final class UndergroundRuntimeTest extends TestCase
         );
         Carbon::setTestNow(Carbon::now()->addHour());
         $future = $runtime->explore($other, (string) Str::uuid())['battle'];
+        $secondExpiredBattle = UndergroundBattle::query()
+            ->where('underground_profile_id', $first->underground_profile_id)
+            ->where('activity_type', UndergroundBattle::ACTIVITY_TUTORIAL)
+            ->sole();
+        UndergroundBattleLog::query()->create([
+            'underground_battle_id' => $secondExpiredBattle->id,
+            'actions' => [],
+            'expires_at' => $first->finished_at->addHour(),
+        ]);
         Carbon::setTestNow($first->finished_at->addHour());
         $expiredDuplicate = $runtime->explore($owner, $requestId);
         $expiredProjection = $runtime->projectExplorationBattle($expiredDuplicate['battle']);
@@ -929,10 +929,11 @@ final class UndergroundRuntimeTest extends TestCase
         $this->assertNull($expiredProjection['rounds']);
         $this->assertSame('詳細ログは保存期間を過ぎました。', $expiredProjection['detail_message']);
         $this->assertDatabaseHas('underground_battle_logs', ['underground_battle_id' => $first->id]);
-        $this->artisan('underground:prune-battle-logs')
-            ->expectsOutput('Pruned 1 expired Underground battle log(s).')
+        $this->artisan('underground:prune-battle-logs', ['--batch' => 1, '--max-batches' => 2])
+            ->expectsOutputToContain('deleted=2')
             ->assertSuccessful();
         $this->assertDatabaseMissing('underground_battle_logs', ['underground_battle_id' => $first->id]);
+        $this->assertDatabaseMissing('underground_battle_logs', ['underground_battle_id' => $secondExpiredBattle->id]);
         $this->assertDatabaseHas('underground_battle_logs', ['underground_battle_id' => $future->id]);
         $this->assertDatabaseHas('underground_battles', ['id' => $first->id, 'request_id' => $requestId]);
         $retained = $runtime->recentBattles($owner)->firstWhere('id', $first->id);
@@ -960,6 +961,106 @@ final class UndergroundRuntimeTest extends TestCase
         $this->assertSame($run->run_key, $runtime->activeTrial($owner)?->run_key);
     }
 
+    public function test_history_compactor_dry_run_preserves_rows_then_backfills_only_provable_legacy_values(): void
+    {
+        Carbon::setTestNow('2026-09-16 12:00:00+09:00');
+        [$user, $secretary] = $this->secretaryUser();
+        $profile = $this->unlockExploration($secretary);
+        UndergroundBattle::query()->update([
+            'compaction_version' => 1,
+            'compacted_at' => Carbon::now(),
+        ]);
+        [$runtime] = $this->runtimeWithOutcomes(['player']);
+        $solo = $runtime->explore($user, (string) Str::uuid())['battle'];
+        $soloSnapshot = [
+            ...$solo->snapshot,
+            'ai' => ['rules' => [['conditions' => [], 'action' => 'normal_attack']]],
+            'equipment' => ['weapon' => ['definition_key' => 'legacy_weapon']],
+        ];
+        $solo->forceFill([
+            'statistics_version' => null,
+            'statistics' => null,
+            'compaction_version' => null,
+            'compacted_at' => null,
+            'snapshot' => $soloSnapshot,
+        ])->save();
+        $solo->log()->delete();
+
+        $party = UndergroundParty::query()->create([
+            'leader_user_id' => $user->id,
+            'leader_secretary_id' => $secretary->id,
+            'content_type' => UndergroundBattle::ACTIVITY_EXPLORATION,
+            'content_key' => 'legacy_party',
+            'content_identity' => 'legacy-party-v1',
+            'party_size' => 2,
+            'leader_combat_level' => $profile->combat_level,
+            'snapshot' => ['party_size' => 2],
+        ]);
+        $party->members()->create([
+            'source_type' => 'self',
+            'secretary_id' => $secretary->id,
+            'source_owner_user_id' => $user->id,
+            'combatant_id' => 'secretary:'.$secretary->id,
+            'original_level' => $profile->combat_level,
+            'effective_level' => $profile->combat_level,
+            'snapshot' => ['combatant_id' => 'secretary:'.$secretary->id, 'equipment' => $soloSnapshot['equipment']],
+        ]);
+        $partyBattle = $solo->replicate();
+        $partyBattle->underground_party_id = $party->id;
+        $partyBattle->request_id = (string) Str::uuid();
+        $partyBattle->request_fingerprint = hash('sha256', $partyBattle->request_id);
+        $partyBattle->snapshot = [
+            ...$soloSnapshot,
+            'party' => ['party_size' => 2, 'members' => []],
+        ];
+        $partyBattle->save();
+
+        $cutoff = Carbon::now()->addMinute()->toAtomString();
+        $preview = app(UndergroundBattleHistoryCompactor::class)->preview(Carbon::parse($cutoff), 10);
+        $this->assertSame(2, $preview['candidates']);
+        $this->assertSame(1, $preview['self_damage_backfillable']);
+        $this->assertSame(1, $preview['self_damage_null']);
+        $this->artisan('underground:compact-battle-history', [
+            '--cutoff' => $cutoff,
+            '--limit' => 10,
+        ])->assertSuccessful();
+        $this->assertNull($solo->refresh()->statistics_version);
+        $this->assertArrayHasKey('equipment', $solo->snapshot);
+
+        $result = app(UndergroundBattleHistoryCompactor::class)->compact(
+            Carbon::parse($cutoff), 10, 1, 30,
+        );
+        $this->assertSame(2, $result['processed']);
+        $this->assertSame(2, $result['statistics_backfilled']);
+        $this->assertGreaterThan($result['battle_bytes_after'], $result['battle_bytes_before']);
+        $this->assertGreaterThan($result['member_bytes_after'], $result['member_bytes_before']);
+
+        $solo->refresh();
+        $partyBattle->refresh();
+        $this->assertSame($solo->damage_dealt, $solo->statistics['self']['damage_dealt']);
+        $this->assertNull($partyBattle->statistics['self']['damage_dealt']);
+        $this->assertSame(1, $partyBattle->statistics['completeness']['reasons']['legacy_party_self_attribution_unavailable']);
+        $this->assertNull($solo->statistics['party']['damage_by_source']);
+        $this->assertArrayNotHasKey('equipment', $solo->snapshot);
+        $this->assertSame(1, $solo->compaction_version);
+        $this->assertSame(1, $partyBattle->compaction_version);
+
+        $rerun = app(UndergroundBattleHistoryCompactor::class)->compact(
+            Carbon::parse($cutoff), 10, 1, 30,
+        );
+        $this->assertSame(0, $rerun['processed']);
+        $this->assertSame(0, Artisan::call('underground:statistics'));
+        $statisticsOutput = Artisan::output();
+        $this->assertStringContainsString('"battle_count":2', $statisticsOutput);
+        $this->assertStringContainsString('"incomplete_statistics_battle_count":2', $statisticsOutput);
+        $this->assertStringContainsString('"self_recorded_battle_count":1', $statisticsOutput);
+        $this->assertStringContainsString('"self_maximum_hit":null', $statisticsOutput);
+        $this->assertStringContainsString(
+            '"self.maximum_hit":{"recorded_battle_count":0,"unknown_battle_count":2,"not_recorded_battle_count":0}',
+            $statisticsOutput,
+        );
+    }
+
     public function test_default_runtime_adapter_executes_the_canonical_pure_combat_core(): void
     {
         Carbon::setTestNow('2026-08-29 16:00:00+09:00');
@@ -983,6 +1084,50 @@ final class UndergroundRuntimeTest extends TestCase
         $this->assertLessThanOrEqual(100, $battle->rounds);
         $this->assertNotEmpty($battle->log?->actions);
         $this->assertSame(AlphaV1CombatRules::IDENTITY, $battle->snapshot['combat_rules_identity']);
+    }
+
+    public function test_statistics_report_streams_all_rows_without_loading_snapshots_or_running_secretary_n_plus_one_queries(): void
+    {
+        Carbon::setTestNow('2026-09-16 13:00:00+09:00');
+        [$user, $secretary] = $this->secretaryUser();
+        $this->unlockExploration($secretary);
+        [$runtime] = $this->runtimeWithOutcomes(['player']);
+        $battle = $runtime->explore($user, (string) Str::uuid())['battle'];
+        $template = $battle->getAttributes();
+        unset($template['id']);
+        $rows = [];
+        for ($index = 0; $index < 1_000; $index++) {
+            $requestId = (string) Str::uuid();
+            $rows[] = [
+                ...$template,
+                'request_id' => $requestId,
+                'request_fingerprint' => hash('sha256', $requestId),
+            ];
+            if (count($rows) === 250) {
+                DB::table('underground_battles')->insert($rows);
+                $rows = [];
+            }
+        }
+
+        $queries = [];
+        DB::listen(static function ($query) use (&$queries): void {
+            $queries[] = $query->sql;
+        });
+        $this->assertSame(0, Artisan::call('underground:statistics'));
+        $this->assertStringContainsString('"battle_count":1001', Artisan::output());
+        $battleQueries = array_values(array_filter(
+            $queries,
+            static fn (string $sql): bool => str_contains($sql, 'underground_battles'),
+        ));
+        $this->assertLessThanOrEqual(5, count($battleQueries));
+        foreach ($battleQueries as $sql) {
+            $this->assertStringNotContainsString('snapshot', $sql);
+            $this->assertStringNotContainsString('underground_battle_logs', $sql);
+        }
+
+        $this->assertSame(1, Artisan::call('underground:statistics', ['--max-rows' => 1_000]));
+        $this->assertStringContainsString('no partial report was emitted', Artisan::output());
+        $this->assertStringNotContainsString('"battle_count"', Artisan::output());
     }
 
     public function test_exploration_drop_grant_is_atomic_replay_safe_and_victory_only(): void
@@ -1354,7 +1499,7 @@ final class UndergroundRuntimeTest extends TestCase
             $battle->shard_delta,
         ]);
         $borrowedMember = $snapshot['party']['members']['borrowed:'.$borrowedSecretary->id];
-        $this->assertSame(0, $snapshot['summary']['final_state']['secretary:'.$leaderSecretary->id]['hp']);
+        $this->assertSame(0, $battle->statistics['self']['ending_hp']);
         $this->assertSame(1, $leaderProfile->refresh()->current_hp);
         $this->assertSame(120, $borrowedMember['original_combat_level']);
         $this->assertSame($leaderProfile->combat_level, $borrowedMember['effective_combat_level']);
@@ -1362,6 +1507,15 @@ final class UndergroundRuntimeTest extends TestCase
         $this->assertSame(1, SecretaryLendingParticipation::query()->where('owner_user_id', $owner->id)->count());
         $this->assertSame(1, UndergroundParty::query()->count());
         $this->assertSame(3, $snapshot['presentation_log_version']);
+        $this->assertSame(0, Artisan::call('underground:statistics'));
+        $reportRows = array_values(array_filter(array_map(
+            static fn (string $line): mixed => json_decode($line, true),
+            preg_split('/\R/', trim(Artisan::output())) ?: [],
+        ), 'is_array'));
+        $borrowedReport = collect($reportRows)->firstWhere('secretary_id', $borrowedSecretary->id);
+        $this->assertIsArray($borrowedReport);
+        $this->assertSame(0, $borrowedReport['battle_count']);
+        $this->assertSame(1, $borrowedReport['rental_participation_count']);
 
         $borrowedSecretary->update(['name' => 'Changed after battle']);
         $borrowedProfile->refresh()->update(['combat_level' => 121, 'unspent_stp' => 600]);
@@ -1519,7 +1673,8 @@ final class UndergroundRuntimeTest extends TestCase
             $projected = $runtime->projectTrialBattle($battle->fresh()->load('log'));
             $this->assertSame($savedName, $projected['player_display_name']);
             $this->assertSame($savedRounds, $projected['rounds']);
-            $this->assertNull($projected['player_image_references']);
+            $this->assertIsArray($projected['player_image_references']);
+            $this->assertSame('none', $projected['player_image_references']['normal']['display']);
             $this->assertNull($projected['party']);
         }
         $this->assertCount(1, $combat->calls);
@@ -1864,6 +2019,27 @@ final class ScriptedUndergroundExplorationCombat implements AtomicUndergroundExp
             'action' => 'normal_attack',
             'amount' => 7,
             'effect_type' => 'damage',
+            'effective_damage' => 7,
+            'hp_damage' => 7,
+            'prevented_damage' => 0,
+            'target_hp_after' => $winner === 'player' ? 0 : 100,
+            'defeated' => $winner === 'player',
+            'damage_source' => 'direct',
+        ];
+        $actionLog[] = [
+            'round' => $rounds,
+            'kind' => 'effect',
+            'side' => 'enemy',
+            'target_side' => 'player',
+            'action' => 'normal_attack',
+            'amount' => 3,
+            'effect_type' => 'damage',
+            'effective_damage' => 3,
+            'hp_damage' => 3,
+            'prevented_damage' => 0,
+            'target_hp_after' => $remainingHp,
+            'defeated' => $remainingHp === 0,
+            'damage_source' => 'direct',
         ];
 
         return new BuildCombatResult(
@@ -1913,6 +2089,10 @@ final class ScriptedUndergroundExplorationCombat implements AtomicUndergroundExp
                 'normal_stats' => [],
                 'final_stats' => [],
                 'technique' => $technique,
+            ],
+            initialState: [
+                'player' => ['team' => 'player', 'hp' => $remainingHp + 3, 'awakened' => false],
+                'enemy' => ['team' => 'enemy', 'hp' => $winner === 'player' ? 7 : 107],
             ],
         );
     }
@@ -1986,6 +2166,9 @@ final class ScriptedUndergroundPartyCombat implements AtomicUndergroundPartyComb
                 'team' => 'player', 'side' => 'player', 'actor_id' => $leaderId,
                 'target_id' => $enemyId, 'target_ids' => [$enemyId],
                 'action' => 'normal_attack', 'amount' => 10,
+                'target_side' => 'enemy', 'effective_damage' => 10, 'hp_damage' => 10,
+                'prevented_damage' => 0, 'target_hp_after' => 0, 'defeated' => true,
+                'damage_source' => 'direct',
             ],
             [
                 'kind' => 'round_end', 'round' => 1, 'team' => 'system',
@@ -2000,7 +2183,7 @@ final class ScriptedUndergroundPartyCombat implements AtomicUndergroundPartyComb
             $actionLog,
             $initial,
             $final,
-            ['damage_dealt' => 10, 'damage_received' => 0, 'effective_healing' => 0],
+            ['damage_dealt' => 10, 'damage_received' => 0, 'effective_healing' => 0, 'damage_prevented' => 0],
             $awakening,
         );
     }

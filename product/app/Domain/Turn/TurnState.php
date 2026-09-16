@@ -49,6 +49,9 @@ final class TurnState
     /** @var array<int, array{money: int, population: int, food: int}> */
     private array $nationStartSummaries = [];
 
+    /** @var array<int, array<string, int>> */
+    private array $routineSummaryMetrics = [];
+
     /** @var array<int, int> */
     private array $refugeesReceivedByNation = [];
 
@@ -496,6 +499,39 @@ final class TurnState
         }
 
         return $this->nationStartSummaries[$nationId];
+    }
+
+    public function addRoutineSummaryMetric(int $nationId, string $key, int $amount = 1): void
+    {
+        $allowed = [
+            'fire_protection_checks',
+            'forest_growth_cells',
+            'forest_growth_quantity',
+            'population_growth_cells',
+            'population_growth',
+        ];
+        if ($nationId < 1 || ! in_array($key, $allowed, true) || $amount < 0) {
+            throw new InvalidArgumentException('Routine Turn summary metric is invalid.');
+        }
+        $this->routineSummaryMetrics[$nationId][$key]
+            = ($this->routineSummaryMetrics[$nationId][$key] ?? 0) + $amount;
+    }
+
+    /** @return array{fire_protection_checks:int,forest_growth_cells:int,forest_growth_quantity:int,population_growth_cells:int,population_growth:int} */
+    public function routineSummaryMetrics(int $nationId): array
+    {
+        if ($nationId < 1) {
+            throw new InvalidArgumentException('Routine Turn summary Nation ID must be positive.');
+        }
+        $metrics = $this->routineSummaryMetrics[$nationId] ?? [];
+
+        return [
+            'fire_protection_checks' => $metrics['fire_protection_checks'] ?? 0,
+            'forest_growth_cells' => $metrics['forest_growth_cells'] ?? 0,
+            'forest_growth_quantity' => $metrics['forest_growth_quantity'] ?? 0,
+            'population_growth_cells' => $metrics['population_growth_cells'] ?? 0,
+            'population_growth' => $metrics['population_growth'] ?? 0,
+        ];
     }
 
     public function addRefugeesReceived(int $nationId, int $population): void

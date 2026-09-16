@@ -2,6 +2,7 @@
 
 namespace Tests\Underground\Unit;
 
+use App\Application\Underground\UndergroundBattleStatisticsProjector;
 use App\Application\Underground\UndergroundPartyBattleProjector;
 use App\Domain\Underground\Combat\PartyCombatResult;
 use PHPUnit\Framework\TestCase;
@@ -34,8 +35,13 @@ final class UndergroundPartyBattleProjectorTest extends TestCase
         $projected = (new UndergroundPartyBattleProjector)->project(
             $result, $fixture['member_snapshots'], $fixture['catalog'],
         );
+        $statistics = (new UndergroundBattleStatisticsProjector)->fromParty($result, 'secretary:1');
 
         self::assertSame(3, $projected['version']);
+        self::assertSame(
+            ['complete' => true, 'issue_count' => 0, 'reasons' => []],
+            $statistics['completeness'],
+        );
         foreach ($result->initialStates as $id => $state) {
             self::assertSame($state['hp'], $projected['initial_state'][$id]['hp']);
             self::assertSame($state['hp'], $projected['rounds'][0]['start_state'][$id]['hp']);
