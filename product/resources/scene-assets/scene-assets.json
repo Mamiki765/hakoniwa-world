@@ -1,5 +1,10 @@
 {
   "assets": {
+    "bg.elven_villa": {
+      "file": "background/430-elven-villa.jpg",
+      "creation_method": "ai_generated",
+      "show_credit": true
+    },
     "bg.guide_shop": {
       "file": "background/430-guide-shop.jpg",
       "creation_method": "ai_generated",
@@ -45,6 +50,7 @@
     }
   },
   "scenes": {
+    "villa": { "background": "bg.elven_villa" },
     "shop": {
       "background": "bg.guide_shop",
       "actors": [{
