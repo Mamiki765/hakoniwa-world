@@ -10,6 +10,7 @@ use App\Domain\Map\NationLandAreaCalculator;
 use App\Domain\Nation\NationProtectionPolicy;
 use App\Domain\Turn\TurnContext;
 use App\Domain\Turn\TurnRandomStreamFactory;
+use App\Models\BuriedTreasure;
 use App\Models\MapCell;
 use App\Models\MapSpace;
 use App\Models\MonsterOccupancy;
@@ -252,7 +253,20 @@ final class TerritoryInfluenceService
         }
 
         $this->persistMutations($mutations);
+        $treasureCellIds = $mutations === []
+            ? []
+            : BuriedTreasure::query()
+                ->where('world_id', $context->world->id)
+                ->whereIn('map_cell_id', array_column($mutations, 'id'))
+                ->where('state', BuriedTreasure::STATE_ACTIVE)
+                ->distinct()
+                ->pluck('map_cell_id')
+                ->mapWithKeys(static fn ($cellId): array => [(int) $cellId => true])
+                ->all();
         foreach ($mutations as $mutation) {
+            if (! isset($treasureCellIds[$mutation['id']])) {
+                continue;
+            }
             $cell = $cellsById->get($mutation['id']);
             $nation = $targetNations->firstWhere('id', $mutation['owner_nation_id']);
             if ($cell instanceof MapCell && $nation instanceof Nation) {
