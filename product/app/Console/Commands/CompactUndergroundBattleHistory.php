@@ -46,13 +46,17 @@ final class CompactUndergroundBattleHistory extends Command
 
         $preview = $compactor->preview($cutoff, $limit, $batch);
         $this->line(sprintf(
-            'mode=%s cutoff=%s preview_batch=%d apply_time_budget=soft_between_battles candidates=%d battle_json_bytes=%d member_json_bytes=%d self_damage_backfillable=%d self_damage_null=%d damage_source_breakdown_null=%d healing_source_breakdown_null=%d oldest=%s newest=%s',
+            'mode=%s cutoff=%s preview_batch=%d apply_time_budget=soft_between_battles candidates=%d battle_json_bytes=%d->%d member_json_bytes=%d->%d projected_snapshot_json_bytes_reduction=%d self_damage_backfillable=%d self_damage_null=%d damage_source_breakdown_null=%d healing_source_breakdown_null=%d oldest=%s newest=%s',
             (bool) $this->option('apply') ? 'apply' : 'dry-run',
             $cutoff->toAtomString(),
             $batch,
             $preview['candidates'],
             $preview['battle_bytes'],
+            $preview['battle_bytes_after'],
             $preview['member_bytes'],
+            $preview['member_bytes_after'],
+            $preview['battle_bytes'] + $preview['member_bytes']
+                - $preview['battle_bytes_after'] - $preview['member_bytes_after'],
             $preview['self_damage_backfillable'],
             $preview['self_damage_null'],
             $preview['damage_source_breakdown_null'],

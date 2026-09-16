@@ -11,15 +11,19 @@ use Illuminate\Support\Facades\DB;
 
 final readonly class UndergroundBattleHistoryCompactor
 {
+    private const PREVIEW_SNAPSHOT_CHUNK = 25;
+
     public function __construct(private UndergroundBattleStorage $storage) {}
 
-    /** @return array{candidates:int,battle_bytes:int,member_bytes:int,self_damage_backfillable:int,self_damage_null:int,damage_source_breakdown_null:int,healing_source_breakdown_null:int,oldest_finished_at:string|null,newest_finished_at:string|null} */
+    /** @return array{candidates:int,battle_bytes:int,battle_bytes_after:int,member_bytes:int,member_bytes_after:int,self_damage_backfillable:int,self_damage_null:int,damage_source_breakdown_null:int,healing_source_breakdown_null:int,oldest_finished_at:string|null,newest_finished_at:string|null} */
     public function preview(Carbon $cutoff, int $limit, int $batchSize = 100): array
     {
         $batchSize = max(1, min(1_000, $batchSize));
         $candidateCount = 0;
         $battleBytes = 0;
+        $battleBytesAfter = 0;
         $memberBytes = 0;
+        $memberBytesAfter = 0;
         $selfDamageBackfillable = 0;
         $selfDamageNull = 0;
         $oldest = null;
@@ -29,9 +33,27 @@ final readonly class UndergroundBattleHistoryCompactor
             $battles = $this->candidates($cutoff)
                 ->where('id', '>', $lastId)
                 ->limit(min($batchSize, $limit - $candidateCount))
-                ->get(['id', 'underground_party_id', 'snapshot', 'finished_at']);
+                ->get(['id', 'underground_party_id', 'finished_at']);
             if ($battles->isEmpty()) {
                 break;
+            }
+            $battleIds = $battles->pluck('id')
+                ->map(static fn (mixed $id): int => (int) $id)
+                ->all();
+            /** @var array<int, array{before:int,after:int}> $battleBytesById */
+            $battleBytesById = [];
+            foreach (UndergroundBattle::query()
+                ->whereKey($battleIds)
+                ->select(['id', 'snapshot'])
+                ->lazyById(self::PREVIEW_SNAPSHOT_CHUNK) as $battleSnapshot) {
+                $snapshot = $battleSnapshot->snapshot;
+                $battleBytesById[(int) $battleSnapshot->id] = [
+                    'before' => $this->jsonBytes($snapshot),
+                    'after' => $this->jsonBytes($this->storage->compactSnapshot($snapshot)),
+                ];
+            }
+            if (count($battleBytesById) !== count($battleIds)) {
+                throw new \RuntimeException('Underground battle preview did not load its exact candidate set.');
             }
             $partyIds = $battles->pluck('underground_party_id')
                 ->filter(static fn (mixed $id): bool => $id !== null)
@@ -39,25 +61,40 @@ final readonly class UndergroundBattleHistoryCompactor
                 ->unique()
                 ->values()
                 ->all();
+            /** @var array<int, int> $memberBytesByParty */
             $memberBytesByParty = [];
+            /** @var array<int, int> $memberBytesAfterByParty */
+            $memberBytesAfterByParty = [];
             if ($partyIds !== []) {
                 foreach (UndergroundPartyMember::query()
                     ->whereIn('underground_party_id', $partyIds)
-                    ->get(['underground_party_id', 'snapshot']) as $member) {
+                    ->select(['id', 'underground_party_id', 'snapshot'])
+                    ->lazyById(self::PREVIEW_SNAPSHOT_CHUNK) as $member) {
                     $partyId = (int) $member->underground_party_id;
+                    $snapshot = $member->getAttribute('snapshot');
+                    if (! is_array($snapshot)) {
+                        throw new \RuntimeException('Underground party member snapshot is not an array.');
+                    }
                     $memberBytesByParty[$partyId] = ($memberBytesByParty[$partyId] ?? 0)
-                        + $this->jsonBytes($member->snapshot);
+                        + $this->jsonBytes($snapshot);
+                    $memberBytesAfterByParty[$partyId] = ($memberBytesAfterByParty[$partyId] ?? 0)
+                        + $this->jsonBytes($this->storage->compactPartyMemberSnapshot($snapshot));
                 }
             }
             foreach ($battles as $battle) {
                 $lastId = (int) $battle->id;
                 $candidateCount++;
-                $battleBytes += $this->jsonBytes($battle->snapshot);
+                $battleSize = $battleBytesById[$lastId]
+                    ?? throw new \RuntimeException('Underground battle preview size is missing.');
+                $battleBytes += $battleSize['before'];
+                $battleBytesAfter += $battleSize['after'];
                 if ($battle->underground_party_id === null) {
                     $selfDamageBackfillable++;
                 } else {
                     $selfDamageNull++;
-                    $memberBytes += $memberBytesByParty[(int) $battle->underground_party_id] ?? 0;
+                    $partyId = (int) $battle->underground_party_id;
+                    $memberBytes += $memberBytesByParty[$partyId] ?? 0;
+                    $memberBytesAfter += $memberBytesAfterByParty[$partyId] ?? 0;
                 }
                 if ($battle->finished_at !== null) {
                     $oldest = $oldest === null || $battle->finished_at->isBefore($oldest)
@@ -71,7 +108,9 @@ final readonly class UndergroundBattleHistoryCompactor
         return [
             'candidates' => $candidateCount,
             'battle_bytes' => $battleBytes,
+            'battle_bytes_after' => $battleBytesAfter,
             'member_bytes' => $memberBytes,
+            'member_bytes_after' => $memberBytesAfter,
             'self_damage_backfillable' => $selfDamageBackfillable,
             'self_damage_null' => $selfDamageNull,
             'damage_source_breakdown_null' => $candidateCount,

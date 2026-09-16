@@ -1016,14 +1016,17 @@ final class UndergroundRuntimeTest extends TestCase
         $partyBattle->save();
 
         $cutoff = Carbon::now()->addMinute()->toAtomString();
-        $preview = app(UndergroundBattleHistoryCompactor::class)->preview(Carbon::parse($cutoff), 10);
+        $preview = app(UndergroundBattleHistoryCompactor::class)->preview(Carbon::parse($cutoff), 10, 1_000);
         $this->assertSame(2, $preview['candidates']);
         $this->assertSame(1, $preview['self_damage_backfillable']);
         $this->assertSame(1, $preview['self_damage_null']);
+        $this->assertGreaterThan($preview['battle_bytes_after'], $preview['battle_bytes']);
+        $this->assertGreaterThan($preview['member_bytes_after'], $preview['member_bytes']);
         $this->artisan('underground:compact-battle-history', [
             '--cutoff' => $cutoff,
             '--limit' => 10,
-        ])->assertSuccessful();
+            '--batch' => 1_000,
+        ])->expectsOutputToContain('projected_snapshot_json_bytes_reduction=')->assertSuccessful();
         $this->assertNull($solo->refresh()->statistics_version);
         $this->assertArrayHasKey('equipment', $solo->snapshot);
 
