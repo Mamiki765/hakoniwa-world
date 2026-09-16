@@ -3,6 +3,7 @@
 namespace Tests\Underground\Feature;
 
 use App\Application\SecretaryLendingService;
+use App\Application\Underground\UndergroundEquipmentCatalog;
 use App\Application\Underground\UndergroundIntroService;
 use App\Application\Underground\UndergroundProfileService;
 use App\Application\Underground\UndergroundStarterEquipmentService;
@@ -270,7 +271,7 @@ final class PostgresUndergroundRuntimeConcurrencyTest extends TestCase
         ]);
         $bulkSale = [
             'operation' => 'equipment_bulk_sell',
-            'catalog_identity' => 'secretary-underground-shop-equipment-alpha-v2',
+            'catalog_identity' => app(UndergroundEquipmentCatalog::class)->identity(),
             'items' => [['id' => $bulkDagger->id, 'sell_price' => 60]],
         ];
         $bulkResults = $this->runConcurrentOperations($user, $secretary, [
