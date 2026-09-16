@@ -130,9 +130,40 @@ foreach (AlphaV1CombatRules::STATS as $stat) {
     );
 }
 
+$versionTwoDefinitions = $definitions;
+// IL61 uses the existing generator's base anchors, without randomized affixes.
+$definitions['kingdom_dagger'] = $definition(
+    'kingdom_dagger', '王都の短剣', 'weapon', 'dagger', 5, 61, 6_200,
+    142, 0, 0, 0, $stats(finesse: 20, agility: 13), requiredTrialKey: 'trial_02',
+);
+$definitions['kingdom_rapier'] = $definition(
+    'kingdom_rapier', '近衛の細剣', 'weapon', 'rapier', 5, 61, 6_200,
+    158, 0, 0, 0, $stats(might: 16, finesse: 12), requiredTrialKey: 'trial_02',
+);
+$definitions['kingdom_longsword'] = $definition(
+    'kingdom_longsword', '王国の長剣', 'weapon', 'longsword', 5, 61, 6_200,
+    144, 41, 0, 0, $stats(vitality: 20, might: 12), requiredTrialKey: 'trial_02',
+);
+$definitions['kingdom_staff'] = $definition(
+    'kingdom_staff', '宮廷の輝石杖', 'weapon', 'crystal_staff', 5, 61, 6_200,
+    126, 0, 0, 0, $stats(finesse: 7, spirit: 27), requiredTrialKey: 'trial_02',
+);
+$definitions['kingdom_breastplate'] = $definition(
+    'kingdom_breastplate', '王都の胸当て', 'armor', null, 5, 61, 5_580,
+    0, 225, 184, 563, $stats(vitality: 7), requiredTrialKey: 'trial_02',
+);
+foreach (['vitality' => '王都の生命護符', 'might' => '王都の武力護符', 'finesse' => '王都の技巧護符', 'spirit' => '宮廷の精神護符', 'agility' => '王都の敏捷護符'] as $stat => $name) {
+    $bonus = array_fill_keys(AlphaV1CombatRules::STATS, 0);
+    $bonus[$stat] = 12;
+    $definitions["kingdom_{$stat}_accessory"] = $definition(
+        "kingdom_{$stat}_accessory", $name, 'accessory', null, 5, 61, 3_720,
+        0, 0, 0, 0, $bonus, requiredTrialKey: 'trial_02',
+    );
+}
+
 return [
     'schema_version' => 2,
-    'catalog_identity' => 'secretary-underground-shop-equipment-alpha-v2',
+    'catalog_identity' => 'secretary-underground-shop-equipment-alpha-v3',
     'weapon_style_labels' => [
         'dagger' => '短剣',
         'rapier' => '細身剣',
@@ -140,6 +171,7 @@ return [
         'crystal_staff' => '輝石杖',
     ],
     'legacy_catalogs' => [
+        'secretary-underground-shop-equipment-alpha-v2' => $versionTwoDefinitions,
         'secretary-underground-shop-equipment-alpha-v1' => $legacyDefinitions,
     ],
     'vault_capacity' => 500,

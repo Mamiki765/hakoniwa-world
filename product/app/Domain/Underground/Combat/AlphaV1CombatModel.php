@@ -1151,6 +1151,7 @@ final readonly class AlphaV1CombatModel
         $partyMode = $partyAllies !== [] || $partyEnemies !== [];
         $decisionIndex = 0;
         $awakeningActionId = null;
+        $techniqueControlledByAi = in_array('awakening_technique', array_column($actor->aiRules, 'action'), true);
         if ($actor->side === 'player' && ! $actor->awakened) {
             $candidate = $this->ai->select($actor, $target, $catalog, $round, 0, $partyAllies, $partyEnemies);
             if ($candidate['type'] === 'awakening') {
@@ -1190,7 +1191,7 @@ final readonly class AlphaV1CombatModel
 
             return;
         }
-        if ($actor->side === 'player'
+        if ($actor->side === 'player' && ! $techniqueControlledByAi
             && $this->useAwakeningTechnique(
                 $actor,
                 $target,
@@ -1271,6 +1272,16 @@ final readonly class AlphaV1CombatModel
                 $decisionTargetId,
                 $decisionTargetIds,
             );
+            if ($action['type'] === 'awakening_technique') {
+                if ($this->useAwakeningTechnique($actor, $target, $random, $round,
+                    $metrics, $actionUsage, $mpHistory, $actionLog, $partyAllies, $partyEnemies,
+                    $actionId, commanded: true)) {
+                    return;
+                }
+                $nextRuleIndex = $action['next_rule_index'];
+
+                continue;
+            }
             if ($action['type'] === 'skill' && is_string($action['key'])
                 && ($catalog->skill($action['key'])['consumes_action'] ?? true) === false) {
                 $this->executeSkill($catalog, $actor, $target, $action['key'], $random, $round,
@@ -1293,7 +1304,7 @@ final readonly class AlphaV1CombatModel
                 throw new InvalidArgumentException('Underground alpha-v1 AI selected unavailable awakening.');
             }
             $nextRuleIndex = $action['next_rule_index'];
-            if ($this->useAwakeningTechnique(
+            if (! $techniqueControlledByAi && $this->useAwakeningTechnique(
                 $actor,
                 $target,
                 $random,
@@ -1625,6 +1636,11 @@ final readonly class AlphaV1CombatModel
         array $partyAllies,
         array $partyEnemies,
     ): array {
+        if (($action['type'] ?? null) === 'awakening_technique') {
+            $ids = $this->awakeningTechniqueTargetIds($actor, $target, $partyAllies, $partyEnemies);
+
+            return [$ids[0] ?? null, $ids];
+        }
         if ($partyAllies === [] && $partyEnemies === []) {
             return [$target->combatantId, [$target->combatantId]];
         }
@@ -1651,7 +1667,7 @@ final readonly class AlphaV1CombatModel
     }
 
     /**
-     * @param  array{type: 'normal_attack'|'defend'|'skill'|'awakening', key: string|null, target_id: string|null, target_explicit: bool, reason: string, fallback: bool, mp_blocked: bool, next_rule_index: int}  $action
+     * @param  array{type: 'normal_attack'|'defend'|'skill'|'awakening'|'awakening_technique', key: string|null, target_id: string|null, target_explicit: bool, reason: string, fallback: bool, mp_blocked: bool, next_rule_index: int}  $action
      * @param  array<string, int|null>  $metrics
      * @param  array<string, int>  $actionUsage
      * @param  list<array<string, mixed>>  $actionLog
@@ -3119,6 +3135,7 @@ final readonly class AlphaV1CombatModel
         array $partyAllies = [],
         array $partyEnemies = [],
         ?string $actionId = null,
+        bool $commanded = false,
     ): bool {
         if (! $player->awakened || $player->awakeningTechniqueUsed || $player->awakeningTechniqueKey === null) {
             return false;
@@ -3135,7 +3152,7 @@ final readonly class AlphaV1CombatModel
                 || $cooldownsInUse >= UndergroundAwakening::FREE_USE_COOLDOWN_COUNT,
             default => $enemy->boss || ($enemy->hp * 100) > ($enemy->maxHp * 15),
         };
-        if (! $shouldUse) {
+        if (! $commanded && ! $shouldUse) {
             return false;
         }
 
@@ -3145,7 +3162,7 @@ final readonly class AlphaV1CombatModel
             'kind' => 'awakening_technique',
             'round' => $round,
             'side' => 'player',
-            'target_side' => in_array($techniqueKey, ['life_requiem', 'limitless_reprise'], true)
+            'target_side' => in_array($techniqueKey, ['absolute_aegis', 'life_requiem', 'limitless_reprise'], true)
                 ? 'player'
                 : 'enemy',
             'action' => $techniqueKey,
@@ -3160,21 +3177,7 @@ final readonly class AlphaV1CombatModel
         if ($partyAllies !== [] || $partyEnemies !== []) {
             $techniqueLog['actor_id'] = $player->combatantId;
             $techniqueLog['team'] = 'player';
-            $techniqueLog['target_ids'] = match ($techniqueKey) {
-                'absolute_aegis' => array_values(array_map(
-                    static fn (BuildCombatState $state): string => $state->combatantId,
-                    array_filter($partyAllies, static fn (BuildCombatState $state): bool => $state->alive()),
-                )),
-                'life_requiem' => array_map(
-                    static fn (BuildCombatState $state): string => $state->combatantId,
-                    $partyAllies,
-                ),
-                'decisive_heavenrend' => array_values(array_map(
-                    static fn (BuildCombatState $state): string => $state->combatantId,
-                    array_filter($partyEnemies, static fn (BuildCombatState $state): bool => $state->alive()),
-                )),
-                default => [$enemy->combatantId],
-            };
+            $techniqueLog['target_ids'] = $this->awakeningTechniqueTargetIds($player, $enemy, $partyAllies, $partyEnemies);
             $techniqueLog['target_id'] = $techniqueLog['target_ids'][0] ?? null;
         }
         $techniqueTargetIds = is_array($techniqueLog['target_ids'] ?? null)
@@ -3539,6 +3542,24 @@ final readonly class AlphaV1CombatModel
             + $this->defenseStatusDelta($target, 'miracle', $target->magicalDefense);
 
         return $physical <= $magical ? 'physical' : 'miracle';
+    }
+
+    /**
+     * @param  list<BuildCombatState>  $allies
+     * @param  list<BuildCombatState>  $enemies
+     * @return list<string>
+     */
+    private function awakeningTechniqueTargetIds(BuildCombatState $player, BuildCombatState $enemy, array $allies, array $enemies): array
+    {
+        $targets = match ($player->awakeningTechniqueKey) {
+            'absolute_aegis' => array_filter($allies ?: [$player], static fn (BuildCombatState $state): bool => $state->alive()),
+            'life_requiem' => $allies ?: [$player],
+            'limitless_reprise' => [$player],
+            'decisive_heavenrend' => array_filter($enemies ?: [$enemy], static fn (BuildCombatState $state): bool => $state->alive()),
+            default => [$enemy],
+        };
+
+        return array_values(array_map(static fn (BuildCombatState $state): string => $state->combatantId, $targets));
     }
 
     private function growthPathForTechnique(BuildCombatState $player): string

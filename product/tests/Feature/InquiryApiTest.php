@@ -65,7 +65,7 @@ final class InquiryApiTest extends TestCase
             'nation_id' => $nation->id,
             'world_id' => $world->id,
             'submitted_turn' => 42,
-            'application_version' => '4.2.1',
+            'application_version' => config('hakoniwa.application_version'),
             'category' => 'bug',
             'attachment_token' => null,
             'attachment_path' => null,

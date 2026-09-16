@@ -124,27 +124,27 @@ v-for="item in graph.nodes" :id="`skill-node-${item.node.key}`" :key="item.node.
 
 <style scoped>
 .skill-tabs { display: flex; gap: 8px; }
-.skill-tabs button { flex: 1; padding: 12px 6px; border: 1px solid #687986; border-radius: 8px; background: #18232c; color: #edf2f6; }
-.skill-tabs button[aria-selected="true"] { background: #345570; border-color: #c3def2; font-weight: 700; }
+.skill-tabs button { flex: 1; padding: 12px 6px; border: 1px solid var(--line); border-radius: 8px; background: var(--paper-deep); color: var(--ink); }
+.skill-tabs button[aria-selected="true"] { background: var(--navy-solid); color: var(--on-solid); border-color: var(--navy); font-weight: 700; }
 .skill-instructions { font-size: 13px; color: var(--muted); margin: 14px 0; }
 .skill-layout { display: grid; grid-template-columns: minmax(0, 1fr) minmax(200px, 0.65fr); gap: 16px; align-items: start; }
 .skill-graph { position: relative; min-width: 0; }
 .skill-graph svg { position: absolute; width: 100%; height: 100%; overflow: visible; }
-.skill-graph path { fill: none; stroke: #8193a2; stroke-width: 2; vector-effect: non-scaling-stroke; }
-.skill-graph path.acquired { stroke: #7fd9bd; stroke-width: 3; }
-.skill-graph path.selected { stroke: #e4c47b; stroke-width: 3; }
-.skill-node { position: absolute; transform: translate(-50%, -50%); width: 30%; height: 72px; padding: 5px 2px; display: flex; flex-direction: column; justify-content: center; gap: 2px; background: #1b2834; border: 1px solid #8397a6; border-radius: 8px; color: #edf2f6; text-align: center; overflow-wrap: anywhere; cursor: pointer; }
+.skill-graph path { fill: none; stroke: var(--muted); stroke-width: 2; vector-effect: non-scaling-stroke; }
+.skill-graph path.acquired { stroke: var(--success); stroke-width: 3; }
+.skill-graph path.selected { stroke: var(--info); stroke-width: 3; }
+.skill-node { position: absolute; transform: translate(-50%, -50%); width: 30%; height: 72px; padding: 5px 2px; display: flex; flex-direction: column; justify-content: center; gap: 2px; background: var(--paper); border: 1px solid var(--input-border); border-radius: 8px; color: var(--ink); text-align: center; overflow-wrap: anywhere; cursor: pointer; }
 .skill-node strong { font-size: 13px; line-height: 1.25; }
 .skill-node span, .skill-node small { font-size: 11px; }
-.skill-node[data-acquired="true"] { background: #20443d; border-color: #7fd9bd; }
-.skill-node[aria-pressed="true"] { outline: 3px solid #e4c47b; outline-offset: 2px; }
+.skill-node[data-acquired="true"] { background: var(--success-surface); border-color: var(--success); }
+.skill-node[aria-pressed="true"] { outline: 3px solid var(--info); outline-offset: 2px; }
 .skill-detail { color: var(--ink); background: var(--paper-deep); border: 1px solid var(--line); padding: 16px; border-radius: 10px; scroll-margin: 80px; }
 .skill-detail h3 { margin: 0 0 12px; font-size: 18px; overflow-wrap: anywhere; }
 .skill-detail p { line-height: 1.65; }
 .skill-detail dl { display: grid; gap: 8px; font-size: 13px; }
 .skill-detail dl > div { display: grid; grid-template-columns: 65px 1fr; gap: 8px; }
 .skill-detail dd { margin: 0; }
-.skill-detail button { padding: 12px; width: 100%; color: #f3f5fa; background: #345570; border: 1px solid #a3bdd0; border-radius: 6px; }
+.skill-detail button { padding: 12px; width: 100%; color: var(--on-solid); background: var(--navy-solid); border: 1px solid var(--navy); border-radius: 6px; }
 .skill-detail button:disabled { opacity: .55; }
 @media (max-width: 700px) { .skill-layout { grid-template-columns: minmax(0, 1fr); } }
 </style>

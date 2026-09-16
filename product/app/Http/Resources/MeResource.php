@@ -4,6 +4,7 @@ namespace App\Http\Resources;
 
 use App\Application\AnnouncementAdminAuthorizer;
 use App\Application\ParadoxBalanceService;
+use App\Application\SecretaryProfilePresenter;
 use App\Models\AuthIdentity;
 use App\Models\User;
 use Illuminate\Http\Request;
@@ -20,6 +21,7 @@ class MeResource extends JsonResource
         return [
             'id' => $this->id,
             'display_name' => $this->display_name,
+            'viewer_preferences' => app(SecretaryProfilePresenter::class)->viewerPreferences($this->resource),
             'paradox' => app(ParadoxBalanceService::class)->presentFor($this->id),
             'can_manage_announcements' => $canManage,
             'can_manage_inquiries' => $canManage,

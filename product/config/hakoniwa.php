@@ -3,7 +3,7 @@
 $currentRuleset = require __DIR__.'/hakoniwa/rulesets/hakoniwa-2s-plus-v26.php';
 
 return [
-    'application_version' => '4.2.1',
+    'application_version' => '4.3.0',
     'ruleset' => $currentRuleset,
     'published_rulesets' => [$currentRuleset['key'] => $currentRuleset],
     'current_catalogs' => [
@@ -25,7 +25,7 @@ return [
     'assets' => [
         'base_url' => env('HAKONIWA_TILE_ASSET_BASE_URL', env('HAKONIWA_ORIGINAL_ASSET_BASE_URL', '/assets/hakoniwa-tiles')),
         'path' => env('HAKONIWA_TILE_ASSET_PATH', env('HAKONIWA_ORIGINAL_ASSET_PATH', '/srv/hakoniwa-assets/tiles')),
-        'allowed_extensions' => ['gif', 'png', 'webp'],
+        'allowed_extensions' => ['gif', 'png', 'webp', 'jpg', 'jpeg'],
         'themes' => [
             'snow' => 'snow',
             'underground' => 'underground',

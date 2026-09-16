@@ -1,9 +1,10 @@
+import { openUndergroundView, withUndergroundDefaults } from '../UndergroundTestNavigation';
 import { flushPromises, mount } from '@vue/test-utils';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import UndergroundPanel from './UndergroundPanel.vue';
 import partyPresentation from './__fixtures__/party-presentation.json';
 
-const response = (data: unknown) => new Response(JSON.stringify({ data }), {
+const response = (data: unknown) => new Response(JSON.stringify({ data: withUndergroundDefaults(data) }), {
     status: 200,
     headers: { 'Content-Type': 'application/json' },
 });
@@ -105,6 +106,7 @@ describe('Underground party presentation controls', () => {
                 duel.won = true;
                 return response(battle);
             }
+            if (path.endsWith('/equipment/shop')) return response({ items: [], owned_items: [], unlocked: true });
             return response(path.endsWith('/battles') ? [] : openState({ guide_duel: duel }));
         }));
         const wrapper = mount(UndergroundPanel, { attachTo: document.body });
@@ -115,7 +117,7 @@ describe('Underground party presentation controls', () => {
             await flushPromises();
         };
         await flushPromises();
-        await click('案内人');
+        await openUndergroundView(wrapper, 'ショップ', '案内人と話す');
         await click('真剣な話');
         await click('勝負を挑む');
         expect(wrapper.text()).toContain('挑戦の会話');
@@ -132,7 +134,7 @@ describe('Underground party presentation controls', () => {
         expect(payloads[0]?.borrowed_secretary_ids).toEqual([]);
         expect(wrapper.text()).toContain('良き夢のあらんことを');
         await click('地下メインへ戻る');
-        await click('案内人');
+        await openUndergroundView(wrapper, 'ショップ', '案内人と話す');
         await click('真剣な話');
         await click('勝負を挑む');
         expect(wrapper.text()).toContain('へし折ってやるわ');
@@ -164,6 +166,7 @@ describe('Underground party presentation controls', () => {
                 payloads.push(JSON.parse(String(init?.body)));
                 return response({ ...smallBattle('party-duel'), context: 'guide_duel' });
             }
+            if (path.endsWith('/equipment/shop')) return response({ items: [], owned_items: [], unlocked: true });
             return response(path.endsWith('/battles') ? [] : state);
         }));
         const wrapper = mount(UndergroundPanel, { attachTo: document.body });
@@ -173,7 +176,7 @@ describe('Underground party presentation controls', () => {
         };
         const choices = () => wrapper.findAll('.underground-serious-talk-actions button').map((button) => button.text());
         await flushPromises();
-        await click('案内人');
+        await openUndergroundView(wrapper, 'ショップ', '案内人と話す');
         await click('真剣な話');
         expect(choices()).toEqual(['本名を聞く', '抱き締める', '勝負を挑む', '戻る']);
         await click('本名を聞く');
@@ -351,7 +354,7 @@ describe('Underground party presentation controls', () => {
 
         const wrapper = mount(UndergroundPanel, { attachTo: document.body });
         await flushPromises();
-        await wrapper.get('.underground-main-navigation button:nth-child(4)').trigger('click');
+        await openUndergroundView(wrapper, '交流場');
         await wrapper.get('.underground-party-browser button').trigger('click');
         await flushPromises();
 
@@ -400,7 +403,7 @@ describe('Underground party presentation controls', () => {
 
         const wrapper = mount(UndergroundPanel, { attachTo: document.body, props: { userId: 7 } });
         await flushPromises();
-        await wrapper.get('.underground-main-navigation button:nth-child(4)').trigger('click');
+        await openUndergroundView(wrapper, '交流場');
         await wrapper.get('.underground-party-browser button').trigger('click');
         await flushPromises();
         await wrapper.get('button[aria-label="保存する秘書をPTに追加"]').trigger('click');
@@ -412,7 +415,7 @@ describe('Underground party presentation controls', () => {
 
         const restored = mount(UndergroundPanel, { attachTo: document.body, props: { userId: 7 } });
         await flushPromises();
-        await restored.get('.underground-main-navigation button:nth-child(4)').trigger('click');
+        await openUndergroundView(restored, '交流場');
         expect(restored.get('.underground-party-count').text()).toBe('2 / 4人');
         expect(restored.get('button[aria-label="選択中の秘書をPTから解除"]')).toBeTruthy();
         expect(restored.get('[aria-label="現在のレンタル状態"]').text()).toContain('HP 50 / 100・覚醒 120');
@@ -457,6 +460,7 @@ describe('Underground party presentation controls', () => {
 
         const wrapper = mount(UndergroundPanel, { attachTo: document.body });
         await flushPromises();
+        await openUndergroundView(wrapper, '冒険', '探索');
         await wrapper.get('.underground-skip-entry button').trigger('click');
         const groundCategory = wrapper.get('.underground-skip-category');
         await groundCategory.get('.underground-skip-custom input').setValue('3');
@@ -551,16 +555,20 @@ describe('Underground party presentation controls', () => {
 
         const wrapper = mount(UndergroundPanel, { attachTo: document.body });
         await flushPromises();
+        await openUndergroundView(wrapper, '冒険', '探索');
         expect(wrapper.get('#underground-hunting-ground-title').text()).toBe('狩場');
+        await openUndergroundView(wrapper, '冒険', '試練');
         expect(wrapper.get('#underground-trial-title').text()).toBe('試練');
-        expect(wrapper.get('#underground-vault-title').text()).toBe('宝物庫');
+        await openUndergroundView(wrapper, '冒険', '秘密の場所');
+        expect(wrapper.get('#underground-vault-title').text()).toBe('秘密の場所');
+        await openUndergroundView(wrapper, '冒険', '秘密の場所');
         const vaultSection = wrapper.get('[aria-labelledby="underground-vault-title"]');
         expect(vaultSection.text()).toContain('鍵 10個');
         expect(vaultSection.get('button').attributes('disabled')).toBeUndefined();
 
+        await openUndergroundView(wrapper, '冒険', '探索');
         await wrapper.get('.underground-skip-entry button').trigger('click');
         const categories = wrapper.findAll('.underground-skip-category');
-        expect(categories).toHaveLength(2);
         expect(categories[0]!.text()).toContain('50%使用（500回）');
         expect(categories[0]!.text()).toContain('100%使用（1000回）');
         expect(categories[1]!.text()).toContain('50%使用（500周）');
@@ -624,17 +632,22 @@ describe('Underground party presentation controls', () => {
 
         const wrapper = mount(UndergroundPanel, { attachTo: document.body, props: { userId: 7 } });
         await flushPromises();
+        await openUndergroundView(wrapper, '冒険', '試練');
         const activeTrialSelect = wrapper.get<HTMLSelectElement>('select[aria-label="試練を選択"]');
         expect(activeTrialSelect.element.value).toBe('trial_02');
+        await openUndergroundView(wrapper, '冒険', '試練');
         expect(wrapper.get('.underground-trial-entry').attributes('disabled')).toBeUndefined();
 
+        await openUndergroundView(wrapper, '冒険', '探索');
         await wrapper.get('.underground-skip-entry button').trigger('click');
         await wrapper.get<HTMLSelectElement>('select[aria-label="スキップする試練を選択"]').setValue('trial_01');
         await wrapper.get('.underground-skip-dialog button[aria-label="閉じる"]').trigger('click');
 
         expect(activeTrialSelect.element.value).toBe('trial_02');
         expect(requests).toHaveLength(0);
+        await openUndergroundView(wrapper, '冒険', '探索');
         expect(wrapper.get('.underground-skip-entry').text()).toContain('所持 100枚');
+        await openUndergroundView(wrapper, '冒険', '試練');
         await wrapper.get('.underground-trial-entry').trigger('click');
         await flushPromises();
 
@@ -680,6 +693,7 @@ describe('Underground party presentation controls', () => {
 
         const wrapper = mount(UndergroundPanel, { attachTo: document.body });
         await flushPromises();
+        await openUndergroundView(wrapper, '冒険', '探索');
         await wrapper.get('.underground-skip-entry button').trigger('click');
         const shortcut = wrapper.findAll('.underground-skip-category')[0]!.findAll('.underground-skip-shortcuts button')[0]!;
         await shortcut.trigger('click');
@@ -693,9 +707,11 @@ describe('Underground party presentation controls', () => {
         expect(otherShortcut.attributes('disabled')).toBeDefined();
 
         await wrapper.get('.underground-skip-dialog button[aria-label="閉じる"]').trigger('click');
+        await openUndergroundView(wrapper, '冒険', '探索');
         await wrapper.get('.underground-explore-button').trigger('click');
         await flushPromises();
         await wrapper.get('.underground-battle-back').trigger('click');
+        await openUndergroundView(wrapper, '冒険', '探索');
         await wrapper.get('.underground-skip-entry button').trigger('click');
         const refreshedShortcuts = wrapper.findAll('.underground-skip-category')[0]!.findAll('.underground-skip-shortcuts button');
         expect(wrapper.get('.underground-skip-dialog').text()).toContain('🎫 0枚');
@@ -738,6 +754,7 @@ describe('Underground party presentation controls', () => {
 
         const wrapper = mount(UndergroundPanel, { attachTo: document.body });
         await flushPromises();
+        await openUndergroundView(wrapper, '冒険', '探索');
         await wrapper.get('.underground-skip-entry button').trigger('click');
         let shortcuts = wrapper.findAll('.underground-skip-category')[0]!.findAll('.underground-skip-shortcuts button');
         await shortcuts[0]!.trigger('click');
@@ -785,6 +802,7 @@ describe('Underground party presentation controls', () => {
 
         const wrapper = mount(UndergroundPanel, { attachTo: document.body });
         await flushPromises();
+        await openUndergroundView(wrapper, '冒険', '探索');
         await wrapper.get('.underground-skip-entry button').trigger('click');
         const shortcut = wrapper.findAll('.underground-skip-category')[0]!.findAll('.underground-skip-shortcuts button')[0]!;
         await shortcut.trigger('click');
@@ -827,6 +845,7 @@ describe('Underground party presentation controls', () => {
 
         const wrapper = mount(UndergroundPanel, { attachTo: document.body });
         await flushPromises();
+        await openUndergroundView(wrapper, '冒険', '探索');
         await wrapper.get('.underground-skip-entry button').trigger('click');
         await wrapper.findAll('.underground-skip-category')[0]!.findAll('.underground-skip-shortcuts button')[0]!.trigger('click');
         await flushPromises();
@@ -866,30 +885,33 @@ describe('Underground party presentation controls', () => {
 
         const wrapper = mount(UndergroundPanel, { attachTo: document.body });
         await flushPromises();
-        await wrapper.get('.underground-main-navigation button:nth-child(4)').trigger('click');
+        await openUndergroundView(wrapper, '交流場');
         await wrapper.get('.underground-party-browser button').trigger('click');
         await flushPromises();
         await wrapper.get('button[aria-label="A秘書をPTに追加"]').trigger('click');
         await wrapper.findAll('button').find(button => button.text() === 'レンタルを確定・更新')!.trigger('click');
         await flushPromises();
-        await wrapper.get('.underground-main-navigation button:first-child').trigger('click');
+        await openUndergroundView(wrapper, '冒険');
+        await openUndergroundView(wrapper, '冒険', '探索');
         await wrapper.get('.underground-explore-button').trigger('click');
         await flushPromises();
         expect(wrapper.get('.underground-pending-request').text()).toContain('同じ同行者');
 
-        await wrapper.get('.underground-main-navigation button:nth-child(4)').trigger('click');
+        await openUndergroundView(wrapper, '交流場');
         await wrapper.get('button[aria-label="A秘書をPTから解除"]').trigger('click');
         await wrapper.get('button[aria-label="B秘書をPTに追加"]').trigger('click');
         expect(wrapper.findAll('button').find(button => button.text() === 'レンタルを確定・更新')!.attributes('disabled')).toBeDefined();
-        await wrapper.get('.underground-main-navigation button:first-child').trigger('click');
+        await openUndergroundView(wrapper, '冒険');
+        await openUndergroundView(wrapper, '冒険', '探索');
         await wrapper.get('.underground-explore-button').trigger('click');
         await flushPromises();
         expect(wrapper.find('.underground-pending-request').exists()).toBe(false);
         await wrapper.get('.underground-battle-back').trigger('click');
-        await wrapper.get('.underground-main-navigation button:nth-child(4)').trigger('click');
+        await openUndergroundView(wrapper, '交流場');
         await wrapper.findAll('button').find(button => button.text() === 'レンタルを確定・更新')!.trigger('click');
         await flushPromises();
-        await wrapper.get('.underground-main-navigation button:first-child').trigger('click');
+        await openUndergroundView(wrapper, '冒険');
+        await openUndergroundView(wrapper, '冒険', '探索');
         await wrapper.get('.underground-explore-button').trigger('click');
         await flushPromises();
 

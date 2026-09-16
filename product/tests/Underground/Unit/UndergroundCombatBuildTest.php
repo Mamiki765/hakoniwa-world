@@ -1024,7 +1024,7 @@ final class UndergroundCombatBuildTest extends TestCase
         $this->assertSame(1, $normalFallback->actionUsage['normal_attack']);
         $this->assertSame(1, $normalFallback->actionUsage['ai_fallback']);
 
-        $manifest['builds']['pure_attacker']['ai_rules'] = array_fill(0, 17, [
+        $manifest['builds']['pure_attacker']['ai_rules'] = array_fill(0, AlphaV1CombatRules::AI_RULE_LIMIT + 1, [
             'conditions' => [['type' => 'always']], 'action' => 'normal_attack',
         ]);
         $this->expectException(InvalidArgumentException::class);
@@ -1147,7 +1147,7 @@ final class UndergroundCombatBuildTest extends TestCase
             static fn (array $definition): bool => $definition['shop_sold'],
         );
 
-        $this->assertSame('secretary-underground-shop-equipment-alpha-v2', $catalog['catalog_identity']);
+        $this->assertSame('secretary-underground-shop-equipment-alpha-v3', $catalog['catalog_identity']);
         $starter = $definitions['starter_knife'];
         $this->assertSame(['weapon', 'dagger', 0, 1, false, false], [
             $starter['category'], $starter['weapon_style'], $starter['rank'], $starter['item_level'],

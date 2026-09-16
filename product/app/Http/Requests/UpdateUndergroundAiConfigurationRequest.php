@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests;
 
+use App\Domain\Underground\Combat\AlphaV1CombatRules;
 use Illuminate\Foundation\Http\FormRequest;
 
 final class UpdateUndergroundAiConfigurationRequest extends FormRequest
@@ -16,12 +17,12 @@ final class UpdateUndergroundAiConfigurationRequest extends FormRequest
     {
         return [
             'request_id' => ['required', 'uuid'],
-            'rules' => ['present', 'nullable', 'array', 'max:16'],
+            'rules' => ['present', 'nullable', 'array', 'max:'.AlphaV1CombatRules::AI_RULE_LIMIT],
             'rules.*' => ['array'],
             'rules.*.conditions' => ['present', 'array', 'max:2'],
             'rules.*.conditions.*' => ['array'],
             'rules.*.action' => ['required', 'string', 'max:120'],
-            'rules.*.jump_to' => ['sometimes', 'integer', 'min:1', 'max:16'],
+            'rules.*.jump_to' => ['sometimes', 'integer', 'min:1', 'max:'.AlphaV1CombatRules::AI_RULE_LIMIT],
         ];
     }
 }

@@ -1,0 +1,80 @@
+{
+  "assets": {
+    "bg.guide_shop": {
+      "file": "background/430-guide-shop.jpg",
+      "creation_method": "ai_generated",
+      "show_credit": true
+    },
+    "bg.aki_exchange": {
+      "file": "background/430-aki-exchange.jpg",
+      "creation_method": "ai_generated",
+      "show_credit": true
+    },
+    "npc.guide": {
+      "file": "npc/430-guide.png",
+      "creation_method": "commissioned_or_permitted",
+      "credit": "©『︎PandoraPartyProject』 棘ナツ/Re:version",
+      "show_credit": true
+    },
+    "npc.aki": {
+      "file": "npc/430-aki.png",
+      "creation_method": "commissioned_or_permitted",
+      "credit": "©『︎PandoraPartyProject』 アキ・インキュバス/棘ナツ/Re:version",
+      "show_credit": true
+    },
+    "event.transparent_mirror": {
+      "file": "event/430-transparent-mirror.png",
+      "creation_method": "commissioned_or_permitted",
+      "credit": "『PandoraPartyProject』(C) みんなの案内人さん/あん子/Re:version",
+      "show_credit": true
+    },
+    "bg.shallow_caves": {
+      "file": "background/430-shallow-caves.jpg",
+      "creation_method": "ai_generated",
+      "show_credit": true
+    },
+    "bg.black_crystal_cave": {
+      "file": "background/430-black-crystal-cave.jpg",
+      "creation_method": "ai_generated",
+      "show_credit": true
+    },
+    "bg.shining_kingdom": {
+      "file": "background/430-shining-kingdom.jpg",
+      "creation_method": "ai_generated",
+      "show_credit": true
+    }
+  },
+  "scenes": {
+    "shop": {
+      "background": "bg.guide_shop",
+      "actors": [{
+        "asset": "npc.guide",
+        "name": "案内人",
+        "placement": { "x": 72, "y": 138, "height": 135 },
+        "mobile": { "x": 72, "y": 138, "height": 135 }
+      }]
+    },
+    "exchange": {
+      "background": "bg.aki_exchange",
+      "actors": [{
+        "asset": "npc.aki",
+        "name": "アキ",
+        "placement": { "x": 72, "y": 99, "height": 96 },
+        "mobile": { "x": 68, "y": 99, "height": 96 }
+      }]
+    },
+    "exchange-intro": {
+      "background": "bg.aki_exchange",
+      "actors": [{
+        "asset": "npc.aki",
+        "name": "アキ",
+        "placement": { "x": 72, "y": 99, "height": 96 },
+        "mobile": { "x": 68, "y": 99, "height": 96 }
+      }]
+    },
+    "mirror": { "still": "event.transparent_mirror" },
+    "hunting_ground.shallow_caves": { "background": "bg.shallow_caves" },
+    "hunting_ground.black_crystal_cave": { "background": "bg.black_crystal_cave" },
+    "hunting_ground.shining_kingdom": { "background": "bg.shining_kingdom" }
+  }
+}

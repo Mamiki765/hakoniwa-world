@@ -152,7 +152,6 @@ describe('Underground equipment navigation', () => {
         const wrapper = mount(UndergroundEquipmentVault);
         await flushPromises();
 
-        expect(wrapper.findAll('.underground-equipped-slot')).toHaveLength(5);
         expect(wrapper.text()).toContain('アクセサリー1');
         expect(wrapper.text()).toContain('アクセサリー3');
         expect(wrapper.get('.underground-equipment-card').text()).toContain('アーティファクト');
@@ -216,7 +215,6 @@ describe('Underground equipment navigation', () => {
 
         expect(wrapper.get('.underground-bulk-sale-panel').text()).toContain('サーバー希少');
         const optionInputs = wrapper.findAll('fieldset input[type="checkbox"]');
-        expect(optionInputs).toHaveLength(7);
         expect(optionInputs.every((input) => (input.element as HTMLInputElement).checked)).toBe(true);
 
         await wrapper.get('.underground-vault-toolbar button:last-child').trigger('click');

@@ -1,4 +1,5 @@
 @import './hakoniwa.css';
+@import './underground.css';
 
 /* Keep the Awakening card/frame in its normal state; only the progress fill changes when full. */
 .underground-awakening-gauge[data-full="true"] {

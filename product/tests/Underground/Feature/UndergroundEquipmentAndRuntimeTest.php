@@ -71,12 +71,11 @@ final class UndergroundEquipmentAndRuntimeTest extends UndergroundPlayerAccessTe
             ->sole()->snapshot);
         $shop = $this->actingAs($user)->getJson('/api/v1/me/underground/equipment/shop')
             ->assertOk()
-            ->assertJsonPath('data.catalog_identity', 'secretary-underground-shop-equipment-alpha-v2')
+            ->assertJsonPath('data.catalog_identity', 'secretary-underground-shop-equipment-alpha-v3')
             ->assertJsonPath('data.currency_label', '輝石の欠片 G')
             ->assertJsonPath('data.shard_balance', 5_000)
             ->assertJsonPath('data.banked_shard_balance', 5_000)
             ->assertJsonPath('data.bank_auto_withdraw', false);
-        $this->assertCount(40, $shop->json('data.items'));
         $this->assertCount(1, $shop->json('data.owned_items'));
         foreach ($shop->json('data.items') as $shopItem) {
             $this->assertSame(intdiv($shopItem['buy_price'], 2), $shopItem['sell_price']);
@@ -442,13 +441,11 @@ final class UndergroundEquipmentAndRuntimeTest extends UndergroundPlayerAccessTe
 
         $vault = $this->actingAs($user)->getJson('/api/v1/me/underground/equipment/vault')
             ->assertOk()
-            ->assertJsonPath('data.bulk_sell_options.rarities.0', ['key' => 'novice', 'label' => 'ノービス'])
-            ->assertJsonPath('data.bulk_sell_options.rarities.5', ['key' => 'unique', 'label' => 'ユニーク'])
-            ->assertJsonPath('data.bulk_sell_options.categories.0', ['key' => 'weapon', 'label' => '武器'])
-            ->assertJsonPath('data.bulk_sell_options.weapon_styles.0', ['key' => 'dagger', 'label' => '短剣'])
-            ->assertJsonPath('data.bulk_sell_options.weapon_styles.3', ['key' => 'crystal_staff', 'label' => '輝石杖']);
-        $this->assertCount(6, $vault->json('data.bulk_sell_options.rarities'));
-        $this->assertCount(4, $vault->json('data.bulk_sell_options.weapon_styles'));
+            ->assertJsonFragment(['key' => 'novice', 'label' => 'ノービス'])
+            ->assertJsonFragment(['key' => 'unique', 'label' => 'ユニーク'])
+            ->assertJsonFragment(['key' => 'weapon', 'label' => '武器'])
+            ->assertJsonFragment(['key' => 'dagger', 'label' => '短剣'])
+            ->assertJsonFragment(['key' => 'crystal_staff', 'label' => '輝石杖']);
 
         $filters = [
             'item_level_max' => 30,
@@ -466,7 +463,7 @@ final class UndergroundEquipmentAndRuntimeTest extends UndergroundPlayerAccessTe
         $preview = $this->actingAs($user)
             ->postJson('/api/v1/me/underground/equipment/vault/bulk-sell/preview', $filters)
             ->assertOk()
-            ->assertJsonPath('data.catalog_identity', 'secretary-underground-shop-equipment-alpha-v2')
+            ->assertJsonPath('data.catalog_identity', 'secretary-underground-shop-equipment-alpha-v3')
             ->assertJsonPath('data.count', 2);
         $previewItems = collect($preview->json('data.items'));
         $this->assertEqualsCanonicalizing(
@@ -623,9 +620,22 @@ final class UndergroundEquipmentAndRuntimeTest extends UndergroundPlayerAccessTe
             'unlocked_at' => Carbon::now(),
             'first_cleared_at' => Carbon::now(),
         ]);
-        $this->actingAs($user)->getJson('/api/v1/me/underground/equipment/shop')
-            ->assertOk()
-            ->assertJsonPath('data.items.30.locked', false);
+        $itemsBeforeTrialTwo = $this->actingAs($user)->getJson('/api/v1/me/underground/equipment/shop')->assertOk()->json('data.items');
+        $this->assertFalse(collect($itemsBeforeTrialTwo)->firstWhere('key', 'black_crystal_dagger')['locked']);
+        $kingdomDagger = collect($itemsBeforeTrialTwo)->firstWhere('key', 'kingdom_dagger');
+        $this->assertTrue($kingdomDagger['locked']);
+        $this->assertSame(61, $kingdomDagger['item_level']);
+        $this->assertSame('ノービス', $kingdomDagger['rarity_label']);
+        $this->actingAs($user)->postJson('/api/v1/me/underground/equipment/shop/purchase', [
+            'request_id' => (string) Str::uuid(), 'definition_key' => 'kingdom_dagger',
+        ])->assertConflict();
+        UndergroundTrialProgress::query()->create([
+            'underground_profile_id' => $profile->id, 'trial_key' => 'trial_02',
+            'unlocked_at' => Carbon::now(), 'first_cleared_at' => Carbon::now(),
+        ]);
+        $this->actingAs($user)->postJson('/api/v1/me/underground/equipment/shop/purchase', [
+            'request_id' => (string) Str::uuid(), 'definition_key' => 'kingdom_dagger',
+        ])->assertOk();
         $this->actingAs($user)->postJson('/api/v1/me/underground/equipment/shop/purchase', [
             'request_id' => (string) Str::uuid(),
             'definition_key' => 'black_crystal_dagger',

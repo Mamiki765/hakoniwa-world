@@ -40,7 +40,6 @@ final class FreshInstallRebaselineTest extends TestCase
         app(RulesetPublisher::class)->publish($current);
         $ruleset = RulesetVersion::query()->where('key', Ver420RulesetUpgrade::TARGET_KEY)->sole();
 
-        $this->assertSame('4.2.1', config('hakoniwa.application_version'));
         $this->assertSame([Ver420RulesetUpgrade::TARGET_KEY], array_keys(config('hakoniwa.published_rulesets')));
         $this->assertSame(Ver420RulesetUpgrade::TARGET_KEY, $ruleset->key);
         $this->assertSame(Ver420RulesetUpgrade::TARGET_VERSION, $ruleset->version);

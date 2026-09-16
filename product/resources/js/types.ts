@@ -5,6 +5,11 @@ export interface UserIdentity {
 }
 
 export interface CurrentUser {
+    viewer_preferences?: {
+        configured: boolean;
+        show_ai_generated_images: boolean | null;
+        own_secretary_fallback: 'silhouette' | 'peridot' | null;
+    };
     id: number;
     display_name: string;
     paradox: ParadoxBalance;

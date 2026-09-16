@@ -11,10 +11,40 @@ use App\Domain\Underground\Combat\DeterministicEquipmentGenerator;
 use App\Domain\Underground\Combat\PriorityCombatAi;
 use App\Domain\Underground\Combat\UndergroundAwakening;
 use App\Domain\Underground\Combat\UndergroundBuildValidator;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 
 final class AlphaV1PartyCombatTest extends TestCase
 {
+    #[DataProvider('controlledTechniqueCases')]
+    public function test_ai_can_delay_an_awakening_technique_and_preserves_its_action_cost(string $growth, string $technique, bool $consumesAction): void
+    {
+        $player = $this->player('secretary:1', awakening: true);
+        $player['awakening']['growth_path'] = $growth;
+        $player['awakening']['technique_key'] = $technique;
+        $player['ai_rules'] = [
+            ['conditions' => [['type' => 'always']], 'action' => 'awakening'],
+            ['conditions' => [['type' => 'round_gte', 'round' => 3]], 'action' => 'awakening_technique'],
+            ['conditions' => [['type' => 'always']], 'action' => 'normal_attack'],
+        ];
+        $result = $this->model()->fightPartySnapshots($this->catalog(1_000_000, 1, 1), [$player], ['party_target'], 4300, 4, 0);
+        $rows = collect($result->actionLog)->where('actor_id', 'secretary:1');
+        $used = $rows->where('kind', 'awakening_technique')->values();
+        self::assertCount(1, $used);
+        self::assertSame(3, $used[0]['round']);
+        self::assertSame($technique, $used[0]['action']);
+        self::assertSame(! $consumesAction, $rows->where('round', 3)->where('action', 'normal_attack')->isNotEmpty());
+        self::assertTrue($rows->where('round', 4)->where('action', 'normal_attack')->isNotEmpty());
+    }
+
+    public static function controlledTechniqueCases(): array
+    {
+        return [
+            'attack consumes the turn' => ['martial_red', 'decisive_heavenrend', true],
+            'MP recovery continues the turn' => ['free_black', 'limitless_reprise', false],
+        ];
+    }
+
     public function test_guide_duel_forces_every_member_to_full_awakening_before_the_opening_ultimate(): void
     {
         $manifest = $this->catalog(1, 1, 1)->manifest();
@@ -27,6 +57,10 @@ final class AlphaV1PartyCombatTest extends TestCase
             $player['stats']['might'] = 3_000;
         }
         unset($player);
+        $players[1]['ai_rules'] = [
+            ['conditions' => [['type' => 'round_gte', 'round' => 2]], 'action' => 'awakening_technique'],
+            ['conditions' => [['type' => 'always']], 'action' => 'defend'],
+        ];
         $result = $this->model()->fightPartySnapshots(new AlphaV1BuildCatalog($manifest), $players, ['dream_queen'], 4100, 2, 0);
         $rows = collect($result->actionLog);
         $awakenings = $rows->where('kind', 'awakening');
@@ -43,6 +77,8 @@ final class AlphaV1PartyCombatTest extends TestCase
         self::assertCount(1, $opening->pluck('target_id')->unique());
         self::assertLessThan($opening->keys()->first(), $awakenings->keys()->last());
         self::assertGreaterThan($opening->keys()->last(), $rows->where('kind', 'awakening_technique')->keys()->first());
+        $controlled = $rows->where('actor_id', 'borrowed:2')->where('kind', 'awakening_technique');
+        self::assertSame([2], $controlled->pluck('round')->all());
         $regeneration = $rows->firstWhere('action', 'guide_regeneration');
         self::assertSame('enemy:1', $regeneration['actor_id']);
         self::assertSame('enemy:1', $regeneration['target_id']);
@@ -561,6 +597,20 @@ final class AlphaV1PartyCombatTest extends TestCase
         $healer = $this->player('borrowed:2', currentHp: 1, awakening: true);
         $healer['awakening']['growth_path'] = 'blessing_green';
         $healer['awakening']['technique_key'] = 'life_requiem';
+        $healer['ai_rules'] = [
+            ['conditions' => [['type' => 'always']], 'action' => 'awakening'],
+            ['conditions' => [['type' => 'ally_hp_lte', 'percent' => 0]], 'action' => 'awakening_technique'],
+            ['conditions' => [['type' => 'always']], 'action' => 'defend'],
+        ];
+        $waitingHealer = $this->combatState('player', 'borrowed:2', 100, aiRules: $healer['ai_rules']);
+        $waitingHealer->awakened = true;
+        $waitingHealer->awakeningTechniqueKey = 'life_requiem';
+        $injuredAlly = $this->combatState('player', 'secretary:1', 1);
+        $enemy = $this->combatState('enemy', 'enemy:1', 100);
+        $ai = new PriorityCombatAi;
+        self::assertSame('defend', $ai->select($waitingHealer, $enemy, $catalog, 1, allies: [$waitingHealer, $injuredAlly])['type']);
+        $injuredAlly->hp = 0;
+        self::assertSame('awakening_technique', $ai->select($waitingHealer, $enemy, $catalog, 1, allies: [$waitingHealer, $injuredAlly])['type']);
         $leader = $this->player('secretary:1', currentHp: 1);
         $leader['stats']['agility'] = 2_000;
         $leader['active_skills'] = ['bulwark_strike'];

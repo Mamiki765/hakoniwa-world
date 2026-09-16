@@ -295,7 +295,7 @@ final class UndergroundEquipmentCatalog
             || ! in_array($category, ['weapon', 'armor', 'accessory'], true)
             || ($category === 'weapon' && ! in_array($style, ['dagger', 'rapier', 'longsword', 'crystal_staff'], true))
             || ($category !== 'weapon' && $style !== null)
-            || ! is_int($definition['rank'] ?? null) || $definition['rank'] < 0 || $definition['rank'] > 4
+            || ! is_int($definition['rank'] ?? null) || $definition['rank'] < 0
             || ! is_int($definition['item_level'] ?? null) || $definition['item_level'] < 1
             || (($generated || ($definition['equippable'] ?? true) !== false) && $definition['item_level'] > $this->generatorItemLevelMax())
             || (! in_array($rarity, ['common', 'uncommon', 'rare', 'epic'], true)

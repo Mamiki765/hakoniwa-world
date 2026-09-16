@@ -3,6 +3,7 @@
 namespace Tests\Underground\Unit;
 
 use App\Domain\Underground\Combat\AlphaV1BuildCatalog;
+use App\Domain\Underground\Combat\AlphaV1CombatRules;
 use App\Domain\Underground\Combat\PriorityCombatAiConfiguration;
 use InvalidArgumentException;
 use PHPUnit\Framework\Attributes\DataProvider;
@@ -116,7 +117,7 @@ final class PriorityCombatAiConfigurationTest extends TestCase
     /** @return iterable<string, array{list<mixed>}> */
     public static function invalidRules(): iterable
     {
-        yield 'more than sixteen rules' => [array_fill(0, 17, [
+        yield 'more than the supported rule limit' => [array_fill(0, AlphaV1CombatRules::AI_RULE_LIMIT + 1, [
             'conditions' => [],
             'action' => 'normal_attack',
         ])];

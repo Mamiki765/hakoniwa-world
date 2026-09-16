@@ -3,6 +3,10 @@
 return [
     'schema_version' => 2,
     'story_identity' => 'secretary-underground-intro-alpha-v2',
+    'residence' => [
+        'villa' => ['name' => '別荘', 'price' => 100000],
+        'mirror' => ['name' => '透明な鏡', 'price' => 1000000],
+    ],
     'shopkeeper_name' => [
         'maximum_graphemes' => 20,
         'true_name_aliases' => [

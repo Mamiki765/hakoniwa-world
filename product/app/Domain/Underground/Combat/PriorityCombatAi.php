@@ -11,7 +11,7 @@ final class PriorityCombatAi
     /**
      * @param  list<BuildCombatState>  $allies
      * @param  list<BuildCombatState>  $enemies
-     * @return array{type: 'normal_attack'|'defend'|'skill'|'awakening', key: string|null, target_id: string|null, target_explicit: bool, reason: string, fallback: bool, mp_blocked: bool, next_rule_index: int}
+     * @return array{type: 'normal_attack'|'defend'|'skill'|'awakening'|'awakening_technique', key: string|null, target_id: string|null, target_explicit: bool, reason: string, fallback: bool, mp_blocked: bool, next_rule_index: int}
      */
     public function select(
         BuildCombatState $actor,
@@ -105,6 +105,24 @@ final class PriorityCombatAi
                         'key' => null,
                         'target_id' => $ruleTarget->combatantId,
                         'target_explicit' => $targetSelector !== null,
+                        'reason' => 'priority_rule_'.$index,
+                        'fallback' => false,
+                        'mp_blocked' => $mpBlocked,
+                        'next_rule_index' => $index + 1,
+                    ];
+                }
+                $index++;
+
+                continue;
+            }
+            if ($action === 'awakening_technique') {
+                if ($actor->side === 'player' && $actor->awakened
+                    && ! $actor->awakeningTechniqueUsed && $actor->awakeningTechniqueKey !== null) {
+                    return [
+                        'type' => 'awakening_technique',
+                        'key' => $actor->awakeningTechniqueKey,
+                        'target_id' => $ruleTarget->combatantId,
+                        'target_explicit' => false,
                         'reason' => 'priority_rule_'.$index,
                         'fallback' => false,
                         'mp_blocked' => $mpBlocked,
@@ -399,6 +417,10 @@ final class PriorityCombatAi
     {
         foreach ($allies as $ally) {
             if (! $ally->alive()) {
+                if ($percent === 0) {
+                    return true;
+                }
+
                 continue;
             }
 

@@ -58,17 +58,7 @@ final readonly class SecretaryProfilePresenter
             'main_image' => $image,
             'images' => $this->images($secretary, $viewer, $viewerPreferencesConfigured, $isOwner),
             'editable_image_metadata' => null,
-            'viewer_preferences' => [
-                'configured' => $viewerPreferencesConfigured,
-                'show_ai_generated_images' => $viewerPreferencesConfigured
-                    ? $viewer->show_ai_generated_secretary_images
-                    : null,
-                'own_secretary_fallback' => $viewerPreferencesConfigured
-                    ? $viewer->secretary_image_fallback
-                    : null,
-                'fallback' => $viewerPreferencesConfigured ? $viewer->secretary_image_fallback : null,
-                'can_update' => $viewer instanceof User,
-            ],
+            'viewer_preferences' => $this->viewerPreferences($viewer),
             'equipment' => $equipment,
         ];
     }
@@ -81,6 +71,20 @@ final readonly class SecretaryProfilePresenter
         $name = $secretary->name ?? '？？？';
 
         return mb_strlen($name) <= 6 ? $name : mb_substr($name, 0, 5).'…';
+    }
+
+    /** @return array<string, mixed> */
+    public function viewerPreferences(?User $viewer): array
+    {
+        $configured = $this->viewerPreferencesConfigured($viewer);
+
+        return [
+            'configured' => $configured,
+            'show_ai_generated_images' => $configured ? $viewer->show_ai_generated_secretary_images : null,
+            'own_secretary_fallback' => $configured ? $viewer->secretary_image_fallback : null,
+            'fallback' => $configured ? $viewer->secretary_image_fallback : null,
+            'can_update' => $viewer instanceof User,
+        ];
     }
 
     /** @return array<string, mixed> */
