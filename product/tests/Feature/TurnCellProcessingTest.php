@@ -1730,7 +1730,36 @@ class TurnCellProcessingTest extends TestCase
             }
         }
 
-        $this->fail('Surface test map did not provide owned land adjacent to empty deep sea.');
+        foreach ($owned as $land) {
+            foreach ((new GridCoordinate($land->x, $land->y))->neighborsWithin(
+                $space->min_x,
+                $space->max_x,
+                $space->min_y,
+                $space->max_y,
+            ) as $coordinate) {
+                $candidate = MapCell::query()->where('map_space_id', $space->id)
+                    ->where('x', $coordinate->x)->where('y', $coordinate->y)
+                    ->whereDoesntHave('ship')->whereDoesntHave('monsterOccupancy')
+                    ->with(['terrain', 'facility'])->first();
+                if (! $candidate instanceof MapCell) {
+                    continue;
+                }
+
+                $states = app(MapCellStateService::class);
+                $states->setFacility($candidate, null);
+                $states->transitionTerrain(
+                    $candidate,
+                    TerrainDefinition::query()->where('key', 'sea')->firstOrFail(),
+                );
+                $candidate->owner_nation_id = null;
+                $candidate->population = 0;
+                $candidate->save();
+
+                return [$land, $candidate];
+            }
+        }
+
+        $this->fail('Surface test map did not provide a usable cell next to owned land.');
     }
 
     private function mutateCell(MapCell $cell, string $terrainKey, ?string $facilityKey, int $population): void

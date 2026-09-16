@@ -174,9 +174,9 @@ class TurnEconomyTest extends TestCase
         $sales = app(CompleteTurnEngine::class)->execute('resource_sales', $context);
         $this->assertSame(0, $sales->metrics['sales']);
         $this->assertSame(0, (int) $nation->fresh()->money);
-        $normalSale = $this->event($run, 'resource.automatic_sale', 'wheat');
-        $this->assertSame(0, $normalSale['requested']);
-        $this->assertSame(0, $normalSale['sold']);
+        $this->assertSame(0, DB::table('audit_events')->where('event_type', 'resource.automatic_sale')
+            ->whereRaw("metadata->>'turn_run_id' = ?", [(string) $run->id])
+            ->whereRaw("metadata->>'resource_key' = 'wheat'")->count());
 
         $events = app(PlayerIslandEventService::class);
         $ownerOverflow = collect($events->ownerPage($nation->fresh(), 1, 2)['groups'])
@@ -677,8 +677,10 @@ class TurnEconomyTest extends TestCase
         app(CompleteTurnEngine::class)->execute('nation_economy', $saleContext);
         $sales = app(CompleteTurnEngine::class)->execute('resource_sales', $saleContext);
         $this->assertSame(0, $sales->metrics['sales']);
-        $this->assertSame(0, $this->event($saleRun, 'resource.automatic_sale', 'industrial_goods')['sold']);
-        $this->assertSame(0, $this->event($saleRun, 'resource.automatic_sale', 'minerals')['sold']);
+        $this->assertSame(0, DB::table('audit_events')->where('event_type', 'resource.automatic_sale')
+            ->whereRaw("metadata->>'turn_run_id' = ?", [(string) $saleRun->id])
+            ->whereIn(DB::raw("metadata->>'resource_key'"), ['industrial_goods', 'minerals'])
+            ->count());
 
         $first->update(['population' => 5_000]);
         $second->update(['population' => 5_000]);

@@ -49,6 +49,7 @@ final class CurrentRulesetRuntimeBoundaryTest extends TestCase
             SecretarySkillCatalog::DECLINING_BIRTHRATE_POLICY,
             SecretarySkillCatalog::INDOMITABLE,
             SecretarySkillCatalog::SHIP_OPERATIONS,
+            SecretarySkillCatalog::NAVY,
         ])->delete();
         $world->update(['ruleset_version_id' => $historical->id]);
         $run = TurnRun::query()->create([
