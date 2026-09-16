@@ -55,7 +55,7 @@ final class SecretaryPersistenceTest extends TestCase
         );
         $skills = $secretary->skills->keyBy('skill_key');
         $this->assertSame(
-            collect(SecretarySkillCatalog::V20_KEYS)->sort()->values()->all(),
+            collect(SecretarySkillCatalog::V26_KEYS)->sort()->values()->all(),
             $skills->keys()->sort()->values()->all(),
         );
         $this->assertSame(0, $skills[SecretarySkillCatalog::AGRICULTURAL_POLICY]->level);
@@ -66,6 +66,7 @@ final class SecretaryPersistenceTest extends TestCase
         $this->assertSame(0, $skills[SecretarySkillCatalog::DECLINING_BIRTHRATE_POLICY]->level);
         $this->assertSame(0, $skills[SecretarySkillCatalog::INDOMITABLE]->level);
         $this->assertSame(0, $skills[SecretarySkillCatalog::SHIP_OPERATIONS]->level);
+        $this->assertSame(0, $skills[SecretarySkillCatalog::NAVY]->level);
         $this->assertSame([0], $skills->pluck('experience')->unique()->values()->all());
         $this->assertDatabaseHas('secretary_item_instances', [
             'secretary_id' => $secretary->id,
@@ -82,7 +83,7 @@ final class SecretaryPersistenceTest extends TestCase
         $replayed = $service->create($user, $world->fresh(), '別入力', '別入力', '', $requestKey);
         $this->assertSame($nation->id, $replayed->id);
         $this->assertSame(1, Secretary::query()->where('user_id', $user->id)->count());
-        $this->assertSame(8, SecretarySkill::query()->where('secretary_id', $secretary->id)->count());
+        $this->assertSame(9, SecretarySkill::query()->where('secretary_id', $secretary->id)->count());
         $this->assertSame(1, $secretary->itemInstances()->count());
     }
 
@@ -112,7 +113,8 @@ final class SecretaryPersistenceTest extends TestCase
                 ->assertJsonPath('data.skills.5.effect', '自然人口上限 +500人 / 誘致人口上限 +1,000人')
                 ->assertJsonPath('data.skills.6.effect', '自然人口増加 +2.50%')
                 ->assertJsonPath('data.skills.7.effect', '準備中')
-                ->assertJsonCount(8, 'data.skills');
+                ->assertJsonPath('data.skills.8.effect', '効果なし')
+                ->assertJsonCount(9, 'data.skills');
         }
         $this->assertSame(2, Secretary::query()->where('name', 'ペリドット')->count());
 
