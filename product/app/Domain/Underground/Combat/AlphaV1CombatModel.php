@@ -99,14 +99,7 @@ final readonly class AlphaV1CombatModel
                 foreach ($players as $player) {
                     $player->awakeningUnlocked = true;
                     $player->awakeningTechniqueKey ??= $this->awakening->defaultTechniqueKey((string) $player->flags['awakening_growth_path']);
-                    $this->activateAwakening(
-                        $player,
-                        1,
-                        $metrics,
-                        $logs,
-                        'guide:forced:'.$player->combatantId,
-                        true,
-                    );
+                    $this->activateAwakening($player, 1, $logs, 'guide:forced:'.$player->combatantId, true);
                 }
             }
         }
@@ -1183,7 +1176,7 @@ final readonly class AlphaV1CombatModel
                     $decisionTargetId,
                     $decisionTargetIds,
                 );
-                if (! $this->activateAwakening($actor, $round, $metrics, $actionLog, $awakeningActionId)) {
+                if (! $this->activateAwakening($actor, $round, $actionLog, $awakeningActionId)) {
                     throw new InvalidArgumentException('Underground alpha-v1 AI selected unavailable awakening.');
                 }
                 $nextRuleIndex = $candidate['next_rule_index'];
@@ -1296,7 +1289,7 @@ final readonly class AlphaV1CombatModel
             if ($action['type'] !== 'awakening') {
                 break;
             }
-            if ($actor->side !== 'player' || ! $this->activateAwakening($actor, $round, $metrics, $actionLog, $actionId)) {
+            if ($actor->side !== 'player' || ! $this->activateAwakening($actor, $round, $actionLog, $actionId)) {
                 throw new InvalidArgumentException('Underground alpha-v1 AI selected unavailable awakening.');
             }
             $nextRuleIndex = $action['next_rule_index'];
@@ -2981,23 +2974,17 @@ final readonly class AlphaV1CombatModel
         ];
     }
 
-    /** @param array<string, int|null> $metrics
-     * @param  list<array<string, mixed>>  $actionLog
-     */
+    /** @param list<array<string, mixed>> $actionLog */
     private function activateAwakening(
         BuildCombatState $player,
         int $round,
-        array &$metrics,
         array &$actionLog,
         ?string $actionId = null,
         bool $forced = false,
     ): bool {
-        $hpBefore = $player->hp;
         if (! ($forced ? $this->awakening->forceActivate($player, $this->rules) : $this->awakening->tryActivate($player, $this->rules))) {
             return false;
         }
-        $effectiveHealing = max(0, $player->hp - $hpBefore);
-        $metrics['effective_healing'] = max(0, (int) ($metrics['effective_healing'] ?? 0)) + $effectiveHealing;
         $row = [
             'kind' => 'awakening',
             'round' => $round,
@@ -3011,7 +2998,6 @@ final readonly class AlphaV1CombatModel
             'awakened_stats' => $player->stats,
             'normal_max_hp' => $player->normalMaxHp,
             'awakened_max_hp' => $player->maxHp,
-            'effective_healing' => $effectiveHealing,
         ];
         if ($actionId !== null) {
             $row['action_id'] = $actionId;

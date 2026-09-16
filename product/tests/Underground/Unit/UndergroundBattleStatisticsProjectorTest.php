@@ -68,8 +68,7 @@ final class UndergroundBattleStatisticsProjectorTest extends TestCase
                     'amount' => -4, 'effect_source' => 'revival', 'revived' => true],
                 ['effect_type' => 'mp_cost', 'actor_id' => 'leader', 'amount' => 9],
                 ['effect_type' => 'mp_recovery', 'actor_id' => 'leader', 'amount' => 3],
-                ['kind' => 'awakening', 'actor_id' => 'leader', 'team' => 'player',
-                    'round' => 2, 'effective_healing' => 0],
+                ['kind' => 'awakening', 'actor_id' => 'leader', 'team' => 'player', 'round' => 2],
                 ['kind' => 'awakening_technique', 'actor_id' => 'leader', 'round' => 3],
             ],
             initialStates: [
@@ -168,7 +167,7 @@ final class UndergroundBattleStatisticsProjectorTest extends TestCase
             enemyRemainingHp: 88,
             damageDealt: 12,
             damageReceived: 7,
-            effectiveHealing: 707,
+            effectiveHealing: 7,
             damagePrevented: 0,
             mpSpent: 0,
             mpNaturalRecovery: 0,
@@ -219,7 +218,7 @@ final class UndergroundBattleStatisticsProjectorTest extends TestCase
                     'amount' => -5, 'effect_source' => 'regeneration'],
                 ['kind' => 'awakening', 'effect_type' => 'awakening', 'team' => 'player',
                     'side' => 'player', 'actor_id' => 'secretary_runtime', 'target_id' => 'secretary_runtime',
-                    'target_side' => 'player', 'round' => 2, 'effective_healing' => 700],
+                    'target_side' => 'player', 'round' => 2],
             ],
             generatedEquipment: [],
             awakening: [
@@ -248,18 +247,18 @@ final class UndergroundBattleStatisticsProjectorTest extends TestCase
         self::assertSame(12, $statistics['self']['damage_dealt']);
         self::assertSame(['direct' => 10, 'periodic' => 2, 'counter' => 0], $statistics['self']['damage_by_source']);
         self::assertSame(7, $statistics['self']['damage_received']);
-        self::assertSame(707, $statistics['self']['effective_healing']);
-        self::assertSame(707, $statistics['self']['effective_healing_received']);
+        self::assertSame(7, $statistics['self']['effective_healing']);
+        self::assertSame(7, $statistics['self']['effective_healing_received']);
         self::assertSame([
             'direct' => 0, 'periodic' => 2, 'lifesteal' => 0,
-            'regeneration' => 5, 'revival' => 0, 'awakening' => 700,
+            'regeneration' => 5, 'revival' => 0, 'awakening' => 0,
         ], $statistics['self']['healing_by_source']);
         self::assertSame(10, $statistics['self']['maximum_hit']);
         self::assertSame('normal_attack', $statistics['self']['maximum_hit_action_key']);
         self::assertSame(['normal_attack' => 1], $statistics['self']['action_usage']);
     }
 
-    public function test_maximum_hit_is_the_total_for_one_action_sequence_with_a_deterministic_action_key(): void
+    public function test_maximum_hit_totals_one_action_against_one_target_without_summing_aoe_targets(): void
     {
         $result = new PartyCombatResult(
             winner: 'player',
@@ -268,26 +267,33 @@ final class UndergroundBattleStatisticsProjectorTest extends TestCase
                 ['kind' => 'decision', 'actor_id' => 'leader', 'team' => 'player',
                     'action_key' => 'dagger_flurry'],
                 ['effect_type' => 'damage', 'actor_id' => 'leader', 'target_id' => 'enemy:1',
-                    'team' => 'player', 'target_side' => 'enemy', 'effective_damage' => 4,
-                    'hp_damage' => 4, 'prevented_damage' => 0, 'target_hp_after' => 6,
+                    'team' => 'player', 'target_side' => 'enemy', 'effective_damage' => 8,
+                    'hp_damage' => 8, 'prevented_damage' => 0, 'target_hp_after' => 7,
                     'damage_source' => 'direct', 'defeated' => false,
                     'action' => 'dagger_flurry', 'action_id' => 'leader:1'],
                 ['effect_type' => 'damage', 'actor_id' => 'leader', 'target_id' => 'enemy:1',
-                    'team' => 'player', 'target_side' => 'enemy', 'effective_damage' => 6,
-                    'hp_damage' => 6, 'prevented_damage' => 0, 'target_hp_after' => 0,
+                    'team' => 'player', 'target_side' => 'enemy', 'effective_damage' => 7,
+                    'hp_damage' => 7, 'prevented_damage' => 0, 'target_hp_after' => 0,
+                    'damage_source' => 'direct', 'defeated' => true,
+                    'action' => 'dagger_flurry', 'action_id' => 'leader:1'],
+                ['effect_type' => 'damage', 'actor_id' => 'leader', 'target_id' => 'enemy:2',
+                    'team' => 'player', 'target_side' => 'enemy', 'effective_damage' => 12,
+                    'hp_damage' => 12, 'prevented_damage' => 0, 'target_hp_after' => 0,
                     'damage_source' => 'direct', 'defeated' => true,
                     'action' => 'dagger_flurry', 'action_id' => 'leader:1'],
             ],
             initialStates: [
                 'leader' => ['team' => 'player', 'hp' => 10, 'awakened' => false],
-                'enemy:1' => ['team' => 'enemy', 'hp' => 10],
+                'enemy:1' => ['team' => 'enemy', 'hp' => 15],
+                'enemy:2' => ['team' => 'enemy', 'hp' => 12],
             ],
             finalStates: [
                 'leader' => ['team' => 'player', 'hp' => 10],
                 'enemy:1' => ['team' => 'enemy', 'hp' => 0],
+                'enemy:2' => ['team' => 'enemy', 'hp' => 0],
             ],
             metrics: [
-                'damage_dealt' => 10,
+                'damage_dealt' => 27,
                 'damage_received' => 0,
                 'effective_healing' => 0,
                 'damage_prevented' => 0,
@@ -297,7 +303,7 @@ final class UndergroundBattleStatisticsProjectorTest extends TestCase
 
         $statistics = (new UndergroundBattleStatisticsProjector)->fromParty($result, 'leader');
 
-        self::assertSame(10, $statistics['self']['maximum_hit']);
+        self::assertSame(15, $statistics['self']['maximum_hit']);
         self::assertSame('dagger_flurry', $statistics['self']['maximum_hit_action_key']);
         self::assertSame('direct', $statistics['self']['maximum_hit_damage_source']);
         self::assertSame(['dagger_flurry' => 1], $statistics['self']['action_usage']);

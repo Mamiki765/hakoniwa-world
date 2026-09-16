@@ -234,6 +234,10 @@ class CompleteTurnIntegrationTest extends TestCase
         $user = User::factory()->create();
         $nation = app(NationCreationService::class)->create($user, $world, '旧集計国', '試験島主');
         $ruleset = $world->rulesetVersion()->firstOrFail();
+        $firstEventAt = now()->subMinutes(4);
+        $splitCutoffAt = now()->subMinutes(3);
+        $secondEventAt = now()->subMinutes(2);
+        $completedAt = now()->subMinute();
         $run = TurnRun::query()->create([
             'world_id' => $world->id,
             'target_turn' => 2,
@@ -246,8 +250,8 @@ class CompleteTurnIntegrationTest extends TestCase
             'pipeline' => [],
             'phase_results' => [],
             'failure_context' => [],
-            'started_at' => now()->subSecond(),
-            'completed_at' => now(),
+            'started_at' => $firstEventAt,
+            'completed_at' => $completedAt,
         ]);
         $base = [
             'actor_user_id' => null,
@@ -261,9 +265,9 @@ class CompleteTurnIntegrationTest extends TestCase
             'severity' => 'info',
             'subject_type' => $nation->getMorphClass(),
             'subject_id' => $nation->id,
-            'occurred_at' => now(),
-            'created_at' => now(),
-            'updated_at' => now(),
+            'occurred_at' => $firstEventAt,
+            'created_at' => $firstEventAt,
+            'updated_at' => $firstEventAt,
         ];
         $auditBefore = DB::table('audit_events')->count();
         $summaryId = DB::table('audit_events')->insertGetId([
@@ -302,28 +306,55 @@ class CompleteTurnIntegrationTest extends TestCase
                 'maximum' => 100,
             ], JSON_THROW_ON_ERROR),
         ]);
+        DB::table('audit_events')->insert([
+            ...$base,
+            'event_type' => 'forest.grown',
+            'nation_id' => null,
+            'x' => $legacyForestCell->x,
+            'y' => $legacyForestCell->y,
+            'subject_type' => $legacyForestCell->getMorphClass(),
+            'subject_id' => $legacyForestCell->id,
+            'metadata' => json_encode([
+                'turn_run_id' => $run->id,
+                'before' => 15,
+                'base_increment' => 7,
+                'increment' => 7,
+                'after' => 22,
+                'maximum' => 100,
+            ], JSON_THROW_ON_ERROR),
+            'occurred_at' => $secondEventAt,
+            'created_at' => $secondEventAt,
+            'updated_at' => $secondEventAt,
+        ]);
+        $splitPreview = app(RoutineAuditCompactor::class)->preview($splitCutoffAt, 10);
+        $this->assertSame(0, $splitPreview['summary_groups']);
+        $this->assertSame(0, $splitPreview['unattributed_groups']);
+        $splitApply = app(RoutineAuditCompactor::class)->compact($splitCutoffAt, 10, 30);
+        $this->assertSame(0, $splitApply['event_rows_deleted']);
+        $this->assertSame(2, DB::table('audit_events')->where('event_type', 'forest.grown')
+            ->whereNull('nation_id')->count());
         $cutoffAt = now()->addMinute();
         $cutoff = $cutoffAt->toAtomString();
         $preview = app(RoutineAuditCompactor::class)->preview($cutoffAt, 10);
         $this->assertSame(1, $preview['summary_groups']);
         $this->assertSame(1, $preview['unattributed_groups']);
-        $this->assertSame(5, $preview['event_rows']);
-        $this->assertSame(1, $preview['unattributed_forest_rows']);
-        $this->assertSame(5, $preview['unattributed_forest_quantity']);
-        $this->assertSame(['legacy_forest_missing_nation_id' => 1], $preview['unattributed_by_reason']);
+        $this->assertSame(6, $preview['event_rows']);
+        $this->assertSame(2, $preview['unattributed_forest_rows']);
+        $this->assertSame(12, $preview['unattributed_forest_quantity']);
+        $this->assertSame(['legacy_forest_missing_nation_id' => 2], $preview['unattributed_by_reason']);
 
         $this->artisan('audit:compact-routine-events', [
             '--cutoff' => $cutoff,
             '--limit' => 10,
         ])->assertSuccessful();
-        $this->assertSame($auditBefore + 7, DB::table('audit_events')->count());
+        $this->assertSame($auditBefore + 8, DB::table('audit_events')->count());
         $before = json_decode((string) DB::table('audit_events')->where('id', $summaryId)->value('metadata'), true, 512, JSON_THROW_ON_ERROR);
         $this->assertArrayNotHasKey('routine', $before);
 
         $result = app(RoutineAuditCompactor::class)->compact($cutoffAt, 10, 30);
         $this->assertSame(1, $result['summary_groups']);
         $this->assertSame(1, $result['unattributed_groups']);
-        $this->assertSame(5, $result['event_rows_deleted']);
+        $this->assertSame(6, $result['event_rows_deleted']);
         $after = json_decode((string) DB::table('audit_events')->where('id', $summaryId)->value('metadata'), true, 512, JSON_THROW_ON_ERROR);
         $this->assertSame(1, $after['routine']['fire_protection_checks']);
         $this->assertNull($after['routine']['forest_growth_cells']);
@@ -334,16 +365,17 @@ class CompleteTurnIntegrationTest extends TestCase
             'complete' => false,
             'known_cells' => 1,
             'known_quantity' => 3,
-            'unattributed_turn_run_cells' => 1,
-            'unattributed_turn_run_quantity' => 5,
+            'unattributed_turn_run_cells' => 2,
+            'unattributed_turn_run_quantity' => 12,
         ], $after['routine']['forest_growth_attribution']);
         $this->assertSame(4, $after['routine_compaction']['source_event_count']);
         $unattributed = DB::table('audit_events')
             ->where('event_type', RoutineAuditCompactor::UNATTRIBUTED_EVENT_TYPE)
             ->sole();
         $unattributedMetadata = json_decode((string) $unattributed->metadata, true, 512, JSON_THROW_ON_ERROR);
-        $this->assertSame(1, $unattributedMetadata['routine']['forest_growth_unattributed_cells']);
-        $this->assertSame(5, $unattributedMetadata['routine']['forest_growth_unattributed_quantity']);
+        $this->assertSame(2, $unattributedMetadata['routine']['forest_growth_unattributed_cells']);
+        $this->assertSame(12, $unattributedMetadata['routine']['forest_growth_unattributed_quantity']);
+        $this->assertSame(2, $unattributedMetadata['routine_compaction']['source_event_count']);
         $this->assertSame('legacy_forest_missing_nation_id', $unattributedMetadata['routine_compaction']['provenance']);
         $this->assertSame(1, DB::table('audit_events')->where('event_type', 'command.preserved')->count());
         $this->assertSame($auditBefore + 3, DB::table('audit_events')->count());

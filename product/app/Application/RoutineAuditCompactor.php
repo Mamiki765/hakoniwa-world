@@ -28,7 +28,7 @@ final class RoutineAuditCompactor
         ];
         $remaining = $limit;
         foreach ($this->candidateSummaries($cutoff, $remaining) as $summary) {
-            $aggregate = $this->eligibleEventAggregate($summary, $cutoff);
+            $aggregate = $this->eligibleEventAggregate($summary);
             if ($aggregate['rows'] < 1) {
                 continue;
             }
@@ -47,7 +47,6 @@ final class RoutineAuditCompactor
                     (int) $group->turn_run_id,
                     (int) $group->world_id,
                     (int) $group->turn,
-                    $cutoff,
                 );
                 if ($aggregate['rows'] < 1) {
                     continue;
@@ -59,9 +58,15 @@ final class RoutineAuditCompactor
                     = ($result['by_type']['forest.grown'] ?? 0) + $aggregate['rows'];
                 $result['unattributed_forest_rows'] += $aggregate['rows'];
                 $result['unattributed_forest_quantity'] += $aggregate['quantity'];
-                $result['unattributed_by_reason']['legacy_forest_missing_nation_id']
-                    = ($result['unattributed_by_reason']['legacy_forest_missing_nation_id'] ?? 0)
-                        + $aggregate['rows'];
+                $reason = $this->unattributedAggregateEvent(
+                    (int) $group->turn_run_id,
+                    (int) $group->world_id,
+                    (int) $group->turn,
+                ) === null
+                    ? 'legacy_forest_missing_nation_id'
+                    : 'legacy_forest_existing_aggregate_with_raw_rows';
+                $result['unattributed_by_reason'][$reason]
+                    = ($result['unattributed_by_reason'][$reason] ?? 0) + $aggregate['rows'];
             }
         }
         ksort($result['by_type']);
@@ -143,22 +148,23 @@ final class RoutineAuditCompactor
             ->where('summaries.occurred_at', '<=', $cutoff)
             ->whereRaw("NOT jsonb_exists(summaries.metadata, 'routine_compaction')")
             ->whereRaw("NOT jsonb_exists(summaries.metadata, 'routine')")
-            ->whereExists(static function ($query): void {
+            ->whereExists(static function ($query) use ($cutoff): void {
                 $query->selectRaw('1')
                     ->from('turn_runs as completed_runs')
                     ->where('completed_runs.status', TurnRun::STATUS_COMPLETED)
                     ->where('completed_runs.is_dry_run', false)
+                    ->whereNotNull('completed_runs.completed_at')
+                    ->where('completed_runs.completed_at', '<=', $cutoff)
                     ->whereColumn('completed_runs.world_id', 'summaries.world_id')
                     ->whereColumn('completed_runs.target_turn', 'summaries.turn')
                     ->whereRaw("completed_runs.id::text = summaries.metadata->>'turn_run_id'");
             })
-            ->whereExists(static function ($query) use ($cutoff): void {
+            ->whereExists(static function ($query): void {
                 $query->selectRaw('1')
                     ->from('audit_events as routine_events')
                     ->whereColumn('routine_events.world_id', 'summaries.world_id')
                     ->whereColumn('routine_events.nation_id', 'summaries.nation_id')
                     ->whereColumn('routine_events.turn', 'summaries.turn')
-                    ->where('routine_events.occurred_at', '<=', $cutoff)
                     ->whereRaw("routine_events.metadata->>'turn_run_id' = summaries.metadata->>'turn_run_id'")
                     ->where(static fn ($events) => self::whereEligibleEvent($events, 'routine_events'));
             })
@@ -176,27 +182,19 @@ final class RoutineAuditCompactor
         return DB::table('audit_events as legacy')
             ->where('legacy.event_type', 'forest.grown')
             ->whereNull('legacy.nation_id')
-            ->where('legacy.occurred_at', '<=', $cutoff)
             ->whereRaw("jsonb_typeof(legacy.metadata->'increment') = 'number'")
             ->whereRaw("(legacy.metadata->>'increment')::numeric >= 0")
             ->whereRaw("legacy.metadata->>'turn_run_id' ~ '^[0-9]+$'")
-            ->whereExists(static function ($query): void {
+            ->whereExists(static function ($query) use ($cutoff): void {
                 $query->selectRaw('1')
                     ->from('turn_runs as completed_runs')
                     ->where('completed_runs.status', TurnRun::STATUS_COMPLETED)
                     ->where('completed_runs.is_dry_run', false)
+                    ->whereNotNull('completed_runs.completed_at')
+                    ->where('completed_runs.completed_at', '<=', $cutoff)
                     ->whereColumn('completed_runs.world_id', 'legacy.world_id')
                     ->whereColumn('completed_runs.target_turn', 'legacy.turn')
                     ->whereRaw("completed_runs.id::text = legacy.metadata->>'turn_run_id'");
-            })
-            ->whereNotExists(static function ($query): void {
-                $query->selectRaw('1')
-                    ->from('audit_events as aggregate')
-                    ->where('aggregate.event_type', self::UNATTRIBUTED_EVENT_TYPE)
-                    ->whereColumn('aggregate.world_id', 'legacy.world_id')
-                    ->whereColumn('aggregate.turn', 'legacy.turn')
-                    ->whereRaw("aggregate.metadata->>'turn_run_id' = legacy.metadata->>'turn_run_id'")
-                    ->whereRaw("(aggregate.metadata->'routine_compaction'->>'version')::integer = ?", [self::VERSION]);
             })
             ->selectRaw("legacy.world_id, legacy.turn, {$turnRunExpression} as turn_run_id, MIN(legacy.id) as first_event_id")
             ->groupBy('legacy.world_id', 'legacy.turn', DB::raw($turnRunExpression))
@@ -206,9 +204,9 @@ final class RoutineAuditCompactor
     }
 
     /** @return array{rows:int,bytes:int,by_type:array<string,int>,routine:array<string,int>,source_id_min:int,source_id_max:int} */
-    private function eligibleEventAggregate(object $summary, Carbon $cutoff): array
+    private function eligibleEventAggregate(object $summary): array
     {
-        $query = $this->eligibleEventsQuery($summary, $cutoff);
+        $query = $this->eligibleEventsQuery($summary);
         $source = (clone $query)->selectRaw(
             'COUNT(*) as row_count, COALESCE(SUM(octet_length(metadata::text)), 0) as json_bytes, MIN(id) as source_id_min, MAX(id) as source_id_max',
         )->first();
@@ -250,7 +248,7 @@ final class RoutineAuditCompactor
         ];
     }
 
-    private function eligibleEventsQuery(object $summary, Carbon $cutoff): Builder
+    private function eligibleEventsQuery(object $summary): Builder
     {
         $metadata = $this->metadata($summary->metadata);
         $turnRunId = $metadata['turn_run_id'] ?? null;
@@ -262,7 +260,6 @@ final class RoutineAuditCompactor
             ->where('world_id', $summary->world_id)
             ->where('nation_id', $summary->nation_id)
             ->where('turn', $summary->turn)
-            ->where('occurred_at', '<=', $cutoff)
             ->whereRaw("metadata->>'turn_run_id' = ?", [(string) (int) $turnRunId])
             ->where(static fn ($events) => self::whereEligibleEvent($events, 'audit_events'));
     }
@@ -310,10 +307,11 @@ final class RoutineAuditCompactor
                 || ! DB::table('turn_runs')->where('id', (int) $turnRunId)
                     ->where('world_id', (int) $summary->world_id)
                     ->where('target_turn', (int) $summary->turn)
-                    ->where('status', TurnRun::STATUS_COMPLETED)->where('is_dry_run', false)->exists()) {
+                    ->where('status', TurnRun::STATUS_COMPLETED)->where('is_dry_run', false)
+                    ->whereNotNull('completed_at')->where('completed_at', '<=', $cutoff)->exists()) {
                 return null;
             }
-            $aggregate = $this->eligibleEventAggregate($summary, $cutoff);
+            $aggregate = $this->eligibleEventAggregate($summary);
             if ($aggregate['rows'] < 1) {
                 return null;
             }
@@ -321,7 +319,6 @@ final class RoutineAuditCompactor
                 (int) $turnRunId,
                 (int) $summary->world_id,
                 (int) $summary->turn,
-                $cutoff,
             );
             $routine = $aggregate['routine'];
             $routine['forest_growth_attribution'] = [
@@ -348,7 +345,7 @@ final class RoutineAuditCompactor
                 'metadata' => json_encode($metadata, JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE),
                 'updated_at' => Carbon::now(),
             ]);
-            $deleted = $this->eligibleEventsQuery($summary, $cutoff)->delete();
+            $deleted = $this->eligibleEventsQuery($summary)->delete();
             if ($deleted !== $aggregate['rows']) {
                 throw new \RuntimeException('Routine audit compaction did not delete its exact source set.');
             }
@@ -364,11 +361,13 @@ final class RoutineAuditCompactor
             $run = DB::table('turn_runs')->where('id', $turnRunId)->lockForUpdate()->first();
             if ($run === null || (int) $run->world_id !== $worldId
                 || (int) $run->target_turn !== $turn
-                || $run->status !== TurnRun::STATUS_COMPLETED || (bool) $run->is_dry_run) {
+                || $run->status !== TurnRun::STATUS_COMPLETED || (bool) $run->is_dry_run
+                || $run->completed_at === null
+                || Carbon::parse((string) $run->completed_at)->isAfter($cutoff)) {
                 return null;
             }
             $existing = $this->unattributedAggregateEvent($turnRunId, $worldId, $turn);
-            $aggregate = $this->unattributedForestAggregate($turnRunId, $worldId, $turn, $cutoff);
+            $aggregate = $this->unattributedForestAggregate($turnRunId, $worldId, $turn);
             if ($existing !== null) {
                 if ($aggregate['rows'] > 0) {
                     throw new \RuntimeException('Unattributed legacy forest aggregate coexists with undeleted source rows.');
@@ -412,7 +411,7 @@ final class RoutineAuditCompactor
                 'created_at' => $now,
                 'updated_at' => $now,
             ]);
-            $deleted = $this->unattributedEventsQuery($turnRunId, $worldId, $turn, $cutoff)->delete();
+            $deleted = $this->unattributedEventsQuery($turnRunId, $worldId, $turn)->delete();
             if ($deleted !== $aggregate['rows']) {
                 throw new \RuntimeException('Unattributed legacy forest compaction did not delete its exact source set.');
             }
@@ -422,9 +421,9 @@ final class RoutineAuditCompactor
     }
 
     /** @return array{rows:int,quantity:int,bytes:int,source_id_min:int,source_id_max:int} */
-    private function unattributedForestAggregate(int $turnRunId, int $worldId, int $turn, Carbon $cutoff): array
+    private function unattributedForestAggregate(int $turnRunId, int $worldId, int $turn): array
     {
-        $row = $this->unattributedEventsQuery($turnRunId, $worldId, $turn, $cutoff)
+        $row = $this->unattributedEventsQuery($turnRunId, $worldId, $turn)
             ->selectRaw("COUNT(*) as row_count,
                 COALESCE(SUM(((metadata->>'increment')::numeric)::bigint), 0) as quantity,
                 COALESCE(SUM(octet_length(metadata::text)), 0) as json_bytes,
@@ -440,24 +439,27 @@ final class RoutineAuditCompactor
         ];
     }
 
-    private function unattributedEventsQuery(int $turnRunId, int $worldId, int $turn, Carbon $cutoff): Builder
+    private function unattributedEventsQuery(int $turnRunId, int $worldId, int $turn): Builder
     {
         return DB::table('audit_events')
             ->where('event_type', 'forest.grown')
             ->where('world_id', $worldId)
             ->where('turn', $turn)
             ->whereNull('nation_id')
-            ->where('occurred_at', '<=', $cutoff)
             ->whereRaw("metadata->>'turn_run_id' = ?", [(string) $turnRunId])
             ->whereRaw("jsonb_typeof(metadata->'increment') = 'number'")
             ->whereRaw("(metadata->>'increment')::numeric >= 0");
     }
 
     /** @return array{rows:int,quantity:int} */
-    private function unattributedForestEvidence(int $turnRunId, int $worldId, int $turn, Carbon $cutoff): array
+    private function unattributedForestEvidence(int $turnRunId, int $worldId, int $turn): array
     {
-        $raw = $this->unattributedForestAggregate($turnRunId, $worldId, $turn, $cutoff);
+        $raw = $this->unattributedForestAggregate($turnRunId, $worldId, $turn);
         if ($raw['rows'] > 0) {
+            if ($this->unattributedAggregateEvent($turnRunId, $worldId, $turn) !== null) {
+                throw new \RuntimeException('Unattributed legacy forest aggregate coexists with undeleted source rows.');
+            }
+
             return ['rows' => $raw['rows'], 'quantity' => $raw['quantity']];
         }
         $event = $this->unattributedAggregateEvent($turnRunId, $worldId, $turn);

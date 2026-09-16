@@ -297,6 +297,8 @@ final class UndergroundBattleStatisticsProjector
                             $sequenceId = $this->damageSequenceId(
                                 $row,
                                 $actorId,
+                                $targetId,
+                                $targetSide,
                                 $damageSource,
                                 (int) $logIndex,
                                 $currentSoloDecisionId,
@@ -346,27 +348,6 @@ final class UndergroundBattleStatisticsProjector
                         if ($row['defeated'] === true) {
                             $partyKnockouts++;
                         }
-                    }
-                }
-            }
-
-            if (($row['kind'] ?? null) === 'awakening') {
-                if (! is_numeric($row['effective_healing'] ?? null)) {
-                    $issues['awakening_healing_missing_effective_amount']
-                        = ($issues['awakening_healing_missing_effective_amount'] ?? 0) + 1;
-                    $healingIncomplete = true;
-                } else {
-                    $effectiveHealing = max(0, (int) $row['effective_healing']);
-                    $actorSide = is_string($row['team'] ?? null)
-                        ? $row['team']
-                        : (is_string($row['side'] ?? null) ? $row['side'] : null);
-                    if ($actorSide === 'player') {
-                        $partyHealingBySource['awakening'] += $effectiveHealing;
-                    }
-                    if ($actorIsSelf) {
-                        $selfHealing += $effectiveHealing;
-                        $selfHealingReceived += $effectiveHealing;
-                        $selfHealingBySource['awakening'] += $effectiveHealing;
                     }
                 }
             }
@@ -709,16 +690,20 @@ final class UndergroundBattleStatisticsProjector
     private function damageSequenceId(
         array $row,
         ?string $actorId,
+        ?string $targetId,
+        ?string $targetSide,
         string $damageSource,
         int $logIndex,
         ?string $currentSoloDecisionId,
     ): string {
+        $targetIdentity = $targetId ?? 'side:'.($targetSide ?? 'unknown');
         $actionId = $row['action_id'] ?? null;
         if (is_string($actionId) && $actionId !== '') {
-            return ($actorId ?? 'side:'.($row['team'] ?? $row['side'] ?? 'unknown')).'|'.$actionId;
+            return ($actorId ?? 'side:'.($row['team'] ?? $row['side'] ?? 'unknown'))
+                .'|'.$actionId.'|'.$targetIdentity;
         }
         if ($damageSource === 'direct' && $currentSoloDecisionId !== null) {
-            return $currentSoloDecisionId;
+            return $currentSoloDecisionId.'|'.$targetIdentity;
         }
 
         return 'row:'.$logIndex;
