@@ -63,7 +63,7 @@ const editedAsset = computed<SceneAsset | null>(() => portrait.value ? {
 } : null);
 const registration = computed(() => {
     if (!method.value || !new RegExp(`^${assetKind.value}/[a-zA-Z0-9_-]+\\.(png|jpe?g|webp)$`).test(assetFile.value)
-        || !/^[a-zA-Z0-9_.-]+$/.test(assetId.value) || !/^[a-zA-Z0-9_-]+$/.test(sceneKey.value)) return '';
+        || !/^[a-zA-Z0-9_.-]+$/.test(assetId.value) || !/^[a-zA-Z0-9_.-]+$/.test(sceneKey.value)) return '';
     const asset = { file: assetFile.value, creation_method: method.value, credit: credit.value || undefined,
         credit_url: creditUrl.value || undefined, show_credit: showCredit.value };
     const scene = assetKind.value === 'npc' ? { actors: [{ asset: assetId.value, name: actorName.value,

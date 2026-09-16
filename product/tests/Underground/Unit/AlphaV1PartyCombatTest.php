@@ -2,6 +2,7 @@
 
 namespace Tests\Underground\Unit;
 
+use App\Application\Underground\UndergroundBattleStatisticsProjector;
 use App\Domain\Underground\Combat\AlphaV1BuildCatalog;
 use App\Domain\Underground\Combat\AlphaV1CombatModel;
 use App\Domain\Underground\Combat\AlphaV1CombatRules;
@@ -641,6 +642,18 @@ final class AlphaV1PartyCombatTest extends TestCase
             $result->finalStates['secretary:1']['max_hp'],
             $result->finalStates['secretary:1']['hp'],
         );
+
+        $automaticHealer = $healer;
+        array_splice($automaticHealer['ai_rules'], 1, 1);
+        $automaticResult = $this->model()->fightPartySnapshots(
+            $catalog, [$leader, $automaticHealer], ['party_target'], 385, 1, 0,
+        );
+        $projector = new UndergroundBattleStatisticsProjector;
+        $commandedStatistics = $projector->fromParty($result, 'borrowed:2')['self'];
+        self::assertSame($projector->fromParty($automaticResult, 'borrowed:2')['self'], $commandedStatistics);
+        self::assertSame(0, $commandedStatistics['skill_uses']);
+        self::assertSame(1, $commandedStatistics['awakening_technique_uses']);
+        self::assertSame(['life_requiem' => 1], $commandedStatistics['action_usage']);
     }
 
     public function test_party_counter_and_lifesteal_keep_their_actual_target_identity_and_action_id(): void

@@ -11,7 +11,7 @@ function initialTree(): string {
         if (props.trees.some((tree) => tree.key === saved)) return saved!;
     } catch { /* Storage may be unavailable; the growth path still provides a default. */ }
     const preferred = props.growthPath === 'guardianship_blue' ? 'guardianship'
-        : props.growthPath === 'blessing_white' ? 'miracle' : 'martial';
+        : props.growthPath === 'blessing_green' ? 'miracle' : 'martial';
     return props.trees.some((tree) => tree.key === preferred) ? preferred : props.trees[0]?.key ?? 'martial';
 }
 const treeKey = ref(initialTree());
