@@ -7,6 +7,7 @@ use App\Application\CompleteTurnEngine;
 use App\Application\MonsterKillCycleService;
 use App\Application\NationCreationService;
 use App\Application\OceanWorldGenerator;
+use App\Application\RoutineAuditCompactor;
 use App\Application\TurnRunner;
 use App\Domain\Economy\NationCapacityResolver;
 use App\Domain\Map\MapCellStateService;
@@ -174,6 +175,7 @@ class CompleteTurnIntegrationTest extends TestCase
         foreach ($summaryRows as $summaryRow) {
             $this->assertSame('nation', $summaryRow->visibility);
             $metadata = json_decode((string) $summaryRow->metadata, true, 512, JSON_THROW_ON_ERROR);
+            $this->assertArrayHasKey('routine', $metadata);
             $summaryNationId = (int) $summaryRow->nation_id;
             $summaryEnd = [
                 'money' => (int) $world->nations()->whereKey($summaryNationId)->value('money'),
@@ -196,8 +198,13 @@ class CompleteTurnIntegrationTest extends TestCase
         $this->assertSame('plain', $secondTarget->fresh()->terrain()->value('key'));
         $this->assertSame(500, (int) NationResource::query()->where('nation_id', $nation->id)
             ->whereHas('definition', fn ($query) => $query->where('key', 'industrial_goods'))->value('amount'));
-        $this->assertGreaterThan(0, DB::table('audit_events')->where('event_type', 'population.increased')->count());
-        $this->assertGreaterThan(0, DB::table('audit_events')->where('event_type', 'forest.grown')->count());
+        $this->assertSame(0, DB::table('audit_events')->where('event_type', 'population.increased')->count());
+        $this->assertSame(0, DB::table('audit_events')->where('event_type', 'forest.grown')->count());
+        $this->assertGreaterThan(0, collect($summaryRows)->sum(static function (object $row): int {
+            $routine = json_decode((string) $row->metadata, true, 512, JSON_THROW_ON_ERROR)['routine'];
+
+            return (int) $routine['population_growth'] + (int) $routine['forest_growth_quantity'];
+        }));
         $this->assertSame(1, DB::table('audit_events')->where('event_type', 'resource.automatic_sale')
             ->whereRaw("metadata->>'resource_key' = ?", ['industrial_goods'])
             ->whereRaw("(metadata->>'sold')::integer = ?", [1_000])->count());
@@ -219,6 +226,97 @@ class CompleteTurnIntegrationTest extends TestCase
         $aggregateMetrics = collect($run->phase_results)->firstWhere('phase', 'aggregate_nations')['metrics'];
         $this->assertSame($changedChunkIds->count(), $aggregateMetrics['map_chunks_updated']);
         $this->assertSame([], $run->failure_context);
+    }
+
+    public function test_legacy_routine_audit_compactor_is_dry_run_first_exact_and_idempotent(): void
+    {
+        $world = $this->lightweightWorld();
+        $user = User::factory()->create();
+        $nation = app(NationCreationService::class)->create($user, $world, '旧集計国', '試験島主');
+        $ruleset = $world->rulesetVersion()->firstOrFail();
+        $run = TurnRun::query()->create([
+            'world_id' => $world->id,
+            'target_turn' => 2,
+            'ruleset_version_id' => $ruleset->id,
+            'random_seed' => str_repeat('8', 64),
+            'source' => 'manual',
+            'is_dry_run' => false,
+            'status' => TurnRun::STATUS_COMPLETED,
+            'attempt_count' => 1,
+            'pipeline' => [],
+            'phase_results' => [],
+            'failure_context' => [],
+            'started_at' => now()->subSecond(),
+            'completed_at' => now(),
+        ]);
+        $base = [
+            'actor_user_id' => null,
+            'world_id' => $world->id,
+            'turn' => 2,
+            'nation_id' => $nation->id,
+            'x' => null,
+            'y' => null,
+            'message' => null,
+            'visibility' => 'nation',
+            'severity' => 'info',
+            'subject_type' => $nation->getMorphClass(),
+            'subject_id' => $nation->id,
+            'occurred_at' => now(),
+            'created_at' => now(),
+            'updated_at' => now(),
+        ];
+        $auditBefore = DB::table('audit_events')->count();
+        $summaryId = DB::table('audit_events')->insertGetId([
+            ...$base,
+            'event_type' => 'turn.summary',
+            'metadata' => json_encode(['turn_run_id' => $run->id, 'summary' => []], JSON_THROW_ON_ERROR),
+        ]);
+        foreach ([
+            ['fire.prevented', []],
+            ['forest.grown', ['increment' => 3]],
+            ['population.increased', ['increase' => 7]],
+            ['resource.automatic_sale', ['requested' => 0, 'sold' => 0, 'revenue' => 0]],
+            ['command.preserved', []],
+        ] as [$eventType, $metadata]) {
+            DB::table('audit_events')->insert([
+                ...$base,
+                'event_type' => $eventType,
+                'metadata' => json_encode(['turn_run_id' => $run->id, ...$metadata], JSON_THROW_ON_ERROR),
+            ]);
+        }
+        $cutoffAt = now()->addMinute();
+        $cutoff = $cutoffAt->toAtomString();
+        $preview = app(RoutineAuditCompactor::class)->preview($cutoffAt, 10);
+        $this->assertSame(1, $preview['summary_groups']);
+        $this->assertSame(4, $preview['event_rows']);
+
+        $this->artisan('audit:compact-routine-events', [
+            '--cutoff' => $cutoff,
+            '--limit' => 10,
+        ])->assertSuccessful();
+        $this->assertSame($auditBefore + 6, DB::table('audit_events')->count());
+        $before = json_decode((string) DB::table('audit_events')->where('id', $summaryId)->value('metadata'), true, 512, JSON_THROW_ON_ERROR);
+        $this->assertArrayNotHasKey('routine', $before);
+
+        $result = app(RoutineAuditCompactor::class)->compact($cutoffAt, 10, 30);
+        $this->assertSame(1, $result['summary_groups']);
+        $this->assertSame(4, $result['event_rows_deleted']);
+        $after = json_decode((string) DB::table('audit_events')->where('id', $summaryId)->value('metadata'), true, 512, JSON_THROW_ON_ERROR);
+        $this->assertEquals([
+            'fire_protection_checks' => 1,
+            'forest_growth_cells' => 1,
+            'forest_growth_quantity' => 3,
+            'population_growth_cells' => 1,
+            'population_growth' => 7,
+        ], $after['routine']);
+        $this->assertSame(4, $after['routine_compaction']['source_event_count']);
+        $this->assertSame(1, DB::table('audit_events')->where('event_type', 'command.preserved')->count());
+        $this->assertSame($auditBefore + 2, DB::table('audit_events')->count());
+
+        $rerun = app(RoutineAuditCompactor::class)->compact($cutoffAt, 10, 30);
+        $this->assertSame(0, $rerun['summary_groups']);
+        $this->assertSame(0, $rerun['event_rows_deleted']);
+        $this->assertSame($auditBefore + 2, DB::table('audit_events')->count());
     }
 
     public function test_real_gameplay_mutations_roll_back_and_retry_the_same_run_seed(): void

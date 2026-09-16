@@ -900,24 +900,26 @@ final class CompleteTurnEngine
                     $metrics['sales']++;
                     $metrics['revenue'] += $revenue;
                 }
-                $pendingEvents[] = [
-                    'event_type' => 'resource.automatic_sale',
-                    'subject' => $nation,
-                    'metadata' => [
-                        'resource_key' => $resource->key, 'policy' => $policy, 'keep_amount' => $keepAmount,
-                        'before' => $before, 'requested' => $requested, 'sold' => $sold,
-                        'revenue' => $revenue, 'after' => $before - $sold,
-                        'sale_reason' => $policy === SalePolicy::Stockpile->value && is_int($resourceCapacity)
-                            ? 'capacity_overflow'
-                            : 'sale_policy',
-                        'resource_capacity' => $resourceCapacity,
-                        'resource_escrow' => $escrowedResources[$resource->id] ?? 0,
-                        'money_capacity' => $capacity->money,
-                    ],
-                    'visibility' => null,
-                    'severity' => null,
-                    'message' => null,
-                ];
+                if ($requested > 0 || $sold > 0 || $revenue > 0) {
+                    $pendingEvents[] = [
+                        'event_type' => 'resource.automatic_sale',
+                        'subject' => $nation,
+                        'metadata' => [
+                            'resource_key' => $resource->key, 'policy' => $policy, 'keep_amount' => $keepAmount,
+                            'before' => $before, 'requested' => $requested, 'sold' => $sold,
+                            'revenue' => $revenue, 'after' => $before - $sold,
+                            'sale_reason' => $policy === SalePolicy::Stockpile->value && is_int($resourceCapacity)
+                                ? 'capacity_overflow'
+                                : 'sale_policy',
+                            'resource_capacity' => $resourceCapacity,
+                            'resource_escrow' => $escrowedResources[$resource->id] ?? 0,
+                            'money_capacity' => $capacity->money,
+                        ],
+                        'visibility' => null,
+                        'severity' => null,
+                        'message' => null,
+                    ];
+                }
             }
         }
         $this->events->recordMany($context, $pendingEvents);
@@ -1142,6 +1144,7 @@ final class CompleteTurnEngine
                 'nation_id' => $nation->id,
                 'nation_name' => $nation->name,
                 'summary' => $summary,
+                'routine' => $context->state->routineSummaryMetrics($nationId),
             ], 'nation');
         }
         $this->events->record($context, 'turn.completed', $context->world, [
@@ -1496,11 +1499,14 @@ final class CompleteTurnEngine
         $cell->terrain_quantity = $after;
         $cell->version++;
         $this->saveChangedCell($context, $cell);
-        $this->events->record($context, 'forest.grown', $cell, [
-            'before' => $before, 'base_increment' => $forest['growth_increment'],
-            'increment' => $after - $before, 'after' => $after,
-            'maximum' => $forest['maximum_quantity'],
-        ]);
+        if ($cell->owner_nation_id !== null) {
+            $context->state->addRoutineSummaryMetric((int) $cell->owner_nation_id, 'forest_growth_cells');
+            $context->state->addRoutineSummaryMetric(
+                (int) $cell->owner_nation_id,
+                'forest_growth_quantity',
+                $after - $before,
+            );
+        }
 
         return true;
     }
@@ -1758,15 +1764,12 @@ final class CompleteTurnEngine
         if ($increase > 0) {
             $cell->version++;
             $this->saveChangedCell($context, $cell);
-            $metadata = [
-                'nation_id' => $cell->owner_nation_id, 'before' => $before,
-                'increase' => $increase, 'after' => $cell->population,
-                'ordinary_maximum' => $ordinaryMaximum,
-                'effective_maximum' => $maximumPopulation,
-                'attraction' => $attraction,
-                'indomitable_bonus' => $indomitableBonus,
-            ];
-            $this->events->record($context, 'population.increased', $cell, $metadata);
+            $context->state->addRoutineSummaryMetric((int) $cell->owner_nation_id, 'population_growth_cells');
+            $context->state->addRoutineSummaryMetric(
+                (int) $cell->owner_nation_id,
+                'population_growth',
+                $increase,
+            );
         }
 
         return ['increase' => $increase, 'decrease' => 0, 'stage_transition' => $transition];

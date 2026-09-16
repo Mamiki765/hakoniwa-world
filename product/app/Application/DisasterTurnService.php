@@ -512,13 +512,12 @@ final class DisasterTurnService
             $cellIndex,
         );
         if ($protection > 0) {
-            $this->events->record($context, 'fire.prevented', $cell, [
-                'nation_id' => $cell->owner_nation_id,
-                'disaster_key' => 'fire',
-                'x' => $cell->x,
-                'y' => $cell->y,
-                'protection_count' => $protection,
-            ]);
+            if ($cell->owner_nation_id !== null) {
+                $context->state->addRoutineSummaryMetric(
+                    (int) $cell->owner_nation_id,
+                    'fire_protection_checks',
+                );
+            }
 
             return false;
         }

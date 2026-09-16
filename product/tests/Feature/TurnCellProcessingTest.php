@@ -821,10 +821,7 @@ class TurnCellProcessingTest extends TestCase
         $this->assertSame(100, $metrics['population_increased']);
         $this->assertSame(9_100, $capital->fresh()->population);
         $this->assertSame(8_000, $this->event($run, 'refugee_received')['received_population']);
-        $this->assertSame([9_000, 9_100], [
-            $this->event($run, 'population.increased')['before'],
-            $this->event($run, 'population.increased')['after'],
-        ]);
+        $this->assertSame(100, $context->state->routineSummaryMetrics($nation->id)['population_growth']);
     }
 
     public function test_sequential_settlement_growth_famine_riot_and_forest_processing(): void
@@ -1170,18 +1167,14 @@ class TurnCellProcessingTest extends TestCase
         $user->secretary()->firstOrFail()->skills()
             ->where('skill_key', SecretarySkillCatalog::FOREST_MANAGEMENT)
             ->update(['level' => 10, 'experience' => 0]);
-        [$forestContext, $forestRun] = $this->context($world, $nation, [$forest->id], str_repeat('e', 64));
+        [$forestContext] = $this->context($world, $nation, [$forest->id], str_repeat('e', 64));
         $forestGrowth = $engine->execute('process_cells', $forestContext);
         $this->assertSame(1, $forestGrowth->metrics['forest_growth']);
         $this->assertSame($forestBefore + 110, $forest->fresh()->terrain_quantity);
         $this->assertSame([], $forestContext->state->pendingSecretaryExperience());
-        $this->assertSame(1, DB::table('audit_events')->where('event_type', 'forest.grown')
-            ->whereRaw("metadata->>'turn_run_id' = ?", [(string) $forestRun->id])->count());
-        $forestEvent = json_decode((string) DB::table('audit_events')->where('event_type', 'forest.grown')
-            ->whereRaw("metadata->>'turn_run_id' = ?", [(string) $forestRun->id])->value('metadata'),
-            true, 512, JSON_THROW_ON_ERROR);
-        $this->assertSame(100, $forestEvent['base_increment']);
-        $this->assertSame(110, $forestEvent['increment']);
+        $forestRoutine = $forestContext->state->routineSummaryMetrics($nation->id);
+        $this->assertSame(1, $forestRoutine['forest_growth_cells']);
+        $this->assertSame(110, $forestRoutine['forest_growth_quantity']);
 
         $maximumTrees = $world->rulesetVersion()->firstOrFail()->settings['terrain_quantities']['forest']['maximum_quantity'];
         $forest->fresh()->update(['terrain_quantity' => $maximumTrees - 50]);
@@ -1336,13 +1329,9 @@ class TurnCellProcessingTest extends TestCase
         $this->assertSame(325, $result->metrics['population_increased']);
         $this->assertSame(150, $result->metrics['population_decreased']);
         $this->assertSame(9_325, $growthCell->fresh()->population);
-        $growth = DB::table('audit_events')->where('event_type', 'population.increased')
-            ->where('subject_id', $growthCell->id)
-            ->whereRaw("metadata->>'turn_run_id' = ?", [(string) $run->id])->sole();
-        $growthMetadata = json_decode((string) $growth->metadata, true, 512, JSON_THROW_ON_ERROR);
-        $this->assertSame(225, $growthMetadata['indomitable_bonus']);
-        $this->assertSame(10_500, $growthMetadata['ordinary_maximum']);
-        $this->assertSame(10_500, $growthMetadata['effective_maximum']);
+        $populationRoutine = $context->state->routineSummaryMetrics($nation->id);
+        $this->assertSame(1, $populationRoutine['population_growth_cells']);
+        $this->assertSame(325, $populationRoutine['population_growth']);
 
         $this->assertSame(21_000, $nearMaximum->fresh()->population);
         $this->assertSame(24_900, $farAboveMaximum->fresh()->population);
@@ -1553,10 +1542,11 @@ class TurnCellProcessingTest extends TestCase
             app(CompleteTurnEngine::class)->execute('process_cells', $context);
 
             $this->assertSame(2_000, $cell->fresh()->population, $label);
-            $event = DB::table('audit_events')->where('event_type', 'population.increased')
-                ->where('subject_id', $cell->id)->latest('id')->firstOrFail();
-            $metadata = json_decode((string) $event->metadata, true, flags: JSON_THROW_ON_ERROR);
-            $this->assertArrayNotHasKey('sea_edge', $metadata, $label);
+            $this->assertSame(
+                1_000,
+                $context->state->routineSummaryMetrics($nation->id)['population_growth'],
+                $label,
+            );
         }
 
         $appearanceSeed = $this->seedForFirstDraw(
