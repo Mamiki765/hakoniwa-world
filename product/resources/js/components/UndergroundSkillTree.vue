@@ -2,9 +2,24 @@
 import { computed, nextTick, ref, watch } from 'vue';
 import type { UndergroundSkillNode, UndergroundSkillTree } from './undergroundSkills';
 
-const props = defineProps<{ trees: UndergroundSkillTree[]; busy: boolean }>();
+const props = defineProps<{ trees: UndergroundSkillTree[]; busy: boolean; userId?: number; growthPath?: string }>();
 const emit = defineEmits<{ acquire: [nodeKey: string]; equip: [] }>();
-const treeKey = ref(props.trees[0]?.key ?? 'martial');
+const storageKey = computed(() => `hakoniwa.underground.skill-tree.${props.userId ?? 'guest'}`);
+function initialTree(): string {
+    try {
+        const saved = localStorage.getItem(storageKey.value);
+        if (props.trees.some((tree) => tree.key === saved)) return saved!;
+    } catch { /* Storage may be unavailable; the growth path still provides a default. */ }
+    const preferred = props.growthPath === 'guardianship_blue' ? 'guardianship'
+        : props.growthPath === 'blessing_white' ? 'miracle' : 'martial';
+    return props.trees.some((tree) => tree.key === preferred) ? preferred : props.trees[0]?.key ?? 'martial';
+}
+const treeKey = ref(initialTree());
+watch(storageKey, () => { treeKey.value = initialTree(); });
+function selectTree(key: string): void {
+    treeKey.value = key;
+    try { localStorage.setItem(storageKey.value, key); } catch { /* Selection still works without persistence. */ }
+}
 const selectedKey = ref<string | null>(null);
 const detail = ref<HTMLElement | null>(null);
 const activeTree = computed(() => props.trees.find((tree) => tree.key === treeKey.value) ?? props.trees[0]);
@@ -69,7 +84,7 @@ function moveTab(event: KeyboardEvent, index: number): void {
     if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
     event.preventDefault();
     const next = (index + (event.key === 'ArrowRight' ? 1 : -1) + props.trees.length) % props.trees.length;
-    treeKey.value = props.trees[next]!.key;
+    selectTree(props.trees[next]!.key);
     document.getElementById(`skill-tab-${treeKey.value}`)?.focus();
 }
 </script>
@@ -80,7 +95,7 @@ function moveTab(event: KeyboardEvent, index: number): void {
             <button
 v-for="(tree, index) in trees" :id="`skill-tab-${tree.key}`" :key="tree.key" type="button" role="tab"
                 :aria-selected="activeTree?.key === tree.key" :tabindex="activeTree?.key === tree.key ? 0 : -1"
-                :aria-controls="`skill-panel-${tree.key}`" @click="treeKey = tree.key" @keydown="moveTab($event, index)"
+                :aria-controls="`skill-panel-${tree.key}`" @click="selectTree(tree.key)" @keydown="moveTab($event, index)"
 >
                 {{ tree.label }}
             </button>

@@ -1723,6 +1723,10 @@ function maximumStpDraft(stat: StatKey): number {
     return Math.min(2_147_483_647, stpDraft.value[stat] + stpDraftRemaining.value);
 }
 
+function setStpShare(stat: StatKey, share: 0.5 | 1): void {
+    stpDraft.value = { ...stpDraft.value, [stat]: Math.floor(maximumStpDraft(stat) * share) };
+}
+
 function setStpDraft(stat: StatKey, event: Event): void {
     const input = event.currentTarget;
     if (!(input instanceof HTMLInputElement)) return;
@@ -2475,21 +2479,25 @@ onUnmounted(() => {
                     </section>
                 </template>
                 <template v-else>
+                    <p v-if="equipmentView === 'home' && innRested" class="ug-home-rest-result" role="status">HPが全回復しました。</p>
                     <UndergroundHome
                         v-if="equipmentView === 'home'"
                         :name="state.visuals?.display_name ?? state.secretary_name" :level="state.combat_level"
                         :hp="state.current_hp ?? state.growth_path?.max_hp ?? 0" :max-hp="state.growth_path?.max_hp ?? 0"
                         :awakening="state.awakening?.current" :awakening-max="state.awakening?.maximum"
                         :shards="state.shard_balance" :banked="state.banked_shard_balance" :tickets="skipTicketBalance ?? 0"
-                        :xp-remaining="state.xp_to_next_level" :growth-path="state.growth_path?.label"
+                        :xp-remaining="state.xp_to_next_level" :growth-path="state.growth_path?.label" :unspent-stp="state.unspent_stp"
                         :scene="state.visuals?.scenes.home" :portrait="state.visuals?.portrait" :awakened-portrait="state.visuals?.awakened_portrait"
                         :icon-url="state.visuals?.icon_url"
                         :show-ai="state.visuals?.show_ai ?? false" :companions="state.rental_party ?? []"
                         :backgrounds="state.visuals?.home_backgrounds" :background-key="state.visuals?.home_background_key" :busy="busy"
+                        :resting="innResting" :rest-disabled="Boolean(state.trial?.active_run)"
                         :destination="selectedHuntingGround?.name" :active-trial="state.trial?.active_run ? '挑戦中の試練' : undefined"
                         :departure-disabled="busy || exploreCooldownSeconds > 0 || state.skill_rebuild_required"
                         :departure-reason="exploreCooldownSeconds > 0 ? '次の出発まであと' + exploreCooldownSeconds + '秒' : undefined"
                         @navigate="navigate" @depart="runSelectedExploration" @continue-trial="runTrial(state.trial?.active_run?.key)"
+                        @rest="restAtInn"
+                        @allocate-stp="selectTab('status')"
                         @background="loungeMutation('home-background', { key: $event })"
                     />
                     <template v-else>
@@ -2738,9 +2746,8 @@ onUnmounted(() => {
 
                 <section v-if="equipmentView === 'character'" class="underground-character-pane" aria-labelledby="underground-character-title">
                     <div class="underground-character-header">
-                        <img v-if="state.visuals?.portrait?.url" :src="state.visuals?.portrait?.url" :alt="`${state.secretary_name}の画像`">
-
-                        <div><h1 id="underground-character-title">{{ state.secretary_name }}</h1></div>
+                        <div><h1 id="underground-character-title">{{ state.visuals?.display_name ?? state.secretary_name }}</h1></div>
+                        <img v-if="state.visuals?.icon_url" :src="state.visuals.icon_url" :alt="`${state.secretary_name}のアイコン`">
                     </div>
                     <dl class="underground-summary">
                         <div><dt>戦闘Lv</dt><dd>{{ state.combat_level }}</dd></div>
@@ -2953,21 +2960,23 @@ onUnmounted(() => {
                 </header>
                 <div class="underground-table-scroll">
                     <table class="underground-status-table">
-                        <thead><tr><th scope="col">能力</th><th scope="col">初期値</th><th scope="col">自然成長</th><th scope="col">確定STP</th><th scope="col">装備</th><th scope="col">最終値</th><th scope="col">今回の配分</th></tr></thead>
+                        <thead><tr><th scope="col">能力</th><th scope="col">現在値<br>（装備なし）</th><th scope="col">今回の配分</th></tr></thead>
                         <tbody>
                             <tr v-for="(label, key) in statLabels" :key="key">
                                 <th scope="row">{{ label }}</th>
-                                <td>{{ state.status_breakdown[key].baseline }}</td>
-                                <td>+{{ state.status_breakdown[key].natural_growth }}</td>
-                                <td>+{{ state.status_breakdown[key].allocated_stp }}</td>
-                                <td>+{{ state.status_breakdown[key].equipment }}</td>
-                                <td>{{ state.status_breakdown[key].final }}</td>
-                                <td class="underground-stp-control"><input type="number" min="0" :max="maximumStpDraft(key)" step="1" inputmode="numeric" :value="stpDraft[key]" :disabled="busy" :aria-label="`${label}の今回の配分`" @input="setStpDraft(key, $event)"></td>
+                                <td>{{ state.status_breakdown[key].baseline + state.status_breakdown[key].natural_growth + state.status_breakdown[key].allocated_stp }}</td>
+                                <td class="underground-stp-control">
+                                    <div class="ug-stp-inputs">
+                                    <button type="button" :disabled="busy" :aria-label="`${label}に残りの50%を配分`" @click="setStpShare(key, 0.5)">50%</button>
+                                    <input type="number" min="0" :max="maximumStpDraft(key)" step="1" inputmode="numeric" :value="stpDraft[key]" :disabled="busy" :aria-label="`${label}の今回の配分`" @input="setStpDraft(key, $event)">
+                                    <button type="button" :disabled="busy" :aria-label="`${label}に残りの100%を配分`" @click="setStpShare(key, 1)">100%</button>
+                                    </div>
+                                </td>
                             </tr>
                         </tbody>
                     </table>
                 </div>
-                <p class="underground-progression-note">確定すると元に戻せません。装備補正とSTPは別々に計算されます。</p>
+                <p class="underground-progression-note">50%・100%は、ほかの能力への仮配分を除いた残りを使います。50%の端数は切り捨てます。最後に一括確定してください。</p>
                 <button class="button primary" type="button" :disabled="busy || stpDraftTotal === 0" @click="confirmStp">{{ stpDraftTotal }} STPを一括確定</button>
             </section>
 
@@ -2980,7 +2989,7 @@ onUnmounted(() => {
                     </div>
                 </header>
                 <p class="underground-progression-note">SPを消費することでスキルを習得できます。</p>
-                <UndergroundSkillTree :trees="state.skill_trees" :busy="busy" @acquire="acquireSkill" @equip="focusActiveLoadout" />
+                <UndergroundSkillTree :trees="state.skill_trees" :busy="busy" :user-id="userId" :growth-path="state.growth_path?.key" @acquire="acquireSkill" @equip="focusActiveLoadout" />
 
                 <section id="underground-active-loadout" class="underground-active-loadout" aria-labelledby="underground-loadout-title">
                     <header><div><h3 id="underground-loadout-title" tabindex="-1">Active Skill</h3><p>取得済みskillを最大5個まで装備します。</p></div><p>基本行動: 通常攻撃 / 防御（常時利用可能）</p></header>

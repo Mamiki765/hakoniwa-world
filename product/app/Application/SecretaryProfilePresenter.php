@@ -123,7 +123,7 @@ final readonly class SecretaryProfilePresenter
             return $this->noImage();
         }
 
-        return $this->fallbackImage((string) ($secretary->user->secretary_image_fallback ?? 'silhouette'));
+        return $this->fallbackImage((string) ($secretary->user->secretary_image_fallback ?? 'silhouette'), true);
     }
 
     /**
@@ -287,9 +287,9 @@ final readonly class SecretaryProfilePresenter
     }
 
     /** @return array<string, mixed> */
-    private function fallbackImage(string $fallback): array
+    private function fallbackImage(string $fallback, bool $large = false): array
     {
-        $url = $this->assets->secretaryFallbackUrl($fallback);
+        $url = $this->assets->secretaryFallbackUrl($fallback, $large);
         if ($url === null) {
             return $this->noImage();
         }

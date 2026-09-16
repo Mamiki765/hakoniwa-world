@@ -192,6 +192,12 @@ class TileAssetTest extends TestCase
         $this->get('/assets/hakoniwa-tiles/peridot/peridot.png')->assertOk()
             ->assertHeader('Content-Type', 'image/png');
 
+        $this->assertSame($resolver->secretaryFallbackUrl('peridot'), $resolver->secretaryFallbackUrl('peridot', true));
+        $this->writePng('peridot/peridot-full-body.png');
+        $this->assertStringContainsString('/peridot/peridot-full-body.png?v=', (string) $resolver->secretaryFallbackUrl('peridot', true));
+        $this->get('/assets/hakoniwa-tiles/peridot/peridot-full-body.png')->assertOk()
+            ->assertHeader('Content-Type', 'image/png');
+
         foreach ($undergroundAssets as $assetKey => $filename) {
             $asset = $resolver->resolve($assetKey, '地下', 'underground');
             $this->assertTrue($asset['available'], $assetKey);

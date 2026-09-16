@@ -23,6 +23,7 @@ const props = withDefaults(defineProps<{
     banked: number;
     tickets: number;
     xpRemaining: number;
+    unspentStp?: number;
     growthPath?: string;
     scene?: SceneDefinition;
     portrait?: SceneAsset | null;
@@ -36,14 +37,16 @@ const props = withDefaults(defineProps<{
     backgrounds?: HomeBackground[];
     backgroundKey?: string;
     busy?: boolean;
+    restDisabled?: boolean;
+    resting?: boolean;
     iconUrl?: string | null;
 }>(), {
     awakening: 0, awakeningMax: 1000, showAi: true, companions: () => [],
     growthPath: '', scene: undefined, portrait: null, awakenedPortrait: null,
     destination: '', departureReason: '', activeTrial: '', backgrounds: undefined,
-    backgroundKey: 'placeholder', iconUrl: null,
+    backgroundKey: 'placeholder', iconUrl: null, unspentStp: 0,
 });
-defineEmits<{ navigate: [destination: UndergroundDestination]; depart: []; continueTrial: []; background: [key: string] }>();
+defineEmits<{ navigate: [destination: UndergroundDestination]; depart: []; continueTrial: []; rest: []; allocateStp: []; background: [key: string] }>();
 const awakenedView = ref(false);
 const backgroundOpen = ref(false);
 const backgroundOptions = computed(() => (props.backgrounds ?? [{ key: 'placeholder', name: '水晶の洞窟', asset: null }])
@@ -82,10 +85,13 @@ const percentage = (value: number, max: number) => `${Math.min(100, Math.max(0, 
         <UndergroundScene :scene="homeScene" :show-ai="showAi" label="地底のホーム">
             <div class="ug-home-stage">
                 <section class="ug-self-card" aria-label="自分の秘書">
-                    <div class="ug-level">Lv. <strong>{{ level }}</strong></div>
+                    <div class="ug-level-row">
+                        <div class="ug-level">Lv. <strong>{{ level }}</strong></div>
+                        <button v-if="unspentStp > 0" class="ug-stp-jump" type="button" :aria-label="`未配分STP ${number(unspentStp)}、配分する`" @click="$emit('allocateStp')">STP {{ number(unspentStp) }} <span aria-hidden="true">→</span></button>
+                    </div>
                     <h2>{{ name }}</h2>
                     <p v-if="growthPath" class="ug-growth-path">{{ growthPath }}</p>
-                    <div class="ug-gauge-label"><span>HP</span><strong>{{ number(hp) }} <small>/ {{ number(maxHp) }}</small></strong></div>
+                    <div class="ug-gauge-label"><span class="ug-hp-actions">HP <button class="ug-quick-rest" type="button" :disabled="busy || restDisabled || resting" :aria-label="resting ? '休憩中' : '宿で休む（10G）'" title="宿で休む（10G・HPを全回復）" @click="$emit('rest')">＋ <small>10G</small></button></span><strong>{{ number(hp) }} <small>/ {{ number(maxHp) }}</small></strong></div>
                     <div class="ug-meter" role="progressbar" aria-label="HP" :aria-valuenow="hp" :aria-valuemax="maxHp" :aria-valuemin="0"><span :style="{ width: percentage(hp, maxHp) }"></span></div>
                     <div class="ug-gauge-label"><span>覚醒</span></div>
                     <div class="ug-meter ug-meter-awakening" role="progressbar" aria-label="覚醒ゲージ" :aria-valuenow="awakening" :aria-valuemax="awakeningMax" :aria-valuemin="0"><span :style="{ width: percentage(awakening, awakeningMax) }"></span></div>

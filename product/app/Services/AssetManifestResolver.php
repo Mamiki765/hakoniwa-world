@@ -115,6 +115,7 @@ final class AssetManifestResolver
     /** @var array<string, string> */
     private const SECRETARY_FALLBACKS = [
         'peridot' => 'peridot.png',
+        'peridot_full_body' => 'peridot-full-body.png',
         'silhouette' => 'silhouette.png',
     ];
 
@@ -208,12 +209,20 @@ final class AssetManifestResolver
         return $this->validatedPath($filename);
     }
 
-    public function secretaryFallbackUrl(string $fallback): ?string
+    public function secretaryFallbackUrl(string $fallback, bool $large = false): ?string
     {
         $filename = self::SECRETARY_FALLBACKS[$fallback] ?? null;
         $directory = config('hakoniwa.assets.themes.peridot');
         if ($filename === null || ! is_string($directory)) {
             return null;
+        }
+
+        if ($large && $fallback === 'peridot') {
+            $portraitFilename = self::SECRETARY_FALLBACKS['peridot_full_body'];
+            $portraitPath = $this->validatedSecretaryFallbackPath($portraitFilename, $directory);
+            if ($portraitPath !== null) {
+                return $this->versionedUrl($directory.'/'.$portraitFilename, $portraitPath);
+            }
         }
 
         $path = $this->validatedSecretaryFallbackPath($filename, $directory);

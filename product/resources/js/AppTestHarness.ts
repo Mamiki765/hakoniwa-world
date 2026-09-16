@@ -257,7 +257,7 @@ export function installAppTestLifecycle(): void {
         document.cookie = 'hakoniwa_theme=; Path=/; Max-Age=0; SameSite=Lax';
         window.localStorage.removeItem('hakoniwa.underground.selected-hunting-ground');
         for (const key of Object.keys(window.localStorage)) {
-            if (key.startsWith('hakoniwa.underground.party-member-ids.')) window.localStorage.removeItem(key);
+            if (key.startsWith('hakoniwa.underground.party-member-ids.') || key.startsWith('hakoniwa.underground.skill-tree.')) window.localStorage.removeItem(key);
         }
         const meta = document.createElement('meta');
         meta.name = 'hakoniwa-application-version';

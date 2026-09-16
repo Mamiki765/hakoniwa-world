@@ -15,6 +15,10 @@
     overflow: clip;
 }
 .ug-shell h1, .ug-shell h2, .ug-shell p { margin: 0; }
+.ug-shell .underground-character-header { display: flex; justify-content: space-between; gap: .5rem; }
+.ug-shell .underground-character-header > div { min-width: 0; }
+.ug-shell .underground-character-header img { flex-shrink: 0; width: 40px; height: 40px; border-radius: 6px; }
+.ug-shell .underground-character-header h1 { font-size: 1.2rem; line-height: 1.4; letter-spacing: .03em; white-space: nowrap; }
 .ug-shell .eyebrow { display: none; }
 .ug-shell button, .ug-shell input, .ug-shell select, .ug-shell textarea { font: inherit; }
 .ug-shell button { cursor: pointer; }
@@ -54,12 +58,18 @@
 .ug-home-stage { position: relative; height: 100%; padding: clamp(18px, 3.2vw, 38px); }
 .ug-self-card { width: 268px; padding: 22px; color: var(--ink); background: var(--ug-overlay); border: 1px solid var(--line); border-top: 3px solid var(--gold); border-radius: 3px 3px 12px 12px; box-shadow: 0 6px 28px #0004; }
 .ug-level { color: var(--ug-accent); font-size: .8rem; letter-spacing: .06em; }
+.ug-level-row { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
+.ug-shell .ug-stp-jump { padding: 3px 0 3px 4px; border: 0; background: transparent; color: var(--danger); font-size: .75rem; font-weight: 650; white-space: nowrap; }
 .ug-level strong { font-size: 1.3rem; }
 .ug-self-card h2 { font-size: 1.65rem; margin-top: 5px; font-family: 'Yu Mincho', serif; letter-spacing: .06em; overflow-wrap: anywhere; }
 .ug-self-card .ug-growth-path { font-size: .78rem; color: var(--muted); margin: 6px 0 24px; }
 .ug-gauge-label { display: flex; justify-content: space-between; gap: 8px; font-size: .72rem; margin-top: 14px; }
 .ug-gauge-label strong { font-variant-numeric: tabular-nums; font-weight: 600; }
 .ug-gauge-label small { color: var(--muted); }
+.ug-hp-actions { display: inline-flex; align-items: center; gap: 5px; }
+.ug-quick-rest { padding: 1px 4px; border: 1px solid var(--line); border-radius: 4px; background: var(--ug-raised); color: var(--ug-accent); line-height: 1.2; }
+.ug-quick-rest small { color: inherit; font-size: .6rem; }
+.ug-home-rest-result { padding: 10px 24px; color: var(--success); background: var(--success-surface); }
 .ug-meter { height: 6px; border: 1px solid var(--input-border); border-radius: 20px; overflow: hidden; background: var(--paper-deep); margin-top: 5px; }
 .ug-meter > span { display: block; height: 100%; background: #3d927d; }
 .ug-meter-awakening > span { background: #8274c1; }
@@ -125,6 +135,11 @@
 .ug-shell > .underground-progression-panel { margin: 20px; }
 .ug-shell .underground-adventure-sections { grid-template-columns: 1fr; }
 .ug-exchange-greeting { margin-bottom: 20px !important; }
+.ug-shell .underground-status-table { min-width: 0; }
+.ug-shell .underground-status-table th, .ug-shell .underground-status-table td { padding: 8px 4px; }
+.ug-stp-inputs { display: flex; align-items: center; justify-content: center; gap: 4px; }
+.ug-stp-inputs button { padding: 5px; border: 1px solid var(--line); border-radius: 4px; color: var(--ink); background: var(--ug-raised); font-size: .75rem; }
+.ug-shell .ug-stp-inputs input { width: clamp(3.1rem, 10vw, 6rem); margin: 0; }
 @container underground (max-width: 700px) {
     .ug-shell { border-radius: 8px; }
     .ug-wallet { padding: 12px 14px; gap: 10px; align-items: flex-start; }
@@ -136,6 +151,7 @@
     .ug-home-stage { padding: 8px; }
     .ug-self-card { width: 172px; padding: 8px 10px; line-height: 1.2; }
     .ug-level { font-size: .6rem; }
+    .ug-shell .ug-stp-jump { font-size: .6rem; padding-block: 1px; }
     .ug-level strong { font-size: 1rem; }
     .ug-self-card h2 { font-size: 1.2rem; margin-top: 0; }
     .ug-self-card .ug-growth-path { font-size: .65rem; margin: 3px 0 5px; }
@@ -161,8 +177,7 @@
 @container underground (max-width: 340px) {
     .ug-home-stage { padding: 6px; }
     .ug-self-card { padding: 6px 8px; }
-    .ug-self-card h2 { display: inline; font-size: 1rem; }
-    .ug-level { display: inline; margin-right: 6px; }
+    .ug-self-card h2 { font-size: 1rem; }
     .ug-self-card .ug-next-level { margin-top: 6px; }
     .ug-companion { gap: 6px; }
 }

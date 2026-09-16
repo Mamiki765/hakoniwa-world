@@ -944,10 +944,18 @@ describe('Underground application operations', () => {
         expect(wrapper.find('.underground-trial-next').exists()).toBe(false);
         expect(wrapper.find('.underground-interbattle-heal').exists()).toBe(false);
         await wrapper.get('.underground-battle-back').trigger('click');
-        await openUndergroundView(wrapper, 'キャラクター', 'STP配分');
-        expect(wrapper.get('.underground-status-table').text()).toContain('初期値');
+        await openUndergroundView(wrapper, 'ホーム');
+        await wrapper.get('button[aria-label="未配分STP 3、配分する"]').trigger('click');
+        expect(wrapper.get('.underground-status-table').text()).toContain('装備なし');
         const vitalityStp = wrapper.get<HTMLInputElement>('.underground-stp-control input');
         expect(vitalityStp.attributes('max')).toBe('3');
+        await wrapper.get('button[aria-label="生命に残りの50%を配分"]').trigger('click');
+        expect(vitalityStp.element.value).toBe('1');
+        await wrapper.get('button[aria-label="武力に残りの100%を配分"]').trigger('click');
+        expect(wrapper.get<HTMLInputElement>('input[aria-label="武力の今回の配分"]').element.value).toBe('2');
+        await wrapper.get('input[aria-label="武力の今回の配分"]').setValue('0');
+        await wrapper.get('button[aria-label="生命に残りの100%を配分"]').trigger('click');
+        expect(vitalityStp.element.value).toBe('3');
         await vitalityStp.setValue('4');
         expect(vitalityStp.element.value).toBe('3');
         expect(wrapper.get('.underground-progression-panel .button.primary').text()).toBe('3 STPを一括確定');
@@ -964,8 +972,10 @@ describe('Underground application operations', () => {
         expect(wrapper.find('#underground-active-loadout').exists()).toBe(true);
         await wrapper.get('.underground-skill-jump').trigger('click');
         expect(document.activeElement).toBe(wrapper.get('#underground-loadout-title').element);
-        expect(wrapper.get('#skill-tab-martial').attributes('aria-selected')).toBe('true');
+        expect(wrapper.get('#skill-tab-guardianship').attributes('aria-selected')).toBe('true');
         await wrapper.get('#skill-tab-miracle').trigger('click');
+        await openUndergroundView(wrapper, 'キャラクター', '能力');
+        await openUndergroundView(wrapper, 'キャラクター', 'スキル・覚醒');
         expect(wrapper.get('#skill-tab-miracle').attributes('aria-selected')).toBe('true');
         expect(wrapper.find('#skill-panel-martial').exists()).toBe(false);
         await wrapper.get('#skill-node-miracle_mending_prayer').trigger('click');
@@ -1075,11 +1085,11 @@ describe('Underground application operations', () => {
         expect(exploreButton.element.parentElement?.textContent).toMatch(/あと(?:9|10)秒/);
         await openUndergroundView(wrapper, 'ショップ');
         expect(wrapper.get('.ug-shop-rest').text()).toContain('あなたのコンビニ、箱庭ダンジョン店です！');
-        const innButton = wrapper.findAll('.ug-shop-rest button')
-            .find((button) => button.text().includes('宿で休む'));
-        expect(innButton).toBeDefined();
-        expect(innButton!.attributes('disabled')).toBeUndefined();
-        await innButton!.trigger('click');
+        await openUndergroundView(wrapper, 'ホーム');
+        const quickRest = wrapper.get('button[aria-label="宿で休む（10G）"]');
+        expect(quickRest.text()).toContain('10G');
+        expect(quickRest.attributes('disabled')).toBeUndefined();
+        await quickRest.trigger('click');
         await flushPromises();
         expect(wrapper.get('[role="alert"]').text()).toContain('Inn response lost');
         const failedInnRequests = fetchMock.mock.calls.filter(([path]) => (
@@ -1087,6 +1097,10 @@ describe('Underground application operations', () => {
         ));
         expect(failedInnRequests).toHaveLength(1);
         const failedInnPayload = JSON.parse(String(failedInnRequests[0]?.[1]?.body)) as { request_id: string };
+        // Switching to the shop must retry the same payment, never charge the home shortcut again.
+        await openUndergroundView(wrapper, 'ショップ');
+        const innButton = wrapper.findAll('.ug-shop-rest button').find(button => button.text().includes('宿で休む'));
+        expect(innButton).toBeDefined();
         await innButton!.trigger('click');
         expect(innButton!.attributes('disabled')).toBeDefined();
         expect(innButton!.text()).toContain('休憩中…');
