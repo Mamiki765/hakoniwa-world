@@ -184,6 +184,7 @@
 @container underground (max-width: 340px) {
     .ug-home-stage { padding: 6px; }
     .ug-self-card { padding: 6px 8px; }
+    .ug-art-switch { left: max(55%, 186px); }
     .ug-self-card h2 { font-size: 1rem; }
     .ug-self-card .ug-next-level { margin-top: 6px; }
     .ug-companion { gap: 6px; }
