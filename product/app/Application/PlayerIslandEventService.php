@@ -100,6 +100,7 @@ final class PlayerIslandEventService
         'command.territory_expanded',
         'territory.influenced',
         'buried_treasure.created',
+        'ship.pirate_attacked',
         'disaster.triggered',
         'land_subsidence.triggered',
         'disaster.cell_damaged',
@@ -764,6 +765,24 @@ final class PlayerIslandEventService
                 $metadata['new_owner_nation_name'] ?? $nation,
             ),
             'buried_treasure.created' => $this->publicBuriedTreasureCreatedMessage($metadata),
+            'ship.pirate_attacked' => match ($metadata['target_type'] ?? null) {
+                'settlement' => sprintf(
+                    '%s(%s,%s)の集落が海賊船に襲撃され、%s人が連れ去られました。',
+                    $nation,
+                    $x,
+                    $y,
+                    number_format($this->integer($metadata, 'stolen_population')),
+                ),
+                'ship' => "{$nation}({$x},{$y})の船が海賊船に襲撃されました。",
+                'seabed' => sprintf(
+                    '%s(%s,%s)の%sが海賊船に襲撃され、破壊されました。',
+                    $nation,
+                    $x,
+                    $y,
+                    $this->facilityLabel($metadata['facility_key'] ?? null),
+                ),
+                default => "{$nation}({$x},{$y})が海賊船に襲撃されました。",
+            },
             'disaster.triggered' => $this->publicDisasterMessage($metadata),
             'land_subsidence.triggered' => $nation === '島'
                 ? '地盤沈下が発生しました。'
@@ -1043,6 +1062,9 @@ final class PlayerIslandEventService
                 'nation_name', 'old_owner_nation_name', 'new_owner_nation_name', 'x', 'y',
             ],
             'buried_treasure.created' => ['source'],
+            'ship.pirate_attacked' => [
+                'nation_name', 'target_type', 'x', 'y', 'stolen_population', 'facility_key',
+            ],
             'disaster.triggered' => ['disaster_key', 'center_x', 'center_y'],
             'disaster.cell_damaged', 'fire.damaged' => [
                 'nation_name', 'x', 'y', 'disaster_key', 'from_terrain_key',
@@ -2667,7 +2689,7 @@ final class PlayerIslandEventService
             'facility.partially_damaged',
             'monster.damage_blocked', 'monster.damaged', 'monster.defense_self_destructed',
             'monster.nuclear_self_destructed',
-            'monster.removed_by_terrain_event' => 'warning',
+            'monster.removed_by_terrain_event', 'ship.pirate_attacked' => 'warning',
             'missile.launch_failed' => 'warning',
             'command.buried_treasure', 'command.seabed_oil_search',
             'command.land_level_earthquake', 'disaster.triggered', 'fire.prevented', 'oil.income',

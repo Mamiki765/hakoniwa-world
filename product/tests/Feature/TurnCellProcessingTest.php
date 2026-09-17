@@ -542,6 +542,7 @@ class TurnCellProcessingTest extends TestCase
         $this->assertSame($origin->id, $pirate->fresh()->map_cell_id);
         $attack = DB::table('audit_events')->where('event_type', 'ship.pirate_attacked')->sole();
         $metadata = json_decode($attack->metadata, true, flags: JSON_THROW_ON_ERROR);
+        $this->assertSame($nation->id, $attack->nation_id);
         $this->assertSame('settlement', $metadata['target_type']);
         $this->assertSame(5_000, $metadata['stolen_population']);
     }
