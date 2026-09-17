@@ -342,6 +342,9 @@ final class SurfaceShipTurnService
         ))->integer(0, count($targets) - 1)];
         /** @var MapCell $cell */
         $cell = $target['cell'];
+        $targetNationId = $target['type'] === 'ship'
+            ? (int) $target['ship']->nation_id
+            : ($cell->owner_nation_id === null ? null : (int) $cell->owner_nation_id);
         $stolen = 0;
         if ($target['type'] === 'settlement') {
             $before = (int) $cell->population;
@@ -383,6 +386,7 @@ final class SurfaceShipTurnService
             $target['facility_key'] = $facilityKey;
         }
         $this->events->record($context, 'ship.pirate_attacked', $pirate, [
+            'nation_id' => $targetNationId,
             'ship_id' => (int) $pirate->id, 'target_type' => $target['type'],
             'x' => (int) $cell->x, 'y' => (int) $cell->y,
             'stolen_population' => $stolen, 'pirate_population' => (int) $pirate->population,

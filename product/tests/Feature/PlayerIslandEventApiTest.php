@@ -247,6 +247,51 @@ class PlayerIslandEventApiTest extends TestCase
         $this->assertNotContains($killedWithHost, $attackerEventIds);
     }
 
+    public function test_pirate_attacks_are_visible_in_the_top_public_log_without_internal_metadata(): void
+    {
+        [$world, , $nation] = $this->nation('海賊被害島');
+        $world->update(['current_turn' => 2]);
+        DB::table('audit_events')->delete();
+
+        foreach ([
+            ['settlement', 3, 4, 5_000, null],
+            ['ship', 5, 6, 0, null],
+            ['seabed', 7, 8, 0, 'seabed_base'],
+        ] as [$targetType, $x, $y, $stolenPopulation, $facilityKey]) {
+            $this->audit('ship.pirate_attacked', $nation, $nation, 'public', 2, [
+                'target_type' => $targetType,
+                'x' => $x,
+                'y' => $y,
+                'stolen_population' => $stolenPopulation,
+                'facility_key' => $facilityKey,
+                'ship_id' => 987_654_321,
+                'pirate_population' => 876_543_210,
+            ]);
+        }
+
+        foreach ([
+            $this->getJson("/api/v1/public/worlds/{$world->id}/events")->assertOk(),
+            $this->getJson("/api/v1/public/nations/{$nation->id}/events")->assertOk(),
+        ] as $response) {
+            $messages = $this->messages($response->json('data.groups'));
+            $this->assertContains(
+                '海賊被害島(3,4)の集落が海賊船に襲撃され、5,000人が連れ去られました。',
+                $messages,
+            );
+            $this->assertContains('海賊被害島(5,6)の船が海賊船に襲撃されました。', $messages);
+            $this->assertContains(
+                '海賊被害島(7,8)の海底基地が海賊船に襲撃され、破壊されました。',
+                $messages,
+            );
+            $this->assertTrue(collect($response->json('data.groups'))->flatMap(
+                static fn (array $group): array => $group['events'],
+            )->every(static fn (array $event): bool => $event['importance'] === 'warning'));
+            foreach (['ship_id', 'pirate_population', '987654321', '876543210'] as $hidden) {
+                $this->assertStringNotContainsString($hidden, (string) $response->getContent());
+            }
+        }
+    }
+
     public function test_nyowamiya_kill_projection_includes_the_actual_attack_and_cheese_once(): void
     {
         [$world, , $nation] = $this->nation('ニョワミヤ表示島');
