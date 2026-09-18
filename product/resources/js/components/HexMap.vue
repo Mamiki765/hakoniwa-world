@@ -217,6 +217,7 @@ function requestVisibleChunks(): void {
 
 function isPanExcludedTarget(target: EventTarget | null): boolean {
     if (!(target instanceof Element)) return false;
+    if (target.closest('.cell-tooltip') !== null) return true;
 
     const interactive = target.closest('button, a, input, select, textarea, [contenteditable="true"], [role="button"]');
 
@@ -310,6 +311,8 @@ function suppressDraggedCellClick(event: MouseEvent): void {
 }
 
 function keydown(event: KeyboardEvent): void {
+    if (event.target instanceof Element && event.target.closest('.cell-tooltip') !== null) return;
+
     const directions: Record<string, number> = {
         ArrowRight: 0, PageUp: 1, ArrowUp: 2,
         ArrowLeft: 3, PageDown: 4, ArrowDown: 5,

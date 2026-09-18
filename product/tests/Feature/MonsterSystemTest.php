@@ -157,7 +157,7 @@ class MonsterSystemTest extends TestCase
             ->orderBy('id')->take(2)->get();
         $this->assertCount(2, $centralCells);
         $this->setCell($centralCells[0], 'plain', 'central_bank', $nation->id, 0);
-        $this->setCell($centralCells[1], 'plain', 'central_granary', $nation->id, 0);
+        $this->setCell($centralCells[1], 'plain', 'central_bank', $nation->id, 0);
         $centralCells[0]->update(['facility_scale' => 20]);
         $centralCells[1]->update(['facility_scale' => 30]);
 
@@ -173,6 +173,7 @@ class MonsterSystemTest extends TestCase
             'denominator' => 10_000,
         ];
         $settings['monster_system']['natural_spawn']['maximum_probability_numerator'] = 10_000;
+        $settings['central_facilities']['definitions']['central_bank']['maximum_per_nation'] = 2;
         $ruleset->settings = $settings;
 
         $seedLabel = null;

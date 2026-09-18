@@ -131,6 +131,22 @@ describe('staggered square-image map', () => {
         await flushPromises();
         expect(wrapper.find('.cell-tooltip').exists()).toBe(true);
 
+        const pageDown = new KeyboardEvent('keydown', { key: 'PageDown', bubbles: true, cancelable: true });
+        tooltip.element.dispatchEvent(pageDown);
+        expect(pageDown.defaultPrevented).toBe(false);
+        expect(wrapper.emitted('move')).toBeUndefined();
+
+        const viewport = wrapper.get('.map-viewport');
+        const capture = trackPointerCapture(viewport.element);
+        const beforePan = wrapper.get('.map-plane').attributes('style');
+        dispatchPointer(tooltip.element, 'pointerdown', { pointerId: 11, pointerType: 'touch', clientX: 10, clientY: 10 });
+        dispatchPointer(tooltip.element, 'pointermove', { pointerId: 11, pointerType: 'touch', clientX: 30, clientY: 30 });
+        dispatchPointer(tooltip.element, 'pointerup', { pointerId: 11, pointerType: 'touch', clientX: 30, clientY: 30 });
+        await flushPromises();
+        expect(capture.captured).toEqual([]);
+        expect(wrapper.get('.map-plane').attributes('style')).toBe(beforePan);
+        expect(wrapper.find('.cell-tooltip').exists()).toBe(true);
+
         await tooltip.trigger('mouseleave');
         vi.advanceTimersByTime(121);
         await flushPromises();

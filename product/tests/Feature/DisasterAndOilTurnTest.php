@@ -1033,6 +1033,37 @@ class DisasterAndOilTurnTest extends TestCase
         }
     }
 
+    public function test_central_facility_disaster_loss_zero_keeps_the_facility_unchanged(): void
+    {
+        [$world, $nation, $ruleset, $space] = $this->worldAndNation('中央施設無被害国');
+        $center = $this->boundsFor($world)->center();
+        $target = $this->cellAt($space, $center->x, $center->y);
+        foreach ($center->neighborsWithin($space->min_x, $space->max_x, $space->min_y, $space->max_y) as $neighbor) {
+            $this->setCell($this->cellAt($space, $neighbor->x, $neighbor->y), 'sea', null, null, 0);
+        }
+        $this->setCell($target, 'plain', 'central_bank', $nation->id, 0);
+        $target->update(['facility_scale' => 20]);
+        $ruleset = $this->forceGlobal($ruleset, 'tsunami');
+        $ruleset = $this->updateRuleset($ruleset, static function (array &$settings): void {
+            $settings['central_facilities']['disaster_damage']['tsunami_level_loss'] = 0;
+        });
+        [$context, $run] = $this->context(
+            $world,
+            $ruleset,
+            $this->seedForCenter($this->centerLabel('tsunami'), $center->x, $center->y, $space),
+            [$nation->id],
+        );
+
+        $result = app(DisasterTurnService::class)->executeGlobal($context);
+
+        $after = $target->fresh(['terrain', 'facility']);
+        $this->assertSame(0, $result['damaged_cells']);
+        $this->assertSame(20, $after->facility_scale);
+        $this->assertSame('central_bank', $after->facility?->key);
+        $this->assertSame(0, DB::table('audit_events')->where('event_type', 'facility.partially_damaged')
+            ->whereRaw("metadata->>'turn_run_id' = ?", [(string) $run->id])->count());
+    }
+
     public function test_v23_huge_meteor_uses_twenty_five_one_central_facility_damage(): void
     {
         [$world, $nation, $ruleset, $space] = $this->worldAndNation('中央施設巨大隕石国');

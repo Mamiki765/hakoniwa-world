@@ -1379,7 +1379,7 @@ final class DisasterTurnService
             $disasterKey === 'land_subsidence' => $contract['land_subsidence_level_loss'],
             default => null,
         };
-        if ($levelLoss === null) {
+        if ($levelLoss === null || $levelLoss === 0) {
             return false;
         }
         $damage = $this->centralFacilityDamage->apply(

@@ -211,7 +211,11 @@ final class UndergroundEquipmentCatalog
                 || ! is_array($definition) || isset($bySlot[$slot])) {
                 throw new RuntimeException('Underground equipment slot contains invalid or multiple items.');
             }
-            $this->assertDefinition($definition, ($entry['instance_identity'] ?? null) !== null);
+            $this->assertDefinition(
+                $definition,
+                ($entry['instance_identity'] ?? null) !== null,
+                enforceCurrentGeneratorQuality: false,
+            );
             $expectedCategory = str_starts_with($slot, 'accessory_') ? 'accessory' : $slot;
             if ($definition['category'] !== $expectedCategory || ($definition['equippable'] ?? true) !== true) {
                 throw new RuntimeException('Underground equipped slot is incompatible.');
@@ -279,8 +283,11 @@ final class UndergroundEquipmentCatalog
     }
 
     /** @param array<string, mixed> $definition */
-    public function assertDefinition(array $definition, bool $generated): void
-    {
+    public function assertDefinition(
+        array $definition,
+        bool $generated,
+        bool $enforceCurrentGeneratorQuality = true,
+    ): void {
         $category = $definition['category'] ?? null;
         $style = $definition['weapon_style'] ?? null;
         $rarity = $definition['rarity'] ?? null;
@@ -343,7 +350,9 @@ final class UndergroundEquipmentCatalog
                 || ! is_string($affix['target'] ?? null) || $affix['target'] === ''
                 || ! is_int($affix['value'] ?? null) || $affix['value'] < 1
                 || ! is_int($affix['quality_bps'] ?? null)
-                || $affix['quality_bps'] < $qualityMinimum || $affix['quality_bps'] > $qualityMaximum) {
+                || $affix['quality_bps'] < 1 || $affix['quality_bps'] > 10_000
+                || ($generated && $enforceCurrentGeneratorQuality
+                    && ($affix['quality_bps'] < $qualityMinimum || $affix['quality_bps'] > $qualityMaximum))) {
                 throw new RuntimeException('Underground equipment affix is invalid.');
             }
             $allowedTargets = match ($affix['kind']) {

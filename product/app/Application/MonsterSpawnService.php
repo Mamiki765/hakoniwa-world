@@ -475,18 +475,25 @@ final class MonsterSpawnService
             $nationId = $cell->owner_nation_id;
             $facilityKey = $cell->facility?->key;
             $level = $cell->facility_scale;
+            $facilityContract = is_string($facilityKey)
+                ? ($context->ruleset->settings['central_facilities']['definitions'][$facilityKey] ?? null)
+                : null;
             $maximumLevel = is_string($facilityKey)
                 ? ($context->ruleset->settings['facility_definitions'][$facilityKey]['maximum_scale'] ?? null)
                 : null;
             if (! is_int($nationId) || ! is_string($facilityKey) || ! is_int($level) || $level < 1
+                || ! is_array($facilityContract)
+                || ($facilityContract['facility_key'] ?? null) !== $facilityKey
+                || ! is_int($facilityContract['maximum_per_nation'] ?? null)
+                || $facilityContract['maximum_per_nation'] < 1
                 || ! is_int($maximumLevel) || $level > $maximumLevel) {
                 throw new DomainException('A central facility has invalid persisted level data.');
             }
             $identity = $nationId.':'.$facilityKey;
-            if (isset($seen[$identity])) {
-                throw new DomainException('A Nation has duplicate central facilities of one type.');
+            $seen[$identity] = ($seen[$identity] ?? 0) + 1;
+            if ($seen[$identity] > $facilityContract['maximum_per_nation']) {
+                throw new DomainException("A Nation has more than the configured {$facilityKey} facility limit.");
             }
-            $seen[$identity] = true;
             $levels[$nationId] = ($levels[$nationId] ?? 0) + $level;
         }
 
