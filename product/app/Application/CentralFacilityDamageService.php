@@ -100,9 +100,14 @@ final readonly class CentralFacilityDamageService
         if ($contract === null) {
             return null;
         }
+        $facilityKeys = is_array($contract) ? ($contract['facility_keys'] ?? null) : null;
         if (! is_array($contract)
-            || ($contract['facility_keys'] ?? null) !== ['central_bank', 'central_granary']
-            || ($contract['destroyed_terrain_key'] ?? null) !== 'shallow') {
+            || ! is_array($facilityKeys)
+            || ! array_is_list($facilityKeys)
+            || $facilityKeys === []
+            || array_filter($facilityKeys, static fn (mixed $key): bool => ! is_string($key) || $key === '') !== []
+            || ! is_string($contract['destroyed_terrain_key'] ?? null)
+            || $contract['destroyed_terrain_key'] === '') {
             throw new DomainException('The active Ruleset has an invalid central-facility damage contract.');
         }
 

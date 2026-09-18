@@ -451,8 +451,12 @@ final class MonsterSpawnService
         if ($contract === null) {
             return [];
         }
+        $facilityKeys = is_array($contract) ? ($contract['facility_keys'] ?? null) : null;
         if (! is_array($contract)
-            || ($contract['facility_keys'] ?? null) !== ['central_bank', 'central_granary']
+            || ! is_array($facilityKeys)
+            || ! array_is_list($facilityKeys)
+            || $facilityKeys === []
+            || array_filter($facilityKeys, static fn (mixed $key): bool => ! is_string($key) || $key === '') !== []
             || ($contract['level_aggregation'] ?? null) !== 'sum') {
             throw new DomainException('The active Ruleset has an invalid central-facility monster HP contract.');
         }
@@ -471,7 +475,11 @@ final class MonsterSpawnService
             $nationId = $cell->owner_nation_id;
             $facilityKey = $cell->facility?->key;
             $level = $cell->facility_scale;
-            if (! is_int($nationId) || ! is_string($facilityKey) || ! is_int($level) || $level < 1 || $level > 90) {
+            $maximumLevel = is_string($facilityKey)
+                ? ($context->ruleset->settings['facility_definitions'][$facilityKey]['maximum_scale'] ?? null)
+                : null;
+            if (! is_int($nationId) || ! is_string($facilityKey) || ! is_int($level) || $level < 1
+                || ! is_int($maximumLevel) || $level > $maximumLevel) {
                 throw new DomainException('A central facility has invalid persisted level data.');
             }
             $identity = $nationId.':'.$facilityKey;
@@ -495,22 +503,35 @@ final class MonsterSpawnService
             return $baseHp;
         }
         $contract = $context->ruleset->settings['central_facilities']['natural_monster_hp'] ?? null;
+        $percentPerLevel = is_array($contract) ? ($contract['percent_per_level'] ?? null) : null;
+        $denominator = is_array($contract) ? ($contract['draw_denominator'] ?? null) : null;
         if (! is_array($contract)
-            || ($contract['percent_per_level'] ?? null) !== 1
+            || ! is_int($percentPerLevel)
+            || $percentPerLevel < 0
             || ($contract['rounding'] ?? null) !== 'independent_fractional_draw'
-            || ($contract['draw_denominator'] ?? null) !== 100
-            || ! is_int($contract['stream_version'] ?? null)) {
+            || ! is_int($denominator)
+            || $denominator < 1
+            || $denominator > 2_147_483_648
+            || ! is_int($contract['stream_version'] ?? null)
+            || $contract['stream_version'] < 1) {
             throw new DomainException('The active Ruleset has invalid central-facility monster HP arithmetic.');
         }
-        $numerator = $baseHp * (100 + $level);
-        $hp = intdiv($numerator, 100);
-        $remainder = $numerator % 100;
+        if ($percentPerLevel > 0 && $level > intdiv(PHP_INT_MAX - $denominator, $percentPerLevel)) {
+            throw new DomainException('Central-facility monster HP factor would overflow.');
+        }
+        $factor = $denominator + ($level * $percentPerLevel);
+        if ($baseHp > intdiv(PHP_INT_MAX, $factor)) {
+            throw new DomainException('Central-facility monster HP would overflow.');
+        }
+        $numerator = $baseHp * $factor;
+        $hp = intdiv($numerator, $denominator);
+        $remainder = $numerator % $denominator;
         if ($remainder > 0) {
             $draw = $context->random->stream(TurnRandomStreamFactory::monsterSpawn(
                 $nationId,
                 'hp_fraction',
                 $contract['stream_version'],
-            ))->integer(1, 100);
+            ))->integer(1, $denominator);
             if ($draw <= $remainder) {
                 $hp++;
             }

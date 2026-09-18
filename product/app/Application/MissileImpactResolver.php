@@ -1163,15 +1163,19 @@ final class MissileImpactResolver
     {
         $settings = $context->ruleset->settings['surface_ships']['missile_impact'] ?? null;
         $damage = is_array($settings) ? ($settings['damage_by_missile_key'] ?? null) : null;
+        $instantSinkKeys = is_array($settings) ? ($settings['instant_sink_missile_keys'] ?? null) : null;
         if (! is_array($settings)
-            || count($settings) !== 3
             || ! is_array($damage)
-            || count($damage) !== 3
-            || ($damage['missile'] ?? null) !== 1
-            || ($damage['pp_missile'] ?? null) !== 1
-            || ($damage['spp_missile'] ?? null) !== 1
-            || ($settings['instant_sink_missile_keys'] ?? null) !== ['land_destruction_missile']
-            || ($settings['foreign_sink_karma'] ?? null) !== 1) {
+            || $damage === []
+            || count($damage) > 100
+            || array_filter($damage, static fn (mixed $value, mixed $key): bool => ! is_string($key) || $key === '' || ! is_int($value) || $value < 1, ARRAY_FILTER_USE_BOTH) !== []
+            || ! is_array($instantSinkKeys)
+            || ! array_is_list($instantSinkKeys)
+            || count($instantSinkKeys) > 100
+            || array_filter($instantSinkKeys, static fn (mixed $key): bool => ! is_string($key) || $key === '') !== []
+            || count(array_unique($instantSinkKeys)) !== count($instantSinkKeys)
+            || ! is_int($settings['foreign_sink_karma'] ?? null)
+            || $settings['foreign_sink_karma'] < 0) {
             throw new DomainException('The active Ruleset has no supported Surface Ship missile contract.');
         }
 
@@ -1722,11 +1726,20 @@ final class MissileImpactResolver
         if ($contract === null) {
             return null;
         }
+        $facilityKeys = is_array($contract) ? ($contract['facility_keys'] ?? null) : null;
+        $ineffectiveMissileKeys = is_array($contract) ? ($contract['ineffective_missile_keys'] ?? null) : null;
         if (! is_array($contract)
-            || ($contract['facility_keys'] ?? null) !== ['central_bank', 'central_granary']
-            || ($contract['ineffective_missile_keys'] ?? null) !== ['missile', 'pp_missile', 'spp_missile']
-            || ($contract['land_destruction_missile_key'] ?? null) !== 'land_destruction_missile'
-            || ($contract['land_destruction_level_loss'] ?? null) !== 1) {
+            || ! is_array($facilityKeys)
+            || ! array_is_list($facilityKeys)
+            || $facilityKeys === []
+            || array_filter($facilityKeys, static fn (mixed $key): bool => ! is_string($key) || $key === '') !== []
+            || ! is_array($ineffectiveMissileKeys)
+            || ! array_is_list($ineffectiveMissileKeys)
+            || array_filter($ineffectiveMissileKeys, static fn (mixed $key): bool => ! is_string($key) || $key === '') !== []
+            || ! is_string($contract['land_destruction_missile_key'] ?? null)
+            || $contract['land_destruction_missile_key'] === ''
+            || ! is_int($contract['land_destruction_level_loss'] ?? null)
+            || $contract['land_destruction_level_loss'] < 1) {
             throw new DomainException('The active Ruleset has an invalid central-facility missile contract.');
         }
 

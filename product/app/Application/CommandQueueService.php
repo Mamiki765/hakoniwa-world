@@ -1819,15 +1819,17 @@ final class CommandQueueService
         if (! is_array($contract)) {
             return;
         }
-        if (($contract['maximum_per_nation'] ?? null) !== 1) {
+        $maximum = $contract['maximum_per_nation'] ?? null;
+        if (! is_int($maximum) || $maximum < 1) {
             throw new DomainException("Central facility {$facilityKey} has an invalid Nation limit.");
         }
-        if (MapCell::query()
+        $existing = MapCell::query()
             ->where('owner_nation_id', $nation->id)
             ->where('id', '<>', $target->id)
             ->whereHas('facility', fn ($query) => $query->where('key', $facilityKey))
-            ->exists()) {
-            throw new PlayerFacingCommandException('中央施設は1島に同じ種類を1個だけ建設できます。');
+            ->count();
+        if ($existing >= $maximum) {
+            throw new PlayerFacingCommandException("中央施設は1島に同じ種類を{$maximum}個まで建設できます。");
         }
     }
 

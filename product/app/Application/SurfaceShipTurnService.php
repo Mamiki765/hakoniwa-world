@@ -635,15 +635,24 @@ final class SurfaceShipTurnService
     {
         $settings = $context->ruleset->settings['surface_ships']['movement'] ?? null;
         if (! is_array($settings)
-            || ($settings['terrain_key'] ?? null) !== 'sea'
-            || ($settings['required_port_facility_key'] ?? null) !== 'port'
-            || ($settings['fuel_resource_key'] ?? null) !== 'oil'
-            || ($settings['normal_event_limit_per_turn'] ?? null) !== 1
-            || ($settings['fuel_shortage_damage_chance_percent'] ?? null) !== 1
-            || ($settings['fuel_shortage_damage'] ?? null) !== 1
-            || ($settings['random_stream_version'] ?? null) !== 1
+            || ! is_string($settings['terrain_key'] ?? null)
+            || $settings['terrain_key'] === ''
+            || ! is_string($settings['required_port_facility_key'] ?? null)
+            || $settings['required_port_facility_key'] === ''
+            || ! is_string($settings['fuel_resource_key'] ?? null)
+            || $settings['fuel_resource_key'] === ''
+            || ! is_int($settings['normal_event_limit_per_turn'] ?? null)
+            || $settings['normal_event_limit_per_turn'] < 1
+            || ! is_int($settings['fuel_shortage_damage_chance_percent'] ?? null)
+            || $settings['fuel_shortage_damage_chance_percent'] < 0
+            || $settings['fuel_shortage_damage_chance_percent'] > 100
+            || ! is_int($settings['fuel_shortage_damage'] ?? null)
+            || $settings['fuel_shortage_damage'] < 0
+            || ! is_int($settings['random_stream_version'] ?? null)
+            || $settings['random_stream_version'] < 1
             || ($settings['secretary_skill_key'] ?? null) !== SecretarySkillCatalog::SHIP_OPERATIONS
-            || ($settings['secretary_experience_per_successful_move'] ?? null) !== 1) {
+            || ! is_int($settings['secretary_experience_per_successful_move'] ?? null)
+            || $settings['secretary_experience_per_successful_move'] < 0) {
             throw new DomainException('The active Ruleset has no supported Surface Ship movement contract.');
         }
 

@@ -814,7 +814,8 @@ final class DomesticCommandExecutor
         if (! is_array($contract)) {
             return false;
         }
-        if (($contract['maximum_per_nation'] ?? null) !== 1) {
+        $maximum = $contract['maximum_per_nation'] ?? null;
+        if (! is_int($maximum) || $maximum < 1) {
             throw new DomainException("Central facility {$facilityKey} has an invalid Nation limit.");
         }
 
@@ -822,7 +823,7 @@ final class DomesticCommandExecutor
             ->where('owner_nation_id', $nation->id)
             ->where('id', '<>', $target->id)
             ->whereHas('facility', fn ($query) => $query->where('key', $facilityKey))
-            ->exists();
+            ->count() >= $maximum;
     }
 
     private function executionCost(
