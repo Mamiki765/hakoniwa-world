@@ -1028,6 +1028,14 @@ final class UndergroundIntroAndPlaytestTest extends UndergroundPlayerAccessTestC
             ->assertJsonPath('data.0.build_name', '護身特化')
             ->assertJsonPath('data.0.encounter_name', '深層追跡者');
         $this->assertCount(20, $history->json('data'));
+        $beforeCursor = $history->json('data.19.history_cursor');
+        $this->assertIsInt($beforeCursor);
+        $this->actingAs($user)->getJson("/api/v1/me/underground/battles?before_cursor={$beforeCursor}")
+            ->assertOk()
+            ->assertJsonCount(2, 'data')
+            ->assertJsonPath('data.0.history_cursor', fn (mixed $value): bool => is_int($value));
+        $this->actingAs($user)->getJson('/api/v1/me/underground/battles?before_cursor=invalid')
+            ->assertUnprocessable();
         $this->assertSame([], array_values(array_filter(
             DB::getQueryLog(),
             static fn (array $query): bool => str_contains(

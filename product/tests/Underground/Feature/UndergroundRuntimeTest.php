@@ -779,14 +779,19 @@ final class UndergroundRuntimeTest extends TestCase
             }
             $requestId = (string) Str::uuid();
             if ($battleIndex === 10) {
-                config(['underground-runtime.combat.battle_log_retention_hours' => 2]);
+                $failPersistenceOnce = true;
+                UndergroundBattle::creating(static function () use (&$failPersistenceOnce): void {
+                    if (! $failPersistenceOnce) {
+                        return;
+                    }
+                    $failPersistenceOnce = false;
+                    throw new RuntimeException('Injected Underground battle persistence failure.');
+                });
                 try {
                     $runtime->fightTrial($user, $run->run_key, $requestId);
                     $this->fail('Trial settlement should roll back when its result cannot be persisted.');
                 } catch (RuntimeException $exception) {
-                    $this->assertSame('Underground battle log retention must be exactly one hour.', $exception->getMessage());
-                } finally {
-                    config(['underground-runtime.combat.battle_log_retention_hours' => 1]);
+                    $this->assertSame('Injected Underground battle persistence failure.', $exception->getMessage());
                 }
                 $this->assertSame([430, 136, 20, 1, 0], [
                     $profile->refresh()->combat_xp,

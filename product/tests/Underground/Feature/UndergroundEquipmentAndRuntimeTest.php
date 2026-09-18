@@ -688,6 +688,10 @@ final class UndergroundEquipmentAndRuntimeTest extends UndergroundPlayerAccessTe
             ->where('underground_profile_id', $profile->id)
             ->where('activity_type', UndergroundBattle::ACTIVITY_TUTORIAL)
             ->sole();
+        config([
+            'underground-equipment.generator.quality_min_bps' => 8_500,
+            'underground-equipment.generator.quality_max_bps' => 8_500,
+        ]);
         $generated = app(UndergroundRuntimeEquipmentGenerator::class)->generate(
             30,
             'shallow_caves',
@@ -710,6 +714,11 @@ final class UndergroundEquipmentAndRuntimeTest extends UndergroundPlayerAccessTe
             'generated_payload' => $generated,
             'source_battle_id' => $sourceBattle->id,
             'acquired_at' => Carbon::now(),
+        ]);
+        $this->assertSame([8_500], array_values(array_unique(array_column($generated['affixes'], 'quality_bps'))));
+        config([
+            'underground-equipment.generator.quality_min_bps' => 9_000,
+            'underground-equipment.generator.quality_max_bps' => 10_000,
         ]);
 
         $vault = $this->actingAs($user)

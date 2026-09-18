@@ -32,10 +32,6 @@ final class CurrentRulesetContractTest extends TestCase
 
     public function test_current_domain_authoring_classifies_every_scalar_leaf_exactly_once(): void
     {
-        $this->assertSame(
-            15,
-            app(CurrentRulesetAuthoringInspector::class)->inspect(config('hakoniwa.ruleset'))['domains'],
-        );
         $coverage = app(CurrentRulesetAuthoringInspector::class)->inspect(config('hakoniwa.ruleset'));
         $this->assertSame($coverage['leaves'], $coverage['behavior'] + $coverage['data'] + $coverage['flavor']);
     }

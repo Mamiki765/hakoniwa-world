@@ -31,11 +31,20 @@ use RuntimeException;
  */
 final readonly class UndergroundAlphaV1PlayerCatalog
 {
+    /** @var array<string, int> */
+    private const PERSISTED_STP_PER_LEVEL = [
+        'martial_red' => 5,
+        'guardianship_blue' => 5,
+        'blessing_green' => 5,
+        'free_black' => 6,
+    ];
+
     public function __construct(
         private AlphaV1CombatRules $rules,
         private UndergroundBuildValidator $buildValidator,
         private PriorityCombatAiConfiguration $aiConfiguration = new PriorityCombatAiConfiguration,
         private UndergroundEquipmentCatalog $equipmentCatalog = new UndergroundEquipmentCatalog,
+        private UndergroundRuntimeCatalog $runtimeCatalog = new UndergroundRuntimeCatalog,
     ) {}
 
     public function growthIdentity(): string
@@ -62,9 +71,9 @@ final readonly class UndergroundAlphaV1PlayerCatalog
     {
         $points = $this->data()['initial_skill_points'] ?? null;
 
-        return is_int($points) && $points === 20
+        return is_int($points) && $points >= 20
             ? $points
-            : throw new RuntimeException('Underground initial Skill Point contract must be exactly 20.');
+            : throw new RuntimeException('Underground initial Skill Point contract must satisfy persistence minimums.');
     }
 
     /**
@@ -320,27 +329,27 @@ final readonly class UndergroundAlphaV1PlayerCatalog
     {
         $value = $this->explorationConfig()['max_rounds'] ?? null;
 
-        return $value === 100
+        return is_int($value) && $value >= 1 && $value <= 100
             ? $value
-            : throw new RuntimeException('Underground exploration max rounds must be exactly 100.');
+            : throw new RuntimeException('Underground exploration max rounds must be between 1 and 100.');
     }
 
     public function innCost(): int
     {
         $cost = $this->shopConfig()['inn']['cost_shards'] ?? null;
 
-        return is_int($cost) && $cost === 10
+        return is_int($cost) && $cost > 0
             ? $cost
-            : throw new RuntimeException('Underground inn cost must be exactly 10G.');
+            : throw new RuntimeException('Underground inn cost must be positive.');
     }
 
     public function bankTransferUnit(): int
     {
         $unit = $this->shopConfig()['bank']['transfer_unit_shards'] ?? null;
 
-        return is_int($unit) && $unit === 1000
+        return is_int($unit) && $unit > 0
             ? $unit
-            : throw new RuntimeException('Underground bank transfer unit must be exactly 1000G.');
+            : throw new RuntimeException('Underground bank transfer unit must be positive.');
     }
 
     /** @return list<array<string, mixed>> */
@@ -367,11 +376,18 @@ final readonly class UndergroundAlphaV1PlayerCatalog
             throw new RuntimeException("Underground growth path [{$key}] is invalid.");
         }
         $this->rules->assertFiveStats($stats);
-        if (array_keys($growth) !== AlphaV1CombatRules::STATS
-            || array_filter($growth, 'is_int') !== $growth
-            || array_sum($growth) + $stp !== 10
-            || ($growth['agility'] ?? null) !== 0) {
+        $growthKeys = array_keys($growth);
+        $statKeys = AlphaV1CombatRules::STATS;
+        sort($growthKeys);
+        sort($statKeys);
+        if ($growthKeys !== $statKeys
+            || array_filter($growth, static fn (mixed $value): bool => ! is_int($value) || $value < 0) !== []
+            || $stp < 0
+            || array_sum($growth) + $stp < 1) {
             throw new RuntimeException("Underground growth path [{$key}] growth contract is invalid.");
+        }
+        if ((self::PERSISTED_STP_PER_LEVEL[$key] ?? null) !== $stp) {
+            throw new RuntimeException("Underground growth path [{$key}] must match the persisted STP entitlement contract.");
         }
         $description = $configured['description'] ?? null;
         if (! is_array($description) || ! array_is_list($description)
@@ -693,11 +709,7 @@ final readonly class UndergroundAlphaV1PlayerCatalog
 
     public function trialCatalog(string $trialKey): AlphaV1BuildCatalog
     {
-        $manifestPath = match ($trialKey) {
-            'trial_01' => 'underground/balance/trial1-v1.json',
-            'trial_02' => 'underground/balance/trial2-v1.json',
-            default => throw new RuntimeException("Unknown Underground Trial catalog [{$trialKey}]."),
-        };
+        $manifestPath = $this->runtimeCatalog->trial($trialKey)['balance_manifest'];
         try {
             $trial = json_decode(
                 file_get_contents(config_path($manifestPath)) ?: '',
@@ -937,7 +949,7 @@ final readonly class UndergroundAlphaV1PlayerCatalog
             );
         }
         $maxRounds = $enemy['max_rounds'] ?? null;
-        if ($maxRounds !== 100) {
+        if (! is_int($maxRounds) || $maxRounds < 1 || $maxRounds > 100) {
             throw new RuntimeException('Underground playtest round contract is invalid.');
         }
         $catalog = $this->laboratoryCatalog();
@@ -1054,20 +1066,12 @@ final readonly class UndergroundAlphaV1PlayerCatalog
             throw new RuntimeException('Underground exploration drop configuration is invalid.');
         }
         $rarities = ['common', 'uncommon', 'rare', 'epic'];
-        $profileKeys = [
-            'standard',
-            'elite',
-            'rare',
-            'shining_kingdom',
-            'shining_kingdom_vault',
-            'trial2_shallow',
-            'trial2_middle',
-            'trial2_deep',
-        ];
-        foreach ($profileKeys as $profileKey) {
-            $profile = $drop['profiles'][$profileKey] ?? null;
+        if ($drop['profiles'] === []) {
+            throw new RuntimeException('Underground exploration drop pool is invalid.');
+        }
+        foreach ($drop['profiles'] as $profileKey => $profile) {
             $weights = is_array($profile) ? ($profile['rarity_weights'] ?? null) : null;
-            if (! is_array($profile)
+            if (! is_string($profileKey) || $profileKey === '' || ! is_array($profile)
                 || ! is_int($profile['presence_bps'] ?? null)
                 || $profile['presence_bps'] < 0 || $profile['presence_bps'] > 10_000
                 || ! is_array($weights)
@@ -1077,8 +1081,7 @@ final readonly class UndergroundAlphaV1PlayerCatalog
                 throw new RuntimeException("Underground exploration drop profile [{$profileKey}] is invalid.");
             }
         }
-        if (array_keys($drop['profiles']) !== $profileKeys
-            || array_keys($drop['category_weights']) !== ['weapon', 'armor', 'accessory']
+        if (array_keys($drop['category_weights']) !== ['weapon', 'armor', 'accessory']
             || array_filter(
                 $drop['category_weights'],
                 static fn (mixed $weight): bool => ! is_int($weight) || $weight < 0,
@@ -1137,8 +1140,8 @@ final readonly class UndergroundAlphaV1PlayerCatalog
             || ! in_array($kind, ['hunting_ground', 'vault'], true)
             || ! is_int($entryKeyCost) || $entryKeyCost < 0
             || ! is_string($dropTierKey) || $dropTierKey === ''
-            || ($kind === 'vault' && ($entryKeyCost !== 1 || ! is_int($vaultBaseG) || $vaultBaseG < 0
-                || ! is_int($treasureMultiplier) || $treasureMultiplier !== 20
+            || ($kind === 'vault' && ($entryKeyCost < 1 || ! is_int($vaultBaseG) || $vaultBaseG < 0
+                || ! is_int($treasureMultiplier) || $treasureMultiplier < 1
                 || ! is_string($forcedDropProfile)
                 || ! array_key_exists($forcedDropProfile, $this->explorationDropConfig()['profiles'])))
             || ($rare !== null && (! is_array($rare) || ! is_string($rare['key'] ?? null)

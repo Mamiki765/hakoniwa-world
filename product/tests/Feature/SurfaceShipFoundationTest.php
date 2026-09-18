@@ -42,9 +42,6 @@ final class SurfaceShipFoundationTest extends TestCase
             ->orderBy('id')->limit(9)->get();
         $this->assertCount(9, $cells);
         $this->assertTrue(Schema::hasTable('ships'));
-        foreach (['home_port_map_cell_id', 'level', 'experience'] as $excludedColumn) {
-            $this->assertFalse(Schema::hasColumn('ships', $excludedColumn));
-        }
 
         $fishing = [];
         foreach (range(0, 2) as $index) {

@@ -2,8 +2,10 @@
 
 namespace App\Http\Requests;
 
+use App\Application\Underground\UndergroundRuntimeCatalog;
 use App\Application\Underground\UndergroundRuntimeService;
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Rule;
 
 final class UndergroundTrialSkipRequest extends FormRequest
 {
@@ -17,7 +19,7 @@ final class UndergroundTrialSkipRequest extends FormRequest
     {
         return [
             'request_id' => ['required', 'uuid'],
-            'trial_key' => ['required', 'string', 'in:trial_01,trial_02'],
+            'trial_key' => ['required', 'string', Rule::in(app(UndergroundRuntimeCatalog::class)->trialKeys())],
             'execution_count' => [
                 'sometimes',
                 'integer',

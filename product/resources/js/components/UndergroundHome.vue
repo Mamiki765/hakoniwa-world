@@ -21,6 +21,7 @@ const props = withDefaults(defineProps<{
     awakeningMax?: number;
     shards: number;
     banked: number;
+    innCost: number;
     tickets: number;
     xpRemaining: number;
     unspentStp?: number;
@@ -91,7 +92,7 @@ const percentage = (value: number, max: number) => `${Math.min(100, Math.max(0, 
                     </div>
                     <h2>{{ name }}</h2>
                     <p v-if="growthPath" class="ug-growth-path">{{ growthPath }}</p>
-                    <div class="ug-gauge-label"><span class="ug-hp-actions">HP <button class="ug-quick-rest" type="button" :disabled="busy || restDisabled || resting" :aria-label="resting ? '休憩中' : '宿で休む（10G）'" title="宿で休む（10G・HPを全回復）" @click="$emit('rest')">＋ <small>10G</small></button></span><strong>{{ number(hp) }} <small>/ {{ number(maxHp) }}</small></strong></div>
+                    <div class="ug-gauge-label"><span class="ug-hp-actions">HP <button class="ug-quick-rest" type="button" :disabled="busy || restDisabled || resting" :aria-label="resting ? '休憩中' : `宿で休む（${number(innCost)}G）`" :title="`宿で休む（${number(innCost)}G・HPを全回復）`" @click="$emit('rest')">＋ <small>{{ number(innCost) }}G</small></button></span><strong>{{ number(hp) }} <small>/ {{ number(maxHp) }}</small></strong></div>
                     <div class="ug-meter" role="progressbar" aria-label="HP" :aria-valuenow="hp" :aria-valuemax="maxHp" :aria-valuemin="0"><span :style="{ width: percentage(hp, maxHp) }"></span></div>
                     <div class="ug-gauge-label"><span>覚醒</span></div>
                     <div class="ug-meter ug-meter-awakening" role="progressbar" aria-label="覚醒ゲージ" :aria-valuenow="awakening" :aria-valuemax="awakeningMax" :aria-valuemin="0"><span :style="{ width: percentage(awakening, awakeningMax) }"></span></div>

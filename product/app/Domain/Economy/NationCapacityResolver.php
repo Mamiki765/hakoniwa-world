@@ -207,15 +207,16 @@ final class NationCapacityResolver
             $authoredFacility = $ruleset->settings['facility_definitions'][$facilityKey] ?? null;
             if (! is_array($contract) || ! is_array($authoredFacility)
                 || ($contract['facility_key'] ?? null) !== $facilityKey
-                || ($contract['maximum_per_nation'] ?? null) !== 1
+                || ! is_int($contract['maximum_per_nation'] ?? null)
+                || $contract['maximum_per_nation'] < 1
                 || ! is_int($contract['capacity_per_level'] ?? null)
                 || $contract['capacity_per_level'] < 1
                 || ! is_int($authoredFacility['maximum_scale'] ?? null)) {
                 throw new DomainException("Published central facility {$facilityKey} settings are invalid.");
             }
             $counts[$facilityKey] = ($counts[$facilityKey] ?? 0) + 1;
-            if ($counts[$facilityKey] > 1) {
-                throw new DomainException("Nation has more than one {$facilityKey} facility.");
+            if ($counts[$facilityKey] > $contract['maximum_per_nation']) {
+                throw new DomainException("Nation has more than the configured {$facilityKey} facility limit.");
             }
             $level = $row->facility_scale;
             if (! is_int($level) || $level < 1 || $level > $authoredFacility['maximum_scale']) {

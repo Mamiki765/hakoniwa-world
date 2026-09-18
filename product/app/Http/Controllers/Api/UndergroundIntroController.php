@@ -478,7 +478,14 @@ final class UndergroundIntroController extends Controller
 
     public function battles(Request $request, UndergroundIntroService $service): JsonResponse
     {
-        return $this->respond(fn (): array => $service->battles($request->user()));
+        $validated = $request->validate([
+            'before_cursor' => ['sometimes', 'integer', 'min:1'],
+        ]);
+
+        return $this->respond(fn (): array => $service->battles(
+            $request->user(),
+            isset($validated['before_cursor']) ? (int) $validated['before_cursor'] : null,
+        ));
     }
 
     public function battle(
