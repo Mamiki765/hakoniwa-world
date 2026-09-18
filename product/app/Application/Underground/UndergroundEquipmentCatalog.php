@@ -80,16 +80,16 @@ final class UndergroundEquipmentCatalog
     {
         $capacity = $this->data()['vault_capacity'] ?? null;
 
-        return $capacity === 500
+        return is_int($capacity) && $capacity > 0
             ? $capacity
-            : throw new RuntimeException('Underground vault capacity must be exactly 500.');
+            : throw new RuntimeException('Underground vault capacity must be positive.');
     }
 
     public function pageSize(): int
     {
         $size = $this->data()['page_size'] ?? null;
 
-        return is_int($size) && $size >= 50 && $size <= 100
+        return is_int($size) && $size >= 1 && $size <= 100
             ? $size
             : throw new RuntimeException('Underground vault page size is invalid.');
     }
@@ -290,6 +290,12 @@ final class UndergroundEquipmentCatalog
         sort($statKeys);
         $expectedStatKeys = AlphaV1CombatRules::STATS;
         sort($expectedStatKeys);
+        $qualityMinimum = $this->data()['generator']['quality_min_bps'] ?? null;
+        $qualityMaximum = $this->data()['generator']['quality_max_bps'] ?? null;
+        if (! is_int($qualityMinimum) || ! is_int($qualityMaximum)
+            || $qualityMinimum < 1 || $qualityMaximum < $qualityMinimum) {
+            throw new RuntimeException('Underground equipment generator quality range is invalid.');
+        }
         if (! is_string($definition['key'] ?? null) || $definition['key'] === ''
             || ! is_string($definition['name'] ?? null) || $definition['name'] === ''
             || ! in_array($category, ['weapon', 'armor', 'accessory'], true)
@@ -337,7 +343,7 @@ final class UndergroundEquipmentCatalog
                 || ! is_string($affix['target'] ?? null) || $affix['target'] === ''
                 || ! is_int($affix['value'] ?? null) || $affix['value'] < 1
                 || ! is_int($affix['quality_bps'] ?? null)
-                || $affix['quality_bps'] < 8_000 || $affix['quality_bps'] > 10_000) {
+                || $affix['quality_bps'] < $qualityMinimum || $affix['quality_bps'] > $qualityMaximum) {
                 throw new RuntimeException('Underground equipment affix is invalid.');
             }
             $allowedTargets = match ($affix['kind']) {
@@ -353,10 +359,10 @@ final class UndergroundEquipmentCatalog
         if ($definition['shop_sold'] === true && $definition['buy_price'] === null) {
             throw new RuntimeException('Underground shop equipment price is missing.');
         }
-        if (! $generated && (($rarity !== 'common' && ($definition['equippable'] ?? true) !== false)
+        if (! $generated && $definition['shop_sold'] === true && (($rarity !== 'common' && ($definition['equippable'] ?? true) !== false)
             || $definition['modifiers'] !== []
             || $definition['affixes'] !== [])) {
-            throw new RuntimeException('Fixed Underground equipment must remain Novice without affixes.');
+            throw new RuntimeException('Underground shop equipment must remain Novice without affixes.');
         }
         if ($generated && (! isset($definition['sell_price'])
             || ! is_int($definition['sell_price']) || $definition['sell_price'] < 1

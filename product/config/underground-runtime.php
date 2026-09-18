@@ -60,6 +60,7 @@ return [
             'required_trial_key' => null,
             'interbattle_heal_bps' => 2000,
             'first_clear_skill_points' => 40,
+            'unlocked_area_layers' => 1,
             'encounters' => [
                 'trial_rat_vanguard',
                 'trial_cave_hunter',
@@ -93,6 +94,7 @@ return [
             'drop_tier_key' => 'obsidian_cavern',
             'interbattle_heal_bps' => 2000,
             'first_clear_skill_points' => 40,
+            'unlocked_area_layers' => 2,
             'encounters' => [
                 'trial2_sootfang_scout',
                 'trial2_mockflame_jester',
