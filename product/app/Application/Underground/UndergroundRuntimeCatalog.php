@@ -289,6 +289,7 @@ final class UndergroundRuntimeCatalog
                 'item_level_max' => $itemLevelMax,
             ];
         }
+
         return [
             'label' => $trial['label'],
             'content_identity' => $trial['content_identity'],
