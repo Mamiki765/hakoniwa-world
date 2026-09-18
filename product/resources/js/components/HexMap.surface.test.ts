@@ -5,7 +5,10 @@ import HexMap from './HexMap.vue';
 
 const worldBounds = { min_x: 0, max_x: 59, min_y: 0, max_y: 59 };
 
-afterEach(() => vi.unstubAllGlobals());
+afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+});
 
 function mapCell(overrides: Partial<MapCell> = {}): MapCell {
     return {
@@ -70,6 +73,68 @@ describe('staggered square-image map', () => {
 
         expect(wrapper.get('.cell-tooltip strong').text()).toBe('海底油田 (1,-1)');
         expect(wrapper.findAll('.cell-tooltip span').map((line) => line.text())).not.toContain('座標 x=1, y=-1');
+    });
+
+    it('keeps all 30 queued commands readable and lets the pointer enter the scrollable tooltip', async () => {
+        vi.useFakeTimers();
+        const cell = mapCell({
+            x: 4,
+            y: 7,
+            details: [{
+                key: 'sea_area', label: '海域', value: 'ウォーリアン海域', unit: null,
+                formatted: 'ウォーリアン海域', visibility: 'public',
+            }],
+        });
+        const items: CommandQueue['items'] = Array.from({ length: 30 }, (_, index) => ({
+            id: index + 1,
+            command_key: 'landfill',
+            command_name: `予約${index + 1}`,
+            queue_position: index + 1,
+            target_context: 'surface_cell',
+            target_x: 4,
+            target_y: 7,
+            target_layer: null,
+            target_slot_index: null,
+            quantity: 1,
+            quantity_semantics: 'unused',
+            quantity_label: null,
+            consumes_turn: true,
+            parameters: {},
+            status: 'queued',
+            queued_at: null,
+        }));
+        const commandQueue: CommandQueue = {
+            version: 9,
+            limit: 30,
+            explicit_count: 30,
+            items,
+            plan: [],
+        };
+        const wrapper = mount(HexMap, { props: {
+            cells: [cell], selected: null, capital: { x: 0, y: 0 }, bounds: worldBounds,
+            commandQueue, loading: false, error: null, emptyChunks: [],
+        } });
+
+        const tile = wrapper.get('.map-cell');
+        await tile.trigger('mouseenter');
+        const queuedLines = wrapper.findAll('.cell-tooltip span')
+            .map((line) => line.text())
+            .filter((line) => line.startsWith('['));
+        expect(queuedLines).toHaveLength(30);
+        expect(queuedLines.at(-1)).toBe('[30] 予約30 ×1');
+        const tooltip = wrapper.get('.cell-tooltip');
+        expect(tooltip.attributes('tabindex')).toBe('0');
+
+        await tile.trigger('mouseleave');
+        await tooltip.trigger('mouseenter');
+        vi.advanceTimersByTime(121);
+        await flushPromises();
+        expect(wrapper.find('.cell-tooltip').exists()).toBe(true);
+
+        await tooltip.trigger('mouseleave');
+        vi.advanceTimersByTime(121);
+        await flushPromises();
+        expect(wrapper.find('.cell-tooltip').exists()).toBe(false);
     });
 
     it('shows only matching queued commands below the sea-area line in position order without scanning an API', async () => {

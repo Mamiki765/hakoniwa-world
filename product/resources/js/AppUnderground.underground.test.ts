@@ -931,7 +931,7 @@ describe('Underground application operations', () => {
         await wrapper.get('.underground-battle-back').trigger('click');
         await openUndergroundView(wrapper, '冒険', '戦闘履歴');
         expect(wrapper.get('.underground-history').text()).toContain('履歴5');
-        expect(wrapper.get('.underground-history').text()).not.toContain('履歴6');
+        expect(wrapper.get('.underground-history').text()).toContain('履歴6');
         await wrapper.findAll('.underground-history li button')[1]!.trigger('click');
         await flushPromises();
         expect(wrapper.get('.underground-battle-result h2').text()).toBe('敗北');
