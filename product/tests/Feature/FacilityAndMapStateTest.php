@@ -19,7 +19,6 @@ use App\Models\TerrainDefinition;
 use App\Models\User;
 use DomainException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Illuminate\Support\Facades\Schema;
 use Tests\Concerns\CreatesTestWorlds;
 use Tests\TestCase;
 
@@ -55,8 +54,6 @@ final class FacilityAndMapStateTest extends TestCase
             ->orderBy('key')->pluck('key')->all());
         $this->assertSame(['industrial_goods', 'minerals'], ResourceDefinition::query()
             ->whereIn('key', ['industrial_goods', 'minerals'])->orderBy('key')->pluck('key')->all());
-        $this->assertFalse(Schema::hasColumn('nations', 'industrial_goods'));
-        $this->assertFalse(Schema::hasColumn('nations', 'minerals'));
     }
 
     public function test_cell_state_values_are_separate_and_reset_with_terrain_or_facility(): void

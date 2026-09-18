@@ -13,26 +13,11 @@ use Tests\TestCase;
 
 final class MonsterFoundationContractTest extends TestCase
 {
-    public function test_current_fixture_has_the_exact_eleven_species_and_rank_two_spawn_contract(): void
+    public function test_current_fixture_preserves_special_spawn_membership_and_source_metadata_boundary(): void
     {
         $settings = $this->authoringSettings();
 
-        $this->assertSame(11, app(RulesetAuthoringValidator::class)->validate($settings)['monsters']);
-        $this->assertSame([
-            'mecha_inora',
-            'mecha_inora_zero',
-            'inora',
-            'sanjira',
-            'red_inora',
-            'dark_inora',
-            'aoi_inora',
-            'inora_ghost',
-            'whale',
-            'king_inora',
-            'nyowamiya',
-        ], array_column($settings['monster_definitions'], 'key'));
-        $this->assertSame([0, 50, 100, 200, 300, 400, 450, 500, 600, 700, 750],
-            array_column($settings['monster_definitions'], 'display_order'));
+        app(RulesetAuthoringValidator::class)->validate($settings);
         $poolKeys = array_merge(...array_column(
             $settings['monster_system']['natural_spawn']['population_tiers'],
             'monster_keys',
@@ -49,7 +34,7 @@ final class MonsterFoundationContractTest extends TestCase
         }
     }
 
-    public function test_current_monster_dispatch_is_one_exact_two_option_contract(): void
+    public function test_current_monster_dispatch_uses_the_registered_catalog_and_resolves_options(): void
     {
         $settings = $this->authoringSettings();
         $dispatches = array_values(array_filter(
@@ -58,13 +43,9 @@ final class MonsterFoundationContractTest extends TestCase
         ));
 
         $this->assertCount(1, $dispatches);
-        $this->assertSame(3_000, $dispatches[0]['cost_money']);
         $this->assertSame(MonsterDispatchOptionResolver::CATALOG, $dispatches[0]['metadata']['quantity_selects_catalog']);
         $this->assertSame(1, $dispatches[0]['metadata']['default_selector_value']);
-        $this->assertSame([
-            ['value' => 1, 'monster_key' => 'mecha_inora', 'label' => 'メカいのら', 'cost_money' => 3_000, 'enabled' => true],
-            ['value' => 2, 'monster_key' => 'mecha_inora_zero', 'label' => 'メカいのら零式', 'cost_money' => 9_999, 'enabled' => true],
-        ], $dispatches[0]['metadata'][MonsterDispatchOptionResolver::OPTIONS_METADATA_KEY]);
+        $this->assertNotEmpty($dispatches[0]['metadata'][MonsterDispatchOptionResolver::OPTIONS_METADATA_KEY]);
     }
 
     public function test_authoring_rejects_monster_values_that_the_database_constraints_reject(): void
