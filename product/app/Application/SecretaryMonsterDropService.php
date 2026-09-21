@@ -53,7 +53,8 @@ final class SecretaryMonsterDropService
             ->lockForUpdate()
             ->sole();
         $secretary = Secretary::query()->where('user_id', $membership->user_id)
-            ->lockForUpdate()->sole();
+            ->sole();
+        $secretary->lockSurfaceState();
         $grantKey = "monster-drop:v1:{$monster->id}:{$recipient->id}";
         $existing = $secretary->itemInstances()->where('grant_key', $grantKey)->first();
         if ($existing instanceof SecretaryItemInstance) {

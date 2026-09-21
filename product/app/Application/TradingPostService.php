@@ -216,7 +216,8 @@ final class TradingPostService
             $user, $item, $startPrice, $durationTurns, $autoRelist,
         ): AuctionListing {
             $this->assertListingInput($lockedNation, $rules, $startPrice, $durationTurns);
-            $secretary = Secretary::query()->where('user_id', $user->id)->lockForUpdate()->firstOrFail();
+            $secretary = Secretary::query()->where('user_id', $user->id)->firstOrFail();
+            $secretary->lockSurfaceState();
             $lockedItem = SecretaryItemInstance::query()
                 ->whereKey($item->id)
                 ->where('secretary_id', $secretary->id)
@@ -439,7 +440,8 @@ final class TradingPostService
 
     private function assertIncomingItemCapacity(User $user, AuctionListing $listing): void
     {
-        $secretary = Secretary::query()->where('user_id', $user->id)->lockForUpdate()->firstOrFail();
+        $secretary = Secretary::query()->where('user_id', $user->id)->firstOrFail();
+        $secretary->lockSurfaceState();
         $ownedItems = SecretaryItemInstance::query()->where('secretary_id', $secretary->id)
             ->lockForUpdate()->get(['id', 'item_key'])->all();
         $ownedNationIds = NationMembership::query()
@@ -481,6 +483,8 @@ final class TradingPostService
 
             return;
         }
+        SecretaryItemInstance::query()->findOrFail($listing->secretary_item_instance_id)
+            ->secretary->lockSurfaceState();
         $item = SecretaryItemInstance::query()->whereKey($listing->secretary_item_instance_id)
             ->lockForUpdate()->firstOrFail();
         if (! $item->is_escrowed) {

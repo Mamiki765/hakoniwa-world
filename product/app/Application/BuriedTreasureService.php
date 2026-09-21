@@ -136,7 +136,8 @@ final class BuriedTreasureService
         }
         $membership = NationMembership::query()->where('world_id', $context->world->id)
             ->where('nation_id', $nation->id)->where('role', 'owner')->lockForUpdate()->sole();
-        $secretary = Secretary::query()->where('user_id', $membership->user_id)->lockForUpdate()->sole();
+        $secretary = Secretary::query()->where('user_id', $membership->user_id)->sole();
+        $secretary->lockSurfaceState();
         $required = 0;
         foreach ($treasures as $treasure) {
             $snapshot = $treasure->reward_snapshot;

@@ -1105,7 +1105,6 @@ STORY;
         return DB::transaction(function () use ($user): ?UndergroundTrialRun {
             $secretary = Secretary::query()
                 ->where('user_id', $user->id)
-                ->lockForUpdate()
                 ->first();
             if (! $secretary instanceof Secretary) {
                 return null;
@@ -1632,6 +1631,7 @@ STORY;
     /** @return array<string, mixed> */
     private function battleImageReferences(Secretary $secretary): array
     {
+        $secretary = $this->imageRetention->lockSnapshotSource($secretary);
         $secretary->loadMissing(['user', 'images']);
 
         return [
@@ -1945,7 +1945,7 @@ STORY;
      */
     private function partyCombatInputs(UndergroundProfile $profile, array $borrowed): array
     {
-        $secretary = $profile->secretary;
+        $secretary = $this->imageRetention->lockSnapshotSource($profile->secretary);
         if (! is_string($secretary->name) || $secretary->name === ''
             || ! is_string($profile->growth_path_key)) {
             throw new UndergroundRuntimeException('underground_party_invalid', 'PT戦闘の開始状態を解決できません。');
@@ -1953,12 +1953,6 @@ STORY;
         $secretary->loadMissing('user');
         $leader = $secretary->user;
         $leaderGameId = $this->visitorCodes->allocate($leader);
-        $leaderImages = SecretaryImage::query()
-            ->where('secretary_id', $secretary->id)
-            ->orderBy('id')
-            ->lockForUpdate()
-            ->get();
-        $secretary->setRelation('images', $leaderImages);
 
         $leaderLevel = $profile->combat_level;
         $leaderEquipment = $this->equipmentLoadout->combatLoadout($profile);
@@ -2922,7 +2916,7 @@ STORY;
     private function partyLeaderSyncInputs(User $user): array
     {
         return DB::transaction(function () use ($user): array {
-            $secretary = Secretary::query()->where('user_id', $user->id)->lockForUpdate()->first();
+            $secretary = Secretary::query()->where('user_id', $user->id)->first();
             if (! $secretary instanceof Secretary) {
                 throw new UndergroundRuntimeException(
                     'underground_secretary_missing',
@@ -3064,7 +3058,6 @@ STORY;
     {
         $secretary = Secretary::query()
             ->where('user_id', $user->id)
-            ->lock('for no key update')
             ->first();
         if (! $secretary instanceof Secretary) {
             throw new UndergroundRuntimeException(
@@ -3072,12 +3065,7 @@ STORY;
                 '秘書がまだ作成されていません。',
             );
         }
-        UndergroundProfile::query()->firstOrCreate(['secretary_id' => $secretary->id]);
-        $profile = UndergroundProfile::query()
-            ->where('secretary_id', $secretary->id)
-            ->lockForUpdate()
-            ->firstOrFail();
-        $profile->setRelation('secretary', $secretary);
+        $profile = app(UndergroundProfileService::class)->lockForSecretary($secretary);
         if ($profile->growth_path_key !== null) {
             $this->starterEquipment->reconcile($profile);
         }
@@ -3102,11 +3090,28 @@ STORY;
         }
         $lockOrder = $secretaryIds;
         sort($lockOrder, SORT_NUMERIC);
+        /** @var Collection<int, UndergroundProfile> $profiles */
+        $profiles = UndergroundProfile::query()
+            ->whereIn('secretary_id', $lockOrder)
+            ->orderBy('secretary_id')
+            ->lockForUpdate()
+            ->get();
+        if ($profiles->count() !== count($secretaryIds)) {
+            throw new UndergroundRuntimeException('underground_party_member_unavailable', '選んだ秘書は現在借りられません。');
+        }
+        foreach ($profiles as $profile) {
+            if (! is_string($profile->growth_path_key)
+                || $profile->skill_rebuild_required
+                || $profile->underground_contract_completed_at === null) {
+                throw new UndergroundRuntimeException('underground_party_member_unavailable', '選んだ秘書は現在借りられません。');
+            }
+        }
+
         /** @var Collection<int, Secretary> $secretaries */
         $secretaries = Secretary::query()
             ->whereIn('id', $lockOrder)
             ->orderBy('id')
-            ->lockForUpdate()
+            ->sharedLock()
             ->get();
         if ($secretaries->count() !== count($secretaryIds)) {
             throw new UndergroundRuntimeException('underground_party_member_unavailable', '選んだ秘書は現在借りられません。');
@@ -3132,23 +3137,6 @@ STORY;
             if (! $setting instanceof SecretaryLendingSetting
                 || ! $setting->is_public
                 || ! $setting->is_available) {
-                throw new UndergroundRuntimeException('underground_party_member_unavailable', '選んだ秘書は現在借りられません。');
-            }
-        }
-
-        /** @var Collection<int, UndergroundProfile> $profiles */
-        $profiles = UndergroundProfile::query()
-            ->whereIn('secretary_id', $lockOrder)
-            ->orderBy('secretary_id')
-            ->lockForUpdate()
-            ->get();
-        if ($profiles->count() !== count($secretaryIds)) {
-            throw new UndergroundRuntimeException('underground_party_member_unavailable', '選んだ秘書は現在借りられません。');
-        }
-        foreach ($profiles as $profile) {
-            if (! is_string($profile->growth_path_key)
-                || $profile->skill_rebuild_required
-                || $profile->underground_contract_completed_at === null) {
                 throw new UndergroundRuntimeException('underground_party_member_unavailable', '選んだ秘書は現在借りられません。');
             }
         }

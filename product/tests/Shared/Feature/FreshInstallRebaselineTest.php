@@ -173,7 +173,7 @@ SQL);
             'level' => 0,
             'experience' => 0,
         ]);
-        $this->assertSame(1, $secretary->equipment_version);
+        $this->assertSame(1, $secretary->surfaceState->equipment_version);
         $starter = SecretaryItemInstance::query()->where('secretary_id', $secretary->id)->sole();
         $this->assertFalse($starter->is_escrowed);
         $this->assertSame('old_bow', $starter->item_key);

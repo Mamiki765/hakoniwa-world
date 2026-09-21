@@ -14,6 +14,11 @@ final class VisitorCodeAllocator
 
     public function allocate(User $user): string
     {
+        $existing = User::query()->whereKey($user->id)->value('visitor_code');
+        if (is_string($existing) && $existing !== '') {
+            return $existing;
+        }
+
         return DB::transaction(function () use ($user): string {
             // Keep user identity writes serialized while allowing a concurrent
             // party member FK to take a KEY SHARE lock on the same user. This

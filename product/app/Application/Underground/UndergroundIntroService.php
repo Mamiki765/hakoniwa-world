@@ -70,8 +70,7 @@ final readonly class UndergroundIntroService
             ->first();
 
         if ($profile instanceof UndergroundProfile && $profile->growth_path_key !== null) {
-            DB::transaction(function () use ($secretary, $profile): void {
-                Secretary::query()->whereKey($secretary->id)->lockForUpdate()->firstOrFail();
+            DB::transaction(function () use ($profile): void {
                 $locked = UndergroundProfile::query()->whereKey($profile->id)->lockForUpdate()->firstOrFail();
                 $this->starterEquipment->reconcile($locked);
             }, 3);
@@ -1179,16 +1178,11 @@ final readonly class UndergroundIntroService
     {
         $secretary = Secretary::query()
             ->where('user_id', $user->id)
-            ->lockForUpdate()
             ->first();
         if (! $secretary instanceof Secretary || $secretary->name === null) {
             throw new UndergroundRuntimeException('underground_secretary_missing', '名前のある秘書が必要です。');
         }
-        UndergroundProfile::query()->firstOrCreate(['secretary_id' => $secretary->id]);
-        $profile = UndergroundProfile::query()
-            ->where('secretary_id', $secretary->id)
-            ->lockForUpdate()
-            ->firstOrFail();
+        $profile = app(UndergroundProfileService::class)->lockForSecretary($secretary);
         UndergroundIntroProgress::query()->firstOrCreate(['underground_profile_id' => $profile->id]);
         $intro = UndergroundIntroProgress::query()
             ->where('underground_profile_id', $profile->id)

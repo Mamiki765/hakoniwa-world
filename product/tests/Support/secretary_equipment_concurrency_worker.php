@@ -40,7 +40,7 @@ try {
         $result = [
             'status' => 'success',
             'operation' => $operation,
-            'equipment_version' => $secretary->equipment_version,
+            'equipment_version' => $secretary->surfaceState->equipment_version,
             'slots' => $secretary->itemInstances->mapWithKeys(
                 static fn ($item): array => [(string) $item->id => $item->equipped_slot],
             )->all(),

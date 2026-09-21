@@ -150,7 +150,7 @@ final class SecretaryItemPresentationTest extends TestCase
     public function test_historical_db_snapshot_effect_resolution_adds_no_per_item_presentation_queries(): void
     {
         $user = User::factory()->create();
-        $secretary = $user->secretary()->create(['equipment_version' => 1]);
+        $secretary = $user->secretary()->create([]);
         $secretary->itemInstances()->create([
             'item_key' => SecretaryItemCatalog::OLD_BOW,
             'level' => 1,

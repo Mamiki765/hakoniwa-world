@@ -1753,7 +1753,7 @@ final class MissileImpactAndSettlementTest extends CommandAndMissileTestCase
         $combatLevelBefore = $profile->combat_level;
         $combatXpBefore = $profile->combat_xp;
         $secretary = $firingUser->secretary()->sole();
-        $secretaryExperienceBefore = $secretary->monster_experience;
+        $secretaryExperienceBefore = $secretary->surfaceState->monster_experience;
         $host = $this->monsterArena($world, $target);
         $firstMonster = $this->monster($world, $host);
         $firstMonster->update(['current_hp' => 1, 'spawned_max_hp' => 1]);
@@ -1787,7 +1787,7 @@ final class MissileImpactAndSettlementTest extends CommandAndMissileTestCase
         $this->assertSame('killed', $firstMonster->fresh()->state);
         $this->assertSame(
             $secretaryExperienceBefore + $experiencePerDamage,
-            $secretary->fresh()->monster_experience,
+            $secretary->fresh()->surfaceState->monster_experience,
         );
         $firstKill = json_decode((string) DB::table('audit_events')->where('event_type', 'monster.killed')
             ->where('subject_id', $firstMonster->id)->value('metadata'), true, 512, JSON_THROW_ON_ERROR);
@@ -1828,7 +1828,7 @@ final class MissileImpactAndSettlementTest extends CommandAndMissileTestCase
         $this->assertSame($experiencePerDamage, $surfaceBase->fresh()->facility_experience);
         $this->assertSame(
             $secretaryExperienceBefore + 2 * $experiencePerDamage,
-            $secretary->fresh()->monster_experience,
+            $secretary->fresh()->surfaceState->monster_experience,
         );
         $events = DB::table('audit_events')->whereIn('event_type', ['monster.damaged', 'monster.killed'])
             ->where('subject_id', $secondMonster->id)->orderBy('id')->get()

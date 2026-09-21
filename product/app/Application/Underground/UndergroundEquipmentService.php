@@ -608,7 +608,6 @@ final readonly class UndergroundEquipmentService
     {
         $secretary = Secretary::query()
             ->where('user_id', $user->id)
-            ->lockForUpdate()
             ->first();
         if (! $secretary instanceof Secretary || $secretary->name === null) {
             throw new UndergroundRuntimeException('underground_secretary_missing', '名前のある秘書が必要です。');

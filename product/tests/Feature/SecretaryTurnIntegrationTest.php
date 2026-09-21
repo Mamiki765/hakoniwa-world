@@ -231,7 +231,7 @@ final class SecretaryTurnIntegrationTest extends TestCase
         $this->assertSame(12, app(LaunchBaseExperienceService::class)->credit($base, $nation, 12, $context));
         $this->assertSame(12, (int) $base->fresh()->facility_experience);
         app(SecretaryTurnService::class)->flushExperience($context);
-        $this->assertSame(24, (int) $secretary->fresh()->monster_experience);
+        $this->assertSame(24, (int) $secretary->fresh()->surfaceState->monster_experience);
     }
 
     public function test_all_three_production_skills_apply_their_integer_multiplier_to_the_matching_output(): void

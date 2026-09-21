@@ -12,6 +12,7 @@ use App\Models\NationMembership;
 use App\Models\RulesetVersion;
 use App\Models\Secretary;
 use App\Models\SecretarySkill;
+use App\Models\SecretarySurfaceState;
 use DomainException;
 
 final class SecretaryTurnService
@@ -41,7 +42,7 @@ final class SecretaryTurnService
         if ($nationIds === []) {
             return 0;
         }
-        $relations = ['user.secretary.skills'];
+        $relations = ['user.secretary.skills', 'user.secretary.surfaceState'];
         if ($itemEffectsEnabled) {
             $relations['user.secretary.itemInstances'] = static fn ($query) => $query
                 ->whereNotNull('equipped_slot')
@@ -71,14 +72,14 @@ final class SecretaryTurnService
                 $nationId,
                 (int) $secretary->id,
                 $secretary->name,
-                (int) $secretary->monster_experience,
+                (int) $secretary->surfaceState->monster_experience,
                 $skills,
             );
             if ($itemEffectsEnabled) {
                 $context->state->setSecretaryItemEffectSnapshot(
                     $nationId,
                     (int) $secretary->id,
-                    (int) $secretary->equipment_version,
+                    (int) $secretary->surfaceState->equipment_version,
                     $this->resolvedItemSnapshots($secretary, $effectCatalog),
                 );
             }
@@ -145,7 +146,7 @@ final class SecretaryTurnService
      */
     private function resolvedItemSnapshots(Secretary $secretary, array $effectCatalog): array
     {
-        if ((int) $secretary->equipment_version < 1) {
+        if ((int) $secretary->surfaceState->equipment_version < 1) {
             throw new DomainException("Secretary {$secretary->id} has an invalid equipment version.");
         }
         $rows = $secretary->itemInstances;
@@ -209,10 +210,8 @@ final class SecretaryTurnService
             $secretaryIds[] = $context->state->secretarySnapshot($nationId)['secretary_id'];
         }
         $secretaryIds = array_values(array_unique($secretaryIds));
-        $secretaries = Secretary::query()->whereIn('id', $secretaryIds)
-            // Only non-key columns are updated here. Keep concurrent writers serialized
-            // without blocking party-member foreign-key references to these rows.
-            ->orderBy('id')->lock('for no key update')->get()->keyBy('id');
+        $secretaries = SecretarySurfaceState::query()->whereIn('secretary_id', $secretaryIds)
+            ->orderBy('secretary_id')->lockForUpdate()->get()->keyBy('secretary_id');
         if ($secretaries->count() !== count($secretaryIds)) {
             throw new DomainException('A snapshotted Secretary disappeared before the final experience flush.');
         }
@@ -266,7 +265,7 @@ final class SecretaryTurnService
         foreach ($monsterAwards as $nationId => $amount) {
             $secretaryId = $context->state->secretarySnapshot($nationId)['secretary_id'];
             $secretary = $secretaries->get($secretaryId);
-            if (! $secretary instanceof Secretary) {
+            if (! $secretary instanceof SecretarySurfaceState) {
                 throw new DomainException("Secretary {$secretaryId} is missing its monster experience row.");
             }
             $before = (int) $secretary->monster_experience;

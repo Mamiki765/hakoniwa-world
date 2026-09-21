@@ -24,6 +24,19 @@ use Throwable;
  */
 final readonly class SecretaryImageRetentionService
 {
+    /**
+     * Hold image identity through snapshot/lease creation. SHARE coexists with
+     * FK KEY SHARE; image editors wait without blocking surface state writers.
+     * The caller must already hold its underground profile transaction.
+     */
+    public function lockSnapshotSource(Secretary $secretary): Secretary
+    {
+        $source = Secretary::query()->whereKey($secretary->id)->sharedLock()->firstOrFail();
+        $source->setRelation('images', $source->images()->orderBy('id')->sharedLock()->get());
+
+        return $source;
+    }
+
     private const IMAGE_DISK = 'secretary_images';
 
     private const PATH_PATTERN = '/\\A[0-9a-f]{64}\\.(?:png|jpg|webp|gif)\\z/';
