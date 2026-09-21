@@ -34,6 +34,27 @@ jobs:
             echo "FORGEJO_PUSH_URL is not configured for this GitHub repository."
             exit 1
           fi
+          python3 - <<'PY'
+          import os
+          from urllib.parse import urlsplit
+
+          configured = urlsplit(os.environ["FORGEJO_PUSH_URL"])
+          valid = (
+              configured.scheme == "https"
+              and configured.hostname == "git.pbwlove.com"
+              and configured.port in (None, 443)
+              and configured.path == "/Mamiki765/hakoniwa-world.git"
+              and configured.username is not None
+              and configured.password is not None
+              and configured.query == ""
+              and configured.fragment == ""
+          )
+          if not valid:
+              raise SystemExit(
+                  "FORGEJO_PUSH_URL does not target the expected Forgejo hakoniwa-world repository."
+              )
+          print("FORGEJO_PUSH_URL target validation passed.")
+          PY
 
       - name: Push the selected ref without rewriting history
         shell: bash
