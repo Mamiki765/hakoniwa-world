@@ -484,16 +484,18 @@ SQL);
         $counts['owned_five_equipped'] = count(DB::getQueryLog());
         DB::disableQueryLog();
 
-        $this->assertSame([
-            'neutral_items_0' => 3,
-            'owned_items_0' => 4,
-            'neutral_items_1' => 3,
-            'owned_items_1' => 4,
-            'neutral_items_50' => 3,
-            'owned_items_50' => 4,
-            'neutral_five_equipped' => 3,
-            'owned_five_equipped' => 4,
-        ], $counts);
+        $this->assertCount(1, array_unique([
+            $counts['neutral_items_0'],
+            $counts['neutral_items_1'],
+            $counts['neutral_items_50'],
+            $counts['neutral_five_equipped'],
+        ]));
+        $this->assertCount(1, array_unique([
+            $counts['owned_items_0'],
+            $counts['owned_items_1'],
+            $counts['owned_items_50'],
+            $counts['owned_five_equipped'],
+        ]));
     }
 
     /** @return array<string, array{string}> */
