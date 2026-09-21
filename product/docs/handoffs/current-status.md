@@ -9,7 +9,7 @@
 - 実装・運用の引継ぎ：[実装handoff](development-history-and-current-handoff.md)
 - 今回の経緯・訂正：[会話記録](conversation-2026-09-21.md)
 - 未実装のOwner案・未決事項：[アイデア帳](../plans/unimplemented-ideas.md)
-- 4.4.0の設計：`release/4.4.0`の`product/docs/releases/4.4.0-data-boundary-design.md`。計画書は同branchへ追加する。存在する設計書＝実装済みではない。
+- 4.4.0の設計：[実装計画](../releases/4.4.0-plan.md)を入口に、[ロックの初期ソース地図](../releases/4.4.0-data-boundary-design.md)、[30日集約blueprint](../releases/4.4.0-receipt-compaction-blueprint.md)、[Agent refine候補](../plans/4.4.0-agent-refine-proposal.md)を必要時に読む。初期メモ§8の未指定事項は最新アイデア帳で更新済み。存在する設計書＝実装済みではない。
 
 ## 1. 確認済みの開発状態
 
@@ -22,14 +22,13 @@
 | 同期 | World #157 / MCP GitHub #1はmerge済み。GitHub→Forgejo main/tagsの片方向。4.3.2 merge後のWorld mirror `35573726878`成功確認済み。tags実照合は未確認 |
 | 本番 | 4.3.2のdeploy手順は渡したが、完了出力は本会話にない。merge、checkout、image、DBを同じ確認として扱わない |
 | Turn560 | Owner出力で復旧確認。maintenance下のmanual retryがcompleted、current_turn=560、attempts=4、`artisan up`済み。追加の手動進行は不要 |
-| 4.4.0 | branchは既に作成済み。更新開始時HEAD `7e4b5831e1eb1bd974a7f704975a090fde7e7442`。4.3.2に初期設計MDだけを加えた状態。破棄・作り直し・force pushをしない |
+| 4.4.0 | 既存の初期設計commit `7e4b5831e1eb1bd974a7f704975a090fde7e7442`を保持。main文書更新`17501b8ba42c7b6450f14f82764996e75a728c1d`を`8ae0447068b9e34783382c8aa7112d7c23857150`で統合し、同branchに計画・集約blueprint・Agent候補を追加。アプリ実装は未開始 |
 
 refsはこの文書更新前の固定点。作業開始時だけ対象branchのHEADを確認し、既存実装との差分から進める。
 
-## 2. 次の作業
+## 2. 今回の文書作業と次の実装候補
 
-Ownerの順序は **mainのhandoff更新 → release/4.4.0を用意 → 4.4.0計画・blueprint**。
-既存release branchへ更新済みmainを通常の統合で取り込み、初期設計MDを保存する。ゲームコード・migration適用・本番操作は今回の文書作業に含まない。
+Owner指定の **mainのhandoff更新 → release/4.4.0を用意 → 4.4.0計画・blueprint** を文書作業として実施。既存release branchと初期設計は保持し、更新済みmainを通常の統合で取り込んだ。ゲームコード・migration適用・本番操作は行っていない。
 
 最初の実装候補は地上／地下のロック隔離とTurn deadlock耐性。30日receipt整理は「○番まで集約済み」を保存し、集約検証後に削除する方式。相手SQL未取得のTurn560を特定APIの確定バグとしない。
 
