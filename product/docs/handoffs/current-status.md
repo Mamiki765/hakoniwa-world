@@ -1,48 +1,44 @@
-# hakoniwa-world 現在地：4.3.2 独立レビュー後
+# hakoniwa-world 現在地：4.3.2完了／4.4.0設計開始
 
-更新：2026-09-21 JST。Owner指定の2026-09-19差分MD、その後のレビュー・Owner指示、今回のGitHub読取を統合。
+更新：2026-09-21 JST。Ownerの明示依頼によるWeb版ChatGPTの更新。
 
-このファイルは再開用の短い入口。詳細と根拠は [統合handoff](development-history-and-current-handoff.md) を必要な節だけ読む。旧本文の4.2.0未merge・Forgejo正本・未実施状態は現在地ではない。
+## 最初に読むもの
 
-## 1. 最後に確認したref
+このファイルは**実装・確認済み状態と次の作業の入口**。会話や未実装案を現在のgameplay仕様として扱わない。
 
-| 対象 | 確認した状態 |
+- 実装・運用の引継ぎ：[実装handoff](development-history-and-current-handoff.md)
+- 今回の経緯・訂正：[会話記録](conversation-2026-09-21.md)
+- 未実装のOwner案・未決事項：[アイデア帳](../plans/unimplemented-ideas.md)
+- 4.4.0の設計：`release/4.4.0`の`product/docs/releases/4.4.0-data-boundary-design.md`。計画書は同branchへ追加する。存在する設計書＝実装済みではない。
+
+## 1. 確認済みの開発状態
+
+| 対象 | 状態・根拠 |
 |---|---|
-| 開発の入口 | GitHub `Mamiki765/hakoniwa-world`。凍結中を現在の前提にしない |
-| main / PR #156 base | `a45c313979e34ef40c4b93819423eecc2fdf9760`、4.3.1 |
-| PR #156 | `release/4.3.2 → main`、open・未merge |
-| 最後の実装レビューHEAD | `66bfa5b4ab42ad3303f7667156c2b5ea4458550f`。この文書更新commitより前のcode固定点 |
-| 既存CI | 上記実装HEADのQuality run `35398745823`（#562）は成功確認済み。文書commit後のHEADへ証拠を付け替えない |
-| World同期PR #157 | open・未merge、HEAD `6b4cbcee2aefe2964f6bca1477c11c32ce526232` |
-| MCP同期GitHub PR #1 | open・未merge、HEAD `90734d7d1a786f9de5574d9a89fa4f6f1853fefc`。MCP本体改修とは別 |
-| production / PC作業状態 | 今回は再観測していない。GitHubのSHAを稼働image・DB・stashの証明にしない |
+| 開発正本 | GitHub `Mamiki765/hakoniwa-world`。GitHub凍結中という過去前提を復活させない |
+| 4.3.2 | PR #156 merge済み。レビューHEAD `374ee3c49c6abf49870969ad755e9e45e9e69d1c`、merge `3f49819fb764b5ac2e9fc49f95f6795ded7754d2` |
+| R1〜R10 | 修正確認済み。R5は許可されたmigrationでSTP総量5/6固定式を整理。旧ガード復元案へ戻さない |
+| 最終CI | exact-head Quality `35571774926`成功を本会話で確認済み。今回、新しいFullを回していない |
+| 同期 | World #157 / MCP GitHub #1はmerge済み。GitHub→Forgejo main/tagsの片方向。4.3.2 merge後のWorld mirror `35573726878`成功確認済み。tags実照合は未確認 |
+| 本番 | 4.3.2のdeploy手順は渡したが、完了出力は本会話にない。merge、checkout、image、DBを同じ確認として扱わない |
+| Turn560 | Owner出力で復旧確認。maintenance下のmanual retryがcompleted、current_turn=560、attempts=4、`artisan up`済み。追加の手動進行は不要 |
+| 4.4.0 | branchは既に作成済み。更新開始時HEAD `7e4b5831e1eb1bd974a7f704975a090fde7e7442`。4.3.2に初期設計MDだけを加えた状態。破棄・作り直し・force pushをしない |
 
-PR URL: <https://github.com/Mamiki765/hakoniwa-world/pull/156>
+refsはこの文書更新前の固定点。作業開始時だけ対象branchのHEADを確認し、既存実装との差分から進める。
 
-## 2. R1〜R10の状態
+## 2. 次の作業
 
-- R1〜R5は`66bfa5b`で修正確認済み。各review threadへ確認返信し、resolvedにした。初回HEAD `ad21ffe24cd4bebb5404153133811ab9bf8847ce`の未修正状態へ戻さない。
-- R6〜R10は追加の横断レビューで見つかった設定変更時の不整合。未修正だが、現行設定のリリースを一律に止める条件とする判定はOwner方針を受けて撤回した。未修正を修正済みにはしていない。
-- 最新Owner依頼は、修正済みR1〜R5も含めR1〜R10を再整理する実装プロンプトを作ること。**migrationを1世代許可**。本番適用・mergeの許可ではない。
-- R5はDBのSTP総量式5/6固定を維持する以外に、今回許可されたmigrationで整理する選択肢がある。具体案と実装済み状態は分ける。
-- SQL migration本数、Surface Ruleset世代、地下combat/equipment identityは別。制約整理だけで自動的に全部を更新しない。許可は今回の移行単位の上限であり、過去全migrationの一括retire承認ではない。
+Ownerの順序は **mainのhandoff更新 → release/4.4.0を用意 → 4.4.0計画・blueprint**。
+既存release branchへ更新済みmainを通常の統合で取り込み、初期設計MDを保存する。ゲームコード・migration適用・本番操作は今回の文書作業に含まない。
 
-## 3. Ownerの開発・レビュー方針
+最初の実装候補は地上／地下のロック隔離とTurn deadlock耐性。30日receipt整理は「○番まで集約済み」を保存し、集約検証後に削除する方式。相手SQL未取得のTurn560を特定APIの確定バグとしない。
 
-約20人の個人運営ゲーム。Ownerは30日以内の復元に備えたバックアップを用意していると説明している。過去再現は必要ならGitを使い、current treeへ全世代の互換コード・移行テストを永久保持しない。
+その後の4.4.0候補は管理（問い合わせ以外の入口、配布、理由付き島整理）、地上アイテム・チケット消費・個人記念碑、地下の異世界PTバトル・別軸強化・G消費。各機能のOwner指定と未決パラメータはアイデア帳を参照する。
 
-具体的な通常操作の実害、資産・所有・進行、二重決算、全体のTurn停止を優先する。横断して読むことと、全経路にテストを新設することは別。将来設定の注意・局所不具合・release停止条件を区別する。
+## 3. 作業の止めどころ
 
-必要なfocused確認が通ったら終了する。同じ故障のmatrix、local Fullと同じCI Fullの重複、修正ごとのFull反復を要求しない。既存Qualityは文書だけのPR更新でも起動し得る設定であり、AGENTSの文章だけでは自動起動を減らせない。今回workflowは変更していない。
+約20人の個人運営ゲーム。資産・所有・進行・二重決算・全体Turn停止の具体的影響を優先し、指摘数やテスト件数を目標にしない。必要なfocusedが通れば同じ確認を反復せず、repository-wide PHPUnitは同じ集合を走らせるexact-head CIへ委譲する。
 
-## 4. 別件として残すもの
+P0/P1がなければ進め、P2は内容次第で後続hotfixという#156のOwner判断は、今後のPRすべてへの無条件merge許可ではない。main変更・merge・deploy・本番DB・配布はその時点の明示許可を確認する。今回許可されたmain変更はhandoff関連文書のみ。
 
-MCP改善（Forgejo MCP #4の子プロセス終了漏れMCP-F1）、30日battle receipt整理、同期PR、N19のSafari地図消失、討伐・レイド等。今回のR1〜R10へ自動的に混ぜない。
-
-4.2.1の約2.63GB論理整理は実行済み、4.3.0はOwner報告でmerge済み、4.3.1の320px重なりは修正確認済み。古い未実施記録から再実行しない。
-
-AGENTSのゼロベース再構築はOwner精査用の提案段階。今回AGENTS・skills・モデル設定を変更していない。
-
-## 5. 再開
-
-対象PRのHEADを一度確認し、最後に読んだ実装HEADとの差分から進める。handoffはOwner／Web版ChatGPT管理で、Codexの通常作業ではread-only。通常のbranch作業の権限は現行AGENTSと最新の明示指示に従い、main直接変更・merge・deploy・本番DB操作・補填は勝手に行わない。
+MCP本体改修のMCP-F1、Safari N19は別件として残る。4.2.1の固定cutoff整理・過去の補填を未実施へ戻さない。AGENTS refineは計画候補で、現行AGENTSやPCのモデル設定を変更済みとはしない。
