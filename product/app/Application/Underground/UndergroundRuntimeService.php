@@ -598,7 +598,7 @@ STORY;
                 'duplicate' => false,
                 'daily_quest' => $this->dailyQuests->recordUndergroundBattles(
                     $user->id,
-                    10,
+                    count($trial['encounters']),
                     'skip-settlement:'.$settlement->id,
                 ),
             ];
@@ -928,7 +928,7 @@ STORY;
                 'duplicate' => false,
                 'daily_quest' => $this->dailyQuests->recordUndergroundBattles(
                     $user->id,
-                    10 * $executionCount,
+                    count($trial['encounters']) * $executionCount,
                     'skip-batch:'.$batch->id,
                 ),
             ];
@@ -2852,12 +2852,8 @@ STORY;
             $profile->skill_points_unspent += $reward;
             $this->reconcileTrialProgresses($profile, $finishedAt);
         }
-        $unlockedAreaLayers = match ($run->trial_key) {
-            'trial_01' => 1,
-            'trial_02' => 2,
-            default => null,
-        };
-        if ($unlockedAreaLayers !== null && $profile->unlocked_area_layers < $unlockedAreaLayers) {
+        $unlockedAreaLayers = $this->catalog->trial($run->trial_key)['unlocked_area_layers'];
+        if ($profile->unlocked_area_layers < $unlockedAreaLayers) {
             $profile->unlocked_area_layers = $unlockedAreaLayers;
         }
         $run->status = UndergroundTrialRun::STATUS_CLEARED;

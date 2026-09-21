@@ -63,7 +63,7 @@ final readonly class UndergroundEquipmentLoadoutResolver
             || ($definition['key'] ?? null) !== $row->definition_key) {
             throw new RuntimeException('Underground generated equipment identity is inconsistent.');
         }
-        $this->catalog->assertDefinition($definition, true);
+        $this->catalog->assertDefinition($definition, true, enforceCurrentGeneratorQuality: false);
 
         return $definition;
     }

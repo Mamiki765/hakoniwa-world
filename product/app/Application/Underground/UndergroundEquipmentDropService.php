@@ -102,8 +102,7 @@ final readonly class UndergroundEquipmentDropService
     ): array {
         if (! $settlement->exists
             || $settlement->underground_profile_id !== $profile->id
-            || $rewardIndex < 1
-            || $rewardIndex > 10) {
+            || $rewardIndex < 1) {
             throw new RuntimeException('Underground equipment drop settlement requires a persisted skip settlement.');
         }
         $drop = $this->rollForTier(

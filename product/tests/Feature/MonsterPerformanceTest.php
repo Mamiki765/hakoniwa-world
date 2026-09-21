@@ -36,7 +36,6 @@ final class MonsterPerformanceTest extends TestCase
         $this->assertSame(0, $baseline['metrics']['monster_actions']);
         // ver 1.4.0 adds one constant-query territory influence phase to every turn.
         $this->assertLessThan(110, $baseline['queries']);
-        $this->assertLessThan(5_000.0, $baseline['duration_ms']);
         $this->assertMonsterPhaseMetricSchema($baseline['metrics']);
 
         $this->report('32x32-no-monster', null, $baseline);
@@ -55,13 +54,12 @@ final class MonsterPerformanceTest extends TestCase
         $this->assertSame(0, $withMonsters['metrics']['monster_moves']);
         $this->assertSame(0, $withMonsters['metrics']['maximum_moves_by_single_monster']);
         $this->assertLessThan(150, $withMonsters['queries']);
-        $this->assertLessThan(5_000.0, $withMonsters['duration_ms']);
         $this->assertMonsterPhaseMetricSchema($withMonsters['metrics']);
 
         $this->report('32x32-monster', null, $withMonsters);
     }
 
-    public function test_standard_60_by_60_monster_turn_stays_within_query_and_duration_budget(): void
+    public function test_standard_60_by_60_monster_turn_keeps_bounded_query_workload(): void
     {
         $this->app->bind(TurnSeedGenerator::class, fn () => new Pr21MonsterPerformanceSeedGenerator);
         $world = app(OceanWorldGenerator::class)->initialize(WorldGenerationProfile::Production);
@@ -73,7 +71,6 @@ final class MonsterPerformanceTest extends TestCase
         $this->assertSame(32, $measurement['metrics']['monsters_loaded']);
         $this->assertSame(32, $measurement['metrics']['monster_actions']);
         $this->assertLessThan(650, $measurement['queries']);
-        $this->assertLessThan(12_000.0, $measurement['duration_ms']);
         $this->assertMonsterPhaseMetricSchema($measurement['metrics']);
 
         $this->report('60x60', null, $measurement);

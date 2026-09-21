@@ -642,7 +642,10 @@ final readonly class UndergroundIntroService
             || $requestedAmount % $this->alphaV1Catalog->bankTransferUnit() !== 0)) {
             throw new UndergroundRuntimeException(
                 'underground_bank_amount_invalid',
-                '通常の預け入れ・引き出しは1000G単位で指定してください。',
+                sprintf(
+                    '通常の預け入れ・引き出しは%dG単位で指定してください。',
+                    $this->alphaV1Catalog->bankTransferUnit(),
+                ),
             );
         }
 
@@ -1006,7 +1009,7 @@ final readonly class UndergroundIntroService
     }
 
     /** @return list<array<string, mixed>> */
-    public function battles(User $user): array
+    public function battles(User $user, ?int $beforeCursor = null): array
     {
         $secretary = $this->secretaryForUser($user);
         $profile = UndergroundProfile::query()->where('secretary_id', $secretary->id)->first();
@@ -1014,16 +1017,36 @@ final readonly class UndergroundIntroService
             return [];
         }
 
-        return UndergroundBattle::query()
+        $activityTypes = [
+            UndergroundBattle::ACTIVITY_TUTORIAL,
+            UndergroundBattle::ACTIVITY_STORY,
+            UndergroundBattle::ACTIVITY_PLAYTEST,
+            UndergroundBattle::ACTIVITY_GUIDE_DUEL,
+            UndergroundBattle::ACTIVITY_EXPLORATION,
+            UndergroundBattle::ACTIVITY_TRIAL,
+        ];
+        $query = UndergroundBattle::query()
             ->where('underground_profile_id', $profile->id)
-            ->whereIn('activity_type', [
-                UndergroundBattle::ACTIVITY_TUTORIAL,
-                UndergroundBattle::ACTIVITY_STORY,
-                UndergroundBattle::ACTIVITY_PLAYTEST,
-                UndergroundBattle::ACTIVITY_GUIDE_DUEL,
-                UndergroundBattle::ACTIVITY_EXPLORATION,
-                UndergroundBattle::ACTIVITY_TRIAL,
-            ])
+            ->whereIn('activity_type', $activityTypes);
+        if ($beforeCursor !== null) {
+            $anchor = UndergroundBattle::query()
+                ->where('underground_profile_id', $profile->id)
+                ->whereIn('activity_type', $activityTypes)
+                ->whereKey($beforeCursor)
+                ->first();
+            if (! $anchor instanceof UndergroundBattle) {
+                return [];
+            }
+            $query->where(static function ($query) use ($anchor): void {
+                $query->where('finished_at', '<', $anchor->finished_at)
+                    ->orWhere(static function ($query) use ($anchor): void {
+                        $query->where('finished_at', '=', $anchor->finished_at)
+                            ->where('id', '<', $anchor->id);
+                    });
+            });
+        }
+
+        return $query
             ->withExists([
                 'log as active_log_exists' => fn ($query) => $query->where('expires_at', '>', Carbon::now()),
             ])
@@ -1031,7 +1054,10 @@ final readonly class UndergroundIntroService
             ->orderByDesc('id')
             ->limit(20)
             ->get()
-            ->map(fn (UndergroundBattle $battle): array => $this->projectBattle($battle, false))
+            ->map(fn (UndergroundBattle $battle): array => [
+                ...$this->projectBattle($battle, false),
+                'history_cursor' => (int) $battle->id,
+            ])
             ->values()
             ->all();
     }
@@ -1645,6 +1671,8 @@ final readonly class UndergroundIntroService
             'banked_shard_balance' => $profile instanceof UndergroundProfile
                 ? $profile->banked_shard_balance
                 : 0,
+            'inn_cost' => $this->alphaV1Catalog->innCost(),
+            'bank_transfer_unit' => $this->alphaV1Catalog->bankTransferUnit(),
             'next_battle_at' => $profile?->next_battle_at?->toAtomString(),
             'current_hp' => $currentHp,
             'unspent_stp' => $profile instanceof UndergroundProfile ? $profile->unspent_stp : 0,

@@ -37,8 +37,10 @@ final class SurfaceShipForcedDisplacementService
         if (! $ship instanceof Ship) {
             return;
         }
-        $settings = $this->settings($context);
         $space = MapSpace::query()->whereKey($origin->map_space_id)->lockForUpdate()->firstOrFail();
+        $maximumMapDistance = ((int) $space->max_x - (int) $space->min_x)
+            + ((int) $space->max_y - (int) $space->min_y);
+        $settings = $this->settings($context, $maximumMapDistance);
         $destination = $this->randomCandidate(
             $context,
             $ship,
@@ -110,7 +112,7 @@ final class SurfaceShipForcedDisplacementService
         $ports = MapCell::query()
             ->where('map_space_id', $space->id)
             ->where('owner_nation_id', $ship->nation_id)
-            ->whereHas('facility', static fn ($query) => $query->where('key', 'port'))
+            ->whereHas('facility', fn ($query) => $query->where('key', $settings['required_port_facility_key']))
             ->lockForUpdate()
             ->get()
             ->sort(static function (MapCell $left, MapCell $right) use ($originCoordinate): int {
@@ -205,18 +207,39 @@ final class SurfaceShipForcedDisplacementService
         return $candidates[$index];
     }
 
-    /** @return array{port_search_distances: list<int>, foreign_destroy_karma: int, random_stream_version: int} */
-    private function settings(TurnContext $context): array
+    /** @return array{port_search_distances: list<int>, foreign_destroy_karma: int, random_stream_version: int, required_port_facility_key: string} */
+    private function settings(TurnContext $context, int $maximumMapDistance): array
     {
         $displacement = $context->ruleset->settings['surface_ships']['forced_displacement'] ?? null;
-        $streamVersion = $context->ruleset->settings['surface_ships']['movement']['random_stream_version'] ?? null;
+        $movement = $context->ruleset->settings['surface_ships']['movement'] ?? null;
+        $distances = is_array($displacement) ? ($displacement['port_search_distances'] ?? null) : null;
+        $streamVersion = is_array($movement) ? ($movement['random_stream_version'] ?? null) : null;
+        $portFacilityKey = is_array($movement) ? ($movement['required_port_facility_key'] ?? null) : null;
         if (! is_array($displacement)
-            || ($displacement['port_search_distances'] ?? null) !== [1, 2]
-            || ($displacement['foreign_destroy_karma'] ?? null) !== 1
-            || $streamVersion !== 1) {
+            || ! is_array($distances)
+            || ! array_is_list($distances)
+            || $distances === []
+            || count($distances) > 100
+            || array_filter(
+                $distances,
+                static fn (mixed $distance): bool => ! is_int($distance)
+                    || $distance < 1
+                    || $distance > $maximumMapDistance,
+            ) !== []
+            || count(array_unique($distances)) !== count($distances)
+            || ! is_int($displacement['foreign_destroy_karma'] ?? null)
+            || $displacement['foreign_destroy_karma'] < 0
+            || ! is_int($streamVersion)
+            || $streamVersion < 1
+            || ! is_string($portFacilityKey)
+            || $portFacilityKey === '') {
             throw new DomainException('The active Ruleset has no supported forced Ship displacement contract.');
         }
 
-        return [...$displacement, 'random_stream_version' => $streamVersion];
+        return [
+            ...$displacement,
+            'random_stream_version' => $streamVersion,
+            'required_port_facility_key' => $portFacilityKey,
+        ];
     }
 }

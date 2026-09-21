@@ -20,8 +20,8 @@ final class UndergroundRuntimeCatalog
     public function maxRounds(): int
     {
         $value = $this->combatValue('max_rounds');
-        if (! is_int($value) || $value !== 100) {
-            throw new RuntimeException('Underground runtime max rounds must be exactly 100.');
+        if (! is_int($value) || $value < 1 || $value > 100) {
+            throw new RuntimeException('Underground runtime max rounds must be between 1 and 100.');
         }
 
         return $value;
@@ -40,9 +40,9 @@ final class UndergroundRuntimeCatalog
     {
         $value = $this->combatValue('battle_log_retention_hours');
 
-        return is_int($value) && $value === 1
+        return is_int($value) && $value > 0
             ? $value
-            : throw new RuntimeException('Underground battle log retention must be exactly one hour.');
+            : throw new RuntimeException('Underground battle log retention must be a positive number of hours.');
     }
 
     public function actorKey(): string
@@ -211,6 +211,7 @@ final class UndergroundRuntimeCatalog
      *   drop_tier_key: string|null,
      *   interbattle_heal_bps: int,
      *   first_clear_skill_points: int,
+     *   unlocked_area_layers: int,
      *   encounters: list<string>,
      *   rewards: list<array{xp: int, shards: int}>
      * }
@@ -226,10 +227,7 @@ final class UndergroundRuntimeCatalog
             || $trial['content_identity'] === ''
             || mb_strlen($trial['content_identity']) > 128
             || ! is_string($trial['balance_manifest'] ?? null)
-            || ! in_array($trial['balance_manifest'], [
-                'underground/balance/trial1-v1.json',
-                'underground/balance/trial2-v1.json',
-            ], true)
+            || preg_match('/\Aunderground\/balance\/[a-z0-9][a-z0-9._-]*\.json\z/', $trial['balance_manifest']) !== 1
             || (! is_null($trial['required_trial_key'] ?? null)
                 && ! is_string($trial['required_trial_key']))
             || (! is_null($trial['drop_tier_key'] ?? null)
@@ -239,16 +237,23 @@ final class UndergroundRuntimeCatalog
             || $trial['interbattle_heal_bps'] < 0
             || $trial['interbattle_heal_bps'] > 10_000
             || ! is_int($trial['first_clear_skill_points'] ?? null)
-            || $trial['first_clear_skill_points'] < 0) {
+            || $trial['first_clear_skill_points'] < 0
+            || ! is_int($trial['unlocked_area_layers'] ?? null)
+            || $trial['unlocked_area_layers'] < 0) {
             throw new InvalidArgumentException("Unknown Underground trial [{$key}].");
+        }
+        if (is_string($trial['required_trial_key'])
+            && ! array_key_exists($trial['required_trial_key'], $trials)) {
+            throw new RuntimeException("Underground Trial [{$key}] references an unknown prerequisite.");
         }
         $encounters = $this->stringList($trial['encounters'] ?? null, 'trial encounters');
         $configuredRewards = $trial['rewards'] ?? null;
-        if (count($encounters) !== 10
+        if ($encounters === []
+            || count($encounters) > 100
             || ! is_array($configuredRewards)
             || ! array_is_list($configuredRewards)
             || count($configuredRewards) !== count($encounters)) {
-            throw new RuntimeException('Underground Trial must contain ten encounters and rewards.');
+            throw new RuntimeException('Underground Trial encounters and rewards are invalid.');
         }
         $rewards = [];
         $dropTierKey = $trial['drop_tier_key'] ?? null;
@@ -284,20 +289,6 @@ final class UndergroundRuntimeCatalog
                 'item_level_max' => $itemLevelMax,
             ];
         }
-        if ($trial['first_clear_skill_points'] !== 40) {
-            throw new RuntimeException('Each Underground Trial must award 40 skill points on first clear.');
-        }
-        if ($key === 'trial_01'
-            && (array_sum(array_column($rewards, 'xp')) !== 800
-                || array_sum(array_column($rewards, 'shards')) !== 205)) {
-            throw new RuntimeException('Underground Trial 1 total rewards are invalid.');
-        }
-        if ($key === 'trial_02'
-            && ($trial['required_trial_key'] !== 'trial_01'
-                || array_sum(array_column($rewards, 'xp')) !== 4720
-                || array_sum(array_column($rewards, 'shards')) !== 1233)) {
-            throw new RuntimeException('Underground Trial 2 unlock and total rewards are invalid.');
-        }
 
         return [
             'label' => $trial['label'],
@@ -307,6 +298,7 @@ final class UndergroundRuntimeCatalog
             'drop_tier_key' => $dropTierKey,
             'interbattle_heal_bps' => $trial['interbattle_heal_bps'],
             'first_clear_skill_points' => $trial['first_clear_skill_points'],
+            'unlocked_area_layers' => $trial['unlocked_area_layers'],
             'encounters' => $encounters,
             'rewards' => $rewards,
         ];
@@ -329,11 +321,16 @@ final class UndergroundRuntimeCatalog
     private function configuredTrialKeys(): array
     {
         $trials = $this->data()['trials'] ?? null;
-        if (! is_array($trials)) {
+        if (! is_array($trials) || $trials === [] || array_is_list($trials)) {
             throw new RuntimeException('Underground trial catalog is invalid.');
         }
+        foreach (array_keys($trials) as $key) {
+            if (! is_string($key) || $key === '' || strlen($key) > 64) {
+                throw new RuntimeException('Underground trial catalog is invalid.');
+            }
+        }
 
-        return array_values(array_filter(array_keys($trials), 'is_string'));
+        return array_keys($trials);
     }
 
     private function combatValue(string $key): mixed

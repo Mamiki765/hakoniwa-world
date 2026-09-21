@@ -3,6 +3,7 @@
 namespace Tests\Shared\Unit;
 
 use App\Domain\Ruleset\RulesetAuthoringValidator;
+use App\Domain\Ship\SurfaceShipCatalog;
 use DomainException;
 use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\TestCase;
@@ -18,6 +19,43 @@ class RulesetAuthoringValidatorTest extends TestCase
         $this->assertSame('hakoniwa-2s-plus-v26', $summary['key']);
         $this->assertSame(26, $summary['version']);
         $this->assertSame(count($settings['command_definitions']), $summary['commands']);
+    }
+
+    public function test_balance_values_and_additional_ship_are_validated_from_the_authored_payload(): void
+    {
+        $settings = config('hakoniwa.ruleset');
+        $settings['initial_x_max'] = 75;
+        $settings['initial_y_max'] = 75;
+        $settings['nation_lifecycle']['recovery_duration_turns'] = 96;
+        $settings['nation_lifecycle']['dormant_visual_theme'] = 'frost';
+        $settings['facility_definitions']['port']['name'] = '新港';
+        $settings['central_facilities']['definitions']['central_bank']['capacity_per_level'] = 2_000;
+        $settings['surface_ships']['capacity_per_type'] = 4;
+        $settings['surface_ships']['definitions']['fishing']['maximum_hp'] = 2;
+        $settings['surface_ships']['definitions']['fishing']['movement_reward_resource_key'] = 'minerals';
+        $settings['surface_ships']['definitions']['research'] = [
+            'name' => '調査船',
+            'asset_key' => 'ship.research',
+            'player_buildable' => false,
+            'build_selector' => null,
+            'sort_order' => 70,
+            'build_cost_money' => 0,
+            'maximum_hp' => 2,
+            'movement_oil_units' => 0,
+            'movement_reward_resource_key' => null,
+            'movement_reward_resource_units' => 0,
+            'movement_reward_money' => 0,
+            'visibility_radius' => 2,
+            'movement_mode' => 'random_drift',
+            'combat_role' => 'none',
+        ];
+        $settings['monster_definitions'][10]['name'] = '珍獣ニョワミヤ改';
+        $settings['monster_definitions'][10]['experience_per_damage'] = 21;
+
+        $summary = app(RulesetAuthoringValidator::class)->validate($settings);
+
+        $this->assertSame('hakoniwa-2s-plus-v26', $summary['key']);
+        $this->assertCount(7, app(SurfaceShipCatalog::class)->definitions($settings));
     }
 
     /**
@@ -83,21 +121,21 @@ class RulesetAuthoringValidatorTest extends TestCase
                 },
                 'display_order duplicates another effective monster order',
             ],
-            'changed Surface Ship capacity' => [
+            'unsupported surface ship movement terrain' => [
                 static function (array $settings): array {
-                    $settings['surface_ships']['capacity_per_type'] = 4;
+                    $settings['surface_ships']['movement']['terrain_key'] = 'shallow';
 
                     return $settings;
                 },
-                'ruleset.surface_ships.capacity_per_type must be exactly 3 for v20',
+                'must use the supported deep-sea handler',
             ],
-            'changed Surface Ship gameplay value' => [
+            'non-zero initial origin' => [
                 static function (array $settings): array {
-                    $settings['surface_ships']['definitions']['fishing']['maximum_hp'] = 2;
+                    $settings['initial_x_min'] = 1;
 
                     return $settings;
                 },
-                'ruleset.surface_ships.definitions.fishing differs from the Owner-approved v26 Ship contract',
+                'must start at x=0 and y=0',
             ],
         ];
     }

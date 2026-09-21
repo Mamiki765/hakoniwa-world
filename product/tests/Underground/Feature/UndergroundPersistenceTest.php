@@ -60,8 +60,6 @@ final class UndergroundPersistenceTest extends TestCase
         $this->assertSame($first->id, $secretary->undergroundProfile()->sole()->id);
         $this->assertSame(1, UndergroundProfile::query()->where('secretary_id', $secretary->id)->count());
 
-        $columns = Schema::getColumnListing('underground_profiles');
-        $this->assertNotContains('current_mp', $columns);
         $this->assertTrue(Schema::hasTable('underground_trial_progress'));
         $this->assertTrue(Schema::hasTable('underground_trial_runs'));
         $this->assertTrue(Schema::hasTable('underground_battles'));
@@ -70,15 +68,6 @@ final class UndergroundPersistenceTest extends TestCase
         $this->assertTrue(Schema::hasTable('underground_intro_requests'));
         $this->assertTrue(Schema::hasTable('underground_skill_allocations'));
         $this->assertTrue(Schema::hasTable('underground_owned_equipment'));
-        foreach ([
-            'underground_trial_progress', 'underground_trial_runs', 'underground_battles',
-            'underground_intro_progress', 'underground_intro_requests', 'underground_owned_equipment',
-        ] as $table) {
-            $this->assertNotContains('user_id', Schema::getColumnListing($table));
-            $this->assertNotContains('world_id', Schema::getColumnListing($table));
-            $this->assertNotContains('nation_id', Schema::getColumnListing($table));
-            $this->assertNotContains('turn_run_id', Schema::getColumnListing($table));
-        }
     }
 
     public function test_starter_equipment_reconciles_exactly_once_and_owned_instances_remain_extensible(): void

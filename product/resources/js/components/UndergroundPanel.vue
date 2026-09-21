@@ -116,6 +116,7 @@ interface CombatRound {
 
 interface Battle {
     id: string;
+    history_cursor?: number;
     context: 'tutorial' | 'scripted_loss' | 'playtest' | 'exploration' | 'trial' | 'guide_duel';
     party?: {
         members: Array<PartyBattleMember>;
@@ -451,6 +452,8 @@ interface UndergroundState {
     xp_to_next_level: number;
     shard_balance: number;
     banked_shard_balance: number;
+    inn_cost: number;
+    bank_transfer_unit: number;
     next_battle_at: string | null;
     current_hp: number | null;
     unspent_stp: number;
@@ -552,7 +555,8 @@ const mutationRejected = ref(false);
 const error = ref('');
 const shopkeeperName = ref('');
 const battles = ref<Battle[]>([]);
-const recentBattles = computed(() => battles.value.slice(0, 5));
+const battleHistoryLoading = ref(false);
+const battleHistoryHasMore = ref(false);
 const selectedBattle = ref<Battle | null>(null);
 const selectedPartyMemberIds = ref<number[]>([]);
 const detailVisible = ref(true);
@@ -562,7 +566,7 @@ const lendingEnabled = ref(false);
 const partySelectionHydrated = ref(false);
 const selectedBuild = ref('');
 const selectedEnemy = ref('');
-const bankAmount = ref<number | null>(1000);
+const bankAmount = ref<number | null>(null);
 const selectedHuntingGroundKey = ref('shallow_caves');
 const selectedSkipHuntingGroundKey = ref('shallow_caves');
 const selectedTrialKey = ref('trial_01');
@@ -939,6 +943,12 @@ watch(() => state.value?.lending?.settings, (settings) => {
     if (!settings) return;
     lendingEnabled.value = settings.is_lendable ?? (settings.is_public && settings.is_available);
 }, { deep: true, immediate: true });
+watch(() => state.value?.bank_transfer_unit, (unit) => {
+    if (!unit) return;
+    if (bankAmount.value === null || bankAmount.value <= 0 || bankAmount.value % unit !== 0) {
+        bankAmount.value = unit;
+    }
+}, { immediate: true });
 
 watch(trialOptions, (trials) => {
     const activeKey = state.value?.trial?.active_run?.key;
@@ -1277,8 +1287,26 @@ async function confirmRespec(): Promise<void> {
     }
 }
 
-async function loadBattles(): Promise<void> {
-    battles.value = await api<Battle[]>('/api/v1/me/underground/battles');
+async function loadBattles(reset = true): Promise<void> {
+    if (battleHistoryLoading.value || (!reset && !battleHistoryHasMore.value)) return;
+    battleHistoryLoading.value = true;
+    try {
+        const cursor = reset ? null : battles.value.at(-1)?.history_cursor;
+        const query = cursor === null || cursor === undefined
+            ? ''
+            : `?before_cursor=${encodeURIComponent(String(cursor))}`;
+        const page = await api<Battle[]>(`/api/v1/me/underground/battles${query}`);
+        if (reset) {
+            battles.value = page;
+        } else {
+            const known = new Set(battles.value.map((battle) => battle.id));
+            battles.value = [...battles.value, ...page.filter((battle) => !known.has(battle.id))];
+        }
+        battleHistoryHasMore.value = page.length === 20
+            && Number.isInteger(page.at(-1)?.history_cursor);
+    } finally {
+        battleHistoryLoading.value = false;
+    }
 }
 
 async function showBattle(battle: Battle): Promise<void> {
@@ -2486,6 +2514,7 @@ onUnmounted(() => {
                         :hp="state.current_hp ?? state.growth_path?.max_hp ?? 0" :max-hp="state.growth_path?.max_hp ?? 0"
                         :awakening="state.awakening?.current" :awakening-max="state.awakening?.maximum"
                         :shards="state.shard_balance" :banked="state.banked_shard_balance" :tickets="skipTicketBalance ?? 0"
+                        :inn-cost="state.inn_cost"
                         :xp-remaining="state.xp_to_next_level" :growth-path="state.growth_path?.label" :unspent-stp="state.unspent_stp"
                         :scene="state.visuals?.scenes.home" :portrait="state.visuals?.portrait" :awakened-portrait="state.visuals?.awakened_portrait"
                         :icon-url="state.visuals?.icon_url"
@@ -2508,7 +2537,7 @@ onUnmounted(() => {
                             </section>
                             <div v-if="currentDestination === 'shop'" class="ug-shop-rest">
                                 <p>{{ shopGreeting }}</p>
-                                <button class="ug-primary" type="button" :disabled="busy || innResting || Boolean(state.trial?.active_run)" @click="restAtInn">{{ innResting ? '休憩中…' : '宿で休む（10G）' }}</button>
+                                <button class="ug-primary" type="button" :disabled="busy || innResting || Boolean(state.trial?.active_run)" @click="restAtInn">{{ innResting ? '休憩中…' : `宿で休む（${state.inn_cost.toLocaleString('ja-JP')}G）` }}</button>
                                 <p v-if="innRested" role="status">HPが全回復しました。</p>
                                 <p v-if="state.trial?.active_run" class="ug-muted">封印の地から帰還後に利用できます。</p>
                             </div>
@@ -2786,8 +2815,8 @@ onUnmounted(() => {
                             <h3>銀行</h3>
                             <p>手持ち: {{ state.shard_balance }} G</p>
                             <p>預金: {{ state.banked_shard_balance }} G</p>
-                            <label for="underground-bank-amount">1000G単位の金額</label>
-                            <input id="underground-bank-amount" v-model.number="bankAmount" type="number" min="1000" step="1000" :disabled="busy">
+                            <label for="underground-bank-amount">{{ state.bank_transfer_unit.toLocaleString('ja-JP') }}G単位の金額</label>
+                            <input id="underground-bank-amount" v-model.number="bankAmount" type="number" :min="state.bank_transfer_unit" :step="state.bank_transfer_unit" :disabled="busy">
                             <div class="underground-shop-entries">
                                 <button type="button" :disabled="busy" @click="runBankAction('deposit')">預け入れ</button>
                                 <button type="button" :disabled="busy" @click="runBankAction('withdraw')">引き出し</button>
@@ -2853,7 +2882,9 @@ onUnmounted(() => {
 
                     <section v-if="equipmentView === 'history'" class="underground-history" aria-labelledby="underground-history-title">
                         <h2 id="underground-history-title">戦闘履歴</h2>
-                        <ul><li v-for="battle in recentBattles" :key="battle.id"><button type="button" @click="showBattle(battle)">{{ battle.encounter_name }} / {{ battleRoundCount(battle) }}ラウンド</button></li></ul>
+                        <ul><li v-for="battle in battles" :key="battle.id"><button type="button" @click="showBattle(battle)">{{ battle.encounter_name }} / {{ battleRoundCount(battle) }}ラウンド</button></li></ul>
+                        <p v-if="battles.length === 0 && !battleHistoryLoading" class="ug-muted">表示できる戦闘履歴はありません。</p>
+                        <button v-if="battleHistoryHasMore" type="button" :disabled="battleHistoryLoading" @click="loadBattles(false)">{{ battleHistoryLoading ? '読み込み中…' : '過去の履歴を読み込む' }}</button>
                     </section>
 
                             <UndergroundResidence v-if="(equipmentView === 'property' || equipmentView === 'villa' || equipmentView === 'trophies') && state.residence" :mode="equipmentView" :residence="state.residence" :busy="busy" :shards="state.shard_balance" @purchase="loungeMutation('residence/purchase', { item: $event })" @property="equipmentView = 'property'" />

@@ -63,14 +63,6 @@ final class RulesetAuthoringValidator
 
     private const ARCHITECTURE_CHUNK_SIZE = 16;
 
-    private const INITIAL_X_MIN = 0;
-
-    private const INITIAL_X_MAX = 59;
-
-    private const INITIAL_Y_MIN = 0;
-
-    private const INITIAL_Y_MAX = 59;
-
     private const POSTGRESQL_INTEGER_MAX = 2_147_483_647;
 
     private const DETERMINISTIC_RANDOM_DRAW_DENOMINATOR_MAX = 2_147_483_648;
@@ -185,11 +177,17 @@ final class RulesetAuthoringValidator
         $xMax = $this->integer($settings['initial_x_max'], 'ruleset.initial_x_max');
         $yMin = $this->integer($settings['initial_y_min'], 'ruleset.initial_y_min');
         $yMax = $this->integer($settings['initial_y_max'], 'ruleset.initial_y_max');
-        if ($xMin !== self::INITIAL_X_MIN
-            || $xMax !== self::INITIAL_X_MAX
-            || $yMin !== self::INITIAL_Y_MIN
-            || $yMax !== self::INITIAL_Y_MAX) {
-            throw new DomainException('Ruleset initial bounds must be x=0..59 and y=0..59.');
+        foreach (['x_min' => $xMin, 'x_max' => $xMax, 'y_min' => $yMin, 'y_max' => $yMax] as $coordinate => $value) {
+            if ($value < DeterministicRandomStream::MINIMUM_INTEGER
+                || $value > DeterministicRandomStream::MAXIMUM_INTEGER) {
+                throw new DomainException("ruleset.initial_{$coordinate} must fit deterministic signed 32-bit draws.");
+            }
+        }
+        if ($xMin !== 0 || $yMin !== 0) {
+            throw new DomainException('Ruleset initial bounds must start at x=0 and y=0.');
+        }
+        if ($xMin >= $xMax || $yMin >= $yMax) {
+            throw new DomainException('Ruleset initial bounds must define non-empty x and y ranges.');
         }
 
         $minimumCapitalDistance = $this->integer(
@@ -398,7 +396,14 @@ final class RulesetAuthoringValidator
             $commandKeys,
         );
         $this->validateKarma($settings, $authoredKey, $version);
-        $this->validateSurfaceShips($settings, $authoredKey, $version, $resourceKeys);
+        $this->validateSurfaceShips(
+            $settings,
+            $authoredKey,
+            $version,
+            $resourceKeys,
+            $facilityKeys,
+            $this->maximumCapitalDistance($xMin, $xMax, $yMin, $yMax, 0),
+        );
         $monsterCount = $this->validateMonsterSystem(
             $settings,
             $resourceKeys,
@@ -500,12 +505,15 @@ final class RulesetAuthoringValidator
     /**
      * @param  array<string, mixed>  $settings
      * @param  list<string>  $resourceKeys
+     * @param  list<string>  $facilityKeys
      */
     private function validateSurfaceShips(
         array $settings,
         string $authoredKey,
         int $version,
         array $resourceKeys,
+        array $facilityKeys,
+        int $maximumMapDistance,
     ): void {
         if ($version < 20) {
             if (array_key_exists('surface_ships', $settings)) {
@@ -522,65 +530,105 @@ final class RulesetAuthoringValidator
         $this->requireKeys($section, [
             'capacity_per_type', 'movement', 'forced_displacement', 'missile_impact', 'definitions',
         ], 'ruleset.surface_ships');
-        if ($this->integer($section['capacity_per_type'], 'ruleset.surface_ships.capacity_per_type', 1) !== 3) {
-            throw new DomainException('ruleset.surface_ships.capacity_per_type must be exactly 3 for v20.');
-        }
+        $this->integer($section['capacity_per_type'], 'ruleset.surface_ships.capacity_per_type', 1);
         $movement = $this->map($section['movement'], 'ruleset.surface_ships.movement');
         $this->requireKeys($movement, [
             'terrain_key', 'required_port_facility_key', 'fuel_resource_key', 'normal_event_limit_per_turn',
             'fuel_shortage_damage_chance_percent', 'fuel_shortage_damage', 'random_stream_version',
             'secretary_skill_key', 'secretary_experience_per_successful_move',
         ], 'ruleset.surface_ships.movement');
-        if ($movement !== [
-            'terrain_key' => 'sea',
-            'required_port_facility_key' => 'port',
-            'fuel_resource_key' => 'oil',
-            'normal_event_limit_per_turn' => 1,
-            'fuel_shortage_damage_chance_percent' => 1,
-            'fuel_shortage_damage' => 1,
-            'random_stream_version' => 1,
-            'secretary_skill_key' => SecretarySkillCatalog::SHIP_OPERATIONS,
-            'secretary_experience_per_successful_move' => 1,
-        ] || ! in_array($movement['fuel_resource_key'], $resourceKeys, true)) {
-            throw new DomainException('ruleset.surface_ships.movement differs from the Owner-approved v20 contract.');
+        $movementTerrainKey = $this->reference(
+            $movement['terrain_key'],
+            self::TERRAIN_KEYS,
+            'ruleset.surface_ships.movement.terrain_key',
+        );
+        if ($movementTerrainKey !== 'sea') {
+            throw new DomainException('ruleset.surface_ships.movement.terrain_key must use the supported deep-sea handler.');
         }
+        $this->reference($movement['required_port_facility_key'], $facilityKeys, 'ruleset.surface_ships.movement.required_port_facility_key');
+        $this->reference($movement['fuel_resource_key'], $resourceKeys, 'ruleset.surface_ships.movement.fuel_resource_key');
+        $this->integer($movement['normal_event_limit_per_turn'], 'ruleset.surface_ships.movement.normal_event_limit_per_turn', 1);
+        $shortageChance = $this->integer($movement['fuel_shortage_damage_chance_percent'], 'ruleset.surface_ships.movement.fuel_shortage_damage_chance_percent', 0);
+        if ($shortageChance > 100) {
+            throw new DomainException('ruleset.surface_ships.movement.fuel_shortage_damage_chance_percent must be at most 100.');
+        }
+        $this->integer($movement['fuel_shortage_damage'], 'ruleset.surface_ships.movement.fuel_shortage_damage', 0);
+        $this->integer($movement['random_stream_version'], 'ruleset.surface_ships.movement.random_stream_version', 1);
+        if ($this->persistedString($movement['secretary_skill_key'], 'ruleset.surface_ships.movement.secretary_skill_key') !== SecretarySkillCatalog::SHIP_OPERATIONS) {
+            throw new DomainException('ruleset.surface_ships.movement.secretary_skill_key has no supported runtime handler.');
+        }
+        $this->integer($movement['secretary_experience_per_successful_move'], 'ruleset.surface_ships.movement.secretary_experience_per_successful_move', 0);
+
         $displacement = $this->map($section['forced_displacement'], 'ruleset.surface_ships.forced_displacement');
         $this->requireKeys($displacement, ['port_search_distances', 'foreign_destroy_karma'], 'ruleset.surface_ships.forced_displacement');
-        if ($displacement !== ['port_search_distances' => [1, 2], 'foreign_destroy_karma' => 1]) {
-            throw new DomainException('ruleset.surface_ships.forced_displacement differs from the Owner-approved v20 contract.');
+        $distances = $this->list($displacement['port_search_distances'], 'ruleset.surface_ships.forced_displacement.port_search_distances');
+        if ($distances === [] || count($distances) > 100) {
+            throw new DomainException('ruleset.surface_ships.forced_displacement.port_search_distances must contain 1..100 entries.');
         }
+        $validatedDistances = [];
+        foreach ($distances as $index => $distance) {
+            $validatedDistance = $this->integer($distance, "ruleset.surface_ships.forced_displacement.port_search_distances.{$index}", 1);
+            if ($validatedDistance > $maximumMapDistance) {
+                throw new DomainException(
+                    "ruleset.surface_ships.forced_displacement.port_search_distances.{$index} must not exceed the initial map diameter {$maximumMapDistance}.",
+                );
+            }
+            $validatedDistances[] = $validatedDistance;
+        }
+        if (count(array_unique($validatedDistances)) !== count($validatedDistances)) {
+            throw new DomainException('ruleset.surface_ships.forced_displacement.port_search_distances must be unique.');
+        }
+        $this->integer($displacement['foreign_destroy_karma'], 'ruleset.surface_ships.forced_displacement.foreign_destroy_karma', 0);
+
         $missileImpact = $this->map($section['missile_impact'], 'ruleset.surface_ships.missile_impact');
         $this->requireKeys($missileImpact, [
             'damage_by_missile_key', 'instant_sink_missile_keys', 'foreign_sink_karma',
         ], 'ruleset.surface_ships.missile_impact');
-        if ($missileImpact !== [
-            'damage_by_missile_key' => ['missile' => 1, 'pp_missile' => 1, 'spp_missile' => 1],
-            'instant_sink_missile_keys' => ['land_destruction_missile'],
-            'foreign_sink_karma' => 1,
-        ]) {
-            throw new DomainException('ruleset.surface_ships.missile_impact differs from the Owner-approved v20 contract.');
+        $damageByMissile = $this->map($missileImpact['damage_by_missile_key'], 'ruleset.surface_ships.missile_impact.damage_by_missile_key');
+        if ($damageByMissile === [] || count($damageByMissile) > 100) {
+            throw new DomainException('ruleset.surface_ships.missile_impact.damage_by_missile_key must contain 1..100 entries.');
         }
+        foreach ($damageByMissile as $missileKey => $damage) {
+            if (! is_string($missileKey) || $missileKey === '') {
+                throw new DomainException('ruleset.surface_ships.missile_impact.damage_by_missile_key keys must be non-empty strings.');
+            }
+            $this->integer($damage, "ruleset.surface_ships.missile_impact.damage_by_missile_key.{$missileKey}", 1);
+        }
+        $instantSinkKeys = $this->list($missileImpact['instant_sink_missile_keys'], 'ruleset.surface_ships.missile_impact.instant_sink_missile_keys');
+        if (count($instantSinkKeys) > 100) {
+            throw new DomainException('ruleset.surface_ships.missile_impact.instant_sink_missile_keys must contain at most 100 entries.');
+        }
+        foreach ($instantSinkKeys as $index => $missileKey) {
+            $this->persistedString($missileKey, "ruleset.surface_ships.missile_impact.instant_sink_missile_keys.{$index}");
+        }
+        if (count(array_unique($instantSinkKeys)) !== count($instantSinkKeys)) {
+            throw new DomainException('ruleset.surface_ships.missile_impact.instant_sink_missile_keys must be unique.');
+        }
+        $this->integer($missileImpact['foreign_sink_karma'], 'ruleset.surface_ships.missile_impact.foreign_sink_karma', 0);
+
         $definitions = $this->map($section['definitions'], 'ruleset.surface_ships.definitions');
-        $isV26 = $authoredKey === self::FORMAL_V26_KEY;
-        $expected = $isV26 ? [
-            'fishing' => ['漁船', 'ship.fishing', true, 1, 10, 500, 1, 1, 'fish', 7000, 0, 1, 'heading_or_random', 'none'],
-            'tourist' => ['観光船', 'ship.tourist', true, 2, 20, 1500, 2, 2, null, 0, 20, 1, 'heading_or_random', 'none'],
-            'exploration' => ['探索船', 'ship.exploration', true, 3, 30, 1000, 2, 1, null, 0, 0, 3, 'sparkle_or_random', 'none'],
-            'pirate' => ['海賊船', 'ship.pirate', false, null, 40, 0, 3, 0, null, 0, 0, 1, 'random_drift', 'pirate'],
-            'treasure' => ['宝船', 'ship.treasure', false, null, 50, 0, 1, 0, null, 0, 0, 1, 'random_drift', 'none'],
-            'warship' => ['戦艦', 'ship.warship', true, 4, 60, 3000, 3, 3, null, 0, 0, 5, 'heading_only', 'warship'],
-        ] : [
-            'fishing' => ['漁船', 'ship.fishing', 1, 10, 500, 1, 1, 'fish', 7000, 0, 1],
-            'tourist' => ['観光船', 'ship.tourist', 2, 20, 1500, 2, 2, null, 0, 20, 1],
-            'exploration' => ['探索船', 'ship.exploration', 3, 30, 1000, 2, 1, null, 0, 0, 3],
-        ];
-        if (array_keys($definitions) !== array_keys($expected)) {
-            throw new DomainException($isV26
-                ? 'ruleset.surface_ships.definitions must contain the exact v26 Player and NPC Ship keys in canonical order.'
-                : 'ruleset.surface_ships.definitions must contain the exact v20 Ship keys in canonical order.');
+        if ($definitions === [] || count($definitions) > 100) {
+            throw new DomainException('ruleset.surface_ships.definitions must contain 1..100 definitions.');
         }
+        $isV26 = $authoredKey === self::FORMAL_V26_KEY;
+        $selectors = [];
+        $assetKeys = [];
+        $sortOrders = [];
+        $resourceDefinitionsByKey = [];
+        foreach ($this->list($settings['resource_definitions'], 'ruleset.resource_definitions') as $resourceDefinitionValue) {
+            $resourceDefinition = $this->map($resourceDefinitionValue, 'ruleset.resource_definitions entry');
+            $resourceDefinitionKey = $this->string(
+                $resourceDefinition['key'] ?? null,
+                'ruleset.resource_definitions entry.key',
+            );
+            $resourceDefinitionsByKey[$resourceDefinitionKey] = $resourceDefinition;
+        }
+        $resourceCapacities = $this->map($settings['resource_capacities'] ?? [], 'ruleset.resource_capacities');
 
         foreach ($definitions as $key => $value) {
+            if (! is_string($key) || $key === '') {
+                throw new DomainException('ruleset.surface_ships.definitions keys must be non-empty strings.');
+            }
             $path = "ruleset.surface_ships.definitions.{$key}";
             $definition = $this->map($value, $path);
             $requiredKeys = [
@@ -600,37 +648,55 @@ final class RulesetAuthoringValidator
             $buildSelector = $definition['build_selector'];
             if ($playerBuildable) {
                 $buildSelector = $this->integer($buildSelector, "{$path}.build_selector", 1);
+                if (isset($selectors[$buildSelector])) {
+                    throw new DomainException("{$path}.build_selector duplicates another Player-buildable Ship.");
+                }
+                $selectors[$buildSelector] = true;
             } elseif ($buildSelector !== null) {
                 throw new DomainException("{$path}.build_selector must be null for an NPC-only Ship.");
             }
-            $actual = [
-                $this->persistedString($definition['name'], "{$path}.name"),
-                $this->persistedString($definition['asset_key'], "{$path}.asset_key"),
-                ...($isV26 ? [$playerBuildable] : []),
-                $buildSelector,
-                $this->integer($definition['sort_order'], "{$path}.sort_order", 1),
-                $this->integer($definition['build_cost_money'], "{$path}.build_cost_money", $playerBuildable ? 1 : 0),
-                $this->integer($definition['maximum_hp'], "{$path}.maximum_hp", 1),
-                $this->integer($definition['movement_oil_units'], "{$path}.movement_oil_units", $playerBuildable ? 1 : 0),
-                $definition['movement_reward_resource_key'],
-                $this->integer($definition['movement_reward_resource_units'], "{$path}.movement_reward_resource_units", 0),
-                $this->integer($definition['movement_reward_money'], "{$path}.movement_reward_money", 0),
-                $this->integer($definition['visibility_radius'], "{$path}.visibility_radius", 1),
-                ...($isV26 ? [
-                    $this->persistedString($definition['movement_mode'], "{$path}.movement_mode"),
-                    $this->persistedString($definition['combat_role'], "{$path}.combat_role"),
-                ] : []),
-            ];
+            $this->persistedString($definition['name'], "{$path}.name");
+            $assetKey = $this->persistedString($definition['asset_key'], "{$path}.asset_key");
+            if (isset($assetKeys[$assetKey])) {
+                throw new DomainException("{$path}.asset_key duplicates another Surface Ship asset.");
+            }
+            $assetKeys[$assetKey] = true;
+            $sortOrder = $this->integer($definition['sort_order'], "{$path}.sort_order", 1);
+            if (isset($sortOrders[$sortOrder])) {
+                throw new DomainException("{$path}.sort_order duplicates another Surface Ship.");
+            }
+            $sortOrders[$sortOrder] = true;
+            $this->integer($definition['build_cost_money'], "{$path}.build_cost_money", $playerBuildable ? 1 : 0);
+            $this->integer($definition['maximum_hp'], "{$path}.maximum_hp", 1);
+            $this->integer($definition['movement_oil_units'], "{$path}.movement_oil_units", $playerBuildable ? 1 : 0);
             if ($definition['movement_reward_resource_key'] !== null) {
-                $resourceKeyIndex = $isV26 ? 8 : 7;
-                $actual[$resourceKeyIndex] = $this->reference(
+                $rewardResourceKey = $this->reference(
                     $definition['movement_reward_resource_key'],
                     $resourceKeys,
                     "{$path}.movement_reward_resource_key",
                 );
+                $rewardResource = $resourceDefinitionsByKey[$rewardResourceKey];
+                $usesFoodCapacity = ($rewardResource['category'] ?? null) === 'food';
+                $usesResourceCapacity = ($rewardResource['storable'] ?? null) === true
+                    && array_key_exists($rewardResourceKey, $resourceCapacities);
+                if (! $usesFoodCapacity && ! $usesResourceCapacity) {
+                    throw new DomainException(
+                        "{$path}.movement_reward_resource_key has no supported storage capacity handler.",
+                    );
+                }
             }
-            if ($actual !== $expected[$key]) {
-                throw new DomainException("{$path} differs from the Owner-approved ".($isV26 ? 'v26' : 'v20').' Ship contract.');
+            $this->integer($definition['movement_reward_resource_units'], "{$path}.movement_reward_resource_units", 0);
+            $this->integer($definition['movement_reward_money'], "{$path}.movement_reward_money", 0);
+            $this->integer($definition['visibility_radius'], "{$path}.visibility_radius", 1);
+            if ($isV26) {
+                $movementMode = $this->persistedString($definition['movement_mode'], "{$path}.movement_mode");
+                if (! in_array($movementMode, ['heading_or_random', 'sparkle_or_random', 'heading_only', 'random_drift'], true)) {
+                    throw new DomainException("{$path}.movement_mode has no supported runtime handler.");
+                }
+                $combatRole = $this->persistedString($definition['combat_role'], "{$path}.combat_role");
+                if (! in_array($combatRole, ['none', 'pirate', 'warship'], true)) {
+                    throw new DomainException("{$path}.combat_role has no supported runtime handler.");
+                }
             }
         }
     }
@@ -914,35 +980,69 @@ final class RulesetAuthoringValidator
             $requiredKeys[] = 'recovery_duration_turns';
         }
         $this->requireKeys($lifecycle, $requiredKeys, $path);
+        $stringList = function (mixed $value, string $listPath): array {
+            $items = $this->list($value, $listPath);
+            foreach ($items as $index => $item) {
+                $this->persistedString($item, "{$listPath}.{$index}");
+            }
+            if (count(array_unique($items)) !== count($items)) {
+                throw new DomainException("{$listPath} must not contain duplicates.");
+            }
+
+            return $items;
+        };
+        $sameSet = static function (array $left, array $right): bool {
+            sort($left);
+            sort($right);
+
+            return $left === $right;
+        };
+        $supportedStates = ['active', 'dormant', 'recovery', 'abandoned'];
+        $states = $stringList($lifecycle['states'], "{$path}.states");
+        if (! $sameSet($states, $supportedStates)) {
+            throw new DomainException("{$path}.states contains an unsupported lifecycle state.");
+        }
         $expectedRuntimeStates = $version >= 13
-            ? ['active', 'dormant', 'recovery', 'abandoned']
+            ? $supportedStates
             : ['active', 'dormant', 'abandoned'];
-        $recoveryEnabled = $version >= 13;
-        if ($this->list($lifecycle['states'], "{$path}.states") !== ['active', 'dormant', 'recovery', 'abandoned']
-            || $this->list($lifecycle['runtime_entry_states'], "{$path}.runtime_entry_states")
-                !== $expectedRuntimeStates
-            || $this->boolean($lifecycle['recovery_entry_enabled'], "{$path}.recovery_entry_enabled") !== $recoveryEnabled
-            || ($version >= 13
-                && $this->integer($lifecycle['recovery_duration_turns'], "{$path}.recovery_duration_turns", 1) !== 84)
-            || $this->list($lifecycle['dormant_reasons'], "{$path}.dormant_reasons")
-                !== ['idle', 'collapse', 'manual']
-            || $this->integer($lifecycle['initial_idle_counter'], "{$path}.initial_idle_counter", 0) !== 2000
-            || $this->integer($lifecycle['dormant_idle_threshold'], "{$path}.dormant_idle_threshold", 1) !== 360
-            || $this->integer($lifecycle['abandonment_idle_threshold'], "{$path}.abandonment_idle_threshold", 1) !== 2160
-            || $this->integer($lifecycle['turns_per_day'], "{$path}.turns_per_day", 1) !== 12
-            || $this->integer($lifecycle['manual_dormancy_min_days'], "{$path}.manual_dormancy_min_days", 1) !== 1
-            || $this->integer($lifecycle['manual_dormancy_max_days'], "{$path}.manual_dormancy_max_days", 1) !== 7
-            || $this->integer($lifecycle['dormant_finance_money'], "{$path}.dormant_finance_money", 0) !== 10
-            || $this->integer($lifecycle['dormant_protection_radius'], "{$path}.dormant_protection_radius", 0) !== 2
-            || $this->persistedString($lifecycle['dormant_visual_theme'], "{$path}.dormant_visual_theme") !== 'snow'
-            || $this->list($lifecycle['territory_influence_target_states'], "{$path}.territory_influence_target_states")
-                !== ['active', 'dormant']
-            || $this->list($lifecycle['territory_influence_source_states'], "{$path}.territory_influence_source_states")
-                !== ['active']) {
-            throw new DomainException("{$path} differs from the ver 2.4.0 Owner decision.");
+        $runtimeStates = $stringList($lifecycle['runtime_entry_states'], "{$path}.runtime_entry_states");
+        if (! $sameSet($runtimeStates, $expectedRuntimeStates)) {
+            throw new DomainException("{$path}.runtime_entry_states contains an unsupported runtime state.");
+        }
+        $recoveryEnabled = $this->boolean($lifecycle['recovery_entry_enabled'], "{$path}.recovery_entry_enabled");
+        if ($recoveryEnabled !== ($version >= 13)) {
+            throw new DomainException("{$path}.recovery_entry_enabled is incompatible with this Ruleset generation.");
+        }
+        if ($version >= 13) {
+            $this->integer($lifecycle['recovery_duration_turns'], "{$path}.recovery_duration_turns", 1);
+        }
+        $dormantReasons = $stringList($lifecycle['dormant_reasons'], "{$path}.dormant_reasons");
+        if (! $sameSet($dormantReasons, ['idle', 'collapse', 'manual'])) {
+            throw new DomainException("{$path}.dormant_reasons contains an unsupported handler.");
+        }
+        $this->integer($lifecycle['initial_idle_counter'], "{$path}.initial_idle_counter", 0);
+        $dormantThreshold = $this->integer($lifecycle['dormant_idle_threshold'], "{$path}.dormant_idle_threshold", 1);
+        $abandonmentThreshold = $this->integer($lifecycle['abandonment_idle_threshold'], "{$path}.abandonment_idle_threshold", 1);
+        if ($dormantThreshold >= $abandonmentThreshold) {
+            throw new DomainException("{$path}.dormant_idle_threshold must be below abandonment_idle_threshold.");
+        }
+        $this->integer($lifecycle['turns_per_day'], "{$path}.turns_per_day", 1);
+        $minimumDormancyDays = $this->integer($lifecycle['manual_dormancy_min_days'], "{$path}.manual_dormancy_min_days", 1);
+        $maximumDormancyDays = $this->integer($lifecycle['manual_dormancy_max_days'], "{$path}.manual_dormancy_max_days", 1);
+        if ($minimumDormancyDays > $maximumDormancyDays) {
+            throw new DomainException("{$path}.manual_dormancy_min_days cannot exceed manual_dormancy_max_days.");
+        }
+        $dormantFinanceMoney = $this->integer($lifecycle['dormant_finance_money'], "{$path}.dormant_finance_money", 0);
+        $this->integer($lifecycle['dormant_protection_radius'], "{$path}.dormant_protection_radius", 0);
+        $this->persistedString($lifecycle['dormant_visual_theme'], "{$path}.dormant_visual_theme");
+        foreach (['territory_influence_target_states', 'territory_influence_source_states'] as $stateListKey) {
+            $influenceStates = $stringList($lifecycle[$stateListKey], "{$path}.{$stateListKey}");
+            if ($influenceStates === [] || array_diff($influenceStates, $states) !== []) {
+                throw new DomainException("{$path}.{$stateListKey} must reference supported lifecycle states.");
+            }
         }
         if (($settings['turn_processing']['automatic_finance_money'] ?? null)
-            !== $lifecycle['dormant_finance_money']) {
+            !== $dormantFinanceMoney) {
             throw new DomainException("{$path}.dormant_finance_money must reuse the canonical finance amount.");
         }
 
@@ -1273,35 +1373,16 @@ final class RulesetAuthoringValidator
         }
 
         $definitions = $this->list($settings['monster_definitions'], 'ruleset.monster_definitions');
-        $keys = $this->definitionKeys($definitions, 'ruleset.monster_definitions');
-        $experiencePerDamage = [
-            'mecha_inora' => 3,
-            'mecha_inora_zero' => 9,
-            'inora' => 4,
-            'sanjira' => 5,
-            'red_inora' => 4,
-            'dark_inora' => 6,
-            'aoi_inora' => 8,
-            'inora_ghost' => 10,
-            'whale' => 5,
-            'king_inora' => 6,
-            'nyowamiya' => 20,
-        ];
-        $expected = [
-            'mecha_inora' => [2, 0, 'none', 1, null, 0, 5, 'hakoniwa_original.monster.mecha_inora', null, 0, 0, 'monster7.gif'],
-            'inora' => [1, 1, 'none', 1, 1, 400, 5, 'hakoniwa_original.monster.inora', null, 1, 0, 'monster0.gif'],
-            'sanjira' => [1, 1, 'harden_odd', 1, 1, 500, 7, 'hakoniwa_original.monster.sanjira', 'hakoniwa_original.monster.hardened', 2, 3, 'monster5.gif'],
-            'red_inora' => [3, 1, 'none', 1, 2, 1_000, 12, 'hakoniwa_original.monster.red_inora', null, 3, 0, 'monster1.gif'],
-            'dark_inora' => [2, 1, 'move_2', 2, 2, 800, 15, 'hakoniwa_original.monster.dark_inora', null, 4, 1, 'monster2.gif'],
-            'inora_ghost' => [1, 0, 'move_9999', 9_999, 2, 300, 10, 'hakoniwa_original.monster.inora_ghost', null, 5, 2, 'monster8.gif'],
-            'whale' => [4, 1, 'harden_even', 1, 3, 1_500, 20, 'hakoniwa_original.monster.kujira', 'hakoniwa_original.monster.hardened', 6, 4, 'monster6.gif'],
-            'king_inora' => [5, 1, 'none', 1, 3, 2_000, 30, 'hakoniwa_original.monster.king_inora', null, 7, 0, 'monster3.gif'],
-        ];
-        if (! $extended && $keys !== array_keys($expected)) {
-            throw new DomainException('ruleset.monster_definitions must contain the exact eight PR21 monster keys in canonical order.');
+        if ($definitions === [] || count($definitions) > 100) {
+            throw new DomainException('ruleset.monster_definitions must contain 1..100 definitions.');
         }
+        $keys = $this->definitionKeys($definitions, 'ruleset.monster_definitions');
+        $historicalKeys = [
+            'mecha_inora', 'inora', 'sanjira', 'red_inora', 'dark_inora',
+            'inora_ghost', 'whale', 'king_inora',
+        ];
         if ($extended) {
-            foreach (array_keys($expected) as $historicalKey) {
+            foreach ($historicalKeys as $historicalKey) {
                 if (! in_array($historicalKey, $keys, true)) {
                     throw new DomainException("ruleset.monster_definitions is missing historical monster {$historicalKey}.");
                 }
@@ -1311,21 +1392,6 @@ final class RulesetAuthoringValidator
                     throw new DomainException("ruleset.monster_definitions is missing required C4 monster {$requiredC4Key}.");
                 }
             }
-        }
-        if (in_array($rulesetVersion, [21, 22, 23, 24, 25, 26], true) && $keys !== [
-            'mecha_inora',
-            'mecha_inora_zero',
-            'inora',
-            'sanjira',
-            'red_inora',
-            'dark_inora',
-            'aoi_inora',
-            'inora_ghost',
-            'whale',
-            'king_inora',
-            'nyowamiya',
-        ]) {
-            throw new DomainException('ruleset.monster_definitions must contain the exact v21+ monster keys in canonical order.');
         }
 
         $assetKeys = [];
@@ -1388,20 +1454,10 @@ final class RulesetAuthoringValidator
             if ($tier !== null && $tier > $maximumTier) {
                 throw new DomainException("{$path}.natural_spawn_tier must be at most {$maximumTier}.");
             }
-            if (in_array($rulesetVersion, [21, 22, 23, 24, 25, 26], true)
-                && in_array($key, ['mecha_inora_zero', 'nyowamiya'], true)
-                && $tier !== 4) {
-                throw new DomainException("{$path}.natural_spawn_tier must be exactly 4 in v21.");
-            }
             $value = $this->integer($definition['wreckage_value_money'], "{$path}.wreckage_value_money", 0);
             $experience = $this->integer($definition['missile_base_experience'], "{$path}.missile_base_experience", 0);
-            if ($rulesetVersion >= 15
-                && $this->integer(
-                    $definition['experience_per_damage'],
-                    "{$path}.experience_per_damage",
-                    0,
-                ) !== ($experiencePerDamage[$key] ?? null)) {
-                throw new DomainException("{$path}.experience_per_damage differs from the v15 Owner decision.");
+            if ($rulesetVersion >= 15) {
+                $this->integer($definition['experience_per_damage'], "{$path}.experience_per_damage", 0);
             }
             $this->persistedString($definition['skill_description'], "{$path}.skill_description");
             if ($this->persistedString($definition['visibility'], "{$path}.visibility") !== 'public') {
@@ -1432,32 +1488,23 @@ final class RulesetAuthoringValidator
                 $this->monsterRewardPolicies->validate($source[MonsterRewardPolicyResolver::METADATA_KEY]);
             }
 
-            if (array_key_exists($key, $expected)) {
+            if (in_array($key, $historicalKeys, true)) {
                 $this->requireKeys($source, ['kind', 'skill_code', 'filename'], "{$path}.source_metadata");
-                $contract = $expected[$key];
-                if ([$baseHp, $variation, $skill, $movementLimit, $tier, $value, $experience, $assetKey,
-                    $hardenedAsset, $source['kind'], $source['skill_code'], $source['filename']] !== $contract) {
-                    throw new DomainException("{$path} differs from the audited Hakoniwa 2+ PR21 contract.");
+            }
+            foreach (['kind', 'skill_code'] as $numericMetadataKey) {
+                if (array_key_exists($numericMetadataKey, $source)) {
+                    $this->integer($source[$numericMetadataKey], "{$path}.source_metadata.{$numericMetadataKey}", 0);
                 }
-            } elseif (in_array($rulesetVersion, [21, 22, 23, 24, 25, 26], true) && $key === 'nyowamiya') {
-                if (($definition['name'] ?? null) !== '珍獣ニョワミヤ'
-                    || ($definition['skill_description'] ?? null) !== 'なんかヘンな怪獣。'
-                    || ($source['filename'] ?? null) !== 'monsnyowa.gif'
-                    || ($source['manual'] ?? null) !== [
-                        'appearance' => '人口50万人以上かつランク2施設があるNationで自然発生',
-                        'special' => '先行移動、ニョワミヤ',
-                    ]
-                    || array_key_exists('kind', $source)
-                    || array_key_exists('skill_code', $source)
-                    || [$baseHp, $variation, $skill, $movementLimit, $tier, $value, $experience, $assetKey, $hardenedAsset]
-                        !== [1, 0, 'none', 1, 4, 2_000, 20, 'hakoniwa_custom.monster.nyowamiya', null]) {
-                    throw new DomainException("{$path} differs from the Owner-approved Nyowamiya contract.");
-                }
-            } else {
-                foreach (['kind', 'skill_code', 'filename'] as $legacyField) {
-                    if (array_key_exists($legacyField, $source)) {
-                        throw new DomainException("{$path}.source_metadata must not invent legacy {$legacyField}.");
+            }
+            if (array_key_exists('filename', $source)) {
+                $this->persistedString($source['filename'], "{$path}.source_metadata.filename");
+            }
+            if (array_key_exists('manual', $source)) {
+                foreach ($this->map($source['manual'], "{$path}.source_metadata.manual") as $manualKey => $manualText) {
+                    if (! is_string($manualKey) || $manualKey === '') {
+                        throw new DomainException("{$path}.source_metadata.manual keys must be non-empty strings.");
                     }
+                    $this->persistedString($manualText, "{$path}.source_metadata.manual.{$manualKey}");
                 }
             }
             $displayOrder = $this->monsterDisplayOrders->resolve(
@@ -2053,24 +2100,6 @@ final class RulesetAuthoringValidator
                 }
             }
         }
-        if (($settings['version'] ?? null) >= 20) {
-            $port = $settings['facility_definitions']['port'] ?? null;
-            if ($port !== [
-                'name' => '港',
-                'asset_key' => 'tile.port',
-                'visibility_policy' => 'public',
-                'build_command_key' => 'build_port',
-                'scale_unit_people' => null,
-                'initial_scale' => null,
-                'scale_increment' => null,
-                'maximum_scale' => null,
-                'workforce_per_scale_people' => null,
-                'production_definition_key' => null,
-                'buildable_terrain_keys' => ['plain'],
-            ]) {
-                throw new DomainException('The v20 Ruleset requires the exact Surface port facility contract.');
-            }
-        }
     }
 
     /**
@@ -2095,83 +2124,112 @@ final class RulesetAuthoringValidator
             return;
         }
 
-        $expected = [
-            'definitions' => [
-                'central_bank' => [
-                    'facility_key' => 'central_bank',
-                    'capacity_kind' => 'money',
-                    'capacity_per_level' => 1000,
-                    'maximum_per_nation' => 1,
-                ],
-                'central_granary' => [
-                    'facility_key' => 'central_granary',
-                    'capacity_kind' => 'food_tons',
-                    'capacity_per_level' => 100000,
-                    'maximum_per_nation' => 1,
-                ],
-            ],
-            'natural_monster_hp' => [
-                'facility_keys' => ['central_bank', 'central_granary'],
-                'percent_per_level' => 1,
-                'level_aggregation' => 'sum',
-                'rounding' => 'independent_fractional_draw',
-                'draw_denominator' => 100,
-                'stream_version' => 1,
-            ],
-            'forest_equivalent_protection' => [
-                'facility_keys' => ['central_bank', 'central_granary'],
-                'disaster_keys' => ['fire', 'typhoon'],
-            ],
-            'damage_behavior' => [
-                'facility_keys' => ['central_bank', 'central_granary'],
-                'destroyed_terrain_key' => 'shallow',
-            ],
-            'missile_resistance' => [
-                'facility_keys' => ['central_bank', 'central_granary'],
-                'ineffective_missile_keys' => ['missile', 'pp_missile', 'spp_missile'],
-                'land_destruction_missile_key' => 'land_destruction_missile',
-                'land_destruction_level_loss' => 1,
-            ],
-            'disaster_damage' => [
-                'facility_keys' => ['central_bank', 'central_granary'],
-                'tsunami_level_loss' => 1,
-                'meteor_shower_level_loss' => 5,
-                'huge_meteor_center_level_loss' => 20,
-                'huge_meteor_ring_one_level_loss' => 5,
-                'huge_meteor_ring_two_level_loss' => 1,
-                'eruption_center_level_loss' => 5,
-                'eruption_ring_one_level_loss' => 1,
-                'land_subsidence_level_loss' => 5,
-                'immune_disaster_keys' => ['earthquake'],
-            ],
-        ];
-        if ($section !== $expected) {
-            throw new DomainException('The v23 central-facility contract differs from the Owner decision.');
+        $section = $this->map($section, 'ruleset.central_facilities');
+        $this->requireKeys($section, [
+            'definitions', 'natural_monster_hp', 'forest_equivalent_protection',
+            'damage_behavior', 'missile_resistance', 'disaster_damage',
+        ], 'ruleset.central_facilities');
+        $facilityList = function (mixed $value, string $path) use ($facilityKeys): array {
+            $items = $this->list($value, $path);
+            if ($items === [] || count($items) > 100) {
+                throw new DomainException("{$path} must contain 1..100 facility keys.");
+            }
+            foreach ($items as $index => $facilityKey) {
+                $this->reference($facilityKey, $facilityKeys, "{$path}.{$index}");
+            }
+            if (count(array_unique($items)) !== count($items)) {
+                throw new DomainException("{$path} must not contain duplicates.");
+            }
+
+            return $items;
+        };
+        $stringList = function (mixed $value, string $path): array {
+            $items = $this->list($value, $path);
+            if (count($items) > 100) {
+                throw new DomainException("{$path} must contain at most 100 values.");
+            }
+            foreach ($items as $index => $item) {
+                $this->persistedString($item, "{$path}.{$index}");
+            }
+            if (count(array_unique($items)) !== count($items)) {
+                throw new DomainException("{$path} must not contain duplicates.");
+            }
+
+            return $items;
+        };
+
+        $definitions = $this->map($section['definitions'], 'ruleset.central_facilities.definitions');
+        if ($definitions === [] || count($definitions) > 100) {
+            throw new DomainException('ruleset.central_facilities.definitions must contain 1..100 definitions.');
+        }
+        foreach ($definitions as $facilityKey => $value) {
+            if (! is_string($facilityKey) || $facilityKey === '') {
+                throw new DomainException('ruleset.central_facilities.definitions keys must be non-empty strings.');
+            }
+            $path = "ruleset.central_facilities.definitions.{$facilityKey}";
+            $contract = $this->map($value, $path);
+            $this->requireKeys($contract, ['facility_key', 'capacity_kind', 'capacity_per_level', 'maximum_per_nation'], $path);
+            if ($this->reference($contract['facility_key'], $facilityKeys, "{$path}.facility_key") !== $facilityKey) {
+                throw new DomainException("{$path}.facility_key must match its definition key.");
+            }
+            $capacityKind = $this->persistedString($contract['capacity_kind'], "{$path}.capacity_kind");
+            if (! in_array($capacityKind, ['money', 'food_tons'], true)) {
+                throw new DomainException("{$path}.capacity_kind has no supported capacity handler.");
+            }
+            $this->integer($contract['capacity_per_level'], "{$path}.capacity_per_level", 1);
+            $this->integer($contract['maximum_per_nation'], "{$path}.maximum_per_nation", 1);
         }
 
-        foreach ($expected['definitions'] as $facilityKey => $contract) {
-            $this->reference($contract['facility_key'], $facilityKeys, "ruleset.central_facilities.definitions.{$facilityKey}.facility_key");
-            $facility = $settings['facility_definitions'][$facilityKey] ?? null;
-            $expectedFacility = [
-                'name' => $facilityKey === 'central_bank' ? '中央銀行' : '中央穀倉',
-                'asset_key' => $facilityKey === 'central_bank' ? 'tile.central_bank' : 'tile.central_granary',
-                'visibility_policy' => 'disguised',
-                'disguise_terrain_key' => 'forest',
-                'disguise_asset_key' => 'tile.forest',
-                'disguise_ownership_policy' => null,
-                'build_command_key' => $facilityKey === 'central_bank' ? 'build_central_bank' : 'build_central_granary',
-                'scale_unit_people' => 1,
-                'initial_scale' => 1,
-                'scale_increment' => 1,
-                'maximum_scale' => 90,
-                'workforce_per_scale_people' => 0,
-                'production_definition_key' => null,
-                'buildable_terrain_keys' => ['plain'],
-            ];
-            if ($facility !== $expectedFacility) {
-                throw new DomainException("The v23 {$facilityKey} facility contract differs from the Owner decision.");
-            }
+        $monsterHpPath = 'ruleset.central_facilities.natural_monster_hp';
+        $monsterHp = $this->map($section['natural_monster_hp'], $monsterHpPath);
+        $this->requireKeys($monsterHp, ['facility_keys', 'percent_per_level', 'level_aggregation', 'rounding', 'draw_denominator', 'stream_version'], $monsterHpPath);
+        $facilityList($monsterHp['facility_keys'], "{$monsterHpPath}.facility_keys");
+        $this->integer($monsterHp['percent_per_level'], "{$monsterHpPath}.percent_per_level", 0);
+        if ($this->persistedString($monsterHp['level_aggregation'], "{$monsterHpPath}.level_aggregation") !== 'sum'
+            || $this->persistedString($monsterHp['rounding'], "{$monsterHpPath}.rounding") !== 'independent_fractional_draw') {
+            throw new DomainException("{$monsterHpPath} selects an unsupported arithmetic handler.");
         }
+        $drawDenominator = $this->integer($monsterHp['draw_denominator'], "{$monsterHpPath}.draw_denominator", 1);
+        if ($drawDenominator > self::DETERMINISTIC_RANDOM_DRAW_DENOMINATOR_MAX) {
+            throw new DomainException(
+                "{$monsterHpPath}.draw_denominator must be at most ".self::DETERMINISTIC_RANDOM_DRAW_DENOMINATOR_MAX.'.',
+            );
+        }
+        $this->integer($monsterHp['stream_version'], "{$monsterHpPath}.stream_version", 1);
+
+        $forestPath = 'ruleset.central_facilities.forest_equivalent_protection';
+        $forest = $this->map($section['forest_equivalent_protection'], $forestPath);
+        $this->requireKeys($forest, ['facility_keys', 'disaster_keys'], $forestPath);
+        $facilityList($forest['facility_keys'], "{$forestPath}.facility_keys");
+        $stringList($forest['disaster_keys'], "{$forestPath}.disaster_keys");
+
+        $damagePath = 'ruleset.central_facilities.damage_behavior';
+        $damage = $this->map($section['damage_behavior'], $damagePath);
+        $this->requireKeys($damage, ['facility_keys', 'destroyed_terrain_key'], $damagePath);
+        $facilityList($damage['facility_keys'], "{$damagePath}.facility_keys");
+        $this->reference($damage['destroyed_terrain_key'], self::TERRAIN_KEYS, "{$damagePath}.destroyed_terrain_key");
+
+        $missilePath = 'ruleset.central_facilities.missile_resistance';
+        $missile = $this->map($section['missile_resistance'], $missilePath);
+        $this->requireKeys($missile, ['facility_keys', 'ineffective_missile_keys', 'land_destruction_missile_key', 'land_destruction_level_loss'], $missilePath);
+        $facilityList($missile['facility_keys'], "{$missilePath}.facility_keys");
+        $stringList($missile['ineffective_missile_keys'], "{$missilePath}.ineffective_missile_keys");
+        $this->persistedString($missile['land_destruction_missile_key'], "{$missilePath}.land_destruction_missile_key");
+        $this->integer($missile['land_destruction_level_loss'], "{$missilePath}.land_destruction_level_loss", 1);
+
+        $disasterPath = 'ruleset.central_facilities.disaster_damage';
+        $disaster = $this->map($section['disaster_damage'], $disasterPath);
+        $lossKeys = [
+            'tsunami_level_loss', 'meteor_shower_level_loss', 'huge_meteor_center_level_loss',
+            'huge_meteor_ring_one_level_loss', 'huge_meteor_ring_two_level_loss',
+            'eruption_center_level_loss', 'eruption_ring_one_level_loss', 'land_subsidence_level_loss',
+        ];
+        $this->requireKeys($disaster, ['facility_keys', ...$lossKeys, 'immune_disaster_keys'], $disasterPath);
+        $facilityList($disaster['facility_keys'], "{$disasterPath}.facility_keys");
+        foreach ($lossKeys as $lossKey) {
+            $this->integer($disaster[$lossKey], "{$disasterPath}.{$lossKey}", 0);
+        }
+        $stringList($disaster['immune_disaster_keys'], "{$disasterPath}.immune_disaster_keys");
     }
 
     private function maximumCapitalDistance(
@@ -3301,10 +3359,10 @@ final class RulesetAuthoringValidator
             $this->probability($event['probability'], "{$eventPath}.probability");
             $centerPadding = $this->integer($event['center_padding'], "{$eventPath}.center_padding", 0);
             $maximumCenterPadding = min(
-                self::INITIAL_X_MIN - DeterministicRandomStream::MINIMUM_INTEGER,
-                DeterministicRandomStream::MAXIMUM_INTEGER - self::INITIAL_X_MAX,
-                self::INITIAL_Y_MIN - DeterministicRandomStream::MINIMUM_INTEGER,
-                DeterministicRandomStream::MAXIMUM_INTEGER - self::INITIAL_Y_MAX,
+                $settings['initial_x_min'] - DeterministicRandomStream::MINIMUM_INTEGER,
+                DeterministicRandomStream::MAXIMUM_INTEGER - $settings['initial_x_max'],
+                $settings['initial_y_min'] - DeterministicRandomStream::MINIMUM_INTEGER,
+                DeterministicRandomStream::MAXIMUM_INTEGER - $settings['initial_y_max'],
             );
             if ($centerPadding > $maximumCenterPadding) {
                 throw new DomainException(

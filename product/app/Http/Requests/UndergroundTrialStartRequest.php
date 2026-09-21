@@ -2,7 +2,9 @@
 
 namespace App\Http\Requests;
 
+use App\Application\Underground\UndergroundRuntimeCatalog;
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Rule;
 
 final class UndergroundTrialStartRequest extends FormRequest
 {
@@ -15,7 +17,7 @@ final class UndergroundTrialStartRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'trial_key' => ['sometimes', 'string', 'in:trial_01,trial_02'],
+            'trial_key' => ['sometimes', 'string', Rule::in(app(UndergroundRuntimeCatalog::class)->trialKeys())],
             'borrowed_secretary_ids' => ['prohibited'],
         ];
     }

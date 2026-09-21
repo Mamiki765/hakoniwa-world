@@ -1267,9 +1267,9 @@ html[data-theme="dark"] .compensation-banner, html[data-theme="dark"] .compensat
 .map-cell.terrain-mountain { background: linear-gradient(145deg, #8b857f, #c6beb2); }
 .map-cell.capital { background: #f0bc54; color: #243734; }
 .map-cell.capital .tile-label { font-size: 1rem; opacity: 1; }
-.cell-tooltip { position: absolute; z-index: 30; width: 220px; max-height: 128px; overflow: hidden; display: grid; gap: 3px; padding: 9px 11px; border: 1px solid var(--navy); background: var(--paper-overlay); color: var(--ink); box-shadow: var(--shadow); pointer-events: none; font-size: .72rem; }
+.cell-tooltip { position: absolute; z-index: 30; box-sizing: border-box; width: 220px; max-width: calc(100% - 16px); max-height: min(320px, calc(100% - 16px)); overflow: auto; overscroll-behavior: contain; display: grid; gap: 3px; padding: 9px 11px; border: 1px solid var(--navy); background: var(--paper-overlay); color: var(--ink); box-shadow: var(--shadow); pointer-events: auto; touch-action: pan-y; font-size: .72rem; }
 .cell-tooltip strong { color: var(--navy); font-size: .82rem; }
-.cell-tooltip span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cell-tooltip span { overflow-wrap: anywhere; }
 .map-empty-note { margin: 0; padding: 5px 10px; background: var(--paper-deep); color: var(--muted); font-size: .65rem; }
 
 .preview-heading { display: flex; align-items: end; justify-content: space-between; gap: 20px; margin-bottom: 12px; }

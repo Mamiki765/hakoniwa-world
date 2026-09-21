@@ -27,11 +27,13 @@ const dragging = ref(false);
 const viewport = ref<HTMLElement | null>(null);
 const viewportSize = ref({ width: 900, height: 600 });
 const tooltipCell = ref<MapCell | null>(null);
+const tooltipElement = ref<HTMLElement | null>(null);
 const wholeWorldView = ref(false);
 const showVisibility = ref(false);
 const tooltipPosition = ref({ x: 0, y: 0, placement: 'right' as 'right' | 'left' | 'bottom' | 'top' });
 const failedAssets = ref<Set<string>>(new Set());
 let resizeObserver: ResizeObserver | null = null;
+let tooltipHideTimer: number | null = null;
 const PAN_THRESHOLD = 6;
 let activePointer: {
     id: number;
@@ -136,7 +138,10 @@ onMounted(() => {
 });
 
 watch(() => [props.capital.x, props.capital.y], () => void nextTick(centerOnCapital));
-onBeforeUnmount(() => resizeObserver?.disconnect());
+onBeforeUnmount(() => {
+    resizeObserver?.disconnect();
+    if (tooltipHideTimer !== null) window.clearTimeout(tooltipHideTimer);
+});
 
 function centerOnCapital(): void {
     wholeWorldView.value = false;
@@ -212,6 +217,7 @@ function requestVisibleChunks(): void {
 
 function isPanExcludedTarget(target: EventTarget | null): boolean {
     if (!(target instanceof Element)) return false;
+    if (target.closest('.cell-tooltip') !== null) return true;
 
     const interactive = target.closest('button, a, input, select, textarea, [contenteditable="true"], [role="button"]');
 
@@ -305,6 +311,8 @@ function suppressDraggedCellClick(event: MouseEvent): void {
 }
 
 function keydown(event: KeyboardEvent): void {
+    if (event.target instanceof Element && event.target.closest('.cell-tooltip') !== null) return;
+
     const directions: Record<string, number> = {
         ArrowRight: 0, PageUp: 1, ArrowUp: 2,
         ArrowLeft: 3, PageDown: 4, ArrowDown: 5,
@@ -316,15 +324,34 @@ function keydown(event: KeyboardEvent): void {
     }
 }
 
-function showTooltip(cell: MapCell, event: Event): void {
+function cancelTooltipHide(): void {
+    if (tooltipHideTimer !== null) {
+        window.clearTimeout(tooltipHideTimer);
+        tooltipHideTimer = null;
+    }
+}
+
+function scheduleTooltipHide(): void {
+    cancelTooltipHide();
+    tooltipHideTimer = window.setTimeout(() => {
+        tooltipCell.value = null;
+        tooltipHideTimer = null;
+    }, 120);
+}
+
+async function showTooltip(cell: MapCell, event: Event): Promise<void> {
+    cancelTooltipHide();
     const target = event.currentTarget as HTMLElement;
     const viewportElement = viewport.value;
     if (viewportElement === null) return;
     const cellRect = target.getBoundingClientRect();
     const bounds = viewportElement.getBoundingClientRect();
-    const width = 220;
-    const height = 128;
     const gap = 10;
+    tooltipCell.value = cell;
+    await nextTick();
+    const tooltip = tooltipElement.value;
+    const width = tooltip?.offsetWidth || 220;
+    const height = tooltip?.offsetHeight || Math.min(320, 48 + tooltipDetails.value.length * 18);
     let placement: 'right' | 'left' | 'bottom' | 'top' = 'right';
     let x = cellRect.right - bounds.left + gap;
     let y = cellRect.top - bounds.top;
@@ -343,8 +370,11 @@ function showTooltip(cell: MapCell, event: Event): void {
         y = cellRect.top - bounds.top - height - gap;
     }
 
-    tooltipCell.value = cell;
-    tooltipPosition.value = { x: Math.max(8, x), y: Math.max(8, y), placement };
+    tooltipPosition.value = {
+        x: Math.max(8, Math.min(x, bounds.width - width - 8)),
+        y: Math.max(8, Math.min(y, bounds.height - Math.min(height, bounds.height - 16) - 8)),
+        placement,
+    };
 }
 
 function assetIdentity(cell: MapCell): string {
@@ -413,9 +443,9 @@ function markAssetFailed(cell: MapCell): void {
                     :aria-label="item.cell.aria_label"
                     type="button"
                     @mouseenter="showTooltip(item.cell, $event)"
-                    @mouseleave="tooltipCell = null"
+                    @mouseleave="scheduleTooltipHide"
                     @focus="showTooltip(item.cell, $event)"
-                    @blur="tooltipCell = null"
+                    @blur="scheduleTooltipHide"
                     @click="emit('select', item.cell)"
                 >
                     <img v-if="assetIsRenderable(item.cell)" :src="item.cell.asset.url ?? ''" alt="" draggable="false" @error="markAssetFailed(item.cell)">
@@ -444,10 +474,16 @@ function markAssetFailed(cell: MapCell): void {
             </div>
             <div
                 v-if="tooltipCell"
+                ref="tooltipElement"
                 class="cell-tooltip"
                 :class="`placement-${tooltipPosition.placement}`"
                 :style="{ left: `${tooltipPosition.x}px`, top: `${tooltipPosition.y}px` }"
                 role="tooltip"
+                tabindex="0"
+                @mouseenter="cancelTooltipHide"
+                @mouseleave="scheduleTooltipHide"
+                @focusin="cancelTooltipHide"
+                @focusout="scheduleTooltipHide"
             >
                 <strong>{{ tooltipCell.display_name }} ({{ tooltipCell.x }},{{ tooltipCell.y }})</strong>
                 <span v-for="line in tooltipDetails" :key="line">{{ line }}</span>

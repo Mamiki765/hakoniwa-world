@@ -197,6 +197,7 @@ final class DisasterTurnService
         if (! $settings['enabled']) {
             return $empty;
         }
+        $centralFacilityKeys = $this->centralFacilityDisasterContract($context)['facility_keys'];
 
         $nations = Nation::query()
             ->where('world_id', $context->world->id)
@@ -290,7 +291,7 @@ final class DisasterTurnService
                 if (! $coastal) {
                     continue;
                 }
-                if (in_array($cellSnapshot['facility_key'], ['central_bank', 'central_granary'], true)) {
+                if (in_array($cellSnapshot['facility_key'], $centralFacilityKeys, true)) {
                     $plan['central_facilities'][$cellSnapshot['id']] = true;
                 } elseif ($cellSnapshot['terrain_key'] === 'mountain') {
                     $plan['protected_mountains'][$cellSnapshot['id']] = true;
@@ -1199,9 +1200,16 @@ final class DisasterTurnService
         if ($contract === null) {
             return $baseFacilityKeys;
         }
+        $facilityKeys = is_array($contract) ? ($contract['facility_keys'] ?? null) : null;
+        $disasterKeys = is_array($contract) ? ($contract['disaster_keys'] ?? null) : null;
         if (! is_array($contract)
-            || ($contract['facility_keys'] ?? null) !== ['central_bank', 'central_granary']
-            || ($contract['disaster_keys'] ?? null) !== ['fire', 'typhoon']) {
+            || ! is_array($facilityKeys)
+            || ! array_is_list($facilityKeys)
+            || $facilityKeys === []
+            || array_filter($facilityKeys, static fn (mixed $key): bool => ! is_string($key) || $key === '') !== []
+            || ! is_array($disasterKeys)
+            || ! array_is_list($disasterKeys)
+            || array_filter($disasterKeys, static fn (mixed $key): bool => ! is_string($key) || $key === '') !== []) {
             throw new DomainException('The active Ruleset has an invalid central-facility forest-protection contract.');
         }
         if (! in_array($disasterKey, $contract['disaster_keys'], true)) {
@@ -1371,7 +1379,7 @@ final class DisasterTurnService
             $disasterKey === 'land_subsidence' => $contract['land_subsidence_level_loss'],
             default => null,
         };
-        if ($levelLoss === null) {
+        if ($levelLoss === null || $levelLoss === 0) {
             return false;
         }
         $damage = $this->centralFacilityDamage->apply(
@@ -1396,17 +1404,22 @@ final class DisasterTurnService
     private function centralFacilityDisasterContract(TurnContext $context): array
     {
         $contract = $context->ruleset->settings['central_facilities']['disaster_damage'] ?? null;
+        $facilityKeys = is_array($contract) ? ($contract['facility_keys'] ?? null) : null;
+        $immuneKeys = is_array($contract) ? ($contract['immune_disaster_keys'] ?? null) : null;
+        $lossKeys = [
+            'tsunami_level_loss', 'meteor_shower_level_loss', 'huge_meteor_center_level_loss',
+            'huge_meteor_ring_one_level_loss', 'huge_meteor_ring_two_level_loss',
+            'eruption_center_level_loss', 'eruption_ring_one_level_loss', 'land_subsidence_level_loss',
+        ];
         if (! is_array($contract)
-            || ($contract['facility_keys'] ?? null) !== ['central_bank', 'central_granary']
-            || ($contract['tsunami_level_loss'] ?? null) !== 1
-            || ($contract['meteor_shower_level_loss'] ?? null) !== 5
-            || ($contract['huge_meteor_center_level_loss'] ?? null) !== 20
-            || ($contract['huge_meteor_ring_one_level_loss'] ?? null) !== 5
-            || ($contract['huge_meteor_ring_two_level_loss'] ?? null) !== 1
-            || ($contract['eruption_center_level_loss'] ?? null) !== 5
-            || ($contract['eruption_ring_one_level_loss'] ?? null) !== 1
-            || ($contract['land_subsidence_level_loss'] ?? null) !== 5
-            || ($contract['immune_disaster_keys'] ?? null) !== ['earthquake']) {
+            || ! is_array($facilityKeys)
+            || ! array_is_list($facilityKeys)
+            || $facilityKeys === []
+            || array_filter($facilityKeys, static fn (mixed $key): bool => ! is_string($key) || $key === '') !== []
+            || array_filter($lossKeys, static fn (string $key): bool => ! is_int($contract[$key] ?? null) || $contract[$key] < 0) !== []
+            || ! is_array($immuneKeys)
+            || ! array_is_list($immuneKeys)
+            || array_filter($immuneKeys, static fn (mixed $key): bool => ! is_string($key) || $key === '') !== []) {
             throw new DomainException('The active Ruleset has an invalid central-facility disaster contract.');
         }
 

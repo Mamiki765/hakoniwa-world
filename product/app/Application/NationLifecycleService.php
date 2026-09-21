@@ -555,7 +555,8 @@ final class NationLifecycleService
         $settings = $ruleset->settings['nation_lifecycle'] ?? null;
         if (! is_array($settings)
             || ($settings['recovery_entry_enabled'] ?? null) !== true
-            || ($settings['recovery_duration_turns'] ?? null) !== 84) {
+            || ! is_int($settings['recovery_duration_turns'] ?? null)
+            || $settings['recovery_duration_turns'] < 1) {
             throw new DomainException('The current Ruleset has no supported Nation lifecycle contract.');
         }
 

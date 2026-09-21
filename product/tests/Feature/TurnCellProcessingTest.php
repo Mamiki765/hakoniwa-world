@@ -14,6 +14,7 @@ use App\Application\WorldExpansionService;
 use App\Domain\Economy\NationCapacityResolver;
 use App\Domain\Map\GridCoordinate;
 use App\Domain\Map\MapCellStateService;
+use App\Domain\Secretary\SecretaryItemCatalog;
 use App\Domain\Secretary\SecretarySkillCatalog;
 use App\Domain\Turn\TurnContext;
 use App\Domain\Turn\TurnRandomStreamFactory;
@@ -235,6 +236,61 @@ class TurnCellProcessingTest extends TestCase
             (int) NationResource::query()->where('nation_id', $nation->id)
                 ->where('resource_definition_id', $oil->id)->value('amount'),
         ]);
+    }
+
+    public function test_surface_ship_can_credit_a_storable_non_food_movement_reward(): void
+    {
+        $world = $this->lightweightWorld();
+        $user = User::factory()->create();
+        $nation = app(NationCreationService::class)->create($user, $world, '資源航行国', '資源航行島主');
+        $space = $this->surfaceMapSpace($world);
+        $port = MapCell::query()->where('owner_nation_id', $nation->id)
+            ->whereHas('terrain', fn ($query) => $query->where('key', 'plain'))->firstOrFail();
+        $this->facility($port, 'port', 'plain');
+        [$origin, $destination, $later] = $this->eastwardSeaLine($space);
+        $ship = Ship::query()->create([
+            'world_id' => $world->id,
+            'ruleset_version_id' => $world->ruleset_version_id,
+            'nation_id' => $nation->id,
+            'map_cell_id' => $origin->id,
+            'ship_type_key' => 'fishing',
+            'current_hp' => 1,
+            'max_hp' => 1,
+            'heading' => GridCoordinate::EAST,
+            'state' => Ship::STATE_ACTIVE,
+            'version' => 1,
+        ]);
+        $oil = ResourceDefinition::query()->where('key', 'oil')->firstOrFail();
+        $minerals = ResourceDefinition::query()->where('key', 'minerals')->firstOrFail();
+        NationResource::query()->updateOrCreate(
+            ['nation_id' => $nation->id, 'resource_definition_id' => $oil->id],
+            ['amount' => 5],
+        );
+        NationResource::query()->updateOrCreate(
+            ['nation_id' => $nation->id, 'resource_definition_id' => $minerals->id],
+            ['amount' => 0],
+        );
+        $ruleset = $world->rulesetVersion()->firstOrFail();
+        $settings = $ruleset->settings;
+        $settings['surface_ships']['definitions']['fishing']['movement_reward_resource_key'] = 'minerals';
+        $settings['surface_ships']['definitions']['fishing']['movement_reward_resource_units'] = 7;
+        $ruleset->settings = $settings;
+        [$context, $run] = $this->context(
+            $world,
+            $nation,
+            [$origin->id, $destination->id, $later->id],
+            hash('sha256', 'surface ship non-food reward'),
+            ruleset: $ruleset,
+        );
+
+        app(CompleteTurnEngine::class)->execute('process_cells', $context);
+
+        $this->assertSame(7, (int) NationResource::query()
+            ->where('nation_id', $nation->id)
+            ->where('resource_definition_id', $minerals->id)
+            ->value('amount'));
+        $this->assertSame('minerals', $this->event($run, 'ship.moved')['resource_key']);
+        $this->assertSame($destination->id, $ship->fresh()->map_cell_id);
     }
 
     public function test_npc_surface_ships_drift_without_port_oil_reward_or_secretary_experience(): void
@@ -1210,6 +1266,8 @@ class TurnCellProcessingTest extends TestCase
         $world = $this->lightweightWorld();
         $user = User::factory()->create();
         $nation = app(NationCreationService::class)->create($user, $world, 'ニョワミヤ村発生国', 'ニョワミヤ村発生島主');
+        $user->secretary->itemInstances()->where('item_key', SecretaryItemCatalog::OLD_BOW)
+            ->update(['equipped_slot' => null]);
         $ruleset = $world->rulesetVersion()->firstOrFail();
         $settings = $ruleset->settings;
         $settings['turn_processing']['settlement']['appearance_probability'] = [

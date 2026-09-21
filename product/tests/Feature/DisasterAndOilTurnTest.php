@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Application\CentralFacilityDamageService;
 use App\Application\CompleteTurnEngine;
 use App\Application\DisasterMutableCellIndex;
 use App\Application\DisasterTurnService;
@@ -1031,6 +1032,69 @@ class DisasterAndOilTurnTest extends TestCase
                 $this->assertSame($disasterKey, $damage['source_key'], $disasterKey);
             }
         }
+    }
+
+    public function test_central_facility_disaster_loss_zero_keeps_the_facility_unchanged(): void
+    {
+        [$world, $nation, $ruleset, $space] = $this->worldAndNation('中央施設無被害国');
+        $center = $this->boundsFor($world)->center();
+        $target = $this->cellAt($space, $center->x, $center->y);
+        foreach ($center->neighborsWithin($space->min_x, $space->max_x, $space->min_y, $space->max_y) as $neighbor) {
+            $this->setCell($this->cellAt($space, $neighbor->x, $neighbor->y), 'sea', null, null, 0);
+        }
+        $this->setCell($target, 'plain', 'central_bank', $nation->id, 0);
+        $target->update(['facility_scale' => 20]);
+        $ruleset = $this->forceGlobal($ruleset, 'tsunami');
+        $ruleset = $this->updateRuleset($ruleset, static function (array &$settings): void {
+            $settings['central_facilities']['disaster_damage']['tsunami_level_loss'] = 0;
+        });
+        [$context, $run] = $this->context(
+            $world,
+            $ruleset,
+            $this->seedForCenter($this->centerLabel('tsunami'), $center->x, $center->y, $space),
+            [$nation->id],
+        );
+
+        $result = app(DisasterTurnService::class)->executeGlobal($context);
+
+        $after = $target->fresh(['terrain', 'facility']);
+        $this->assertSame(0, $result['damaged_cells']);
+        $this->assertSame(20, $after->facility_scale);
+        $this->assertSame('central_bank', $after->facility?->key);
+        $this->assertSame(0, DB::table('audit_events')->where('event_type', 'facility.partially_damaged')
+            ->whereRaw("metadata->>'turn_run_id' = ?", [(string) $run->id])->count());
+    }
+
+    public function test_central_facility_damage_uses_the_authored_maximum_level(): void
+    {
+        [$world, $nation, $ruleset, $space] = $this->worldAndNation('中央施設上限可変国');
+        $target = MapCell::query()->where('map_space_id', $space->id)
+            ->whereNull('facility_definition_id')
+            ->whereHas('terrain', fn ($query) => $query->where('key', 'plain'))
+            ->firstOrFail();
+        $this->setCell($target, 'plain', 'central_bank', $nation->id, 0);
+        $target->update(['facility_scale' => 91]);
+        $ruleset = $this->updateRuleset($ruleset, static function (array &$settings): void {
+            $settings['facility_definitions']['central_bank']['maximum_scale'] = 100;
+        });
+        [$context] = $this->context(
+            $world,
+            $ruleset,
+            hash('sha256', 'central facility configured maximum damage'),
+            [$nation->id],
+            [$target->id],
+        );
+
+        $result = app(CentralFacilityDamageService::class)->apply(
+            $context,
+            $target->fresh(['terrain', 'facility', 'ownerNation']),
+            1,
+            'test',
+            'configured_maximum',
+        );
+
+        $this->assertSame(90, $result['after_scale']);
+        $this->assertSame(90, (int) $target->fresh()->facility_scale);
     }
 
     public function test_v23_huge_meteor_uses_twenty_five_one_central_facility_damage(): void

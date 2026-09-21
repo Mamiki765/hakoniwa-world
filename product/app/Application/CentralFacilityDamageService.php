@@ -40,8 +40,12 @@ final readonly class CentralFacilityDamageService
         if ($contract === null || ! in_array($facilityKey, $contract['facility_keys'], true)) {
             return null;
         }
+        $maximumLevel = $context->ruleset->settings['facility_definitions'][$facilityKey]['maximum_scale'] ?? null;
+        if (! is_int($maximumLevel) || $maximumLevel < 1) {
+            throw new DomainException('The active Ruleset has an invalid central-facility maximum level.');
+        }
         $before = $cell->facility_scale;
-        if (! is_int($before) || $before < 1 || $before > 90) {
+        if (! is_int($before) || $before < 1 || $before > $maximumLevel) {
             throw new DomainException('A central facility has invalid persisted level data.');
         }
         if ($levelLoss < 1) {
@@ -100,9 +104,14 @@ final readonly class CentralFacilityDamageService
         if ($contract === null) {
             return null;
         }
+        $facilityKeys = is_array($contract) ? ($contract['facility_keys'] ?? null) : null;
         if (! is_array($contract)
-            || ($contract['facility_keys'] ?? null) !== ['central_bank', 'central_granary']
-            || ($contract['destroyed_terrain_key'] ?? null) !== 'shallow') {
+            || ! is_array($facilityKeys)
+            || ! array_is_list($facilityKeys)
+            || $facilityKeys === []
+            || array_filter($facilityKeys, static fn (mixed $key): bool => ! is_string($key) || $key === '') !== []
+            || ! is_string($contract['destroyed_terrain_key'] ?? null)
+            || $contract['destroyed_terrain_key'] === '') {
             throw new DomainException('The active Ruleset has an invalid central-facility damage contract.');
         }
 
