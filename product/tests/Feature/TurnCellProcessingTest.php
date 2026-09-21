@@ -14,6 +14,7 @@ use App\Application\WorldExpansionService;
 use App\Domain\Economy\NationCapacityResolver;
 use App\Domain\Map\GridCoordinate;
 use App\Domain\Map\MapCellStateService;
+use App\Domain\Secretary\SecretaryItemCatalog;
 use App\Domain\Secretary\SecretarySkillCatalog;
 use App\Domain\Turn\TurnContext;
 use App\Domain\Turn\TurnRandomStreamFactory;
@@ -1265,6 +1266,8 @@ class TurnCellProcessingTest extends TestCase
         $world = $this->lightweightWorld();
         $user = User::factory()->create();
         $nation = app(NationCreationService::class)->create($user, $world, 'ニョワミヤ村発生国', 'ニョワミヤ村発生島主');
+        $user->secretary->itemInstances()->where('item_key', SecretaryItemCatalog::OLD_BOW)
+            ->update(['equipped_slot' => null]);
         $ruleset = $world->rulesetVersion()->firstOrFail();
         $settings = $ruleset->settings;
         $settings['turn_processing']['settlement']['appearance_probability'] = [

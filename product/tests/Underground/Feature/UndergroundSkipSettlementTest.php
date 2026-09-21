@@ -3,9 +3,11 @@
 namespace Tests\Underground\Feature;
 
 use App\Application\Underground\UndergroundProfileService;
+use App\Application\Underground\UndergroundRuntimeCatalog;
 use App\Application\Underground\UndergroundRuntimeException;
 use App\Application\Underground\UndergroundRuntimeService;
 use App\Application\Underground\UndergroundStarterEquipmentService;
+use App\Domain\Underground\Progression\UndergroundCombatProgression;
 use App\Models\Secretary;
 use App\Models\UndergroundBattle;
 use App\Models\UndergroundContentClearProgress;
@@ -29,6 +31,14 @@ final class UndergroundSkipSettlementTest extends TestCase
     {
         config(['underground-alpha-v1.growth_paths.martial_red.unspent_stp_per_level' => 6]);
         [$user, $profile] = $this->readyProfile();
+        $curve = app(UndergroundRuntimeCatalog::class)->xpCurve();
+        $profile->update([
+            'combat_xp' => app(UndergroundCombatProgression::class)->totalXpRequiredForLevel(
+                2,
+                $curve['first_level_cost'],
+                $curve['cost_increment_per_level'],
+            ) - 1,
+        ]);
         UndergroundContentClearProgress::query()->create([
             'underground_profile_id' => $profile->id, 'content_type' => 'hunting_ground',
             'content_key' => 'shallow_caves', 'actual_clear_count' => 50, 'total_clear_count' => 50,
