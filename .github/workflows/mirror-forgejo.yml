@@ -1,0 +1,86 @@
+name: Mirror main and tags to Forgejo
+
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - "*"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: forgejo-mirror-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  mirror:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      FORGEJO_PUSH_URL: ${{ secrets.FORGEJO_PUSH_URL }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Require the Forgejo repository secret
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -z "$FORGEJO_PUSH_URL" ]]; then
+            echo "FORGEJO_PUSH_URL is not configured for this GitHub repository."
+            exit 1
+          fi
+          python3 - <<'PY'
+          import os
+          from urllib.parse import urlsplit
+
+          configured = urlsplit(os.environ["FORGEJO_PUSH_URL"])
+          valid = (
+              configured.scheme == "https"
+              and configured.hostname == "git.pbwlove.com"
+              and configured.port in (None, 443)
+              and configured.path == "/Mamiki765/hakoniwa-world.git"
+              and configured.username is not None
+              and configured.password is not None
+              and configured.query == ""
+              and configured.fragment == ""
+          )
+          if not valid:
+              raise SystemExit(
+                  "FORGEJO_PUSH_URL does not target the expected Forgejo hakoniwa-world repository."
+              )
+          print("FORGEJO_PUSH_URL target validation passed.")
+          PY
+
+      - name: Push the selected ref without rewriting history
+        shell: bash
+        run: |
+          set -euo pipefail
+          git remote add forgejo "$FORGEJO_PUSH_URL"
+
+          case "$GITHUB_REF_TYPE" in
+            branch)
+              if [[ "$GITHUB_REF_NAME" != "main" ]]; then
+                echo "Refusing to mirror an unexpected branch: $GITHUB_REF_NAME"
+                exit 1
+              fi
+              git fetch --no-tags forgejo refs/heads/main:refs/remotes/forgejo/main
+              if ! git merge-base --is-ancestor refs/remotes/forgejo/main "$GITHUB_SHA"; then
+                echo "Forgejo main is not an ancestor of GitHub main; refusing to rewrite or merge history."
+                exit 1
+              fi
+              git push forgejo "$GITHUB_SHA:refs/heads/main"
+              ;;
+            tag)
+              git show-ref --verify --quiet "refs/tags/$GITHUB_REF_NAME"
+              git push forgejo "refs/tags/$GITHUB_REF_NAME:refs/tags/$GITHUB_REF_NAME"
+              ;;
+            *)
+              echo "Unsupported GitHub ref type: $GITHUB_REF_TYPE"
+              exit 1
+              ;;
+          esac
