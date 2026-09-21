@@ -158,6 +158,14 @@ final class SecretaryItemPresentationTest extends TestCase
             'grant_key' => 'presentation-query-bow',
             'obtained_at' => now(),
         ]);
+        [$world] = $this->ownedFixtureWorld($user);
+
+        DB::flushQueryLog();
+        DB::enableQueryLog();
+        app(SecretaryEquipmentService::class)->options($user, 1, $world->id);
+        $singleItemQueryCount = count(DB::getQueryLog());
+        DB::disableQueryLog();
+
         foreach (range(1, 49) as $number) {
             $secretary->itemInstances()->create([
                 'item_key' => SecretaryItemCatalog::RING,
@@ -167,15 +175,14 @@ final class SecretaryItemPresentationTest extends TestCase
                 'obtained_at' => now(),
             ]);
         }
-        [$world] = $this->ownedFixtureWorld($user);
+
         DB::flushQueryLog();
         DB::enableQueryLog();
-
         $options = app(SecretaryEquipmentService::class)->options($user, 1, $world->id);
-        $queryCount = count(DB::getQueryLog());
+        $fiftyItemQueryCount = count(DB::getQueryLog());
         DB::disableQueryLog();
 
-        $this->assertSame(3, $queryCount);
+        $this->assertSame($singleItemQueryCount, $fiftyItemQueryCount);
         $this->assertCount(50, $options['items']);
         $this->assertSame(
             '10%の確率で、自領の地上にいる怪獣に1ダメージを与える。',
