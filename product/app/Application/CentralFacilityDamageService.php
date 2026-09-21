@@ -40,8 +40,12 @@ final readonly class CentralFacilityDamageService
         if ($contract === null || ! in_array($facilityKey, $contract['facility_keys'], true)) {
             return null;
         }
+        $maximumLevel = $context->ruleset->settings['facility_definitions'][$facilityKey]['maximum_scale'] ?? null;
+        if (! is_int($maximumLevel) || $maximumLevel < 1) {
+            throw new DomainException('The active Ruleset has an invalid central-facility maximum level.');
+        }
         $before = $cell->facility_scale;
-        if (! is_int($before) || $before < 1 || $before > 90) {
+        if (! is_int($before) || $before < 1 || $before > $maximumLevel) {
             throw new DomainException('A central facility has invalid persisted level data.');
         }
         if ($levelLoss < 1) {

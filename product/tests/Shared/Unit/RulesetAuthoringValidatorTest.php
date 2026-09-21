@@ -32,6 +32,7 @@ class RulesetAuthoringValidatorTest extends TestCase
         $settings['central_facilities']['definitions']['central_bank']['capacity_per_level'] = 2_000;
         $settings['surface_ships']['capacity_per_type'] = 4;
         $settings['surface_ships']['definitions']['fishing']['maximum_hp'] = 2;
+        $settings['surface_ships']['definitions']['fishing']['movement_reward_resource_key'] = 'minerals';
         $settings['surface_ships']['definitions']['research'] = [
             'name' => '調査船',
             'asset_key' => 'ship.research',
@@ -119,6 +120,22 @@ class RulesetAuthoringValidatorTest extends TestCase
                     return $settings;
                 },
                 'display_order duplicates another effective monster order',
+            ],
+            'unsupported surface ship movement terrain' => [
+                static function (array $settings): array {
+                    $settings['surface_ships']['movement']['terrain_key'] = 'shallow';
+
+                    return $settings;
+                },
+                'must use the supported deep-sea handler',
+            ],
+            'non-zero initial origin' => [
+                static function (array $settings): array {
+                    $settings['initial_x_min'] = 1;
+
+                    return $settings;
+                },
+                'must start at x=0 and y=0',
             ],
         ];
     }

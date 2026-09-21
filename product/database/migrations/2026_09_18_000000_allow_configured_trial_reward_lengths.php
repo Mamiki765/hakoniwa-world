@@ -54,12 +54,22 @@ ALTER TABLE underground_owned_equipment
     )
   )
 SQL);
+        DB::statement('ALTER TABLE underground_profiles DROP CONSTRAINT underground_profiles_stp_entitlement_check');
+        DB::statement(<<<'SQL'
+ALTER TABLE underground_profiles
+  ADD CONSTRAINT underground_profiles_stp_entitlement_check
+  CHECK (
+    growth_path_key IS NOT NULL
+    OR unspent_stp + allocated_vitality_stp + allocated_might_stp
+      + allocated_finesse_stp + allocated_spirit_stp + allocated_agility_stp = 0
+  )
+SQL);
     }
 
     public function down(): void
     {
         throw new RuntimeException(
-            'Configured Underground Trial reward lengths must be preserved; this migration is forward-only.',
+            'Configured Underground reward lengths and persisted STP totals must be preserved; this migration is forward-only.',
         );
     }
 };

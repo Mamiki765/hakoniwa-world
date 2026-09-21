@@ -595,14 +595,23 @@ final class SurfaceShipTurnService
         $resource = null;
         if ($definition->movementRewardResourceKey !== null) {
             $rewardResource = $this->resources[$definition->movementRewardResourceKey];
-            $resource = $this->boundedAssets->creditFood(
-                $nation,
-                $rewardResource,
-                $definition->movementRewardResourceUnits,
-                $context->ruleset,
-            );
-            if ($resource->overflow > 0) {
-                $this->foodOverflow->resolve($context, $nation, $rewardResource, $resource);
+            if ($rewardResource->category === 'food') {
+                $resource = $this->boundedAssets->creditFood(
+                    $nation,
+                    $rewardResource,
+                    $definition->movementRewardResourceUnits,
+                    $context->ruleset,
+                );
+                if ($resource->overflow > 0) {
+                    $this->foodOverflow->resolve($context, $nation, $rewardResource, $resource);
+                }
+            } else {
+                $resource = $this->boundedAssets->creditResource(
+                    $nation,
+                    $rewardResource,
+                    $definition->movementRewardResourceUnits,
+                    $context->ruleset,
+                );
             }
         }
         $money = $definition->movementRewardMoney > 0

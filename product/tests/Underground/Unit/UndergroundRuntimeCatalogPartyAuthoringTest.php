@@ -6,7 +6,6 @@ use App\Application\Underground\UndergroundAlphaV1PlayerCatalog;
 use App\Application\Underground\UndergroundEquipmentCatalog;
 use App\Application\Underground\UndergroundRuntimeCatalog;
 use InvalidArgumentException;
-use RuntimeException;
 use Tests\TestCase;
 
 final class UndergroundRuntimeCatalogPartyAuthoringTest extends TestCase
@@ -78,13 +77,14 @@ final class UndergroundRuntimeCatalogPartyAuthoringTest extends TestCase
         );
     }
 
-    public function test_growth_path_stp_per_level_must_match_the_persisted_entitlement_contract(): void
+    public function test_growth_path_stp_per_level_is_authored_without_a_persisted_balance_literal(): void
     {
         config(['underground-alpha-v1.growth_paths.martial_red.unspent_stp_per_level' => 6]);
 
-        $this->expectException(RuntimeException::class);
-        $this->expectExceptionMessage('must match the persisted STP entitlement contract');
-        app(UndergroundAlphaV1PlayerCatalog::class)->growthPath('martial_red');
+        $catalog = app(UndergroundAlphaV1PlayerCatalog::class);
+
+        $this->assertSame(6, $catalog->growthPath('martial_red')['unspent_stp_per_level']);
+        $this->assertSame(12, $catalog->stpEntitlement('martial_red', 3));
     }
 
     public function test_party_boss_scaling_supports_none_and_content_authored_tables(): void

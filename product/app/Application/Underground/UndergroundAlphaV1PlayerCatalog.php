@@ -31,14 +31,6 @@ use RuntimeException;
  */
 final readonly class UndergroundAlphaV1PlayerCatalog
 {
-    /** @var array<string, int> */
-    private const PERSISTED_STP_PER_LEVEL = [
-        'martial_red' => 5,
-        'guardianship_blue' => 5,
-        'blessing_green' => 5,
-        'free_black' => 6,
-    ];
-
     public function __construct(
         private AlphaV1CombatRules $rules,
         private UndergroundBuildValidator $buildValidator,
@@ -385,9 +377,6 @@ final readonly class UndergroundAlphaV1PlayerCatalog
             || $stp < 0
             || array_sum($growth) + $stp < 1) {
             throw new RuntimeException("Underground growth path [{$key}] growth contract is invalid.");
-        }
-        if ((self::PERSISTED_STP_PER_LEVEL[$key] ?? null) !== $stp) {
-            throw new RuntimeException("Underground growth path [{$key}] must match the persisted STP entitlement contract.");
         }
         $description = $configured['description'] ?? null;
         if (! is_array($description) || ! array_is_list($description)

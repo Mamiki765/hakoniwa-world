@@ -27,6 +27,7 @@ final class UndergroundSkipSettlementTest extends TestCase
 
     public function test_hunting_ground_skip_consumes_once_retries_idempotently_and_only_increments_total(): void
     {
+        config(['underground-alpha-v1.growth_paths.martial_red.unspent_stp_per_level' => 6]);
         [$user, $profile] = $this->readyProfile();
         UndergroundContentClearProgress::query()->create([
             'underground_profile_id' => $profile->id, 'content_type' => 'hunting_ground',
@@ -45,6 +46,7 @@ final class UndergroundSkipSettlementTest extends TestCase
         $this->assertSame(1, $result['daily_quest']['progress']);
         $this->assertFalse($result['daily_quest']['completed_now']);
         $this->assertTrue($retry['duplicate']);
+        $this->assertSame([2, 6], [$profile->fresh()->combat_level, $profile->fresh()->unspent_stp]);
         $this->assertDatabaseCount('underground_skip_settlements', 1);
         $this->assertDatabaseCount('user_skip_ticket_ledger', 1);
     }
@@ -128,6 +130,43 @@ final class UndergroundSkipSettlementTest extends TestCase
         $this->assertSame(10, $result['daily_quest']['progress']);
         $this->assertTrue($result['daily_quest']['completed_now']);
         $this->assertSame(5, $result['daily_quest']['paradox_balance']);
+    }
+
+    public function test_single_trial_skip_settles_an_authored_eleventh_drop_reward(): void
+    {
+        $trial = config('underground-runtime.trials.trial_02');
+        $trial['content_identity'] = 'test-trial-with-eleven-rewards';
+        $trial['encounters'][] = $trial['encounters'][9];
+        $trial['rewards'][] = $trial['rewards'][9];
+        config(['underground-runtime.trials.trial_02' => $trial]);
+
+        [$user, $profile] = $this->readyProfile();
+        $clearedAt = Carbon::now()->subDay();
+        foreach (['trial_01', 'trial_02'] as $trialKey) {
+            UndergroundTrialProgress::query()->create([
+                'underground_profile_id' => $profile->id,
+                'trial_key' => $trialKey,
+                'unlocked_at' => $clearedAt,
+                'first_cleared_at' => $clearedAt,
+            ]);
+        }
+        UndergroundContentClearProgress::query()->create([
+            'underground_profile_id' => $profile->id,
+            'content_type' => 'trial',
+            'content_key' => 'trial_02',
+            'actual_clear_count' => 5,
+            'total_clear_count' => 5,
+        ]);
+        UserSkipTicketBalance::query()->create(['user_id' => $user->id, 'balance' => 10]);
+
+        $result = app(UndergroundRuntimeService::class)->skipTrial(
+            $user,
+            (string) Str::uuid(),
+            'trial_02',
+        );
+
+        $this->assertCount(11, $result['settlement']->reward_snapshot['encounters']);
+        $this->assertCount(11, $result['settlement']->reward_snapshot['drops']);
     }
 
     public function test_trial_skip_remains_locked_at_four_actual_clears_without_consuming_or_rewarding(): void

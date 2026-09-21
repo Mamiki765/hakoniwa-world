@@ -183,6 +183,9 @@ final class RulesetAuthoringValidator
                 throw new DomainException("ruleset.initial_{$coordinate} must fit deterministic signed 32-bit draws.");
             }
         }
+        if ($xMin !== 0 || $yMin !== 0) {
+            throw new DomainException('Ruleset initial bounds must start at x=0 and y=0.');
+        }
         if ($xMin >= $xMax || $yMin >= $yMax) {
             throw new DomainException('Ruleset initial bounds must define non-empty x and y ranges.');
         }
@@ -534,7 +537,14 @@ final class RulesetAuthoringValidator
             'fuel_shortage_damage_chance_percent', 'fuel_shortage_damage', 'random_stream_version',
             'secretary_skill_key', 'secretary_experience_per_successful_move',
         ], 'ruleset.surface_ships.movement');
-        $this->reference($movement['terrain_key'], self::TERRAIN_KEYS, 'ruleset.surface_ships.movement.terrain_key');
+        $movementTerrainKey = $this->reference(
+            $movement['terrain_key'],
+            self::TERRAIN_KEYS,
+            'ruleset.surface_ships.movement.terrain_key',
+        );
+        if ($movementTerrainKey !== 'sea') {
+            throw new DomainException('ruleset.surface_ships.movement.terrain_key must use the supported deep-sea handler.');
+        }
         $this->reference($movement['required_port_facility_key'], $facilityKeys, 'ruleset.surface_ships.movement.required_port_facility_key');
         $this->reference($movement['fuel_resource_key'], $resourceKeys, 'ruleset.surface_ships.movement.fuel_resource_key');
         $this->integer($movement['normal_event_limit_per_turn'], 'ruleset.surface_ships.movement.normal_event_limit_per_turn', 1);
@@ -604,6 +614,16 @@ final class RulesetAuthoringValidator
         $selectors = [];
         $assetKeys = [];
         $sortOrders = [];
+        $resourceDefinitionsByKey = [];
+        foreach ($this->list($settings['resource_definitions'], 'ruleset.resource_definitions') as $resourceDefinitionValue) {
+            $resourceDefinition = $this->map($resourceDefinitionValue, 'ruleset.resource_definitions entry');
+            $resourceDefinitionKey = $this->string(
+                $resourceDefinition['key'] ?? null,
+                'ruleset.resource_definitions entry.key',
+            );
+            $resourceDefinitionsByKey[$resourceDefinitionKey] = $resourceDefinition;
+        }
+        $resourceCapacities = $this->map($settings['resource_capacities'] ?? [], 'ruleset.resource_capacities');
 
         foreach ($definitions as $key => $value) {
             if (! is_string($key) || $key === '') {
@@ -650,11 +670,20 @@ final class RulesetAuthoringValidator
             $this->integer($definition['maximum_hp'], "{$path}.maximum_hp", 1);
             $this->integer($definition['movement_oil_units'], "{$path}.movement_oil_units", $playerBuildable ? 1 : 0);
             if ($definition['movement_reward_resource_key'] !== null) {
-                $this->reference(
+                $rewardResourceKey = $this->reference(
                     $definition['movement_reward_resource_key'],
                     $resourceKeys,
                     "{$path}.movement_reward_resource_key",
                 );
+                $rewardResource = $resourceDefinitionsByKey[$rewardResourceKey];
+                $usesFoodCapacity = ($rewardResource['category'] ?? null) === 'food';
+                $usesResourceCapacity = ($rewardResource['storable'] ?? null) === true
+                    && array_key_exists($rewardResourceKey, $resourceCapacities);
+                if (! $usesFoodCapacity && ! $usesResourceCapacity) {
+                    throw new DomainException(
+                        "{$path}.movement_reward_resource_key has no supported storage capacity handler.",
+                    );
+                }
             }
             $this->integer($definition['movement_reward_resource_units'], "{$path}.movement_reward_resource_units", 0);
             $this->integer($definition['movement_reward_money'], "{$path}.movement_reward_money", 0);
