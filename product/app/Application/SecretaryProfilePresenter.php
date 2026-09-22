@@ -52,7 +52,7 @@ final readonly class SecretaryProfilePresenter
             'secretary_level' => $level,
             'passive_level_total' => $level,
             'capacity_bonus_percent' => $level,
-            'monster_experience' => (int) $secretary->monster_experience,
+            'monster_experience' => (int) $secretary->surfaceState->monster_experience,
             'combat_level' => $secretary->undergroundProfile?->combat_level,
             'biography' => $secretary->profile_biography,
             'main_image' => $image,

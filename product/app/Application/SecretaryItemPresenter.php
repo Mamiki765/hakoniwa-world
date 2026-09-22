@@ -30,7 +30,7 @@ final class SecretaryItemPresenter
 
         return [
             'effect_context' => $projection?->context,
-            'equipment_version' => $secretary->equipment_version,
+            'equipment_version' => $secretary->surfaceState->equipment_version,
             'inventory' => [
                 'capacity' => SecretaryItemGrantService::INVENTORY_CAPACITY,
                 'used' => $items->count(),

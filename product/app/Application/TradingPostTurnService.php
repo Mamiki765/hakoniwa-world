@@ -20,6 +20,7 @@ use App\Models\NationResourceSalePolicy;
 use App\Models\ResourceDefinition;
 use App\Models\Secretary;
 use App\Models\SecretaryItemInstance;
+use App\Models\SecretarySurfaceState;
 use DomainException;
 
 final class TradingPostTurnService
@@ -375,7 +376,13 @@ final class TradingPostTurnService
             ->where('role', 'owner')
             ->lockForUpdate()
             ->sole();
-        $secretary = Secretary::query()->where('user_id', $membership->user_id)->lockForUpdate()->sole();
+        $secretary = Secretary::query()->where('user_id', $membership->user_id)->sole();
+        $surfaceIds = [$secretary->id];
+        if ($listing->seller_type === 'nation') {
+            $surfaceIds[] = SecretaryItemInstance::query()->findOrFail($listing->secretary_item_instance_id)->secretary_id;
+        }
+        SecretarySurfaceState::query()->whereIn('secretary_id', $surfaceIds)
+            ->orderBy('secretary_id')->lockForUpdate()->get();
         if ($listing->seller_type === 'nation') {
             $item = SecretaryItemInstance::query()->whereKey($listing->secretary_item_instance_id)
                 ->lockForUpdate()->firstOrFail();
@@ -427,6 +434,8 @@ final class TradingPostTurnService
                     ->firstOrFail();
                 $balance->increment('amount', $listing->quantity);
             } else {
+                SecretaryItemInstance::query()->findOrFail($listing->secretary_item_instance_id)
+                    ->secretary->lockSurfaceState();
                 $item = SecretaryItemInstance::query()->whereKey($listing->secretary_item_instance_id)
                     ->lockForUpdate()->firstOrFail();
                 if (! $item->is_escrowed) {

@@ -78,7 +78,7 @@ final class PostgresSecretaryEquipmentConcurrencyTest extends TestCase
         $this->assertSame('success', $first['status']);
         $this->assertSame('exception', $second['status']);
         $this->assertSame('secretary_equipment_version_conflict', $second['code']);
-        $this->assertSame(2, $secretary->fresh()->equipment_version);
+        $this->assertSame(2, $secretary->fresh()->surfaceState->equipment_version);
         $this->assertSame(1, $bow->fresh()->equipped_slot);
         $this->assertSame(1, SecretaryItemInstance::query()
             ->where('secretary_id', $secretary->id)->whereNotNull('equipped_slot')->count());
@@ -112,7 +112,7 @@ final class PostgresSecretaryEquipmentConcurrencyTest extends TestCase
         $this->assertSame('success', $abandonment['status']);
         $this->assertSame('abandoned', $nation->fresh()->state);
         $this->assertDatabaseMissing('nation_memberships', ['nation_id' => $nation->id, 'user_id' => $user->id]);
-        $this->assertSame(2, $secretary->fresh()->equipment_version);
+        $this->assertSame(2, $secretary->fresh()->surfaceState->equipment_version);
         $this->assertNull($bow->fresh()->equipped_slot);
     }
 
@@ -137,7 +137,7 @@ final class PostgresSecretaryEquipmentConcurrencyTest extends TestCase
         $this->assertSame('abandoned', $nation->fresh()->state);
         $this->assertDatabaseMissing('nation_memberships', ['nation_id' => $nation->id, 'user_id' => $user->id]);
         $this->assertDatabaseHas('turn_runs', ['world_id' => $world->id, 'status' => 'pending']);
-        $this->assertSame(2, $secretary->fresh()->equipment_version);
+        $this->assertSame(2, $secretary->fresh()->surfaceState->equipment_version);
         $this->assertNull($bow->fresh()->equipped_slot);
     }
 
@@ -167,7 +167,7 @@ final class PostgresSecretaryEquipmentConcurrencyTest extends TestCase
         $this->assertSame('secretary_equipment_turn_unresolved', $equipment['code']);
         $this->assertTrue(NationMembership::query()
             ->where('user_id', $user->id)->where('world_id', $targetWorld->id)->exists());
-        $this->assertSame(1, $secretary->fresh()->equipment_version);
+        $this->assertSame(1, $secretary->fresh()->surfaceState->equipment_version);
         $this->assertSame(1, $bow->fresh()->equipped_slot);
     }
 

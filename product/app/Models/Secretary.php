@@ -12,8 +12,7 @@ use Illuminate\Support\Carbon;
 /**
  * @property int $id
  * @property int $user_id
- * @property int $equipment_version
- * @property int $monster_experience
+ * @property-read SecretarySurfaceState $surfaceState
  * @property string|null $name
  * @property string|null $nickname
  * @property string $portrait_preference
@@ -34,17 +33,36 @@ final class Secretary extends Model
     protected $fillable = [
         'user_id', 'name', 'nickname', 'portrait_preference', 'named_at', 'profile_biography', 'main_image_path',
         'main_image_mime_type', 'main_image_creation_method', 'main_image_credit',
-        'main_image_updated_at', 'monster_experience',
+        'main_image_updated_at',
     ];
 
     protected function casts(): array
     {
         return [
-            'equipment_version' => 'integer',
-            'monster_experience' => 'integer',
             'named_at' => 'immutable_datetime',
             'main_image_updated_at' => 'immutable_datetime',
         ];
+    }
+
+    protected static function booted(): void
+    {
+        self::created(function (Secretary $secretary): void {
+            $secretary->surfaceState()->create([]);
+        });
+    }
+
+    /** @return HasOne<SecretarySurfaceState, $this> */
+    public function surfaceState(): HasOne
+    {
+        return $this->hasOne(SecretarySurfaceState::class);
+    }
+
+    public function lockSurfaceState(): SecretarySurfaceState
+    {
+        $state = $this->surfaceState()->lockForUpdate()->firstOrFail();
+        $this->setRelation('surfaceState', $state);
+
+        return $state;
     }
 
     /** @return BelongsTo<User, $this> */

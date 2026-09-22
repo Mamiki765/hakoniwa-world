@@ -72,7 +72,8 @@ final class SecretaryItemGrantService
             $resolvedRarity,
             $resolvedFixedSalePriceMoney,
         ): ?SecretaryItemInstance {
-            $locked = Secretary::query()->whereKey($secretary->id)->lockForUpdate()->firstOrFail();
+            $locked = Secretary::query()->whereKey($secretary->id)->firstOrFail();
+            $locked->lockSurfaceState();
             if ($grantKey !== null) {
                 $existingGrant = $locked->itemInstances()->where('grant_key', $grantKey)->first();
                 if ($existingGrant instanceof SecretaryItemInstance) {

@@ -4,6 +4,7 @@ namespace App\Application;
 
 use App\Application\Underground\UndergroundAlphaV1PlayerCatalog;
 use App\Application\Underground\UndergroundEquipmentLoadoutResolver;
+use App\Application\Underground\UndergroundProfileService;
 use App\Application\Underground\UndergroundRuntimeCatalog;
 use App\Domain\Underground\Combat\UndergroundAwakening;
 use App\Models\Secretary;
@@ -37,7 +38,8 @@ final readonly class SecretaryLendingService
     public function update(User $user, bool $isLendable): SecretaryLendingSetting
     {
         return DB::transaction(function () use ($user, $isLendable): SecretaryLendingSetting {
-            $secretary = Secretary::query()->where('user_id', $user->id)->lockForUpdate()->firstOrFail();
+            $secretary = Secretary::query()->where('user_id', $user->id)->firstOrFail();
+            app(UndergroundProfileService::class)->lockForSecretary($secretary);
             $this->visitorCodes->allocate($user);
             DB::table('secretary_lending_settings')->insertOrIgnore([
                 'secretary_id' => $secretary->id, 'is_public' => false, 'is_available' => true,

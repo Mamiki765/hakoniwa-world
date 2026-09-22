@@ -1,12 +1,15 @@
 <?php
 
 use App\Application\InquirySubmissionService;
+use App\Application\SecretaryItemGrantService;
 use App\Application\SecretaryTurnService;
 use App\Application\Underground\UndergroundLendingRewardService;
+use App\Domain\Secretary\SecretaryItemCatalog;
 use App\Domain\Turn\TurnContext;
 use App\Domain\Turn\TurnRandomStreamFactory;
 use App\Domain\Turn\TurnState;
 use App\Models\Secretary;
+use App\Models\SecretarySurfaceState;
 use App\Models\TurnRun;
 use App\Models\UndergroundPartyMember;
 use App\Models\UndergroundProfile;
@@ -42,12 +45,11 @@ try {
             DB::table('worlds')->where('id', $fixture['world_id'])->lockForUpdate()->first();
             DB::table('nations')->where('world_id', $fixture['world_id'])->orderBy('id')->lockForUpdate()->get();
             $pause();
-            DB::table('secretaries')->where('id', $fixture['secretary_id'])->orderBy('id')->lock('for no key update')->get();
+            DB::table('secretary_surface_states')->where('secretary_id', $fixture['secretary_id'])->lockForUpdate()->get();
             DB::table('worlds')->where('id', $fixture['world_id'])->increment('current_turn');
         });
     } elseif ($operation === 'party') {
         DB::transaction(function () use ($fixture, $pause): void {
-            DB::table('secretaries')->where('id', $fixture['secretary_id'])->lock('for no key update')->first();
             DB::table('underground_profiles')->where('id', $fixture['profile_id'])->lockForUpdate()->first();
             $pause();
             UndergroundPartyMember::query()->create([
@@ -61,7 +63,6 @@ try {
         $partyId = DB::transaction(function () use ($fixture, $pause): int {
             $leaderSecretary = Secretary::query()
                 ->whereKey($fixture['leader_secretary_id'])
-                ->lock('for no key update')
                 ->firstOrFail();
             UndergroundProfile::query()
                 ->whereKey($fixture['leader_profile_id'])
@@ -122,15 +123,25 @@ try {
             $state->awardSecretaryExperience($nationId, $fixture['skill_key']);
             $state->awardSecretaryMonsterExperience($nationId, $fixture['turn_monster_award']);
         }
-        $pause();
-        $metrics = DB::transaction(fn (): array => $service->flushExperience($context));
+        $metrics = DB::transaction(function () use ($fixture, $service, $context, $pause): array {
+            app(SecretaryItemGrantService::class)->grant(
+                Secretary::query()->findOrFail($fixture['borrowed_secretary_id']),
+                SecretaryItemCatalog::ELF_BOW, 1, null, 'turn-isolation:grant',
+            );
+            $metrics = $service->flushExperience($context);
+            // Keep the early grant and flush locks until the FK snapshot and
+            // competing surface writer have both been observed by the parent.
+            $pause();
+
+            return $metrics;
+        });
         $emit(['status' => 'ok', 'metrics' => $metrics]);
         exit(0);
     } elseif ($operation === 'secretary_update') {
         DB::transaction(function () use ($fixture): void {
-            $secretary = Secretary::query()
+            $secretary = SecretarySurfaceState::query()
                 ->whereKey($fixture['borrowed_secretary_id'])
-                ->lock('for no key update')
+                ->lockForUpdate()
                 ->firstOrFail();
             $secretary->monster_experience += $fixture['concurrent_monster_award'];
             $secretary->save();

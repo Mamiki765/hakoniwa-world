@@ -276,7 +276,7 @@
 
 - Status: Decided
 - Implemented: Yes; PR102 persistence foundation only.
-- Decision: 地底RPGの恒久進行、将来のcombat/exploration progression、装備、探索基地、地下箱庭の解禁済みarea layer、Secretary固有の地下状態はSecretary-ownedとし、Nationの破棄・再作成を越えて保持する。PR102はSecretaryと1:1のlazy-created profileへ非負の`unlocked_area_layers`だけを保存し、`1 layer = 4 facility slots`をstorageせず派生する。梯子はslotではなく、空slot/cell row、surface World/Nation/MapCell/Turn identity、combat XP/level/checkpointを保存しない。profile初回作成はSecretary row lockとunique FKで直列化し、Secretaryが正式に削除された場合だけcurrent child lifecycleと同じcascadeで削除する。pure combat coreへEloquentを持ち込まない。
+- Decision: 地底RPGの恒久進行、将来のcombat/exploration progression、装備、探索基地、地下箱庭の解禁済みarea layer、Secretary固有の地下状態はSecretary-ownedとし、Nationの破棄・再作成を越えて保持する。PR102はSecretaryと1:1のlazy-created profileへ非負の`unlocked_area_layers`だけを保存し、`1 layer = 4 facility slots`をstorageせず派生する。梯子はslotではなく、空slot/cell row、surface World/Nation/MapCell/Turn identity、combat XP/level/checkpointを保存しない。profile初回作成は既存unique FKによる競合作成処理を用い、作成後はprofile rowで直列化する（4.4.0の[ロック隔離](../product/docs/architecture/secretary-lock-boundaries.md)で親Secretary row lockから変更）。Secretaryが正式に削除された場合だけcurrent child lifecycleと同じcascadeで削除する。pure combat coreへEloquentを持ち込まない。
 - Future boundary: 実際に解禁slotへ置く地下施設はNation-ownedとする。Nation破棄時に施設は消えるがSecretaryの解禁layer entitlementは残り、同じSecretaryの新Nationでは空配置から同じslot capacityを利用できる。施設、persistent combat run、request idempotency、resume、API/UIはPR102では実装しない。
 - Decision record: `docs/architecture/underground-combat-laboratory.md`、`docs/roadmap/3.0.0-alpha-underground.md`
 
