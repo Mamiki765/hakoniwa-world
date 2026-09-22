@@ -546,13 +546,13 @@ return [
         // Initial tuning values; measured with a fixed four-member party, without party-size scaling.
         'stages' => [
             'bahamul_beginner_1' => ['name' => '黒竜バハムル・初級1', 'level' => 100, 'item_level' => 130, 'previous' => null, 'abyssal_roar' => false,
-                'max_hp' => 42000, 'might' => 6500, 'spirit' => 1500, 'finesse' => 200, 'agility' => 80,
+                'max_hp' => 42000, 'might' => 600, 'spirit' => 600, 'finesse' => 200, 'agility' => 80,
                 'physical_defense' => 600, 'magical_defense' => 400, 'weapon_power' => 300, 'xp' => 10000, 'shards' => 10000],
             'bahamul_beginner_2' => ['name' => '黒竜バハムル・初級2', 'level' => 200, 'item_level' => 150, 'previous' => 'bahamul_beginner_1', 'abyssal_roar' => false,
-                'max_hp' => 100000, 'might' => 5400, 'spirit' => 1300, 'finesse' => 450, 'agility' => 100,
+                'max_hp' => 100000, 'might' => 1500, 'spirit' => 1500, 'finesse' => 450, 'agility' => 100,
                 'physical_defense' => 1800, 'magical_defense' => 1400, 'weapon_power' => 700, 'xp' => 25000, 'shards' => 25000],
             'bahamul_beginner_3' => ['name' => '黒竜バハムル・初級3', 'level' => 400, 'item_level' => 180, 'previous' => 'bahamul_beginner_2', 'abyssal_roar' => false,
-                'max_hp' => 140000, 'might' => 4500, 'spirit' => 3100, 'finesse' => 800, 'agility' => 150,
+                'max_hp' => 140000, 'might' => 3100, 'spirit' => 3100, 'finesse' => 800, 'agility' => 150,
                 'physical_defense' => 4800, 'magical_defense' => 3800, 'weapon_power' => 1600, 'xp' => 80000, 'shards' => 60000],
             'bahamul_intermediate_1' => ['name' => '黒竜バハムル・中級1', 'level' => 666, 'item_level' => 210, 'previous' => 'bahamul_beginner_3', 'abyssal_roar' => true,
                 'max_hp' => 360000, 'might' => 12000, 'spirit' => 6000, 'finesse' => 1200, 'agility' => 220,
