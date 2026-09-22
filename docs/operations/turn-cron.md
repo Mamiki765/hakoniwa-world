@@ -73,8 +73,11 @@ Before registering production cron:
 - Exit code `0`: the dry run completed, or a complete production pipeline committed.
 - Non-zero: the World was missing, a lock/idempotency guard rejected execution, the scaffold is incomplete, or execution failed.
 - A duplicate host trigger returns quickly because `flock` may reject it; even without `flock`, the PostgreSQL advisory lock rejects overlap.
-- On a Laravel failure, game state and `current_turn` roll back. The run history remains `failed` with bounded failure information.
-- `source=cron` does not retry an existing `failed` or `blocked` TurnRun. It exits non-zero without changing the run status, attempt count, ruleset, or saved seed.
+- 4.4.0 C1 retries only transaction-body PostgreSQL `40P01` / `40001` failures, at most three attempts including the first, within the same invocation. It requires a completed root rollback on the same connection/session. The World lock, run ID, target, ruleset and seed remain unchanged; the whole pipeline starts again with fresh attempt state. This applies to manual and cron invocations, not the shell wrapper.
+- Commit/after-commit failures, connection loss, caller-owned outer transactions, pipeline blocks and other SQLSTATEs are not automatically retried. A completed run is not relabelled failed by an after-commit exception.
+- `attempt_count` counts execution attempts, including C1 retries. Bounded `failure_context.transient_retries` records the prior attempt number, phase and SQLSTATE for this invocation, including when recovery succeeds. On terminal failure `phase`, `exception_class`, `sqlstate` and `attempts_this_invocation` describe the final failure. Success still has status `completed` and null `failure_code` / `failure_message`; historical retry diagnostics do not mean the turn is failed.
+- On a transaction-body failure, game state and `current_turn` roll back. If retries are exhausted or the failure is ineligible, the run remains `failed` with bounded failure information. Inspect commit/connection failures rather than assuming rollback from the command exit code alone.
+- `source=cron` still does not reopen an existing `failed` or `blocked` TurnRun on a later invocation. It exits non-zero without changing the run status, attempt count, ruleset, or saved seed. C1 does not implement C2 or eliminate operator intervention after three unsuccessful attempts.
 - Inspect the non-zero exit, application log, and `hakoniwa:turn:status`. Fix the cause, then explicitly retry as the operator:
 
   ```console
@@ -85,4 +88,4 @@ Before registering production cron:
 
 - Before every deploy, run `hakoniwa:release:preflight`. A pending, running, or failed next production TurnRun blocks deploy and must be explicitly resolved. Never carry an automatic retry across a release.
 
-If a command is interrupted after the database connection closes, the session advisory lock is released by PostgreSQL; the run record may still require operator diagnosis. Stale-run recovery, retry backoff and limits, and external notification are post-release work, not shell logic.
+If a command is interrupted after the database connection closes, the session advisory lock is released by PostgreSQL; the run record may still require operator diagnosis. Stale-run recovery, cross-invocation retry, retry backoff and external notification remain later work, not shell logic. The 4.4.0 exception to the initial D-02 no-automatic-retry policy is defined in [C1 implementation notes](../../product/docs/releases/4.4.0-turn-resilience-c1.md).

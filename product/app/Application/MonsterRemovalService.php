@@ -25,6 +25,17 @@ final class MonsterRemovalService
 
     public function __construct(private readonly TurnEventRecorder $events) {}
 
+    /** Discard objects mutated by the previous transaction before any phase runs. */
+    public function resetForAttempt(): void
+    {
+        $this->batch = null;
+        $this->batchTurnRunId = null;
+        $this->batchWorldId = null;
+        $this->batchAttemptCount = null;
+        $this->batchComplete = false;
+        $this->removedCount = 0;
+    }
+
     public function useBatch(MonsterTurnBatch $batch, TurnContext $context, bool $complete = true): void
     {
         $this->batch = $batch;
