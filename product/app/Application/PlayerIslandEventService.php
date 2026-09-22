@@ -416,7 +416,11 @@ final class PlayerIslandEventService
             return [
                 'id' => (int) $row->id,
                 'type' => (string) $row->event_type,
-                'message' => $this->majorNewsMessage((string) $row->event_type, $nationName),
+                'message' => $row->event_type === 'nation.abandoned'
+                    && ($metadata['reason'] ?? null) === 'administrative'
+                    && is_string($metadata['public_reason'] ?? null)
+                    ? "{$nationName}は運営により存在を消され、忘れ去られる。理由：{$metadata['public_reason']}"
+                    : $this->majorNewsMessage((string) $row->event_type, $nationName),
                 'importance' => 'notable',
                 'target_turn' => (int) $row->turn,
             ];

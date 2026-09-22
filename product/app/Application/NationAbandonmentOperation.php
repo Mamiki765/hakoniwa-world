@@ -41,9 +41,14 @@ final class NationAbandonmentOperation
         ?int $actorUserId,
         string $source,
         int $eventTurn,
+        ?string $publicReason = null,
     ): array {
-        if (! in_array($source, ['manual', 'automatic_idle'], true)) {
+        if (! in_array($source, ['manual', 'automatic_idle', 'administrative'], true)) {
             throw new DomainException('Nation abandonment source is invalid.');
+        }
+        $administrative = $source === 'administrative';
+        if ($administrative && ($actorUserId === null || trim($publicReason ?? '') === '')) {
+            throw new DomainException('Administrative abandonment requires an actor and public reason.');
         }
 
         $capital = NationCapital::query()->where('nation_id', $nation->id)->lockForUpdate()->first();
@@ -56,7 +61,7 @@ final class NationAbandonmentOperation
             ->where('role', 'owner')
             ->lockForUpdate()
             ->sole();
-        if ($actorUserId !== null && (int) $membership->user_id !== $actorUserId) {
+        if (! $administrative && $actorUserId !== null && (int) $membership->user_id !== $actorUserId) {
             throw new DomainException('Manual abandonment actor changed after authorization.');
         }
         $oldCapital = [
@@ -169,9 +174,11 @@ SQL, [$capitalCubeX, $oldCapital['y'], $capitalCubeSum, $radius]);
             'nation_id' => $nation->id,
             'x' => $oldCapital['x'],
             'y' => $oldCapital['y'],
-            'message' => $automatic
+            'message' => $administrative
+                ? "{$nation->name}は運営により存在を消され、忘れ去られる。理由：{$publicReason}"
+                : ($automatic
                 ? "{$nation->name}は放置され、忘れ去られる。"
-                : "{$nation->name}は破棄され、忘れ去られた。",
+                : "{$nation->name}は破棄され、忘れ去られた。"),
             'visibility' => 'public',
             'event_type' => 'nation.abandoned',
             'severity' => 'critical',
@@ -182,8 +189,9 @@ SQL, [$capitalCubeX, $oldCapital['y'], $capitalCubeSum, $radius]);
                 'nation_number' => $nation->nation_number,
                 'nation_name' => $nation->name,
                 'actor_user_id' => $actorUserId,
-                'actor' => $automatic ? 'system' : 'owner',
-                'reason' => $automatic ? 'idle_threshold' : 'manual_abandonment',
+                'actor' => $administrative ? 'administrator' : ($automatic ? 'system' : 'owner'),
+                'reason' => $administrative ? 'administrative' : ($automatic ? 'idle_threshold' : 'manual_abandonment'),
+                ...($administrative ? ['public_reason' => $publicReason, 'target_owner_user_id' => (int) $membership->user_id] : []),
                 'world_id' => $world->id,
                 'target_turn' => $eventTurn,
                 'current_turn' => $eventTurn,

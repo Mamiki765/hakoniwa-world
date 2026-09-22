@@ -6,6 +6,8 @@ import AnnouncementBody from './components/AnnouncementBody.vue';
 import CellDetails from './components/CellDetails.vue';
 import CommandQueuePanel from './components/CommandQueuePanel.vue';
 import GuideConversationTopicAdmin from './components/GuideConversationTopicAdmin.vue';
+import AdminOperationsPanel from './components/AdminOperationsPanel.vue';
+import AdminTurnControl from './components/AdminTurnControl.vue';
 import HexMap from './components/HexMap.vue';
 import IslandEventLog from './components/IslandEventLog.vue';
 import MessageBoard from './components/MessageBoard.vue';
@@ -118,6 +120,8 @@ const previewNation = ref<PublicNationDetail | null>(null);
 const mapSpace = ref<MapSpace | null>(null);
 const authoritativeCommandQueue = ref<CommandQueue | null>(null);
 const compensationGrants = ref<CompensationGrant[]>([]);
+const compensationHistory = ref(false);
+const adminOpened = ref(false);
 const compensationModalOpen = ref(false);
 const compensationLoading = ref(false);
 const compensationClaimingId = ref<number | null>(null);
@@ -125,7 +129,7 @@ const pendingCompensationClaim = ref<{ grantId: number; requestId: string } | nu
 const compensationError = ref('');
 const undergroundSurfaceMap = ref<UndergroundSurfaceMap | null>(null);
 const selectedUndergroundSlot = ref<UndergroundFacilityTarget | null>(null);
-const page = ref<'home' | 'announcements' | 'inquiry' | 'admin-inquiries' | 'guide-topics' | 'island' | 'preview' | 'resources' | 'trading-post' | 'secretary' | 'underground' | 'options' | 'account' | 'credits'>(
+const page = ref<'home' | 'announcements' | 'inquiry' | 'admin-inquiries' | 'guide-topics' | 'admin' | 'island' | 'preview' | 'resources' | 'trading-post' | 'secretary' | 'underground' | 'options' | 'account' | 'credits'>(
     window.location.pathname === '/credits'
         ? 'credits'
         : (window.location.pathname === '/underground' ? 'underground' : 'home'),
@@ -408,8 +412,7 @@ function handleDailyQuestProgress(quest: DailyQuestProgress): void {
 }
 
 async function loadCompensationGrants(): Promise<void> {
-    const currentNation = nation.value;
-    if (currentNation === null) {
+    if (user.value === null) {
         compensationGrants.value = [];
         compensationModalOpen.value = false;
         return;
@@ -417,10 +420,12 @@ async function loadCompensationGrants(): Promise<void> {
     compensationLoading.value = true;
     compensationError.value = '';
     try {
-        compensationGrants.value = await api<CompensationGrant[]>(
-            `/api/v1/nations/${currentNation.id}/compensation-grants`,
+        const pendingGrant = compensationGrants.value.find((grant) => grant.id === pendingCompensationClaim.value?.grantId);
+        const grants = await api<CompensationGrant[]>(
+            `/api/v1/me/compensation-grants${compensationHistory.value ? '?history=1' : ''}`,
         );
-        if (compensationGrants.value.length === 0) compensationModalOpen.value = false;
+        compensationGrants.value = pendingGrant && !grants.some((grant) => grant.id === pendingGrant.id)
+            ? [pendingGrant, ...grants] : grants;
     } catch (error) {
         compensationError.value = error instanceof Error ? error.message : '配布倉庫を読み込めませんでした。';
     } finally {
@@ -431,6 +436,7 @@ async function loadCompensationGrants(): Promise<void> {
 function openCompensationWarehouse(): void {
     compensationError.value = '';
     compensationModalOpen.value = true;
+    void loadCompensationGrants();
 }
 
 function closeCompensationWarehouse(): void {
@@ -440,8 +446,7 @@ function closeCompensationWarehouse(): void {
 }
 
 async function claimCompensation(grant: CompensationGrant): Promise<void> {
-    const currentNation = nation.value;
-    if (currentNation === null || compensationClaimingId.value !== null) return;
+    if (user.value === null || compensationClaimingId.value !== null) return;
     const currentPending = pendingCompensationClaim.value;
     if (currentPending !== null && currentPending.grantId !== grant.id) {
         compensationError.value = '結果が不明な配布を再確認してから、別の配布を受け取ってください。';
@@ -453,7 +458,7 @@ async function claimCompensation(grant: CompensationGrant): Promise<void> {
     compensationError.value = '';
     try {
         const result = await api<CompensationClaimResult>(
-            `/api/v1/nations/${currentNation.id}/compensation-grants/${grant.id}/claim`,
+            `/api/v1/me/compensation-grants/${grant.id}/claim`,
             {
                 method: 'POST',
                 body: JSON.stringify({ request_id: pending.requestId }),
@@ -462,12 +467,11 @@ async function claimCompensation(grant: CompensationGrant): Promise<void> {
         pendingCompensationClaim.value = null;
         compensationGrants.value = compensationGrants.value.flatMap((candidate) => {
             if (candidate.id !== grant.id) return [candidate];
-            return result.grant.status === 'claimed'
+            return result.grant.status === 'claimed' || result.grant.status === 'expired'
                 || result.grant.items.every((item) => item.remaining_amount < 1)
                 ? []
                 : [result.grant];
         });
-        if (compensationGrants.value.length === 0) compensationModalOpen.value = false;
         const labels = result.applied_now.flatMap((applied) => {
             if (applied.applied < 1) return [];
             const item = grant.items.find((candidate) => candidate.asset_key === applied.asset_key);
@@ -475,15 +479,15 @@ async function claimCompensation(grant: CompensationGrant): Promise<void> {
         });
         showRewardToast(labels.length > 0
             ? `配布倉庫から${labels.join('、')}を受け取りました。`
-            : '現在の所持上限まで受取済みです。残りは配布倉庫に保管されています。');
+            : result.grant.status === 'expired' ? '受取期限が過ぎたため、未受取分は失効しました。'
+                : '今受け取れる分はありません。残りは期限まで倉庫に保管されています。');
         const requestGeneration = nationStateGeneration;
         const refreshes = await Promise.allSettled([
             api<Nation | null>('/api/v1/me/nation').then((refreshedNation) => {
                 if (requestGeneration === nationStateGeneration) nation.value = refreshedNation;
             }),
-            api<CompensationGrant[]>(`/api/v1/nations/${currentNation.id}/compensation-grants`).then((grants) => {
+            api<CompensationGrant[]>('/api/v1/me/compensation-grants').then((grants) => {
                 compensationGrants.value = grants;
-                if (grants.length === 0) compensationModalOpen.value = false;
             }),
             api<CurrentUser>('/api/v1/me').then((refreshedUser) => { user.value = refreshedUser; }),
         ]);
@@ -492,7 +496,7 @@ async function claimCompensation(grant: CompensationGrant): Promise<void> {
             showRewardToast(compensationError.value);
         }
     } catch (error) {
-        if (error instanceof ApiError) pendingCompensationClaim.value = null;
+        if (error instanceof ApiError && error.status < 500) pendingCompensationClaim.value = null;
         compensationError.value = error instanceof Error ? error.message : '配布を受け取れませんでした。';
     } finally {
         compensationClaimingId.value = null;
@@ -1630,6 +1634,7 @@ async function abandonNation(): Promise<void> {
                         <span>{{ user.display_name }}</span>
                         <button v-if="!nation" type="button" @click="page = 'home'">島を作る</button>
                         <button type="button" @click="page = 'account'">アカウント</button>
+                        <button type="button" @click="openCompensationWarehouse">配布倉庫</button>
                     </div>
                     <button
                         v-if="!user.can_manage_inquiries"
@@ -1651,6 +1656,23 @@ async function abandonNation(): Promise<void> {
     <main :class="{ 'map-main': page === 'island' || page === 'preview' }">
         <p v-if="busy" class="status" role="status">読み込み中…</p>
         <p v-if="message" class="status error" role="alert">{{ message }}</p>
+
+        <AdminTurnControl
+            v-if="user?.can_manage_inquiries && worlds[0]"
+            v-show="page === 'home' || page === 'admin'"
+            :world-id="worlds[0].id"
+            @updated="loadPublicLobby"
+        />
+
+        <AdminOperationsPanel
+            v-if="adminOpened && user?.can_manage_inquiries && worlds[0]"
+            v-show="page === 'admin'"
+            :world-id="worlds[0].id"
+            @close="page = 'home'"
+            @announcements="openAnnouncements(1)"
+            @guide="page = 'guide-topics'"
+            @inquiries="openAdminInquiries(1)"
+        />
 
         <section v-if="page === 'home'" class="lobby">
             <div class="lobby-heading">
@@ -1706,6 +1728,7 @@ async function abandonNation(): Promise<void> {
             <section v-if="user?.can_manage_inquiries" class="inquiry-window" aria-labelledby="inquiry-heading">
                 <div class="section-heading">
                     <div><p class="eyebrow">CONTACT</p><h2 id="inquiry-heading">お問い合わせ</h2></div>
+                    <button type="button" @click="adminOpened = true; page = 'admin'">管理ページへ</button>
                     <button type="button" @click="openInquiry">お問い合わせを送る</button>
                 </div>
                 <ol v-if="latestInquiries.length" class="inquiry-list compact">
@@ -1717,14 +1740,6 @@ async function abandonNation(): Promise<void> {
                 </ol>
                 <p v-else class="empty-state">お問い合わせはまだありません。</p>
                 <button type="button" @click="openAdminInquiries(1)">すべて見る</button>
-            </section>
-
-            <section v-if="user?.can_manage_guide_topics" class="inquiry-window" aria-labelledby="guide-topic-heading">
-                <div class="section-heading">
-                    <div><p class="eyebrow">GUIDE CONVERSATIONS</p><h2 id="guide-topic-heading">案内人の会話</h2></div>
-                    <button type="button" @click="page = 'guide-topics'">会話を管理</button>
-                </div>
-                <p>「少しお話をする」に表示する話題と選択肢を登録します。</p>
             </section>
 
             <div class="lobby-grid">
@@ -1924,13 +1939,14 @@ async function abandonNation(): Promise<void> {
 
         <GuideConversationTopicAdmin
             v-else-if="user?.can_manage_guide_topics && page === 'guide-topics'"
-            @close="page = 'home'"
+            @close="page = 'admin'"
         />
 
         <section v-else-if="page === 'announcements'" class="announcement-page panel">
             <div class="section-heading">
                 <div><p class="eyebrow">ANNOUNCEMENTS</p><h1>お知らせ</h1></div>
                 <div class="announcement-actions">
+                    <button v-if="user?.can_manage_announcements" type="button" @click="adminOpened = true; page = 'admin'">管理ページへ</button>
                     <button type="button" @click="page = 'home'">TOPへ戻る</button>
                     <button v-if="user?.can_manage_announcements" type="button" @click="editAnnouncement()">新規作成</button>
                 </div>
@@ -2083,7 +2099,7 @@ async function abandonNation(): Promise<void> {
                 </details>
             </header>
             <button
-                v-if="compensationGrants.length > 0"
+                v-if="!compensationHistory && compensationGrants.length > 0"
                 class="compensation-banner"
                 type="button"
                 @click="openCompensationWarehouse"
@@ -2565,7 +2581,7 @@ async function abandonNation(): Promise<void> {
         </section>
     </main>
 
-    <div v-if="compensationModalOpen && nation" class="modal-backdrop" @click.self="closeCompensationWarehouse">
+    <div v-if="compensationModalOpen && user" class="modal-backdrop" @click.self="closeCompensationWarehouse">
         <section class="compensation-modal" role="dialog" aria-modal="true" aria-labelledby="compensation-modal-title">
             <header>
                 <div>
@@ -2574,18 +2590,24 @@ async function abandonNation(): Promise<void> {
                 </div>
                 <button type="button" aria-label="閉じる" :disabled="compensationClaimingId !== null" @click="closeCompensationWarehouse">×</button>
             </header>
-            <p class="compensation-lead">運営から届いた資源を受け取れます。所持上限を超える分は倉庫に残ります。</p>
+            <p class="compensation-lead">運営からの配布は365日以内に受け取れます。所持上限を超える分と、島なしの地上資産は期限まで倉庫に残ります。</p>
+            <label><input v-model="compensationHistory" type="checkbox" :disabled="compensationClaimingId !== null || pendingCompensationClaim !== null" @change="loadCompensationGrants">受取済み・期限切れの履歴を見る（直近100件）</label>
             <p v-if="compensationError" class="field-error" role="alert">{{ compensationError }}</p>
             <p v-if="compensationLoading" class="empty-state">配布内容を確認しています…</p>
+            <p v-else-if="compensationGrants.length === 0" class="empty-state">該当する配布はありません。</p>
             <article v-for="grant in compensationGrants" :key="grant.id" class="compensation-grant">
                 <p class="compensation-reason">{{ grant.reason }}</p>
+                <p v-if="grant.status === 'expired'">受取期限切れ（未受取分は失効）</p>
+                <p v-else-if="grant.status === 'claimed'">受取済み</p>
+                <p v-else>あと{{ grant.remaining_days }}日 ／ 期限：{{ formatAnnouncementDate(grant.expires_at) }}</p>
                 <dl>
-                    <div v-for="item in grant.items.filter((candidate) => candidate.remaining_amount > 0)" :key="item.asset_key">
+                    <div v-for="item in grant.items.filter((candidate) => compensationHistory || candidate.remaining_amount > 0)" :key="item.asset_key">
                         <dt>{{ item.label }}</dt>
-                        <dd>{{ formatCompensationItem(item) }}</dd>
+                        <dd>{{ compensationHistory ? `受取済み ${formatCompensationItem(item, item.claimed_amount)} ／ 未受取 ${formatCompensationItem(item)}` : formatCompensationItem(item) }}</dd>
                     </div>
                 </dl>
                 <button
+                    v-if="!compensationHistory"
                     class="button primary"
                     type="button"
                     :disabled="compensationClaimingId !== null || (pendingCompensationClaim !== null && pendingCompensationClaim.grantId !== grant.id)"

@@ -3,6 +3,7 @@
 namespace App\Application;
 
 use App\Domain\Turn\TurnContext;
+use App\Domain\World\WorldEventContext;
 use App\Models\Nation;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\DB;
@@ -11,7 +12,7 @@ final class TurnEventRecorder
 {
     /** @param array<string, mixed> $metadata */
     public function record(
-        TurnContext $context,
+        TurnContext|WorldEventContext $context,
         string $eventType,
         ?Model $subject = null,
         array $metadata = [],
@@ -67,7 +68,7 @@ final class TurnEventRecorder
      * @return array<string, mixed>
      */
     private function row(
-        TurnContext $context,
+        TurnContext|WorldEventContext $context,
         string $eventType,
         ?Model $subject,
         array $metadata,
@@ -83,7 +84,7 @@ final class TurnEventRecorder
         $y = isset($metadata['y']) && is_int($metadata['y']) ? $metadata['y'] : null;
 
         return [
-            'actor_user_id' => null,
+            'actor_user_id' => $context instanceof WorldEventContext ? $context->actorUserId : null,
             'world_id' => $context->world->id,
             'turn' => $context->targetTurn,
             'nation_id' => $nationId,
@@ -96,7 +97,7 @@ final class TurnEventRecorder
             'subject_type' => $subject?->getMorphClass(),
             'subject_id' => $subject?->getKey(),
             'metadata' => json_encode([
-                'turn_run_id' => $context->run->id,
+                'turn_run_id' => $context instanceof TurnContext ? $context->run->id : null,
                 'world_id' => $context->world->id,
                 'target_turn' => $context->targetTurn,
                 ...$metadata,

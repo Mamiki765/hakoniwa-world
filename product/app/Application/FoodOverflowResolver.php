@@ -8,6 +8,7 @@ use App\Domain\Economy\InventorySalePlanner;
 use App\Domain\Economy\NationCapacities;
 use App\Domain\Economy\NationCapacityResolver;
 use App\Domain\Turn\TurnContext;
+use App\Domain\World\WorldEventContext;
 use App\Models\Nation;
 use App\Models\NationResource;
 use App\Models\ResourceDefinition;
@@ -34,7 +35,7 @@ final class FoodOverflowResolver
      * }
      */
     public function resolve(
-        TurnContext $context,
+        TurnContext|WorldEventContext $context,
         Nation $nation,
         ResourceDefinition $resource,
         CapacityAdditionResult $foodCredit,
@@ -140,7 +141,7 @@ final class FoodOverflowResolver
 
     /** @return array{requested_overflow_tons: int, sold_tons: int, revenue: int, discarded_tons: int, food_capacity_tons: int, money_capacity: int} */
     private function resolveLocked(
-        TurnContext $context,
+        TurnContext|WorldEventContext $context,
         Nation $lockedNation,
         ResourceDefinition $resource,
         CapacityAdditionResult $foodCredit,

@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\Api\AdminGuideConversationTopicController;
 use App\Http\Controllers\Api\AdminInquiryController;
+use App\Http\Controllers\Api\AdminOperationsController;
 use App\Http\Controllers\Api\AnnouncementController;
 use App\Http\Controllers\Api\ApiController;
 use App\Http\Controllers\Api\CommandQueueController;
@@ -69,6 +70,14 @@ Route::prefix('api/v1/public')
 Route::prefix('api/v1/admin')
     ->middleware([PrivateApiResponse::class, RequireAnnouncementAdmin::class])
     ->group(function (): void {
+        Route::get('/receipt-purge/status', [AdminOperationsController::class, 'purgeStatus']);
+        Route::get('/worlds/{world}/operations', [AdminOperationsController::class, 'overview']);
+        Route::post('/worlds/{world}/turn-attempt', [AdminOperationsController::class, 'advanceTurn']);
+        Route::get('/worlds/{world}/turn-status', [AdminOperationsController::class, 'turnStatus']);
+        Route::post('/worlds/{world}/operations/{operation}/preview', [AdminOperationsController::class, 'preview'])
+            ->whereIn('operation', ['distribution', 'abandonment', 'purge']);
+        Route::post('/worlds/{world}/operations/{operation}/apply', [AdminOperationsController::class, 'apply'])
+            ->whereIn('operation', ['distribution', 'abandonment', 'purge']);
         Route::get('/inquiries/latest', [AdminInquiryController::class, 'latest']);
         Route::get('/inquiries', [AdminInquiryController::class, 'index']);
         Route::get('/inquiries/{inquiryId}', [AdminInquiryController::class, 'show'])
@@ -90,6 +99,8 @@ Route::get('/api/v1/secretaries/{secretary}', [SecretaryController::class, 'publ
 
 Route::prefix('api/v1')->middleware(['auth', PrivateApiResponse::class])->group(function (): void {
     Route::get('/me', [ApiController::class, 'me']);
+    Route::get('/me/compensation-grants', [CompensationWarehouseController::class, 'mine']);
+    Route::post('/me/compensation-grants/{compensationGrant}/claim', [CompensationWarehouseController::class, 'claimMine']);
     Route::post('/me/daily-login', [DailyRewardController::class, 'login'])->middleware('throttle:30,1');
     Route::post('/me/daily-quests/development-opened', [DailyRewardController::class, 'developmentOpened'])
         ->middleware('throttle:30,1');

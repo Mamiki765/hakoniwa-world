@@ -80,8 +80,10 @@ export interface CompensationGrant {
     id: number;
     grant_key: string;
     reason: string;
-    status: 'pending' | 'partial' | 'claimed';
+    status: 'pending' | 'partial' | 'claimed' | 'expired';
     claimed_at: string | null;
+    expires_at: string;
+    remaining_days: number;
     items: CompensationGrantItem[];
 }
 

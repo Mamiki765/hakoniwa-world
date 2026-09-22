@@ -27,6 +27,7 @@ final class TurnScheduleStatusTest extends TestCase
         config(['app.timezone' => 'UTC', 'hakoniwa.turn_schedule.grace_minutes' => 15]);
         $world = $this->lightweightWorld();
         $this->turnRun($world->id, 1, TurnRun::STATUS_COMPLETED, '2026-08-09T13:00:00Z'); // 22:00 JST
+        $world->update(['turn_schedule_origin_at' => '2026-08-09T13:00:00Z']);
         Carbon::setTestNow('2026-08-09T15:00:00Z'); // 00:00 JST on the next date
 
         $this->getJson("/api/v1/public/worlds/{$world->id}/summary")
@@ -42,6 +43,7 @@ final class TurnScheduleStatusTest extends TestCase
         config(['hakoniwa.turn_schedule.grace_minutes' => 15]);
         $world = $this->lightweightWorld();
         $this->turnRun($world->id, 1, TurnRun::STATUS_COMPLETED, '2026-08-09T13:01:00Z');
+        $world->update(['turn_schedule_origin_at' => '2026-08-09T13:00:00Z']);
 
         Carbon::setTestNow('2026-08-09T15:15:00Z');
         $this->getJson("/api/v1/public/worlds/{$world->id}/summary")
@@ -83,6 +85,7 @@ final class TurnScheduleStatusTest extends TestCase
         $world = $this->lightweightWorld();
         foreach (['2026-01-10T15:00:00Z', '2026-08-10T15:00:00Z'] as $utcMidnightJst) {
             Carbon::setTestNow($utcMidnightJst);
+            $world->update(['turn_schedule_origin_at' => CarbonImmutable::parse($utcMidnightJst)->subHours(2)]);
             $this->getJson("/api/v1/public/worlds/{$world->id}/summary")
                 ->assertOk()
                 ->assertJsonPath('data.next_scheduled_turn_at', CarbonImmutable::parse($utcMidnightJst)->toIso8601String());

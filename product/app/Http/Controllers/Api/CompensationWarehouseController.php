@@ -14,6 +14,27 @@ use Illuminate\Http\Request;
 
 final class CompensationWarehouseController extends Controller
 {
+    public function mine(Request $request, CompensationWarehouseService $warehouse): JsonResponse
+    {
+        $user = $request->user();
+        abort_unless($user instanceof User, 401);
+
+        return response()->json(['data' => $warehouse->forUser($user, $request->boolean('history'))]);
+    }
+
+    public function claimMine(Request $request, CompensationGrant $compensationGrant, CompensationWarehouseService $warehouse): JsonResponse
+    {
+        $user = $request->user();
+        abort_unless($user instanceof User, 401);
+        abort_unless($compensationGrant->recipient_user_id === $user->id, 404);
+        $validated = $request->validate(['request_id' => ['required', 'uuid']]);
+        try {
+            return response()->json(['data' => $warehouse->claim($user, $compensationGrant, $validated['request_id'])]);
+        } catch (DomainException $exception) {
+            return response()->json(['code' => 'compensation_claim_failed', 'message' => $exception->getMessage()], 409);
+        }
+    }
+
     public function index(
         Request $request,
         Nation $nation,
@@ -40,7 +61,7 @@ final class CompensationWarehouseController extends Controller
         ]);
 
         try {
-            $result = $warehouse->claim($user, $nation, $compensationGrant, $validated['request_id']);
+            $result = $warehouse->claim($user, $compensationGrant, $validated['request_id']);
         } catch (DomainException $exception) {
             return response()->json([
                 'code' => 'compensation_claim_failed',
