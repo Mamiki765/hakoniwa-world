@@ -1,9 +1,10 @@
-name: Mirror main and tags to Forgejo
+name: Mirror main, release branches and tags to Forgejo
 
 on:
   push:
     branches:
       - main
+      - "release/*"
     tags:
       - "*"
   workflow_dispatch:
@@ -17,6 +18,7 @@ concurrency:
 
 jobs:
   mirror:
+    if: ${{ github.event_name != 'push' || !github.event.deleted }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     env:
@@ -64,16 +66,42 @@ jobs:
 
           case "$GITHUB_REF_TYPE" in
             branch)
-              if [[ "$GITHUB_REF_NAME" != "main" ]]; then
+              if [[ "$GITHUB_REF_NAME" != "main" && ! "$GITHUB_REF_NAME" =~ ^release/[^/]+$ ]]; then
                 echo "Refusing to mirror an unexpected branch: $GITHUB_REF_NAME"
                 exit 1
               fi
-              git fetch --no-tags forgejo refs/heads/main:refs/remotes/forgejo/main
-              if ! git merge-base --is-ancestor refs/remotes/forgejo/main "$GITHUB_SHA"; then
-                echo "Forgejo main is not an ancestor of GitHub main; refusing to rewrite or merge history."
+              target="refs/heads/$GITHUB_REF_NAME"
+              tracking="refs/remotes/forgejo/$GITHUB_REF_NAME"
+              git check-ref-format "$target"
+              remote_status=0
+              git ls-remote --exit-code --heads forgejo "$target" >/dev/null || remote_status=$?
+              case "$remote_status" in
+                0)
+                  git fetch --no-tags forgejo "$target:$tracking"
+                  if ! git merge-base --is-ancestor "$tracking" "$GITHUB_SHA"; then
+                    echo "Forgejo $GITHUB_REF_NAME is not an ancestor of the selected GitHub commit; refusing to rewrite or merge history."
+                    exit 1
+                  fi
+                  ;;
+                2)
+                  if [[ "$GITHUB_REF_NAME" == "main" ]]; then
+                    echo "Forgejo main is missing; refusing to recreate it automatically."
+                    exit 1
+                  fi
+                  echo "Creating the missing release branch: $GITHUB_REF_NAME"
+                  ;;
+                *)
+                  echo "Unable to inspect the Forgejo ref; refusing to treat an access failure as a missing branch."
+                  exit "$remote_status"
+                  ;;
+              esac
+              git push forgejo "$GITHUB_SHA:$target"
+              actual="$(git ls-remote --heads forgejo "$target" | awk '{print $1}')"
+              if [[ "$actual" != "$GITHUB_SHA" ]]; then
+                echo "Forgejo branch SHA did not match after push."
                 exit 1
               fi
-              git push forgejo "$GITHUB_SHA:refs/heads/main"
+              echo "Verified $GITHUB_REF_NAME at $actual"
               ;;
             tag)
               git show-ref --verify --quiet "refs/tags/$GITHUB_REF_NAME"
