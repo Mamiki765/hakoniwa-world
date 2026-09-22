@@ -2,8 +2,10 @@
 
 namespace Tests\Underground\Feature;
 
+use App\Application\Underground\BorrowedSecretarySnapshotFactory;
 use App\Application\Underground\UndergroundAlphaV1PlayerCatalog;
 use App\Application\Underground\UndergroundBattleHistoryCompactor;
+use App\Application\Underground\UndergroundEquipmentDropService;
 use App\Application\Underground\UndergroundEquipmentLoadoutResolver;
 use App\Application\Underground\UndergroundReceiptPurgeService;
 use App\Application\Underground\UndergroundReceiptRollupService;
@@ -18,6 +20,7 @@ use App\Models\UndergroundTrialProgress;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Tests\Concerns\CreatesTestWorlds;
 use Tests\Support\UndergroundPlayerAccessTestCase;
@@ -26,6 +29,72 @@ final class UndergroundEquipmentAndRuntimeTest extends UndergroundPlayerAccessTe
 {
     use CreatesTestWorlds;
     use RefreshDatabase;
+
+    public function test_resonance_uses_separate_storage_and_survives_equip_retry_and_combat_with_a_boss_weapon(): void
+    {
+        [$user, $secretary] = $this->secretaryUser('Resonance secretary');
+        $user->forceFill(['visitor_code' => 'RESON001'])->save();
+        $profile = $this->openEquipmentProfile($secretary);
+        $this->actingAs($user)->getJson('/api/v1/me/underground/main')->assertOk();
+        $sourceBattle = UndergroundBattle::query()->where('underground_profile_id', $profile->id)
+            ->where('activity_type', UndergroundBattle::ACTIVITY_TUTORIAL)->sole();
+        // Reproduce the supported pre-G slot constraint while the existing starter remains owned.
+        DB::statement("ALTER TABLE underground_owned_equipment DROP CONSTRAINT underground_owned_equipment_slot_check,
+            ADD CONSTRAINT underground_owned_equipment_slot_check CHECK (equipped_slot IS NULL OR equipped_slot IN
+            ('weapon', 'armor', 'accessory_1', 'accessory_2', 'accessory_3'))");
+        (require database_path('migrations/2026_09_22_070000_add_underground_resonance_equipment_slot.php'))->up();
+        $items = [];
+        foreach (['weapon', 'resonance'] as $category) {
+            $rewardBattle = $sourceBattle->replicate();
+            $rewardBattle->request_id = (string) Str::uuid();
+            $rewardBattle->save();
+            $generated = app(UndergroundRuntimeEquipmentGenerator::class)->generate(
+                210, 'bahamul', 'unique', $category, $category === 'weapon' ? 'crystal_staff' : null,
+                null, 4404, 'bahamul-equipment-test:'.$category,
+            );
+            $items[$category] = UndergroundOwnedEquipment::query()->create([
+                'underground_profile_id' => $profile->id, 'definition_key' => $generated['key'],
+                'catalog_identity' => 'secretary-underground-shop-equipment-alpha-v3',
+                'grant_key' => 'drop:bahamul:'.$category, 'instance_kind' => 'generated',
+                'instance_identity' => $generated['instance_identity'], 'generator_identity' => $generated['generator_identity'],
+                'generated_payload' => $generated, 'source_battle_id' => $rewardBattle->id, 'acquired_at' => now(),
+            ]);
+        }
+        config(['underground-equipment.vault_capacity' => 2]);
+        $this->assertSame(0, app(UndergroundEquipmentDropService::class)->remainingVaultCapacity($profile));
+        $this->assertSame(49, app(UndergroundEquipmentDropService::class)->remainingVaultCapacity($profile, 'resonance'));
+        $this->getJson('/api/v1/me/underground/equipment/vault')->assertOk()
+            ->assertJsonPath('data.total', 2);
+        $this->getJson('/api/v1/me/underground/equipment/vault?inventory=resonance')->assertOk()
+            ->assertJsonPath('data.total', 1)->assertJsonPath('data.capacity', 50)
+            ->assertJsonPath('data.items.0.id', $items['resonance']->id)
+            ->assertJsonPath('data.bulk_sell_options.categories.0.key', 'resonance');
+        foreach ($items as $slot => $item) {
+            $request = ['request_id' => (string) Str::uuid(), 'item_id' => $item->id];
+            $first = $this->putJson('/api/v1/me/underground/equipment/equipped', $request)->assertOk()
+                ->assertJsonPath('data.vault.equipped.'.$slot.'.id', $item->id);
+            $this->putJson('/api/v1/me/underground/equipment/equipped', $request)->assertOk()->assertExactJson($first->json());
+        }
+        $loadout = app(UndergroundEquipmentLoadoutResolver::class)->combatLoadout($profile->fresh());
+        $this->assertSame('miracle', $loadout['unique_effect']['category']);
+        $resonanceModifiers = $items['resonance']->generated_payload['modifiers'];
+        $this->assertSame($resonanceModifiers, array_intersect_key($loadout['modifiers'], $resonanceModifiers));
+        $factory = app(BorrowedSecretarySnapshotFactory::class);
+        $withoutCrystal = $factory->create($secretary->fresh(['user', 'images']), $profile->fresh(),
+            $profile->combat_level, ['weapon' => 210], $user, false);
+        $this->assertSame([], array_intersect_key($withoutCrystal['effective_equipment']['modifiers'], $resonanceModifiers));
+        $synced = $factory->create($secretary->fresh(['user', 'images']), $profile->fresh(),
+            $profile->combat_level, ['weapon' => 210, 'resonance' => 130], $user, false);
+        $this->assertSame(130, collect($synced['effective_equipment']['items'])->firstWhere('equipped_slot', 'resonance')['item_level']);
+        $this->assertLessThan($resonanceModifiers['resonance_area_damage_bps'], $synced['effective_equipment']['modifiers']['resonance_area_damage_bps']);
+        $this->postJson('/api/v1/me/underground/explore', ['request_id' => (string) Str::uuid()])->assertOk();
+        $this->assertEquals($items['resonance']->generated_payload, $items['resonance']->fresh()->generated_payload);
+        $this->deleteJson('/api/v1/me/underground/equipment/equipped/resonance', ['request_id' => (string) Str::uuid()])
+            ->assertOk()->assertJsonPath('data.vault.equipped.resonance', null);
+        $this->postJson('/api/v1/me/underground/equipment/vault/bulk-sell/preview', [
+            'rarities' => ['unique'], 'categories' => ['resonance'], 'weapon_styles' => [],
+        ])->assertOk()->assertJsonPath('data.count', 1)->assertJsonPath('data.items.0.id', $items['resonance']->id);
+    }
 
     public function test_equipment_shop_vault_purchase_sell_and_equip_are_owner_scoped_atomic_and_idempotent(): void
     {
@@ -705,6 +774,8 @@ final class UndergroundEquipmentAndRuntimeTest extends UndergroundPlayerAccessTe
             23,
             'generated-equipment-feature-test',
         );
+        // Supported persisted v1 equipment must still load after the generator advances.
+        $generated['generator_identity'] = 'secretary-underground-drop-equipment-alpha-v1';
         $item = UndergroundOwnedEquipment::query()->create([
             'underground_profile_id' => $profile->id,
             'definition_key' => $generated['key'],

@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Support\Carbon;
@@ -49,6 +50,19 @@ final class UndergroundOwnedEquipment extends Model
             'generated_payload' => 'array',
             'acquired_at' => 'immutable_datetime',
         ];
+    }
+
+    /** @param Builder<static> $query */
+    public function scopeInventory(Builder $query, string $inventory = 'equipment'): void
+    {
+        if ($inventory === 'resonance') {
+            $query->where('generated_payload->category', 'resonance');
+        } else {
+            $query->where(function (Builder $items): void {
+                $items->whereNull('generated_payload')
+                    ->orWhere('generated_payload->category', '!=', 'resonance');
+            });
+        }
     }
 
     /** @return BelongsTo<UndergroundProfile, $this> */

@@ -51,6 +51,35 @@ afterEach(() => {
 });
 
 describe('Underground equipment navigation', () => {
+    it('keeps crystal storage and bulk sale separate and displays both identical affixes', async () => {
+        let previewBody: unknown;
+        const crystal = item({ category: 'resonance', name: '黒竜の共鳴結晶', rarity: 'unique',
+            affixes: [0, 1].map(() => ({ key: 'area', label: '範囲攻撃強化', kind: 'modifier', value: 900 })) });
+        stubUndergroundFetch(vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+            const url = new URL(String(input), 'http://localhost');
+            if (url.pathname.endsWith('/preview')) {
+                previewBody = JSON.parse(String(init?.body));
+                return response({ catalog_identity: 'test-catalog', items: [crystal], count: 1, total_sell_price: 180 });
+            }
+            const resonance = url.searchParams.get('inventory') === 'resonance';
+            return response({ catalog_identity: 'test-catalog', used: 1, capacity: resonance ? 50 : 500, equipped,
+                items: resonance ? [crystal] : [item()], page: 1, per_page: 50, last_page: 1, total: 1,
+                bulk_sell_options: { rarities: [{ key: 'unique', label: 'ユニーク' }],
+                    categories: [{ key: resonance ? 'resonance' : 'accessory', label: resonance ? '共鳴結晶' : 'アクセサリー' }],
+                    weapon_styles: [] } });
+        }));
+        const wrapper = mount(UndergroundEquipmentVault);
+        await flushPromises();
+        await wrapper.get('nav[aria-label="宝物庫の種類"] button:last-child').trigger('click');
+        await flushPromises();
+        expect(wrapper.get('.underground-vault-capacity').text()).toContain('1 / 50');
+        expect(wrapper.get('.underground-equipment-card').text().match(/範囲攻撃強化/g)).toHaveLength(2);
+        await wrapper.get('.underground-bulk-preview-button').trigger('click');
+        await flushPromises();
+        expect(previewBody).toMatchObject({ categories: ['resonance'], weapon_styles: [] });
+        wrapper.unmount();
+    });
+
     it('resets to page one when sorting and restores the chosen rarity sort on reopening', async () => {
         const paths: string[] = [];
         stubUndergroundFetch(vi.fn(async (input: RequestInfo | URL) => {

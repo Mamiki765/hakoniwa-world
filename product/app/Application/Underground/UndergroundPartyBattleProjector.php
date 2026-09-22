@@ -117,6 +117,9 @@ final class UndergroundPartyBattleProjector
         if (($row['reason'] ?? null) === 'outrage_chance') {
             $action['label'] = '無礼者！';
         }
+        if (is_string($row['equipment_effect_label'] ?? null)) {
+            $action['label'] = $row['equipment_effect_label'];
+        }
         $actorId = is_string($row['actor_id'] ?? null) ? $row['actor_id'] : null;
         $targetId = is_string($row['target_id'] ?? null) ? $row['target_id'] : null;
         $action['actor_name'] = $actorId !== null && is_array($members[$actorId] ?? null)

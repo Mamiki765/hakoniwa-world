@@ -24,12 +24,12 @@ const shop = ref<ShopResponse | null>(null);
 const busy = ref(false);
 const loading = ref(true);
 const error = ref('');
-const category = ref<EquipmentItem['category']>('weapon');
+const category = ref<keyof typeof categoryLabels>('weapon');
 const weaponStyle = ref('all');
 const confirmItem = ref<EquipmentItem | null>(null);
 const pending = ref<{ fingerprint: string; requestId: string } | null>(null);
 
-const categoryLabels: Record<EquipmentItem['category'], string> = { weapon: '武器', armor: '防具', accessory: 'アクセサリー' };
+const categoryLabels = { weapon: '武器', armor: '防具', accessory: 'アクセサリー' };
 const styleLabels: Record<string, string> = { dagger: '短剣', rapier: '細身剣', longsword: '長剣', crystal_staff: '輝石杖' };
 const slotLabels: Record<EquipmentSlot, string> = {
     weapon: '武器',
@@ -37,6 +37,7 @@ const slotLabels: Record<EquipmentSlot, string> = {
     accessory_1: 'アクセサリー1',
     accessory_2: 'アクセサリー2',
     accessory_3: 'アクセサリー3',
+    resonance: '共鳴結晶',
 };
 function slotLabel(slot: EquipmentSlot | null | undefined): string {
     return slot ? slotLabels[slot] : 'アクセサリー';
@@ -128,7 +129,7 @@ onMounted(() => { void loadShop(); });
         <p v-if="error" class="status error" role="alert">{{ error }}</p>
         <template v-if="shop">
             <nav class="underground-equipment-tabs" aria-label="装備カテゴリ">
-                <button v-for="label in (Object.keys(categoryLabels) as EquipmentItem['category'][])" :key="label" type="button" :aria-pressed="category === label" @click="category = label">{{ categoryLabels[label] }}</button>
+                <button v-for="label in (Object.keys(categoryLabels) as (keyof typeof categoryLabels)[])" :key="label" type="button" :aria-pressed="category === label" @click="category = label">{{ categoryLabels[label] }}</button>
             </nav>
             <div v-if="category === 'weapon'" class="underground-equipment-style-tabs" aria-label="武器スタイル">
                 <button type="button" :aria-pressed="weaponStyle === 'all'" @click="weaponStyle = 'all'">すべて</button>

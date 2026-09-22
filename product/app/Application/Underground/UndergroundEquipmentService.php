@@ -29,7 +29,7 @@ final readonly class UndergroundEquipmentService
     ];
 
     /** @var list<string> */
-    public const BULK_SELL_CATEGORY_KEYS = ['weapon', 'armor', 'accessory'];
+    public const BULK_SELL_CATEGORY_KEYS = ['weapon', 'armor', 'accessory', 'resonance'];
 
     public function __construct(
         private UndergroundEquipmentCatalog $catalog,
@@ -92,7 +92,7 @@ final readonly class UndergroundEquipmentService
     }
 
     /** @return array<string, mixed> */
-    public function vault(User $user, int $page, string $sort = 'newest'): array
+    public function vault(User $user, int $page, string $sort = 'newest', string $inventory = 'equipment'): array
     {
         if ($page < 1) {
             throw new UndergroundRuntimeException('underground_vault_page_invalid', '宝物庫のpageを確認してください。');
@@ -102,10 +102,15 @@ final readonly class UndergroundEquipmentService
             throw new UndergroundRuntimeException('underground_vault_sort_invalid', '宝物庫の並び順を確認してください。');
         }
 
-        return $this->withLockedOpenProfile($user, function (UndergroundProfile $profile) use ($page, $sort): array {
+        if (! in_array($inventory, ['equipment', 'resonance'], true)) {
+            throw new UndergroundRuntimeException('underground_vault_inventory_invalid', '所持品の種類を確認してください。');
+        }
+
+        return $this->withLockedOpenProfile($user, function (UndergroundProfile $profile) use ($page, $sort, $inventory): array {
             $perPage = $this->catalog->pageSize();
             $total = UndergroundOwnedEquipment::query()
                 ->where('underground_profile_id', $profile->id)
+                ->inventory($inventory)
                 ->count();
             $lastPage = max(1, (int) ceil($total / $perPage));
             if ($page > $lastPage) {
@@ -113,6 +118,7 @@ final readonly class UndergroundEquipmentService
             }
             $items = UndergroundOwnedEquipment::query()
                 ->where('underground_profile_id', $profile->id)
+                ->inventory($inventory)
                 ->orderByDesc('acquired_at')
                 ->orderByDesc('id')
                 ->get()
@@ -142,9 +148,10 @@ final readonly class UndergroundEquipmentService
             $items = array_slice($items, ($page - 1) * $perPage, $perPage);
 
             return [
-                ...$this->loadout->summary($profile),
+                ...$this->loadout->summary($profile, $inventory),
+                'inventory' => $inventory,
                 'catalog_identity' => $this->catalog->identity(),
-                'bulk_sell_options' => $this->bulkSellOptions(),
+                'bulk_sell_options' => $this->bulkSellOptions($inventory),
                 'items' => $items,
                 'sort' => $sort,
                 'page' => $page,
@@ -237,6 +244,7 @@ final readonly class UndergroundEquipmentService
                 }
                 $used = UndergroundOwnedEquipment::query()
                     ->where('underground_profile_id', $profile->id)
+                    ->inventory()
                     ->count();
                 if ($used >= $this->catalog->vaultCapacity()) {
                     throw new UndergroundRuntimeException('underground_vault_full', '宝物庫に空きがありません。');
@@ -460,8 +468,8 @@ final readonly class UndergroundEquipmentService
         if ($slot === 'accessory') {
             $slot = 'accessory_1';
         }
-        if (! in_array($slot, ['armor', ...UndergroundEquipmentCatalog::ACCESSORY_SLOTS], true)) {
-            throw new UndergroundRuntimeException('underground_equipment_slot_invalid', '武器は外せません。防具またはアクセサリーを指定してください。');
+        if (! in_array($slot, ['armor', 'resonance', ...UndergroundEquipmentCatalog::ACCESSORY_SLOTS], true)) {
+            throw new UndergroundRuntimeException('underground_equipment_slot_invalid', '武器は外せません。防具・アクセサリー・共鳴結晶を指定してください。');
         }
 
         return $this->mutate(
@@ -673,7 +681,7 @@ final readonly class UndergroundEquipmentService
      *   weapon_styles: list<array{key: string, label: string}>
      * }
      */
-    private function bulkSellOptions(): array
+    private function bulkSellOptions(string $inventory): array
     {
         return [
             'rarities' => [
@@ -684,12 +692,14 @@ final readonly class UndergroundEquipmentService
                 ['key' => 'relic', 'label' => 'レリック'],
                 ['key' => 'unique', 'label' => 'ユニーク'],
             ],
-            'categories' => [
+            'categories' => $inventory === 'resonance' ? [
+                ['key' => 'resonance', 'label' => '共鳴結晶'],
+            ] : [
                 ['key' => 'weapon', 'label' => '武器'],
                 ['key' => 'armor', 'label' => '防具'],
                 ['key' => 'accessory', 'label' => 'アクセサリー'],
             ],
-            'weapon_styles' => $this->catalog->weaponStyleOptions(),
+            'weapon_styles' => $inventory === 'resonance' ? [] : $this->catalog->weaponStyleOptions(),
         ];
     }
 

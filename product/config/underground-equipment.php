@@ -175,13 +175,38 @@ return [
         'secretary-underground-shop-equipment-alpha-v1' => $legacyDefinitions,
     ],
     'vault_capacity' => 500,
+    'resonance_capacity' => 50,
     'page_size' => 50,
     'definitions' => $definitions,
     'generator' => [
-        'identity' => 'secretary-underground-drop-equipment-alpha-v1',
+        'identity' => 'secretary-underground-drop-equipment-alpha-v2',
+        'legacy_identities' => ['secretary-underground-drop-equipment-alpha-v1'],
         'item_level_min' => 1,
-        'item_level_max' => 120,
+        'item_level_max' => 210,
         'tiers' => [
+            'bahamul' => [
+                'weapon_names' => ['dagger' => '黒竜の短剣', 'rapier' => '黒竜の細剣', 'longsword' => '黒竜の長剣', 'crystal_staff' => '黒竜の輝石杖'],
+                'armor_name' => '黒竜の胸当て',
+                'accessory_name' => '黒竜の護符',
+                'resonance_name' => '黒竜の共鳴結晶',
+                'weapon_effect' => [
+                    'key' => 'bahamul_shockwave',
+                    'label' => '黒竜の衝撃波',
+                    'chance_bps' => 2_000,
+                    'potency_bps' => 2_800,
+                    'stat_coefficients' => [
+                        'dagger' => ['might' => 7_000, 'finesse' => 3_000],
+                        'rapier' => ['might' => 7_000, 'finesse' => 3_000],
+                        'longsword' => ['vitality' => 4_000, 'might' => 6_000],
+                        'crystal_staff' => ['spirit' => 7_000, 'finesse' => 3_000],
+                    ],
+                ],
+                'resonance_effect' => [
+                    'key' => 'bahamul_resonance',
+                    'label' => '黒竜の共鳴',
+                    'target' => 'resonance_area_damage_bps',
+                ],
+            ],
             'shallow_caves' => [
                 'weapon_names' => ['dagger' => '浅層の短剣', 'rapier' => '浅層の細剣', 'longsword' => '浅層の長剣', 'crystal_staff' => '浅層の杖'],
                 'armor_name' => '浅層の胸当て',
@@ -216,6 +241,7 @@ return [
             ],
         ],
         'rarities' => [
+            'unique' => ['label' => 'ユニーク', 'weapon_armor_slots' => 3],
             'common' => ['label' => 'レギュラー', 'weapon_armor_slots' => 1, 'accessory_slots' => 1, 'accessory_presence_bps' => 5_000, 'accessory_value_bps' => 5_000],
             'uncommon' => ['label' => 'ハイクオリティ', 'weapon_armor_slots' => 2, 'accessory_slots' => 2, 'accessory_presence_bps' => 5_000, 'accessory_value_bps' => 5_000],
             'rare' => ['label' => 'アーティファクト', 'weapon_armor_slots' => 3, 'accessory_slots' => 2, 'accessory_presence_bps' => 8_000, 'accessory_value_bps' => 8_000],
@@ -287,5 +313,22 @@ return [
         'quality_min_bps' => 8_000,
         'quality_max_bps' => 10_000,
         'sell_price_bps' => 1_000,
+        'resonance' => [
+            'slots' => 2,
+            'percentage_item_level_cap' => 200,
+            'stats' => [1 => 1, 120 => 5, 130 => 10, 150 => 20, 180 => 40, 210 => 60],
+            'intrinsic_bps' => [1 => 100, 130 => 600, 150 => 800, 180 => 1_000, 200 => 1_200],
+            'affix_min_bps' => [1 => 100, 130 => 300, 150 => 400, 180 => 500, 200 => 600],
+            'affix_max_bps' => [1 => 100, 130 => 400, 150 => 600, 180 => 800, 200 => 900],
+            'affixes' => [
+                'resonance_single_damage_bps' => '単体攻撃強化',
+                'resonance_area_damage_bps' => '範囲攻撃強化',
+                'resonance_normal_damage_bps' => '通常攻撃強化',
+                'resonance_skill_damage_bps' => '攻撃技強化',
+                'resonance_single_healing_bps' => '単体回復強化',
+                'resonance_area_healing_bps' => '範囲回復強化',
+                'resonance_guard_reduction_bps' => '防御行動強化',
+            ],
+        ],
     ],
 ];

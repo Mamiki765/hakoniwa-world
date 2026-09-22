@@ -534,13 +534,14 @@ const crystalOffer = stories.crystal_offer.body;
 const commonEnding = stories.common_ending.body;
 
 const statLabels = { vitality: '生命', might: '武力', finesse: '技巧', spirit: '精神', agility: '敏捷' } as const;
-const equipmentSlots: EquipmentSlot[] = ['weapon', 'armor', 'accessory_1', 'accessory_2', 'accessory_3'];
+const equipmentSlots: EquipmentSlot[] = ['weapon', 'armor', 'accessory_1', 'accessory_2', 'accessory_3', 'resonance'];
 const equipmentSlotLabels: Record<EquipmentSlot, string> = {
     weapon: '武器',
     armor: '防具',
     accessory_1: 'アクセサリー1',
     accessory_2: 'アクセサリー2',
     accessory_3: 'アクセサリー3',
+    resonance: '共鳴結晶',
 };
 const huntingGroundPreferenceKey = 'hakoniwa.underground.selected-hunting-ground';
 function equipmentSlotLabel(slot: EquipmentSlot): string { return equipmentSlotLabels[slot]; }

@@ -3,6 +3,7 @@
 namespace App\Application\Underground;
 
 use App\Domain\Underground\Combat\AlphaV1CombatRules;
+use App\Domain\Underground\Combat\EquipmentCombatEffects;
 use InvalidArgumentException;
 use RuntimeException;
 
@@ -12,7 +13,7 @@ final class UndergroundEquipmentCatalog
 
     /** @var list<string> */
     public const EQUIPPED_SLOTS = [
-        'weapon', 'armor', 'accessory_1', 'accessory_2', 'accessory_3',
+        'weapon', 'armor', 'accessory_1', 'accessory_2', 'accessory_3', 'resonance',
     ];
 
     /** @var list<string> */
@@ -29,6 +30,7 @@ final class UndergroundEquipmentCatalog
         'critical_chance_bps',
         'critical_damage_bps',
         'mp_cost_reduction_bps',
+        ...EquipmentCombatEffects::RESONANCE_MODIFIERS,
     ];
 
     public function identity(): string
@@ -76,9 +78,14 @@ final class UndergroundEquipmentCatalog
             : throw new RuntimeException('Underground equipment generator item-level maximum is invalid.');
     }
 
-    public function vaultCapacity(): int
+    public function supportsGeneratorIdentity(string $identity): bool
     {
-        $capacity = $this->data()['vault_capacity'] ?? null;
+        return in_array($identity, [$this->generatorIdentity(), ...($this->data()['generator']['legacy_identities'] ?? [])], true);
+    }
+
+    public function vaultCapacity(string $inventory = 'equipment'): int
+    {
+        $capacity = $this->data()[$inventory === 'resonance' ? 'resonance_capacity' : 'vault_capacity'] ?? null;
 
         return is_int($capacity) && $capacity > 0
             ? $capacity
@@ -277,7 +284,7 @@ final class UndergroundEquipmentCatalog
             'stats' => $stats,
             'modifiers' => $modifiers,
             'affixes' => $affixes,
-            'unique_effect' => null,
+            'unique_effect' => $weapon['unique_effect'],
             'items' => $items,
         ];
     }
@@ -305,13 +312,14 @@ final class UndergroundEquipmentCatalog
         }
         if (! is_string($definition['key'] ?? null) || $definition['key'] === ''
             || ! is_string($definition['name'] ?? null) || $definition['name'] === ''
-            || ! in_array($category, ['weapon', 'armor', 'accessory'], true)
+            || ! in_array($category, ['weapon', 'armor', 'accessory', 'resonance'], true)
             || ($category === 'weapon' && ! in_array($style, ['dagger', 'rapier', 'longsword', 'crystal_staff'], true))
             || ($category !== 'weapon' && $style !== null)
             || ! is_int($definition['rank'] ?? null) || $definition['rank'] < 0
             || ! is_int($definition['item_level'] ?? null) || $definition['item_level'] < 1
             || (($generated || ($definition['equippable'] ?? true) !== false) && $definition['item_level'] > $this->generatorItemLevelMax())
             || (! in_array($rarity, ['common', 'uncommon', 'rare', 'epic'], true)
+                && ! ($generated && $rarity === 'unique' && in_array($category, ['weapon', 'resonance'], true))
                 && ! (! $generated && ($definition['equippable'] ?? true) === false && $rarity === 'unique'))
             || ! is_string($definition['rarity_label'] ?? null) || $definition['rarity_label'] === ''
             || (! is_null($definition['buy_price'] ?? null) && (! is_int($definition['buy_price']) || $definition['buy_price'] < 1))
@@ -326,9 +334,15 @@ final class UndergroundEquipmentCatalog
             || $statKeys !== $expectedStatKeys
             || ! is_array($definition['modifiers'] ?? null)
             || ! is_array($definition['affixes'] ?? null) || ! array_is_list($definition['affixes'])
-            || ! array_key_exists('unique_effect', $definition)
-            || $definition['unique_effect'] !== null) {
+            || ! array_key_exists('unique_effect', $definition)) {
             throw new RuntimeException('Underground equipment definition is invalid.');
+        }
+        EquipmentCombatEffects::assertUnique($definition['unique_effect']);
+        $effectType = $definition['unique_effect']['type'] ?? null;
+        if (($effectType === 'shockwave' && ($category !== 'weapon' || $rarity !== 'unique'))
+            || ($effectType === 'resonance' && $category !== 'resonance')
+            || ($generated && $rarity === 'unique' && $effectType === null)) {
+            throw new RuntimeException('Underground equipment intrinsic effect category is invalid.');
         }
         foreach ($definition['stats'] as $value) {
             if (! is_int($value) || $value < 0) {
@@ -344,7 +358,7 @@ final class UndergroundEquipmentCatalog
         foreach ($definition['affixes'] as $affix) {
             if (! is_array($affix)
                 || ! is_string($affix['key'] ?? null) || $affix['key'] === ''
-                || isset($affixKeys[$affix['key']])
+                || ($category !== 'resonance' && isset($affixKeys[$affix['key']]))
                 || ! is_string($affix['label'] ?? null) || $affix['label'] === ''
                 || ! in_array($affix['kind'] ?? null, ['stat', 'modifier', 'base'], true)
                 || ! is_string($affix['target'] ?? null) || $affix['target'] === ''
@@ -377,7 +391,8 @@ final class UndergroundEquipmentCatalog
             || ! is_int($definition['sell_price']) || $definition['sell_price'] < 1
             || ! is_string($definition['instance_identity'] ?? null)
             || strlen($definition['instance_identity']) !== 64
-            || ($definition['generator_identity'] ?? null) !== $this->generatorIdentity())) {
+            || ! is_string($definition['generator_identity'] ?? null)
+            || ! $this->supportsGeneratorIdentity($definition['generator_identity']))) {
             throw new RuntimeException('Generated Underground equipment identity is invalid.');
         }
     }
