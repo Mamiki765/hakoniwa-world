@@ -270,6 +270,7 @@ final readonly class BorrowedSecretarySnapshotFactory
                 'instance_identity' => $row->instance_identity,
                 'generator_identity' => $row->generator_identity,
                 'generated_payload' => $row->generated_payload,
+                'polish_level' => $row->polish_level,
             ];
         }
         $skillTreeIdentity = $profile->skill_tree_identity;
@@ -974,9 +975,12 @@ final readonly class BorrowedSecretarySnapshotFactory
                 || ! is_string($category) || ! is_string($rarity)) {
                 throw new RuntimeException('Borrowed generated equipment provenance is invalid.');
             }
-            $effective = $this->generated->generate($effectiveLevel, $tier, $rarity, $category, $style, $mainStat, $seed, $sourceIdentity);
+            $effective = $this->generated->generate(
+                $effectiveLevel, $tier, $rarity, $category, $style, $mainStat, $seed, $sourceIdentity,
+                $source['resonance_variant'] ?? null,
+            );
 
-            return $effective;
+            return (new UndergroundEquipmentPolishing)->apply($effective, (int) ($definition['polish_level'] ?? 0));
         }
         if ($originalLevel <= $itemLevelCap) {
             return $definition;

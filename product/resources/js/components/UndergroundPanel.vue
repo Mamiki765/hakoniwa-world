@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import stories from '../../stories/intro.json';
 import loungeStories from '../../stories/lounge.json';
+import otherworldStory from '../../stories/otherworld.json';
 import UndergroundHome from './UndergroundHome.vue';
 import UndergroundNavigation from './UndergroundNavigation.vue';
 import UndergroundScene from './UndergroundScene.vue';
@@ -14,6 +15,7 @@ import type { UndergroundSkillTree as SkillTree } from './undergroundSkills';
 import UndergroundCombatantCard from './UndergroundCombatantCard.vue';
 import UndergroundEquipmentShop from './UndergroundEquipmentShop.vue';
 import UndergroundEquipmentVault from './UndergroundEquipmentVault.vue';
+import UndergroundEquipmentPolishing from './UndergroundEquipmentPolishing.vue';
 import UndergroundPartyBuilder, { type PartyCandidate } from './UndergroundPartyBuilder.vue';
 import UndergroundPartyBattleCards from './UndergroundPartyBattleCards.vue';
 import { shouldReleasePendingExplorationRequest } from './undergroundExplorationPending';
@@ -67,6 +69,8 @@ interface RoundAction {
     revived?: boolean;
     revive_hp_bps?: number | null;
     important?: boolean;
+    countdown?: number;
+    major_telegraph?: boolean;
 }
 
 interface RoundState {
@@ -177,15 +181,17 @@ interface Battle {
         item?: {
             instance_identity: string;
             name: string;
-            category: 'weapon' | 'armor' | 'accessory';
+            category: 'weapon' | 'armor' | 'accessory' | 'resonance';
             item_level: number;
             rarity: 'common' | 'uncommon' | 'rare' | 'epic' | 'unique';
             rarity_label: string;
             affixes: Array<{ key: string; label: string; target: string; value: number }>;
         };
     } | null;
+    drops?: Array<NonNullable<Battle['drop']>> | null;
     treasure?: { found: boolean; base_g: number; multiplier: number; total_g: number } | null;
     shining_kingdom_key?: { balance_before: number; entry_cost?: number; awarded: number; balance_after: number } | null;
+    distorted_stones?: number;
     daily_quest?: DailyQuestProgress;
 }
 
@@ -433,6 +439,8 @@ interface PendingExplorationRequest {
     huntingGroundKey: string;
     intentKey: string;
     borrowedSecretaryIds: number[];
+    otherworld: boolean;
+    useStone: boolean;
 }
 
 interface LendingCandidatesPage {
@@ -478,6 +486,15 @@ interface UndergroundState {
     active_slots: Array<ActiveSkill | null>;
     passive_modifiers: Record<string, number | boolean | string>;
     shopkeeper_name: string | null;
+    distorted_stone_shop?: { balance: number; day: string; purchased_today: number; daily_limit: number; next_price: number | null };
+    polishing_tutorial_completed?: boolean;
+    otherworld?: {
+        stages: Array<{ key: string; name: string; recommended_level: number; item_level: number; locked: boolean; unlock_condition: string | null; cleared: boolean }>;
+        next_battle_at: string | null;
+        distorted_stone_balance: number;
+    } | null;
+    otherworld_intro_available?: boolean;
+    otherworld_unlocked?: boolean;
     true_name_branch: boolean;
     tutorial_projection: {
         stats: Record<'vitality' | 'might' | 'finesse' | 'spirit' | 'agility', number>;
@@ -569,6 +586,8 @@ const selectedBuild = ref('');
 const selectedEnemy = ref('');
 const bankAmount = ref<number | null>(null);
 const selectedHuntingGroundKey = ref('shallow_caves');
+const selectedOtherworldStage = ref('bahamul_beginner_1');
+const useOtherworldStone = ref(false);
 const selectedSkipHuntingGroundKey = ref('shallow_caves');
 const selectedTrialKey = ref('trial_01');
 const selectedSkipTrialKey = ref('trial_01');
@@ -601,31 +620,38 @@ const pendingAwakeningMessageMutation = ref<PendingMutation | null>(null);
 const pendingAwakeningTechniqueMutation = ref<PendingMutation | null>(null);
 const awakeningMessageDraft = ref('');
 const awakeningTechniqueDraft = ref<string | null>(null);
-type View = 'home' | 'adventure' | 'trials' | 'secret' | 'history' | 'playtest' | 'character' | 'status' | 'skills' | 'shop' | 'bank' | 'guide' | 'ai' | 'vault' | 'party' | 'property' | 'villa' | 'recollections' | 'trophies';
+type View = 'home' | 'adventure' | 'otherworld' | 'trials' | 'secret' | 'history' | 'playtest' | 'character' | 'status' | 'skills' | 'shop' | 'polishing' | 'bank' | 'guide' | 'ai' | 'vault' | 'party' | 'property' | 'villa' | 'recollections' | 'trophies';
 const equipmentView = ref<View>('home');
 const tabs: Record<UndergroundDestination, Array<{ key: View; label: string }>> = {
     home: [],
-    adventure: [{ key: 'adventure', label: '探索' }, { key: 'trials', label: '試練' }, { key: 'secret', label: '秘密の場所' }, { key: 'history', label: '戦闘履歴' }, { key: 'playtest', label: '力試し' }],
+    adventure: [{ key: 'adventure', label: '探索' }, { key: 'trials', label: '試練' }, { key: 'secret', label: '秘密の場所' }, { key: 'otherworld', label: '異世界の戦い' }, { key: 'history', label: '戦闘履歴' }, { key: 'playtest', label: '力試し' }],
     character: [{ key: 'character', label: '能力' }, { key: 'status', label: 'STP配分' }, { key: 'skills', label: 'スキル・覚醒' }, { key: 'vault', label: '装備・保管庫' }, { key: 'ai', label: '戦法' }],
-    shop: [{ key: 'shop', label: '装備を買う' }, { key: 'bank', label: '銀行' }, { key: 'guide', label: '案内人と話す' }],
+    shop: [{ key: 'shop', label: '装備を買う' }, { key: 'polishing', label: '魔石研磨' }, { key: 'bank', label: '銀行' }, { key: 'guide', label: '案内人と話す' }],
     exchange: [{ key: 'party', label: 'パーティー' }, { key: 'property', label: '不動産' }],
     villa: [{ key: 'villa', label: '冒険日誌' }, { key: 'recollections', label: '回想' }, { key: 'trophies', label: 'トロフィー棚' }],
 };
 const currentDestination = computed<UndergroundDestination>(() => undergroundDestinations.find(destination =>
     destination.key === equipmentView.value || tabs[destination.key].some(tab => tab.key === equipmentView.value))?.key ?? 'home');
-const pageTabs = computed(() => tabs[currentDestination.value].filter(tab => tab.key !== 'playtest' || state.value?.playtest));
+const pageTabs = computed(() => tabs[currentDestination.value].filter(tab => (tab.key !== 'playtest' || state.value?.playtest)
+    && (!['polishing', 'otherworld'].includes(tab.key) || state.value?.otherworld_unlocked)));
 const pageTitle = computed(() => undergroundDestinations.find(destination => destination.key === currentDestination.value)?.label);
 const exchangeGreeting = ref(loungeStories.greetings[0]);
-const loungeReplay = ref<'exchange-1' | 'exchange-2' | 'mirror' | null>(null);
+const loungeReplay = ref<'exchange-1' | 'exchange-2' | 'mirror' | 'otherworld' | null>(null);
 const activeLoungeEvent = computed(() => {
     const residence = state.value?.residence;
     if (!residence) return null;
+    if (loungeReplay.value === 'otherworld' || currentDestination.value === 'shop' && state.value?.otherworld_intro_available) {
+        return { ...otherworldStory, key: 'otherworld', page: 1, scene: 'otherworld-intro' };
+    }
     if (loungeReplay.value === 'mirror' || currentDestination.value === 'shop' && residence.mirror_owned && !residence.mirror_event_completed) {
         return { ...loungeStories.mirror, key: 'mirror', page: 1, scene: 'mirror' };
     }
     if (loungeReplay.value?.startsWith('exchange-') || currentDestination.value === 'exchange' && residence.exchange_intro_page < 2) {
         const page = loungeReplay.value === 'exchange-2' ? 2 : loungeReplay.value === 'exchange-1' ? 1 : residence.exchange_intro_page + 1;
         return { ...loungeStories.exchange[page - 1]!, key: 'exchange', page, scene: 'exchange-intro' };
+    }
+    if (currentDestination.value === 'shop' && state.value?.otherworld_unlocked && !state.value.polishing_tutorial_completed) {
+        return { ...loungeStories.polishing, key: 'polishing', page: 1, scene: 'shop' };
     }
     return null;
 });
@@ -660,7 +686,10 @@ function selectTab(view: View): void {
 async function advanceLounge(): Promise<void> {
     if (loungeReplay.value) { loungeReplay.value = null; return; }
     const event = activeLoungeEvent.value;
-    if (event) await loungeMutation('events/advance', { event: event.key, page: event.page });
+    if (event && await loungeMutation('events/advance', { event: event.key, page: event.page })) {
+        if (event.key === 'otherworld') equipmentView.value = 'otherworld';
+        if (event.key === 'polishing') equipmentView.value = 'polishing';
+    }
 }
 
 const guideMode = ref<'basic' | 'conversation' | 'recollections' | 'serious_talk' | 'respec' | 'guide_duel'>('basic');
@@ -689,6 +718,12 @@ const cooldownNowMs = ref(Date.now());
 let cooldownTimer: ReturnType<typeof window.setInterval> | null = null;
 let huntingGroundPreferenceHydrated = false;
 const currentBattle = computed(() => selectedBattle.value ?? state.value?.battle ?? null);
+const currentBattleDrops = computed(() => currentBattle.value?.drops ?? (currentBattle.value?.drop ? [currentBattle.value.drop] : []));
+const otherworldStage = computed(() => state.value?.otherworld?.stages.find(stage => stage.key === selectedOtherworldStage.value));
+const otherworldWait = computed(() => {
+    const next = state.value?.otherworld?.next_battle_at;
+    return next ? Math.max(0, Math.ceil((Date.parse(next) - cooldownNowMs.value) / 1000)) : 0;
+});
 const partySelectedIds = computed(() => selectedPartyMemberIds.value);
 const pendingRentalMutation = ref<PendingMutation | null>(null);
 const confirmedPartyIds = computed(() => (state.value?.rental_party ?? []).map((member) => member.secretary_id));
@@ -1433,7 +1468,7 @@ async function runPlaytest(): Promise<void> {
     }
 }
 
-async function runExplore(huntingGroundKey: string, intentKey = 'selected-ground'): Promise<void> {
+async function runExplore(huntingGroundKey: string, intentKey = 'selected-ground', otherworld = false, useStone = false): Promise<void> {
     if (busy.value) return;
     innRested.value = false;
     const currentPending = pendingExplorationRequest.value;
@@ -1450,17 +1485,20 @@ async function runExplore(huntingGroundKey: string, intentKey = 'selected-ground
         huntingGroundKey,
         intentKey,
         borrowedSecretaryIds: [...confirmedPartyIds.value],
+        otherworld,
+        useStone,
     };
     pendingExplorationRequest.value = pending;
     busy.value = true;
     error.value = '';
     try {
-        const battle = await api<Battle>('/api/v1/me/underground/explore', {
+        const battle = await api<Battle>(pending.otherworld ? '/api/v1/me/underground/otherworld/challenge' : '/api/v1/me/underground/explore', {
             method: 'POST',
             body: JSON.stringify({
                 request_id: pending.requestId,
                 hunting_ground_key: pending.huntingGroundKey,
                 borrowed_secretary_ids: [...pending.borrowedSecretaryIds],
+                ...(pending.otherworld ? { use_stone: pending.useStone } : {}),
             }),
         });
         showDailyQuestCompletion(battle.daily_quest);
@@ -2304,7 +2342,8 @@ onUnmounted(() => {
                                     <small v-if="group.action.agility_combo_hits" class="underground-agility-combo">{{ group.action.agility_combo_hits }}連続ヒット！</small>
                                     <span v-if="group.cost !== null" class="underground-action-cost">MP −{{ group.cost.toLocaleString() }}</span>
                                     <p v-for="(supplement, supplementIndex) in group.source.slice(2, -1)" :key="supplementIndex" class="underground-action-supplement">{{ actionNarrative(supplement, currentBattle) }}</p>
-                                    <p>{{ actionNarrative(group.action, currentBattle) }}</p>
+                                    <strong v-if="group.action.countdown" class="ug-boss-countdown" :class="{ 'is-major': group.action.major_telegraph }">{{ group.action.countdown }}</strong>
+                                    <p v-else>{{ actionNarrative(group.action, currentBattle) }}</p>
                                     <details v-if="group.source.length > 1" class="underground-action-details">
                                         <summary>行動の全詳細</summary>
                                         <p v-for="(source, sourceIndex) in group.source" :key="sourceIndex">{{ actionNarrative(source, currentBattle) }}</p>
@@ -2362,13 +2401,16 @@ onUnmounted(() => {
                     <p>経験値 +{{ currentBattle.xp_awarded }}・輝石の欠片 {{ currentBattle.shard_delta >= 0 ? '+' : '' }}{{ currentBattle.shard_delta }}G<span v-if="currentBattle.context === 'playtest'">・ドロップなし</span></p>
                     <p v-if="currentBattle.treasure?.found" class="underground-equipment-drop" role="status">財宝を見つけた！ ×{{ currentBattle.treasure.multiplier }}</p>
                     <p v-if="(currentBattle.shining_kingdom_key?.awarded ?? 0) > 0" class="underground-equipment-drop" role="status">輝きの王国の鍵 +{{ currentBattle.shining_kingdom_key?.awarded }}</p>
-                    <p v-if="currentBattle.drop?.status === 'granted' && currentBattle.drop.item" class="underground-equipment-drop" role="status">
-                        装備drop: {{ currentBattle.drop.item.rarity_label }}・Item Lv {{ currentBattle.drop.item.item_level }}・{{ currentBattle.drop.item.name }}
-                        <span v-if="currentBattle.drop.item.affixes.length > 0">（{{ currentBattle.drop.item.affixes.map((affix) => affix.label).join('、') }}）</span>
+                    <p v-if="(currentBattle.distorted_stones ?? 0) > 0" class="underground-equipment-drop" role="status">歪んだ輝石 +{{ currentBattle.distorted_stones }}</p>
+                    <template v-for="(drop, dropIndex) in currentBattleDrops" :key="dropIndex">
+                    <p v-if="drop.status === 'granted' && drop.item" class="underground-equipment-drop" role="status">
+                        装備drop: {{ drop.item.rarity_label }}・Item Lv {{ drop.item.item_level }}・{{ drop.item.name }}
+                        <span v-if="drop.item.affixes.length > 0">（{{ drop.item.affixes.map((affix) => affix.label).join('、') }}）</span>
                     </p>
-                    <p v-if="currentBattle.drop?.status === 'vault_full' && currentBattle.drop.item" class="underground-equipment-drop lost" role="alert">
-                        宝物庫が満杯のため、{{ currentBattle.drop.item.rarity_label }}・Item Lv {{ currentBattle.drop.item.item_level }}・{{ currentBattle.drop.item.name }}を持ち帰れませんでした。
+                    <p v-if="drop.status === 'vault_full' && drop.item" class="underground-equipment-drop lost" role="alert">
+                        保管庫が満杯のため、{{ drop.item.rarity_label }}・Item Lv {{ drop.item.item_level }}・{{ drop.item.name }}を持ち帰れませんでした。
                     </p>
+                    </template>
                     <p v-if="(currentBattle.interbattle_heal_amount ?? 0) > 0" class="underground-interbattle-heal">体力が少し回復した</p>
                     <div
                         v-if="currentBattle.combat_level_after !== undefined && currentBattle.combat_level_after !== currentBattle.combat_level_before"
@@ -2506,6 +2548,7 @@ onUnmounted(() => {
                 <template v-if="activeLoungeEvent">
                     <UndergroundScene :scene="state.visuals?.scenes[activeLoungeEvent.scene]" :show-ai="state.visuals?.show_ai ?? false" />
                     <section class="ug-page-content ug-event-story" aria-label="物語">
+                        <h2>{{ activeLoungeEvent.title }}</h2>
                         <p v-for="(line, index) in activeLoungeEvent.body" :key="index">{{ line }}</p>
                         <button class="ug-primary" type="button" :disabled="busy" @click="advanceLounge">{{ loungeReplay ? '回想に戻る' : activeLoungeEvent.choice }}</button>
                     </section>
@@ -2546,7 +2589,21 @@ onUnmounted(() => {
                                 <p v-if="state.trial?.active_run" class="ug-muted">封印の地から帰還後に利用できます。</p>
                             </div>
                             <p v-if="equipmentView === 'party'" class="ug-exchange-greeting">{{ exchangeGreeting }}</p>
+                            <section v-if="equipmentView === 'polishing' && state.distorted_stone_shop" class="ug-property-item" aria-label="歪んだ輝石">
+                                <header><h2>歪んだ輝石</h2><span>所持 {{ state.distorted_stone_shop.balance.toLocaleString('ja-JP') }} 個</span></header>
+                                <p>異世界への再挑戦までの待ち時間を省略できます。</p>
+                                <p>本日 {{ state.distorted_stone_shop.purchased_today }} / {{ state.distorted_stone_shop.daily_limit }} 個購入（日本時間0時更新）</p>
+                                <button
+                                    v-if="state.distorted_stone_shop.next_price !== null" type="button" class="ug-primary"
+                                    :disabled="busy || Boolean(pendingLoungeMutation) || state.shard_balance < state.distorted_stone_shop.next_price"
+                                    @click="loungeMutation('shop/distorted-stone', { price: state.distorted_stone_shop.next_price })"
+                                >
+                                    1個購入する（{{ state.distorted_stone_shop.next_price.toLocaleString('ja-JP') }} G）
+                                </button>
+                                <strong v-else class="ug-sold-out">本日売り切れ</strong>
+                            </section>
                             <UndergroundEquipmentShop v-if="equipmentView === 'shop'" @updated="applyEquipmentMutation" />
+                            <UndergroundEquipmentPolishing v-if="equipmentView === 'polishing'" :balance="state.shard_balance" @updated="applyEquipmentMutation" />
             <section v-if="equipmentView === 'guide' || equipmentView === 'recollections' && state.residence?.villa_owned" class="underground-guide-room" aria-label="案内人">
                 <div v-if="equipmentView === 'guide'" class="underground-guide-actions">
                     <button
@@ -2878,6 +2935,23 @@ onUnmounted(() => {
                         <button v-if="state.trial?.active_run" class="button secondary" type="button" :disabled="busy" @click="withdrawTrial">封印の地から帰還する</button>
                     </section>
 
+                    <section v-if="equipmentView === 'otherworld' && state.otherworld" class="underground-playtest" aria-labelledby="underground-otherworld-title">
+                        <h2 id="underground-otherworld-title">異世界の戦い</h2>
+                        <p>黒竜バハムルが、輝きの王国を脅かしています。</p>
+                        <p>現在のHPと覚醒ゲージを引き継いで挑みます。同行者はパーティー画面で確定してください。</p>
+                        <label for="underground-otherworld-stage">挑戦する段階</label>
+                        <select id="underground-otherworld-stage" v-model="selectedOtherworldStage" :disabled="busy || Boolean(pendingExplorationRequest)">
+                            <option v-for="stage in state.otherworld.stages" :key="stage.key" :value="stage.key" :disabled="stage.locked">{{ stage.name }}{{ stage.cleared ? '（クリア済み）' : '' }}</option>
+                        </select>
+                        <p v-if="otherworldStage">4人推奨・Lv {{ otherworldStage.recommended_level }} 前後／報酬 Item Lv {{ otherworldStage.item_level }}</p>
+                        <p>勝利で黒竜晶を1個獲得。まれに黒竜の武器も獲得します。</p>
+                        <p v-if="otherworldWait > 0">再挑戦まで {{ Math.floor(otherworldWait / 60) }}分{{ otherworldWait % 60 }}秒</p>
+                        <label v-if="otherworldWait > 0"><input v-model="useOtherworldStone" type="checkbox" :disabled="busy || Boolean(pendingExplorationRequest) || state.otherworld.distorted_stone_balance < 1">歪んだ輝石を1個使って待機を省略（所持 {{ state.otherworld.distorted_stone_balance }}個）</label>
+                        <p v-if="pendingExplorationRequest" role="status">前回の戦闘結果が未確認です。同じ段階・同行者・輝石使用で結果を確認します。</p>
+                        <button class="button primary" type="button" :disabled="busy || (!pendingExplorationRequest && (!otherworldStage || otherworldStage.locked || Boolean(state.trial?.active_run) || (otherworldWait > 0 && (!useOtherworldStone || state.otherworld.distorted_stone_balance < 1))))" @click="runExplore(selectedOtherworldStage, 'otherworld', true, otherworldWait > 0 && useOtherworldStone)">{{ pendingExplorationRequest ? '戦闘結果を確認する' : '黒竜バハムルに挑む' }}</button>
+                        <p v-if="state.trial?.active_run">試練から帰還してから挑戦してください。</p>
+                    </section>
+
                     <section v-if="equipmentView === 'playtest' && state.playtest" class="underground-playtest" aria-labelledby="underground-playtest-title">
                         <h2 id="underground-playtest-title">力試し（α）</h2>
                         <p>{{ state.playtest.notice }}</p>
@@ -2903,6 +2977,7 @@ onUnmounted(() => {
                                     <button v-if="(state.residence.exchange_intro_page ?? 0) >= 1" type="button" @click="loungeReplay = 'exchange-1'">{{ loungeStories.exchange[0]!.title }}</button>
                                     <button v-if="state.residence.exchange_intro_page >= 2" type="button" @click="loungeReplay = 'exchange-2'">{{ loungeStories.exchange[1]!.title }}</button>
                                     <button v-if="state.residence.mirror_event_completed" type="button" @click="loungeReplay = 'mirror'">{{ loungeStories.mirror.title }}</button>
+                                    <button v-if="state.otherworld_unlocked" type="button" @click="loungeReplay = 'otherworld'">{{ otherworldStory.title }}</button>
                                 </section>
                             </template>
                         </div>

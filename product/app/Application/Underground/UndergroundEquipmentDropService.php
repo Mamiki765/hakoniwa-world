@@ -55,6 +55,39 @@ final readonly class UndergroundEquipmentDropService
         return $this->settleGeneratedDrop($profile, $battle, $drop, 'exploration-drop:'.$battle->request_id);
     }
 
+    /** @return list<array<string, mixed>> */
+    public function settleOtherworldVictory(UndergroundProfile $profile, UndergroundBattle $battle, string $stageKey, int $seed): array
+    {
+        if (! $battle->exists || $battle->underground_profile_id !== $profile->id
+            || $battle->activity_type !== UndergroundBattle::ACTIVITY_EXPLORATION
+            || $battle->activity_key !== $stageKey || $battle->result !== UndergroundBattle::RESULT_VICTORY) {
+            throw new RuntimeException('Otherworld rewards require a persisted owned victory.');
+        }
+        $content = $this->playerCatalog->otherworld();
+        $itemLevel = $content['stages'][$stageKey]['item_level'];
+        $random = new UndergroundRandom($seed);
+        $variants = $this->equipmentCatalog->resonanceVariantKeys('bahamul');
+        $styles = $this->equipmentCatalog->weaponStyleKeys();
+        $source = 'otherworld-drop:'.$stageKey.':'.$battle->request_id;
+        $payloads = [$this->generator->generate($itemLevel, 'bahamul', 'unique', 'resonance', null, null,
+            $random->integer('otherworld:crystal:affix', 0, 2_147_483_647), $source.':1',
+            $variants[$random->integer('otherworld:crystal:variant', 0, count($variants) - 1)])];
+        if ($random->integer('otherworld:weapon:presence', 1, 10_000) <= $content['weapon_drop_chance_bps']) {
+            $payloads[] = $this->generator->generate($itemLevel, 'bahamul', 'unique', 'weapon',
+                $styles[$random->integer('otherworld:weapon:style', 0, count($styles) - 1)], null,
+                $random->integer('otherworld:weapon:affix', 0, 2_147_483_647), $source.':2');
+        }
+        $drops = [];
+        foreach ($payloads as $index => $payload) {
+            $this->equipmentCatalog->assertDefinition($payload, true);
+            $drops[] = $this->persistGeneratedDrop($profile,
+                ['identity' => $this->playerCatalog->explorationDropConfig()['identity'], 'payload' => $payload],
+                $source.':'.($index + 1), $battle->id, null, null, $index + 1, $battle->finished_at ?? Carbon::now());
+        }
+
+        return $drops;
+    }
+
     /**
      * @param  array<string, mixed>  $reward
      * @return array<string, mixed>
@@ -196,7 +229,7 @@ final readonly class UndergroundEquipmentDropService
             ->inventory($inventory)
             ->count();
 
-        return max(0, $this->equipmentCatalog->vaultCapacity($inventory) - $used);
+        return max(0, $this->equipmentCatalog->vaultCapacityForProfile($profile, $inventory) - $used);
     }
 
     /**

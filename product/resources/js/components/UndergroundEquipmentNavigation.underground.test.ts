@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { EquipmentItem } from './EquipmentItemCard.vue';
 import UndergroundEquipmentShop from './UndergroundEquipmentShop.vue';
 import UndergroundEquipmentVault from './UndergroundEquipmentVault.vue';
+import UndergroundEquipmentPolishing from './UndergroundEquipmentPolishing.vue';
 
 const response = (data: unknown, status = 200): Response => new Response(JSON.stringify({ data }), {
     status,
@@ -51,6 +52,43 @@ afterEach(() => {
 });
 
 describe('Underground equipment navigation', () => {
+    it('keeps the same polishing intent after a paid response is lost', async () => {
+        const crystal = item({ category: 'resonance', name: '堅鱗の黒竜晶', equipped_slot: 'resonance', polish_level: 0 });
+        const requests: unknown[] = [];
+        let paidRequest: string | null = null;
+        let balance = 1_000_000;
+        const fetchMock = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+            if (init?.method === 'POST') {
+                const body = JSON.parse(String(init.body));
+                requests.push(body);
+                if (paidRequest === null) {
+                    paidRequest = body.request_id;
+                    balance -= 300_000;
+                    throw new TypeError('Connection lost after payment');
+                }
+                return response({ shard_balance: balance, banked_shard_balance: 0,
+                    vault: { used: 1, capacity: 50, equipped: { ...equipped, resonance: { ...crystal, polish_level: 1 } } } });
+            }
+            return response({ shard_balance: balance, item: { ...crystal, polish_level: paidRequest ? 1 : 0 },
+                next_item: { ...crystal, polish_level: paidRequest ? 2 : 1 }, next_price: 300_000, maximum_level: 5 });
+        });
+        stubUndergroundFetch(fetchMock);
+        const wrapper = mount(UndergroundEquipmentPolishing, { props: { balance } });
+        await flushPromises();
+        await wrapper.findAll('button').find(button => button.text() === '研磨する')!.trigger('click');
+        await flushPromises();
+        expect(requests).toHaveLength(1);
+        expect(wrapper.findAll('button').find(button => button.text() === '研磨する')!.attributes('disabled')).toBeDefined();
+        await wrapper.findAll('button').find(button => button.text() === '前の操作の結果を確認する')!.trigger('click');
+        await flushPromises();
+        expect(requests).toHaveLength(2);
+        expect(requests[1]).toEqual(requests[0]);
+        expect(wrapper.emitted('updated')).toHaveLength(1);
+        expect(wrapper.emitted('updated')![0]![0]).toMatchObject({ shard_balance: 700_000 });
+        expect(wrapper.text()).toContain('結晶を研磨しました');
+        wrapper.unmount();
+    });
+
     it('keeps crystal storage and bulk sale separate and displays both identical affixes', async () => {
         let previewBody: unknown;
         const crystal = item({ category: 'resonance', name: '黒竜の共鳴結晶', rarity: 'unique',

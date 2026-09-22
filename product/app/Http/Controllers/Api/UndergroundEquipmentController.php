@@ -10,6 +10,7 @@ use App\Http\Requests\EquipUndergroundEquipmentRequest;
 use App\Http\Requests\PreviewUndergroundBulkSellRequest;
 use App\Http\Requests\PurchaseUndergroundEquipmentRequest;
 use App\Http\Requests\SellUndergroundEquipmentRequest;
+use App\Http\Requests\UndergroundIntroMutationRequest;
 use App\Http\Requests\UnequipUndergroundEquipmentRequest;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -20,6 +21,25 @@ final class UndergroundEquipmentController extends Controller
     public function shop(Request $request, UndergroundEquipmentService $service): JsonResponse
     {
         return $this->respond(fn (): array => $service->shop($request->user()));
+    }
+
+    public function polishing(Request $request, UndergroundEquipmentService $service): JsonResponse
+    {
+        return $this->respond(fn (): array => $service->polishing($request->user()));
+    }
+
+    public function polish(UndergroundIntroMutationRequest $request, UndergroundEquipmentService $service): JsonResponse
+    {
+        $request->validate([
+            'item_id' => ['required', 'integer', 'min:1'],
+            'level' => ['required', 'integer', 'min:0'],
+            'price' => ['required', 'integer', 'min:1'],
+        ]);
+
+        return $this->respond(fn (): array => $service->polish(
+            $request->user(), $request->string('request_id')->value(), $request->integer('item_id'),
+            $request->integer('level'), $request->integer('price'),
+        ));
     }
 
     public function vault(Request $request, UndergroundEquipmentService $service): JsonResponse

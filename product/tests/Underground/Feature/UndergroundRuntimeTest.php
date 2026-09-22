@@ -54,6 +54,47 @@ final class UndergroundRuntimeTest extends TestCase
 {
     use RefreshDatabase;
 
+    public function test_otherworld_rewards_and_stone_retry_use_the_existing_settlement_without_sharing_exploration_cooldown(): void
+    {
+        Carbon::setTestNow('2026-09-23 10:00:00');
+        [$user, $secretary] = $this->secretaryUser();
+        $user->forceFill(['visitor_code' => 'BAHA0001'])->save();
+        $profile = $this->unlockExploration($secretary);
+        $normalCooldown = Carbon::now()->addHour();
+        $profile->update(['combat_level' => 100, 'unspent_stp' => 495, 'otherworld_discovered_at' => Carbon::now(),
+            'next_battle_at' => $normalCooldown, 'distorted_stone_balance' => 1, 'current_hp' => 500]);
+        UndergroundTrialProgress::query()->create(['underground_profile_id' => $profile->id, 'trial_key' => 'trial_02',
+            'unlocked_at' => Carbon::now(), 'first_cleared_at' => Carbon::now()]);
+        config(['underground-alpha-v1.otherworld.weapon_drop_chance_bps' => 10000]);
+        $combat = new ScriptedUndergroundPartyCombat(123);
+        $this->app->instance(AtomicUndergroundPartyCombat::class, $combat);
+        $this->actingAs($user);
+        $payload = ['request_id' => (string) Str::uuid(), 'hunting_ground_key' => 'bahamul_beginner_1'];
+        $first = $this->postJson('/api/v1/me/underground/otherworld/challenge', $payload)->assertOk()->json('data');
+        $this->assertCount(2, $first['drops']);
+        $this->assertSame(['resonance', 'weapon'], array_column(array_column($first['drops'], 'item'), 'category'));
+        $this->assertSame(['bahamul_beginner_1'], $combat->calls[0]['enemy_keys']);
+        $this->assertSame(123, $profile->refresh()->current_hp);
+        $this->assertTrue($normalCooldown->equalTo($profile->next_battle_at));
+        $this->assertTrue(Carbon::now()->addSeconds(600)->equalTo($profile->next_otherworld_battle_at));
+        $this->assertSame(1, $profile->distorted_stone_balance);
+        $request = [...$payload, 'request_id' => (string) Str::uuid(), 'use_stone' => true];
+        $second = $this->postJson('/api/v1/me/underground/otherworld/challenge', $request)->assertOk()->json('data');
+        $balances = $profile->refresh()->only(['shard_balance', 'combat_xp', 'distorted_stone_balance']);
+        $this->postJson('/api/v1/me/underground/otherworld/challenge', $request)->assertOk()->assertJsonPath('data.id', $second['id']);
+        $this->assertEquals($balances, $profile->refresh()->only(array_keys($balances)));
+        $this->assertSame(0, $profile->distorted_stone_balance);
+        $this->assertCount(2, $combat->calls);
+        $this->postJson('/api/v1/me/underground/otherworld/challenge', [...$payload, 'request_id' => (string) Str::uuid()])
+            ->assertConflict()->assertJsonPath('code', 'underground_otherworld_cooldown');
+        $items = UndergroundOwnedEquipment::query()->where('underground_profile_id', $profile->id)->where('instance_kind', 'generated')->get();
+        $this->assertCount(4, $items);
+        UndergroundBattle::query()->whereIn('request_id', [$first['id'], $second['id']])->delete();
+        $this->assertSame(4, UndergroundOwnedEquipment::query()->whereIn('id', $items->modelKeys())->count());
+        $stages = app(UndergroundRuntimeService::class)->projectOtherworldState($profile)['stages'];
+        $this->assertFalse(collect($stages)->firstWhere('key', 'bahamul_beginner_2')['locked']);
+    }
+
     public function test_guide_duel_preserves_both_owners_and_rental_resources_and_grants_gram_once(): void
     {
         [$leader, $secretary] = $this->secretaryUser();
@@ -1245,7 +1286,7 @@ final class UndergroundRuntimeTest extends TestCase
         config([
             'underground-alpha-v1.exploration.grounds.shining_kingdom.rare_encounter.chance_bps' => 1,
             'underground-alpha-v1.exploration.grounds.shining_kingdom.key_reward.normal_chance_bps' => 10_000,
-            'underground-alpha-v1.exploration.grounds.shining_kingdom_vault.rare_encounter.chance_bps' => 1,
+            'underground-alpha-v1.exploration.grounds.shining_kingdom_vault.rare_encounter.chance_bps' => 10_000,
         ]);
         [$user, $secretary] = $this->secretaryUser();
         $profile = $this->unlockExploration($secretary);
@@ -1269,9 +1310,14 @@ final class UndergroundRuntimeTest extends TestCase
         $this->assertSame(0, $kingdom->snapshot['shining_kingdom_key']['entry_cost']);
         $this->assertSame(1, $kingdom->snapshot['shining_kingdom_key']['awarded']);
         $this->assertSame(UndergroundBattle::RESULT_VICTORY, $kingdom->result);
+        $this->assertSame(0, $profile->distorted_stone_balance);
 
         Carbon::setTestNow(Carbon::now()->addSeconds(10));
-        $vault = $runtime->explore($user, (string) Str::uuid(), 'shining_kingdom_vault')['battle'];
+        $vaultRequest = (string) Str::uuid();
+        $vault = $runtime->explore($user, $vaultRequest, 'shining_kingdom_vault')['battle'];
+        $runtime->explore($user, $vaultRequest, 'shining_kingdom_vault');
+        $this->assertSame(1, $profile->refresh()->distorted_stone_balance);
+        $this->assertSame(1, $runtime->projectExplorationBattle($vault)['distorted_stones']);
         $this->assertSame(0, $profile->refresh()->shining_kingdom_key_balance);
         $this->assertSame(1, $vault->snapshot['shining_kingdom_key']['balance_before']);
         $this->assertSame(1, $vault->snapshot['shining_kingdom_key']['entry_cost']);
@@ -1288,6 +1334,7 @@ final class UndergroundRuntimeTest extends TestCase
         $this->assertSame(0, $profile->refresh()->shining_kingdom_key_balance);
         $this->assertSame('ineligible', $defeat->snapshot['drop']['status']);
         $this->assertTrue($retry['duplicate']);
+        $this->assertSame(1, $profile->refresh()->distorted_stone_balance);
     }
 
     public function test_trial_two_is_unlocked_by_trial_one_clear_without_a_level_gate(): void

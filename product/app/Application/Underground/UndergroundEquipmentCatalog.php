@@ -4,6 +4,7 @@ namespace App\Application\Underground;
 
 use App\Domain\Underground\Combat\AlphaV1CombatRules;
 use App\Domain\Underground\Combat\EquipmentCombatEffects;
+use App\Models\UndergroundProfile;
 use InvalidArgumentException;
 use RuntimeException;
 
@@ -78,18 +79,39 @@ final class UndergroundEquipmentCatalog
             : throw new RuntimeException('Underground equipment generator item-level maximum is invalid.');
     }
 
+    /** @return list<string> */
+    public function resonanceVariantKeys(string $tier): array
+    {
+        return array_keys($this->data()['generator']['tiers'][$tier]['resonance_variants'] ?? []);
+    }
+
     public function supportsGeneratorIdentity(string $identity): bool
     {
         return in_array($identity, [$this->generatorIdentity(), ...($this->data()['generator']['legacy_identities'] ?? [])], true);
     }
 
-    public function vaultCapacity(string $inventory = 'equipment'): int
+    public function vaultCapacity(string $inventory = 'equipment', bool $expanded = false): int
     {
         $capacity = $this->data()[$inventory === 'resonance' ? 'resonance_capacity' : 'vault_capacity'] ?? null;
+        $extra = $this->data()[$inventory === 'resonance' ? 'resonance_expansion_capacity' : 'vault_expansion_capacity'] ?? null;
 
-        return is_int($capacity) && $capacity > 0
-            ? $capacity
+        return is_int($capacity) && $capacity > 0 && is_int($extra) && $extra > 0
+            ? $capacity + ($expanded ? $extra : 0)
             : throw new RuntimeException('Underground vault capacity must be positive.');
+    }
+
+    public function vaultCapacityForProfile(UndergroundProfile $profile, string $inventory = 'equipment'): int
+    {
+        $purchasedAt = $inventory === 'resonance'
+            ? $profile->resonance_expansion_purchased_at
+            : $profile->vault_expansion_purchased_at;
+
+        return $this->vaultCapacity($inventory, $purchasedAt !== null);
+    }
+
+    public function maximumBulkSellCount(): int
+    {
+        return $this->vaultCapacity('equipment', true) + $this->vaultCapacity('resonance', true);
     }
 
     public function pageSize(): int
@@ -267,6 +289,7 @@ final class UndergroundEquipmentCatalog
                 'rarity' => $definition['rarity'],
                 'catalog_identity' => $entry['catalog_identity'],
                 'instance_identity' => $entry['instance_identity'],
+                'polish_level' => (int) ($definition['polish_level'] ?? 0),
             ];
         }
 

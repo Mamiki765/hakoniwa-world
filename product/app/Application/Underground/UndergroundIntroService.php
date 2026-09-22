@@ -153,6 +153,8 @@ final readonly class UndergroundIntroService
                 'villa' => 'villa_purchased_at',
                 'mirror' => 'mirror_purchased_at',
                 'trophy_shelf' => 'trophy_shelf_purchased_at',
+                'vault_expansion' => 'vault_expansion_purchased_at',
+                'resonance_expansion' => 'resonance_expansion_purchased_at',
                 default => throw new UndergroundRuntimeException('underground_residence_item_invalid', '購入する品物を確認してください。'),
             };
             if ($profile->getAttribute($column) !== null) {
@@ -165,6 +167,50 @@ final readonly class UndergroundIntroService
             $profile->setAttribute($column, Carbon::now());
             $profile->save();
         });
+    }
+
+    /** @return array<string, mixed> */
+    public function purchaseDistortedStone(User $user, string $requestId, int $quotedPrice): array
+    {
+        return $this->mutate($user, $requestId, 'distorted_stone_purchase', ['price' => $quotedPrice], function (
+            Secretary $secretary,
+            UndergroundProfile $profile,
+            UndergroundIntroProgress $intro,
+        ) use ($quotedPrice): void {
+            $this->assertShopUnlocked($profile, $intro);
+            $shop = $this->distortedStoneShop($profile);
+            if ($shop['next_price'] === null) {
+                throw new UndergroundRuntimeException('underground_distorted_stone_sold_out', '本日の歪んだ輝石は売り切れです。');
+            }
+            if ($shop['next_price'] !== $quotedPrice) {
+                throw new UndergroundRuntimeException('underground_distorted_stone_price_changed', '販売価格が変わりました。店を開き直してください。');
+            }
+            if ($profile->shard_balance < $quotedPrice) {
+                throw new UndergroundRuntimeException('underground_distorted_stone_insufficient_shards', '手持ちのGが足りません。');
+            }
+            $profile->shard_balance -= $quotedPrice;
+            $profile->distorted_stone_balance++;
+            $profile->distorted_stone_purchase_day = Carbon::parse($shop['day'], 'Asia/Tokyo');
+            $profile->distorted_stone_purchase_count = $shop['purchased_today'] + 1;
+            $profile->save();
+        });
+    }
+
+    /** @return array{balance:int, day:string, purchased_today:int, daily_limit:int, next_price:int|null} */
+    private function distortedStoneShop(?UndergroundProfile $profile): array
+    {
+        $prices = $this->catalog->distortedStoneDailyPrices();
+        $day = Carbon::now('Asia/Tokyo')->toDateString();
+        $purchased = $profile?->distorted_stone_purchase_day?->toDateString() === $day
+            ? $profile->distorted_stone_purchase_count : 0;
+
+        return [
+            'balance' => $profile->distorted_stone_balance ?? 0,
+            'day' => $day,
+            'purchased_today' => $purchased,
+            'daily_limit' => count($prices),
+            'next_price' => $prices[$purchased] ?? null,
+        ];
     }
 
     /** @return array<string, mixed> */
@@ -188,7 +234,7 @@ final readonly class UndergroundIntroService
     /** @return array<string, mixed> */
     public function advanceLoungeEvent(User $user, string $requestId, string $event, int $page): array
     {
-        if (! in_array($event, ['exchange', 'mirror'], true)
+        if (! in_array($event, ['exchange', 'mirror', 'polishing', 'otherworld'], true)
             || ! in_array($page, $event === 'exchange' ? [1, 2] : [1], true)) {
             throw new UndergroundRuntimeException('underground_event_invalid', 'イベントの進行を確認してください。');
         }
@@ -199,6 +245,21 @@ final readonly class UndergroundIntroService
             UndergroundIntroProgress $intro,
         ) use ($event, $page): void {
             $this->assertShopUnlocked($profile, $intro);
+            if ($event === 'otherworld') {
+                if ($profile->otherworld_discovered_at === null && ! $this->runtime->canDiscoverOtherworld($profile)) {
+                    throw new UndergroundRuntimeException('underground_otherworld_locked', '試練2をクリアし、Lv100以上になってからショップを訪ねてください。');
+                }
+                $profile->otherworld_discovered_at ??= Carbon::now();
+                $profile->save();
+
+                return;
+            }
+            if ($event === 'polishing') {
+                $profile->polishing_tutorial_completed_at ??= Carbon::now();
+                $profile->save();
+
+                return;
+            }
             if ($event === 'mirror') {
                 if ($profile->mirror_purchased_at === null) {
                     throw new UndergroundRuntimeException('underground_mirror_required', '透明な鏡をまだ持っていません。');
@@ -1649,10 +1710,19 @@ final readonly class UndergroundIntroService
                 'villa_owned' => $profile?->villa_purchased_at !== null,
                 'mirror_owned' => $profile?->mirror_purchased_at !== null,
                 'trophy_shelf_owned' => $profile?->trophy_shelf_purchased_at !== null,
+                'vault_expansion_owned' => $profile?->vault_expansion_purchased_at !== null,
+                'resonance_expansion_owned' => $profile?->resonance_expansion_purchased_at !== null,
                 'exchange_intro_page' => (int) ($profile->exchange_intro_page ?? 0),
                 'mirror_event_completed' => $profile?->mirror_event_completed_at !== null,
                 'items' => $this->catalog->residence(),
             ],
+            'distorted_stone_shop' => $this->distortedStoneShop($profile),
+            'polishing_tutorial_completed' => $profile?->polishing_tutorial_completed_at !== null,
+            'otherworld_intro_available' => $profile instanceof UndergroundProfile
+                && $profile->otherworld_discovered_at === null && $this->runtime->canDiscoverOtherworld($profile),
+            'otherworld_unlocked' => $profile?->otherworld_discovered_at !== null,
+            'otherworld' => $profile instanceof UndergroundProfile && $profile->otherworld_discovered_at !== null
+                ? $this->runtime->projectOtherworldState($profile) : null,
             'secretary_name' => $secretary->name,
             'combat_level' => $profile instanceof UndergroundProfile ? $profile->combat_level : 1,
             'combat_xp' => $profile instanceof UndergroundProfile ? $profile->combat_xp : 0,

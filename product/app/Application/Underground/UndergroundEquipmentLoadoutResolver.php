@@ -9,7 +9,10 @@ use RuntimeException;
 
 final readonly class UndergroundEquipmentLoadoutResolver
 {
-    public function __construct(private UndergroundEquipmentCatalog $catalog) {}
+    public function __construct(
+        private UndergroundEquipmentCatalog $catalog,
+        private UndergroundEquipmentPolishing $polishing = new UndergroundEquipmentPolishing,
+    ) {}
 
     /** @return array<string, mixed> */
     public function combatLoadout(UndergroundProfile $profile): array
@@ -38,7 +41,7 @@ final readonly class UndergroundEquipmentLoadoutResolver
                 ->where('underground_profile_id', $profile->id)
                 ->inventory($inventory)
                 ->count(),
-            'capacity' => $this->catalog->vaultCapacity($inventory),
+            'capacity' => $this->catalog->vaultCapacityForProfile($profile, $inventory),
             'equipped' => $equipped,
         ];
     }
@@ -67,7 +70,7 @@ final readonly class UndergroundEquipmentLoadoutResolver
         }
         $this->catalog->assertDefinition($definition, true, enforceCurrentGeneratorQuality: false);
 
-        return $definition;
+        return $this->polishing->apply($definition, $row->polish_level);
     }
 
     /** @return array<string, mixed> */

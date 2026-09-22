@@ -294,6 +294,7 @@ final class UndergroundSkipSettlementTest extends TestCase
 
     public function test_vault_bulk_skip_requires_every_key_and_replays_without_double_consumption(): void
     {
+        config(['underground-alpha-v1.exploration.grounds.shining_kingdom_vault.rare_encounter.chance_bps' => 10_000]);
         [$user, $profile] = $this->readyProfile();
         UndergroundTrialProgress::query()->create([
             'underground_profile_id' => $profile->id,
@@ -331,6 +332,7 @@ final class UndergroundSkipSettlementTest extends TestCase
         $this->assertSame(0, $profile->refresh()->shining_kingdom_key_balance);
         $this->assertSame(0, UserSkipTicketBalance::query()->where('user_id', $user->id)->value('balance'));
         $this->assertSame(3, $first['batch']->reward_snapshot['equipment_granted_count']);
+        $this->assertSame(3, $profile->refresh()->distorted_stone_balance);
         $this->assertSame(3, UndergroundOwnedEquipment::query()
             ->where('source_skip_batch_id', $first['batch']->id)
             ->count());

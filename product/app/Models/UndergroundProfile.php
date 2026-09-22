@@ -20,6 +20,10 @@ use Illuminate\Support\Carbon;
  * @property int $banked_shard_balance
  * @property int|null $current_hp
  * @property Carbon|null $next_battle_at
+ * @property Carbon|null $next_otherworld_battle_at
+ * @property int $distorted_stone_balance
+ * @property Carbon|null $distorted_stone_purchase_day
+ * @property int $distorted_stone_purchase_count
  * @property Carbon|null $underground_contract_completed_at
  * @property string|null $growth_path_key
  * @property string|null $growth_path_identity
@@ -28,6 +32,10 @@ use Illuminate\Support\Carbon;
  * @property Carbon|null $villa_purchased_at
  * @property Carbon|null $mirror_purchased_at
  * @property Carbon|null $trophy_shelf_purchased_at
+ * @property Carbon|null $vault_expansion_purchased_at
+ * @property Carbon|null $resonance_expansion_purchased_at
+ * @property Carbon|null $polishing_tutorial_completed_at
+ * @property Carbon|null $otherworld_discovered_at
  * @property int $exchange_intro_page
  * @property Carbon|null $mirror_event_completed_at
  * @property string|null $home_background_key
@@ -62,6 +70,8 @@ final class UndergroundProfile extends Model
     protected $fillable = [
         'secretary_id', 'unlocked_area_layers', 'combat_level', 'combat_xp', 'shard_balance', 'next_battle_at',
         'shining_kingdom_key_balance',
+        'distorted_stone_balance', 'distorted_stone_purchase_day', 'distorted_stone_purchase_count',
+        'next_otherworld_battle_at',
         'banked_shard_balance', 'current_hp',
         'underground_contract_completed_at', 'growth_path_key', 'growth_path_identity', 'growth_path_selected_at',
         'last_respec_at',
@@ -72,6 +82,9 @@ final class UndergroundProfile extends Model
         'awakening_gauge', 'awakening_message', 'awakening_technique_key', 'custom_ai_rules',
         'villa_purchased_at', 'mirror_purchased_at', 'exchange_intro_page', 'mirror_event_completed_at',
         'trophy_shelf_purchased_at',
+        'vault_expansion_purchased_at', 'resonance_expansion_purchased_at',
+        'polishing_tutorial_completed_at',
+        'otherworld_discovered_at',
         'home_background_key',
     ];
 
@@ -83,6 +96,10 @@ final class UndergroundProfile extends Model
             'combat_xp' => 'integer',
             'shard_balance' => 'integer',
             'shining_kingdom_key_balance' => 'integer',
+            'distorted_stone_balance' => 'integer',
+            'distorted_stone_purchase_day' => 'immutable_date',
+            'distorted_stone_purchase_count' => 'integer',
+            'next_otherworld_battle_at' => 'immutable_datetime',
             'banked_shard_balance' => 'integer',
             'current_hp' => 'integer',
             'next_battle_at' => 'immutable_datetime',
@@ -104,6 +121,10 @@ final class UndergroundProfile extends Model
             'villa_purchased_at' => 'immutable_datetime',
             'mirror_purchased_at' => 'immutable_datetime',
             'trophy_shelf_purchased_at' => 'immutable_datetime',
+            'vault_expansion_purchased_at' => 'immutable_datetime',
+            'resonance_expansion_purchased_at' => 'immutable_datetime',
+            'polishing_tutorial_completed_at' => 'immutable_datetime',
+            'otherworld_discovered_at' => 'immutable_datetime',
             'exchange_intro_page' => 'integer',
             'mirror_event_completed_at' => 'immutable_datetime',
         ];

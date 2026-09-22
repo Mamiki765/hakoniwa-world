@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests;
 
+use App\Application\Underground\UndergroundEquipmentCatalog;
 use Illuminate\Foundation\Http\FormRequest;
 
 final class ConfirmUndergroundBulkSellRequest extends FormRequest
@@ -17,7 +18,7 @@ final class ConfirmUndergroundBulkSellRequest extends FormRequest
         return [
             'request_id' => ['required', 'uuid'],
             'catalog_identity' => ['required', 'string', 'max:200'],
-            'items' => ['required', 'array', 'min:1', 'max:500'],
+            'items' => ['required', 'array', 'min:1', 'max:'.app(UndergroundEquipmentCatalog::class)->maximumBulkSellCount()],
             'items.*' => ['required', 'array:id,sell_price'],
             'items.*.id' => ['required', 'integer', 'min:1', 'distinct'],
             'items.*.sell_price' => ['required', 'integer', 'min:1'],

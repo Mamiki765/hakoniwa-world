@@ -179,6 +179,7 @@ final readonly class PriorityCombatAiConfiguration
                 ['key' => 'status_stacks_gte', 'label' => '自分の指定状態が指定stack以上', 'value_kind' => 'status_stacks'],
                 ['key' => 'role_stacks_gte', 'label' => '自分のrole stackが指定数以上', 'value_kind' => 'role_stacks'],
                 ['key' => 'enemy_telegraph', 'label' => '敵が強打予告中', 'value_kind' => 'none'],
+                ['key' => 'enemy_major_telegraph', 'label' => '敵が大予告中', 'value_kind' => 'none'],
                 ['key' => 'skill_ready', 'label' => '指定skillが現在使用可能', 'value_kind' => 'skill'],
                 ['key' => 'round_gte', 'label' => '指定round以降', 'value_kind' => 'round'],
                 ['key' => 'round_modulo', 'label' => 'roundの周期条件', 'value_kind' => 'round_modulo'],
@@ -349,7 +350,7 @@ final readonly class PriorityCombatAiConfiguration
             }
             $normalized['modulo'] = $modulo;
             $normalized['equals'] = $equals;
-        } elseif (! in_array($type, ['always', 'enemy_telegraph'], true)) {
+        } elseif (! in_array($type, ['always', 'enemy_telegraph', 'enemy_major_telegraph'], true)) {
             throw new InvalidArgumentException('AI condition type is invalid.');
         }
 

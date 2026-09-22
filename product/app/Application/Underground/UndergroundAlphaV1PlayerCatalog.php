@@ -15,12 +15,12 @@ use RuntimeException;
  *     key: string,
  *     content_identity: string,
  *     name: string,
- *     kind: 'hunting_ground'|'vault',
+ *     kind: 'hunting_ground'|'vault'|'otherworld',
  *     required_trial_key: string|null,
  *     enemy_count_by_party_size: array{1:int,2:int,3:int,4:int},
  *     item_level_min: int,
  *     item_level_max: int,
- *     rare_encounter: array{key:string,chance_bps:int,encounter:array<string,mixed>}|null,
+ *     rare_encounter: array{key:string,chance_bps:int,encounter:array<string,mixed>,distorted_stone_quantity?:int}|null,
  *     key_reward: array{normal_chance_bps:int,rare_quantity:int}|null,
  *     entry_key_cost: int,
  *     vault_base_g: int|null,
@@ -296,6 +296,17 @@ final readonly class UndergroundAlphaV1PlayerCatalog
     /** @return ExplorationHuntingGround */
     public function explorationHuntingGround(string $key): array
     {
+        if ($this->isOtherworldStage($key)) {
+            $content = $this->otherworld();
+            $stage = $content['stages'][$key];
+
+            return ['key' => $key, 'name' => $stage['name'], 'content_identity' => 'secretary-underground-otherworld-v1:'.$key,
+                'kind' => 'otherworld', 'required_trial_key' => $content['required_trial_key'],
+                'enemy_count_by_party_size' => [1 => 1, 2 => 1, 3 => 1, 4 => 1],
+                'item_level_min' => $stage['item_level'], 'item_level_max' => $stage['item_level'],
+                'rare_encounter' => null, 'key_reward' => null, 'entry_key_cost' => 0,
+                'vault_base_g' => null, 'treasure_multiplier' => null, 'forced_drop_profile' => null, 'drop_tier_key' => 'bahamul'];
+        }
         foreach ($this->explorationHuntingGrounds() as $ground) {
             if ($ground['key'] === $key) {
                 return $ground;
@@ -542,6 +553,13 @@ final readonly class UndergroundAlphaV1PlayerCatalog
     public function explorationEncounters(?string $huntingGroundKey = null): array
     {
         $groundKey = $huntingGroundKey ?? $this->explorationHuntingGroundKey();
+        if ($this->isOtherworldStage($groundKey)) {
+            $stage = $this->otherworld()['stages'][$groundKey];
+
+            return [['key' => $groundKey, 'label' => $stage['name'], 'weight' => 10000,
+                'xp' => $stage['xp'], 'shards' => $stage['shards'], 'drop_profile' => 'otherworld_fixed',
+                'item_level_min' => $stage['item_level'], 'item_level_max' => $stage['item_level']]];
+        }
         $ground = $this->configuredHuntingGround($groundKey);
         $configured = $ground['encounters'] ?? null;
         if (! is_array($configured) || $configured === []) {
@@ -692,6 +710,55 @@ final readonly class UndergroundAlphaV1PlayerCatalog
         $manifest = $this->explorationCatalog()->manifest();
         $duel = $this->guideDuel();
         $manifest['enemies'][$duel['key']] = $duel['enemy'];
+
+        return new AlphaV1BuildCatalog($manifest);
+    }
+
+    /** @return array<string,mixed> */
+    public function otherworld(): array
+    {
+        return $this->data()['otherworld'];
+    }
+
+    public function isOtherworldStage(string $key): bool
+    {
+        return isset($this->otherworld()['stages'][$key]);
+    }
+
+    public function otherworldCatalog(string $stageKey): AlphaV1BuildCatalog
+    {
+        $content = $this->otherworld();
+        $stage = $content['stages'][$stageKey] ?? null;
+        if (! is_array($stage)) {
+            throw new RuntimeException('Unknown otherworld stage.');
+        }
+        $manifest = $this->explorationCatalog()->manifest();
+        $manifest['skills'] = [...$manifest['skills'], ...$content['skills']];
+        $manifest['statuses'] = [...$manifest['statuses'], ...$content['statuses']];
+        $ultimateRules = $stage['abyssal_roar']
+            ? [['conditions' => [['type' => 'own_hp_lte', 'percent' => $content['roar_hp_percent']],
+                ['type' => 'skill_ready', 'skill' => 'bahamul_roar']], 'action' => 'skill:bahamul_roar']]
+            : [
+                ['conditions' => [['type' => 'self_has_status', 'status' => 'telegraph'], ['type' => 'skill_ready', 'skill' => 'bahamul_megaflare']], 'action' => 'skill:bahamul_megaflare'],
+                ['conditions' => [['type' => 'own_hp_lte', 'percent' => $content['ultimate_hp_percent']], ['type' => 'skill_ready', 'skill' => 'bahamul_megaflare']], 'action' => 'skill:enemy_telegraph'],
+            ];
+        $manifest['enemies'][$stageKey] = [
+            'label' => $stage['name'], 'boss' => true,
+            'base_stats' => ['vitality' => $stage['might'], 'might' => $stage['might'], 'finesse' => $stage['finesse'],
+                'spirit' => $stage['spirit'], 'agility' => $stage['agility']],
+            'max_hp' => $stage['max_hp'], 'physical_defense' => $stage['physical_defense'],
+            'magical_defense' => $stage['magical_defense'], 'weapon_power' => $stage['weapon_power'],
+            'skills' => ['bahamul_breath', 'bahamul_megaflare', $stage['abyssal_roar'] ? 'bahamul_roar' : 'enemy_telegraph'], 'modifiers' => [],
+            'normal_attack' => ['type' => 'damage', 'category' => 'physical', 'potency_bps' => 10000,
+                'stat_coefficients' => ['might' => 10000], 'weapon_coefficient_bps' => 10000,
+                'fixed' => 0, 'target_max_hp_bps' => 0, 'can_crit' => false, 'dodgeable' => true, 'hits' => 1],
+            'ai_rules' => [
+                ...$ultimateRules,
+                ['conditions' => [['type' => 'round_modulo', 'modulo' => 3, 'equals' => 0]], 'action' => 'skill:bahamul_breath'],
+                ['conditions' => [['type' => 'always']], 'action' => 'normal_attack'],
+            ],
+            'charged_attack' => $stage['abyssal_roar'] ? $content['charged_attack'] : null,
+        ];
 
         return new AlphaV1BuildCatalog($manifest);
     }
@@ -1135,7 +1202,8 @@ final readonly class UndergroundAlphaV1PlayerCatalog
                 || ! array_key_exists($forcedDropProfile, $this->explorationDropConfig()['profiles'])))
             || ($rare !== null && (! is_array($rare) || ! is_string($rare['key'] ?? null)
                 || ! is_int($rare['chance_bps'] ?? null) || $rare['chance_bps'] < 1 || $rare['chance_bps'] > 10_000
-                || ! is_array($rare['encounter'] ?? null)))
+                || ! is_array($rare['encounter'] ?? null)
+                || ! is_int($rare['distorted_stone_quantity'] ?? 0) || ($rare['distorted_stone_quantity'] ?? 0) < 0))
             || ($keyReward !== null && (! is_array($keyReward)
                 || ! is_int($keyReward['normal_chance_bps'] ?? null)
                 || $keyReward['normal_chance_bps'] < 0 || $keyReward['normal_chance_bps'] > 10_000

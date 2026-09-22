@@ -17,6 +17,50 @@ use PHPUnit\Framework\TestCase;
 
 final class AlphaV1PartyCombatTest extends TestCase
 {
+    public function test_charged_attack_leaves_a_full_round_to_react_and_fills_gauges_without_forcing_awakening(): void
+    {
+        $manifest = $this->catalog(1_000_000, 100, 1000, enemyAoe: true, enemyBoss: true)->manifest();
+        $manifest['enemies']['party_target']['charged_attack'] = [
+            'trigger_skill' => 'charge_roar', 'countdown_rounds' => 5, 'skill' => 'party_wave', 'status' => 'charged_wave',
+        ];
+        $manifest['statuses']['charged_wave'] = ['label' => '溜め', 'disposition' => 'buff', 'duration_rounds' => 100,
+            'stack_policy' => 'refresh', 'max_stacks' => 1,
+            'effects' => [['type' => 'damage_dealt_modifier', 'category' => 'all', 'action_key' => 'party_wave', 'value_bps' => 70000]]];
+        $manifest['skills']['charge_roar'] = ['label' => '咆哮', 'node_key' => null, 'mp_cost' => 0, 'cooldown' => 100,
+            'effects' => [['type' => 'apply_status', 'target' => 'self', 'status' => 'charged_wave']]];
+        $manifest['enemies']['party_target']['skills'][] = 'charge_roar';
+        $manifest['enemies']['party_target']['ai_rules'] = [
+            ['conditions' => [['type' => 'skill_ready', 'skill' => 'charge_roar']], 'action' => 'skill:charge_roar'],
+            ['conditions' => [['type' => 'always']], 'action' => 'normal_attack'],
+        ];
+        $guardian = $this->player('secretary:1', currentHp: 1000, awakening: true);
+        $guardian['awakening'] = [...$guardian['awakening'], 'gauge' => 0, 'growth_path' => 'guardianship_blue', 'technique_key' => 'absolute_aegis'];
+        $guardian['ai_rules'] = [
+            ['conditions' => [['type' => 'enemy_major_telegraph']], 'action' => 'awakening'],
+            ['conditions' => [['type' => 'enemy_major_telegraph']], 'action' => 'awakening_technique'],
+            ['conditions' => [['type' => 'always']], 'action' => 'defend'],
+        ];
+        $companion = $this->player('secretary:2', currentHp: 1000, awakening: true, defend: true);
+        $companion['awakening']['gauge'] = 0;
+        $companion['ai_rules'] = [['conditions' => [['type' => 'always']], 'action' => 'defend']];
+        $result = $this->model()->fightPartySnapshots(new AlphaV1BuildCatalog($manifest), [$guardian, $companion], ['party_target'], 4405, 7, 0);
+        $rows = collect($result->actionLog);
+        self::assertSame([5, 4, 3, 2, 1], $rows->where('action', 'charged_attack_countdown')->pluck('countdown')->all());
+        self::assertSame([5], $rows->where('kind', 'awakening_technique')->where('action', 'absolute_aegis')->pluck('round')->all());
+        $wave = $rows->where('effect_type', 'damage')->where('action', 'party_wave');
+        self::assertCount(2, $wave);
+        self::assertSame([6], $wave->pluck('round')->unique()->values()->all());
+        self::assertTrue($rows->where('round', 7)->where('actor_id', 'enemy:1')->where('action', 'normal_attack')->isNotEmpty());
+        self::assertFalse($result->finalStates['secretary:2']['awakened']);
+        self::assertSame(1000, $result->finalStates['secretary:2']['awakening_gauge']);
+        $manifest['statuses']['charged_wave']['effects'] = [];
+        $unboosted = $this->model()->fightPartySnapshots(new AlphaV1BuildCatalog($manifest), [$guardian, $companion], ['party_target'], 4405, 7, 0);
+        $ordinaryRows = collect($unboosted->actionLog)->where('effect_type', 'damage');
+        self::assertGreaterThan($ordinaryRows->where('action', 'party_wave')->sum('amount'), $wave->sum('amount'));
+        self::assertSame($ordinaryRows->where('action', 'normal_attack')->pluck('amount')->all(),
+            $rows->where('effect_type', 'damage')->where('action', 'normal_attack')->pluck('amount')->all());
+    }
+
     public function test_weapon_followup_occurs_once_after_a_multihit_area_action_and_replays_with_the_snapshot(): void
     {
         $manifest = $this->catalog(1_000_000, 1, 1, enemyAoe: true)->manifest();

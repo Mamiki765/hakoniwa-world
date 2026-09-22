@@ -30,6 +30,68 @@ final class UndergroundEquipmentAndRuntimeTest extends UndergroundPlayerAccessTe
     use CreatesTestWorlds;
     use RefreshDatabase;
 
+    public function test_polishing_charges_once_preserves_the_roll_and_reaches_the_upgrade_limit(): void
+    {
+        [$user, $secretary] = $this->secretaryUser('結晶を研磨する秘書');
+        $user->forceFill(['visitor_code' => 'POLI0001'])->save();
+        $profile = $this->openEquipmentProfile($secretary, 6_000_000);
+        $this->actingAs($user)->getJson('/api/v1/me/underground/main')->assertOk();
+        $sourceBattle = UndergroundBattle::query()->where('underground_profile_id', $profile->id)
+            ->where('activity_type', UndergroundBattle::ACTIVITY_TUTORIAL)->sole();
+        $generated = app(UndergroundRuntimeEquipmentGenerator::class)->generate(
+            210, 'bahamul', 'unique', 'resonance', null, null, 4405, 'polishing-feature', 'guard',
+        );
+        $item = UndergroundOwnedEquipment::query()->create([
+            'underground_profile_id' => $profile->id, 'definition_key' => $generated['key'],
+            'catalog_identity' => 'secretary-underground-shop-equipment-alpha-v3',
+            'grant_key' => 'drop:polishing-feature', 'instance_kind' => 'generated',
+            'instance_identity' => $generated['instance_identity'], 'generator_identity' => $generated['generator_identity'],
+            'generated_payload' => $generated, 'source_battle_id' => $sourceBattle->id, 'acquired_at' => now(),
+        ]);
+        $this->putJson('/api/v1/me/underground/equipment/equipped', [
+            'request_id' => (string) Str::uuid(), 'item_id' => $item->id,
+        ])->assertOk();
+        $spent = 0;
+        $unpolishedLending = app(BorrowedSecretarySnapshotFactory::class)->create(
+            $secretary->fresh(['user', 'images']), $profile->fresh(), $profile->combat_level, ['weapon' => 120, 'resonance' => 180], $user, false,
+        );
+        $firstRequest = null;
+        foreach (range(0, 4) as $level) {
+            $preview = $this->getJson('/api/v1/me/underground/equipment/polishing')->assertOk()->json('data');
+            $this->assertSame($level, $item->fresh()->polish_level);
+            $this->assertSame(6_000_000 - $spent, $profile->fresh()->shard_balance);
+            $request = ['request_id' => (string) Str::uuid(), 'item_id' => $item->id, 'level' => $level, 'price' => $preview['next_price']];
+            $firstRequest ??= $request;
+            $this->postJson('/api/v1/me/underground/equipment/polishing', $request)->assertOk()
+                ->assertJsonPath('data.vault.equipped.resonance.stats', $preview['next_item']['stats']);
+            $spent += $request['price'];
+        }
+        $this->postJson('/api/v1/me/underground/equipment/polishing', $firstRequest)->assertOk();
+        $this->assertSame(6_000_000 - $spent, $profile->fresh()->shard_balance);
+        $this->assertSame(5, $item->fresh()->polish_level);
+        $this->assertEquals($generated, $item->fresh()->generated_payload);
+        $final = $this->getJson('/api/v1/me/underground/equipment/polishing')->assertOk()
+            ->assertJsonPath('data.next_price', null)->assertJsonPath('data.next_item', null)->json('data.item');
+        $this->assertSame($generated['instance_identity'], $final['instance_identity']);
+        $this->assertSame(intdiv($generated['base']['stats']['vitality'] * 5, 2), $final['stats']['vitality']);
+        $this->assertSame($generated['unique_effect']['value_bps'] + 50, $final['unique_effect']['value_bps']);
+        $this->assertSame(array_column($generated['affixes'], 'key'), array_column($final['affixes'], 'key'));
+        $this->assertSame(array_column($generated['affixes'], 'quality_bps'), array_column($final['affixes'], 'quality_bps'));
+        $this->postJson('/api/v1/me/underground/equipment/polishing', [
+            ...$firstRequest, 'request_id' => (string) Str::uuid(),
+        ])->assertConflict();
+        $this->assertSame(6_000_000 - $spent, $profile->fresh()->shard_balance);
+        $synced = app(BorrowedSecretarySnapshotFactory::class)->create(
+            $secretary->fresh(['user', 'images']), $profile->fresh(), $profile->combat_level, ['weapon' => 120, 'resonance' => 180], $user, false,
+        );
+        $borrowedCrystal = collect($synced['effective_equipment']['items'])->firstWhere('equipped_slot', 'resonance');
+        $this->assertSame(180, $borrowedCrystal['item_level']);
+        $this->assertSame(5, $borrowedCrystal['polish_level']);
+        $this->assertSame(90, $synced['effective_equipment']['stats']['vitality'] - $unpolishedLending['effective_equipment']['stats']['vitality']);
+        $this->assertSame(30, $synced['effective_equipment']['stats']['spirit'] - $unpolishedLending['effective_equipment']['stats']['spirit']);
+        $this->assertEquals($generated, $item->fresh()->generated_payload);
+    }
+
     public function test_resonance_uses_separate_storage_and_survives_equip_retry_and_combat_with_a_boss_weapon(): void
     {
         [$user, $secretary] = $this->secretaryUser('Resonance secretary');

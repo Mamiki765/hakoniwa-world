@@ -154,9 +154,17 @@ STORY;
     }
 
     /** @param list<int> $borrowedSecretaryIds
+     * @return array{battle:UndergroundBattle, duplicate:bool, daily_quest:array<string,int|string|bool>}
+     */
+    public function challengeOtherworld(User $user, string $requestId, string $stageKey, array $borrowedSecretaryIds = [], bool $useStone = false): array
+    {
+        return $this->runExplorationRequest($user, $requestId, $stageKey, $borrowedSecretaryIds, otherworld: true, useStone: $useStone);
+    }
+
+    /** @param list<int> $borrowedSecretaryIds
      * @return array{battle: UndergroundBattle, duplicate: bool, daily_quest: array<string,int|string|bool>}
      */
-    private function runExplorationRequest(User $user, string $requestId, ?string $huntingGroundKey, array $borrowedSecretaryIds, bool $guideDuel = false): array
+    private function runExplorationRequest(User $user, string $requestId, ?string $huntingGroundKey, array $borrowedSecretaryIds, bool $guideDuel = false, bool $otherworld = false, bool $useStone = false): array
     {
         $this->assertRequestId($requestId);
         if (count($borrowedSecretaryIds) > 3
@@ -173,6 +181,9 @@ STORY;
         }
         $huntingGroundKey ??= $this->alphaV1Catalog->explorationHuntingGroundKey();
         $huntingGround = $this->alphaV1Catalog->explorationHuntingGround($huntingGroundKey);
+        if (($huntingGround['kind'] === 'otherworld') !== $otherworld) {
+            throw new UndergroundRuntimeException('underground_otherworld_entry_required', '異世界の戦いの画面から出発してください。');
+        }
         $fingerprintPayload = [
             'activity_type' => $guideDuel ? UndergroundBattle::ACTIVITY_GUIDE_DUEL : 'exploration',
             'guide_duel_identity' => $guideDuel ? $this->alphaV1Catalog->guideDuel()['identity'] : null,
@@ -182,6 +193,10 @@ STORY;
         ];
         if (! $guideDuel) {
             unset($fingerprintPayload['guide_duel_identity']);
+        }
+        if ($otherworld) {
+            $fingerprintPayload['otherworld'] = true;
+            $fingerprintPayload['use_distorted_stone'] = $useStone;
         }
         if ($borrowedSecretaryIds !== []) {
             $fingerprintPayload['borrowed_secretary_ids'] = $borrowedSecretaryIds;
@@ -223,6 +238,8 @@ STORY;
                     $leaderSyncInputs,
                     $preparedBorrowed,
                     $guideDuel,
+                    $otherworld,
+                    $useStone,
                 ): array {
                     $profile = $this->lockedProfileForUser($user);
                     $this->assertExplorationUnlocked($profile);
@@ -270,7 +287,20 @@ STORY;
                             'daily_quest' => $this->dailyQuests->currentStatus($user->id, DailyQuestService::UNDERGROUND_BATTLES),
                         ];
                     }
-                    $this->assertCooldownElapsed($profile);
+                    if ($otherworld) {
+                        if ($profile->next_otherworld_battle_at !== null && $profile->next_otherworld_battle_at->isFuture()) {
+                            if (! $useStone || $profile->distorted_stone_balance < 1) {
+                                throw new UndergroundRuntimeException('underground_otherworld_cooldown', '再挑戦までお待ちください。歪んだ輝石を使うと待機を省略できます。');
+                            }
+                            $profile->distorted_stone_balance--;
+                        }
+                        if ($this->equipmentDrops->remainingVaultCapacity($profile, 'resonance') < 1
+                            || $this->equipmentDrops->remainingVaultCapacity($profile) < 1) {
+                            throw new UndergroundRuntimeException('underground_vault_full', '報酬を受け取るため、装備と共鳴結晶の保管庫にそれぞれ空きを作ってください。');
+                        }
+                    } else {
+                        $this->assertCooldownElapsed($profile);
+                    }
                     $keyBalanceBefore = $profile->shining_kingdom_key_balance;
                     $this->consumeExplorationEntryKey($profile, $huntingGround);
                     $seed = $this->battleSeed->forRequest(
@@ -293,7 +323,7 @@ STORY;
                         )];
                     }
 
-                    $battle = $borrowedSecretaryIds === []
+                    $battle = $borrowedSecretaryIds === [] && ! $otherworld
                             ? $this->resolveAndSettleExplorationBattle(
                                 $profile,
                                 $requestId,
@@ -338,6 +368,7 @@ STORY;
     {
         $this->assertRequestId($requestId);
         $huntingGround = $this->alphaV1Catalog->explorationHuntingGround($huntingGroundKey);
+        $this->assertSkippableHuntingGround($huntingGround);
         $policy = $this->catalog->skipPolicy('hunting_ground');
         $fingerprint = $this->fingerprint([
             'operation' => 'skip',
@@ -393,6 +424,7 @@ STORY;
             $victoryReward = $this->explorationVictoryReward($huntingGround, $encounterKey, $encounter, $seed, true);
             $reward = $this->applyRepeatableReward($profile, $encounter['xp'], $victoryReward['shards']);
             $profile->shining_kingdom_key_balance += $victoryReward['keys'];
+            $profile->distorted_stone_balance += $victoryReward['distorted_stones'];
             $profile->save();
             $settledAt = Carbon::now();
             $settlement = UndergroundSkipSettlement::query()->create([
@@ -429,6 +461,7 @@ STORY;
                         'balance_after' => $profile->shining_kingdom_key_balance,
                     ],
                     'treasure' => $victoryReward['treasure'],
+                    'distorted_stones' => $victoryReward['distorted_stones'],
                     'drops' => [['status' => 'pending']],
                 ],
                 'settled_at' => $settledAt,
@@ -615,6 +648,7 @@ STORY;
         $this->assertRequestId($requestId);
         $this->assertBulkSkipExecutionCount($executionCount);
         $huntingGround = $this->alphaV1Catalog->explorationHuntingGround($huntingGroundKey);
+        $this->assertSkippableHuntingGround($huntingGround);
         $policy = $this->catalog->skipPolicy('hunting_ground');
         $fingerprint = $this->fingerprint([
             'operation' => 'bulk_skip',
@@ -684,6 +718,7 @@ STORY;
                 $victoryReward = $this->explorationVictoryReward($huntingGround, $encounterKey, $encounter, $seed, true);
                 $reward = $this->applyRepeatableReward($profile, $encounter['xp'], $victoryReward['shards']);
                 $profile->shining_kingdom_key_balance += $victoryReward['keys'];
+                $profile->distorted_stone_balance += $victoryReward['distorted_stones'];
                 $xpAwarded += $encounter['xp'];
                 $shardsAwarded += $victoryReward['shards'];
                 $stpAwarded += $reward['stp_awarded'];
@@ -695,6 +730,7 @@ STORY;
                     'shards' => $victoryReward['shards'],
                     'keys' => $victoryReward['keys'],
                     'treasure' => $victoryReward['treasure'],
+                    'distorted_stones' => $victoryReward['distorted_stones'],
                 ];
                 $dropEncounter = $encounter;
                 if (is_string($huntingGround['forced_drop_profile'] ?? null)) {
@@ -1323,6 +1359,51 @@ STORY;
         ];
     }
 
+    public function canDiscoverOtherworld(UndergroundProfile $profile): bool
+    {
+        $entry = $this->alphaV1Catalog->otherworld();
+
+        return $profile->combat_level >= $entry['minimum_level']
+            && UndergroundTrialProgress::query()->where('underground_profile_id', $profile->id)
+                ->where('trial_key', $entry['required_trial_key'])->whereNotNull('first_cleared_at')->exists();
+    }
+
+    /** @return array<string,mixed> */
+    public function projectOtherworldState(UndergroundProfile $profile): array
+    {
+        $cleared = $this->otherworldClearedKeys($profile);
+        $content = $this->alphaV1Catalog->otherworld();
+        $stages = [];
+        foreach ($content['stages'] as $key => $stage) {
+            $reason = $this->otherworldUnavailableReason($profile, $key, $cleared);
+            $stages[] = ['key' => $key, 'name' => $stage['name'], 'recommended_level' => $stage['level'],
+                'item_level' => $stage['item_level'], 'locked' => $reason !== null,
+                'unlock_condition' => $reason, 'cleared' => in_array($key, $cleared, true)];
+        }
+
+        return ['stages' => $stages, 'next_battle_at' => $profile->next_otherworld_battle_at?->toAtomString(),
+            'cooldown_seconds' => $content['cooldown_seconds'], 'distorted_stone_balance' => $profile->distorted_stone_balance];
+    }
+
+    /** @return list<string> */
+    private function otherworldClearedKeys(UndergroundProfile $profile): array
+    {
+        return UndergroundContentClearProgress::query()->where('underground_profile_id', $profile->id)
+            ->where('content_type', 'hunting_ground')->where('actual_clear_count', '>', 0)->pluck('content_key')->all();
+    }
+
+    /** @param list<string> $cleared */
+    private function otherworldUnavailableReason(UndergroundProfile $profile, string $key, array $cleared): ?string
+    {
+        if ($profile->otherworld_discovered_at === null) {
+            return '試練2クリア・Lv100以上でショップを訪ねてください。';
+        }
+        $previous = $this->alphaV1Catalog->otherworld()['stages'][$key]['previous'];
+
+        return is_string($previous) && ! in_array($previous, $cleared, true)
+            ? '前の段階をクリアすると解禁されます。' : null;
+    }
+
     /** @return array<string, mixed> */
     public function projectHuntingGroundState(UndergroundProfile $profile): array
     {
@@ -1551,7 +1632,9 @@ STORY;
                     ? $snapshot['hunting_ground']
                     : null,
             'drop' => is_array($snapshot['drop'] ?? null) ? $snapshot['drop'] : null,
+            'drops' => is_array($snapshot['drops'] ?? null) ? $snapshot['drops'] : null,
             'treasure' => is_array($snapshot['treasure'] ?? null) ? $snapshot['treasure'] : null,
+            'distorted_stones' => (int) ($snapshot['distorted_stones'] ?? 0),
             'shining_kingdom_key' => is_array($snapshot['shining_kingdom_key'] ?? null)
                 ? $snapshot['shining_kingdom_key']
                 : null,
@@ -1788,6 +1871,7 @@ STORY;
         };
         $rewardSettlement = $this->applyRepeatableReward($profile, $xpAwarded, $shardDelta);
         $profile->shining_kingdom_key_balance += $victoryReward['keys'];
+        $profile->distorted_stone_balance += $victoryReward['distorted_stones'];
         $curve = $rewardSettlement['xp_curve'];
         $stpAwarded = $rewardSettlement['stp_awarded'];
         $maxHpAfter = $this->alphaV1Catalog->currentMaxHp(
@@ -1892,6 +1976,7 @@ STORY;
                     'balance_after' => $profile->shining_kingdom_key_balance,
                 ],
                 'treasure' => $victoryReward['treasure'],
+                'distorted_stones' => $victoryReward['distorted_stones'],
                 'awakening' => $result->awakening,
                 'drop' => [
                     'identity' => $this->alphaV1Catalog->explorationDropConfig()['identity'],
@@ -2171,7 +2256,8 @@ STORY;
             throw new UndergroundRuntimeException('underground_party_invalid', '敵編成を解決できません。');
         }
         $enemyKeys = $encounterKeys;
-        $combatCatalog = $this->alphaV1Catalog->explorationCatalog();
+        $otherworld = $huntingGround['kind'] === 'otherworld';
+        $combatCatalog = $otherworld ? $this->alphaV1Catalog->otherworldCatalog($huntingGroundKey) : $this->alphaV1Catalog->explorationCatalog();
         $enemyLabels = [];
         for ($index = 1; $index <= $enemyCount; $index++) {
             $enemyKey = $enemyKeys[$index - 1];
@@ -2215,7 +2301,7 @@ STORY;
             $memberRows,
         );
 
-        $maxRounds = $this->alphaV1Catalog->explorationMaxRounds();
+        $maxRounds = $otherworld ? $this->alphaV1Catalog->otherworld()['max_rounds'] : $this->alphaV1Catalog->explorationMaxRounds();
         $naturalRecovery = (int) $this->alphaV1Catalog->growthPath($profile->growth_path_key)['natural_recovery'];
         $startedAt = Carbon::now();
         $result = $this->partyCombat->fight(
@@ -2265,6 +2351,7 @@ STORY;
         };
         $rewardSettlement = $this->applyRepeatableReward($profile, $xpAwarded, $shardDelta);
         $profile->shining_kingdom_key_balance += $victoryReward['keys'];
+        $profile->distorted_stone_balance += $victoryReward['distorted_stones'];
         $curve = $rewardSettlement['xp_curve'];
         $stpAwarded = $rewardSettlement['stp_awarded'];
         $maxHpAfter = $this->alphaV1Catalog->currentMaxHp(
@@ -2289,10 +2376,14 @@ STORY;
         }
         unset($rental);
         $profile->rental_party = $rentalMembers;
-        $profile->next_battle_at = $finishedAt->copy()->addSeconds($this->catalog->cooldownSeconds());
+        if ($otherworld) {
+            $profile->next_otherworld_battle_at = $finishedAt->copy()->addSeconds($this->alphaV1Catalog->otherworld()['cooldown_seconds']);
+        } else {
+            $profile->next_battle_at = $finishedAt->copy()->addSeconds($this->catalog->cooldownSeconds());
+        }
         $profile->save();
 
-        $projection = $this->partyProjector->project($result, $memberSnapshots, $leaderDefinition['catalog']);
+        $projection = $this->partyProjector->project($result, $memberSnapshots, $combatCatalog);
         $projection['summary']['result'] = $resultType;
         $detailSnapshot = [
             'initial_state' => $projection['initial_state'],
@@ -2379,6 +2470,7 @@ STORY;
                     'balance_after' => $profile->shining_kingdom_key_balance,
                 ],
                 'treasure' => $victoryReward['treasure'],
+                'distorted_stones' => $victoryReward['distorted_stones'],
                 'awakening' => $leaderFinalAwakening,
                 'party_awakening' => $result->awakening,
                 'drop' => [
@@ -2396,19 +2488,25 @@ STORY;
         if (is_string($huntingGround['forced_drop_profile'] ?? null)) {
             $dropEncounter['drop_profile'] = $huntingGround['forced_drop_profile'];
         }
-        $snapshot['drop'] = $resultType === UndergroundBattle::RESULT_VICTORY
-            ? $this->equipmentDrops->settleVictory(
-                $profile,
-                $battle,
-                $huntingGroundKey,
-                $dropEncounter,
-                $seed,
-                $huntingGround['drop_tier_key'],
-            )
+        if ($otherworld) {
+            unset($snapshot['drop']);
+            $snapshot['drops'] = $resultType === UndergroundBattle::RESULT_VICTORY
+                ? $this->equipmentDrops->settleOtherworldVictory($profile, $battle, $huntingGroundKey, $seed) : [];
+        } else {
+            $snapshot['drop'] = $resultType === UndergroundBattle::RESULT_VICTORY
+                ? $this->equipmentDrops->settleVictory(
+                    $profile,
+                    $battle,
+                    $huntingGroundKey,
+                    $dropEncounter,
+                    $seed,
+                    $huntingGround['drop_tier_key'],
+                )
             : [
-                'identity' => $this->alphaV1Catalog->explorationDropConfig()['identity'],
-                'status' => 'ineligible',
-            ];
+                    'identity' => $this->alphaV1Catalog->explorationDropConfig()['identity'],
+                    'status' => 'ineligible',
+                ];
+        }
         $battle->snapshot = $snapshot;
         $battle->save();
         UndergroundBattleLog::query()->create([
@@ -3417,7 +3515,7 @@ STORY;
     /**
      * @param  array<string, mixed>  $huntingGround
      * @param  array<string, mixed>  $encounter
-     * @return array{shards:int,keys:int,treasure:array{found:bool,base_g:int,multiplier:int,total_g:int}}
+     * @return array{shards:int,keys:int,distorted_stones:int,treasure:array{found:bool,base_g:int,multiplier:int,total_g:int}}
      */
     private function explorationVictoryReward(
         array $huntingGround,
@@ -3428,7 +3526,7 @@ STORY;
         ?int $baseGOverride = null,
     ): array {
         if (! $victory) {
-            return ['shards' => 0, 'keys' => 0, 'treasure' => ['found' => false, 'base_g' => 0, 'multiplier' => 1, 'total_g' => 0]];
+            return ['shards' => 0, 'keys' => 0, 'distorted_stones' => 0, 'treasure' => ['found' => false, 'base_g' => 0, 'multiplier' => 1, 'total_g' => 0]];
         }
         $random = new UndergroundRandom($seed);
         $baseG = ($huntingGround['kind'] ?? 'hunting_ground') === 'vault'
@@ -3450,10 +3548,14 @@ STORY;
                 : ($random->integer('reward:shining-kingdom-key', 1, 10_000) <= $keyReward['normal_chance_bps'] ? 1 : 0);
         }
         $totalG = $baseG * $multiplier;
+        $rare = $huntingGround['rare_encounter'] ?? null;
+        $distortedStones = is_array($rare) && ($rare['key'] ?? null) === $encounterKey
+            ? (int) ($rare['distorted_stone_quantity'] ?? 0) : 0;
 
         return [
             'shards' => $totalG,
             'keys' => $keys,
+            'distorted_stones' => $distortedStones,
             'treasure' => ['found' => $treasure, 'base_g' => $baseG, 'multiplier' => $multiplier, 'total_g' => $totalG],
         ];
     }
@@ -3487,6 +3589,12 @@ STORY;
         UndergroundProfile $profile,
         array $huntingGround,
     ): void {
+        if (($huntingGround['kind'] ?? null) === 'otherworld') {
+            $reason = $this->otherworldUnavailableReason($profile, $huntingGround['key'], $this->otherworldClearedKeys($profile));
+            if ($reason !== null) {
+                throw new UndergroundRuntimeException('underground_otherworld_locked', $reason);
+            }
+        }
         $requiredTrial = $huntingGround['required_trial_key'] ?? null;
         if ($requiredTrial === null) {
             return;
@@ -3501,6 +3609,14 @@ STORY;
                 'underground_hunting_ground_locked',
                 '黒晶洞は試練1を初回clearすると解禁されます。',
             );
+        }
+    }
+
+    /** @param array<string,mixed> $huntingGround */
+    private function assertSkippableHuntingGround(array $huntingGround): void
+    {
+        if ($huntingGround['kind'] === 'otherworld') {
+            throw new UndergroundRuntimeException('underground_otherworld_skip_unavailable', '異世界の戦いでは戦闘をスキップできません。');
         }
     }
 

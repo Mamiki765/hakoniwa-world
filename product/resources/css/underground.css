@@ -1,4 +1,6 @@
 .underground-panel.ug-panel { padding: 0; border: 0; background: transparent; box-shadow: none; max-width: 1120px; }
+.ug-boss-countdown { display: block; font-size: clamp(3rem, 12vw, 6rem); line-height: 1.1; font-variant-numeric: tabular-nums; }
+.ug-boss-countdown.is-major { color: #b62d35; text-shadow: 0 0 18px #b62d3540; }
 .ug-shell {
     container: underground / inline-size;
     --ug-surface: var(--paper);
