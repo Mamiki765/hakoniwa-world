@@ -3,7 +3,10 @@
 namespace Tests\Underground\Feature;
 
 use App\Application\SecretaryLendingService;
+use App\Application\Underground\UndergroundBattleHistoryCompactor;
 use App\Application\Underground\UndergroundLendingRewardService;
+use App\Application\Underground\UndergroundReceiptPurgeService;
+use App\Application\Underground\UndergroundReceiptRollupService;
 use App\Application\Underground\UndergroundStarterEquipmentService;
 use App\Models\Secretary;
 use App\Models\SecretaryLendingDailyReward;
@@ -94,12 +97,17 @@ final class UndergroundLendingRewardServiceTest extends TestCase
         [$leader, $leaderSecretary] = $this->secretary();
         $service = app(UndergroundLendingRewardService::class);
 
-        Carbon::setTestNow('2026-09-08 23:50:00+09:00');
+        Carbon::setTestNow('2026-08-08 23:50:00+09:00');
         for ($i = 1; $i <= 9; $i++) {
             $party = $this->party($leader, $leaderSecretary, $borrowed, $i);
             $this->assertSame(0, $service->settle($this->battle($leader, $party, $i), $party)['tickets_awarded']);
         }
         Carbon::setTestNow('2026-09-09 00:10:00+09:00');
+        $leaderProfile = UndergroundProfile::query()->where('secretary_id', $leaderSecretary->id)->sole();
+        app(UndergroundBattleHistoryCompactor::class)->compact(now()->subDays(30), 100, 100, 30);
+        app(UndergroundReceiptRollupService::class)->aggregate($leaderProfile->id, 'battle', now()->subDays(30), 100, true);
+        app(UndergroundReceiptPurgeService::class)->purge($leaderProfile->id, 'battle', now()->subDays(30), 100, true);
+        $this->assertDatabaseCount('secretary_lending_participations', 0);
         $party = $this->party($leader, $leaderSecretary, $borrowed, 10);
         $battle = $this->battle($leader, $party, 10);
         $this->assertSame(
@@ -113,7 +121,7 @@ final class UndergroundLendingRewardServiceTest extends TestCase
 
         $this->assertSame(1, app(SecretaryLendingService::class)->ticketBalance($owner));
         $this->assertSame([
-            ['canonical_day' => '2026-09-08', 'participation_count' => 9, 'tickets_awarded' => 0],
+            ['canonical_day' => '2026-08-08', 'participation_count' => 9, 'tickets_awarded' => 0],
             ['canonical_day' => '2026-09-09', 'participation_count' => 1, 'tickets_awarded' => 1],
         ], SecretaryLendingDailyReward::query()->where('owner_user_id', $owner->id)
             ->orderBy('canonical_day')->get(['canonical_day', 'participation_count', 'tickets_awarded'])
@@ -122,6 +130,20 @@ final class UndergroundLendingRewardServiceTest extends TestCase
                 'participation_count' => $reward->participation_count,
                 'tickets_awarded' => $reward->tickets_awarded,
             ])->all());
+
+        for ($i = 11; $i <= 19; $i++) {
+            $party = $this->party($leader, $leaderSecretary, $borrowed, $i);
+            $service->settle($this->battle($leader, $party, $i), $party);
+        }
+        Carbon::setTestNow('2026-10-10 00:10:00+09:00');
+        app(UndergroundBattleHistoryCompactor::class)->compact(now()->subDays(30), 100, 100, 30);
+        app(UndergroundReceiptRollupService::class)->aggregate($leaderProfile->id, 'battle', now()->subDays(30), 100, true);
+        app(UndergroundReceiptPurgeService::class)->purge($leaderProfile->id, 'battle', now()->subDays(30), 100, true);
+        $this->assertDatabaseCount('secretary_lending_participations', 0);
+        $party = $this->party($leader, $leaderSecretary, $borrowed, 20);
+        $this->assertSame(1, $service->settle($this->battle($leader, $party, 20), $party)['tickets_awarded']);
+        $this->assertSame(2, app(SecretaryLendingService::class)->ticketBalance($owner));
+        $this->assertDatabaseHas('user_skip_ticket_balances', ['user_id' => $owner->id, 'lifetime_participation_count' => 20]);
     }
 
     public function test_daily_cap_stops_the_tenth_participation_ticket_at_one_hundred(): void

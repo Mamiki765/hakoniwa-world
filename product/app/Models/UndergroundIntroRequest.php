@@ -20,7 +20,7 @@ final class UndergroundIntroRequest extends Model
 {
     protected $fillable = [
         'underground_profile_id', 'request_id', 'request_fingerprint', 'operation',
-        'resulting_stage', 'underground_battle_id',
+        'resulting_stage', 'underground_battle_id', 'result_payload',
     ];
 
     /** @return array<string, string> */
@@ -29,6 +29,7 @@ final class UndergroundIntroRequest extends Model
         return [
             'underground_profile_id' => 'integer',
             'underground_battle_id' => 'integer',
+            'result_payload' => 'array',
         ];
     }
 

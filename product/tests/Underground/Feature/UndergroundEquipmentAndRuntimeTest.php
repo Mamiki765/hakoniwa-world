@@ -3,7 +3,10 @@
 namespace Tests\Underground\Feature;
 
 use App\Application\Underground\UndergroundAlphaV1PlayerCatalog;
+use App\Application\Underground\UndergroundBattleHistoryCompactor;
 use App\Application\Underground\UndergroundEquipmentLoadoutResolver;
+use App\Application\Underground\UndergroundReceiptPurgeService;
+use App\Application\Underground\UndergroundReceiptRollupService;
 use App\Application\Underground\UndergroundRuntimeEquipmentGenerator;
 use App\Models\UndergroundBattle;
 use App\Models\UndergroundIntroProgress;
@@ -716,6 +719,15 @@ final class UndergroundEquipmentAndRuntimeTest extends UndergroundPlayerAccessTe
             'acquired_at' => Carbon::now(),
         ]);
         $this->assertSame([8_500], array_values(array_unique(array_column($generated['affixes'], 'quality_bps'))));
+        $profile->introProgress->update(['tutorial_encounter_key' => $sourceBattle->encounter_key]);
+        $this->travel(31)->days();
+        app(UndergroundBattleHistoryCompactor::class)->compact(now()->subDays(30), 10, 10, 30);
+        app(UndergroundReceiptRollupService::class)->aggregate($profile->id, 'battle', now()->subDays(30), 10, true);
+        $purged = app(UndergroundReceiptPurgeService::class)->purge($profile->id, 'battle', now()->subDays(30), 10, true);
+        $this->assertSame(1, $purged['candidates']);
+        $this->assertDatabaseMissing('underground_battles', ['id' => $sourceBattle->id]);
+        $this->assertSame($sourceBattle->id, $item->fresh()->source_battle_id);
+        $this->assertEquals($generated, $item->fresh()->generated_payload);
         config([
             'underground-equipment.generator.quality_min_bps' => 9_000,
             'underground-equipment.generator.quality_max_bps' => 10_000,

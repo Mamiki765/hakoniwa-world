@@ -20,7 +20,7 @@ final class ReportUndergroundStatistics extends Command
                             {--activity=* : Activity types; defaults to exploration and trial}
                             {--max-rows= : Optional safety gate; no report is emitted when exceeded}';
 
-    protected $description = 'Stream permanent Underground battle statistics without action logs or snapshots';
+    protected $description = 'Stream retained Underground battle statistics; purged periods are unavailable';
 
     public function handle(): int
     {
@@ -132,6 +132,7 @@ final class ReportUndergroundStatistics extends Command
         $this->finalizeAggregate($overall);
         $this->line(json_encode([
             'statistics_version' => UndergroundBattleStatisticsProjector::VERSION,
+            'receipt_scope' => 'retained_receipts',
             'activities' => $activities,
             'recorded_from' => $first?->toAtomString(),
             'recorded_to' => $last?->toAtomString(),

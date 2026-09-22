@@ -1,3 +1,4 @@
+import { stubUndergroundFetch } from './UndergroundAdmissionTestFixture';
 import { openUndergroundView, withUndergroundDefaults } from './UndergroundTestNavigation';
 import { flushPromises, mount } from '@vue/test-utils';
 import { describe, expect, it, vi } from 'vitest';
@@ -31,7 +32,7 @@ describe('Underground application operations', () => {
             }
             return response(null, 404);
         });
-        vi.stubGlobal('fetch', fetchMock);
+        stubUndergroundFetch(fetchMock);
         const wrapper = mount(App);
         await flushPromises();
         await wrapper.findAll('.site-header nav button').find((button) => button.text() === '秘書')!.trigger('click');
@@ -140,7 +141,7 @@ describe('Underground application operations', () => {
 
             return response(null, 404);
         });
-        vi.stubGlobal('fetch', fetchMock);
+        stubUndergroundFetch(fetchMock);
         const wrapper = mount(App);
         await flushPromises();
 
@@ -332,7 +333,7 @@ describe('Underground application operations', () => {
 
             return response(null, 404);
         });
-        vi.stubGlobal('fetch', fetchMock);
+        stubUndergroundFetch(fetchMock);
         const wrapper = mount(App);
         await flushPromises();
         await wrapper.findAll('.site-header nav button')
@@ -808,7 +809,12 @@ describe('Underground application operations', () => {
                 };
                 return response(openState);
             }
-            if (path === '/api/v1/me/underground/playtest' && init?.method === 'POST') return response(playtestBattle);
+            if (path === '/api/v1/me/underground/playtest' && init?.method === 'POST') {
+                if (fetchMock.mock.calls.filter(([called]) => String(called) === path).length === 1) {
+                    throw new TypeError('Playtest response lost');
+                }
+                return response(playtestBattle);
+            }
             if (path === '/api/v1/me/underground/battles') return response(historyBattles);
             if (path === `/api/v1/me/underground/battles/${summary.id}`) {
                 battleDetailGets++;
@@ -825,7 +831,7 @@ describe('Underground application operations', () => {
             }
             return response(null, 404);
         });
-        vi.stubGlobal('fetch', fetchMock);
+        stubUndergroundFetch(fetchMock);
         window.localStorage.setItem('hakoniwa.underground.selected-hunting-ground', 'black_crystal_cave');
         const wrapper = mount(App, { attachTo: document.body });
         await flushPromises();
@@ -1113,6 +1119,12 @@ describe('Underground application operations', () => {
         await openUndergroundView(wrapper, '冒険', '力試し');
         await wrapper.get('.underground-playtest .button').trigger('click');
         await flushPromises();
+        expect(wrapper.get('[role="alert"]').text()).toContain('Playtest response lost');
+        await wrapper.get('.underground-playtest .button').trigger('click');
+        await flushPromises();
+        const retriedPlaytests = fetchMock.mock.calls.filter(([path]) => String(path).endsWith('/playtest'));
+        expect(retriedPlaytests).toHaveLength(2);
+        expect(retriedPlaytests[1]?.[1]?.body).toBe(retriedPlaytests[0]?.[1]?.body);
         await wrapper.get('.underground-battle-back').trigger('click');
         await openUndergroundView(wrapper, 'ショップ');
         expect(wrapper.get('.ug-shop-rest').text()).toContain('あなたのコンビニ、箱庭ダンジョン店です！');
@@ -1344,7 +1356,7 @@ describe('Underground application operations', () => {
 
             return response(null, 404);
         });
-        vi.stubGlobal('fetch', fetchMock);
+        stubUndergroundFetch(fetchMock);
         const wrapper = mount(UndergroundPanel);
         await flushPromises();
 
@@ -1425,7 +1437,7 @@ describe('Underground application operations', () => {
 
             return response(null, 404);
         });
-        vi.stubGlobal('fetch', fetchMock);
+        stubUndergroundFetch(fetchMock);
         const wrapper = mount(UndergroundPanel);
         await flushPromises();
 
@@ -1452,7 +1464,7 @@ describe('Underground application operations', () => {
 
             return response(null, 404);
         });
-        vi.stubGlobal('fetch', fetchMock);
+        stubUndergroundFetch(fetchMock);
         const wrapper = mount(UndergroundPanel);
         await flushPromises();
 
@@ -1585,7 +1597,7 @@ describe('Underground application operations', () => {
 
             return response(null, 404);
         });
-        vi.stubGlobal('fetch', fetchMock);
+        stubUndergroundFetch(fetchMock);
         const wrapper = mount(App);
         await flushPromises();
         await wrapper.findAll('.site-header nav button')
@@ -1662,7 +1674,7 @@ describe('Underground application operations', () => {
 
             return response(null, 404);
         });
-        vi.stubGlobal('fetch', fetchMock);
+        stubUndergroundFetch(fetchMock);
         const wrapper = mount(App);
         await flushPromises();
 
@@ -1710,7 +1722,7 @@ describe('Underground application operations', () => {
 
             return response(null, 404);
         });
-        vi.stubGlobal('fetch', fetchMock);
+        stubUndergroundFetch(fetchMock);
         const wrapper = mount(App);
         await flushPromises();
 
@@ -1770,7 +1782,7 @@ describe('Underground application operations', () => {
 
             return response(null, 404);
         });
-        vi.stubGlobal('fetch', fetchMock);
+        stubUndergroundFetch(fetchMock);
         const wrapper = mount(App);
         await flushPromises();
 
@@ -1817,7 +1829,7 @@ describe('Underground application operations', () => {
 
             return response(null, 404);
         });
-        vi.stubGlobal('fetch', fetchMock);
+        stubUndergroundFetch(fetchMock);
         const wrapper = mount(App);
         await flushPromises();
 
@@ -1896,7 +1908,7 @@ describe('Underground application operations', () => {
 
             return response(null, 404);
         });
-        vi.stubGlobal('fetch', fetchMock);
+        stubUndergroundFetch(fetchMock);
         const wrapper = mount(App);
         await flushPromises();
 
@@ -1995,7 +2007,7 @@ describe('Underground application operations', () => {
             }
             return response(null, 404);
         });
-        vi.stubGlobal('fetch', fetchMock);
+        stubUndergroundFetch(fetchMock);
         const wrapper = mount(UndergroundPanel);
         await flushPromises();
 
@@ -2226,6 +2238,9 @@ describe('Underground application operations', () => {
                 });
             }
             if (path === '/api/v1/me/underground/guide-conversation/reply' && init?.method === 'POST') {
+                if (fetchMock.mock.calls.filter(([called]) => String(called) === path).length === 1) {
+                    throw new TypeError('Guide reply response lost');
+                }
                 const payload = JSON.parse(String(init.body)) as { topic_id: number; position: number };
                 return response({ topic_id: payload.topic_id, position: payload.position, reply_line: '選択への返答' });
             }
@@ -2234,7 +2249,7 @@ describe('Underground application operations', () => {
             }
             return response(null, 404);
         });
-        vi.stubGlobal('fetch', fetchMock);
+        stubUndergroundFetch(fetchMock);
         const wrapper = mount(UndergroundPanel);
         await flushPromises();
 
@@ -2275,6 +2290,12 @@ describe('Underground application operations', () => {
         await wrapper.findAll('.underground-guide-conversation-choices button')
             .find((button) => button.text() === '返事をする')!.trigger('click');
         await flushPromises();
+        expect(wrapper.get('[role="alert"]').text()).toContain('Guide reply response lost');
+        await wrapper.findAll('button').find((button) => button.text() === '前の会話の結果を確認する')!.trigger('click');
+        await flushPromises();
+        const retriedReplies = fetchMock.mock.calls.filter(([path]) => String(path).endsWith('/guide-conversation/reply'));
+        expect(retriedReplies).toHaveLength(2);
+        expect(retriedReplies[1]?.[1]?.body).toBe(retriedReplies[0]?.[1]?.body);
         expect(wrapper.get('.underground-guide-conversation').text()).toContain('案内人「選択への返答」');
         expect(wrapper.get('.underground-guide-conversation').text()).toContain('げんこつ');
         expect(wrapper.get('.underground-guide-conversation').text()).toContain('話をやめる');

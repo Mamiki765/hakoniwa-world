@@ -12,12 +12,12 @@ use InvalidArgumentException;
 use RuntimeException;
 use stdClass;
 
-/** Aggregates journal facts only. No receipt deletion or reward settlement. */
+/** Aggregates lifetime facts. No receipt deletion or reward settlement. */
 final class UndergroundReceiptRollupService
 {
     public const VERSION = 1;
 
-    public const STREAMS = ['battle', 'skip', 'bulk_skip'];
+    public const STREAMS = ['battle', 'skip', 'bulk_skip', 'intro_request'];
 
     private const TABLE = 'underground_receipt_rollups';
 
@@ -26,6 +26,8 @@ final class UndergroundReceiptRollupService
         'damage_dealt_sum', 'damage_dealt_known_count',
         'damage_received_sum', 'damage_received_known_count', 'skip_tickets_used',
     ];
+
+    public function __construct(private UndergroundLifetimeStatistics $statistics) {}
 
     /** @return array<string, int> */
     public function totals(int $profileId): array
@@ -82,30 +84,10 @@ final class UndergroundReceiptRollupService
             $count = 0;
             $stopReason = $candidates->count() === $batchSize ? 'batch_limit' : 'no_more_receipts';
             foreach ($candidates as $candidate) {
-                $finished = $candidate->{$finishedColumn};
-                if ($finished === null) {
-                    $stopReason = 'unfinished_receipt';
+                $reason = $this->preparationBlocker($stream, $candidate, $cutoff);
+                if ($reason !== null) {
+                    $stopReason = $reason;
                     break;
-                }
-                if (CarbonImmutable::parse($finished)->isAfter($cutoff)) {
-                    $stopReason = 'retention_window';
-                    break;
-                }
-                if ($stream === 'battle') {
-                    if (! in_array($candidate->activity_type, [
-                        UndergroundBattle::ACTIVITY_EXPLORATION, UndergroundBattle::ACTIVITY_TRIAL,
-                        UndergroundBattle::ACTIVITY_TUTORIAL, UndergroundBattle::ACTIVITY_STORY,
-                        UndergroundBattle::ACTIVITY_PLAYTEST, UndergroundBattle::ACTIVITY_GUIDE_DUEL,
-                    ], true)) {
-                        $stopReason = 'unclassified_activity';
-                        break;
-                    }
-                    // The older compactor can still backfill statistics on a
-                    // legacy row. Do not freeze those numbers before it finishes.
-                    if ((int) $candidate->compaction_version !== UndergroundBattleStorage::COMPACTION_VERSION) {
-                        $stopReason = 'legacy_statistics_pending';
-                        break;
-                    }
                 }
                 $to = (int) $candidate->id;
                 $count++;
@@ -117,6 +99,9 @@ final class UndergroundReceiptRollupService
             }
 
             if ($apply && $count > 0) {
+                $statisticsBefore = json_decode($checkpoint->lifetime_statistics ?? '[]', true, 512, JSON_THROW_ON_ERROR);
+                $statisticsDelta = $stream === 'battle' ? $this->statistics->range($profileId, $from, $to) : [];
+                $statisticsAfter = $this->statistics->merge($statisticsBefore, $statisticsDelta);
                 $before = $this->metrics($checkpoint);
                 $after = [];
                 foreach (self::METRICS as $metric) {
@@ -127,6 +112,7 @@ final class UndergroundReceiptRollupService
                     ...$after,
                     'verified_through_id' => $to,
                     'aggregation_version' => self::VERSION,
+                    'lifetime_statistics' => json_encode($statisticsAfter, JSON_THROW_ON_ERROR),
                     'verified_at' => $now,
                     'last_batch' => json_encode([
                         'from_exclusive' => $from, 'through_inclusive' => $to,
@@ -145,7 +131,9 @@ final class UndergroundReceiptRollupService
                 $sourceAgain = $this->metrics($this->sourceTotals($profileId, $stream)
                     ->where('id', '>', $from)->where('id', '<=', $to)->first());
                 if ($saved === null || (int) $saved->verified_through_id !== $to
-                    || $this->metrics($saved) !== $after || $sourceAgain !== $delta) {
+                    || $this->metrics($saved) !== $after || $sourceAgain !== $delta
+                    || json_decode($saved->lifetime_statistics, true, 512, JSON_THROW_ON_ERROR) != $statisticsAfter
+                    || ($stream === 'battle' && $this->statistics->range($profileId, $from, $to) != $statisticsDelta)) {
                     // Neither the totals nor the boundary may survive a failed
                     // read-back comparison. Raw receipts are still untouched.
                     throw new RuntimeException('Receipt rollup verification failed.');
@@ -163,14 +151,40 @@ final class UndergroundReceiptRollupService
     }
 
     /** @return array{string, string} */
-    private function source(string $stream): array
+    public function source(string $stream): array
     {
         return match ($stream) {
             'battle' => ['underground_battles', 'finished_at'],
             'skip' => ['underground_skip_settlements', 'settled_at'],
             'bulk_skip' => ['underground_skip_batches', 'settled_at'],
+            'intro_request' => ['underground_intro_requests', 'created_at'],
             default => throw new InvalidArgumentException('Unknown receipt stream.'),
         };
+    }
+
+    public function preparationBlocker(string $stream, stdClass $receipt, CarbonInterface $cutoff): ?string
+    {
+        [, $finishedColumn] = $this->source($stream);
+        if ($receipt->{$finishedColumn} === null) {
+            return 'unfinished_receipt';
+        }
+        if (CarbonImmutable::parse($receipt->{$finishedColumn})->greaterThanOrEqualTo($cutoff)) {
+            return 'retention_window';
+        }
+        if ($stream === 'battle') {
+            if (! in_array($receipt->activity_type, [
+                UndergroundBattle::ACTIVITY_EXPLORATION, UndergroundBattle::ACTIVITY_TRIAL,
+                UndergroundBattle::ACTIVITY_TUTORIAL, UndergroundBattle::ACTIVITY_STORY,
+                UndergroundBattle::ACTIVITY_PLAYTEST, UndergroundBattle::ACTIVITY_GUIDE_DUEL,
+            ], true)) {
+                return 'unclassified_activity';
+            }
+            if ((int) $receipt->compaction_version !== UndergroundBattleStorage::COMPACTION_VERSION) {
+                return 'legacy_statistics_pending';
+            }
+        }
+
+        return null;
     }
 
     private function sourceTotals(int $profileId, string $stream): Builder
@@ -178,14 +192,16 @@ final class UndergroundReceiptRollupService
         [$table, $finishedColumn] = $this->source($stream);
         $query = DB::table($table)->where('underground_profile_id', $profileId)->whereNotNull($finishedColumn);
         if ($stream !== 'battle') {
+            $tickets = $stream === 'intro_request' ? '0::bigint' : 'COALESCE(SUM(ticket_cost), 0)';
+
             return $query->selectRaw('COUNT(*) AS receipt_count, 0::bigint AS battle_count, 0::bigint AS victory_count,
                 0::bigint AS damage_dealt_sum, 0::bigint AS damage_dealt_known_count,
                 0::bigint AS damage_received_sum, 0::bigint AS damage_received_known_count,
-                COALESCE(SUM(ticket_cost), 0) AS skip_tickets_used');
+                '.$tickets.' AS skip_tickets_used');
         }
         // Keep the existing journal's scope and legacy self/party semantics.
         // Story/duel receipts advance the boundary but contribute no journal battle.
-        $included = "(activity_type IN ('exploration', 'trial', 'playtest') OR (activity_type = 'tutorial' AND activity_key = 'first_descent_tutorial'))";
+        $included = UndergroundLifetimeStatistics::JOURNAL_SCOPE;
         $dealt = "CASE WHEN statistics IS NULL AND underground_party_id IS NULL THEN damage_dealt ELSE (statistics->'self'->>'damage_dealt')::bigint END";
         $received = "CASE WHEN statistics IS NULL AND underground_party_id IS NULL THEN damage_received ELSE (statistics->'self'->>'damage_received')::bigint END";
 
@@ -218,7 +234,7 @@ final class UndergroundReceiptRollupService
         return $metrics;
     }
 
-    private function assertSourceSequence(string $table): void
+    public function assertSourceSequence(string $table): void
     {
         if (DB::connection()->getDriverName() !== 'pgsql') {
             throw new RuntimeException('Receipt rollups require PostgreSQL.');

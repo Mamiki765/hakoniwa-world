@@ -1,3 +1,4 @@
+import { stubUndergroundFetch } from '../UndergroundAdmissionTestFixture';
 import { flushPromises, mount } from '@vue/test-utils';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { EquipmentItem } from './EquipmentItemCard.vue';
@@ -52,7 +53,7 @@ afterEach(() => {
 describe('Underground equipment navigation', () => {
     it('resets to page one when sorting and restores the chosen rarity sort on reopening', async () => {
         const paths: string[] = [];
-        vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+        stubUndergroundFetch(vi.fn(async (input: RequestInfo | URL) => {
             paths.push(String(input));
             const params = new URL(String(input), 'http://localhost').searchParams;
             return response({ catalog_identity: 'test-catalog', used: 60, capacity: 500, equipped,
@@ -81,7 +82,7 @@ describe('Underground equipment navigation', () => {
 
     it('falls back to the default sort if the saved value is invalid or storage is unavailable', async () => {
         const paths: string[] = [];
-        vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+        stubUndergroundFetch(vi.fn(async (input: RequestInfo | URL) => {
             paths.push(String(input));
             return response({ catalog_identity: 'test-catalog', used: 1, capacity: 500, equipped,
                 items: [item()], page: 1, per_page: 50, last_page: 1, total: 1 });
@@ -112,7 +113,7 @@ describe('Underground equipment navigation', () => {
             item_level: 1254, rarity: 'unique', rarity_label: 'ユニーク', instance_kind: 'fixed',
             sellable: false, equippable: false, sell_price: 0,
             description: '装備不可。所持による能力効果はありません。', commemorative_effects: ['生命アップ', '光輝（被回復アップ）'] });
-        vi.stubGlobal('fetch', vi.fn(async () => response({ catalog_identity: 'test-catalog', used: 1, capacity: 500,
+        stubUndergroundFetch(vi.fn(async () => response({ catalog_identity: 'test-catalog', used: 1, capacity: 500,
             equipped, items: [gram], page: 1, per_page: 50, last_page: 1, total: 1 })));
         const wrapper = mount(UndergroundEquipmentVault);
         await flushPromises();
@@ -147,7 +148,7 @@ describe('Underground equipment navigation', () => {
             }
             return response(null, 404);
         });
-        vi.stubGlobal('fetch', fetchMock);
+        stubUndergroundFetch(fetchMock);
 
         const wrapper = mount(UndergroundEquipmentVault);
         await flushPromises();
@@ -208,7 +209,7 @@ describe('Underground equipment navigation', () => {
             }
             return response(null, 404);
         });
-        vi.stubGlobal('fetch', fetchMock);
+        stubUndergroundFetch(fetchMock);
 
         const wrapper = mount(UndergroundEquipmentVault);
         await flushPromises();
@@ -292,7 +293,7 @@ describe('Underground equipment navigation', () => {
             }
             return response(null, 404);
         });
-        vi.stubGlobal('fetch', fetchMock);
+        stubUndergroundFetch(fetchMock);
 
         const wrapper = mount(UndergroundEquipmentVault);
         await flushPromises();
@@ -335,7 +336,7 @@ describe('Underground equipment navigation', () => {
             }
             return response(null, 404);
         });
-        vi.stubGlobal('fetch', fetchMock);
+        stubUndergroundFetch(fetchMock);
 
         const wrapper = mount(UndergroundEquipmentShop);
         await flushPromises();

@@ -70,7 +70,7 @@ final class GuideConversationTest extends TestCase
         $this->assertDatabaseMissing('guide_conversation_topics', ['id' => $created['id']]);
     }
 
-    public function test_player_conversation_is_random_from_eligible_topics_and_only_persists_hidden_totals(): void
+    public function test_player_conversation_is_random_from_eligible_topics_and_keeps_lifetime_totals_hidden(): void
     {
         $always = $this->topic('always', 'いつでも話せる話題');
         $trialOne = $this->topic('trial_01_first_clear', '試練1の話題');

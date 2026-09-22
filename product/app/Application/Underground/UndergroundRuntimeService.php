@@ -2613,12 +2613,9 @@ STORY;
             $projection = $this->withTrialOneRoundTwentyWarning($projection);
         }
         $projection['summary']['result'] = $resultType;
-        $firstChallenge = $trialBattleIndex === 1
-            && ! UndergroundBattle::query()
-                ->where('underground_profile_id', $profile->id)
-                ->where('activity_type', UndergroundBattle::ACTIVITY_TRIAL)
-                ->where('activity_key', $trialRun->trial_key)
-                ->exists();
+        $trialProgress = UndergroundTrialProgress::query()
+            ->where('underground_profile_id', $profile->id)->where('trial_key', $trialRun->trial_key)->firstOrFail();
+        $firstChallenge = $trialBattleIndex === 1 && $trialProgress->first_challenged_at === null;
         $challengeIntro = $firstChallenge ? match ($trialRun->trial_key) {
             'trial_01' => self::TRIAL_ONE_FIRST_CHALLENGE_INTRO,
             'trial_02' => self::TRIAL_TWO_FIRST_CHALLENGE_INTRO,
@@ -2647,6 +2644,14 @@ STORY;
             ],
             default => null,
         } : null;
+        if ($trialProgress->first_challenged_at === null) {
+            $trialProgress->first_challenged_at = $startedAt;
+            $trialProgress->first_challenge_intro = $challengeIntro;
+        }
+        if ($firstClearStory !== null) {
+            $trialProgress->first_clear_story = $firstClearStory;
+        }
+        $trialProgress->save();
         $detailSnapshot = [
             'initial_state' => $projection['initial_state'],
             'player_image_references' => $this->battleImageReferences($secretary),
@@ -2930,6 +2935,7 @@ STORY;
                     '周囲の探索はまだ解禁されていません。',
                 );
             }
+            app(UndergroundRequestAdmission::class)->assertPreparationTime();
             $this->starterEquipment->reconcile($profile);
             $equipment = $this->equipmentLoadout->combatLoadout($profile);
             $itemLevels = $this->equipmentItemLevelsBySlot($equipment);
@@ -3000,6 +3006,7 @@ STORY;
                     'snapshot' => $snapshot,
                 ];
             }
+            app(UndergroundRequestAdmission::class)->assertPreparationTime();
             if ($reserveImages) {
                 $this->imageRetention->reserveBattleImages(
                     $this->imageRetention->reservationKey($leaderSyncInputs['profile_id'], $requestId),

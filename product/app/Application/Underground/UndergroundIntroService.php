@@ -333,6 +333,7 @@ final readonly class UndergroundIntroService
 
             $battle = $this->settleStoryBattle($profile, $requestId, 'tutorial', $secretary->name);
             $intro->tutorial_battle_id = $battle->id;
+            $intro->tutorial_encounter_key = $battle->encounter_key;
             $intro->stage = UndergroundIntroStage::ESCAPE_PENDING;
             $intro->save();
 
@@ -459,6 +460,7 @@ final readonly class UndergroundIntroService
             $profile->save();
             $this->starterEquipment->reconcile($profile);
             $intro->stage = UndergroundIntroStage::GROWTH_PATH_SELECTED;
+            $intro->initial_growth_path_key = $growthPathKey;
             $intro->save();
         });
     }
@@ -1826,15 +1828,15 @@ final readonly class UndergroundIntroService
         );
 
         $tutorial = $intro->tutorialBattle;
-        $tutorialExperienced = $intro->tutorial_battle_id !== null && $tutorial instanceof UndergroundBattle;
+        $tutorialExperienced = $intro->tutorial_battle_id !== null;
         $entries[] = $this->historicalEntry(
             'tutorial',
             '最初の試練',
             $tutorialExperienced,
             $tutorialExperienced
-                ? ["{$tutorial->encounter_key}とのTutorial戦闘を経験しました。"]
+                ? [($intro->tutorial_encounter_key ?? $tutorial->encounter_key ?? '最初の敵').'とのTutorial戦闘を経験しました。']
                 : null,
-            $tutorialExperienced ? ['battle_id' => $tutorial->id] : [],
+            $tutorial instanceof UndergroundBattle ? ['battle_id' => $tutorial->id] : [],
         );
         $tutorialAftermathExperienced = $this->stageAtLeast($stage, UndergroundIntroStage::RETURNED_AFTER_TUTORIAL);
         $entries[] = $this->historicalEntry(
@@ -2015,31 +2017,20 @@ final readonly class UndergroundIntroService
         $entries = [];
         foreach (['trial_01', 'trial_02'] as $trialKey) {
             $trial = $this->runtimeCatalog->trial($trialKey);
-            $base = static fn () => UndergroundBattle::query()
-                ->where('underground_profile_id', $profile->id)
-                ->where('activity_type', UndergroundBattle::ACTIVITY_TRIAL)
-                ->where('activity_key', $trialKey);
-            $start = $base()
-                ->where('trial_battle_index', 1)
-                ->whereRaw("jsonb_typeof(snapshot->'challenge_intro') = 'string'")
-                ->orderBy('id')
-                ->first(['id', 'snapshot']);
-            $clear = $base()
-                ->whereRaw("jsonb_typeof(snapshot->'first_clear_story') = 'object'")
-                ->orderBy('id')
-                ->first(['id', 'snapshot']);
-            if ($start instanceof UndergroundBattle) {
+            $progress = UndergroundTrialProgress::query()
+                ->where('underground_profile_id', $profile->id)->where('trial_key', $trialKey)->first();
+            if ($progress?->first_challenge_intro !== null) {
                 $entries[] = $this->historicalEntry(
                     "{$trialKey}_start",
                     "{$trial['label']}の開始",
                     true,
-                    [$start->snapshot['challenge_intro']],
-                    ['trial_key' => $trialKey, 'battle_id' => $start->id],
+                    [$progress->first_challenge_intro],
+                    ['trial_key' => $trialKey],
                 );
             }
-            if ($clear instanceof UndergroundBattle) {
-                $story = $clear->snapshot['first_clear_story'];
-                if (is_array($story) && is_string($story['body'] ?? null)) {
+            if ($progress?->first_clear_story !== null) {
+                $story = $progress->first_clear_story;
+                if (is_string($story['body'] ?? null)) {
                     $body = [$story['body']];
                     if (is_array($story['system_messages'] ?? null)) {
                         $body = [...$body, ...$this->stringList($story['system_messages'], 'trial clear story messages')];
@@ -2051,7 +2042,7 @@ final readonly class UndergroundIntroService
                             : (is_string($story['title'] ?? null) ? $story['title'] : "{$trial['label']}のクリア"),
                         true,
                         $body,
-                        ['trial_key' => $trialKey, 'battle_id' => $clear->id],
+                        ['trial_key' => $trialKey],
                     );
                 }
             }
@@ -2081,23 +2072,7 @@ final readonly class UndergroundIntroService
 
     private function initialGrowthPathKey(UndergroundProfile $profile): ?string
     {
-        $fingerprint = UndergroundIntroRequest::query()
-            ->where('underground_profile_id', $profile->id)
-            ->where('operation', 'growth_path')
-            ->orderBy('id')
-            ->value('request_fingerprint');
-        if (! is_string($fingerprint) || $fingerprint === '') {
-            return null;
-        }
-        foreach ($this->alphaV1Catalog->growthPaths() as $path) {
-            $pathKey = $path['key'] ?? null;
-            if (is_string($pathKey)
-                && hash_equals($fingerprint, $this->fingerprint('growth_path', ['growth_path_key' => $pathKey]))) {
-                return $pathKey;
-            }
-        }
-
-        return null;
+        return $profile->introProgress?->initial_growth_path_key;
     }
 
     private function hasTrialTwoFirstClear(UndergroundProfile $profile): bool
