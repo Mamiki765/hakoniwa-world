@@ -716,6 +716,9 @@ final class UndergroundEquipmentAndRuntimeTest extends UndergroundPlayerAccessTe
             'acquired_at' => Carbon::now(),
         ]);
         $this->assertSame([8_500], array_values(array_unique(array_column($generated['affixes'], 'quality_bps'))));
+        $sourceBattle->delete();
+        $this->assertSame($sourceBattle->id, $item->fresh()->source_battle_id);
+        $this->assertEquals($generated, $item->fresh()->generated_payload);
         config([
             'underground-equipment.generator.quality_min_bps' => 9_000,
             'underground-equipment.generator.quality_max_bps' => 10_000,

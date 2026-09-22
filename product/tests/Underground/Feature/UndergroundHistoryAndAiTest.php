@@ -13,7 +13,6 @@ use App\Models\UndergroundTrialRun;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Tests\Concerns\CreatesTestWorlds;
 use Tests\Support\UndergroundPlayerAccessTestCase;
@@ -479,15 +478,7 @@ final class UndergroundHistoryAndAiTest extends UndergroundPlayerAccessTestCase
         [$owner, $secretary] = $this->secretaryUser('Growth recollection secretary');
         $profile = $this->openEquipmentProfile($secretary);
         $profile->update(['villa_purchased_at' => Carbon::now()]);
-        UndergroundIntroRequest::query()->create([
-            'underground_profile_id' => $profile->id,
-            'request_id' => (string) Str::uuid(),
-            'request_fingerprint' => $this->introFingerprint('growth_path', [
-                'growth_path_key' => 'martial_red',
-            ]),
-            'operation' => 'growth_path',
-            'resulting_stage' => 'growth_path_selected',
-        ]);
+        $profile->introProgress->update(['initial_growth_path_key' => 'martial_red']);
 
         $respecified = $this->actingAs($owner)->postJson('/api/v1/me/underground/respec', [
             'request_id' => (string) Str::uuid(),
@@ -509,15 +500,7 @@ final class UndergroundHistoryAndAiTest extends UndergroundPlayerAccessTestCase
         $this->assertSame('「ふふ、とってもお似合いですよ、その能力」', $fallbackBody[0]);
         $this->assertNotContains('「全部？　まぁ、別にあなたにしか必要のないものです。ええ、あげますよ、欲張りさん？」', $fallbackBody);
 
-        UndergroundIntroRequest::query()->create([
-            'underground_profile_id' => $profile->id,
-            'request_id' => (string) Str::uuid(),
-            'request_fingerprint' => $this->introFingerprint('growth_path', [
-                'growth_path_key' => 'free_black',
-            ]),
-            'operation' => 'growth_path',
-            'resulting_stage' => 'growth_path_selected',
-        ]);
+        $profile->introProgress->update(['initial_growth_path_key' => 'free_black']);
         $free = $this->actingAs($owner)->getJson('/api/v1/me/underground')
             ->assertOk()->json('data.recollections.entries');
         $freeBody = collect($free)->firstWhere('key', 'common_ending')['body'];
@@ -525,62 +508,30 @@ final class UndergroundHistoryAndAiTest extends UndergroundPlayerAccessTestCase
         $this->assertNotContains('「ふふ、とってもお似合いですよ、その能力」', $freeBody);
     }
 
-    public function test_recollection_trial_stories_remain_bounded_with_multiple_runs(): void
+    public function test_recollection_trial_stories_survive_receipt_removal(): void
     {
-        [$owner, $secretary] = $this->secretaryUser('Bounded recollection secretary');
+        [$owner, $secretary] = $this->secretaryUser('Recollection secretary');
         $profile = $this->openEquipmentProfile($secretary);
         $profile->update(['villa_purchased_at' => Carbon::now()]);
-        UndergroundTrialProgress::query()->create([
-            'underground_profile_id' => $profile->id,
-            'trial_key' => 'trial_02',
-            'unlocked_at' => Carbon::now(),
-            'first_cleared_at' => Carbon::now(),
+        UndergroundTrialProgress::query()->updateOrCreate([
+            'underground_profile_id' => $profile->id, 'trial_key' => 'trial_02',
+        ], [
+            'unlocked_at' => Carbon::now(), 'first_cleared_at' => Carbon::now(),
+            'first_challenged_at' => Carbon::now(), 'first_challenge_intro' => 'Original challenge',
+            'first_clear_story' => ['title' => 'Original title', 'body' => 'Original story', 'system_messages' => ['Original reward']],
         ]);
-        $rows = [];
-        foreach (['trial_01', 'trial_02'] as $trialKey) {
-            for ($run = 1; $run <= 2; $run++) {
-                $runKey = (string) Str::uuid();
-                for ($index = 1; $index <= 10; $index++) {
-                    $snapshot = [];
-                    if ($run === 1 && $index === 1) {
-                        $snapshot['challenge_intro'] = "{$trialKey} start story";
-                    }
-                    if ($run === 2 && $index === 10) {
-                        $snapshot['first_clear_story'] = [
-                            'title' => "{$trialKey} first clear",
-                            'body' => "{$trialKey} late clear story",
-                            'system_messages' => ["{$trialKey} clear reward"],
-                        ];
-                    }
-                    $rows[] = $this->trialBattleRow($profile, $trialKey, $runKey, $index, $snapshot);
-                }
-            }
-        }
-        DB::table('underground_battles')->insert($rows);
-
-        DB::flushQueryLog();
-        DB::enableQueryLog();
-        $entries = $this->actingAs($owner)->getJson('/api/v1/me/underground')
-            ->assertOk()->json('data.recollections.entries');
-        $queries = collect(DB::getQueryLog())->filter(static fn (array $query): bool => str_contains($query['query'], 'from "underground_battles"')
-            && str_contains($query['query'], '"activity_type"')
-            && str_contains($query['query'], '"activity_key"')
-        )->values();
-        DB::disableQueryLog();
-
-        $this->assertSame('trial_01 start story', collect($entries)->firstWhere('key', 'trial_01_start')['body'][0]);
-        $this->assertSame([
-            'trial_02 late clear story',
-            'trial_02 clear reward',
-        ], collect($entries)->firstWhere('key', 'trial_02_clear')['body']);
-        $this->assertSame('デュラハンの撃破と案内人', collect($entries)->firstWhere('key', 'trial_02_clear')['title']);
-        $this->assertNotEmpty($queries);
-        foreach ($queries as $query) {
-            $normalized = strtolower((string) $query['query']);
-            $this->assertStringContainsString('select "id", "snapshot"', $normalized);
-            $this->assertStringContainsString('limit 1', $normalized);
-            $this->assertStringNotContainsString('select *', $normalized);
-        }
+        $intro = $profile->introProgress;
+        $intro->update(['tutorial_encounter_key' => 'original_enemy']);
+        UndergroundBattle::query()->where('underground_profile_id', $profile->id)->delete();
+        UndergroundIntroRequest::query()->where('underground_profile_id', $profile->id)->delete();
+        $entries = collect($this->actingAs($owner)->getJson('/api/v1/me/underground')
+            ->assertOk()->json('data.recollections.entries'));
+        $this->assertSame(['Original challenge'], $entries->firstWhere('key', 'trial_02_start')['body']);
+        $this->assertSame(['Original story', 'Original reward'], $entries->firstWhere('key', 'trial_02_clear')['body']);
+        $this->assertSame('デュラハンの撃破と案内人', $entries->firstWhere('key', 'trial_02_clear')['title']);
+        $this->assertTrue($entries->firstWhere('key', 'tutorial')['experienced']);
+        $this->assertSame(['original_enemyとのTutorial戦闘を経験しました。'], $entries->firstWhere('key', 'tutorial')['body']);
+        $this->assertSame('underground_open', $intro->fresh()->stage);
     }
 
     /** @return array{User, Secretary} */

@@ -4,6 +4,7 @@ namespace Tests\Underground\Feature;
 
 use App\Application\Underground\UndergroundBattleHistoryCompactor;
 use App\Application\Underground\UndergroundJournalService;
+use App\Application\Underground\UndergroundLifetimeStatistics;
 use App\Application\Underground\UndergroundProfileService;
 use App\Application\Underground\UndergroundReceiptRollupService;
 use App\Models\Secretary;
@@ -158,6 +159,34 @@ final class UndergroundReceiptRollupTest extends TestCase
         $this->assertSame($second->id, $retry['verified_through_id']);
         $this->assertSame(1, $retry['receipts']);
         $this->assertSame($before, $rollups->totals($profile->id));
+    }
+
+    public function test_lifetime_statistics_preserve_known_unknown_and_maximum_after_receipt_deletion(): void
+    {
+        [, $profile] = $this->profile();
+        $old = CarbonImmutable::now()->subDays(40);
+        $known = $this->battle($profile, $old, ['statistics_version' => 1, 'statistics' => [
+            'self' => ['damage_dealt' => 35, 'maximum_hit' => 25, 'maximum_hit_action_key' => 'combo',
+                'maximum_hit_damage_source' => 'direct', 'effective_healing' => 7,
+                'complete_guard_count' => 1, 'damage_prevented' => 4, 'action_usage' => ['combo' => 2]],
+        ]]);
+        $unknown = $this->battle($profile, $old, ['statistics_version' => 1, 'statistics' => [
+            'self' => ['damage_dealt' => null, 'maximum_hit' => null, 'effective_healing' => null],
+            'completeness' => ['reasons' => ['legacy_party_self_attribution_unavailable' => 1]],
+        ]]);
+        $statistics = app(UndergroundLifetimeStatistics::class);
+        $before = $statistics->totals($profile->id);
+        app(UndergroundReceiptRollupService::class)->aggregate($profile->id, 'battle', CarbonImmutable::now()->subDays(30), 500, true);
+        UndergroundBattle::query()->whereKey([$known->id, $unknown->id])->delete();
+        $after = $statistics->totals($profile->id);
+        $this->assertEquals($before, $after);
+        $this->assertSame(['known_sum' => 7, 'known_count' => 1, 'unknown_count' => 1], $before['self']['effective_healing']);
+        $this->assertSame(25, $after['self']['maximum_hit']['value']);
+        $this->assertSame('combo', $after['self']['maximum_hit']['action_key']);
+        $this->assertSame(['combo' => 2], $after['self']['action_usage']['known_sums']);
+        $this->assertSame(1, $after['self']['complete_guard_count']['known_sum']);
+        $this->assertSame(4, $after['self']['damage_prevented']['known_sum']);
+        $this->assertSame(1, $after['incomplete_reasons']['legacy_party_self_attribution_unavailable']);
     }
 
     /** @return array{User, UndergroundProfile} */

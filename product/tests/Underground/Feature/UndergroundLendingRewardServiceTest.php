@@ -7,6 +7,7 @@ use App\Application\Underground\UndergroundLendingRewardService;
 use App\Application\Underground\UndergroundStarterEquipmentService;
 use App\Models\Secretary;
 use App\Models\SecretaryLendingDailyReward;
+use App\Models\SecretaryLendingParticipation;
 use App\Models\UndergroundBattle;
 use App\Models\UndergroundParty;
 use App\Models\UndergroundProfile;
@@ -99,6 +100,7 @@ final class UndergroundLendingRewardServiceTest extends TestCase
             $party = $this->party($leader, $leaderSecretary, $borrowed, $i);
             $this->assertSame(0, $service->settle($this->battle($leader, $party, $i), $party)['tickets_awarded']);
         }
+        SecretaryLendingParticipation::query()->where('owner_user_id', $owner->id)->delete();
         Carbon::setTestNow('2026-09-09 00:10:00+09:00');
         $party = $this->party($leader, $leaderSecretary, $borrowed, 10);
         $battle = $this->battle($leader, $party, 10);
@@ -122,6 +124,16 @@ final class UndergroundLendingRewardServiceTest extends TestCase
                 'participation_count' => $reward->participation_count,
                 'tickets_awarded' => $reward->tickets_awarded,
             ])->all());
+
+        for ($i = 11; $i <= 19; $i++) {
+            $party = $this->party($leader, $leaderSecretary, $borrowed, $i);
+            $service->settle($this->battle($leader, $party, $i), $party);
+        }
+        SecretaryLendingParticipation::query()->where('owner_user_id', $owner->id)->delete();
+        $party = $this->party($leader, $leaderSecretary, $borrowed, 20);
+        $this->assertSame(1, $service->settle($this->battle($leader, $party, 20), $party)['tickets_awarded']);
+        $this->assertSame(2, app(SecretaryLendingService::class)->ticketBalance($owner));
+        $this->assertDatabaseHas('user_skip_ticket_balances', ['user_id' => $owner->id, 'lifetime_participation_count' => 20]);
     }
 
     public function test_daily_cap_stops_the_tenth_participation_ticket_at_one_hundred(): void

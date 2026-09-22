@@ -12,7 +12,7 @@ use InvalidArgumentException;
 use RuntimeException;
 use stdClass;
 
-/** Aggregates journal facts only. No receipt deletion or reward settlement. */
+/** Aggregates lifetime facts. No receipt deletion or reward settlement. */
 final class UndergroundReceiptRollupService
 {
     public const VERSION = 1;
@@ -26,6 +26,8 @@ final class UndergroundReceiptRollupService
         'damage_dealt_sum', 'damage_dealt_known_count',
         'damage_received_sum', 'damage_received_known_count', 'skip_tickets_used',
     ];
+
+    public function __construct(private UndergroundLifetimeStatistics $statistics) {}
 
     /** @return array<string, int> */
     public function totals(int $profileId): array
@@ -117,6 +119,9 @@ final class UndergroundReceiptRollupService
             }
 
             if ($apply && $count > 0) {
+                $statisticsBefore = json_decode($checkpoint->lifetime_statistics ?? '[]', true, 512, JSON_THROW_ON_ERROR);
+                $statisticsDelta = $stream === 'battle' ? $this->statistics->range($profileId, $from, $to) : [];
+                $statisticsAfter = $this->statistics->merge($statisticsBefore, $statisticsDelta);
                 $before = $this->metrics($checkpoint);
                 $after = [];
                 foreach (self::METRICS as $metric) {
@@ -127,6 +132,7 @@ final class UndergroundReceiptRollupService
                     ...$after,
                     'verified_through_id' => $to,
                     'aggregation_version' => self::VERSION,
+                    'lifetime_statistics' => json_encode($statisticsAfter, JSON_THROW_ON_ERROR),
                     'verified_at' => $now,
                     'last_batch' => json_encode([
                         'from_exclusive' => $from, 'through_inclusive' => $to,
@@ -145,7 +151,9 @@ final class UndergroundReceiptRollupService
                 $sourceAgain = $this->metrics($this->sourceTotals($profileId, $stream)
                     ->where('id', '>', $from)->where('id', '<=', $to)->first());
                 if ($saved === null || (int) $saved->verified_through_id !== $to
-                    || $this->metrics($saved) !== $after || $sourceAgain !== $delta) {
+                    || $this->metrics($saved) !== $after || $sourceAgain !== $delta
+                    || json_decode($saved->lifetime_statistics, true, 512, JSON_THROW_ON_ERROR) != $statisticsAfter
+                    || ($stream === 'battle' && $this->statistics->range($profileId, $from, $to) != $statisticsDelta)) {
                     // Neither the totals nor the boundary may survive a failed
                     // read-back comparison. Raw receipts are still untouched.
                     throw new RuntimeException('Receipt rollup verification failed.');
@@ -185,7 +193,7 @@ final class UndergroundReceiptRollupService
         }
         // Keep the existing journal's scope and legacy self/party semantics.
         // Story/duel receipts advance the boundary but contribute no journal battle.
-        $included = "(activity_type IN ('exploration', 'trial', 'playtest') OR (activity_type = 'tutorial' AND activity_key = 'first_descent_tutorial'))";
+        $included = UndergroundLifetimeStatistics::JOURNAL_SCOPE;
         $dealt = "CASE WHEN statistics IS NULL AND underground_party_id IS NULL THEN damage_dealt ELSE (statistics->'self'->>'damage_dealt')::bigint END";
         $received = "CASE WHEN statistics IS NULL AND underground_party_id IS NULL THEN damage_received ELSE (statistics->'self'->>'damage_received')::bigint END";
 

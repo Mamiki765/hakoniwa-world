@@ -7,6 +7,9 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Support\Carbon;
 
 /**
+ * Source IDs are durable provenance, not foreign keys to live receipts.
+ * The exclusive non-null source column identifies battle / skip / bulk skip.
+ *
  * @property int $id
  * @property int $underground_profile_id
  * @property string $definition_key
