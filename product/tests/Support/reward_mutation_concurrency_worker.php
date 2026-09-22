@@ -4,7 +4,6 @@ use App\Application\CompensationWarehouseService;
 use App\Application\DailyLoginRewardService;
 use App\Application\ParadoxBalanceService;
 use App\Models\CompensationGrant;
-use App\Models\Nation;
 use App\Models\User;
 use Illuminate\Contracts\Console\Kernel;
 use Illuminate\Support\Facades\DB;
@@ -48,11 +47,9 @@ try {
             'balance_after' => $debit['balance_after'] ?? null,
         ];
     } elseif ($operation === 'compensation_claim') {
-        $nation = Nation::query()->findOrFail((int) $payload['nation_id']);
         $grant = CompensationGrant::query()->findOrFail((int) $payload['grant_id']);
         $claim = app(CompensationWarehouseService::class)->claim(
             $user,
-            $nation,
             $grant,
             (string) $payload['request_id'],
         );
