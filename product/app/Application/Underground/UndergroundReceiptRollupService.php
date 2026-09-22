@@ -71,7 +71,7 @@ final class UndergroundReceiptRollupService
             if ($checkpoint !== null && (int) $checkpoint->aggregation_version !== self::VERSION) {
                 throw new RuntimeException('Unsupported receipt aggregation version.');
             }
-            $from = (int) ($checkpoint?->verified_through_id ?? 0);
+            $from = (int) ($checkpoint->verified_through_id ?? 0);
             $columns = ['id', $finishedColumn];
             if ($stream === 'battle') {
                 $columns = [...$columns, 'activity_type', 'compaction_version'];
@@ -212,7 +212,7 @@ final class UndergroundReceiptRollupService
     {
         $metrics = [];
         foreach (self::METRICS as $metric) {
-            $metrics[$metric] = (int) ($row?->{$metric} ?? 0);
+            $metrics[$metric] = (int) ($row->{$metric} ?? 0);
         }
 
         return $metrics;
