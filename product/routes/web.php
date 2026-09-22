@@ -21,6 +21,7 @@ use App\Http\Controllers\Api\SurfaceShipController;
 use App\Http\Controllers\Api\TradingPostController;
 use App\Http\Controllers\Api\UndergroundEquipmentController;
 use App\Http\Controllers\Api\UndergroundIntroController;
+use App\Http\Controllers\Api\UndergroundRequestAdmissionController;
 use App\Http\Controllers\AssetController;
 use App\Http\Controllers\Auth\OAuthController;
 use App\Http\Controllers\CommunityGuidelinesController;
@@ -28,6 +29,7 @@ use App\Http\Controllers\ManualController;
 use App\Http\Middleware\PrivateApiResponse;
 use App\Http\Middleware\PublicApiResponse;
 use App\Http\Middleware\RequireAnnouncementAdmin;
+use App\Http\Middleware\RequireUndergroundRequestAdmission;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/auth/{provider}/redirect', [OAuthController::class, 'redirect'])->name('oauth.redirect');
@@ -100,7 +102,8 @@ Route::prefix('api/v1')->middleware(['auth', PrivateApiResponse::class])->group(
     Route::delete('/me/secretary/images/{slot}', [SecretaryController::class, 'deleteImageSlot']);
     Route::patch('/me/secretary/portrait-preference', [SecretaryController::class, 'updatePortraitPreference']);
     Route::patch('/me/secretary/image-preferences', [SecretaryController::class, 'updateImagePreferences']);
-    Route::prefix('/me/underground')->middleware('throttle:60,1')->group(function (): void {
+    Route::prefix('/me/underground')->middleware(['throttle:60,1', RequireUndergroundRequestAdmission::class])->group(function (): void {
+        Route::post('/requests', UndergroundRequestAdmissionController::class);
         Route::get('/', [UndergroundIntroController::class, 'show']);
         Route::post('/residence/purchase', [UndergroundIntroController::class, 'purchaseResidence']);
         Route::post('/events/advance', [UndergroundIntroController::class, 'advanceLoungeEvent']);

@@ -115,6 +115,8 @@ final class GuideConversationService
             );
         }
 
+        app(UndergroundRequestAdmission::class)->assertLockedProfile($profile);
+
         return [$secretary, $profile];
     }
 

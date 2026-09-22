@@ -80,6 +80,7 @@ final readonly class UndergroundPlaytestService
             if (! $profile instanceof UndergroundProfile || ! $intro instanceof UndergroundIntroProgress) {
                 throw new UndergroundRuntimeException('underground_playtest_locked', '力試しはまだ解禁されていません。');
             }
+            app(UndergroundRequestAdmission::class)->assertLockedProfile($profile);
             $this->assertUnlocked($profile, $intro);
 
             if (UndergroundIntroRequest::query()

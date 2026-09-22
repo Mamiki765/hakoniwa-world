@@ -619,6 +619,7 @@ final readonly class UndergroundEquipmentService
         if (! $profile instanceof UndergroundProfile) {
             throw new UndergroundRuntimeException('underground_equipment_locked', '装備ショップはまだ解禁されていません。');
         }
+        app(UndergroundRequestAdmission::class)->assertLockedProfile($profile);
         $intro = UndergroundIntroProgress::query()
             ->where('underground_profile_id', $profile->id)
             ->lockForUpdate()

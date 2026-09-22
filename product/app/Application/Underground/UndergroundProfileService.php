@@ -22,6 +22,7 @@ final class UndergroundProfileService
     {
         $profile = $this->ensureForSecretary($secretary);
         $locked = UndergroundProfile::query()->whereKey($profile->id)->lockForUpdate()->firstOrFail();
+        app(UndergroundRequestAdmission::class)->assertLockedProfile($locked);
         $locked->setRelation('secretary', $secretary);
 
         return $locked;

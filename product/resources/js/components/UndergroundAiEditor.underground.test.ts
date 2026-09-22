@@ -1,3 +1,4 @@
+import { stubUndergroundFetch } from '../UndergroundAdmissionTestFixture';
 import { flushPromises, mount } from '@vue/test-utils';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import UndergroundAiEditor from './UndergroundAiEditor.vue';
@@ -87,7 +88,7 @@ describe('Underground AI editor', () => {
 
     it('clamps status stacks when changing to a status with a lower maximum', async () => {
         const payloads: Array<{ rules: unknown }> = [];
-        vi.stubGlobal('fetch', vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+        stubUndergroundFetch(vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
             payloads.push(JSON.parse(String(init?.body)) as { rules: unknown });
             return response({ stage: 'underground_open' });
         }));
@@ -113,7 +114,7 @@ describe('Underground AI editor', () => {
 
     it('clamps the modulo remainder when lowering the modulo', async () => {
         const payloads: Array<{ rules: unknown }> = [];
-        vi.stubGlobal('fetch', vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+        stubUndergroundFetch(vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
             payloads.push(JSON.parse(String(init?.body)) as { rules: unknown });
             return response({ stage: 'underground_open' });
         }));
@@ -146,7 +147,7 @@ describe('Underground AI editor', () => {
             if (attempts === 1) throw new TypeError('AI response lost');
             return response({ stage: 'underground_open', ai: configuration({ is_custom: true }) });
         });
-        vi.stubGlobal('fetch', fetchMock);
+        stubUndergroundFetch(fetchMock);
         const wrapper = mount(UndergroundAiEditor, { props: { configuration: configuration() } });
 
         await wrapper.findAll('.underground-ai-mode-actions button')[1]!.trigger('click');
@@ -174,7 +175,7 @@ describe('Underground AI editor', () => {
             payloads.push(JSON.parse(String(init?.body)) as { request_id: string; rules: unknown });
             return response({ stage: 'underground_open' });
         });
-        vi.stubGlobal('fetch', fetchMock);
+        stubUndergroundFetch(fetchMock);
 
         const custom = configuration({ is_custom: true });
         const wrapper = mount(UndergroundAiEditor, { props: { configuration: custom } });
@@ -194,7 +195,7 @@ describe('Underground AI editor', () => {
 
     it('preserves jump targets across reordering and blocks backward or dangling jumps', async () => {
         const payloads: Array<{ rules: unknown }> = [];
-        vi.stubGlobal('fetch', vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+        stubUndergroundFetch(vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
             payloads.push(JSON.parse(String(init?.body)) as { rules: unknown });
             return response({ stage: 'underground_open' });
         }));
@@ -229,7 +230,7 @@ describe('Underground AI editor', () => {
     it('abandons a conflicting request UUID before retrying the same draft', async () => {
         const requestIds: string[] = [];
         let attempts = 0;
-        vi.stubGlobal('fetch', vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+        stubUndergroundFetch(vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
             attempts += 1;
             requestIds.push((JSON.parse(String(init?.body)) as { request_id: string }).request_id);
             if (attempts === 1) {

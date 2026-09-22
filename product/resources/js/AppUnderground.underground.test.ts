@@ -1,3 +1,4 @@
+import { stubUndergroundFetch } from './UndergroundAdmissionTestFixture';
 import { openUndergroundView, withUndergroundDefaults } from './UndergroundTestNavigation';
 import { flushPromises, mount } from '@vue/test-utils';
 import { describe, expect, it, vi } from 'vitest';
@@ -31,7 +32,7 @@ describe('Underground application operations', () => {
             }
             return response(null, 404);
         });
-        vi.stubGlobal('fetch', fetchMock);
+        stubUndergroundFetch(fetchMock);
         const wrapper = mount(App);
         await flushPromises();
         await wrapper.findAll('.site-header nav button').find((button) => button.text() === '秘書')!.trigger('click');
@@ -140,7 +141,7 @@ describe('Underground application operations', () => {
 
             return response(null, 404);
         });
-        vi.stubGlobal('fetch', fetchMock);
+        stubUndergroundFetch(fetchMock);
         const wrapper = mount(App);
         await flushPromises();
 
@@ -332,7 +333,7 @@ describe('Underground application operations', () => {
 
             return response(null, 404);
         });
-        vi.stubGlobal('fetch', fetchMock);
+        stubUndergroundFetch(fetchMock);
         const wrapper = mount(App);
         await flushPromises();
         await wrapper.findAll('.site-header nav button')
@@ -825,7 +826,7 @@ describe('Underground application operations', () => {
             }
             return response(null, 404);
         });
-        vi.stubGlobal('fetch', fetchMock);
+        stubUndergroundFetch(fetchMock);
         window.localStorage.setItem('hakoniwa.underground.selected-hunting-ground', 'black_crystal_cave');
         const wrapper = mount(App, { attachTo: document.body });
         await flushPromises();
@@ -1344,7 +1345,7 @@ describe('Underground application operations', () => {
 
             return response(null, 404);
         });
-        vi.stubGlobal('fetch', fetchMock);
+        stubUndergroundFetch(fetchMock);
         const wrapper = mount(UndergroundPanel);
         await flushPromises();
 
@@ -1425,7 +1426,7 @@ describe('Underground application operations', () => {
 
             return response(null, 404);
         });
-        vi.stubGlobal('fetch', fetchMock);
+        stubUndergroundFetch(fetchMock);
         const wrapper = mount(UndergroundPanel);
         await flushPromises();
 
@@ -1452,7 +1453,7 @@ describe('Underground application operations', () => {
 
             return response(null, 404);
         });
-        vi.stubGlobal('fetch', fetchMock);
+        stubUndergroundFetch(fetchMock);
         const wrapper = mount(UndergroundPanel);
         await flushPromises();
 
@@ -1585,7 +1586,7 @@ describe('Underground application operations', () => {
 
             return response(null, 404);
         });
-        vi.stubGlobal('fetch', fetchMock);
+        stubUndergroundFetch(fetchMock);
         const wrapper = mount(App);
         await flushPromises();
         await wrapper.findAll('.site-header nav button')
@@ -1662,7 +1663,7 @@ describe('Underground application operations', () => {
 
             return response(null, 404);
         });
-        vi.stubGlobal('fetch', fetchMock);
+        stubUndergroundFetch(fetchMock);
         const wrapper = mount(App);
         await flushPromises();
 
@@ -1710,7 +1711,7 @@ describe('Underground application operations', () => {
 
             return response(null, 404);
         });
-        vi.stubGlobal('fetch', fetchMock);
+        stubUndergroundFetch(fetchMock);
         const wrapper = mount(App);
         await flushPromises();
 
@@ -1770,7 +1771,7 @@ describe('Underground application operations', () => {
 
             return response(null, 404);
         });
-        vi.stubGlobal('fetch', fetchMock);
+        stubUndergroundFetch(fetchMock);
         const wrapper = mount(App);
         await flushPromises();
 
@@ -1817,7 +1818,7 @@ describe('Underground application operations', () => {
 
             return response(null, 404);
         });
-        vi.stubGlobal('fetch', fetchMock);
+        stubUndergroundFetch(fetchMock);
         const wrapper = mount(App);
         await flushPromises();
 
@@ -1896,7 +1897,7 @@ describe('Underground application operations', () => {
 
             return response(null, 404);
         });
-        vi.stubGlobal('fetch', fetchMock);
+        stubUndergroundFetch(fetchMock);
         const wrapper = mount(App);
         await flushPromises();
 
@@ -1995,7 +1996,7 @@ describe('Underground application operations', () => {
             }
             return response(null, 404);
         });
-        vi.stubGlobal('fetch', fetchMock);
+        stubUndergroundFetch(fetchMock);
         const wrapper = mount(UndergroundPanel);
         await flushPromises();
 
@@ -2234,7 +2235,7 @@ describe('Underground application operations', () => {
             }
             return response(null, 404);
         });
-        vi.stubGlobal('fetch', fetchMock);
+        stubUndergroundFetch(fetchMock);
         const wrapper = mount(UndergroundPanel);
         await flushPromises();
 

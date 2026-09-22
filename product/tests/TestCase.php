@@ -11,9 +11,12 @@ use Illuminate\Database\SQLiteConnection;
 use Illuminate\Foundation\Testing\TestCase as BaseTestCase;
 use Illuminate\Support\Facades\DB;
 use RuntimeException;
+use Tests\Concerns\SendsUndergroundAdmission;
 
 abstract class TestCase extends BaseTestCase
 {
+    use SendsUndergroundAdmission;
+
     protected function refreshApplication(): void
     {
         parent::refreshApplication();
