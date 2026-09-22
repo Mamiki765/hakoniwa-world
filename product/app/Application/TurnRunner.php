@@ -15,8 +15,10 @@ use App\Models\RulesetVersion;
 use App\Models\TurnRun;
 use App\Models\World;
 use DomainException;
+use Illuminate\Database\Connection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
+use PDO;
 use PDOException;
 use RuntimeException;
 use Throwable;
@@ -224,6 +226,9 @@ class TurnRunner
                     }, 1);
                     break;
                 } catch (Throwable $exception) {
+                    // The callback captures this by reference; it can change
+                    // before Connection::transaction() rethrows the exception.
+                    /** @var Throwable|null $bodyFailure */
                     $sqlState = $this->sqlState($exception);
                     // Only retry a body failure after a complete root rollback on
                     // the same session. Commit/after-commit and reconnect failures
@@ -231,11 +236,7 @@ class TurnRunner
                     if ($attempt >= self::MAX_TRANSIENT_ATTEMPTS
                         || ! in_array($sqlState, ['40P01', '40001'], true)
                         || $bodyFailure !== $exception
-                        || $connection->getDriverName() !== 'pgsql'
-                        || $entryLevel !== 0
-                        || $connection->transactionLevel() !== 0
-                        || $connection->getPdo() !== $pdo
-                        || $pdo->inTransaction()) {
+                        || ! $this->rolledBackOnSameSession($connection, $pdo, $entryLevel)) {
                         throw $exception;
                     }
 
@@ -280,6 +281,16 @@ class TurnRunner
         }
 
         return $completedRun;
+    }
+
+    private function rolledBackOnSameSession(Connection $connection, PDO $pdo, int $entryLevel): bool
+    {
+        // These are post-transaction observations, not memoized entry values.
+        return $connection->getDriverName() === 'pgsql'
+            && $entryLevel === 0
+            && $connection->transactionLevel() === 0
+            && $connection->getPdo() === $pdo
+            && ! $pdo->inTransaction();
     }
 
     /** @param list<array{attempt_count: int, phase: string|null, sqlstate: string|null}> $retries */
