@@ -22,7 +22,7 @@ interface UndergroundAdmission {
 }
 
 // Component request IDs remain local intent handles. Only the issuer chooses
-// the UUID sent to a mutation. Retain the same promise/token even on failure;
+// the UUID sent to a mutation. Retain an issued token after mutation failure;
 // never turn an uncertain or expired operation into a new request automatically.
 const undergroundAdmissions = new Map<string, Promise<UndergroundAdmission>>();
 let undergroundReloadRequired = false;
@@ -63,6 +63,10 @@ export async function apiEnvelope<T>(path: string, init: RequestInit = {}): Prom
         if (!pending) {
             pending = api<UndergroundAdmission>('/api/v1/me/underground/requests', {
                 method: 'POST', body: JSON.stringify({ method, path }),
+            }).catch((error) => {
+                // No mutation was sent: let an explicit retry request admission again.
+                undergroundAdmissions.delete(key);
+                throw error;
             });
             undergroundAdmissions.set(key, pending);
         }
