@@ -4,7 +4,7 @@ import { ApiError, api } from '../api/client';
 import EquipmentItemCard, { type AccessorySlot, type EquipmentItem, type EquipmentSlot } from './EquipmentItemCard.vue';
 import UndergroundBulkSaleConfirmDialog from './UndergroundBulkSaleConfirmDialog.vue';
 
-const equipmentSlots: EquipmentSlot[] = ['weapon', 'armor', 'accessory_1', 'accessory_2', 'accessory_3'];
+const equipmentSlots: EquipmentSlot[] = ['weapon', 'armor', 'accessory_1', 'accessory_2', 'accessory_3', 'resonance'];
 const accessorySlots: AccessorySlot[] = ['accessory_1', 'accessory_2', 'accessory_3'];
 
 interface VaultResponse {
@@ -67,6 +67,7 @@ const loading = ref(true);
 const error = ref('');
 const pending = ref<{ fingerprint: string; requestId: string } | null>(null);
 const accessoryTargetSlot = ref<AccessorySlot>('accessory_1');
+const inventory = ref<'equipment' | 'resonance'>('equipment');
 const sortOrder = ref(readSortPreference());
 const bulkSellOptions = ref<BulkSellOptions | null>(null);
 const selectedRarityKeys = ref<string[]>([]);
@@ -97,6 +98,7 @@ function isAccessorySlot(slot: EquipmentSlot | null | undefined): slot is Access
     return typeof slot === 'string' && slot.startsWith('accessory_');
 }
 function slotLabel(slot: EquipmentSlot | null | undefined): string {
+    if (slot === 'resonance') return '共鳴結晶';
     if (slot === 'weapon') return '武器';
     if (slot === 'armor') return '防具';
     if (isAccessorySlot(slot)) return `アクセサリー${accessorySlots.indexOf(slot) + 1}`;
@@ -136,7 +138,7 @@ function normalizeBulkOptions(options: BulkSellOptions | undefined): BulkSellOpt
 
 function readSortPreference(): string {
     try {
-        const stored = window.localStorage.getItem(sortPreferenceKey);
+        const stored = window.localStorage.getItem(preferenceKey(sortPreferenceKey));
         return sortOptions.find((option) => option.key === stored)?.key ?? 'newest';
     } catch {
         return 'newest';
@@ -145,7 +147,7 @@ function readSortPreference(): string {
 
 function changeSortOrder(): void {
     try {
-        window.localStorage.setItem(sortPreferenceKey, sortOrder.value);
+        window.localStorage.setItem(preferenceKey(sortPreferenceKey), sortOrder.value);
     } catch {
         // Storage may be unavailable; sorting still works for this visit.
     }
@@ -155,7 +157,7 @@ function changeSortOrder(): void {
 function readBulkPreferences(): BulkSellPreferences | null {
     if (typeof window === 'undefined') return null;
     try {
-        const stored = window.localStorage.getItem(bulkSellPreferenceKey);
+        const stored = window.localStorage.getItem(preferenceKey(bulkSellPreferenceKey));
         if (!stored) return null;
         const parsed: unknown = JSON.parse(stored);
         if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) return null;
@@ -189,7 +191,7 @@ function persistBulkPreferences(): void {
     if (!bulkOptionsInitialized.value || typeof window === 'undefined') return;
     try {
         const raw = String(itemLevelMaxDraft.value).trim();
-        window.localStorage.setItem(bulkSellPreferenceKey, JSON.stringify({
+        window.localStorage.setItem(preferenceKey(bulkSellPreferenceKey), JSON.stringify({
             item_level_max: raw === '' ? null : Number(raw),
             rarities: selectedRarityKeys.value,
             categories: selectedCategoryKeys.value,
@@ -235,7 +237,8 @@ async function loadVault(page = vault.value?.page ?? 1): Promise<void> {
     loading.value = true;
     error.value = '';
     try {
-        const next = await api<VaultResponse>(`/api/v1/me/underground/equipment/vault?page=${page}&sort=${sortOrder.value}`);
+        const suffix = inventory.value === 'resonance' ? '&inventory=resonance' : '';
+        const next = await api<VaultResponse>(`/api/v1/me/underground/equipment/vault?page=${page}&sort=${sortOrder.value}${suffix}`);
         vault.value = next;
         syncBulkSellOptions(next.bulk_sell_options);
     } catch (caught) {
@@ -393,14 +396,32 @@ async function mutate(action: 'equip' | 'unequip', item?: EquipmentItem, selecte
 }
 
 onMounted(() => { void loadVault(); });
+
+function preferenceKey(base: string): string {
+    return inventory.value === 'resonance' ? `${base}.resonance` : base;
+}
+
+async function changeInventory(next: 'equipment' | 'resonance'): Promise<void> {
+    if (bulkFilterDisabled.value || next === inventory.value) return;
+    inventory.value = next;
+    sortOrder.value = readSortPreference();
+    bulkOptionsInitialized.value = false;
+    vault.value = null;
+    bulkSellOptions.value = null;
+    await loadVault(1);
+}
 </script>
 
 <template>
     <section class="underground-equipment-screen" aria-labelledby="underground-equipment-vault-title">
         <header class="underground-equipment-screen-heading">
-            <div><h1 id="underground-equipment-vault-title">宝物庫</h1><p>所有アイテムを確認し、武器1つ・防具1つ・アクセサリー3枠まで装備できます。</p></div>
+            <div><h1 id="underground-equipment-vault-title">宝物庫</h1><p>武器1つ・防具1つ・アクセサリー3つ・共鳴結晶1つを装備できます。</p></div>
             <div v-if="vault" class="underground-vault-capacity"><strong>{{ vault.used }} / {{ vault.capacity }}</strong><span>使用中 / 容量</span></div>
         </header>
+        <nav class="underground-equipment-tabs" aria-label="宝物庫の種類">
+            <button type="button" class="button secondary" :aria-pressed="inventory === 'equipment'" :disabled="bulkFilterDisabled" @click="changeInventory('equipment')">装備</button>
+            <button type="button" class="button secondary" :aria-pressed="inventory === 'resonance'" :disabled="bulkFilterDisabled" @click="changeInventory('resonance')">共鳴結晶</button>
+        </nav>
         <p v-if="loading" class="status" role="status">宝物庫を読み込んでいます…</p>
         <p v-if="error" class="status error" role="alert">{{ error }}</p>
         <template v-if="vault">
@@ -441,7 +462,7 @@ onMounted(() => { void loadVault(); });
                             <span>{{ option.label }}</span>
                         </label>
                     </fieldset>
-                    <fieldset>
+                    <fieldset v-if="bulkSellOptions.weapon_styles.length > 0">
                         <legend>武器スタイル</legend>
                         <label v-for="option in bulkSellOptions.weapon_styles" :key="`weapon-style-${option.key}`">
                             <input v-model="selectedWeaponStyleKeys" type="checkbox" :value="option.key" :disabled="bulkFilterDisabled" @change="onBulkFilterChanged">

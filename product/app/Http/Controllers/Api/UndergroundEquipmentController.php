@@ -24,12 +24,16 @@ final class UndergroundEquipmentController extends Controller
 
     public function vault(Request $request, UndergroundEquipmentService $service): JsonResponse
     {
-        $request->validate(['sort' => ['sometimes', 'string', Rule::in(UndergroundEquipmentService::VAULT_SORT_KEYS)]]);
+        $request->validate([
+            'sort' => ['sometimes', 'string', Rule::in(UndergroundEquipmentService::VAULT_SORT_KEYS)],
+            'inventory' => ['sometimes', 'string', Rule::in(['equipment', 'resonance'])],
+        ]);
 
         return $this->respond(fn (): array => $service->vault(
             $request->user(),
             $request->integer('page', 1),
             $request->string('sort', 'newest')->value(),
+            $request->string('inventory', 'equipment')->value(),
         ));
     }
 

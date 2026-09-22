@@ -189,13 +189,14 @@ final readonly class UndergroundEquipmentDropService
         );
     }
 
-    public function remainingVaultCapacity(UndergroundProfile $profile): int
+    public function remainingVaultCapacity(UndergroundProfile $profile, string $inventory = 'equipment'): int
     {
         $used = UndergroundOwnedEquipment::query()
             ->where('underground_profile_id', $profile->id)
+            ->inventory($inventory)
             ->count();
 
-        return max(0, $this->equipmentCatalog->vaultCapacity() - $used);
+        return max(0, $this->equipmentCatalog->vaultCapacity($inventory) - $used);
     }
 
     /**
@@ -270,7 +271,8 @@ final readonly class UndergroundEquipmentDropService
         if (! is_array($payload)) {
             throw new RuntimeException('Underground generated drop payload is missing.');
         }
-        if ($checkVaultCapacity && $this->remainingVaultCapacity($profile) < 1) {
+        $inventory = ($payload['category'] ?? null) === 'resonance' ? 'resonance' : 'equipment';
+        if ($checkVaultCapacity && $this->remainingVaultCapacity($profile, $inventory) < 1) {
             return [
                 'identity' => $drop['identity'],
                 'status' => 'vault_full',

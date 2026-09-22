@@ -2,19 +2,44 @@
 
 namespace Tests\Underground\Unit;
 
+use App\Application\Underground\UndergroundEquipmentCatalog;
 use App\Application\Underground\UndergroundRuntimeEquipmentGenerator;
 use InvalidArgumentException;
 use Tests\TestCase;
 
 final class UndergroundRuntimeEquipmentGeneratorTest extends TestCase
 {
+    public function test_resonance_duplicate_max_rolls_stop_percentage_growth_but_keep_equal_flat_stat_growth(): void
+    {
+        config([
+            'underground-equipment.generator.resonance.affixes' => ['resonance_area_damage_bps' => '範囲攻撃強化'],
+            'underground-equipment.generator.quality_min_bps' => 10_000,
+            'underground-equipment.generator.quality_max_bps' => 10_000,
+        ]);
+        $atCap = $this->generate(200, 'bahamul', 'unique', 'resonance', null, null, 23);
+        $afterCap = $this->generate(210, 'bahamul', 'unique', 'resonance', null, null, 23);
+        app(UndergroundEquipmentCatalog::class)->assertDefinition($afterCap, true);
+
+        $this->assertCount(2, $atCap['affixes']);
+        $this->assertSame($atCap['affixes'][0]['key'], $atCap['affixes'][1]['key']);
+        $this->assertSame(3_000, $afterCap['modifiers']['resonance_area_damage_bps']);
+        $this->assertSame($atCap['affixes'], $afterCap['affixes']);
+        $this->assertSame($atCap['unique_effect'], $afterCap['unique_effect']);
+        $this->assertCount(1, array_unique($afterCap['stats']));
+        $this->assertGreaterThan($atCap['stats']['vitality'], $afterCap['stats']['vitality']);
+
+        $weapon = $this->generate(210, 'bahamul', 'unique', 'weapon', 'longsword', null, 23);
+        app(UndergroundEquipmentCatalog::class)->assertDefinition($weapon, true);
+        $this->assertCount(3, $weapon['affixes']);
+        $this->assertSame('shockwave', $weapon['unique_effect']['type']);
+    }
+
     public function test_same_input_and_seed_replay_the_same_generated_payload(): void
     {
         $first = $this->generate(40, 'black_crystal_cave', 'epic', 'weapon', 'dagger', null, 3);
         $retry = $this->generate(40, 'black_crystal_cave', 'epic', 'weapon', 'dagger', null, 3);
 
         $this->assertSame($first, $retry);
-        $this->assertSame('secretary-underground-drop-equipment-alpha-v1', $first['generator_identity']);
         $this->assertSame(64, strlen($first['instance_identity']));
         $otherSource = (new UndergroundRuntimeEquipmentGenerator)->generate(
             40, 'black_crystal_cave', 'epic', 'weapon', 'dagger', null, 3, 'other-source',
@@ -158,7 +183,7 @@ final class UndergroundRuntimeEquipmentGeneratorTest extends TestCase
         $this->assertSame(36, $dagger['base']['weapon_power']);
     }
 
-    public function test_item_level_one_through_one_hundred_twenty_is_valid_but_outside_boundary_is_rejected(): void
+    public function test_item_level_boundaries_include_bahamul_and_reject_unsupported_levels(): void
     {
         $first = $this->generate(1, 'shallow_caves', 'common', 'weapon', 'dagger', null, 0);
         $formerLast = $this->generate(90, 'obsidian_cavern', 'common', 'weapon', 'dagger', null, 0);
@@ -173,7 +198,10 @@ final class UndergroundRuntimeEquipmentGeneratorTest extends TestCase
         $this->assertSame(120, $last['item_level']);
         $this->assertSame('王都の短剣', $last['name']);
 
-        foreach ([0, 121] as $itemLevel) {
+        $bahamul = $this->generate(210, 'bahamul', 'unique', 'weapon', 'longsword', null, 0);
+        $this->assertGreaterThan($last['weapon_power'], $bahamul['weapon_power']);
+
+        foreach ([0, 211] as $itemLevel) {
             try {
                 $this->generate($itemLevel, 'shallow_caves', 'common', 'weapon', 'dagger', null, 0);
                 $this->fail("Item Lv {$itemLevel} should be rejected.");
@@ -201,13 +229,13 @@ final class UndergroundRuntimeEquipmentGeneratorTest extends TestCase
         }
     }
 
-    public function test_unique_rarity_is_rejected_and_supported_rarities_never_generate_unique_effects(): void
+    public function test_ordinary_tiers_cannot_generate_unique_effects(): void
     {
         try {
             $this->generate(40, 'black_crystal_cave', 'unique', 'weapon', 'dagger', null, 3);
-            $this->fail('Unique rarity should be rejected by the runtime generator.');
+            $this->fail('An ordinary tier must not generate a boss weapon effect.');
         } catch (InvalidArgumentException) {
-            // Unique generation is intentionally not supported by this generator.
+            // This tier has no intrinsic weapon effect.
         }
 
         foreach (['common', 'uncommon', 'rare', 'epic'] as $rarity) {

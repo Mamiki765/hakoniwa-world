@@ -796,9 +796,13 @@ final readonly class AlphaV1CombatModel
             || ! is_int($equipment['max_hp'] ?? null) || $equipment['max_hp'] < 0
             || ! is_array($equipmentModifiers)
             || ! is_array($equipmentAffixes) || ! array_is_list($equipmentAffixes)
-            || ! array_key_exists('unique_effect', $equipment)
-            || $equipment['unique_effect'] !== null) {
+            || ! array_key_exists('unique_effect', $equipment)) {
             throw new InvalidArgumentException('Underground alpha-v1 runtime equipment snapshot is invalid.');
+        }
+        EquipmentCombatEffects::assertUnique($equipment['unique_effect']);
+        $weaponEffect = $equipment['unique_effect'];
+        if ($weaponEffect !== null && $weaponEffect['type'] !== 'shockwave') {
+            throw new InvalidArgumentException('Underground runtime weapon effect is invalid.');
         }
         foreach ($equipmentStats as $value) {
             if (! is_int($value) || $value < 0) {
@@ -813,6 +817,7 @@ final readonly class AlphaV1CombatModel
             'critical_chance_bps',
             'critical_damage_bps',
             'mp_cost_reduction_bps',
+            ...EquipmentCombatEffects::RESONANCE_MODIFIERS,
         ];
         foreach ($equipmentModifiers as $modifierKey => $value) {
             if (! in_array($modifierKey, $allowedEquipmentModifiers, true)
@@ -836,6 +841,11 @@ final readonly class AlphaV1CombatModel
         }
         $this->rules->assertFiveStats($stats, false);
 
+        $normalAttack = $catalog->manifest()['normal_attack'];
+        if ($weaponEffect !== null) {
+            $normalAttack['category'] = $weaponEffect['category'];
+            $normalAttack['stat_coefficients'] = $weaponEffect['stat_coefficients'];
+        }
         $state = new BuildCombatState(
             'player',
             $key,
@@ -851,8 +861,9 @@ final readonly class AlphaV1CombatModel
             $aiRules,
             $this->skillModifiers($catalog, $skills, $modifiers),
             null,
-            $catalog->manifest()['normal_attack'],
+            $normalAttack,
         );
+        $state->weaponEffect = $weaponEffect;
         $currentHp = $snapshot['current_hp'] ?? $state->maxHp;
         if (! is_int($currentHp) || $currentHp < ($allowDefeated ? 0 : 1) || $currentHp > $state->maxHp) {
             throw new InvalidArgumentException('Underground alpha-v1 runtime current HP is invalid.');
@@ -1363,6 +1374,7 @@ final readonly class AlphaV1CombatModel
                     $index === 0,
                     $effectTargetIds,
                     $actionId,
+                    source: 'normal',
                 );
                 if ($partyAllies !== [] || $partyEnemies !== []) {
                     $this->annotatePartyLogs($actionLog, $offset, $actor, $effectTarget, $effectTargetIds);
@@ -1371,6 +1383,9 @@ final readonly class AlphaV1CombatModel
                     }
                 }
             }
+
+            $this->weaponFollowup($actor, $target, $partyEnemies, $random, $round,
+                'normal_attack', $metrics, $actionUsage, $actionLog, $actionId);
 
             return;
         }
@@ -1486,6 +1501,10 @@ final readonly class AlphaV1CombatModel
             if (($effect['type'] ?? null) === 'damage') {
                 $agilityComboPending = false;
             }
+        }
+        if ($hasDamageEffect) {
+            $this->weaponFollowup($actor, $target, $partyEnemies, $random, $round,
+                $skillKey, $metrics, $actionUsage, $actionLog, $actionId);
         }
         if (($actor->flags['effective_heal_action'] ?? false) === true
             && in_array('heart_of_mercy', $actor->skills, true)) {
@@ -1751,6 +1770,7 @@ final readonly class AlphaV1CombatModel
                 $showAgilityCombo,
                 $targetIds,
                 $actionId,
+                source: 'skill',
             ),
             'heal' => $this->applyHeal(
                 $actor,
@@ -1906,6 +1926,7 @@ final readonly class AlphaV1CombatModel
         bool $showAgilityCombo = true,
         array $targetIds = [],
         ?string $actionId = null,
+        string $source = 'other',
     ): void {
         $hits = max(1, (int) ($effect['hits'] ?? 1));
         $agilityComboLogged = false;
@@ -1969,6 +1990,10 @@ final readonly class AlphaV1CombatModel
                 $actor->flags['afterguard_focus'] = false;
             }
             $rawDamage = max(1, intdiv($rawDamage * max(1, $damageBps), 10_000));
+            $resonanceBonus = EquipmentCombatEffects::damageBonus(
+                $actor->modifiers, $this->partyTargetScope($effect), $source,
+            );
+            $rawDamage = max(1, intdiv($rawDamage * (10_000 + $resonanceBonus), 10_000));
 
             $critical = false;
             if (($effect['can_crit'] ?? false) === true) {
@@ -2088,6 +2113,10 @@ final readonly class AlphaV1CombatModel
             $combinedBps = $this->targetDamageBps($target, $category);
             $combinedBps = intdiv($combinedBps * $guardBps, 10_000);
             $combinedBps = max(10_000 - AlphaV1CombatRules::DAMAGE_REDUCTION_CAP_BPS, min(20_000, $combinedBps));
+            if ($guarded) {
+                $combinedBps = intdiv($combinedBps
+                    * (10_000 - (int) ($target->modifiers['resonance_guard_reduction_bps'] ?? 0)), 10_000);
+            }
             if ($target->awakeningGuardRoundsRemaining > 0) {
                 $combinedBps = max(1, intdiv(
                     $combinedBps * (10_000 - UndergroundAwakening::GUARDIAN_DAMAGE_REDUCTION_BPS),
@@ -2212,6 +2241,63 @@ final readonly class AlphaV1CombatModel
     }
 
     /**
+     * One roll at the attacking action boundary; targets and combo hits never reroll it.
+     *
+     * @param  list<BuildCombatState>  $partyEnemies
+     * @param  array<string, int|null>  $metrics
+     * @param  array<string, int>  $actionUsage
+     * @param  list<array<string, mixed>>  $actionLog
+     */
+    private function weaponFollowup(
+        BuildCombatState $actor,
+        BuildCombatState $target,
+        array $partyEnemies,
+        UndergroundRandom $random,
+        int $round,
+        string $triggerAction,
+        array &$metrics,
+        array &$actionUsage,
+        array &$actionLog,
+        ?string $actionId,
+    ): void {
+        $weaponEffect = $actor->weaponEffect;
+        $targets = array_values(array_filter($partyEnemies !== [] ? $partyEnemies : [$target],
+            static fn (BuildCombatState $enemy): bool => $enemy->alive()));
+        if ($weaponEffect === null || ! $actor->alive() || $targets === []) {
+            return;
+        }
+        $rollKey = $actionId ?? "{$round}:{$triggerAction}";
+        if ($random->integer("alpha-v1:weapon-followup:{$actor->combatantId}:{$rollKey}", 1, 10_000)
+            > $weaponEffect['chance_bps']) {
+            return;
+        }
+        $effect = [
+            'category' => $weaponEffect['category'],
+            'stat_coefficients' => $weaponEffect['stat_coefficients'],
+            'potency_bps' => $weaponEffect['potency_bps'],
+            'weapon_coefficient_bps' => 10_000,
+            'can_crit' => true,
+            'dodgeable' => true,
+            'target_scope' => 'all_enemies',
+        ];
+        foreach ($targets as $enemy) {
+            $offset = count($actionLog);
+            $this->applyDamage($actor, $enemy, $effect, $random, $round,
+                'weapon_followup:'.$weaponEffect['key'], $metrics, $actionUsage, $actionLog,
+                targetIds: [$enemy->combatantId], actionId: $actionId);
+            if ($partyEnemies !== []) {
+                $this->annotatePartyLogs($actionLog, $offset, $actor, $enemy, [$enemy->combatantId]);
+            }
+            for ($index = $offset, $count = count($actionLog); $index < $count; $index++) {
+                if (($actionLog[$index]['action'] ?? null) === 'weapon_followup:'.$weaponEffect['key']) {
+                    $actionLog[$index]['equipment_effect_label'] = $weaponEffect['label'];
+                    $actionLog[$index]['target_scope'] = 'all_enemies';
+                }
+            }
+        }
+    }
+
+    /**
      * @param  array<string, mixed>  $effect
      * @param  array<string, int|null>  $metrics
      * @param  list<array<string, mixed>>  $actionLog
@@ -2261,6 +2347,9 @@ final readonly class AlphaV1CombatModel
     ): void {
         $amount = $this->recoveryAmount($source, $target, $effect);
         $amount = intdiv($amount * (10_000 + (int) ($source->modifiers['healing_bps'] ?? 0)), 10_000);
+        $amount = intdiv($amount * (10_000 + EquipmentCombatEffects::healingBonus(
+            $source->modifiers, $this->partyTargetScope($effect),
+        )), 10_000);
         $effective = $this->healExact($target, $amount, $metrics);
         if ($effective > 0 && $source->side === 'player') {
             $source->flags['effective_heal_action'] = true;
@@ -3202,6 +3291,7 @@ final readonly class AlphaV1CombatModel
                 [
                     'category' => 'physical',
                     'potency_bps' => UndergroundAwakening::MARTIAL_POTENCY_BPS,
+                    'target_scope' => 'all_enemies',
                     'stat_coefficients' => ['might' => 8_000, 'finesse' => 2_000],
                     'weapon_coefficient_bps' => 15_000,
                     'fixed' => 0,
@@ -3233,6 +3323,7 @@ final readonly class AlphaV1CombatModel
                     [
                         'category' => 'physical',
                         'potency_bps' => intdiv(UndergroundAwakening::MARTIAL_POTENCY_BPS, 2),
+                        'target_scope' => 'all_enemies',
                         'stat_coefficients' => ['might' => 8_000, 'finesse' => 2_000],
                         'weapon_coefficient_bps' => 15_000,
                         'fixed' => 0,
@@ -3355,6 +3446,11 @@ final readonly class AlphaV1CombatModel
             foreach ($allies as $ally) {
                 $wasDefeated = ! $ally->alive();
                 $reviveHp = intdiv($ally->maxHp * UndergroundAwakening::BLESSING_REVIVE_HP_BPS, 10_000);
+                if (! $wasDefeated) {
+                    $reviveHp = intdiv($reviveHp * (10_000 + EquipmentCombatEffects::healingBonus(
+                        $player->modifiers, 'all_allies',
+                    )), 10_000);
+                }
                 $effective = $this->healExact($ally, $reviveHp, $metrics);
                 $row = $this->logRow(
                     $round,
@@ -3487,6 +3583,11 @@ final readonly class AlphaV1CombatModel
             );
         } else {
             throw new InvalidArgumentException('Underground awakening technique execution is invalid.');
+        }
+
+        if ($techniqueLog['target_side'] === 'enemy') {
+            $this->weaponFollowup($player, $enemy, $partyEnemies, $random, $round,
+                $techniqueKey, $metrics, $actionUsage, $actionLog, $actionId);
         }
 
         return $technique['consumes_action'];

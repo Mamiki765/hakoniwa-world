@@ -1,5 +1,5 @@
 <script setup lang="ts">
-export type EquipmentSlot = 'weapon' | 'armor' | 'accessory_1' | 'accessory_2' | 'accessory_3';
+export type EquipmentSlot = 'weapon' | 'armor' | 'accessory_1' | 'accessory_2' | 'accessory_3' | 'resonance';
 export type AccessorySlot = 'accessory_1' | 'accessory_2' | 'accessory_3';
 
 export interface EquipmentAffix {
@@ -14,7 +14,7 @@ export interface EquipmentItem {
     id?: number;
     key: string;
     name: string;
-    category: 'weapon' | 'armor' | 'accessory';
+    category: 'weapon' | 'armor' | 'accessory' | 'resonance';
     weapon_style?: string | null;
     rank: number;
     item_level: number;
@@ -30,6 +30,12 @@ export interface EquipmentItem {
     max_hp: number;
     stats: Record<string, number>;
     affixes?: EquipmentAffix[];
+    unique_effect?: {
+        type: 'resonance' | 'shockwave';
+        label: string;
+        value_bps?: number;
+        chance_bps?: number;
+    } | null;
     instance_kind?: 'fixed' | 'generated' | string;
     instance_identity?: string | null;
     identity?: string | null;
@@ -59,6 +65,7 @@ const categoryLabels: Record<EquipmentItem['category'], string> = {
     weapon: '武器',
     armor: '防具',
     accessory: 'アクセサリー',
+    resonance: '共鳴結晶',
 };
 const statLabels: Record<string, string> = {
     vitality: '生命',
@@ -128,8 +135,13 @@ function affixValue(affix: EquipmentAffix): string {
             <div v-if="item.max_hp > 0"><dt>最大HP</dt><dd>+{{ item.max_hp }}</dd></div>
             <div v-for="([key, value]) in nonZeroStats()" :key="key"><dt>{{ statLabel(key) }}</dt><dd>+{{ value }}</dd></div>
         </dl>
+        <p v-if="item.unique_effect" class="underground-equipment-card-effect">
+            {{ item.unique_effect.label }}：
+            <template v-if="item.unique_effect.type === 'resonance'">範囲攻撃 +{{ (item.unique_effect.value_bps ?? 0) / 100 }}%</template>
+            <template v-else>攻撃時に{{ (item.unique_effect.chance_bps ?? 0) / 100 }}%の確率で敵全体へ衝撃波</template>
+        </p>
         <ul v-if="item.affixes && item.affixes.length > 0" class="underground-equipment-card-affixes" aria-label="追加効果">
-            <li v-for="(affix, index) in item.affixes" :key="affix.key ?? `${affix.label}-${affix.value}-${index}`">
+            <li v-for="(affix, index) in item.affixes" :key="`${affix.key ?? affix.label}-${index}`">
                 {{ affix.label }} {{ affixValue(affix) }}
             </li>
         </ul>

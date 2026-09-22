@@ -20,7 +20,7 @@ final class PreviewUndergroundBulkSellRequest extends FormRequest
             'item_level_max' => ['nullable', 'integer', 'min:1'],
             'rarities' => ['present', 'array', 'max:6'],
             'rarities.*' => ['string', 'distinct', Rule::in(UndergroundEquipmentService::BULK_SELL_RARITY_KEYS)],
-            'categories' => ['present', 'array', 'max:3'],
+            'categories' => ['present', 'array', 'max:'.count(UndergroundEquipmentService::BULK_SELL_CATEGORY_KEYS)],
             'categories.*' => ['string', 'distinct', Rule::in(UndergroundEquipmentService::BULK_SELL_CATEGORY_KEYS)],
             'weapon_styles' => ['present', 'array', 'max:20'],
             'weapon_styles.*' => ['string', 'distinct', 'max:100'],

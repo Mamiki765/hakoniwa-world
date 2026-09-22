@@ -186,7 +186,7 @@ final class UndergroundAlphaV1BattleProjector
             'target_name' => $this->displayName($targetSide, $playerDisplayName, $enemyDisplayName),
             'label' => $type === 'phase_transition' && $message !== null
                 ? $message
-                : $this->actionLabel($action, $catalog),
+                : ($row['equipment_effect_label'] ?? $this->actionLabel($action, $catalog)),
             'amount' => abs($amount),
             'critical' => (bool) ($row['critical'] ?? false),
             'evaded' => (bool) ($row['evaded'] ?? false),

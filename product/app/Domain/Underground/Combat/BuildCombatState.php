@@ -15,6 +15,9 @@ final class BuildCombatState
 
     public bool $guarding = false;
 
+    /** @var array<string, mixed>|null */
+    public ?array $weaponEffect = null;
+
     /** @var array{source_side: 'player'|'enemy', source_key: string, source_combatant_id?: string, applied_round: int}|null */
     public ?array $taunt = null;
 
