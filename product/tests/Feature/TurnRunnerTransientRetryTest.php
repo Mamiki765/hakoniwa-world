@@ -9,6 +9,7 @@ use App\Domain\Turn\TurnContext;
 use App\Domain\Turn\TurnPhase;
 use App\Domain\Turn\TurnPhaseResult;
 use App\Domain\Turn\TurnPipeline;
+use App\Domain\World\WorldMutationLock;
 use App\Models\MapCell;
 use App\Models\MonsterDefinition;
 use App\Models\MonsterInstance;
@@ -18,6 +19,7 @@ use App\Models\TurnRun;
 use Closure;
 use DomainException;
 use Illuminate\Database\DeadlockException;
+use Illuminate\Database\Events\QueryExecuted;
 use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\DatabaseMigrations;
 use Illuminate\Support\Facades\DB;
@@ -165,6 +167,91 @@ final class TurnRunnerTransientRetryTest extends TestCase
             $this->assertSame('23505', $failed->failure_context['sqlstate']);
             $this->assertSame(TurnRun::STATUS_FAILED, $failed->status);
             $this->assertSame($world->current_turn, $world->fresh()->current_turn);
+        }
+    }
+
+    public function test_retry_aborts_if_the_lock_session_is_lost_after_diagnostics(): void
+    {
+        $world = $this->lightweightWorld();
+        $originalName = $world->name;
+        $connection = DB::connection();
+        $originalPdo = $connection->getPdo();
+        $pid = (int) $connection->selectOne('SELECT pg_backend_pid() AS pid')->pid;
+        $lock = app(WorldMutationLock::class);
+        $key = $lock->key($world);
+        $observerName = 'turn_retry_session_probe';
+        config(["database.connections.{$observerName}" => $connection->getConfig()]);
+        $observer = DB::connection($observerName);
+        $originalDispatcher = $connection->getEventDispatcher();
+        $dispatcher = clone $originalDispatcher;
+        $connection->setEventDispatcher($dispatcher);
+        $armed = false;
+        $terminated = false;
+        $observerHoldsLock = false;
+        $executions = 0;
+        $dispatcher->listen(QueryExecuted::class, function (QueryExecuted $query) use (
+            $connection, $observer, $pid, $key, &$armed, &$terminated, &$observerHoldsLock,
+        ): void {
+            if (! $armed || $terminated || $query->connection !== $connection
+                || ! str_starts_with($query->sql, 'update "turn_runs"')) {
+                return;
+            }
+            // Kill only this fixture's idle session after retry diagnostics have
+            // committed. The next BEGIN must exercise Laravel's auto-reconnect.
+            $terminated = true;
+            $this->assertSame(0, $connection->transactionLevel());
+            $this->assertTrue((bool) $observer->selectOne(
+                'SELECT pg_terminate_backend(?, 5000) AS terminated', [$pid],
+            )->terminated);
+            $observerHoldsLock = (bool) $observer->selectOne(
+                'SELECT pg_try_advisory_lock(hashtextextended(?, 0)) AS acquired', [$key],
+            )->acquired;
+            $this->assertTrue($observerHoldsLock);
+        });
+        $runner = $this->runner(function (TurnContext $context, string $phase) use (&$armed, &$executions): void {
+            if ($phase !== 'prepare_turn') {
+                return;
+            }
+            $executions++;
+            $context->world->update(['name' => 'must not run after session loss']);
+            if ($executions === 1) {
+                $armed = true;
+                DB::unprepared("DO $$ BEGIN RAISE EXCEPTION 'retry fixture' USING ERRCODE = '40001'; END; $$;");
+            }
+        });
+
+        try {
+            try {
+                $runner->run($world, source: 'cron');
+                $this->fail('A replacement session must not resume the turn without its World lock.');
+            } catch (DomainException $exception) {
+                $this->assertStringContainsString('mutation lock database session changed', $exception->getMessage());
+            }
+            $this->assertTrue($terminated);
+            $this->assertNotSame($originalPdo, $connection->getPdo());
+            $this->assertSame(1, $executions);
+            $this->assertSame($originalName, $world->fresh()->name);
+            $this->assertSame($world->current_turn, $world->fresh()->current_turn);
+            $run = TurnRun::query()->where('world_id', $world->id)->sole();
+            $this->assertSame(TurnRun::STATUS_FAILED, $run->status);
+            $this->assertSame(2, $run->attempt_count);
+            $this->assertNull($run->failure_context['phase']);
+            $this->assertSame(['40001'], array_column($run->failure_context['transient_retries'], 'sqlstate'));
+            $this->assertTrue((bool) $observer->selectOne(
+                'SELECT pg_advisory_unlock(hashtextextended(?, 0)) AS released', [$key],
+            )->released);
+            $observerHoldsLock = false;
+            // A later, explicit invocation may acquire a new lock normally.
+            $lock->acquire($world);
+            $lock->assertHeld($world);
+            $lock->release($world);
+        } finally {
+            $connection->setEventDispatcher($originalDispatcher);
+            if ($observerHoldsLock) {
+                $observer->selectOne('SELECT pg_advisory_unlock(hashtextextended(?, 0))', [$key]);
+            }
+            DB::purge($observerName);
+            config(["database.connections.{$observerName}" => null]);
         }
     }
 

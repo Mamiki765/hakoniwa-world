@@ -301,6 +301,9 @@ class TurnRunner
         array $retries,
         ?string &$currentPhase,
     ): void {
+        // beginTransaction() itself may reconnect. Validate the session that
+        // acquired the advisory lock before the first game-state query.
+        $this->lock->assertHeld($world);
         $lockedWorld = World::query()->whereKey($world->id)->lockForUpdate()->firstOrFail();
         if ($lockedWorld->current_turn + 1 !== $run->target_turn) {
             throw new TurnAlreadyAppliedException('World current_turn no longer matches the turn run target.');
