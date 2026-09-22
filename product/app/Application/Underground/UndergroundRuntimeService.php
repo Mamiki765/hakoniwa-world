@@ -2935,6 +2935,7 @@ STORY;
                     '周囲の探索はまだ解禁されていません。',
                 );
             }
+            app(UndergroundRequestAdmission::class)->assertPreparationTime();
             $this->starterEquipment->reconcile($profile);
             $equipment = $this->equipmentLoadout->combatLoadout($profile);
             $itemLevels = $this->equipmentItemLevelsBySlot($equipment);
@@ -3005,6 +3006,7 @@ STORY;
                     'snapshot' => $snapshot,
                 ];
             }
+            app(UndergroundRequestAdmission::class)->assertPreparationTime();
             if ($reserveImages) {
                 $this->imageRetention->reserveBattleImages(
                     $this->imageRetention->reservationKey($leaderSyncInputs['profile_id'], $requestId),

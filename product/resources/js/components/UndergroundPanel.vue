@@ -574,6 +574,7 @@ const selectedSkipTrialKey = ref('trial_01');
 const customHuntingGroundSkipCount = ref('');
 const customTrialSkipCount = ref('');
 const pendingExplorationRequest = ref<PendingExplorationRequest | null>(null);
+const pendingPlaytestRequest = ref<{ requestId: string; buildKey: string; enemyKey: string } | null>(null);
 const partyCandidateSearchOpen = ref(false);
 const partyCandidateLoading = ref(false);
 const partyCandidateLoadedOnce = ref(false);
@@ -675,6 +676,8 @@ const guideDuelLines = computed(() => {
 const guideConversation = ref<GuideConversationStart | null>(null);
 const guideConversationLine = ref('');
 const guideConversationPhase = ref<'topic' | 'reply' | 'punch'>('topic');
+type GuideConversationAction = 'start' | 'reply' | 'punch';
+const pendingGuideConversation = ref<{ action: GuideConversationAction; payload: Record<string, number>; requestId: string } | null>(null);
 const selectedRecollectionKey = ref<string | null>(null);
 const seriousTalkSceneKey = ref('root');
 const selectedRespecPathKey = ref<string | null>(null);
@@ -1107,56 +1110,51 @@ function openGuide(mode: 'basic' | 'conversation' | 'recollections' | 'serious_t
 }
 
 async function startGuideConversation(): Promise<void> {
-    if (busy.value) return;
-    busy.value = true;
-    error.value = '';
-    guideMode.value = 'conversation';
-    resetGuideConversation();
-    try {
-        const topic = await api<GuideConversationStart>('/api/v1/me/underground/guide-conversation/start', {
-            method: 'POST',
-        });
-        guideConversation.value = topic;
-        guideConversationLine.value = topic.initial_line;
-        guideConversationPhase.value = 'topic';
-    } catch (caught) {
-        error.value = caught instanceof Error ? caught.message : '案内人との会話を始められませんでした。';
-    } finally {
-        busy.value = false;
-    }
+    await runGuideConversation('start');
 }
 
 async function chooseGuideConversationReply(position: number): Promise<void> {
     const topic = guideConversation.value;
     if (busy.value || topic === null || guideConversationPhase.value !== 'topic') return;
-    busy.value = true;
-    error.value = '';
-    try {
-        const result = await api<GuideConversationReply>('/api/v1/me/underground/guide-conversation/reply', {
-            method: 'POST',
-            body: JSON.stringify({ topic_id: topic.topic_id, position }),
-        });
-        guideConversationLine.value = result.reply_line;
-        guideConversationPhase.value = 'reply';
-    } catch (caught) {
-        error.value = caught instanceof Error ? caught.message : '案内人へ返答できませんでした。';
-    } finally {
-        busy.value = false;
-    }
+    await runGuideConversation('reply', { topic_id: topic.topic_id, position });
 }
 
 async function punchGuide(): Promise<void> {
     if (busy.value || guideConversation.value === null) return;
+    await runGuideConversation('punch');
+}
+
+async function runGuideConversation(action: GuideConversationAction, payload: Record<string, number> = {}): Promise<void> {
+    if (busy.value) return;
+    const pending = pendingGuideConversation.value ?? { action, payload, requestId: requestId() };
+    if (pending.action !== action || JSON.stringify(pending.payload) !== JSON.stringify(payload)) {
+        error.value = '前の会話の結果を確認してから、次の操作をしてください。';
+        return;
+    }
+    pendingGuideConversation.value = pending;
     busy.value = true;
     error.value = '';
+    guideMode.value = 'conversation';
     try {
-        const result = await api<GuideConversationPunch>('/api/v1/me/underground/guide-conversation/punch', {
-            method: 'POST',
-        });
-        guideConversationLine.value = result.punch_line;
-        guideConversationPhase.value = 'punch';
+        const path = `/api/v1/me/underground/guide-conversation/${action}`;
+        const options = { method: 'POST', body: JSON.stringify({ request_id: pending.requestId, ...pending.payload }) };
+        if (action === 'start') {
+            const topic = await api<GuideConversationStart>(path, options);
+            guideConversation.value = topic;
+            guideConversationLine.value = topic.initial_line;
+            guideConversationPhase.value = 'topic';
+        } else if (action === 'reply') {
+            const result = await api<GuideConversationReply>(path, options);
+            guideConversationLine.value = result.reply_line;
+            guideConversationPhase.value = 'reply';
+        } else {
+            const result = await api<GuideConversationPunch>(path, options);
+            guideConversationLine.value = result.punch_line;
+            guideConversationPhase.value = 'punch';
+        }
+        pendingGuideConversation.value = null;
     } catch (caught) {
-        error.value = caught instanceof Error ? caught.message : 'げんこつできませんでした。';
+        error.value = caught instanceof Error ? caught.message : '案内人との会話を更新できませんでした。';
     } finally {
         busy.value = false;
     }
@@ -1409,6 +1407,10 @@ watch(() => currentBattle.value?.id, async (battleId) => {
 
 async function runPlaytest(): Promise<void> {
     if (busy.value || !selectedBuild.value || !selectedEnemy.value) return;
+    const pending = pendingPlaytestRequest.value ?? {
+        requestId: requestId(), buildKey: selectedBuild.value, enemyKey: selectedEnemy.value,
+    };
+    pendingPlaytestRequest.value = pending;
     innRested.value = false;
     busy.value = true;
     error.value = '';
@@ -1416,11 +1418,12 @@ async function runPlaytest(): Promise<void> {
         selectedBattle.value = await api<Battle>('/api/v1/me/underground/playtest', {
             method: 'POST',
             body: JSON.stringify({
-                request_id: requestId(),
-                build_key: selectedBuild.value,
-                enemy_key: selectedEnemy.value,
+                request_id: pending.requestId,
+                build_key: pending.buildKey,
+                enemy_key: pending.enemyKey,
             }),
         });
+        pendingPlaytestRequest.value = null;
         await loadBattles();
     } catch (caught) {
         error.value = caught instanceof Error ? caught.message : '力試しを開始できませんでした。';
@@ -2548,6 +2551,7 @@ onUnmounted(() => {
                     <button
                         type="button"
                         :aria-pressed="guideMode === 'conversation'"
+                        :disabled="busy || pendingGuideConversation !== null"
                         @click="startGuideConversation"
                     >
                         少しお話をする
@@ -2577,6 +2581,10 @@ onUnmounted(() => {
                         再振りをしたい
                     </button>
                 </div>
+                <p v-if="pendingGuideConversation && !busy" role="status">
+                    会話の結果を確認できていません。
+                    <button type="button" @click="runGuideConversation(pendingGuideConversation.action, pendingGuideConversation.payload)">前の会話の結果を確認する</button>
+                </p>
                 <section
                     v-if="guideMode === 'conversation' && guideConversation"
                     class="underground-guide-conversation"
@@ -2591,7 +2599,7 @@ onUnmounted(() => {
                             v-for="choice in guideConversation.choices"
                             :key="choice.position"
                             type="button"
-                            :disabled="busy"
+                            :disabled="busy || pendingGuideConversation !== null"
                             @click="chooseGuideConversationReply(choice.position)"
                         >
                             {{ choice.text }}
@@ -2873,10 +2881,10 @@ onUnmounted(() => {
                         <h2 id="underground-playtest-title">力試し（α）</h2>
                         <p>{{ state.playtest.notice }}</p>
                         <label for="underground-build">完成形ビルド</label>
-                        <select id="underground-build" v-model="selectedBuild" :disabled="busy"><option v-for="build in state.playtest.builds" :key="build.key" :value="build.key">{{ build.label }} — {{ build.description }}</option></select>
+                        <select id="underground-build" v-model="selectedBuild" :disabled="busy || pendingPlaytestRequest !== null"><option v-for="build in state.playtest.builds" :key="build.key" :value="build.key">{{ build.label }} — {{ build.description }}</option></select>
                         <label for="underground-enemy">対戦相手</label>
-                        <select id="underground-enemy" v-model="selectedEnemy" :disabled="busy"><option v-for="enemy in state.playtest.enemies" :key="enemy.key" :value="enemy.key">{{ enemy.label }} — {{ enemy.description }}</option></select>
-                        <button class="button primary" type="button" :disabled="busy || !selectedBuild || !selectedEnemy" @click="runPlaytest">戦闘開始</button>
+                        <select id="underground-enemy" v-model="selectedEnemy" :disabled="busy || pendingPlaytestRequest !== null"><option v-for="enemy in state.playtest.enemies" :key="enemy.key" :value="enemy.key">{{ enemy.label }} — {{ enemy.description }}</option></select>
+                        <button class="button primary" type="button" :disabled="busy || !selectedBuild || !selectedEnemy" @click="runPlaytest">{{ pendingPlaytestRequest ? '力試しの結果を確認する' : '戦闘開始' }}</button>
                         <p>報酬なし: XP 0・輝石の欠片 0G・ドロップなし。敗北ペナルティもありません。</p>
                     </section>
 

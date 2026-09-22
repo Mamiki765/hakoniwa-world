@@ -87,6 +87,17 @@ final class UndergroundRequestAdmission
         $this->assertTime($claims);
     }
 
+    /** Preparation has no stored-result replay: it must not write after expiry.
+     * Does not acquire the leader lock while borrowed profiles are locked.
+     */
+    public function assertPreparationTime(): void
+    {
+        $claims = request()->attributes->get(self::ATTRIBUTE);
+        if (is_array($claims) && now()->getTimestamp() >= $claims['expires_at']) {
+            throw new UndergroundRuntimeException('underground_request_expired', self::MESSAGE);
+        }
+    }
+
     /** @param array<string, mixed> $claims */
     private function assertTime(array $claims): void
     {

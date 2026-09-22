@@ -1699,7 +1699,7 @@ final class UndergroundRuntimeTest extends TestCase
 
     public function test_trial_start_and_fight_reject_borrowed_members_before_runtime_execution(): void
     {
-        $user = User::factory()->create();
+        [$user] = $this->secretaryUser();
 
         $this->actingAs($user)->postJson('/api/v1/me/underground/trial/start', [
             'trial_key' => 'trial_01',

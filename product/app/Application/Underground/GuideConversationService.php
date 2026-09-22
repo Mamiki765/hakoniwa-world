@@ -7,6 +7,7 @@ use App\Models\GuideConversationTopic;
 use App\Models\Secretary;
 use App\Models\SecretaryGuideConversationTotal;
 use App\Models\UndergroundIntroProgress;
+use App\Models\UndergroundIntroRequest;
 use App\Models\UndergroundProfile;
 use App\Models\UndergroundTrialProgress;
 use App\Models\User;
@@ -30,6 +31,42 @@ final class GuideConversationService
     ];
 
     public function __construct(private readonly GuideConversationUnlockCatalog $unlocks) {}
+
+    /**
+     * @param  array<string, int>  $payload
+     * @return array<string, mixed>
+     */
+    public function settleRequest(User $user, string $requestId, string $action, array $payload = []): array
+    {
+        ksort($payload);
+        $fingerprint = hash('sha256', json_encode(['guide_conversation', $action, $payload], JSON_THROW_ON_ERROR));
+
+        return DB::transaction(function () use ($user, $requestId, $action, $payload, $fingerprint): array {
+            [, $profile] = $this->lockedOpenState($user);
+            $previous = UndergroundIntroRequest::query()->where('underground_profile_id', $profile->id)
+                ->where('request_id', $requestId)->lockForUpdate()->first();
+            if ($previous !== null) {
+                if ($previous->operation !== 'guide_conversation' || ! hash_equals($previous->request_fingerprint, $fingerprint)) {
+                    throw new UndergroundRuntimeException('underground_request_conflict', '同じrequest IDが別の操作に使用されています。');
+                }
+
+                return $previous->getAttribute('result_payload');
+            }
+            $result = match ($action) {
+                'start' => $this->start($user),
+                'reply' => $this->reply($user, $payload['topic_id'], $payload['position']),
+                'punch' => $this->punch($user),
+                default => throw new \InvalidArgumentException('Unknown guide conversation operation.'),
+            };
+            UndergroundIntroRequest::query()->create([
+                'underground_profile_id' => $profile->id, 'request_id' => $requestId,
+                'request_fingerprint' => $fingerprint, 'operation' => 'guide_conversation',
+                'resulting_stage' => UndergroundIntroStage::UNDERGROUND_OPEN, 'result_payload' => $result,
+            ]);
+
+            return $result;
+        }, 3);
+    }
 
     /** @return array{topic_id: int, initial_line: string, choices: list<array{position: int, text: string}>} */
     public function start(User $user): array
@@ -95,12 +132,13 @@ final class GuideConversationService
     {
         $secretary = Secretary::query()
             ->where('user_id', $user->id)
-            ->lockForUpdate()
             ->first();
         if (! $secretary instanceof Secretary || $secretary->name === null) {
             throw new UndergroundRuntimeException('underground_secretary_missing', '名前のある秘書が必要です。');
         }
-        $profile = UndergroundProfile::query()->where('secretary_id', $secretary->id)->first();
+        // Serialize totals and request results together with purge. Do not lock
+        // the secretary first: borrowed snapshots acquire profile before secretary.
+        $profile = UndergroundProfile::query()->where('secretary_id', $secretary->id)->lockForUpdate()->first();
         $intro = $profile instanceof UndergroundProfile
             ? UndergroundIntroProgress::query()->where('underground_profile_id', $profile->id)->first()
             : null;

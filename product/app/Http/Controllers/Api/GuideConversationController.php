@@ -12,7 +12,7 @@ final class GuideConversationController extends Controller
 {
     public function start(Request $request, GuideConversationService $service): JsonResponse
     {
-        return $this->respond(fn (): array => $service->start($request->user()));
+        return $this->respond(fn (): array => $service->settleRequest($request->user(), $this->requestId($request), 'start'));
     }
 
     public function reply(Request $request, GuideConversationService $service): JsonResponse
@@ -22,16 +22,23 @@ final class GuideConversationController extends Controller
             'position' => ['required', 'integer', 'between:1,3'],
         ]);
 
-        return $this->respond(fn (): array => $service->reply(
+        return $this->respond(fn (): array => $service->settleRequest(
             $request->user(),
-            (int) $validated['topic_id'],
-            (int) $validated['position'],
+            $this->requestId($request),
+            'reply',
+            ['topic_id' => (int) $validated['topic_id'], 'position' => (int) $validated['position']],
         ));
     }
 
     public function punch(Request $request, GuideConversationService $service): JsonResponse
     {
-        return $this->respond(fn (): array => $service->punch($request->user()));
+        return $this->respond(fn (): array => $service->settleRequest($request->user(), $this->requestId($request), 'punch'));
+    }
+
+    private function requestId(Request $request): string
+    {
+        // Middleware has verified this server-issued identity against the token.
+        return (string) $request->input('request_id', $request->header('X-Underground-Request-Id'));
     }
 
     /** @param callable(): array<mixed> $operation */
