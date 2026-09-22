@@ -1,15 +1,45 @@
 # hakoniwa-world / hakoniwa-mcp 実装・運用handoff
 
-更新：2026-09-21 JST。Owner明示依頼でWeb版ChatGPTが更新。今回の役割分離は文書の整理であり、gameplayや既存の権限を自動変更しない。
+更新：2026-09-22 JST。Owner明示依頼によるPR #161上の文書のみの`[skip ci]`更新。ゲームコード・権限・本番状態は変更しない。
 
 ## 0. この文書の役割
 
 再開入口は[current-status.md](current-status.md)。本書には実装済みの境界・完了証拠・既知の運用残件を置く。
-[会話記録](conversation-2026-09-21.md)は判断の経緯、[未実装アイデア帳](../plans/unimplemented-ideas.md)はOwner要望・構想・未決事項、releaseの計画書は実装方法の提案を扱う。未実装案を現在のコードより優先される「実装済み仕様」へ昇格させない。
+[9月21日の会話](conversation-2026-09-21.md)と[9月22日の会話](conversation-2026-09-22.md)は判断の経緯、[未実装アイデア帳](../plans/unimplemented-ideas.md)はOwner要望・構想・未決事項、releaseの計画書は実装方法の提案を扱う。未実装案を現在のコードより優先される「実装済み仕様」へ昇格させない。
 
 各項目をOwner指定、Owner提供ログ、GitHub固定SHA確認、実装担当報告、Assistant提案、未確認に分ける。handoffはOwner/Web版ChatGPTが管理し、通常のCodex実装ではread-only。Ownerが個別に依頼した更新は例外。
 
 前版の長い履歴は[4.3.2 merge時の同ファイル](https://github.com/Mamiki765/hakoniwa-world/blob/3f49819fb764b5ac2e9fc49f95f6795ded7754d2/product/docs/handoffs/development-history-and-current-handoff.md)、さらに旧統合版は`66bfa5b4ab42ad3303f7667156c2b5ea4458550f`から必要時に参照する。全資料の毎回再読を要求しない。
+
+## 0.1 4.4.0の到達点（2026-09-22）
+
+再開時は[current-status](current-status.md)を優先する。4.3.2以降を「アプリ未実装」に戻さない。
+
+| 対象 | 固定点と検証 |
+|---|---|
+| B / #158 | merge `8060bb0572d2de737c4b9516e3b2c9c22b55e835`。実装最終`ef69ccf5af150d01f61f9885219f5f556b70b119`、Quality #570 / `35671219307`成功を前会話で確認 |
+| C1 / #159 | merge `62b2bc4075560f27ae30c89659524954d7ba3d09`。実装最終`56f8c6427db6df877f555c8e00e50dd5b45bcc43`、Quality #573 / `35683601737`成功。Owner持参の独立レビューも追加P0〜P2なし |
+| D1 / #160 | merge `b2997b6d00af934159e959bc6f6748018e17a0ec`。旧`ad9d4d03...`は#574でPHPUnit16/16等成功、PHPStanの不要nullsafe2件だけ赤。`c44db055291c607bd7d43605e59e38a5161cfcd9`で2箇所を直し`[skip ci]`。Owner持参の独立レビューは証拠関係を確認してmerge可とした。c44自体のCI成功とはしない |
+| D2〜D4 / #161 | `codex/4.4.0-receipt-durable-dependencies`、baseはD1 merge。実装HEAD `94376c14980edfaeb5c07e2bc8058f94dc22e98e`、**未マージ・独立レビュー進行中** |
+
+#161のQuality #575 / `35707991038`は今回failure確認。backend-static/frontend/documentationとPHPUnit15 shardは成功、16/16の`UndergroundRuntimeTest::test_trial_start_and_fight_reject_borrowed_members_before_runtime_execution`（1707行）がexpected422/actual409。原因未確定・未修正。CIの赤を文書更新で解決済みにしない。
+
+### PR #161で提出された実装（実装メモ/PR本文に基づく。独立判定前）
+
+- D2：generated装備のsource ID値とCHECKを保持しつつlive receipt FK/CASCADEを解除。貸出累計は既存券残高rowの`lifetime_participation_count`、10参加/日次100枚を維持。初回growth/tutorial/Trial文を既存progressへ保持。D1 rollupの本人/PT生涯統計を補完。
+- D3：server生成UUID・profile・HTTP operation・issued/expires/versionを束縛した24h受付。旧形式は409＋再読込。既存結果のある期限後retryと未知/削除済みrequestを区別し、入口とprofile lock後で検証する説明。実装の妥当性は固定HEADレビューで確認する。
+- D4：battle/skip/bulk_skip/IntroRequestのverified prefixを明示applyでpurge。`deleted_through_id <= verified_through_id`、件数/残存/境界を同一transactionで照合。pin/進行中/未準備/恒久事実不足で止める。貸出participationとparty snapshotはbattleと同時に除去、経済ledgerを保持する説明。
+- migrationは`2026_09_22_010000_detach_durable_underground_receipt_dependencies.php`と`2026_09_22_020000_add_underground_receipt_deletion_checkpoints.php`の2本、forward-only。既存装備の再抽選/再配布はしない。
+- 実装担当報告：最終focused9件/124assertions、貸出等9件/56、統計3件/35、frontend45tests等。これは担当者報告で、今回の文書担当が再実行した値ではない。
+- `product/docs/releases/4.4.0-receipt-durable-dependencies.md`、`UndergroundReceiptPurgeService`、`UndergroundReceiptRollupService`、`UndergroundLifetimeStatistics`、`UndergroundRequestAdmission`が主な入口。詳細はPR変更一覧から追う。
+
+**忘却防止は実装完了と本番有効化を分ける。** `product/docker/cron/preview-underground-receipts.sh`はread-only wrapperとして提出。候補statusはあるが管理画面はE。cron登録・定期通知の稼働・本番purgeは未実施。単純に「もう自動で掃除を知らせる」と記録しない。
+
+### 次にすること／今回していないこと
+
+最初に#161の新着reviewとCI失敗の切り分け。コード修正の必要がある場合も同PRを更新し、意味のないPR分割やFull反復は避ける。文書更新は実装HEADへ`[skip ci]`で追加し、review対象94376c1と区別する。本番への4.4.0適用、PR #161 merge、runtime修正を今回行ったとはしない。
+
+Bは旧Secretary2列をDROPするので、4.4.0本番cutoverでは旧webのGETを含むtrafficと旧Turn処理を止め、新imageでmigrationして切り替える。成功確認前の自動purgeは禁止。本番runbookの確定/実施は別のOwner許可を要する。
 
 ## 1. 4.3.2の確定した開発結果
 
@@ -40,19 +70,19 @@
 
 開発正本はGitHub。World同期#157はmerge `a374204f41f22c4bee69c85c422393c6dd56913c`、MCP GitHub同期#1はmerge `bc3744f50e3359186ad7b5ae74a77c0a6fd264e9`。Owner共有の成功報告と、4.3.2 merge後の[World mirror 35573726878](https://github.com/Mamiki765/hakoniwa-world/actions/runs/35573726878)成功を区別して保持する。
 
-同期はGitHub→Forgejo main/tagsのみ、通常push。分岐時にforce push/自動merge/逆同期しない。未mergeのrelease branchはこの同期対象ではない。tag経路の実SHA照合は未確認。
+4.4.0の#160以降、同期workflowはGitHub→Forgejoのmain・単一階層`release/*`・tagを対象とする。小branchは`codex/*`等とし、`release/4.4.0/subtask`も対象外。force push/削除伝播/逆同期はしない。releaseのD1 merge `b2997b6d...`に対するmirror run `35692790817`は今回SUCCESSを確認。Forgejoへ直接接続した独立SHA照合・tag実照合は未実施。PR #161/別企画branchの未merge内容を自動同期済みとしない。`[skip ci]`がpush同期も止め得る点に注意する。
 
 OwnerのOCI出力では、checkoutは`/home/ubuntu/apps/hakoniwa-world`、composeは`/home/ubuntu/apps`、remoteは`github`と`forgejo`（`origin`なし）、main追跡先は`forgejo/main`。その後、Ownerはdeploy scriptのfetch/pull先を明示的に`github main`へ変更した。これはbranch upstreamを書換えた証拠ではない。
 
 最初の`git fetch origin`失敗はbuild/stop/migration前。その後のdeploy手順は提供したが、成功ログは未提示。GitHub SHA一致を稼働image・DB・mount一致の証明にしない。remote URLに含み得るcredentialやSecretの値を記録・貼付させない。
 
-## 3. Turn560：復旧済み、耐性改善は未実装
+## 3. Turn560：復旧済み、B/C1はreleaseへ実装済み
 
 Ownerのログで2026-09-21 14:00 JSTのTurn560が`finalize_turn`、`secretaries ... ORDER BY id ASC FOR NO KEY UPDATE`、SQLSTATE `40P01`で失敗。通常manual retryでも再発し、maintenance下で同run560がcompleted、current_turn=560、attempts=4。`artisan up`の成功も提示済み。これを未復旧へ戻さず、手動で余分なTurnを進めない。
 
 失敗時のWorldはv26 / ruleset_version_id=41。相手側SQLは未取得で、特定地下APIや実lock cycleの確定には不足。Turn前半の戦利品付与等が親SecretaryへFOR UPDATEを保持し、最後のflushと地下PTのFK確認が循環するH1は**設計上の候補**。
 
-現行コードはTurn本体`DB::transaction(..., 1)`、failed/blockedを次回cronでも拒否。4.4.0では失敗種別を分けたretryとロック隔離を検討するが、今回コード・D-02の契約は未変更。`KEY SHARE`と`NO KEY UPDATE`は共存し、identity FKが存在するだけで別DB/User-root化が必要という過去の説明は訂正済み。
+4.4.0 releaseにはB/C1を実装済み。C1は同一起動内に限りtransaction本体の40P01/40001を最大3回、完全rollback・同run/target/ruleset/seed・PHP状態再構成でretryする。World lock取得write PDOを保持し、各BEGIN後/game state前に照合、接続変更なら再取得せず停止。後続cronのfailed/blocked再開（C2）はOwnerが時刻/Turnずれを理由に保留。D-02はC1を反映済み。これは本番適用確認ではない。`KEY SHARE`と`NO KEY UPDATE`は共存し、identity FKが存在するだけで別DB/User-root化が必要という過去の説明は訂正済み。
 
 所有は`User → Secretary → UndergroundProfile`を保持。島再作成で秘書・地下進行を消さない。`nation_underground_facilities`はNation側の施設であり、地下RPGと名前だけで一括移動しない。
 
@@ -64,7 +94,7 @@ Ownerのログで2026-09-21 14:00 JSTのTurn560が`finalize_turn`、`secretaries
 
 最大一撃は1行動・1対象で敏捷連撃は合算、AoE別対象は合算しない。覚醒変身時の全快は回復から除外、覚醒技の実回復は集計。完全ガードとdamage_preventedを混同せず、制御命令/実技の使用回数を二重計上しない。貸出先の詳細日記は不要でレンタル回数を残す。
 
-日誌は探索・試練・力試し・初回tutorialを対象にし、命名story・案内人決闘を除く。今はbattle/skipのSUM/COUNTが残る。試練/女王クリア判定と既存トロフィーは既に恒久progress・記念品を利用する一方、装備の出所FK、貸出累計、日誌、回想、再送防止は30日整理前の変更対象。単純DELETEは未実装。
+日誌は探索・試練・力試し・初回tutorialを対象にし、命名story・案内人決闘を除く。D1は恒久rollup＋verified境界より後のrawを一つのSQL snapshotで読む。装備の出所・貸出累計・回想・再送防止・明示purgeは#161に提出済みだがレビュー未完。試練/女王クリア判定や既存トロフィーは既存恒久progress/記念品を利用する。Ownerは30日超の任意期間統計を捨て、生涯値と意味ある記念日/初回事実を残すと確定。月別bucket、全rawの縮小コピー、無限UUID台帳は作らない。
 
 ## 5. 既存のゲーム・UI境界（次の実装で誤変更しない）
 
