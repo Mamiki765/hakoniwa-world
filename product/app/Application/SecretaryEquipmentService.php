@@ -48,7 +48,9 @@ class SecretaryEquipmentService
         $effectProjection = $this->effectContexts->resolve($user, $worldId);
         $secretary = Secretary::query()
             ->where('user_id', $user->id)
-            ->with('itemInstances')
+            // Read the version first so a concurrent equipment change cannot
+            // pair an old item list with a new optimistic-lock token.
+            ->with(['surfaceState', 'itemInstances'])
             ->first();
         if (! $secretary instanceof Secretary) {
             throw new SecretaryNotFoundException('秘書がまだ作成されていません。');
