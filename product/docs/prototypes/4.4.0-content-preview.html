@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>箱庭 4.4.0 — 構想プレビュー</title>
+<style>
+:root{color-scheme:dark;--bg:#071814;--panel:#102722;--card:#17352e;--border:#41615a;--text:#e3efeb;--muted:#abc2ba;--accent:#9dd9df;--gold:#eecb72}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font:16px/1.7 system-ui,sans-serif}header,main,footer{max-width:1080px;margin:auto;padding:24px}header{padding-bottom:10px}h1{font-size:clamp(25px,4vw,38px);line-height:1.35;margin:12px 0}h2{font-size:26px;margin:0 0 8px}h3{margin:0 0 8px;font-size:20px}p{margin:8px 0 16px}.eyebrow{font-size:12px;letter-spacing:.14em;color:var(--gold)}.muted,small{color:var(--muted)}.notice{border-left:4px solid var(--gold);background:#20382c;padding:12px 16px}.tabs{display:flex;flex-wrap:wrap;gap:8px;margin:22px 0 4px}button,input,select,textarea{font:inherit}button{padding:10px 18px;border:1px solid var(--border);background:#234940;color:var(--text);border-radius:8px;cursor:pointer}button:hover{border-color:var(--accent)}button[aria-selected=true]{border-color:var(--gold);background:#34544a;color:#fff}.primary{background:#14535b;border-color:var(--accent)}.danger{background:#603b35;border-color:#be8e82}button:disabled{opacity:.6;cursor:default}:focus-visible{outline:3px solid var(--gold);outline-offset:3px}.panel{padding:24px;background:var(--panel);border:1px solid var(--border);border-radius:12px}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(280px,100%),1fr));gap:16px;margin:20px 0}.card{padding:20px;border:1px solid var(--border);background:var(--card);border-radius:10px}.tag{font-size:12px;display:inline-block;padding:2px 9px;border:1px solid var(--border);border-radius:20px;color:var(--accent);margin-bottom:10px}.actions{display:flex;flex-wrap:wrap;gap:10px;margin-top:16px}details{border-top:1px solid var(--border);padding:15px 0}summary{cursor:pointer;color:var(--accent);font-weight:700}label{display:block;margin:12px 0 5px}input,select,textarea{width:100%;background:#081e19;border:1px solid var(--border);border-radius:6px;color:var(--text);padding:9px 12px}textarea{min-height:85px}.inline{display:flex;align-items:center;gap:10px}.inline input{width:auto}.result{border:1px dashed var(--gold);padding:15px;margin-top:16px;white-space:pre-wrap}.results{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(175px,100%),1fr));gap:12px;margin:20px 0}.loot{padding:18px;background:#0a221d;border:2px solid #80b39c;border-radius:10px;min-height:148px}.loot[data-rarity=HQ]{border-color:#93cddd}.loot[data-rarity=AF]{border-color:#d4a3e5}.loot[data-rarity=RE]{border-color:var(--gold)}.loot .rarity{font-size:13px;letter-spacing:.1em;color:var(--accent)}.loot strong{display:block;margin:8px 0}.reveal .loot{animation:reveal .6s both;animation-delay:var(--delay)}@keyframes reveal{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:none}}.no-motion .loot{animation:none}.monument{display:flex;align-items:center;gap:18px;margin:18px 0}.tile{width:96px;height:96px;background:#547649;display:grid;place-items:center;border:1px solid #8fac7e}.stone{background:#75827c;color:#fff;width:32px;height:32px;text-align:center;line-height:32px;font-weight:bold}.tile img{width:96px;height:96px;object-fit:contain;image-rendering:pixelated}.table-wrap{overflow:auto}table{width:100%;border-collapse:collapse;margin:15px 0}th,td{text-align:left;padding:10px;border-bottom:1px solid var(--border);vertical-align:top}th{color:var(--accent)}.boss-head{display:flex;gap:22px;align-items:center}.dragon{font-size:62px}.health{height:16px;border-radius:10px;background:#243b34;overflow:hidden;margin:14px 0}.health>span{display:block;height:100%;width:50%;background:var(--gold)}.numbers{font-size:28px;font-weight:700}.status{margin:18px 0;padding:12px 16px;background:#1b3830;border-radius:8px}[hidden]{display:none!important}footer{font-size:13px;color:var(--muted)}@media(max-width:600px){header,main,footer{padding:16px}.panel{padding:16px}.tabs button{flex:1 0 42%}td,th{padding:8px;font-size:14px}}@media(prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important}}
+</style>
+</head>
+<body>
+<header>
+<div class="eyebrow">HAKONIWA 2S+ / 4.4.0 CONCEPT</div>
+<h1>次の遊びを、組み立てる。</h1>
+<p class="muted">管理・宝箱・異世界・竜晶。導線と雰囲気だけを確かめる、オフラインの画面見本。</p>
+<div class="notice"><strong>未実装のデモです。</strong> サーバー通信・保存・配布・島削除・実際の抽選や戦闘計算は行いません。名前・数値・確率は提案または見本です。</div>
+<nav class="tabs" role="tablist" aria-label="構想の切替">
+<button id="tab-admin" role="tab" aria-controls="admin" aria-selected="true" data-tab="admin">E 管理</button>
+<button id="tab-chest" role="tab" aria-controls="chest" aria-selected="false" data-tab="chest">F 宝箱・記念碑</button>
+<button id="tab-boss" role="tab" aria-controls="boss" aria-selected="false" data-tab="boss">H 異世界</button>
+<button id="tab-crystal" role="tab" aria-controls="crystal" aria-selected="false" data-tab="crystal">G 竜晶・竜武器</button>
+</nav>
+</header>
+<main>
+<section id="admin" class="panel" role="tabpanel" aria-labelledby="tab-admin">
+<h2>管理</h2><p class="muted">お問い合わせ一覧は今の場所に残し、その他の管理機能はここから。</p>
+<div class="grid"><div class="card"><span class="tag">最初の機能</span><h3>配布倉庫への登録</h3><p>残高を直接変更せず、受け取れる配布を作成します。</p><button data-open="distribution">配布を開く</button></div><div class="card"><span class="tag">懲罰専用ではありません</span><h3>島の整理</h3><p>長期不在・本人希望・運営上の整理も扱います。</p><button data-open="removal">島管理を開く</button></div></div>
+<details id="distribution"><summary>配布内容</summary><label for="recipient">対象島（見本）</label><select id="recipient"><option>見本の島A — 島主A</option><option>見本の島B — 島主B</option></select><label for="amount">地下G</label><input id="amount" type="number" min="1" step="1" value="10000"><label for="grant-reason">配布理由</label><textarea id="grant-reason">運営からの記念配布</textarea><div class="actions"><button class="primary" id="grant-preview">確認する（デモ）</button></div><div id="grant-result" class="result" hidden></div></details>
+<details id="removal"><summary>島整理の内容</summary><label for="remove-target">対象島（見本）</label><select id="remove-target"><option>見本の島C — 長期不在</option><option>見本の島D — 本人希望</option></select><label for="remove-reason">記録する理由</label><textarea id="remove-reason">長期不在による海域整理。違反処分ではありません。</textarea><label class="inline"><input id="publish" type="checkbox" checked>公開告知を付ける（選択可とする案）</label><p class="notice">秘書・地下進行は保持。実際の海域・船・競売への影響は、サーバー側の確認が必要です。</p><button class="danger" id="remove-preview">処理内容を確認（デモ）</button><div id="remove-result" class="result" hidden></div></details>
+<details><summary>案内リンクの枠</summary><p>お知らせ編集 ／ 案内人の会話編集 ／ 運用案内</p><small>本ファイルから実際の管理画面へは接続しません。</small></details>
+</section>
+<section id="chest" class="panel" role="tabpanel" aria-labelledby="tab-chest" hidden>
+<h2>秘書の宝箱</h2><p>チケットのLv1につき景品1個。景品Lvは、その品の許容範囲から別に抽選します。</p>
+<div class="grid"><div class="card"><span class="tag">下位の候補</span><h3>わくわく宝箱</h3><p>レギュラーとHQ、時折アーティファクト。</p></div><div class="card"><span class="tag">上位の候補</span><h3>ドキドキ宝箱</h3><p>HQ 70% ／ レリック 30%というOwner案。</p></div></div>
+<label for="ticket">開封するチケット</label><select id="ticket"><option value="lower">わくわくチケット（下位）</option><option value="upper">ドキドキチケット（上位）</option></select><label for="ticket-level">チケットLv（拡張後の見本）</label><select id="ticket-level"><option value="1">Lv1 → 景品1個</option><option value="5" selected>Lv5 → 景品5個</option><option value="10">Lv10 → 景品10個</option></select><p class="muted">現在の実装は両チケットともLv1上限です。以下は数と演出の見本で、提供率を再現する抽選ではありません。</p>
+<details><summary>提供割合の案を見る</summary><p>下位の70%＋30%＋AF 1〜2%は100%を超えるため未確定です。</p><div class="table-wrap"><table><tr><th>案</th><th>R</th><th>HQ</th><th>AF</th></tr><tr><td>A：AFを分け残り7:3</td><td>68.95%</td><td>29.55%</td><td>1.5%</td></tr><tr><td>B：R70%を維持</td><td>70%</td><td>28.5%</td><td>1.5%</td></tr></table></div><p>三紋章・チケット・非売品は排出対象外。正式poolは後日作成します。</p></details>
+<div class="actions"><button class="primary" id="open-chest">演出デモを開く</button><button id="skip-animation">演出を省略</button></div><div id="loot-results" class="results" aria-live="polite"></div>
+<details><summary>オリジナル記念碑の設定見本</summary><p>1ユーザー1画像・名前を登録。建設価格は通常記念碑と同じ。建設数を1基に制限する意味ではありません。</p><label for="monument-name">記念碑名</label><input id="monument-name" maxlength="40" value="わたしの記念碑"><label for="monument-file">32×32 GIF</label><input id="monument-file" type="file" accept=".gif,image/gif"><div class="monument"><div class="tile" id="monument-tile"><span class="stone">?</span></div><div><strong id="monument-label">わたしの記念碑</strong><p class="muted">3倍表示／「?」は正式素材ではなく文字の仮置き。</p></div></div><div id="file-message" role="status"></div><small>画像はブラウザ内の表示だけ。平地の制作素材・保存先・正式GIFは本ファイルに含みません。</small></details>
+</section>
+<section id="boss" class="panel" role="tabpanel" aria-labelledby="tab-boss" hidden>
+<div class="boss-head"><span class="dragon" aria-hidden="true">🐲</span><div><span class="tag">異世界バトル — 固定PT</span><h2>黒竜バハムル</h2><p>人数による敵の強さの補正なし。戦技2・防御1・回復1で調整する案。</p></div></div>
+<label for="difficulty">調整段階</label><select id="difficulty"><option value="0">初級1</option><option value="1">初級2</option><option value="2">初級3</option><option value="3">中級1</option></select><div id="boss-reference" class="status"></div><div class="table-wrap"><table><thead><tr><th>技の仮名</th><th>意味</th></tr></thead><tbody id="boss-skills"></tbody></table></div>
+<details><summary>挑戦前に決めること</summary><p>10分待機か歪んだ輝石消費か。敗北時の消費、HP・覚醒の持込み、貸出報酬・日課対象を決めます。通常狩場まで10分停止させません。</p></details>
+<div class="health" aria-hidden="true"><span></span></div><p class="muted">HP50%は予告デモの見本値。実際の閾値・ボスHPは未決です。</p><div class="actions"><button class="primary" id="warning-demo">予告の流れを見る</button><button id="warning-next" disabled>次へ</button></div><div id="battle-demo" class="result" hidden aria-live="polite"></div>
+</section>
+<section id="crystal" class="panel" role="tabpanel" aria-labelledby="tab-crystal" hidden>
+<h2>竜晶の共鳴</h2><p class="muted">おすすめ案。良い竜晶をボスから拾い、Gで育てる。武器のIL更新で投資を失わない別枠。</p>
+<div class="grid"><div class="card"><span class="tag">主効果の候補</span><h3>熾牙の竜晶</h3><p>攻めを伸ばす竜の鼓動。</p></div><div class="card"><span class="tag">主効果の候補</span><h3>堅鱗の竜晶</h3><p>防御役の耐久を支える。</p></div><div class="card"><span class="tag">主効果の候補</span><h3>命脈の竜晶</h3><p>回復役の支援を助ける。</p></div></div>
+<details><summary>費用・別案（未確定）</summary><p>ランクIの+1〜+5を1万／2万／4万／8万／16万Gとする試案なら合計31万G。上位ランクの総額例は62万／124万／248万G。確定成功で、破壊や格下げはなしという候補です。</p><p>別案は「星紋の刻印」「竜契の指環」。全部を同時に増設する意味ではありません。</p></details>
+<h3>レアユニーク：竜武器シリーズ</h3><p>エンチャは合計4枠。専用の1枠目＋通常の3枠。</p><label for="dragon-weapon">見本の武器</label><select id="dragon-weapon"><option value="0">竜牙短剣《影牙》</option><option value="1">竜細剣《星穿ち》</option><option value="2">竜剣《黒暁》</option><option value="3">竜杖《夜啼》</option></select><div id="dragon-dependency" class="status"></div><div class="card"><span class="tag">第1枠・専用効果案</span><h3>竜息の残響</h3><p>攻撃時、時々全体衝撃波で追撃する。元の一行動につき抽選一度、追撃から再発動しない案。</p><small>第2〜4枠は通常の追加効果。名前・発動率・威力は未採用です。</small></div>
+</section>
+<div id="global-status" role="status" class="status" hidden></div>
+</main>
+<footer>2026-09-22 ・ Owner精査用。C1の実装とは別の設計資料です。外部通信・本番操作はありません。</footer>
+<script>
+'use strict';
+const $ = (id) => document.getElementById(id);
+const text = (id, value) => { $(id).textContent = value; $(id).hidden = false; };
+const tabs = [...document.querySelectorAll('[data-tab]')];
+function selectTab(tab) { for (const b of tabs) { const active = b === tab; b.setAttribute('aria-selected', String(active)); $(b.dataset.tab).hidden = !active; } $('global-status').hidden = true; }
+for (const tab of tabs) { tab.addEventListener('click', () => selectTab(tab)); tab.addEventListener('keydown', (e) => { if (e.key !== 'ArrowRight' && e.key !== 'ArrowLeft') return; e.preventDefault(); const next = tabs[(tabs.indexOf(tab) + (e.key === 'ArrowRight' ? 1 : tabs.length - 1)) % tabs.length]; selectTab(next); next.focus(); }); }
+for (const b of document.querySelectorAll('[data-open]')) b.addEventListener('click', () => { const d = $(b.dataset.open); d.open = true; d.querySelector('summary').focus(); });
+$('grant-preview').addEventListener('click', () => { const amount = Number($('amount').value); if (!Number.isSafeInteger(amount) || amount < 1 || !$('grant-reason').value.trim()) { text('grant-result', '正の整数と理由を入力してください。'); return; } text('grant-result', `確認見本：${$('recipient').value}\n地下G ${amount.toLocaleString('ja-JP')} を配布倉庫に登録する案\n理由：${$('grant-reason').value}\n※ 登録・送信はしていません。`); });
+$('remove-preview').addEventListener('click', () => text('remove-result', `確認見本：${$('remove-target').value}\n理由：${$('remove-reason').value || '未入力'}\n公開告知：${$('publish').checked ? 'ありという案' : 'なしという案'}\n秘書・地下進行は保持。実行には対象範囲のサーバー確認が必要です。\n※ 島削除・保存はしていません。`));
+const samples = { lower: [['R','エルフの弓',7],['HQ','宮廷秘書の礼装',3],['R','熟練秘書のスーツ',9],['HQ','蒼海の遠弓',2],['AF','星樹の弓',1]], upper: [['HQ','森霊の弓',4],['RE','レリック景品（未命名）',8],['HQ','宮廷秘書の礼装',2],['HQ','蒼海の遠弓',10],['RE','レリック景品（未命名）',1]] };
+$('open-chest').addEventListener('click', () => { const root = $('loot-results'); root.replaceChildren(); root.classList.remove('no-motion'); root.classList.add('reveal'); const list = samples[$('ticket').value]; const count = Number($('ticket-level').value); for (let i=0; i<count; i++) { const [rarity,name,level] = list[i%list.length]; const card = document.createElement('article'); card.className='loot'; card.dataset.rarity=rarity; card.style.setProperty('--delay', `${i*55}ms`); const a=document.createElement('span'); a.className='rarity'; a.textContent=rarity; const b=document.createElement('strong'); b.textContent=name; const c=document.createElement('span'); c.textContent=`Lv${level} ／ 固定見本`; card.append(a,b,c); root.append(card); } });
+$('skip-animation').addEventListener('click', () => $('loot-results').classList.add('no-motion'));
+$('monument-name').addEventListener('input', () => { $('monument-label').textContent=$('monument-name').value || '無名の記念碑'; });
+let imageUrl = null;
+$('monument-file').addEventListener('change', async () => { const file=$('monument-file').files[0]; if (!file) return; const bytes=new Uint8Array(await file.slice(0,10).arrayBuffer()); const signature=String.fromCharCode(...bytes.slice(0,6)); const w=bytes[6]+256*bytes[7], h=bytes[8]+256*bytes[9]; if (!['GIF87a','GIF89a'].includes(signature) || w!==32 || h!==32) { text('file-message','32×32のGIFを選んでください。これはブラウザ内だけの形式確認です。'); return; } if (imageUrl) URL.revokeObjectURL(imageUrl); imageUrl=URL.createObjectURL(file); const img=document.createElement('img'); img.alt='アップロード記念碑の見本'; img.src=imageUrl; $('monument-tile').replaceChildren(img); text('file-message','ブラウザ内のプレビューです。アップロード・保存していません。'); });
+const levels=[100,200,400,666], ils=[130,150,180,210];
+const skills=[['黒爪','単体・重い物理攻撃'],['黒炎の息吹','全体・魔法攻撃'],['竜翼','全体・物理攻撃＋短い弱体候補'],['メガフレア','予告後に放つ大技'],['深淵の咆哮','上位段階の自己強化候補']];
+function updateBoss(){ const d=Number($('difficulty').value); text('boss-reference',`調整用 Lv${levels[d]} ／ 仮報酬 IL${ils[d]} ／ 入場制限ではありません`); $('boss-skills').replaceChildren(); for(const row of skills.slice(0,d===0?4:5)){ const tr=document.createElement('tr'); for(const cell of row){ const td=document.createElement('td'); td.textContent=cell; tr.append(td); } $('boss-skills').append(tr); } }
+$('difficulty').addEventListener('change',updateBoss); updateBoss();
+let phase=0; const demo=['大予告：黒竜の喉に光が集まる。メガフレアの構え！\n（閾値通過の見本。ここでは発射しない）','対処の一巡：防御役は構え、回復役は立て直し、戦技役は軽減を合わせる。\n（プレイヤーが行動できる機会を確保する案）','次のボス行動：メガフレア！\n（本見本にはHP計算・勝敗・報酬はありません）'];
+$('warning-demo').addEventListener('click',()=>{phase=0;text('battle-demo',demo[phase]);$('warning-next').disabled=false;});
+$('warning-next').addEventListener('click',()=>{phase=Math.min(phase+1,2);text('battle-demo',demo[phase]);$('warning-next').disabled=phase===2;});
+function weapon(){text('dragon-dependency',`依存：${['武力＋技巧','武力＋技巧','体力＋武力','精神＋技巧'][Number($('dragon-weapon').value)]} ／ 専用1＋通常3の合計4枠`);}
+$('dragon-weapon').addEventListener('change',weapon);weapon();
+</script>
+</body>
+</html>
