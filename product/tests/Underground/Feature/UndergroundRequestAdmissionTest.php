@@ -2,7 +2,8 @@
 
 namespace Tests\Underground\Feature;
 
-use App\Models\UndergroundIntroRequest;
+use App\Application\Underground\UndergroundReceiptPurgeService;
+use App\Application\Underground\UndergroundReceiptRollupService;
 use Illuminate\Database\Events\QueryExecuted;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
@@ -41,7 +42,10 @@ final class UndergroundRequestAdmissionTest extends UndergroundPlayerAccessTestC
         $this->actingAs($user);
         $this->travel(24)->hours();
         $this->postJson($path, $payload, $headers)->assertOk(); // Stored result only.
-        UndergroundIntroRequest::query()->where('request_id', $admission['request_id'])->delete();
+        $this->travel(31)->days();
+        app(UndergroundReceiptRollupService::class)->aggregate($profile->id, 'intro_request', now()->subDays(30), 500, true);
+        $purged = app(UndergroundReceiptPurgeService::class)->purge($profile->id, 'intro_request', now()->subDays(30), 500, true);
+        $this->assertSame(1, $purged['candidates']);
         $this->postJson($path, $payload, $headers)->assertConflict()->assertJsonPath('code', 'underground_request_expired');
         $this->assertSame(4000, $profile->fresh()->shard_balance);
         $this->assertSame(1000, $profile->fresh()->banked_shard_balance);

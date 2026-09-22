@@ -11,7 +11,7 @@ final class UndergroundLifetimeStatistics
 {
     public const JOURNAL_SCOPE = "(activity_type IN ('exploration', 'trial', 'playtest') OR (activity_type = 'tutorial' AND activity_key = 'first_descent_tutorial'))";
 
-    private const SUMS = [
+    private const SELF_SUMS = [
         'effective_healing', 'effective_healing_received',
         'damage_prevented', 'complete_guard_count', 'complete_guard_prevented_damage',
         'enemy_complete_guard_count', 'enemy_defeats', 'normal_attacks', 'skill_uses',
@@ -19,7 +19,12 @@ final class UndergroundLifetimeStatistics
         'revivals_performed', 'awakened_at_start', 'awakened_in_battle', 'awakening_technique_uses',
     ];
 
-    private const MAPS = ['damage_by_source', 'healing_by_source', 'action_usage'];
+    private const PARTY_SUMS = [
+        'damage_dealt', 'damage_received', 'effective_healing', 'damage_prevented',
+        'complete_guard_count', 'complete_guard_prevented_damage', 'knockouts', 'revivals', 'awakened_combatants',
+    ];
+
+    private const MAPS = ['self' => ['damage_by_source', 'healing_by_source', 'action_usage'], 'party' => ['damage_by_source', 'healing_by_source']];
 
     /** @return array<string, mixed> */
     public function range(int $profileId, int $from, int $through): array
@@ -63,18 +68,22 @@ final class UndergroundLifetimeStatistics
         if ($right === []) {
             return $left;
         }
-        foreach (self::SUMS as $key) {
-            foreach (['known_sum', 'known_count', 'unknown_count'] as $column) {
-                $left['self'][$key][$column] += $right['self'][$key][$column];
+        foreach (['self' => self::SELF_SUMS, 'party' => self::PARTY_SUMS] as $scope => $keys) {
+            foreach ($keys as $key) {
+                foreach (['known_sum', 'known_count', 'unknown_count'] as $column) {
+                    $left[$scope][$key][$column] += $right[$scope][$key][$column];
+                }
             }
         }
-        foreach (self::MAPS as $key) {
-            foreach ($right['self'][$key]['known_sums'] as $name => $value) {
-                $left['self'][$key]['known_sums'][$name] = ($left['self'][$key]['known_sums'][$name] ?? 0) + $value;
+        foreach (self::MAPS as $scope => $keys) {
+            foreach ($keys as $key) {
+                foreach ($right[$scope][$key]['known_sums'] as $name => $value) {
+                    $left[$scope][$key]['known_sums'][$name] = ($left[$scope][$key]['known_sums'][$name] ?? 0) + $value;
+                }
+                $left[$scope][$key]['known_count'] += $right[$scope][$key]['known_count'];
+                $left[$scope][$key]['unknown_count'] += $right[$scope][$key]['unknown_count'];
+                ksort($left[$scope][$key]['known_sums']);
             }
-            $left['self'][$key]['known_count'] += $right['self'][$key]['known_count'];
-            $left['self'][$key]['unknown_count'] += $right['self'][$key]['unknown_count'];
-            ksort($left['self'][$key]['known_sums']);
         }
         $maximum = &$left['self']['maximum_hit'];
         $candidate = $right['self']['maximum_hit'];
@@ -108,22 +117,31 @@ final class UndergroundLifetimeStatistics
     {
         $statistics = json_decode($row->statistics ?? '[]', true, 512, JSON_THROW_ON_ERROR);
         $self = $statistics['self'] ?? [];
+        $party = $statistics['party'] ?? [];
+        if ($row->statistics === null) {
+            $party = ['damage_dealt' => $row->damage_dealt, 'damage_received' => $row->damage_received, 'effective_healing' => $row->healing_done];
+        }
         if ($row->statistics === null && $row->underground_party_id === null) {
             $self = ['damage_dealt' => $row->damage_dealt, 'damage_received' => $row->damage_received, 'effective_healing' => $row->healing_done];
         }
-        $part = ['self' => [], 'incomplete_reasons' => $statistics['completeness']['reasons'] ?? []];
+        $part = ['self' => [], 'party' => [], 'incomplete_reasons' => $statistics['completeness']['reasons'] ?? []];
         if ($row->statistics === null) {
             $part['incomplete_reasons']['legacy_statistics_missing'] = 1;
         }
-        foreach (self::SUMS as $key) {
-            $value = $self[$key] ?? null;
-            $known = is_numeric($value) || is_bool($value);
-            $part['self'][$key] = ['known_sum' => $known ? (int) $value : 0, 'known_count' => $known ? 1 : 0, 'unknown_count' => $known ? 0 : 1];
+        $scopes = ['self' => $self, 'party' => $party];
+        foreach (['self' => self::SELF_SUMS, 'party' => self::PARTY_SUMS] as $scope => $keys) {
+            foreach ($keys as $key) {
+                $value = $scopes[$scope][$key] ?? null;
+                $known = is_numeric($value) || is_bool($value);
+                $part[$scope][$key] = ['known_sum' => $known ? (int) $value : 0, 'known_count' => $known ? 1 : 0, 'unknown_count' => $known ? 0 : 1];
+            }
         }
-        foreach (self::MAPS as $key) {
-            $value = $self[$key] ?? null;
-            $known = is_array($value);
-            $part['self'][$key] = ['known_sums' => $known ? $value : [], 'known_count' => $known ? 1 : 0, 'unknown_count' => $known ? 0 : 1];
+        foreach (self::MAPS as $scope => $keys) {
+            foreach ($keys as $key) {
+                $value = $scopes[$scope][$key] ?? null;
+                $known = is_array($value);
+                $part[$scope][$key] = ['known_sums' => $known ? $value : [], 'known_count' => $known ? 1 : 0, 'unknown_count' => $known ? 0 : 1];
+            }
         }
         $maximum = $self['maximum_hit'] ?? null;
         $part['self']['maximum_hit'] = [

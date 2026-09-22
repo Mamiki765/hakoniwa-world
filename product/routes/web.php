@@ -102,8 +102,9 @@ Route::prefix('api/v1')->middleware(['auth', PrivateApiResponse::class])->group(
     Route::delete('/me/secretary/images/{slot}', [SecretaryController::class, 'deleteImageSlot']);
     Route::patch('/me/secretary/portrait-preference', [SecretaryController::class, 'updatePortraitPreference']);
     Route::patch('/me/secretary/image-preferences', [SecretaryController::class, 'updateImagePreferences']);
+    Route::post('/me/underground/requests', UndergroundRequestAdmissionController::class)
+        ->middleware('throttle:60,1,underground-admission:');
     Route::prefix('/me/underground')->middleware(['throttle:60,1', RequireUndergroundRequestAdmission::class])->group(function (): void {
-        Route::post('/requests', UndergroundRequestAdmissionController::class);
         Route::get('/', [UndergroundIntroController::class, 'show']);
         Route::post('/residence/purchase', [UndergroundIntroController::class, 'purchaseResidence']);
         Route::post('/events/advance', [UndergroundIntroController::class, 'advanceLoungeEvent']);

@@ -2,6 +2,9 @@
 
 namespace Tests\Underground\Feature;
 
+use App\Application\Underground\UndergroundBattleHistoryCompactor;
+use App\Application\Underground\UndergroundReceiptPurgeService;
+use App\Application\Underground\UndergroundReceiptRollupService;
 use App\Domain\Underground\Combat\UndergroundAwakening;
 use App\Models\Secretary;
 use App\Models\UndergroundBattle;
@@ -522,8 +525,13 @@ final class UndergroundHistoryAndAiTest extends UndergroundPlayerAccessTestCase
         ]);
         $intro = $profile->introProgress;
         $intro->update(['tutorial_encounter_key' => 'original_enemy']);
-        UndergroundBattle::query()->where('underground_profile_id', $profile->id)->delete();
-        UndergroundIntroRequest::query()->where('underground_profile_id', $profile->id)->delete();
+        $this->travel(31)->days();
+        app(UndergroundBattleHistoryCompactor::class)->compact(now()->subDays(30), 10, 10, 30);
+        foreach (['battle', 'intro_request'] as $stream) {
+            app(UndergroundReceiptRollupService::class)->aggregate($profile->id, $stream, now()->subDays(30), 10, true);
+            app(UndergroundReceiptPurgeService::class)->purge($profile->id, $stream, now()->subDays(30), 10, true);
+        }
+        $this->assertDatabaseMissing('underground_battles', ['underground_profile_id' => $profile->id]);
         $entries = collect($this->actingAs($owner)->getJson('/api/v1/me/underground')
             ->assertOk()->json('data.recollections.entries'));
         $this->assertSame(['Original challenge'], $entries->firstWhere('key', 'trial_02_start')['body']);
