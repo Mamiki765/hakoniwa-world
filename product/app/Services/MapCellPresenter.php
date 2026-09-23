@@ -92,13 +92,18 @@ final class MapCellPresenter
         $layers = $this->assets->resolveLayers($displayAssetKey, $displayName, $overlayAssetKeys, $theme);
         if ($isOriginalMonument) {
             $imageUrl = $this->monumentDesigns->imageUrl($cell->monumentDesign?->image_path);
-            $layers['completed'] = [
-                'key' => 'tile.monument.original',
-                'url' => $imageUrl,
-                'available' => $imageUrl !== null,
-                'fallback_label' => '?',
-                'fallback_style' => 'tile-monument-original',
-            ];
+            if ($imageUrl !== null) {
+                $layers['completed'] = [
+                    'key' => 'tile.monument.original',
+                    'url' => $imageUrl,
+                    'available' => true,
+                    'fallback_label' => '?',
+                    'fallback_style' => 'tile-monument-original',
+                ];
+            } elseif (! $layers['completed']['available']) {
+                $layers['completed']['fallback_label'] = '?';
+                $layers['completed']['fallback_style'] = 'tile-monument-original';
+            }
         }
         if ($facilityPresentation !== null
             && ! $layers['completed']['available']

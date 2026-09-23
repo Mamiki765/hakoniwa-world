@@ -50,6 +50,7 @@ final class AssetManifestResolver
         'tile.monument.peace' => 'monument0.gif',
         'tile.monument.prosperity' => 'monument0.gif',
         'tile.monument.victory' => 'monument0.gif',
+        'tile.monument.original' => 'monument-original.gif',
         'overlay.ownership' => 'ownership.png',
         'overlay.border' => 'border.png',
         'overlay.command_target' => 'command-target.png',

@@ -120,6 +120,7 @@ class TileAssetTest extends TestCase
     public function test_all_monument_variants_share_the_original_monument_gif(): void
     {
         $this->writeGif('monument0.gif');
+        $this->writeGif('monument-original.gif');
         $resolver = app(AssetManifestResolver::class);
 
         foreach (['tile.monument', 'tile.monument.peace', 'tile.monument.prosperity', 'tile.monument.victory'] as $assetKey) {
@@ -129,6 +130,9 @@ class TileAssetTest extends TestCase
             $this->assertStringContainsString('/monument0.gif?v=', (string) $asset['url']);
             $this->assertSame('monument0.gif', $resolver->filenameForAssetKey($assetKey));
         }
+        $original = $resolver->resolve('tile.monument.original', 'オリジナル記念碑');
+        $this->assertTrue($original['available']);
+        $this->assertStringContainsString('/monument-original.gif?v=', (string) $original['url']);
     }
 
     public function test_themed_assets_use_only_allowlisted_external_files_and_fall_back_safely(): void
