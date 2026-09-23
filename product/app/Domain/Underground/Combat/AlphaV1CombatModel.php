@@ -1075,7 +1075,7 @@ final readonly class AlphaV1CombatModel
             $logs[] = ['kind' => 'narration', 'effect_type' => 'narration', 'round' => $round,
                 'team' => 'enemy', 'actor_id' => $enemy->combatantId, 'action' => 'charged_attack_countdown',
                 'countdown' => $remaining, 'major_telegraph' => $remaining === 1,
-                'lines' => [(string) $remaining, $remaining === 1 ? '大予告——次のラウンド、破滅の閃光が放たれる！' : '黒い竜の口元に、光が集まっていく……']];
+                'lines' => [(string) $remaining]];
         }
     }
 
@@ -1518,7 +1518,8 @@ final readonly class AlphaV1CombatModel
             }
             $actionLog[] = ['kind' => 'narration', 'effect_type' => 'narration', 'round' => $round,
                 'team' => 'enemy', 'actor_id' => $actor->combatantId, 'action' => 'charged_attack_roar',
-                'lines' => [$actor->label.'が深淵の咆哮を放った！', '秘書たちの覚醒ゲージが満ちる！']];
+                'lines' => [$actor->label.'が深淵の咆哮を放った！', '秘書たちの覚醒ゲージが満ちる！',
+                    '黒い竜の口元に、光が集まっていく……']];
             $this->advanceChargedAttack($actor, $round, $actionLog);
         }
         if ($actor->side === 'player') {
