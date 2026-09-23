@@ -405,7 +405,7 @@ SQL);
             ]);
             $v27Row->delete();
         }
-        DB::table('migrations')->where('migration', '2026_09_23_020000_activate_v27_ruleset')->delete();
+        DB::table('migrations')->where('migration', '2026_09_23_030000_install_4_4_0')->delete();
         DB::table('monument_definitions')->where('key', 'original')->delete();
 
         Schema::dropIfExists('buried_treasures');

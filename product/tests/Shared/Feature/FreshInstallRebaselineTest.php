@@ -68,6 +68,9 @@ final class FreshInstallRebaselineTest extends TestCase
         $this->assertDatabaseHas('migrations', [
             'migration' => '2026_09_18_000000_allow_configured_trial_reward_lengths',
         ]);
+        $this->assertDatabaseHas('migrations', [
+            'migration' => '2026_09_23_030000_install_4_4_0',
+        ]);
         $nationIdColumn = DB::selectOne(<<<'SQL'
 SELECT is_nullable
   FROM information_schema.columns
