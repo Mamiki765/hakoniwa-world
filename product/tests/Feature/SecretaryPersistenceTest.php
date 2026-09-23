@@ -17,6 +17,7 @@ use App\Models\UndergroundBattleLog;
 use App\Models\UndergroundProfile;
 use App\Models\User;
 use Illuminate\Database\QueryException;
+use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Carbon;
@@ -26,6 +27,7 @@ use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Mockery;
+use ReflectionMethod;
 use RuntimeException;
 use Tests\Concerns\CreatesTestWorlds;
 use Tests\TestCase;
@@ -47,13 +49,23 @@ final class SecretaryPersistenceTest extends TestCase
         $item = app(SecretaryItemGrantService::class)->grantStarterOldBow($secretary);
         $this->assertNotNull($item);
         $preserved = [$secretary->fresh()->getAttributes(), $profile->fresh()->getAttributes(), $item->fresh()->getAttributes()];
-        $migration = require database_path('migrations/2026_09_21_000000_isolate_secretary_surface_state.php');
-        $migration->down();
+        // Rebuild only the pre-4.4 surface columns in this focused fixture.
+        // The release migration itself is forward-only; never expose a rollback
+        // of durable underground assets just to prepare this test.
+        DB::statement('LOCK TABLE secretaries, secretary_surface_states IN ACCESS EXCLUSIVE MODE');
+        Schema::table('secretaries', function (Blueprint $table): void {
+            $table->bigInteger('monster_experience')->default(0);
+            $table->bigInteger('equipment_version')->default(1);
+        });
+        DB::statement('UPDATE secretaries s SET monster_experience = state.monster_experience, equipment_version = state.equipment_version FROM secretary_surface_states state WHERE state.secretary_id = s.id');
+        DB::statement('ALTER TABLE secretaries ADD CONSTRAINT secretaries_monster_experience_non_negative CHECK (monster_experience >= 0), ADD CONSTRAINT secretaries_equipment_version_check CHECK (equipment_version >= 1)');
+        Schema::drop('secretary_surface_states');
+        $migration = require database_path('migrations/2026_09_23_020000_activate_v27_ruleset.php');
         $this->assertDatabaseHas('secretaries', [
             'id' => $secretary->id, 'monster_experience' => 123, 'equipment_version' => 7,
         ]);
 
-        $migration->up();
+        (new ReflectionMethod($migration, 'isolateSecretarySurfaceState'))->invoke($migration);
 
         $this->assertDatabaseHas('secretary_surface_states', [
             'secretary_id' => $secretary->id, 'monster_experience' => 123, 'equipment_version' => 7,
