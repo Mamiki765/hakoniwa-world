@@ -8,6 +8,7 @@ use App\Domain\Monster\MonsterBehaviorResolver;
 use App\Domain\Monster\MonsterHardening;
 use App\Domain\Monster\MonsterTurnBatch;
 use App\Domain\Nation\NationProtectionPolicy;
+use App\Domain\Secretary\SecretaryItemEffectAggregator;
 use App\Domain\Ship\SurfaceShipTurnBatch;
 use App\Domain\Turn\TurnContext;
 use App\Domain\Turn\TurnRandomStreamFactory;
@@ -31,6 +32,7 @@ final class MonsterTurnService
         private readonly DisasterTurnService $disasters,
         private readonly MonsterBehaviorResolver $behaviors,
         private readonly NationProtectionPolicy $nationProtection,
+        private readonly SecretaryItemEffectAggregator $secretaryItems,
         private readonly SurfaceShipRemovalService $shipRemoval,
     ) {}
 
@@ -202,6 +204,12 @@ final class MonsterTurnService
             }
             $facilityKey = $destination->facility?->key;
             $isDefense = $facilityKey === ($movement['defense_facility_key'] ?? null);
+            if ($isDefense && $destination->owner_nation_id !== null
+                && $this->secretaryItems->hasSnapshotEffect(
+                    $context->state, (int) $destination->owner_nation_id, 'nyowamiya_ribbon',
+                )) {
+                $isDefense = false;
+            }
             if (! $isDefense && (in_array($destination->terrain->key, $movement['blocked_terrain_keys'] ?? [], true)
                 || in_array($facilityKey, $movement['blocked_facility_keys'] ?? [], true))) {
                 continue;

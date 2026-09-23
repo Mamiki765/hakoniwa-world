@@ -134,6 +134,11 @@ final class TurnState
      */
     private array $secretaryItemEffectSnapshots = [];
 
+    /** @var array<int, int> */
+    private array $secretaryCharmChargesUsed = [];
+
+    private bool $secretaryCharmChargesFlushed = false;
+
     /** @var array<int, true> */
     private array $secretaryRingFinanceNationIds = [];
 
@@ -987,7 +992,8 @@ final class TurnState
                 if (! is_array($effect)
                     || ! is_string($effect['type'] ?? null) || $effect['type'] === ''
                     || ! is_string($effect['timing'] ?? null) || $effect['timing'] === ''
-                    || ! is_array($effect['parameters'] ?? null) || array_is_list($effect['parameters'])
+                    || ! is_array($effect['parameters'] ?? null)
+                    || ($effect['parameters'] !== [] && array_is_list($effect['parameters']))
                     || ! is_array($effect['target_map_space_keys'] ?? null)
                     || ! array_is_list($effect['target_map_space_keys'])
                     || (! is_int($effect['random_stream_version'] ?? null)
@@ -1038,6 +1044,33 @@ final class TurnState
         }
 
         return $this->secretaryItemEffectSnapshots[$nationId];
+    }
+
+    public function secretaryCharmChargesUsed(int $itemInstanceId): int
+    {
+        return $this->secretaryCharmChargesUsed[$itemInstanceId] ?? 0;
+    }
+
+    public function recordSecretaryCharmCharge(int $itemInstanceId): void
+    {
+        if ($this->secretaryCharmChargesFlushed) {
+            throw new InvalidArgumentException('Secretary charm charges cannot be used after the final flush.');
+        }
+        $this->secretaryCharmChargesUsed[$itemInstanceId] = $this->secretaryCharmChargesUsed($itemInstanceId) + 1;
+    }
+
+    /** @return array<int, int> */
+    public function secretaryCharmChargeUsage(): array
+    {
+        return $this->secretaryCharmChargesUsed;
+    }
+
+    public function markSecretaryCharmChargesFlushed(): void
+    {
+        if ($this->secretaryCharmChargesFlushed) {
+            throw new InvalidArgumentException('Secretary charm charges were already flushed.');
+        }
+        $this->secretaryCharmChargesFlushed = true;
     }
 
     public function hasSecretaryItemEffectSnapshot(mixed $nationId): bool
@@ -1153,7 +1186,7 @@ final class TurnState
         return $this->pendingSecretaryMonsterExperience;
     }
 
-    public function consumeFinalDefenseInterception(mixed $nationId): bool
+    public function consumeFinalDefenseInterception(mixed $nationId, bool $preserveCharge = false): bool
     {
         $nationId = $this->validatedNationId($nationId);
         $level = $this->secretarySkillLevel($nationId, SecretarySkillCatalog::FINAL_DEFENSE_LINE);
@@ -1161,7 +1194,9 @@ final class TurnState
         if ($used >= $level) {
             return false;
         }
-        $this->finalDefenseInterceptionsUsed[$nationId] = $used + 1;
+        if (! $preserveCharge) {
+            $this->finalDefenseInterceptionsUsed[$nationId] = $used + 1;
+        }
 
         return true;
     }

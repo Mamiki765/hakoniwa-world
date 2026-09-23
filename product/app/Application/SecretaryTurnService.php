@@ -11,9 +11,11 @@ use App\Models\Nation;
 use App\Models\NationMembership;
 use App\Models\RulesetVersion;
 use App\Models\Secretary;
+use App\Models\SecretaryItemInstance;
 use App\Models\SecretarySkill;
 use App\Models\SecretarySurfaceState;
 use DomainException;
+use Illuminate\Support\Facades\DB;
 
 final class SecretaryTurnService
 {
@@ -187,6 +189,99 @@ final class SecretaryTurnService
         }
 
         return $snapshots;
+    }
+
+    /** @return array{charges_used: int, items_changed: int} */
+    public function flushCharmCharges(TurnContext $context): array
+    {
+        $usage = $context->state->secretaryCharmChargeUsage();
+        if ($usage === []) {
+            $context->state->markSecretaryCharmChargesFlushed();
+
+            return ['charges_used' => 0, 'items_changed' => 0];
+        }
+        $expected = [];
+        $equipmentVersions = [];
+        foreach ($context->state->stableNationIds() as $nationId) {
+            if (! $context->state->hasSecretaryItemEffectSnapshot($nationId)) {
+                continue;
+            }
+            $snapshot = $context->state->secretaryItemEffectSnapshot($nationId);
+            foreach ($snapshot['items'] as $item) {
+                $id = $item['item_instance_id'];
+                if (! isset($usage[$id])) {
+                    continue;
+                }
+                $expected[$id] = [
+                    'secretary_id' => $snapshot['secretary_id'],
+                    'item_key' => $item['item_key'],
+                    'level' => $item['level'],
+                    'equipped_slot' => $item['equipped_slot'],
+                ];
+                $equipmentVersions[$snapshot['secretary_id']] = $snapshot['equipment_version'];
+            }
+        }
+        if (count($expected) !== count($usage)) {
+            throw new DomainException('Secretary charm usage references an item outside the turn-start snapshot.');
+        }
+
+        $surfaceRows = SecretarySurfaceState::query()
+            ->whereIn('secretary_id', array_keys($equipmentVersions))
+            ->orderBy('secretary_id')->lockForUpdate()->get()->keyBy('secretary_id');
+        if ($surfaceRows->count() !== count($equipmentVersions)) {
+            throw new DomainException('A Secretary surface state disappeared before charm flush.');
+        }
+        foreach ($equipmentVersions as $secretaryId => $version) {
+            if ((int) $surfaceRows->get($secretaryId)->equipment_version !== $version) {
+                throw new DomainException('Secretary equipment changed during its locked Turn.');
+            }
+        }
+
+        $rows = SecretaryItemInstance::query()->whereIn('id', array_keys($expected))
+            ->orderBy('id')->lockForUpdate()->get()->keyBy('id');
+        if ($rows->count() !== count($expected)) {
+            throw new DomainException('A Secretary charm disappeared before the final flush.');
+        }
+        $deleted = [];
+        $updated = [];
+        foreach ($expected as $id => $snapshot) {
+            $row = $rows->get($id);
+            $used = $usage[$id];
+            if ($row->secretary_id !== $snapshot['secretary_id']
+                || $row->item_key !== $snapshot['item_key']
+                || $row->level !== $snapshot['level']
+                || $row->equipped_slot !== $snapshot['equipped_slot']
+                || $row->is_escrowed || $used < 1 || $used > $row->level) {
+                throw new DomainException('Secretary charm changed during its locked Turn.');
+            }
+            $remaining = $row->level - $used;
+            if ($remaining === 0) {
+                $deleted[] = $id;
+            } else {
+                $updated[$id] = $remaining;
+            }
+        }
+        if ($updated !== []) {
+            $values = implode(', ', array_fill(0, count($updated), '(?::bigint, ?::integer)'));
+            $bindings = [];
+            foreach ($updated as $id => $level) {
+                $bindings[] = $id;
+                $bindings[] = $level;
+            }
+            DB::update(
+                'UPDATE secretary_item_instances AS item SET level = changes.level, updated_at = CURRENT_TIMESTAMP '
+                .'FROM (VALUES '.$values.') AS changes(id, level) WHERE item.id = changes.id',
+                $bindings,
+            );
+        }
+        if ($deleted !== []) {
+            SecretaryItemInstance::query()->whereIn('id', $deleted)->delete();
+        }
+        SecretarySurfaceState::query()->whereIn('secretary_id', array_keys($equipmentVersions))
+            ->increment('equipment_version');
+        $context->state->markSecretaryCharmChargesFlushed();
+
+        return ['charges_used' => array_sum($usage), 'items_changed' => count($usage)];
     }
 
     /** @return array{experience_awarded: int, skills_changed: int, levels_gained: int, monster_experience_awarded: int, monster_experience_secretaries_changed: int} */

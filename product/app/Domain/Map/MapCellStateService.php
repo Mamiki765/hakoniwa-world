@@ -52,6 +52,7 @@ final class MapCellStateService
         if ($facility === null) {
             $cell->facility_definition_id = null;
             $cell->monument_definition_id = null;
+            $cell->monument_design_id = null;
             $cell->facility_scale = null;
             $cell->facility_experience = null;
             $cell->facility_operational_state = null;
@@ -63,6 +64,7 @@ final class MapCellStateService
         $cell->facility_definition_id = $facility->id;
         if ($facility->key !== 'monument') {
             $cell->monument_definition_id = null;
+            $cell->monument_design_id = null;
         }
         $cell->facility_operational_state = 'operational';
         $cell->setRelation('facility', $facility);

@@ -2,8 +2,10 @@
 
 namespace App\Application;
 
+use App\Domain\Secretary\SecretaryItemEffectAggregator;
 use App\Domain\Secretary\SecretarySkillCatalog;
 use App\Domain\Turn\TurnContext;
+use App\Domain\Turn\TurnRandomStreamFactory;
 use App\Models\MapCell;
 use App\Models\Nation;
 use App\Models\Ship;
@@ -17,6 +19,7 @@ final class SurfaceShipCombatService
         private readonly NationRefugeeReceptionService $refugees,
         private readonly LaunchBaseExperienceService $baseExperience,
         private readonly SecretaryExperienceAwardService $secretaryExperience,
+        private readonly SecretaryItemEffectAggregator $secretaryItems,
         private readonly TurnEventRecorder $events,
     ) {}
 
@@ -45,6 +48,16 @@ final class SurfaceShipCombatService
         if ($experience > 0) {
             if ($source === 'missile') {
                 if ($firingBase instanceof MapCell) {
+                    if ($ship->ship_type_key === 'pirate') {
+                        $effect = $this->secretaryItems->singleSnapshotEffect(
+                            $context->state, (int) $attacker->id, 'launch_base_experience_double_chance',
+                        );
+                        if ($effect !== null && $context->random->stream(TurnRandomStreamFactory::secretaryItemChance(
+                            (int) $attacker->id, 'pirate_experience_double', $effect['random_stream_version'],
+                        ))->integer(1, 100) <= $effect['parameters']['chance_percent']) {
+                            $experience *= 2;
+                        }
+                    }
                     $experience = $this->baseExperience->credit($firingBase, $attacker, $experience, $context);
                 } else {
                     $experience = 0;
@@ -76,6 +89,7 @@ final class SurfaceShipCombatService
                 $cell,
                 $ship->ship_type_key === 'pirate' ? 'pirate_sink' : 'treasure_ship_sink',
                 $ship->ship_type_key === 'treasure',
+                $ship->ship_type_key === 'pirate' ? $population : null,
             );
             if ($ship->ship_type_key === 'pirate' && $population > 0) {
                 $percent = (int) $context->ruleset->settings['ocean_loop']['pirate_attack'][

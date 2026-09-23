@@ -5,6 +5,7 @@ namespace App\Application;
 use App\Domain\Secretary\SecretaryItemCatalog;
 use App\Models\Secretary;
 use App\Models\SecretaryItemInstance;
+use Closure;
 use DomainException;
 use Illuminate\Support\Facades\DB;
 
@@ -86,44 +87,107 @@ final class SecretaryItemGrantService
                     return $existingGrant;
                 }
             }
-            if ($definition['unique_per_secretary'] && $locked->itemInstances()->where('item_key', $itemKey)->exists()) {
-                throw new DomainException("Secretary already owns unique item {$itemKey} outside this grant.");
-            }
 
+            return $this->persistLockedGrant(
+                $locked, $itemKey, $level, $equippedSlot, $grantKey,
+                $definition, $resolvedRarity, $resolvedFixedSalePriceMoney,
+            );
+        }, 3);
+    }
+
+    /**
+     * Generate an unequipped drop only after its locked duplicate/capacity checks.
+     * The callback only draws an Item and level; it must not mutate inventory.
+     *
+     * @param  Closure(): array{item_key: string, level: int}  $generate
+     * @return array{status: 'granted'|'already_granted', item: SecretaryItemInstance}|array{status: 'inventory_full', inventory_used: int}
+     */
+    public function grantGenerated(int $secretaryId, string $grantKey, Closure $generate): array
+    {
+        if (trim($grantKey) === '' || strlen($grantKey) > 128) {
+            throw new DomainException('Secretary item grant key must be 1-128 characters when present.');
+        }
+
+        // The enclosing Turn attempt, not this RNG callback, owns deadlock retries.
+        return DB::transaction(function () use ($secretaryId, $grantKey, $generate): array {
+            $locked = Secretary::query()->whereKey($secretaryId)->firstOrFail();
+            $locked->lockSurfaceState();
+            $existing = $locked->itemInstances()->where('grant_key', $grantKey)->first();
+            if ($existing instanceof SecretaryItemInstance) {
+                return ['status' => 'already_granted', 'item' => $existing];
+            }
             $used = $locked->itemInstances()->count();
             if ($used >= self::INVENTORY_CAPACITY) {
-                $this->recordInventoryFull($locked, $itemKey, $grantKey, $used);
-
-                return null;
-            }
-            if ($equippedSlot !== null && $locked->itemInstances()->where('equipped_slot', $equippedSlot)->exists()) {
-                throw new DomainException("Secretary equipment slot {$equippedSlot} is already occupied.");
-            }
-            if ($equippedSlot !== null) {
-                $equippedInCategory = $locked->itemInstances()
-                    ->whereNotNull('equipped_slot')
-                    ->get(['item_key'])
-                    ->filter(fn (SecretaryItemInstance $item): bool => (
-                        $this->catalog->definition($item->item_key)['category'] === $definition['category']
-                    ))
-                    ->count();
-                if ($equippedInCategory >= $this->catalog->maximumEquipped($definition['category'])) {
-                    throw new DomainException("Secretary cannot equip another {$definition['category']} item.");
-                }
+                return ['status' => 'inventory_full', 'inventory_used' => $used];
             }
 
-            return $locked->itemInstances()->create([
-                'item_key' => $itemKey,
-                'level' => $level,
-                'equipped_slot' => $equippedSlot,
-                'grant_key' => $grantKey,
-                ...($resolvedRarity === null ? [] : [
-                    'resolved_rarity' => $resolvedRarity,
-                    'resolved_fixed_sale_price_money' => $resolvedFixedSalePriceMoney,
-                ]),
-                'obtained_at' => now(),
-            ]);
-        }, 3);
+            $generated = $generate();
+            $itemKey = $generated['item_key'];
+            $level = $generated['level'];
+            $definition = $this->catalog->definitionWithResolvedEconomics($itemKey, null, null);
+            if ($level < 1 || $level > $definition['max_level']) {
+                throw new DomainException("Invalid level {$level} for Secretary item {$itemKey}.");
+            }
+            $item = $this->persistLockedGrant(
+                $locked, $itemKey, $level, null, $grantKey, $definition, null, null, $used,
+            );
+            if (! $item instanceof SecretaryItemInstance) {
+                throw new DomainException('Monster drop inventory changed after its locked pre-draw capacity check.');
+            }
+
+            return ['status' => 'granted', 'item' => $item];
+        }, 1);
+    }
+
+    /** @param array<string, mixed> $definition */
+    private function persistLockedGrant(
+        Secretary $locked,
+        string $itemKey,
+        int $level,
+        ?int $equippedSlot,
+        ?string $grantKey,
+        array $definition,
+        ?string $resolvedRarity,
+        ?int $resolvedFixedSalePriceMoney,
+        ?int $knownInventoryUsage = null,
+    ): ?SecretaryItemInstance {
+        if ($definition['unique_per_secretary'] && $locked->itemInstances()->where('item_key', $itemKey)->exists()) {
+            throw new DomainException("Secretary already owns unique item {$itemKey} outside this grant.");
+        }
+
+        $used = $knownInventoryUsage ?? $locked->itemInstances()->count();
+        if ($used >= self::INVENTORY_CAPACITY) {
+            $this->recordInventoryFull($locked, $itemKey, $grantKey, $used);
+
+            return null;
+        }
+        if ($equippedSlot !== null && $locked->itemInstances()->where('equipped_slot', $equippedSlot)->exists()) {
+            throw new DomainException("Secretary equipment slot {$equippedSlot} is already occupied.");
+        }
+        if ($equippedSlot !== null) {
+            $equippedInCategory = $locked->itemInstances()
+                ->whereNotNull('equipped_slot')
+                ->get(['item_key'])
+                ->filter(fn (SecretaryItemInstance $item): bool => (
+                    $this->catalog->definition($item->item_key)['category'] === $definition['category']
+                ))
+                ->count();
+            if ($equippedInCategory >= $this->catalog->maximumEquipped($definition['category'])) {
+                throw new DomainException("Secretary cannot equip another {$definition['category']} item.");
+            }
+        }
+
+        return $locked->itemInstances()->create([
+            'item_key' => $itemKey,
+            'level' => $level,
+            'equipped_slot' => $equippedSlot,
+            'grant_key' => $grantKey,
+            ...($resolvedRarity === null ? [] : [
+                'resolved_rarity' => $resolvedRarity,
+                'resolved_fixed_sale_price_money' => $resolvedFixedSalePriceMoney,
+            ]),
+            'obtained_at' => now(),
+        ]);
     }
 
     private function recordInventoryFull(Secretary $secretary, string $itemKey, ?string $grantKey, int $used): void

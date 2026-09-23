@@ -7,6 +7,7 @@ use App\Application\Ver390RulesetUpgrade;
 use App\Application\Ver392RulesetUpgrade;
 use App\Application\Ver393RulesetUpgrade;
 use App\Application\Ver420RulesetUpgrade;
+use App\Application\Ver440RulesetUpgrade;
 use App\Models\FacilityDefinition;
 use App\Models\MapCell;
 use App\Models\MonsterDefinition;
@@ -394,6 +395,19 @@ SQL);
 
     private function returnSchemaToExact390Source(): void
     {
+        // Rewind the later catalog before replaying the supported v22 upgrade chain.
+        $v27Row = RulesetVersion::query()->where('key', Ver440RulesetUpgrade::TARGET_KEY)->first();
+        if ($v27Row instanceof RulesetVersion) {
+            DB::table('worlds')->where('ruleset_version_id', $v27Row->id)->update([
+                'ruleset_version_id' => RulesetVersion::query()
+                    ->where('key', Ver440RulesetUpgrade::SOURCE_KEY)->valueOrFail('id'),
+                'updated_at' => now(),
+            ]);
+            $v27Row->delete();
+        }
+        DB::table('migrations')->where('migration', '2026_09_23_020000_activate_v27_ruleset')->delete();
+        DB::table('monument_definitions')->where('key', 'original')->delete();
+
         Schema::dropIfExists('buried_treasures');
         if (Schema::hasColumn('ships', 'population')) {
             DB::statement('ALTER TABLE ships DROP CONSTRAINT IF EXISTS ships_ocean_population_check');

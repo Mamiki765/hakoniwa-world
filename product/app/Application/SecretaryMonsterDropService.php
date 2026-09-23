@@ -10,7 +10,6 @@ use App\Models\MonsterInstance;
 use App\Models\Nation;
 use App\Models\NationMembership;
 use App\Models\Secretary;
-use App\Models\SecretaryItemInstance;
 use DomainException;
 
 final class SecretaryMonsterDropService
@@ -45,6 +44,53 @@ final class SecretaryMonsterDropService
             ? $host
             : $killer;
 
+        $grantKey = "monster-drop:v1:{$monster->id}:{$recipient->id}";
+        $result = $this->grants->grantGenerated(
+            $this->recipientSecretaryId($context, $recipient),
+            $grantKey,
+            fn (): array => $this->drawItem($context, $monster, $table, $version),
+        );
+        if ($result['status'] === 'inventory_full') {
+            $message = '倉庫がいっぱいのため、怪獣の戦利品を受け取れませんでした。';
+            $this->events->record($context, 'monster.item_drop_inventory_full', $recipient, [
+                'nation_id' => (int) $recipient->id,
+                'inventory_capacity' => SecretaryItemGrantService::INVENTORY_CAPACITY,
+                'inventory_used' => $result['inventory_used'],
+            ], 'private', 'warning', $message);
+
+            return ['status' => 'inventory_full', 'recipient_nation_id' => (int) $recipient->id];
+        }
+        $item = $result['item'];
+        if ($result['status'] === 'already_granted') {
+            return [
+                'status' => 'already_granted',
+                'recipient_nation_id' => (int) $recipient->id,
+                'item_instance_id' => (int) $item->id,
+            ];
+        }
+        $definition = $this->items->definition($item->item_key);
+        $level = (int) $item->level;
+        $message = '怪獣の戦利品として「'.$definition['name'].' Lv'.$level.'」を入手しました。';
+        $this->events->record($context, 'monster.item_drop_received', $recipient, [
+            'nation_id' => (int) $recipient->id,
+            'item_name' => $definition['name'],
+            'item_level' => $level,
+        ], 'private', 'info', $message);
+
+        return [
+            'status' => 'granted',
+            'recipient_nation_id' => (int) $recipient->id,
+            'item_instance_id' => (int) $item->id,
+        ];
+    }
+
+    private function recipientSecretaryId(TurnContext $context, Nation $recipient): int
+    {
+        if ($context->state->hasSecretarySnapshot((int) $recipient->id)) {
+            return $context->state->secretarySnapshot((int) $recipient->id)['secretary_id'];
+        }
+
+        // Direct callers without the Turn batch retain the original ownership lookup.
         $membership = NationMembership::query()
             ->where('world_id', $context->world->id)
             ->where('nation_id', $recipient->id)
@@ -52,30 +98,17 @@ final class SecretaryMonsterDropService
             ->orderBy('id')
             ->lockForUpdate()
             ->sole();
-        $secretary = Secretary::query()->where('user_id', $membership->user_id)
-            ->sole();
-        $secretary->lockSurfaceState();
-        $grantKey = "monster-drop:v1:{$monster->id}:{$recipient->id}";
-        $existing = $secretary->itemInstances()->where('grant_key', $grantKey)->first();
-        if ($existing instanceof SecretaryItemInstance) {
-            return [
-                'status' => 'already_granted',
-                'recipient_nation_id' => (int) $recipient->id,
-                'item_instance_id' => (int) $existing->id,
-            ];
-        }
-        $used = $secretary->itemInstances()->count();
-        if ($used >= SecretaryItemGrantService::INVENTORY_CAPACITY) {
-            $message = '倉庫がいっぱいのため、怪獣の戦利品を受け取れませんでした。';
-            $this->events->record($context, 'monster.item_drop_inventory_full', $recipient, [
-                'nation_id' => (int) $recipient->id,
-                'inventory_capacity' => SecretaryItemGrantService::INVENTORY_CAPACITY,
-                'inventory_used' => $used,
-            ], 'private', 'warning', $message);
 
-            return ['status' => 'inventory_full', 'recipient_nation_id' => (int) $recipient->id];
-        }
+        return (int) Secretary::query()->where('user_id', $membership->user_id)->sole()->id;
+    }
 
+    /**
+     * @param  array{rarity_weights: array<string, int>, level_cap_percent: int}  $table
+     * @return array{item_key: string, level: int}
+     */
+    private function drawItem(TurnContext $context, MonsterInstance $monster, array $table, int $version): array
+    {
+        $settings = $context->ruleset->settings;
         $rarity = $this->weightedRarity(
             $table['rarity_weights'],
             $context->random->stream(TurnRandomStreamFactory::monsterItemDrop(
@@ -94,22 +127,16 @@ final class SecretaryMonsterDropService
         $level = $context->random->stream(TurnRandomStreamFactory::monsterItemDrop(
             (int) $monster->id, 'level', $version,
         ))->integer(1, $effectiveMaximum);
-        $item = $this->grants->grant($secretary, $itemKey, $level, null, $grantKey);
-        if (! $item instanceof SecretaryItemInstance) {
-            throw new DomainException('Monster drop inventory changed after its locked pre-draw capacity check.');
+        if ($monster->definition->key === 'nyowamiya'
+            && isset($settings['monster_system']['item_drop']['nyowamiya_love_emblem_replacement_percent'])
+            && $context->random->stream(TurnRandomStreamFactory::monsterItemDrop(
+                (int) $monster->id, 'emblem_replacement', $version,
+            ))->integer(1, 100) <= (int) $settings['monster_system']['item_drop']['nyowamiya_love_emblem_replacement_percent']) {
+            $itemKey = SecretaryItemCatalog::LOVE_EMBLEM;
+            $level = 1;
         }
-        $message = '怪獣の戦利品として「'.$definition['name'].' Lv'.$level.'」を入手しました。';
-        $this->events->record($context, 'monster.item_drop_received', $recipient, [
-            'nation_id' => (int) $recipient->id,
-            'item_name' => $definition['name'],
-            'item_level' => $level,
-        ], 'private', 'info', $message);
 
-        return [
-            'status' => 'granted',
-            'recipient_nation_id' => (int) $recipient->id,
-            'item_instance_id' => (int) $item->id,
-        ];
+        return ['item_key' => $itemKey, 'level' => $level];
     }
 
     /** @param array<string, int> $weights */

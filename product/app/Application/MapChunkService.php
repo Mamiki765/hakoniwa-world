@@ -30,6 +30,7 @@ final class MapChunkService
                 'terrain',
                 'facility',
                 'monumentDefinition',
+                'monumentDesign',
                 'ownerNation:id,nation_number,name',
                 'ship.nation:id,nation_number,name',
                 'ship.rulesetVersion:id,settings',

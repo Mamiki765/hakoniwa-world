@@ -188,8 +188,12 @@ final class MonsterSpawnService
             $typeStream = $context->random->stream(
                 TurnRandomStreamFactory::monsterSpawn($nation->id, 'type', $streamVersion),
             );
-            $typeIndex = $typeStream->integer(0, count($pool) - 1);
-            $monsterKey = $pool[$typeIndex];
+            $ribbonBonus = isset($rankTwoNationIds[$nation->id])
+                && in_array('nyowamiya', $pool, true)
+                && $this->secretaryItems->hasSnapshotEffect($context->state, (int) $nation->id, 'nyowamiya_ribbon')
+                ? 1 : 0;
+            $typeIndex = $typeStream->integer(0, count($pool) - 1 + $ribbonBonus);
+            $monsterKey = $typeIndex === count($pool) ? 'nyowamiya' : $pool[$typeIndex];
             if ($rankTwoCondition !== null
                 && in_array($monsterKey, $rankTwoCondition['conditional_monster_keys'], true)
                 && ! isset($rankTwoNationIds[$nation->id])) {

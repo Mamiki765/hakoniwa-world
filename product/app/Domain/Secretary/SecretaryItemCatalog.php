@@ -36,6 +36,14 @@ class SecretaryItemCatalog
 
     public const DOKIDOKI_TICKET = 'dokidoki_ticket';
 
+    public const LOVE_EMBLEM = 'love_emblem';
+
+    public const TWIN_STAR_EMBLEM = 'twin_star_emblem';
+
+    public const CRESCENT_EMBLEM = 'crescent_emblem';
+
+    public const NYOWAMIYA_RIBBON = 'nyowamiya_ribbon';
+
     public const RARITY_NOVICE = 'novice';
 
     public const RARITY_REGULAR = 'regular';
@@ -44,12 +52,18 @@ class SecretaryItemCatalog
 
     public const RARITY_HIGH_QUALITY = 'high_quality';
 
+    public const RARITY_ARTIFACT = 'artifact';
+
+    public const RARITY_RELIC = 'relic';
+
     /** @var array<string, array{label: string, fixed_sale_price_money: int}> */
     private const RARITIES = [
         self::RARITY_NOVICE => ['label' => 'ノービス', 'fixed_sale_price_money' => 100],
         self::RARITY_REGULAR => ['label' => 'レギュラー', 'fixed_sale_price_money' => 500],
         self::RARITY_CURSED => ['label' => 'カースド', 'fixed_sale_price_money' => 1],
         self::RARITY_HIGH_QUALITY => ['label' => 'ハイクオリティ', 'fixed_sale_price_money' => 1500],
+        self::RARITY_ARTIFACT => ['label' => 'アーティファクト', 'fixed_sale_price_money' => 3000],
+        self::RARITY_RELIC => ['label' => 'レリック', 'fixed_sale_price_money' => 6000],
     ];
 
     private const DEFAULT_SAME_ITEM_MAX_EQUIPPED = 1;
@@ -77,7 +91,8 @@ class SecretaryItemCatalog
      *   flavor_text: string,
      *   unique_per_secretary: bool,
      *   fixed_sale_price_money: int,
-     *   same_item_max_equipped?: int
+     *   same_item_max_equipped?: int,
+     *   introduced_version?: int
      * }
      */
     public function definition(string $itemKey): array
@@ -131,7 +146,8 @@ class SecretaryItemCatalog
      *   flavor_text: string,
      *   unique_per_secretary: bool,
      *   fixed_sale_price_money: int,
-     *   same_item_max_equipped?: int
+     *   same_item_max_equipped?: int,
+     *   introduced_version?: int
      * }>
      */
     public function definitions(): array
@@ -354,6 +370,51 @@ class SecretaryItemCatalog
                 'unique_per_secretary' => false,
             ],
         ];
+        $newItems = [
+            'fire_charm' => ['accessory', self::RARITY_REGULAR, 3, '防火のお守り', 'マッチ一本火事の元。いくらお金がかかっても火災保険は入っておくように。絶対というものはこの世に存在しないのだから。'],
+            'wave_charm' => ['accessory', self::RARITY_REGULAR, 3, '防波のお守り', 'お守りの輝石は、波から領域を護るバリアを生み出すのだとか。'],
+            'wind_charm' => ['accessory', self::RARITY_REGULAR, 3, '防風のお守り', '「台風がそんなに怖いの？　農場しか被害受けないから安いモンじゃない」'],
+            'quake_charm' => ['accessory', self::RARITY_REGULAR, 3, '耐震のお守り', 'あと1回……1回だけでいいから地ならしさせて……'],
+            'star_charm' => ['accessory', self::RARITY_HIGH_QUALITY, 3, '防星のお守り', 'あの星たちは、いったいどこから来るのだろう？　落ちた星は、この惑星の一部にどうなっていくのだろう？'],
+            'gem_bow' => ['bow', self::RARITY_HIGH_QUALITY, 15, '輝石の弓', 'エルフの真髄、宝石魔法を引き出しやすく調整された弓。秘書と特に相性の良い輝石が選び抜かれている。'],
+            'elven_bow' => ['bow', self::RARITY_ARTIFACT, 50, 'エルヴンボウ', '数千年を生きた大樹と地底から掘り出した輝石を贅沢に用いて作られた逸品。その一矢は、天災を齎す。'],
+            'aquamarine_bow' => ['bow', self::RARITY_HIGH_QUALITY, 15, 'アクアマリンの弓', '透き通るような蒼い輝石がつけられた弓。海の怪獣に効果がありそうだ。'],
+            'artemis_bow' => ['bow', self::RARITY_ARTIFACT, 50, 'アルテミスの弓', '美しい狩りの女神のものとされる黄金の弓。おそらくは、異界から流れ着いたものであろう。'],
+            'bullseye_bow' => ['bow', self::RARITY_HIGH_QUALITY, 15, 'ブルズアイの弓', '怪獣の急所に魔力矢を確実に当てる事を第一に考え、魔力と相性の悪い合金を敢えて用いた一品。間違っても人に向けてはいけない。'],
+            'shiva_bow' => ['bow', self::RARITY_ARTIFACT, 50, 'シヴァの弓', '科学の力によって、矢に核兵器にも匹敵する威力を込める事ができると恐れられる最強の弓。'],
+            'experienced_suit' => ['clothing', self::RARITY_REGULAR, 10, '熟練秘書のスーツ', '輝石のあしらわれた、オーダーメイドの一品。今日も私は、島を見る。'],
+            'eternal_suit' => ['clothing', self::RARITY_HIGH_QUALITY, 11, '永久秘書の礼装', '年季を感じさせる上質な布で作られた礼装。'],
+            'star_reader_suit' => ['clothing', self::RARITY_ARTIFACT, 12, '星詠みの正装', '流星の軌道を予測できる知識は、この世界では重要な地位につながる。'],
+            'military_suit' => ['clothing', self::RARITY_REGULAR, 10, '軍務卿の礼装', '海の警戒と怪獣討伐のために仕立てられた礼装。'],
+            'marshal_suit' => ['clothing', self::RARITY_HIGH_QUALITY, 11, '大元帥の礼装', '幾度もの戦いをくぐり抜けた秘書のための礼装。'],
+            'war_suit' => ['clothing', self::RARITY_ARTIFACT, 12, '戦神の礼装', '決戦の場に立つ秘書のための礼装。'],
+            'chancellor_suit' => ['clothing', self::RARITY_REGULAR, 10, '宰相の式服', '島の人々の暮らしを見守るための式服。'],
+            'grand_chancellor_suit' => ['clothing', self::RARITY_HIGH_QUALITY, 11, '大宰相の式服', '長い歳月を島の発展に捧げた秘書の式服。'],
+            'star_chancellor_suit' => ['clothing', self::RARITY_ARTIFACT, 12, '星詠みの宰相服', '星と大地の巡りを読む秘書の正装。'],
+            'magic_white_flag' => ['accessory', self::RARITY_HIGH_QUALITY, 1, '魔法の白旗', '「……この世界の白旗はちゃんと降参の意味ですよね？」秘書はそう、不安そうに呟いた。'],
+            self::NYOWAMIYA_RIBBON => ['accessory', self::RARITY_HIGH_QUALITY, 1, 'ニョワミヤリボン', '怪獣を愛でたいあなたに！ニョワミヤリボン！'],
+            self::LOVE_EMBLEM => ['accessory', self::RARITY_ARTIFACT, 1, '愛の紋章', '星瞬く夜に誰が祈る？'],
+            self::TWIN_STAR_EMBLEM => ['accessory', self::RARITY_ARTIFACT, 1, '双子星の紋章', '星降る夜に誰が願う？'],
+            self::CRESCENT_EMBLEM => ['accessory', self::RARITY_ARTIFACT, 1, '三日月の紋章', '月満ちる夜に誰が笑う？'],
+        ];
+        foreach ($newItems as $key => [$category, $rarity, $maximumLevel, $name, $flavor]) {
+            $definitions[$key] = [
+                'key' => $key,
+                'category' => $category,
+                'category_label' => self::CATEGORIES[$category]['label'],
+                'category_max_equipped' => self::CATEGORIES[$category]['maximum_equipped'],
+                'rarity' => $rarity,
+                'rarity_label' => self::RARITIES[$rarity]['label'],
+                'tradable' => true,
+                'npc_tradable' => false,
+                'max_level' => $maximumLevel,
+                'name' => $name,
+                'flavor_text' => $flavor,
+                'unique_per_secretary' => false,
+                'fixed_sale_price_money' => self::RARITIES[$rarity]['fixed_sale_price_money'],
+                'introduced_version' => 27,
+            ];
+        }
         foreach ($definitions as $key => $definition) {
             $rarity = $definition['rarity'];
             $definitions[$key] = [

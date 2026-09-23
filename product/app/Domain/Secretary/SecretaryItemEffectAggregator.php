@@ -76,6 +76,22 @@ final class SecretaryItemEffectAggregator
         return $total;
     }
 
+    public function hasSnapshotEffect(TurnState $state, int $nationId, string $effectType): bool
+    {
+        return $this->snapshotEffects($state, $nationId, $effectType) !== [];
+    }
+
+    /** @return array<string, mixed>|null */
+    public function singleSnapshotEffect(TurnState $state, int $nationId, string $effectType): ?array
+    {
+        $effects = $this->snapshotEffects($state, $nationId, $effectType);
+        if (count($effects) > 1) {
+            throw new DomainException("Secretary Item {$effectType} must resolve to one equipped effect.");
+        }
+
+        return $effects[0]['effect'] ?? null;
+    }
+
     public function snapshotKarmaMinimumDelta(TurnState $state, int $nationId): int
     {
         $total = 0;
@@ -116,11 +132,13 @@ final class SecretaryItemEffectAggregator
         $parameters = $resolved['effect']['parameters'];
         $sources = $parameters['sources'] ?? null;
         $excludedSkillKeys = $parameters['excluded_skill_keys'] ?? [];
+        $eligibleSkillKeys = $parameters['eligible_skill_keys'] ?? [];
         $chancePerLevel = $parameters['chance_percent_per_level'] ?? null;
         $multiplier = $parameters['multiplier'] ?? null;
         $version = $resolved['effect']['random_stream_version'] ?? null;
-        if (! is_array($sources) || ! in_array($source, $sources, true)
+        if (! is_array($sources)
             || ! is_array($excludedSkillKeys) || ! array_is_list($excludedSkillKeys)
+            || ! is_array($eligibleSkillKeys) || ! array_is_list($eligibleSkillKeys)
             || ! is_int($chancePerLevel) || $chancePerLevel < 1
             || ! is_int($multiplier) || $multiplier < 2
             || ! is_int($version) || $version < 1) {
@@ -131,12 +149,26 @@ final class SecretaryItemEffectAggregator
                 throw new DomainException('Secretary experience equipment skill exclusion is invalid.');
             }
         }
+        if (! in_array($source, $sources, true)) {
+            return null;
+        }
         if ($skillKey !== null && in_array($skillKey, $excludedSkillKeys, true)) {
             return null;
         }
+        if ($skillKey !== null && $eligibleSkillKeys !== [] && ! in_array($skillKey, $eligibleSkillKeys, true)) {
+            return null;
+        }
+
+        $base = $parameters['chance_base_percent'] ?? 0;
+        $numerator = $parameters['chance_multiplier_numerator'] ?? 1;
+        $denominator = $parameters['chance_multiplier_denominator'] ?? 1;
+        if (! is_int($base) || $base < 0 || ! is_int($numerator) || $numerator < 1
+            || ! is_int($denominator) || $denominator < 1) {
+            throw new DomainException('Secretary experience equipment chance is invalid.');
+        }
 
         return [
-            'chance_percent' => $resolved['level'] * $chancePerLevel,
+            'chance_percent' => intdiv(($base + $resolved['level'] * $chancePerLevel) * $numerator, $denominator),
             'multiplier' => $multiplier,
             'random_stream_version' => $version,
         ];

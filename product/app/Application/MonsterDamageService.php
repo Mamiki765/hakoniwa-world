@@ -447,6 +447,12 @@ SQL, [
             SecretaryItemGameplayContract::ELF_BOW_DAMAGE_TYPE,
             SecretaryItemGameplayContract::LONGSHOT_BOW_DAMAGE_TYPE,
             SecretaryItemGameplayContract::MECHANICAL_BOW_DAMAGE_TYPE,
+            'secretary_gem_bow',
+            'secretary_elven_bow',
+            'secretary_aquamarine_bow',
+            'secretary_artemis_bow',
+            'secretary_bullseye_bow',
+            'secretary_shiva_bow',
         ], true);
     }
 }

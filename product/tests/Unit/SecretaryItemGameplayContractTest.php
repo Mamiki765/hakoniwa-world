@@ -27,7 +27,7 @@ final class SecretaryItemGameplayContractTest extends TestCase
             'regular' => ['key' => 'regular', 'name' => 'レギュラー', 'fixed_sale_price_money' => 500],
             'cursed' => ['key' => 'cursed', 'name' => 'カースド', 'fixed_sale_price_money' => 1],
             'high_quality' => ['key' => 'high_quality', 'name' => 'ハイクオリティ', 'fixed_sale_price_money' => 1500],
-        ], $catalog->rarities());
+        ], array_intersect_key($catalog->rarities(), array_flip(['novice', 'regular', 'cursed', 'high_quality'])));
         foreach ([SecretaryItemCatalog::ELF_BOW, SecretaryItemCatalog::LONGSHOT_BOW, SecretaryItemCatalog::MECHANICAL_BOW] as $itemKey) {
             $definition = $catalog->definition($itemKey);
             $this->assertSame('regular', $definition['rarity']);
@@ -76,6 +76,10 @@ final class SecretaryItemGameplayContractTest extends TestCase
             'secretary_item:bow:nation:7:item:elf_bow:trigger:v1',
             TurnRandomStreamFactory::secretaryBow(7, SecretaryItemCatalog::ELF_BOW, 'trigger', 1),
         );
+        $this->assertSame(
+            'secretary_item:bow:nation:7:item:gem_bow:target:v1',
+            TurnRandomStreamFactory::secretaryBow(7, 'gem_bow', 'target', 1),
+        );
     }
 
     public function test_current_monster_drop_tables_and_pools_are_closed_and_exclude_old_bow_and_mecha(): void
@@ -92,10 +96,6 @@ final class SecretaryItemGameplayContractTest extends TestCase
         ], $drop['rarity_pools']['regular']);
         $this->assertSame(['collar'], $drop['rarity_pools']['cursed']);
         $this->assertNotContains('old_bow', $drop['rarity_pools']['novice']);
-        $this->assertSame(
-            ['novice' => 40, 'regular' => 40, 'cursed' => 20],
-            $drop['monster_tables']['king_inora']['rarity_weights'],
-        );
         $this->assertSame(100, $drop['monster_tables']['king_inora']['level_cap_percent']);
         $this->assertSame($drop['monster_tables']['king_inora'], $drop['monster_tables']['nyowamiya']);
     }

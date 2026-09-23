@@ -8,8 +8,10 @@ use App\Application\DomesticCommandExecutor;
 use App\Application\MonsterDamageService;
 use App\Application\NationCreationService;
 use App\Application\SecretaryBowAttackService;
+use App\Application\SecretaryDisasterCharmService;
 use App\Application\SecretaryItemGrantService;
 use App\Application\SecretaryItemSaleService;
+use App\Application\SecretaryTicketGachaService;
 use App\Application\SecretaryTurnService;
 use App\Application\TradingPostTurnService;
 use App\Domain\Secretary\SecretaryItemCatalog;
@@ -42,6 +44,82 @@ final class SecretaryItemEffectsTest extends TestCase
 {
     use CreatesTestWorlds;
     use RefreshDatabase;
+
+    public function test_ticket_draw_consumes_one_ticket_and_replays_the_same_result(): void
+    {
+        $world = $this->lightweightWorld();
+        [$user] = $this->nation($world, 'チケット検証島');
+        $this->switchToItemRuleset($world);
+        $secretary = $user->secretary()->sole();
+        $ticket = $secretary->itemInstances()->create([
+            'item_key' => SecretaryItemCatalog::WAKUWAKU_TICKET,
+            'level' => 1, 'equipped_slot' => null,
+            'grant_key' => 'test:ticket-draw', 'obtained_at' => now(),
+        ]);
+
+        $service = app(SecretaryTicketGachaService::class);
+        $requestKey = (string) Str::uuid();
+        $first = $service->draw($user, $ticket->id, $requestKey);
+        $this->assertCount(1, $first);
+        $this->assertContains($first[0]['rarity'], ['regular', 'high_quality', 'artifact']);
+        $this->assertFalse((bool) config('hakoniwa.ruleset.secretary.items.'.$first[0]['key'].'.gacha_exception'));
+        $this->assertNull($ticket->fresh());
+        $this->assertSame($first, $service->draw($user, $ticket->id, $requestKey));
+        $this->assertSame(1, DB::table('secretary_gacha_draws')->where('secretary_id', $secretary->id)->count());
+    }
+
+    public function test_charm_charge_uses_turn_snapshot_and_rollback_retry_does_not_keep_consumption(): void
+    {
+        $world = $this->lightweightWorld();
+        [$user, $nation] = $this->nation($world, 'お守り検証島');
+        $this->switchToItemRuleset($world);
+        $world = $world->fresh();
+        $secretary = $user->secretary()->sole();
+        $charm = $secretary->itemInstances()->create([
+            'item_key' => 'fire_charm', 'level' => 2, 'equipped_slot' => 2,
+            'grant_key' => 'test:fire-charm-retry', 'obtained_at' => now(),
+        ]);
+        $cell = MapCell::query()->where('owner_nation_id', $nation->id)->orderBy('id')->firstOrFail();
+        $context = $this->context($world, hash('sha256', 'charm rollback retry'), [$nation->id]);
+        $service = app(SecretaryDisasterCharmService::class);
+        $turnSecretaries = app(SecretaryTurnService::class);
+        $queries = [];
+        DB::listen(static function (QueryExecuted $query) use (&$queries): void {
+            $queries[] = strtolower($query->sql);
+        });
+
+        try {
+            DB::transaction(function () use ($context, $turnSecretaries, $service, $cell, $charm, &$queries): void {
+                $turnSecretaries->loadAttemptSnapshots($context, [$cell->owner_nation_id]);
+                $before = count($queries);
+                $this->assertTrue($service->protect($context, $cell, 'fire'));
+                $this->assertSame(1, $context->state->secretaryCharmChargesUsed($charm->id));
+                $this->assertSame([], array_values(array_filter(
+                    array_slice($queries, $before),
+                    static fn (string $sql): bool => str_contains($sql, 'secretary_item_instances')
+                        || str_contains($sql, 'secretary_surface_states'),
+                )));
+                $this->assertSame(2, $charm->fresh()->level);
+                $this->assertSame(['charges_used' => 1, 'items_changed' => 1],
+                    $turnSecretaries->flushCharmCharges($context));
+                $this->assertSame(1, $charm->fresh()->level);
+
+                throw new RuntimeException('force attempt rollback');
+            });
+        } catch (RuntimeException $exception) {
+            $this->assertSame('force attempt rollback', $exception->getMessage());
+        }
+        $this->assertSame(2, $charm->fresh()->level);
+
+        $retry = $this->retryContext($context);
+        $turnSecretaries->loadAttemptSnapshots($retry, [$nation->id]);
+        $this->assertSame(0, $retry->state->secretaryCharmChargesUsed($charm->id));
+        $this->assertTrue($service->protect($retry, $cell, 'fire'));
+        $this->assertSame(2, $charm->fresh()->level);
+        $this->assertSame(1, $retry->state->secretaryCharmChargesUsed($charm->id));
+        $turnSecretaries->flushCharmCharges($retry);
+        $this->assertSame(1, $charm->fresh()->level);
+    }
 
     public function test_v11_shaped_prepare_batch_loads_equipped_items_once_and_keeps_an_immutable_stable_snapshot(): void
     {

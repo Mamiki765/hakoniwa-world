@@ -109,6 +109,11 @@ final class CurrentCatalogInstaller
                     'description' => '歴史的な勝利を記録する碑です。', 'effect_key' => null,
                     'enabled' => true, 'sort_order' => 30, 'metadata' => [],
                 ],
+                ...((int) ($rules['version'] ?? 0) >= 27 ? [[
+                    'key' => 'original', 'name' => 'オリジナル記念碑', 'asset_key' => 'tile.monument.original',
+                    'description' => '建設者が登録した画像と名前を表示する記念碑です。', 'effect_key' => null,
+                    'enabled' => true, 'sort_order' => 40, 'metadata' => [],
+                ]] : []),
             ],
         ];
     }

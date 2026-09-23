@@ -276,6 +276,26 @@ final class TurnRandomStreamFactory
         return self::NATURAL_TREASURE_PREFIX.$opportunity.':'.$purpose.':v'.$streamVersion;
     }
 
+    public static function buriedTreasureEmblem(int $mapCellId, string $source, int $stackPosition, int $streamVersion): string
+    {
+        if ($mapCellId < 1 || $stackPosition < 1 || $streamVersion < 1
+            || ! in_array($source, ['meteor', 'pirate_sink'], true)) {
+            throw new InvalidArgumentException('Buried Treasure emblem stream identity is invalid.');
+        }
+
+        return 'ocean_loop:buried_treasure:emblem:'.$mapCellId.':'.$source.':'.$stackPosition.':v'.$streamVersion;
+    }
+
+    public static function secretaryItemChance(int $nationId, string $effect, int $streamVersion): string
+    {
+        if ($nationId < 1 || $streamVersion < 1
+            || ! in_array($effect, ['final_defense_preserve', 'settlement_experience_double', 'pirate_experience_double'], true)) {
+            throw new InvalidArgumentException('Secretary Item chance stream identity is invalid.');
+        }
+
+        return 'secretary:item:'.$nationId.':'.$effect.':v'.$streamVersion;
+    }
+
     public static function missileImpact(int $queueItemId): string
     {
         if ($queueItemId < 1) {
@@ -318,7 +338,7 @@ final class TurnRandomStreamFactory
             return self::secretaryOldBow($nationId, $purpose, $streamVersion);
         }
         if ($nationId < 1 || $streamVersion < 1
-            || ! in_array($itemKey, ['elf_bow', 'longshot_bow', 'mechanical_bow'], true)
+            || preg_match('/\A[a-z][a-z0-9_]*\z/D', $itemKey) !== 1
             || ! in_array($purpose, ['trigger', 'target'], true)) {
             throw new InvalidArgumentException('Secretary Bow stream identity is invalid.');
         }
@@ -338,7 +358,7 @@ final class TurnRandomStreamFactory
     public static function monsterItemDrop(int $monsterInstanceId, string $purpose, int $streamVersion): string
     {
         if ($monsterInstanceId < 1 || $streamVersion < 1
-            || ! in_array($purpose, ['recipient', 'rarity', 'item', 'level'], true)) {
+            || ! in_array($purpose, ['recipient', 'rarity', 'item', 'level', 'emblem_replacement'], true)) {
             throw new InvalidArgumentException('Monster Item drop stream identity is invalid.');
         }
 
