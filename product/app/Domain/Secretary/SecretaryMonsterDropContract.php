@@ -17,6 +17,7 @@ final class SecretaryMonsterDropContract
         'hakoniwa-2s-plus-v24',
         'hakoniwa-2s-plus-v25',
         'hakoniwa-2s-plus-v26',
+        'hakoniwa-2s-plus-v27',
     ];
 
     /** @var list<string> */
@@ -74,6 +75,12 @@ final class SecretaryMonsterDropContract
                 throw new DomainException("Monster drop references unknown monster {$monsterKey}.");
             }
         }
+        $v27 = $settings['key'] === 'hakoniwa-2s-plus-v27';
+        if ($v27 && (! is_int($drop['nyowamiya_love_emblem_replacement_percent'] ?? null)
+            || $drop['nyowamiya_love_emblem_replacement_percent'] < 0
+            || $drop['nyowamiya_love_emblem_replacement_percent'] > 100)) {
+            throw new DomainException('The v27 Nyowamiya replacement rate must be a percentage.');
+        }
         $expectedPools = [
             SecretaryItemCatalog::RARITY_NOVICE => [
                 SecretaryItemCatalog::RING,
@@ -91,6 +98,11 @@ final class SecretaryMonsterDropContract
                 SecretaryItemCatalog::MECHANICAL_BOW,
             ],
             SecretaryItemCatalog::RARITY_CURSED => [SecretaryItemCatalog::COLLAR],
+            ...($v27 ? [SecretaryItemCatalog::RARITY_HIGH_QUALITY => [
+                'star_charm', 'gem_bow', 'aquamarine_bow', 'bullseye_bow',
+                'eternal_suit', 'marshal_suit', 'grand_chancellor_suit',
+                'magic_white_flag', 'nyowamiya_ribbon',
+            ]] : []),
         ];
         $rarityPools = $drop['rarity_pools'] ?? null;
         if (! is_array($rarityPools)
@@ -167,7 +179,7 @@ final class SecretaryMonsterDropContract
      */
     private function eligibleMonsters(array $settings): array
     {
-        return in_array($settings['key'] ?? null, ['hakoniwa-2s-plus-v21', 'hakoniwa-2s-plus-v22', 'hakoniwa-2s-plus-v23', 'hakoniwa-2s-plus-v24', 'hakoniwa-2s-plus-v25', 'hakoniwa-2s-plus-v26'], true)
+        return in_array($settings['key'] ?? null, ['hakoniwa-2s-plus-v21', 'hakoniwa-2s-plus-v22', 'hakoniwa-2s-plus-v23', 'hakoniwa-2s-plus-v24', 'hakoniwa-2s-plus-v25', 'hakoniwa-2s-plus-v26', 'hakoniwa-2s-plus-v27'], true)
             ? [...self::ELIGIBLE_MONSTERS, 'nyowamiya']
             : self::ELIGIBLE_MONSTERS;
     }

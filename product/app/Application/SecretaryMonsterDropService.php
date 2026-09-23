@@ -94,6 +94,15 @@ final class SecretaryMonsterDropService
         $level = $context->random->stream(TurnRandomStreamFactory::monsterItemDrop(
             (int) $monster->id, 'level', $version,
         ))->integer(1, $effectiveMaximum);
+        if ($monster->definition->key === 'nyowamiya'
+            && isset($settings['monster_system']['item_drop']['nyowamiya_love_emblem_replacement_percent'])
+            && $context->random->stream(TurnRandomStreamFactory::monsterItemDrop(
+                (int) $monster->id, 'emblem_replacement', $version,
+            ))->integer(1, 100) <= (int) $settings['monster_system']['item_drop']['nyowamiya_love_emblem_replacement_percent']) {
+            $itemKey = SecretaryItemCatalog::LOVE_EMBLEM;
+            $definition = $this->items->definition($itemKey);
+            $level = 1;
+        }
         $item = $this->grants->grant($secretary, $itemKey, $level, null, $grantKey);
         if (! $item instanceof SecretaryItemInstance) {
             throw new DomainException('Monster drop inventory changed after its locked pre-draw capacity check.');

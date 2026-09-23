@@ -43,6 +43,8 @@ use App\Models\NationResource;
 use App\Models\ResourceDefinition;
 use App\Models\Ship;
 use App\Models\TerrainDefinition;
+use App\Models\User;
+use App\Models\UserMonumentDesign;
 use DomainException;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\DB;
@@ -1127,6 +1129,21 @@ final class DomesticCommandExecutor
         if ($definition->key === 'build_monument') {
             $monument = MonumentDefinition::query()->findOrFail($item->quantity);
             $cell->monument_definition_id = $monument->id;
+            $cell->monument_design_id = null;
+            if ($monument->key === 'original') {
+                $membership = NationMembership::query()
+                    ->whereKey($item->queued_by_membership_id)
+                    ->where('nation_id', $nation->id)
+                    ->where('role', 'owner')
+                    ->lockForUpdate()
+                    ->firstOrFail();
+                User::query()->whereKey($membership->user_id)->lockForUpdate()->firstOrFail();
+                $design = UserMonumentDesign::query()->firstOrCreate(
+                    ['user_id' => $membership->user_id],
+                    ['name' => 'オリジナル記念碑'],
+                );
+                $cell->monument_design_id = $design->id;
+            }
         }
         $cell->population = $population;
         $cell->version++;

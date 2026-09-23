@@ -2,12 +2,15 @@
 
 namespace App\Application;
 
+use App\Domain\Map\GridCoordinate;
 use App\Domain\Secretary\SecretaryItemCatalog;
+use App\Domain\Secretary\SecretaryItemEffectAggregator;
 use App\Domain\Secretary\SecretaryItemGameplayContract;
 use App\Domain\Secretary\SecretaryItemProbability;
 use App\Domain\Secretary\SecretaryItemTargetSafetyPolicy;
 use App\Domain\Turn\TurnContext;
 use App\Domain\Turn\TurnRandomStreamFactory;
+use App\Models\MapCell;
 use App\Models\MapSpace;
 use App\Models\MonsterOccupancy;
 use App\Models\Nation;
@@ -21,6 +24,8 @@ final class SecretaryBowAttackService
         SecretaryItemCatalog::ELF_BOW,
         SecretaryItemCatalog::LONGSHOT_BOW,
         SecretaryItemCatalog::MECHANICAL_BOW,
+        'gem_bow', 'elven_bow', 'aquamarine_bow', 'artemis_bow',
+        'bullseye_bow', 'shiva_bow',
     ];
 
     public function __construct(
@@ -28,6 +33,7 @@ final class SecretaryBowAttackService
         private readonly SecretaryItemProbability $probability,
         private readonly SecretaryItemTargetSafetyPolicy $safety,
         private readonly MonsterDamageService $damage,
+        private readonly SecretaryItemEffectAggregator $secretaryItems,
     ) {}
 
     /** @return array<string, int> */
@@ -69,6 +75,7 @@ final class SecretaryBowAttackService
             'secretary_bow_hits' => 0,
             'secretary_bow_kills' => 0,
             'secretary_mechanical_bow_finishers' => 0,
+            'secretary_bow_finishers' => 0,
         ];
         if ($nationEffects === []) {
             return $metrics;
@@ -88,6 +95,21 @@ final class SecretaryBowAttackService
                     ->where('ruleset_version_id', $context->ruleset->id)))
             ->whereHas('cell', fn ($cell) => $cell->where('map_space_id', $surface->id))
             ->with(['monster.definition', 'cell'])->orderBy('id')->lockForUpdate()->get();
+        $ribbonNationIds = array_values(array_filter(
+            $context->state->stableNationIds(),
+            fn (int $nationId): bool => $this->secretaryItems->hasSnapshotEffect(
+                $context->state, $nationId, 'nyowamiya_ribbon',
+            ),
+        ));
+        $defensesByNation = [];
+        if ($ribbonNationIds !== []) {
+            foreach (MapCell::query()->where('map_space_id', $surface->id)
+                ->whereIn('owner_nation_id', $ribbonNationIds)
+                ->whereHas('facility', fn ($query) => $query->where('key', 'defense'))
+                ->orderBy('id')->get() as $defense) {
+                $defensesByNation[$defense->owner_nation_id][] = new GridCoordinate($defense->x, $defense->y);
+            }
+        }
 
         foreach ($context->state->stableNationIds() as $nationId) {
             $resolved = $nationEffects[$nationId] ?? null;
@@ -98,8 +120,14 @@ final class SecretaryBowAttackService
             $effect = $resolved['effect'];
             $candidates = [];
             foreach ($occupancies as $occupancy) {
+                $monsterCoordinate = new GridCoordinate($occupancy->cell->x, $occupancy->cell->y);
+                foreach ($defensesByNation[$nationId] ?? [] as $defenseCoordinate) {
+                    if ($defenseCoordinate->distanceTo($monsterCoordinate) <= 2) {
+                        continue 2;
+                    }
+                }
                 $owned = (int) $occupancy->cell->owner_nation_id === $nationId;
-                $longshotAoi = $itemKey === SecretaryItemCatalog::LONGSHOT_BOW
+                $longshotAoi = ($effect['parameters']['target_scope'] ?? null) === 'owned_territory_or_surface_aoi_inora'
                     && $occupancy->monster->definition->key === 'aoi_inora';
                 if (! $owned && ! $longshotAoi) {
                     continue;
@@ -111,13 +139,14 @@ final class SecretaryBowAttackService
 
                     continue;
                 }
-                if ($itemKey === SecretaryItemCatalog::MECHANICAL_BOW
-                    && $occupancy->monster->current_hp === 2
-                    && $this->safety->allows($occupancy->monster, 2, $context->targetTurn)) {
+                $finisherEffect = $effect['parameters']['finisher'] ?? null;
+                if (is_array($finisherEffect)
+                    && $occupancy->monster->current_hp === $finisherEffect['current_hp']
+                    && $this->safety->allows($occupancy->monster, $finisherEffect['damage'], $context->targetTurn)) {
                     $finisher = true;
                 }
                 if ($finisher) {
-                    $candidates[] = ['occupancy' => $occupancy, 'damage' => 2, 'finisher' => true];
+                    $candidates[] = ['occupancy' => $occupancy, 'damage' => $finisherEffect['damage'], 'finisher' => true];
                 }
             }
             $isOld = $itemKey === SecretaryItemCatalog::OLD_BOW;
@@ -149,7 +178,8 @@ final class SecretaryBowAttackService
                 : (int) $effect['parameters']['chance_base_basis_points']
                     + ((int) $resolved['item']['level'] * (int) $effect['parameters']['chance_basis_points_per_level']);
             if ($candidate !== null && $candidate['finisher']) {
-                $chance = intdiv($chance * 2, 5);
+                $finisherEffect = $effect['parameters']['finisher'];
+                $chance = intdiv($chance * $finisherEffect['chance_multiplier_numerator'], $finisherEffect['chance_multiplier_denominator']);
             }
             if (! $this->probability->passesBasisPointDraw($triggerDraw, $chance)) {
                 if ($isOld) {
@@ -186,7 +216,8 @@ final class SecretaryBowAttackService
             }
             $metrics['secretary_bow_hits']++;
             $metrics['secretary_bow_kills'] += $result->killed ? 1 : 0;
-            $metrics['secretary_mechanical_bow_finishers'] += $candidate['finisher'] ? 1 : 0;
+            $metrics['secretary_bow_finishers'] += $candidate['finisher'] ? 1 : 0;
+            $metrics['secretary_mechanical_bow_finishers'] += $candidate['finisher'] && $itemKey === SecretaryItemCatalog::MECHANICAL_BOW ? 1 : 0;
             if ($isOld) {
                 $metrics['secretary_old_bow_hits']++;
                 $metrics['secretary_old_bow_kills'] += $result->killed ? 1 : 0;

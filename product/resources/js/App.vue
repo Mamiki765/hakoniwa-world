@@ -11,6 +11,7 @@ import AdminTurnControl from './components/AdminTurnControl.vue';
 import HexMap from './components/HexMap.vue';
 import IslandEventLog from './components/IslandEventLog.vue';
 import MessageBoard from './components/MessageBoard.vue';
+import MonumentDesignSettings from './components/MonumentDesignSettings.vue';
 import RankingAchievements from './components/RankingAchievements.vue';
 import SalePolicyPanel from './components/SalePolicyPanel.vue';
 import SecretaryEquipmentModal from './components/SecretaryEquipmentModal.vue';
@@ -83,6 +84,7 @@ watch([announcementBody, announcementBodyFormat], () => {
 });
 const nation = ref<Nation | null>(null);
 const secretary = ref<Secretary | null>(null);
+const pendingTicketGacha = ref<{ ticketId: number; requestKey: string } | null>(null);
 type SecretarySection = 'main' | 'skills' | 'equipment' | 'warehouse' | 'settings';
 const secretarySection = ref<SecretarySection>('main');
 const viewedSecretaryProfile = ref<SecretaryProfile | null>(null);
@@ -1321,6 +1323,30 @@ async function sellSecretaryItem(item: Secretary['inventory']['items'][number]):
     }
 }
 
+async function useSecretaryTicket(item: Secretary['inventory']['items'][number]): Promise<void> {
+    if (secretary.value === null || busy.value || item.is_equipped || item.is_escrowed) return;
+    if (!window.confirm(`${item.name} Lv${item.level}を使って${item.level}点を抽選しますか？`)) return;
+    if (pendingTicketGacha.value?.ticketId !== item.id) {
+        pendingTicketGacha.value = { ticketId: item.id, requestKey: crypto.randomUUID() };
+    }
+    const request = pendingTicketGacha.value;
+    busy.value = true;
+    message.value = '';
+    try {
+        const result = await api<{ items: { name: string; level: number }[] }>(
+            '/api/v1/me/secretary/tickets/draw',
+            { method: 'POST', body: JSON.stringify({ ticket_item_id: item.id, request_key: request.requestKey }) },
+        );
+        await loadSecretary();
+        pendingTicketGacha.value = null;
+        message.value = `抽選結果：${result.items.map(drawn => `${drawn.name} Lv${drawn.level}`).join('、')}`;
+    } catch (error) {
+        message.value = error instanceof Error ? error.message : 'チケットを使用できませんでした。';
+    } finally {
+        busy.value = false;
+    }
+}
+
 async function openSecretary(): Promise<void> {
     if (user.value === null) return;
     busy.value = true;
@@ -2394,7 +2420,10 @@ async function abandonNation(): Promise<void> {
                         <li v-for="item in secretary.inventory.items" :key="item.id">
                             <div class="secretary-warehouse-heading">
                                 <div><strong>{{ item.name }}</strong> <span>Lv{{ item.level }}</span></div>
-                                <button class="button danger secretary-item-sell" type="button" :disabled="busy" @click="sellSecretaryItem(item)">{{ item.fixed_sale_label }}</button>
+                                <div>
+                                    <button v-if="item.category === 'ticket'" class="button primary" type="button" :disabled="busy || item.is_escrowed" @click="useSecretaryTicket(item)">使う</button>
+                                    <button class="button danger secretary-item-sell" type="button" :disabled="busy" @click="sellSecretaryItem(item)">{{ item.fixed_sale_label }}</button>
+                                </div>
                             </div>
                             <p v-if="item.effect_text" class="item-effect">{{ item.effect_text }}</p>
                             <p>{{ item.rarity_label }}・{{ item.category_label }}<template v-if="item.is_equipped">・slot {{ item.equipped_slot }} に装備中</template><template v-if="item.is_escrowed">・交易場へ出品中</template></p>
@@ -2436,6 +2465,7 @@ async function abandonNation(): Promise<void> {
         <section v-else-if="page === 'options'" class="panel profile-panel options-panel">
             <p class="eyebrow">OPTIONS</p>
             <h1>オプション</h1>
+            <MonumentDesignSettings v-if="user" />
             <section class="options-section display-settings" aria-labelledby="display-settings-title">
                 <h2 id="display-settings-title">表示設定</h2>
                 <fieldset class="theme-options">

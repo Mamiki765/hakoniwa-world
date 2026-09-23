@@ -37,6 +37,7 @@ final class DisasterTurnService
         private readonly WorldDisasterOpportunityService $worldOpportunities,
         private readonly NpcShipSpawnService $npcShipSpawn,
         private readonly BuriedTreasureService $buriedTreasures,
+        private readonly SecretaryDisasterCharmService $charms,
     ) {}
 
     /** @return array<string, int> */
@@ -530,6 +531,9 @@ final class DisasterTurnService
         if ($this->nationProtection->protectsFromDisaster($context, $cell->x, $cell->y)) {
             return false;
         }
+        if ($this->charms->protect($context, $cell, 'fire')) {
+            return false;
+        }
         if ($this->isCapital($cell)) {
             $this->damageCapital($context, $cell, 'fire', 'facility_or_wasteland', [
                 'draw' => $trigger['draw'],
@@ -606,6 +610,9 @@ final class DisasterTurnService
             if ($this->nationProtection->protectsFromDisaster($context, $cell->x, $cell->y)) {
                 continue;
             }
+            if ($this->charms->protect($context, $cell, 'earthquake')) {
+                continue;
+            }
             if ($this->isCapital($cell)) {
                 $this->damageCapital($context, $cell, 'earthquake', 'facility_or_wasteland', [
                     'source' => $source,
@@ -675,6 +682,9 @@ final class DisasterTurnService
             if ($this->nationProtection->protectsFromDisaster($context, $cell->x, $cell->y)) {
                 continue;
             }
+            if ($this->charms->protect($context, $cell, 'tsunami')) {
+                continue;
+            }
             $centralDamage = $this->applyCentralFacilityDisasterDamage($context, $cell, 'tsunami');
             if ($centralDamage !== null) {
                 $damaged += $centralDamage ? 1 : 0;
@@ -740,6 +750,9 @@ final class DisasterTurnService
             if ($this->nationProtection->protectsFromDisaster($context, $cell->x, $cell->y)) {
                 continue;
             }
+            if ($this->charms->protect($context, $cell, 'typhoon')) {
+                continue;
+            }
             $this->changeCell($context, $cell, 'typhoon', 'plain', false, 'disaster.cell_damaged', [
                 'center_x' => $center->x, 'center_y' => $center->y,
                 'protection_count' => $protection, 'draw' => $draw,
@@ -768,14 +781,20 @@ final class DisasterTurnService
             $createTreasure = $cell !== null && $this->isMutable($cell, $cellIndex)
                 && ! $this->nationProtection->protectsFromDisaster($context, $cell->x, $cell->y);
             if ($cell !== null && $this->isMutable($cell, $cellIndex)) {
-                $shipRemoved = $this->shipRemoval->sinkLockedAtCell(
+                $nationallyProtected = $this->nationProtection->protectsFromDisaster($context, $cell->x, $cell->y);
+                $damageable = $cell->terrain->key !== 'sea'
+                    || in_array($cell->facility?->key, $settings['seabed_facility_keys'], true)
+                    || $ships->get($cell->id) !== null;
+                $charmProtected = ! $nationallyProtected && $damageable
+                    && $this->charms->protect($context, $cell, 'meteor_shower');
+                $shipRemoved = ! $charmProtected && $this->shipRemoval->sinkLockedAtCell(
                     $context,
                     $cell,
                     $ships->get($cell->id),
                     'meteor_shower',
                     ['disaster_key' => 'meteor_shower'],
                 ) !== null;
-                if ($this->nationProtection->protectsFromDisaster($context, $cell->x, $cell->y)) {
+                if ($nationallyProtected || $charmProtected) {
                     // Keep the selected impact and continuation RNG opportunity, but apply no effect.
                     $damaged += $shipRemoved ? 1 : 0;
                 } elseif ($this->isCapital($cell)) {

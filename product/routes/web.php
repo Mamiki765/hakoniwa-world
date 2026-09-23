@@ -18,11 +18,13 @@ use App\Http\Controllers\Api\PlayerEventController;
 use App\Http\Controllers\Api\PublicApiController;
 use App\Http\Controllers\Api\SalePolicyController;
 use App\Http\Controllers\Api\SecretaryController;
+use App\Http\Controllers\Api\SecretaryTicketGachaController;
 use App\Http\Controllers\Api\SurfaceShipController;
 use App\Http\Controllers\Api\TradingPostController;
 use App\Http\Controllers\Api\UndergroundEquipmentController;
 use App\Http\Controllers\Api\UndergroundIntroController;
 use App\Http\Controllers\Api\UndergroundRequestAdmissionController;
+use App\Http\Controllers\Api\UserMonumentDesignController;
 use App\Http\Controllers\AssetController;
 use App\Http\Controllers\Auth\OAuthController;
 use App\Http\Controllers\CommunityGuidelinesController;
@@ -105,6 +107,9 @@ Route::prefix('api/v1')->middleware(['auth', PrivateApiResponse::class])->group(
     Route::post('/me/daily-quests/development-opened', [DailyRewardController::class, 'developmentOpened'])
         ->middleware('throttle:30,1');
     Route::get('/me/secretary', [SecretaryController::class, 'show']);
+    Route::get('/me/monument-design', [UserMonumentDesignController::class, 'show']);
+    Route::post('/me/monument-design', [UserMonumentDesignController::class, 'save'])
+        ->middleware('throttle:10,1');
     Route::post('/me/secretary/name', [SecretaryController::class, 'name']);
     Route::patch('/me/secretary/name', [SecretaryController::class, 'rename']);
     Route::patch('/me/secretary/profile', [SecretaryController::class, 'updateProfile']);
@@ -178,6 +183,8 @@ Route::prefix('api/v1')->middleware(['auth', PrivateApiResponse::class])->group(
         ->where('slot', '-?\d+');
     Route::post('/me/secretary/items/{item}/sell', [SecretaryController::class, 'sellItem'])
         ->where('item', '-?\d+');
+    Route::post('/me/secretary/tickets/draw', [SecretaryTicketGachaController::class, 'draw'])
+        ->middleware('throttle:20,1');
     Route::post('/inquiries', [InquiryController::class, 'store'])->middleware('throttle:3,1');
     Route::get('/worlds', [ApiController::class, 'worlds']);
     Route::get('/worlds/{world}/trading-post', [TradingPostController::class, 'index']);

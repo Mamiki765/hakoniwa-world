@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Application\UserMonumentDesignService;
 use App\Domain\Facility\FacilityCapacityService;
 use App\Domain\Facility\FacilityRankPolicy;
 use App\Domain\Facility\FacilityVisibilityPolicy;
@@ -32,6 +33,7 @@ final class MapCellPresenter
         private readonly MonsterHardening $hardening,
         private readonly SeaAreaNameResolver $seaAreas,
         private readonly SurfaceShipCatalog $ships,
+        private readonly UserMonumentDesignService $monumentDesigns,
     ) {}
 
     /**
@@ -76,14 +78,28 @@ final class MapCellPresenter
             && $centralPresentation === null
             ? $this->facilityRanks->presentation($rulesetSettings, $facility, (int) $cell->facility_scale)
             : null;
+        $isOriginalMonument = $facility?->key === 'monument'
+            && $cell->monumentDefinition?->key === 'original';
         $displayAssetKey = $ship['asset_key'] ?? ($facility?->key === 'monument' && $cell->monumentDefinition !== null
             ? $cell->monumentDefinition->asset_key
             : ($facilityPresentation['asset_key'] ?? $displayDefinition->asset_key));
-        $displayName = $ship['name'] ?? ($facility?->key === 'monument' && $cell->monumentDefinition !== null
+        $displayName = $isOriginalMonument && $cell->monumentDesign !== null
+            ? $cell->monumentDesign->name
+            : ($ship['name'] ?? ($facility?->key === 'monument' && $cell->monumentDefinition !== null
             ? $cell->monumentDefinition->name
-            : ($centralPresentation['name'] ?? $facilityPresentation['name'] ?? $displayDefinition->name));
+            : ($centralPresentation['name'] ?? $facilityPresentation['name'] ?? $displayDefinition->name)));
         $overlayAssetKeys = $buriedTreasureVisible ? ['map.buried_treasure.sparkle'] : [];
         $layers = $this->assets->resolveLayers($displayAssetKey, $displayName, $overlayAssetKeys, $theme);
+        if ($isOriginalMonument) {
+            $imageUrl = $this->monumentDesigns->imageUrl($cell->monumentDesign?->image_path);
+            $layers['completed'] = [
+                'key' => 'tile.monument.original',
+                'url' => $imageUrl,
+                'available' => $imageUrl !== null,
+                'fallback_label' => '?',
+                'fallback_style' => 'tile-monument-original',
+            ];
+        }
         if ($facilityPresentation !== null
             && ! $layers['completed']['available']
             && $facility !== null

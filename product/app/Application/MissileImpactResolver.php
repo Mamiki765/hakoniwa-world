@@ -10,6 +10,7 @@ use App\Domain\Map\MapCellStateService;
 use App\Domain\Monster\MonsterBehaviorResolver;
 use App\Domain\Nation\NationProtectionPolicy;
 use App\Domain\Secretary\SecretaryDemographicPolicy;
+use App\Domain\Secretary\SecretaryItemEffectAggregator;
 use App\Domain\Secretary\SecretaryItemGameplayContract;
 use App\Domain\Secretary\SecretaryItemProbability;
 use App\Domain\Secretary\SecretarySkillCatalog;
@@ -84,6 +85,7 @@ final class MissileImpactResolver
         private readonly NationLifecycleService $nationLifecycle,
         private readonly SecretaryExperienceAwardService $secretaryExperience,
         private readonly SecretaryItemProbability $itemProbability,
+        private readonly SecretaryItemEffectAggregator $secretaryItems,
         private readonly SecretaryDemographicPolicy $demographics,
         private readonly UndergroundFacilityBenefits $undergroundBenefits,
         private readonly SurfaceShipCatalog $surfaceShips,
@@ -910,7 +912,7 @@ final class MissileImpactResolver
             ];
         }
         $this->awardFinalDefenseArrivalExperience($context, $cell);
-        $defense = $this->defenseInterception($context, $space, $cell, $base, $intent->definitionKey);
+        $defense = $this->defenseInterception($context, $space, $cell, $base, $intent->definitionKey, $firingNation);
         if ($defense !== null) {
             return $defense;
         }
@@ -957,6 +959,7 @@ final class MissileImpactResolver
         MapCell $cell,
         array $base,
         string $missileKey,
+        ?Nation $firingNation = null,
     ): ?array {
         $contract = $context->ruleset->settings['military']['defense_interception'] ?? null;
         if ($contract === null) {
@@ -981,6 +984,15 @@ final class MissileImpactResolver
 
         $center = new GridCoordinate($cell->x, $cell->y);
         $defenses = $this->coveringDefenses($space, $center);
+        if ($firingNation !== null
+            && $this->secretaryItems->hasSnapshotEffect(
+                $context->state, (int) $firingNation->id, 'monster_missile_defense_bypass',
+            )
+            && MonsterOccupancy::query()->where('map_cell_id', $cell->id)->exists()) {
+            $defenses = $defenses->reject(
+                static fn (MapCell $defense): bool => (int) $defense->owner_nation_id === (int) $firingNation->id,
+            )->values();
+        }
         if ($defenses->isEmpty()) {
             return null;
         }
@@ -1338,6 +1350,7 @@ final class MissileImpactResolver
                     $firingBase,
                     $missileKey,
                     $capitalMultiplier === null ? $loss : $loss * $capitalMultiplier,
+                    $targetNationId,
                 )
                 : 0;
             $refugees = $firingNation !== null && $queueItemId !== null
@@ -1447,6 +1460,7 @@ final class MissileImpactResolver
                 $firingBase,
                 $missileKey,
                 $beforePopulation,
+                $targetNationId,
             )
             : 0;
         $effect = $isWater ? 'water_facility_destroyed' : 'land_scorched';
@@ -1475,6 +1489,7 @@ final class MissileImpactResolver
         MapCell $firingBase,
         string $missileKey,
         int $populationBasis,
+        ?int $targetNationId,
     ): int {
         $settings = $context->ruleset->settings['military']['launch_base_experience']['settlement_hit'] ?? null;
         if (! is_array($settings)
@@ -1487,10 +1502,26 @@ final class MissileImpactResolver
             throw new DomainException('The active ruleset has an invalid settlement-hit experience divisor.');
         }
 
+        $points = intdiv(max(0, $populationBasis), $divisor);
+        $effect = $this->secretaryItems->singleSnapshotEffect(
+            $context->state, (int) $firingNation->id, 'launch_base_experience_double_chance',
+        );
+        if ($points > 0 && $effect !== null) {
+            $parameters = $effect['parameters'];
+            $chance = $targetNationId !== null && $targetNationId !== (int) $firingNation->id
+                ? $parameters['foreign_settlement_chance_percent']
+                : $parameters['chance_percent'];
+            if ($context->random->stream(TurnRandomStreamFactory::secretaryItemChance(
+                (int) $firingNation->id, 'settlement_experience_double', $effect['random_stream_version'],
+            ))->integer(1, 100) <= $chance) {
+                $points *= 2;
+            }
+        }
+
         return $this->baseExperience->credit(
             $firingBase,
             $firingNation,
-            intdiv(max(0, $populationBasis), $divisor),
+            $points,
             $context,
         );
     }
@@ -1768,7 +1799,18 @@ final class MissileImpactResolver
             || ($effect['exclude_monster_occupied_cells'] ?? null) !== true) {
             throw new DomainException('The active ruleset has an invalid Secretary final-defense effect.');
         }
-        if (! $context->state->consumeFinalDefenseInterception($nationId)) {
+        if ($context->state->finalDefenseInterceptionsUsed($nationId)
+            >= $context->state->secretarySkillLevel($nationId, SecretarySkillCatalog::FINAL_DEFENSE_LINE)) {
+            return null;
+        }
+        $preserveEffect = $this->secretaryItems->singleSnapshotEffect(
+            $context->state, $nationId, 'final_defense_preserve_chance',
+        );
+        $preserveCharge = $preserveEffect !== null
+            && $context->random->stream(TurnRandomStreamFactory::secretaryItemChance(
+                $nationId, 'final_defense_preserve', $preserveEffect['random_stream_version'],
+            ))->integer(1, 100) <= $preserveEffect['parameters']['chance_percent'];
+        if (! $context->state->consumeFinalDefenseInterception($nationId, $preserveCharge)) {
             return null;
         }
 

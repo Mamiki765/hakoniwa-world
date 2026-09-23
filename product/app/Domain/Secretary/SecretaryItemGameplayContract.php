@@ -70,6 +70,8 @@ final class SecretaryItemGameplayContract
 
     private const V26_RULESET_KEY = 'hakoniwa-2s-plus-v26';
 
+    private const V27_RULESET_KEY = 'hakoniwa-2s-plus-v27';
+
     public function __construct(private readonly SecretaryItemCatalog $catalog) {}
 
     /** @param array<string, mixed> $settings */
@@ -98,9 +100,10 @@ final class SecretaryItemGameplayContract
         }
 
         $rulesetKey = $settings['key'] ?? null;
-        $formal = in_array($rulesetKey, [self::V16_RULESET_KEY, self::V17_RULESET_KEY, self::V18_RULESET_KEY, self::V19_RULESET_KEY, self::V20_RULESET_KEY, self::V21_RULESET_KEY, self::V22_RULESET_KEY, self::V23_RULESET_KEY, self::V24_RULESET_KEY, self::V25_RULESET_KEY, self::V26_RULESET_KEY], true);
-        $v17 = in_array($rulesetKey, [self::V17_RULESET_KEY, self::V18_RULESET_KEY, self::V19_RULESET_KEY, self::V20_RULESET_KEY, self::V21_RULESET_KEY, self::V22_RULESET_KEY, self::V23_RULESET_KEY, self::V24_RULESET_KEY, self::V25_RULESET_KEY, self::V26_RULESET_KEY], true);
-        $v26 = $rulesetKey === self::V26_RULESET_KEY;
+        $formal = in_array($rulesetKey, [self::V16_RULESET_KEY, self::V17_RULESET_KEY, self::V18_RULESET_KEY, self::V19_RULESET_KEY, self::V20_RULESET_KEY, self::V21_RULESET_KEY, self::V22_RULESET_KEY, self::V23_RULESET_KEY, self::V24_RULESET_KEY, self::V25_RULESET_KEY, self::V26_RULESET_KEY, self::V27_RULESET_KEY], true);
+        $v17 = in_array($rulesetKey, [self::V17_RULESET_KEY, self::V18_RULESET_KEY, self::V19_RULESET_KEY, self::V20_RULESET_KEY, self::V21_RULESET_KEY, self::V22_RULESET_KEY, self::V23_RULESET_KEY, self::V24_RULESET_KEY, self::V25_RULESET_KEY, self::V26_RULESET_KEY, self::V27_RULESET_KEY], true);
+        $v27 = $rulesetKey === self::V27_RULESET_KEY;
+        $v26 = $rulesetKey === self::V26_RULESET_KEY || $v27;
         $secretary = $this->map($settings['secretary'] ?? null, 'ruleset.secretary');
         if ($formal) {
             $rarities = $this->map($secretary['item_rarities'] ?? null, 'ruleset.secretary.item_rarities');
@@ -108,7 +111,8 @@ final class SecretaryItemGameplayContract
                 $rarities,
                 $v17
                     ? [SecretaryItemCatalog::RARITY_NOVICE, SecretaryItemCatalog::RARITY_REGULAR, SecretaryItemCatalog::RARITY_CURSED,
-                        ...($v26 ? [SecretaryItemCatalog::RARITY_HIGH_QUALITY] : [])]
+                        ...($v26 ? [SecretaryItemCatalog::RARITY_HIGH_QUALITY] : []),
+                        ...($v27 ? [SecretaryItemCatalog::RARITY_ARTIFACT, SecretaryItemCatalog::RARITY_RELIC] : [])]
                     : [SecretaryItemCatalog::RARITY_NOVICE],
                 'ruleset.secretary.item_rarities',
             );
@@ -158,6 +162,7 @@ final class SecretaryItemGameplayContract
             if ($formal) {
                 $this->exactKeys($item, [
                     'key', 'category', 'rarity', 'tradable', 'npc_tradable', 'max_level', 'effects',
+                    ...($v27 ? ['gacha_exception'] : []),
                 ], $path);
                 $catalog = $catalogDefinitions[$itemKey];
                 if (($item['key'] ?? null) !== $itemKey
@@ -166,7 +171,15 @@ final class SecretaryItemGameplayContract
                     || ($item['rarity'] ?? null) !== $catalog['rarity']
                     || ($item['tradable'] ?? null) !== $catalog['tradable']
                     || ($item['npc_tradable'] ?? null) !== $catalog['npc_tradable']
-                    || $this->catalog->sameItemMaximum($itemKey) !== 1) {
+                    || $this->catalog->sameItemMaximum($itemKey) !== 1
+                    || ($v27 && ($item['gacha_exception'] ?? null) !== in_array($itemKey, [
+                        SecretaryItemCatalog::OLD_BOW,
+                        SecretaryItemCatalog::WAKUWAKU_TICKET,
+                        SecretaryItemCatalog::DOKIDOKI_TICKET,
+                        SecretaryItemCatalog::LOVE_EMBLEM,
+                        SecretaryItemCatalog::TWIN_STAR_EMBLEM,
+                        SecretaryItemCatalog::CRESCENT_EMBLEM,
+                    ], true))) {
                     throw new DomainException("{$path} differs from the global equipment catalog.");
                 }
             } else {
@@ -193,13 +206,36 @@ final class SecretaryItemGameplayContract
                 throw new DomainException("{$path}.effects has an invalid effect count.");
             }
             foreach ($effects as $index => $effect) {
-                $this->validateEffect(
-                    $itemKey,
-                    $this->map($effect, "{$path}.effects.{$index}"),
-                    "{$path}.effects.{$index}",
-                    $index,
-                    $v17,
-                );
+                if ($v27 && ($catalogDefinitions[$itemKey]['introduced_version'] ?? 16) === 27) {
+                    $this->validateV27Effect($itemKey, $this->map($effect, "{$path}.effects.{$index}"), "{$path}.effects.{$index}");
+                } else {
+                    $this->validateEffect(
+                        $itemKey,
+                        $this->map($effect, "{$path}.effects.{$index}"),
+                        "{$path}.effects.{$index}",
+                        $index,
+                        $v17,
+                    );
+                }
+            }
+        }
+        if ($v27) {
+            $gacha = $this->map($secretary['ticket_gacha'] ?? null, 'ruleset.secretary.ticket_gacha');
+            $this->exactDefinitionKeys($gacha, [SecretaryItemCatalog::WAKUWAKU_TICKET, SecretaryItemCatalog::DOKIDOKI_TICKET], 'ruleset.secretary.ticket_gacha');
+            foreach ([
+                SecretaryItemCatalog::WAKUWAKU_TICKET => ['regular', 'high_quality', 'artifact'],
+                SecretaryItemCatalog::DOKIDOKI_TICKET => ['high_quality', 'artifact'],
+            ] as $ticketKey => $rarities) {
+                $ticket = $this->map($gacha[$ticketKey] ?? null, "ruleset.secretary.ticket_gacha.{$ticketKey}");
+                $this->exactKeys($ticket, ['rarity_weights_basis_points'], "ruleset.secretary.ticket_gacha.{$ticketKey}");
+                $weights = $this->map($ticket['rarity_weights_basis_points'], "ruleset.secretary.ticket_gacha.{$ticketKey}.rarity_weights_basis_points");
+                $this->exactKeys($weights, $rarities, "ruleset.secretary.ticket_gacha.{$ticketKey}.rarity_weights_basis_points");
+                foreach ($weights as $rarity => $weight) {
+                    $this->integer($weight, "ruleset.secretary.ticket_gacha.{$ticketKey}.rarity_weights_basis_points.{$rarity}", 0);
+                }
+                if (array_sum($weights) !== 10_000) {
+                    throw new DomainException("ruleset.secretary.ticket_gacha.{$ticketKey} weights must total 10000.");
+                }
             }
         }
     }
@@ -288,6 +324,12 @@ final class SecretaryItemGameplayContract
             self::KARMA_MINIMUM_DELTA => 'karma_turn_start',
             self::REFUGEE_GENERATION_PERCENT => 'missile_refugee_generation',
             self::KARMA_CRIME_DOUBLE_CHANCE => 'missile_impact_karma',
+            'disaster_guard' => 'surface_disaster_cell_damage',
+            'monster_missile_defense_bypass' => 'surface_missile_interception',
+            'nyowamiya_ribbon' => 'surface_monster_interaction',
+            'population_growth_percent' => 'surface_population_growth',
+            'final_defense_preserve_chance' => 'surface_final_defense_interception',
+            'launch_base_experience_double_chance' => 'surface_launch_base_experience',
             default => throw new DomainException('Unknown Secretary Item effect type.'),
         };
 
@@ -314,7 +356,7 @@ final class SecretaryItemGameplayContract
                 '資金繰りの際、追加で%d億円を得る。',
                 $level * (int) $effects[0]['parameters']['bonus_money_per_level'],
             ),
-            self::EXPERIENCE_DOUBLE_CHANCE => "秘書本人が経験値を得る際、{$level}%の確率でその獲得経験値を2倍にする。",
+            self::EXPERIENCE_DOUBLE_CHANCE => $this->experienceEffectText($effects[0]['parameters'], $level),
             self::NATURAL_MONSTER_SPAWN_PERCENT => sprintf(
                 '自島の通常怪獣自然出現率 %s%d%%',
                 $effects[0]['parameters']['percent_per_level'] > 0 ? '+' : '-',
@@ -332,6 +374,16 @@ final class SecretaryItemGameplayContract
                 4 + $level,
                 4 + $level,
             ),
+            'disaster_guard' => match ($effects[0]['parameters']['disaster_key']) {
+                'fire' => '火災', 'tsunami' => '津波', 'typhoon' => '台風',
+                'earthquake' => '地震', 'meteor_shower' => '流星群',
+                default => throw new DomainException('Unknown Secretary disaster guard.'),
+            }.'による自島の被害を1マス防ぐ。発動後にLvが1下がり、Lv1なら壊れる。',
+            'monster_missile_defense_bypass' => '怪獣がいるマスを狙った自国のミサイルは、自国の防衛施設に迎撃されない。',
+            'nyowamiya_ribbon' => '防衛施設は怪獣に踏まれても自爆せず、保護範囲内の怪獣を秘書は攻撃しない。',
+            'population_growth_percent' => sprintf('通常・誘致の人口増加量が%d%%増える。', $effects[0]['parameters']['percent']),
+            'final_defense_preserve_chance' => sprintf('最終防衛ラインで迎撃するとき、%d%%の確率で迎撃回数を消費しない。', $effects[0]['parameters']['chance_percent']),
+            'launch_base_experience_double_chance' => sprintf('集落や海賊船へのミサイル攻撃で、%d%%の確率で発射基地の獲得EXPが2倍になる。', $effects[0]['parameters']['chance_percent']),
             default => throw new DomainException('Unknown Secretary Item effect type.'),
         };
     }
@@ -374,6 +426,114 @@ final class SecretaryItemGameplayContract
                 : $this->validateCollarKarma($effect, $path),
             default => throw new DomainException("{$path} belongs to an unknown Secretary Item."),
         };
+    }
+
+    /** @param array<string, mixed> $effect */
+    private function validateV27Effect(string $itemKey, array $effect, string $path): void
+    {
+        $charms = [
+            'fire_charm' => 'fire', 'wave_charm' => 'tsunami',
+            'wind_charm' => 'typhoon', 'quake_charm' => 'earthquake',
+            'star_charm' => 'meteor_shower',
+        ];
+        if (isset($charms[$itemKey])) {
+            if ($effect != [
+                'type' => 'disaster_guard',
+                'disaster_key' => $charms[$itemKey],
+                'cells_per_charge' => 1,
+            ]) {
+                throw new DomainException("{$path} differs from the disaster guard contract.");
+            }
+
+            return;
+        }
+        $bows = [
+            'gem_bow' => [2400, self::OLD_BOW_TARGET_SCOPE, 'secretary_gem_bow', false],
+            'elven_bow' => [4900, self::OLD_BOW_TARGET_SCOPE, 'secretary_elven_bow', false],
+            'aquamarine_bow' => [2400, 'owned_territory_or_surface_aoi_inora', 'secretary_aquamarine_bow', false],
+            'artemis_bow' => [4900, 'owned_territory_or_surface_aoi_inora', 'secretary_artemis_bow', false],
+            'bullseye_bow' => [1900, self::OLD_BOW_TARGET_SCOPE, 'secretary_bullseye_bow', true],
+            'shiva_bow' => [3900, self::OLD_BOW_TARGET_SCOPE, 'secretary_shiva_bow', true],
+        ];
+        if (isset($bows[$itemKey])) {
+            [, $scope, $damageType, $finisher] = $bows[$itemKey];
+            $base = $this->integer($effect['chance_base_basis_points'] ?? null, "{$path}.chance_base_basis_points", 0);
+            $perLevel = $this->integer($effect['chance_basis_points_per_level'] ?? null, "{$path}.chance_basis_points_per_level", 0);
+            if ($base + $perLevel * $this->catalog->definition($itemKey)['max_level'] > 10_000) {
+                throw new DomainException("{$path} chance exceeds 10000 basis points.");
+            }
+            $this->validateLevelBow($effect, $path, $damageType, $scope, $base, $finisher, true);
+
+            return;
+        }
+        $suits = [
+            'experienced_suit' => [12, 'all'], 'eternal_suit' => [24, 'all'], 'star_reader_suit' => [38, 'all'],
+            'military_suit' => [12, 'combat'], 'marshal_suit' => [24, 'combat'], 'war_suit' => [38, 'combat'],
+            'chancellor_suit' => [12, 'peace'], 'grand_chancellor_suit' => [24, 'peace'],
+            'star_chancellor_suit' => [38, 'peace'],
+        ];
+        if (isset($suits[$itemKey])) {
+            [, $group] = $suits[$itemKey];
+            $base = $this->integer($effect['chance_base_percent'] ?? null, "{$path}.chance_base_percent", 0);
+            $perLevel = $this->integer($effect['chance_percent_per_level'] ?? null, "{$path}.chance_percent_per_level", 0);
+            $numerator = $this->integer($effect['chance_multiplier_numerator'] ?? null, "{$path}.chance_multiplier_numerator", 1);
+            $denominator = $this->integer($effect['chance_multiplier_denominator'] ?? null, "{$path}.chance_multiplier_denominator", 1);
+            if (intdiv(($base + $perLevel * $this->catalog->definition($itemKey)['max_level']) * $numerator, $denominator) > 100) {
+                throw new DomainException("{$path} chance exceeds 100 percent.");
+            }
+            $skills = match ($group) {
+                'peace' => ['agricultural_policy', 'specialty_development', 'gold_vein_survey', 'forest_management', 'indomitable', 'ship_operations'],
+                'combat' => ['final_defense_line', 'navy'],
+                default => [],
+            };
+            if ($effect != [
+                'type' => self::EXPERIENCE_DOUBLE_CHANCE,
+                'chance_base_percent' => $base,
+                'chance_percent_per_level' => $perLevel,
+                'chance_multiplier_numerator' => $numerator,
+                'chance_multiplier_denominator' => $denominator,
+                'multiplier' => 2,
+                'sources' => $group === 'peace' ? ['passive_skill_experience'] : ['passive_skill_experience', 'monster_experience'],
+                'eligible_skill_keys' => $skills,
+                'excluded_skill_keys' => ['declining_birthrate_policy'],
+                'draw_unit' => 'canonical_award_event',
+                'random_stream_version' => 1,
+            ]) {
+                throw new DomainException("{$path} differs from the surface suit contract.");
+            }
+
+            return;
+        }
+        foreach (['percent', 'chance_percent', 'foreign_settlement_chance_percent'] as $field) {
+            if (array_key_exists($field, $effect)
+                && ($this->integer($effect[$field], "{$path}.{$field}", 0) > 100)) {
+                throw new DomainException("{$path}.{$field} exceeds 100 percent.");
+            }
+        }
+        $expected = match ($itemKey) {
+            'magic_white_flag' => ['type' => 'monster_missile_defense_bypass'],
+            SecretaryItemCatalog::NYOWAMIYA_RIBBON => [
+                'type' => 'nyowamiya_ribbon', 'nyowamiya_type_weight_bonus' => 1,
+            ],
+            SecretaryItemCatalog::LOVE_EMBLEM => [
+                'type' => 'population_growth_percent', 'percent' => $effect['percent'] ?? null,
+                'applies_to' => ['ordinary', 'attraction'],
+            ],
+            SecretaryItemCatalog::TWIN_STAR_EMBLEM => [
+                'type' => 'final_defense_preserve_chance', 'chance_percent' => $effect['chance_percent'] ?? null,
+                'random_stream_version' => 1,
+            ],
+            SecretaryItemCatalog::CRESCENT_EMBLEM => [
+                'type' => 'launch_base_experience_double_chance',
+                'chance_percent' => $effect['chance_percent'] ?? null,
+                'foreign_settlement_chance_percent' => $effect['foreign_settlement_chance_percent'] ?? null,
+                'random_stream_version' => 1,
+            ],
+            default => throw new DomainException("{$path} belongs to an unknown v27 Secretary Item."),
+        };
+        if ($effect != $expected) {
+            throw new DomainException("{$path} differs from the supported surface item contract.");
+        }
     }
 
     /** @param array<string, mixed> $effect */
@@ -481,6 +641,7 @@ final class SecretaryItemGameplayContract
         string $targetScope,
         int $chanceBase,
         bool $mechanical,
+        bool $flexibleNumbers = false,
     ): void {
         $keys = [
             'type', 'timing', 'chance_base_basis_points', 'chance_basis_points_per_level',
@@ -494,7 +655,7 @@ final class SecretaryItemGameplayContract
         if (($effect['type'] ?? null) !== self::PRE_NORMAL_MONSTER_ATTACK
             || ($effect['timing'] ?? null) !== self::OLD_BOW_TIMING
             || ($effect['chance_base_basis_points'] ?? null) !== $chanceBase
-            || ($effect['chance_basis_points_per_level'] ?? null) !== 100
+            || (! $flexibleNumbers && ($effect['chance_basis_points_per_level'] ?? null) !== 100)
             || ($effect['damage'] ?? null) !== 1
             || ($effect['damage_type'] ?? null) !== $damageType
             || ($effect['target_scope'] ?? null) !== $targetScope
@@ -511,11 +672,15 @@ final class SecretaryItemGameplayContract
             ], "{$path}.finisher");
             if (($finisher['current_hp'] ?? null) !== 2
                 || ($finisher['damage'] ?? null) !== 2
-                || ($finisher['chance_multiplier_numerator'] ?? null) !== 2
-                || ($finisher['chance_multiplier_denominator'] ?? null) !== 5
+                || (! $flexibleNumbers && ($finisher['chance_multiplier_numerator'] ?? null) !== 2)
+                || (! $flexibleNumbers && ($finisher['chance_multiplier_denominator'] ?? null) !== 5)
                 || ($finisher['requires_damage_one_safety_rejection'] ?? null) !== true
                 || ($finisher['requires_damage_two_kill'] ?? null) !== true) {
                 throw new DomainException("{$path}.finisher differs from the Mechanical Bow contract.");
+            }
+            if ($flexibleNumbers) {
+                $this->integer($finisher['chance_multiplier_numerator'] ?? null, "{$path}.finisher.chance_multiplier_numerator", 0);
+                $this->integer($finisher['chance_multiplier_denominator'] ?? null, "{$path}.finisher.chance_multiplier_denominator", 1);
             }
         }
     }
@@ -561,21 +726,44 @@ final class SecretaryItemGameplayContract
         $chance = isset($parameters['chance_basis_points'])
             ? (int) $parameters['chance_basis_points']
             : (int) $parameters['chance_base_basis_points'] + ($level * (int) $parameters['chance_basis_points_per_level']);
-        $scope = $itemKey === SecretaryItemCatalog::LONGSHOT_BOW
+        $scope = ($parameters['target_scope'] ?? null) === 'owned_territory_or_surface_aoi_inora'
             ? '自領の地上怪獣、または地上の生存中「あおいのら」'
             : '自領の地上にいる怪獣';
         $text = sprintf('%s%%の確率で、%sに%dダメージを与える。', $this->percentage($chance), $scope, $parameters['damage']);
-        if ($itemKey === SecretaryItemCatalog::MECHANICAL_BOW) {
-            $text .= sprintf(' 危険HP2の怪獣には%s%%の確率で2ダメージの撃破攻撃を行う。', $this->percentage(intdiv($chance * 2, 5)));
+        if (isset($parameters['finisher'])) {
+            $text .= sprintf(' 危険HP2の怪獣には%s%%の確率で2ダメージの撃破攻撃を行う。', $this->percentage(intdiv(
+                $chance * $parameters['finisher']['chance_multiplier_numerator'],
+                $parameters['finisher']['chance_multiplier_denominator'],
+            )));
         }
 
         return $text;
     }
 
+    /** @param array<string, mixed> $parameters */
+    private function experienceEffectText(array $parameters, int $level): string
+    {
+        $base = (int) ($parameters['chance_base_percent'] ?? 0);
+        $perLevel = (int) ($parameters['chance_percent_per_level'] ?? 0);
+        $numerator = (int) ($parameters['chance_multiplier_numerator'] ?? 1);
+        $denominator = (int) ($parameters['chance_multiplier_denominator'] ?? 1);
+        $chance = intdiv(($base + $level * $perLevel) * $numerator, $denominator);
+        $skills = $parameters['eligible_skill_keys'] ?? [];
+        $scope = $skills === [] ? '地上経験値' : (in_array('navy', $skills, true) ? '戦闘系経験値' : '平和系経験値');
+
+        return "{$scope}を得る際、{$chance}%の確率で獲得経験値を2倍にする。";
+    }
+
     /** @return array<string, array<string, mixed>> */
     private function catalogDefinitions(mixed $rulesetKey): array
     {
-        $definitions = $this->catalog->definitions();
+        if ($rulesetKey === self::V27_RULESET_KEY) {
+            return $this->catalog->definitions();
+        }
+        $definitions = array_filter(
+            $this->catalog->definitions(),
+            static fn (array $definition): bool => ($definition['introduced_version'] ?? 16) <= 26,
+        );
         if ($rulesetKey === self::V26_RULESET_KEY) {
             return $definitions;
         }

@@ -16,6 +16,7 @@ use App\Domain\Map\MapCellStateService;
 use App\Domain\Map\NationLandAreaCalculator;
 use App\Domain\Monster\MonsterTurnBatch;
 use App\Domain\Secretary\SecretaryDemographicPolicy;
+use App\Domain\Secretary\SecretaryItemEffectAggregator;
 use App\Domain\Secretary\SecretaryItemGameplayContract;
 use App\Domain\Secretary\SecretaryProductionBonus;
 use App\Domain\Secretary\SecretarySkillCatalog;
@@ -75,6 +76,7 @@ final class CompleteTurnEngine
         private readonly TerritoryInfluenceService $territoryInfluence,
         private readonly SecretaryTurnService $secretaries,
         private readonly SecretaryProductionBonus $secretaryProduction,
+        private readonly SecretaryItemEffectAggregator $secretaryItems,
         private readonly SecretaryDemographicPolicy $demographics,
         private readonly SecretaryDemographicExperienceService $demographicExperience,
         private readonly SecretaryBowAttackService $secretaryBows,
@@ -1125,6 +1127,7 @@ final class CompleteTurnEngine
         }
         $demographicMetrics = $this->demographicExperience->award($context, $finalPopulationByNation);
         $secretaryMetrics = $this->secretaries->flushExperience($context);
+        $charmMetrics = $this->secretaries->flushCharmCharges($context);
         $awardMetrics = $this->awards->finalize($context);
         $lifecycleMetrics = $this->nationLifecycle->finalize($context);
         $karmaMetrics = $this->karma->finalize($context);
@@ -1160,6 +1163,8 @@ final class CompleteTurnEngine
             'completed' => true,
             'target_turn' => $context->targetTurn,
             'secretary_experience_awarded' => $secretaryMetrics['experience_awarded'],
+            'secretary_charm_charges_used' => $charmMetrics['charges_used'],
+            'secretary_charm_items_changed' => $charmMetrics['items_changed'],
             'secretary_skills_changed' => $secretaryMetrics['skills_changed'],
             'secretary_levels_gained' => $secretaryMetrics['levels_gained'],
             'secretary_monster_experience_awarded' => $secretaryMetrics['monster_experience_awarded'],
@@ -1750,6 +1755,16 @@ final class CompleteTurnEngine
             $growth = $context->random->stream(TurnRandomStreamFactory::POPULATION_GROWTH)->integer(
                 $growthRules['minimum'], $growthRules['maximum'],
             );
+            $populationEffect = $this->secretaryItems->singleSnapshotEffect(
+                $context->state, (int) $cell->owner_nation_id, 'population_growth_percent',
+            );
+            if ($populationEffect !== null) {
+                $percent = $populationEffect['parameters']['percent'] ?? null;
+                if (! is_int($percent) || $percent < 0) {
+                    throw new DomainException('Secretary population growth Item snapshot is invalid.');
+                }
+                $growth += intdiv($growth * $percent, 100);
+            }
             if (! $attraction && $demographicsEnabled) {
                 $indomitableBonus = $this->demographics->indomitableBonus(
                     $context->ruleset->settings,

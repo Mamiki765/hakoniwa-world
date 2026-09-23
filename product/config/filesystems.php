@@ -63,6 +63,14 @@ return [
             'report' => true,
         ],
 
+        'monument_images' => [
+            'driver' => 'local',
+            'root' => rtrim(env('HAKONIWA_SECRETARY_IMAGE_PATH', '/srv/bot-assets/hakoniwa-secretaries'), '/\\').'/monuments',
+            'visibility' => 'public',
+            'throw' => true,
+            'report' => true,
+        ],
+
         's3' => [
             'driver' => 's3',
             'key' => env('AWS_ACCESS_KEY_ID'),
