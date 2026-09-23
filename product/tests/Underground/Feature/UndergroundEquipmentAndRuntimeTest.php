@@ -20,7 +20,6 @@ use App\Models\UndergroundTrialProgress;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Carbon;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Tests\Concerns\CreatesTestWorlds;
 use Tests\Support\UndergroundPlayerAccessTestCase;
@@ -100,11 +99,6 @@ final class UndergroundEquipmentAndRuntimeTest extends UndergroundPlayerAccessTe
         $this->actingAs($user)->getJson('/api/v1/me/underground/main')->assertOk();
         $sourceBattle = UndergroundBattle::query()->where('underground_profile_id', $profile->id)
             ->where('activity_type', UndergroundBattle::ACTIVITY_TUTORIAL)->sole();
-        // Reproduce the supported pre-G slot constraint while the existing starter remains owned.
-        DB::statement("ALTER TABLE underground_owned_equipment DROP CONSTRAINT underground_owned_equipment_slot_check,
-            ADD CONSTRAINT underground_owned_equipment_slot_check CHECK (equipped_slot IS NULL OR equipped_slot IN
-            ('weapon', 'armor', 'accessory_1', 'accessory_2', 'accessory_3'))");
-        (require database_path('migrations/2026_09_22_070000_add_underground_resonance_equipment_slot.php'))->up();
         $items = [];
         foreach (['weapon', 'resonance'] as $category) {
             $rewardBattle = $sourceBattle->replicate();

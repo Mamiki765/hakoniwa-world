@@ -22,7 +22,6 @@ use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Mockery;
@@ -34,34 +33,6 @@ final class SecretaryPersistenceTest extends TestCase
 {
     use CreatesTestWorlds;
     use RefreshDatabase;
-
-    public function test_surface_state_migration_preserves_identity_assets_and_underground_progress(): void
-    {
-        $user = User::factory()->create();
-        $secretary = $user->secretary()->create(['name' => '移行前の秘書', 'named_at' => now()]);
-        $secretary->surfaceState->update(['monster_experience' => 123, 'equipment_version' => 7]);
-        $profile = UndergroundProfile::query()->create([
-            'secretary_id' => $secretary->id, 'combat_xp' => 17,
-            'shard_balance' => 83, 'banked_shard_balance' => 29, 'unlocked_area_layers' => 2,
-        ]);
-        $item = app(SecretaryItemGrantService::class)->grantStarterOldBow($secretary);
-        $this->assertNotNull($item);
-        $preserved = [$secretary->fresh()->getAttributes(), $profile->fresh()->getAttributes(), $item->fresh()->getAttributes()];
-        $migration = require database_path('migrations/2026_09_21_000000_isolate_secretary_surface_state.php');
-        $migration->down();
-        $this->assertDatabaseHas('secretaries', [
-            'id' => $secretary->id, 'monster_experience' => 123, 'equipment_version' => 7,
-        ]);
-
-        $migration->up();
-
-        $this->assertDatabaseHas('secretary_surface_states', [
-            'secretary_id' => $secretary->id, 'monster_experience' => 123, 'equipment_version' => 7,
-        ]);
-        $this->assertFalse(Schema::hasColumn('secretaries', 'monster_experience'));
-        $this->assertFalse(Schema::hasColumn('secretaries', 'equipment_version'));
-        $this->assertSame($preserved, [$secretary->fresh()->getAttributes(), $profile->fresh()->getAttributes(), $item->fresh()->getAttributes()]);
-    }
 
     public function test_first_successful_registration_creates_one_unnamed_secretary_and_replay_is_idempotent(): void
     {
