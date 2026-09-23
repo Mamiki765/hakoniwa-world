@@ -232,6 +232,39 @@ class DisasterAndOilTurnTest extends TestCase
             ->where('visibility', 'public')->count());
     }
 
+    public function test_star_charm_prevents_meteor_impact_without_creating_treasure(): void
+    {
+        [$world, $nation, $ruleset, $space, $user] = $this->worldAndNation('防星のお守り検証国');
+        $ruleset = $this->forceGlobal($ruleset, 'meteor_shower');
+        $center = $this->boundsFor($world)->center();
+        $target = $this->cellAt($space, $center->x, $center->y);
+        $this->setCell($target, 'shallow', null, $nation->id, 0);
+        $charm = $user->secretary()->sole()->itemInstances()->create([
+            'item_key' => 'star_charm', 'level' => 1, 'equipped_slot' => 2,
+            'grant_key' => 'test:meteor-charm-treasure', 'obtained_at' => now(),
+        ]);
+        [$context, $run] = $this->context(
+            $world,
+            $ruleset,
+            $this->seedForCenter(TurnRandomStreamFactory::GLOBAL_METEOR_SHOWER_CENTER, $center->x, $center->y, $space),
+            [$nation->id],
+        );
+
+        $result = app(DisasterTurnService::class)->executeGlobal($context);
+
+        $after = $target->fresh(['terrain']);
+        $this->assertSame(1, $result['executed_disasters']);
+        $this->assertSame(0, $result['damaged_cells']);
+        $this->assertSame('shallow', $after->terrain->key);
+        $this->assertSame($nation->id, $after->owner_nation_id);
+        $this->assertSame(1, $context->state->secretaryCharmChargesUsed($charm->id));
+        $this->assertSame('meteor_shower', $this->event($run, 'secretary.disaster_charm_protected')['disaster_key']);
+        $this->assertSame(0, BuriedTreasure::query()->where('world_id', $world->id)
+            ->where('map_cell_id', $target->id)->where('source', 'meteor')->count());
+        $this->assertSame(0, DB::table('audit_events')->where('event_type', 'buried_treasure.created')
+            ->whereRaw("metadata->>'turn_run_id' = ?", [(string) $run->id])->count());
+    }
+
     public function test_eruption_sinks_a_dormant_nation_ship_before_mutating_its_cell(): void
     {
         [$world, $nation, $ruleset, $space] = $this->worldAndNation('休眠船舶災害国');
