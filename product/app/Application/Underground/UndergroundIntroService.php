@@ -179,6 +179,9 @@ final readonly class UndergroundIntroService
         ) use ($quotedPrice): void {
             $this->assertShopUnlocked($profile, $intro);
             $shop = $this->distortedStoneShop($profile);
+            if (! $shop['unlocked']) {
+                throw new UndergroundRuntimeException('underground_distorted_stone_locked', '試練2をクリアすると歪んだ輝石を受け取れます。');
+            }
             if ($shop['next_price'] === null) {
                 throw new UndergroundRuntimeException('underground_distorted_stone_sold_out', '本日の歪んだ輝石は売り切れです。');
             }
@@ -196,20 +199,24 @@ final readonly class UndergroundIntroService
         });
     }
 
-    /** @return array{balance:int, day:string, purchased_today:int, daily_limit:int, next_price:int|null} */
+    /** @return array{balance:int, day:string, purchased_today:int, daily_limit:int, next_price:int|null, unlocked:bool} */
     private function distortedStoneShop(?UndergroundProfile $profile): array
     {
         $prices = $this->catalog->distortedStoneDailyPrices();
         $day = Carbon::now('Asia/Tokyo')->toDateString();
         $purchased = $profile?->distorted_stone_purchase_day?->toDateString() === $day
             ? $profile->distorted_stone_purchase_count : 0;
+        $unlocked = $profile instanceof UndergroundProfile
+            && UndergroundTrialProgress::query()->where('underground_profile_id', $profile->id)
+                ->where('trial_key', 'trial_02')->whereNotNull('first_cleared_at')->exists();
 
         return [
             'balance' => $profile->distorted_stone_balance ?? 0,
             'day' => $day,
             'purchased_today' => $purchased,
             'daily_limit' => count($prices),
-            'next_price' => $prices[$purchased] ?? null,
+            'next_price' => $unlocked ? ($prices[$purchased] ?? null) : null,
+            'unlocked' => $unlocked,
         ];
     }
 

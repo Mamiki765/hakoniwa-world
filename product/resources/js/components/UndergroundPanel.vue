@@ -440,7 +440,6 @@ interface PendingExplorationRequest {
     intentKey: string;
     borrowedSecretaryIds: number[];
     otherworld: boolean;
-    useStone: boolean;
 }
 
 interface LendingCandidatesPage {
@@ -486,11 +485,10 @@ interface UndergroundState {
     active_slots: Array<ActiveSkill | null>;
     passive_modifiers: Record<string, number | boolean | string>;
     shopkeeper_name: string | null;
-    distorted_stone_shop?: { balance: number; day: string; purchased_today: number; daily_limit: number; next_price: number | null };
+    distorted_stone_shop?: { balance: number; day: string; purchased_today: number; daily_limit: number; next_price: number | null; unlocked: boolean };
     polishing_tutorial_completed?: boolean;
     otherworld?: {
         stages: Array<{ key: string; name: string; recommended_level: number; item_level: number; locked: boolean; unlock_condition: string | null; cleared: boolean }>;
-        next_battle_at: string | null;
         distorted_stone_balance: number;
     } | null;
     otherworld_intro_available?: boolean;
@@ -587,7 +585,6 @@ const selectedEnemy = ref('');
 const bankAmount = ref<number | null>(null);
 const selectedHuntingGroundKey = ref('shallow_caves');
 const selectedOtherworldStage = ref('bahamul_beginner_1');
-const useOtherworldStone = ref(false);
 const selectedSkipHuntingGroundKey = ref('shallow_caves');
 const selectedTrialKey = ref('trial_01');
 const selectedSkipTrialKey = ref('trial_01');
@@ -720,10 +717,6 @@ let huntingGroundPreferenceHydrated = false;
 const currentBattle = computed(() => selectedBattle.value ?? state.value?.battle ?? null);
 const currentBattleDrops = computed(() => currentBattle.value?.drops ?? (currentBattle.value?.drop ? [currentBattle.value.drop] : []));
 const otherworldStage = computed(() => state.value?.otherworld?.stages.find(stage => stage.key === selectedOtherworldStage.value));
-const otherworldWait = computed(() => {
-    const next = state.value?.otherworld?.next_battle_at;
-    return next ? Math.max(0, Math.ceil((Date.parse(next) - cooldownNowMs.value) / 1000)) : 0;
-});
 const partySelectedIds = computed(() => selectedPartyMemberIds.value);
 const pendingRentalMutation = ref<PendingMutation | null>(null);
 const confirmedPartyIds = computed(() => (state.value?.rental_party ?? []).map((member) => member.secretary_id));
@@ -1468,7 +1461,7 @@ async function runPlaytest(): Promise<void> {
     }
 }
 
-async function runExplore(huntingGroundKey: string, intentKey = 'selected-ground', otherworld = false, useStone = false): Promise<void> {
+async function runExplore(huntingGroundKey: string, intentKey = 'selected-ground', otherworld = false): Promise<void> {
     if (busy.value) return;
     innRested.value = false;
     const currentPending = pendingExplorationRequest.value;
@@ -1486,7 +1479,6 @@ async function runExplore(huntingGroundKey: string, intentKey = 'selected-ground
         intentKey,
         borrowedSecretaryIds: [...confirmedPartyIds.value],
         otherworld,
-        useStone,
     };
     pendingExplorationRequest.value = pending;
     busy.value = true;
@@ -1498,7 +1490,6 @@ async function runExplore(huntingGroundKey: string, intentKey = 'selected-ground
                 request_id: pending.requestId,
                 hunting_ground_key: pending.huntingGroundKey,
                 borrowed_secretary_ids: [...pending.borrowedSecretaryIds],
-                ...(pending.otherworld ? { use_stone: pending.useStone } : {}),
             }),
         });
         showDailyQuestCompletion(battle.daily_quest);
@@ -2589,16 +2580,16 @@ onUnmounted(() => {
                                 <p v-if="state.trial?.active_run" class="ug-muted">封印の地から帰還後に利用できます。</p>
                             </div>
                             <p v-if="equipmentView === 'party'" class="ug-exchange-greeting">{{ exchangeGreeting }}</p>
-                            <section v-if="equipmentView === 'polishing' && state.distorted_stone_shop" class="ug-property-item" aria-label="歪んだ輝石">
+                            <section v-if="equipmentView === 'polishing' && state.distorted_stone_shop?.unlocked" class="ug-property-item" aria-label="歪んだ輝石">
                                 <header><h2>歪んだ輝石</h2><span>所持 {{ state.distorted_stone_shop.balance.toLocaleString('ja-JP') }} 個</span></header>
-                                <p>異世界への再挑戦までの待ち時間を省略できます。</p>
-                                <p>本日 {{ state.distorted_stone_shop.purchased_today }} / {{ state.distorted_stone_shop.daily_limit }} 個購入（日本時間0時更新）</p>
+                                <p>異世界の勝利1回につき1個使います。敗北・時間切れでは消費しません。試練2クリア後に案内人から受け取れます。</p>
+                                <p>本日 {{ state.distorted_stone_shop.purchased_today }} / {{ state.distorted_stone_shop.daily_limit }} 個受取・購入（日本時間0時更新）</p>
                                 <button
                                     v-if="state.distorted_stone_shop.next_price !== null" type="button" class="ug-primary"
                                     :disabled="busy || Boolean(pendingLoungeMutation) || state.shard_balance < state.distorted_stone_shop.next_price"
                                     @click="loungeMutation('shop/distorted-stone', { price: state.distorted_stone_shop.next_price })"
                                 >
-                                    1個購入する（{{ state.distorted_stone_shop.next_price.toLocaleString('ja-JP') }} G）
+                                    {{ state.distorted_stone_shop.next_price === 0 ? '1個受け取る（無料）' : `1個購入する（${state.distorted_stone_shop.next_price.toLocaleString('ja-JP')} G）` }}
                                 </button>
                                 <strong v-else class="ug-sold-out">本日売り切れ</strong>
                             </section>
@@ -2944,11 +2935,9 @@ onUnmounted(() => {
                             <option v-for="stage in state.otherworld.stages" :key="stage.key" :value="stage.key" :disabled="stage.locked">{{ stage.name }}{{ stage.cleared ? '（クリア済み）' : '' }}</option>
                         </select>
                         <p v-if="otherworldStage">4人推奨・Lv {{ otherworldStage.recommended_level }} 前後／報酬 Item Lv {{ otherworldStage.item_level }}</p>
-                        <p>勝利で黒竜晶を1個獲得。まれに黒竜の武器も獲得します。</p>
-                        <p v-if="otherworldWait > 0">再挑戦まで {{ Math.floor(otherworldWait / 60) }}分{{ otherworldWait % 60 }}秒</p>
-                        <label v-if="otherworldWait > 0"><input v-model="useOtherworldStone" type="checkbox" :disabled="busy || Boolean(pendingExplorationRequest) || state.otherworld.distorted_stone_balance < 1">歪んだ輝石を1個使って待機を省略（所持 {{ state.otherworld.distorted_stone_balance }}個）</label>
-                        <p v-if="pendingExplorationRequest" role="status">前回の戦闘結果が未確認です。同じ段階・同行者・輝石使用で結果を確認します。</p>
-                        <button class="button primary" type="button" :disabled="busy || (!pendingExplorationRequest && (!otherworldStage || otherworldStage.locked || Boolean(state.trial?.active_run) || (otherworldWait > 0 && (!useOtherworldStone || state.otherworld.distorted_stone_balance < 1))))" @click="runExplore(selectedOtherworldStage, 'otherworld', true, otherworldWait > 0 && useOtherworldStone)">{{ pendingExplorationRequest ? '戦闘結果を確認する' : '黒竜バハムルに挑む' }}</button>
+                        <p>勝利で黒竜晶を1個獲得。まれに黒竜の武器も獲得します。歪んだ輝石が1個あれば挑戦でき、勝利時に1個消費します（所持 {{ state.otherworld.distorted_stone_balance }}個）。</p>
+                        <p v-if="pendingExplorationRequest" role="status">前回の戦闘結果が未確認です。同じ段階・同行者で結果を確認します。</p>
+                        <button class="button primary" type="button" :disabled="busy || (!pendingExplorationRequest && (!otherworldStage || otherworldStage.locked || Boolean(state.trial?.active_run) || state.otherworld.distorted_stone_balance < 1))" @click="runExplore(selectedOtherworldStage, 'otherworld', true)">{{ pendingExplorationRequest ? '戦闘結果を確認する' : '黒竜バハムルに挑む' }}</button>
                         <p v-if="state.trial?.active_run">試練から帰還してから挑戦してください。</p>
                     </section>
 

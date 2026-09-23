@@ -20,7 +20,6 @@ use Illuminate\Support\Carbon;
  * @property int $banked_shard_balance
  * @property int|null $current_hp
  * @property Carbon|null $next_battle_at
- * @property Carbon|null $next_otherworld_battle_at
  * @property int $distorted_stone_balance
  * @property Carbon|null $distorted_stone_purchase_day
  * @property int $distorted_stone_purchase_count
@@ -71,7 +70,6 @@ final class UndergroundProfile extends Model
         'secretary_id', 'unlocked_area_layers', 'combat_level', 'combat_xp', 'shard_balance', 'next_battle_at',
         'shining_kingdom_key_balance',
         'distorted_stone_balance', 'distorted_stone_purchase_day', 'distorted_stone_purchase_count',
-        'next_otherworld_battle_at',
         'banked_shard_balance', 'current_hp',
         'underground_contract_completed_at', 'growth_path_key', 'growth_path_identity', 'growth_path_selected_at',
         'last_respec_at',
@@ -99,7 +97,6 @@ final class UndergroundProfile extends Model
             'distorted_stone_balance' => 'integer',
             'distorted_stone_purchase_day' => 'immutable_date',
             'distorted_stone_purchase_count' => 'integer',
-            'next_otherworld_battle_at' => 'immutable_datetime',
             'banked_shard_balance' => 'integer',
             'current_hp' => 'integer',
             'next_battle_at' => 'immutable_datetime',

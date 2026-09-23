@@ -13,7 +13,6 @@ return new class extends Migration
             $table->bigInteger('distorted_stone_balance')->default(0);
             $table->date('distorted_stone_purchase_day')->nullable();
             $table->integer('distorted_stone_purchase_count')->default(0);
-            $table->timestampTz('next_otherworld_battle_at')->nullable();
         });
         DB::statement('ALTER TABLE underground_profiles ADD CONSTRAINT underground_otherworld_balances_check
             CHECK (distorted_stone_balance >= 0 AND distorted_stone_purchase_count >= 0)');

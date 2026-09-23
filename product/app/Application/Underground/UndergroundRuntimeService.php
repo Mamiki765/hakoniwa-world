@@ -156,15 +156,15 @@ STORY;
     /** @param list<int> $borrowedSecretaryIds
      * @return array{battle:UndergroundBattle, duplicate:bool, daily_quest:array<string,int|string|bool>}
      */
-    public function challengeOtherworld(User $user, string $requestId, string $stageKey, array $borrowedSecretaryIds = [], bool $useStone = false): array
+    public function challengeOtherworld(User $user, string $requestId, string $stageKey, array $borrowedSecretaryIds = []): array
     {
-        return $this->runExplorationRequest($user, $requestId, $stageKey, $borrowedSecretaryIds, otherworld: true, useStone: $useStone);
+        return $this->runExplorationRequest($user, $requestId, $stageKey, $borrowedSecretaryIds, otherworld: true);
     }
 
     /** @param list<int> $borrowedSecretaryIds
      * @return array{battle: UndergroundBattle, duplicate: bool, daily_quest: array<string,int|string|bool>}
      */
-    private function runExplorationRequest(User $user, string $requestId, ?string $huntingGroundKey, array $borrowedSecretaryIds, bool $guideDuel = false, bool $otherworld = false, bool $useStone = false): array
+    private function runExplorationRequest(User $user, string $requestId, ?string $huntingGroundKey, array $borrowedSecretaryIds, bool $guideDuel = false, bool $otherworld = false): array
     {
         $this->assertRequestId($requestId);
         if (count($borrowedSecretaryIds) > 3
@@ -196,7 +196,6 @@ STORY;
         }
         if ($otherworld) {
             $fingerprintPayload['otherworld'] = true;
-            $fingerprintPayload['use_distorted_stone'] = $useStone;
         }
         if ($borrowedSecretaryIds !== []) {
             $fingerprintPayload['borrowed_secretary_ids'] = $borrowedSecretaryIds;
@@ -239,7 +238,6 @@ STORY;
                     $preparedBorrowed,
                     $guideDuel,
                     $otherworld,
-                    $useStone,
                 ): array {
                     $profile = $this->lockedProfileForUser($user);
                     $this->assertExplorationUnlocked($profile);
@@ -288,11 +286,8 @@ STORY;
                         ];
                     }
                     if ($otherworld) {
-                        if ($profile->next_otherworld_battle_at !== null && $profile->next_otherworld_battle_at->isFuture()) {
-                            if (! $useStone || $profile->distorted_stone_balance < 1) {
-                                throw new UndergroundRuntimeException('underground_otherworld_cooldown', '再挑戦までお待ちください。歪んだ輝石を使うと待機を省略できます。');
-                            }
-                            $profile->distorted_stone_balance--;
+                        if ($profile->distorted_stone_balance < 1) {
+                            throw new UndergroundRuntimeException('underground_otherworld_stone_required', '黒竜バハムルへの挑戦には歪んだ輝石が必要です。');
                         }
                         if ($this->equipmentDrops->remainingVaultCapacity($profile, 'resonance') < 1
                             || $this->equipmentDrops->remainingVaultCapacity($profile) < 1) {
@@ -1381,8 +1376,7 @@ STORY;
                 'unlock_condition' => $reason, 'cleared' => in_array($key, $cleared, true)];
         }
 
-        return ['stages' => $stages, 'next_battle_at' => $profile->next_otherworld_battle_at?->toAtomString(),
-            'cooldown_seconds' => $content['cooldown_seconds'], 'distorted_stone_balance' => $profile->distorted_stone_balance];
+        return ['stages' => $stages, 'distorted_stone_balance' => $profile->distorted_stone_balance];
     }
 
     /** @return list<string> */
@@ -2376,9 +2370,9 @@ STORY;
         }
         unset($rental);
         $profile->rental_party = $rentalMembers;
-        if ($otherworld) {
-            $profile->next_otherworld_battle_at = $finishedAt->copy()->addSeconds($this->alphaV1Catalog->otherworld()['cooldown_seconds']);
-        } else {
+        if ($otherworld && $resultType === UndergroundBattle::RESULT_VICTORY) {
+            $profile->distorted_stone_balance--;
+        } elseif (! $otherworld) {
             $profile->next_battle_at = $finishedAt->copy()->addSeconds($this->catalog->cooldownSeconds());
         }
         $profile->save();

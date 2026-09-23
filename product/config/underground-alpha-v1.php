@@ -540,7 +540,6 @@ return [
     'otherworld' => [
         'minimum_level' => 100,
         'required_trial_key' => 'trial_02',
-        'cooldown_seconds' => 600,
         'weapon_drop_chance_bps' => 1000,
         'max_rounds' => 80,
         // Initial tuning values; measured with a fixed four-member party, without party-size scaling.
@@ -553,7 +552,7 @@ return [
                 'physical_defense' => 1800, 'magical_defense' => 1400, 'weapon_power' => 700, 'xp' => 25000, 'shards' => 25000],
             'bahamul_beginner_3' => ['name' => '黒竜バハムル・初級3', 'level' => 400, 'item_level' => 180, 'previous' => 'bahamul_beginner_2', 'abyssal_roar' => false,
                 'max_hp' => 110000, 'might' => 5500, 'spirit' => 3500, 'finesse' => 800, 'agility' => 150,
-                'physical_defense' => 4800, 'magical_defense' => 3800, 'weapon_power' => 1600, 'xp' => 80000, 'shards' => 60000],
+                'physical_defense' => 4800, 'magical_defense' => 3800, 'weapon_power' => 1600, 'xp' => 50000, 'shards' => 60000],
             'bahamul_intermediate_1' => ['name' => '黒竜バハムル・中級1', 'level' => 666, 'item_level' => 210, 'previous' => 'bahamul_beginner_3', 'abyssal_roar' => true,
                 'max_hp' => 390000, 'might' => 12075, 'spirit' => 6000, 'finesse' => 1200, 'agility' => 220,
                 'physical_defense' => 16000, 'magical_defense' => 9000, 'weapon_power' => 2600, 'xp' => 200000, 'shards' => 120000],

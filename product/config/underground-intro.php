@@ -3,7 +3,7 @@
 return [
     'schema_version' => 2,
     'story_identity' => 'secretary-underground-intro-alpha-v2',
-    'distorted_stone_daily_prices' => [10000, 50000, 100000],
+    'distorted_stone_daily_prices' => [0, 10000, 50000, 100000],
     'residence' => [
         'villa' => ['name' => '別荘', 'price' => 100000],
         'mirror' => ['name' => '透明な鏡', 'price' => 1000000],

@@ -84,9 +84,16 @@ final class UndergroundResidenceTest extends UndergroundPlayerAccessTestCase
         Carbon::setTestNow('2026-09-22 23:59:00+09:00');
         [$user, $secretary] = $this->secretaryUser('輝石を買う秘書');
         $profile = $this->openEquipmentProfile($secretary, 200_000);
-        $profile->update(['next_battle_at' => now()->addSeconds(10), 'next_otherworld_battle_at' => now()->addSeconds(600)]);
+        $profile->update(['next_battle_at' => now()->addSeconds(10)]);
+        $this->actingAs($user)->postJson('/api/v1/me/underground/shop/distorted-stone', [
+            'request_id' => (string) Str::uuid(), 'price' => 0,
+        ])->assertConflict()->assertJsonPath('code', 'underground_distorted_stone_locked');
+        UndergroundTrialProgress::query()->create([
+            'underground_profile_id' => $profile->id, 'trial_key' => 'trial_02',
+            'unlocked_at' => now(), 'first_cleared_at' => now(),
+        ]);
         $purchases = [];
-        foreach ([10_000, 50_000, 100_000] as $price) {
+        foreach ([0, 10_000, 50_000, 100_000] as $price) {
             $request = ['request_id' => (string) Str::uuid(), 'price' => $price];
             $this->actingAs($user)->postJson('/api/v1/me/underground/shop/distorted-stone', $request)->assertOk();
             $purchases[] = $request;
@@ -94,18 +101,17 @@ final class UndergroundResidenceTest extends UndergroundPlayerAccessTestCase
         $this->postJson('/api/v1/me/underground/shop/distorted-stone', [
             'request_id' => (string) Str::uuid(), 'price' => 100_000,
         ])->assertConflict()->assertJsonPath('code', 'underground_distorted_stone_sold_out');
-        $this->assertSame(3, $profile->fresh()->distorted_stone_balance);
+        $this->assertSame(4, $profile->fresh()->distorted_stone_balance);
         $this->assertSame(40_000, $profile->fresh()->shard_balance);
         Carbon::setTestNow('2026-09-23 00:00:00+09:00');
-        $this->postJson('/api/v1/me/underground/shop/distorted-stone', $purchases[2])->assertOk()
+        $this->postJson('/api/v1/me/underground/shop/distorted-stone', $purchases[3])->assertOk()
             ->assertJsonPath('data.distorted_stone_shop.purchased_today', 0)
-            ->assertJsonPath('data.distorted_stone_shop.balance', 3);
+            ->assertJsonPath('data.distorted_stone_shop.balance', 4);
         $this->postJson('/api/v1/me/underground/shop/distorted-stone', [
-            'request_id' => (string) Str::uuid(), 'price' => 10_000,
-        ])->assertOk()->assertJsonPath('data.distorted_stone_shop.balance', 4);
-        $this->assertSame(30_000, $profile->fresh()->shard_balance);
+            'request_id' => (string) Str::uuid(), 'price' => 0,
+        ])->assertOk()->assertJsonPath('data.distorted_stone_shop.balance', 5);
+        $this->assertSame(40_000, $profile->fresh()->shard_balance);
         $this->assertEquals(Carbon::parse('2026-09-22 23:59:10+09:00'), $profile->fresh()->next_battle_at);
-        $this->assertEquals(Carbon::parse('2026-09-23 00:09:00+09:00'), $profile->fresh()->next_otherworld_battle_at);
     }
 
     protected function tearDown(): void

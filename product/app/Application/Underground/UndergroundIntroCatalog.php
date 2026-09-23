@@ -53,7 +53,7 @@ final class UndergroundIntroCatalog
             throw new RuntimeException('Distorted stone daily prices are missing.');
         }
         foreach ($prices as $price) {
-            if (! is_int($price) || $price < 1) {
+            if (! is_int($price) || $price < 0) {
                 throw new RuntimeException('Distorted stone daily price is invalid.');
             }
         }

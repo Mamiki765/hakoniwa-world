@@ -61,7 +61,7 @@ final class UndergroundIntroController extends Controller
 
     public function purchaseDistortedStone(UndergroundIntroMutationRequest $request, UndergroundIntroService $service): JsonResponse
     {
-        $request->validate(['price' => ['required', 'integer', 'min:1']]);
+        $request->validate(['price' => ['required', 'integer', 'min:0']]);
 
         return $this->respond(fn (): array => $service->purchaseDistortedStone(
             $request->user(), $request->string('request_id')->value(), $request->integer('price'),
@@ -256,12 +256,12 @@ final class UndergroundIntroController extends Controller
 
     public function challengeOtherworld(UndergroundExploreRequest $request, UndergroundRuntimeService $service): JsonResponse
     {
-        $entry = $request->validate(['hunting_ground_key' => ['required', 'string', 'max:64'], 'use_stone' => ['sometimes', 'boolean']]);
+        $entry = $request->validate(['hunting_ground_key' => ['required', 'string', 'max:64']]);
 
         return $this->respond(function () use ($request, $service, $entry): array {
             $ids = $request->validated()['borrowed_secretary_ids'] ?? [];
             $result = $service->challengeOtherworld($request->user(), $request->string('request_id')->value(),
-                $entry['hunting_ground_key'], array_map('intval', $ids), (bool) ($entry['use_stone'] ?? false));
+                $entry['hunting_ground_key'], array_map('intval', $ids));
 
             return [...$service->projectExplorationBattle($result['battle']), 'daily_quest' => $result['daily_quest']];
         });

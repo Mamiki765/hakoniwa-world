@@ -54,7 +54,7 @@ final class UndergroundRuntimeTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_otherworld_rewards_and_stone_retry_use_the_existing_settlement_without_sharing_exploration_cooldown(): void
+    public function test_otherworld_rewards_consume_one_stone_per_victory_without_sharing_exploration_cooldown(): void
     {
         Carbon::setTestNow('2026-09-23 10:00:00');
         [$user, $secretary] = $this->secretaryUser();
@@ -62,7 +62,7 @@ final class UndergroundRuntimeTest extends TestCase
         $profile = $this->unlockExploration($secretary);
         $normalCooldown = Carbon::now()->addHour();
         $profile->update(['combat_level' => 100, 'unspent_stp' => 495, 'otherworld_discovered_at' => Carbon::now(),
-            'next_battle_at' => $normalCooldown, 'distorted_stone_balance' => 1, 'current_hp' => 500]);
+            'next_battle_at' => $normalCooldown, 'distorted_stone_balance' => 2, 'current_hp' => 500]);
         UndergroundTrialProgress::query()->create(['underground_profile_id' => $profile->id, 'trial_key' => 'trial_02',
             'unlocked_at' => Carbon::now(), 'first_cleared_at' => Carbon::now()]);
         config(['underground-alpha-v1.otherworld.weapon_drop_chance_bps' => 10000]);
@@ -76,9 +76,8 @@ final class UndergroundRuntimeTest extends TestCase
         $this->assertSame(['bahamul_beginner_1'], $combat->calls[0]['enemy_keys']);
         $this->assertSame(123, $profile->refresh()->current_hp);
         $this->assertTrue($normalCooldown->equalTo($profile->next_battle_at));
-        $this->assertTrue(Carbon::now()->addSeconds(600)->equalTo($profile->next_otherworld_battle_at));
         $this->assertSame(1, $profile->distorted_stone_balance);
-        $request = [...$payload, 'request_id' => (string) Str::uuid(), 'use_stone' => true];
+        $request = [...$payload, 'request_id' => (string) Str::uuid()];
         $second = $this->postJson('/api/v1/me/underground/otherworld/challenge', $request)->assertOk()->json('data');
         $balances = $profile->refresh()->only(['shard_balance', 'combat_xp', 'distorted_stone_balance']);
         $this->postJson('/api/v1/me/underground/otherworld/challenge', $request)->assertOk()->assertJsonPath('data.id', $second['id']);
@@ -86,13 +85,39 @@ final class UndergroundRuntimeTest extends TestCase
         $this->assertSame(0, $profile->distorted_stone_balance);
         $this->assertCount(2, $combat->calls);
         $this->postJson('/api/v1/me/underground/otherworld/challenge', [...$payload, 'request_id' => (string) Str::uuid()])
-            ->assertConflict()->assertJsonPath('code', 'underground_otherworld_cooldown');
+            ->assertConflict()->assertJsonPath('code', 'underground_otherworld_stone_required');
         $items = UndergroundOwnedEquipment::query()->where('underground_profile_id', $profile->id)->where('instance_kind', 'generated')->get();
         $this->assertCount(4, $items);
         UndergroundBattle::query()->whereIn('request_id', [$first['id'], $second['id']])->delete();
         $this->assertSame(4, UndergroundOwnedEquipment::query()->whereIn('id', $items->modelKeys())->count());
         $stages = app(UndergroundRuntimeService::class)->projectOtherworldState($profile)['stages'];
         $this->assertFalse(collect($stages)->firstWhere('key', 'bahamul_beginner_2')['locked']);
+    }
+
+    public function test_otherworld_timeout_preserves_the_stone_for_a_retry(): void
+    {
+        [$user, $secretary] = $this->secretaryUser();
+        $user->forceFill(['visitor_code' => 'BAHA0002'])->save();
+        $profile = $this->unlockExploration($secretary);
+        $profile->update(['combat_level' => 100, 'unspent_stp' => 495, 'otherworld_discovered_at' => Carbon::now(),
+            'distorted_stone_balance' => 1, 'current_hp' => 500]);
+        UndergroundTrialProgress::query()->create(['underground_profile_id' => $profile->id, 'trial_key' => 'trial_02',
+            'unlocked_at' => Carbon::now(), 'first_cleared_at' => Carbon::now()]);
+        $combat = new ScriptedUndergroundPartyCombat(outcomes: ['stalemate']);
+        $this->app->instance(AtomicUndergroundPartyCombat::class, $combat);
+        $this->actingAs($user)->postJson('/api/v1/me/underground/otherworld/challenge', [
+            'request_id' => (string) Str::uuid(), 'hunting_ground_key' => 'bahamul_beginner_1',
+        ])->assertOk()->assertJsonPath('data.shard_delta', 0);
+        $this->assertSame(1, $profile->fresh()->distorted_stone_balance);
+        $this->assertCount(1, $combat->calls);
+        $this->postJson('/api/v1/me/underground/otherworld/challenge', [
+            'request_id' => (string) Str::uuid(), 'hunting_ground_key' => 'bahamul_beginner_1',
+        ])->assertOk();
+        $this->assertSame(0, $profile->fresh()->distorted_stone_balance);
+        $this->assertCount(2, $combat->calls);
+        $this->postJson('/api/v1/me/underground/otherworld/challenge', [
+            'request_id' => (string) Str::uuid(), 'hunting_ground_key' => 'bahamul_beginner_1',
+        ])->assertConflict()->assertJsonPath('code', 'underground_otherworld_stone_required');
     }
 
     public function test_guide_duel_preserves_both_owners_and_rental_resources_and_grants_gram_once(): void
@@ -2171,6 +2196,7 @@ final class ScriptedUndergroundPartyCombat implements AtomicUndergroundPartyComb
         private readonly ?int $leaderRemainingHp = null,
         private readonly ?int $borrowedRemainingHp = null,
         private readonly ?int $borrowedGauge = null,
+        private array $outcomes = [],
     ) {}
 
     public function fight(
@@ -2182,6 +2208,7 @@ final class ScriptedUndergroundPartyCombat implements AtomicUndergroundPartyComb
         int $naturalRecovery,
     ): PartyCombatResult {
         $this->calls[] = ['player_snapshots' => $playerSnapshots, 'enemy_keys' => $enemyKeys];
+        $winner = array_shift($this->outcomes) ?? 'player';
         $initial = [];
         $final = [];
         $awakening = [];
@@ -2221,10 +2248,11 @@ final class ScriptedUndergroundPartyCombat implements AtomicUndergroundPartyComb
         foreach ($enemyKeys as $index => $enemyKey) {
             $id = 'enemy:'.($index + 1);
             $initial[$id] = ['team' => 'enemy', 'combatant_id' => $id, 'label' => $enemyKey, 'hp' => 10, 'max_hp' => 10, 'mp' => 0];
-            $final[$id] = ['team' => 'enemy', 'combatant_id' => $id, 'label' => $enemyKey, 'hp' => 0, 'max_hp' => 10, 'mp' => 0];
+            $final[$id] = ['team' => 'enemy', 'combatant_id' => $id, 'label' => $enemyKey,
+                'hp' => $winner === 'player' ? 0 : 10, 'max_hp' => 10, 'mp' => 0];
         }
         $enemyId = 'enemy:1';
-        $actionLog = [
+        $actionLog = $winner === 'player' ? [
             [
                 'kind' => 'effect', 'effect_type' => 'damage', 'round' => 1,
                 'team' => 'player', 'side' => 'player', 'actor_id' => $leaderId,
@@ -2234,15 +2262,15 @@ final class ScriptedUndergroundPartyCombat implements AtomicUndergroundPartyComb
                 'prevented_damage' => 0, 'target_hp_after' => 0, 'defeated' => true,
                 'damage_source' => 'direct',
             ],
-            [
-                'kind' => 'round_end', 'round' => 1, 'team' => 'system',
-                'actor_id' => 'system', 'target_id' => null, 'target_ids' => [],
-                'combatants' => $final,
-            ],
+        ] : [];
+        $actionLog[] = [
+            'kind' => 'round_end', 'round' => 1, 'team' => 'system',
+            'actor_id' => 'system', 'target_id' => null, 'target_ids' => [],
+            'combatants' => $final,
         ];
 
         return new PartyCombatResult(
-            'player',
+            $winner,
             1,
             $actionLog,
             $initial,
