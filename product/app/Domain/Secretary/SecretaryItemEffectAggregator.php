@@ -139,7 +139,7 @@ final class SecretaryItemEffectAggregator
         if (! is_array($sources)
             || ! is_array($excludedSkillKeys) || ! array_is_list($excludedSkillKeys)
             || ! is_array($eligibleSkillKeys) || ! array_is_list($eligibleSkillKeys)
-            || ! is_int($chancePerLevel) || $chancePerLevel < 1
+            || ! is_int($chancePerLevel) || $chancePerLevel < 0
             || ! is_int($multiplier) || $multiplier < 2
             || ! is_int($version) || $version < 1) {
             throw new DomainException('Secretary experience equipment snapshot is invalid.');

@@ -9,12 +9,15 @@ use App\Application\MonsterDamageService;
 use App\Application\NationCreationService;
 use App\Application\SecretaryBowAttackService;
 use App\Application\SecretaryDisasterCharmService;
+use App\Application\SecretaryExperienceAwardService;
 use App\Application\SecretaryItemGrantService;
 use App\Application\SecretaryItemSaleService;
 use App\Application\SecretaryTicketGachaService;
 use App\Application\SecretaryTurnService;
 use App\Application\TradingPostTurnService;
 use App\Domain\Secretary\SecretaryItemCatalog;
+use App\Domain\Secretary\SecretaryItemEffectAggregator;
+use App\Domain\Secretary\SecretaryItemGameplayContract;
 use App\Domain\Turn\TurnContext;
 use App\Domain\Turn\TurnRandomStreamFactory;
 use App\Domain\Turn\TurnState;
@@ -119,6 +122,33 @@ final class SecretaryItemEffectsTest extends TestCase
         $this->assertSame(1, $retry->state->secretaryCharmChargesUsed($charm->id));
         $turnSecretaries->flushCharmCharges($retry);
         $this->assertSame(1, $charm->fresh()->level);
+    }
+
+    public function test_v27_suit_with_zero_level_chance_increment_can_award_experience(): void
+    {
+        $world = $this->lightweightWorld();
+        [$user, $nation] = $this->nation($world, '固定確率衣服検証島');
+        $user->secretary()->sole()->itemInstances()->create([
+            'item_key' => 'eternal_suit', 'level' => 2, 'equipped_slot' => 2,
+            'grant_key' => 'test:flat-suit-chance', 'obtained_at' => now(),
+        ]);
+        $ruleset = $this->switchToItemRuleset($world);
+        $settings = $ruleset->settings;
+        $settings['secretary']['items']['eternal_suit']['effects'][0]['chance_base_percent'] = 100;
+        $settings['secretary']['items']['eternal_suit']['effects'][0]['chance_percent_per_level'] = 0;
+        app(SecretaryItemGameplayContract::class)->validate($settings);
+        $ruleset->settings = $settings;
+        $ruleset->save();
+
+        $context = $this->context($world->fresh(), hash('sha256', 'flat v27 suit chance'), [$nation->id]);
+        app(SecretaryTurnService::class)->loadAttemptSnapshots($context, [$nation->id]);
+
+        $effect = app(SecretaryItemEffectAggregator::class)->snapshotExperienceDouble(
+            $context->state, $nation->id, SecretaryExperienceAwardService::MONSTER,
+        );
+        $this->assertSame(100, $effect['chance_percent']);
+        $this->assertSame(24, app(SecretaryExperienceAwardService::class)
+            ->awardMonster($context, $nation->id, 12));
     }
 
     public function test_v11_shaped_prepare_batch_loads_equipped_items_once_and_keeps_an_immutable_stable_snapshot(): void
