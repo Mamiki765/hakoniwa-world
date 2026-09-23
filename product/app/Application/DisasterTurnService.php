@@ -778,8 +778,7 @@ final class DisasterTurnService
         do {
             $coordinate = $coordinates[$stream->integer(0, count($coordinates) - 1)];
             $cell = $this->cellAt($space, $coordinate, $cellIndex);
-            $createTreasure = $cell !== null && $this->isMutable($cell, $cellIndex)
-                && ! $this->nationProtection->protectsFromDisaster($context, $cell->x, $cell->y);
+            $createTreasure = false;
             if ($cell !== null && $this->isMutable($cell, $cellIndex)) {
                 $nationallyProtected = $this->nationProtection->protectsFromDisaster($context, $cell->x, $cell->y);
                 $damageable = $cell->terrain->key !== 'sea'
@@ -787,6 +786,7 @@ final class DisasterTurnService
                     || $ships->get($cell->id) !== null;
                 $charmProtected = ! $nationallyProtected && $damageable
                     && $this->charms->protect($context, $cell, 'meteor_shower');
+                $createTreasure = ! $nationallyProtected && ! $charmProtected;
                 $shipRemoved = ! $charmProtected && $this->shipRemoval->sinkLockedAtCell(
                     $context,
                     $cell,
