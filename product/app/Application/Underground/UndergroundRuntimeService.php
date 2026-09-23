@@ -2502,7 +2502,7 @@ STORY;
                     $seed,
                     $huntingGround['drop_tier_key'],
                 )
-            : [
+                : [
                     'identity' => $this->alphaV1Catalog->explorationDropConfig()['identity'],
                     'status' => 'ineligible',
                 ];
