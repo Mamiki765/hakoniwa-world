@@ -9,6 +9,8 @@ use RuntimeException;
 
 final class UndergroundIntroCatalog
 {
+    public function __construct(private readonly UndergroundEquipmentCatalog $equipment = new UndergroundEquipmentCatalog) {}
+
     public function identity(): string
     {
         $identity = $this->data()['story_identity'] ?? null;
@@ -18,7 +20,7 @@ final class UndergroundIntroCatalog
             : throw new RuntimeException('Underground intro identity is missing.');
     }
 
-    /** @return array<string, array{name: string, price: int}> */
+    /** @return array<string, array{name: string, price: int, capacity_before?: int, capacity_after?: int}> */
     public function residence(): array
     {
         $items = $this->data()['residence'] ?? null;
@@ -26,16 +28,37 @@ final class UndergroundIntroCatalog
             throw new RuntimeException('Underground residence configuration is missing.');
         }
         $result = [];
-        foreach (['villa', 'mirror', 'trophy_shelf'] as $key) {
+        foreach (['villa', 'mirror', 'trophy_shelf', 'vault_expansion', 'resonance_expansion'] as $key) {
             $item = $items[$key] ?? null;
             if (! is_array($item) || ! is_string($item['name'] ?? null)
                 || ! is_int($item['price'] ?? null) || $item['price'] < 1) {
                 throw new RuntimeException('Underground residence configuration is invalid.');
             }
             $result[$key] = ['name' => $item['name'], 'price' => $item['price']];
+            if (in_array($key, ['vault_expansion', 'resonance_expansion'], true)) {
+                $inventory = $key === 'resonance_expansion' ? 'resonance' : 'equipment';
+                $result[$key]['capacity_before'] = $this->equipment->vaultCapacity($inventory);
+                $result[$key]['capacity_after'] = $this->equipment->vaultCapacity($inventory, true);
+            }
         }
 
         return $result;
+    }
+
+    /** @return non-empty-list<int> */
+    public function distortedStoneDailyPrices(): array
+    {
+        $prices = $this->data()['distorted_stone_daily_prices'] ?? null;
+        if (! is_array($prices) || ! array_is_list($prices) || $prices === []) {
+            throw new RuntimeException('Distorted stone daily prices are missing.');
+        }
+        foreach ($prices as $price) {
+            if (! is_int($price) || $price < 0) {
+                throw new RuntimeException('Distorted stone daily price is invalid.');
+            }
+        }
+
+        return $prices;
     }
 
     /** @return array<string, mixed> */

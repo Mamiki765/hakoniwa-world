@@ -18,6 +18,7 @@ export interface EquipmentItem {
     weapon_style?: string | null;
     rank: number;
     item_level: number;
+    polish_level?: number;
     rarity: string;
     rarity_label?: string;
     buy_price?: number | null;
@@ -123,7 +124,7 @@ function affixValue(affix: EquipmentAffix): string {
                 <p class="underground-equipment-card-kicker">
                     {{ categoryLabel() }}<span v-if="styleLabel()">・{{ styleLabel() }}</span><span v-if="item.instance_kind === 'generated'">・生成装備</span>
                 </p>
-                <h3>{{ item.name }}</h3>
+                <h3>{{ item.name }}<span v-if="item.polish_level"> +{{ item.polish_level }}</span></h3>
             </div>
             <span class="underground-equipment-rarity">{{ item.rarity_label ?? item.rarity }} / {{ rankLabel() }}</span>
         </header>

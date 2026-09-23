@@ -22,6 +22,7 @@ final class UndergroundRuntimeEquipmentGenerator
         ?string $mainStat,
         int $seed,
         string $sourceIdentity,
+        ?string $resonanceVariant = null,
     ): array {
         $generator = $this->config();
         if ($itemLevel < $generator['item_level_min'] || $itemLevel > $generator['item_level_max']
@@ -35,6 +36,10 @@ final class UndergroundRuntimeEquipmentGenerator
         $rarity = $generator['rarities'][$rarityKey] ?? null;
         $resonance = $category === 'resonance';
         $uniqueWeapon = $rarityKey === 'unique' && $category === 'weapon';
+        $variant = $resonanceVariant === null ? null : ($tier['resonance_variants'][$resonanceVariant] ?? null);
+        if ($resonanceVariant !== null && (! $resonance || ! is_array($variant))) {
+            throw new InvalidArgumentException('Underground resonance variant is invalid.');
+        }
         if (! is_array($tier) || ! is_array($rarity)
             || ($rarityKey === 'unique' && ! $uniqueWeapon && ! $resonance)
             || ($uniqueWeapon && ! is_array($tier['weapon_effect'] ?? null))) {
@@ -59,7 +64,7 @@ final class UndergroundRuntimeEquipmentGenerator
                 throw new InvalidArgumentException('Underground generated resonance input is invalid.');
             }
             $bodyKey = 'resonance';
-            $name = $tier['resonance_name'] ?? null;
+            $name = $variant['name'] ?? $tier['resonance_name'] ?? null;
         } else {
             if ($weaponStyle !== null || ! is_string($mainStat)
                 || ! in_array($mainStat, AlphaV1CombatRules::STATS, true)) {
@@ -77,6 +82,15 @@ final class UndergroundRuntimeEquipmentGenerator
             throw new RuntimeException('Underground generated equipment body is invalid.');
         }
         $base = $this->body($bodyDefinition, $itemLevel, $mainStat);
+        if ($variant !== null) {
+            foreach (AlphaV1CombatRules::STATS as $stat) {
+                $weight = $variant['stats_bps'][$stat] ?? null;
+                if (! is_int($weight) || $weight < 0) {
+                    throw new RuntimeException('Underground resonance stat allocation is invalid.');
+                }
+                $base['stats'][$stat] = $this->roundHalfUp($base['stats'][$stat] * $weight, 10000);
+            }
+        }
         $random = new UndergroundRandom($seed);
         $affixCount = $resonance ? (int) $generator['resonance']['slots']
             : ($category === 'accessory' ? $this->accessoryAffixCount($random, $rarity)
@@ -187,6 +201,9 @@ final class UndergroundRuntimeEquipmentGenerator
             'seed' => $seed,
             'source_identity' => $sourceIdentity,
         ];
+        if ($resonanceVariant !== null) {
+            $identityPayload['resonance_variant'] = $resonanceVariant;
+        }
         try {
             $encoded = json_encode($identityPayload, JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES);
         } catch (JsonException $exception) {
@@ -232,6 +249,7 @@ final class UndergroundRuntimeEquipmentGenerator
                 'tier_key' => $tierKey,
                 'seed' => $seed,
                 'identity' => $sourceIdentity,
+                ...($resonanceVariant === null ? [] : ['resonance_variant' => $resonanceVariant]),
             ],
         ];
     }

@@ -1,0 +1,40 @@
+<?php
+
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Support\Facades\DB;
+
+return new class extends Migration
+{
+    public function up(): void
+    {
+        DB::statement('ALTER TABLE underground_owned_equipment DROP CONSTRAINT underground_equipment_source_battle_unique');
+        // Legacy one-item rewards occupy index 1 without changing their saved provenance.
+        DB::statement('CREATE UNIQUE INDEX underground_equipment_battle_reward_unique ON underground_owned_equipment (source_battle_id, COALESCE(source_reward_index, 1)) WHERE source_battle_id IS NOT NULL');
+        DB::statement('ALTER TABLE underground_owned_equipment DROP CONSTRAINT underground_owned_equipment_instance_check');
+        DB::statement(<<<'SQL'
+ALTER TABLE underground_owned_equipment ADD CONSTRAINT underground_owned_equipment_instance_check CHECK (
+    (instance_kind = 'fixed'
+     AND instance_identity IS NULL AND generator_identity IS NULL AND generated_payload IS NULL
+     AND source_battle_id IS NULL AND source_skip_settlement_id IS NULL
+     AND source_skip_batch_id IS NULL AND source_reward_index IS NULL)
+    OR
+    (instance_kind = 'generated'
+     AND instance_identity IS NOT NULL AND generator_identity IS NOT NULL
+     AND generated_payload IS NOT NULL AND grant_key IS NOT NULL
+     AND (
+        (source_battle_id IS NOT NULL AND source_skip_settlement_id IS NULL AND source_skip_batch_id IS NULL
+         AND (source_reward_index IS NULL OR source_reward_index >= 1))
+        OR
+        (source_battle_id IS NULL AND source_skip_settlement_id IS NOT NULL AND source_skip_batch_id IS NULL AND source_reward_index >= 1)
+        OR
+        (source_battle_id IS NULL AND source_skip_settlement_id IS NULL AND source_skip_batch_id IS NOT NULL AND source_reward_index >= 1)
+     ))
+)
+SQL);
+    }
+
+    public function down(): void
+    {
+        throw new RuntimeException('Persisted battle rewards must be preserved; use a reviewed forward migration.');
+    }
+};

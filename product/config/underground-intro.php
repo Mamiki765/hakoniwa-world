@@ -3,10 +3,13 @@
 return [
     'schema_version' => 2,
     'story_identity' => 'secretary-underground-intro-alpha-v2',
+    'distorted_stone_daily_prices' => [0, 10000, 50000, 100000],
     'residence' => [
         'villa' => ['name' => '別荘', 'price' => 100000],
         'mirror' => ['name' => '透明な鏡', 'price' => 1000000],
         'trophy_shelf' => ['name' => 'トロフィー棚', 'price' => 500000],
+        'vault_expansion' => ['name' => '宝物庫増築(1)', 'price' => 1000000],
+        'resonance_expansion' => ['name' => '共鳴結晶庫増築(1)', 'price' => 1000000],
     ],
     'shopkeeper_name' => [
         'maximum_graphemes' => 20,

@@ -176,6 +176,8 @@ return [
     ],
     'vault_capacity' => 500,
     'resonance_capacity' => 50,
+    'vault_expansion_capacity' => 100,
+    'resonance_expansion_capacity' => 50,
     'page_size' => 50,
     'definitions' => $definitions,
     'generator' => [
@@ -189,6 +191,12 @@ return [
                 'armor_name' => '黒竜の胸当て',
                 'accessory_name' => '黒竜の護符',
                 'resonance_name' => '黒竜の共鳴結晶',
+                'resonance_variants' => [
+                    'might' => ['name' => '熾牙の黒竜晶', 'stats_bps' => $stats(10000, 10000, 10000, 0, 10000)],
+                    'guard' => ['name' => '堅鱗の黒竜晶', 'stats_bps' => $stats(15000, 10000, 0, 5000, 10000)],
+                    'healing' => ['name' => '命脈の黒竜晶', 'stats_bps' => $stats(10000, 0, 10000, 10000, 10000)],
+                    'finesse' => ['name' => '慧眼の黒竜晶', 'stats_bps' => $stats(10000, 0, 20000, 0, 10000)],
+                ],
                 'weapon_effect' => [
                     'key' => 'bahamul_shockwave',
                     'label' => '黒竜の衝撃波',
@@ -329,6 +337,17 @@ return [
                 'resonance_area_healing_bps' => '範囲回復強化',
                 'resonance_guard_reduction_bps' => '防御行動強化',
             ],
+        ],
+    ],
+    'polishing' => [
+        'maximum_level' => 5,
+        'fixed_stat_gain_per_level_bps' => 3000,
+        'percentage_gain_per_level_bps' => 10,
+        'costs_by_item_level' => [
+            130 => [30000, 50000, 80000, 120000, 220000],
+            150 => [60000, 100000, 160000, 240000, 440000],
+            180 => [150000, 250000, 400000, 600000, 1100000],
+            200 => [300000, 500000, 800000, 1200000, 2200000],
         ],
     ],
 ];

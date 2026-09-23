@@ -118,6 +118,7 @@ Route::prefix('api/v1')->middleware(['auth', PrivateApiResponse::class])->group(
     Route::prefix('/me/underground')->middleware(['throttle:60,1', RequireUndergroundRequestAdmission::class])->group(function (): void {
         Route::get('/', [UndergroundIntroController::class, 'show']);
         Route::post('/residence/purchase', [UndergroundIntroController::class, 'purchaseResidence']);
+        Route::post('/shop/distorted-stone', [UndergroundIntroController::class, 'purchaseDistortedStone']);
         Route::post('/events/advance', [UndergroundIntroController::class, 'advanceLoungeEvent']);
         Route::get('/journal', [UndergroundIntroController::class, 'journal']);
         Route::post('/home-background', [UndergroundIntroController::class, 'homeBackground']);
@@ -137,6 +138,7 @@ Route::prefix('api/v1')->middleware(['auth', PrivateApiResponse::class])->group(
         Route::get('/main', [UndergroundIntroController::class, 'main']);
         Route::post('/explore', [UndergroundIntroController::class, 'explore']);
         Route::post('/guide-duel', [UndergroundIntroController::class, 'challengeGuide']);
+        Route::post('/otherworld/challenge', [UndergroundIntroController::class, 'challengeOtherworld']);
         Route::post('/skip/hunting-ground', [UndergroundIntroController::class, 'skipHuntingGround']);
         Route::post('/skip/trial', [UndergroundIntroController::class, 'skipTrial']);
         Route::put('/lending', [UndergroundIntroController::class, 'updateLending']);
@@ -148,6 +150,8 @@ Route::prefix('api/v1')->middleware(['auth', PrivateApiResponse::class])->group(
         Route::post('/inn/rest', [UndergroundIntroController::class, 'restAtInn']);
         Route::post('/bank/transfer', [UndergroundIntroController::class, 'bankTransfer']);
         Route::get('/equipment/shop', [UndergroundEquipmentController::class, 'shop']);
+        Route::get('/equipment/polishing', [UndergroundEquipmentController::class, 'polishing']);
+        Route::post('/equipment/polishing', [UndergroundEquipmentController::class, 'polish']);
         Route::post('/equipment/shop/purchase', [UndergroundEquipmentController::class, 'purchase']);
         Route::post('/equipment/items/{itemId}/sell', [UndergroundEquipmentController::class, 'sell'])
             ->whereNumber('itemId');

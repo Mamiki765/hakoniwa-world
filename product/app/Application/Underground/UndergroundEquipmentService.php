@@ -36,6 +36,7 @@ final readonly class UndergroundEquipmentService
         private UndergroundEquipmentLoadoutResolver $loadout,
         private UndergroundStarterEquipmentService $starter,
         private UndergroundAlphaV1PlayerCatalog $playerCatalog,
+        private UndergroundEquipmentPolishing $polishing = new UndergroundEquipmentPolishing,
     ) {}
 
     /** @return array<string, mixed> */
@@ -45,6 +46,53 @@ final readonly class UndergroundEquipmentService
             $user,
             fn (UndergroundProfile $profile): array => $this->loadout->summary($profile),
         );
+    }
+
+    /** @return array<string, mixed> */
+    public function polishing(User $user): array
+    {
+        return $this->withLockedOpenProfile($user, function (UndergroundProfile $profile): array {
+            $item = UndergroundOwnedEquipment::query()->where('underground_profile_id', $profile->id)
+                ->where('equipped_slot', 'resonance')->first();
+            $current = $item instanceof UndergroundOwnedEquipment ? $this->loadout->projectOwned($item) : null;
+            $next = null;
+            $price = $item instanceof UndergroundOwnedEquipment ? $this->polishing->nextPrice($current['item_level'], $item->polish_level) : null;
+            if ($item instanceof UndergroundOwnedEquipment && $price !== null) {
+                $projected = clone $item;
+                $projected->polish_level++;
+                $next = $this->loadout->projectOwned($projected);
+            }
+
+            return ['shard_balance' => $profile->shard_balance, 'item' => $current, 'next_item' => $next,
+                'next_price' => $price, 'maximum_level' => $this->polishing->maximumLevel()];
+        });
+    }
+
+    /** @return array<string, mixed> */
+    public function polish(User $user, string $requestId, int $itemId, int $expectedLevel, int $quotedPrice): array
+    {
+        return $this->mutate($user, $requestId, 'equipment_polish', [
+            'item_id' => $itemId, 'level' => $expectedLevel, 'price' => $quotedPrice,
+        ], function (UndergroundProfile $profile) use ($itemId, $expectedLevel, $quotedPrice): void {
+            $item = UndergroundOwnedEquipment::query()->whereKey($itemId)
+                ->where('underground_profile_id', $profile->id)->where('equipped_slot', 'resonance')
+                ->lockForUpdate()->first();
+            if (! $item instanceof UndergroundOwnedEquipment || $item->polish_level !== $expectedLevel) {
+                throw new UndergroundRuntimeException('underground_polishing_changed', '装備中の結晶か研磨段階が変わりました。確認し直してください。');
+            }
+            $definition = $this->loadout->definitionForRow($item);
+            $price = $this->polishing->nextPrice($definition['item_level'], $item->polish_level);
+            if ($price === null || $price !== $quotedPrice) {
+                throw new UndergroundRuntimeException('underground_polishing_changed', '研磨する内容が変わりました。確認し直してください。');
+            }
+            if ($profile->shard_balance < $price) {
+                throw new UndergroundRuntimeException('underground_polishing_insufficient_shards', '手持ちのGが足りません。');
+            }
+            $profile->shard_balance -= $price;
+            $profile->save();
+            $item->polish_level++;
+            $item->save();
+        });
     }
 
     /** @return array<string, mixed> */
@@ -246,7 +294,7 @@ final readonly class UndergroundEquipmentService
                     ->where('underground_profile_id', $profile->id)
                     ->inventory()
                     ->count();
-                if ($used >= $this->catalog->vaultCapacity()) {
+                if ($used >= $this->catalog->vaultCapacityForProfile($profile)) {
                     throw new UndergroundRuntimeException('underground_vault_full', '宝物庫に空きがありません。');
                 }
                 if ($profile->shard_balance < $definition['buy_price']) {
@@ -825,7 +873,7 @@ final readonly class UndergroundEquipmentService
     private function normalizeBulkSellQuotes(array $quotedItems): array
     {
         if ($quotedItems === [] || ! array_is_list($quotedItems)
-            || count($quotedItems) > $this->catalog->vaultCapacity()) {
+            || count($quotedItems) > $this->catalog->maximumBulkSellCount()) {
             throw new UndergroundRuntimeException(
                 'underground_bulk_sell_quote_invalid',
                 'まとめ売りする装備を確認してください。',

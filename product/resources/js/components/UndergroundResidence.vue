@@ -44,8 +44,9 @@ watch(() => [props.mode, props.residence.villa_owned, props.residence.trophy_she
     <section v-if="mode === 'property'" class="ug-property">
         <p>{{ residence.villa_owned ? stories.property_greetings.after : stories.property_greetings.before }}</p>
         <p class="ug-muted">手持ち {{ number(shards) }} G</p>
-        <article v-for="key in (residence.villa_owned ? ['villa', 'mirror', 'trophy_shelf'] : ['villa']) as ResidenceItemKey[]" :key="key" class="ug-property-item">
+        <article v-for="key in (residence.villa_owned ? ['villa', 'mirror', 'trophy_shelf', 'vault_expansion', 'resonance_expansion'] : ['villa']) as ResidenceItemKey[]" :key="key" class="ug-property-item">
             <header><h2>{{ residence.items[key].name }}</h2><strong>{{ number(residence.items[key].price) }} G</strong></header>
+            <p v-if="residence.items[key].capacity_after !== undefined">収納数 {{ residence.items[key].capacity_before }} → {{ residence.items[key].capacity_after }}</p>
             <p><em>{{ stories.flavor[key] }}</em></p>
             <strong v-if="itemOwned(key)" class="ug-sold-out">SOLD OUT</strong>
             <button v-else class="ug-primary" type="button" :disabled="busy || shards < residence.items[key].price" @click="confirmation = key">購入する</button>
