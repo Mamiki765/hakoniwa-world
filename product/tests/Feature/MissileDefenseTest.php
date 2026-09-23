@@ -75,7 +75,8 @@ final class MissileDefenseTest extends CommandAndMissileTestCase
         $targetUserId = (int) DB::table('nation_memberships')
             ->where('nation_id', $targetNation->id)
             ->where('role', 'owner')
-            ->valueOrFail('user_id');
+            ->value('user_id');
+        $this->assertGreaterThan(0, $targetUserId);
         $targetUser = User::query()->findOrFail($targetUserId);
         app(SecretaryItemGrantService::class)->grant(
             $targetUser->secretary()->sole(),

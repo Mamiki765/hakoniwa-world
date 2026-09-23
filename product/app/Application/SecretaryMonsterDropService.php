@@ -10,7 +10,6 @@ use App\Models\MonsterInstance;
 use App\Models\Nation;
 use App\Models\NationMembership;
 use App\Models\Secretary;
-use App\Models\SecretaryItemInstance;
 use DomainException;
 
 final class SecretaryMonsterDropService
@@ -61,10 +60,7 @@ final class SecretaryMonsterDropService
 
             return ['status' => 'inventory_full', 'recipient_nation_id' => (int) $recipient->id];
         }
-        $item = $result['item'] ?? null;
-        if (! $item instanceof SecretaryItemInstance) {
-            throw new DomainException('Monster drop grant did not return its Item.');
-        }
+        $item = $result['item'];
         if ($result['status'] === 'already_granted') {
             return [
                 'status' => 'already_granted',

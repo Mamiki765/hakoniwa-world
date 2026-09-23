@@ -992,7 +992,8 @@ final class TurnState
                 if (! is_array($effect)
                     || ! is_string($effect['type'] ?? null) || $effect['type'] === ''
                     || ! is_string($effect['timing'] ?? null) || $effect['timing'] === ''
-                    || ! is_array($effect['parameters'] ?? null) || array_is_list($effect['parameters'])
+                    || ! is_array($effect['parameters'] ?? null)
+                    || ($effect['parameters'] !== [] && array_is_list($effect['parameters']))
                     || ! is_array($effect['target_map_space_keys'] ?? null)
                     || ! array_is_list($effect['target_map_space_keys'])
                     || (! is_int($effect['random_stream_version'] ?? null)
