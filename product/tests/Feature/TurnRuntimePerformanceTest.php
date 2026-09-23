@@ -7,6 +7,7 @@ use App\Application\CompleteTurnEngine;
 use App\Application\MonsterKillCycleService;
 use App\Application\NationCreationService;
 use App\Application\OceanWorldGenerator;
+use App\Application\SecretaryItemGrantService;
 use App\Application\TurnRunner;
 use App\Application\WorldExpansionService;
 use App\Domain\Map\GridCoordinate;
@@ -276,6 +277,7 @@ final class TurnRuntimePerformanceTest extends TestCase
         $this->report("32x32-defense-{$shots}-shots", $measurement);
         $this->assertSame($shots, $processCells['metrics']['missile_shots_fired']);
         $this->assertLessThanOrEqual(1, $processCells['defense_lookup_queries']);
+        $this->assertLessThanOrEqual(1, $processCells['monster_occupancy_lookup_queries']);
     }
 
     /** @return iterable<string, array{int}> */
@@ -302,11 +304,18 @@ final class TurnRuntimePerformanceTest extends TestCase
             "Defense Performance {$shots}",
             'Defense Performance Owner',
         );
+        $targetUser = User::factory()->create();
         $targetNation = app(NationCreationService::class)->create(
-            User::factory()->create(),
+            $targetUser,
             $world,
             "Defense Target {$shots}",
             'Defense Target Owner',
+        );
+        // White-flag filtering checks turn-local monster occupancy for every shot.
+        // Keep the 1/25-shot profile on the defending owner so that check cannot
+        // regress into one SELECT per impact.
+        app(SecretaryItemGrantService::class)->grant(
+            $targetUser->secretary()->firstOrFail(), 'magic_white_flag', 1, 2, null,
         );
         $firing->update(['money' => 1_000_000]);
         $space = $this->surfaceMapSpace($world);

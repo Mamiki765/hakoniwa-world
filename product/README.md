@@ -39,4 +39,4 @@ npm run build
 
 通常の起動・DB操作・OAuth設定はrepository rootの運用文書を参照してください。実際のsecretや原作GIFをこのdirectoryへ追加しないでください。
 
-production turnはhost cronから既存のturn commandを実行します。登録前確認、失敗時の非ゼロ終了、同じtarget turn・ruleset・seedを使う明示的な手動retryは`docs/operations/turn-cron.md`を参照してください。初期公開版はautomatic retryを行いません。
+production turnはhost cronから既存のturn commandを実行します。4.4.0 C1では、同じWorld lock・run・target turn・ruleset・seedを保ち、transaction本体のPostgreSQL `40P01` / `40001`だけを完全rollback後に同一起動内で初回込み最大3回再試行します。lock取得sessionが変われば停止し、後続cronによる既存failed/blockedの再開は行いません。登録前確認、非ゼロ終了、手動retryと対象外失敗の扱いは[`turn-cron.md`](../docs/operations/turn-cron.md)と[C1実装メモ](docs/releases/4.4.0-turn-resilience-c1.md)を参照してください。

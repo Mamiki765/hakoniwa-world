@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Application\CompensationWarehouseService;
+use App\Application\NationCreationService;
 use App\Application\ParadoxBalanceService;
 use App\Application\Underground\UndergroundProfileService;
 use App\Domain\Economy\NationCapacityResolver;
@@ -22,6 +23,44 @@ final class CompensationWarehouseTest extends TestCase
 {
     use CreatesTestWorlds;
     use RefreshDatabase;
+
+    public function test_islandless_user_receives_personal_assets_then_surface_assets_and_expired_remainders_stay_in_history(): void
+    {
+        $world = $this->lightweightWorld();
+        $user = User::factory()->create();
+        $profile = app(UndergroundProfileService::class)->ensureForSecretary(Secretary::query()->create(['user_id' => $user->id]));
+        $profile->update(['shard_balance' => 0]);
+        $warehouse = app(CompensationWarehouseService::class);
+        $grant = $warehouse->createForUser($world, $user, 'islandless-personal-and-surface', 'operator', '全員への配布', [
+            'paradox' => 2, 'skip_ticket' => 3, 'underground_g' => 4, 'money' => 5,
+        ])['grant'];
+        $endpoint = "/api/v1/me/compensation-grants/{$grant->id}/claim";
+        $request = ['request_id' => (string) Str::uuid()];
+        $this->actingAs($user)->postJson($endpoint, $request)->assertOk()->assertJsonPath('data.grant.status', 'partial');
+        $this->postJson($endpoint, $request)->assertOk()->assertJsonPath('data.duplicate', true);
+        $this->assertSame(4, $profile->fresh()->shard_balance);
+        $this->assertDatabaseHas('user_skip_ticket_balances', ['user_id' => $user->id, 'balance' => 3]);
+        $this->assertDatabaseHas('compensation_grant_items', ['compensation_grant_id' => $grant->id, 'asset_key' => 'money', 'claimed_amount' => 0]);
+
+        $nation = app(NationCreationService::class)->create($user, $world, 'あとから作った島', '島主');
+        $before = (int) $nation->money;
+        $this->postJson($endpoint, ['request_id' => (string) Str::uuid()])->assertOk()->assertJsonPath('data.grant.status', 'claimed');
+        $this->assertSame($before + 5, (int) $nation->fresh()->money);
+        $this->assertSame(4, $profile->fresh()->shard_balance);
+
+        $expired = $warehouse->createForUser($world, $user, 'expired-remainder', 'operator', '期限のある配布', ['money' => 9])['grant'];
+        $this->travelTo($expired->expires_at);
+        try {
+            $this->postJson("/api/v1/me/compensation-grants/{$expired->id}/claim", ['request_id' => (string) Str::uuid()])
+                ->assertOk()->assertJsonPath('data.grant.status', 'expired')->assertJsonCount(0, 'data.applied_now');
+            $this->getJson('/api/v1/me/compensation-grants?history=1')->assertOk()
+                ->assertJsonPath('data.0.status', 'expired')->assertJsonPath('data.0.items.0.remaining_amount', 9);
+            $this->assertSame($before + 5, (int) $nation->fresh()->money);
+            $this->assertDatabaseHas('compensation_grants', ['id' => $expired->id, 'status' => 'expired']);
+        } finally {
+            $this->travelBack();
+        }
+    }
 
     public function test_owner_claims_all_supported_assets_once_through_the_capacity_aware_warehouse(): void
     {

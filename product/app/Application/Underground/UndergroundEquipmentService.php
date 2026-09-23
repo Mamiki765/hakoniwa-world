@@ -29,13 +29,14 @@ final readonly class UndergroundEquipmentService
     ];
 
     /** @var list<string> */
-    public const BULK_SELL_CATEGORY_KEYS = ['weapon', 'armor', 'accessory'];
+    public const BULK_SELL_CATEGORY_KEYS = ['weapon', 'armor', 'accessory', 'resonance'];
 
     public function __construct(
         private UndergroundEquipmentCatalog $catalog,
         private UndergroundEquipmentLoadoutResolver $loadout,
         private UndergroundStarterEquipmentService $starter,
         private UndergroundAlphaV1PlayerCatalog $playerCatalog,
+        private UndergroundEquipmentPolishing $polishing = new UndergroundEquipmentPolishing,
     ) {}
 
     /** @return array<string, mixed> */
@@ -45,6 +46,53 @@ final readonly class UndergroundEquipmentService
             $user,
             fn (UndergroundProfile $profile): array => $this->loadout->summary($profile),
         );
+    }
+
+    /** @return array<string, mixed> */
+    public function polishing(User $user): array
+    {
+        return $this->withLockedOpenProfile($user, function (UndergroundProfile $profile): array {
+            $item = UndergroundOwnedEquipment::query()->where('underground_profile_id', $profile->id)
+                ->where('equipped_slot', 'resonance')->first();
+            $current = $item instanceof UndergroundOwnedEquipment ? $this->loadout->projectOwned($item) : null;
+            $next = null;
+            $price = $item instanceof UndergroundOwnedEquipment ? $this->polishing->nextPrice($current['item_level'], $item->polish_level) : null;
+            if ($item instanceof UndergroundOwnedEquipment && $price !== null) {
+                $projected = clone $item;
+                $projected->polish_level++;
+                $next = $this->loadout->projectOwned($projected);
+            }
+
+            return ['shard_balance' => $profile->shard_balance, 'item' => $current, 'next_item' => $next,
+                'next_price' => $price, 'maximum_level' => $this->polishing->maximumLevel()];
+        });
+    }
+
+    /** @return array<string, mixed> */
+    public function polish(User $user, string $requestId, int $itemId, int $expectedLevel, int $quotedPrice): array
+    {
+        return $this->mutate($user, $requestId, 'equipment_polish', [
+            'item_id' => $itemId, 'level' => $expectedLevel, 'price' => $quotedPrice,
+        ], function (UndergroundProfile $profile) use ($itemId, $expectedLevel, $quotedPrice): void {
+            $item = UndergroundOwnedEquipment::query()->whereKey($itemId)
+                ->where('underground_profile_id', $profile->id)->where('equipped_slot', 'resonance')
+                ->lockForUpdate()->first();
+            if (! $item instanceof UndergroundOwnedEquipment || $item->polish_level !== $expectedLevel) {
+                throw new UndergroundRuntimeException('underground_polishing_changed', '装備中の結晶か研磨段階が変わりました。確認し直してください。');
+            }
+            $definition = $this->loadout->definitionForRow($item);
+            $price = $this->polishing->nextPrice($definition['item_level'], $item->polish_level);
+            if ($price === null || $price !== $quotedPrice) {
+                throw new UndergroundRuntimeException('underground_polishing_changed', '研磨する内容が変わりました。確認し直してください。');
+            }
+            if ($profile->shard_balance < $price) {
+                throw new UndergroundRuntimeException('underground_polishing_insufficient_shards', '手持ちのGが足りません。');
+            }
+            $profile->shard_balance -= $price;
+            $profile->save();
+            $item->polish_level++;
+            $item->save();
+        });
     }
 
     /** @return array<string, mixed> */
@@ -92,7 +140,7 @@ final readonly class UndergroundEquipmentService
     }
 
     /** @return array<string, mixed> */
-    public function vault(User $user, int $page, string $sort = 'newest'): array
+    public function vault(User $user, int $page, string $sort = 'newest', string $inventory = 'equipment'): array
     {
         if ($page < 1) {
             throw new UndergroundRuntimeException('underground_vault_page_invalid', '宝物庫のpageを確認してください。');
@@ -102,10 +150,15 @@ final readonly class UndergroundEquipmentService
             throw new UndergroundRuntimeException('underground_vault_sort_invalid', '宝物庫の並び順を確認してください。');
         }
 
-        return $this->withLockedOpenProfile($user, function (UndergroundProfile $profile) use ($page, $sort): array {
+        if (! in_array($inventory, ['equipment', 'resonance'], true)) {
+            throw new UndergroundRuntimeException('underground_vault_inventory_invalid', '所持品の種類を確認してください。');
+        }
+
+        return $this->withLockedOpenProfile($user, function (UndergroundProfile $profile) use ($page, $sort, $inventory): array {
             $perPage = $this->catalog->pageSize();
             $total = UndergroundOwnedEquipment::query()
                 ->where('underground_profile_id', $profile->id)
+                ->inventory($inventory)
                 ->count();
             $lastPage = max(1, (int) ceil($total / $perPage));
             if ($page > $lastPage) {
@@ -113,6 +166,7 @@ final readonly class UndergroundEquipmentService
             }
             $items = UndergroundOwnedEquipment::query()
                 ->where('underground_profile_id', $profile->id)
+                ->inventory($inventory)
                 ->orderByDesc('acquired_at')
                 ->orderByDesc('id')
                 ->get()
@@ -142,9 +196,10 @@ final readonly class UndergroundEquipmentService
             $items = array_slice($items, ($page - 1) * $perPage, $perPage);
 
             return [
-                ...$this->loadout->summary($profile),
+                ...$this->loadout->summary($profile, $inventory),
+                'inventory' => $inventory,
                 'catalog_identity' => $this->catalog->identity(),
-                'bulk_sell_options' => $this->bulkSellOptions(),
+                'bulk_sell_options' => $this->bulkSellOptions($inventory),
                 'items' => $items,
                 'sort' => $sort,
                 'page' => $page,
@@ -237,8 +292,9 @@ final readonly class UndergroundEquipmentService
                 }
                 $used = UndergroundOwnedEquipment::query()
                     ->where('underground_profile_id', $profile->id)
+                    ->inventory()
                     ->count();
-                if ($used >= $this->catalog->vaultCapacity()) {
+                if ($used >= $this->catalog->vaultCapacityForProfile($profile)) {
                     throw new UndergroundRuntimeException('underground_vault_full', '宝物庫に空きがありません。');
                 }
                 if ($profile->shard_balance < $definition['buy_price']) {
@@ -460,8 +516,8 @@ final readonly class UndergroundEquipmentService
         if ($slot === 'accessory') {
             $slot = 'accessory_1';
         }
-        if (! in_array($slot, ['armor', ...UndergroundEquipmentCatalog::ACCESSORY_SLOTS], true)) {
-            throw new UndergroundRuntimeException('underground_equipment_slot_invalid', '武器は外せません。防具またはアクセサリーを指定してください。');
+        if (! in_array($slot, ['armor', 'resonance', ...UndergroundEquipmentCatalog::ACCESSORY_SLOTS], true)) {
+            throw new UndergroundRuntimeException('underground_equipment_slot_invalid', '武器は外せません。防具・アクセサリー・共鳴結晶を指定してください。');
         }
 
         return $this->mutate(
@@ -608,7 +664,6 @@ final readonly class UndergroundEquipmentService
     {
         $secretary = Secretary::query()
             ->where('user_id', $user->id)
-            ->lockForUpdate()
             ->first();
         if (! $secretary instanceof Secretary || $secretary->name === null) {
             throw new UndergroundRuntimeException('underground_secretary_missing', '名前のある秘書が必要です。');
@@ -620,6 +675,7 @@ final readonly class UndergroundEquipmentService
         if (! $profile instanceof UndergroundProfile) {
             throw new UndergroundRuntimeException('underground_equipment_locked', '装備ショップはまだ解禁されていません。');
         }
+        app(UndergroundRequestAdmission::class)->assertLockedProfile($profile);
         $intro = UndergroundIntroProgress::query()
             ->where('underground_profile_id', $profile->id)
             ->lockForUpdate()
@@ -673,7 +729,7 @@ final readonly class UndergroundEquipmentService
      *   weapon_styles: list<array{key: string, label: string}>
      * }
      */
-    private function bulkSellOptions(): array
+    private function bulkSellOptions(string $inventory): array
     {
         return [
             'rarities' => [
@@ -684,12 +740,14 @@ final readonly class UndergroundEquipmentService
                 ['key' => 'relic', 'label' => 'レリック'],
                 ['key' => 'unique', 'label' => 'ユニーク'],
             ],
-            'categories' => [
+            'categories' => $inventory === 'resonance' ? [
+                ['key' => 'resonance', 'label' => '共鳴結晶'],
+            ] : [
                 ['key' => 'weapon', 'label' => '武器'],
                 ['key' => 'armor', 'label' => '防具'],
                 ['key' => 'accessory', 'label' => 'アクセサリー'],
             ],
-            'weapon_styles' => $this->catalog->weaponStyleOptions(),
+            'weapon_styles' => $inventory === 'resonance' ? [] : $this->catalog->weaponStyleOptions(),
         ];
     }
 
@@ -815,7 +873,7 @@ final readonly class UndergroundEquipmentService
     private function normalizeBulkSellQuotes(array $quotedItems): array
     {
         if ($quotedItems === [] || ! array_is_list($quotedItems)
-            || count($quotedItems) > $this->catalog->vaultCapacity()) {
+            || count($quotedItems) > $this->catalog->maximumBulkSellCount()) {
             throw new UndergroundRuntimeException(
                 'underground_bulk_sell_quote_invalid',
                 'まとめ売りする装備を確認してください。',

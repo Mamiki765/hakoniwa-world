@@ -15,14 +15,19 @@ use App\Models\RulesetVersion;
 use App\Models\TurnRun;
 use App\Models\World;
 use DomainException;
+use Illuminate\Database\Connection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
+use PDO;
+use PDOException;
 use RuntimeException;
 use Throwable;
 
 class TurnRunner
 {
     private const SOURCES = ['manual', 'cron'];
+
+    private const MAX_TRANSIENT_ATTEMPTS = 3;
 
     public function __construct(
         private readonly TurnPipeline $pipeline,
@@ -195,52 +200,63 @@ class TurnRunner
             'completed_at' => null,
         ]);
         $currentPhase = null;
+        $attempt = 0;
+        $retries = [];
 
         try {
-            DB::transaction(function () use ($world, $ruleset, $run, &$currentPhase): void {
-                $lockedWorld = World::query()->whereKey($world->id)->lockForUpdate()->firstOrFail();
-                if ($lockedWorld->current_turn + 1 !== $run->target_turn) {
-                    throw new TurnAlreadyAppliedException('World current_turn no longer matches the turn run target.');
-                }
-                if ($lockedWorld->ruleset_version_id !== $run->ruleset_version_id) {
-                    throw new DomainException('World ruleset changed after the turn run snapshot was created.');
-                }
+            while (true) {
+                $attempt++;
+                $currentPhase = null;
+                $bodyFailure = null;
+                $connection = DB::connection();
+                $entryLevel = $connection->transactionLevel();
+                $pdo = $connection->getPdo();
+                // This singleton is shared by command, monster and disaster paths.
+                // Database rollback cannot restore its occupancy index or counters.
+                app(MonsterRemovalService::class)->resetForAttempt();
 
-                $context = new TurnContext(
-                    world: $lockedWorld,
-                    run: $run,
-                    ruleset: $ruleset,
-                    targetTurn: $run->target_turn,
-                    randomSeed: $run->random_seed,
-                    random: new TurnRandomStreamFactory($run->random_seed),
-                    state: new TurnState,
-                );
-                $results = [];
-                foreach ($this->pipeline->phases() as $phase) {
-                    $currentPhase = $phase->key();
-                    $started = hrtime(true);
-                    $result = $phase->execute($context);
-                    if ($result->phase !== $phase->key()) {
-                        throw new DomainException("Turn phase {$phase->key()} returned a mismatched result.");
+                try {
+                    DB::transaction(function () use ($world, $ruleset, $run, $retries, &$currentPhase, &$bodyFailure): void {
+                        try {
+                            $this->executeAttempt($world, $ruleset, $run, $retries, $currentPhase);
+                        } catch (Throwable $exception) {
+                            $bodyFailure = $exception;
+                            throw $exception;
+                        }
+                    }, 1);
+                    break;
+                } catch (Throwable $exception) {
+                    // The callback captures this by reference; it can change
+                    // before Connection::transaction() rethrows the exception.
+                    /** @var Throwable|null $bodyFailure */
+                    $sqlState = $this->sqlState($exception);
+                    // Only retry a body failure after a complete root rollback on
+                    // the same session. Commit/after-commit and reconnect failures
+                    // do not establish that all game effects were rolled back.
+                    if ($attempt >= self::MAX_TRANSIENT_ATTEMPTS
+                        || ! in_array($sqlState, ['40P01', '40001'], true)
+                        || $bodyFailure !== $exception
+                        || ! $this->rolledBackOnSameSession($connection, $pdo, $entryLevel)) {
+                        throw $exception;
                     }
-                    $results[] = [
-                        ...$result->toArray(),
-                        'duration_ms' => round((hrtime(true) - $started) / 1_000_000, 3),
-                    ];
-                }
 
-                $lockedWorld->update(['current_turn' => $run->target_turn]);
-                TurnRun::query()->whereKey($run->id)->lockForUpdate()->firstOrFail()->update([
-                    'status' => TurnRun::STATUS_COMPLETED,
-                    'phase_results' => $results,
-                    'completed_at' => now(),
-                    'failure_code' => null,
-                    'failure_message' => null,
-                    'failure_context' => [],
-                ]);
-            }, 1);
+                    $retries[] = [
+                        'attempt_count' => $run->attempt_count,
+                        'phase' => $currentPhase,
+                        'sqlstate' => $sqlState,
+                    ];
+                    // Persist the attempt counter outside the rolled-back game
+                    // transaction, retaining the same run, ruleset and seed.
+                    $run->refresh();
+                    $run->update([
+                        'attempt_count' => $run->attempt_count + 1,
+                        'failure_context' => ['transient_retries' => $retries],
+                    ]);
+                }
+            }
         } catch (Throwable $exception) {
-            TurnRun::query()->whereKey($run->id)->update([
+            // An after-commit failure must not relabel a committed turn as failed.
+            TurnRun::query()->whereKey($run->id)->where('status', TurnRun::STATUS_RUNNING)->update([
                 'status' => TurnRun::STATUS_FAILED,
                 'completed_at' => now(),
                 'failure_code' => 'turn_execution_failed',
@@ -248,6 +264,9 @@ class TurnRunner
                 'failure_context' => [
                     'phase' => $currentPhase,
                     'exception_class' => $exception::class,
+                    'sqlstate' => $this->sqlState($exception),
+                    'attempts_this_invocation' => $attempt,
+                    'transient_retries' => $retries,
                 ],
             ]);
 
@@ -262,5 +281,86 @@ class TurnRunner
         }
 
         return $completedRun;
+    }
+
+    private function rolledBackOnSameSession(Connection $connection, PDO $pdo, int $entryLevel): bool
+    {
+        // These are post-transaction observations, not memoized entry values.
+        return $connection->getDriverName() === 'pgsql'
+            && $entryLevel === 0
+            && $connection->transactionLevel() === 0
+            && $connection->getPdo() === $pdo
+            && ! $pdo->inTransaction();
+    }
+
+    /** @param list<array{attempt_count: int, phase: string|null, sqlstate: string|null}> $retries */
+    private function executeAttempt(
+        World $world,
+        RulesetVersion $ruleset,
+        TurnRun $run,
+        array $retries,
+        ?string &$currentPhase,
+    ): void {
+        // beginTransaction() itself may reconnect. Validate the session that
+        // acquired the advisory lock before the first game-state query.
+        $this->lock->assertHeld($world);
+        $lockedWorld = World::query()->whereKey($world->id)->lockForUpdate()->firstOrFail();
+        if ($lockedWorld->current_turn + 1 !== $run->target_turn) {
+            throw new TurnAlreadyAppliedException('World current_turn no longer matches the turn run target.');
+        }
+        if ($lockedWorld->ruleset_version_id !== $run->ruleset_version_id) {
+            throw new DomainException('World ruleset changed after the turn run snapshot was created.');
+        }
+
+        $context = new TurnContext(
+            world: $lockedWorld,
+            run: $run,
+            ruleset: $ruleset,
+            targetTurn: $run->target_turn,
+            randomSeed: $run->random_seed,
+            random: new TurnRandomStreamFactory($run->random_seed),
+            state: new TurnState,
+        );
+        $results = [];
+        foreach ($this->pipeline->phases() as $phase) {
+            $currentPhase = $phase->key();
+            $started = hrtime(true);
+            $result = $phase->execute($context);
+            if ($result->phase !== $phase->key()) {
+                throw new DomainException("Turn phase {$phase->key()} returned a mismatched result.");
+            }
+            $results[] = [
+                ...$result->toArray(),
+                'duration_ms' => round((hrtime(true) - $started) / 1_000_000, 3),
+            ];
+        }
+
+        $lockedWorld->update(['current_turn' => $run->target_turn]);
+        TurnRun::query()->whereKey($run->id)->lockForUpdate()->firstOrFail()->update([
+            'status' => TurnRun::STATUS_COMPLETED,
+            'phase_results' => $results,
+            'completed_at' => now(),
+            'failure_code' => null,
+            'failure_message' => null,
+            'failure_context' => $retries === [] ? [] : ['transient_retries' => $retries],
+        ]);
+    }
+
+    private function sqlState(Throwable $exception): ?string
+    {
+        // Laravel wraps nested transaction conflicts in DeadlockException.
+        // Follow the cause to the first structured PDO error; never infer a
+        // retry from the translated message or an unrelated exception code.
+        do {
+            if ($exception instanceof PDOException) {
+                $state = $exception->errorInfo[0] ?? $exception->getCode();
+                if (is_string($state) && preg_match('/^[0-9A-Z]{5}$/D', $state) === 1) {
+                    return $state;
+                }
+            }
+            $exception = $exception->getPrevious();
+        } while ($exception !== null);
+
+        return null;
     }
 }

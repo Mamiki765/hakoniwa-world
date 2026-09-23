@@ -1885,11 +1885,6 @@ class CommandQueueAndSalePolicyTest extends TestCase
         $prosperity = MonumentDefinition::query()->where('key', 'prosperity')->firstOrFail();
         $peaceId = (int) $peace->id;
         $prosperityId = (int) $prosperity->id;
-        $this->assertSame(
-            ['peace' => 1, 'prosperity' => 2, 'victory' => 3],
-            MonumentDefinition::query()->orderBy('id')->pluck('id', 'key')
-                ->map(static fn (mixed $id): int => (int) $id)->all(),
-        );
 
         $this->actingAs($owner)->postJson($path, [
             'command_key' => 'build_monument',

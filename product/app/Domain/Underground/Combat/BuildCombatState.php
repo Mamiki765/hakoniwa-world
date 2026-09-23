@@ -15,6 +15,9 @@ final class BuildCombatState
 
     public bool $guarding = false;
 
+    /** @var array<string, mixed>|null */
+    public ?array $weaponEffect = null;
+
     /** @var array{source_side: 'player'|'enemy', source_key: string, source_combatant_id?: string, applied_round: int}|null */
     public ?array $taunt = null;
 
@@ -89,6 +92,7 @@ final class BuildCombatState
      * @param  array{round: int, status: string, message: string}|null  $phaseTransition
      * @param  array<string, mixed>  $normalAttack
      * @param  array<string, mixed>|null  $guideDuel
+     * @param  array{trigger_skill:string, countdown_rounds:int, skill:string, status:string}|null  $chargedAttack
      */
     public function __construct(
         public readonly string $side,
@@ -107,6 +111,7 @@ final class BuildCombatState
         public readonly ?array $phaseTransition,
         public readonly array $normalAttack,
         public readonly ?array $guideDuel = null,
+        public readonly ?array $chargedAttack = null,
     ) {
         $this->combatantId = $key;
         $this->hp = $maxHp;

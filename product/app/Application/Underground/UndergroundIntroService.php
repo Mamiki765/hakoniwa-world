@@ -70,8 +70,7 @@ final readonly class UndergroundIntroService
             ->first();
 
         if ($profile instanceof UndergroundProfile && $profile->growth_path_key !== null) {
-            DB::transaction(function () use ($secretary, $profile): void {
-                Secretary::query()->whereKey($secretary->id)->lockForUpdate()->firstOrFail();
+            DB::transaction(function () use ($profile): void {
                 $locked = UndergroundProfile::query()->whereKey($profile->id)->lockForUpdate()->firstOrFail();
                 $this->starterEquipment->reconcile($locked);
             }, 3);
@@ -154,6 +153,8 @@ final readonly class UndergroundIntroService
                 'villa' => 'villa_purchased_at',
                 'mirror' => 'mirror_purchased_at',
                 'trophy_shelf' => 'trophy_shelf_purchased_at',
+                'vault_expansion' => 'vault_expansion_purchased_at',
+                'resonance_expansion' => 'resonance_expansion_purchased_at',
                 default => throw new UndergroundRuntimeException('underground_residence_item_invalid', '購入する品物を確認してください。'),
             };
             if ($profile->getAttribute($column) !== null) {
@@ -166,6 +167,57 @@ final readonly class UndergroundIntroService
             $profile->setAttribute($column, Carbon::now());
             $profile->save();
         });
+    }
+
+    /** @return array<string, mixed> */
+    public function purchaseDistortedStone(User $user, string $requestId, int $quotedPrice): array
+    {
+        return $this->mutate($user, $requestId, 'distorted_stone_purchase', ['price' => $quotedPrice], function (
+            Secretary $secretary,
+            UndergroundProfile $profile,
+            UndergroundIntroProgress $intro,
+        ) use ($quotedPrice): void {
+            $this->assertShopUnlocked($profile, $intro);
+            $shop = $this->distortedStoneShop($profile);
+            if (! $shop['unlocked']) {
+                throw new UndergroundRuntimeException('underground_distorted_stone_locked', '試練2をクリアすると歪んだ輝石を受け取れます。');
+            }
+            if ($shop['next_price'] === null) {
+                throw new UndergroundRuntimeException('underground_distorted_stone_sold_out', '本日の歪んだ輝石は売り切れです。');
+            }
+            if ($shop['next_price'] !== $quotedPrice) {
+                throw new UndergroundRuntimeException('underground_distorted_stone_price_changed', '販売価格が変わりました。店を開き直してください。');
+            }
+            if ($profile->shard_balance < $quotedPrice) {
+                throw new UndergroundRuntimeException('underground_distorted_stone_insufficient_shards', '手持ちのGが足りません。');
+            }
+            $profile->shard_balance -= $quotedPrice;
+            $profile->distorted_stone_balance++;
+            $profile->distorted_stone_purchase_day = Carbon::parse($shop['day'], 'Asia/Tokyo');
+            $profile->distorted_stone_purchase_count = $shop['purchased_today'] + 1;
+            $profile->save();
+        });
+    }
+
+    /** @return array{balance:int, day:string, purchased_today:int, daily_limit:int, next_price:int|null, unlocked:bool} */
+    private function distortedStoneShop(?UndergroundProfile $profile): array
+    {
+        $prices = $this->catalog->distortedStoneDailyPrices();
+        $day = Carbon::now('Asia/Tokyo')->toDateString();
+        $purchased = $profile?->distorted_stone_purchase_day?->toDateString() === $day
+            ? $profile->distorted_stone_purchase_count : 0;
+        $unlocked = $profile instanceof UndergroundProfile
+            && UndergroundTrialProgress::query()->where('underground_profile_id', $profile->id)
+                ->where('trial_key', 'trial_02')->whereNotNull('first_cleared_at')->exists();
+
+        return [
+            'balance' => $profile->distorted_stone_balance ?? 0,
+            'day' => $day,
+            'purchased_today' => $purchased,
+            'daily_limit' => count($prices),
+            'next_price' => $unlocked ? ($prices[$purchased] ?? null) : null,
+            'unlocked' => $unlocked,
+        ];
     }
 
     /** @return array<string, mixed> */
@@ -189,7 +241,7 @@ final readonly class UndergroundIntroService
     /** @return array<string, mixed> */
     public function advanceLoungeEvent(User $user, string $requestId, string $event, int $page): array
     {
-        if (! in_array($event, ['exchange', 'mirror'], true)
+        if (! in_array($event, ['exchange', 'mirror', 'polishing', 'otherworld'], true)
             || ! in_array($page, $event === 'exchange' ? [1, 2] : [1], true)) {
             throw new UndergroundRuntimeException('underground_event_invalid', 'イベントの進行を確認してください。');
         }
@@ -200,6 +252,21 @@ final readonly class UndergroundIntroService
             UndergroundIntroProgress $intro,
         ) use ($event, $page): void {
             $this->assertShopUnlocked($profile, $intro);
+            if ($event === 'otherworld') {
+                if ($profile->otherworld_discovered_at === null && ! $this->runtime->canDiscoverOtherworld($profile)) {
+                    throw new UndergroundRuntimeException('underground_otherworld_locked', '試練2をクリアし、Lv100以上になってからショップを訪ねてください。');
+                }
+                $profile->otherworld_discovered_at ??= Carbon::now();
+                $profile->save();
+
+                return;
+            }
+            if ($event === 'polishing') {
+                $profile->polishing_tutorial_completed_at ??= Carbon::now();
+                $profile->save();
+
+                return;
+            }
             if ($event === 'mirror') {
                 if ($profile->mirror_purchased_at === null) {
                     throw new UndergroundRuntimeException('underground_mirror_required', '透明な鏡をまだ持っていません。');
@@ -334,6 +401,7 @@ final readonly class UndergroundIntroService
 
             $battle = $this->settleStoryBattle($profile, $requestId, 'tutorial', $secretary->name);
             $intro->tutorial_battle_id = $battle->id;
+            $intro->tutorial_encounter_key = $battle->encounter_key;
             $intro->stage = UndergroundIntroStage::ESCAPE_PENDING;
             $intro->save();
 
@@ -460,6 +528,7 @@ final readonly class UndergroundIntroService
             $profile->save();
             $this->starterEquipment->reconcile($profile);
             $intro->stage = UndergroundIntroStage::GROWTH_PATH_SELECTED;
+            $intro->initial_growth_path_key = $growthPathKey;
             $intro->save();
         });
     }
@@ -1179,16 +1248,11 @@ final readonly class UndergroundIntroService
     {
         $secretary = Secretary::query()
             ->where('user_id', $user->id)
-            ->lockForUpdate()
             ->first();
         if (! $secretary instanceof Secretary || $secretary->name === null) {
             throw new UndergroundRuntimeException('underground_secretary_missing', '名前のある秘書が必要です。');
         }
-        UndergroundProfile::query()->firstOrCreate(['secretary_id' => $secretary->id]);
-        $profile = UndergroundProfile::query()
-            ->where('secretary_id', $secretary->id)
-            ->lockForUpdate()
-            ->firstOrFail();
+        $profile = app(UndergroundProfileService::class)->lockForSecretary($secretary);
         UndergroundIntroProgress::query()->firstOrCreate(['underground_profile_id' => $profile->id]);
         $intro = UndergroundIntroProgress::query()
             ->where('underground_profile_id', $profile->id)
@@ -1653,10 +1717,19 @@ final readonly class UndergroundIntroService
                 'villa_owned' => $profile?->villa_purchased_at !== null,
                 'mirror_owned' => $profile?->mirror_purchased_at !== null,
                 'trophy_shelf_owned' => $profile?->trophy_shelf_purchased_at !== null,
+                'vault_expansion_owned' => $profile?->vault_expansion_purchased_at !== null,
+                'resonance_expansion_owned' => $profile?->resonance_expansion_purchased_at !== null,
                 'exchange_intro_page' => (int) ($profile->exchange_intro_page ?? 0),
                 'mirror_event_completed' => $profile?->mirror_event_completed_at !== null,
                 'items' => $this->catalog->residence(),
             ],
+            'distorted_stone_shop' => $this->distortedStoneShop($profile),
+            'polishing_tutorial_completed' => $profile?->polishing_tutorial_completed_at !== null,
+            'otherworld_intro_available' => $profile instanceof UndergroundProfile
+                && $profile->otherworld_discovered_at === null && $this->runtime->canDiscoverOtherworld($profile),
+            'otherworld_unlocked' => $profile?->otherworld_discovered_at !== null,
+            'otherworld' => $profile instanceof UndergroundProfile && $profile->otherworld_discovered_at !== null
+                ? $this->runtime->projectOtherworldState($profile) : null,
             'secretary_name' => $secretary->name,
             'combat_level' => $profile instanceof UndergroundProfile ? $profile->combat_level : 1,
             'combat_xp' => $profile instanceof UndergroundProfile ? $profile->combat_xp : 0,
@@ -1832,15 +1905,15 @@ final readonly class UndergroundIntroService
         );
 
         $tutorial = $intro->tutorialBattle;
-        $tutorialExperienced = $intro->tutorial_battle_id !== null && $tutorial instanceof UndergroundBattle;
+        $tutorialExperienced = $intro->tutorial_battle_id !== null;
         $entries[] = $this->historicalEntry(
             'tutorial',
             '最初の試練',
             $tutorialExperienced,
             $tutorialExperienced
-                ? ["{$tutorial->encounter_key}とのTutorial戦闘を経験しました。"]
+                ? [($intro->tutorial_encounter_key ?? $tutorial->encounter_key ?? '最初の敵').'とのTutorial戦闘を経験しました。']
                 : null,
-            $tutorialExperienced ? ['battle_id' => $tutorial->id] : [],
+            $tutorial instanceof UndergroundBattle ? ['battle_id' => $tutorial->id] : [],
         );
         $tutorialAftermathExperienced = $this->stageAtLeast($stage, UndergroundIntroStage::RETURNED_AFTER_TUTORIAL);
         $entries[] = $this->historicalEntry(
@@ -2021,31 +2094,20 @@ final readonly class UndergroundIntroService
         $entries = [];
         foreach (['trial_01', 'trial_02'] as $trialKey) {
             $trial = $this->runtimeCatalog->trial($trialKey);
-            $base = static fn () => UndergroundBattle::query()
-                ->where('underground_profile_id', $profile->id)
-                ->where('activity_type', UndergroundBattle::ACTIVITY_TRIAL)
-                ->where('activity_key', $trialKey);
-            $start = $base()
-                ->where('trial_battle_index', 1)
-                ->whereRaw("jsonb_typeof(snapshot->'challenge_intro') = 'string'")
-                ->orderBy('id')
-                ->first(['id', 'snapshot']);
-            $clear = $base()
-                ->whereRaw("jsonb_typeof(snapshot->'first_clear_story') = 'object'")
-                ->orderBy('id')
-                ->first(['id', 'snapshot']);
-            if ($start instanceof UndergroundBattle) {
+            $progress = UndergroundTrialProgress::query()
+                ->where('underground_profile_id', $profile->id)->where('trial_key', $trialKey)->first();
+            if ($progress?->first_challenge_intro !== null) {
                 $entries[] = $this->historicalEntry(
                     "{$trialKey}_start",
                     "{$trial['label']}の開始",
                     true,
-                    [$start->snapshot['challenge_intro']],
-                    ['trial_key' => $trialKey, 'battle_id' => $start->id],
+                    [$progress->first_challenge_intro],
+                    ['trial_key' => $trialKey],
                 );
             }
-            if ($clear instanceof UndergroundBattle) {
-                $story = $clear->snapshot['first_clear_story'];
-                if (is_array($story) && is_string($story['body'] ?? null)) {
+            if ($progress?->first_clear_story !== null) {
+                $story = $progress->first_clear_story;
+                if (is_string($story['body'] ?? null)) {
                     $body = [$story['body']];
                     if (is_array($story['system_messages'] ?? null)) {
                         $body = [...$body, ...$this->stringList($story['system_messages'], 'trial clear story messages')];
@@ -2057,7 +2119,7 @@ final readonly class UndergroundIntroService
                             : (is_string($story['title'] ?? null) ? $story['title'] : "{$trial['label']}のクリア"),
                         true,
                         $body,
-                        ['trial_key' => $trialKey, 'battle_id' => $clear->id],
+                        ['trial_key' => $trialKey],
                     );
                 }
             }
@@ -2087,23 +2149,7 @@ final readonly class UndergroundIntroService
 
     private function initialGrowthPathKey(UndergroundProfile $profile): ?string
     {
-        $fingerprint = UndergroundIntroRequest::query()
-            ->where('underground_profile_id', $profile->id)
-            ->where('operation', 'growth_path')
-            ->orderBy('id')
-            ->value('request_fingerprint');
-        if (! is_string($fingerprint) || $fingerprint === '') {
-            return null;
-        }
-        foreach ($this->alphaV1Catalog->growthPaths() as $path) {
-            $pathKey = $path['key'] ?? null;
-            if (is_string($pathKey)
-                && hash_equals($fingerprint, $this->fingerprint('growth_path', ['growth_path_key' => $pathKey]))) {
-                return $pathKey;
-            }
-        }
-
-        return null;
+        return $profile->introProgress?->initial_growth_path_key;
     }
 
     private function hasTrialTwoFirstClear(UndergroundProfile $profile): bool

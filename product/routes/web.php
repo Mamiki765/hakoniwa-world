@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\Api\AdminGuideConversationTopicController;
 use App\Http\Controllers\Api\AdminInquiryController;
+use App\Http\Controllers\Api\AdminOperationsController;
 use App\Http\Controllers\Api\AnnouncementController;
 use App\Http\Controllers\Api\ApiController;
 use App\Http\Controllers\Api\CommandQueueController;
@@ -17,10 +18,13 @@ use App\Http\Controllers\Api\PlayerEventController;
 use App\Http\Controllers\Api\PublicApiController;
 use App\Http\Controllers\Api\SalePolicyController;
 use App\Http\Controllers\Api\SecretaryController;
+use App\Http\Controllers\Api\SecretaryTicketGachaController;
 use App\Http\Controllers\Api\SurfaceShipController;
 use App\Http\Controllers\Api\TradingPostController;
 use App\Http\Controllers\Api\UndergroundEquipmentController;
 use App\Http\Controllers\Api\UndergroundIntroController;
+use App\Http\Controllers\Api\UndergroundRequestAdmissionController;
+use App\Http\Controllers\Api\UserMonumentDesignController;
 use App\Http\Controllers\AssetController;
 use App\Http\Controllers\Auth\OAuthController;
 use App\Http\Controllers\CommunityGuidelinesController;
@@ -28,6 +32,7 @@ use App\Http\Controllers\ManualController;
 use App\Http\Middleware\PrivateApiResponse;
 use App\Http\Middleware\PublicApiResponse;
 use App\Http\Middleware\RequireAnnouncementAdmin;
+use App\Http\Middleware\RequireUndergroundRequestAdmission;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/auth/{provider}/redirect', [OAuthController::class, 'redirect'])->name('oauth.redirect');
@@ -67,6 +72,14 @@ Route::prefix('api/v1/public')
 Route::prefix('api/v1/admin')
     ->middleware([PrivateApiResponse::class, RequireAnnouncementAdmin::class])
     ->group(function (): void {
+        Route::get('/receipt-purge/status', [AdminOperationsController::class, 'purgeStatus']);
+        Route::get('/worlds/{world}/operations', [AdminOperationsController::class, 'overview']);
+        Route::post('/worlds/{world}/turn-attempt', [AdminOperationsController::class, 'advanceTurn']);
+        Route::get('/worlds/{world}/turn-status', [AdminOperationsController::class, 'turnStatus']);
+        Route::post('/worlds/{world}/operations/{operation}/preview', [AdminOperationsController::class, 'preview'])
+            ->whereIn('operation', ['distribution', 'abandonment', 'purge']);
+        Route::post('/worlds/{world}/operations/{operation}/apply', [AdminOperationsController::class, 'apply'])
+            ->whereIn('operation', ['distribution', 'abandonment', 'purge']);
         Route::get('/inquiries/latest', [AdminInquiryController::class, 'latest']);
         Route::get('/inquiries', [AdminInquiryController::class, 'index']);
         Route::get('/inquiries/{inquiryId}', [AdminInquiryController::class, 'show'])
@@ -88,10 +101,15 @@ Route::get('/api/v1/secretaries/{secretary}', [SecretaryController::class, 'publ
 
 Route::prefix('api/v1')->middleware(['auth', PrivateApiResponse::class])->group(function (): void {
     Route::get('/me', [ApiController::class, 'me']);
+    Route::get('/me/compensation-grants', [CompensationWarehouseController::class, 'mine']);
+    Route::post('/me/compensation-grants/{compensationGrant}/claim', [CompensationWarehouseController::class, 'claimMine']);
     Route::post('/me/daily-login', [DailyRewardController::class, 'login'])->middleware('throttle:30,1');
     Route::post('/me/daily-quests/development-opened', [DailyRewardController::class, 'developmentOpened'])
         ->middleware('throttle:30,1');
     Route::get('/me/secretary', [SecretaryController::class, 'show']);
+    Route::get('/me/monument-design', [UserMonumentDesignController::class, 'show']);
+    Route::post('/me/monument-design', [UserMonumentDesignController::class, 'save'])
+        ->middleware('throttle:10,1');
     Route::post('/me/secretary/name', [SecretaryController::class, 'name']);
     Route::patch('/me/secretary/name', [SecretaryController::class, 'rename']);
     Route::patch('/me/secretary/profile', [SecretaryController::class, 'updateProfile']);
@@ -100,9 +118,12 @@ Route::prefix('api/v1')->middleware(['auth', PrivateApiResponse::class])->group(
     Route::delete('/me/secretary/images/{slot}', [SecretaryController::class, 'deleteImageSlot']);
     Route::patch('/me/secretary/portrait-preference', [SecretaryController::class, 'updatePortraitPreference']);
     Route::patch('/me/secretary/image-preferences', [SecretaryController::class, 'updateImagePreferences']);
-    Route::prefix('/me/underground')->middleware('throttle:60,1')->group(function (): void {
+    Route::post('/me/underground/requests', UndergroundRequestAdmissionController::class)
+        ->middleware('throttle:60,1,underground-admission:');
+    Route::prefix('/me/underground')->middleware(['throttle:60,1', RequireUndergroundRequestAdmission::class])->group(function (): void {
         Route::get('/', [UndergroundIntroController::class, 'show']);
         Route::post('/residence/purchase', [UndergroundIntroController::class, 'purchaseResidence']);
+        Route::post('/shop/distorted-stone', [UndergroundIntroController::class, 'purchaseDistortedStone']);
         Route::post('/events/advance', [UndergroundIntroController::class, 'advanceLoungeEvent']);
         Route::get('/journal', [UndergroundIntroController::class, 'journal']);
         Route::post('/home-background', [UndergroundIntroController::class, 'homeBackground']);
@@ -122,6 +143,7 @@ Route::prefix('api/v1')->middleware(['auth', PrivateApiResponse::class])->group(
         Route::get('/main', [UndergroundIntroController::class, 'main']);
         Route::post('/explore', [UndergroundIntroController::class, 'explore']);
         Route::post('/guide-duel', [UndergroundIntroController::class, 'challengeGuide']);
+        Route::post('/otherworld/challenge', [UndergroundIntroController::class, 'challengeOtherworld']);
         Route::post('/skip/hunting-ground', [UndergroundIntroController::class, 'skipHuntingGround']);
         Route::post('/skip/trial', [UndergroundIntroController::class, 'skipTrial']);
         Route::put('/lending', [UndergroundIntroController::class, 'updateLending']);
@@ -133,6 +155,8 @@ Route::prefix('api/v1')->middleware(['auth', PrivateApiResponse::class])->group(
         Route::post('/inn/rest', [UndergroundIntroController::class, 'restAtInn']);
         Route::post('/bank/transfer', [UndergroundIntroController::class, 'bankTransfer']);
         Route::get('/equipment/shop', [UndergroundEquipmentController::class, 'shop']);
+        Route::get('/equipment/polishing', [UndergroundEquipmentController::class, 'polishing']);
+        Route::post('/equipment/polishing', [UndergroundEquipmentController::class, 'polish']);
         Route::post('/equipment/shop/purchase', [UndergroundEquipmentController::class, 'purchase']);
         Route::post('/equipment/items/{itemId}/sell', [UndergroundEquipmentController::class, 'sell'])
             ->whereNumber('itemId');
@@ -159,6 +183,8 @@ Route::prefix('api/v1')->middleware(['auth', PrivateApiResponse::class])->group(
         ->where('slot', '-?\d+');
     Route::post('/me/secretary/items/{item}/sell', [SecretaryController::class, 'sellItem'])
         ->where('item', '-?\d+');
+    Route::post('/me/secretary/tickets/draw', [SecretaryTicketGachaController::class, 'draw'])
+        ->middleware('throttle:20,1');
     Route::post('/inquiries', [InquiryController::class, 'store'])->middleware('throttle:3,1');
     Route::get('/worlds', [ApiController::class, 'worlds']);
     Route::get('/worlds/{world}/trading-post', [TradingPostController::class, 'index']);

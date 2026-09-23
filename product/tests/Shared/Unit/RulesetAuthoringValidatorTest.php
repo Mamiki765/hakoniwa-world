@@ -16,8 +16,8 @@ class RulesetAuthoringValidatorTest extends TestCase
         $settings = config('hakoniwa.ruleset');
 
         $summary = $validator->validate($settings);
-        $this->assertSame('hakoniwa-2s-plus-v26', $summary['key']);
-        $this->assertSame(26, $summary['version']);
+        $this->assertSame('hakoniwa-2s-plus-v27', $summary['key']);
+        $this->assertSame(27, $summary['version']);
         $this->assertSame(count($settings['command_definitions']), $summary['commands']);
     }
 
@@ -54,7 +54,7 @@ class RulesetAuthoringValidatorTest extends TestCase
 
         $summary = app(RulesetAuthoringValidator::class)->validate($settings);
 
-        $this->assertSame('hakoniwa-2s-plus-v26', $summary['key']);
+        $this->assertSame('hakoniwa-2s-plus-v27', $summary['key']);
         $this->assertCount(7, app(SurfaceShipCatalog::class)->definitions($settings));
     }
 

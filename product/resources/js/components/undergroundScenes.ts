@@ -48,15 +48,17 @@ export interface UndergroundVisuals {
     home_background_key: string;
 }
 
-export type ResidenceItemKey = 'villa' | 'mirror' | 'trophy_shelf';
+export type ResidenceItemKey = 'villa' | 'mirror' | 'trophy_shelf' | 'vault_expansion' | 'resonance_expansion';
 
 export interface ResidenceState {
     villa_owned: boolean;
     mirror_owned: boolean;
     trophy_shelf_owned: boolean;
+    vault_expansion_owned: boolean;
+    resonance_expansion_owned: boolean;
     exchange_intro_page: number;
     mirror_event_completed: boolean;
-    items: Record<ResidenceItemKey, { name: string; price: number }>;
+    items: Record<ResidenceItemKey, { name: string; price: number; capacity_before?: number; capacity_after?: number }>;
 }
 
 export type UndergroundDestination = 'home' | 'adventure' | 'character' | 'shop' | 'exchange' | 'villa';

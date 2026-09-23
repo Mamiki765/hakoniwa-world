@@ -270,7 +270,7 @@ final class SecretaryInventoryTest extends TestCase
         ]);
         $moneyCapacity = app(NationCapacityResolver::class)->resolve($nation)->money;
         $nation->update(['money' => $moneyCapacity]);
-        $beforeVersion = $secretary->equipment_version;
+        $beforeVersion = $secretary->surfaceState->equipment_version;
 
         $this->actingAs($user)->postJson("/api/v1/me/secretary/items/{$equipped->id}/sell", ['world_id' => $world->id])
             ->assertUnprocessable()->assertJsonPath('message', '装備中のアイテムは売却できません。');
@@ -280,7 +280,7 @@ final class SecretaryInventoryTest extends TestCase
             ->assertUnprocessable()->assertJsonPath('message', '資金上限まで全額を受け取れないため売却できません。');
 
         $this->assertSame($moneyCapacity, $nation->fresh()->money);
-        $this->assertSame($beforeVersion, $secretary->fresh()->equipment_version);
+        $this->assertSame($beforeVersion, $secretary->fresh()->surfaceState->equipment_version);
         $this->assertSame(3, SecretaryItemInstance::query()->whereIn('id', [$equipped->id, $escrowed->id, $capacity->id])->count());
         $this->assertSame(0, DB::table('audit_events')->where('event_type', 'secretary.item_sold')->count());
     }
@@ -380,7 +380,7 @@ SQL);
         $oldBow = $namedSecretary->itemInstances()->where('item_key', SecretaryItemCatalog::OLD_BOW)->sole();
         $namedCapacity = app(NationCapacityResolver::class)->resolve($namedNation)->money;
         $namedNation->update(['money' => $namedCapacity]);
-        $beforeVersion = $namedSecretary->equipment_version;
+        $beforeVersion = $namedSecretary->surfaceState->equipment_version;
 
         $this->actingAs($namedUser)->postJson("/api/v1/me/secretary/items/{$oldBow->id}/sell", ['world_id' => $world->id])
             ->assertUnprocessable()->assertJsonPath('message', 'ペリドットが嫌がっています…');
@@ -388,7 +388,7 @@ SQL);
             'id' => $oldBow->id, 'secretary_id' => $namedSecretary->id, 'equipped_slot' => 1,
         ]);
         $this->assertSame($namedCapacity, $namedNation->fresh()->money);
-        $this->assertSame($beforeVersion, $namedSecretary->fresh()->equipment_version);
+        $this->assertSame($beforeVersion, $namedSecretary->fresh()->surfaceState->equipment_version);
 
         $unnamedUser = User::factory()->create();
         $unnamedNation = app(NationCreationService::class)->create($unnamedUser, $world, '無名弓拒否島', '無名弓拒否島主');

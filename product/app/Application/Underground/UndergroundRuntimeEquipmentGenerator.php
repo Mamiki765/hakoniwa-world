@@ -22,10 +22,11 @@ final class UndergroundRuntimeEquipmentGenerator
         ?string $mainStat,
         int $seed,
         string $sourceIdentity,
+        ?string $resonanceVariant = null,
     ): array {
         $generator = $this->config();
         if ($itemLevel < $generator['item_level_min'] || $itemLevel > $generator['item_level_max']
-            || ! in_array($category, ['weapon', 'armor', 'accessory'], true)
+            || ! in_array($category, ['weapon', 'armor', 'accessory', 'resonance'], true)
             || $seed < 0 || $seed > 2_147_483_647
             || $sourceIdentity === '' || strlen($sourceIdentity) > 200
             || preg_match('//u', $sourceIdentity) !== 1) {
@@ -33,7 +34,15 @@ final class UndergroundRuntimeEquipmentGenerator
         }
         $tier = $generator['tiers'][$tierKey] ?? null;
         $rarity = $generator['rarities'][$rarityKey] ?? null;
-        if (! is_array($tier) || ! is_array($rarity) || $rarityKey === 'unique') {
+        $resonance = $category === 'resonance';
+        $uniqueWeapon = $rarityKey === 'unique' && $category === 'weapon';
+        $variant = $resonanceVariant === null ? null : ($tier['resonance_variants'][$resonanceVariant] ?? null);
+        if ($resonanceVariant !== null && (! $resonance || ! is_array($variant))) {
+            throw new InvalidArgumentException('Underground resonance variant is invalid.');
+        }
+        if (! is_array($tier) || ! is_array($rarity)
+            || ($rarityKey === 'unique' && ! $uniqueWeapon && ! $resonance)
+            || ($uniqueWeapon && ! is_array($tier['weapon_effect'] ?? null))) {
             throw new InvalidArgumentException('Underground generated equipment tier or rarity is invalid.');
         }
 
@@ -50,6 +59,12 @@ final class UndergroundRuntimeEquipmentGenerator
             }
             $bodyKey = 'armor';
             $name = $tier['armor_name'] ?? null;
+        } elseif ($resonance) {
+            if ($weaponStyle !== null || $mainStat !== null || ! is_array($tier['resonance_effect'] ?? null)) {
+                throw new InvalidArgumentException('Underground generated resonance input is invalid.');
+            }
+            $bodyKey = 'resonance';
+            $name = $variant['name'] ?? $tier['resonance_name'] ?? null;
         } else {
             if ($weaponStyle !== null || ! is_string($mainStat)
                 || ! in_array($mainStat, AlphaV1CombatRules::STATS, true)) {
@@ -62,15 +77,24 @@ final class UndergroundRuntimeEquipmentGenerator
             throw new RuntimeException('Underground generated equipment name is invalid.');
         }
 
-        $bodyDefinition = $generator['body_anchors'][$bodyKey] ?? null;
+        $bodyDefinition = $resonance ? ['category' => 'resonance'] : ($generator['body_anchors'][$bodyKey] ?? null);
         if (! is_array($bodyDefinition)) {
             throw new RuntimeException('Underground generated equipment body is invalid.');
         }
         $base = $this->body($bodyDefinition, $itemLevel, $mainStat);
+        if ($variant !== null) {
+            foreach (AlphaV1CombatRules::STATS as $stat) {
+                $weight = $variant['stats_bps'][$stat] ?? null;
+                if (! is_int($weight) || $weight < 0) {
+                    throw new RuntimeException('Underground resonance stat allocation is invalid.');
+                }
+                $base['stats'][$stat] = $this->roundHalfUp($base['stats'][$stat] * $weight, 10000);
+            }
+        }
         $random = new UndergroundRandom($seed);
-        $affixCount = $category === 'accessory'
-            ? $this->accessoryAffixCount($random, $rarity)
-            : (int) ($rarity['weapon_armor_slots'] ?? -1);
+        $affixCount = $resonance ? (int) $generator['resonance']['slots']
+            : ($category === 'accessory' ? $this->accessoryAffixCount($random, $rarity)
+                : (int) ($rarity['weapon_armor_slots'] ?? -1));
         $accessoryValueBps = $category === 'accessory'
             ? (int) ($rarity['accessory_value_bps'] ?? -1)
             : 10_000;
@@ -79,8 +103,8 @@ final class UndergroundRuntimeEquipmentGenerator
             throw new RuntimeException('Underground generated equipment rarity contract is invalid.');
         }
 
-        $eligible = $generator['affixes'] ?? null;
-        if (! is_array($eligible) || count($eligible) < $affixCount) {
+        $eligible = $resonance ? ($generator['resonance']['affixes'] ?? null) : ($generator['affixes'] ?? null);
+        if (! is_array($eligible) || $eligible === [] || (! $resonance && count($eligible) < $affixCount)) {
             throw new RuntimeException('Underground generated equipment affix pool is invalid.');
         }
         $qualityMin = $generator['quality_min_bps'] ?? null;
@@ -96,6 +120,21 @@ final class UndergroundRuntimeEquipmentGenerator
             $selected = $random->integer("affix:key:{$index}", 0, count($keys) - 1);
             $key = $keys[$selected];
             $definition = $eligible[$key];
+            if ($resonance) {
+                $quality = $random->integer("affix:quality:{$index}", $qualityMin, $qualityMax);
+                $percentageLevel = min($itemLevel, (int) $generator['resonance']['percentage_item_level_cap']);
+                $minimum = $this->interpolate($generator['resonance']['affix_min_bps'], $percentageLevel);
+                $maximum = $this->interpolate($generator['resonance']['affix_max_bps'], $percentageLevel);
+                $value = $minimum + $this->roundHalfUp(
+                    ($maximum - $minimum) * max(0, $quality - 8_000), 2_000,
+                );
+                $affixes[] = [
+                    'key' => $key, 'label' => $definition, 'kind' => 'modifier', 'target' => $key,
+                    'value' => $value, 'quality_bps' => $quality,
+                ];
+
+                continue;
+            }
             unset($eligible[$key]);
             if (! is_array($definition)) {
                 throw new RuntimeException('Underground generated equipment affix definition is invalid.');
@@ -134,6 +173,23 @@ final class UndergroundRuntimeEquipmentGenerator
             }
         }
 
+        $uniqueEffect = null;
+        if ($resonance) {
+            $effect = $tier['resonance_effect'];
+            $value = $this->interpolate($generator['resonance']['intrinsic_bps'],
+                min($itemLevel, (int) $generator['resonance']['percentage_item_level_cap']));
+            $uniqueEffect = [...$effect, 'type' => 'resonance', 'value_bps' => $value];
+            $modifiers[$effect['target']] = ($modifiers[$effect['target']] ?? 0) + $value;
+        } elseif ($uniqueWeapon) {
+            $effect = $tier['weapon_effect'];
+            $uniqueEffect = [
+                'key' => $effect['key'], 'label' => $effect['label'], 'type' => 'shockwave',
+                'chance_bps' => $effect['chance_bps'], 'potency_bps' => $effect['potency_bps'],
+                'category' => $weaponStyle === 'crystal_staff' ? 'miracle' : 'physical',
+                'stat_coefficients' => $effect['stat_coefficients'][$weaponStyle],
+            ];
+        }
+
         $identityPayload = [
             'generator_identity' => $generator['identity'],
             'item_level' => $itemLevel,
@@ -145,6 +201,9 @@ final class UndergroundRuntimeEquipmentGenerator
             'seed' => $seed,
             'source_identity' => $sourceIdentity,
         ];
+        if ($resonanceVariant !== null) {
+            $identityPayload['resonance_variant'] = $resonanceVariant;
+        }
         try {
             $encoded = json_encode($identityPayload, JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES);
         } catch (JsonException $exception) {
@@ -182,7 +241,7 @@ final class UndergroundRuntimeEquipmentGenerator
             'stats' => $stats,
             'modifiers' => $modifiers,
             'affixes' => $affixes,
-            'unique_effect' => null,
+            'unique_effect' => $uniqueEffect,
             'base' => $base,
             'instance_identity' => $identity,
             'generator_identity' => $generator['identity'],
@@ -190,6 +249,7 @@ final class UndergroundRuntimeEquipmentGenerator
                 'tier_key' => $tierKey,
                 'seed' => $seed,
                 'identity' => $sourceIdentity,
+                ...($resonanceVariant === null ? [] : ['resonance_variant' => $resonanceVariant]),
             ],
         ];
     }
@@ -288,26 +348,29 @@ final class UndergroundRuntimeEquipmentGenerator
             if (! in_array($stat, AlphaV1CombatRules::STATS, true) || ! is_array($anchors)) {
                 throw new RuntimeException('Underground generated equipment stat anchors are invalid.');
             }
-            $stats[$stat] = $this->interpolate($anchors, $itemLevel);
+            $stats[$stat] = $this->interpolate($anchors, $itemLevel, true);
         }
         if ($definition['category'] === 'accessory') {
             if (! is_string($mainStat)) {
                 throw new RuntimeException('Underground generated accessory main stat is missing.');
             }
-            $stats[$mainStat] = $this->interpolate($definition['main_stat'], $itemLevel);
+            $stats[$mainStat] = $this->interpolate($definition['main_stat'], $itemLevel, true);
+        } elseif ($definition['category'] === 'resonance') {
+            $stats = array_fill_keys(AlphaV1CombatRules::STATS,
+                $this->interpolate($this->config()['resonance']['stats'], $itemLevel, true));
         }
 
         return [
-            'weapon_power' => $this->interpolate($definition['weapon_power'] ?? $zeroAnchors, $itemLevel),
-            'physical_defense' => $this->interpolate($definition['physical_defense'] ?? $zeroAnchors, $itemLevel),
-            'magical_defense' => $this->interpolate($definition['magical_defense'] ?? $zeroAnchors, $itemLevel),
-            'max_hp' => $this->interpolate($definition['max_hp'] ?? $zeroAnchors, $itemLevel),
+            'weapon_power' => $this->interpolate($definition['weapon_power'] ?? $zeroAnchors, $itemLevel, true),
+            'physical_defense' => $this->interpolate($definition['physical_defense'] ?? $zeroAnchors, $itemLevel, true),
+            'magical_defense' => $this->interpolate($definition['magical_defense'] ?? $zeroAnchors, $itemLevel, true),
+            'max_hp' => $this->interpolate($definition['max_hp'] ?? $zeroAnchors, $itemLevel, true),
             'stats' => $stats,
         ];
     }
 
     /** @param array<mixed, mixed> $anchors */
-    private function interpolate(array $anchors, int $itemLevel): int
+    private function interpolate(array $anchors, int $itemLevel, bool $extrapolate = false): int
     {
         $validated = [];
         foreach ($anchors as $level => $value) {
@@ -330,6 +393,11 @@ final class UndergroundRuntimeEquipmentGenerator
                 break;
             }
         }
+        if ($upperLevel === null && $extrapolate && count($validated) >= 2) {
+            $levels = array_keys($validated);
+            $upperLevel = $levels[count($levels) - 1];
+            $lowerLevel = $levels[count($levels) - 2];
+        }
         if (! is_int($lowerLevel) || ! is_int($upperLevel)) {
             throw new RuntimeException('Underground generated equipment item level cannot be extrapolated.');
         }
@@ -345,10 +413,10 @@ final class UndergroundRuntimeEquipmentGenerator
         $anchors = match ($category) {
             'weapon' => [1 => 120, 10 => 360, 20 => 1_000, 40 => 3_000, 60 => 6_000, 90 => 12_000, 120 => 18_000],
             'armor' => [1 => 100, 10 => 300, 20 => 900, 40 => 2_700, 60 => 5_400, 90 => 10_800, 120 => 16_200],
-            'accessory' => [1 => 60, 10 => 180, 20 => 600, 40 => 1_800, 60 => 3_600, 90 => 7_200, 120 => 10_800],
+            'accessory', 'resonance' => [1 => 60, 10 => 180, 20 => 600, 40 => 1_800, 60 => 3_600, 90 => 7_200, 120 => 10_800],
             default => throw new RuntimeException('Underground generated equipment category is invalid.'),
         };
-        $buyEquivalent = $this->interpolate($anchors, $itemLevel);
+        $buyEquivalent = $this->interpolate($anchors, $itemLevel, true);
 
         return max(1, $this->roundHalfUp($buyEquivalent * $sellPriceBps, 10_000));
     }
@@ -367,7 +435,7 @@ final class UndergroundRuntimeEquipmentGenerator
     {
         $config = config('underground-equipment.generator');
         if (! is_array($config)
-            || ($config['identity'] ?? null) !== 'secretary-underground-drop-equipment-alpha-v1') {
+            || ($config['identity'] ?? null) !== 'secretary-underground-drop-equipment-alpha-v2') {
             throw new RuntimeException('Underground generated equipment configuration is invalid.');
         }
 

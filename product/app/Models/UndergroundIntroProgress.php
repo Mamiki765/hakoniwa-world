@@ -17,6 +17,8 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * @property string|null $branch_identity
  * @property int|null $tutorial_battle_id
  * @property int|null $scripted_loss_battle_id
+ * @property string|null $tutorial_encounter_key
+ * @property string|null $initial_growth_path_key
  * @property int $guide_recollection_max_completed
  * @property-read UndergroundProfile $profile
  * @property-read UndergroundBattle|null $tutorialBattle
@@ -27,6 +29,7 @@ final class UndergroundIntroProgress extends Model
     protected $fillable = [
         'underground_profile_id', 'stage', 'shopkeeper_name', 'special_loss_required', 'branch_identity',
         'tutorial_battle_id', 'scripted_loss_battle_id', 'guide_recollection_max_completed',
+        'tutorial_encounter_key', 'initial_growth_path_key',
     ];
 
     protected $attributes = ['stage' => UndergroundIntroStage::NOT_STARTED];

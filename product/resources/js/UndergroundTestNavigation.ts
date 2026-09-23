@@ -6,8 +6,8 @@ export function withUndergroundDefaults(data: unknown): unknown {
         shard_balance: 0, banked_shard_balance: 0, xp_to_next_level: 0,
         inn_cost: 10, bank_transfer_unit: 1000,
         residence: {
-            villa_owned: true, mirror_owned: false, trophy_shelf_owned: false, exchange_intro_page: 2, mirror_event_completed: false,
-            items: { villa: { name: '別荘', price: 100000 }, mirror: { name: '透明な鏡', price: 1000000 }, trophy_shelf: { name: 'トロフィー棚', price: 500000 } },
+            villa_owned: true, mirror_owned: false, trophy_shelf_owned: false, vault_expansion_owned: false, resonance_expansion_owned: false, exchange_intro_page: 2, mirror_event_completed: false,
+            items: { villa: { name: '別荘', price: 100000 }, mirror: { name: '透明な鏡', price: 1000000 }, trophy_shelf: { name: 'トロフィー棚', price: 500000 }, vault_expansion: { name: '宝物庫増築(1)', price: 1000000 }, resonance_expansion: { name: '共鳴結晶庫増築(1)', price: 1000000 } },
         },
         ...data,
     };

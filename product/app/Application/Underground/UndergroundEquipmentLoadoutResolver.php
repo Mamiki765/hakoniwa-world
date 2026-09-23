@@ -9,7 +9,10 @@ use RuntimeException;
 
 final readonly class UndergroundEquipmentLoadoutResolver
 {
-    public function __construct(private UndergroundEquipmentCatalog $catalog) {}
+    public function __construct(
+        private UndergroundEquipmentCatalog $catalog,
+        private UndergroundEquipmentPolishing $polishing = new UndergroundEquipmentPolishing,
+    ) {}
 
     /** @return array<string, mixed> */
     public function combatLoadout(UndergroundProfile $profile): array
@@ -18,7 +21,7 @@ final readonly class UndergroundEquipmentLoadoutResolver
     }
 
     /** @return array{used: int, capacity: int, equipped: array<string, array<string, mixed>|null>} */
-    public function summary(UndergroundProfile $profile): array
+    public function summary(UndergroundProfile $profile, string $inventory = 'equipment'): array
     {
         $rows = UndergroundOwnedEquipment::query()
             ->where('underground_profile_id', $profile->id)
@@ -36,8 +39,9 @@ final readonly class UndergroundEquipmentLoadoutResolver
         return [
             'used' => UndergroundOwnedEquipment::query()
                 ->where('underground_profile_id', $profile->id)
+                ->inventory($inventory)
                 ->count(),
-            'capacity' => $this->catalog->vaultCapacity(),
+            'capacity' => $this->catalog->vaultCapacityForProfile($profile, $inventory),
             'equipped' => $equipped,
         ];
     }
@@ -52,7 +56,8 @@ final readonly class UndergroundEquipmentLoadoutResolver
             return $this->catalog->definition($row->definition_key, $row->catalog_identity);
         }
         if ($row->instance_kind !== 'generated'
-            || $row->generator_identity !== $this->catalog->generatorIdentity()
+            || ! is_string($row->generator_identity)
+            || ! $this->catalog->supportsGeneratorIdentity($row->generator_identity)
             || ! is_string($row->instance_identity) || strlen($row->instance_identity) !== 64
             || ! is_array($row->generated_payload)) {
             throw new RuntimeException('Underground generated equipment persistence is invalid.');
@@ -65,7 +70,7 @@ final readonly class UndergroundEquipmentLoadoutResolver
         }
         $this->catalog->assertDefinition($definition, true, enforceCurrentGeneratorQuality: false);
 
-        return $definition;
+        return $this->polishing->apply($definition, $row->polish_level);
     }
 
     /** @return array<string, mixed> */

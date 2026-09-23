@@ -17,6 +17,129 @@ use PHPUnit\Framework\TestCase;
 
 final class AlphaV1PartyCombatTest extends TestCase
 {
+    public function test_charged_attack_leaves_a_full_round_to_react_and_fills_gauges_without_forcing_awakening(): void
+    {
+        $manifest = $this->catalog(1_000_000, 100, 1000, enemyAoe: true, enemyBoss: true)->manifest();
+        $manifest['enemies']['party_target']['charged_attack'] = [
+            'trigger_skill' => 'charge_roar', 'countdown_rounds' => 5, 'skill' => 'party_wave', 'status' => 'charged_wave',
+        ];
+        $manifest['statuses']['charged_wave'] = ['label' => '溜め', 'disposition' => 'buff', 'duration_rounds' => 100,
+            'stack_policy' => 'refresh', 'max_stacks' => 1,
+            'effects' => [['type' => 'damage_dealt_modifier', 'category' => 'all', 'action_key' => 'party_wave', 'value_bps' => 70000]]];
+        $manifest['skills']['charge_roar'] = ['label' => '咆哮', 'node_key' => null, 'mp_cost' => 0, 'cooldown' => 100,
+            'effects' => [['type' => 'apply_status', 'target' => 'self', 'status' => 'charged_wave']]];
+        $manifest['enemies']['party_target']['skills'][] = 'charge_roar';
+        $manifest['enemies']['party_target']['ai_rules'] = [
+            ['conditions' => [['type' => 'skill_ready', 'skill' => 'charge_roar']], 'action' => 'skill:charge_roar'],
+            ['conditions' => [['type' => 'always']], 'action' => 'normal_attack'],
+        ];
+        $guardian = $this->player('secretary:1', currentHp: 1000, awakening: true);
+        $guardian['awakening'] = [...$guardian['awakening'], 'gauge' => 0, 'growth_path' => 'guardianship_blue', 'technique_key' => 'absolute_aegis'];
+        $guardian['ai_rules'] = [
+            ['conditions' => [['type' => 'enemy_major_telegraph']], 'action' => 'awakening'],
+            ['conditions' => [['type' => 'enemy_major_telegraph']], 'action' => 'awakening_technique'],
+            ['conditions' => [['type' => 'always']], 'action' => 'defend'],
+        ];
+        $companion = $this->player('secretary:2', currentHp: 1000, awakening: true, defend: true);
+        $companion['awakening']['gauge'] = 0;
+        $companion['ai_rules'] = [['conditions' => [['type' => 'always']], 'action' => 'defend']];
+        $result = $this->model()->fightPartySnapshots(new AlphaV1BuildCatalog($manifest), [$guardian, $companion], ['party_target'], 4405, 7, 0);
+        $rows = collect($result->actionLog);
+        self::assertSame([5, 4, 3, 2, 1], $rows->where('action', 'charged_attack_countdown')->pluck('countdown')->all());
+        self::assertSame([5], $rows->where('kind', 'awakening_technique')->where('action', 'absolute_aegis')->pluck('round')->all());
+        $wave = $rows->where('effect_type', 'damage')->where('action', 'party_wave');
+        self::assertCount(2, $wave);
+        self::assertSame([6], $wave->pluck('round')->unique()->values()->all());
+        self::assertTrue($rows->where('round', 7)->where('actor_id', 'enemy:1')->where('action', 'normal_attack')->isNotEmpty());
+        self::assertFalse($result->finalStates['secretary:2']['awakened']);
+        self::assertSame(1000, $result->finalStates['secretary:2']['awakening_gauge']);
+        $manifest['statuses']['charged_wave']['effects'] = [];
+        $unboosted = $this->model()->fightPartySnapshots(new AlphaV1BuildCatalog($manifest), [$guardian, $companion], ['party_target'], 4405, 7, 0);
+        $ordinaryRows = collect($unboosted->actionLog)->where('effect_type', 'damage');
+        self::assertGreaterThan($ordinaryRows->where('action', 'party_wave')->sum('amount'), $wave->sum('amount'));
+        self::assertSame($ordinaryRows->where('action', 'normal_attack')->pluck('amount')->all(),
+            $rows->where('effect_type', 'damage')->where('action', 'normal_attack')->pluck('amount')->all());
+    }
+
+    public function test_weapon_followup_occurs_once_after_a_multihit_area_action_and_replays_with_the_snapshot(): void
+    {
+        $manifest = $this->catalog(1_000_000, 1, 1, enemyAoe: true)->manifest();
+        $manifest['skills']['sweeping_cut']['effects'][0]['hits'] = 3;
+        $catalog = new AlphaV1BuildCatalog($manifest);
+        $player = $this->player('secretary:1', currentHp: 1000);
+        $player['active_skills'] = ['sweeping_cut'];
+        $player['ai_rules'] = [['conditions' => [['type' => 'always']], 'action' => 'skill:sweeping_cut']];
+        $player['equipment']['unique_effect'] = [
+            'key' => 'bahamul_shockwave', 'label' => '黒竜の衝撃波', 'type' => 'shockwave',
+            'category' => 'physical', 'chance_bps' => 10_000, 'potency_bps' => 2_800,
+            'stat_coefficients' => ['might' => 7_000, 'finesse' => 3_000],
+        ];
+        $model = $this->model();
+        $result = $model->fightPartySnapshots($catalog, [$player], ['party_target', 'party_target'], 4404, 1, 0);
+        $retry = $model->fightPartySnapshots($catalog, [$player], ['party_target', 'party_target'], 4404, 1, 0);
+        self::assertSame($result->actionLog, $retry->actionLog);
+        $damage = collect($result->actionLog)->where('actor_id', 'secretary:1')->where('effect_type', 'damage');
+        self::assertCount(6, $damage->where('action', 'sweeping_cut'));
+        $waves = $damage->where('action', 'weapon_followup:bahamul_shockwave');
+        self::assertCount(2, $waves);
+        self::assertSame(['enemy:1', 'enemy:2'], $waves->pluck('target_id')->values()->all());
+        self::assertSame([1], $waves->map(static fn (array $row): int => $row['agility_combo_hits'] ?? 1)->unique()->values()->all());
+        self::assertSame(['all_enemies'], $waves->pluck('target_scope')->unique()->values()->all());
+        $statistics = (new UndergroundBattleStatisticsProjector)->fromParty($result, 'secretary:1');
+        self::assertSame(['sweeping_cut' => 1], $statistics['self']['action_usage']);
+        self::assertSame($damage->sum('effective_damage'), $statistics['self']['damage_dealt']);
+    }
+
+    public function test_area_resonance_remains_area_with_one_enemy_and_stacks_with_attack_skill_bonus(): void
+    {
+        $catalog = $this->catalog(1_000_000, 1, 1, enemyAoe: true);
+        $player = $this->player('secretary:1', currentHp: 1000);
+        $player['stats']['might'] = 10_000;
+        $player['active_skills'] = ['sweeping_cut'];
+        $player['ai_rules'] = [['conditions' => [['type' => 'always']], 'action' => 'skill:sweeping_cut']];
+        $baseline = $this->model()->fightPartySnapshots($catalog, [$player], ['party_target'], 4404, 1, 0);
+        $player['equipment']['modifiers'] = ['resonance_area_damage_bps' => 2_100, 'resonance_skill_damage_bps' => 900];
+        $boosted = $this->model()->fightPartySnapshots($catalog, [$player], ['party_target'], 4404, 1, 0);
+        $baseHit = collect($baseline->actionLog)->where('actor_id', 'secretary:1')->where('effect_type', 'damage')->first();
+        $boostedHit = collect($boosted->actionLog)->where('actor_id', 'secretary:1')->where('effect_type', 'damage')->first();
+        self::assertEqualsWithDelta($baseHit['amount'] * 1.30, $boostedHit['amount'], 2);
+    }
+
+    public function test_resonance_guard_reduces_capped_incoming_damage_only_while_defending(): void
+    {
+        $catalog = $this->catalog(1_000_000, 1_000, 1);
+        $damage = [];
+        foreach ([true, false] as $guarding) {
+            foreach ([0, 1_800] as $bonus) {
+                $player = $this->player('secretary:1', currentHp: 1000, defend: $guarding);
+                $player['equipment']['modifiers'] = ['resonance_guard_reduction_bps' => $bonus];
+                $result = $this->model()->fightPartySnapshots($catalog, [$player], ['party_target'], 4404, 1, 0);
+                $damage[] = collect($result->actionLog)->where('actor_id', 'enemy:1')->where('effect_type', 'damage')->sum('amount');
+            }
+        }
+        self::assertGreaterThan(0, $damage[0]);
+        self::assertEqualsWithDelta($damage[0] * .82, $damage[1], 1);
+        self::assertSame($damage[2], $damage[3]);
+    }
+
+    public function test_resonance_direct_healing_boost_leaves_periodic_healing_unchanged(): void
+    {
+        $catalog = $this->catalog(1_000_000, 1, 1);
+        $player = $this->player('secretary:1', currentHp: 10);
+        $player['active_skills'] = ['regeneration'];
+        $player['ai_rules'] = [
+            ['conditions' => [['type' => 'skill_ready', 'skill' => 'regeneration']], 'action' => 'skill:regeneration'],
+            ['conditions' => [['type' => 'always']], 'action' => 'defend'],
+        ];
+        $baseline = $this->model()->fightPartySnapshots($catalog, [$player], ['party_target'], 4404, 2, 0);
+        $player['equipment']['modifiers'] = ['resonance_single_healing_bps' => 1_800];
+        $boosted = $this->model()->fightPartySnapshots($catalog, [$player], ['party_target'], 4404, 2, 0);
+        $baseHealing = collect($baseline->actionLog)->where('actor_id', 'secretary:1')->where('effect_type', 'recovery');
+        $boostHealing = collect($boosted->actionLog)->where('actor_id', 'secretary:1')->where('effect_type', 'recovery');
+        self::assertLessThan($baseHealing->where('effect_source', 'direct')->sum('amount'), $boostHealing->where('effect_source', 'direct')->sum('amount'));
+        self::assertSame($baseHealing->where('effect_source', 'periodic')->pluck('amount')->all(), $boostHealing->where('effect_source', 'periodic')->pluck('amount')->all());
+    }
+
     #[DataProvider('controlledTechniqueCases')]
     public function test_ai_can_delay_an_awakening_technique_and_preserves_its_action_cost(string $growth, string $technique, bool $consumesAction): void
     {

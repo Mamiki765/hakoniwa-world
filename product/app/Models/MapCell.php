@@ -21,6 +21,7 @@ use Illuminate\Support\Carbon;
  * @property int $terrain_definition_id
  * @property int|null $facility_definition_id
  * @property int|null $monument_definition_id
+ * @property int|null $monument_design_id
  * @property int|null $owner_nation_id
  * @property int $population
  * @property int|null $terrain_quantity
@@ -33,6 +34,7 @@ use Illuminate\Support\Carbon;
  * @property-read TerrainDefinition $terrain
  * @property-read FacilityDefinition|null $facility
  * @property-read MonumentDefinition|null $monumentDefinition
+ * @property-read UserMonumentDesign|null $monumentDesign
  * @property-read Nation|null $ownerNation
  * @property-read MonsterOccupancy|null $monsterOccupancy
  * @property-read Ship|null $ship
@@ -41,7 +43,7 @@ class MapCell extends Model
 {
     protected $fillable = [
         'map_space_id', 'map_chunk_id', 'x', 'y', 'chunk_x', 'chunk_y', 'local_x', 'local_y',
-        'terrain_definition_id', 'facility_definition_id', 'monument_definition_id', 'owner_nation_id', 'population', 'terrain_quantity',
+        'terrain_definition_id', 'facility_definition_id', 'monument_definition_id', 'monument_design_id', 'owner_nation_id', 'population', 'terrain_quantity',
         'facility_scale', 'facility_experience', 'facility_operational_state', 'state', 'version',
     ];
 
@@ -70,6 +72,12 @@ class MapCell extends Model
     public function monumentDefinition(): BelongsTo
     {
         return $this->belongsTo(MonumentDefinition::class, 'monument_definition_id');
+    }
+
+    /** @return BelongsTo<UserMonumentDesign, $this> */
+    public function monumentDesign(): BelongsTo
+    {
+        return $this->belongsTo(UserMonumentDesign::class, 'monument_design_id');
     }
 
     /** @return BelongsTo<Nation, $this> */

@@ -11,6 +11,7 @@ use App\Domain\TradingPost\TradingPostRules;
 use App\Domain\Turn\DeterministicRandomStream;
 use App\Domain\Turn\TurnContext;
 use App\Domain\Turn\TurnRandomStreamFactory;
+use App\Domain\World\WorldEventContext;
 use App\Models\AuctionBid;
 use App\Models\AuctionListing;
 use App\Models\Nation;
@@ -20,6 +21,7 @@ use App\Models\NationResourceSalePolicy;
 use App\Models\ResourceDefinition;
 use App\Models\Secretary;
 use App\Models\SecretaryItemInstance;
+use App\Models\SecretarySurfaceState;
 use DomainException;
 
 final class TradingPostTurnService
@@ -88,8 +90,28 @@ final class TradingPostTurnService
         return $metrics;
     }
 
+    /** The caller holds the World mutation lock and transaction. No relisting or NPC generation. */
+    public function settleForAbandonment(WorldEventContext $context, Nation $nation): int
+    {
+        $rules = TradingPostRules::fromSettings($context->ruleset->settings);
+        $listings = AuctionListing::query()->where('world_id', $context->world->id)
+            ->where('status', AuctionListing::STATUS_ACTIVE)
+            ->where(fn ($query) => $query->where('seller_nation_id', $nation->id)
+                ->orWhere('highest_bidder_nation_id', $nation->id))
+            ->orderBy('id')->lockForUpdate()->get();
+        foreach ($listings as $listing) {
+            if ($listing->bid_count > 0) {
+                $this->settleSale($context, $rules, $listing);
+            } else {
+                $this->expireWithoutBid($context, $listing);
+            }
+        }
+
+        return $listings->count();
+    }
+
     private function settleSale(
-        TurnContext $context,
+        TurnContext|WorldEventContext $context,
         TradingPostRules $rules,
         AuctionListing $listing,
     ): void {
@@ -160,7 +182,7 @@ final class TradingPostTurnService
     }
 
     private function recordPlayerSettlementEvents(
-        TurnContext $context,
+        TurnContext|WorldEventContext $context,
         AuctionListing $listing,
         Nation $winner,
         ?Nation $seller,
@@ -242,7 +264,7 @@ final class TradingPostTurnService
     }
 
     /** @return array<string, int|string> */
-    private function deliverResource(TurnContext $context, AuctionListing $listing, Nation $winner): array
+    private function deliverResource(TurnContext|WorldEventContext $context, AuctionListing $listing, Nation $winner): array
     {
         $resource = ResourceDefinition::query()->whereKey($listing->resource_definition_id)->firstOrFail();
         if ($resource->category === 'food') {
@@ -375,7 +397,13 @@ final class TradingPostTurnService
             ->where('role', 'owner')
             ->lockForUpdate()
             ->sole();
-        $secretary = Secretary::query()->where('user_id', $membership->user_id)->lockForUpdate()->sole();
+        $secretary = Secretary::query()->where('user_id', $membership->user_id)->sole();
+        $surfaceIds = [$secretary->id];
+        if ($listing->seller_type === 'nation') {
+            $surfaceIds[] = SecretaryItemInstance::query()->findOrFail($listing->secretary_item_instance_id)->secretary_id;
+        }
+        SecretarySurfaceState::query()->whereIn('secretary_id', $surfaceIds)
+            ->orderBy('secretary_id')->lockForUpdate()->get();
         if ($listing->seller_type === 'nation') {
             $item = SecretaryItemInstance::query()->whereKey($listing->secretary_item_instance_id)
                 ->lockForUpdate()->firstOrFail();
@@ -407,7 +435,7 @@ final class TradingPostTurnService
         ];
     }
 
-    private function expireWithoutBid(TurnContext $context, AuctionListing $listing): void
+    private function expireWithoutBid(TurnContext|WorldEventContext $context, AuctionListing $listing): void
     {
         $metadata = [
             'nation_id' => $listing->seller_nation_id,
@@ -427,6 +455,8 @@ final class TradingPostTurnService
                     ->firstOrFail();
                 $balance->increment('amount', $listing->quantity);
             } else {
+                SecretaryItemInstance::query()->findOrFail($listing->secretary_item_instance_id)
+                    ->secretary->lockSurfaceState();
                 $item = SecretaryItemInstance::query()->whereKey($listing->secretary_item_instance_id)
                     ->lockForUpdate()->firstOrFail();
                 if (! $item->is_escrowed) {

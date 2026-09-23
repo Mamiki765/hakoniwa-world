@@ -143,7 +143,7 @@ final class SecretaryPersistenceTest extends TestCase
             ->where('secretary_id', $secretary->id)
             ->where('skill_key', SecretarySkillCatalog::AGRICULTURAL_POLICY)
             ->update(['level' => 4, 'experience' => 7]);
-        $secretary->update(['monster_experience' => 42]);
+        $secretary->surfaceState->update(['monster_experience' => 42]);
         $item = $secretary->itemInstances()->sole();
 
         app(NationAbandonmentService::class)->abandon($user, $first, $first->name);
@@ -151,6 +151,9 @@ final class SecretaryPersistenceTest extends TestCase
             'id' => $secretary->id,
             'user_id' => $user->id,
             'name' => '継承名',
+        ]);
+        $this->assertDatabaseHas('secretary_surface_states', [
+            'secretary_id' => $secretary->id,
             'monster_experience' => 42,
         ]);
         $this->assertDatabaseHas('secretary_item_instances', [
@@ -170,7 +173,7 @@ final class SecretaryPersistenceTest extends TestCase
             'experience' => 7,
         ]);
         $this->assertSame($item->id, $user->secretary()->firstOrFail()->itemInstances()->sole()->id);
-        $this->assertSame(42, (int) $user->secretary()->value('monster_experience'));
+        $this->assertSame(42, (int) $user->secretary()->firstOrFail()->surfaceState->monster_experience);
     }
 
     public function test_named_secretary_can_be_renamed_repeatedly_without_creation_or_skill_changes(): void
@@ -264,7 +267,7 @@ final class SecretaryPersistenceTest extends TestCase
         ] as $skillKey => $level) {
             $secretary->skills()->where('skill_key', $skillKey)->update(['level' => $level]);
         }
-        $secretary->update(['monster_experience' => 120]);
+        $secretary->surfaceState->update(['monster_experience' => 120]);
         UndergroundProfile::query()->create([
             'secretary_id' => $secretary->id,
             'combat_level' => 37,

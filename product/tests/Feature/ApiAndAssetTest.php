@@ -5,12 +5,14 @@ namespace Tests\Feature;
 use App\Application\AuthIdentityService;
 use App\Application\ExternalIdentityData;
 use App\Application\MapChunkService;
+use App\Application\UserMonumentDesignService;
 use App\Domain\Economy\NationEconomyCalculator;
 use App\Domain\Map\MapCellStateService;
 use App\Domain\Map\SeaAreaNameResolver;
 use App\Models\FacilityDefinition;
 use App\Models\MapCell;
 use App\Models\MapSpace;
+use App\Models\MonumentDefinition;
 use App\Models\Nation;
 use App\Models\NationResource;
 use App\Models\ResourceDefinition;
@@ -20,7 +22,9 @@ use App\Models\User;
 use App\Services\AssetManifestResolver;
 use DomainException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Tests\Concerns\CreatesTestWorlds;
 use Tests\TestCase;
@@ -29,6 +33,51 @@ class ApiAndAssetTest extends TestCase
 {
     use CreatesTestWorlds;
     use RefreshDatabase;
+
+    public function test_original_monument_replacement_updates_every_existing_tile_and_deletes_old_gif(): void
+    {
+        $world = $this->lightweightWorld();
+        $user = User::factory()->create();
+        Storage::fake('monument_images');
+        $gif = base64_decode('R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs=', true);
+        $this->assertIsString($gif);
+        $designs = app(UserMonumentDesignService::class);
+        $design = $designs->save($user, '旧記念碑', UploadedFile::fake()->createWithContent('old.gif', $gif));
+        $oldPath = $design->image_path;
+        $this->assertNotNull($oldPath);
+        Storage::disk('monument_images')->assertExists($oldPath);
+
+        $original = MonumentDefinition::query()->where('key', 'original')->firstOrFail();
+        $cells = MapCell::query()->where('chunk_x', 0)->where('chunk_y', 0)->orderBy('id')->limit(2)->get();
+        $this->assertCount(2, $cells);
+        $plain = TerrainDefinition::query()->where('key', 'plain')->firstOrFail();
+        $monument = FacilityDefinition::query()->where('key', 'monument')->firstOrFail();
+        foreach ($cells as $cell) {
+            $state = app(MapCellStateService::class);
+            $state->transitionTerrain($cell, $plain);
+            $state->setFacility($cell, $monument);
+            $cell->monument_definition_id = $original->id;
+            $cell->monument_design_id = $design->id;
+            $cell->save();
+        }
+        $space = $this->surfaceMapSpace($world);
+        $chunks = app(MapChunkService::class);
+        $before = $chunks->present($space, 0, 0, null);
+
+        $updated = $designs->save($user, '新記念碑', UploadedFile::fake()->createWithContent('new.gif', $gif));
+        $this->assertNotSame($oldPath, $updated->image_path);
+        Storage::disk('monument_images')->assertMissing($oldPath);
+        Storage::disk('monument_images')->assertExists($updated->image_path);
+        $after = $chunks->present($space, 0, 0, null);
+        $this->assertNotSame($before['version'], $after['version']);
+        foreach ($cells as $cell) {
+            $presented = collect($after['cells'])->first(
+                static fn (array $row): bool => $row['x'] === $cell->x && $row['y'] === $cell->y,
+            );
+            $this->assertSame('新記念碑', $presented['display_name']);
+            $this->assertSame($designs->imageUrl($updated->image_path), $presented['asset']['url']);
+        }
+    }
 
     public function test_api_requires_auth_and_never_exposes_provider_user_id(): void
     {

@@ -9,6 +9,11 @@ use RuntimeException;
 
 final class TurnScheduleStatus
 {
+    public function initialOrigin(): CarbonImmutable
+    {
+        return $this->scheduledAtOrBefore(CarbonImmutable::now(), (string) config('hakoniwa.turn_schedule.timezone', 'Asia/Tokyo'));
+    }
+
     /** @return array{status: string, last_successful_turn_at: ?string, next_scheduled_turn_at: string, timezone: string} */
     public function forWorld(World $world, ?CarbonImmutable $now = null): array
     {
@@ -29,9 +34,10 @@ final class TurnScheduleStatus
             ->orderByDesc('id')
             ->first();
         $lastSuccessfulAt = $lastSuccessful?->completed_at?->toImmutable()->utc();
-        $expected = $lastSuccessfulAt === null
-            ? $this->scheduledAtOrBefore($now, $timezone)
-            : $this->scheduledAfter($lastSuccessfulAt, $timezone);
+        $expected = $world->turn_schedule_origin_at?->addHours($world->current_turn * $intervalHours)->utc()
+            ?? ($lastSuccessfulAt === null
+                ? $this->scheduledAtOrBefore($now, $timezone)
+                : $this->scheduledAfter($lastSuccessfulAt, $timezone));
 
         $unresolvedStatus = TurnRun::query()
             ->where('world_id', $world->id)

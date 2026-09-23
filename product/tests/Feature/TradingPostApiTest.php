@@ -201,7 +201,7 @@ final class TradingPostApiTest extends TestCase
             ->assertOk()->assertJsonMissing(['id' => $ring->id]);
         $this->actingAs($owner)->putJson('/api/v1/me/secretary/equipment/2', [
             'item_id' => $ring->id,
-            'expected_version' => $secretary->equipment_version,
+            'expected_version' => $secretary->surfaceState->equipment_version,
         ])->assertUnprocessable();
         $this->actingAs($owner)->postJson($this->listingUrl($nation), [
             'product_type' => 'item', 'item_instance_id' => $ring->id,

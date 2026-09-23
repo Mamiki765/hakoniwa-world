@@ -3,6 +3,7 @@
 namespace App\Application;
 
 use App\Domain\Economy\CapacityBoundedAssetService;
+use App\Domain\Nation\UserMembershipMutationLock;
 use App\Domain\Ruleset\CurrentRulesetGuard;
 use App\Domain\World\WorldMutationLock;
 use App\Models\CompensationGrant;
@@ -38,6 +39,7 @@ final readonly class CompensationWarehouseService
         private WorldMutationLock $worldMutationLock,
         private CurrentRulesetGuard $rulesetGuard,
         private NextProductionTurnRunGuard $turnRunGuard,
+        private UserMembershipMutationLock $membershipLock,
     ) {}
 
     /**
@@ -51,63 +53,96 @@ final readonly class CompensationWarehouseService
         string $reason,
         array $assets,
     ): array {
+        $ownerId = NationMembership::query()->where('nation_id', $nation->id)
+            ->where('role', 'owner')->sole()->user_id;
+
+        return $this->createForUser(
+            World::query()->findOrFail($nation->world_id),
+            User::query()->findOrFail($ownerId),
+            $grantKey, $operatorIdentifier, $reason, $assets, $nation,
+        );
+    }
+
+    /**
+     * Nation records the original target; recipient_user_id owns the grant even after island abandonment.
+     *
+     * @param  array<string, mixed>  $assets
+     * @return array{grant: CompensationGrant, duplicate: bool}
+     */
+    public function createForUser(
+        World $world,
+        User $user,
+        string $grantKey,
+        string $operatorIdentifier,
+        string $reason,
+        array $assets,
+        ?Nation $nation = null,
+    ): array {
         $assets = $this->normalizedAssets($assets);
+        $reason = trim($reason);
         if ($grantKey === '' || mb_strlen($grantKey) > 180
             || $operatorIdentifier === '' || mb_strlen($operatorIdentifier) > 120
             || trim($reason) === '') {
             throw new DomainException('Grant key, operator identifier, and reason are required.');
         }
 
-        return DB::transaction(function () use ($nation, $grantKey, $operatorIdentifier, $reason, $assets): array {
-            $lockedNation = Nation::query()->whereKey($nation->id)->lockForUpdate()->firstOrFail();
-            $owner = NationMembership::query()
-                ->where('nation_id', $lockedNation->id)
-                ->where('world_id', $lockedNation->world_id)
-                ->where('role', 'owner')
-                ->lockForUpdate()
-                ->sole();
-            $existing = CompensationGrant::query()->where('grant_key', $grantKey)
-                ->with('items')->lockForUpdate()->first();
-            if ($existing instanceof CompensationGrant) {
-                $existingAssets = $existing->items->pluck('amount', 'asset_key')
-                    ->map(static fn (mixed $amount): int => (int) $amount)->all();
-                ksort($existingAssets);
-                if ($existing->nation_id !== $lockedNation->id
-                    || $existing->recipient_user_id !== (int) $owner->user_id
-                    || $existing->operator_identifier !== $operatorIdentifier
-                    || $existing->reason !== $reason
-                    || $existingAssets !== $assets) {
-                    throw new DomainException('Compensation grant key conflicts with a different grant.');
+        $this->membershipLock->acquire($user);
+        try {
+            return DB::transaction(function () use ($world, $user, $nation, $grantKey, $operatorIdentifier, $reason, $assets): array {
+                if ($nation !== null) {
+                    $this->assertRecipient($user, $nation);
+                    if ($nation->world_id !== $world->id) {
+                        throw new DomainException('Compensation target belongs to another World.');
+                    }
+                }
+                $existing = CompensationGrant::query()->where('grant_key', $grantKey)
+                    ->with('items')->lockForUpdate()->first();
+                if ($existing instanceof CompensationGrant) {
+                    $existingAssets = $existing->items->pluck('amount', 'asset_key')
+                        ->map(static fn (mixed $amount): int => (int) $amount)->all();
+                    ksort($existingAssets);
+                    if ($existing->nation_id !== $nation?->id
+                        || $existing->world_id !== $world->id
+                        || $existing->recipient_user_id !== $user->id
+                        || $existing->operator_identifier !== $operatorIdentifier
+                        || $existing->reason !== $reason
+                        || $existingAssets !== $assets) {
+                        throw new DomainException('Compensation grant key conflicts with a different grant.');
+                    }
+
+                    return ['grant' => $existing, 'duplicate' => true];
                 }
 
-                return ['grant' => $existing, 'duplicate' => true];
-            }
-
-            $grant = CompensationGrant::query()->create([
-                'world_id' => $lockedNation->world_id,
-                'nation_id' => $lockedNation->id,
-                'recipient_user_id' => (int) $owner->user_id,
-                'grant_key' => $grantKey,
-                'operator_identifier' => $operatorIdentifier,
-                'reason' => trim($reason),
-                'status' => CompensationGrant::STATUS_PENDING,
-            ]);
-            foreach ($assets as $assetKey => $amount) {
-                $grant->items()->create([
-                    'asset_key' => $assetKey,
-                    'amount' => $amount,
-                    'claimed_amount' => 0,
+                $grant = CompensationGrant::query()->create([
+                    'world_id' => $world->id,
+                    'nation_id' => $nation?->id,
+                    'recipient_user_id' => $user->id,
+                    'grant_key' => $grantKey,
+                    'operator_identifier' => $operatorIdentifier,
+                    'reason' => trim($reason),
+                    'status' => CompensationGrant::STATUS_PENDING,
+                    'expires_at' => now()->addDays(365),
                 ]);
-            }
+                foreach ($assets as $assetKey => $amount) {
+                    $grant->items()->create([
+                        'asset_key' => $assetKey,
+                        'amount' => $amount,
+                        'claimed_amount' => 0,
+                    ]);
+                }
 
-            return ['grant' => $grant->load('items'), 'duplicate' => false];
-        }, 3);
+                return ['grant' => $grant->load('items'), 'duplicate' => false];
+            }, 3);
+        } finally {
+            $this->membershipLock->release($user);
+        }
     }
 
     /** @return list<array<string, mixed>> */
     public function pendingFor(User $user, Nation $nation): array
     {
         $this->assertRecipient($user, $nation);
+        $this->expireForUser($user);
 
         return CompensationGrant::query()
             ->where('nation_id', $nation->id)
@@ -118,10 +153,33 @@ final readonly class CompensationWarehouseService
             ->values()->all();
     }
 
-    /** @return array<string, mixed> */
-    public function claim(User $user, Nation $nation, CompensationGrant $grant, string $requestKey): array
+    /** @return list<array<string, mixed>> */
+    public function forUser(User $user, bool $history = false): array
     {
-        $world = World::query()->findOrFail($nation->world_id);
+        $this->expireForUser($user);
+
+        return CompensationGrant::query()->where('recipient_user_id', $user->id)
+            ->whereIn('status', $history
+                ? [CompensationGrant::STATUS_CLAIMED, CompensationGrant::STATUS_EXPIRED]
+                : [CompensationGrant::STATUS_PENDING, CompensationGrant::STATUS_PARTIAL])
+            ->with('items')->orderByDesc('id')->when($history, fn ($query) => $query->limit(100))->get()
+            ->map(fn (CompensationGrant $grant): array => $this->present($grant))->all();
+    }
+
+    private function expireForUser(User $user): void
+    {
+        CompensationGrant::query()->where('recipient_user_id', $user->id)
+            ->whereIn('status', [CompensationGrant::STATUS_PENDING, CompensationGrant::STATUS_PARTIAL])
+            ->where('expires_at', '<=', now())->update(['status' => CompensationGrant::STATUS_EXPIRED]);
+    }
+
+    /** @return array<string, mixed> */
+    public function claim(User $user, CompensationGrant $grant, string $requestKey): array
+    {
+        if ($grant->recipient_user_id !== $user->id) {
+            throw new DomainException('Compensation grant belongs to another user.');
+        }
+        $world = World::query()->findOrFail($grant->world_id);
         $claimLockKey = 'hakoniwa.compensation.claim.request.'.$requestKey;
         $this->acquireClaimRequestLock($claimLockKey);
 
@@ -131,78 +189,92 @@ final readonly class CompensationWarehouseService
                 return $existing;
             }
 
-            $this->worldMutationLock->acquire($world);
+            $this->membershipLock->acquire($user);
             try {
-                return DB::transaction(function () use ($user, $nation, $grant, $requestKey, $world): array {
-                    $lockedWorld = World::query()->whereKey($world->id)->lockForUpdate()->firstOrFail();
-                    $ruleset = $lockedWorld->rulesetVersion()->firstOrFail();
-                    $this->rulesetGuard->assertMutable($lockedWorld, $ruleset);
-                    $this->turnRunGuard->assertClear($lockedWorld);
+                $this->worldMutationLock->acquire($world);
+                try {
+                    return DB::transaction(function () use ($user, $grant, $requestKey, $world): array {
+                        $lockedWorld = World::query()->whereKey($world->id)->lockForUpdate()->firstOrFail();
+                        $ruleset = $lockedWorld->rulesetVersion()->firstOrFail();
+                        $this->rulesetGuard->assertMutable($lockedWorld, $ruleset);
+                        $this->turnRunGuard->assertClear($lockedWorld);
 
-                    $lockedNation = Nation::query()
-                        ->whereKey($nation->id)
-                        ->where('world_id', $lockedWorld->id)
-                        ->lockForUpdate()
-                        ->firstOrFail();
-                    $lockedGrant = CompensationGrant::query()->whereKey($grant->id)
-                        ->with(['items' => fn ($query) => $query->orderBy('id')])
-                        ->lockForUpdate()->firstOrFail();
-                    $this->assertGrantRecipient($user, $lockedNation, $lockedGrant);
-                    if ($lockedGrant->status === CompensationGrant::STATUS_CLAIMED) {
-                        return [
-                            'grant' => $this->present($lockedGrant),
-                            'applied_now' => [],
-                            'already_claimed' => true,
-                            'duplicate' => false,
+                        $membership = NationMembership::query()->where('user_id', $user->id)
+                            ->where('world_id', $lockedWorld->id)->where('role', 'owner')->first();
+                        $lockedNation = $membership === null ? null : Nation::query()
+                            ->whereKey($membership->nation_id)->where('state', '!=', 'abandoned')
+                            ->lockForUpdate()->first();
+                        $lockedGrant = CompensationGrant::query()->whereKey($grant->id)
+                            ->with(['items' => fn ($query) => $query->orderBy('id')])
+                            ->lockForUpdate()->firstOrFail();
+                        if ($lockedGrant->recipient_user_id !== $user->id) {
+                            throw new DomainException('Compensation grant belongs to another user.');
+                        }
+                        if ($lockedGrant->status === CompensationGrant::STATUS_CLAIMED) {
+                            return [
+                                'grant' => $this->present($lockedGrant),
+                                'applied_now' => [],
+                                'already_claimed' => true,
+                                'duplicate' => false,
+                            ];
+                        }
+
+                        if ($lockedGrant->expires_at->lessThanOrEqualTo(now())) {
+                            $lockedGrant->update(['status' => CompensationGrant::STATUS_EXPIRED]);
+
+                            return ['grant' => $this->present($lockedGrant), 'applied_now' => [],
+                                'already_claimed' => false, 'duplicate' => false];
+                        }
+
+                        $this->lockUserAssetsInCanonicalOrder($user, $lockedGrant);
+                        $appliedNow = [];
+                        foreach ($lockedGrant->items as $item) {
+                            $remaining = $item->amount - $item->claimed_amount;
+                            if ($remaining < 1) {
+                                continue;
+                            }
+                            $applied = $this->creditAsset($user, $lockedNation, $item, $remaining, $ruleset);
+                            if ($applied < 0 || $applied > $remaining) {
+                                throw new DomainException('Compensation claim applied an invalid amount.');
+                            }
+                            if ($applied > 0) {
+                                $item->increment('claimed_amount', $applied);
+                            }
+                            $appliedNow[] = [
+                                'asset_key' => $item->asset_key,
+                                'applied' => $applied,
+                                'remaining' => $remaining - $applied,
+                            ];
+                        }
+
+                        $lockedGrant->load('items');
+                        $complete = $lockedGrant->items->every(
+                            static fn (CompensationGrantItem $item): bool => $item->claimed_amount === $item->amount,
+                        );
+                        $lockedGrant->fill([
+                            'status' => $complete ? CompensationGrant::STATUS_CLAIMED : CompensationGrant::STATUS_PARTIAL,
+                            'claimed_at' => $complete ? now() : null,
+                        ])->save();
+                        $result = [
+                            'grant' => $this->present($lockedGrant->fresh('items')),
+                            'applied_now' => $appliedNow,
+                            'already_claimed' => false,
                         ];
-                    }
+                        DB::table('compensation_grant_claims')->insert([
+                            'compensation_grant_id' => $lockedGrant->id,
+                            'user_id' => $user->id,
+                            'request_key' => $requestKey,
+                            'result' => json_encode($result, JSON_THROW_ON_ERROR),
+                            'created_at' => now(),
+                        ]);
 
-                    $this->lockUserAssetsInCanonicalOrder($user, $lockedGrant);
-                    $appliedNow = [];
-                    foreach ($lockedGrant->items as $item) {
-                        $remaining = $item->amount - $item->claimed_amount;
-                        if ($remaining < 1) {
-                            continue;
-                        }
-                        $applied = $this->creditAsset($user, $lockedNation, $item, $remaining, $ruleset);
-                        if ($applied < 0 || $applied > $remaining) {
-                            throw new DomainException('Compensation claim applied an invalid amount.');
-                        }
-                        if ($applied > 0) {
-                            $item->increment('claimed_amount', $applied);
-                        }
-                        $appliedNow[] = [
-                            'asset_key' => $item->asset_key,
-                            'applied' => $applied,
-                            'remaining' => $remaining - $applied,
-                        ];
-                    }
-
-                    $lockedGrant->load('items');
-                    $complete = $lockedGrant->items->every(
-                        static fn (CompensationGrantItem $item): bool => $item->claimed_amount === $item->amount,
-                    );
-                    $lockedGrant->fill([
-                        'status' => $complete ? CompensationGrant::STATUS_CLAIMED : CompensationGrant::STATUS_PARTIAL,
-                        'claimed_at' => $complete ? now() : null,
-                    ])->save();
-                    $result = [
-                        'grant' => $this->present($lockedGrant->fresh('items')),
-                        'applied_now' => $appliedNow,
-                        'already_claimed' => false,
-                    ];
-                    DB::table('compensation_grant_claims')->insert([
-                        'compensation_grant_id' => $lockedGrant->id,
-                        'user_id' => $user->id,
-                        'request_key' => $requestKey,
-                        'result' => json_encode($result, JSON_THROW_ON_ERROR),
-                        'created_at' => now(),
-                    ]);
-
-                    return [...$result, 'duplicate' => false];
-                }, 3);
+                        return [...$result, 'duplicate' => false];
+                    }, 3);
+                } finally {
+                    $this->worldMutationLock->release($world);
+                }
             } finally {
-                $this->worldMutationLock->release($world);
+                $this->membershipLock->release($user);
             }
         } finally {
             $this->releaseClaimRequestLock($claimLockKey);
@@ -267,11 +339,15 @@ final readonly class CompensationWarehouseService
 
     private function creditAsset(
         User $user,
-        Nation $nation,
+        ?Nation $nation,
         CompensationGrantItem $item,
         int $amount,
         RulesetVersion $ruleset,
     ): int {
+        if ($nation === null && in_array($item->asset_key, ['money', 'wheat', 'fish', 'meat', 'oil'], true)) {
+            return 0;
+        }
+
         return match ($item->asset_key) {
             'money' => $this->boundedAssets->creditMoney($nation, $amount, $ruleset)->applied,
             'wheat', 'fish', 'meat' => $this->boundedAssets->creditFood(
@@ -400,25 +476,6 @@ final readonly class CompensationWarehouseService
         }
     }
 
-    private function assertGrantRecipient(User $user, Nation $nation, CompensationGrant $grant): void
-    {
-        $ownerMembership = NationMembership::query()
-            ->where('user_id', $user->id)
-            ->where('nation_id', $nation->id)
-            ->where('world_id', $nation->world_id)
-            ->where('role', 'owner')
-            ->lockForUpdate()
-            ->first(['id']);
-        if (! $ownerMembership instanceof NationMembership) {
-            throw new DomainException('Only the target Nation owner can access compensation grants.');
-        }
-        if ($grant->nation_id !== $nation->id
-            || $grant->world_id !== $nation->world_id
-            || $grant->recipient_user_id !== $user->id) {
-            throw new DomainException('Compensation grant recipient does not match the authenticated Nation owner.');
-        }
-    }
-
     /** @return array<string, mixed> */
     private function present(CompensationGrant $grant): array
     {
@@ -428,6 +485,8 @@ final readonly class CompensationWarehouseService
             'reason' => $grant->reason,
             'status' => $grant->status,
             'claimed_at' => $grant->claimed_at?->toIso8601String(),
+            'expires_at' => $grant->expires_at->toIso8601String(),
+            'remaining_days' => max(0, (int) ceil(now()->diffInDays($grant->expires_at, false))),
             'items' => $grant->items->sortBy('id')->map(function (CompensationGrantItem $item): array {
                 $display = self::ASSETS[$item->asset_key] ?? throw new DomainException('Unknown compensation asset.');
 

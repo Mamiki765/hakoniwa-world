@@ -1,9 +1,9 @@
 <?php
 
-$currentRuleset = require __DIR__.'/hakoniwa/rulesets/hakoniwa-2s-plus-v26.php';
+$currentRuleset = require __DIR__.'/hakoniwa/rulesets/hakoniwa-2s-plus-v27.php';
 
 return [
-    'application_version' => '4.3.2',
+    'application_version' => '4.4.0',
     'ruleset' => $currentRuleset,
     'published_rulesets' => [$currentRuleset['key'] => $currentRuleset],
     'current_catalogs' => [
@@ -43,6 +43,9 @@ return [
     ],
     'secretary_profile' => [
         'image_base_url' => env('HAKONIWA_SECRETARY_IMAGE_BASE_URL', '/hakoniwa-secretaries'),
+    ],
+    'monument_design' => [
+        'image_base_url' => rtrim(env('HAKONIWA_SECRETARY_IMAGE_BASE_URL', '/hakoniwa-secretaries'), '/').'/monuments',
     ],
     'turn_schedule' => [
         'timezone' => 'Asia/Tokyo',

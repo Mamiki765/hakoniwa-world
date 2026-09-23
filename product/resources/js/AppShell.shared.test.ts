@@ -880,6 +880,8 @@ describe('application lobby and island entry', () => {
         const grant = {
             id: 41,
             grant_key: 'incident-test-owner-1',
+            expires_at: '2027-09-09T12:00:00+09:00',
+            remaining_days: 365,
             reason: '今回のお詫びです。',
             status: 'pending' as const,
             claimed_at: null,
@@ -918,11 +920,11 @@ describe('application lobby and island entry', () => {
             }]);
             if (path === '/api/v1/me/underground/surface-map') return response(null);
             if (path.includes('/api/v1/map-spaces/2/chunks/')) return response(emptyChunk);
-            if (path === '/api/v1/nations/3/compensation-grants') {
+            if (path === '/api/v1/me/compensation-grants') {
                 if (claimAttempts >= 2) throw new TypeError('warehouse refresh failed');
                 return response(claimed ? [] : [grant]);
             }
-            if (path === '/api/v1/nations/3/compensation-grants/41/claim' && init?.method === 'POST') {
+            if (path === '/api/v1/me/compensation-grants/41/claim' && init?.method === 'POST') {
                 claimAttempts++;
                 claimed = true;
                 if (claimAttempts === 1) throw new TypeError('claim response lost');
@@ -974,6 +976,11 @@ describe('application lobby and island entry', () => {
         await flushPromises();
         expect(wrapper.get('.compensation-modal').text()).toContain('claim response lost');
         expect(wrapper.get('.compensation-grant .button.primary').text()).toBe('受取結果を再確認する');
+        await wrapper.get('.compensation-modal button[aria-label="閉じる"]').trigger('click');
+        await wrapper.findAll('.session-account-actions button').find((button) => button.text() === '配布倉庫')!.trigger('click');
+        await flushPromises();
+        // The refreshed pending list no longer includes the committed grant, but its unknown intent must remain retryable.
+        expect(wrapper.get('.compensation-grant .button.primary').text()).toBe('受取結果を再確認する');
         await wrapper.get('.compensation-grant .button.primary').trigger('click');
         await flushPromises();
 
@@ -986,7 +993,7 @@ describe('application lobby and island entry', () => {
         expect(wrapper.get('.reward-toast').text()).toContain('資金1,234億円');
         expect(wrapper.get('.reward-toast').text()).toContain('スキップチケット1,000枚');
         expect(wrapper.find('.compensation-banner').exists()).toBe(false);
-        expect(wrapper.find('.compensation-modal').exists()).toBe(false);
+        expect(wrapper.get('.compensation-modal').text()).toContain('該当する配布はありません');
         await vi.advanceTimersByTimeAsync(5_250);
         await flushPromises();
         expect(wrapper.get('.reward-toast').text()).toContain('配布は受取済みですが、最新表示を更新できませんでした。');

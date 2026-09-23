@@ -60,6 +60,10 @@ final readonly class UndergroundScenePresenter
                 : $this->assets->scene($key, $showAi, $visible);
         }
         $scenes['home'] = ['background' => $background, 'actors' => []];
+        $scenes['otherworld-intro'] = [
+            'background' => $this->assets->scene('hunting_ground.shining_kingdom', $showAi, false)['background'],
+            'actors' => $scenes['shop']['actors'],
+        ];
 
         return [
             'display_name' => $this->portraits->battleDisplayName($secretary),

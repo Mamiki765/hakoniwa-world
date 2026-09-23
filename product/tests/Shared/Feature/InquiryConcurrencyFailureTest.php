@@ -63,7 +63,6 @@ final class InquiryConcurrencyFailureTest extends TestCase
             $this->continueWorker($workers['inquiry']);
             $this->waitForBlock($workers['inquiry']['pid'], $workers['turn']['pid']);
             $this->continueWorker($workers['turn']);
-            $this->waitForBlock($workers['turn']['pid'], $workers['party']['pid']);
             // The actual member FK can now finish without waiting for the inquiry's User lock.
             $this->continueWorker($workers['party']);
             $results = array_map(fn (array $worker): array => $this->readWorkerEvent($worker), $workers);
@@ -127,23 +126,23 @@ final class InquiryConcurrencyFailureTest extends TestCase
             'turn_monster_award' => $turnMonsterAward,
             'concurrent_monster_award' => $concurrentMonsterAward,
         ];
-        $borrowedMonsterBefore = (int) $borrowed->monster_experience;
-        $leaderMonsterBefore = (int) $leaderSecretary->monster_experience;
+        $borrowedMonsterBefore = (int) $borrowed->surfaceState->monster_experience;
+        $leaderMonsterBefore = (int) $leaderSecretary->surfaceState->monster_experience;
         $workers = [];
         try {
             $workers['party'] = $this->startWorker('party_snapshot', $fixture);
             $this->assertTrue($this->readWorkerEvent($workers['party'])['ready']);
             $workers['turn'] = $this->startWorker('turn_flush', $fixture);
             $this->assertTrue($this->readWorkerEvent($workers['turn'])['ready']);
-            $this->continueWorker($workers['turn']);
-            $this->waitForBlock($workers['turn']['pid'], $workers['party']['pid']);
-
-            // The Turn query already owns the lower borrowed Secretary row while it waits for the leader.
+            // Early item grant and flush completed while the underground
+            // profile is still held; only another surface writer must wait.
             $workers['writer'] = $this->startWorker('secretary_update', $fixture);
             $this->waitForBlock($workers['writer']['pid'], $workers['turn']['pid']);
             $this->continueWorker($workers['party']);
-
-            $results = array_map(fn (array $worker): array => $this->readWorkerEvent($worker), $workers);
+            $partyResult = $this->readWorkerEvent($workers['party']);
+            $this->continueWorker($workers['turn']);
+            $results = ['party' => $partyResult, 'turn' => $this->readWorkerEvent($workers['turn']),
+                'writer' => $this->readWorkerEvent($workers['writer'])];
             $this->assertSame(
                 ['party' => 'ok', 'turn' => 'ok', 'writer' => 'ok'],
                 array_map(fn (array $result): string => $result['status'], $results),
@@ -158,11 +157,11 @@ final class InquiryConcurrencyFailureTest extends TestCase
             );
             $this->assertSame(
                 $borrowedMonsterBefore + $turnMonsterAward + $concurrentMonsterAward,
-                (int) $borrowed->fresh()->monster_experience,
+                (int) $borrowed->fresh()->surfaceState->monster_experience,
             );
             $this->assertSame(
                 $leaderMonsterBefore + $turnMonsterAward,
-                (int) $leaderSecretary->fresh()->monster_experience,
+                (int) $leaderSecretary->fresh()->surfaceState->monster_experience,
             );
         } finally {
             $this->stopWorkers($workers);

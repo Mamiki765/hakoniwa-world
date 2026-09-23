@@ -133,9 +133,7 @@ final class UndergroundLendingRewardService
                 $balance = UserSkipTicketBalance::query()
                     ->where('user_id', $member->source_owner_user_id)->firstOrFail();
                 $balance = UserSkipTicketBalance::query()->whereKey($balance->id)->lockForUpdate()->firstOrFail();
-                $priorParticipationCount = SecretaryLendingParticipation::query()
-                    ->where('owner_user_id', $member->source_owner_user_id)
-                    ->count();
+                $priorParticipationCount = (int) $balance->lifetime_participation_count;
                 $participation = SecretaryLendingParticipation::query()->create([
                     'underground_battle_id' => $lockedBattle->id,
                     'underground_party_member_id' => $member->id,
@@ -161,10 +159,11 @@ final class UndergroundLendingRewardService
                     - intdiv($priorParticipationCount, self::PARTICIPATIONS_PER_TICKET);
                 $available = max(0, self::DAILY_TICKET_CAP - (int) $daily->tickets_awarded);
                 $ticketDelta = min($thresholdTickets, $available);
+                $balanceBefore = (int) $balance->balance;
+                $balance->lifetime_participation_count = $priorParticipationCount + 1;
+                $balance->balance += $ticketDelta;
+                $balance->save();
                 if ($ticketDelta > 0) {
-                    $balanceBefore = (int) $balance->balance;
-                    $balance->balance += $ticketDelta;
-                    $balance->save();
                     DB::table('user_skip_ticket_ledger')->insert([
                         'user_id' => $member->source_owner_user_id,
                         'underground_battle_id' => $lockedBattle->id,

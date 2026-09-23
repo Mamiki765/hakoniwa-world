@@ -91,7 +91,7 @@ final class BuriedTreasureService
         return $metrics;
     }
 
-    public function create(TurnContext $context, MapCell $cell, string $source, bool $premium): BuriedTreasure
+    public function create(TurnContext $context, MapCell $cell, string $source, bool $premium, ?int $piratePopulation = null): BuriedTreasure
     {
         $settings = $this->settings($context);
         $active = BuriedTreasure::query()->where('world_id', $context->world->id)
@@ -105,6 +105,22 @@ final class BuriedTreasureService
         }
         $snapshot = $settings[$premium ? 'premium_reward' : 'standard_reward'];
         $this->validateRewardSnapshot($snapshot, $premium);
+        $replacements = $settings['emblem_replacements'] ?? null;
+        if (is_array($replacements) && ! $premium && in_array($source, ['meteor', 'pirate_sink'], true)) {
+            $replacement = $replacements[$source] ?? null;
+            if (! is_array($replacement)) {
+                throw new DomainException('The active Ruleset is missing the Buried Treasure replacement contract.');
+            }
+            $replace = $source === 'pirate_sink'
+                ? $piratePopulation !== null && $piratePopulation >= $replacement['minimum_population']
+                : $context->random->stream(TurnRandomStreamFactory::buriedTreasureEmblem(
+                    (int) $cell->id, $source, $active->count() + 1, (int) $settings['stream_version'],
+                ))->integer(1, 100) <= $replacement['chance_percent'];
+            if ($replace) {
+                $snapshot = $replacement['reward'];
+                $this->validateRewardSnapshot($snapshot, false);
+            }
+        }
         $treasure = BuriedTreasure::query()->create([
             'world_id' => $context->world->id,
             'map_cell_id' => $cell->id,
@@ -114,14 +130,18 @@ final class BuriedTreasureService
             'state' => BuriedTreasure::STATE_ACTIVE,
         ]);
         $context->state->markMapChunkChanged((int) $cell->map_chunk_id);
-        $this->events->record($context, 'buried_treasure.created', $treasure, [
+        $metadata = [
             'treasure_id' => (int) $treasure->id,
             'source' => $source,
             'premium' => $premium,
-            'item_key' => (string) $snapshot['item_key'],
             'x' => (int) $cell->x,
             'y' => (int) $cell->y,
-        ], $source === 'natural' ? 'admin' : 'public');
+        ];
+        if (in_array($snapshot['item_key'], [SecretaryItemCatalog::WAKUWAKU_TICKET, SecretaryItemCatalog::DOKIDOKI_TICKET], true)) {
+            $metadata['item_key'] = $snapshot['item_key'];
+        }
+        $this->events->record($context, 'buried_treasure.created', $treasure, $metadata,
+            $source === 'natural' ? 'admin' : 'public');
 
         return $treasure;
     }
@@ -136,7 +156,8 @@ final class BuriedTreasureService
         }
         $membership = NationMembership::query()->where('world_id', $context->world->id)
             ->where('nation_id', $nation->id)->where('role', 'owner')->lockForUpdate()->sole();
-        $secretary = Secretary::query()->where('user_id', $membership->user_id)->lockForUpdate()->sole();
+        $secretary = Secretary::query()->where('user_id', $membership->user_id)->sole();
+        $secretary->lockSurfaceState();
         $required = 0;
         foreach ($treasures as $treasure) {
             $snapshot = $treasure->reward_snapshot;
@@ -224,10 +245,10 @@ final class BuriedTreasureService
     /** @param array<string, mixed> $snapshot */
     private function validateRewardSnapshot(array $snapshot, bool $premium): void
     {
-        $expectedItemKey = $premium
-            ? SecretaryItemCatalog::DOKIDOKI_TICKET
-            : SecretaryItemCatalog::WAKUWAKU_TICKET;
-        if (($snapshot['item_key'] ?? null) !== $expectedItemKey
+        $expectedItemKeys = $premium
+            ? [SecretaryItemCatalog::DOKIDOKI_TICKET]
+            : [SecretaryItemCatalog::WAKUWAKU_TICKET, SecretaryItemCatalog::TWIN_STAR_EMBLEM, SecretaryItemCatalog::CRESCENT_EMBLEM];
+        if (! in_array($snapshot['item_key'] ?? null, $expectedItemKeys, true)
             || ! is_int($snapshot['quantity'] ?? null)
             || $snapshot['quantity'] < 1
             || ! is_string($snapshot['rarity'] ?? null)
@@ -235,6 +256,10 @@ final class BuriedTreasureService
             || ! is_int($snapshot['fixed_sale_price_money'] ?? null)
             || $snapshot['fixed_sale_price_money'] < 0) {
             throw new DomainException('Buried Treasure reward snapshot is invalid.');
+        }
+        if (in_array($snapshot['item_key'], [SecretaryItemCatalog::TWIN_STAR_EMBLEM, SecretaryItemCatalog::CRESCENT_EMBLEM], true)
+            && ($snapshot['quantity'] !== 1 || $snapshot['rarity'] !== SecretaryItemCatalog::RARITY_ARTIFACT)) {
+            throw new DomainException('Buried Treasure emblem snapshot is invalid.');
         }
     }
 }

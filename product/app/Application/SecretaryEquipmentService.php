@@ -48,7 +48,9 @@ class SecretaryEquipmentService
         $effectProjection = $this->effectContexts->resolve($user, $worldId);
         $secretary = Secretary::query()
             ->where('user_id', $user->id)
-            ->with('itemInstances')
+            // Read the version first so a concurrent equipment change cannot
+            // pair an old item list with a new optimistic-lock token.
+            ->with(['surfaceState', 'itemInstances'])
             ->first();
         if (! $secretary instanceof Secretary) {
             throw new SecretaryNotFoundException('秘書がまだ作成されていません。');
@@ -88,7 +90,7 @@ class SecretaryEquipmentService
 
         return [
             'slot' => $slot,
-            'equipment_version' => $secretary->equipment_version,
+            'equipment_version' => $secretary->surfaceState->equipment_version,
             'current_item' => $current instanceof SecretaryItemInstance
                 ? $this->optionItem($current, $effectProjection)
                 : null,
@@ -177,11 +179,11 @@ class SecretaryEquipmentService
 
                 $secretary = Secretary::query()
                     ->where('user_id', $user->id)
-                    ->lockForUpdate()
                     ->first();
                 if (! $secretary instanceof Secretary) {
                     throw new SecretaryNotFoundException('秘書がまだ作成されていません。');
                 }
+                $secretary->lockSurfaceState();
 
                 /** @var Collection<int, SecretaryItemInstance> $items */
                 $items = SecretaryItemInstance::query()
@@ -189,7 +191,7 @@ class SecretaryEquipmentService
                     ->orderBy('id')
                     ->lockForUpdate()
                     ->get();
-                if ($secretary->equipment_version !== $expectedVersion) {
+                if ($secretary->surfaceState->equipment_version !== $expectedVersion) {
                     throw new SecretaryEquipmentConflictException(
                         'secretary_equipment_version_conflict',
                         '装備状態が更新されています。最新の状態から選び直してください。',
@@ -230,9 +232,9 @@ class SecretaryEquipmentService
                     $selected->save();
                 }
 
-                $previousVersion = $secretary->equipment_version;
-                $secretary->equipment_version = $previousVersion + 1;
-                $secretary->save();
+                $previousVersion = $secretary->surfaceState->equipment_version;
+                $secretary->surfaceState->equipment_version = $previousVersion + 1;
+                $secretary->surfaceState->save();
                 $this->recordMutation($user, $secretary, $slot, $current, $selected, $previousVersion);
 
                 return $secretary->fresh(['skills', 'itemInstances']);
@@ -440,7 +442,7 @@ class SecretaryEquipmentService
                 'new_item_id' => $next?->id,
                 'new_item_key' => $next?->item_key,
                 'previous_equipment_version' => $previousVersion,
-                'new_equipment_version' => $secretary->equipment_version,
+                'new_equipment_version' => $secretary->surfaceState->equipment_version,
             ], JSON_THROW_ON_ERROR),
             'occurred_at' => $now,
             'created_at' => $now,

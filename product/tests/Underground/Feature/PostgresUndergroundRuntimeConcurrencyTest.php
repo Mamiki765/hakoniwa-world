@@ -61,7 +61,7 @@ final class PostgresUndergroundRuntimeConcurrencyTest extends TestCase
         parent::tearDown();
     }
 
-    public function test_same_request_concurrent_explorations_settle_one_battle_under_secretary_lock(): void
+    public function test_same_request_concurrent_explorations_settle_one_battle_under_profile_lock(): void
     {
         [$user, $secretary, $profile] = $this->undergroundFixture();
         $this->openExploration($user, $secretary);
@@ -355,7 +355,7 @@ final class PostgresUndergroundRuntimeConcurrencyTest extends TestCase
             ->where('operation', 'equipment_equip')->count());
     }
 
-    public function test_concurrent_different_shopkeeper_names_commit_exactly_one_under_secretary_lock(): void
+    public function test_concurrent_different_shopkeeper_names_commit_exactly_one_under_profile_lock(): void
     {
         [$user, $secretary, $profile] = $this->undergroundFixture();
         $secretary->update(['name' => 'ペリドット', 'named_at' => now()]);
@@ -402,7 +402,7 @@ final class PostgresUndergroundRuntimeConcurrencyTest extends TestCase
             ->count());
     }
 
-    public function test_same_request_concurrent_tutorials_settle_one_battle_and_reward_under_secretary_lock(): void
+    public function test_same_request_concurrent_tutorials_settle_one_battle_and_reward_under_profile_lock(): void
     {
         [$user, $secretary, $profile] = $this->undergroundFixture();
         $secretary->update(['name' => 'ペリドット', 'named_at' => now()]);
@@ -731,7 +731,6 @@ final class PostgresUndergroundRuntimeConcurrencyTest extends TestCase
         $parent = $primary->selectOne('SELECT pg_backend_pid() AS pid');
         $this->assertIsObject($parent);
         $parentPid = (int) $parent->pid;
-        $primary->table('secretaries')->where('id', $secretary->id)->lockForUpdate()->firstOrFail();
         $primary->table('underground_profiles')
             ->where('secretary_id', $secretary->id)
             ->lockForUpdate()
@@ -759,7 +758,7 @@ final class PostgresUndergroundRuntimeConcurrencyTest extends TestCase
                 (int) file_get_contents($directory.'/database-0'),
                 (int) file_get_contents($directory.'/database-1'),
             ];
-            $this->waitForSecretaryLockWaiters($pids, $parentPid);
+            $this->waitForProfileLockWaiters($pids, $parentPid);
             $primary->commit();
 
             return [
@@ -830,7 +829,7 @@ final class PostgresUndergroundRuntimeConcurrencyTest extends TestCase
     }
 
     /** @param list<int> $pids */
-    private function waitForSecretaryLockWaiters(array $pids, int $parentPid): void
+    private function waitForProfileLockWaiters(array $pids, int $parentPid): void
     {
         $deadline = microtime(true) + 10;
         $placeholders = implode(', ', array_fill(0, count($pids), '?'));
@@ -841,20 +840,20 @@ final class PostgresUndergroundRuntimeConcurrencyTest extends TestCase
                     ."FROM pg_stat_activity WHERE pid IN ({$placeholders})",
                 array_merge([$parentPid], $pids),
             );
-            $secretaryWaiters = collect($rows)->filter(static function (object $row): bool {
+            $profileWaiters = collect($rows)->filter(static function (object $row): bool {
                 $query = strtolower((string) $row->query);
 
                 return $row->wait_event_type === 'Lock'
-                    && (str_contains($query, 'from "secretaries"')
-                        || str_contains($query, 'from secretaries'));
+                    && (str_contains($query, 'from "underground_profiles"')
+                        || str_contains($query, 'from underground_profiles'));
             });
             if (count($rows) === count($pids)
-                && $secretaryWaiters->count() === count($pids)
-                && $secretaryWaiters->contains(static fn (object $row): bool => (int) $row->blocked_by_parent === 1)) {
+                && $profileWaiters->count() === count($pids)
+                && $profileWaiters->contains(static fn (object $row): bool => (int) $row->blocked_by_parent === 1)) {
                 return;
             }
             if (microtime(true) >= $deadline) {
-                $this->fail('Underground runtime workers did not overlap on the Secretary row lock.');
+                $this->fail('Underground runtime workers did not overlap on the UndergroundProfile row lock.');
             }
             usleep(10_000);
         } while (true);

@@ -24,7 +24,7 @@ current repository candidate releaseのapplication versionは`3.10.0`、surface 
 
 - `product/app/Domain/Underground/Combat/`: rules、state、AI、private RNG、engine、result。
 - `product/app/Application/Underground/`: manifest駆動simulationとreport aggregation。
-- `product/app/Application/Underground/UndergroundProfileService.php`: Secretary row lockを使うprofile lazy-create adapter。
+- `product/app/Application/Underground/UndergroundProfileService.php`: unique FKによる競合作成とprofile row lockを使うlazy-create / serialization adapter。
 - `product/app/Models/UndergroundProfile.php`: Secretary-owned profileのEloquent persistence model。
 - `product/app/Domain/Underground/Area/`: layerからfacility slot capacityを派生するpure calculator。
 - Underground runtime adapter/orchestrator: Secretary snapshot、狩場/encounter、trial run、cooldown、canonical engine実行、settlementを接続する。pure engineの複製やround途中のpersistent sessionは作らない。
@@ -43,7 +43,7 @@ current repository candidate releaseのapplication versionは`3.10.0`、surface 
 
 Undergroundの恒久的なplayer progression ownerは`Secretary`である。combat level/XP、輝石の欠片、STP/SP、Skill Tree allocation/loadout、trial unlock/progress、地下箱庭で解禁済みのarea layer等のSecretary固有状態はNationから独立して保持する。PR102では地下箱庭entitlementを、PR103ではcombat progressionとruntime stateを、PR107ではcurrent HP/銀行/STP foundationを、PR108では有限SPとskill allocationを追加する。equipmentと探索基地等の将来状態もこのowner境界を継承する。
 
-`underground_profiles`はSecretaryと1:1で、`secretary_id`をunique FKとする。既存Secretaryはbackfillせず、必要になった時にApplication serviceがtransaction内でSecretary rowをlockしてprofileをlazy createする。profileはNationの破棄・再作成では削除しない。Secretaryそのものが正式に削除された場合だけ、Secretary skill/itemと同じcurrent child lifecycleに従ってcascade deleteする。current User→Secretary FKは`RESTRICT`であり、このPRはUser/Secretary lifecycleを変更しない。
+`underground_profiles`はSecretaryと1:1で、`secretary_id`をunique FKとする。既存Secretaryはbackfillせず、必要になった時にApplication serviceがunique FKと競合作成処理でprofileをlazy createし、作成後の地下mutationはprofile rowで直列化する。4.4.0以降の詳細なlock境界は`product/docs/architecture/secretary-lock-boundaries.md`を正本とする。profileはNationの破棄・再作成では削除しない。Secretaryそのものが正式に削除された場合だけ、Secretary skill/itemと同じcurrent child lifecycleに従ってcascade deleteする。current User→Secretary FKは`RESTRICT`であり、このPRはUser/Secretary lifecycleを変更しない。
 
 ### Area and facility boundary
 
@@ -262,7 +262,7 @@ PR103 runtimeはpure engineへidentity/profile snapshot、loadout、encounter、
 
 ## PR104 first-player intro contract
 
-PR104は汎用visual novel/script engineではなく、Secretary-ownedの一方向finite-state introである。短いダミーscene内のpage番号はfrontend local stateでよいが、Tutorial clear、XP settlement、脱出帰還、店員命名とbranch、scripted loss完了、shop説明、地下メイン解禁はserverで永続化する。mutationはSecretary/profile/intro rowを同じlock順で直列化し、profile単位のUUID fingerprint ledgerとbattle unique identityでduplicate、別payload reuse、stage skip、逆戻りを拒否する。
+PR104は汎用visual novel/script engineではなく、Secretary-ownedの一方向finite-state introである。短いダミーscene内のpage番号はfrontend local stateでよいが、Tutorial clear、XP settlement、脱出帰還、店員命名とbranch、scripted loss完了、shop説明、地下メイン解禁はserverで永続化する。mutationはprofileを直列化rootとしてintro rowを同じtransaction内で更新し、profile単位のUUID fingerprint ledgerとbattle unique identityでduplicate、別payload reuse、stage skip、逆戻りを拒否する。4.4.0以降の親Secretary lock例外は画像snapshot等の明示されたidentity保護に限り、`product/docs/architecture/secretary-lock-boundaries.md`に従う。
 
 Tutorialはversioned `tutorial_giant_rat` inputと固定starter-knife projectionをcanonical pure engineへ渡す。starter knifeはinventory Item、weapon instance、rarity/affix/durability schemaを作らない。期待resultは100 round未満のplayer victoryだけであり、contract外ならtransactionをrollbackする。settlementはcombat XP +5、shard +0、combat level 1維持だけで、normal cooldown、Trial、通常探索reward/penaltyを通らない。battle compact record/detailはPR103のtable/logを再利用し、詳細action logには共通の1時間retentionを適用する。
 
@@ -290,7 +290,7 @@ PR107はcurrent authenticated User→own Secretary→profileを解決し、通�
 
 PR108はgrowth path選択時にfinite initial 20 SPと`secretary-underground-skill-tree-alpha-v1`を一度だけ保存する。forward migrationは既存のgrowth-selected profileだけを20/20へreconcileし、未選択profileは0/0/nullを維持する。`underground_skill_allocations`はprofile/nodeのrankとnullable active slotを保持し、profile/node unique、profile/slot unique、rank positive、slot 1〜5をdatabaseでも保護する。既存migrationは変更せずforward-only migrationを追加する。
 
-STP allocation、SP node acquisition、active loadout更新は`UndergroundIntroService`の既存UUID fingerprint ledger、Secretary/profile row lock、operation-specific fingerprintを再利用する。同じrequest ID + 同じintentは保存済みprojectionを返し、別payload reuseはconflictにする。node取得はcurrent identity、max rank、同tree prerequisite、lower-tier invested points gate、unspent SPをlock内で再検証してからSPを減算する。STPとSPのreset/refund、Trial SP grantはこのadapterに含めない。
+STP allocation、SP node acquisition、active loadout更新は`UndergroundIntroService`の既存UUID fingerprint ledger、profile row lock、operation-specific fingerprintを再利用する。同じrequest ID + 同じintentは保存済みprojectionを返し、別payload reuseはconflictにする。node取得はcurrent identity、max rank、同tree prerequisite、lower-tier invested points gate、unspent SPをlock内で再検証してからSPを減算する。STPとSPのreset/refund、Trial SP grantはこのadapterに含めない。
 
 Skill Treeの表示はdesktop 3 column / mobile 3 tabとし、mobileで長い3 treeを連続stackしない。宿は既存の10G・carried balance・UUID retry contractを維持したまま、request中disableと成功後の案内人台詞・HP全回復statusだけをclient feedbackとして追加する。
 

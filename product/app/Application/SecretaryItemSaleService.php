@@ -66,10 +66,11 @@ final class SecretaryItemSaleService
                     throw new DomainException('所有する島を確認できません。');
                 }
 
-                $secretary = Secretary::query()->where('user_id', $user->id)->lockForUpdate()->first();
+                $secretary = Secretary::query()->where('user_id', $user->id)->first();
                 if (! $secretary instanceof Secretary) {
                     throw new DomainException('秘書がまだ作成されていません。');
                 }
+                $secretary->lockSurfaceState();
                 $item = SecretaryItemInstance::query()
                     ->whereKey($itemId)
                     ->where('secretary_id', $secretary->id)

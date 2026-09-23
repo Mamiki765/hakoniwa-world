@@ -63,7 +63,6 @@ final readonly class UndergroundPlaytestService
         ): array {
             $secretary = Secretary::query()
                 ->where('user_id', $user->id)
-                ->lockForUpdate()
                 ->first();
             if (! $secretary instanceof Secretary || $secretary->name === null) {
                 throw new UndergroundRuntimeException('underground_secretary_missing', '名前のある秘書が必要です。');
@@ -81,6 +80,7 @@ final readonly class UndergroundPlaytestService
             if (! $profile instanceof UndergroundProfile || ! $intro instanceof UndergroundIntroProgress) {
                 throw new UndergroundRuntimeException('underground_playtest_locked', '力試しはまだ解禁されていません。');
             }
+            app(UndergroundRequestAdmission::class)->assertLockedProfile($profile);
             $this->assertUnlocked($profile, $intro);
 
             if (UndergroundIntroRequest::query()

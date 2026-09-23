@@ -47,6 +47,7 @@ class OceanWorldGenerator
                     'name' => $worldConfig['name'],
                     'ruleset_version_id' => $ruleset->id,
                     'current_turn' => 1,
+                    'turn_schedule_origin_at' => app(TurnScheduleStatus::class)->initialOrigin(),
                 ]);
                 $worldRuleset = $ruleset;
             }

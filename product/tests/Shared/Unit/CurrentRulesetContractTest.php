@@ -9,25 +9,25 @@ use Tests\TestCase;
 
 final class CurrentRulesetContractTest extends TestCase
 {
-    private const V26_CHECKSUM = '791ec7754ba794660fff3e27c1b287a481096055cf125d1080a6fe31c6f3d10b';
+    private const V27_CHECKSUM = 'f353eb5a409657809a1e3ebdcc5fa6dcd7f700ba6b0a6bc5165313cd32c1d3f4';
 
-    public function test_normal_config_loads_and_validates_the_v26_identity_and_checksum(): void
+    public function test_normal_config_loads_and_validates_the_v27_identity_and_checksum(): void
     {
         $normalConfig = require config_path('hakoniwa.php');
         $current = $normalConfig['ruleset'];
 
-        $this->assertSame(['hakoniwa-2s-plus-v26'], array_keys($normalConfig['published_rulesets']));
-        $this->assertSame($current, $normalConfig['published_rulesets']['hakoniwa-2s-plus-v26']);
+        $this->assertSame(['hakoniwa-2s-plus-v27'], array_keys($normalConfig['published_rulesets']));
+        $this->assertSame($current, $normalConfig['published_rulesets']['hakoniwa-2s-plus-v27']);
         $this->assertSame($current['secretary'], $normalConfig['current_catalogs']['secretary']);
-        $this->assertSame('hakoniwa-2s-plus-v26', $current['key']);
-        $this->assertSame(26, $current['version']);
+        $this->assertSame('hakoniwa-2s-plus-v27', $current['key']);
+        $this->assertSame(27, $current['version']);
         $this->assertArrayNotHasKey('behavior', $current);
         $this->assertArrayNotHasKey('data', $current);
         $this->assertArrayNotHasKey('flavor', $current);
-        $this->assertSame(self::V26_CHECKSUM, $this->checksum($current));
+        $this->assertSame(self::V27_CHECKSUM, $this->checksum($current));
         $summary = app(RulesetAuthoringValidator::class)->validate($current);
-        $this->assertSame('hakoniwa-2s-plus-v26', $summary['key']);
-        $this->assertSame(26, $summary['version']);
+        $this->assertSame('hakoniwa-2s-plus-v27', $summary['key']);
+        $this->assertSame(27, $summary['version']);
     }
 
     public function test_current_domain_authoring_classifies_every_scalar_leaf_exactly_once(): void
@@ -73,7 +73,7 @@ final class CurrentRulesetContractTest extends TestCase
             app(CurrentRulesetAuthoringInspector::class)->inspect($current),
             app(CurrentRulesetAuthoringInspector::class)->inspect($withAdditionalEmptyContainer),
         );
-        $this->assertSame(self::V26_CHECKSUM, $this->checksum($current));
+        $this->assertSame(self::V27_CHECKSUM, $this->checksum($current));
         $this->assertNotSame($this->checksum($current), $this->checksum($withAdditionalEmptyContainer));
     }
 

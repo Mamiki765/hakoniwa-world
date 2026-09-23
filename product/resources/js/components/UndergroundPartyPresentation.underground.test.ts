@@ -1,3 +1,4 @@
+import { stubUndergroundFetch } from '../UndergroundAdmissionTestFixture';
 import { openUndergroundView, withUndergroundDefaults } from '../UndergroundTestNavigation';
 import { flushPromises, mount } from '@vue/test-utils';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -98,7 +99,7 @@ describe('Underground party presentation controls', () => {
         const duel = { unlocked: true, won: false, challenge_lines: ['挑戦の会話'], accept_lines: [], cancel_lines: ['キャンセルの会話'], rematch_lines: ['再戦の会話'], solo_rematch_lines: ['へし折ってやるわ'] };
         const payloads: Array<Record<string, unknown>> = [];
         const battle = { ...smallBattle('duel'), context: 'guide_duel', encounter_name: '夢の女王', duel_dialogue: ['良き夢のあらんことを'] };
-        vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        stubUndergroundFetch(vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
             const path = String(input);
             if (path.endsWith('/guide-duel')) {
                 payloads.push(JSON.parse(String(init?.body)));
@@ -160,7 +161,7 @@ describe('Underground party presentation controls', () => {
                 embrace: { lines: ['抱擁の会話'], choices: back },
             } } },
         });
-        vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        stubUndergroundFetch(vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
             const path = String(input);
             if (path.endsWith('/guide-duel')) {
                 payloads.push(JSON.parse(String(init?.body)));
@@ -229,7 +230,7 @@ describe('Underground party presentation controls', () => {
             treasure: { found: true, base_g: 222, multiplier: 20, total_g: 4_440 },
             party: { members: [], enemies: [] },
         };
-        vi.stubGlobal('fetch', vi.fn((input: RequestInfo | URL) => (
+        stubUndergroundFetch(vi.fn((input: RequestInfo | URL) => (
             String(input).endsWith('/api/v1/me/underground/battles')
                 ? Promise.resolve(response([]))
                 : Promise.resolve(response({ stage: 'underground_open', battle, secretary_name: 'Leader' }))
@@ -257,7 +258,7 @@ describe('Underground party presentation controls', () => {
 
     it('renders the generated engine presentation fixture through the party projection', async () => {
         const state = openState({ battle: partyPresentation });
-        vi.stubGlobal('fetch', vi.fn((input: RequestInfo | URL) => (
+        stubUndergroundFetch(vi.fn((input: RequestInfo | URL) => (
             String(input).endsWith('/api/v1/me/underground/battles')
                 ? Promise.resolve(response([]))
                 : Promise.resolve(response(state))
@@ -313,7 +314,7 @@ describe('Underground party presentation controls', () => {
                 end_state: null,
             }],
         };
-        vi.stubGlobal('fetch', vi.fn((input: RequestInfo | URL) => (
+        stubUndergroundFetch(vi.fn((input: RequestInfo | URL) => (
             String(input).endsWith('/api/v1/me/underground/battles')
                 ? Promise.resolve(response([]))
                 : Promise.resolve(response(openState({ battle })))
@@ -338,7 +339,7 @@ describe('Underground party presentation controls', () => {
             lending: { settings: { is_public: false, is_available: true }, candidates: [], ticket_balance: 0 },
         });
         const lendingRequests: Array<Record<string, unknown>> = [];
-        vi.stubGlobal('fetch', vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+        stubUndergroundFetch(vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
             const path = String(input);
             if (path.startsWith('/api/v1/me/underground/lending/candidates')) {
                 return Promise.resolve(response({ candidates: [], next_after_id: null }));
@@ -386,7 +387,7 @@ describe('Underground party presentation controls', () => {
             party_member_ids: undefined,
             lending: { settings: { is_public: false, is_available: true }, candidates: [], ticket_balance: 0 },
         });
-        vi.stubGlobal('fetch', vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+        stubUndergroundFetch(vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
             const path = String(input);
             if (path === '/api/v1/me/underground/rental-party' && init?.method === 'PUT') {
                 expect(JSON.parse(String(init.body)).borrowed_secretary_ids).toEqual([42]);
@@ -447,7 +448,7 @@ describe('Underground party presentation controls', () => {
             settled_at: '2026-09-09T00:00:00Z',
         };
         const skipRequests: Array<Record<string, unknown>> = [];
-        vi.stubGlobal('fetch', vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+        stubUndergroundFetch(vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
             const path = String(input);
             if (path === '/api/v1/me/underground/skip/hunting-ground') {
                 skipRequests.push(JSON.parse(String(init?.body ?? '{}')) as Record<string, unknown>);
@@ -527,7 +528,7 @@ describe('Underground party presentation controls', () => {
             lending: { settings: { is_lendable: false, is_public: false, is_available: false }, candidates: [], ticket_balance: 20_000 },
         });
         const requests: Array<Record<string, unknown>> = [];
-        vi.stubGlobal('fetch', vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+        stubUndergroundFetch(vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
             const path = String(input);
             if (path === '/api/v1/me/underground/skip/hunting-ground') {
                 requests.push(JSON.parse(String(init?.body ?? '{}')) as Record<string, unknown>);
@@ -613,7 +614,7 @@ describe('Underground party presentation controls', () => {
             lending: { settings: { is_lendable: false, is_public: false, is_available: false }, candidates: [], ticket_balance: 100 },
         });
         const requests: Array<{ path: string; body: Record<string, unknown> }> = [];
-        vi.stubGlobal('fetch', vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+        stubUndergroundFetch(vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
             const path = String(input);
             if (path === '/api/v1/me/underground/trial/fight' && init?.method === 'POST') {
                 requests.push({ path, body: JSON.parse(String(init.body)) as Record<string, unknown> });
@@ -668,7 +669,7 @@ describe('Underground party presentation controls', () => {
         });
         const requests: Array<Record<string, unknown>> = [];
         let explored = false;
-        vi.stubGlobal('fetch', vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+        stubUndergroundFetch(vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
             const path = String(input);
             if (path === '/api/v1/me/underground/skip/hunting-ground') {
                 requests.push(JSON.parse(String(init?.body ?? '{}')) as Record<string, unknown>);
@@ -734,7 +735,7 @@ describe('Underground party presentation controls', () => {
             lending: { settings: { is_lendable: false, is_public: false, is_available: false }, candidates: [], ticket_balance: 6 },
         });
         let skipRequests = 0;
-        vi.stubGlobal('fetch', vi.fn((input: RequestInfo | URL) => {
+        stubUndergroundFetch(vi.fn((input: RequestInfo | URL) => {
             const path = String(input);
             if (path === '/api/v1/me/underground/skip/hunting-ground') {
                 skipRequests += 1;
@@ -777,7 +778,7 @@ describe('Underground party presentation controls', () => {
         });
         const skipRequests: Array<Record<string, unknown>> = [];
         let stateRequests = 0;
-        vi.stubGlobal('fetch', vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+        stubUndergroundFetch(vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
             const path = String(input);
             if (path === '/api/v1/me/underground/skip/hunting-ground') {
                 skipRequests.push(JSON.parse(String(init?.body ?? '{}')) as Record<string, unknown>);
@@ -824,7 +825,7 @@ describe('Underground party presentation controls', () => {
             lending: { settings: { is_lendable: false, is_public: false, is_available: false }, candidates: [], ticket_balance: 4 },
         });
         let stateReads = 0;
-        vi.stubGlobal('fetch', vi.fn((input: RequestInfo | URL) => {
+        stubUndergroundFetch(vi.fn((input: RequestInfo | URL) => {
             const path = String(input);
             if (path === '/api/v1/me/underground') {
                 stateReads++;
@@ -861,7 +862,7 @@ describe('Underground party presentation controls', () => {
         const candidateB = { secretary_id: 3, source: 'borrowed_secretary' as const, display_name: 'B秘書', combat_level: 30, available: true };
         const state = openState({ lending: { settings: { is_public: false, is_available: true }, candidates: [], ticket_balance: 0 } });
         const requests: Array<Record<string, unknown>> = [];
-        vi.stubGlobal('fetch', vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+        stubUndergroundFetch(vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
             const path = String(input);
             if (path === '/api/v1/me/underground/rental-party' && init?.method === 'PUT') {
                 const ids = JSON.parse(String(init.body)).borrowed_secretary_ids as number[];

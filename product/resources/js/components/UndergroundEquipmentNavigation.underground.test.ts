@@ -1,8 +1,10 @@
+import { stubUndergroundFetch } from '../UndergroundAdmissionTestFixture';
 import { flushPromises, mount } from '@vue/test-utils';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { EquipmentItem } from './EquipmentItemCard.vue';
 import UndergroundEquipmentShop from './UndergroundEquipmentShop.vue';
 import UndergroundEquipmentVault from './UndergroundEquipmentVault.vue';
+import UndergroundEquipmentPolishing from './UndergroundEquipmentPolishing.vue';
 
 const response = (data: unknown, status = 200): Response => new Response(JSON.stringify({ data }), {
     status,
@@ -50,9 +52,75 @@ afterEach(() => {
 });
 
 describe('Underground equipment navigation', () => {
+    it('keeps the same polishing intent after a paid response is lost', async () => {
+        const crystal = item({ category: 'resonance', name: '堅鱗の黒竜晶', equipped_slot: 'resonance', polish_level: 0 });
+        const requests: unknown[] = [];
+        let paidRequest: string | null = null;
+        let balance = 1_000_000;
+        const fetchMock = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+            if (init?.method === 'POST') {
+                const body = JSON.parse(String(init.body));
+                requests.push(body);
+                if (paidRequest === null) {
+                    paidRequest = body.request_id;
+                    balance -= 300_000;
+                    throw new TypeError('Connection lost after payment');
+                }
+                return response({ shard_balance: balance, banked_shard_balance: 0,
+                    vault: { used: 1, capacity: 50, equipped: { ...equipped, resonance: { ...crystal, polish_level: 1 } } } });
+            }
+            return response({ shard_balance: balance, item: { ...crystal, polish_level: paidRequest ? 1 : 0 },
+                next_item: { ...crystal, polish_level: paidRequest ? 2 : 1 }, next_price: 300_000, maximum_level: 5 });
+        });
+        stubUndergroundFetch(fetchMock);
+        const wrapper = mount(UndergroundEquipmentPolishing, { props: { balance } });
+        await flushPromises();
+        await wrapper.findAll('button').find(button => button.text() === '研磨する')!.trigger('click');
+        await flushPromises();
+        expect(requests).toHaveLength(1);
+        expect(wrapper.findAll('button').find(button => button.text() === '研磨する')!.attributes('disabled')).toBeDefined();
+        await wrapper.findAll('button').find(button => button.text() === '前の操作の結果を確認する')!.trigger('click');
+        await flushPromises();
+        expect(requests).toHaveLength(2);
+        expect(requests[1]).toEqual(requests[0]);
+        expect(wrapper.emitted('updated')).toHaveLength(1);
+        expect(wrapper.emitted('updated')![0]![0]).toMatchObject({ shard_balance: 700_000 });
+        expect(wrapper.text()).toContain('結晶を研磨しました');
+        wrapper.unmount();
+    });
+
+    it('keeps crystal storage and bulk sale separate and displays both identical affixes', async () => {
+        let previewBody: unknown;
+        const crystal = item({ category: 'resonance', name: '黒竜の共鳴結晶', rarity: 'unique',
+            affixes: [0, 1].map(() => ({ key: 'area', label: '範囲攻撃強化', kind: 'modifier', value: 900 })) });
+        stubUndergroundFetch(vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+            const url = new URL(String(input), 'http://localhost');
+            if (url.pathname.endsWith('/preview')) {
+                previewBody = JSON.parse(String(init?.body));
+                return response({ catalog_identity: 'test-catalog', items: [crystal], count: 1, total_sell_price: 180 });
+            }
+            const resonance = url.searchParams.get('inventory') === 'resonance';
+            return response({ catalog_identity: 'test-catalog', used: 1, capacity: resonance ? 50 : 500, equipped,
+                items: resonance ? [crystal] : [item()], page: 1, per_page: 50, last_page: 1, total: 1,
+                bulk_sell_options: { rarities: [{ key: 'unique', label: 'ユニーク' }],
+                    categories: [{ key: resonance ? 'resonance' : 'accessory', label: resonance ? '共鳴結晶' : 'アクセサリー' }],
+                    weapon_styles: [] } });
+        }));
+        const wrapper = mount(UndergroundEquipmentVault);
+        await flushPromises();
+        await wrapper.get('nav[aria-label="宝物庫の種類"] button:last-child').trigger('click');
+        await flushPromises();
+        expect(wrapper.get('.underground-vault-capacity').text()).toContain('1 / 50');
+        expect(wrapper.get('.underground-equipment-card').text().match(/範囲攻撃強化/g)).toHaveLength(2);
+        await wrapper.get('.underground-bulk-preview-button').trigger('click');
+        await flushPromises();
+        expect(previewBody).toMatchObject({ categories: ['resonance'], weapon_styles: [] });
+        wrapper.unmount();
+    });
+
     it('resets to page one when sorting and restores the chosen rarity sort on reopening', async () => {
         const paths: string[] = [];
-        vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+        stubUndergroundFetch(vi.fn(async (input: RequestInfo | URL) => {
             paths.push(String(input));
             const params = new URL(String(input), 'http://localhost').searchParams;
             return response({ catalog_identity: 'test-catalog', used: 60, capacity: 500, equipped,
@@ -81,7 +149,7 @@ describe('Underground equipment navigation', () => {
 
     it('falls back to the default sort if the saved value is invalid or storage is unavailable', async () => {
         const paths: string[] = [];
-        vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+        stubUndergroundFetch(vi.fn(async (input: RequestInfo | URL) => {
             paths.push(String(input));
             return response({ catalog_identity: 'test-catalog', used: 1, capacity: 500, equipped,
                 items: [item()], page: 1, per_page: 50, last_page: 1, total: 1 });
@@ -112,7 +180,7 @@ describe('Underground equipment navigation', () => {
             item_level: 1254, rarity: 'unique', rarity_label: 'ユニーク', instance_kind: 'fixed',
             sellable: false, equippable: false, sell_price: 0,
             description: '装備不可。所持による能力効果はありません。', commemorative_effects: ['生命アップ', '光輝（被回復アップ）'] });
-        vi.stubGlobal('fetch', vi.fn(async () => response({ catalog_identity: 'test-catalog', used: 1, capacity: 500,
+        stubUndergroundFetch(vi.fn(async () => response({ catalog_identity: 'test-catalog', used: 1, capacity: 500,
             equipped, items: [gram], page: 1, per_page: 50, last_page: 1, total: 1 })));
         const wrapper = mount(UndergroundEquipmentVault);
         await flushPromises();
@@ -147,7 +215,7 @@ describe('Underground equipment navigation', () => {
             }
             return response(null, 404);
         });
-        vi.stubGlobal('fetch', fetchMock);
+        stubUndergroundFetch(fetchMock);
 
         const wrapper = mount(UndergroundEquipmentVault);
         await flushPromises();
@@ -208,7 +276,7 @@ describe('Underground equipment navigation', () => {
             }
             return response(null, 404);
         });
-        vi.stubGlobal('fetch', fetchMock);
+        stubUndergroundFetch(fetchMock);
 
         const wrapper = mount(UndergroundEquipmentVault);
         await flushPromises();
@@ -292,7 +360,7 @@ describe('Underground equipment navigation', () => {
             }
             return response(null, 404);
         });
-        vi.stubGlobal('fetch', fetchMock);
+        stubUndergroundFetch(fetchMock);
 
         const wrapper = mount(UndergroundEquipmentVault);
         await flushPromises();
@@ -335,7 +403,7 @@ describe('Underground equipment navigation', () => {
             }
             return response(null, 404);
         });
-        vi.stubGlobal('fetch', fetchMock);
+        stubUndergroundFetch(fetchMock);
 
         const wrapper = mount(UndergroundEquipmentShop);
         await flushPromises();

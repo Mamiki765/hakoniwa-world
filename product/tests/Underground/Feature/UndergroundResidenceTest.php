@@ -2,8 +2,10 @@
 
 namespace Tests\Underground\Feature;
 
+use App\Application\Underground\UndergroundEquipmentDropService;
 use App\Models\SecretaryGuideConversationTotal;
 use App\Models\UndergroundBattle;
+use App\Models\UndergroundIntroRequest;
 use App\Models\UndergroundTrialProgress;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
@@ -17,8 +19,104 @@ final class UndergroundResidenceTest extends UndergroundPlayerAccessTestCase
 
     private ?string $guideAssetDirectory = null;
 
+    public function test_otherworld_discovery_requires_trial_two_and_level_one_hundred_and_survives_request_removal(): void
+    {
+        [$user, $secretary] = $this->secretaryUser('異世界に向かう秘書');
+        $profile = $this->openEquipmentProfile($secretary);
+        $profile->update(['combat_level' => 99]);
+        UndergroundTrialProgress::query()->create([
+            'underground_profile_id' => $profile->id, 'trial_key' => 'trial_02',
+            'unlocked_at' => now(), 'first_cleared_at' => now(),
+        ]);
+        $this->actingAs($user)->getJson('/api/v1/me/underground/main')->assertOk()
+            ->assertJsonPath('data.otherworld_intro_available', false);
+        $profile->update(['combat_level' => 100]);
+        $this->getJson('/api/v1/me/underground/main')->assertOk()
+            ->assertJsonPath('data.otherworld_intro_available', true)->assertJsonPath('data.otherworld_unlocked', false);
+        $request = ['request_id' => (string) Str::uuid(), 'event' => 'otherworld', 'page' => 1];
+        $this->postJson('/api/v1/me/underground/events/advance', $request)->assertOk()
+            ->assertJsonPath('data.otherworld_unlocked', true)->assertJsonPath('data.otherworld_intro_available', false);
+        $discoveredAt = $profile->fresh()->otherworld_discovered_at;
+        $this->postJson('/api/v1/me/underground/events/advance', $request)->assertOk();
+        UndergroundIntroRequest::query()->where('underground_profile_id', $profile->id)->delete();
+        $this->getJson('/api/v1/me/underground/main')->assertOk()->assertJsonPath('data.otherworld_unlocked', true);
+        $this->assertEquals($discoveredAt, $profile->fresh()->otherworld_discovered_at);
+    }
+
+    public function test_purchased_vault_expansions_allow_new_items_without_charging_retries(): void
+    {
+        // Reach a full vault through ordinary purchases without manufacturing hundreds of items.
+        config(['underground-equipment.vault_capacity' => 2]);
+        [$user, $secretary] = $this->secretaryUser('増築する秘書');
+        $profile = $this->openEquipmentProfile($secretary, 2_500_000);
+        $this->actingAs($user)->getJson('/api/v1/me/underground')->assertOk();
+        $purchase = fn (string $key) => $this->postJson('/api/v1/me/underground/equipment/shop/purchase', [
+            'request_id' => (string) Str::uuid(), 'definition_key' => $key,
+        ]);
+        $purchase('iron_dagger')->assertOk();
+        $purchase('leather_armor')->assertConflict()->assertJsonPath('code', 'underground_vault_full');
+        $this->postJson('/api/v1/me/underground/residence/purchase', [
+            'request_id' => (string) Str::uuid(), 'item' => 'villa',
+        ])->assertOk();
+        $balanceBefore = $profile->fresh()->shard_balance;
+        $request = ['request_id' => (string) Str::uuid(), 'item' => 'vault_expansion'];
+        $this->postJson('/api/v1/me/underground/residence/purchase', $request)->assertOk();
+        $this->postJson('/api/v1/me/underground/residence/purchase', $request)->assertOk();
+        $this->postJson('/api/v1/me/underground/residence/purchase', [
+            ...$request, 'request_id' => (string) Str::uuid(),
+        ])->assertOk()->assertJsonPath('data.shard_balance', $balanceBefore - 1_000_000);
+        $purchase('leather_armor')->assertOk();
+        $this->getJson('/api/v1/me/underground/equipment/vault')->assertOk()
+            ->assertJsonPath('data.total', 3)->assertJsonPath('data.capacity', 102);
+        $remaining = app(UndergroundEquipmentDropService::class)->remainingVaultCapacity($profile->fresh());
+        $this->assertSame(99, $remaining);
+
+        $this->postJson('/api/v1/me/underground/residence/purchase', [
+            'request_id' => (string) Str::uuid(), 'item' => 'resonance_expansion',
+        ])->assertOk()->assertJsonPath('data.residence.resonance_expansion_owned', true);
+        $this->getJson('/api/v1/me/underground/equipment/vault?inventory=resonance')->assertOk()
+            ->assertJsonPath('data.capacity', 100);
+        $this->assertSame(100, app(UndergroundEquipmentDropService::class)->remainingVaultCapacity($profile->fresh(), 'resonance'));
+    }
+
+    public function test_distorted_stone_purchases_keep_the_daily_price_and_replay_across_midnight(): void
+    {
+        Carbon::setTestNow('2026-09-22 23:59:00+09:00');
+        [$user, $secretary] = $this->secretaryUser('輝石を買う秘書');
+        $profile = $this->openEquipmentProfile($secretary, 200_000);
+        $profile->update(['next_battle_at' => now()->addSeconds(10)]);
+        $this->actingAs($user)->postJson('/api/v1/me/underground/shop/distorted-stone', [
+            'request_id' => (string) Str::uuid(), 'price' => 0,
+        ])->assertConflict()->assertJsonPath('code', 'underground_distorted_stone_locked');
+        UndergroundTrialProgress::query()->create([
+            'underground_profile_id' => $profile->id, 'trial_key' => 'trial_02',
+            'unlocked_at' => now(), 'first_cleared_at' => now(),
+        ]);
+        $purchases = [];
+        foreach ([0, 10_000, 50_000, 100_000] as $price) {
+            $request = ['request_id' => (string) Str::uuid(), 'price' => $price];
+            $this->actingAs($user)->postJson('/api/v1/me/underground/shop/distorted-stone', $request)->assertOk();
+            $purchases[] = $request;
+        }
+        $this->postJson('/api/v1/me/underground/shop/distorted-stone', [
+            'request_id' => (string) Str::uuid(), 'price' => 100_000,
+        ])->assertConflict()->assertJsonPath('code', 'underground_distorted_stone_sold_out');
+        $this->assertSame(4, $profile->fresh()->distorted_stone_balance);
+        $this->assertSame(40_000, $profile->fresh()->shard_balance);
+        Carbon::setTestNow('2026-09-23 00:00:00+09:00');
+        $this->postJson('/api/v1/me/underground/shop/distorted-stone', $purchases[3])->assertOk()
+            ->assertJsonPath('data.distorted_stone_shop.purchased_today', 0)
+            ->assertJsonPath('data.distorted_stone_shop.balance', 4);
+        $this->postJson('/api/v1/me/underground/shop/distorted-stone', [
+            'request_id' => (string) Str::uuid(), 'price' => 0,
+        ])->assertOk()->assertJsonPath('data.distorted_stone_shop.balance', 5);
+        $this->assertSame(40_000, $profile->fresh()->shard_balance);
+        $this->assertEquals(Carbon::parse('2026-09-22 23:59:10+09:00'), $profile->fresh()->next_battle_at);
+    }
+
     protected function tearDown(): void
     {
+        Carbon::setTestNow();
         if ($this->guideAssetDirectory !== null) {
             File::deleteDirectory($this->guideAssetDirectory);
         }
