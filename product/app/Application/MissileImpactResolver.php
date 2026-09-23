@@ -988,7 +988,7 @@ final class MissileImpactResolver
             && $this->secretaryItems->hasSnapshotEffect(
                 $context->state, (int) $firingNation->id, 'monster_missile_defense_bypass',
             )
-            && MonsterOccupancy::query()->where('map_cell_id', $cell->id)->exists()) {
+            && $this->monsterRemoval->hasAtCell($context, (int) $cell->id)) {
             $defenses = $defenses->reject(
                 static fn (MapCell $defense): bool => (int) $defense->owner_nation_id === (int) $firingNation->id,
             )->values();

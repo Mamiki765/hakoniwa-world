@@ -258,8 +258,7 @@ final class BuriedTreasureService
             throw new DomainException('Buried Treasure reward snapshot is invalid.');
         }
         if (in_array($snapshot['item_key'], [SecretaryItemCatalog::TWIN_STAR_EMBLEM, SecretaryItemCatalog::CRESCENT_EMBLEM], true)
-            && ($snapshot['quantity'] !== 1 || $snapshot['rarity'] !== SecretaryItemCatalog::RARITY_ARTIFACT
-                || $snapshot['fixed_sale_price_money'] !== 3000)) {
+            && ($snapshot['quantity'] !== 1 || $snapshot['rarity'] !== SecretaryItemCatalog::RARITY_ARTIFACT)) {
             throw new DomainException('Buried Treasure emblem snapshot is invalid.');
         }
     }

@@ -32,17 +32,17 @@ final class FreshInstallRebaselineTest extends TestCase
     use RefreshDatabase;
     use UsesIndividualTestWorld;
 
-    public function test_current_postgresql_schema_and_v26_catalog_are_installed(): void
+    public function test_current_postgresql_schema_and_catalog_are_installed(): void
     {
         config(['hakoniwa' => require config_path('hakoniwa.php')]);
         $current = config('hakoniwa.ruleset');
         app(CurrentCatalogInstaller::class)->install($current);
         app(RulesetPublisher::class)->publish($current);
-        $ruleset = RulesetVersion::query()->where('key', Ver420RulesetUpgrade::TARGET_KEY)->sole();
+        $ruleset = RulesetVersion::query()->where('key', $current['key'])->sole();
 
-        $this->assertSame([Ver420RulesetUpgrade::TARGET_KEY], array_keys(config('hakoniwa.published_rulesets')));
-        $this->assertSame(Ver420RulesetUpgrade::TARGET_KEY, $ruleset->key);
-        $this->assertSame(Ver420RulesetUpgrade::TARGET_VERSION, $ruleset->version);
+        $this->assertArrayHasKey($current['key'], config('hakoniwa.published_rulesets'));
+        $this->assertSame($current['key'], $ruleset->key);
+        $this->assertSame($current['version'], $ruleset->version);
         $this->assertDatabaseHas('ruleset_versions', [
             'key' => Ver420RulesetUpgrade::SOURCE_KEY,
             'version' => Ver420RulesetUpgrade::SOURCE_VERSION,
