@@ -379,7 +379,7 @@ final class SecretaryItemGameplayContract
                 'earthquake' => '地震', 'meteor_shower' => '流星群',
                 default => throw new DomainException('Unknown Secretary disaster guard.'),
             }.'による自島の被害を1マス防ぐ。発動後にLvが1下がり、Lv1なら壊れる。',
-            'monster_missile_defense_bypass' => '怪獣がいるマスを狙った自国のミサイルは、自国の防衛施設に迎撃されない。',
+            'monster_missile_defense_bypass' => '装備中、自国の防衛施設は怪獣がいるマスへのミサイルを迎撃しない。',
             'nyowamiya_ribbon' => '防衛施設は怪獣に踏まれても自爆せず、保護範囲内の怪獣を秘書は攻撃しない。',
             'population_growth_percent' => sprintf('通常・誘致の人口増加量が%d%%増える。', $effects[0]['parameters']['percent']),
             'final_defense_preserve_chance' => sprintf('最終防衛ラインで迎撃するとき、%d%%の確率で迎撃回数を消費しない。', $effects[0]['parameters']['chance_percent']),

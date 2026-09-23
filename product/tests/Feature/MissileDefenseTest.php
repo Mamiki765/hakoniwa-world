@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Application\CommandQueueService;
 use App\Application\PlayerIslandEventService;
+use App\Application\SecretaryItemGrantService;
 use App\Application\SecretaryNamingService;
 use App\Application\SecretaryTurnService;
 use App\Domain\Map\MapCellStateService;
@@ -66,6 +67,96 @@ final class MissileDefenseTest extends CommandAndMissileTestCase
         $this->assertSame([
             $targetNation->id => [SecretarySkillCatalog::FINAL_DEFENSE_LINE => 1],
         ], $context->state->pendingSecretaryExperience());
+    }
+
+    public function test_magic_white_flag_on_defense_owner_stops_its_defense_from_protecting_a_monster(): void
+    {
+        [$world, $firingUser, $firing, $targetNation] = $this->combatants('白旗防御側');
+        $targetUserId = (int) DB::table('nation_memberships')
+            ->where('nation_id', $targetNation->id)
+            ->where('role', 'owner')
+            ->valueOrFail('user_id');
+        $targetUser = User::query()->findOrFail($targetUserId);
+        app(SecretaryItemGrantService::class)->grant(
+            $targetUser->secretary()->sole(),
+            'magic_white_flag',
+            1,
+            2,
+            'test:white-flag:defense-owner',
+        );
+
+        $firing->update(['money' => 10_000]);
+        $space = $this->surfaceMapSpace($world);
+        $base = $this->missileBase($firing);
+        $target = MapCell::query()->where('owner_nation_id', $targetNation->id)
+            ->whereKeyNot($targetNation->capital()->value('map_cell_id'))
+            ->whereNull('facility_definition_id')->with(['terrain', 'facility', 'ownerNation'])->firstOrFail();
+        $defense = $this->placeFacilityAtDistance($space, $target, $targetNation, 1, 'defense');
+        $monster = $this->monster($world, $target);
+        $monster->update(['current_hp' => 2, 'spawned_max_hp' => 2]);
+        $item = $this->queue(app(CommandQueueService::class), $firingUser, $firing, $space, 'missile', $target);
+        $context = $this->context(
+            $world,
+            2,
+            $this->seedForImpactIndex($item, $target, 2, $target),
+            [$firing->id, $targetNation->id],
+        );
+        app(SecretaryTurnService::class)->loadAttemptSnapshots($context, [$firing->id, $targetNation->id]);
+
+        $this->resolveMissile($context, $base);
+
+        $detail = json_decode((string) DB::table('audit_events')->where('event_type', 'missile.launch_detail')
+            ->whereRaw("metadata->>'queue_item_id' = ?", [(string) $item->id])->value('metadata'),
+            true,
+            512,
+            JSON_THROW_ON_ERROR,
+        );
+        $this->assertSame('damaged', $detail['impacts'][0]['effect']);
+        $this->assertSame(1, $monster->fresh()->current_hp);
+        $this->assertSame(0, DB::table('audit_events')->where('event_type', 'missile.defense_intercepted')->count());
+        $this->assertNotNull($defense->fresh()->facility_definition_id);
+    }
+
+    public function test_magic_white_flag_on_firing_nation_does_not_disable_foreign_defense(): void
+    {
+        [$world, $firingUser, $firing, $targetNation] = $this->combatants('白旗攻撃側');
+        app(SecretaryItemGrantService::class)->grant(
+            $firingUser->secretary()->sole(),
+            'magic_white_flag',
+            1,
+            2,
+            'test:white-flag:firing-owner',
+        );
+
+        $firing->update(['money' => 10_000]);
+        $space = $this->surfaceMapSpace($world);
+        $base = $this->missileBase($firing);
+        $target = MapCell::query()->where('owner_nation_id', $targetNation->id)
+            ->whereKeyNot($targetNation->capital()->value('map_cell_id'))
+            ->whereNull('facility_definition_id')->with(['terrain', 'facility', 'ownerNation'])->firstOrFail();
+        $this->placeFacilityAtDistance($space, $target, $targetNation, 1, 'defense');
+        $monster = $this->monster($world, $target);
+        $monster->update(['current_hp' => 2, 'spawned_max_hp' => 2]);
+        $item = $this->queue(app(CommandQueueService::class), $firingUser, $firing, $space, 'missile', $target);
+        $context = $this->context(
+            $world,
+            2,
+            $this->seedForImpactIndex($item, $target, 2, $target),
+            [$firing->id, $targetNation->id],
+        );
+        app(SecretaryTurnService::class)->loadAttemptSnapshots($context, [$firing->id, $targetNation->id]);
+
+        $this->resolveMissile($context, $base);
+
+        $detail = json_decode((string) DB::table('audit_events')->where('event_type', 'missile.launch_detail')
+            ->whereRaw("metadata->>'queue_item_id' = ?", [(string) $item->id])->value('metadata'),
+            true,
+            512,
+            JSON_THROW_ON_ERROR,
+        );
+        $this->assertSame('defense_intercepted', $detail['impacts'][0]['effect']);
+        $this->assertSame(2, $monster->fresh()->current_hp);
+        $this->assertSame(1, DB::table('audit_events')->where('event_type', 'missile.defense_intercepted')->count());
     }
 
     public function test_v8_defense_radius_center_outside_decoy_overlap_self_and_monster_contract(): void

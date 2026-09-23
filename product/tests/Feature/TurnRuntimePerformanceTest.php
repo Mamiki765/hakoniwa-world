@@ -304,16 +304,18 @@ final class TurnRuntimePerformanceTest extends TestCase
             "Defense Performance {$shots}",
             'Defense Performance Owner',
         );
+        $targetUser = User::factory()->create();
         $targetNation = app(NationCreationService::class)->create(
-            User::factory()->create(),
+            $targetUser,
             $world,
             "Defense Target {$shots}",
             'Defense Target Owner',
         );
-        // A white flag used to issue an occupancy SELECT for every shot, even at
-        // an empty target protected by a foreign defense. Reuse the 1/25-shot case.
+        // White-flag filtering checks turn-local monster occupancy for every shot.
+        // Keep the 1/25-shot profile on the defending owner so that check cannot
+        // regress into one SELECT per impact.
         app(SecretaryItemGrantService::class)->grant(
-            $firingUser->secretary()->firstOrFail(), 'magic_white_flag', 1, 2, null,
+            $targetUser->secretary()->firstOrFail(), 'magic_white_flag', 1, 2, null,
         );
         $firing->update(['money' => 1_000_000]);
         $space = $this->surfaceMapSpace($world);

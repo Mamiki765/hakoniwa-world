@@ -912,7 +912,7 @@ final class MissileImpactResolver
             ];
         }
         $this->awardFinalDefenseArrivalExperience($context, $cell);
-        $defense = $this->defenseInterception($context, $space, $cell, $base, $intent->definitionKey, $firingNation);
+        $defense = $this->defenseInterception($context, $space, $cell, $base, $intent->definitionKey);
         if ($defense !== null) {
             return $defense;
         }
@@ -959,7 +959,6 @@ final class MissileImpactResolver
         MapCell $cell,
         array $base,
         string $missileKey,
-        ?Nation $firingNation = null,
     ): ?array {
         $contract = $context->ruleset->settings['military']['defense_interception'] ?? null;
         if ($contract === null) {
@@ -984,13 +983,14 @@ final class MissileImpactResolver
 
         $center = new GridCoordinate($cell->x, $cell->y);
         $defenses = $this->coveringDefenses($space, $center);
-        if ($firingNation !== null
-            && $this->secretaryItems->hasSnapshotEffect(
-                $context->state, (int) $firingNation->id, 'monster_missile_defense_bypass',
-            )
-            && $this->monsterRemoval->hasAtCell($context, (int) $cell->id)) {
+        if ($this->monsterRemoval->hasAtCell($context, (int) $cell->id)) {
             $defenses = $defenses->reject(
-                static fn (MapCell $defense): bool => (int) $defense->owner_nation_id === (int) $firingNation->id,
+                fn (MapCell $defense): bool => $defense->owner_nation_id !== null
+                    && $this->secretaryItems->hasSnapshotEffect(
+                        $context->state,
+                        (int) $defense->owner_nation_id,
+                        'monster_missile_defense_bypass',
+                    ),
             )->values();
         }
         if ($defenses->isEmpty()) {
