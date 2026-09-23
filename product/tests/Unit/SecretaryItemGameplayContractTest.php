@@ -76,6 +76,10 @@ final class SecretaryItemGameplayContractTest extends TestCase
             'secretary_item:bow:nation:7:item:elf_bow:trigger:v1',
             TurnRandomStreamFactory::secretaryBow(7, SecretaryItemCatalog::ELF_BOW, 'trigger', 1),
         );
+        $this->assertSame(
+            'secretary_item:bow:nation:7:item:gem_bow:target:v1',
+            TurnRandomStreamFactory::secretaryBow(7, 'gem_bow', 'target', 1),
+        );
     }
 
     public function test_current_monster_drop_tables_and_pools_are_closed_and_exclude_old_bow_and_mecha(): void

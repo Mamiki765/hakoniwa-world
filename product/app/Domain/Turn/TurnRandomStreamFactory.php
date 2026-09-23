@@ -338,7 +338,7 @@ final class TurnRandomStreamFactory
             return self::secretaryOldBow($nationId, $purpose, $streamVersion);
         }
         if ($nationId < 1 || $streamVersion < 1
-            || ! in_array($itemKey, ['elf_bow', 'longshot_bow', 'mechanical_bow'], true)
+            || preg_match('/\A[a-z][a-z0-9_]*\z/D', $itemKey) !== 1
             || ! in_array($purpose, ['trigger', 'target'], true)) {
             throw new InvalidArgumentException('Secretary Bow stream identity is invalid.');
         }
