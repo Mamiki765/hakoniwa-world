@@ -105,10 +105,12 @@ final class UndergroundRuntimeTest extends TestCase
             'unlocked_at' => Carbon::now(), 'first_cleared_at' => Carbon::now()]);
         $combat = new ScriptedUndergroundPartyCombat(outcomes: ['stalemate']);
         $this->app->instance(AtomicUndergroundPartyCombat::class, $combat);
+        $xpBefore = $profile->combat_xp;
         $this->actingAs($user)->postJson('/api/v1/me/underground/otherworld/challenge', [
             'request_id' => (string) Str::uuid(), 'hunting_ground_key' => 'bahamul_beginner_1',
-        ])->assertOk()->assertJsonPath('data.shard_delta', 0);
-        $this->assertSame(1, $profile->fresh()->distorted_stone_balance);
+        ])->assertOk()->assertJsonPath('data.shard_delta', 0)->assertJsonPath('data.xp_awarded', 0);
+        $this->assertSame($xpBefore, $profile->fresh()->combat_xp);
+        $this->assertSame(1, $profile->distorted_stone_balance);
         $this->assertCount(1, $combat->calls);
         $this->postJson('/api/v1/me/underground/otherworld/challenge', [
             'request_id' => (string) Str::uuid(), 'hunting_ground_key' => 'bahamul_beginner_1',

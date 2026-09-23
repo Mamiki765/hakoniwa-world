@@ -2335,7 +2335,7 @@ STORY;
         );
         $xpAwarded = match ($resultType) {
             UndergroundBattle::RESULT_VICTORY => $averagedReward['xp'],
-            UndergroundBattle::RESULT_WITHDRAWAL => intdiv($averagedReward['xp'], 4),
+            UndergroundBattle::RESULT_WITHDRAWAL => $otherworld ? 0 : intdiv($averagedReward['xp'], 4),
             default => 0,
         };
         $shardDelta = match ($resultType) {
