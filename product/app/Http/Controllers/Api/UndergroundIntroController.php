@@ -205,6 +205,7 @@ final class UndergroundIntroController extends Controller
             $request->user(),
             $request->string('request_id')->value(),
             $request->string('growth_path_key')->value(),
+            $request->boolean('bypass_cooldown_with_pd'),
         ));
     }
 

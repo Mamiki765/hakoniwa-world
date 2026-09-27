@@ -333,6 +333,8 @@ interface GrowthPath {
 
 interface RespecState {
     cost: number;
+    paradox_balance: number;
+    cooldown_bypass_cost_pd: number;
     last_completed_at: string | null;
     next_available_at: string | null;
     growth_paths: GrowthPath[];
@@ -375,6 +377,11 @@ interface ActiveSkill {
 interface PendingMutation {
     fingerprint: string;
     requestId: string;
+}
+
+interface PendingRespecMutation extends PendingMutation {
+    growthPathKey: string;
+    bypassCooldownWithPd: boolean;
 }
 
 interface PendingSkipRequest extends PendingMutation {
@@ -717,7 +724,7 @@ const selectedRecollectionKey = ref<string | null>(null);
 const seriousTalkSceneKey = ref('root');
 const selectedRespecPathKey = ref<string | null>(null);
 const respecConfirmOpen = ref(false);
-const pendingRespecMutation = ref<PendingMutation | null>(null);
+const pendingRespecMutation = ref<PendingRespecMutation | null>(null);
 const pendingRecollectionMutation = ref<PendingMutation | null>(null);
 const cooldownNowMs = ref(Date.now());
 let cooldownTimer: ReturnType<typeof window.setInterval> | null = null;
@@ -928,16 +935,18 @@ const respecInsufficientShards = computed(() => {
     return respec !== null && respec !== undefined && state.value !== null
         && state.value.shard_balance < respec.cost;
 });
+const respecInsufficientPd = computed(() => respecCooldownSeconds.value > 0
+    && (state.value?.respec?.paradox_balance ?? 0) < (state.value?.respec?.cooldown_bypass_cost_pd ?? 10));
 const respecUnavailable = computed(() => state.value?.respec === null
     || state.value?.respec === undefined
     || respecActiveTrial.value
-    || respecCooldownSeconds.value > 0
-    || respecInsufficientShards.value);
+    || respecInsufficientShards.value
+    || respecInsufficientPd.value);
 const respecUnavailableReason = computed(() => {
     if (state.value?.respec === null || state.value?.respec === undefined) return '再振りを利用できません。';
     if (respecActiveTrial.value) return 'active Trial中は再振りできません。封印の地から帰還してください。';
-    if (respecCooldownSeconds.value > 0) return `次の再振りまであと${respecCooldownSeconds.value}秒です。`;
     if (respecInsufficientShards.value) return '手持ちの輝石のかけらが不足しています。';
+    if (respecInsufficientPd.value) return `待ち時間の解除には${state.value.respec.cooldown_bypass_cost_pd}Pdが必要です。`;
     return '';
 });
 const respecPaths = computed(() => state.value?.respec?.growth_paths ?? []);
@@ -1315,12 +1324,17 @@ function openRespecConfirmation(): void {
 async function confirmRespec(): Promise<void> {
     const path = selectedRespecPath.value;
     if (path === null || respecUnavailable.value || busy.value) return;
-    const fingerprint = JSON.stringify({ growth_path_key: path.key });
+    const previous = pendingRespecMutation.value;
+    const bypassCooldownWithPd = previous?.growthPathKey === path.key
+        ? previous.bypassCooldownWithPd : respecCooldownSeconds.value > 0;
+    const fingerprint = JSON.stringify({ growth_path_key: path.key, bypass_cooldown_with_pd: bypassCooldownWithPd });
     const pending = pendingRespecMutation.value?.fingerprint === fingerprint
         ? pendingRespecMutation.value
-        : { fingerprint, requestId: requestId() };
+        : { fingerprint, requestId: requestId(), growthPathKey: path.key, bypassCooldownWithPd };
     pendingRespecMutation.value = pending;
-    if (await mutate('/api/v1/me/underground/respec', { growth_path_key: path.key }, pending.requestId)) {
+    if (await mutate('/api/v1/me/underground/respec', {
+        growth_path_key: path.key, bypass_cooldown_with_pd: pending.bypassCooldownWithPd,
+    }, pending.requestId)) {
         pendingRespecMutation.value = null;
         stpDraft.value = { vitality: 0, might: 0, finesse: 0, spirit: 0, agility: 0 };
         pendingStpMutation.value = null;
@@ -2763,17 +2777,18 @@ onUnmounted(() => {
                         <div>
                             <h2 id="underground-respec-title">再振り</h2>
                         </div>
-                        <p v-if="state.respec">手持ち {{ state.shard_balance }} G</p>
+                        <p v-if="state.respec">手持ち {{ state.shard_balance }} G・{{ state.respec.paradox_balance }} Pd</p>
                     </header>
                     <div v-if="state.respec" class="underground-respec-explanations">
                         <p>SP・STP・成長方針を再設定します。</p>
                         <p>輝石のかけらが Lv × 10 G 必要です。</p>
-                        <p>一度行うと24時間は再び行うことができません。</p>
+                        <p>通常は一度行うと24時間待機します。待機中も10Pdを追加して再振りできます。</p>
                     </div>
                     <template v-if="state.respec">
                         <dl class="underground-respec-summary">
                             <div><dt>今回の費用</dt><dd>{{ state.respec.cost }} G</dd></div>
                             <div><dt>次回利用</dt><dd>{{ respecCooldownSeconds > 0 ? `あと${respecCooldownSeconds}秒` : '現在利用可能' }}</dd></div>
+                            <div v-if="respecCooldownSeconds > 0"><dt>待ち時間解除</dt><dd>{{ state.respec.cooldown_bypass_cost_pd }} Pd</dd></div>
                         </dl>
                         <p v-if="respecUnavailable" class="underground-respec-notice" role="status">{{ respecUnavailableReason }}</p>
                         <div class="underground-respec-growth-grid" role="radiogroup" aria-label="再振り後の成長方針">
@@ -3183,10 +3198,11 @@ onUnmounted(() => {
                     </header>
                     <p>SP・STP・成長方針を再設定します。</p>
                     <p class="underground-confirm-item"><strong>{{ selectedRespecPath.label }}</strong><span>{{ state.respec.cost }} G</span></p>
-                    <p class="underground-respec-destructive">この操作は取り消せません。実行後は24時間、再び再振りできません。</p>
+                    <p v-if="respecCooldownSeconds > 0" class="underground-respec-destructive">待ち時間を解除するため、さらに{{ state.respec.cooldown_bypass_cost_pd }} Pdを消費します。</p>
+                    <p class="underground-respec-destructive">この操作は取り消せません。実行後の通常の再振りには24時間の待ち時間が付きます。</p>
                     <footer>
                         <button class="button secondary" type="button" :disabled="busy" @click="respecConfirmOpen = false">キャンセル</button>
-                        <button class="button primary" type="button" :disabled="busy || respecUnavailable" @click="confirmRespec">再振りを実行する</button>
+                        <button class="button primary" type="button" :disabled="busy || respecUnavailable" @click="confirmRespec">{{ respecCooldownSeconds > 0 ? '10Pdで待ち時間を解除して再振り' : '再振りを実行する' }}</button>
                     </footer>
                 </section>
             </div>

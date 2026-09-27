@@ -2,6 +2,7 @@
 
 namespace Tests\Underground\Feature;
 
+use App\Application\ParadoxBalanceService;
 use App\Application\Underground\UndergroundAlphaV1BattleProjector;
 use App\Application\Underground\UndergroundAlphaV1PlayerCatalog;
 use App\Application\Underground\UndergroundBattleStorage;
@@ -714,6 +715,54 @@ final class UndergroundIntroAndPlaytestTest extends UndergroundPlayerAccessTestC
             ->where('underground_profile_id', $profile->id)
             ->where('operation', 'respec')
             ->count());
+    }
+
+    public function test_respec_cooldown_can_be_bypassed_once_per_request_for_ten_pd_plus_normal_g(): void
+    {
+        [$user, $secretary] = $this->secretaryUser('Paid respec secretary');
+        $profile = $this->openEquipmentProfile($secretary, 1_000, 0);
+        $profile->update(['combat_level' => 4, 'last_respec_at' => Carbon::now()]);
+        $payload = [
+            'request_id' => (string) Str::uuid(),
+            'growth_path_key' => 'free_black',
+            'bypass_cooldown_with_pd' => true,
+        ];
+
+        $this->actingAs($user)->postJson('/api/v1/me/underground/respec', $payload)
+            ->assertConflict()->assertJsonPath('code', 'underground_respec_insufficient_paradox');
+        $this->assertSame(1_000, $profile->fresh()->shard_balance);
+        $this->assertSame(0, UndergroundIntroRequest::query()
+            ->where('underground_profile_id', $profile->id)->where('operation', 'respec')->count());
+
+        $paradox = app(ParadoxBalanceService::class);
+        $paradox->credit($user->id, 20, 'test:respec-funding:'.$user->id, 'compensation');
+        $result = $this->actingAs($user)->postJson('/api/v1/me/underground/respec', $payload)
+            ->assertOk()
+            ->assertJsonPath('data.growth_path.key', 'free_black')
+            ->assertJsonPath('data.shard_balance', 960)
+            ->assertJsonPath('data.respec.paradox_balance', 10)
+            ->assertJsonPath('data.respec.cooldown_bypass_cost_pd', 10);
+        $this->actingAs($user)->postJson('/api/v1/me/underground/respec', $payload)
+            ->assertOk()->assertExactJson($result->json());
+        $this->actingAs($user)->postJson('/api/v1/me/underground/respec', [
+            ...$payload, 'bypass_cooldown_with_pd' => false,
+        ])->assertConflict()->assertJsonPath('code', 'underground_request_conflict');
+        $this->assertDatabaseHas('user_paradox_ledger', [
+            'user_id' => $user->id,
+            'entry_key' => 'underground:respec:'.$payload['request_id'],
+            'source_kind' => 'underground_respec',
+            'delta' => -10,
+        ]);
+        $this->assertSame(1, DB::table('user_paradox_ledger')
+            ->where('user_id', $user->id)->where('source_kind', 'underground_respec')->count());
+
+        $profile->refresh()->update(['last_respec_at' => Carbon::now()->subHours(25)]);
+        $this->actingAs($user)->postJson('/api/v1/me/underground/respec', [
+            'request_id' => (string) Str::uuid(),
+            'growth_path_key' => 'martial_red',
+            'bypass_cooldown_with_pd' => true,
+        ])->assertOk()->assertJsonPath('data.shard_balance', 920)
+            ->assertJsonPath('data.respec.paradox_balance', 10);
     }
 
     public function test_respec_rejects_invalid_insufficient_and_active_trial_requests_atomically(): void
