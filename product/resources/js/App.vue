@@ -130,6 +130,11 @@ const compensationClaimingId = ref<number | null>(null);
 const pendingCompensationClaim = ref<{ grantId: number; requestId: string } | null>(null);
 const compensationError = ref('');
 const undergroundSurfaceMap = ref<UndergroundSurfaceMap | null>(null);
+const distortedStoneReminder = ref(false);
+const dailyQuestModalOpen = ref(false);
+const dailyQuestLoading = ref(false);
+const dailyQuestError = ref('');
+const dailyQuests = ref<DailyQuestProgress[]>([]);
 const selectedUndergroundSlot = ref<UndergroundFacilityTarget | null>(null);
 const page = ref<'home' | 'announcements' | 'inquiry' | 'admin-inquiries' | 'guide-topics' | 'admin' | 'island' | 'preview' | 'resources' | 'trading-post' | 'secretary' | 'underground' | 'options' | 'account' | 'credits'>(
     window.location.pathname === '/credits'
@@ -326,6 +331,7 @@ onMounted(async () => {
         }
         try {
             await loadSecretary();
+            if (secretary.value !== null) await loadDistortedStoneReminder();
         } catch (error) {
             message.value = error instanceof Error
                 ? error.message
@@ -370,6 +376,28 @@ async function recordDevelopmentOpened(): Promise<void> {
         }
     } catch {
         // Opening the development screen must not depend on reward notification delivery.
+    }
+}
+
+async function loadDistortedStoneReminder(): Promise<void> {
+    try {
+        const reminder = await api<{ unclaimed: boolean }>('/api/v1/me/underground/distorted-stone-reminder');
+        distortedStoneReminder.value = reminder.unclaimed;
+    } catch {
+        // The underground panel refreshes this indicator when it opens.
+    }
+}
+
+async function openDailyQuests(): Promise<void> {
+    dailyQuestModalOpen.value = true;
+    dailyQuestLoading.value = true;
+    dailyQuestError.value = '';
+    try {
+        dailyQuests.value = await api<DailyQuestProgress[]>('/api/v1/me/daily-quests');
+    } catch (error) {
+        dailyQuestError.value = error instanceof Error ? error.message : 'デイリークエストを読み込めませんでした。';
+    } finally {
+        dailyQuestLoading.value = false;
     }
 }
 
@@ -1649,7 +1677,7 @@ async function abandonNation(): Promise<void> {
             <button v-if="secretary" type="button" @click="openSecretary">{{ secretary.header_label }}</button>
             <button v-if="nation" type="button" @click="page = 'resources'">資源売却</button>
             <button v-if="nation" type="button" @click="page = 'trading-post'">交易場</button>
-            <button v-if="secretary" type="button" @click="openUnderground">地底</button>
+            <button v-if="secretary" type="button" class="notification-anchor" :aria-label="distortedStoneReminder ? '地底（歪んだ輝石の初回受取があります）' : undefined" @click="openUnderground">地底<span v-if="distortedStoneReminder" class="notification-dot" aria-hidden="true" /></button>
             <button type="button" @click="openOptions">オプション</button>
             <a href="/manual">マニュアル</a>
         </nav>
@@ -2135,6 +2163,7 @@ async function abandonNation(): Promise<void> {
                 <span aria-hidden="true">›</span>
             </button>
             <div class="island-workspace-region">
+                <button class="daily-quest-trigger" type="button" @click="openDailyQuests">デイリークエストを確認</button>
                 <nav class="workspace-jump" aria-label="開発ワークスペース内の移動">
                     <button type="button" aria-controls="island-development-workspace" @click="scrollIslandWorkspaceTo('.command-panel')">セル・コマンド</button>
                     <button type="button" aria-controls="island-development-workspace" @click="scrollIslandWorkspaceTo('.map-column')">地図</button>
@@ -2283,6 +2312,7 @@ async function abandonNation(): Promise<void> {
             :secretary-image-url="viewedSecretaryProfile?.main_image.url ?? null"
             @return-to-secretary="returnFromUnderground"
             @daily-quest="handleDailyQuestProgress"
+            @distorted-stone-reminder="distortedStoneReminder = $event"
         />
 
         <section v-else-if="page === 'secretary' && (viewedSecretaryProfile || secretary)" class="panel secretary-panel">
@@ -2610,6 +2640,23 @@ async function abandonNation(): Promise<void> {
             <p>原作GIFは本リポジトリとDocker imageに含まれません。未配置時はCSS fallbackを表示します。</p>
         </section>
     </main>
+
+    <div v-if="dailyQuestModalOpen" class="modal-backdrop" @click.self="dailyQuestModalOpen = false">
+        <section class="daily-quest-modal" role="dialog" aria-modal="true" aria-labelledby="daily-quest-modal-title">
+            <header>
+                <div><h2 id="daily-quest-modal-title">デイリークエスト</h2><p>{{ dailyQuests[0]?.canonical_day ?? '今日' }}の進捗（日本時間）</p></div>
+                <button type="button" aria-label="閉じる" @click="dailyQuestModalOpen = false">×</button>
+            </header>
+            <p v-if="dailyQuestLoading" role="status">読み込み中…</p>
+            <p v-else-if="dailyQuestError" class="status error" role="alert">{{ dailyQuestError }}</p>
+            <ul v-else class="daily-quest-list">
+                <li v-for="quest in dailyQuests" :key="quest.key">
+                    <strong>{{ quest.label }}</strong>
+                    <span>{{ quest.progress }} / {{ quest.target }}{{ quest.completed ? '・達成' : '' }}</span>
+                </li>
+            </ul>
+        </section>
+    </div>
 
     <div v-if="compensationModalOpen && user" class="modal-backdrop" @click.self="closeCompensationWarehouse">
         <section class="compensation-modal" role="dialog" aria-modal="true" aria-labelledby="compensation-modal-title">

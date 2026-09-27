@@ -3,6 +3,17 @@ import { describe, expect, it } from 'vitest';
 import UndergroundPartyBattleCards from './UndergroundPartyBattleCards.vue';
 
 describe('Underground party battle cards', () => {
+    it('shows each party member’s active buffs and debuffs at the selected boundary', () => {
+        const wrapper = mount(UndergroundPartyBattleCards, { props: {
+            actors: [{ team: 'player', combatant_id: 'secretary:1', display_name: '秘書' }],
+            stateById: { 'secretary:1': { hp: 100, max_hp: 100, mp: 500,
+                statuses: [{ label: '出血', remaining: 2, stacks: 1 }],
+                role_stacks: { fighting_spirit: 1, grace: 0 } } },
+        } });
+        expect(wrapper.get('.underground-party-battle-card .underground-active-state').text()).toContain('出血 残2');
+        expect(wrapper.get('.underground-party-battle-card .underground-active-state').text()).toContain('闘志 1');
+    });
+
     it('shows each boundary barrier separately from HP in cards and portrait events', async () => {
         const state = { hp: 6220, max_hp: 8000, mp: 10000, barrier: 754 };
         const wrapper = mount(UndergroundPartyBattleCards, { props: {

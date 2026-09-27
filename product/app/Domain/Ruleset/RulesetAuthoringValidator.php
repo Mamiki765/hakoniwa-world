@@ -1440,11 +1440,8 @@ final class RulesetAuthoringValidator
             }
             $baseHp = $this->integer($definition['base_hp'], "{$path}.base_hp", 1);
             $variation = $this->integer($definition['hp_variation'], "{$path}.hp_variation", 0);
-            if ($variation > 18) {
-                throw new DomainException("{$path}.hp_variation must be at most 18.");
-            }
-            if ($baseHp + $variation > 65_535) {
-                throw new DomainException("{$path} HP range must fit an unsigned small integer.");
+            if ($baseHp + $variation > 32_767) {
+                throw new DomainException("{$path} HP range must fit a signed small integer.");
             }
             $skill = $this->persistedString($definition['skill_key'], "{$path}.skill_key");
             if (! in_array($skill, $knownSkills, true)) {

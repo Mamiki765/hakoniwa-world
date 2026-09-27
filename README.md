@@ -1,40 +1,19 @@
 # hakoniwa-world
 
-PHP/LaravelとVueで実装する、全プレイヤーが一つの地上世界を共有する箱庭ゲームです。最初のMVPは `product/` にあります。
+**箱庭諸島２S＋**。PHP/LaravelとVueで実装する、全プレイヤーが一つの地上世界を共有する箱庭ゲームです。アプリケーション本体は`product/`にあります。
 
-## MVPの動作
+地上の開発計画・ターン更新・経済・災害・怪獣・ミサイル・島のライフサイクルと、秘書の育成・装備・パーティー探索などの地底ゲームを扱います。MVP時点の「生産・消費や地下は未実装」という説明は現在地ではありません。
 
-```text
-Docker Composeを起動
-→ DiscordまたはGoogleでログイン
-→ 国家を作成
-→ 全面海の共有世界から空き海域を選択
-→ 旧作を基礎にした初期島・首都・初期領土を同一transactionで生成
-→ Vueで首都周辺のchunkを表示
-```
+## 開発を再開する
 
-世界初期化直後の `x=0..59, y=0..59` は3,600セルすべて海です。各rowは60セルで、偶数rowを16px右へずらすstaggered square-tile gridとして表示します。島はWorld初期化時ではなく、国家登録時に初めて生成されます。新作では旧作の村2つのうち1つを中心のCapitalへ置き換え、通常Villageを1つ残します。
+[現在地](product/docs/handoffs/current-status.md) → [文書の入口](docs/README.md) → 対象のcode・現行設計へ進んでください。[作業予定](product/docs/plans/4.4.1-todo.md)では、実装済み、確認待ち、未着手、Owner判断待ちを分けています。
 
-初期資源は固定food列ではありません。`resource_definitions` と `nation_resources` を使い、国家作成時に小麦100、魚0、肉0を設定します。生産・消費は未実装です。
+Agentの作業規則は[AGENTS.md](AGENTS.md)、設計上の未決gateは[open-questions.md](docs/open-questions.md)です。過去の会話・実装記録を通常の再開資料へ戻さず、archiveの閲覧はOwnerの明示指示に限定します。
 
-## 技術構成
+## 起動と運用
 
-- PHP 8.5.8 / Laravel 13.22.0
-- Node.js 24.18.0 LTS / Vue 3.5.40 / TypeScript 6.0.2 / Vite 8
-- PostgreSQL 18.4
-- Apache + PHPの単一Web image（document rootは `public/`）
-- Docker Compose services: `hakoniwa-web`, `hakoniwa-postgres`
+ローカル起動・APP_KEY・OAuthは[local-development.md](docs/operations/local-development.md)、Composeは[docker-compose.md](docs/operations/docker-compose.md)、backup/restoreは[database-backup-and-restore.md](product/docs/operations/database-backup-and-restore.md)を参照してください。採用依存versionは`product/Dockerfile`・lock file・Composeを正本とします。
 
-ローカル起動、APP_KEY生成、OAuth設定は [local-development.md](docs/operations/local-development.md)、Compose操作は [docker-compose.md](docs/operations/docker-compose.md)、backup/restoreは [database-backup-and-restore.md](product/docs/operations/database-backup-and-restore.md)を参照してください。
+ゲームデータは箱庭専用PostgreSQLで管理し、他サービスのDBと共有しません。OAuth secret・DB password・APP_KEYはGit外の環境設定へ置きます。原作画像などの外部assetと出典・利用条件は[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)と対象assetの運用文書を参照してください。
 
-## データと秘密情報
-
-ゲームデータの正本は箱庭専用PostgreSQLです。ソースはGitHub、OAuth secret・DB password・APP_KEYはGit外のroot `.env`、DB backupは `pg_dump` で管理します。Nextcloud用MariaDBや他サービスのPostgreSQLを共有しません。
-
-原作GIFはGitやDocker imageへ含めません。Git外のasset directoryをread-only mountでき、未配置時はCSS fallbackを表示します。Capitalは新作のplaceholderです。出典は [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)を参照してください。
-
-## 未実装
-
-ミサイルcombat、国境侵食、休眠遷移Job、地下・宇宙、WebSocket、本番OCI Compose統合は現在のroadmap scope外です。実装済みのcommand、queue、turn処理、経済、人口、災害、怪獣は各ruleset版とarchitecture文書を正本とします。
-
-設計判断と残るgateは [docs/open-questions.md](docs/open-questions.md)、実装構成は [mvp-implementation.md](docs/architecture/mvp-implementation.md)を参照してください。
+作業branchの更新と本番への反映は別です。main更新・merge・deploy・本番DB操作を、開発再開の指示だけで実行しません。

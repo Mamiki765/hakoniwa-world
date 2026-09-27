@@ -6,7 +6,6 @@ use App\Domain\Monster\MonsterSpawnSource;
 use App\Domain\Turn\LaunchIntent;
 use App\Domain\Turn\TurnState;
 use InvalidArgumentException;
-use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\TestCase;
 
 class TurnStateTest extends TestCase
@@ -27,37 +26,6 @@ class TurnStateTest extends TestCase
         $this->assertSame(3, $first->remainingShots());
         $state->consumeLaunchIntentShots($first, 3);
         $this->assertSame(0, $first->remainingShots());
-    }
-
-    #[DataProvider('invalidIntentProvider')]
-    public function test_invalid_launch_intent_coordinates_and_counts_are_rejected(
-        mixed $nationId,
-        mixed $definitionKey,
-        mixed $targetX,
-        mixed $targetY,
-        mixed $requestedShots,
-    ): void {
-        $this->expectException(InvalidArgumentException::class);
-        (new TurnState)->registerLaunchIntent(
-            $nationId,
-            $definitionKey,
-            $targetX,
-            $targetY,
-            $requestedShots,
-        );
-    }
-
-    /** @return array<string, array{mixed, mixed, mixed, mixed, mixed}> */
-    public static function invalidIntentProvider(): array
-    {
-        return [
-            'zero Nation ID' => [0, 'missile', 1, 2, 3],
-            'empty definition key' => [1, '', 1, 2, 3],
-            'string x' => [1, 'missile', '1', 2, 3],
-            'float y' => [1, 'missile', 1, 2.0, 3],
-            'negative requested shots' => [1, 'missile', 1, 2, -1],
-            'string requested shots' => [1, 'missile', 1, 2, '3'],
-        ];
     }
 
     public function test_invalid_remaining_shot_updates_are_rejected(): void

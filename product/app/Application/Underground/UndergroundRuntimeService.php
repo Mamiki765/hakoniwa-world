@@ -2512,7 +2512,7 @@ STORY;
         $this->imageRetention->retainSnapshotImages($battle, $detailSnapshot);
         $this->lendingRewards->settle($battle, $party);
         if ($resultType === UndergroundBattle::RESULT_VICTORY) {
-            $this->recordActualContentClear($profile, 'hunting_ground', $huntingGroundKey);
+            $this->recordActualContentClear($profile, 'hunting_ground', $huntingGroundKey, $otherworld ? $finishedAt : null);
         }
 
         return $battle->load('log');
@@ -3567,7 +3567,7 @@ STORY;
             || $profile->growth_path_identity !== $this->alphaV1Catalog->growthIdentity()
             || $profile->growth_path_selected_at === null
             || $profile->skill_tree_identity !== $this->alphaV1Catalog->skillTreeIdentity()
-            || $profile->skill_points_total < $this->alphaV1Catalog->initialSkillPoints()
+            || $profile->skill_points_total < 1
             || $profile->skill_points_unspent > $profile->skill_points_total
             || $profile->combat_level < 1) {
             throw new UndergroundRuntimeException(
@@ -3752,10 +3752,14 @@ STORY;
         UndergroundProfile $profile,
         string $contentType,
         string $contentKey,
+        ?Carbon $firstClearedAt = null,
     ): void {
         $progress = $this->lockedContentProgress($profile, $contentType, $contentKey);
         $progress->actual_clear_count++;
         $progress->total_clear_count++;
+        if ($firstClearedAt !== null && $progress->first_cleared_at === null) {
+            $progress->first_cleared_at = $firstClearedAt;
+        }
         $progress->save();
     }
 

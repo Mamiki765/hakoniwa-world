@@ -3,6 +3,7 @@
 namespace App\Application\Underground;
 
 use App\Application\SecretaryLendingService;
+use App\Application\SecretaryProfilePresenter;
 use App\Domain\Underground\Combat\AlphaV1CombatModel;
 use App\Domain\Underground\Combat\AlphaV1CombatRules;
 use App\Domain\Underground\Combat\CombatResult;
@@ -55,6 +56,7 @@ final readonly class UndergroundIntroService
         private UndergroundBattleStatisticsProjector $statisticsProjector,
         private UndergroundBattleStorage $battleStorage,
         private UndergroundScenePresenter $scenes,
+        private SecretaryProfilePresenter $secretaryPresenter,
     ) {}
 
     /** @return array<string, mixed> */
@@ -84,6 +86,26 @@ final readonly class UndergroundIntroService
         }
 
         return $this->projectState($secretary, $profile, $profile?->introProgress);
+    }
+
+    public function firstDistortedStoneUnclaimed(User $user): bool
+    {
+        $secretaryId = Secretary::query()->where('user_id', $user->id)->value('id');
+        if ($secretaryId === null) {
+            return false;
+        }
+        $profile = UndergroundProfile::query()
+            ->where('secretary_id', (int) $secretaryId)
+            ->first(['otherworld_discovered_at', 'distorted_stone_purchase_day']);
+
+        return $this->firstDistortedStoneUnclaimedForProfile($profile);
+    }
+
+    private function firstDistortedStoneUnclaimedForProfile(?UndergroundProfile $profile): bool
+    {
+        return $profile instanceof UndergroundProfile
+            && $profile->otherworld_discovered_at !== null
+            && $profile->distorted_stone_purchase_day === null;
     }
 
     /** @return array<string, mixed> */
@@ -1310,7 +1332,7 @@ final readonly class UndergroundIntroService
     ): void {
         $this->assertGrowthUnlocked($profile, $intro);
         if ($profile->skill_tree_identity !== $this->alphaV1Catalog->skillTreeIdentity()
-            || $profile->skill_points_total < $this->alphaV1Catalog->initialSkillPoints()
+            || $profile->skill_points_total < 1
             || $profile->skill_points_unspent > $profile->skill_points_total) {
             throw new UndergroundRuntimeException(
                 'underground_skill_tree_identity_mismatch',
@@ -1571,6 +1593,33 @@ final readonly class UndergroundIntroService
         return $battle->load('log');
     }
 
+    /** @return list<array<string, mixed>> */
+    private function projectRentalParty(UndergroundProfile $profile, User $viewer): array
+    {
+        $members = $profile->rental_party ?? [];
+        if ($members === []) {
+            return [];
+        }
+
+        $secretaries = Secretary::query()
+            ->whereIn('id', array_column($members, 'secretary_id'))
+            ->with(['images', 'user'])
+            ->get()
+            ->keyBy('id');
+
+        return array_map(function (array $member) use ($secretaries, $viewer): array {
+            $secretary = $secretaries->get($member['secretary_id']);
+            $image = $secretary instanceof Secretary
+                ? $this->secretaryPresenter->resolveCompactImage($secretary, $viewer)
+                : null;
+
+            return [
+                ...$member,
+                'icon_url' => ($image['display'] ?? null) === 'uploaded' ? $image['url'] : null,
+            ];
+        }, $members);
+    }
+
     /** @return array<string, mixed> */
     private function projectState(
         Secretary $secretary,
@@ -1724,6 +1773,7 @@ final readonly class UndergroundIntroService
                 'items' => $this->catalog->residence(),
             ],
             'distorted_stone_shop' => $this->distortedStoneShop($profile),
+            'distorted_stone_reminder' => $this->firstDistortedStoneUnclaimedForProfile($profile),
             'polishing_tutorial_completed' => $profile?->polishing_tutorial_completed_at !== null,
             'otherworld_intro_available' => $profile instanceof UndergroundProfile
                 && $profile->otherworld_discovered_at === null && $this->runtime->canDiscoverOtherworld($profile),
@@ -1764,7 +1814,8 @@ final readonly class UndergroundIntroService
                 : 0,
             'skill_tree_identity' => $profile?->skill_tree_identity,
             'skill_rebuild_required' => $profile->skill_rebuild_required ?? false,
-            'rental_party' => $profile->rental_party ?? [],
+            'rental_party' => $profile instanceof UndergroundProfile
+                ? $this->projectRentalParty($profile, $secretary->user) : [],
             'skill_trees' => $skillTrees,
             'active_slots' => $activeSlots,
             'passive_modifiers' => $skillBuild['passive_modifiers'] ?? [],

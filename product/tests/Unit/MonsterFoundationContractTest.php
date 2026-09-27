@@ -50,7 +50,7 @@ final class MonsterFoundationContractTest extends TestCase
 
     public function test_authoring_rejects_monster_values_that_the_database_constraints_reject(): void
     {
-        foreach ([['hp_variation', 19], ['natural_spawn_tier', 5]] as [$field, $value]) {
+        foreach ([['hp_variation', 65_535, 'HP range'], ['natural_spawn_tier', 5, 'natural_spawn_tier']] as [$field, $value, $message]) {
             $settings = $this->authoringSettings();
             $settings['monster_definitions'][0][$field] = $value;
 
@@ -58,7 +58,7 @@ final class MonsterFoundationContractTest extends TestCase
                 app(RulesetAuthoringValidator::class)->validate($settings);
                 $this->fail("Authoring accepted {$field} outside the persisted database range.");
             } catch (DomainException $exception) {
-                $this->assertStringContainsString($field, $exception->getMessage());
+                $this->assertStringContainsString($message, $exception->getMessage());
             }
         }
     }

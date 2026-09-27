@@ -35,6 +35,8 @@ COPY --from=vendor /app /var/www/html
 COPY --from=frontend /app/public/build /var/www/html/public/build
 
 RUN chmod +x /usr/local/bin/hakoniwa-entrypoint \
+    && chmod 0755 /var/www/html/resources/stories \
+    && find /var/www/html/resources/stories -maxdepth 1 -type f -name '*.json' -exec chmod 0644 {} + \
     && mkdir -p /var/www/html/storage/framework/cache/data \
         /var/www/html/storage/framework/sessions \
         /var/www/html/storage/framework/views \
@@ -46,6 +48,12 @@ RUN chmod +x /usr/local/bin/hakoniwa-entrypoint \
         /srv/bot-assets/hakoniwa-inquiries /srv/bot-assets/hakoniwa-secretaries
 
 WORKDIR /var/www/html
+
+# Fail the build if the HTTP worker cannot read the story assets (including an empty glob).
+USER www-data
+RUN php -r '$files = glob("resources/stories/*.json"); if ($files === false || $files === []) { throw new RuntimeException("No story JSON files found."); } foreach ($files as $file) { if (file_get_contents($file) === false) { throw new RuntimeException("Unreadable story JSON: ".$file); } }'
+USER root
+
 ENTRYPOINT ["hakoniwa-entrypoint"]
 CMD ["apache2-foreground"]
 

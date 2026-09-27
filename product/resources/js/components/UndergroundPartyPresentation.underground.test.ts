@@ -570,11 +570,13 @@ describe('Underground party presentation controls', () => {
         await openUndergroundView(wrapper, '冒険', '探索');
         await wrapper.get('.underground-skip-entry button').trigger('click');
         const categories = wrapper.findAll('.underground-skip-category');
+        const groundSelect = categories[0]!.get<HTMLSelectElement>('select');
+        await groundSelect.setValue('shallow_caves');
         expect(categories[0]!.text()).toContain('50%使用（500回）');
         expect(categories[0]!.text()).toContain('100%使用（1000回）');
         expect(categories[1]!.text()).toContain('50%使用（500周）');
         expect(categories[1]!.text()).toContain('100%使用（1000周）');
-        await categories[0]!.get('select').setValue('shining_kingdom_vault');
+        await groundSelect.setValue('shining_kingdom_vault');
         expect(categories[0]!.text()).toContain('50%使用（5回）');
         expect(categories[0]!.text()).toContain('100%使用（10回）');
         await categories[0]!.findAll('.underground-skip-shortcuts button')[1]!.trigger('click');

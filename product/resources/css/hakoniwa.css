@@ -159,6 +159,8 @@ a { color: var(--navy); }
     white-space: nowrap;
 }
 .site-header nav button:hover, .session-actions button:hover, .session-actions a:hover { color: var(--coral); }
+.notification-anchor { position: relative; }
+.notification-dot { position: absolute; top: 2px; right: 2px; width: 9px; height: 9px; border-radius: 50%; background: #d62934; box-shadow: 0 0 0 2px var(--paper); pointer-events: none; }
 .session-actions { justify-content: flex-end; font-size: .82rem; }
 .session-user-actions { display: grid; justify-items: end; }
 .session-account-actions { display: flex; align-items: center; justify-content: flex-end; gap: 5px; flex-wrap: wrap; }
@@ -228,6 +230,15 @@ main { width: min(1560px, 100%); margin: 0 auto; padding: clamp(16px, 3vw, 46px)
     color: var(--ink);
     box-shadow: 0 18px 60px rgb(0 0 0 / 35%);
 }
+.daily-quest-modal { display: grid; gap: 16px; width: min(100%, 480px); max-height: calc(100dvh - 32px); overflow: auto; padding: 20px; border: 2px solid var(--line); background: var(--paper); color: var(--ink); box-shadow: 0 18px 60px rgb(0 0 0 / 35%); }
+.daily-quest-trigger { display: block; margin: 0 0 12px auto; padding: 8px 12px; border: 1px solid var(--line); border-radius: 6px; background: var(--input-surface); cursor: pointer; }
+.daily-quest-modal > header { display: flex; align-items: start; justify-content: space-between; gap: 16px; }
+.daily-quest-modal > header h2, .daily-quest-modal > header p { margin: 0; }
+.daily-quest-modal > header p { color: var(--muted); }
+.daily-quest-modal > header button { min-width: 40px; min-height: 40px; border: 0; background: transparent; font-size: 1.65rem; cursor: pointer; }
+.daily-quest-list { display: grid; gap: 8px; margin: 0; padding: 0; list-style: none; }
+.daily-quest-list li { display: flex; justify-content: space-between; gap: 16px; padding: 12px; border: 1px solid var(--line); background: var(--input-surface); }
+.daily-quest-list li span { white-space: nowrap; font-variant-numeric: tabular-nums; }
 .compensation-modal > header { display: flex; align-items: start; justify-content: space-between; gap: 16px; }
 .compensation-modal > header h2, .compensation-modal > header p, .compensation-lead, .compensation-reason { margin: 0; }
 .compensation-modal > header > button { min-width: 40px; min-height: 40px; border: 0; color: var(--ink); background: transparent; font-size: 1.65rem; cursor: pointer; }

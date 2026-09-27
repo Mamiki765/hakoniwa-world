@@ -19,4 +19,9 @@ final class DailyRewardController extends Controller
     {
         return response()->json(['data' => $quests->recordDevelopmentOpened($request->user())]);
     }
+
+    public function quests(Request $request, DailyQuestService $quests): JsonResponse
+    {
+        return response()->json(['data' => $quests->todayStatuses((int) $request->user()->id)]);
+    }
 }

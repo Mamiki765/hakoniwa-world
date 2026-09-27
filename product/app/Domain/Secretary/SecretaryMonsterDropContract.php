@@ -57,8 +57,12 @@ final class SecretaryMonsterDropContract
                 'killer_percent_when_foreign_host', 'host_percent_when_foreign_host',
                 'same_or_no_host', 'inventory_full_reroute',
             ])
-            || ($recipient['killer_percent_when_foreign_host'] ?? null) !== 75
-            || ($recipient['host_percent_when_foreign_host'] ?? null) !== 25
+            || ! is_int($recipient['killer_percent_when_foreign_host'] ?? null)
+            || $recipient['killer_percent_when_foreign_host'] < 0
+            || $recipient['killer_percent_when_foreign_host'] > 100
+            || ! is_int($recipient['host_percent_when_foreign_host'] ?? null)
+            || $recipient['host_percent_when_foreign_host'] < 0
+            || $recipient['killer_percent_when_foreign_host'] + $recipient['host_percent_when_foreign_host'] !== 100
             || ($recipient['same_or_no_host'] ?? null) !== 'killer'
             || ($recipient['inventory_full_reroute'] ?? null) !== false) {
             throw new DomainException('ruleset.monster_system.item_drop differs from the recipient/RNG contract.');

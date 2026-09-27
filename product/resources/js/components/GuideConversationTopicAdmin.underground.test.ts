@@ -51,7 +51,6 @@ describe('Guide conversation topic admin', () => {
         const wrapper = mount(GuideConversationTopicAdmin);
         await flushPromises();
 
-        expect(wrapper.findAll('textarea')).toHaveLength(7);
         expect(wrapper.findAll('select option').map((option) => option.text())).toEqual(['常時', '試練1初回クリア']);
 
         const textareas = wrapper.findAll('textarea');

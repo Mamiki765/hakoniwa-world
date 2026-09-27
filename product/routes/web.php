@@ -104,6 +104,7 @@ Route::prefix('api/v1')->middleware(['auth', PrivateApiResponse::class])->group(
     Route::get('/me/compensation-grants', [CompensationWarehouseController::class, 'mine']);
     Route::post('/me/compensation-grants/{compensationGrant}/claim', [CompensationWarehouseController::class, 'claimMine']);
     Route::post('/me/daily-login', [DailyRewardController::class, 'login'])->middleware('throttle:30,1');
+    Route::get('/me/daily-quests', [DailyRewardController::class, 'quests']);
     Route::post('/me/daily-quests/development-opened', [DailyRewardController::class, 'developmentOpened'])
         ->middleware('throttle:30,1');
     Route::get('/me/secretary', [SecretaryController::class, 'show']);
@@ -122,6 +123,7 @@ Route::prefix('api/v1')->middleware(['auth', PrivateApiResponse::class])->group(
         ->middleware('throttle:60,1,underground-admission:');
     Route::prefix('/me/underground')->middleware(['throttle:60,1', RequireUndergroundRequestAdmission::class])->group(function (): void {
         Route::get('/', [UndergroundIntroController::class, 'show']);
+        Route::get('/distorted-stone-reminder', [UndergroundIntroController::class, 'distortedStoneReminder']);
         Route::post('/residence/purchase', [UndergroundIntroController::class, 'purchaseResidence']);
         Route::post('/shop/distorted-stone', [UndergroundIntroController::class, 'purchaseDistortedStone']);
         Route::post('/events/advance', [UndergroundIntroController::class, 'advanceLoungeEvent']);

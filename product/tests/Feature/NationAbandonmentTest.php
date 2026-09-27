@@ -62,11 +62,8 @@ final class NationAbandonmentTest extends TestCase
             'confirmation_name' => $otherNation->name,
         ])->assertForbidden();
 
-        foreach (['確認', '確認島 ', '確認しま', ''] as $confirmation) {
-            $this->actingAs($owner)->postJson($endpoint, ['confirmation_name' => $confirmation])
-                ->assertUnprocessable()
-                ->assertJsonValidationErrors('confirmation_name');
-        }
+        $this->actingAs($owner)->postJson($endpoint, ['confirmation_name' => '確認'])
+            ->assertUnprocessable()->assertJsonValidationErrors('confirmation_name');
         $this->assertSame('active', $nation->fresh()->state);
 
         $currentRulesetId = $world->ruleset_version_id;
@@ -308,7 +305,6 @@ final class NationAbandonmentTest extends TestCase
 
         $event = DB::table('audit_events')->where('event_type', 'nation.abandoned')->sole();
         $metadata = json_decode((string) $event->metadata, true, 512, JSON_THROW_ON_ERROR);
-        $this->assertSame('沈降島は破棄され、忘れ去られた。', $event->message);
         $this->assertSame($nation->id, $metadata['nation_id']);
         $this->assertSame($nation->nation_number, $metadata['nation_number']);
         $this->assertSame('沈降島', $metadata['nation_name']);

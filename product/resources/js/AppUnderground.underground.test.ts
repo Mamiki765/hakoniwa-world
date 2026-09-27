@@ -845,6 +845,7 @@ describe('Underground application operations', () => {
 
         await openUndergroundView(wrapper, 'キャラクター', '能力');
         expect(wrapper.get('.underground-summary').text()).toContain('戦闘Lv1');
+        expect(wrapper.get('.underground-growth-summary').text()).toContain('生命41');
         await openUndergroundView(wrapper, 'キャラクター', '能力');
         expect(wrapper.get('.underground-summary').text()).toContain('経験値5 / 100');
         await openUndergroundView(wrapper, 'キャラクター', '能力');
@@ -953,6 +954,7 @@ describe('Underground application operations', () => {
         await openUndergroundView(wrapper, 'ホーム');
         await wrapper.get('button[aria-label="未配分STP 3、配分する"]').trigger('click');
         expect(wrapper.get('.underground-status-table').text()).toContain('装備なし');
+        expect(wrapper.get('.underground-status-table').text()).toContain('生命40');
         const vitalityStp = wrapper.get<HTMLInputElement>('.underground-stp-control input');
         expect(vitalityStp.attributes('max')).toBe('3');
         await wrapper.get('button[aria-label="生命に残りの50%を配分"]').trigger('click');
@@ -1969,6 +1971,56 @@ describe('Underground application operations', () => {
         expect(successfulBody).toEqual({ item_id: null, expected_version: 2 });
     });
 
+    it('starts skip at the newest usable ground and falls back when its key or clear unlock is missing', async () => {
+        const ground = (key: string, name: string, entryKeyCost: number, keyBalance: number, skipUnlocked: boolean) => ({
+            key, name, kind: entryKeyCost > 0 ? 'vault' : 'hunting_ground', locked: false, unlock_condition: null,
+            entry_key_cost: entryKeyCost, key_balance: keyBalance, disabled: false, unavailable_reason: null,
+            item_level_min: 5, item_level_max: 30,
+            skip: { actual_clear_count: skipUnlocked ? 50 : 0, total_clear_count: 50, actual_clears_required: 50, unlocked: skipUnlocked, ticket_cost: 1 },
+        });
+        let laterGroundAvailable = false;
+        let vaultKeys = 1;
+        let vaultSkipUnlocked = true;
+        const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+            const path = String(input);
+            if (path === '/api/v1/me/underground') return response({
+                stage: 'underground_open', secretary_name: 'ペリドット', combat_level: 100, combat_xp: 0,
+                next_level_xp: 100, next_level_requirement: 100, current_hp: 100, unspent_stp: 0,
+                skill_points_total: 0, skill_points_unspent: 0, skill_points_spent: 0,
+                skill_trees: null, active_slots: [], passive_modifiers: {},
+                growth_path: null, battle: null, trial: null, otherworld_unlocked: true, distorted_stone_reminder: true,
+                lending: { ticket_balance: 100, settings: { is_public: false, is_available: false }, candidates: [] },
+                hunting_grounds: [
+                    ground('shallow_caves', '浅い洞窟', 0, 0, true),
+                    ground('black_crystal_cave', '黒晶洞', 0, 0, true),
+                    ground('shining_kingdom_vault', '輝きの王国の宝物庫', 1, vaultKeys, vaultSkipUnlocked),
+                    ...(laterGroundAvailable ? [ground('later_ground', '後から追加された狩場', 0, 0, true)] : []),
+                ],
+            });
+            if (path === '/api/v1/me/underground/battles') return response([]);
+            return response(null, 404);
+        });
+        stubUndergroundFetch(fetchMock);
+
+        for (const [laterAvailable, keys, unlocked, expected] of [
+            [true, 1, true, 'later_ground'],
+            [false, 1, true, 'shining_kingdom_vault'],
+            [false, 0, true, 'black_crystal_cave'],
+            [false, 1, false, 'black_crystal_cave'],
+        ] as const) {
+            laterGroundAvailable = laterAvailable;
+            vaultKeys = keys;
+            vaultSkipUnlocked = unlocked;
+            const wrapper = mount(UndergroundPanel);
+            await flushPromises();
+            expect(wrapper.find('.ug-navigation button.notification-anchor .notification-dot').exists()).toBe(true);
+            await openUndergroundView(wrapper, '冒険', '探索');
+            await wrapper.get('.underground-skip-entry button').trigger('click');
+            expect(wrapper.get<HTMLSelectElement>('.underground-skip-category select').element.value).toBe(expected);
+            wrapper.unmount();
+        }
+    });
+
     it('opens the shop, shows carried balance, and retries an ambiguous purchase with the same UUID', async () => {
         const item = {
             key: 'iron_dagger', name: '鉄の短剣', category: 'weapon', weapon_style: 'dagger', rank: 1, item_level: 1,
@@ -2310,6 +2362,8 @@ describe('Underground application operations', () => {
         const firstRecollection = wrapper.findAll('.underground-recollection-list button')
             .find((button) => button.text().includes('過去について問う・1'))!;
         await firstRecollection.trigger('click');
+        expect(wrapper.get('.ug-event-story.underground-recollection-detail').text()).toContain('過去について問う・1');
+        expect(wrapper.find('.underground-recollection-list').exists()).toBe(false);
         await wrapper.get('.underground-recollection-detail .button.primary').trigger('click');
         await flushPromises();
         expect(wrapper.get('[role="alert"]').text()).toContain('Recollection response lost');
