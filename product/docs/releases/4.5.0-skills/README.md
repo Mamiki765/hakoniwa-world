@@ -1,5 +1,7 @@
 # 4.5.0：Trial 3 後の 140 SP Skill Tree
 
+4.5.1ではOwnerの指示により、新skill 6技の同treeへの先行投資96SP条件を廃止した。取得費24SPと前提skillは維持する。以下の取得routeと測定結果は4.5.0時点の記録であり、4.5.1の最短取得routeを示すものではない。現在の定義は`foundation-v3.json`を参照する。
+
 ## 判断と測定条件
 
 既存 skill の定義（威力・回復量・効果・cost・prerequisite）は変更していない。100 SP 以下の吸収斬り route も維持した。新 skill は各 tree に 2 方向を追加した。全て active、cost 24 SP、同 tree の先行投資 96 SP と既存 node の prerequisite を要求する。取得には最低 120 SP が必要で、同 tree の新 skill 2 つは最低でも 144 SP になる。全取得費用は戦技 198、護身 174、祝福 186 SP。active は常に 5 枠。

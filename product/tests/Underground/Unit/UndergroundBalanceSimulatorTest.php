@@ -345,7 +345,7 @@ final class UndergroundBalanceSimulatorTest extends TestCase
 
     public function test_alpha_v1_small_smoke_reports_build_damage_mp_scale_and_zero_abnormal_states(): void
     {
-        $path = dirname(__DIR__, 3).'/config/underground/balance/foundation-v2.json';
+        $path = dirname(__DIR__, 3).'/config/underground/balance/foundation-v3.json';
         $contents = file_get_contents($path);
         $this->assertIsString($contents);
         $manifest = json_decode($contents, true, flags: JSON_THROW_ON_ERROR);
@@ -355,7 +355,7 @@ final class UndergroundBalanceSimulatorTest extends TestCase
             $manifest,
             $contents,
             hash('sha256', $contents),
-            'config/underground/balance/foundation-v2.json',
+            'config/underground/balance/foundation-v3.json',
             str_repeat('b', 40),
             false,
             0,
@@ -383,7 +383,7 @@ final class UndergroundBalanceSimulatorTest extends TestCase
             'php',
             'artisan',
             'underground:balance',
-            '--manifest=config/underground/balance/foundation-v2.json',
+            '--manifest=config/underground/balance/foundation-v3.json',
             '--seed-start=0',
             '--count=8',
             '--commit-sha='.str_repeat('b', 40),
@@ -394,7 +394,7 @@ final class UndergroundBalanceSimulatorTest extends TestCase
             $manifest,
             $contents,
             hash('sha256', $contents),
-            'config/underground/balance/foundation-v2.json',
+            'config/underground/balance/foundation-v3.json',
             str_repeat('b', 40),
             false,
             0,

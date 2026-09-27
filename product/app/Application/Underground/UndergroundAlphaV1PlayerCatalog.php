@@ -1079,7 +1079,7 @@ final readonly class UndergroundAlphaV1PlayerCatalog
     {
         try {
             $manifest = json_decode(
-                file_get_contents(config_path('underground/balance/foundation-v2.json')) ?: '',
+                file_get_contents(config_path('underground/balance/foundation-v3.json')) ?: '',
                 true,
                 512,
                 JSON_THROW_ON_ERROR,

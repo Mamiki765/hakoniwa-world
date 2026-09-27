@@ -401,7 +401,7 @@ describe('Underground application operations', () => {
             skill_tree_identity: 'secretary-underground-skill-tree-alpha-v2',
             skill_trees: [{ key: 'martial', label: '戦技', invested_points: 6, full_points: 100, nodes: [{
                     key: 'martial_dagger_flurry', label: '短剣乱舞', summary: '短剣・細剣で3回攻撃し、出血を狙う。',
-                    type: 'active', rank: 1, max_rank: 1, point_cost: 6, invested_points_required: 15,
+                    type: 'active', rank: 1, max_rank: 1, point_cost: 6, invested_points_required: 0,
                     prerequisite: 'martial_precision_cut', can_acquire: false, unavailable_reason: '最大rankです',
                     skill_key: 'dagger_flurry', mp_cost: 1200, cooldown: 2, required_weapon_styles: ['dagger', 'rapier'] as string[], recommended_stats: ['might', 'finesse'] as string[], active_slot: null,
                 }] },
@@ -413,8 +413,8 @@ describe('Underground application operations', () => {
                     skill_key: 'holy_bolt', mp_cost: 700, cooldown: 0, required_weapon_styles: [] as string[], recommended_stats: ['spirit', 'finesse'] as string[], active_slot: null,
                 }, {
                     key: 'miracle_spirit_channel', label: '精神導路', summary: '祝福与ダメージを強化する。',
-                    type: 'passive', rank: 0, max_rank: 5, point_cost: 1, invested_points_required: 15,
-                    prerequisite: null, can_acquire: false, unavailable_reason: '祝福へあと15SP必要',
+                    type: 'passive', rank: 0, max_rank: 5, point_cost: 1, invested_points_required: 0,
+                    prerequisite: null, can_acquire: true, unavailable_reason: null,
                     skill_key: null, mp_cost: null, cooldown: null, required_weapon_styles: [] as string[], recommended_stats: null, active_slot: null,
                 }, {
                     key: 'miracle_mending_prayer', label: '治癒祈祷', summary: '自身のHPを回復する。',
@@ -423,8 +423,8 @@ describe('Underground application operations', () => {
                     skill_key: 'mending_prayer', mp_cost: 1200, cooldown: 2, required_weapon_styles: [] as string[], recommended_stats: ['spirit'] as string[], active_slot: null,
                 }, {
                     key: 'miracle_crystal_cycle', label: '輝石循環', summary: '1 actionを使って自身のMPを3000回復する。',
-                    type: 'active', rank: 0, max_rank: 1, point_cost: 6, invested_points_required: 35,
-                    prerequisite: 'miracle_mending_prayer', can_acquire: false, unavailable_reason: '祝福へあと35SP必要',
+                    type: 'active', rank: 0, max_rank: 1, point_cost: 6, invested_points_required: 0,
+                    prerequisite: 'miracle_mending_prayer', can_acquire: false, unavailable_reason: '前提skill未取得',
                     skill_key: 'crystal_cycle', mp_cost: 0, cooldown: 3, required_weapon_styles: [] as string[], recommended_stats: [] as string[], active_slot: null,
                 }] }],
             active_slots: [null, null, null, null, null] as Array<{

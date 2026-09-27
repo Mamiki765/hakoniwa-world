@@ -2171,7 +2171,7 @@ final class UndergroundCombatBuildTest extends TestCase
     /** @return array{array<string, mixed>, AlphaV1BuildCatalog, UndergroundBuildValidator} */
     private function catalog(): array
     {
-        $contents = file_get_contents(dirname(__DIR__, 3).'/config/underground/balance/foundation-v2.json');
+        $contents = file_get_contents(dirname(__DIR__, 3).'/config/underground/balance/foundation-v3.json');
         $this->assertIsString($contents);
         $manifest = json_decode($contents, true, flags: JSON_THROW_ON_ERROR);
         $this->assertIsArray($manifest);
