@@ -486,6 +486,7 @@ interface UndergroundState {
     passive_modifiers: Record<string, number | boolean | string>;
     shopkeeper_name: string | null;
     distorted_stone_shop?: { balance: number; day: string; purchased_today: number; daily_limit: number; next_price: number | null; unlocked: boolean };
+    distorted_stone_reminder?: boolean;
     polishing_tutorial_completed?: boolean;
     otherworld?: {
         stages: Array<{ key: string; name: string; recommended_level: number; item_level: number; locked: boolean; unlock_condition: string | null; cleared: boolean }>;
@@ -564,6 +565,7 @@ const props = defineProps<{ secretaryImageUrl?: string | null; userId?: number }
 const emit = defineEmits<{
     returnToSecretary: [];
     dailyQuest: [quest: DailyQuestProgress];
+    distortedStoneReminder: [unclaimed: boolean];
 }>();
 const state = ref<UndergroundState | null>(null);
 const busy = ref(false);
@@ -795,6 +797,14 @@ const selectedHuntingGround = computed(() => ordinaryHuntingGrounds.value
     .find((ground) => ground.key === selectedHuntingGroundKey.value) ?? null);
 const selectedSkipHuntingGround = computed(() => unlockedHuntingGrounds.value
     .find((ground) => ground.key === selectedSkipHuntingGroundKey.value) ?? unlockedHuntingGrounds.value[0] ?? null);
+function openSkipModal(): void {
+    const preferred = [...unlockedHuntingGrounds.value].reverse().find((ground) =>
+        !ground.disabled && ground.skip.unlocked
+        && (skipTicketBalance.value ?? 0) >= ground.skip.ticket_cost
+        && ground.key_balance >= ground.entry_key_cost);
+    selectedSkipHuntingGroundKey.value = (preferred ?? unlockedHuntingGrounds.value[0])?.key ?? 'shallow_caves';
+    skipModalOpen.value = true;
+}
 const shiningKingdomVault = computed(() => unlockedHuntingGrounds.value
     .find((ground) => ground.kind === 'vault') ?? null);
 const trialOptions = computed<TrialOption[]>(() => {
@@ -997,6 +1007,9 @@ watch(trialOptions, (trials) => {
 }, { deep: true, immediate: true });
 
 watch(state, (current) => {
+    if (typeof current?.distorted_stone_reminder === 'boolean') {
+        emit('distortedStoneReminder', current.distorted_stone_reminder);
+    }
     if (!current || partySelectionHydrated.value) return;
     selectedPartyMemberIds.value = (current.rental_party ?? []).map((member) => member.secretary_id);
     partySelectionHydrated.value = true;
@@ -2539,7 +2552,7 @@ onUnmounted(() => {
                 </div>
                 <header v-if="currentDestination !== 'home'" class="ug-page-heading"><h1>{{ pageTitle }}</h1><span>{{ state.shard_balance.toLocaleString('ja-JP') }} G</span></header>
                 <nav v-if="pageTabs.length && !activeLoungeEvent && !(selectedRecollection && (equipmentView === 'recollections' || guideMode === 'recollections' && equipmentView === 'guide'))" class="ug-tabs" aria-label="画面内の切り替え">
-                    <button v-for="tab in pageTabs" :key="tab.key" type="button" :aria-current="equipmentView === tab.key ? 'page' : undefined" @click="selectTab(tab.key)">{{ tab.label }}</button>
+                    <button v-for="tab in pageTabs" :key="tab.key" type="button" :class="{ 'notification-anchor': tab.key === 'polishing' && state.distorted_stone_reminder }" :aria-current="equipmentView === tab.key ? 'page' : undefined" @click="selectTab(tab.key)">{{ tab.label }}<span v-if="tab.key === 'polishing' && state.distorted_stone_reminder" class="notification-dot" aria-hidden="true" /></button>
                 </nav>
                 <template v-if="activeLoungeEvent">
                     <UndergroundScene :scene="state.visuals?.scenes[activeLoungeEvent.scene]" :show-ai="state.visuals?.show_ai ?? false" />
@@ -2899,7 +2912,7 @@ onUnmounted(() => {
                             <h2 id="underground-adventure-title">冒険</h2>
                             <div v-if="skipTicketBalance !== null" class="underground-skip-entry">
                                 <span>🎫 所持 {{ skipTicketBalance }}枚</span>
-                                <button type="button" :disabled="busy" @click="skipModalOpen = true">スキップ使用</button>
+                                <button type="button" :disabled="busy" @click="openSkipModal">スキップ使用</button>
                             </div>
                         </header>
                         <p v-if="pendingExplorationRequest" class="underground-pending-request" role="status">
@@ -3170,7 +3183,7 @@ onUnmounted(() => {
                     </footer>
                 </section>
             </div>
-                <UndergroundNavigation :current="currentDestination" :exchange-discovered="(state.residence?.exchange_intro_page ?? 0) >= 2" @navigate="navigate" />
+                <UndergroundNavigation :current="currentDestination" :exchange-discovered="(state.residence?.exchange_intro_page ?? 0) >= 2" :distorted-stone-reminder="state.distorted_stone_reminder" @navigate="navigate" />
             </div>
         </template>
     </section>

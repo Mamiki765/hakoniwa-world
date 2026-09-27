@@ -100,6 +100,15 @@ final class SurfaceParadoxDailyRewardTest extends TestCase
         $four = $quests->recordUndergroundBattles($user->id, 4, 'test-battle-group-a');
         $this->assertSame(4, $four['progress']);
         $this->assertFalse($four['completed_now']);
+        $this->actingAs($user)->getJson('/api/v1/me/daily-quests')
+            ->assertOk()
+            ->assertJsonPath('data.0.key', DailyQuestService::DEVELOPMENT_OPENED)
+            ->assertJsonPath('data.0.completed', true)
+            ->assertJsonPath('data.1.key', DailyQuestService::UNDERGROUND_BATTLES)
+            ->assertJsonPath('data.1.progress', 4)
+            ->assertJsonPath('data.1.target', 10)
+            ->assertJsonPath('data.2.key', DailyQuestService::COMMAND_REGISTERED)
+            ->assertJsonPath('data.2.progress', 0);
         $duplicate = $quests->recordUndergroundBattles($user->id, 4, 'test-battle-group-a');
         $this->assertSame(4, $duplicate['progress']);
         $six = $quests->recordUndergroundBattles($user->id, 6, 'test-battle-group-b');
@@ -128,6 +137,10 @@ final class SurfaceParadoxDailyRewardTest extends TestCase
         $this->assertSame(0, $staleCommandRetry['progress']);
         $this->assertFalse($staleCommandRetry['completed_now']);
         $this->assertSame(0, $staleBattleRetry['progress']);
+        $this->getJson('/api/v1/me/daily-quests')->assertOk()
+            ->assertJsonPath('data.0.progress', 0)
+            ->assertJsonPath('data.1.progress', 0)
+            ->assertJsonPath('data.2.progress', 0);
         $this->assertDatabaseMissing('user_daily_quest_progress', ['canonical_day' => '2026-09-10']);
 
         $this->assertDatabaseCount('user_daily_quest_progress', 3);

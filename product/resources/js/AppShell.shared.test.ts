@@ -1132,6 +1132,11 @@ describe('application lobby and island entry', () => {
                     position: index + 1, kind: 'automatic_finance', editable: false, command_name: '資金繰り', quantity: null,
                 })),
             });
+            if (path === '/api/v1/me/daily-quests') return response([
+                { key: 'development_opened', label: '開発画面を開く', canonical_day: '2026-09-09', progress: 1, target: 1, completed: true },
+                { key: 'underground_battles', label: '地下で10戦する', canonical_day: '2026-09-09', progress: 4, target: 10, completed: false },
+                { key: 'command_registered', label: 'コマンドを登録する', canonical_day: '2026-09-09', progress: 0, target: 1, completed: false },
+            ]);
             return response(null, 404);
         });
         vi.stubGlobal('fetch', fetchMock);
@@ -1196,6 +1201,11 @@ describe('application lobby and island entry', () => {
 
         await wrapper.findAll('.site-header nav button').find((button) => button.text() === '自島へ')!.trigger('click');
         await flushPromises();
+        await wrapper.get('.daily-quest-trigger').trigger('click');
+        await flushPromises();
+        expect(wrapper.get('.daily-quest-modal').text()).toContain('開発画面を開く1 / 1・達成');
+        expect(wrapper.get('.daily-quest-modal').text()).toContain('地下で10戦する4 / 10');
+        await wrapper.get('.daily-quest-modal button[aria-label="閉じる"]').trigger('click');
         expect(wrapper.find('.nation-hud').text()).toContain('62,728億円');
         expect(wrapper.find('.nation-hud').text()).toContain('N1 自島');
         expect(wrapper.find('.nation-hud').text()).toContain('島主：自島主');

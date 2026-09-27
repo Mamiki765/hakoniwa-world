@@ -88,6 +88,26 @@ final readonly class UndergroundIntroService
         return $this->projectState($secretary, $profile, $profile?->introProgress);
     }
 
+    public function firstDistortedStoneUnclaimed(User $user): bool
+    {
+        $secretaryId = Secretary::query()->where('user_id', $user->id)->value('id');
+        if ($secretaryId === null) {
+            return false;
+        }
+        $profile = UndergroundProfile::query()
+            ->where('secretary_id', (int) $secretaryId)
+            ->first(['otherworld_discovered_at', 'distorted_stone_purchase_day']);
+
+        return $this->firstDistortedStoneUnclaimedForProfile($profile);
+    }
+
+    private function firstDistortedStoneUnclaimedForProfile(?UndergroundProfile $profile): bool
+    {
+        return $profile instanceof UndergroundProfile
+            && $profile->otherworld_discovered_at !== null
+            && $profile->distorted_stone_purchase_day === null;
+    }
+
     /** @return array<string, mixed> */
     public function completeRecollection(User $user, string $requestId, int $chapter): array
     {
@@ -1753,6 +1773,7 @@ final readonly class UndergroundIntroService
                 'items' => $this->catalog->residence(),
             ],
             'distorted_stone_shop' => $this->distortedStoneShop($profile),
+            'distorted_stone_reminder' => $this->firstDistortedStoneUnclaimedForProfile($profile),
             'polishing_tutorial_completed' => $profile?->polishing_tutorial_completed_at !== null,
             'otherworld_intro_available' => $profile instanceof UndergroundProfile
                 && $profile->otherworld_discovered_at === null && $this->runtime->canDiscoverOtherworld($profile),

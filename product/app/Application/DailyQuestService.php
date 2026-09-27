@@ -87,6 +87,15 @@ final readonly class DailyQuestService
         ];
     }
 
+    /** @return list<array<string, int|string|bool>> */
+    public function todayStatuses(int $userId): array
+    {
+        return array_map(
+            fn (string $key): array => $this->currentStatus($userId, $key),
+            [self::DEVELOPMENT_OPENED, self::UNDERGROUND_BATTLES, self::COMMAND_REGISTERED],
+        );
+    }
+
     /** @return array<string, int|string|bool> */
     private function record(int $userId, string $questKey, int $amount, string $entryKey): array
     {
