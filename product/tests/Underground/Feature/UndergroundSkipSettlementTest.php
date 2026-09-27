@@ -443,6 +443,30 @@ final class UndergroundSkipSettlementTest extends TestCase
         $this->assertDatabaseCount('secretary_lending_participations', 0);
     }
 
+    public function test_trial_three_skip_rolls_one_distorted_stone_chance_per_skipped_battle_once(): void
+    {
+        config(['underground-runtime.trials.trial_03.distorted_stone_chance_bps' => 10_000]);
+        [$user, $profile] = $this->readyProfile();
+        UndergroundTrialProgress::query()->create([
+            'underground_profile_id' => $profile->id, 'trial_key' => 'trial_03',
+            'unlocked_at' => Carbon::now(), 'first_cleared_at' => Carbon::now(),
+        ]);
+        UndergroundContentClearProgress::query()->create([
+            'underground_profile_id' => $profile->id, 'content_type' => 'trial', 'content_key' => 'trial_03',
+            'actual_clear_count' => 5, 'total_clear_count' => 5,
+        ]);
+        UserSkipTicketBalance::query()->create(['user_id' => $user->id, 'balance' => 100]);
+        $runtime = app(UndergroundRuntimeService::class);
+        $requestId = (string) Str::uuid();
+        $first = $runtime->bulkSkipTrial($user, $requestId, 'trial_03', 2);
+        $retry = $runtime->bulkSkipTrial($user, $requestId, 'trial_03', 2);
+
+        $this->assertTrue($retry['duplicate']);
+        $this->assertSame($first['batch']->id, $retry['batch']->id);
+        $this->assertSame(20, $first['batch']->reward_snapshot['distorted_stones']);
+        $this->assertSame(20, $profile->refresh()->distorted_stone_balance);
+    }
+
     public function test_bulk_skip_aggregates_vault_full_drops_without_creating_items(): void
     {
         $this->forceShallowStandardDrop();

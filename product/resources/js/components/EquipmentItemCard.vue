@@ -30,6 +30,7 @@ export interface EquipmentItem {
     magical_defense: number;
     max_hp: number;
     stats: Record<string, number>;
+    modifiers?: Record<string, number>;
     affixes?: EquipmentAffix[];
     unique_effect?: {
         type: 'resonance' | 'shockwave';
@@ -100,7 +101,24 @@ function statLabel(key: string): string {
 
 function rankLabel(): string {
     if (props.item.instance_kind === 'generated') return 'ドロップ装備';
+    if (props.item.rarity === 'unique' && props.item.instance_kind === 'fixed') return '報酬装備';
     return props.item.rank > 0 ? `Rank ${props.item.rank}` : '初期装備';
+}
+
+const fixedModifierLabels: Array<[string, string]> = [
+    ['self_regeneration_target_hp_bps', '再生（毎ターン最大HP回復）'],
+    ['physical_damage_bps', '物理攻撃力'],
+    ['miracle_damage_bps', '魔法攻撃力'],
+    ['mp_cost_reduction_bps', 'MP効率'],
+    ['healing_bps', '治癒力'],
+];
+
+function fixedModifiers(): Array<[string, number]> {
+    if (props.item.instance_kind !== 'fixed') return [];
+    return fixedModifierLabels.flatMap(([key, label]) => {
+        const value = props.item.modifiers?.[key] ?? 0;
+        return value > 0 ? [[label, value]] : [];
+    });
 }
 
 function affixValue(affix: EquipmentAffix): string {
@@ -141,6 +159,9 @@ function affixValue(affix: EquipmentAffix): string {
             <template v-if="item.unique_effect.type === 'resonance'">範囲攻撃 +{{ (item.unique_effect.value_bps ?? 0) / 100 }}%</template>
             <template v-else>攻撃時に{{ (item.unique_effect.chance_bps ?? 0) / 100 }}%の確率で敵全体へ衝撃波</template>
         </p>
+        <ul v-if="fixedModifiers().length > 0" class="underground-equipment-card-affixes" aria-label="固有補正">
+            <li v-for="([label, value]) in fixedModifiers()" :key="label">{{ label }} +{{ value / 100 }}%</li>
+        </ul>
         <ul v-if="item.affixes && item.affixes.length > 0" class="underground-equipment-card-affixes" aria-label="追加効果">
             <li v-for="(affix, index) in item.affixes" :key="`${affix.key ?? affix.label}-${index}`">
                 {{ affix.label }} {{ affixValue(affix) }}

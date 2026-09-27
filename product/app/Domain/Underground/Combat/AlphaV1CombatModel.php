@@ -822,6 +822,7 @@ final readonly class AlphaV1CombatModel
             'critical_chance_bps',
             'critical_damage_bps',
             'mp_cost_reduction_bps',
+            'self_regeneration_target_hp_bps',
             ...EquipmentCombatEffects::RESONANCE_MODIFIERS,
         ];
         foreach ($equipmentModifiers as $modifierKey => $value) {
@@ -1035,7 +1036,7 @@ final readonly class AlphaV1CombatModel
 
     /**
      * @param  array<string,mixed>  $enemy
-     * @return array{trigger_skill:string, countdown_rounds:int, skill:string, status:string}|null
+     * @return array{trigger_skill:string, countdown_rounds:int, skill:string, status:string, narration_lines?:list<string>}|null
      */
     private function chargedAttack(AlphaV1BuildCatalog $catalog, array $enemy): ?array
     {
@@ -1047,7 +1048,10 @@ final readonly class AlphaV1CombatModel
             || ! in_array($charge['trigger_skill'], $enemy['skills'], true)
             || ! is_int($charge['countdown_rounds'] ?? null) || $charge['countdown_rounds'] < 1
             || ! is_string($charge['skill'] ?? null) || ! in_array($charge['skill'], $enemy['skills'], true)
-            || ! is_string($charge['status'] ?? null)) {
+            || ! is_string($charge['status'] ?? null)
+            || (isset($charge['narration_lines'])
+                && (! is_array($charge['narration_lines']) || ! array_is_list($charge['narration_lines'])
+                    || array_filter($charge['narration_lines'], 'is_string') !== $charge['narration_lines']))) {
             throw new InvalidArgumentException('Underground charged attack is invalid.');
         }
         $catalog->skill($charge['skill']);
@@ -1055,7 +1059,9 @@ final readonly class AlphaV1CombatModel
         $catalog->status($charge['status']);
 
         return ['trigger_skill' => $charge['trigger_skill'], 'countdown_rounds' => $charge['countdown_rounds'],
-            'skill' => $charge['skill'], 'status' => $charge['status']];
+            'skill' => $charge['skill'], 'status' => $charge['status'],
+            ...(isset($charge['narration_lines']) ? ['narration_lines' => $charge['narration_lines']] : []),
+        ];
     }
 
     /**
@@ -1516,10 +1522,14 @@ final readonly class AlphaV1CombatModel
                     $this->gainAwakeningGauge($opponent, UndergroundAwakening::GAUGE_MAX);
                 }
             }
-            $actionLog[] = ['kind' => 'narration', 'effect_type' => 'narration', 'round' => $round,
-                'team' => 'enemy', 'actor_id' => $actor->combatantId, 'action' => 'charged_attack_roar',
-                'lines' => [$actor->label.'が深淵の咆哮を放った！', '秘書たちの覚醒ゲージが満ちる！',
-                    '黒い竜の口元に、光が集まっていく……']];
+            $narrationLines = $actor->chargedAttack['narration_lines']
+                ?? [$actor->label.'が深淵の咆哮を放った！', '秘書たちの覚醒ゲージが満ちる！',
+                    '黒い竜の口元に、光が集まっていく……'];
+            if ($narrationLines !== []) {
+                $actionLog[] = ['kind' => 'narration', 'effect_type' => 'narration', 'round' => $round,
+                    'team' => 'enemy', 'actor_id' => $actor->combatantId, 'action' => 'charged_attack_roar',
+                    'lines' => $narrationLines];
+            }
             $this->advanceChargedAttack($actor, $round, $actionLog);
         }
         if ($actor->side === 'player') {
@@ -2284,7 +2294,8 @@ final readonly class AlphaV1CombatModel
                 $this->counter($target, $actor, $round, $metrics, $actionUsage, $actionLog, $actionId);
             }
             if ($hpDamage > 0 && $actor->alive()) {
-                $baseLifestealBps = max(0, (int) ($actor->modifiers['lifesteal_bps'] ?? 0));
+                $baseLifestealBps = max(0, (int) ($actor->modifiers['lifesteal_bps'] ?? 0)
+                    + (int) ($effect['lifesteal_bps'] ?? 0));
                 $bloodlineActive = $actor->side === 'player'
                     && $actor->awakeningLifestealRoundsRemaining > 0;
                 $lifestealBps = $bloodlineActive

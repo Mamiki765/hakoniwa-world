@@ -19,6 +19,7 @@ import UndergroundEquipmentPolishing from './UndergroundEquipmentPolishing.vue';
 import UndergroundPartyBuilder, { type PartyCandidate } from './UndergroundPartyBuilder.vue';
 import UndergroundPartyBattleCards from './UndergroundPartyBattleCards.vue';
 import { shouldReleasePendingExplorationRequest } from './undergroundExplorationPending';
+import { renderUndergroundStory } from '../undergroundStoryMarkup';
 import type { EquipmentItem, EquipmentSlot } from './EquipmentItemCard.vue';
 import type { UndergroundAiConfiguration } from './undergroundAi';
 import type { DailyQuestProgress } from '../types';
@@ -167,6 +168,7 @@ interface Battle {
         system_messages: string[];
     } | null;
     challenge_intro?: string | null;
+    milestone_story?: string | null;
     duel_dialogue?: string[] | null;
     hunting_ground?: {
         key: string;
@@ -244,6 +246,7 @@ interface SkipResult {
         drops?: SkipDrop[];
         equipment_granted_count?: number;
         vault_full_count?: number;
+        distorted_stones?: number;
         ticket_balance_after?: number;
         [key: string]: unknown;
     };
@@ -280,6 +283,7 @@ interface TrialState {
     total_battles: number;
     first_cleared: boolean;
     active_run: TrialRun | null;
+    upcoming_story?: string | null;
     trials?: TrialOption[];
 }
 
@@ -2256,7 +2260,8 @@ onUnmounted(() => {
 
         <template v-if="state && currentBattle">
             <section id="underground-battle-start" class="underground-battle-log" aria-label="戦闘ログ">
-                <p v-if="currentBattle.challenge_intro" class="underground-trial-intro">{{ currentBattle.challenge_intro }}</p>
+                <p v-if="currentBattle.challenge_intro" class="underground-trial-intro" v-html="renderUndergroundStory(currentBattle.challenge_intro)"></p>
+                <p v-if="currentBattle.milestone_story" class="underground-trial-intro" v-html="renderUndergroundStory(currentBattle.milestone_story)"></p>
                 <header class="underground-battle-opening">
                     <p class="eyebrow">遭遇</p>
                     <h1>{{ currentBattle.encounter_name }}</h1>
@@ -2441,7 +2446,7 @@ onUnmounted(() => {
                 </footer>
                 <section v-if="currentBattle.first_clear_story" class="underground-first-clear-story" aria-labelledby="underground-first-clear-title">
                     <h2 id="underground-first-clear-title">{{ currentBattle.first_clear_story.title }}</h2>
-                    <p class="underground-first-clear-body">{{ currentBattle.first_clear_story.body }}</p>
+                    <p class="underground-first-clear-body" v-html="renderUndergroundStory(currentBattle.first_clear_story.body)"></p>
                     <div class="underground-first-clear-results" role="status">
                         <p v-for="message in currentBattle.first_clear_story.system_messages" :key="message">{{ message }}</p>
                     </div>
@@ -2566,7 +2571,7 @@ onUnmounted(() => {
                     <UndergroundScene :scene="state.visuals?.scenes.villa" :show-ai="state.visuals?.show_ai ?? false" />
                     <section class="ug-page-content ug-event-story underground-recollection-detail" aria-live="polite" aria-label="回想">
                         <h2>{{ selectedRecollection.title }}</h2>
-                        <p v-for="(line, index) in selectedRecollection.body ?? []" :key="`${selectedRecollection.key}-${index}`">{{ line }}</p>
+                        <p v-for="(line, index) in selectedRecollection.body ?? []" :key="`${selectedRecollection.key}-${index}`" v-html="renderUndergroundStory(line)"></p>
                         <button
                             v-if="selectedRecollection.kind === 'past' && !selectedRecollection.completed"
                             class="ug-primary button primary" type="button"
@@ -2931,6 +2936,7 @@ onUnmounted(() => {
                             </section>
                             <section v-if="equipmentView === 'trials'" class="underground-adventure-block" aria-labelledby="underground-trial-title">
                                 <h3 id="underground-trial-title">試練</h3>
+                                <p v-if="state.trial?.upcoming_story" class="underground-trial-intro" v-html="renderUndergroundStory(state.trial.upcoming_story)"></p>
                                 <select v-model="selectedTrialKey" aria-label="試練を選択" :disabled="busy || Boolean(state.trial?.active_run)">
                                     <option v-for="trial in unlockedTrialOptions" :key="trial.key" :value="trial.key">{{ trial.label }}</option>
                                 </select>
@@ -3061,6 +3067,7 @@ onUnmounted(() => {
                             <div><dt>消費</dt><dd>{{ lastSkipResult.ticket_cost }}枚</dd></div>
                             <div><dt>EXP</dt><dd>+{{ lastSkipResult.xp_awarded }}</dd></div>
                             <div><dt>欠片</dt><dd>+{{ lastSkipResult.shards_awarded }}G</dd></div>
+                            <div v-if="(lastSkipResult.rewards?.distorted_stones ?? 0) > 0"><dt>歪んだ輝石</dt><dd>+{{ lastSkipResult.rewards?.distorted_stones }}個</dd></div>
                             <div><dt>Lv</dt><dd>{{ lastSkipResult.combat_level_before }} → {{ lastSkipResult.combat_level_after }}</dd></div>
                             <div><dt>装備獲得</dt><dd>{{ lastSkipResult.rewards?.equipment_granted_count ?? skipDrops(lastSkipResult).filter((drop) => drop.status === 'granted').length }}個</dd></div>
                             <div><dt>取り逃し</dt><dd>{{ lastSkipResult.rewards?.vault_full_count ?? skipDrops(lastSkipResult).filter((drop) => drop.status === 'vault_full').length }}個（宝物庫満杯）</dd></div>

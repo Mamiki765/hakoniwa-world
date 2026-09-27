@@ -17,6 +17,7 @@ use Illuminate\Support\Carbon;
  * @property Carbon|null $first_challenged_at
  * @property string|null $first_challenge_intro
  * @property array<string, mixed>|null $first_clear_story
+ * @property array<int, string>|null $first_milestone_stories
  * @property Carbon $created_at
  * @property Carbon $updated_at
  * @property-read UndergroundProfile $profile
@@ -25,7 +26,7 @@ final class UndergroundTrialProgress extends Model
 {
     protected $fillable = [
         'underground_profile_id', 'trial_key', 'unlocked_at', 'first_cleared_at',
-        'first_challenged_at', 'first_challenge_intro', 'first_clear_story',
+        'first_challenged_at', 'first_challenge_intro', 'first_clear_story', 'first_milestone_stories',
     ];
 
     /** @return array<string, string> */
@@ -37,6 +38,7 @@ final class UndergroundTrialProgress extends Model
             'first_cleared_at' => 'immutable_datetime',
             'first_challenged_at' => 'immutable_datetime',
             'first_clear_story' => 'array',
+            'first_milestone_stories' => 'array',
         ];
     }
 

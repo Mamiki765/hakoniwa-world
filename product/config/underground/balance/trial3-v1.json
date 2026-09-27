@@ -1,0 +1,1955 @@
+{
+    "schema_version": 1,
+    "simulation_type": "trial_sequence",
+    "trial_generation": 3,
+    "trial_key": "trial_03",
+    "trial_identity": "secretary-underground-trial-03-v1",
+    "combat_identity": "secretary-underground-alpha-v7",
+    "seed_strategy_identity": "trial-sequence-common-random-v1",
+    "seed_range": {
+        "start": 0,
+        "count": 100
+    },
+    "max_rounds": 100,
+    "mp_natural_recovery": 300,
+    "skill_points_total": 100,
+    "checkpoints": [
+        500,
+        550,
+        600,
+        650,
+        700
+    ],
+    "interbattle_healing": {
+        "primary_bps": 3000,
+        "comparison_bps": [
+            2000,
+            3000,
+            4000
+        ],
+        "comparison_levels": [
+            500
+        ]
+    },
+    "builds": {
+        "martial_red": {
+            "label": "武力技巧型（赤）",
+            "growth_path": "martial_red",
+            "stp_weights_bps": {
+                "vitality": 2030,
+                "might": 4700,
+                "finesse": 1120,
+                "spirit": 10,
+                "agility": 2140
+            },
+            "skill_allocations": {
+                "martial_precision_cut": {
+                    "rank": 1,
+                    "active_slot": null
+                },
+                "martial_sweeping_cut": {
+                    "rank": 1,
+                    "active_slot": null
+                },
+                "martial_armor_break": {
+                    "rank": 1,
+                    "active_slot": 2
+                },
+                "martial_iaido_cut": {
+                    "rank": 1,
+                    "active_slot": 3
+                },
+                "martial_whirlwind": {
+                    "rank": 1,
+                    "active_slot": 1
+                },
+                "martial_executioner": {
+                    "rank": 1,
+                    "active_slot": 4
+                },
+                "miracle_mending_prayer": {
+                    "rank": 1,
+                    "active_slot": 5
+                }
+            },
+            "awakening_technique_key": "shura_bloodline",
+            "equipment_stages": {
+                "entry": [
+                    {
+                        "slot": "weapon",
+                        "item_level": 180,
+                        "tier": "bahamul",
+                        "rarity": "unique",
+                        "category": "weapon",
+                        "weapon_style": "dagger",
+                        "main_stat": null,
+                        "resonance_variant": null,
+                        "seed": 300
+                    },
+                    {
+                        "slot": "armor",
+                        "item_level": 120,
+                        "tier": "shining_kingdom",
+                        "rarity": "uncommon",
+                        "category": "armor",
+                        "weapon_style": null,
+                        "main_stat": null,
+                        "resonance_variant": null,
+                        "seed": 301
+                    },
+                    {
+                        "slot": "accessory_1",
+                        "item_level": 120,
+                        "tier": "shining_kingdom",
+                        "rarity": "uncommon",
+                        "category": "accessory",
+                        "weapon_style": null,
+                        "main_stat": "might",
+                        "resonance_variant": null,
+                        "seed": 302
+                    },
+                    {
+                        "slot": "resonance",
+                        "item_level": 180,
+                        "tier": "bahamul",
+                        "rarity": "unique",
+                        "category": "resonance",
+                        "weapon_style": null,
+                        "main_stat": null,
+                        "resonance_variant": "might",
+                        "seed": 303
+                    }
+                ],
+                "after_five": [
+                    {
+                        "slot": "weapon",
+                        "item_level": 180,
+                        "tier": "bahamul",
+                        "rarity": "unique",
+                        "category": "weapon",
+                        "weapon_style": "dagger",
+                        "main_stat": null,
+                        "resonance_variant": null,
+                        "seed": 300
+                    },
+                    {
+                        "slot": "armor",
+                        "item_level": 150,
+                        "tier": "hero",
+                        "rarity": "uncommon",
+                        "category": "armor",
+                        "weapon_style": null,
+                        "main_stat": null,
+                        "resonance_variant": null,
+                        "seed": 304
+                    },
+                    {
+                        "slot": "accessory_1",
+                        "item_level": 150,
+                        "tier": "hero",
+                        "rarity": "uncommon",
+                        "category": "accessory",
+                        "weapon_style": null,
+                        "main_stat": "might",
+                        "resonance_variant": null,
+                        "seed": 305
+                    },
+                    {
+                        "slot": "resonance",
+                        "item_level": 180,
+                        "tier": "bahamul",
+                        "rarity": "unique",
+                        "category": "resonance",
+                        "weapon_style": null,
+                        "main_stat": null,
+                        "resonance_variant": "might",
+                        "seed": 303
+                    }
+                ],
+                "before_boss": [
+                    {
+                        "slot": "weapon",
+                        "item_level": 180,
+                        "tier": "bahamul",
+                        "rarity": "unique",
+                        "category": "weapon",
+                        "weapon_style": "dagger",
+                        "main_stat": null,
+                        "resonance_variant": null,
+                        "seed": 300
+                    },
+                    {
+                        "slot": "armor",
+                        "item_level": 175,
+                        "tier": "hero",
+                        "rarity": "uncommon",
+                        "category": "armor",
+                        "weapon_style": null,
+                        "main_stat": null,
+                        "resonance_variant": null,
+                        "seed": 306
+                    },
+                    {
+                        "slot": "accessory_1",
+                        "item_level": 175,
+                        "tier": "hero",
+                        "rarity": "uncommon",
+                        "category": "accessory",
+                        "weapon_style": null,
+                        "main_stat": "might",
+                        "resonance_variant": null,
+                        "seed": 307
+                    },
+                    {
+                        "slot": "resonance",
+                        "item_level": 180,
+                        "tier": "bahamul",
+                        "rarity": "unique",
+                        "category": "resonance",
+                        "weapon_style": null,
+                        "main_stat": null,
+                        "resonance_variant": "might",
+                        "seed": 303
+                    }
+                ]
+            }
+        },
+        "guardianship_blue": {
+            "label": "護身型（青）",
+            "growth_path": "guardianship_blue",
+            "stp_weights_bps": {
+                "vitality": 4630,
+                "might": 2780,
+                "finesse": 1150,
+                "spirit": 220,
+                "agility": 1220
+            },
+            "skill_allocations": {
+                "guardianship_shield_bash": {
+                    "rank": 1,
+                    "active_slot": 1
+                },
+                "guardianship_counter_stance": {
+                    "rank": 1,
+                    "active_slot": 2
+                },
+                "guardianship_renewing_guard": {
+                    "rank": 1,
+                    "active_slot": 3
+                },
+                "guardianship_bulwark_strike": {
+                    "rank": 1,
+                    "active_slot": 4
+                }
+            },
+            "awakening_technique_key": "fortress_strike",
+            "equipment_stages": {
+                "entry": [
+                    {
+                        "slot": "weapon",
+                        "item_level": 180,
+                        "tier": "bahamul",
+                        "rarity": "unique",
+                        "category": "weapon",
+                        "weapon_style": "longsword",
+                        "main_stat": null,
+                        "resonance_variant": null,
+                        "seed": 320
+                    },
+                    {
+                        "slot": "armor",
+                        "item_level": 120,
+                        "tier": "shining_kingdom",
+                        "rarity": "uncommon",
+                        "category": "armor",
+                        "weapon_style": null,
+                        "main_stat": null,
+                        "resonance_variant": null,
+                        "seed": 321
+                    },
+                    {
+                        "slot": "accessory_1",
+                        "item_level": 120,
+                        "tier": "shining_kingdom",
+                        "rarity": "uncommon",
+                        "category": "accessory",
+                        "weapon_style": null,
+                        "main_stat": "vitality",
+                        "resonance_variant": null,
+                        "seed": 322
+                    },
+                    {
+                        "slot": "resonance",
+                        "item_level": 180,
+                        "tier": "bahamul",
+                        "rarity": "unique",
+                        "category": "resonance",
+                        "weapon_style": null,
+                        "main_stat": null,
+                        "resonance_variant": "guard",
+                        "seed": 323
+                    }
+                ],
+                "after_five": [
+                    {
+                        "slot": "weapon",
+                        "item_level": 180,
+                        "tier": "bahamul",
+                        "rarity": "unique",
+                        "category": "weapon",
+                        "weapon_style": "longsword",
+                        "main_stat": null,
+                        "resonance_variant": null,
+                        "seed": 320
+                    },
+                    {
+                        "slot": "armor",
+                        "item_level": 150,
+                        "tier": "hero",
+                        "rarity": "uncommon",
+                        "category": "armor",
+                        "weapon_style": null,
+                        "main_stat": null,
+                        "resonance_variant": null,
+                        "seed": 324
+                    },
+                    {
+                        "slot": "accessory_1",
+                        "item_level": 150,
+                        "tier": "hero",
+                        "rarity": "uncommon",
+                        "category": "accessory",
+                        "weapon_style": null,
+                        "main_stat": "vitality",
+                        "resonance_variant": null,
+                        "seed": 325
+                    },
+                    {
+                        "slot": "resonance",
+                        "item_level": 180,
+                        "tier": "bahamul",
+                        "rarity": "unique",
+                        "category": "resonance",
+                        "weapon_style": null,
+                        "main_stat": null,
+                        "resonance_variant": "guard",
+                        "seed": 323
+                    }
+                ],
+                "before_boss": [
+                    {
+                        "slot": "weapon",
+                        "item_level": 180,
+                        "tier": "bahamul",
+                        "rarity": "unique",
+                        "category": "weapon",
+                        "weapon_style": "longsword",
+                        "main_stat": null,
+                        "resonance_variant": null,
+                        "seed": 320
+                    },
+                    {
+                        "slot": "armor",
+                        "item_level": 175,
+                        "tier": "hero",
+                        "rarity": "uncommon",
+                        "category": "armor",
+                        "weapon_style": null,
+                        "main_stat": null,
+                        "resonance_variant": null,
+                        "seed": 326
+                    },
+                    {
+                        "slot": "accessory_1",
+                        "item_level": 175,
+                        "tier": "hero",
+                        "rarity": "uncommon",
+                        "category": "accessory",
+                        "weapon_style": null,
+                        "main_stat": "vitality",
+                        "resonance_variant": null,
+                        "seed": 327
+                    },
+                    {
+                        "slot": "resonance",
+                        "item_level": 180,
+                        "tier": "bahamul",
+                        "rarity": "unique",
+                        "category": "resonance",
+                        "weapon_style": null,
+                        "main_stat": null,
+                        "resonance_variant": "guard",
+                        "seed": 323
+                    }
+                ]
+            }
+        },
+        "blessing_green": {
+            "label": "祝福型（緑）",
+            "growth_path": "blessing_green",
+            "stp_weights_bps": {
+                "vitality": 1730,
+                "might": 0,
+                "finesse": 2280,
+                "spirit": 5280,
+                "agility": 710
+            },
+            "skill_allocations": {
+                "miracle_holy_bolt": {
+                    "rank": 1,
+                    "active_slot": 1
+                },
+                "miracle_mending_prayer": {
+                    "rank": 1,
+                    "active_slot": 2
+                },
+                "miracle_lucid_dream": {
+                    "rank": 1,
+                    "active_slot": 3
+                },
+                "miracle_holy_nova": {
+                    "rank": 1,
+                    "active_slot": null
+                },
+                "miracle_holy_lance": {
+                    "rank": 1,
+                    "active_slot": 4
+                },
+                "miracle_regeneration": {
+                    "rank": 1,
+                    "active_slot": 5
+                }
+            },
+            "awakening_technique_key": "judgment_light",
+            "equipment_stages": {
+                "entry": [
+                    {
+                        "slot": "weapon",
+                        "item_level": 180,
+                        "tier": "bahamul",
+                        "rarity": "unique",
+                        "category": "weapon",
+                        "weapon_style": "crystal_staff",
+                        "main_stat": null,
+                        "resonance_variant": null,
+                        "seed": 340
+                    },
+                    {
+                        "slot": "armor",
+                        "item_level": 120,
+                        "tier": "shining_kingdom",
+                        "rarity": "uncommon",
+                        "category": "armor",
+                        "weapon_style": null,
+                        "main_stat": null,
+                        "resonance_variant": null,
+                        "seed": 341
+                    },
+                    {
+                        "slot": "accessory_1",
+                        "item_level": 120,
+                        "tier": "shining_kingdom",
+                        "rarity": "uncommon",
+                        "category": "accessory",
+                        "weapon_style": null,
+                        "main_stat": "spirit",
+                        "resonance_variant": null,
+                        "seed": 342
+                    },
+                    {
+                        "slot": "resonance",
+                        "item_level": 180,
+                        "tier": "bahamul",
+                        "rarity": "unique",
+                        "category": "resonance",
+                        "weapon_style": null,
+                        "main_stat": null,
+                        "resonance_variant": "healing",
+                        "seed": 343
+                    }
+                ],
+                "after_five": [
+                    {
+                        "slot": "weapon",
+                        "item_level": 180,
+                        "tier": "bahamul",
+                        "rarity": "unique",
+                        "category": "weapon",
+                        "weapon_style": "crystal_staff",
+                        "main_stat": null,
+                        "resonance_variant": null,
+                        "seed": 340
+                    },
+                    {
+                        "slot": "armor",
+                        "item_level": 150,
+                        "tier": "hero",
+                        "rarity": "uncommon",
+                        "category": "armor",
+                        "weapon_style": null,
+                        "main_stat": null,
+                        "resonance_variant": null,
+                        "seed": 344
+                    },
+                    {
+                        "slot": "accessory_1",
+                        "item_level": 150,
+                        "tier": "hero",
+                        "rarity": "uncommon",
+                        "category": "accessory",
+                        "weapon_style": null,
+                        "main_stat": "spirit",
+                        "resonance_variant": null,
+                        "seed": 345
+                    },
+                    {
+                        "slot": "resonance",
+                        "item_level": 180,
+                        "tier": "bahamul",
+                        "rarity": "unique",
+                        "category": "resonance",
+                        "weapon_style": null,
+                        "main_stat": null,
+                        "resonance_variant": "healing",
+                        "seed": 343
+                    }
+                ],
+                "before_boss": [
+                    {
+                        "slot": "weapon",
+                        "item_level": 180,
+                        "tier": "bahamul",
+                        "rarity": "unique",
+                        "category": "weapon",
+                        "weapon_style": "crystal_staff",
+                        "main_stat": null,
+                        "resonance_variant": null,
+                        "seed": 340
+                    },
+                    {
+                        "slot": "armor",
+                        "item_level": 175,
+                        "tier": "hero",
+                        "rarity": "uncommon",
+                        "category": "armor",
+                        "weapon_style": null,
+                        "main_stat": null,
+                        "resonance_variant": null,
+                        "seed": 346
+                    },
+                    {
+                        "slot": "accessory_1",
+                        "item_level": 175,
+                        "tier": "hero",
+                        "rarity": "uncommon",
+                        "category": "accessory",
+                        "weapon_style": null,
+                        "main_stat": "spirit",
+                        "resonance_variant": null,
+                        "seed": 347
+                    },
+                    {
+                        "slot": "resonance",
+                        "item_level": 180,
+                        "tier": "bahamul",
+                        "rarity": "unique",
+                        "category": "resonance",
+                        "weapon_style": null,
+                        "main_stat": null,
+                        "resonance_variant": "healing",
+                        "seed": 343
+                    }
+                ]
+            }
+        }
+    },
+    "battle_sequence": [
+        "trial3_raysel",
+        "trial3_claire",
+        "trial3_selmina",
+        "trial3_shelna_gald",
+        "trial3_eltia_arzen",
+        "trial3_ferdio",
+        "trial3_bernolt_olsent",
+        "trial3_rauzen_lyucelle_zelvan",
+        "trial3_elvein",
+        "trial3_gilgamesh"
+    ],
+    "enemy_parties": {
+        "trial3_shelna_gald": [
+            "trial3_shelna",
+            "trial3_gald"
+        ],
+        "trial3_eltia_arzen": [
+            "trial3_eltia",
+            "trial3_arzen"
+        ],
+        "trial3_bernolt_olsent": [
+            "trial3_bernolt",
+            "trial3_olsent"
+        ],
+        "trial3_rauzen_lyucelle_zelvan": [
+            "trial3_rauzen",
+            "trial3_lyucelle",
+            "trial3_zelvan"
+        ]
+    },
+    "tuning_parameters": {
+        "recommended_level_min": 500,
+        "recommended_level_max": 700,
+        "entry_weapon_item_level": 180,
+        "entry_resonance_item_level": 180,
+        "equipment_stages": {
+            "entry": "battles 1-5",
+            "after_five": "battles 6-9",
+            "before_boss": "battle 10"
+        }
+    },
+    "skills": {
+        "trial3_sword_flash": {
+            "label": "剣閃",
+            "node_key": null,
+            "mp_cost": 0,
+            "cooldown": 0,
+            "required_weapon_styles": [],
+            "effects": [
+                {
+                    "type": "damage",
+                    "category": "physical",
+                    "potency_bps": 3700,
+                    "stat_coefficients": {
+                        "might": 8500,
+                        "finesse": 1500
+                    },
+                    "weapon_coefficient_bps": 10000,
+                    "fixed": 0,
+                    "target_max_hp_bps": 0,
+                    "can_crit": false,
+                    "dodgeable": true,
+                    "hits": 3,
+                    "target": "enemy"
+                }
+            ]
+        },
+        "trial3_excalibur": {
+            "label": "エクスカリバー",
+            "node_key": null,
+            "mp_cost": 2400,
+            "cooldown": 3,
+            "required_weapon_styles": [],
+            "effects": [
+                {
+                    "type": "damage",
+                    "category": "physical",
+                    "potency_bps": 12000,
+                    "stat_coefficients": {
+                        "might": 8500,
+                        "finesse": 1500
+                    },
+                    "weapon_coefficient_bps": 10000,
+                    "fixed": 0,
+                    "target_max_hp_bps": 0,
+                    "can_crit": false,
+                    "dodgeable": false,
+                    "hits": 1,
+                    "lifesteal_bps": 2500,
+                    "target": "enemy"
+                }
+            ]
+        },
+        "trial3_awakening": {
+            "label": "覚醒",
+            "node_key": null,
+            "mp_cost": 0,
+            "cooldown": 100,
+            "required_weapon_styles": [],
+            "effects": [
+                {
+                    "type": "apply_status",
+                    "target": "self",
+                    "status": "trial3_awakened"
+                },
+                {
+                    "type": "heal",
+                    "target": "self",
+                    "stat_coefficients": {},
+                    "target_max_hp_bps": 2500,
+                    "fixed": 0
+                }
+            ]
+        },
+        "trial3_dimensional_warning": {
+            "label": "次元斬の大予告",
+            "node_key": null,
+            "mp_cost": 0,
+            "cooldown": 100,
+            "required_weapon_styles": [],
+            "effects": [
+                {
+                    "type": "telegraph",
+                    "target": "self"
+                }
+            ]
+        },
+        "trial3_dimensional_slash": {
+            "label": "次元斬",
+            "node_key": null,
+            "mp_cost": 0,
+            "cooldown": 100,
+            "required_weapon_styles": [],
+            "effects": [
+                {
+                    "type": "damage",
+                    "category": "physical",
+                    "potency_bps": 23500,
+                    "stat_coefficients": {
+                        "might": 8500,
+                        "finesse": 1500
+                    },
+                    "weapon_coefficient_bps": 10000,
+                    "fixed": 0,
+                    "target_max_hp_bps": 0,
+                    "can_crit": false,
+                    "dodgeable": false,
+                    "hits": 1,
+                    "target": "enemy"
+                }
+            ],
+            "consume_status": "telegraph"
+        }
+    },
+    "statuses": {
+        "trial3_awakened": {
+            "label": "覚醒",
+            "disposition": "buff",
+            "duration_rounds": 100,
+            "stack_policy": "refresh",
+            "max_stacks": 1,
+            "application_chance_bps": 10000,
+            "effects": [
+                {
+                    "type": "damage_dealt_modifier",
+                    "category": "all",
+                    "value_bps": 3000
+                },
+                {
+                    "type": "damage_taken_modifier",
+                    "category": "all",
+                    "value_bps": -1500
+                }
+            ]
+        }
+    },
+    "enemies": {
+        "trial3_raysel": {
+            "label": "暁の剣聖 レイセル",
+            "species": "勇者の幻影",
+            "boss": false,
+            "base_stats": {
+                "vitality": 900,
+                "might": 833,
+                "finesse": 1050,
+                "spirit": 221,
+                "agility": 700
+            },
+            "max_hp": 6375,
+            "physical_defense": 840,
+            "magical_defense": 640,
+            "weapon_power": 308,
+            "normal_attack": {
+                "type": "damage",
+                "category": "physical",
+                "potency_bps": 6000,
+                "stat_coefficients": {
+                    "might": 7500,
+                    "finesse": 2500
+                },
+                "weapon_coefficient_bps": 10000,
+                "fixed": 0,
+                "target_max_hp_bps": 0,
+                "can_crit": false,
+                "dodgeable": true,
+                "hits": 1
+            },
+            "skills": [
+                "precision_cut",
+                "armor_break_strike",
+                "iaido_cut",
+                "executioner_cut"
+            ],
+            "ai_rules": [
+                {
+                    "conditions": [
+                        {
+                            "type": "skill_ready",
+                            "skill": "executioner_cut"
+                        }
+                    ],
+                    "action": "skill:executioner_cut"
+                },
+                {
+                    "conditions": [
+                        {
+                            "type": "skill_ready",
+                            "skill": "iaido_cut"
+                        }
+                    ],
+                    "action": "skill:iaido_cut"
+                },
+                {
+                    "conditions": [
+                        {
+                            "type": "skill_ready",
+                            "skill": "armor_break_strike"
+                        }
+                    ],
+                    "action": "skill:armor_break_strike"
+                },
+                {
+                    "conditions": [
+                        {
+                            "type": "skill_ready",
+                            "skill": "precision_cut"
+                        }
+                    ],
+                    "action": "skill:precision_cut"
+                },
+                {
+                    "conditions": [
+                        {
+                            "type": "always"
+                        }
+                    ],
+                    "action": "normal_attack"
+                }
+            ],
+            "modifiers": {}
+        },
+        "trial3_claire": {
+            "label": "白銀の聖盾 クレア",
+            "species": "勇者の幻影",
+            "boss": false,
+            "base_stats": {
+                "vitality": 1650,
+                "might": 588,
+                "finesse": 550,
+                "spirit": 343,
+                "agility": 450
+            },
+            "max_hp": 7875,
+            "physical_defense": 1200,
+            "magical_defense": 800,
+            "weapon_power": 272,
+            "normal_attack": {
+                "type": "damage",
+                "category": "physical",
+                "potency_bps": 6000,
+                "stat_coefficients": {
+                    "might": 7500,
+                    "finesse": 2500
+                },
+                "weapon_coefficient_bps": 10000,
+                "fixed": 0,
+                "target_max_hp_bps": 0,
+                "can_crit": false,
+                "dodgeable": true,
+                "hits": 1
+            },
+            "skills": [
+                "shield_bash",
+                "counter_stance",
+                "bulwark_strike"
+            ],
+            "ai_rules": [
+                {
+                    "conditions": [
+                        {
+                            "type": "round_modulo",
+                            "modulo": 6,
+                            "equals": 1
+                        },
+                        {
+                            "type": "skill_ready",
+                            "skill": "counter_stance"
+                        }
+                    ],
+                    "action": "skill:counter_stance"
+                },
+                {
+                    "conditions": [
+                        {
+                            "type": "skill_ready",
+                            "skill": "bulwark_strike"
+                        }
+                    ],
+                    "action": "skill:bulwark_strike"
+                },
+                {
+                    "conditions": [
+                        {
+                            "type": "skill_ready",
+                            "skill": "shield_bash"
+                        }
+                    ],
+                    "action": "skill:shield_bash"
+                },
+                {
+                    "conditions": [
+                        {
+                            "type": "always"
+                        }
+                    ],
+                    "action": "normal_attack"
+                }
+            ],
+            "modifiers": {}
+        },
+        "trial3_selmina": {
+            "label": "星詠みの賢者 セルミナ",
+            "species": "勇者の幻影",
+            "boss": false,
+            "base_stats": {
+                "vitality": 700,
+                "might": 196,
+                "finesse": 500,
+                "spirit": 906,
+                "agility": 650
+            },
+            "max_hp": 6150,
+            "physical_defense": 600,
+            "magical_defense": 1040,
+            "weapon_power": 304,
+            "normal_attack": {
+                "type": "damage",
+                "category": "miracle",
+                "potency_bps": 6000,
+                "stat_coefficients": {
+                    "spirit": 10000
+                },
+                "weapon_coefficient_bps": 10000,
+                "fixed": 0,
+                "target_max_hp_bps": 0,
+                "can_crit": false,
+                "dodgeable": true,
+                "hits": 1
+            },
+            "skills": [
+                "crystal_aegis",
+                "holy_bolt",
+                "holy_lance"
+            ],
+            "ai_rules": [
+                {
+                    "conditions": [
+                        {
+                            "type": "self_lacks_status",
+                            "status": "protective_guard"
+                        },
+                        {
+                            "type": "skill_ready",
+                            "skill": "crystal_aegis"
+                        }
+                    ],
+                    "action": "skill:crystal_aegis"
+                },
+                {
+                    "conditions": [
+                        {
+                            "type": "skill_ready",
+                            "skill": "holy_lance"
+                        }
+                    ],
+                    "action": "skill:holy_lance"
+                },
+                {
+                    "conditions": [
+                        {
+                            "type": "skill_ready",
+                            "skill": "holy_bolt"
+                        }
+                    ],
+                    "action": "skill:holy_bolt"
+                },
+                {
+                    "conditions": [
+                        {
+                            "type": "always"
+                        }
+                    ],
+                    "action": "normal_attack"
+                }
+            ],
+            "modifiers": {}
+        },
+        "trial3_shelna": {
+            "label": "月影の双剣士 シェルナ",
+            "species": "勇者の幻影",
+            "boss": false,
+            "base_stats": {
+                "vitality": 720,
+                "might": 539,
+                "finesse": 1550,
+                "spirit": 196,
+                "agility": 950
+            },
+            "max_hp": 4875,
+            "physical_defense": 640,
+            "magical_defense": 520,
+            "weapon_power": 272,
+            "normal_attack": {
+                "type": "damage",
+                "category": "physical",
+                "potency_bps": 6000,
+                "stat_coefficients": {
+                    "might": 7500,
+                    "finesse": 2500
+                },
+                "weapon_coefficient_bps": 10000,
+                "fixed": 0,
+                "target_max_hp_bps": 0,
+                "can_crit": false,
+                "dodgeable": true,
+                "hits": 1
+            },
+            "skills": [
+                "dagger_flurry",
+                "severing_bleed"
+            ],
+            "ai_rules": [
+                {
+                    "conditions": [
+                        {
+                            "type": "skill_ready",
+                            "skill": "dagger_flurry"
+                        }
+                    ],
+                    "action": "skill:dagger_flurry"
+                },
+                {
+                    "conditions": [
+                        {
+                            "type": "skill_ready",
+                            "skill": "severing_bleed"
+                        }
+                    ],
+                    "action": "skill:severing_bleed"
+                },
+                {
+                    "conditions": [
+                        {
+                            "type": "always"
+                        }
+                    ],
+                    "action": "normal_attack"
+                }
+            ],
+            "modifiers": {}
+        },
+        "trial3_gald": {
+            "label": "烈心の拳士 ガルド",
+            "species": "勇者の幻影",
+            "boss": false,
+            "base_stats": {
+                "vitality": 1050,
+                "might": 809,
+                "finesse": 650,
+                "spirit": 172,
+                "agility": 700
+            },
+            "max_hp": 5625,
+            "physical_defense": 840,
+            "magical_defense": 520,
+            "weapon_power": 276,
+            "normal_attack": {
+                "type": "damage",
+                "category": "physical",
+                "potency_bps": 6000,
+                "stat_coefficients": {
+                    "might": 7500,
+                    "finesse": 2500
+                },
+                "weapon_coefficient_bps": 10000,
+                "fixed": 0,
+                "target_max_hp_bps": 0,
+                "can_crit": false,
+                "dodgeable": true,
+                "hits": 1
+            },
+            "skills": [
+                "precision_cut",
+                "executioner_cut"
+            ],
+            "ai_rules": [
+                {
+                    "conditions": [
+                        {
+                            "type": "skill_ready",
+                            "skill": "executioner_cut"
+                        }
+                    ],
+                    "action": "skill:executioner_cut"
+                },
+                {
+                    "conditions": [
+                        {
+                            "type": "skill_ready",
+                            "skill": "precision_cut"
+                        }
+                    ],
+                    "action": "skill:precision_cut"
+                },
+                {
+                    "conditions": [
+                        {
+                            "type": "always"
+                        }
+                    ],
+                    "action": "normal_attack"
+                }
+            ],
+            "modifiers": {}
+        },
+        "trial3_eltia": {
+            "label": "慈光の聖女 エルティア",
+            "species": "勇者の幻影",
+            "boss": false,
+            "base_stats": {
+                "vitality": 850,
+                "might": 147,
+                "finesse": 500,
+                "spirit": 760,
+                "agility": 500
+            },
+            "max_hp": 5400,
+            "physical_defense": 600,
+            "magical_defense": 960,
+            "weapon_power": 248,
+            "normal_attack": {
+                "type": "damage",
+                "category": "miracle",
+                "potency_bps": 6000,
+                "stat_coefficients": {
+                    "spirit": 10000
+                },
+                "weapon_coefficient_bps": 10000,
+                "fixed": 0,
+                "target_max_hp_bps": 0,
+                "can_crit": false,
+                "dodgeable": true,
+                "hits": 1
+            },
+            "skills": [
+                "mending_prayer",
+                "regeneration",
+                "cleansing_wave",
+                "resurrection",
+                "holy_bolt"
+            ],
+            "ai_rules": [
+                {
+                    "conditions": [
+                        {
+                            "type": "skill_ready",
+                            "skill": "resurrection"
+                        }
+                    ],
+                    "action": "skill:resurrection"
+                },
+                {
+                    "conditions": [
+                        {
+                            "type": "ally_hp_lte",
+                            "percent": 65
+                        },
+                        {
+                            "type": "skill_ready",
+                            "skill": "mending_prayer"
+                        }
+                    ],
+                    "action": "skill:mending_prayer"
+                },
+                {
+                    "conditions": [
+                        {
+                            "type": "skill_ready",
+                            "skill": "regeneration"
+                        }
+                    ],
+                    "action": "skill:regeneration"
+                },
+                {
+                    "conditions": [
+                        {
+                            "type": "skill_ready",
+                            "skill": "cleansing_wave"
+                        }
+                    ],
+                    "action": "skill:cleansing_wave",
+                    "target": "debuffed_ally"
+                },
+                {
+                    "conditions": [
+                        {
+                            "type": "skill_ready",
+                            "skill": "holy_bolt"
+                        }
+                    ],
+                    "action": "skill:holy_bolt"
+                },
+                {
+                    "conditions": [
+                        {
+                            "type": "always"
+                        }
+                    ],
+                    "action": "normal_attack"
+                }
+            ],
+            "modifiers": {}
+        },
+        "trial3_arzen": {
+            "label": "誓いの槍騎士 アルゼン",
+            "species": "勇者の幻影",
+            "boss": false,
+            "base_stats": {
+                "vitality": 1150,
+                "might": 760,
+                "finesse": 700,
+                "spirit": 221,
+                "agility": 550
+            },
+            "max_hp": 7500,
+            "physical_defense": 920,
+            "magical_defense": 680,
+            "weapon_power": 304,
+            "normal_attack": {
+                "type": "damage",
+                "category": "physical",
+                "potency_bps": 6000,
+                "stat_coefficients": {
+                    "might": 7500,
+                    "finesse": 2500
+                },
+                "weapon_coefficient_bps": 10000,
+                "fixed": 0,
+                "target_max_hp_bps": 0,
+                "can_crit": false,
+                "dodgeable": true,
+                "hits": 1
+            },
+            "skills": [
+                "armor_break_strike",
+                "iaido_cut",
+                "precision_cut"
+            ],
+            "ai_rules": [
+                {
+                    "conditions": [
+                        {
+                            "type": "skill_ready",
+                            "skill": "iaido_cut"
+                        }
+                    ],
+                    "action": "skill:iaido_cut"
+                },
+                {
+                    "conditions": [
+                        {
+                            "type": "skill_ready",
+                            "skill": "armor_break_strike"
+                        }
+                    ],
+                    "action": "skill:armor_break_strike"
+                },
+                {
+                    "conditions": [
+                        {
+                            "type": "skill_ready",
+                            "skill": "precision_cut"
+                        }
+                    ],
+                    "action": "skill:precision_cut"
+                },
+                {
+                    "conditions": [
+                        {
+                            "type": "always"
+                        }
+                    ],
+                    "action": "normal_attack"
+                }
+            ],
+            "modifiers": {}
+        },
+        "trial3_ferdio": {
+            "label": "蒼天の竜騎士 フェルディオ",
+            "species": "勇者の幻影",
+            "boss": false,
+            "base_stats": {
+                "vitality": 1250,
+                "might": 931,
+                "finesse": 900,
+                "spirit": 245,
+                "agility": 700
+            },
+            "max_hp": 9750,
+            "physical_defense": 920,
+            "magical_defense": 720,
+            "weapon_power": 344,
+            "normal_attack": {
+                "type": "damage",
+                "category": "physical",
+                "potency_bps": 6000,
+                "stat_coefficients": {
+                    "might": 7500,
+                    "finesse": 2500
+                },
+                "weapon_coefficient_bps": 10000,
+                "fixed": 0,
+                "target_max_hp_bps": 0,
+                "can_crit": false,
+                "dodgeable": true,
+                "hits": 1
+            },
+            "skills": [
+                "executioner_cut",
+                "iaido_cut",
+                "armor_break_strike"
+            ],
+            "ai_rules": [
+                {
+                    "conditions": [
+                        {
+                            "type": "skill_ready",
+                            "skill": "executioner_cut"
+                        }
+                    ],
+                    "action": "skill:executioner_cut"
+                },
+                {
+                    "conditions": [
+                        {
+                            "type": "skill_ready",
+                            "skill": "iaido_cut"
+                        }
+                    ],
+                    "action": "skill:iaido_cut"
+                },
+                {
+                    "conditions": [
+                        {
+                            "type": "skill_ready",
+                            "skill": "armor_break_strike"
+                        }
+                    ],
+                    "action": "skill:armor_break_strike"
+                },
+                {
+                    "conditions": [
+                        {
+                            "type": "always"
+                        }
+                    ],
+                    "action": "normal_attack"
+                }
+            ],
+            "modifiers": {}
+        },
+        "trial3_bernolt": {
+            "label": "堅城の守護者 ベルノルト",
+            "species": "勇者の幻影",
+            "boss": false,
+            "base_stats": {
+                "vitality": 1850,
+                "might": 662,
+                "finesse": 500,
+                "spirit": 343,
+                "agility": 350
+            },
+            "max_hp": 10500,
+            "physical_defense": 1400,
+            "magical_defense": 840,
+            "weapon_power": 296,
+            "normal_attack": {
+                "type": "damage",
+                "category": "physical",
+                "potency_bps": 6000,
+                "stat_coefficients": {
+                    "might": 7500,
+                    "finesse": 2500
+                },
+                "weapon_coefficient_bps": 10000,
+                "fixed": 0,
+                "target_max_hp_bps": 0,
+                "can_crit": false,
+                "dodgeable": true,
+                "hits": 1
+            },
+            "skills": [
+                "counter_stance",
+                "renewing_guard",
+                "shield_bash",
+                "bulwark_strike"
+            ],
+            "ai_rules": [
+                {
+                    "conditions": [
+                        {
+                            "type": "own_hp_lte",
+                            "percent": 25
+                        },
+                        {
+                            "type": "skill_ready",
+                            "skill": "renewing_guard"
+                        }
+                    ],
+                    "action": "skill:renewing_guard"
+                },
+                {
+                    "conditions": [
+                        {
+                            "type": "round_modulo",
+                            "modulo": 7,
+                            "equals": 1
+                        },
+                        {
+                            "type": "skill_ready",
+                            "skill": "counter_stance"
+                        }
+                    ],
+                    "action": "skill:counter_stance"
+                },
+                {
+                    "conditions": [
+                        {
+                            "type": "skill_ready",
+                            "skill": "bulwark_strike"
+                        }
+                    ],
+                    "action": "skill:bulwark_strike"
+                },
+                {
+                    "conditions": [
+                        {
+                            "type": "skill_ready",
+                            "skill": "shield_bash"
+                        }
+                    ],
+                    "action": "skill:shield_bash"
+                },
+                {
+                    "conditions": [
+                        {
+                            "type": "always"
+                        }
+                    ],
+                    "action": "normal_attack"
+                }
+            ],
+            "modifiers": {}
+        },
+        "trial3_olsent": {
+            "label": "黎明の司祭 オルセント",
+            "species": "勇者の幻影",
+            "boss": false,
+            "base_stats": {
+                "vitality": 850,
+                "might": 172,
+                "finesse": 400,
+                "spirit": 809,
+                "agility": 500
+            },
+            "max_hp": 6375,
+            "physical_defense": 640,
+            "magical_defense": 1080,
+            "weapon_power": 276,
+            "normal_attack": {
+                "type": "damage",
+                "category": "miracle",
+                "potency_bps": 6000,
+                "stat_coefficients": {
+                    "spirit": 10000
+                },
+                "weapon_coefficient_bps": 10000,
+                "fixed": 0,
+                "target_max_hp_bps": 0,
+                "can_crit": false,
+                "dodgeable": true,
+                "hits": 1
+            },
+            "skills": [
+                "mending_prayer",
+                "regeneration",
+                "holy_bolt"
+            ],
+            "ai_rules": [
+                {
+                    "conditions": [
+                        {
+                            "type": "ally_hp_lte",
+                            "percent": 70
+                        },
+                        {
+                            "type": "skill_ready",
+                            "skill": "mending_prayer"
+                        }
+                    ],
+                    "action": "skill:mending_prayer"
+                },
+                {
+                    "conditions": [
+                        {
+                            "type": "skill_ready",
+                            "skill": "regeneration"
+                        }
+                    ],
+                    "action": "skill:regeneration"
+                },
+                {
+                    "conditions": [
+                        {
+                            "type": "skill_ready",
+                            "skill": "holy_bolt"
+                        }
+                    ],
+                    "action": "skill:holy_bolt"
+                },
+                {
+                    "conditions": [
+                        {
+                            "type": "always"
+                        }
+                    ],
+                    "action": "normal_attack"
+                }
+            ],
+            "modifiers": {}
+        },
+        "trial3_rauzen": {
+            "label": "百戦の勇将 ラウゼン",
+            "species": "勇者の幻影",
+            "boss": false,
+            "base_stats": {
+                "vitality": 1300,
+                "might": 833,
+                "finesse": 650,
+                "spirit": 270,
+                "agility": 600
+            },
+            "max_hp": 8250,
+            "physical_defense": 960,
+            "magical_defense": 720,
+            "weapon_power": 320,
+            "normal_attack": {
+                "type": "damage",
+                "category": "physical",
+                "potency_bps": 6000,
+                "stat_coefficients": {
+                    "might": 7500,
+                    "finesse": 2500
+                },
+                "weapon_coefficient_bps": 10000,
+                "fixed": 0,
+                "target_max_hp_bps": 0,
+                "can_crit": false,
+                "dodgeable": true,
+                "hits": 1
+            },
+            "skills": [
+                "whirlwind",
+                "armor_break_strike",
+                "precision_cut"
+            ],
+            "ai_rules": [
+                {
+                    "conditions": [
+                        {
+                            "type": "skill_ready",
+                            "skill": "whirlwind"
+                        }
+                    ],
+                    "action": "skill:whirlwind"
+                },
+                {
+                    "conditions": [
+                        {
+                            "type": "skill_ready",
+                            "skill": "armor_break_strike"
+                        }
+                    ],
+                    "action": "skill:armor_break_strike"
+                },
+                {
+                    "conditions": [
+                        {
+                            "type": "skill_ready",
+                            "skill": "precision_cut"
+                        }
+                    ],
+                    "action": "skill:precision_cut"
+                },
+                {
+                    "conditions": [
+                        {
+                            "type": "always"
+                        }
+                    ],
+                    "action": "normal_attack"
+                }
+            ],
+            "modifiers": {}
+        },
+        "trial3_lyucelle": {
+            "label": "風渡りの射手 リュセール",
+            "species": "勇者の幻影",
+            "boss": false,
+            "base_stats": {
+                "vitality": 650,
+                "might": 417,
+                "finesse": 1650,
+                "spirit": 172,
+                "agility": 1100
+            },
+            "max_hp": 5850,
+            "physical_defense": 560,
+            "magical_defense": 520,
+            "weapon_power": 288,
+            "normal_attack": {
+                "type": "damage",
+                "category": "physical",
+                "potency_bps": 6000,
+                "stat_coefficients": {
+                    "might": 7500,
+                    "finesse": 2500
+                },
+                "weapon_coefficient_bps": 10000,
+                "fixed": 0,
+                "target_max_hp_bps": 0,
+                "can_crit": false,
+                "dodgeable": true,
+                "hits": 1
+            },
+            "skills": [
+                "sweeping_cut",
+                "quick_stab",
+                "precision_cut"
+            ],
+            "ai_rules": [
+                {
+                    "conditions": [
+                        {
+                            "type": "skill_ready",
+                            "skill": "sweeping_cut"
+                        }
+                    ],
+                    "action": "skill:sweeping_cut"
+                },
+                {
+                    "conditions": [
+                        {
+                            "type": "skill_ready",
+                            "skill": "quick_stab"
+                        }
+                    ],
+                    "action": "skill:quick_stab"
+                },
+                {
+                    "conditions": [
+                        {
+                            "type": "skill_ready",
+                            "skill": "precision_cut"
+                        }
+                    ],
+                    "action": "skill:precision_cut"
+                },
+                {
+                    "conditions": [
+                        {
+                            "type": "always"
+                        }
+                    ],
+                    "action": "normal_attack"
+                }
+            ],
+            "modifiers": {}
+        },
+        "trial3_zelvan": {
+            "label": "紅蓮の魔導師 ゼルヴァン",
+            "species": "勇者の幻影",
+            "boss": false,
+            "base_stats": {
+                "vitality": 650,
+                "might": 172,
+                "finesse": 550,
+                "spirit": 931,
+                "agility": 600
+            },
+            "max_hp": 5925,
+            "physical_defense": 544,
+            "magical_defense": 960,
+            "weapon_power": 304,
+            "normal_attack": {
+                "type": "damage",
+                "category": "miracle",
+                "potency_bps": 6000,
+                "stat_coefficients": {
+                    "spirit": 10000
+                },
+                "weapon_coefficient_bps": 10000,
+                "fixed": 0,
+                "target_max_hp_bps": 0,
+                "can_crit": false,
+                "dodgeable": true,
+                "hits": 1
+            },
+            "skills": [
+                "holy_nova",
+                "holy_lance",
+                "holy_bolt"
+            ],
+            "ai_rules": [
+                {
+                    "conditions": [
+                        {
+                            "type": "skill_ready",
+                            "skill": "holy_nova"
+                        }
+                    ],
+                    "action": "skill:holy_nova"
+                },
+                {
+                    "conditions": [
+                        {
+                            "type": "skill_ready",
+                            "skill": "holy_lance"
+                        }
+                    ],
+                    "action": "skill:holy_lance"
+                },
+                {
+                    "conditions": [
+                        {
+                            "type": "skill_ready",
+                            "skill": "holy_bolt"
+                        }
+                    ],
+                    "action": "skill:holy_bolt"
+                },
+                {
+                    "conditions": [
+                        {
+                            "type": "always"
+                        }
+                    ],
+                    "action": "normal_attack"
+                }
+            ],
+            "modifiers": {}
+        },
+        "trial3_elvein": {
+            "label": "光冠の勇者 エルヴェイン",
+            "species": "勇者の幻影",
+            "boss": false,
+            "base_stats": {
+                "vitality": 1550,
+                "might": 1050,
+                "finesse": 900,
+                "spirit": 980,
+                "agility": 750
+            },
+            "max_hp": 13875,
+            "physical_defense": 1160,
+            "magical_defense": 1080,
+            "weapon_power": 340,
+            "normal_attack": {
+                "type": "damage",
+                "category": "physical",
+                "potency_bps": 6000,
+                "stat_coefficients": {
+                    "might": 7500,
+                    "finesse": 2500
+                },
+                "weapon_coefficient_bps": 10000,
+                "fixed": 0,
+                "target_max_hp_bps": 0,
+                "can_crit": false,
+                "dodgeable": true,
+                "hits": 1
+            },
+            "skills": [
+                "executioner_cut",
+                "counter_stance",
+                "mending_prayer",
+                "holy_lance"
+            ],
+            "ai_rules": [
+                {
+                    "conditions": [
+                        {
+                            "type": "own_hp_lte",
+                            "percent": 25
+                        },
+                        {
+                            "type": "skill_ready",
+                            "skill": "mending_prayer"
+                        }
+                    ],
+                    "action": "skill:mending_prayer"
+                },
+                {
+                    "conditions": [
+                        {
+                            "type": "round_modulo",
+                            "modulo": 7,
+                            "equals": 1
+                        },
+                        {
+                            "type": "skill_ready",
+                            "skill": "counter_stance"
+                        }
+                    ],
+                    "action": "skill:counter_stance"
+                },
+                {
+                    "conditions": [
+                        {
+                            "type": "skill_ready",
+                            "skill": "executioner_cut"
+                        }
+                    ],
+                    "action": "skill:executioner_cut"
+                },
+                {
+                    "conditions": [
+                        {
+                            "type": "skill_ready",
+                            "skill": "holy_lance"
+                        }
+                    ],
+                    "action": "skill:holy_lance"
+                },
+                {
+                    "conditions": [
+                        {
+                            "type": "always"
+                        }
+                    ],
+                    "action": "normal_attack"
+                }
+            ],
+            "modifiers": {}
+        },
+        "trial3_gilgamesh": {
+            "label": "殲滅王ギルガメス",
+            "species": "殲滅王",
+            "boss": true,
+            "base_stats": {
+                "vitality": 1900,
+                "might": 2100,
+                "finesse": 1100,
+                "spirit": 1200,
+                "agility": 750
+            },
+            "max_hp": 30000,
+            "physical_defense": 1750,
+            "magical_defense": 1600,
+            "weapon_power": 500,
+            "normal_attack": {
+                "type": "damage",
+                "category": "physical",
+                "potency_bps": 6000,
+                "stat_coefficients": {
+                    "might": 7500,
+                    "finesse": 2500
+                },
+                "weapon_coefficient_bps": 10000,
+                "fixed": 0,
+                "target_max_hp_bps": 0,
+                "can_crit": false,
+                "dodgeable": true,
+                "hits": 1
+            },
+            "skills": [
+                "trial3_sword_flash",
+                "trial3_excalibur",
+                "trial3_awakening",
+                "trial3_dimensional_warning",
+                "trial3_dimensional_slash"
+            ],
+            "ai_rules": [
+                {
+                    "conditions": [
+                        {
+                            "type": "own_hp_lte",
+                            "percent": 65
+                        },
+                        {
+                            "type": "self_lacks_status",
+                            "status": "trial3_awakened"
+                        },
+                        {
+                            "type": "skill_ready",
+                            "skill": "trial3_awakening"
+                        }
+                    ],
+                    "action": "skill:trial3_awakening"
+                },
+                {
+                    "conditions": [
+                        {
+                            "type": "own_hp_lte",
+                            "percent": 45
+                        },
+                        {
+                            "type": "skill_ready",
+                            "skill": "trial3_dimensional_slash"
+                        },
+                        {
+                            "type": "self_lacks_status",
+                            "status": "telegraph"
+                        }
+                    ],
+                    "action": "skill:trial3_dimensional_warning"
+                },
+                {
+                    "conditions": [
+                        {
+                            "type": "own_hp_lte",
+                            "percent": 75
+                        },
+                        {
+                            "type": "skill_ready",
+                            "skill": "trial3_excalibur"
+                        }
+                    ],
+                    "action": "skill:trial3_excalibur"
+                },
+                {
+                    "conditions": [
+                        {
+                            "type": "skill_ready",
+                            "skill": "trial3_sword_flash"
+                        }
+                    ],
+                    "action": "skill:trial3_sword_flash"
+                },
+                {
+                    "conditions": [
+                        {
+                            "type": "always"
+                        }
+                    ],
+                    "action": "normal_attack"
+                }
+            ],
+            "modifiers": {},
+            "charged_attack": {
+                "trigger_skill": "trial3_dimensional_warning",
+                "countdown_rounds": 1,
+                "skill": "trial3_dimensional_slash",
+                "status": "telegraph",
+                "narration_lines": []
+            }
+        }
+    }
+}

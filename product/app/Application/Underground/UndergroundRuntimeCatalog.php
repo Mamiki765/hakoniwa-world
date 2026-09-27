@@ -209,10 +209,12 @@ final class UndergroundRuntimeCatalog
      *   balance_manifest: string,
      *   required_trial_key: string|null,
      *   drop_tier_key: string|null,
+     *   distorted_stone_chance_bps: int,
      *   interbattle_heal_bps: int,
      *   first_clear_skill_points: int,
      *   unlocked_area_layers: int,
      *   encounters: list<string>,
+     *   enemy_parties: array<string, list<string>>,
      *   rewards: list<array{xp: int, shards: int}>
      * }
      */
@@ -232,6 +234,9 @@ final class UndergroundRuntimeCatalog
                 && ! is_string($trial['required_trial_key']))
             || (! is_null($trial['drop_tier_key'] ?? null)
                 && ! is_string($trial['drop_tier_key']))
+            || ! is_int($trial['distorted_stone_chance_bps'] ?? 0)
+            || ($trial['distorted_stone_chance_bps'] ?? 0) < 0
+            || ($trial['distorted_stone_chance_bps'] ?? 0) > 10_000
             || ($trial['required_trial_key'] ?? null) === $key
             || ! is_int($trial['interbattle_heal_bps'] ?? null)
             || $trial['interbattle_heal_bps'] < 0
@@ -247,6 +252,19 @@ final class UndergroundRuntimeCatalog
             throw new RuntimeException("Underground Trial [{$key}] references an unknown prerequisite.");
         }
         $encounters = $this->stringList($trial['encounters'] ?? null, 'trial encounters');
+        $enemyParties = $trial['enemy_parties'] ?? [];
+        if (! is_array($enemyParties) || array_is_list($enemyParties) && $enemyParties !== []) {
+            throw new RuntimeException('Underground Trial enemy parties are invalid.');
+        }
+        foreach ($enemyParties as $encounterKey => $enemyKeys) {
+            if (! is_string($encounterKey) || ! in_array($encounterKey, $encounters, true)
+                || ! is_array($enemyKeys) || ! array_is_list($enemyKeys)
+                || count($enemyKeys) < 1 || count($enemyKeys) > 3
+                || count(array_unique($enemyKeys)) !== count($enemyKeys)) {
+                throw new RuntimeException('Underground Trial enemy parties are invalid.');
+            }
+            $this->stringList($enemyKeys, 'trial enemy party');
+        }
         $configuredRewards = $trial['rewards'] ?? null;
         if ($encounters === []
             || count($encounters) > 100
@@ -296,10 +314,12 @@ final class UndergroundRuntimeCatalog
             'balance_manifest' => $trial['balance_manifest'],
             'required_trial_key' => $trial['required_trial_key'],
             'drop_tier_key' => $dropTierKey,
+            'distorted_stone_chance_bps' => $trial['distorted_stone_chance_bps'] ?? 0,
             'interbattle_heal_bps' => $trial['interbattle_heal_bps'],
             'first_clear_skill_points' => $trial['first_clear_skill_points'],
             'unlocked_area_layers' => $trial['unlocked_area_layers'],
             'encounters' => $encounters,
+            'enemy_parties' => $enemyParties,
             'rewards' => $rewards,
         ];
     }

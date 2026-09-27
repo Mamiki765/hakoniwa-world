@@ -92,7 +92,7 @@ final class BuildCombatState
      * @param  array{round: int, status: string, message: string}|null  $phaseTransition
      * @param  array<string, mixed>  $normalAttack
      * @param  array<string, mixed>|null  $guideDuel
-     * @param  array{trigger_skill:string, countdown_rounds:int, skill:string, status:string}|null  $chargedAttack
+     * @param  array{trigger_skill:string, countdown_rounds:int, skill:string, status:string, narration_lines?:list<string>}|null  $chargedAttack
      */
     public function __construct(
         public readonly string $side,

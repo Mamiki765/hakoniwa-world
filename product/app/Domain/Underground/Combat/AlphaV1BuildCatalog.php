@@ -235,6 +235,12 @@ final readonly class AlphaV1BuildCatalog
                     throw new InvalidArgumentException("Underground alpha-v1 skill [{$key}] has an invalid target scope.");
                 }
                 if ($effect['type'] === 'damage'
+                    && (isset($effect['lifesteal_bps'])
+                        && (! is_int($effect['lifesteal_bps'])
+                            || $effect['lifesteal_bps'] < 0 || $effect['lifesteal_bps'] > 10_000))) {
+                    throw new InvalidArgumentException("Underground skill [{$key}] has invalid lifesteal.");
+                }
+                if ($effect['type'] === 'damage'
                     && ($effect['target_max_hp_bps'] ?? 0) > 0
                     && ! is_array($effect['source_cap_coefficients'] ?? null)) {
                     throw new InvalidArgumentException(

@@ -2143,7 +2143,7 @@ final readonly class UndergroundIntroService
     private function projectTrialRecollections(UndergroundProfile $profile): array
     {
         $entries = [];
-        foreach (['trial_01', 'trial_02'] as $trialKey) {
+        foreach ($this->runtimeCatalog->trialKeys() as $trialKey) {
             $trial = $this->runtimeCatalog->trial($trialKey);
             $progress = UndergroundTrialProgress::query()
                 ->where('underground_profile_id', $profile->id)->where('trial_key', $trialKey)->first();
@@ -2155,6 +2155,20 @@ final readonly class UndergroundIntroService
                     [$progress->first_challenge_intro],
                     ['trial_key' => $trialKey],
                 );
+            }
+            if ($trialKey === 'trial_03' && is_array($progress?->first_milestone_stories)) {
+                foreach ([5, 7, 10] as $battleIndex) {
+                    $scene = $progress->first_milestone_stories[$battleIndex] ?? null;
+                    if (is_string($scene)) {
+                        $entries[] = $this->historicalEntry(
+                            "{$trialKey}_battle_{$battleIndex}",
+                            "{$trial['label']}・第{$battleIndex}戦",
+                            true,
+                            [$scene],
+                            ['trial_key' => $trialKey],
+                        );
+                    }
+                }
             }
             if ($progress?->first_clear_story !== null) {
                 $story = $progress->first_clear_story;

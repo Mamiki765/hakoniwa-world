@@ -11,6 +11,7 @@ use App\Application\Underground\CanonicalUndergroundExplorationCombat;
 use App\Application\Underground\UndergroundAlphaV1PlayerCatalog;
 use App\Application\Underground\UndergroundBattleHistoryCompactor;
 use App\Application\Underground\UndergroundBattleSeed;
+use App\Application\Underground\UndergroundEquipmentLoadoutResolver;
 use App\Application\Underground\UndergroundEquipmentService;
 use App\Application\Underground\UndergroundIntroService;
 use App\Application\Underground\UndergroundJournalService;
@@ -1519,6 +1520,110 @@ final class UndergroundRuntimeTest extends TestCase
             $profile->unlocked_area_layers,
         ]);
         $this->assertNull($runtime->projectTrialBattle($repeatBattle)['first_clear_story']);
+    }
+
+    public function test_trial_three_solo_party_encounters_keep_composition_on_retry_and_saved_replay(): void
+    {
+        Carbon::setTestNow('2026-09-27 10:00:00+09:00');
+        [$user, $secretary] = $this->secretaryUser();
+        $profile = $this->unlockExploration($secretary);
+        foreach (['trial_01', 'trial_02'] as $key) {
+            UndergroundTrialProgress::query()->create([
+                'underground_profile_id' => $profile->id, 'trial_key' => $key,
+                'unlocked_at' => Carbon::now(), 'first_cleared_at' => Carbon::now(),
+            ]);
+        }
+        $partyCombat = new ScriptedUndergroundPartyCombat(outcomes: ['player', 'enemy']);
+        $this->app->instance(AtomicUndergroundPartyCombat::class, $partyCombat);
+        $runtime = app(UndergroundRuntimeService::class);
+        $run = $runtime->startTrial($user, 'trial_03');
+        $run->update(['next_battle_index' => 4]);
+        $requestId = (string) Str::uuid();
+        $first = $runtime->fightTrial($user, $run->run_key, $requestId)['battle'];
+        $retried = $runtime->fightTrial($user, $run->run_key, $requestId);
+        $this->assertTrue($retried['duplicate']);
+        $this->assertSame($first->id, $retried['battle']->id);
+        $this->assertCount(1, $partyCombat->calls[0]['player_snapshots']);
+        $this->assertSame(['trial3_shelna', 'trial3_gald'], $partyCombat->calls[0]['enemy_keys']);
+        $this->assertSame(5, $run->refresh()->next_battle_index);
+        $this->assertSame(2, $runtime->projectTrialBattle($first)['party']['enemy_count']);
+        $this->assertSame(['trial3_shelna', 'trial3_gald'], $first->snapshot['party']['enemy_keys']);
+
+        Carbon::setTestNow(Carbon::now()->addSeconds(10));
+        $run->update(['next_battle_index' => 8]);
+        $second = $runtime->fightTrial($user, $run->run_key, (string) Str::uuid())['battle'];
+        $this->assertSame(['trial3_rauzen', 'trial3_lyucelle', 'trial3_zelvan'], $partyCombat->calls[1]['enemy_keys']);
+        $this->assertSame(UndergroundTrialRun::STATUS_DEFEATED, $run->refresh()->status);
+        $this->assertSame(1, $run->next_battle_index);
+        $saved = UndergroundBattle::query()->with(['profile.secretary.user', 'log'])->findOrFail($second->id);
+        $this->assertSame(3, $runtime->projectTrialBattle($saved)['party']['enemy_count']);
+        $this->assertSame(['trial3_rauzen', 'trial3_lyucelle', 'trial3_zelvan'], $saved->snapshot['party']['enemy_keys']);
+        $this->assertNull(UndergroundTrialProgress::query()->where('trial_key', 'trial_03')->sole()->first_cleared_at);
+        $this->assertDatabaseCount('secretary_lending_participations', 0);
+    }
+
+    public function test_trial_three_milestones_and_excalibur_are_first_time_rewards(): void
+    {
+        Carbon::setTestNow('2026-09-27 11:00:00+09:00');
+        config(['underground-runtime.trials.trial_03.distorted_stone_chance_bps' => 10_000]);
+        [$user, $secretary] = $this->secretaryUser();
+        $profile = $this->unlockExploration($secretary);
+        $profile->update(['skill_points_total' => 100, 'skill_points_unspent' => 100, 'unlocked_area_layers' => 2]);
+        foreach (['trial_01', 'trial_02'] as $key) {
+            UndergroundTrialProgress::query()->create([
+                'underground_profile_id' => $profile->id, 'trial_key' => $key,
+                'unlocked_at' => Carbon::now(), 'first_cleared_at' => Carbon::now(),
+            ]);
+        }
+        $partyCombat = new ScriptedUndergroundPartyCombat(outcomes: ['player', 'player', 'player', 'player']);
+        $this->app->instance(AtomicUndergroundPartyCombat::class, $partyCombat);
+        $runtime = app(UndergroundRuntimeService::class);
+        $run = $runtime->startTrial($user, 'trial_03');
+        foreach ([5, 7, 10] as $index) {
+            $run->update(['next_battle_index' => $index]);
+            if ($index === 10) {
+                $this->assertStringContainsString('殲滅王ギルガメス', $runtime->projectTrialState($profile)['upcoming_story']);
+            }
+            $battle = $runtime->fightTrial($user, $run->run_key, (string) Str::uuid())['battle'];
+            $this->assertIsString($runtime->projectTrialBattle($battle)['milestone_story']);
+            $this->assertSame(1, $runtime->projectTrialBattle($battle)['distorted_stones']);
+            Carbon::setTestNow(Carbon::now()->addSeconds(10));
+        }
+        $progress = UndergroundTrialProgress::query()->where('trial_key', 'trial_03')->sole();
+        $this->assertSame([5, 7, 10], array_keys($progress->first_milestone_stories));
+        $this->assertNull($runtime->projectTrialState($profile)['upcoming_story']);
+        $this->assertSame('ただ、虚しさだけ', $runtime->projectTrialBattle($battle)['first_clear_story']['title']);
+        $this->assertStringContainsString('《《魔王の娘》》', $progress->first_clear_story['body']);
+        $this->assertSame([140, 140, 3, 3], [
+            $profile->refresh()->skill_points_total, $profile->skill_points_unspent,
+            $profile->unlocked_area_layers, $profile->distorted_stone_balance,
+        ]);
+        $this->assertDatabaseHas('underground_owned_equipment', [
+            'underground_profile_id' => $profile->id,
+            'definition_key' => 'excalibur', 'instance_kind' => 'fixed',
+        ]);
+        $excalibur = UndergroundOwnedEquipment::query()
+            ->where('underground_profile_id', $profile->id)->where('definition_key', 'excalibur')->sole();
+        $rewardItem = app(UndergroundEquipmentLoadoutResolver::class)->projectOwned($excalibur);
+        $this->assertSame([185, 'unique', false, 0], [
+            $rewardItem['item_level'], $rewardItem['rarity'], $rewardItem['sellable'], $rewardItem['sell_price'],
+        ]);
+        app(UndergroundEquipmentService::class)->equip($user, (string) Str::uuid(), $excalibur->id);
+        $loadout = app(UndergroundEquipmentLoadoutResolver::class)->combatLoadout($profile->refresh());
+        $this->assertSame('excalibur', collect($loadout['items'])->firstWhere('equipped_slot', 'weapon')['key']);
+        $this->assertSame(200, $loadout['modifiers']['self_regeneration_target_hp_bps']);
+        foreach (['physical_damage_bps', 'miracle_damage_bps', 'mp_cost_reduction_bps', 'healing_bps'] as $effect) {
+            $this->assertSame(500, $loadout['modifiers'][$effect]);
+        }
+
+        $repeat = $runtime->startTrial($user, 'trial_03');
+        $repeat->update(['next_battle_index' => 10]);
+        $repeatBattle = $runtime->fightTrial($user, $repeat->run_key, (string) Str::uuid())['battle'];
+        $this->assertNull($runtime->projectTrialBattle($repeatBattle)['milestone_story']);
+        $this->assertNull($runtime->projectTrialBattle($repeatBattle)['first_clear_story']);
+        $this->assertSame(140, $profile->refresh()->skill_points_total);
+        $this->assertSame(1, UndergroundOwnedEquipment::query()
+            ->where('underground_profile_id', $profile->id)->where('definition_key', 'excalibur')->count());
     }
 
     public function test_vault_full_records_lost_drop_without_rolling_back_exploration_rewards(): void

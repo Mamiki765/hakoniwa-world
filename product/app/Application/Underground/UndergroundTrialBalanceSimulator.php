@@ -41,6 +41,7 @@ final readonly class UndergroundTrialBalanceSimulator
 
     public function __construct(
         private AtomicUndergroundExplorationCombat $combat,
+        private AtomicUndergroundPartyCombat $partyCombat,
         private UndergroundAlphaV1PlayerCatalog $players,
         private UndergroundEquipmentCatalog $equipment,
         private AlphaV1CombatRules $rules,
@@ -278,7 +279,11 @@ final readonly class UndergroundTrialBalanceSimulator
             $battleReport[] = [
                 'index' => $index,
                 'key' => $normalized['sequence'][$index - 1],
-                'label' => $normalized['enemies'][$normalized['sequence'][$index - 1]]['label'],
+                'label' => implode(' ＋ ', array_map(
+                    fn (string $enemyKey): string => $normalized['enemies'][$enemyKey]['label'],
+                    $normalized['enemy_parties'][$normalized['sequence'][$index - 1]]
+                        ?? [$normalized['sequence'][$index - 1]],
+                )),
                 'entered_count' => $entered,
                 'victory_count' => $victories,
                 'defeat_count' => $metrics['defeats'],
@@ -351,6 +356,7 @@ final readonly class UndergroundTrialBalanceSimulator
     private function simulateTrial(array $normalized, array $scenario, int $seed, bool $includeActionLogs): array
     {
         $build = $this->buildContext($normalized, $scenario['build_key'], $scenario['level']);
+        $entryBuild = $build;
         $snapshot = $build['player_snapshot'];
         $currentHp = $build['max_hp'];
         $awakeningGauge = (int) ($snapshot['awakening']['gauge'] ?? 0);
@@ -363,24 +369,68 @@ final readonly class UndergroundTrialBalanceSimulator
         $healOverflow = 0;
         foreach ($normalized['sequence'] as $offset => $enemyKey) {
             $index = $offset + 1;
+            if ($normalized['trial_generation'] === 3 && ($index === 6 || $index === 10)) {
+                $build = $this->buildContext(
+                    $normalized, $scenario['build_key'], $scenario['level'],
+                    $index === 6 ? 'after_five' : 'before_boss',
+                );
+                $snapshot = $build['player_snapshot'];
+            }
             $snapshot['current_hp'] = $currentHp;
             if (is_array($snapshot['awakening'] ?? null)) {
                 $snapshot['awakening']['gauge'] = $awakeningGauge;
             }
-            $result = $this->combat->fight(
-                $build['catalog'],
-                $snapshot,
-                $enemyKey,
-                $this->battleSeed($normalized['trial_identity'], $seed, $index),
-                $normalized['max_rounds'],
-                $normalized['natural_recovery'],
-            );
-            $totalRounds += $result->rounds;
-            $abnormalResults += $result->abnormalState === [] ? 0 : 1;
-            $remainingHp = $result->winner === 'enemy' ? 0 : $result->playerRemainingHp;
+            $battleSeed = $this->battleSeed($normalized['trial_identity'], $seed, $index);
+            if ($normalized['trial_generation'] === 3) {
+                $snapshot['combatant_id'] = 'player:1';
+                $enemyKeys = $normalized['enemy_parties'][$enemyKey] ?? [$enemyKey];
+                $result = $this->partyCombat->fight(
+                    $build['catalog'], [$snapshot], $enemyKeys, $battleSeed,
+                    $normalized['max_rounds'], $normalized['natural_recovery'],
+                );
+                $final = $result->finalStates['player:1'];
+                $awakening = $result->awakening['player:1'];
+                $battleResult = [
+                    'seed' => $battleSeed, 'rules_identity' => AlphaV1CombatRules::IDENTITY,
+                    'winner' => $result->winner, 'rounds' => $result->rounds,
+                    'remaining_hp' => (int) $final['hp'],
+                    'damage_dealt' => (int) ($result->metrics['damage_dealt'] ?? 0),
+                    'damage_received' => (int) ($result->metrics['damage_received'] ?? 0),
+                    'effective_healing' => (int) ($result->metrics['effective_healing'] ?? 0),
+                    'damage_prevented' => (int) ($result->metrics['damage_prevented'] ?? 0),
+                    'action_usage' => $this->partyPlayerActionUsage($result->actionLog),
+                    'final_mp' => (int) $final['mp'],
+                    'mp_exhaustion_round' => $result->metrics['mp_exhaustion_round'] ?? null,
+                    'skill_unavailable_due_to_mp' => (int) ($result->metrics['skill_unavailable_due_to_mp'] ?? 0),
+                    'awakening' => $awakening, 'abnormal_state' => [],
+                    'action_log' => $result->actionLog, 'mp_history' => [],
+                ];
+            } else {
+                $result = $this->combat->fight(
+                    $build['catalog'], $snapshot, $enemyKey, $battleSeed,
+                    $normalized['max_rounds'], $normalized['natural_recovery'],
+                );
+                $battleResult = [
+                    'seed' => $result->seed, 'rules_identity' => $result->rulesIdentity,
+                    'winner' => $result->winner, 'rounds' => $result->rounds,
+                    'remaining_hp' => $result->playerRemainingHp,
+                    'damage_dealt' => $result->damageDealt,
+                    'damage_received' => $result->damageReceived,
+                    'effective_healing' => $result->effectiveHealing,
+                    'damage_prevented' => $result->damagePrevented,
+                    'action_usage' => $result->actionUsage, 'final_mp' => $result->finalMp,
+                    'mp_exhaustion_round' => $result->mpExhaustionRound,
+                    'skill_unavailable_due_to_mp' => $result->skillUnavailableDueToMp,
+                    'awakening' => $result->awakening, 'abnormal_state' => $result->abnormalState,
+                    'action_log' => $result->actionLog, 'mp_history' => $result->mpHistory,
+                ];
+            }
+            $totalRounds += $battleResult['rounds'];
+            $abnormalResults += $battleResult['abnormal_state'] === [] ? 0 : 1;
+            $remainingHp = $battleResult['winner'] === 'enemy' ? 0 : $battleResult['remaining_hp'];
             $interbattleHeal = 0;
             $postHealHp = $remainingHp;
-            if ($result->winner === 'player' && $index < 10) {
+            if ($battleResult['winner'] === 'player' && $index < 10) {
                 $nominalHeal = intdiv($build['max_hp'] * $scenario['heal_bps'], 10_000);
                 $postHealHp = min($build['max_hp'], $remainingHp + $nominalHeal);
                 $interbattleHeal = $postHealHp - $remainingHp;
@@ -391,48 +441,51 @@ final readonly class UndergroundTrialBalanceSimulator
             $battle = [
                 'index' => $index,
                 'key' => $enemyKey,
-                'label' => $normalized['enemies'][$enemyKey]['label'],
-                'seed' => $result->seed,
-                'combat_identity' => $result->rulesIdentity,
-                'winner' => $result->winner,
-                'rounds' => $result->rounds,
+                'label' => implode(' ＋ ', array_map(
+                    fn (string $key): string => $normalized['enemies'][$key]['label'],
+                    $normalized['enemy_parties'][$enemyKey] ?? [$enemyKey],
+                )),
+                'seed' => $battleResult['seed'],
+                'combat_identity' => $battleResult['rules_identity'],
+                'winner' => $battleResult['winner'],
+                'rounds' => $battleResult['rounds'],
                 'remaining_hp' => $remainingHp,
                 'interbattle_heal' => $interbattleHeal,
                 'post_heal_hp' => $postHealHp,
-                'damage_dealt' => $result->damageDealt,
-                'damage_received' => $result->damageReceived,
-                'effective_healing' => $result->effectiveHealing,
-                'damage_prevented' => $result->damagePrevented,
-                'action_usage' => $result->actionUsage,
+                'damage_dealt' => $battleResult['damage_dealt'],
+                'damage_received' => $battleResult['damage_received'],
+                'effective_healing' => $battleResult['effective_healing'],
+                'damage_prevented' => $battleResult['damage_prevented'],
+                'action_usage' => $battleResult['action_usage'],
                 'starting_mp' => AlphaV1CombatRules::MAX_MP,
-                'mp_exhausted' => $result->mpExhaustionRound !== null,
-                'skill_unavailable_due_to_mp' => $result->skillUnavailableDueToMp,
-                'final_mp' => $result->finalMp,
+                'mp_exhausted' => $battleResult['mp_exhaustion_round'] !== null,
+                'skill_unavailable_due_to_mp' => $battleResult['skill_unavailable_due_to_mp'],
+                'final_mp' => $battleResult['final_mp'],
                 'phase_transition_count' => count(array_filter(
-                    $result->actionLog,
+                    $battleResult['action_log'],
                     static fn (array $row): bool => ($row['effect_type'] ?? null) === 'phase_transition',
                 )),
-                'awakening_triggered' => $result->awakening['triggered'] === true,
-                'awakening_technique_used' => ($result->awakening['technique']['used'] ?? false) === true,
-                'awakening_technique_key' => $result->awakening['technique']['key'] ?? null,
-                'awakening_gauge_before' => $result->awakening['gauge_before'],
-                'awakening_gauge_after' => $result->awakening['gauge_after'],
-                'abnormal_state' => $result->abnormalState,
+                'awakening_triggered' => $battleResult['awakening']['triggered'] === true,
+                'awakening_technique_used' => ($battleResult['awakening']['technique']['used'] ?? false) === true,
+                'awakening_technique_key' => $battleResult['awakening']['technique']['key'] ?? null,
+                'awakening_gauge_before' => $battleResult['awakening']['gauge_before'],
+                'awakening_gauge_after' => $battleResult['awakening']['gauge_after'],
+                'abnormal_state' => $battleResult['abnormal_state'],
             ];
             if ($includeActionLogs) {
-                $battle['action_log'] = $result->actionLog;
-                $battle['mp_history'] = $result->mpHistory;
+                $battle['action_log'] = $battleResult['action_log'];
+                $battle['mp_history'] = $battleResult['mp_history'];
             }
             $battles[] = $battle;
-            if ($result->winner !== 'player' || $result->abnormalState !== []) {
+            if ($battleResult['winner'] !== 'player' || $battleResult['abnormal_state'] !== []) {
                 $failedBattle = $index;
-                $failureResult = $result->winner === 'stalemate' ? 'stalemate' : 'defeat';
-                $stalemates += $result->winner === 'stalemate' ? 1 : 0;
+                $failureResult = $battleResult['winner'] === 'stalemate' ? 'stalemate' : 'defeat';
+                $stalemates += $battleResult['winner'] === 'stalemate' ? 1 : 0;
 
                 break;
             }
             $currentHp = $postHealHp;
-            $awakeningGauge = $result->awakening['gauge_after'];
+            $awakeningGauge = $battleResult['awakening']['gauge_after'];
         }
         $cleared = count($battles) === 10
             && $failedBattle === null
@@ -441,7 +494,7 @@ final readonly class UndergroundTrialBalanceSimulator
 
         return [
             'seed' => $seed,
-            'build' => $this->publicBuildContext($build),
+            'build' => $this->publicBuildContext($entryBuild),
             'cleared' => $cleared,
             'boss_reached' => count($battles) >= 10,
             'boss_cleared' => $cleared,
@@ -461,7 +514,7 @@ final readonly class UndergroundTrialBalanceSimulator
      * @param  array<string, mixed>  $normalized
      * @return array<string, mixed>
      */
-    private function buildContext(array $normalized, string $buildKey, int $level): array
+    private function buildContext(array $normalized, string $buildKey, int $level, string $equipmentStage = 'entry'): array
     {
         $configured = $normalized['builds'][$buildKey];
         $growthPath = $configured['growth_path'];
@@ -484,7 +537,10 @@ final readonly class UndergroundTrialBalanceSimulator
                 ];
             }
         } else {
-            foreach ($configured['generated_equipment'] as $request) {
+            $requests = $normalized['trial_generation'] === 3
+                ? $configured['equipment_stages'][$equipmentStage]
+                : $configured['generated_equipment'];
+            foreach ($requests as $request) {
                 $definition = $this->equipmentGenerator->generate(
                     $request['item_level'],
                     $request['tier'],
@@ -493,7 +549,8 @@ final readonly class UndergroundTrialBalanceSimulator
                     $request['weapon_style'],
                     $request['main_stat'],
                     $request['seed'],
-                    implode(':', [$normalized['trial_identity'], $buildKey, $request['slot']]),
+                    implode(':', [$normalized['trial_identity'], $buildKey, $equipmentStage, $request['slot']]),
+                    $request['resonance_variant'] ?? null,
                 );
                 $equipped[] = [
                     'slot' => $request['slot'],
@@ -553,6 +610,7 @@ final readonly class UndergroundTrialBalanceSimulator
             'skill_allocations' => $configured['skill_allocations'],
             'equipment_keys' => array_column($loadout['items'], 'key'),
             'awakening_technique_key' => $techniqueKey,
+            'equipment_stage' => $equipmentStage,
         ];
     }
 
@@ -580,6 +638,7 @@ final readonly class UndergroundTrialBalanceSimulator
             'passive_modifiers' => $build['passive_modifiers'],
             'equipment_keys' => $build['equipment_keys'],
             'equipment' => $build['equipment'],
+            'equipment_stage' => $build['equipment_stage'],
             'awakening_technique_key' => $build['awakening_technique_key'],
         ];
     }
@@ -599,9 +658,13 @@ final readonly class UndergroundTrialBalanceSimulator
         $trialRatios = [];
         foreach ($builds as $buildKey => $levels) {
             foreach ($levels as $levelKey => $build) {
+                if ($normalized['trial_generation'] === 3) {
+                    $build = $build['entry'];
+                }
                 $selfAgility = (int) $build['combat_stats']['agility'];
                 foreach ($normalized['sequence'] as $index => $enemyKey) {
-                    $enemy = $normalized['enemies'][$enemyKey];
+                    $firstEnemyKey = ($normalized['enemy_parties'][$enemyKey] ?? [$enemyKey])[0];
+                    $enemy = $normalized['enemies'][$firstEnemyKey];
                     $observation = $this->agilityObservation(
                         $selfAgility,
                         (int) $enemy['base_stats']['agility'],
@@ -611,7 +674,7 @@ final readonly class UndergroundTrialBalanceSimulator
                         'build_label' => $build['label'],
                         'level' => (int) substr($levelKey, 2),
                         'battle_index' => $index + 1,
-                        'enemy_key' => $enemyKey,
+                        'enemy_key' => $firstEnemyKey,
                         'enemy_label' => $enemy['label'],
                         ...$observation,
                     ];
@@ -718,7 +781,7 @@ final readonly class UndergroundTrialBalanceSimulator
             throw new InvalidArgumentException('Trial simulation manifest identity is invalid.');
         }
         $trialGeneration = $manifest['trial_generation'] ?? 1;
-        if (! in_array($trialGeneration, [1, 2], true)) {
+        if (! in_array($trialGeneration, [1, 2, 3], true)) {
             throw new InvalidArgumentException('Trial simulation generation is invalid.');
         }
         $trialIdentity = $this->requiredString($manifest, 'trial_identity');
@@ -744,7 +807,11 @@ final readonly class UndergroundTrialBalanceSimulator
             || ! is_int($skillPointsTotal) || $skillPointsTotal < 1) {
             throw new InvalidArgumentException('Trial simulation manifest contract is invalid.');
         }
-        $requiredCheckpoints = $trialGeneration === 1 ? [20, 25, 30, 35] : [150, 180];
+        $requiredCheckpoints = match ($trialGeneration) {
+            1 => [20, 25, 30, 35],
+            2 => [150, 180],
+            3 => [500],
+        };
         foreach ($requiredCheckpoints as $checkpoint) {
             if (! in_array($checkpoint, $checkpoints, true)) {
                 throw new InvalidArgumentException('Trial simulation is missing a required level checkpoint.');
@@ -759,14 +826,22 @@ final readonly class UndergroundTrialBalanceSimulator
         $primaryHeal = $comparison['primary_bps'] ?? null;
         $comparisonBps = $comparison['comparison_bps'] ?? null;
         $comparisonLevels = $comparison['comparison_levels'] ?? null;
-        $requiredComparisonLevel = $trialGeneration === 1 ? 30 : 150;
-        if ($primaryHeal !== 2000 || $comparisonBps !== [1000, 2000, 3000]
+        $requiredComparisonLevel = match ($trialGeneration) {
+            1 => 30,
+            2 => 150,
+            3 => 500,
+        };
+        $expectedPrimaryHeal = $trialGeneration === 3 ? 3000 : 2000;
+        $expectedComparison = $trialGeneration === 3 ? [2000, 3000, 4000] : [1000, 2000, 3000];
+        if ($primaryHeal !== $expectedPrimaryHeal || $comparisonBps !== $expectedComparison
             || ! is_array($comparisonLevels) || ! in_array($requiredComparisonLevel, $comparisonLevels, true)) {
             throw new InvalidArgumentException('Trial healing comparison contract is invalid.');
         }
-        $expectedBuilds = $trialGeneration === 1
-            ? [...self::PRIMARY_BUILD_KEYS, ...self::STP_COMPARISON_BUILD_KEYS]
-            : self::PRIMARY_BUILD_KEYS;
+        $expectedBuilds = match ($trialGeneration) {
+            1 => [...self::PRIMARY_BUILD_KEYS, ...self::STP_COMPARISON_BUILD_KEYS],
+            2 => self::PRIMARY_BUILD_KEYS,
+            3 => array_slice(self::PRIMARY_BUILD_KEYS, 0, 3),
+        };
         if (array_keys($builds) !== $expectedBuilds) {
             throw new InvalidArgumentException('Trial simulation representative builds are not in the required stable order.');
         }
@@ -784,7 +859,8 @@ final readonly class UndergroundTrialBalanceSimulator
                 || ($trialGeneration === 1 && (! is_array($fixedEquipment)
                     || count($fixedEquipment) !== 3
                     || array_filter($fixedEquipment, 'is_string') !== $fixedEquipment))
-                || ($trialGeneration === 2 && ! $this->validGeneratedEquipment($generatedEquipment))) {
+                || ($trialGeneration === 2 && ! $this->validGeneratedEquipment($generatedEquipment))
+                || ($trialGeneration === 3 && ! $this->validTrialThreeEquipmentStages($build['equipment_stages'] ?? null))) {
                 throw new InvalidArgumentException("Trial build [{$key}] is invalid.");
             }
             if ($trialGeneration === 1 && in_array($key, self::ZERO_AGILITY_BUILD_KEYS, true)
@@ -795,7 +871,7 @@ final readonly class UndergroundTrialBalanceSimulator
                 && $build['stp_weights_bps']['agility'] !== 1000) {
                 throw new InvalidArgumentException("Trial agility comparison build [{$key}] must allocate 10 percent of STP to agility.");
             }
-            if ($trialGeneration === 2) {
+            if ($trialGeneration >= 2) {
                 $techniqueKey = $build['awakening_technique_key'] ?? null;
                 if (! is_string($techniqueKey)
                     || $this->awakening->technique($growthPath, $techniqueKey)['key'] !== $techniqueKey) {
@@ -804,20 +880,30 @@ final readonly class UndergroundTrialBalanceSimulator
             }
         }
         unset($build);
+        $enemyParties = $manifest['enemy_parties'] ?? [];
+        if (! is_array($enemyParties)) {
+            throw new InvalidArgumentException('Trial enemy parties are invalid.');
+        }
         foreach ($sequence as $key) {
-            if (! is_string($key) || ! is_array($enemies[$key] ?? null)) {
+            $members = $enemyParties[$key] ?? [$key];
+            if (! is_string($key) || ! is_array($members) || ! array_is_list($members)
+                || count($members) < 1 || count($members) > 3
+                || count(array_unique($members)) !== count($members)
+                || array_filter($members, static fn (mixed $member): bool => ! is_string($member) || ! is_array($enemies[$member] ?? null)) !== []) {
                 throw new InvalidArgumentException('Trial battle sequence references an unknown enemy.');
             }
         }
-        $bossKey = $sequence[9];
+        $bossKey = ($enemyParties[$sequence[9]] ?? [$sequence[9]])[0];
         $bossLabel = $enemies[$bossKey]['label'] ?? null;
         if (($enemies[$bossKey]['boss'] ?? null) !== true
             || ($trialGeneration === 1 && $bossLabel !== 'ワイバーン')
-            || ($trialGeneration === 2 && (! is_string($bossLabel) || ! str_contains($bossLabel, 'デュラハン')))) {
+            || ($trialGeneration === 2 && (! is_string($bossLabel) || ! str_contains($bossLabel, 'デュラハン')))
+            || ($trialGeneration === 3 && $bossLabel !== '殲滅王ギルガメス')) {
             throw new InvalidArgumentException('Trial battle 10 must be the generation-appropriate boss.');
         }
         if (($trialGeneration === 1 && ($trialKey !== 'trial_01' || $skillPointsTotal !== 20))
-            || ($trialGeneration === 2 && ($trialKey !== 'trial_02' || $skillPointsTotal !== 60))) {
+            || ($trialGeneration === 2 && ($trialKey !== 'trial_02' || $skillPointsTotal !== 60))
+            || ($trialGeneration === 3 && ($trialKey !== 'trial_03' || $skillPointsTotal !== 100))) {
             throw new InvalidArgumentException('Trial progression contract is invalid.');
         }
         $this->assertSeedRange($seedRange['start'], $seedRange['count']);
@@ -839,6 +925,7 @@ final readonly class UndergroundTrialBalanceSimulator
             'primary_build_keys' => self::PRIMARY_BUILD_KEYS,
             'builds' => $builds,
             'sequence' => $sequence,
+            'enemy_parties' => $enemyParties,
             'skills' => $skills,
             'statuses' => $statuses,
             'enemies' => $enemies,
@@ -914,6 +1001,53 @@ final readonly class UndergroundTrialBalanceSimulator
         return true;
     }
 
+    private function validTrialThreeEquipmentStages(mixed $stages): bool
+    {
+        if (! is_array($stages) || array_keys($stages) !== ['entry', 'after_five', 'before_boss']) {
+            return false;
+        }
+        foreach ($stages as $stage => $requests) {
+            if (! is_array($requests) || ! array_is_list($requests)
+                || array_column($requests, 'slot') !== ['weapon', 'armor', 'accessory_1', 'resonance']) {
+                return false;
+            }
+            foreach ($requests as $request) {
+                $slot = $request['slot'];
+                $category = $slot === 'accessory_1' ? 'accessory' : $slot;
+                if (($request['category'] ?? null) !== $category
+                    || ! is_int($request['item_level'] ?? null)
+                    || $request['item_level'] < 1 || $request['item_level'] > 210
+                    || ! in_array($request['rarity'] ?? null, ['common', 'uncommon', 'rare', 'epic', 'unique'], true)
+                    || ! is_string($request['tier'] ?? null)
+                    || ! is_int($request['seed'] ?? null) || $request['seed'] < 0
+                    || $request['seed'] > 2_147_483_647
+                    || ($category === 'weapon' && ! in_array($request['weapon_style'] ?? null, ['dagger', 'rapier', 'longsword', 'crystal_staff'], true))
+                    || ($category !== 'weapon' && ($request['weapon_style'] ?? null) !== null)
+                    || ($category === 'accessory' && ! in_array($request['main_stat'] ?? null, AlphaV1CombatRules::STATS, true))
+                    || ($category !== 'accessory' && ($request['main_stat'] ?? null) !== null)) {
+                    return false;
+                }
+            }
+            if ($requests[0]['item_level'] !== 180 || $requests[0]['tier'] !== 'bahamul'
+                || $requests[3]['item_level'] !== 180 || $requests[3]['tier'] !== 'bahamul'
+                || $requests[3]['rarity'] !== 'unique'
+                || ! in_array($requests[3]['resonance_variant'] ?? null, ['might', 'guard', 'healing', 'finesse'], true)) {
+                return false;
+            }
+            $expectedIl = match ($stage) {
+                'entry' => 120,
+                'after_five' => 150,
+                'before_boss' => 175,
+                default => 0,
+            };
+            if ($requests[1]['item_level'] !== $expectedIl || $requests[2]['item_level'] !== $expectedIl) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
     /** @return array{id: string, build_key: string, level: int, heal_bps: int} */
     private function scenario(string $buildKey, int $level, int $healBps): array
     {
@@ -935,9 +1069,17 @@ final readonly class UndergroundTrialBalanceSimulator
         foreach (array_keys($normalized['builds']) as $buildKey) {
             $report[$buildKey] = [];
             foreach ($normalized['checkpoints'] as $level) {
-                $report[$buildKey]["lv{$level}"] = $this->publicBuildContext(
-                    $this->buildContext($normalized, $buildKey, $level),
-                );
+                if ($normalized['trial_generation'] === 3) {
+                    foreach (['entry', 'after_five', 'before_boss'] as $stage) {
+                        $report[$buildKey]["lv{$level}"][$stage] = $this->publicBuildContext(
+                            $this->buildContext($normalized, $buildKey, $level, $stage),
+                        );
+                    }
+                } else {
+                    $report[$buildKey]["lv{$level}"] = $this->publicBuildContext(
+                        $this->buildContext($normalized, $buildKey, $level),
+                    );
+                }
             }
         }
 
@@ -952,11 +1094,20 @@ final readonly class UndergroundTrialBalanceSimulator
     {
         $report = [];
         foreach ($normalized['sequence'] as $index => $key) {
-            $enemy = $normalized['enemies'][$key];
+            $enemyKeys = $normalized['enemy_parties'][$key] ?? [$key];
+            $enemy = $normalized['enemies'][$enemyKeys[0]];
             $report[] = [
                 'index' => $index + 1,
                 'key' => $key,
-                'label' => $enemy['label'],
+                'enemy_keys' => $enemyKeys,
+                'label' => implode(' ＋ ', array_map(
+                    fn (string $enemyKey): string => $normalized['enemies'][$enemyKey]['label'],
+                    $enemyKeys,
+                )),
+                'members' => array_map(
+                    fn (string $enemyKey): array => $normalized['enemies'][$enemyKey],
+                    $enemyKeys,
+                ),
                 'boss' => ($enemy['boss'] ?? false) === true,
                 'max_hp' => $enemy['max_hp'],
                 'physical_defense' => $enemy['physical_defense'],
@@ -982,7 +1133,7 @@ final readonly class UndergroundTrialBalanceSimulator
     {
         $byId = array_column($reports, null, 'id');
         $builds = [];
-        if ($normalized['trial_generation'] === 2) {
+        if ($normalized['trial_generation'] >= 2) {
             foreach ($normalized['primary_build_keys'] as $buildKey) {
                 $rates = [];
                 foreach ($normalized['checkpoints'] as $level) {
@@ -997,7 +1148,7 @@ final readonly class UndergroundTrialBalanceSimulator
 
             return [
                 'advisory_not_acceptance_gate' => true,
-                'target_level_band' => [150, 180],
+                'target_level_band' => $normalized['trial_generation'] === 3 ? [500, 650] : [150, 180],
                 'builds' => $builds,
             ];
         }
@@ -1027,6 +1178,25 @@ final readonly class UndergroundTrialBalanceSimulator
                 && array_reduce($builds, static fn (bool $all, array $row): bool => $all
                     && $row['progression_curve_strictly_increases'], true),
         ];
+    }
+
+    /**
+     * @param  list<array<string, mixed>>  $actionLog
+     * @return array<string, int>
+     */
+    private function partyPlayerActionUsage(array $actionLog): array
+    {
+        $usage = [];
+        foreach ($actionLog as $row) {
+            $key = $row['action_key'] ?? null;
+            if (($row['kind'] ?? null) !== 'decision' || ($row['team'] ?? null) !== 'player'
+                || ! is_string($key) || in_array($key, ['normal_attack', 'defend'], true)) {
+                continue;
+            }
+            $usage[$key] = ($usage[$key] ?? 0) + 1;
+        }
+
+        return $usage;
     }
 
     private function battleSeed(string $trialIdentity, int $trialSeed, int $battleIndex): int
