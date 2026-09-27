@@ -222,6 +222,7 @@ return [
             ['conditions' => [['type' => 'own_hp_lte', 'percent' => 95], ['type' => 'self_lacks_status', 'status' => 'aegis']], 'action' => 'skill:counter_stance'],
             ['conditions' => [['type' => 'own_barrier_gte', 'percent' => 1]], 'action' => 'skill:barrier_crash'],
             ['conditions' => [['type' => 'always']], 'action' => 'skill:unbroken_retort'],
+            ['conditions' => [['type' => 'always']], 'action' => 'skill:barrier_crash'],
             ['conditions' => [['type' => 'enemy_has_dispellable_buff']], 'action' => 'skill:dispelling_cut'],
             ['conditions' => [['type' => 'enemy_status_stacks_gte', 'status' => 'bleed', 'stacks' => 2]], 'action' => 'skill:wound_opening'],
             ['conditions' => [['type' => 'always']], 'action' => 'skill:executioner_cut'],

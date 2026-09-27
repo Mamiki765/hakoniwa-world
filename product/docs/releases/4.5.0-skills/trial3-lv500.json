@@ -145,18 +145,18 @@
         },
         "guardian_140_barrier": {
             "sp": 132,
-            "clears": 67,
-            "boss_reached": 67,
-            "rounds_mean": 226.75,
-            "healing_mean": 53849.17,
-            "prevented_mean": 621164.21,
+            "clears": 98,
+            "boss_reached": 98,
+            "rounds_mean": 187.72,
+            "healing_mean": 36023.05,
+            "prevented_mean": 515900.61,
             "actions": {
-                "counter_stance": 6974,
-                "barrier_crash": 6535,
-                "bulwark_strike": 5284,
-                "shield_bash": 336,
-                "renewing_guard": 1771,
-                "defend": 67
+                "counter_stance": 5888,
+                "barrier_crash": 6039,
+                "bulwark_strike": 4376,
+                "renewing_guard": 1185,
+                "defend": 98,
+                "shield_bash": 37
             }
         },
         "miracle_140_group": {

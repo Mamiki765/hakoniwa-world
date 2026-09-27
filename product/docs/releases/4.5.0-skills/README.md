@@ -15,7 +15,7 @@ Lv300～700 の production 秘書について、Owner 許可の read-only 集計
 | 戦技・淀み断ち `dispelling_cut` | 単体物理 150%、CT2。解除可能な強化を 1 個解除。固有 trait や解除不可状態は対象外 | 24 / 96 / `martial_armor_break` | 破甲撃から伸ばす対強化 route。一刀両断より低威力、出血 finish との同時取得不可 |
 | 戦技・傷開き `wound_opening` | 単体物理 150%、CT3。出血を最大 3 stack 消費し、1 stack につき威力係数 +74% | 24 / 96 / `martial_severing_bleed` | 短剣乱舞・裂傷斬りとの連係。蓄積と消費の手番が必要 |
 | 護身・護命陣 `emergency_cover` | 次の単体直接攻撃 1 回を肩代わりし、その攻撃を 85% 軽減。2 round 有効、CT6。solo は自分へ使用 | 24 / 96 / `guardianship_protective_oath` | 継続挑発と違う緊急保護。AoE は対象外 |
-| 護身・砕壁衝 `barrier_crash` | 単体物理 155%、CT3。自分の障壁を全消費し、消費量の 70% を加算。加算源は最大 HP の 15% で上限 | 24 / 96 / `guardianship_counter_stance` | 鏡陣・活身法の障壁を攻撃へ変える。防御資源を失う |
+| 護身・砕壁衝 `barrier_crash` | 単体物理 260%、CT3。自分の障壁を全消費し、消費量の 70% を加算。加算源は最大 HP の 15% で上限 | 24 / 96 / `guardianship_counter_stance` | 障壁なしでも攻撃できるが、鏡陣・活身法の障壁を攻撃へ変える時に最大効果。挑発やよろめきはなく、防御資源も失う |
 | 祝福・調和の祈り `harmony_heal` | 生存味方全員に精神 65% + 各人最大 HP の 1.75% を回復、MP2800、CT3 | 24 / 96 / `miracle_regeneration` | 単体ヒールより一人あたり弱く、複数人の被害に対応 |
 | 祝福・癒光 `healing_ray` | 単体魔法 180%。傷ついた味方 1 人に精神 50% + 最大 HP の 1% を回復、MP900、CT2 | 24 / 96 / `miracle_holy_lance` | 純攻撃のホーリーランス 280% と単体ヒールの両方より各成分が弱く、攻撃手番に小回復を載せる |
 
@@ -27,14 +27,14 @@ Lv300～700 の production 秘書について、Owner 許可の read-only 集計
 
 ### 戦技
 
-**対強化・継戦（120 SP、一般構成）**
+**対強化・継戦（120 SP）**
 
 - 取得：`martial_precision_cut`, `martial_dagger_flurry`, `martial_severing_bleed`, `martial_sweeping_cut`, `martial_armor_break`, `martial_iaido_cut`, `martial_draining_cut`, `martial_quick_stab`, `martial_dispelling_cut`
 - 5 枠：短剣乱舞、裂傷斬り、居合斬り、吸収斬り、淀み断ち。
 - AI：解除可能な敵強化を見たら淀み断ち、自己 HP 70% 以下で吸収斬り。通常は出血・居合で攻撃。Trial 3 ボスでは淀み断ちを 32 seed で 32 回使用。
 - 選択：出血消費 finish と一刀両断を捨て、解除と継戦を取る。技巧の先行投資分として瞬突も取得するが、この 5 枠には入れない。
 
-**出血 finish・継戦（120 SP）**
+**出血 finish・継戦（120 SP、一般構成）**
 
 - 取得：`martial_precision_cut`, `martial_dagger_flurry`, `martial_severing_bleed`, `martial_sweeping_cut`, `martial_armor_break`, `martial_iaido_cut`, `martial_draining_cut`, `martial_quick_stab`, `martial_wound_opening`
 - 5 枠：短剣乱舞、裂傷斬り、傷開き、居合斬り、吸収斬り。
@@ -43,30 +43,30 @@ Lv300～700 の production 秘書について、Owner 許可の read-only 集計
 
 ### 護身
 
-**緊急保護（132 SP、一般構成）**
+**緊急保護（132 SP）**
 
 - 取得：`guardianship_shield_bash`, `guardianship_rallying_cry`, `guardianship_counter_stance`, `guardianship_protective_oath`, `guardianship_fortress`, `guardianship_bulwark_strike`, `guardianship_retort`, `guardianship_renewing_guard`, `guardianship_emergency_cover`
 - 5 枠：護命陣、不動結界、活身法、盾撃、闘志破砕。
 - AI：大予告で護命陣、味方 HP 75% 以下で不動結界、自分 HP 55% 以下で活身法、それ以外は挑発付き攻撃。solo ボス 32 seed で護命陣 91 回、不動結界 200 回、活身法 105 回。
 - 選択：鏡陣と不屈反攻は取得しても枠から外し、反撃火力より保護を優先。砕壁衝との同時取得はできない。
 
-**障壁反撃（132 SP）**
+**障壁反撃（132 SP、一般構成）**
 
 - 取得：`guardianship_shield_bash`, `guardianship_rallying_cry`, `guardianship_counter_stance`, `guardianship_protective_oath`, `guardianship_fortress`, `guardianship_bulwark_strike`, `guardianship_retort`, `guardianship_renewing_guard`, `guardianship_barrier_crash`
 - 5 枠：砕壁衝、鏡陣、活身法、盾撃、闘志破砕。
-- AI：障壁が最大 HP の 1% 以上なら砕壁衝、強打予告・負傷時は鏡陣、自己回復後は攻撃。solo ボス 32 seed で砕壁衝 304 回、鏡陣 305 回。
+- AI：障壁が最大 HP の 1% 以上なら優先して砕壁衝、強打予告・負傷時は鏡陣、障壁なしでも CT が戻れば砕壁衝を使う。solo ボス 32 seed で砕壁衝 262 回、鏡陣 250 回、反撃 481 回。
 - 選択：護命陣と不動結界を枠から外す。障壁を消費する分、次の被弾に備える資源は減る。
 
 ### 祝福
 
-**全体回復（138 SP、一般構成）**
+**全体回復（138 SP）**
 
 - 取得：`miracle_mending_prayer`, `miracle_regeneration`, `miracle_resurrection`, `miracle_heart_of_mercy`, `miracle_holy_bolt`, `miracle_holy_nova`, `miracle_holy_lance`, `miracle_harmony_heal`, `miracle_lucid_dream`, `miracle_crystal_cycle`
 - 5 枠：ヒール、調和の祈り、夢想、ホーリーノヴァ、ホーリーランス。
 - AI：重傷者へ単体ヒール、味方 HP 75% 以下で全体回復、MP 低下時は夢想、残りは攻撃。solo ボス 32 seed で調和の祈り 99 回、ヒール 105 回。
 - 選択：癒光とリジェネ、蘇生、マナリカバーを枠から外す。全体被害向けで、solo では回復効率が下がる。
 
-**攻撃回復（138 SP）**
+**攻撃回復（138 SP、一般構成）**
 
 - 取得：`miracle_mending_prayer`, `miracle_regeneration`, `miracle_resurrection`, `miracle_heart_of_mercy`, `miracle_holy_bolt`, `miracle_holy_nova`, `miracle_holy_lance`, `miracle_healing_ray`, `miracle_lucid_dream`, `miracle_crystal_cycle`
 - 5 枠：ヒール、リジェネ、夢想、ホーリーランス、癒光。
@@ -75,20 +75,20 @@ Lv300～700 の production 秘書について、Owner 許可の read-only 集計
 
 ## 木人と実戦
 
-一般構成はいずれも攻撃だけで 5 枠を埋めていない。100 SP 戦技は短剣乱舞・裂傷斬り・居合斬り・吸収斬り・精密斬り（84 SP）、護身は盾撃・鏡陣・活身法・闘志破砕・不動結界（84 SP）、祝福はヒール・リジェネ・夢想・ホーリーノヴァ・ホーリーランス（72 SP）。140 SP は上記の対強化・継戦、緊急保護、全体回復を代表とした。
+一般構成はいずれも攻撃だけで 5 枠を埋めていない。100 SP 戦技は短剣乱舞・裂傷斬り・居合斬り・吸収斬り・精密斬り（84 SP）、護身は盾撃・鏡陣・活身法・闘志破砕・不動結界（84 SP）、祝福はヒール・リジェネ・夢想・ホーリーノヴァ・ホーリーランス（72 SP）。140 SP は出血 finish・継戦、障壁反撃、攻撃回復を代表とした。前者は吸収斬りを含む攻撃構成、護身は防御と自己回復を 2 枠、祝福は回復と MP 管理を 3 枠に装備する。
 
 | Budget / role | 木人 damage/round | 戦技=100 の比 | 最終ボス damage/round | 勝利 | 実戦の役割行動 |
 |---|---:|---:|---:|---:|---|
 | 100 戦技・継戦 | 2431.6 | 100 | 1538.7 | 32/32 | 吸収斬り 554 回 |
 | 100 護身 | 1950.5 | 80.2 | 1247.4 | 32/32 | 鏡陣 292 回、反撃 835 回 |
 | 100 祝福 | 1760.7 | 72.4 | 1299.5 | 32/32 | リジェネ 112 回、夢想 124 回 |
-| 140 戦技・対強化継戦 | 2302.1 | 100 | 1532.9 | 32/32 | 吸収斬り 457 回、淀み断ち 32 回 |
-| 140 護身・緊急保護 | 1950.5 | 84.7 | 1058.0 | 32/32 | 護命陣 91 回、不動結界 200 回、活身法 105 回 |
-| 140 祝福・全体回復 | 1760.7 | 76.5 | 1163.7 | 32/32 | 調和の祈り 99 回、ヒール 105 回 |
+| 140 戦技・出血 finish 継戦 | 2612.4 | 100 | 1500.6 | 32/32 | 吸収斬り 574 回、傷開き 25 回 |
+| 140 護身・障壁反撃 | 2141.4 | 82.0 | 1450.6 | 32/32 | 鏡陣 250 回、反撃 481 回、砕壁衝 262 回 |
+| 140 祝福・攻撃回復 | 2140.7 | 81.9 | 1545.3 | 32/32 | リジェネ 29 回、夢想 83 回、癒光 340 回 |
 
-目標帯 100 / 護身 75～85 / 祝福 73～83 と比べ、140 SP 一般構成は 100 / 84.7 / 76.5。100 SP 祝福は下限より 0.6 point 低い。100 SP の新技追加で帳尻を合わせることはせず、この差を残す。新技の威力を過剰に上げる必要はない。木人では回復・保護が発動しないが、5 枠の機会費用は反映している。
+目標帯 100 / 護身 75～85 / 祝福 73～83 と比べ、140 SP 一般構成は **100 / 82.0 / 81.9**。護身が祝福をわずかに上回るが、この差自体を固定 acceptance とはしない。100 SP 祝福は下限より 0.6 point 低い。100 SP の新技追加で帳尻を合わせることはせず、この差を残す。木人では回復・防御が発動しないが、5 枠の機会費用は反映している。
 
-特化構成の木人 damage/round は出血 finish 戦技 2612.4、障壁反撃 護身 1950.5、攻撃回復 祝福 2140.7。出血 finish は一般戦技の +13.5% だが解除を失う。攻撃回復は一般戦技の 93.0% に達するが、全体回復・範囲攻撃を失い、最終ボスでの有効回復は平均 18,544（全体回復型 22,970）、軽減は 59,836（同 81,896）。この特化構成同士を一般 role 比とは混ぜない。
+状況対応側も同じ出血戦技を 100 とすると、対強化・継戦の戦技 2302.1（88.1）、緊急保護の護身 1950.5（74.7）、全体回復の祝福 1760.7（67.4）。この低い数値を隠して一般比へ混ぜない。最終ボスでは淀み断ちが 32 seed で 32 回、護命陣が 91 回、調和の祈りが 99 回使用されており、各々が攻撃以外の用途を持つ。攻撃回復型は全体回復型より木人火力が高い一方、全体回復・範囲攻撃を失い、最終ボスでの有効回復は平均 18,544（全体回復型 22,970）、軽減は 59,836（同 81,896）。砕壁衝は CT3 かつ挑発・よろめきがないため、既存の闘志破砕や盾撃の完全上位互換ではない。
 
 ## Trial 3・10 連戦再測定
 
@@ -102,7 +102,7 @@ Lv300～700 の production 秘書について、Owner 許可の read-only 集計
 | 戦技 140・対強化継戦 | 120 | 20 | 96 |
 | 戦技 140・出血 finish | 120 | 24 | 98 |
 | 護身 140・緊急保護 | 132 | 100 | 100 |
-| 護身 140・障壁反撃 | 132 | 67 | 98 |
+| 護身 140・障壁反撃 | 132 | 98 | 100 |
 | 祝福 140・全体回復 | 138 | 75 | 99 |
 | 祝福 140・攻撃回復 | 138 | 99 | 100 |
 

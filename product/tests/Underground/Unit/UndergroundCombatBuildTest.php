@@ -2217,8 +2217,8 @@ final class UndergroundCombatBuildTest extends TestCase
 
     public function test_barrier_crash_spends_existing_barrier_for_damage(): void
     {
-        $catalog = $this->awakeningCatalog(enemyDefends: true);
-        $snapshot = $this->awakeningPlayerSnapshot('guardianship_blue', gauge: 0, unlocked: false,
+        $catalog = $this->awakeningCatalog(enemyWeaponPower: 0);
+        $snapshot = $this->awakeningPlayerSnapshot('guardianship_blue', gauge: 0, currentHp: null, unlocked: false,
             skills: ['counter_stance', 'barrier_crash'], aiRules: [
                 ['conditions' => [['type' => 'self_lacks_status', 'status' => 'aegis']], 'action' => 'skill:counter_stance'],
                 ['conditions' => [['type' => 'own_barrier_gte', 'percent' => 1]], 'action' => 'skill:barrier_crash'],

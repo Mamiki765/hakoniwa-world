@@ -1494,16 +1494,16 @@ final readonly class AlphaV1CombatModel
     private function coveredTarget(BuildCombatState $target, array $partyTargets, int $round,
         ?string $actionId, array &$actionLog): BuildCombatState
     {
-        $cover = $target->flags['emergency_cover'] ?? null;
-        if (! is_array($cover)) {
+        $cover = $target->emergencyCover;
+        if ($cover === null) {
             return $target;
         }
-        unset($target->flags['emergency_cover']);
-        if (($cover['expires_round'] ?? 0) < $round) {
+        $target->emergencyCover = null;
+        if ($cover['expires_round'] < $round) {
             return $target;
         }
         foreach ($partyTargets !== [] ? $partyTargets : [$target] as $candidate) {
-            if ($candidate->combatantId !== ($cover['protector_id'] ?? null) || ! $candidate->alive()) {
+            if ($candidate->combatantId !== $cover['protector_id'] || ! $candidate->alive()) {
                 continue;
             }
             $candidate->flags['cover_reduction_bps'] = $cover['reduction_bps'];
@@ -2013,10 +2013,10 @@ final readonly class AlphaV1CombatModel
     private function applyCover(BuildCombatState $source, BuildCombatState $target, array $effect,
         int $round, string $actionKey, array &$actionLog, array $targetIds, ?string $actionId): void
     {
-        $target->flags['emergency_cover'] = [
+        $target->emergencyCover = [
             'protector_id' => $source->combatantId,
-            'reduction_bps' => $effect['damage_reduction_bps'],
-            'expires_round' => $round + $effect['duration_rounds'] - 1,
+            'reduction_bps' => (int) $effect['damage_reduction_bps'],
+            'expires_round' => $round + (int) $effect['duration_rounds'] - 1,
         ];
         $actionLog[] = $this->logRow($round, $source, $actionKey, 0, false, false,
             effectType: 'cover_applied', targetSide: $target->side, actionId: $actionId,

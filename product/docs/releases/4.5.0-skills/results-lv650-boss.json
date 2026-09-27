@@ -1191,41 +1191,42 @@
                 "shield_bash",
                 "bulwark_strike"
             ],
-            "dummy_dpr": 1950.475,
+            "dummy_dpr": 2141.3646875,
             "dummy_actions": {
                 "normal_attack": 0,
                 "defend": 0,
                 "ai_fallback": 0,
                 "action_skipped": 0,
                 "counter": 0,
-                "barrier_crash": 0,
+                "barrier_crash": 1088,
                 "counter_stance": 0,
                 "renewing_guard": 0,
-                "shield_bash": 1600,
-                "bulwark_strike": 1600
+                "shield_bash": 1056,
+                "bulwark_strike": 1056
             },
             "dummy_damage_by_action": {
-                "bulwark_strike": 3412833,
-                "shield_bash": 2636235,
-                "weapon_followup:bahamul_shockwave": 192452
+                "barrier_crash": 2671133,
+                "bulwark_strike": 2262550,
+                "shield_bash": 1732880,
+                "weapon_followup:bahamul_shockwave": 185804
             },
-            "practical_dpr": 1199.3899127061106,
+            "practical_dpr": 1450.577883472057,
             "practical_wins": 32,
-            "practical_rounds_mean": 32.21875,
-            "practical_damage_received_mean": 15370.96875,
-            "practical_healing_mean": 7241.25,
-            "practical_prevented_mean": 86453.4375,
+            "practical_rounds_mean": 26.28125,
+            "practical_damage_received_mean": 8890.28125,
+            "practical_healing_mean": 724.125,
+            "practical_prevented_mean": 73029.96875,
             "practical_actions": {
                 "normal_attack": 0,
-                "defend": 80,
+                "defend": 96,
                 "ai_fallback": 0,
                 "action_skipped": 0,
-                "counter": 444,
-                "barrier_crash": 304,
-                "counter_stance": 305,
-                "renewing_guard": 60,
+                "counter": 481,
+                "barrier_crash": 262,
+                "counter_stance": 250,
+                "renewing_guard": 6,
                 "shield_bash": 0,
-                "bulwark_strike": 282
+                "bulwark_strike": 226
             }
         },
         "miracle_140_group": {
