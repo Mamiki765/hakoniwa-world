@@ -1317,7 +1317,7 @@ final readonly class UndergroundAlphaV1PlayerCatalog
     private function playerAiRules(array $activeSkills): array
     {
         $configured = $this->explorationConfig()['player_skill_ai_rules'];
-        $emergencyActions = ['skill:mending_prayer', 'skill:renewing_guard'];
+        $emergencyActions = ['skill:mending_prayer', 'skill:renewing_guard', 'skill:draining_cut'];
         $emergency = [];
         $remaining = [];
         foreach ($configured as $rule) {

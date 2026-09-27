@@ -81,7 +81,7 @@ $shiningNobleEncounter = [
 return [
     'schema_version' => 1,
     'growth_identity' => 'secretary-underground-growth-alpha-v1',
-    'skill_tree_identity' => 'secretary-underground-skill-tree-alpha-v2',
+    'skill_tree_identity' => 'secretary-underground-skill-tree-alpha-v3',
     'initial_skill_points' => 20,
     // Player-facing build guidance only. Combat, healing, AI, requirements, and simulation must not read it.
     'player_skill_guidance' => [
@@ -95,6 +95,7 @@ return [
         'whirlwind' => ['recommended_stats' => ['might', 'finesse']],
         'executioner_cut' => ['recommended_stats' => ['might', 'finesse']],
         'quick_stab' => ['recommended_stats' => ['might', 'finesse']],
+        'draining_cut' => ['recommended_stats' => ['might', 'finesse']],
         'shield_bash' => ['recommended_stats' => ['vitality', 'might']],
         'rallying_cry' => ['recommended_stats' => ['vitality', 'might']],
         'counter_stance' => ['recommended_stats' => ['vitality', 'might']],
@@ -199,6 +200,7 @@ return [
             ['conditions' => [['type' => 'always']], 'action' => 'skill:resurrection', 'target' => 'fallen_ally'],
             ['conditions' => [['type' => 'ally_hp_lte', 'percent' => 55]], 'action' => 'skill:mending_prayer'],
             ['conditions' => [['type' => 'own_hp_lte', 'percent' => 55]], 'action' => 'skill:renewing_guard'],
+            ['conditions' => [['type' => 'own_hp_lte', 'percent' => 70]], 'action' => 'skill:draining_cut'],
             ['conditions' => [['type' => 'own_mp_lte', 'percent' => 75], ['type' => 'self_lacks_status', 'status' => 'lucid_recovery']], 'action' => 'skill:lucid_dream'],
             ['conditions' => [['type' => 'own_mp_lte', 'percent' => 35]], 'action' => 'skill:crystal_cycle'],
             ['conditions' => [['type' => 'role_stacks_gte', 'status' => 'grace', 'stacks' => 3]], 'action' => 'skill:heart_of_mercy'],

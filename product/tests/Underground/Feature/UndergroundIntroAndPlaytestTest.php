@@ -203,7 +203,7 @@ final class UndergroundIntroAndPlaytestTest extends UndergroundPlayerAccessTestC
             ->assertJsonPath('data.growth_path.natural_recovery', 300)
             ->assertJsonPath('data.skill_points_total', 20)
             ->assertJsonPath('data.skill_points_unspent', 20)
-            ->assertJsonPath('data.skill_tree_identity', 'secretary-underground-skill-tree-alpha-v2')
+            ->assertJsonPath('data.skill_tree_identity', 'secretary-underground-skill-tree-alpha-v3')
             ->assertJsonPath('data.skill_trees.0.label', '戦技')
             ->assertJsonPath('data.skill_trees.0.nodes.0.recommended_stats', ['might', 'finesse'])
             ->assertJsonPath('data.skill_trees.1.label', '護身')
@@ -403,7 +403,7 @@ final class UndergroundIntroAndPlaytestTest extends UndergroundPlayerAccessTestC
             'growth_path_selected_at' => Carbon::now(),
             'skill_points_total' => 20,
             'skill_points_unspent' => 20,
-            'skill_tree_identity' => 'secretary-underground-skill-tree-alpha-v2',
+            'skill_tree_identity' => 'secretary-underground-skill-tree-alpha-v3',
         ]);
         UndergroundIntroProgress::query()->create([
             'underground_profile_id' => $profile->id,
@@ -526,6 +526,58 @@ final class UndergroundIntroAndPlaytestTest extends UndergroundPlayerAccessTestC
             $otherProfile->banked_shard_balance,
         ]);
         $this->assertSame($other->id, $otherSecretary->user_id);
+    }
+
+    public function test_martial_sustain_route_fits_pre_clear_sp_and_custom_ai_loadout(): void
+    {
+        [$user, $secretary] = $this->secretaryUser('Martial sustain secretary');
+        $profile = $this->openEquipmentProfile($secretary);
+        $acquire = fn (string $node) => $this->actingAs($user)->postJson('/api/v1/me/underground/skills/acquire', [
+            'request_id' => (string) Str::uuid(),
+            'node_key' => $node,
+        ]);
+
+        $acquire('martial_draining_cut')->assertConflict()->assertJsonPath('code', 'underground_skill_prerequisite');
+        $acquire('martial_precision_cut')->assertOk();
+        $acquire('martial_sweeping_cut')->assertOk();
+        $acquire('martial_draining_cut')->assertConflict()->assertJsonPath('code', 'underground_skill_points_insufficient');
+        $this->assertSame(8, $profile->refresh()->skill_points_unspent);
+
+        // Trial 1 and 2 grants, before the Trial 3 first-clear reward.
+        $profile->update(['skill_points_total' => 100, 'skill_points_unspent' => 88]);
+        foreach (['martial_armor_break', 'martial_iaido_cut', 'martial_whirlwind', 'martial_executioner', 'martial_draining_cut'] as $node) {
+            $acquire($node)->assertOk();
+        }
+        $this->assertSame(4, $profile->refresh()->skill_points_unspent);
+        $this->actingAs($user)->putJson('/api/v1/me/underground/skills/loadout', [
+            'request_id' => (string) Str::uuid(),
+            'slots' => ['whirlwind', 'armor_break_strike', 'iaido_cut', 'executioner_cut', 'draining_cut'],
+        ])->assertOk()
+            ->assertJsonPath('data.active_slots.4.key', 'draining_cut')
+            ->assertJsonCount(5, 'data.active_slots');
+        $this->actingAs($user)->putJson('/api/v1/me/underground/ai', [
+            'request_id' => (string) Str::uuid(),
+            'rules' => [[
+                'conditions' => [
+                    ['type' => 'own_hp_lte', 'percent' => 80],
+                    ['type' => 'skill_ready', 'skill' => 'draining_cut'],
+                ],
+                'action' => 'skill:draining_cut',
+            ], [
+                'conditions' => [['type' => 'always']],
+                'action' => 'skill:executioner_cut',
+            ]],
+        ])->assertOk()->assertJsonPath('data.ai.rules.0.action', 'skill:draining_cut');
+        $this->assertSame(0, UndergroundTrialProgress::query()
+            ->where('underground_profile_id', $profile->id)
+            ->where('trial_key', 'trial_03')->count());
+        $this->actingAs($user)->postJson('/api/v1/me/underground/respec', [
+            'request_id' => (string) Str::uuid(),
+            'growth_path_key' => 'free_black',
+        ])->assertOk()
+            ->assertJsonPath('data.skill_points_unspent', 100)
+            ->assertJsonPath('data.active_slots', [null, null, null, null, null]);
+        $this->assertSame(0, $profile->skillAllocations()->count());
     }
 
     public function test_respec_combines_growth_stp_and_skill_reset_without_healing_or_rewinding_progress(): void
@@ -875,7 +927,7 @@ final class UndergroundIntroAndPlaytestTest extends UndergroundPlayerAccessTestC
             'growth_path_selected_at' => Carbon::now(),
             'skill_points_total' => 20,
             'skill_points_unspent' => 20,
-            'skill_tree_identity' => 'secretary-underground-skill-tree-alpha-v2',
+            'skill_tree_identity' => 'secretary-underground-skill-tree-alpha-v3',
             'current_hp' => 321,
         ]);
         UndergroundIntroProgress::query()->create([

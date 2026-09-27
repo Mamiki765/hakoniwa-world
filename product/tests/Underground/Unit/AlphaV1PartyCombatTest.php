@@ -815,6 +815,30 @@ final class AlphaV1PartyCombatTest extends TestCase
         self::assertIsString($lifesteal['action_id'] ?? null);
     }
 
+    public function test_party_draining_cut_heals_only_its_own_actor(): void
+    {
+        $catalog = $this->catalog(enemyHp: 10_000_000, enemyPower: 1, enemyAgility: 1);
+        $attacker = $this->player('secretary:1', currentHp: 1);
+        $attacker['active_skills'] = ['draining_cut'];
+        $attacker['ai_rules'] = [[
+            'conditions' => [['type' => 'always']], 'action' => 'skill:draining_cut',
+        ]];
+        $companion = $this->player('borrowed:2', currentHp: 1, defend: true);
+        $result = $this->model()->fightPartySnapshots(
+            $catalog, [$attacker, $companion], ['party_target'], 619, 1, 0,
+        );
+        $damage = collect($result->actionLog)->firstWhere('action', 'draining_cut');
+        $drain = collect($result->actionLog)->firstWhere('action', 'lifesteal');
+        self::assertIsArray($damage);
+        self::assertIsArray($drain);
+        self::assertSame('secretary:1', $drain['actor_id']);
+        self::assertSame('secretary:1', $drain['target_id']);
+        self::assertSame(['secretary:1'], $drain['target_ids']);
+        self::assertSame($damage['action_id'], $drain['action_id']);
+        self::assertSame(-intdiv($damage['hp_damage'] * 7000, 10_000), $drain['amount']);
+        self::assertSame(1, $result->finalStates['borrowed:2']['hp']);
+    }
+
     public function test_counter_stance_counters_each_attacker_once_per_round_even_against_multiple_hits(): void
     {
         $manifest = $this->catalog(10_000_000, 1, 1)->manifest();

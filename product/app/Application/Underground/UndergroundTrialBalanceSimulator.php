@@ -840,10 +840,25 @@ final readonly class UndergroundTrialBalanceSimulator
         $expectedBuilds = match ($trialGeneration) {
             1 => [...self::PRIMARY_BUILD_KEYS, ...self::STP_COMPARISON_BUILD_KEYS],
             2 => self::PRIMARY_BUILD_KEYS,
-            3 => array_slice(self::PRIMARY_BUILD_KEYS, 0, 3),
+            3 => [...array_slice(self::PRIMARY_BUILD_KEYS, 0, 3), 'martial_sustain'],
         };
         if (array_keys($builds) !== $expectedBuilds) {
             throw new InvalidArgumentException('Trial simulation representative builds are not in the required stable order.');
+        }
+        if ($trialGeneration === 3) {
+            $sustainBuild = $builds['martial_sustain'];
+            if (! is_array($sustainBuild)
+                || array_keys($sustainBuild) !== ['inherits', 'label', 'skill_allocations']
+                || $sustainBuild['inherits'] !== 'martial_red'
+                || ! is_string($sustainBuild['label'])
+                || ! is_array($sustainBuild['skill_allocations'])) {
+                throw new InvalidArgumentException('Trial 3 martial sustain comparison build is invalid.');
+            }
+            $builds['martial_sustain'] = [
+                ...$builds['martial_red'],
+                'label' => $sustainBuild['label'],
+                'skill_allocations' => $sustainBuild['skill_allocations'],
+            ];
         }
         foreach ($builds as $key => &$build) {
             $growthPath = $build['growth_path'] ?? null;

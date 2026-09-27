@@ -13,7 +13,7 @@
         "active_skill_limit": 5,
         "ai_rule_limit": 16,
         "build_point_budget": 120,
-        "all_tree_points": 402,
+        "all_tree_points": 414,
         "damage_reduction_cap_bps": 7500,
         "role_stack_cap": 5
     },
@@ -55,7 +55,8 @@
                 "martial_iaido_cut": {"label": "居合斬り", "summary": "単体へ大きな一撃を放つ。", "type": "active", "skill_key": "iaido_cut", "max_rank": 1, "point_cost_per_rank": 18, "invested_points_required": 0, "prerequisite": "martial_armor_break"},
                 "martial_whirlwind": {"label": "旋風斬り", "summary": "集団への強い範囲攻撃。再使用まで単体技でつなぐ。", "type": "active", "skill_key": "whirlwind", "max_rank": 1, "point_cost_per_rank": 18, "invested_points_required": 0, "prerequisite": "martial_sweeping_cut"},
                 "martial_executioner": {"label": "一刀両断", "summary": "再使用までが長い単体大技。居合斬りとの二枚構成も可能。", "type": "active", "skill_key": "executioner_cut", "max_rank": 1, "point_cost_per_rank": 24, "invested_points_required": 0, "prerequisite": "martial_iaido_cut"},
-                "martial_quick_stab": {"label": "瞬突", "summary": "通常の行動を消費せず単体を素早く突く。CT3。武器種は不問。技枠を1つ使う。", "type": "active", "skill_key": "quick_stab", "max_rank": 1, "point_cost_per_rank": 12, "invested_points_required": 0, "prerequisite": "martial_precision_cut"}
+                "martial_quick_stab": {"label": "瞬突", "summary": "通常の行動を消費せず単体を素早く突く。CT3。武器種は不問。技枠を1つ使う。", "type": "active", "skill_key": "quick_stab", "max_rank": 1, "point_cost_per_rank": 12, "invested_points_required": 0, "prerequisite": "martial_precision_cut"},
+                "martial_draining_cut": {"label": "吸収斬り", "summary": "敵1体へ攻撃。敵HPへ実際に与えたダメージの70%を自身のHPとして吸収する。", "type": "active", "skill_key": "draining_cut", "max_rank": 1, "point_cost_per_rank": 12, "invested_points_required": 0, "prerequisite": "martial_precision_cut"}
             }
         },
         "guardianship": {
@@ -91,6 +92,7 @@
     },
     "skills": {
         "precision_cut": {"label": "精密斬り", "node_key": "martial_precision_cut", "mp_cost": 0, "cooldown": 2, "required_weapon_styles": [], "effects": [{"type": "damage", "target": "enemy", "target_scope": "single_enemy", "category": "physical", "potency_bps": 10500, "stat_coefficients": {"might": 10000}, "weapon_coefficient_bps": 10000, "fixed": 0, "target_max_hp_bps": 0, "can_crit": true, "dodgeable": true, "hits": 1}]},
+        "draining_cut": {"label": "吸収斬り", "node_key": "martial_draining_cut", "mp_cost": 0, "cooldown": 1, "required_weapon_styles": [], "effects": [{"type": "damage", "target": "enemy", "target_scope": "single_enemy", "category": "physical", "potency_bps": 12000, "stat_coefficients": {"might": 10000}, "weapon_coefficient_bps": 10000, "fixed": 0, "target_max_hp_bps": 0, "can_crit": true, "dodgeable": true, "hits": 1, "lifesteal_bps": 7000}]},
         "dagger_flurry": {"label": "短剣乱舞", "node_key": "martial_dagger_flurry", "mp_cost": 0, "cooldown": 2, "required_weapon_styles": [], "effects": [{"type": "damage", "target": "enemy", "target_scope": "single_enemy", "category": "physical", "potency_bps": 4800, "stat_coefficients": {"might": 10000}, "weapon_coefficient_bps": 8000, "fixed": 0, "target_max_hp_bps": 0, "can_crit": true, "dodgeable": true, "hits": 3}, {"type": "apply_status", "target": "enemy", "target_scope": "single_enemy", "status": "bleed"}]},
         "armor_break_strike": {"label": "破甲撃", "node_key": "martial_armor_break", "mp_cost": 0, "cooldown": 3, "required_weapon_styles": [], "effects": [{"type": "damage", "target": "enemy", "target_scope": "single_enemy", "category": "physical", "potency_bps": 12500, "stat_coefficients": {"might": 10000}, "weapon_coefficient_bps": 10000, "fixed": 0, "target_max_hp_bps": 0, "can_crit": true, "dodgeable": true, "hits": 1}, {"type": "apply_status", "target": "enemy", "target_scope": "single_enemy", "status": "armor_break"}]},
         "severing_bleed": {"label": "裂傷斬り", "node_key": "martial_severing_bleed", "mp_cost": 0, "cooldown": 3, "required_weapon_styles": [], "effects": [{"type": "damage", "target": "enemy", "target_scope": "single_enemy", "category": "physical", "potency_bps": 17000, "stat_coefficients": {"might": 10000}, "weapon_coefficient_bps": 10000, "fixed": 0, "target_max_hp_bps": 0, "can_crit": true, "dodgeable": true, "hits": 1}, {"type": "apply_status", "target": "enemy", "target_scope": "single_enemy", "status": "bleed"}]},

@@ -561,6 +561,19 @@
                     }
                 ]
             }
+        },
+        "martial_sustain": {
+            "inherits": "martial_red",
+            "label": "武力技巧型・吸収斬り",
+            "skill_allocations": {
+                "martial_precision_cut": {"rank": 1, "active_slot": null},
+                "martial_sweeping_cut": {"rank": 1, "active_slot": null},
+                "martial_armor_break": {"rank": 1, "active_slot": 2},
+                "martial_iaido_cut": {"rank": 1, "active_slot": 3},
+                "martial_whirlwind": {"rank": 1, "active_slot": 1},
+                "martial_executioner": {"rank": 1, "active_slot": 4},
+                "martial_draining_cut": {"rank": 1, "active_slot": 5}
+            }
         }
     },
     "battle_sequence": [

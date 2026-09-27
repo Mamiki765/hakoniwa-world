@@ -29,6 +29,41 @@ final class UndergroundSkillRefundUpgradeTest extends TestCase
     use RefreshDatabase;
     use UsesIndividualTestWorld;
 
+    public function test_additive_skill_tree_upgrade_preserves_allocation_slots_ai_and_earned_sp(): void
+    {
+        [, $secretary] = $this->secretaryUser();
+        $profile = $this->unlockExploration($secretary);
+        $rules = [[
+            'conditions' => [['type' => 'always']],
+            'action' => 'skill:precision_cut',
+        ]];
+        $profile->update([
+            'skill_tree_identity' => 'secretary-underground-skill-tree-alpha-v2',
+            'skill_points_total' => 100,
+            'skill_points_unspent' => 94,
+            'custom_ai_rules' => $rules,
+        ]);
+        $allocation = UndergroundSkillAllocation::query()->create([
+            'underground_profile_id' => $profile->id,
+            'tree_key' => 'martial',
+            'node_key' => 'martial_precision_cut',
+            'rank' => 1,
+            'active_slot' => 1,
+        ]);
+
+        $migration = require database_path('migrations/2026_09_27_000200_extend_underground_skill_tree.php');
+        $migration->up();
+        $migration->up();
+
+        $profile->refresh();
+        $this->assertSame(config('underground-alpha-v1.skill_tree_identity'), $profile->skill_tree_identity);
+        $this->assertSame([100, 94], [$profile->skill_points_total, $profile->skill_points_unspent]);
+        $this->assertEquals($rules, $profile->custom_ai_rules);
+        $this->assertFalse($profile->skill_rebuild_required);
+        $this->assertSame([1, 1], [$allocation->fresh()->rank, $allocation->fresh()->active_slot]);
+        $this->assertSame(1, $profile->skillAllocations()->count());
+    }
+
     public function test_skill_refund_preserves_earned_progress_and_historical_retry_until_loadout_is_saved(): void
     {
         [$user, $secretary] = $this->secretaryUser();
