@@ -53,7 +53,8 @@ final readonly class TradingPostRules
         $minimumIncrement = self::positiveInt($player, 'minimum_increment_money');
         $sellerNumerator = self::positiveInt($player, 'seller_proceeds_numerator');
         $sellerDenominator = self::positiveInt($player, 'seller_proceeds_denominator');
-        if ($maximumDuration < $minimumDuration || $sellerNumerator > $sellerDenominator
+        if ($maximumDuration < $minimumDuration || $maximumDuration > 32_767
+            || $sellerNumerator > $sellerDenominator
             || ($player['seller_proceeds_rounding'] ?? null) !== 'floor'
             || ($player['fee_behavior'] ?? null) !== 'discard_remainder_on_sale') {
             throw new DomainException('ruleset.trading_post.player has invalid ranges or behavior.');

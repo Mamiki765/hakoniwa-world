@@ -40,7 +40,7 @@ SQL);
 ALTER TABLE monster_definitions
   DROP CONSTRAINT monster_definitions_hp_check,
   ADD CONSTRAINT monster_definitions_hp_check CHECK (
-    base_hp >= 1 AND hp_variation >= 0 AND base_hp + hp_variation <= 65535
+    base_hp >= 1 AND hp_variation >= 0 AND base_hp + hp_variation <= 32767
   )
 SQL);
         DB::statement(<<<'SQL'
