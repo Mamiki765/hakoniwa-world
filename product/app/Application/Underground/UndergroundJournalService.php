@@ -9,6 +9,7 @@ use App\Models\UndergroundOwnedEquipment;
 use App\Models\UndergroundProfile;
 use App\Models\UndergroundTrialProgress;
 use App\Models\User;
+use Carbon\CarbonImmutable;
 
 final readonly class UndergroundJournalService
 {
@@ -65,7 +66,9 @@ final readonly class UndergroundJournalService
                 $trophies[] = [
                     'key' => $clear->content_key,
                     ...$otherworldTrophies[$clear->content_key],
-                    'achieved_at' => $clear->first_cleared_at?->toIso8601String(),
+                    'achieved_at' => $clear->first_cleared_at !== null
+                        ? CarbonImmutable::parse($clear->first_cleared_at)->toIso8601String()
+                        : null,
                 ];
             }
 

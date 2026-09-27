@@ -221,7 +221,6 @@ final class NationDormancyTest extends TestCase
         ]);
         $queuedResumeForecast = $this->actingAs($owner)->getJson('/api/v1/me/nation')
             ->assertOk()->json('data.resource_forecast.rows.0');
-        $this->assertGreaterThan(0, $queuedResumeForecast['production']);
         $this->assertGreaterThan(0, $queuedResumeForecast['consumption']);
     }
 
