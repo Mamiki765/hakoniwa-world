@@ -29,28 +29,21 @@
 - rootの設定・文書・CIは、依頼された作業に直接必要な場合だけ変更する。
 - 一つのPRへ無関係な機能、広範なrefactor、別systemの仕様変更を混ぜない。
 - 必要な変更が当初の小さな境界を超える場合、実装を続ける前にOwnerへ報告する。
-- Ownerが使用を認めたrepositoryでは、作業branchの作成・commit・push、初回PR作成、PR title/body更新、review comment投稿、review修正のcommit・再pushを通常の開発作業として進める。review可能な状態までの反復更新に個別のOwner確認は不要であり、使用可能なForgejo・GitHubで権限を分けない。migration fileを作業branchで作成・commit・pushすることも同様に扱う。
+- Ownerが使用を認めたrepositoryでは、通常の作業branchの作成・commit・push、初回PR作成、PR title/body更新、review comment投稿、review修正のcommit・再pushを通常の開発作業として進める。review可能な状態までの反復更新に個別のOwner確認は不要であり、使用可能なForgejo・GitHubで権限を分けない。migration fileを作業branchで作成・commit・pushすることも同様に扱う。
+- `release/*` branchは、Ownerが対象releaseの作成を明示したときだけ作る。通常の作業branch作成権限からrelease作成を推定しない。自動同期先でも別途作成せず、指定された開発正本と同期方向を守る。
 - mainへの直接commit/push、PR merge、production deploy、production DB操作・migration適用、OCI上のproduction変更、production user dataへの補填・変更はOwnerの明示許可なしに行わない。
 
 ---
 
 ## 3. 正本と文書
 
-作業開始時は、依頼内容に必要な範囲で次を確認する。
+作業開始時は`product/docs/handoffs/current-status.md`と`docs/README.md`を読み、依頼に関係する`docs/open-questions.md`のgate、現行contract、code・schema・migration・testsへ進む。未完作業は現在地から案内する予定表を使い、旧統合handoffや全docsを一括で読まない。
 
-- `product/docs/handoffs/current-status.md`（存在する場合は先に読み、記載された適用範囲では旧統合handoffより優先する）
-- `product/docs/handoffs/development-history-and-current-handoff.md`
-- `docs/README.md`
-- `docs/open-questions.md`
-- 対象機能のcurrent architecture、ADR、operations、Ruleset文書
-- 現在のcode、schema、migration、tests
-
-次の扱いを守る。
-
+- 現行仕様・設計・運用、Owner採用済みの未完作業、未決の構想、完了履歴を分ける。実装済みでも現役の仕様書・runbookはarchiveへ送らない。
+- `archive/`配下はOwnerの明示指示がある対象だけ閲覧・検索する。通常検索から除外し、古いリンクの追跡や一括読込で間接的に戻さない。Git履歴もこの制限の迂回に使わない。
+- 未処理の監査候補は予定側で保持する。historical文書、audit文書、roadmap、future proposalをcurrent authorityとして扱わない。
 - handoffはOwnerの明示指示なしに編集、再生成、整形、commitしない。
-- historical文書、audit文書、roadmap、future proposalをcurrent authorityとして扱わない。
-- ファイル名や更新日時だけで正本かどうかを判断しない。
-- 文書とcurrent code・schema・accepted ADRが矛盾する場合、黙って片方へ合わせず矛盾を報告する。
+- ファイル名や更新日時だけで正本かどうかを判断しない。文書とcurrent code・schema・accepted ADRの矛盾は報告し、黙って仕様を変更しない。
 - 詳細仕様をAGENTS.mdへ複製しない。
 
 ---
