@@ -148,7 +148,6 @@ describe('surface inquiries and nation lifecycle', () => {
         const profileButton = wrapper.findAll('.site-header nav button')
             .find((button) => button.text() === 'オプション')!;
         await profileButton.trigger('click');
-        const dormancyButton = wrapper.get<HTMLButtonElement>('.dormancy-block button');
         await wrapper.get('#dormancy-days').setValue('7');
         await wrapper.get('.dormancy-form').trigger('submit');
         await flushPromises();

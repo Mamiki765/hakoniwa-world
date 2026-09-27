@@ -457,7 +457,7 @@
 - Status: Decided
 - Implemented: game state rollbackとsame run / target turn / ruleset / seedによる手動retryに加え、4.4.0 C1で同一起動内の限定retryを実装する。World advisory lockを取得したPDOを保持し、各attemptのtransaction開始後、game stateの読書き前に同じsessionであることを検証する。
 - Decision: manual/cronとも、Turn transaction本体のPostgreSQL SQLSTATE `40P01` / `40001`だけ、完全なroot rollback後に初回込み最大3回まで同一起動内で再試行する。同じWorld lock・run・target turn・ruleset・seedを維持し、各attemptのPHP状態を作り直す。再接続でlock取得sessionが変わった場合は再取得して続けず停止する。上限到達・対象外例外・blockedは停止し、後続cronから既存failed/blockedを再開するC2は未実装。operatorはログとTurnRunを確認して既存manual retryを行う。releaseを跨ぐautomatic retry、commit成否不明の接続断、stale-runningの自動回収は行わない。backoff・外部通知は後続課題とする。
-- 現行contractは`product/docs/handoffs/current-contracts.md`、運用入口は`docs/operations/turn-cron.md`。初期公開時の経緯は`docs/decisions/ADR-0008-first-production-release.md`に保持する。
+- Decision record: 現行contractは`product/docs/handoffs/current-contracts.md`、運用入口は`docs/operations/turn-cron.md`。初期公開時の経緯は`docs/decisions/ADR-0008-first-production-release.md`に保持する。
 
 ### B-14 明示的放棄の安全策
 

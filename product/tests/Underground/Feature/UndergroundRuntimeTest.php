@@ -1850,11 +1850,12 @@ final class UndergroundRuntimeTest extends TestCase
         $this->assertSame([3, 980], [$source->refresh()->current_hp, $source->awakening_gauge]);
         SecretaryLendingSetting::query()->where('secretary_id', $borrowed->id)->update(['is_available' => false]);
         $this->assertSame($renewed, $intro->updateRentalParty($leader, $rentId, [$borrowed->id])['rental_party'][0]);
+        $imagePath = str_repeat('a', 64).'.png';
         $image = SecretaryImage::query()->create([
-            'secretary_id' => $borrowed->id, 'slot' => 'icon', 'path' => 'borrowed-icon.png',
+            'secretary_id' => $borrowed->id, 'slot' => 'icon', 'path' => $imagePath,
             'mime_type' => 'image/png', 'creation_method' => 'self_made',
         ]);
-        $this->assertSame('/hakoniwa-secretaries/borrowed-icon.png', $intro->state($leader)['rental_party'][0]['icon_url']);
+        $this->assertSame('/hakoniwa-secretaries/'.$imagePath, $intro->state($leader)['rental_party'][0]['icon_url']);
         $this->assertArrayNotHasKey('icon_url', $profile->fresh()->rental_party[0]);
         $image->delete();
         $this->assertNull($intro->state($leader)['rental_party'][0]['icon_url']);

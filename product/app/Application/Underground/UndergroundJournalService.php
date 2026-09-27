@@ -4,8 +4,8 @@ namespace App\Application\Underground;
 
 use App\Models\Secretary;
 use App\Models\SecretaryGuideConversationTotal;
-use App\Models\UndergroundOwnedEquipment;
 use App\Models\UndergroundContentClearProgress;
+use App\Models\UndergroundOwnedEquipment;
 use App\Models\UndergroundProfile;
 use App\Models\UndergroundTrialProgress;
 use App\Models\User;
@@ -24,7 +24,7 @@ final readonly class UndergroundJournalService
         $profile = $secretary instanceof Secretary
             ? UndergroundProfile::query()->where('secretary_id', $secretary->id)->first()
             : null;
-        if (! $profile instanceof UndergroundProfile || $profile->villa_purchased_at === null) {
+        if ($profile === null || $profile->villa_purchased_at === null) {
             throw new UndergroundRuntimeException('underground_villa_required', '別荘を購入すると冒険日誌を読めます。');
         }
 
