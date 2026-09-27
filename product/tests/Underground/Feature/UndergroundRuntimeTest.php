@@ -657,7 +657,7 @@ final class UndergroundRuntimeTest extends TestCase
         $resumed = app(UndergroundRuntimeService::class)->activeTrial($user);
 
         $this->assertSame($run->run_key, $resumed?->run_key);
-        $this->assertSame('secretary-underground-trial-01-v2', $resumed?->trial_content_identity);
+        $this->assertSame('secretary-underground-trial-01-v3', $resumed?->trial_content_identity);
         $this->assertSame(2, $resumed?->next_battle_index);
         $withdrawn = $runtime->withdrawTrial($user, $run->run_key);
         $this->assertSame(UndergroundTrialRun::STATUS_WITHDRAWN, $withdrawn->status);
@@ -696,7 +696,7 @@ final class UndergroundRuntimeTest extends TestCase
         $run->update(['next_battle_index' => 6]);
 
         $sameContent = $runtime->activeTrial($user);
-        $this->assertSame([$run->run_key, 'secretary-underground-trial-01-v2', 6], [
+        $this->assertSame([$run->run_key, 'secretary-underground-trial-01-v3', 6], [
             $sameContent?->run_key,
             $sameContent?->trial_content_identity,
             $sameContent?->next_battle_index,
@@ -704,7 +704,7 @@ final class UndergroundRuntimeTest extends TestCase
 
         config(['hakoniwa.application_version' => '3.0.0-alpha.2']);
         $applicationOnly = $runtime->activeTrial($user);
-        $this->assertSame([$run->run_key, 'secretary-underground-trial-01-v2', 6], [
+        $this->assertSame([$run->run_key, 'secretary-underground-trial-01-v3', 6], [
             $applicationOnly?->run_key,
             $applicationOnly?->trial_content_identity,
             $applicationOnly?->next_battle_index,
@@ -712,16 +712,16 @@ final class UndergroundRuntimeTest extends TestCase
 
         config(['underground-runtime.runtime_identity' => 'secretary-underground-runtime-alpha-v1']);
         $runtimeOnly = $runtime->activeTrial($user);
-        $this->assertSame([$run->run_key, 'secretary-underground-trial-01-v2', 6], [
+        $this->assertSame([$run->run_key, 'secretary-underground-trial-01-v3', 6], [
             $runtimeOnly?->run_key,
             $runtimeOnly?->trial_content_identity,
             $runtimeOnly?->next_battle_index,
         ]);
 
-        config(['underground-runtime.trials.trial_01.content_identity' => 'trial-01-v2']);
+        $run->update(['trial_content_identity' => 'secretary-underground-trial-01-v2']);
         $projected = $runtime->projectTrialState($profile->refresh());
         $reset = $run->refresh();
-        $this->assertSame([$run->run_key, 'trial-01-v2', 1, UndergroundTrialRun::STATUS_ACTIVE], [
+        $this->assertSame([$run->run_key, 'secretary-underground-trial-01-v3', 1, UndergroundTrialRun::STATUS_ACTIVE], [
             $projected['active_run']['run_key'],
             $reset->trial_content_identity,
             $projected['active_run']['next_battle_index'],
@@ -741,7 +741,7 @@ final class UndergroundRuntimeTest extends TestCase
         $this->assertFalse(collect($projected['trials'])->firstWhere('key', 'trial_02')['locked']);
 
         $continued = $runtime->startTrial($user, 'trial_01');
-        $this->assertSame([$run->run_key, 'trial-01-v2', 1], [
+        $this->assertSame([$run->run_key, 'secretary-underground-trial-01-v3', 1], [
             $continued->run_key,
             $continued->trial_content_identity,
             $continued->next_battle_index,
@@ -749,7 +749,7 @@ final class UndergroundRuntimeTest extends TestCase
         $battle = $runtime->fightTrial($user, $run->run_key, (string) Str::uuid())['battle'];
         $this->assertSame('trial_rat_vanguard', $battle->encounter_key);
         $this->assertSame(2, $run->refresh()->next_battle_index);
-        $this->assertSame('trial-01-v2', $run->trial_content_identity);
+        $this->assertSame('secretary-underground-trial-01-v3', $run->trial_content_identity);
     }
 
     public function test_defeat_halves_odd_shards_and_ends_trial_with_progress_reset(): void
@@ -1403,7 +1403,17 @@ final class UndergroundRuntimeTest extends TestCase
 
         $run = $runtime->startTrial($user, 'trial_02');
         $this->assertSame('trial_02', $run->trial_key);
-        $this->assertSame('secretary-underground-trial-02-v1', $run->trial_content_identity);
+        $this->assertSame('secretary-underground-trial-02-v2', $run->trial_content_identity);
+        $run->update([
+            'trial_content_identity' => 'secretary-underground-trial-02-v1',
+            'next_battle_index' => 6,
+        ]);
+        $resumed = $runtime->activeTrial($user);
+        $this->assertSame([$run->run_key, 'secretary-underground-trial-02-v2', 1], [
+            $resumed?->run_key,
+            $resumed?->trial_content_identity,
+            $resumed?->next_battle_index,
+        ]);
     }
 
     public function test_trial_two_victory_settles_xp_shards_and_generated_drop_before_player_retreat(): void
