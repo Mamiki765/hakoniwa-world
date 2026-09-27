@@ -40,7 +40,8 @@ final class SecretaryMonsterDropService
         $recipientDraw = $context->random->stream(TurnRandomStreamFactory::monsterItemDrop(
             (int) $monster->id, 'recipient', $version,
         ))->integer(1, 100);
-        $recipient = $host !== null && (int) $host->id !== (int) $killer->id && $recipientDraw > 75
+        $killerPercent = $settings['monster_system']['item_drop']['recipient']['killer_percent_when_foreign_host'];
+        $recipient = $host !== null && (int) $host->id !== (int) $killer->id && $recipientDraw > $killerPercent
             ? $host
             : $killer;
 

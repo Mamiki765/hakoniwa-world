@@ -480,7 +480,7 @@ interface UndergroundState {
     skill_points_spent: number;
     skill_tree_identity: string | null;
     skill_rebuild_required?: boolean;
-    rental_party?: Array<{ secretary_id: number; display_name: string; current_hp: number; max_hp: number; awakening_gauge: number }>;
+    rental_party?: Array<{ secretary_id: number; display_name: string; current_hp: number; max_hp: number; awakening_gauge: number; icon_url?: string | null }>;
     skill_trees: SkillTree[] | null;
     active_slots: Array<ActiveSkill | null>;
     passive_modifiers: Record<string, number | boolean | string>;
@@ -668,11 +668,13 @@ async function loungeMutation(path: string, payload: Record<string, string | num
 }
 function navigate(destination: UndergroundDestination): void {
     loungeReplay.value = null;
+    selectedRecollectionKey.value = null;
     equipmentView.value = tabs[destination][0]?.key ?? 'home';
     if (destination === 'exchange') exchangeGreeting.value = loungeStories.greetings[Math.floor(Math.random() * loungeStories.greetings.length)]!;
 }
 function selectTab(view: View): void {
     loungeReplay.value = null;
+    selectedRecollectionKey.value = null;
     if (view === 'guide') openGuide();
     else if (view === 'recollections') {
         guideMode.value = 'recollections';
@@ -2333,7 +2335,10 @@ onUnmounted(() => {
                                     <small v-if="group.action.agility_combo_hits" class="underground-agility-combo">{{ group.action.agility_combo_hits }}連続ヒット！</small>
                                     <span v-if="group.cost !== null" class="underground-action-cost">MP −{{ group.cost.toLocaleString() }}</span>
                                     <p v-for="(supplement, supplementIndex) in group.source.slice(2, -1)" :key="supplementIndex" class="underground-action-supplement">{{ actionNarrative(supplement, currentBattle) }}</p>
-                                    <strong v-if="group.action.countdown" class="ug-boss-countdown" :class="{ 'is-major': group.action.major_telegraph }">{{ group.action.countdown }}</strong>
+                                    <template v-if="group.action.countdown">
+                                        <strong class="ug-boss-countdown" :class="{ 'is-major': group.action.major_telegraph }">{{ group.action.countdown }}</strong>
+                                        <p v-if="group.action.major_telegraph">大予告が付与された。</p>
+                                    </template>
                                     <p v-else>{{ actionNarrative(group.action, currentBattle) }}</p>
                                     <details v-if="group.source.length > 1" class="underground-action-details">
                                         <summary>行動の全詳細</summary>
@@ -2533,7 +2538,7 @@ onUnmounted(() => {
                     <button type="button" @click="loungeMutation(pendingLoungeMutation.path, pendingLoungeMutation.payload)">前の操作の結果を確認する</button>
                 </div>
                 <header v-if="currentDestination !== 'home'" class="ug-page-heading"><h1>{{ pageTitle }}</h1><span>{{ state.shard_balance.toLocaleString('ja-JP') }} G</span></header>
-                <nav v-if="pageTabs.length && !activeLoungeEvent" class="ug-tabs" aria-label="画面内の切り替え">
+                <nav v-if="pageTabs.length && !activeLoungeEvent && !(selectedRecollection && (equipmentView === 'recollections' || guideMode === 'recollections' && equipmentView === 'guide'))" class="ug-tabs" aria-label="画面内の切り替え">
                     <button v-for="tab in pageTabs" :key="tab.key" type="button" :aria-current="equipmentView === tab.key ? 'page' : undefined" @click="selectTab(tab.key)">{{ tab.label }}</button>
                 </nav>
                 <template v-if="activeLoungeEvent">
@@ -2542,6 +2547,22 @@ onUnmounted(() => {
                         <h2>{{ activeLoungeEvent.title }}</h2>
                         <p v-for="(line, index) in activeLoungeEvent.body" :key="index">{{ line }}</p>
                         <button class="ug-primary" type="button" :disabled="busy" @click="advanceLounge">{{ loungeReplay ? '回想に戻る' : activeLoungeEvent.choice }}</button>
+                    </section>
+                </template>
+                <template v-else-if="selectedRecollection && (equipmentView === 'recollections' || guideMode === 'recollections' && equipmentView === 'guide')">
+                    <UndergroundScene :scene="state.visuals?.scenes.villa" :show-ai="state.visuals?.show_ai ?? false" />
+                    <section class="ug-page-content ug-event-story underground-recollection-detail" aria-live="polite" aria-label="回想">
+                        <h2>{{ selectedRecollection.title }}</h2>
+                        <p v-for="(line, index) in selectedRecollection.body ?? []" :key="`${selectedRecollection.key}-${index}`">{{ line }}</p>
+                        <button
+                            v-if="selectedRecollection.kind === 'past' && !selectedRecollection.completed"
+                            class="ug-primary button primary" type="button"
+                            :disabled="busy || selectedRecollection.locked"
+                            @click="completeRecollection(selectedRecollection)"
+                        >
+                            読み終えた
+                        </button>
+                        <button type="button" :disabled="busy" @click="selectedRecollectionKey = null">回想に戻る</button>
                     </section>
                 </template>
                 <template v-else>
@@ -2673,6 +2694,12 @@ onUnmounted(() => {
                         試練2を初回クリアすると、案内人の過去について問えるようになります。
                     </p>
                     <ul class="underground-recollection-list">
+                        <template v-if="equipmentView === 'recollections'">
+                            <li v-if="(state.residence?.exchange_intro_page ?? 0) >= 1"><button type="button" @click="loungeReplay = 'exchange-1'">{{ loungeStories.exchange[0]!.title }}</button></li>
+                            <li v-if="(state.residence?.exchange_intro_page ?? 0) >= 2"><button type="button" @click="loungeReplay = 'exchange-2'">{{ loungeStories.exchange[1]!.title }}</button></li>
+                            <li v-if="state.residence?.mirror_event_completed"><button type="button" @click="loungeReplay = 'mirror'">{{ loungeStories.mirror.title }}</button></li>
+                            <li v-if="state.otherworld_unlocked"><button type="button" @click="loungeReplay = 'otherworld'">{{ otherworldStory.title }}</button></li>
+                        </template>
                         <li
                             v-for="entry in recollectionEntries"
                             :key="entry.key"
@@ -2688,22 +2715,7 @@ onUnmounted(() => {
                             </button>
                         </li>
                     </ul>
-                    <article v-if="selectedRecollection" class="underground-recollection-detail" aria-live="polite">
-                        <h3>{{ selectedRecollection.title }}</h3>
-                        <div v-if="selectedRecollection.body" class="underground-story">
-                            <p v-for="(line, index) in selectedRecollection.body" :key="`${selectedRecollection.key}-${index}`">{{ line }}</p>
-                        </div>
-                        <button
-                            v-if="selectedRecollection.kind === 'past' && !selectedRecollection.completed"
-                            class="button primary"
-                            type="button"
-                            :disabled="busy || selectedRecollection.locked"
-                            @click="completeRecollection(selectedRecollection)"
-                        >
-                            読み終えた
-                        </button>
-                    </article>
-                    <p v-else class="underground-guide-conversation">読める記録を選んでください。</p>
+                    <p class="underground-guide-conversation">読める記録を選んでください。</p>
                 </section>
                 <section v-else-if="guideMode === 'serious_talk' && (seriousTalkScene || state.guide_duel?.unlocked)" class="underground-guide-serious-talk" aria-labelledby="underground-serious-talk-title">
                     <header>
@@ -2856,7 +2868,7 @@ onUnmounted(() => {
                     </section>
                     <section v-if="state.growth_path" class="underground-growth-summary">
                         <h2>能力</h2>
-                        <dl><div v-for="(label, key) in statLabels" :key="key"><dt>{{ label }}</dt><dd>{{ state.current_stats?.[key] ?? state.growth_path.stats[key] }}</dd></div></dl>
+                        <dl><div v-for="(label, key) in statLabels" :key="key"><dt>{{ label }}</dt><dd>{{ state.combat_stats?.[key] ?? state.growth_path.stats[key] }}</dd></div></dl>
                         <p>自然回復 {{ state.growth_path.natural_recovery }} MP / ラウンド・Lv2以降 未使用STP +{{ state.growth_path.unspent_stp_per_level }}</p>
                     </section>
                     <section class="underground-equipment" aria-labelledby="underground-equipment-title">
@@ -2960,15 +2972,7 @@ onUnmounted(() => {
                     </section>
 
                             <UndergroundResidence v-if="(equipmentView === 'property' || equipmentView === 'villa' || equipmentView === 'trophies') && state.residence" :mode="equipmentView" :residence="state.residence" :busy="busy" :shards="state.shard_balance" @purchase="loungeMutation('residence/purchase', { item: $event })" @property="equipmentView = 'property'" />
-                            <template v-if="equipmentView === 'recollections'">
-                                <p v-if="!state.residence?.villa_owned">別荘を購入すると回想を読めます。</p>
-                                <section v-else class="ug-event-replays" aria-label="交流場と鏡の回想">
-                                    <button v-if="(state.residence.exchange_intro_page ?? 0) >= 1" type="button" @click="loungeReplay = 'exchange-1'">{{ loungeStories.exchange[0]!.title }}</button>
-                                    <button v-if="state.residence.exchange_intro_page >= 2" type="button" @click="loungeReplay = 'exchange-2'">{{ loungeStories.exchange[1]!.title }}</button>
-                                    <button v-if="state.residence.mirror_event_completed" type="button" @click="loungeReplay = 'mirror'">{{ loungeStories.mirror.title }}</button>
-                                    <button v-if="state.otherworld_unlocked" type="button" @click="loungeReplay = 'otherworld'">{{ otherworldStory.title }}</button>
-                                </section>
-                            </template>
+                            <p v-if="equipmentView === 'recollections' && !state.residence?.villa_owned">別荘を購入すると回想を読めます。</p>
                         </div>
                     </template>
                 </template>

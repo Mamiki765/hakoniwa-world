@@ -5,6 +5,7 @@ namespace Tests\Underground\Feature;
 use App\Application\Underground\UndergroundEquipmentDropService;
 use App\Models\SecretaryGuideConversationTotal;
 use App\Models\UndergroundBattle;
+use App\Models\UndergroundContentClearProgress;
 use App\Models\UndergroundIntroRequest;
 use App\Models\UndergroundTrialProgress;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -178,11 +179,25 @@ final class UndergroundResidenceTest extends UndergroundPlayerAccessTestCase
         $post('residence/purchase', ['item' => 'trophy_shelf'])
             ->assertOk()->assertJsonPath('data.shard_balance', 1_000_000);
         $this->assertEquals($purchasedAt, $profile->fresh()->trophy_shelf_purchased_at);
+        UndergroundContentClearProgress::query()->create([
+            'underground_profile_id' => $profile->id, 'content_type' => 'hunting_ground',
+            'content_key' => 'bahamul_beginner_1', 'actual_clear_count' => 1, 'total_clear_count' => 1,
+        ])->forceFill(['first_cleared_at' => $firstClear])->save();
+        UndergroundContentClearProgress::query()->create([
+            'underground_profile_id' => $profile->id, 'content_type' => 'hunting_ground',
+            'content_key' => 'bahamul_intermediate_1', 'actual_clear_count' => 1, 'total_clear_count' => 1,
+        ]);
         $this->actingAs($user)->getJson('/api/v1/me/underground/journal')->assertOk()
             ->assertJsonPath('data.trophies.0.key', 'trial_01')
             ->assertJsonPath('data.trophies.0.achieved_at', $firstClear->copy()->utc()->toIso8601String())
             ->assertJsonMissing(['name' => 'デュラハンの兜'])
             ->assertJsonMissing(['name' => '魔剣のレプリカ']);
+        $trophies = array_column($this->actingAs($user)->getJson('/api/v1/me/underground/journal')->assertOk()->json('data.trophies'), null, 'key');
+        $this->assertSame(['name' => '黒竜の爪(初級1)', 'achievement' => '黒竜バハムル撃破(初級1)',
+            'achieved_at' => $firstClear->toIso8601String()], array_diff_key($trophies['bahamul_beginner_1'], ['key' => true]));
+        $this->assertSame('黒竜の爪(中級1)', $trophies['bahamul_intermediate_1']['name']);
+        $this->assertSame('黒竜バハムル撃破(中級1)', $trophies['bahamul_intermediate_1']['achievement']);
+        $this->assertNull($trophies['bahamul_intermediate_1']['achieved_at']);
         $post('residence/purchase', ['item' => 'mirror'])
             ->assertOk()->assertJsonPath('data.residence.mirror_owned', true)->assertJsonPath('data.shard_balance', 0);
         $post('events/advance', ['event' => 'mirror', 'page' => 1])

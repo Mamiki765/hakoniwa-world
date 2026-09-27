@@ -287,6 +287,28 @@ final class UndergroundReceiptRollupTest extends TestCase
         $this->assertSame($totals, $rollups->totals($profile->id));
     }
 
+    public function test_otherworld_victory_receipt_waits_for_durable_first_clear_time(): void
+    {
+        [, $profile] = $this->profile();
+        $old = CarbonImmutable::now()->subDays(40);
+        $cutoff = CarbonImmutable::now()->subDays(30);
+        $battle = $this->battle($profile, $old, ['activity_key' => 'bahamul_beginner_1']);
+        app(UndergroundReceiptRollupService::class)->aggregate($profile->id, 'battle', $cutoff, 500, true);
+
+        $purge = app(UndergroundReceiptPurgeService::class);
+        $blocked = $purge->purge($profile->id, 'battle', $cutoff, 500, true);
+        $this->assertSame('otherworld_first_clear_fact_missing', $blocked['stop_reason']);
+        $this->assertDatabaseHas('underground_battles', ['id' => $battle->id]);
+
+        DB::table('underground_content_clear_progress')->insert([
+            'underground_profile_id' => $profile->id,
+            'content_type' => 'hunting_ground', 'content_key' => 'bahamul_beginner_1',
+            'actual_clear_count' => 1, 'total_clear_count' => 1,
+            'first_cleared_at' => $old, 'created_at' => now(), 'updated_at' => now(),
+        ]);
+        $this->assertSame($battle->id, $purge->purge($profile->id, 'battle', $cutoff, 500, true)['deleted_through_id']);
+    }
+
     /** @return array{User, UndergroundProfile} */
     private function profile(): array
     {

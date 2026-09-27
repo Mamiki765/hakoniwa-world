@@ -567,7 +567,8 @@ final class SecretaryItemGameplayContract
         $this->exactKeys($effect, ['type', 'bonus_money_per_level', 'stacking'], $path);
         if (($effect['type'] ?? null) !== self::FINANCE_INCOME_BONUS
             || ($effect['stacking'] ?? null) !== self::RING_STACKING
-            || ($effect['bonus_money_per_level'] ?? null) !== 1) {
+            || ! is_int($effect['bonus_money_per_level'] ?? null)
+            || $effect['bonus_money_per_level'] < 1) {
             throw new DomainException("{$path} is not the supported Ring effect contract.");
         }
     }

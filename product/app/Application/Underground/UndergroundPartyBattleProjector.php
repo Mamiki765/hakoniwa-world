@@ -16,7 +16,7 @@ final class UndergroundPartyBattleProjector
      */
     public function project(PartyCombatResult $result, array $memberSnapshots, AlphaV1BuildCatalog $catalog): array
     {
-        $initial = $this->states($result->initialStates, $memberSnapshots);
+        $initial = $this->states($result->initialStates, $memberSnapshots, $catalog);
         $rounds = [];
         $awakeningRounds = [];
         $awakeningStates = [];
@@ -30,6 +30,7 @@ final class UndergroundPartyBattleProjector
                 $rounds[$round]['end_state'] = $this->states(
                     is_array($row['combatants'] ?? null) ? $row['combatants'] : [],
                     $memberSnapshots,
+                    $catalog,
                 );
 
                 continue;
@@ -63,7 +64,7 @@ final class UndergroundPartyBattleProjector
                 'rounds' => $result->rounds,
                 'metrics' => $result->metrics,
                 'awakening' => $result->awakening,
-                'final_state' => $this->states($result->finalStates, $memberSnapshots),
+                'final_state' => $this->states($result->finalStates, $memberSnapshots, $catalog),
             ],
             'rounds' => array_values($rounds),
             'portrait_events' => $this->portraits($memberSnapshots, $awakeningRounds, $result->rounds, $initial, $result->finalStates, $awakeningStates),
@@ -75,7 +76,7 @@ final class UndergroundPartyBattleProjector
      * @param  array<string, array<string, mixed>>  $members
      * @return array<string, array<string, mixed>>
      */
-    private function states(array $states, array $members): array
+    private function states(array $states, array $members, AlphaV1BuildCatalog $catalog): array
     {
         $projected = [];
         foreach ($states as $id => $state) {
@@ -88,7 +89,7 @@ final class UndergroundPartyBattleProjector
                 'combatant_id' => $combatantId,
                 'team' => $state['team'] ?? ($member['team'] ?? null),
                 'label' => $state['label'] ?? ($member['label'] ?? $member['display_name'] ?? null),
-                ...$state,
+                ...(new UndergroundAlphaV1BattleProjector)->projectState($state, $catalog),
             ];
         }
 

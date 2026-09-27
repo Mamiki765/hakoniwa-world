@@ -1,8 +1,10 @@
 # 実装予定・構想：Owner判断と未決の範囲
 
-分類：今後の作業。現在動作している仕様ではない。現行仕様は [current-contracts](../handoffs/current-contracts.md)、作業一覧は [未完TODO](4.4.1-todo.md)を参照する。
+分類：採用方針と未決の構想。4.4.1 branchで実装したものも含むが、production反映済みとは扱わない。現行仕様は [current-contracts](../handoffs/current-contracts.md)、作業状態は [4.4.1 TODO](4.4.1-todo.md)を参照する。
 
-## 1. 採用された変更方針（実装は未完）
+## 1. 採用された変更方針
+
+1〜4は4.4.1 branchで実装した。5は固定値と重複テストを中心に整理中、6の最終構造はOwner判断待ち、7の分類・移動は今回の[文書一覧](../../../docs/documentation-inventory.md)を参照する。release branch上の実装をproduction稼働と混同しない。
 
 
 1. トロフィーの見せ方はまずバハムル初級1・中級1。**内部の初回勝利記録は異世界ボス全レベルを対象**にする。

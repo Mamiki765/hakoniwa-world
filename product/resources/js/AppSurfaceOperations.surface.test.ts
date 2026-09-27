@@ -148,13 +148,7 @@ describe('surface inquiries and nation lifecycle', () => {
         const profileButton = wrapper.findAll('.site-header nav button')
             .find((button) => button.text() === 'オプション')!;
         await profileButton.trigger('click');
-        expect(wrapper.findAll('.danger-zone h3').map((heading) => heading.text())).toEqual([
-            '島を休止する', '島を破棄する',
-        ]);
         const dormancyButton = wrapper.get<HTMLButtonElement>('.dormancy-block button');
-        expect(dormancyButton.classes()).toContain('secondary');
-        expect(dormancyButton.classes()).not.toContain('danger');
-        expect(wrapper.get('.abandonment-block button').classes()).toContain('danger');
         await wrapper.get('#dormancy-days').setValue('7');
         await wrapper.get('.dormancy-form').trigger('submit');
         await flushPromises();

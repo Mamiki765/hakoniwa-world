@@ -19,6 +19,7 @@ final class UndergroundContentClearProgress extends Model
             'underground_profile_id' => 'integer',
             'actual_clear_count' => 'integer',
             'total_clear_count' => 'integer',
+        'first_cleared_at' => 'immutable_datetime',
         ];
     }
 }

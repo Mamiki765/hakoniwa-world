@@ -845,6 +845,7 @@ describe('Underground application operations', () => {
 
         await openUndergroundView(wrapper, 'キャラクター', '能力');
         expect(wrapper.get('.underground-summary').text()).toContain('戦闘Lv1');
+        expect(wrapper.get('.underground-growth-summary').text()).toContain('生命41');
         await openUndergroundView(wrapper, 'キャラクター', '能力');
         expect(wrapper.get('.underground-summary').text()).toContain('経験値5 / 100');
         await openUndergroundView(wrapper, 'キャラクター', '能力');
@@ -953,6 +954,7 @@ describe('Underground application operations', () => {
         await openUndergroundView(wrapper, 'ホーム');
         await wrapper.get('button[aria-label="未配分STP 3、配分する"]').trigger('click');
         expect(wrapper.get('.underground-status-table').text()).toContain('装備なし');
+        expect(wrapper.get('.underground-status-table').text()).toContain('生命40');
         const vitalityStp = wrapper.get<HTMLInputElement>('.underground-stp-control input');
         expect(vitalityStp.attributes('max')).toBe('3');
         await wrapper.get('button[aria-label="生命に残りの50%を配分"]').trigger('click');
@@ -2310,6 +2312,8 @@ describe('Underground application operations', () => {
         const firstRecollection = wrapper.findAll('.underground-recollection-list button')
             .find((button) => button.text().includes('過去について問う・1'))!;
         await firstRecollection.trigger('click');
+        expect(wrapper.get('.ug-event-story.underground-recollection-detail').text()).toContain('過去について問う・1');
+        expect(wrapper.find('.underground-recollection-list').exists()).toBe(false);
         await wrapper.get('.underground-recollection-detail .button.primary').trigger('click');
         await flushPromises();
         expect(wrapper.get('[role="alert"]').text()).toContain('Recollection response lost');

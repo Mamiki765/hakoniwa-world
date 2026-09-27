@@ -29,10 +29,12 @@ use App\Domain\Underground\Combat\UndergroundAwakening;
 use App\Domain\Underground\Combat\UndergroundCombatRules;
 use App\Domain\Underground\Combat\UndergroundRandom;
 use App\Models\Secretary;
+use App\Models\SecretaryImage;
 use App\Models\SecretaryLendingParticipation;
 use App\Models\SecretaryLendingSetting;
 use App\Models\UndergroundBattle;
 use App\Models\UndergroundBattleLog;
+use App\Models\UndergroundContentClearProgress;
 use App\Models\UndergroundIntroProgress;
 use App\Models\UndergroundIntroRequest;
 use App\Models\UndergroundOwnedEquipment;
@@ -71,6 +73,9 @@ final class UndergroundRuntimeTest extends TestCase
         $this->actingAs($user);
         $payload = ['request_id' => (string) Str::uuid(), 'hunting_ground_key' => 'bahamul_beginner_1'];
         $first = $this->postJson('/api/v1/me/underground/otherworld/challenge', $payload)->assertOk()->json('data');
+        $firstClearedAt = UndergroundContentClearProgress::query()->where('underground_profile_id', $profile->id)
+            ->where('content_type', 'hunting_ground')->where('content_key', 'bahamul_beginner_1')->value('first_cleared_at');
+        $this->assertNotNull($firstClearedAt);
         $this->assertCount(2, $first['drops']);
         $this->assertSame(['resonance', 'weapon'], array_column(array_column($first['drops'], 'item'), 'category'));
         $this->assertSame(['bahamul_beginner_1'], $combat->calls[0]['enemy_keys']);
@@ -78,7 +83,11 @@ final class UndergroundRuntimeTest extends TestCase
         $this->assertTrue($normalCooldown->equalTo($profile->next_battle_at));
         $this->assertSame(1, $profile->distorted_stone_balance);
         $request = [...$payload, 'request_id' => (string) Str::uuid()];
+        $this->travel(1)->minutes();
         $second = $this->postJson('/api/v1/me/underground/otherworld/challenge', $request)->assertOk()->json('data');
+        $this->assertEquals($firstClearedAt, UndergroundContentClearProgress::query()
+            ->where('underground_profile_id', $profile->id)->where('content_type', 'hunting_ground')
+            ->where('content_key', 'bahamul_beginner_1')->value('first_cleared_at'));
         $balances = $profile->refresh()->only(['shard_balance', 'combat_xp', 'distorted_stone_balance']);
         $this->postJson('/api/v1/me/underground/otherworld/challenge', $request)->assertOk()->assertJsonPath('data.id', $second['id']);
         $this->assertEquals($balances, $profile->refresh()->only(array_keys($balances)));
@@ -1807,11 +1816,14 @@ final class UndergroundRuntimeTest extends TestCase
         $rentId = (string) Str::uuid();
         $state = $intro->updateRentalParty($leader, $rentId, [$borrowed->id]);
         $initial = $state['rental_party'][0];
+        $initialStored = $profile->fresh()->rental_party[0];
+        $this->assertNull($initial['icon_url']);
+        $this->assertArrayNotHasKey('icon_url', $initialStored);
         $this->assertGreaterThan(3, $initial['current_hp']);
         $this->assertSame($initial['max_hp'], $initial['current_hp']);
         $this->assertSame(0, $initial['awakening_gauge']);
         $halfHp = intdiv($initial['max_hp'], 2);
-        $profile->update(['combat_level' => 2, 'unspent_stp' => 5, 'rental_party' => [[...$initial, 'current_hp' => $halfHp]]]);
+        $profile->update(['combat_level' => 2, 'unspent_stp' => 5, 'rental_party' => [[...$initialStored, 'current_hp' => $halfHp]]]);
         $recalculatedMax = $runtime->prepareRentalParty($leader, [$borrowed->id])['members'][0]['max_hp'];
         $this->assertGreaterThan($initial['max_hp'], $recalculatedMax);
         $requestId = (string) Str::uuid();
@@ -1819,8 +1831,8 @@ final class UndergroundRuntimeTest extends TestCase
         $this->assertSame((int) floor($halfHp / $initial['max_hp'] * $recalculatedMax), $combat->calls[0]['player_snapshots'][1]['current_hp']);
         $rental = $profile->refresh()->rental_party[0];
         $this->assertSame([0, 120], [$rental['current_hp'], $rental['awakening_gauge']]);
-        $this->assertSame($rental, $intro->state($leader)['rental_party'][0]);
-        $this->assertSame($rental, $intro->updateRentalParty($leader, $rentId, [$borrowed->id])['rental_party'][0]);
+        $this->assertSame([...$rental, 'icon_url' => null], $intro->state($leader)['rental_party'][0]);
+        $this->assertSame([...$rental, 'icon_url' => null], $intro->updateRentalParty($leader, $rentId, [$borrowed->id])['rental_party'][0]);
         $this->assertTrue($runtime->explore($leader, $requestId, null, [$borrowed->id])['duplicate']);
         $this->assertSame($rental, $profile->refresh()->rental_party[0]);
         $profile->update(['next_battle_at' => Carbon::now()->subSecond()]);
@@ -1834,10 +1846,18 @@ final class UndergroundRuntimeTest extends TestCase
         $this->assertSame($renewed['max_hp'], $renewed['current_hp']);
         $this->assertSame(0, $renewed['awakening_gauge']);
         $this->assertTrue($runtime->explore($leader, $requestId, null, [$borrowed->id])['duplicate']);
-        $this->assertSame($renewed, $profile->refresh()->rental_party[0]);
+        $this->assertSame(array_diff_key($renewed, ['icon_url' => true]), $profile->refresh()->rental_party[0]);
         $this->assertSame([3, 980], [$source->refresh()->current_hp, $source->awakening_gauge]);
         SecretaryLendingSetting::query()->where('secretary_id', $borrowed->id)->update(['is_available' => false]);
         $this->assertSame($renewed, $intro->updateRentalParty($leader, $rentId, [$borrowed->id])['rental_party'][0]);
+        $image = SecretaryImage::query()->create([
+            'secretary_id' => $borrowed->id, 'slot' => 'icon', 'path' => 'borrowed-icon.png',
+            'mime_type' => 'image/png', 'creation_method' => 'self_made',
+        ]);
+        $this->assertSame('/hakoniwa-secretaries/borrowed-icon.png', $intro->state($leader)['rental_party'][0]['icon_url']);
+        $this->assertArrayNotHasKey('icon_url', $profile->fresh()->rental_party[0]);
+        $image->delete();
+        $this->assertNull($intro->state($leader)['rental_party'][0]['icon_url']);
     }
 
     /** @return array{User, Secretary} */

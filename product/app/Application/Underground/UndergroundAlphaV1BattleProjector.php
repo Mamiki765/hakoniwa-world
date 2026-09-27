@@ -28,8 +28,8 @@ final class UndergroundAlphaV1BattleProjector
             $kind = $row['kind'] ?? 'effect';
             if ($kind === 'round_end') {
                 $rounds[$round]['end_state'] = [
-                    'player' => $this->state($row['player'] ?? null, $catalog),
-                    'enemy' => $this->state($row['enemy'] ?? null, $catalog),
+                    'player' => $this->projectState($row['player'] ?? null, $catalog),
+                    'enemy' => $this->projectState($row['enemy'] ?? null, $catalog),
                 ];
 
                 continue;
@@ -138,8 +138,8 @@ final class UndergroundAlphaV1BattleProjector
         }
 
         return [
-            'player' => $this->state($value['player'], $catalog),
-            'enemy' => $this->state($value['enemy'], $catalog),
+            'player' => $this->projectState($value['player'], $catalog),
+            'enemy' => $this->projectState($value['enemy'], $catalog),
         ];
     }
 
@@ -201,7 +201,7 @@ final class UndergroundAlphaV1BattleProjector
     }
 
     /** @return array<string, mixed> */
-    private function state(mixed $value, AlphaV1BuildCatalog $catalog): array
+    public function projectState(mixed $value, AlphaV1BuildCatalog $catalog): array
     {
         $value = is_array($value) ? $value : [];
         $statuses = [];

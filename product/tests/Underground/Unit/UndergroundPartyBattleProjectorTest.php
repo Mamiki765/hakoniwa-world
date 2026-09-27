@@ -10,6 +10,23 @@ use Tests\Underground\Fixtures\PartyPresentationFixture;
 
 final class UndergroundPartyBattleProjectorTest extends TestCase
 {
+    public function test_party_boundary_states_use_the_existing_status_labels(): void
+    {
+        $fixture = PartyPresentationFixture::create();
+        $state = ['hp' => 100, 'max_hp' => 100, 'mp' => 500, 'barrier' => 0,
+            'statuses' => [['key' => 'bleed', 'remaining' => 2, 'stacks' => 1]],
+            'role_stacks' => ['fighting_spirit' => 0, 'grace' => 0]];
+        $result = new PartyCombatResult('player', 0, [], ['secretary:1' => $state], ['secretary:1' => $state]);
+        $projected = (new UndergroundPartyBattleProjector)->project(
+            $result, $fixture['member_snapshots'], $fixture['catalog'],
+        );
+
+        self::assertSame([['label' => '出血', 'remaining' => 2, 'stacks' => 1]],
+            $projected['initial_state']['secretary:1']['statuses']);
+        self::assertSame($projected['initial_state']['secretary:1']['statuses'],
+            $projected['summary']['final_state']['secretary:1']['statuses']);
+    }
+
     public function test_barrier_gain_is_positive_for_display_without_changing_the_internal_log(): void
     {
         $fixture = PartyPresentationFixture::create();

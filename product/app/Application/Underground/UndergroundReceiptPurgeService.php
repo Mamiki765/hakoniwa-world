@@ -14,7 +14,10 @@ use stdClass;
 /** Manual retention of verified prefixes; never aggregates or awards anything. */
 final class UndergroundReceiptPurgeService
 {
-    public function __construct(private UndergroundReceiptRollupService $rollups) {}
+    public function __construct(
+        private UndergroundReceiptRollupService $rollups,
+        private UndergroundAlphaV1PlayerCatalog $catalog,
+    ) {}
 
     /** @return array<string, mixed> */
     public function purge(int $profileId, string $stream, CarbonInterface $cutoff, int $batchSize = 500, bool $apply = false): array
@@ -41,13 +44,20 @@ final class UndergroundReceiptPurgeService
             $query = DB::table($table)->where('underground_profile_id', $profileId)->where('id', '>', $from);
             $columns = ['id', $finishedColumn];
             if ($stream === 'battle') {
-                $columns = [...$columns, 'activity_type', 'activity_key', 'compaction_version', 'trial_run_key', 'underground_party_id'];
+                $columns = [...$columns, 'activity_type', 'activity_key', 'result', 'compaction_version', 'trial_run_key', 'underground_party_id'];
             } elseif ($stream === 'intro_request') {
                 $columns[] = 'operation';
             }
             $candidates = (clone $query)->orderBy('id')->limit($batchSize)->get($columns);
             $intro = DB::table('underground_intro_progress')->where('underground_profile_id', $profileId)->first();
             $activeRun = DB::table('underground_trial_runs')->where('underground_profile_id', $profileId)->where('status', 'active')->value('run_key');
+            $otherworldFirstClears = $stream === 'battle'
+                ? DB::table('underground_content_clear_progress')
+                    ->where('underground_profile_id', $profileId)
+                    ->where('content_type', 'hunting_ground')
+                    ->whereIn('content_key', array_keys($this->catalog->otherworld()['stages']))
+                    ->pluck('first_cleared_at', 'content_key')->all()
+                : [];
             $ids = [];
             $partyIds = [];
             $to = $from;
@@ -60,7 +70,7 @@ final class UndergroundReceiptPurgeService
                     $blocker = 'unverified_receipt';
                 }
                 if ($blocker === null) {
-                    $blocker = $this->durabilityBlocker($profileId, $stream, $candidate, $intro, $activeRun, $checkpoint);
+                    $blocker = $this->durabilityBlocker($profileId, $stream, $candidate, $intro, $activeRun, $checkpoint, $otherworldFirstClears);
                 }
                 if ($blocker !== null) {
                     $reason = $blocker;
@@ -122,7 +132,8 @@ final class UndergroundReceiptPurgeService
         }, 1);
     }
 
-    private function durabilityBlocker(int $profileId, string $stream, stdClass $receipt, ?stdClass $intro, ?string $activeRun, ?stdClass $checkpoint): ?string
+    /** @param array<string, string|null> $otherworldFirstClears */
+    private function durabilityBlocker(int $profileId, string $stream, stdClass $receipt, ?stdClass $intro, ?string $activeRun, ?stdClass $checkpoint, array $otherworldFirstClears): ?string
     {
         if ($stream === 'intro_request') {
             if ($intro !== null && $intro->stage !== UndergroundIntroStage::UNDERGROUND_OPEN) {
@@ -165,6 +176,13 @@ final class UndergroundReceiptPurgeService
             if (($snapshot->challenge_intro !== null && $snapshot->challenge_intro !== 'null' && $progress->first_challenge_intro === null)
                 || ($snapshot->first_clear_story !== null && $snapshot->first_clear_story !== 'null' && $progress->first_clear_story === null)) {
                 return 'trial_story_fact_missing';
+            }
+        }
+        if ($receipt->activity_type === 'exploration' && $receipt->result === 'victory'
+            && array_key_exists($receipt->activity_key, $this->catalog->otherworld()['stages'])) {
+            $firstClearedAt = $otherworldFirstClears[$receipt->activity_key] ?? null;
+            if ($firstClearedAt === null || CarbonImmutable::parse($firstClearedAt)->isAfter(CarbonImmutable::parse($receipt->finished_at))) {
+                return 'otherworld_first_clear_fact_missing';
             }
         }
 

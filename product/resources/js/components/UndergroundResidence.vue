@@ -10,7 +10,7 @@ const confirmation = ref<ResidenceItemKey | null>(null);
 const itemOwned = (key: ResidenceItemKey) => props.residence[`${key}_owned`];
 interface Journal {
     cleared_trials: Array<{ key: string; name: string }>;
-    trophies: Array<{ key: string; name: string; achievement: string; achieved_at: string }>;
+    trophies: Array<{ key: string; name: string; achievement: string; achieved_at: string | null }>;
     battle_count: number; victory_count: number;
     damage_dealt: number | null; damage_received: number | null;
     damage_dealt_unknown_battles: number; damage_received_unknown_battles: number;
@@ -76,7 +76,8 @@ watch(() => [props.mode, props.residence.villa_owned, props.residence.trophy_she
                 <li v-for="trophy in journal.trophies" :key="trophy.key">
                     <h3>{{ trophy.name }}</h3>
                     <p>{{ trophy.achievement }}</p>
-                    <time :datetime="trophy.achieved_at">{{ achievedAt(trophy.achieved_at) }}</time>
+                    <time v-if="trophy.achieved_at" :datetime="trophy.achieved_at">{{ achievedAt(trophy.achieved_at) }}</time>
+                    <span v-else>初撃破日時の記録なし</span>
                 </li>
             </ul>
             <p v-else class="ug-muted">まだトロフィーはありません。強敵を初めて倒すと、ここに記念品が増えていきます。</p>

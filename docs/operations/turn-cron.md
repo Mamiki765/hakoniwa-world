@@ -88,4 +88,4 @@ Before registering production cron:
 
 - Before every deploy, run `hakoniwa:release:preflight`. A pending, running, or failed next production TurnRun blocks deploy and must be explicitly resolved. Never carry an automatic retry across a release.
 
-If a command is interrupted after the database connection closes, the session advisory lock is released by PostgreSQL; the run record may still require operator diagnosis. Stale-run recovery, cross-invocation retry, retry backoff and external notification remain later work, not shell logic. The 4.4.0 exception to the initial D-02 no-automatic-retry policy is defined in [C1 implementation notes](../../product/docs/releases/4.4.0-turn-resilience-c1.md).
+If a command is interrupted after the database connection closes, the session advisory lock is released by PostgreSQL; the run record may still require operator diagnosis. Stale-run recovery, cross-invocation retry, retry backoff and external notification remain later work, not shell logic. The current in-process retry boundary is recorded in [current contracts](../../product/docs/handoffs/current-contracts.md).

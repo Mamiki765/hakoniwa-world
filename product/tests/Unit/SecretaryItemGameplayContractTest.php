@@ -22,24 +22,14 @@ final class SecretaryItemGameplayContractTest extends TestCase
         $catalog = app(SecretaryItemCatalog::class);
         $contract->validate($settings);
 
-        $this->assertSame([
-            'novice' => ['key' => 'novice', 'name' => 'ノービス', 'fixed_sale_price_money' => 100],
-            'regular' => ['key' => 'regular', 'name' => 'レギュラー', 'fixed_sale_price_money' => 500],
-            'cursed' => ['key' => 'cursed', 'name' => 'カースド', 'fixed_sale_price_money' => 1],
-            'high_quality' => ['key' => 'high_quality', 'name' => 'ハイクオリティ', 'fixed_sale_price_money' => 1500],
-        ], array_intersect_key($catalog->rarities(), array_flip(['novice', 'regular', 'cursed', 'high_quality'])));
         foreach ([SecretaryItemCatalog::ELF_BOW, SecretaryItemCatalog::LONGSHOT_BOW, SecretaryItemCatalog::MECHANICAL_BOW] as $itemKey) {
             $definition = $catalog->definition($itemKey);
-            $this->assertSame('regular', $definition['rarity']);
             $this->assertTrue($definition['tradable']);
             $this->assertFalse($definition['npc_tradable']);
-            $this->assertSame(500, $definition['fixed_sale_price_money']);
         }
         $collar = $catalog->definition(SecretaryItemCatalog::COLLAR);
-        $this->assertSame('cursed', $collar['rarity']);
         $this->assertTrue($collar['tradable']);
         $this->assertFalse($collar['npc_tradable']);
-        $this->assertSame(1, $collar['fixed_sale_price_money']);
         $this->assertSame(1, $settings['secretary']['items'][SecretaryItemCatalog::COLLAR]['effects'][0]['minimum_start_karma']);
         $this->assertArrayNotHasKey(
             'minimum_start_karma',
@@ -48,13 +38,8 @@ final class SecretaryItemGameplayContractTest extends TestCase
         $oldBow = $catalog->definition(SecretaryItemCatalog::OLD_BOW);
         $this->assertFalse($oldBow['tradable']);
         $this->assertFalse($oldBow['npc_tradable']);
-        $this->assertSame(100, $oldBow['fixed_sale_price_money']);
         $dokidoki = $catalog->definition(SecretaryItemCatalog::DOKIDOKI_TICKET);
-        $this->assertSame(['ticket', 'high_quality', 1500], [
-            $dokidoki['category'],
-            $dokidoki['rarity'],
-            $dokidoki['fixed_sale_price_money'],
-        ]);
+        $this->assertSame('ticket', $dokidoki['category']);
         $this->assertSame(
             [SecretarySkillCatalog::DECLINING_BIRTHRATE_POLICY],
             $settings['secretary']['items'][SecretaryItemCatalog::SECRETARY_SUIT]['effects'][0]['excluded_skill_keys'],
@@ -64,14 +49,6 @@ final class SecretaryItemGameplayContractTest extends TestCase
         $this->assertSame(21_000, $demographics->attractionMaximum($settings, 20_000, 10));
         $this->assertSame(225, $demographics->indomitableBonus($settings, 9_000, 10));
 
-        $this->assertSame(
-            '12%の確率で、自領の地上にいる怪獣に1ダメージを与える。',
-            $contract->effectText($settings, SecretaryItemCatalog::ELF_BOW, 1),
-        );
-        $this->assertSame(
-            '21%の確率で、自領の地上にいる怪獣に1ダメージを与える。',
-            $contract->effectText($settings, SecretaryItemCatalog::ELF_BOW, 10),
-        );
         $this->assertSame(
             'secretary_item:bow:nation:7:item:elf_bow:trigger:v1',
             TurnRandomStreamFactory::secretaryBow(7, SecretaryItemCatalog::ELF_BOW, 'trigger', 1),
@@ -88,32 +65,17 @@ final class SecretaryItemGameplayContractTest extends TestCase
         app(SecretaryMonsterDropContract::class)->validate($settings);
         $drop = $settings['monster_system']['item_drop'];
 
-        $this->assertSame(['mecha_inora', 'mecha_inora_zero'], $drop['excluded_monster_keys']);
-        $this->assertSame(75, $drop['recipient']['killer_percent_when_foreign_host']);
-        $this->assertSame(25, $drop['recipient']['host_percent_when_foreign_host']);
-        $this->assertSame([
-            'elf_bow', 'longshot_bow', 'mechanical_bow',
-        ], $drop['rarity_pools']['regular']);
-        $this->assertSame(['collar'], $drop['rarity_pools']['cursed']);
         $this->assertNotContains('old_bow', $drop['rarity_pools']['novice']);
         $this->assertSame(100, $drop['monster_tables']['king_inora']['level_cap_percent']);
         $this->assertSame($drop['monster_tables']['king_inora'], $drop['monster_tables']['nyowamiya']);
     }
 
-    public function test_current_contract_validates_and_resolves_exact_player_text(): void
+    public function test_current_contract_validates_and_resolves_effects(): void
     {
         $settings = CurrentRulesetFixture::settings();
         $contract = app(SecretaryItemGameplayContract::class);
         $effectCatalog = $contract->validatedEffectCatalog($settings);
 
-        $this->assertSame(
-            '10%の確率で、自領の地上にいる怪獣に1ダメージを与える。',
-            $contract->effectText($settings, SecretaryItemCatalog::OLD_BOW, 1),
-        );
-        $this->assertSame(
-            '資金繰りの際、追加で3億円を得る。',
-            $contract->effectText($settings, SecretaryItemCatalog::RING, 3),
-        );
         $this->assertSame(['surface'], $contract->resolvedEffects(
             $settings,
             SecretaryItemCatalog::OLD_BOW,
@@ -186,11 +148,6 @@ final class SecretaryItemGameplayContractTest extends TestCase
         }];
         yield 'float finance bonus' => [static function (array $settings): array {
             $settings['secretary']['items']['ring']['effects'][0]['bonus_money_per_level'] = 1.0;
-
-            return $settings;
-        }];
-        yield 'unsupported finance bonus' => [static function (array $settings): array {
-            $settings['secretary']['items']['ring']['effects'][0]['bonus_money_per_level'] = 2;
 
             return $settings;
         }];

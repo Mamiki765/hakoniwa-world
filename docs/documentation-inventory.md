@@ -1,32 +1,36 @@
-# 文書整理の進捗：4.4.1
+# 文書の分類：4.4.1
 
-2026-09-27。T12はrepo全体のdocs棚卸しであり、**未完**。旧一覧の「168文書」「3.0.0時点の分類」を現在の全件監査結果として使わない。
+2026-09-27。対象は通常検索に入る`docs/`・`product/docs/`のMarkdown全件。起点の非archive 217件を確認し、過去の開発本文125件を`docs/archive/through-4.4.0/`へ元の相対pathを保って移動した。通常側に残る37件の旧pathは既存リンク向けの短い案内であり、過去本文ではない。先行して移動済みの8件は`pre-4.4.1/`にあり、今回読み直していない。今回もarchiveの本文は閲覧・検索していない。
 
-## 初回に分離した本文
+## 現行
 
-起点は`d4bf02e5c46fc5fe69d25ea8c14e61a3474a0caa`。次の旧本文8件を同一blobのままarchiveへ移し、元pathには現行の入口または短い移動案内を置いた。入口を壊さず、通常の読込で旧仕様が展開されないようにする。古い名称のfileが残っていることは旧本文を維持した意味ではない。
-
-| 元path | 本文の保管先（通常は読まない） |
+| 対象 | 扱い |
 |---|---|
-| `README.md` | `docs/archive/pre-4.4.1/README.md` |
-| `docs/README.md` | `docs/archive/pre-4.4.1/docs/README.md` |
-| `docs/documentation-inventory.md` | `docs/archive/pre-4.4.1/docs/documentation-inventory.md` |
-| `docs/architecture/mvp-implementation.md` | `docs/archive/pre-4.4.1/docs/architecture/mvp-implementation.md` |
-| `product/docs/handoffs/current-status.md` | `docs/archive/pre-4.4.1/product/docs/handoffs/current-status.md` |
-| `product/docs/handoffs/development-history-and-current-handoff.md` | `docs/archive/pre-4.4.1/product/docs/handoffs/development-history-and-current-handoff.md` |
-| `product/docs/handoffs/conversation-2026-09-21.md` | `docs/archive/pre-4.4.1/product/docs/handoffs/conversation-2026-09-21.md` |
-| `product/docs/handoffs/conversation-2026-09-22.md` | `docs/archive/pre-4.4.1/product/docs/handoffs/conversation-2026-09-22.md` |
+| `product/docs/handoffs/current-status.md`、`current-contracts.md` | 現在地と取り違え防止の入口。handoffはOwnerの明示指示なしに編集しない |
+| `docs/README.md`、`docs/open-questions.md`、本一覧 | 通常の入口と設計gate。過去の資料名が残る場合も現行仕様への自動昇格ではない |
+| `docs/architecture/`、`product/docs/architecture/`の本文 | 現行設計・継続利用する技術境界。実装済みという理由だけでは移動しない。実際のcode・schemaと照合する |
+| `docs/decisions/` | 採用済みADR。古い決定の現行適用範囲は後続決定とcodeで確認する |
+| `docs/assets/`、`docs/reference-analysis/license-and-provenance.md`、`source-inventory.md` | 素材対応と出典・ライセンスの参照。古いgameplay値の正本ではない |
+| `docs/operations/`の現行手順、`product/docs/operations/`の現行手順 | 開発、Compose、Turn、OAuth、同期、backup、4.4.0管理、本番観測。production操作は別許可 |
+| `product/docs/manual/`、`items/current-item-catalog.md`、`community-guidelines.md` | プレイヤー向けと現行item資料 |
+| `product/docs/releases/4.4.1-chat-implementation.md` | 今回のrelease作業・検証記録。履歴化時は再分類する |
 
-旧root README・MVP記録にあった生産/Turn/地下等の未実装記述、旧handoffの#167未merge・本番4.3.2という現在地を通常入口から外した。現役の実行・所有契約は`product/docs/handoffs/current-contracts.md`、未完・未決は予定側へ残す。会話中の旧Relic30%等を採用仕様へ戻さない。
+旧pathの短い案内や`docs/architecture/mvp-implementation.md`、旧会話handoffは本文に含めない。`docs/architecture/underground-combat-laboratory.md`など長期更新文書は、その記述だけで4.4.1の実装仕様を確定せずcodeと照合する。
 
-## 現役として残した範囲
+## 採用済み・未完
 
-architecture・accepted ADR・operations・プレイヤーmanualは、実装済みであることを理由に移動しない。新しい通常索引は`docs/README.md`。E監査原本は`product/docs/plans/reference/`へ保存し、未処理候補を消さない。
+- `product/docs/plans/4.4.1-todo.md`：T01〜T12の作業と未完境界。実装済み項目はrelease記録とcodeで確認する。
+- `product/docs/plans/reference/e-test-and-constraint-audit.md`：T09の原本。候補を現在も未修正と決めつけない。
+- `product/docs/plans/4.4.1-ruleset-simplification-investigation.md`：T10の依存調査。最終構造は未決。
+- `product/docs/plans/post-4.4.0-decisions-and-ideas.md`の「採用された変更方針」：残る作業だけに適用。実装済みになった箇所はこの分類から外す。
 
-AGENTSの旧統合handoff必読を置換し、archiveの検索・読込・旧リンク追跡をOwnerの明示指示に限定した。release/*の新規作成もOwnerの明示指示が必要とした。今回、既存archive本文の閲覧はしていない。
+## 未決・将来の構想
 
-## 続ける作業
+- `docs/future-systems/`、`docs/operations/existing-server-context.md`：将来案。古い初回公開前提や実装済み項目を含み得るため、着手時に現行code・Owner判断を確認する。
+- `product/docs/plans/post-4.4.0-decisions-and-ideas.md`の「構想・留保・別件」：採用済みの実装指示ではない。
 
-`docs/`・`product/docs/`の残るrelease計画、checkpoint、レビュー、旧版別メモ、future-systems、索引を内容ごとに分類する。現在も必要な仕様と未完事項を先に抽出し、その後に履歴本文を移す。未分類文書をまとめて失効扱いしない。
+## 過去の開発記録
 
-今回の8件分離は全docsの棚卸し完了ではない。残る本文中の旧handoff必読・古いリンク、repository-wideな通常検索範囲、移動後リンクの横断確認はCodex側の続きに残る。archiveの内部リンクは原文保存のため当時のままで、読む許可がある場合は起点SHAと元pathで解釈する。現在の仕様への導線として自動追跡しない。
+今回移動した125本文は、旧版のrelease計画・レビュー・停止チェックポイント・テスト再設計記録、旧運用チェックリスト、旧roadmap・要件、第三者実装の解析、実装前の目標構成を含む。4.4.0 D/Cの現行保持・retry契約は`current-contracts.md`と現行code/運用へ残した。E/F/G/Hの古い混在計画は、未決の将来案を`post-4.4.0-decisions-and-ideas.md`に残したうえで移動した。
+
+旧本文へは通常の索引からリンクせず、AgentはOwnerの明示指示なしにarchiveを閲覧・検索・旧リンク追跡しない。元pathの短い案内は既存の参照を壊さないためのもので、過去本文を読む許可ではない。Git履歴をこの制限の迂回に使わない。

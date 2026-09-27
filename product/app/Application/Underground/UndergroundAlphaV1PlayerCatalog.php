@@ -63,9 +63,9 @@ final readonly class UndergroundAlphaV1PlayerCatalog
     {
         $points = $this->data()['initial_skill_points'] ?? null;
 
-        return is_int($points) && $points >= 20
+        return is_int($points) && $points > 0
             ? $points
-            : throw new RuntimeException('Underground initial Skill Point contract must satisfy persistence minimums.');
+            : throw new RuntimeException('Underground initial Skill Points must be positive.');
     }
 
     /**

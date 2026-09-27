@@ -5,6 +5,7 @@ namespace App\Application\Underground;
 use App\Models\Secretary;
 use App\Models\SecretaryGuideConversationTotal;
 use App\Models\UndergroundOwnedEquipment;
+use App\Models\UndergroundContentClearProgress;
 use App\Models\UndergroundProfile;
 use App\Models\UndergroundTrialProgress;
 use App\Models\User;
@@ -49,6 +50,25 @@ final readonly class UndergroundJournalService
             }
         }
         if ($hasShelf) {
+            $otherworldTrophies = [
+                'bahamul_beginner_1' => ['name' => '黒竜の爪(初級1)', 'achievement' => '黒竜バハムル撃破(初級1)'],
+                'bahamul_intermediate_1' => ['name' => '黒竜の爪(中級1)', 'achievement' => '黒竜バハムル撃破(中級1)'],
+            ];
+            $otherworldClears = UndergroundContentClearProgress::query()
+                ->where('underground_profile_id', $profile->id)
+                ->where('content_type', 'hunting_ground')
+                ->whereIn('content_key', array_keys($otherworldTrophies))
+                ->where('actual_clear_count', '>', 0)
+                ->orderBy('content_key')
+                ->get(['content_key', 'first_cleared_at']);
+            foreach ($otherworldClears as $clear) {
+                $trophies[] = [
+                    'key' => $clear->content_key,
+                    ...$otherworldTrophies[$clear->content_key],
+                    'achieved_at' => $clear->first_cleared_at?->toIso8601String(),
+                ];
+            }
+
             // The unsellable first-victory reward is timestamped with the duel's finished_at.
             // Read this permanent record, not a battle receipt that may later be pruned.
             $gram = UndergroundOwnedEquipment::query()->where('underground_profile_id', $profile->id)

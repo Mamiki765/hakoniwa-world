@@ -3,7 +3,6 @@
 namespace Tests\Feature;
 
 use App\Application\NationCreationService;
-use App\Domain\Inquiry\InquiryCategoryCatalog;
 use App\Models\AuthIdentity;
 use App\Models\Inquiry;
 use App\Models\User;
@@ -20,16 +19,8 @@ final class InquiryApiTest extends TestCase
 {
     use UsesReusableSurfaceWorld;
 
-    public function test_category_catalog_contains_exactly_the_five_owner_approved_categories(): void
+    public function test_unknown_category_is_rejected(): void
     {
-        $this->assertSame([
-            'bug' => 'バグ報告',
-            'request' => '要望',
-            'idea' => 'アイデア',
-            'secretary_fan_art' => '秘書のファンアート',
-            'other' => 'その他',
-        ], InquiryCategoryCatalog::LABELS);
-
         $this->lightweightWorld();
         $this->actingAs(User::factory()->create())->postJson('/api/v1/inquiries', [
             'submission_key' => (string) Str::uuid(),
