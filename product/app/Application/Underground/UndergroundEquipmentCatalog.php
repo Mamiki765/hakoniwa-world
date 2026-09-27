@@ -31,6 +31,7 @@ final class UndergroundEquipmentCatalog
         'critical_chance_bps',
         'critical_damage_bps',
         'mp_cost_reduction_bps',
+        'self_regeneration_target_hp_bps',
         ...EquipmentCombatEffects::RESONANCE_MODIFIERS,
     ];
 
@@ -343,7 +344,8 @@ final class UndergroundEquipmentCatalog
             || (($generated || ($definition['equippable'] ?? true) !== false) && $definition['item_level'] > $this->generatorItemLevelMax())
             || (! in_array($rarity, ['common', 'uncommon', 'rare', 'epic'], true)
                 && ! ($generated && $rarity === 'unique' && in_array($category, ['weapon', 'resonance'], true))
-                && ! (! $generated && ($definition['equippable'] ?? true) === false && $rarity === 'unique'))
+                && ! (! $generated && $rarity === 'unique' && $definition['shop_sold'] === false
+                    && $definition['sellable'] === false && $category === 'weapon'))
             || ! is_string($definition['rarity_label'] ?? null) || $definition['rarity_label'] === ''
             || (! is_null($definition['buy_price'] ?? null) && (! is_int($definition['buy_price']) || $definition['buy_price'] < 1))
             || ! is_bool($definition['shop_sold'] ?? null)

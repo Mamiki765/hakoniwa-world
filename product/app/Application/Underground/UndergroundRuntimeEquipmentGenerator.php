@@ -435,7 +435,7 @@ final class UndergroundRuntimeEquipmentGenerator
     {
         $config = config('underground-equipment.generator');
         if (! is_array($config)
-            || ($config['identity'] ?? null) !== 'secretary-underground-drop-equipment-alpha-v2') {
+            || ($config['identity'] ?? null) !== 'secretary-underground-drop-equipment-alpha-v3') {
             throw new RuntimeException('Underground generated equipment configuration is invalid.');
         }
 

@@ -76,7 +76,7 @@ final class UndergroundAwakening
             ], [
                 'key' => 'shura_bloodline',
                 'name' => '修羅の血脈',
-                'summary' => '発動時にやや強いphysical attackを放ち、その初撃を含む3ラウンド、direct attackで敵HPへ実際に与えたdamageの15%を吸収して回復する。合計吸収率は25%上限。',
+                'summary' => '発動時にやや強いphysical attackを放ち、その初撃を含む3ラウンド、direct attackで敵HPへ実際に与えたdamageの15%を吸収して回復する。通常吸収との合計は25%上限。技固有の吸収は別枠。',
                 'consumes_action' => true,
             ]],
             'guardianship_blue' => [[

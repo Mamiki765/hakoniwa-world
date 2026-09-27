@@ -2,6 +2,7 @@
 
 namespace App\Application\Underground;
 
+use App\Application\ParadoxBalanceService;
 use App\Application\SecretaryLendingService;
 use App\Application\SecretaryProfilePresenter;
 use App\Domain\Underground\Combat\AlphaV1CombatModel;
@@ -37,6 +38,8 @@ final readonly class UndergroundIntroService
 
     private const RESPEC_COOLDOWN_HOURS = 24;
 
+    private const RESPEC_COOLDOWN_BYPASS_PD = 10;
+
     public function __construct(
         private UndergroundIntroCatalog $catalog,
         private UndergroundRuntimeCatalog $runtimeCatalog,
@@ -57,6 +60,7 @@ final readonly class UndergroundIntroService
         private UndergroundBattleStorage $battleStorage,
         private UndergroundScenePresenter $scenes,
         private SecretaryProfilePresenter $secretaryPresenter,
+        private ParadoxBalanceService $paradox,
     ) {}
 
     /** @return array<string, mixed> */
@@ -556,15 +560,20 @@ final readonly class UndergroundIntroService
     }
 
     /** @return array<string, mixed> */
-    public function respec(User $user, string $requestId, string $growthPathKey): array
+    public function respec(User $user, string $requestId, string $growthPathKey, bool $bypassCooldownWithPd = false): array
     {
         $path = $this->alphaV1Catalog->growthPath($growthPathKey);
 
-        return $this->mutate($user, $requestId, 'respec', ['growth_path_key' => $growthPathKey], function (
+        $payload = ['growth_path_key' => $growthPathKey];
+        if ($bypassCooldownWithPd) {
+            $payload['bypass_cooldown_with_pd'] = true;
+        }
+
+        return $this->mutate($user, $requestId, 'respec', $payload, function (
             Secretary $_secretary,
             UndergroundProfile $profile,
             UndergroundIntroProgress $intro,
-        ) use ($growthPathKey, $path): void {
+        ) use ($user, $requestId, $growthPathKey, $path, $bypassCooldownWithPd): void {
             $this->assertSkillTreeUnlocked($profile, $intro);
             $activeTrial = UndergroundTrialRun::query()
                 ->where('underground_profile_id', $profile->id)
@@ -580,7 +589,8 @@ final readonly class UndergroundIntroService
 
             $now = Carbon::now();
             $nextAvailableAt = $profile->last_respec_at?->addHours(self::RESPEC_COOLDOWN_HOURS);
-            if ($nextAvailableAt !== null && $now->isBefore($nextAvailableAt)) {
+            $cooldownActive = $nextAvailableAt !== null && $now->isBefore($nextAvailableAt);
+            if ($cooldownActive && ! $bypassCooldownWithPd) {
                 throw new UndergroundRuntimeException(
                     'underground_respec_cooldown',
                     '再振りは24時間に1回だけ行えます。',
@@ -592,6 +602,18 @@ final readonly class UndergroundIntroService
                 throw new UndergroundRuntimeException(
                     'underground_respec_insufficient_carried_shards',
                     '手持ちの輝石のかけらが不足しています。',
+                );
+            }
+            if ($cooldownActive && $this->paradox->debit(
+                $user->id,
+                self::RESPEC_COOLDOWN_BYPASS_PD,
+                'underground:respec:'.$requestId,
+                'underground_respec',
+                metadata: ['underground_profile_id' => $profile->id],
+            ) === null) {
+                throw new UndergroundRuntimeException(
+                    'underground_respec_insufficient_paradox',
+                    '待ち時間の解除には10Pdが必要です。',
                 );
             }
 
@@ -1750,6 +1772,8 @@ final readonly class UndergroundIntroService
             && $profile->growth_path_key !== null
                 ? [
                     'cost' => $this->respecCost($profile),
+                    'paradox_balance' => $this->paradox->balanceFor((int) $secretary->user_id),
+                    'cooldown_bypass_cost_pd' => self::RESPEC_COOLDOWN_BYPASS_PD,
                     'last_completed_at' => $profile->last_respec_at?->toAtomString(),
                     'next_available_at' => $profile->last_respec_at
                         ?->addHours(self::RESPEC_COOLDOWN_HOURS)
@@ -2143,7 +2167,7 @@ final readonly class UndergroundIntroService
     private function projectTrialRecollections(UndergroundProfile $profile): array
     {
         $entries = [];
-        foreach (['trial_01', 'trial_02'] as $trialKey) {
+        foreach ($this->runtimeCatalog->trialKeys() as $trialKey) {
             $trial = $this->runtimeCatalog->trial($trialKey);
             $progress = UndergroundTrialProgress::query()
                 ->where('underground_profile_id', $profile->id)->where('trial_key', $trialKey)->first();
@@ -2155,6 +2179,20 @@ final readonly class UndergroundIntroService
                     [$progress->first_challenge_intro],
                     ['trial_key' => $trialKey],
                 );
+            }
+            if ($trialKey === 'trial_03' && is_array($progress?->first_milestone_stories)) {
+                foreach ([5, 7, 10] as $battleIndex) {
+                    $scene = $progress->first_milestone_stories[$battleIndex] ?? null;
+                    if (is_string($scene)) {
+                        $entries[] = $this->historicalEntry(
+                            "{$trialKey}_battle_{$battleIndex}",
+                            "{$trial['label']}・第{$battleIndex}戦",
+                            true,
+                            [$scene],
+                            ['trial_key' => $trialKey],
+                        );
+                    }
+                }
             }
             if ($progress?->first_clear_story !== null) {
                 $story = $progress->first_clear_story;

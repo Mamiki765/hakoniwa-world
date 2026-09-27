@@ -188,7 +188,7 @@ final class PriorityCombatAiConfigurationTest extends TestCase
 
     private function catalog(): AlphaV1BuildCatalog
     {
-        $contents = file_get_contents(dirname(__DIR__, 3).'/config/underground/balance/foundation-v1.json');
+        $contents = file_get_contents(dirname(__DIR__, 3).'/config/underground/balance/foundation-v2.json');
         $this->assertIsString($contents);
         $manifest = json_decode($contents, true, flags: JSON_THROW_ON_ERROR);
         $this->assertIsArray($manifest);

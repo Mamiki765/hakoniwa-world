@@ -187,7 +187,7 @@ final readonly class AlphaV1BuildCatalog
 
     private function assertSkillDefinitions(): void
     {
-        $effectTypes = ['damage', 'heal', 'revive', 'barrier', 'apply_status', 'cleanse', 'dispel', 'mp_restore', 'telegraph', 'taunt'];
+        $effectTypes = ['damage', 'heal', 'revive', 'barrier', 'apply_status', 'cleanse', 'dispel', 'mp_restore', 'telegraph', 'taunt', 'cover'];
         foreach ($this->manifest['skills'] as $key => $skill) {
             if (! is_string($key) || ! is_array($skill)
                 || ! is_int($skill['mp_cost'] ?? null) || $skill['mp_cost'] < 0
@@ -235,11 +235,47 @@ final readonly class AlphaV1BuildCatalog
                     throw new InvalidArgumentException("Underground alpha-v1 skill [{$key}] has an invalid target scope.");
                 }
                 if ($effect['type'] === 'damage'
+                    && (isset($effect['lifesteal_bps'])
+                        && (! is_int($effect['lifesteal_bps'])
+                            || $effect['lifesteal_bps'] < 0 || $effect['lifesteal_bps'] > 10_000))) {
+                    throw new InvalidArgumentException("Underground skill [{$key}] has invalid lifesteal.");
+                }
+                if ($effect['type'] === 'damage'
                     && ($effect['target_max_hp_bps'] ?? 0) > 0
                     && ! is_array($effect['source_cap_coefficients'] ?? null)) {
                     throw new InvalidArgumentException(
                         "Underground alpha-v1 percentage damage [{$key}] requires a source-derived cap.",
                     );
+                }
+                if (isset($effect['consume_target_status'])) {
+                    $consume = $effect['consume_target_status'];
+                    if ($effect['type'] !== 'damage' || ! is_array($consume)
+                        || ! is_string($consume['key'] ?? null)
+                        || ! isset($this->manifest['statuses'][$consume['key']])
+                        || ! is_int($consume['maximum'] ?? null)
+                        || $consume['maximum'] < 1 || $consume['maximum'] > 5
+                        || ! is_int($consume['bonus_per_stack_bps'] ?? null)
+                        || $consume['bonus_per_stack_bps'] < 0 || $consume['bonus_per_stack_bps'] > 10_000) {
+                        throw new InvalidArgumentException("Underground skill [{$key}] has invalid target status consumption.");
+                    }
+                }
+                if (isset($effect['consume_barrier'])) {
+                    $consume = $effect['consume_barrier'];
+                    if ($effect['type'] !== 'damage' || ! is_array($consume)
+                        || ! is_int($consume['maximum_hp_bps'] ?? null)
+                        || $consume['maximum_hp_bps'] < 1 || $consume['maximum_hp_bps'] > 5_000
+                        || ! is_int($consume['bonus_per_consumed_bps'] ?? null)
+                        || $consume['bonus_per_consumed_bps'] < 0 || $consume['bonus_per_consumed_bps'] > 10_000) {
+                        throw new InvalidArgumentException("Underground skill [{$key}] has invalid barrier consumption.");
+                    }
+                }
+                if ($effect['type'] === 'cover'
+                    && (($effect['target_scope'] ?? null) !== 'single_ally'
+                        || ! is_int($effect['damage_reduction_bps'] ?? null)
+                        || $effect['damage_reduction_bps'] < 1 || $effect['damage_reduction_bps'] > 9_500
+                        || ! is_int($effect['duration_rounds'] ?? null)
+                        || $effect['duration_rounds'] < 1 || $effect['duration_rounds'] > 3)) {
+                    throw new InvalidArgumentException("Underground skill [{$key}] has invalid cover.");
                 }
                 if ($effect['type'] === 'taunt' && ($effect['target'] ?? null) !== 'enemy') {
                     throw new InvalidArgumentException("Underground alpha-v1 taunt [{$key}] must target the enemy.");

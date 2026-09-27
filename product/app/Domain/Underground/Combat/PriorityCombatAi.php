@@ -388,6 +388,7 @@ final class PriorityCombatAi
             'own_hp_gte' => is_int($percent) && $actor->hp * 100 >= $actor->maxHp * $percent,
             'own_mp_lte' => is_int($percent) && $actor->mp * 100 <= AlphaV1CombatRules::MAX_MP * $percent,
             'own_mp_gte' => is_int($percent) && $actor->mp * 100 >= AlphaV1CombatRules::MAX_MP * $percent,
+            'own_barrier_gte' => is_int($percent) && $actor->barrier * 100 >= $actor->maxHp * $percent,
             'enemy_hp_lte' => is_int($percent) && $enemy->hp * 100 <= $enemy->maxHp * $percent,
             'ally_hp_lte' => is_int($percent)
                 && $this->allyPercentageAtOrBelow($allies !== [] ? $allies : [$actor], $percent),
@@ -395,9 +396,15 @@ final class PriorityCombatAi
             'self_lacks_status' => is_string($status) && ! $actor->hasStatus($status),
             'enemy_has_status' => is_string($status) && $enemy->hasStatus($status),
             'enemy_lacks_status' => is_string($status) && ! $enemy->hasStatus($status),
+            'enemy_has_dispellable_buff' => count(array_filter($enemy->statuses,
+                static fn (array $entry): bool => $entry['disposition'] === 'buff'
+                    && $entry['dispellable'] === true)) > 0,
             'status_stacks_gte' => is_string($status)
                 && is_int($condition['stacks'] ?? null)
                 && $actor->statusStacks($status) >= $condition['stacks'],
+            'enemy_status_stacks_gte' => is_string($status)
+                && is_int($condition['stacks'] ?? null)
+                && $enemy->statusStacks($status) >= $condition['stacks'],
             'role_stacks_gte' => is_string($status)
                 && is_int($condition['stacks'] ?? null)
                 && $actor->roleStack($status) >= $condition['stacks'],

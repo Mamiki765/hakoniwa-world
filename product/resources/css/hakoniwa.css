@@ -738,6 +738,7 @@ html[data-theme="dark"] .compensation-banner, html[data-theme="dark"] .compensat
 .underground-guide-conversation-choices button { min-height: 2.9rem; text-align: left; }
 .underground-guide-conversation-choices .underground-guide-punch { border-color: var(--coral); color: var(--coral); }
 .underground-guide-recollections { display: grid; gap: 1rem; padding-top: 1rem; border-top: 1px solid var(--line); }
+.underground-story-emphasis { font-style: normal; text-emphasis: filled dot; }
 .underground-recollection-list { display: grid; gap: .4rem; margin: 0; padding-left: 1.5rem; }
 .underground-recollection-list li { min-width: 0; }
 .underground-recollection-list button { max-width: 100%; overflow-wrap: anywhere; }

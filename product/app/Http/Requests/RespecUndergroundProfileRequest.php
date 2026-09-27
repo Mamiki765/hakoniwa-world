@@ -23,6 +23,7 @@ final class RespecUndergroundProfileRequest extends FormRequest
                 'blessing_green',
                 'free_black',
             ])],
+            'bypass_cooldown_with_pd' => ['sometimes', 'boolean'],
         ];
     }
 }

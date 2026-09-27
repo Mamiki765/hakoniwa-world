@@ -3,6 +3,7 @@
 namespace Tests\Underground\Unit;
 
 use App\Application\Underground\CanonicalUndergroundExplorationCombat;
+use App\Application\Underground\CanonicalUndergroundPartyCombat;
 use App\Application\Underground\UndergroundAlphaV1PlayerCatalog;
 use App\Application\Underground\UndergroundBalanceSimulator;
 use App\Application\Underground\UndergroundBuildBalanceSimulator;
@@ -64,7 +65,7 @@ final class UndergroundBalanceSimulatorTest extends TestCase
             $manifest,
             $contents,
             hash('sha256', $contents),
-            'config/underground/balance/trial1-v1.json',
+            'config/underground/balance/trial1-v2.json',
             str_repeat('c', 40),
             false,
             41,
@@ -157,7 +158,7 @@ final class UndergroundBalanceSimulatorTest extends TestCase
             $manifest,
             $contents,
             hash('sha256', $contents),
-            'config/underground/balance/trial2-v1.json',
+            'config/underground/balance/trial2-v2.json',
             str_repeat('d', 40),
             false,
             0,
@@ -329,7 +330,7 @@ final class UndergroundBalanceSimulatorTest extends TestCase
             $manifest,
             $contents,
             hash('sha256', $contents),
-            'config/underground/balance/trial1-v1.json',
+            'config/underground/balance/trial1-v2.json',
             str_repeat('d', 40),
             false,
             41,
@@ -344,7 +345,7 @@ final class UndergroundBalanceSimulatorTest extends TestCase
 
     public function test_alpha_v1_small_smoke_reports_build_damage_mp_scale_and_zero_abnormal_states(): void
     {
-        $path = dirname(__DIR__, 3).'/config/underground/balance/foundation-v1.json';
+        $path = dirname(__DIR__, 3).'/config/underground/balance/foundation-v2.json';
         $contents = file_get_contents($path);
         $this->assertIsString($contents);
         $manifest = json_decode($contents, true, flags: JSON_THROW_ON_ERROR);
@@ -354,7 +355,7 @@ final class UndergroundBalanceSimulatorTest extends TestCase
             $manifest,
             $contents,
             hash('sha256', $contents),
-            'config/underground/balance/foundation-v1.json',
+            'config/underground/balance/foundation-v2.json',
             str_repeat('b', 40),
             false,
             0,
@@ -382,7 +383,7 @@ final class UndergroundBalanceSimulatorTest extends TestCase
             'php',
             'artisan',
             'underground:balance',
-            '--manifest=config/underground/balance/foundation-v1.json',
+            '--manifest=config/underground/balance/foundation-v2.json',
             '--seed-start=0',
             '--count=8',
             '--commit-sha='.str_repeat('b', 40),
@@ -393,7 +394,7 @@ final class UndergroundBalanceSimulatorTest extends TestCase
             $manifest,
             $contents,
             hash('sha256', $contents),
-            'config/underground/balance/foundation-v1.json',
+            'config/underground/balance/foundation-v2.json',
             str_repeat('b', 40),
             false,
             0,
@@ -505,6 +506,41 @@ final class UndergroundBalanceSimulatorTest extends TestCase
         $this->assertSame($first, $second);
         $this->assertNotEmpty($first['result']['action_log']);
         $this->assertSame(41, $first['result']['seed']);
+    }
+
+    public function test_trial_three_replay_uses_party_combat_and_boss_phase_actions(): void
+    {
+        $manifest = json_decode(
+            file_get_contents(base_path('config/underground/balance/trial3-v1.json')),
+            true,
+            512,
+            JSON_THROW_ON_ERROR,
+        );
+        $replay = $this->trialSimulator()->replay($manifest, 'blessing_green:lv650:heal3000', 0);
+        $battles = $replay['result']['battles'];
+
+        $this->assertTrue($replay['result']['cleared']);
+        $this->assertCount(10, $battles);
+        $this->assertContains('executioner_cut', array_column($battles[0]['action_log'], 'action_key'));
+        $this->assertGreaterThan(0, $battles[0]['action_usage']['holy_lance'] ?? 0);
+        $this->assertCount(2, $manifest['enemy_parties']['trial3_shelna_gald']);
+
+        $bossActions = $battles[9]['action_log'];
+        $awakening = array_values(array_filter($bossActions,
+            static fn (array $row): bool => ($row['action'] ?? null) === 'trial3_awakening' && ($row['effect_type'] ?? null) === 'recovery',
+        ));
+        $warnings = array_values(array_filter($bossActions,
+            static fn (array $row): bool => ($row['action'] ?? null) === 'charged_attack_countdown' && ($row['major_telegraph'] ?? false),
+        ));
+        $slashes = array_values(array_filter($bossActions,
+            static fn (array $row): bool => ($row['action'] ?? null) === 'trial3_dimensional_slash' && ($row['effect_type'] ?? null) === 'damage',
+        ));
+
+        $this->assertCount(1, $awakening);
+        $this->assertNotEmpty($warnings);
+        $this->assertNotEmpty($slashes);
+        $this->assertLessThan($slashes[0]['round'], $warnings[0]['round']);
+        $this->assertContains('lifesteal', array_column($bossActions, 'action'));
     }
 
     public function test_threshold_failure_is_reported_without_deleting_the_scenario(): void
@@ -641,7 +677,7 @@ final class UndergroundBalanceSimulatorTest extends TestCase
     /** @return array{string, array<string, mixed>} */
     private function trialManifest(): array
     {
-        $path = dirname(__DIR__, 3).'/config/underground/balance/trial1-v1.json';
+        $path = dirname(__DIR__, 3).'/config/underground/balance/trial1-v2.json';
         $contents = file_get_contents($path);
         $this->assertIsString($contents);
         $manifest = json_decode($contents, true, flags: JSON_THROW_ON_ERROR);
@@ -653,7 +689,7 @@ final class UndergroundBalanceSimulatorTest extends TestCase
     /** @return array{string, array<string, mixed>} */
     private function trialTwoManifest(): array
     {
-        $path = dirname(__DIR__, 3).'/config/underground/balance/trial2-v1.json';
+        $path = dirname(__DIR__, 3).'/config/underground/balance/trial2-v2.json';
         $contents = file_get_contents($path);
         $this->assertIsString($contents);
         $manifest = json_decode($contents, true, flags: JSON_THROW_ON_ERROR);
@@ -677,6 +713,7 @@ final class UndergroundBalanceSimulatorTest extends TestCase
 
         return new UndergroundTrialBalanceSimulator(
             new CanonicalUndergroundExplorationCombat($model),
+            new CanonicalUndergroundPartyCombat($model),
             new UndergroundAlphaV1PlayerCatalog($rules, $validator),
             new UndergroundEquipmentCatalog,
             $rules,

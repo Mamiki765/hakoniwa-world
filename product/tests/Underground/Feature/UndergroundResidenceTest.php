@@ -253,8 +253,14 @@ final class UndergroundResidenceTest extends UndergroundPlayerAccessTestCase
         File::ensureDirectoryExists($directory.'/background');
         copy(resource_path('images/underground-placeholder.jpg'), $directory.'/background/area.jpg');
         file_put_contents($directory.'/scene-assets.json', json_encode([
-            'assets' => ['cave' => ['file' => 'background/area.jpg', 'creation_method' => 'ai_generated']],
-            'scenes' => ['hunting_ground.black_crystal_cave' => ['background' => 'cave']],
+            'assets' => [
+                'cave' => ['file' => 'background/area.jpg', 'creation_method' => 'ai_generated'],
+                'castle' => ['file' => 'background/area.jpg', 'creation_method' => 'ai_generated'],
+            ],
+            'scenes' => [
+                'hunting_ground.black_crystal_cave' => ['background' => 'cave'],
+                'trial_03.twilight_castle' => ['background' => 'castle'],
+            ],
         ], JSON_THROW_ON_ERROR));
         config(['hakoniwa.assets.path' => $directory]);
         try {
@@ -266,14 +272,25 @@ final class UndergroundResidenceTest extends UndergroundPlayerAccessTestCase
             ]);
             $this->actingAs($user)->postJson('/api/v1/me/underground/home-background', $payload)->assertOk()
                 ->assertJsonPath('data.visuals.scenes.home.background.id', 'cave');
+            $castle = ['key' => 'trial_03.twilight_castle', 'request_id' => (string) Str::uuid()];
+            $this->actingAs($user)->postJson('/api/v1/me/underground/home-background', $castle)->assertConflict();
+            foreach (['trial_02', 'trial_03'] as $trialKey) {
+                UndergroundTrialProgress::query()->create([
+                    'underground_profile_id' => $profile->id, 'trial_key' => $trialKey,
+                    'unlocked_at' => now(), 'first_cleared_at' => now(),
+                ]);
+            }
+            $this->actingAs($user)->postJson('/api/v1/me/underground/home-background', $castle)->assertOk()
+                ->assertJsonPath('data.visuals.scenes.home.background.id', 'castle')
+                ->assertJsonPath('data.visuals.scenes.home.background.creation_method', 'ai_generated');
             $this->actingAs($user)->patchJson('/api/v1/me/secretary/image-preferences', [
                 'show_ai_generated_images' => false, 'own_secretary_fallback' => 'silhouette',
             ])->assertOk();
             $this->actingAs($user->fresh())->getJson('/api/v1/me/underground')->assertOk()
                 ->assertJsonPath('data.visuals.scenes.home.background', null)
-                ->assertJsonPath('data.visuals.home_background_key', 'hunting_ground.black_crystal_cave')
-                ->assertJsonMissing(['id' => 'cave']);
-            $this->assertSame('hunting_ground.black_crystal_cave', $profile->fresh()->home_background_key);
+                ->assertJsonPath('data.visuals.home_background_key', 'trial_03.twilight_castle')
+                ->assertJsonMissing(['id' => 'castle']);
+            $this->assertSame('trial_03.twilight_castle', $profile->fresh()->home_background_key);
         } finally {
             File::deleteDirectory($directory);
         }

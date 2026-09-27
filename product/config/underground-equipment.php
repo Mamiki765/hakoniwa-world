@@ -160,10 +160,24 @@ foreach (['vitality' => '王都の生命護符', 'might' => '王都の武力護�
         0, 0, 0, 0, $bonus, requiredTrialKey: 'trial_02',
     );
 }
+$versionThreeDefinitions = $definitions;
+$definitions['excalibur'] = [
+    ...$definition('excalibur', 'エクスカリバー', 'weapon', 'longsword', 0, 185, null,
+        395, 130, 0, 0, $stats(40, 40, 40, 40, 40), false, false),
+    'rarity' => 'unique',
+    'rarity_label' => 'ユニーク',
+    'modifiers' => [
+        'self_regeneration_target_hp_bps' => 200,
+        'physical_damage_bps' => 500,
+        'miracle_damage_bps' => 500,
+        'mp_cost_reduction_bps' => 500,
+        'healing_bps' => 500,
+    ],
+];
 
 return [
     'schema_version' => 2,
-    'catalog_identity' => 'secretary-underground-shop-equipment-alpha-v3',
+    'catalog_identity' => 'secretary-underground-shop-equipment-alpha-v4',
     'weapon_style_labels' => [
         'dagger' => '短剣',
         'rapier' => '細身剣',
@@ -171,6 +185,7 @@ return [
         'crystal_staff' => '輝石杖',
     ],
     'legacy_catalogs' => [
+        'secretary-underground-shop-equipment-alpha-v3' => $versionThreeDefinitions,
         'secretary-underground-shop-equipment-alpha-v2' => $versionTwoDefinitions,
         'secretary-underground-shop-equipment-alpha-v1' => $legacyDefinitions,
     ],
@@ -181,8 +196,8 @@ return [
     'page_size' => 50,
     'definitions' => $definitions,
     'generator' => [
-        'identity' => 'secretary-underground-drop-equipment-alpha-v2',
-        'legacy_identities' => ['secretary-underground-drop-equipment-alpha-v1'],
+        'identity' => 'secretary-underground-drop-equipment-alpha-v3',
+        'legacy_identities' => ['secretary-underground-drop-equipment-alpha-v2', 'secretary-underground-drop-equipment-alpha-v1'],
         'item_level_min' => 1,
         'item_level_max' => 210,
         'tiers' => [
@@ -246,6 +261,11 @@ return [
                     'spirit' => '宮廷の精神護符',
                     'agility' => '王都の敏捷護符',
                 ],
+            ],
+            'hero' => [
+                'weapon_names' => ['dagger' => '勇者の短剣', 'rapier' => '勇者の細剣', 'longsword' => '勇者の剣', 'crystal_staff' => '勇者の杖'],
+                'armor_name' => '勇者の鎧',
+                'accessory_name' => '勇者の護符',
             ],
         ],
         'rarities' => [

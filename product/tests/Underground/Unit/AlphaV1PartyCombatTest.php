@@ -815,6 +815,30 @@ final class AlphaV1PartyCombatTest extends TestCase
         self::assertIsString($lifesteal['action_id'] ?? null);
     }
 
+    public function test_party_draining_cut_heals_only_its_own_actor(): void
+    {
+        $catalog = $this->catalog(enemyHp: 10_000_000, enemyPower: 1, enemyAgility: 1);
+        $attacker = $this->player('secretary:1', currentHp: 1);
+        $attacker['active_skills'] = ['draining_cut'];
+        $attacker['ai_rules'] = [[
+            'conditions' => [['type' => 'always']], 'action' => 'skill:draining_cut',
+        ]];
+        $companion = $this->player('borrowed:2', currentHp: 1, defend: true);
+        $result = $this->model()->fightPartySnapshots(
+            $catalog, [$attacker, $companion], ['party_target'], 619, 1, 0,
+        );
+        $damage = collect($result->actionLog)->firstWhere('action', 'draining_cut');
+        $drain = collect($result->actionLog)->firstWhere('action', 'lifesteal');
+        self::assertIsArray($damage);
+        self::assertIsArray($drain);
+        self::assertSame('secretary:1', $drain['actor_id']);
+        self::assertSame('secretary:1', $drain['target_id']);
+        self::assertSame(['secretary:1'], $drain['target_ids']);
+        self::assertSame($damage['action_id'], $drain['action_id']);
+        self::assertSame(-intdiv($damage['hp_damage'] * 7000, 10_000), $drain['amount']);
+        self::assertSame(1, $result->finalStates['borrowed:2']['hp']);
+    }
+
     public function test_counter_stance_counters_each_attacker_once_per_round_even_against_multiple_hits(): void
     {
         $manifest = $this->catalog(10_000_000, 1, 1)->manifest();
@@ -993,6 +1017,88 @@ final class AlphaV1PartyCombatTest extends TestCase
         self::assertGreaterThanOrEqual(4, $mercy['round']);
     }
 
+    public function test_emergency_cover_intercepts_one_explicit_single_hit_and_not_area_damage(): void
+    {
+        $manifest = $this->catalog(1_000_000, 1_500, 1)->manifest();
+        $manifest['enemies']['party_target']['ai_rules'] = [[
+            'conditions' => [['type' => 'always']], 'action' => 'normal_attack', 'target' => 'untaunted_enemy',
+        ]];
+        $ally = $this->player('secretary:1', currentHp: 500);
+        $guardian = $this->player('secretary:2', currentHp: 1_000);
+        $guardian['stats']['agility'] = 500;
+        $guardian['active_skills'] = ['emergency_cover'];
+        $guardian['ai_rules'] = [['conditions' => [['type' => 'always']], 'action' => 'skill:emergency_cover']];
+        $model = $this->model();
+        $single = $model->fightPartySnapshots(new AlphaV1BuildCatalog($manifest), [$ally, $guardian], ['party_target'], 717, 1, 0);
+        $rows = collect($single->actionLog);
+        $trigger = $rows->firstWhere('effect_type', 'cover_triggered');
+        $enemyDamage = $rows->first(static fn (array $row): bool => ($row['actor_id'] ?? null) === 'enemy:1'
+            && ($row['effect_type'] ?? null) === 'damage');
+        self::assertIsArray($trigger);
+        self::assertSame('secretary:1', $trigger['protected_actor_id']);
+        self::assertSame('secretary:2', $enemyDamage['target_id']);
+        self::assertSame(500, $single->finalStates['secretary:1']['hp']);
+
+        $areaManifest = $this->catalog(1_000_000, 1_500, 1, enemyAoe: true)->manifest();
+        $area = $model->fightPartySnapshots(new AlphaV1BuildCatalog($areaManifest), [$ally, $guardian], ['party_target'], 717, 1, 0);
+        self::assertNull(collect($area->actionLog)->firstWhere('effect_type', 'cover_triggered'));
+        self::assertLessThan(500, $area->finalStates['secretary:1']['hp']);
+
+        $solo = $model->fightPlayerSnapshot(new AlphaV1BuildCatalog($manifest), $guardian,
+            'party_target', 717, 1, 0);
+        self::assertNotNull(collect($solo->actionLog)->firstWhere('effect_type', 'cover_triggered'));
+        self::assertLessThan(500, $solo->damageReceived);
+
+        $freeSkillManifest = $manifest;
+        $freeSkillManifest['skills']['quick_stab']['effects'][0] = [
+            ...$manifest['enemies']['party_target']['normal_attack'],
+            'target' => 'enemy', 'target_scope' => 'single_enemy',
+        ];
+        $freeSkillManifest['enemies']['party_target']['skills'] = ['quick_stab'];
+        $freeSkillManifest['enemies']['party_target']['ai_rules'] = [
+            ['conditions' => [['type' => 'always']], 'action' => 'skill:quick_stab'],
+            ['conditions' => [['type' => 'always']], 'action' => 'normal_attack'],
+        ];
+        $freeSkill = $model->fightPlayerSnapshot(new AlphaV1BuildCatalog($freeSkillManifest), $guardian,
+            'party_target', 718, 1, 0);
+        $enemyHits = collect($freeSkill->actionLog)->where('side', 'enemy')->where('effect_type', 'damage');
+        $stab = $enemyHits->firstWhere('action', 'quick_stab');
+        $followingAttack = $enemyHits->firstWhere('action', 'normal_attack');
+        self::assertIsArray($stab);
+        self::assertIsArray($followingAttack);
+        self::assertGreaterThan($stab['amount'] * 3, $followingAttack['amount']);
+    }
+
+    public function test_group_heal_and_attack_heal_reach_the_intended_allies(): void
+    {
+        $catalog = $this->catalog(1_000_000, 1, 1);
+        $healer = $this->player('secretary:1', currentHp: 500);
+        $healer['stats']['agility'] = 500;
+        $healer['active_skills'] = ['harmony_heal'];
+        $healer['ai_rules'] = [['conditions' => [['type' => 'always']], 'action' => 'skill:harmony_heal']];
+        $ally = $this->player('secretary:2', currentHp: 400);
+        $model = $this->model();
+        $group = $model->fightPartySnapshots($catalog, [$healer, $ally], ['party_target'], 718, 1, 0);
+        $heals = collect($group->actionLog)->where('action', 'harmony_heal')->where('effect_type', 'recovery');
+        self::assertSame(['secretary:1', 'secretary:2'], $heals->pluck('target_id')->values()->all());
+        self::assertGreaterThan(500, $group->finalStates['secretary:1']['hp']);
+        self::assertGreaterThan(400, $group->finalStates['secretary:2']['hp']);
+
+        $healer['active_skills'] = ['healing_ray'];
+        $healer['ai_rules'] = [['conditions' => [['type' => 'always']], 'action' => 'skill:healing_ray']];
+        $hybrid = $model->fightPartySnapshots($catalog, [$healer, $ally], ['party_target'], 718, 1, 0);
+        $hybridRows = collect($hybrid->actionLog)->where('action', 'healing_ray');
+        self::assertSame('enemy:1', $hybridRows->firstWhere('effect_type', 'damage')['target_id']);
+        self::assertSame('secretary:2', $hybridRows->firstWhere('effect_type', 'recovery')['target_id']);
+
+        $lethalSolo = $model->fightPlayerSnapshot($this->catalog(1, 1, 1), $healer,
+            'party_target', 719, 1, 0);
+        self::assertSame('player', $lethalSolo->winner);
+        self::assertGreaterThan(400, $lethalSolo->playerRemainingHp);
+        self::assertNotNull(collect($lethalSolo->actionLog)->where('action', 'healing_ray')
+            ->firstWhere('effect_type', 'recovery'));
+    }
+
     private function catalog(
         int $enemyHp,
         int $enemyPower,
@@ -1001,7 +1107,7 @@ final class AlphaV1PartyCombatTest extends TestCase
         bool $enemyCounter = false,
         bool $enemyBoss = false,
     ): AlphaV1BuildCatalog {
-        $contents = file_get_contents(dirname(__DIR__, 3).'/config/underground/balance/foundation-v1.json');
+        $contents = file_get_contents(dirname(__DIR__, 3).'/config/underground/balance/foundation-v2.json');
         self::assertIsString($contents);
         $manifest = json_decode($contents, true, flags: JSON_THROW_ON_ERROR);
         self::assertIsArray($manifest);

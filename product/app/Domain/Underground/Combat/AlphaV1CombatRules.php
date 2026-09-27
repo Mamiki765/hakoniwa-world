@@ -9,7 +9,7 @@ final class AlphaV1CombatRules
     // Reserve 100x BPS headroom for downstream stat, HP, damage, and status products.
     private const LEVEL_SCALE_INTEGER_HEADROOM = 1_000_000;
 
-    public const IDENTITY = 'secretary-underground-alpha-v7';
+    public const IDENTITY = 'secretary-underground-alpha-v8';
 
     public const SIMULATOR_VERSION = 'underground-build-balance-alpha-v2';
 
@@ -27,7 +27,7 @@ final class AlphaV1CombatRules
 
     public const AI_RULE_LIMIT = 20;
 
-    public const BUILD_POINT_BUDGET = 120;
+    public const BUILD_POINT_BUDGET = 140;
 
     public const DAMAGE_REDUCTION_CAP_BPS = 7_500;
 

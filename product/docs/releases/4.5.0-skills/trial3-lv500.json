@@ -1,0 +1,198 @@
+{
+    "level": 500,
+    "seed_start": 0,
+    "seed_count": 100,
+    "interbattle_healing_bps": 3000,
+    "results": {
+        "martial_100": {
+            "sp": 90,
+            "clears": 0,
+            "boss_reached": 1,
+            "rounds_mean": 67.62,
+            "healing_mean": 20126.14,
+            "prevented_mean": 144115.03,
+            "actions": {
+                "executioner_cut": 1389,
+                "iaido_cut": 1127,
+                "armor_break_strike": 843,
+                "whirlwind": 383,
+                "normal_attack": 161,
+                "mending_prayer": 1914,
+                "awakening": 83,
+                "defend": 157
+            }
+        },
+        "martial_100_sustain": {
+            "sp": 96,
+            "clears": 19,
+            "boss_reached": 20,
+            "rounds_mean": 92.5,
+            "healing_mean": 34656.9,
+            "prevented_mean": 208860.58,
+            "actions": {
+                "executioner_cut": 1001,
+                "iaido_cut": 744,
+                "armor_break_strike": 484,
+                "draining_cut": 5713,
+                "whirlwind": 284,
+                "normal_attack": 121,
+                "awakening": 119,
+                "defend": 2
+            }
+        },
+        "martial_100_bleed_sustain": {
+            "sp": 84,
+            "clears": 18,
+            "boss_reached": 18,
+            "rounds_mean": 95.58,
+            "healing_mean": 37051.39,
+            "prevented_mean": 213454.2,
+            "actions": {
+                "iaido_cut": 1102,
+                "severing_bleed": 714,
+                "dagger_flurry": 446,
+                "draining_cut": 6159,
+                "precision_cut": 248,
+                "awakening": 122,
+                "defend": 1
+            }
+        },
+        "guardian_100_standard": {
+            "sp": 84,
+            "clears": 68,
+            "boss_reached": 68,
+            "rounds_mean": 206.92,
+            "healing_mean": 7806.92,
+            "prevented_mean": 600362.19,
+            "actions": {
+                "counter_stance": 6203,
+                "bulwark_strike": 6455,
+                "shield_bash": 4965,
+                "fortress": 1284,
+                "renewing_guard": 259,
+                "defend": 68
+            }
+        },
+        "miracle_100_two_attack": {
+            "sp": 72,
+            "clears": 98,
+            "boss_reached": 98,
+            "rounds_mean": 188.14,
+            "healing_mean": 151023.14,
+            "prevented_mean": 461722.1,
+            "actions": {
+                "holy_lance": 5654,
+                "holy_nova": 4457,
+                "regeneration": 2599,
+                "lucid_dream": 2488,
+                "normal_attack": 2184,
+                "mending_prayer": 180,
+                "awakening": 1,
+                "defend": 98
+            }
+        },
+        "martial_140_dispel_sustain": {
+            "sp": 120,
+            "clears": 20,
+            "boss_reached": 20,
+            "rounds_mean": 93.03,
+            "healing_mean": 35748.17,
+            "prevented_mean": 204514.23,
+            "actions": {
+                "iaido_cut": 927,
+                "severing_bleed": 531,
+                "dagger_flurry": 284,
+                "draining_cut": 6009,
+                "dispelling_cut": 568,
+                "awakening": 112,
+                "normal_attack": 108,
+                "defend": 6
+            }
+        },
+        "martial_140_wound_sustain": {
+            "sp": 120,
+            "clears": 24,
+            "boss_reached": 25,
+            "rounds_mean": 97.67,
+            "healing_mean": 37817.87,
+            "prevented_mean": 218745.12,
+            "actions": {
+                "iaido_cut": 1115,
+                "severing_bleed": 756,
+                "dagger_flurry": 473,
+                "draining_cut": 6223,
+                "wound_opening": 218,
+                "normal_attack": 99,
+                "awakening": 132,
+                "defend": 2
+            }
+        },
+        "guardian_140_cover": {
+            "sp": 132,
+            "clears": 100,
+            "boss_reached": 100,
+            "rounds_mean": 236.82,
+            "healing_mean": 84024.39,
+            "prevented_mean": 572732.97,
+            "actions": {
+                "bulwark_strike": 9615,
+                "shield_bash": 5565,
+                "fortress": 4442,
+                "renewing_guard": 2754,
+                "defend": 100,
+                "awakening": 40
+            }
+        },
+        "guardian_140_barrier": {
+            "sp": 132,
+            "clears": 98,
+            "boss_reached": 98,
+            "rounds_mean": 187.72,
+            "healing_mean": 36023.05,
+            "prevented_mean": 515900.61,
+            "actions": {
+                "counter_stance": 5888,
+                "barrier_crash": 6039,
+                "bulwark_strike": 4376,
+                "renewing_guard": 1185,
+                "defend": 98,
+                "shield_bash": 37
+            }
+        },
+        "miracle_140_group": {
+            "sp": 138,
+            "clears": 75,
+            "boss_reached": 75,
+            "rounds_mean": 224.44,
+            "healing_mean": 165276.67,
+            "prevented_mean": 557494.49,
+            "actions": {
+                "holy_lance": 5521,
+                "holy_nova": 3386,
+                "normal_attack": 2721,
+                "harmony_heal": 2564,
+                "lucid_dream": 2970,
+                "mending_prayer": 3444,
+                "awakening": 21,
+                "defend": 75
+            }
+        },
+        "miracle_140_hybrid": {
+            "sp": 138,
+            "clears": 99,
+            "boss_reached": 99,
+            "rounds_mean": 155.99,
+            "healing_mean": 128874.67,
+            "prevented_mean": 385893.6,
+            "actions": {
+                "healing_ray": 6669,
+                "holy_lance": 3361,
+                "normal_attack": 1332,
+                "regeneration": 1370,
+                "lucid_dream": 1833,
+                "defend": 99,
+                "mending_prayer": 56
+            }
+        }
+    }
+}

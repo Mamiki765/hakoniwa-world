@@ -130,6 +130,7 @@ STORY;
         private DailyQuestService $dailyQuests,
         private UndergroundBattleStatisticsProjector $statisticsProjector,
         private UndergroundBattleStorage $battleStorage,
+        private UndergroundTrialThreeStory $trialThreeStory,
     ) {}
 
     /**
@@ -913,8 +914,11 @@ STORY;
             $drops = [];
             $equipmentGranted = 0;
             $vaultFull = 0;
-            if (is_string($dropTierKey)) {
-                $remainingVaultSlots = $this->equipmentDrops->remainingVaultCapacity($profile);
+            $distortedStones = 0;
+            if (is_string($dropTierKey) || $trial['distorted_stone_chance_bps'] > 0) {
+                $remainingVaultSlots = is_string($dropTierKey)
+                    ? $this->equipmentDrops->remainingVaultCapacity($profile)
+                    : 0;
                 $rewardsPerRun = count($trial['rewards']);
                 for ($execution = 1; $execution <= $executionCount; $execution++) {
                     foreach ($trial['rewards'] as $index => $entry) {
@@ -924,6 +928,12 @@ STORY;
                             $requestId,
                             $policy['identity'].':'.$trial['content_identity'].':bulk-reward:'.$rewardIndex,
                         );
+                        $distortedStones += $this->rollTrialDistortedStone(
+                            $trial['distorted_stone_chance_bps'], $rewardSeed,
+                        );
+                        if (! is_string($dropTierKey)) {
+                            continue;
+                        }
                         $drop = $this->equipmentDrops->settleBulkSkippedVictory(
                             $profile,
                             $batch,
@@ -943,10 +953,13 @@ STORY;
                     }
                 }
             }
+            $profile->distorted_stone_balance += $distortedStones;
+            $profile->save();
             $batch->reward_snapshot = [
                 'stp_awarded' => $stpAwarded,
                 'equipment_granted_count' => $equipmentGranted,
                 'vault_full_count' => $vaultFull,
+                'distorted_stones' => $distortedStones,
                 'drops' => $drops,
                 'ticket_balance_after' => $ticketBalanceAfter,
             ];
@@ -1511,8 +1524,8 @@ STORY;
                     'label' => $trial['label'],
                     'total_battles' => count($trial['encounters']),
                     'locked' => ! $unlocked,
-                    'unlock_condition' => $requiredTrialKey === 'trial_01'
-                        ? '試練1を初回clear'
+                    'unlock_condition' => is_string($requiredTrialKey)
+                        ? '試練'.(array_search($requiredTrialKey, $this->catalog->trialKeys(), true) + 1).'を初回clear'
                         : null,
                     'first_cleared' => $progress?->first_cleared_at !== null,
                     'skip' => [
@@ -1525,6 +1538,16 @@ STORY;
                 ];
             }
             $firstProgress = $progresses->get($firstTrialKey);
+            $trialThreeProgress = $progresses->get('trial_03');
+            $milestoneStories = $trialThreeProgress instanceof UndergroundTrialProgress
+                ? ($trialThreeProgress->first_milestone_stories ?? [])
+                : [];
+            $upcomingStory = $run instanceof UndergroundTrialRun
+                && $run->trial_key === 'trial_03'
+                && $run->next_battle_index === 10
+                && ! array_key_exists(10, $milestoneStories)
+                    ? $this->trialThreeStory->scene('battle_10')
+                    : null;
 
             return [
                 'key' => $firstTrialKey,
@@ -1532,6 +1555,7 @@ STORY;
                 'total_battles' => count($firstTrial['encounters']),
                 'first_cleared' => $firstProgress?->first_cleared_at !== null,
                 'active_run' => $run instanceof UndergroundTrialRun ? $this->projectTrialRun($run) : null,
+                'upcoming_story' => $upcomingStory,
                 'trials' => $trials,
             ];
         }, 3);
@@ -1649,6 +1673,14 @@ STORY;
             'first_clear_story' => $context === UndergroundBattle::ACTIVITY_TRIAL
                 && is_array($snapshot['first_clear_story'] ?? null)
                     ? $snapshot['first_clear_story']
+                    : null,
+            'first_clear_equipment' => $context === UndergroundBattle::ACTIVITY_TRIAL
+                && is_array($snapshot['first_clear_equipment'] ?? null)
+                    ? $snapshot['first_clear_equipment']
+                    : null,
+            'milestone_story' => $context === UndergroundBattle::ACTIVITY_TRIAL
+                && is_string($snapshot['milestone_story'] ?? null)
+                    ? $snapshot['milestone_story']
                     : null,
             'awakening' => is_array($snapshot['awakening'] ?? null)
                 ? $snapshot['awakening']
@@ -2555,9 +2587,11 @@ STORY;
      *   balance_manifest: string,
      *   required_trial_key: string|null,
      *   drop_tier_key: string|null,
+     *   distorted_stone_chance_bps: int,
      *   interbattle_heal_bps: int,
      *   first_clear_skill_points: int,
      *   encounters: list<string>,
+     *   enemy_parties: array<string, list<string>>,
      *   rewards: list<array{xp: int, shards: int}>
      * } $trial
      */
@@ -2617,33 +2651,75 @@ STORY;
             $awakeningUnlocked,
             $secretary->name,
         );
-        $enemy = $definition['catalog']->enemy($encounterKey);
-        $encounterLabel = $enemy['label'] ?? null;
-        if (! is_string($encounterLabel) || $encounterLabel === '') {
-            throw new UndergroundRuntimeException(
-                'underground_trial_progress_invalid',
-                '封印の地の対戦相手を解決できません。',
-            );
-        }
+        $partyMode = $trial['enemy_parties'] !== [];
+        $enemyKeys = $trial['enemy_parties'][$encounterKey] ?? [$encounterKey];
+        $enemyLabels = array_map(
+            fn (string $key): string => (string) $definition['catalog']->enemy($key)['label'],
+            $enemyKeys,
+        );
+        $encounterLabel = implode(' ＋ ', $enemyLabels);
         $growthPath = $this->alphaV1Catalog->growthPath($profile->growth_path_key);
         $maxRounds = $this->catalog->maxRounds();
         $startedAt = Carbon::now();
-        $result = $this->explorationCombat->fight(
-            $definition['catalog'],
-            $definition['player_snapshot'],
-            $encounterKey,
-            $seed,
-            $maxRounds,
-            (int) $growthPath['natural_recovery'],
-        );
-        $this->assertExplorationCombatResult(
-            $result,
-            $encounterKey,
-            $seed,
-            $maxRounds,
-            $awakeningUnlocked,
-            $profile->awakening_gauge,
-        );
+        $memberSnapshots = [];
+        $partySnapshot = null;
+        if ($partyMode) {
+            $playerId = 'player:1';
+            $definition['player_snapshot']['combatant_id'] = $playerId;
+            $images = $this->battleImageReferences($secretary);
+            $memberSnapshots[$playerId] = [
+                'team' => 'player', 'combatant_id' => $playerId,
+                'display_name' => $this->secretaryPresenter->battleDisplayName($secretary),
+                'image_references' => $images,
+            ];
+            foreach ($enemyKeys as $index => $key) {
+                $id = 'enemy:'.($index + 1);
+                $memberSnapshots[$id] = [
+                    'team' => 'enemy', 'combatant_id' => $id,
+                    'display_name' => $enemyLabels[$index],
+                    'image_references' => ['compact' => null, 'normal' => null, 'awakening' => null],
+                ];
+            }
+            $partySnapshot = [
+                'schema_version' => 1,
+                'content_identity' => $trial['content_identity'],
+                'party_size' => 1,
+                'enemy_count' => count($enemyKeys),
+                'enemy_count_authority' => 'trial_content',
+                'enemy_keys' => $enemyKeys,
+                'members' => $memberSnapshots,
+            ];
+            $result = $this->partyCombat->fight(
+                $definition['catalog'], [$definition['player_snapshot']], $enemyKeys,
+                $seed, $maxRounds, (int) $growthPath['natural_recovery'],
+            );
+            $playerFinalState = $result->finalStates[$playerId] ?? null;
+            $playerAwakening = $result->awakening[$playerId] ?? null;
+            if (! is_array($playerFinalState) || ! is_int($playerFinalState['hp'] ?? null)
+                || ! is_array($playerAwakening) || ! is_int($playerAwakening['gauge_after'] ?? null)) {
+                throw new UndergroundRuntimeException('underground_party_result_invalid', '試練の戦闘結果を解決できません。');
+            }
+            $playerRemainingHp = $playerFinalState['hp'];
+            $damageDealt = (int) ($result->metrics['damage_dealt'] ?? 0);
+            $damageReceived = (int) ($result->metrics['damage_received'] ?? 0);
+            $healingDone = (int) ($result->metrics['effective_healing'] ?? 0);
+            $statistics = $this->statisticsProjector->fromParty($result, $playerId);
+        } else {
+            $result = $this->explorationCombat->fight(
+                $definition['catalog'], $definition['player_snapshot'], $encounterKey,
+                $seed, $maxRounds, (int) $growthPath['natural_recovery'],
+            );
+            $this->assertExplorationCombatResult(
+                $result, $encounterKey, $seed, $maxRounds,
+                $awakeningUnlocked, $profile->awakening_gauge,
+            );
+            $playerRemainingHp = $result->playerRemainingHp;
+            $playerAwakening = $result->awakening;
+            $damageDealt = $result->damageDealt;
+            $damageReceived = $result->damageReceived;
+            $healingDone = $result->effectiveHealing;
+            $statistics = $this->statisticsProjector->fromSolo($result);
+        }
         $finishedAt = Carbon::now();
         $resultType = match ($result->winner) {
             'player' => UndergroundBattle::RESULT_VICTORY,
@@ -2665,6 +2741,10 @@ STORY;
             default => 0,
         };
         $rewardSettlement = $this->applyRepeatableReward($profile, $xpAwarded, $shardDelta);
+        $distortedStones = $resultType === UndergroundBattle::RESULT_VICTORY
+            ? $this->rollTrialDistortedStone($trial['distorted_stone_chance_bps'], $seed)
+            : 0;
+        $profile->distorted_stone_balance += $distortedStones;
         $curve = $rewardSettlement['xp_curve'];
         $stpAwarded = $rewardSettlement['stp_awarded'];
         $maxHpAfter = $this->alphaV1Catalog->currentMaxHp(
@@ -2673,14 +2753,14 @@ STORY;
             $profile->allocatedStp(),
             $equipment,
         );
-        $remainingHpAfterBattle = min($result->playerRemainingHp, $maxHpAfter);
+        $remainingHpAfterBattle = min($playerRemainingHp, $maxHpAfter);
         $profile->current_hp = match ($resultType) {
             UndergroundBattle::RESULT_DEFEAT => $maxHpAfter,
             UndergroundBattle::RESULT_VICTORY => $isTrialBoss
                 ? $remainingHpAfterBattle
                 : min(
                     $maxHpAfter,
-                    $result->playerRemainingHp + intdiv(
+                    $playerRemainingHp + intdiv(
                         $maxHpAfter * $trial['interbattle_heal_bps'],
                         10_000,
                     ),
@@ -2690,17 +2770,26 @@ STORY;
         $interbattleHealAmount = $resultType === UndergroundBattle::RESULT_VICTORY && ! $isTrialBoss
             ? $profile->current_hp - $remainingHpAfterBattle
             : 0;
-        $profile->awakening_gauge = $result->awakening['gauge_after'];
+        $profile->awakening_gauge = $playerAwakening['gauge_after'];
         $firstClear = $this->settleTrial($profile, $trialRun, $resultType, $isTrialBoss, $finishedAt);
+        $firstClearEquipment = null;
+        if ($firstClear && $trialRun->trial_key === 'trial_03') {
+            $item = UndergroundOwnedEquipment::query()->firstOrCreate(
+                ['underground_profile_id' => $profile->id, 'definition_key' => 'excalibur', 'instance_kind' => 'fixed'],
+                ['catalog_identity' => app(UndergroundEquipmentCatalog::class)->identity(),
+                    'equipped_slot' => null, 'acquired_at' => $finishedAt],
+            );
+            $firstClearEquipment = $this->equipmentLoadout->projectOwned($item);
+        }
         $profile->next_battle_at = $finishedAt->copy()->addSeconds($this->catalog->cooldownSeconds());
         $profile->save();
 
-        $projection = $this->alphaV1Projector->project(
-            $result,
-            $definition['catalog'],
-            $this->secretaryPresenter->battleDisplayName($secretary),
-            $encounterLabel,
-        );
+        $projection = $partyMode
+            ? $this->partyProjector->project($result, $memberSnapshots, $definition['catalog'])
+            : $this->alphaV1Projector->project(
+                $result, $definition['catalog'],
+                $this->secretaryPresenter->battleDisplayName($secretary), $encounterLabel,
+            );
         if ($trialRun->trial_key === 'trial_01' && $isTrialBoss && $result->rounds >= 20) {
             $projection = $this->withTrialOneRoundTwentyWarning($projection);
         }
@@ -2711,8 +2800,18 @@ STORY;
         $challengeIntro = $firstChallenge ? match ($trialRun->trial_key) {
             'trial_01' => self::TRIAL_ONE_FIRST_CHALLENGE_INTRO,
             'trial_02' => self::TRIAL_TWO_FIRST_CHALLENGE_INTRO,
+            'trial_03' => $this->trialThreeStory->scene('intro'),
             default => null,
         } : null;
+        $milestoneStory = null;
+        if ($trialRun->trial_key === 'trial_03' && in_array($trialBattleIndex, [5, 7, 10], true)) {
+            $saved = $trialProgress->first_milestone_stories ?? [];
+            if (! array_key_exists($trialBattleIndex, $saved)) {
+                $milestoneStory = $this->trialThreeStory->scene('battle_'.$trialBattleIndex);
+                $saved[$trialBattleIndex] = $milestoneStory;
+                $trialProgress->first_milestone_stories = $saved;
+            }
+        }
         $firstClearStory = $firstClear ? match ($trialRun->trial_key) {
             'trial_01' => [
                 'title' => self::TRIAL_ONE_FIRST_CLEAR_STORY_TITLE,
@@ -2734,6 +2833,18 @@ STORY;
                     '地底マップが'.UndergroundAreaCapacity::forUnlockedLayers(2).'マスまで拡張された。',
                 ],
             ],
+            'trial_03' => [
+                ...$this->trialThreeStory->firstClear(
+                    $secretary->name,
+                    $profile->introProgress?->shopkeeper_name,
+                ),
+                'system_messages' => [
+                    "{$secretary->name}は天光の王城を制覇した。",
+                    'SPを40入手した。',
+                    '地底マップが'.UndergroundAreaCapacity::forUnlockedLayers(3).'マスまで拡張された。',
+                    'エクスカリバーを入手した。',
+                ],
+            ],
             default => null,
         } : null;
         if ($trialProgress->first_challenged_at === null) {
@@ -2747,6 +2858,7 @@ STORY;
         $detailSnapshot = [
             'initial_state' => $projection['initial_state'],
             'player_image_references' => $this->battleImageReferences($secretary),
+            ...($partyMode ? ['portrait_events' => $projection['portrait_events'], 'party' => $partySnapshot] : []),
         ];
         $battle = UndergroundBattle::query()->create([
             'underground_profile_id' => $profile->id,
@@ -2760,11 +2872,11 @@ STORY;
             'trial_battle_index' => $trialBattleIndex,
             'result' => $resultType,
             'rounds' => $result->rounds,
-            'damage_dealt' => $result->damageDealt,
-            'damage_received' => $result->damageReceived,
-            'healing_done' => $result->effectiveHealing,
+            'damage_dealt' => $damageDealt,
+            'damage_received' => $damageReceived,
+            'healing_done' => $healingDone,
             'statistics_version' => UndergroundBattleStatisticsProjector::VERSION,
-            'statistics' => $this->statisticsProjector->fromSolo($result),
+            'statistics' => $statistics,
             'xp_awarded' => $xpAwarded,
             'shard_delta' => $shardDelta,
             'combat_level_before' => $levelBefore,
@@ -2776,13 +2888,16 @@ STORY;
             'private_seed' => $seed,
             'snapshot' => $this->battleStorage->compactSnapshot([
                 'trial_content_identity' => $trial['content_identity'],
-                'combat_rules_identity' => $result->rulesIdentity,
+                'combat_rules_identity' => AlphaV1CombatRules::IDENTITY,
                 'ai' => $definition['ai'],
                 'player_display_name' => $this->secretaryPresenter->battleDisplayName($secretary),
                 'player_image_references' => $detailSnapshot['player_image_references'],
                 'encounter_display_name' => $encounterLabel,
-                'presentation_log_version' => UndergroundAlphaV1BattleProjector::PRESENTATION_LOG_VERSION,
+                'presentation_log_version' => $partyMode
+                    ? UndergroundPartyBattleProjector::PRESENTATION_LOG_VERSION
+                    : UndergroundAlphaV1BattleProjector::PRESENTATION_LOG_VERSION,
                 'initial_state' => $projection['initial_state'],
+                ...($partyMode ? ['portrait_events' => $projection['portrait_events'], 'party' => $partySnapshot] : []),
                 'summary' => $projection['summary'],
                 'growth_path_key' => $profile->growth_path_key,
                 'growth_path_identity' => $profile->growth_path_identity,
@@ -2797,6 +2912,7 @@ STORY;
                 'effective_passive_modifiers' => $definition['passive_modifiers'],
                 'encounter' => [
                     'key' => $encounterKey,
+                    'enemy_keys' => $enemyKeys,
                     'xp_reward' => $reward['xp'],
                     'shard_reward' => $reward['shards'],
                 ],
@@ -2812,12 +2928,15 @@ STORY;
                 'max_hp_after' => $maxHpAfter,
                 'interbattle_heal_amount' => $interbattleHealAmount,
                 'banked_shard_balance' => $profile->banked_shard_balance,
-                'awakening' => $result->awakening,
+                'awakening' => $playerAwakening,
                 'trial_total_battles' => count($trial['encounters']),
                 'trial_status' => $trialRun->status,
                 'trial_next_battle_index' => $trialRun->next_battle_index,
+                'distorted_stones' => $distortedStones,
                 'challenge_intro' => $challengeIntro,
+                'milestone_story' => $milestoneStory,
                 'first_clear_story' => $firstClearStory,
+                'first_clear_equipment' => $firstClearEquipment,
                 'drop' => [
                     'identity' => $this->alphaV1Catalog->explorationDropConfig()['identity'],
                     'status' => 'pending',
@@ -3504,6 +3623,16 @@ STORY;
             );
         }
         $profile->shining_kingdom_key_balance -= $totalCost;
+    }
+
+    private function rollTrialDistortedStone(int $chanceBps, int $seed): int
+    {
+        if ($chanceBps === 0) {
+            return 0;
+        }
+
+        return (new UndergroundRandom($seed))->integer('reward:trial:distorted-stone', 1, 10_000)
+            <= $chanceBps ? 1 : 0;
     }
 
     /**

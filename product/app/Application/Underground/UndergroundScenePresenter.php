@@ -35,6 +35,12 @@ final readonly class UndergroundScenePresenter
                 $options[] = ['key' => $key, 'name' => $name, 'asset' => $background];
             }
         }
+        if (in_array('trial_03', $clearedTrials, true)) {
+            $background = $this->assets->scene('trial_03.twilight_castle', $showAi, false)['background'];
+            if ($background !== null) {
+                $options[] = ['key' => 'trial_03.twilight_castle', 'name' => '黄昏の王城', 'asset' => $background];
+            }
+        }
 
         return $options;
     }

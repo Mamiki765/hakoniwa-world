@@ -1,0 +1,1413 @@
+{
+    "level": 650,
+    "seed_start": 31000,
+    "seed_count": 32,
+    "equipment_stage": "before_boss",
+    "stp_weights_bps": {
+        "martial_red": {
+            "vitality": 2100,
+            "might": 5200,
+            "finesse": 1250,
+            "spirit": 0,
+            "agility": 1450
+        },
+        "guardianship_blue": {
+            "vitality": 3350,
+            "might": 5200,
+            "finesse": 0,
+            "spirit": 0,
+            "agility": 1450
+        },
+        "blessing_green": {
+            "vitality": 2100,
+            "might": 0,
+            "finesse": 1250,
+            "spirit": 5200,
+            "agility": 1450
+        }
+    },
+    "practical_enemy": "trial3_gilgamesh",
+    "results": {
+        "martial_100": {
+            "sp": 90,
+            "budget": 100,
+            "allocations": {
+                "martial_precision_cut": {
+                    "rank": 1,
+                    "active_slot": null
+                },
+                "martial_sweeping_cut": {
+                    "rank": 1,
+                    "active_slot": null
+                },
+                "martial_armor_break": {
+                    "rank": 1,
+                    "active_slot": 2
+                },
+                "martial_iaido_cut": {
+                    "rank": 1,
+                    "active_slot": 3
+                },
+                "martial_whirlwind": {
+                    "rank": 1,
+                    "active_slot": 1
+                },
+                "martial_executioner": {
+                    "rank": 1,
+                    "active_slot": 4
+                },
+                "miracle_mending_prayer": {
+                    "rank": 1,
+                    "active_slot": 5
+                }
+            },
+            "active_skills": [
+                "whirlwind",
+                "armor_break_strike",
+                "iaido_cut",
+                "executioner_cut",
+                "mending_prayer"
+            ],
+            "dummy_dpr": 2185.5740625,
+            "dummy_actions": {
+                "normal_attack": 640,
+                "defend": 0,
+                "ai_fallback": 0,
+                "action_skipped": 0,
+                "counter": 0,
+                "whirlwind": 640,
+                "armor_break_strike": 640,
+                "iaido_cut": 640,
+                "executioner_cut": 640,
+                "mending_prayer": 0
+            },
+            "dummy_damage_by_action": {
+                "executioner_cut": 2520807,
+                "weapon_followup:bahamul_shockwave": 192333,
+                "iaido_cut": 1825837,
+                "armor_break_strike": 918960,
+                "whirlwind": 1067411,
+                "normal_attack": 468489
+            },
+            "practical_dpr": 1403.7038288288288,
+            "practical_wins": 31,
+            "practical_rounds_mean": 27.75,
+            "practical_damage_received_mean": 22080.03125,
+            "practical_healing_mean": 12202.6875,
+            "practical_prevented_mean": 66175.78125,
+            "practical_actions": {
+                "normal_attack": 32,
+                "defend": 37,
+                "ai_fallback": 0,
+                "action_skipped": 0,
+                "counter": 0,
+                "whirlwind": 64,
+                "armor_break_strike": 119,
+                "iaido_cut": 161,
+                "executioner_cut": 172,
+                "mending_prayer": 302
+            }
+        },
+        "martial_100_sustain": {
+            "sp": 96,
+            "budget": 100,
+            "allocations": {
+                "martial_precision_cut": {
+                    "rank": 1,
+                    "active_slot": null
+                },
+                "martial_sweeping_cut": {
+                    "rank": 1,
+                    "active_slot": null
+                },
+                "martial_armor_break": {
+                    "rank": 1,
+                    "active_slot": 2
+                },
+                "martial_iaido_cut": {
+                    "rank": 1,
+                    "active_slot": 3
+                },
+                "martial_whirlwind": {
+                    "rank": 1,
+                    "active_slot": 1
+                },
+                "martial_executioner": {
+                    "rank": 1,
+                    "active_slot": 4
+                },
+                "martial_draining_cut": {
+                    "rank": 1,
+                    "active_slot": 5
+                }
+            },
+            "active_skills": [
+                "whirlwind",
+                "armor_break_strike",
+                "iaido_cut",
+                "executioner_cut",
+                "draining_cut"
+            ],
+            "dummy_dpr": 2185.5740625,
+            "dummy_actions": {
+                "normal_attack": 640,
+                "defend": 0,
+                "ai_fallback": 0,
+                "action_skipped": 0,
+                "counter": 0,
+                "whirlwind": 640,
+                "armor_break_strike": 640,
+                "iaido_cut": 640,
+                "executioner_cut": 640,
+                "draining_cut": 0
+            },
+            "dummy_damage_by_action": {
+                "executioner_cut": 2520807,
+                "weapon_followup:bahamul_shockwave": 192333,
+                "iaido_cut": 1825837,
+                "armor_break_strike": 918960,
+                "whirlwind": 1067411,
+                "normal_attack": 468489
+            },
+            "practical_dpr": 1485.3444576877234,
+            "practical_wins": 32,
+            "practical_rounds_mean": 26.21875,
+            "practical_damage_received_mean": 20684.46875,
+            "practical_healing_mean": 15324.6875,
+            "practical_prevented_mean": 62120,
+            "practical_actions": {
+                "normal_attack": 32,
+                "defend": 20,
+                "ai_fallback": 0,
+                "action_skipped": 0,
+                "counter": 0,
+                "whirlwind": 32,
+                "armor_break_strike": 34,
+                "iaido_cut": 62,
+                "executioner_cut": 78,
+                "draining_cut": 581
+            }
+        },
+        "guardian_100": {
+            "sp": 48,
+            "budget": 100,
+            "allocations": {
+                "guardianship_shield_bash": {
+                    "rank": 1,
+                    "active_slot": 1
+                },
+                "guardianship_counter_stance": {
+                    "rank": 1,
+                    "active_slot": 2
+                },
+                "guardianship_renewing_guard": {
+                    "rank": 1,
+                    "active_slot": 3
+                },
+                "guardianship_bulwark_strike": {
+                    "rank": 1,
+                    "active_slot": 4
+                }
+            },
+            "active_skills": [
+                "shield_bash",
+                "counter_stance",
+                "renewing_guard",
+                "bulwark_strike"
+            ],
+            "dummy_dpr": 1950.475,
+            "dummy_actions": {
+                "normal_attack": 0,
+                "defend": 0,
+                "ai_fallback": 0,
+                "action_skipped": 0,
+                "counter": 0,
+                "shield_bash": 1600,
+                "counter_stance": 0,
+                "renewing_guard": 0,
+                "bulwark_strike": 1600
+            },
+            "dummy_damage_by_action": {
+                "bulwark_strike": 3412833,
+                "shield_bash": 2636235,
+                "weapon_followup:bahamul_shockwave": 192452
+            },
+            "practical_dpr": 1247.4012474012475,
+            "practical_wins": 32,
+            "practical_rounds_mean": 30.0625,
+            "practical_damage_received_mean": 1315.96875,
+            "practical_healing_mean": 0,
+            "practical_prevented_mean": 92497.59375,
+            "practical_actions": {
+                "normal_attack": 0,
+                "defend": 96,
+                "ai_fallback": 0,
+                "action_skipped": 0,
+                "counter": 835,
+                "shield_bash": 248,
+                "counter_stance": 292,
+                "renewing_guard": 0,
+                "bulwark_strike": 320
+            }
+        },
+        "miracle_100": {
+            "sp": 60,
+            "budget": 100,
+            "allocations": {
+                "miracle_holy_bolt": {
+                    "rank": 1,
+                    "active_slot": 1
+                },
+                "miracle_mending_prayer": {
+                    "rank": 1,
+                    "active_slot": 2
+                },
+                "miracle_lucid_dream": {
+                    "rank": 1,
+                    "active_slot": 3
+                },
+                "miracle_holy_nova": {
+                    "rank": 1,
+                    "active_slot": null
+                },
+                "miracle_holy_lance": {
+                    "rank": 1,
+                    "active_slot": 4
+                },
+                "miracle_regeneration": {
+                    "rank": 1,
+                    "active_slot": 5
+                }
+            },
+            "active_skills": [
+                "holy_bolt",
+                "mending_prayer",
+                "lucid_dream",
+                "holy_lance",
+                "regeneration"
+            ],
+            "dummy_dpr": 2305.4003125,
+            "dummy_actions": {
+                "normal_attack": 0,
+                "defend": 0,
+                "ai_fallback": 0,
+                "action_skipped": 0,
+                "counter": 0,
+                "holy_bolt": 1728,
+                "mending_prayer": 0,
+                "lucid_dream": 416,
+                "holy_lance": 1056,
+                "regeneration": 0
+            },
+            "dummy_damage_by_action": {
+                "holy_lance": 3760018,
+                "weapon_followup:bahamul_shockwave": 146941,
+                "holy_bolt": 3470322
+            },
+            "practical_dpr": 1551.3952618453866,
+            "practical_wins": 32,
+            "practical_rounds_mean": 25.0625,
+            "practical_damage_received_mean": 19540.9375,
+            "practical_healing_mean": 18758.34375,
+            "practical_prevented_mean": 58687.0625,
+            "practical_actions": {
+                "normal_attack": 0,
+                "defend": 96,
+                "ai_fallback": 0,
+                "action_skipped": 0,
+                "counter": 0,
+                "holy_bolt": 274,
+                "mending_prayer": 0,
+                "lucid_dream": 96,
+                "holy_lance": 247,
+                "regeneration": 89
+            }
+        },
+        "martial_100_bleed": {
+            "sp": 96,
+            "budget": 100,
+            "allocations": {
+                "martial_precision_cut": {
+                    "rank": 1,
+                    "active_slot": 5
+                },
+                "martial_dagger_flurry": {
+                    "rank": 1,
+                    "active_slot": 1
+                },
+                "martial_severing_bleed": {
+                    "rank": 1,
+                    "active_slot": 2
+                },
+                "martial_sweeping_cut": {
+                    "rank": 1,
+                    "active_slot": null
+                },
+                "martial_armor_break": {
+                    "rank": 1,
+                    "active_slot": null
+                },
+                "martial_iaido_cut": {
+                    "rank": 1,
+                    "active_slot": 3
+                },
+                "martial_executioner": {
+                    "rank": 1,
+                    "active_slot": 4
+                }
+            },
+            "active_skills": [
+                "dagger_flurry",
+                "severing_bleed",
+                "iaido_cut",
+                "executioner_cut",
+                "precision_cut"
+            ],
+            "dummy_dpr": 2735.1175,
+            "dummy_actions": {
+                "normal_attack": 0,
+                "defend": 0,
+                "ai_fallback": 0,
+                "action_skipped": 0,
+                "counter": 0,
+                "dagger_flurry": 640,
+                "severing_bleed": 640,
+                "iaido_cut": 640,
+                "executioner_cut": 640,
+                "precision_cut": 640
+            },
+            "dummy_damage_by_action": {
+                "executioner_cut": 2520807,
+                "weapon_followup:bahamul_shockwave": 192048,
+                "iaido_cut": 1825837,
+                "severing_bleed": 1286487,
+                "dagger_flurry": 1033427,
+                "precision_cut": 772020
+            },
+            "practical_dpr": 1581.0794701986756,
+            "practical_wins": 0,
+            "practical_rounds_mean": 18.875,
+            "practical_damage_received_mean": 13889,
+            "practical_healing_mean": 0,
+            "practical_prevented_mean": 38394.75,
+            "practical_actions": {
+                "normal_attack": 0,
+                "defend": 190,
+                "ai_fallback": 0,
+                "action_skipped": 0,
+                "counter": 0,
+                "dagger_flurry": 64,
+                "severing_bleed": 65,
+                "iaido_cut": 94,
+                "executioner_cut": 95,
+                "precision_cut": 64
+            }
+        },
+        "martial_100_bleed_sustain": {
+            "sp": 84,
+            "budget": 100,
+            "allocations": {
+                "martial_precision_cut": {
+                    "rank": 1,
+                    "active_slot": 5
+                },
+                "martial_dagger_flurry": {
+                    "rank": 1,
+                    "active_slot": 1
+                },
+                "martial_severing_bleed": {
+                    "rank": 1,
+                    "active_slot": 2
+                },
+                "martial_sweeping_cut": {
+                    "rank": 1,
+                    "active_slot": null
+                },
+                "martial_armor_break": {
+                    "rank": 1,
+                    "active_slot": null
+                },
+                "martial_iaido_cut": {
+                    "rank": 1,
+                    "active_slot": 3
+                },
+                "martial_draining_cut": {
+                    "rank": 1,
+                    "active_slot": 4
+                }
+            },
+            "active_skills": [
+                "dagger_flurry",
+                "severing_bleed",
+                "iaido_cut",
+                "draining_cut",
+                "precision_cut"
+            ],
+            "dummy_dpr": 2431.6009375,
+            "dummy_actions": {
+                "normal_attack": 0,
+                "defend": 0,
+                "ai_fallback": 0,
+                "action_skipped": 0,
+                "counter": 0,
+                "dagger_flurry": 800,
+                "severing_bleed": 800,
+                "iaido_cut": 800,
+                "draining_cut": 0,
+                "precision_cut": 800
+            },
+            "dummy_damage_by_action": {
+                "iaido_cut": 2179103,
+                "severing_bleed": 1547185,
+                "dagger_flurry": 1301549,
+                "precision_cut": 1000521,
+                "weapon_followup:bahamul_shockwave": 186865
+            },
+            "practical_dpr": 1538.6711990111248,
+            "practical_wins": 32,
+            "practical_rounds_mean": 25.28125,
+            "practical_damage_received_mean": 19925.15625,
+            "practical_healing_mean": 14578.71875,
+            "practical_prevented_mean": 59838.6875,
+            "practical_actions": {
+                "normal_attack": 0,
+                "defend": 25,
+                "ai_fallback": 0,
+                "action_skipped": 0,
+                "counter": 0,
+                "dagger_flurry": 49,
+                "severing_bleed": 66,
+                "iaido_cut": 83,
+                "draining_cut": 554,
+                "precision_cut": 32
+            }
+        },
+        "guardian_100_standard": {
+            "sp": 84,
+            "budget": 100,
+            "allocations": {
+                "guardianship_shield_bash": {
+                    "rank": 1,
+                    "active_slot": 1
+                },
+                "guardianship_counter_stance": {
+                    "rank": 1,
+                    "active_slot": 2
+                },
+                "guardianship_renewing_guard": {
+                    "rank": 1,
+                    "active_slot": 3
+                },
+                "guardianship_bulwark_strike": {
+                    "rank": 1,
+                    "active_slot": 4
+                },
+                "guardianship_rallying_cry": {
+                    "rank": 1,
+                    "active_slot": null
+                },
+                "guardianship_protective_oath": {
+                    "rank": 1,
+                    "active_slot": null
+                },
+                "guardianship_fortress": {
+                    "rank": 1,
+                    "active_slot": 5
+                }
+            },
+            "active_skills": [
+                "shield_bash",
+                "counter_stance",
+                "renewing_guard",
+                "bulwark_strike",
+                "fortress"
+            ],
+            "dummy_dpr": 1950.475,
+            "dummy_actions": {
+                "normal_attack": 0,
+                "defend": 0,
+                "ai_fallback": 0,
+                "action_skipped": 0,
+                "counter": 0,
+                "shield_bash": 1600,
+                "counter_stance": 0,
+                "renewing_guard": 0,
+                "bulwark_strike": 1600,
+                "fortress": 0
+            },
+            "dummy_damage_by_action": {
+                "bulwark_strike": 3412833,
+                "shield_bash": 2636235,
+                "weapon_followup:bahamul_shockwave": 192452
+            },
+            "practical_dpr": 1247.4012474012475,
+            "practical_wins": 32,
+            "practical_rounds_mean": 30.0625,
+            "practical_damage_received_mean": 1315.96875,
+            "practical_healing_mean": 0,
+            "practical_prevented_mean": 92497.59375,
+            "practical_actions": {
+                "normal_attack": 0,
+                "defend": 96,
+                "ai_fallback": 0,
+                "action_skipped": 0,
+                "counter": 835,
+                "shield_bash": 248,
+                "counter_stance": 292,
+                "renewing_guard": 0,
+                "bulwark_strike": 320,
+                "fortress": 0
+            }
+        },
+        "miracle_100_standard": {
+            "sp": 72,
+            "budget": 100,
+            "allocations": {
+                "miracle_mending_prayer": {
+                    "rank": 1,
+                    "active_slot": 1
+                },
+                "miracle_regeneration": {
+                    "rank": 1,
+                    "active_slot": 2
+                },
+                "miracle_lucid_dream": {
+                    "rank": 1,
+                    "active_slot": 3
+                },
+                "miracle_crystal_cycle": {
+                    "rank": 1,
+                    "active_slot": 4
+                },
+                "miracle_holy_bolt": {
+                    "rank": 1,
+                    "active_slot": null
+                },
+                "miracle_holy_nova": {
+                    "rank": 1,
+                    "active_slot": null
+                },
+                "miracle_holy_lance": {
+                    "rank": 1,
+                    "active_slot": 5
+                }
+            },
+            "active_skills": [
+                "mending_prayer",
+                "regeneration",
+                "lucid_dream",
+                "crystal_cycle",
+                "holy_lance"
+            ],
+            "dummy_dpr": 1694.4971875,
+            "dummy_actions": {
+                "normal_attack": 1952,
+                "defend": 0,
+                "ai_fallback": 0,
+                "action_skipped": 0,
+                "counter": 0,
+                "mending_prayer": 0,
+                "regeneration": 0,
+                "lucid_dream": 160,
+                "crystal_cycle": 0,
+                "holy_lance": 1088
+            },
+            "dummy_damage_by_action": {
+                "holy_lance": 3861218,
+                "weapon_followup:bahamul_shockwave": 163780,
+                "normal_attack": 1397393
+            },
+            "practical_dpr": 1230.755905511811,
+            "practical_wins": 32,
+            "practical_rounds_mean": 31.75,
+            "practical_damage_received_mean": 25412,
+            "practical_healing_mean": 24232.1875,
+            "practical_prevented_mean": 76321.0625,
+            "practical_actions": {
+                "normal_attack": 389,
+                "defend": 96,
+                "ai_fallback": 0,
+                "action_skipped": 0,
+                "counter": 0,
+                "mending_prayer": 0,
+                "regeneration": 118,
+                "lucid_dream": 86,
+                "crystal_cycle": 0,
+                "holy_lance": 327
+            }
+        },
+        "miracle_100_two_attack": {
+            "sp": 72,
+            "budget": 100,
+            "allocations": {
+                "miracle_mending_prayer": {
+                    "rank": 1,
+                    "active_slot": 1
+                },
+                "miracle_regeneration": {
+                    "rank": 1,
+                    "active_slot": 2
+                },
+                "miracle_lucid_dream": {
+                    "rank": 1,
+                    "active_slot": 3
+                },
+                "miracle_crystal_cycle": {
+                    "rank": 1,
+                    "active_slot": null
+                },
+                "miracle_holy_bolt": {
+                    "rank": 1,
+                    "active_slot": null
+                },
+                "miracle_holy_nova": {
+                    "rank": 1,
+                    "active_slot": 4
+                },
+                "miracle_holy_lance": {
+                    "rank": 1,
+                    "active_slot": 5
+                }
+            },
+            "active_skills": [
+                "mending_prayer",
+                "regeneration",
+                "lucid_dream",
+                "holy_nova",
+                "holy_lance"
+            ],
+            "dummy_dpr": 1760.68375,
+            "dummy_actions": {
+                "normal_attack": 864,
+                "defend": 0,
+                "ai_fallback": 0,
+                "action_skipped": 0,
+                "counter": 0,
+                "mending_prayer": 0,
+                "regeneration": 0,
+                "lucid_dream": 416,
+                "holy_nova": 896,
+                "holy_lance": 1024
+            },
+            "dummy_damage_by_action": {
+                "holy_lance": 3613821,
+                "weapon_followup:bahamul_shockwave": 152787,
+                "holy_nova": 1268204,
+                "normal_attack": 599376
+            },
+            "practical_dpr": 1299.5359001040583,
+            "practical_wins": 32,
+            "practical_rounds_mean": 30.03125,
+            "practical_damage_received_mean": 23951.78125,
+            "practical_healing_mean": 22926.34375,
+            "practical_prevented_mean": 71934.1875,
+            "practical_actions": {
+                "normal_attack": 115,
+                "defend": 96,
+                "ai_fallback": 0,
+                "action_skipped": 0,
+                "counter": 0,
+                "mending_prayer": 0,
+                "regeneration": 112,
+                "lucid_dream": 124,
+                "holy_nova": 219,
+                "holy_lance": 295
+            }
+        },
+        "martial_140_bleed": {
+            "sp": 120,
+            "budget": 140,
+            "allocations": {
+                "martial_precision_cut": {
+                    "rank": 1,
+                    "active_slot": null
+                },
+                "martial_dagger_flurry": {
+                    "rank": 1,
+                    "active_slot": 1
+                },
+                "martial_severing_bleed": {
+                    "rank": 1,
+                    "active_slot": 2
+                },
+                "martial_sweeping_cut": {
+                    "rank": 1,
+                    "active_slot": null
+                },
+                "martial_armor_break": {
+                    "rank": 1,
+                    "active_slot": null
+                },
+                "martial_iaido_cut": {
+                    "rank": 1,
+                    "active_slot": 4
+                },
+                "martial_executioner": {
+                    "rank": 1,
+                    "active_slot": 5
+                },
+                "martial_wound_opening": {
+                    "rank": 1,
+                    "active_slot": 3
+                }
+            },
+            "active_skills": [
+                "dagger_flurry",
+                "severing_bleed",
+                "wound_opening",
+                "iaido_cut",
+                "executioner_cut"
+            ],
+            "dummy_dpr": 2859.3940625,
+            "dummy_actions": {
+                "normal_attack": 162,
+                "defend": 0,
+                "ai_fallback": 0,
+                "action_skipped": 0,
+                "counter": 0,
+                "dagger_flurry": 640,
+                "severing_bleed": 640,
+                "wound_opening": 478,
+                "iaido_cut": 640,
+                "executioner_cut": 640
+            },
+            "dummy_damage_by_action": {
+                "executioner_cut": 2520807,
+                "weapon_followup:bahamul_shockwave": 199872,
+                "iaido_cut": 1825837,
+                "severing_bleed": 1286487,
+                "dagger_flurry": 1033427,
+                "wound_opening": 2001533,
+                "normal_attack": 127748
+            },
+            "practical_dpr": 1596.8380165289257,
+            "practical_wins": 0,
+            "practical_rounds_mean": 18.90625,
+            "practical_damage_received_mean": 13889,
+            "practical_healing_mean": 0,
+            "practical_prevented_mean": 38407.40625,
+            "practical_actions": {
+                "normal_attack": 13,
+                "defend": 190,
+                "ai_fallback": 0,
+                "action_skipped": 0,
+                "counter": 0,
+                "dagger_flurry": 64,
+                "severing_bleed": 67,
+                "wound_opening": 50,
+                "iaido_cut": 94,
+                "executioner_cut": 95
+            }
+        },
+        "martial_140_dispel": {
+            "sp": 120,
+            "budget": 140,
+            "allocations": {
+                "martial_precision_cut": {
+                    "rank": 1,
+                    "active_slot": null
+                },
+                "martial_sweeping_cut": {
+                    "rank": 1,
+                    "active_slot": null
+                },
+                "martial_armor_break": {
+                    "rank": 1,
+                    "active_slot": 2
+                },
+                "martial_iaido_cut": {
+                    "rank": 1,
+                    "active_slot": 3
+                },
+                "martial_whirlwind": {
+                    "rank": 1,
+                    "active_slot": 1
+                },
+                "martial_executioner": {
+                    "rank": 1,
+                    "active_slot": 4
+                },
+                "martial_draining_cut": {
+                    "rank": 1,
+                    "active_slot": null
+                },
+                "martial_dispelling_cut": {
+                    "rank": 1,
+                    "active_slot": 5
+                }
+            },
+            "active_skills": [
+                "whirlwind",
+                "armor_break_strike",
+                "iaido_cut",
+                "executioner_cut",
+                "dispelling_cut"
+            ],
+            "dummy_dpr": 2185.5740625,
+            "dummy_actions": {
+                "normal_attack": 640,
+                "defend": 0,
+                "ai_fallback": 0,
+                "action_skipped": 0,
+                "counter": 0,
+                "whirlwind": 640,
+                "armor_break_strike": 640,
+                "iaido_cut": 640,
+                "executioner_cut": 640,
+                "dispelling_cut": 0
+            },
+            "dummy_damage_by_action": {
+                "executioner_cut": 2520807,
+                "weapon_followup:bahamul_shockwave": 192333,
+                "iaido_cut": 1825837,
+                "armor_break_strike": 918960,
+                "whirlwind": 1067411,
+                "normal_attack": 468489
+            },
+            "practical_dpr": 1430.7846153846153,
+            "practical_wins": 1,
+            "practical_rounds_mean": 22.34375,
+            "practical_damage_received_mean": 13778.96875,
+            "practical_healing_mean": 0,
+            "practical_prevented_mean": 39068.21875,
+            "practical_actions": {
+                "normal_attack": 41,
+                "defend": 213,
+                "ai_fallback": 0,
+                "action_skipped": 0,
+                "counter": 0,
+                "whirlwind": 78,
+                "armor_break_strike": 88,
+                "iaido_cut": 107,
+                "executioner_cut": 125,
+                "dispelling_cut": 32
+            }
+        },
+        "martial_140_dispel_sustain": {
+            "sp": 120,
+            "budget": 140,
+            "allocations": {
+                "martial_precision_cut": {
+                    "rank": 1,
+                    "active_slot": null
+                },
+                "martial_dagger_flurry": {
+                    "rank": 1,
+                    "active_slot": 1
+                },
+                "martial_severing_bleed": {
+                    "rank": 1,
+                    "active_slot": 2
+                },
+                "martial_sweeping_cut": {
+                    "rank": 1,
+                    "active_slot": null
+                },
+                "martial_armor_break": {
+                    "rank": 1,
+                    "active_slot": null
+                },
+                "martial_iaido_cut": {
+                    "rank": 1,
+                    "active_slot": 3
+                },
+                "martial_draining_cut": {
+                    "rank": 1,
+                    "active_slot": 4
+                },
+                "martial_quick_stab": {
+                    "rank": 1,
+                    "active_slot": null
+                },
+                "martial_dispelling_cut": {
+                    "rank": 1,
+                    "active_slot": 5
+                }
+            },
+            "active_skills": [
+                "dagger_flurry",
+                "severing_bleed",
+                "iaido_cut",
+                "draining_cut",
+                "dispelling_cut"
+            ],
+            "dummy_dpr": 2302.0765625,
+            "dummy_actions": {
+                "normal_attack": 800,
+                "defend": 0,
+                "ai_fallback": 0,
+                "action_skipped": 0,
+                "counter": 0,
+                "dagger_flurry": 800,
+                "severing_bleed": 800,
+                "iaido_cut": 800,
+                "draining_cut": 0,
+                "dispelling_cut": 0
+            },
+            "dummy_damage_by_action": {
+                "iaido_cut": 2179103,
+                "severing_bleed": 1547185,
+                "dagger_flurry": 1301549,
+                "normal_attack": 578983,
+                "weapon_followup:bahamul_shockwave": 193925
+            },
+            "practical_dpr": 1532.9131513647642,
+            "practical_wins": 32,
+            "practical_rounds_mean": 25.1875,
+            "practical_damage_received_mean": 16116.46875,
+            "practical_healing_mean": 11939.90625,
+            "practical_prevented_mean": 48437.1875,
+            "practical_actions": {
+                "normal_attack": 32,
+                "defend": 51,
+                "ai_fallback": 0,
+                "action_skipped": 0,
+                "counter": 0,
+                "dagger_flurry": 33,
+                "severing_bleed": 80,
+                "iaido_cut": 121,
+                "draining_cut": 457,
+                "dispelling_cut": 32
+            }
+        },
+        "martial_140_wound_sustain": {
+            "sp": 120,
+            "budget": 140,
+            "allocations": {
+                "martial_precision_cut": {
+                    "rank": 1,
+                    "active_slot": null
+                },
+                "martial_dagger_flurry": {
+                    "rank": 1,
+                    "active_slot": 1
+                },
+                "martial_severing_bleed": {
+                    "rank": 1,
+                    "active_slot": 2
+                },
+                "martial_sweeping_cut": {
+                    "rank": 1,
+                    "active_slot": null
+                },
+                "martial_armor_break": {
+                    "rank": 1,
+                    "active_slot": null
+                },
+                "martial_iaido_cut": {
+                    "rank": 1,
+                    "active_slot": 4
+                },
+                "martial_draining_cut": {
+                    "rank": 1,
+                    "active_slot": 5
+                },
+                "martial_quick_stab": {
+                    "rank": 1,
+                    "active_slot": null
+                },
+                "martial_wound_opening": {
+                    "rank": 1,
+                    "active_slot": 3
+                }
+            },
+            "active_skills": [
+                "dagger_flurry",
+                "severing_bleed",
+                "wound_opening",
+                "iaido_cut",
+                "draining_cut"
+            ],
+            "dummy_dpr": 2612.42875,
+            "dummy_actions": {
+                "normal_attack": 157,
+                "defend": 0,
+                "ai_fallback": 0,
+                "action_skipped": 0,
+                "counter": 0,
+                "dagger_flurry": 800,
+                "severing_bleed": 800,
+                "wound_opening": 643,
+                "iaido_cut": 800,
+                "draining_cut": 0
+            },
+            "dummy_damage_by_action": {
+                "iaido_cut": 2179103,
+                "severing_bleed": 1547185,
+                "dagger_flurry": 1308941,
+                "wound_opening": 2821740,
+                "weapon_followup:bahamul_shockwave": 187471,
+                "normal_attack": 119682
+            },
+            "practical_dpr": 1500.6024096385543,
+            "practical_wins": 32,
+            "practical_rounds_mean": 25.9375,
+            "practical_damage_received_mean": 20432.90625,
+            "practical_healing_mean": 15038.1875,
+            "practical_prevented_mean": 61364.34375,
+            "practical_actions": {
+                "normal_attack": 10,
+                "defend": 24,
+                "ai_fallback": 0,
+                "action_skipped": 0,
+                "counter": 0,
+                "dagger_flurry": 48,
+                "severing_bleed": 65,
+                "wound_opening": 25,
+                "iaido_cut": 84,
+                "draining_cut": 574
+            }
+        },
+        "guardian_140_cover": {
+            "sp": 132,
+            "budget": 140,
+            "allocations": {
+                "guardianship_shield_bash": {
+                    "rank": 1,
+                    "active_slot": 4
+                },
+                "guardianship_rallying_cry": {
+                    "rank": 1,
+                    "active_slot": null
+                },
+                "guardianship_counter_stance": {
+                    "rank": 1,
+                    "active_slot": null
+                },
+                "guardianship_protective_oath": {
+                    "rank": 1,
+                    "active_slot": null
+                },
+                "guardianship_fortress": {
+                    "rank": 1,
+                    "active_slot": 2
+                },
+                "guardianship_bulwark_strike": {
+                    "rank": 1,
+                    "active_slot": 5
+                },
+                "guardianship_retort": {
+                    "rank": 1,
+                    "active_slot": null
+                },
+                "guardianship_renewing_guard": {
+                    "rank": 1,
+                    "active_slot": 3
+                },
+                "guardianship_emergency_cover": {
+                    "rank": 1,
+                    "active_slot": 1
+                }
+            },
+            "active_skills": [
+                "emergency_cover",
+                "fortress",
+                "renewing_guard",
+                "shield_bash",
+                "bulwark_strike"
+            ],
+            "dummy_dpr": 1950.475,
+            "dummy_actions": {
+                "normal_attack": 0,
+                "defend": 0,
+                "ai_fallback": 0,
+                "action_skipped": 0,
+                "counter": 0,
+                "emergency_cover": 0,
+                "fortress": 0,
+                "renewing_guard": 0,
+                "shield_bash": 1600,
+                "bulwark_strike": 1600
+            },
+            "dummy_damage_by_action": {
+                "bulwark_strike": 3412833,
+                "shield_bash": 2636235,
+                "weapon_followup:bahamul_shockwave": 192452
+            },
+            "practical_dpr": 1057.9872448979593,
+            "practical_wins": 32,
+            "practical_rounds_mean": 36.75,
+            "practical_damage_received_mean": 21395.1875,
+            "practical_healing_mean": 12672.1875,
+            "practical_prevented_mean": 97142.75,
+            "practical_actions": {
+                "normal_attack": 0,
+                "defend": 84,
+                "ai_fallback": 0,
+                "action_skipped": 0,
+                "counter": 0,
+                "emergency_cover": 91,
+                "fortress": 200,
+                "renewing_guard": 105,
+                "shield_bash": 252,
+                "bulwark_strike": 444
+            }
+        },
+        "guardian_140_barrier": {
+            "sp": 132,
+            "budget": 140,
+            "allocations": {
+                "guardianship_shield_bash": {
+                    "rank": 1,
+                    "active_slot": 4
+                },
+                "guardianship_rallying_cry": {
+                    "rank": 1,
+                    "active_slot": null
+                },
+                "guardianship_counter_stance": {
+                    "rank": 1,
+                    "active_slot": 2
+                },
+                "guardianship_protective_oath": {
+                    "rank": 1,
+                    "active_slot": null
+                },
+                "guardianship_fortress": {
+                    "rank": 1,
+                    "active_slot": null
+                },
+                "guardianship_bulwark_strike": {
+                    "rank": 1,
+                    "active_slot": 5
+                },
+                "guardianship_retort": {
+                    "rank": 1,
+                    "active_slot": null
+                },
+                "guardianship_renewing_guard": {
+                    "rank": 1,
+                    "active_slot": 3
+                },
+                "guardianship_barrier_crash": {
+                    "rank": 1,
+                    "active_slot": 1
+                }
+            },
+            "active_skills": [
+                "barrier_crash",
+                "counter_stance",
+                "renewing_guard",
+                "shield_bash",
+                "bulwark_strike"
+            ],
+            "dummy_dpr": 2141.3646875,
+            "dummy_actions": {
+                "normal_attack": 0,
+                "defend": 0,
+                "ai_fallback": 0,
+                "action_skipped": 0,
+                "counter": 0,
+                "barrier_crash": 1088,
+                "counter_stance": 0,
+                "renewing_guard": 0,
+                "shield_bash": 1056,
+                "bulwark_strike": 1056
+            },
+            "dummy_damage_by_action": {
+                "barrier_crash": 2671133,
+                "bulwark_strike": 2262550,
+                "shield_bash": 1732880,
+                "weapon_followup:bahamul_shockwave": 185804
+            },
+            "practical_dpr": 1450.577883472057,
+            "practical_wins": 32,
+            "practical_rounds_mean": 26.28125,
+            "practical_damage_received_mean": 8890.28125,
+            "practical_healing_mean": 724.125,
+            "practical_prevented_mean": 73029.96875,
+            "practical_actions": {
+                "normal_attack": 0,
+                "defend": 96,
+                "ai_fallback": 0,
+                "action_skipped": 0,
+                "counter": 481,
+                "barrier_crash": 262,
+                "counter_stance": 250,
+                "renewing_guard": 6,
+                "shield_bash": 0,
+                "bulwark_strike": 226
+            }
+        },
+        "miracle_140_group": {
+            "sp": 138,
+            "budget": 140,
+            "allocations": {
+                "miracle_mending_prayer": {
+                    "rank": 1,
+                    "active_slot": 1
+                },
+                "miracle_regeneration": {
+                    "rank": 1,
+                    "active_slot": null
+                },
+                "miracle_resurrection": {
+                    "rank": 1,
+                    "active_slot": null
+                },
+                "miracle_heart_of_mercy": {
+                    "rank": 1,
+                    "active_slot": null
+                },
+                "miracle_holy_bolt": {
+                    "rank": 1,
+                    "active_slot": null
+                },
+                "miracle_holy_nova": {
+                    "rank": 1,
+                    "active_slot": 4
+                },
+                "miracle_holy_lance": {
+                    "rank": 1,
+                    "active_slot": 5
+                },
+                "miracle_harmony_heal": {
+                    "rank": 1,
+                    "active_slot": 2
+                },
+                "miracle_lucid_dream": {
+                    "rank": 1,
+                    "active_slot": 3
+                },
+                "miracle_crystal_cycle": {
+                    "rank": 1,
+                    "active_slot": null
+                }
+            },
+            "active_skills": [
+                "mending_prayer",
+                "harmony_heal",
+                "lucid_dream",
+                "holy_nova",
+                "holy_lance"
+            ],
+            "dummy_dpr": 1760.68375,
+            "dummy_actions": {
+                "normal_attack": 864,
+                "defend": 0,
+                "ai_fallback": 0,
+                "action_skipped": 0,
+                "counter": 0,
+                "mending_prayer": 0,
+                "harmony_heal": 0,
+                "lucid_dream": 416,
+                "holy_nova": 896,
+                "holy_lance": 1024
+            },
+            "dummy_damage_by_action": {
+                "holy_lance": 3613821,
+                "weapon_followup:bahamul_shockwave": 152787,
+                "holy_nova": 1268204,
+                "normal_attack": 599376
+            },
+            "practical_dpr": 1163.728624535316,
+            "practical_wins": 32,
+            "practical_rounds_mean": 33.625,
+            "practical_damage_received_mean": 27269.4375,
+            "practical_healing_mean": 22970.15625,
+            "practical_prevented_mean": 81895.5625,
+            "practical_actions": {
+                "normal_attack": 175,
+                "defend": 74,
+                "ai_fallback": 0,
+                "action_skipped": 0,
+                "counter": 0,
+                "mending_prayer": 105,
+                "harmony_heal": 99,
+                "lucid_dream": 137,
+                "holy_nova": 192,
+                "holy_lance": 294
+            }
+        },
+        "miracle_140_hybrid": {
+            "sp": 138,
+            "budget": 140,
+            "allocations": {
+                "miracle_mending_prayer": {
+                    "rank": 1,
+                    "active_slot": 1
+                },
+                "miracle_regeneration": {
+                    "rank": 1,
+                    "active_slot": 2
+                },
+                "miracle_resurrection": {
+                    "rank": 1,
+                    "active_slot": null
+                },
+                "miracle_heart_of_mercy": {
+                    "rank": 1,
+                    "active_slot": null
+                },
+                "miracle_holy_bolt": {
+                    "rank": 1,
+                    "active_slot": null
+                },
+                "miracle_holy_nova": {
+                    "rank": 1,
+                    "active_slot": null
+                },
+                "miracle_holy_lance": {
+                    "rank": 1,
+                    "active_slot": 4
+                },
+                "miracle_healing_ray": {
+                    "rank": 1,
+                    "active_slot": 5
+                },
+                "miracle_lucid_dream": {
+                    "rank": 1,
+                    "active_slot": 3
+                },
+                "miracle_crystal_cycle": {
+                    "rank": 1,
+                    "active_slot": null
+                }
+            },
+            "active_skills": [
+                "mending_prayer",
+                "regeneration",
+                "lucid_dream",
+                "holy_lance",
+                "healing_ray"
+            ],
+            "dummy_dpr": 2140.6509375,
+            "dummy_actions": {
+                "normal_attack": 448,
+                "defend": 0,
+                "ai_fallback": 0,
+                "action_skipped": 0,
+                "counter": 0,
+                "mending_prayer": 0,
+                "regeneration": 0,
+                "lucid_dream": 416,
+                "holy_lance": 864,
+                "healing_ray": 1472
+            },
+            "dummy_damage_by_action": {
+                "healing_ray": 3318462,
+                "holy_lance": 3044819,
+                "normal_attack": 330262,
+                "weapon_followup:bahamul_shockwave": 156540
+            },
+            "practical_dpr": 1545.316377171216,
+            "practical_wins": 32,
+            "practical_rounds_mean": 25.1875,
+            "practical_damage_received_mean": 19924.09375,
+            "practical_healing_mean": 18543.65625,
+            "practical_prevented_mean": 59836.1875,
+            "practical_actions": {
+                "normal_attack": 93,
+                "defend": 96,
+                "ai_fallback": 0,
+                "action_skipped": 0,
+                "counter": 0,
+                "mending_prayer": 0,
+                "regeneration": 29,
+                "lucid_dream": 83,
+                "holy_lance": 165,
+                "healing_ray": 340
+            }
+        }
+    }
+}

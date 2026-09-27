@@ -26,7 +26,7 @@ final class UndergroundCombatBuildTest extends TestCase
 
         $this->assertSame(AlphaV1CombatRules::STATS, $manifest['base_stats']);
         $this->assertSame(AlphaV1CombatRules::TREES, $manifest['skill_tree_keys']);
-        $this->assertSame(120, $manifest['balance']['build_point_budget']);
+        $this->assertSame(140, $manifest['balance']['build_point_budget']);
         $this->assertSame(5, $manifest['balance']['active_skill_limit']);
         $this->assertSame(AlphaV1CombatRules::TARGETING_IDENTITY, $manifest['targeting_contract']['identity']);
         $this->assertSame([
@@ -1687,6 +1687,86 @@ final class UndergroundCombatBuildTest extends TestCase
         $this->assertTrue($result->awakening['technique']['used']);
     }
 
+    public function test_draining_cut_uses_only_actual_hp_damage_and_keeps_its_own_rate_during_shura(): void
+    {
+        $manifest = $this->awakeningCatalog(enemyWeaponPower: 1, enemyPhysicalDefense: 0)->manifest();
+        $manifest['skills']['draining_test_barrier'] = [
+            'label' => '障壁', 'node_key' => null, 'mp_cost' => 0, 'cooldown' => 10,
+            'effects' => [[
+                'type' => 'barrier', 'target' => 'self', 'target_scope' => 'self',
+                'source_stat_coefficients' => [], 'target_max_hp_bps' => 0, 'fixed' => 100,
+            ]],
+        ];
+        $manifest['enemies']['awakening_target']['skills'] = ['draining_test_barrier'];
+        $manifest['enemies']['awakening_target']['ai_rules'] = [
+            ['conditions' => [['type' => 'skill_ready', 'skill' => 'draining_test_barrier']], 'action' => 'skill:draining_test_barrier'],
+            ['conditions' => [['type' => 'always']], 'action' => 'defend'],
+        ];
+        $snapshot = $this->awakeningPlayerSnapshot(
+            'martial_red', gauge: 0, currentHp: 1, unlocked: false,
+            skills: ['draining_cut'],
+            aiRules: [['conditions' => [['type' => 'always']], 'action' => 'skill:draining_cut']],
+        );
+        $snapshot['stats']['might'] = 1000;
+        $snapshot['stats']['agility'] = 1;
+        $fight = fn (array $content, array $player, int $rounds) => $this->model()->fightPlayerSnapshot(
+            new AlphaV1BuildCatalog($content), $player, 'awakening_target', 617, $rounds, 0,
+        );
+
+        $barrier = $fight($manifest, $snapshot, 1);
+        $damage = collect($barrier->actionLog)->firstWhere('action', 'draining_cut');
+        $drain = collect($barrier->actionLog)->firstWhere('action', 'lifesteal');
+        $this->assertIsArray($damage);
+        $this->assertIsArray($drain);
+        $this->assertGreaterThan(0, $damage['barrier_absorbed']);
+        $this->assertGreaterThan(0, $damage['hp_damage']);
+        $this->assertSame(-intdiv($damage['hp_damage'] * 7000, 10_000), $drain['amount']);
+        $this->assertLessThan(intdiv($damage['effective_damage'] * 7000, 10_000), -$drain['amount']);
+
+        $overkillManifest = $manifest;
+        $overkillManifest['enemies']['awakening_target']['max_hp'] = 200;
+        $overkill = $fight($overkillManifest, $snapshot, 1);
+        $overkillDamage = collect($overkill->actionLog)->firstWhere('action', 'draining_cut');
+        $overkillDrain = collect($overkill->actionLog)->firstWhere('action', 'lifesteal');
+        $this->assertIsArray($overkillDamage);
+        $this->assertIsArray($overkillDrain);
+        $this->assertSame(200, $overkillDamage['hp_damage']);
+        $this->assertSame(-140, $overkillDrain['amount']);
+
+        $maxHp = $barrier->initialState['player']['max_hp'];
+        $nearlyFull = $snapshot;
+        $nearlyFull['current_hp'] = $maxHp - 1;
+        $fullCap = $fight($manifest, $nearlyFull, 1);
+        $this->assertSame(-1, collect($fullCap->actionLog)->firstWhere('action', 'lifesteal')['amount']);
+
+        $awakened = $snapshot;
+        $awakened['awakening'] = [
+            ...$awakened['awakening'], 'unlocked' => true,
+            'gauge' => UndergroundAwakening::GAUGE_MAX,
+            'technique_key' => 'shura_bloodline',
+        ];
+        $awakened['stats']['vitality'] = 1_000;
+        $awakened['modifiers']['lifesteal_bps'] = 2_000;
+        $bloodlineManifest = $manifest;
+        $bloodlineManifest['enemies']['awakening_target']['weapon_power'] = 8000;
+        $bloodlineManifest['enemies']['awakening_target']['ai_rules'][1]['action'] = 'normal_attack';
+        $bloodline = $fight($bloodlineManifest, $awakened, 2);
+        $bloodlineDamage = collect($bloodline->actionLog)->first(
+            static fn (array $row): bool => ($row['action'] ?? null) === 'draining_cut'
+                && ($row['effect_type'] ?? null) === 'damage',
+        );
+        $skillDrain = collect($bloodline->actionLog)->first(
+            static fn (array $row): bool => ($row['action'] ?? null) === 'lifesteal'
+                && ($row['round'] ?? null) === ($bloodlineDamage['round'] ?? null),
+        );
+        $bloodlineDrain = collect($bloodline->actionLog)->firstWhere('action', 'shura_bloodline_lifesteal');
+        $this->assertIsArray($bloodlineDamage);
+        $this->assertIsArray($skillDrain);
+        $this->assertIsArray($bloodlineDrain);
+        $this->assertSame(-intdiv($bloodlineDamage['hp_damage'] * 7000, 10_000), $skillDrain['amount']);
+        $this->assertSame(-intdiv($bloodlineDamage['hp_damage'] * UndergroundAwakening::LIFESTEAL_CAP_BPS, 10_000), $bloodlineDrain['amount']);
+    }
+
     public function test_enemy_lifesteal_recovers_from_actual_hp_damage_independently_of_regeneration(): void
     {
         $catalog = $this->awakeningCatalog(enemyWeaponPower: 5_000);
@@ -1948,7 +2028,7 @@ final class UndergroundCombatBuildTest extends TestCase
     public function test_dullahan_hatred_stacks_each_round_caps_at_fifty_and_judgment_can_reset_it(): void
     {
         [$manifest] = $this->catalog();
-        $contents = file_get_contents(dirname(__DIR__, 3).'/config/underground/balance/trial2-v1.json');
+        $contents = file_get_contents(dirname(__DIR__, 3).'/config/underground/balance/trial2-v2.json');
         $this->assertIsString($contents);
         $trial = json_decode($contents, true, flags: JSON_THROW_ON_ERROR);
         $this->assertIsArray($trial);
@@ -2091,13 +2171,67 @@ final class UndergroundCombatBuildTest extends TestCase
     /** @return array{array<string, mixed>, AlphaV1BuildCatalog, UndergroundBuildValidator} */
     private function catalog(): array
     {
-        $contents = file_get_contents(dirname(__DIR__, 3).'/config/underground/balance/foundation-v1.json');
+        $contents = file_get_contents(dirname(__DIR__, 3).'/config/underground/balance/foundation-v2.json');
         $this->assertIsString($contents);
         $manifest = json_decode($contents, true, flags: JSON_THROW_ON_ERROR);
         $this->assertIsArray($manifest);
         $catalog = new AlphaV1BuildCatalog($manifest);
 
         return [$manifest, $catalog, new UndergroundBuildValidator(new AlphaV1CombatRules)];
+    }
+
+    public function test_dispelling_cut_reuses_the_dispellable_buff_boundary(): void
+    {
+        $snapshot = $this->awakeningPlayerSnapshot('martial_red', gauge: 0, unlocked: false,
+            skills: ['dispelling_cut'], aiRules: [
+                ['conditions' => [['type' => 'enemy_has_dispellable_buff']], 'action' => 'skill:dispelling_cut'],
+                ['conditions' => [['type' => 'always']], 'action' => 'defend'],
+            ]);
+        $snapshot['stats']['agility'] = 1;
+        $result = $this->model()->fightPlayerSnapshot(
+            $this->awakeningCatalog(enemyAgility: 75, enemyBuffs: true),
+            $snapshot, 'awakening_target', 227, 1, 0,
+        );
+        $rows = collect($result->actionLog);
+        $this->assertGreaterThan(0, $rows->where('action', 'dispelling_cut')->where('effect_type', 'damage')->sum('amount'));
+        $this->assertSame([-1], $rows->where('action', 'dispelling_cut')->where('effect_type', 'status_removed')->pluck('amount')->all());
+        $this->assertSame(['protected_aegis'], array_column($rows->firstWhere('kind', 'round_end')['enemy']['statuses'], 'key'));
+    }
+
+    public function test_wound_opening_consumes_bleed_without_unbounded_bonus(): void
+    {
+        $catalog = $this->awakeningCatalog(enemyDefends: true);
+        $snapshot = $this->awakeningPlayerSnapshot('martial_red', gauge: 0, unlocked: false,
+            skills: ['severing_bleed', 'wound_opening'], aiRules: [
+                ['conditions' => [['type' => 'enemy_lacks_status', 'status' => 'bleed']], 'action' => 'skill:severing_bleed'],
+                ['conditions' => [['type' => 'enemy_has_status', 'status' => 'bleed']], 'action' => 'skill:wound_opening'],
+            ]);
+        $result = $this->model()->fightPlayerSnapshot($catalog, $snapshot, 'awakening_target', 211, 2, 0);
+        $rows = collect($result->actionLog);
+        $this->assertSame([-1], $rows->where('action', 'status_spent:bleed')->pluck('amount')->all());
+        $this->assertGreaterThan(0, $rows->where('action', 'wound_opening')->where('effect_type', 'damage')->sum('amount'));
+        $this->assertSame([], array_filter($rows->last(static fn (array $row): bool => ($row['kind'] ?? null) === 'round_end')['enemy']['statuses'],
+            static fn (array $status): bool => $status['key'] === 'bleed'));
+        $this->assertSame(3, $catalog->status('bleed')['max_stacks']);
+    }
+
+    public function test_barrier_crash_spends_existing_barrier_for_damage(): void
+    {
+        $catalog = $this->awakeningCatalog(enemyWeaponPower: 0);
+        $snapshot = $this->awakeningPlayerSnapshot('guardianship_blue', gauge: 0, currentHp: null, unlocked: false,
+            skills: ['counter_stance', 'barrier_crash'], aiRules: [
+                ['conditions' => [['type' => 'self_lacks_status', 'status' => 'aegis']], 'action' => 'skill:counter_stance'],
+                ['conditions' => [['type' => 'own_barrier_gte', 'percent' => 1]], 'action' => 'skill:barrier_crash'],
+            ]);
+        $withBarrier = $this->model()->fightPlayerSnapshot($catalog, $snapshot, 'awakening_target', 211, 2, 0);
+        $spent = collect($withBarrier->actionLog)->firstWhere('action', 'barrier_spent');
+        $boosted = collect($withBarrier->actionLog)->firstWhere('action', 'barrier_crash');
+        $snapshot['active_skills'] = ['barrier_crash'];
+        $snapshot['ai_rules'] = [['conditions' => [['type' => 'always']], 'action' => 'skill:barrier_crash']];
+        $plain = $this->model()->fightPlayerSnapshot($catalog, $snapshot, 'awakening_target', 211, 1, 0);
+        $this->assertIsArray($spent);
+        $this->assertGreaterThan(0, $spent['amount']);
+        $this->assertGreaterThan(collect($plain->actionLog)->firstWhere('action', 'barrier_crash')['amount'], $boosted['amount']);
     }
 
     private function awakeningCatalog(

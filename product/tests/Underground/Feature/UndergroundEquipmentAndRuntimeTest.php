@@ -199,7 +199,7 @@ final class UndergroundEquipmentAndRuntimeTest extends UndergroundPlayerAccessTe
             ->sole()->snapshot);
         $shop = $this->actingAs($user)->getJson('/api/v1/me/underground/equipment/shop')
             ->assertOk()
-            ->assertJsonPath('data.catalog_identity', 'secretary-underground-shop-equipment-alpha-v3')
+            ->assertJsonPath('data.catalog_identity', 'secretary-underground-shop-equipment-alpha-v4')
             ->assertJsonPath('data.currency_label', '輝石の欠片 G')
             ->assertJsonPath('data.shard_balance', 5_000)
             ->assertJsonPath('data.banked_shard_balance', 5_000)
@@ -591,7 +591,7 @@ final class UndergroundEquipmentAndRuntimeTest extends UndergroundPlayerAccessTe
         $preview = $this->actingAs($user)
             ->postJson('/api/v1/me/underground/equipment/vault/bulk-sell/preview', $filters)
             ->assertOk()
-            ->assertJsonPath('data.catalog_identity', 'secretary-underground-shop-equipment-alpha-v3')
+            ->assertJsonPath('data.catalog_identity', 'secretary-underground-shop-equipment-alpha-v4')
             ->assertJsonPath('data.count', 2);
         $previewItems = collect($preview->json('data.items'));
         $this->assertEqualsCanonicalizing(
@@ -990,7 +990,7 @@ final class UndergroundEquipmentAndRuntimeTest extends UndergroundPlayerAccessTe
             'growth_path_selected_at' => Carbon::now(),
             'skill_points_total' => 20,
             'skill_points_unspent' => 20,
-            'skill_tree_identity' => 'secretary-underground-skill-tree-alpha-v2',
+            'skill_tree_identity' => 'secretary-underground-skill-tree-alpha-v4',
             'unspent_stp' => 5,
             'current_hp' => 400,
         ]);

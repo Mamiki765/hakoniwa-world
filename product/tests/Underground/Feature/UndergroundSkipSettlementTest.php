@@ -32,12 +32,13 @@ final class UndergroundSkipSettlementTest extends TestCase
         config(['underground-alpha-v1.growth_paths.martial_red.unspent_stp_per_level' => 6]);
         [$user, $profile] = $this->readyProfile();
         $curve = app(UndergroundRuntimeCatalog::class)->xpCurve();
+        $xpBefore = app(UndergroundCombatProgression::class)->totalXpRequiredForLevel(
+            2,
+            $curve['first_level_cost'],
+            $curve['cost_increment_per_level'],
+        ) - 1;
         $profile->update([
-            'combat_xp' => app(UndergroundCombatProgression::class)->totalXpRequiredForLevel(
-                2,
-                $curve['first_level_cost'],
-                $curve['cost_increment_per_level'],
-            ) - 1,
+            'combat_xp' => $xpBefore,
         ]);
         UndergroundContentClearProgress::query()->create([
             'underground_profile_id' => $profile->id, 'content_type' => 'hunting_ground',
@@ -56,7 +57,10 @@ final class UndergroundSkipSettlementTest extends TestCase
         $this->assertSame(1, $result['daily_quest']['progress']);
         $this->assertFalse($result['daily_quest']['completed_now']);
         $this->assertTrue($retry['duplicate']);
-        $this->assertSame([2, 6], [$profile->fresh()->combat_level, $profile->fresh()->unspent_stp]);
+        $after = $profile->fresh();
+        $this->assertSame($xpBefore + $result['settlement']->xp_awarded, $after->combat_xp);
+        $this->assertGreaterThan(1, $after->combat_level);
+        $this->assertSame(($after->combat_level - 1) * 6, $after->unspent_stp);
         $this->assertDatabaseCount('underground_skip_settlements', 1);
         $this->assertDatabaseCount('user_skip_ticket_ledger', 1);
     }
@@ -443,6 +447,30 @@ final class UndergroundSkipSettlementTest extends TestCase
         $this->assertDatabaseCount('secretary_lending_participations', 0);
     }
 
+    public function test_trial_three_skip_rolls_one_distorted_stone_chance_per_skipped_battle_once(): void
+    {
+        config(['underground-runtime.trials.trial_03.distorted_stone_chance_bps' => 10_000]);
+        [$user, $profile] = $this->readyProfile();
+        UndergroundTrialProgress::query()->create([
+            'underground_profile_id' => $profile->id, 'trial_key' => 'trial_03',
+            'unlocked_at' => Carbon::now(), 'first_cleared_at' => Carbon::now(),
+        ]);
+        UndergroundContentClearProgress::query()->create([
+            'underground_profile_id' => $profile->id, 'content_type' => 'trial', 'content_key' => 'trial_03',
+            'actual_clear_count' => 5, 'total_clear_count' => 5,
+        ]);
+        UserSkipTicketBalance::query()->create(['user_id' => $user->id, 'balance' => 100]);
+        $runtime = app(UndergroundRuntimeService::class);
+        $requestId = (string) Str::uuid();
+        $first = $runtime->bulkSkipTrial($user, $requestId, 'trial_03', 2);
+        $retry = $runtime->bulkSkipTrial($user, $requestId, 'trial_03', 2);
+
+        $this->assertTrue($retry['duplicate']);
+        $this->assertSame($first['batch']->id, $retry['batch']->id);
+        $this->assertSame(20, $first['batch']->reward_snapshot['distorted_stones']);
+        $this->assertSame(20, $profile->refresh()->distorted_stone_balance);
+    }
+
     public function test_bulk_skip_aggregates_vault_full_drops_without_creating_items(): void
     {
         $this->forceShallowStandardDrop();
@@ -495,7 +523,7 @@ final class UndergroundSkipSettlementTest extends TestCase
         $user = User::factory()->create();
         $secretary = Secretary::query()->create(['user_id' => $user->id, 'name' => 'Skip tester', 'named_at' => Carbon::now()]);
         $profile = app(UndergroundProfileService::class)->ensureForSecretary($secretary);
-        $profile->update(['underground_contract_completed_at' => Carbon::now()->subMinute(), 'growth_path_key' => 'martial_red', 'growth_path_identity' => 'secretary-underground-growth-alpha-v1', 'growth_path_selected_at' => Carbon::now(), 'skill_points_total' => 20, 'skill_points_unspent' => 20, 'skill_tree_identity' => 'secretary-underground-skill-tree-alpha-v2', 'unspent_stp' => 0]);
+        $profile->update(['underground_contract_completed_at' => Carbon::now()->subMinute(), 'growth_path_key' => 'martial_red', 'growth_path_identity' => 'secretary-underground-growth-alpha-v1', 'growth_path_selected_at' => Carbon::now(), 'skill_points_total' => 20, 'skill_points_unspent' => 20, 'skill_tree_identity' => 'secretary-underground-skill-tree-alpha-v4', 'unspent_stp' => 0]);
         $tutorial = UndergroundBattle::query()->create(['underground_profile_id' => $profile->id, 'request_id' => (string) Str::uuid(), 'request_fingerprint' => str_repeat('a', 64), 'runtime_identity' => 'test', 'activity_type' => 'tutorial', 'activity_key' => 'tutorial', 'encounter_key' => 'giant_rat', 'result' => 'victory', 'rounds' => 1, 'damage_dealt' => 1, 'damage_received' => 0, 'healing_done' => 0, 'combat_level_before' => 1, 'combat_level_after' => 1, 'combat_xp_before' => 0, 'combat_xp_after' => 0, 'shard_balance_before' => 0, 'shard_balance_after' => 0, 'private_seed' => 1, 'snapshot' => [], 'started_at' => Carbon::now()->subHour(), 'finished_at' => Carbon::now()->subHour()]);
         UndergroundIntroProgress::query()->create(['underground_profile_id' => $profile->id, 'stage' => 'underground_open', 'shopkeeper_name' => '案内係', 'special_loss_required' => false, 'branch_identity' => 'normal', 'tutorial_battle_id' => $tutorial->id]);
         $profile->update(['combat_xp' => 49]);

@@ -6,7 +6,7 @@ use App\Models\UserParadoxBalance;
 use DomainException;
 use Illuminate\Support\Facades\DB;
 
-/** Surface-only, user-scoped Paradox balance. It is not a Nation trade resource. */
+/** User-scoped Paradox balance. It is not a Nation trade resource. */
 final class ParadoxBalanceService
 {
     public const NAME = '輝石';
@@ -96,7 +96,7 @@ final class ParadoxBalanceService
         array $metadata,
         bool $allowInsufficient = false,
     ): ?array {
-        if (! in_array($sourceKind, ['daily_login', 'daily_quest', 'command', 'compensation'], true)) {
+        if (! in_array($sourceKind, ['daily_login', 'daily_quest', 'command', 'compensation', 'underground_respec'], true)) {
             throw new DomainException('Unknown Paradox ledger source.');
         }
 
