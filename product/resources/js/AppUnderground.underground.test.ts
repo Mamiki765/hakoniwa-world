@@ -2105,7 +2105,7 @@ describe('Underground application operations', () => {
                 cooldown: null, required_weapon_styles: [], recommended_stats: null, active_slot: null,
             }],
         }];
-        let respecProjection = { cost: 20, last_completed_at: null as string | null, next_available_at: null as string | null, growth_paths: paths };
+        let respecProjection = { cost: 20, paradox_balance: 0, cooldown_bypass_cost_pd: 10, last_completed_at: null as string | null, next_available_at: null as string | null, growth_paths: paths };
         let respecCommitted = false;
         let openState: any = {
             stage: 'underground_open', secretary_name: 'ペリドット', combat_level: 2, combat_xp: 100,
@@ -2158,7 +2158,7 @@ describe('Underground application operations', () => {
             },
             battle: null, next_battle_at: null,
         };
-        const respecPayloads: Array<{ request_id: string; growth_path_key: string }> = [];
+        const respecPayloads: Array<{ request_id: string; growth_path_key: string; bypass_cooldown_with_pd: boolean }> = [];
         const recollectionPayloads: Array<{ request_id: string; chapter: number }> = [];
         const skillPayloads: Array<{ request_id: string; node_key: string }> = [];
         const loadoutPayloads: Array<{ request_id: string; slots: Array<string | null> }> = [];
@@ -2234,7 +2234,7 @@ describe('Underground application operations', () => {
                 return response(openState);
             }
             if (path === '/api/v1/me/underground/respec' && init?.method === 'POST') {
-                const payload = JSON.parse(String(init.body)) as { request_id: string; growth_path_key: string };
+                const payload = JSON.parse(String(init.body)) as { request_id: string; growth_path_key: string; bypass_cooldown_with_pd: boolean };
                 respecPayloads.push(payload);
                 if (respecPayloads.length === 1) throw new TypeError('Respec response lost');
                 respecProjection = {
@@ -2399,7 +2399,7 @@ describe('Underground application operations', () => {
         await guideAction('再振りをしたい').trigger('click');
         expect(wrapper.get('.underground-respec-explanations').text()).toContain('SP・STP・成長方針を再設定します。');
         expect(wrapper.get('.underground-respec-explanations').text()).toContain('輝石のかけらが Lv × 10 G 必要です。');
-        expect(wrapper.get('.underground-respec-explanations').text()).toContain('一度行うと24時間は再び行うことができません。');
+        expect(wrapper.get('.underground-respec-explanations').text()).toContain('待機中も10Pdを追加して再振りできます。');
         await wrapper.findAll('.underground-respec-growth-card [role="radio"]')[1]!.trigger('click');
         expect(wrapper.get('.underground-respec-selection').text()).toBe('選択中: 自由');
         await wrapper.get('.underground-respec-submit').trigger('click');
@@ -2412,11 +2412,11 @@ describe('Underground application operations', () => {
         await wrapper.get('[role="dialog"] .button.primary').trigger('click');
         await flushPromises();
         expect(respecPayloads).toHaveLength(2);
-        expect(respecPayloads[0]).toEqual({ request_id: expect.any(String), growth_path_key: 'free_black' });
+        expect(respecPayloads[0]).toEqual({ request_id: expect.any(String), growth_path_key: 'free_black', bypass_cooldown_with_pd: false });
         expect(respecPayloads[1]).toEqual(respecPayloads[0]);
         expect(wrapper.find('[role="dialog"]').exists()).toBe(false);
         expect(wrapper.get('[role="alert"]').text()).toContain('Battle history refresh failed');
-        expect(wrapper.get('.underground-respec-notice').text()).toContain('次の再振りまであと');
+        expect(wrapper.get('.underground-respec-notice').text()).toContain('待ち時間の解除には10Pdが必要です。');
         expect(wrapper.get('.underground-respec-submit').attributes('disabled')).toBeDefined();
         await openUndergroundView(wrapper, 'キャラクター', 'STP配分');
         expect((wrapper.get('input[aria-label="生命の今回の配分"]').element as HTMLInputElement).value).toBe('0');

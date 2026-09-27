@@ -1369,6 +1369,7 @@ final readonly class AlphaV1CombatModel
                 && ($catalog->skill($action['key'])['consumes_action'] ?? true) === false) {
                 $this->executeSkill($catalog, $actor, $target, $action['key'], $random, $round,
                     $metrics, $actionUsage, $mpHistory, $actionLog, $partyAllies, $partyEnemies, $actionId);
+                unset($target->flags['cover_reduction_bps']);
                 if (! $actor->alive()) {
                     return;
                 }

@@ -1048,6 +1048,25 @@ final class AlphaV1PartyCombatTest extends TestCase
             'party_target', 717, 1, 0);
         self::assertNotNull(collect($solo->actionLog)->firstWhere('effect_type', 'cover_triggered'));
         self::assertLessThan(500, $solo->damageReceived);
+
+        $freeSkillManifest = $manifest;
+        $freeSkillManifest['skills']['quick_stab']['effects'][0] = [
+            ...$manifest['enemies']['party_target']['normal_attack'],
+            'target' => 'enemy', 'target_scope' => 'single_enemy',
+        ];
+        $freeSkillManifest['enemies']['party_target']['skills'] = ['quick_stab'];
+        $freeSkillManifest['enemies']['party_target']['ai_rules'] = [
+            ['conditions' => [['type' => 'always']], 'action' => 'skill:quick_stab'],
+            ['conditions' => [['type' => 'always']], 'action' => 'normal_attack'],
+        ];
+        $freeSkill = $model->fightPlayerSnapshot(new AlphaV1BuildCatalog($freeSkillManifest), $guardian,
+            'party_target', 718, 1, 0);
+        $enemyHits = collect($freeSkill->actionLog)->where('side', 'enemy')->where('effect_type', 'damage');
+        $stab = $enemyHits->firstWhere('action', 'quick_stab');
+        $followingAttack = $enemyHits->firstWhere('action', 'normal_attack');
+        self::assertIsArray($stab);
+        self::assertIsArray($followingAttack);
+        self::assertGreaterThan($stab['amount'] * 3, $followingAttack['amount']);
     }
 
     public function test_group_heal_and_attack_heal_reach_the_intended_allies(): void

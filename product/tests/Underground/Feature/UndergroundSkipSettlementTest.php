@@ -32,12 +32,13 @@ final class UndergroundSkipSettlementTest extends TestCase
         config(['underground-alpha-v1.growth_paths.martial_red.unspent_stp_per_level' => 6]);
         [$user, $profile] = $this->readyProfile();
         $curve = app(UndergroundRuntimeCatalog::class)->xpCurve();
+        $xpBefore = app(UndergroundCombatProgression::class)->totalXpRequiredForLevel(
+            2,
+            $curve['first_level_cost'],
+            $curve['cost_increment_per_level'],
+        ) - 1;
         $profile->update([
-            'combat_xp' => app(UndergroundCombatProgression::class)->totalXpRequiredForLevel(
-                2,
-                $curve['first_level_cost'],
-                $curve['cost_increment_per_level'],
-            ) - 1,
+            'combat_xp' => $xpBefore,
         ]);
         UndergroundContentClearProgress::query()->create([
             'underground_profile_id' => $profile->id, 'content_type' => 'hunting_ground',
@@ -56,7 +57,10 @@ final class UndergroundSkipSettlementTest extends TestCase
         $this->assertSame(1, $result['daily_quest']['progress']);
         $this->assertFalse($result['daily_quest']['completed_now']);
         $this->assertTrue($retry['duplicate']);
-        $this->assertSame([2, 6], [$profile->fresh()->combat_level, $profile->fresh()->unspent_stp]);
+        $after = $profile->fresh();
+        $this->assertSame($xpBefore + $result['settlement']->xp_awarded, $after->combat_xp);
+        $this->assertGreaterThan(1, $after->combat_level);
+        $this->assertSame(($after->combat_level - 1) * 6, $after->unspent_stp);
         $this->assertDatabaseCount('underground_skip_settlements', 1);
         $this->assertDatabaseCount('user_skip_ticket_ledger', 1);
     }
