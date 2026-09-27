@@ -1978,6 +1978,7 @@ describe('Underground application operations', () => {
             item_level_min: 5, item_level_max: 30,
             skip: { actual_clear_count: skipUnlocked ? 50 : 0, total_clear_count: 50, actual_clears_required: 50, unlocked: skipUnlocked, ticket_cost: 1 },
         });
+        let laterGroundAvailable = false;
         let vaultKeys = 1;
         let vaultSkipUnlocked = true;
         const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
@@ -1993,6 +1994,7 @@ describe('Underground application operations', () => {
                     ground('shallow_caves', '浅い洞窟', 0, 0, true),
                     ground('black_crystal_cave', '黒晶洞', 0, 0, true),
                     ground('shining_kingdom_vault', '輝きの王国の宝物庫', 1, vaultKeys, vaultSkipUnlocked),
+                    ...(laterGroundAvailable ? [ground('later_ground', '後から追加された狩場', 0, 0, true)] : []),
                 ],
             });
             if (path === '/api/v1/me/underground/battles') return response([]);
@@ -2000,11 +2002,13 @@ describe('Underground application operations', () => {
         });
         stubUndergroundFetch(fetchMock);
 
-        for (const [keys, unlocked, expected] of [
-            [1, true, 'shining_kingdom_vault'],
-            [0, true, 'black_crystal_cave'],
-            [1, false, 'black_crystal_cave'],
+        for (const [laterAvailable, keys, unlocked, expected] of [
+            [true, 1, true, 'later_ground'],
+            [false, 1, true, 'shining_kingdom_vault'],
+            [false, 0, true, 'black_crystal_cave'],
+            [false, 1, false, 'black_crystal_cave'],
         ] as const) {
+            laterGroundAvailable = laterAvailable;
             vaultKeys = keys;
             vaultSkipUnlocked = unlocked;
             const wrapper = mount(UndergroundPanel);
