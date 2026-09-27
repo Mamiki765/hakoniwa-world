@@ -1598,8 +1598,7 @@ final readonly class AlphaV1CombatModel
             : 1;
         $agilityComboPending = $agilityComboHits > 1;
         foreach ($skill['effects'] as $effect) {
-            if (! $actor->alive()
-                || ($partyAllies === [] && $partyEnemies === [] && ! $target->alive())) {
+            if (! $actor->alive()) {
                 break;
             }
             $targets = $this->partyEffectTargets($effect, $actor, $target, $partyAllies, $partyEnemies);

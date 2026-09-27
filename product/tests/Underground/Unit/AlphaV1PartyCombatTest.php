@@ -1090,6 +1090,13 @@ final class AlphaV1PartyCombatTest extends TestCase
         $hybridRows = collect($hybrid->actionLog)->where('action', 'healing_ray');
         self::assertSame('enemy:1', $hybridRows->firstWhere('effect_type', 'damage')['target_id']);
         self::assertSame('secretary:2', $hybridRows->firstWhere('effect_type', 'recovery')['target_id']);
+
+        $lethalSolo = $model->fightPlayerSnapshot($this->catalog(1, 1, 1), $healer,
+            'party_target', 719, 1, 0);
+        self::assertSame('player', $lethalSolo->winner);
+        self::assertGreaterThan(400, $lethalSolo->playerRemainingHp);
+        self::assertNotNull(collect($lethalSolo->actionLog)->where('action', 'healing_ray')
+            ->firstWhere('effect_type', 'recovery'));
     }
 
     private function catalog(
