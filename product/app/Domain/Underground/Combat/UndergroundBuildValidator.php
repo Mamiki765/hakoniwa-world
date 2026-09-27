@@ -214,7 +214,9 @@ final class UndergroundBuildValidator
             'always', 'own_hp_lte', 'own_hp_gte', 'own_mp_lte', 'own_mp_gte',
             'enemy_hp_lte', 'ally_hp_lte', 'self_has_status', 'self_lacks_status', 'enemy_has_status',
             'enemy_lacks_status', 'status_stacks_gte', 'role_stacks_gte', 'enemy_telegraph', 'skill_ready',
-            'round_gte', 'round_modulo',
+            'round_gte', 'round_modulo', 'own_barrier_gte', 'enemy_has_dispellable_buff',
+            'enemy_status_stacks_gte',
+            'enemy_major_telegraph',
         ];
         foreach ($aiRules as $rule) {
             $conditions = is_array($rule) ? ($rule['conditions'] ?? null) : null;
@@ -228,7 +230,7 @@ final class UndergroundBuildValidator
                 if (! is_array($condition) || ! in_array($condition['type'] ?? null, $conditionTypes, true)) {
                     throw new InvalidArgumentException("Underground alpha-v1 build [{$buildKey}] AI condition is invalid.");
                 }
-                if (in_array($condition['type'], ['status_stacks_gte', 'role_stacks_gte'], true)
+                if (in_array($condition['type'], ['status_stacks_gte', 'enemy_status_stacks_gte', 'role_stacks_gte'], true)
                     && (! is_string($condition['status'] ?? null)
                         || ! is_int($condition['stacks'] ?? null)
                         || $condition['stacks'] < 1)) {

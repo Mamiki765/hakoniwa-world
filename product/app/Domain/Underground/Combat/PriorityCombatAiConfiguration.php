@@ -170,13 +170,16 @@ final readonly class PriorityCombatAiConfiguration
                 ['key' => 'own_hp_gte', 'label' => '自分のHPが指定%以上', 'value_kind' => 'percent'],
                 ['key' => 'own_mp_lte', 'label' => '自分のMPが指定%以下', 'value_kind' => 'percent'],
                 ['key' => 'own_mp_gte', 'label' => '自分のMPが指定%以上', 'value_kind' => 'percent'],
+                ['key' => 'own_barrier_gte', 'label' => '自分の障壁が最大HPの指定%以上', 'value_kind' => 'percent'],
                 ['key' => 'enemy_hp_lte', 'label' => '敵のHPが指定%以下', 'value_kind' => 'percent'],
                 ['key' => 'ally_hp_lte', 'label' => '味方のHPが指定%以下（0%は戦闘不能）', 'value_kind' => 'percent'],
                 ['key' => 'self_has_status', 'label' => '自分に指定状態がある', 'value_kind' => 'status'],
                 ['key' => 'self_lacks_status', 'label' => '自分に指定状態がない', 'value_kind' => 'status'],
                 ['key' => 'enemy_has_status', 'label' => '敵に指定状態がある', 'value_kind' => 'status'],
                 ['key' => 'enemy_lacks_status', 'label' => '敵に指定状態がない', 'value_kind' => 'status'],
+                ['key' => 'enemy_has_dispellable_buff', 'label' => '敵に解除可能な強化がある', 'value_kind' => 'none'],
                 ['key' => 'status_stacks_gte', 'label' => '自分の指定状態が指定stack以上', 'value_kind' => 'status_stacks'],
+                ['key' => 'enemy_status_stacks_gte', 'label' => '敵の指定状態が指定stack以上', 'value_kind' => 'status_stacks'],
                 ['key' => 'role_stacks_gte', 'label' => '自分のrole stackが指定数以上', 'value_kind' => 'role_stacks'],
                 ['key' => 'enemy_telegraph', 'label' => '敵が強打予告中', 'value_kind' => 'none'],
                 ['key' => 'enemy_major_telegraph', 'label' => '敵が大予告中', 'value_kind' => 'none'],
@@ -288,7 +291,7 @@ final readonly class PriorityCombatAiConfiguration
         $normalized = ['type' => $type];
         $allowedKeys = ['type'];
 
-        if (in_array($type, ['own_hp_lte', 'own_hp_gte', 'own_mp_lte', 'own_mp_gte', 'enemy_hp_lte', 'ally_hp_lte'], true)) {
+        if (in_array($type, ['own_hp_lte', 'own_hp_gte', 'own_mp_lte', 'own_mp_gte', 'own_barrier_gte', 'enemy_hp_lte', 'ally_hp_lte'], true)) {
             $allowedKeys[] = 'percent';
             $percent = $condition['percent'] ?? null;
             if (! is_int($percent) || $percent < 0 || $percent > 100) {
@@ -303,7 +306,7 @@ final readonly class PriorityCombatAiConfiguration
             }
             $catalog->status($status);
             $normalized['status'] = $status;
-        } elseif ($type === 'status_stacks_gte') {
+        } elseif (in_array($type, ['status_stacks_gte', 'enemy_status_stacks_gte'], true)) {
             $allowedKeys = ['type', 'status', 'stacks'];
             $statusKey = $condition['status'] ?? null;
             $stacks = $condition['stacks'] ?? null;
@@ -350,7 +353,7 @@ final readonly class PriorityCombatAiConfiguration
             }
             $normalized['modulo'] = $modulo;
             $normalized['equals'] = $equals;
-        } elseif (! in_array($type, ['always', 'enemy_telegraph', 'enemy_major_telegraph'], true)) {
+        } elseif (! in_array($type, ['always', 'enemy_telegraph', 'enemy_major_telegraph', 'enemy_has_dispellable_buff'], true)) {
             throw new InvalidArgumentException('AI condition type is invalid.');
         }
 

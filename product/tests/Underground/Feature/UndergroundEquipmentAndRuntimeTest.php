@@ -990,7 +990,7 @@ final class UndergroundEquipmentAndRuntimeTest extends UndergroundPlayerAccessTe
             'growth_path_selected_at' => Carbon::now(),
             'skill_points_total' => 20,
             'skill_points_unspent' => 20,
-            'skill_tree_identity' => 'secretary-underground-skill-tree-alpha-v3',
+            'skill_tree_identity' => 'secretary-underground-skill-tree-alpha-v4',
             'unspent_stp' => 5,
             'current_hp' => 400,
         ]);

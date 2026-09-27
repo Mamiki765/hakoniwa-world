@@ -80,7 +80,7 @@ final class UndergroundLendingRewardServiceTest extends TestCase
             'growth_path_selected_at' => now(),
             'skill_points_total' => 20,
             'skill_points_unspent' => 20,
-            'skill_tree_identity' => 'secretary-underground-skill-tree-alpha-v3',
+            'skill_tree_identity' => 'secretary-underground-skill-tree-alpha-v4',
         ]);
         app(UndergroundStarterEquipmentService::class)->reconcile($profile->fresh());
         app(SecretaryLendingService::class)->update($owner, true);

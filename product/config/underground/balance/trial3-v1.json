@@ -4,7 +4,7 @@
     "trial_generation": 3,
     "trial_key": "trial_03",
     "trial_identity": "secretary-underground-trial-03-v1",
-    "combat_identity": "secretary-underground-alpha-v7",
+    "combat_identity": "secretary-underground-alpha-v8",
     "seed_strategy_identity": "trial-sequence-common-random-v1",
     "seed_range": {
         "start": 0,

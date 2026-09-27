@@ -1333,6 +1333,9 @@ final readonly class AlphaV1CombatModel
                 && $this->usesSingleHostilePartyTarget($action, $actor, $catalog)) {
                 $target = $this->enemyPartyTarget($actor, $partyEnemies, $random, $actionId) ?? $target;
             }
+            if ($actor->side === 'enemy' && $this->isSingleDirectAttack($action, $actor, $catalog)) {
+                $target = $this->coveredTarget($target, $partyEnemies, $round, $actionId, $actionLog);
+            }
             [$decisionTargetId, $decisionTargetIds] = $this->decisionTargets(
                 $action,
                 $actor,
@@ -1452,6 +1455,7 @@ final readonly class AlphaV1CombatModel
                     }
                 }
             }
+            unset($target->flags['cover_reduction_bps']);
 
             $this->weaponFollowup($actor, $target, $partyEnemies, $random, $round,
                 'normal_attack', $metrics, $actionUsage, $actionLog, $actionId);
@@ -1465,6 +1469,54 @@ final readonly class AlphaV1CombatModel
         }
         $this->executeSkill($catalog, $actor, $target, $skillKey, $random, $round,
             $metrics, $actionUsage, $mpHistory, $actionLog, $partyAllies, $partyEnemies, $actionId);
+        unset($target->flags['cover_reduction_bps']);
+    }
+
+    /** @param array<string, mixed> $action */
+    private function isSingleDirectAttack(array $action, BuildCombatState $actor, AlphaV1BuildCatalog $catalog): bool
+    {
+        if (($action['type'] ?? null) === 'normal_attack') {
+            return $this->partyTargetScope($actor->normalAttack) === 'single_enemy';
+        }
+        if (($action['type'] ?? null) !== 'skill' || ! is_string($action['key'] ?? null)) {
+            return false;
+        }
+        $damageEffects = array_values(array_filter($catalog->skill($action['key'])['effects'],
+            static fn (array $effect): bool => ($effect['type'] ?? null) === 'damage'));
+
+        return count($damageEffects) === 1 && $this->partyTargetScope($damageEffects[0]) === 'single_enemy';
+    }
+
+    /**
+     * @param  list<BuildCombatState>  $partyTargets
+     * @param  list<array<string, mixed>>  $actionLog
+     */
+    private function coveredTarget(BuildCombatState $target, array $partyTargets, int $round,
+        ?string $actionId, array &$actionLog): BuildCombatState
+    {
+        $cover = $target->flags['emergency_cover'] ?? null;
+        if (! is_array($cover)) {
+            return $target;
+        }
+        unset($target->flags['emergency_cover']);
+        if (($cover['expires_round'] ?? 0) < $round) {
+            return $target;
+        }
+        foreach ($partyTargets !== [] ? $partyTargets : [$target] as $candidate) {
+            if ($candidate->combatantId !== ($cover['protector_id'] ?? null) || ! $candidate->alive()) {
+                continue;
+            }
+            $candidate->flags['cover_reduction_bps'] = $cover['reduction_bps'];
+            $row = $this->logRow($round, $candidate, 'emergency_cover', 0, false, false,
+                effectType: 'cover_triggered', targetSide: $candidate->side, actionId: $actionId,
+                targetState: $candidate, targetIds: [$candidate->combatantId]);
+            $row['protected_actor_id'] = $target->combatantId;
+            $actionLog[] = $row;
+
+            return $candidate;
+        }
+
+        return $target;
     }
 
     /**
@@ -1947,8 +1999,28 @@ final readonly class AlphaV1CombatModel
                 $actionId,
             ),
             'taunt' => $this->applyTaunt($actor, $effectTarget, $round, $skillKey, $actionLog, $targetIds, $actionId),
+            'cover' => $this->applyCover($actor, $effectTarget, $effect, $round, $skillKey,
+                $actionLog, $targetIds, $actionId),
             default => throw new InvalidArgumentException("Underground alpha-v1 skill [{$skillKey}] effect is unsupported."),
         };
+    }
+
+    /**
+     * @param  array<string, mixed>  $effect
+     * @param  list<array<string, mixed>>  $actionLog
+     * @param  list<string>  $targetIds
+     */
+    private function applyCover(BuildCombatState $source, BuildCombatState $target, array $effect,
+        int $round, string $actionKey, array &$actionLog, array $targetIds, ?string $actionId): void
+    {
+        $target->flags['emergency_cover'] = [
+            'protector_id' => $source->combatantId,
+            'reduction_bps' => $effect['damage_reduction_bps'],
+            'expires_round' => $round + $effect['duration_rounds'] - 1,
+        ];
+        $actionLog[] = $this->logRow($round, $source, $actionKey, 0, false, false,
+            effectType: 'cover_applied', targetSide: $target->side, actionId: $actionId,
+            targetState: $target, targetIds: $targetIds);
     }
 
     /**
@@ -2065,6 +2137,25 @@ final readonly class AlphaV1CombatModel
                     );
                 }
             }
+            $consumeTargetStatus = $effect['consume_target_status'] ?? null;
+            if (is_array($consumeTargetStatus)) {
+                $statusKey = $consumeTargetStatus['key'];
+                $available = (int) ($target->statuses[$statusKey]['stacks'] ?? 0);
+                $consumed = min($available, $consumeTargetStatus['maximum']);
+                $damageBps += $consumed * $consumeTargetStatus['bonus_per_stack_bps'];
+                if ($consumed > 0) {
+                    $remaining = $available - $consumed;
+                    if ($remaining === 0) {
+                        unset($target->statuses[$statusKey]);
+                    } else {
+                        $target->statuses[$statusKey]['stacks'] = $remaining;
+                    }
+                    $actionLog[] = $this->logRow($round, $actor, 'status_spent:'.$statusKey,
+                        -$consumed, false, false, effectType: 'status_removed',
+                        targetSide: $target->side, actionId: $actionId,
+                        targetState: $target, targetIds: $targetIds);
+                }
+            }
             if ($category === 'miracle') {
                 $period = (int) ($actor->modifiers['apotheosis_period_rounds'] ?? 0);
                 if ($period > 0 && $round % $period === 0) {
@@ -2080,6 +2171,17 @@ final readonly class AlphaV1CombatModel
                 $actor->flags['afterguard_focus'] = false;
             }
             $rawDamage = max(1, intdiv($rawDamage * max(1, $damageBps), 10_000));
+            $consumeBarrier = $effect['consume_barrier'] ?? null;
+            if (is_array($consumeBarrier) && $actor->barrier > 0) {
+                $spentBarrier = $actor->barrier;
+                $actor->barrier = 0;
+                $bonusBase = min($spentBarrier,
+                    intdiv($actor->maxHp * $consumeBarrier['maximum_hp_bps'], 10_000));
+                $rawDamage += intdiv($bonusBase * $consumeBarrier['bonus_per_consumed_bps'], 10_000);
+                $actionLog[] = $this->logRow($round, $actor, 'barrier_spent', $spentBarrier,
+                    false, false, effectType: 'barrier_spent', targetSide: $actor->side,
+                    actionId: $actionId, targetState: $actor, targetIds: [$actor->combatantId]);
+            }
             $resonanceBonus = EquipmentCombatEffects::damageBonus(
                 $actor->modifiers, $this->partyTargetScope($effect), $source,
             );
@@ -2213,6 +2315,10 @@ final readonly class AlphaV1CombatModel
                     10_000,
                 ));
             }
+            if (isset($target->flags['cover_reduction_bps'])) {
+                $combinedBps = max(1, intdiv($combinedBps
+                    * (10_000 - (int) $target->flags['cover_reduction_bps']), 10_000));
+            }
             $postMitigationBeforeCombo = max(1, intdiv($preMitigation * $combinedBps, 10_000));
             $postMitigation = $postMitigationBeforeCombo * $agilityComboHits;
             $absorbableDamage = $target->hp + $target->barrier;
@@ -2294,23 +2400,28 @@ final readonly class AlphaV1CombatModel
                 $this->counter($target, $actor, $round, $metrics, $actionUsage, $actionLog, $actionId);
             }
             if ($hpDamage > 0 && $actor->alive()) {
-                $baseLifestealBps = max(0, (int) ($actor->modifiers['lifesteal_bps'] ?? 0)
-                    + (int) ($effect['lifesteal_bps'] ?? 0));
+                $ordinaryLifestealBps = max(0, (int) ($actor->modifiers['lifesteal_bps'] ?? 0));
+                $skillLifestealBps = max(0, (int) ($effect['lifesteal_bps'] ?? 0));
                 $bloodlineActive = $actor->side === 'player'
                     && $actor->awakeningLifestealRoundsRemaining > 0;
-                $lifestealBps = $bloodlineActive
-                    ? min(
-                        UndergroundAwakening::LIFESTEAL_CAP_BPS,
-                        $baseLifestealBps + UndergroundAwakening::BLOODLINE_LIFESTEAL_BPS,
-                    )
-                    : $baseLifestealBps;
-                if ($lifestealBps > 0) {
-                    $effective = $this->healExact($actor, intdiv($hpDamage * $lifestealBps, 10_000), $metrics);
+                $lifestealParts = $bloodlineActive
+                    ? [
+                        ['bps' => $skillLifestealBps, 'action' => 'lifesteal'],
+                        ['bps' => min(UndergroundAwakening::LIFESTEAL_CAP_BPS,
+                            $ordinaryLifestealBps + UndergroundAwakening::BLOODLINE_LIFESTEAL_BPS),
+                            'action' => 'shura_bloodline_lifesteal'],
+                    ]
+                    : [['bps' => $ordinaryLifestealBps + $skillLifestealBps, 'action' => 'lifesteal']];
+                foreach ($lifestealParts as $part) {
+                    if ($part['bps'] <= 0) {
+                        continue;
+                    }
+                    $effective = $this->healExact($actor, intdiv($hpDamage * $part['bps'], 10_000), $metrics);
                     if ($effective > 0) {
                         $lifestealRow = $this->logRow(
                             $round,
                             $actor,
-                            $bloodlineActive ? 'shura_bloodline_lifesteal' : 'lifesteal',
+                            $part['action'],
                             -$effective,
                             false,
                             false,

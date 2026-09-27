@@ -203,7 +203,7 @@ final class UndergroundIntroAndPlaytestTest extends UndergroundPlayerAccessTestC
             ->assertJsonPath('data.growth_path.natural_recovery', 300)
             ->assertJsonPath('data.skill_points_total', 20)
             ->assertJsonPath('data.skill_points_unspent', 20)
-            ->assertJsonPath('data.skill_tree_identity', 'secretary-underground-skill-tree-alpha-v3')
+            ->assertJsonPath('data.skill_tree_identity', 'secretary-underground-skill-tree-alpha-v4')
             ->assertJsonPath('data.skill_trees.0.label', '戦技')
             ->assertJsonPath('data.skill_trees.0.nodes.0.recommended_stats', ['might', 'finesse'])
             ->assertJsonPath('data.skill_trees.1.label', '護身')
@@ -403,7 +403,7 @@ final class UndergroundIntroAndPlaytestTest extends UndergroundPlayerAccessTestC
             'growth_path_selected_at' => Carbon::now(),
             'skill_points_total' => 20,
             'skill_points_unspent' => 20,
-            'skill_tree_identity' => 'secretary-underground-skill-tree-alpha-v3',
+            'skill_tree_identity' => 'secretary-underground-skill-tree-alpha-v4',
         ]);
         UndergroundIntroProgress::query()->create([
             'underground_profile_id' => $profile->id,
@@ -927,7 +927,7 @@ final class UndergroundIntroAndPlaytestTest extends UndergroundPlayerAccessTestC
             'growth_path_selected_at' => Carbon::now(),
             'skill_points_total' => 20,
             'skill_points_unspent' => 20,
-            'skill_tree_identity' => 'secretary-underground-skill-tree-alpha-v3',
+            'skill_tree_identity' => 'secretary-underground-skill-tree-alpha-v4',
             'current_hp' => 321,
         ]);
         UndergroundIntroProgress::query()->create([

@@ -54,6 +54,9 @@ final class UndergroundSkillRefundUpgradeTest extends TestCase
         $migration = require database_path('migrations/2026_09_27_000200_extend_underground_skill_tree.php');
         $migration->up();
         $migration->up();
+        $completedMigration = require database_path('migrations/2026_09_27_000300_complete_underground_skill_tree.php');
+        $completedMigration->up();
+        $completedMigration->up();
 
         $profile->refresh();
         $this->assertSame(config('underground-alpha-v1.skill_tree_identity'), $profile->skill_tree_identity);
@@ -98,6 +101,8 @@ final class UndergroundSkillRefundUpgradeTest extends TestCase
         // Replay the rest of the supported upgrade chain before exercising current skill actions.
         $skillTreeMigration = require database_path('migrations/2026_09_27_000200_extend_underground_skill_tree.php');
         $skillTreeMigration->up();
+        $completedMigration = require database_path('migrations/2026_09_27_000300_complete_underground_skill_tree.php');
+        $completedMigration->up();
         $announcementAfter = (array) DB::table('announcements')->where('id', $announcementId)->sole();
         $this->assertSame('plain_text', $announcementAfter['body_format']);
         $this->assertSame($announcementBefore, array_intersect_key($announcementAfter, $announcementBefore));
