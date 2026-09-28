@@ -8,6 +8,9 @@ export interface EquipmentAffix {
     key?: string;
     kind?: string;
     target?: string;
+    rating?: number;
+    effective_bps?: number;
+    effective_value?: number;
 }
 
 export interface EquipmentItem {
@@ -26,11 +29,15 @@ export interface EquipmentItem {
     owned?: boolean;
     equipped_slot?: EquipmentSlot | null;
     weapon_power: number;
+    weapon_scale_bps?: number;
+    armor_scale_bps?: number;
     physical_defense: number;
     magical_defense: number;
     max_hp: number;
+    body_max_hp_effective?: number;
     stats: Record<string, number>;
     modifiers?: Record<string, number>;
+    rating_modifiers?: Record<string, { rating: number; effective_bps: number }>;
     affixes?: EquipmentAffix[];
     unique_effect?: {
         type: 'resonance' | 'shockwave';
@@ -87,6 +94,13 @@ function nonZeroStats(): Array<[string, number]> {
     return Object.entries(props.item.stats ?? {}).filter(([, value]) => value > 0);
 }
 
+function bodyHp(): number {
+    if (props.item.body_max_hp_effective !== undefined) return props.item.body_max_hp_effective;
+    return props.item.max_hp - (props.item.affixes ?? [])
+        .filter(affix => affix.kind === 'base' && affix.target === 'max_hp')
+        .reduce((total, affix) => total + affix.value, 0);
+}
+
 function categoryLabel(): string {
     return categoryLabels[props.item.category] ?? props.item.category;
 }
@@ -113,17 +127,29 @@ const fixedModifierLabels: Array<[string, string]> = [
     ['healing_bps', '治癒力'],
 ];
 
-function fixedModifiers(): Array<[string, number]> {
+function percent(bps: number): string {
+    return `${(bps / 100).toLocaleString('ja-JP', { maximumFractionDigits: 2 })}%`;
+}
+
+function fixedModifiers(): Array<[string, string]> {
     if (props.item.instance_kind !== 'fixed') return [];
     return fixedModifierLabels.flatMap(([key, label]) => {
         const value = props.item.modifiers?.[key] ?? 0;
-        return value > 0 ? [[label, value]] : [];
+        const rating = props.item.rating_modifiers?.[key];
+        if (rating) return [[label, `+${rating.rating.toLocaleString('ja-JP')}（+${percent(rating.effective_bps)}）`]];
+        return value > 0 ? [[label, `+${percent(value)}`]] : [];
     });
 }
 
 function affixValue(affix: EquipmentAffix): string {
     if (affix.kind === 'modifier') {
-        return `+${(affix.value / 100).toLocaleString('ja-JP', { maximumFractionDigits: 2 })}%`;
+        if (affix.rating !== undefined && affix.effective_bps !== undefined) {
+            return `+${affix.rating.toLocaleString('ja-JP')}（+${percent(affix.effective_bps)}）`;
+        }
+        return `+${percent(affix.value)}`;
+    }
+    if (affix.target === 'max_hp' && affix.effective_value !== undefined) {
+        return `+${affix.effective_value.toLocaleString('ja-JP')}`;
     }
     return `+${affix.value.toLocaleString('ja-JP')}`;
 }
@@ -148,10 +174,11 @@ function affixValue(affix: EquipmentAffix): string {
         </header>
         <dl class="underground-equipment-card-stats">
             <div><dt>Item Lv</dt><dd>{{ item.item_level }}</dd></div>
-            <div v-if="item.category === 'weapon' && item.equippable !== false"><dt>武器力</dt><dd>{{ item.weapon_power }}</dd></div>
+            <div v-if="item.category === 'weapon' && item.equippable !== false && item.weapon_scale_bps !== undefined"><dt>武器力</dt><dd>{{ item.weapon_scale_bps / 100 }}%</dd></div>
+            <div v-if="item.category === 'armor' && item.armor_scale_bps !== undefined"><dt>HP倍率</dt><dd>{{ item.armor_scale_bps / 100 }}%</dd></div>
             <div v-if="item.physical_defense > 0"><dt>物防</dt><dd>{{ item.physical_defense }}</dd></div>
             <div v-if="item.magical_defense > 0"><dt>魔防</dt><dd>{{ item.magical_defense }}</dd></div>
-            <div v-if="item.max_hp > 0"><dt>最大HP</dt><dd>+{{ item.max_hp }}</dd></div>
+            <div v-if="bodyHp() > 0"><dt>最大HP（素体）</dt><dd>+{{ bodyHp() }}</dd></div>
             <div v-for="([key, value]) in nonZeroStats()" :key="key"><dt>{{ statLabel(key) }}</dt><dd>+{{ value }}</dd></div>
         </dl>
         <p v-if="item.unique_effect" class="underground-equipment-card-effect">
@@ -160,7 +187,7 @@ function affixValue(affix: EquipmentAffix): string {
             <template v-else>攻撃時に{{ (item.unique_effect.chance_bps ?? 0) / 100 }}%の確率で敵全体へ衝撃波</template>
         </p>
         <ul v-if="fixedModifiers().length > 0" class="underground-equipment-card-affixes" aria-label="固有補正">
-            <li v-for="([label, value]) in fixedModifiers()" :key="label">{{ label }} +{{ value / 100 }}%</li>
+            <li v-for="([label, value]) in fixedModifiers()" :key="label">{{ label }} {{ value }}</li>
         </ul>
         <ul v-if="item.affixes && item.affixes.length > 0" class="underground-equipment-card-affixes" aria-label="追加効果">
             <li v-for="(affix, index) in item.affixes" :key="`${affix.key ?? affix.label}-${index}`">

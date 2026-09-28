@@ -160,7 +160,7 @@ final class DeterministicEquipmentGenerator
 
     /**
      * @param  list<array<string, mixed>>  $items
-     * @return array{stats: array<string, int>, weapon_power: int, physical_defense: int, magical_defense: int, max_hp: int, modifiers: array<string, int|bool|string>, unique_effects: list<string>}
+     * @return array{stats: array<string, int>, weapon_power: int, physical_defense: int, magical_defense: int, max_hp: int, max_hp_affix_base: int, max_hp_affix_scaled: int, weapon_scale_bps: int, armor_scale_bps: int, modifiers: array<string, int|bool|string>, unique_effects: list<string>}
      */
     public function aggregate(array $items): array
     {
@@ -171,10 +171,20 @@ final class DeterministicEquipmentGenerator
             'physical_defense' => 0,
             'magical_defense' => 0,
             'max_hp' => 0,
+            'max_hp_affix_base' => 0,
+            'max_hp_affix_scaled' => 0,
             'modifiers' => [],
             'unique_effects' => [],
         ];
+        $ratings = [];
+        $weaponLevel = 200;
+        $armorLevel = null;
         foreach ($items as $item) {
+            if (($item['slot'] ?? null) === 'weapon') {
+                $weaponLevel = $item['item_level'];
+            } elseif (($item['slot'] ?? null) === 'armor') {
+                $armorLevel = $item['item_level'];
+            }
             $base = $item['base'] ?? [];
             foreach (AlphaV1CombatRules::STATS as $key) {
                 $result['stats'][$key] += (int) ($base['stats'][$key] ?? 0);
@@ -195,9 +205,22 @@ final class DeterministicEquipmentGenerator
                 if ($kind === 'stat' && in_array($target, AlphaV1CombatRules::STATS, true)) {
                     $result['stats'][$target] += $value;
                 } elseif ($kind === 'modifier') {
-                    $result['modifiers'][$target] = (int) ($result['modifiers'][$target] ?? 0) + $value;
+                    if (UndergroundEquipmentScaling::isRatingTarget($target)) {
+                        $ratings[$target] = ($ratings[$target] ?? 0)
+                            + UndergroundEquipmentScaling::scaled(
+                                $value, UndergroundEquipmentScaling::scaleBps($item['item_level']),
+                            );
+                    } else {
+                        $result['modifiers'][$target] = (int) ($result['modifiers'][$target] ?? 0) + $value;
+                    }
                 } elseif ($kind === 'base' && array_key_exists($target, $result)) {
                     $result[$target] += $value;
+                    if ($target === 'max_hp') {
+                        $result['max_hp_affix_base'] += $value;
+                        $result['max_hp_affix_scaled'] += UndergroundEquipmentScaling::scaled(
+                            $value, UndergroundEquipmentScaling::scaleBps($item['item_level']),
+                        );
+                    }
                 }
             }
             $unique = $item['unique_effect']['key'] ?? null;
@@ -205,6 +228,14 @@ final class DeterministicEquipmentGenerator
                 $result['unique_effects'][] = $unique;
             }
         }
+        $requirementBps = UndergroundEquipmentScaling::requirementBps($weaponLevel, $armorLevel);
+        foreach ($ratings as $target => $rating) {
+            $result['modifiers'][$target] = UndergroundEquipmentScaling::effectiveBps(
+                $rating, $requirementBps, $target,
+            );
+        }
+        $result['weapon_scale_bps'] = UndergroundEquipmentScaling::scaleBps($weaponLevel);
+        $result['armor_scale_bps'] = UndergroundEquipmentScaling::scaleBps($armorLevel ?? 200);
 
         return $result;
     }

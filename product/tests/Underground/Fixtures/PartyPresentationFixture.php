@@ -28,7 +28,7 @@ final class PartyPresentationFixture
      */
     public static function create(): array
     {
-        $manifestJson = file_get_contents(dirname(__DIR__, 3).'/config/underground/balance/foundation-v3.json');
+        $manifestJson = file_get_contents(dirname(__DIR__, 3).'/config/underground/balance/foundation-v4.json');
         if (! is_string($manifestJson)) {
             throw new \RuntimeException('Party presentation fixture manifest is unavailable.');
         }

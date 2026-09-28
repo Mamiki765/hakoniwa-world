@@ -1,30 +1,60 @@
-# 現在地：4.4.0公開後 / 4.4.1開発中
+# 現在地：main 4.5.1 / 4.6装備基盤の通常PR作業
 
-更新：2026-09-27。Ownerの「release/4.4.1を作り、T項目を進める」依頼による更新。GitHubの確認、Owner提示ログ、静止画の表示、未確認を区別する。
+更新：2026-09-28。GitHub確認、Owner判断、実装案、production証拠を区別する。
 
 ## 開発の固定点
 
 - 開発正本：`Mamiki765/hakoniwa-world` / GitHub。
-- 4.4.0のmain：`d4bf02e5c46fc5fe69d25ea8c14e61a3474a0caa`。PR #167はmerge済み。
-- 作業branch：Ownerの明示指示で上記mainから`release/4.4.1`を作成した。次に再開するときはbranchの実HEADと[実装・検証記録](../releases/4.4.1-chat-implementation.md)を照合する。
-- この初回変更ではapplication_versionは4.4.0、Rulesetはv27のまま。release完了・version更新・本番反映を先取りしていない。
+- 調査時main：`8b65d320a97caa0ca99735fc20445592f95a9c84`（4.5.1）。production適用の証拠ではない。
+- 通常作業branch：`codex/4.6.0-chat-preparation`。開始HEAD `ff8edd4bdaa8e602c192ee43c90bc07bd3270f76`をfetchして確認。作業中に追加された地上アイテム文書等の4コミットも同branchへ取り込んだ。実装HEADとQualityはPRで確認する。
+- 現行仕様は[装備倍率とrating](../architecture/underground-equipment-scaling.md)、プレイヤー向けは[装備手引き](../manual/equipment.md)。開始指示書は実装と資料統合後に削除した。ZIP・Owner PCの資料は入力条件にしていない。
+- このbranchは未merge。main直更新・production操作は行っていない。
 
-## Productionの最後の証拠
+## Productionの証拠
 
-2026-09-27 06:31 JSTにOwnerが提示した静止画では、**ver 4.4.0 / T628 / 正常**、最終更新9/27 06:00、次回予定08:00、24島、総人口10,761,185人と表示されている。残り時間の表示は01:28:39。静止画だけでは、カウントダウンの進行、各Turnの実行元、手動ボタンの動作、最新DB・healthを独立確認できない。
+この準備作業ではproduction DB・health・稼働versionを再照会していない。repository mainが4.5.1であることをproduction適用済みと読み替えない。
 
-2026-09-23のOwner提示ログでは、4.4.0切替、統合migration batch43、Ruleset v27 / DB ID42、T588のcron完走（attempts1）、予定起点設定が完了した。今回DBへ再照会して得た値ではない。詳細と未復旧のSecretary診断は[deployment status](../operations/current-deployment.md)を参照。
+このhandoffが引き継いだ最後の証拠は、2026-09-27 06:31 JSTのOwner提示静止画の **ver 4.4.0 / T628 / 正常**（24島、総人口10,761,185人）。2026-09-23のOwner提示ログには4.4.0切替、統合migration batch43、Ruleset v27 / DB ID42、T588のcron完走、予定起点設定がある。詳細は[deployment status](../operations/current-deployment.md)。これらをやり直さない。
 
-4.4.0適用・T588・予定起点設定をやり直さない。30日receipt purgeは運用開始未確認・未実施扱いで、T04等の保全とOwnerの別承認が先。1時間の詳細ログ保持とは別。
+30日receipt purgeの運用開始は本作業では未確認。保全とOwnerの別承認が先で、詳細戦闘ログ1時間保持とは別。
 
-## 今回の実装と残件
+## Repositoryへ入っている4.5.xまでの変更
 
-[4.4.1 TODO](../plans/4.4.1-todo.md)を作業一覧、[実装・検証記録](../releases/4.4.1-chat-implementation.md)を今回の成果とCodexへの入口にする。T02の記録、T03の権限対策、T06の手引き修正、T09の一部、T12の初回整理を実施した。T01・T04・T05・T07・T08・T10・T11とT09/T12の残りを完了扱いしない。
+4.4.1の日課modal・初回輝石通知・スキップ選択・Bahamul初勝利/trophy・表示改善、4.5.0の試練3「天光の王城」・報酬・140SP技能・10Pd即時再振り、4.5.1のskill investment gate撤去までmainへ入っている。4.5.0資料の96SP gateをcurrent制約として再導入しない。
 
-トロフィーの名称・画像、Ruleset簡素化の最終境界などは未決のまま。全体独立レビューはOwnerの最新指示で余力があれば行う別枠であり、この実装着手を止める必須gateではない。
+## 4.6第一弾の実装範囲と最新判断
 
-## 読む範囲と権限
+第一弾は**装備倍率/ratingと既存品・共鳴・研磨・貸出・表示への接続**。狩場4や市場は作らない。計算式・保存境界は現行architectureを参照。
 
-現行仕様は[current-contracts](current-contracts.md)、未決の構想は[予定側](../plans/post-4.4.0-decisions-and-ideas.md)、対象設計への入口は[docs](../../../docs/README.md)。旧統合handoff・会話記録・MVP説明の本文はarchiveへ分離し、通常の読込対象から外した。T12はrepo全体を対象とし、今回の一部移動だけでは完了しない。
+- IL200基準で超過10ILごとに1.1倍。武器は攻撃側、防具はHP、回復も世代成長へ追随させる。内部加算値は残し、長期の成長カーブ再設計は後回し。
+- 中級1バハ武器はIL210のご褒美。石も**IL210維持・rating対象affixはアクセと同じ共通IL倍率×1.1**でOwner確定。古い210→200正規化指示は実行しない。固定能力・固定%まで一律に倍率を掛ける決定ではない。
+- 通常エンチャに加えて、共鳴の攻撃/回復等の一部affixもrating化する方向。固定能力、固定割合の効果と区別。エクスカリバー自然回復は固定。
+- 表示はrating＋実効値。武器力は攻撃・固定回復等の倍率、HP倍率は防具による最大HP倍率を指す。最大HPアップaffixは付いた品のILで一度だけ加算し、防具倍率と重ねない。武器/防具ILで必要値が増える説明は手引きへ。低IL鎧による低HP/高補正の選択と、アクセ先行による実効上積みは許容する。
+- 防御系エンチャの実効上限90%がOwner指定。既存の別系統の防御・覚醒は一括変更せず、境界は現行architectureを参照。
+- 研磨は基準割合に1段階+0.1 percentage point相当を足してratingへ投影する。固定能力30%・費用・+5上限と固有固定%の加算量は維持。将来の量的再設計は未確定。
+- 宝物庫の共鳴結晶に、確認窓付きの個別売却を追加。既存の所有者確認・装備中拒否・冪等な売却APIを使用。
+- 防具ILは現在HPのみを伸ばし物防・魔防は倍率対象外。将来の胸当て（物防）・ローブ（魔防）特化の差は、実際の高IL戦闘で確認してから数値を決める。現時点で防御倍率を追加しない。
+- Ownerは地上アイテム拡張を別途考案中。**Relic・合成・同系統育成・夢魔の三紋章・チケット圧縮等の案は[地上アイテム拡張メモ](../plans/surface-item-expansion.md)へ集約する。** 地下第一弾の実装者が推測して作らない。
 
-mainへの直接更新、merge、production deploy、DB変更、purge、cron登録、補填は今回実行していない。GitHubのbranch更新とForgejo同期、本番反映は区別する。handoffの再編集はOwnerの明示指示に従う。
+## 確認と一時資料
+
+同じ通常branchで実装し、既存装備・結晶・貸出・戦闘と画面の代表確認を行う。全IL/全職/全seedの恒久表は作らない。最終runtime HEADのCI結果はPRのQualityを確認する。
+
+実仕様は手引きとarchitecture、残件はこのhandoffへ統合した。開始指示書`product/docs/plans/4.6.0-chat-preparation.md`は削除し、参照リンクも現行仕様へ差し替えた。既に削除済みのrating-probeは復活させていない。
+
+## 持ち越し（第一弾へ自動追加しない）
+
+| 項目 | 現在の扱い |
+|---|---|
+| 狩場4「夕凪の帰港地」 | 王城の扉の先の郷愁ある港、大型獣・半魚人。200〜220帯、以後狩場/試練ごと+10案。装備式の後に実測調整。 |
+| 試練4 | 白い大井戸の先、緑の粘液に溶けた前線村跡の構想。公開時期未決。案内人の反応・台詞はOwnerが決める。 |
+| 装備売買 | 「剣が欲しいのに杖が出る」問題への対応。方式・通貨・条件・公開時期をUG-05のgateに沿って決める。鉱石/素材市場案は一旦保留、代替実装しない。 |
+| 転生 | 上限・成長力・必要XP、節目のアクセ枠/技枠拡張。値・Lv超過者の扱い・公開時期未決。 |
+| 都市 | 大部分の新機能は狩場3「輝きの王国」で見える/使い始められる拠点型を目指す。達成条件とは別。 |
+| UI/秘書 | 貸出コメント、用途別AI/技保存セット、PC/mobileヘッダー画像、小画面フッター。 |
+| グラムの表示 | 説明文を整理して武器力・固有効果風の数値を見せる案は会話中の提案。装備不可・売却不可の記念品を実戦装備へ読み替えず、仕様決定は別途行う。 |
+| 地上 | [地上アイテム拡張メモ](../plans/surface-item-expansion.md)を常設のアイデア置き場とする。Relic/合成/育成/圧縮案、地上→地底の小さな還元、必要なRuleset調整は地下4.6第一弾へ自動追加しない。 |
+| 長期案 | 秘書になりきるチャット、共有大討伐、深層探索等。40案は採用済みTODOではない。 |
+| 運用別件 | T01 MCP exporter、purge/cron等。今回触らない。 |
+
+既存の[current-contracts](current-contracts.md)、[予定側](../plans/post-4.4.0-decisions-and-ideas.md)、[open-questions](../../../docs/open-questions.md)、[文書入口](../../../docs/README.md)から対象だけ読む。[4.4.1 TODO](../plans/4.4.1-todo.md)と[途中の実装記録](../releases/4.4.1-chat-implementation.md)を最新の現在地と混同しない。archiveは別のOwner指示なしに読込対象へ戻さない。

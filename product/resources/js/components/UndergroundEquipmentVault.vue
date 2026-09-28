@@ -78,6 +78,8 @@ const bulkPreview = ref<BulkSellPreviewResponse | null>(null);
 const bulkPreviewLoading = ref(false);
 const bulkConfirmOpen = ref(false);
 const bulkPending = ref<{ fingerprint: string; requestId: string } | null>(null);
+const singleSaleTarget = ref<EquipmentItem | null>(null);
+const singleSalePending = ref<{ fingerprint: string; requestId: string } | null>(null);
 const bulkOptionsInitialized = ref(false);
 let bulkOptionsSignature = '';
 
@@ -357,6 +359,42 @@ async function confirmBulkSale(): Promise<void> {
     }
 }
 
+function openSingleSale(item: EquipmentItem): void {
+    if (busy.value || item.category !== 'resonance' || item.equipped_slot !== null
+        || item.sellable === false || item.id === undefined || item.sell_price < 1) return;
+    singleSaleTarget.value = item;
+}
+
+async function confirmSingleSale(): Promise<void> {
+    const item = singleSaleTarget.value;
+    if (!item || item.id === undefined || busy.value) return;
+    const fingerprint = `${item.id}:${item.sell_price}`;
+    const request = singleSalePending.value?.fingerprint === fingerprint
+        ? singleSalePending.value
+        : { fingerprint, requestId: requestId() };
+    singleSalePending.value = request;
+    busy.value = true;
+    error.value = '';
+    try {
+        const result = await api<MutationResponse>(`/api/v1/me/underground/equipment/items/${item.id}/sell`, {
+            method: 'POST', body: JSON.stringify({ request_id: request.requestId }),
+        });
+        emit('updated', result);
+        singleSalePending.value = null;
+        singleSaleTarget.value = null;
+        await loadVault(1);
+    } catch (caught) {
+        error.value = caught instanceof Error ? caught.message : '共鳴結晶の売却に失敗しました。再試行してください。';
+        if (caught instanceof ApiError && caught.status === 409) {
+            singleSalePending.value = null;
+            singleSaleTarget.value = null;
+            await loadVault(1);
+        }
+    } finally {
+        busy.value = false;
+    }
+}
+
 watch(
     [selectedRarityKeys, selectedCategoryKeys, selectedWeaponStyleKeys, itemLevelMaxDraft],
     () => persistBulkPreferences(),
@@ -512,6 +550,10 @@ async function changeInventory(next: 'equipment' | 'resonance'): Promise<void> {
                             </select>
                         </label>
                     </template>
+                    <template #price>
+                        <button v-if="inventory === 'resonance' && item.sellable !== false && !item.equipped_slot" class="button secondary" type="button" :disabled="busy" @click="openSingleSale(item)">売却する</button>
+                        <span v-else-if="item.sellable === false">売却不可</span>
+                    </template>
                     <template #action>{{ item.equipped_slot ? '装備中' : '装備する' }}</template>
                 </EquipmentItemCard>
             </div>
@@ -523,6 +565,16 @@ async function changeInventory(next: 'equipment' | 'resonance'): Promise<void> {
                 :submitting="busy"
                 @cancel="bulkConfirmOpen = false"
                 @confirm="confirmBulkSale"
+            />
+            <UndergroundBulkSaleConfirmDialog
+                v-if="singleSaleTarget"
+                :items="[singleSaleTarget]"
+                :count="1"
+                :total-sell-price="singleSaleTarget.sell_price"
+                :submitting="busy"
+                single
+                @cancel="singleSaleTarget = null"
+                @confirm="confirmSingleSale"
             />
         </template>
     </section>

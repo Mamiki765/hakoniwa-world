@@ -3,6 +3,7 @@
 namespace App\Application\Underground;
 
 use App\Domain\Underground\Combat\AlphaV1CombatRules;
+use App\Domain\Underground\Combat\UndergroundEquipmentScaling;
 use App\Domain\Underground\Combat\UndergroundRandom;
 use InvalidArgumentException;
 use JsonException;
@@ -150,6 +151,15 @@ final class UndergroundRuntimeEquipmentGenerator
                 $accessoryValueBps,
             );
         }
+        foreach ($affixes as &$affix) {
+            if ($affix['kind'] === 'modifier'
+                && UndergroundEquipmentScaling::isRatingTarget($affix['target'])) {
+                $affix['rating'] = UndergroundEquipmentScaling::scaled(
+                    $affix['value'], UndergroundEquipmentScaling::scaleBps($itemLevel),
+                );
+            }
+        }
+        unset($affix);
 
         $stats = $base['stats'];
         $modifiers = [];
@@ -435,7 +445,7 @@ final class UndergroundRuntimeEquipmentGenerator
     {
         $config = config('underground-equipment.generator');
         if (! is_array($config)
-            || ($config['identity'] ?? null) !== 'secretary-underground-drop-equipment-alpha-v3') {
+            || ($config['identity'] ?? null) !== 'secretary-underground-drop-equipment-alpha-v4') {
             throw new RuntimeException('Underground generated equipment configuration is invalid.');
         }
 
