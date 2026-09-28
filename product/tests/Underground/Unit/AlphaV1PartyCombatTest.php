@@ -1107,7 +1107,7 @@ final class AlphaV1PartyCombatTest extends TestCase
         bool $enemyCounter = false,
         bool $enemyBoss = false,
     ): AlphaV1BuildCatalog {
-        $contents = file_get_contents(dirname(__DIR__, 3).'/config/underground/balance/foundation-v3.json');
+        $contents = file_get_contents(dirname(__DIR__, 3).'/config/underground/balance/foundation-v4.json');
         self::assertIsString($contents);
         $manifest = json_decode($contents, true, flags: JSON_THROW_ON_ERROR);
         self::assertIsArray($manifest);

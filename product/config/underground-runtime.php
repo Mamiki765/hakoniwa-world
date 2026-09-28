@@ -55,8 +55,8 @@ return [
     'trials' => [
         'trial_01' => [
             'label' => '地下に眠る古代遺跡',
-            'content_identity' => 'secretary-underground-trial-01-v3',
-            'balance_manifest' => 'underground/balance/trial1-v2.json',
+            'content_identity' => 'secretary-underground-trial-01-v4',
+            'balance_manifest' => 'underground/balance/trial1-v3.json',
             'required_trial_key' => null,
             'interbattle_heal_bps' => 2000,
             'first_clear_skill_points' => 40,
@@ -88,8 +88,8 @@ return [
         ],
         'trial_02' => [
             'label' => '黒曜石の魔窟',
-            'content_identity' => 'secretary-underground-trial-02-v2',
-            'balance_manifest' => 'underground/balance/trial2-v2.json',
+            'content_identity' => 'secretary-underground-trial-02-v3',
+            'balance_manifest' => 'underground/balance/trial2-v3.json',
             'required_trial_key' => 'trial_01',
             'drop_tier_key' => 'obsidian_cavern',
             'interbattle_heal_bps' => 2000,
@@ -122,8 +122,8 @@ return [
         ],
         'trial_03' => [
             'label' => '天光の王城',
-            'content_identity' => 'secretary-underground-trial-03-v1',
-            'balance_manifest' => 'underground/balance/trial3-v1.json',
+            'content_identity' => 'secretary-underground-trial-03-v2',
+            'balance_manifest' => 'underground/balance/trial3-v2.json',
             'required_trial_key' => 'trial_02',
             'drop_tier_key' => 'hero',
             'distorted_stone_chance_bps' => 100,

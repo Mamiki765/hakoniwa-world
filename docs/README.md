@@ -8,7 +8,7 @@
 |---|---|
 | 現在のbranch、productionの観測、確認限界 | [current-status](../product/docs/handoffs/current-status.md) |
 | 取り違えを防ぐ現行contract | [current-contracts](../product/docs/handoffs/current-contracts.md) |
-| 4.6第一弾の開始（一時資料） | [装備基盤の実装依頼](../product/docs/plans/4.6.0-chat-preparation.md)。完了時に必要情報を現役文書へ統合し、この入口と一時資料を削除/差替えする。 |
+| 4.6第一弾の装備計算 | [地底装備の倍率とrating](../product/docs/architecture/underground-equipment-scaling.md)、[プレイヤー向け装備手引き](../product/docs/manual/equipment.md) |
 | 4.4.1の作業一覧・途中記録（現在地は上記handoffを参照） | [4.4.1 TODO](../product/docs/plans/4.4.1-todo.md)、[実装・検証記録](../product/docs/releases/4.4.1-chat-implementation.md) |
 | 未決の構想と別枠の課題 | [Owner判断・構想](../product/docs/plans/post-4.4.0-decisions-and-ideas.md) |
 | 実装前の設計gate | [open-questions](open-questions.md) |

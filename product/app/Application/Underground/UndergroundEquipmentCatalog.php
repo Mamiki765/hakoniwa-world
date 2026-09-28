@@ -4,6 +4,7 @@ namespace App\Application\Underground;
 
 use App\Domain\Underground\Combat\AlphaV1CombatRules;
 use App\Domain\Underground\Combat\EquipmentCombatEffects;
+use App\Domain\Underground\Combat\UndergroundEquipmentScaling;
 use App\Models\UndergroundProfile;
 use InvalidArgumentException;
 use RuntimeException;
@@ -232,7 +233,10 @@ final class UndergroundEquipmentCatalog
         $physicalDefense = 0;
         $magicalDefense = 0;
         $maxHp = 0;
+        $maxHpAffixBase = 0;
+        $maxHpAffixScaled = 0;
         $modifiers = [];
+        $ratings = [];
         $affixes = [];
         foreach ($equipped as $entry) {
             $slot = $entry['slot'] ?? null;
@@ -257,20 +261,63 @@ final class UndergroundEquipmentCatalog
             foreach (AlphaV1CombatRules::STATS as $stat) {
                 $stats[$stat] += $definition['stats'][$stat];
             }
-            foreach ($definition['modifiers'] as $key => $value) {
-                $modifiers[$key] = ($modifiers[$key] ?? 0) + $value;
-            }
+            // Persisted modifiers already include affixes. Remove their raw bps before
+            // resolving the rating once across the whole loadout.
+            $fixedModifiers = $definition['modifiers'];
             foreach ($definition['affixes'] as $affix) {
+                if ($affix['kind'] === 'base' && $affix['target'] === 'max_hp') {
+                    $maxHpAffixBase += $affix['value'];
+                    $maxHpAffixScaled += UndergroundEquipmentScaling::scaled(
+                        $affix['value'], UndergroundEquipmentScaling::scaleBps($definition['item_level']),
+                    );
+                }
+                if ($affix['kind'] === 'modifier'
+                    && UndergroundEquipmentScaling::isRatingTarget($affix['target'])) {
+                    $target = $affix['target'];
+                    $fixedModifiers[$target] = ($fixedModifiers[$target] ?? 0) - $affix['value'];
+                    if ($fixedModifiers[$target] < 0) {
+                        throw new RuntimeException('Underground equipment modifier and affix disagree.');
+                    }
+                    $ratings[$target] = ($ratings[$target] ?? 0)
+                        + UndergroundEquipmentScaling::scaled(
+                            $affix['value'], UndergroundEquipmentScaling::scaleBps($definition['item_level']),
+                        );
+                }
                 $affixes[] = [
                     'item_key' => $definition['key'],
                     ...$affix,
                 ];
+            }
+            if ($definition['key'] === 'excalibur' && $definition['category'] === 'weapon') {
+                foreach ($fixedModifiers as $target => $value) {
+                    if (UndergroundEquipmentScaling::isRatingTarget($target)) {
+                        $ratings[$target] = ($ratings[$target] ?? 0)
+                            + UndergroundEquipmentScaling::scaled(
+                                $value, UndergroundEquipmentScaling::scaleBps($definition['item_level']),
+                            );
+                        unset($fixedModifiers[$target]);
+                    }
+                }
+            }
+            foreach ($fixedModifiers as $key => $value) {
+                $modifiers[$key] = ($modifiers[$key] ?? 0) + $value;
             }
         }
         $weaponEntry = $bySlot['weapon'] ?? null;
         $weapon = is_array($weaponEntry) ? ($weaponEntry['definition'] ?? null) : null;
         if (! is_array($weapon)) {
             throw new RuntimeException('Underground weapon slot cannot be empty.');
+        }
+        $armorEntry = $bySlot['armor'] ?? null;
+        $armor = is_array($armorEntry) ? ($armorEntry['definition'] ?? null) : null;
+        $armorLevel = is_array($armor) ? $armor['item_level'] : null;
+        $requirementBps = UndergroundEquipmentScaling::requirementBps($weapon['item_level'], $armorLevel);
+        foreach ($ratings as $target => $rating) {
+            $modifiers[$target] = ($modifiers[$target] ?? 0)
+                + UndergroundEquipmentScaling::effectiveBps($rating, $requirementBps, $target);
+        }
+        if (isset($modifiers['resonance_guard_reduction_bps'])) {
+            $modifiers['resonance_guard_reduction_bps'] = min(9_000, $modifiers['resonance_guard_reduction_bps']);
         }
 
         $items = [];
@@ -299,12 +346,18 @@ final class UndergroundEquipmentCatalog
             'label' => $weapon['name'],
             'catalog_identity' => $this->identity(),
             'item_level' => $weapon['item_level'],
+            'armor_item_level' => $armorLevel,
+            'weapon_scale_bps' => UndergroundEquipmentScaling::scaleBps($weapon['item_level']),
+            'armor_scale_bps' => UndergroundEquipmentScaling::scaleBps($armorLevel ?? 200),
+            'rating_requirement_bps' => $requirementBps,
             'rarity' => $weapon['rarity'],
             'weapon_style' => $weapon['weapon_style'],
             'weapon_power' => $weapon['weapon_power'],
             'physical_defense' => $physicalDefense,
             'magical_defense' => $magicalDefense,
             'max_hp' => $maxHp,
+            'max_hp_affix_base' => $maxHpAffixBase,
+            'max_hp_affix_scaled' => $maxHpAffixScaled,
             'stats' => $stats,
             'modifiers' => $modifiers,
             'affixes' => $affixes,

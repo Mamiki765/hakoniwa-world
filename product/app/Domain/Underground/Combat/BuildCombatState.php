@@ -82,9 +82,17 @@ final class BuildCombatState
 
     public int $equipmentMaxHp = 0;
 
+    public int $equipmentMaxHpAffixBase = 0;
+
+    public int $equipmentMaxHpAffixScaled = 0;
+
     public int $equipmentPhysicalDefense = 0;
 
     public int $equipmentMagicalDefense = 0;
+
+    public int $weaponOutputScaleBps = UndergroundEquipmentScaling::BASE_BPS;
+
+    public int $armorMaxHpScaleBps = UndergroundEquipmentScaling::BASE_BPS;
 
     /**
      * @param  'player'|'enemy'  $side

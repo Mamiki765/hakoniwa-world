@@ -98,8 +98,9 @@ final readonly class SecretaryLendingService
                 continue;
             }
             try {
+                $requirementBps = $this->equipmentLoadout->ratingRequirementBps($profile);
                 $equipment = $profile->ownedEquipment->map(
-                    fn ($item): array => $this->equipmentLoadout->projectOwned($item),
+                    fn ($item): array => $this->equipmentLoadout->projectOwned($item, $requirementBps),
                 )->all();
             } catch (\RuntimeException) {
                 continue;

@@ -2028,7 +2028,7 @@ final class UndergroundCombatBuildTest extends TestCase
     public function test_dullahan_hatred_stacks_each_round_caps_at_fifty_and_judgment_can_reset_it(): void
     {
         [$manifest] = $this->catalog();
-        $contents = file_get_contents(dirname(__DIR__, 3).'/config/underground/balance/trial2-v2.json');
+        $contents = file_get_contents(dirname(__DIR__, 3).'/config/underground/balance/trial2-v3.json');
         $this->assertIsString($contents);
         $trial = json_decode($contents, true, flags: JSON_THROW_ON_ERROR);
         $this->assertIsArray($trial);
@@ -2171,7 +2171,7 @@ final class UndergroundCombatBuildTest extends TestCase
     /** @return array{array<string, mixed>, AlphaV1BuildCatalog, UndergroundBuildValidator} */
     private function catalog(): array
     {
-        $contents = file_get_contents(dirname(__DIR__, 3).'/config/underground/balance/foundation-v3.json');
+        $contents = file_get_contents(dirname(__DIR__, 3).'/config/underground/balance/foundation-v4.json');
         $this->assertIsString($contents);
         $manifest = json_decode($contents, true, flags: JSON_THROW_ON_ERROR);
         $this->assertIsArray($manifest);

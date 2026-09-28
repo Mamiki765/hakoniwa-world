@@ -2,6 +2,7 @@
 
 namespace App\Application\Underground;
 
+use App\Domain\Underground\Combat\UndergroundEquipmentScaling;
 use App\Models\UndergroundOwnedEquipment;
 use App\Models\UndergroundProfile;
 use Illuminate\Database\Eloquent\Collection;
@@ -23,6 +24,7 @@ final readonly class UndergroundEquipmentLoadoutResolver
     /** @return array{used: int, capacity: int, equipped: array<string, array<string, mixed>|null>} */
     public function summary(UndergroundProfile $profile, string $inventory = 'equipment'): array
     {
+        $requirementBps = $this->ratingRequirementBps($profile);
         $rows = UndergroundOwnedEquipment::query()
             ->where('underground_profile_id', $profile->id)
             ->whereNotNull('equipped_slot')
@@ -33,7 +35,7 @@ final readonly class UndergroundEquipmentLoadoutResolver
             if (! array_key_exists($row->equipped_slot, $equipped)) {
                 throw new RuntimeException('Underground equipped slot is unsupported.');
             }
-            $equipped[$row->equipped_slot] = $this->projectOwned($row);
+            $equipped[$row->equipped_slot] = $this->projectOwned($row, $requirementBps);
         }
 
         return [
@@ -42,8 +44,14 @@ final readonly class UndergroundEquipmentLoadoutResolver
                 ->inventory($inventory)
                 ->count(),
             'capacity' => $this->catalog->vaultCapacityForProfile($profile, $inventory),
+            'rating_requirement_bps' => $requirementBps,
             'equipped' => $equipped,
         ];
+    }
+
+    public function ratingRequirementBps(UndergroundProfile $profile): int
+    {
+        return $this->combatLoadout($profile)['rating_requirement_bps'];
     }
 
     /** @return array<string, mixed> */
@@ -74,22 +82,74 @@ final readonly class UndergroundEquipmentLoadoutResolver
     }
 
     /** @return array<string, mixed> */
-    public function projectOwned(UndergroundOwnedEquipment $row): array
+    public function projectOwned(UndergroundOwnedEquipment $row, ?int $requirementBps = null): array
     {
         $definition = $this->definitionForRow($row);
+        $requirementBps ??= $this->ratingRequirementBps($row->profile);
         $projection = $definition;
         unset($projection['base'], $projection['source']);
+        $bodyMaxHp = $definition['max_hp'];
+        foreach ($definition['affixes'] as $affix) {
+            if ($affix['kind'] === 'base' && $affix['target'] === 'max_hp') {
+                $bodyMaxHp -= $affix['value'];
+            }
+        }
+        $projection['body_max_hp_effective'] = $definition['category'] === 'armor'
+            ? UndergroundEquipmentScaling::scaled(
+                $bodyMaxHp, UndergroundEquipmentScaling::scaleBps($definition['item_level']),
+            )
+            : $bodyMaxHp;
+        if ($definition['category'] === 'weapon' && ($definition['equippable'] ?? true) === true) {
+            $projection['weapon_scale_bps'] = UndergroundEquipmentScaling::scaleBps($definition['item_level']);
+        }
+        if ($definition['category'] === 'armor') {
+            $projection['armor_scale_bps'] = UndergroundEquipmentScaling::scaleBps($definition['item_level']);
+        }
         $projection['affixes'] = array_map(
-            static fn (array $affix): array => [
-                'key' => $affix['key'],
-                'label' => $affix['label'],
-                'kind' => $affix['kind'],
-                'target' => $affix['target'],
-                'value' => $affix['value'],
-                'quality_bps' => $affix['quality_bps'],
-            ],
+            static function (array $affix) use ($definition, $requirementBps): array {
+                $rating = $affix['kind'] === 'modifier'
+                    && UndergroundEquipmentScaling::isRatingTarget($affix['target'])
+                    ? UndergroundEquipmentScaling::scaled(
+                        $affix['value'], UndergroundEquipmentScaling::scaleBps($definition['item_level']),
+                    )
+                    : null;
+
+                return [
+                    'key' => $affix['key'], 'label' => $affix['label'],
+                    'kind' => $affix['kind'], 'target' => $affix['target'],
+                    'value' => $affix['value'], 'quality_bps' => $affix['quality_bps'],
+                    ...($rating === null ? [] : [
+                        'rating' => $rating,
+                        'effective_bps' => UndergroundEquipmentScaling::effectiveBps(
+                            $rating, $requirementBps, $affix['target'],
+                        ),
+                    ]),
+                    ...($affix['kind'] === 'base' && $affix['target'] === 'max_hp'
+                        ? ['effective_value' => UndergroundEquipmentScaling::scaled(
+                            $affix['value'], UndergroundEquipmentScaling::scaleBps($definition['item_level']),
+                        )]
+                        : []),
+                ];
+            },
             $definition['affixes'],
         );
+        if ($definition['key'] === 'excalibur' && $definition['category'] === 'weapon') {
+            $projection['rating_modifiers'] = [];
+            foreach ($definition['modifiers'] as $target => $value) {
+                if (! UndergroundEquipmentScaling::isRatingTarget($target)) {
+                    continue;
+                }
+                $rating = UndergroundEquipmentScaling::scaled(
+                    $value, UndergroundEquipmentScaling::scaleBps($definition['item_level']),
+                );
+                $projection['rating_modifiers'][$target] = [
+                    'rating' => $rating,
+                    'effective_bps' => UndergroundEquipmentScaling::effectiveBps(
+                        $rating, $requirementBps, $target,
+                    ),
+                ];
+            }
+        }
 
         return [
             'id' => $row->id,

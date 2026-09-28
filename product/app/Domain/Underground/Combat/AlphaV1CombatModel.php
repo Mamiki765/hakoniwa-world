@@ -857,7 +857,7 @@ final readonly class AlphaV1CombatModel
             $key,
             $label,
             false,
-            $this->rules->maxHp($stats, 10_000, $equipment['max_hp']),
+            UndergroundEquipmentScaling::maxHp($this->rules, $stats, 10_000, $equipment),
             $stats,
             $equipment['physical_defense'] + ($stats['vitality'] * 4),
             $equipment['magical_defense'] + ($stats['spirit'] * 4),
@@ -870,6 +870,8 @@ final readonly class AlphaV1CombatModel
             $normalAttack,
         );
         $state->weaponEffect = $weaponEffect;
+        $state->weaponOutputScaleBps = (int) ($equipment['weapon_scale_bps'] ?? UndergroundEquipmentScaling::BASE_BPS);
+        $state->armorMaxHpScaleBps = (int) ($equipment['armor_scale_bps'] ?? UndergroundEquipmentScaling::BASE_BPS);
         $currentHp = $snapshot['current_hp'] ?? $state->maxHp;
         if (! is_int($currentHp) || $currentHp < ($allowDefeated ? 0 : 1) || $currentHp > $state->maxHp) {
             throw new InvalidArgumentException('Underground alpha-v1 runtime current HP is invalid.');
@@ -902,6 +904,8 @@ final readonly class AlphaV1CombatModel
             $state->awakeningTechniqueKey = $awakening['unlocked'] ? $technique['key'] : null;
             $state->flags['awakening_growth_path'] = $awakening['growth_path'];
             $state->equipmentMaxHp = $equipment['max_hp'];
+            $state->equipmentMaxHpAffixBase = (int) ($equipment['max_hp_affix_base'] ?? 0);
+            $state->equipmentMaxHpAffixScaled = (int) ($equipment['max_hp_affix_scaled'] ?? 0);
             $state->equipmentPhysicalDefense = $equipment['physical_defense'];
             $state->equipmentMagicalDefense = $equipment['magical_defense'];
         }
@@ -911,7 +915,7 @@ final readonly class AlphaV1CombatModel
 
     /**
      * @param  array<string, mixed>  $build
-     * @param  array{stats: array<string, int>, weapon_power: int, physical_defense: int, magical_defense: int, max_hp: int, modifiers: array<string, int|bool|string>, unique_effects: list<string>}  $equipment
+     * @param  array{stats: array<string, int>, weapon_power: int, physical_defense: int, magical_defense: int, max_hp: int, max_hp_affix_base: int, max_hp_affix_scaled: int, weapon_scale_bps: int, armor_scale_bps: int, modifiers: array<string, int|bool|string>, unique_effects: list<string>}  $equipment
      */
     private function playerState(
         AlphaV1BuildCatalog $catalog,
@@ -942,12 +946,12 @@ final readonly class AlphaV1CombatModel
         $physicalDefense = $equipment['physical_defense'] + ($stats['vitality'] * 4);
         $magicalDefense = $equipment['magical_defense'] + ($stats['spirit'] * 4);
 
-        return new BuildCombatState(
+        $state = new BuildCombatState(
             'player',
             $build['key'],
             $build['label'],
             false,
-            $this->rules->maxHp($stats, $scaleBps, $equipment['max_hp']),
+            UndergroundEquipmentScaling::maxHp($this->rules, $stats, $scaleBps, $equipment),
             $stats,
             $physicalDefense,
             $magicalDefense,
@@ -959,6 +963,10 @@ final readonly class AlphaV1CombatModel
             null,
             $catalog->manifest()['normal_attack'],
         );
+        $state->weaponOutputScaleBps = $equipment['weapon_scale_bps'];
+        $state->armorMaxHpScaleBps = $equipment['armor_scale_bps'];
+
+        return $state;
     }
 
     private function enemyState(
@@ -2097,6 +2105,7 @@ final readonly class AlphaV1CombatModel
             $effectivePower = $this->rules->weightedStats($this->currentStats($actor), $coefficients);
             $effectivePower += intdiv($actor->weaponPower * (int) ($effect['weapon_coefficient_bps'] ?? 0), 10_000);
             $effectivePower += max(0, (int) ($effect['fixed'] ?? 0));
+            $effectivePower = UndergroundEquipmentScaling::scaled($effectivePower, $actor->weaponOutputScaleBps);
             $rawDamage = max(1, intdiv($effectivePower * (int) ($effect['potency_bps'] ?? 10_000), 10_000));
             $targetMaxHpBps = max(0, (int) ($effect['target_max_hp_bps'] ?? 0));
             if ($targetMaxHpBps > 0) {
@@ -2105,6 +2114,7 @@ final readonly class AlphaV1CombatModel
                     $this->currentStats($actor),
                     is_array($effect['source_cap_coefficients'] ?? null) ? $effect['source_cap_coefficients'] : [],
                 );
+                $sourceCap = UndergroundEquipmentScaling::scaled($sourceCap, $actor->weaponOutputScaleBps);
                 $sourceCap = intdiv($sourceCap * (int) ($effect['source_cap_multiplier_bps'] ?? 10_000), 10_000);
                 $rawDamage += min($percentageComponent, max(0, $sourceCap));
             }
@@ -2618,8 +2628,9 @@ final readonly class AlphaV1CombatModel
             ? $effect['source_stat_coefficients']
             : [];
         $amount = $this->rules->weightedStats($this->currentStats($source), $coefficients);
-        $amount += intdiv($target->maxHp * max(0, (int) ($effect['target_max_hp_bps'] ?? 0)), 10_000);
         $amount += max(0, (int) ($effect['fixed'] ?? 0));
+        $amount = UndergroundEquipmentScaling::scaled($amount, $source->weaponOutputScaleBps);
+        $amount += intdiv($target->maxHp * max(0, (int) ($effect['target_max_hp_bps'] ?? 0)), 10_000);
 
         return max(0, $amount);
     }
@@ -2775,6 +2786,7 @@ final readonly class AlphaV1CombatModel
                     $this->currentStats($source),
                     is_array($effect['source_stat_coefficients'] ?? null) ? $effect['source_stat_coefficients'] : [],
                 );
+                $cap = UndergroundEquipmentScaling::scaled($cap, $source->weaponOutputScaleBps);
                 $cap = intdiv($cap * (int) ($effect['source_cap_multiplier_bps'] ?? 10_000), 10_000);
                 $effect['tick_value'] = max(1, min($percentage, max(1, $cap)));
                 $effect['periodic_multiplier_bps'] = $periodicMultiplierBps;
@@ -2782,10 +2794,11 @@ final readonly class AlphaV1CombatModel
                 $effect['source_combatant_id'] = $source->combatantId;
             } elseif (($effect['type'] ?? null) === 'periodic_heal') {
                 $effect['tick_value'] = max(1,
-                    $this->rules->weightedStats(
+                    UndergroundEquipmentScaling::scaled($this->rules->weightedStats(
                         $this->currentStats($source),
                         is_array($effect['source_stat_coefficients'] ?? null) ? $effect['source_stat_coefficients'] : [],
-                    ) + intdiv($target->maxHp * max(0, (int) ($effect['target_max_hp_bps'] ?? 0)), 10_000),
+                    ), $source->weaponOutputScaleBps)
+                        + intdiv($target->maxHp * max(0, (int) ($effect['target_max_hp_bps'] ?? 0)), 10_000),
                 );
                 $effect['periodic_multiplier_bps'] = $periodicMultiplierBps;
                 $effect['source_side'] = $source->side;
@@ -3021,6 +3034,7 @@ final readonly class AlphaV1CombatModel
             (($defender->stat('vitality') * 6) + ($defender->stat('might') * 4)) * $powerBps,
             10_000,
         );
+        $effectivePower = UndergroundEquipmentScaling::scaled($effectivePower, $defender->weaponOutputScaleBps);
         $damageBps = max(
             10_000 - AlphaV1CombatRules::DAMAGE_REDUCTION_CAP_BPS,
             min(20_000, $this->targetDamageBps($attacker, 'physical')),

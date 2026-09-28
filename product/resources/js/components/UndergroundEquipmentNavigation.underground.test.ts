@@ -52,6 +52,37 @@ afterEach(() => {
 });
 
 describe('Underground equipment navigation', () => {
+    it('confirms a single unequipped crystal sale before using the existing sale route', async () => {
+        const crystal = item({ category: 'resonance', name: '命脈の黒竜晶', sellable: true, sell_price: 900 });
+        const sales: Array<{ path: string; body: { request_id: string } }> = [];
+        stubUndergroundFetch(vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+            const path = new URL(String(input), 'http://localhost').pathname;
+            if (init?.method === 'POST' && path.endsWith('/sell')) {
+                sales.push({ path, body: JSON.parse(String(init.body)) });
+                return response({ shard_balance: 900, banked_shard_balance: 0,
+                    vault: { used: 0, capacity: 50, equipped } });
+            }
+            return response({ catalog_identity: 'test-catalog', used: 1, capacity: 50, equipped,
+                items: [crystal], page: 1, per_page: 50, last_page: 1, total: 1 });
+        }));
+        const wrapper = mount(UndergroundEquipmentVault);
+        await flushPromises();
+        await wrapper.findAll('button').find(button => button.text() === '共鳴結晶')!.trigger('click');
+        await flushPromises();
+        const saleButton = wrapper.findAll('button').find(button => button.text() === '売却する')!;
+        await saleButton.trigger('click');
+        expect(wrapper.get('[role="dialog"]').text()).toContain('命脈の黒竜晶');
+        expect(wrapper.get('[role="dialog"]').text()).toContain('900G');
+        expect(sales).toHaveLength(0);
+        await wrapper.get('[role="dialog"] .button.primary').trigger('click');
+        await flushPromises();
+        expect(sales).toHaveLength(1);
+        expect(sales[0]?.path).toContain('/equipment/items/7/sell');
+        expect(sales[0]?.body.request_id).toBeTruthy();
+        expect(wrapper.emitted('updated')).toHaveLength(1);
+        wrapper.unmount();
+    });
+
     it('keeps the same polishing intent after a paid response is lost', async () => {
         const crystal = item({ category: 'resonance', name: '堅鱗の黒竜晶', equipped_slot: 'resonance', polish_level: 0 });
         const requests: unknown[] = [];

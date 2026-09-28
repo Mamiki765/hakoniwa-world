@@ -798,7 +798,7 @@ describe('Underground application operations', () => {
                         ...tree,
                         invested_points: 5,
                         nodes: tree.nodes.map((node) => ({ ...node, rank: 1, can_acquire: false, unavailable_reason: '最大rankです' })),
-                    }),
+                    }) as typeof openState.skill_trees,
                 };
                 return response(openState);
             }

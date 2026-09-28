@@ -4,12 +4,14 @@ namespace Tests\Underground\Unit;
 
 use App\Application\Underground\UndergroundEquipmentCatalog;
 use App\Application\Underground\UndergroundRuntimeEquipmentGenerator;
+use App\Domain\Underground\Combat\AlphaV1CombatRules;
+use App\Domain\Underground\Combat\UndergroundEquipmentScaling;
 use InvalidArgumentException;
 use Tests\TestCase;
 
 final class UndergroundRuntimeEquipmentGeneratorTest extends TestCase
 {
-    public function test_resonance_duplicate_max_rolls_stop_percentage_growth_but_keep_equal_flat_stat_growth(): void
+    public function test_resonance_keeps_fixed_effect_and_roll_quality_while_210_affixes_gain_rating(): void
     {
         config([
             'underground-equipment.generator.resonance.affixes' => ['resonance_area_damage_bps' => '範囲攻撃強化'],
@@ -23,7 +25,9 @@ final class UndergroundRuntimeEquipmentGeneratorTest extends TestCase
         $this->assertCount(2, $atCap['affixes']);
         $this->assertSame($atCap['affixes'][0]['key'], $atCap['affixes'][1]['key']);
         $this->assertSame(3_000, $afterCap['modifiers']['resonance_area_damage_bps']);
-        $this->assertSame($atCap['affixes'], $afterCap['affixes']);
+        $this->assertSame($atCap['affixes'][0]['value'], $afterCap['affixes'][0]['value']);
+        $this->assertSame($atCap['affixes'][0]['quality_bps'], $afterCap['affixes'][0]['quality_bps']);
+        $this->assertSame(990, $afterCap['affixes'][0]['rating']);
         $this->assertSame($atCap['unique_effect'], $afterCap['unique_effect']);
         $this->assertCount(1, array_unique($afterCap['stats']));
         $this->assertGreaterThan($atCap['stats']['vitality'], $afterCap['stats']['vitality']);
@@ -46,6 +50,50 @@ final class UndergroundRuntimeEquipmentGeneratorTest extends TestCase
         );
         $this->assertNotSame($first['instance_identity'], $otherSource['instance_identity']);
         $this->assertSame($first['affixes'], $otherSource['affixes']);
+    }
+
+    public function test_210_weapon_and_armor_resolve_220_accessory_rating_and_hp_affix_once(): void
+    {
+        $physical = config('underground-equipment.generator.affixes.physical_damage_bps');
+        $maxHp = config('underground-equipment.generator.affixes.max_hp');
+        config([
+            'underground-equipment.generator.rarities.common.accessory_presence_bps' => 10_000,
+            'underground-equipment.generator.affixes' => ['physical_damage_bps' => $physical],
+        ]);
+        $weapon = $this->generate(210, 'hero', 'common', 'weapon', 'longsword', null, 23);
+        $accessory = $this->generate(220, 'hero', 'common', 'accessory', null, 'might', 24);
+        config(['underground-equipment.generator.affixes' => ['max_hp' => $maxHp]]);
+        $armor = $this->generate(210, 'hero', 'common', 'armor', null, null, 25);
+        $lowArmor = $this->generate(200, 'hero', 'common', 'armor', null, null, 25);
+        $hpAccessory = $this->generate(220, 'hero', 'common', 'accessory', null, 'might', 26);
+        $catalog = app(UndergroundEquipmentCatalog::class);
+        $entry = static fn (string $slot, array $definition): array => [
+            'slot' => $slot, 'definition' => $definition,
+            'catalog_identity' => $catalog->identity(),
+            'instance_identity' => $definition['instance_identity'],
+        ];
+        $full = $catalog->combatLoadout([
+            $entry('weapon', $weapon), $entry('armor', $armor),
+            $entry('accessory_1', $accessory), $entry('accessory_2', $hpAccessory),
+        ]);
+        $low = $catalog->combatLoadout([
+            $entry('weapon', $weapon), $entry('armor', $lowArmor),
+            $entry('accessory_1', $accessory), $entry('accessory_2', $hpAccessory),
+        ]);
+
+        $this->assertSame([11_000, 11_000], [$full['weapon_scale_bps'], $full['armor_scale_bps']]);
+        $this->assertGreaterThan($accessory['affixes'][0]['value'], $accessory['affixes'][0]['rating']);
+        $this->assertSame(11_000, $full['rating_requirement_bps']);
+        $this->assertSame(10_000, $low['rating_requirement_bps']);
+        $this->assertGreaterThan($full['modifiers']['physical_damage_bps'], $low['modifiers']['physical_damage_bps']);
+        $this->assertGreaterThan($full['max_hp_affix_base'], $full['max_hp_affix_scaled']);
+        $this->assertSame($hpAccessory['affixes'][0]['value'], $hpAccessory['max_hp'] - $hpAccessory['base']['max_hp']);
+        $this->assertSame(671, UndergroundEquipmentScaling::maxHp(
+            new AlphaV1CombatRules,
+            array_fill_keys(AlphaV1CombatRules::STATS, 20),
+            10_000,
+            ['max_hp' => 100, 'max_hp_affix_base' => 100, 'max_hp_affix_scaled' => 121, 'armor_scale_bps' => 11_000],
+        ));
     }
 
     public function test_body_anchors_are_exposed_before_affix_application(): void
@@ -201,7 +249,9 @@ final class UndergroundRuntimeEquipmentGeneratorTest extends TestCase
         $bahamul = $this->generate(210, 'bahamul', 'unique', 'weapon', 'longsword', null, 0);
         $this->assertGreaterThan($last['weapon_power'], $bahamul['weapon_power']);
 
-        foreach ([0, 211] as $itemLevel) {
+        $this->assertSame(220, $this->generate(220, 'hero', 'common', 'weapon', 'dagger', null, 0)['item_level']);
+
+        foreach ([0, 221] as $itemLevel) {
             try {
                 $this->generate($itemLevel, 'shallow_caves', 'common', 'weapon', 'dagger', null, 0);
                 $this->fail("Item Lv {$itemLevel} should be rejected.");

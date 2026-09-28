@@ -6,6 +6,7 @@ use App\Domain\Underground\Combat\AlphaV1BuildCatalog;
 use App\Domain\Underground\Combat\AlphaV1CombatRules;
 use App\Domain\Underground\Combat\PriorityCombatAiConfiguration;
 use App\Domain\Underground\Combat\UndergroundBuildValidator;
+use App\Domain\Underground\Combat\UndergroundEquipmentScaling;
 use InvalidArgumentException;
 use JsonException;
 use RuntimeException;
@@ -519,7 +520,7 @@ final readonly class UndergroundAlphaV1PlayerCatalog
             throw new RuntimeException('Underground equipment max HP bonus is invalid.');
         }
 
-        return $this->rules->maxHp($combatStats, 10_000, $maxHp);
+        return UndergroundEquipmentScaling::maxHp($this->rules, $combatStats, 10_000, $equipment);
     }
 
     /**
@@ -1079,7 +1080,7 @@ final readonly class UndergroundAlphaV1PlayerCatalog
     {
         try {
             $manifest = json_decode(
-                file_get_contents(config_path('underground/balance/foundation-v3.json')) ?: '',
+                file_get_contents(config_path('underground/balance/foundation-v4.json')) ?: '',
                 true,
                 512,
                 JSON_THROW_ON_ERROR,

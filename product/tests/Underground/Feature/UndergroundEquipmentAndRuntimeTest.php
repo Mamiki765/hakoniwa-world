@@ -108,6 +108,14 @@ final class UndergroundEquipmentAndRuntimeTest extends UndergroundPlayerAccessTe
                 210, 'bahamul', 'unique', $category, $category === 'weapon' ? 'crystal_staff' : null,
                 null, 4404, 'bahamul-equipment-test:'.$category,
             );
+            if ($category === 'resonance') {
+                // An already-owned v3 crystal has the saved roll, but no rating audit field.
+                $generated['generator_identity'] = 'secretary-underground-drop-equipment-alpha-v3';
+                foreach ($generated['affixes'] as &$affix) {
+                    unset($affix['rating']);
+                }
+                unset($affix);
+            }
             $items[$category] = UndergroundOwnedEquipment::query()->create([
                 'underground_profile_id' => $profile->id, 'definition_key' => $generated['key'],
                 'catalog_identity' => 'secretary-underground-shop-equipment-alpha-v3',
@@ -134,7 +142,10 @@ final class UndergroundEquipmentAndRuntimeTest extends UndergroundPlayerAccessTe
         $loadout = app(UndergroundEquipmentLoadoutResolver::class)->combatLoadout($profile->fresh());
         $this->assertSame('miracle', $loadout['unique_effect']['category']);
         $resonanceModifiers = $items['resonance']->generated_payload['modifiers'];
-        $this->assertSame($resonanceModifiers, array_intersect_key($loadout['modifiers'], $resonanceModifiers));
+        $this->assertGreaterThan(
+            $resonanceModifiers['resonance_area_damage_bps'],
+            $loadout['modifiers']['resonance_area_damage_bps'],
+        );
         $factory = app(BorrowedSecretarySnapshotFactory::class);
         $withoutCrystal = $factory->create($secretary->fresh(['user', 'images']), $profile->fresh(),
             $profile->combat_level, ['weapon' => 210], $user, false);
@@ -883,7 +894,9 @@ final class UndergroundEquipmentAndRuntimeTest extends UndergroundPlayerAccessTe
                 ['key', 'label', 'kind', 'target', 'value', 'quality_bps'],
             ),
             $generated['affixes'],
-        ), $projected['affixes']);
+        ), array_map(static fn (array $affix): array => Arr::only(
+            $affix, ['key', 'label', 'kind', 'target', 'value', 'quality_bps'],
+        ), $projected['affixes']));
         $this->assertArrayNotHasKey('source', $projected);
         $this->assertArrayNotHasKey('base', $projected);
         $this->assertEquals($generated['stats'], $projected['stats']);
