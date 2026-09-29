@@ -6,6 +6,7 @@ use App\Application\Underground\BorrowedSecretarySnapshotFactory;
 use App\Application\Underground\UndergroundAlphaV1PlayerCatalog;
 use App\Application\Underground\UndergroundBattleHistoryCompactor;
 use App\Application\Underground\UndergroundEquipmentDropService;
+use App\Application\Underground\UndergroundEquipmentCatalog;
 use App\Application\Underground\UndergroundEquipmentLoadoutResolver;
 use App\Application\Underground\UndergroundReceiptPurgeService;
 use App\Application\Underground\UndergroundReceiptRollupService;
@@ -28,6 +29,32 @@ final class UndergroundEquipmentAndRuntimeTest extends UndergroundPlayerAccessTe
 {
     use CreatesTestWorlds;
     use RefreshDatabase;
+
+    public function test_existing_excalibur_uses_the_new_catalog_after_upgrade(): void
+    {
+        [, $secretary] = $this->secretaryUser('王城を抜けた秘書');
+        $profile = $this->openEquipmentProfile($secretary);
+        $catalog = app(UndergroundEquipmentCatalog::class);
+        $legacyIdentity = 'secretary-underground-shop-equipment-alpha-v4';
+        $item = UndergroundOwnedEquipment::query()->create([
+            'underground_profile_id' => $profile->id,
+            'definition_key' => 'excalibur',
+            'catalog_identity' => $legacyIdentity,
+            'instance_kind' => 'fixed',
+            'acquired_at' => now(),
+        ]);
+        $resolver = app(UndergroundEquipmentLoadoutResolver::class);
+        $oldItemLevel = $catalog->definition('excalibur', $legacyIdentity)['item_level'];
+        $this->assertSame($oldItemLevel, $resolver->definitionForRow($item)['item_level']);
+
+        $migration = require database_path('migrations/2026_09_30_000000_upgrade_excalibur_to_il200.php');
+        $migration->up();
+        $migration->up();
+
+        $this->assertSame($catalog->identity(), $item->refresh()->catalog_identity);
+        $this->assertSame($catalog->definition('excalibur')['item_level'], $resolver->definitionForRow($item)['item_level']);
+        $this->assertGreaterThan($oldItemLevel, $resolver->definitionForRow($item)['item_level']);
+    }
 
     public function test_polishing_charges_once_preserves_the_roll_and_reaches_the_upgrade_limit(): void
     {
@@ -210,7 +237,7 @@ final class UndergroundEquipmentAndRuntimeTest extends UndergroundPlayerAccessTe
             ->sole()->snapshot);
         $shop = $this->actingAs($user)->getJson('/api/v1/me/underground/equipment/shop')
             ->assertOk()
-            ->assertJsonPath('data.catalog_identity', 'secretary-underground-shop-equipment-alpha-v4')
+            ->assertJsonPath('data.catalog_identity', app(UndergroundEquipmentCatalog::class)->identity())
             ->assertJsonPath('data.currency_label', '輝石の欠片 G')
             ->assertJsonPath('data.shard_balance', 5_000)
             ->assertJsonPath('data.banked_shard_balance', 5_000)
@@ -602,7 +629,7 @@ final class UndergroundEquipmentAndRuntimeTest extends UndergroundPlayerAccessTe
         $preview = $this->actingAs($user)
             ->postJson('/api/v1/me/underground/equipment/vault/bulk-sell/preview', $filters)
             ->assertOk()
-            ->assertJsonPath('data.catalog_identity', 'secretary-underground-shop-equipment-alpha-v4')
+            ->assertJsonPath('data.catalog_identity', app(UndergroundEquipmentCatalog::class)->identity())
             ->assertJsonPath('data.count', 2);
         $previewItems = collect($preview->json('data.items'));
         $this->assertEqualsCanonicalizing(

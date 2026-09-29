@@ -478,6 +478,7 @@ html[data-theme="dark"] .compensation-banner, html[data-theme="dark"] .compensat
 .underground-adventure-block { display: grid; align-content: start; gap: .55rem; padding: .75rem; border: 1px solid var(--line); background: var(--paper); }
 .underground-adventure-block h3, .underground-adventure-block small { margin: 0; }
 .underground-adventure-block small { color: var(--muted); }
+.underground-vault-entry { display: flex; flex-wrap: wrap; align-items: center; gap: .35rem .7rem; }
 .underground-adventure-block select { width: 100%; min-height: 2.6rem; padding: .45rem .55rem; border: 1px solid var(--input-border); background: var(--input-surface); color: var(--ink); font: inherit; }
 .underground-history { margin-top: .25rem; padding-top: 1rem; border-top: 1px solid var(--line); }
 .underground-history ul { display: grid; gap: .4rem; margin: 0; padding: 0; list-style: none; }

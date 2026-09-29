@@ -2964,12 +2964,13 @@ onUnmounted(() => {
                             </section>
                             <section v-if="equipmentView === 'secret'" class="underground-adventure-block" aria-labelledby="underground-vault-title">
                                 <h3 id="underground-vault-title">秘密の場所</h3>
-                                <div v-for="vault in unlockedVaults" :key="vault.key">
+                                <div v-for="vault in unlockedVaults" :key="vault.key" class="underground-vault-entry">
                                     <strong>{{ vault.name }}</strong>
                                     <button class="button primary" type="button" :disabled="busy || exploreCooldownSeconds > 0 || Boolean(state.trial?.active_run) || vault.disabled" @click="runExplore(vault.key, 'vault:' + vault.key)">挑戦する</button>
                                     <small>装備 Item Lv {{ vault.item_level_min }}～{{ vault.item_level_max }}</small>
+                                    <small>{{ vault.key_label }}：所持 {{ vault.key_balance }}個・1回につき{{ vault.entry_key_cost }}個消費</small>
                                     <small v-if="vault.disabled">{{ vault.unavailable_reason }}</small>
-                                    <small v-else>{{ vault.key_label }} {{ vault.key_balance }}個・1回につき{{ vault.entry_key_cost }}個消費</small>
+                                    <small v-if="exploreCooldownSeconds > 0">次の出発まであと{{ exploreCooldownSeconds }}秒</small>
                                 </div>
                                 <small v-if="unlockedVaults.length === 0">試練2を初回clearすると解禁されます。</small>
                             </section>

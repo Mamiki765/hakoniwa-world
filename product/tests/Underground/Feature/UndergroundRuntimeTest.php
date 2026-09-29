@@ -11,6 +11,7 @@ use App\Application\Underground\CanonicalUndergroundExplorationCombat;
 use App\Application\Underground\UndergroundAlphaV1PlayerCatalog;
 use App\Application\Underground\UndergroundBattleHistoryCompactor;
 use App\Application\Underground\UndergroundBattleSeed;
+use App\Application\Underground\UndergroundEquipmentCatalog;
 use App\Application\Underground\UndergroundEquipmentLoadoutResolver;
 use App\Application\Underground\UndergroundEquipmentService;
 use App\Application\Underground\UndergroundIntroService;
@@ -1680,7 +1681,7 @@ final class UndergroundRuntimeTest extends TestCase
         $excalibur = UndergroundOwnedEquipment::query()
             ->where('underground_profile_id', $profile->id)->where('definition_key', 'excalibur')->sole();
         $rewardItem = app(UndergroundEquipmentLoadoutResolver::class)->projectOwned($excalibur);
-        $this->assertSame([185, 'unique', false, 0], [
+        $this->assertSame([app(UndergroundEquipmentCatalog::class)->definition('excalibur')['item_level'], 'unique', false, 0], [
             $rewardItem['item_level'], $rewardItem['rarity'], $rewardItem['sellable'], $rewardItem['sell_price'],
         ]);
         app(UndergroundEquipmentService::class)->equip($user, (string) Str::uuid(), $excalibur->id);
