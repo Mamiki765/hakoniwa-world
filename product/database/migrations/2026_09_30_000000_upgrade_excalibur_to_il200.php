@@ -16,10 +16,6 @@ return new class extends Migration
 
     public function down(): void
     {
-        DB::table('underground_owned_equipment')
-            ->where('definition_key', 'excalibur')
-            ->where('instance_kind', 'fixed')
-            ->where('catalog_identity', 'secretary-underground-shop-equipment-alpha-v5')
-            ->update(['catalog_identity' => 'secretary-underground-shop-equipment-alpha-v4']);
+        throw new RuntimeException('The Excalibur catalog upgrade is forward-only; restore the verified pre-migration backup.');
     }
 };

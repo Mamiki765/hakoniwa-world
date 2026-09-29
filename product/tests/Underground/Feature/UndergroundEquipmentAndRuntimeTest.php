@@ -54,6 +54,22 @@ final class UndergroundEquipmentAndRuntimeTest extends UndergroundPlayerAccessTe
         $this->assertSame($catalog->identity(), $item->refresh()->catalog_identity);
         $this->assertSame($catalog->definition('excalibur')['item_level'], $resolver->definitionForRow($item)['item_level']);
         $this->assertGreaterThan($oldItemLevel, $resolver->definitionForRow($item)['item_level']);
+
+        $newItem = UndergroundOwnedEquipment::query()->create([
+            'underground_profile_id' => $profile->id,
+            'definition_key' => 'excalibur',
+            'catalog_identity' => $catalog->identity(),
+            'instance_kind' => 'fixed',
+            'acquired_at' => now(),
+        ]);
+
+        try {
+            $migration->down();
+            $this->fail('Rollback must not downgrade Excaliburs awarded after the upgrade.');
+        } catch (\RuntimeException) {
+            $this->assertSame($catalog->identity(), $item->refresh()->catalog_identity);
+            $this->assertSame($catalog->identity(), $newItem->refresh()->catalog_identity);
+        }
     }
 
     public function test_polishing_charges_once_preserves_the_roll_and_reaches_the_upgrade_limit(): void
