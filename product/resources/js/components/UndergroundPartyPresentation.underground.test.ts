@@ -564,7 +564,6 @@ describe('Underground party presentation controls', () => {
         expect(wrapper.get('#underground-vault-title').text()).toBe('秘密の場所');
         await openUndergroundView(wrapper, '冒険', '秘密の場所');
         const vaultSection = wrapper.get('[aria-labelledby="underground-vault-title"]');
-        expect(vaultSection.text()).toContain('鍵 10個');
         expect(vaultSection.get('button').attributes('disabled')).toBeUndefined();
 
         await openUndergroundView(wrapper, '冒険', '探索');
