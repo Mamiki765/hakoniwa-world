@@ -262,6 +262,17 @@ return [
                     'agility' => '王都の敏捷護符',
                 ],
             ],
+            'yunagi_harbor' => [
+                'weapon_names' => ['dagger' => '帰港地の短剣', 'rapier' => '白港の細剣', 'longsword' => '防波堤の長剣', 'crystal_staff' => '夕凪の輝石杖'],
+                'armor_name' => '白港の胸当て',
+                'accessory_names' => [
+                    'vitality' => '白港の生命護符',
+                    'might' => '白港の武力護符',
+                    'finesse' => '白港の技巧護符',
+                    'spirit' => '夕凪の精神護符',
+                    'agility' => '白港の敏捷護符',
+                ],
+            ],
             'hero' => [
                 'weapon_names' => ['dagger' => '勇者の短剣', 'rapier' => '勇者の細剣', 'longsword' => '勇者の剣', 'crystal_staff' => '勇者の杖'],
                 'armor_name' => '勇者の鎧',

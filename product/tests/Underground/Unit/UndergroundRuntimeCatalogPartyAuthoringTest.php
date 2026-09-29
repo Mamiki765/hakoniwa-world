@@ -5,6 +5,8 @@ namespace Tests\Underground\Unit;
 use App\Application\Underground\UndergroundAlphaV1PlayerCatalog;
 use App\Application\Underground\UndergroundEquipmentCatalog;
 use App\Application\Underground\UndergroundRuntimeCatalog;
+use App\Application\Underground\UndergroundRuntimeEquipmentGenerator;
+use App\Domain\Underground\Combat\AlphaV1CombatModel;
 use InvalidArgumentException;
 use Tests\TestCase;
 
@@ -115,5 +117,33 @@ final class UndergroundRuntimeCatalogPartyAuthoringTest extends TestCase
             'hp_bps' => [1 => 10_000],
             'attack_bps' => [1 => 10_000, 2 => 10_000, 3 => 10_000, 4 => 10_000],
         ], 1);
+    }
+
+    public function test_yunagi_harbor_wiring_and_catalog_bound_equipment_reaches_combat(): void
+    {
+        $catalog = app(UndergroundAlphaV1PlayerCatalog::class);
+        $ground = $catalog->explorationHuntingGround('yunagi_harbor');
+        $rare = $ground['rare_encounter'];
+
+        $this->assertSame('yunagi_harbor_key_balance', $ground['key_balance_field']);
+        $this->assertSame('yunagi_harbor', $catalog->explorationHuntingGround('yunagi_harbor_vault')['drop_tier_key']);
+
+        $item = app(UndergroundRuntimeEquipmentGenerator::class)->generate(
+            $ground['item_level_max'], 'yunagi_harbor', 'epic', 'weapon', 'dagger', null, 31000, 'yunagi-harbor-top-tier',
+        );
+        $this->assertSame($ground['item_level_max'], $item['item_level']);
+
+        $loadout = app(UndergroundEquipmentCatalog::class)->combatLoadout([[
+            'slot' => 'weapon', 'definition' => $item,
+            'catalog_identity' => $item['generator_identity'], 'instance_identity' => $item['instance_identity'],
+        ]]);
+        $snapshot = $catalog->explorationCombatDefinition('martial_red', 700, [
+            'vitality' => 0, 'might' => $catalog->stpEntitlement('martial_red', 700),
+            'finesse' => 0, 'spirit' => 0, 'agility' => 0,
+        ], $loadout, '代表戦技')['player_snapshot'];
+        $battle = app(AlphaV1CombatModel::class)->fightPlayerSnapshot(
+            $catalog->explorationCatalog(), $snapshot, $rare['key'], 31_000, 100, 300,
+        );
+        $this->assertSame('player', $battle->winner);
     }
 }
