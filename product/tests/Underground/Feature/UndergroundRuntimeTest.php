@@ -1613,7 +1613,15 @@ final class UndergroundRuntimeTest extends TestCase
         $this->app->instance(AtomicUndergroundPartyCombat::class, $partyCombat);
         $runtime = app(UndergroundRuntimeService::class);
         $run = $runtime->startTrial($user, 'trial_03');
-        $run->update(['next_battle_index' => 4]);
+        $run->update([
+            'trial_content_identity' => 'secretary-underground-trial-03-v2',
+            'next_battle_index' => 4,
+        ]);
+        $resumed = $runtime->activeTrial($user);
+        $this->assertSame([config('underground-runtime.trials.trial_03.content_identity'), 1], [
+            $resumed?->trial_content_identity, $resumed?->next_battle_index,
+        ]);
+        $run->refresh()->update(['next_battle_index' => 4]);
         $requestId = (string) Str::uuid();
         $first = $runtime->fightTrial($user, $run->run_key, $requestId)['battle'];
         $retried = $runtime->fightTrial($user, $run->run_key, $requestId);

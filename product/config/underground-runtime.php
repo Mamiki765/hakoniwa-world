@@ -122,7 +122,7 @@ return [
         ],
         'trial_03' => [
             'label' => '天光の王城',
-            'content_identity' => 'secretary-underground-trial-03-v2',
+            'content_identity' => 'secretary-underground-trial-03-v3',
             'balance_manifest' => 'underground/balance/trial3-v2.json',
             'required_trial_key' => 'trial_02',
             'drop_tier_key' => 'hero',
