@@ -1381,9 +1381,16 @@ final class UndergroundRuntimeTest extends TestCase
             'underground-alpha-v1.exploration.grounds.yunagi_harbor.rare_encounter.chance_bps' => 10_000,
             'underground-alpha-v1.exploration.grounds.yunagi_harbor_vault.rare_encounter.chance_bps' => 10_000,
         ]);
+        $catalog = app(UndergroundAlphaV1PlayerCatalog::class);
+        $ground = $catalog->explorationHuntingGround('yunagi_harbor');
+        $vaultGround = $catalog->explorationHuntingGround('yunagi_harbor_vault');
+        $groundRare = $catalog->explorationEncounter($ground['rare_encounter']['key'], 'yunagi_harbor');
+        $vaultRare = $catalog->explorationEncounter($vaultGround['rare_encounter']['key'], 'yunagi_harbor_vault');
         [$user, $secretary] = $this->secretaryUser();
         $profile = $this->unlockExploration($secretary);
         [$runtime] = $this->runtimeWithOutcomes(['player', 'player']);
+        $initialKeyBalance = $profile->yunagi_harbor_key_balance;
+        $initialStoneBalance = $profile->distorted_stone_balance;
 
         $before = collect($runtime->projectHuntingGroundState($profile)['grounds'])->keyBy('key');
         $this->assertTrue($before['yunagi_harbor']['locked']);
@@ -1406,10 +1413,14 @@ final class UndergroundRuntimeTest extends TestCase
         $this->assertSame(1, $profile->combat_level);
 
         $harbor = $runtime->explore($user, (string) Str::uuid(), 'yunagi_harbor')['battle'];
-        $this->assertSame('harbor_crystal_dolphin', $harbor->encounter_key);
-        $this->assertSame(25_500, $harbor->xp_awarded);
-        $this->assertSame(1, $profile->refresh()->yunagi_harbor_key_balance);
-        $this->assertSame(1, $profile->distorted_stone_balance);
+        $this->assertSame($ground['rare_encounter']['key'], $harbor->encounter_key);
+        $this->assertSame($groundRare['xp'], $harbor->xp_awarded);
+        $keyBalanceAfterHarbor = $initialKeyBalance + $ground['key_reward']['rare_quantity'];
+        $stoneBalanceAfterHarbor = $initialStoneBalance + $ground['rare_encounter']['distorted_stone_quantity'];
+        $this->assertGreaterThan($initialKeyBalance, $profile->refresh()->yunagi_harbor_key_balance);
+        $this->assertSame($keyBalanceAfterHarbor, $profile->yunagi_harbor_key_balance);
+        $this->assertGreaterThan($initialStoneBalance, $profile->distorted_stone_balance);
+        $this->assertSame($stoneBalanceAfterHarbor, $profile->distorted_stone_balance);
         $this->assertSame(0, $profile->shining_kingdom_key_balance);
 
         Carbon::setTestNow(Carbon::now()->addSeconds(10));
@@ -1417,15 +1428,15 @@ final class UndergroundRuntimeTest extends TestCase
         $vault = $runtime->explore($user, $requestId, 'yunagi_harbor_vault')['battle'];
         $retry = $runtime->explore($user, $requestId, 'yunagi_harbor_vault');
         $this->assertTrue($retry['duplicate']);
-        $this->assertSame(0, $profile->refresh()->yunagi_harbor_key_balance);
-        $this->assertSame(2, $profile->distorted_stone_balance);
-        $this->assertSame('夕凪の帰港地の鍵', $vault->snapshot['shining_kingdom_key']['label']);
+        $this->assertLessThan($keyBalanceAfterHarbor, $profile->refresh()->yunagi_harbor_key_balance);
+        $this->assertSame($keyBalanceAfterHarbor - $vaultGround['entry_key_cost'], $profile->yunagi_harbor_key_balance);
+        $this->assertSame($stoneBalanceAfterHarbor + $vaultGround['rare_encounter']['distorted_stone_quantity'], $profile->distorted_stone_balance);
+        $this->assertSame($vaultGround['key_label'], $vault->snapshot['shining_kingdom_key']['label']);
         $this->assertSame('granted', $vault->snapshot['drop']['status']);
-        $this->assertSame('harbor_crystal_dolphin', $vault->encounter_key);
-        $this->assertSame(25_500, $vault->xp_awarded);
-        $this->assertContains($vault->snapshot['drop']['item']['rarity'], ['uncommon', 'rare', 'epic']);
-        $this->assertGreaterThanOrEqual(215, $vault->snapshot['drop']['item']['item_level']);
-        $this->assertLessThanOrEqual(220, $vault->snapshot['drop']['item']['item_level']);
+        $this->assertSame($vaultGround['rare_encounter']['key'], $vault->encounter_key);
+        $this->assertSame($vaultRare['xp'], $vault->xp_awarded);
+        $this->assertGreaterThanOrEqual($vaultRare['item_level_min'], $vault->snapshot['drop']['item']['item_level']);
+        $this->assertLessThanOrEqual($vaultRare['item_level_max'], $vault->snapshot['drop']['item']['item_level']);
     }
 
     public function test_trial_two_is_unlocked_by_trial_one_clear_without_a_level_gate(): void

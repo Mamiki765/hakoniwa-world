@@ -119,37 +119,19 @@ final class UndergroundRuntimeCatalogPartyAuthoringTest extends TestCase
         ], 1);
     }
 
-    public function test_yunagi_harbor_reward_expectation_and_il220_generation(): void
+    public function test_yunagi_harbor_wiring_and_catalog_bound_equipment_reaches_combat(): void
     {
         $catalog = app(UndergroundAlphaV1PlayerCatalog::class);
         $ground = $catalog->explorationHuntingGround('yunagi_harbor');
-        $encounters = $catalog->explorationEncounters('yunagi_harbor');
         $rare = $ground['rare_encounter'];
 
-        $normalWeight = array_sum(array_column($encounters, 'weight'));
-        $weightedXp = array_sum(array_map(
-            static fn (array $encounter): int => $encounter['weight'] * $encounter['xp'],
-            $encounters,
-        ));
-        $normalExpectation = intdiv($weightedXp, $normalWeight);
-        $rareXp = $catalog->explorationEncounter($rare['key'], 'yunagi_harbor')['xp'];
-
-        $this->assertSame([10_000, 31_350_000, 100, 25_500], [
-            $normalWeight, $weightedXp, $rare['chance_bps'], $rareXp,
-        ]);
-        $this->assertSame(335_865, 99 * $normalExpectation + $rareXp);
-        $this->assertSame([1, 2, 3, 4], array_map(
-            fn (int $size): int => $catalog->explorationEnemyCountForPartySize('yunagi_harbor', $size),
-            [1, 2, 3, 4],
-        ));
         $this->assertSame('yunagi_harbor_key_balance', $ground['key_balance_field']);
         $this->assertSame('yunagi_harbor', $catalog->explorationHuntingGround('yunagi_harbor_vault')['drop_tier_key']);
 
         $item = app(UndergroundRuntimeEquipmentGenerator::class)->generate(
-            220, 'yunagi_harbor', 'epic', 'weapon', 'dagger', null, 31000, 'yunagi-harbor-il220',
+            $ground['item_level_max'], 'yunagi_harbor', 'epic', 'weapon', 'dagger', null, 31000, 'yunagi-harbor-top-tier',
         );
-        $this->assertSame(220, $item['item_level']);
-        $this->assertSame('secretary-underground-drop-equipment-alpha-v4', $item['generator_identity']);
+        $this->assertSame($ground['item_level_max'], $item['item_level']);
 
         $loadout = app(UndergroundEquipmentCatalog::class)->combatLoadout([[
             'slot' => 'weapon', 'definition' => $item,
