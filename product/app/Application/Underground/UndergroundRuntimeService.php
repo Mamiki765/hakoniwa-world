@@ -297,7 +297,7 @@ STORY;
                     } else {
                         $this->assertCooldownElapsed($profile);
                     }
-                    $keyBalanceBefore = $profile->shining_kingdom_key_balance;
+                    $keyBalanceBefore = $this->explorationKeyBalance($profile, $huntingGround);
                     $this->consumeExplorationEntryKey($profile, $huntingGround);
                     $seed = $this->battleSeed->forRequest(
                         $profile->id,
@@ -407,7 +407,7 @@ STORY;
             $this->assertSkipUnlocked($progress, $policy['actual_clears_required']);
             $balance = $this->lockedSkipTicketBalance($user);
             $this->assertSkipTicketBalance($balance, $policy['ticket_cost']);
-            $keyBalanceBefore = $profile->shining_kingdom_key_balance;
+            $keyBalanceBefore = $this->explorationKeyBalance($profile, $huntingGround);
             $this->consumeExplorationEntryKey($profile, $huntingGround);
             $seed = $this->battleSeed->forRequest(
                 $profile->id,
@@ -419,7 +419,7 @@ STORY;
             $encounter = $this->alphaV1Catalog->explorationEncounter($encounterKey, $huntingGroundKey);
             $victoryReward = $this->explorationVictoryReward($huntingGround, $encounterKey, $encounter, $seed, true);
             $reward = $this->applyRepeatableReward($profile, $encounter['xp'], $victoryReward['shards']);
-            $profile->shining_kingdom_key_balance += $victoryReward['keys'];
+            $this->awardExplorationKeys($profile, $huntingGround, $victoryReward['keys']);
             $profile->distorted_stone_balance += $victoryReward['distorted_stones'];
             $profile->save();
             $settledAt = Carbon::now();
@@ -451,10 +451,11 @@ STORY;
                     ]],
                     'stp_awarded' => $reward['stp_awarded'],
                     'shining_kingdom_key' => [
+                        'label' => $huntingGround['key_label'],
                         'balance_before' => $keyBalanceBefore,
                         'entry_cost' => $huntingGround['entry_key_cost'],
                         'awarded' => $victoryReward['keys'],
-                        'balance_after' => $profile->shining_kingdom_key_balance,
+                        'balance_after' => $this->explorationKeyBalance($profile, $huntingGround),
                     ],
                     'treasure' => $victoryReward['treasure'],
                     'distorted_stones' => $victoryReward['distorted_stones'],
@@ -690,7 +691,7 @@ STORY;
             $ticketCost = $this->bulkSkipTicketCost($policy['ticket_cost'], $executionCount);
             $balance = $this->lockedSkipTicketBalance($user);
             $this->assertSkipTicketBalance($balance, $ticketCost);
-            $keyBalanceBefore = $profile->shining_kingdom_key_balance;
+            $keyBalanceBefore = $this->explorationKeyBalance($profile, $huntingGround);
             $this->consumeExplorationEntryKey($profile, $huntingGround, $executionCount);
 
             $levelBefore = $profile->combat_level;
@@ -713,7 +714,7 @@ STORY;
                 $encounter = $this->alphaV1Catalog->explorationEncounter($encounterKey, $huntingGroundKey);
                 $victoryReward = $this->explorationVictoryReward($huntingGround, $encounterKey, $encounter, $seed, true);
                 $reward = $this->applyRepeatableReward($profile, $encounter['xp'], $victoryReward['shards']);
-                $profile->shining_kingdom_key_balance += $victoryReward['keys'];
+                $this->awardExplorationKeys($profile, $huntingGround, $victoryReward['keys']);
                 $profile->distorted_stone_balance += $victoryReward['distorted_stones'];
                 $xpAwarded += $encounter['xp'];
                 $shardsAwarded += $victoryReward['shards'];
@@ -790,9 +791,10 @@ STORY;
                 'drops' => $drops,
                 'ticket_balance_after' => $ticketBalanceAfter,
                 'shining_kingdom_key' => [
+                    'label' => $huntingGround['key_label'],
                     'balance_before' => $keyBalanceBefore,
                     'entry_cost_total' => $huntingGround['entry_key_cost'] * $executionCount,
-                    'balance_after' => $profile->shining_kingdom_key_balance,
+                    'balance_after' => $this->explorationKeyBalance($profile, $huntingGround),
                 ],
             ];
             $batch->save();
@@ -1429,7 +1431,8 @@ STORY;
             $requiredTrial = $ground['required_trial_key'];
             $locked = is_string($requiredTrial) && ! in_array($requiredTrial, $clearedTrials, true);
             $entryKeyCost = $ground['entry_key_cost'];
-            $keyUnavailable = ! $locked && $entryKeyCost > $profile->shining_kingdom_key_balance;
+            $keyBalance = $this->explorationKeyBalance($profile, $ground);
+            $keyUnavailable = ! $locked && $entryKeyCost > $keyBalance;
             $progress = $progresses->get($ground['key']);
             $actualClears = $progress instanceof UndergroundContentClearProgress
                 ? $progress->actual_clear_count
@@ -1446,12 +1449,14 @@ STORY;
                 'unlock_condition' => match ($requiredTrial) {
                     'trial_01' => '試練1を初回clear',
                     'trial_02' => '試練2を初回clear',
+                    'trial_03' => '試練3を初回clear',
                     default => null,
                 },
                 'entry_key_cost' => $entryKeyCost,
-                'key_balance' => $profile->shining_kingdom_key_balance,
+                'key_balance' => $keyBalance,
+                'key_label' => $ground['key_label'],
                 'disabled' => $keyUnavailable,
-                'unavailable_reason' => $keyUnavailable ? '輝きの王国の鍵が必要' : null,
+                'unavailable_reason' => $keyUnavailable ? $ground['key_label'].'が必要' : null,
                 'item_level_min' => $ground['item_level_min'],
                 'item_level_max' => $ground['item_level_max'],
                 'skip' => [
@@ -1896,7 +1901,7 @@ STORY;
             default => 0,
         };
         $rewardSettlement = $this->applyRepeatableReward($profile, $xpAwarded, $shardDelta);
-        $profile->shining_kingdom_key_balance += $victoryReward['keys'];
+        $this->awardExplorationKeys($profile, $huntingGround, $victoryReward['keys']);
         $profile->distorted_stone_balance += $victoryReward['distorted_stones'];
         $curve = $rewardSettlement['xp_curve'];
         $stpAwarded = $rewardSettlement['stp_awarded'];
@@ -1996,10 +2001,11 @@ STORY;
                 'max_hp_after' => $maxHpAfter,
                 'banked_shard_balance' => $profile->banked_shard_balance,
                 'shining_kingdom_key' => [
+                    'label' => $huntingGround['key_label'],
                     'balance_before' => $keyBalanceBefore,
                     'entry_cost' => $huntingGround['entry_key_cost'],
                     'awarded' => $victoryReward['keys'],
-                    'balance_after' => $profile->shining_kingdom_key_balance,
+                    'balance_after' => $this->explorationKeyBalance($profile, $huntingGround),
                 ],
                 'treasure' => $victoryReward['treasure'],
                 'distorted_stones' => $victoryReward['distorted_stones'],
@@ -2376,7 +2382,7 @@ STORY;
             default => 0,
         };
         $rewardSettlement = $this->applyRepeatableReward($profile, $xpAwarded, $shardDelta);
-        $profile->shining_kingdom_key_balance += $victoryReward['keys'];
+        $this->awardExplorationKeys($profile, $huntingGround, $victoryReward['keys']);
         $profile->distorted_stone_balance += $victoryReward['distorted_stones'];
         $curve = $rewardSettlement['xp_curve'];
         $stpAwarded = $rewardSettlement['stp_awarded'];
@@ -2490,10 +2496,11 @@ STORY;
                 'max_hp_after' => $maxHpAfter,
                 'banked_shard_balance' => $profile->banked_shard_balance,
                 'shining_kingdom_key' => [
+                    'label' => $huntingGround['key_label'],
                     'balance_before' => $keyBalanceBefore,
                     'entry_cost' => $huntingGround['entry_key_cost'],
                     'awarded' => $victoryReward['keys'],
-                    'balance_after' => $profile->shining_kingdom_key_balance,
+                    'balance_after' => $this->explorationKeyBalance($profile, $huntingGround),
                 ],
                 'treasure' => $victoryReward['treasure'],
                 'distorted_stones' => $victoryReward['distorted_stones'],
@@ -3616,13 +3623,29 @@ STORY;
             throw new RuntimeException('Underground exploration entry key cost overflowed.');
         }
         $totalCost = $cost * $executionCount;
-        if ($profile->shining_kingdom_key_balance < $totalCost) {
+        if ($this->explorationKeyBalance($profile, $huntingGround) < $totalCost) {
             throw new UndergroundRuntimeException(
                 'underground_shining_kingdom_key_insufficient',
-                '輝きの王国の鍵が必要です。',
+                $huntingGround['key_label'].'が必要です。',
             );
         }
-        $profile->shining_kingdom_key_balance -= $totalCost;
+        $field = $huntingGround['key_balance_field'];
+        $profile->{$field} -= $totalCost;
+    }
+
+    /** @param array<string, mixed> $huntingGround */
+    private function explorationKeyBalance(UndergroundProfile $profile, array $huntingGround): int
+    {
+        $field = $huntingGround['key_balance_field'];
+
+        return (int) $profile->{$field};
+    }
+
+    /** @param array<string, mixed> $huntingGround */
+    private function awardExplorationKeys(UndergroundProfile $profile, array $huntingGround, int $quantity): void
+    {
+        $field = $huntingGround['key_balance_field'];
+        $profile->{$field} += $quantity;
     }
 
     private function rollTrialDistortedStone(int $chanceBps, int $seed): int
@@ -3730,7 +3753,12 @@ STORY;
                 ->exists()) {
             throw new UndergroundRuntimeException(
                 'underground_hunting_ground_locked',
-                '黒晶洞は試練1を初回clearすると解禁されます。',
+                $huntingGround['name'].'は'.match ($requiredTrial) {
+                    'trial_01' => '試練1',
+                    'trial_02' => '試練2',
+                    'trial_03' => '試練3',
+                    default => '必要な試練',
+                }.'を初回clearすると解禁されます。',
             );
         }
     }
