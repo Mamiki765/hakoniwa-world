@@ -9,7 +9,7 @@
 - `release/4.6.0` はmainより先行し、4.6の装備倍率/rating基盤と狩場4「夕凪の帰港地」まで取り込み済み。
 - PR #171「feat: 4.6装備倍率・ratingと共鳴結晶個別売却」は `release/4.6.0` へmerge済み。実装HEAD `c61553b0b5227cbf9cfc0c83f38c5431ba02cfe5` のQuality `36428096913` は16/16 PHPUnit shardを含め成功。
 - PR #172「狩場4『夕凪の帰港地』と宝物庫を追加」は `release/4.6.0` へmerge済み。最終HEAD `10251c256feadf2d3aad3f706707784f08979ef0`。初回HEADのFull CIでは16/16 PHPUnit shard、backend static、documentationが成功し、frontendは旧固定表示額assertionだけで失敗。最終HEADではそのassertionと新規balance固定値assertionを除去し、focused確認を実施。Owner指示により最終HEADのFull CIはskipした。
-- 2026-09-29の本handoff更新時点で、`release/4.6.0` の `application_version` はまだ4.5.1。4.6.0の機能scopeは閉じ、残るのはversion更新、累積独立review、release最終HEADのFull CI、`release/4.6.0 → main` PRというrelease closure作業。
+- PR #173「Set application version to 4.6.0」は `release/4.6.0` へmerge済み（merge `158fb34ed1cf37b0dfd2b496e1cc6d33d5dffb48`）。`application_version` は4.6.0へ更新済み。4.6.0の機能scopeは閉じ、残るのは累積独立review、release最終HEADのFull CI、`release/4.6.0 → main` PRというrelease closure作業。
 - handoff / current-status / Ownerの会話で決まった未実装案の整理はChat側が担当する。CodexはOwnerから個別に明示された場合を除き、これらの判断を推測して更新しない。
 
 ## Productionの証拠
@@ -75,12 +75,11 @@ Ownerの現行方針：
 
 残作業：
 
-1. `application_version` を4.6.0へ更新。
-2. main...release/4.6.0の累積差分を独立review。
-3. P0/P1/P2があれば必要最小限で修正。
-4. release最終HEADで正式Full CIを1回実行し、exact-head greenを確認。
-5. `release/4.6.0 → main` のrelease PRを作成。
-6. Owner確認後にmerge判断。production deployは別操作。
+1. main...release/4.6.0の累積差分を独立review。
+2. P0/P1/P2があれば必要最小限で修正。
+3. release最終HEADで正式Full CIを1回実行し、exact-head greenを確認。
+4. `release/4.6.0 → main` のrelease PRを作成。
+5. Owner確認後にmerge判断。production deployは別操作。
 
 Trial4、市場、転生、地上産業、Relic/合成、研磨量再設計等をclosureへ混ぜない。
 
