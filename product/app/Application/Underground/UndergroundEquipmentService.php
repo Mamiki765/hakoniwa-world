@@ -2,6 +2,7 @@
 
 namespace App\Application\Underground;
 
+use App\Domain\Underground\Combat\UndergroundEquipmentScaling;
 use App\Domain\Underground\Intro\UndergroundIntroStage;
 use App\Models\Secretary;
 use App\Models\UndergroundBattle;
@@ -52,15 +53,16 @@ final readonly class UndergroundEquipmentService
     public function polishing(User $user): array
     {
         return $this->withLockedOpenProfile($user, function (UndergroundProfile $profile): array {
+            $requirementBps = $this->loadout->ratingRequirementBps($profile);
             $item = UndergroundOwnedEquipment::query()->where('underground_profile_id', $profile->id)
                 ->where('equipped_slot', 'resonance')->first();
-            $current = $item instanceof UndergroundOwnedEquipment ? $this->loadout->projectOwned($item) : null;
+            $current = $item instanceof UndergroundOwnedEquipment ? $this->loadout->projectOwned($item, $requirementBps) : null;
             $next = null;
             $price = $item instanceof UndergroundOwnedEquipment ? $this->polishing->nextPrice($current['item_level'], $item->polish_level) : null;
             if ($item instanceof UndergroundOwnedEquipment && $price !== null) {
                 $projected = clone $item;
                 $projected->polish_level++;
-                $next = $this->loadout->projectOwned($projected);
+                $next = $this->loadout->projectOwned($projected, $requirementBps);
             }
 
             return ['shard_balance' => $profile->shard_balance, 'item' => $current, 'next_item' => $next,
@@ -99,6 +101,7 @@ final readonly class UndergroundEquipmentService
     public function shop(User $user): array
     {
         return $this->withLockedOpenProfile($user, function (UndergroundProfile $profile): array {
+            $requirementBps = $this->loadout->ratingRequirementBps($profile);
             $owned = UndergroundOwnedEquipment::query()
                 ->where('underground_profile_id', $profile->id)
                 ->orderBy('id')
@@ -114,6 +117,12 @@ final readonly class UndergroundEquipmentService
 
                 return [
                     ...$definition,
+                    ...($definition['category'] === 'weapon' && ($definition['equippable'] ?? true) === true
+                        ? ['weapon_scale_bps' => UndergroundEquipmentScaling::scaleBps($definition['item_level'])]
+                        : []),
+                    ...($definition['category'] === 'armor'
+                        ? ['armor_scale_bps' => UndergroundEquipmentScaling::scaleBps($definition['item_level'])]
+                        : []),
                     'sell_price' => $this->catalog->sellPrice($definition),
                     'owned' => in_array($definition['key'], $ownedKeys, true),
                     'locked' => is_string($requiredTrial)
@@ -132,7 +141,7 @@ final readonly class UndergroundEquipmentService
                 'bank_auto_withdraw' => false,
                 'items' => $items,
                 'owned_items' => $owned
-                    ->map(fn (UndergroundOwnedEquipment $row): array => $this->loadout->projectOwned($row))
+                    ->map(fn (UndergroundOwnedEquipment $row): array => $this->loadout->projectOwned($row, $requirementBps))
                     ->values()
                     ->all(),
             ];
@@ -155,6 +164,7 @@ final readonly class UndergroundEquipmentService
         }
 
         return $this->withLockedOpenProfile($user, function (UndergroundProfile $profile) use ($page, $sort, $inventory): array {
+            $requirementBps = $this->loadout->ratingRequirementBps($profile);
             $perPage = $this->catalog->pageSize();
             $total = UndergroundOwnedEquipment::query()
                 ->where('underground_profile_id', $profile->id)
@@ -170,7 +180,7 @@ final readonly class UndergroundEquipmentService
                 ->orderByDesc('acquired_at')
                 ->orderByDesc('id')
                 ->get()
-                ->map(fn (UndergroundOwnedEquipment $row): array => $this->loadout->projectOwned($row))
+                ->map(fn (UndergroundOwnedEquipment $row): array => $this->loadout->projectOwned($row, $requirementBps))
                 ->values()
                 ->all();
             // Resolve fixed and generated definitions through the same catalog before pagination.
@@ -235,12 +245,13 @@ final readonly class UndergroundEquipmentService
             $categories,
             $weaponStyles,
         ): array {
+            $requirementBps = $this->loadout->ratingRequirementBps($profile);
             $items = UndergroundOwnedEquipment::query()
                 ->where('underground_profile_id', $profile->id)
                 ->orderByDesc('acquired_at')
                 ->orderByDesc('id')
                 ->get()
-                ->map(fn (UndergroundOwnedEquipment $row): array => $this->loadout->projectOwned($row))
+                ->map(fn (UndergroundOwnedEquipment $row): array => $this->loadout->projectOwned($row, $requirementBps))
                 ->filter(fn (array $item): bool => $this->matchesBulkSellFilters(
                     $item,
                     $itemLevelMax,

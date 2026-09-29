@@ -642,8 +642,10 @@ final readonly class BorrowedSecretarySnapshotFactory
         }
 
         return $this->orderedKeys($definition, [
-            'key', 'label', 'catalog_identity', 'item_level', 'rarity', 'weapon_style',
-            'weapon_power', 'physical_defense', 'magical_defense', 'max_hp', 'stats',
+            'key', 'label', 'catalog_identity', 'item_level', 'armor_item_level',
+            'weapon_scale_bps', 'armor_scale_bps', 'rating_requirement_bps', 'rarity', 'weapon_style',
+            'weapon_power', 'physical_defense', 'magical_defense', 'max_hp',
+            'max_hp_affix_base', 'max_hp_affix_scaled', 'stats',
             'modifiers', 'affixes', 'unique_effect', 'items',
         ]);
     }

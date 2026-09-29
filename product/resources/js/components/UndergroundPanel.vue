@@ -192,7 +192,7 @@ interface Battle {
     } | null;
     drops?: Array<NonNullable<Battle['drop']>> | null;
     treasure?: { found: boolean; base_g: number; multiplier: number; total_g: number } | null;
-    shining_kingdom_key?: { balance_before: number; entry_cost?: number; awarded: number; balance_after: number } | null;
+    shining_kingdom_key?: { label?: string; balance_before: number; entry_cost?: number; awarded: number; balance_after: number } | null;
     distorted_stones?: number;
     daily_quest?: DailyQuestProgress;
 }
@@ -216,6 +216,7 @@ interface HuntingGround {
     unlock_condition: string | null;
     entry_key_cost: number;
     key_balance: number;
+    key_label: string;
     disabled: boolean;
     unavailable_reason: string | null;
     item_level_min: number;
@@ -816,8 +817,8 @@ function openSkipModal(): void {
     selectedSkipHuntingGroundKey.value = (preferred ?? unlockedHuntingGrounds.value[0])?.key ?? 'shallow_caves';
     skipModalOpen.value = true;
 }
-const shiningKingdomVault = computed(() => unlockedHuntingGrounds.value
-    .find((ground) => ground.kind === 'vault') ?? null);
+const unlockedVaults = computed(() => unlockedHuntingGrounds.value
+    .filter((ground) => ground.kind === 'vault'));
 const trialOptions = computed<TrialOption[]>(() => {
     const trial = state.value?.trial;
     if (!trial) return [];
@@ -2428,7 +2429,7 @@ onUnmounted(() => {
                     <p>{{ battleRoundCount(currentBattle) }}ラウンドで決着。</p>
                     <p>経験値 +{{ currentBattle.xp_awarded }}・輝石の欠片 {{ currentBattle.shard_delta >= 0 ? '+' : '' }}{{ currentBattle.shard_delta }}G<span v-if="currentBattle.context === 'playtest'">・ドロップなし</span></p>
                     <p v-if="currentBattle.treasure?.found" class="underground-equipment-drop" role="status">財宝を見つけた！ ×{{ currentBattle.treasure.multiplier }}</p>
-                    <p v-if="(currentBattle.shining_kingdom_key?.awarded ?? 0) > 0" class="underground-equipment-drop" role="status">輝きの王国の鍵 +{{ currentBattle.shining_kingdom_key?.awarded }}</p>
+                    <p v-if="(currentBattle.shining_kingdom_key?.awarded ?? 0) > 0" class="underground-equipment-drop" role="status">{{ currentBattle.shining_kingdom_key?.label ?? '輝きの王国の鍵' }} +{{ currentBattle.shining_kingdom_key?.awarded }}</p>
                     <p v-if="(currentBattle.distorted_stones ?? 0) > 0" class="underground-equipment-drop" role="status">歪んだ輝石 +{{ currentBattle.distorted_stones }}</p>
                     <template v-for="(drop, dropIndex) in currentBattleDrops" :key="dropIndex">
                     <p v-if="drop.status === 'granted' && drop.item" class="underground-equipment-drop" role="status">
@@ -2945,6 +2946,7 @@ onUnmounted(() => {
                                     <option v-for="ground in ordinaryHuntingGrounds" :key="ground.key" :value="ground.key">{{ ground.name }}</option>
                                 </select>
                                 <button class="button primary underground-explore-button" type="button" :disabled="busy || exploreCooldownSeconds > 0 || Boolean(state.trial?.active_run) || !selectedHuntingGround" @click="runSelectedExploration">探索する</button>
+                                <small v-if="selectedHuntingGround">装備 Item Lv {{ selectedHuntingGround.item_level_min }}～{{ selectedHuntingGround.item_level_max }}</small>
                                 <small v-if="exploreCooldownSeconds > 0">次の出発まであと{{ exploreCooldownSeconds }}秒</small>
                                 <small v-else-if="state.trial?.active_run">進行中の試練から帰還すると探索できます。</small>
                                 <small v-else>現在のPT {{ 1 + confirmedPartyIds.length }} / 4で出発します。</small>
@@ -2962,11 +2964,14 @@ onUnmounted(() => {
                             </section>
                             <section v-if="equipmentView === 'secret'" class="underground-adventure-block" aria-labelledby="underground-vault-title">
                                 <h3 id="underground-vault-title">秘密の場所</h3>
-                                <strong>{{ shiningKingdomVault?.name ?? '未解禁' }}</strong>
-                                <button class="button primary" type="button" :disabled="busy || exploreCooldownSeconds > 0 || Boolean(state.trial?.active_run) || !shiningKingdomVault || shiningKingdomVault.disabled" @click="shiningKingdomVault && runExplore(shiningKingdomVault.key, 'shining-kingdom-vault')">挑戦する</button>
-                                <small v-if="shiningKingdomVault?.disabled">{{ shiningKingdomVault.unavailable_reason }}</small>
-                                <small v-else-if="shiningKingdomVault">鍵 {{ shiningKingdomVault.key_balance }}個・1回につき{{ shiningKingdomVault.entry_key_cost }}個消費</small>
-                                <small v-else>試練2を初回clearすると解禁されます。</small>
+                                <div v-for="vault in unlockedVaults" :key="vault.key">
+                                    <strong>{{ vault.name }}</strong>
+                                    <button class="button primary" type="button" :disabled="busy || exploreCooldownSeconds > 0 || Boolean(state.trial?.active_run) || vault.disabled" @click="runExplore(vault.key, 'vault:' + vault.key)">挑戦する</button>
+                                    <small>装備 Item Lv {{ vault.item_level_min }}～{{ vault.item_level_max }}</small>
+                                    <small v-if="vault.disabled">{{ vault.unavailable_reason }}</small>
+                                    <small v-else>{{ vault.key_label }} {{ vault.key_balance }}個・1回につき{{ vault.entry_key_cost }}個消費</small>
+                                </div>
+                                <small v-if="unlockedVaults.length === 0">試練2を初回clearすると解禁されます。</small>
                             </section>
                         </div>
                         <button v-if="state.trial?.active_run" class="button secondary" type="button" :disabled="busy" @click="withdrawTrial">封印の地から帰還する</button>

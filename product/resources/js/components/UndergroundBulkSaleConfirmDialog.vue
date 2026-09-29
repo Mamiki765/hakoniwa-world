@@ -7,6 +7,7 @@ const props = defineProps<{
     count: number;
     totalSellPrice: number;
     submitting: boolean;
+    single?: boolean;
 }>();
 const emit = defineEmits<{ confirm: []; cancel: [] }>();
 const dialog = ref<HTMLElement | null>(null);
@@ -52,7 +53,7 @@ function handleKeydown(event: KeyboardEvent): void {
             @keydown="handleKeydown"
         >
             <header>
-                <h2 id="underground-bulk-confirm-title">以下の装備をまとめて売却します。</h2>
+                <h2 id="underground-bulk-confirm-title">{{ single ? 'この共鳴結晶を売却します。' : '以下の装備をまとめて売却します。' }}</h2>
                 <button ref="cancelButton" class="equipment-modal-close" type="button" aria-label="確認を閉じる" :disabled="submitting" @click="emit('cancel')">×</button>
             </header>
             <ul class="underground-bulk-confirm-list" aria-label="売却対象">
@@ -65,7 +66,7 @@ function handleKeydown(event: KeyboardEvent): void {
             <p>よろしいですか？</p>
             <footer>
                 <button class="button secondary" type="button" :disabled="submitting" @click="emit('cancel')">キャンセル</button>
-                <button class="button primary" type="button" :disabled="submitting || items.length === 0" @click="emit('confirm')">{{ submitting ? '処理中…' : 'まとめて売却する' }}</button>
+                <button class="button primary" type="button" :disabled="submitting || items.length === 0" @click="emit('confirm')">{{ submitting ? '処理中…' : single ? '売却する' : 'まとめて売却する' }}</button>
             </footer>
         </section>
     </div>

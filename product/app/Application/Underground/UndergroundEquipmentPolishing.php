@@ -2,6 +2,7 @@
 
 namespace App\Application\Underground;
 
+use App\Domain\Underground\Combat\UndergroundEquipmentScaling;
 use RuntimeException;
 
 /** Projects upgrades over the saved roll; never regenerates or rewrites its payload. */
@@ -53,6 +54,12 @@ final class UndergroundEquipmentPolishing
         }
         foreach ($definition['affixes'] as &$affix) {
             $affix['value'] += $percentageGain;
+            if ($affix['kind'] === 'modifier'
+                && UndergroundEquipmentScaling::isRatingTarget($affix['target'])) {
+                $affix['rating'] = UndergroundEquipmentScaling::scaled(
+                    $affix['value'], UndergroundEquipmentScaling::scaleBps($definition['item_level']),
+                );
+            }
             $definition['modifiers'][$affix['target']] += $percentageGain;
         }
         unset($affix);

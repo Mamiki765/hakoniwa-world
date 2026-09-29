@@ -6,6 +6,7 @@ use App\Domain\Underground\Combat\AlphaV1BuildCatalog;
 use App\Domain\Underground\Combat\AlphaV1CombatRules;
 use App\Domain\Underground\Combat\PriorityCombatAiConfiguration;
 use App\Domain\Underground\Combat\UndergroundBuildValidator;
+use App\Domain\Underground\Combat\UndergroundEquipmentScaling;
 use InvalidArgumentException;
 use JsonException;
 use RuntimeException;
@@ -22,6 +23,8 @@ use RuntimeException;
  *     item_level_max: int,
  *     rare_encounter: array{key:string,chance_bps:int,encounter:array<string,mixed>,distorted_stone_quantity?:int}|null,
  *     key_reward: array{normal_chance_bps:int,rare_quantity:int}|null,
+ *     key_balance_field: string,
+ *     key_label: string,
  *     entry_key_cost: int,
  *     vault_base_g: int|null,
  *     treasure_multiplier: int|null,
@@ -305,6 +308,7 @@ final readonly class UndergroundAlphaV1PlayerCatalog
                 'enemy_count_by_party_size' => [1 => 1, 2 => 1, 3 => 1, 4 => 1],
                 'item_level_min' => $stage['item_level'], 'item_level_max' => $stage['item_level'],
                 'rare_encounter' => null, 'key_reward' => null, 'entry_key_cost' => 0,
+                'key_balance_field' => 'shining_kingdom_key_balance', 'key_label' => '輝きの王国の鍵',
                 'vault_base_g' => null, 'treasure_multiplier' => null, 'forced_drop_profile' => null, 'drop_tier_key' => 'bahamul'];
         }
         foreach ($this->explorationHuntingGrounds() as $ground) {
@@ -519,7 +523,7 @@ final readonly class UndergroundAlphaV1PlayerCatalog
             throw new RuntimeException('Underground equipment max HP bonus is invalid.');
         }
 
-        return $this->rules->maxHp($combatStats, 10_000, $maxHp);
+        return UndergroundEquipmentScaling::maxHp($this->rules, $combatStats, 10_000, $equipment);
     }
 
     /**
@@ -1079,7 +1083,7 @@ final readonly class UndergroundAlphaV1PlayerCatalog
     {
         try {
             $manifest = json_decode(
-                file_get_contents(config_path('underground/balance/foundation-v3.json')) ?: '',
+                file_get_contents(config_path('underground/balance/foundation-v4.json')) ?: '',
                 true,
                 512,
                 JSON_THROW_ON_ERROR,
@@ -1188,6 +1192,8 @@ final readonly class UndergroundAlphaV1PlayerCatalog
         $forcedDropProfile = $ground['forced_drop_profile'] ?? null;
         $dropTierKey = $ground['drop_tier_key'] ?? $key;
         $keyReward = $ground['key_reward'] ?? null;
+        $keyBalanceField = $ground['key_balance_field'] ?? 'shining_kingdom_key_balance';
+        $keyLabel = $ground['key_label'] ?? '輝きの王国の鍵';
         if ($key === ''
             || ! is_string($ground['content_identity'] ?? null) || $ground['content_identity'] === ''
             || ! is_string($ground['name'] ?? null) || $ground['name'] === ''
@@ -1201,6 +1207,8 @@ final readonly class UndergroundAlphaV1PlayerCatalog
             || array_filter($enemyCounts, static fn (mixed $count): bool => ! is_int($count) || $count < 1) !== []
             || ! in_array($kind, ['hunting_ground', 'vault'], true)
             || ! is_int($entryKeyCost) || $entryKeyCost < 0
+            || ! in_array($keyBalanceField, ['shining_kingdom_key_balance', 'yunagi_harbor_key_balance'], true)
+            || ! is_string($keyLabel) || $keyLabel === ''
             || ! is_string($dropTierKey) || $dropTierKey === ''
             || ($kind === 'vault' && ($entryKeyCost < 1 || ! is_int($vaultBaseG) || $vaultBaseG < 0
                 || ! is_int($treasureMultiplier) || $treasureMultiplier < 1
@@ -1228,6 +1236,8 @@ final readonly class UndergroundAlphaV1PlayerCatalog
             'item_level_max' => $ground['item_level_max'],
             'rare_encounter' => $rare,
             'key_reward' => $keyReward,
+            'key_balance_field' => $keyBalanceField,
+            'key_label' => $keyLabel,
             'entry_key_cost' => $entryKeyCost,
             'vault_base_g' => $vaultBaseG,
             'treasure_multiplier' => $treasureMultiplier,

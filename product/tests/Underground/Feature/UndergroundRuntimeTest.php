@@ -657,7 +657,7 @@ final class UndergroundRuntimeTest extends TestCase
         $resumed = app(UndergroundRuntimeService::class)->activeTrial($user);
 
         $this->assertSame($run->run_key, $resumed?->run_key);
-        $this->assertSame('secretary-underground-trial-01-v3', $resumed?->trial_content_identity);
+        $this->assertSame('secretary-underground-trial-01-v4', $resumed?->trial_content_identity);
         $this->assertSame(2, $resumed?->next_battle_index);
         $withdrawn = $runtime->withdrawTrial($user, $run->run_key);
         $this->assertSame(UndergroundTrialRun::STATUS_WITHDRAWN, $withdrawn->status);
@@ -696,7 +696,7 @@ final class UndergroundRuntimeTest extends TestCase
         $run->update(['next_battle_index' => 6]);
 
         $sameContent = $runtime->activeTrial($user);
-        $this->assertSame([$run->run_key, 'secretary-underground-trial-01-v3', 6], [
+        $this->assertSame([$run->run_key, 'secretary-underground-trial-01-v4', 6], [
             $sameContent?->run_key,
             $sameContent?->trial_content_identity,
             $sameContent?->next_battle_index,
@@ -704,7 +704,7 @@ final class UndergroundRuntimeTest extends TestCase
 
         config(['hakoniwa.application_version' => '3.0.0-alpha.2']);
         $applicationOnly = $runtime->activeTrial($user);
-        $this->assertSame([$run->run_key, 'secretary-underground-trial-01-v3', 6], [
+        $this->assertSame([$run->run_key, 'secretary-underground-trial-01-v4', 6], [
             $applicationOnly?->run_key,
             $applicationOnly?->trial_content_identity,
             $applicationOnly?->next_battle_index,
@@ -712,7 +712,7 @@ final class UndergroundRuntimeTest extends TestCase
 
         config(['underground-runtime.runtime_identity' => 'secretary-underground-runtime-alpha-v1']);
         $runtimeOnly = $runtime->activeTrial($user);
-        $this->assertSame([$run->run_key, 'secretary-underground-trial-01-v3', 6], [
+        $this->assertSame([$run->run_key, 'secretary-underground-trial-01-v4', 6], [
             $runtimeOnly?->run_key,
             $runtimeOnly?->trial_content_identity,
             $runtimeOnly?->next_battle_index,
@@ -721,7 +721,7 @@ final class UndergroundRuntimeTest extends TestCase
         $run->update(['trial_content_identity' => 'secretary-underground-trial-01-v2']);
         $projected = $runtime->projectTrialState($profile->refresh());
         $reset = $run->refresh();
-        $this->assertSame([$run->run_key, 'secretary-underground-trial-01-v3', 1, UndergroundTrialRun::STATUS_ACTIVE], [
+        $this->assertSame([$run->run_key, 'secretary-underground-trial-01-v4', 1, UndergroundTrialRun::STATUS_ACTIVE], [
             $projected['active_run']['run_key'],
             $reset->trial_content_identity,
             $projected['active_run']['next_battle_index'],
@@ -741,7 +741,7 @@ final class UndergroundRuntimeTest extends TestCase
         $this->assertFalse(collect($projected['trials'])->firstWhere('key', 'trial_02')['locked']);
 
         $continued = $runtime->startTrial($user, 'trial_01');
-        $this->assertSame([$run->run_key, 'secretary-underground-trial-01-v3', 1], [
+        $this->assertSame([$run->run_key, 'secretary-underground-trial-01-v4', 1], [
             $continued->run_key,
             $continued->trial_content_identity,
             $continued->next_battle_index,
@@ -749,7 +749,7 @@ final class UndergroundRuntimeTest extends TestCase
         $battle = $runtime->fightTrial($user, $run->run_key, (string) Str::uuid())['battle'];
         $this->assertSame('trial_rat_vanguard', $battle->encounter_key);
         $this->assertSame(2, $run->refresh()->next_battle_index);
-        $this->assertSame('secretary-underground-trial-01-v3', $run->trial_content_identity);
+        $this->assertSame('secretary-underground-trial-01-v4', $run->trial_content_identity);
     }
 
     public function test_defeat_halves_odd_shards_and_ends_trial_with_progress_reset(): void
@@ -1374,6 +1374,71 @@ final class UndergroundRuntimeTest extends TestCase
         $this->assertSame(1, $profile->refresh()->distorted_stone_balance);
     }
 
+    public function test_yunagi_harbor_unlocks_after_trial_three_and_rare_awards_stone_and_vault_key_once(): void
+    {
+        Carbon::setTestNow('2026-09-29 06:00:00+09:00');
+        config([
+            'underground-alpha-v1.exploration.grounds.yunagi_harbor.rare_encounter.chance_bps' => 10_000,
+            'underground-alpha-v1.exploration.grounds.yunagi_harbor_vault.rare_encounter.chance_bps' => 10_000,
+        ]);
+        $catalog = app(UndergroundAlphaV1PlayerCatalog::class);
+        $ground = $catalog->explorationHuntingGround('yunagi_harbor');
+        $vaultGround = $catalog->explorationHuntingGround('yunagi_harbor_vault');
+        $groundRare = $catalog->explorationEncounter($ground['rare_encounter']['key'], 'yunagi_harbor');
+        $vaultRare = $catalog->explorationEncounter($vaultGround['rare_encounter']['key'], 'yunagi_harbor_vault');
+        [$user, $secretary] = $this->secretaryUser();
+        $profile = $this->unlockExploration($secretary);
+        [$runtime] = $this->runtimeWithOutcomes(['player', 'player']);
+        $initialKeyBalance = $profile->yunagi_harbor_key_balance;
+        $initialStoneBalance = $profile->distorted_stone_balance;
+
+        $before = collect($runtime->projectHuntingGroundState($profile)['grounds'])->keyBy('key');
+        $this->assertTrue($before['yunagi_harbor']['locked']);
+        $this->assertTrue($before['yunagi_harbor_vault']['locked']);
+        $this->assertRuntimeError(
+            'underground_hunting_ground_locked',
+            fn () => $runtime->explore($user, (string) Str::uuid(), 'yunagi_harbor'),
+        );
+
+        UndergroundTrialProgress::query()->create([
+            'underground_profile_id' => $profile->id,
+            'trial_key' => 'trial_03',
+            'unlocked_at' => Carbon::now(),
+            'first_cleared_at' => Carbon::now(),
+        ]);
+        $after = collect($runtime->projectHuntingGroundState($profile->refresh())['grounds'])->keyBy('key');
+        $this->assertFalse($after['yunagi_harbor']['locked']);
+        $this->assertFalse($after['yunagi_harbor_vault']['locked']);
+        $this->assertTrue($after['yunagi_harbor_vault']['disabled']);
+        $this->assertSame(1, $profile->combat_level);
+
+        $harbor = $runtime->explore($user, (string) Str::uuid(), 'yunagi_harbor')['battle'];
+        $this->assertSame($ground['rare_encounter']['key'], $harbor->encounter_key);
+        $this->assertSame($groundRare['xp'], $harbor->xp_awarded);
+        $keyBalanceAfterHarbor = $initialKeyBalance + $ground['key_reward']['rare_quantity'];
+        $stoneBalanceAfterHarbor = $initialStoneBalance + $ground['rare_encounter']['distorted_stone_quantity'];
+        $this->assertGreaterThan($initialKeyBalance, $profile->refresh()->yunagi_harbor_key_balance);
+        $this->assertSame($keyBalanceAfterHarbor, $profile->yunagi_harbor_key_balance);
+        $this->assertGreaterThan($initialStoneBalance, $profile->distorted_stone_balance);
+        $this->assertSame($stoneBalanceAfterHarbor, $profile->distorted_stone_balance);
+        $this->assertSame(0, $profile->shining_kingdom_key_balance);
+
+        Carbon::setTestNow(Carbon::now()->addSeconds(10));
+        $requestId = (string) Str::uuid();
+        $vault = $runtime->explore($user, $requestId, 'yunagi_harbor_vault')['battle'];
+        $retry = $runtime->explore($user, $requestId, 'yunagi_harbor_vault');
+        $this->assertTrue($retry['duplicate']);
+        $this->assertLessThan($keyBalanceAfterHarbor, $profile->refresh()->yunagi_harbor_key_balance);
+        $this->assertSame($keyBalanceAfterHarbor - $vaultGround['entry_key_cost'], $profile->yunagi_harbor_key_balance);
+        $this->assertSame($stoneBalanceAfterHarbor + $vaultGround['rare_encounter']['distorted_stone_quantity'], $profile->distorted_stone_balance);
+        $this->assertSame($vaultGround['key_label'], $vault->snapshot['shining_kingdom_key']['label']);
+        $this->assertSame('granted', $vault->snapshot['drop']['status']);
+        $this->assertSame($vaultGround['rare_encounter']['key'], $vault->encounter_key);
+        $this->assertSame($vaultRare['xp'], $vault->xp_awarded);
+        $this->assertGreaterThanOrEqual($vaultRare['item_level_min'], $vault->snapshot['drop']['item']['item_level']);
+        $this->assertLessThanOrEqual($vaultRare['item_level_max'], $vault->snapshot['drop']['item']['item_level']);
+    }
+
     public function test_trial_two_is_unlocked_by_trial_one_clear_without_a_level_gate(): void
     {
         Carbon::setTestNow('2026-09-06 09:00:00+09:00');
@@ -1403,13 +1468,13 @@ final class UndergroundRuntimeTest extends TestCase
 
         $run = $runtime->startTrial($user, 'trial_02');
         $this->assertSame('trial_02', $run->trial_key);
-        $this->assertSame('secretary-underground-trial-02-v2', $run->trial_content_identity);
+        $this->assertSame('secretary-underground-trial-02-v3', $run->trial_content_identity);
         $run->update([
             'trial_content_identity' => 'secretary-underground-trial-02-v1',
             'next_battle_index' => 6,
         ]);
         $resumed = $runtime->activeTrial($user);
-        $this->assertSame([$run->run_key, 'secretary-underground-trial-02-v2', 1], [
+        $this->assertSame([$run->run_key, 'secretary-underground-trial-02-v3', 1], [
             $resumed?->run_key,
             $resumed?->trial_content_identity,
             $resumed?->next_battle_index,

@@ -165,7 +165,12 @@ final class UndergroundAwakening
         foreach (AlphaV1CombatRules::STATS as $stat) {
             $player->stats[$stat] = $this->awakenedStat($player->normalStats[$stat]);
         }
-        $player->maxHp = $rules->maxHp($player->stats, 10_000, $player->equipmentMaxHp);
+        $player->maxHp = UndergroundEquipmentScaling::maxHp($rules, $player->stats, 10_000, [
+            'max_hp' => $player->equipmentMaxHp,
+            'max_hp_affix_base' => $player->equipmentMaxHpAffixBase,
+            'max_hp_affix_scaled' => $player->equipmentMaxHpAffixScaled,
+            'armor_scale_bps' => $player->armorMaxHpScaleBps,
+        ]);
         $player->physicalDefense = $player->equipmentPhysicalDefense + ($player->stats['vitality'] * 4);
         $player->magicalDefense = $player->equipmentMagicalDefense + ($player->stats['spirit'] * 4);
         $player->hp = $player->maxHp;

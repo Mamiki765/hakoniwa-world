@@ -196,10 +196,10 @@ return [
     'page_size' => 50,
     'definitions' => $definitions,
     'generator' => [
-        'identity' => 'secretary-underground-drop-equipment-alpha-v3',
-        'legacy_identities' => ['secretary-underground-drop-equipment-alpha-v2', 'secretary-underground-drop-equipment-alpha-v1'],
+        'identity' => 'secretary-underground-drop-equipment-alpha-v4',
+        'legacy_identities' => ['secretary-underground-drop-equipment-alpha-v3', 'secretary-underground-drop-equipment-alpha-v2', 'secretary-underground-drop-equipment-alpha-v1'],
         'item_level_min' => 1,
-        'item_level_max' => 210,
+        'item_level_max' => 220,
         'tiers' => [
             'bahamul' => [
                 'weapon_names' => ['dagger' => '黒竜の短剣', 'rapier' => '黒竜の細剣', 'longsword' => '黒竜の長剣', 'crystal_staff' => '黒竜の輝石杖'],
@@ -260,6 +260,17 @@ return [
                     'finesse' => '王都の技巧護符',
                     'spirit' => '宮廷の精神護符',
                     'agility' => '王都の敏捷護符',
+                ],
+            ],
+            'yunagi_harbor' => [
+                'weapon_names' => ['dagger' => '帰港地の短剣', 'rapier' => '白港の細剣', 'longsword' => '防波堤の長剣', 'crystal_staff' => '夕凪の輝石杖'],
+                'armor_name' => '白港の胸当て',
+                'accessory_names' => [
+                    'vitality' => '白港の生命護符',
+                    'might' => '白港の武力護符',
+                    'finesse' => '白港の技巧護符',
+                    'spirit' => '夕凪の精神護符',
+                    'agility' => '白港の敏捷護符',
                 ],
             ],
             'hero' => [

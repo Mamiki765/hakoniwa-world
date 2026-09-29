@@ -21,6 +21,7 @@ use Illuminate\Support\Carbon;
  * @property int|null $current_hp
  * @property Carbon|null $next_battle_at
  * @property int $distorted_stone_balance
+ * @property int $yunagi_harbor_key_balance
  * @property Carbon|null $distorted_stone_purchase_day
  * @property int $distorted_stone_purchase_count
  * @property Carbon|null $underground_contract_completed_at
@@ -69,6 +70,7 @@ final class UndergroundProfile extends Model
     protected $fillable = [
         'secretary_id', 'unlocked_area_layers', 'combat_level', 'combat_xp', 'shard_balance', 'next_battle_at',
         'shining_kingdom_key_balance',
+        'yunagi_harbor_key_balance',
         'distorted_stone_balance', 'distorted_stone_purchase_day', 'distorted_stone_purchase_count',
         'banked_shard_balance', 'current_hp',
         'underground_contract_completed_at', 'growth_path_key', 'growth_path_identity', 'growth_path_selected_at',
@@ -94,6 +96,7 @@ final class UndergroundProfile extends Model
             'combat_xp' => 'integer',
             'shard_balance' => 'integer',
             'shining_kingdom_key_balance' => 'integer',
+            'yunagi_harbor_key_balance' => 'integer',
             'distorted_stone_balance' => 'integer',
             'distorted_stone_purchase_day' => 'immutable_date',
             'distorted_stone_purchase_count' => 'integer',
