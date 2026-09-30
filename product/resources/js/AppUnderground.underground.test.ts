@@ -11,8 +11,12 @@ const response = (data: unknown, status = 200) => baseResponse(withUndergroundDe
 installAppTestLifecycle();
 
 describe('Underground application operations', () => {
-    it('shows the free distorted stone reminder through the header, shop and polishing tab and clears it after receipt', async () => {
+    it('refreshes the free stone reminder at JST midnight and after resuming, and clears it after receipt', async () => {
+        vi.useFakeTimers();
+        vi.setSystemTime(new Date('2026-09-23T14:59:59Z'));
+        const visibility = vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('visible');
         let unclaimed = true;
+        let shopDay = '2026-09-23';
         const state = () => ({
             stage: 'underground_open', secretary_name: 'ペリドット', combat_level: 100, combat_xp: 0,
             next_level_xp: 100, next_level_requirement: 100, current_hp: 100, unspent_stp: 0,
@@ -21,7 +25,7 @@ describe('Underground application operations', () => {
             growth_path: null, battle: null, trial: null, otherworld_unlocked: true, polishing_tutorial_completed: true,
             distorted_stone_reminder: unclaimed,
             distorted_stone_shop: {
-                balance: unclaimed ? 0 : 1, day: '2026-09-23', purchased_today: unclaimed ? 0 : 1,
+                balance: unclaimed ? 0 : 1, day: shopDay, purchased_today: unclaimed ? 0 : 1,
                 daily_limit: 4, next_price: unclaimed ? 0 : 10_000, unlocked: true,
             },
         });
@@ -36,6 +40,7 @@ describe('Underground application operations', () => {
             if (path === '/api/v1/me/underground') return response(state());
             if (path === '/api/v1/me/underground/battles') return response([]);
             if (path === '/api/v1/me/underground/shop/distorted-stone' && init?.method === 'POST') {
+                expect(JSON.parse(String(init.body)).price).toBe(0);
                 unclaimed = false;
                 return response(state());
             }
@@ -43,22 +48,63 @@ describe('Underground application operations', () => {
         });
         stubUndergroundFetch(fetchMock);
         const wrapper = mount(App);
-        await flushPromises();
-        const headerButton = () => wrapper.findAll('.site-header nav button').find(button => button.text() === '地底')!;
-        const shopButton = () => wrapper.findAll('.ug-navigation button').find(button => button.text().includes('ショップ'))!;
-        const polishingTab = () => wrapper.findAll('.ug-tabs button').find(button => button.text() === '魔石研磨')!;
-        expect(headerButton().find('.notification-dot').exists()).toBe(true);
-        await headerButton().trigger('click');
-        await flushPromises();
-        expect(shopButton().find('.notification-dot').exists()).toBe(true);
-        await openUndergroundView(wrapper, 'ショップ', '魔石研磨');
-        expect(polishingTab().find('.notification-dot').exists()).toBe(true);
-        await wrapper.get('[aria-label="歪んだ輝石"] button').trigger('click');
-        await flushPromises();
-        expect(headerButton().find('.notification-dot').exists()).toBe(false);
-        expect(shopButton().find('.notification-dot').exists()).toBe(false);
-        expect(polishingTab().find('.notification-dot').exists()).toBe(false);
-        wrapper.unmount();
+        try {
+            await flushPromises();
+            const headerButton = () => wrapper.findAll('.site-header nav button').find(button => button.text() === '地底')!;
+            const shopButton = () => wrapper.findAll('.ug-navigation button').find(button => button.text().includes('ショップ'))!;
+            const polishingTab = () => wrapper.findAll('.ug-tabs button').find(button => button.text() === '魔石研磨')!;
+            expect(headerButton().find('.notification-dot').exists()).toBe(true);
+            await headerButton().trigger('click');
+            await flushPromises();
+            expect(shopButton().find('.notification-dot').exists()).toBe(true);
+            await openUndergroundView(wrapper, 'ショップ', '魔石研磨');
+            expect(polishingTab().find('.notification-dot').exists()).toBe(true);
+            await wrapper.get('[aria-label="歪んだ輝石"] button').trigger('click');
+            await flushPromises();
+            expect(headerButton().find('.notification-dot').exists()).toBe(false);
+            expect(shopButton().find('.notification-dot').exists()).toBe(false);
+            expect(polishingTab().find('.notification-dot').exists()).toBe(false);
+
+            unclaimed = true;
+            shopDay = '2026-09-24';
+            await vi.advanceTimersByTimeAsync(1_000);
+            await flushPromises();
+            expect(headerButton().find('.notification-dot').exists()).toBe(true);
+            expect(shopButton().find('.notification-dot').exists()).toBe(true);
+            expect(polishingTab().find('.notification-dot').exists()).toBe(true);
+            await wrapper.get('[aria-label="歪んだ輝石"] button').trigger('click');
+            await flushPromises();
+            expect(headerButton().find('.notification-dot').exists()).toBe(false);
+            expect(shopButton().find('.notification-dot').exists()).toBe(false);
+            expect(polishingTab().find('.notification-dot').exists()).toBe(false);
+
+            await wrapper.findAll('.site-header nav button').find(button => button.text() === 'TOP')!.trigger('click');
+            await flushPromises();
+            const reminderCalls = () => fetchMock.mock.calls.filter(([path]) => String(path).endsWith('/distorted-stone-reminder')).length;
+            const beforeResume = reminderCalls();
+            visibility.mockReturnValue('hidden');
+            unclaimed = true;
+            shopDay = '2026-09-25';
+            vi.setSystemTime(new Date('2026-09-24T15:00:00Z'));
+            document.dispatchEvent(new Event('visibilitychange'));
+            window.dispatchEvent(new Event('pageshow'));
+            await flushPromises();
+            expect(reminderCalls()).toBe(beforeResume);
+            visibility.mockReturnValue('visible');
+            document.dispatchEvent(new Event('visibilitychange'));
+            window.dispatchEvent(new Event('pageshow'));
+            await flushPromises();
+            expect(reminderCalls()).toBe(beforeResume + 1);
+            expect(headerButton().find('.notification-dot').exists()).toBe(true);
+            await headerButton().trigger('click');
+            await flushPromises();
+            await openUndergroundView(wrapper, 'ショップ', '魔石研磨');
+            expect(shopButton().find('.notification-dot').exists()).toBe(true);
+            expect(polishingTab().find('.notification-dot').exists()).toBe(true);
+        } finally {
+            wrapper.unmount();
+            visibility.mockRestore();
+        }
     });
 
     it('sells only the unequipped instance of two equal-level bracelets', async () => {

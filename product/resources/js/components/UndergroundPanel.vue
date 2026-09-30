@@ -1122,6 +1122,21 @@ async function refresh(returnIfTutorialAlreadyFinished = true): Promise<void> {
     if (state.value.stage === 'underground_open') await loadBattles();
 }
 
+async function refreshDistortedStoneReminder(): Promise<boolean> {
+    const previousState = state.value;
+    const current = await api<UndergroundState>('/api/v1/me/underground', { cache: 'no-store' });
+    if (state.value && state.value === previousState) {
+        state.value = {
+            ...state.value,
+            distorted_stone_shop: current.distorted_stone_shop,
+            distorted_stone_reminder: current.distorted_stone_reminder,
+        };
+    }
+    return state.value?.distorted_stone_reminder ?? current.distorted_stone_reminder ?? false;
+}
+
+defineExpose({ refreshDistortedStoneReminder });
+
 async function mutate(
     path: string,
     body: Record<string, unknown> = {},

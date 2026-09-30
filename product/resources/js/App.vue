@@ -73,10 +73,14 @@ async function checkApplicationVersion(): Promise<void> {
 
 function handleApplicationPageShow(): void {
     void checkApplicationVersion();
+    refreshDistortedStoneReminderForDay();
 }
 
 function handleApplicationVisibilityChange(): void {
-    if (document.visibilityState === 'visible') void checkApplicationVersion();
+    if (document.visibilityState === 'visible') {
+        void checkApplicationVersion();
+        refreshDistortedStoneReminderForDay();
+    }
 }
 const themeModes = ['system', 'light', 'dark', 'skyblue', 'autumn', 'black'] as const;
 type ThemeMode = typeof themeModes[number];
@@ -159,6 +163,14 @@ const pendingCompensationClaim = ref<{ grantId: number; requestId: string } | nu
 const compensationError = ref('');
 const undergroundSurfaceMap = ref<UndergroundSurfaceMap | null>(null);
 const distortedStoneReminder = ref(false);
+const undergroundPanel = ref<InstanceType<typeof UndergroundPanel> | null>(null);
+const distortedStoneDayMs = 86_400_000;
+const distortedStoneJstOffsetMs = 9 * 60 * 60 * 1000;
+let distortedStoneReminderDay: number | null = null;
+let distortedStoneReminderInFlight = false;
+let distortedStoneReminderRevision = 0;
+let distortedStoneReminderTimer: ReturnType<typeof setTimeout> | null = null;
+let distortedStoneReminderStopped = false;
 const dailyQuestModalOpen = ref(false);
 const dailyQuestLoading = ref(false);
 const dailyQuestError = ref('');
@@ -406,12 +418,48 @@ async function recordDevelopmentOpened(): Promise<void> {
 }
 
 async function loadDistortedStoneReminder(): Promise<void> {
+    if (distortedStoneReminderInFlight || distortedStoneReminderStopped) return;
+    distortedStoneReminderInFlight = true;
+    const day = Math.floor((Date.now() + distortedStoneJstOffsetMs) / distortedStoneDayMs);
+    const revision = distortedStoneReminderRevision;
     try {
-        const reminder = await api<{ unclaimed: boolean }>('/api/v1/me/underground/distorted-stone-reminder');
-        distortedStoneReminder.value = reminder.unclaimed;
+        const unclaimed = undergroundPanel.value
+            ? await undergroundPanel.value.refreshDistortedStoneReminder()
+            : (await api<{ unclaimed: boolean }>('/api/v1/me/underground/distorted-stone-reminder', { cache: 'no-store' })).unclaimed;
+        if (!distortedStoneReminderStopped && revision === distortedStoneReminderRevision) {
+            distortedStoneReminder.value = unclaimed;
+        }
+        distortedStoneReminderDay = day;
     } catch {
         // The underground panel refreshes this indicator when it opens.
+    } finally {
+        distortedStoneReminderInFlight = false;
+        scheduleDistortedStoneReminder();
+        if (day !== Math.floor((Date.now() + distortedStoneJstOffsetMs) / distortedStoneDayMs)) {
+            refreshDistortedStoneReminderForDay();
+        }
     }
+}
+
+function updateDistortedStoneReminder(unclaimed: boolean): void {
+    distortedStoneReminderRevision++;
+    distortedStoneReminder.value = unclaimed;
+}
+
+function refreshDistortedStoneReminderForDay(): void {
+    if (document.visibilityState === 'hidden' || !user.value || !secretary.value) return;
+    const day = Math.floor((Date.now() + distortedStoneJstOffsetMs) / distortedStoneDayMs);
+    if (distortedStoneReminderDay !== day) void loadDistortedStoneReminder();
+}
+
+function scheduleDistortedStoneReminder(): void {
+    if (distortedStoneReminderStopped) return;
+    if (distortedStoneReminderTimer !== null) clearTimeout(distortedStoneReminderTimer);
+    const delay = distortedStoneDayMs - (Date.now() + distortedStoneJstOffsetMs) % distortedStoneDayMs;
+    distortedStoneReminderTimer = setTimeout(() => {
+        distortedStoneReminderTimer = null;
+        refreshDistortedStoneReminderForDay();
+    }, delay);
 }
 
 async function openDailyQuests(): Promise<void> {
@@ -572,6 +620,8 @@ async function claimCompensation(grant: CompensationGrant): Promise<void> {
 }
 
 onUnmounted(() => {
+    distortedStoneReminderStopped = true;
+    if (distortedStoneReminderTimer !== null) clearTimeout(distortedStoneReminderTimer);
     window.removeEventListener('popstate', syncPageFromHistory);
     window.removeEventListener('pageshow', handleApplicationPageShow);
     document.removeEventListener('visibilitychange', handleApplicationVisibilityChange);
@@ -2352,11 +2402,12 @@ async function abandonNation(): Promise<void> {
 
         <UndergroundPanel
             v-else-if="page === 'underground' && user && secretary?.name"
+            ref="undergroundPanel"
             :user-id="user.id"
             :secretary-image-url="viewedSecretaryProfile?.main_image.url ?? null"
             @return-to-secretary="returnFromUnderground"
             @daily-quest="handleDailyQuestProgress"
-            @distorted-stone-reminder="distortedStoneReminder = $event"
+            @distorted-stone-reminder="updateDistortedStoneReminder"
         />
 
         <section v-else-if="page === 'secretary' && (viewedSecretaryProfile || secretary)" class="panel secretary-panel">
