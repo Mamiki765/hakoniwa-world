@@ -174,10 +174,12 @@ $definitions['excalibur'] = [
         'healing_bps' => 500,
     ],
 ];
+$versionFourDefinitions = $definitions;
+$definitions['excalibur']['item_level'] = 200;
 
 return [
     'schema_version' => 2,
-    'catalog_identity' => 'secretary-underground-shop-equipment-alpha-v4',
+    'catalog_identity' => 'secretary-underground-shop-equipment-alpha-v5',
     'weapon_style_labels' => [
         'dagger' => '短剣',
         'rapier' => '細身剣',
@@ -185,6 +187,7 @@ return [
         'crystal_staff' => '輝石杖',
     ],
     'legacy_catalogs' => [
+        'secretary-underground-shop-equipment-alpha-v4' => $versionFourDefinitions,
         'secretary-underground-shop-equipment-alpha-v3' => $versionThreeDefinitions,
         'secretary-underground-shop-equipment-alpha-v2' => $versionTwoDefinitions,
         'secretary-underground-shop-equipment-alpha-v1' => $legacyDefinitions,

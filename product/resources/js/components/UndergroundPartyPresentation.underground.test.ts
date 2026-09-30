@@ -479,6 +479,54 @@ describe('Underground party presentation controls', () => {
         wrapper.unmount();
     });
 
+    it('shows vault keys and the shared departure wait when entry is unavailable', async () => {
+        const state = openState({
+            next_battle_at: new Date(Date.now() + 90_000).toISOString(),
+            hunting_grounds: [
+                {
+                    key: 'shining_kingdom_vault',
+                    name: '輝きの王国の宝物庫',
+                    kind: 'vault',
+                    locked: false,
+                    disabled: true,
+                    unavailable_reason: '鍵が必要',
+                    item_level_min: 91,
+                    item_level_max: 120,
+                    key_label: '輝きの王国の鍵',
+                    key_balance: 0,
+                    entry_key_cost: 1,
+                },
+                {
+                    key: 'yunagi_harbor_vault',
+                    name: '夕凪の帰港地の宝物庫',
+                    kind: 'vault',
+                    locked: false,
+                    disabled: false,
+                    unavailable_reason: null,
+                    item_level_min: 200,
+                    item_level_max: 220,
+                    key_label: '夕凪の帰港地の鍵',
+                    key_balance: 1,
+                    entry_key_cost: 1,
+                },
+            ],
+        });
+        stubUndergroundFetch(vi.fn((input: RequestInfo | URL) => Promise.resolve(response(
+            String(input).endsWith('/battles') ? [] : state,
+        ))));
+
+        const wrapper = mount(UndergroundPanel, { attachTo: document.body });
+        await flushPromises();
+        await openUndergroundView(wrapper, '冒険', '秘密の場所');
+        const vaultSection = wrapper.get('[aria-labelledby="underground-vault-title"]');
+        expect(vaultSection.text()).toContain('輝きの王国の鍵：所持 0個');
+        expect(vaultSection.text()).toContain('夕凪の帰港地の鍵：所持 1個');
+        expect(vaultSection.text()).toContain('鍵が必要');
+        expect(vaultSection.text()).toMatch(/次の出発まであと\d+秒/);
+        expect(vaultSection.findAll('button').every((button) => button.attributes('disabled') !== undefined)).toBe(true);
+        wrapper.unmount();
+    });
+
     it('keeps hunting grounds and trials separate and calculates 50 and 100 percent bulk shortcuts', async () => {
         const state = openState({
             hunting_grounds: [
