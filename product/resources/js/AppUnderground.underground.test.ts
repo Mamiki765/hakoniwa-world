@@ -11,6 +11,56 @@ const response = (data: unknown, status = 200) => baseResponse(withUndergroundDe
 installAppTestLifecycle();
 
 describe('Underground application operations', () => {
+    it('shows the free distorted stone reminder through the header, shop and polishing tab and clears it after receipt', async () => {
+        let unclaimed = true;
+        const state = () => ({
+            stage: 'underground_open', secretary_name: 'ペリドット', combat_level: 100, combat_xp: 0,
+            next_level_xp: 100, next_level_requirement: 100, current_hp: 100, unspent_stp: 0,
+            skill_points_total: 0, skill_points_unspent: 0, skill_points_spent: 0,
+            skill_trees: null, active_slots: [], passive_modifiers: {},
+            growth_path: null, battle: null, trial: null, otherworld_unlocked: true, polishing_tutorial_completed: true,
+            distorted_stone_reminder: unclaimed,
+            distorted_stone_shop: {
+                balance: unclaimed ? 0 : 1, day: '2026-09-23', purchased_today: unclaimed ? 0 : 1,
+                daily_limit: 4, next_price: unclaimed ? 0 : 10_000, unlocked: true,
+            },
+        });
+        const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+            const path = String(input);
+            if (path === '/api/v1/me') return response({ id: 1, display_name: 'Owner', providers: [] });
+            if (path === '/api/v1/me/nation') return response(ownerNationFixture);
+            if (path === '/api/v1/me/secretary?world_id=1') return response({
+                ...unnamedSecretaryFixture, name: 'ペリドット', named_at: '2026-09-22T00:00:00Z', header_label: 'ペリドット',
+            });
+            if (path === '/api/v1/me/underground/distorted-stone-reminder') return response({ unclaimed });
+            if (path === '/api/v1/me/underground') return response(state());
+            if (path === '/api/v1/me/underground/battles') return response([]);
+            if (path === '/api/v1/me/underground/shop/distorted-stone' && init?.method === 'POST') {
+                unclaimed = false;
+                return response(state());
+            }
+            return publicResponse(path) ?? response(null, 404);
+        });
+        stubUndergroundFetch(fetchMock);
+        const wrapper = mount(App);
+        await flushPromises();
+        const headerButton = () => wrapper.findAll('.site-header nav button').find(button => button.text() === '地底')!;
+        const shopButton = () => wrapper.findAll('.ug-navigation button').find(button => button.text().includes('ショップ'))!;
+        const polishingTab = () => wrapper.findAll('.ug-tabs button').find(button => button.text() === '魔石研磨')!;
+        expect(headerButton().find('.notification-dot').exists()).toBe(true);
+        await headerButton().trigger('click');
+        await flushPromises();
+        expect(shopButton().find('.notification-dot').exists()).toBe(true);
+        await openUndergroundView(wrapper, 'ショップ', '魔石研磨');
+        expect(polishingTab().find('.notification-dot').exists()).toBe(true);
+        await wrapper.get('[aria-label="歪んだ輝石"] button').trigger('click');
+        await flushPromises();
+        expect(headerButton().find('.notification-dot').exists()).toBe(false);
+        expect(shopButton().find('.notification-dot').exists()).toBe(false);
+        expect(polishingTab().find('.notification-dot').exists()).toBe(false);
+        wrapper.unmount();
+    });
+
     it('sells only the unequipped instance of two equal-level bracelets', async () => {
         const secretary = structuredClone(unnamedSecretaryFixture);
         Object.assign(secretary, { name: '秘書', named_at: '2026-09-09T00:00:00Z', header_label: '秘書' });

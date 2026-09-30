@@ -100,16 +100,25 @@ final readonly class UndergroundIntroService
         }
         $profile = UndergroundProfile::query()
             ->where('secretary_id', (int) $secretaryId)
-            ->first(['otherworld_discovered_at', 'distorted_stone_purchase_day']);
+            ->first(['otherworld_discovered_at', 'distorted_stone_purchase_day', 'distorted_stone_purchase_count']);
 
-        return $this->firstDistortedStoneUnclaimedForProfile($profile);
+        return $this->firstDistortedStoneUnclaimedForProfile(
+            $profile,
+            $this->distortedStonePurchasedToday($profile, Carbon::now('Asia/Tokyo')->toDateString()),
+        );
     }
 
-    private function firstDistortedStoneUnclaimedForProfile(?UndergroundProfile $profile): bool
+    private function firstDistortedStoneUnclaimedForProfile(?UndergroundProfile $profile, int $purchasedToday): bool
     {
         return $profile instanceof UndergroundProfile
             && $profile->otherworld_discovered_at !== null
-            && $profile->distorted_stone_purchase_day === null;
+            && $purchasedToday === 0;
+    }
+
+    private function distortedStonePurchasedToday(?UndergroundProfile $profile, string $day): int
+    {
+        return $profile?->distorted_stone_purchase_day?->toDateString() === $day
+            ? $profile->distorted_stone_purchase_count : 0;
     }
 
     /** @return array<string, mixed> */
@@ -230,8 +239,7 @@ final readonly class UndergroundIntroService
     {
         $prices = $this->catalog->distortedStoneDailyPrices();
         $day = Carbon::now('Asia/Tokyo')->toDateString();
-        $purchased = $profile?->distorted_stone_purchase_day?->toDateString() === $day
-            ? $profile->distorted_stone_purchase_count : 0;
+        $purchased = $this->distortedStonePurchasedToday($profile, $day);
         $unlocked = $profile instanceof UndergroundProfile
             && UndergroundTrialProgress::query()->where('underground_profile_id', $profile->id)
                 ->where('trial_key', 'trial_02')->whereNotNull('first_cleared_at')->exists();
@@ -1782,6 +1790,7 @@ final readonly class UndergroundIntroService
                 ]
                 : null;
         $recollectionState = $this->projectRecollections($secretary, $profile, $intro);
+        $distortedStoneShop = $this->distortedStoneShop($profile);
 
         return [
             'stage' => $stage,
@@ -1796,8 +1805,8 @@ final readonly class UndergroundIntroService
                 'mirror_event_completed' => $profile?->mirror_event_completed_at !== null,
                 'items' => $this->catalog->residence(),
             ],
-            'distorted_stone_shop' => $this->distortedStoneShop($profile),
-            'distorted_stone_reminder' => $this->firstDistortedStoneUnclaimedForProfile($profile),
+            'distorted_stone_shop' => $distortedStoneShop,
+            'distorted_stone_reminder' => $this->firstDistortedStoneUnclaimedForProfile($profile, $distortedStoneShop['purchased_today']),
             'polishing_tutorial_completed' => $profile?->polishing_tutorial_completed_at !== null,
             'otherworld_intro_available' => $profile instanceof UndergroundProfile
                 && $profile->otherworld_discovered_at === null && $this->runtime->canDiscoverOtherworld($profile),
