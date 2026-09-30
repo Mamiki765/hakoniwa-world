@@ -4,7 +4,7 @@ import { flushPromises, mount } from '@vue/test-utils';
 import { describe, expect, it, vi } from 'vitest';
 import App from './App.vue';
 import UndergroundPanel from './components/UndergroundPanel.vue';
-import { response as baseResponse, ownerNationFixture, unnamedSecretaryFixture, publicResponse, installAppTestLifecycle } from './AppTestHarness';
+import { response as baseResponse, ownerNationFixture, unnamedSecretaryFixture, publicResponse, publicDetail, emptyChunk, installAppTestLifecycle } from './AppTestHarness';
 
 const response = (data: unknown, status = 200) => baseResponse(withUndergroundDefaults(data), status);
 
@@ -1851,6 +1851,17 @@ describe('Underground application operations', () => {
         serverSecretary.name = 'ペリドット';
         serverSecretary.named_at = '2026-08-16T15:00:00+09:00';
         serverSecretary.header_label = 'ペリドット';
+        Object.assign(serverSecretary.inventory.items[0]!, {
+            key: 'hoarder_talisman', name: '蓄える者のタリスマン', category: 'accessory',
+            category_label: 'アクセサリー', effect_text: '資源の保管容量を増やす。',
+        });
+        const serverNation = structuredClone(ownerNationFixture);
+        const capacityWithoutItem = 20_000;
+        serverNation.resources = [{
+            key: 'industrial_goods', name: '工業品', category: 'industry', unit: 'unit', unit_label: 'ユニット',
+            nutrition_per_unit: null, storable: true, tradable: true, amount: 0,
+            capacity: capacityWithoutItem * 1.01, remaining_capacity: capacityWithoutItem * 1.01, is_at_capacity: false,
+        }];
         let optionsCalls = 0;
         let putCalls = 0;
         let resolveFirstPut: ((response: Response) => void) | undefined;
@@ -1863,7 +1874,7 @@ describe('Underground application operations', () => {
             if (path === '/api/v1/me') {
                 return response({ id: 1, display_name: 'Owner', can_manage_announcements: false, can_manage_inquiries: false, providers: [] });
             }
-            if (path === '/api/v1/me/nation') return response(ownerNationFixture);
+            if (path === '/api/v1/me/nation') return response(serverNation);
             if (path === '/api/v1/me/secretary?world_id=1') return response(serverSecretary);
             if (path === '/api/v1/me/secretary/equipment/1/options?world_id=1') {
                 optionsCalls++;
@@ -1905,13 +1916,21 @@ describe('Underground application operations', () => {
                 serverSecretary.inventory.items[0]!.equipped_slot = null;
                 serverSecretary.inventory.items[0]!.is_equipped = false;
                 serverSecretary.equipment.slots[0]!.item = null;
+                serverNation.resources[0]!.capacity = capacityWithoutItem;
+                serverNation.resources[0]!.remaining_capacity = capacityWithoutItem;
                 return response(serverSecretary);
             }
+            if (path === '/api/v1/worlds/1/map-spaces') return response([publicDetail.map_space]);
+            if (path.includes('/api/v1/map-spaces/2/chunks/')) return response(emptyChunk);
+            if (path === '/api/v1/nations/3/sale-policies') return response([{
+                resource_id: 11, resource_key: 'industrial_goods', resource_name: '工業品', unit_label: 'ユニット',
+                amount: 0, policy: 'stockpile', keep_amount: null, version: 1,
+            }]);
 
             return response(null, 404);
         });
         stubUndergroundFetch(fetchMock);
-        const wrapper = mount(App);
+        const wrapper = mount(App, { global: { stubs: { CommandQueuePanel: true } } });
         await flushPromises();
 
         await wrapper.findAll('.site-header nav button').find((button) => button.text() === 'ペリドット')!.trigger('click');
@@ -1931,7 +1950,7 @@ describe('Underground application operations', () => {
         expect(wrapper.get('.equipment-modal').attributes('aria-modal')).toBe('true');
         expect(wrapper.findAll('.equipment-option-row').map((row) => row.text())).toEqual([
             '外す',
-            '古びた弓Lv110%の確率で、自領の地上にいる怪獣に1ダメージを与える。',
+            '蓄える者のタリスマンLv1資源の保管容量を増やす。',
             '指輪Lv3資金繰りの際、追加で3億円を得る。',
         ]);
         expect(wrapper.findAll<HTMLInputElement>('.equipment-option-row input')[1]!.element.checked).toBe(true);
@@ -1959,16 +1978,25 @@ describe('Underground application operations', () => {
         expect(wrapper.find('.equipment-modal').exists()).toBe(true);
 
         const beforeSuccessfulReload = scopedSecretaryGets();
+        const nationGets = () => fetchMock.mock.calls.filter(([path]) => String(path) === '/api/v1/me/nation').length;
+        const beforeNationReload = nationGets();
         await wrapper.get('.equipment-modal-footer button').trigger('click');
         await flushPromises();
         expect(putCalls).toBe(3);
         expect(scopedSecretaryGets()).toBe(beforeSuccessfulReload + 1);
+        expect(nationGets()).toBe(beforeNationReload + 1);
         expect(wrapper.find('.equipment-modal').exists()).toBe(false);
         expect(wrapper.findAll('.secretary-equipment li')[0]!.text()).toContain('空き');
         const successfulBody = JSON.parse(String(fetchMock.mock.calls.filter(([path]) => (
             String(path) === '/api/v1/me/secretary/equipment/1'
         )).at(-1)?.[1]?.body));
         expect(successfulBody).toEqual({ item_id: null, expected_version: 2 });
+        await wrapper.findAll('.site-header nav button').find((button) => button.text() === '自島へ')!.trigger('click');
+        await flushPromises();
+        expect(wrapper.get('.policy-direction').text()).toContain(`${capacityWithoutItem.toLocaleString()}ユニット（上限）`);
+        await wrapper.get('input[type="range"]').setValue('500');
+        expect(wrapper.get<HTMLInputElement>('.policy-amount input').element.value).toBe(String(capacityWithoutItem / 2));
+        expect(nationGets()).toBe(beforeNationReload + 1);
     });
 
     it('starts skip at the newest usable ground and falls back when its key or clear unlock is missing', async () => {

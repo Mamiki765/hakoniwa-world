@@ -139,7 +139,6 @@ function formatDate(value: string): string {
     <section class="message-board" aria-labelledby="message-board-heading">
         <header class="message-board-heading">
             <div>
-                <p class="eyebrow">ISLAND MESSAGE BOARD</p>
                 <h2 id="message-board-heading">伝言板</h2>
             </div>
             <button
