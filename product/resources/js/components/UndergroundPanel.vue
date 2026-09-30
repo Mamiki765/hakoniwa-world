@@ -22,7 +22,7 @@ import { shouldReleasePendingExplorationRequest } from './undergroundExploration
 import { renderUndergroundStory } from '../undergroundStoryMarkup';
 import type { EquipmentItem, EquipmentSlot } from './EquipmentItemCard.vue';
 import type { UndergroundAiConfiguration } from './undergroundAi';
-import type { DailyQuestProgress } from '../types';
+import type { DailyQuestProgress, MerchantConversationTopic } from '../types';
 
 const maximumBulkSkipExecutions = 1000;
 
@@ -631,14 +631,14 @@ const pendingAwakeningMessageMutation = ref<PendingMutation | null>(null);
 const pendingAwakeningTechniqueMutation = ref<PendingMutation | null>(null);
 const awakeningMessageDraft = ref('');
 const awakeningTechniqueDraft = ref<string | null>(null);
-type View = 'home' | 'adventure' | 'otherworld' | 'trials' | 'secret' | 'history' | 'playtest' | 'character' | 'status' | 'skills' | 'shop' | 'polishing' | 'bank' | 'guide' | 'ai' | 'vault' | 'party' | 'property' | 'villa' | 'recollections' | 'trophies';
+type View = 'home' | 'adventure' | 'otherworld' | 'trials' | 'secret' | 'history' | 'playtest' | 'character' | 'status' | 'skills' | 'shop' | 'polishing' | 'bank' | 'guide' | 'ai' | 'vault' | 'party' | 'property' | 'merchant' | 'villa' | 'recollections' | 'trophies';
 const equipmentView = ref<View>('home');
 const tabs: Record<UndergroundDestination, Array<{ key: View; label: string }>> = {
     home: [],
     adventure: [{ key: 'adventure', label: '探索' }, { key: 'trials', label: '試練' }, { key: 'secret', label: '秘密の場所' }, { key: 'otherworld', label: '異世界の戦い' }, { key: 'history', label: '戦闘履歴' }, { key: 'playtest', label: '力試し' }],
     character: [{ key: 'character', label: '能力' }, { key: 'status', label: 'STP配分' }, { key: 'skills', label: 'スキル・覚醒' }, { key: 'vault', label: '装備・保管庫' }, { key: 'ai', label: '戦法' }],
     shop: [{ key: 'shop', label: '装備を買う' }, { key: 'polishing', label: '魔石研磨' }, { key: 'bank', label: '銀行' }, { key: 'guide', label: '案内人と話す' }],
-    exchange: [{ key: 'party', label: 'パーティー' }, { key: 'property', label: '不動産' }],
+    exchange: [{ key: 'party', label: 'パーティー' }, { key: 'property', label: '不動産' }, { key: 'merchant', label: '行商人と話す' }],
     villa: [{ key: 'villa', label: '冒険日誌' }, { key: 'recollections', label: '回想' }, { key: 'trophies', label: 'トロフィー棚' }],
 };
 const currentDestination = computed<UndergroundDestination>(() => undergroundDestinations.find(destination =>
@@ -647,6 +647,23 @@ const pageTabs = computed(() => tabs[currentDestination.value].filter(tab => (ta
     && (!['polishing', 'otherworld'].includes(tab.key) || state.value?.otherworld_unlocked)));
 const pageTitle = computed(() => undergroundDestinations.find(destination => destination.key === currentDestination.value)?.label);
 const exchangeGreeting = ref(loungeStories.greetings[0]);
+const merchantTopics = ref<Array<Pick<MerchantConversationTopic, 'id' | 'question' | 'answer'>>>([]);
+const merchantLoading = ref(false);
+const merchantError = ref('');
+async function loadMerchantTopics(): Promise<void> {
+    if (merchantLoading.value) return;
+    merchantLoading.value = true;
+    merchantError.value = '';
+    merchantTopics.value = [];
+    try {
+        const result = await api<{ topics: typeof merchantTopics.value }>('/api/v1/me/underground/merchant-conversation-topics');
+        merchantTopics.value = result.topics;
+    } catch (caught) {
+        merchantError.value = caught instanceof Error ? caught.message : '話題を読み込めませんでした。';
+    } finally {
+        merchantLoading.value = false;
+    }
+}
 const loungeReplay = ref<'exchange-1' | 'exchange-2' | 'mirror' | 'otherworld' | null>(null);
 const activeLoungeEvent = computed(() => {
     const residence = state.value?.residence;
@@ -689,7 +706,8 @@ function navigate(destination: UndergroundDestination): void {
 function selectTab(view: View): void {
     loungeReplay.value = null;
     selectedRecollectionKey.value = null;
-    if (view === 'guide') openGuide();
+    if (view === 'merchant') { equipmentView.value = view; void loadMerchantTopics(); }
+    else if (view === 'guide') openGuide();
     else if (view === 'recollections') {
         guideMode.value = 'recollections';
         selectedRecollectionKey.value = null;
@@ -2634,6 +2652,23 @@ onUnmounted(() => {
                                 <p v-if="state.trial?.active_run" class="ug-muted">封印の地から帰還後に利用できます。</p>
                             </div>
                             <p v-if="equipmentView === 'party'" class="ug-exchange-greeting">{{ exchangeGreeting }}</p>
+                            <section v-if="equipmentView === 'merchant'" class="ug-merchant-conversation" aria-label="行商人と話す">
+                                <p class="ug-exchange-greeting">{{ loungeStories.merchant_conversation.greeting }}</p>
+                                <p v-if="merchantLoading" role="status">話題を読み込んでいます…</p>
+                                <div v-else-if="merchantError" role="alert">
+                                    <p>{{ merchantError }}</p>
+                                    <button type="button" @click="loadMerchantTopics">もう一度読み込む</button>
+                                </div>
+                                <p v-else-if="merchantTopics.length === 0">話題がまだ登録されていません。</p>
+                                <div v-else class="ug-merchant-topics">
+                                    <details v-for="topic in merchantTopics" :key="topic.id" class="ug-merchant-topic">
+                                        <summary>{{ topic.question }}</summary>
+                                        <div class="ug-merchant-answer">
+                                            <p v-for="(line, index) in topic.answer.split('\n')" :key="index">{{ line }}</p>
+                                        </div>
+                                    </details>
+                                </div>
+                            </section>
                             <section v-if="equipmentView === 'polishing' && state.distorted_stone_shop?.unlocked" class="ug-property-item" aria-label="歪んだ輝石">
                                 <header><h2>歪んだ輝石</h2><span>所持 {{ state.distorted_stone_shop.balance.toLocaleString('ja-JP') }} 個</span></header>
                                 <p>異世界の勝利1回につき1個使います。敗北・時間切れでは消費しません。試練2クリア後に案内人から受け取れます。</p>

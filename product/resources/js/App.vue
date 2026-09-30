@@ -165,7 +165,7 @@ const dailyQuestError = ref('');
 const dailyQuests = ref<DailyQuestProgress[]>([]);
 const hasIncompleteDailyQuests = computed(() => dailyQuests.value.some((quest) => !quest.completed));
 const selectedUndergroundSlot = ref<UndergroundFacilityTarget | null>(null);
-const page = ref<'home' | 'announcements' | 'inquiry' | 'admin-inquiries' | 'guide-topics' | 'admin' | 'island' | 'preview' | 'trading-post' | 'secretary' | 'underground' | 'options' | 'account' | 'credits'>(
+const page = ref<'home' | 'announcements' | 'inquiry' | 'admin-inquiries' | 'guide-topics' | 'merchant-topics' | 'admin' | 'island' | 'preview' | 'trading-post' | 'secretary' | 'underground' | 'options' | 'account' | 'credits'>(
     window.location.pathname === '/credits'
         ? 'credits'
         : (window.location.pathname === '/underground' ? 'underground' : 'home'),
@@ -1764,6 +1764,7 @@ async function abandonNation(): Promise<void> {
             @close="page = 'home'"
             @announcements="openAnnouncements(1)"
             @guide="page = 'guide-topics'"
+            @merchant="page = 'merchant-topics'"
             @inquiries="openAdminInquiries(1)"
         />
 
@@ -2029,6 +2030,12 @@ async function abandonNation(): Promise<void> {
 
         <GuideConversationTopicAdmin
             v-else-if="user?.can_manage_guide_topics && page === 'guide-topics'"
+            @close="page = 'admin'"
+        />
+
+        <GuideConversationTopicAdmin
+            v-else-if="user?.can_manage_guide_topics && page === 'merchant-topics'"
+            merchant
             @close="page = 'admin'"
         />
 

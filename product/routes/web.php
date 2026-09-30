@@ -11,6 +11,7 @@ use App\Http\Controllers\Api\DailyRewardController;
 use App\Http\Controllers\Api\GuideConversationController;
 use App\Http\Controllers\Api\InquiryController;
 use App\Http\Controllers\Api\MessageBoardController;
+use App\Http\Controllers\Api\MerchantConversationTopicController;
 use App\Http\Controllers\Api\NationAbandonmentController;
 use App\Http\Controllers\Api\NationDormancyController;
 use App\Http\Controllers\Api\NationProfileController;
@@ -92,6 +93,10 @@ Route::prefix('api/v1/admin')
         Route::post('/announcements/preview', [AnnouncementController::class, 'preview']);
         Route::patch('/announcements/{announcement}', [AnnouncementController::class, 'update']);
         Route::delete('/announcements/{announcement}', [AnnouncementController::class, 'destroy']);
+        Route::get('/merchant-conversation-topics', [MerchantConversationTopicController::class, 'adminIndex']);
+        Route::post('/merchant-conversation-topics', [MerchantConversationTopicController::class, 'store']);
+        Route::patch('/merchant-conversation-topics/{merchantConversationTopic}', [MerchantConversationTopicController::class, 'update']);
+        Route::delete('/merchant-conversation-topics/{merchantConversationTopic}', [MerchantConversationTopicController::class, 'destroy']);
         Route::get('/guide-conversation-topics', [AdminGuideConversationTopicController::class, 'index']);
         Route::post('/guide-conversation-topics', [AdminGuideConversationTopicController::class, 'store']);
         Route::patch('/guide-conversation-topics/{guideConversationTopic}', [AdminGuideConversationTopicController::class, 'update']);
@@ -140,6 +145,7 @@ Route::prefix('api/v1')->middleware(['auth', PrivateApiResponse::class])->group(
         Route::post('/shopkeeper/name', [UndergroundIntroController::class, 'nameShopkeeper']);
         Route::post('/scripted-loss', [UndergroundIntroController::class, 'scriptedLoss']);
         Route::post('/recollections/read', [UndergroundIntroController::class, 'completeRecollection']);
+        Route::get('/merchant-conversation-topics', [MerchantConversationTopicController::class, 'index']);
         Route::post('/guide-conversation/start', [GuideConversationController::class, 'start']);
         Route::post('/guide-conversation/reply', [GuideConversationController::class, 'reply']);
         Route::post('/guide-conversation/punch', [GuideConversationController::class, 'punch']);

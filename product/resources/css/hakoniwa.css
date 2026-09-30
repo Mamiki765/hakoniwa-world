@@ -725,6 +725,16 @@ html[data-theme="dark"] .compensation-banner, html[data-theme="dark"] .compensat
 .underground-main-navigation { display: flex; flex-wrap: wrap; gap: .45rem; padding: .35rem; border: 1px solid var(--line); background: var(--paper-deep); }
 .underground-main-navigation button { min-height: 2.8rem; padding: .55rem .9rem; border: 1px solid transparent; background: transparent; color: var(--ink); font: inherit; font-weight: 800; cursor: pointer; }
 .underground-main-navigation button:hover, .underground-main-navigation button:focus-visible, .underground-main-navigation button[aria-current="page"] { border-color: var(--coral); background: var(--paper); }
+.ug-merchant-conversation, .ug-merchant-topics { display: grid; gap: .75rem; min-width: 0; }
+.ug-merchant-topic { border: 1px solid var(--line); border-radius: 8px; background: var(--paper); color: var(--ink); overflow-wrap: anywhere; }
+.ug-merchant-topic summary { display: flex; align-items: center; justify-content: space-between; gap: .75rem; min-height: 44px; padding: .75rem 1rem; list-style: none; font-weight: 800; cursor: pointer; }
+.ug-merchant-topic summary::-webkit-details-marker { display: none; }
+.ug-merchant-topic summary::after { content: '＋'; flex-shrink: 0; color: var(--coral); }
+.ug-merchant-topic[open] summary { background: var(--selected-surface); }
+.ug-merchant-topic[open] summary::after { content: '－'; }
+.ug-merchant-topic summary:focus-visible { outline: 3px solid var(--coral); outline-offset: -3px; }
+.ug-merchant-answer { display: grid; gap: .5rem; padding: 1rem; border-top: 1px solid var(--line); line-height: 1.9; }
+.ug-merchant-answer p { margin: 0; }
 .underground-guide-room { display: grid; gap: 1rem; min-width: 0; padding: 1rem; border: 1px solid var(--line); border-radius: 12px; background: var(--input-surface); }
 .underground-guide-room h1, .underground-guide-room h2, .underground-guide-room h3, .underground-guide-room p { margin: 0; }
 .underground-guide-room-heading { display: flex; align-items: start; justify-content: space-between; gap: 1rem; padding-bottom: .8rem; border-bottom: 2px solid var(--line); }
