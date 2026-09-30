@@ -33,6 +33,7 @@ final class UndergroundIntroAndPlaytestTest extends UndergroundPlayerAccessTestC
 
     public function test_tutorial_is_a_legal_deterministic_single_settlement_then_escape_returns_to_secretary(): void
     {
+        $this->freezeTime();
         [$user] = $this->secretaryUser('Tutorial secretary');
         $entryRequest = (string) Str::uuid();
         $this->actingAs($user)->postJson('/api/v1/me/underground/entry', [
@@ -143,6 +144,7 @@ final class UndergroundIntroAndPlaytestTest extends UndergroundPlayerAccessTestC
 
     public function test_normal_shopkeeper_name_is_safe_immutable_and_requires_shop_explanation_before_main(): void
     {
+        $this->freezeTime();
         [$user] = $this->secretaryUser('Normal secretary');
         $this->reachShopkeeperNaming($user);
         $twentyGraphemes = str_repeat("e\u{0301}", 20);
@@ -391,6 +393,7 @@ final class UndergroundIntroAndPlaytestTest extends UndergroundPlayerAccessTestC
 
     public function test_inn_and_bank_use_owned_locked_balances_with_exact_transfer_contracts(): void
     {
+        $this->freezeTime();
         [$user, $secretary] = $this->secretaryUser('Shop secretary');
         [$other, $otherSecretary] = $this->secretaryUser('Other shop secretary');
         $profile = UndergroundProfile::query()->create([
@@ -583,6 +586,7 @@ final class UndergroundIntroAndPlaytestTest extends UndergroundPlayerAccessTestC
 
     public function test_respec_combines_growth_stp_and_skill_reset_without_healing_or_rewinding_progress(): void
     {
+        $this->freezeTime();
         [$user, $secretary] = $this->secretaryUser('Respec secretary');
         $profile = $this->openEquipmentProfile($secretary, 1_000, 9_000);
         $this->actingAs($user)->getJson('/api/v1/me/underground/main')->assertOk();
@@ -719,6 +723,7 @@ final class UndergroundIntroAndPlaytestTest extends UndergroundPlayerAccessTestC
 
     public function test_respec_cooldown_can_be_bypassed_once_per_request_for_ten_pd_plus_normal_g(): void
     {
+        $this->freezeTime();
         [$user, $secretary] = $this->secretaryUser('Paid respec secretary');
         $profile = $this->openEquipmentProfile($secretary, 1_000, 0);
         $profile->update(['combat_level' => 4, 'last_respec_at' => Carbon::now()]);
@@ -834,6 +839,7 @@ final class UndergroundIntroAndPlaytestTest extends UndergroundPlayerAccessTestC
 
     public function test_true_name_branch_runs_one_logged_alpha_v1_scripted_loss_without_normal_penalties(): void
     {
+        $this->freezeTime();
         [$user] = $this->secretaryUser('Special secretary');
         $this->reachShopkeeperNaming($user);
         $this->actingAs($user)->postJson('/api/v1/me/underground/shopkeeper/name', [

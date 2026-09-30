@@ -137,6 +137,7 @@ final class UndergroundHistoryAndAiTest extends UndergroundPlayerAccessTestCase
 
     public function test_ai_configuration_uses_default_preset_and_saves_normalized_rules_idempotently(): void
     {
+        $this->freezeTime();
         [$user, $secretary] = $this->secretaryUser('AI設定秘書');
         $profile = $this->openEquipmentProfile($secretary);
 
@@ -302,6 +303,7 @@ final class UndergroundHistoryAndAiTest extends UndergroundPlayerAccessTestCase
 
     public function test_recollections_require_trial_two_first_clear_and_are_sequential_idempotent_and_side_effect_free(): void
     {
+        $this->freezeTime();
         [$owner, $ownerSecretary] = $this->secretaryUser('Recollection secretary');
         $profile = $this->openEquipmentProfile($ownerSecretary);
         UndergroundTrialProgress::query()->create([
