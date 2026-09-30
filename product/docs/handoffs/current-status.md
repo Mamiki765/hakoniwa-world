@@ -93,6 +93,7 @@ Trial4、市場、転生、地上産業、Relic/合成、研磨量再設計等�
 | 地上item | [地上アイテム拡張メモ](../plans/surface-item-expansion.md)。Relic、固定recipe合成、同系統育成、夢魔の三紋章、ticket圧縮等。 |
 | 地上産業 | [地上発展拡張メモ](../plans/surface-development-expansion.md)。配置synergy、電力、二次/三次産業、属性魔力。地下攻略必須にはしない。 |
 | UI / 秘書 | 貸出コメント、用途別AI/技保存set、PC/mobile header画像、小画面footer等。 |
+| UI bug：首都地下の選択詳細 | **要修正**。dark themeで`.underground-map-detail`が淡い背景なのに文字色を明示せず継承し、「選択中 / 空き施設枠 / 階層 / 座標」がほぼ読めない。2026-09-30 Owner screenshotで確認。背景または前景色をtheme-awareにして十分なcontrastを確保する。値やDOM全文を固定するtestではなく、必要ならclass/style contractを最小限確認する。 |
 | グラム表示 | 記念品の説明を武器力・固有効果風に整理する案。装備不可・売却不可の契約を勝手に変えない。 |
 | 長期案 | 共有大討伐、深層探索、秘書になりきるchat等。採用済みTODOではない。 |
 | Turn C2 | C1の同一起動内40P01/40001 retryは実装済み。failed/blocked runを後続処理で安全に自律復旧するC2は未実装。Owner不在時に一時deadlockだけでWorldが永久停止しないことが目的。対象失敗、same run/turn/ruleset/seed、backoff、上限、auditを決めてから実装する。 |
