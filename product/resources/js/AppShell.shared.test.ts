@@ -1032,6 +1032,8 @@ describe('application lobby and island entry', () => {
         };
         let previewDetailCalls = 0;
         let dailyQuestsComplete = false;
+        let dailyQuestDay = '2026-09-09';
+        let commandRegistered = false;
         const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
             const path = String(input);
             if (path.endsWith('/rankings')) return response([
@@ -1132,9 +1134,9 @@ describe('application lobby and island entry', () => {
                 })),
             });
             if (path === '/api/v1/me/daily-quests') return response([
-                { key: 'development_opened', label: '開発画面を開く', canonical_day: '2026-09-09', progress: 1, target: 1, completed: true },
-                { key: 'underground_battles', label: '地下で10戦する', canonical_day: '2026-09-09', progress: dailyQuestsComplete ? 10 : 4, target: 10, completed: dailyQuestsComplete },
-                { key: 'command_registered', label: 'コマンドを登録する', canonical_day: '2026-09-09', progress: dailyQuestsComplete ? 1 : 0, target: 1, completed: dailyQuestsComplete },
+                { key: 'development_opened', label: '開発画面を開く', canonical_day: dailyQuestDay, progress: 1, target: 1, completed: true },
+                { key: 'underground_battles', label: '地下で10戦する', canonical_day: dailyQuestDay, progress: dailyQuestsComplete ? 10 : 4, target: 10, completed: dailyQuestsComplete },
+                { key: 'command_registered', label: 'コマンドを登録する', canonical_day: dailyQuestDay, progress: dailyQuestsComplete || commandRegistered ? 1 : 0, target: 1, completed: dailyQuestsComplete || commandRegistered },
             ]);
             return response(null, 404);
         });
@@ -1206,6 +1208,7 @@ describe('application lobby and island entry', () => {
         expect(wrapper.get('.daily-quest-modal').text()).toContain('開発画面を開く1 / 1・達成');
         expect(wrapper.get('.daily-quest-modal').text()).toContain('地下で10戦する4 / 10');
         await wrapper.get('.daily-quest-modal button[aria-label="閉じる"]').trigger('click');
+        commandRegistered = true;
         wrapper.getComponent(CommandQueuePanel).vm.$emit('daily-quest', {
             key: 'command_registered', label: 'コマンドを登録する', canonical_day: '2026-09-09',
             progress: 1, target: 1, completed: true, completed_now: false, paradox_awarded: 0, paradox_balance: 0,
@@ -1217,6 +1220,14 @@ describe('application lobby and island entry', () => {
         await flushPromises();
         expect(wrapper.find('.daily-quest-trigger .notification-dot').exists()).toBe(false);
         await wrapper.get('.daily-quest-modal button[aria-label="閉じる"]').trigger('click');
+        dailyQuestDay = '2026-09-10';
+        dailyQuestsComplete = false;
+        wrapper.getComponent(CommandQueuePanel).vm.$emit('daily-quest', {
+            key: 'command_registered', label: 'コマンドを登録する', canonical_day: dailyQuestDay,
+            progress: 1, target: 1, completed: true, completed_now: false, paradox_awarded: 0, paradox_balance: 0,
+        });
+        await flushPromises();
+        expect(wrapper.find('.daily-quest-trigger .notification-dot').exists()).toBe(true);
         expect(wrapper.find('.nation-hud').text()).toContain('62,728億円');
         expect(wrapper.find('.nation-hud').text()).toContain('N1 自島');
         expect(wrapper.find('.nation-hud').text()).toContain('島主：自島主');

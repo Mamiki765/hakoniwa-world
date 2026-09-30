@@ -460,7 +460,11 @@ function dismissRewardToast(): void {
 }
 
 function handleDailyQuestProgress(quest: DailyQuestProgress): void {
-    if (dailyQuests.value[0]?.canonical_day !== quest.canonical_day) dailyQuests.value = [];
+    const previousDay = dailyQuests.value[0]?.canonical_day;
+    if (previousDay !== quest.canonical_day) {
+        dailyQuests.value = [];
+        if (previousDay !== undefined) void loadDailyQuests();
+    }
     const existing = dailyQuests.value.find((entry) => entry.key === quest.key);
     if (existing) Object.assign(existing, quest);
     else dailyQuests.value.push(quest);
@@ -1343,9 +1347,8 @@ async function submitEquipment(itemId: number | null): Promise<void> {
         });
         secretary.value = committedSecretary;
         setOwnedSecretaryProfile(committedSecretary);
-        try {
-            await loadSecretary();
-        } catch {
+        const [secretaryRefresh] = await Promise.allSettled([loadSecretary(), refreshMyNation()]);
+        if (secretaryRefresh.status === 'rejected') {
             message.value = '装備は変更されましたが、最新の効果表示を読み込めませんでした。画面を開き直してください。';
         }
         equipmentSubmitting.value = false;
