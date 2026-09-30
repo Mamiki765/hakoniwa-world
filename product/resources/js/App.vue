@@ -50,6 +50,34 @@ import type {
 const applicationVersion = document.querySelector<HTMLMetaElement>(
     'meta[name="hakoniwa-application-version"]',
 )?.content ?? '';
+let applicationVersionCheckInFlight = false;
+let applicationReloadRequested = false;
+
+async function checkApplicationVersion(): Promise<void> {
+    if (applicationVersion === '' || applicationVersionCheckInFlight || applicationReloadRequested
+        || document.visibilityState === 'hidden') return;
+
+    applicationVersionCheckInFlight = true;
+    try {
+        const latest = await api<{ version: string }>('/api/v1/application-version', { cache: 'no-store' });
+        if (latest.version !== '' && latest.version !== applicationVersion) {
+            applicationReloadRequested = true;
+            window.location.reload();
+        }
+    } catch {
+        // Version checks are best-effort; normal gameplay must remain available.
+    } finally {
+        applicationVersionCheckInFlight = false;
+    }
+}
+
+function handleApplicationPageShow(): void {
+    void checkApplicationVersion();
+}
+
+function handleApplicationVisibilityChange(): void {
+    if (document.visibilityState === 'visible') void checkApplicationVersion();
+}
 const themeModes = ['system', 'light', 'dark'] as const;
 type ThemeMode = typeof themeModes[number];
 
@@ -319,6 +347,9 @@ function matchTurnStatus(status: PublicWorldSummary['turn_status'] | undefined):
 
 onMounted(async () => {
     window.addEventListener('popstate', syncPageFromHistory);
+    window.addEventListener('pageshow', handleApplicationPageShow);
+    document.addEventListener('visibilitychange', handleApplicationVisibilityChange);
+    void checkApplicationVersion();
     clockTimer = setInterval(() => { clockNow.value = Date.now(); }, 1000);
     await loadPublicLobby();
     try {
@@ -535,6 +566,8 @@ async function claimCompensation(grant: CompensationGrant): Promise<void> {
 
 onUnmounted(() => {
     window.removeEventListener('popstate', syncPageFromHistory);
+    window.removeEventListener('pageshow', handleApplicationPageShow);
+    document.removeEventListener('visibilitychange', handleApplicationVisibilityChange);
     if (clockTimer !== null) clearInterval(clockTimer);
     if (summaryDeadlineTimer !== null) clearTimeout(summaryDeadlineTimer);
     if (summaryRetryTimer !== null) clearTimeout(summaryRetryTimer);
