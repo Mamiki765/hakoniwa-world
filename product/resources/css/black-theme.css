@@ -1,0 +1,84 @@
+/* Independent palette adaptation; see docs/architecture/black-theme.md. */
+html[data-theme="black"] {
+    color-scheme: dark;
+    --canvas: #24272a;
+    --canvas-accent: #24272a;
+    --paper: #34373b;
+    --paper-deep: #42474e;
+    --paper-overlay: rgb(52 55 59 / 96%);
+    --paper-soft-overlay: rgb(52 55 59 / 90%);
+    --ink: #e2e2e5;
+    --muted: #c2c7cf;
+    --navy: #96cbff;
+    --navy-light: #cee5ff;
+    --navy-solid: #96cbff;
+    --on-solid: #003353;
+    --coral: #5fdbb9;
+    --coral-dark: #7ef8d5;
+    --gold: #edc148;
+    --line: #8c9198;
+    --heading-line: #8c9198;
+    --shadow: 0 16px 40px rgb(0 0 0 / 30%);
+    --input-surface: #24272a;
+    --input-border: #8c9198;
+    --hover-surface: #42474e;
+    --selected-surface: #004a76;
+    --table-heading: #42474e;
+    --danger: #ffb4ab;
+    --danger-strong: #ffdad6;
+    --danger-solid: #ffb4ab;
+    --danger-surface: #690005;
+    --warning: #ffdf93;
+    --warning-surface: #594400;
+    --info: #5fb3ff;
+    --success: #7ef8d5;
+    --success-surface: #005140;
+    --toast-surface: #42474e;
+    --toast-ink: #e2e2e5;
+    --toast-border: #8c9198;
+    --link: #acb7e7;
+    --on-danger-solid: #690005;
+    --minus: #ff6c72;
+    --awakening: #c2b6ee;
+    --disabled-surface: #42474e;
+    --backdrop: rgb(0 0 0 / 72%);
+}
+
+html[data-theme="black"] body { color: var(--ink); background: var(--canvas); }
+html[data-theme="black"] a:not(.button) { color: var(--link); }
+html[data-theme="black"] a:not(.button):visited { color: var(--link); }
+html[data-theme="black"] a:not(.button):is(:hover, :active) { color: var(--navy-light); }
+html[data-theme="black"] :is(button, a, input, textarea, select, summary):focus-visible { outline: 2px solid var(--navy); outline-offset: 2px; }
+html[data-theme="black"] :is(input, textarea, select, option) { color: var(--ink); background-color: var(--input-surface); border-color: var(--input-border); accent-color: var(--navy); }
+html[data-theme="black"] :is(.button, button, input, textarea, select):disabled { color: var(--muted); background-color: var(--disabled-surface); border-color: var(--line); opacity: 1; }
+html[data-theme="black"] :is(button, .button):hover:not(:disabled) { border-color: var(--navy); }
+html[data-theme="black"] :is(.button.primary, .ug-primary):hover:not(:disabled) { color: var(--on-solid); background: var(--navy-light); }
+html[data-theme="black"] .button.danger:not(:disabled) { color: var(--on-danger-solid); }
+html[data-theme="black"] .button.danger:hover:not(:disabled) { background: var(--danger-strong); border-color: var(--danger-strong); }
+html[data-theme="black"] :is(.manual-header a, .contact-action a):is(:link, :visited, :hover, :active) { color: var(--on-solid); }
+html[data-theme="black"] :is(.modal-backdrop, .command-modal-backdrop, .command-entry-backdrop) { background: var(--backdrop); }
+
+/* HUD and map controls previously used white ink on the solid primary color. */
+html[data-theme="black"] :is(.world-stats, .nation-hud, .map-toolbar) { color: var(--ink); background: var(--paper-deep); border-color: var(--line); }
+html[data-theme="black"] :is(.world-stats div, .hud-primary > div, .resource-forecast th, .resource-forecast td) { border-color: var(--line); }
+html[data-theme="black"] :is(.world-stats dt, .hakoniwa-calendar, .nation-hud .profile-owner, .turn-indicator, .hud-primary dt, .hud-capacity-limit, .hud-more span, .hud-details dt, .resource-forecast-note, .resource-forecast thead th) { color: var(--muted); }
+html[data-theme="black"] :is(.hud-more, .resource-forecast h2, .hud-support h2, .resource-forecast tbody th) { color: var(--ink); }
+html[data-theme="black"] :is(.resource-forecast, .hud-support) { background: var(--paper); border-color: var(--line); }
+html[data-theme="black"] .resource-forecast .forecast-positive { color: var(--info); }
+html[data-theme="black"] .resource-forecast .forecast-negative { color: var(--minus); }
+html[data-theme="black"] .workforce-unemployment { color: var(--danger-strong); background: var(--danger-surface); }
+html[data-theme="black"] .workforce-saturation { color: var(--navy-light); background: var(--selected-surface); }
+html[data-theme="black"] .map-toolbar button { color: var(--ink); border-color: var(--line); }
+html[data-theme="black"] .map-toolbar .visibility-toggle[aria-pressed="true"] { color: var(--success); border-color: var(--success); }
+html[data-theme="black"] .map-toolbar .error { color: var(--danger); }
+html[data-theme="black"] :is(.underground-entrance, .underground-slot-fallback) { color: var(--ink); background: var(--paper-deep); }
+html[data-theme="black"] .underground-slot.selected { box-shadow: inset 0 0 0 3px var(--navy); }
+
+/* Readable status accents on the same surfaces as the rest of the game. */
+html[data-theme="black"] .ug-boss-countdown.is-major { color: var(--danger); text-shadow: none; }
+html[data-theme="black"] .underground-party-meter.is-awakening[data-state="ready"] > span { color: var(--warning); text-shadow: none; }
+html[data-theme="black"] .ug-meter > span { background: var(--success); }
+html[data-theme="black"] .ug-meter-awakening > span { background: var(--awakening); }
+html[data-theme="black"] :is(.compensation-banner, .compensation-grant, .compensation-modal) { border-color: var(--gold); }
+html[data-theme="black"] .underground-ai-mode-actions button[aria-pressed="true"] { border-color: var(--navy); box-shadow: 0 0 0 1px var(--navy) inset; }
+html[data-theme="black"] .underground-party-candidate.is-selected { border-color: var(--navy); box-shadow: inset 0 0 0 2px var(--navy); }

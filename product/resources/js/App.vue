@@ -78,7 +78,7 @@ function handleApplicationPageShow(): void {
 function handleApplicationVisibilityChange(): void {
     if (document.visibilityState === 'visible') void checkApplicationVersion();
 }
-const themeModes = ['system', 'light', 'dark', 'skyblue', 'autumn'] as const;
+const themeModes = ['system', 'light', 'dark', 'skyblue', 'autumn', 'black'] as const;
 type ThemeMode = typeof themeModes[number];
 
 function normaliseThemeMode(value: string | undefined): ThemeMode {
@@ -2569,6 +2569,10 @@ async function abandonNation(): Promise<void> {
                     <label v-for="mode in (['skyblue', 'autumn'] as const)" :key="mode" class="theme-choice">
                         <input type="radio" name="display-theme" :value="mode" :checked="themeMode === mode" @change="selectTheme(mode)">
                         <span><strong>{{ mode === 'skyblue' ? 'SkyBlue' : 'Autumn' }}</strong><small>箱庭諸島2 for PHP</small></span>
+                    </label>
+                    <label class="theme-choice">
+                        <input type="radio" name="display-theme" value="black" :checked="themeMode === 'black'" @change="selectTheme('black')">
+                        <span><strong>Black</strong><small>黒や灰色を基調とした暗色テーマです。</small></span>
                     </label>
                 </fieldset>
             </section>
