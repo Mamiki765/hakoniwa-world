@@ -149,6 +149,7 @@ a { color: var(--navy); }
 .brand span { color: var(--coral); }
 .app-version { color: var(--muted); font-size: .62rem; font-weight: 750; letter-spacing: .04em; }
 .site-header nav, .session-actions { display: flex; align-items: center; gap: 5px; flex-wrap: wrap; }
+.site-header nav a { white-space: nowrap; flex-shrink: 0; }
 .site-header nav button, .session-actions button, .session-actions a {
     border: 0;
     background: transparent;
@@ -231,7 +232,7 @@ main { width: min(1560px, 100%); margin: 0 auto; padding: clamp(16px, 3vw, 46px)
     box-shadow: 0 18px 60px rgb(0 0 0 / 35%);
 }
 .daily-quest-modal { display: grid; gap: 16px; width: min(100%, 480px); max-height: calc(100dvh - 32px); overflow: auto; padding: 20px; border: 2px solid var(--line); background: var(--paper); color: var(--ink); box-shadow: 0 18px 60px rgb(0 0 0 / 35%); }
-.daily-quest-trigger { display: block; margin: 0 0 12px auto; padding: 8px 12px; border: 1px solid var(--line); border-radius: 6px; background: var(--input-surface); cursor: pointer; }
+.daily-quest-trigger { margin: 0; padding: 6px 10px; border: 1px solid var(--line); background: var(--input-surface); cursor: pointer; white-space: nowrap; }
 .daily-quest-modal > header { display: flex; align-items: start; justify-content: space-between; gap: 16px; }
 .daily-quest-modal > header h2, .daily-quest-modal > header p { margin: 0; }
 .daily-quest-modal > header p { color: var(--muted); }
@@ -1318,7 +1319,15 @@ html[data-theme="dark"] .compensation-banner, html[data-theme="dark"] .compensat
 .secret-form { color: var(--ink); }
 .message-board-read-only, .message-board-status { color: var(--muted); }
 
-.resource-panel h1 { font-size: clamp(2rem, 5vw, 4rem); }
+.resource-panel { margin: 10px 0; padding: 10px 12px; border: 1px solid var(--line); background: var(--paper); }
+.resource-panel-actions { float: right; margin-left: 8px; }
+.resource-policy-details > summary { cursor: pointer; padding-block: 4px; }
+.resource-policy-details > summary > strong { font-size: 1rem; }
+.resource-policy-details .policy-list { clear: both; }
+.policy-lock-note { grid-column: 1 / -1; margin: 4px 0 0; font-size: .72rem; color: var(--warning); }
+.resource-policy-help { margin-top: 8px; font-size: .75rem; color: var(--muted); }
+.resource-policy-help summary { cursor: pointer; }
+.resource-policy-help p { margin: 5px 0 0; }
 .trading-post-panel { max-width: 1180px; }
 .trading-post-heading { display: flex; align-items: end; justify-content: space-between; gap: 20px; margin-bottom: 24px; }
 .trading-post-heading h1 { margin: 0; font-size: clamp(2rem, 5vw, 4rem); }
@@ -1352,10 +1361,17 @@ html[data-theme="dark"] .compensation-banner, html[data-theme="dark"] .compensat
 .trading-post-listing-form input, .trading-post-listing-form select { min-height: 42px; padding: 7px 9px; border: 1px solid var(--line); background: var(--input-surface); color: var(--ink); }
 .trading-post-checkbox { display: flex; align-items: center; gap: 8px; }
 .trading-post-checkbox input { min-height: auto; }
-.policy-list { display: grid; gap: 12px; margin-top: 28px; }
-.policy-list form { display: grid; grid-template-columns: 1fr auto minmax(180px, 1fr) minmax(130px, .6fr) auto; align-items: end; gap: 12px; padding: 16px; border: 1px solid var(--line); }
-.policy-list label { display: grid; gap: 5px; font-size: .8rem; font-weight: 700; }
-.policy-list select, .policy-list input, .policy-list button { min-height: 38px; padding: 7px 9px; }
+.policy-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr)); gap: 8px; margin-top: 8px; }
+.policy-list form { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 4px 8px; padding: 8px 10px; border: 1px solid var(--line); }
+.policy-resource, .policy-direction { grid-column: 1 / -1; display: flex; flex-wrap: wrap; justify-content: space-between; gap: 4px 8px; }
+.policy-resource span { font-size: .75rem; font-variant-numeric: tabular-nums; }
+.policy-direction { color: var(--muted); font-size: .68rem; }
+.policy-list input[type="range"] { grid-column: 1 / -1; width: 100%; min-width: 0; height: 28px; margin: 0; accent-color: var(--navy); cursor: pointer; }
+.policy-current { grid-column: 1 / -1; text-align: center; font-size: .78rem; font-weight: 700; }
+.policy-amount { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 8px; min-width: 0; font-size: .72rem; }
+.policy-amount input { width: 100%; min-width: 0; flex: 1 1 80px; }
+.policy-list input[type="number"], .policy-list button { min-height: 32px; padding: 4px 6px; color: var(--ink); border: 1px solid var(--input-border); background: var(--input-surface); }
+.policy-list button { cursor: pointer; }
 
 @media (max-width: 1120px) and (min-width: 821px) {
     .island-grid { grid-template-columns: 240px minmax(340px, 1fr) 282px; min-width: 862px; }
@@ -1508,7 +1524,6 @@ html[data-theme="dark"] .compensation-banner, html[data-theme="dark"] .compensat
     .message-board-heading, .message-board-content { padding-inline: 14px; }
     .message-board-meta { align-items: flex-start; flex-direction: column; gap: 2px; }
     .message-board-form-footer .button { min-height: 44px; }
-    .policy-list form { grid-template-columns: 1fr; align-items: stretch; }
     .secretary-panel .secretary-page-title { font-size: 1.25rem; }
     .secretary-name { font-size: 2.4rem; }
     .secretary-skill { gap: 4px 8px; padding: 10px 11px; }

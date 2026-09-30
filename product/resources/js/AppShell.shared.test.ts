@@ -1,8 +1,10 @@
 import { flushPromises, mount } from '@vue/test-utils';
 import { describe, expect, it, vi } from 'vitest';
 import App from './App.vue';
+import CommandQueuePanel from './components/CommandQueuePanel.vue';
 import HexMap from './components/HexMap.vue';
 import TradingPostPanel from './components/TradingPostPanel.vue';
+import SalePolicyPanel from './components/SalePolicyPanel.vue';
 import type { Nation, PublicNationDetail, TradingPostData, TradingPostListing } from './types';
 import { response, envelopeResponse, validationResponse, emptyChunk, publicDetail, resourceForecastFixture, ownerNationFixture, surfaceCellFixture, undergroundSurfaceMapFixture, unnamedSecretaryFixture, publicResponse, installAppTestLifecycle } from './AppTestHarness';
 
@@ -32,25 +34,23 @@ describe('application lobby and island entry', () => {
 
         await flushPromises();
         const requestCount = fetchMock.mock.calls.length;
-        await wrapper.get<HTMLInputElement>('input[value="dark"]').setValue();
-        expect(document.documentElement.dataset.theme).toBe('dark');
-        expect(document.cookie).toContain('hakoniwa_theme=dark');
-        await wrapper.get<HTMLInputElement>('input[value="light"]').setValue();
-        expect(document.documentElement.dataset.theme).toBe('light');
-        expect(document.cookie).toContain('hakoniwa_theme=light');
-        await wrapper.get<HTMLInputElement>('input[value="system"]').setValue();
-        expect(document.documentElement.dataset.theme).toBe('system');
-        expect(document.cookie).toContain('hakoniwa_theme=system');
+        for (const mode of ['dark', 'light', 'system', 'skyblue', 'autumn']) {
+            await wrapper.get<HTMLInputElement>(`input[value="${mode}"]`).setValue();
+            expect(document.documentElement.dataset.theme).toBe(mode);
+            expect(document.cookie).toContain(`hakoniwa_theme=${mode}`);
+        }
         expect(fetchMock).toHaveBeenCalledTimes(requestCount);
         wrapper.unmount();
 
-        document.documentElement.dataset.theme = 'dark';
-        const darkWrapper = mount(App);
-        await darkWrapper.findAll('.site-header nav button')
-            .find((button) => button.text() === 'オプション')!.trigger('click');
-        expect(darkWrapper.get<HTMLInputElement>('input[value="dark"]').element.checked).toBe(true);
-        await flushPromises();
-        darkWrapper.unmount();
+        for (const mode of ['dark', 'skyblue', 'autumn']) {
+            document.documentElement.dataset.theme = mode;
+            const restoredWrapper = mount(App);
+            await restoredWrapper.findAll('.site-header nav button')
+                .find((button) => button.text() === 'オプション')!.trigger('click');
+            expect(restoredWrapper.get<HTMLInputElement>(`input[value="${mode}"]`).element.checked).toBe(true);
+            await flushPromises();
+            restoredWrapper.unmount();
+        }
 
         let resolveNation!: (value: Response) => void;
         const pendingNation = new Promise<Response>((resolve) => {
@@ -88,7 +88,6 @@ describe('application lobby and island entry', () => {
 
         expect(window.location.pathname).toBe('/');
         expect(wrapper.find('.underground-panel').exists()).toBe(false);
-        expect(wrapper.text()).toContain('HAKONIWA ISLANDS');
         expect(wrapper.text()).toContain('ターン更新（2時間ごと）');
         expect(wrapper.text()).toContain('公開島');
         expect(wrapper.text()).toContain('約500億円');
@@ -734,7 +733,6 @@ describe('application lobby and island entry', () => {
         await wrapper.find('.ranking-card tbody button').trigger('click');
         await flushPromises();
         expect(scrollTo).toHaveBeenCalledWith({ top: 0, left: 0, behavior: 'auto' });
-        expect(wrapper.text()).toContain('PUBLIC ISLAND PREVIEW');
         expect(wrapper.text()).toContain('人口・面積・推定資金・食料合計・施設規模');
         expect(wrapper.find('.preview-heading').text()).toContain('人口1,000人');
         expect(wrapper.find('.preview-heading').text()).toContain('面積17セル');
@@ -1033,6 +1031,7 @@ describe('application lobby and island entry', () => {
             ],
         };
         let previewDetailCalls = 0;
+        let dailyQuestsComplete = false;
         const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
             const path = String(input);
             if (path.endsWith('/rankings')) return response([
@@ -1134,8 +1133,8 @@ describe('application lobby and island entry', () => {
             });
             if (path === '/api/v1/me/daily-quests') return response([
                 { key: 'development_opened', label: '開発画面を開く', canonical_day: '2026-09-09', progress: 1, target: 1, completed: true },
-                { key: 'underground_battles', label: '地下で10戦する', canonical_day: '2026-09-09', progress: 4, target: 10, completed: false },
-                { key: 'command_registered', label: 'コマンドを登録する', canonical_day: '2026-09-09', progress: 0, target: 1, completed: false },
+                { key: 'underground_battles', label: '地下で10戦する', canonical_day: '2026-09-09', progress: dailyQuestsComplete ? 10 : 4, target: 10, completed: dailyQuestsComplete },
+                { key: 'command_registered', label: 'コマンドを登録する', canonical_day: '2026-09-09', progress: dailyQuestsComplete ? 1 : 0, target: 1, completed: dailyQuestsComplete },
             ]);
             return response(null, 404);
         });
@@ -1146,7 +1145,7 @@ describe('application lobby and island entry', () => {
         const headerNavigation = wrapper.find('.site-header nav').text();
         expect(headerNavigation).toContain('TOP');
         expect(headerNavigation).toContain('自島へ');
-        expect(headerNavigation).toContain('資源売却');
+        expect(headerNavigation).not.toContain('資源売却');
         expect(headerNavigation).toContain('交易場');
         expect(headerNavigation).toContain('オプション');
         expect(headerNavigation).toContain('マニュアル');
@@ -1201,10 +1200,22 @@ describe('application lobby and island entry', () => {
 
         await wrapper.findAll('.site-header nav button').find((button) => button.text() === '自島へ')!.trigger('click');
         await flushPromises();
+        expect(wrapper.find('.daily-quest-trigger .notification-dot').exists()).toBe(true);
         await wrapper.get('.daily-quest-trigger').trigger('click');
         await flushPromises();
         expect(wrapper.get('.daily-quest-modal').text()).toContain('開発画面を開く1 / 1・達成');
         expect(wrapper.get('.daily-quest-modal').text()).toContain('地下で10戦する4 / 10');
+        await wrapper.get('.daily-quest-modal button[aria-label="閉じる"]').trigger('click');
+        wrapper.getComponent(CommandQueuePanel).vm.$emit('daily-quest', {
+            key: 'command_registered', label: 'コマンドを登録する', canonical_day: '2026-09-09',
+            progress: 1, target: 1, completed: true, completed_now: false, paradox_awarded: 0, paradox_balance: 0,
+        });
+        await flushPromises();
+        expect(wrapper.find('.daily-quest-trigger .notification-dot').exists()).toBe(true);
+        dailyQuestsComplete = true;
+        await wrapper.get('.daily-quest-trigger').trigger('click');
+        await flushPromises();
+        expect(wrapper.find('.daily-quest-trigger .notification-dot').exists()).toBe(false);
         await wrapper.get('.daily-quest-modal button[aria-label="閉じる"]').trigger('click');
         expect(wrapper.find('.nation-hud').text()).toContain('62,728億円');
         expect(wrapper.find('.nation-hud').text()).toContain('N1 自島');
@@ -1299,6 +1310,8 @@ describe('application lobby and island entry', () => {
             expect(developmentBoard.compareDocumentPosition(log.element) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
         }
         const workspaceJumpButtons = wrapper.findAll('.workspace-jump button');
+        expect(wrapper.getComponent(SalePolicyPanel).props('nationId')).toBe(ownerNationFixture.id);
+        expect(wrapper.find('.resource-panel .daily-quest-trigger').exists()).toBe(true);
         expect(workspaceJumpButtons.every((button) => button.attributes('aria-controls') === workspaceScroll.attributes('id'))).toBe(true);
         const scrollTo = vi.fn();
         Object.defineProperty(workspaceScroll.element, 'scrollTo', { configurable: true, value: scrollTo });
@@ -1328,7 +1341,6 @@ describe('application lobby and island entry', () => {
         const publicRankingButton = wrapper.findAll('.ranking-card tbody button').find((button) => button.text().includes('公開島'))!;
         await publicRankingButton.trigger('click');
         await flushPromises();
-        expect(wrapper.text()).toContain('PUBLIC ISLAND PREVIEW');
         expect(fetchMock.mock.calls.filter(([path]) =>
             String(path).includes('/api/v1/public/nations/7/map-spaces/2/chunks/'))).toHaveLength(publicPreviewChunkCallsBefore);
         expect(fetchMock.mock.calls.filter(([path]) =>

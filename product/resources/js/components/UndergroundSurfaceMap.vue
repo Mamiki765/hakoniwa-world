@@ -214,8 +214,9 @@ function facilityLabel(slot: UndergroundSurfaceMapSlot): string {
     width: min(100%, 25rem);
     margin: 0.75rem auto 0;
     padding: 0.75rem;
-    border-left: 0.22rem solid #b62f35;
-    background: color-mix(in srgb, var(--surface, #fff) 92%, #b62f35);
+    border-left: 0.22rem solid var(--coral);
+    background: var(--selected-surface);
+    color: var(--ink);
 }
 .underground-map-detail h3 { margin: 0; }
 .underground-map-detail dl { display: grid; gap: 0.25rem; margin: 0; }

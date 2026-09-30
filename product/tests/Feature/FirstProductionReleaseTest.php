@@ -108,7 +108,7 @@ final class FirstProductionReleaseTest extends TestCase
             $this->get($path)->assertOk()
                 ->assertSee('<html lang="ja" data-theme="system">', false);
         }
-        foreach (['system' => 'system', 'light' => 'light', 'dark' => 'dark', 'wat' => 'system'] as $cookie => $expected) {
+        foreach (['system' => 'system', 'light' => 'light', 'dark' => 'dark', 'skyblue' => 'skyblue', 'autumn' => 'autumn', 'wat' => 'system'] as $cookie => $expected) {
             foreach ($themePaths as $path) {
                 $response = $this->withUnencryptedCookie('hakoniwa_theme', $cookie)->get($path);
                 $response->assertOk()

@@ -697,7 +697,6 @@ onBeforeUnmount(() => {
         <aside class="command-panel" aria-label="セル情報と開発コマンド" :aria-busy="busy" :inert="pendingDefinition ? true : undefined">
             <div class="command-panel-body">
                 <section v-if="selectedUnderground" class="underground-target-summary" aria-label="選択中の地下施設枠">
-                    <p class="eyebrow">UNDERGROUND SLOT</p>
                     <h3>地下{{ selectedUnderground.layer }}層・slot {{ selectedUnderground.slot_index }}</h3>
                     <p>{{ selectedUnderground.coordinate_label }}</p>
                     <p>{{ selectedUnderground.facility_key === null ? '空き施設枠' : '建築済み施設枠' }}</p>
@@ -792,7 +791,6 @@ onBeforeUnmount(() => {
             <div class="plan-panel-body">
                 <div class="plan-heading">
                     <div>
-                        <p class="eyebrow">DEVELOPMENT PLAN</p>
                         <h3>開発計画</h3>
                     </div>
                     <span>{{ queue.explicit_count }}件登録</span>
@@ -884,7 +882,6 @@ onBeforeUnmount(() => {
             >
                 <header class="command-entry-heading">
                     <div>
-                        <p class="eyebrow">COMMAND INPUT</p>
                         <h3 id="command-entry-title">{{ pendingDefinition.name }}</h3>
                     </div>
                     <button type="button" aria-label="入力を閉じる" @click="closePendingCommand">×</button>

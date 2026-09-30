@@ -78,7 +78,7 @@ function handleApplicationPageShow(): void {
 function handleApplicationVisibilityChange(): void {
     if (document.visibilityState === 'visible') void checkApplicationVersion();
 }
-const themeModes = ['system', 'light', 'dark'] as const;
+const themeModes = ['system', 'light', 'dark', 'skyblue', 'autumn'] as const;
 type ThemeMode = typeof themeModes[number];
 
 function normaliseThemeMode(value: string | undefined): ThemeMode {
@@ -163,8 +163,9 @@ const dailyQuestModalOpen = ref(false);
 const dailyQuestLoading = ref(false);
 const dailyQuestError = ref('');
 const dailyQuests = ref<DailyQuestProgress[]>([]);
+const hasIncompleteDailyQuests = computed(() => dailyQuests.value.some((quest) => !quest.completed));
 const selectedUndergroundSlot = ref<UndergroundFacilityTarget | null>(null);
-const page = ref<'home' | 'announcements' | 'inquiry' | 'admin-inquiries' | 'guide-topics' | 'admin' | 'island' | 'preview' | 'resources' | 'trading-post' | 'secretary' | 'underground' | 'options' | 'account' | 'credits'>(
+const page = ref<'home' | 'announcements' | 'inquiry' | 'admin-inquiries' | 'guide-topics' | 'admin' | 'island' | 'preview' | 'trading-post' | 'secretary' | 'underground' | 'options' | 'account' | 'credits'>(
     window.location.pathname === '/credits'
         ? 'credits'
         : (window.location.pathname === '/underground' ? 'underground' : 'home'),
@@ -398,13 +399,7 @@ async function recordDevelopmentOpened(): Promise<void> {
     if (user.value === null) return;
     try {
         const quest = await api<DailyQuestProgress>('/api/v1/me/daily-quests/development-opened', { method: 'POST' });
-        user.value = {
-            ...user.value,
-            paradox: { ...user.value.paradox, balance: quest.paradox_balance },
-        };
-        if (quest.completed_now) {
-            showRewardToast(`デイリークエスト「${quest.label}」達成: 輝石${quest.paradox_awarded}Pdを受け取りました。`);
-        }
+        handleDailyQuestProgress(quest);
     } catch {
         // Opening the development screen must not depend on reward notification delivery.
     }
@@ -421,6 +416,10 @@ async function loadDistortedStoneReminder(): Promise<void> {
 
 async function openDailyQuests(): Promise<void> {
     dailyQuestModalOpen.value = true;
+    await loadDailyQuests();
+}
+
+async function loadDailyQuests(): Promise<void> {
     dailyQuestLoading.value = true;
     dailyQuestError.value = '';
     try {
@@ -461,6 +460,10 @@ function dismissRewardToast(): void {
 }
 
 function handleDailyQuestProgress(quest: DailyQuestProgress): void {
+    if (dailyQuests.value[0]?.canonical_day !== quest.canonical_day) dailyQuests.value = [];
+    const existing = dailyQuests.value.find((entry) => entry.key === quest.key);
+    if (existing) Object.assign(existing, quest);
+    else dailyQuests.value.push(quest);
     if (user.value !== null) {
         user.value = {
             ...user.value,
@@ -1113,6 +1116,7 @@ async function openOwnIsland(): Promise<void> {
             page.value = 'island';
             await loadCompensationGrants();
             await recordDevelopmentOpened();
+            await loadDailyQuests();
         }
     } catch (error) {
         message.value = error instanceof Error ? error.message : '自島を読み込めませんでした。';
@@ -1708,7 +1712,6 @@ async function abandonNation(): Promise<void> {
             <button type="button" @click="page = 'home'">TOP</button>
             <button v-if="nation" type="button" @click="openOwnIsland">自島へ</button>
             <button v-if="secretary" type="button" @click="openSecretary">{{ secretary.header_label }}</button>
-            <button v-if="nation" type="button" @click="page = 'resources'">資源売却</button>
             <button v-if="nation" type="button" @click="page = 'trading-post'">交易場</button>
             <button v-if="secretary" type="button" class="notification-anchor" :aria-label="distortedStoneReminder ? '地底（歪んだ輝石の初回受取があります）' : undefined" @click="openUnderground">地底<span v-if="distortedStoneReminder" class="notification-dot" aria-hidden="true" /></button>
             <button type="button" @click="openOptions">オプション</button>
@@ -1764,9 +1767,8 @@ async function abandonNation(): Promise<void> {
         <section v-if="page === 'home'" class="lobby">
             <div class="lobby-heading">
                 <div>
-                    <p class="eyebrow">HAKONIWA ISLANDS</p>
                     <h1>箱庭諸島２S＋</h1>
-                    <p>島を育て、世界の出来事を見守りながら、長く続く島を作りましょう。</p>
+                    <p>島と秘書とダンジョンと</p>
                 </div>
                 <div v-if="!user" class="compact-login">
                     <p>島を運営するにはログインしてください。</p>
@@ -1800,7 +1802,7 @@ async function abandonNation(): Promise<void> {
 
             <section class="announcement-window" aria-labelledby="latest-announcements-heading">
                 <div class="section-heading">
-                    <div><p class="eyebrow">ANNOUNCEMENTS</p><h2 id="latest-announcements-heading">お知らせ</h2></div>
+                    <div><h2 id="latest-announcements-heading">お知らせ</h2></div>
                     <button type="button" @click="openAnnouncements(1)">すべて表示</button>
                 </div>
                 <ol v-if="latestAnnouncements.length" class="announcement-list compact">
@@ -1814,7 +1816,7 @@ async function abandonNation(): Promise<void> {
 
             <section v-if="user?.can_manage_inquiries" class="inquiry-window" aria-labelledby="inquiry-heading">
                 <div class="section-heading">
-                    <div><p class="eyebrow">CONTACT</p><h2 id="inquiry-heading">お問い合わせ</h2></div>
+                    <div><h2 id="inquiry-heading">お問い合わせ</h2></div>
                     <button type="button" @click="adminOpened = true; page = 'admin'">管理ページへ</button>
                     <button type="button" @click="openInquiry">お問い合わせを送る</button>
                 </div>
@@ -1832,7 +1834,7 @@ async function abandonNation(): Promise<void> {
             <div class="lobby-grid">
                 <section class="ranking-card">
                     <div class="section-heading">
-                        <div><p class="eyebrow">ISLANDS</p><h2>島一覧</h2></div>
+                        <div><h2>島一覧</h2></div>
                         <span>誰でも閲覧できます</span>
                     </div>
                     <div class="ranking-scroll">
@@ -1877,7 +1879,7 @@ async function abandonNation(): Promise<void> {
 
                 <section class="events-card">
                     <div class="section-heading">
-                        <div><p class="eyebrow">MAJOR NEWS</p><h2>重大ニュース</h2></div>
+                        <div><h2>重大ニュース</h2></div>
                     </div>
                     <template v-if="majorNews?.groups.length">
                         <section v-for="group in majorNews.groups" :key="group.target_turn" class="public-event-group">
@@ -1895,7 +1897,7 @@ async function abandonNation(): Promise<void> {
 
                 <section class="events-card">
                     <div class="section-heading">
-                        <div><p class="eyebrow">PUBLIC ISLAND LOG</p><h2>公開島ログ</h2></div>
+                        <div><h2>公開島ログ</h2></div>
                     </div>
                     <template v-if="publicEvents?.groups.length">
                         <section v-for="group in publicEvents.groups" :key="group.target_turn" class="public-event-group">
@@ -1922,7 +1924,6 @@ async function abandonNation(): Promise<void> {
             </div>
 
             <form v-if="user && !nation" class="nation-form panel" @submit.prevent="createNation">
-                <p class="eyebrow">CREATE YOUR NATION</p>
                 <h2>最初の島を作成</h2>
                 <label>
                     島名
@@ -1947,7 +1948,6 @@ async function abandonNation(): Promise<void> {
         </section>
 
         <section v-else-if="user && page === 'inquiry'" class="panel inquiry-page">
-            <p class="eyebrow">CONTACT</p>
             <h1>お問い合わせ</h1>
             <div v-if="inquiryConfirmation" class="inquiry-confirmation" role="status">
                 <h2>送信しました</h2>
@@ -2031,7 +2031,7 @@ async function abandonNation(): Promise<void> {
 
         <section v-else-if="page === 'announcements'" class="announcement-page panel">
             <div class="section-heading">
-                <div><p class="eyebrow">ANNOUNCEMENTS</p><h1>お知らせ</h1></div>
+                <div><h1>お知らせ</h1></div>
                 <div class="announcement-actions">
                     <button v-if="user?.can_manage_announcements" type="button" @click="adminOpened = true; page = 'admin'">管理ページへ</button>
                     <button type="button" @click="page = 'home'">TOPへ戻る</button>
@@ -2115,7 +2115,6 @@ async function abandonNation(): Promise<void> {
         <section v-else-if="page === 'island' && nation?.capital && mapSpace" class="island-page">
             <header class="nation-hud">
                 <div class="hud-identity">
-                    <p class="eyebrow">MY ISLAND</p>
                     <h1 :class="{ 'karma-name': nation.karma_positive }">N{{ nation.nation_number }} {{ nation.name }}</h1>
                     <p v-if="nation.state_label"><span class="state-badge">{{ nation.state_label }}</span><template v-if="nation.winter_theme_active"> 冬theme適用中</template></p>
                     <p v-if="nation.karma_positive" class="karma-emphasis">KARMA:{{ nation.karma }}</p>
@@ -2195,8 +2194,12 @@ async function abandonNation(): Promise<void> {
                 <span><strong>配布倉庫に受取可能な品があります</strong><small>{{ compensationGrants.length }}件の配布内容を確認する</small></span>
                 <span aria-hidden="true">›</span>
             </button>
+            <SalePolicyPanel :key="`${nation.id}:${nation.current_turn}`" :nation-id="nation.id" :resources="nation.resources" :population="nation.total_population">
+                <template #actions>
+                    <button class="daily-quest-trigger notification-anchor" type="button" :aria-label="hasIncompleteDailyQuests ? 'デイリークエスト（未達成の項目があります）' : undefined" @click="openDailyQuests">デイリークエスト<span v-if="hasIncompleteDailyQuests" class="notification-dot" aria-hidden="true" /></button>
+                </template>
+            </SalePolicyPanel>
             <div class="island-workspace-region">
-                <button class="daily-quest-trigger" type="button" @click="openDailyQuests">デイリークエストを確認</button>
                 <nav class="workspace-jump" aria-label="開発ワークスペース内の移動">
                     <button type="button" aria-controls="island-development-workspace" @click="scrollIslandWorkspaceTo('.command-panel')">セル・コマンド</button>
                     <button type="button" aria-controls="island-development-workspace" @click="scrollIslandWorkspaceTo('.map-column')">地図</button>
@@ -2259,7 +2262,6 @@ async function abandonNation(): Promise<void> {
         <section v-else-if="page === 'preview' && previewNation?.capital && mapSpace" class="preview-page">
             <header class="preview-heading">
                 <div>
-                    <p class="eyebrow">PUBLIC ISLAND PREVIEW</p>
                     <h1 :class="{ 'karma-name': previewNation.karma > 0 }">N{{ previewNation.nation_number }} {{ previewNation.name }}</h1>
                     <p v-if="previewNation.state_label"><span class="state-badge">{{ previewNation.state_label }}</span></p>
                     <p v-if="previewNation.karma > 0" class="karma-emphasis">{{ previewNation.karma_badge }}</p>
@@ -2327,7 +2329,6 @@ async function abandonNation(): Promise<void> {
             <IslandEventLog :key="`public:${previewNation.id}:${previewNation.world.current_turn}`" :nation-id="previewNation.id" audience="public" />
         </section>
 
-        <SalePolicyPanel v-else-if="user && nation && page === 'resources'" :nation-id="nation.id" />
 
         <TradingPostPanel v-else-if="user && nation && page === 'trading-post'" :nation-id="nation.id" :world-id="nation.world_id" />
 
@@ -2526,7 +2527,6 @@ async function abandonNation(): Promise<void> {
         </section>
 
         <section v-else-if="page === 'options'" class="panel profile-panel options-panel">
-            <p class="eyebrow">OPTIONS</p>
             <h1>オプション</h1>
             <MonumentDesignSettings v-if="user" />
             <section class="options-section display-settings" aria-labelledby="display-settings-title">
@@ -2562,6 +2562,10 @@ async function abandonNation(): Promise<void> {
                             @change="selectTheme('dark')"
                         >
                         <span><strong>ダークテーマ</strong><small>常に暗い紺・深緑系の配色で表示します。</small></span>
+                    </label>
+                    <label v-for="mode in (['skyblue', 'autumn'] as const)" :key="mode" class="theme-choice">
+                        <input type="radio" name="display-theme" :value="mode" :checked="themeMode === mode" @change="selectTheme(mode)">
+                        <span><strong>{{ mode === 'skyblue' ? 'SkyBlue' : 'Autumn' }}</strong><small>箱庭諸島2 for PHP</small></span>
                     </label>
                 </fieldset>
             </section>
@@ -2660,7 +2664,6 @@ async function abandonNation(): Promise<void> {
         </section>
 
         <section v-else-if="page === 'credits'" class="panel credits-panel">
-            <p class="eyebrow">CREDITS</p>
             <h1>参考作品と画像</h1>
             <p>箱庭諸島2＋：字・原作 徳岡宏樹、画像 小川克人、題字 稲葉修吾。</p>
             <p>
@@ -2670,7 +2673,10 @@ async function abandonNation(): Promise<void> {
                 <img src="https://assets.pbwlove.com/hakoniwa/snow/banner_y.gif" alt="雪国チップ / K.Y studio" loading="lazy">
             </a>
             <p><a href="http://www.bekkoame.ne.jp/~tokuoka/hakoniwa.html" rel="external">原配布元</a></p>
-            <p>原作GIFは本リポジトリとDocker imageに含まれません。未配置時はCSS fallbackを表示します。</p>
+            <p>地形・施設・怪獣の原作GIFは外部assetから表示します。未配置時はCSS fallbackを表示します。</p>
+            <h2>表示テーマ</h2>
+            <p>一部CSS提供元：箱庭諸島2 for PHP / Watson（SkyBlue・Autumn）</p>
+            <p>配布元（元サイト閉鎖済みのため現存配布ページ）：<a href="https://hako.gob.jp/script.html" target="_blank" rel="noopener noreferrer">箱庭なページ</a></p>
         </section>
     </main>
 

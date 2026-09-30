@@ -1233,6 +1233,7 @@ describe('command plan workspace', () => {
 
 describe('sale policy panel', () => {
     it('does not offer sell_all when wheat capabilities forbid it', async () => {
+        const population = 80;
         vi.stubGlobal('fetch', vi.fn(async () => jsonResponse([{
             resource_id: 10,
             resource_key: 'wheat',
@@ -1244,17 +1245,15 @@ describe('sale policy panel', () => {
             version: 1,
             allowed_policies: ['stockpile', 'keep_amount'],
         }])));
-        const wrapper = mount(SalePolicyPanel, { props: { nationId: 1 } });
+        const wrapper = mount(SalePolicyPanel, { props: { nationId: 1, population } });
         await flushPromises();
 
-        expect(wrapper.find('option[value="sell_all"]').exists()).toBe(false);
-        expect(wrapper.find('option[value="stockpile"]').exists()).toBe(true);
-        expect(wrapper.find('option[value="stockpile"]').text()).toBe('上限まで備蓄');
-        expect(wrapper.find('option[value="keep_amount"]').exists()).toBe(true);
-        expect(wrapper.text()).toContain('個別上限を超えた分だけを売却');
-        expect(wrapper.text()).toContain('在庫 100トン');
-        await wrapper.find('select').setValue('keep_amount');
-        expect(wrapper.text()).toContain('保持数（トン）');
+        await wrapper.get('input[type="range"]').setValue('0');
+        await wrapper.get('form').trigger('submit');
+        await flushPromises();
+        const requests = vi.mocked(fetch).mock.calls;
+        const put = requests.find(([, init]) => init?.method === 'PUT');
+        expect(JSON.parse(String(put?.[1]?.body))).toEqual({ policy: 'keep_amount', keep_amount: population, expected_version: 1 });
     });
 
     it('updates keep_amount with the row version and exposes non-negative validation', async () => {
@@ -1268,7 +1267,6 @@ describe('sale policy panel', () => {
         const wrapper = mount(SalePolicyPanel, { props: { nationId: 1 } });
         await flushPromises();
 
-        await wrapper.find('select').setValue('keep_amount');
         const input = wrapper.find('input[type="number"]');
         expect(input.attributes('min')).toBe('0');
         await input.setValue('25');
@@ -1277,5 +1275,89 @@ describe('sale policy panel', () => {
 
         const put = fetchMock.mock.calls.find(([, init]) => init?.method === 'PUT');
         expect(JSON.parse(String(put?.[1]?.body))).toEqual({ policy: 'keep_amount', keep_amount: 25, expected_version: 1 });
+    });
+
+    it('sends both endpoints and a precise holding above the slider range without changing policy meanings', async () => {
+        const original = {
+            resource_id: 11, resource_key: 'minerals', resource_name: '鉱物', unit_label: 'トン',
+            amount: 100, policy: 'stockpile', keep_amount: null, version: 7,
+        };
+        let version = original.version;
+        const fetchMock = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+            if (init?.method !== 'PUT') return jsonResponse([original]);
+            return jsonResponse({ ...original, ...JSON.parse(String(init.body)), version: ++version });
+        });
+        vi.stubGlobal('fetch', fetchMock);
+        const capacity = original.amount * 3;
+        const wrapper = mount(SalePolicyPanel, { props: { nationId: 1, resources: [{ key: original.resource_key, capacity }] } });
+        await flushPromises();
+        const slider = wrapper.get('input[type="range"]');
+        for (const [position, policy] of [['0', 'sell_all'], ['1000', 'stockpile']]) {
+            const expectedVersion = version;
+            await slider.setValue(position);
+            await wrapper.get('form').trigger('submit');
+            await flushPromises();
+            expect(JSON.parse(String(fetchMock.mock.calls.at(-1)?.[1]?.body))).toEqual({ policy, keep_amount: null, expected_version: expectedVersion });
+        }
+        await slider.setValue('500');
+        await wrapper.get('form').trigger('submit');
+        await flushPromises();
+        expect(JSON.parse(String(fetchMock.mock.calls.at(-1)?.[1]?.body))).toMatchObject({ policy: 'keep_amount', keep_amount: capacity / 2 });
+
+        const exactHolding = 123456;
+        await wrapper.get('input[type="number"]').setValue(String(exactHolding));
+        await wrapper.get('form').trigger('submit');
+        await flushPromises();
+        expect(JSON.parse(String(fetchMock.mock.calls.at(-1)?.[1]?.body))).toMatchObject({ policy: 'keep_amount', keep_amount: exactHolding });
+    });
+
+    it('reloads the row version after a conflicting save', async () => {
+        let conflict = true;
+        const fetchMock = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+            if (init?.method === 'PUT' && conflict) {
+                conflict = false;
+                return new Response(JSON.stringify({ message: 'conflict' }), { status: 409 });
+            }
+            return jsonResponse(init?.method === 'PUT'
+                ? { resource_id: 11, policy: 'keep_amount', keep_amount: 25, version: 10 }
+                : [{ resource_id: 11, resource_key: 'minerals', resource_name: '鉱物', unit_label: 'トン', amount: 100, policy: 'stockpile', keep_amount: null, version: conflict ? 1 : 9 }]);
+        });
+        vi.stubGlobal('fetch', fetchMock);
+        const wrapper = mount(SalePolicyPanel, { props: { nationId: 1 } });
+        await flushPromises();
+        await wrapper.get('input[type="number"]').setValue('25');
+        await wrapper.get('form').trigger('submit');
+        await flushPromises();
+        await wrapper.get('input[type="number"]').setValue('25');
+        await wrapper.get('form').trigger('submit');
+        await flushPromises();
+        expect(JSON.parse(String(fetchMock.mock.calls.at(-1)?.[1]?.body))).toMatchObject({ expected_version: 9 });
+    });
+
+    it('rejects numeric wheat holdings below population and locks to stockpile when population exceeds capacity', async () => {
+        const capacity = 100;
+        const fetchMock = vi.fn(async () => jsonResponse([{
+            resource_id: 10, resource_key: 'wheat', resource_name: '小麦', unit_label: 'トン',
+            amount: capacity, policy: 'keep_amount', keep_amount: 0, version: 1,
+            allowed_policies: ['keep_amount', 'stockpile'],
+        }]));
+        vi.stubGlobal('fetch', fetchMock);
+        const wrapper = mount(SalePolicyPanel, { props: { nationId: 1, population: capacity / 2, resources: [{ key: 'wheat', capacity }] } });
+        await flushPromises();
+        expect(wrapper.find('details[open]').exists()).toBe(false);
+        expect(wrapper.get<HTMLInputElement>('input[type="number"]').element.value).toBe(String(capacity / 2));
+        await wrapper.get('input[type="number"]').setValue(String(capacity / 2 - 1));
+        await wrapper.get('form').trigger('submit');
+        expect(vi.mocked(fetch).mock.calls.some(([, init]) => init?.method === 'PUT')).toBe(false);
+        wrapper.unmount();
+
+        const locked = mount(SalePolicyPanel, { props: { nationId: 1, population: capacity + 1, resources: [{ key: 'wheat', capacity }] } });
+        await flushPromises();
+        expect(locked.get<HTMLInputElement>('input[type="range"]').element.disabled).toBe(true);
+        expect(locked.get<HTMLInputElement>('input[type="range"]').element.value).toBe(locked.get('input[type="range"]').attributes('max'));
+        expect(locked.get<HTMLInputElement>('input[type="number"]').element.disabled).toBe(true);
+        await locked.get('form').trigger('submit');
+        const put = vi.mocked(fetch).mock.calls.find(([, init]) => init?.method === 'PUT');
+        expect(JSON.parse(String(put?.[1]?.body))).toEqual({ policy: 'stockpile', keep_amount: null, expected_version: 1 });
     });
 });

@@ -58,7 +58,6 @@ watch(() => [props.nationId, props.audience], resetAndLoad);
     <section class="island-events-panel" :aria-labelledby="`island-events-heading-${props.audience}`">
         <header class="island-events-heading">
             <div>
-                <p class="eyebrow">{{ props.audience === 'public' ? 'PUBLIC ISLAND LOG' : 'ISLAND LOG' }}</p>
                 <h2 :id="`island-events-heading-${props.audience}`">{{ props.audience === 'public' ? '公開島ログ' : '島ログ' }}</h2>
             </div>
             <span v-if="result?.turn_range">
