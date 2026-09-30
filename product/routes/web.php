@@ -25,6 +25,7 @@ use App\Http\Controllers\Api\UndergroundEquipmentController;
 use App\Http\Controllers\Api\UndergroundIntroController;
 use App\Http\Controllers\Api\UndergroundRequestAdmissionController;
 use App\Http\Controllers\Api\UserMonumentDesignController;
+use App\Http\Controllers\AppController;
 use App\Http\Controllers\AssetController;
 use App\Http\Controllers\Auth\OAuthController;
 use App\Http\Controllers\CommunityGuidelinesController;
@@ -39,6 +40,9 @@ Route::get('/auth/{provider}/redirect', [OAuthController::class, 'redirect'])->n
 Route::get('/account/link/{provider}/redirect', [OAuthController::class, 'link'])->middleware('auth')->name('oauth.link');
 Route::get('/auth/{provider}/callback', [OAuthController::class, 'callback'])->name('oauth.callback');
 Route::post('/logout', [OAuthController::class, 'logout'])->middleware('auth')->name('logout');
+
+Route::get('/api/v1/application-version', [AppController::class, 'version'])
+    ->middleware('throttle:60,1');
 
 Route::get('/assets/hakoniwa-tiles/{filename}', AssetController::class)
     ->where('filename', '[A-Za-z0-9_-]+\.(?:gif|png|webp)');
@@ -220,4 +224,4 @@ Route::prefix('api/v1')->middleware(['auth', PrivateApiResponse::class])->group(
     Route::delete('/nations/{nation}/trading-post/listings/{auctionListing}', [TradingPostController::class, 'destroy']);
 });
 
-Route::view('/{path?}', 'app')->where('path', '.*');
+Route::get('/{path?}', [AppController::class, 'show'])->where('path', '.*');
