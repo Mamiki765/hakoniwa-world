@@ -24,7 +24,7 @@ interface Preview {
 }
 type Operation = 'distribution' | 'abandonment' | 'purge';
 const props = defineProps<{ worldId: number }>();
-const emit = defineEmits<{ close: []; announcements: []; guide: []; inquiries: [] }>();
+const emit = defineEmits<{ close: []; announcements: []; guide: []; merchant: []; inquiries: [] }>();
 const overview = ref<Overview | null>(null);
 const purgeRows = ref<PurgeRow[]>([]);
 const busy = ref(false);
@@ -135,6 +135,7 @@ const stopLabels: Record<string, string> = {
             <button :disabled="locked" @click="selectSection('abandonment')">島整理</button>
             <button :disabled="locked" @click="emit('announcements')">お知らせ管理</button>
             <button :disabled="locked" @click="emit('guide')">案内人の会話</button>
+            <button :disabled="locked" @click="emit('merchant')">行商人の会話</button>
             <button :disabled="locked" @click="emit('inquiries')">お問い合わせ一覧</button>
             <button :disabled="locked" @click="selectSection('purge')">ログ整理</button>
         </nav>

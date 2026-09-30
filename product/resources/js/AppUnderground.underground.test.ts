@@ -11,6 +11,148 @@ const response = (data: unknown, status = 200) => baseResponse(withUndergroundDe
 installAppTestLifecycle();
 
 describe('Underground application operations', () => {
+    it('refreshes the free stone reminder at JST midnight and after resuming, and clears it after receipt', async () => {
+        vi.useFakeTimers();
+        // The device is five minutes ahead of the server's JST clock.
+        vi.setSystemTime(new Date('2026-09-23T15:04:59Z'));
+        const visibility = vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('visible');
+        let unclaimed = true;
+        let shopDay = '2026-09-23';
+        let resetAfterMs = 1_000;
+        let delayedState: Promise<Response> | null = null;
+        let delayedPurchase: Promise<Response> | null = null;
+        let failNextState = false;
+        const state = () => ({
+            stage: 'underground_open', secretary_name: 'ペリドット', combat_level: 100, combat_xp: 0,
+            next_level_xp: 100, next_level_requirement: 100, current_hp: 100, unspent_stp: 0,
+            skill_points_total: 0, skill_points_unspent: 0, skill_points_spent: 0,
+            skill_trees: null, active_slots: [], passive_modifiers: {},
+            growth_path: null, battle: null, trial: null, otherworld_unlocked: true, polishing_tutorial_completed: true,
+            distorted_stone_reminder: unclaimed,
+            distorted_stone_shop: {
+                balance: unclaimed ? 0 : 1, day: shopDay, reset_after_ms: resetAfterMs, purchased_today: unclaimed ? 0 : 1,
+                daily_limit: 4, next_price: unclaimed ? 0 : 10_000, unlocked: true,
+            },
+        });
+        const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+            const path = String(input);
+            if (path === '/api/v1/me') return response({ id: 1, display_name: 'Owner', providers: [] });
+            if (path === '/api/v1/me/nation') return response(ownerNationFixture);
+            if (path === '/api/v1/me/secretary?world_id=1') return response({
+                ...unnamedSecretaryFixture, name: 'ペリドット', named_at: '2026-09-22T00:00:00Z', header_label: 'ペリドット',
+            });
+            if (path === '/api/v1/me/underground/distorted-stone-reminder') return response({ unclaimed, day: shopDay, reset_after_ms: resetAfterMs });
+            if (path === '/api/v1/me/underground') {
+                const pending = delayedState;
+                delayedState = null;
+                if (!pending && failNextState) {
+                    failNextState = false;
+                    return response(null, 503);
+                }
+                return pending ?? response(state());
+            }
+            if (path === '/api/v1/me/underground/battles') return response([]);
+            if (path === '/api/v1/me/underground/shop/distorted-stone' && init?.method === 'POST') {
+                expect(JSON.parse(String(init.body)).price).toBe(0);
+                unclaimed = false;
+                const pending = delayedPurchase;
+                delayedPurchase = null;
+                return pending ?? response(state());
+            }
+            return publicResponse(path) ?? response(null, 404);
+        });
+        stubUndergroundFetch(fetchMock);
+        const wrapper = mount(App);
+        try {
+            await flushPromises();
+            const headerButton = () => wrapper.findAll('.site-header nav button').find(button => button.text() === '地底')!;
+            const shopButton = () => wrapper.findAll('.ug-navigation button').find(button => button.text().includes('ショップ'))!;
+            const polishingTab = () => wrapper.findAll('.ug-tabs button').find(button => button.text() === '魔石研磨')!;
+            expect(headerButton().find('.notification-dot').exists()).toBe(true);
+            await headerButton().trigger('click');
+            await flushPromises();
+            expect(shopButton().find('.notification-dot').exists()).toBe(true);
+            await openUndergroundView(wrapper, 'ショップ', '魔石研磨');
+            expect(polishingTab().find('.notification-dot').exists()).toBe(true);
+            await wrapper.get('[aria-label="歪んだ輝石"] button').trigger('click');
+            await flushPromises();
+            expect(headerButton().find('.notification-dot').exists()).toBe(false);
+            expect(shopButton().find('.notification-dot').exists()).toBe(false);
+            expect(polishingTab().find('.notification-dot').exists()).toBe(false);
+
+            await wrapper.findAll('.site-header nav button').find(button => button.text() === 'TOP')!.trigger('click');
+            await flushPromises();
+            const previousDayState = response(state());
+            let resolveEntry!: (value: Response) => void;
+            delayedState = new Promise<Response>(resolve => { resolveEntry = resolve; });
+            await headerButton().trigger('click');
+            await flushPromises();
+            unclaimed = true;
+            shopDay = '2026-09-24';
+            resetAfterMs = 86_400_000;
+            failNextState = true;
+            await vi.advanceTimersByTimeAsync(1_000);
+            resolveEntry(previousDayState);
+            await flushPromises();
+            expect(headerButton().find('.notification-dot').exists()).toBe(false);
+            resetAfterMs -= 5_000;
+            await vi.advanceTimersByTimeAsync(5_000);
+            await flushPromises();
+            expect(headerButton().find('.notification-dot').exists()).toBe(true);
+            expect(shopButton().find('.notification-dot').exists()).toBe(true);
+            await openUndergroundView(wrapper, 'ショップ', '魔石研磨');
+            expect(polishingTab().find('.notification-dot').exists()).toBe(true);
+            // A purchase made before midnight must not overwrite the newer daily state.
+            let resolvePurchase!: (value: Response) => void;
+            delayedPurchase = new Promise<Response>(resolve => { resolvePurchase = resolve; });
+            await wrapper.get('[aria-label="歪んだ輝石"] button').trigger('click');
+            await flushPromises();
+            const previousDayPurchase = response(state());
+            unclaimed = true;
+            shopDay = '2026-09-25';
+            resetAfterMs = 86_400_000;
+            await vi.advanceTimersByTimeAsync(86_395_000);
+            await flushPromises();
+            resolvePurchase(previousDayPurchase);
+            await flushPromises();
+            expect(headerButton().find('.notification-dot').exists()).toBe(true);
+            expect(shopButton().find('.notification-dot').exists()).toBe(true);
+            expect(polishingTab().find('.notification-dot').exists()).toBe(true);
+            await wrapper.get('[aria-label="歪んだ輝石"] button').trigger('click');
+            await flushPromises();
+            expect(headerButton().find('.notification-dot').exists()).toBe(false);
+            expect(shopButton().find('.notification-dot').exists()).toBe(false);
+            expect(polishingTab().find('.notification-dot').exists()).toBe(false);
+
+            await wrapper.findAll('.site-header nav button').find(button => button.text() === 'TOP')!.trigger('click');
+            await flushPromises();
+            const reminderCalls = () => fetchMock.mock.calls.filter(([path]) => String(path).endsWith('/distorted-stone-reminder')).length;
+            const beforeResume = reminderCalls();
+            visibility.mockReturnValue('hidden');
+            unclaimed = true;
+            shopDay = '2026-09-26';
+            vi.setSystemTime(new Date('2026-09-25T15:05:00Z'));
+            document.dispatchEvent(new Event('visibilitychange'));
+            window.dispatchEvent(new Event('pageshow'));
+            await flushPromises();
+            expect(reminderCalls()).toBe(beforeResume);
+            visibility.mockReturnValue('visible');
+            document.dispatchEvent(new Event('visibilitychange'));
+            window.dispatchEvent(new Event('pageshow'));
+            await flushPromises();
+            expect(reminderCalls()).toBe(beforeResume + 1);
+            expect(headerButton().find('.notification-dot').exists()).toBe(true);
+            await headerButton().trigger('click');
+            await flushPromises();
+            await openUndergroundView(wrapper, 'ショップ', '魔石研磨');
+            expect(shopButton().find('.notification-dot').exists()).toBe(true);
+            expect(polishingTab().find('.notification-dot').exists()).toBe(true);
+        } finally {
+            wrapper.unmount();
+            visibility.mockRestore();
+        }
+    });
+
     it('sells only the unequipped instance of two equal-level bracelets', async () => {
         const secretary = structuredClone(unnamedSecretaryFixture);
         Object.assign(secretary, { name: '秘書', named_at: '2026-09-09T00:00:00Z', header_label: '秘書' });

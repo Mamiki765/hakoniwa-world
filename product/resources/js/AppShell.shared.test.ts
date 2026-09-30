@@ -34,7 +34,7 @@ describe('application lobby and island entry', () => {
 
         await flushPromises();
         const requestCount = fetchMock.mock.calls.length;
-        for (const mode of ['dark', 'light', 'system', 'skyblue', 'autumn']) {
+        for (const mode of ['dark', 'light', 'system', 'skyblue', 'autumn', 'black']) {
             await wrapper.get<HTMLInputElement>(`input[value="${mode}"]`).setValue();
             expect(document.documentElement.dataset.theme).toBe(mode);
             expect(document.cookie).toContain(`hakoniwa_theme=${mode}`);
@@ -42,12 +42,14 @@ describe('application lobby and island entry', () => {
         expect(fetchMock).toHaveBeenCalledTimes(requestCount);
         wrapper.unmount();
 
-        for (const mode of ['dark', 'skyblue', 'autumn']) {
+        for (const mode of ['dark', 'skyblue', 'autumn', 'black', 'wat']) {
             document.documentElement.dataset.theme = mode;
             const restoredWrapper = mount(App);
             await restoredWrapper.findAll('.site-header nav button')
                 .find((button) => button.text() === 'オプション')!.trigger('click');
-            expect(restoredWrapper.get<HTMLInputElement>(`input[value="${mode}"]`).element.checked).toBe(true);
+            const expectedMode = mode === 'wat' ? 'system' : mode;
+            expect(restoredWrapper.get<HTMLInputElement>(`input[value="${expectedMode}"]`).element.checked).toBe(true);
+            expect(document.documentElement.dataset.theme).toBe(expectedMode);
             await flushPromises();
             restoredWrapper.unmount();
         }
