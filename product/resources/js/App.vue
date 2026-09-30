@@ -73,10 +73,14 @@ async function checkApplicationVersion(): Promise<void> {
 
 function handleApplicationPageShow(): void {
     void checkApplicationVersion();
+    refreshDistortedStoneReminderForDay(true);
 }
 
 function handleApplicationVisibilityChange(): void {
-    if (document.visibilityState === 'visible') void checkApplicationVersion();
+    if (document.visibilityState === 'visible') {
+        void checkApplicationVersion();
+        refreshDistortedStoneReminderForDay(true);
+    }
 }
 const themeModes = ['system', 'light', 'dark', 'skyblue', 'autumn', 'black'] as const;
 type ThemeMode = typeof themeModes[number];
@@ -159,6 +163,15 @@ const pendingCompensationClaim = ref<{ grantId: number; requestId: string } | nu
 const compensationError = ref('');
 const undergroundSurfaceMap = ref<UndergroundSurfaceMap | null>(null);
 const distortedStoneReminder = ref(false);
+const undergroundPanel = ref<InstanceType<typeof UndergroundPanel> | null>(null);
+let distortedStoneReminderDay: string | null = null;
+let distortedStoneReminderDeadline: number | null = null;
+const distortedStoneReminderRetryDelays = [5_000, 30_000, 120_000] as const;
+let distortedStoneReminderRetries = 0;
+let distortedStoneReminderInFlight = false;
+let distortedStoneReminderRevision = 0;
+let distortedStoneReminderTimer: ReturnType<typeof setTimeout> | null = null;
+let distortedStoneReminderStopped = false;
 const dailyQuestModalOpen = ref(false);
 const dailyQuestLoading = ref(false);
 const dailyQuestError = ref('');
@@ -406,12 +419,53 @@ async function recordDevelopmentOpened(): Promise<void> {
 }
 
 async function loadDistortedStoneReminder(): Promise<void> {
+    if (distortedStoneReminderInFlight || distortedStoneReminderStopped) return;
+    distortedStoneReminderInFlight = true;
+    const revision = distortedStoneReminderRevision;
     try {
-        const reminder = await api<{ unclaimed: boolean }>('/api/v1/me/underground/distorted-stone-reminder');
-        distortedStoneReminder.value = reminder.unclaimed;
-    } catch {
+        const reminder = undergroundPanel.value
+            ? await undergroundPanel.value.refreshDistortedStoneReminder()
+            : await api<{ unclaimed: boolean; day: string; reset_after_ms: number }>('/api/v1/me/underground/distorted-stone-reminder', { cache: 'no-store' });
+        if (!distortedStoneReminderStopped && revision === distortedStoneReminderRevision) {
+            distortedStoneReminder.value = reminder.unclaimed;
+        }
+        distortedStoneReminderDay = reminder.day;
+        distortedStoneReminderDeadline = performance.now() + reminder.reset_after_ms;
+        distortedStoneReminderRetries = 0;
+    } catch (caught) {
+        distortedStoneReminderDeadline = null;
+        if (!(caught instanceof ApiError) || caught.status >= 500 || caught.status === 408) {
+            const delay = distortedStoneReminderRetryDelays[distortedStoneReminderRetries++];
+            if (delay !== undefined) distortedStoneReminderDeadline = performance.now() + delay;
+        }
         // The underground panel refreshes this indicator when it opens.
+    } finally {
+        distortedStoneReminderInFlight = false;
+        scheduleDistortedStoneReminder();
     }
+}
+
+function updateDistortedStoneReminder(unclaimed: boolean): void {
+    distortedStoneReminderRevision++;
+    distortedStoneReminder.value = unclaimed;
+}
+
+function refreshDistortedStoneReminderForDay(force = false): void {
+    if (document.visibilityState === 'hidden' || !user.value || !secretary.value) return;
+    if (force && !distortedStoneReminderInFlight) distortedStoneReminderRetries = 0;
+    if (force || distortedStoneReminderDay === null || distortedStoneReminderDeadline === null
+        || performance.now() >= distortedStoneReminderDeadline) void loadDistortedStoneReminder();
+}
+
+function scheduleDistortedStoneReminder(): void {
+    if (distortedStoneReminderStopped) return;
+    if (distortedStoneReminderTimer !== null) clearTimeout(distortedStoneReminderTimer);
+    if (distortedStoneReminderDeadline === null) return;
+    const delay = Math.max(0, distortedStoneReminderDeadline - performance.now());
+    distortedStoneReminderTimer = setTimeout(() => {
+        distortedStoneReminderTimer = null;
+        refreshDistortedStoneReminderForDay();
+    }, delay);
 }
 
 async function openDailyQuests(): Promise<void> {
@@ -572,6 +626,8 @@ async function claimCompensation(grant: CompensationGrant): Promise<void> {
 }
 
 onUnmounted(() => {
+    distortedStoneReminderStopped = true;
+    if (distortedStoneReminderTimer !== null) clearTimeout(distortedStoneReminderTimer);
     window.removeEventListener('popstate', syncPageFromHistory);
     window.removeEventListener('pageshow', handleApplicationPageShow);
     document.removeEventListener('visibilitychange', handleApplicationVisibilityChange);
@@ -2352,11 +2408,12 @@ async function abandonNation(): Promise<void> {
 
         <UndergroundPanel
             v-else-if="page === 'underground' && user && secretary?.name"
+            ref="undergroundPanel"
             :user-id="user.id"
             :secretary-image-url="viewedSecretaryProfile?.main_image.url ?? null"
             @return-to-secretary="returnFromUnderground"
             @daily-quest="handleDailyQuestProgress"
-            @distorted-stone-reminder="distortedStoneReminder = $event"
+            @distorted-stone-reminder="updateDistortedStoneReminder"
         />
 
         <section v-else-if="page === 'secretary' && (viewedSecretaryProfile || secretary)" class="panel secretary-panel">

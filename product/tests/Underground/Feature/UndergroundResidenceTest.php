@@ -91,17 +91,24 @@ final class UndergroundResidenceTest extends UndergroundPlayerAccessTestCase
         ])->assertConflict()->assertJsonPath('code', 'underground_distorted_stone_locked');
         $this->getJson('/api/v1/me/underground/distorted-stone-reminder')
             ->assertOk()->assertJsonPath('data.unclaimed', false);
+        $this->getJson('/api/v1/me/underground')->assertOk()
+            ->assertJsonPath('data.distorted_stone_reminder', false);
         UndergroundTrialProgress::query()->create([
             'underground_profile_id' => $profile->id, 'trial_key' => 'trial_02',
             'unlocked_at' => now(), 'first_cleared_at' => now(),
         ]);
         $profile->update(['otherworld_discovered_at' => now()]);
         $this->getJson('/api/v1/me/underground/distorted-stone-reminder')
-            ->assertOk()->assertJsonPath('data.unclaimed', true);
+            ->assertOk()->assertJsonPath('data.unclaimed', true)
+            ->assertJsonPath('data.day', '2026-09-22')->assertJsonPath('data.reset_after_ms', 60_000);
         $this->getJson('/api/v1/me/underground')->assertOk()
             ->assertJsonPath('data.distorted_stone_reminder', true);
-        $purchases = [];
-        foreach ([0, 10_000, 50_000, 100_000] as $price) {
+        $purchases = [['request_id' => (string) Str::uuid(), 'price' => 0]];
+        $this->postJson('/api/v1/me/underground/shop/distorted-stone', $purchases[0])->assertOk()
+            ->assertJsonPath('data.distorted_stone_reminder', false);
+        $this->getJson('/api/v1/me/underground/distorted-stone-reminder')
+            ->assertOk()->assertJsonPath('data.unclaimed', false);
+        foreach ([10_000, 50_000, 100_000] as $price) {
             $request = ['request_id' => (string) Str::uuid(), 'price' => $price];
             $this->actingAs($user)->postJson('/api/v1/me/underground/shop/distorted-stone', $request)->assertOk();
             $purchases[] = $request;
@@ -110,16 +117,24 @@ final class UndergroundResidenceTest extends UndergroundPlayerAccessTestCase
             'request_id' => (string) Str::uuid(), 'price' => 100_000,
         ])->assertConflict()->assertJsonPath('code', 'underground_distorted_stone_sold_out');
         $this->assertSame(4, $profile->fresh()->distorted_stone_balance);
-        $this->getJson('/api/v1/me/underground/distorted-stone-reminder')
-            ->assertOk()->assertJsonPath('data.unclaimed', false);
         $this->assertSame(40_000, $profile->fresh()->shard_balance);
         Carbon::setTestNow('2026-09-23 00:00:00+09:00');
+        $this->getJson('/api/v1/me/underground/distorted-stone-reminder')
+            ->assertOk()->assertJsonPath('data.unclaimed', true)
+            ->assertJsonPath('data.day', '2026-09-23')->assertJsonPath('data.reset_after_ms', 86_400_000);
+        $this->getJson('/api/v1/me/underground')->assertOk()
+            ->assertJsonPath('data.distorted_stone_shop.purchased_today', 0)
+            ->assertJsonPath('data.distorted_stone_shop.next_price', 0)
+            ->assertJsonPath('data.distorted_stone_shop.day', '2026-09-23')
+            ->assertJsonPath('data.distorted_stone_shop.reset_after_ms', 86_400_000)
+            ->assertJsonPath('data.distorted_stone_reminder', true);
         $this->postJson('/api/v1/me/underground/shop/distorted-stone', $purchases[3])->assertOk()
             ->assertJsonPath('data.distorted_stone_shop.purchased_today', 0)
             ->assertJsonPath('data.distorted_stone_shop.balance', 4);
         $this->postJson('/api/v1/me/underground/shop/distorted-stone', [
             'request_id' => (string) Str::uuid(), 'price' => 0,
-        ])->assertOk()->assertJsonPath('data.distorted_stone_shop.balance', 5);
+        ])->assertOk()->assertJsonPath('data.distorted_stone_shop.balance', 5)
+            ->assertJsonPath('data.distorted_stone_reminder', false);
         $this->assertSame(40_000, $profile->fresh()->shard_balance);
         $this->assertEquals(Carbon::parse('2026-09-22 23:59:10+09:00'), $profile->fresh()->next_battle_at);
         $profile->update(['distorted_stone_balance' => 0]);
