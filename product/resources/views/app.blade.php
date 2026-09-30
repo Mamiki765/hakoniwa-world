@@ -1,6 +1,6 @@
 @php
     $theme = request()->cookie('hakoniwa_theme');
-    $theme = in_array($theme, ['system', 'light', 'dark', 'skyblue', 'autumn'], true) ? $theme : 'system';
+    $theme = in_array($theme, ['system', 'light', 'dark', 'skyblue', 'autumn', 'black'], true) ? $theme : 'system';
 @endphp
 <!doctype html>
 <html lang="ja" data-theme="{{ $theme }}">
