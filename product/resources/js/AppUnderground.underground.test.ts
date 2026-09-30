@@ -17,6 +17,7 @@ describe('Underground application operations', () => {
         const visibility = vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('visible');
         let unclaimed = true;
         let shopDay = '2026-09-23';
+        let delayedState: Promise<Response> | null = null;
         const state = () => ({
             stage: 'underground_open', secretary_name: 'ペリドット', combat_level: 100, combat_xp: 0,
             next_level_xp: 100, next_level_requirement: 100, current_hp: 100, unspent_stp: 0,
@@ -37,7 +38,11 @@ describe('Underground application operations', () => {
                 ...unnamedSecretaryFixture, name: 'ペリドット', named_at: '2026-09-22T00:00:00Z', header_label: 'ペリドット',
             });
             if (path === '/api/v1/me/underground/distorted-stone-reminder') return response({ unclaimed });
-            if (path === '/api/v1/me/underground') return response(state());
+            if (path === '/api/v1/me/underground') {
+                const pending = delayedState;
+                delayedState = null;
+                return pending ?? response(state());
+            }
             if (path === '/api/v1/me/underground/battles') return response([]);
             if (path === '/api/v1/me/underground/shop/distorted-stone' && init?.method === 'POST') {
                 expect(JSON.parse(String(init.body)).price).toBe(0);
@@ -65,12 +70,21 @@ describe('Underground application operations', () => {
             expect(shopButton().find('.notification-dot').exists()).toBe(false);
             expect(polishingTab().find('.notification-dot').exists()).toBe(false);
 
+            await wrapper.findAll('.site-header nav button').find(button => button.text() === 'TOP')!.trigger('click');
+            await flushPromises();
+            const previousDayState = response(state());
+            let resolveEntry!: (value: Response) => void;
+            delayedState = new Promise<Response>(resolve => { resolveEntry = resolve; });
+            await headerButton().trigger('click');
+            await flushPromises();
             unclaimed = true;
             shopDay = '2026-09-24';
             await vi.advanceTimersByTimeAsync(1_000);
+            resolveEntry(previousDayState);
             await flushPromises();
             expect(headerButton().find('.notification-dot').exists()).toBe(true);
             expect(shopButton().find('.notification-dot').exists()).toBe(true);
+            await openUndergroundView(wrapper, 'ショップ', '魔石研磨');
             expect(polishingTab().find('.notification-dot').exists()).toBe(true);
             await wrapper.get('[aria-label="歪んだ輝石"] button').trigger('click');
             await flushPromises();

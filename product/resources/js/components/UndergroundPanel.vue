@@ -1111,28 +1111,38 @@ function changeSkipHuntingGround(event: Event): void {
     }
 }
 
-async function refresh(returnIfTutorialAlreadyFinished = true): Promise<void> {
-    innRested.value = false;
-    state.value = await api<UndergroundState>('/api/v1/me/underground');
-    cooldownNowMs.value = Date.now();
-    if (returnIfTutorialAlreadyFinished && state.value.stage === 'returned_after_tutorial') {
-        emit('returnToSecretary');
-        return;
-    }
-    if (state.value.stage === 'underground_open') await loadBattles();
+let stateRefreshQueue: Promise<void> = Promise.resolve();
+
+function refresh(returnIfTutorialAlreadyFinished = true): Promise<void> {
+    const pending = stateRefreshQueue.then(async () => {
+        innRested.value = false;
+        state.value = await api<UndergroundState>('/api/v1/me/underground');
+        cooldownNowMs.value = Date.now();
+        if (returnIfTutorialAlreadyFinished && state.value.stage === 'returned_after_tutorial') {
+            emit('returnToSecretary');
+            return;
+        }
+        if (state.value.stage === 'underground_open') await loadBattles();
+    });
+    stateRefreshQueue = pending.catch(() => {});
+    return pending;
 }
 
-async function refreshDistortedStoneReminder(): Promise<boolean> {
-    const previousState = state.value;
-    const current = await api<UndergroundState>('/api/v1/me/underground', { cache: 'no-store' });
-    if (state.value && state.value === previousState) {
-        state.value = {
-            ...state.value,
-            distorted_stone_shop: current.distorted_stone_shop,
-            distorted_stone_reminder: current.distorted_stone_reminder,
-        };
-    }
-    return state.value?.distorted_stone_reminder ?? current.distorted_stone_reminder ?? false;
+function refreshDistortedStoneReminder(): Promise<boolean> {
+    const pending = stateRefreshQueue.then(async () => {
+        const previousState = state.value;
+        const current = await api<UndergroundState>('/api/v1/me/underground', { cache: 'no-store' });
+        if (state.value && state.value === previousState) {
+            state.value = {
+                ...state.value,
+                distorted_stone_shop: current.distorted_stone_shop,
+                distorted_stone_reminder: current.distorted_stone_reminder,
+            };
+        }
+        return state.value?.distorted_stone_reminder ?? current.distorted_stone_reminder ?? false;
+    });
+    stateRefreshQueue = pending.then(() => {}, () => {});
+    return pending;
 }
 
 defineExpose({ refreshDistortedStoneReminder });
