@@ -1113,16 +1113,30 @@ function changeSkipHuntingGround(event: Event): void {
 
 let stateRefreshQueue: Promise<void> = Promise.resolve();
 
+function applyStateWithLatestStoneDay(incoming: UndergroundState): UndergroundState {
+    const latestShop = state.value?.distorted_stone_shop;
+    const incomingShop = incoming.distorted_stone_shop;
+    if (latestShop && incomingShop && latestShop.day > incomingShop.day) {
+        incoming = {
+            ...incoming,
+            distorted_stone_shop: { ...latestShop, balance: incomingShop.balance, unlocked: incomingShop.unlocked },
+            distorted_stone_reminder: state.value?.distorted_stone_reminder,
+        };
+    }
+    state.value = incoming;
+    return incoming;
+}
+
 function refresh(returnIfTutorialAlreadyFinished = true): Promise<void> {
     const pending = stateRefreshQueue.then(async () => {
         innRested.value = false;
-        state.value = await api<UndergroundState>('/api/v1/me/underground');
+        const current = applyStateWithLatestStoneDay(await api<UndergroundState>('/api/v1/me/underground'));
         cooldownNowMs.value = Date.now();
-        if (returnIfTutorialAlreadyFinished && state.value.stage === 'returned_after_tutorial') {
+        if (returnIfTutorialAlreadyFinished && current.stage === 'returned_after_tutorial') {
             emit('returnToSecretary');
             return;
         }
-        if (state.value.stage === 'underground_open') await loadBattles();
+        if (current.stage === 'underground_open') await loadBattles();
     });
     stateRefreshQueue = pending.catch(() => {});
     return pending;
@@ -1132,14 +1146,16 @@ function refreshDistortedStoneReminder(): Promise<{ unclaimed: boolean; day: str
     const pending = stateRefreshQueue.then(async () => {
         const previousState = state.value;
         const current = await api<UndergroundState>('/api/v1/me/underground', { cache: 'no-store' });
-        if (state.value && state.value === previousState) {
+        if (state.value && (state.value === previousState
+            || (current.distorted_stone_shop && state.value.distorted_stone_shop
+                && current.distorted_stone_shop.day > state.value.distorted_stone_shop.day))) {
             state.value = {
                 ...state.value,
                 distorted_stone_shop: current.distorted_stone_shop,
                 distorted_stone_reminder: current.distorted_stone_reminder,
             };
         }
-        const shop = current.distorted_stone_shop;
+        const shop = state.value?.distorted_stone_shop ?? current.distorted_stone_shop;
         if (!shop) throw new Error('Distorted stone shop state is unavailable.');
         return {
             unclaimed: state.value?.distorted_stone_reminder ?? current.distorted_stone_reminder ?? false,
@@ -1165,17 +1181,17 @@ async function mutate(
     error.value = '';
     innRested.value = false;
     try {
-        state.value = await api<UndergroundState>(path, {
+        const current = applyStateWithLatestStoneDay(await api<UndergroundState>(path, {
             method,
             body: JSON.stringify({ request_id: mutationRequestId, ...body }),
-        });
+        }));
         cooldownNowMs.value = Date.now();
         selectedBattle.value = null;
-        if (state.value.stage === 'returned_after_tutorial') {
+        if (current.stage === 'returned_after_tutorial') {
             emit('returnToSecretary');
             return true;
         }
-        if (state.value.stage === 'underground_open') {
+        if (current.stage === 'underground_open') {
             try {
                 await loadBattles();
             } catch (caught) {
@@ -2300,7 +2316,7 @@ async function applyEquipmentMutation(result: EquipmentMutationState): Promise<v
 }
 
 function applyAiMutation(result: unknown): void {
-    state.value = result as UndergroundState;
+    applyStateWithLatestStoneDay(result as UndergroundState);
     cooldownNowMs.value = Date.now();
 }
 

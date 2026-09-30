@@ -20,6 +20,7 @@ describe('Underground application operations', () => {
         let shopDay = '2026-09-23';
         let resetAfterMs = 1_000;
         let delayedState: Promise<Response> | null = null;
+        let delayedPurchase: Promise<Response> | null = null;
         let failNextState = false;
         const state = () => ({
             stage: 'underground_open', secretary_name: 'ペリドット', combat_level: 100, combat_xp: 0,
@@ -54,7 +55,9 @@ describe('Underground application operations', () => {
             if (path === '/api/v1/me/underground/shop/distorted-stone' && init?.method === 'POST') {
                 expect(JSON.parse(String(init.body)).price).toBe(0);
                 unclaimed = false;
-                return response(state());
+                const pending = delayedPurchase;
+                delayedPurchase = null;
+                return pending ?? response(state());
             }
             return publicResponse(path) ?? response(null, 404);
         });
@@ -99,6 +102,22 @@ describe('Underground application operations', () => {
             expect(shopButton().find('.notification-dot').exists()).toBe(true);
             await openUndergroundView(wrapper, 'ショップ', '魔石研磨');
             expect(polishingTab().find('.notification-dot').exists()).toBe(true);
+            // A purchase made before midnight must not overwrite the newer daily state.
+            let resolvePurchase!: (value: Response) => void;
+            delayedPurchase = new Promise<Response>(resolve => { resolvePurchase = resolve; });
+            await wrapper.get('[aria-label="歪んだ輝石"] button').trigger('click');
+            await flushPromises();
+            const previousDayPurchase = response(state());
+            unclaimed = true;
+            shopDay = '2026-09-25';
+            resetAfterMs = 86_400_000;
+            await vi.advanceTimersByTimeAsync(86_395_000);
+            await flushPromises();
+            resolvePurchase(previousDayPurchase);
+            await flushPromises();
+            expect(headerButton().find('.notification-dot').exists()).toBe(true);
+            expect(shopButton().find('.notification-dot').exists()).toBe(true);
+            expect(polishingTab().find('.notification-dot').exists()).toBe(true);
             await wrapper.get('[aria-label="歪んだ輝石"] button').trigger('click');
             await flushPromises();
             expect(headerButton().find('.notification-dot').exists()).toBe(false);
@@ -111,8 +130,8 @@ describe('Underground application operations', () => {
             const beforeResume = reminderCalls();
             visibility.mockReturnValue('hidden');
             unclaimed = true;
-            shopDay = '2026-09-25';
-            vi.setSystemTime(new Date('2026-09-24T15:05:00Z'));
+            shopDay = '2026-09-26';
+            vi.setSystemTime(new Date('2026-09-25T15:05:00Z'));
             document.dispatchEvent(new Event('visibilitychange'));
             window.dispatchEvent(new Event('pageshow'));
             await flushPromises();
