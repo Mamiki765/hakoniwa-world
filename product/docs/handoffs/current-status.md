@@ -1,108 +1,82 @@
-# 現在地：main 4.5.1 / release/4.6.0 機能scope完了・release closure待ち
+# 現在地：main 4.6.1／4.6.0 release完了
 
-更新：2026-09-29。GitHub確認、Owner判断、実装済み、構想、production証拠を分離する。
+更新：2026-09-30。Ownerの会話上の決定と、固定SHAで確認したrepositoryの状態を照合した。未実装案、回答済み問い合わせ、検証の未確認部分を分ける。
 
 ## 開発の固定点
 
-- 開発正本：`Mamiki765/hakoniwa-world` / GitHub。
-- main：`8b65d320a97caa0ca99735fc20445592f95a9c84`（4.5.1）。production適用の証拠ではない。
-- `release/4.6.0` はmainより先行し、4.6の装備倍率/rating基盤と狩場4「夕凪の帰港地」まで取り込み済み。
-- PR #171「feat: 4.6装備倍率・ratingと共鳴結晶個別売却」は `release/4.6.0` へmerge済み。実装HEAD `c61553b0b5227cbf9cfc0c83f38c5431ba02cfe5` のQuality `36428096913` は16/16 PHPUnit shardを含め成功。
-- PR #172「狩場4『夕凪の帰港地』と宝物庫を追加」は `release/4.6.0` へmerge済み。最終HEAD `10251c256feadf2d3aad3f706707784f08979ef0`。初回HEADのFull CIでは16/16 PHPUnit shard、backend static、documentationが成功し、frontendは旧固定表示額assertionだけで失敗。最終HEADではそのassertionと新規balance固定値assertionを除去し、focused確認を実施。Owner指示により最終HEADのFull CIはskipした。
-- PR #173「Set application version to 4.6.0」は `release/4.6.0` へmerge済み（merge `158fb34ed1cf37b0dfd2b496e1cc6d33d5dffb48`）。`application_version` は4.6.0へ更新済み。4.6.0の機能scopeは閉じ、残るのは累積独立review、release最終HEADのFull CI、`release/4.6.0 → main` PRというrelease closure作業。
-- handoff / current-status / Ownerの会話で決まった未実装案の整理はChat側が担当する。CodexはOwnerから個別に明示された場合を除き、これらの判断を推測して更新しない。
+- 開発正本は `Mamiki765/hakoniwa-world` / GitHub。本更新の確認基点は main `21357bb9f240650c28960b7b69ddf961b3fcaac0`。`application_version` は **4.6.1**。
+- PR #174「Release 4.6.0」はmainへmerge済み（`bb63cb3bab3e8520d43648fb3c59c7afc8466aea`）。装備倍率・rating、共鳴結晶個別売却、狩場4・宝物庫を含む。**4.6.0 closureを未完TODOへ戻さない。**
+- PR #175「4.6.1 宝物庫表示と装備のつなぎ」もmainへmerge済み（確認基点と同じSHA）。終了済みの `release/4.6.0` ではなく、現行mainを次作業の基点にする。
+- Ownerの会話にしかない意図・採否・TODOはChatとOwnerが管理する。Codexは通常実装でhandoffを編集せず、Ownerの明示指示がある場合だけ例外とする。今回の文書更新はOwnerの明示依頼による。
 
-## Productionの証拠
+### 確認結果の限界
 
-今回の4.6作業ではproduction DB・health・稼働versionを再照会していない。repository main / releaseの状態をproduction適用済みと読み替えない。
+PR #174のrelease HEAD `22efb953978ac98507611e2256d048ed23d6280a` はQuality `36586934619` 全job成功。PR #175は初回HEADの正式16 shard・frontend・documentationが成功し、backend-staticのPint指摘と後続review修正をfocused確認した。最終HEAD `301dfb94efba95c21150c3ba6da29f887a73d3d3` はOwner指示で `[skip ci]`。**4.6.1最終HEADのFull CI未実施は確認限界であり、再実行を自動的なTODOにしない。**
 
-このhandoffが引き継いだ最後のproduction証拠は、2026-09-27 06:31 JSTのOwner提示静止画の **ver 4.4.0 / T628 / 正常**（24島、総人口10,761,185人）。2026-09-23のOwner提示ログには4.4.0切替、統合migration batch43、Ruleset v27 / DB ID42、T588のcron完走、予定起点設定がある。詳細は[deployment status](../operations/current-deployment.md)。これらをやり直さない。
+Productionは[観測と残件](../operations/current-deployment.md)を参照。MCPが返すcheckout SHA・healthy・pending migration数だけで、稼働imageのapplication versionや個別migrationの適用を断定しない。会話での「productionも4.6.1」は証拠の範囲を超えた表現だった。
 
-30日receipt purgeの運用開始は未確認。保全とOwnerの別承認が先で、詳細戦闘ログ1時間保持とは別。
+## 現行の主要変更
 
-## 4.5.xまでmainへ入っているもの
+### 4.4.1〜4.5.1
 
-4.4.1の日課modal・初回輝石通知・スキップ選択・Bahamul初勝利/trophy・表示改善、4.5.0の試練3「天光の王城」・報酬・140SP技能・10Pd即時再振り、4.5.1のskill investment gate撤去までmainへ入っている。4.5.0資料の96SP gateをcurrent制約として再導入しない。
+日課modal、初回輝石通知、スキップ選択、異世界初回勝利の恒久記録・トロフィー、同行者アイコン、通常能力の装備込み表示は実装済み。STP配分は裸ステのまま。試練3「天光の王城」、140SP向け技能、待機中10Pd追加による即時再振り、skill investment gate撤去も実装済み。旧予定表の未チェック行だけを理由に再実装しない。
 
-## 4.6.0 実装済みscope
+### 装備倍率・rating・研磨
 
-### 装備倍率 / rating
+詳細は[装備倍率とrating](../architecture/underground-equipment-scaling.md)と[装備手引き](../manual/equipment.md)。
 
-現行仕様は[装備倍率とrating](../architecture/underground-equipment-scaling.md)、プレイヤー向けは[装備手引き](../manual/equipment.md)。
+- IL200基準、超過10ILごとに1.1倍。IL210=1.10、IL220=1.21。旧武器加算値は内部に残し、画面の武器力は倍率を指す。
+- 武器倍率は該当する攻撃・固定量/能力由来回復・障壁へ適用。最大HP割合回復や反映済みdamage由来吸収への二重適用はしない。防具はHP倍率で、物防・魔防を同じ倍率では拡大しない。
+- ratingの必要倍率は武器・防具の低いILを基準に最低IL200。IL210共鳴結晶のランダムaffixは保存roll×1.1で投影。固有固定%は別扱い。
+- 最大HP affixは品のILで一度だけ拡大して加算。防御行動強化の実効減算上限90%は既存の別系統capを置換しない。
+- **研磨の今回の対応は完了。** 固定能力は＋0値の30%/段階、割合系は基準値＋0.1 percentage point/段階、＋5上限・費用を維持。rating対象は研磨後の基準値に品のIL倍率を掛ける。IL210の研磨増分にも×1.1が乗るが、実効%は要求側倍率で変わる。
+- 共鳴結晶の確認付き個別売却、貸出・覚醒・戦闘・表示への接続も実装済み。**「研磨量の再設計」を未完や将来必須へ再掲しない。**
 
-- IL200基準で超過10ILごとに1.1倍。IL210=1.10、IL220=1.21。
-- 武器は攻撃・固定回復/障壁等の世代倍率、防具はHP倍率へ接続。
-- rating対象affixは必要ratingに対して実効値を投影する。固定能力・固定割合のunique effectと区別する。
-- IL210バハ武器は維持。IL210黒竜共鳴結晶も保存rollから共通rating倍率×1.1で再投影し、固定unique %は一律倍率化しない。
-- 最大HP affixはそのitem自身のILで一度だけ加算し、防具倍率との二重scaleを避ける。
-- 防御系ratingの実効上限90%。既存の別系統capを置換しない。
-- 研磨は従来の固定能力+30%/段階、+5上限、費用を維持し、percentage系は1段階+0.1 percentage point相当をratingへ投影。
-- 共鳴結晶の確認付き個別売却を既存単品売却APIへ接続。
-- 借用snapshot、覚醒、戦闘、balance manifest、UIの武器力/HP倍率/rating表示へ接続済み。
+### 狩場4「夕凪の帰港地」・4.6.1の装備接続
 
-防具の「高ILで物防型 / 魔防型へ分ける」案は、Ownerが2026-09-29時点で見送る方向。active TODOへ戻さない。研磨量の量的再設計とグラム表示整理は将来候補で、4.6.0 release blockerではない。
+- Trial3初回clear後に解禁。Lv700 PTは設計の入口目安で、強制入場Lv制限ではない。
+- 通常11種＋エリート4種＋レア「クリスタル・ドルフィン」。レアは宝石系の幸運枠で、罠敵ではない。
+- 通常XP期待値3,135、レア1%・25,500XP込み3,358.65/戦、狩場3比約3.98倍。これは全勝を仮定した抽選上の期待値で、実測獲得量や永久固定値ではない。
+- **現行4.6.1のdrop帯**：通常敵IL200〜210、エリートIL210〜220、レアIL215〜220、宝物庫IL200〜220。4.6.0当時のIL181下限を現行値に戻さない。
+- 試練3の10戦はIL121〜200へ接続。初回エクスカリバーはIL200。旧IL185品の定義を残し、既存の対象所有行だけを進めるforward-only migrationがある。
+- 試練3content identityはv3。進行中の旧v2挑戦は既存の不一致処理で1戦目から再開する。
+- 専用鍵・宝物庫は実装済み。鍵不足時も所持/必要本数を表示し、探索共通待機の残り秒数をボタン付近へ表示する。
+- 敵画像は未追加でfallbackを使用。白い井戸と試練4は未実装。
 
-### 狩場4「夕凪の帰港地」
+[4.6.1記録](../releases/4.6.1-vault-and-equipment.md)が変更の入口。[4.6.0 balance記録](../releases/4.6.0-yunagi-harbor-balance.md)は当時の装備条件での測定で、現行条件の再測定済みとは扱わない。
 
-PR #172で実装済み。
+## 次に追う未完作業
 
-- Trial3初回clear後に解禁。Lv700は戦闘設計の入口目安で、runtimeの強制入場Lv制限ではない。
-- 通常11種 + エリート4種 + レア1種。
-- レアは**クリスタル・ドルフィン**。過去の宝石系レアと同様、「出たらラッキー」の幸運枠。1%独立抽選。
-- 通常weightは雑魚8,000 + エリート2,000。通常XP期待値3,135 / 戦。
-- クリスタル・ドルフィン25,500XP込みの設計期待値は3,358.65XP / 戦。狩場3約844.30XP / 戦の約3.98倍。
-- 装備dropは既存4.6 generatorを使用。通常敵IL181〜210、エリートIL205〜220、レアIL215〜220。
-- 専用「夕凪の帰港地の鍵」と対応する宝物庫を追加。レアは歪んだ輝石1個と専用鍵1個を付与。
-- 欠片の通常weight込み期待値816.41G / 勝、レア込み826.24G / 勝。宝物庫基本750G、財宝20倍。
-- 敵画像は未追加。既存の画像なしfallbackを使う。
-- Trial4、白い大井戸の進行、緑の粘液の村跡storyは未実装。
-
-戦闘測定の詳細は[夕凪の帰港地balance記録](../releases/4.6.0-yunagi-harbor-balance.md)。Lv700・IL180の現行weight抽選64 seedで49/64勝、Lv700・IL220で64/64勝。エリート4体同時は入口装備では壁、更新後に攻略可能という測定。クリスタル・ドルフィンは幸運枠なので罠敵化しない。
-
-## Test方針
-
-Ownerの現行方針：
-
-- configやbalance値をtest側へ同じ数値で写し、「数値を変えたら期待値も変えてgreen」にするtestを増やさない。
-- catalog値そのものではなく、到達可能なruntime operation、failure、settlement、ownership、idempotency、retry、migration、実データ破損防止などのcontractを守る。
-- 表示全文、catalog件数、敵種類数等の偶然の固定を仕様testにしない。
-- 全IL×全build×全seed matrixを恒久suiteへ持ち込まない。balance計測はrelease記録と必要な代表測定へ分ける。
-- PR #172では、固定表示額assertionと新規のXP/weight/IL固定値写経assertionを削除し、catalog→runtimeの接続、鍵、duplicate retry、drop generation等の意味ある保証へ縮めた。
-
-## 4.6.0 release closure
-
-新機能はこれ以上追加しない。
-
-残作業：
-
-1. main...release/4.6.0の累積差分を独立review。
-2. P0/P1/P2があれば必要最小限で修正。
-3. release最終HEADで正式Full CIを1回実行し、exact-head greenを確認。
-4. `release/4.6.0 → main` のrelease PRを作成。
-5. Owner確認後にmerge判断。production deployは別操作。
-
-Trial4、市場、転生、地上産業、Relic/合成、研磨量再設計等をclosureへ混ぜない。
-
-## 持ち越し / 次の構想
-
-| 項目 | 現在の扱い |
+| 項目 | 状態・次の境界 |
 |---|---|
-| 試練4 | 夕凪の帰港地の白い大井戸の先。緑の粘液に溶けた旧前線村跡と、案内人/スライム娘の過去へ接続する構想。案内人の反応・台詞はOwnerが決める。 |
-| 装備売買 | 「剣が欲しいのに杖が出る」問題への対応。方式・通貨・条件・公開時期をUG-05のgateに沿って決める。鉱石/素材市場案は一旦保留。 |
-| 転生 | 上限・成長力・必要XP、節目のアクセ枠/技枠拡張。値・既存高Lv者の扱い・公開時期は未決。 |
-| 地上item | [地上アイテム拡張メモ](../plans/surface-item-expansion.md)。Relic、固定recipe合成、同系統育成、夢魔の三紋章、ticket圧縮等。 |
-| 地上産業 | [地上発展拡張メモ](../plans/surface-development-expansion.md)。配置synergy、電力、二次/三次産業、属性魔力。地下攻略必須にはしない。 |
-| UI / 秘書 | 貸出コメント、用途別AI/技保存set、PC/mobile header画像、小画面footer等。 |
-| グラム表示 | 記念品の説明を武器力・固有効果風に整理する案。装備不可・売却不可の契約を勝手に変えない。 |
-| 長期案 | 共有大討伐、深層探索、秘書になりきるchat等。採用済みTODOではない。 |
-| Turn C2 | C1の同一起動内40P01/40001 retryは実装済み。failed/blocked runを後続処理で安全に自律復旧するC2は未実装。Owner不在時に一時deadlockだけでWorldが永久停止しないことが目的。対象失敗、same run/turn/ruleset/seed、backoff、上限、auditを決めてから実装する。 |
-| idea memo MCP | Chatの長いcontextへ埋もれる案/TODOを外部にappend/search/list/status管理する軽量MCP案。product runtimeではなく開発補助。idea / decided / implemented / deferred / rejected等の状態を持ち、repo正本と混同しない。 |
-| 運用別件 | T01 MCP exporter、30日receipt purge / cron等。4.6 closureへ混ぜない。 |
+| 首都地下の選択詳細が読めない | **Owner報告・要修正**。9/30の画像で、通常表示では「空き施設枠・階層・座標」が淡い背景と同化し、文字選択時だけ読める。`UndergroundSurfaceMap.vue` の明色fallback背景と継承文字色を確認。関連するglobal CSSにも修正は見当たらない。実ブラウザでlight/dark/systemを確認して局所修正する。今回は記録のみ。 |
+| 全テストの固定値一覧化（9/28依頼） | **成果物の完了確認待ち**。設定値の写経・文言一致・記念碑/狩場/怪獣の件数固定を全suiteからMDへ整理し、DB型を守る固定値らしきものは別表にする依頼。T09の部分監査とは範囲が違う。この確認範囲で完成版を見つけていないだけなので、まず既存成果物の有無を確認して重複作業を避ける。 |
+| T09 テスト・DB CHECK・validator棚卸し | 一部整理済み。残る候補を現行codeで再判定する。全候補を未修正としない。監査だけで新規テストを量産しない。 |
+| T10 Ruleset簡素化・baseline rebase② | 依存調査あり、最終構造はOwner判断待ち。4.4.0内17本→1本の統合①は完了済みで別件。 |
+| T12 文書整理の残り | 初回の分類・移動は済み。現役設計と未完作業を保存し、古い状態・未チェック表示の取り残しを整理する。今回のhandoff更新だけでrepo全体の整理完了とはしない。 |
+| T01 Secretary production diagnostic | exporterの正本・管理先とv27 schemaへの接続を確認する。MCP本体へsourceを回収する案は未採用。運用入口を参照し、production適用は別承認。 |
+| T11 30日receipt purge運用 | 機能の存在と本番cron開始は別。初回事実・恒久統計等の保全、稼働証拠、Owner承認を確認する。今回はDELETEしない。 |
+| Turn C2 自律復旧 | Owner不在でも一時deadlockだけで世界を永久停止させたくない、という要望。C1の同一起動内retryは実装済み。後続の安全な再開方式は未決。cronにfailedを無条件再試行させず、同run/turn/ruleset/seedと監査・再試行上限等を決める。 |
+| 狩場4の画像 | 敵16種の制作・配信・接続。背景の港町は会話に作例があるが、配信/登録済みとは未確認。ゲーム本体の再実装とは分ける。 |
 
-## 設計上の境界
+詳細な持ち越しは[4.4.1予定表](../plans/4.4.1-todo.md)、新要素は[Owner判断・構想](../plans/post-4.4.0-decisions-and-ideas.md)を参照。古いOpen/Deferred gateをすべて現在の実装TODOへ昇格させない。
 
-地底攻略の地上還元は**首都地下の施設群**。地底農場・地底工場等が基礎産業を補助することはあるが、地上の新産業・電力・配置synergy・属性魔力を地底攻略必須へ変更しない。
+## 回答済み・見送り・復活させないもの
 
-地上の配置・電力・上位産業・魔力は未実装構想。実装時にOwner判断を取り、汎用engineやschemaを先行して作らない。
+| 項目 | 最新の扱い |
+|---|---|
+| INQ-000013 資材売却・伐採 | **Ownerが「資金上限です」と回答済み、ひとまず対応終了。** 追加返信・補填・伐採保護・上限警告UIを今回のTODOへ自動追加しない。当時残高をDB照合したという記録にはしない。 |
+| 研磨量の再設計 | 今回の意図は実装済み。追加の量的再設計TODOは取り下げる。 |
+| 高IL防具の物防/魔防特化 | Ownerは見送る方向。未完作業へ戻さない。 |
+| 鉱石/素材市場 | 「一旦忘れる」。地下装備売買とは分けて保留。 |
+| 4.6.0 closure・4.6.1修正 | mainへmerge済み。旧releaseへ新しいTODOだけを書いて完了扱いにしない。 |
+| 一時開始資料 | 4.6第一弾の開始指示書は必要情報を現役文書へ統合後に削除済み。再生成しない。 |
 
-既存の[current-contracts](current-contracts.md)、[予定側](../plans/post-4.4.0-decisions-and-ideas.md)、[open-questions](../../../docs/open-questions.md)、[文書入口](../../../docs/README.md)から対象だけ読む。archiveは別のOwner指示なしに読込対象へ戻さない。
+## 会話で維持する設計の方向
+
+- 地底RPGの地上還元は**首都地下の施設群**。地上産業・電力・属性魔力へ、地底攻略必須という新しい条件を勝手に追加しない。
+- 地底の新しいシステムは、原則として**輝く都市（狩場3／現行名「輝きの王国」）で解禁して拠点感を出す**というOwnerの方向。利用解禁と、高難度の達成・入手条件は別。既存の例外を一律に移す指示ではない。
+- Trial4は帰港地の白い大井戸から、緑の粘液に溶けた旧前線村跡へ。案内人の反応・台詞はOwnerが決める。詳細は構想帳へ保存。
+- 地上は、作物・工業品・鉱物・原油・電力から高付加価値な二次/三次産業へ進む構想。RAの海あみゅ・大農場のような配置の工夫を重視する。
+
+行動原則は[AGENTS](../../../AGENTS.md)、現行仕様の取り違え防止は[current-contracts](current-contracts.md)、通常の入口は[docs/README](../../../docs/README.md)。会話の提案をOwner採用済みに読み替えず、未決事項を実装時に確認する。
