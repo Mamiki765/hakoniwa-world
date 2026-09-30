@@ -166,6 +166,8 @@ const distortedStoneReminder = ref(false);
 const undergroundPanel = ref<InstanceType<typeof UndergroundPanel> | null>(null);
 let distortedStoneReminderDay: string | null = null;
 let distortedStoneReminderDeadline: number | null = null;
+const distortedStoneReminderRetryDelays = [5_000, 30_000, 120_000] as const;
+let distortedStoneReminderRetries = 0;
 let distortedStoneReminderInFlight = false;
 let distortedStoneReminderRevision = 0;
 let distortedStoneReminderTimer: ReturnType<typeof setTimeout> | null = null;
@@ -429,8 +431,13 @@ async function loadDistortedStoneReminder(): Promise<void> {
         }
         distortedStoneReminderDay = reminder.day;
         distortedStoneReminderDeadline = performance.now() + reminder.reset_after_ms;
-    } catch {
+        distortedStoneReminderRetries = 0;
+    } catch (caught) {
         distortedStoneReminderDeadline = null;
+        if (!(caught instanceof ApiError) || caught.status >= 500 || caught.status === 408) {
+            const delay = distortedStoneReminderRetryDelays[distortedStoneReminderRetries++];
+            if (delay !== undefined) distortedStoneReminderDeadline = performance.now() + delay;
+        }
         // The underground panel refreshes this indicator when it opens.
     } finally {
         distortedStoneReminderInFlight = false;
@@ -445,6 +452,7 @@ function updateDistortedStoneReminder(unclaimed: boolean): void {
 
 function refreshDistortedStoneReminderForDay(force = false): void {
     if (document.visibilityState === 'hidden' || !user.value || !secretary.value) return;
+    if (force && !distortedStoneReminderInFlight) distortedStoneReminderRetries = 0;
     if (force || distortedStoneReminderDay === null || distortedStoneReminderDeadline === null
         || performance.now() >= distortedStoneReminderDeadline) void loadDistortedStoneReminder();
 }

@@ -20,6 +20,7 @@ describe('Underground application operations', () => {
         let shopDay = '2026-09-23';
         let resetAfterMs = 1_000;
         let delayedState: Promise<Response> | null = null;
+        let failNextState = false;
         const state = () => ({
             stage: 'underground_open', secretary_name: 'ペリドット', combat_level: 100, combat_xp: 0,
             next_level_xp: 100, next_level_requirement: 100, current_hp: 100, unspent_stp: 0,
@@ -43,6 +44,10 @@ describe('Underground application operations', () => {
             if (path === '/api/v1/me/underground') {
                 const pending = delayedState;
                 delayedState = null;
+                if (!pending && failNextState) {
+                    failNextState = false;
+                    return response(null, 503);
+                }
                 return pending ?? response(state());
             }
             if (path === '/api/v1/me/underground/battles') return response([]);
@@ -82,8 +87,13 @@ describe('Underground application operations', () => {
             unclaimed = true;
             shopDay = '2026-09-24';
             resetAfterMs = 86_400_000;
+            failNextState = true;
             await vi.advanceTimersByTimeAsync(1_000);
             resolveEntry(previousDayState);
+            await flushPromises();
+            expect(headerButton().find('.notification-dot').exists()).toBe(false);
+            resetAfterMs -= 5_000;
+            await vi.advanceTimersByTimeAsync(5_000);
             await flushPromises();
             expect(headerButton().find('.notification-dot').exists()).toBe(true);
             expect(shopButton().find('.notification-dot').exists()).toBe(true);
