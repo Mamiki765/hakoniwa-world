@@ -1,10 +1,14 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue';
+import { computed, onMounted, ref } from 'vue';
 import { ApiError, api } from '../api/client';
-import type { GuideConversationTopic, GuideConversationTopicIndex } from '../types';
+import type { GuideConversationTopic, GuideConversationTopicIndex, MerchantConversationTopic } from '../types';
 
+const props = defineProps<{ merchant?: boolean }>();
+const title = computed(() => props.merchant ? '行商人の会話管理' : '案内人の会話管理');
+const endpoint = computed(() => props.merchant ? '/api/v1/admin/merchant-conversation-topics' : '/api/v1/admin/guide-conversation-topics');
+type ConversationTopic = GuideConversationTopic | MerchantConversationTopic;
 const emit = defineEmits<{ close: [] }>();
-const topics = ref<GuideConversationTopic[]>([]);
+const topics = ref<ConversationTopic[]>([]);
 const unlockOptions = ref<GuideConversationTopicIndex['unlock_options']>([]);
 const loading = ref(false);
 const saving = ref(false);
@@ -27,9 +31,9 @@ async function load(): Promise<void> {
     loading.value = true;
     message.value = '';
     try {
-        const result = await api<GuideConversationTopicIndex>('/api/v1/admin/guide-conversation-topics');
+        const result = await api<GuideConversationTopicIndex | { topics: MerchantConversationTopic[] }>(endpoint.value);
         topics.value = result.topics;
-        unlockOptions.value = result.unlock_options;
+        unlockOptions.value = 'unlock_options' in result ? result.unlock_options : [];
     } catch (error) {
         message.value = error instanceof Error ? error.message : '会話トピックを読み込めませんでした。';
     } finally {
@@ -51,17 +55,23 @@ function clearForm(): void {
     errors.value = {};
 }
 
-function edit(topic: GuideConversationTopic): void {
+function edit(topic: ConversationTopic): void {
     editingId.value = topic.id;
-    initialLine.value = topic.initial_line;
-    choice1.value = topic.choice_1;
-    reply1.value = topic.reply_1;
-    choice2.value = topic.choice_2 ?? '';
-    reply2.value = topic.reply_2 ?? '';
-    choice3.value = topic.choice_3 ?? '';
-    reply3.value = topic.reply_3 ?? '';
-    unlockKey.value = topic.unlock_key;
-    enabled.value = topic.enabled;
+    if ('question' in topic) {
+        initialLine.value = topic.question;
+        reply1.value = topic.answer;
+        enabled.value = topic.enabled;
+    } else {
+        initialLine.value = topic.initial_line;
+        choice1.value = topic.choice_1;
+        reply1.value = topic.reply_1;
+        choice2.value = topic.choice_2 ?? '';
+        reply2.value = topic.reply_2 ?? '';
+        choice3.value = topic.choice_3 ?? '';
+        reply3.value = topic.reply_3 ?? '';
+        unlockKey.value = topic.unlock_key;
+        enabled.value = topic.enabled;
+    }
     errors.value = {};
     message.value = '';
     window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -74,11 +84,11 @@ async function save(): Promise<void> {
     errors.value = {};
     const id = editingId.value;
     try {
-        await api<GuideConversationTopic>(id === null
-            ? '/api/v1/admin/guide-conversation-topics'
-            : `/api/v1/admin/guide-conversation-topics/${id}`, {
+        await api<ConversationTopic>(id === null ? endpoint.value : `${endpoint.value}/${id}`, {
             method: id === null ? 'POST' : 'PATCH',
-            body: JSON.stringify({
+            body: JSON.stringify(props.merchant ? {
+                question: initialLine.value, answer: reply1.value, enabled: enabled.value,
+            } : {
                 initial_line: initialLine.value,
                 choice_1: choice1.value,
                 reply_1: reply1.value,
@@ -107,12 +117,12 @@ async function save(): Promise<void> {
     }
 }
 
-async function remove(topic: GuideConversationTopic): Promise<void> {
+async function remove(topic: ConversationTopic): Promise<void> {
     if (!window.confirm('この会話トピックを削除しますか？')) return;
     loading.value = true;
     message.value = '';
     try {
-        await api<null>(`/api/v1/admin/guide-conversation-topics/${topic.id}`, { method: 'DELETE' });
+        await api<null>(`${endpoint.value}/${topic.id}`, { method: 'DELETE' });
         if (editingId.value === topic.id) clearForm();
         await load();
         message.value = '会話トピックを削除しました。';
@@ -131,7 +141,7 @@ function unlockLabel(key: string): string {
 <template>
     <section class="guide-topic-admin panel" aria-labelledby="guide-topic-admin-title">
         <header class="guide-topic-admin-heading">
-            <div><p class="eyebrow">GUIDE CONVERSATIONS</p><h1 id="guide-topic-admin-title">案内人の会話管理</h1></div>
+            <div><p v-if="!merchant" class="eyebrow">GUIDE CONVERSATIONS</p><h1 id="guide-topic-admin-title">{{ title }}</h1></div>
             <button type="button" @click="emit('close')">TOPへ戻る</button>
         </header>
 
@@ -139,27 +149,31 @@ function unlockLabel(key: string): string {
 
         <form class="guide-topic-form" @submit.prevent="save">
             <h2>{{ editingId === null ? '新しい話題' : `話題 #${editingId} を編集` }}</h2>
-            <label>最初の台詞
-                <textarea v-model="initialLine" maxlength="4000" rows="4" required></textarea>
-                <span v-if="errors.initial_line" class="field-error" role="alert">{{ errors.initial_line }}</span>
+            <label>{{ merchant ? '質問' : '最初の台詞' }}
+                <textarea v-model="initialLine" :maxlength="merchant ? 1000 : 4000" :rows="merchant ? 2 : 4" required></textarea>
+                <span v-if="errors[merchant ? 'question' : 'initial_line']" class="field-error" role="alert">{{ errors[merchant ? 'question' : 'initial_line'] }}</span>
             </label>
-            <fieldset>
+            <label v-if="merchant">回答
+                <textarea v-model="reply1" maxlength="4000" rows="3" required></textarea>
+                <span v-if="errors.answer" class="field-error" role="alert">{{ errors.answer }}</span>
+            </label>
+            <fieldset v-if="!merchant">
                 <legend>選択肢1（必須）</legend>
                 <label>選択肢<textarea v-model="choice1" maxlength="1000" rows="2" required></textarea><span v-if="errors.choice_1" class="field-error" role="alert">{{ errors.choice_1 }}</span></label>
                 <label>返答<textarea v-model="reply1" maxlength="4000" rows="3" required></textarea><span v-if="errors.reply_1" class="field-error" role="alert">{{ errors.reply_1 }}</span></label>
             </fieldset>
-            <fieldset>
+            <fieldset v-if="!merchant">
                 <legend>選択肢2（任意・両方入力）</legend>
                 <label>選択肢<textarea v-model="choice2" maxlength="1000" rows="2"></textarea><span v-if="errors.choice_2" class="field-error" role="alert">{{ errors.choice_2 }}</span></label>
                 <label>返答<textarea v-model="reply2" maxlength="4000" rows="3"></textarea><span v-if="errors.reply_2" class="field-error" role="alert">{{ errors.reply_2 }}</span></label>
             </fieldset>
-            <fieldset>
+            <fieldset v-if="!merchant">
                 <legend>選択肢3（任意・両方入力）</legend>
                 <label>選択肢<textarea v-model="choice3" maxlength="1000" rows="2"></textarea><span v-if="errors.choice_3" class="field-error" role="alert">{{ errors.choice_3 }}</span></label>
                 <label>返答<textarea v-model="reply3" maxlength="4000" rows="3"></textarea><span v-if="errors.reply_3" class="field-error" role="alert">{{ errors.reply_3 }}</span></label>
             </fieldset>
             <div class="guide-topic-settings">
-                <label>解放条件
+                <label v-if="!merchant">解放条件
                     <select v-model="unlockKey" required>
                         <option v-for="option in unlockOptions" :key="option.key" :value="option.key">{{ option.label }}</option>
                     </select>
@@ -178,8 +192,8 @@ function unlockLabel(key: string): string {
             <p v-if="loading">読み込み中…</p>
             <p v-else-if="topics.length === 0" class="empty-state">会話トピックはまだありません。</p>
             <article v-for="topic in topics" v-else :key="topic.id" :data-enabled="topic.enabled">
-                <header><strong>#{{ topic.id }} {{ unlockLabel(topic.unlock_key) }}</strong><span>{{ topic.enabled ? '表示中' : '停止中' }}</span></header>
-                <p>{{ topic.initial_line }}</p>
+                <header><strong>#{{ topic.id }} {{ 'question' in topic ? topic.question : unlockLabel(topic.unlock_key) }}</strong><span>{{ topic.enabled ? '表示中' : '停止中' }}</span></header>
+                <p>{{ 'question' in topic ? topic.answer : topic.initial_line }}</p>
                 <div class="guide-topic-actions">
                     <button type="button" @click="edit(topic)">編集</button>
                     <button class="danger" type="button" @click="remove(topic)">削除</button>

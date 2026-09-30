@@ -19,6 +19,13 @@ export interface CurrentUser {
     providers: UserIdentity[];
 }
 
+export interface MerchantConversationTopic {
+    id: number;
+    question: string;
+    answer: string;
+    enabled: boolean;
+}
+
 export interface GuideConversationTopic {
     id: number;
     initial_line: string;
