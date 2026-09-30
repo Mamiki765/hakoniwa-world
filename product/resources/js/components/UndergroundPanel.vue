@@ -497,7 +497,7 @@ interface UndergroundState {
     active_slots: Array<ActiveSkill | null>;
     passive_modifiers: Record<string, number | boolean | string>;
     shopkeeper_name: string | null;
-    distorted_stone_shop?: { balance: number; day: string; purchased_today: number; daily_limit: number; next_price: number | null; unlocked: boolean };
+    distorted_stone_shop?: { balance: number; day: string; reset_after_ms: number; purchased_today: number; daily_limit: number; next_price: number | null; unlocked: boolean };
     distorted_stone_reminder?: boolean;
     polishing_tutorial_completed?: boolean;
     otherworld?: {
@@ -1128,7 +1128,7 @@ function refresh(returnIfTutorialAlreadyFinished = true): Promise<void> {
     return pending;
 }
 
-function refreshDistortedStoneReminder(): Promise<boolean> {
+function refreshDistortedStoneReminder(): Promise<{ unclaimed: boolean; day: string; reset_after_ms: number }> {
     const pending = stateRefreshQueue.then(async () => {
         const previousState = state.value;
         const current = await api<UndergroundState>('/api/v1/me/underground', { cache: 'no-store' });
@@ -1139,7 +1139,13 @@ function refreshDistortedStoneReminder(): Promise<boolean> {
                 distorted_stone_reminder: current.distorted_stone_reminder,
             };
         }
-        return state.value?.distorted_stone_reminder ?? current.distorted_stone_reminder ?? false;
+        const shop = current.distorted_stone_shop;
+        if (!shop) throw new Error('Distorted stone shop state is unavailable.');
+        return {
+            unclaimed: state.value?.distorted_stone_reminder ?? current.distorted_stone_reminder ?? false,
+            day: shop.day,
+            reset_after_ms: shop.reset_after_ms,
+        };
     });
     stateRefreshQueue = pending.then(() => {}, () => {});
     return pending;

@@ -73,13 +73,13 @@ async function checkApplicationVersion(): Promise<void> {
 
 function handleApplicationPageShow(): void {
     void checkApplicationVersion();
-    refreshDistortedStoneReminderForDay();
+    refreshDistortedStoneReminderForDay(true);
 }
 
 function handleApplicationVisibilityChange(): void {
     if (document.visibilityState === 'visible') {
         void checkApplicationVersion();
-        refreshDistortedStoneReminderForDay();
+        refreshDistortedStoneReminderForDay(true);
     }
 }
 const themeModes = ['system', 'light', 'dark', 'skyblue', 'autumn', 'black'] as const;
@@ -164,9 +164,8 @@ const compensationError = ref('');
 const undergroundSurfaceMap = ref<UndergroundSurfaceMap | null>(null);
 const distortedStoneReminder = ref(false);
 const undergroundPanel = ref<InstanceType<typeof UndergroundPanel> | null>(null);
-const distortedStoneDayMs = 86_400_000;
-const distortedStoneJstOffsetMs = 9 * 60 * 60 * 1000;
-let distortedStoneReminderDay: number | null = null;
+let distortedStoneReminderDay: string | null = null;
+let distortedStoneReminderDeadline: number | null = null;
 let distortedStoneReminderInFlight = false;
 let distortedStoneReminderRevision = 0;
 let distortedStoneReminderTimer: ReturnType<typeof setTimeout> | null = null;
@@ -420,24 +419,22 @@ async function recordDevelopmentOpened(): Promise<void> {
 async function loadDistortedStoneReminder(): Promise<void> {
     if (distortedStoneReminderInFlight || distortedStoneReminderStopped) return;
     distortedStoneReminderInFlight = true;
-    const day = Math.floor((Date.now() + distortedStoneJstOffsetMs) / distortedStoneDayMs);
     const revision = distortedStoneReminderRevision;
     try {
-        const unclaimed = undergroundPanel.value
+        const reminder = undergroundPanel.value
             ? await undergroundPanel.value.refreshDistortedStoneReminder()
-            : (await api<{ unclaimed: boolean }>('/api/v1/me/underground/distorted-stone-reminder', { cache: 'no-store' })).unclaimed;
+            : await api<{ unclaimed: boolean; day: string; reset_after_ms: number }>('/api/v1/me/underground/distorted-stone-reminder', { cache: 'no-store' });
         if (!distortedStoneReminderStopped && revision === distortedStoneReminderRevision) {
-            distortedStoneReminder.value = unclaimed;
+            distortedStoneReminder.value = reminder.unclaimed;
         }
-        distortedStoneReminderDay = day;
+        distortedStoneReminderDay = reminder.day;
+        distortedStoneReminderDeadline = performance.now() + reminder.reset_after_ms;
     } catch {
+        distortedStoneReminderDeadline = null;
         // The underground panel refreshes this indicator when it opens.
     } finally {
         distortedStoneReminderInFlight = false;
         scheduleDistortedStoneReminder();
-        if (day !== Math.floor((Date.now() + distortedStoneJstOffsetMs) / distortedStoneDayMs)) {
-            refreshDistortedStoneReminderForDay();
-        }
     }
 }
 
@@ -446,16 +443,17 @@ function updateDistortedStoneReminder(unclaimed: boolean): void {
     distortedStoneReminder.value = unclaimed;
 }
 
-function refreshDistortedStoneReminderForDay(): void {
+function refreshDistortedStoneReminderForDay(force = false): void {
     if (document.visibilityState === 'hidden' || !user.value || !secretary.value) return;
-    const day = Math.floor((Date.now() + distortedStoneJstOffsetMs) / distortedStoneDayMs);
-    if (distortedStoneReminderDay !== day) void loadDistortedStoneReminder();
+    if (force || distortedStoneReminderDay === null || distortedStoneReminderDeadline === null
+        || performance.now() >= distortedStoneReminderDeadline) void loadDistortedStoneReminder();
 }
 
 function scheduleDistortedStoneReminder(): void {
     if (distortedStoneReminderStopped) return;
     if (distortedStoneReminderTimer !== null) clearTimeout(distortedStoneReminderTimer);
-    const delay = distortedStoneDayMs - (Date.now() + distortedStoneJstOffsetMs) % distortedStoneDayMs;
+    if (distortedStoneReminderDeadline === null) return;
+    const delay = Math.max(0, distortedStoneReminderDeadline - performance.now());
     distortedStoneReminderTimer = setTimeout(() => {
         distortedStoneReminderTimer = null;
         refreshDistortedStoneReminderForDay();

@@ -13,10 +13,12 @@ installAppTestLifecycle();
 describe('Underground application operations', () => {
     it('refreshes the free stone reminder at JST midnight and after resuming, and clears it after receipt', async () => {
         vi.useFakeTimers();
-        vi.setSystemTime(new Date('2026-09-23T14:59:59Z'));
+        // The device is five minutes ahead of the server's JST clock.
+        vi.setSystemTime(new Date('2026-09-23T15:04:59Z'));
         const visibility = vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('visible');
         let unclaimed = true;
         let shopDay = '2026-09-23';
+        let resetAfterMs = 1_000;
         let delayedState: Promise<Response> | null = null;
         const state = () => ({
             stage: 'underground_open', secretary_name: 'ペリドット', combat_level: 100, combat_xp: 0,
@@ -26,7 +28,7 @@ describe('Underground application operations', () => {
             growth_path: null, battle: null, trial: null, otherworld_unlocked: true, polishing_tutorial_completed: true,
             distorted_stone_reminder: unclaimed,
             distorted_stone_shop: {
-                balance: unclaimed ? 0 : 1, day: shopDay, purchased_today: unclaimed ? 0 : 1,
+                balance: unclaimed ? 0 : 1, day: shopDay, reset_after_ms: resetAfterMs, purchased_today: unclaimed ? 0 : 1,
                 daily_limit: 4, next_price: unclaimed ? 0 : 10_000, unlocked: true,
             },
         });
@@ -37,7 +39,7 @@ describe('Underground application operations', () => {
             if (path === '/api/v1/me/secretary?world_id=1') return response({
                 ...unnamedSecretaryFixture, name: 'ペリドット', named_at: '2026-09-22T00:00:00Z', header_label: 'ペリドット',
             });
-            if (path === '/api/v1/me/underground/distorted-stone-reminder') return response({ unclaimed });
+            if (path === '/api/v1/me/underground/distorted-stone-reminder') return response({ unclaimed, day: shopDay, reset_after_ms: resetAfterMs });
             if (path === '/api/v1/me/underground') {
                 const pending = delayedState;
                 delayedState = null;
@@ -79,6 +81,7 @@ describe('Underground application operations', () => {
             await flushPromises();
             unclaimed = true;
             shopDay = '2026-09-24';
+            resetAfterMs = 86_400_000;
             await vi.advanceTimersByTimeAsync(1_000);
             resolveEntry(previousDayState);
             await flushPromises();
@@ -99,7 +102,7 @@ describe('Underground application operations', () => {
             visibility.mockReturnValue('hidden');
             unclaimed = true;
             shopDay = '2026-09-25';
-            vi.setSystemTime(new Date('2026-09-24T15:00:00Z'));
+            vi.setSystemTime(new Date('2026-09-24T15:05:00Z'));
             document.dispatchEvent(new Event('visibilitychange'));
             window.dispatchEvent(new Event('pageshow'));
             await flushPromises();

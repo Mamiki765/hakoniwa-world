@@ -92,20 +92,22 @@ final readonly class UndergroundIntroService
         return $this->projectState($secretary, $profile, $profile?->introProgress);
     }
 
-    public function firstDistortedStoneUnclaimed(User $user): bool
+    /** @return array{unclaimed:bool, day:string, reset_after_ms:int} */
+    public function distortedStoneReminder(User $user): array
     {
         $secretaryId = Secretary::query()->where('user_id', $user->id)->value('id');
-        if ($secretaryId === null) {
-            return false;
-        }
-        $profile = UndergroundProfile::query()
+        $profile = $secretaryId === null ? null : UndergroundProfile::query()
             ->where('secretary_id', (int) $secretaryId)
             ->first(['otherworld_discovered_at', 'distorted_stone_purchase_day', 'distorted_stone_purchase_count']);
+        $window = $this->distortedStoneDailyWindow();
 
-        return $this->firstDistortedStoneUnclaimedForProfile(
-            $profile,
-            $this->distortedStonePurchasedToday($profile, Carbon::now('Asia/Tokyo')->toDateString()),
-        );
+        return [
+            'unclaimed' => $this->firstDistortedStoneUnclaimedForProfile(
+                $profile,
+                $this->distortedStonePurchasedToday($profile, $window['day']),
+            ),
+            ...$window,
+        ];
     }
 
     private function firstDistortedStoneUnclaimedForProfile(?UndergroundProfile $profile, int $purchasedToday): bool
@@ -119,6 +121,17 @@ final readonly class UndergroundIntroService
     {
         return $profile?->distorted_stone_purchase_day?->toDateString() === $day
             ? $profile->distorted_stone_purchase_count : 0;
+    }
+
+    /** @return array{day:string, reset_after_ms:int} */
+    private function distortedStoneDailyWindow(): array
+    {
+        $now = Carbon::now('Asia/Tokyo');
+
+        return [
+            'day' => $now->toDateString(),
+            'reset_after_ms' => (int) $now->diffInMilliseconds($now->copy()->startOfDay()->addDay()),
+        ];
     }
 
     /** @return array<string, mixed> */
@@ -234,19 +247,19 @@ final readonly class UndergroundIntroService
         });
     }
 
-    /** @return array{balance:int, day:string, purchased_today:int, daily_limit:int, next_price:int|null, unlocked:bool} */
+    /** @return array{balance:int, day:string, reset_after_ms:int, purchased_today:int, daily_limit:int, next_price:int|null, unlocked:bool} */
     private function distortedStoneShop(?UndergroundProfile $profile): array
     {
         $prices = $this->catalog->distortedStoneDailyPrices();
-        $day = Carbon::now('Asia/Tokyo')->toDateString();
-        $purchased = $this->distortedStonePurchasedToday($profile, $day);
+        $window = $this->distortedStoneDailyWindow();
+        $purchased = $this->distortedStonePurchasedToday($profile, $window['day']);
         $unlocked = $profile instanceof UndergroundProfile
             && UndergroundTrialProgress::query()->where('underground_profile_id', $profile->id)
                 ->where('trial_key', 'trial_02')->whereNotNull('first_cleared_at')->exists();
 
         return [
             'balance' => $profile->distorted_stone_balance ?? 0,
-            'day' => $day,
+            ...$window,
             'purchased_today' => $purchased,
             'daily_limit' => count($prices),
             'next_price' => $unlocked ? ($prices[$purchased] ?? null) : null,

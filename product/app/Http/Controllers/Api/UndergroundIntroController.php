@@ -47,7 +47,7 @@ final class UndergroundIntroController extends Controller
 
     public function distortedStoneReminder(Request $request, UndergroundIntroService $service): JsonResponse
     {
-        return response()->json(['data' => ['unclaimed' => $service->firstDistortedStoneUnclaimed($request->user())]]);
+        return response()->json(['data' => $service->distortedStoneReminder($request->user())]);
     }
 
     public function surfaceMap(Request $request, UndergroundSurfaceMapProjection $projection): JsonResponse

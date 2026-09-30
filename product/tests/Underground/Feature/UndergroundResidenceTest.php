@@ -99,7 +99,8 @@ final class UndergroundResidenceTest extends UndergroundPlayerAccessTestCase
         ]);
         $profile->update(['otherworld_discovered_at' => now()]);
         $this->getJson('/api/v1/me/underground/distorted-stone-reminder')
-            ->assertOk()->assertJsonPath('data.unclaimed', true);
+            ->assertOk()->assertJsonPath('data.unclaimed', true)
+            ->assertJsonPath('data.day', '2026-09-22')->assertJsonPath('data.reset_after_ms', 60_000);
         $this->getJson('/api/v1/me/underground')->assertOk()
             ->assertJsonPath('data.distorted_stone_reminder', true);
         $purchases = [['request_id' => (string) Str::uuid(), 'price' => 0]];
@@ -119,10 +120,13 @@ final class UndergroundResidenceTest extends UndergroundPlayerAccessTestCase
         $this->assertSame(40_000, $profile->fresh()->shard_balance);
         Carbon::setTestNow('2026-09-23 00:00:00+09:00');
         $this->getJson('/api/v1/me/underground/distorted-stone-reminder')
-            ->assertOk()->assertJsonPath('data.unclaimed', true);
+            ->assertOk()->assertJsonPath('data.unclaimed', true)
+            ->assertJsonPath('data.day', '2026-09-23')->assertJsonPath('data.reset_after_ms', 86_400_000);
         $this->getJson('/api/v1/me/underground')->assertOk()
             ->assertJsonPath('data.distorted_stone_shop.purchased_today', 0)
             ->assertJsonPath('data.distorted_stone_shop.next_price', 0)
+            ->assertJsonPath('data.distorted_stone_shop.day', '2026-09-23')
+            ->assertJsonPath('data.distorted_stone_shop.reset_after_ms', 86_400_000)
             ->assertJsonPath('data.distorted_stone_reminder', true);
         $this->postJson('/api/v1/me/underground/shop/distorted-stone', $purchases[3])->assertOk()
             ->assertJsonPath('data.distorted_stone_shop.purchased_today', 0)
