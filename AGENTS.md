@@ -166,7 +166,8 @@ test追加を求めるreviewも、到達経路・故障・既存確認の不足�
 - `_references/`配下はread-onlyとする。
 - `_references/`のファイルを編集、整形、rename、削除、commitしない。
 - third-party実装を直接翻訳・複製せず、必要な挙動だけを独立して実装する。
-- third-partyの画像、文章、相当量のcodeを`product/`へコピーしない。
+- third-partyの画像、文章、相当量のcodeを、出典・再配布条件を確認せず`product/`へコピーしない。
+- 明示的に再配布可能で、出典・配布条件を記録した小規模なUI/theme素材は、frontend release assetとして`product/`へ収録してよい。
 - 新規code、文書、DB text、API、user inputはUTF-8を使用する。
 
 ---
