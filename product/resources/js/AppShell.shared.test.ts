@@ -1205,7 +1205,7 @@ describe('application lobby and island entry', () => {
         await wrapper.findAll('.site-header nav button').find((button) => button.text() === '自島へ')!.trigger('click');
         await flushPromises();
         expect(wrapper.find('.daily-quest-trigger .notification-dot').exists()).toBe(true);
-        await wrapper.get('.daily-quest-trigger').trigger('click');
+        await wrapper.findAll('button').find(button => button.text() === 'デイリークエスト')!.trigger('click');
         await flushPromises();
         expect(wrapper.get('.daily-quest-modal').text()).toContain('開発画面を開く1 / 1・達成');
         expect(wrapper.get('.daily-quest-modal').text()).toContain('地下で10戦する4 / 10');
@@ -1218,7 +1218,7 @@ describe('application lobby and island entry', () => {
         await flushPromises();
         expect(wrapper.find('.daily-quest-trigger .notification-dot').exists()).toBe(true);
         dailyQuestsComplete = true;
-        await wrapper.get('.daily-quest-trigger').trigger('click');
+        await wrapper.findAll('button').find(button => button.text() === 'デイリークエスト')!.trigger('click');
         await flushPromises();
         expect(wrapper.find('.daily-quest-trigger .notification-dot').exists()).toBe(false);
         await wrapper.get('.daily-quest-modal button[aria-label="閉じる"]').trigger('click');
