@@ -208,6 +208,7 @@ Route::prefix('api/v1')->middleware(['auth', PrivateApiResponse::class])->group(
     Route::post('/nations/{nation}/message-board', [MessageBoardController::class, 'storePublic']);
     Route::post('/nations/{nation}/message-board/secret', [MessageBoardController::class, 'storeSecret']);
     Route::patch('/nations/{nation}/profile', [NationProfileController::class, 'update']);
+    Route::get('/nations/{nation}/ships', [SurfaceShipController::class, 'index']);
     Route::patch('/nations/{nation}/ships/{ship}/heading', [SurfaceShipController::class, 'updateHeading']);
     Route::post('/nations/{nation}/abandon', [NationAbandonmentController::class, 'store']);
     Route::post('/nations/{nation}/dormancy', [NationDormancyController::class, 'store']);

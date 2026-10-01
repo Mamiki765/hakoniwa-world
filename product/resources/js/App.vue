@@ -14,6 +14,7 @@ import MessageBoard from './components/MessageBoard.vue';
 import MonumentDesignSettings from './components/MonumentDesignSettings.vue';
 import RankingAchievements from './components/RankingAchievements.vue';
 import SalePolicyPanel from './components/SalePolicyPanel.vue';
+import ShipStatusWindow from './components/ShipStatusWindow.vue';
 import SecretaryEquipmentModal from './components/SecretaryEquipmentModal.vue';
 import TradingPostPanel from './components/TradingPostPanel.vue';
 import UndergroundPanel from './components/UndergroundPanel.vue';
@@ -2262,6 +2263,7 @@ async function abandonNation(): Promise<void> {
             </button>
             <SalePolicyPanel :key="`${nation.id}:${nation.current_turn}`" :nation-id="nation.id" :resources="nation.resources" :population="nation.total_population">
                 <template #actions>
+                    <ShipStatusWindow :nation-id="nation.id" />
                     <button class="daily-quest-trigger notification-anchor" type="button" :aria-label="hasIncompleteDailyQuests ? 'デイリークエスト（未達成の項目があります）' : undefined" @click="openDailyQuests">デイリークエスト<span v-if="hasIncompleteDailyQuests" class="notification-dot" aria-hidden="true" /></button>
                 </template>
             </SalePolicyPanel>

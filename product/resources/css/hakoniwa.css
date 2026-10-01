@@ -240,6 +240,14 @@ main { width: min(1560px, 100%); margin: 0 auto; padding: clamp(16px, 3vw, 46px)
 .daily-quest-list { display: grid; gap: 8px; margin: 0; padding: 0; list-style: none; }
 .daily-quest-list li { display: flex; justify-content: space-between; gap: 16px; padding: 12px; border: 1px solid var(--line); background: var(--input-surface); }
 .daily-quest-list li span { white-space: nowrap; font-variant-numeric: tabular-nums; }
+.ship-status-modal:not([open]) { display: none; }
+.ship-status-modal { width: min(480px, calc(100% - 32px)); }
+.ship-status-modal::backdrop { background: rgb(21 30 27 / 72%); }
+.ship-status-list { display: grid; gap: 8px; margin: 0; padding: 0; list-style: none; font-variant-numeric: tabular-nums; }
+.ship-status-list li { white-space: nowrap; }
+@media (max-width: 600px) {
+    .resource-panel-actions { float: none; display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 4px; margin: 0 0 8px; }
+}
 .compensation-modal > header { display: flex; align-items: start; justify-content: space-between; gap: 16px; }
 .compensation-modal > header h2, .compensation-modal > header p, .compensation-lead, .compensation-reason { margin: 0; }
 .compensation-modal > header > button { min-width: 40px; min-height: 40px; border: 0; color: var(--ink); background: transparent; font-size: 1.65rem; cursor: pointer; }
