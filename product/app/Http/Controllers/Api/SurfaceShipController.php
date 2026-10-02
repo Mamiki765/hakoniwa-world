@@ -5,10 +5,12 @@ namespace App\Http\Controllers\Api;
 use App\Application\SurfaceShipCourseService;
 use App\Domain\Concurrency\OptimisticLockException;
 use App\Domain\Ruleset\ResetRequiredException;
+use App\Domain\Ship\SurfaceShipCatalog;
 use App\Domain\Turn\TurnAlreadyRunningException;
 use App\Domain\Turn\UnresolvedNextTurnRunException;
 use App\Http\Controllers\Controller;
 use App\Models\Nation;
+use App\Models\NationMembership;
 use App\Models\Ship;
 use DomainException;
 use Illuminate\Http\JsonResponse;
@@ -16,6 +18,59 @@ use Illuminate\Http\Request;
 
 final class SurfaceShipController extends Controller
 {
+    public function index(Request $request, Nation $nation, SurfaceShipCatalog $catalog): JsonResponse
+    {
+        abort_unless(in_array($nation->state, ['active', 'dormant', 'recovery'], true), 404);
+        abort_unless(NationMembership::query()
+            ->where('user_id', $request->user()->id)
+            ->where('world_id', $nation->world_id)
+            ->where('nation_id', $nation->id)->exists(), 403);
+
+        $ships = Ship::activeForNation($nation->world_id, $nation->id)
+            ->with(['cell:id,x,y', 'rulesetVersion:id,settings'])
+            ->orderBy('id')->get();
+        $definitions = [];
+        $rows = [];
+        foreach ($ships as $ship) {
+            $definitions[$ship->ruleset_version_id] ??= collect(
+                $catalog->definitions($ship->rulesetVersion->settings),
+            )->keyBy('key');
+            $definition = $definitions[$ship->ruleset_version_id]->get($ship->ship_type_key);
+            if ($definition === null || $ship->cell === null) {
+                continue;
+            }
+            $rows[] = [
+                'id' => $ship->id,
+                'name' => $definition->name,
+                'sort_order' => $definition->sortOrder,
+                'x' => $ship->cell->x,
+                'y' => $ship->cell->y,
+                'current_hp' => $ship->current_hp,
+                'max_hp' => $ship->max_hp,
+                'heading' => $ship->heading,
+                'movement_mode' => $definition->movementMode,
+            ];
+        }
+        usort($rows, static fn (array $left, array $right): int => [$left['sort_order'], $left['id']] <=> [$right['sort_order'], $right['id']]);
+
+        $settings = $nation->world()->with('rulesetVersion')->firstOrFail()->rulesetVersion->settings;
+        $capacity = $catalog->capacityPerType($settings);
+        $shipTypes = [];
+        foreach ($catalog->definitions($settings) as $definition) {
+            if (! $definition->playerBuildable) {
+                continue;
+            }
+            $shipTypes[] = [
+                'key' => $definition->key,
+                'name' => $definition->name,
+                'count' => $ships->where('ship_type_key', $definition->key)->count(),
+                'capacity' => $capacity,
+            ];
+        }
+
+        return response()->json(['data' => $rows, 'meta' => ['ship_types' => $shipTypes]]);
+    }
+
     public function updateHeading(
         Request $request,
         Nation $nation,

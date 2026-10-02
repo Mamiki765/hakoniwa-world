@@ -277,6 +277,47 @@ final class SurfaceShipFoundationTest extends TestCase
         $this->assertSame([0, 2], [$ship->fresh()->heading, $ship->fresh()->version]);
     }
 
+    public function test_ship_list_is_private_and_returns_only_surviving_own_ships_in_catalog_order(): void
+    {
+        $world = $this->lightweightWorld();
+        $owner = User::factory()->create();
+        $nation = app(NationCreationService::class)->create($owner, $world, '船一覧国', '船一覧島主');
+        $cells = MapCell::query()->where('map_space_id', $this->surfaceMapSpace($world)->id)
+            ->whereNull('owner_nation_id')->whereNull('facility_definition_id')
+            ->whereHas('terrain', fn ($query) => $query->where('key', 'sea'))
+            ->orderByDesc('id')->limit(4)->get();
+        $warshipDefinition = collect(app(SurfaceShipCatalog::class)->definitions($world->rulesetVersion->settings))
+            ->firstWhere('key', 'warship');
+        $warship = $this->createShip($world, $nation, $cells[0], 'warship', $warshipDefinition->maximumHp);
+        $fishing = $this->createShip($world, $nation, $cells[1], 'fishing', 1);
+        $fishing->update(['heading' => 2]);
+        $removed = $this->createShip($world, $nation, $cells[2], 'fishing', 1);
+        $removed->update([
+            'state' => Ship::STATE_REMOVED, 'map_cell_id' => null,
+            'removal_reason' => 'scuttled', 'removed_at' => now(),
+        ]);
+        $this->createNpcShip($world, $cells[3], 'treasure', 1, 1);
+        $path = "/api/v1/nations/{$nation->id}/ships";
+
+        $this->getJson($path)->assertUnauthorized();
+        $this->actingAs(User::factory()->create())->getJson($path)->assertForbidden();
+        $capacity = app(SurfaceShipCatalog::class)->capacityPerType($world->rulesetVersion->settings);
+        config(['hakoniwa.ruleset.surface_ships.capacity_per_type' => $capacity + 1]);
+        $response = $this->actingAs($owner)->getJson($path)->assertOk();
+        $rows = $response->json('data');
+        $this->assertSame([$fishing->id, $warship->id], array_column($rows, 'id'));
+        $this->assertSame([$cells[1]->x, $cells[1]->y, 1, 1, 2], [
+            $rows[0]['x'], $rows[0]['y'], $rows[0]['current_hp'], $rows[0]['max_hp'], $rows[0]['heading'],
+        ]);
+        $this->assertNull($rows[1]['heading']);
+        $this->assertSame('heading_only', $rows[1]['movement_mode']);
+        $types = collect($response->json('meta.ship_types'))->keyBy('key');
+        $this->assertSame([1, $capacity], [$types['fishing']['count'], $types['fishing']['capacity']]);
+        $this->assertSame([1, $capacity], [$types['warship']['count'], $types['warship']['capacity']]);
+        $this->assertSame([0, $capacity], [$types['tourist']['count'], $types['tourist']['capacity']]);
+        $this->assertFalse($types->has('treasure'));
+    }
+
     private function createShip(
         World $world,
         Nation $nation,

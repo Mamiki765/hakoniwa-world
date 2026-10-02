@@ -31,11 +31,8 @@ final class SurfaceShipBuildService
     ): ?CommandFailureReason {
         $definition = $this->catalog->resolve($command, $item->quantity);
         $capacity = $this->catalog->capacityPerType($context->ruleset->settings);
-        $activeShips = Ship::query()
-            ->where('world_id', $context->world->id)
-            ->where('nation_id', $nation->id)
+        $activeShips = Ship::activeForNation($context->world->id, $nation->id)
             ->where('ship_type_key', $definition->key)
-            ->where('state', Ship::STATE_ACTIVE)
             ->limit($capacity)
             ->lockForUpdate()
             ->get(['id']);
@@ -69,11 +66,8 @@ final class SurfaceShipBuildService
     ): array {
         $definition = $this->catalog->resolve($command, $item->quantity);
         $capacity = $this->catalog->capacityPerType($context->ruleset->settings);
-        $activeShips = Ship::query()
-            ->where('world_id', $context->world->id)
-            ->where('nation_id', $nation->id)
+        $activeShips = Ship::activeForNation($context->world->id, $nation->id)
             ->where('ship_type_key', $definition->key)
-            ->where('state', Ship::STATE_ACTIVE)
             ->limit($capacity)
             ->lockForUpdate()
             ->get(['id']);
