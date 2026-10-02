@@ -55,7 +55,7 @@ final class SecretaryPersistenceTest extends TestCase
         );
         $skills = $secretary->skills->keyBy('skill_key');
         $this->assertSame(
-            collect(SecretarySkillCatalog::V26_KEYS)->sort()->values()->all(),
+            collect(SecretarySkillCatalog::KEYS)->sort()->values()->all(),
             $skills->keys()->sort()->values()->all(),
         );
         $this->assertSame(0, $skills[SecretarySkillCatalog::AGRICULTURAL_POLICY]->level);

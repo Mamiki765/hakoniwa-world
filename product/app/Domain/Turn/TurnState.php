@@ -898,12 +898,7 @@ final class TurnState
         if (! is_int($monsterExperience) || $monsterExperience < 0) {
             throw new InvalidArgumentException('Secretary monster experience snapshot must be a non-negative integer.');
         }
-        if (! in_array(array_keys($skills), [
-            SecretarySkillCatalog::KEYS,
-            SecretarySkillCatalog::V17_KEYS,
-            SecretarySkillCatalog::V20_KEYS,
-            SecretarySkillCatalog::V26_KEYS,
-        ], true)) {
+        if (array_keys($skills) !== SecretarySkillCatalog::KEYS) {
             throw new InvalidArgumentException('Secretary snapshot must contain the exact current skill catalog.');
         }
         $validatedSkills = [];
@@ -1122,7 +1117,7 @@ final class TurnState
 
     public function secretarySkillLevel(mixed $nationId, string $skillKey): int
     {
-        if (! in_array($skillKey, SecretarySkillCatalog::V26_KEYS, true)) {
+        if (! in_array($skillKey, SecretarySkillCatalog::KEYS, true)) {
             throw new InvalidArgumentException("Unknown Secretary skill {$skillKey}.");
         }
 
@@ -1133,7 +1128,7 @@ final class TurnState
     {
         $nationId = $this->validatedNationId($nationId);
         $this->secretarySnapshot($nationId);
-        if (! in_array($skillKey, SecretarySkillCatalog::V26_KEYS, true) || $amount < 1) {
+        if (! in_array($skillKey, SecretarySkillCatalog::KEYS, true) || $amount < 1) {
             throw new InvalidArgumentException('Secretary experience award must use a known skill and positive amount.');
         }
         if ($this->secretaryExperienceFlushed) {

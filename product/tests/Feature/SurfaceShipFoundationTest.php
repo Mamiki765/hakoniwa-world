@@ -24,6 +24,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Tests\Concerns\CreatesTestWorlds;
+use Tests\Support\SyntheticHistoricalRulesetSnapshot;
 use Tests\TestCase;
 
 final class SurfaceShipFoundationTest extends TestCase
@@ -73,8 +74,7 @@ final class SurfaceShipFoundationTest extends TestCase
             fn () => $this->createShip($world, $nation, $cells[4], 'unknown', 1),
             'Ship type outside its Ruleset snapshot',
         );
-        $historicalRulesetId = (int) DB::table('ruleset_versions')
-            ->where('key', 'hakoniwa-2s-plus-v19')->value('id');
+        $historicalRulesetId = (int) SyntheticHistoricalRulesetSnapshot::create('ship-identity-history', 26)->id;
         $this->assertConstraintRejects(
             fn () => Ship::query()->create([
                 'world_id' => $world->id,

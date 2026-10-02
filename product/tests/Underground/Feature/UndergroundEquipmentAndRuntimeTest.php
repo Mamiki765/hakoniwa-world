@@ -30,7 +30,7 @@ final class UndergroundEquipmentAndRuntimeTest extends UndergroundPlayerAccessTe
     use CreatesTestWorlds;
     use RefreshDatabase;
 
-    public function test_existing_excalibur_uses_the_new_catalog_after_upgrade(): void
+    public function test_fixed_equipment_resolves_its_persisted_catalog_identity_without_rewriting_it(): void
     {
         [, $secretary] = $this->secretaryUser('王城を抜けた秘書');
         $profile = $this->openEquipmentProfile($secretary);
@@ -47,14 +47,6 @@ final class UndergroundEquipmentAndRuntimeTest extends UndergroundPlayerAccessTe
         $oldItemLevel = $catalog->definition('excalibur', $legacyIdentity)['item_level'];
         $this->assertSame($oldItemLevel, $resolver->definitionForRow($item)['item_level']);
 
-        $migration = require database_path('migrations/2026_09_30_000000_upgrade_excalibur_to_il200.php');
-        $migration->up();
-        $migration->up();
-
-        $this->assertSame($catalog->identity(), $item->refresh()->catalog_identity);
-        $this->assertSame($catalog->definition('excalibur')['item_level'], $resolver->definitionForRow($item)['item_level']);
-        $this->assertGreaterThan($oldItemLevel, $resolver->definitionForRow($item)['item_level']);
-
         $newItem = UndergroundOwnedEquipment::query()->create([
             'underground_profile_id' => $profile->id,
             'definition_key' => 'excalibur',
@@ -63,13 +55,9 @@ final class UndergroundEquipmentAndRuntimeTest extends UndergroundPlayerAccessTe
             'acquired_at' => now(),
         ]);
 
-        try {
-            $migration->down();
-            $this->fail('Rollback must not downgrade Excaliburs awarded after the upgrade.');
-        } catch (\RuntimeException) {
-            $this->assertSame($catalog->identity(), $item->refresh()->catalog_identity);
-            $this->assertSame($catalog->identity(), $newItem->refresh()->catalog_identity);
-        }
+        $this->assertSame($catalog->definition('excalibur')['item_level'], $resolver->definitionForRow($newItem)['item_level']);
+        $this->assertSame($legacyIdentity, $item->refresh()->catalog_identity);
+        $this->assertSame($oldItemLevel, $resolver->definitionForRow($item)['item_level']);
     }
 
     public function test_polishing_charges_once_preserves_the_roll_and_reaches_the_upgrade_limit(): void
