@@ -183,6 +183,7 @@ final readonly class UndergroundJournalService
         }
         $clears = [];
         foreach (UndergroundContentClearProgress::query()->where('underground_profile_id', $profile->id)
+            ->whereIn('content_type', ['hunting_ground', 'trial'])
             ->orderBy('content_type')->orderBy('content_key')->get(['content_type', 'content_key', 'actual_clear_count', 'total_clear_count']) as $progress) {
             $clears[$progress->content_type.':'.$progress->content_key] = [
                 'type' => $progress->content_type, 'key' => $progress->content_key,

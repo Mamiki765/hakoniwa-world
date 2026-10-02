@@ -2,6 +2,7 @@
 
 namespace Tests\Underground\Feature;
 
+use App\Application\Underground\UndergroundAlphaV1PlayerCatalog;
 use App\Application\Underground\UndergroundEquipmentDropService;
 use App\Models\SecretaryGuideConversationTotal;
 use App\Models\UndergroundBattle;
@@ -54,6 +55,12 @@ final class UndergroundResidenceTest extends UndergroundPlayerAccessTestCase
             'underground_profile_id' => $profile->id, 'content_type' => 'hunting_ground',
             'content_key' => 'shallow_caves', 'actual_clear_count' => 2, 'total_clear_count' => 5,
         ]);
+        // Guide-duel progress is reachable but lies outside adventure journal clears.
+        UndergroundContentClearProgress::query()->create([
+            'underground_profile_id' => $profile->id, 'content_type' => 'guide_duel',
+            'content_key' => app(UndergroundAlphaV1PlayerCatalog::class)->guideDuel()['key'],
+            'actual_clear_count' => 1, 'total_clear_count' => 1,
+        ]);
         UndergroundTrialProgress::query()->create([
             'underground_profile_id' => $profile->id, 'trial_key' => 'trial_01',
             'unlocked_at' => now(), 'first_cleared_at' => now(),
@@ -87,6 +94,7 @@ final class UndergroundResidenceTest extends UndergroundPlayerAccessTestCase
             ->assertJsonPath('data.content_clears.0.skip_clear_count', 3)
             ->assertJsonPath('data.content_clears.1.actual_clear_count', null)
             ->assertJsonPath('data.content_clears.1.skip_clear_count', null)
+            ->assertJsonMissing(['type' => 'guide_duel'])
             ->assertJsonPath('data.lending_participation_count', 42)
             ->assertJsonMissing(['key' => 'private_other_action'])->json('data');
         $this->assertArrayNotHasKey('occurred_at', $data['maximum_hit']);
