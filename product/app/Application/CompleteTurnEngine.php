@@ -201,8 +201,16 @@ final class CompleteTurnEngine
         }
         $resources = $this->resourceDefinitions($context);
         $wheat = $this->resourceDefinition($resources, 'wheat');
+        $nationIds = $context->state->stableNationIds();
+        // Cell state stays unchanged during economy; keep these reads local to this phase.
+        $populationByNation = $this->populationByNation($nationIds);
+        $facilitiesByNation = ($nationIds === []
+            ? new Collection
+            : MapCell::query()->whereIn('owner_nation_id', $nationIds)
+                ->whereNotNull('facility_definition_id')->with('facility')->orderBy('id')->get()
+        )->groupBy('owner_nation_id');
 
-        foreach ($context->state->stableNationIds() as $nationId) {
+        foreach ($nationIds as $nationId) {
             $nation = Nation::query()->whereKey($nationId)->lockForUpdate()->firstOrFail();
             if (! in_array($nation->state, ['active', 'recovery'], true)) {
                 continue;
@@ -221,7 +229,12 @@ final class CompleteTurnEngine
                     SecretarySkillCatalog::GOLD_VEIN_SURVEY,
                 ),
             ] : [];
-            $inputs = $this->currentEconomyInputs($context, $nation);
+            $inputs = $this->currentEconomyInputs(
+                $context,
+                $nation,
+                $facilitiesByNation->get($nationId, []),
+                $populationByNation[$nationId] ?? 0,
+            );
             $economy = $this->economyCalculator->calculate(
                 $context->ruleset->settings,
                 $nation->state,
@@ -329,6 +342,7 @@ final class CompleteTurnEngine
     }
 
     /**
+     * @param  iterable<MapCell>  $facilities
      * @return array{
      *     population: int,
      *     farm_capacity: int,
@@ -337,8 +351,12 @@ final class CompleteTurnEngine
      *     undersea_city_cells: list<MapCell>
      * }
      */
-    private function currentEconomyInputs(TurnContext $context, Nation $nation): array
-    {
+    private function currentEconomyInputs(
+        TurnContext $context,
+        Nation $nation,
+        iterable $facilities,
+        int $population,
+    ): array {
         $oilRules = $context->ruleset->settings['turn_processing']['oil_field'] ?? null;
         $oilFacilityKey = is_array($oilRules) ? ($oilRules['facility_key'] ?? null) : null;
         if (! is_string($oilFacilityKey)) {
@@ -348,12 +366,6 @@ final class CompleteTurnEngine
         $industrialFacilities = [];
         $oilFieldCount = 0;
         $underseaCityCells = [];
-        $facilities = MapCell::query()
-            ->where('owner_nation_id', $nation->id)
-            ->whereNotNull('facility_definition_id')
-            ->with('facility')
-            ->orderBy('id')
-            ->get();
         foreach ($facilities as $cell) {
             $definition = $cell->facility;
             $key = $definition?->key;
@@ -394,7 +406,7 @@ final class CompleteTurnEngine
         }
 
         return [
-            'population' => (int) MapCell::query()->where('owner_nation_id', $nation->id)->sum('population'),
+            'population' => $population,
             'farm_capacity' => $farmCapacity,
             'industrial_facilities' => $industrialFacilities,
             'oil_field_count' => $oilFieldCount,
@@ -1121,9 +1133,10 @@ final class CompleteTurnEngine
     /** @return array<string, int|bool> */
     private function finalizeTurn(TurnContext $context): array
     {
+        $populationByNation = $this->populationByNation($context->state->lifecycleNationIds());
         $finalPopulationByNation = [];
-        foreach ($this->summaryRecords($context->state->lifecycleNationIds()) as $nationId => $record) {
-            $finalPopulationByNation[$nationId] = $record['summary']['population'];
+        foreach ($context->state->lifecycleNationIds() as $nationId) {
+            $finalPopulationByNation[$nationId] = $populationByNation[$nationId] ?? 0;
         }
         $demographicMetrics = $this->demographicExperience->award($context, $finalPopulationByNation);
         $secretaryMetrics = $this->secretaries->flushExperience($context);
