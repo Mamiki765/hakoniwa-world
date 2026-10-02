@@ -185,7 +185,7 @@ final class UndergroundReceiptRollupTest extends TestCase
 
     public function test_lifetime_statistics_preserve_known_unknown_and_maximum_after_receipt_deletion(): void
     {
-        [, $profile] = $this->profile();
+        [$user, $profile] = $this->profile();
         $old = CarbonImmutable::now()->subDays(40);
         $known = $this->battle($profile, $old, ['statistics_version' => 1, 'statistics' => [
             'party' => ['damage_dealt' => 70, 'effective_healing' => 20],
@@ -201,6 +201,8 @@ final class UndergroundReceiptRollupTest extends TestCase
         $statistics = app(UndergroundLifetimeStatistics::class);
         $before = $statistics->totals($profile->id);
         app(UndergroundReceiptRollupService::class)->aggregate($profile->id, 'battle', CarbonImmutable::now()->subDays(30), 500, true);
+        $journal = app(UndergroundJournalService::class);
+        $journalBefore = $journal->forUser($user);
         app(UndergroundReceiptPurgeService::class)->purge($profile->id, 'battle', CarbonImmutable::now()->subDays(30), 500, true);
         $after = $statistics->totals($profile->id);
         $this->assertEquals($before, $after);
@@ -213,6 +215,30 @@ final class UndergroundReceiptRollupTest extends TestCase
         $this->assertSame(1, $after['self']['complete_guard_count']['known_sum']);
         $this->assertSame(4, $after['self']['damage_prevented']['known_sum']);
         $this->assertSame(1, $after['incomplete_reasons']['legacy_party_self_attribution_unavailable']);
+        $this->assertSame($journalBefore, $journal->forUser($user));
+
+        // Saved prefix + live tail must count each record once without reloading logs.
+        $this->battle($profile, CarbonImmutable::now(), ['statistics_version' => 1, 'statistics' => [
+            'self' => ['maximum_hit' => 60, 'maximum_hit_action_key' => 'normal_attack',
+                'effective_healing' => 3, 'action_usage' => ['combo' => 1]],
+        ]]);
+        DB::enableQueryLog();
+        try {
+            $withTail = $journal->forUser($user);
+            $queries = array_column(DB::getQueryLog(), 'query');
+        } finally {
+            DB::disableQueryLog();
+        }
+        $this->assertSame(60, $withTail['maximum_hit']['value']);
+        $this->assertSame('通常攻撃', $withTail['maximum_hit']['action_name']);
+        $this->assertSame(3, $withTail['favorite_skills']['entries'][0]['count']);
+        $this->assertSame(10, $withTail['combat_support']['self']['effective_healing']['value']);
+        $this->assertSame(1, $withTail['combat_support']['self']['effective_healing']['unknown_battles']);
+        $statisticsQuery = array_values(array_filter($queries, static fn (string $sql): bool => str_contains($sql, 'AS saved')))[0];
+        $this->assertStringContainsString('verified_through_id', $statisticsQuery);
+        $this->assertStringContainsString('id > COALESCE', $statisticsQuery);
+        $this->assertStringNotContainsString('round_logs', $statisticsQuery);
+        $this->assertStringNotContainsString('snapshot', $statisticsQuery);
     }
 
     public function test_purge_stops_at_pins_and_unprepared_rows_and_requires_verification(): void

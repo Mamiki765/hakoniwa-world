@@ -8,6 +8,7 @@ use App\Models\UndergroundBattle;
 use App\Models\UndergroundContentClearProgress;
 use App\Models\UndergroundIntroRequest;
 use App\Models\UndergroundTrialProgress;
+use App\Models\UserSkipTicketBalance;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\File;
@@ -19,6 +20,81 @@ final class UndergroundResidenceTest extends UndergroundPlayerAccessTestCase
     use RefreshDatabase;
 
     private ?string $guideAssetDirectory = null;
+
+    public function test_journal_records_keep_missing_self_facts_separate_from_party_and_other_owners(): void
+    {
+        [$user, $secretary] = $this->secretaryUser('日誌の主');
+        $profile = $this->openEquipmentProfile($secretary);
+        $profile->update(['villa_purchased_at' => now()]);
+        $this->actingAs($user)->getJson('/api/v1/me/underground/journal')->assertOk()
+            ->assertJsonPath('data.maximum_hit.value', null)
+            ->assertJsonPath('data.favorite_skills.entries', [])
+            ->assertJsonPath('data.combat_support.self.effective_healing.value', 0)
+            ->assertJsonPath('data.content_clears', [])
+            ->assertJsonPath('data.lending_participation_count', 0);
+
+        // Supported compacted older party receipt: only PT support totals survive.
+        $legacy = UndergroundBattle::query()->where('underground_profile_id', $profile->id)->firstOrFail();
+        $legacy->update(['statistics_version' => 1, 'statistics' => [
+            'self' => [], 'party' => ['effective_healing' => 30, 'damage_prevented' => 14, 'revivals' => 2],
+        ]]);
+        $this->getJson('/api/v1/me/underground/journal')->assertOk()
+            ->assertJsonPath('data.combat_support.self.effective_healing.value', null)
+            ->assertJsonPath('data.combat_support.party.effective_healing.value', 30)
+            ->assertJsonPath('data.maximum_hit.unknown_battles', 1);
+        $known = $this->tutorialBattle($profile);
+        $known->update(['statistics_version' => 1, 'statistics' => [
+            'self' => ['maximum_hit' => 90, 'maximum_hit_action_key' => 'decisive_heavenrend',
+                'maximum_hit_damage_source' => 'direct', 'effective_healing' => 7, 'damage_prevented' => 4,
+                'revivals_performed' => 1, 'action_usage' => ['normal_attack' => 999,
+                    'mending_prayer' => 8, 'renewing_guard' => 4, 'decisive_heavenrend' => 4, 'harmony_heal' => 1]],
+            'party' => ['effective_healing' => 20, 'damage_prevented' => 10, 'revivals' => 1],
+        ]]);
+        UndergroundContentClearProgress::query()->create([
+            'underground_profile_id' => $profile->id, 'content_type' => 'hunting_ground',
+            'content_key' => 'shallow_caves', 'actual_clear_count' => 2, 'total_clear_count' => 5,
+        ]);
+        UndergroundTrialProgress::query()->create([
+            'underground_profile_id' => $profile->id, 'trial_key' => 'trial_01',
+            'unlocked_at' => now(), 'first_cleared_at' => now(),
+        ]);
+        UserSkipTicketBalance::query()->create(['user_id' => $user->id, 'balance' => 0, 'lifetime_participation_count' => 42]);
+        [$other, $otherSecretary] = $this->secretaryUser('非公開の他人');
+        $otherProfile = $this->openEquipmentProfile($otherSecretary);
+        $otherProfile->update(['villa_purchased_at' => now()]);
+        UserSkipTicketBalance::query()->create(['user_id' => $other->id, 'balance' => 0, 'lifetime_participation_count' => 99]);
+        $this->tutorialBattle($otherProfile)->update(['statistics_version' => 1,
+            'statistics' => ['self' => ['maximum_hit' => 99_999, 'action_usage' => ['private_other_action' => 1000]]]]);
+
+        $data = $this->getJson('/api/v1/me/underground/journal?user_id='.$other->id)->assertOk()
+            ->assertJsonPath('data.maximum_hit.value', 90)
+            ->assertJsonPath('data.maximum_hit.action_name', '天断一閃')
+            ->assertJsonPath('data.maximum_hit.known_battles', 1)
+            ->assertJsonPath('data.maximum_hit.unknown_battles', 1)
+            ->assertJsonPath('data.favorite_skills.entries.0.key', 'mending_prayer')
+            ->assertJsonPath('data.favorite_skills.entries.1.key', 'decisive_heavenrend')
+            ->assertJsonPath('data.favorite_skills.entries.2.key', 'renewing_guard')
+            ->assertJsonPath('data.favorite_skills.unknown_battles', 1)
+            ->assertJsonPath('data.combat_support.self.effective_healing.value', 7)
+            ->assertJsonPath('data.combat_support.self.effective_healing.unknown_battles', 1)
+            ->assertJsonPath('data.combat_support.party.effective_healing.value', 50)
+            ->assertJsonPath('data.combat_support.self.damage_prevented.value', 4)
+            ->assertJsonPath('data.combat_support.party.damage_prevented.value', 24)
+            ->assertJsonPath('data.combat_support.self.revivals.value', 1)
+            ->assertJsonPath('data.combat_support.party.revivals.value', 3)
+            ->assertJsonPath('data.content_clears.0.name', '浅い洞窟')
+            ->assertJsonPath('data.content_clears.0.actual_clear_count', 2)
+            ->assertJsonPath('data.content_clears.0.skip_clear_count', 3)
+            ->assertJsonPath('data.content_clears.1.actual_clear_count', null)
+            ->assertJsonPath('data.content_clears.1.skip_clear_count', null)
+            ->assertJsonPath('data.lending_participation_count', 42)
+            ->assertJsonMissing(['key' => 'private_other_action'])->json('data');
+        $this->assertArrayNotHasKey('occurred_at', $data['maximum_hit']);
+        $this->assertArrayNotHasKey('opponent', $data['maximum_hit']);
+        $this->actingAs($other)->getJson('/api/v1/me/underground/journal')->assertOk()
+            ->assertJsonPath('data.maximum_hit.value', 99_999)
+            ->assertJsonPath('data.lending_participation_count', 99);
+    }
 
     public function test_otherworld_discovery_requires_trial_two_and_level_one_hundred_and_survives_request_removal(): void
     {
