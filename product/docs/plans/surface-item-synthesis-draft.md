@@ -36,6 +36,8 @@ World advisory lock → World row → Secretaryのsurface state → 指定素材
 
 receiptは `(secretary_id, request_key)` のuniqueと排他で保護し、素材IDを昇順で固定する。同じUUID・同じ素材は保存結果を返す。UUID使い回しで別素材へ変更する操作は拒否する。別UUIDで消費済みIDを再指定しても、新しい素材集合を勝手に選ばない。成果物の売却・削除後もreceiptを保持し、retryで再付与しない。receiptのpurgeは実装しない。
 
+確定済みreceiptは本人認可を通して、World lock・Turn/Ruleset guard・現行レシピ検査より先に照合する。応答喪失後にTurnが失敗した場合も保存結果を確認できる。排他取得後にも再照合してcommitとの競合を閉じる。guardは新規消費だけを制限する。v27でtable未作成の場合は存在を確認してreceipt照会を省略する。
+
 UIは送信前に消費と成果物を確認し、連打を抑止する。通信結果不明時は同じUUIDと素材IDをページ内・sessionStorageに保持し、再表示後もその結果だけを照会する。World lock競合の409も元の処理の完了を否定しないためintentを保持する。それ以外の確定した409/422拒否でintentを解除する。未発見レシピは本人APIでも空配列。公開プロフィールへrecipeや倉庫候補を追加しない。取得後に装備した成果物の表示は既存の公開装備contractを使う。公開source code自体を秘密にする意味ではない。
 
 ## Ruleset・migrationと並行baseline修正

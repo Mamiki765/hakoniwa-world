@@ -13,6 +13,7 @@ use App\Models\User;
 use App\Models\World;
 use DomainException;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 
 final readonly class SecretaryItemSynthesisService
 {
@@ -80,32 +81,36 @@ final readonly class SecretaryItemSynthesisService
         if (count($ingredientIds) !== 3 || count(array_unique($ingredientIds)) !== 3) {
             throw new DomainException(self::UNAVAILABLE);
         }
+        $secretary = Secretary::query()->where('user_id', $user->id)->first();
+        if (! $secretary instanceof Secretary) {
+            throw new DomainException(self::UNAVAILABLE);
+        }
+        // Committed receipts are private immutable results, not new mutations.
+        // v27 intentionally has no receipt table; never query it blindly.
+        $hasReceipts = Schema::hasTable('secretary_item_syntheses');
+        if ($hasReceipts && ($replay = $this->replay($secretary, $recipeKey, $ingredientIds, $requestKey)) !== null) {
+            return $replay;
+        }
         $world = World::query()->where('key', config('hakoniwa.world.key'))->firstOrFail();
         $this->worldMutationLock->acquire($world);
         try {
-            return DB::transaction(function () use ($user, $world, $recipeKey, $ingredientIds, $requestKey): array {
+            return DB::transaction(function () use ($user, $world, $recipeKey, $ingredientIds, $requestKey, $hasReceipts): array {
                 $lockedWorld = World::query()->whereKey($world->id)->lockForUpdate()->firstOrFail();
+                $secretary = Secretary::query()->where('user_id', $user->id)->first();
+                if (! $secretary instanceof Secretary) {
+                    throw new DomainException(self::UNAVAILABLE);
+                }
+                $secretary->lockSurfaceState();
+                // The first lookup may have raced the original transaction's commit.
+                if ($hasReceipts && ($replay = $this->replay($secretary, $recipeKey, $ingredientIds, $requestKey)) !== null) {
+                    return $replay;
+                }
                 $ruleset = $lockedWorld->rulesetVersion()->firstOrFail();
                 $this->rulesetGuard->assertMutable($lockedWorld, $ruleset);
                 $this->turnRunGuard->assertClear($lockedWorld);
                 $recipe = $this->recipes->recipe($ruleset->settings);
                 if ($recipe === null || $recipe['key'] !== $recipeKey) {
                     throw new DomainException(self::UNAVAILABLE);
-                }
-                $secretary = Secretary::query()->where('user_id', $user->id)->first();
-                if (! $secretary instanceof Secretary) {
-                    throw new DomainException(self::UNAVAILABLE);
-                }
-                $secretary->lockSurfaceState();
-                $receipt = DB::table('secretary_item_syntheses')->where('secretary_id', $secretary->id)
-                    ->where('request_key', $requestKey)->lockForUpdate()->first();
-                if ($receipt !== null) {
-                    if ($receipt->recipe_key !== $recipeKey
-                        || json_decode($receipt->ingredient_ids, true, 512, JSON_THROW_ON_ERROR) !== $ingredientIds) {
-                        throw new DomainException(self::UNAVAILABLE);
-                    }
-
-                    return json_decode($receipt->result_snapshot, true, 512, JSON_THROW_ON_ERROR);
                 }
                 $items = $secretary->itemInstances()->whereIn('id', $ingredientIds)->orderBy('id')->lockForUpdate()->get();
                 $keys = $items->pluck('item_key')->sort()->values()->all();
@@ -144,5 +149,24 @@ final readonly class SecretaryItemSynthesisService
         } finally {
             $this->worldMutationLock->release($world);
         }
+    }
+
+    /**
+     * @param  list<int>  $ingredientIds
+     * @return array<string, mixed>|null
+     */
+    private function replay(Secretary $secretary, string $recipeKey, array $ingredientIds, string $requestKey): ?array
+    {
+        $receipt = DB::table('secretary_item_syntheses')->where('secretary_id', $secretary->id)
+            ->where('request_key', $requestKey)->first();
+        if ($receipt === null) {
+            return null;
+        }
+        if ($receipt->recipe_key !== $recipeKey
+            || json_decode($receipt->ingredient_ids, true, 512, JSON_THROW_ON_ERROR) !== $ingredientIds) {
+            throw new DomainException(self::UNAVAILABLE);
+        }
+
+        return json_decode($receipt->result_snapshot, true, 512, JSON_THROW_ON_ERROR);
     }
 }

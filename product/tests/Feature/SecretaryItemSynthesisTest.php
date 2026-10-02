@@ -169,10 +169,13 @@ final class SecretaryItemSynthesisTest extends TestCase
         $this->assertSame(0, $this->secretary->itemInstances()->where('item_key', SecretaryItemCatalog::SUCCUBUS_EMBLEM)->count());
     }
 
-    public function test_unresolved_turn_and_historical_world_cannot_consume_materials(): void
+    public function test_unresolved_turn_and_historical_world_allow_receipt_replay_but_cannot_consume_materials(): void
     {
         $current = config('hakoniwa.ruleset');
         $this->activateDraft();
+        $ids = $this->materials();
+        $committed = $this->payload($ids);
+        $first = $this->actingAs($this->owner)->postJson('/api/v1/me/secretary/item-synthesis', $committed)->assertOk()->json();
         $ids = $this->materials();
         $run = TurnRun::query()->create([
             'world_id' => $this->world->id, 'target_turn' => $this->world->current_turn + 1,
@@ -181,12 +184,14 @@ final class SecretaryItemSynthesisTest extends TestCase
             'status' => TurnRun::STATUS_FAILED, 'attempt_count' => 1,
             'pipeline' => [], 'phase_results' => [], 'failure_context' => [],
         ]);
-        $this->actingAs($this->owner)->postJson('/api/v1/me/secretary/item-synthesis', $this->payload($ids))->assertUnprocessable();
+        $this->postJson('/api/v1/me/secretary/item-synthesis', $committed)->assertOk()->assertExactJson($first);
+        $this->postJson('/api/v1/me/secretary/item-synthesis', $this->payload($ids))->assertUnprocessable();
         $run->delete();
         config(['hakoniwa.ruleset' => $current]);
+        $this->postJson('/api/v1/me/secretary/item-synthesis', $committed)->assertOk()->assertExactJson($first);
         $this->postJson('/api/v1/me/secretary/item-synthesis', $this->payload($ids))->assertUnprocessable();
         $this->assertSame(3, $this->secretary->itemInstances()->whereIn('id', $ids)->count());
-        $this->assertDatabaseCount('secretary_item_syntheses', 0);
+        $this->assertDatabaseCount('secretary_item_syntheses', 1);
     }
 
     public function test_lock_contention_is_a_retryable_response_without_consumption(): void
