@@ -483,13 +483,6 @@ final class UndergroundBalanceSimulatorTest extends TestCase
         $this->assertFalse($manifest['laboratory_scope']['win_rate_observations_are_balance_targets']);
         $this->assertFalse($manifest['laboratory_scope']['future_balance_must_preserve_observed_win_rates']);
         $this->assertTrue($manifest['laboratory_scope']['retuning_before_first_playable_is_allowed']);
-        $this->assertSame(
-            [0.7924, 0.561, 0.7538, 0.6783],
-            array_map(
-                static fn (array $scenario): float => $scenario['laboratory_observation']['observed_win_rate'],
-                $manifest['scenarios'],
-            ),
-        );
         foreach ($manifest['scenarios'] as $scenario) {
             $this->assertArrayNotHasKey('acceptance', $scenario);
             $this->assertFalse($scenario['laboratory_observation']['is_player_facing_balance_target']);

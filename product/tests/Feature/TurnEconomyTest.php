@@ -199,7 +199,7 @@ class TurnEconomyTest extends TestCase
         $nation = app(NationCreationService::class)->create(User::factory()->create(), $world, '資金上限国', '試験島主');
         $capacity = app(NationCapacityResolver::class)->resolve($nation, $world->rulesetVersion()->firstOrFail());
         $this->facilityCell($nation, 'farm', 2);
-        $this->setPopulation($nation, 1_100);
+        $this->setPopulation($nation, 2_000);
         $this->setResources($nation, ['wheat' => $capacity->foodTons, 'fish' => 0, 'monster_meat' => 0]);
         $this->setPolicy($nation, 'wheat', 'keep_amount', $capacity->foodTons + 10_000);
         $nation->update(['money' => $capacity->money]);
@@ -209,12 +209,12 @@ class TurnEconomyTest extends TestCase
 
         $this->assertSame(0, $economy->metrics['food_overflow_sold']);
         $this->assertSame(0, $economy->metrics['food_overflow_revenue']);
-        $this->assertSame(880, $economy->metrics['food_overflow_discarded']);
+        $this->assertSame(1_600, $economy->metrics['food_overflow_discarded']);
         $this->assertSame($capacity->money, (int) $nation->fresh()->money);
         $overflow = $this->event($run, 'resource.food_overflow_resolved', 'wheat');
         $this->assertSame(0, $overflow['sold_tons']);
         $this->assertSame(0, $overflow['revenue']);
-        $this->assertSame(880, $overflow['discarded_tons']);
+        $this->assertSame(1_600, $overflow['discarded_tons']);
     }
 
     public function test_residual_food_overflow_uses_thousand_ton_sale_batches_and_discards_the_remainder(): void

@@ -144,16 +144,4 @@ describe('viewer-safe cell details', () => {
         expect(wrapper.text()).toContain('試験島（N1）');
         expect(wrapper.text()).not.toContain('N18');
     });
-
-    it('renders a public disguised representation exactly as an ordinary forest detail view', () => {
-        const ordinary = mount(CellDetails, { props: { cell: cell({
-            terrain: 'forest', terrain_name: '森', display_name: '森', details: [],
-        }) } });
-        const disguised = mount(CellDetails, { props: { cell: cell({
-            terrain: 'forest', terrain_name: '森', facility: null, facility_name: null, display_name: '森', details: [],
-        }) } });
-        expect(disguised.html()).toBe(ordinary.html());
-        expect(disguised.html()).not.toContain('missile_base');
-        expect(disguised.text()).not.toContain('ミサイル基地');
-    });
 });

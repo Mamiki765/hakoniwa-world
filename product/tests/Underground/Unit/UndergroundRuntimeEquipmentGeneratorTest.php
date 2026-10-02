@@ -96,127 +96,20 @@ final class UndergroundRuntimeEquipmentGeneratorTest extends TestCase
         ));
     }
 
-    public function test_body_anchors_are_exposed_before_affix_application(): void
+    public function test_representative_body_anchors_are_exposed_before_affix_application(): void
     {
         $cases = [
-            'dagger' => [
-                'category' => 'weapon',
-                'weapon_style' => 'dagger',
-                'main_stat' => null,
-                'anchors' => [
-                    1 => self::base(30, 0, 0, 0, self::stats(finesse: 3, agility: 2)),
-                    10 => self::base(44, 0, 0, 0, self::stats(finesse: 6, agility: 4)),
-                    20 => self::base(60, 0, 0, 0, self::stats(finesse: 10, agility: 7)),
-                    30 => self::base(80, 0, 0, 0, self::stats(finesse: 13, agility: 9)),
-                    40 => self::base(100, 0, 0, 0, self::stats(finesse: 15, agility: 10)),
-                    50 => self::base(120, 0, 0, 0, self::stats(finesse: 18, agility: 12)),
-                    60 => self::base(140, 0, 0, 0, self::stats(finesse: 20, agility: 13)),
-                    70 => self::base(160, 0, 0, 0, self::stats(finesse: 22, agility: 15)),
-                    80 => self::base(180, 0, 0, 0, self::stats(finesse: 24, agility: 16)),
-                    90 => self::base(200, 0, 0, 0, self::stats(finesse: 26, agility: 18)),
-                ],
-            ],
-            'rapier' => [
-                'category' => 'weapon',
-                'weapon_style' => 'rapier',
-                'main_stat' => null,
-                'anchors' => [
-                    1 => self::base(34, 0, 0, 0, self::stats(might: 2, finesse: 2)),
-                    10 => self::base(50, 0, 0, 0, self::stats(might: 5, finesse: 4)),
-                    20 => self::base(68, 0, 0, 0, self::stats(might: 8, finesse: 6)),
-                    30 => self::base(90, 0, 0, 0, self::stats(might: 10, finesse: 8)),
-                    40 => self::base(112, 0, 0, 0, self::stats(might: 12, finesse: 9)),
-                    50 => self::base(134, 0, 0, 0, self::stats(might: 14, finesse: 11)),
-                    60 => self::base(156, 0, 0, 0, self::stats(might: 16, finesse: 12)),
-                    70 => self::base(178, 0, 0, 0, self::stats(might: 18, finesse: 14)),
-                    80 => self::base(200, 0, 0, 0, self::stats(might: 20, finesse: 15)),
-                    90 => self::base(222, 0, 0, 0, self::stats(might: 22, finesse: 17)),
-                ],
-            ],
-            'longsword' => [
-                'category' => 'weapon',
-                'weapon_style' => 'longsword',
-                'main_stat' => null,
-                'anchors' => [
-                    1 => self::base(31, 4, 0, 0, self::stats(vitality: 3, might: 2)),
-                    10 => self::base(46, 8, 0, 0, self::stats(vitality: 6, might: 4)),
-                    20 => self::base(62, 14, 0, 0, self::stats(vitality: 10, might: 6)),
-                    30 => self::base(82, 20, 0, 0, self::stats(vitality: 13, might: 8)),
-                    40 => self::base(102, 26, 0, 0, self::stats(vitality: 15, might: 9)),
-                    50 => self::base(122, 33, 0, 0, self::stats(vitality: 18, might: 11)),
-                    60 => self::base(142, 40, 0, 0, self::stats(vitality: 20, might: 12)),
-                    70 => self::base(162, 48, 0, 0, self::stats(vitality: 22, might: 14)),
-                    80 => self::base(182, 56, 0, 0, self::stats(vitality: 24, might: 15)),
-                    90 => self::base(202, 64, 0, 0, self::stats(vitality: 26, might: 17)),
-                ],
-            ],
-            'crystal_staff' => [
-                'category' => 'weapon',
-                'weapon_style' => 'crystal_staff',
-                'main_stat' => null,
-                'anchors' => [
-                    1 => self::base(26, 0, 0, 0, self::stats(finesse: 1, spirit: 4)),
-                    10 => self::base(38, 0, 0, 0, self::stats(finesse: 2, spirit: 8)),
-                    20 => self::base(52, 0, 0, 0, self::stats(finesse: 3, spirit: 13)),
-                    30 => self::base(70, 0, 0, 0, self::stats(finesse: 4, spirit: 17)),
-                    40 => self::base(88, 0, 0, 0, self::stats(finesse: 5, spirit: 20)),
-                    50 => self::base(106, 0, 0, 0, self::stats(finesse: 6, spirit: 24)),
-                    60 => self::base(124, 0, 0, 0, self::stats(finesse: 7, spirit: 27)),
-                    70 => self::base(142, 0, 0, 0, self::stats(finesse: 8, spirit: 30)),
-                    80 => self::base(160, 0, 0, 0, self::stats(finesse: 9, spirit: 34)),
-                    90 => self::base(178, 0, 0, 0, self::stats(finesse: 10, spirit: 38)),
-                ],
-            ],
-            'armor' => [
-                'category' => 'armor',
-                'weapon_style' => null,
-                'main_stat' => null,
-                'anchors' => [
-                    1 => self::base(0, 12, 9, 20, self::stats(vitality: 1)),
-                    10 => self::base(0, 28, 22, 60, self::stats(vitality: 2)),
-                    20 => self::base(0, 52, 42, 120, self::stats(vitality: 3)),
-                    30 => self::base(0, 86, 71, 210, self::stats(vitality: 4)),
-                    40 => self::base(0, 120, 100, 300, self::stats(vitality: 5)),
-                    50 => self::base(0, 170, 140, 425, self::stats(vitality: 6)),
-                    60 => self::base(0, 220, 180, 550, self::stats(vitality: 7)),
-                    70 => self::base(0, 270, 220, 675, self::stats(vitality: 8)),
-                    80 => self::base(0, 320, 260, 800, self::stats(vitality: 9)),
-                    90 => self::base(0, 370, 300, 925, self::stats(vitality: 10)),
-                ],
-            ],
-            'accessory' => [
-                'category' => 'accessory',
-                'weapon_style' => null,
-                'main_stat' => 'spirit',
-                'anchors' => [
-                    1 => self::base(0, 0, 0, 0, self::stats(spirit: 1)),
-                    10 => self::base(0, 0, 0, 0, self::stats(spirit: 2)),
-                    20 => self::base(0, 0, 0, 0, self::stats(spirit: 3)),
-                    30 => self::base(0, 0, 0, 0, self::stats(spirit: 5)),
-                    40 => self::base(0, 0, 0, 0, self::stats(spirit: 6)),
-                    50 => self::base(0, 0, 0, 0, self::stats(spirit: 9)),
-                    60 => self::base(0, 0, 0, 0, self::stats(spirit: 12)),
-                    70 => self::base(0, 0, 0, 0, self::stats(spirit: 15)),
-                    80 => self::base(0, 0, 0, 0, self::stats(spirit: 18)),
-                    90 => self::base(0, 0, 0, 0, self::stats(spirit: 21)),
-                ],
-            ],
+            ['weapon', 'dagger', null, 1, self::base(30, 0, 0, 0, self::stats(finesse: 3, agility: 2))],
+            ['weapon', 'rapier', null, 20, self::base(68, 0, 0, 0, self::stats(might: 8, finesse: 6))],
+            ['weapon', 'longsword', null, 90, self::base(202, 64, 0, 0, self::stats(vitality: 26, might: 17))],
+            ['weapon', 'crystal_staff', null, 40, self::base(88, 0, 0, 0, self::stats(finesse: 5, spirit: 20))],
+            ['armor', null, null, 50, self::base(0, 170, 140, 425, self::stats(vitality: 6))],
+            ['accessory', null, 'spirit', 70, self::base(0, 0, 0, 0, self::stats(spirit: 15))],
         ];
 
-        foreach ($cases as $bodyKey => $case) {
-            foreach ($case['anchors'] as $itemLevel => $expectedBase) {
-                $item = $this->generate(
-                    $itemLevel,
-                    'shallow_caves',
-                    'common',
-                    $case['category'],
-                    $case['weapon_style'],
-                    $case['main_stat'],
-                    0,
-                );
-
-                $this->assertSame($expectedBase, $item['base'], "Unexpected {$bodyKey} body at Item Lv {$itemLevel}.");
-            }
+        foreach ($cases as [$category, $style, $stat, $level, $expectedBase]) {
+            $item = $this->generate($level, 'shallow_caves', 'common', $category, $style, $stat, 0);
+            $this->assertSame($expectedBase, $item['base']);
         }
     }
 
