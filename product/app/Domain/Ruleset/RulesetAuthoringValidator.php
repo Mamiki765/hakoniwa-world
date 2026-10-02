@@ -15,6 +15,7 @@ use App\Domain\Monster\MonsterNaturalSpawnPolicy;
 use App\Domain\Monster\MonsterRewardPolicyResolver;
 use App\Domain\Secretary\SecretaryItemCatalog;
 use App\Domain\Secretary\SecretaryItemGameplayContract;
+use App\Domain\Secretary\SecretaryItemSynthesisContract;
 use App\Domain\Secretary\SecretaryItemTargetSafetyPolicy;
 use App\Domain\Secretary\SecretaryMonsterDropContract;
 use App\Domain\Secretary\SecretarySkillCatalog;
@@ -364,6 +365,7 @@ final class RulesetAuthoringValidator
         (new SecretaryMonsterDropContract(new SecretaryItemCatalog))->validate($dropSettings);
         $this->validateMilitary($settings, $facilityKeys, $version);
         $this->validateSecretary($settings, $resourceKeys, $commandKeys, $authoredKey);
+        (new SecretaryItemSynthesisContract)->validate($settings);
 
         return [
             'key' => $authoredKey,
