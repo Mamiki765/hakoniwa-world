@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Support\Carbon;
@@ -49,6 +50,13 @@ final class Ship extends Model
             'version' => 'integer',
             'removed_at' => 'datetime',
         ];
+    }
+
+    /** @return Builder<Ship> */
+    public static function activeForNation(int $worldId, int $nationId): Builder
+    {
+        return self::query()->where('world_id', $worldId)
+            ->where('nation_id', $nationId)->where('state', self::STATE_ACTIVE);
     }
 
     /** @return BelongsTo<World, $this> */

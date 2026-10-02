@@ -245,6 +245,10 @@ main { width: min(1560px, 100%); margin: 0 auto; padding: clamp(16px, 3vw, 46px)
 .ship-status-modal::backdrop { background: rgb(21 30 27 / 72%); }
 .ship-status-list { display: grid; gap: 8px; margin: 0; padding: 0; list-style: none; font-variant-numeric: tabular-nums; }
 .ship-status-list li { white-space: nowrap; }
+.ship-type-counts { display: grid; gap: 4px; color: var(--muted); font-size: .8rem; }
+.ship-type-counts p { margin: 0; }
+.ship-type-count-values { display: flex; flex-wrap: wrap; gap: 4px 12px; }
+.ship-type-count-values span { white-space: nowrap; font-variant-numeric: tabular-nums; }
 @media (max-width: 600px) {
     .resource-panel-actions { float: none; display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 4px; margin: 0 0 8px; }
 }

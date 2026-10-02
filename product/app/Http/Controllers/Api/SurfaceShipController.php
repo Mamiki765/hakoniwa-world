@@ -26,9 +26,7 @@ final class SurfaceShipController extends Controller
             ->where('world_id', $nation->world_id)
             ->where('nation_id', $nation->id)->exists(), 403);
 
-        $ships = $nation->ships()->where('state', Ship::STATE_ACTIVE)
-            ->where('world_id', $nation->world_id)
-            ->whereHas('cell')
+        $ships = Ship::activeForNation($nation->world_id, $nation->id)
             ->with(['cell:id,x,y', 'rulesetVersion:id,settings'])
             ->orderBy('id')->get();
         $definitions = [];
@@ -55,7 +53,22 @@ final class SurfaceShipController extends Controller
         }
         usort($rows, static fn (array $left, array $right): int => [$left['sort_order'], $left['id']] <=> [$right['sort_order'], $right['id']]);
 
-        return response()->json(['data' => $rows]);
+        $settings = $nation->world()->with('rulesetVersion')->firstOrFail()->rulesetVersion->settings;
+        $capacity = $catalog->capacityPerType($settings);
+        $shipTypes = [];
+        foreach ($catalog->definitions($settings) as $definition) {
+            if (! $definition->playerBuildable) {
+                continue;
+            }
+            $shipTypes[] = [
+                'key' => $definition->key,
+                'name' => $definition->name,
+                'count' => $ships->where('ship_type_key', $definition->key)->count(),
+                'capacity' => $capacity,
+            ];
+        }
+
+        return response()->json(['data' => $rows, 'meta' => ['ship_types' => $shipTypes]]);
     }
 
     public function updateHeading(

@@ -301,13 +301,21 @@ final class SurfaceShipFoundationTest extends TestCase
 
         $this->getJson($path)->assertUnauthorized();
         $this->actingAs(User::factory()->create())->getJson($path)->assertForbidden();
-        $rows = $this->actingAs($owner)->getJson($path)->assertOk()->json('data');
+        $capacity = app(SurfaceShipCatalog::class)->capacityPerType($world->rulesetVersion->settings);
+        config(['hakoniwa.ruleset.surface_ships.capacity_per_type' => $capacity + 1]);
+        $response = $this->actingAs($owner)->getJson($path)->assertOk();
+        $rows = $response->json('data');
         $this->assertSame([$fishing->id, $warship->id], array_column($rows, 'id'));
         $this->assertSame([$cells[1]->x, $cells[1]->y, 1, 1, 2], [
             $rows[0]['x'], $rows[0]['y'], $rows[0]['current_hp'], $rows[0]['max_hp'], $rows[0]['heading'],
         ]);
         $this->assertNull($rows[1]['heading']);
         $this->assertSame('heading_only', $rows[1]['movement_mode']);
+        $types = collect($response->json('meta.ship_types'))->keyBy('key');
+        $this->assertSame([1, $capacity], [$types['fishing']['count'], $types['fishing']['capacity']]);
+        $this->assertSame([1, $capacity], [$types['warship']['count'], $types['warship']['capacity']]);
+        $this->assertSame([0, $capacity], [$types['tourist']['count'], $types['tourist']['capacity']]);
+        $this->assertFalse($types->has('treasure'));
     }
 
     private function createShip(
