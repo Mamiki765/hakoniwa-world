@@ -25,38 +25,15 @@ final class SecretarySkillCatalog
     public const NAVY = 'navy';
 
     /** @var list<string> */
-    public const V14_KEYS = [
-        self::AGRICULTURAL_POLICY,
-        self::SPECIALTY_DEVELOPMENT,
-        self::GOLD_VEIN_SURVEY,
-        self::FINAL_DEFENSE_LINE,
-    ];
-
-    /** @var list<string> */
     public const KEYS = [
         self::AGRICULTURAL_POLICY,
         self::SPECIALTY_DEVELOPMENT,
         self::GOLD_VEIN_SURVEY,
         self::FOREST_MANAGEMENT,
         self::FINAL_DEFENSE_LINE,
-    ];
-
-    /** @var list<string> */
-    public const V17_KEYS = [
-        ...self::KEYS,
         self::DECLINING_BIRTHRATE_POLICY,
         self::INDOMITABLE,
-    ];
-
-    /** @var list<string> */
-    public const V20_KEYS = [
-        ...self::V17_KEYS,
         self::SHIP_OPERATIONS,
-    ];
-
-    /** @var list<string> */
-    public const V26_KEYS = [
-        ...self::V20_KEYS,
         self::NAVY,
     ];
 
@@ -130,12 +107,17 @@ final class SecretarySkillCatalog
             throw new DomainException('The active ruleset has an invalid Secretary catalog version.');
         }
 
-        return match (true) {
-            $version >= 26 => self::V26_KEYS,
-            $version >= 20 => self::V20_KEYS,
-            $version >= 17 => self::V17_KEYS,
-            $version >= 15 => self::KEYS,
-            default => self::V14_KEYS,
-        };
+        if (($ruleset['key'] ?? null) === config('hakoniwa.ruleset.key')
+            && $version === config('hakoniwa.ruleset.version')) {
+            return self::KEYS;
+        }
+        // Historical World projections read the saved catalog. They do not
+        // author or execute a retired Ruleset, nor invent missing modern skills.
+        $definitions = $ruleset['secretary']['skills'] ?? null;
+        if (! is_array($definitions)) {
+            throw new DomainException('The historical snapshot has no Secretary skill catalog.');
+        }
+
+        return array_values(array_filter(self::KEYS, static fn (string $key): bool => array_key_exists($key, $definitions)));
     }
 }

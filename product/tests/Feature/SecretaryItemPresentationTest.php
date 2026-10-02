@@ -14,6 +14,7 @@ use App\Models\World;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Tests\Concerns\CreatesTestWorlds;
+use Tests\Support\SyntheticHistoricalRulesetSnapshot;
 use Tests\TestCase;
 
 final class SecretaryItemPresentationTest extends TestCase
@@ -232,31 +233,15 @@ final class SecretaryItemPresentationTest extends TestCase
     private function historicalSecretaryItemSettings(): array
     {
         $settings = $this->historicalRuleset('historical-secretary-item-snapshot-v15', 15);
-        $oldBow = $settings['secretary']['items']['old_bow'];
-        unset($oldBow['rarity'], $oldBow['tradable'], $oldBow['npc_tradable']);
-        $oldBow['same_item_max_equipped'] = 1;
-        $ring = $settings['secretary']['items']['ring'];
-        unset($ring['rarity'], $ring['tradable'], $ring['npc_tradable']);
-        $ring['category'] = 'ring';
-        $ring['same_item_max_equipped'] = 5;
-        unset($settings['secretary']['item_rarities']);
-        $settings['secretary']['item_categories'] = [
-            'bow' => ['key' => 'bow', 'max_equipped' => 1],
-            'ring' => ['key' => 'ring', 'max_equipped' => 5],
-        ];
-        $settings['secretary']['items'] = [
-            'old_bow' => $oldBow,
-            'ring' => $ring,
-        ];
 
-        return $settings;
+        return SyntheticHistoricalRulesetSnapshot::withLegacySecretaryItems($settings);
     }
 
     /** @return array<string, mixed> */
     private function historicalRuleset(string $key, int $version): array
     {
         /** @var array<string, mixed> $settings */
-        $settings = require config_path('hakoniwa/rulesets/hakoniwa-2s-plus-v16.php');
+        $settings = require config_path('hakoniwa/rulesets/hakoniwa-2s-plus-v27.php');
         $settings['key'] = $key;
         $settings['version'] = $version;
 

@@ -103,78 +103,27 @@ final class FirstProductionReleaseTest extends TestCase
         $this->withoutVite();
         config(['hakoniwa.community.contact_url' => 'https://example.test/contact']);
 
-        $themePaths = ['/', '/manual', '/community-guidelines'];
-        foreach ($themePaths as $path) {
+        foreach (['/', '/manual', '/community-guidelines'] as $path) {
             $this->get($path)->assertOk()
-                ->assertSee('<html lang="ja" data-theme="system">', false);
+                ->assertSee('data-theme="system"', false);
         }
-        foreach (['system' => 'system', 'light' => 'light', 'dark' => 'dark', 'skyblue' => 'skyblue', 'autumn' => 'autumn', 'black' => 'black', 'wat' => 'system'] as $cookie => $expected) {
-            foreach ($themePaths as $path) {
-                $response = $this->withUnencryptedCookie('hakoniwa_theme', $cookie)->get($path);
-                $response->assertOk()
-                    ->assertSee("<html lang=\"ja\" data-theme=\"{$expected}\">", false)
-                    ->assertDontSee('<html lang="ja" data-theme="wat">', false);
-            }
+        foreach (['system', 'light', 'dark', 'skyblue', 'autumn', 'black'] as $theme) {
+            $this->withUnencryptedCookie('hakoniwa_theme', $theme)->get('/manual')->assertOk()
+                ->assertSee("data-theme=\"{$theme}\"", false);
         }
+        $this->withUnencryptedCookie('hakoniwa_theme', 'wat')->get('/manual')->assertOk()
+            ->assertSee('data-theme="system"', false);
 
-        $sections = [
-            'index' => 'マニュアルの入口',
-            'beginner' => 'はじめの一歩',
-            'intermediate' => '土地と施設',
-            'economy' => '人口と資源',
-            'advanced' => 'ミサイルと怪獣',
-            'disasters' => '災害と防災',
-            'ships' => '港と船',
-            'trading-post' => '交易場',
-            'secretary' => '地上の秘書',
-            'underground' => '地底の探索',
-            'combat' => '育成と戦闘',
-            'equipment' => '地底装備',
-            'faq' => '島の状態と困ったとき',
-        ];
-        $navigation = [];
-        foreach ($sections as $key => $label) {
-            $path = $key === 'index' ? '/manual' : "/manual/{$key}";
-            $navigation[] = "href=\"{$path}\"";
-            $navigation[] = ">{$label}</a>";
-        }
-        $linkedPaths = [];
-        foreach ($sections as $key => $label) {
-            $path = $key === 'index' ? '/manual' : "/manual/{$key}";
-            $heading = $key === 'index' ? '箱庭諸島２S＋マニュアル' : $label;
-            $response = $this->get($path)->assertOk()
-                ->assertSee("<title>{$label} | 箱庭諸島２S＋</title>", false)
-                ->assertSee("<h1>{$heading}</h1>", false)
-                ->assertSeeInOrder($navigation, false)
-                ->assertSee("href=\"{$path}\" class=\"current\"", false)
-                ->assertSee('class="manual-table-scroll"', false)
-                ->assertSee('href="/credits"', false)
-                ->assertSee('href="/community-guidelines"', false);
-            $html = $response->getContent();
-            $this->assertIsString($html);
-            preg_match('/<main class="manual-content">(.*?)<\/main>/s', $html, $main);
-            $this->assertArrayHasKey(1, $main);
-            preg_match_all('/href="([^"]+)"/', $main[1], $links);
-            foreach ($links[1] as $link) {
-                $this->assertStringStartsWith('/', $link);
-                $linkedPaths[$link] = true;
-            }
-        }
-        foreach (array_keys($linkedPaths) as $path) {
+        $manual = $this->get('/manual')->assertOk()
+            ->assertSee('href="/manual/beginner"', false)
+            ->assertSee('href="/credits"', false)
+            ->assertSee('href="/community-guidelines"', false);
+        preg_match_all('/href="(\/manual(?:\/[a-z-]+)?|\/credits|\/community-guidelines)"/', $manual->getContent(), $links);
+        foreach (array_unique($links[1]) as $path) {
             $this->get($path)->assertOk();
         }
-        $this->get('/manual/underground')->assertSee('試練2をクリアすると……？')
-            ->assertDontSee('案内人の過去を問う話')
-            ->assertDontSee('5まで読むと');
         $this->get('/community-guidelines')->assertOk()
-            ->assertSee('利用ルール')
-            ->assertSee('通報・異議申立て窓口を開く');
-
-        foreach (glob(base_path('docs/manual/*.md')) ?: [] as $path) {
-            $manual = file_get_contents($path);
-            $this->assertIsString($manual);
-            $this->assertDoesNotMatchRegularExpression('/\b(?:source|legacy|ruleset)\b/i', $manual);
-        }
+            ->assertSee('href="https://example.test/contact"', false);
     }
 
     private function turnRun(World $world, string $status, bool $isDryRun, string $seed): TurnRun

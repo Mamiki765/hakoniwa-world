@@ -6,20 +6,6 @@ use DomainException;
 
 final class SecretaryMonsterDropContract
 {
-    public const RULESET_KEYS = [
-        'hakoniwa-2s-plus-v17',
-        'hakoniwa-2s-plus-v18',
-        'hakoniwa-2s-plus-v19',
-        'hakoniwa-2s-plus-v20',
-        'hakoniwa-2s-plus-v21',
-        'hakoniwa-2s-plus-v22',
-        'hakoniwa-2s-plus-v23',
-        'hakoniwa-2s-plus-v24',
-        'hakoniwa-2s-plus-v25',
-        'hakoniwa-2s-plus-v26',
-        'hakoniwa-2s-plus-v27',
-    ];
-
     /** @var list<string> */
     public const ELIGIBLE_MONSTERS = [
         'inora', 'sanjira', 'red_inora', 'dark_inora', 'inora_ghost', 'aoi_inora', 'whale', 'king_inora',
@@ -40,13 +26,6 @@ final class SecretaryMonsterDropContract
     public function validate(array $settings): void
     {
         $drop = $settings['monster_system']['item_drop'] ?? null;
-        if (! in_array($settings['key'] ?? null, self::RULESET_KEYS, true)) {
-            if ($drop !== null) {
-                throw new DomainException('Secretary monster drops may only be authored by the v17+ contract.');
-            }
-
-            return;
-        }
         if (! is_array($drop) || array_is_list($drop)) {
             throw new DomainException('ruleset.monster_system.item_drop must be an object map.');
         }
@@ -73,16 +52,15 @@ final class SecretaryMonsterDropContract
                 $definitionKeys[] = $definition['key'];
             }
         }
-        $eligibleMonsters = $this->eligibleMonsters($settings);
+        $eligibleMonsters = [...self::ELIGIBLE_MONSTERS, 'nyowamiya'];
         foreach ([...$eligibleMonsters, ...self::EXCLUDED_MONSTERS] as $monsterKey) {
             if (! in_array($monsterKey, $definitionKeys, true)) {
                 throw new DomainException("Monster drop references unknown monster {$monsterKey}.");
             }
         }
-        $v27 = $settings['key'] === 'hakoniwa-2s-plus-v27';
-        if ($v27 && (! is_int($drop['nyowamiya_love_emblem_replacement_percent'] ?? null)
+        if (! is_int($drop['nyowamiya_love_emblem_replacement_percent'] ?? null)
             || $drop['nyowamiya_love_emblem_replacement_percent'] < 0
-            || $drop['nyowamiya_love_emblem_replacement_percent'] > 100)) {
+            || $drop['nyowamiya_love_emblem_replacement_percent'] > 100) {
             throw new DomainException('The v27 Nyowamiya replacement rate must be a percentage.');
         }
         $expectedPools = [
@@ -102,11 +80,11 @@ final class SecretaryMonsterDropContract
                 SecretaryItemCatalog::MECHANICAL_BOW,
             ],
             SecretaryItemCatalog::RARITY_CURSED => [SecretaryItemCatalog::COLLAR],
-            ...($v27 ? [SecretaryItemCatalog::RARITY_HIGH_QUALITY => [
+            SecretaryItemCatalog::RARITY_HIGH_QUALITY => [
                 'star_charm', 'gem_bow', 'aquamarine_bow', 'bullseye_bow',
                 'eternal_suit', 'marshal_suit', 'grand_chancellor_suit',
                 'magic_white_flag', 'nyowamiya_ribbon',
-            ]] : []),
+            ],
         ];
         $rarityPools = $drop['rarity_pools'] ?? null;
         if (! is_array($rarityPools)
@@ -176,16 +154,6 @@ final class SecretaryMonsterDropContract
     private function authoredPools(array $drop): mixed
     {
         return $drop['rarity_pools'] ?? null;
-    }
-
-    /** @param array<string, mixed> $settings
-     * @return list<string>
-     */
-    private function eligibleMonsters(array $settings): array
-    {
-        return in_array($settings['key'] ?? null, ['hakoniwa-2s-plus-v21', 'hakoniwa-2s-plus-v22', 'hakoniwa-2s-plus-v23', 'hakoniwa-2s-plus-v24', 'hakoniwa-2s-plus-v25', 'hakoniwa-2s-plus-v26', 'hakoniwa-2s-plus-v27'], true)
-            ? [...self::ELIGIBLE_MONSTERS, 'nyowamiya']
-            : self::ELIGIBLE_MONSTERS;
     }
 
     /** @param array<array-key, mixed> $value

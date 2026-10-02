@@ -43,7 +43,7 @@ foreach ($tables as $table) {
         }
 
         if (preg_match(
-            '/^"?([a-z][a-z0-9_]*)"? (bigint|integer|smallint|boolean|character varying\(\d+\)|character\(\d+\)|text|jsonb|uuid|date|numeric\(\d+,\d+\)|timestamp\(\d+\) (?:with|without) time zone)(?: |$)/',
+            '/^"?([a-z][a-z0-9_]*)"? (bigint|integer|smallint|boolean|character varying\(\d+\)|character\(\d+\)|text|jsonb|uuid|date|numeric\(\d+,\d+\)|timestamp(?:\(\d+\))? (?:with|without) time zone)(?: |$)/',
             $line,
             $column,
         ) !== 1) {

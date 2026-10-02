@@ -1,64 +1,5 @@
 <?php
 
-$behavior = [
-    0 => '/turn_processing/command_random_effects/land_level_earthquake/facility_keys/*',
-    1 => '/turn_processing/disasters/earthquake/facility_keys/*',
-    2 => '/turn_processing/disasters/eruption/seabed_facility_keys/*',
-    3 => '/turn_processing/disasters/fire/facility_keys/*',
-    4 => '/turn_processing/disasters/fire/protection_facility_keys/*',
-    5 => '/turn_processing/disasters/huge_meteor/seabed_facility_keys/*',
-    6 => '/turn_processing/disasters/meteor_shower/seabed_facility_keys/*',
-    7 => '/turn_processing/disasters/tsunami/excluded_facility_keys/*',
-    8 => '/turn_processing/disasters/tsunami/facility_keys/*',
-    9 => '/turn_processing/disasters/tsunami/settlement_facility_keys/*',
-    10 => '/turn_processing/disasters/tsunami/water_facility_keys/*',
-    11 => '/turn_processing/disasters/typhoon/facility_keys/*',
-    12 => '/turn_processing/disasters/typhoon/protection_facility_keys/*',
-    13 => 'affected_coastal_land_result',
-    14 => 'affected_shallow_result',
-    15 => 'depleted_terrain_key',
-    16 => 'enabled',
-    17 => 'facility_key',
-    18 => 'growth_rule_key',
-    19 => 'key',
-    20 => 'mountain_immune',
-    21 => 'out_of_bounds_is_water',
-    22 => 'output_resource_key',
-    23 => 'stream_version',
-];
-
-$data = [
-    0 => 'adjacent_water_offset',
-    1 => 'base_damage_threshold',
-    2 => 'base_safe_land_cells',
-    3 => 'capital_damage_percentage',
-    4 => 'capital_growth_maximum_population',
-    5 => 'center_padding',
-    6 => 'deep_sea',
-    7 => 'denominator',
-    8 => 'draw_denominator',
-    9 => 'eruption_center',
-    10 => 'excavation_or_shallow',
-    11 => 'facility_or_wasteland',
-    12 => 'growth_increment',
-    13 => 'initial_quantity',
-    14 => 'internal_denominator',
-    15 => 'maximum_quantity',
-    16 => 'minimum_city_population',
-    17 => 'minimum_quantity',
-    18 => 'numerator',
-    19 => 'production_units',
-    20 => 'radius',
-    21 => 'reward_maximum_money',
-    22 => 'reward_minimum_money',
-    23 => 'success_threshold_per_cost_unit',
-];
-
-$flavor = [
-    0 => 'label',
-    1 => 'unit',
-];
-
 return [
     'payload' => [
         'terrain_quantities' => [
@@ -146,9 +87,11 @@ return [
                     'excluded_facility_keys' => [
                         0 => 'seabed_base',
                         1 => 'monument',
+                        2 => 'undersea_city',
                     ],
                     'water_facility_keys' => [
                         0 => 'seabed_base',
+                        1 => 'undersea_city',
                     ],
                     'internal_denominator' => 12,
                     'adjacent_water_offset' => 1,
@@ -184,6 +127,7 @@ return [
                     'seabed_facility_keys' => [
                         0 => 'seabed_oil_field',
                         1 => 'seabed_base',
+                        2 => 'undersea_city',
                     ],
                 ],
                 'huge_meteor' => [
@@ -196,6 +140,7 @@ return [
                     'seabed_facility_keys' => [
                         0 => 'seabed_oil_field',
                         1 => 'seabed_base',
+                        2 => 'undersea_city',
                     ],
                 ],
                 'eruption' => [
@@ -208,6 +153,7 @@ return [
                     'seabed_facility_keys' => [
                         0 => 'seabed_oil_field',
                         1 => 'seabed_base',
+                        2 => 'undersea_city',
                     ],
                 ],
                 'fire' => [
@@ -222,6 +168,9 @@ return [
                     ],
                     'protection_facility_keys' => [
                         0 => 'monument',
+                    ],
+                    'unprotected_sea_facility_keys' => [
+                        0 => 'undersea_city',
                     ],
                 ],
                 'land_subsidence' => [
@@ -259,8 +208,62 @@ return [
         ],
     ],
     'classification' => [
-        'behavior' => $behavior,
-        'data' => $data,
-        'flavor' => $flavor,
+        'behavior' => [
+            0 => '/turn_processing/command_random_effects/land_level_earthquake/facility_keys/*',
+            1 => '/turn_processing/disasters/earthquake/facility_keys/*',
+            2 => '/turn_processing/disasters/eruption/seabed_facility_keys/*',
+            3 => '/turn_processing/disasters/fire/facility_keys/*',
+            4 => '/turn_processing/disasters/fire/protection_facility_keys/*',
+            5 => '/turn_processing/disasters/huge_meteor/seabed_facility_keys/*',
+            6 => '/turn_processing/disasters/meteor_shower/seabed_facility_keys/*',
+            7 => '/turn_processing/disasters/tsunami/excluded_facility_keys/*',
+            8 => '/turn_processing/disasters/tsunami/facility_keys/*',
+            9 => '/turn_processing/disasters/tsunami/settlement_facility_keys/*',
+            10 => '/turn_processing/disasters/tsunami/water_facility_keys/*',
+            11 => '/turn_processing/disasters/typhoon/facility_keys/*',
+            12 => '/turn_processing/disasters/typhoon/protection_facility_keys/*',
+            13 => 'affected_coastal_land_result',
+            14 => 'affected_shallow_result',
+            15 => 'depleted_terrain_key',
+            16 => 'enabled',
+            17 => 'facility_key',
+            18 => 'growth_rule_key',
+            19 => 'key',
+            20 => 'mountain_immune',
+            21 => 'out_of_bounds_is_water',
+            22 => 'output_resource_key',
+            23 => 'stream_version',
+            24 => '/turn_processing/disasters/fire/unprotected_sea_facility_keys/*',
+        ],
+        'data' => [
+            0 => 'adjacent_water_offset',
+            1 => 'base_damage_threshold',
+            2 => 'base_safe_land_cells',
+            3 => 'capital_damage_percentage',
+            4 => 'capital_growth_maximum_population',
+            5 => 'center_padding',
+            6 => 'deep_sea',
+            7 => 'denominator',
+            8 => 'draw_denominator',
+            9 => 'eruption_center',
+            10 => 'excavation_or_shallow',
+            11 => 'facility_or_wasteland',
+            12 => 'growth_increment',
+            13 => 'initial_quantity',
+            14 => 'internal_denominator',
+            15 => 'maximum_quantity',
+            16 => 'minimum_city_population',
+            17 => 'minimum_quantity',
+            18 => 'numerator',
+            19 => 'production_units',
+            20 => 'radius',
+            21 => 'reward_maximum_money',
+            22 => 'reward_minimum_money',
+            23 => 'success_threshold_per_cost_unit',
+        ],
+        'flavor' => [
+            0 => 'label',
+            1 => 'unit',
+        ],
     ],
 ];

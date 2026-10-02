@@ -18,118 +18,11 @@ final class CurrentRulesetAuthoringInspector
         'monsters-and-military.php',
         'secretary.php',
         'trading-post.php',
-    ];
-
-    /** @var list<string> */
-    private const V19_ADDITIONAL_DOMAIN_FILES = ['underground-facilities.php'];
-
-    /** @var list<string> */
-    private const V20_ADDITIONAL_DOMAIN_FILES = ['surface-ships.php'];
-
-    /** @var list<string> */
-    private const V21_ADDITIONAL_DOMAIN_FILES = ['facility-ranks.php'];
-
-    /** @var list<string> */
-    private const V23_ADDITIONAL_DOMAIN_FILES = ['central-facilities.php'];
-
-    /** @var list<string> */
-    private const V26_ADDITIONAL_DOMAIN_FILES = ['ocean-loop.php'];
-
-    /** @var array<string, string> */
-    private const V17_DOMAIN_OVERRIDES = [
-        'world-and-map.php' => 'v17/world-and-map.php',
-        'turn-pipeline.php' => 'v17/turn-pipeline.php',
-        'monsters-and-military.php' => 'v17/monsters-and-military.php',
-        'secretary.php' => 'v17/secretary.php',
-    ];
-
-    /** @var array<string, string> */
-    private const V18_DOMAIN_OVERRIDES = [
-        'world-and-map.php' => 'v18/world-and-map.php',
-        'lifecycle-and-karma.php' => 'v18/lifecycle-and-karma.php',
-        'terrain-and-disasters.php' => 'v18/terrain-and-disasters.php',
-        'facilities.php' => 'v18/facilities.php',
-        'commands-and-production.php' => 'v18/commands-and-production.php',
-        'turn-pipeline.php' => 'v18/turn-pipeline.php',
-        'monsters-and-military.php' => 'v18/monsters-and-military.php',
-        'secretary.php' => 'v17/secretary.php',
-    ];
-
-    /** @var array<string, string> */
-    private const V19_DOMAIN_OVERRIDES = [
-        ...self::V18_DOMAIN_OVERRIDES,
-        'world-and-map.php' => 'v19/world-and-map.php',
-        'commands-and-production.php' => 'v19/commands-and-production.php',
-        'underground-facilities.php' => 'v19/underground-facilities.php',
-    ];
-
-    /** @var array<string, string> */
-    private const V20_DOMAIN_OVERRIDES = [
-        ...self::V19_DOMAIN_OVERRIDES,
-        'world-and-map.php' => 'v20/world-and-map.php',
-        'facilities.php' => 'v20/facilities.php',
-        'commands-and-production.php' => 'v20/commands-and-production.php',
-        'secretary.php' => 'v20/secretary.php',
-        'surface-ships.php' => 'v20/surface-ships.php',
-    ];
-
-    /** @var array<string, string> */
-    private const V21_DOMAIN_OVERRIDES = [
-        ...self::V20_DOMAIN_OVERRIDES,
-        'world-and-map.php' => 'v21/world-and-map.php',
-        'lifecycle-and-karma.php' => 'v21/lifecycle-and-karma.php',
-        'monsters-and-military.php' => 'v21/monsters-and-military.php',
-        'facility-ranks.php' => 'v21/facility-ranks.php',
-    ];
-
-    /** @var array<string, string> */
-    private const V22_DOMAIN_OVERRIDES = [
-        ...self::V21_DOMAIN_OVERRIDES,
-        'world-and-map.php' => 'v22/world-and-map.php',
-        'secretary.php' => 'v22/secretary.php',
-    ];
-
-    /** @var array<string, string> */
-    private const V23_DOMAIN_OVERRIDES = [
-        ...self::V22_DOMAIN_OVERRIDES,
-        'world-and-map.php' => 'v23/world-and-map.php',
-        'facilities.php' => 'v23/facilities.php',
-        'commands-and-production.php' => 'v23/commands-and-production.php',
-        'central-facilities.php' => 'v23/central-facilities.php',
-        'monsters-and-military.php' => 'v23/monsters-and-military.php',
-    ];
-
-    /** @var array<string, string> */
-    private const V24_DOMAIN_OVERRIDES = [
-        ...self::V23_DOMAIN_OVERRIDES,
-        'world-and-map.php' => 'v24/world-and-map.php',
-        'commands-and-production.php' => 'v24/commands-and-production.php',
-        'turn-pipeline.php' => 'v24/turn-pipeline.php',
-    ];
-
-    /** @var array<string, string> */
-    private const V25_DOMAIN_OVERRIDES = [
-        ...self::V24_DOMAIN_OVERRIDES,
-        'world-and-map.php' => 'v25/world-and-map.php',
-    ];
-
-    /** @var array<string, string> */
-    private const V26_DOMAIN_OVERRIDES = [
-        ...self::V25_DOMAIN_OVERRIDES,
-        'world-and-map.php' => 'v26/world-and-map.php',
-        'surface-ships.php' => 'v26/surface-ships.php',
-        'secretary.php' => 'v26/secretary.php',
-        'monsters-and-military.php' => 'v26/monsters-and-military.php',
-        'ocean-loop.php' => 'v26/ocean-loop.php',
-    ];
-
-    /** @var array<string, string> */
-    private const V27_DOMAIN_OVERRIDES = [
-        ...self::V26_DOMAIN_OVERRIDES,
-        'world-and-map.php' => 'v27/world-and-map.php',
-        'secretary.php' => 'v27/secretary.php',
-        'monsters-and-military.php' => 'v27/monsters-and-military.php',
-        'ocean-loop.php' => 'v27/ocean-loop.php',
+        'underground-facilities.php',
+        'surface-ships.php',
+        'facility-ranks.php',
+        'central-facilities.php',
+        'ocean-loop.php',
     ];
 
     private const CLASSIFICATIONS = ['behavior', 'data', 'flavor'];
@@ -140,59 +33,15 @@ final class CurrentRulesetAuthoringInspector
      */
     public function inspect(array $publishedPayload): array
     {
-        $rulesetKey = $publishedPayload['key'] ?? null;
-        if (! in_array($rulesetKey, ['hakoniwa-2s-plus-v16', 'hakoniwa-2s-plus-v17', 'hakoniwa-2s-plus-v18', 'hakoniwa-2s-plus-v19', 'hakoniwa-2s-plus-v20', 'hakoniwa-2s-plus-v21', 'hakoniwa-2s-plus-v22', 'hakoniwa-2s-plus-v23', 'hakoniwa-2s-plus-v24', 'hakoniwa-2s-plus-v25', 'hakoniwa-2s-plus-v26', 'hakoniwa-2s-plus-v27'], true)) {
-            throw new DomainException('Ruleset authoring inspection supports only v16 through v27.');
+        if (($publishedPayload['key'] ?? null) !== config('hakoniwa.ruleset.key')) {
+            throw new DomainException('Ruleset authoring inspection supports only the current Ruleset.');
         }
         $authoredLeaves = [];
         $classifiedPaths = [];
         $counts = array_fill_keys(self::CLASSIFICATIONS, 0);
 
-        $domainFiles = match ($rulesetKey) {
-            'hakoniwa-2s-plus-v26', 'hakoniwa-2s-plus-v27' => [
-                ...self::DOMAIN_FILES,
-                ...self::V19_ADDITIONAL_DOMAIN_FILES,
-                ...self::V20_ADDITIONAL_DOMAIN_FILES,
-                ...self::V21_ADDITIONAL_DOMAIN_FILES,
-                ...self::V23_ADDITIONAL_DOMAIN_FILES,
-                ...self::V26_ADDITIONAL_DOMAIN_FILES,
-            ],
-            'hakoniwa-2s-plus-v23', 'hakoniwa-2s-plus-v24', 'hakoniwa-2s-plus-v25' => [
-                ...self::DOMAIN_FILES,
-                ...self::V19_ADDITIONAL_DOMAIN_FILES,
-                ...self::V20_ADDITIONAL_DOMAIN_FILES,
-                ...self::V21_ADDITIONAL_DOMAIN_FILES,
-                ...self::V23_ADDITIONAL_DOMAIN_FILES,
-            ],
-            'hakoniwa-2s-plus-v21', 'hakoniwa-2s-plus-v22' => [
-                ...self::DOMAIN_FILES,
-                ...self::V19_ADDITIONAL_DOMAIN_FILES,
-                ...self::V20_ADDITIONAL_DOMAIN_FILES,
-                ...self::V21_ADDITIONAL_DOMAIN_FILES,
-            ],
-            'hakoniwa-2s-plus-v20' => [
-                ...self::DOMAIN_FILES,
-                ...self::V19_ADDITIONAL_DOMAIN_FILES,
-                ...self::V20_ADDITIONAL_DOMAIN_FILES,
-            ],
-            'hakoniwa-2s-plus-v19' => [...self::DOMAIN_FILES, ...self::V19_ADDITIONAL_DOMAIN_FILES],
-            default => self::DOMAIN_FILES,
-        };
-        foreach ($domainFiles as $file) {
-            $relativePath = match ($rulesetKey) {
-                'hakoniwa-2s-plus-v27' => self::V27_DOMAIN_OVERRIDES[$file] ?? 'current/'.$file,
-                'hakoniwa-2s-plus-v26' => self::V26_DOMAIN_OVERRIDES[$file] ?? 'current/'.$file,
-                'hakoniwa-2s-plus-v25' => self::V25_DOMAIN_OVERRIDES[$file] ?? 'current/'.$file,
-                'hakoniwa-2s-plus-v24' => self::V24_DOMAIN_OVERRIDES[$file] ?? 'current/'.$file,
-                'hakoniwa-2s-plus-v23' => self::V23_DOMAIN_OVERRIDES[$file] ?? 'current/'.$file,
-                'hakoniwa-2s-plus-v22' => self::V22_DOMAIN_OVERRIDES[$file] ?? 'current/'.$file,
-                'hakoniwa-2s-plus-v21' => self::V21_DOMAIN_OVERRIDES[$file] ?? 'current/'.$file,
-                'hakoniwa-2s-plus-v20' => self::V20_DOMAIN_OVERRIDES[$file] ?? 'current/'.$file,
-                'hakoniwa-2s-plus-v19' => self::V19_DOMAIN_OVERRIDES[$file] ?? 'current/'.$file,
-                'hakoniwa-2s-plus-v18' => self::V18_DOMAIN_OVERRIDES[$file] ?? 'current/'.$file,
-                'hakoniwa-2s-plus-v17' => self::V17_DOMAIN_OVERRIDES[$file] ?? 'current/'.$file,
-                default => 'current/'.$file,
-            };
+        foreach (self::DOMAIN_FILES as $file) {
+            $relativePath = 'current/'.$file;
             $domain = require config_path('hakoniwa/rulesets/'.$relativePath);
             if (! is_array($domain) || array_keys($domain) !== ['payload', 'classification']) {
                 throw new DomainException("Current Ruleset domain {$file} must contain only payload and classification.");
@@ -272,7 +121,7 @@ final class CurrentRulesetAuthoringInspector
         }
 
         return [
-            'domains' => count($domainFiles),
+            'domains' => count(self::DOMAIN_FILES),
             'leaves' => count($publishedLeaves),
             'behavior' => $counts['behavior'],
             'data' => $counts['data'],

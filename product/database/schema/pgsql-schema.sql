@@ -2,7 +2,7 @@
 -- PostgreSQL database dump
 --
 
-\restrict KWF7zqWAHRFweR5bsqlqPZVo5sQ6TirvaMUWXCs5pltZtTLhbcd1SIGg0N1Cmhc
+\restrict AIHFphxJP48UpE3pFUEXLH31hK9jVCb4eqFdqiUNflydUNPiXW2UCB06T64hwuO
 
 -- Dumped from database version 18.4 (Debian 18.4-1.pgdg12+1)
 -- Dumped by pg_dump version 18.4 (Debian 18.4-1.pgdg12+1)
@@ -18,6 +18,8 @@ SET check_function_bodies = false;
 SET xmloption = content;
 SET client_min_messages = warning;
 SET row_security = off;
+
+
 
 --
 -- Name: enforce_queue_item_world_ruleset_match(); Type: FUNCTION; Schema: public; Owner: -
@@ -35,6 +37,10 @@ BEGIN
         FROM nation_command_queue_items
         WHERE id = NEW.id
     ) THEN
+        RETURN NEW;
+    END IF;
+
+    IF NEW.target_context = 'underground_slot' THEN
         RETURN NEW;
     END IF;
 
@@ -125,6 +131,38 @@ $$;
 
 
 --
+-- Name: validate_buried_treasure_identity(); Type: FUNCTION; Schema: public; Owner: -
+--
+
+CREATE FUNCTION public.validate_buried_treasure_identity() RETURNS trigger
+    LANGUAGE plpgsql
+    AS $$
+DECLARE
+  cell_world_id bigint;
+  resolving_nation_world_id bigint;
+BEGIN
+  SELECT space.world_id INTO cell_world_id
+    FROM map_cells cell
+    JOIN map_spaces space ON space.id = cell.map_space_id
+   WHERE cell.id = NEW.map_cell_id;
+  IF cell_world_id IS NULL OR cell_world_id <> NEW.world_id THEN
+    RAISE EXCEPTION 'Buried Treasure cell must belong to its World.';
+  END IF;
+  IF NEW.resolved_by_nation_id IS NOT NULL THEN
+    SELECT world_id INTO resolving_nation_world_id
+      FROM nations
+     WHERE id = NEW.resolved_by_nation_id;
+    IF resolving_nation_world_id IS NULL OR resolving_nation_world_id <> NEW.world_id THEN
+      RAISE EXCEPTION 'Buried Treasure resolving Nation must belong to its World.';
+    END IF;
+  END IF;
+
+  RETURN NEW;
+END;
+$$;
+
+
+--
 -- Name: validate_monster_instance_world_ruleset(); Type: FUNCTION; Schema: public; Owner: -
 --
 
@@ -136,16 +174,62 @@ DECLARE
     definition_ruleset bigint;
     definition_min_hp integer;
     definition_max_hp integer;
+    ruleset_settings jsonb;
+    central_contract jsonb;
+    central_facility_keys jsonb;
+    central_percent_per_level integer;
+    central_facility_key_count integer;
+    central_facility_definition_count integer;
+    central_maximum_level integer;
+    maximum_spawned_hp bigint;
 BEGIN
     SELECT ruleset_version_id INTO world_ruleset FROM worlds WHERE id = NEW.world_id;
-    SELECT ruleset_version_id, base_hp, base_hp + hp_variation
-      INTO definition_ruleset, definition_min_hp, definition_max_hp
-      FROM monster_definitions WHERE id = NEW.monster_definition_id;
+    SELECT definition.ruleset_version_id,
+           definition.base_hp,
+           definition.base_hp + definition.hp_variation,
+           ruleset.settings
+      INTO definition_ruleset, definition_min_hp, definition_max_hp, ruleset_settings
+      FROM monster_definitions definition
+      JOIN ruleset_versions ruleset ON ruleset.id = definition.ruleset_version_id
+     WHERE definition.id = NEW.monster_definition_id;
     IF world_ruleset IS NULL OR definition_ruleset IS NULL OR world_ruleset <> definition_ruleset THEN
         RAISE EXCEPTION 'monster definition must belong to the World current ruleset';
     END IF;
-    IF NEW.spawned_max_hp < definition_min_hp OR NEW.spawned_max_hp > definition_max_hp THEN
-        RAISE EXCEPTION 'spawned monster HP is outside its definition range';
+
+    maximum_spawned_hp := definition_max_hp;
+    central_contract := ruleset_settings #> '{central_facilities,natural_monster_hp}';
+    IF central_contract IS NOT NULL THEN
+        central_facility_keys := central_contract -> 'facility_keys';
+        central_percent_per_level := (central_contract ->> 'percent_per_level')::integer;
+        IF jsonb_typeof(central_contract) <> 'object'
+           OR jsonb_typeof(central_facility_keys) <> 'array'
+           OR jsonb_array_length(central_facility_keys) < 1
+           OR central_percent_per_level < 1 THEN
+            RAISE EXCEPTION 'central facility monster HP contract is invalid';
+        END IF;
+
+        SELECT count(*),
+               count(ruleset_settings #> ARRAY['facility_definitions', facility_key, 'maximum_scale']),
+               COALESCE(sum((ruleset_settings #>> ARRAY['facility_definitions', facility_key, 'maximum_scale'])::integer), 0)
+          INTO central_facility_key_count, central_facility_definition_count, central_maximum_level
+          FROM jsonb_array_elements_text(central_facility_keys) AS authored(facility_key);
+        IF central_facility_key_count <> central_facility_definition_count
+           OR central_maximum_level < 1 THEN
+            RAISE EXCEPTION 'central facility maximum level contract is invalid';
+        END IF;
+
+        maximum_spawned_hp := LEAST(
+            32767,
+            (
+                definition_max_hp::bigint
+                * (100::bigint + central_percent_per_level::bigint * central_maximum_level::bigint)
+                + 99
+            ) / 100
+        );
+    END IF;
+
+    IF NEW.spawned_max_hp < definition_min_hp OR NEW.spawned_max_hp > maximum_spawned_hp THEN
+        RAISE EXCEPTION 'spawned monster HP is outside its Ruleset range';
     END IF;
     RETURN NEW;
 END;
@@ -204,6 +288,7 @@ DECLARE
     cell_facility text;
     cell_space text;
 BEGIN
+    PERFORM 1 FROM map_cells WHERE id = NEW.map_cell_id FOR UPDATE;
     SELECT world_id, state INTO monster_world, monster_state
       FROM monster_instances WHERE id = NEW.monster_instance_id;
     SELECT ms.world_id, fd.key, ms.key INTO cell_world, cell_facility, cell_space
@@ -222,6 +307,11 @@ BEGIN
     END IF;
     IF cell_facility = 'capital' THEN
         RAISE EXCEPTION 'Capital cells cannot contain monster occupancy';
+    END IF;
+    IF EXISTS (
+      SELECT 1 FROM ships ship WHERE ship.map_cell_id = NEW.map_cell_id AND ship.state = 'active'
+    ) THEN
+        RAISE EXCEPTION 'A Monster cannot share a cell with a Ship';
     END IF;
     RETURN NEW;
 END;
@@ -354,6 +444,177 @@ END;
 $$;
 
 
+--
+-- Name: validate_surface_ship_cell_mutation(); Type: FUNCTION; Schema: public; Owner: -
+--
+
+CREATE FUNCTION public.validate_surface_ship_cell_mutation() RETURNS trigger
+    LANGUAGE plpgsql
+    AS $$
+DECLARE
+  ship_world_id bigint;
+  cell_world_id bigint;
+  cell_map_space_key varchar;
+  cell_terrain_key varchar;
+  cell_facility_id bigint;
+  facility_visibility_policy varchar;
+  facility_disguise_terrain_key varchar;
+BEGIN
+  IF to_regclass('public.ships') IS NULL THEN
+    RETURN NEW;
+  END IF;
+
+  SELECT world_id INTO ship_world_id
+    FROM ships
+   WHERE map_cell_id = OLD.id
+     AND state = 'active'
+   FOR UPDATE;
+  IF ship_world_id IS NULL THEN
+    RETURN NEW;
+  END IF;
+
+  SELECT space.world_id, space.key, terrain.key, NEW.facility_definition_id,
+         facility.visibility_policy, facility.disguise_terrain_key
+    INTO cell_world_id, cell_map_space_key, cell_terrain_key, cell_facility_id,
+         facility_visibility_policy, facility_disguise_terrain_key
+    FROM map_spaces space
+    JOIN terrain_definitions terrain ON terrain.id = NEW.terrain_definition_id
+    LEFT JOIN facility_definitions facility ON facility.id = NEW.facility_definition_id
+   WHERE space.id = NEW.map_space_id;
+
+  IF cell_world_id IS NULL OR cell_world_id <> ship_world_id OR cell_map_space_key <> 'surface'
+     OR cell_terrain_key <> 'sea'
+     OR (cell_facility_id IS NOT NULL
+       AND (facility_visibility_policy IS DISTINCT FROM 'disguised'
+         OR facility_disguise_terrain_key IS DISTINCT FROM 'sea')) THEN
+    RAISE EXCEPTION 'An occupied Ship cell must retain its Surface deep-sea coexistence contract.';
+  END IF;
+
+  RETURN NEW;
+END;
+$$;
+
+
+--
+-- Name: validate_surface_ship_identity(); Type: FUNCTION; Schema: public; Owner: -
+--
+
+CREATE FUNCTION public.validate_surface_ship_identity() RETURNS trigger
+    LANGUAGE plpgsql
+    AS $$
+DECLARE
+  nation_world_id bigint;
+  nation_state varchar;
+  world_ruleset_id bigint;
+  ship_rules jsonb;
+  ship_definition jsonb;
+  definition_player_buildable boolean;
+  type_capacity integer;
+  cell_world_id bigint;
+  cell_map_space_key varchar;
+  cell_terrain_key varchar;
+  cell_facility_id bigint;
+  facility_visibility_policy varchar;
+  facility_disguise_terrain_key varchar;
+BEGIN
+  SELECT ruleset_version_id INTO world_ruleset_id
+    FROM worlds
+   WHERE id = NEW.world_id;
+  SELECT settings -> 'surface_ships' INTO ship_rules
+    FROM ruleset_versions
+   WHERE id = NEW.ruleset_version_id;
+  IF world_ruleset_id IS NULL OR ship_rules IS NULL THEN
+    RAISE EXCEPTION 'Ship ruleset provenance must reference a World and authored Surface Ship contract.';
+  END IF;
+  IF TG_OP = 'INSERT' AND NEW.ruleset_version_id <> world_ruleset_id THEN
+    RAISE EXCEPTION 'A new Ship must bind the current World Ruleset snapshot.';
+  END IF;
+  IF TG_OP = 'UPDATE' AND NEW.ruleset_version_id <> OLD.ruleset_version_id THEN
+    RAISE EXCEPTION 'Ship Ruleset provenance is immutable.';
+  END IF;
+  ship_definition := ship_rules -> 'definitions' -> NEW.ship_type_key;
+  IF ship_definition IS NULL OR jsonb_typeof(ship_definition) <> 'object' THEN
+    RAISE EXCEPTION 'Ship type must be authored by its Ruleset snapshot.';
+  END IF;
+  IF NEW.max_hp <> (ship_definition ->> 'maximum_hp')::integer THEN
+    RAISE EXCEPTION 'Ship maximum HP must match its Ruleset snapshot.';
+  END IF;
+  IF ship_definition ? 'player_buildable' THEN
+    IF jsonb_typeof(ship_definition -> 'player_buildable') <> 'boolean' THEN
+      RAISE EXCEPTION 'Ship ownership contract must be authored as a boolean.';
+    END IF;
+    definition_player_buildable := (ship_definition ->> 'player_buildable')::boolean;
+  ELSE
+    definition_player_buildable := true;
+  END IF;
+  IF NEW.nation_id IS NULL AND definition_player_buildable THEN
+    RAISE EXCEPTION 'A Player-buildable Ship must belong to a Nation.';
+  END IF;
+  IF NEW.nation_id IS NOT NULL AND NOT definition_player_buildable THEN
+    RAISE EXCEPTION 'An NPC-only Ship cannot belong to a Nation.';
+  END IF;
+  type_capacity := (ship_rules ->> 'capacity_per_type')::integer;
+  IF type_capacity IS NULL OR type_capacity < 1 THEN
+    RAISE EXCEPTION 'Ship type capacity must be authored by its Ruleset snapshot.';
+  END IF;
+
+  IF NEW.nation_id IS NOT NULL THEN
+    SELECT world_id, state INTO nation_world_id, nation_state
+      FROM nations
+     WHERE id = NEW.nation_id
+     FOR UPDATE;
+    IF nation_world_id IS NULL OR nation_world_id <> NEW.world_id THEN
+      RAISE EXCEPTION 'Ship Nation must belong to the same World.';
+    END IF;
+  END IF;
+
+  IF NEW.state = 'active' THEN
+    PERFORM 1 FROM map_cells WHERE id = NEW.map_cell_id FOR UPDATE;
+    SELECT space.world_id, space.key, terrain.key, cell.facility_definition_id,
+           facility.visibility_policy, facility.disguise_terrain_key
+      INTO cell_world_id, cell_map_space_key, cell_terrain_key, cell_facility_id,
+           facility_visibility_policy, facility_disguise_terrain_key
+      FROM map_cells cell
+      JOIN map_spaces space ON space.id = cell.map_space_id
+      JOIN terrain_definitions terrain ON terrain.id = cell.terrain_definition_id
+      LEFT JOIN facility_definitions facility ON facility.id = cell.facility_definition_id
+     WHERE cell.id = NEW.map_cell_id;
+    IF cell_world_id IS NULL OR cell_world_id <> NEW.world_id OR cell_map_space_key <> 'surface' THEN
+      RAISE EXCEPTION 'An active Ship must occupy a Surface cell in its World.';
+    END IF;
+    IF cell_terrain_key <> 'sea' THEN
+      RAISE EXCEPTION 'An active Ship must occupy deep sea.';
+    END IF;
+    IF cell_facility_id IS NOT NULL
+       AND (facility_visibility_policy IS DISTINCT FROM 'disguised'
+         OR facility_disguise_terrain_key IS DISTINCT FROM 'sea') THEN
+      RAISE EXCEPTION 'A Ship may coexist only with a facility canonically disguised as sea.';
+    END IF;
+    IF EXISTS (
+      SELECT 1 FROM monster_occupancies occupancy WHERE occupancy.map_cell_id = NEW.map_cell_id
+    ) THEN
+      RAISE EXCEPTION 'A Ship cannot share a cell with a Monster.';
+    END IF;
+    IF NEW.nation_id IS NOT NULL AND nation_state = 'abandoned' THEN
+      RAISE EXCEPTION 'An abandoned Nation cannot own an active Ship.';
+    END IF;
+    IF NEW.nation_id IS NOT NULL AND (
+      SELECT count(*)
+        FROM ships ship
+       WHERE ship.nation_id = NEW.nation_id
+         AND ship.ship_type_key = NEW.ship_type_key
+         AND ship.state = 'active'
+         AND ship.id IS DISTINCT FROM NEW.id
+    ) >= type_capacity THEN
+      RAISE EXCEPTION 'A Nation exceeded the active Ship capacity authored by its Ruleset snapshot.';
+    END IF;
+  END IF;
+
+  RETURN NEW;
+END;
+$$;
+
+
 SET default_tablespace = '';
 
 SET default_table_access_method = heap;
@@ -368,7 +629,9 @@ CREATE TABLE public.announcements (
     body text NOT NULL,
     created_at timestamp(0) with time zone,
     updated_at timestamp(0) with time zone,
-    deleted_at timestamp(0) with time zone
+    deleted_at timestamp(0) with time zone,
+    body_format character varying(255) DEFAULT 'plain_text'::character varying NOT NULL,
+    CONSTRAINT announcements_body_format_check CHECK (((body_format)::text = ANY ((ARRAY['plain_text'::character varying, 'markdown'::character varying])::text[])))
 );
 
 
@@ -457,13 +720,14 @@ CREATE TABLE public.auction_listings (
     completed_turn bigint,
     created_at timestamp(0) with time zone,
     updated_at timestamp(0) with time zone,
+    original_secretary_item_instance_id bigint,
     CONSTRAINT auction_listings_bid_state_check CHECK ((((bid_count = 0) AND (current_price IS NULL) AND (highest_bidder_nation_id IS NULL)) OR ((bid_count > 0) AND (current_price IS NOT NULL) AND (highest_bidder_nation_id IS NOT NULL)))),
     CONSTRAINT auction_listings_npc_relist_check CHECK ((((seller_type)::text = 'nation'::text) OR (auto_relist = false))),
     CONSTRAINT auction_listings_price_check CHECK (((start_price > 0) AND ((current_price IS NULL) OR (current_price >= start_price)))),
-    CONSTRAINT auction_listings_product_check CHECK (((((product_type)::text = 'resource'::text) AND (resource_definition_id IS NOT NULL) AND (secretary_item_instance_id IS NULL) AND (item_key IS NULL) AND (item_level IS NULL) AND (quantity IS NOT NULL) AND (quantity > 0)) OR (((product_type)::text = 'item'::text) AND (resource_definition_id IS NULL) AND (quantity IS NULL) AND (item_key IS NOT NULL) AND (item_level IS NOT NULL) AND (item_level > 0) AND ((((seller_type)::text = 'nation'::text) AND (secretary_item_instance_id IS NOT NULL)) OR (((seller_type)::text = 'hakoniwa_federation'::text) AND (secretary_item_instance_id IS NULL)))))),
+    CONSTRAINT auction_listings_product_check CHECK (((((product_type)::text = 'resource'::text) AND (resource_definition_id IS NOT NULL) AND (secretary_item_instance_id IS NULL) AND (original_secretary_item_instance_id IS NULL) AND (item_key IS NULL) AND (item_level IS NULL) AND (quantity IS NOT NULL) AND (quantity > 0)) OR (((product_type)::text = 'item'::text) AND (resource_definition_id IS NULL) AND (quantity IS NULL) AND (item_key IS NOT NULL) AND (item_level IS NOT NULL) AND (item_level > 0) AND ((((seller_type)::text = 'nation'::text) AND (original_secretary_item_instance_id IS NOT NULL) AND ((secretary_item_instance_id IS NULL) OR (secretary_item_instance_id = original_secretary_item_instance_id)) AND (((status)::text <> 'active'::text) OR (secretary_item_instance_id IS NOT NULL))) OR (((seller_type)::text = 'hakoniwa_federation'::text) AND (secretary_item_instance_id IS NULL) AND (original_secretary_item_instance_id IS NULL)))))),
     CONSTRAINT auction_listings_seller_check CHECK (((((seller_type)::text = 'nation'::text) AND (seller_nation_id IS NOT NULL)) OR (((seller_type)::text = 'hakoniwa_federation'::text) AND (seller_nation_id IS NULL)))),
     CONSTRAINT auction_listings_status_check CHECK ((((status)::text = ANY (ARRAY[('active'::character varying)::text, ('cancelled'::character varying)::text, ('sold'::character varying)::text, ('expired'::character varying)::text])) AND ((((status)::text = 'active'::text) AND (completed_turn IS NULL)) OR (((status)::text <> 'active'::text) AND (completed_turn IS NOT NULL))))),
-    CONSTRAINT auction_listings_turn_check CHECK (((duration_turns >= 3) AND (duration_turns <= 84) AND (ends_turn = (started_turn + duration_turns))))
+    CONSTRAINT auction_listings_turn_check CHECK (((duration_turns > 0) AND (ends_turn = (started_turn + duration_turns))))
 );
 
 
@@ -568,6 +832,50 @@ ALTER SEQUENCE public.auth_identities_id_seq OWNED BY public.auth_identities.id;
 
 
 --
+-- Name: buried_treasures; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.buried_treasures (
+    id bigint NOT NULL,
+    world_id bigint NOT NULL,
+    map_cell_id bigint NOT NULL,
+    source character varying(32) NOT NULL,
+    reward_snapshot jsonb NOT NULL,
+    created_turn bigint NOT NULL,
+    state character varying(16) DEFAULT 'active'::character varying NOT NULL,
+    resolved_by_nation_id bigint,
+    resolved_turn bigint,
+    resolution_reason character varying(48),
+    resolved_at timestamp(0) with time zone,
+    created_at timestamp(0) without time zone,
+    updated_at timestamp(0) without time zone,
+    CONSTRAINT buried_treasures_reward_check CHECK ((jsonb_typeof(reward_snapshot) = 'object'::text)),
+    CONSTRAINT buried_treasures_source_check CHECK (((source)::text = ANY ((ARRAY['pirate_sink'::character varying, 'treasure_ship_sink'::character varying, 'meteor'::character varying, 'huge_meteor'::character varying, 'natural'::character varying])::text[]))),
+    CONSTRAINT buried_treasures_state_check CHECK (((((state)::text = 'active'::text) AND (resolved_by_nation_id IS NULL) AND (resolved_turn IS NULL) AND (resolution_reason IS NULL) AND (resolved_at IS NULL)) OR (((state)::text = 'collected'::text) AND (resolved_by_nation_id IS NOT NULL) AND (resolved_turn IS NOT NULL) AND ((resolution_reason)::text = 'collected'::text) AND (resolved_at IS NOT NULL)) OR (((state)::text = 'removed'::text) AND (resolved_by_nation_id IS NULL) AND (resolved_turn IS NOT NULL) AND (resolution_reason IS NOT NULL) AND (resolved_at IS NOT NULL)))),
+    CONSTRAINT buried_treasures_turn_check CHECK (((created_turn >= 1) AND ((resolved_turn IS NULL) OR (resolved_turn >= created_turn))))
+);
+
+
+--
+-- Name: buried_treasures_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.buried_treasures_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: buried_treasures_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.buried_treasures_id_seq OWNED BY public.buried_treasures.id;
+
+
+--
 -- Name: cache; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -636,6 +944,115 @@ ALTER SEQUENCE public.command_definitions_id_seq OWNED BY public.command_definit
 
 
 --
+-- Name: compensation_grant_claims; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.compensation_grant_claims (
+    id bigint NOT NULL,
+    compensation_grant_id bigint NOT NULL,
+    user_id bigint NOT NULL,
+    request_key uuid NOT NULL,
+    result jsonb NOT NULL,
+    created_at timestamp(0) with time zone NOT NULL
+);
+
+
+--
+-- Name: compensation_grant_claims_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.compensation_grant_claims_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: compensation_grant_claims_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.compensation_grant_claims_id_seq OWNED BY public.compensation_grant_claims.id;
+
+
+--
+-- Name: compensation_grant_items; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.compensation_grant_items (
+    id bigint NOT NULL,
+    compensation_grant_id bigint NOT NULL,
+    asset_key character varying(32) NOT NULL,
+    amount bigint NOT NULL,
+    claimed_amount bigint DEFAULT '0'::bigint NOT NULL,
+    created_at timestamp(0) without time zone,
+    updated_at timestamp(0) without time zone,
+    CONSTRAINT compensation_grant_items_amount_check CHECK (((amount > 0) AND (claimed_amount >= 0) AND (claimed_amount <= amount))),
+    CONSTRAINT compensation_grant_items_asset_check CHECK (((asset_key)::text = ANY ((ARRAY['money'::character varying, 'wheat'::character varying, 'fish'::character varying, 'meat'::character varying, 'oil'::character varying, 'paradox'::character varying, 'skip_ticket'::character varying, 'underground_g'::character varying])::text[])))
+);
+
+
+--
+-- Name: compensation_grant_items_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.compensation_grant_items_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: compensation_grant_items_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.compensation_grant_items_id_seq OWNED BY public.compensation_grant_items.id;
+
+
+--
+-- Name: compensation_grants; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.compensation_grants (
+    id bigint NOT NULL,
+    world_id bigint NOT NULL,
+    nation_id bigint,
+    recipient_user_id bigint NOT NULL,
+    grant_key character varying(180) NOT NULL,
+    operator_identifier character varying(120) NOT NULL,
+    reason text NOT NULL,
+    status character varying(16) DEFAULT 'pending'::character varying NOT NULL,
+    claimed_at timestamp(0) with time zone,
+    created_at timestamp(0) without time zone,
+    updated_at timestamp(0) without time zone,
+    expires_at timestamp with time zone NOT NULL,
+    CONSTRAINT compensation_grants_status_check CHECK (((status)::text = ANY ((ARRAY['pending'::character varying, 'partial'::character varying, 'claimed'::character varying, 'expired'::character varying])::text[])))
+);
+
+
+--
+-- Name: compensation_grants_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.compensation_grants_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: compensation_grants_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.compensation_grants_id_seq OWNED BY public.compensation_grants.id;
+
+
+--
 -- Name: facility_definitions; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -680,6 +1097,49 @@ CREATE SEQUENCE public.facility_definitions_id_seq
 --
 
 ALTER SEQUENCE public.facility_definitions_id_seq OWNED BY public.facility_definitions.id;
+
+
+--
+-- Name: guide_conversation_topics; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.guide_conversation_topics (
+    id bigint NOT NULL,
+    initial_line text NOT NULL,
+    choice_1 text NOT NULL,
+    reply_1 text NOT NULL,
+    choice_2 text,
+    reply_2 text,
+    choice_3 text,
+    reply_3 text,
+    unlock_key character varying(80) DEFAULT 'always'::character varying NOT NULL,
+    enabled boolean DEFAULT true NOT NULL,
+    created_by_user_id bigint NOT NULL,
+    updated_by_user_id bigint NOT NULL,
+    created_at timestamp(0) without time zone,
+    updated_at timestamp(0) without time zone,
+    CONSTRAINT guide_conversation_topics_choice_2_pair_check CHECK (((choice_2 IS NULL) = (reply_2 IS NULL))),
+    CONSTRAINT guide_conversation_topics_choice_3_pair_check CHECK (((choice_3 IS NULL) = (reply_3 IS NULL)))
+);
+
+
+--
+-- Name: guide_conversation_topics_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.guide_conversation_topics_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: guide_conversation_topics_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.guide_conversation_topics_id_seq OWNED BY public.guide_conversation_topics.id;
 
 
 --
@@ -792,7 +1252,8 @@ CREATE TABLE public.map_cells (
     chunk_y integer NOT NULL,
     local_x smallint NOT NULL,
     local_y smallint NOT NULL,
-    monument_definition_id bigint
+    monument_definition_id bigint,
+    monument_design_id bigint
 );
 
 
@@ -889,6 +1350,41 @@ CREATE SEQUENCE public.map_spaces_id_seq
 --
 
 ALTER SEQUENCE public.map_spaces_id_seq OWNED BY public.map_spaces.id;
+
+
+--
+-- Name: merchant_conversation_topics; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.merchant_conversation_topics (
+    id bigint NOT NULL,
+    question text NOT NULL,
+    answer text NOT NULL,
+    enabled boolean DEFAULT true NOT NULL,
+    created_by_user_id bigint,
+    updated_by_user_id bigint,
+    created_at timestamp(0) without time zone,
+    updated_at timestamp(0) without time zone
+);
+
+
+--
+-- Name: merchant_conversation_topics_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.merchant_conversation_topics_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: merchant_conversation_topics_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.merchant_conversation_topics_id_seq OWNED BY public.merchant_conversation_topics.id;
 
 
 --
@@ -990,9 +1486,9 @@ CREATE TABLE public.monster_definitions (
     experience_per_damage smallint,
     CONSTRAINT monster_definitions_display_order_non_negative CHECK (((display_order IS NULL) OR (display_order >= 0))),
     CONSTRAINT monster_definitions_experience_per_damage_non_negative CHECK (((experience_per_damage IS NULL) OR (experience_per_damage >= 0))),
-    CONSTRAINT monster_definitions_hp_check CHECK (((base_hp >= 1) AND (hp_variation <= 18) AND ((base_hp + hp_variation) <= 65535))),
+    CONSTRAINT monster_definitions_hp_check CHECK (((base_hp >= 1) AND (hp_variation >= 0) AND ((base_hp + hp_variation) <= 32767))),
     CONSTRAINT monster_definitions_skill_check CHECK (((skill_key)::text = ANY (ARRAY[('none'::character varying)::text, ('move_2'::character varying)::text, ('move_9999'::character varying)::text, ('harden_odd'::character varying)::text, ('harden_even'::character varying)::text]))),
-    CONSTRAINT monster_definitions_spawn_tier_check CHECK (((natural_spawn_tier IS NULL) OR ((natural_spawn_tier >= 1) AND (natural_spawn_tier <= 3)))),
+    CONSTRAINT monster_definitions_spawn_tier_check CHECK (((natural_spawn_tier IS NULL) OR ((natural_spawn_tier >= 1) AND (natural_spawn_tier <= 4)))),
     CONSTRAINT monster_definitions_visibility_check CHECK (((visibility)::text = 'public'::text))
 );
 
@@ -1239,7 +1735,7 @@ ALTER SEQUENCE public.nation_command_queue_bulk_requests_id_seq OWNED BY public.
 CREATE TABLE public.nation_command_queue_items (
     id bigint NOT NULL,
     nation_command_queue_id bigint NOT NULL,
-    command_definition_id bigint NOT NULL,
+    command_definition_id bigint,
     queue_position integer,
     parameters jsonb DEFAULT '{}'::jsonb NOT NULL,
     status character varying(255) DEFAULT 'queued'::character varying NOT NULL,
@@ -1254,13 +1750,19 @@ CREATE TABLE public.nation_command_queue_items (
     failure_metadata jsonb DEFAULT '{}'::jsonb NOT NULL,
     created_at timestamp(0) without time zone,
     updated_at timestamp(0) without time zone,
-    target_x integer NOT NULL,
-    target_y integer NOT NULL,
+    target_x integer,
+    target_y integer,
     quantity smallint DEFAULT 1 NOT NULL,
     request_fingerprint character(64),
     request_ruleset_version_id bigint,
+    target_context character varying(32) DEFAULT 'surface_cell'::character varying NOT NULL,
+    target_layer smallint,
+    target_slot_index smallint,
+    underground_command_key character varying(64),
+    paradox_execution_count integer DEFAULT 0 NOT NULL,
     CONSTRAINT nation_command_queue_items_quantity_check CHECK (((quantity >= 1) AND (quantity <= 99))),
-    CONSTRAINT nation_command_queue_items_request_fingerprint_check CHECK (((request_fingerprint IS NULL) OR (request_fingerprint ~ '^[0-9a-f]{64}$'::text)))
+    CONSTRAINT nation_command_queue_items_request_fingerprint_check CHECK (((request_fingerprint IS NULL) OR (request_fingerprint ~ '^[0-9a-f]{64}$'::text))),
+    CONSTRAINT nation_command_queue_items_target_context_check CHECK (((((target_context)::text = 'surface_cell'::text) AND (command_definition_id IS NOT NULL) AND (underground_command_key IS NULL) AND (target_x IS NOT NULL) AND (target_y IS NOT NULL) AND (target_layer IS NULL) AND (target_slot_index IS NULL)) OR (((target_context)::text = 'underground_slot'::text) AND (command_definition_id IS NULL) AND ((underground_command_key)::text = ANY ((ARRAY['build_underground_city'::character varying, 'build_underground_farm'::character varying, 'build_underground_factory'::character varying, 'build_underground_missile_base'::character varying, 'remove_underground_facility'::character varying])::text[])) AND (target_x IS NULL) AND (target_y IS NULL) AND (target_layer >= 1) AND ((target_slot_index >= 0) AND (target_slot_index <= 3)))))
 );
 
 
@@ -1570,6 +2072,44 @@ ALTER SEQUENCE public.nation_resources_id_seq OWNED BY public.nation_resources.i
 
 
 --
+-- Name: nation_underground_facilities; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.nation_underground_facilities (
+    id bigint NOT NULL,
+    nation_id bigint NOT NULL,
+    ruleset_version_id bigint NOT NULL,
+    layer smallint NOT NULL,
+    slot_index smallint NOT NULL,
+    facility_key character varying(64) NOT NULL,
+    created_at timestamp(0) without time zone,
+    updated_at timestamp(0) without time zone,
+    CONSTRAINT nation_underground_facilities_key_check CHECK (((facility_key)::text = ANY ((ARRAY['underground_city'::character varying, 'underground_farm'::character varying, 'underground_factory'::character varying, 'underground_missile_base'::character varying])::text[]))),
+    CONSTRAINT nation_underground_facilities_layer_check CHECK ((layer >= 1)),
+    CONSTRAINT nation_underground_facilities_slot_check CHECK (((slot_index >= 0) AND (slot_index <= 3)))
+);
+
+
+--
+-- Name: nation_underground_facilities_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.nation_underground_facilities_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: nation_underground_facilities_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.nation_underground_facilities_id_seq OWNED BY public.nation_underground_facilities.id;
+
+
+--
 -- Name: nations; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -1745,18 +2285,20 @@ CREATE TABLE public.secretaries (
     named_at timestamp(0) with time zone,
     created_at timestamp(0) with time zone,
     updated_at timestamp(0) with time zone,
-    equipment_version bigint DEFAULT '1'::bigint NOT NULL,
-    profile_biography text DEFAULT E'全てが謎に包まれた、長耳の秘書。\nかつては囚われの身になっていたが島主に救われ、後に才能を買われて秘書となった。\nその身に不思議な力を宿している。'::text NOT NULL,
+    profile_biography text DEFAULT '全てが謎に包まれた、長耳の秘書。
+かつては囚われの身になっていたが島主に救われ、後に才能を買われて秘書となった。
+その身に不思議な力を宿している。'::text NOT NULL,
     main_image_path character varying(80),
     main_image_mime_type character varying(32),
     main_image_creation_method character varying(32),
     main_image_credit character varying(160),
     main_image_updated_at timestamp(0) with time zone,
-    monster_experience bigint DEFAULT '0'::bigint NOT NULL,
-    CONSTRAINT secretaries_equipment_version_check CHECK ((equipment_version >= 1)),
+    nickname character varying(6),
+    portrait_preference character varying(16) DEFAULT 'full_body'::character varying NOT NULL,
     CONSTRAINT secretaries_main_image_state_check CHECK ((((main_image_path IS NULL) AND (main_image_mime_type IS NULL) AND (main_image_creation_method IS NULL) AND (main_image_credit IS NULL) AND (main_image_updated_at IS NULL)) OR (((main_image_path)::text ~ '^[0-9a-f]{64}\.(png|jpg|webp|gif)$'::text) AND ((main_image_mime_type)::text = ANY (ARRAY[('image/png'::character varying)::text, ('image/jpeg'::character varying)::text, ('image/webp'::character varying)::text, ('image/gif'::character varying)::text])) AND ((main_image_creation_method)::text = ANY (ARRAY[('self_made'::character varying)::text, ('ai_generated'::character varying)::text, ('commissioned_or_permitted'::character varying)::text, ('other'::character varying)::text])) AND ((main_image_credit IS NULL) OR (char_length((main_image_credit)::text) <= 160)) AND (main_image_updated_at IS NOT NULL)))),
-    CONSTRAINT secretaries_monster_experience_non_negative CHECK ((monster_experience >= 0)),
     CONSTRAINT secretaries_name_state_check CHECK ((((name IS NULL) AND (named_at IS NULL)) OR ((name IS NOT NULL) AND (named_at IS NOT NULL)))),
+    CONSTRAINT secretaries_nickname_check CHECK (((nickname IS NULL) OR ((char_length((nickname)::text) >= 1) AND (char_length((nickname)::text) <= 6)))),
+    CONSTRAINT secretaries_portrait_preference_check CHECK (((portrait_preference)::text = ANY ((ARRAY['full_body'::character varying, 'bust'::character varying])::text[]))),
     CONSTRAINT secretaries_profile_biography_length_check CHECK ((char_length(profile_biography) <= 1000))
 );
 
@@ -1781,6 +2323,117 @@ ALTER SEQUENCE public.secretaries_id_seq OWNED BY public.secretaries.id;
 
 
 --
+-- Name: secretary_gacha_draws; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.secretary_gacha_draws (
+    id bigint NOT NULL,
+    secretary_id bigint NOT NULL,
+    request_key uuid NOT NULL,
+    ticket_item_instance_id bigint NOT NULL,
+    ticket_key character varying(64) NOT NULL,
+    ticket_level integer NOT NULL,
+    result_snapshot jsonb NOT NULL,
+    created_at timestamp(0) without time zone,
+    updated_at timestamp(0) without time zone
+);
+
+
+--
+-- Name: secretary_gacha_draws_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.secretary_gacha_draws_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: secretary_gacha_draws_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.secretary_gacha_draws_id_seq OWNED BY public.secretary_gacha_draws.id;
+
+
+--
+-- Name: secretary_guide_conversation_totals; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.secretary_guide_conversation_totals (
+    id bigint NOT NULL,
+    secretary_id bigint NOT NULL,
+    topics_started bigint DEFAULT '0'::bigint NOT NULL,
+    normal_replies bigint DEFAULT '0'::bigint NOT NULL,
+    punch_count bigint DEFAULT '0'::bigint NOT NULL,
+    created_at timestamp(0) without time zone,
+    updated_at timestamp(0) without time zone
+);
+
+
+--
+-- Name: secretary_guide_conversation_totals_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.secretary_guide_conversation_totals_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: secretary_guide_conversation_totals_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.secretary_guide_conversation_totals_id_seq OWNED BY public.secretary_guide_conversation_totals.id;
+
+
+--
+-- Name: secretary_images; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.secretary_images (
+    id bigint NOT NULL,
+    secretary_id bigint NOT NULL,
+    slot character varying(32) NOT NULL,
+    path character varying(80) NOT NULL,
+    mime_type character varying(32) NOT NULL,
+    creation_method character varying(32) NOT NULL,
+    credit character varying(160),
+    created_at timestamp(0) without time zone,
+    updated_at timestamp(0) without time zone,
+    CONSTRAINT secretary_images_creation_method_check CHECK (((creation_method)::text = ANY ((ARRAY['self_made'::character varying, 'ai_generated'::character varying, 'commissioned_or_permitted'::character varying, 'other'::character varying])::text[]))),
+    CONSTRAINT secretary_images_credit_length_check CHECK (((char_length((credit)::text) >= 1) AND (char_length((credit)::text) <= 160))),
+    CONSTRAINT secretary_images_mime_check CHECK (((mime_type)::text = ANY ((ARRAY['image/png'::character varying, 'image/jpeg'::character varying, 'image/webp'::character varying, 'image/gif'::character varying])::text[]))),
+    CONSTRAINT secretary_images_path_check CHECK (((path)::text ~ '^[0-9a-f]{64}\.(png|jpg|webp|gif)$'::text)),
+    CONSTRAINT secretary_images_slot_check CHECK (((slot)::text = ANY ((ARRAY['icon'::character varying, 'bust'::character varying, 'full_body'::character varying, 'awakening_icon'::character varying, 'awakening_bust'::character varying, 'awakening_full_body'::character varying])::text[])))
+);
+
+
+--
+-- Name: secretary_images_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.secretary_images_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: secretary_images_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.secretary_images_id_seq OWNED BY public.secretary_images.id;
+
+
+--
 -- Name: secretary_item_instances; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -1795,9 +2448,12 @@ CREATE TABLE public.secretary_item_instances (
     created_at timestamp(0) with time zone,
     updated_at timestamp(0) with time zone,
     is_escrowed boolean DEFAULT false NOT NULL,
+    resolved_rarity character varying(32),
+    resolved_fixed_sale_price_money bigint,
     CONSTRAINT secretary_item_instances_equipped_slot_check CHECK (((equipped_slot IS NULL) OR ((equipped_slot >= 1) AND (equipped_slot <= 5)))),
     CONSTRAINT secretary_item_instances_escrow_equipment_check CHECK (((NOT is_escrowed) OR (equipped_slot IS NULL))),
-    CONSTRAINT secretary_item_instances_level_check CHECK ((level >= 1))
+    CONSTRAINT secretary_item_instances_level_check CHECK ((level >= 1)),
+    CONSTRAINT secretary_item_instances_resolved_economics_check CHECK ((((resolved_rarity IS NULL) AND (resolved_fixed_sale_price_money IS NULL)) OR ((resolved_rarity IS NOT NULL) AND (length((resolved_rarity)::text) > 0) AND (resolved_fixed_sale_price_money IS NOT NULL) AND (resolved_fixed_sale_price_money >= 0))))
 );
 
 
@@ -1821,6 +2477,151 @@ ALTER SEQUENCE public.secretary_item_instances_id_seq OWNED BY public.secretary_
 
 
 --
+-- Name: secretary_lending_build_snapshots; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.secretary_lending_build_snapshots (
+    id bigint NOT NULL,
+    secretary_id bigint NOT NULL,
+    build_identity character varying(100) NOT NULL,
+    source_fingerprint character(64) NOT NULL,
+    source_snapshot jsonb NOT NULL,
+    created_at timestamp(0) without time zone,
+    updated_at timestamp(0) without time zone,
+    projection_cache jsonb,
+    CONSTRAINT secretary_lending_build_snapshots_fingerprint_check CHECK ((source_fingerprint ~ '^[0-9a-f]{64}$'::text)),
+    CONSTRAINT secretary_lending_build_snapshots_projection_cache_check CHECK (((projection_cache IS NULL) OR (jsonb_typeof(projection_cache) = 'object'::text)))
+);
+
+
+--
+-- Name: secretary_lending_build_snapshots_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.secretary_lending_build_snapshots_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: secretary_lending_build_snapshots_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.secretary_lending_build_snapshots_id_seq OWNED BY public.secretary_lending_build_snapshots.id;
+
+
+--
+-- Name: secretary_lending_daily_rewards; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.secretary_lending_daily_rewards (
+    id bigint NOT NULL,
+    owner_user_id bigint NOT NULL,
+    canonical_day date NOT NULL,
+    participation_count integer DEFAULT 0 NOT NULL,
+    tickets_awarded integer DEFAULT 0 NOT NULL,
+    created_at timestamp(0) without time zone,
+    updated_at timestamp(0) without time zone,
+    CONSTRAINT secretary_lending_daily_ticket_cap_check CHECK ((tickets_awarded >= 0))
+);
+
+
+--
+-- Name: secretary_lending_daily_rewards_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.secretary_lending_daily_rewards_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: secretary_lending_daily_rewards_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.secretary_lending_daily_rewards_id_seq OWNED BY public.secretary_lending_daily_rewards.id;
+
+
+--
+-- Name: secretary_lending_participations; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.secretary_lending_participations (
+    id bigint NOT NULL,
+    underground_battle_id bigint NOT NULL,
+    underground_party_member_id bigint CONSTRAINT secretary_lending_participa_underground_party_member_i_not_null NOT NULL,
+    secretary_id bigint NOT NULL,
+    owner_user_id bigint NOT NULL,
+    canonical_day date NOT NULL,
+    result character varying(16) NOT NULL,
+    ticket_delta integer DEFAULT 0 NOT NULL,
+    settled_at timestamp(0) with time zone NOT NULL,
+    created_at timestamp(0) without time zone,
+    updated_at timestamp(0) without time zone,
+    CONSTRAINT secretary_lending_participation_result_check CHECK (((result)::text = ANY ((ARRAY['victory'::character varying, 'defeat'::character varying, 'withdrawal'::character varying])::text[]))),
+    CONSTRAINT secretary_lending_participation_ticket_check CHECK ((ticket_delta = ANY (ARRAY[0, 1])))
+);
+
+
+--
+-- Name: secretary_lending_participations_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.secretary_lending_participations_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: secretary_lending_participations_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.secretary_lending_participations_id_seq OWNED BY public.secretary_lending_participations.id;
+
+
+--
+-- Name: secretary_lending_settings; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.secretary_lending_settings (
+    id bigint NOT NULL,
+    secretary_id bigint NOT NULL,
+    is_public boolean DEFAULT false NOT NULL,
+    is_available boolean DEFAULT true NOT NULL,
+    created_at timestamp(0) without time zone,
+    updated_at timestamp(0) without time zone
+);
+
+
+--
+-- Name: secretary_lending_settings_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.secretary_lending_settings_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: secretary_lending_settings_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.secretary_lending_settings_id_seq OWNED BY public.secretary_lending_settings.id;
+
+
+--
 -- Name: secretary_skills; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -1833,7 +2634,7 @@ CREATE TABLE public.secretary_skills (
     created_at timestamp(0) with time zone,
     updated_at timestamp(0) with time zone,
     CONSTRAINT secretary_skills_experience_check CHECK ((experience >= 0)),
-    CONSTRAINT secretary_skills_key_check CHECK (((skill_key)::text = ANY ((ARRAY['agricultural_policy'::character varying, 'specialty_development'::character varying, 'gold_vein_survey'::character varying, 'forest_management'::character varying, 'final_defense_line'::character varying, 'declining_birthrate_policy'::character varying, 'indomitable'::character varying])::text[]))),
+    CONSTRAINT secretary_skills_key_check CHECK (((skill_key)::text = ANY ((ARRAY['agricultural_policy'::character varying, 'specialty_development'::character varying, 'gold_vein_survey'::character varying, 'forest_management'::character varying, 'final_defense_line'::character varying, 'declining_birthrate_policy'::character varying, 'indomitable'::character varying, 'ship_operations'::character varying, 'navy'::character varying])::text[]))),
     CONSTRAINT secretary_skills_level_check CHECK ((level >= 0))
 );
 
@@ -1858,6 +2659,21 @@ ALTER SEQUENCE public.secretary_skills_id_seq OWNED BY public.secretary_skills.i
 
 
 --
+-- Name: secretary_surface_states; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.secretary_surface_states (
+    secretary_id bigint NOT NULL,
+    monster_experience bigint DEFAULT '0'::bigint NOT NULL,
+    equipment_version bigint DEFAULT '1'::bigint NOT NULL,
+    created_at timestamp(0) without time zone,
+    updated_at timestamp(0) without time zone,
+    CONSTRAINT secretary_surface_equipment_version_check CHECK ((equipment_version >= 1)),
+    CONSTRAINT secretary_surface_experience_check CHECK ((monster_experience >= 0))
+);
+
+
+--
 -- Name: sessions; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -1869,6 +2685,54 @@ CREATE TABLE public.sessions (
     payload text NOT NULL,
     last_activity integer NOT NULL
 );
+
+
+--
+-- Name: ships; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.ships (
+    id bigint NOT NULL,
+    world_id bigint NOT NULL,
+    ruleset_version_id bigint NOT NULL,
+    nation_id bigint,
+    map_cell_id bigint,
+    ship_type_key character varying(32) NOT NULL,
+    current_hp smallint NOT NULL,
+    max_hp smallint NOT NULL,
+    heading smallint,
+    state character varying(24) DEFAULT 'active'::character varying NOT NULL,
+    version bigint DEFAULT '1'::bigint NOT NULL,
+    removal_reason character varying(255),
+    removed_at timestamp(0) with time zone,
+    created_at timestamp(0) without time zone,
+    updated_at timestamp(0) without time zone,
+    population bigint,
+    CONSTRAINT ships_heading_check CHECK (((heading IS NULL) OR ((heading >= 0) AND (heading <= 5)))),
+    CONSTRAINT ships_hp_check CHECK ((((max_hp >= 1) AND (max_hp <= 32767)) AND ((current_hp >= 0) AND (current_hp <= max_hp)))),
+    CONSTRAINT ships_ocean_population_check CHECK (((((ship_type_key)::text = 'pirate'::text) AND (nation_id IS NULL) AND (population > 0)) OR (((ship_type_key)::text <> 'pirate'::text) AND (population IS NULL)))),
+    CONSTRAINT ships_state_check CHECK (((((state)::text = 'active'::text) AND (map_cell_id IS NOT NULL) AND (current_hp >= 1) AND (removal_reason IS NULL) AND (removed_at IS NULL)) OR (((state)::text = 'removed'::text) AND (map_cell_id IS NULL) AND (removal_reason IS NOT NULL) AND (removed_at IS NOT NULL)))),
+    CONSTRAINT ships_version_check CHECK ((version >= 1))
+);
+
+
+--
+-- Name: ships_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.ships_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: ships_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.ships_id_seq OWNED BY public.ships.id;
 
 
 --
@@ -1960,6 +2824,41 @@ ALTER SEQUENCE public.turn_runs_id_seq OWNED BY public.turn_runs.id;
 
 
 --
+-- Name: underground_battle_image_references; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.underground_battle_image_references (
+    id bigint NOT NULL,
+    reference_key character varying(64) NOT NULL,
+    underground_battle_id bigint,
+    retained_until timestamp(0) with time zone NOT NULL,
+    path character varying(80) NOT NULL,
+    created_at timestamp(0) without time zone,
+    updated_at timestamp(0) without time zone,
+    CONSTRAINT underground_battle_image_refs_path_check CHECK (((path)::text ~ '^[0-9a-f]{64}\.(png|jpg|webp|gif)$'::text))
+);
+
+
+--
+-- Name: underground_battle_image_references_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.underground_battle_image_references_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: underground_battle_image_references_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.underground_battle_image_references_id_seq OWNED BY public.underground_battle_image_references.id;
+
+
+--
 -- Name: underground_battle_logs; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -1969,7 +2868,8 @@ CREATE TABLE public.underground_battle_logs (
     actions jsonb NOT NULL,
     expires_at timestamp(0) with time zone NOT NULL,
     created_at timestamp(0) without time zone,
-    updated_at timestamp(0) without time zone
+    updated_at timestamp(0) without time zone,
+    presentation jsonb
 );
 
 
@@ -2026,20 +2926,29 @@ CREATE TABLE public.underground_battles (
     finished_at timestamp(0) with time zone NOT NULL,
     created_at timestamp(0) without time zone,
     updated_at timestamp(0) without time zone,
-    CONSTRAINT underground_battles_activity_type_check CHECK (((activity_type)::text = ANY ((ARRAY['exploration'::character varying, 'trial'::character varying, 'tutorial'::character varying, 'story'::character varying, 'playtest'::character varying])::text[]))),
+    underground_party_id bigint,
+    statistics_version smallint,
+    statistics jsonb,
+    compaction_version smallint,
+    compacted_at timestamp(0) with time zone,
+    CONSTRAINT underground_battles_activity_type_check CHECK (((activity_type)::text = ANY ((ARRAY['exploration'::character varying, 'trial'::character varying, 'tutorial'::character varying, 'story'::character varying, 'playtest'::character varying, 'guide_duel'::character varying])::text[]))),
     CONSTRAINT underground_battles_combat_level_after_positive CHECK ((combat_level_after >= 1)),
     CONSTRAINT underground_battles_combat_level_before_positive CHECK ((combat_level_before >= 1)),
     CONSTRAINT underground_battles_combat_xp_after_non_negative CHECK ((combat_xp_after >= 0)),
     CONSTRAINT underground_battles_combat_xp_before_non_negative CHECK ((combat_xp_before >= 0)),
+    CONSTRAINT underground_battles_compaction_pair_check CHECK (((compaction_version IS NULL) = (compacted_at IS NULL))),
+    CONSTRAINT underground_battles_compaction_version_positive CHECK (((compaction_version IS NULL) OR (compaction_version >= 1))),
     CONSTRAINT underground_battles_damage_dealt_non_negative CHECK ((damage_dealt >= 0)),
     CONSTRAINT underground_battles_damage_received_non_negative CHECK ((damage_received >= 0)),
     CONSTRAINT underground_battles_healing_done_non_negative CHECK ((healing_done >= 0)),
     CONSTRAINT underground_battles_private_seed_range CHECK (((private_seed >= 0) AND (private_seed <= 2147483647))),
     CONSTRAINT underground_battles_request_fingerprint_check CHECK ((request_fingerprint ~ '^[0-9a-f]{64}$'::text)),
-    CONSTRAINT underground_battles_result_check CHECK (((result)::text = ANY ((ARRAY['victory'::character varying, 'defeat'::character varying, 'withdrawal'::character varying])::text[]))),
+    CONSTRAINT underground_battles_result_check CHECK (((result)::text = ANY (ARRAY[('victory'::character varying)::text, ('defeat'::character varying)::text, ('withdrawal'::character varying)::text]))),
     CONSTRAINT underground_battles_rounds_range CHECK (((rounds >= 1) AND (rounds <= 100))),
     CONSTRAINT underground_battles_shard_balance_after_non_negative CHECK ((shard_balance_after >= 0)),
     CONSTRAINT underground_battles_shard_balance_before_non_negative CHECK ((shard_balance_before >= 0)),
+    CONSTRAINT underground_battles_statistics_pair_check CHECK (((statistics_version IS NULL) = (statistics IS NULL))),
+    CONSTRAINT underground_battles_statistics_version_positive CHECK (((statistics_version IS NULL) OR (statistics_version >= 1))),
     CONSTRAINT underground_battles_trial_battle_index_positive CHECK (((trial_battle_index IS NULL) OR (trial_battle_index >= 1))),
     CONSTRAINT underground_battles_trial_context_check CHECK (((((activity_type)::text = 'trial'::text) AND (trial_run_key IS NOT NULL) AND (trial_battle_index IS NOT NULL)) OR (((activity_type)::text <> 'trial'::text) AND (trial_run_key IS NULL) AND (trial_battle_index IS NULL)))),
     CONSTRAINT underground_battles_xp_awarded_non_negative CHECK ((xp_awarded >= 0))
@@ -2066,6 +2975,44 @@ ALTER SEQUENCE public.underground_battles_id_seq OWNED BY public.underground_bat
 
 
 --
+-- Name: underground_content_clear_progress; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.underground_content_clear_progress (
+    id bigint NOT NULL,
+    underground_profile_id bigint CONSTRAINT underground_content_clear_progr_underground_profile_id_not_null NOT NULL,
+    content_type character varying(24) NOT NULL,
+    content_key character varying(64) NOT NULL,
+    actual_clear_count integer DEFAULT 0 NOT NULL,
+    total_clear_count integer DEFAULT 0 NOT NULL,
+    created_at timestamp(0) without time zone,
+    updated_at timestamp(0) without time zone,
+    first_cleared_at timestamp(0) with time zone,
+    CONSTRAINT underground_content_clear_progress_count_check CHECK (((actual_clear_count >= 0) AND (total_clear_count >= actual_clear_count))),
+    CONSTRAINT underground_content_clear_progress_type_check CHECK (((content_type)::text = ANY ((ARRAY['hunting_ground'::character varying, 'trial'::character varying, 'guide_duel'::character varying])::text[])))
+);
+
+
+--
+-- Name: underground_content_clear_progress_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.underground_content_clear_progress_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: underground_content_clear_progress_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.underground_content_clear_progress_id_seq OWNED BY public.underground_content_clear_progress.id;
+
+
+--
 -- Name: underground_intro_progress; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -2080,11 +3027,15 @@ CREATE TABLE public.underground_intro_progress (
     scripted_loss_battle_id bigint,
     created_at timestamp(0) without time zone,
     updated_at timestamp(0) without time zone,
-    CONSTRAINT underground_intro_progress_branch_identity_check CHECK (((branch_identity IS NULL) OR ((branch_identity)::text = ANY ((ARRAY['normal'::character varying, 'legacy_temporary'::character varying, 'true_name'::character varying])::text[])))),
-    CONSTRAINT underground_intro_progress_naming_check CHECK (((((stage)::text = ANY ((ARRAY['not_started'::character varying, 'initial_descent'::character varying, 'tutorial_ready'::character varying, 'escape_pending'::character varying, 'returned_after_tutorial'::character varying, 'shopkeeper_encounter'::character varying, 'shopkeeper_naming'::character varying])::text[])) AND (shopkeeper_name IS NULL) AND (special_loss_required IS NULL) AND (branch_identity IS NULL)) OR (((stage)::text <> ALL ((ARRAY['not_started'::character varying, 'initial_descent'::character varying, 'tutorial_ready'::character varying, 'escape_pending'::character varying, 'returned_after_tutorial'::character varying, 'shopkeeper_encounter'::character varying, 'shopkeeper_naming'::character varying])::text[])) AND (shopkeeper_name IS NOT NULL) AND (special_loss_required IS NOT NULL) AND (branch_identity IS NOT NULL)))),
-    CONSTRAINT underground_intro_progress_special_loss_check CHECK (((((branch_identity)::text = 'normal'::text) AND (special_loss_required = false) AND (scripted_loss_battle_id IS NULL)) OR (((branch_identity)::text = ANY ((ARRAY['legacy_temporary'::character varying, 'true_name'::character varying])::text[])) AND (special_loss_required = true) AND ((((stage)::text = 'special_loss_pending'::text) AND (scripted_loss_battle_id IS NULL)) OR (((stage)::text = ANY ((ARRAY['special_loss_complete'::character varying, 'shop_explanation'::character varying, 'contract_ready'::character varying, 'crystal_selection'::character varying, 'growth_path_selected'::character varying, 'underground_open'::character varying])::text[])) AND (scripted_loss_battle_id IS NOT NULL)))) OR ((branch_identity IS NULL) AND (special_loss_required IS NULL) AND (scripted_loss_battle_id IS NULL)))),
-    CONSTRAINT underground_intro_progress_stage_check CHECK (((stage)::text = ANY ((ARRAY['not_started'::character varying, 'initial_descent'::character varying, 'tutorial_ready'::character varying, 'escape_pending'::character varying, 'returned_after_tutorial'::character varying, 'shopkeeper_encounter'::character varying, 'shopkeeper_naming'::character varying, 'special_loss_pending'::character varying, 'special_loss_complete'::character varying, 'shop_explanation'::character varying, 'contract_ready'::character varying, 'crystal_selection'::character varying, 'growth_path_selected'::character varying, 'underground_open'::character varying])::text[]))),
-    CONSTRAINT underground_intro_progress_tutorial_check CHECK (((((stage)::text = ANY ((ARRAY['not_started'::character varying, 'initial_descent'::character varying, 'tutorial_ready'::character varying])::text[])) AND (tutorial_battle_id IS NULL)) OR (((stage)::text <> ALL ((ARRAY['not_started'::character varying, 'initial_descent'::character varying, 'tutorial_ready'::character varying])::text[])) AND (tutorial_battle_id IS NOT NULL))))
+    guide_recollection_max_completed smallint DEFAULT '0'::smallint CONSTRAINT underground_intro_progress_guide_recollection_max_comp_not_null NOT NULL,
+    tutorial_encounter_key character varying(100),
+    initial_growth_path_key character varying(64),
+    CONSTRAINT underground_intro_progress_branch_identity_check CHECK (((branch_identity IS NULL) OR ((branch_identity)::text = ANY (ARRAY[('normal'::character varying)::text, ('legacy_temporary'::character varying)::text, ('true_name'::character varying)::text])))),
+    CONSTRAINT underground_intro_progress_naming_check CHECK (((((stage)::text = ANY (ARRAY[('not_started'::character varying)::text, ('initial_descent'::character varying)::text, ('tutorial_ready'::character varying)::text, ('escape_pending'::character varying)::text, ('returned_after_tutorial'::character varying)::text, ('shopkeeper_encounter'::character varying)::text, ('shopkeeper_naming'::character varying)::text])) AND (shopkeeper_name IS NULL) AND (special_loss_required IS NULL) AND (branch_identity IS NULL)) OR (((stage)::text <> ALL (ARRAY[('not_started'::character varying)::text, ('initial_descent'::character varying)::text, ('tutorial_ready'::character varying)::text, ('escape_pending'::character varying)::text, ('returned_after_tutorial'::character varying)::text, ('shopkeeper_encounter'::character varying)::text, ('shopkeeper_naming'::character varying)::text])) AND (shopkeeper_name IS NOT NULL) AND (special_loss_required IS NOT NULL) AND (branch_identity IS NOT NULL)))),
+    CONSTRAINT underground_intro_progress_recollection_completed_check CHECK (((guide_recollection_max_completed >= 0) AND (guide_recollection_max_completed <= 5))),
+    CONSTRAINT underground_intro_progress_special_loss_check CHECK (((((branch_identity)::text = 'normal'::text) AND (special_loss_required = false) AND (scripted_loss_battle_id IS NULL)) OR (((branch_identity)::text = ANY (ARRAY[('legacy_temporary'::character varying)::text, ('true_name'::character varying)::text])) AND (special_loss_required = true) AND ((((stage)::text = 'special_loss_pending'::text) AND (scripted_loss_battle_id IS NULL)) OR (((stage)::text = ANY (ARRAY[('special_loss_complete'::character varying)::text, ('shop_explanation'::character varying)::text, ('contract_ready'::character varying)::text, ('crystal_selection'::character varying)::text, ('growth_path_selected'::character varying)::text, ('underground_open'::character varying)::text])) AND (scripted_loss_battle_id IS NOT NULL)))) OR ((branch_identity IS NULL) AND (special_loss_required IS NULL) AND (scripted_loss_battle_id IS NULL)))),
+    CONSTRAINT underground_intro_progress_stage_check CHECK (((stage)::text = ANY (ARRAY[('not_started'::character varying)::text, ('initial_descent'::character varying)::text, ('tutorial_ready'::character varying)::text, ('escape_pending'::character varying)::text, ('returned_after_tutorial'::character varying)::text, ('shopkeeper_encounter'::character varying)::text, ('shopkeeper_naming'::character varying)::text, ('special_loss_pending'::character varying)::text, ('special_loss_complete'::character varying)::text, ('shop_explanation'::character varying)::text, ('contract_ready'::character varying)::text, ('crystal_selection'::character varying)::text, ('growth_path_selected'::character varying)::text, ('underground_open'::character varying)::text]))),
+    CONSTRAINT underground_intro_progress_tutorial_check CHECK (((((stage)::text = ANY (ARRAY[('not_started'::character varying)::text, ('initial_descent'::character varying)::text, ('tutorial_ready'::character varying)::text])) AND (tutorial_battle_id IS NULL)) OR (((stage)::text <> ALL (ARRAY[('not_started'::character varying)::text, ('initial_descent'::character varying)::text, ('tutorial_ready'::character varying)::text])) AND (tutorial_battle_id IS NOT NULL))))
 );
 
 
@@ -2121,9 +3072,11 @@ CREATE TABLE public.underground_intro_requests (
     underground_battle_id bigint,
     created_at timestamp(0) without time zone,
     updated_at timestamp(0) without time zone,
+    result_payload jsonb,
     CONSTRAINT underground_intro_requests_fingerprint_check CHECK ((request_fingerprint ~ '^[0-9a-f]{64}$'::text)),
-    CONSTRAINT underground_intro_requests_operation_check CHECK (((operation)::text = ANY ((ARRAY['entry'::character varying, 'advance'::character varying, 'tutorial'::character varying, 'shopkeeper_name'::character varying, 'scripted_loss'::character varying, 'contract'::character varying, 'growth_path'::character varying, 'inn_rest'::character varying, 'bank_transfer'::character varying, 'playtest'::character varying, 'stp_allocate'::character varying, 'skill_acquire'::character varying, 'active_loadout'::character varying, 'equipment_purchase'::character varying, 'equipment_sell'::character varying, 'equipment_equip'::character varying, 'equipment_unequip'::character varying])::text[]))),
-    CONSTRAINT underground_intro_requests_stage_check CHECK (((resulting_stage)::text = ANY ((ARRAY['not_started'::character varying, 'initial_descent'::character varying, 'tutorial_ready'::character varying, 'escape_pending'::character varying, 'returned_after_tutorial'::character varying, 'shopkeeper_encounter'::character varying, 'shopkeeper_naming'::character varying, 'special_loss_pending'::character varying, 'special_loss_complete'::character varying, 'shop_explanation'::character varying, 'contract_ready'::character varying, 'crystal_selection'::character varying, 'growth_path_selected'::character varying, 'underground_open'::character varying])::text[])))
+    CONSTRAINT underground_intro_requests_operation_check CHECK (((operation)::text = ANY ((ARRAY['entry'::character varying, 'advance'::character varying, 'tutorial'::character varying, 'shopkeeper_name'::character varying, 'scripted_loss'::character varying, 'contract'::character varying, 'growth_path'::character varying, 'inn_rest'::character varying, 'bank_transfer'::character varying, 'playtest'::character varying, 'stp_allocate'::character varying, 'skill_acquire'::character varying, 'active_loadout'::character varying, 'awakening_message'::character varying, 'equipment_purchase'::character varying, 'equipment_sell'::character varying, 'equipment_equip'::character varying, 'equipment_unequip'::character varying, 'respec'::character varying, 'equipment_bulk_sell'::character varying, 'ai_configuration'::character varying, 'awakening_technique'::character varying, 'recollection_read'::character varying, 'rental_party'::character varying, 'residence_purchase'::character varying, 'lounge_event'::character varying, 'home_background'::character varying, 'guide_conversation'::character varying, 'distorted_stone_purchase'::character varying, 'equipment_polish'::character varying])::text[]))),
+    CONSTRAINT underground_intro_requests_result_check CHECK ((((operation)::text = 'guide_conversation'::text) = (result_payload IS NOT NULL))),
+    CONSTRAINT underground_intro_requests_stage_check CHECK (((resulting_stage)::text = ANY (ARRAY[('not_started'::character varying)::text, ('initial_descent'::character varying)::text, ('tutorial_ready'::character varying)::text, ('escape_pending'::character varying)::text, ('returned_after_tutorial'::character varying)::text, ('shopkeeper_encounter'::character varying)::text, ('shopkeeper_naming'::character varying)::text, ('special_loss_pending'::character varying)::text, ('special_loss_complete'::character varying)::text, ('shop_explanation'::character varying)::text, ('contract_ready'::character varying)::text, ('crystal_selection'::character varying)::text, ('growth_path_selected'::character varying)::text, ('underground_open'::character varying)::text])))
 );
 
 
@@ -2160,8 +3113,20 @@ CREATE TABLE public.underground_owned_equipment (
     acquired_at timestamp(0) with time zone NOT NULL,
     created_at timestamp(0) without time zone,
     updated_at timestamp(0) without time zone,
+    instance_kind character varying(16) DEFAULT 'fixed'::character varying NOT NULL,
+    instance_identity character varying(64),
+    generator_identity character varying(100),
+    generated_payload jsonb,
+    source_battle_id bigint,
+    source_skip_settlement_id bigint,
+    source_reward_index bigint,
+    source_skip_batch_id bigint,
+    polish_level integer DEFAULT 0 NOT NULL,
+    CONSTRAINT underground_equipment_polish_check CHECK (((polish_level >= 0) AND ((polish_level = 0) OR (((instance_kind)::text = 'generated'::text) AND ((generated_payload ->> 'category'::text) = 'resonance'::text))))),
+    CONSTRAINT underground_equipment_provenance_check CHECK ((((source_battle_id IS NULL) OR (source_battle_id > 0)) AND ((source_skip_settlement_id IS NULL) OR (source_skip_settlement_id > 0)) AND ((source_skip_batch_id IS NULL) OR (source_skip_batch_id > 0)) AND (((instance_kind)::text <> 'generated'::text) OR (source_battle_id IS NOT NULL) OR (source_reward_index IS NOT NULL)))),
     CONSTRAINT underground_owned_equipment_identity_check CHECK ((((definition_key)::text <> ''::text) AND ((catalog_identity)::text <> ''::text))),
-    CONSTRAINT underground_owned_equipment_slot_check CHECK (((equipped_slot IS NULL) OR ((equipped_slot)::text = ANY ((ARRAY['weapon'::character varying, 'armor'::character varying, 'accessory'::character varying])::text[]))))
+    CONSTRAINT underground_owned_equipment_instance_check CHECK (((((instance_kind)::text = 'fixed'::text) AND (instance_identity IS NULL) AND (generator_identity IS NULL) AND (generated_payload IS NULL) AND (source_battle_id IS NULL) AND (source_skip_settlement_id IS NULL) AND (source_skip_batch_id IS NULL) AND (source_reward_index IS NULL)) OR (((instance_kind)::text = 'generated'::text) AND (instance_identity IS NOT NULL) AND (generator_identity IS NOT NULL) AND (generated_payload IS NOT NULL) AND (grant_key IS NOT NULL) AND (((source_battle_id IS NOT NULL) AND (source_skip_settlement_id IS NULL) AND (source_skip_batch_id IS NULL) AND ((source_reward_index IS NULL) OR (source_reward_index >= 1))) OR ((source_battle_id IS NULL) AND (source_skip_settlement_id IS NOT NULL) AND (source_skip_batch_id IS NULL) AND (source_reward_index >= 1)) OR ((source_battle_id IS NULL) AND (source_skip_settlement_id IS NULL) AND (source_skip_batch_id IS NOT NULL) AND (source_reward_index >= 1)))))),
+    CONSTRAINT underground_owned_equipment_slot_check CHECK (((equipped_slot IS NULL) OR ((equipped_slot)::text = ANY ((ARRAY['weapon'::character varying, 'armor'::character varying, 'accessory_1'::character varying, 'accessory_2'::character varying, 'accessory_3'::character varying, 'resonance'::character varying])::text[]))))
 );
 
 
@@ -2182,6 +3147,86 @@ CREATE SEQUENCE public.underground_owned_equipment_id_seq
 --
 
 ALTER SEQUENCE public.underground_owned_equipment_id_seq OWNED BY public.underground_owned_equipment.id;
+
+
+--
+-- Name: underground_parties; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.underground_parties (
+    id bigint NOT NULL,
+    leader_user_id bigint NOT NULL,
+    leader_secretary_id bigint NOT NULL,
+    content_type character varying(32) NOT NULL,
+    content_key character varying(100) NOT NULL,
+    content_identity character varying(128) NOT NULL,
+    party_size smallint NOT NULL,
+    leader_combat_level integer NOT NULL,
+    snapshot jsonb NOT NULL,
+    created_at timestamp(0) without time zone,
+    updated_at timestamp(0) without time zone,
+    CONSTRAINT underground_parties_level_check CHECK ((leader_combat_level >= 1)),
+    CONSTRAINT underground_parties_size_check CHECK (((party_size >= 1) AND (party_size <= 4)))
+);
+
+
+--
+-- Name: underground_parties_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.underground_parties_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: underground_parties_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.underground_parties_id_seq OWNED BY public.underground_parties.id;
+
+
+--
+-- Name: underground_party_members; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.underground_party_members (
+    id bigint NOT NULL,
+    underground_party_id bigint NOT NULL,
+    source_type character varying(32) NOT NULL,
+    secretary_id bigint,
+    source_owner_user_id bigint,
+    combatant_id character varying(100) NOT NULL,
+    original_level integer NOT NULL,
+    effective_level integer NOT NULL,
+    snapshot jsonb NOT NULL,
+    created_at timestamp(0) without time zone,
+    updated_at timestamp(0) without time zone,
+    CONSTRAINT underground_party_members_level_check CHECK (((original_level >= 1) AND (effective_level >= 1) AND (effective_level <= original_level))),
+    CONSTRAINT underground_party_members_source_check CHECK (((source_type)::text = ANY ((ARRAY['self'::character varying, 'borrowed_secretary'::character varying, 'companion'::character varying])::text[])))
+);
+
+
+--
+-- Name: underground_party_members_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.underground_party_members_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: underground_party_members_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.underground_party_members_id_seq OWNED BY public.underground_party_members.id;
 
 
 --
@@ -2213,23 +3258,46 @@ CREATE TABLE public.underground_profiles (
     skill_tree_identity character varying(100),
     created_at timestamp(0) without time zone,
     updated_at timestamp(0) without time zone,
+    awakening_gauge smallint DEFAULT '0'::smallint NOT NULL,
+    awakening_message character varying(100),
+    last_respec_at timestamp(0) with time zone,
+    custom_ai_rules jsonb,
+    awakening_technique_key character varying(64),
+    shining_kingdom_key_balance bigint DEFAULT '0'::bigint NOT NULL,
+    skill_rebuild_required boolean DEFAULT false NOT NULL,
+    rental_party jsonb DEFAULT '[]'::jsonb NOT NULL,
+    villa_purchased_at timestamp(0) with time zone,
+    mirror_purchased_at timestamp(0) with time zone,
+    exchange_intro_page smallint DEFAULT '0'::smallint NOT NULL,
+    mirror_event_completed_at timestamp(0) with time zone,
+    home_background_key character varying(120),
+    trophy_shelf_purchased_at timestamp(0) with time zone,
+    vault_expansion_purchased_at timestamp(0) with time zone,
+    resonance_expansion_purchased_at timestamp(0) with time zone,
+    distorted_stone_balance bigint DEFAULT '0'::bigint NOT NULL,
+    distorted_stone_purchase_day date,
+    distorted_stone_purchase_count integer DEFAULT 0 NOT NULL,
+    polishing_tutorial_completed_at timestamp(0) with time zone,
+    otherworld_discovered_at timestamp(0) with time zone,
+    yunagi_harbor_key_balance bigint DEFAULT '0'::bigint NOT NULL,
+    CONSTRAINT underground_otherworld_balances_check CHECK (((distorted_stone_balance >= 0) AND (distorted_stone_purchase_count >= 0))),
+    CONSTRAINT underground_profiles_awakening_gauge_check CHECK (((awakening_gauge >= 0) AND (awakening_gauge <= 1000))),
+    CONSTRAINT underground_profiles_awakening_message_check CHECK (((awakening_message IS NULL) OR (((char_length((awakening_message)::text) >= 1) AND (char_length((awakening_message)::text) <= 100)) AND ((awakening_message)::text !~ '[\r\n]'::text)))),
+    CONSTRAINT underground_profiles_awakening_technique_check CHECK (((awakening_technique_key IS NULL) OR (((growth_path_key)::text = 'martial_red'::text) AND ((awakening_technique_key)::text = ANY ((ARRAY['decisive_heavenrend'::character varying, 'shura_bloodline'::character varying])::text[]))) OR (((growth_path_key)::text = 'guardianship_blue'::text) AND ((awakening_technique_key)::text = ANY ((ARRAY['absolute_aegis'::character varying, 'fortress_strike'::character varying])::text[]))) OR (((growth_path_key)::text = 'blessing_green'::text) AND ((awakening_technique_key)::text = ANY ((ARRAY['life_requiem'::character varying, 'judgment_light'::character varying])::text[]))) OR (((growth_path_key)::text = 'free_black'::text) AND ((awakening_technique_key)::text = ANY ((ARRAY['limitless_reprise'::character varying, 'formless_strike'::character varying])::text[]))))),
     CONSTRAINT underground_profiles_banked_shard_balance_non_negative CHECK ((banked_shard_balance >= 0)),
     CONSTRAINT underground_profiles_combat_level_positive CHECK ((combat_level >= 1)),
     CONSTRAINT underground_profiles_combat_xp_non_negative CHECK ((combat_xp >= 0)),
     CONSTRAINT underground_profiles_current_hp_positive CHECK (((current_hp IS NULL) OR (current_hp >= 1))),
-    CONSTRAINT underground_profiles_growth_path_check CHECK ((((growth_path_key IS NULL) AND (growth_path_identity IS NULL) AND (growth_path_selected_at IS NULL)) OR ((underground_contract_completed_at IS NOT NULL) AND ((growth_path_key)::text = ANY ((ARRAY['martial_red'::character varying, 'guardianship_blue'::character varying, 'blessing_green'::character varying, 'free_black'::character varying])::text[])) AND ((growth_path_identity)::text = 'secretary-underground-growth-alpha-v1'::text) AND (growth_path_selected_at IS NOT NULL) AND (growth_path_selected_at >= underground_contract_completed_at)))),
+    CONSTRAINT underground_profiles_custom_ai_rules_check CHECK (((custom_ai_rules IS NULL) OR ((jsonb_typeof(custom_ai_rules) = 'array'::text) AND (jsonb_array_length(custom_ai_rules) <= 20)))),
+    CONSTRAINT underground_profiles_growth_path_check CHECK ((((growth_path_key IS NULL) AND (growth_path_identity IS NULL) AND (growth_path_selected_at IS NULL)) OR ((underground_contract_completed_at IS NOT NULL) AND ((growth_path_key)::text = ANY (ARRAY[('martial_red'::character varying)::text, ('guardianship_blue'::character varying)::text, ('blessing_green'::character varying)::text, ('free_black'::character varying)::text])) AND ((growth_path_identity)::text = 'secretary-underground-growth-alpha-v1'::text) AND (growth_path_selected_at IS NOT NULL) AND (growth_path_selected_at >= underground_contract_completed_at)))),
+    CONSTRAINT underground_profiles_rental_party_check CHECK (((jsonb_typeof(rental_party) = 'array'::text) AND (jsonb_array_length(rental_party) <= 3))),
     CONSTRAINT underground_profiles_shard_balance_non_negative CHECK ((shard_balance >= 0)),
-    CONSTRAINT underground_profiles_skill_points_check CHECK (((skill_points_total >= 0) AND (skill_points_unspent >= 0) AND (skill_points_unspent <= skill_points_total) AND (((growth_path_key IS NULL) AND (skill_points_total = 0) AND (skill_points_unspent = 0) AND (skill_tree_identity IS NULL)) OR ((growth_path_key IS NOT NULL) AND (skill_points_total >= 20) AND (skill_tree_identity IS NOT NULL))))),
-    CONSTRAINT underground_profiles_stp_entitlement_check CHECK ((((growth_path_key IS NULL) AND ((((((unspent_stp + allocated_vitality_stp) + allocated_might_stp) + allocated_finesse_stp) + allocated_spirit_stp) + allocated_agility_stp) = 0)) OR ((growth_path_key IS NOT NULL) AND ((((((unspent_stp + allocated_vitality_stp) + allocated_might_stp) + allocated_finesse_stp) + allocated_spirit_stp) + allocated_agility_stp) = ((combat_level - 1) *
-CASE growth_path_key
-    WHEN 'free_black'::text THEN 6
-    WHEN 'martial_red'::text THEN 5
-    WHEN 'guardianship_blue'::text THEN 5
-    WHEN 'blessing_green'::text THEN 5
-    ELSE 0
-END))))),
+    CONSTRAINT underground_profiles_shining_kingdom_key_non_negative CHECK ((shining_kingdom_key_balance >= 0)),
+    CONSTRAINT underground_profiles_skill_points_check CHECK (((skill_points_total >= 0) AND (skill_points_unspent >= 0) AND (skill_points_unspent <= skill_points_total) AND (((growth_path_key IS NULL) AND (skill_points_total = 0) AND (skill_points_unspent = 0) AND (skill_tree_identity IS NULL)) OR ((growth_path_key IS NOT NULL) AND (skill_tree_identity IS NOT NULL))))),
+    CONSTRAINT underground_profiles_stp_entitlement_check CHECK (((growth_path_key IS NOT NULL) OR ((((((unspent_stp + allocated_vitality_stp) + allocated_might_stp) + allocated_finesse_stp) + allocated_spirit_stp) + allocated_agility_stp) = 0))),
     CONSTRAINT underground_profiles_stp_non_negative CHECK (((unspent_stp >= 0) AND (allocated_vitality_stp >= 0) AND (allocated_might_stp >= 0) AND (allocated_finesse_stp >= 0) AND (allocated_spirit_stp >= 0) AND (allocated_agility_stp >= 0))),
-    CONSTRAINT underground_profiles_unlocked_area_layers_non_negative CHECK ((unlocked_area_layers >= 0))
+    CONSTRAINT underground_profiles_unlocked_area_layers_non_negative CHECK ((unlocked_area_layers >= 0)),
+    CONSTRAINT underground_profiles_yunagi_harbor_key_non_negative CHECK ((yunagi_harbor_key_balance >= 0))
 );
 
 
@@ -2250,6 +3318,37 @@ CREATE SEQUENCE public.underground_profiles_id_seq
 --
 
 ALTER SEQUENCE public.underground_profiles_id_seq OWNED BY public.underground_profiles.id;
+
+
+--
+-- Name: underground_receipt_rollups; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.underground_receipt_rollups (
+    underground_profile_id bigint NOT NULL,
+    stream character varying(16) NOT NULL,
+    verified_through_id bigint NOT NULL,
+    aggregation_version smallint NOT NULL,
+    receipt_count bigint DEFAULT '0'::bigint NOT NULL,
+    battle_count bigint DEFAULT '0'::bigint NOT NULL,
+    victory_count bigint DEFAULT '0'::bigint NOT NULL,
+    damage_dealt_sum bigint DEFAULT '0'::bigint NOT NULL,
+    damage_dealt_known_count bigint DEFAULT '0'::bigint NOT NULL,
+    damage_received_sum bigint DEFAULT '0'::bigint NOT NULL,
+    damage_received_known_count bigint DEFAULT '0'::bigint CONSTRAINT underground_receipt_rollups_damage_received_known_coun_not_null NOT NULL,
+    skip_tickets_used bigint DEFAULT '0'::bigint NOT NULL,
+    last_batch jsonb NOT NULL,
+    verified_at timestamp(0) with time zone NOT NULL,
+    created_at timestamp(0) with time zone,
+    updated_at timestamp(0) with time zone,
+    lifetime_statistics jsonb,
+    deleted_through_id bigint DEFAULT '0'::bigint NOT NULL,
+    deleted_receipt_count bigint DEFAULT '0'::bigint NOT NULL,
+    last_deletion jsonb,
+    CONSTRAINT underground_receipt_rollups_counts_check CHECK (((verified_through_id > 0) AND (aggregation_version > 0) AND (receipt_count > 0) AND ((battle_count >= 0) AND (battle_count <= receipt_count)) AND ((victory_count >= 0) AND (victory_count <= battle_count)) AND ((damage_dealt_known_count >= 0) AND (damage_dealt_known_count <= battle_count)) AND ((damage_received_known_count >= 0) AND (damage_received_known_count <= battle_count)) AND (damage_dealt_sum >= 0) AND (damage_received_sum >= 0) AND (skip_tickets_used >= 0))),
+    CONSTRAINT underground_receipt_rollups_deletion_check CHECK ((((deleted_through_id >= 0) AND (deleted_through_id <= verified_through_id)) AND ((deleted_receipt_count >= 0) AND (deleted_receipt_count <= receipt_count)))),
+    CONSTRAINT underground_receipt_rollups_stream_check CHECK (((stream)::text = ANY ((ARRAY['battle'::character varying, 'skip'::character varying, 'bulk_skip'::character varying, 'intro_request'::character varying])::text[])))
+);
 
 
 --
@@ -2289,6 +3388,112 @@ ALTER SEQUENCE public.underground_skill_allocations_id_seq OWNED BY public.under
 
 
 --
+-- Name: underground_skip_batches; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.underground_skip_batches (
+    id bigint NOT NULL,
+    underground_profile_id bigint NOT NULL,
+    user_id bigint NOT NULL,
+    request_id uuid NOT NULL,
+    request_fingerprint character(64) NOT NULL,
+    skip_identity character varying(100) NOT NULL,
+    content_type character varying(24) NOT NULL,
+    content_key character varying(64) NOT NULL,
+    content_identity character varying(128) NOT NULL,
+    execution_count integer NOT NULL,
+    ticket_cost bigint NOT NULL,
+    xp_awarded bigint NOT NULL,
+    shard_awarded bigint NOT NULL,
+    combat_level_before integer NOT NULL,
+    combat_level_after integer NOT NULL,
+    combat_xp_before bigint NOT NULL,
+    combat_xp_after bigint NOT NULL,
+    shard_balance_before bigint NOT NULL,
+    shard_balance_after bigint NOT NULL,
+    reward_snapshot jsonb NOT NULL,
+    settled_at timestamp(0) with time zone NOT NULL,
+    created_at timestamp(0) without time zone,
+    updated_at timestamp(0) without time zone,
+    CONSTRAINT underground_skip_batches_cost_check CHECK (((execution_count >= 1) AND (ticket_cost >= 1) AND ((content_type)::text = ANY ((ARRAY['hunting_ground'::character varying, 'trial'::character varying])::text[])))),
+    CONSTRAINT underground_skip_batches_fingerprint_check CHECK ((request_fingerprint ~ '^[0-9a-f]{64}$'::text)),
+    CONSTRAINT underground_skip_batches_progression_check CHECK (((combat_level_before >= 1) AND (combat_level_after >= combat_level_before) AND (combat_xp_after >= combat_xp_before) AND (shard_balance_after >= shard_balance_before)))
+);
+
+
+--
+-- Name: underground_skip_batches_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.underground_skip_batches_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: underground_skip_batches_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.underground_skip_batches_id_seq OWNED BY public.underground_skip_batches.id;
+
+
+--
+-- Name: underground_skip_settlements; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.underground_skip_settlements (
+    id bigint NOT NULL,
+    underground_profile_id bigint NOT NULL,
+    user_id bigint NOT NULL,
+    request_id uuid NOT NULL,
+    request_fingerprint character(64) NOT NULL,
+    skip_identity character varying(100) NOT NULL,
+    content_type character varying(24) NOT NULL,
+    content_key character varying(64) NOT NULL,
+    content_identity character varying(128) NOT NULL,
+    ticket_cost smallint NOT NULL,
+    xp_awarded integer NOT NULL,
+    shard_awarded bigint NOT NULL,
+    combat_level_before integer NOT NULL,
+    combat_level_after integer NOT NULL,
+    combat_xp_before bigint NOT NULL,
+    combat_xp_after bigint NOT NULL,
+    shard_balance_before bigint NOT NULL,
+    shard_balance_after bigint NOT NULL,
+    private_seed integer NOT NULL,
+    reward_snapshot jsonb NOT NULL,
+    settled_at timestamp(0) with time zone NOT NULL,
+    created_at timestamp(0) without time zone,
+    updated_at timestamp(0) without time zone,
+    CONSTRAINT underground_skip_settlements_fingerprint_check CHECK ((request_fingerprint ~ '^[0-9a-f]{64}$'::text)),
+    CONSTRAINT underground_skip_settlements_progression_check CHECK (((combat_level_before >= 1) AND (combat_level_after >= combat_level_before) AND (combat_xp_after >= combat_xp_before) AND (shard_balance_after >= shard_balance_before))),
+    CONSTRAINT underground_skip_settlements_type_cost_check CHECK (((((content_type)::text = 'hunting_ground'::text) AND (ticket_cost = 1)) OR (((content_type)::text = 'trial'::text) AND (ticket_cost = 10))))
+);
+
+
+--
+-- Name: underground_skip_settlements_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.underground_skip_settlements_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: underground_skip_settlements_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.underground_skip_settlements_id_seq OWNED BY public.underground_skip_settlements.id;
+
+
+--
 -- Name: underground_trial_progress; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -2299,7 +3504,11 @@ CREATE TABLE public.underground_trial_progress (
     unlocked_at timestamp(0) with time zone NOT NULL,
     first_cleared_at timestamp(0) with time zone,
     created_at timestamp(0) without time zone,
-    updated_at timestamp(0) without time zone
+    updated_at timestamp(0) without time zone,
+    first_challenged_at timestamp(0) with time zone,
+    first_challenge_intro text,
+    first_clear_story jsonb,
+    first_milestone_stories jsonb
 );
 
 
@@ -2340,7 +3549,7 @@ CREATE TABLE public.underground_trial_runs (
     updated_at timestamp(0) without time zone,
     CONSTRAINT underground_trial_runs_content_identity_not_empty CHECK ((char_length((trial_content_identity)::text) > 0)),
     CONSTRAINT underground_trial_runs_next_battle_index_positive CHECK ((next_battle_index >= 1)),
-    CONSTRAINT underground_trial_runs_status_check CHECK (((status)::text = ANY ((ARRAY['active'::character varying, 'withdrawn'::character varying, 'defeated'::character varying, 'cleared'::character varying])::text[])))
+    CONSTRAINT underground_trial_runs_status_check CHECK (((status)::text = ANY (ARRAY[('active'::character varying)::text, ('withdrawn'::character varying)::text, ('defeated'::character varying)::text, ('cleared'::character varying)::text])))
 );
 
 
@@ -2361,6 +3570,301 @@ CREATE SEQUENCE public.underground_trial_runs_id_seq
 --
 
 ALTER SEQUENCE public.underground_trial_runs_id_seq OWNED BY public.underground_trial_runs.id;
+
+
+--
+-- Name: user_daily_login_claims; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.user_daily_login_claims (
+    id bigint NOT NULL,
+    user_id bigint NOT NULL,
+    canonical_day date NOT NULL,
+    paradox_awarded integer NOT NULL,
+    skip_tickets_awarded integer NOT NULL,
+    claimed_at timestamp(0) with time zone NOT NULL,
+    created_at timestamp(0) without time zone,
+    updated_at timestamp(0) without time zone,
+    CONSTRAINT user_daily_login_award_check CHECK (((paradox_awarded > 0) AND (skip_tickets_awarded > 0)))
+);
+
+
+--
+-- Name: user_daily_login_claims_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.user_daily_login_claims_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: user_daily_login_claims_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.user_daily_login_claims_id_seq OWNED BY public.user_daily_login_claims.id;
+
+
+--
+-- Name: user_daily_quest_activities; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.user_daily_quest_activities (
+    id bigint NOT NULL,
+    user_id bigint NOT NULL,
+    canonical_day date NOT NULL,
+    quest_key character varying(64) NOT NULL,
+    entry_key character varying(180) NOT NULL,
+    amount integer NOT NULL,
+    created_at timestamp(0) without time zone,
+    updated_at timestamp(0) without time zone,
+    CONSTRAINT user_daily_quest_activity_amount_check CHECK ((amount > 0)),
+    CONSTRAINT user_daily_quest_activity_key_check CHECK (((quest_key)::text = ANY ((ARRAY['development_opened'::character varying, 'underground_battles'::character varying, 'command_registered'::character varying])::text[])))
+);
+
+
+--
+-- Name: user_daily_quest_activities_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.user_daily_quest_activities_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: user_daily_quest_activities_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.user_daily_quest_activities_id_seq OWNED BY public.user_daily_quest_activities.id;
+
+
+--
+-- Name: user_daily_quest_progress; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.user_daily_quest_progress (
+    id bigint NOT NULL,
+    user_id bigint NOT NULL,
+    canonical_day date NOT NULL,
+    quest_key character varying(64) NOT NULL,
+    progress integer DEFAULT 0 NOT NULL,
+    target integer NOT NULL,
+    paradox_awarded integer DEFAULT 0 NOT NULL,
+    completed_at timestamp(0) with time zone,
+    created_at timestamp(0) without time zone,
+    updated_at timestamp(0) without time zone,
+    CONSTRAINT user_daily_quest_progress_key_check CHECK (((quest_key)::text = ANY ((ARRAY['development_opened'::character varying, 'underground_battles'::character varying, 'command_registered'::character varying])::text[]))),
+    CONSTRAINT user_daily_quest_progress_value_check CHECK (((progress <= target) AND (target > 0) AND (((completed_at IS NULL) AND (paradox_awarded = 0)) OR ((completed_at IS NOT NULL) AND (progress = target) AND (paradox_awarded > 0)))))
+);
+
+
+--
+-- Name: user_daily_quest_progress_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.user_daily_quest_progress_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: user_daily_quest_progress_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.user_daily_quest_progress_id_seq OWNED BY public.user_daily_quest_progress.id;
+
+
+--
+-- Name: user_monument_designs; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.user_monument_designs (
+    id bigint NOT NULL,
+    user_id bigint NOT NULL,
+    name character varying(40) DEFAULT 'オリジナル記念碑'::character varying NOT NULL,
+    image_path character varying(96),
+    created_at timestamp(0) without time zone,
+    updated_at timestamp(0) without time zone
+);
+
+
+--
+-- Name: user_monument_designs_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.user_monument_designs_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: user_monument_designs_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.user_monument_designs_id_seq OWNED BY public.user_monument_designs.id;
+
+
+--
+-- Name: user_paradox_balances; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.user_paradox_balances (
+    id bigint NOT NULL,
+    user_id bigint NOT NULL,
+    balance bigint DEFAULT '0'::bigint NOT NULL,
+    created_at timestamp(0) without time zone,
+    updated_at timestamp(0) without time zone,
+    CONSTRAINT user_paradox_balance_nonnegative_check CHECK ((balance >= 0))
+);
+
+
+--
+-- Name: user_paradox_balances_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.user_paradox_balances_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: user_paradox_balances_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.user_paradox_balances_id_seq OWNED BY public.user_paradox_balances.id;
+
+
+--
+-- Name: user_paradox_ledger; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.user_paradox_ledger (
+    id bigint NOT NULL,
+    user_id bigint NOT NULL,
+    entry_key character varying(180) NOT NULL,
+    delta bigint NOT NULL,
+    balance_before bigint NOT NULL,
+    balance_after bigint NOT NULL,
+    source_kind character varying(32) NOT NULL,
+    canonical_day date,
+    metadata jsonb,
+    created_at timestamp(0) without time zone,
+    updated_at timestamp(0) without time zone,
+    CONSTRAINT user_paradox_ledger_delta_check CHECK (((delta <> 0) AND (balance_before >= 0) AND (balance_after >= 0) AND (balance_after = (balance_before + delta)))),
+    CONSTRAINT user_paradox_ledger_source_check CHECK (((source_kind)::text = ANY ((ARRAY['daily_login'::character varying, 'daily_quest'::character varying, 'command'::character varying, 'compensation'::character varying, 'underground_respec'::character varying])::text[])))
+);
+
+
+--
+-- Name: user_paradox_ledger_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.user_paradox_ledger_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: user_paradox_ledger_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.user_paradox_ledger_id_seq OWNED BY public.user_paradox_ledger.id;
+
+
+--
+-- Name: user_skip_ticket_balances; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.user_skip_ticket_balances (
+    id bigint NOT NULL,
+    user_id bigint NOT NULL,
+    balance integer DEFAULT 0 NOT NULL,
+    created_at timestamp(0) without time zone,
+    updated_at timestamp(0) without time zone,
+    lifetime_participation_count bigint DEFAULT '0'::bigint NOT NULL,
+    CONSTRAINT lending_lifetime_count_check CHECK ((lifetime_participation_count >= 0))
+);
+
+
+--
+-- Name: user_skip_ticket_balances_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.user_skip_ticket_balances_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: user_skip_ticket_balances_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.user_skip_ticket_balances_id_seq OWNED BY public.user_skip_ticket_balances.id;
+
+
+--
+-- Name: user_skip_ticket_ledger; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.user_skip_ticket_ledger (
+    id bigint NOT NULL,
+    user_id bigint NOT NULL,
+    underground_battle_id bigint,
+    underground_party_member_id bigint,
+    entry_key character varying(180) NOT NULL,
+    delta integer NOT NULL,
+    balance_before integer NOT NULL,
+    balance_after integer NOT NULL,
+    canonical_day date NOT NULL,
+    metadata jsonb,
+    created_at timestamp(0) without time zone,
+    updated_at timestamp(0) without time zone,
+    underground_skip_settlement_id bigint,
+    underground_skip_batch_id bigint,
+    CONSTRAINT user_skip_ticket_ledger_delta_check CHECK (((delta <> 0) AND (balance_before >= 0) AND (balance_after >= 0) AND (balance_after = (balance_before + delta)))),
+    CONSTRAINT user_skip_ticket_ledger_skip_source_check CHECK (((underground_skip_settlement_id IS NULL) OR (underground_skip_batch_id IS NULL)))
+);
+
+
+--
+-- Name: user_skip_ticket_ledger_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.user_skip_ticket_ledger_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: user_skip_ticket_ledger_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.user_skip_ticket_ledger_id_seq OWNED BY public.user_skip_ticket_ledger.id;
 
 
 --
@@ -2448,7 +3952,8 @@ CREATE TABLE public.worlds (
     ruleset_version_id bigint NOT NULL,
     current_turn bigint DEFAULT 1 NOT NULL,
     created_at timestamp(0) without time zone,
-    updated_at timestamp(0) without time zone
+    updated_at timestamp(0) without time zone,
+    turn_schedule_origin_at timestamp(0) with time zone
 );
 
 
@@ -2507,6 +4012,13 @@ ALTER TABLE ONLY public.auth_identities ALTER COLUMN id SET DEFAULT nextval('pub
 
 
 --
+-- Name: buried_treasures id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.buried_treasures ALTER COLUMN id SET DEFAULT nextval('public.buried_treasures_id_seq'::regclass);
+
+
+--
 -- Name: command_definitions id; Type: DEFAULT; Schema: public; Owner: -
 --
 
@@ -2514,10 +4026,38 @@ ALTER TABLE ONLY public.command_definitions ALTER COLUMN id SET DEFAULT nextval(
 
 
 --
+-- Name: compensation_grant_claims id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.compensation_grant_claims ALTER COLUMN id SET DEFAULT nextval('public.compensation_grant_claims_id_seq'::regclass);
+
+
+--
+-- Name: compensation_grant_items id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.compensation_grant_items ALTER COLUMN id SET DEFAULT nextval('public.compensation_grant_items_id_seq'::regclass);
+
+
+--
+-- Name: compensation_grants id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.compensation_grants ALTER COLUMN id SET DEFAULT nextval('public.compensation_grants_id_seq'::regclass);
+
+
+--
 -- Name: facility_definitions id; Type: DEFAULT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.facility_definitions ALTER COLUMN id SET DEFAULT nextval('public.facility_definitions_id_seq'::regclass);
+
+
+--
+-- Name: guide_conversation_topics id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.guide_conversation_topics ALTER COLUMN id SET DEFAULT nextval('public.guide_conversation_topics_id_seq'::regclass);
 
 
 --
@@ -2553,6 +4093,13 @@ ALTER TABLE ONLY public.map_chunks ALTER COLUMN id SET DEFAULT nextval('public.m
 --
 
 ALTER TABLE ONLY public.map_spaces ALTER COLUMN id SET DEFAULT nextval('public.map_spaces_id_seq'::regclass);
+
+
+--
+-- Name: merchant_conversation_topics id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.merchant_conversation_topics ALTER COLUMN id SET DEFAULT nextval('public.merchant_conversation_topics_id_seq'::regclass);
 
 
 --
@@ -2682,6 +4229,13 @@ ALTER TABLE ONLY public.nation_resources ALTER COLUMN id SET DEFAULT nextval('pu
 
 
 --
+-- Name: nation_underground_facilities id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.nation_underground_facilities ALTER COLUMN id SET DEFAULT nextval('public.nation_underground_facilities_id_seq'::regclass);
+
+
+--
 -- Name: nations id; Type: DEFAULT; Schema: public; Owner: -
 --
 
@@ -2717,6 +4271,27 @@ ALTER TABLE ONLY public.secretaries ALTER COLUMN id SET DEFAULT nextval('public.
 
 
 --
+-- Name: secretary_gacha_draws id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.secretary_gacha_draws ALTER COLUMN id SET DEFAULT nextval('public.secretary_gacha_draws_id_seq'::regclass);
+
+
+--
+-- Name: secretary_guide_conversation_totals id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.secretary_guide_conversation_totals ALTER COLUMN id SET DEFAULT nextval('public.secretary_guide_conversation_totals_id_seq'::regclass);
+
+
+--
+-- Name: secretary_images id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.secretary_images ALTER COLUMN id SET DEFAULT nextval('public.secretary_images_id_seq'::regclass);
+
+
+--
 -- Name: secretary_item_instances id; Type: DEFAULT; Schema: public; Owner: -
 --
 
@@ -2724,10 +4299,45 @@ ALTER TABLE ONLY public.secretary_item_instances ALTER COLUMN id SET DEFAULT nex
 
 
 --
+-- Name: secretary_lending_build_snapshots id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.secretary_lending_build_snapshots ALTER COLUMN id SET DEFAULT nextval('public.secretary_lending_build_snapshots_id_seq'::regclass);
+
+
+--
+-- Name: secretary_lending_daily_rewards id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.secretary_lending_daily_rewards ALTER COLUMN id SET DEFAULT nextval('public.secretary_lending_daily_rewards_id_seq'::regclass);
+
+
+--
+-- Name: secretary_lending_participations id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.secretary_lending_participations ALTER COLUMN id SET DEFAULT nextval('public.secretary_lending_participations_id_seq'::regclass);
+
+
+--
+-- Name: secretary_lending_settings id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.secretary_lending_settings ALTER COLUMN id SET DEFAULT nextval('public.secretary_lending_settings_id_seq'::regclass);
+
+
+--
 -- Name: secretary_skills id; Type: DEFAULT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.secretary_skills ALTER COLUMN id SET DEFAULT nextval('public.secretary_skills_id_seq'::regclass);
+
+
+--
+-- Name: ships id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.ships ALTER COLUMN id SET DEFAULT nextval('public.ships_id_seq'::regclass);
 
 
 --
@@ -2745,6 +4355,13 @@ ALTER TABLE ONLY public.turn_runs ALTER COLUMN id SET DEFAULT nextval('public.tu
 
 
 --
+-- Name: underground_battle_image_references id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.underground_battle_image_references ALTER COLUMN id SET DEFAULT nextval('public.underground_battle_image_references_id_seq'::regclass);
+
+
+--
 -- Name: underground_battle_logs id; Type: DEFAULT; Schema: public; Owner: -
 --
 
@@ -2756,6 +4373,13 @@ ALTER TABLE ONLY public.underground_battle_logs ALTER COLUMN id SET DEFAULT next
 --
 
 ALTER TABLE ONLY public.underground_battles ALTER COLUMN id SET DEFAULT nextval('public.underground_battles_id_seq'::regclass);
+
+
+--
+-- Name: underground_content_clear_progress id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.underground_content_clear_progress ALTER COLUMN id SET DEFAULT nextval('public.underground_content_clear_progress_id_seq'::regclass);
 
 
 --
@@ -2780,6 +4404,20 @@ ALTER TABLE ONLY public.underground_owned_equipment ALTER COLUMN id SET DEFAULT 
 
 
 --
+-- Name: underground_parties id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.underground_parties ALTER COLUMN id SET DEFAULT nextval('public.underground_parties_id_seq'::regclass);
+
+
+--
+-- Name: underground_party_members id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.underground_party_members ALTER COLUMN id SET DEFAULT nextval('public.underground_party_members_id_seq'::regclass);
+
+
+--
 -- Name: underground_profiles id; Type: DEFAULT; Schema: public; Owner: -
 --
 
@@ -2794,6 +4432,20 @@ ALTER TABLE ONLY public.underground_skill_allocations ALTER COLUMN id SET DEFAUL
 
 
 --
+-- Name: underground_skip_batches id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.underground_skip_batches ALTER COLUMN id SET DEFAULT nextval('public.underground_skip_batches_id_seq'::regclass);
+
+
+--
+-- Name: underground_skip_settlements id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.underground_skip_settlements ALTER COLUMN id SET DEFAULT nextval('public.underground_skip_settlements_id_seq'::regclass);
+
+
+--
 -- Name: underground_trial_progress id; Type: DEFAULT; Schema: public; Owner: -
 --
 
@@ -2805,6 +4457,62 @@ ALTER TABLE ONLY public.underground_trial_progress ALTER COLUMN id SET DEFAULT n
 --
 
 ALTER TABLE ONLY public.underground_trial_runs ALTER COLUMN id SET DEFAULT nextval('public.underground_trial_runs_id_seq'::regclass);
+
+
+--
+-- Name: user_daily_login_claims id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.user_daily_login_claims ALTER COLUMN id SET DEFAULT nextval('public.user_daily_login_claims_id_seq'::regclass);
+
+
+--
+-- Name: user_daily_quest_activities id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.user_daily_quest_activities ALTER COLUMN id SET DEFAULT nextval('public.user_daily_quest_activities_id_seq'::regclass);
+
+
+--
+-- Name: user_daily_quest_progress id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.user_daily_quest_progress ALTER COLUMN id SET DEFAULT nextval('public.user_daily_quest_progress_id_seq'::regclass);
+
+
+--
+-- Name: user_monument_designs id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.user_monument_designs ALTER COLUMN id SET DEFAULT nextval('public.user_monument_designs_id_seq'::regclass);
+
+
+--
+-- Name: user_paradox_balances id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.user_paradox_balances ALTER COLUMN id SET DEFAULT nextval('public.user_paradox_balances_id_seq'::regclass);
+
+
+--
+-- Name: user_paradox_ledger id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.user_paradox_ledger ALTER COLUMN id SET DEFAULT nextval('public.user_paradox_ledger_id_seq'::regclass);
+
+
+--
+-- Name: user_skip_ticket_balances id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.user_skip_ticket_balances ALTER COLUMN id SET DEFAULT nextval('public.user_skip_ticket_balances_id_seq'::regclass);
+
+
+--
+-- Name: user_skip_ticket_ledger id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.user_skip_ticket_ledger ALTER COLUMN id SET DEFAULT nextval('public.user_skip_ticket_ledger_id_seq'::regclass);
 
 
 --
@@ -2885,6 +4593,14 @@ ALTER TABLE ONLY public.auth_identities
 
 
 --
+-- Name: buried_treasures buried_treasures_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.buried_treasures
+    ADD CONSTRAINT buried_treasures_pkey PRIMARY KEY (id);
+
+
+--
 -- Name: cache_locks cache_locks_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -2917,6 +4633,54 @@ ALTER TABLE ONLY public.command_definitions
 
 
 --
+-- Name: compensation_grant_claims compensation_grant_claims_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.compensation_grant_claims
+    ADD CONSTRAINT compensation_grant_claims_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: compensation_grant_claims compensation_grant_claims_request_key_unique; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.compensation_grant_claims
+    ADD CONSTRAINT compensation_grant_claims_request_key_unique UNIQUE (request_key);
+
+
+--
+-- Name: compensation_grant_items compensation_grant_item_asset_unique; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.compensation_grant_items
+    ADD CONSTRAINT compensation_grant_item_asset_unique UNIQUE (compensation_grant_id, asset_key);
+
+
+--
+-- Name: compensation_grant_items compensation_grant_items_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.compensation_grant_items
+    ADD CONSTRAINT compensation_grant_items_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: compensation_grants compensation_grants_grant_key_unique; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.compensation_grants
+    ADD CONSTRAINT compensation_grants_grant_key_unique UNIQUE (grant_key);
+
+
+--
+-- Name: compensation_grants compensation_grants_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.compensation_grants
+    ADD CONSTRAINT compensation_grants_pkey PRIMARY KEY (id);
+
+
+--
 -- Name: facility_definitions facility_definitions_asset_key_unique; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -2938,6 +4702,14 @@ ALTER TABLE ONLY public.facility_definitions
 
 ALTER TABLE ONLY public.facility_definitions
     ADD CONSTRAINT facility_definitions_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: guide_conversation_topics guide_conversation_topics_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.guide_conversation_topics
+    ADD CONSTRAINT guide_conversation_topics_pkey PRIMARY KEY (id);
 
 
 --
@@ -2989,6 +4761,14 @@ ALTER TABLE ONLY public.island_messages
 
 
 --
+-- Name: secretary_lending_participations lending_participation_battle_member_unique; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.secretary_lending_participations
+    ADD CONSTRAINT lending_participation_battle_member_unique UNIQUE (underground_battle_id, underground_party_member_id);
+
+
+--
 -- Name: map_cells map_cells_map_space_xy_unique; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -3034,6 +4814,14 @@ ALTER TABLE ONLY public.map_spaces
 
 ALTER TABLE ONLY public.map_spaces
     ADD CONSTRAINT map_spaces_world_id_key_unique UNIQUE (world_id, key);
+
+
+--
+-- Name: merchant_conversation_topics merchant_conversation_topics_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.merchant_conversation_topics
+    ADD CONSTRAINT merchant_conversation_topics_pkey PRIMARY KEY (id);
 
 
 --
@@ -3349,6 +5137,22 @@ ALTER TABLE ONLY public.nation_resources
 
 
 --
+-- Name: nation_underground_facilities nation_underground_facilities_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.nation_underground_facilities
+    ADD CONSTRAINT nation_underground_facilities_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: nation_underground_facilities nation_underground_facilities_slot_unique; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.nation_underground_facilities
+    ADD CONSTRAINT nation_underground_facilities_slot_unique UNIQUE (nation_id, layer, slot_index);
+
+
+--
 -- Name: nations nations_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -3461,6 +5265,54 @@ ALTER TABLE ONLY public.secretaries
 
 
 --
+-- Name: secretary_gacha_draws secretary_gacha_draws_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.secretary_gacha_draws
+    ADD CONSTRAINT secretary_gacha_draws_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: secretary_gacha_draws secretary_gacha_draws_secretary_id_request_key_unique; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.secretary_gacha_draws
+    ADD CONSTRAINT secretary_gacha_draws_secretary_id_request_key_unique UNIQUE (secretary_id, request_key);
+
+
+--
+-- Name: secretary_guide_conversation_totals secretary_guide_conversation_totals_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.secretary_guide_conversation_totals
+    ADD CONSTRAINT secretary_guide_conversation_totals_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: secretary_guide_conversation_totals secretary_guide_conversation_totals_secretary_id_unique; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.secretary_guide_conversation_totals
+    ADD CONSTRAINT secretary_guide_conversation_totals_secretary_id_unique UNIQUE (secretary_id);
+
+
+--
+-- Name: secretary_images secretary_images_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.secretary_images
+    ADD CONSTRAINT secretary_images_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: secretary_images secretary_images_secretary_id_slot_unique; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.secretary_images
+    ADD CONSTRAINT secretary_images_secretary_id_slot_unique UNIQUE (secretary_id, slot);
+
+
+--
 -- Name: secretary_item_instances secretary_item_instances_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -3474,6 +5326,62 @@ ALTER TABLE ONLY public.secretary_item_instances
 
 ALTER TABLE ONLY public.secretary_item_instances
     ADD CONSTRAINT secretary_item_instances_secretary_id_grant_key_unique UNIQUE (secretary_id, grant_key);
+
+
+--
+-- Name: secretary_lending_build_snapshots secretary_lending_build_snapshots_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.secretary_lending_build_snapshots
+    ADD CONSTRAINT secretary_lending_build_snapshots_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: secretary_lending_build_snapshots secretary_lending_build_snapshots_secretary_id_unique; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.secretary_lending_build_snapshots
+    ADD CONSTRAINT secretary_lending_build_snapshots_secretary_id_unique UNIQUE (secretary_id);
+
+
+--
+-- Name: secretary_lending_daily_rewards secretary_lending_daily_rewards_owner_user_id_canonical_day_uni; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.secretary_lending_daily_rewards
+    ADD CONSTRAINT secretary_lending_daily_rewards_owner_user_id_canonical_day_uni UNIQUE (owner_user_id, canonical_day);
+
+
+--
+-- Name: secretary_lending_daily_rewards secretary_lending_daily_rewards_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.secretary_lending_daily_rewards
+    ADD CONSTRAINT secretary_lending_daily_rewards_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: secretary_lending_participations secretary_lending_participations_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.secretary_lending_participations
+    ADD CONSTRAINT secretary_lending_participations_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: secretary_lending_settings secretary_lending_settings_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.secretary_lending_settings
+    ADD CONSTRAINT secretary_lending_settings_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: secretary_lending_settings secretary_lending_settings_secretary_id_unique; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.secretary_lending_settings
+    ADD CONSTRAINT secretary_lending_settings_secretary_id_unique UNIQUE (secretary_id);
 
 
 --
@@ -3493,11 +5401,27 @@ ALTER TABLE ONLY public.secretary_skills
 
 
 --
+-- Name: secretary_surface_states secretary_surface_states_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.secretary_surface_states
+    ADD CONSTRAINT secretary_surface_states_pkey PRIMARY KEY (secretary_id);
+
+
+--
 -- Name: sessions sessions_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.sessions
     ADD CONSTRAINT sessions_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: ships ships_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.ships
+    ADD CONSTRAINT ships_pkey PRIMARY KEY (id);
 
 
 --
@@ -3533,6 +5457,22 @@ ALTER TABLE ONLY public.turn_runs
 
 
 --
+-- Name: underground_battle_image_references underground_battle_image_references_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.underground_battle_image_references
+    ADD CONSTRAINT underground_battle_image_references_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: underground_battle_image_references underground_battle_image_refs_key_path_unique; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.underground_battle_image_references
+    ADD CONSTRAINT underground_battle_image_refs_key_path_unique UNIQUE (reference_key, path);
+
+
+--
 -- Name: underground_battle_logs underground_battle_logs_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -3565,6 +5505,38 @@ ALTER TABLE ONLY public.underground_battles
 
 
 --
+-- Name: underground_battles underground_battles_underground_party_id_unique; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.underground_battles
+    ADD CONSTRAINT underground_battles_underground_party_id_unique UNIQUE (underground_party_id);
+
+
+--
+-- Name: underground_content_clear_progress underground_content_clear_progress_identity_unique; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.underground_content_clear_progress
+    ADD CONSTRAINT underground_content_clear_progress_identity_unique UNIQUE (underground_profile_id, content_type, content_key);
+
+
+--
+-- Name: underground_content_clear_progress underground_content_clear_progress_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.underground_content_clear_progress
+    ADD CONSTRAINT underground_content_clear_progress_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: underground_owned_equipment underground_equipment_instance_identity_unique; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.underground_owned_equipment
+    ADD CONSTRAINT underground_equipment_instance_identity_unique UNIQUE (instance_identity);
+
+
+--
 -- Name: underground_owned_equipment underground_equipment_profile_grant_unique; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -3578,6 +5550,22 @@ ALTER TABLE ONLY public.underground_owned_equipment
 
 ALTER TABLE ONLY public.underground_owned_equipment
     ADD CONSTRAINT underground_equipment_profile_slot_unique UNIQUE (underground_profile_id, equipped_slot);
+
+
+--
+-- Name: underground_owned_equipment underground_equipment_source_skip_batch_reward_unique; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.underground_owned_equipment
+    ADD CONSTRAINT underground_equipment_source_skip_batch_reward_unique UNIQUE (source_skip_batch_id, source_reward_index);
+
+
+--
+-- Name: underground_owned_equipment underground_equipment_source_skip_reward_unique; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.underground_owned_equipment
+    ADD CONSTRAINT underground_equipment_source_skip_reward_unique UNIQUE (source_skip_settlement_id, source_reward_index);
 
 
 --
@@ -3637,6 +5625,38 @@ ALTER TABLE ONLY public.underground_owned_equipment
 
 
 --
+-- Name: underground_parties underground_parties_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.underground_parties
+    ADD CONSTRAINT underground_parties_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: underground_party_members underground_party_members_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.underground_party_members
+    ADD CONSTRAINT underground_party_members_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: underground_party_members underground_party_members_underground_party_id_combatant_id_uni; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.underground_party_members
+    ADD CONSTRAINT underground_party_members_underground_party_id_combatant_id_uni UNIQUE (underground_party_id, combatant_id);
+
+
+--
+-- Name: underground_party_members underground_party_members_underground_party_id_secretary_id_uni; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.underground_party_members
+    ADD CONSTRAINT underground_party_members_underground_party_id_secretary_id_uni UNIQUE (underground_party_id, secretary_id);
+
+
+--
 -- Name: underground_profiles underground_profiles_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -3650,6 +5670,14 @@ ALTER TABLE ONLY public.underground_profiles
 
 ALTER TABLE ONLY public.underground_profiles
     ADD CONSTRAINT underground_profiles_secretary_id_unique UNIQUE (secretary_id);
+
+
+--
+-- Name: underground_receipt_rollups underground_receipt_rollups_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.underground_receipt_rollups
+    ADD CONSTRAINT underground_receipt_rollups_pkey PRIMARY KEY (underground_profile_id, stream);
 
 
 --
@@ -3674,6 +5702,38 @@ ALTER TABLE ONLY public.underground_skill_allocations
 
 ALTER TABLE ONLY public.underground_skill_allocations
     ADD CONSTRAINT underground_skill_profile_slot_unique UNIQUE (underground_profile_id, active_slot);
+
+
+--
+-- Name: underground_skip_batches underground_skip_batches_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.underground_skip_batches
+    ADD CONSTRAINT underground_skip_batches_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: underground_skip_batches underground_skip_batches_profile_request_unique; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.underground_skip_batches
+    ADD CONSTRAINT underground_skip_batches_profile_request_unique UNIQUE (underground_profile_id, request_id);
+
+
+--
+-- Name: underground_skip_settlements underground_skip_settlements_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.underground_skip_settlements
+    ADD CONSTRAINT underground_skip_settlements_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: underground_skip_settlements underground_skip_settlements_profile_request_unique; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.underground_skip_settlements
+    ADD CONSTRAINT underground_skip_settlements_profile_request_unique UNIQUE (underground_profile_id, request_id);
 
 
 --
@@ -3714,6 +5774,150 @@ ALTER TABLE ONLY public.underground_trial_runs
 
 ALTER TABLE ONLY public.underground_trial_runs
     ADD CONSTRAINT underground_trial_runs_underground_profile_id_unique UNIQUE (underground_profile_id);
+
+
+--
+-- Name: user_daily_login_claims user_daily_login_claims_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.user_daily_login_claims
+    ADD CONSTRAINT user_daily_login_claims_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: user_daily_login_claims user_daily_login_claims_user_id_canonical_day_unique; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.user_daily_login_claims
+    ADD CONSTRAINT user_daily_login_claims_user_id_canonical_day_unique UNIQUE (user_id, canonical_day);
+
+
+--
+-- Name: user_daily_quest_activities user_daily_quest_activities_entry_key_unique; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.user_daily_quest_activities
+    ADD CONSTRAINT user_daily_quest_activities_entry_key_unique UNIQUE (entry_key);
+
+
+--
+-- Name: user_daily_quest_activities user_daily_quest_activities_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.user_daily_quest_activities
+    ADD CONSTRAINT user_daily_quest_activities_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: user_daily_quest_progress user_daily_quest_progress_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.user_daily_quest_progress
+    ADD CONSTRAINT user_daily_quest_progress_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: user_daily_quest_progress user_daily_quest_progress_unique; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.user_daily_quest_progress
+    ADD CONSTRAINT user_daily_quest_progress_unique UNIQUE (user_id, canonical_day, quest_key);
+
+
+--
+-- Name: user_monument_designs user_monument_designs_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.user_monument_designs
+    ADD CONSTRAINT user_monument_designs_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: user_monument_designs user_monument_designs_user_id_unique; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.user_monument_designs
+    ADD CONSTRAINT user_monument_designs_user_id_unique UNIQUE (user_id);
+
+
+--
+-- Name: user_paradox_balances user_paradox_balances_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.user_paradox_balances
+    ADD CONSTRAINT user_paradox_balances_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: user_paradox_balances user_paradox_balances_user_id_unique; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.user_paradox_balances
+    ADD CONSTRAINT user_paradox_balances_user_id_unique UNIQUE (user_id);
+
+
+--
+-- Name: user_paradox_ledger user_paradox_ledger_entry_key_unique; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.user_paradox_ledger
+    ADD CONSTRAINT user_paradox_ledger_entry_key_unique UNIQUE (entry_key);
+
+
+--
+-- Name: user_paradox_ledger user_paradox_ledger_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.user_paradox_ledger
+    ADD CONSTRAINT user_paradox_ledger_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: user_skip_ticket_balances user_skip_ticket_balances_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.user_skip_ticket_balances
+    ADD CONSTRAINT user_skip_ticket_balances_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: user_skip_ticket_balances user_skip_ticket_balances_user_id_unique; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.user_skip_ticket_balances
+    ADD CONSTRAINT user_skip_ticket_balances_user_id_unique UNIQUE (user_id);
+
+
+--
+-- Name: user_skip_ticket_ledger user_skip_ticket_ledger_entry_key_unique; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.user_skip_ticket_ledger
+    ADD CONSTRAINT user_skip_ticket_ledger_entry_key_unique UNIQUE (entry_key);
+
+
+--
+-- Name: user_skip_ticket_ledger user_skip_ticket_ledger_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.user_skip_ticket_ledger
+    ADD CONSTRAINT user_skip_ticket_ledger_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: user_skip_ticket_ledger user_skip_ticket_ledger_skip_batch_unique; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.user_skip_ticket_ledger
+    ADD CONSTRAINT user_skip_ticket_ledger_skip_batch_unique UNIQUE (underground_skip_batch_id);
+
+
+--
+-- Name: user_skip_ticket_ledger user_skip_ticket_ledger_skip_unique; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.user_skip_ticket_ledger
+    ADD CONSTRAINT user_skip_ticket_ledger_skip_unique UNIQUE (underground_skip_settlement_id);
 
 
 --
@@ -3807,6 +6011,13 @@ CREATE INDEX auction_listings_active_world_end_index ON public.auction_listings 
 
 
 --
+-- Name: audit_events_admin_request_unique; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX audit_events_admin_request_unique ON public.audit_events USING btree (((metadata ->> 'request_id'::text))) WHERE ((event_type)::text = 'admin.operation_completed'::text);
+
+
+--
 -- Name: audit_events_nation_turn; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -3842,6 +6053,20 @@ CREATE INDEX audit_events_world_turn ON public.audit_events USING btree (world_i
 
 
 --
+-- Name: buried_treasures_map_cell_id_state_id_index; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX buried_treasures_map_cell_id_state_id_index ON public.buried_treasures USING btree (map_cell_id, state, id);
+
+
+--
+-- Name: buried_treasures_world_id_state_index; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX buried_treasures_world_id_state_index ON public.buried_treasures USING btree (world_id, state);
+
+
+--
 -- Name: cache_expiration_index; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -3860,6 +6085,41 @@ CREATE INDEX cache_locks_expiration_index ON public.cache_locks USING btree (exp
 --
 
 CREATE INDEX command_queue_active_order ON public.nation_command_queue_items USING btree (nation_command_queue_id, status, queue_position);
+
+
+--
+-- Name: compensation_grant_claims_compensation_grant_id_created_at_inde; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX compensation_grant_claims_compensation_grant_id_created_at_inde ON public.compensation_grant_claims USING btree (compensation_grant_id, created_at);
+
+
+--
+-- Name: compensation_grants_expiry_index; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX compensation_grants_expiry_index ON public.compensation_grants USING btree (recipient_user_id, expires_at);
+
+
+--
+-- Name: compensation_grants_nation_id_status_index; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX compensation_grants_nation_id_status_index ON public.compensation_grants USING btree (nation_id, status);
+
+
+--
+-- Name: compensation_grants_recipient_user_id_status_index; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX compensation_grants_recipient_user_id_status_index ON public.compensation_grants USING btree (recipient_user_id, status);
+
+
+--
+-- Name: guide_conversation_topics_enabled_unlock_key_index; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX guide_conversation_topics_enabled_unlock_key_index ON public.guide_conversation_topics USING btree (enabled, unlock_key);
 
 
 --
@@ -4010,6 +6270,13 @@ CREATE INDEX secretary_item_instances_secretary_id_obtained_at_id_index ON publi
 
 
 --
+-- Name: secretary_lending_participations_owner_user_id_canonical_day_in; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX secretary_lending_participations_owner_user_id_canonical_day_in ON public.secretary_lending_participations USING btree (owner_user_id, canonical_day);
+
+
+--
 -- Name: sessions_last_activity_index; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -4021,6 +6288,27 @@ CREATE INDEX sessions_last_activity_index ON public.sessions USING btree (last_a
 --
 
 CREATE INDEX sessions_user_id_index ON public.sessions USING btree (user_id);
+
+
+--
+-- Name: ships_active_map_cell_unique; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX ships_active_map_cell_unique ON public.ships USING btree (map_cell_id) WHERE ((state)::text = 'active'::text);
+
+
+--
+-- Name: ships_nation_id_state_ship_type_key_index; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ships_nation_id_state_ship_type_key_index ON public.ships USING btree (nation_id, state, ship_type_key);
+
+
+--
+-- Name: ships_world_id_state_index; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ships_world_id_state_index ON public.ships USING btree (world_id, state);
 
 
 --
@@ -4045,6 +6333,20 @@ CREATE UNIQUE INDEX turn_runs_world_target_live_unique ON public.turn_runs USING
 
 
 --
+-- Name: underground_battle_image_refs_battle_path_index; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX underground_battle_image_refs_battle_path_index ON public.underground_battle_image_references USING btree (underground_battle_id, path);
+
+
+--
+-- Name: underground_battle_image_refs_path_until_index; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX underground_battle_image_refs_path_until_index ON public.underground_battle_image_references USING btree (path, retained_until);
+
+
+--
 -- Name: underground_battle_logs_expires_at_index; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -4059,6 +6361,27 @@ CREATE INDEX underground_battles_profile_finished_at_index ON public.underground
 
 
 --
+-- Name: underground_battles_rollup_cursor_index; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX underground_battles_rollup_cursor_index ON public.underground_battles USING btree (underground_profile_id, id);
+
+
+--
+-- Name: underground_battles_statistics_range_index; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX underground_battles_statistics_range_index ON public.underground_battles USING btree (activity_type, statistics_version, finished_at);
+
+
+--
+-- Name: underground_equipment_battle_reward_unique; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX underground_equipment_battle_reward_unique ON public.underground_owned_equipment USING btree (source_battle_id, COALESCE(source_reward_index, (1)::bigint)) WHERE (source_battle_id IS NOT NULL);
+
+
+--
 -- Name: underground_equipment_vault_page_index; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -4066,10 +6389,94 @@ CREATE INDEX underground_equipment_vault_page_index ON public.underground_owned_
 
 
 --
+-- Name: underground_intro_requests_rollup_cursor_index; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX underground_intro_requests_rollup_cursor_index ON public.underground_intro_requests USING btree (underground_profile_id, id);
+
+
+--
+-- Name: underground_parties_leader_user_id_created_at_index; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX underground_parties_leader_user_id_created_at_index ON public.underground_parties USING btree (leader_user_id, created_at);
+
+
+--
+-- Name: underground_party_members_source_owner_user_id_source_type_inde; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX underground_party_members_source_owner_user_id_source_type_inde ON public.underground_party_members USING btree (source_owner_user_id, source_type);
+
+
+--
+-- Name: underground_skip_batches_rollup_cursor_index; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX underground_skip_batches_rollup_cursor_index ON public.underground_skip_batches USING btree (underground_profile_id, id);
+
+
+--
+-- Name: underground_skip_batches_underground_profile_id_content_type_co; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX underground_skip_batches_underground_profile_id_content_type_co ON public.underground_skip_batches USING btree (underground_profile_id, content_type, content_key);
+
+
+--
+-- Name: underground_skip_settlements_rollup_cursor_index; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX underground_skip_settlements_rollup_cursor_index ON public.underground_skip_settlements USING btree (underground_profile_id, id);
+
+
+--
+-- Name: underground_skip_settlements_underground_profile_id_content_typ; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX underground_skip_settlements_underground_profile_id_content_typ ON public.underground_skip_settlements USING btree (underground_profile_id, content_type, content_key);
+
+
+--
 -- Name: underground_trial_runs_profile_status_index; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE INDEX underground_trial_runs_profile_status_index ON public.underground_trial_runs USING btree (underground_profile_id, status);
+
+
+--
+-- Name: user_daily_quest_activity_progress_index; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX user_daily_quest_activity_progress_index ON public.user_daily_quest_activities USING btree (user_id, canonical_day, quest_key);
+
+
+--
+-- Name: user_paradox_ledger_user_id_canonical_day_index; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX user_paradox_ledger_user_id_canonical_day_index ON public.user_paradox_ledger USING btree (user_id, canonical_day);
+
+
+--
+-- Name: user_paradox_ledger_user_id_created_at_index; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX user_paradox_ledger_user_id_created_at_index ON public.user_paradox_ledger USING btree (user_id, created_at);
+
+
+--
+-- Name: user_skip_ticket_ledger_user_id_canonical_day_index; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX user_skip_ticket_ledger_user_id_canonical_day_index ON public.user_skip_ticket_ledger USING btree (user_id, canonical_day);
+
+
+--
+-- Name: buried_treasures buried_treasure_identity_guard; Type: TRIGGER; Schema: public; Owner: -
+--
+
+CREATE TRIGGER buried_treasure_identity_guard BEFORE INSERT OR UPDATE ON public.buried_treasures FOR EACH ROW EXECUTE FUNCTION public.validate_buried_treasure_identity();
 
 
 --
@@ -4171,6 +6578,20 @@ CREATE TRIGGER nation_monster_kill_stat_guard BEFORE INSERT OR UPDATE ON public.
 
 
 --
+-- Name: map_cells surface_ship_cell_mutation_guard; Type: TRIGGER; Schema: public; Owner: -
+--
+
+CREATE TRIGGER surface_ship_cell_mutation_guard BEFORE UPDATE OF map_space_id, terrain_definition_id, facility_definition_id ON public.map_cells FOR EACH ROW EXECUTE FUNCTION public.validate_surface_ship_cell_mutation();
+
+
+--
+-- Name: ships surface_ship_identity_guard; Type: TRIGGER; Schema: public; Owner: -
+--
+
+CREATE TRIGGER surface_ship_identity_guard BEFORE INSERT OR UPDATE OF world_id, ruleset_version_id, nation_id, map_cell_id, ship_type_key, max_hp, state ON public.ships FOR EACH ROW EXECUTE FUNCTION public.validate_surface_ship_identity();
+
+
+--
 -- Name: auction_bids auction_bids_auction_listing_id_foreign; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -4207,7 +6628,7 @@ ALTER TABLE ONLY public.auction_listings
 --
 
 ALTER TABLE ONLY public.auction_listings
-    ADD CONSTRAINT auction_listings_secretary_item_instance_id_foreign FOREIGN KEY (secretary_item_instance_id) REFERENCES public.secretary_item_instances(id) ON DELETE RESTRICT;
+    ADD CONSTRAINT auction_listings_secretary_item_instance_id_foreign FOREIGN KEY (secretary_item_instance_id) REFERENCES public.secretary_item_instances(id) ON DELETE SET NULL;
 
 
 --
@@ -4259,11 +6680,99 @@ ALTER TABLE ONLY public.auth_identities
 
 
 --
+-- Name: buried_treasures buried_treasures_map_cell_id_foreign; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.buried_treasures
+    ADD CONSTRAINT buried_treasures_map_cell_id_foreign FOREIGN KEY (map_cell_id) REFERENCES public.map_cells(id) ON DELETE CASCADE;
+
+
+--
+-- Name: buried_treasures buried_treasures_resolved_by_nation_id_foreign; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.buried_treasures
+    ADD CONSTRAINT buried_treasures_resolved_by_nation_id_foreign FOREIGN KEY (resolved_by_nation_id) REFERENCES public.nations(id) ON DELETE SET NULL;
+
+
+--
+-- Name: buried_treasures buried_treasures_world_id_foreign; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.buried_treasures
+    ADD CONSTRAINT buried_treasures_world_id_foreign FOREIGN KEY (world_id) REFERENCES public.worlds(id) ON DELETE CASCADE;
+
+
+--
 -- Name: command_definitions command_definitions_ruleset_version_id_foreign; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.command_definitions
     ADD CONSTRAINT command_definitions_ruleset_version_id_foreign FOREIGN KEY (ruleset_version_id) REFERENCES public.ruleset_versions(id) ON DELETE CASCADE;
+
+
+--
+-- Name: compensation_grant_claims compensation_grant_claims_compensation_grant_id_foreign; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.compensation_grant_claims
+    ADD CONSTRAINT compensation_grant_claims_compensation_grant_id_foreign FOREIGN KEY (compensation_grant_id) REFERENCES public.compensation_grants(id) ON DELETE RESTRICT;
+
+
+--
+-- Name: compensation_grant_claims compensation_grant_claims_user_id_foreign; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.compensation_grant_claims
+    ADD CONSTRAINT compensation_grant_claims_user_id_foreign FOREIGN KEY (user_id) REFERENCES public.users(id) ON DELETE RESTRICT;
+
+
+--
+-- Name: compensation_grant_items compensation_grant_items_compensation_grant_id_foreign; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.compensation_grant_items
+    ADD CONSTRAINT compensation_grant_items_compensation_grant_id_foreign FOREIGN KEY (compensation_grant_id) REFERENCES public.compensation_grants(id) ON DELETE CASCADE;
+
+
+--
+-- Name: compensation_grants compensation_grants_nation_id_foreign; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.compensation_grants
+    ADD CONSTRAINT compensation_grants_nation_id_foreign FOREIGN KEY (nation_id) REFERENCES public.nations(id) ON DELETE RESTRICT;
+
+
+--
+-- Name: compensation_grants compensation_grants_recipient_user_id_foreign; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.compensation_grants
+    ADD CONSTRAINT compensation_grants_recipient_user_id_foreign FOREIGN KEY (recipient_user_id) REFERENCES public.users(id) ON DELETE RESTRICT;
+
+
+--
+-- Name: compensation_grants compensation_grants_world_id_foreign; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.compensation_grants
+    ADD CONSTRAINT compensation_grants_world_id_foreign FOREIGN KEY (world_id) REFERENCES public.worlds(id) ON DELETE RESTRICT;
+
+
+--
+-- Name: guide_conversation_topics guide_conversation_topics_created_by_user_id_foreign; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.guide_conversation_topics
+    ADD CONSTRAINT guide_conversation_topics_created_by_user_id_foreign FOREIGN KEY (created_by_user_id) REFERENCES public.users(id) ON DELETE RESTRICT;
+
+
+--
+-- Name: guide_conversation_topics guide_conversation_topics_updated_by_user_id_foreign; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.guide_conversation_topics
+    ADD CONSTRAINT guide_conversation_topics_updated_by_user_id_foreign FOREIGN KEY (updated_by_user_id) REFERENCES public.users(id) ON DELETE RESTRICT;
 
 
 --
@@ -4363,6 +6872,14 @@ ALTER TABLE ONLY public.map_cells
 
 
 --
+-- Name: map_cells map_cells_monument_design_id_foreign; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.map_cells
+    ADD CONSTRAINT map_cells_monument_design_id_foreign FOREIGN KEY (monument_design_id) REFERENCES public.user_monument_designs(id) ON DELETE SET NULL;
+
+
+--
 -- Name: map_cells map_cells_owner_nation_id_foreign; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -4392,6 +6909,22 @@ ALTER TABLE ONLY public.map_chunks
 
 ALTER TABLE ONLY public.map_spaces
     ADD CONSTRAINT map_spaces_world_id_foreign FOREIGN KEY (world_id) REFERENCES public.worlds(id) ON DELETE CASCADE;
+
+
+--
+-- Name: merchant_conversation_topics merchant_conversation_topics_created_by_user_id_foreign; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.merchant_conversation_topics
+    ADD CONSTRAINT merchant_conversation_topics_created_by_user_id_foreign FOREIGN KEY (created_by_user_id) REFERENCES public.users(id) ON DELETE RESTRICT;
+
+
+--
+-- Name: merchant_conversation_topics merchant_conversation_topics_updated_by_user_id_foreign; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.merchant_conversation_topics
+    ADD CONSTRAINT merchant_conversation_topics_updated_by_user_id_foreign FOREIGN KEY (updated_by_user_id) REFERENCES public.users(id) ON DELETE RESTRICT;
 
 
 --
@@ -4659,6 +7192,22 @@ ALTER TABLE ONLY public.nation_resources
 
 
 --
+-- Name: nation_underground_facilities nation_underground_facilities_nation_id_foreign; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.nation_underground_facilities
+    ADD CONSTRAINT nation_underground_facilities_nation_id_foreign FOREIGN KEY (nation_id) REFERENCES public.nations(id) ON DELETE CASCADE;
+
+
+--
+-- Name: nation_underground_facilities nation_underground_facilities_ruleset_version_id_foreign; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.nation_underground_facilities
+    ADD CONSTRAINT nation_underground_facilities_ruleset_version_id_foreign FOREIGN KEY (ruleset_version_id) REFERENCES public.ruleset_versions(id) ON DELETE RESTRICT;
+
+
+--
 -- Name: nations nations_world_id_foreign; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -4699,6 +7248,30 @@ ALTER TABLE ONLY public.secretaries
 
 
 --
+-- Name: secretary_gacha_draws secretary_gacha_draws_secretary_id_foreign; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.secretary_gacha_draws
+    ADD CONSTRAINT secretary_gacha_draws_secretary_id_foreign FOREIGN KEY (secretary_id) REFERENCES public.secretaries(id) ON DELETE CASCADE;
+
+
+--
+-- Name: secretary_guide_conversation_totals secretary_guide_conversation_totals_secretary_id_foreign; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.secretary_guide_conversation_totals
+    ADD CONSTRAINT secretary_guide_conversation_totals_secretary_id_foreign FOREIGN KEY (secretary_id) REFERENCES public.secretaries(id) ON DELETE CASCADE;
+
+
+--
+-- Name: secretary_images secretary_images_secretary_id_foreign; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.secretary_images
+    ADD CONSTRAINT secretary_images_secretary_id_foreign FOREIGN KEY (secretary_id) REFERENCES public.secretaries(id) ON DELETE CASCADE;
+
+
+--
 -- Name: secretary_item_instances secretary_item_instances_secretary_id_foreign; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -4707,11 +7280,107 @@ ALTER TABLE ONLY public.secretary_item_instances
 
 
 --
+-- Name: secretary_lending_build_snapshots secretary_lending_build_snapshots_secretary_id_foreign; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.secretary_lending_build_snapshots
+    ADD CONSTRAINT secretary_lending_build_snapshots_secretary_id_foreign FOREIGN KEY (secretary_id) REFERENCES public.secretaries(id) ON DELETE CASCADE;
+
+
+--
+-- Name: secretary_lending_daily_rewards secretary_lending_daily_rewards_owner_user_id_foreign; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.secretary_lending_daily_rewards
+    ADD CONSTRAINT secretary_lending_daily_rewards_owner_user_id_foreign FOREIGN KEY (owner_user_id) REFERENCES public.users(id) ON DELETE RESTRICT;
+
+
+--
+-- Name: secretary_lending_participations secretary_lending_participations_owner_user_id_foreign; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.secretary_lending_participations
+    ADD CONSTRAINT secretary_lending_participations_owner_user_id_foreign FOREIGN KEY (owner_user_id) REFERENCES public.users(id) ON DELETE RESTRICT;
+
+
+--
+-- Name: secretary_lending_participations secretary_lending_participations_secretary_id_foreign; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.secretary_lending_participations
+    ADD CONSTRAINT secretary_lending_participations_secretary_id_foreign FOREIGN KEY (secretary_id) REFERENCES public.secretaries(id) ON DELETE RESTRICT;
+
+
+--
+-- Name: secretary_lending_participations secretary_lending_participations_underground_battle_id_foreign; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.secretary_lending_participations
+    ADD CONSTRAINT secretary_lending_participations_underground_battle_id_foreign FOREIGN KEY (underground_battle_id) REFERENCES public.underground_battles(id) ON DELETE RESTRICT;
+
+
+--
+-- Name: secretary_lending_participations secretary_lending_participations_underground_party_member_id_fo; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.secretary_lending_participations
+    ADD CONSTRAINT secretary_lending_participations_underground_party_member_id_fo FOREIGN KEY (underground_party_member_id) REFERENCES public.underground_party_members(id) ON DELETE RESTRICT;
+
+
+--
+-- Name: secretary_lending_settings secretary_lending_settings_secretary_id_foreign; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.secretary_lending_settings
+    ADD CONSTRAINT secretary_lending_settings_secretary_id_foreign FOREIGN KEY (secretary_id) REFERENCES public.secretaries(id) ON DELETE CASCADE;
+
+
+--
 -- Name: secretary_skills secretary_skills_secretary_id_foreign; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.secretary_skills
     ADD CONSTRAINT secretary_skills_secretary_id_foreign FOREIGN KEY (secretary_id) REFERENCES public.secretaries(id) ON DELETE CASCADE;
+
+
+--
+-- Name: secretary_surface_states secretary_surface_states_secretary_id_foreign; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.secretary_surface_states
+    ADD CONSTRAINT secretary_surface_states_secretary_id_foreign FOREIGN KEY (secretary_id) REFERENCES public.secretaries(id) ON DELETE CASCADE;
+
+
+--
+-- Name: ships ships_map_cell_id_foreign; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.ships
+    ADD CONSTRAINT ships_map_cell_id_foreign FOREIGN KEY (map_cell_id) REFERENCES public.map_cells(id) ON DELETE CASCADE;
+
+
+--
+-- Name: ships ships_nation_id_foreign; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.ships
+    ADD CONSTRAINT ships_nation_id_foreign FOREIGN KEY (nation_id) REFERENCES public.nations(id) ON DELETE CASCADE;
+
+
+--
+-- Name: ships ships_ruleset_version_id_foreign; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.ships
+    ADD CONSTRAINT ships_ruleset_version_id_foreign FOREIGN KEY (ruleset_version_id) REFERENCES public.ruleset_versions(id) ON DELETE RESTRICT;
+
+
+--
+-- Name: ships ships_world_id_foreign; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.ships
+    ADD CONSTRAINT ships_world_id_foreign FOREIGN KEY (world_id) REFERENCES public.worlds(id) ON DELETE CASCADE;
 
 
 --
@@ -4731,11 +7400,27 @@ ALTER TABLE ONLY public.turn_runs
 
 
 --
+-- Name: underground_battle_image_references underground_battle_image_references_underground_battle_id_forei; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.underground_battle_image_references
+    ADD CONSTRAINT underground_battle_image_references_underground_battle_id_forei FOREIGN KEY (underground_battle_id) REFERENCES public.underground_battles(id) ON DELETE SET NULL;
+
+
+--
 -- Name: underground_battle_logs underground_battle_logs_underground_battle_id_foreign; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.underground_battle_logs
     ADD CONSTRAINT underground_battle_logs_underground_battle_id_foreign FOREIGN KEY (underground_battle_id) REFERENCES public.underground_battles(id) ON DELETE CASCADE;
+
+
+--
+-- Name: underground_battles underground_battles_underground_party_id_foreign; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.underground_battles
+    ADD CONSTRAINT underground_battles_underground_party_id_foreign FOREIGN KEY (underground_party_id) REFERENCES public.underground_parties(id) ON DELETE RESTRICT;
 
 
 --
@@ -4747,19 +7432,11 @@ ALTER TABLE ONLY public.underground_battles
 
 
 --
--- Name: underground_intro_progress underground_intro_progress_scripted_loss_battle_id_foreign; Type: FK CONSTRAINT; Schema: public; Owner: -
+-- Name: underground_content_clear_progress underground_content_clear_progress_underground_profile_id_forei; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
-ALTER TABLE ONLY public.underground_intro_progress
-    ADD CONSTRAINT underground_intro_progress_scripted_loss_battle_id_foreign FOREIGN KEY (scripted_loss_battle_id) REFERENCES public.underground_battles(id) ON DELETE CASCADE;
-
-
---
--- Name: underground_intro_progress underground_intro_progress_tutorial_battle_id_foreign; Type: FK CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.underground_intro_progress
-    ADD CONSTRAINT underground_intro_progress_tutorial_battle_id_foreign FOREIGN KEY (tutorial_battle_id) REFERENCES public.underground_battles(id) ON DELETE CASCADE;
+ALTER TABLE ONLY public.underground_content_clear_progress
+    ADD CONSTRAINT underground_content_clear_progress_underground_profile_id_forei FOREIGN KEY (underground_profile_id) REFERENCES public.underground_profiles(id) ON DELETE CASCADE;
 
 
 --
@@ -4775,7 +7452,7 @@ ALTER TABLE ONLY public.underground_intro_progress
 --
 
 ALTER TABLE ONLY public.underground_intro_requests
-    ADD CONSTRAINT underground_intro_requests_underground_battle_id_foreign FOREIGN KEY (underground_battle_id) REFERENCES public.underground_battles(id) ON DELETE CASCADE;
+    ADD CONSTRAINT underground_intro_requests_underground_battle_id_foreign FOREIGN KEY (underground_battle_id) REFERENCES public.underground_battles(id) ON DELETE SET NULL;
 
 
 --
@@ -4795,6 +7472,46 @@ ALTER TABLE ONLY public.underground_owned_equipment
 
 
 --
+-- Name: underground_parties underground_parties_leader_secretary_id_foreign; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.underground_parties
+    ADD CONSTRAINT underground_parties_leader_secretary_id_foreign FOREIGN KEY (leader_secretary_id) REFERENCES public.secretaries(id) ON DELETE RESTRICT;
+
+
+--
+-- Name: underground_parties underground_parties_leader_user_id_foreign; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.underground_parties
+    ADD CONSTRAINT underground_parties_leader_user_id_foreign FOREIGN KEY (leader_user_id) REFERENCES public.users(id) ON DELETE RESTRICT;
+
+
+--
+-- Name: underground_party_members underground_party_members_secretary_id_foreign; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.underground_party_members
+    ADD CONSTRAINT underground_party_members_secretary_id_foreign FOREIGN KEY (secretary_id) REFERENCES public.secretaries(id) ON DELETE RESTRICT;
+
+
+--
+-- Name: underground_party_members underground_party_members_source_owner_user_id_foreign; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.underground_party_members
+    ADD CONSTRAINT underground_party_members_source_owner_user_id_foreign FOREIGN KEY (source_owner_user_id) REFERENCES public.users(id) ON DELETE RESTRICT;
+
+
+--
+-- Name: underground_party_members underground_party_members_underground_party_id_foreign; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.underground_party_members
+    ADD CONSTRAINT underground_party_members_underground_party_id_foreign FOREIGN KEY (underground_party_id) REFERENCES public.underground_parties(id) ON DELETE RESTRICT;
+
+
+--
 -- Name: underground_profiles underground_profiles_secretary_id_foreign; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -4803,11 +7520,51 @@ ALTER TABLE ONLY public.underground_profiles
 
 
 --
+-- Name: underground_receipt_rollups underground_receipt_rollups_underground_profile_id_foreign; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.underground_receipt_rollups
+    ADD CONSTRAINT underground_receipt_rollups_underground_profile_id_foreign FOREIGN KEY (underground_profile_id) REFERENCES public.underground_profiles(id) ON DELETE CASCADE;
+
+
+--
 -- Name: underground_skill_allocations underground_skill_allocations_underground_profile_id_foreign; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.underground_skill_allocations
     ADD CONSTRAINT underground_skill_allocations_underground_profile_id_foreign FOREIGN KEY (underground_profile_id) REFERENCES public.underground_profiles(id) ON DELETE CASCADE;
+
+
+--
+-- Name: underground_skip_batches underground_skip_batches_underground_profile_id_foreign; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.underground_skip_batches
+    ADD CONSTRAINT underground_skip_batches_underground_profile_id_foreign FOREIGN KEY (underground_profile_id) REFERENCES public.underground_profiles(id) ON DELETE CASCADE;
+
+
+--
+-- Name: underground_skip_batches underground_skip_batches_user_id_foreign; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.underground_skip_batches
+    ADD CONSTRAINT underground_skip_batches_user_id_foreign FOREIGN KEY (user_id) REFERENCES public.users(id) ON DELETE RESTRICT;
+
+
+--
+-- Name: underground_skip_settlements underground_skip_settlements_underground_profile_id_foreign; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.underground_skip_settlements
+    ADD CONSTRAINT underground_skip_settlements_underground_profile_id_foreign FOREIGN KEY (underground_profile_id) REFERENCES public.underground_profiles(id) ON DELETE CASCADE;
+
+
+--
+-- Name: underground_skip_settlements underground_skip_settlements_user_id_foreign; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.underground_skip_settlements
+    ADD CONSTRAINT underground_skip_settlements_user_id_foreign FOREIGN KEY (user_id) REFERENCES public.users(id) ON DELETE RESTRICT;
 
 
 --
@@ -4824,6 +7581,102 @@ ALTER TABLE ONLY public.underground_trial_progress
 
 ALTER TABLE ONLY public.underground_trial_runs
     ADD CONSTRAINT underground_trial_runs_underground_profile_id_foreign FOREIGN KEY (underground_profile_id) REFERENCES public.underground_profiles(id) ON DELETE CASCADE;
+
+
+--
+-- Name: user_daily_login_claims user_daily_login_claims_user_id_foreign; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.user_daily_login_claims
+    ADD CONSTRAINT user_daily_login_claims_user_id_foreign FOREIGN KEY (user_id) REFERENCES public.users(id) ON DELETE RESTRICT;
+
+
+--
+-- Name: user_daily_quest_activities user_daily_quest_activities_user_id_foreign; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.user_daily_quest_activities
+    ADD CONSTRAINT user_daily_quest_activities_user_id_foreign FOREIGN KEY (user_id) REFERENCES public.users(id) ON DELETE RESTRICT;
+
+
+--
+-- Name: user_daily_quest_progress user_daily_quest_progress_user_id_foreign; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.user_daily_quest_progress
+    ADD CONSTRAINT user_daily_quest_progress_user_id_foreign FOREIGN KEY (user_id) REFERENCES public.users(id) ON DELETE RESTRICT;
+
+
+--
+-- Name: user_monument_designs user_monument_designs_user_id_foreign; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.user_monument_designs
+    ADD CONSTRAINT user_monument_designs_user_id_foreign FOREIGN KEY (user_id) REFERENCES public.users(id) ON DELETE CASCADE;
+
+
+--
+-- Name: user_paradox_balances user_paradox_balances_user_id_foreign; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.user_paradox_balances
+    ADD CONSTRAINT user_paradox_balances_user_id_foreign FOREIGN KEY (user_id) REFERENCES public.users(id) ON DELETE RESTRICT;
+
+
+--
+-- Name: user_paradox_ledger user_paradox_ledger_user_id_foreign; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.user_paradox_ledger
+    ADD CONSTRAINT user_paradox_ledger_user_id_foreign FOREIGN KEY (user_id) REFERENCES public.users(id) ON DELETE RESTRICT;
+
+
+--
+-- Name: user_skip_ticket_balances user_skip_ticket_balances_user_id_foreign; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.user_skip_ticket_balances
+    ADD CONSTRAINT user_skip_ticket_balances_user_id_foreign FOREIGN KEY (user_id) REFERENCES public.users(id) ON DELETE RESTRICT;
+
+
+--
+-- Name: user_skip_ticket_ledger user_skip_ticket_ledger_underground_battle_id_foreign; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.user_skip_ticket_ledger
+    ADD CONSTRAINT user_skip_ticket_ledger_underground_battle_id_foreign FOREIGN KEY (underground_battle_id) REFERENCES public.underground_battles(id) ON DELETE SET NULL;
+
+
+--
+-- Name: user_skip_ticket_ledger user_skip_ticket_ledger_underground_party_member_id_foreign; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.user_skip_ticket_ledger
+    ADD CONSTRAINT user_skip_ticket_ledger_underground_party_member_id_foreign FOREIGN KEY (underground_party_member_id) REFERENCES public.underground_party_members(id) ON DELETE SET NULL;
+
+
+--
+-- Name: user_skip_ticket_ledger user_skip_ticket_ledger_underground_skip_batch_id_foreign; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.user_skip_ticket_ledger
+    ADD CONSTRAINT user_skip_ticket_ledger_underground_skip_batch_id_foreign FOREIGN KEY (underground_skip_batch_id) REFERENCES public.underground_skip_batches(id) ON DELETE SET NULL;
+
+
+--
+-- Name: user_skip_ticket_ledger user_skip_ticket_ledger_underground_skip_settlement_id_foreign; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.user_skip_ticket_ledger
+    ADD CONSTRAINT user_skip_ticket_ledger_underground_skip_settlement_id_foreign FOREIGN KEY (underground_skip_settlement_id) REFERENCES public.underground_skip_settlements(id) ON DELETE SET NULL;
+
+
+--
+-- Name: user_skip_ticket_ledger user_skip_ticket_ledger_user_id_foreign; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.user_skip_ticket_ledger
+    ADD CONSTRAINT user_skip_ticket_ledger_user_id_foreign FOREIGN KEY (user_id) REFERENCES public.users(id) ON DELETE RESTRICT;
 
 
 --
@@ -4846,101 +7699,4 @@ ALTER TABLE ONLY public.worlds
 -- PostgreSQL database dump complete
 --
 
-\unrestrict KWF7zqWAHRFweR5bsqlqPZVo5sQ6TirvaMUWXCs5pltZtTLhbcd1SIGg0N1Cmhc
-
---
--- PostgreSQL database dump
---
-
-\restrict A7eHKmIpcI68k2eyPVJRdKTymupHuj2OS9RzAYUngCAUKiUJSzskFX6ppNCqhkF
-
--- Dumped from database version 18.4 (Debian 18.4-1.pgdg12+1)
--- Dumped by pg_dump version 18.4 (Debian 18.4-1.pgdg12+1)
-
-SET statement_timeout = 0;
-SET lock_timeout = 0;
-SET idle_in_transaction_session_timeout = 0;
-SET transaction_timeout = 0;
-SET client_encoding = 'UTF8';
-SET standard_conforming_strings = on;
-SELECT pg_catalog.set_config('search_path', '', false);
-SET check_function_bodies = false;
-SET xmloption = content;
-SET client_min_messages = warning;
-SET row_security = off;
-
---
--- Data for Name: migrations; Type: TABLE DATA; Schema: public; Owner: -
---
-
-COPY public.migrations (id, migration, batch) FROM stdin;
-1	0001_01_01_000000_create_users_table	1
-2	0001_01_01_000001_create_cache_table	1
-3	2026_07_26_000000_create_hakoniwa_schema	1
-4	2026_07_26_010000_add_roadmap_pr2_systems	1
-5	2026_07_26_020000_replace_axial_coordinates_with_staggered_xy	1
-6	2026_07_27_000000_add_command_parameter_metadata	1
-7	2026_07_27_010000_publish_roadmap_pr6_ruleset	1
-8	2026_07_28_000000_add_universal_quantity_to_command_queue_items	1
-9	2026_07_28_010000_normalize_food_resources_to_tons	1
-10	2026_07_28_999999_enforce_queue_item_ruleset_consistency	1
-11	2026_07_29_000000_publish_roadmap_pr7_ruleset	1
-12	2026_07_29_010000_create_turn_runs	1
-13	2026_07_30_000000_publish_roadmap_pr11_ruleset	1
-14	2026_08_01_000000_start_world_turns_at_one	1
-15	2026_08_02_000000_publish_roadmap_pr14_ruleset	1
-16	2026_08_02_010000_publish_roadmap_pr15_ruleset	1
-17	2026_08_02_020000_add_per_world_nation_numbers	1
-18	2026_08_04_000000_publish_roadmap_pr18_ruleset	1
-19	2026_08_04_010000_add_nation_profiles	1
-20	2026_08_04_020000_publish_roadmap_pr19_ruleset	1
-21	2026_08_05_000000_create_monster_system_and_publish_roadmap_pr21_ruleset	1
-22	2026_08_05_010000_add_pr22_command_event_state_and_publish_ruleset	1
-23	2026_08_05_020000_prepare_first_production_release	1
-24	2026_08_09_000000_publish_hakoniwa_2s_plus_v2	1
-25	2026_08_09_010000_create_announcements	1
-26	2026_08_09_020000_repair_hakoniwa_2s_plus_v2_live_monster_references	1
-27	2026_08_09_030000_repair_deterministic_application_timestamps	1
-28	2026_08_09_040000_create_nation_awards_and_monster_cycles	1
-29	2026_08_10_000000_publish_hakoniwa_2s_plus_v3	1
-30	2026_08_11_000000_create_island_messages	1
-31	2026_08_13_000000_publish_hakoniwa_2s_plus_v4	1
-32	2026_08_14_000000_publish_hakoniwa_2s_plus_v5	1
-33	2026_08_15_000000_enable_nation_reregistration	1
-34	2026_08_16_000000_publish_hakoniwa_2s_plus_v6	1
-35	2026_08_16_010000_create_nation_command_queue_bulk_requests	1
-36	2026_08_16_020000_create_secretary_system	1
-37	2026_08_16_030000_publish_hakoniwa_2s_plus_v7	1
-38	2026_08_16_040000_publish_hakoniwa_2s_plus_v8	1
-39	2026_08_17_000000_publish_hakoniwa_2s_plus_v9	1
-40	2026_08_17_010000_create_secretary_items_and_inquiries	1
-41	2026_08_19_000000_add_command_request_fingerprint	1
-42	2026_08_19_010000_publish_hakoniwa_2s_plus_v10	1
-43	2026_08_20_000000_add_secretary_equipment_version	1
-44	2026_08_20_010000_add_monster_definition_display_order	1
-45	2026_08_21_000000_add_command_request_ruleset_provenance	1
-46	2026_08_21_010000_publish_hakoniwa_2s_plus_v11	1
-47	2026_08_22_000000_rebaseline_ver_2_4_install_and_upgrade	1
-48	2026_08_23_000000_add_nation_dormancy_and_publish_v12	1
-49	2026_08_23_010000_add_nation_karma_and_publish_v13	1
-50	2026_08_24_000000_add_secretary_profiles_and_publish_v14	1
-51	2026_08_24_010000_add_monster_experience_and_publish_v15	1
-52	2026_08_25_000000_add_oil_resource_and_publish_v16	1
-53	2026_08_26_000000_publish_v17_secretary_item_foundation	2
-54	2026_08_27_000000_publish_v18_undersea_city	2
-55	2026_08_30_050000_rebaseline_3_0_0_underground_release	2
-\.
-
-
---
--- Name: migrations_id_seq; Type: SEQUENCE SET; Schema: public; Owner: -
---
-
-SELECT pg_catalog.setval('public.migrations_id_seq', 55, true);
-
-
---
--- PostgreSQL database dump complete
---
-
-\unrestrict A7eHKmIpcI68k2eyPVJRdKTymupHuj2OS9RzAYUngCAUKiUJSzskFX6ppNCqhkF
+\unrestrict AIHFphxJP48UpE3pFUEXLH31hK9jVCb4eqFdqiUNflydUNPiXW2UCB06T64hwuO

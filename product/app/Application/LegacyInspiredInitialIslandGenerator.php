@@ -40,20 +40,13 @@ final class LegacyInspiredInitialIslandGenerator implements InitialIslandGenerat
         $reservation = $center->radius($rules['initial_island_reservation_radius']);
         $terrainIds = TerrainDefinition::query()->pluck('id', 'key');
         $placement = $rules['initial_island_placement'] ?? null;
-        if ($placement === null) {
-            $reservationTerrainKeys = ['sea'];
-            $relocateShips = false;
-        } elseif (is_array($placement)
-            && ($placement['reservation_terrain_keys'] ?? null) === ['sea', 'shallow', 'wasteland', 'mountain']
-            && ($placement['ship_relocation'] ?? null) === 'final_empty_sea_within_reservation'
-            && ((! array_key_exists('candidate_evaluation', $placement) && count($placement) === 2)
-                || (count($placement) === 3
-                    && ($placement['candidate_evaluation'] ?? null) === 'stable_batched_until_safe'))) {
-            $reservationTerrainKeys = $placement['reservation_terrain_keys'];
-            $relocateShips = true;
-        } else {
+        if (! is_array($placement) || count($placement) !== 3
+            || ($placement['reservation_terrain_keys'] ?? null) !== ['sea', 'shallow', 'wasteland', 'mountain']
+            || ($placement['ship_relocation'] ?? null) !== 'final_empty_sea_within_reservation'
+            || ($placement['candidate_evaluation'] ?? null) !== 'stable_batched_until_safe') {
             throw new DomainException('The active Ruleset has no supported initial-island placement contract.');
         }
+        $reservationTerrainKeys = $placement['reservation_terrain_keys'];
         $reservationTerrainIds = array_map(
             static fn (string $key): int => (int) $terrainIds[$key],
             $reservationTerrainKeys,
@@ -197,7 +190,6 @@ final class LegacyInspiredInitialIslandGenerator implements InitialIslandGenerat
             $mapSpace,
             $cells,
             (int) $terrainIds['sea'],
-            $relocateShips,
         );
 
         $changedChunks = [];
@@ -299,7 +291,6 @@ final class LegacyInspiredInitialIslandGenerator implements InitialIslandGenerat
         MapSpace $mapSpace,
         Collection $cells,
         int $seaTerrainId,
-        bool $enabled,
     ): array {
         $cellIds = $cells->pluck('id')->map(static fn ($id): int => (int) $id)->all();
         $ships = Ship::query()
@@ -311,9 +302,6 @@ final class LegacyInspiredInitialIslandGenerator implements InitialIslandGenerat
             ->get();
         if ($ships->isEmpty()) {
             return [[], []];
-        }
-        if (! $enabled) {
-            throw new DomainException('選択された海域はすでに使用されています。');
         }
 
         $monsterCellIds = MonsterOccupancy::query()

@@ -6,7 +6,6 @@ use App\Domain\Map\GridCoordinate;
 use App\Models\MapSpace;
 use DomainException;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Schema;
 
 final class CapitalPlacementService
 {
@@ -21,29 +20,14 @@ final class CapitalPlacementService
         $minimumDistance = (int) $rules['minimum_capital_distance'];
         $requiredCells = 1 + 3 * $radius * ($radius + 1);
         $placement = $rules['initial_island_placement'] ?? null;
-        if ($placement === null) {
-            $reservationTerrainKeys = ['sea'];
-            $relocateShips = false;
-        } elseif (is_array($placement)
-            && ($placement['reservation_terrain_keys'] ?? null) === ['sea', 'shallow', 'wasteland', 'mountain']
-            && ($placement['ship_relocation'] ?? null) === 'final_empty_sea_within_reservation'
-            && ((! array_key_exists('candidate_evaluation', $placement) && count($placement) === 2)
-                || (count($placement) === 3
-                    && ($placement['candidate_evaluation'] ?? null) === 'stable_batched_until_safe'))) {
-            $reservationTerrainKeys = $placement['reservation_terrain_keys'];
-            $relocateShips = true;
-        } else {
+        if (! is_array($placement) || count($placement) !== 3
+            || ($placement['reservation_terrain_keys'] ?? null) !== ['sea', 'shallow', 'wasteland', 'mountain']
+            || ($placement['ship_relocation'] ?? null) !== 'final_empty_sea_within_reservation'
+            || ($placement['candidate_evaluation'] ?? null) !== 'stable_batched_until_safe') {
             throw new DomainException('The active Ruleset has no supported initial-island placement contract.');
         }
+        $reservationTerrainKeys = $placement['reservation_terrain_keys'];
         $terrainPlaceholders = implode(', ', array_fill(0, count($reservationTerrainKeys), '?'));
-        $shipExclusion = ! $relocateShips && Schema::hasTable('ships') ? <<<'SQL'
-                  AND NOT EXISTS (
-                    SELECT 1
-                    FROM ships surface_ship
-                    WHERE surface_ship.map_cell_id = surrounding.id
-                      AND surface_ship.state = 'active'
-                  )
-            SQL : '';
         // These coarse bounds are necessary for hex distance <= radius. The exact
         // GREATEST predicate remains authoritative, while the map-space x/y index
         // avoids rescanning every cell for every candidate.
@@ -99,7 +83,6 @@ final class CapitalPlacementService
                   AND surrounding.owner_nation_id IS NULL
                   AND surrounding.facility_definition_id IS NULL
                   AND surrounding.population = 0
-            {$shipExclusion}
               ) = ?
               AND NOT EXISTS (
                 SELECT 1

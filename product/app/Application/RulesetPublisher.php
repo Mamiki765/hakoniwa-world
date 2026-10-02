@@ -11,7 +11,6 @@ use App\Models\ResourceDefinition;
 use App\Models\RulesetVersion;
 use DomainException;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Schema;
 
 final class RulesetPublisher
 {
@@ -21,21 +20,6 @@ final class RulesetPublisher
     public function publish(array $settings): RulesetVersion
     {
         $this->validator->validate($settings);
-        $supportsMonsterDisplayOrder = array_key_exists('monster_definitions', $settings)
-            && Schema::hasColumn('monster_definitions', 'display_order');
-        $authorsMonsterExperiencePerDamage = $this->authorsMonsterExperiencePerDamage($settings);
-        if (! $supportsMonsterDisplayOrder) {
-            foreach ($settings['monster_definitions'] ?? [] as $definition) {
-                if (is_array($definition) && array_key_exists('display_order', $definition)) {
-                    throw new DomainException('Explicit monster display order requires the C3 schema migration.');
-                }
-            }
-        }
-        if ($authorsMonsterExperiencePerDamage
-            && ! Schema::hasColumn('monster_definitions', 'experience_per_damage')) {
-            throw new DomainException('Monster damage experience authoring requires the v15 schema migration.');
-        }
-
         $key = $settings['key'] ?? null;
         $version = $settings['version'] ?? null;
         if (! is_string($key) || $key === '' || ! is_int($version) || $version < 1) {
@@ -46,8 +30,6 @@ final class RulesetPublisher
             $settings,
             $key,
             $version,
-            $supportsMonsterDisplayOrder,
-            $authorsMonsterExperiencePerDamage,
         ): RulesetVersion {
             $ruleset = RulesetVersion::query()->where('key', $key)->lockForUpdate()->first();
             if ($ruleset !== null) {
@@ -55,8 +37,6 @@ final class RulesetPublisher
                 $this->assertDefinitions(
                     $ruleset,
                     $settings,
-                    $supportsMonsterDisplayOrder,
-                    $authorsMonsterExperiencePerDamage,
                 );
 
                 return $ruleset;
@@ -71,8 +51,6 @@ final class RulesetPublisher
             $this->createDefinitions(
                 $ruleset,
                 $settings,
-                $supportsMonsterDisplayOrder,
-                $authorsMonsterExperiencePerDamage,
             );
 
             return $ruleset;
@@ -94,15 +72,10 @@ final class RulesetPublisher
             throw new DomainException("Published ruleset {$key} is missing.");
         }
 
-        $supportsMonsterDisplayOrder = array_key_exists('monster_definitions', $settings)
-            && Schema::hasColumn('monster_definitions', 'display_order');
-        $authorsMonsterExperiencePerDamage = $this->authorsMonsterExperiencePerDamage($settings);
         $this->assertSameSnapshot($ruleset, $settings, $version);
         $this->assertDefinitions(
             $ruleset,
             $settings,
-            $supportsMonsterDisplayOrder,
-            $authorsMonsterExperiencePerDamage,
         );
 
         return $ruleset;
@@ -125,8 +98,6 @@ final class RulesetPublisher
     private function createDefinitions(
         RulesetVersion $ruleset,
         array $settings,
-        bool $supportsMonsterDisplayOrder,
-        bool $authorsMonsterExperiencePerDamage,
     ): void {
         foreach ($this->commandPayloads($ruleset, $settings) as $payload) {
             CommandDefinition::query()->create($payload);
@@ -139,8 +110,6 @@ final class RulesetPublisher
         foreach ($this->monsterPayloads(
             $ruleset,
             $settings,
-            $supportsMonsterDisplayOrder,
-            $authorsMonsterExperiencePerDamage,
         ) as $payload) {
             MonsterDefinition::query()->create($payload);
         }
@@ -150,8 +119,6 @@ final class RulesetPublisher
     private function assertDefinitions(
         RulesetVersion $ruleset,
         array $settings,
-        bool $supportsMonsterDisplayOrder,
-        bool $authorsMonsterExperiencePerDamage,
     ): void {
         $expectedCommands = collect($this->commandPayloads($ruleset, $settings))->keyBy('key');
         $commands = CommandDefinition::query()->where('ruleset_version_id', $ruleset->id)->get();
@@ -180,14 +147,9 @@ final class RulesetPublisher
             }
         }
 
-        if (! array_key_exists('monster_definitions', $settings)) {
-            return;
-        }
         $expectedMonsters = collect($this->monsterPayloads(
             $ruleset,
             $settings,
-            $supportsMonsterDisplayOrder,
-            $authorsMonsterExperiencePerDamage,
         ))->keyBy('key');
         $monsters = MonsterDefinition::query()->where('ruleset_version_id', $ruleset->id)->get();
         if ($monsters->count() !== $expectedMonsters->count()) {
@@ -198,8 +160,6 @@ final class RulesetPublisher
             if (! is_array($expected)
                 || $this->canonicalJson($this->monsterState(
                     $definition,
-                    $supportsMonsterDisplayOrder,
-                    $authorsMonsterExperiencePerDamage,
                 )) !== $this->canonicalJson($expected)) {
                 throw new DomainException(
                     "Published ruleset {$ruleset->key} monster {$definition->key} differs from its snapshot.",
@@ -215,8 +175,6 @@ final class RulesetPublisher
     private function monsterPayloads(
         RulesetVersion $ruleset,
         array $settings,
-        bool $supportsMonsterDisplayOrder,
-        bool $authorsMonsterExperiencePerDamage,
     ): array {
         $payloads = [];
         foreach ($settings['monster_definitions'] ?? [] as $definition) {
@@ -243,12 +201,8 @@ final class RulesetPublisher
                 'hardening_contract' => $definition['hardening_contract'],
                 'source_metadata' => $definition['source_metadata'],
             ];
-            if ($supportsMonsterDisplayOrder) {
-                $payload['display_order'] = $definition['display_order'] ?? null;
-            }
-            if ($authorsMonsterExperiencePerDamage) {
-                $payload['experience_per_damage'] = $definition['experience_per_damage'];
-            }
+            $payload['display_order'] = $definition['display_order'];
+            $payload['experience_per_damage'] = $definition['experience_per_damage'];
             $payloads[] = $payload;
         }
 
@@ -367,8 +321,6 @@ final class RulesetPublisher
     /** @return array<string, mixed> */
     private function monsterState(
         MonsterDefinition $definition,
-        bool $supportsMonsterDisplayOrder,
-        bool $authorsMonsterExperiencePerDamage,
     ): array {
         $state = [
             'ruleset_version_id' => $definition->ruleset_version_id,
@@ -390,12 +342,8 @@ final class RulesetPublisher
             'hardening_contract' => $definition->hardening_contract,
             'source_metadata' => $definition->source_metadata,
         ];
-        if ($supportsMonsterDisplayOrder) {
-            $state['display_order'] = $definition->display_order;
-        }
-        if ($authorsMonsterExperiencePerDamage) {
-            $state['experience_per_damage'] = $definition->experience_per_damage;
-        }
+        $state['display_order'] = $definition->display_order;
+        $state['experience_per_damage'] = $definition->experience_per_damage;
 
         return $state;
     }
@@ -427,21 +375,5 @@ final class RulesetPublisher
         }
 
         return $value;
-    }
-
-    /** @param array<string, mixed> $settings */
-    private function authorsMonsterExperiencePerDamage(array $settings): bool
-    {
-        $definitions = $settings['monster_definitions'] ?? [];
-        if (! is_array($definitions)) {
-            return false;
-        }
-        foreach ($definitions as $definition) {
-            if (is_array($definition) && array_key_exists('experience_per_damage', $definition)) {
-                return true;
-            }
-        }
-
-        return false;
     }
 }

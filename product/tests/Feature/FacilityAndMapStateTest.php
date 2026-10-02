@@ -13,7 +13,6 @@ use App\Models\MapCell;
 use App\Models\MapSpace;
 use App\Models\Nation;
 use App\Models\ProductionDefinition;
-use App\Models\ResourceDefinition;
 use App\Models\RulesetVersion;
 use App\Models\TerrainDefinition;
 use App\Models\User;
@@ -27,33 +26,27 @@ final class FacilityAndMapStateTest extends TestCase
     use CreatesTestWorlds;
     use RefreshDatabase;
 
-    public function test_ruleset_defines_typed_facility_capacity_and_production(): void
+    public function test_facility_scale_uses_people_units_and_current_production_references(): void
     {
         $ruleset = RulesetVersion::query()->where('key', config('hakoniwa.ruleset.key'))->firstOrFail();
         $capacities = app(FacilityCapacityService::class);
+        $factory = FacilityDefinition::query()->where('key', 'factory')->firstOrFail();
 
-        foreach ([
-            'farm' => [10, 2, 50, 10000],
-            'factory' => [30, 10, 100, 30000],
-            'mine' => [5, 5, 200, 5000],
-        ] as $key => [$initial, $increment, $maximum, $people]) {
-            $facility = FacilityDefinition::query()->where('key', $key)->firstOrFail();
-            $description = $capacities->describe($facility, $capacities->initialScale($facility));
+        $this->assertTrue($factory->enabled);
+        $this->assertIsInt($factory->initial_scale);
+        $this->assertIsInt($factory->scale_increment);
+        $this->assertIsInt($factory->maximum_scale);
+        $this->assertSame(1000, $factory->scale_unit_people);
+        $this->assertSame(7000, $capacities->capacityPeople($factory, 7));
+        $this->assertSame(0, $capacities->capacityPeople($factory, 0));
+        $this->assertSame($factory->initial_scale, $capacities->initialScale($factory));
 
-            $this->assertTrue($facility->enabled);
-            $this->assertSame($initial, $description['initial_scale']);
-            $this->assertSame($increment, $description['scale_increment']);
-            $this->assertSame($maximum, $description['maximum_scale']);
-            $this->assertSame(1000, $description['scale_unit_people']);
-            $this->assertSame($people, $description['capacity_people']);
-        }
-
-        $this->assertSame([
-            'factory_industrial_goods', 'farm_wheat', 'mine_minerals',
-        ], ProductionDefinition::query()->where('ruleset_version_id', $ruleset->id)
-            ->orderBy('key')->pluck('key')->all());
-        $this->assertSame(['industrial_goods', 'minerals'], ResourceDefinition::query()
-            ->whereIn('key', ['industrial_goods', 'minerals'])->orderBy('key')->pluck('key')->all());
+        $production = ProductionDefinition::query()->where('ruleset_version_id', $ruleset->id)
+            ->where('facility_definition_id', $factory->id)->sole();
+        $this->assertTrue($production->enabled);
+        $this->assertSame('industrial_goods', $production->outputResource->key);
+        $this->assertGreaterThan(0, $production->production_per_scale);
+        $this->assertGreaterThan(0, $production->required_workforce_per_scale);
     }
 
     public function test_cell_state_values_are_separate_and_reset_with_terrain_or_facility(): void

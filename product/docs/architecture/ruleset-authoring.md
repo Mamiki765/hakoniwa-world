@@ -6,6 +6,10 @@ The application authors one canonical runtime Ruleset. The exact configured key,
 and entrypoint are resolved from `config/hakoniwa.php` and current code; this permanent
 authoring document does not pin a concrete Ruleset generation.
 
+The current entrypoint composes complete domains from `config/hakoniwa/rulesets/current/`.
+It does not load retired Ruleset generations. Flattening an authoring chain must preserve
+the complete published payload, including values, types, container shapes and array order.
+
 When a release needs a semantic Ruleset change, its draft entrypoint may explicitly compose
 unchanged fields from the exact immutable production predecessor `N` and only the bounded
 changed-domain fragments for `N+1`. It does not load unsupported historical or roadmap

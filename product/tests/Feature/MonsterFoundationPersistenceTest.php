@@ -25,14 +25,13 @@ final class MonsterFoundationPersistenceTest extends TestCase
             ->orderBy('display_order')
             ->get();
 
-        $this->assertSame(
-            [0, 50, 100, 200, 300, 400, 450, 500, 600, 700, 750],
-            $definitions->pluck('display_order')->all(),
-        );
+        $duplicateOrder = $definitions[0]->display_order;
+        $originalOrders = [$definitions[2]->display_order, $definitions[3]->display_order];
+        $unusedOrder = $definitions->max('display_order') + 1;
 
         foreach ([
             static fn () => $definitions[2]->update(['display_order' => -1]),
-            static fn () => $definitions[2]->update(['display_order' => 50]),
+            static fn () => $definitions[2]->update(['display_order' => $duplicateOrder]),
         ] as $mutation) {
             try {
                 DB::transaction($mutation);
@@ -43,16 +42,16 @@ final class MonsterFoundationPersistenceTest extends TestCase
         }
 
         try {
-            DB::transaction(static function () use ($definitions): void {
-                $definitions[2]->update(['display_order' => 75]);
-                $definitions[3]->update(['display_order' => 50]);
+            DB::transaction(static function () use ($definitions, $unusedOrder, $duplicateOrder): void {
+                $definitions[2]->update(['display_order' => $unusedOrder]);
+                $definitions[3]->update(['display_order' => $duplicateOrder]);
             });
             $this->fail('Expected the duplicate order to roll back the whole transaction.');
         } catch (QueryException) {
             $this->addToAssertionCount(1);
         }
-        $this->assertSame(100, $definitions[2]->fresh()->display_order);
-        $this->assertSame(200, $definitions[3]->fresh()->display_order);
+        $this->assertSame($originalOrders[0], $definitions[2]->fresh()->display_order);
+        $this->assertSame($originalOrders[1], $definitions[3]->fresh()->display_order);
     }
 
     public function test_current_publisher_reuses_exact_orders_and_rejects_persisted_order_drift(): void

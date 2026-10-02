@@ -2,6 +2,10 @@
 
 更新：2026-09-30。Owner提示の過去の操作ログと、読み取り専用MCPの観測を区別する。本書はproduction操作の実行指示ではない。
 
+Owner承認の4.9.0／v27基準を初期構築へ一本化する変更のfresh／既存DB手順は
+[baseline consolidation](../plans/4.9.1-v27-baseline-consolidation.md)に記載する。
+そのPRのschema取得と検証は隔離した合成DBによるもので、下記の本番観測や適用証拠を更新するものではない。
+
 ## 最新の読み取り観測
 
 MCP `production_status` の `generated_at=2026-09-30T03:10:14Z`（12:10:14 JST）、`stale=false`。

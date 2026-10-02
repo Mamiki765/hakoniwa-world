@@ -4,11 +4,11 @@ namespace Tests\Shared\Feature;
 
 use App\Application\CommandQueueService;
 use App\Application\CurrentCatalogInstaller;
+use App\Application\CurrentDatabaseBaseline;
 use App\Application\NationCreationService;
 use App\Application\OceanWorldGenerator;
 use App\Application\RulesetPublisher;
 use App\Application\TurnRunner;
-use App\Application\Ver420RulesetUpgrade;
 use App\Domain\Secretary\SecretarySkillCatalog;
 use App\Domain\World\WorldGenerationProfile;
 use App\Models\MapCell;
@@ -43,34 +43,9 @@ final class FreshInstallRebaselineTest extends TestCase
         $this->assertArrayHasKey($current['key'], config('hakoniwa.published_rulesets'));
         $this->assertSame($current['key'], $ruleset->key);
         $this->assertSame($current['version'], $ruleset->version);
-        $this->assertDatabaseHas('ruleset_versions', [
-            'key' => Ver420RulesetUpgrade::SOURCE_KEY,
-            'version' => Ver420RulesetUpgrade::SOURCE_VERSION,
-        ]);
-        $this->assertDatabaseHas('migrations', [
-            'migration' => '2026_09_09_030000_add_surface_paradox_and_daily_rewards',
-        ]);
-        $this->assertDatabaseHas('migrations', [
-            'migration' => '2026_09_12_000000_publish_v24_3_9_2_release',
-        ]);
-        $this->assertDatabaseHas('migrations', [
-            'migration' => '2026_09_13_000000_publish_v25_3_9_3_release',
-        ]);
-        $this->assertDatabaseHas('migrations', [
-            'migration' => '2026_09_13_000000_rebuild_underground_skills_and_store_rental_party',
-        ]);
-        $this->assertDatabaseHas('migrations', [
-            'migration' => '2026_09_15_000000_enable_npc_surface_ships',
-        ]);
-        $this->assertDatabaseHas('migrations', [
-            'migration' => '2026_09_15_010000_add_ocean_loop',
-        ]);
-        $this->assertDatabaseHas('migrations', [
-            'migration' => '2026_09_18_000000_allow_configured_trial_reward_lengths',
-        ]);
-        $this->assertDatabaseHas('migrations', [
-            'migration' => '2026_09_23_030000_install_4_4_0',
-        ]);
+        $this->assertSame([CurrentDatabaseBaseline::MIGRATION], DB::table('migrations')->orderBy('id')->pluck('migration')->all());
+        $this->assertSame([$current['key']], RulesetVersion::query()->orderBy('id')->pluck('key')->all());
+        app(CurrentDatabaseBaseline::class)->assertExisting();
         $nationIdColumn = DB::selectOne(<<<'SQL'
 SELECT is_nullable
   FROM information_schema.columns
