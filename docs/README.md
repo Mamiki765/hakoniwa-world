@@ -14,7 +14,7 @@
 | 地上の配置・電力・上位産業・属性魔力 | [地上発展拡張](../product/docs/plans/surface-development-expansion.md) |
 | T01〜T12の元の範囲・途中記録 | [4.4.1予定表](../product/docs/plans/4.4.1-todo.md)、[実装・検証記録](../product/docs/releases/4.4.1-chat-implementation.md)。古いcheckboxを現在の未実装判定に使わない |
 | 本番の観測、証拠の限界、運用残件 | [deployment status](../product/docs/operations/current-deployment.md) |
-| v27基準のfresh構築・既存DB採用・撤去した互換性 | [4.9.1 baseline consolidation](../product/docs/plans/4.9.1-v27-baseline-consolidation.md) |
+| v27基準のfresh構築・既存DB採用・撤去した互換性 | [4.9.1 baseline consolidation](../product/docs/plans/4.9.1-v27-baseline-consolidation.md)、[本番構造差の修正](../product/docs/plans/4.9.2-baseline-structure-fix.md) |
 | 実装前の設計gate | [open-questions](open-questions.md)。全Open/Deferredを現在のTODOへ昇格させない |
 | 文書整理の進捗と未分類範囲 | [documentation-inventory](documentation-inventory.md) |
 
