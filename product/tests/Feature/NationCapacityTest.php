@@ -44,6 +44,7 @@ class NationCapacityTest extends TestCase
             'industrial_goods' => 9_999_000,
             'minerals' => 9_999_000,
             'oil' => 5_000,
+            'power' => 0,
         ], $base->resources);
 
         $secretary = $user->secretary()->firstOrFail();
@@ -67,6 +68,7 @@ class NationCapacityTest extends TestCase
             'industrial_goods' => 10_998_900,
             'minerals' => 10_998_900,
             'oil' => 5_500,
+            'power' => 0,
         ], $modified->resources);
         $secretary->itemInstances()->whereIn('item_key', [
             SecretaryItemCatalog::HOARDER_TALISMAN,

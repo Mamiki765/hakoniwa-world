@@ -42,16 +42,9 @@ final class SecretaryTurnStateTest extends TestCase
     /** @return array<string, array{level: int, experience: int}> */
     private function skills(int $productionLevel, int $defenseLevel): array
     {
-        return [
+        return array_replace(array_fill_keys(SecretarySkillCatalog::KEYS, ['level' => 0, 'experience' => 0]), [
             SecretarySkillCatalog::AGRICULTURAL_POLICY => ['level' => $productionLevel, 'experience' => 0],
-            SecretarySkillCatalog::SPECIALTY_DEVELOPMENT => ['level' => 0, 'experience' => 0],
-            SecretarySkillCatalog::GOLD_VEIN_SURVEY => ['level' => 0, 'experience' => 0],
-            SecretarySkillCatalog::FOREST_MANAGEMENT => ['level' => 0, 'experience' => 0],
             SecretarySkillCatalog::FINAL_DEFENSE_LINE => ['level' => $defenseLevel, 'experience' => 0],
-            SecretarySkillCatalog::DECLINING_BIRTHRATE_POLICY => ['level' => 0, 'experience' => 0],
-            SecretarySkillCatalog::INDOMITABLE => ['level' => 0, 'experience' => 0],
-            SecretarySkillCatalog::SHIP_OPERATIONS => ['level' => 0, 'experience' => 0],
-            SecretarySkillCatalog::NAVY => ['level' => 0, 'experience' => 0],
-        ];
+        ]);
     }
 }

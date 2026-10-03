@@ -284,7 +284,7 @@ class ApiAndAssetTest extends TestCase
             ->assertJsonPath('data.resource_forecast.workforce.status', 'saturation')
             ->assertJsonPath('data.resource_forecast.workforce.percentage_tenths', 444);
         $this->assertSame(
-            ['food', 'industrial_goods', 'minerals', 'oil'],
+            ['food', 'industrial_goods', 'minerals', 'oil', 'power'],
             collect($forecast->json('data.resource_forecast.rows'))->pluck('key')->all(),
         );
 

@@ -63,7 +63,7 @@ final class NationCapacityResolver
             throw new DomainException('Capacity modifier semantics are deferred until E-04 is decided.');
         }
 
-        [$centralMoney, $centralFood] = $this->centralCapacityBonuses($nation, $ruleset);
+        [$centralMoney, $centralFood, $powerCapacity] = $this->facilityCapacityBonuses($nation, $ruleset);
         $baseMoney = $this->checkedAdd($baseMoney, $centralMoney, 'money');
         $baseFood = $this->checkedAdd($baseFood, $centralFood, 'food');
 
@@ -109,10 +109,7 @@ final class NationCapacityResolver
         }
 
         if (isset($ruleset->settings['power_economy'])) {
-            $condenserCount = DB::table('map_cells as cell')
-                ->join('facility_definitions as facility', 'facility.id', '=', 'cell.facility_definition_id')
-                ->where('cell.owner_nation_id', $nation->id)->where('facility.key', 'condenser')->count();
-            $resourceCapacities['power'] = $this->power->storageCapacity($ruleset->settings, $condenserCount);
+            $resourceCapacities['power'] = $powerCapacity;
         }
 
         return new NationCapacities($baseMoney, $baseFood, $resourceCapacities);
@@ -192,21 +189,23 @@ final class NationCapacityResolver
         return intdiv($numerator, $denominator);
     }
 
-    /** @return array{int, int} */
-    private function centralCapacityBonuses(Nation $nation, RulesetVersion $ruleset): array
+    /** @return array{int, int, int} */
+    private function facilityCapacityBonuses(Nation $nation, RulesetVersion $ruleset): array
     {
         $definitions = $ruleset->settings['central_facilities']['definitions'] ?? null;
         if ($definitions === null) {
-            return [0, 0];
+            return [0, 0, 0];
         }
         if (! is_array($definitions) || array_is_list($definitions)) {
             throw new DomainException('Published central facility capacity settings are invalid.');
         }
 
+        $hasPower = isset($ruleset->settings['power_economy']);
+        $facilityKeys = [...array_keys($definitions), ...($hasPower ? ['condenser'] : [])];
         $rows = DB::table('map_cells as cell')
             ->join('facility_definitions as facility', 'facility.id', '=', 'cell.facility_definition_id')
             ->where('cell.owner_nation_id', $nation->id)
-            ->whereIn('facility.key', array_keys($definitions))
+            ->whereIn('facility.key', $facilityKeys)
             ->orderBy('facility.key')
             ->get(['facility.key', 'cell.facility_scale']);
         $counts = [];
@@ -214,6 +213,11 @@ final class NationCapacityResolver
         $food = 0;
         foreach ($rows as $row) {
             $facilityKey = (string) $row->key;
+            if ($facilityKey === 'condenser' && $hasPower) {
+                $counts[$facilityKey] = ($counts[$facilityKey] ?? 0) + 1;
+
+                continue;
+            }
             $contract = $definitions[$facilityKey] ?? null;
             $authoredFacility = $ruleset->settings['facility_definitions'][$facilityKey] ?? null;
             if (! is_array($contract) || ! is_array($authoredFacility)
@@ -241,7 +245,7 @@ final class NationCapacityResolver
             };
         }
 
-        return [$money, $food];
+        return [$money, $food, $hasPower ? $this->power->storageCapacity($ruleset->settings, $counts['condenser'] ?? 0) : 0];
     }
 
     private function checkedAdd(int $left, int $right, string $label): int

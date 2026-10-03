@@ -83,7 +83,7 @@ final class SecretaryPersistenceTest extends TestCase
         $replayed = $service->create($user, $world->fresh(), '別入力', '別入力', '', $requestKey);
         $this->assertSame($nation->id, $replayed->id);
         $this->assertSame(1, Secretary::query()->where('user_id', $user->id)->count());
-        $this->assertSame(9, SecretarySkill::query()->where('secretary_id', $secretary->id)->count());
+        $this->assertSame(count(SecretarySkillCatalog::KEYS), SecretarySkill::query()->where('secretary_id', $secretary->id)->count());
         $this->assertSame(1, $secretary->itemInstances()->count());
     }
 
