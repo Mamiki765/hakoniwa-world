@@ -67,25 +67,6 @@ $$;
 
 
 --
--- Name: reject_monster_kill_record_mutation(); Type: FUNCTION; Schema: public; Owner: -
---
-
-CREATE FUNCTION public.reject_monster_kill_record_mutation() RETURNS trigger
-    LANGUAGE plpgsql
-    AS $$
-BEGIN
-    -- A kill fact remains immutable while its World exists. The pre-release
-    -- reset path deletes the World root, so its FK cascades may remove the
-    -- otherwise immutable World-owned graph without a session-level bypass.
-    IF TG_OP = 'DELETE' AND NOT EXISTS (SELECT 1 FROM worlds WHERE id = OLD.world_id) THEN
-        RETURN OLD;
-    END IF;
-    RAISE EXCEPTION 'monster kill records are immutable';
-END;
-$$;
-
-
---
 -- Name: reject_nation_achievement_delete(); Type: FUNCTION; Schema: public; Owner: -
 --
 
@@ -230,44 +211,6 @@ BEGIN
 
     IF NEW.spawned_max_hp < definition_min_hp OR NEW.spawned_max_hp > maximum_spawned_hp THEN
         RAISE EXCEPTION 'spawned monster HP is outside its Ruleset range';
-    END IF;
-    RETURN NEW;
-END;
-$$;
-
-
---
--- Name: validate_monster_kill_record(); Type: FUNCTION; Schema: public; Owner: -
---
-
-CREATE FUNCTION public.validate_monster_kill_record() RETURNS trigger
-    LANGUAGE plpgsql
-    AS $$
-DECLARE
-    monster_world bigint;
-    monster_definition bigint;
-    monster_state text;
-    killer_world bigint;
-    host_world bigint;
-    base_world bigint;
-BEGIN
-    SELECT world_id, monster_definition_id, state
-      INTO monster_world, monster_definition, monster_state
-      FROM monster_instances WHERE id = NEW.monster_instance_id;
-    SELECT world_id INTO killer_world FROM nations WHERE id = NEW.killer_nation_id;
-    IF NEW.host_nation_id IS NOT NULL THEN
-        SELECT world_id INTO host_world FROM nations WHERE id = NEW.host_nation_id;
-    END IF;
-    IF NEW.firing_base_id IS NOT NULL THEN
-        SELECT ms.world_id INTO base_world FROM map_cells mc
-          JOIN map_spaces ms ON ms.id = mc.map_space_id WHERE mc.id = NEW.firing_base_id;
-    END IF;
-    IF monster_state IS DISTINCT FROM 'killed'
-       OR monster_world <> NEW.world_id OR monster_definition <> NEW.monster_definition_id
-       OR killer_world <> NEW.world_id
-       OR (NEW.host_nation_id IS NOT NULL AND host_world <> NEW.world_id)
-       OR (NEW.firing_base_id IS NOT NULL AND base_world <> NEW.world_id) THEN
-        RAISE EXCEPTION 'monster kill record references inconsistent World state';
     END IF;
     RETURN NEW;
 END;
@@ -6518,7 +6461,7 @@ CREATE TRIGGER nation_award_world_guard BEFORE INSERT OR UPDATE OF world_id, nat
 -- Name: nation_command_queue_items nation_command_queue_items_world_ruleset_match; Type: TRIGGER; Schema: public; Owner: -
 --
 
-CREATE CONSTRAINT TRIGGER nation_command_queue_items_world_ruleset_match AFTER INSERT OR UPDATE OF nation_command_queue_id, command_definition_id ON public.nation_command_queue_items DEFERRABLE INITIALLY IMMEDIATE FOR EACH ROW EXECUTE FUNCTION public.enforce_queue_item_world_ruleset_match();
+CREATE CONSTRAINT TRIGGER nation_command_queue_items_world_ruleset_match AFTER INSERT OR UPDATE OF nation_command_queue_id, command_definition_id, status ON public.nation_command_queue_items DEFERRABLE INITIALLY IMMEDIATE FOR EACH ROW EXECUTE FUNCTION public.enforce_queue_item_world_ruleset_match();
 
 
 --

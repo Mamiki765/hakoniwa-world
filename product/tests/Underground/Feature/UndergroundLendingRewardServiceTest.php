@@ -120,6 +120,8 @@ final class UndergroundLendingRewardServiceTest extends TestCase
         );
 
         $this->assertSame(1, app(SecretaryLendingService::class)->ticketBalance($owner));
+        $this->assertSame(10, $service->lifetimeParticipationCount($owner));
+        $this->assertSame(0, $service->lifetimeParticipationCount($leader));
         $this->assertSame([
             ['canonical_day' => '2026-08-08', 'participation_count' => 9, 'tickets_awarded' => 0],
             ['canonical_day' => '2026-09-09', 'participation_count' => 1, 'tickets_awarded' => 1],
@@ -170,6 +172,7 @@ final class UndergroundLendingRewardServiceTest extends TestCase
         $this->assertSame(10, $daily->refresh()->participation_count);
         $this->assertSame(100, $daily->refresh()->tickets_awarded);
         $this->assertSame(0, app(SecretaryLendingService::class)->ticketBalance($owner));
+        $this->assertSame(10, $service->lifetimeParticipationCount($owner));
         $this->assertDatabaseHas('secretary_lending_participations', [
             'underground_battle_id' => $battle->id,
             'owner_user_id' => $owner->id,

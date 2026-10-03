@@ -129,22 +129,20 @@ Testとreviewは、故障時の影響に比例して重点を置く。特に次�
 
 次を守る。
 
-- 要求された意味と具体的な故障影響を検証する。既存testやcommentからOwner intentを逆算せず、恒久contractと扱わない。偶然の要素数、DOM構造、class順、内部名、catalog全件を独自に固定しない。
-- testの新設・拡張には、到達可能な操作またはsupported upgrade、具体的な故障、既存の代表確認で検出できない理由が必要である。不安や「念のため」だけで必要性を広げない。新機能も同じ基準で判断し、過去事故の発生は必須条件にしない。
-- その不足がなければtestを追加しない。不足がある場合は既存代表の最小限の拡張・置換を優先し、異なる責務または独立した失敗条件がある場合だけ別caseにする。
-- この基準はfile・methodだけでなく、provider、loop、assertion、別layerでの再検証にも適用する。同じ故障しか検出しない組合せやvariantを増やさない。
-- UIを迂回できる外部入力の認可・安全性、正常操作の境界値、supported upgradeの既存データを、到達不能な異常と混同しない。個々の追加には上記基準を適用し、DB直書きでのみ作る到達不能状態、unsupported history、理論上の整数限界だけのためにtestを増やさない。
-- データ・資産・進行の破壊や重要な実regressionを検出する代表には必要なコストを認める。高影響の分野という理由だけで全異常系を必要扱いしない。sourceの横断確認も全経路へのtest追加義務と解釈しない。
-- 依頼範囲の仕様変更で不要になった保証は削除・置換する。ゼロベース見直しでは既存保証の全維持を前提にしない。不要な保証を削るためだけの代替testは作らず、件数の維持・減少だけを品質の根拠にしない。
-- focusedから変更の影響に必要なtestとstatic checkを選ぶ。必要な確認が通ったら終了し、新たな変更・失敗・具体的な未解消懸念がない限り拡大・反復しない。未実施の確認は報告する。
-- push/PRの権限とCIコスト管理を分離する。pushごとに高コストCIが動く環境では無意味な細切れpushを避け、小修正ごとにrepository-wide CIを機械的に再要求しない。Owner管理のForgejoなど高コストCIが自動起動しない環境では、push回数を節約するためにreview用の共有・更新を止めない。
-- repository-wide PHPUnitは、exact-head CIが同じtest identifier集合を全件実行する場合、原則としてCIへ委譲する。
-- localでCIを補う確認は、migration、concurrency、環境差、CI failureなどの具体的な不足に限定する。一時調査を恒久testへ残す必要性は別に判断する。
-- source、dependency、test設定が変わっていない場合、CIと同じ全PHPUnitをlocalで重複実行しない。
-- repository-wide回帰はexact-head CIを最終authorityとして確認する。
+- testは仕様と故障検出のcontractを検証する。既存testやcommentからOwner intentを逆算せず、恒久contractと扱わない。
+- 説明文・空白・DOM構造/順序・class順・内部名・SQL表記・catalogの偶然の件数・設定写経を原則追加しない。例外は防ぐ故障をtestまたはPRに明記する。
+- 固定値を一律禁止しない。DB型・制約、認可・秘匿、transaction rollback・同seed retry、スケールの単位・境界、消費・付与個数、欠測と0、本人とPTの分離、前後の資産・進行保持など、仕様上必要な保証を残す。SQL数・履歴非走査の性能contractも維持する。
+- UIは意味で要素を選び、ラベルと値の対応・表示配線をfixtureで検証する。実catalogの名称期待はcanonical resolverを参照し、説明文やセル順を固定しない。
+- 新規・変更testのreviewでは、contractを保った文言・空白・表示順・SQL表記の変更なら通り、対象の故障なら落ちることを反証や局所mutationで確認し、未確認範囲を示す。
+- testの新設・拡張には、到達可能な操作またはsupported upgrade、具体的な故障、既存代表で検出できない理由が必要である。不足は既存代表の最小限の拡張・置換を優先し、独立した責務・失敗条件だけを別caseにする。新機能も同じ基準で判断し、不安だけで追加しない。過去事故は必須条件にしない。
+- この基準はfile・method、provider、loop、assertion、別layerにも適用する。同じ故障しか検出しない組合せや無意味なパラメータ全列挙は代表境界に絞り、必要な保証の網羅性は維持する。source横断確認を全経路へのtest追加義務にしない。
+- UIを迂回できる外部入力の認可・安全性、正常操作の境界、supported upgradeの既存データは到達不能な異常と区別する。DB直書きだけの到達不能状態、unsupported history、理論上の整数限界のためにtestを増やさない。重要な故障を守る代表には必要なコストを認めるが、高影響だけで全異常系を必要扱いしない。
+- 依頼範囲の仕様変更で不要になった保証は削除・置換する。ゼロベース見直しでも必要な保証を確認し、既存保証の全維持や不要な代替testを前提にしない。件数の維持・減少だけを品質の根拠にしない。
+- focusedから影響に必要なtestとstatic checkを選ぶ。必要な確認が通ったら終了し、新たな変更・失敗・具体的な未解消懸念がない限り拡大・反復しない。未実施の確認は報告する。
+- push/PRの権限とCIコスト管理を分離する。高コストCIがpushごとに動く環境では無意味な細切れpushや小修正ごとのrepository-wide CI要求を避ける。自動起動しない環境では、push節約のためにreview用の共有・更新を止めない。
+- repository-wide回帰はexact-head CIを最終authorityとし、同じtest identifier集合を全件実行するPHPUnitは原則CIへ委譲する。localの補完はmigration、concurrency、環境差、CI failureなど具体的な不足に限る。source・dependency・test設定が同じなら全PHPUnitを重複実行しない。一時調査の恒久test化は別に判断する。
 
-Review findingは、supported production pathからの到達可能性と、上記の品質基準またはcurrent player・operatorへの具体的な回帰を示す。単なる好み、unsupported history、DBやrequestで拒否される不可能状態だけを理由にP1/P2としない。
-test追加を求めるreviewも、到達経路・故障・既存確認の不足を示す。推測だけの不足を理由にtestを増やさない。
+Review findingは、supported production pathからの到達可能性と、上記の品質基準またはcurrent player・operatorへの具体的な回帰を示す。好み、unsupported history、DBやrequestで拒否される不可能状態だけをP1/P2としない。test追加を求めるreviewも、到達経路・故障・既存確認の不足を示す。
 
 具体的なtest command、suite構成、CI shard構成はComposer設定とtesting文書を正本とする。
 
