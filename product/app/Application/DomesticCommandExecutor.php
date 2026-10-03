@@ -12,6 +12,7 @@ use App\Domain\Command\PlayerFacingCommandException;
 use App\Domain\Command\SettlementOverbuildPolicy;
 use App\Domain\Command\TerritoryExpansionFacts;
 use App\Domain\Command\TerritoryExpansionPolicy;
+use App\Domain\Command\WindPowerRepairPolicy;
 use App\Domain\Economy\CapacityBoundedAssetService;
 use App\Domain\Economy\NationCapacityResolver;
 use App\Domain\Facility\FacilityRankPolicy;
@@ -564,7 +565,7 @@ final class DomesticCommandExecutor
         if ($this->hasOtherCentralFacility($context, $nation, $definition, $cell)) {
             return ['reason' => CommandFailureReason::FacilityLimitReached, 'observed' => $observed];
         }
-        $requiredMoney = $this->isWindRepair($definition, $cell) ? intdiv($definition->cost_money, 2) : $definition->cost_money;
+        $requiredMoney = WindPowerRepairPolicy::costMoney($definition, $cell->facility?->key, $cell->facility_operational_state);
         if ($definition->key === 'monster_dispatch'
             && ($definition->metadata['quantity_selects_catalog'] ?? null) === MonsterDispatchOptionResolver::CATALOG) {
             try {
@@ -797,8 +798,7 @@ final class DomesticCommandExecutor
 
     private function isWindRepair(CommandDefinition $definition, MapCell $cell): bool
     {
-        return $definition->key === 'build_wind_power' && $cell->facility?->key === 'wind_power'
-            && $cell->facility_operational_state === 'damaged';
+        return WindPowerRepairPolicy::matches($definition, $cell->facility?->key, $cell->facility_operational_state);
     }
 
     private function paradoxCost(CommandDefinition $definition): int
@@ -842,9 +842,6 @@ final class DomesticCommandExecutor
         CommandDefinition $definition,
         MapCell $cell,
     ): int {
-        if ($this->isWindRepair($definition, $cell)) {
-            return intdiv($definition->cost_money, 2);
-        }
         if (in_array($definition->key, MissileImpactResolver::MISSILE_KEYS, true)) {
             return 0;
         }
@@ -857,7 +854,7 @@ final class DomesticCommandExecutor
             return $this->surfaceShips->resolve($definition, $item->quantity)->buildCostMoney;
         }
         if (! $this->isSeabedOilSearch($definition, $cell)) {
-            return $definition->cost_money;
+            return WindPowerRepairPolicy::costMoney($definition, $cell->facility?->key, $cell->facility_operational_state);
         }
 
         if ($definition->cost_money < 1) {

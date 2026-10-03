@@ -96,17 +96,26 @@ final class PowerEconomyTest extends TestCase
         $this->assertSame('wind_power', $wind->fresh()->facility->key);
         $this->assertSame('damaged', $wind->fresh()->facility_operational_state);
         $this->assertSame(0, $this->actingAs($user)->getJson('/api/v1/me/nation')->assertOk()->json('data.resource_forecast.power_summary.wind_expected_mw'));
-        $nation->update(['money' => 200]);
+        $nation->update(['money' => 100]);
         $space = $this->surfaceMapSpace($world);
         $previewUrl = "/api/v1/nations/{$nation->id}/map-spaces/{$space->id}/command-definitions?target_x={$wind->x}&target_y={$wind->y}";
         $beforeRepair = collect($this->getJson($previewUrl)->assertOk()->json('data.commands'))->firstWhere('key', 'build_wind_power');
+        $this->assertSame(100, $beforeRepair['cost_money']);
+        $this->assertSame(0, $beforeRepair['shortfall_money']);
         $this->assertSame('currently_executable', $beforeRepair['execution_preview_status']);
+        $nation->update(['money' => 99]);
+        $insufficient = collect($this->getJson($previewUrl)->assertOk()->json('data.commands'))->firstWhere('key', 'build_wind_power');
+        $this->assertSame(1, $insufficient['shortfall_money']);
+        $this->assertSame('currently_unavailable', $insufficient['execution_preview_status']);
+        $nation->update(['money' => 100]);
         $queue = app(CommandQueueService::class)->add($user, $nation, $space, 'build_wind_power', $wind->x, $wind->y, (string) Str::uuid(), 1);
+        $this->getJson("/api/v1/nations/{$nation->id}/map-spaces/{$space->id}/command-queue")
+            ->assertOk()->assertJsonPath('data.items.0.effective_cost_money', 100);
         $firstRepair = collect($this->getJson($previewUrl.'&position=1')->assertOk()->json('data.commands'))->firstWhere('key', 'build_wind_power');
         $this->assertSame('currently_executable', $firstRepair['execution_preview_status']);
         $afterRepair = collect($this->getJson($previewUrl.'&position=2')->assertOk()->json('data.commands'))->firstWhere('key', 'build_wind_power');
+        $this->assertSame(200, $afterRepair['cost_money']);
         $this->assertSame('currently_unavailable', $afterRepair['execution_preview_status']);
-        $nation->update(['money' => 100]);
         app(CompleteTurnEngine::class)->execute('development_commands', $context);
         $this->assertSame('completed', $queue['item']->fresh()->status);
         $this->assertSame('operational', $wind->fresh()->facility_operational_state);

@@ -15,6 +15,7 @@ use App\Domain\Command\SettlementOverbuildPolicy;
 use App\Domain\Command\SurfaceCommandProjectionMemo;
 use App\Domain\Command\TerritoryExpansionFacts;
 use App\Domain\Command\TerritoryExpansionPolicy;
+use App\Domain\Command\WindPowerRepairPolicy;
 use App\Domain\Concurrency\OptimisticLockException;
 use App\Domain\Facility\FacilityRankPolicy;
 use App\Domain\Map\GridCoordinate;
@@ -1178,7 +1179,7 @@ final class CommandQueueService
             return false;
         }
         if ($definition->requires_empty_facility && $state['facility_key'] !== null
-            && ! ($definition->key === 'build_wind_power' && $state['facility_key'] === 'wind_power' && $state['facility_operational_state'] === 'damaged')
+            && ! WindPowerRepairPolicy::matches($definition, $state['facility_key'], $state['facility_operational_state'])
             && ! SettlementOverbuildPolicy::allows($definition->key, $state['facility_key'], $definition->metadata)
             && $this->projectedOwnerOverbuildEffect($definition, $nation, $state) === null) {
             return false;
@@ -1514,7 +1515,7 @@ final class CommandQueueService
             throw new PlayerFacingCommandException('首都を通常建設commandで上書きすることはできません。');
         }
         if ($definition->requires_empty_facility && $facilityKey !== null
-            && ! ($definition->key === 'build_wind_power' && $facilityKey === 'wind_power' && $state['facility_operational_state'] === 'damaged')
+            && ! WindPowerRepairPolicy::matches($definition, $facilityKey, $state['facility_operational_state'])
             && ! SettlementOverbuildPolicy::allows($definition->key, $facilityKey, $definition->metadata)
             && ! $facilityExpansion
             && $ownerOverbuildEffect === null) {
