@@ -147,7 +147,7 @@ final class MapCellPresenter
         ];
     }
 
-    /** @return array{terrain_key: string, facility_key: string|null, owner_nation_id: int|null} */
+    /** @return array{terrain_key: string, facility_key: string|null, owner_nation_id: int|null, facility_operational_state: string|null} */
     public static function visibleState(
         MapCell $cell,
         ?int $viewerNationId,
@@ -171,6 +171,7 @@ final class MapCellPresenter
             'owner_nation_id' => $isDisguised && $cell->facility->disguise_ownership_policy === 'neutral'
                 ? null
                 : $cell->owner_nation_id,
+            'facility_operational_state' => $isOwner ? $cell->facility_operational_state : null,
         ];
     }
 

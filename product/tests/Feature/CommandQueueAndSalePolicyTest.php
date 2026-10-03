@@ -589,11 +589,13 @@ class CommandQueueAndSalePolicyTest extends TestCase
             'terrain_key' => 'shallow',
             'facility_key' => null,
             'owner_nation_id' => null,
+            'facility_operational_state' => null,
         ], $service->projectCellStateBeforePosition($reclaimCell->fresh(['terrain', 'facility']), $queue, 4, $nation, $mapSpace));
         $this->assertSame([
             'terrain_key' => 'sea',
             'facility_key' => null,
             'owner_nation_id' => null,
+            'facility_operational_state' => null,
         ], $service->projectCellStateBeforePosition($defenseCell->fresh(['terrain', 'facility']), $queue, 4, $nation, $mapSpace));
     }
 

@@ -233,8 +233,8 @@ final class CommandQueueController extends Controller
                                     $projectionMemo,
                                 );
                         }
-                        if ($definition->key === 'build_port') {
-                            $portProjectedExecutable = $service->projectedTargetMatches(
+                        if (in_array($definition->key, ['build_port', 'build_wind_power'], true)) {
+                            $targetProjectedExecutable = $service->projectedTargetMatches(
                                 $definition,
                                 $projected,
                                 $nation,
@@ -244,10 +244,12 @@ final class CommandQueueController extends Controller
                                 $position,
                                 $projectionMemo,
                             );
-                            if ($currentlyExecutable && ! $portProjectedExecutable) {
-                                $unavailableReason = '予約済みcommand後は港の建設条件を満たしません。';
+                            if ($currentlyExecutable && ! $targetProjectedExecutable) {
+                                $unavailableReason = $definition->key === 'build_wind_power'
+                                    ? '予約済みcommand後は風力発電所の建設・修理条件を満たしません。'
+                                    : '予約済みcommand後は港の建設条件を満たしません。';
                             } elseif (! $currentlyExecutable) {
-                                $projectedExecutable = $portProjectedExecutable;
+                                $projectedExecutable = $targetProjectedExecutable;
                             }
                         }
                     }
