@@ -89,14 +89,16 @@ SQL);
             JSON_THROW_ON_ERROR,
         );
         $actual = $this->structure();
-        // PostgreSQL reparses pg_dump CHECK expressions (notably typed arrays).
-        // Keep the two observed, reviewed structures rather than weakening SQL checks.
+        // Production's migration ancestry and a fresh dump differ in physical
+        // column order and PostgreSQL's literal-array CHECK representation.
+        // Match complete reviewed structures; never normalize or omit guarantees.
         foreach ($expected as $variant) {
             if ($actual === $variant) {
                 return;
             }
         }
-        $differences = array_keys(array_diff_assoc($expected['upgraded'], $actual) + array_diff_assoc($actual, $expected['upgraded']));
+        $production = $expected['production_4_9_0'];
+        $differences = array_keys(array_diff_assoc($production, $actual) + array_diff_assoc($actual, $production));
         throw new RuntimeException('Database differs from the accepted 4.9.0 baseline: '.implode(', ', $differences).'. Do not reset or repair data automatically.');
     }
 

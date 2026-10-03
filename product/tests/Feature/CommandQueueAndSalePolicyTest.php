@@ -25,6 +25,7 @@ use App\Models\User;
 use App\Models\World;
 use DomainException;
 use Illuminate\Database\Events\QueryExecuted;
+use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -899,6 +900,41 @@ class CommandQueueAndSalePolicyTest extends TestCase
             ->assertDontSee('design_idのparameter schema default rangeが不正です。', false)
             ->assertJsonMissingPath('code')
             ->assertJsonMissingPath('errors.command');
+    }
+
+    public function test_status_only_update_preserves_the_queue_world_ruleset_guard(): void
+    {
+        [$user, $nation, $mapSpace] = $this->nation('状態更新保証国');
+        $item = app(CommandQueueService::class)->add(
+            user: $user,
+            nation: $nation,
+            mapSpace: $mapSpace,
+            commandKey: 'finance',
+            targetX: 0,
+            targetY: 0,
+            requestKey: (string) Str::uuid(),
+            expectedVersion: 1,
+        )['item'];
+        $item->update(['status' => 'cancelled', 'queue_position' => null, 'cancelled_at' => now()]);
+        $this->assertSame('cancelled', $item->fresh()->status);
+
+        // A World switch can retain finalized requests referencing its predecessor.
+        // Reading that history is valid; status-only reactivation must still check
+        // the current World/definition identity, without executing historical PHP.
+        $other = SyntheticHistoricalRulesetSnapshot::create('synthetic-next-world-snapshot', 28);
+        $nation->world()->firstOrFail()->update(['ruleset_version_id' => $other->id]);
+        try {
+            DB::transaction(static function () use ($item): void {
+                DB::table('nation_command_queue_items')->where('id', $item->id)->update([
+                    'status' => 'queued', 'queue_position' => 1, 'cancelled_at' => null,
+                ]);
+            });
+            $this->fail('A status-only update bypassed the current World Ruleset guard.');
+        } catch (QueryException $exception) {
+            $this->assertSame('23514', $exception->errorInfo[0]);
+            $this->assertStringContainsString('does not match World ruleset', $exception->getMessage());
+        }
+        $this->assertSame('cancelled', $item->fresh()->status);
     }
 
     public function test_queue_read_validates_ruleset_without_locking_the_shared_world(): void
