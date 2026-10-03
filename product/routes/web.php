@@ -19,6 +19,7 @@ use App\Http\Controllers\Api\PlayerEventController;
 use App\Http\Controllers\Api\PublicApiController;
 use App\Http\Controllers\Api\SalePolicyController;
 use App\Http\Controllers\Api\SecretaryController;
+use App\Http\Controllers\Api\SecretaryItemSynthesisController;
 use App\Http\Controllers\Api\SecretaryTicketGachaController;
 use App\Http\Controllers\Api\SurfaceShipController;
 use App\Http\Controllers\Api\TradingPostController;
@@ -195,6 +196,8 @@ Route::prefix('api/v1')->middleware(['auth', PrivateApiResponse::class])->group(
         ->where('slot', '-?\d+');
     Route::post('/me/secretary/items/{item}/sell', [SecretaryController::class, 'sellItem'])
         ->where('item', '-?\d+');
+    Route::get('/me/secretary/item-synthesis', [SecretaryItemSynthesisController::class, 'index']);
+    Route::post('/me/secretary/item-synthesis', [SecretaryItemSynthesisController::class, 'store']);
     Route::post('/me/secretary/tickets/draw', [SecretaryTicketGachaController::class, 'draw'])
         ->middleware('throttle:20,1');
     Route::post('/inquiries', [InquiryController::class, 'store'])->middleware('throttle:3,1');

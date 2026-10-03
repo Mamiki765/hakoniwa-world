@@ -72,6 +72,8 @@ final class SecretaryItemGameplayContract
 
     private const V27_RULESET_KEY = 'hakoniwa-2s-plus-v27';
 
+    private const V28_RULESET_KEY = 'hakoniwa-2s-plus-v28';
+
     public function __construct(private readonly SecretaryItemCatalog $catalog) {}
 
     /** @param array<string, mixed> $settings */
@@ -100,9 +102,9 @@ final class SecretaryItemGameplayContract
         }
 
         $rulesetKey = $settings['key'] ?? null;
-        $formal = in_array($rulesetKey, [self::V16_RULESET_KEY, self::V17_RULESET_KEY, self::V18_RULESET_KEY, self::V19_RULESET_KEY, self::V20_RULESET_KEY, self::V21_RULESET_KEY, self::V22_RULESET_KEY, self::V23_RULESET_KEY, self::V24_RULESET_KEY, self::V25_RULESET_KEY, self::V26_RULESET_KEY, self::V27_RULESET_KEY], true);
-        $v17 = in_array($rulesetKey, [self::V17_RULESET_KEY, self::V18_RULESET_KEY, self::V19_RULESET_KEY, self::V20_RULESET_KEY, self::V21_RULESET_KEY, self::V22_RULESET_KEY, self::V23_RULESET_KEY, self::V24_RULESET_KEY, self::V25_RULESET_KEY, self::V26_RULESET_KEY, self::V27_RULESET_KEY], true);
-        $v27 = $rulesetKey === self::V27_RULESET_KEY;
+        $formal = in_array($rulesetKey, [self::V16_RULESET_KEY, self::V17_RULESET_KEY, self::V18_RULESET_KEY, self::V19_RULESET_KEY, self::V20_RULESET_KEY, self::V21_RULESET_KEY, self::V22_RULESET_KEY, self::V23_RULESET_KEY, self::V24_RULESET_KEY, self::V25_RULESET_KEY, self::V26_RULESET_KEY, self::V27_RULESET_KEY, self::V28_RULESET_KEY], true);
+        $v17 = in_array($rulesetKey, [self::V17_RULESET_KEY, self::V18_RULESET_KEY, self::V19_RULESET_KEY, self::V20_RULESET_KEY, self::V21_RULESET_KEY, self::V22_RULESET_KEY, self::V23_RULESET_KEY, self::V24_RULESET_KEY, self::V25_RULESET_KEY, self::V26_RULESET_KEY, self::V27_RULESET_KEY, self::V28_RULESET_KEY], true);
+        $v27 = in_array($rulesetKey, [self::V27_RULESET_KEY, self::V28_RULESET_KEY], true);
         $v26 = $rulesetKey === self::V26_RULESET_KEY || $v27;
         $secretary = $this->map($settings['secretary'] ?? null, 'ruleset.secretary');
         if ($formal) {
@@ -179,6 +181,7 @@ final class SecretaryItemGameplayContract
                         SecretaryItemCatalog::LOVE_EMBLEM,
                         SecretaryItemCatalog::TWIN_STAR_EMBLEM,
                         SecretaryItemCatalog::CRESCENT_EMBLEM,
+                        SecretaryItemCatalog::SUCCUBUS_EMBLEM,
                     ], true))) {
                     throw new DomainException("{$path} differs from the global equipment catalog.");
                 }
@@ -206,7 +209,7 @@ final class SecretaryItemGameplayContract
                 throw new DomainException("{$path}.effects has an invalid effect count.");
             }
             foreach ($effects as $index => $effect) {
-                if ($v27 && ($catalogDefinitions[$itemKey]['introduced_version'] ?? 16) === 27) {
+                if ($v27 && ($catalogDefinitions[$itemKey]['introduced_version'] ?? 16) >= 27) {
                     $this->validateV27Effect($itemKey, $this->map($effect, "{$path}.effects.{$index}"), "{$path}.effects.{$index}");
                 } else {
                     $this->validateEffect(
@@ -515,7 +518,7 @@ final class SecretaryItemGameplayContract
             SecretaryItemCatalog::NYOWAMIYA_RIBBON => [
                 'type' => 'nyowamiya_ribbon', 'nyowamiya_type_weight_bonus' => 1,
             ],
-            SecretaryItemCatalog::LOVE_EMBLEM => [
+            SecretaryItemCatalog::LOVE_EMBLEM, SecretaryItemCatalog::SUCCUBUS_EMBLEM => [
                 'type' => 'population_growth_percent', 'percent' => $effect['percent'] ?? null,
                 'applies_to' => ['ordinary', 'attraction'],
             ],
@@ -758,8 +761,11 @@ final class SecretaryItemGameplayContract
     /** @return array<string, array<string, mixed>> */
     private function catalogDefinitions(mixed $rulesetKey): array
     {
-        if ($rulesetKey === self::V27_RULESET_KEY) {
-            return $this->catalog->definitions();
+        if (in_array($rulesetKey, [self::V27_RULESET_KEY, self::V28_RULESET_KEY], true)) {
+            $version = $rulesetKey === self::V28_RULESET_KEY ? 28 : 27;
+
+            return array_filter($this->catalog->definitions(),
+                static fn (array $definition): bool => ($definition['introduced_version'] ?? 16) <= $version);
         }
         $definitions = array_filter(
             $this->catalog->definitions(),

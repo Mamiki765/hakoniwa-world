@@ -16,6 +16,7 @@ import RankingAchievements from './components/RankingAchievements.vue';
 import SalePolicyPanel from './components/SalePolicyPanel.vue';
 import ShipStatusWindow from './components/ShipStatusWindow.vue';
 import SecretaryEquipmentModal from './components/SecretaryEquipmentModal.vue';
+import SecretaryItemSynthesis from './components/SecretaryItemSynthesis.vue';
 import TradingPostPanel from './components/TradingPostPanel.vue';
 import UndergroundPanel from './components/UndergroundPanel.vue';
 import SecretaryImageSlotsEditor from './components/SecretaryImageSlotsEditor.vue';
@@ -2548,6 +2549,7 @@ async function abandonNation(): Promise<void> {
                     </ul>
                 </section>
                 <section v-else-if="secretarySection === 'warehouse' && secretary" id="secretary-panel-warehouse" role="tabpanel" aria-labelledby="secretary-tab-warehouse">
+                    <SecretaryItemSynthesis :key="secretary.id" :secretary-id="secretary.id" :busy="busy" @busy="busy = $event" @synthesized="loadSecretary" />
                     <h3 class="secretary-section-title">倉庫 {{ secretary.inventory.used }} / {{ secretary.inventory.capacity }}</h3>
                     <ul class="secretary-warehouse">
                         <li v-for="item in secretary.inventory.items" :key="item.id">

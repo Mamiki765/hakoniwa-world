@@ -42,12 +42,19 @@ final class CurrentRulesetAuthoringInspector
 
         foreach (self::DOMAIN_FILES as $file) {
             $relativePath = 'current/'.$file;
+            if (($publishedPayload['key'] ?? null) === 'hakoniwa-2s-plus-v28' && $file === 'secretary.php') {
+                $relativePath = 'draft-synthesis/secretary.php';
+            }
             $domain = require config_path('hakoniwa/rulesets/'.$relativePath);
             if (! is_array($domain) || array_keys($domain) !== ['payload', 'classification']) {
                 throw new DomainException("Current Ruleset domain {$file} must contain only payload and classification.");
             }
 
             $payload = $domain['payload'];
+            if (($publishedPayload['key'] ?? null) === 'hakoniwa-2s-plus-v28' && $file === 'world-and-map.php') {
+                $payload['key'] = $publishedPayload['key'];
+                $payload['version'] = $publishedPayload['version'];
+            }
             $classification = $domain['classification'];
             if (! is_array($payload) || ! is_array($classification)) {
                 throw new DomainException("Current Ruleset domain {$file} has an invalid authoring shape.");

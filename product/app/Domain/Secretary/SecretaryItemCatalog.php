@@ -42,6 +42,8 @@ class SecretaryItemCatalog
 
     public const CRESCENT_EMBLEM = 'crescent_emblem';
 
+    public const SUCCUBUS_EMBLEM = 'succubus_emblem';
+
     public const NYOWAMIYA_RIBBON = 'nyowamiya_ribbon';
 
     public const RARITY_NOVICE = 'novice';
@@ -423,6 +425,24 @@ class SecretaryItemCatalog
                 'fixed_sale_price_money' => self::RARITIES[$rarity]['fixed_sale_price_money'],
             ];
         }
+
+        // A draft definition: absent from the immutable v27 gameplay catalog.
+        $definitions[self::SUCCUBUS_EMBLEM] = [
+            'key' => self::SUCCUBUS_EMBLEM,
+            'category' => 'accessory',
+            'category_label' => self::CATEGORIES['accessory']['label'],
+            'category_max_equipped' => self::CATEGORIES['accessory']['maximum_equipped'],
+            'rarity' => self::RARITY_RELIC,
+            'rarity_label' => self::RARITIES[self::RARITY_RELIC]['label'],
+            'tradable' => false,
+            'npc_tradable' => false,
+            'max_level' => 1,
+            'name' => '夢魔の紋章',
+            'flavor_text' => '人間よ、快楽だけを貪る獣に帰れ。もう何も暗い事を考えなくて良い様に。',
+            'unique_per_secretary' => false,
+            'fixed_sale_price_money' => self::RARITIES[self::RARITY_RELIC]['fixed_sale_price_money'],
+            'introduced_version' => 28,
+        ];
 
         return $definitions;
     }

@@ -92,6 +92,20 @@ final class SecretaryItemEffectAggregator
         return $effects[0]['effect'] ?? null;
     }
 
+    public function snapshotPopulationGrowthPercent(TurnState $state, int $nationId): int
+    {
+        $total = 0;
+        foreach ($this->snapshotEffects($state, $nationId, 'population_growth_percent') as $resolved) {
+            $percent = $resolved['effect']['parameters']['percent'] ?? null;
+            if (! is_int($percent) || $percent < 0) {
+                throw new DomainException('Secretary population growth Item snapshot is invalid.');
+            }
+            $total += $percent;
+        }
+
+        return $total;
+    }
+
     public function snapshotKarmaMinimumDelta(TurnState $state, int $nationId): int
     {
         $total = 0;
