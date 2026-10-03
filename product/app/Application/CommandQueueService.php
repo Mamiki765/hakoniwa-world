@@ -15,6 +15,7 @@ use App\Domain\Command\SettlementOverbuildPolicy;
 use App\Domain\Command\SurfaceCommandProjectionMemo;
 use App\Domain\Command\TerritoryExpansionFacts;
 use App\Domain\Command\TerritoryExpansionPolicy;
+use App\Domain\Command\WindPowerRepairPolicy;
 use App\Domain\Concurrency\OptimisticLockException;
 use App\Domain\Facility\FacilityRankPolicy;
 use App\Domain\Map\GridCoordinate;
@@ -58,6 +59,8 @@ final class CommandQueueService
         'build_fast_mine' => 'mine',
         'build_central_bank' => 'central_bank',
         'build_central_granary' => 'central_granary',
+        'build_pizzeria' => 'pizzeria',
+        'build_thermal_power' => 'thermal_power',
     ];
 
     public function __construct(
@@ -1079,8 +1082,8 @@ final class CommandQueueService
     }
 
     /**
-     * @param  array{terrain_key: string, facility_key: string|null, owner_nation_id: int|null}|null  $initialState
-     * @return array{terrain_key: string, facility_key: string|null, owner_nation_id: int|null}
+     * @param  array{terrain_key: string, facility_key: string|null, owner_nation_id: int|null, facility_operational_state: string|null}|null  $initialState
+     * @return array{terrain_key: string, facility_key: string|null, owner_nation_id: int|null, facility_operational_state: string|null}
      */
     public function projectCellStateBeforePosition(
         MapCell $cell,
@@ -1096,6 +1099,7 @@ final class CommandQueueService
             'terrain_key' => $cell->terrain->key,
             'facility_key' => $cell->facility?->key,
             'owner_nation_id' => $cell->owner_nation_id,
+            'facility_operational_state' => $cell->facility_operational_state,
         ];
         $memoKey = implode(':', [
             spl_object_id($queue),
@@ -1104,6 +1108,7 @@ final class CommandQueueService
             $state['terrain_key'],
             $state['facility_key'] ?? '-',
             $state['owner_nation_id'] ?? '-',
+            $state['facility_operational_state'] ?? '-',
         ]);
         $cached = $projectionMemo->get($memoKey);
         if ($cached !== null) {
@@ -1151,7 +1156,7 @@ final class CommandQueueService
     }
 
     /**
-     * @param  array{terrain_key: string, facility_key: string|null, owner_nation_id: int|null}  $state
+     * @param  array{terrain_key: string, facility_key: string|null, owner_nation_id: int|null, facility_operational_state: string|null}  $state
      */
     public function projectedTargetMatches(
         CommandDefinition $definition,
@@ -1174,6 +1179,7 @@ final class CommandQueueService
             return false;
         }
         if ($definition->requires_empty_facility && $state['facility_key'] !== null
+            && ! WindPowerRepairPolicy::matches($definition, $state['facility_key'], $state['facility_operational_state'])
             && ! SettlementOverbuildPolicy::allows($definition->key, $state['facility_key'], $definition->metadata)
             && $this->projectedOwnerOverbuildEffect($definition, $nation, $state) === null) {
             return false;
@@ -1265,8 +1271,8 @@ final class CommandQueueService
     }
 
     /**
-     * @param  array{terrain_key: string, facility_key: string|null, owner_nation_id: int|null}  $state
-     * @return array{terrain_key: string, facility_key: string|null, owner_nation_id: int|null}
+     * @param  array{terrain_key: string, facility_key: string|null, owner_nation_id: int|null, facility_operational_state: string|null}  $state
+     * @return array{terrain_key: string, facility_key: string|null, owner_nation_id: int|null, facility_operational_state: string|null}
      */
     private function applyProjectedResult(CommandDefinition $definition, array $state, Nation $nation): array
     {
@@ -1274,6 +1280,7 @@ final class CommandQueueService
         if ($ownerOverbuildEffect === 'defense_self_destruct') {
             $state['terrain_key'] = 'sea';
             $state['facility_key'] = null;
+            $state['facility_operational_state'] = null;
             $state['owner_nation_id'] = null;
 
             return $state;
@@ -1281,6 +1288,7 @@ final class CommandQueueService
         if ($ownerOverbuildEffect === 'monument_flight') {
             $state['terrain_key'] = 'wasteland';
             $state['facility_key'] = null;
+            $state['facility_operational_state'] = null;
 
             return $state;
         }
@@ -1297,6 +1305,7 @@ final class CommandQueueService
                 default => 'shallow',
             };
             $state['facility_key'] = null;
+            $state['facility_operational_state'] = null;
             if (in_array($state['terrain_key'], ['sea', 'shallow'], true)) {
                 $state['owner_nation_id'] = null;
             }
@@ -1306,11 +1315,13 @@ final class CommandQueueService
             }
             if ($definition->result_facility_key !== null) {
                 $state['facility_key'] = $definition->result_facility_key;
+                $state['facility_operational_state'] = 'operational';
             }
         }
 
         if (in_array($definition->key, ['land_clear', 'land_level', 'logging', 'plant_forest'], true)) {
             $state['facility_key'] = null;
+            $state['facility_operational_state'] = null;
         }
         if ($definition->key === 'territory_expand') {
             $state['owner_nation_id'] = $nation->id;
@@ -1432,7 +1443,7 @@ final class CommandQueueService
     }
 
     /**
-     * @param  array{terrain_key: string, facility_key: string|null, owner_nation_id: int|null}|null  $visibleState
+     * @param  array{terrain_key: string, facility_key: string|null, owner_nation_id: int|null, facility_operational_state: string|null}|null  $visibleState
      * @param  array<string, mixed>|null  $rulesetSettings
      */
     public function validateTarget(
@@ -1447,6 +1458,7 @@ final class CommandQueueService
             'terrain_key' => $cell->terrain->key,
             'facility_key' => $cell->facility?->key,
             'owner_nation_id' => $cell->owner_nation_id,
+            'facility_operational_state' => $cell->facility_operational_state,
         ];
         $terrainKey = $state['terrain_key'];
         $facilityKey = $state['facility_key'];
@@ -1503,6 +1515,7 @@ final class CommandQueueService
             throw new PlayerFacingCommandException('首都を通常建設commandで上書きすることはできません。');
         }
         if ($definition->requires_empty_facility && $facilityKey !== null
+            && ! WindPowerRepairPolicy::matches($definition, $facilityKey, $state['facility_operational_state'])
             && ! SettlementOverbuildPolicy::allows($definition->key, $facilityKey, $definition->metadata)
             && ! $facilityExpansion
             && $ownerOverbuildEffect === null) {

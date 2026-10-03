@@ -3,7 +3,10 @@
 namespace App\Application;
 
 use App\Application\Underground\UndergroundFacilityBenefits;
+use App\Domain\Economy\FoodConsumptionPlanner;
+use App\Domain\Economy\NationCapacities;
 use App\Domain\Economy\NationEconomyCalculator;
+use App\Domain\Economy\PowerEconomyCalculator;
 use App\Domain\Economy\UnderseaCityMaintenancePlanner;
 use App\Domain\Facility\FacilityCapacityService;
 use App\Domain\Facility\FacilityRankPolicy;
@@ -30,6 +33,8 @@ final class NationResourceForecastProjection
         private readonly UndergroundFacilityBenefits $undergroundBenefits,
         private readonly NationQueuedMeaningfulActivityQuery $meaningfulActivity,
         private readonly SurfaceShipCatalog $surfaceShips,
+        private readonly PowerEconomyCalculator $power,
+        private readonly FoodConsumptionPlanner $food,
     ) {}
 
     /**
@@ -44,12 +49,13 @@ final class NationResourceForecastProjection
      *     mine_capacity_people: int
      * }  $basicStatus
      * @return array{
-     *     rows: list<array{key: string, name: string, production: int, consumption: int, delta: int, holding: int}>,
+     *     rows: list<array<string, mixed>>,
      *     food_holding_note: string,
+     *     power_summary: array<string, mixed>|null,
      *     workforce: array{status: string, label: string, percentage_tenths: int, population: int, demand: int}
      * }
      */
-    public function forNation(Nation $nation, Collection $balances, array $basicStatus): array
+    public function forNation(Nation $nation, Collection $balances, array $basicStatus, NationCapacities $capacities): array
     {
         $world = $nation->world()->firstOrFail();
         $ruleset = $world->rulesetVersion()->firstOrFail();
@@ -71,8 +77,10 @@ final class NationResourceForecastProjection
         if ($maintenanceRules !== null && $underseaCityFacilityKey !== 'undersea_city') {
             throw new DomainException('Published undersea-city maintenance settings are invalid.');
         }
+        $hasPower = isset($ruleset->settings['power_economy']);
         $facilityKeys = array_values(array_unique(array_filter([
             'factory', 'mine', $oilFacilityKey, $underseaCityFacilityKey,
+            ...($hasPower ? ['wind_power', 'pizzeria', 'thermal_power'] : []),
         ], 'is_string')));
         $definitions = FacilityDefinition::query()
             ->whereIn('key', $facilityKeys)
@@ -100,16 +108,20 @@ final class NationResourceForecastProjection
         $industrialFacilities = [];
         $underseaCityCellIds = [];
         $oilFieldCount = 0;
+        $windCount = 0;
+        $pizzeriaScales = [];
+        $thermalScales = [];
         $projectedFacilityIds = array_values(array_unique(array_filter([
             ...$industrialIds,
             (int) $oilField->id,
             $underseaCity instanceof FacilityDefinition ? (int) $underseaCity->id : null,
+            ...($hasPower ? $definitions->whereIn('key', ['wind_power', 'pizzeria', 'thermal_power'])->modelKeys() : []),
         ], 'is_int')));
         $facilityRows = DB::table('map_cells')
             ->where('owner_nation_id', $nation->id)
             ->whereIn('facility_definition_id', $projectedFacilityIds)
             ->orderBy('id')
-            ->get(['id', 'facility_definition_id', 'facility_scale']);
+            ->get(['id', 'facility_definition_id', 'facility_scale', 'facility_operational_state']);
         foreach ($facilityRows as $row) {
             $definition = $definitionsById->get((int) $row->facility_definition_id);
             if (! $definition instanceof FacilityDefinition) {
@@ -117,6 +129,27 @@ final class NationResourceForecastProjection
             }
             if ($definition->id === $oilField->id) {
                 $oilFieldCount++;
+
+                continue;
+            }
+            if ($definition->key === 'wind_power') {
+                $windCount += (int) ($row->facility_operational_state !== 'damaged');
+
+                continue;
+            }
+            if ($definition->key === 'pizzeria') {
+                if (! is_numeric($row->facility_scale)) {
+                    throw new DomainException('Pizzeria scale is missing from the forecast.');
+                }
+                $pizzeriaScales[] = (int) $row->facility_scale;
+
+                continue;
+            }
+            if ($definition->key === 'thermal_power') {
+                if (! is_numeric($row->facility_scale)) {
+                    throw new DomainException('Thermal scale is missing from the forecast.');
+                }
+                $thermalScales[] = (int) $row->facility_scale;
 
                 continue;
             }
@@ -205,6 +238,81 @@ final class NationResourceForecastProjection
             ),
             $this->resourceRow($balancesByKey, 'oil', $economy['oil_production'], $shipOilConsumption),
         ];
+        $powerSummary = null;
+        if ($hasPower) {
+            $foods = [];
+            foreach ($ruleset->settings['turn_processing']['food']['consumption_priority'] as $key) {
+                $balance = $this->balance($balancesByKey, $key);
+                $foods[] = [
+                    'resource_key' => $key,
+                    'amount' => (int) $balance->amount + ($key === 'wheat' ? $economy['wheat_production'] : 0),
+                    'nutrition' => $this->nutrition($balance->definition),
+                ];
+            }
+            $populationFood = $this->food->plan($foods, $economy['food_consumption']);
+            $remainingFoods = array_map(static fn (array $row): array => [
+                'resource_key' => $row['resource_key'], 'amount' => $row['after'], 'nutrition' => $row['nutrition_per_unit'],
+            ], $populationFood['resources']);
+            $remainingNutrition = array_sum(array_map(static fn (array $row): int => $row['amount'] * $row['nutrition'], $remainingFoods));
+            $enabled = in_array($effectiveNationState, ['active', 'recovery'], true);
+            $funded = $this->power->fundedPizzerias($ruleset->settings, $enabled ? $pizzeriaScales : [], (int) $nation->money);
+            $storedMw = (int) $this->balance($balancesByKey, 'power')->amount;
+            $capacityMw = $capacities->resources['power'];
+            // Oil fields produce later in process_cells, after this settlement.
+            $fuelOil = (int) $this->balance($balancesByKey, 'oil')->amount;
+            $fuelMinerals = (int) $this->balance($balancesByKey, 'minerals')->amount + $economy['minerals_production'] - $maintenance['minerals_consumed'];
+            $powerRules = $ruleset->settings['power_economy'];
+            $thermalMinimum = $this->power->thermalGeneration($ruleset->settings, $enabled ? $thermalScales : [], $fuelOil, $fuelMinerals,
+                $powerRules['thermal_oil_mw_per_unit'] * $powerRules['thermal_coal_tons_per_oil_unit'] - 1, intdiv($powerRules['thermal_oil_mw_per_unit'], 2) - 1);
+            $thermalMaximum = $this->power->thermalGeneration($ruleset->settings, $enabled ? $thermalScales : [], $fuelOil, $fuelMinerals, 0, 0);
+            $forecast = $this->power->forecast(
+                $ruleset->settings, $storedMw, $capacityMw, $remainingNutrition,
+                $funded['scales'], $enabled ? $windCount : 0,
+                $thermalMinimum['generated_mw'], $skillLevels['energy_saving'] ?? 0,
+            );
+            $ranges = $forecast['ranges'];
+            $foodMinimum = $this->food->plan($remainingFoods, $ranges['food_consumed_tons']['minimum'])['supplied_nutrition'];
+            $foodMaximum = $this->food->plan($remainingFoods, $ranges['food_consumed_tons']['maximum'])['supplied_nutrition'];
+            $rows[0]['consumption_range'] = [
+                'minimum' => $economy['food_consumption'] + $foodMinimum,
+                'maximum' => $economy['food_consumption'] + $foodMaximum,
+            ];
+            $rows[0]['delta_range'] = [
+                'minimum' => $rows[0]['production'] - $rows[0]['consumption_range']['maximum'],
+                'maximum' => $rows[0]['production'] - $rows[0]['consumption_range']['minimum'],
+            ];
+            $rows[] = [
+                'key' => 'power', 'name' => '電力', 'unit_label' => 'MW',
+                'production' => $ranges['generated_mw']['minimum'],
+                'consumption' => $ranges['consumed_mw']['minimum'],
+                'delta' => $ranges['stored_after_mw']['minimum'] - $storedMw,
+                'holding' => $storedMw,
+                'production_range' => $ranges['generated_mw'], 'consumption_range' => $ranges['consumed_mw'],
+                'delta_range' => [
+                    'minimum' => $ranges['stored_after_mw']['minimum'] - $storedMw,
+                    'maximum' => $ranges['stored_after_mw']['maximum'] - $storedMw,
+                ],
+            ];
+            $powerSummary = [
+                'wind_expected_mw' => $forecast['wind_expected_mw'], 'capacity_mw' => $capacityMw,
+                'stored_after_mw' => $ranges['stored_after_mw'], 'discarded_mw' => $ranges['discarded_mw'],
+                'pizzeria_revenue' => $ranges['pizzeria_revenue'], 'pizzeria_maintenance' => $funded['maintenance'],
+                'pizzeria_unfunded' => $funded['unfunded'],
+                'thermal_generated_mw' => $thermalMinimum['generated_mw'],
+                'thermal_oil_display' => $thermalMaximum['oil_display'],
+                'thermal_minerals_display' => $thermalMaximum['minerals_display'],
+            ];
+            foreach (['oil' => 3, 'minerals' => 2] as $key => $rowIndex) {
+                $rows[$rowIndex]['consumption_range'] = [
+                    'minimum' => $rows[$rowIndex]['consumption'] + $thermalMinimum[$key.'_consumed'],
+                    'maximum' => $rows[$rowIndex]['consumption'] + $thermalMaximum[$key.'_consumed'],
+                ];
+                $rows[$rowIndex]['delta_range'] = [
+                    'minimum' => $rows[$rowIndex]['production'] - $rows[$rowIndex]['consumption_range']['maximum'],
+                    'maximum' => $rows[$rowIndex]['production'] - $rows[$rowIndex]['consumption_range']['minimum'],
+                ];
+            }
+        }
         $population = $economy['population'];
         $demand = $economy['total_workforce_demand'];
         if ($population > $demand) {
@@ -224,6 +332,7 @@ final class NationResourceForecastProjection
         return [
             'rows' => $rows,
             'food_holding_note' => '食料の所持は小麦換算です。',
+            'power_summary' => $powerSummary,
             'workforce' => [
                 'status' => $status,
                 'label' => $label,

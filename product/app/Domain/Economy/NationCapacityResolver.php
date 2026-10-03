@@ -19,6 +19,7 @@ final class NationCapacityResolver
     public function __construct(
         private readonly SecretaryItemEffectAggregator $itemEffects,
         iterable $modifiers = [],
+        private readonly PowerEconomyCalculator $power = new PowerEconomyCalculator,
     ) {
         $this->modifiers = [...$modifiers];
     }
@@ -62,9 +63,12 @@ final class NationCapacityResolver
             throw new DomainException('Capacity modifier semantics are deferred until E-04 is decided.');
         }
 
-        [$centralMoney, $centralFood] = $this->centralCapacityBonuses($nation, $ruleset);
+        [$centralMoney, $centralFood, $powerCapacity] = $this->facilityCapacityBonuses($nation, $ruleset);
         $baseMoney = $this->checkedAdd($baseMoney, $centralMoney, 'money');
         $baseFood = $this->checkedAdd($baseFood, $centralFood, 'food');
+        if (isset($ruleset->settings['power_economy'])) {
+            $resourceCapacities['power'] = $powerCapacity;
+        }
 
         $expectedSkillCount = null;
         $secretaryBonus = $ruleset->settings['secretary']['capacity_bonus'] ?? null;
@@ -86,7 +90,8 @@ final class NationCapacityResolver
             $expectedSkillCount = count($skillDefinitions);
         }
 
-        [$secretaryPercent, $equippedItems] = $this->capacitySources($nation, $expectedSkillCount);
+        [$secretaryPercent, $equippedItems] = $this->capacitySources($nation, $expectedSkillCount,
+            array_keys($ruleset->settings['secretary']['skills'] ?? []));
         $itemPercentages = $this->itemEffects->capacityPercentages($ruleset, $equippedItems);
         $baseMoney = $this->applyPercentageGenres(
             $baseMoney,
@@ -110,13 +115,15 @@ final class NationCapacityResolver
     }
 
     /**
+     * @param  list<string>  $skillKeys
      * @return array{int, list<array{item_key: string, level: int}>}
      */
-    private function capacitySources(Nation $nation, ?int $expectedSkillCount): array
+    private function capacitySources(Nation $nation, ?int $expectedSkillCount, array $skillKeys): array
     {
         $skillTotals = DB::table('nation_memberships as skill_membership')
             ->join('secretaries as skill_secretary', 'skill_secretary.user_id', '=', 'skill_membership.user_id')
             ->join('secretary_skills as skill', 'skill.secretary_id', '=', 'skill_secretary.id')
+            ->whereIn('skill.skill_key', $skillKeys)
             ->where('skill_membership.nation_id', $nation->id)
             ->where('skill_membership.world_id', $nation->world_id)
             ->where('skill_membership.role', 'owner')
@@ -181,21 +188,23 @@ final class NationCapacityResolver
         return intdiv($numerator, $denominator);
     }
 
-    /** @return array{int, int} */
-    private function centralCapacityBonuses(Nation $nation, RulesetVersion $ruleset): array
+    /** @return array{int, int, int} */
+    private function facilityCapacityBonuses(Nation $nation, RulesetVersion $ruleset): array
     {
         $definitions = $ruleset->settings['central_facilities']['definitions'] ?? null;
         if ($definitions === null) {
-            return [0, 0];
+            return [0, 0, 0];
         }
         if (! is_array($definitions) || array_is_list($definitions)) {
             throw new DomainException('Published central facility capacity settings are invalid.');
         }
 
+        $hasPower = isset($ruleset->settings['power_economy']);
+        $facilityKeys = [...array_keys($definitions), ...($hasPower ? ['condenser'] : [])];
         $rows = DB::table('map_cells as cell')
             ->join('facility_definitions as facility', 'facility.id', '=', 'cell.facility_definition_id')
             ->where('cell.owner_nation_id', $nation->id)
-            ->whereIn('facility.key', array_keys($definitions))
+            ->whereIn('facility.key', $facilityKeys)
             ->orderBy('facility.key')
             ->get(['facility.key', 'cell.facility_scale']);
         $counts = [];
@@ -203,6 +212,11 @@ final class NationCapacityResolver
         $food = 0;
         foreach ($rows as $row) {
             $facilityKey = (string) $row->key;
+            if ($facilityKey === 'condenser' && $hasPower) {
+                $counts[$facilityKey] = ($counts[$facilityKey] ?? 0) + 1;
+
+                continue;
+            }
             $contract = $definitions[$facilityKey] ?? null;
             $authoredFacility = $ruleset->settings['facility_definitions'][$facilityKey] ?? null;
             if (! is_array($contract) || ! is_array($authoredFacility)
@@ -230,7 +244,7 @@ final class NationCapacityResolver
             };
         }
 
-        return [$money, $food];
+        return [$money, $food, $hasPower ? $this->power->storageCapacity($ruleset->settings, $counts['condenser'] ?? 0) : 0];
     }
 
     private function checkedAdd(int $left, int $right, string $label): int

@@ -39,7 +39,7 @@ class NationCreationTest extends TestCase
         $this->assertSame(100, $nation->money);
         $this->assertSame([
             'fish' => 0, 'industrial_goods' => 0, 'minerals' => 0, 'monster_meat' => 0,
-            'oil' => 0, 'wheat' => 10_000,
+            'oil' => 0, 'power' => 0, 'wheat' => 10_000,
         ], NationResource::query()
             ->where('nation_id', $nation->id)
             ->join('resource_definitions', 'resource_definitions.id', '=', 'nation_resources.resource_definition_id')

@@ -7,7 +7,7 @@ use Illuminate\Database\Eloquent\Collection;
 
 final class SurfaceCommandProjectionMemo
 {
-    /** @var array<string, array{terrain_key: string, facility_key: string|null, owner_nation_id: int|null}> */
+    /** @var array<string, array{terrain_key: string, facility_key: string|null, owner_nation_id: int|null, facility_operational_state: string|null}> */
     private array $states = [];
 
     /** @var array<string, Collection<int, MapCell>> */
@@ -16,13 +16,13 @@ final class SurfaceCommandProjectionMemo
     /** @var array<string, bool>|null */
     private ?array $terrainWater = null;
 
-    /** @return array{terrain_key: string, facility_key: string|null, owner_nation_id: int|null}|null */
+    /** @return array{terrain_key: string, facility_key: string|null, owner_nation_id: int|null, facility_operational_state: string|null}|null */
     public function get(string $key): ?array
     {
         return $this->states[$key] ?? null;
     }
 
-    /** @param array{terrain_key: string, facility_key: string|null, owner_nation_id: int|null} $state */
+    /** @param array{terrain_key: string, facility_key: string|null, owner_nation_id: int|null, facility_operational_state: string|null} $state */
     public function put(string $key, array $state): void
     {
         $this->states[$key] = $state;

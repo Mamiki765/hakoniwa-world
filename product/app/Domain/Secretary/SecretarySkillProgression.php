@@ -55,7 +55,13 @@ final class SecretarySkillProgression
             throw new DomainException('Secretary skill level requirement exceeds the supported integer range.');
         }
 
-        return $levelBasis * $levelBasis * $multiplier;
+        $divisor = $requirement['divisor'] ?? 1;
+        if (! is_int($divisor) || $divisor < 1) {
+            throw new DomainException('Secretary skill requirement divisor must be positive.');
+        }
+        $numerator = $levelBasis * $levelBasis * $multiplier;
+
+        return intdiv($numerator, $divisor) + (int) ($numerator % $divisor > 0);
     }
 
     /**
