@@ -4,6 +4,7 @@ namespace Tests\Underground\Feature;
 
 use App\Application\Underground\UndergroundAlphaV1PlayerCatalog;
 use App\Application\Underground\UndergroundEquipmentDropService;
+use App\Domain\Underground\Combat\UndergroundAwakening;
 use App\Models\SecretaryGuideConversationTotal;
 use App\Models\UndergroundBattle;
 use App\Models\UndergroundContentClearProgress;
@@ -25,6 +26,7 @@ final class UndergroundResidenceTest extends UndergroundPlayerAccessTestCase
     public function test_journal_records_keep_missing_self_facts_separate_from_party_and_other_owners(): void
     {
         [$user, $secretary] = $this->secretaryUser('日誌の主');
+        $catalog = app(UndergroundAlphaV1PlayerCatalog::class);
         $profile = $this->openEquipmentProfile($secretary);
         $profile->update(['villa_purchased_at' => now()]);
         $this->actingAs($user)->getJson('/api/v1/me/underground/journal')->assertOk()
@@ -58,7 +60,7 @@ final class UndergroundResidenceTest extends UndergroundPlayerAccessTestCase
         // Guide-duel progress is reachable but lies outside adventure journal clears.
         UndergroundContentClearProgress::query()->create([
             'underground_profile_id' => $profile->id, 'content_type' => 'guide_duel',
-            'content_key' => app(UndergroundAlphaV1PlayerCatalog::class)->guideDuel()['key'],
+            'content_key' => $catalog->guideDuel()['key'],
             'actual_clear_count' => 1, 'total_clear_count' => 1,
         ]);
         UndergroundTrialProgress::query()->create([
@@ -75,7 +77,7 @@ final class UndergroundResidenceTest extends UndergroundPlayerAccessTestCase
 
         $data = $this->getJson('/api/v1/me/underground/journal?user_id='.$other->id)->assertOk()
             ->assertJsonPath('data.maximum_hit.value', 90)
-            ->assertJsonPath('data.maximum_hit.action_name', '天断一閃')
+            ->assertJsonPath('data.maximum_hit.action_name', app(UndergroundAwakening::class)->technique('martial_red', 'decisive_heavenrend')['name'])
             ->assertJsonPath('data.maximum_hit.known_battles', 1)
             ->assertJsonPath('data.maximum_hit.unknown_battles', 1)
             ->assertJsonPath('data.favorite_skills.entries.0.key', 'mending_prayer')
@@ -89,7 +91,7 @@ final class UndergroundResidenceTest extends UndergroundPlayerAccessTestCase
             ->assertJsonPath('data.combat_support.party.damage_prevented.value', 24)
             ->assertJsonPath('data.combat_support.self.revivals.value', 1)
             ->assertJsonPath('data.combat_support.party.revivals.value', 3)
-            ->assertJsonPath('data.content_clears.0.name', '浅い洞窟')
+            ->assertJsonPath('data.content_clears.0.name', $catalog->explorationHuntingGround('shallow_caves')['name'])
             ->assertJsonPath('data.content_clears.0.actual_clear_count', 2)
             ->assertJsonPath('data.content_clears.0.skip_clear_count', 3)
             ->assertJsonPath('data.content_clears.1.actual_clear_count', null)

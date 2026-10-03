@@ -1,4 +1,5 @@
 import { flushPromises, mount } from '@vue/test-utils';
+import type { VueWrapper } from '@vue/test-utils';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import UndergroundResidence from './UndergroundResidence.vue';
 import type { ResidenceState } from './undergroundScenes';
@@ -28,6 +29,38 @@ const journal = {
     lending_participation_count: 42,
 };
 
+const label = (text: string) => text.replace(/\s+/g, '');
+const numbers = (text: string) => (text.match(/\d[\d,]*/g) ?? []).map((value) => Number(value.replaceAll(',', '')));
+
+function definition(wrapper: VueWrapper, name: string): Element | undefined {
+    return wrapper.findAll('dt').find((term) => label(term.text()) === label(name))?.element.nextElementSibling ?? undefined;
+}
+
+function cell(wrapper: VueWrapper, rowName: string, columnName: string): Element {
+    const row = wrapper.findAll('tr').find((candidate) => {
+        const heading = candidate.find('th[scope="row"]');
+        return heading.exists() && label(heading.text()) === label(rowName);
+    });
+    if (!row) throw new Error(`Missing record row: ${rowName}`);
+    const columns = [...row.element.closest('table')!.querySelectorAll('th[scope="col"]')];
+    const index = columns.findIndex((heading) => label(heading.textContent ?? '') === label(columnName));
+    if (index < 0) throw new Error(`Missing record column: ${columnName}`);
+    return row.element.children[index]!;
+}
+
+// Read the primary quantity separately from its coverage note. A missing value
+// must still have a visible nonnumeric placeholder, while a known zero stays 0.
+function quantity(element: Element | undefined): number | null {
+    expect(element).toBeDefined();
+    const primary = element!.cloneNode(true) as Element;
+    primary.querySelectorAll('small').forEach((note) => note.remove());
+    const text = primary.textContent?.trim() ?? '';
+    expect(text).not.toBe('');
+    const values = numbers(text);
+    expect(values.length).toBeLessThanOrEqual(1);
+    return values[0] ?? null;
+}
+
 afterEach(() => vi.unstubAllGlobals());
 
 describe('Adventure journal records', () => {
@@ -35,16 +68,28 @@ describe('Adventure journal records', () => {
         vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify({ data: journal }))));
         const wrapper = mount(UndergroundResidence, { props: { residence, mode: 'villa', busy: false, shards: 0 } });
         await flushPromises();
-        expect(wrapper.text()).toContain('天断一閃');
-        expect(wrapper.text()).toContain('記録のある 2 戦での最大');
-        expect(wrapper.get('ol').text()).toContain('ヒール8 回');
-        const tables = wrapper.findAll('table');
-        expect(tables[0]!.findAll('th').map((cell) => cell.text())).toContain('本人');
-        expect(tables[0]!.findAll('tr')[1]!.findAll('td').map((cell) => cell.text())).toEqual(['7HP記録のある分・1 戦は記録なし', '50HP']);
-        expect(tables[0]!.findAll('tr')[2]!.findAll('td').map((cell) => cell.text())).toEqual(['記録なし3 戦は記録なし', '24']);
-        expect(tables[1]!.findAll('tr')[1]!.findAll('td').map((cell) => cell.text().replaceAll(' ', ''))).toEqual(['2回', '3回']);
-        expect(tables[1]!.findAll('tr')[2]!.findAll('td').map((cell) => cell.text())).toEqual(['記録なし', '記録なし']);
-        expect(wrapper.text()).toContain('42 回');
+        const maximum = definition(wrapper, '最大ダメージ');
+        expect(quantity(maximum)).toBe(journal.maximum_hit.value);
+        expect(numbers(maximum!.querySelector('small')!.textContent ?? '')).toEqual([journal.maximum_hit.known_battles]);
+        expect(definition(wrapper, '技名')!.textContent).toContain(journal.maximum_hit.action_name);
+        const skill = journal.favorite_skills.entries[0]!;
+        const skillRow = wrapper.findAll('ol li').find((entry) => entry.find('span').text() === skill.name);
+        expect(quantity(skillRow?.find('strong').element)).toBe(skill.count);
+        const selfHealing = cell(wrapper, '実回復HP', '本人');
+        expect(quantity(selfHealing)).toBe(journal.combat_support.self.effective_healing.value);
+        expect(numbers(selfHealing.querySelector('small')!.textContent ?? '')).toEqual([journal.combat_support.self.effective_healing.unknown_battles]);
+        expect(quantity(cell(wrapper, '実回復HP', 'PT合計'))).toBe(journal.combat_support.party.effective_healing.value);
+        const selfDefense = cell(wrapper, '防いだダメージ', '本人');
+        expect(quantity(selfDefense)).toBeNull();
+        expect(numbers(selfDefense.querySelector('small')!.textContent ?? '')).toEqual([journal.combat_support.self.damage_prevented.unknown_battles]);
+        expect(quantity(cell(wrapper, '防いだダメージ', 'PT合計'))).toBe(journal.combat_support.party.damage_prevented.value);
+        const clear = journal.content_clears[0]!;
+        expect(quantity(cell(wrapper, clear.name, '実戦'))).toBe(clear.actual_clear_count);
+        expect(quantity(cell(wrapper, clear.name, 'スキップ'))).toBe(clear.skip_clear_count);
+        const unknownClear = journal.content_clears[1]!;
+        expect(quantity(cell(wrapper, unknownClear.name, '実戦'))).toBeNull();
+        expect(quantity(cell(wrapper, unknownClear.name, 'スキップ'))).toBeNull();
+        expect(quantity(definition(wrapper, '助っ人参加累計'))).toBe(journal.lending_participation_count);
         wrapper.unmount();
     });
 
@@ -55,10 +100,11 @@ describe('Adventure journal records', () => {
         } }))));
         const wrapper = mount(UndergroundResidence, { props: { residence, mode: 'villa', busy: false, shards: 0 } });
         await flushPromises();
-        expect(wrapper.text()).toContain('最大ダメージ記録なし');
-        expect(wrapper.text()).toContain('使用技の記録なし');
-        expect(wrapper.text()).not.toContain('技名の記録なし');
-        expect(wrapper.findAll('table')[0]!.findAll('tr')[3]!.findAll('td')[0]!.text()).toBe('0回');
+        expect(quantity(definition(wrapper, '最大ダメージ'))).toBeNull();
+        expect(definition(wrapper, '技名')).toBeUndefined();
+        expect(wrapper.findAll('ol li')).toHaveLength(0);
+        expect(quantity(cell(wrapper, '蘇生した回数', '本人'))).toBe(journal.combat_support.self.revivals.value);
+        expect(quantity(cell(wrapper, '蘇生した回数', 'PT合計'))).toBe(journal.combat_support.party.revivals.value);
         wrapper.unmount();
     });
 });

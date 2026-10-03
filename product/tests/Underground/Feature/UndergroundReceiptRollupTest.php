@@ -2,12 +2,14 @@
 
 namespace Tests\Underground\Feature;
 
+use App\Application\Underground\UndergroundAlphaV1PlayerCatalog;
 use App\Application\Underground\UndergroundBattleHistoryCompactor;
 use App\Application\Underground\UndergroundJournalService;
 use App\Application\Underground\UndergroundLifetimeStatistics;
 use App\Application\Underground\UndergroundProfileService;
 use App\Application\Underground\UndergroundReceiptPurgeService;
 use App\Application\Underground\UndergroundReceiptRollupService;
+use App\Domain\Underground\Combat\PriorityCombatAiConfiguration;
 use App\Models\Secretary;
 use App\Models\UndergroundBattle;
 use App\Models\UndergroundParty;
@@ -222,23 +224,23 @@ final class UndergroundReceiptRollupTest extends TestCase
             'self' => ['maximum_hit' => 60, 'maximum_hit_action_key' => 'normal_attack',
                 'effective_healing' => 3, 'action_usage' => ['combo' => 1]],
         ]]);
+        $withTail = $journal->forUser($user);
         DB::enableQueryLog();
         try {
-            $withTail = $journal->forUser($user);
+            $statistics->totals($profile->id);
             $queries = array_column(DB::getQueryLog(), 'query');
         } finally {
             DB::disableQueryLog();
         }
         $this->assertSame(60, $withTail['maximum_hit']['value']);
-        $this->assertSame('通常攻撃', $withTail['maximum_hit']['action_name']);
+        $actions = app(PriorityCombatAiConfiguration::class)->editorCatalog(app(UndergroundAlphaV1PlayerCatalog::class)->laboratoryCatalog())['actions'];
+        $this->assertSame(array_column($actions, 'label', 'key')['normal_attack'], $withTail['maximum_hit']['action_name']);
         $this->assertSame(3, $withTail['favorite_skills']['entries'][0]['count']);
         $this->assertSame(10, $withTail['combat_support']['self']['effective_healing']['value']);
         $this->assertSame(1, $withTail['combat_support']['self']['effective_healing']['unknown_battles']);
-        $statisticsQuery = array_values(array_filter($queries, static fn (string $sql): bool => str_contains($sql, 'AS saved')))[0];
-        $this->assertStringContainsString('verified_through_id', $statisticsQuery);
-        $this->assertStringContainsString('id > COALESCE', $statisticsQuery);
-        $this->assertStringNotContainsString('round_logs', $statisticsQuery);
-        $this->assertStringNotContainsString('snapshot', $statisticsQuery);
+        $this->assertCount(1, $queries);
+        $this->assertStringNotContainsString('underground_battle_logs', $queries[0]);
+        $this->assertStringNotContainsString('snapshot', $queries[0]);
     }
 
     public function test_purge_stops_at_pins_and_unprepared_rows_and_requires_verification(): void
