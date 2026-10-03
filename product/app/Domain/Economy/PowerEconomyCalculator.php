@@ -8,6 +8,23 @@ use DomainException;
 /** Shared, side-effect-free MW settlement for the 4.11 release draft. */
 final class PowerEconomyCalculator
 {
+    /**
+     * @param  array<string, mixed>  $settings
+     * @param  list<int>  $scales  In stable map-cell order.
+     * @return array{scales: list<int>, maintenance: int, unfunded: int}
+     */
+    public function fundedPizzerias(array $settings, array $scales, int $money): array
+    {
+        $rules = $this->rules($settings);
+        $count = min(count($scales), intdiv(max(0, $money), $rules['pizzeria_maintenance']));
+
+        return [
+            'scales' => array_slice($scales, 0, $count),
+            'maintenance' => $count * $rules['pizzeria_maintenance'],
+            'unfunded' => count($scales) - $count,
+        ];
+    }
+
     /** @param array<string, mixed> $settings */
     public function storageCapacity(array $settings, int $condenserCount): int
     {
@@ -39,6 +56,63 @@ final class PowerEconomyCalculator
     }
 
     /**
+     * Oil first, then coal at half output and half oil-equivalent sale value.
+     * Inventory restricts the rational operating amount before either rounding draw.
+     *
+     * @param  array<string, mixed>  $settings
+     * @param  list<int>  $scales
+     * @return array<string, int>
+     */
+    public function thermalGeneration(array $settings, array $scales, int $oil, int $minerals, int $oilRoll, int $coalRoll): array
+    {
+        $rules = $this->rules($settings);
+        if (min($oil, $minerals) < 0) {
+            throw new DomainException('Thermal fuel inventory must be non-negative.');
+        }
+        foreach ($scales as $scale) {
+            if ($scale < 2 || $scale > 6) {
+                throw new DomainException('Thermal scale is outside its release contract.');
+            }
+        }
+        $ticksPerMw = $rules['thermal_coal_tons_per_oil_unit'];
+        $oilDenominator = $rules['thermal_oil_mw_per_unit'] * $ticksPerMw;
+        $coalDenominator = intdiv($rules['thermal_oil_mw_per_unit'], 2);
+        if ($oilRoll < 0 || $oilRoll >= $oilDenominator || $coalRoll < 0 || $coalRoll >= $coalDenominator) {
+            throw new DomainException('Thermal fuel rounding roll is outside its denominator.');
+        }
+        $capacityTicks = array_sum($scales) * $rules['thermal_power_mw_per_scale'] * $ticksPerMw;
+        $oilTicks = min($capacityTicks, $oil * $oilDenominator);
+        $coalTicks = min(intdiv($capacityTicks - $oilTicks, 2), $minerals * $coalDenominator);
+        $generated = intdiv($oilTicks + $coalTicks, $ticksPerMw);
+        // Tiny inventories that cannot produce one whole MW never pay for zero output.
+        if ($generated === 0) {
+            $oilTicks = $coalTicks = 0;
+        }
+
+        return [
+            'generated_mw' => $generated,
+            'oil_consumed' => intdiv($oilTicks, $oilDenominator) + (int) ($oilRoll < $oilTicks % $oilDenominator),
+            'minerals_consumed' => intdiv($coalTicks, $coalDenominator) + (int) ($coalRoll < $coalTicks % $coalDenominator),
+            'oil_display' => intdiv($oilTicks, $oilDenominator) + (int) ($oilTicks % $oilDenominator > 0),
+            'minerals_display' => intdiv($coalTicks, $coalDenominator) + (int) ($coalTicks % $coalDenominator > 0),
+        ];
+    }
+
+    /** @param array<string, mixed> $settings
+     * @param  list<int>  $scales
+     * @return array<string, int>
+     */
+    public function thermalGenerationForTurn(array $settings, array $scales, int $oil, int $minerals, int $nationId, TurnRandomStreamFactory $random): array
+    {
+        $rules = $this->rules($settings);
+
+        return $this->thermalGeneration($settings, $scales, $oil, $minerals,
+            $random->stream('nation_economy:thermal_oil:nation:'.$nationId.':v1')->integer(0, $rules['thermal_oil_mw_per_unit'] * $rules['thermal_coal_tons_per_oil_unit'] - 1),
+            $random->stream('nation_economy:thermal_coal:nation:'.$nationId.':v1')->integer(0, intdiv($rules['thermal_oil_mw_per_unit'], 2) - 1),
+        );
+    }
+
+    /**
      * Round the combined Nation demand once, using its own retry-stable stream.
      * Generation and transfers never become consumption or Secretary experience.
      *
@@ -55,18 +129,19 @@ final class PowerEconomyCalculator
         int $foodAvailableTons,
         array $pizzeriaScales,
         TurnRandomStreamFactory $random,
+        int $energySavingLevel = 0,
     ): array {
         if ($nationId < 1) {
             throw new DomainException('Power settlement needs a Nation identity.');
         }
         $rules = $this->rules($settings);
-        $foodPerMw = intdiv($rules['pizzeria_food_tons_per_scale'], $rules['pizzeria_power_mw_per_scale']);
+        [$numerator, $denominator] = $this->demandRatio($settings, $energySavingLevel);
         $roll = $random->stream('nation_economy:power_demand:nation:'.$nationId.':v1')
-            ->integer(0, $foodPerMw - 1);
+            ->integer(0, $denominator - 1);
 
         return $this->settle(
             $settings, $storedMw, $generatedMw, $capacityMw,
-            $foodAvailableTons, $pizzeriaScales, $roll,
+            $foodAvailableTons, $pizzeriaScales, $roll, $energySavingLevel,
         );
     }
 
@@ -87,6 +162,7 @@ final class PowerEconomyCalculator
         int $foodAvailableTons,
         array $pizzeriaScales,
         int $roundingRoll,
+        int $energySavingLevel = 0,
     ): array {
         $rules = $this->rules($settings);
         if (min($storedMw, $generatedMw, $capacityMw, $foodAvailableTons) < 0) {
@@ -99,8 +175,8 @@ final class PowerEconomyCalculator
             }
             $scaleTotal += $scale;
         }
-        $foodPerMw = intdiv($rules['pizzeria_food_tons_per_scale'], $rules['pizzeria_power_mw_per_scale']);
-        if ($roundingRoll < 0 || $roundingRoll >= $foodPerMw) {
+        [$numerator, $denominator] = $this->demandRatio($settings, $energySavingLevel);
+        if ($roundingRoll < 0 || $roundingRoll >= $denominator) {
             throw new DomainException('Power demand rounding roll is outside its denominator.');
         }
         // Direct generation is usable even with zero storage capacity. Only the
@@ -109,12 +185,13 @@ final class PowerEconomyCalculator
         $foodRequested = min(
             $scaleTotal * $rules['pizzeria_food_tons_per_scale'],
             $foodAvailableTons,
-            $supplyMw * $foodPerMw,
+            intdiv($supplyMw * $denominator, $numerator),
         );
-        $consumedMw = intdiv($foodRequested, $foodPerMw)
-            + (int) ($roundingRoll < $foodRequested % $foodPerMw);
+        $demandNumerator = $foodRequested * $numerator;
+        $consumedMw = intdiv($demandNumerator, $denominator)
+            + (int) ($roundingRoll < $demandNumerator % $denominator);
         // A rounded-down charge cannot grant unpowered processing or revenue.
-        $foodConsumed = min($foodRequested, $consumedMw * $foodPerMw);
+        $foodConsumed = min($foodRequested, intdiv($consumedMw * $denominator, $numerator));
         $remainderMw = $supplyMw - $consumedMw;
 
         return [
@@ -148,18 +225,20 @@ final class PowerEconomyCalculator
         int $foodAvailableTons,
         array $pizzeriaScales,
         int $windCount,
+        int $thermalMw = 0,
+        int $energySavingLevel = 0,
     ): array {
         $rules = $this->rules($settings);
         if ($windCount < 0) {
             throw new DomainException('Wind count must be non-negative.');
         }
-        $foodPerMw = intdiv($rules['pizzeria_food_tons_per_scale'], $rules['pizzeria_power_mw_per_scale']);
+        [$numerator, $denominator] = $this->demandRatio($settings, $energySavingLevel);
         $ranges = [];
         foreach ([$rules['wind_minimum_mw'], $rules['wind_maximum_mw']] as $windMw) {
-            foreach ([0, $foodPerMw - 1] as $roll) {
+            foreach ([0, $denominator - 1] as $roll) {
                 $plan = $this->settle(
-                    $settings, $storedMw, $windCount * $windMw, $capacityMw,
-                    $foodAvailableTons, $pizzeriaScales, $roll,
+                    $settings, $storedMw, $windCount * $windMw + $thermalMw, $capacityMw,
+                    $foodAvailableTons, $pizzeriaScales, $roll, $energySavingLevel,
                 );
                 foreach ($plan as $key => $amount) {
                     $range = $ranges[$key] ?? ['minimum' => $amount, 'maximum' => $amount];
@@ -175,6 +254,35 @@ final class PowerEconomyCalculator
             'wind_expected_mw' => (float) ($windCount * ($rules['wind_minimum_mw'] + $rules['wind_maximum_mw'])) / 2,
             'ranges' => $ranges,
         ];
+    }
+
+    /** Rational food-to-MW ratio; reduce it so existing level-zero rounding stays unchanged.
+     * @param  array<string, mixed>  $settings
+     * @return array{int, int}
+     */
+    private function demandRatio(array $settings, int $level): array
+    {
+        if ($level < 0) {
+            throw new DomainException('Energy saving level must be non-negative.');
+        }
+        $rules = $this->rules($settings);
+        $numerator = $rules['pizzeria_power_mw_per_scale'];
+        $denominator = $rules['pizzeria_food_tons_per_scale'];
+        if ($level > 0) {
+            $effect = $settings['secretary']['skills']['energy_saving']['effect'] ?? null;
+            if (! is_array($effect)) {
+                throw new DomainException('Energy saving effect is missing.');
+            }
+            $numerator *= $effect['base'] + $effect['numerator_per_level'] * $level;
+            $denominator *= $effect['base'] + $effect['denominator_per_level'] * $level;
+        }
+        $a = $numerator;
+        $b = $denominator;
+        while ($b !== 0) {
+            [$a, $b] = [$b, $a % $b];
+        }
+
+        return [intdiv($numerator, $a), intdiv($denominator, $a)];
     }
 
     /** @param list<int> $cellIds */
@@ -201,6 +309,7 @@ final class PowerEconomyCalculator
         }
         $keys = [
             'wind_minimum_mw', 'wind_maximum_mw', 'condenser_capacity_mw',
+            'thermal_power_mw_per_scale', 'thermal_oil_mw_per_unit', 'thermal_coal_tons_per_oil_unit',
             'pizzeria_food_tons_per_scale', 'pizzeria_power_mw_per_scale',
             'pizzeria_maximum_scale', 'pizzeria_revenue_at_maximum', 'pizzeria_maintenance',
         ];
@@ -212,6 +321,7 @@ final class PowerEconomyCalculator
             $validated[$key] = $rules[$key];
         }
         if ($validated['wind_minimum_mw'] > $validated['wind_maximum_mw']
+            || $validated['thermal_oil_mw_per_unit'] % 2 !== 0
             || $validated['pizzeria_food_tons_per_scale'] % $validated['pizzeria_power_mw_per_scale'] !== 0) {
             throw new DomainException('Power economy draft ratios are invalid.');
         }

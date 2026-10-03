@@ -95,6 +95,11 @@ final class DatabaseBaselineAdoptionTest extends TestCase
 
     private function legacyLedger(): void
     {
+        // This test owns the pre-v28 baseline boundary; restore its exact skill
+        // constraint before adopting its marker. The power upgrade has its own test.
+        DB::table('secretary_skills')->where('skill_key', 'energy_saving')->delete();
+        DB::statement('ALTER TABLE secretary_skills DROP CONSTRAINT secretary_skills_key_check');
+        DB::statement("ALTER TABLE secretary_skills ADD CONSTRAINT secretary_skills_key_check CHECK (skill_key = ANY ((ARRAY['agricultural_policy'::character varying, 'specialty_development'::character varying, 'gold_vein_survey'::character varying, 'forest_management'::character varying, 'final_defense_line'::character varying, 'declining_birthrate_policy'::character varying, 'indomitable'::character varying, 'ship_operations'::character varying, 'navy'::character varying])::text[]))");
         DB::table('migrations')->where('migration', CurrentDatabaseBaseline::MIGRATION)->delete();
         $migrations = json_decode((string) file_get_contents(database_path('baselines/4_9_0_migrations.json')), true, 512, JSON_THROW_ON_ERROR);
         foreach ($migrations as $migration) {

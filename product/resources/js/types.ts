@@ -106,7 +106,7 @@ export interface CompensationClaimResult {
 }
 
 export interface SecretarySkill {
-    key: 'agricultural_policy' | 'specialty_development' | 'gold_vein_survey' | 'forest_management' | 'final_defense_line' | 'declining_birthrate_policy' | 'indomitable' | 'ship_operations';
+    key: 'agricultural_policy' | 'specialty_development' | 'gold_vein_survey' | 'forest_management' | 'final_defense_line' | 'declining_birthrate_policy' | 'indomitable' | 'ship_operations' | 'navy' | 'energy_saving';
     name: string;
     level: number;
     experience: number;
@@ -414,14 +414,30 @@ export interface Nation {
 
 export interface ResourceForecast {
     rows: Array<{
-        key: 'food' | 'industrial_goods' | 'minerals' | 'oil';
+        key: 'food' | 'industrial_goods' | 'minerals' | 'oil' | 'power';
         name: string;
         production: number;
         consumption: number;
         delta: number;
         holding: number;
+        unit_label?: string;
+        production_range?: { minimum: number; maximum: number };
+        consumption_range?: { minimum: number; maximum: number };
+        delta_range?: { minimum: number; maximum: number };
     }>;
     food_holding_note: string;
+    power_summary?: {
+        wind_expected_mw: number;
+        thermal_generated_mw: number;
+        thermal_oil_display: number;
+        thermal_minerals_display: number;
+        capacity_mw: number;
+        stored_after_mw: { minimum: number; maximum: number };
+        discarded_mw: { minimum: number; maximum: number };
+        pizzeria_revenue: { minimum: number; maximum: number };
+        pizzeria_maintenance: number;
+        pizzeria_unfunded: number;
+    } | null;
     workforce: {
         status: 'unemployment' | 'saturation';
         label: '失業率' | '労働力飽和';

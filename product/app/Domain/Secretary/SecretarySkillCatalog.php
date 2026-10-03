@@ -24,6 +24,8 @@ final class SecretarySkillCatalog
 
     public const NAVY = 'navy';
 
+    public const ENERGY_SAVING = 'energy_saving';
+
     /** @var list<string> */
     public const KEYS = [
         self::AGRICULTURAL_POLICY,
@@ -35,6 +37,7 @@ final class SecretarySkillCatalog
         self::INDOMITABLE,
         self::SHIP_OPERATIONS,
         self::NAVY,
+        self::ENERGY_SAVING,
     ];
 
     /**

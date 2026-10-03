@@ -135,7 +135,7 @@ final class SecretaryTurnService
                 'experience' => (int) $row->experience,
             ];
         }
-        if ($rows->count() !== count($skills)) {
+        if ($rows->keys()->diff(SecretarySkillCatalog::KEYS)->isNotEmpty()) {
             throw new DomainException("Secretary {$secretary->id} has an unexpected skill outside the active catalog.");
         }
 

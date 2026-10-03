@@ -56,6 +56,8 @@ final class DomesticCommandExecutor
         'build_farm', 'build_factory', 'build_mine',
         'build_fast_farm', 'build_fast_factory', 'build_fast_mine',
         'build_central_bank', 'build_central_granary',
+        'build_pizzeria',
+        'build_thermal_power',
     ];
 
     /** @var list<string> */
@@ -502,7 +504,7 @@ final class DomesticCommandExecutor
         }
         if ($definition->requires_empty_facility && $cell->facility_definition_id !== null) {
             $matchingQuantityFacility = $this->isMatchingQuantityFacility($definition, $cell);
-            if (! $matchingQuantityFacility
+            if (! $matchingQuantityFacility && ! $this->isWindRepair($definition, $cell)
                 && ! SettlementOverbuildPolicy::allows($definition->key, $cell->facility?->key, $definition->metadata)
                 && $ownerOverbuildEffect === null) {
                 return ['reason' => CommandFailureReason::FacilityExists, 'observed' => $observed];
@@ -562,7 +564,7 @@ final class DomesticCommandExecutor
         if ($this->hasOtherCentralFacility($context, $nation, $definition, $cell)) {
             return ['reason' => CommandFailureReason::FacilityLimitReached, 'observed' => $observed];
         }
-        $requiredMoney = $definition->cost_money;
+        $requiredMoney = $this->isWindRepair($definition, $cell) ? intdiv($definition->cost_money, 2) : $definition->cost_money;
         if ($definition->key === 'monster_dispatch'
             && ($definition->metadata['quantity_selects_catalog'] ?? null) === MonsterDispatchOptionResolver::CATALOG) {
             try {
@@ -793,6 +795,12 @@ final class DomesticCommandExecutor
             && $cell->facility?->key === $definition->result_facility_key;
     }
 
+    private function isWindRepair(CommandDefinition $definition, MapCell $cell): bool
+    {
+        return $definition->key === 'build_wind_power' && $cell->facility?->key === 'wind_power'
+            && $cell->facility_operational_state === 'damaged';
+    }
+
     private function paradoxCost(CommandDefinition $definition): int
     {
         $cost = $definition->metadata['cost_paradox'] ?? 0;
@@ -834,6 +842,9 @@ final class DomesticCommandExecutor
         CommandDefinition $definition,
         MapCell $cell,
     ): int {
+        if ($this->isWindRepair($definition, $cell)) {
+            return intdiv($definition->cost_money, 2);
+        }
         if (in_array($definition->key, MissileImpactResolver::MISSILE_KEYS, true)) {
             return 0;
         }

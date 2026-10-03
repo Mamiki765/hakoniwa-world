@@ -300,7 +300,23 @@ final class MapCellPresenter
         }
 
         $facility = $cell->facility;
-        if ($facility?->scale_unit_people !== null && $cell->facility_scale !== null && $centralPresentation === null) {
+        if ($facility?->key === 'wind_power') {
+            $label = $cell->facility_operational_state === 'damaged' ? '故障中・建設コマンドで半額修理' : '45〜135MW/T（平均90MW）';
+            $details[] = $this->detail('power_generation', '発電', $label, null, $label, 'public');
+        } elseif ($facility?->key === 'condenser') {
+            $capacity = $rulesetSettings['power_economy']['condenser_capacity_mw'];
+            $details[] = $this->detail('power_capacity', '蓄電容量', $capacity, 'MW', number_format($capacity).'MW', 'public');
+        } elseif ($facility?->key === 'thermal_power' && $cell->facility_scale !== null) {
+            $capacity = $cell->facility_scale * $rulesetSettings['power_economy']['thermal_power_mw_per_scale'];
+            $label = number_format($capacity).'MW/T（全石炭 '.number_format(intdiv($capacity, 2)).'MW/T）';
+            $details[] = $this->detail('power_generation', '発電上限', $capacity, 'MW', $label, 'public');
+        } elseif ($facility?->key === 'pizzeria' && $cell->facility_scale !== null) {
+            $powerRules = $rulesetSettings['power_economy'];
+            $foodTons = $cell->facility_scale * $powerRules['pizzeria_food_tons_per_scale'];
+            $demandMw = $cell->facility_scale * $powerRules['pizzeria_power_mw_per_scale'];
+            $details[] = $this->detail('pizzeria_food', '食料処理', $foodTons, 't/T', number_format($foodTons).'t/T', 'public');
+            $details[] = $this->detail('pizzeria_power', '必要電力', $demandMw, 'MW', number_format($demandMw).'MW/T', 'public');
+        } elseif ($facility?->scale_unit_people !== null && $cell->facility_scale !== null && $centralPresentation === null) {
             $capacity = $this->capacities->capacityPeople(
                 $facility,
                 $cell->facility_scale,

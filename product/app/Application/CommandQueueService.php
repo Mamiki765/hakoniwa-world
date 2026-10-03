@@ -58,6 +58,8 @@ final class CommandQueueService
         'build_fast_mine' => 'mine',
         'build_central_bank' => 'central_bank',
         'build_central_granary' => 'central_granary',
+        'build_pizzeria' => 'pizzeria',
+        'build_thermal_power' => 'thermal_power',
     ];
 
     public function __construct(
@@ -1174,6 +1176,7 @@ final class CommandQueueService
             return false;
         }
         if ($definition->requires_empty_facility && $state['facility_key'] !== null
+            && ! ($definition->key === 'build_wind_power' && $state['facility_key'] === 'wind_power' && $cell->facility_operational_state === 'damaged')
             && ! SettlementOverbuildPolicy::allows($definition->key, $state['facility_key'], $definition->metadata)
             && $this->projectedOwnerOverbuildEffect($definition, $nation, $state) === null) {
             return false;
@@ -1503,6 +1506,7 @@ final class CommandQueueService
             throw new PlayerFacingCommandException('首都を通常建設commandで上書きすることはできません。');
         }
         if ($definition->requires_empty_facility && $facilityKey !== null
+            && ! ($definition->key === 'build_wind_power' && $facilityKey === 'wind_power' && $cell->facility_operational_state === 'damaged')
             && ! SettlementOverbuildPolicy::allows($definition->key, $facilityKey, $definition->metadata)
             && ! $facilityExpansion
             && $ownerOverbuildEffect === null) {

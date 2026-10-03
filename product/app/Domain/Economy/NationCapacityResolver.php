@@ -19,6 +19,7 @@ final class NationCapacityResolver
     public function __construct(
         private readonly SecretaryItemEffectAggregator $itemEffects,
         iterable $modifiers = [],
+        private readonly PowerEconomyCalculator $power = new PowerEconomyCalculator,
     ) {
         $this->modifiers = [...$modifiers];
     }
@@ -86,7 +87,8 @@ final class NationCapacityResolver
             $expectedSkillCount = count($skillDefinitions);
         }
 
-        [$secretaryPercent, $equippedItems] = $this->capacitySources($nation, $expectedSkillCount);
+        [$secretaryPercent, $equippedItems] = $this->capacitySources($nation, $expectedSkillCount,
+            array_keys($ruleset->settings['secretary']['skills'] ?? []));
         $itemPercentages = $this->itemEffects->capacityPercentages($ruleset, $equippedItems);
         $baseMoney = $this->applyPercentageGenres(
             $baseMoney,
@@ -106,17 +108,26 @@ final class NationCapacityResolver
             }
         }
 
+        if (isset($ruleset->settings['power_economy'])) {
+            $condenserCount = DB::table('map_cells as cell')
+                ->join('facility_definitions as facility', 'facility.id', '=', 'cell.facility_definition_id')
+                ->where('cell.owner_nation_id', $nation->id)->where('facility.key', 'condenser')->count();
+            $resourceCapacities['power'] = $this->power->storageCapacity($ruleset->settings, $condenserCount);
+        }
+
         return new NationCapacities($baseMoney, $baseFood, $resourceCapacities);
     }
 
     /**
+     * @param  list<string>  $skillKeys
      * @return array{int, list<array{item_key: string, level: int}>}
      */
-    private function capacitySources(Nation $nation, ?int $expectedSkillCount): array
+    private function capacitySources(Nation $nation, ?int $expectedSkillCount, array $skillKeys): array
     {
         $skillTotals = DB::table('nation_memberships as skill_membership')
             ->join('secretaries as skill_secretary', 'skill_secretary.user_id', '=', 'skill_membership.user_id')
             ->join('secretary_skills as skill', 'skill.secretary_id', '=', 'skill_secretary.id')
+            ->whereIn('skill.skill_key', $skillKeys)
             ->where('skill_membership.nation_id', $nation->id)
             ->where('skill_membership.world_id', $nation->world_id)
             ->where('skill_membership.role', 'owner')

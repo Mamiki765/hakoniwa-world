@@ -16,6 +16,7 @@ class PowerEconomyCalculatorTest extends TestCase
         return ['power_economy' => [
             'wind_minimum_mw' => 2, 'wind_maximum_mw' => 4,
             'condenser_capacity_mw' => 7,
+            'thermal_power_mw_per_scale' => 100, 'thermal_oil_mw_per_unit' => 60, 'thermal_coal_tons_per_oil_unit' => 1000,
             'pizzeria_food_tons_per_scale' => 30, 'pizzeria_power_mw_per_scale' => 3,
             'pizzeria_maximum_scale' => 3,
             'pizzeria_revenue_at_maximum' => 90, 'pizzeria_maintenance' => 1,
@@ -93,5 +94,37 @@ class PowerEconomyCalculatorTest extends TestCase
         $this->assertSame($minimum['food_consumed_tons'], $forecast['ranges']['food_consumed_tons']['minimum']);
         $this->assertSame($maximum['food_consumed_tons'], $forecast['ranges']['food_consumed_tons']['maximum']);
         $this->assertSame($maximum['stored_after_mw'], $forecast['ranges']['stored_after_mw']['maximum']);
+    }
+
+    public function test_thermal_oil_priority_inventory_limits_and_retry_stable_fractional_fuel(): void
+    {
+        $calculator = new PowerEconomyCalculator;
+        $settings = $this->settings();
+        $settings['secretary']['skills']['energy_saving']['effect'] = ['base' => 10, 'numerator_per_level' => 2, 'denominator_per_level' => 3];
+        $up = $calculator->thermalGeneration($settings, [2], 4, 10000, 0, 0);
+        $down = $calculator->thermalGeneration($settings, [2], 4, 10000, 59999, 29);
+        $this->assertSame(200, $up['generated_mw']);
+        $this->assertSame(4, $up['oil_consumed']);
+        $this->assertSame(3, $down['oil_consumed']);
+        $this->assertSame(4, $down['oil_display']);
+        $this->assertSame(0, $up['minerals_consumed']);
+        $coal = $calculator->thermalGeneration($settings, [6], 0, 10000, 0, 0);
+        $this->assertSame(300, $coal['generated_mw']);
+        $this->assertSame(10000, $coal['minerals_consumed']);
+        $mixed = $calculator->thermalGeneration($settings, [2], 2, 10000, 0, 0);
+        $this->assertSame(160, $mixed['generated_mw']);
+        $this->assertSame(2, $mixed['oil_consumed']);
+        $this->assertSame(1334, $mixed['minerals_consumed']);
+        $this->assertSame(180, $calculator->thermalGeneration($settings, [2], 3, 0, 0, 0)['generated_mw']);
+        $this->assertSame(0, $calculator->thermalGeneration($settings, [6], 0, 0, 0, 0)['generated_mw']);
+        $seed = str_repeat('cd', 32);
+        $this->assertSame(
+            $calculator->thermalGenerationForTurn($settings, [2, 3], 8, 10000, 11, new TurnRandomStreamFactory($seed)),
+            $calculator->thermalGenerationForTurn($settings, [3, 2], 8, 10000, 11, new TurnRandomStreamFactory($seed)),
+        );
+        $saving = $calculator->settle($settings, 0, 5, 0, 60, [2], 0, 100);
+        $this->assertSame(5, $saving['consumed_mw']);
+        $this->assertGreaterThan(50, $saving['food_consumed_tons']);
+        $this->assertSame(0, $saving['stored_after_mw']);
     }
 }

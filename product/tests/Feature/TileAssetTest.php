@@ -261,6 +261,17 @@ class TileAssetTest extends TestCase
         $this->get('/assets/hakoniwa-tiles/not-listed.gif')->assertNotFound();
     }
 
+    public function test_pizzeria_asset_is_missing_until_a_valid_named_image_is_deployed(): void
+    {
+        $resolver = app(AssetManifestResolver::class);
+        $this->assertFalse($resolver->resolve('tile.pizzeria', 'ピザ屋')['available']);
+        $this->get('/assets/hakoniwa-tiles/pizzeria-32x32.png')->assertNotFound();
+        $this->writePng('pizzeria-32x32.png');
+        $resolved = $resolver->resolve('tile.pizzeria', 'ピザ屋');
+        $this->assertTrue($resolved['available']);
+        $this->get((string) $resolved['url'])->assertOk()->assertHeader('Content-Type', 'image/png');
+    }
+
     private function writeGif(string $filename): string
     {
         $gif = base64_decode('R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==', true);
