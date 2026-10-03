@@ -22,6 +22,11 @@ final class UndergroundLendingRewardService
 
     public function __construct(private readonly UndergroundBattleStorage $battleStorage) {}
 
+    public function lifetimeParticipationCount(User $owner): int
+    {
+        return (int) UserSkipTicketBalance::query()->where('user_id', $owner->id)->value('lifetime_participation_count');
+    }
+
     /**
      * Persists the minimum party identity needed by lending settlement. Combat
      * inputs remain in the in-memory battle result and are never copied here.

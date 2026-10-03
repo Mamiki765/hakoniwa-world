@@ -2,12 +2,14 @@
 
 namespace Tests\Underground\Feature;
 
+use App\Application\Underground\UndergroundAlphaV1PlayerCatalog;
 use App\Application\Underground\UndergroundBattleHistoryCompactor;
 use App\Application\Underground\UndergroundJournalService;
 use App\Application\Underground\UndergroundLifetimeStatistics;
 use App\Application\Underground\UndergroundProfileService;
 use App\Application\Underground\UndergroundReceiptPurgeService;
 use App\Application\Underground\UndergroundReceiptRollupService;
+use App\Domain\Underground\Combat\PriorityCombatAiConfiguration;
 use App\Models\Secretary;
 use App\Models\UndergroundBattle;
 use App\Models\UndergroundParty;
@@ -185,7 +187,7 @@ final class UndergroundReceiptRollupTest extends TestCase
 
     public function test_lifetime_statistics_preserve_known_unknown_and_maximum_after_receipt_deletion(): void
     {
-        [, $profile] = $this->profile();
+        [$user, $profile] = $this->profile();
         $old = CarbonImmutable::now()->subDays(40);
         $known = $this->battle($profile, $old, ['statistics_version' => 1, 'statistics' => [
             'party' => ['damage_dealt' => 70, 'effective_healing' => 20],
@@ -201,6 +203,8 @@ final class UndergroundReceiptRollupTest extends TestCase
         $statistics = app(UndergroundLifetimeStatistics::class);
         $before = $statistics->totals($profile->id);
         app(UndergroundReceiptRollupService::class)->aggregate($profile->id, 'battle', CarbonImmutable::now()->subDays(30), 500, true);
+        $journal = app(UndergroundJournalService::class);
+        $journalBefore = $journal->forUser($user);
         app(UndergroundReceiptPurgeService::class)->purge($profile->id, 'battle', CarbonImmutable::now()->subDays(30), 500, true);
         $after = $statistics->totals($profile->id);
         $this->assertEquals($before, $after);
@@ -213,6 +217,30 @@ final class UndergroundReceiptRollupTest extends TestCase
         $this->assertSame(1, $after['self']['complete_guard_count']['known_sum']);
         $this->assertSame(4, $after['self']['damage_prevented']['known_sum']);
         $this->assertSame(1, $after['incomplete_reasons']['legacy_party_self_attribution_unavailable']);
+        $this->assertSame($journalBefore, $journal->forUser($user));
+
+        // Saved prefix + live tail must count each record once without reloading logs.
+        $this->battle($profile, CarbonImmutable::now(), ['statistics_version' => 1, 'statistics' => [
+            'self' => ['maximum_hit' => 60, 'maximum_hit_action_key' => 'normal_attack',
+                'effective_healing' => 3, 'action_usage' => ['combo' => 1]],
+        ]]);
+        $withTail = $journal->forUser($user);
+        DB::enableQueryLog();
+        try {
+            $statistics->totals($profile->id);
+            $queries = array_column(DB::getQueryLog(), 'query');
+        } finally {
+            DB::disableQueryLog();
+        }
+        $this->assertSame(60, $withTail['maximum_hit']['value']);
+        $actions = app(PriorityCombatAiConfiguration::class)->editorCatalog(app(UndergroundAlphaV1PlayerCatalog::class)->laboratoryCatalog())['actions'];
+        $this->assertSame(array_column($actions, 'label', 'key')['normal_attack'], $withTail['maximum_hit']['action_name']);
+        $this->assertSame(3, $withTail['favorite_skills']['entries'][0]['count']);
+        $this->assertSame(10, $withTail['combat_support']['self']['effective_healing']['value']);
+        $this->assertSame(1, $withTail['combat_support']['self']['effective_healing']['unknown_battles']);
+        $this->assertCount(1, $queries);
+        $this->assertStringNotContainsString('underground_battle_logs', $queries[0]);
+        $this->assertStringNotContainsString('snapshot', $queries[0]);
     }
 
     public function test_purge_stops_at_pins_and_unprepared_rows_and_requires_verification(): void
