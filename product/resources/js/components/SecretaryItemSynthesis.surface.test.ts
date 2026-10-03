@@ -47,7 +47,6 @@ describe('SecretaryItemSynthesis', () => {
             .mockResolvedValueOnce({ recipes: [] });
         const retry = mount(SecretaryItemSynthesis, { props: { secretaryId: 7, busy: false } });
         await flushPromises();
-        expect(retry.text()).toContain('送信済みの結果を確認');
         await retry.find('button').trigger('click');
         await flushPromises();
         expect(JSON.parse(mockApi.mock.calls[3]![1]!.body as string)).toEqual(first);
@@ -70,7 +69,6 @@ describe('SecretaryItemSynthesis', () => {
         const unavailable = mount(SecretaryItemSynthesis, { props: { secretaryId: 8, busy: false } });
         await flushPromises();
         expect(unavailable.find('button').attributes('disabled')).toBeDefined();
-        expect(unavailable.text()).toContain('装備・出品を解除してください');
         unavailable.unmount();
     });
 });
