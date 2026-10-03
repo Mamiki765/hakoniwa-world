@@ -8,6 +8,7 @@ use App\Application\DisasterTurnService;
 use App\Application\NationCreationService;
 use App\Application\SecretaryTurnService;
 use App\Domain\Map\MapCellStateService;
+use App\Domain\Secretary\SecretaryItemCatalog;
 use App\Domain\Turn\TurnContext;
 use App\Domain\Turn\TurnRandomStreamFactory;
 use App\Domain\Turn\TurnState;
@@ -37,15 +38,25 @@ final class PowerEconomyTest extends TestCase
         foreach (['wind_power', 'thermal_power', 'condenser', 'pizzeria'] as $key) {
             $this->facility($nation, $key);
         }
+        $user->secretary()->sole()->itemInstances()->create([
+            'item_key' => SecretaryItemCatalog::HOARDER_TALISMAN,
+            'level' => 10,
+            'equipped_slot' => 2,
+            'grant_key' => 'test:power:hoarder',
+            'obtained_at' => now(),
+        ]);
         $nation->update(['money' => 2000]);
-        foreach (['wheat' => 10000, 'fish' => 0, 'monster_meat' => 0, 'oil' => 8, 'minerals' => 2000, 'power' => 1100] as $key => $amount) {
+        foreach (['wheat' => 10000, 'fish' => 0, 'monster_meat' => 0, 'oil' => 8, 'minerals' => 2000, 'power' => 1200] as $key => $amount) {
             $this->balance($nation, $key)->update(['amount' => $amount]);
         }
-        $forecast = $this->actingAs($user)->getJson('/api/v1/me/nation')->assertOk()->json('data.resource_forecast');
+        $data = $this->actingAs($user)->getJson('/api/v1/me/nation')->assertOk()->json('data');
+        $forecast = $data['resource_forecast'];
+        $this->assertSame(1320, collect($data['resources'])->firstWhere('key', 'power')['capacity']);
+        $this->assertSame(1320, $forecast['power_summary']['capacity_mw']);
         $power = collect($forecast['rows'])->firstWhere('key', 'power');
         $this->assertSame(['minimum' => 245, 'maximum' => 335], $power['production_range']);
         $this->assertSame(['minimum' => 30, 'maximum' => 30], $power['consumption_range']);
-        $this->assertSame(['minimum' => 1200, 'maximum' => 1200], $forecast['power_summary']['stored_after_mw']);
+        $this->assertSame(['minimum' => 1320, 'maximum' => 1320], $forecast['power_summary']['stored_after_mw']);
         $run = $this->createRun($world);
         DB::beginTransaction();
         $first = $this->context($world, $nation, $run);
@@ -58,11 +69,11 @@ final class PowerEconomyTest extends TestCase
         $this->assertSame($result, $this->settlement($run));
         $this->assertSame($balances, NationResource::query()->where('nation_id', $nation->id)->orderBy('id')->pluck('amount', 'resource_definition_id')->all());
         $this->assertSame(7000, (int) $this->balance($nation, 'wheat')->amount);
-        $this->assertSame(1200, (int) $this->balance($nation, 'power')->amount);
+        $this->assertSame(1320, (int) $this->balance($nation, 'power')->amount);
         $this->assertSame(2015, (int) $nation->fresh()->money);
         $this->assertSame(2000, (int) $this->balance($nation, 'minerals')->amount);
         $this->assertSame(8 - $result['thermal']['oil_consumed'], (int) $this->balance($nation, 'oil')->amount);
-        $this->assertSame(1100 + $result['generated_mw'], $result['consumed_mw'] + $result['stored_after_mw'] + $result['discarded_mw']);
+        $this->assertSame(1200 + $result['generated_mw'], $result['consumed_mw'] + $result['stored_after_mw'] + $result['discarded_mw']);
         $this->assertSame(30, $retry->state->pendingSecretaryExperience()[$nation->id]['energy_saving']);
         $flush = app(SecretaryTurnService::class)->flushExperience($retry);
         $this->assertSame(30, $flush['experience_awarded']);

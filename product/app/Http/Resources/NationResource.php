@@ -25,11 +25,11 @@ class NationResource extends JsonResource
         $isOwner = $balances !== null;
         $basicStatus = app(NationBasicStatusProjection::class)->forNation($this->resource);
         $foodTotal = $basicStatus['food_total_tons'];
-        $resourceForecast = $balances === null
-            ? null
-            : app(NationResourceForecastProjection::class)->forNation($this->resource, $balances, $basicStatus);
         $capacities = $isOwner
             ? app(NationCapacityResolver::class)->resolve($this->resource)
+            : null;
+        $resourceForecast = $balances !== null && $capacities !== null
+            ? app(NationResourceForecastProjection::class)->forNation($this->resource, $balances, $basicStatus, $capacities)
             : null;
         $boundedAssets = $isOwner ? app(CapacityBoundedAssetService::class) : null;
         $moneyInUse = $boundedAssets?->moneyInUse($this->resource);

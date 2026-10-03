@@ -4,6 +4,7 @@ namespace App\Application;
 
 use App\Application\Underground\UndergroundFacilityBenefits;
 use App\Domain\Economy\FoodConsumptionPlanner;
+use App\Domain\Economy\NationCapacities;
 use App\Domain\Economy\NationEconomyCalculator;
 use App\Domain\Economy\PowerEconomyCalculator;
 use App\Domain\Economy\UnderseaCityMaintenancePlanner;
@@ -54,7 +55,7 @@ final class NationResourceForecastProjection
      *     workforce: array{status: string, label: string, percentage_tenths: int, population: int, demand: int}
      * }
      */
-    public function forNation(Nation $nation, Collection $balances, array $basicStatus): array
+    public function forNation(Nation $nation, Collection $balances, array $basicStatus, NationCapacities $capacities): array
     {
         $world = $nation->world()->firstOrFail();
         $ruleset = $world->rulesetVersion()->firstOrFail();
@@ -79,7 +80,7 @@ final class NationResourceForecastProjection
         $hasPower = isset($ruleset->settings['power_economy']);
         $facilityKeys = array_values(array_unique(array_filter([
             'factory', 'mine', $oilFacilityKey, $underseaCityFacilityKey,
-            ...($hasPower ? ['wind_power', 'condenser', 'pizzeria', 'thermal_power'] : []),
+            ...($hasPower ? ['wind_power', 'pizzeria', 'thermal_power'] : []),
         ], 'is_string')));
         $definitions = FacilityDefinition::query()
             ->whereIn('key', $facilityKeys)
@@ -108,14 +109,13 @@ final class NationResourceForecastProjection
         $underseaCityCellIds = [];
         $oilFieldCount = 0;
         $windCount = 0;
-        $condenserCount = 0;
         $pizzeriaScales = [];
         $thermalScales = [];
         $projectedFacilityIds = array_values(array_unique(array_filter([
             ...$industrialIds,
             (int) $oilField->id,
             $underseaCity instanceof FacilityDefinition ? (int) $underseaCity->id : null,
-            ...($hasPower ? $definitions->whereIn('key', ['wind_power', 'condenser', 'pizzeria', 'thermal_power'])->modelKeys() : []),
+            ...($hasPower ? $definitions->whereIn('key', ['wind_power', 'pizzeria', 'thermal_power'])->modelKeys() : []),
         ], 'is_int')));
         $facilityRows = DB::table('map_cells')
             ->where('owner_nation_id', $nation->id)
@@ -134,11 +134,6 @@ final class NationResourceForecastProjection
             }
             if ($definition->key === 'wind_power') {
                 $windCount += (int) ($row->facility_operational_state !== 'damaged');
-
-                continue;
-            }
-            if ($definition->key === 'condenser') {
-                $condenserCount++;
 
                 continue;
             }
@@ -262,7 +257,7 @@ final class NationResourceForecastProjection
             $enabled = in_array($effectiveNationState, ['active', 'recovery'], true);
             $funded = $this->power->fundedPizzerias($ruleset->settings, $enabled ? $pizzeriaScales : [], (int) $nation->money);
             $storedMw = (int) $this->balance($balancesByKey, 'power')->amount;
-            $capacityMw = $this->power->storageCapacity($ruleset->settings, $condenserCount);
+            $capacityMw = $capacities->resources['power'];
             // Oil fields produce later in process_cells, after this settlement.
             $fuelOil = (int) $this->balance($balancesByKey, 'oil')->amount;
             $fuelMinerals = (int) $this->balance($balancesByKey, 'minerals')->amount + $economy['minerals_production'] - $maintenance['minerals_consumed'];

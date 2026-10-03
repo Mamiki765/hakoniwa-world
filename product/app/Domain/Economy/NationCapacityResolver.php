@@ -66,6 +66,9 @@ final class NationCapacityResolver
         [$centralMoney, $centralFood, $powerCapacity] = $this->facilityCapacityBonuses($nation, $ruleset);
         $baseMoney = $this->checkedAdd($baseMoney, $centralMoney, 'money');
         $baseFood = $this->checkedAdd($baseFood, $centralFood, 'food');
+        if (isset($ruleset->settings['power_economy'])) {
+            $resourceCapacities['power'] = $powerCapacity;
+        }
 
         $expectedSkillCount = null;
         $secretaryBonus = $ruleset->settings['secretary']['capacity_bonus'] ?? null;
@@ -106,10 +109,6 @@ final class NationCapacityResolver
             foreach ($resourceCapacities as $resourceKey => $capacity) {
                 $resourceCapacities[$resourceKey] = $this->applyPercentageGenres($capacity, $resourceItemPercent);
             }
-        }
-
-        if (isset($ruleset->settings['power_economy'])) {
-            $resourceCapacities['power'] = $powerCapacity;
         }
 
         return new NationCapacities($baseMoney, $baseFood, $resourceCapacities);
