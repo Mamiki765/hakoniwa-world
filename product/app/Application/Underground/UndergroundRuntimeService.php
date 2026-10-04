@@ -2326,7 +2326,8 @@ STORY;
                 'current_hp_before' => $currentHpBefore, 'max_hp_before' => $maxHpBefore,
                 'current_hp_after' => $profile->current_hp, 'max_hp_after' => $maxHpAfter,
                 'party_awakening' => $result->awakening, 'awakening' => $result->awakening[$leaderId],
-                'xp_curve' => $settlement['xp_curve'], 'stp_awarded' => $settlement['stp_awarded']]),
+                'xp_curve' => $settlement['xp_curve'], 'stp_awarded' => $settlement['stp_awarded'],
+                'unspent_stp_after' => $profile->unspent_stp]),
             'compaction_version' => UndergroundBattleStorage::COMPACTION_VERSION, 'compacted_at' => $finishedAt,
             'started_at' => $startedAt, 'finished_at' => $finishedAt,
         ]);

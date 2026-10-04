@@ -43,7 +43,7 @@ final class UndergroundMadMoonTest extends UndergroundPlayerAccessTestCase
         $user->forceFill(['visitor_code' => '41400001'])->save();
         $profile = $this->openEquipmentProfile($secretary);
         $profile->update(['mad_moon_unlocked_at' => now(), 'current_hp' => 123, 'awakening_gauge' => 67,
-            'next_battle_at' => now()->addHour()]);
+            'unspent_stp' => 7, 'next_battle_at' => now()->addHour()]);
         UndergroundTrialProgress::query()->create(['underground_profile_id' => $profile->id,
             'trial_key' => 'trial_01', 'unlocked_at' => now(), 'first_cleared_at' => now()]);
         config(['underground-alpha-v1.mad_moon.enemy.max_hp' => 1,
@@ -54,6 +54,7 @@ final class UndergroundMadMoonTest extends UndergroundPlayerAccessTestCase
         $rentalBefore = $profile->rental_party;
         $beforeXp = $profile->combat_xp;
         $beforeGold = $profile->shard_balance;
+        $beforeStp = $profile->unspent_stp;
         $request = ['request_id' => (string) Str::uuid()];
         $battle = $this->actingAs($user)->postJson('/api/v1/me/underground/mad-moon', $request)->assertOk()
             ->assertJsonPath('data.result', 'victory')->assertJsonPath('data.current_hp_before', 123)
@@ -61,13 +62,18 @@ final class UndergroundMadMoonTest extends UndergroundPlayerAccessTestCase
             ->assertJsonPath('data.xp_awarded', 200000)->assertJsonPath('data.shard_delta', 120000)->json('data');
         $this->assertSame($beforeXp + 200000, $profile->fresh()->combat_xp);
         $this->assertSame($beforeGold + 120000, $profile->fresh()->shard_balance);
+        $this->assertGreaterThan($battle['combat_level_before'], $battle['combat_level_after']);
+        $this->assertGreaterThan(0, $battle['stp_awarded']);
+        $this->assertSame($beforeStp + $battle['stp_awarded'], $battle['unspent_stp_after']);
+        $this->assertSame($profile->fresh()->unspent_stp, $battle['unspent_stp_after']);
         $this->assertSame($equipmentBefore, $profile->ownedEquipment()->count());
         $this->assertSame($rentalBefore, $profile->fresh()->rental_party);
         $this->assertSame($battle['current_hp_after'], $profile->fresh()->current_hp);
         $this->assertSame($battle['awakening']['gauge_after'], $profile->fresh()->awakening_gauge);
         $this->assertCount(2, $battle['party']['members']);
         $this->assertFalse($battle['initial_state']['npc:guide']['awakening_unlocked']);
-        $this->postJson('/api/v1/me/underground/mad-moon', $request)->assertOk()->assertJsonPath('data.id', $request['request_id']);
+        $this->postJson('/api/v1/me/underground/mad-moon', $request)->assertOk()->assertJsonPath('data.id', $request['request_id'])
+            ->assertJsonPath('data.unspent_stp_after', $battle['unspent_stp_after']);
         $this->assertSame($beforeGold + 120000, $profile->fresh()->shard_balance);
         UndergroundBattle::query()->where('underground_profile_id', $profile->id)->delete();
         $this->postJson('/api/v1/me/underground/mad-moon', ['request_id' => (string) Str::uuid()])->assertConflict();
