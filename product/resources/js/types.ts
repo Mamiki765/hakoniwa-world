@@ -356,6 +356,14 @@ export interface Announcement {
 
 export interface World { id: number; key: string; name: string; turn: number }
 export interface MapBounds { min_x: number; max_x: number; min_y: number; max_y: number }
+export type WeatherKey = 'sunny' | 'cloudy' | 'rain' | 'snow' | 'thunder' | 'typhoon' | 'meteor_shower' | 'huge_meteor';
+export interface SeaArea {
+    chunk_x: number;
+    chunk_y: number;
+    name: string;
+    bounds: MapBounds;
+    weather: { key: WeatherKey; label: string; turn: number; asset: AssetDescriptor } | null;
+}
 export interface MapSpace {
     id: number;
     world_id: number;
@@ -363,6 +371,7 @@ export interface MapSpace {
     name: string;
     bounds_revision: string;
     bounds: MapBounds;
+    sea_areas?: SeaArea[];
 }
 
 export interface Nation {

@@ -11,6 +11,7 @@ use App\Models\MonsterDefinition;
 use App\Models\Nation;
 use App\Models\NationMonsterKillStat;
 use App\Models\World;
+use App\Services\SeaAreaWeatherPresenter;
 use App\Support\MoneyFormatter;
 use DomainException;
 use Illuminate\Support\Collection;
@@ -26,6 +27,7 @@ final class PublicWorldService
         private readonly HakoniwaCalendar $calendar,
         private readonly MonsterDisplayOrderResolver $monsterDisplayOrders,
         private readonly UndergroundSurfaceMapProjection $undergroundMaps,
+        private readonly SeaAreaWeatherPresenter $weather,
     ) {}
 
     /** @return array<string, mixed> */
@@ -84,6 +86,7 @@ final class PublicWorldService
         $mapSpace = MapSpace::query()
             ->where('world_id', $nation->world_id)
             ->where('key', config('hakoniwa.world.map_space_key'))
+            ->with('chunks:id,map_space_id,chunk_x,chunk_y,weather_key,weather_turn')
             ->firstOrFail();
         $capital = $nation->capital()->first();
         $secretaryId = DB::table('nation_memberships as membership')
@@ -141,6 +144,7 @@ final class PublicWorldService
                 'key' => $mapSpace->key,
                 'name' => $mapSpace->name,
                 'bounds_revision' => $mapSpace->boundsRevision(),
+                'sea_areas' => $this->weather->present($mapSpace),
                 'bounds' => [
                     'min_x' => $mapSpace->min_x,
                     'max_x' => $mapSpace->max_x,
