@@ -7,6 +7,7 @@ use App\Models\UndergroundBattle;
 use App\Models\UndergroundContentClearProgress;
 use App\Models\UndergroundTrialProgress;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Str;
 use Tests\Support\UndergroundPlayerAccessTestCase;
 
@@ -86,6 +87,12 @@ final class UndergroundMadMoonTest extends UndergroundPlayerAccessTestCase
         $this->postJson('/api/v1/me/underground/mad-moon', $request)->assertOk()->assertJsonPath('data.id', $request['request_id'])
             ->assertJsonPath('data.unspent_stp_after', $battle['unspent_stp_after']);
         $this->assertSame($beforeGold + 120000, $profile->fresh()->shard_balance);
+        $this->assertSame(0, Artisan::call('underground:statistics', ['--activity' => [UndergroundBattle::ACTIVITY_EVENT]]));
+        $eventReport = json_decode(explode("\n", trim(Artisan::output()))[0], true, 512, JSON_THROW_ON_ERROR);
+        $this->assertSame(1, $eventReport['battle_count']);
+        $this->assertSame(0, Artisan::call('underground:statistics'));
+        $defaultReport = json_decode(explode("\n", trim(Artisan::output()))[0], true, 512, JSON_THROW_ON_ERROR);
+        $this->assertSame(0, $defaultReport['battle_count']);
         UndergroundBattle::query()->where('underground_profile_id', $profile->id)->delete();
         $this->postJson('/api/v1/me/underground/mad-moon', ['request_id' => (string) Str::uuid()])->assertConflict();
         $this->getJson('/api/v1/me/underground')->assertOk()->assertJsonPath('data.mad_moon.victory_pending', true)
