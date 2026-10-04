@@ -96,8 +96,12 @@ final class DatabaseBaselineAdoptionTest extends TestCase
 
     private function legacyLedger(): void
     {
-        // This test owns the pre-v28 baseline boundary; restore its exact skill
-        // constraint before adopting its marker. Later upgrades have their own tests.
+        // This test owns the pre-v28 baseline boundary; restore its exact schema
+        // and skill constraint before adopting its marker. Later upgrades have their own tests.
+        DB::statement('ALTER TABLE map_chunks DROP CONSTRAINT map_chunks_weather_check');
+        Schema::table('map_chunks', static function ($table): void {
+            $table->dropColumn(['weather_key', 'weather_turn']);
+        });
         Schema::drop('oil_discovery_backfills');
         DB::table('secretary_skills')->whereIn('skill_key', ['energy_saving', 'oil_development'])->delete();
         DB::statement('ALTER TABLE secretary_skills DROP CONSTRAINT secretary_skills_key_check');
