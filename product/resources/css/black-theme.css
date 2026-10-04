@@ -59,7 +59,7 @@ html[data-theme="black"] :is(.manual-header a, .contact-action a):is(:link, :vis
 html[data-theme="black"] :is(.modal-backdrop, .command-modal-backdrop, .command-entry-backdrop) { background: var(--backdrop); }
 
 /* HUD and map controls previously used white ink on the solid primary color. */
-html[data-theme="black"] :is(.world-stats, .nation-hud, .map-toolbar) { color: var(--ink); background: var(--paper-deep); border-color: var(--line); }
+html[data-theme="black"] :is(.world-stats, .nation-hud, .map-toolbar) { --hud-gauge-surface: var(--paper-deep); color: var(--ink); background: var(--paper-deep); border-color: var(--line); }
 html[data-theme="black"] :is(.world-stats div, .hud-primary > div, .resource-forecast th, .resource-forecast td) { border-color: var(--line); }
 html[data-theme="black"] :is(.world-stats dt, .hakoniwa-calendar, .nation-hud .profile-owner, .turn-indicator, .hud-primary dt, .hud-capacity-limit, .hud-more span, .hud-details dt, .resource-forecast-note, .resource-forecast thead th) { color: var(--muted); }
 html[data-theme="black"] :is(.hud-more, .resource-forecast h2, .hud-support h2, .resource-forecast tbody th) { color: var(--ink); }

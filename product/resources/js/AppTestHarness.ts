@@ -61,7 +61,7 @@ export const ownerNationFixture: Nation = {
     dormancy_remaining_turns: null, dormancy_remaining_days: null, abandonment_remaining_turns: 2060,
     can_request_dormancy: true, winter_theme_active: false, current_turn: 1, registered_turn: 1,
     survival_turns: 0, finance_only_turns: 100, activity_status: 'finance_only', total_population: 1000,
-    territory_cell_count: 19, owned_land_cells: 17, capital: { x: 12, y: 8 },
+    territory_cell_count: 19, owned_land_cells: 17, safe_land_cells: 100, capital: { x: 12, y: 8 },
 };
 
 export const undergroundAsset = (key: string, fallbackLabel: string): AssetDescriptor => ({

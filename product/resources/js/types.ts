@@ -410,6 +410,7 @@ export interface Nation {
     total_population: number;
     territory_cell_count: number;
     owned_land_cells: number;
+    safe_land_cells: number;
     capital: { x: number; y: number } | null;
 }
 

@@ -424,7 +424,7 @@ describe('application lobby and island entry', () => {
             abandonment_remaining_turns: 2160, can_request_dormancy: true,
             winter_theme_active: false, current_turn: 1, registered_turn: 1,
             survival_turns: 0, finance_only_turns: 0, activity_status: 'active', total_population: 1000,
-            territory_cell_count: 19, owned_land_cells: 17, capital: { x: 12, y: 8 },
+            territory_cell_count: 19, owned_land_cells: 17, safe_land_cells: 100, capital: { x: 12, y: 8 },
         } as Nation;
         let summaryCalls = 0;
         let nationCalls = 0;
@@ -1008,7 +1008,12 @@ describe('application lobby and island entry', () => {
             total_food_tons: 10000, food_total_tons: 10000,
             food_capacity_tons: 999900, food_remaining_capacity_tons: 989900, food_is_at_capacity: false,
             farm_capacity_people: 10000, factory_capacity_people: 20000, mine_capacity_people: 30000,
-            resource_forecast: resourceForecastFixture,
+            resource_forecast: {
+                ...resourceForecastFixture,
+                rows: resourceForecastFixture.rows.map((row) => row.key === 'food'
+                    ? { ...row, holding: 10000, production: 50000, consumption: 60000, delta: -10000 }
+                    : row),
+            },
             food_resources: [
                 { key: 'wheat', name: '小麦', balance: 10000, unit: 'ton', unit_label: 'トン' },
                 { key: 'fish', name: '魚', balance: 0, unit: 'ton', unit_label: 'トン' },
@@ -1020,8 +1025,8 @@ describe('application lobby and island entry', () => {
             dormancy_remaining_days: null, abandonment_remaining_turns: 2160,
             can_request_dormancy: true, winter_theme_active: false,
             current_turn: 1, registered_turn: 1, survival_turns: 0,
-            finance_only_turns: 0, activity_status: 'active', total_population: 1000, territory_cell_count: 19,
-            owned_land_cells: 17,
+            finance_only_turns: 0, activity_status: 'active', total_population: 1000, territory_cell_count: 125,
+            owned_land_cells: 123, safe_land_cells: 123,
             capital: { x: 12, y: 8 },
             resources: [
                 { key: 'wheat', name: '小麦', category: 'food', unit: 'ton', unit_label: 'トン', nutrition_per_unit: 1, storable: true, tradable: true, amount: 10000, capacity: 999900, remaining_capacity: 989900, is_at_capacity: false },
@@ -1116,6 +1121,13 @@ describe('application lobby and island entry', () => {
             if (path.includes('/api/v1/public/nations/7/map-spaces/2/chunks/')) return response(emptyChunk);
             if (path === '/api/v1/nations/3/profile' && init?.method === 'PATCH') return response({
                 ...nation, owner_name: '更新島主', comment: '<b>更新コメント</b>',
+                owned_land_cells: 124,
+                resource_forecast: {
+                    ...nation.resource_forecast,
+                    rows: nation.resource_forecast.rows.map((row) => row.key === 'food'
+                        ? { ...row, production: 49999, delta: -10001 }
+                        : row),
+                },
             });
             if (path === '/api/v1/worlds/1/map-spaces') return response([{
                 id: 2, world_id: 1, key: 'surface', name: '地上', bounds_revision: 'bounds-0-59', bounds: { min_x: 0, max_x: 59, min_y: 0, max_y: 59 },
@@ -1279,7 +1291,10 @@ describe('application lobby and island entry', () => {
         expect(surfaceCommandRequest).toContain('target_y=8');
         expect(surfaceCommandRequest).not.toContain('target_layer');
         expect(wrapper.find('.hud-primary').text()).toContain('人口1,000人');
-        expect(wrapper.find('.hud-primary').text()).toContain('面積17セル');
+        expect(wrapper.get('[role="meter"][aria-label="面積（安全面積）"]').attributes('aria-valuetext')).toBe('123 / 123');
+        expect(wrapper.get('[role="meter"][aria-label="資金（保管容量）"]').attributes('aria-valuetext')).toBe('62,728 / 9,999');
+        expect(wrapper.get('[role="meter"][aria-label="資金（保管容量）"]').attributes('aria-valuenow')).toBe('9999');
+        expect(wrapper.get('[role="meter"][aria-label="食料（保管容量）"]').attributes('aria-valuetext')).toBe('10,000 / 999,900');
         expect(wrapper.find('.hud-primary').text()).toContain('食料10,000トン');
         expect(wrapper.find('.hud-primary').text()).toContain('農場規模10,000人');
         expect(wrapper.find('.hud-primary').text()).toContain('工場規模20,000人');
@@ -1293,9 +1308,9 @@ describe('application lobby and island entry', () => {
             '資源', '生産', '消費', '予測', '所持',
         ]);
         expect(wrapper.findAll('.resource-forecast tbody tr')).toHaveLength(4);
-        expect(wrapper.findAll('.resource-forecast tbody tr')[0]!.text()).toContain('食料（小麦換算）55,00060,000−5,00012,000');
+        expect(wrapper.findAll('.resource-forecast tbody tr')[0]!.text()).toContain('食料（小麦換算）50,00060,000−10,00010,000');
         expect(wrapper.find('.resource-forecast .forecast-positive').text()).toBe('+15,000');
-        expect(wrapper.find('.resource-forecast .forecast-negative').text()).toBe('−5,000');
+        expect(wrapper.find('.resource-forecast .forecast-negative').text()).toBe('−10,000');
         expect(wrapper.find('.workforce-forecast').text()).toContain('失業率 16.0%');
         expect(wrapper.find('.hud-details').text()).toContain('資金上限9,999億円');
         expect(wrapper.find('.hud-details').text()).toContain('食材上限999,900トン');
@@ -1377,6 +1392,8 @@ describe('application lobby and island entry', () => {
         expect(wrapper.find('.nation-hud').text()).toContain('島主：更新島主');
         expect(wrapper.find('.nation-hud').text()).toContain('<b>更新コメント</b>');
         expect(wrapper.find('.nation-hud b').exists()).toBe(false);
+        expect(wrapper.get('[role="meter"][aria-label="面積（安全面積）"]').attributes('aria-valuetext')).toBe('124 / 123 DANGER');
+        expect(wrapper.get('[role="meter"][aria-label="食料（保管容量）"]').attributes('aria-valuetext')).toBe('10,000 / 999,900 DANGER');
         const patchRequest = fetchMock.mock.calls.find(([path]) => String(path) === '/api/v1/nations/3/profile');
         expect(JSON.parse(String(patchRequest?.[1]?.body))).toEqual({ owner_name: '更新島主', comment: '<b>更新コメント</b>' });
         const patchIndex = fetchMock.mock.calls.findIndex(([path]) => String(path) === '/api/v1/nations/3/profile');
