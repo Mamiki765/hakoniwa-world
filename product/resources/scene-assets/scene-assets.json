@@ -52,6 +52,11 @@
       "file": "background/450-twilight-castle.png",
       "creation_method": "ai_generated",
       "show_credit": true
+    },
+    "bg.yunagi_harbor": {
+      "file": "background/4140-yunagi-harbor.jpeg",
+      "creation_method": "ai_generated",
+      "show_credit": true
     }
   },
   "scenes": {
@@ -87,6 +92,7 @@
     "hunting_ground.shallow_caves": { "background": "bg.shallow_caves" },
     "hunting_ground.black_crystal_cave": { "background": "bg.black_crystal_cave" },
     "hunting_ground.shining_kingdom": { "background": "bg.shining_kingdom" },
-    "trial_03.twilight_castle": { "background": "bg.twilight_castle" }
+    "trial_03.twilight_castle": { "background": "bg.twilight_castle" },
+    "hunting_ground.yunagi_harbor": { "background": "bg.yunagi_harbor" }
   }
 }

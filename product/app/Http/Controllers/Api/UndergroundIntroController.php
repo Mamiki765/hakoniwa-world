@@ -75,7 +75,7 @@ final class UndergroundIntroController extends Controller
 
     public function advanceLoungeEvent(UndergroundIntroMutationRequest $request, UndergroundIntroService $service): JsonResponse
     {
-        $request->validate(['event' => ['required', 'string', 'in:exchange,mirror,polishing,otherworld'], 'page' => ['required', 'integer', 'min:1', 'max:2']]);
+        $request->validate(['event' => ['required', 'string', 'in:exchange,mirror,polishing,otherworld,yunagi_harbor'], 'page' => ['required', 'integer', 'min:1', 'max:2']]);
 
         return $this->respond(fn (): array => $service->advanceLoungeEvent(
             $request->user(), $request->string('request_id')->value(), $request->string('event')->value(), $request->integer('page'),

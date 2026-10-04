@@ -70,6 +70,10 @@ final readonly class UndergroundScenePresenter
             'background' => $this->assets->scene('hunting_ground.shining_kingdom', $showAi, false)['background'],
             'actors' => $scenes['shop']['actors'],
         ];
+        $scenes['yunagi-harbor-intro'] = [
+            'background' => $this->assets->scene('hunting_ground.yunagi_harbor', $showAi, false)['background'],
+            'actors' => $scenes['shop']['actors'],
+        ];
 
         return [
             'display_name' => $this->portraits->battleDisplayName($secretary),

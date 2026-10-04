@@ -4,6 +4,7 @@ import { flushPromises, mount } from '@vue/test-utils';
 import { describe, expect, it, vi } from 'vitest';
 import App from './App.vue';
 import UndergroundPanel from './components/UndergroundPanel.vue';
+import yunagiHarborStory from '../stories/yunagi-harbor.json';
 import { response as baseResponse, ownerNationFixture, unnamedSecretaryFixture, publicResponse, publicDetail, emptyChunk, installAppTestLifecycle } from './AppTestHarness';
 
 const response = (data: unknown, status = 200) => baseResponse(withUndergroundDefaults(data), status);
@@ -11,6 +12,52 @@ const response = (data: unknown, status = 200) => baseResponse(withUndergroundDe
 installAppTestLifecycle();
 
 describe('Underground application operations', () => {
+    it('shows the harbor intro only at home, interpolates names as text, and persists completion through the event route', async () => {
+        let available = true;
+        const name = '<img src=x onerror=alert(1)>$&';
+        const state = () => ({
+            stage: 'underground_open', secretary_name: name, combat_level: 1, combat_xp: 0,
+            next_level_xp: 100, next_level_requirement: 100, current_hp: 100, unspent_stp: 0,
+            skill_points_total: 0, skill_points_unspent: 0, skill_points_spent: 0,
+            skill_trees: null, active_slots: [], passive_modifiers: {},
+            growth_path: null, battle: null, trial: null, yunagi_harbor_intro_available: available,
+        });
+        const requests: Array<Record<string, unknown>> = [];
+        stubUndergroundFetch(vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+            const path = String(input);
+            if (path === '/api/v1/me/underground') return response(state());
+            if (path === '/api/v1/me/underground/battles') return response([]);
+            if (path === '/api/v1/me/underground/events/advance') {
+                requests.push(JSON.parse(String(init?.body)));
+                available = false;
+                return response(state());
+            }
+            return response(null, 404);
+        }));
+        const wrapper = mount(UndergroundPanel);
+        await flushPromises();
+        const event = () => wrapper.find('section[aria-label="物語"]');
+        expect(event().get('h2').text()).toBe(yunagiHarborStory.title);
+        expect(event().text()).toContain(name);
+        expect(event().text()).not.toContain('(秘書名)');
+        expect(event().find('img').exists()).toBe(false);
+        await openUndergroundView(wrapper, 'ショップ');
+        expect(event().exists()).toBe(false);
+        expect(requests).toHaveLength(0);
+        await openUndergroundView(wrapper, 'ホーム');
+        await event().get('button').trigger('click');
+        await flushPromises();
+        expect(requests).toHaveLength(1);
+        expect(requests[0]).toMatchObject({ event: 'yunagi_harbor', page: 1 });
+        expect(requests[0]?.request_id).toBeTruthy();
+        expect(event().exists()).toBe(false);
+        wrapper.unmount();
+        const restored = mount(UndergroundPanel);
+        await flushPromises();
+        expect(restored.find('section[aria-label="物語"]').exists()).toBe(false);
+        restored.unmount();
+    });
+
     it('refreshes the free stone reminder at JST midnight and after resuming, and clears it after receipt', async () => {
         vi.useFakeTimers();
         // The device is five minutes ahead of the server's JST clock.

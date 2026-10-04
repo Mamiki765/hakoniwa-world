@@ -288,7 +288,7 @@ final readonly class UndergroundIntroService
     /** @return array<string, mixed> */
     public function advanceLoungeEvent(User $user, string $requestId, string $event, int $page): array
     {
-        if (! in_array($event, ['exchange', 'mirror', 'polishing', 'otherworld'], true)
+        if (! in_array($event, ['exchange', 'mirror', 'polishing', 'otherworld', 'yunagi_harbor'], true)
             || ! in_array($page, $event === 'exchange' ? [1, 2] : [1], true)) {
             throw new UndergroundRuntimeException('underground_event_invalid', 'イベントの進行を確認してください。');
         }
@@ -299,6 +299,15 @@ final readonly class UndergroundIntroService
             UndergroundIntroProgress $intro,
         ) use ($event, $page): void {
             $this->assertShopUnlocked($profile, $intro);
+            if ($event === 'yunagi_harbor') {
+                if (! $this->hasYunagiHarborFirstClear($profile)) {
+                    throw new UndergroundRuntimeException('underground_yunagi_harbor_locked', '試練3を初回クリアすると読めます。');
+                }
+                $profile->yunagi_harbor_intro_completed_at ??= Carbon::now();
+                $profile->save();
+
+                return;
+            }
             if ($event === 'otherworld') {
                 if ($profile->otherworld_discovered_at === null && ! $this->runtime->canDiscoverOtherworld($profile)) {
                     throw new UndergroundRuntimeException('underground_otherworld_locked', '試練2をクリアし、Lv100以上になってからショップを訪ねてください。');
@@ -1821,6 +1830,8 @@ final readonly class UndergroundIntroService
             'distorted_stone_shop' => $distortedStoneShop,
             'distorted_stone_reminder' => $this->firstDistortedStoneUnclaimedForProfile($profile, $distortedStoneShop['purchased_today']),
             'polishing_tutorial_completed' => $profile?->polishing_tutorial_completed_at !== null,
+            'yunagi_harbor_intro_available' => $profile instanceof UndergroundProfile
+                && $profile->yunagi_harbor_intro_completed_at === null && $this->hasYunagiHarborFirstClear($profile),
             'otherworld_intro_available' => $profile instanceof UndergroundProfile
                 && $profile->otherworld_discovered_at === null && $this->runtime->canDiscoverOtherworld($profile),
             'otherworld_unlocked' => $profile?->otherworld_discovered_at !== null,
@@ -2261,6 +2272,15 @@ final readonly class UndergroundIntroService
     private function initialGrowthPathKey(UndergroundProfile $profile): ?string
     {
         return $profile->introProgress?->initial_growth_path_key;
+    }
+
+    private function hasYunagiHarborFirstClear(UndergroundProfile $profile): bool
+    {
+        return UndergroundTrialProgress::query()
+            ->where('underground_profile_id', $profile->id)
+            ->where('trial_key', $this->alphaV1Catalog->explorationHuntingGround('yunagi_harbor')['required_trial_key'])
+            ->whereNotNull('first_cleared_at')
+            ->exists();
     }
 
     private function hasTrialTwoFirstClear(UndergroundProfile $profile): bool

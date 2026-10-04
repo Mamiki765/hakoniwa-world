@@ -2,6 +2,7 @@
 import stories from '../../stories/intro.json';
 import loungeStories from '../../stories/lounge.json';
 import otherworldStory from '../../stories/otherworld.json';
+import yunagiHarborStory from '../../stories/yunagi-harbor.json';
 import UndergroundHome from './UndergroundHome.vue';
 import UndergroundNavigation from './UndergroundNavigation.vue';
 import UndergroundScene from './UndergroundScene.vue';
@@ -505,6 +506,7 @@ interface UndergroundState {
         distorted_stone_balance: number;
     } | null;
     otherworld_intro_available?: boolean;
+    yunagi_harbor_intro_available?: boolean;
     otherworld_unlocked?: boolean;
     true_name_branch: boolean;
     tutorial_projection: {
@@ -668,6 +670,13 @@ const loungeReplay = ref<'exchange-1' | 'exchange-2' | 'mirror' | 'otherworld' |
 const activeLoungeEvent = computed(() => {
     const residence = state.value?.residence;
     if (!residence) return null;
+    if (currentDestination.value === 'home' && state.value?.yunagi_harbor_intro_available) {
+        return {
+            ...yunagiHarborStory,
+            body: yunagiHarborStory.body.map(line => line.replaceAll('(秘書名)', () => state.value?.secretary_name ?? '')),
+            key: 'yunagi_harbor', page: 1, scene: 'yunagi-harbor-intro',
+        };
+    }
     if (loungeReplay.value === 'otherworld' || currentDestination.value === 'shop' && state.value?.otherworld_intro_available) {
         return { ...otherworldStory, key: 'otherworld', page: 1, scene: 'otherworld-intro' };
     }

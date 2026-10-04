@@ -106,6 +106,37 @@ final class UndergroundResidenceTest extends UndergroundPlayerAccessTestCase
             ->assertJsonPath('data.lending_participation_count', 99);
     }
 
+    public function test_yunagi_harbor_intro_requires_trial_three_clear_and_remains_read_after_receipt_removal(): void
+    {
+        [$user, $secretary] = $this->secretaryUser('帰港地に進む秘書');
+        $profile = $this->openEquipmentProfile($secretary);
+        $progress = UndergroundTrialProgress::query()->create([
+            'underground_profile_id' => $profile->id, 'trial_key' => 'trial_03', 'unlocked_at' => now(),
+        ]);
+        $request = ['request_id' => (string) Str::uuid(), 'event' => 'yunagi_harbor', 'page' => 1];
+        $this->actingAs($user)->getJson('/api/v1/me/underground')->assertOk()
+            ->assertJsonPath('data.yunagi_harbor_intro_available', false);
+        $this->postJson('/api/v1/me/underground/events/advance', $request)->assertConflict();
+        $progress->update(['first_cleared_at' => now()]);
+        $this->getJson('/api/v1/me/underground')->assertOk()
+            ->assertJsonPath('data.yunagi_harbor_intro_available', true)
+            ->assertJsonPath('data.residence.mirror_owned', false);
+        $before = $profile->fresh()->only(['combat_xp', 'shard_balance', 'unlocked_area_layers']);
+        $this->postJson('/api/v1/me/underground/events/advance', $request)->assertOk()
+            ->assertJsonPath('data.yunagi_harbor_intro_available', false);
+        $completedAt = $profile->fresh()->yunagi_harbor_intro_completed_at;
+        $this->assertNotNull($completedAt);
+        $this->postJson('/api/v1/me/underground/events/advance', $request)->assertOk();
+        UndergroundIntroRequest::query()->where('underground_profile_id', $profile->id)->delete();
+        $this->getJson('/api/v1/me/underground')->assertOk()
+            ->assertJsonPath('data.yunagi_harbor_intro_available', false);
+        $this->postJson('/api/v1/me/underground/events/advance', [
+            ...$request, 'request_id' => (string) Str::uuid(),
+        ])->assertOk();
+        $this->assertEquals($completedAt, $profile->fresh()->yunagi_harbor_intro_completed_at);
+        $this->assertSame($before, $profile->fresh()->only(array_keys($before)));
+    }
+
     public function test_otherworld_discovery_requires_trial_two_and_level_one_hundred_and_survives_request_removal(): void
     {
         [$user, $secretary] = $this->secretaryUser('異世界に向かう秘書');
@@ -346,21 +377,27 @@ final class UndergroundResidenceTest extends UndergroundPlayerAccessTestCase
     public function test_home_background_requires_a_clear_and_ai_off_keeps_the_selection_without_exposing_the_ai_url(): void
     {
         [$user, $secretary] = $this->secretaryUser('背景を選ぶ秘書');
-        $profile = $this->openEquipmentProfile($secretary);
+        $profile = $this->openEquipmentProfile($secretary, 1_100_000);
         $this->actingAs($user)->patchJson('/api/v1/me/secretary/image-preferences', [
             'show_ai_generated_images' => true, 'own_secretary_fallback' => 'silhouette',
         ])->assertOk();
         $directory = storage_path('framework/testing/scene-'.Str::uuid());
         File::ensureDirectoryExists($directory.'/background');
+        File::ensureDirectoryExists($directory.'/npc');
         copy(resource_path('images/underground-placeholder.jpg'), $directory.'/background/area.jpg');
+        copy(resource_path('images/underground-placeholder.jpg'), $directory.'/npc/guide.jpg');
         file_put_contents($directory.'/scene-assets.json', json_encode([
             'assets' => [
                 'cave' => ['file' => 'background/area.jpg', 'creation_method' => 'ai_generated'],
                 'castle' => ['file' => 'background/area.jpg', 'creation_method' => 'ai_generated'],
+                'harbor' => ['file' => 'background/area.jpg', 'creation_method' => 'ai_generated'],
+                'guide' => ['file' => 'npc/guide.jpg', 'creation_method' => 'commissioned_or_permitted'],
             ],
             'scenes' => [
                 'hunting_ground.black_crystal_cave' => ['background' => 'cave'],
                 'trial_03.twilight_castle' => ['background' => 'castle'],
+                'hunting_ground.yunagi_harbor' => ['background' => 'harbor'],
+                'shop' => ['actors' => [['asset' => 'guide', 'name' => '案内人']]],
             ],
         ], JSON_THROW_ON_ERROR));
         config(['hakoniwa.assets.path' => $directory]);
@@ -374,7 +411,9 @@ final class UndergroundResidenceTest extends UndergroundPlayerAccessTestCase
             $this->actingAs($user)->postJson('/api/v1/me/underground/home-background', $payload)->assertOk()
                 ->assertJsonPath('data.visuals.scenes.home.background.id', 'cave');
             $castle = ['key' => 'trial_03.twilight_castle', 'request_id' => (string) Str::uuid()];
+            $harbor = ['key' => 'hunting_ground.yunagi_harbor', 'request_id' => (string) Str::uuid()];
             $this->actingAs($user)->postJson('/api/v1/me/underground/home-background', $castle)->assertConflict();
+            $this->postJson('/api/v1/me/underground/home-background', $harbor)->assertConflict();
             foreach (['trial_02', 'trial_03'] as $trialKey) {
                 UndergroundTrialProgress::query()->create([
                     'underground_profile_id' => $profile->id, 'trial_key' => $trialKey,
@@ -384,14 +423,28 @@ final class UndergroundResidenceTest extends UndergroundPlayerAccessTestCase
             $this->actingAs($user)->postJson('/api/v1/me/underground/home-background', $castle)->assertOk()
                 ->assertJsonPath('data.visuals.scenes.home.background.id', 'castle')
                 ->assertJsonPath('data.visuals.scenes.home.background.creation_method', 'ai_generated');
+            $selected = $this->postJson('/api/v1/me/underground/home-background', $harbor)->assertOk()
+                ->assertJsonPath('data.visuals.scenes.home.background.id', 'harbor')
+                ->assertJsonPath('data.visuals.scenes.yunagi-harbor-intro.background.id', 'harbor')
+                ->assertJsonPath('data.visuals.scenes.yunagi-harbor-intro.actors', []);
+            $harborOption = collect($selected->json('data.visuals.home_backgrounds'))->firstWhere('key', $harbor['key']);
+            $this->assertSame(app(UndergroundAlphaV1PlayerCatalog::class)->explorationHuntingGround('yunagi_harbor')['name'], $harborOption['name']);
+            $this->postJson('/api/v1/me/underground/residence/purchase', [
+                'request_id' => (string) Str::uuid(), 'item' => 'villa',
+            ])->assertOk();
+            $this->postJson('/api/v1/me/underground/residence/purchase', [
+                'request_id' => (string) Str::uuid(), 'item' => 'mirror',
+            ])->assertOk()->assertJsonPath('data.visuals.scenes.yunagi-harbor-intro.actors.0.asset.id', 'guide');
             $this->actingAs($user)->patchJson('/api/v1/me/secretary/image-preferences', [
                 'show_ai_generated_images' => false, 'own_secretary_fallback' => 'silhouette',
             ])->assertOk();
             $this->actingAs($user->fresh())->getJson('/api/v1/me/underground')->assertOk()
                 ->assertJsonPath('data.visuals.scenes.home.background', null)
-                ->assertJsonPath('data.visuals.home_background_key', 'trial_03.twilight_castle')
-                ->assertJsonMissing(['id' => 'castle']);
-            $this->assertSame('trial_03.twilight_castle', $profile->fresh()->home_background_key);
+                ->assertJsonPath('data.visuals.home_background_key', $harbor['key'])
+                ->assertJsonPath('data.visuals.scenes.yunagi-harbor-intro.background', null)
+                ->assertJsonPath('data.visuals.scenes.yunagi-harbor-intro.actors.0.asset.id', 'guide')
+                ->assertJsonMissing(['id' => 'harbor']);
+            $this->assertSame($harbor['key'], $profile->fresh()->home_background_key);
         } finally {
             File::deleteDirectory($directory);
         }
