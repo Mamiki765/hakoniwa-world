@@ -20,7 +20,7 @@ it('preserves forecast values and uncertainty without units or explanations whil
         thermal_oil_display: 4, thermal_minerals_display: 0,
         capacity_mw: 1200, stored_after_mw: { minimum: 1090, maximum: 1120 },
         discarded_mw: { minimum: 0, maximum: 0 },
-        pizzeria_revenue: { minimum: 15, maximum: 16 }, pizzeria_maintenance: 1, pizzeria_unfunded: 0,
+        pizzeria_revenue: { minimum: 15, maximum: 16 },
     };
     vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
         const path = String(input);

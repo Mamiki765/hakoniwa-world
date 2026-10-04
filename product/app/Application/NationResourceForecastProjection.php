@@ -255,7 +255,6 @@ final class NationResourceForecastProjection
             ], $populationFood['resources']);
             $remainingNutrition = array_sum(array_map(static fn (array $row): int => $row['amount'] * $row['nutrition'], $remainingFoods));
             $enabled = in_array($effectiveNationState, ['active', 'recovery'], true);
-            $funded = $this->power->fundedPizzerias($ruleset->settings, $enabled ? $pizzeriaScales : [], (int) $nation->money);
             $storedMw = (int) $this->balance($balancesByKey, 'power')->amount;
             $capacityMw = $capacities->resources['power'];
             // Oil fields produce later in process_cells, after this settlement.
@@ -267,7 +266,7 @@ final class NationResourceForecastProjection
             $thermalMaximum = $this->power->thermalGeneration($ruleset->settings, $enabled ? $thermalScales : [], $fuelOil, $fuelMinerals, 0, 0);
             $forecast = $this->power->forecast(
                 $ruleset->settings, $storedMw, $capacityMw, $remainingNutrition,
-                $funded['scales'], $enabled ? $windCount : 0,
+                $enabled ? $pizzeriaScales : [], $enabled ? $windCount : 0,
                 $thermalMinimum['generated_mw'], $skillLevels['energy_saving'] ?? 0,
             );
             $ranges = $forecast['ranges'];
@@ -296,8 +295,7 @@ final class NationResourceForecastProjection
             $powerSummary = [
                 'wind_expected_mw' => $forecast['wind_expected_mw'], 'capacity_mw' => $capacityMw,
                 'stored_after_mw' => $ranges['stored_after_mw'], 'discarded_mw' => $ranges['discarded_mw'],
-                'pizzeria_revenue' => $ranges['pizzeria_revenue'], 'pizzeria_maintenance' => $funded['maintenance'],
-                'pizzeria_unfunded' => $funded['unfunded'],
+                'pizzeria_revenue' => $ranges['pizzeria_revenue'],
                 'thermal_generated_mw' => $thermalMinimum['generated_mw'],
                 'thermal_oil_display' => $thermalMaximum['oil_display'],
                 'thermal_minerals_display' => $thermalMaximum['minerals_display'],

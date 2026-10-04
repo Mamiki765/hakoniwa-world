@@ -12,7 +12,7 @@ final class CurrentRulesetContractTest extends TestCase
 {
     private const V28_CHECKSUM = '708aebb3dbf392e64a5349528240268d18b78a45b005a702f29e4ce155fd5bc8';
 
-    private const V29_CHECKSUM = 'b1377c85878f7895cb5093a7cb9374dd962b808a39ee43efbeae5228816b4bdf';
+    private const V29_CHECKSUM = '13407ee130b7c5ff661bc264cb237e6acea68afe36df49857d28498779100348';
 
     public function test_normal_config_loads_and_validates_v29_without_changing_the_v28_snapshot(): void
     {
