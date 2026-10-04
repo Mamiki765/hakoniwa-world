@@ -2,6 +2,7 @@
 
 namespace App\Domain\Turn;
 
+use App\Domain\Map\GridCoordinate;
 use App\Domain\Monster\MonsterSpawnSource;
 use App\Domain\Secretary\SecretarySkillCatalog;
 use InvalidArgumentException;
@@ -27,6 +28,21 @@ final class TurnState
 
     /** @var array<int, array{weather_key: string, chunk_x: int, chunk_y: int, min_x: int, max_x: int, min_y: int, max_y: int}>|null */
     private ?array $seaAreaWeather = null;
+
+    /** @var list<GridCoordinate> */
+    private array $weatherHugeMeteorCenters = [];
+
+    /** @param list<GridCoordinate> $centers */
+    public function setWeatherHugeMeteorCenters(array $centers): void
+    {
+        $this->weatherHugeMeteorCenters = $centers;
+    }
+
+    /** @return list<GridCoordinate> */
+    public function weatherHugeMeteorCenters(): array
+    {
+        return $this->weatherHugeMeteorCenters;
+    }
 
     /** @param array<int, array{weather_key: string, chunk_x: int, chunk_y: int, min_x: int, max_x: int, min_y: int, max_y: int}> $weather */
     public function setSeaAreaWeather(array $weather): void

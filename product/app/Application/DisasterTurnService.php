@@ -73,12 +73,11 @@ final class DisasterTurnService
         $definitions = [
             'earthquake' => [TurnRandomStreamFactory::GLOBAL_EARTHQUAKE_TRIGGER, TurnRandomStreamFactory::GLOBAL_EARTHQUAKE_CENTER],
             'tsunami' => [TurnRandomStreamFactory::GLOBAL_TSUNAMI_TRIGGER, TurnRandomStreamFactory::GLOBAL_TSUNAMI_CENTER],
-            'huge_meteor' => [TurnRandomStreamFactory::GLOBAL_HUGE_METEOR_TRIGGER, TurnRandomStreamFactory::GLOBAL_HUGE_METEOR_CENTER],
             'eruption' => [TurnRandomStreamFactory::GLOBAL_ERUPTION_TRIGGER, TurnRandomStreamFactory::GLOBAL_ERUPTION_CENTER],
         ];
 
         foreach ($definitions as $key => [$triggerLabel, $centerLabel]) {
-            if ($key === 'huge_meteor') {
+            if ($key === 'eruption') {
                 $weatherMetrics = $this->executeWeatherDisasters($context, $space, $rules, $cellIndex);
                 $metrics['executed_disasters'] += $weatherMetrics['executed_disasters'];
                 $metrics['damaged_cells'] += $weatherMetrics['damaged_cells'];
@@ -126,14 +125,6 @@ final class DisasterTurnService
                         $cellIndex,
                     ),
                     'tsunami' => $this->tsunami($context, $space, $center, $settings, $cellIndex),
-                    'huge_meteor' => $this->resolveHugeMeteorBlast(
-                        $context,
-                        $space,
-                        $center,
-                        $settings,
-                        cellIndex: $cellIndex,
-                        createBuriedTreasure: true,
-                    ),
                     'eruption' => $this->eruption($context, $space, $center, $settings, $cellIndex),
                 };
             }
@@ -187,20 +178,27 @@ final class DisasterTurnService
     ): array {
         $regions = array_filter($context->state->seaAreaWeather(),
             static fn (array $region): bool => in_array($region['weather_key'], ['typhoon', 'meteor_shower'], true));
+        $centers = $context->state->weatherHugeMeteorCenters();
         $metrics = ['executed_disasters' => 0, 'damaged_cells' => 0];
-        if ($regions === []) {
+        if ($regions === [] && $centers === []) {
             return $metrics;
         }
         $cellIndex ??= $this->newMutableCellIndex($context);
-        // One batched load for all winning areas, including the one-cell windbreak halo.
+        // One load for weather areas + windbreak halos and all huge meteor blasts, clipped to the World.
         $cells = MapCell::query()->where('map_space_id', $space->id)
             ->whereBetween('x', [$space->min_x, $space->max_x])
             ->whereBetween('y', [$space->min_y, $space->max_y])
-            ->where(function ($query) use ($regions): void {
+            ->where(function ($query) use ($regions, $centers): void {
                 foreach ($regions as $region) {
                     $query->orWhere(function ($area) use ($region): void {
                         $area->whereBetween('x', [$region['min_x'] - 1, $region['max_x'] + 1])
                             ->whereBetween('y', [$region['min_y'] - 1, $region['max_y'] + 1]);
+                    });
+                }
+                foreach ($centers as $center) {
+                    $query->orWhere(function ($blast) use ($center): void {
+                        $blast->whereBetween('x', [$center->x - 2, $center->x + 2])
+                            ->whereBetween('y', [$center->y - 2, $center->y + 2]);
                     });
                 }
             })->orderBy('id')->lockForUpdate()->with(['terrain', 'facility'])->get();
@@ -240,6 +238,21 @@ final class DisasterTurnService
                 $metrics['damaged_cells'] += $this->meteorShower($context, $space, $origin, $rules[$key], $cellIndex, $coordinates, $stream, $ships);
             }
             $metrics['executed_disasters']++;
+        }
+        if ($centers !== []) {
+            $ships ??= $this->shipRemoval->lockActiveWorldIndex($context);
+            $shipBatch = new SurfaceShipTurnBatch($ships->filter(static fn (Ship $ship): bool => $ship->state === Ship::STATE_ACTIVE), []);
+            foreach ($centers as $center) {
+                // Keep the old center-based player log, including centers in the outside border.
+                $this->events->record($context, 'disaster.triggered', $context->world, [
+                    'disaster_key' => 'huge_meteor', 'center_x' => $center->x, 'center_y' => $center->y,
+                ]);
+                $metrics['damaged_cells'] += $this->resolveHugeMeteorBlast(
+                    $context, $space, $center, $rules['huge_meteor'],
+                    cellIndex: $cellIndex, shipBatch: $shipBatch, createBuriedTreasure: true,
+                );
+                $metrics['executed_disasters']++;
+            }
         }
 
         return $metrics;

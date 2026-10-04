@@ -2,7 +2,9 @@
 
 namespace App\Application;
 
+use App\Domain\Disaster\HugeMeteorWeatherDistribution;
 use App\Domain\Disaster\SeaAreaWeatherLottery;
+use App\Domain\Map\GridCoordinate;
 use App\Domain\Turn\TurnContext;
 use App\Domain\Turn\TurnRandomStreamFactory;
 use App\Models\MapChunk;
@@ -19,7 +21,15 @@ final class SeaAreaWeatherService
             return count($context->state->seaAreaWeather());
         }
         $settings = $context->ruleset->settings['turn_processing']['sea_area_weather'];
-        $size = $context->ruleset->settings['chunk_size'];
+        $bounds = $space->currentBounds();
+        $hugeMeteor = $context->ruleset->settings['turn_processing']['disasters']['huge_meteor'];
+        $distribution = new HugeMeteorWeatherDistribution($bounds, $hugeMeteor['center_padding'], $hugeMeteor['probability']);
+        $outsideStream = $context->random->stream(TurnRandomStreamFactory::weatherHugeMeteorOutside($settings['stream_version']));
+        $centers = [];
+        $outsideCount = $distribution->drawOutsideCount($outsideStream);
+        for ($index = 0; $index < $outsideCount; $index++) {
+            $centers[] = $distribution->drawOutsideCenter($outsideStream);
+        }
         $chunks = MapChunk::query()->where('map_space_id', $space->id)
             ->whereExists(function ($query) use ($space): void {
                 $query->selectRaw('1')->from('map_cells')
@@ -30,17 +40,22 @@ final class SeaAreaWeatherService
         $records = [];
         $updates = [];
         foreach ($chunks as $chunk) {
-            $draw = $context->random->stream(TurnRandomStreamFactory::seaAreaWeather(
-                $chunk->chunk_x, $chunk->chunk_y, $settings['stream_version'],
-            ))->integer(0, $settings['denominator'] - 1);
-            $key = $this->lottery->select($settings, $draw);
+            $region = $bounds->intersectionWithChunk($chunk->chunk_x, $chunk->chunk_y);
+            if ($region === null) {
+                continue;
+            }
+            $width = $region['max_x'] - $region['min_x'] + 1;
+            $area = $width * ($region['max_y'] - $region['min_y'] + 1);
+            $key = $this->lottery->draw($settings, $distribution->internalProbability($area),
+                $context->random->stream(TurnRandomStreamFactory::seaAreaWeather($chunk->chunk_x, $chunk->chunk_y, $settings['stream_version'])));
+            if ($key === 'huge_meteor') {
+                $impact = $context->random->stream(TurnRandomStreamFactory::seaAreaWeatherEffect($key, $chunk->chunk_x, $chunk->chunk_y, $settings['stream_version']))->integer(0, $area - 1);
+                $centers[] = new GridCoordinate($region['min_x'] + $impact % $width, $region['min_y'] + intdiv($impact, $width));
+            }
             $records[$chunk->id] = [
                 'weather_key' => $key,
                 'chunk_x' => $chunk->chunk_x, 'chunk_y' => $chunk->chunk_y,
-                'min_x' => max($space->min_x, $chunk->chunk_x * $size),
-                'max_x' => min($space->max_x, ($chunk->chunk_x + 1) * $size - 1),
-                'min_y' => max($space->min_y, $chunk->chunk_y * $size),
-                'max_y' => min($space->max_y, ($chunk->chunk_y + 1) * $size - 1),
+                ...$region,
             ];
             $updates[] = [
                 'id' => $chunk->id, 'map_space_id' => $space->id,
@@ -53,6 +68,7 @@ final class SeaAreaWeatherService
             DB::table('map_chunks')->upsert($updates, ['id'], ['weather_key', 'weather_turn']);
         }
         $context->state->setSeaAreaWeather($records);
+        $context->state->setWeatherHugeMeteorCenters($centers);
 
         return count($records);
     }

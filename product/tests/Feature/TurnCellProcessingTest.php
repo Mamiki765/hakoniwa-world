@@ -1311,6 +1311,12 @@ class TurnCellProcessingTest extends TestCase
         $user->secretary()->firstOrFail()->skills()
             ->where('skill_key', SecretarySkillCatalog::FOREST_MANAGEMENT)
             ->update(['level' => 10, 'experience' => 0]);
+        $dryRuleset = $world->rulesetVersion()->sole();
+        $drySettings = $dryRuleset->settings;
+        $drySettings['turn_processing']['sea_area_weather']['fixed_probabilities'] = ['typhoon' => 0, 'meteor_shower' => 0];
+        $drySettings['turn_processing']['sea_area_weather']['normal_weights'] = ['sunny' => 1, 'cloudy' => 0, 'rain' => 0, 'snow' => 0, 'thunder' => 0];
+        $drySettings['turn_processing']['disasters']['huge_meteor']['probability'] = ['numerator' => 0, 'denominator' => 1];
+        $dryRuleset->update(['settings' => $drySettings]);
         [$forestContext] = $this->context($world, $nation, [$forest->id], str_repeat('e', 64));
         $forestGrowth = $engine->execute('process_cells', $forestContext);
         $this->assertSame(1, $forestGrowth->metrics['forest_growth']);
@@ -1324,6 +1330,7 @@ class TurnCellProcessingTest extends TestCase
         $rainSettings = $rainRuleset->settings;
         $rainSettings['turn_processing']['sea_area_weather']['fixed_probabilities'] = ['typhoon' => 0, 'meteor_shower' => 0];
         $rainSettings['turn_processing']['sea_area_weather']['normal_weights'] = ['sunny' => 0, 'cloudy' => 0, 'rain' => 1, 'snow' => 0, 'thunder' => 0];
+        $rainSettings['turn_processing']['disasters']['huge_meteor']['probability'] = ['numerator' => 0, 'denominator' => 1];
         $rainRuleset->update(['settings' => $rainSettings]);
         $neutralForest = MapCell::query()->where('map_space_id', $space->id)->whereNull('owner_nation_id')->orderBy('id')->firstOrFail();
         $this->forest($neutralForest, 500);

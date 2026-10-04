@@ -16,7 +16,7 @@ return new class extends Migration
             $table->string('weather_key')->nullable();
             $table->unsignedBigInteger('weather_turn')->nullable();
         });
-        DB::statement("ALTER TABLE map_chunks ADD CONSTRAINT map_chunks_weather_check CHECK ((weather_key IS NULL AND weather_turn IS NULL) OR (weather_key IS NOT NULL AND weather_turn IS NOT NULL AND weather_turn >= 0 AND weather_key IN ('sunny', 'cloudy', 'rain', 'snow', 'thunder', 'typhoon', 'meteor_shower')))");
+        DB::statement("ALTER TABLE map_chunks ADD CONSTRAINT map_chunks_weather_check CHECK ((weather_key IS NULL AND weather_turn IS NULL) OR (weather_key IS NOT NULL AND weather_turn IS NOT NULL AND weather_turn >= 0 AND weather_key IN ('sunny', 'cloudy', 'rain', 'snow', 'thunder', 'typhoon', 'meteor_shower', 'huge_meteor')))");
         app(PowerEconomyUpgrade::class)->enableSeaAreaWeather();
     }
 

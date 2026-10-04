@@ -56,6 +56,11 @@ final class TurnRandomStreamFactory
         return "global_disasters:sea_area_weather:{$key}:{$chunkX}:{$chunkY}:v{$version}";
     }
 
+    public static function weatherHugeMeteorOutside(int $version): string
+    {
+        return "process_cells:sea_area_weather:huge_meteor:outside:v{$version}";
+    }
+
     public const GLOBAL_TYPHOON_TRIGGER = 'global_disasters:typhoon:trigger:v1';
 
     public const GLOBAL_TYPHOON_CENTER = 'global_disasters:typhoon:center:v1';

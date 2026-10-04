@@ -1396,7 +1396,7 @@ class DisasterAndOilTurnTest extends TestCase
 
     private function forceGlobal(RulesetVersion $ruleset, string $selected): RulesetVersion
     {
-        $this->weatherDisaster = in_array($selected, ['typhoon', 'meteor_shower'], true) ? $selected : null;
+        $this->weatherDisaster = in_array($selected, ['typhoon', 'meteor_shower', 'huge_meteor'], true) ? $selected : null;
         $this->weatherTarget = null;
 
         return $this->updateRuleset($ruleset, static function (array &$settings) use ($selected): void {
@@ -1404,7 +1404,7 @@ class DisasterAndOilTurnTest extends TestCase
             $settings['turn_processing']['sea_area_weather']['normal_weights'] = ['sunny' => 1, 'cloudy' => 0, 'rain' => 0, 'snow' => 0, 'thunder' => 0];
             foreach (self::GLOBAL_KEYS as $key) {
                 $settings['turn_processing']['disasters'][$key]['probability'] = [
-                    'numerator' => $key === $selected ? 1 : 0,
+                    'numerator' => $key === $selected && $key !== 'huge_meteor' ? 1 : 0,
                     'denominator' => 1,
                 ];
                 $settings['turn_processing']['disasters'][$key]['center_padding'] = 0;
@@ -1487,6 +1487,9 @@ class DisasterAndOilTurnTest extends TestCase
                 'min_y' => max($space->min_y, $cell->chunk_y * 16),
                 'max_y' => min($space->max_y, $cell->chunk_y * 16 + 15),
             ]]);
+            if ($this->weatherDisaster === 'huge_meteor') {
+                $state->setWeatherHugeMeteorCenters([$target]);
+            }
         }
         app(SecretaryTurnService::class)->loadAttemptSnapshots($context, $nationIds);
 
@@ -1533,6 +1536,12 @@ class DisasterAndOilTurnTest extends TestCase
 
     private function seedForCenter(string $label, int $x, int $y, MapSpace $space): string
     {
+        if ($label === TurnRandomStreamFactory::GLOBAL_HUGE_METEOR_CENTER) {
+            // Effect fixtures choose their center directly; actual terminal draws have separate coverage.
+            $this->weatherTarget = new GridCoordinate($x, $y);
+
+            return hash('sha256', "terminal-impact:{$x}:{$y}");
+        }
         if (in_array($label, [TurnRandomStreamFactory::GLOBAL_TYPHOON_CENTER, TurnRandomStreamFactory::GLOBAL_METEOR_SHOWER_CENTER], true)) {
             $this->weatherTarget = new GridCoordinate($x, $y);
             $cell = $this->cellAt($space, $x, $y);

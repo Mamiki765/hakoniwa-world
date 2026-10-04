@@ -621,7 +621,7 @@ final class TurnRuntimePerformanceTest extends TestCase
                 $random = new TurnRandomStreamFactory($seed);
                 $selected = [];
                 foreach ([[0, 0], [1, 0], [0, 1], [1, 1]] as [$x, $y]) {
-                    $key = $lottery->select($weather, $random->stream(TurnRandomStreamFactory::seaAreaWeather($x, $y, 1))->integer(0, 9999));
+                    $key = $lottery->draw($weather, ['numerator' => 0, 'denominator' => 1], $random->stream(TurnRandomStreamFactory::seaAreaWeather($x, $y, 1)));
                     if (in_array($key, ['typhoon', 'meteor_shower'], true)) {
                         $selected[] = $key;
                     }

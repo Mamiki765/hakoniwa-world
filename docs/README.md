@@ -17,7 +17,7 @@
 | 4.11.1 資源予測の簡素化・ピザ金銭維持費削除・秘書条件表示 | [4.11.1 power/secretary](../product/docs/releases/4.11.1-power-secretary.md) |
 | 4.12.0 油田開発・船舶収益・海軍回避・過去油田XPのdry-run | [4.12.0 oil/fleet](../product/docs/releases/4.12.0-oil-fleet.md) |
 | 4.12.1 新しい地上施設の村系置換漏れ修正・自島HUDゲージ | [4.12.1 settlement overbuild / HUD](../product/docs/releases/4.12.1-settlement-overbuild.md) |
-| 4.13.0 海域天候抽選・保存・雨の森林成長・台風/流星群 | [4.13.0 sea-area weather](../product/docs/releases/4.13.0-sea-area-weather.md) |
+| 4.13.0 海域天候抽選・保存・雨の森林成長・台風/流星群/終末 | [4.13.0 sea-area weather](../product/docs/releases/4.13.0-sea-area-weather.md) |
 | 現在のmain、完了release、直近TODO、回答済み・見送り | [current-status](../product/docs/handoffs/current-status.md) |
 | 取り違えを防ぐ現行contract | [current-contracts](../product/docs/handoffs/current-contracts.md) |
 | IL200超の装備計算・研磨 | [地底装備の倍率とrating](../product/docs/architecture/underground-equipment-scaling.md)、[プレイヤー向け装備手引き](../product/docs/manual/equipment.md) |
