@@ -61,9 +61,9 @@ final class TurnState
         return $this->seaAreaWeather ?? [];
     }
 
-    public function weatherForChunk(int $chunkId): ?string
+    public function weatherForChunk(int $chunkId): string
     {
-        return $this->seaAreaWeather[$chunkId]['weather_key'] ?? null;
+        return $this->seaAreaWeather[$chunkId]['weather_key'] ?? 'sunny';
     }
 
     /** @var array<int, true> */

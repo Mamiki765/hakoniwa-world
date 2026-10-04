@@ -1013,12 +1013,15 @@ final class PlayerIslandEventService
     /** @param array<string, mixed> $metadata */
     private function publicDisasterMessage(array $metadata): string
     {
-        if (isset($metadata['sea_area_name'])) {
-            return sprintf('%s（%s,%s）〜（%s,%s）で%sが発生！',
+        if (in_array($metadata['disaster_key'] ?? null, ['typhoon', 'meteor_shower'], true) && isset($metadata['sea_area_name'])) {
+            $area = sprintf('%s（%s,%s）〜（%s,%s）',
                 $metadata['sea_area_name'],
                 $this->publicCoordinate($metadata, 'min_x'), $this->publicCoordinate($metadata, 'min_y'),
-                $this->publicCoordinate($metadata, 'max_x'), $this->publicCoordinate($metadata, 'max_y'),
-                $this->disasterLabel($metadata['disaster_key'] ?? null));
+                $this->publicCoordinate($metadata, 'max_x'), $this->publicCoordinate($metadata, 'max_y'));
+
+            return $metadata['disaster_key'] === 'typhoon'
+                ? "{$area}で台風の被害が出ています。"
+                : "{$area}に流星群が降り注ぎました。";
         }
         $x = $this->publicCoordinate($metadata, 'center_x');
         $y = $this->publicCoordinate($metadata, 'center_y');

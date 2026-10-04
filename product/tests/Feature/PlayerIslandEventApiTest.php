@@ -1054,6 +1054,8 @@ class PlayerIslandEventApiTest extends TestCase
                 $this->assertCount(2, $weatherMessages);
                 foreach ($weatherMessages as $message) {
                     $this->assertStringContainsString('（0,0）〜（15,15）', $message);
+                    $this->assertTrue(str_ends_with($message, 'で台風の被害が出ています。')
+                        || str_ends_with($message, 'に流星群が降り注ぎました。'));
                 }
                 $this->assertContains('(-1,0)に巨大隕石が落下しました。', $messages);
             }

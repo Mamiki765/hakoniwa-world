@@ -362,7 +362,7 @@ export interface SeaArea {
     chunk_y: number;
     name: string;
     bounds: MapBounds;
-    weather: { key: WeatherKey; label: string; turn: number; asset: AssetDescriptor } | null;
+    weather: { key: WeatherKey; label: string; turn: number | null; asset: AssetDescriptor } | null;
 }
 export interface MapSpace {
     id: number;

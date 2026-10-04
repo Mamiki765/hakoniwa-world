@@ -22,12 +22,16 @@ ZIPのSHA-256は `4d2f3ab17e2e8aca9339c644f0be94e14bc1e33b37573ce1f0bbc2d58e2342
 ## リリース時の配置手順
 
 1. 承認済みZIP version 2のhashを確認し、作業ディレクトリに展開する。
-2. 上表の8 GIFだけを、対象環境の`HAKONIWA_TILE_ASSET_PATH`の直下へ同名で配置する。
-   現行本番の既存ディレクトリは`/srv/hakoniwa-assets/tiles`。アプリから読み取り専用にする。
+2. アプリ適用より先に、上表の8 GIFだけを既存assetディレクトリへ同名で追加する。
+   本番で確認したhost側は`/srv/bot-assets/hakoniwa`、container側の
+   `HAKONIWA_TILE_ASSET_PATH`は`/srv/hakoniwa-assets/tiles`で、read-only mountされている。
+   既存の同名fileがあればhashを照合し、一致しなければ上書きせず停止する。
    既存GIFの置換、再エンコード、ビルド成果物への取り込みは不要。
 3. 既存`HAKONIWA_TILE_ASSET_BASE_URL`（既定`/assets/hakoniwa-tiles`）を維持する。
    allowlist・実MIME・正方形検査を通った画像にだけURLが付く。URLはmtime/sizeでversion化される。
-4. 各`/assets/hakoniwa-tiles/<ファイル名>`が200・`Content-Type: image/gif`で読み取れることと、
+4. 先行配置後に既存asset HTTP配信の200・`Content-Type: image/gif`・24×24 GIF形式/hashを確認する。
+   旧アプリのallowlistは新天候名をまだ受理しないため、アプリrouteの確認は切替後に行う。
+   切替後に各`/assets/hakoniwa-tiles/<ファイル名>`が200・`Content-Type: image/gif`で読み取れることと、
    マップの8天候アイコン・「海域・天候」toggleを確認する。欠落時は天候文字が表示され、Turnは処理できる。
 
 UIはnearest-neighborで画面上12×12pxに縮小する。ズーム・全体表示でも画面サイズを維持する。

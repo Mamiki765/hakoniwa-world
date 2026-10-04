@@ -85,6 +85,13 @@ describe('staggered square-image map', () => {
         expect(wrapper.get('.sea-area-toggle').attributes('aria-pressed')).toBe('false');
         await wrapper.get('.sea-area-toggle').trigger('click');
         expect(wrapper.findAll('.sea-area-border')).toHaveLength(1);
+        await wrapper.setProps({ seaAreas: [{ chunk_x: 0, chunk_y: 0, name: 'テスト海域', bounds: { min_x: 0, max_x: 15, min_y: 0, max_y: 15 },
+            weather: { key: 'sunny', label: '晴れ', turn: null, asset: { key: 'weather.sunny', url: null, available: false, fallback_label: '晴れ', fallback_style: '' } } }] });
+        expect(wrapper.get('.sea-area title').text()).toBe('テスト海域・晴れ');
+        expect(wrapper.get('.weather-icon-fallback').text()).toBe('晴');
+        await wrapper.get('.map-cell').trigger('mouseenter');
+        expect(wrapper.get('.cell-tooltip').text()).toContain('天候: 晴れ');
+        expect(wrapper.get('.cell-tooltip').text()).not.toContain('第null');
     });
 
     it('keeps the coordinates on the tooltip title without a dedicated coordinate line', async () => {

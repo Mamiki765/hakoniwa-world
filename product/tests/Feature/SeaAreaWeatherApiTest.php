@@ -23,6 +23,9 @@ final class SeaAreaWeatherApiTest extends TestCase
         $user = User::factory()->create();
         $nation = app(NationCreationService::class)->create($user, $world, '天候表示', '表示島主');
         $space = $this->surfaceMapSpace($world);
+        $before = $this->getJson("/api/v1/public/worlds/{$world->id}/map-spaces")->assertOk()->json('data.0.sea_areas');
+        $this->assertSame(['sunny', 'sunny', 'sunny', 'sunny'], array_column(array_column($before, 'weather'), 'key'));
+        $this->assertSame([null, null, null, null], array_column(array_column($before, 'weather'), 'turn'));
         $world->update(['current_turn' => 2]);
         $space->update(['max_x' => 29]);
         $chunks = MapChunk::query()->where('map_space_id', $space->id)->orderBy('chunk_y')->orderBy('chunk_x')->get();
@@ -37,7 +40,8 @@ final class SeaAreaWeatherApiTest extends TestCase
         $this->assertCount(1, array_filter($queries, static fn (string $sql): bool => str_contains($sql, 'from "map_chunks"')));
         $areas = $public->json('data.0.sea_areas');
         $this->assertCount(4, $areas);
-        $this->assertSame(['sunny', 'rain', 'huge_meteor', null], array_map(static fn (array $area): ?string => $area['weather']['key'] ?? null, $areas));
+        $this->assertSame(['sunny', 'rain', 'huge_meteor', 'sunny'], array_map(static fn (array $area): ?string => $area['weather']['key'] ?? null, $areas));
+        $this->assertNull($areas[3]['weather']['turn']);
         $this->assertSame(2, $areas[2]['weather']['turn']);
         $this->assertSame('終末', $areas[2]['weather']['label']);
         $this->assertSame(29, $areas[1]['bounds']['max_x']);

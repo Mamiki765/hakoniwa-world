@@ -29,9 +29,10 @@ final class SeaAreaWeatherPresenter
             if ($region === null) {
                 continue;
             }
-            $key = $chunk->weather_key;
+            // Before the first weather Turn, all existing/new areas are sunny without inventing a recorded Turn.
+            $key = $chunk->weather_key ?? 'sunny';
             $weather = null;
-            if ($key !== null && $chunk->weather_turn !== null && isset(self::LABELS[$key])) {
+            if (isset(self::LABELS[$key])) {
                 $assets[$key] ??= $this->assets->resolve('weather.'.$key, self::LABELS[$key]);
                 $weather = ['key' => $key, 'label' => self::LABELS[$key], 'turn' => $chunk->weather_turn, 'asset' => $assets[$key]];
             }

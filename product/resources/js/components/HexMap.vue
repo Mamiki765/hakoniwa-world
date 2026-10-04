@@ -111,7 +111,7 @@ const tooltipDetails = computed(() => {
         if (detail.key === 'sea_area') detailLines.push(...queuedCommandLines(cell));
     }
     const area = props.seaAreas?.find((region) => region.chunk_x === Math.floor(cell.x / 16) && region.chunk_y === Math.floor(cell.y / 16));
-    if (area?.weather != null) detailLines.push(`天候: ${area.weather.label}（第${area.weather.turn}ターン）`);
+    if (area?.weather != null) detailLines.push(`天候: ${weatherDescription(area)}`);
 
     return [
         ...(cell.ship == null ? [] : [
@@ -133,6 +133,12 @@ const tooltipDetails = computed(() => {
         ...detailLines,
     ];
 });
+
+function weatherDescription(area: SeaArea): string {
+    const weather = area.weather;
+    if (weather == null) return '';
+    return weather.label + (weather.turn == null ? '' : `（第${weather.turn}ターン）`);
+}
 
 onMounted(() => {
     if (viewport.value === null) return;
@@ -492,7 +498,7 @@ function markAssetFailed(cell: MapCell): void {
                 </button>
                 <svg v-if="showSeaAreas" class="sea-area-overlay" aria-label="海域と当ターンの天候">
                     <g v-for="item in seaAreaOverlays" :key="`${item.area.chunk_x}:${item.area.chunk_y}`" class="sea-area">
-                        <title>{{ item.area.name }}{{ item.area.weather == null ? '' : `・${item.area.weather.label}（第${item.area.weather.turn}ターン）` }}</title>
+                        <title>{{ item.area.name }}{{ item.area.weather == null ? '' : `・${weatherDescription(item.area)}` }}</title>
                         <polygon :points="item.points" class="sea-area-border" :class="item.area.weather == null ? '' : `weather-${item.area.weather.key}`" vector-effect="non-scaling-stroke" />
                         <template v-if="item.area.weather != null">
                             <image
