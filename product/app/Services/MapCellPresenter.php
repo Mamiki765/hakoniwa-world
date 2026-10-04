@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Application\UserMonumentDesignService;
+use App\Domain\Economy\PowerEconomyCalculator;
 use App\Domain\Facility\FacilityCapacityService;
 use App\Domain\Facility\FacilityRankPolicy;
 use App\Domain\Facility\FacilityVisibilityPolicy;
@@ -34,10 +35,12 @@ final class MapCellPresenter
         private readonly SeaAreaNameResolver $seaAreas,
         private readonly SurfaceShipCatalog $ships,
         private readonly UserMonumentDesignService $monumentDesigns,
+        private readonly PowerEconomyCalculator $power,
     ) {}
 
     /**
      * @param  array<string, mixed>|null  $rulesetSettings
+     * @param  array{natural:int, attraction:int, capital:int}|null  $populationMaximums
      * @return array<string, mixed>
      */
     public function present(
@@ -48,6 +51,7 @@ final class MapCellPresenter
         bool $withinViewerVisibility = false,
         ?array $rulesetSettings = null,
         bool $buriedTreasureVisible = false,
+        ?array $populationMaximums = null,
     ): array {
         $rulesetSettings ??= $this->configuredRulesetSettings();
         $isOwner = $viewerNationId !== null && $viewerNationId === $cell->owner_nation_id;
@@ -116,6 +120,7 @@ final class MapCellPresenter
             $rulesetSettings,
             $facilityPresentation,
             $centralPresentation,
+            $populationMaximums,
         );
         $monster = $this->monster($cell, $currentTurn, $neutralizeOwnership);
 
@@ -269,6 +274,7 @@ final class MapCellPresenter
      * @param  array<string, mixed>  $rulesetSettings
      * @param  array<string, mixed>|null  $facilityPresentation
      * @param  array{name:string, level:int, maximum_level:int}|null  $centralPresentation
+     * @param  array{natural:int, attraction:int, capital:int}|null  $populationMaximums
      * @return array<int, array{key: string, label: string, value: int|string, unit: string|null, formatted: string, visibility: string}>
      */
     private function details(
@@ -279,6 +285,7 @@ final class MapCellPresenter
         array $rulesetSettings,
         ?array $facilityPresentation,
         ?array $centralPresentation,
+        ?array $populationMaximums,
     ): array {
         if ($isDisguised) {
             return [$this->detail('sea_area', '海域', $seaAreaName, null, $seaAreaName, 'public')];
@@ -287,6 +294,13 @@ final class MapCellPresenter
         $details = [$this->detail('sea_area', '海域', $seaAreaName, null, $seaAreaName, 'public')];
         if ($cell->population > 0) {
             $details[] = $this->detail('population', '人口', $cell->population, '人', number_format($cell->population).'人', 'public');
+        }
+        if ($isOwner && $populationMaximums !== null
+            && in_array($cell->facility?->key, $rulesetSettings['turn_processing']['settlement']['population_facility_keys'], true)) {
+            $capital = $cell->facility?->key === 'capital';
+            $maximum = $populationMaximums[$capital ? 'capital' : 'natural'];
+            $label = number_format($maximum).($capital ? '' : '/'.number_format($populationMaximums['attraction'])).'人';
+            $details[] = $this->detail('population_maximum', '最大', $maximum, '人', $label, 'owner');
         }
 
         if ($cell->terrain->quantity_key !== null && $cell->terrain_quantity !== null && $isOwner) {
@@ -298,6 +312,11 @@ final class MapCellPresenter
                 number_format($cell->terrain_quantity).$cell->terrain->quantity_unit,
                 'owner',
             );
+            $maximum = $rulesetSettings['terrain_quantities'][$cell->terrain->key]['maximum_quantity'] ?? null;
+            if (is_int($maximum)) {
+                $details[] = $this->detail('terrain_maximum', '最大', $maximum, $cell->terrain->quantity_unit,
+                    number_format($maximum).$cell->terrain->quantity_unit, 'owner');
+            }
         }
 
         $facility = $cell->facility;
@@ -311,12 +330,20 @@ final class MapCellPresenter
             $capacity = $cell->facility_scale * $rulesetSettings['power_economy']['thermal_power_mw_per_scale'];
             $label = number_format($capacity).'MW/T（全石炭 '.number_format(intdiv($capacity, 2)).'MW/T）';
             $details[] = $this->detail('power_generation', '発電上限', $capacity, 'MW', $label, 'public');
+            $maximum = $this->facilityRanks->maximumScale($rulesetSettings, $facility)
+                * $rulesetSettings['power_economy']['thermal_power_mw_per_scale'];
+            $details[] = $this->detail('power_maximum', '最大', $maximum, 'MW', number_format($maximum).'MW/T', 'public');
         } elseif ($facility?->key === 'pizzeria' && $cell->facility_scale !== null) {
             $powerRules = $rulesetSettings['power_economy'];
             $foodTons = $cell->facility_scale * $powerRules['pizzeria_food_tons_per_scale'];
             $demandMw = $cell->facility_scale * $powerRules['pizzeria_power_mw_per_scale'];
             $details[] = $this->detail('pizzeria_food', '食料処理', $foodTons, 't/T', number_format($foodTons).'t/T', 'public');
+            $maximum = $this->facilityRanks->maximumScale($rulesetSettings, $facility) * $powerRules['pizzeria_food_tons_per_scale'];
+            $details[] = $this->detail('pizzeria_maximum', '最大', $maximum, 't/T', number_format($maximum).'t/T', 'public');
             $details[] = $this->detail('pizzeria_power', '必要電力', $demandMw, 'MW', number_format($demandMw).'MW/T', 'public');
+            $revenue = $this->power->settle($rulesetSettings, 0, $demandMw, 0, $foodTons, [$cell->facility_scale], 0)['pizzeria_revenue'];
+            $details[] = $this->detail('pizzeria_revenue', '収益上限', $revenue, '億円/T',
+                number_format($revenue).'億円/T（食料・電力充足時）', 'public');
         } elseif ($facility?->scale_unit_people !== null && $cell->facility_scale !== null && $centralPresentation === null) {
             $capacity = $this->capacities->capacityPeople(
                 $facility,
@@ -324,6 +351,9 @@ final class MapCellPresenter
                 $this->facilityRanks->maximumScale($rulesetSettings, $facility),
             );
             $details[] = $this->detail('facility_capacity', '規模', $capacity, '人', number_format($capacity).'人規模', 'public');
+            $maximumScale = $this->facilityRanks->maximumScale($rulesetSettings, $facility);
+            $maximum = $this->capacities->capacityPeople($facility, $maximumScale, $maximumScale);
+            $details[] = $this->detail('facility_maximum', '最大', $maximum, '人', number_format($maximum).'人規模', 'public');
         }
         if ($centralPresentation !== null) {
             $level = $centralPresentation['level'];
@@ -353,7 +383,8 @@ final class MapCellPresenter
             $level = $this->missiles->level($facility, $experience);
             $launchCapacity = $this->missiles->launchCapacity($facility, $experience);
             $details[] = $this->detail('facility_experience', '経験値', $experience, null, number_format($experience), 'owner');
-            $details[] = $this->detail('facility_level', 'LV', $level, null, (string) $level, 'owner');
+            $maximum = $experience === $this->missiles->maximumExperience($facility);
+            $details[] = $this->detail('facility_level', 'LV', $level, null, (string) $level.($maximum ? '★' : ''), 'owner');
             $details[] = $this->detail('launch_capacity', '発射可能数', $launchCapacity, '発', number_format($launchCapacity).'発', 'owner');
         }
 

@@ -26,7 +26,7 @@ const usesWorkforce = computed(() => ['farm', 'factory', 'mine'].includes(props.
                 <dt>{{ cell.ship ? 'このマスの所有者' : '所有' }}</dt>
                 <dd>{{ cell.owner_name ?? '中立' }}<span v-if="cell.owner_nation_number !== null">（N{{ cell.owner_nation_number }}）</span></dd>
                 <template v-for="detail in cell.details" :key="detail.key">
-                    <dt>{{ detail.label }}</dt><dd>{{ detail.formatted }}</dd>
+                    <dt>{{ detail.label }}</dt><dd :title="detail.key === 'population_maximum' && detail.formatted.includes('/') ? '自然増/誘致の上限' : undefined">{{ detail.formatted }}</dd>
                 </template>
                 <template v-if="cell.monster">
                     <dt>怪獣</dt><dd>{{ cell.monster.name }}</dd>

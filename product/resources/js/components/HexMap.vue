@@ -107,7 +107,8 @@ const tooltipDetails = computed(() => {
 
     const detailLines: string[] = [];
     for (const detail of cell.details) {
-        detailLines.push(`${detail.label}: ${detail.formatted}`);
+        const hint = detail.key === 'population_maximum' && detail.formatted.includes('/') ? '（自然増/誘致）' : '';
+        detailLines.push(`${detail.label}: ${detail.formatted}${hint}`);
         if (detail.key === 'sea_area') detailLines.push(...queuedCommandLines(cell));
     }
     const area = props.seaAreas?.find((region) => region.chunk_x === Math.floor(cell.x / 16) && region.chunk_y === Math.floor(cell.y / 16));

@@ -8,6 +8,8 @@ use App\Domain\Facility\FacilityCapacityService;
 use App\Domain\Facility\FacilityRankPolicy;
 use App\Domain\Facility\MissileBaseRules;
 use App\Domain\Map\MapCellStateService;
+use App\Domain\Secretary\SecretaryDemographicPolicy;
+use App\Domain\Secretary\SecretarySkillCatalog;
 use App\Models\FacilityDefinition;
 use App\Models\MapCell;
 use App\Models\MapSpace;
@@ -219,6 +221,40 @@ final class FacilityAndMapStateTest extends TestCase
         $this->assertSame('30,000人規模', $details['facility_capacity']['formatted']);
         $this->assertFalse($details->has('planned_production'));
         $this->assertFalse($details->has('population'));
+    }
+
+    public function test_population_maximums_use_owner_skill_without_changing_public_details(): void
+    {
+        [$user, $nation, $mapSpace] = $this->nation('人口上限国');
+        $cell = MapCell::query()->where('owner_nation_id', $nation->id)->whereNull('facility_definition_id')
+            ->whereHas('terrain', fn ($query) => $query->where('key', 'plain'))->firstOrFail();
+        app(MapCellStateService::class)->setFacility($cell, FacilityDefinition::query()->where('key', 'city')->firstOrFail());
+        $cell->population = 10000;
+        $cell->save();
+        $outsider = User::factory()->create();
+        $publicBefore = $this->cellFromResponse(
+            $this->actingAs($outsider)->getJson($this->chunkUrl($mapSpace, $cell))->assertOk()->json('data.cells'), $cell,
+        );
+
+        $level = 14;
+        $user->secretary->skills()->where('skill_key', SecretarySkillCatalog::DECLINING_BIRTHRATE_POLICY)->update(['level' => $level]);
+        $settings = $nation->world()->with('rulesetVersion')->firstOrFail()->rulesetVersion->settings;
+        $policy = app(SecretaryDemographicPolicy::class);
+        $natural = $policy->naturalMaximum($settings, $settings['turn_processing']['settlement']['ordinary_maximum_population'], $level);
+        $attraction = $policy->attractionMaximum($settings, $settings['turn_processing']['settlement']['attraction_maximum_population'], $level);
+        $owner = $this->cellFromResponse(
+            $this->actingAs($user)->getJson($this->chunkUrl($mapSpace, $cell))->assertOk()->json('data.cells'), $cell,
+        );
+        $details = collect($owner['details'])->keyBy('key');
+        $this->assertSame($cell->population, $details['population']['value']);
+        $this->assertSame($natural, $details['population_maximum']['value']);
+        preg_match_all('/[\d,]+/', $details['population_maximum']['formatted'], $numbers);
+        $this->assertSame([number_format($natural), number_format($attraction)], $numbers[0]);
+        $publicAfter = $this->cellFromResponse(
+            $this->actingAs($outsider)->getJson($this->chunkUrl($mapSpace, $cell))->assertOk()->json('data.cells'), $cell,
+        );
+        $this->assertSame($publicBefore, $publicAfter);
+        $this->assertFalse(collect($publicAfter['details'])->keyBy('key')->has('population_maximum'));
     }
 
     /** @return array{User, Nation, MapSpace} */
