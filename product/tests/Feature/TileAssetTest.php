@@ -76,6 +76,27 @@ class TileAssetTest extends TestCase
         $this->assertFalse($resolver->resolve('tile.sea', '海')['available']);
     }
 
+    public function test_weather_icons_use_the_external_allowlist_and_missing_files_fall_back(): void
+    {
+        $resolver = app(AssetManifestResolver::class);
+        $expected = [
+            'sunny' => 'weather-sunny.gif', 'cloudy' => 'weather-cloudy.gif',
+            'rain' => 'weather-rain.gif', 'snow' => 'weather-snow.gif',
+            'thunder' => 'weather-thunder.gif', 'typhoon' => 'weather-typhoon.gif',
+            'meteor_shower' => 'weather-shooting-stars.gif', 'huge_meteor' => 'weather-doomsday.gif',
+        ];
+        foreach ($expected as $key => $filename) {
+            $this->assertFalse($resolver->resolve('weather.'.$key, $key)['available']);
+            $this->writeGif($filename);
+            $asset = $resolver->resolve('weather.'.$key, $key);
+            $this->assertTrue($asset['available']);
+            $this->assertStringContainsString('/'.$filename.'?v=', $asset['url']);
+            $this->get('/assets/hakoniwa-tiles/'.$filename)->assertOk()
+                ->assertHeader('Content-Type', 'image/gif');
+        }
+        $this->assertNull($resolver->pathForFilename('weather-unapproved.gif'));
+    }
+
     public function test_settlement_and_missile_scar_tiles_use_the_confirmed_original_mappings(): void
     {
         foreach (['land1.gif', 'land3.gif', 'land4.gif', 'land5.gif', 'land10.gif', 'land13.gif', 'undersea-city.gif', 'port.gif'] as $filename) {

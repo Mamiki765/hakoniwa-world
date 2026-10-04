@@ -68,7 +68,8 @@ final class PublicApiController extends Controller
 
     public function mapSpaces(World $world): AnonymousResourceCollection
     {
-        return MapSpaceResource::collection($world->mapSpaces()->orderBy('id')->get());
+        return MapSpaceResource::collection($world->mapSpaces()
+            ->with('chunks:id,map_space_id,chunk_x,chunk_y,weather_key,weather_turn')->orderBy('id')->get());
     }
 
     public function nation(Nation $nation, PublicWorldService $service): JsonResponse

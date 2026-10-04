@@ -78,6 +78,8 @@ final class SecretaryItemGameplayContract
 
     private const V30_RULESET_KEY = 'hakoniwa-2s-plus-v30';
 
+    private const V31_RULESET_KEY = 'hakoniwa-2s-plus-v31';
+
     public function __construct(private readonly SecretaryItemCatalog $catalog) {}
 
     /** @param array<string, mixed> $settings */
@@ -106,9 +108,9 @@ final class SecretaryItemGameplayContract
         }
 
         $rulesetKey = $settings['key'] ?? null;
-        $formal = in_array($rulesetKey, [self::V16_RULESET_KEY, self::V17_RULESET_KEY, self::V18_RULESET_KEY, self::V19_RULESET_KEY, self::V20_RULESET_KEY, self::V21_RULESET_KEY, self::V22_RULESET_KEY, self::V23_RULESET_KEY, self::V24_RULESET_KEY, self::V25_RULESET_KEY, self::V26_RULESET_KEY, self::V27_RULESET_KEY, self::V28_RULESET_KEY, self::V29_RULESET_KEY, self::V30_RULESET_KEY], true);
-        $v17 = in_array($rulesetKey, [self::V17_RULESET_KEY, self::V18_RULESET_KEY, self::V19_RULESET_KEY, self::V20_RULESET_KEY, self::V21_RULESET_KEY, self::V22_RULESET_KEY, self::V23_RULESET_KEY, self::V24_RULESET_KEY, self::V25_RULESET_KEY, self::V26_RULESET_KEY, self::V27_RULESET_KEY, self::V28_RULESET_KEY, self::V29_RULESET_KEY, self::V30_RULESET_KEY], true);
-        $v27 = in_array($rulesetKey, [self::V27_RULESET_KEY, self::V28_RULESET_KEY, self::V29_RULESET_KEY, self::V30_RULESET_KEY], true);
+        $formal = in_array($rulesetKey, [self::V16_RULESET_KEY, self::V17_RULESET_KEY, self::V18_RULESET_KEY, self::V19_RULESET_KEY, self::V20_RULESET_KEY, self::V21_RULESET_KEY, self::V22_RULESET_KEY, self::V23_RULESET_KEY, self::V24_RULESET_KEY, self::V25_RULESET_KEY, self::V26_RULESET_KEY, self::V27_RULESET_KEY, self::V28_RULESET_KEY, self::V29_RULESET_KEY, self::V30_RULESET_KEY, self::V31_RULESET_KEY], true);
+        $v17 = in_array($rulesetKey, [self::V17_RULESET_KEY, self::V18_RULESET_KEY, self::V19_RULESET_KEY, self::V20_RULESET_KEY, self::V21_RULESET_KEY, self::V22_RULESET_KEY, self::V23_RULESET_KEY, self::V24_RULESET_KEY, self::V25_RULESET_KEY, self::V26_RULESET_KEY, self::V27_RULESET_KEY, self::V28_RULESET_KEY, self::V29_RULESET_KEY, self::V30_RULESET_KEY, self::V31_RULESET_KEY], true);
+        $v27 = in_array($rulesetKey, [self::V27_RULESET_KEY, self::V28_RULESET_KEY, self::V29_RULESET_KEY, self::V30_RULESET_KEY, self::V31_RULESET_KEY], true);
         $v26 = $rulesetKey === self::V26_RULESET_KEY || $v27;
         $secretary = $this->map($settings['secretary'] ?? null, 'ruleset.secretary');
         if ($formal) {
@@ -213,7 +215,7 @@ final class SecretaryItemGameplayContract
             }
             foreach ($effects as $index => $effect) {
                 if ($v27 && ($catalogDefinitions[$itemKey]['introduced_version'] ?? 16) === 27) {
-                    $this->validateV27Effect($itemKey, $this->map($effect, "{$path}.effects.{$index}"), "{$path}.effects.{$index}", $rulesetKey === self::V30_RULESET_KEY);
+                    $this->validateV27Effect($itemKey, $this->map($effect, "{$path}.effects.{$index}"), "{$path}.effects.{$index}", in_array($rulesetKey, [self::V30_RULESET_KEY, self::V31_RULESET_KEY], true));
                 } else {
                     $this->validateEffect(
                         $itemKey,
@@ -764,7 +766,7 @@ final class SecretaryItemGameplayContract
     /** @return array<string, array<string, mixed>> */
     private function catalogDefinitions(mixed $rulesetKey): array
     {
-        if (in_array($rulesetKey, [self::V27_RULESET_KEY, self::V28_RULESET_KEY, self::V29_RULESET_KEY, self::V30_RULESET_KEY], true)) {
+        if (in_array($rulesetKey, [self::V27_RULESET_KEY, self::V28_RULESET_KEY, self::V29_RULESET_KEY, self::V30_RULESET_KEY, self::V31_RULESET_KEY], true)) {
             return $this->catalog->definitions();
         }
         $definitions = array_filter(

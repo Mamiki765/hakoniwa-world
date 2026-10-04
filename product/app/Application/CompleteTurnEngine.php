@@ -87,6 +87,7 @@ final class CompleteTurnEngine
         private readonly KarmaTurnService $karma,
         private readonly TradingPostTurnService $tradingPost,
         private readonly UndergroundFacilityBenefits $undergroundBenefits,
+        private readonly SeaAreaWeatherService $weather,
     ) {}
 
     public function execute(string $phase, TurnContext $context): TurnPhaseResult
@@ -524,6 +525,7 @@ final class CompleteTurnEngine
             ->orderBy('id')
             ->lockForUpdate()
             ->get();
+        $metrics['sea_area_weather_chunks'] = $this->weather->draw($context, $space);
         $cellsById = $cells->keyBy('id');
         $cellsByCoordinate = $cells->mapWithKeys(static fn (MapCell $cell): array => [
             $cell->x.':'.$cell->y => $cell,
@@ -1510,6 +1512,9 @@ final class CompleteTurnEngine
                 ),
                 $growthIncrement,
             );
+        }
+        if ($context->state->weatherForChunk($cell->map_chunk_id) === 'rain') {
+            $growthIncrement *= $context->ruleset->settings['turn_processing']['sea_area_weather']['rain_forest_growth_multiplier'];
         }
         $after = min($forest['maximum_quantity'], $cell->terrain_quantity + $growthIncrement);
         if ($after === $cell->terrain_quantity) {

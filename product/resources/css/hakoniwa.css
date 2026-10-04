@@ -1281,6 +1281,22 @@ html[data-theme="dark"] .compensation-banner, html[data-theme="dark"] .compensat
 .map-viewport.is-dragging { cursor: grabbing; }
 .map-viewport:focus-visible { outline: 4px solid var(--coral); }
 .map-plane { position: absolute; inset: 0; transform-origin: 0 0; will-change: transform; }
+.map-toolbar .sea-area-toggle[aria-pressed="true"] { border-color: var(--gold); color: var(--gold); }
+.sea-area-overlay { position: absolute; top: 0; left: 0; width: 1px; height: 1px; overflow: visible; pointer-events: none; z-index: 10; }
+.sea-area-border { fill: none; stroke: var(--sea-area-line, #234958); stroke-width: 2.5px; stroke-linejoin: round; }
+.sea-area-border.weather-sunny { fill: rgba(255, 206, 86, .045); }
+.sea-area-border.weather-cloudy { fill: rgba(122, 142, 161, .065); }
+.sea-area-border.weather-rain { fill: rgba(58, 135, 214, .08); }
+.sea-area-border.weather-snow { fill: rgba(196, 237, 255, .11); }
+.sea-area-border.weather-thunder { fill: rgba(224, 99, 202, .075); }
+.sea-area-border.weather-typhoon { fill: rgba(77, 117, 169, .10); }
+.sea-area-border.weather-meteor_shower { fill: rgba(125, 214, 78, .075); }
+.sea-area-border.weather-huge_meteor { fill: rgba(240, 94, 56, .10); }
+.weather-icon { image-rendering: pixelated; }
+.weather-icon-fallback { fill: #fff; stroke: #163543; stroke-width: 2px; paint-order: stroke; font-weight: 700; }
+[data-theme="dark"], [data-theme="black"] { --sea-area-line: #a1c0cb; }
+[data-theme="autumn"] { --sea-area-line: #6c4630; }
+[data-theme="skyblue"] { --sea-area-line: #32617b; }
 .map-cell { position: absolute; width: 32px; height: 32px; padding: 0; border: 0; background: #bca883; color: #132827; cursor: pointer; overflow: hidden; image-rendering: pixelated; transition: filter .1s, box-shadow .1s; }
 .map-viewport.is-dragging .map-cell { cursor: grabbing; }
 .map-cell::after { content: ""; position: absolute; inset: 0; border: 1px solid rgba(10,40,44,.22); pointer-events: none; }

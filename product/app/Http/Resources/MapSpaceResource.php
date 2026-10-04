@@ -3,6 +3,7 @@
 namespace App\Http\Resources;
 
 use App\Models\MapSpace;
+use App\Services\SeaAreaWeatherPresenter;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
@@ -18,6 +19,7 @@ class MapSpaceResource extends JsonResource
             'coordinate_system' => $this->coordinate_system,
             'bounds_revision' => $this->boundsRevision(),
             'bounds' => ['min_x' => $this->min_x, 'max_x' => $this->max_x, 'min_y' => $this->min_y, 'max_y' => $this->max_y],
+            'sea_areas' => app(SeaAreaWeatherPresenter::class)->present($this->resource),
         ];
     }
 }

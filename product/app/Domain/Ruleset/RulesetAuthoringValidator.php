@@ -2930,6 +2930,33 @@ final class RulesetAuthoringValidator
         $this->requireKeys($disasters, [
             'earthquake', 'tsunami', 'typhoon', 'meteor_shower', 'huge_meteor', 'eruption', 'fire',
         ], "{$path}.disasters");
+        $seaAreaWeather = array_key_exists('sea_area_weather', $turn);
+        if ($settings['version'] >= 31 || $seaAreaWeather) {
+            $weatherPath = "{$path}.sea_area_weather";
+            $weather = $this->map($turn['sea_area_weather'] ?? null, $weatherPath);
+            $this->requireKeys($weather, ['stream_version', 'denominator', 'fixed_probabilities', 'normal_weights', 'rain_forest_growth_multiplier'], $weatherPath);
+            if ($this->integer($weather['stream_version'], "{$weatherPath}.stream_version", 1) !== 1) {
+                throw new DomainException('Unsupported sea-area weather stream version.');
+            }
+            $denominator = $this->integer($weather['denominator'], "{$weatherPath}.denominator", 1);
+            if ($denominator > self::DETERMINISTIC_RANDOM_DRAW_DENOMINATOR_MAX) {
+                throw new DomainException('Sea-area weather denominator exceeds the deterministic draw range.');
+            }
+            $fixed = $this->map($weather['fixed_probabilities'], "{$weatherPath}.fixed_probabilities");
+            $weights = $this->map($weather['normal_weights'], "{$weatherPath}.normal_weights");
+            $this->requireKeys($fixed, ['typhoon', 'meteor_shower'], "{$weatherPath}.fixed_probabilities");
+            $this->requireKeys($weights, ['sunny', 'cloudy', 'rain', 'snow', 'thunder'], "{$weatherPath}.normal_weights");
+            if (count($fixed) !== 2 || count($weights) !== 5) {
+                throw new DomainException('Unsupported sea-area weather keys.');
+            }
+            foreach ($fixed + $weights as $key => $value) {
+                $this->integer($value, "{$weatherPath}.{$key}", 0);
+            }
+            if (array_sum($fixed) >= $denominator || array_sum($weights) <= 0) {
+                throw new DomainException('Sea-area weather must leave a positive normal-weather slot and weight.');
+            }
+            $this->integer($weather['rain_forest_growth_multiplier'], "{$weatherPath}.rain_forest_growth_multiplier", 1);
+        }
         foreach ([
             'earthquake' => 10,
             'tsunami' => 10,
@@ -2940,6 +2967,15 @@ final class RulesetAuthoringValidator
         ] as $key => $expectedRadius) {
             $eventPath = "{$path}.disasters.{$key}";
             $event = $this->map($disasters[$key], $eventPath);
+            if ($seaAreaWeather && in_array($key, ['typhoon', 'meteor_shower'], true)) {
+                foreach (['probability', 'center_padding', 'radius'] as $legacyField) {
+                    if (array_key_exists($legacyField, $event)) {
+                        throw new DomainException("{$eventPath} uses sea-area weather; {$legacyField} is obsolete.");
+                    }
+                }
+
+                continue;
+            }
             $this->requireKeys($event, ['probability', 'center_padding', 'radius'], $eventPath);
             $this->probability($event['probability'], "{$eventPath}.probability");
             $centerPadding = $this->integer($event['center_padding'], "{$eventPath}.center_padding", 0);

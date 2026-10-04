@@ -62,6 +62,38 @@ function trackPointerCapture(element: Element): { captured: number[]; released: 
 }
 
 describe('staggered square-image map', () => {
+    it('toggles an area perimeter and the recorded weather while keeping cells selectable', async () => {
+        const cell = mapCell({ x: 0, y: 0 });
+        const wrapper = mount(HexMap, { props: {
+            cells: [cell], selected: null, capital: { x: 0, y: 0 }, bounds: worldBounds,
+            loading: false, error: null, emptyChunks: [],
+            seaAreas: [{ chunk_x: 0, chunk_y: 0, name: 'テスト海域', bounds: { min_x: 0, max_x: 15, min_y: 0, max_y: 15 },
+                weather: { key: 'rain', label: '雨', turn: 7, asset: { key: 'weather.rain', url: '/assets/weather-rain.gif', available: true, fallback_label: '雨', fallback_style: '' } } }],
+        } });
+        expect(wrapper.findAll('.sea-area-border')).toHaveLength(1);
+        expect(wrapper.get('.sea-area-border').classes()).toContain('weather-rain');
+        expect(wrapper.get('.weather-icon').attributes('width')).toBe('12');
+        expect(wrapper.get('.sea-area title').text()).toContain('第7ターン');
+        await wrapper.get('.map-cell').trigger('click');
+        expect(wrapper.emitted('select')?.[0]).toEqual([cell]);
+        await wrapper.get('.map-cell').trigger('mouseenter');
+        expect(wrapper.get('.cell-tooltip').text()).toContain('天候: 雨（第7ターン）');
+        await wrapper.get('.weather-icon').trigger('error');
+        expect(wrapper.get('.weather-icon-fallback').text()).toBe('雨');
+        await wrapper.get('.sea-area-toggle').trigger('click');
+        expect(wrapper.find('.sea-area-overlay').exists()).toBe(false);
+        expect(wrapper.get('.sea-area-toggle').attributes('aria-pressed')).toBe('false');
+        await wrapper.get('.sea-area-toggle').trigger('click');
+        expect(wrapper.findAll('.sea-area-border')).toHaveLength(1);
+        await wrapper.setProps({ seaAreas: [{ chunk_x: 0, chunk_y: 0, name: 'テスト海域', bounds: { min_x: 0, max_x: 15, min_y: 0, max_y: 15 },
+            weather: { key: 'sunny', label: '晴れ', turn: null, asset: { key: 'weather.sunny', url: null, available: false, fallback_label: '晴れ', fallback_style: '' } } }] });
+        expect(wrapper.get('.sea-area title').text()).toBe('テスト海域・晴れ');
+        expect(wrapper.get('.weather-icon-fallback').text()).toBe('晴');
+        await wrapper.get('.map-cell').trigger('mouseenter');
+        expect(wrapper.get('.cell-tooltip').text()).toContain('天候: 晴れ');
+        expect(wrapper.get('.cell-tooltip').text()).not.toContain('第null');
+    });
+
     it('keeps the coordinates on the tooltip title without a dedicated coordinate line', async () => {
         const cell = mapCell({ x: 1, y: -1, display_name: '海底油田' });
         const wrapper = mount(HexMap, { props: {

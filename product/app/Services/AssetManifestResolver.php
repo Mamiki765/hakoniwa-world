@@ -13,6 +13,14 @@ final class AssetManifestResolver
 
     /** @var array<string, string> */
     private const MANIFEST = [
+        'weather.sunny' => 'weather-sunny.gif',
+        'weather.cloudy' => 'weather-cloudy.gif',
+        'weather.rain' => 'weather-rain.gif',
+        'weather.snow' => 'weather-snow.gif',
+        'weather.thunder' => 'weather-thunder.gif',
+        'weather.typhoon' => 'weather-typhoon.gif',
+        'weather.meteor_shower' => 'weather-shooting-stars.gif',
+        'weather.huge_meteor' => 'weather-doomsday.gif',
         'tile.sea' => 'land0.gif',
         'tile.shallow' => 'land14.gif',
         'tile.wasteland' => 'land1.gif',

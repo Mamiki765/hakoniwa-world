@@ -1,13 +1,15 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { floorMod, gridToPixel, TILE_SIZE } from '../map/projection';
-import type { CommandQueue, CommandQueueItem, MapBounds, MapCell } from '../types';
+import { seaAreaOutline } from '../map/seaAreaWeather';
+import type { CommandQueue, CommandQueueItem, MapBounds, MapCell, SeaArea } from '../types';
 
 const props = defineProps<{
     cells: MapCell[];
     selected: MapCell | null;
     capital: { x: number; y: number };
     bounds: MapBounds;
+    seaAreas?: SeaArea[];
     ownNationId?: number;
     commandQueue?: CommandQueue | null;
     loading: boolean;
@@ -30,6 +32,8 @@ const tooltipCell = ref<MapCell | null>(null);
 const tooltipElement = ref<HTMLElement | null>(null);
 const wholeWorldView = ref(false);
 const showVisibility = ref(false);
+const showSeaAreas = ref(true);
+const failedWeatherAssets = ref(new Set<string>());
 const tooltipPosition = ref({ x: 0, y: 0, placement: 'right' as 'right' | 'left' | 'bottom' | 'top' });
 const failedAssets = ref<Set<string>>(new Set());
 let resizeObserver: ResizeObserver | null = null;
@@ -51,6 +55,18 @@ const positioned = computed(() => props.cells.map((cell) => {
     const capitalPixel = gridToPixel(props.capital);
     return { cell, x: pixel.x - capitalPixel.x, y: pixel.y - capitalPixel.y };
 }));
+
+const seaAreaOverlays = computed(() => {
+    const origin = gridToPixel(props.capital);
+    return (props.seaAreas ?? []).map((area) => {
+        const topLeft = gridToPixel({ x: area.bounds.min_x, y: area.bounds.min_y });
+        return { area, points: seaAreaOutline(area.bounds, origin), x: topLeft.x - origin.x, y: topLeft.y - origin.y };
+    });
+});
+
+function weatherAssetFailed(url: string): void {
+    failedWeatherAssets.value = new Set([...failedWeatherAssets.value, url]);
+}
 
 const visiblePositioned = computed(() => positioned.value.filter((item) => {
     const screenX = pan.value.x + item.x * zoom.value;
@@ -94,6 +110,8 @@ const tooltipDetails = computed(() => {
         detailLines.push(`${detail.label}: ${detail.formatted}`);
         if (detail.key === 'sea_area') detailLines.push(...queuedCommandLines(cell));
     }
+    const area = props.seaAreas?.find((region) => region.chunk_x === Math.floor(cell.x / 16) && region.chunk_y === Math.floor(cell.y / 16));
+    if (area?.weather != null) detailLines.push(`天候: ${weatherDescription(area)}`);
 
     return [
         ...(cell.ship == null ? [] : [
@@ -115,6 +133,12 @@ const tooltipDetails = computed(() => {
         ...detailLines,
     ];
 });
+
+function weatherDescription(area: SeaArea): string {
+    const weather = area.weather;
+    if (weather == null) return '';
+    return weather.label + (weather.turn == null ? '' : `（第${weather.turn}ターン）`);
+}
 
 onMounted(() => {
     if (viewport.value === null) return;
@@ -407,6 +431,7 @@ function markAssetFailed(cell: MapCell): void {
             >
                 視界表示
             </button>
+            <button type="button" class="sea-area-toggle" :aria-pressed="showSeaAreas" @click="showSeaAreas = !showSeaAreas">海域・天候</button>
             <span class="map-cell-count">表示 {{ visiblePositioned.length }}/{{ cells.length }}セル</span>
             <span v-if="loading" role="status">読み込み中…</span>
             <span v-if="error" class="error" role="alert">{{ error }}</span>
@@ -471,6 +496,22 @@ function markAssetFailed(cell: MapCell): void {
                         <span v-if="item.cell.monster.hardened_now" class="monster-hardened">硬</span>
                     </span>
                 </button>
+                <svg v-if="showSeaAreas" class="sea-area-overlay" aria-label="海域と当ターンの天候">
+                    <g v-for="item in seaAreaOverlays" :key="`${item.area.chunk_x}:${item.area.chunk_y}`" class="sea-area">
+                        <title>{{ item.area.name }}{{ item.area.weather == null ? '' : `・${weatherDescription(item.area)}` }}</title>
+                        <polygon :points="item.points" class="sea-area-border" :class="item.area.weather == null ? '' : `weather-${item.area.weather.key}`" vector-effect="non-scaling-stroke" />
+                        <template v-if="item.area.weather != null">
+                            <image
+                                v-if="item.area.weather.asset.available && item.area.weather.asset.url && !failedWeatherAssets.has(item.area.weather.asset.url)"
+                                class="weather-icon"
+                                :href="item.area.weather.asset.url"
+                                :x="item.x + 4 / zoom" :y="item.y + 4 / zoom" :width="12 / zoom" :height="12 / zoom"
+                                @error="weatherAssetFailed(item.area.weather.asset.url)"
+                            />
+                            <text v-else class="weather-icon-fallback" :x="item.x + 4 / zoom" :y="item.y + 14 / zoom" :font-size="12 / zoom">{{ item.area.weather.label.slice(0, 1) }}</text>
+                        </template>
+                    </g>
+                </svg>
             </div>
             <div
                 v-if="tooltipCell"

@@ -10,7 +10,7 @@ use App\Models\World;
 use Illuminate\Support\Facades\DB;
 use RuntimeException;
 
-/** Forward-only resource releases; never rewrites saved Turn or Ship provenance. */
+/** Forward-only Ruleset releases; never rewrites saved Turn or Ship provenance. */
 final class PowerEconomyUpgrade
 {
     public function __construct(
@@ -39,6 +39,13 @@ final class PowerEconomyUpgrade
         $settings = require config_path('hakoniwa/rulesets/hakoniwa-2s-plus-v30.php');
         $priorSettings = require config_path('hakoniwa/rulesets/hakoniwa-2s-plus-v29.php');
         $this->publish($settings, $priorSettings, false, true);
+    }
+
+    public function enableSeaAreaWeather(): void
+    {
+        $settings = require config_path('hakoniwa/rulesets/hakoniwa-2s-plus-v31.php');
+        $priorSettings = require config_path('hakoniwa/rulesets/hakoniwa-2s-plus-v30.php');
+        $this->publish($settings, $priorSettings, false);
     }
 
     /** @param array<string, mixed> $settings
@@ -75,6 +82,7 @@ final class PowerEconomyUpgrade
                 $current = match ($settings['version']) {
                     28 => $this->publisher->publishPowerIntroduction($settings),
                     29 => $this->publisher->publishPizzeriaMaintenanceRemoval($settings),
+                    30 => $this->publisher->publishOilAndFleetSkills($settings),
                     default => $this->publisher->publish($settings),
                 };
                 if ($initializePower) {
