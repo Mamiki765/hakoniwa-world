@@ -21,6 +21,8 @@ final class CommandQuantitySemantics
         'build_farm', 'build_factory', 'build_mine',
         'build_fast_farm', 'build_fast_factory', 'build_fast_mine',
         'build_central_bank', 'build_central_granary',
+        'build_pizzeria',
+        'build_thermal_power',
         'missile', 'pp_missile', 'land_destruction_missile', 'spp_missile',
     ];
 

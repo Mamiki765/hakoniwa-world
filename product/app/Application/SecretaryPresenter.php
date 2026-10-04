@@ -71,6 +71,9 @@ final class SecretaryPresenter
             SecretarySkillCatalog::INDOMITABLE => $this->indomitableEffect($definition, $level),
             SecretarySkillCatalog::SHIP_OPERATIONS => '準備中',
             SecretarySkillCatalog::NAVY => '効果なし',
+            SecretarySkillCatalog::ENERGY_SAVING => sprintf('電力消費 %.2f%%（実消費1MW＝1XP）',
+                100 * ($definition['effect']['base'] + $definition['effect']['numerator_per_level'] * $level)
+                / ($definition['effect']['base'] + $definition['effect']['denominator_per_level'] * $level)),
             default => throw new DomainException("Unknown Secretary skill {$skillKey}."),
         };
     }

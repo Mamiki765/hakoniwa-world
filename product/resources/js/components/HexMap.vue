@@ -452,7 +452,7 @@ function markAssetFailed(cell: MapCell): void {
                     <template v-for="overlay in item.cell.overlays" :key="overlay.key">
                         <img v-if="overlay.available && overlay.url" class="tile-overlay" :src="overlay.url" alt="" draggable="false">
                     </template>
-                    <span v-if="!assetIsRenderable(item.cell)" class="tile-label">{{ item.cell.facility === 'capital' ? '首' : item.cell.asset.fallback_label.slice(0, 1) }}</span>
+                    <span v-if="!assetIsRenderable(item.cell)" class="tile-label">{{ ['wind_power', 'thermal_power', 'condenser', 'pizzeria'].includes(item.cell.facility ?? '') ? '?' : item.cell.facility === 'capital' ? '首' : item.cell.asset.fallback_label.slice(0, 1) }}</span>
                     <small v-if="item.cell.ship?.owner_nation != null || item.cell.owner_nation_number !== null">
                         N{{ item.cell.ship?.owner_nation?.nation_number ?? item.cell.owner_nation_number }}
                     </small>

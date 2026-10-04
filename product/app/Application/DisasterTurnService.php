@@ -1341,10 +1341,18 @@ final class DisasterTurnService
             return $monsterRemoved;
         }
 
-        $this->cells->setFacility($cell, null);
-        $terrain = $cellIndex?->terrainDefinition($terrainKey)
-            ?? TerrainDefinition::query()->where('key', $terrainKey)->firstOrFail();
-        $this->cells->transitionTerrain($cell, $terrain);
+        $windRepairable = isset($context->ruleset->settings['power_economy'])
+            && $beforeFacility === 'wind_power' && ! $neutralizeOwner
+            && ! in_array($terrainKey, ['sea', 'shallow'], true);
+        if ($windRepairable) {
+            // Reuse the existing facility state; land loss still removes equipment.
+            $cell->facility_operational_state = 'damaged';
+        } else {
+            $this->cells->setFacility($cell, null);
+            $terrain = $cellIndex?->terrainDefinition($terrainKey)
+                ?? TerrainDefinition::query()->where('key', $terrainKey)->firstOrFail();
+            $this->cells->transitionTerrain($cell, $terrain);
+        }
         $cell->owner_nation_id = $targetOwner;
         $cell->population = 0;
         $cell->version++;
@@ -1355,14 +1363,15 @@ final class DisasterTurnService
             'x' => $cell->x,
             'y' => $cell->y,
             'from_terrain_key' => $beforeTerrain,
-            'to_terrain_key' => $terrainKey,
-            'removed_facility_key' => $beforeFacility,
+            'to_terrain_key' => $cell->terrain->key,
+            'removed_facility_key' => $windRepairable ? null : $beforeFacility,
             'from_owner_nation_id' => $beforeOwner,
             'to_owner_nation_id' => $targetOwner,
             'before_population' => $beforePopulation,
             'after_population' => 0,
+            'wind_repairable' => $windRepairable,
             ...$extra,
-        ], $visibility);
+        ], $visibility, message: $windRepairable ? '風力発電所が被災し故障しました。建設コマンドで半額修理できます。' : null);
 
         return true;
     }

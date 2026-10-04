@@ -1,0 +1,112 @@
+<?php
+
+namespace App\Application;
+
+use App\Domain\World\WorldMutationLock;
+use App\Models\ResourceDefinition;
+use App\Models\RulesetVersion;
+use App\Models\TurnRun;
+use App\Models\World;
+use Illuminate\Support\Facades\DB;
+use RuntimeException;
+
+/** Forward-only v27 -> v28 publication; never rewrites saved Turn or Ship provenance. */
+final class PowerEconomyUpgrade
+{
+    public function __construct(
+        private readonly CurrentCatalogInstaller $catalogs,
+        private readonly RulesetPublisher $publisher,
+        private readonly WorldMutationLock $lock,
+    ) {}
+
+    public function apply(): void
+    {
+        $settings = config('hakoniwa.ruleset');
+        if (! is_array($settings) || ($settings['key'] ?? null) !== 'hakoniwa-2s-plus-v28') {
+            throw new RuntimeException('The power migration requires the complete v28 release draft.');
+        }
+        $priorSettings = require config_path('hakoniwa/rulesets/hakoniwa-2s-plus-v27.php');
+        $prior = RulesetVersion::query()->where('key', $priorSettings['key'])->first();
+        if ($prior !== null && ! RulesetVersion::query()->whereKey($prior->id)
+            ->whereRaw('settings = ?::jsonb', [json_encode($priorSettings, JSON_THROW_ON_ERROR | JSON_PRESERVE_ZERO_FRACTION)])->exists()) {
+            throw new RuntimeException('The saved v27 predecessor differs from the accepted snapshot.');
+        }
+        if ($settings['monster_definitions'] !== $priorSettings['monster_definitions']
+            || array_slice($settings['command_definitions'], 0, count($priorSettings['command_definitions'])) !== $priorSettings['command_definitions']) {
+            throw new RuntimeException('This migration only remaps unchanged monster and existing command definitions.');
+        }
+        $worlds = $prior === null ? collect() : World::query()->where('ruleset_version_id', $prior->id)->orderBy('id')->get();
+        $held = [];
+        try {
+            foreach ($worlds as $world) {
+                $this->lock->acquire($world);
+                $held[] = $world;
+            }
+            DB::transaction(function () use ($settings, $prior, $worlds): void {
+                foreach ($worlds as $world) {
+                    $this->lock->assertHeld($world);
+                    $locked = World::query()->whereKey($world->id)->lockForUpdate()->firstOrFail();
+                    if ($locked->ruleset_version_id !== $prior?->id
+                        || TurnRun::query()->where('world_id', $world->id)->unresolvedProduction()->exists()) {
+                        throw new RuntimeException('Resolve the existing Turn before upgrading its World; no retry identity is changed.');
+                    }
+                }
+                $this->catalogs->install($settings);
+                $current = $this->publisher->publish($settings);
+                DB::statement('ALTER TABLE secretary_skills DROP CONSTRAINT secretary_skills_key_check');
+                DB::statement("ALTER TABLE secretary_skills ADD CONSTRAINT secretary_skills_key_check CHECK (skill_key IN ('agricultural_policy', 'specialty_development', 'gold_vein_survey', 'forest_management', 'final_defense_line', 'declining_birthrate_policy', 'indomitable', 'ship_operations', 'navy', 'energy_saving'))");
+                DB::table('secretary_skills')->insertUsing(
+                    ['secretary_id', 'skill_key', 'level', 'experience', 'created_at', 'updated_at'],
+                    DB::table('secretaries as secretary')->selectRaw("secretary.id, 'energy_saving', 0, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP")
+                        ->whereNotExists(fn ($query) => $query->selectRaw('1')->from('secretary_skills as skill')
+                            ->whereColumn('skill.secretary_id', 'secretary.id')->where('skill.skill_key', 'energy_saving')),
+                );
+                foreach ($worlds as $world) {
+                    $world->update(['ruleset_version_id' => $current->id]);
+                    DB::update(<<<'SQL'
+UPDATE monster_instances AS instance
+SET monster_definition_id = current.id
+FROM monster_definitions AS old, monster_definitions AS current
+WHERE instance.world_id = ? AND instance.monster_definition_id = old.id
+  AND old.ruleset_version_id = ? AND current.ruleset_version_id = ? AND current.key = old.key
+SQL, [$world->id, $prior?->id, $current->id]);
+                    // The ordinary guard forbids changing the identity or count of
+                    // a stat. This exact migration only rebinds identical definitions,
+                    // under an exclusive table lock, without touching any progression.
+                    // PostgreSQL rolls back this ALTER too if publication fails.
+                    DB::statement('ALTER TABLE nation_monster_kill_stats DISABLE TRIGGER nation_monster_kill_stat_guard');
+                    DB::update(<<<'SQL'
+UPDATE nation_monster_kill_stats AS stat
+SET monster_definition_id = current.id
+FROM monster_definitions AS old, monster_definitions AS current
+WHERE stat.world_id = ? AND stat.monster_definition_id = old.id
+  AND old.ruleset_version_id = ? AND current.ruleset_version_id = ? AND current.key = old.key
+SQL, [$world->id, $prior?->id, $current->id]);
+                    DB::statement('ALTER TABLE nation_monster_kill_stats ENABLE TRIGGER nation_monster_kill_stat_guard');
+                    DB::update(<<<'SQL'
+UPDATE nation_command_queue_items AS item
+SET command_definition_id = current.id
+FROM nation_command_queues AS queue, nations AS nation,
+     command_definitions AS old, command_definitions AS current
+WHERE item.nation_command_queue_id = queue.id AND queue.nation_id = nation.id
+  AND nation.world_id = ? AND item.status = 'queued' AND item.target_context = 'surface_cell'
+  AND item.command_definition_id = old.id AND old.ruleset_version_id = ?
+  AND current.ruleset_version_id = ? AND current.key = old.key
+SQL, [$world->id, $prior?->id, $current->id]);
+                }
+                $power = ResourceDefinition::query()->where('key', 'power')->sole();
+                DB::table('nation_resources')->insertUsing(
+                    ['nation_id', 'resource_definition_id', 'amount', 'created_at', 'updated_at'],
+                    DB::table('nations as nation')->selectRaw('nation.id, ?, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP', [$power->id])
+                        ->whereIn('nation.world_id', World::query()->where('ruleset_version_id', $current->id)->select('id'))
+                        ->whereNotExists(fn ($query) => $query->selectRaw('1')->from('nation_resources as balance')
+                            ->whereColumn('balance.nation_id', 'nation.id')->where('balance.resource_definition_id', $power->id)),
+                );
+            }, 1);
+        } finally {
+            foreach (array_reverse($held) as $world) {
+                $this->lock->release($world);
+            }
+        }
+    }
+}

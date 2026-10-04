@@ -12,6 +12,7 @@ use App\Domain\Command\PlayerFacingCommandException;
 use App\Domain\Command\SettlementOverbuildPolicy;
 use App\Domain\Command\TerritoryExpansionFacts;
 use App\Domain\Command\TerritoryExpansionPolicy;
+use App\Domain\Command\WindPowerRepairPolicy;
 use App\Domain\Economy\CapacityBoundedAssetService;
 use App\Domain\Economy\NationCapacityResolver;
 use App\Domain\Facility\FacilityRankPolicy;
@@ -56,6 +57,8 @@ final class DomesticCommandExecutor
         'build_farm', 'build_factory', 'build_mine',
         'build_fast_farm', 'build_fast_factory', 'build_fast_mine',
         'build_central_bank', 'build_central_granary',
+        'build_pizzeria',
+        'build_thermal_power',
     ];
 
     /** @var list<string> */
@@ -502,7 +505,7 @@ final class DomesticCommandExecutor
         }
         if ($definition->requires_empty_facility && $cell->facility_definition_id !== null) {
             $matchingQuantityFacility = $this->isMatchingQuantityFacility($definition, $cell);
-            if (! $matchingQuantityFacility
+            if (! $matchingQuantityFacility && ! $this->isWindRepair($definition, $cell)
                 && ! SettlementOverbuildPolicy::allows($definition->key, $cell->facility?->key, $definition->metadata)
                 && $ownerOverbuildEffect === null) {
                 return ['reason' => CommandFailureReason::FacilityExists, 'observed' => $observed];
@@ -562,7 +565,7 @@ final class DomesticCommandExecutor
         if ($this->hasOtherCentralFacility($context, $nation, $definition, $cell)) {
             return ['reason' => CommandFailureReason::FacilityLimitReached, 'observed' => $observed];
         }
-        $requiredMoney = $definition->cost_money;
+        $requiredMoney = WindPowerRepairPolicy::costMoney($definition, $cell->facility?->key, $cell->facility_operational_state);
         if ($definition->key === 'monster_dispatch'
             && ($definition->metadata['quantity_selects_catalog'] ?? null) === MonsterDispatchOptionResolver::CATALOG) {
             try {
@@ -793,6 +796,11 @@ final class DomesticCommandExecutor
             && $cell->facility?->key === $definition->result_facility_key;
     }
 
+    private function isWindRepair(CommandDefinition $definition, MapCell $cell): bool
+    {
+        return WindPowerRepairPolicy::matches($definition, $cell->facility?->key, $cell->facility_operational_state);
+    }
+
     private function paradoxCost(CommandDefinition $definition): int
     {
         $cost = $definition->metadata['cost_paradox'] ?? 0;
@@ -846,7 +854,7 @@ final class DomesticCommandExecutor
             return $this->surfaceShips->resolve($definition, $item->quantity)->buildCostMoney;
         }
         if (! $this->isSeabedOilSearch($definition, $cell)) {
-            return $definition->cost_money;
+            return WindPowerRepairPolicy::costMoney($definition, $cell->facility?->key, $cell->facility_operational_state);
         }
 
         if ($definition->cost_money < 1) {

@@ -4,6 +4,7 @@ namespace App\Application;
 
 use App\Application\Underground\UndergroundFacilityBenefits;
 use App\Domain\Economy\CapacityBoundedAssetService;
+use App\Domain\Economy\FoodConsumptionPlanner;
 use App\Domain\Economy\InventorySalePlanner;
 use App\Domain\Economy\NationCapacityResolver;
 use App\Domain\Economy\NationEconomyCalculator;
@@ -62,6 +63,8 @@ final class CompleteTurnEngine
         private readonly InventorySalePlanner $salePlanner,
         private readonly NationCapacityResolver $capacities,
         private readonly NationEconomyCalculator $economyCalculator,
+        private readonly FoodConsumptionPlanner $foodConsumption,
+        private readonly PowerEconomyTurnService $powerEconomy,
         private readonly UnderseaCityMaintenancePlanner $underseaCityMaintenance,
         private readonly FacilityCapacityService $facilityCapacities,
         private readonly FacilityRankPolicy $facilityRanks,
@@ -303,6 +306,7 @@ final class CompleteTurnEngine
                 $resources,
             );
             $this->events->record($context, 'resource.food_consumed', $nation, $consumption);
+            $this->powerEconomy->execute($context, $nation, $facilitiesByNation->get($nationId, []), $resources);
             if ($productionOverflowStage === 'after_population_nutrition_consumption') {
                 if ($foodCredit->requested > 0) {
                     $overflow = $this->foodOverflow->resolveAfterNutrition(
@@ -1351,9 +1355,8 @@ final class CompleteTurnEngine
         int $requiredNutrition,
         Collection $catalog,
     ): array {
-        $remaining = $requiredNutrition;
-        $totalSupplied = 0;
-        $resources = [];
+        $foods = [];
+        $balances = [];
         foreach ($priority as $resourceKey) {
             $resource = $this->resourceDefinition($catalog, $resourceKey);
             $nutrition = $this->integerNutrition($resource);
@@ -1365,26 +1368,18 @@ final class CompleteTurnEngine
             ], ['amount' => 0]);
             $balance = NationResource::query()->whereKey($balance->id)->lockForUpdate()->firstOrFail();
             $before = (int) $balance->amount;
-            $neededUnits = $remaining === 0 ? 0 : intdiv($remaining + $nutrition - 1, $nutrition);
-            $consumed = min($before, $neededUnits);
-            $supplied = $consumed * $nutrition;
-            $totalSupplied += $supplied;
-            if ($consumed > 0) {
-                $balance->decrement('amount', $consumed);
-            }
-            $remaining = max(0, $remaining - $supplied);
-            $resources[] = [
-                'resource_key' => $resourceKey, 'before' => $before, 'consumed_units' => $consumed,
-                'nutrition_per_unit' => $nutrition, 'supplied_nutrition' => $supplied,
-                'after' => $before - $consumed,
-            ];
+            $foods[] = ['resource_key' => $resourceKey, 'amount' => $before, 'nutrition' => $nutrition];
+            $balances[$resourceKey] = $balance;
         }
 
-        return [
-            'required_nutrition' => $requiredNutrition, 'resources' => $resources,
-            'supplied_nutrition' => $totalSupplied,
-            'shortage' => $remaining, 'famine' => $remaining > 0,
-        ];
+        $plan = $this->foodConsumption->plan($foods, $requiredNutrition);
+        foreach ($plan['resources'] as $row) {
+            if ($row['consumed_units'] > 0) {
+                $balances[$row['resource_key']]->decrement('amount', $row['consumed_units']);
+            }
+        }
+
+        return $plan;
     }
 
     private function integerNutrition(ResourceDefinition $resource): int

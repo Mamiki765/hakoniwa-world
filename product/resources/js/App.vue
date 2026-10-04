@@ -314,6 +314,12 @@ function formatForecastDelta(value: number): string {
     return `${value > 0 ? '+' : '−'}${Math.abs(value).toLocaleString('ja-JP')}`;
 }
 
+function formatForecastRange(value: number, range?: { minimum: number; maximum: number }, signed = false): string {
+    const format = signed ? formatForecastDelta : (amount: number) => amount.toLocaleString('ja-JP');
+    if (!range) return format(value);
+    return range.minimum === range.maximum ? format(range.minimum) : `${format(range.minimum)}〜${format(range.maximum)}`;
+}
+
 function formatPercentageTenths(value: number): string {
     return (value / 10).toFixed(1);
 }
@@ -2217,15 +2223,33 @@ async function abandonNation(): Promise<void> {
                                     <tbody>
                                         <tr v-for="row in nation.resource_forecast.rows" :key="row.key">
                                             <th scope="row">{{ row.name }}</th>
-                                            <td>{{ row.production.toLocaleString('ja-JP') }}</td>
-                                            <td>{{ row.consumption.toLocaleString('ja-JP') }}</td>
-                                            <td :class="{ 'forecast-positive': row.delta > 0, 'forecast-negative': row.delta < 0 }">{{ formatForecastDelta(row.delta) }}</td>
-                                            <td>{{ row.holding.toLocaleString('ja-JP') }}</td>
+                                            <td>{{ formatForecastRange(row.production, row.production_range) }}{{ row.unit_label ?? '' }}</td>
+                                            <td>{{ formatForecastRange(row.consumption, row.consumption_range) }}{{ row.unit_label ?? '' }}</td>
+                                            <td :class="{ 'forecast-positive': (row.delta_range?.minimum ?? row.delta) > 0, 'forecast-negative': (row.delta_range?.maximum ?? row.delta) < 0 }">{{ formatForecastRange(row.delta, row.delta_range, true) }}{{ row.unit_label ?? '' }}</td>
+                                            <td>{{ row.holding.toLocaleString('ja-JP') }}{{ row.unit_label ?? '' }}</td>
                                         </tr>
                                     </tbody>
                                 </table>
                             </div>
                             <p class="resource-forecast-note">{{ nation.resource_forecast.food_holding_note }}</p>
+                            <template v-if="nation.resource_forecast.power_summary">
+                                <p class="resource-forecast-note">
+                                    電力の範囲は風況・端数丸めにより変動します。風力平均は参考値{{ nation.resource_forecast.power_summary.wind_expected_mw.toLocaleString('ja-JP') }}MW/T。
+                                    電力の増減は持越し残量の差です。蓄電上限{{ nation.resource_forecast.power_summary.capacity_mw.toLocaleString('ja-JP') }}MW、
+                                    次の残量{{ formatForecastRange(0, nation.resource_forecast.power_summary.stored_after_mw) }}MW、
+                                    余剰破棄{{ formatForecastRange(0, nation.resource_forecast.power_summary.discarded_mw) }}MW。
+                                </p>
+                                <p class="resource-forecast-note">
+                                    ピザ売上{{ formatForecastRange(0, nation.resource_forecast.power_summary.pizzeria_revenue) }}億円/T（資金上限適用前）、
+                                    維持費{{ nation.resource_forecast.power_summary.pizzeria_maintenance.toLocaleString('ja-JP') }}億円/T。
+                                    <span v-if="nation.resource_forecast.power_summary.pizzeria_unfunded">維持費不足で{{ nation.resource_forecast.power_summary.pizzeria_unfunded }}施設停止。</span>
+                                </p>
+                                <p v-if="nation.resource_forecast.power_summary.thermal_generated_mw" class="status-note">
+                                    火力{{ nation.resource_forecast.power_summary.thermal_generated_mw.toLocaleString('ja-JP') }}MW/T。
+                                    燃料目安（切上げ）：石油{{ nation.resource_forecast.power_summary.thermal_oil_display.toLocaleString('ja-JP') }}万バレル、
+                                    鉱物{{ nation.resource_forecast.power_summary.thermal_minerals_display.toLocaleString('ja-JP') }}t/T。実消費の端数は確率丸めします。
+                                </p>
+                            </template>
                             <p class="workforce-forecast" :class="`workforce-${nation.resource_forecast.workforce.status}`">
                                 <strong>{{ nation.resource_forecast.workforce.label }}</strong>
                                 {{ formatPercentageTenths(nation.resource_forecast.workforce.percentage_tenths) }}%

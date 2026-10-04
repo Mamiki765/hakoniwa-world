@@ -10,6 +10,9 @@ const usesWorkforce = computed(() => ['farm', 'factory', 'mine'].includes(props.
     <section class="selected-cell" aria-live="polite">
         <template v-if="cell">
             <h3>{{ cell.display_name }} ({{ cell.x }}, {{ cell.y }})</h3>
+            <p v-if="['wind_power', 'thermal_power', 'condenser', 'pizzeria'].includes(cell.facility ?? '') && !cell.asset.available">
+                施設画像は未配備です。
+            </p>
             <dl>
                 <template v-if="cell.ship">
                     <template v-if="cell.ship.owner_nation">

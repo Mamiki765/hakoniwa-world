@@ -14,6 +14,7 @@ use App\Domain\Command\CommandRequestConflictException;
 use App\Domain\Command\DevelopmentPlanQuantity;
 use App\Domain\Command\PlayerFacingCommandException;
 use App\Domain\Command\SurfaceCommandProjectionMemo;
+use App\Domain\Command\WindPowerRepairPolicy;
 use App\Domain\Concurrency\OptimisticLockException;
 use App\Domain\Facility\FacilityCapacityService;
 use App\Domain\Ruleset\ResetRequiredException;
@@ -233,8 +234,8 @@ final class CommandQueueController extends Controller
                                     $projectionMemo,
                                 );
                         }
-                        if ($definition->key === 'build_port') {
-                            $portProjectedExecutable = $service->projectedTargetMatches(
+                        if (in_array($definition->key, ['build_port', 'build_wind_power'], true)) {
+                            $targetProjectedExecutable = $service->projectedTargetMatches(
                                 $definition,
                                 $projected,
                                 $nation,
@@ -244,10 +245,12 @@ final class CommandQueueController extends Controller
                                 $position,
                                 $projectionMemo,
                             );
-                            if ($currentlyExecutable && ! $portProjectedExecutable) {
-                                $unavailableReason = '予約済みcommand後は港の建設条件を満たしません。';
+                            if ($currentlyExecutable && ! $targetProjectedExecutable) {
+                                $unavailableReason = $definition->key === 'build_wind_power'
+                                    ? '予約済みcommand後は風力発電所の建設・修理条件を満たしません。'
+                                    : '予約済みcommand後は港の建設条件を満たしません。';
                             } elseif (! $currentlyExecutable) {
-                                $projectedExecutable = $portProjectedExecutable;
+                                $projectedExecutable = $targetProjectedExecutable;
                             }
                         }
                     }
@@ -275,7 +278,12 @@ final class CommandQueueController extends Controller
                     }
                     $applicable = ($definition->target_type === 'nation' || $cell !== null)
                         && (! $requiresNationTarget || $presentedTargetOptions !== []);
-                    $shortfall = max(0, $definition->cost_money - $nation->money);
+                    $presentedCost = WindPowerRepairPolicy::costMoney(
+                        $definition,
+                        $projected['facility_key'] ?? null,
+                        $projected['facility_operational_state'] ?? null,
+                    );
+                    $shortfall = max(0, $presentedCost - $nation->money);
                     $paradoxCost = $definition->metadata['cost_paradox'] ?? 0;
                     if (! is_int($paradoxCost) || $paradoxCost < 0) {
                         throw new DomainException("Command {$definition->key} has invalid Paradox cost metadata.");
@@ -310,7 +318,7 @@ final class CommandQueueController extends Controller
                         'quantity_semantics' => $this->quantitySemantics->for($definition),
                         'quantity_default' => $this->quantitySemantics->presentationDefault($definition),
                         'quantity_options' => $this->quantitySemantics->options($definition),
-                        'cost_money' => $definition->cost_money,
+                        'cost_money' => $presentedCost,
                         'cost_paradox' => $paradoxCost,
                         'command_group' => ($definition->metadata['command_group'] ?? 'normal') === 'paradox'
                             ? 'paradox'
@@ -601,7 +609,7 @@ final class CommandQueueController extends Controller
                     'quantity_label' => $definition instanceof UndergroundCommandDefinition
                         ? null
                         : $this->quantitySemantics->label($definition, $item->quantity),
-                    'effective_cost_money' => $this->effectiveCostMoney($definition, $item),
+                    'effective_cost_money' => $this->effectiveCostMoney($definition, $item, $projected, $nation->id),
                     'consumes_turn' => (bool) ($definition->metadata['consumes_turn'] ?? true),
                     'parameters' => $item->parameters === [] ? (object) [] : $item->parameters,
                     'status' => $item->status,
@@ -640,12 +648,18 @@ final class CommandQueueController extends Controller
         ];
     }
 
+    /** @param array{terrain_key: string, facility_key: string|null, owner_nation_id: int|null, facility_operational_state: string|null}|null $projected */
     private function effectiveCostMoney(
         CommandDefinition|UndergroundCommandDefinition $definition,
         NationCommandQueueItem $item,
+        ?array $projected,
+        int $nationId,
     ): int {
         if (! $definition instanceof CommandDefinition) {
             return $definition->cost_money;
+        }
+        if ($definition->key === 'build_wind_power' && ($projected['owner_nation_id'] ?? null) === $nationId) {
+            return WindPowerRepairPolicy::costMoney($definition, $projected['facility_key'], $projected['facility_operational_state']);
         }
 
         return $this->quantitySemantics->effectiveCostMoney($definition, $item->quantity);

@@ -40,8 +40,12 @@ final class CurrentRulesetAuthoringInspector
         $classifiedPaths = [];
         $counts = array_fill_keys(self::CLASSIFICATIONS, 0);
 
-        foreach (self::DOMAIN_FILES as $file) {
-            $relativePath = 'current/'.$file;
+        $files = [...self::DOMAIN_FILES, 'power-and-pizza.php'];
+        foreach ($files as $file) {
+            $relativePath = (in_array($file, [
+                'world-and-map.php', 'economy-and-resources.php', 'facilities.php',
+                'commands-and-production.php', 'terrain-and-disasters.php', 'power-and-pizza.php', 'secretary.php',
+            ], true) ? 'release-4.11/' : 'current/').$file;
             $domain = require config_path('hakoniwa/rulesets/'.$relativePath);
             if (! is_array($domain) || array_keys($domain) !== ['payload', 'classification']) {
                 throw new DomainException("Current Ruleset domain {$file} must contain only payload and classification.");
@@ -121,7 +125,7 @@ final class CurrentRulesetAuthoringInspector
         }
 
         return [
-            'domains' => count(self::DOMAIN_FILES),
+            'domains' => count($files),
             'leaves' => count($publishedLeaves),
             'behavior' => $counts['behavior'],
             'data' => $counts['data'],

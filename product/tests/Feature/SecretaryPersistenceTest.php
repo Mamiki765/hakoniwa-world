@@ -83,7 +83,7 @@ final class SecretaryPersistenceTest extends TestCase
         $replayed = $service->create($user, $world->fresh(), '別入力', '別入力', '', $requestKey);
         $this->assertSame($nation->id, $replayed->id);
         $this->assertSame(1, Secretary::query()->where('user_id', $user->id)->count());
-        $this->assertSame(9, SecretarySkill::query()->where('secretary_id', $secretary->id)->count());
+        $this->assertSame(count(SecretarySkillCatalog::KEYS), SecretarySkill::query()->where('secretary_id', $secretary->id)->count());
         $this->assertSame(1, $secretary->itemInstances()->count());
     }
 
@@ -114,7 +114,7 @@ final class SecretaryPersistenceTest extends TestCase
                 ->assertJsonPath('data.skills.6.effect', '自然人口増加 +2.50%')
                 ->assertJsonPath('data.skills.7.effect', '準備中')
                 ->assertJsonPath('data.skills.8.effect', '効果なし')
-                ->assertJsonCount(9, 'data.skills');
+                ->assertJsonCount(count(SecretarySkillCatalog::KEYS), 'data.skills');
         }
         $this->assertSame(2, Secretary::query()->where('name', 'ペリドット')->count());
 

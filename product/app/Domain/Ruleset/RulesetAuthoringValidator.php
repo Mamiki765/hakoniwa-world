@@ -5,6 +5,7 @@ namespace App\Domain\Ruleset;
 use App\Domain\Command\CommandQueueLimit;
 use App\Domain\Command\DevelopmentPlanQuantity;
 use App\Domain\Command\MissileTargetPolicy;
+use App\Domain\Economy\PowerEconomyCalculator;
 use App\Domain\Economy\SalePolicy;
 use App\Domain\Facility\FacilityVisibilityPolicy;
 use App\Domain\Map\GridCoordinate;
@@ -306,6 +307,9 @@ final class RulesetAuthoringValidator
         }
 
         $resourceKeys = $this->validateResources($settings);
+        if (isset($settings['power_economy'])) {
+            (new PowerEconomyCalculator)->storageCapacity($settings, 0);
+        }
         $commandKeys = $this->definitionKeys(
             $this->list($settings['command_definitions'], 'ruleset.command_definitions'),
             'ruleset.command_definitions',
@@ -777,6 +781,18 @@ final class RulesetAuthoringValidator
                         'target_experience' => 'normal_missile_hit_equivalent',
                     ]) {
                     throw new DomainException("{$path} does not match the v26 Navy skill contract.");
+                }
+
+                continue;
+            }
+
+            if ($key === SecretarySkillCatalog::ENERGY_SAVING) {
+                if ($initialLevel !== 0 || $basis !== 'next_level_squared' || $multiplier !== 3
+                    || ($requirement['divisor'] ?? null) !== 2
+                    || $effect !== ['type' => 'power_consumption_ratio', 'base' => 1000, 'numerator_per_level' => 5, 'denominator_per_level' => 7]
+                    || $source !== ['type' => 'actual_power_consumption', 'points_per_mw' => 1]
+                    || ! in_array('power', $resourceKeys, true)) {
+                    throw new DomainException("{$path} does not match the power consumption skill contract.");
                 }
 
                 continue;
@@ -2472,7 +2488,7 @@ final class RulesetAuthoringValidator
                         "ruleset.resource_capacities.{$resourceKey} requires a storable resource.",
                     );
                 }
-                if (($definition['tradable'] ?? null) !== true) {
+                if (($definition['tradable'] ?? null) !== true && $resourceKey !== 'power') {
                     throw new DomainException(
                         "ruleset.resource_capacities.{$resourceKey} requires a tradable resource for stockpile overflow sale.",
                     );
