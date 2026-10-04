@@ -16,10 +16,12 @@ use App\Domain\Facility\MissileBaseRules;
 use App\Domain\Map\GridCoordinate;
 use App\Domain\Map\MapCellStateService;
 use App\Domain\Secretary\SecretarySkillCatalog;
+use App\Domain\Turn\TurnRandomStreamFactory;
 use App\Models\BuriedTreasure;
 use App\Models\FacilityDefinition;
 use App\Models\MapCell;
 use App\Models\MonsterOccupancy;
+use App\Models\NationMembership;
 use App\Models\NationUndergroundFacility;
 use App\Models\Ship;
 use App\Models\TerrainDefinition;
@@ -1407,6 +1409,54 @@ final class MissileImpactAndSettlementTest extends CommandAndMissileTestCase
         $this->assertSame('pirate_sink', $treasure->source);
         $this->assertSame(1, DB::table('audit_events')->where('event_type', 'buried_treasure.created')
             ->where('visibility', 'public')->count());
+    }
+
+    public function test_navy_evades_normal_one_hp_missile_but_cannot_evade_instant_sink(): void
+    {
+        [$world, $user, $firing, $target] = $this->combatants('海軍');
+        $space = $this->surfaceMapSpace($world);
+        $base = $this->missileBase($firing);
+        $cell = MapCell::query()->where('map_space_id', $space->id)->whereNull('owner_nation_id')
+            ->whereNull('facility_definition_id')->whereDoesntHave('ship')->whereDoesntHave('monsterOccupancy')
+            ->whereHas('terrain', fn ($q) => $q->where('key', 'sea'))->orderBy('id')->firstOrFail();
+        $ship = Ship::query()->create([
+            'world_id' => $world->id, 'ruleset_version_id' => $world->ruleset_version_id, 'nation_id' => $target->id,
+            'map_cell_id' => $cell->id, 'ship_type_key' => 'warship', 'current_hp' => 1, 'max_hp' => 3,
+            'heading' => null, 'state' => Ship::STATE_ACTIVE, 'version' => 1,
+        ]);
+        $owner = NationMembership::query()->where('nation_id', $target->id)->where('role', 'owner')->sole()->user;
+        $owner->secretary()->sole()->skills()->where('skill_key', 'navy')->update(['level' => 20]);
+        $ruleset = $world->rulesetVersion()->sole();
+        $settings = $ruleset->settings;
+        foreach (['missile', 'land_destruction_missile'] as $key) {
+            $settings['military']['missiles'][$key]['deviation_radius'] = 0;
+        }
+        $ruleset->update(['settings' => $settings]);
+        for ($probe = 0; ; $probe++) {
+            $seed = hash('sha256', "navy missile {$probe}");
+            if ((new TurnRandomStreamFactory($seed))->stream(TurnRandomStreamFactory::secretaryNavyEvasion($ship->id, 1))->integer(0, 999999) < 75000) {
+                break;
+            }
+        }
+        $item = $this->queue(app(CommandQueueService::class), $user, $firing, $space, 'missile', $cell);
+        for ($attempt = 0; $attempt < 2; $attempt++) {
+            $context = $this->context($world, 2, $seed, [$firing->id, $target->id]);
+            app(SecretaryTurnService::class)->loadAttemptSnapshots($context, [$firing->id, $target->id]);
+            DB::beginTransaction();
+            try {
+                $metrics = $this->resolveMissile($context, $base);
+                $this->assertSame([1, 0, 1], [$metrics['shots_fired'], $metrics['meaningful_impacts'], $metrics['ineffective_impacts']]);
+                $this->assertSame([Ship::STATE_ACTIVE, 1], [$ship->fresh()->state, $ship->fresh()->current_hp]);
+            } finally {
+                DB::rollBack();
+            }
+        }
+        $item->delete();
+        $this->queue(app(CommandQueueService::class), $user, $firing, $space, 'land_destruction_missile', $cell);
+        $context = $this->context($world, 2, $seed, [$firing->id, $target->id]);
+        app(SecretaryTurnService::class)->loadAttemptSnapshots($context, [$firing->id, $target->id]);
+        $this->resolveMissile($context, $base);
+        $this->assertSame(Ship::STATE_REMOVED, $ship->fresh()->state);
     }
 
     public function test_ordinary_missiles_still_destroy_other_owned_water_facilities(): void

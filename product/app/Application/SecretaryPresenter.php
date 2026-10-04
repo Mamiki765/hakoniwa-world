@@ -16,6 +16,7 @@ final class SecretaryPresenter
         private readonly SecretarySkillProgression $progression,
         private readonly SecretaryItemPresenter $items,
         private readonly SecretaryProfilePresenter $profiles,
+        private readonly SecretaryNavyEvasionService $navyEvasion,
     ) {}
 
     /** @return array<string, mixed> */
@@ -66,12 +67,13 @@ final class SecretaryPresenter
             SecretarySkillCatalog::AGRICULTURAL_POLICY => sprintf('小麦生産＋%.1f%%', $level / 10),
             SecretarySkillCatalog::SPECIALTY_DEVELOPMENT => sprintf('工場生産＋%.1f%%', $level / 10),
             SecretarySkillCatalog::GOLD_VEIN_SURVEY => sprintf('採掘場生産＋%.1f%%', $level / 10),
+            SecretarySkillCatalog::OIL_DEVELOPMENT => '石油産出＋'.number_format($level * $definition['effect']['units_per_level_per_field']).'万バレル',
             SecretarySkillCatalog::FOREST_MANAGEMENT => "伐採資金・森林増加＋{$level}%",
             SecretarySkillCatalog::FINAL_DEFENSE_LINE => "防衛されなかったミサイルを1ターンにつき{$level}発まで迎撃",
             SecretarySkillCatalog::DECLINING_BIRTHRATE_POLICY => $this->birthratePolicyEffect($definition, $level),
             SecretarySkillCatalog::INDOMITABLE => $this->indomitableEffect($definition, $level),
-            SecretarySkillCatalog::SHIP_OPERATIONS => '準備中',
-            SecretarySkillCatalog::NAVY => '効果なし',
+            SecretarySkillCatalog::SHIP_OPERATIONS => "漁獲・観光収入＋{$level}%",
+            SecretarySkillCatalog::NAVY => sprintf('戦艦への通常攻撃を%.2f%%で回避', $this->navyEvasion->chancePercent($definition['effect'], $level)),
             SecretarySkillCatalog::ENERGY_SAVING => sprintf('電力消費 %.2f%%',
                 100 * ($definition['effect']['base'] + $definition['effect']['numerator_per_level'] * $level)
                 / ($definition['effect']['base'] + $definition['effect']['denominator_per_level'] * $level)),
@@ -85,6 +87,7 @@ final class SecretaryPresenter
             SecretarySkillCatalog::AGRICULTURAL_POLICY => '農場整備を行う',
             SecretarySkillCatalog::SPECIALTY_DEVELOPMENT => '工場整備を行う',
             SecretarySkillCatalog::GOLD_VEIN_SURVEY => '採掘場整備を行う',
+            SecretarySkillCatalog::OIL_DEVELOPMENT => '油田を掘り当てる',
             SecretarySkillCatalog::FOREST_MANAGEMENT => '植林・伐採を行う',
             SecretarySkillCatalog::FINAL_DEFENSE_LINE => '自領土にミサイルが飛来する',
             SecretarySkillCatalog::DECLINING_BIRTHRATE_POLICY => '過去最大人口を更新する（経験値補正無効）',

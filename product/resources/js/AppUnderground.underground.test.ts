@@ -353,16 +353,20 @@ describe('Underground application operations', () => {
             row.get('.secretary-skill-name').text(),
             row.get('.secretary-skill-experience-condition').text(),
         ]))).toEqual(Object.fromEntries(secretary.skills.map((skill) => [skill.name, skill.experience_condition])));
-        const agriculturalSkill = skillRows[0]!;
-        const defenseSkill = skillRows[4]!;
+        const rowForSkill = (key: typeof secretary.skills[number]['key']) => skillRows.find((row) => (
+            row.get('.secretary-skill-name').text() === secretary.skills.find((skill) => skill.key === key)!.name
+        ))!;
+        const agriculturalSkill = rowForSkill('agricultural_policy');
+        const defenseSkill = rowForSkill('final_defense_line');
         expect(agriculturalSkill.get('.secretary-skill-name').text()).toBe('農業政策');
         expect(agriculturalSkill.findAll('.secretary-skill-progress span').map((span) => span.text())).toEqual(['Lv0', 'XP 0 / 1']);
         expect(agriculturalSkill.get('.secretary-skill-effect').text()).toBe('小麦生産＋0.0%');
         expect(defenseSkill.get('.secretary-skill-name').text()).toBe('最終防衛ライン');
         expect(defenseSkill.findAll('.secretary-skill-progress span').map((span) => span.text())).toEqual(['Lv1', 'XP 0 / 100']);
         expect(defenseSkill.get('.secretary-skill-effect').text()).toBe('防衛されなかったミサイルを1ターンにつき1発まで迎撃');
-        expect(skillRows[5]!.get('.secretary-skill-effect').text()).toBe('自然人口上限 +500人 / 誘致人口上限 +1,000人');
-        expect(skillRows[6]!.get('.secretary-skill-effect').text()).toBe('自然人口増加 +2.50%');
+        expect(Object.fromEntries(skillRows.map((row) => [
+            row.get('.secretary-skill-name').text(), row.get('.secretary-skill-effect').text(),
+        ]))).toEqual(Object.fromEntries(secretary.skills.map((skill) => [skill.name, skill.effect])));
         expect(wrapper.get('.secretary-skills').text()).not.toContain('次のlevelまで');
         expect(wrapper.findAll('.site-header nav button').some((button) => button.text() === 'ペリドット')).toBe(true);
 

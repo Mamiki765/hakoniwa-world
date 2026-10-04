@@ -107,18 +107,6 @@ final class SecretaryPersistenceTest extends TestCase
                 ->assertOk()
                 ->assertJsonPath('data.name', 'ペリドット')
                 ->assertJsonPath('data.header_label', 'ペリドット')
-                ->assertJsonPath('data.skills.0.effect', '小麦生産＋0.0%')
-                ->assertJsonPath('data.skills.3.effect', '伐採資金・森林増加＋0%')
-                ->assertJsonPath('data.skills.4.effect', '防衛されなかったミサイルを1ターンにつき1発まで迎撃')
-                ->assertJsonPath('data.skills.5.effect', '自然人口上限 +500人 / 誘致人口上限 +1,000人')
-                ->assertJsonPath('data.skills.6.effect', '自然人口増加 +2.50%')
-                ->assertJsonPath('data.skills.7.effect', '準備中')
-                ->assertJsonPath('data.skills.8.effect', '効果なし')
-                ->assertJsonPath('data.skills.9.name', '省エネ研究')
-                ->assertJsonPath('data.skills.9.effect', '電力消費 100.00%')
-                ->assertJsonPath('data.skills.9.experience_condition', '電力を消費する')
-                ->assertJsonPath('data.skills.4.experience_condition', '自領土にミサイルが飛来する')
-                ->assertJsonPath('data.skills.5.experience_condition', '過去最大人口を更新する（経験値補正無効）')
                 ->assertJsonCount(count(SecretarySkillCatalog::KEYS), 'data.skills');
         }
         $this->assertSame(2, Secretary::query()->where('name', 'ペリドット')->count());

@@ -71,6 +71,7 @@ final class PlayerIslandEventService
         'ship.forced_displaced',
         'ship.fuel_shortage_damaged',
         'ship.missile_damaged',
+        'ship.attack_evaded',
         'ship.sunk',
         'missile.launch_failed',
         'missile.launch_detail',
@@ -777,7 +778,9 @@ final class PlayerIslandEventService
                     $y,
                     number_format($this->integer($metadata, 'stolen_population')),
                 ),
-                'ship' => "{$nation}({$x},{$y})の船が海賊船に襲撃されました。",
+                'ship' => ($metadata['evaded'] ?? false)
+                    ? "{$nation}({$x},{$y})の戦艦が海賊船の攻撃を回避しました。"
+                    : "{$nation}({$x},{$y})の船が海賊船に襲撃されました。",
                 'seabed' => sprintf(
                     '%s(%s,%s)の%sが海賊船に襲撃され、破壊されました。',
                     $nation,
@@ -1067,7 +1070,7 @@ final class PlayerIslandEventService
             ],
             'buried_treasure.created' => ['source'],
             'ship.pirate_attacked' => [
-                'nation_name', 'target_type', 'x', 'y', 'stolen_population', 'facility_key',
+                'nation_name', 'target_type', 'x', 'y', 'stolen_population', 'facility_key', 'evaded',
             ],
             'disaster.triggered' => ['disaster_key', 'center_x', 'center_y'],
             'disaster.cell_damaged', 'fire.damaged' => [
@@ -1686,6 +1689,7 @@ final class PlayerIslandEventService
                 number_format($this->integer($metadata, 'y')),
                 number_format($this->integer($metadata, 'current_hp')),
             ),
+            'ship.attack_evaded' => '戦艦がミサイル攻撃を回避しました。',
             'ship.sunk' => sprintf(
                 '%sが%sにより(%s,%s)で沈没しました。',
                 is_string($metadata['ship_name'] ?? null) ? $metadata['ship_name'] : '船',
@@ -2465,6 +2469,7 @@ final class PlayerIslandEventService
             'water_facility_destroyed' => '水上施設を破壊しました',
             'ship_damaged' => '船に損傷を与えました',
             'ship_sunk' => '船を撃沈しました',
+            'ship_evaded' => '戦艦に攻撃を回避されました',
             'facility_scale_damaged', 'facility_scale_land_damaged' => '施設の規模を減少させました',
             'facility_scale_ineffective' => '施設の規模へ被害を与えられませんでした',
             'land_scorched' => '土地を焼け跡にしました',

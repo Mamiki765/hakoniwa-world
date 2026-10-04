@@ -7,6 +7,7 @@ use App\Domain\Facility\FacilityVisibilityPolicy;
 use App\Domain\Map\GridCoordinate;
 use App\Domain\Map\MapCellStateService;
 use App\Domain\Monster\MonsterTurnBatch;
+use App\Domain\Secretary\SecretaryProductionBonus;
 use App\Domain\Secretary\SecretarySkillCatalog;
 use App\Domain\Ship\SurfaceShipCatalog;
 use App\Domain\Ship\SurfaceShipDefinition;
@@ -47,6 +48,8 @@ final class SurfaceShipTurnService
         private readonly MapCellStateService $cells,
         private readonly SurfaceVisibilityService $visibility,
         private readonly BuriedTreasureService $buriedTreasures,
+        private readonly SecretaryProductionBonus $secretaryProduction,
+        private readonly SecretaryNavyEvasionService $navyEvasion,
     ) {}
 
     public function load(TurnContext $context, MapSpace $space): SurfaceShipTurnBatch
@@ -346,6 +349,7 @@ final class SurfaceShipTurnService
             ? (int) $target['ship']->nation_id
             : ($cell->owner_nation_id === null ? null : (int) $cell->owner_nation_id);
         $stolen = 0;
+        $evaded = false;
         if ($target['type'] === 'settlement') {
             $before = (int) $cell->population;
             $minimum = $cell->facility?->key === 'capital'
@@ -364,12 +368,13 @@ final class SurfaceShipTurnService
         } elseif ($target['type'] === 'ship') {
             /** @var Ship $victim */
             $victim = $target['ship'];
-            if ((int) $victim->current_hp <= (int) $settings['player_ship_damage']) {
+            $evaded = $this->navyEvasion->evades($context, $victim, (int) $settings['player_ship_damage']);
+            if (! $evaded && (int) $victim->current_hp <= (int) $settings['player_ship_damage']) {
                 $this->removal->sinkLockedAtCell($context, $cell, $victim, 'pirate_attack', [
                     'pirate_ship_id' => (int) $pirate->id,
                 ]);
                 $ships->forget($victim, (int) $cell->id);
-            } else {
+            } elseif (! $evaded) {
                 $victim->current_hp -= (int) $settings['player_ship_damage'];
                 $victim->version++;
                 $victim->save();
@@ -390,6 +395,7 @@ final class SurfaceShipTurnService
             'ship_id' => (int) $pirate->id, 'target_type' => $target['type'],
             'x' => (int) $cell->x, 'y' => (int) $cell->y,
             'stolen_population' => $stolen, 'pirate_population' => (int) $pirate->population,
+            'evaded' => $evaded,
             'facility_key' => $target['facility_key'] ?? null,
         ], 'public', 'warning');
     }
@@ -593,13 +599,21 @@ final class SurfaceShipTurnService
         SurfaceShipDefinition $definition,
     ): array {
         $resource = null;
+        $resourceUnits = $definition->movementRewardResourceUnits;
+        $moneyUnits = $definition->movementRewardMoney;
+        if (in_array($definition->key, ['fishing', 'tourist'], true)
+            && ($context->ruleset->settings['secretary']['skills'][SecretarySkillCatalog::SHIP_OPERATIONS]['effect']['type'] ?? null) === 'ship_reward_multiplier') {
+            $level = $context->state->secretarySkillLevel((int) $nation->id, SecretarySkillCatalog::SHIP_OPERATIONS);
+            $resourceUnits = $this->secretaryProduction->apply($context->ruleset->settings, SecretarySkillCatalog::SHIP_OPERATIONS, $level, $resourceUnits);
+            $moneyUnits = $this->secretaryProduction->apply($context->ruleset->settings, SecretarySkillCatalog::SHIP_OPERATIONS, $level, $moneyUnits);
+        }
         if ($definition->movementRewardResourceKey !== null) {
             $rewardResource = $this->resources[$definition->movementRewardResourceKey];
             if ($rewardResource->category === 'food') {
                 $resource = $this->boundedAssets->creditFood(
                     $nation,
                     $rewardResource,
-                    $definition->movementRewardResourceUnits,
+                    $resourceUnits,
                     $context->ruleset,
                 );
                 if ($resource->overflow > 0) {
@@ -609,21 +623,21 @@ final class SurfaceShipTurnService
                 $resource = $this->boundedAssets->creditResource(
                     $nation,
                     $rewardResource,
-                    $definition->movementRewardResourceUnits,
+                    $resourceUnits,
                     $context->ruleset,
                 );
             }
         }
-        $money = $definition->movementRewardMoney > 0
-            ? $this->boundedAssets->creditMoney($nation, $definition->movementRewardMoney, $context->ruleset)
+        $money = $moneyUnits > 0
+            ? $this->boundedAssets->creditMoney($nation, $moneyUnits, $context->ruleset)
             : null;
 
         return [
             'resource_key' => $definition->movementRewardResourceKey,
-            'resource_requested' => $definition->movementRewardResourceUnits,
+            'resource_requested' => $resourceUnits,
             'resource_applied' => $resource === null ? 0 : $resource->applied,
             'resource_overflow' => $resource === null ? 0 : $resource->overflow,
-            'money_requested' => $definition->movementRewardMoney,
+            'money_requested' => $moneyUnits,
             'money_applied' => $money === null ? 0 : $money->applied,
             'money_overflow' => $money === null ? 0 : $money->overflow,
         ];

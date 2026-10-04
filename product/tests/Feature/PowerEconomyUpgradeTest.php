@@ -32,7 +32,7 @@ final class PowerEconomyUpgradeTest extends TestCase
     /** @return array<string, array{int}> */
     public static function supportedPredecessors(): array
     {
-        return ['power introduction' => [27], 'cash maintenance removal' => [28]];
+        return ['power introduction' => [27], 'cash maintenance removal' => [28], 'oil and fleet skills' => [29]];
     }
 
     #[DataProvider('supportedPredecessors')]
@@ -48,8 +48,10 @@ final class PowerEconomyUpgradeTest extends TestCase
         $upgrade = static function () use ($priorVersion): void {
             if ($priorVersion === 27) {
                 app(PowerEconomyUpgrade::class)->apply();
-            } else {
+            } elseif ($priorVersion === 28) {
                 app(PowerEconomyUpgrade::class)->removePizzeriaMaintenance();
+            } else {
+                app(PowerEconomyUpgrade::class)->enableOilAndFleetSkills();
             }
         };
         // Reconstruct the supported predecessor without executing retired authoring.
@@ -71,6 +73,7 @@ final class PowerEconomyUpgradeTest extends TestCase
         $stat = NationMonsterKillStat::query()->create(['world_id' => $world->id, 'nation_id' => $nation->id, 'monster_definition_id' => $oldMonster->id,
             'kill_count' => 1, 'first_killed_turn' => 1, 'last_killed_turn' => 1, 'version' => 1]);
         $secretary = $user->secretary()->sole();
+        $secretary->skills()->where('skill_key', 'oil_development')->delete();
         $secretary->skills()->where('skill_key', 'agricultural_policy')->update(['level' => 7, 'experience' => 11]);
         if ($priorVersion === 27) {
             $secretary->skills()->where('skill_key', 'energy_saving')->delete();
@@ -96,6 +99,11 @@ final class PowerEconomyUpgradeTest extends TestCase
         $run->update(['status' => TurnRun::STATUS_COMPLETED]);
         $runBefore = $run->fresh()->getAttributes();
         $upgrade();
+        if ($priorVersion === 29) {
+            $this->assertSame(['level' => 0, 'experience' => 0], $secretary->skills()->where('skill_key', 'oil_development')->sole()->only(['level', 'experience']));
+            $boundary = DB::table('oil_discovery_backfills')->where('world_id', $world->id)->sole();
+            $this->assertNull($boundary->applied_at);
+        }
         $this->assertSame($currentId, $world->fresh()->ruleset_version_id);
         $this->assertSame($assets, $nation->fresh()->getAttributes());
         $this->assertSame($savedPrior, $prior->fresh()->getRawOriginal('settings'));

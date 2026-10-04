@@ -43,7 +43,8 @@ final class CurrentRulesetAuthoringInspector
         $files = [...self::DOMAIN_FILES, 'power-and-pizza.php'];
         foreach ($files as $file) {
             $directory = match ($file) {
-                'world-and-map.php', 'power-and-pizza.php', 'secretary.php' => 'release-4.11.1/',
+                'world-and-map.php', 'secretary.php' => 'release-4.12/',
+                'power-and-pizza.php' => 'release-4.11.1/',
                 'economy-and-resources.php', 'facilities.php', 'commands-and-production.php', 'terrain-and-disasters.php' => 'release-4.11/',
                 default => 'current/',
             };

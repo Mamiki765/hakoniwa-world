@@ -37,6 +37,19 @@ final class RulesetPublisher
         return $this->publishSnapshot($settings);
     }
 
+    /** Historical migration only: accept the immutable v29 snapshot.
+     * @param  array<string, mixed>  $settings
+     */
+    public function publishPizzeriaMaintenanceRemoval(array $settings): RulesetVersion
+    {
+        $checksum = hash('sha256', json_encode($settings, JSON_THROW_ON_ERROR | JSON_PRESERVE_ZERO_FRACTION));
+        if ($checksum !== '13407ee130b7c5ff661bc264cb237e6acea68afe36df49857d28498779100348') {
+            throw new DomainException('The pizzeria maintenance removal migration requires the exact immutable v29 snapshot.');
+        }
+
+        return $this->publishSnapshot($settings);
+    }
+
     /** @param array<string, mixed> $settings */
     private function publishSnapshot(array $settings): RulesetVersion
     {

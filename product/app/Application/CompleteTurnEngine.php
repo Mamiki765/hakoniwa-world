@@ -1438,6 +1438,13 @@ final class CompleteTurnEngine
             throw new DomainException('Seabed oil field production rules are invalid.');
         }
         $resource = $this->resourceDefinition($this->resourceDefinitions($context), $resourceKey);
+        $productionUnits = $this->secretaryProduction->applyOilDevelopment(
+            $context->ruleset->settings,
+            isset($context->ruleset->settings['secretary']['skills'][SecretarySkillCatalog::OIL_DEVELOPMENT])
+                && $context->state->hasSecretarySnapshot((int) $nation->id)
+                ? $context->state->secretarySkillLevel((int) $nation->id, SecretarySkillCatalog::OIL_DEVELOPMENT) : 0,
+            $productionUnits,
+        );
         $before = (int) NationResource::query()
             ->where('nation_id', $nation->id)
             ->where('resource_definition_id', $resource->id)

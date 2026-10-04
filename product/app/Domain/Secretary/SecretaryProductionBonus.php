@@ -37,6 +37,22 @@ final class SecretaryProductionBonus
     }
 
     /** @param array<string, mixed> $ruleset */
+    public function applyOilDevelopment(array $ruleset, int $level, int $base): int
+    {
+        $effect = $ruleset['secretary']['skills'][SecretarySkillCatalog::OIL_DEVELOPMENT]['effect'] ?? null;
+        // Saved Worlds preceding oil development still project their original yield.
+        if ($effect === null) {
+            return $base;
+        }
+        if ($base < 0 || $level < 0 || ($effect['type'] ?? null) !== 'oil_field_production_addition'
+            || ! is_int($effect['units_per_level_per_field'] ?? null)) {
+            throw new DomainException('The active ruleset has an invalid oil-development effect.');
+        }
+
+        return $base + $level * $effect['units_per_level_per_field'];
+    }
+
+    /** @param array<string, mixed> $ruleset */
     public function applyForestManagement(array $ruleset, int $level, int $base): int
     {
         if ($base < 0 || $level < 0) {

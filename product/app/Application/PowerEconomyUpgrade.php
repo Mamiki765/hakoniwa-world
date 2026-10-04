@@ -10,7 +10,7 @@ use App\Models\World;
 use Illuminate\Support\Facades\DB;
 use RuntimeException;
 
-/** Forward-only power releases; never rewrites saved Turn or Ship provenance. */
+/** Forward-only resource releases; never rewrites saved Turn or Ship provenance. */
 final class PowerEconomyUpgrade
 {
     public function __construct(
@@ -34,10 +34,17 @@ final class PowerEconomyUpgrade
         $this->publish($settings, $priorSettings, false);
     }
 
+    public function enableOilAndFleetSkills(): void
+    {
+        $settings = require config_path('hakoniwa/rulesets/hakoniwa-2s-plus-v30.php');
+        $priorSettings = require config_path('hakoniwa/rulesets/hakoniwa-2s-plus-v29.php');
+        $this->publish($settings, $priorSettings, false, true);
+    }
+
     /** @param array<string, mixed> $settings
      * @param  array<string, mixed>  $priorSettings
      */
-    private function publish(array $settings, array $priorSettings, bool $initializePower): void
+    private function publish(array $settings, array $priorSettings, bool $initializePower, bool $initializeOilAndFleet = false): void
     {
         $prior = RulesetVersion::query()->where('key', $priorSettings['key'])->first();
         if ($prior !== null && ! RulesetVersion::query()->whereKey($prior->id)
@@ -55,7 +62,7 @@ final class PowerEconomyUpgrade
                 $this->lock->acquire($world);
                 $held[] = $world;
             }
-            DB::transaction(function () use ($settings, $prior, $worlds, $initializePower): void {
+            DB::transaction(function () use ($settings, $prior, $worlds, $initializePower, $initializeOilAndFleet): void {
                 foreach ($worlds as $world) {
                     $this->lock->assertHeld($world);
                     $locked = World::query()->whereKey($world->id)->lockForUpdate()->firstOrFail();
@@ -65,9 +72,11 @@ final class PowerEconomyUpgrade
                     }
                 }
                 $this->catalogs->install($settings);
-                $current = $initializePower
-                    ? $this->publisher->publishPowerIntroduction($settings)
-                    : $this->publisher->publish($settings);
+                $current = match ($settings['version']) {
+                    28 => $this->publisher->publishPowerIntroduction($settings),
+                    29 => $this->publisher->publishPizzeriaMaintenanceRemoval($settings),
+                    default => $this->publisher->publish($settings),
+                };
                 if ($initializePower) {
                     DB::statement('ALTER TABLE secretary_skills DROP CONSTRAINT secretary_skills_key_check');
                     DB::statement("ALTER TABLE secretary_skills ADD CONSTRAINT secretary_skills_key_check CHECK (skill_key IN ('agricultural_policy', 'specialty_development', 'gold_vein_survey', 'forest_management', 'final_defense_line', 'declining_birthrate_policy', 'indomitable', 'ship_operations', 'navy', 'energy_saving'))");
@@ -77,6 +86,23 @@ final class PowerEconomyUpgrade
                             ->whereNotExists(fn ($query) => $query->selectRaw('1')->from('secretary_skills as skill')
                                 ->whereColumn('skill.secretary_id', 'secretary.id')->where('skill.skill_key', 'energy_saving')),
                     );
+                }
+                if ($initializeOilAndFleet) {
+                    DB::statement('ALTER TABLE secretary_skills DROP CONSTRAINT secretary_skills_key_check');
+                    DB::statement("ALTER TABLE secretary_skills ADD CONSTRAINT secretary_skills_key_check CHECK (skill_key IN ('agricultural_policy', 'specialty_development', 'gold_vein_survey', 'oil_development', 'forest_management', 'final_defense_line', 'declining_birthrate_policy', 'indomitable', 'ship_operations', 'navy', 'energy_saving'))");
+                    DB::table('secretary_skills')->insertUsing(
+                        ['secretary_id', 'skill_key', 'level', 'experience', 'created_at', 'updated_at'],
+                        DB::table('secretaries as secretary')->selectRaw("secretary.id, 'oil_development', 0, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP")
+                            ->whereNotExists(fn ($query) => $query->selectRaw('1')->from('secretary_skills as skill')
+                                ->whereColumn('skill.secretary_id', 'secretary.id')->where('skill.skill_key', 'oil_development')),
+                    );
+                    foreach ($worlds as $world) {
+                        DB::table('oil_discovery_backfills')->insertOrIgnore([
+                            'world_id' => $world->id,
+                            'cutoff_turn' => $world->current_turn,
+                            'cutoff_audit_id' => DB::table('audit_events')->where('world_id', $world->id)->max('id') ?? 0,
+                        ]);
+                    }
                 }
                 foreach ($worlds as $world) {
                     $world->update(['ruleset_version_id' => $current->id]);
