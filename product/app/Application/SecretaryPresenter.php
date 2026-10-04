@@ -41,6 +41,7 @@ final class SecretaryPresenter
                 'required_experience' => $required,
                 'remaining_experience' => max(0, $required - $row->experience),
                 'effect' => $this->effect($key, $row->level, $definition),
+                'experience_condition' => $this->experienceCondition($key),
             ];
         }
         if ($rows->count() !== count($skills)) {
@@ -71,9 +72,26 @@ final class SecretaryPresenter
             SecretarySkillCatalog::INDOMITABLE => $this->indomitableEffect($definition, $level),
             SecretarySkillCatalog::SHIP_OPERATIONS => '準備中',
             SecretarySkillCatalog::NAVY => '効果なし',
-            SecretarySkillCatalog::ENERGY_SAVING => sprintf('電力消費 %.2f%%（実消費1MW＝1XP）',
+            SecretarySkillCatalog::ENERGY_SAVING => sprintf('電力消費 %.2f%%',
                 100 * ($definition['effect']['base'] + $definition['effect']['numerator_per_level'] * $level)
                 / ($definition['effect']['base'] + $definition['effect']['denominator_per_level'] * $level)),
+            default => throw new DomainException("Unknown Secretary skill {$skillKey}."),
+        };
+    }
+
+    private function experienceCondition(string $skillKey): string
+    {
+        return match ($skillKey) {
+            SecretarySkillCatalog::AGRICULTURAL_POLICY => '農場整備を行う',
+            SecretarySkillCatalog::SPECIALTY_DEVELOPMENT => '工場整備を行う',
+            SecretarySkillCatalog::GOLD_VEIN_SURVEY => '採掘場整備を行う',
+            SecretarySkillCatalog::FOREST_MANAGEMENT => '植林・伐採を行う',
+            SecretarySkillCatalog::FINAL_DEFENSE_LINE => '自領土にミサイルが飛来する',
+            SecretarySkillCatalog::DECLINING_BIRTHRATE_POLICY => '過去最大人口を更新する（経験値補正無効）',
+            SecretarySkillCatalog::INDOMITABLE => '1ターンで人口が減少する',
+            SecretarySkillCatalog::SHIP_OPERATIONS => '船がマップ上を移動する',
+            SecretarySkillCatalog::NAVY => '軍艦の射撃が敵に命中する',
+            SecretarySkillCatalog::ENERGY_SAVING => '電力を消費する',
             default => throw new DomainException("Unknown Secretary skill {$skillKey}."),
         };
     }

@@ -113,6 +113,7 @@ export interface SecretarySkill {
     required_experience: number;
     remaining_experience: number;
     effect: string;
+    experience_condition: string;
 }
 
 export interface Secretary {
@@ -435,8 +436,6 @@ export interface ResourceForecast {
         stored_after_mw: { minimum: number; maximum: number };
         discarded_mw: { minimum: number; maximum: number };
         pizzeria_revenue: { minimum: number; maximum: number };
-        pizzeria_maintenance: number;
-        pizzeria_unfunded: number;
     } | null;
     workforce: {
         status: 'unemployment' | 'saturation';

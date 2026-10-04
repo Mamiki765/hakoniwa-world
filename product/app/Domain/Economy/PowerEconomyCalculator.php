@@ -8,23 +8,6 @@ use DomainException;
 /** Shared, side-effect-free MW settlement for the 4.11 release draft. */
 final class PowerEconomyCalculator
 {
-    /**
-     * @param  array<string, mixed>  $settings
-     * @param  list<int>  $scales  In stable map-cell order.
-     * @return array{scales: list<int>, maintenance: int, unfunded: int}
-     */
-    public function fundedPizzerias(array $settings, array $scales, int $money): array
-    {
-        $rules = $this->rules($settings);
-        $count = min(count($scales), intdiv(max(0, $money), $rules['pizzeria_maintenance']));
-
-        return [
-            'scales' => array_slice($scales, 0, $count),
-            'maintenance' => $count * $rules['pizzeria_maintenance'],
-            'unfunded' => count($scales) - $count,
-        ];
-    }
-
     /** @param array<string, mixed> $settings */
     public function storageCapacity(array $settings, int $condenserCount): int
     {
@@ -205,7 +188,6 @@ final class PowerEconomyCalculator
                 $foodConsumed * $rules['pizzeria_revenue_at_maximum'],
                 $rules['pizzeria_maximum_scale'] * $rules['pizzeria_food_tons_per_scale'],
             ),
-            'pizzeria_maintenance' => count($pizzeriaScales) * $rules['pizzeria_maintenance'],
         ];
     }
 
@@ -311,7 +293,7 @@ final class PowerEconomyCalculator
             'wind_minimum_mw', 'wind_maximum_mw', 'condenser_capacity_mw',
             'thermal_power_mw_per_scale', 'thermal_oil_mw_per_unit', 'thermal_coal_tons_per_oil_unit',
             'pizzeria_food_tons_per_scale', 'pizzeria_power_mw_per_scale',
-            'pizzeria_maximum_scale', 'pizzeria_revenue_at_maximum', 'pizzeria_maintenance',
+            'pizzeria_maximum_scale', 'pizzeria_revenue_at_maximum',
         ];
         $validated = [];
         foreach ($keys as $key) {

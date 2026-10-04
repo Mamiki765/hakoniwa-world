@@ -349,6 +349,10 @@ describe('Underground application operations', () => {
         await initialTabs[1]!.trigger('click');
         expect(wrapper.get('.secretary-section-title').text()).toBe('パッシブスキル');
         const skillRows = wrapper.findAll('.secretary-skill');
+        expect(Object.fromEntries(skillRows.map((row) => [
+            row.get('.secretary-skill-name').text(),
+            row.get('.secretary-skill-experience-condition').text(),
+        ]))).toEqual(Object.fromEntries(secretary.skills.map((skill) => [skill.name, skill.experience_condition])));
         const agriculturalSkill = skillRows[0]!;
         const defenseSkill = skillRows[4]!;
         expect(agriculturalSkill.get('.secretary-skill-name').text()).toBe('農業政策');

@@ -46,8 +46,9 @@ final class FreshInstallRebaselineTest extends TestCase
         $this->assertSame([
             CurrentDatabaseBaseline::MIGRATION,
             '2026_10_03_000000_publish_power_economy_v28',
+            '2026_10_04_000000_publish_pizzeria_maintenance_removal_v29',
         ], DB::table('migrations')->orderBy('id')->pluck('migration')->all());
-        $this->assertSame([$current['key']], RulesetVersion::query()->orderBy('id')->pluck('key')->all());
+        $this->assertSame(['hakoniwa-2s-plus-v28', $current['key']], RulesetVersion::query()->orderBy('version')->pluck('key')->all());
         // The immutable baseline's nine-skill CHECK is verified at its own
         // adoption boundary. This current install includes the v28 extension.
         $nationIdColumn = DB::selectOne(<<<'SQL'

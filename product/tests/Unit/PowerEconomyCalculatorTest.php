@@ -19,7 +19,7 @@ class PowerEconomyCalculatorTest extends TestCase
             'thermal_power_mw_per_scale' => 100, 'thermal_oil_mw_per_unit' => 60, 'thermal_coal_tons_per_oil_unit' => 1000,
             'pizzeria_food_tons_per_scale' => 30, 'pizzeria_power_mw_per_scale' => 3,
             'pizzeria_maximum_scale' => 3,
-            'pizzeria_revenue_at_maximum' => 90, 'pizzeria_maintenance' => 1,
+            'pizzeria_revenue_at_maximum' => 90,
         ]];
     }
 

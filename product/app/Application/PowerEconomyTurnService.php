@@ -57,7 +57,6 @@ final class PowerEconomyTurnService
         if ($windIds === [] && $scales === [] && $thermalScales === []) {
             return;
         }
-        $funded = $this->power->fundedPizzerias($context->ruleset->settings, $scales, (int) $nation->money);
         $balances = NationResource::query()->where('nation_id', $nation->id)->lockForUpdate()->get()->keyBy('resource_definition_id');
         $foods = [];
         foreach ($context->ruleset->settings['turn_processing']['food']['consumption_priority'] as $key) {
@@ -98,7 +97,7 @@ final class PowerEconomyTurnService
         $plan = $this->power->settleTurn(
             $context->ruleset->settings, (int) $nation->id, (int) $balance->amount,
             $generation, $this->capacities->resolve($nation, $context->ruleset)->resources['power'],
-            $foodAvailable, $funded['scales'], $context->random, $level,
+            $foodAvailable, $scales, $context->random, $level,
         );
         foreach (['oil', 'minerals'] as $key) {
             if ($thermal[$key.'_consumed'] > 0) {
@@ -114,9 +113,6 @@ final class PowerEconomyTurnService
             }
         }
         $balance->update(['amount' => $plan['stored_after_mw']]);
-        if ($funded['maintenance'] > 0) {
-            $nation->decrement('money', $funded['maintenance']);
-        }
         $credit = $this->assets->creditMoney($nation, $plan['pizzeria_revenue'], $context->ruleset);
         $nation->refresh();
         if ($plan['consumed_mw'] > 0 && $context->state->hasSecretarySnapshot($nation->id)) {
@@ -124,7 +120,7 @@ final class PowerEconomyTurnService
         }
         $this->events->record($context, 'resource.power_settled', $nation, [
             ...$plan, 'resource_key' => 'power', 'wind_count' => count($windIds),
-            'pizzeria_unfunded' => $funded['unfunded'], 'credited_revenue' => $credit->applied,
+            'credited_revenue' => $credit->applied,
             'food_consumption' => $consumption,
             'thermal' => $thermal, 'energy_saving_level' => $level,
         ]);

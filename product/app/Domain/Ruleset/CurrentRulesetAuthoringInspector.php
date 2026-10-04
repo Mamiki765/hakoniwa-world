@@ -42,10 +42,12 @@ final class CurrentRulesetAuthoringInspector
 
         $files = [...self::DOMAIN_FILES, 'power-and-pizza.php'];
         foreach ($files as $file) {
-            $relativePath = (in_array($file, [
-                'world-and-map.php', 'economy-and-resources.php', 'facilities.php',
-                'commands-and-production.php', 'terrain-and-disasters.php', 'power-and-pizza.php', 'secretary.php',
-            ], true) ? 'release-4.11/' : 'current/').$file;
+            $directory = match ($file) {
+                'world-and-map.php', 'power-and-pizza.php', 'secretary.php' => 'release-4.11.1/',
+                'economy-and-resources.php', 'facilities.php', 'commands-and-production.php', 'terrain-and-disasters.php' => 'release-4.11/',
+                default => 'current/',
+            };
+            $relativePath = $directory.$file;
             $domain = require config_path('hakoniwa/rulesets/'.$relativePath);
             if (! is_array($domain) || array_keys($domain) !== ['payload', 'classification']) {
                 throw new DomainException("Current Ruleset domain {$file} must contain only payload and classification.");

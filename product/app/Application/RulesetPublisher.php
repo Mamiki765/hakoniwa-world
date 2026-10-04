@@ -20,6 +20,26 @@ final class RulesetPublisher
     public function publish(array $settings): RulesetVersion
     {
         $this->validator->validate($settings);
+
+        return $this->publishSnapshot($settings);
+    }
+
+    /** Historical migration only: accept the exact production v28 snapshot, never author it.
+     * @param  array<string, mixed>  $settings
+     */
+    public function publishPowerIntroduction(array $settings): RulesetVersion
+    {
+        $checksum = hash('sha256', json_encode($settings, JSON_THROW_ON_ERROR | JSON_PRESERVE_ZERO_FRACTION));
+        if ($checksum !== '708aebb3dbf392e64a5349528240268d18b78a45b005a702f29e4ce155fd5bc8') {
+            throw new DomainException('The power introduction migration requires the exact immutable v28 snapshot.');
+        }
+
+        return $this->publishSnapshot($settings);
+    }
+
+    /** @param array<string, mixed> $settings */
+    private function publishSnapshot(array $settings): RulesetVersion
+    {
         $key = $settings['key'] ?? null;
         $version = $settings['version'] ?? null;
         if (! is_string($key) || $key === '' || ! is_int($version) || $version < 1) {

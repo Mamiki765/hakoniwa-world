@@ -891,10 +891,11 @@ html[data-theme="dark"] .compensation-banner, html[data-theme="dark"] .compensat
 .secretary-naming-form input { min-height: 46px; padding: 9px 11px; border: 1px solid var(--input-border); background: var(--input-surface); color: var(--ink); font: inherit; }
 .secretary-naming-form .button { justify-self: start; min-width: 92px; }
 .secretary-skills { display: grid; gap: 8px; max-width: 760px; margin-top: 10px; }
-.secretary-skill { display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "name progress" "effect effect"; gap: 4px 12px; padding: 11px 14px; border: 1px solid var(--line); background: var(--input-surface); }
+.secretary-skill { display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "name progress" "effect effect" "condition condition"; gap: 4px 12px; padding: 11px 14px; border: 1px solid var(--line); background: var(--input-surface); }
 .secretary-skill-name { grid-area: name; min-width: 0; font-weight: 900; }
 .secretary-skill-progress { grid-area: progress; display: flex; align-items: baseline; justify-content: flex-end; gap: 10px; margin: 0; color: var(--coral-dark); font-size: .86rem; font-weight: 900; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .secretary-skill-effect { grid-area: effect; margin: 0; font-size: .8rem; line-height: 1.45; }
+.secretary-skill-experience-condition { grid-area: condition; margin: 0; color: var(--muted); font-size: .75rem; line-height: 1.5; }
 .secretary-equipment { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 8px; margin: 12px 0; padding: 0; list-style: none; }
 .secretary-equipment li { position: relative; min-height: 82px; border: 1px solid var(--line); background: var(--input-surface); text-align: center; }
 .secretary-equipment li:focus-within { outline: 3px solid color-mix(in srgb, var(--coral-dark) 42%, transparent); outline-offset: 2px; }
