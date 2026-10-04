@@ -14,25 +14,29 @@ final class CurrentRulesetContractTest extends TestCase
 
     private const V29_CHECKSUM = '13407ee130b7c5ff661bc264cb237e6acea68afe36df49857d28498779100348';
 
-    public function test_normal_config_loads_and_validates_v29_without_changing_the_v28_snapshot(): void
+    private const V30_CHECKSUM = 'f3226711a8dd2ae137395098a27901608f12d7a6647ece15f9c0b7ff285e3205';
+
+    public function test_normal_config_loads_and_validates_v30_without_changing_the_historical_snapshots(): void
     {
         $normalConfig = require config_path('hakoniwa.php');
         $current = $normalConfig['ruleset'];
 
-        $this->assertSame(['hakoniwa-2s-plus-v29'], array_keys($normalConfig['published_rulesets']));
-        $this->assertSame($current, $normalConfig['published_rulesets']['hakoniwa-2s-plus-v29']);
+        $this->assertSame(['hakoniwa-2s-plus-v30'], array_keys($normalConfig['published_rulesets']));
+        $this->assertSame($current, $normalConfig['published_rulesets']['hakoniwa-2s-plus-v30']);
         $this->assertSame($current['secretary'], $normalConfig['current_catalogs']['secretary']);
-        $this->assertSame('hakoniwa-2s-plus-v29', $current['key']);
-        $this->assertSame(29, $current['version']);
+        $this->assertSame('hakoniwa-2s-plus-v30', $current['key']);
+        $this->assertSame(30, $current['version']);
         $this->assertArrayNotHasKey('behavior', $current);
         $this->assertArrayNotHasKey('data', $current);
         $this->assertArrayNotHasKey('flavor', $current);
-        $this->assertSame(self::V29_CHECKSUM, $this->checksum($current));
+        $this->assertSame(self::V30_CHECKSUM, $this->checksum($current));
+        $predecessor = require config_path('hakoniwa/rulesets/hakoniwa-2s-plus-v29.php');
+        $this->assertSame(self::V29_CHECKSUM, $this->checksum($predecessor));
         $prior = require config_path('hakoniwa/rulesets/hakoniwa-2s-plus-v28.php');
         $this->assertSame(self::V28_CHECKSUM, $this->checksum($prior));
         $summary = app(RulesetAuthoringValidator::class)->validate($current);
-        $this->assertSame('hakoniwa-2s-plus-v29', $summary['key']);
-        $this->assertSame(29, $summary['version']);
+        $this->assertSame('hakoniwa-2s-plus-v30', $summary['key']);
+        $this->assertSame(30, $summary['version']);
         $prior['power_economy']['pizzeria_maintenance'] = 0;
         $this->expectException(DomainException::class);
         $this->expectExceptionMessage('exact immutable v28 snapshot');
@@ -82,7 +86,7 @@ final class CurrentRulesetContractTest extends TestCase
             app(CurrentRulesetAuthoringInspector::class)->inspect($current),
             app(CurrentRulesetAuthoringInspector::class)->inspect($withAdditionalEmptyContainer),
         );
-        $this->assertSame(self::V29_CHECKSUM, $this->checksum($current));
+        $this->assertSame(self::V30_CHECKSUM, $this->checksum($current));
         $this->assertNotSame($this->checksum($current), $this->checksum($withAdditionalEmptyContainer));
     }
 
