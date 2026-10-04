@@ -128,7 +128,10 @@ final class NationEconomyCalculator
             'wheat_production' => $wheatProduction,
             'industrial_goods_production' => $industrialProduction,
             'minerals_production' => $mineralProduction,
-            'oil_production' => $enabled ? $oilFieldCount * $oilRules['production_units'] : 0,
+            'oil_production' => $enabled ? $oilFieldCount * $this->secretaryProduction->applyOilDevelopment(
+                $ruleset, $secretarySkillLevels[SecretarySkillCatalog::OIL_DEVELOPMENT] ?? 0,
+                $oilRules['production_units'],
+            ) : 0,
             'food_consumption' => $enabled ? intdiv($population, $foodRules['population_per_nutrition']) : 0,
         ];
     }

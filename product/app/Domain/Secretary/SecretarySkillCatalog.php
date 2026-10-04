@@ -12,6 +12,8 @@ final class SecretarySkillCatalog
 
     public const GOLD_VEIN_SURVEY = 'gold_vein_survey';
 
+    public const OIL_DEVELOPMENT = 'oil_development';
+
     public const FOREST_MANAGEMENT = 'forest_management';
 
     public const FINAL_DEFENSE_LINE = 'final_defense_line';
@@ -31,13 +33,14 @@ final class SecretarySkillCatalog
         self::AGRICULTURAL_POLICY,
         self::SPECIALTY_DEVELOPMENT,
         self::GOLD_VEIN_SURVEY,
+        self::OIL_DEVELOPMENT,
+        self::ENERGY_SAVING,
         self::FOREST_MANAGEMENT,
         self::FINAL_DEFENSE_LINE,
         self::DECLINING_BIRTHRATE_POLICY,
         self::INDOMITABLE,
         self::SHIP_OPERATIONS,
         self::NAVY,
-        self::ENERGY_SAVING,
     ];
 
     /**

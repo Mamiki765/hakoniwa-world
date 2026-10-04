@@ -707,6 +707,16 @@ final class RulesetAuthoringValidator
                 continue;
             }
 
+            if ($key === SecretarySkillCatalog::OIL_DEVELOPMENT) {
+                if ($initialLevel !== 0 || $basis !== 'next_level_squared' || $multiplier !== 1
+                    || $effect !== ['type' => 'oil_field_production_addition', 'units_per_level_per_field' => 1]
+                    || $source !== ['type' => 'successful_oil_discovery', 'points_per_discovery' => 1]) {
+                    throw new DomainException("{$path} does not match the oil-development contract.");
+                }
+
+                continue;
+            }
+
             if ($key === SecretarySkillCatalog::DECLINING_BIRTHRATE_POLICY) {
                 if ($initialLevel !== 0 || $basis !== 'triangular_growth' || $multiplier !== 10_000
                     || ($requirement['accounting'] ?? null) !== 'cumulative_non_consuming'
@@ -757,8 +767,9 @@ final class RulesetAuthoringValidator
                     || $basis !== $expectedBasis
                     || $multiplier !== $expectedMultiplier
                     || $effect !== [
-                        'type' => 'placeholder',
-                        'display' => '準備中',
+                        'type' => 'ship_reward_multiplier',
+                        'per_mille_per_level' => 10,
+                        'rounding' => 'floor_after_multiplier',
                     ]
                     || $source !== [
                         'type' => 'successful_ship_movement',
@@ -775,12 +786,12 @@ final class RulesetAuthoringValidator
                 if ($initialLevel !== 0
                     || $basis !== 'next_level_linear'
                     || $multiplier !== 30
-                    || $effect !== ['type' => 'placeholder', 'display' => '効果なし']
+                    || $effect !== ['type' => 'warship_damage_evasion', 'maximum_percent' => 15, 'level_offset' => 20, 'random_stream_version' => 1]
                     || $source !== [
                         'type' => 'successful_warship_hit',
                         'target_experience' => 'normal_missile_hit_equivalent',
                     ]) {
-                    throw new DomainException("{$path} does not match the v26 Navy skill contract.");
+                    throw new DomainException("{$path} does not match the Navy skill contract.");
                 }
 
                 continue;

@@ -78,6 +78,7 @@ final class MissileImpactResolver
         private readonly MonsterDamageService $monsterDamage,
         private readonly MonsterRemovalService $monsterRemoval,
         private readonly TurnEventRecorder $events,
+        private readonly SecretaryNavyEvasionService $navyEvasion,
         private readonly NationIdleCounterFinalizer $idleCounters,
         private readonly NationProtectionPolicy $nationProtection,
         private readonly MonsterBehaviorResolver $monsterBehaviors,
@@ -1102,6 +1103,18 @@ final class MissileImpactResolver
             ];
         }
         $beforeHp = (int) $ship->current_hp;
+        if ($this->navyEvasion->evades($context, $ship, $damage, $instantSink)) {
+            $this->events->record($context, 'ship.attack_evaded', $ship, [
+                'nation_id' => $ship->nation_id, 'ship_id' => (int) $ship->id,
+                'ship_type_key' => $ship->ship_type_key, 'missile_key' => $missileKey,
+                'x' => (int) $cell->x, 'y' => (int) $cell->y,
+            ], 'nation');
+
+            return [...$base, 'effect' => 'ship_evaded', 'meaningful' => false,
+                'target_nation_id' => $owner?->id, 'target_nation_name' => $owner?->name,
+                'ship_id' => (int) $ship->id, 'ship_type_key' => $ship->ship_type_key,
+                'before_hp' => $beforeHp, 'after_hp' => $beforeHp, 'damage' => 0, 'underlying_preserved' => true];
+        }
         $sunk = $instantSink || $beforeHp <= $damage;
         if ($sunk) {
             $removed = $this->shipRemoval->sinkLockedAtCell($context, $cell, $ship, 'missile', [

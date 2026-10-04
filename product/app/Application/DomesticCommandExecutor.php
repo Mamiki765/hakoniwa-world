@@ -2042,6 +2042,10 @@ final class DomesticCommandExecutor
             $context->state->markMapChunkChanged($cell->map_chunk_id);
         }
 
+        if ($found && $context->state->hasSecretarySnapshot((int) $nation->id)
+            && isset($context->ruleset->settings['secretary']['skills'][SecretarySkillCatalog::OIL_DEVELOPMENT])) {
+            $this->secretaryExperience->awardSkill($context, (int) $nation->id, SecretarySkillCatalog::OIL_DEVELOPMENT);
+        }
         $this->events->record($context, 'command.seabed_oil_search', $cell, [
             'nation_id' => $nation->id,
             'queue_item_id' => $item->id,

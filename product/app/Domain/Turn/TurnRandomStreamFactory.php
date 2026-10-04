@@ -305,6 +305,15 @@ final class TurnRandomStreamFactory
         return self::MISSILE_IMPACT_PREFIX.$queueItemId.':deviation:v1';
     }
 
+    public static function secretaryNavyEvasion(int $shipId, int $streamVersion): string
+    {
+        if ($shipId < 1 || $streamVersion < 1) {
+            throw new InvalidArgumentException('Navy evasion stream identity must use positive integers.');
+        }
+
+        return 'secretary:navy:ship:'.$shipId.':evasion:v'.$streamVersion;
+    }
+
     public static function karmaSanction(int $nationId, int $streamVersion): string
     {
         if ($nationId < 1 || $streamVersion < 1) {

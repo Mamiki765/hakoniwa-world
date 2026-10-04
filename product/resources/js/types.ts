@@ -106,7 +106,7 @@ export interface CompensationClaimResult {
 }
 
 export interface SecretarySkill {
-    key: 'agricultural_policy' | 'specialty_development' | 'gold_vein_survey' | 'forest_management' | 'final_defense_line' | 'declining_birthrate_policy' | 'indomitable' | 'ship_operations' | 'navy' | 'energy_saving';
+    key: 'agricultural_policy' | 'specialty_development' | 'gold_vein_survey' | 'oil_development' | 'energy_saving' | 'forest_management' | 'final_defense_line' | 'declining_birthrate_policy' | 'indomitable' | 'ship_operations' | 'navy';
     name: string;
     level: number;
     experience: number;

@@ -17,6 +17,8 @@ final class SecretaryProductionBonusTest extends TestCase
 
         $service = new SecretaryProductionBonus;
         $this->assertSame($expected, $service->apply($ruleset, 'skill', $level, $base));
+        $ruleset['secretary']['skills']['skill']['effect']['per_mille_per_level'] = 10;
+        $this->assertSame(intdiv($base * (100 + $level), 100), $service->apply($ruleset, 'skill', $level, $base));
         $forestRuleset = ['secretary' => ['skills' => ['forest_management' => ['effect' => [
             'type' => 'forest_management',
             'percent_per_level' => 1,

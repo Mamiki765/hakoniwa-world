@@ -59,6 +59,8 @@ class TurnCellProcessingTest extends TestCase
         $world = $this->lightweightWorld();
         $user = User::factory()->create();
         $nation = app(NationCreationService::class)->create($user, $world, '航行試験国', '航行島主');
+        $user->secretary()->sole()->skills()->where('skill_key', 'ship_operations')->update(['level' => 20]);
+        $user->secretary()->sole()->skills()->where('skill_key', 'navy')->update(['level' => 100]);
         $space = $this->surfaceMapSpace($world);
         $port = MapCell::query()->where('owner_nation_id', $nation->id)
             ->whereHas('terrain', fn ($query) => $query->where('key', 'plain'))->firstOrFail();
@@ -107,7 +109,7 @@ class TurnCellProcessingTest extends TestCase
         $metrics = app(CompleteTurnEngine::class)->execute('process_cells', $context)->metrics;
         app(SecretaryTurnService::class)->flushExperience($context);
 
-        $this->assertSame([1, 1, 1, 0, 4, 0, 7], [
+        $this->assertSame([1, 1, 1, 0, 4, 0, 8], [
             $metrics['ship_events'], $metrics['ship_moves'], $metrics['ship_secretary_experience'],
             $metrics['ship_fish_applied'],
             (int) NationResource::query()->where('nation_id', $nation->id)
@@ -121,11 +123,11 @@ class TurnCellProcessingTest extends TestCase
             ->whereHas('definition', fn ($query) => $query->where('category', 'food'))
             ->sum('amount'));
         $moveEvent = $this->event($run, 'ship.moved');
-        $this->assertSame([7_000, 0, 7_000], [
+        $this->assertSame([8_400, 0, 8_400], [
             $moveEvent['resource_requested'], $moveEvent['resource_applied'], $moveEvent['resource_overflow'],
         ]);
         $overflowEvent = $this->event($run, 'resource.food_overflow_resolved');
-        $this->assertSame(['fish', 7_000, 7_000, 7, 0], [
+        $this->assertSame(['fish', 8_400, 8_000, 8, 400], [
             $overflowEvent['resource_key'], $overflowEvent['requested_overflow_tons'],
             $overflowEvent['sold_tons'], $overflowEvent['revenue'], $overflowEvent['discarded_tons'],
         ]);
@@ -142,9 +144,9 @@ class TurnCellProcessingTest extends TestCase
             'ruleset_version_id' => $world->ruleset_version_id,
             'nation_id' => $nation->id,
             'map_cell_id' => $fuelOrigin->id,
-            'ship_type_key' => 'exploration',
+            'ship_type_key' => 'warship',
             'current_hp' => 2,
-            'max_hp' => 2,
+            'max_hp' => 3,
             'heading' => GridCoordinate::EAST,
             'state' => Ship::STATE_ACTIVE,
             'version' => 1,
@@ -152,11 +154,19 @@ class TurnCellProcessingTest extends TestCase
         NationResource::query()->where('nation_id', $nation->id)
             ->where('resource_definition_id', $oil->id)->update(['amount' => 0]);
         $fuelLabel = TurnRandomStreamFactory::shipMovement($fuelShip->id, 'fuel_shortage_damage', 1);
+        for ($probe = 0; ; $probe++) {
+            $fuelSeed = hash('sha256', "fuel shortage navy exclusion {$probe}");
+            $random = new TurnRandomStreamFactory($fuelSeed);
+            if ($random->stream($fuelLabel)->integer(1, 100) === 1
+                && $random->stream(TurnRandomStreamFactory::secretaryNavyEvasion($fuelShip->id, 1))->integer(0, 999999) < 125000) {
+                break;
+            }
+        }
         [$fuelContext] = $this->context(
             $world,
             $nation,
             [$fuelOrigin->id, $fuelDestination->id],
-            $this->seedForFirstDraw($fuelLabel, 1, 100, 1),
+            $fuelSeed,
         );
         $fuelMetrics = app(CompleteTurnEngine::class)->execute('process_cells', $fuelContext)->metrics;
         $this->assertSame([1, 1, 1, $fuelOrigin->id], [
@@ -213,7 +223,7 @@ class TurnCellProcessingTest extends TestCase
             $monsterBatch,
             $shipBatch,
         );
-        $this->assertSame([1, 0, $fuelDestination->id, 4], [
+        $this->assertSame([1, 0, $fuelDestination->id, 2], [
             $shipBatch->metrics()['ship_moves'],
             $shipBatch->metrics()['ship_no_port'],
             $fuelShip->fresh()->map_cell_id,
@@ -228,7 +238,7 @@ class TurnCellProcessingTest extends TestCase
             hash('sha256', 'port loss applies next turn'),
         );
         $afterPortLoss = app(CompleteTurnEngine::class)->execute('process_cells', $nextTurnContext)->metrics;
-        $this->assertSame([1, 0, 1, $fuelDestination->id, 4], [
+        $this->assertSame([1, 0, 1, $fuelDestination->id, 2], [
             $afterPortLoss['ship_events'],
             $afterPortLoss['ship_moves'],
             $afterPortLoss['ship_no_port'],
@@ -601,6 +611,83 @@ class TurnCellProcessingTest extends TestCase
         $this->assertSame($nation->id, $attack->nation_id);
         $this->assertSame('settlement', $metadata['target_type']);
         $this->assertSame(5_000, $metadata['stolen_population']);
+    }
+
+    public function test_navy_evades_a_pirate_hit_at_one_hp_and_replays_the_same_seed(): void
+    {
+        $world = $this->lightweightWorld();
+        $user = User::factory()->create();
+        $nation = app(NationCreationService::class)->create($user, $world, '海軍回避国', '島主');
+        $user->secretary()->sole()->skills()->where('skill_key', 'navy')->update(['level' => 20]);
+        $space = $this->surfaceMapSpace($world);
+        [$origin, $victimCell] = $this->eastwardSeaLine($space);
+        $victim = Ship::query()->create([
+            'world_id' => $world->id, 'ruleset_version_id' => $world->ruleset_version_id, 'nation_id' => $nation->id,
+            'map_cell_id' => $victimCell->id, 'ship_type_key' => 'warship', 'current_hp' => 1, 'max_hp' => 3,
+            'heading' => null, 'state' => Ship::STATE_ACTIVE, 'version' => 1,
+        ]);
+        $pirate = Ship::query()->create([
+            'world_id' => $world->id, 'ruleset_version_id' => $world->ruleset_version_id, 'nation_id' => null,
+            'map_cell_id' => $origin->id, 'ship_type_key' => 'pirate', 'current_hp' => 2, 'max_hp' => 3,
+            'population' => 5000, 'heading' => null, 'state' => Ship::STATE_ACTIVE, 'version' => 1,
+        ]);
+        for ($probe = 0; ; $probe++) {
+            $seed = hash('sha256', "navy pirate {$probe}");
+            if ((new TurnRandomStreamFactory($seed))->stream(TurnRandomStreamFactory::secretaryNavyEvasion($victim->id, 1))->integer(0, 999999) < 75000) {
+                break;
+            }
+        }
+        $first = null;
+        for ($attempt = 0; $attempt < 2; $attempt++) {
+            [$context, $run] = $this->context($world, $nation, [$origin->id, $victimCell->id], $seed);
+            $settings = $context->ruleset->settings;
+            $settings['ocean_loop']['pirate_attack']['probability'] = ['numerator' => 1, 'denominator' => 1];
+            $context->ruleset->settings = $settings;
+            DB::beginTransaction();
+            try {
+                $service = app(SurfaceShipTurnService::class);
+                $batch = $service->load($context, $space);
+                $cells = collect([$origin, $victimCell])->map(fn ($cell) => $cell->fresh(['terrain', 'facility']));
+                $service->processCell($context, $space, $cells->first(), $cells->mapWithKeys(fn ($cell) => [$cell->x.':'.$cell->y => $cell])->all(), app(MonsterTurnService::class)->load($context), $batch);
+                $result = [$victim->fresh()->state, $victim->fresh()->current_hp, $this->event($run, 'ship.pirate_attacked')['evaded']];
+                $this->assertSame([Ship::STATE_ACTIVE, 1, true], $result);
+                if ($first !== null) {
+                    $this->assertSame($first, $result);
+                }
+                $first = $result;
+            } finally {
+                DB::rollBack();
+            }
+        }
+    }
+
+    public function test_tourist_income_uses_turn_start_level_and_discards_the_fraction(): void
+    {
+        $world = $this->lightweightWorld();
+        $user = User::factory()->create();
+        $nation = app(NationCreationService::class)->create($user, $world, '観光倍率国', '島主');
+        $user->secretary()->sole()->skills()->where('skill_key', 'ship_operations')->update(['level' => 9, 'experience' => 999]);
+        $space = $this->surfaceMapSpace($world);
+        $port = MapCell::query()->where('owner_nation_id', $nation->id)->whereHas('terrain', fn ($q) => $q->where('key', 'plain'))->firstOrFail();
+        $this->facility($port, 'port', 'plain');
+        [$origin, $destination] = $this->eastwardSeaLine($space);
+        Ship::query()->create([
+            'world_id' => $world->id, 'ruleset_version_id' => $world->ruleset_version_id, 'nation_id' => $nation->id,
+            'map_cell_id' => $origin->id, 'ship_type_key' => 'tourist', 'current_hp' => 2, 'max_hp' => 2,
+            'heading' => GridCoordinate::EAST, 'state' => Ship::STATE_ACTIVE, 'version' => 1,
+        ]);
+        $nation->update(['money' => 0]);
+        NationResource::query()->where('nation_id', $nation->id)
+            ->where('resource_definition_id', ResourceDefinition::query()->where('key', 'oil')->sole()->id)->update(['amount' => 5]);
+        [$context, $run] = $this->context($world, $nation, [$origin->id, $destination->id], hash('sha256', 'tourist integer reward'));
+        $service = app(SurfaceShipTurnService::class);
+        $batch = $service->load($context, $space);
+        $cells = collect([$origin, $destination])->map(fn ($cell) => $cell->fresh(['terrain', 'facility']));
+        $service->processCell($context, $space, $cells->first(), $cells->mapWithKeys(fn ($cell) => [$cell->x.':'.$cell->y => $cell])->all(), app(MonsterTurnService::class)->load($context), $batch);
+        app(SecretaryTurnService::class)->flushExperience($context);
+        $this->assertSame(21, $nation->fresh()->money);
+        $this->assertSame(21, $this->event($run, 'ship.moved')['money_requested']);
+        $this->assertSame(10, $user->secretary()->sole()->skills()->where('skill_key', 'ship_operations')->value('level'));
     }
 
     public function test_pirate_attack_preserves_the_capital_population_minimum(): void
