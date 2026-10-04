@@ -176,6 +176,7 @@ final class UndergroundReceiptRollupService
                 UndergroundBattle::ACTIVITY_EXPLORATION, UndergroundBattle::ACTIVITY_TRIAL,
                 UndergroundBattle::ACTIVITY_TUTORIAL, UndergroundBattle::ACTIVITY_STORY,
                 UndergroundBattle::ACTIVITY_PLAYTEST, UndergroundBattle::ACTIVITY_GUIDE_DUEL,
+                UndergroundBattle::ACTIVITY_EVENT,
             ], true)) {
                 return 'unclassified_activity';
             }
