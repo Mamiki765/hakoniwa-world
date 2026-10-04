@@ -50,8 +50,54 @@ class DisasterAndOilTurnTest extends TestCase
 
     /** @var list<string> */
     private const GLOBAL_KEYS = [
-        'earthquake', 'tsunami', 'typhoon', 'meteor_shower', 'huge_meteor', 'eruption',
+        'earthquake', 'tsunami', 'huge_meteor', 'eruption',
     ];
+
+    private ?string $weatherDisaster = null;
+
+    private ?GridCoordinate $weatherTarget = null;
+
+    public function test_sea_area_typhoon_keeps_half_chance_wind_damage_and_neighboring_area_windbreaks(): void
+    {
+        [$world, $nation, $ruleset, $space] = $this->worldAndNation('海域風力国');
+        $ruleset = $this->forceGlobal($ruleset, 'typhoon');
+        $ruleset = $this->updateRuleset($ruleset, static function (array &$settings): void {
+            $settings['turn_processing']['disasters']['typhoon']['facility_keys'] = ['wind_power'];
+            $settings['turn_processing']['disasters']['typhoon']['internal_denominator'] = 12;
+            $settings['turn_processing']['disasters']['typhoon']['base_damage_threshold'] = 6;
+        });
+        $inside = $this->cellAt($space, 15, 1);
+        $outside = $this->cellAt($space, 17, 1);
+        foreach ((new GridCoordinate(15, 1))->radius(1) as $coordinate) {
+            $this->setCell($this->cellAt($space, $coordinate->x, $coordinate->y), 'plain', null, null, 0);
+        }
+        $this->setCell($inside, 'plain', 'wind_power', $nation->id, 0);
+        $this->setCell($outside, 'plain', 'wind_power', $nation->id, 0);
+        $windbreak = $this->cellAt($space, 16, 1);
+        $this->setCell($windbreak, 'forest', null, null, 0);
+        $this->weatherTarget = new GridCoordinate(15, 1);
+        $effectLabel = TurnRandomStreamFactory::seaAreaWeatherEffect('typhoon', 0, 0, 1);
+        foreach ([5, 6] as $draw) {
+            for ($candidate = 0; $candidate < 1000; $candidate++) {
+                $seed = hash('sha256', "wind-boundary:{$draw}:{$candidate}");
+                if ((new TurnRandomStreamFactory($seed))->stream($effectLabel)->integer(0, 11) === $draw) {
+                    break;
+                }
+            }
+            [$context] = $this->context($world, $ruleset, $seed, [$nation->id]);
+            app(DisasterTurnService::class)->executeGlobal($context);
+            $this->assertSame('operational', $inside->fresh()->facility_operational_state);
+            if ($draw === 5) {
+                $this->setCell($windbreak, 'plain', null, null, 0);
+                [$unprotected] = $this->context($world, $ruleset, $seed, [$nation->id]);
+                app(DisasterTurnService::class)->executeGlobal($unprotected);
+                $this->assertSame('damaged', $inside->fresh()->facility_operational_state);
+                $this->assertSame('wind_power', $inside->fresh()->facility()->value('key'));
+                $inside->fresh()->update(['facility_operational_state' => 'operational']);
+            }
+        }
+        $this->assertSame('operational', $outside->fresh()->facility_operational_state);
+    }
 
     public function test_world_disaster_opportunities_scale_exactly_with_chunk_count(): void
     {
@@ -218,8 +264,14 @@ class DisasterAndOilTurnTest extends TestCase
                 ->whereRaw("metadata->>'turn_run_id' = ?", [(string) $run->id])->count(), $key);
             $metadata = $this->event($run, 'disaster.triggered');
             $this->assertSame($key, $metadata['disaster_key']);
-            $this->assertSame($center->x, $metadata['center_x']);
-            $this->assertSame($center->y, $metadata['center_y']);
+            if (in_array($key, ['typhoon', 'meteor_shower'], true)) {
+                $this->assertGreaterThanOrEqual($metadata['min_x'], $center->x);
+                $this->assertLessThanOrEqual($metadata['max_x'], $center->x);
+                $this->assertArrayNotHasKey('world_opportunity_index', $metadata);
+            } else {
+                $this->assertSame($center->x, $metadata['center_x']);
+                $this->assertSame($center->y, $metadata['center_y']);
+            }
         }
         $this->assertSame([
             ['source' => 'meteor', 'item_key' => 'wakuwaku_ticket'],
@@ -551,6 +603,7 @@ class DisasterAndOilTurnTest extends TestCase
 
     public function test_earthquake_removal_is_visible_to_later_typhoon_protection_checks(): void
     {
+        $this->weatherDisaster = 'typhoon';
         [$world, $nation, $ruleset, $space] = $this->worldAndNation('連続災害国');
         $center = $this->boundsFor($world)->center();
         $target = $this->cellAt($space, $center->x, $center->y);
@@ -575,7 +628,6 @@ class DisasterAndOilTurnTest extends TestCase
                 'numerator' => 1,
                 'denominator' => 1,
             ];
-            $settings['turn_processing']['disasters']['typhoon']['radius'] = 64;
             $settings['turn_processing']['disasters']['typhoon']['facility_keys'] = ['farm'];
             $settings['turn_processing']['disasters']['typhoon']['protection_facility_keys'] = ['monument'];
             $settings['turn_processing']['disasters']['typhoon']['internal_denominator'] = 1;
@@ -585,7 +637,7 @@ class DisasterAndOilTurnTest extends TestCase
         [$context, $run] = $this->context(
             $world,
             $ruleset,
-            $this->seedForAreaGates(['earthquake', 'typhoon'], 64),
+            $this->seedForAreaGates(['earthquake'], 64),
             [$nation->id],
         );
 
@@ -1344,7 +1396,12 @@ class DisasterAndOilTurnTest extends TestCase
 
     private function forceGlobal(RulesetVersion $ruleset, string $selected): RulesetVersion
     {
+        $this->weatherDisaster = in_array($selected, ['typhoon', 'meteor_shower'], true) ? $selected : null;
+        $this->weatherTarget = null;
+
         return $this->updateRuleset($ruleset, static function (array &$settings) use ($selected): void {
+            $settings['turn_processing']['sea_area_weather']['fixed_probabilities'] = ['typhoon' => 0, 'meteor_shower' => 0];
+            $settings['turn_processing']['sea_area_weather']['normal_weights'] = ['sunny' => 1, 'cloudy' => 0, 'rain' => 0, 'snow' => 0, 'thunder' => 0];
             foreach (self::GLOBAL_KEYS as $key) {
                 $settings['turn_processing']['disasters'][$key]['probability'] = [
                     'numerator' => $key === $selected ? 1 : 0,
@@ -1352,7 +1409,9 @@ class DisasterAndOilTurnTest extends TestCase
                 ];
                 $settings['turn_processing']['disasters'][$key]['center_padding'] = 0;
             }
-            $settings['turn_processing']['disasters'][$selected]['radius'] = $selected === 'eruption' ? 1 : 0;
+            if (! in_array($selected, ['typhoon', 'meteor_shower'], true)) {
+                $settings['turn_processing']['disasters'][$selected]['radius'] = $selected === 'eruption' ? 1 : 0;
+            }
             $settings['turn_processing']['disasters']['earthquake']['damage_probability'] = [
                 'numerator' => 1, 'denominator' => 1,
             ];
@@ -1416,6 +1475,19 @@ class DisasterAndOilTurnTest extends TestCase
         $state->setSurfaceCellIds($cellIds);
 
         $context = new TurnContext($world, $run, $ruleset, 2, $seed, new TurnRandomStreamFactory($seed), $state);
+        if ($this->weatherDisaster !== null) {
+            $space = $this->surfaceMapSpace($world);
+            $target = $this->weatherTarget ?? $space->currentBounds()->center();
+            $cell = $this->cellAt($space, $target->x, $target->y);
+            $state->setSeaAreaWeather([$cell->map_chunk_id => [
+                'weather_key' => $this->weatherDisaster,
+                'chunk_x' => $cell->chunk_x, 'chunk_y' => $cell->chunk_y,
+                'min_x' => max($space->min_x, $cell->chunk_x * 16),
+                'max_x' => min($space->max_x, $cell->chunk_x * 16 + 15),
+                'min_y' => max($space->min_y, $cell->chunk_y * 16),
+                'max_y' => min($space->max_y, $cell->chunk_y * 16 + 15),
+            ]]);
+        }
         app(SecretaryTurnService::class)->loadAttemptSnapshots($context, $nationIds);
 
         return [$context, $run];
@@ -1461,6 +1533,26 @@ class DisasterAndOilTurnTest extends TestCase
 
     private function seedForCenter(string $label, int $x, int $y, MapSpace $space): string
     {
+        if (in_array($label, [TurnRandomStreamFactory::GLOBAL_TYPHOON_CENTER, TurnRandomStreamFactory::GLOBAL_METEOR_SHOWER_CENTER], true)) {
+            $this->weatherTarget = new GridCoordinate($x, $y);
+            $cell = $this->cellAt($space, $x, $y);
+            $minX = max($space->min_x, $cell->chunk_x * 16);
+            $maxX = min($space->max_x, $cell->chunk_x * 16 + 15);
+            $minY = max($space->min_y, $cell->chunk_y * 16);
+            $maxY = min($space->max_y, $cell->chunk_y * 16 + 15);
+            $width = $maxX - $minX + 1;
+            $count = $width * ($maxY - $minY + 1);
+            for ($candidate = 0; $candidate < 100000; $candidate++) {
+                $seed = hash('sha256', "weather-impact:{$x}:{$y}:{$candidate}");
+                $stream = (new TurnRandomStreamFactory($seed))->stream(
+                    TurnRandomStreamFactory::seaAreaWeatherEffect('meteor_shower', $cell->chunk_x, $cell->chunk_y, 1));
+                if ($label === TurnRandomStreamFactory::GLOBAL_TYPHOON_CENTER
+                    || $stream->integer(0, $count - 1) === ($y - $minY) * $width + $x - $minX) {
+                    return $seed;
+                }
+            }
+            $this->fail('Unable to find a weather impact seed.');
+        }
         $disasterKey = match ($label) {
             TurnRandomStreamFactory::GLOBAL_EARTHQUAKE_CENTER => 'earthquake',
             TurnRandomStreamFactory::GLOBAL_TSUNAMI_CENTER => 'tsunami',

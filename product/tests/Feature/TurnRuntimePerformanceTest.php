@@ -10,6 +10,7 @@ use App\Application\OceanWorldGenerator;
 use App\Application\SecretaryItemGrantService;
 use App\Application\TurnRunner;
 use App\Application\WorldExpansionService;
+use App\Domain\Disaster\SeaAreaWeatherLottery;
 use App\Domain\Map\GridCoordinate;
 use App\Domain\Map\MapCellStateService;
 use App\Domain\Ruleset\CurrentRulesetGuard;
@@ -571,7 +572,10 @@ final class TurnRuntimePerformanceTest extends TestCase
 
         $ruleset = $world->rulesetVersion()->firstOrFail();
         $settings = $ruleset->settings;
-        foreach (['earthquake', 'tsunami', 'typhoon', 'meteor_shower', 'huge_meteor', 'eruption'] as $key) {
+        if (! in_array($disasterKey, ['typhoon', 'meteor_shower'], true)) {
+            $settings['turn_processing']['sea_area_weather']['fixed_probabilities'] = ['typhoon' => 0, 'meteor_shower' => 0];
+        }
+        foreach (['earthquake', 'tsunami', 'huge_meteor', 'eruption'] as $key) {
             $settings['turn_processing']['disasters'][$key]['probability'] = [
                 'numerator' => $key === $disasterKey ? 1 : 0,
                 'denominator' => 1,
@@ -609,6 +613,25 @@ final class TurnRuntimePerformanceTest extends TestCase
 
     private function forcedDisasterSeed(World $world, string $disasterKey): string
     {
+        if (in_array($disasterKey, ['typhoon', 'meteor_shower'], true)) {
+            $weather = $world->rulesetVersion()->sole()->settings['turn_processing']['sea_area_weather'];
+            $lottery = new SeaAreaWeatherLottery;
+            for ($candidate = 0; $candidate < 100000; $candidate++) {
+                $seed = hash('sha256', "forced-weather:{$disasterKey}:{$candidate}");
+                $random = new TurnRandomStreamFactory($seed);
+                $selected = [];
+                foreach ([[0, 0], [1, 0], [0, 1], [1, 1]] as [$x, $y]) {
+                    $key = $lottery->select($weather, $random->stream(TurnRandomStreamFactory::seaAreaWeather($x, $y, 1))->integer(0, 9999));
+                    if (in_array($key, ['typhoon', 'meteor_shower'], true)) {
+                        $selected[] = $key;
+                    }
+                }
+                if ($selected === [$disasterKey]) {
+                    return $seed;
+                }
+            }
+            $this->fail('Unable to find forced weather seed.');
+        }
         if ($disasterKey === 'land_subsidence') {
             return hash('sha256', 'turn-runtime-forced-land-subsidence');
         }

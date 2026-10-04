@@ -50,6 +50,19 @@ final class RulesetPublisher
         return $this->publishSnapshot($settings);
     }
 
+    /** Historical migration only: accept the exact immutable v30 snapshot.
+     * @param  array<string, mixed>  $settings
+     */
+    public function publishOilAndFleetSkills(array $settings): RulesetVersion
+    {
+        $checksum = hash('sha256', json_encode($settings, JSON_THROW_ON_ERROR | JSON_PRESERVE_ZERO_FRACTION));
+        if ($checksum !== 'f3226711a8dd2ae137395098a27901608f12d7a6647ece15f9c0b7ff285e3205') {
+            throw new DomainException('The oil and fleet skills migration requires the exact immutable v30 snapshot.');
+        }
+
+        return $this->publishSnapshot($settings);
+    }
+
     /** @param array<string, mixed> $settings */
     private function publishSnapshot(array $settings): RulesetVersion
     {

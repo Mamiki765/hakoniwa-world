@@ -534,7 +534,7 @@ class CompleteTurnIntegrationTest extends TestCase
             ]),
             'chunk_versions' => DB::table('map_chunks')
                 ->whereIn('map_space_id', DB::table('map_spaces')->where('world_id', $world->id)->select('id'))
-                ->orderBy('id')->pluck('version', 'id')->all(),
+                ->orderBy('id')->get(['id', 'version', 'weather_key', 'weather_turn'])->map(static fn ($chunk): array => (array) $chunk)->all(),
             'audit_count' => DB::table('audit_events')->count(),
         ];
     }
@@ -557,7 +557,7 @@ class CompleteTurnIntegrationTest extends TestCase
             ]),
             'chunk_versions' => DB::table('map_chunks')
                 ->whereIn('map_space_id', DB::table('map_spaces')->where('world_id', $world->id)->select('id'))
-                ->orderBy('id')->pluck('version', 'id')->all(),
+                ->orderBy('id')->get(['id', 'version', 'weather_key', 'weather_turn'])->map(static fn ($chunk): array => (array) $chunk)->all(),
             'events' => DB::table('audit_events')->orderBy('id')->get([
                 'event_type', 'subject_type', 'subject_id', 'metadata',
             ])->map(static function (object $event): array {

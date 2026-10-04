@@ -32,7 +32,7 @@ final class PowerEconomyUpgradeTest extends TestCase
     /** @return array<string, array{int}> */
     public static function supportedPredecessors(): array
     {
-        return ['power introduction' => [27], 'cash maintenance removal' => [28], 'oil and fleet skills' => [29]];
+        return ['power introduction' => [27], 'cash maintenance removal' => [28], 'oil and fleet skills' => [29], 'sea-area weather' => [30]];
     }
 
     #[DataProvider('supportedPredecessors')]
@@ -50,8 +50,10 @@ final class PowerEconomyUpgradeTest extends TestCase
                 app(PowerEconomyUpgrade::class)->apply();
             } elseif ($priorVersion === 28) {
                 app(PowerEconomyUpgrade::class)->removePizzeriaMaintenance();
-            } else {
+            } elseif ($priorVersion === 29) {
                 app(PowerEconomyUpgrade::class)->enableOilAndFleetSkills();
+            } else {
+                app(PowerEconomyUpgrade::class)->enableSeaAreaWeather();
             }
         };
         // Reconstruct the supported predecessor without executing retired authoring.
@@ -73,7 +75,9 @@ final class PowerEconomyUpgradeTest extends TestCase
         $stat = NationMonsterKillStat::query()->create(['world_id' => $world->id, 'nation_id' => $nation->id, 'monster_definition_id' => $oldMonster->id,
             'kill_count' => 1, 'first_killed_turn' => 1, 'last_killed_turn' => 1, 'version' => 1]);
         $secretary = $user->secretary()->sole();
-        $secretary->skills()->where('skill_key', 'oil_development')->delete();
+        if ($priorVersion < 30) {
+            $secretary->skills()->where('skill_key', 'oil_development')->delete();
+        }
         $secretary->skills()->where('skill_key', 'agricultural_policy')->update(['level' => 7, 'experience' => 11]);
         if ($priorVersion === 27) {
             $secretary->skills()->where('skill_key', 'energy_saving')->delete();

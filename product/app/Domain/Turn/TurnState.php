@@ -25,6 +25,31 @@ final class TurnState
     /** @var list<int> */
     private array $surfaceCellIds = [];
 
+    /** @var array<int, array{weather_key: string, chunk_x: int, chunk_y: int, min_x: int, max_x: int, min_y: int, max_y: int}>|null */
+    private ?array $seaAreaWeather = null;
+
+    /** @param array<int, array{weather_key: string, chunk_x: int, chunk_y: int, min_x: int, max_x: int, min_y: int, max_y: int}> $weather */
+    public function setSeaAreaWeather(array $weather): void
+    {
+        $this->seaAreaWeather = $weather;
+    }
+
+    public function hasSeaAreaWeather(): bool
+    {
+        return $this->seaAreaWeather !== null;
+    }
+
+    /** @return array<int, array{weather_key: string, chunk_x: int, chunk_y: int, min_x: int, max_x: int, min_y: int, max_y: int}> */
+    public function seaAreaWeather(): array
+    {
+        return $this->seaAreaWeather ?? [];
+    }
+
+    public function weatherForChunk(int $chunkId): ?string
+    {
+        return $this->seaAreaWeather[$chunkId]['weather_key'] ?? null;
+    }
+
     /** @var array<int, true> */
     private array $processedShipIds = [];
 

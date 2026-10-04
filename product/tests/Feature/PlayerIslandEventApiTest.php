@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Application\NationCreationService;
+use App\Domain\Map\SeaAreaNameResolver;
 use App\Models\Nation;
 use App\Models\User;
 use App\Models\World;
@@ -994,6 +995,14 @@ class PlayerIslandEventApiTest extends TestCase
         [$world, $owner, $nation] = $this->nation('災害表示島');
         $world->update(['current_turn' => 2]);
         DB::table('audit_events')->delete();
+        $seaAreaName = app(SeaAreaNameResolver::class)->forCoordinate(0, 0);
+        foreach (['typhoon', 'meteor_shower'] as $weather) {
+            $this->audit('disaster.triggered', $world, null, 'public', 2, [
+                'disaster_key' => $weather, 'sea_area_name' => $seaAreaName,
+                'chunk_x' => 0, 'chunk_y' => 0, 'min_x' => 0, 'max_x' => 15, 'min_y' => 0, 'max_y' => 15,
+                'draw' => 123, 'random_seed' => str_repeat('a', 64),
+            ]);
+        }
         $this->audit('disaster.cell_damaged', $nation, $nation, 'public', 2, [
             'disaster_key' => 'typhoon',
             'from_terrain_key' => 'plain',
@@ -1034,14 +1043,22 @@ class PlayerIslandEventApiTest extends TestCase
             $this->getJson("/api/v1/public/worlds/{$world->id}/events")->assertOk(),
             $this->getJson("/api/v1/public/nations/{$nation->id}/events")->assertOk(),
             $this->actingAs($owner)->getJson("/api/v1/nations/{$nation->id}/events")->assertOk(),
-        ] as $response) {
+        ] as $responseIndex => $response) {
             $messages = $this->messages($response->json('data.groups'));
+            if ($responseIndex === 0) {
+                // World-wide disasters identify the real area while retaining RNG secrecy.
+                $weatherMessages = array_values(array_filter($messages, static fn (string $message): bool => str_contains($message, $seaAreaName)));
+                $this->assertCount(2, $weatherMessages);
+                foreach ($weatherMessages as $message) {
+                    $this->assertStringContainsString('（0,0）〜（15,15）', $message);
+                }
+            }
             $this->assertContains('災害表示島(4,5)で台風により農場が失われ、平地になりました。', $messages);
             $this->assertContains('災害表示島(6,7)で地震により森が荒地へ変化しました。', $messages);
             $this->assertContains('災害表示島(8,9)で巨大隕石により首都人口が90%減少し、100人になりました。', $messages);
             $this->assertContains('災害表示島(10,11)で巨大隕石によりミサイル基地が失われ、荒地になりました。', $messages);
             $body = (string) $response->getContent();
-            foreach (['平地が平地へ変化', '9,999', 'draw', 'before_population', 'minimum_population_adjustment', 'metadata'] as $hidden) {
+            foreach (['平地が平地へ変化', '9,999', 'draw', 'random_seed', 'before_population', 'minimum_population_adjustment', 'metadata'] as $hidden) {
                 $this->assertStringNotContainsString($hidden, $body);
             }
         }

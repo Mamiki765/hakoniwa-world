@@ -7,6 +7,7 @@ use App\Domain\Facility\FacilityRankPolicy;
 use App\Domain\Map\GridCoordinate;
 use App\Domain\Map\MapCellStateService;
 use App\Domain\Map\NationLandAreaCalculator;
+use App\Domain\Map\SeaAreaNameResolver;
 use App\Domain\Nation\NationProtectionPolicy;
 use App\Domain\Ship\SurfaceShipTurnBatch;
 use App\Domain\Turn\DeterministicRandomStream;
@@ -16,8 +17,10 @@ use App\Models\MapCell;
 use App\Models\MapSpace;
 use App\Models\Nation;
 use App\Models\NationCommandQueueItem;
+use App\Models\Ship;
 use App\Models\TerrainDefinition;
 use DomainException;
+use Illuminate\Database\Eloquent\Collection;
 
 final class DisasterTurnService
 {
@@ -38,6 +41,8 @@ final class DisasterTurnService
         private readonly NpcShipSpawnService $npcShipSpawn,
         private readonly BuriedTreasureService $buriedTreasures,
         private readonly SecretaryDisasterCharmService $charms,
+        private readonly SeaAreaWeatherService $weather,
+        private readonly SeaAreaNameResolver $seaAreas,
     ) {}
 
     /** @return array<string, int> */
@@ -62,18 +67,22 @@ final class DisasterTurnService
             'monsters_removed_by_terrain' => 0,
         ];
         $space = $this->surfaceSpace($context);
+        $this->weather->draw($context, $space);
         $cellIndex = null;
 
         $definitions = [
             'earthquake' => [TurnRandomStreamFactory::GLOBAL_EARTHQUAKE_TRIGGER, TurnRandomStreamFactory::GLOBAL_EARTHQUAKE_CENTER],
             'tsunami' => [TurnRandomStreamFactory::GLOBAL_TSUNAMI_TRIGGER, TurnRandomStreamFactory::GLOBAL_TSUNAMI_CENTER],
-            'typhoon' => [TurnRandomStreamFactory::GLOBAL_TYPHOON_TRIGGER, TurnRandomStreamFactory::GLOBAL_TYPHOON_CENTER],
-            'meteor_shower' => [TurnRandomStreamFactory::GLOBAL_METEOR_SHOWER_TRIGGER, TurnRandomStreamFactory::GLOBAL_METEOR_SHOWER_CENTER],
             'huge_meteor' => [TurnRandomStreamFactory::GLOBAL_HUGE_METEOR_TRIGGER, TurnRandomStreamFactory::GLOBAL_HUGE_METEOR_CENTER],
             'eruption' => [TurnRandomStreamFactory::GLOBAL_ERUPTION_TRIGGER, TurnRandomStreamFactory::GLOBAL_ERUPTION_CENTER],
         ];
 
         foreach ($definitions as $key => [$triggerLabel, $centerLabel]) {
+            if ($key === 'huge_meteor') {
+                $weatherMetrics = $this->executeWeatherDisasters($context, $space, $rules, $cellIndex);
+                $metrics['executed_disasters'] += $weatherMetrics['executed_disasters'];
+                $metrics['damaged_cells'] += $weatherMetrics['damaged_cells'];
+            }
             $settings = $rules[$key];
             $worldOpportunity = $this->worldOpportunities->resolve($context, $space, $key);
 
@@ -102,7 +111,7 @@ final class DisasterTurnService
                 $metrics['executed_disasters']++;
                 $cellIndex ??= $this->newMutableCellIndex($context);
                 $radius = (int) $settings['radius'];
-                if (in_array($key, ['tsunami', 'typhoon'], true)) {
+                if ($key === 'tsunami') {
                     $radius++;
                 }
                 $this->loadRadiusCells($space, $center, $radius, $cellIndex);
@@ -117,8 +126,6 @@ final class DisasterTurnService
                         $cellIndex,
                     ),
                     'tsunami' => $this->tsunami($context, $space, $center, $settings, $cellIndex),
-                    'typhoon' => $this->typhoon($context, $space, $center, $settings, $cellIndex),
-                    'meteor_shower' => $this->meteorShower($context, $space, $center, $settings, $cellIndex),
                     'huge_meteor' => $this->resolveHugeMeteorBlast(
                         $context,
                         $space,
@@ -164,6 +171,76 @@ final class DisasterTurnService
             $metrics[$key] = $value;
         }
         $metrics['monsters_removed_by_terrain'] = $this->monsterRemoval->removedCount();
+
+        return $metrics;
+    }
+
+    /**
+     * @param  array<string, array<string, mixed>>  $rules
+     * @return array{executed_disasters: int, damaged_cells: int}
+     */
+    private function executeWeatherDisasters(
+        TurnContext $context,
+        MapSpace $space,
+        array $rules,
+        ?DisasterMutableCellIndex &$cellIndex,
+    ): array {
+        $regions = array_filter($context->state->seaAreaWeather(),
+            static fn (array $region): bool => in_array($region['weather_key'], ['typhoon', 'meteor_shower'], true));
+        $metrics = ['executed_disasters' => 0, 'damaged_cells' => 0];
+        if ($regions === []) {
+            return $metrics;
+        }
+        $cellIndex ??= $this->newMutableCellIndex($context);
+        // One batched load for all winning areas, including the one-cell windbreak halo.
+        $cells = MapCell::query()->where('map_space_id', $space->id)
+            ->whereBetween('x', [$space->min_x, $space->max_x])
+            ->whereBetween('y', [$space->min_y, $space->max_y])
+            ->where(function ($query) use ($regions): void {
+                foreach ($regions as $region) {
+                    $query->orWhere(function ($area) use ($region): void {
+                        $area->whereBetween('x', [$region['min_x'] - 1, $region['max_x'] + 1])
+                            ->whereBetween('y', [$region['min_y'] - 1, $region['max_y'] + 1]);
+                    });
+                }
+            })->orderBy('id')->lockForUpdate()->with(['terrain', 'facility'])->get();
+        $cellIndex->addCells($cells);
+        $ships = null;
+        foreach ($regions as $region) {
+            $key = $region['weather_key'];
+            $coordinates = [];
+            foreach (range($region['min_y'], $region['max_y']) as $y) {
+                foreach (range($region['min_x'], $region['max_x']) as $x) {
+                    if ($cellIndex->cellAt($x, $y) !== null) {
+                        $coordinates[] = new GridCoordinate($x, $y);
+                    }
+                }
+            }
+            if ($coordinates === []) {
+                continue;
+            }
+            $metadata = [
+                'disaster_key' => $key,
+                'sea_area_name' => $this->seaAreas->forCoordinate($region['min_x'], $region['min_y']),
+                'chunk_x' => $region['chunk_x'], 'chunk_y' => $region['chunk_y'],
+                'min_x' => $region['min_x'], 'max_x' => $region['max_x'],
+                'min_y' => $region['min_y'], 'max_y' => $region['max_y'],
+            ];
+            $this->events->record($context, 'disaster.triggered', $context->world, $metadata);
+            $stream = $context->random->stream(TurnRandomStreamFactory::seaAreaWeatherEffect(
+                $key, $region['chunk_x'], $region['chunk_y'],
+                $context->ruleset->settings['turn_processing']['sea_area_weather']['stream_version'],
+            ));
+            // Preserve the existing per-hit effects; only the target domain and stream change.
+            $origin = new GridCoordinate($region['min_x'], $region['min_y']);
+            if ($key === 'typhoon') {
+                $metrics['damaged_cells'] += $this->typhoon($context, $space, $origin, $rules[$key], $cellIndex, $coordinates, $stream);
+            } else {
+                $ships ??= $this->shipRemoval->lockActiveWorldIndex($context);
+                $metrics['damaged_cells'] += $this->meteorShower($context, $space, $origin, $rules[$key], $cellIndex, $coordinates, $stream, $ships);
+            }
+            $metrics['executed_disasters']++;
+        }
 
         return $metrics;
     }
@@ -708,16 +785,21 @@ final class DisasterTurnService
         return $damaged;
     }
 
-    /** @param array<string, mixed> $settings */
+    /**
+     * @param  array<string, mixed>  $settings
+     * @param  list<GridCoordinate>  $coordinates
+     */
     private function typhoon(
         TurnContext $context,
         MapSpace $space,
         GridCoordinate $center,
         array $settings,
         DisasterMutableCellIndex $cellIndex,
+        array $coordinates,
+        DeterministicRandomStream $stream,
     ): int {
         $damaged = 0;
-        foreach ($center->radius($settings['radius']) as $coordinate) {
+        foreach ($coordinates as $coordinate) {
             $cell = $this->cellAt($space, $coordinate, $cellIndex);
             if ($cell === null || ! $this->isMutable($cell, $cellIndex)
                 || ! in_array($cell->facility?->key, $settings['facility_keys'], true)) {
@@ -731,8 +813,7 @@ final class DisasterTurnService
                 $this->forestProtectionFacilityKeys($context, 'typhoon', $settings['protection_facility_keys']),
                 $cellIndex,
             );
-            $draw = $context->random->stream(TurnRandomStreamFactory::GLOBAL_TYPHOON_EFFECT)
-                ->integer(0, $settings['internal_denominator'] - 1);
+            $draw = $stream->integer(0, $settings['internal_denominator'] - 1);
             $threshold = $settings['base_damage_threshold'];
             if ($cell->facility?->key === 'farm') {
                 $rankTwoThreshold = $this->facilityRanks->rankTwoTyphoonThreshold(
@@ -763,18 +844,22 @@ final class DisasterTurnService
         return $damaged;
     }
 
-    /** @param array<string, mixed> $settings */
+    /**
+     * @param  array<string, mixed>  $settings
+     * @param  list<GridCoordinate>  $coordinates
+     * @param  Collection<int, Ship>  $ships
+     */
     private function meteorShower(
         TurnContext $context,
         MapSpace $space,
         GridCoordinate $center,
         array $settings,
         DisasterMutableCellIndex $cellIndex,
+        array $coordinates,
+        DeterministicRandomStream $stream,
+        Collection $ships,
     ): int {
         $damaged = 0;
-        $ships = $this->shipRemoval->lockActiveWorldIndex($context);
-        $coordinates = $center->radius($settings['radius']);
-        $stream = $context->random->stream(TurnRandomStreamFactory::GLOBAL_METEOR_SHOWER_EFFECT);
         do {
             $coordinate = $coordinates[$stream->integer(0, count($coordinates) - 1)];
             $cell = $this->cellAt($space, $coordinate, $cellIndex);

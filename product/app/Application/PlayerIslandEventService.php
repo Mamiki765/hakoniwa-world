@@ -1013,6 +1013,13 @@ final class PlayerIslandEventService
     /** @param array<string, mixed> $metadata */
     private function publicDisasterMessage(array $metadata): string
     {
+        if (isset($metadata['sea_area_name'])) {
+            return sprintf('%s（%s,%s）〜（%s,%s）で%sが発生！',
+                $metadata['sea_area_name'],
+                $this->publicCoordinate($metadata, 'min_x'), $this->publicCoordinate($metadata, 'min_y'),
+                $this->publicCoordinate($metadata, 'max_x'), $this->publicCoordinate($metadata, 'max_y'),
+                $this->disasterLabel($metadata['disaster_key'] ?? null));
+        }
         $x = $this->publicCoordinate($metadata, 'center_x');
         $y = $this->publicCoordinate($metadata, 'center_y');
 
@@ -1072,7 +1079,7 @@ final class PlayerIslandEventService
             'ship.pirate_attacked' => [
                 'nation_name', 'target_type', 'x', 'y', 'stolen_population', 'facility_key', 'evaded',
             ],
-            'disaster.triggered' => ['disaster_key', 'center_x', 'center_y'],
+            'disaster.triggered' => ['disaster_key', 'center_x', 'center_y', 'sea_area_name', 'chunk_x', 'chunk_y', 'min_x', 'max_x', 'min_y', 'max_y'],
             'disaster.cell_damaged', 'fire.damaged' => [
                 'nation_name', 'x', 'y', 'disaster_key', 'from_terrain_key',
                 'to_terrain_key', 'removed_facility_key',
@@ -1443,12 +1450,14 @@ final class PlayerIslandEventService
                 number_format($this->integer($metadata, 'center_x')),
                 number_format($this->integer($metadata, 'center_y')),
             ),
-            'disaster.triggered' => sprintf(
-                '%sが発生しました（中心 %s, %s）。',
-                $this->disasterLabel($metadata['disaster_key'] ?? null),
-                number_format($this->integer($metadata, 'center_x')),
-                number_format($this->integer($metadata, 'center_y')),
-            ),
+            'disaster.triggered' => isset($metadata['sea_area_name'])
+                ? $this->publicDisasterMessage($metadata)
+                : sprintf(
+                    '%sが発生しました（中心 %s, %s）。',
+                    $this->disasterLabel($metadata['disaster_key'] ?? null),
+                    number_format($this->integer($metadata, 'center_x')),
+                    number_format($this->integer($metadata, 'center_y')),
+                ),
             'land_subsidence.triggered' => sprintf(
                 '地盤沈下が発生し、浅瀬%sセルが海へ、陸地%sセルが浅瀬へ沈下しました。',
                 number_format($this->integer($metadata, 'changed_to_sea_count')),

@@ -1320,6 +1320,22 @@ class TurnCellProcessingTest extends TestCase
         $this->assertSame(1, $forestRoutine['forest_growth_cells']);
         $this->assertSame(110, $forestRoutine['forest_growth_quantity']);
 
+        $rainRuleset = $world->rulesetVersion()->sole();
+        $rainSettings = $rainRuleset->settings;
+        $rainSettings['turn_processing']['sea_area_weather']['fixed_probabilities'] = ['typhoon' => 0, 'meteor_shower' => 0];
+        $rainSettings['turn_processing']['sea_area_weather']['normal_weights'] = ['sunny' => 0, 'cloudy' => 0, 'rain' => 1, 'snow' => 0, 'thunder' => 0];
+        $rainRuleset->update(['settings' => $rainSettings]);
+        $neutralForest = MapCell::query()->where('map_space_id', $space->id)->whereNull('owner_nation_id')->orderBy('id')->firstOrFail();
+        $this->forest($neutralForest, 500);
+        [$rainContext] = $this->context($world, $nation, [$forest->id, $neutralForest->id], str_repeat('e', 64));
+        $beforeRain = $forest->fresh()->terrain_quantity;
+        $engine->execute('process_cells', $rainContext);
+        $this->assertSame('rain', $rainContext->state->weatherForChunk($forest->map_chunk_id));
+        $this->assertSame($beforeRain + 220, $forest->fresh()->terrain_quantity);
+        // Neutral cells remain outside the existing natural-growth processing rule.
+        $this->assertSame(500, $neutralForest->fresh()->terrain_quantity);
+        $this->assertSame(220, $rainContext->state->routineSummaryMetrics($nation->id)['forest_growth_quantity']);
+
         $maximumTrees = $world->rulesetVersion()->firstOrFail()->settings['terrain_quantities']['forest']['maximum_quantity'];
         $forest->fresh()->update(['terrain_quantity' => $maximumTrees - 50]);
         [$forestMaximumContext] = $this->context($world, $nation, [$forest->id], str_repeat('f', 64));
