@@ -1530,7 +1530,18 @@ class DomesticCommandExecutionTest extends TestCase
         $this->setCellState($target, 'sea', null);
         Nation::query()->whereKey($nation->id)->update(['money' => 999]);
         $item = $this->queue($user, $nation, $space, 'excavate', $target, 5);
-        $seed = $this->seedWithFirstDraw(TurnRandomStreamFactory::SEABED_OIL_SEARCH, 100, 3);
+        $user->secretary()->sole()->itemInstances()->create([
+            'item_key' => 'chancellor_suit', 'level' => 10, 'equipped_slot' => 2,
+            'grant_key' => 'test:oil-peace-suit', 'obtained_at' => now(),
+        ]);
+        for ($probe = 0; ; $probe++) {
+            $seed = hash('sha256', "oil peace suit {$probe}");
+            $random = new TurnRandomStreamFactory($seed);
+            if ($random->stream(TurnRandomStreamFactory::SEABED_OIL_SEARCH)->integer(0, 99) === 3
+                && $random->stream(TurnRandomStreamFactory::secretaryExperience($nation->id, 'passive_skill_experience', 1))->integer(1, 100) <= 10) {
+                break;
+            }
+        }
         $context = $this->context($world, [$nation->id], $seed);
         app(SecretaryTurnService::class)->loadAttemptSnapshots($context, [$nation->id]);
 
@@ -1563,10 +1574,10 @@ class DomesticCommandExecutionTest extends TestCase
         $this->assertSame($version, $target->fresh()->version);
         $this->assertSame(209, $nation->fresh()->money);
         $this->assertSame(1, DB::table('audit_events')->where('event_type', 'command.seabed_oil_search')->count());
-        $this->assertSame(1, $context->state->pendingSecretaryExperience()[$nation->id]['oil_development']);
+        $this->assertSame(2, $context->state->pendingSecretaryExperience()[$nation->id]['oil_development']);
         app(SecretaryTurnService::class)->flushExperience($context);
         $skill = $user->secretary()->sole()->skills()->where('skill_key', 'oil_development')->sole();
-        $this->assertSame([1, 0], [$skill->level, $skill->experience]);
+        $this->assertSame([1, 1], [$skill->level, $skill->experience]);
 
         $this->setCellState($target, 'sea', null);
         Nation::query()->whereKey($nation->id)->update(['money' => 999]);

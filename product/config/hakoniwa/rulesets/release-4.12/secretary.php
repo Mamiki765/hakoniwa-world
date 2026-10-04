@@ -21,6 +21,9 @@ $skills['navy']['effect'] = [
     'level_offset' => 20,
     'random_stream_version' => 1,
 ];
+foreach (['chancellor_suit', 'grand_chancellor_suit', 'star_chancellor_suit'] as $itemKey) {
+    $domain['payload']['secretary']['items'][$itemKey]['effects'][0]['eligible_skill_keys'][] = 'oil_development';
+}
 $domain['classification']['data'][] = 'units_per_level_per_field';
 $domain['classification']['data'][] = 'points_per_discovery';
 $domain['classification']['data'][] = 'maximum_percent';
