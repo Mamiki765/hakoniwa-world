@@ -10,6 +10,7 @@ use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use RuntimeException;
 use Tests\Concerns\CreatesTestWorlds;
 use Tests\Concerns\UsesIndividualTestWorld;
@@ -96,8 +97,9 @@ final class DatabaseBaselineAdoptionTest extends TestCase
     private function legacyLedger(): void
     {
         // This test owns the pre-v28 baseline boundary; restore its exact skill
-        // constraint before adopting its marker. The power upgrade has its own test.
-        DB::table('secretary_skills')->where('skill_key', 'energy_saving')->delete();
+        // constraint before adopting its marker. Later upgrades have their own tests.
+        Schema::drop('oil_discovery_backfills');
+        DB::table('secretary_skills')->whereIn('skill_key', ['energy_saving', 'oil_development'])->delete();
         DB::statement('ALTER TABLE secretary_skills DROP CONSTRAINT secretary_skills_key_check');
         DB::statement("ALTER TABLE secretary_skills ADD CONSTRAINT secretary_skills_key_check CHECK (skill_key = ANY ((ARRAY['agricultural_policy'::character varying, 'specialty_development'::character varying, 'gold_vein_survey'::character varying, 'forest_management'::character varying, 'final_defense_line'::character varying, 'declining_birthrate_policy'::character varying, 'indomitable'::character varying, 'ship_operations'::character varying, 'navy'::character varying])::text[]))");
         DB::table('migrations')->where('migration', CurrentDatabaseBaseline::MIGRATION)->delete();
