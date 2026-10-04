@@ -4,6 +4,12 @@ return [
     'schema_version' => 2,
     'story_identity' => 'secretary-underground-intro-alpha-v2',
     'distorted_stone_daily_prices' => [0, 10000, 50000, 100000],
+    // Preparation only; do not publish an entry until the battle and settlement are connected.
+    'mad_moon' => [
+        'required_actual_clears' => 50,
+        'introduction' => json_decode(file_get_contents(__DIR__.'/../resources/stories/yunagi-harbor-mad-moon.json'), true, 512, JSON_THROW_ON_ERROR),
+        'victory' => json_decode(file_get_contents(__DIR__.'/../resources/stories/yunagi-harbor-mad-moon-victory.json'), true, 512, JSON_THROW_ON_ERROR),
+    ],
     'residence' => [
         'villa' => ['name' => '別荘', 'price' => 100000],
         'mirror' => ['name' => '透明な鏡', 'price' => 1000000],

@@ -131,6 +131,34 @@ final class UndergroundIntroCatalog
         ];
     }
 
+    /** @return array{required_actual_clears: int, introduction: array{title: string, body: list<string>}, victory: array{title: string, body: list<string>}} */
+    public function madMoon(): array
+    {
+        $event = $this->data()['mad_moon'] ?? null;
+        if (! is_array($event) || ! is_int($event['required_actual_clears'] ?? null)
+            || $event['required_actual_clears'] < 1) {
+            throw new RuntimeException('Underground mad moon preparation is invalid.');
+        }
+        $stories = [];
+        foreach (['introduction', 'victory'] as $key) {
+            $story = $event[$key] ?? null;
+            if (! is_array($story) || ! is_string($story['title'] ?? null)
+                || ! is_array($story['body'] ?? null) || ! array_is_list($story['body'])) {
+                throw new RuntimeException('Underground mad moon story is invalid.');
+            }
+            $body = [];
+            foreach ($story['body'] as $line) {
+                if (! is_string($line)) {
+                    throw new RuntimeException('Underground mad moon story line is invalid.');
+                }
+                $body[] = $line;
+            }
+            $stories[$key] = ['title' => $story['title'], 'body' => $body];
+        }
+
+        return ['required_actual_clears' => $event['required_actual_clears'], ...$stories];
+    }
+
     public function normalizeShopkeeperName(string $value): string
     {
         if (! mb_check_encoding($value, 'UTF-8')

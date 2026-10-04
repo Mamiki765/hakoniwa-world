@@ -87,6 +87,22 @@ final readonly class UndergroundScenePresenter
         ];
     }
 
+    /** @return array<string, mixed> */
+    public function madMoonIntroduction(Secretary $secretary, UndergroundProfile $profile): array
+    {
+        $visuals = $this->forProfile($secretary, $profile);
+        $scene = $this->assets->scene('yunagi-harbor-mad-moon', $visuals['show_ai']);
+        $scene['background'] = $visuals['scenes']['yunagi-harbor-intro']['background'];
+        $scene['actors'] = [...$visuals['scenes']['shop']['actors'], ...$scene['actors']];
+        // Each manifest scene starts its actor keys at zero; make the combined keys unique.
+        foreach ($scene['actors'] as $index => &$actor) {
+            $actor['key'] = (string) $index;
+        }
+        unset($actor);
+
+        return $scene;
+    }
+
     /** @return array<string, mixed>|null */
     private function portrait(Secretary $secretary, User $viewer, bool $awakened): ?array
     {

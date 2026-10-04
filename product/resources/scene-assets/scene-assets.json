@@ -53,6 +53,12 @@
       "creation_method": "ai_generated",
       "show_credit": true
     },
+    "npc.mem_lilim": {
+      "file": "npc/4140-mem-lilim.png",
+      "creation_method": "commissioned_or_permitted",
+      "credit": "©『︎PandoraPartyProject』 メム＝リリム/まれみち/Re:version",
+      "show_credit": true
+    },
     "bg.yunagi_harbor": {
       "file": "background/4140-yunagi-harbor.jpeg",
       "creation_method": "ai_generated",
@@ -93,6 +99,14 @@
     "hunting_ground.black_crystal_cave": { "background": "bg.black_crystal_cave" },
     "hunting_ground.shining_kingdom": { "background": "bg.shining_kingdom" },
     "trial_03.twilight_castle": { "background": "bg.twilight_castle" },
-    "hunting_ground.yunagi_harbor": { "background": "bg.yunagi_harbor" }
+    "hunting_ground.yunagi_harbor": { "background": "bg.yunagi_harbor" },
+    "yunagi-harbor-mad-moon": {
+      "actors": [{
+        "asset": "npc.mem_lilim",
+        "name": "メム＝リリム",
+        "placement": { "x": 28, "y": 99, "height": 96 },
+        "mobile": { "x": 28, "y": 99, "height": 96 }
+      }]
+    }
   }
 }

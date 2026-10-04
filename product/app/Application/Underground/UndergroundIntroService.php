@@ -17,6 +17,7 @@ use App\Domain\Underground\Progression\UndergroundCombatProgression;
 use App\Models\Secretary;
 use App\Models\UndergroundBattle;
 use App\Models\UndergroundBattleLog;
+use App\Models\UndergroundContentClearProgress;
 use App\Models\UndergroundIntroProgress;
 use App\Models\UndergroundIntroRequest;
 use App\Models\UndergroundProfile;
@@ -90,6 +91,37 @@ final readonly class UndergroundIntroService
         }
 
         return $this->projectState($secretary, $profile, $profile?->introProgress);
+    }
+
+    /**
+     * Read-only preparation, deliberately unconnected to player state and event routes.
+     *
+     * @return array{title: string, body: list<string>, scene: array<string, mixed>}|null
+     */
+    public function prepareMadMoonIntroduction(User $user): ?array
+    {
+        $secretary = $this->secretaryForUser($user);
+        $profile = UndergroundProfile::query()->where('secretary_id', $secretary->id)->first();
+        if (! $profile instanceof UndergroundProfile) {
+            return null;
+        }
+        $event = $this->catalog->madMoon();
+        $qualified = UndergroundContentClearProgress::query()
+            ->where('underground_profile_id', $profile->id)
+            ->where('content_type', 'hunting_ground')->where('content_key', 'yunagi_harbor')
+            ->where('actual_clear_count', '>=', $event['required_actual_clears'])->exists();
+        if (! $qualified) {
+            return null;
+        }
+
+        return [
+            'title' => $event['introduction']['title'],
+            'body' => array_map(
+                fn (string $line): string => str_replace('(秘書名)', (string) $secretary->name, $line),
+                $event['introduction']['body'],
+            ),
+            'scene' => $this->scenes->madMoonIntroduction($secretary, $profile),
+        ];
     }
 
     /** @return array{unclaimed:bool, day:string, reset_after_ms:int} */

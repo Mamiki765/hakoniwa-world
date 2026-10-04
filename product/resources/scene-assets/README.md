@@ -31,6 +31,8 @@
 
 画像そのものを加工せず、縦横比を維持して配置する。`placement` がPC設定、`mobile` が舞台の横幅700px以下での上書き。`x` と `y` は画像の基準点位置、`height` は舞台の高さに対する割合。既定の基準点は横中央・足元で、必要なら `pivot_x`・`pivot_y`、重なり順の `layer` を指定する。画像が欠損しても背景は水晶へ戻り、文字・操作は両テーマで読める面に残す。
 
+`npc/4140-mem-lilim.png`はOwner提供の非AI委託画像（768×1024、705,271 bytes）。加工・画像生成への入力・変換をせず収録し、指定の権利表記`©『︎PandoraPartyProject』 メム＝リリム/まれみち/Re:version`を使用する。`yunagi-harbor-mad-moon`は非公開準備用で、実際の戦闘接続後に夕凪の帰港地背景とショップの案内人分岐を合わせて使う。素材登録だけではプレイヤーの導入口を公開しない。
+
 ## デフォルトのペリドット
 
 `peridot/peridot-full-body.png` はOwner提供のデフォルト全身図。配信先は `/srv/bot-assets/hakoniwa/peridot/peridot-full-body.png`。既存の秘書画像resolverに登録してあり、場面manifestへの重複登録は不要。大型表示で選ばれ、小アイコンの `peridot.png` とシルエットの `silhouette.png` は既存ファイルを維持する。画像は加工せず、秘書の既存表示設定に従う。

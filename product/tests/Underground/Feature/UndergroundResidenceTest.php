@@ -4,6 +4,8 @@ namespace Tests\Underground\Feature;
 
 use App\Application\Underground\UndergroundAlphaV1PlayerCatalog;
 use App\Application\Underground\UndergroundEquipmentDropService;
+use App\Application\Underground\UndergroundIntroService;
+use App\Application\Underground\UndergroundScenePresenter;
 use App\Domain\Underground\Combat\UndergroundAwakening;
 use App\Models\SecretaryGuideConversationTotal;
 use App\Models\UndergroundBattle;
@@ -135,6 +137,45 @@ final class UndergroundResidenceTest extends UndergroundPlayerAccessTestCase
         ])->assertOk();
         $this->assertEquals($completedAt, $profile->fresh()->yunagi_harbor_intro_completed_at);
         $this->assertSame($before, $profile->fresh()->only(array_keys($before)));
+    }
+
+    public function test_mad_moon_preparation_uses_existing_normal_harbor_wins_without_publishing_an_entry(): void
+    {
+        [$user, $secretary] = $this->secretaryUser('準備の秘書$&');
+        $profile = $this->openEquipmentProfile($secretary);
+        foreach (['trial_01', 'trial_02', 'trial_03'] as $trialKey) {
+            UndergroundTrialProgress::query()->create([
+                'underground_profile_id' => $profile->id, 'trial_key' => $trialKey,
+                'unlocked_at' => now(), 'first_cleared_at' => now(),
+            ]);
+        }
+        $clears = UndergroundContentClearProgress::query()->create([
+            'underground_profile_id' => $profile->id, 'content_type' => 'hunting_ground',
+            'content_key' => 'yunagi_harbor', 'actual_clear_count' => 49, 'total_clear_count' => 49,
+        ]);
+        config(['underground-intro.mad_moon.introduction.body' => ['(秘書名)と(秘書名)']]);
+        $service = app(UndergroundIntroService::class);
+        $before = $profile->fresh()->only(['current_hp', 'combat_xp', 'shard_balance', 'awakening_gauge']);
+        $this->assertNull($service->prepareMadMoonIntroduction($user));
+        $clears->update(['actual_clear_count' => 50, 'total_clear_count' => 50]);
+        $prepared = $service->prepareMadMoonIntroduction($user);
+        $this->assertNotNull($prepared);
+        $this->assertSame([$secretary->name.'と'.$secretary->name], $prepared['body']);
+        $this->assertSame($before, $profile->fresh()->only(array_keys($before)));
+
+        // Skips are reachable only after 50 actual wins. Raise this story's fixture gate
+        // to distinguish an additional skip from an actual win without impossible progress.
+        config(['underground-intro.mad_moon.required_actual_clears' => 51]);
+        $clears->update(['total_clear_count' => 51]);
+        $this->assertNull($service->prepareMadMoonIntroduction($user));
+        $clears->update(['actual_clear_count' => 51]);
+        $this->assertNotNull($service->prepareMadMoonIntroduction($user));
+        $this->actingAs($user)->getJson('/api/v1/me/underground')->assertOk()
+            ->assertJsonMissingPath('data.mad_moon_intro_available')
+            ->assertJsonMissingPath('data.visuals.scenes.yunagi-harbor-mad-moon');
+        $this->postJson('/api/v1/me/underground/events/advance', [
+            'request_id' => (string) Str::uuid(), 'event' => 'mad_moon', 'page' => 1,
+        ])->assertUnprocessable();
     }
 
     public function test_otherworld_discovery_requires_trial_two_and_level_one_hundred_and_survives_request_removal(): void
@@ -392,12 +433,14 @@ final class UndergroundResidenceTest extends UndergroundPlayerAccessTestCase
                 'castle' => ['file' => 'background/area.jpg', 'creation_method' => 'ai_generated'],
                 'harbor' => ['file' => 'background/area.jpg', 'creation_method' => 'ai_generated'],
                 'guide' => ['file' => 'npc/guide.jpg', 'creation_method' => 'commissioned_or_permitted'],
+                'mem' => ['file' => 'npc/guide.jpg', 'creation_method' => 'commissioned_or_permitted'],
             ],
             'scenes' => [
                 'hunting_ground.black_crystal_cave' => ['background' => 'cave'],
                 'trial_03.twilight_castle' => ['background' => 'castle'],
                 'hunting_ground.yunagi_harbor' => ['background' => 'harbor'],
                 'shop' => ['actors' => [['asset' => 'guide', 'name' => '案内人']]],
+                'yunagi-harbor-mad-moon' => ['actors' => [['asset' => 'mem', 'name' => '襲撃者']]],
             ],
         ], JSON_THROW_ON_ERROR));
         config(['hakoniwa.assets.path' => $directory]);
@@ -429,12 +472,20 @@ final class UndergroundResidenceTest extends UndergroundPlayerAccessTestCase
                 ->assertJsonPath('data.visuals.scenes.yunagi-harbor-intro.actors', []);
             $harborOption = collect($selected->json('data.visuals.home_backgrounds'))->firstWhere('key', $harbor['key']);
             $this->assertSame(app(UndergroundAlphaV1PlayerCatalog::class)->explorationHuntingGround('yunagi_harbor')['name'], $harborOption['name']);
+            $scenes = app(UndergroundScenePresenter::class);
+            $this->assertSame(['mem'], array_column(array_column(
+                $scenes->madMoonIntroduction($secretary->fresh(), $profile->fresh())['actors'], 'asset',
+            ), 'id'));
             $this->postJson('/api/v1/me/underground/residence/purchase', [
                 'request_id' => (string) Str::uuid(), 'item' => 'villa',
             ])->assertOk();
             $this->postJson('/api/v1/me/underground/residence/purchase', [
                 'request_id' => (string) Str::uuid(), 'item' => 'mirror',
             ])->assertOk()->assertJsonPath('data.visuals.scenes.yunagi-harbor-intro.actors.0.asset.id', 'guide');
+            $preparedActors = $scenes->madMoonIntroduction($secretary->fresh(), $profile->fresh())['actors'];
+            $this->assertSame($scenes->forProfile($secretary->fresh(), $profile->fresh())['scenes']['shop']['actors'][0], $preparedActors[0]);
+            $this->assertSame(['guide', 'mem'], array_column(array_column($preparedActors, 'asset'), 'id'));
+            $this->assertNotSame($preparedActors[0]['key'], $preparedActors[1]['key']);
             $this->actingAs($user)->patchJson('/api/v1/me/secretary/image-preferences', [
                 'show_ai_generated_images' => false, 'own_secretary_fallback' => 'silhouette',
             ])->assertOk();
