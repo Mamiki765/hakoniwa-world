@@ -131,6 +131,8 @@ STORY;
         private UndergroundBattleStatisticsProjector $statisticsProjector,
         private UndergroundBattleStorage $battleStorage,
         private UndergroundTrialThreeStory $trialThreeStory,
+        private UndergroundIntroCatalog $introCatalog,
+        private UndergroundScenePresenter $scenes,
     ) {}
 
     /**
@@ -152,6 +154,43 @@ STORY;
     public function challengeGuide(User $user, string $requestId, array $borrowedSecretaryIds = []): array
     {
         return $this->runExplorationRequest($user, $requestId, $this->alphaV1Catalog->guideDuel()['required_ground'], $borrowedSecretaryIds, true);
+    }
+
+    /** @return array{battle:UndergroundBattle, duplicate:bool, daily_quest:array<string,int|string|bool>} */
+    public function challengeMadMoon(User $user, string $requestId): array
+    {
+        $this->assertRequestId($requestId);
+        $event = $this->alphaV1Catalog->madMoon();
+        $fingerprint = $this->fingerprint(['activity_type' => UndergroundBattle::ACTIVITY_EVENT,
+            'activity_key' => $event['key'], 'content_identity' => $event['identity']]);
+
+        return DB::transaction(function () use ($user, $requestId, $event, $fingerprint): array {
+            $profile = $this->lockedProfileForUser($user);
+            $this->assertExplorationUnlocked($profile);
+            $this->assertRequestNotUsedByIntro($profile, $requestId);
+            $duplicate = $this->duplicateBattle($profile, $requestId, $fingerprint, $event['key']);
+            if ($duplicate instanceof UndergroundBattle) {
+                return ['battle' => $duplicate, 'duplicate' => true,
+                    'daily_quest' => $this->dailyQuests->currentStatus($user->id, DailyQuestService::UNDERGROUND_BATTLES)];
+            }
+            if ($profile->mad_moon_unlocked_at === null || $profile->mad_moon_cleared_at !== null) {
+                throw new UndergroundRuntimeException('underground_mad_moon_unavailable', '狂月賛歌には現在挑戦できません。');
+            }
+            $this->assertSkillRebuildCompleted($profile);
+            if ($this->lockedActiveTrialRun($profile) instanceof UndergroundTrialRun) {
+                throw new UndergroundRuntimeException('underground_trial_active', '試練から帰還してから挑戦してください。');
+            }
+            if ($profile->mad_moon_intro_completed_at !== null) {
+                $this->assertCooldownElapsed($profile);
+            }
+            if ($profile->current_hp === 0) {
+                throw new UndergroundRuntimeException('underground_hp_depleted', '宿屋で回復してから挑戦してください。');
+            }
+            $battle = $this->resolveAndSettleMadMoon($profile, $requestId, $fingerprint);
+
+            return ['battle' => $battle, 'duplicate' => false,
+                'daily_quest' => $this->dailyQuests->recordUndergroundBattles($user->id, 1, 'battle:'.$battle->id)];
+        }, 3);
     }
 
     /** @param list<int> $borrowedSecretaryIds
@@ -1301,6 +1340,29 @@ STORY;
         return $this->projectAlphaV1Battle($battle, UndergroundBattle::ACTIVITY_GUIDE_DUEL, $withRounds);
     }
 
+    /** @return array<string,mixed> */
+    public function projectMadMoonBattle(UndergroundBattle $battle, bool $withRounds = true): array
+    {
+        return $this->projectAlphaV1Battle($battle, UndergroundBattle::ACTIVITY_EVENT, $withRounds);
+    }
+
+    /** @return array<string,mixed> */
+    public function projectMadMoonState(UndergroundProfile $profile): array
+    {
+        $event = $this->introCatalog->madMoon();
+        $pending = $profile->mad_moon_unlocked_at !== null && $profile->mad_moon_intro_completed_at === null;
+        $victoryPending = $profile->mad_moon_cleared_at !== null && $profile->mad_moon_victory_scene_completed_at === null;
+        $story = $pending ? $event['introduction'] : ($victoryPending ? $event['victory'] : null);
+        if ($story !== null) {
+            $story['body'] = array_map(fn (string $line): string => str_replace('(秘書名)', (string) $profile->secretary->name, $line), $story['body']);
+        }
+
+        return ['name' => $event['introduction']['title'], 'intro_pending' => $pending,
+            'retry_available' => $profile->mad_moon_intro_completed_at !== null && $profile->mad_moon_cleared_at === null,
+            'cleared' => $profile->mad_moon_cleared_at !== null, 'victory_pending' => $victoryPending,
+            'can_fight' => $profile->current_hp !== 0, 'story' => $story];
+    }
+
     /** @return array<string, mixed> */
     public function projectGuideDuelState(UndergroundProfile $profile): array
     {
@@ -2050,6 +2112,7 @@ STORY;
         if ($resultType === UndergroundBattle::RESULT_VICTORY) {
             $this->recordActualContentClear($profile, 'hunting_ground', $huntingGroundKey);
         }
+        $this->unlockMadMoonAfterHarborBattle($profile, $huntingGroundKey, $finishedAt);
 
         return $battle->load('log');
     }
@@ -2176,6 +2239,103 @@ STORY;
         }
 
         return [$secretary, $leader, $leaderLevel, $leaderEquipment, $maxHpBefore, $currentHpBefore, $leaderDisplayName, $leaderDefinition, $leaderCombatantId, $leaderSnapshot, $memberSnapshots, $memberRows, $playerSnapshots];
+    }
+
+    private function resolveAndSettleMadMoon(UndergroundProfile $profile, string $requestId, string $fingerprint): UndergroundBattle
+    {
+        [$secretary, $leader, $leaderLevel, $equipment, $maxHpBefore, $currentHpBefore, $displayName,
+            $definition, $leaderId, $leaderSnapshot, $memberSnapshots, $memberRows, $players]
+            = $this->partyCombatInputs($profile, []);
+        $event = $this->alphaV1Catalog->madMoon();
+        $catalog = $this->alphaV1Catalog->madMoonCatalog();
+        $guide = $this->alphaV1Catalog->madMoonGuideSnapshot($profile->growth_path_key);
+        $players[] = $guide;
+        $scene = $this->scenes->madMoonIntroduction($secretary, $profile);
+        $guideImage = null;
+        $bossImage = null;
+        foreach ($scene['actors'] as $actor) {
+            if (($actor['asset']['id'] ?? null) === 'npc.guide') {
+                $guideImage = $actor['asset'];
+            } elseif (($actor['asset']['id'] ?? null) === 'npc.mem_lilim') {
+                $bossImage = $actor['asset'];
+            }
+        }
+        $memberSnapshots['npc:guide'] = ['team' => 'player', 'combatant_id' => 'npc:guide', 'display_name' => '案内人',
+            'source_type' => 'companion', 'original_combat_level' => $event['guide']['level'], 'effective_combat_level' => $event['guide']['level'],
+            'image_references' => ['compact' => $guideImage, 'normal' => $guideImage, 'awakening' => null]];
+        $memberRows[] = ['source_type' => 'companion', 'secretary_id' => null, 'source_owner_user_id' => null,
+            'combatant_id' => 'npc:guide', 'original_level' => $event['guide']['level'], 'effective_level' => $event['guide']['level'],
+            'snapshot' => $memberSnapshots['npc:guide']];
+        $memberSnapshots['enemy:1'] = ['team' => 'enemy', 'combatant_id' => 'enemy:1', 'display_name' => $event['enemy']['label'],
+            'image_references' => ['compact' => $bossImage, 'normal' => $bossImage, 'awakening' => null]];
+        $partySnapshot = ['schema_version' => 1, 'content_identity' => $event['identity'], 'party_size' => 2,
+            'enemy_count' => 1, 'enemy_count_authority' => 'fixed', 'leader_combat_level' => $leaderLevel,
+            'leader_equipment_item_levels' => $this->equipmentItemLevelsBySlot($equipment),
+            'reward_authority' => ['mode' => 'leader_first_victory_only']];
+        $party = $this->lendingRewards->createSnapshot($leader, $secretary, UndergroundBattle::ACTIVITY_EVENT,
+            $event['key'], $event['identity'], $leaderLevel, $partySnapshot, $memberRows);
+        $seed = $this->battleSeed->forRequest($profile->id, $requestId, $event['identity']);
+        $startedAt = Carbon::now();
+        $result = $this->partyCombat->fight($catalog, $players, [$event['key']], $seed, $event['max_rounds'],
+            (int) $this->alphaV1Catalog->growthPath($profile->growth_path_key)['natural_recovery']);
+        $finishedAt = Carbon::now();
+        $resultType = match ($result->winner) {
+            'player' => UndergroundBattle::RESULT_VICTORY,
+            'enemy' => UndergroundBattle::RESULT_DEFEAT,
+            default => UndergroundBattle::RESULT_WITHDRAWAL,
+        };
+        $reward = $this->alphaV1Catalog->otherworld()['stages'][$event['reward_stage']];
+        $xp = $resultType === UndergroundBattle::RESULT_VICTORY ? $reward['xp'] : 0;
+        $gold = match ($resultType) {
+            UndergroundBattle::RESULT_VICTORY => $reward['shards'],
+            UndergroundBattle::RESULT_DEFEAT => intdiv($profile->shard_balance, 2) - $profile->shard_balance,
+            default => 0,
+        };
+        $settlement = $this->applyRepeatableReward($profile, $xp, $gold);
+        $maxHpAfter = $this->alphaV1Catalog->currentMaxHp($profile->growth_path_key, $profile->combat_level, $profile->allocatedStp(), $equipment);
+        $profile->current_hp = $resultType === UndergroundBattle::RESULT_DEFEAT
+            ? $maxHpAfter : min(max(1, $result->finalStates[$leaderId]['hp']), $maxHpAfter);
+        $profile->awakening_gauge = $result->awakening[$leaderId]['gauge_after'];
+        $profile->mad_moon_intro_completed_at ??= $startedAt;
+        if ($resultType === UndergroundBattle::RESULT_VICTORY) {
+            $profile->mad_moon_cleared_at = $finishedAt;
+        }
+        $profile->next_battle_at = $finishedAt->copy()->addSeconds($this->catalog->cooldownSeconds());
+        $profile->save();
+        $projection = $this->partyProjector->project($result, $memberSnapshots, $catalog);
+        $projection['summary']['result'] = $resultType;
+        $detail = ['initial_state' => $projection['initial_state'], 'portrait_events' => $projection['portrait_events'],
+            'party' => [...$partySnapshot, 'party_id' => $party->id, 'members' => $memberSnapshots]];
+        $battle = UndergroundBattle::query()->create([
+            'underground_profile_id' => $profile->id, 'underground_party_id' => $party->id,
+            'request_id' => $requestId, 'request_fingerprint' => $fingerprint, 'runtime_identity' => $event['identity'],
+            'activity_type' => UndergroundBattle::ACTIVITY_EVENT, 'activity_key' => $event['key'], 'encounter_key' => $event['key'],
+            'result' => $resultType, 'rounds' => $result->rounds,
+            'damage_dealt' => (int) ($result->metrics['damage_dealt'] ?? 0), 'damage_received' => (int) ($result->metrics['damage_received'] ?? 0),
+            'healing_done' => (int) ($result->metrics['effective_healing'] ?? 0),
+            'statistics_version' => UndergroundBattleStatisticsProjector::VERSION,
+            'statistics' => $this->statisticsProjector->fromParty($result, $leaderId),
+            'xp_awarded' => $xp, 'shard_delta' => $gold, 'combat_level_before' => $leaderLevel, 'combat_level_after' => $profile->combat_level,
+            'combat_xp_before' => $settlement['combat_xp_before'], 'combat_xp_after' => $profile->combat_xp,
+            'shard_balance_before' => $settlement['shard_balance_before'], 'shard_balance_after' => $profile->shard_balance, 'private_seed' => $seed,
+            'snapshot' => $this->battleStorage->compactSnapshot(['content_identity' => $event['identity'], 'combat_rules_identity' => AlphaV1CombatRules::IDENTITY,
+                'player_display_name' => $displayName, 'encounter_display_name' => $event['enemy']['label'],
+                'presentation_log_version' => UndergroundPartyBattleProjector::PRESENTATION_LOG_VERSION,
+                'initial_state' => $detail['initial_state'], 'summary' => $projection['summary'], 'portrait_events' => $detail['portrait_events'],
+                'party' => $detail['party'], 'encounter' => ['key' => $event['key'], 'enemy_keys' => [$event['key']]],
+                'current_hp_before' => $currentHpBefore, 'max_hp_before' => $maxHpBefore,
+                'current_hp_after' => $profile->current_hp, 'max_hp_after' => $maxHpAfter,
+                'party_awakening' => $result->awakening, 'awakening' => $result->awakening[$leaderId],
+                'xp_curve' => $settlement['xp_curve'], 'stp_awarded' => $settlement['stp_awarded']]),
+            'compaction_version' => UndergroundBattleStorage::COMPACTION_VERSION, 'compacted_at' => $finishedAt,
+            'started_at' => $startedAt, 'finished_at' => $finishedAt,
+        ]);
+        UndergroundBattleLog::query()->create(['underground_battle_id' => $battle->id, 'actions' => $projection['rounds'],
+            'presentation' => $this->battleStorage->detailPresentation($detail),
+            'expires_at' => $finishedAt->copy()->addHours($this->catalog->battleLogRetentionHours())]);
+        $this->imageRetention->retainSnapshotImages($battle, $detail);
+
+        return $battle->load('log');
     }
 
     /** @param list<array<string, mixed>> $borrowed */
@@ -2553,6 +2713,7 @@ STORY;
         if ($resultType === UndergroundBattle::RESULT_VICTORY) {
             $this->recordActualContentClear($profile, 'hunting_ground', $huntingGroundKey, $otherworld ? $finishedAt : null);
         }
+        $this->unlockMadMoonAfterHarborBattle($profile, $huntingGroundKey, $finishedAt);
 
         return $battle->load('log');
     }
@@ -3903,6 +4064,19 @@ STORY;
             ->where('content_key', $contentKey)
             ->lockForUpdate()
             ->firstOrFail();
+    }
+
+    private function unlockMadMoonAfterHarborBattle(UndergroundProfile $profile, string $groundKey, Carbon $finishedAt): void
+    {
+        if ($groundKey !== $this->alphaV1Catalog->madMoon()['required_ground'] || $profile->mad_moon_unlocked_at !== null) {
+            return;
+        }
+        if (UndergroundContentClearProgress::query()->where('underground_profile_id', $profile->id)
+            ->where('content_type', 'hunting_ground')->where('content_key', $groundKey)
+            ->where('actual_clear_count', '>=', $this->introCatalog->madMoon()['required_actual_clears'])->exists()) {
+            $profile->mad_moon_unlocked_at = $finishedAt;
+            $profile->save();
+        }
     }
 
     private function recordActualContentClear(

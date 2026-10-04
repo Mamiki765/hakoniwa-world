@@ -319,10 +319,10 @@ function formatForecastDelta(value: number): string {
     return `${value > 0 ? '+' : '−'}${Math.abs(value).toLocaleString('ja-JP')}`;
 }
 
-function formatForecastRange(value: number, range?: { minimum: number; maximum: number }, signed = false): string {
+function formatForecastRange(value: number, range?: { minimum: number; maximum: number }, signed = false, consumption = false): string {
     const format = signed ? formatForecastDelta : (amount: number) => amount.toLocaleString('ja-JP');
     if (!range) return format(value);
-    return range.minimum === range.maximum ? format(range.minimum) : `${format(range.minimum)}〜${format(range.maximum)}`;
+    return format(consumption ? range.maximum : range.minimum);
 }
 
 function formatPercentageTenths(value: number): string {
@@ -2232,8 +2232,8 @@ async function abandonNation(): Promise<void> {
                                         <tr v-for="row in nation.resource_forecast.rows" :key="row.key">
                                             <th scope="row">{{ row.key === 'food' ? '食料（小麦換算）' : row.name }}</th>
                                             <td>{{ formatForecastRange(row.production, row.production_range) }}{{ row.key === 'power' ? '' : row.unit_label ?? '' }}</td>
-                                            <td>{{ formatForecastRange(row.consumption, row.consumption_range) }}{{ row.key === 'power' ? '' : row.unit_label ?? '' }}</td>
-                                            <td :class="{ 'forecast-positive': (row.delta_range?.minimum ?? row.delta) > 0, 'forecast-negative': (row.delta_range?.maximum ?? row.delta) < 0 }">{{ formatForecastRange(row.delta, row.delta_range, true) }}{{ row.key === 'power' ? '' : row.unit_label ?? '' }}</td>
+                                            <td>{{ formatForecastRange(row.consumption, row.consumption_range, false, true) }}{{ row.key === 'power' ? '' : row.unit_label ?? '' }}</td>
+                                            <td :class="{ 'forecast-positive': (row.delta_range?.minimum ?? row.delta) > 0, 'forecast-negative': (row.delta_range?.minimum ?? row.delta) < 0 }">{{ formatForecastRange(row.delta, row.delta_range, true) }}{{ row.key === 'power' ? '' : row.unit_label ?? '' }}</td>
                                             <td>{{ row.holding.toLocaleString('ja-JP') }}{{ row.key === 'power' ? '' : row.unit_label ?? '' }}</td>
                                         </tr>
                                     </tbody>

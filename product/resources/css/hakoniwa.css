@@ -1072,11 +1072,11 @@ html[data-theme="dark"] .compensation-banner, html[data-theme="dark"] .compensat
 .resource-forecast, .hud-support { min-width: 0; padding: 9px 10px; border: 1px solid rgba(255,255,255,.18); background: rgba(255,255,255,.05); }
 .resource-forecast h2, .hud-support h2 { margin: 0 0 6px; color: white; font-family: inherit; font-size: .78rem; }
 .resource-forecast-table-wrap { max-width: 100%; overflow-x: auto; }
-.resource-forecast table { width: 100%; min-width: 330px; border-collapse: collapse; table-layout: fixed; font-variant-numeric: tabular-nums; }
+.resource-forecast table { width: 100%; min-width: 330px; border-collapse: collapse; table-layout: auto; font-variant-numeric: tabular-nums; }
 .resource-forecast th, .resource-forecast td { padding: 3px 4px; border-bottom: 1px solid rgba(255,255,255,.12); text-align: right; white-space: nowrap; }
 .resource-forecast thead th { color: #b9d2d2; font-size: .62rem; }
 .resource-forecast th:first-child { width: 21%; text-align: left; }
-.resource-forecast tbody th { color: white; }
+.resource-forecast tbody th { color: white; white-space: normal; }
 .resource-forecast .forecast-positive { color: #8ce0ff; font-weight: 900; }
 .resource-forecast .forecast-negative { color: #ff9b95; font-weight: 900; }
 .resource-forecast-note { margin: 5px 0 0; color: #d9e7e4; font-size: .62rem; }

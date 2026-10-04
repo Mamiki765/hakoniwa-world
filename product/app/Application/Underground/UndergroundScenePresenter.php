@@ -74,6 +74,14 @@ final readonly class UndergroundScenePresenter
             'background' => $this->assets->scene('hunting_ground.yunagi_harbor', $showAi, false)['background'],
             'actors' => $scenes['shop']['actors'],
         ];
+        $scenes['yunagi-harbor-mad-moon'] = $this->assets->scene('yunagi-harbor-mad-moon', $showAi);
+        $scenes['yunagi-harbor-mad-moon']['background'] = $scenes['yunagi-harbor-intro']['background'];
+        $scenes['yunagi-harbor-mad-moon']['actors'] = [...$scenes['shop']['actors'], ...$scenes['yunagi-harbor-mad-moon']['actors']];
+        foreach ($scenes['yunagi-harbor-mad-moon']['actors'] as $index => &$actor) {
+            $actor['key'] = (string) $index;
+        }
+        unset($actor);
+        $scenes['yunagi-harbor-mad-moon-victory'] = $scenes['yunagi-harbor-intro'];
 
         return [
             'display_name' => $this->portraits->battleDisplayName($secretary),
@@ -91,16 +99,8 @@ final readonly class UndergroundScenePresenter
     public function madMoonIntroduction(Secretary $secretary, UndergroundProfile $profile): array
     {
         $visuals = $this->forProfile($secretary, $profile);
-        $scene = $this->assets->scene('yunagi-harbor-mad-moon', $visuals['show_ai']);
-        $scene['background'] = $visuals['scenes']['yunagi-harbor-intro']['background'];
-        $scene['actors'] = [...$visuals['scenes']['shop']['actors'], ...$scene['actors']];
-        // Each manifest scene starts its actor keys at zero; make the combined keys unique.
-        foreach ($scene['actors'] as $index => &$actor) {
-            $actor['key'] = (string) $index;
-        }
-        unset($actor);
 
-        return $scene;
+        return $visuals['scenes']['yunagi-harbor-mad-moon'];
     }
 
     /** @return array<string, mixed>|null */

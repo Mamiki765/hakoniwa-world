@@ -17,7 +17,6 @@ use App\Domain\Underground\Progression\UndergroundCombatProgression;
 use App\Models\Secretary;
 use App\Models\UndergroundBattle;
 use App\Models\UndergroundBattleLog;
-use App\Models\UndergroundContentClearProgress;
 use App\Models\UndergroundIntroProgress;
 use App\Models\UndergroundIntroRequest;
 use App\Models\UndergroundProfile;
@@ -91,37 +90,6 @@ final readonly class UndergroundIntroService
         }
 
         return $this->projectState($secretary, $profile, $profile?->introProgress);
-    }
-
-    /**
-     * Read-only preparation, deliberately unconnected to player state and event routes.
-     *
-     * @return array{title: string, body: list<string>, scene: array<string, mixed>}|null
-     */
-    public function prepareMadMoonIntroduction(User $user): ?array
-    {
-        $secretary = $this->secretaryForUser($user);
-        $profile = UndergroundProfile::query()->where('secretary_id', $secretary->id)->first();
-        if (! $profile instanceof UndergroundProfile) {
-            return null;
-        }
-        $event = $this->catalog->madMoon();
-        $qualified = UndergroundContentClearProgress::query()
-            ->where('underground_profile_id', $profile->id)
-            ->where('content_type', 'hunting_ground')->where('content_key', 'yunagi_harbor')
-            ->where('actual_clear_count', '>=', $event['required_actual_clears'])->exists();
-        if (! $qualified) {
-            return null;
-        }
-
-        return [
-            'title' => $event['introduction']['title'],
-            'body' => array_map(
-                fn (string $line): string => str_replace('(秘書名)', (string) $secretary->name, $line),
-                $event['introduction']['body'],
-            ),
-            'scene' => $this->scenes->madMoonIntroduction($secretary, $profile),
-        ];
     }
 
     /** @return array{unclaimed:bool, day:string, reset_after_ms:int} */
@@ -320,7 +288,7 @@ final readonly class UndergroundIntroService
     /** @return array<string, mixed> */
     public function advanceLoungeEvent(User $user, string $requestId, string $event, int $page): array
     {
-        if (! in_array($event, ['exchange', 'mirror', 'polishing', 'otherworld', 'yunagi_harbor'], true)
+        if (! in_array($event, ['exchange', 'mirror', 'polishing', 'otherworld', 'yunagi_harbor', 'mad_moon', 'mad_moon_victory'], true)
             || ! in_array($page, $event === 'exchange' ? [1, 2] : [1], true)) {
             throw new UndergroundRuntimeException('underground_event_invalid', 'イベントの進行を確認してください。');
         }
@@ -331,6 +299,21 @@ final readonly class UndergroundIntroService
             UndergroundIntroProgress $intro,
         ) use ($event, $page): void {
             $this->assertShopUnlocked($profile, $intro);
+            if ($event === 'mad_moon' || $event === 'mad_moon_victory') {
+                if ($profile->mad_moon_unlocked_at === null
+                    || ($event === 'mad_moon_victory' && $profile->mad_moon_cleared_at === null)
+                    || ($event === 'mad_moon' && $profile->mad_moon_cleared_at !== null)) {
+                    throw new UndergroundRuntimeException('underground_mad_moon_unavailable', '狂月賛歌の進行を確認してください。');
+                }
+                if ($event === 'mad_moon') {
+                    $profile->mad_moon_intro_completed_at ??= Carbon::now();
+                } else {
+                    $profile->mad_moon_victory_scene_completed_at ??= Carbon::now();
+                }
+                $profile->save();
+
+                return;
+            }
             if ($event === 'yunagi_harbor') {
                 if (! $this->hasYunagiHarborFirstClear($profile)) {
                     throw new UndergroundRuntimeException('underground_yunagi_harbor_locked', '試練3を初回クリアすると読めます。');
@@ -1197,6 +1180,7 @@ final readonly class UndergroundIntroService
             UndergroundBattle::ACTIVITY_STORY,
             UndergroundBattle::ACTIVITY_PLAYTEST,
             UndergroundBattle::ACTIVITY_GUIDE_DUEL,
+            UndergroundBattle::ACTIVITY_EVENT,
             UndergroundBattle::ACTIVITY_EXPLORATION,
             UndergroundBattle::ACTIVITY_TRIAL,
         ];
@@ -1254,6 +1238,7 @@ final readonly class UndergroundIntroService
                     UndergroundBattle::ACTIVITY_STORY,
                     UndergroundBattle::ACTIVITY_PLAYTEST,
                     UndergroundBattle::ACTIVITY_GUIDE_DUEL,
+                    UndergroundBattle::ACTIVITY_EVENT,
                     UndergroundBattle::ACTIVITY_EXPLORATION,
                     UndergroundBattle::ACTIVITY_TRIAL,
                 ])
@@ -1933,6 +1918,8 @@ final readonly class UndergroundIntroService
             'recollections' => $recollectionState,
             'guide_duel' => $stage === UndergroundIntroStage::UNDERGROUND_OPEN && $profile instanceof UndergroundProfile
                 ? $this->runtime->projectGuideDuelState($profile) : null,
+            'mad_moon' => $stage === UndergroundIntroStage::UNDERGROUND_OPEN && $profile instanceof UndergroundProfile
+                ? $this->runtime->projectMadMoonState($profile) : null,
             'battle' => $battle instanceof UndergroundBattle ? $this->projectBattle($battle, true) : null,
             'lending' => $stage === UndergroundIntroStage::UNDERGROUND_OPEN
                 && $profile instanceof UndergroundProfile
@@ -2378,6 +2365,9 @@ final readonly class UndergroundIntroService
     /** @return array<string, mixed> */
     private function projectBattle(UndergroundBattle $battle, bool $withActions): array
     {
+        if ($battle->activity_type === UndergroundBattle::ACTIVITY_EVENT) {
+            return $this->runtime->projectMadMoonBattle($battle, $withActions);
+        }
         if ($battle->activity_type === UndergroundBattle::ACTIVITY_GUIDE_DUEL) {
             return $this->runtime->projectGuideDuel($battle, $withActions);
         }
