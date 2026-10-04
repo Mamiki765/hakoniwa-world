@@ -2227,13 +2227,13 @@ class CommandQueueAndSalePolicyTest extends TestCase
         $centralTarget->update(['population' => 4_567]);
         $base = "/api/v1/nations/{$nation->id}/map-spaces/{$mapSpace->id}";
 
-        $farm = collect($this->actingAs($owner)->getJson(
+        $wind = collect($this->actingAs($owner)->getJson(
             "{$base}/command-definitions?target_x={$target->x}&target_y={$target->y}",
-        )->assertOk()->json('data.commands'))->firstWhere('key', 'build_farm');
-        $this->assertSame('currently_executable', $farm['execution_preview_status']);
+        )->assertOk()->json('data.commands'))->firstWhere('key', 'build_wind_power');
+        $this->assertSame('currently_executable', $wind['execution_preview_status']);
 
         $this->postJson("{$base}/command-queue", [
-            'command_key' => 'build_farm',
+            'command_key' => 'build_wind_power',
             'target_x' => $target->x,
             'target_y' => $target->y,
             'request_key' => (string) Str::uuid(),
@@ -2252,13 +2252,13 @@ class CommandQueueAndSalePolicyTest extends TestCase
             'expected_version' => 2,
         ])->assertCreated();
 
-        $capitalFarm = collect($this->getJson(
+        $capitalWind = collect($this->getJson(
             "{$base}/command-definitions?target_x={$capital->x}&target_y={$capital->y}",
-        )->assertOk()->json('data.commands'))->firstWhere('key', 'build_farm');
-        $this->assertSame('currently_unavailable', $capitalFarm['execution_preview_status']);
-        $this->assertContains('首都を通常建設commandで上書きすることはできません。', $capitalFarm['execution_warnings']);
+        )->assertOk()->json('data.commands'))->firstWhere('key', 'build_wind_power');
+        $this->assertSame('currently_unavailable', $capitalWind['execution_preview_status']);
+        $this->assertContains('首都を通常建設commandで上書きすることはできません。', $capitalWind['execution_warnings']);
         $this->postJson("{$base}/command-queue", [
-            'command_key' => 'build_farm',
+            'command_key' => 'build_wind_power',
             'target_x' => $capital->x,
             'target_y' => $capital->y,
             'request_key' => (string) Str::uuid(),

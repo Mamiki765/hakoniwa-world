@@ -133,6 +133,9 @@ class ApiAndAssetTest extends TestCase
         $user = User::factory()->create();
         $mapSpace = MapSpace::query()->firstOrFail();
         $rulesetSettings = $world->rulesetVersion()->firstOrFail()->settings;
+        // The HUD must use the active snapshot rather than a hard-coded 100-cell limit.
+        $rulesetSettings['turn_processing']['disasters']['land_subsidence']['base_safe_land_cells'] = 123;
+        $world->rulesetVersion()->firstOrFail()->update(['settings' => $rulesetSettings]);
         DB::flushQueryLog();
         DB::enableQueryLog();
         app(NationEconomyCalculator::class)->calculate(
@@ -182,6 +185,7 @@ class ApiAndAssetTest extends TestCase
             ->assertJsonPath('data.resources.0.unit_label', 'トン')
             ->assertJsonPath('data.total_food_tons', 10_000)
             ->assertJsonPath('data.food_total_tons', 10_000)
+            ->assertJsonPath('data.safe_land_cells', 123)
             ->assertJsonPath('data.money_capacity', 10_098)
             ->assertJsonPath('data.food_capacity_tons', 1_009_899)
             ->assertJsonPath('data.food_resources.0.balance', 10_000)

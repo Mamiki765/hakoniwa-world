@@ -9,6 +9,7 @@ import GuideConversationTopicAdmin from './components/GuideConversationTopicAdmi
 import AdminOperationsPanel from './components/AdminOperationsPanel.vue';
 import AdminTurnControl from './components/AdminTurnControl.vue';
 import HexMap from './components/HexMap.vue';
+import HudResourceGauge from './components/HudResourceGauge.vue';
 import IslandEventLog from './components/IslandEventLog.vue';
 import MessageBoard from './components/MessageBoard.vue';
 import MonumentDesignSettings from './components/MonumentDesignSettings.vue';
@@ -285,6 +286,10 @@ const linkedProviders = computed(() => new Set(user.value?.providers.map((identi
 const abandonmentConfirmed = computed(() => nation.value !== null
     && abandonmentConfirmationName.value === nation.value.name);
 const nonFoodResources = computed(() => nation.value?.resources.filter((resource) => resource.category !== 'food') ?? []);
+const foodShortage = computed(() => {
+    const food = nation.value?.resource_forecast.rows.find((row) => row.key === 'food');
+    return food !== undefined && food.holding + food.production < food.consumption;
+});
 const nextTurnCountdown = computed(() => {
     if (worldSummary.value?.turn_status !== 'normal') return null;
     const remaining = Math.max(0, new Date(worldSummary.value.next_scheduled_turn_at).getTime() - clockNow.value);
@@ -2197,13 +2202,16 @@ async function abandonNation(): Promise<void> {
                 </div>
                 <dl class="hud-primary">
                     <div><dt>人口</dt><dd>{{ nation.total_population.toLocaleString() }}人</dd></div>
-                    <div><dt>面積</dt><dd>{{ nation.owned_land_cells.toLocaleString() }}セル</dd></div>
+                    <div class="hud-area">
+                        <dt>面積<HudResourceGauge label="面積（安全面積）" :value="nation.owned_land_cells" :capacity="nation.safe_land_cells" :danger="nation.owned_land_cells > nation.safe_land_cells" /></dt>
+                        <dd>{{ nation.owned_land_cells.toLocaleString() }}/{{ nation.safe_land_cells.toLocaleString() }}セル</dd>
+                    </div>
                     <div class="hud-money">
-                        <dt>資金</dt>
+                        <dt>資金<HudResourceGauge label="資金（保管容量）" :value="nation.money" :capacity="nation.money_capacity" :warning="nation.money_is_at_capacity" /></dt>
                         <dd><strong class="hud-current-value">{{ formatExactMoney(nation.money) }}</strong></dd>
                     </div>
                     <div class="hud-food">
-                        <dt>食料</dt>
+                        <dt>食料<HudResourceGauge label="食料（保管容量）" :value="nation.total_food_tons" :capacity="nation.food_capacity_tons" :danger="foodShortage" /></dt>
                         <dd><strong class="hud-current-value">{{ formatResource(nation.total_food_tons, 'トン') }}</strong></dd>
                     </div>
                     <div><dt>農場規模</dt><dd>{{ nation.farm_capacity_people.toLocaleString() }}人</dd></div>

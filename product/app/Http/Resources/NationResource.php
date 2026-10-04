@@ -4,6 +4,7 @@ namespace App\Http\Resources;
 
 use App\Application\NationBasicStatusProjection;
 use App\Application\NationResourceForecastProjection;
+use App\Domain\Disaster\LandSubsidenceThresholdResolver;
 use App\Domain\Economy\CapacityBoundedAssetService;
 use App\Domain\Economy\NationCapacities;
 use App\Domain\Economy\NationCapacityResolver;
@@ -23,6 +24,12 @@ class NationResource extends JsonResource
             ? $this->resourceBalances->sortBy(fn (NationResourceBalance $balance): int => $balance->definition->sort_order)
             : null;
         $isOwner = $balances !== null;
+        $safeLandCells = $isOwner
+            ? app(LandSubsidenceThresholdResolver::class)->resolve(
+                $this->world()->firstOrFail()->rulesetVersion()->firstOrFail(),
+                $this->resource,
+            )
+            : null;
         $basicStatus = app(NationBasicStatusProjection::class)->forNation($this->resource);
         $foodTotal = $basicStatus['food_total_tons'];
         $capacities = $isOwner
@@ -106,6 +113,7 @@ class NationResource extends JsonResource
             'total_population' => $basicStatus['total_population'],
             'territory_cell_count' => $basicStatus['territory_cell_count'],
             'owned_land_cells' => $basicStatus['owned_land_cells'],
+            'safe_land_cells' => $this->when($isOwner, $safeLandCells),
             'total_food_tons' => $this->when($isOwner, $foodTotal),
             'food_total_tons' => $foodTotal,
             'food_capacity_tons' => $this->when($isOwner, $capacities?->foodTons),

@@ -1030,6 +1030,7 @@ html[data-theme="dark"] .compensation-banner, html[data-theme="dark"] .compensat
 .account-panel li { display: flex; justify-content: space-between; padding: 16px; border: 1px solid var(--line); }
 
 .nation-hud {
+    --hud-gauge-surface: var(--navy-solid);
     display: grid;
     grid-template-columns: minmax(150px, .65fr) minmax(0, 3fr);
     align-items: center;
@@ -1045,6 +1046,11 @@ html[data-theme="dark"] .compensation-banner, html[data-theme="dark"] .compensat
 .hud-primary { display: grid; grid-template-columns: repeat(7, minmax(70px, 1fr)); gap: 6px; margin: 0; }
 .hud-primary > div { min-width: 0; padding: 6px 8px; border-left: 1px solid rgba(255,255,255,.16); }
 .hud-primary dt { color: #b9d2d2; font-size: .64rem; }
+.hud-primary :is(.hud-area, .hud-money, .hud-food) dt { display: flex; align-items: center; gap: 5px; white-space: nowrap; }
+.hud-gauge { position: relative; flex: 1; min-width: 0; height: 3px; border-radius: 2px; background: color-mix(in srgb, currentColor 25%, transparent); }
+.hud-gauge-fill { display: block; height: 100%; border-radius: inherit; background: currentColor; }
+.hud-gauge.is-warning { color: var(--coral); }
+.hud-gauge-danger { position: absolute; inset-inline-end: 0; top: 50%; transform: translateY(-50%); padding: 0 1px; color: var(--coral); background: var(--hud-gauge-surface); font-size: .48rem; line-height: 1; }
 .hud-primary dd { margin: 2px 0 0; font-size: .83rem; font-weight: 850; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .hud-money { min-width: 0; }
 .hud-capacity-value { display: grid; gap: 1px; min-width: 0; }
@@ -1508,6 +1514,7 @@ html[data-theme="dark"] .compensation-banner, html[data-theme="dark"] .compensat
     .hud-identity .profile-owner, .hud-identity .profile-comment { grid-column: 1 / -1; }
     .hud-primary { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 3px; }
     .hud-primary > div { padding: 3px 5px; }
+    .hud-gauge-danger { font-size: .43rem; }
     .hud-primary dd { font-size: .75rem; }
     .hud-current-value { font-size: clamp(.62rem, 2.6vw, .75rem); }
     .hud-capacity-limit { font-size: clamp(.5rem, 2.1vw, .6rem); }

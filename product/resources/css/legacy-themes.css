@@ -180,6 +180,7 @@ html:is([data-theme="skyblue"], [data-theme="autumn"]) .command-panel { backgrou
 html:is([data-theme="skyblue"], [data-theme="autumn"]) :is(.plan-panel, .manual-content) { background: #fff; }
 html:is([data-theme="skyblue"], [data-theme="autumn"]) .policy-list form { background: var(--legacy-input-cell); }
 html:is([data-theme="skyblue"], [data-theme="autumn"]) :is(.world-stats, .nation-hud) {
+    --hud-gauge-surface: var(--paper-deep);
     color: var(--ink);
     background: var(--paper-deep);
     border: 1px solid var(--legacy-th-border);

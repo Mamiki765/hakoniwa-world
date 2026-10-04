@@ -2,6 +2,12 @@
 
 通常の再開で読むのは現在地と、今回の作業に必要な文書だけです。過去のrelease順に全docsを読む必要はありません。
 
+## 地上・地下・地底の基本原則
+
+- 対象地形・所有者の条件を満たす地上の通常施設建設は、村・町・都市を置換できる。新しい地上施設を追加するときは、[共通の置換許可リスト](../product/app/Domain/Command/SettlementOverbuildPolicy.php)へ追加し、[予告・計画登録](../product/app/Application/CommandQueueService.php)と[Turn実行](../product/app/Application/DomesticCommandExecutor.php)で同じ判定を使う。首都や他の施設を置換対象へ広げず、所有者・地形の検証を維持する。同種施設の増設・修理は各施設の既存契約に従う。
+- **地下**は首都強化用のNation所有施設。建設・撤去は通常の開発計画で公式Turnを使い、対象は解禁済みの`(layer, slot_index)`。占有slotへの直接上書きはしない。[地下施設の設計](../product/docs/architecture/underground-facility-development.md)と[実装](../product/app/Application/Underground/UndergroundFacilityService.php)を参照する。
+- **地底**はFFA/RPGパート。Secretary所有の進行・資産とTurn独立の探索・戦闘を、地下施設のNation所有・公式Turn処理と混同しない。地上の新施設へ地底攻略必須の条件を勝手に追加しない。[現行contract](../product/docs/handoffs/current-contracts.md)と[地底の手引き](../product/docs/manual/underground.md)を入口にする。この呼び分けだけを理由にアプリ全体の表示や識別子を一括変更しない。
+
 ## 再開と実装
 
 | 目的 | 入口 |
@@ -10,6 +16,7 @@
 | 4.11.0 電力・ピザの仕様表・決算・移行・画像の残件 | [4.11.0 power/pizza](../product/docs/releases/4.11.0-power-pizza.md) |
 | 4.11.1 資源予測の簡素化・ピザ金銭維持費削除・秘書条件表示 | [4.11.1 power/secretary](../product/docs/releases/4.11.1-power-secretary.md) |
 | 4.12.0 油田開発・船舶収益・海軍回避・過去油田XPのdry-run | [4.12.0 oil/fleet](../product/docs/releases/4.12.0-oil-fleet.md) |
+| 4.12.1 新しい地上施設の村系置換漏れ修正・自島HUDゲージ | [4.12.1 settlement overbuild / HUD](../product/docs/releases/4.12.1-settlement-overbuild.md) |
 | 現在のmain、完了release、直近TODO、回答済み・見送り | [current-status](../product/docs/handoffs/current-status.md) |
 | 取り違えを防ぐ現行contract | [current-contracts](../product/docs/handoffs/current-contracts.md) |
 | IL200超の装備計算・研磨 | [地底装備の倍率とrating](../product/docs/architecture/underground-equipment-scaling.md)、[プレイヤー向け装備手引き](../product/docs/manual/equipment.md) |
