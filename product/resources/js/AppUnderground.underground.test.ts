@@ -23,12 +23,19 @@ describe('Underground application operations', () => {
                 victory_pending: false, can_fight: true, story: { title: '狂月賛歌', body: ['<img>$&と|呪い《ギフト》'] } },
         };
         const requests: Record<string, unknown>[] = [];
+        let failEvent = true;
+        const dailyQuest = { key: 'underground_battles', label: '地底戦闘', canonical_day: '2026-10-05',
+            progress: 10, target: 10, paradox_awarded: 3, completed: true, completed_now: true, paradox_balance: 30 };
         stubUndergroundFetch(vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
             if (String(input) === '/api/v1/me/underground') return response(state);
             if (String(input) === '/api/v1/me/underground/battles') return response([]);
             if (String(input) === '/api/v1/me/underground/mad-moon') {
                 requests.push(JSON.parse(String(init?.body)));
-                return response(null, 503);
+                return failEvent ? response(null, 503) : response({
+                    id: requests.at(-1)?.request_id, context: 'event_battle', encounter_name: 'メム＝リリム',
+                    result: 'victory', rounds_count: 1, xp_awarded: 200000, shard_delta: 120000,
+                    detail_available: false, daily_quest: dailyQuest,
+                });
             }
             return response(null, 404);
         }));
@@ -47,6 +54,11 @@ describe('Underground application operations', () => {
         expect(requests[0]).toEqual(requests[1]);
         expect(Object.keys(requests[0]!)).toEqual(['request_id']);
         expect(wrapper.find('section[aria-label="狂月賛歌の物語"]').exists()).toBe(true);
+        expect(wrapper.emitted('dailyQuest')).toBeUndefined();
+        failEvent = false;
+        await fight.trigger('click');
+        await flushPromises();
+        expect(wrapper.emitted('dailyQuest')).toEqual([[dailyQuest]]);
         wrapper.unmount();
     });
 

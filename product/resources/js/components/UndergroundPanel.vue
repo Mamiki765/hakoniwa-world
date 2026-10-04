@@ -1639,6 +1639,7 @@ async function runMadMoon(): Promise<void> {
     error.value = '';
     try {
         const battle = await api<Battle>('/api/v1/me/underground/mad-moon', { method: 'POST', body: JSON.stringify({ request_id: id }) });
+        showDailyQuestCompletion(battle.daily_quest);
         selectedBattle.value = battle;
         await refresh(false);
         pendingMadMoonRequest.value = null;
