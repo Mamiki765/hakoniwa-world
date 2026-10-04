@@ -1771,8 +1771,8 @@ class DomesticCommandExecutionTest extends TestCase
         $space = MapSpace::query()->where('world_id', $world->id)->where('key', 'surface')->firstOrFail();
         $capital = $nation->capital()->firstOrFail()->cell()->with(['terrain', 'facility'])->firstOrFail();
         $targets = MapCell::query()->where('owner_nation_id', $nation->id)
-            ->whereKeyNot($capital->id)->orderBy('id')->limit(5)->get();
-        $this->assertCount(5, $targets);
+            ->whereKeyNot($capital->id)->orderBy('id')->limit(9)->get();
+        $this->assertCount(9, $targets);
 
         $states = app(MapCellStateService::class);
         $plain = TerrainDefinition::query()->where('key', 'plain')->firstOrFail();
@@ -1790,8 +1790,12 @@ class DomesticCommandExecutionTest extends TestCase
             $this->queue($user, $nation, $space, 'build_factory', $targets[1], 1, 2),
             $this->queue($user, $nation, $space, 'build_defense_facility', $targets[2], 1, 3),
             $this->queue($user, $nation, $space, 'build_monument', $targets[3], $prosperityId, 4),
-            $this->queue($user, $nation, $space, 'build_factory', $targets[4], 1, 5),
-            $this->queue($user, $nation, $space, 'build_farm', $capital, 1, 6),
+            $this->queue($user, $nation, $space, 'build_wind_power', $targets[4], 1, 5),
+            $this->queue($user, $nation, $space, 'build_thermal_power', $targets[5], 1, 6),
+            $this->queue($user, $nation, $space, 'build_condenser', $targets[6], 1, 7),
+            $this->queue($user, $nation, $space, 'build_pizzeria', $targets[7], 1, 8),
+            $this->queue($user, $nation, $space, 'build_pizzeria', $targets[8], 1, 9),
+            $this->queue($user, $nation, $space, 'build_wind_power', $capital, 1, 10),
         ];
 
         foreach ([
@@ -1799,7 +1803,11 @@ class DomesticCommandExecutionTest extends TestCase
             1 => 'village',
             2 => 'town',
             3 => 'city',
-            4 => 'defense',
+            4 => 'village',
+            5 => 'town',
+            6 => 'city',
+            7 => 'village',
+            8 => 'defense',
         ] as $index => $facilityKey) {
             $states->setFacility(
                 $targets[$index],
@@ -1812,7 +1820,7 @@ class DomesticCommandExecutionTest extends TestCase
         $prosperity->update(['sort_order' => 1]);
 
         $executor = app(DomesticCommandExecutor::class);
-        for ($turn = 2; $turn <= 5; $turn++) {
+        for ($turn = 2; $turn <= 9; $turn++) {
             $result = $executor->execute($this->context(
                 $world,
                 [$nation->id],
@@ -1825,23 +1833,23 @@ class DomesticCommandExecutionTest extends TestCase
             $world,
             [$nation->id],
             hash('sha256', 'settlement-overbuild:failures'),
-            targetTurn: 6,
+            targetTurn: 10,
         ));
 
-        $this->assertSame(['completed', 'completed', 'completed', 'completed', 'failed', 'failed'],
+        $this->assertSame([...array_fill(0, 8, 'completed'), 'failed', 'failed'],
             collect($items)->map(fn (NationCommandQueueItem $item): string => $item->fresh()->status)->all());
-        $this->assertSame('facility_exists', $items[4]->fresh()->failure_code);
-        $this->assertSame('capital_protected', $items[5]->fresh()->failure_code);
+        $this->assertSame('facility_exists', $items[8]->fresh()->failure_code);
+        $this->assertSame('capital_protected', $items[9]->fresh()->failure_code);
         $this->assertSame(2, $failureResult['failures']);
-        $this->assertSame(['farm', 'factory', 'defense', 'monument'],
-            $targets->take(4)->map(fn (MapCell $cell): string => $cell->fresh()->facility()->value('key'))->all());
+        $this->assertSame(['farm', 'factory', 'defense', 'monument', 'wind_power', 'thermal_power', 'condenser', 'pizzeria'],
+            $targets->take(8)->map(fn (MapCell $cell): string => $cell->fresh()->facility()->value('key'))->all());
         $this->assertSame('prosperity', $targets[3]->fresh()->monumentDefinition()->value('key'));
-        $this->assertSame([0, 0, 0, 0],
-            $targets->take(4)->map(fn (MapCell $cell): int => $cell->fresh()->population)->all());
-        $this->assertSame('defense', $targets[4]->fresh()->facility()->value('key'));
+        $this->assertSame(array_fill(0, 8, 0),
+            $targets->take(8)->map(fn (MapCell $cell): int => $cell->fresh()->population)->all());
+        $this->assertSame('defense', $targets[8]->fresh()->facility()->value('key'));
         $this->assertSame('capital', $capital->fresh()->facility()->value('key'));
 
-        $world->update(['current_turn' => 5]);
+        $world->update(['current_turn' => 9]);
         $topMessages = collect($this->getJson("/api/v1/public/worlds/{$world->id}/events")
             ->assertOk()->json('data.groups'))
             ->flatMap(static fn (array $group): array => $group['events'])->pluck('message')->all();
