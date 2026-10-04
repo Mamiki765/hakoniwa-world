@@ -49,6 +49,22 @@ class PowerEconomyCalculatorTest extends TestCase
         $this->assertSame(0, $noCharge['pizzeria_revenue']);
     }
 
+    public function test_zero_cash_maintenance_funds_all_shops_without_money_while_legacy_charges_remain_replayable(): void
+    {
+        $calculator = new PowerEconomyCalculator;
+        $settings = $this->settings();
+        $this->assertSame(['scales' => [], 'maintenance' => 0, 'unfunded' => 2], $calculator->fundedPizzerias($settings, [1, 2], 0));
+        $this->assertSame(['scales' => [1], 'maintenance' => 1, 'unfunded' => 1], $calculator->fundedPizzerias($settings, [1, 2], 1));
+        $settings['power_economy']['pizzeria_maintenance'] = 0;
+        $funded = $calculator->fundedPizzerias($settings, [1, 2], 0);
+        $this->assertSame(['scales' => [1, 2], 'maintenance' => 0, 'unfunded' => 0], $funded);
+        $plan = $calculator->settle($settings, 0, 9, 0, 90, $funded['scales'], 0);
+        $this->assertSame(0, $plan['pizzeria_maintenance']);
+        $this->assertSame(9, $plan['consumed_mw']);
+        $this->assertSame(90, $plan['food_consumed_tons']);
+        $this->assertSame(90, $plan['pizzeria_revenue']);
+    }
+
     public function test_storage_has_no_free_base_and_conserves_supply_after_capacity_loss(): void
     {
         $calculator = new PowerEconomyCalculator;

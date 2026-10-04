@@ -2,6 +2,7 @@
 
 namespace Tests\Shared\Unit;
 
+use App\Application\RulesetPublisher;
 use App\Domain\Ruleset\CurrentRulesetAuthoringInspector;
 use App\Domain\Ruleset\RulesetAuthoringValidator;
 use DomainException;
@@ -11,23 +12,31 @@ final class CurrentRulesetContractTest extends TestCase
 {
     private const V28_CHECKSUM = '708aebb3dbf392e64a5349528240268d18b78a45b005a702f29e4ce155fd5bc8';
 
-    public function test_normal_config_loads_and_validates_the_v28_identity_and_checksum(): void
+    private const V29_CHECKSUM = 'b1377c85878f7895cb5093a7cb9374dd962b808a39ee43efbeae5228816b4bdf';
+
+    public function test_normal_config_loads_and_validates_v29_without_changing_the_v28_snapshot(): void
     {
         $normalConfig = require config_path('hakoniwa.php');
         $current = $normalConfig['ruleset'];
 
-        $this->assertSame(['hakoniwa-2s-plus-v28'], array_keys($normalConfig['published_rulesets']));
-        $this->assertSame($current, $normalConfig['published_rulesets']['hakoniwa-2s-plus-v28']);
+        $this->assertSame(['hakoniwa-2s-plus-v29'], array_keys($normalConfig['published_rulesets']));
+        $this->assertSame($current, $normalConfig['published_rulesets']['hakoniwa-2s-plus-v29']);
         $this->assertSame($current['secretary'], $normalConfig['current_catalogs']['secretary']);
-        $this->assertSame('hakoniwa-2s-plus-v28', $current['key']);
-        $this->assertSame(28, $current['version']);
+        $this->assertSame('hakoniwa-2s-plus-v29', $current['key']);
+        $this->assertSame(29, $current['version']);
         $this->assertArrayNotHasKey('behavior', $current);
         $this->assertArrayNotHasKey('data', $current);
         $this->assertArrayNotHasKey('flavor', $current);
-        $this->assertSame(self::V28_CHECKSUM, $this->checksum($current));
+        $this->assertSame(self::V29_CHECKSUM, $this->checksum($current));
+        $prior = require config_path('hakoniwa/rulesets/hakoniwa-2s-plus-v28.php');
+        $this->assertSame(self::V28_CHECKSUM, $this->checksum($prior));
         $summary = app(RulesetAuthoringValidator::class)->validate($current);
-        $this->assertSame('hakoniwa-2s-plus-v28', $summary['key']);
-        $this->assertSame(28, $summary['version']);
+        $this->assertSame('hakoniwa-2s-plus-v29', $summary['key']);
+        $this->assertSame(29, $summary['version']);
+        $prior['power_economy']['pizzeria_maintenance'] = 0;
+        $this->expectException(DomainException::class);
+        $this->expectExceptionMessage('exact immutable v28 snapshot');
+        app(RulesetPublisher::class)->publishPowerIntroduction($prior);
     }
 
     public function test_current_domain_authoring_classifies_every_scalar_leaf_exactly_once(): void
@@ -73,7 +82,7 @@ final class CurrentRulesetContractTest extends TestCase
             app(CurrentRulesetAuthoringInspector::class)->inspect($current),
             app(CurrentRulesetAuthoringInspector::class)->inspect($withAdditionalEmptyContainer),
         );
-        $this->assertSame(self::V28_CHECKSUM, $this->checksum($current));
+        $this->assertSame(self::V29_CHECKSUM, $this->checksum($current));
         $this->assertNotSame($this->checksum($current), $this->checksum($withAdditionalEmptyContainer));
     }
 

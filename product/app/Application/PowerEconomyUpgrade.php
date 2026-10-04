@@ -10,7 +10,7 @@ use App\Models\World;
 use Illuminate\Support\Facades\DB;
 use RuntimeException;
 
-/** Forward-only v27 -> v28 publication; never rewrites saved Turn or Ship provenance. */
+/** Forward-only power releases; never rewrites saved Turn or Ship provenance. */
 final class PowerEconomyUpgrade
 {
     public function __construct(
@@ -21,15 +21,28 @@ final class PowerEconomyUpgrade
 
     public function apply(): void
     {
-        $settings = config('hakoniwa.ruleset');
-        if (! is_array($settings) || ($settings['key'] ?? null) !== 'hakoniwa-2s-plus-v28') {
-            throw new RuntimeException('The power migration requires the complete v28 release draft.');
-        }
+        // Historical migrations must keep their exact payload after current advances.
+        $settings = require config_path('hakoniwa/rulesets/hakoniwa-2s-plus-v28.php');
         $priorSettings = require config_path('hakoniwa/rulesets/hakoniwa-2s-plus-v27.php');
+        $this->publish($settings, $priorSettings, true);
+    }
+
+    public function removePizzeriaMaintenance(): void
+    {
+        $settings = require config_path('hakoniwa/rulesets/hakoniwa-2s-plus-v29.php');
+        $priorSettings = require config_path('hakoniwa/rulesets/hakoniwa-2s-plus-v28.php');
+        $this->publish($settings, $priorSettings, false);
+    }
+
+    /** @param array<string, mixed> $settings
+     * @param  array<string, mixed>  $priorSettings
+     */
+    private function publish(array $settings, array $priorSettings, bool $initializePower): void
+    {
         $prior = RulesetVersion::query()->where('key', $priorSettings['key'])->first();
         if ($prior !== null && ! RulesetVersion::query()->whereKey($prior->id)
             ->whereRaw('settings = ?::jsonb', [json_encode($priorSettings, JSON_THROW_ON_ERROR | JSON_PRESERVE_ZERO_FRACTION)])->exists()) {
-            throw new RuntimeException('The saved v27 predecessor differs from the accepted snapshot.');
+            throw new RuntimeException('The saved predecessor differs from the accepted snapshot.');
         }
         if ($settings['monster_definitions'] !== $priorSettings['monster_definitions']
             || array_slice($settings['command_definitions'], 0, count($priorSettings['command_definitions'])) !== $priorSettings['command_definitions']) {
@@ -42,7 +55,7 @@ final class PowerEconomyUpgrade
                 $this->lock->acquire($world);
                 $held[] = $world;
             }
-            DB::transaction(function () use ($settings, $prior, $worlds): void {
+            DB::transaction(function () use ($settings, $prior, $worlds, $initializePower): void {
                 foreach ($worlds as $world) {
                     $this->lock->assertHeld($world);
                     $locked = World::query()->whereKey($world->id)->lockForUpdate()->firstOrFail();
@@ -52,15 +65,19 @@ final class PowerEconomyUpgrade
                     }
                 }
                 $this->catalogs->install($settings);
-                $current = $this->publisher->publish($settings);
-                DB::statement('ALTER TABLE secretary_skills DROP CONSTRAINT secretary_skills_key_check');
-                DB::statement("ALTER TABLE secretary_skills ADD CONSTRAINT secretary_skills_key_check CHECK (skill_key IN ('agricultural_policy', 'specialty_development', 'gold_vein_survey', 'forest_management', 'final_defense_line', 'declining_birthrate_policy', 'indomitable', 'ship_operations', 'navy', 'energy_saving'))");
-                DB::table('secretary_skills')->insertUsing(
-                    ['secretary_id', 'skill_key', 'level', 'experience', 'created_at', 'updated_at'],
-                    DB::table('secretaries as secretary')->selectRaw("secretary.id, 'energy_saving', 0, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP")
-                        ->whereNotExists(fn ($query) => $query->selectRaw('1')->from('secretary_skills as skill')
-                            ->whereColumn('skill.secretary_id', 'secretary.id')->where('skill.skill_key', 'energy_saving')),
-                );
+                $current = $initializePower
+                    ? $this->publisher->publishPowerIntroduction($settings)
+                    : $this->publisher->publish($settings);
+                if ($initializePower) {
+                    DB::statement('ALTER TABLE secretary_skills DROP CONSTRAINT secretary_skills_key_check');
+                    DB::statement("ALTER TABLE secretary_skills ADD CONSTRAINT secretary_skills_key_check CHECK (skill_key IN ('agricultural_policy', 'specialty_development', 'gold_vein_survey', 'forest_management', 'final_defense_line', 'declining_birthrate_policy', 'indomitable', 'ship_operations', 'navy', 'energy_saving'))");
+                    DB::table('secretary_skills')->insertUsing(
+                        ['secretary_id', 'skill_key', 'level', 'experience', 'created_at', 'updated_at'],
+                        DB::table('secretaries as secretary')->selectRaw("secretary.id, 'energy_saving', 0, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP")
+                            ->whereNotExists(fn ($query) => $query->selectRaw('1')->from('secretary_skills as skill')
+                                ->whereColumn('skill.secretary_id', 'secretary.id')->where('skill.skill_key', 'energy_saving')),
+                    );
+                }
                 foreach ($worlds as $world) {
                     $world->update(['ruleset_version_id' => $current->id]);
                     DB::update(<<<'SQL'
@@ -94,14 +111,16 @@ WHERE item.nation_command_queue_id = queue.id AND queue.nation_id = nation.id
   AND current.ruleset_version_id = ? AND current.key = old.key
 SQL, [$world->id, $prior?->id, $current->id]);
                 }
-                $power = ResourceDefinition::query()->where('key', 'power')->sole();
-                DB::table('nation_resources')->insertUsing(
-                    ['nation_id', 'resource_definition_id', 'amount', 'created_at', 'updated_at'],
-                    DB::table('nations as nation')->selectRaw('nation.id, ?, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP', [$power->id])
-                        ->whereIn('nation.world_id', World::query()->where('ruleset_version_id', $current->id)->select('id'))
-                        ->whereNotExists(fn ($query) => $query->selectRaw('1')->from('nation_resources as balance')
-                            ->whereColumn('balance.nation_id', 'nation.id')->where('balance.resource_definition_id', $power->id)),
-                );
+                if ($initializePower) {
+                    $power = ResourceDefinition::query()->where('key', 'power')->sole();
+                    DB::table('nation_resources')->insertUsing(
+                        ['nation_id', 'resource_definition_id', 'amount', 'created_at', 'updated_at'],
+                        DB::table('nations as nation')->selectRaw('nation.id, ?, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP', [$power->id])
+                            ->whereIn('nation.world_id', World::query()->where('ruleset_version_id', $current->id)->select('id'))
+                            ->whereNotExists(fn ($query) => $query->selectRaw('1')->from('nation_resources as balance')
+                                ->whereColumn('balance.nation_id', 'nation.id')->where('balance.resource_definition_id', $power->id)),
+                    );
+                }
             }, 1);
         } finally {
             foreach (array_reverse($held) as $world) {

@@ -17,6 +17,7 @@ use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
+use PHPUnit\Framework\Attributes\DataProvider;
 use RuntimeException;
 use Tests\Concerns\CreatesTestWorlds;
 use Tests\Concerns\UsesIndividualTestWorld;
@@ -28,18 +29,35 @@ final class PowerEconomyUpgradeTest extends TestCase
     use RefreshDatabase;
     use UsesIndividualTestWorld;
 
-    public function test_upgrade_preserves_assets_progression_queue_and_retry_provenance_and_refuses_an_unresolved_turn(): void
+    /** @return array<string, array{int}> */
+    public static function supportedPredecessors(): array
+    {
+        return ['power introduction' => [27], 'cash maintenance removal' => [28]];
+    }
+
+    #[DataProvider('supportedPredecessors')]
+    public function test_upgrade_preserves_assets_progression_queue_and_retry_provenance_and_refuses_an_unresolved_turn(int $priorVersion): void
     {
         $world = $this->lightweightWorld();
         $user = User::factory()->create();
         $nation = app(NationCreationService::class)->create($user, $world, '移行国', '保存島');
-        $currentId = $world->ruleset_version_id;
-        $priorSettings = require config_path('hakoniwa/rulesets/hakoniwa-2s-plus-v27.php');
-        $prior = RulesetVersion::query()->create(['key' => $priorSettings['key'], 'version' => 27, 'settings' => $priorSettings, 'is_active' => true]);
+        $sourceId = $world->ruleset_version_id;
+        $currentId = RulesetVersion::query()->where('version', $priorVersion + 1)->sole()->id;
+        $priorSettings = (static fn (): array => require config_path("hakoniwa/rulesets/hakoniwa-2s-plus-v{$priorVersion}.php"))();
+        $prior = RulesetVersion::query()->firstOrCreate(['key' => $priorSettings['key']], ['version' => $priorVersion, 'settings' => $priorSettings, 'is_active' => true]);
+        $upgrade = static function () use ($priorVersion): void {
+            if ($priorVersion === 27) {
+                app(PowerEconomyUpgrade::class)->apply();
+            } else {
+                app(PowerEconomyUpgrade::class)->removePizzeriaMaintenance();
+            }
+        };
         // Reconstruct the supported predecessor without executing retired authoring.
         foreach ([CommandDefinition::class => 'command_definitions', MonsterDefinition::class => 'monster_definitions', ProductionDefinition::class => 'production_definitions'] as $model => $domain) {
-            foreach ($model::query()->where('ruleset_version_id', $currentId)->whereIn('key', array_column($priorSettings[$domain], 'key'))->get() as $row) {
-                $row->replicate()->fill(['ruleset_version_id' => $prior->id])->save();
+            if (! $model::query()->where('ruleset_version_id', $prior->id)->exists()) {
+                foreach ($model::query()->where('ruleset_version_id', $sourceId)->whereIn('key', array_column($priorSettings[$domain], 'key'))->get() as $row) {
+                    $row->replicate()->fill(['ruleset_version_id' => $prior->id])->save();
+                }
             }
         }
         $cell = $nation->capital()->sole()->cell()->sole();
@@ -54,8 +72,13 @@ final class PowerEconomyUpgradeTest extends TestCase
             'kill_count' => 1, 'first_killed_turn' => 1, 'last_killed_turn' => 1, 'version' => 1]);
         $secretary = $user->secretary()->sole();
         $secretary->skills()->where('skill_key', 'agricultural_policy')->update(['level' => 7, 'experience' => 11]);
-        $secretary->skills()->where('skill_key', 'energy_saving')->delete();
-        NationResource::query()->where('nation_id', $nation->id)->whereHas('definition', fn ($query) => $query->where('key', 'power'))->delete();
+        if ($priorVersion === 27) {
+            $secretary->skills()->where('skill_key', 'energy_saving')->delete();
+            NationResource::query()->where('nation_id', $nation->id)->whereHas('definition', fn ($query) => $query->where('key', 'power'))->delete();
+        } else {
+            $secretary->skills()->where('skill_key', 'energy_saving')->update(['level' => 2, 'experience' => 5]);
+            $nation->resourceBalances()->whereHas('definition', fn ($query) => $query->where('key', 'power'))->sole()->update(['amount' => 17]);
+        }
         $assets = $nation->fresh()->getAttributes();
         $balances = $nation->resourceBalances()->orderBy('id')->get()->map->getAttributes()->all();
         $savedPrior = $prior->fresh()->getRawOriginal('settings');
@@ -63,7 +86,7 @@ final class PowerEconomyUpgradeTest extends TestCase
             'random_seed' => str_repeat('cd', 32), 'source' => 'manual', 'is_dry_run' => false, 'status' => TurnRun::STATUS_FAILED,
             'attempt_count' => 1, 'pipeline' => [], 'phase_results' => [], 'failure_context' => []]);
         try {
-            app(PowerEconomyUpgrade::class)->apply();
+            $upgrade();
             $this->fail('An unresolved production Turn must keep its retry identity and block publication.');
         } catch (RuntimeException $error) {
             $this->assertStringContainsString('Resolve the existing Turn', $error->getMessage());
@@ -72,7 +95,7 @@ final class PowerEconomyUpgradeTest extends TestCase
         $this->assertSame($balances, $nation->resourceBalances()->orderBy('id')->get()->map->getAttributes()->all());
         $run->update(['status' => TurnRun::STATUS_COMPLETED]);
         $runBefore = $run->fresh()->getAttributes();
-        app(PowerEconomyUpgrade::class)->apply();
+        $upgrade();
         $this->assertSame($currentId, $world->fresh()->ruleset_version_id);
         $this->assertSame($assets, $nation->fresh()->getAttributes());
         $this->assertSame($savedPrior, $prior->fresh()->getRawOriginal('settings'));
@@ -89,10 +112,14 @@ final class PowerEconomyUpgradeTest extends TestCase
         $this->assertSame(2, $stat->fresh()->kill_count);
         $this->assertSame('O', DB::selectOne("SELECT tgenabled FROM pg_trigger WHERE tgname = 'nation_monster_kill_stat_guard'")->tgenabled);
         $power = $nation->resourceBalances()->whereHas('definition', fn ($query) => $query->where('key', 'power'))->sole();
-        $this->assertSame(0, (int) $power->amount);
+        $this->assertSame($priorVersion === 27 ? 0 : 17, (int) $power->amount);
+        if ($priorVersion === 28) {
+            $this->assertSame($balances, $nation->resourceBalances()->orderBy('id')->get()->map->getAttributes()->all());
+            $this->assertSame(5, $secretary->skills()->where('skill_key', 'energy_saving')->sole()->experience);
+        }
         $power->update(['amount' => 17]);
         $secretary->skills()->where('skill_key', 'energy_saving')->update(['level' => 2, 'experience' => 5]);
-        app(PowerEconomyUpgrade::class)->apply();
+        $upgrade();
         $this->assertSame(17, (int) $power->fresh()->amount);
         $this->assertSame(7, $secretary->skills()->where('skill_key', 'agricultural_policy')->sole()->level);
         $this->assertSame(5, $secretary->skills()->where('skill_key', 'energy_saving')->sole()->experience);

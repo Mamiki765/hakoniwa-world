@@ -27,6 +27,6 @@ final class CurrentRulesetFixture
     /** @return array<string, mixed> */
     public static function settings(): array
     {
-        return require config_path('hakoniwa/rulesets/hakoniwa-2s-plus-v28.php');
+        return require config_path('hakoniwa/rulesets/hakoniwa-2s-plus-v29.php');
     }
 }

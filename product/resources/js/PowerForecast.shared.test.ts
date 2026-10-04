@@ -6,7 +6,7 @@ import { emptyChunk, installAppTestLifecycle, ownerNationFixture, publicResponse
 
 installAppTestLifecycle();
 
-it('preserves forecast uncertainty and MW units while selecting an unprovided pizzeria image', async () => {
+it('preserves forecast values and uncertainty without units or explanations while selecting an unprovided pizzeria image', async () => {
     const nation = structuredClone(ownerNationFixture);
     nation.resource_forecast.rows.push({
         key: 'power', name: '電力', unit_label: 'MW', holding: 1100,
@@ -44,10 +44,12 @@ it('preserves forecast uncertainty and MW units while selecting an unprovided pi
     await wrapper.findAll('.site-header nav button').find(button => button.text() === '自島へ')!.trigger('click');
     await flushPromises();
     const powerRow = wrapper.findAll('.resource-forecast tbody tr').find(row => row.text().startsWith('電力'))!;
-    expect(powerRow.text()).toContain('245〜335MW');
-    expect(powerRow.text()).toContain('29〜30MW');
-    expect(powerRow.text()).toContain('−10〜+20MW');
-    expect(powerRow.text()).toContain('1,100MW');
+    const headings = wrapper.findAll('.resource-forecast thead th').slice(1).map(heading => heading.text());
+    const cells = powerRow.findAll('td');
+    expect(Object.fromEntries(headings.map((heading, index) => [heading, cells[index]!.text()]))).toMatchObject({
+        '生産': '245〜335', '消費': '29〜30', '予測': '−10〜+20', '所持': '1,100',
+    });
+    expect(wrapper.get('.resource-forecast').text()).not.toMatch(/MW|維持費|風力平均|ピザ売上|燃料目安/);
     wrapper.getComponent(HexMap).vm.$emit('select', {
         ...surfaceCellFixture, facility: 'pizzeria', facility_name: 'ピザ屋', display_name: 'ピザ屋',
         asset: { ...surfaceCellFixture.asset, key: 'tile.pizzeria', available: false },

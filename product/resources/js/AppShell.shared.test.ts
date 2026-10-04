@@ -1293,10 +1293,9 @@ describe('application lobby and island entry', () => {
             '資源', '生産', '消費', '予測', '所持',
         ]);
         expect(wrapper.findAll('.resource-forecast tbody tr')).toHaveLength(4);
-        expect(wrapper.findAll('.resource-forecast tbody tr')[0]!.text()).toContain('食料55,00060,000−5,00012,000');
+        expect(wrapper.findAll('.resource-forecast tbody tr')[0]!.text()).toContain('食料（小麦換算）55,00060,000−5,00012,000');
         expect(wrapper.find('.resource-forecast .forecast-positive').text()).toBe('+15,000');
         expect(wrapper.find('.resource-forecast .forecast-negative').text()).toBe('−5,000');
-        expect(wrapper.find('.resource-forecast-note').text()).toBe('食料の所持は小麦換算です。');
         expect(wrapper.find('.workforce-forecast').text()).toContain('失業率 16.0%');
         expect(wrapper.find('.hud-details').text()).toContain('資金上限9,999億円');
         expect(wrapper.find('.hud-details').text()).toContain('食材上限999,900トン');

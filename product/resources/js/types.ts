@@ -113,6 +113,7 @@ export interface SecretarySkill {
     required_experience: number;
     remaining_experience: number;
     effect: string;
+    experience_condition: string;
 }
 
 export interface Secretary {

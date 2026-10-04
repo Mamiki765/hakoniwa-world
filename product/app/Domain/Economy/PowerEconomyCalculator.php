@@ -16,7 +16,9 @@ final class PowerEconomyCalculator
     public function fundedPizzerias(array $settings, array $scales, int $money): array
     {
         $rules = $this->rules($settings);
-        $count = min(count($scales), intdiv(max(0, $money), $rules['pizzeria_maintenance']));
+        $count = $rules['pizzeria_maintenance'] === 0
+            ? count($scales)
+            : min(count($scales), intdiv(max(0, $money), $rules['pizzeria_maintenance']));
 
         return [
             'scales' => array_slice($scales, 0, $count),
@@ -315,8 +317,9 @@ final class PowerEconomyCalculator
         ];
         $validated = [];
         foreach ($keys as $key) {
-            if (! is_int($rules[$key] ?? null) || $rules[$key] < 1) {
-                throw new DomainException("Power economy setting {$key} must be a positive integer.");
+            $minimum = $key === 'pizzeria_maintenance' ? 0 : 1;
+            if (! is_int($rules[$key] ?? null) || $rules[$key] < $minimum) {
+                throw new DomainException("Power economy setting {$key} must be an integer of at least {$minimum}.");
             }
             $validated[$key] = $rules[$key];
         }

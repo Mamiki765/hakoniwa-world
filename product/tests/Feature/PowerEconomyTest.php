@@ -45,7 +45,7 @@ final class PowerEconomyTest extends TestCase
             'grant_key' => 'test:power:hoarder',
             'obtained_at' => now(),
         ]);
-        $nation->update(['money' => 2000]);
+        $nation->update(['money' => 0]);
         foreach (['wheat' => 10000, 'fish' => 0, 'monster_meat' => 0, 'oil' => 8, 'minerals' => 2000, 'power' => 1200] as $key => $amount) {
             $this->balance($nation, $key)->update(['amount' => $amount]);
         }
@@ -70,7 +70,7 @@ final class PowerEconomyTest extends TestCase
         $this->assertSame($balances, NationResource::query()->where('nation_id', $nation->id)->orderBy('id')->pluck('amount', 'resource_definition_id')->all());
         $this->assertSame(7000, (int) $this->balance($nation, 'wheat')->amount);
         $this->assertSame(1320, (int) $this->balance($nation, 'power')->amount);
-        $this->assertSame(2015, (int) $nation->fresh()->money);
+        $this->assertSame(16, (int) $nation->fresh()->money);
         $this->assertSame(2000, (int) $this->balance($nation, 'minerals')->amount);
         $this->assertSame(8 - $result['thermal']['oil_consumed'], (int) $this->balance($nation, 'oil')->amount);
         $this->assertSame(1200 + $result['generated_mw'], $result['consumed_mw'] + $result['stored_after_mw'] + $result['discarded_mw']);
