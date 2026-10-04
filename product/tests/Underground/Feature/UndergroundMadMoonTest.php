@@ -32,9 +32,13 @@ final class UndergroundMadMoonTest extends UndergroundPlayerAccessTestCase
         $clears->update(['actual_clear_count' => 51]);
         $profile->refresh()->update(['next_battle_at' => null]);
         $this->getJson('/api/v1/me/underground')->assertOk()->assertJsonPath('data.mad_moon.intro_pending', false);
-        $this->postJson('/api/v1/me/underground/explore', ['request_id' => (string) Str::uuid(), 'hunting_ground_key' => 'yunagi_harbor'])->assertOk();
+        $trigger = ['request_id' => (string) Str::uuid(), 'hunting_ground_key' => 'yunagi_harbor'];
+        $this->postJson('/api/v1/me/underground/explore', $trigger)->assertOk();
         $this->getJson('/api/v1/me/underground')->assertOk()->assertJsonPath('data.mad_moon.intro_pending', true);
         $this->assertNotNull($profile->fresh()->mad_moon_unlocked_at);
+        $this->postJson('/api/v1/me/underground/explore', $trigger)->assertOk()->assertJsonPath('data.id', $trigger['request_id']);
+        $this->postJson('/api/v1/me/underground/explore', ['request_id' => (string) Str::uuid(), 'hunting_ground_key' => 'yunagi_harbor'])
+            ->assertConflict()->assertJsonPath('code', 'underground_mad_moon_intro_pending');
     }
 
     public function test_chain_resources_once_rewards_and_victory_scene_survive_receipt_removal(): void
@@ -55,6 +59,13 @@ final class UndergroundMadMoonTest extends UndergroundPlayerAccessTestCase
         $beforeXp = $profile->combat_xp;
         $beforeGold = $profile->shard_balance;
         $beforeStp = $profile->unspent_stp;
+        $beforeBanked = $profile->banked_shard_balance;
+        $this->actingAs($user);
+        $this->postJson('/api/v1/me/underground/inn/rest', ['request_id' => (string) Str::uuid()])
+            ->assertConflict()->assertJsonPath('code', 'underground_mad_moon_intro_pending');
+        $this->postJson('/api/v1/me/underground/bank/transfer', ['request_id' => (string) Str::uuid(), 'action' => 'deposit_all'])
+            ->assertConflict()->assertJsonPath('code', 'underground_mad_moon_intro_pending');
+        $this->assertSame($beforeBanked, $profile->fresh()->banked_shard_balance);
         $request = ['request_id' => (string) Str::uuid()];
         $battle = $this->actingAs($user)->postJson('/api/v1/me/underground/mad-moon', $request)->assertOk()
             ->assertJsonPath('data.result', 'victory')->assertJsonPath('data.current_hp_before', 123)
