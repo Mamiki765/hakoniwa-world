@@ -1788,12 +1788,12 @@ class DomesticCommandExecutionTest extends TestCase
         $items = [
             $this->queue($user, $nation, $space, 'build_farm', $targets[0], 1, 1),
             $this->queue($user, $nation, $space, 'build_factory', $targets[1], 1, 2),
-            $this->queue($user, $nation, $space, 'build_defense_facility', $targets[2], 1, 3),
-            $this->queue($user, $nation, $space, 'build_monument', $targets[3], $prosperityId, 4),
-            $this->queue($user, $nation, $space, 'build_wind_power', $targets[4], 1, 5),
-            $this->queue($user, $nation, $space, 'build_thermal_power', $targets[5], 1, 6),
-            $this->queue($user, $nation, $space, 'build_condenser', $targets[6], 1, 7),
-            $this->queue($user, $nation, $space, 'build_pizzeria', $targets[7], 1, 8),
+            $this->queue($user, $nation, $space, 'build_wind_power', $targets[4], 1, 3),
+            $this->queue($user, $nation, $space, 'build_thermal_power', $targets[5], 1, 4),
+            $this->queue($user, $nation, $space, 'build_condenser', $targets[6], 1, 5),
+            $this->queue($user, $nation, $space, 'build_pizzeria', $targets[7], 1, 6),
+            $this->queue($user, $nation, $space, 'build_defense_facility', $targets[2], 1, 7),
+            $this->queue($user, $nation, $space, 'build_monument', $targets[3], $prosperityId, 8),
             $this->queue($user, $nation, $space, 'build_pizzeria', $targets[8], 1, 9),
             $this->queue($user, $nation, $space, 'build_wind_power', $capital, 1, 10),
         ];
