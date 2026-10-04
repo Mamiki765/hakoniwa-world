@@ -65,9 +65,12 @@ final class TurnRuntimePerformanceTest extends TestCase
 
         $this->report($profile, $measurement);
         $this->assertSame($expectedCells, $processCells['metrics']['processed']);
-        $this->assertLessThanOrEqual(13, $processCells['queries']);
+        // Weather adds one bulk chunk read and one upsert, independent of World size.
+        $this->assertLessThanOrEqual(15, $processCells['queries']);
         $this->assertLessThanOrEqual(70, $globalDisasters['queries']);
-        $this->assertLessThanOrEqual(64, $globalDisasters['hydrated_models'][MapCell::class] ?? 0);
+        // This fixed seed draws one weather disaster area, including its one-cell halo.
+        // Retain the legacy 64-cell budget plus at most 18x18, still rejecting a full-World reload.
+        $this->assertLessThanOrEqual(64 + (18 * 18), $globalDisasters['hydrated_models'][MapCell::class] ?? 0);
         $this->assertSame(TurnPipeline::CANONICAL_PHASE_KEYS, array_keys($measurement['phases']));
     }
 
