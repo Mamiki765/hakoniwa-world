@@ -6,7 +6,7 @@ import { emptyChunk, installAppTestLifecycle, ownerNationFixture, publicResponse
 
 installAppTestLifecycle();
 
-it('preserves forecast values and uncertainty without units or explanations while selecting an unprovided pizzeria image', async () => {
+it('shows existing conservative forecast endpoints without units or explanations while selecting an unprovided pizzeria image', async () => {
     const nation = structuredClone(ownerNationFixture);
     nation.resource_forecast.rows.push({
         key: 'power', name: '電力', unit_label: 'MW', holding: 1100,
@@ -47,7 +47,7 @@ it('preserves forecast values and uncertainty without units or explanations whil
     const headings = wrapper.findAll('.resource-forecast thead th').slice(1).map(heading => heading.text());
     const cells = powerRow.findAll('td');
     expect(Object.fromEntries(headings.map((heading, index) => [heading, cells[index]!.text()]))).toMatchObject({
-        '生産': '245〜335', '消費': '29〜30', '予測': '−10〜+20', '所持': '1,100',
+        '生産': '245', '消費': '30', '予測': '−10', '所持': '1,100',
     });
     expect(wrapper.get('.resource-forecast').text()).not.toMatch(/MW|維持費|風力平均|ピザ売上|燃料目安/);
     wrapper.getComponent(HexMap).vm.$emit('select', {

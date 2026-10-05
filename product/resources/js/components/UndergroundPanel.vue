@@ -2,6 +2,7 @@
 import stories from '../../stories/intro.json';
 import loungeStories from '../../stories/lounge.json';
 import otherworldStory from '../../stories/otherworld.json';
+import yunagiHarborStory from '../../stories/yunagi-harbor.json';
 import UndergroundHome from './UndergroundHome.vue';
 import UndergroundNavigation from './UndergroundNavigation.vue';
 import UndergroundScene from './UndergroundScene.vue';
@@ -122,7 +123,7 @@ interface CombatRound {
 interface Battle {
     id: string;
     history_cursor?: number;
-    context: 'tutorial' | 'scripted_loss' | 'playtest' | 'exploration' | 'trial' | 'guide_duel';
+    context: 'tutorial' | 'scripted_loss' | 'playtest' | 'exploration' | 'trial' | 'guide_duel' | 'event_battle';
     party?: {
         members: Array<PartyBattleMember>;
         enemies?: Array<PartyBattleMember>;
@@ -505,6 +506,7 @@ interface UndergroundState {
         distorted_stone_balance: number;
     } | null;
     otherworld_intro_available?: boolean;
+    yunagi_harbor_intro_available?: boolean;
     otherworld_unlocked?: boolean;
     true_name_branch: boolean;
     tutorial_projection: {
@@ -522,6 +524,7 @@ interface UndergroundState {
     awakening: AwakeningState | null;
     recollections?: RecollectionState;
     guide_duel?: { unlocked: boolean; won: boolean; challenge_lines: string[]; accept_lines: string[]; cancel_lines: string[]; rematch_lines: string[]; solo_rematch_lines: string[] } | null;
+    mad_moon?: { name: string; intro_pending: boolean; retry_available: boolean; cleared: boolean; victory_pending: boolean; can_fight: boolean; story: { title: string; body: string[] } | null } | null;
     ai?: UndergroundAiConfiguration | null;
     battle: Battle | null;
     party_candidates?: PartyCandidate[];
@@ -668,6 +671,13 @@ const loungeReplay = ref<'exchange-1' | 'exchange-2' | 'mirror' | 'otherworld' |
 const activeLoungeEvent = computed(() => {
     const residence = state.value?.residence;
     if (!residence) return null;
+    if (currentDestination.value === 'home' && state.value?.yunagi_harbor_intro_available) {
+        return {
+            ...yunagiHarborStory,
+            body: yunagiHarborStory.body.map(line => line.replaceAll('(秘書名)', () => state.value?.secretary_name ?? '')),
+            key: 'yunagi_harbor', page: 1, scene: 'yunagi-harbor-intro',
+        };
+    }
     if (loungeReplay.value === 'otherworld' || currentDestination.value === 'shop' && state.value?.otherworld_intro_available) {
         return { ...otherworldStory, key: 'otherworld', page: 1, scene: 'otherworld-intro' };
     }
@@ -749,6 +759,8 @@ const cooldownNowMs = ref(Date.now());
 let cooldownTimer: ReturnType<typeof window.setInterval> | null = null;
 let huntingGroundPreferenceHydrated = false;
 const currentBattle = computed(() => selectedBattle.value ?? state.value?.battle ?? null);
+const activeMadMoonStory = computed(() => state.value?.mad_moon?.story ?? null);
+const pendingMadMoonRequest = ref<string | null>(null);
 const currentBattleDrops = computed(() => currentBattle.value?.drops ?? (currentBattle.value?.drop ? [currentBattle.value.drop] : []));
 const otherworldStage = computed(() => state.value?.otherworld?.stages.find(stage => stage.key === selectedOtherworldStage.value));
 const partySelectedIds = computed(() => selectedPartyMemberIds.value);
@@ -821,8 +833,16 @@ const seriousTalkChoices = computed<SeriousTalkChoice[]>(() => {
 });
 const unlockedHuntingGrounds = computed(() => (state.value?.hunting_grounds ?? [])
     .filter((ground) => !ground.locked));
-const ordinaryHuntingGrounds = computed(() => unlockedHuntingGrounds.value
-    .filter((ground) => ground.kind !== 'vault'));
+const ordinaryHuntingGrounds = computed<HuntingGround[]>(() => {
+    const grounds = unlockedHuntingGrounds.value.filter((ground) => ground.kind !== 'vault');
+    if (state.value?.mad_moon?.retry_available) {
+        grounds.push({ key: 'mad_moon', name: state.value.mad_moon.name, kind: 'hunting_ground', locked: false,
+            unlock_condition: null, entry_key_cost: 0, key_balance: 0, key_label: '', disabled: !state.value.mad_moon.can_fight,
+            unavailable_reason: null, item_level_min: 0, item_level_max: 0,
+            skip: { actual_clear_count: 0, total_clear_count: 0, actual_clears_required: 0, unlocked: false, ticket_cost: 0 } });
+    }
+    return grounds;
+});
 const selectedHuntingGround = computed(() => ordinaryHuntingGrounds.value
     .find((ground) => ground.key === selectedHuntingGroundKey.value) ?? null);
 const selectedSkipHuntingGround = computed(() => unlockedHuntingGrounds.value
@@ -1607,7 +1627,34 @@ async function runExplore(huntingGroundKey: string, intentKey = 'selected-ground
 async function runSelectedExploration(): Promise<void> {
     const groundKey = selectedHuntingGround.value?.key;
     if (!groundKey) return;
-    await runExplore(groundKey);
+    if (groundKey === 'mad_moon') await runMadMoon();
+    else await runExplore(groundKey);
+}
+
+async function runMadMoon(): Promise<void> {
+    if (busy.value) return;
+    const id = pendingMadMoonRequest.value ?? requestId();
+    pendingMadMoonRequest.value = id;
+    busy.value = true;
+    error.value = '';
+    try {
+        const battle = await api<Battle>('/api/v1/me/underground/mad-moon', { method: 'POST', body: JSON.stringify({ request_id: id }) });
+        showDailyQuestCompletion(battle.daily_quest);
+        selectedBattle.value = battle;
+        await refresh(false);
+        pendingMadMoonRequest.value = null;
+    } catch (caught) {
+        error.value = caught instanceof Error ? caught.message : '狂月賛歌に挑戦できませんでした。';
+    } finally {
+        busy.value = false;
+    }
+}
+
+async function completeMadMoonScene(): Promise<void> {
+    const victory = state.value?.mad_moon?.victory_pending;
+    if (await loungeMutation('events/advance', { event: victory ? 'mad_moon_victory' : 'mad_moon', page: 1 })) {
+        equipmentView.value = victory ? 'home' : 'adventure';
+    }
 }
 
 async function runSkip(contentType: 'hunting_ground' | 'trial', contentKey: string, executionCount: number): Promise<void> {
@@ -2556,7 +2603,7 @@ onUnmounted(() => {
                     次の階層へ<small v-if="exploreCooldownSeconds > 0">あと{{ exploreCooldownSeconds }}秒</small>
                 </button>
                 <button
-                    v-if="repeatableExplorationGroundKey"
+                    v-if="repeatableExplorationGroundKey && !activeMadMoonStory"
                     class="button primary underground-exploration-repeat"
                     type="button"
                     :disabled="busy || exploreCooldownSeconds > 0"
@@ -2564,8 +2611,18 @@ onUnmounted(() => {
                 >
                     もう一度ここを探索する<small v-if="exploreCooldownSeconds > 0">あと{{ exploreCooldownSeconds }}秒</small>
                 </button>
-                <button class="button secondary underground-battle-back" type="button" @click="closeBattle">地下メインへ戻る</button>
+                <button class="button secondary underground-battle-back" type="button" @click="closeBattle">{{ activeMadMoonStory ? '物語へ進む' : '地下メインへ戻る' }}</button>
             </div>
+        </template>
+
+        <template v-else-if="state && activeMadMoonStory">
+            <UndergroundScene :scene="state.visuals?.scenes[state.mad_moon?.victory_pending ? 'yunagi-harbor-mad-moon-victory' : 'yunagi-harbor-mad-moon']" :show-ai="state.visuals?.show_ai ?? false" />
+            <section class="ug-page-content ug-event-story" aria-label="狂月賛歌の物語">
+                <h2>{{ activeMadMoonStory.title }}</h2>
+                <p v-for="(line, index) in activeMadMoonStory.body" :key="index" v-html="renderUndergroundStory(line)"></p>
+                <button v-if="state.mad_moon?.intro_pending" class="ug-primary" type="button" :disabled="busy || !state.mad_moon.can_fight" @click="runMadMoon">戦う</button>
+                <button class="button secondary" type="button" :disabled="busy" @click="completeMadMoonScene">{{ state.mad_moon?.victory_pending ? 'ホームへ' : '撤退する' }}</button>
+            </section>
         </template>
 
         <template v-else-if="state?.stage === 'initial_descent'">
@@ -3027,11 +3084,11 @@ onUnmounted(() => {
                                 <select class="underground-ground-selector" aria-label="狩場を選択" :value="selectedHuntingGroundKey" :disabled="busy || Boolean(state.trial?.active_run)" @change="changeHuntingGround">
                                     <option v-for="ground in ordinaryHuntingGrounds" :key="ground.key" :value="ground.key">{{ ground.name }}</option>
                                 </select>
-                                <button class="button primary underground-explore-button" type="button" :disabled="busy || exploreCooldownSeconds > 0 || Boolean(state.trial?.active_run) || !selectedHuntingGround" @click="runSelectedExploration">探索する</button>
-                                <small v-if="selectedHuntingGround">装備 Item Lv {{ selectedHuntingGround.item_level_min }}～{{ selectedHuntingGround.item_level_max }}</small>
+                                <button class="button primary underground-explore-button" type="button" :disabled="busy || exploreCooldownSeconds > 0 || Boolean(state.trial?.active_run) || !selectedHuntingGround || selectedHuntingGround.disabled" @click="runSelectedExploration">探索する</button>
+                                <small v-if="selectedHuntingGround && selectedHuntingGround.key !== 'mad_moon'">装備 Item Lv {{ selectedHuntingGround.item_level_min }}～{{ selectedHuntingGround.item_level_max }}</small>
                                 <small v-if="exploreCooldownSeconds > 0">次の出発まであと{{ exploreCooldownSeconds }}秒</small>
                                 <small v-else-if="state.trial?.active_run">進行中の試練から帰還すると探索できます。</small>
-                                <small v-else>現在のPT {{ 1 + confirmedPartyIds.length }} / 4で出発します。</small>
+                                <small v-else-if="selectedHuntingGround?.key !== 'mad_moon'">現在のPT {{ 1 + confirmedPartyIds.length }} / 4で出発します。</small>
                             </section>
                             <section v-if="equipmentView === 'trials'" class="underground-adventure-block" aria-labelledby="underground-trial-title">
                                 <h3 id="underground-trial-title">試練</h3>

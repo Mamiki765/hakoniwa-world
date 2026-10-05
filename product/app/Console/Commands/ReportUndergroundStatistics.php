@@ -35,6 +35,7 @@ final class ReportUndergroundStatistics extends Command
             UndergroundBattle::ACTIVITY_STORY,
             UndergroundBattle::ACTIVITY_PLAYTEST,
             UndergroundBattle::ACTIVITY_GUIDE_DUEL,
+            UndergroundBattle::ACTIVITY_EVENT,
         ];
         if (array_diff($activities, $allowed) !== []) {
             $this->error('An unsupported activity type was requested.');

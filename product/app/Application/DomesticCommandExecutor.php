@@ -1168,6 +1168,7 @@ final class DomesticCommandExecutor
             'command_key' => $definition->key,
             'facility_key' => $facilityKey,
             'before_scale' => $beforeScale,
+            'facility_name' => $facility->name,
             'facility_scale' => $cell->facility_scale,
             'scale_increment' => $expanded ? $facility->scale_increment : null,
             'x' => $cell->x,

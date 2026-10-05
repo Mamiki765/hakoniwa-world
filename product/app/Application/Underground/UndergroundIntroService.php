@@ -288,7 +288,7 @@ final readonly class UndergroundIntroService
     /** @return array<string, mixed> */
     public function advanceLoungeEvent(User $user, string $requestId, string $event, int $page): array
     {
-        if (! in_array($event, ['exchange', 'mirror', 'polishing', 'otherworld'], true)
+        if (! in_array($event, ['exchange', 'mirror', 'polishing', 'otherworld', 'yunagi_harbor', 'mad_moon', 'mad_moon_victory'], true)
             || ! in_array($page, $event === 'exchange' ? [1, 2] : [1], true)) {
             throw new UndergroundRuntimeException('underground_event_invalid', 'イベントの進行を確認してください。');
         }
@@ -299,6 +299,30 @@ final readonly class UndergroundIntroService
             UndergroundIntroProgress $intro,
         ) use ($event, $page): void {
             $this->assertShopUnlocked($profile, $intro);
+            if ($event === 'mad_moon' || $event === 'mad_moon_victory') {
+                if ($profile->mad_moon_unlocked_at === null
+                    || ($event === 'mad_moon_victory' && $profile->mad_moon_cleared_at === null)
+                    || ($event === 'mad_moon' && $profile->mad_moon_cleared_at !== null)) {
+                    throw new UndergroundRuntimeException('underground_mad_moon_unavailable', '狂月賛歌の進行を確認してください。');
+                }
+                if ($event === 'mad_moon') {
+                    $profile->mad_moon_intro_completed_at ??= Carbon::now();
+                } else {
+                    $profile->mad_moon_victory_scene_completed_at ??= Carbon::now();
+                }
+                $profile->save();
+
+                return;
+            }
+            if ($event === 'yunagi_harbor') {
+                if (! $this->hasYunagiHarborFirstClear($profile)) {
+                    throw new UndergroundRuntimeException('underground_yunagi_harbor_locked', '試練3を初回クリアすると読めます。');
+                }
+                $profile->yunagi_harbor_intro_completed_at ??= Carbon::now();
+                $profile->save();
+
+                return;
+            }
             if ($event === 'otherworld') {
                 if ($profile->otherworld_discovered_at === null && ! $this->runtime->canDiscoverOtherworld($profile)) {
                     throw new UndergroundRuntimeException('underground_otherworld_locked', '試練2をクリアし、Lv100以上になってからショップを訪ねてください。');
@@ -1156,6 +1180,7 @@ final readonly class UndergroundIntroService
             UndergroundBattle::ACTIVITY_STORY,
             UndergroundBattle::ACTIVITY_PLAYTEST,
             UndergroundBattle::ACTIVITY_GUIDE_DUEL,
+            UndergroundBattle::ACTIVITY_EVENT,
             UndergroundBattle::ACTIVITY_EXPLORATION,
             UndergroundBattle::ACTIVITY_TRIAL,
         ];
@@ -1213,6 +1238,7 @@ final readonly class UndergroundIntroService
                     UndergroundBattle::ACTIVITY_STORY,
                     UndergroundBattle::ACTIVITY_PLAYTEST,
                     UndergroundBattle::ACTIVITY_GUIDE_DUEL,
+                    UndergroundBattle::ACTIVITY_EVENT,
                     UndergroundBattle::ACTIVITY_EXPLORATION,
                     UndergroundBattle::ACTIVITY_TRIAL,
                 ])
@@ -1821,6 +1847,8 @@ final readonly class UndergroundIntroService
             'distorted_stone_shop' => $distortedStoneShop,
             'distorted_stone_reminder' => $this->firstDistortedStoneUnclaimedForProfile($profile, $distortedStoneShop['purchased_today']),
             'polishing_tutorial_completed' => $profile?->polishing_tutorial_completed_at !== null,
+            'yunagi_harbor_intro_available' => $profile instanceof UndergroundProfile
+                && $profile->yunagi_harbor_intro_completed_at === null && $this->hasYunagiHarborFirstClear($profile),
             'otherworld_intro_available' => $profile instanceof UndergroundProfile
                 && $profile->otherworld_discovered_at === null && $this->runtime->canDiscoverOtherworld($profile),
             'otherworld_unlocked' => $profile?->otherworld_discovered_at !== null,
@@ -1890,6 +1918,8 @@ final readonly class UndergroundIntroService
             'recollections' => $recollectionState,
             'guide_duel' => $stage === UndergroundIntroStage::UNDERGROUND_OPEN && $profile instanceof UndergroundProfile
                 ? $this->runtime->projectGuideDuelState($profile) : null,
+            'mad_moon' => $stage === UndergroundIntroStage::UNDERGROUND_OPEN && $profile instanceof UndergroundProfile
+                ? $this->runtime->projectMadMoonState($profile) : null,
             'battle' => $battle instanceof UndergroundBattle ? $this->projectBattle($battle, true) : null,
             'lending' => $stage === UndergroundIntroStage::UNDERGROUND_OPEN
                 && $profile instanceof UndergroundProfile
@@ -2263,6 +2293,15 @@ final readonly class UndergroundIntroService
         return $profile->introProgress?->initial_growth_path_key;
     }
 
+    private function hasYunagiHarborFirstClear(UndergroundProfile $profile): bool
+    {
+        return UndergroundTrialProgress::query()
+            ->where('underground_profile_id', $profile->id)
+            ->where('trial_key', $this->alphaV1Catalog->explorationHuntingGround('yunagi_harbor')['required_trial_key'])
+            ->whereNotNull('first_cleared_at')
+            ->exists();
+    }
+
     private function hasTrialTwoFirstClear(UndergroundProfile $profile): bool
     {
         return UndergroundTrialProgress::query()
@@ -2326,6 +2365,9 @@ final readonly class UndergroundIntroService
     /** @return array<string, mixed> */
     private function projectBattle(UndergroundBattle $battle, bool $withActions): array
     {
+        if ($battle->activity_type === UndergroundBattle::ACTIVITY_EVENT) {
+            return $this->runtime->projectMadMoonBattle($battle, $withActions);
+        }
         if ($battle->activity_type === UndergroundBattle::ACTIVITY_GUIDE_DUEL) {
             return $this->runtime->projectGuideDuel($battle, $withActions);
         }

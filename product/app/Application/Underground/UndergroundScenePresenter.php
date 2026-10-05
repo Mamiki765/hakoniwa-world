@@ -70,6 +70,18 @@ final readonly class UndergroundScenePresenter
             'background' => $this->assets->scene('hunting_ground.shining_kingdom', $showAi, false)['background'],
             'actors' => $scenes['shop']['actors'],
         ];
+        $scenes['yunagi-harbor-intro'] = [
+            'background' => $this->assets->scene('hunting_ground.yunagi_harbor', $showAi, false)['background'],
+            'actors' => $scenes['shop']['actors'],
+        ];
+        $scenes['yunagi-harbor-mad-moon'] = $this->assets->scene('yunagi-harbor-mad-moon', $showAi);
+        $scenes['yunagi-harbor-mad-moon']['background'] = $scenes['yunagi-harbor-intro']['background'];
+        $scenes['yunagi-harbor-mad-moon']['actors'] = [...$scenes['shop']['actors'], ...$scenes['yunagi-harbor-mad-moon']['actors']];
+        foreach ($scenes['yunagi-harbor-mad-moon']['actors'] as $index => &$actor) {
+            $actor['key'] = (string) $index;
+        }
+        unset($actor);
+        $scenes['yunagi-harbor-mad-moon-victory'] = $scenes['yunagi-harbor-intro'];
 
         return [
             'display_name' => $this->portraits->battleDisplayName($secretary),
@@ -81,6 +93,14 @@ final readonly class UndergroundScenePresenter
             'portrait' => $this->portrait($secretary, $viewer, false),
             'awakened_portrait' => $this->portrait($secretary, $viewer, true),
         ];
+    }
+
+    /** @return array<string, mixed> */
+    public function madMoonIntroduction(Secretary $secretary, UndergroundProfile $profile): array
+    {
+        $visuals = $this->forProfile($secretary, $profile);
+
+        return $visuals['scenes']['yunagi-harbor-mad-moon'];
     }
 
     /** @return array<string, mixed>|null */

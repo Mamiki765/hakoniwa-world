@@ -2,6 +2,7 @@
 
 namespace App\Application;
 
+use App\Models\FacilityDefinition;
 use App\Models\MapCell;
 use App\Models\Nation;
 use App\Models\NationCommandQueueItem;
@@ -12,6 +13,9 @@ use Illuminate\Support\Facades\DB;
 
 final class PlayerIslandEventService
 {
+    /** @var array<string,mixed>|null */
+    private ?array $expandedFacilityNames = null;
+
     public const OWNER_TURNS_PER_PAGE = 12;
 
     public const PUBLIC_WORLD_TURNS_PER_PAGE = 2;
@@ -1283,13 +1287,15 @@ final class PlayerIslandEventService
     private function facilityExpandedMessage(array $metadata): string
     {
         $facilityKey = $metadata['facility_key'] ?? null;
+        $facilityName = is_string($metadata['facility_name'] ?? null) && $metadata['facility_name'] !== ''
+            ? $metadata['facility_name'] : $this->expandedFacilityName($facilityKey);
         if (in_array($facilityKey, ['central_bank', 'central_granary'], true)) {
             return sprintf(
                 '%s(%s,%s)で%s整備が行われました。（Lv %s → %s）',
                 is_string($metadata['nation_name'] ?? null) ? $metadata['nation_name'] : '自国',
                 number_format($this->integer($metadata, 'x')),
                 number_format($this->integer($metadata, 'y')),
-                $this->facilityLabel($facilityKey),
+                $facilityName,
                 number_format($this->integer($metadata, 'before_scale')),
                 number_format($this->integer($metadata, 'facility_scale')),
             );
@@ -1297,7 +1303,7 @@ final class PlayerIslandEventService
 
         return sprintf(
             '%sを増築しました（規模 %s → %s）。',
-            $this->facilityLabel($facilityKey),
+            $facilityName,
             number_format($this->integer($metadata, 'before_scale')),
             number_format($this->integer($metadata, 'facility_scale')),
         );
@@ -2613,6 +2619,17 @@ final class PlayerIslandEventService
             'scorched' => '焼け跡',
             default => '地形',
         };
+    }
+
+    private function expandedFacilityName(mixed $key): string
+    {
+        if (! is_string($key)) {
+            return $this->facilityLabel($key);
+        }
+        $this->expandedFacilityNames ??= FacilityDefinition::query()->pluck('name', 'key')->all();
+        $name = $this->expandedFacilityNames[$key] ?? null;
+
+        return is_string($name) && $name !== '' ? $name : $this->facilityLabel($key);
     }
 
     private function facilityLabel(mixed $key, string $fallback = '施設'): string

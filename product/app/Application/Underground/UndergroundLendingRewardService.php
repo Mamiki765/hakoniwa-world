@@ -51,6 +51,16 @@ final class UndergroundLendingRewardService
             throw new InvalidArgumentException('A party requires the leader Secretary as its only self member.');
         }
         foreach ($members as $member) {
+            if ($member['source_type'] === 'companion') {
+                if ($contentType !== UndergroundBattle::ACTIVITY_EVENT || $contentKey !== 'mad_moon'
+                    || $member['combatant_id'] !== 'npc:guide'
+                    || $member['secretary_id'] !== null || $member['source_owner_user_id'] !== null
+                    || $member['original_level'] < 1 || $member['effective_level'] !== $member['original_level']) {
+                    throw new InvalidArgumentException('Temporary guide identity is invalid.');
+                }
+
+                continue;
+            }
             if (! in_array($member['source_type'], ['self', 'borrowed_secretary'], true)
                 || $member['combatant_id'] === '') {
                 throw new InvalidArgumentException('Party member snapshot shape is invalid.');

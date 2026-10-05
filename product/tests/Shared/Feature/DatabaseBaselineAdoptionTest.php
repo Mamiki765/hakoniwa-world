@@ -98,6 +98,17 @@ final class DatabaseBaselineAdoptionTest extends TestCase
     {
         // This test owns the pre-v28 baseline boundary; restore its exact schema
         // and skill constraint before adopting its marker. Later upgrades have their own tests.
+        Schema::table('underground_profiles', static function ($table): void {
+            $table->dropColumn([
+                'yunagi_harbor_intro_completed_at',
+                'mad_moon_unlocked_at',
+                'mad_moon_intro_completed_at',
+                'mad_moon_cleared_at',
+                'mad_moon_victory_scene_completed_at',
+            ]);
+        });
+        DB::statement('ALTER TABLE underground_battles DROP CONSTRAINT underground_battles_activity_type_check');
+        DB::statement("ALTER TABLE underground_battles ADD CONSTRAINT underground_battles_activity_type_check CHECK (activity_type = ANY ((ARRAY['exploration'::character varying, 'trial'::character varying, 'tutorial'::character varying, 'story'::character varying, 'playtest'::character varying, 'guide_duel'::character varying])::text[]))");
         DB::statement('ALTER TABLE map_chunks DROP CONSTRAINT map_chunks_weather_check');
         Schema::table('map_chunks', static function ($table): void {
             $table->dropColumn(['weather_key', 'weather_turn']);

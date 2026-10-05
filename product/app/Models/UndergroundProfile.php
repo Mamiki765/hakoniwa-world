@@ -36,6 +36,11 @@ use Illuminate\Support\Carbon;
  * @property Carbon|null $resonance_expansion_purchased_at
  * @property Carbon|null $polishing_tutorial_completed_at
  * @property Carbon|null $otherworld_discovered_at
+ * @property Carbon|null $yunagi_harbor_intro_completed_at
+ * @property Carbon|null $mad_moon_unlocked_at
+ * @property Carbon|null $mad_moon_intro_completed_at
+ * @property Carbon|null $mad_moon_cleared_at
+ * @property Carbon|null $mad_moon_victory_scene_completed_at
  * @property int $exchange_intro_page
  * @property Carbon|null $mirror_event_completed_at
  * @property string|null $home_background_key
@@ -84,6 +89,8 @@ final class UndergroundProfile extends Model
         'trophy_shelf_purchased_at',
         'vault_expansion_purchased_at', 'resonance_expansion_purchased_at',
         'polishing_tutorial_completed_at',
+        'yunagi_harbor_intro_completed_at',
+        'mad_moon_unlocked_at', 'mad_moon_intro_completed_at', 'mad_moon_cleared_at', 'mad_moon_victory_scene_completed_at',
         'otherworld_discovered_at',
         'home_background_key',
     ];
@@ -125,6 +132,11 @@ final class UndergroundProfile extends Model
             'resonance_expansion_purchased_at' => 'immutable_datetime',
             'polishing_tutorial_completed_at' => 'immutable_datetime',
             'otherworld_discovered_at' => 'immutable_datetime',
+            'yunagi_harbor_intro_completed_at' => 'immutable_datetime',
+            'mad_moon_unlocked_at' => 'immutable_datetime',
+            'mad_moon_intro_completed_at' => 'immutable_datetime',
+            'mad_moon_cleared_at' => 'immutable_datetime',
+            'mad_moon_victory_scene_completed_at' => 'immutable_datetime',
             'exchange_intro_page' => 'integer',
             'mirror_event_completed_at' => 'immutable_datetime',
         ];

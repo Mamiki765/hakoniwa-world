@@ -61,6 +61,8 @@ final class UndergroundBattle extends Model
 
     public const ACTIVITY_GUIDE_DUEL = 'guide_duel';
 
+    public const ACTIVITY_EVENT = 'event_battle';
+
     public const RESULT_VICTORY = 'victory';
 
     public const RESULT_DEFEAT = 'defeat';

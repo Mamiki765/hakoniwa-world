@@ -75,7 +75,7 @@ final class UndergroundIntroController extends Controller
 
     public function advanceLoungeEvent(UndergroundIntroMutationRequest $request, UndergroundIntroService $service): JsonResponse
     {
-        $request->validate(['event' => ['required', 'string', 'in:exchange,mirror,polishing,otherworld'], 'page' => ['required', 'integer', 'min:1', 'max:2']]);
+        $request->validate(['event' => ['required', 'string', 'in:exchange,mirror,polishing,otherworld,yunagi_harbor,mad_moon,mad_moon_victory'], 'page' => ['required', 'integer', 'min:1', 'max:2']]);
 
         return $this->respond(fn (): array => $service->advanceLoungeEvent(
             $request->user(), $request->string('request_id')->value(), $request->string('event')->value(), $request->integer('page'),
@@ -257,6 +257,15 @@ final class UndergroundIntroController extends Controller
             $result = $service->challengeGuide($request->user(), $request->string('request_id')->value(), array_map('intval', $ids));
 
             return $service->projectGuideDuel($result['battle']);
+        });
+    }
+
+    public function challengeMadMoon(UndergroundIntroMutationRequest $request, UndergroundRuntimeService $service): JsonResponse
+    {
+        return $this->respond(function () use ($request, $service): array {
+            $result = $service->challengeMadMoon($request->user(), $request->string('request_id')->value());
+
+            return [...$service->projectMadMoonBattle($result['battle']), 'daily_quest' => $result['daily_quest']];
         });
     }
 

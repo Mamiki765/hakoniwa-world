@@ -55,9 +55,12 @@ final class UndergroundReceiptRollupTest extends TestCase
 
         $this->battle($profile, $old, ['damage_dealt' => 12, 'damage_received' => 4]);
         $this->battle($profile, $old, [
+            'activity_type' => UndergroundBattle::ACTIVITY_EVENT, 'activity_key' => 'mad_moon', 'damage_dealt' => 9_999,
+        ]);
+        $this->battle($profile, $old, [
             'activity_type' => 'tutorial', 'activity_key' => 'first_descent_tutorial', 'damage_dealt' => 2,
         ]);
-        $this->battle($profile, $old, ['activity_type' => 'guide_duel', 'damage_dealt' => 9_999]);
+        $lastBattle = $this->battle($profile, $old, ['activity_type' => 'guide_duel', 'damage_dealt' => 9_999]);
         $this->skip($profile, $user, $old, false);
         $this->skip($profile, $user, $old, true);
         $profile->update(['trophy_shelf_purchased_at' => $old]);
@@ -86,6 +89,10 @@ final class UndergroundReceiptRollupTest extends TestCase
         $this->artisan('hakoniwa:underground:receipts:aggregate', [
             '--profile' => (string) $profile->id, '--before' => $cutoff->toIso8601String(), '--apply' => true,
         ])->assertSuccessful();
+        $this->assertDatabaseHas('underground_receipt_rollups', [
+            'underground_profile_id' => $profile->id, 'stream' => 'battle',
+            'verified_through_id' => $lastBattle->id, 'receipt_count' => count($sourceRows),
+        ]);
         $this->assertSame($before, $journal->forUser($user));
         foreach (UndergroundReceiptRollupService::STREAMS as $stream) {
             $this->assertSame(0, $rollups->aggregate($profile->id, $stream, $cutoff, 500, true)['receipts']);

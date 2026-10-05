@@ -85,6 +85,12 @@ final class UndergroundRequestAdmission
             throw new UndergroundRuntimeException('underground_request_reload_required', self::MESSAGE);
         }
         $this->assertTime($claims);
+        if ($profile->mad_moon_unlocked_at !== null && $profile->mad_moon_intro_completed_at === null
+            && $claims['operation'] !== 'POST /api/v1/me/underground/mad-moon'
+            && ! ($claims['operation'] === 'POST /api/v1/me/underground/events/advance' && request()->input('event') === 'mad_moon')
+            && ! $this->hasStoredResult($claims)) {
+            throw new UndergroundRuntimeException('underground_mad_moon_intro_pending', '狂月賛歌の連戦を終えるか、導入画面から撤退してください。');
+        }
     }
 
     /** Preparation has no stored-result replay: it must not write after expiry.
@@ -106,11 +112,21 @@ final class UndergroundRequestAdmission
         }
         // An expired token can only replay an existing result. The second check
         // under the writer's profile lock closes the race against manual purge.
-        foreach (['underground_battles', 'underground_skip_settlements', 'underground_skip_batches', 'underground_intro_requests'] as $table) {
-            if (DB::table($table)->where('underground_profile_id', $claims['profile_id'])->where('request_id', $claims['request_id'])->exists()) {
-                return;
-            }
+        if ($this->hasStoredResult($claims)) {
+            return;
         }
         throw new UndergroundRuntimeException('underground_request_expired', self::MESSAGE);
+    }
+
+    /** @param array<string, mixed> $claims */
+    private function hasStoredResult(array $claims): bool
+    {
+        foreach (['underground_battles', 'underground_skip_settlements', 'underground_skip_batches', 'underground_intro_requests'] as $table) {
+            if (DB::table($table)->where('underground_profile_id', $claims['profile_id'])->where('request_id', $claims['request_id'])->exists()) {
+                return true;
+            }
+        }
+
+        return false;
     }
 }

@@ -4,6 +4,7 @@ import { flushPromises, mount } from '@vue/test-utils';
 import { describe, expect, it, vi } from 'vitest';
 import App from './App.vue';
 import UndergroundPanel from './components/UndergroundPanel.vue';
+import yunagiHarborStory from '../stories/yunagi-harbor.json';
 import { response as baseResponse, ownerNationFixture, unnamedSecretaryFixture, publicResponse, publicDetail, emptyChunk, installAppTestLifecycle } from './AppTestHarness';
 
 const response = (data: unknown, status = 200) => baseResponse(withUndergroundDefaults(data), status);
@@ -11,6 +12,102 @@ const response = (data: unknown, status = 200) => baseResponse(withUndergroundDe
 installAppTestLifecycle();
 
 describe('Underground application operations', () => {
+    it('keeps the event introduction pending on failed requests and sends only the event request when a rental party exists', async () => {
+        const state = {
+            stage: 'underground_open', secretary_name: '<img>$&', combat_level: 1000, combat_xp: 0,
+            next_level_xp: 100, next_level_requirement: 100, current_hp: 123, unspent_stp: 0,
+            skill_points_total: 0, skill_points_unspent: 0, skill_points_spent: 0,
+            skill_trees: null, active_slots: [], passive_modifiers: {}, growth_path: null, battle: null, trial: null,
+            rental_party: [{ secretary_id: 999 }],
+            mad_moon: { name: '狂月賛歌', intro_pending: true, retry_available: false, cleared: false,
+                victory_pending: false, can_fight: true, story: { title: '狂月賛歌', body: ['<img>$&と|呪い《ギフト》'] } },
+        };
+        const requests: Record<string, unknown>[] = [];
+        let failEvent = true;
+        const dailyQuest = { key: 'underground_battles', label: '地底戦闘', canonical_day: '2026-10-05',
+            progress: 10, target: 10, paradox_awarded: 3, completed: true, completed_now: true, paradox_balance: 30 };
+        stubUndergroundFetch(vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+            if (String(input) === '/api/v1/me/underground') return response(state);
+            if (String(input) === '/api/v1/me/underground/battles') return response([]);
+            if (String(input) === '/api/v1/me/underground/mad-moon') {
+                requests.push(JSON.parse(String(init?.body)));
+                return failEvent ? response(null, 503) : response({
+                    id: requests.at(-1)?.request_id, context: 'event_battle', encounter_name: 'メム＝リリム',
+                    result: 'victory', rounds_count: 1, xp_awarded: 200000, shard_delta: 120000,
+                    detail_available: false, daily_quest: dailyQuest,
+                });
+            }
+            return response(null, 404);
+        }));
+        const wrapper = mount(UndergroundPanel);
+        await flushPromises();
+        const event = wrapper.get('section[aria-label="狂月賛歌の物語"]');
+        expect(event.text()).toContain('<img>$&');
+        expect(event.find('img').exists()).toBe(false);
+        expect(event.get('ruby rt').text()).toBe('ギフト');
+        const fight = event.findAll('button').find(button => button.text() === '戦う')!;
+        await fight.trigger('click');
+        await flushPromises();
+        await fight.trigger('click');
+        await flushPromises();
+        expect(requests).toHaveLength(2);
+        expect(requests[0]).toEqual(requests[1]);
+        expect(Object.keys(requests[0]!)).toEqual(['request_id']);
+        expect(wrapper.find('section[aria-label="狂月賛歌の物語"]').exists()).toBe(true);
+        expect(wrapper.emitted('dailyQuest')).toBeUndefined();
+        failEvent = false;
+        await fight.trigger('click');
+        await flushPromises();
+        expect(wrapper.emitted('dailyQuest')).toEqual([[dailyQuest]]);
+        wrapper.unmount();
+    });
+
+    it('shows the harbor intro only at home, interpolates names as text, and persists completion through the event route', async () => {
+        let available = true;
+        const name = '<img src=x onerror=alert(1)>$&';
+        const state = () => ({
+            stage: 'underground_open', secretary_name: name, combat_level: 1, combat_xp: 0,
+            next_level_xp: 100, next_level_requirement: 100, current_hp: 100, unspent_stp: 0,
+            skill_points_total: 0, skill_points_unspent: 0, skill_points_spent: 0,
+            skill_trees: null, active_slots: [], passive_modifiers: {},
+            growth_path: null, battle: null, trial: null, yunagi_harbor_intro_available: available,
+        });
+        const requests: Array<Record<string, unknown>> = [];
+        stubUndergroundFetch(vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+            const path = String(input);
+            if (path === '/api/v1/me/underground') return response(state());
+            if (path === '/api/v1/me/underground/battles') return response([]);
+            if (path === '/api/v1/me/underground/events/advance') {
+                requests.push(JSON.parse(String(init?.body)));
+                available = false;
+                return response(state());
+            }
+            return response(null, 404);
+        }));
+        const wrapper = mount(UndergroundPanel);
+        await flushPromises();
+        const event = () => wrapper.find('section[aria-label="物語"]');
+        expect(event().get('h2').text()).toBe(yunagiHarborStory.title);
+        expect(event().text()).toContain(name);
+        expect(event().text()).not.toContain('(秘書名)');
+        expect(event().find('img').exists()).toBe(false);
+        await openUndergroundView(wrapper, 'ショップ');
+        expect(event().exists()).toBe(false);
+        expect(requests).toHaveLength(0);
+        await openUndergroundView(wrapper, 'ホーム');
+        await event().get('button').trigger('click');
+        await flushPromises();
+        expect(requests).toHaveLength(1);
+        expect(requests[0]).toMatchObject({ event: 'yunagi_harbor', page: 1 });
+        expect(requests[0]?.request_id).toBeTruthy();
+        expect(event().exists()).toBe(false);
+        wrapper.unmount();
+        const restored = mount(UndergroundPanel);
+        await flushPromises();
+        expect(restored.find('section[aria-label="物語"]').exists()).toBe(false);
+        restored.unmount();
+    });
+
     it('refreshes the free stone reminder at JST midnight and after resuming, and clears it after receipt', async () => {
         vi.useFakeTimers();
         // The device is five minutes ahead of the server's JST clock.

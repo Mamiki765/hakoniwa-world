@@ -40,6 +40,7 @@ final readonly class UndergroundAlphaV1PlayerCatalog
         private PriorityCombatAiConfiguration $aiConfiguration = new PriorityCombatAiConfiguration,
         private UndergroundEquipmentCatalog $equipmentCatalog = new UndergroundEquipmentCatalog,
         private UndergroundRuntimeCatalog $runtimeCatalog = new UndergroundRuntimeCatalog,
+        private UndergroundRuntimeEquipmentGenerator $generatedEquipment = new UndergroundRuntimeEquipmentGenerator,
     ) {}
 
     public function growthIdentity(): string
@@ -716,6 +717,79 @@ final readonly class UndergroundAlphaV1PlayerCatalog
         $manifest['enemies'][$duel['key']] = $duel['enemy'];
 
         return new AlphaV1BuildCatalog($manifest);
+    }
+
+    /** @return array<string, mixed> */
+    public function madMoon(): array
+    {
+        return $this->data()['mad_moon'];
+    }
+
+    public function madMoonCatalog(): AlphaV1BuildCatalog
+    {
+        $event = $this->madMoon();
+        $manifest = $this->explorationCatalog()->manifest();
+        $manifest['skills'] = [...$manifest['skills'], ...$event['skills']];
+        $manifest['statuses'] = [...$manifest['statuses'], ...$event['statuses']];
+        $manifest['enemies'][$event['key']] = $event['enemy'];
+
+        return new AlphaV1BuildCatalog($manifest);
+    }
+
+    /** @return array<string, mixed> */
+    public function madMoonGuideSnapshot(string $playerGrowthPath): array
+    {
+        $pathKey = $playerGrowthPath === 'guardianship_blue' ? 'martial_red' : 'guardianship_blue';
+        $catalog = $this->madMoonCatalog();
+        $build = $catalog->build($this->growthPath($pathKey)['default_build_key']);
+        $guide = $this->madMoon()['guide'];
+        $level = $guide['level'];
+        $points = $this->stpEntitlement($pathKey, $level);
+        $allocated = [];
+        foreach (AlphaV1CombatRules::STATS as $stat) {
+            $allocated[$stat] = intdiv($points * $build['base_stats'][$stat], 100);
+        }
+        $allocated['agility'] += $points - array_sum($allocated);
+        $items = [];
+        foreach (UndergroundEquipmentCatalog::EQUIPPED_SLOTS as $index => $slot) {
+            if ($slot === 'resonance') {
+                continue;
+            }
+            $category = str_starts_with($slot, 'accessory_') ? 'accessory' : $slot;
+            $definition = $this->generatedEquipment->generate($guide['item_level'], 'yunagi_harbor', 'rare', $category,
+                $category === 'weapon' ? ($pathKey === 'martial_red' ? 'dagger' : 'longsword') : null,
+                $category === 'accessory' ? ($pathKey === 'martial_red' ? 'might' : 'vitality') : null,
+                41400 + $index, $this->madMoon()['identity']);
+            $items[] = ['definition' => $definition, 'slot' => $slot,
+                'catalog_identity' => $this->equipmentCatalog->identity(), 'instance_identity' => $definition['key']];
+        }
+        $equipment = $this->equipmentCatalog->combatLoadout($items);
+        $allocations = [];
+        foreach ($build['allocations'] as $nodeKey => $rank) {
+            $node = $catalog->node($nodeKey)['node'];
+            $slot = array_search($node['skill_key'] ?? null, $build['active_skills'], true);
+            $allocations[$nodeKey] = ['rank' => $rank, 'active_slot' => $slot === false ? null : $slot + 1];
+        }
+        $definition = $this->playerCombatDefinition($catalog, $pathKey, $level, $allocated, $equipment, '案内人', null, $allocations, null);
+        $snapshot = $definition['player_snapshot'];
+        foreach (['stats', 'equipment'] as $key) {
+            foreach ($snapshot[$key] as $field => $value) {
+                if ($key === 'stats' || in_array($field, ['weapon_power', 'physical_defense', 'magical_defense', 'max_hp'], true)) {
+                    $snapshot[$key][$field] = intdiv($value * $guide['scale_bps'], 10000);
+                }
+            }
+        }
+        foreach ($snapshot['equipment']['stats'] as &$stat) {
+            $stat = intdiv($stat * $guide['scale_bps'], 10000);
+        }
+        unset($stat);
+        unset($snapshot['current_hp']);
+        $snapshot['key'] = 'mad_moon_guide';
+        $snapshot['combatant_id'] = 'npc:guide';
+        $snapshot['natural_recovery'] = $this->growthPath($pathKey)['natural_recovery'];
+        $snapshot['awakening'] = ['unlocked' => false, 'gauge' => 0, 'message' => '案内人', 'growth_path' => $pathKey];
+
+        return $snapshot;
     }
 
     /** @return array<string,mixed> */

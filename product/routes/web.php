@@ -155,6 +155,7 @@ Route::prefix('api/v1')->middleware(['auth', PrivateApiResponse::class])->group(
         Route::get('/main', [UndergroundIntroController::class, 'main']);
         Route::post('/explore', [UndergroundIntroController::class, 'explore']);
         Route::post('/guide-duel', [UndergroundIntroController::class, 'challengeGuide']);
+        Route::post('/mad-moon', [UndergroundIntroController::class, 'challengeMadMoon']);
         Route::post('/otherworld/challenge', [UndergroundIntroController::class, 'challengeOtherworld']);
         Route::post('/skip/hunting-ground', [UndergroundIntroController::class, 'skipHuntingGround']);
         Route::post('/skip/trial', [UndergroundIntroController::class, 'skipTrial']);
