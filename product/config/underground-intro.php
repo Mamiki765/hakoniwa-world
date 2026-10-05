@@ -190,7 +190,10 @@ return [
                 ],
             ],
         ],
-        'history' => json_decode(file_get_contents(__DIR__.'/../resources/stories/intro.json'), true, 512, JSON_THROW_ON_ERROR),
+        'history' => [
+            ...json_decode(file_get_contents(__DIR__.'/../resources/stories/intro.json'), true, 512, JSON_THROW_ON_ERROR),
+            'yunagi_harbor_intro' => json_decode(file_get_contents(__DIR__.'/../resources/stories/yunagi-harbor.json'), true, 512, JSON_THROW_ON_ERROR),
+        ],
     ],
     'battles' => [
         'tutorial' => [

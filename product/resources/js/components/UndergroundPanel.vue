@@ -403,6 +403,7 @@ interface RecollectionEntry {
     body?: string[];
     trial_key?: string;
     battle_id?: number;
+    scene?: string;
 }
 
 interface SeriousTalkChoice {
@@ -2705,7 +2706,7 @@ onUnmounted(() => {
                     </section>
                 </template>
                 <template v-else-if="selectedRecollection && (equipmentView === 'recollections' || guideMode === 'recollections' && equipmentView === 'guide')">
-                    <UndergroundScene :scene="state.visuals?.scenes.villa" :show-ai="state.visuals?.show_ai ?? false" />
+                    <UndergroundScene :scene="state.visuals?.scenes[selectedRecollection.scene ?? 'villa']" :show-ai="state.visuals?.show_ai ?? false" />
                     <section class="ug-page-content ug-event-story underground-recollection-detail" aria-live="polite" aria-label="回想">
                         <h2>{{ selectedRecollection.title }}</h2>
                         <p v-for="(line, index) in selectedRecollection.body ?? []" :key="`${selectedRecollection.key}-${index}`" v-html="renderUndergroundStory(line)"></p>

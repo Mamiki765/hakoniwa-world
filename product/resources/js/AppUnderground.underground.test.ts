@@ -4,6 +4,7 @@ import { flushPromises, mount } from '@vue/test-utils';
 import { describe, expect, it, vi } from 'vitest';
 import App from './App.vue';
 import UndergroundPanel from './components/UndergroundPanel.vue';
+import UndergroundScene from './components/UndergroundScene.vue';
 import yunagiHarborStory from '../stories/yunagi-harbor.json';
 import { response as baseResponse, ownerNationFixture, unnamedSecretaryFixture, publicResponse, publicDetail, emptyChunk, installAppTestLifecycle } from './AppTestHarness';
 
@@ -12,6 +13,53 @@ const response = (data: unknown, status = 200) => baseResponse(withUndergroundDe
 installAppTestLifecycle();
 
 describe('Underground application operations', () => {
+    it('replays experienced events with their scene and returns without mutating gameplay', async () => {
+        const scene = { background: { id: 'harbor', url: '/harbor.jpg', creation_method: 'ai_generated' }, actors: [] };
+        const villa = { background: { id: 'villa', url: '/villa.jpg', creation_method: 'self_made' }, actors: [] };
+        const event = { key: 'mad_moon_intro', kind: 'historical', title: '既読イベント', experienced: true,
+            locked: false, body: ['<img>$&と|呪い《ギフト》'], scene: 'yunagi-harbor-mad-moon' };
+        const previous = { key: 'previous', kind: 'historical', title: '以前のイベント', experienced: true,
+            locked: false, body: ['以前の本文'] };
+        const unread = { ...event, key: 'mad_moon_victory', title: '未読イベント', experienced: false, locked: true };
+        const requests: Array<{ path: string; method: string }> = [];
+        stubUndergroundFetch(vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+            const path = String(input);
+            requests.push({ path, method: init?.method ?? 'GET' });
+            if (path === '/api/v1/me/underground') return response({
+                stage: 'underground_open', secretary_name: '秘書', combat_level: 1, combat_xp: 0,
+                next_level_xp: 100, next_level_requirement: 100, current_hp: 100, unspent_stp: 0,
+                skill_points_total: 0, skill_points_unspent: 0, skill_points_spent: 0,
+                skill_trees: null, active_slots: [], passive_modifiers: {}, growth_path: null, battle: null, trial: null,
+                visuals: { show_ai: true, scenes: { villa, [event.scene]: scene }, home_backgrounds: [] },
+                recollections: { available: true, past_available: false, max_completed: 0, entries: [event, previous, unread] },
+            });
+            if (path === '/api/v1/me/underground/battles') return response([]);
+            return response(null, 404);
+        }));
+        const wrapper = mount(UndergroundPanel);
+        await flushPromises();
+        await openUndergroundView(wrapper, '別荘', '回想');
+        const entryButton = (title: string) => wrapper.findAll('button').find(button => button.text() === title);
+        expect(entryButton(unread.title)).toBeUndefined();
+        const before = requests.length;
+        await entryButton(event.title)!.trigger('click');
+        await flushPromises();
+        expect(wrapper.getComponent(UndergroundScene).props('scene')).toEqual(scene);
+        const detail = wrapper.get('section[aria-label="回想"]');
+        expect(detail.get('h2').text()).toBe(event.title);
+        expect(detail.text()).toContain('<img>$&');
+        expect(detail.find('img').exists()).toBe(false);
+        expect(detail.get('ruby rt').text()).toBe('ギフト');
+        await detail.get('button').trigger('click');
+        await flushPromises();
+        await entryButton(previous.title)!.trigger('click');
+        await flushPromises();
+        expect(wrapper.getComponent(UndergroundScene).props('scene')).toEqual(villa);
+        expect(requests.slice(before)).toEqual([]);
+        expect(requests.some(request => request.method !== 'GET')).toBe(false);
+        wrapper.unmount();
+    });
+
     it('keeps the event introduction pending on failed requests and sends only the event request when a rental party exists', async () => {
         const state = {
             stage: 'underground_open', secretary_name: '<img>$&', combat_level: 1000, combat_xp: 0,
