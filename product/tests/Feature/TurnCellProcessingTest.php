@@ -968,6 +968,51 @@ class TurnCellProcessingTest extends TestCase
         $this->assertSame(100, $context->state->routineSummaryMetrics($nation->id)['population_growth']);
     }
 
+    public function test_pizzeria_fire_uses_the_normal_cell_pass_and_adjacent_forest_protection(): void
+    {
+        $world = $this->lightweightWorld();
+        $user = User::factory()->create();
+        $nation = app(NationCreationService::class)->create($user, $world, 'Fire test', 'Owner');
+        $capital = $nation->capital()->sole()->cell()->sole();
+        [$pizzeria, $forest] = $this->sequentialCandidates($nation, $capital);
+        $this->facility($pizzeria, 'pizzeria', 'plain');
+        $this->forest($forest, 500);
+        $ruleset = $world->rulesetVersion()->sole();
+        $settings = $ruleset->settings;
+        $settings['turn_processing']['disasters']['fire']['probability'] = ['numerator' => 1, 'denominator' => 1];
+        $ruleset->update(['settings' => $settings]);
+        $engine = app(CompleteTurnEngine::class);
+        [$protectedContext] = $this->context($world, $nation, [$pizzeria->id, $forest->id], str_repeat('a', 64));
+
+        $protected = $engine->execute('process_cells', $protectedContext);
+
+        $this->assertSame(0, $protected->metrics['fires']);
+        $this->assertSame('pizzeria', $pizzeria->fresh()->facility()->value('key'));
+
+        // Clear all neighboring protection so the same ordinary cell path must burn.
+        $space = $this->surfaceMapSpace($world);
+        foreach ((new GridCoordinate($pizzeria->x, $pizzeria->y))->neighborsWithin(
+            $space->min_x, $space->max_x, $space->min_y, $space->max_y,
+        ) as $coordinate) {
+            $neighbor = MapCell::query()->where('map_space_id', $space->id)
+                ->where('x', $coordinate->x)->where('y', $coordinate->y)->sole();
+            if ($neighbor->id !== $capital->id) {
+                $this->plain($neighbor);
+            }
+        }
+        [$unprotectedContext] = $this->context($world, $nation, [$pizzeria->id, $forest->id], str_repeat('a', 64));
+
+        $unprotected = $engine->execute('process_cells', $unprotectedContext);
+
+        $this->assertSame(1, $unprotected->metrics['fires']);
+        $this->assertSame('wasteland', $pizzeria->fresh()->terrain()->value('key'));
+        $this->assertNull($pizzeria->fresh()->facility_definition_id);
+        $this->assertDatabaseHas('audit_events', [
+            'event_type' => 'fire.damaged',
+            'subject_id' => $pizzeria->id,
+        ]);
+    }
+
     public function test_sequential_settlement_growth_famine_riot_and_forest_processing(): void
     {
         $world = $this->lightweightWorld();

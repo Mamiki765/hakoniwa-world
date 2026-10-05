@@ -656,7 +656,7 @@ final class CompleteTurnEngine
 
                 continue;
             }
-            if ($facilityKey === 'factory') {
+            if (in_array($facilityKey, ['factory', 'pizzeria'], true)) {
                 if ($this->disasters->processFire($context, $cell, $disasterCells)) {
                     $metrics['fires']++;
 

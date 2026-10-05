@@ -48,6 +48,13 @@ final class PowerEconomyUpgrade
         $this->publish($settings, $priorSettings, false);
     }
 
+    public function correctNaturalFireTargets(): void
+    {
+        $settings = require config_path('hakoniwa/rulesets/hakoniwa-2s-plus-v32.php');
+        $priorSettings = require config_path('hakoniwa/rulesets/hakoniwa-2s-plus-v31.php');
+        $this->publish($settings, $priorSettings, false);
+    }
+
     /** @param array<string, mixed> $settings
      * @param  array<string, mixed>  $priorSettings
      */
@@ -83,6 +90,7 @@ final class PowerEconomyUpgrade
                     28 => $this->publisher->publishPowerIntroduction($settings),
                     29 => $this->publisher->publishPizzeriaMaintenanceRemoval($settings),
                     30 => $this->publisher->publishOilAndFleetSkills($settings),
+                    31 => $this->publisher->publishSeaAreaWeather($settings),
                     default => $this->publisher->publish($settings),
                 };
                 if ($initializePower) {
