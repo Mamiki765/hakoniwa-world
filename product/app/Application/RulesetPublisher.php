@@ -63,6 +63,19 @@ final class RulesetPublisher
         return $this->publishSnapshot($settings);
     }
 
+    /** Historical migration only: accept the exact immutable v31 snapshot.
+     * @param  array<string, mixed>  $settings
+     */
+    public function publishSeaAreaWeather(array $settings): RulesetVersion
+    {
+        $checksum = hash('sha256', json_encode($settings, JSON_THROW_ON_ERROR | JSON_PRESERVE_ZERO_FRACTION));
+        if ($checksum !== '08fefb852613edbf92acce62c7c0eb6c82cea27d3ad464afdc2f54da23fd0557') {
+            throw new DomainException('The sea-area weather migration requires the exact immutable v31 snapshot.');
+        }
+
+        return $this->publishSnapshot($settings);
+    }
+
     /** @param array<string, mixed> $settings */
     private function publishSnapshot(array $settings): RulesetVersion
     {

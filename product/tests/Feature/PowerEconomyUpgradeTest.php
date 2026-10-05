@@ -32,7 +32,7 @@ final class PowerEconomyUpgradeTest extends TestCase
     /** @return array<string, array{int}> */
     public static function supportedPredecessors(): array
     {
-        return ['power introduction' => [27], 'cash maintenance removal' => [28], 'oil and fleet skills' => [29], 'sea-area weather' => [30]];
+        return ['power introduction' => [27], 'cash maintenance removal' => [28], 'oil and fleet skills' => [29], 'sea-area weather' => [30], 'natural fire targets' => [31]];
     }
 
     #[DataProvider('supportedPredecessors')]
@@ -52,8 +52,10 @@ final class PowerEconomyUpgradeTest extends TestCase
                 app(PowerEconomyUpgrade::class)->removePizzeriaMaintenance();
             } elseif ($priorVersion === 29) {
                 app(PowerEconomyUpgrade::class)->enableOilAndFleetSkills();
-            } else {
+            } elseif ($priorVersion === 30) {
                 app(PowerEconomyUpgrade::class)->enableSeaAreaWeather();
+            } else {
+                app(PowerEconomyUpgrade::class)->correctNaturalFireTargets();
             }
         };
         // Reconstruct the supported predecessor without executing retired authoring.
