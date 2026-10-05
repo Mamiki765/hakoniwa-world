@@ -9,7 +9,7 @@
 通常のimplementation / review開始時は、次の順で読む。
 
 1. [`AGENTS.md`](../AGENTS.md)
-2. [`product/docs/handoffs/development-history-and-current-handoff.md`](../product/docs/handoffs/development-history-and-current-handoff.md)
+2. [`product/docs/handoffs/development-history-and-current-handoff.md`（固定原文）](https://github.com/Mamiki765/hakoniwa-world/blob/09e37b423bed0992d81f223100b04f9c1eb3b5cc/docs/archive/pre-4.4.1/product/docs/handoffs/development-history-and-current-handoff.md)
 3. この`docs/README.md`
 4. [`docs/open-questions.md`](open-questions.md)
 5. task-specificなcurrent code / Ruleset / ADR / architecture / operations文書
