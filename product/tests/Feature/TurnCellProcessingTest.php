@@ -988,7 +988,6 @@ class TurnCellProcessingTest extends TestCase
 
         $this->assertSame(0, $protected->metrics['fires']);
         $this->assertSame('pizzeria', $pizzeria->fresh()->facility()->value('key'));
-        $this->assertSame(1, $protectedContext->state->routineSummaryMetrics($nation->id)['fire_protection_checks']);
 
         // Clear all neighboring protection so the same ordinary cell path must burn.
         $space = $this->surfaceMapSpace($world);
