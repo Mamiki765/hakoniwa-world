@@ -20,6 +20,7 @@
 | 4.13.0 海域天候抽選・保存・雨・台風/流星群/終末・マップ表示 | [4.13.0 sea-area weather](../product/docs/releases/4.13.0-sea-area-weather.md) |
 | 4.13.0 承認済み天候GIFの対応表・外部配置 | [weather asset placement](assets/weather-asset-placement-4.13.0.md) |
 | 4.14.0 地底背景・ホーム初回イベント・狂月賛歌・表示修正 | [4.14.0 underground harbor](../product/docs/releases/4.14.0-underground-harbor.md) |
+| 4.14.1 地図の上限・ピザ屋の収益表示 | [4.14.1 map details](../product/docs/releases/4.14.1-map-details.md) |
 | 現在のmain、完了release、直近TODO、回答済み・見送り | [current-status](../product/docs/handoffs/current-status.md) |
 | 取り違えを防ぐ現行contract | [current-contracts](../product/docs/handoffs/current-contracts.md) |
 | IL200超の装備計算・研磨 | [地底装備の倍率とrating](../product/docs/architecture/underground-equipment-scaling.md)、[プレイヤー向け装備手引き](../product/docs/manual/equipment.md) |

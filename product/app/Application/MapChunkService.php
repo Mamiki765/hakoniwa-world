@@ -2,10 +2,14 @@
 
 namespace App\Application;
 
+use App\Application\Underground\UndergroundFacilityBenefits;
 use App\Domain\Map\GridCoordinate;
+use App\Domain\Secretary\SecretaryDemographicPolicy;
+use App\Domain\Secretary\SecretarySkillCatalog;
 use App\Models\BuriedTreasure;
 use App\Models\MapCell;
 use App\Models\MapSpace;
+use App\Models\Nation;
 use App\Models\NationCapital;
 use App\Services\MapCellPresenter;
 use DomainException;
@@ -16,6 +20,9 @@ final class MapChunkService
         private readonly MapCellPresenter $presenter,
         private readonly SurfaceVisibilityService $visibility,
         private readonly BuriedTreasureRevealResolver $treasureReveals,
+        private readonly SecretaryTurnService $secretaries,
+        private readonly SecretaryDemographicPolicy $demographics,
+        private readonly UndergroundFacilityBenefits $undergroundBenefits,
     ) {}
 
     /** @return array<string, mixed> */
@@ -55,6 +62,26 @@ final class MapChunkService
 
         $world = $mapSpace->world()->with('rulesetVersion')->firstOrFail();
         $rulesetSettings = $world->rulesetVersion->settings;
+        $populationMaximums = null;
+        $settlement = $rulesetSettings['turn_processing']['settlement'];
+        $ownedSettlements = $cells->filter(static fn (MapCell $cell): bool => $viewerNationId !== null
+            && $cell->owner_nation_id === $viewerNationId
+            && in_array($cell->facility?->key, $settlement['population_facility_keys'], true));
+        if ($ownedSettlements->isNotEmpty()) {
+            $natural = $settlement['ordinary_maximum_population'];
+            $attraction = $settlement['attraction_maximum_population'];
+            if ($this->demographics->enabled($rulesetSettings)) {
+                $levels = $this->secretaries->currentSkillLevels(Nation::query()->findOrFail($viewerNationId), $world->rulesetVersion);
+                $level = $levels[SecretarySkillCatalog::DECLINING_BIRTHRATE_POLICY];
+                $natural = $this->demographics->naturalMaximum($rulesetSettings, $natural, $level);
+                $attraction = $this->demographics->attractionMaximum($rulesetSettings, $attraction, $level);
+            }
+            $capital = $rulesetSettings['capital_growth_maximum_population'];
+            if ($ownedSettlements->contains(static fn (MapCell $cell): bool => $cell->facility?->key === 'capital')) {
+                $capital += $this->undergroundBenefits->capitalMaximumBonus((int) $viewerNationId);
+            }
+            $populationMaximums = compact('natural', 'attraction', 'capital');
+        }
         $currentTurn = (int) $world->current_turn;
         $lifecycle = config('hakoniwa.ruleset.nation_lifecycle', []);
         $radius = is_int($lifecycle['dormant_protection_radius'] ?? null)
@@ -99,6 +126,7 @@ final class MapChunkService
             isset($visibleCoordinates[$cell->x.':'.$cell->y]),
             $rulesetSettings,
             isset($treasureCellIds[$cell->id]),
+            $populationMaximums,
         ))->values();
         $representationVersion = hash('sha256', json_encode($presentedCells, JSON_THROW_ON_ERROR));
 
