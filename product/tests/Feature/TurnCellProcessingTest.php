@@ -982,7 +982,7 @@ class TurnCellProcessingTest extends TestCase
         $settings['turn_processing']['disasters']['fire']['probability'] = ['numerator' => 1, 'denominator' => 1];
         $ruleset->update(['settings' => $settings]);
         $engine = app(CompleteTurnEngine::class);
-        [$protectedContext] = $this->context($world, $nation, [$pizzeria->id], str_repeat('a', 64));
+        [$protectedContext] = $this->context($world, $nation, [$pizzeria->id, $forest->id], str_repeat('a', 64));
 
         $protected = $engine->execute('process_cells', $protectedContext);
 
@@ -1001,7 +1001,7 @@ class TurnCellProcessingTest extends TestCase
                 $this->plain($neighbor);
             }
         }
-        [$unprotectedContext] = $this->context($world, $nation, [$pizzeria->id], str_repeat('a', 64));
+        [$unprotectedContext] = $this->context($world, $nation, [$pizzeria->id, $forest->id], str_repeat('a', 64));
 
         $unprotected = $engine->execute('process_cells', $unprotectedContext);
 
