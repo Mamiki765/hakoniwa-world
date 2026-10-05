@@ -6,7 +6,8 @@
 
 | 対象 | 扱い |
 |---|---|
-| `product/docs/handoffs/current-status.md`、`current-contracts.md` | 現在地と取り違え防止の入口。handoffはOwnerの明示指示なしに編集しない |
+| `product/docs/handoffs/current-status.md` | 作業引継ぎはprivate `peridot-notes`へ移行。同pathの短い入口で既存参照を維持。旧本文の固定原文・移行対応は外部管理庫のmanifestに保全 |
+| `product/docs/handoffs/current-contracts.md` | 現役の所有・再送・保持・retry等の技術契約。本体同pathに残す |
 | `docs/README.md`、`docs/open-questions.md`、本一覧 | 通常の入口と設計gate。過去の資料名が残る場合も現行仕様への自動昇格ではない |
 | `docs/architecture/`、`product/docs/architecture/`の本文 | 現行設計・継続利用する技術境界。実装済みという理由だけでは移動しない。実際のcode・schemaと照合する |
 | `docs/decisions/` | 採用済みADR。古い決定の現行適用範囲は後続決定とcodeで確認する |
