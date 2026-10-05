@@ -17,6 +17,8 @@ export interface CurrentUser {
     can_manage_inquiries: boolean;
     can_manage_guide_topics: boolean;
     providers: UserIdentity[];
+    achievements?: Array<{ key: string; name: string; description: string; acquired_at: string }>;
+    titles?: Array<{ key: string; name: string }>;
 }
 
 export interface MerchantConversationTopic {

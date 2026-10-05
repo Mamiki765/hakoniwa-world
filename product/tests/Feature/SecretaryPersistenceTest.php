@@ -6,7 +6,9 @@ use App\Application\NationAbandonmentService;
 use App\Application\NationCreationService;
 use App\Application\SecretaryImageRetentionService;
 use App\Application\SecretaryItemGrantService;
+use App\Application\SecretaryNamingService;
 use App\Application\SecretaryProfilePresenter;
+use App\Application\UserAchievementService;
 use App\Domain\Secretary\SecretaryItemCatalog;
 use App\Domain\Secretary\SecretarySkillCatalog;
 use App\Models\Secretary;
@@ -16,6 +18,7 @@ use App\Models\UndergroundBattle;
 use App\Models\UndergroundBattleLog;
 use App\Models\UndergroundProfile;
 use App\Models\User;
+use App\Models\UserAchievement;
 use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
@@ -177,6 +180,9 @@ final class SecretaryPersistenceTest extends TestCase
         app(NationCreationService::class)->create($user, $world, '改名島', '改名島主');
         app(NationCreationService::class)->create($other, $world->fresh(), '同名島', '同名島主');
 
+        $this->actingAs($user)->getJson('/api/v1/me')->assertOk()
+            ->assertJsonPath('data.achievements', [])->assertJsonPath('data.titles', []);
+
         $this->actingAs($user)->patchJson('/api/v1/me/secretary/name', ['name' => '未命名から改名'])
             ->assertUnprocessable();
         $this->actingAs($user)->postJson('/api/v1/me/secretary/name', ['name' => 'ペリドット'])
@@ -186,6 +192,10 @@ final class SecretaryPersistenceTest extends TestCase
 
         $secretary = $user->secretary()->firstOrFail();
         $namedAt = $secretary->named_at;
+        $receipt = UserAchievement::query()->where('user_id', $user->id)->sole();
+        $this->assertSame(UserAchievementService::ISLAND_SECRETARY, $receipt->achievement_key);
+        $this->assertSame(config('hakoniwa.ruleset.user_achievements.island_secretary.title_key'), $receipt->title_key);
+        $this->assertTrue($namedAt->equalTo($receipt->acquired_at));
         $skills = SecretarySkill::query()->where('secretary_id', $secretary->id)
             ->orderBy('skill_key')->get(['skill_key', 'level', 'experience'])->toArray();
         foreach (['エメラルド', 'サファイア'] as $name) {
@@ -197,6 +207,11 @@ final class SecretaryPersistenceTest extends TestCase
         $secretary->refresh();
         $this->assertSame('サファイア', $secretary->name);
         $this->assertTrue($namedAt?->equalTo($secretary->named_at));
+        $this->assertSame($receipt->getAttributes(), UserAchievement::query()->where('user_id', $user->id)->sole()->getAttributes());
+        $this->actingAs($user)->getJson('/api/v1/me')->assertOk()
+            ->assertJsonCount(1, 'data.achievements')->assertJsonCount(1, 'data.titles')
+            ->assertJsonPath('data.achievements.0.key', $receipt->achievement_key)
+            ->assertJsonPath('data.titles.0.key', $receipt->title_key);
         $this->assertSame(2, Secretary::query()->count());
         $this->assertSame($skills, SecretarySkill::query()->where('secretary_id', $secretary->id)
             ->orderBy('skill_key')->get(['skill_key', 'level', 'experience'])->toArray());
@@ -241,6 +256,25 @@ final class SecretaryPersistenceTest extends TestCase
         $this->actingAs($user)->postJson('/api/v1/me/secretary/name', ['name' => '<b>秘書</b>'])
             ->assertUnprocessable();
         $this->assertNull($user->secretary()->value('name'));
+        $this->assertSame(0, UserAchievement::query()->where('user_id', $user->id)->count());
+    }
+
+    public function test_failed_achievement_save_rolls_back_first_naming(): void
+    {
+        $user = User::factory()->create();
+        app(NationCreationService::class)->create($user, $this->lightweightWorld(), '命名島', '島主');
+        $this->mock(UserAchievementService::class, function ($mock): void {
+            $mock->shouldReceive('grantIslandSecretary')->once()->andThrow(new RuntimeException('save failed'));
+        });
+        try {
+            app(SecretaryNamingService::class)->name($user, 'ペリドット');
+            $this->fail('命名と実績の保存は同時に成功する必要があります。');
+        } catch (RuntimeException $exception) {
+            $this->assertSame('save failed', $exception->getMessage());
+        }
+        $this->assertNull($user->secretary()->value('name'));
+        $this->assertNull($user->secretary()->value('named_at'));
+        $this->assertSame(0, UserAchievement::query()->where('user_id', $user->id)->count());
     }
 
     public function test_public_profile_uses_canonical_level_equipment_and_owner_fallback_preferences(): void

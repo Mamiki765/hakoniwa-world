@@ -1534,6 +1534,7 @@ async function nameSecretary(): Promise<void> {
         setOwnedSecretaryProfile(committedSecretary);
         try {
             await loadSecretary();
+            user.value = await api<CurrentUser>('/api/v1/me');
         } catch {
             message.value = `秘書は「${committedSecretary.name ?? secretaryName.value}」と命名されましたが、最新の効果表示を読み込めませんでした。画面を開き直してください。`;
         }
@@ -2678,6 +2679,21 @@ async function abandonNation(): Promise<void> {
                     <button class="button primary" type="submit" :disabled="busy">画像表示設定を保存</button>
                 </div>
             </form>
+            </section>
+            <section v-if="user" class="options-section" aria-labelledby="user-achievements-title">
+                <h2 id="user-achievements-title">実績と肩書き</h2>
+                <h3>取得した実績</h3>
+                <ul v-if="user.achievements?.length" aria-label="取得した実績">
+                    <li v-for="achievement in user.achievements" :key="achievement.key">
+                        <strong>{{ achievement.name }}</strong>：{{ achievement.description }}
+                    </li>
+                </ul>
+                <p v-else>まだ実績を取得していません。</p>
+                <h3>取得した肩書き</h3>
+                <ul v-if="user.titles?.length" aria-label="取得した肩書き">
+                    <li v-for="title in user.titles" :key="title.key">{{ title.name }}</li>
+                </ul>
+                <p v-else>まだ肩書きを取得していません。</p>
             </section>
             <section v-if="user && nation" class="options-section profile-settings" aria-labelledby="profile-settings-title">
                 <h2 id="profile-settings-title">プロフィール</h2>

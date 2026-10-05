@@ -9,6 +9,8 @@ use Illuminate\Support\Facades\DB;
 
 final class SecretaryNamingService
 {
+    public function __construct(private readonly UserAchievementService $achievements) {}
+
     public function name(User $user, string $name): Secretary
     {
         return DB::transaction(function () use ($user, $name): Secretary {
@@ -20,6 +22,7 @@ final class SecretaryNamingService
                 throw new DomainException('Secretaryはすでに命名されています。');
             }
             $secretary->update(['name' => $name, 'named_at' => now()]);
+            $this->achievements->grantIslandSecretary($secretary);
 
             return $secretary->load('skills');
         });
