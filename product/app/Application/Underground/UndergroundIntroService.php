@@ -2108,6 +2108,36 @@ final readonly class UndergroundIntroService
             $entries[] = $entry;
         }
 
+        $harborExperienced = $profile->yunagi_harbor_intro_completed_at !== null;
+        $entries[] = $this->historicalEntry(
+            'yunagi_harbor_intro',
+            $this->historyTitle($history, 'yunagi_harbor_intro'),
+            $harborExperienced,
+            $harborExperienced ? array_map(
+                static fn (string $line): string => str_replace('(秘書名)', (string) $secretary->name, $line),
+                $this->historyBody($history, 'yunagi_harbor_intro'),
+            ) : null,
+            ['scene' => 'yunagi-harbor-intro'],
+        );
+        $madMoon = $this->catalog->madMoon();
+        foreach ([
+            ['key' => 'mad_moon_intro', 'story' => $madMoon['introduction'],
+                'experienced' => $profile->mad_moon_intro_completed_at !== null, 'scene' => 'yunagi-harbor-mad-moon'],
+            ['key' => 'mad_moon_victory', 'story' => $madMoon['victory'],
+                'experienced' => $profile->mad_moon_victory_scene_completed_at !== null, 'scene' => 'yunagi-harbor-mad-moon-victory'],
+        ] as $event) {
+            $entries[] = $this->historicalEntry(
+                $event['key'],
+                $event['story']['title'],
+                $event['experienced'],
+                $event['experienced'] ? array_map(
+                    static fn (string $line): string => str_replace('(秘書名)', (string) $secretary->name, $line),
+                    $event['story']['body'],
+                ) : null,
+                ['scene' => $event['scene']],
+            );
+        }
+
         return $entries;
     }
 

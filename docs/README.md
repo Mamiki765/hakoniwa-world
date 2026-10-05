@@ -10,6 +10,8 @@
 
 ## 再開と実装
 
+新しいイベントシーンを追加するときは、既読後の回想登録も確認する。既存の解放条件・既読記録・シーン表示を再利用し、回想で戦闘・報酬・進行を再実行しない。
+
 | 目的 | 入口 |
 |---|---|
 | 4.10.0の採用PR・統合状況・検証・残る判断 | [4.10.0 release](../product/docs/releases/4.10.0.md) |
@@ -21,6 +23,7 @@
 | 4.13.0 承認済み天候GIFの対応表・外部配置 | [weather asset placement](assets/weather-asset-placement-4.13.0.md) |
 | 4.14.0 地底背景・ホーム初回イベント・狂月賛歌・表示修正 | [4.14.0 underground harbor](../product/docs/releases/4.14.0-underground-harbor.md) |
 | 4.14.1 地図の上限・ピザ屋の収益表示 | [4.14.1 map details](../product/docs/releases/4.14.1-map-details.md) |
+| 4.14.2 帰港地・狂月賛歌の既読回想 | [4.14.2 recollections](../product/docs/releases/4.14.2-recollections.md) |
 | 外部管理庫の現在地・作業引継ぎへの入口 | [current-status](../product/docs/handoffs/current-status.md) |
 | 取り違えを防ぐ現行contract | [current-contracts](../product/docs/handoffs/current-contracts.md) |
 | IL200超の装備計算・研磨 | [地底装備の倍率とrating](../product/docs/architecture/underground-equipment-scaling.md)、[プレイヤー向け装備手引き](../product/docs/manual/equipment.md) |

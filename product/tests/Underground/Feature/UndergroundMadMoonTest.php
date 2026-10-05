@@ -2,6 +2,7 @@
 
 namespace Tests\Underground\Feature;
 
+use App\Application\Underground\UndergroundIntroCatalog;
 use App\Application\Underground\UndergroundStarterEquipmentService;
 use App\Models\UndergroundBattle;
 use App\Models\UndergroundContentClearProgress;
@@ -48,7 +49,7 @@ final class UndergroundMadMoonTest extends UndergroundPlayerAccessTestCase
         $user->forceFill(['visitor_code' => '41400001'])->save();
         $profile = $this->openEquipmentProfile($secretary);
         $profile->update(['mad_moon_unlocked_at' => now(), 'current_hp' => 123, 'awakening_gauge' => 67,
-            'unspent_stp' => 7, 'next_battle_at' => now()->addHour()]);
+            'unspent_stp' => 7, 'next_battle_at' => now()->addHour(), 'villa_purchased_at' => now()]);
         UndergroundTrialProgress::query()->create(['underground_profile_id' => $profile->id,
             'trial_key' => 'trial_01', 'unlocked_at' => now(), 'first_cleared_at' => now()]);
         config(['underground-alpha-v1.mad_moon.enemy.max_hp' => 1,
@@ -67,6 +68,10 @@ final class UndergroundMadMoonTest extends UndergroundPlayerAccessTestCase
         $this->postJson('/api/v1/me/underground/bank/transfer', ['request_id' => (string) Str::uuid(), 'action' => 'deposit_all'])
             ->assertConflict()->assertJsonPath('code', 'underground_mad_moon_intro_pending');
         $this->assertSame($beforeBanked, $profile->fresh()->banked_shard_balance);
+        $unread = collect($this->getJson('/api/v1/me/underground')->assertOk()->json('data.recollections.entries'))
+            ->firstWhere('key', 'mad_moon_intro');
+        $this->assertFalse($unread['experienced']);
+        $this->assertArrayNotHasKey('body', $unread);
         $request = ['request_id' => (string) Str::uuid()];
         $battle = $this->actingAs($user)->postJson('/api/v1/me/underground/mad-moon', $request)->assertOk()
             ->assertJsonPath('data.result', 'victory')->assertJsonPath('data.current_hp_before', 123)
@@ -95,10 +100,31 @@ final class UndergroundMadMoonTest extends UndergroundPlayerAccessTestCase
         $this->assertSame(0, $defaultReport['battle_count']);
         UndergroundBattle::query()->where('underground_profile_id', $profile->id)->delete();
         $this->postJson('/api/v1/me/underground/mad-moon', ['request_id' => (string) Str::uuid()])->assertConflict();
-        $this->getJson('/api/v1/me/underground')->assertOk()->assertJsonPath('data.mad_moon.victory_pending', true)
-            ->assertJsonPath('data.mad_moon.retry_available', false);
+        $entries = collect($this->getJson('/api/v1/me/underground')->assertOk()->assertJsonPath('data.mad_moon.victory_pending', true)
+            ->assertJsonPath('data.mad_moon.retry_available', false)->json('data.recollections.entries'));
+        $this->assertTrue($entries->firstWhere('key', 'mad_moon_intro')['experienced']);
+        $victory = $entries->firstWhere('key', 'mad_moon_victory');
+        $this->assertFalse($victory['experienced']);
+        $this->assertTrue($victory['locked']);
+        $this->assertArrayNotHasKey('body', $victory);
         $this->postJson('/api/v1/me/underground/events/advance', ['request_id' => (string) Str::uuid(), 'event' => 'mad_moon_victory', 'page' => 1])->assertOk();
-        $this->getJson('/api/v1/me/underground')->assertOk()->assertJsonPath('data.mad_moon.victory_pending', false);
+        $replayBefore = $profile->fresh()->getRawOriginal();
+        $requestCount = $profile->introRequests()->count();
+        $entries = collect($this->getJson('/api/v1/me/underground')->assertOk()->assertJsonPath('data.mad_moon.victory_pending', false)
+            ->json('data.recollections.entries'));
+        $stories = app(UndergroundIntroCatalog::class)->madMoon();
+        foreach (['mad_moon_intro' => 'introduction', 'mad_moon_victory' => 'victory'] as $key => $storyKey) {
+            $entry = $entries->firstWhere('key', $key);
+            $story = $stories[$storyKey];
+            $this->assertTrue($entry['experienced']);
+            $this->assertFalse($entry['locked']);
+            $this->assertSame($story['title'], $entry['title']);
+            $this->assertSame(array_map(fn (string $line): string => str_replace('(秘書名)', $secretary->name, $line), $story['body']), $entry['body']);
+            $this->assertSame($key === 'mad_moon_intro' ? 'yunagi-harbor-mad-moon' : 'yunagi-harbor-mad-moon-victory', $entry['scene']);
+        }
+        $this->assertSame($replayBefore, $profile->fresh()->getRawOriginal());
+        $this->assertSame($requestCount, $profile->introRequests()->count());
+        $this->assertSame(0, $profile->battles()->count());
     }
 
     public function test_withdrawal_and_defeat_allow_retry_after_the_normal_wait(): void

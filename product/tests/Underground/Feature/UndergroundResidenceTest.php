@@ -122,6 +122,12 @@ final class UndergroundResidenceTest extends UndergroundPlayerAccessTestCase
         $this->getJson('/api/v1/me/underground')->assertOk()
             ->assertJsonPath('data.yunagi_harbor_intro_available', true)
             ->assertJsonPath('data.residence.mirror_owned', false);
+        $profile->update(['villa_purchased_at' => now()]);
+        $unread = collect($this->getJson('/api/v1/me/underground')->assertOk()->json('data.recollections.entries'))
+            ->firstWhere('key', 'yunagi_harbor_intro');
+        $this->assertFalse($unread['experienced']);
+        $this->assertTrue($unread['locked']);
+        $this->assertArrayNotHasKey('body', $unread);
         $before = $profile->fresh()->only(['combat_xp', 'shard_balance', 'unlocked_area_layers']);
         $this->postJson('/api/v1/me/underground/events/advance', $request)->assertOk()
             ->assertJsonPath('data.yunagi_harbor_intro_available', false);
@@ -129,8 +135,18 @@ final class UndergroundResidenceTest extends UndergroundPlayerAccessTestCase
         $this->assertNotNull($completedAt);
         $this->postJson('/api/v1/me/underground/events/advance', $request)->assertOk();
         UndergroundIntroRequest::query()->where('underground_profile_id', $profile->id)->delete();
-        $this->getJson('/api/v1/me/underground')->assertOk()
-            ->assertJsonPath('data.yunagi_harbor_intro_available', false);
+        $replayBefore = $profile->fresh()->getRawOriginal();
+        $entry = collect($this->getJson('/api/v1/me/underground')->assertOk()
+            ->assertJsonPath('data.yunagi_harbor_intro_available', false)->json('data.recollections.entries'))
+            ->firstWhere('key', 'yunagi_harbor_intro');
+        $story = config('underground-intro.recollections.history.yunagi_harbor_intro');
+        $this->assertTrue($entry['experienced']);
+        $this->assertFalse($entry['locked']);
+        $this->assertSame($story['title'], $entry['title']);
+        $this->assertSame(array_map(fn (string $line): string => str_replace('(秘書名)', $secretary->name, $line), $story['body']), $entry['body']);
+        $this->assertSame('yunagi-harbor-intro', $entry['scene']);
+        $this->assertSame($replayBefore, $profile->fresh()->getRawOriginal());
+        $this->assertSame(0, UndergroundIntroRequest::query()->where('underground_profile_id', $profile->id)->count());
         $this->postJson('/api/v1/me/underground/events/advance', [
             ...$request, 'request_id' => (string) Str::uuid(),
         ])->assertOk();
