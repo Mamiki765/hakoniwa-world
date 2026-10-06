@@ -4,6 +4,17 @@
 
 Docker EngineとDocker Compose v2を使用する。hostの80/443は使わず、既定では`127.0.0.1:8080`へ公開する。
 
+## PowerShellでの検索
+
+repository rootから対象ディレクトリを絞り、ファイル名を確認してから内容を検索する。`rg`のパス引数へワイルドカードを含めず、ファイル名の絞り込みには`-g`を使う。日本語文書はUTF-8で読み、出力もUTF-8にする。
+
+```powershell
+[Console]::OutputEncoding = [Text.UTF8Encoding]::new($false)
+Get-Content -LiteralPath docs/README.md -Encoding UTF8
+rg --files product/app/Application -g '*Forecast*.php'
+rg -n 'pizzeria' product/app/Application -g '*.php'
+```
+
 ## 初期設定
 
 PowerShellでrepository rootから実行する。
