@@ -16,9 +16,9 @@
 
 データの流れは「箱庭の取得行 → 既存Discord紐づけ → Mariaの既存付与関数 → 既存保存と所属者への通知」。箱庭は `auth_identities(provider='discord').provider_user_id` を使う。表示名やメールで照合しない。Googleのみの人は後から既存のDiscord連携を行うと送信対象になる。
 
-箱庭の `hakoniwa:sync-maria-achievements` が、Discord紐づけ済み・`maria_sent_at` が空の取得行を一回最大25件送る。schedulerで毎分実行し、重複起動は避ける。取得・ターン更新のtransaction外で接続し、外部障害は箱庭の取得やターン進行を止めない。受け付け成功時だけ `maria_sent_at` を保存し、失敗は次回へ残す。汎用イベント基盤・別の履歴テーブルは作らない。
+箱庭の `hakoniwa:sync-maria-achievements` が、Discord紐づけ済み・`maria_sent_at` が空の取得行を一回最大25件送る。現行の[host cron方式](../../../docs/operations/turn-cron.md)で独立jobを毎分登録し、hostの `flock` で重複起動を避ける導入案。Laravel schedulerが本番で動いている証拠は確認していないため、それを前提にしない。取得・ターン更新のtransaction外で接続し、外部障害は箱庭の取得やターン進行を止めない。受け付け成功時だけ `maria_sent_at` を保存し、失敗は次回へ残す。汎用イベント基盤・別の履歴テーブルは作らない。
 
-Mariaの既存Expressに `POST /internal/hakoniwa/achievement` を加える。専用Bearer認証後、Discord IDと既知の実績keyだけを受け付け、`island_secretary` を既存実績ID **151** に対応させる。Draft #21の `/hakoniwa` 用150「島主」はそのまま。同じ人への同時受信は順番に既存 `unlockAchievements` を呼び、cache初回読込時の二重付与を防ぐ。
+Mariaの既存Expressに `POST /internal/hakoniwa/achievement` を加える。専用Bearer認証後、Discord IDと既知の実績keyだけを受け付け、`island_secretary` を既存実績ID **151** に対応させる。Draft #21の `/hakoniwa` 用150「島主」はそのまま。HTTPと通常コマンドは共通の初回読込Promiseで同じ実績JSONを使い、片方のcache上書き・取得喪失を防ぐ。HTTPだけのqueueは置かず、既存 `unlockAchievements` の取得済み判定を使う。
 
 Mariaの取得行がない人にも、既存関数が行を作って実績を保存する。非所属・退会済みでもMaria実績を取得し、通知だけを抑止する。Mariaに肩書きは追加しない。既存cache/dirty・毎分DB保存・shutdown保存は変更しない。`accepted:true` はこの既存経路での受付完了であり、DB書込み完了の応答ではない。受付後、毎分保存前にprocessが強制終了すると未保存分を失う既存の窓がある。今回の最小実装はこの保存基盤を作り直さない。
 
@@ -35,10 +35,10 @@ Mariaの取得行がない人にも、既存関数が行を作って実績を保
 両containerは既存 `apps_default` networkを共有し、Mariaの3000/tcpはhost公開なし。内部候補URLは `http://mariachang:3000/internal/hakoniwa/achievement`。読み取りで接続構成を確認しただけで、実付与APIは呼んでいない。
 
 1. Draftレビュー後、通常のbackup・migration手順でWorldのschema/v33を適用する。未完了Turnでは既存guardが移行を拒否する。既命名者の補填もこのmigration内で行い、外部通信しない。
-2. Ownerが新しい専用共有secretを用意し、Maria実行envの `HAKONIWA_LINK_SECRET` とWorld実行envの `MARIA_ACHIEVEMENTS_TOKEN` に同じ値を置く。Worldの `MARIA_ACHIEVEMENTS_URL` に上記内部URLを設定する。既存Bot TOKEN・DB資格情報は転用しない。秘密値をGitやPRへ置かない。
-3. Mariaを更新して既存起動処理・一回のmember cache取得を確認する。Worldの既存schedulerで送信commandが動くようにする。未設定なら送信commandは何もしない。設定済み環境では補填行も送信対象になり、Mariaで初取得かつ現所属なら既存通知が出る。
+2. Ownerが新しい専用共有secretを用意し、Maria実行envの `HAKONIWA_LINK_SECRET` とWorldのroot `.env` の `MARIA_ACHIEVEMENTS_TOKEN` に同じ値を置く。Worldの `MARIA_ACHIEVEMENTS_URL` に上記内部URLを設定する。`compose.yml` のWeb serviceはこの2変数を転送する。本番の別Compose fileにも同じ環境設定が必要。通常の導入手順でWeb containerを再作成し、実行envへ反映する。Composeを使わないLaravel実行時は `product/.env` 側に設定する。既存Bot TOKEN・DB資格情報は転用しない。秘密値をGitやPRへ置かない。
+3. Mariaを更新して既存起動処理・一回のmember cache取得を確認する。上記host cron手順の専用wrapperで送信commandを毎分呼ぶjobをOwnerが登録する。今回、実cron登録はしていない。未設定なら送信commandは何もしない。設定済み環境では補填行も送信対象になり、Mariaで初取得かつ現所属なら既存通知が出る。
 
-新しい資格情報の生成・配置、merge/deploy、migration適用、scheduler有効化は今回行っていない。送信済み後のDiscordアカウント付け替えまで再配布する仕様は追加していない。
+新しい資格情報の生成・配置、merge/deploy、migration適用、host cron有効化は今回行っていない。送信済み後のDiscordアカウント付け替えまで再配布する仕様は追加していない。
 
 ## 次の20候補の実現性（未採用・未実装）
 

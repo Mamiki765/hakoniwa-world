@@ -56,6 +56,20 @@ CRON_TZ=Asia/Tokyo
 
 このjobは`expires_at <= now`の`underground_battle_logs`だけを削除する。`underground_battles`のcompact record、damage/recovery summary、request idempotency identityは保持し、期限後もcompact summaryを表示できる。03:15 JSTの独立jobであり、Turn command、TurnRun、World lock、failed/blocked Turnのmanual retry contractには触れない。非ゼロ終了時は同じcommandをoperatorが原因確認後に明示実行し、shell側でretry loopを作らない。
 
+## Maria achievement sync（導入時のみ）
+
+実績連携も既存のhost cron方式を使う。Laravel scheduler・新しいscheduler containerは追加しない。`product/docker/cron/sync-maria-achievements.sh` は `hakoniwa-web` 内の `hakoniwa:sync-maria-achievements` を `www-data` で呼ぶだけで、取得・Turn transactionの外で送信する。wrapperの `HAKONIWA_PROJECT_DIR` は実際のCompose directoryに合わせる。
+
+Ownerが導入を決めた時だけ、Mariaの実行envへ `HAKONIWA_LINK_SECRET`、Worldのroot `.env` へ同じ専用値を `MARIA_ACHIEVEMENTS_TOKEN` として配置し、`MARIA_ACHIEVEMENTS_URL` に内部受信URLを設定する。checked-in `compose.yml` はこの2変数を `hakoniwa-web.environment` へ転送する。本番が別Compose fileを使う場合、operatorが同じ2変数を実serviceへ渡す。root `.env` の変更は既存containerへ自動反映されないため、通常の導入手順でWeb containerを再作成する。秘密値はcron・コマンド引数・logへ置かず、環境全体を出力して確認しない。
+
+設定とmigration・Maria更新後、hostに次の独立jobを登録する例。実際のdirectory・wrapper pathはoperatorが合わせる。今回、実cron登録・設定・試験送信は行っていない。
+
+```cron
+* * * * * /usr/bin/flock -n /run/lock/hakoniwa-maria-achievements.lock /usr/bin/env HAKONIWA_PROJECT_DIR=/opt/hakoniwa-world /opt/hakoniwa-world/product/docker/cron/sync-maria-achievements.sh >> /var/log/hakoniwa-maria-achievements.log 2>&1
+```
+
+一回最大25件で、失敗した取得行は未送信のまま残し、次回に再試行する。`flock` は同じhost上での重複起動を避ける。送信先やtokenが未設定ならcommandは何も送らない。既存のTurn cronとretry contractは変更しない。
+
 ## Pre-registration checks
 
 Before registering production cron:
