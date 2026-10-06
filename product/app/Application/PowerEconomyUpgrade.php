@@ -55,6 +55,13 @@ final class PowerEconomyUpgrade
         $this->publish($settings, $priorSettings, false);
     }
 
+    public function enableUserAchievements(): void
+    {
+        $settings = require config_path('hakoniwa/rulesets/hakoniwa-2s-plus-v33.php');
+        $priorSettings = require config_path('hakoniwa/rulesets/hakoniwa-2s-plus-v32.php');
+        $this->publish($settings, $priorSettings, false);
+    }
+
     /** @param array<string, mixed> $settings
      * @param  array<string, mixed>  $priorSettings
      */
@@ -91,6 +98,7 @@ final class PowerEconomyUpgrade
                     29 => $this->publisher->publishPizzeriaMaintenanceRemoval($settings),
                     30 => $this->publisher->publishOilAndFleetSkills($settings),
                     31 => $this->publisher->publishSeaAreaWeather($settings),
+                    32 => $this->publisher->publishNaturalFireTargets($settings),
                     default => $this->publisher->publish($settings),
                 };
                 if ($initializePower) {

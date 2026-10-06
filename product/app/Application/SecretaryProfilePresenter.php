@@ -16,6 +16,7 @@ final readonly class SecretaryProfilePresenter
         private SecretaryItemPresenter $items,
         private AssetManifestResolver $assets,
         private SecretarySkillCatalog $catalog,
+        private UserAchievementService $achievements,
     ) {}
 
     /** @return array<string, mixed> */
@@ -45,6 +46,7 @@ final readonly class SecretaryProfilePresenter
             'id' => $secretary->id,
             'name' => $secretary->name,
             'nickname' => $secretary->nickname,
+            'equipped_title' => $this->achievements->equippedTitle($secretary),
             'battle_display_name' => $this->battleDisplayName($secretary),
             'portrait_preference' => $secretary->portrait_preference ?? 'full_body',
             'is_owner' => $isOwner,

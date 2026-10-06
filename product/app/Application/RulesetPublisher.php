@@ -76,6 +76,19 @@ final class RulesetPublisher
         return $this->publishSnapshot($settings);
     }
 
+    /** Historical migration only: accept the exact immutable v32 snapshot.
+     * @param  array<string, mixed>  $settings
+     */
+    public function publishNaturalFireTargets(array $settings): RulesetVersion
+    {
+        $checksum = hash('sha256', json_encode($settings, JSON_THROW_ON_ERROR | JSON_PRESERVE_ZERO_FRACTION));
+        if ($checksum !== 'c5d5116703d6aaca319de923575c58aee15f16323d7aa2a246a497ea2e472bdc') {
+            throw new DomainException('The natural fire migration requires the exact immutable v32 snapshot.');
+        }
+
+        return $this->publishSnapshot($settings);
+    }
+
     /** @param array<string, mixed> $settings */
     private function publishSnapshot(array $settings): RulesetVersion
     {

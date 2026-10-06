@@ -2,6 +2,11 @@
 
 return [
 
+    'maria_achievements' => [
+        'url' => env('MARIA_ACHIEVEMENTS_URL'),
+        'token' => env('MARIA_ACHIEVEMENTS_TOKEN'),
+    ],
+
     'discord' => [
         'client_id' => env('DISCORD_CLIENT_ID'),
         'client_secret' => env('DISCORD_CLIENT_SECRET'),

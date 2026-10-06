@@ -60,7 +60,9 @@ describe('application lobby and island entry', () => {
         });
         vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
             const path = String(input);
-            if (path === '/api/v1/me') return response({ id: 1, display_name: 'Owner', providers: [] });
+            if (path === '/api/v1/me') return response({
+                id: 1, display_name: 'Owner', providers: [],
+            });
             if (path === '/api/v1/me/nation') return pendingNation;
             if (path === '/api/v1/me/secretary?world_id=1') return response(null);
 

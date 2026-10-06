@@ -6,9 +6,12 @@ use App\Application\NationAbandonmentService;
 use App\Application\NationCreationService;
 use App\Application\SecretaryImageRetentionService;
 use App\Application\SecretaryItemGrantService;
+use App\Application\SecretaryNamingService;
 use App\Application\SecretaryProfilePresenter;
+use App\Application\UserAchievementService;
 use App\Domain\Secretary\SecretaryItemCatalog;
 use App\Domain\Secretary\SecretarySkillCatalog;
+use App\Models\RulesetVersion;
 use App\Models\Secretary;
 use App\Models\SecretaryImage;
 use App\Models\SecretarySkill;
@@ -16,12 +19,14 @@ use App\Models\UndergroundBattle;
 use App\Models\UndergroundBattleLog;
 use App\Models\UndergroundProfile;
 use App\Models\User;
+use App\Models\UserAchievement;
 use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Mockery;
@@ -177,26 +182,46 @@ final class SecretaryPersistenceTest extends TestCase
         app(NationCreationService::class)->create($user, $world, '改名島', '改名島主');
         app(NationCreationService::class)->create($other, $world->fresh(), '同名島', '同名島主');
 
+        $this->actingAs($user)->getJson('/api/v1/me')->assertOk()
+            ->assertJsonPath('data.achievements', [])->assertJsonPath('data.titles', []);
+
         $this->actingAs($user)->patchJson('/api/v1/me/secretary/name', ['name' => '未命名から改名'])
             ->assertUnprocessable();
         $this->actingAs($user)->postJson('/api/v1/me/secretary/name', ['name' => 'ペリドット'])
-            ->assertOk();
+            ->assertOk()
+            ->assertJsonPath('data.acquired_achievement.name', config('hakoniwa.ruleset.user_achievements.island_secretary.name'))
+            ->assertJsonPath('data.acquired_achievement.title_name', config('hakoniwa.ruleset.user_achievements.island_secretary.title_name'));
         $this->actingAs($other)->postJson('/api/v1/me/secretary/name', ['name' => 'エメラルド'])
             ->assertOk();
 
         $secretary = $user->secretary()->firstOrFail();
         $namedAt = $secretary->named_at;
+        $receipt = UserAchievement::query()->where('user_id', $user->id)->sole();
+        $this->assertSame(UserAchievementService::ISLAND_SECRETARY, $receipt->achievement_key);
+        $this->assertSame(config('hakoniwa.ruleset.user_achievements.island_secretary.title_key'), $receipt->title_key);
+        $this->assertTrue($namedAt->equalTo($receipt->acquired_at));
         $skills = SecretarySkill::query()->where('secretary_id', $secretary->id)
             ->orderBy('skill_key')->get(['skill_key', 'level', 'experience'])->toArray();
         foreach (['エメラルド', 'サファイア'] as $name) {
             $this->actingAs($user)->patchJson('/api/v1/me/secretary/name', ['name' => $name])
                 ->assertOk()
-                ->assertJsonPath('data.name', $name);
+                ->assertJsonPath('data.name', $name)
+                ->assertJsonMissingPath('data.acquired_achievement');
         }
 
         $secretary->refresh();
         $this->assertSame('サファイア', $secretary->name);
         $this->assertTrue($namedAt?->equalTo($secretary->named_at));
+        $this->assertSame($receipt->getAttributes(), UserAchievement::query()->where('user_id', $user->id)->sole()->getAttributes());
+        $this->actingAs($user)->patchJson('/api/v1/me/secretary/title', ['title_key' => 'not_owned', 'user_id' => $other->id])
+            ->assertUnprocessable();
+        $this->actingAs($user)->patchJson('/api/v1/me/secretary/title', ['title_key' => $receipt->title_key])
+            ->assertOk()->assertJsonPath('data.profile.equipped_title.key', $receipt->title_key);
+        $this->assertSame($receipt->title_key, $user->secretary()->sole()->equipped_title_key);
+        $this->actingAs($user)->getJson('/api/v1/me')->assertOk()
+            ->assertJsonCount(1, 'data.achievements')->assertJsonCount(1, 'data.titles')
+            ->assertJsonPath('data.achievements.0.key', $receipt->achievement_key)
+            ->assertJsonPath('data.titles.0.key', $receipt->title_key);
         $this->assertSame(2, Secretary::query()->count());
         $this->assertSame($skills, SecretarySkill::query()->where('secretary_id', $secretary->id)
             ->orderBy('skill_key')->get(['skill_key', 'level', 'experience'])->toArray());
@@ -226,6 +251,30 @@ final class SecretaryPersistenceTest extends TestCase
         $this->assertSame('サファイア', $user->secretary()->value('name'));
     }
 
+    public function test_v32_upgrade_backfills_named_secretaries_and_equips_the_initial_title_once(): void
+    {
+        $world = $this->lightweightWorld();
+        $user = User::factory()->create();
+        $unnamed = User::factory()->create();
+        app(NationCreationService::class)->create($user, $world, '旧命名島', '島主');
+        app(NationCreationService::class)->create($unnamed, $world->fresh(), '未命名島', '島主');
+        $namedAt = Carbon::parse('2026-10-01T00:00:00Z');
+        $secretary = $user->secretary()->sole();
+        $secretary->update(['name' => '既存秘書', 'named_at' => $namedAt]);
+        $world->update(['ruleset_version_id' => RulesetVersion::query()->where('version', 32)->sole()->id]);
+        Schema::drop('user_achievements');
+        Schema::table('secretaries', static fn ($table) => $table->dropColumn('equipped_title_key'));
+
+        $migration = require database_path('migrations/2026_10_06_010000_add_user_achievements.php');
+        DB::transaction(static fn () => $migration->up());
+        $receipt = UserAchievement::query()->where('user_id', $user->id)->sole();
+        $this->assertTrue($namedAt->equalTo($receipt->acquired_at));
+        $this->assertSame($receipt->title_key, $secretary->fresh()->equipped_title_key);
+        $this->assertSame(0, UserAchievement::query()->where('user_id', $unnamed->id)->count());
+        $this->assertNull(app(UserAchievementService::class)->grantIslandSecretary($secretary->fresh()));
+        $this->assertSame(1, UserAchievement::query()->count());
+    }
+
     public function test_naming_requires_a_secretary_and_safe_single_line_plain_text(): void
     {
         $user = User::factory()->create();
@@ -241,6 +290,25 @@ final class SecretaryPersistenceTest extends TestCase
         $this->actingAs($user)->postJson('/api/v1/me/secretary/name', ['name' => '<b>秘書</b>'])
             ->assertUnprocessable();
         $this->assertNull($user->secretary()->value('name'));
+        $this->assertSame(0, UserAchievement::query()->where('user_id', $user->id)->count());
+    }
+
+    public function test_failed_achievement_save_rolls_back_first_naming(): void
+    {
+        $user = User::factory()->create();
+        app(NationCreationService::class)->create($user, $this->lightweightWorld(), '命名島', '島主');
+        $this->mock(UserAchievementService::class, function ($mock): void {
+            $mock->shouldReceive('grantIslandSecretary')->once()->andThrow(new RuntimeException('save failed'));
+        });
+        try {
+            app(SecretaryNamingService::class)->name($user, 'ペリドット');
+            $this->fail('命名と実績の保存は同時に成功する必要があります。');
+        } catch (RuntimeException $exception) {
+            $this->assertSame('save failed', $exception->getMessage());
+        }
+        $this->assertNull($user->secretary()->value('name'));
+        $this->assertNull($user->secretary()->value('named_at'));
+        $this->assertSame(0, UserAchievement::query()->where('user_id', $user->id)->count());
     }
 
     public function test_public_profile_uses_canonical_level_equipment_and_owner_fallback_preferences(): void

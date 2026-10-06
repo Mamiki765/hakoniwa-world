@@ -10,6 +10,7 @@ use App\Application\SecretaryPresenter;
 use App\Application\SecretaryProfilePresenter;
 use App\Application\SecretaryProfileService;
 use App\Application\Underground\UndergroundIntroService;
+use App\Application\UserAchievementService;
 use App\Domain\Secretary\SecretaryEquipmentConflictException;
 use App\Domain\Secretary\SecretaryEquipmentValidationException;
 use App\Domain\Secretary\SecretaryNotFoundException;
@@ -21,6 +22,7 @@ use App\Http\Requests\UpdateSecretaryImageMetadataRequest;
 use App\Http\Requests\UpdateSecretaryImagePreferencesRequest;
 use App\Http\Requests\UpdateSecretaryPortraitPreferenceRequest;
 use App\Http\Requests\UpdateSecretaryProfileRequest;
+use App\Http\Requests\UpdateSecretaryTitleRequest;
 use App\Http\Resources\NationResource;
 use App\Models\Secretary;
 use DomainException;
@@ -91,12 +93,16 @@ final class SecretaryController extends Controller
         SecretaryPresenter $presenter,
     ): JsonResponse {
         try {
-            $secretary = $naming->name($request->user(), $request->string('name')->value());
+            $result = $naming->name($request->user(), $request->string('name')->value());
         } catch (DomainException $exception) {
             throw ValidationException::withMessages(['name' => $exception->getMessage()]);
         }
 
-        return response()->json(['data' => $presenter->present($secretary, viewer: $request->user())]);
+        $data = $presenter->present($result['secretary'], viewer: $request->user());
+        // 今回保存した取得だけを返す。再読込・改名の応答には含めない。
+        $data['acquired_achievement'] = $result['acquired_achievement'];
+
+        return response()->json(['data' => $data]);
     }
 
     public function rename(
@@ -108,6 +114,20 @@ final class SecretaryController extends Controller
             $secretary = $naming->rename($request->user(), $request->string('name')->value());
         } catch (DomainException $exception) {
             throw ValidationException::withMessages(['name' => $exception->getMessage()]);
+        }
+
+        return response()->json(['data' => $presenter->present($secretary, viewer: $request->user())]);
+    }
+
+    public function updateTitle(
+        UpdateSecretaryTitleRequest $request,
+        UserAchievementService $achievements,
+        SecretaryPresenter $presenter,
+    ): JsonResponse {
+        try {
+            $secretary = $achievements->equipTitle($request->user(), $request->string('title_key')->value());
+        } catch (DomainException $exception) {
+            throw ValidationException::withMessages(['title_key' => $exception->getMessage()]);
         }
 
         return response()->json(['data' => $presenter->present($secretary, viewer: $request->user())]);

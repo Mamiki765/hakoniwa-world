@@ -18,29 +18,31 @@ final class CurrentRulesetContractTest extends TestCase
 
     private const V31_CHECKSUM = '08fefb852613edbf92acce62c7c0eb6c82cea27d3ad464afdc2f54da23fd0557';
 
-    public function test_normal_config_loads_and_validates_v32_without_changing_the_historical_snapshots(): void
+    private const V32_CHECKSUM = 'c5d5116703d6aaca319de923575c58aee15f16323d7aa2a246a497ea2e472bdc';
+
+    public function test_normal_config_loads_and_validates_current_without_changing_the_historical_snapshots(): void
     {
         $normalConfig = require config_path('hakoniwa.php');
         $current = $normalConfig['ruleset'];
 
-        $this->assertSame(['hakoniwa-2s-plus-v32'], array_keys($normalConfig['published_rulesets']));
-        $this->assertSame($current, $normalConfig['published_rulesets']['hakoniwa-2s-plus-v32']);
+        $this->assertSame([$current['key']], array_keys($normalConfig['published_rulesets']));
+        $this->assertSame($current, $normalConfig['published_rulesets'][$current['key']]);
         $this->assertSame($current['secretary'], $normalConfig['current_catalogs']['secretary']);
-        $this->assertSame('hakoniwa-2s-plus-v32', $current['key']);
-        $this->assertSame(32, $current['version']);
+        $this->assertSame('hakoniwa-2s-plus-v33', $current['key']);
+        $this->assertSame(33, $current['version']);
         $this->assertArrayNotHasKey('behavior', $current);
         $this->assertArrayNotHasKey('data', $current);
         $this->assertArrayNotHasKey('flavor', $current);
         $v31 = require config_path('hakoniwa/rulesets/hakoniwa-2s-plus-v31.php');
         $this->assertSame(self::V31_CHECKSUM, $this->checksum($v31));
-        $expected = $v31;
+        $v32 = require config_path('hakoniwa/rulesets/hakoniwa-2s-plus-v32.php');
+        $this->assertSame(self::V32_CHECKSUM, $this->checksum($v32));
+        $expected = $v32;
         $expected['key'] = $current['key'];
         $expected['version'] = $current['version'];
-        $expected['turn_processing']['disasters']['fire']['facility_keys'] = array_values(array_diff(
-            $v31['turn_processing']['disasters']['fire']['facility_keys'],
-            ['thermal_power'],
-        ));
-        $this->assertSame($expected, $current);
+        $withoutAchievements = $current;
+        unset($withoutAchievements['user_achievements']);
+        $this->assertSame($expected, $withoutAchievements);
         $v30 = require config_path('hakoniwa/rulesets/hakoniwa-2s-plus-v30.php');
         $this->assertSame(self::V30_CHECKSUM, $this->checksum($v30));
         $predecessor = require config_path('hakoniwa/rulesets/hakoniwa-2s-plus-v29.php');
@@ -48,8 +50,8 @@ final class CurrentRulesetContractTest extends TestCase
         $prior = require config_path('hakoniwa/rulesets/hakoniwa-2s-plus-v28.php');
         $this->assertSame(self::V28_CHECKSUM, $this->checksum($prior));
         $summary = app(RulesetAuthoringValidator::class)->validate($current);
-        $this->assertSame('hakoniwa-2s-plus-v32', $summary['key']);
-        $this->assertSame(32, $summary['version']);
+        $this->assertSame($current['key'], $summary['key']);
+        $this->assertSame($current['version'], $summary['version']);
         $prior['power_economy']['pizzeria_maintenance'] = 0;
         $this->expectException(DomainException::class);
         $this->expectExceptionMessage('exact immutable v28 snapshot');

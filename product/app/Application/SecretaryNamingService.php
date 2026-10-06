@@ -9,9 +9,12 @@ use Illuminate\Support\Facades\DB;
 
 final class SecretaryNamingService
 {
-    public function name(User $user, string $name): Secretary
+    public function __construct(private readonly UserAchievementService $achievements) {}
+
+    /** @return array{secretary: Secretary, acquired_achievement: array{name: string, title_name: string}|null} */
+    public function name(User $user, string $name): array
     {
-        return DB::transaction(function () use ($user, $name): Secretary {
+        return DB::transaction(function () use ($user, $name): array {
             $secretary = Secretary::query()->where('user_id', $user->id)->lockForUpdate()->first();
             if (! $secretary instanceof Secretary) {
                 throw new DomainException('Secretaryは最初のNation登録成功時に作成されます。');
@@ -20,8 +23,9 @@ final class SecretaryNamingService
                 throw new DomainException('Secretaryはすでに命名されています。');
             }
             $secretary->update(['name' => $name, 'named_at' => now()]);
+            $acquired = $this->achievements->grantIslandSecretary($secretary);
 
-            return $secretary->load('skills');
+            return ['secretary' => $secretary->load('skills'), 'acquired_achievement' => $acquired];
         });
     }
 

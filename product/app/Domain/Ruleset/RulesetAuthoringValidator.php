@@ -122,6 +122,19 @@ final class RulesetAuthoringValidator
         if ($authoredKey !== config('hakoniwa.ruleset.key') || $version !== config('hakoniwa.ruleset.version')) {
             throw new DomainException('Authoring supports only the configured current Ruleset; historical snapshots are read-only.');
         }
+        $achievements = $this->map($settings['user_achievements'] ?? null, 'ruleset.user_achievements');
+        $this->requireKeys($achievements, ['island_secretary'], 'ruleset.user_achievements');
+        foreach ($achievements as $key => $definition) {
+            $path = 'ruleset.user_achievements.'.$key;
+            $definition = $this->map($definition, $path);
+            $this->requireKeys($definition, ['condition', 'name', 'description', 'title_key', 'title_name'], $path);
+            if ($definition['condition'] !== 'secretary_named') {
+                throw new DomainException($path.' has an unsupported acquisition condition.');
+            }
+            foreach (['name', 'description', 'title_key', 'title_name'] as $field) {
+                $this->persistedString($definition[$field], $path.'.'.$field);
+            }
+        }
         $turnResolution = $this->map($settings['turn_resolution'] ?? null, 'ruleset.turn_resolution');
         if ($turnResolution !== [
             'normal_monster_stage' => 'after_ordinary_surface_cell_events',

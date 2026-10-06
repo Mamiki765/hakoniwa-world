@@ -40,10 +40,11 @@ final class CurrentRulesetAuthoringInspector
         $classifiedPaths = [];
         $counts = array_fill_keys(self::CLASSIFICATIONS, 0);
 
-        $files = [...self::DOMAIN_FILES, 'power-and-pizza.php'];
+        $files = [...self::DOMAIN_FILES, 'power-and-pizza.php', 'user-achievements.php'];
         foreach ($files as $file) {
             $directory = match ($file) {
-                'world-and-map.php', 'terrain-and-disasters.php' => 'natural-fire-fix/',
+                'world-and-map.php', 'user-achievements.php' => 'island-secretary/',
+                'terrain-and-disasters.php' => 'natural-fire-fix/',
                 'secretary.php' => 'release-4.12/',
                 'power-and-pizza.php' => 'release-4.11.1/',
                 'economy-and-resources.php', 'facilities.php', 'commands-and-production.php' => 'release-4.11/',

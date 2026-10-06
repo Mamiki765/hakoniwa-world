@@ -38,6 +38,8 @@
 
 ## 対象ごとの現行資料
 
+- 実績・肩書き、既命名者の補填、Mariaの既存保存・通知への連携は[実績連携の草案](../product/docs/plans/maria-achievement-link.md)を参照します。Draft実装までで、導入・実付与・実通知は行っていません。次の20候補は未採用です。
+
 - Rulesetを変更する場合は[authoring](../product/docs/architecture/ruleset-authoring.md)と実際のconfig・validator・consumerを確認します。過去版の調整値を永久不変の契約にしません。
 - 地上と地下のlockは[Secretary lock boundaries](../product/docs/architecture/secretary-lock-boundaries.md)、管理操作は[管理運用](../product/docs/operations/4.4.0-admin-operations.md)を入口にします。Git merge、checkout、稼働image、production DBの適用状態は別の証拠です。
 - ローカル環境は[local development](operations/local-development.md)と[Compose](operations/docker-compose.md)、データ保護は[backup/restore](../product/docs/operations/database-backup-and-restore.md)を確認します。
