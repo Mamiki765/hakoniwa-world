@@ -115,6 +115,7 @@ final class DatabaseBaselineAdoptionTest extends TestCase
         });
         Schema::drop('oil_discovery_backfills');
         Schema::drop('user_achievements');
+        Schema::table('secretaries', fn ($table) => $table->dropColumn('equipped_title_key'));
         DB::table('secretary_skills')->whereIn('skill_key', ['energy_saving', 'oil_development'])->delete();
         DB::statement('ALTER TABLE secretary_skills DROP CONSTRAINT secretary_skills_key_check');
         DB::statement("ALTER TABLE secretary_skills ADD CONSTRAINT secretary_skills_key_check CHECK (skill_key = ANY ((ARRAY['agricultural_policy'::character varying, 'specialty_development'::character varying, 'gold_vein_survey'::character varying, 'forest_management'::character varying, 'final_defense_line'::character varying, 'declining_birthrate_policy'::character varying, 'indomitable'::character varying, 'ship_operations'::character varying, 'navy'::character varying])::text[]))");

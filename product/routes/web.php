@@ -122,6 +122,7 @@ Route::prefix('api/v1')->middleware(['auth', PrivateApiResponse::class])->group(
         ->middleware('throttle:10,1');
     Route::post('/me/secretary/name', [SecretaryController::class, 'name']);
     Route::patch('/me/secretary/name', [SecretaryController::class, 'rename']);
+    Route::patch('/me/secretary/title', [SecretaryController::class, 'updateTitle']);
     Route::patch('/me/secretary/profile', [SecretaryController::class, 'updateProfile']);
     Route::post('/me/secretary/images/{slot}', [SecretaryController::class, 'storeImageSlot']);
     Route::patch('/me/secretary/images/{slot}', [SecretaryController::class, 'updateImageSlotMetadata']);

@@ -339,13 +339,15 @@ describe('Underground application operations', () => {
     it('shows the unnamed Secretary story with the default name and switches permanently to the skill view after naming', async () => {
         window.history.replaceState({}, '', '/underground');
         let secretary = structuredClone(unnamedSecretaryFixture);
+        const acquired = { name: 'Fixture実績', title_name: 'Fixture肩書き' };
+        const title = { key: 'fixture', name: acquired.title_name };
         vi.spyOn(window, 'confirm').mockReturnValue(true);
         const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
             const path = String(input);
             const lobby = publicResponse(path);
             if (lobby !== null) return lobby;
             if (path === '/api/v1/me') {
-                return response({ id: 1, display_name: 'Owner', can_manage_announcements: false, providers: [], viewer_preferences: secretary.profile.viewer_preferences });
+                return response({ id: 1, display_name: 'Owner', can_manage_announcements: false, providers: [], viewer_preferences: secretary.profile.viewer_preferences, titles: secretary.name ? [title] : [], achievements: secretary.name ? [{ key: 'fixture', name: acquired.name, description: 'Fixture条件', acquired_at: secretary.named_at }] : [] });
             }
             if (path === '/api/v1/me/nation') return response(ownerNationFixture);
             if (path === '/api/v1/me/secretary/name' && init?.method === 'POST') {
@@ -355,11 +357,12 @@ describe('Underground application operations', () => {
                     name: body.name,
                     named_at: '2026-08-16T15:00:00+09:00',
                     header_label: body.name,
-                    profile: { ...secretary.profile, name: body.name, battle_display_name: body.name },
+                    profile: { ...secretary.profile, name: body.name, battle_display_name: body.name, equipped_title: title },
                 };
 
-                return response(secretary);
+                return response({ ...secretary, acquired_achievement: acquired });
             }
+            if (path === '/api/v1/me/secretary/title' && init?.method === 'PATCH') return response(secretary);
             if (path === '/api/v1/me/secretary/name' && init?.method === 'PATCH') {
                 const body = JSON.parse(String(init.body)) as { name: string };
                 secretary = {
@@ -464,6 +467,10 @@ describe('Underground application operations', () => {
         expect(wrapper.find('.secretary-story').exists()).toBe(false);
         expect(wrapper.get('.secretary-page-title').text()).toBe('秘書');
         expect(wrapper.get('.secretary-name').text()).toBe('ペリドット');
+        expect(wrapper.get('[role="status"]').text()).toContain(acquired.name);
+        expect(wrapper.get('[role="status"]').text()).toContain(acquired.title_name);
+        expect(wrapper.get('[aria-label="秘書基本情報"]').text()).toContain(title.name);
+        await wrapper.get('[aria-label="通知を閉じる"]').trigger('click');
         expect(wrapper.get('.secretary-main-profile').text()).toContain('内政Lv1');
         expect(wrapper.get('.secretary-main-profile').text()).toContain('資金・食糧最大+1%');
         expect(wrapper.get('.secretary-main-profile').text()).toContain('討伐経験値0');
@@ -490,7 +497,7 @@ describe('Underground application operations', () => {
         expect(fetchMock.mock.calls.some(([path]) => String(path) === '/api/v1/secretaries/11?world_id=1')).toBe(true);
         expect(wrapper.get<HTMLTextAreaElement>('.secretary-biography textarea').element.value).toBe('更新した経歴');
         const initialTabs = wrapper.findAll('[role="tab"]');
-        expect(initialTabs.map((tab) => tab.text())).toEqual(['メイン', '熟練度', '装備', '倉庫', '設定']);
+        expect(initialTabs.map((tab) => tab.text())).toEqual(['メイン', '熟練度', '装備', '倉庫', '設定', '実績']);
         await initialTabs[1]!.trigger('click');
         expect(wrapper.get('.secretary-section-title').text()).toBe('パッシブスキル');
         const skillRows = wrapper.findAll('.secretary-skill');
@@ -518,7 +525,7 @@ describe('Underground application operations', () => {
         const secretaryGetCount = () => fetchMock.mock.calls.filter(([path]) => String(path) === '/api/v1/me/secretary?world_id=1').length;
         const beforeTabSwitch = secretaryGetCount();
         const tabs = wrapper.findAll('[role="tab"]');
-        expect(tabs.map((tab) => tab.text())).toEqual(['メイン', '熟練度', '装備', '倉庫', '設定']);
+        expect(tabs.map((tab) => tab.text())).toEqual(['メイン', '熟練度', '装備', '倉庫', '設定', '実績']);
         expect(tabs[1]!.attributes('aria-selected')).toBe('true');
         await tabs[1]!.trigger('keydown', { key: 'ArrowRight' });
         expect(wrapper.findAll('[role="tab"]')[2]!.attributes('aria-selected')).toBe('true');
@@ -540,7 +547,15 @@ describe('Underground application operations', () => {
         expect(secretaryGetCount()).toBe(beforeTabSwitch);
 
         await wrapper.findAll('[role="tab"]')[3]!.trigger('keydown', { key: 'End' });
-        expect(wrapper.findAll('[role="tab"]')[4]!.attributes('aria-selected')).toBe('true');
+        expect(wrapper.get('#secretary-tab-achievements').attributes('aria-selected')).toBe('true');
+        expect(wrapper.get('ul[aria-label="取得した実績"]').text()).toContain(acquired.name);
+        expect(wrapper.get('ul[aria-label="取得した実績"]').text()).toContain('Fixture条件');
+        expect(wrapper.get<HTMLSelectElement>('#secretary-title').element.value).toBe(title.key);
+        await wrapper.get('.secretary-title-form').trigger('submit');
+        await flushPromises();
+        const titleRequest = fetchMock.mock.calls.find(([path]) => String(path) === '/api/v1/me/secretary/title');
+        expect(JSON.parse(String(titleRequest?.[1]?.body))).toEqual({ title_key: title.key });
+        await wrapper.get('#secretary-tab-settings').trigger('click');
         expect(wrapper.get('.secretary-settings').text()).toContain('基本設定');
         expect(wrapper.findAll('.secretary-settings .secretary-image-slot')).toHaveLength(6);
         expect(wrapper.get<HTMLInputElement>('.secretary-rename-form input').element.value).toBe('ペリドット');
@@ -552,9 +567,10 @@ describe('Underground application operations', () => {
         ));
         expect(JSON.parse(String(renameRequest?.[1]?.body))).toEqual({ name: 'エメラルド' });
         expect(wrapper.text()).toContain('秘書の名前を「エメラルド」に変更しました。');
+        expect(wrapper.find('[role="status"]').exists()).toBe(false);
         expect(wrapper.findAll('.site-header nav button').some((button) => button.text() === 'エメラルド')).toBe(true);
         await wrapper.get('#secretary-nickname').setValue('エメ');
-        await wrapper.findAll('.secretary-basic-settings form')[1]!.trigger('submit');
+        await wrapper.findAll('.secretary-basic-settings form').find((form) => form.find('#secretary-nickname').exists())!.trigger('submit');
         await flushPromises();
         const nicknameRequests = fetchMock.mock.calls.filter(([path, init]) => (
             String(path) === '/api/v1/me/secretary/profile' && init?.method === 'PATCH'
@@ -590,6 +606,11 @@ describe('Underground application operations', () => {
         await flushPromises();
         expect(wrapper.find('.underground-panel').exists()).toBe(false);
         expect(wrapper.find('.secretary-panel').exists()).toBe(true);
+        wrapper.unmount();
+        const reloaded = mount(App);
+        await flushPromises();
+        expect(reloaded.find('[role="status"]').exists()).toBe(false);
+        reloaded.unmount();
     });
 
     it('replaces the Underground history entry when escape completion redirects to Secretary', async () => {

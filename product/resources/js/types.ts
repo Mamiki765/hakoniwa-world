@@ -149,6 +149,7 @@ export interface Secretary {
 export interface SecretaryProfile {
     id: number;
     name: string | null;
+    equipped_title?: { key: string; name: string } | null;
     nickname?: string | null;
     battle_display_name?: string;
     is_owner: boolean;

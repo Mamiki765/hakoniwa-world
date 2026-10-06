@@ -62,8 +62,6 @@ describe('application lobby and island entry', () => {
             const path = String(input);
             if (path === '/api/v1/me') return response({
                 id: 1, display_name: 'Owner', providers: [],
-                achievements: [{ key: 'fixture', name: 'Fixture実績', description: 'Fixture条件', acquired_at: '2026-10-06T00:00:00Z' }],
-                titles: [{ key: 'fixture-title', name: 'Fixture肩書き' }],
             });
             if (path === '/api/v1/me/nation') return pendingNation;
             if (path === '/api/v1/me/secretary?world_id=1') return response(null);
@@ -75,9 +73,6 @@ describe('application lobby and island entry', () => {
             .find((button) => button.text() === 'オプション')!.trigger('click');
         await flushPromises();
         expect(pendingWrapper.find('.profile-settings').exists()).toBe(false);
-        expect(pendingWrapper.get('ul[aria-label="取得した実績"]').text()).toContain('Fixture実績');
-        expect(pendingWrapper.get('ul[aria-label="取得した実績"]').text()).toContain('Fixture条件');
-        expect(pendingWrapper.get('ul[aria-label="取得した肩書き"]').text()).toBe('Fixture肩書き');
 
         resolveNation(response({ ...ownerNationFixture, comment: '既存コメント' }));
         await flushPromises();
