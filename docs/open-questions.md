@@ -17,7 +17,7 @@
 | lifecycle / automatic turn operations | T-02 | ver 2.4.0はADR-0014/ADR-0015によりdormant/recoveryを専用Jobではなくofficial Turn開始/終端へ統合する。将来専用scheduler/batchへ変更する前に停止し、production cronと手動retry境界はD-02を維持する。 |
 | public release | — | RELEASE-01、AUTH-05、B-14、D-03、D-04、D-05、D-07はPR23 owner decisionで決定済み。 |
 | Underground 3.0.0 / post-release | UG-05 | E-01/UG-01〜04によりpure combat、Secretary-owned persistence/runtime、正式intro、通常探索、growth/STP、有限SPとplayer Skill Tree、案内人の部屋と複合再振り、Nation-owned facility・surface bridgeまで実装済み。party boundaryはUG-05、party敵AoEの被damage覚醒ゲージはUG-06で決定済み。marketはUG-05で停止する。 |
-| post-MVP deferred | AUTH-06〜AUTH-09、B-08、D-06、D-08、C-02、C-04、E-02、E-04〜E-09 | 別のowner-approved roadmapまで実装しない。 |
+| post-MVP deferred | AUTH-06〜AUTH-09、B-08、D-06、D-08、C-02、C-04、E-02、E-04〜E-06、E-08〜E-09 | 別のowner-approved roadmapまで実装しない。E-07も承認済み実績連携以外へ拡張しない。 |
 
 ## Decided architecture
 
@@ -262,6 +262,15 @@
 - Implemented: Partially; application `3.9.2`までに正式intro・契約・4 growth path・通常探索・growth/STP・有限SP・player Skill Tree、Trial 1/2・覚醒、Nation-owned施設とread-only surface bridge、正式equipment・装備Shop・アクセサリー3枠・500枠宝物庫、浅層・黒晶洞・輝きの王国と戦闘用宝物庫、Item Lv・rarity・affix・generated drop、案内人の部屋と複合再振り、条件指定型の宝物庫まとめ売り、Secretaryごとのcustom AI、battle単位のnormalized rule/hash snapshot、作戦編集画面、非同期borrowed Secretary partyを実装済み。marketは未実装。
 - Decision: 地下roadmapを`release/3.0.0-alpha`として開始し、Turn非依存の任意side gameをmodular monolith内の独立domainとして育てる。後続releaseもSecretary-owned progression、canonical combat、versioned content identity、request idempotencyを再利用し、Surface RulesetやWorld Turnへ地下戦闘runtimeを混在させない。
 - Decision record: `docs/roadmap/3.0.0-alpha-underground.md`、`docs/architecture/underground-combat-laboratory.md`
+
+### E-07 Mariachangへの実績取得連携
+
+- Status: Decided
+- Implemented: WorldのDraft PR #204に「島の秘書」の取得・肩書き・補填と送信経路を実装。Maria側の受信・既存付与経路はPR #21でmerge済み。Worldのmain・productionには未適用。
+- Decision: 2026-10-06のOwner判断により実績は箱庭とMariaの両方で取得し、対応する肩書きは箱庭の秘書だけが取得・装備する。非所属・退会者もMariaで取得し、通知だけを抑止する。所属は起動時一回の取得とDiscord.jsのjoin/remove cache更新で判定し、取得不能も通知を抑止する。
+- Integration boundary: 既存Discord identityと専用Bearer認証で箱庭の取得行をMariaの既存付与・保存経路へ送る一方向連携とする。外部通信は取得transaction外で行い、失敗は再送対象に残して箱庭の取得やTurn進行を止めない。
+- Boundary: 承認範囲は「島の秘書」の実績連携。追加実績、汎用連携、任意のDiscord送信は含めない。Worldのmerge/deploy・DB適用、専用secret設定・cron登録による連携有効化は別のOwner承認・作業とし、承認範囲外のMaria連携は別roadmapまでDeferredを維持する。
+- Decision record: `product/docs/plans/maria-achievement-link.md`
 
 ## Underground RPG gates
 
@@ -612,12 +621,6 @@
 - Status: Deferred
 - Activation gate: meteor item roadmap
 - Boundary: cell、range、Nation、layer、eventへのtarget contractを決める。
-
-### E-07 Mariachang連携
-
-- Status: Deferred
-- Activation gate: separately approved integration roadmap
-- Boundary: authentication、data ownership、one-way reference、failure isolationを決める。
 
 ### E-08 season
 

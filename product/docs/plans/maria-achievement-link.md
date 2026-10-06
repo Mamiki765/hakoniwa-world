@@ -1,6 +1,12 @@
 # 箱庭実績・肩書きとMariachangの取得連携（Draft）
 
-確認日: 2026-10-06。Worldの起点は `main` @ `1ecf8265eca44a638f031ff6ffee219b958f912a`（v32）、Mariachangは `master` @ `7a7d984230311ec381ba0f3561951baea1352996`。World [Draft #204](https://github.com/Mamiki765/hakoniwa-world/pull/204)と既存のMaria [Draft #21](https://github.com/Mamiki765/Mariachang/pull/21)で作業する。実装・模擬検証までで、merge・deploy・実環境DB更新・実Discord通知は行っていない。
+確認日: 2026-10-06。調査起点はWorld `main` @ `1ecf8265eca44a638f031ff6ffee219b958f912a`（v32）、Mariachang `master` @ `7a7d984230311ec381ba0f3561951baea1352996`。World [Draft #204](https://github.com/Mamiki765/hakoniwa-world/pull/204)は未merge・未deploy。Maria [#21](https://github.com/Mamiki765/Mariachang/pull/21)はOwnerがmerge済み（`5283df6b84f7e03bc4d756b48688ce4278cca567`）。Maria本体の更新と、Worldからの実績連携の有効化は別の作業であり、Worldの実DB付与・実連携通知は未検証。
+
+## Ownerが承認した範囲（2026-10-06）
+
+Ownerは箱庭と雨宿りの両方で実績を取得する仕組みと、最初の「島の秘書」の実装を依頼した。対応する肩書きは箱庭の秘書だけが取得・装備し、Mariaには実績だけを連動させる。非所属・退会者もMariaで取得し通知だけを抑止すること、起動時一回の所属取得とjoin/remove cache更新を使うことも確認済み。[E-07](../../../docs/open-questions.md#e-07-mariachangへの実績取得連携)はこの範囲をDecidedとする。
+
+承認はこの実績連携の実装・Draftレビューまでで、追加20候補や他のMaria連携、任意のDiscord送信を承認した意味ではない。Worldのmerge/deploy・DB適用と、本番の専用secret設定・cron登録による連携有効化は別のOwner承認・作業として扱う。以下をauthentication・data ownership・一方向連携・failure isolationのDecision recordとし、承認範囲外のMaria連携はDeferredを維持する。
 
 ## 確定した取得・表示
 

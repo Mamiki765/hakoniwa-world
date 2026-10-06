@@ -84,7 +84,7 @@ EXPECTED_STATUSES = {
     "E-04": "Deferred",
     "E-05": "Deferred",
     "E-06": "Deferred",
-    "E-07": "Deferred",
+    "E-07": "Decided",
     "E-08": "Deferred",
     "E-09": "Deferred",
     "MISSILE-01": "Decided",
