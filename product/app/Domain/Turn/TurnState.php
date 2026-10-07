@@ -15,17 +15,17 @@ final class TurnState
     /** @var array<int, array<string, array{element_key: string, resource_key: string, amount: int, count: int|null}>> */
     private array $economicContributions = [];
 
-    /** @var array<int, bool> */
+    /** @var array<int, true> */
     private array $supplementalAttractionPayments = [];
 
-    public function supplementalAttractionPayment(int $nationId): ?bool
+    public function hasPaidSupplementalAttraction(int $nationId): bool
     {
-        return $this->supplementalAttractionPayments[$nationId] ?? null;
+        return isset($this->supplementalAttractionPayments[$nationId]);
     }
 
-    public function setSupplementalAttractionPayment(int $nationId, bool $paid): void
+    public function markSupplementalAttractionPaid(int $nationId): void
     {
-        $this->supplementalAttractionPayments[$nationId] = $paid;
+        $this->supplementalAttractionPayments[$nationId] = true;
     }
 
     /** Collect only completed credits/debits; callers retain their existing settlement and RNG order. */

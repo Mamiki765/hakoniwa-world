@@ -1799,13 +1799,14 @@ final class CompleteTurnEngine
         $supplementalAttraction = false;
         if ($towel !== null) {
             $nationId = (int) $cell->owner_nation_id;
-            $paid = $context->state->supplementalAttractionPayment($nationId);
-            if ($paid === null) {
-                // The existing growth pass supplies eligibility. One guarded debit avoids a rescan or per-cell reads.
+            $paid = $context->state->hasPaidSupplementalAttraction($nationId);
+            if (! $paid) {
+                // Retry only unpaid eligible cells; same-Turn ship income can make a later debit affordable.
+                // The existing growth pass supplies eligibility without a rescan or extra balance reads.
                 $paid = Nation::query()->whereKey($nationId)->where('money', '>=', $towel['cost_money'])
                     ->decrement('money', $towel['cost_money']) === 1;
-                $context->state->setSupplementalAttractionPayment($nationId, $paid);
                 if ($paid) {
+                    $context->state->markSupplementalAttractionPaid($nationId);
                     $context->state->addEconomicContribution($nationId, 'attraction_towel', 'money', -$towel['cost_money'], null);
                 }
             }
@@ -1825,9 +1826,6 @@ final class CompleteTurnEngine
             $growth = $context->random->stream(TurnRandomStreamFactory::POPULATION_GROWTH)->integer(
                 $growthRules['minimum'], $growthRules['maximum'],
             );
-            if ($supplementalAttraction) {
-                $growth = intdiv($growth * $towel['percent'], 100);
-            }
             $populationEffect = $this->secretaryItems->singleSnapshotEffect(
                 $context->state, (int) $cell->owner_nation_id, 'population_growth_percent',
             );
@@ -1837,6 +1835,9 @@ final class CompleteTurnEngine
                     throw new DomainException('Secretary population growth Item snapshot is invalid.');
                 }
                 $growth += intdiv($growth * $percent, 100);
+            }
+            if ($supplementalAttraction) {
+                $growth = intdiv($growth * $towel['percent'], 100);
             }
             if (! $attraction && ! $supplementalAttraction && $demographicsEnabled) {
                 $indomitableBonus = $this->demographics->indomitableBonus(

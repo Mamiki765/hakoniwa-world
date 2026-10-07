@@ -1676,6 +1676,45 @@ class TurnCellProcessingTest extends TestCase
             ], $label);
             $this->assertCount($money === $expectedMoney ? 0 : 1, $attempt->state->economicContributions($nation->id), $label);
         }
+        $item->update(['level' => 1, 'equipped_slot' => $slot]);
+        $this->settlement($first, 'city', 10_000);
+        $this->underseaCity($second, 10_000);
+        $port = $this->ownedEmptyCell($nation, [$first->id, $second->id, $capitalId]);
+        $this->facility($port, 'port', 'plain');
+        [$origin, $destination] = $this->eastwardSeaLine($this->surfaceMapSpace($world));
+        Ship::query()->create([
+            'world_id' => $world->id, 'ruleset_version_id' => $ruleset->id,
+            'nation_id' => $nation->id, 'map_cell_id' => $origin->id, 'ship_type_key' => 'tourist',
+            'current_hp' => 2, 'max_hp' => 2, 'heading' => GridCoordinate::EAST,
+            'state' => Ship::STATE_ACTIVE, 'version' => 1,
+        ]);
+        NationResource::query()->where('nation_id', $nation->id)
+            ->whereHas('definition', fn ($query) => $query->where('key', 'oil'))->update(['amount' => 2]);
+        $nation->update(['money' => 90]);
+        [$laterIncome] = $this->context($world, $nation,
+            [$first->id, $origin->id, $second->id, $destination->id], hash('sha256', 'towel later ship income'), ruleset: $ruleset);
+        $laterResult = app(CompleteTurnEngine::class)->execute('process_cells', $laterIncome);
+        $this->assertSame(1, $laterResult->metrics['ship_moves']);
+        $this->assertSame([10_000, 10_020, 10], [
+            $first->fresh()->population, $second->fresh()->population, (int) $nation->fresh()->money,
+        ]);
+        $this->assertSame([['element_key' => 'attraction_towel', 'resource_key' => 'money', 'amount' => -100, 'count' => null]],
+            array_values(array_filter($laterIncome->state->economicContributions($nation->id),
+                static fn (array $row): bool => $row['element_key'] === 'attraction_towel')));
+        $user->secretary()->sole()->itemInstances()->create([
+            'item_key' => SecretaryItemCatalog::LOVE_EMBLEM, 'level' => 1,
+            'equipped_slot' => $slot + 1, 'obtained_at' => now(),
+        ]);
+        $settings['turn_processing']['settlement']['post_ordinary_attraction_growth'] = [
+            'minimum' => 199, 'maximum' => 199, 'unit_people' => 1,
+        ];
+        $ruleset->update(['settings' => $settings]);
+        $this->settlement($first, 'city', 10_000);
+        $nation->update(['money' => 100]);
+        [$withLove] = $this->context($world, $nation, [$first->id], hash('sha256', 'towel regular growth modifiers'), ruleset: $ruleset);
+        app(CompleteTurnEngine::class)->execute('process_cells', $withLove);
+        // Apply 10% to regular attraction's 218 people after the existing love bonus, then floor once.
+        $this->assertSame([10_021, 0], [$first->fresh()->population, (int) $nation->fresh()->money]);
     }
 
     public function test_undersea_city_reuses_settlement_growth_and_one_famine_loss_then_discards_below_3000(): void
