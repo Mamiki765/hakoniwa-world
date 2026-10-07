@@ -1541,6 +1541,7 @@ final class MissileKarmaAndRecoveryTest extends CommandAndMissileTestCase
             ->with(['terrain', 'facility', 'ownerNation'])->firstOrFail();
         $thirdImpact = MapCell::query()->where('owner_nation_id', $third->id)
             ->whereKeyNot($third->capital()->value('map_cell_id'))
+            ->whereHas('terrain', fn ($query) => $query->where('key', 'plain'))
             ->whereNull('facility_definition_id')->with(['terrain', 'facility', 'ownerNation'])
             ->firstOrFail();
         MapCell::query()->whereIn('owner_nation_id', [$first->id, $second->id, $third->id])
