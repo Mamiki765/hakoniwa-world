@@ -585,6 +585,9 @@ final class DisasterTurnService
         $rules = $this->rules($context);
         $settings = $rules['fire'];
         $facilityKey = $cell->facility?->key;
+        if ($this->facilityRanks->largeCityImmuneToDisaster($context->ruleset->settings, $facilityKey, (int) $cell->population, 'fire')) {
+            return false;
+        }
         $unprotectedSeaFacility = in_array(
             $facilityKey,
             $settings['unprotected_sea_facility_keys'] ?? [],
@@ -622,6 +625,9 @@ final class DisasterTurnService
             return false;
         }
         if ($this->charms->protect($context, $cell, 'fire')) {
+            return false;
+        }
+        if ($unprotectedSeaFacility && $this->protectUnderseaFire($context, $cell, $settings, $cellIndex)) {
             return false;
         }
         if ($this->isCapital($cell)) {
@@ -669,6 +675,51 @@ final class DisasterTurnService
     }
 
     /** @param array<string, mixed> $settings */
+    private function protectUnderseaFire(
+        TurnContext $context,
+        MapCell $cell,
+        array $settings,
+        ?DisasterMutableCellIndex $cellIndex,
+    ): bool {
+        $protection = $settings['undersea_protection'] ?? null;
+        if (! is_array($protection)) {
+            return false;
+        }
+        $radius = (int) $protection['radius'];
+        $cost = (int) $protection['cost_money'];
+        $origin = new GridCoordinate((int) $cell->x, (int) $cell->y);
+        $candidates = $cellIndex?->cells() ?? MapCell::query()
+            ->where('map_space_id', $cell->map_space_id)
+            ->whereBetween('x', [$cell->x - $radius, $cell->x + $radius])
+            ->whereBetween('y', [$cell->y - $radius, $cell->y + $radius])
+            ->whereHas('facility', fn ($query) => $query->where('key', $protection['facility_key']))
+            ->orderBy('id')->lockForUpdate()->with('facility')->get()->all();
+        foreach ($candidates as $station) {
+            if ($station->facility?->key !== $protection['facility_key']
+                || $station->owner_nation_id === null
+                || $station->owner_nation_id !== $cell->owner_nation_id
+                || $origin->distanceTo(new GridCoordinate((int) $station->x, (int) $station->y)) > $radius) {
+                continue;
+            }
+            $payer = Nation::query()->whereKey($station->owner_nation_id)
+                ->whereIn('state', ['active', 'recovery'])->lockForUpdate()->first();
+            if ($payer === null || (int) $payer->money < $cost) {
+                continue;
+            }
+            $payer->decrement('money', $cost);
+            // The first affordable station settles the single fire. Never charge overlaps twice.
+            $this->events->record($context, 'fire.extinguished_undersea', $cell, [
+                'nation_id' => $cell->owner_nation_id, 'x' => $cell->x, 'y' => $cell->y,
+                'cost_money' => $cost,
+            ], 'private');
+
+            return true;
+        }
+
+        return false;
+    }
+
+    /** @param array<string, mixed> $settings */
     private function earthquake(
         TurnContext $context,
         MapSpace $space,
@@ -688,6 +739,9 @@ final class DisasterTurnService
                 continue;
             }
             $facilityKey = $cell->facility?->key;
+            if ($this->facilityRanks->largeCityImmuneToDisaster($context->ruleset->settings, $facilityKey, (int) $cell->population, 'earthquake')) {
+                continue;
+            }
             $city = in_array($facilityKey, ['village', 'town', 'city', 'capital'], true)
                 && $cell->population >= $settings['minimum_city_population'];
             if (! $city && ! in_array($facilityKey, $settings['facility_keys'], true)) {
@@ -897,6 +951,7 @@ final class DisasterTurnService
                     $damaged += $shipRemoved ? 1 : 0;
                 } elseif ($this->isCapital($cell)) {
                     $this->damageCapital($context, $cell, 'meteor_shower', 'deep_sea', [
+                        'population_damage_kind' => FacilityRankPolicy::LAND_DESTRUCTION,
                         'center_x' => $center->x, 'center_y' => $center->y,
                     ]);
                     $damaged++;
@@ -1031,9 +1086,9 @@ final class DisasterTurnService
                 if ($distance === 0) {
                     $this->damageCapital($context, $cell, $disasterKey, 'deep_sea', $eventMetadata);
                 } elseif ($distance === 1) {
-                    $this->damageCapital($context, $cell, $disasterKey, 'excavation_or_shallow', $eventMetadata);
+                    $this->damageCapital($context, $cell, $disasterKey, 'excavation_or_shallow', [...$eventMetadata, 'population_damage_kind' => FacilityRankPolicy::LAND_DESTRUCTION]);
                 } elseif ($this->hugeMeteorRingTwoTarget($cell, $settings)) {
-                    $this->damageCapital($context, $cell, $disasterKey, 'facility_or_wasteland', $eventMetadata);
+                    $this->damageCapital($context, $cell, $disasterKey, 'facility_or_wasteland', [...$eventMetadata, 'population_damage_kind' => FacilityRankPolicy::ORDINARY_TERRAIN_DESTRUCTION]);
                 } else {
                     continue;
                 }
@@ -1075,7 +1130,7 @@ final class DisasterTurnService
                     'wasteland',
                     false,
                     'disaster.cell_damaged',
-                    $eventMetadata,
+                    [...$eventMetadata, 'population_damage_kind' => FacilityRankPolicy::ORDINARY_TERRAIN_DESTRUCTION],
                     $cellIndex,
                 );
             } elseif ($cell->terrain->key === 'sea' || $cell->terrain->key === 'shallow'
@@ -1119,7 +1174,7 @@ final class DisasterTurnService
                     $distance === 0 ? 'sea' : 'shallow',
                     true,
                     'disaster.cell_damaged',
-                    $eventMetadata,
+                    $distance === 1 ? [...$eventMetadata, 'population_damage_kind' => FacilityRankPolicy::LAND_DESTRUCTION] : $eventMetadata,
                     $cellIndex,
                 );
             }
@@ -1385,6 +1440,11 @@ final class DisasterTurnService
         }
         $before = $cell->population;
         $cell->population = max($minimum, intdiv($before * (100 - $percentage), 100));
+        $kind = $extra['population_damage_kind'] ?? null;
+        $limit = is_string($kind) ? $this->facilityRanks->populationDamageLimit($context->ruleset->settings, $kind) : null;
+        if ($limit !== null) {
+            $cell->population = max($cell->population, $before - $limit);
+        }
         $minimumPopulationAdjustment = max(0, $cell->population - $before);
         $cell->version++;
         $this->saveChangedCell($context, $cell);
@@ -1432,6 +1492,24 @@ final class DisasterTurnService
         $beforeFacility = $cell->facility?->key;
         $beforeOwner = $cell->owner_nation_id;
         $beforePopulation = $cell->population;
+        $kind = $extra['population_damage_kind'] ?? ($disasterKey === 'meteor_shower' ? FacilityRankPolicy::LAND_DESTRUCTION : null);
+        $loss = is_string($kind) ? $this->facilityScaleDamage->applyPopulation($context, $cell, $kind) : null;
+        if ($loss !== null) {
+            $this->events->record($context, $eventType, $cell, [
+                'nation_id' => $beforeOwner,
+                'disaster_key' => $disasterKey,
+                'x' => $cell->x,
+                'y' => $cell->y,
+                'preserved_facility_key' => $beforeFacility,
+                'before_population' => $beforePopulation,
+                'after_population' => $cell->population,
+                'from_terrain_key' => $beforeTerrain,
+                'to_terrain_key' => $beforeTerrain,
+                ...$extra,
+            ]);
+
+            return $loss > 0;
+        }
         $targetOwner = $neutralizeOwner ? null : $beforeOwner;
         $monsterRemoved = $this->removeMonsterForTerrainEvent($context, $cell, $disasterKey);
         if ($beforeTerrain === $terrainKey && $beforeFacility === null

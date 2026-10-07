@@ -8,6 +8,22 @@ final class MonsterNaturalSpawnPolicy
 {
     /**
      * @param  array<string, mixed>  $settings
+     * @return list<string>
+     */
+    public function rescuePool(array $settings, int $population, bool $industrialRankTwo): array
+    {
+        $rescue = $settings['rescue']['monster_keys'] ?? [];
+        $conditional = $settings['rank_two_condition']['conditional_monster_keys'] ?? [];
+
+        return array_values(array_filter(
+            $this->poolForPopulation($settings, $population),
+            static fn (string $key): bool => in_array($key, $rescue, true)
+                && ($industrialRankTwo || ! in_array($key, $conditional, true)),
+        ));
+    }
+
+    /**
+     * @param  array<string, mixed>  $settings
      * @param  list<string>  $definitionKeys
      */
     public function validatePoolReferences(array $settings, array $definitionKeys): void

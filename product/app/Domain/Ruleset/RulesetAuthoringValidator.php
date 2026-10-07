@@ -444,6 +444,21 @@ final class RulesetAuthoringValidator
                 ],
             ],
         ];
+        if ($version >= 35) {
+            $expected['definitions']['city'] = [
+                'rank_one_maximum_population' => 20_000,
+                'rank_two_name' => '大都市',
+                'rank_two_asset_key' => 'tile.large_city',
+                'rank_two_effect_description' => '地震・火災を受けず、通常怪獣の自然発生先にならない。',
+                'promotion_description' => '人口20,001人以上で自動的にランク2、20,000人以下で通常都市へ',
+                'immune_disaster_keys' => ['earthquake', 'fire'],
+                'exclude_normal_monster_spawn' => true,
+                'population_damage_reference' => 'farm',
+                'population_per_damage_unit' => 1000,
+                'minimum_population' => 0,
+                'capital_population_loss_policy' => 'minimum_of_existing_and_fixed_loss',
+            ];
+        }
         if ($authored !== $expected) {
             throw new DomainException('The v21+ Ruleset facility rank system differs from the Owner decision.');
         }
@@ -1024,6 +1039,7 @@ final class RulesetAuthoringValidator
         $expected['foreign_wasteland_territory_expand'] = 1;
         $expected['impact_points']['facility_scale_damaged'] = 1;
         $expected['impact_points']['facility_scale_land_damaged'] = 3;
+        $expected['impact_points']['undersea_fire_station_destroyed'] = 3;
         if ($authored !== $expected) {
             throw new DomainException('ruleset.karma differs from the v13 Owner decision.');
         }
@@ -1187,7 +1203,7 @@ final class RulesetAuthoringValidator
             'monster_final_blow_experience' => 0,
         ];
         $expectedResistance = [
-            'facility_keys' => ['seabed_base', 'undersea_city'],
+            'facility_keys' => ['seabed_base', 'undersea_city', 'undersea_fire_station'],
             'ineffective_missile_keys' => ['missile', 'pp_missile', 'spp_missile'],
             'destructive_missile_keys' => ['land_destruction_missile'],
         ];
@@ -1500,6 +1516,13 @@ final class RulesetAuthoringValidator
         }
         if ($actualTiers !== $expectedTiers) {
             throw new DomainException("{$spawnPath}.population_tiers must match the Owner-approved v21 uniform pools.");
+        }
+        if (($settings['version'] ?? 0) >= 35 && ($spawn['rescue'] ?? null) !== [
+            'monster_keys' => ['king_inora', 'nyowamiya', 'mecha_inora_zero'],
+            'empty_terrain_keys' => ['plain', 'wasteland'], 'large_city_facility_key' => 'city',
+            'eligibility' => 'existing_population_and_industrial_rank_conditions', 'trigger' => 'no_normal_candidate',
+        ]) {
+            throw new DomainException('Natural rescue spawning differs from the Owner decision.');
         }
         $rankTwoCondition = $spawn['rank_two_condition'] ?? null;
         if ($rankTwoCondition !== [
@@ -2752,6 +2775,12 @@ final class RulesetAuthoringValidator
             $this->integer($growth['unit_people'], "{$path}.settlement.{$growthKey}.unit_people", 1);
         }
         $attractionMaximum = $this->integer($settlement['attraction_maximum_population'], "{$path}.settlement.attraction_maximum_population", 1);
+        if (($settings['version'] ?? 0) >= 35
+            && (($settlement['capital_maximum_basis'] ?? null) !== 'effective_attraction_maximum'
+                || ($settlement['capital_maximum_attraction_bonus'] ?? null) !== 15000
+                || $settings['capital_growth_maximum_population'] !== $attractionMaximum + 15000)) {
+            throw new DomainException('The capital maximum must follow the effective attraction maximum.');
+        }
         if ($attractionMaximum < $largestOrdinaryMaximum) {
             throw new DomainException("{$path}.settlement attraction maximum cannot be below an ordinary maximum.");
         }
@@ -3093,6 +3122,23 @@ final class RulesetAuthoringValidator
         }
         if (($fire['unprotected_sea_facility_keys'] ?? null) !== ['undersea_city']) {
             throw new DomainException("{$firePath} must make undersea_city an unprotected normal-probability fire target.");
+        }
+        $protection = $this->map($fire['undersea_protection'] ?? null, "{$firePath}.undersea_protection");
+        if (($protection['facility_key'] ?? null) !== 'undersea_fire_station'
+            || ($protection['radius'] ?? null) !== 2
+            || ($protection['cost_money'] ?? null) !== 100
+            || ($protection['target_owner'] ?? null) !== 'station_owner'
+            || ($protection['selection'] ?? null) !== 'affordable_owner_map_cell_id_ascending') {
+            throw new DomainException("{$firePath} differs from the undersea fire protection contract.");
+        }
+        $maintenance = $this->map($turn['undersea_fire_station_maintenance'] ?? null, "{$path}.undersea_fire_station_maintenance");
+        if (($maintenance['facility_key'] ?? null) !== 'undersea_fire_station'
+            || ($maintenance['cost_money'] ?? null) !== 6
+            || ($maintenance['settlement_order'] ?? null) !== 'map_cell_id_ascending'
+            || ($maintenance['settlement_stage'] ?? null) !== 'after_undersea_city_maintenance'
+            || ($maintenance['failure_terrain_key'] ?? null) !== 'sea'
+            || ($maintenance['failure_ownership_policy'] ?? null) !== 'neutral') {
+            throw new DomainException("{$path} differs from the undersea fire station maintenance contract.");
         }
 
         if (array_key_exists('land_subsidence', $disasters)) {

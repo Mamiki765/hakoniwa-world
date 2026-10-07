@@ -48,6 +48,12 @@ final class SecretaryItemGameplayContractTest extends TestCase
         $this->assertSame(10_500, $demographics->naturalMaximum($settings, 10_000, 10));
         $this->assertSame(21_000, $demographics->attractionMaximum($settings, 20_000, 10));
         $this->assertSame(225, $demographics->indomitableBonus($settings, 9_000, 10));
+        $this->assertSame(51_500, $demographics->capitalMaximum($settings, 10, 10_000));
+        $historical = require config_path('hakoniwa/rulesets/hakoniwa-2s-plus-v34.php');
+        $contract->validate($historical);
+        $this->assertSame(35_000, $demographics->capitalMaximum($historical, 10, 10_000));
+        $towel = $catalog->definition(SecretaryItemCatalog::ATTRACTION_TOWEL);
+        $this->assertSame(['accessory', 'artifact', 10], [$towel['category'], $towel['rarity'], $towel['max_level']]);
 
         $this->assertSame(
             'secretary_item:bow:nation:7:item:elf_bow:trigger:v1',

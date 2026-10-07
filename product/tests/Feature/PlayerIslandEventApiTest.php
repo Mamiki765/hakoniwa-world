@@ -18,6 +18,40 @@ class PlayerIslandEventApiTest extends TestCase
     use CreatesTestWorlds;
     use RefreshDatabase;
 
+    public function test_summary_projects_settled_contributions_only_to_owner_and_keeps_old_missing_rows_hidden(): void
+    {
+        [$world, $owner, $nation] = $this->nation('決済表示島');
+        $world->update(['current_turn' => 2]);
+        DB::table('audit_events')->delete();
+        $old = $this->audit('turn.summary', $nation, $nation, 'nation', 1, []);
+        $summary = $this->audit('turn.summary', $nation, $nation, 'nation', 2, [
+            'economic_contributions' => [
+                ['element_key' => 'fishing', 'resource_key' => 'fish', 'amount' => 0, 'count' => 3],
+                ['element_key' => 'pizzeria', 'resource_key' => 'money', 'amount' => 110, 'count' => null],
+                ['element_key' => 'undersea_fire_station', 'resource_key' => 'money', 'amount' => -6, 'count' => 1],
+            ],
+            'summary' => ['money' => ['start' => 100, 'end' => 104, 'delta' => 4]],
+        ]);
+        $fire = $this->audit('fire.extinguished_undersea', $nation, $nation, 'private', 2, ['x' => 4, 'y' => 5, 'cost_money' => 100]);
+        $overflow = $this->audit('resource.food_overflow_resolved', $nation, $nation, 'nation', 2, [
+            'resource_key' => 'fish', 'requested_overflow_tons' => 21_000, 'sold_tons' => 0, 'revenue' => 0, 'discarded_tons' => 21_000,
+        ]);
+        $events = collect($this->actingAs($owner)->getJson("/api/v1/nations/{$nation->id}/events")->assertOk()->json('data.groups'))->flatMap(fn (array $group): array => $group['events']);
+        $rows = $events->firstWhere('id', $summary)['economic_contributions'];
+        $this->assertSame([0, 110, -6], array_column($rows, 'amount'));
+        $this->assertSame([3, null, 1], array_column($rows, 'count'));
+        $this->assertSame(['トン', '億円', '億円'], array_column($rows, 'unit'));
+        $this->assertNull($events->firstWhere('id', $old)['economic_contributions']);
+        $this->assertSame(4, $events->firstWhere('id', $summary)['summary']['money']['delta']);
+        $this->assertTrue($events->contains('id', $overflow));
+        $fireEvent = $events->firstWhere('id', $fire);
+        $this->assertTrue($fireEvent['confidential']);
+        $this->assertStringContainsString('(4,5)', $fireEvent['message']);
+        $this->assertStringContainsString('100億円', $fireEvent['message']);
+        $public = collect($this->getJson("/api/v1/public/nations/{$nation->id}/events")->assertOk()->json('data.groups'))->flatMap(fn (array $group): array => $group['events']);
+        $this->assertEmpty($public->whereIn('id', [$old, $summary, $fire, $overflow]));
+    }
+
     public function test_major_news_is_a_fixed_public_lifecycle_feed_and_excludes_commands_awards_and_turn_completion(): void
     {
         [$world, , $nation] = $this->nation('ニュース島');
@@ -190,6 +224,9 @@ class PlayerIslandEventApiTest extends TestCase
         $damagedWithoutHost = $this->audit('monster.damaged', $attacker, $attacker, 'public', 2, [
             'monster_key' => 'inora', 'x' => 12, 'y' => 8,
         ]);
+        $killedWithoutHost = $this->audit('monster.killed', $attacker, $attacker, 'public', 2, [
+            'monster_key' => 'aoi_inora', 'killer_nation_id' => $attacker->id, 'x' => 0, 'y' => 0,
+        ]);
         $damagedWithHost = $this->audit('monster.damaged', $attacker, $attacker, 'public', 2, [
             'monster_key' => 'inora', 'host_nation_id' => $host->id,
             'host_nation_name' => $host->name, 'x' => 12, 'y' => 8,
@@ -243,6 +280,7 @@ class PlayerIslandEventApiTest extends TestCase
         )->pluck('id');
         $this->assertNotContains($blockedWithoutHost, $attackerEventIds);
         $this->assertNotContains($damagedWithoutHost, $attackerEventIds);
+        $this->assertNotContains($killedWithoutHost, $attackerEventIds);
         $this->assertNotContains($damagedWithHost, $attackerEventIds);
         $this->assertNotContains($legacyDamagedWithHostId, $attackerEventIds);
         $this->assertNotContains($killedWithHost, $attackerEventIds);

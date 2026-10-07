@@ -39,6 +39,7 @@ use App\Models\World;
 use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
+use PHPUnit\Framework\Attributes\DataProvider;
 use RuntimeException;
 use Tests\Concerns\CreatesTestWorlds;
 use Tests\Support\CurrentRulesetFixture;
@@ -638,12 +639,50 @@ class MonsterSystemTest extends TestCase
             ->where('x', $fallbackDestination->x)->where('y', $fallbackDestination->y)->count());
     }
 
+    public function test_natural_spawn_uses_an_ordinary_city_and_excludes_the_population_rank_two_city(): void
+    {
+        [$world, $nation, $ruleset, $space] = $this->worldAndNation('大都市自然発生国');
+        MapCell::query()->where('owner_nation_id', $nation->id)->update(['population' => 0]);
+        $capital = $nation->capital()->firstOrFail()->cell()->firstOrFail();
+        $capital->update(['population' => 100_000]);
+        $targets = MapCell::query()->where('owner_nation_id', $nation->id)->whereKeyNot($capital->id)
+            ->whereHas('terrain', fn ($query) => $query->where('key', 'plain'))->orderBy('id')->limit(2)->get();
+        $this->assertCount(2, $targets);
+        [$ordinary, $large] = $targets->all();
+        $this->setCell($ordinary, 'plain', 'city', $nation->id, 20_000);
+        $this->setCell($large, 'plain', 'city', $nation->id, 20_001);
+        $ruleset = $this->guaranteeNaturalSpawn($ruleset);
+        $seedLabel = null;
+        foreach (range(0, 1_000) as $candidate) {
+            $label = "ordinary city before fallback {$candidate}";
+            if ((new TurnRandomStreamFactory(hash('sha256', $label)))->stream(
+                TurnRandomStreamFactory::monsterSpawn($nation->id, 'candidate', 1),
+            )->integer(0, 1) === 1) {
+                $seedLabel = $label;
+                break;
+            }
+        }
+        $this->assertNotNull($seedLabel, 'Removing the exclusion must select the second, large-city candidate.');
+        [$context] = $this->context($world, $ruleset, 2, $seedLabel, [$nation->id]);
+
+        $metrics = app(MonsterSpawnService::class)->spawnNatural($context, $space);
+
+        $this->assertSame(1, $metrics['monsters_spawned']);
+        $this->assertSame($ordinary->id, (int) MonsterOccupancy::query()->sole()->map_cell_id);
+        $this->assertSame(0, (int) $ordinary->fresh()->population);
+        $this->assertSame(20_001, (int) $large->fresh()->population);
+        $this->assertSame('city', $large->fresh()->facility()->value('key'));
+    }
+
     public function test_triggered_spawn_without_an_eligible_settlement_is_a_safe_audited_noop(): void
     {
         [$world, $nation, $ruleset, $space] = $this->worldAndNation('候補なし国');
         MapCell::query()->where('owner_nation_id', $nation->id)->update(['population' => 0]);
         $capital = $nation->capital()->firstOrFail()->cell()->firstOrFail();
         $capital->update(['population' => 400_000]);
+        foreach (MapCell::query()->where('owner_nation_id', $nation->id)->whereKeyNot($capital->id)->get() as $cell) {
+            $this->setCell($cell, 'forest', null, $nation->id, 0);
+        }
         $ruleset = $this->guaranteeNaturalSpawn($ruleset);
         [$context, $run] = $this->context($world, $ruleset, 2, 'spawn-no-candidate', [$nation->id]);
 
@@ -657,6 +696,75 @@ class MonsterSystemTest extends TestCase
             ->whereRaw("metadata->>'turn_run_id' = ?", [(string) $run->id])->count());
         $this->assertSame('admin', DB::table('audit_events')
             ->where('event_type', 'monster.spawn_failed_no_settlement')->value('visibility'));
+    }
+
+    public static function rescueSpawnCases(): array
+    {
+        return [
+            'large city at king threshold' => ['city', 'plain', 400_000, false, 0, 'king_inora'],
+            'empty wasteland without industry' => [null, 'wasteland', 500_000, false, 0, 'king_inora'],
+            'empty plain with industry and nyowamiya' => [null, 'plain', 500_000, true, 1, 'nyowamiya'],
+            'empty plain with industry and mecha zero' => [null, 'plain', 500_000, true, 2, 'mecha_inora_zero'],
+            'below king threshold has no rescue type' => [null, 'plain', 399_999, true, 0, null],
+        ];
+    }
+
+    #[DataProvider('rescueSpawnCases')]
+    public function test_rescue_spawn_uses_only_existing_population_and_industrial_eligible_types(
+        ?string $facility, string $terrain, int $population, bool $industry, int $typeIndex, ?string $expected,
+    ): void {
+        [$world, $nation, $ruleset, $space] = $this->worldAndNation('救済出現国');
+        $capital = $nation->capital()->firstOrFail()->cell()->firstOrFail();
+        $cells = MapCell::query()->where('owner_nation_id', $nation->id)->whereKeyNot($capital->id)->orderBy('id')->get();
+        foreach ($cells as $cell) {
+            $this->setCell($cell, 'forest', null, $nation->id, 0);
+        }
+        $target = $cells->firstOrFail();
+        $targetPopulation = $facility === 'city' ? 21_000 : 0;
+        $this->setCell($target, $terrain, $facility, $nation->id, $targetPopulation);
+        $capital->update(['population' => $population - $targetPopulation]);
+        if ($industry) {
+            $farm = $cells->get(1);
+            $this->setCell($farm, 'plain', 'farm', $nation->id, 0);
+            $farm->refresh()->update(['facility_scale' => 51]);
+        }
+        $capitalIdentity = $capital->fresh()->only(['id', 'facility_definition_id', 'owner_nation_id', 'terrain_definition_id', 'population']);
+        $ruleset = $this->guaranteeNaturalSpawn($ruleset);
+        $pool = app(MonsterNaturalSpawnPolicy::class)->rescuePool($ruleset->settings['monster_system']['natural_spawn'], $population, $industry);
+        $label = 'rescue single type';
+        if (count($pool) > 1) {
+            foreach (range(0, 1_000) as $candidate) {
+                $label = "rescue type {$candidate}";
+                if ((new TurnRandomStreamFactory(hash('sha256', $label)))->stream(
+                    TurnRandomStreamFactory::monsterSpawn($nation->id, 'type', 1),
+                )->integer(0, count($pool) - 1) === $typeIndex) {
+                    break;
+                }
+            }
+        }
+        [$context, $run] = $this->context($world, $ruleset, 2, $label, [$nation->id]);
+
+        $metrics = app(MonsterSpawnService::class)->spawnNatural($context, $space);
+
+        $this->assertSame($capitalIdentity, $capital->fresh()->only(array_keys($capitalIdentity)));
+        if ($expected === null) {
+            $this->assertSame(0, $metrics['monsters_spawned']);
+            $this->assertSame(1, $metrics['blocked_no_settlement']);
+            $this->assertSame(0, MonsterOccupancy::query()->count());
+        } else {
+            $this->assertSame(1, $metrics['monsters_spawned']);
+            $occupancy = MonsterOccupancy::query()->sole();
+            $this->assertSame($target->id, (int) $occupancy->map_cell_id);
+            $this->assertSame($expected, MonsterInstance::query()->sole()->definition()->value('key'));
+            $target->refresh();
+            $this->assertSame(0, (int) $target->population);
+            $this->assertNull($target->facility_definition_id);
+            $this->assertSame($nation->id, $target->owner_nation_id);
+            $this->assertSame('wasteland', $target->terrain()->value('key'));
+            $event = json_decode((string) DB::table('audit_events')->where('event_type', 'monster.spawned')
+                ->whereRaw("metadata->>'turn_run_id' = ?", [(string) $run->id])->value('metadata'), true, 512, JSON_THROW_ON_ERROR);
+            $this->assertTrue($event['rescue_spawn']);
+        }
     }
 
     public function test_natural_spawn_replays_the_same_actor_after_transaction_rollback(): void

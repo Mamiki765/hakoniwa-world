@@ -206,7 +206,7 @@ final class CompleteTurnEngine
         $resources = $this->resourceDefinitions($context);
         $wheat = $this->resourceDefinition($resources, 'wheat');
         $nationIds = $context->state->stableNationIds();
-        // Cell state stays unchanged during economy; keep these reads local to this phase.
+        // Keep these initial reads local to this phase; unpaid stations may be abandoned below.
         $populationByNation = $this->populationByNation($nationIds);
         $facilitiesByNation = ($nationIds === []
             ? new Collection
@@ -298,6 +298,7 @@ final class CompleteTurnEngine
                 $inputs['undersea_city_cells'],
                 $resources,
             );
+            $this->settleUnderseaFireStationMaintenance($context, $nation, $facilitiesByNation->get($nationId, []));
 
             $requiredNutrition = $economy['food_consumption'];
             $consumption = $this->consumeFood(
@@ -489,6 +490,37 @@ final class CompleteTurnEngine
             'industrial_goods_consumed' => $plan['industrial_goods_consumed'],
             'minerals_consumed' => $plan['minerals_consumed'],
         ];
+    }
+
+    /** @param iterable<MapCell> $facilities */
+    private function settleUnderseaFireStationMaintenance(TurnContext $context, Nation $nation, iterable $facilities): void
+    {
+        $settings = $context->ruleset->settings['turn_processing']['undersea_fire_station_maintenance'] ?? null;
+        if (! is_array($settings)) {
+            return;
+        }
+        $cost = (int) $settings['cost_money'];
+        foreach ($facilities as $cell) {
+            if ($cell->facility?->key !== $settings['facility_key']) {
+                continue;
+            }
+            if ((int) $nation->money >= $cost) {
+                $nation->decrement('money', $cost);
+                $context->state->addEconomicContribution($nation->id, 'undersea_fire_station', 'money', -$cost);
+
+                continue;
+            }
+            $this->cells->setFacility($cell, null);
+            $this->cells->transitionTerrain($cell, $this->terrainDefinition($context, $settings['failure_terrain_key']));
+            $cell->owner_nation_id = null;
+            $cell->population = 0;
+            $cell->version++;
+            $this->saveChangedCell($context, $cell);
+            $this->events->record($context, 'facility.undersea_fire_station_abandoned', $cell, [
+                'nation_id' => $nation->id, 'x' => $cell->x, 'y' => $cell->y,
+                'cost_money' => $cost,
+            ], 'private');
+        }
     }
 
     /** @return array<string, int> */
@@ -1167,6 +1199,7 @@ final class CompleteTurnEngine
                 'nation_name' => $nation->name,
                 'summary' => $summary,
                 'routine' => $context->state->routineSummaryMetrics($nationId),
+                'economic_contributions' => $context->state->economicContributions($nationId),
             ], 'nation');
         }
         $this->events->record($context, 'turn.completed', $context->world, [
@@ -1681,11 +1714,11 @@ final class CompleteTurnEngine
             && $context->state->hasAttraction($cell->owner_nation_id);
         $capital = $cell->facility?->key === 'capital';
         $ordinaryMaximum = $capital
-            ? $context->ruleset->settings['capital_growth_maximum_population']
-                + $this->undergroundBenefits->capitalMaximumBonusForTurn(
-                    $context->state,
-                    (int) $cell->owner_nation_id,
-                )
+            ? $this->demographics->capitalMaximum(
+                $context->ruleset->settings,
+                $birthrateLevel,
+                $this->undergroundBenefits->capitalMaximumBonusForTurn($context->state, (int) $cell->owner_nation_id),
+            )
             : ($demographicsEnabled ? $this->demographics->naturalMaximum(
                 $context->ruleset->settings,
                 $ordinaryMaximum,
@@ -1760,12 +1793,32 @@ final class CompleteTurnEngine
 
             return ['increase' => 0, 'decrease' => $loss, 'stage_transition' => 0];
         }
-        $maximumPopulation = $attraction && $cell->facility?->key !== 'capital'
+        $towel = ! $capital && ! $attraction && $before >= $ordinaryMaximum && $before < $attractionMaximum
+            ? $this->secretaryItems->snapshotAttractionTowel($context->state, (int) $cell->owner_nation_id)
+            : null;
+        $supplementalAttraction = false;
+        if ($towel !== null) {
+            $nationId = (int) $cell->owner_nation_id;
+            $paid = $context->state->hasPaidSupplementalAttraction($nationId);
+            if (! $paid) {
+                // Retry only unpaid eligible cells; same-Turn ship income can make a later debit affordable.
+                // The existing growth pass supplies eligibility without a rescan or extra balance reads.
+                $paid = Nation::query()->whereKey($nationId)->where('money', '>=', $towel['cost_money'])
+                    ->decrement('money', $towel['cost_money']) === 1;
+                if ($paid) {
+                    $context->state->markSupplementalAttractionPaid($nationId);
+                    $context->state->addEconomicContribution($nationId, 'attraction_towel', 'money', -$towel['cost_money'], null);
+                }
+            }
+            $supplementalAttraction = $paid;
+        }
+        $maximumPopulation = ($attraction || $supplementalAttraction) && ! $capital
             ? $attractionMaximum
             : $ordinaryMaximum;
         $indomitableBonus = 0;
         if ($before < $maximumPopulation) {
             $growthRules = match (true) {
+                $supplementalAttraction => $rules['post_ordinary_attraction_growth'],
                 ! $attraction => $rules['ordinary_growth'],
                 $before < $ordinaryMaximum => $rules['attraction_growth'],
                 default => $rules['post_ordinary_attraction_growth'],
@@ -1783,7 +1836,10 @@ final class CompleteTurnEngine
                 }
                 $growth += intdiv($growth * $percent, 100);
             }
-            if (! $attraction && $demographicsEnabled) {
+            if ($supplementalAttraction) {
+                $growth = intdiv($growth * $towel['percent'], 100);
+            }
+            if (! $attraction && ! $supplementalAttraction && $demographicsEnabled) {
                 $indomitableBonus = $this->demographics->indomitableBonus(
                     $context->ruleset->settings,
                     $before,

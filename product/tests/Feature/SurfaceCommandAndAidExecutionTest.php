@@ -8,6 +8,7 @@ use App\Application\PlayerIslandEventService;
 use App\Domain\Economy\NationCapacityResolver;
 use App\Domain\Map\GridCoordinate;
 use App\Domain\Map\MapCellStateService;
+use App\Domain\Map\NationLandAreaCalculator;
 use App\Domain\Secretary\SecretarySkillCatalog;
 use App\Models\FacilityDefinition;
 use App\Models\MapCell;
@@ -27,6 +28,38 @@ use Tests\Support\CommandAndMissileTestCase;
 final class SurfaceCommandAndAidExecutionTest extends CommandAndMissileTestCase
 {
     use UsesReusableSurfaceWorld;
+
+    public function test_undersea_station_uses_canonical_construction_ownership_and_visibility(): void
+    {
+        $world = $this->lightweightWorld();
+        [$user, $nation] = $this->nation($world, '海底消防国');
+        $space = $this->surfaceMapSpace($world);
+        [$target] = $this->neutralCellsNearTerritory($nation, $space, 1);
+        app(MapCellStateService::class)->setFacility($target, null);
+        app(MapCellStateService::class)->transitionTerrain($target, TerrainDefinition::query()->where('key', 'sea')->sole());
+        $target->owner_nation_id = null;
+        $target->population = 0;
+        $target->save();
+        $landBefore = app(NationLandAreaCalculator::class)->forNation($nation);
+        $nation->update(['money' => 1_000]);
+        $item = $this->queue(app(CommandQueueService::class), $user, $nation, $space, 'build_undersea_fire_station', $target);
+        app(DomesticCommandExecutor::class)->execute($this->context($world, 2, hash('sha256', 'build undersea fire station'), [$nation->id]));
+        $built = $target->fresh(['terrain', 'facility', 'ownerNation']);
+        $this->assertSame('completed', $item->fresh()->status);
+        $this->assertSame(0, (int) $nation->fresh()->money);
+        $this->assertSame('undersea_fire_station', $built->facility?->key);
+        $this->assertSame($nation->id, $built->owner_nation_id);
+        $this->assertSame($landBefore, app(NationLandAreaCalculator::class)->forNation($nation));
+        $this->assertSame('undersea_fire_station', MapCellPresenter::visibleState($built, $nation->id)['facility_key']);
+        $hidden = MapCellPresenter::visibleState($built, null, false);
+        $this->assertSame(['sea', null, null], [$hidden['terrain_key'], $hidden['facility_key'], $hidden['owner_nation_id']]);
+        $this->assertSame('undersea_fire_station', MapCellPresenter::visibleState($built, null, true)['facility_key']);
+        $public = collect(app(PlayerIslandEventService::class)->publicNationPage($nation, 1, 2)['groups'])->flatMap(fn (array $group): array => $group['events']);
+        $event = $public->firstWhere('type', 'command.undersea_fire_station_built_public');
+        $this->assertIsArray($event);
+        $this->assertStringContainsString('(?,?)', $event['message']);
+        $this->assertStringNotContainsString("({$built->x},{$built->y})", $event['message']);
+    }
 
     public function test_remaining_cell_commands_apply_their_audited_effects_and_exact_costs(): void
     {

@@ -102,6 +102,19 @@ final class RulesetPublisher
         return $this->publishSnapshot($settings);
     }
 
+    /** Historical migration only: accept the exact immutable v34 snapshot.
+     * @param  array<string, mixed>  $settings
+     */
+    public function publishShipVisibility(array $settings): RulesetVersion
+    {
+        $checksum = hash('sha256', json_encode($settings, JSON_THROW_ON_ERROR | JSON_PRESERVE_ZERO_FRACTION));
+        if ($checksum !== 'b85940a9a596359a950e83420f39e59edbe7b803432ca7ad1fbcdb9ff54ecd8b') {
+            throw new DomainException('The ship visibility migration requires the exact immutable v34 snapshot.');
+        }
+
+        return $this->publishSnapshot($settings);
+    }
+
     /** @param array<string, mixed> $settings */
     private function publishSnapshot(array $settings): RulesetVersion
     {

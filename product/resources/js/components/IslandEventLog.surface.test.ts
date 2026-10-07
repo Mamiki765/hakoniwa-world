@@ -17,6 +17,35 @@ function deferredResponse(): { promise: Promise<Response>; resolve: (value: Resp
 afterEach(() => vi.unstubAllGlobals());
 
 describe('IslandEventLog', () => {
+    it('wires settled amounts and optional counts into the summary, including zero receipts', async () => {
+        vi.stubGlobal('fetch', vi.fn().mockResolvedValue(response({
+            groups: [{ target_turn: 2, events: [{
+                id: 1, type: 'turn.summary', message: '資源変化', importance: 'info', target_turn: 2,
+                confidential: false, summary: null,
+                economic_contributions: [
+                    { element_key: 'fishing', name: '試験漁船', count: 3, amount: 0, unit: 'トン' },
+                    { element_key: 'pizzeria', name: '試験ピザ', count: null, amount: 110, unit: '億円' },
+                    { element_key: 'undersea_fire_station', name: '試験消防', count: 1, amount: -6, unit: '億円' },
+                ],
+            }] }],
+            page: 1, anchor_turn: 2, turn_range: { start: 1, end: 2 }, turns_per_page: 12,
+            has_newer_page: false, has_older_page: false,
+        } satisfies PlayerIslandEventPage)));
+        const wrapper = mount(IslandEventLog, { props: { nationId: 3, audience: 'owner' } });
+        await flushPromises();
+        const rows = wrapper.findAll('p');
+        const fishing = rows.find((row) => row.text().includes('試験漁船'))!;
+        expect(fishing.text()).toContain('×3');
+        expect(fishing.text()).toContain('0トン');
+        const pizza = rows.find((row) => row.text().includes('試験ピザ'))!;
+        expect(pizza.text()).toContain('+110億円');
+        expect(pizza.text()).not.toContain('×');
+        const station = rows.find((row) => row.text().includes('試験消防'))!;
+        expect(station.text()).toContain('-6億円');
+        // Owner explicitly places breakdowns immediately before the existing total summary.
+        const summary = rows.find((row) => row.text() === '資源変化')!;
+        expect(station.element.compareDocumentPosition(summary.element) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    });
     it('renders owner events as one-line messages and keeps confidential styling separate from text', async () => {
         const fetchMock = vi.fn().mockResolvedValue(response({
             groups: [{

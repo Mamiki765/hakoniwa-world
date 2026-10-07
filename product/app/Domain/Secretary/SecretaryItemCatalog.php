@@ -44,6 +44,8 @@ class SecretaryItemCatalog
 
     public const NYOWAMIYA_RIBBON = 'nyowamiya_ribbon';
 
+    public const ATTRACTION_TOWEL = 'attraction_towel';
+
     public const RARITY_NOVICE = 'novice';
 
     public const RARITY_REGULAR = 'regular';
@@ -415,6 +417,20 @@ class SecretaryItemCatalog
                 'introduced_version' => 27,
             ];
         }
+        $definitions[self::ATTRACTION_TOWEL] = [
+            'key' => self::ATTRACTION_TOWEL,
+            'category' => 'accessory',
+            'category_label' => self::CATEGORIES['accessory']['label'],
+            'category_max_equipped' => self::CATEGORIES['accessory']['maximum_equipped'],
+            'rarity' => self::RARITY_ARTIFACT,
+            'tradable' => true,
+            'npc_tradable' => false,
+            'max_level' => 10,
+            'name' => '誘致支援タオル',
+            'flavor_text' => '【PR】税制優遇！職場自信あります！今なら可愛い秘書もついてくる！',
+            'unique_per_secretary' => false,
+            'introduced_version' => 35,
+        ];
         foreach ($definitions as $key => $definition) {
             $rarity = $definition['rarity'];
             $definitions[$key] = [

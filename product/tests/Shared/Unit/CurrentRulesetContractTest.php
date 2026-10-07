@@ -28,8 +28,8 @@ final class CurrentRulesetContractTest extends TestCase
         $this->assertSame([$current['key']], array_keys($normalConfig['published_rulesets']));
         $this->assertSame($current, $normalConfig['published_rulesets'][$current['key']]);
         $this->assertSame($current['secretary'], $normalConfig['current_catalogs']['secretary']);
-        $this->assertSame('hakoniwa-2s-plus-v34', $current['key']);
-        $this->assertSame(34, $current['version']);
+        $this->assertSame('hakoniwa-2s-plus-v35', $current['key']);
+        $this->assertSame(35, $current['version']);
         $this->assertArrayNotHasKey('behavior', $current);
         $this->assertArrayNotHasKey('data', $current);
         $this->assertArrayNotHasKey('flavor', $current);
@@ -37,12 +37,15 @@ final class CurrentRulesetContractTest extends TestCase
         $this->assertSame(self::V31_CHECKSUM, $this->checksum($v31));
         $v32 = require config_path('hakoniwa/rulesets/hakoniwa-2s-plus-v32.php');
         $this->assertSame(self::V32_CHECKSUM, $this->checksum($v32));
-        $expected = require config_path('hakoniwa/rulesets/hakoniwa-2s-plus-v33.php');
-        $expected['key'] = $current['key'];
-        $expected['version'] = $current['version'];
-        $expected['surface_ships']['definitions']['exploration']['visibility_radius'] = 5;
-        $expected['surface_ships']['definitions']['warship']['visibility_radius'] = 2;
-        $this->assertSame($expected, $current);
+        $v34 = require config_path('hakoniwa/rulesets/hakoniwa-2s-plus-v34.php');
+        $this->assertSame('b85940a9a596359a950e83420f39e59edbe7b803432ca7ad1fbcdb9ff54ecd8b', $this->checksum($v34));
+        // The new facility must not reset unrelated production contracts.
+        foreach (['surface_ships', 'power_economy', 'resource_definitions'] as $domain) {
+            $this->assertSame($v34[$domain], $current[$domain]);
+        }
+        $secretary = $current['secretary'];
+        unset($secretary['items']['attraction_towel']);
+        $this->assertSame($v34['secretary'], $secretary);
         $v30 = require config_path('hakoniwa/rulesets/hakoniwa-2s-plus-v30.php');
         $this->assertSame(self::V30_CHECKSUM, $this->checksum($v30));
         $predecessor = require config_path('hakoniwa/rulesets/hakoniwa-2s-plus-v29.php');

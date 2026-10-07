@@ -14,6 +14,25 @@ final readonly class FacilityScaleDamageService
         private TurnEventRecorder $events,
     ) {}
 
+    public function applyPopulation(TurnContext $context, MapCell $cell, string $damageKind): ?int
+    {
+        if (! $this->ranks->isLargeCity($context->ruleset->settings, $cell->facility?->key, (int) $cell->population)) {
+            return null;
+        }
+        $limit = $this->ranks->populationDamageLimit($context->ruleset->settings, $damageKind);
+        if ($limit === null) {
+            return null;
+        }
+        $before = (int) $cell->population;
+        $minimum = $this->ranks->contract($context->ruleset->settings, 'city')['minimum_population'];
+        $cell->population = max($minimum, $before - $limit);
+        $cell->version++;
+        $cell->save();
+        $context->state->markMapChunkChanged($cell->map_chunk_id);
+
+        return $before - $cell->population;
+    }
+
     /**
      * @param  array<string, mixed>  $metadata
      * @return array{facility_key: string, before_scale: int, after_scale: int, scale_loss: int, rank_before: 2, rank_after: 1|2}|null

@@ -9,6 +9,7 @@ use App\Application\DisasterTurnService;
 use App\Application\DomesticCommandExecutor;
 use App\Application\NationCreationService;
 use App\Application\OceanWorldGenerator;
+use App\Application\PlayerIslandEventService;
 use App\Application\SecretaryTurnService;
 use App\Application\WorldExpansionService;
 use App\Domain\Map\GridCoordinate;
@@ -37,6 +38,7 @@ use DomainException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
+use PHPUnit\Framework\Attributes\DataProvider;
 use RuntimeException;
 use Tests\Concerns\CreatesTestWorlds;
 use Tests\Concerns\UsesIndividualTestWorld;
@@ -56,6 +58,125 @@ class DisasterAndOilTurnTest extends TestCase
     private ?string $weatherDisaster = null;
 
     private ?GridCoordinate $weatherTarget = null;
+
+    public static function underseaFireBoundaries(): array
+    {
+        return [
+            'exact fee at radius two' => [2, 100, 1, false, 0],
+            'outside radius' => [3, 100, 1, true, 100],
+            'insufficient fee' => [2, 99, 1, true, 99],
+            'overlapping stations settle once' => [2, 200, 2, false, 100],
+        ];
+    }
+
+    #[DataProvider('underseaFireBoundaries')]
+    public function test_undersea_fire_uses_hex_range_and_one_affordable_payment(int $distance, int $money, int $stationCount, bool $burns, int $remaining): void
+    {
+        [$world, $nation, $ruleset, $space] = $this->worldAndNation('海底消火国');
+        $ruleset = $this->updateRuleset($ruleset, static function (array &$settings): void {
+            $settings['turn_processing']['disasters']['fire']['probability'] = ['numerator' => 1, 'denominator' => 1];
+        });
+        $center = $this->boundsFor($world)->center();
+        $target = $this->cellAt($space, $center->x, $center->y);
+        $this->setCell($target, 'sea', 'undersea_city', $nation->id, 3_000);
+        $cells = [$target->fresh(['terrain', 'facility'])];
+        foreach (array_slice($center->ring($distance), 0, $stationCount) as $coordinate) {
+            $station = $this->cellAt($space, $coordinate->x, $coordinate->y);
+            $this->setCell($station, 'sea', 'undersea_fire_station', $nation->id, 0);
+            $cells[] = $station->fresh(['terrain', 'facility']);
+        }
+        $nation->update(['money' => $money]);
+        [$context, $run] = $this->context($world, $ruleset, hash('sha256', 'undersea fire boundary'), [$nation->id]);
+        $index = DisasterMutableCellIndex::fromCells($cells, [$nation->id], TerrainDefinition::all());
+        $this->assertSame($burns, app(DisasterTurnService::class)->processFire($context, $cells[0], $index));
+        $this->assertSame($remaining, (int) $nation->fresh()->money);
+        $this->assertSame($burns ? null : 'undersea_city', $target->fresh()->facility()->value('key'));
+        $this->assertSame($burns ? 0 : 1, DB::table('audit_events')->where('event_type', 'fire.extinguished_undersea')
+            ->whereRaw("metadata->>'turn_run_id' = ?", [(string) $run->id])->count());
+        $this->assertSame([], $context->state->economicContributions($nation->id), 'Fire fees remain individual events.');
+    }
+
+    public function test_undersea_fire_station_does_not_protect_foreign_facilities(): void
+    {
+        [$world, $payer, $ruleset, $space] = $this->worldAndNation('消防所有国');
+        $owner = app(NationCreationService::class)->create(User::factory()->create(), $world, '被災国', '試験島主');
+        $ruleset = $this->updateRuleset($ruleset, static function (array &$settings): void {
+            $settings['turn_processing']['disasters']['fire']['probability'] = ['numerator' => 1, 'denominator' => 1];
+        });
+        $center = $this->boundsFor($world)->center();
+        $target = $this->cellAt($space, $center->x, $center->y);
+        $stationCoordinate = $center->ring(2)[0];
+        $station = $this->cellAt($space, $stationCoordinate->x, $stationCoordinate->y);
+        $this->setCell($target, 'sea', 'undersea_city', $owner->id, 3_000);
+        $this->setCell($station, 'sea', 'undersea_fire_station', $payer->id, 0);
+        $target = $target->fresh(['terrain', 'facility']);
+        $station = $station->fresh(['terrain', 'facility']);
+        $payer->update(['money' => 100]);
+        $owner->update(['money' => 77]);
+        [$context, $run] = $this->context($world, $ruleset, hash('sha256', 'foreign undersea fire'), [$payer->id, $owner->id]);
+        $index = DisasterMutableCellIndex::fromCells([$target, $station], [$payer->id, $owner->id], TerrainDefinition::all());
+
+        $this->assertTrue(app(DisasterTurnService::class)->processFire($context, $target, $index));
+        $this->assertNull($target->fresh()->facility_definition_id);
+        $this->assertSame(100, (int) $payer->fresh()->money);
+        $this->assertSame(77, (int) $owner->fresh()->money);
+        $this->assertSame(0, DB::table('audit_events')->where('event_type', 'fire.extinguished_undersea')
+            ->whereRaw("metadata->>'turn_run_id' = ?", [(string) $run->id])->count());
+        $this->assertSame([], $context->state->economicContributions($payer->id));
+        $this->assertSame([], $context->state->economicContributions($owner->id));
+    }
+
+    public function test_undersea_station_is_fire_immune_and_cannot_protect_ground_facilities(): void
+    {
+        [$world, $nation, $ruleset, $space] = $this->worldAndNation('消火区分国');
+        $ruleset = $this->updateRuleset($ruleset, static function (array &$settings): void {
+            $settings['turn_processing']['disasters']['fire']['probability'] = ['numerator' => 1, 'denominator' => 1];
+        });
+        $center = $this->boundsFor($world)->center();
+        $station = $this->cellAt($space, $center->x, $center->y);
+        $groundCoordinate = $center->neighbor(GridCoordinate::EAST);
+        $ground = $this->cellAt($space, $groundCoordinate->x, $groundCoordinate->y);
+        $this->setCell($station, 'sea', 'undersea_fire_station', $nation->id, 0);
+        $this->setCell($ground, 'plain', 'pizzeria', $nation->id, 0);
+        $station = $station->fresh(['terrain', 'facility']);
+        $ground = $ground->fresh(['terrain', 'facility']);
+        $nation->update(['money' => 100]);
+        [$context] = $this->context($world, $ruleset, hash('sha256', 'undersea fire immunity'), [$nation->id]);
+        $index = DisasterMutableCellIndex::fromCells([$station, $ground], [$nation->id], TerrainDefinition::all());
+        $service = app(DisasterTurnService::class);
+        $this->assertFalse($service->processFire($context, $station, $index));
+        $this->assertTrue($service->processFire($context, $ground, $index));
+        $this->assertSame('undersea_fire_station', $station->fresh()->facility()->value('key'));
+        $this->assertNull($ground->fresh()->facility_definition_id);
+        $this->assertSame(100, (int) $nation->fresh()->money);
+        $service->resolveHugeMeteorBlast($context, $space, $center, $ruleset->settings['turn_processing']['disasters']['huge_meteor'], cellIndex: $index);
+        $this->assertNull($station->fresh()->facility_definition_id, 'Fire immunity must not protect against seabed-capable disasters.');
+        $this->assertNull($station->fresh()->owner_nation_id);
+    }
+
+    public function test_city_population_rank_is_immune_to_fire_and_earthquake_until_demotion(): void
+    {
+        [$world, $nation, $ruleset, $space] = $this->worldAndNation('大都市災害国');
+        $ruleset = $this->forceGlobal($ruleset, 'earthquake');
+        $ruleset = $this->updateRuleset($ruleset, static function (array &$settings): void {
+            $settings['turn_processing']['disasters']['fire']['probability'] = ['numerator' => 1, 'denominator' => 1];
+        });
+        $center = $this->boundsFor($world)->center();
+        $target = $this->cellAt($space, $center->x, $center->y);
+        $this->setCell($target, 'plain', 'city', $nation->id, 20_001);
+        $target = $target->fresh(['terrain', 'facility']);
+        [$context] = $this->context($world, $ruleset,
+            $this->seedForCenter(TurnRandomStreamFactory::GLOBAL_EARTHQUAKE_CENTER, $center->x, $center->y, $space), [$nation->id]);
+        $service = app(DisasterTurnService::class);
+        $this->assertFalse($service->processFire($context, $target));
+        $service->executeGlobal($context);
+        $this->assertSame('city', $target->fresh()->facility()->value('key'));
+        $this->assertSame(20_001, (int) $target->fresh()->population);
+        $target = $target->fresh(['terrain', 'facility']);
+        $target->update(['population' => 20_000]);
+        $this->assertTrue($service->processFire($context, $target));
+        $this->assertNull($target->fresh()->facility_definition_id);
+    }
 
     public function test_sea_area_typhoon_keeps_half_chance_wind_damage_and_neighboring_area_windbreaks(): void
     {
@@ -454,8 +575,8 @@ class DisasterAndOilTurnTest extends TestCase
         $expected = [
             'earthquake' => 9_000,
             'eruption' => 6_300,
-            'meteor_shower' => 630,
-            'meteor_shower-second' => 100,
+            'meteor_shower' => 3_300,
+            'meteor_shower-second' => 330,
         ];
 
         foreach ($expected as $step => $population) {
@@ -497,6 +618,67 @@ class DisasterAndOilTurnTest extends TestCase
         $this->assertTrue($minimumDamage['minimum_population_applied']);
         $this->assertSame(50, $minimumDamage['minimum_population_adjustment']);
         $this->assertSame(5, DB::table('audit_events')->where('event_type', 'capital.disaster_damaged')->count());
+    }
+
+    public function test_huge_meteor_population_damage_uses_farm_units_and_retains_capital_special_protection(): void
+    {
+        [$world, $nation, $ruleset, $space] = $this->worldAndNation('大都市被害国');
+        $capital = $nation->capital()->firstOrFail()->cell()->with(['terrain', 'facility'])->firstOrFail();
+        $city = MapCell::query()->where('owner_nation_id', $nation->id)->whereKeyNot($capital->id)
+            ->whereHas('terrain', fn ($query) => $query->where('key', 'plain'))->firstOrFail();
+        foreach (['city' => $city, 'capital' => $capital] as $facility => $cell) {
+            foreach ([0, 1, 2] as $distance) {
+                $this->setCell($cell, 'plain', $facility, $nation->id, 25_000);
+                $cell->refresh();
+                $identity = $cell->only(['id', 'terrain_definition_id', 'facility_definition_id', 'owner_nation_id', 'x', 'y']);
+                $coordinate = new GridCoordinate($cell->x, $cell->y);
+                $center = collect($coordinate->radius($distance))->first(fn (GridCoordinate $candidate): bool => $candidate->distanceTo($coordinate) === $distance && $candidate->x >= $space->min_x
+                    && $candidate->x <= $space->max_x && $candidate->y >= $space->min_y && $candidate->y <= $space->max_y);
+                $this->assertInstanceOf(GridCoordinate::class, $center);
+                [$context] = $this->context($world, $ruleset, hash('sha256', "population blast {$facility} {$distance}"), [$nation->id]);
+                $damaged = app(DisasterTurnService::class)->resolveHugeMeteorBlast(
+                    $context, $space, $center, $ruleset->settings['turn_processing']['disasters']['huge_meteor'],
+                    cellIndex: DisasterMutableCellIndex::fromCells([$cell->fresh(['terrain', 'facility'])], [$nation->id], TerrainDefinition::query()->get()),
+                );
+
+                $this->assertSame(1, $damaged);
+                $cell->refresh();
+                if ($facility === 'city' && $distance === 0) {
+                    $this->assertSame(0, (int) $cell->population);
+                    $this->assertNull($cell->facility_definition_id);
+                    $this->assertNull($cell->owner_nation_id);
+                    $this->assertSame('sea', $cell->terrain()->value('key'));
+                } else {
+                    $this->assertSame($identity, $cell->only(array_keys($identity)));
+                    $this->assertSame([0 => 2_500, 1 => 22_000, 2 => 24_000][$distance], (int) $cell->population);
+                }
+                if ($facility === 'capital' && $distance > 0) {
+                    $eventId = DB::table('audit_events')->where('event_type', 'capital.disaster_damaged')
+                        ->whereRaw("metadata->>'turn_run_id' = ?", [(string) $context->run->id])->value('id');
+                    $page = app(PlayerIslandEventService::class)->publicWorldPage($world, anchorTurn: $context->targetTurn);
+                    $event = collect($page['groups'])->flatMap(static fn (array $group): array => $group['events'])
+                        ->firstWhere('id', (int) $eventId);
+                    $this->assertNotNull($event);
+                    $this->assertStringContainsString(number_format(25_000 - $cell->population), $event['message']);
+                }
+            }
+        }
+        $this->setCell($city, 'plain', 'city', $nation->id, 25_000);
+        $ruleset = $this->forceGlobal($ruleset, 'meteor_shower');
+        [$meteorContext] = $this->context($world, $ruleset,
+            $this->seedForCenter(TurnRandomStreamFactory::GLOBAL_METEOR_SHOWER_CENTER, $city->x, $city->y, $space), [$nation->id]);
+        app(DisasterTurnService::class)->executeGlobal($meteorContext);
+        $this->assertSame(22_000, (int) $city->fresh()->population);
+        $this->assertSame('city', $city->fresh()->facility()->value('key'));
+        $populationEventId = DB::table('audit_events')->where('event_type', 'disaster.cell_damaged')
+            ->where('subject_id', $city->id)->whereRaw("metadata->>'turn_run_id' = ?", [(string) $meteorContext->run->id])->value('id');
+        $public = app(PlayerIslandEventService::class)->publicWorldPage($world, anchorTurn: $meteorContext->targetTurn);
+        $shown = collect($public['groups'])->flatMap(static fn (array $group): array => $group['events'])
+            ->firstWhere('id', (int) $populationEventId);
+        $this->assertNotNull($shown);
+        $this->assertStringContainsString(number_format(25_000 - $city->fresh()->population), $shown['message']);
+        $this->assertSame($capital->id, $nation->capital()->value('map_cell_id'));
+        $this->assertSame(0, DB::table('audit_events')->whereIn('event_type', ['refugee_generated', 'refugee_received'])->count());
     }
 
     public function test_fire_is_prevented_by_forest_then_damages_factory_and_capital(): void

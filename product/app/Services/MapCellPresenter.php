@@ -75,12 +75,13 @@ final class MapCellPresenter
             && $cell->facility_scale !== null
             ? $this->centralFacilityPresentation($rulesetSettings, $facility, (int) $cell->facility_scale)
             : null;
+        $rankMeasure = $facility?->key === 'city' ? (int) $cell->population : $cell->facility_scale;
         $facilityPresentation = $facility !== null
             && $facility->key === $cell->facility?->key
-            && $facility->scale_unit_people !== null
-            && $cell->facility_scale !== null
+            && ($facility->key === 'city' || $facility->scale_unit_people !== null)
+            && $rankMeasure !== null
             && $centralPresentation === null
-            ? $this->facilityRanks->presentation($rulesetSettings, $facility, (int) $cell->facility_scale)
+            ? $this->facilityRanks->presentation($rulesetSettings, $facility, (int) $rankMeasure)
             : null;
         $isOriginalMonument = $facility?->key === 'monument'
             && $cell->monumentDefinition?->key === 'original';
@@ -110,6 +111,9 @@ final class MapCellPresenter
             && $facility->asset_key !== $displayAssetKey) {
             $displayAssetKey = $facility->asset_key;
             $layers = $this->assets->resolveLayers($displayAssetKey, $displayName, $overlayAssetKeys, $theme);
+        }
+        if ($facility?->key === 'undersea_fire_station' && ! $layers['completed']['available']) {
+            $layers = $this->assets->resolveLayers('tile.undersea_city', $displayName, $overlayAssetKeys, $theme);
         }
         $seaAreaName = $this->seaAreas->forCoordinate($cell->x, $cell->y);
         $details = $this->details(

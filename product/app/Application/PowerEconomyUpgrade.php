@@ -69,6 +69,13 @@ final class PowerEconomyUpgrade
         $this->publish($settings, $priorSettings, false);
     }
 
+    public function enableUnderseaFireStation(): void
+    {
+        $settings = require config_path('hakoniwa/rulesets/hakoniwa-2s-plus-v35.php');
+        $priorSettings = require config_path('hakoniwa/rulesets/hakoniwa-2s-plus-v34.php');
+        $this->publish($settings, $priorSettings, false);
+    }
+
     /** @param array<string, mixed> $settings
      * @param  array<string, mixed>  $priorSettings
      */
@@ -107,6 +114,7 @@ final class PowerEconomyUpgrade
                     31 => $this->publisher->publishSeaAreaWeather($settings),
                     32 => $this->publisher->publishNaturalFireTargets($settings),
                     33 => $this->publisher->publishUserAchievements($settings),
+                    34 => $this->publisher->publishShipVisibility($settings),
                     default => $this->publisher->publish($settings),
                 };
                 if ($initializePower) {

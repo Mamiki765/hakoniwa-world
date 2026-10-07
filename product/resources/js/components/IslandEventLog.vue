@@ -85,15 +85,23 @@ watch(() => [props.nationId, props.audience], resetAndLoad);
                         :class="`importance-${event.importance}`"
                     >
                         <span class="island-event-mark" aria-hidden="true"></span>
-                        <p>
-                            <span v-if="'confidential' in event && event.confidential" class="event-confidential-label">秘密</span>
-                            {{ event.message }}
-                            <template v-if="'summary' in event && event.summary">
-                                <span :class="deltaClass(event.summary.money.delta)"> 資金 {{ formatDelta(event.summary.money.delta) }}億円</span>
-                                <span :class="deltaClass(event.summary.population.delta)">／人口 {{ formatDelta(event.summary.population.delta) }}人</span>
-                                <span :class="deltaClass(event.summary.food.delta)">／食料 {{ formatDelta(event.summary.food.delta) }}トン</span>
-                            </template>
-                        </p>
+                        <div>
+                            <div v-if="'economic_contributions' in event && event.economic_contributions?.length" class="turn-economic-contributions">
+                                <p v-for="row in event.economic_contributions" :key="row.element_key">
+                                    {{ row.name }}<template v-if="row.count !== null">×{{ row.count }}</template>:
+                                    <span :class="deltaClass(row.amount)">{{ formatDelta(row.amount) }}{{ row.unit }}</span>
+                                </p>
+                            </div>
+                            <p>
+                                <span v-if="'confidential' in event && event.confidential" class="event-confidential-label">秘密</span>
+                                {{ event.message }}
+                                <template v-if="'summary' in event && event.summary">
+                                    <span :class="deltaClass(event.summary.money.delta)"> 資金 {{ formatDelta(event.summary.money.delta) }}億円</span>
+                                    <span :class="deltaClass(event.summary.population.delta)">／人口 {{ formatDelta(event.summary.population.delta) }}人</span>
+                                    <span :class="deltaClass(event.summary.food.delta)">／食料 {{ formatDelta(event.summary.food.delta) }}トン</span>
+                                </template>
+                            </p>
+                        </div>
                     </li>
                 </ol>
             </section>

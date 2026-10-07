@@ -86,6 +86,8 @@ final class SecretaryItemGameplayContract
 
     private const V34_RULESET_KEY = 'hakoniwa-2s-plus-v34';
 
+    private const V35_RULESET_KEY = 'hakoniwa-2s-plus-v35';
+
     public function __construct(private readonly SecretaryItemCatalog $catalog) {}
 
     /** @param array<string, mixed> $settings */
@@ -114,9 +116,9 @@ final class SecretaryItemGameplayContract
         }
 
         $rulesetKey = $settings['key'] ?? null;
-        $formal = in_array($rulesetKey, [self::V16_RULESET_KEY, self::V17_RULESET_KEY, self::V18_RULESET_KEY, self::V19_RULESET_KEY, self::V20_RULESET_KEY, self::V21_RULESET_KEY, self::V22_RULESET_KEY, self::V23_RULESET_KEY, self::V24_RULESET_KEY, self::V25_RULESET_KEY, self::V26_RULESET_KEY, self::V27_RULESET_KEY, self::V28_RULESET_KEY, self::V29_RULESET_KEY, self::V30_RULESET_KEY, self::V31_RULESET_KEY, self::V32_RULESET_KEY, self::V33_RULESET_KEY, self::V34_RULESET_KEY], true);
-        $v17 = in_array($rulesetKey, [self::V17_RULESET_KEY, self::V18_RULESET_KEY, self::V19_RULESET_KEY, self::V20_RULESET_KEY, self::V21_RULESET_KEY, self::V22_RULESET_KEY, self::V23_RULESET_KEY, self::V24_RULESET_KEY, self::V25_RULESET_KEY, self::V26_RULESET_KEY, self::V27_RULESET_KEY, self::V28_RULESET_KEY, self::V29_RULESET_KEY, self::V30_RULESET_KEY, self::V31_RULESET_KEY, self::V32_RULESET_KEY, self::V33_RULESET_KEY, self::V34_RULESET_KEY], true);
-        $v27 = in_array($rulesetKey, [self::V27_RULESET_KEY, self::V28_RULESET_KEY, self::V29_RULESET_KEY, self::V30_RULESET_KEY, self::V31_RULESET_KEY, self::V32_RULESET_KEY, self::V33_RULESET_KEY, self::V34_RULESET_KEY], true);
+        $formal = in_array($rulesetKey, [self::V16_RULESET_KEY, self::V17_RULESET_KEY, self::V18_RULESET_KEY, self::V19_RULESET_KEY, self::V20_RULESET_KEY, self::V21_RULESET_KEY, self::V22_RULESET_KEY, self::V23_RULESET_KEY, self::V24_RULESET_KEY, self::V25_RULESET_KEY, self::V26_RULESET_KEY, self::V27_RULESET_KEY, self::V28_RULESET_KEY, self::V29_RULESET_KEY, self::V30_RULESET_KEY, self::V31_RULESET_KEY, self::V32_RULESET_KEY, self::V33_RULESET_KEY, self::V34_RULESET_KEY, self::V35_RULESET_KEY], true);
+        $v17 = in_array($rulesetKey, [self::V17_RULESET_KEY, self::V18_RULESET_KEY, self::V19_RULESET_KEY, self::V20_RULESET_KEY, self::V21_RULESET_KEY, self::V22_RULESET_KEY, self::V23_RULESET_KEY, self::V24_RULESET_KEY, self::V25_RULESET_KEY, self::V26_RULESET_KEY, self::V27_RULESET_KEY, self::V28_RULESET_KEY, self::V29_RULESET_KEY, self::V30_RULESET_KEY, self::V31_RULESET_KEY, self::V32_RULESET_KEY, self::V33_RULESET_KEY, self::V34_RULESET_KEY, self::V35_RULESET_KEY], true);
+        $v27 = in_array($rulesetKey, [self::V27_RULESET_KEY, self::V28_RULESET_KEY, self::V29_RULESET_KEY, self::V30_RULESET_KEY, self::V31_RULESET_KEY, self::V32_RULESET_KEY, self::V33_RULESET_KEY, self::V34_RULESET_KEY, self::V35_RULESET_KEY], true);
         $v26 = $rulesetKey === self::V26_RULESET_KEY || $v27;
         $secretary = $this->map($settings['secretary'] ?? null, 'ruleset.secretary');
         if ($formal) {
@@ -220,8 +222,8 @@ final class SecretaryItemGameplayContract
                 throw new DomainException("{$path}.effects has an invalid effect count.");
             }
             foreach ($effects as $index => $effect) {
-                if ($v27 && ($catalogDefinitions[$itemKey]['introduced_version'] ?? 16) === 27) {
-                    $this->validateV27Effect($itemKey, $this->map($effect, "{$path}.effects.{$index}"), "{$path}.effects.{$index}", in_array($rulesetKey, [self::V30_RULESET_KEY, self::V31_RULESET_KEY, self::V32_RULESET_KEY, self::V33_RULESET_KEY, self::V34_RULESET_KEY], true));
+                if ($v27 && ($catalogDefinitions[$itemKey]['introduced_version'] ?? 16) >= 27) {
+                    $this->validateV27Effect($itemKey, $this->map($effect, "{$path}.effects.{$index}"), "{$path}.effects.{$index}", in_array($rulesetKey, [self::V30_RULESET_KEY, self::V31_RULESET_KEY, self::V32_RULESET_KEY, self::V33_RULESET_KEY, self::V34_RULESET_KEY, self::V35_RULESET_KEY], true));
                 } else {
                     $this->validateEffect(
                         $itemKey,
@@ -342,6 +344,7 @@ final class SecretaryItemGameplayContract
             'monster_missile_defense_bypass' => 'surface_missile_interception',
             'nyowamiya_ribbon' => 'surface_monster_interaction',
             'population_growth_percent' => 'surface_population_growth',
+            'supplemental_attraction' => 'surface_population_growth',
             'final_defense_preserve_chance' => 'surface_final_defense_interception',
             'launch_base_experience_double_chance' => 'surface_launch_base_experience',
             default => throw new DomainException('Unknown Secretary Item effect type.'),
@@ -396,6 +399,11 @@ final class SecretaryItemGameplayContract
             'monster_missile_defense_bypass' => '装備中、自国の防衛施設は怪獣がいるマスへのミサイルを迎撃しない。',
             'nyowamiya_ribbon' => '防衛施設は怪獣に踏まれても自爆せず、保護範囲内の怪獣を秘書は攻撃しない。',
             'population_growth_percent' => sprintf('通常・誘致の人口増加量が%d%%増える。', $effects[0]['parameters']['percent']),
+            'supplemental_attraction' => sprintf(
+                '通常の人口誘致を実行しないTurnに自然増加上限へ達した街を誘致し、通常の追加誘致人口の%d%%を増やす。追加成長するTurnだけ、島全体で一度%d億円を支払う。',
+                $level * $effects[0]['parameters']['percent_per_level'],
+                $level * $effects[0]['parameters']['cost_money_per_level'],
+            ),
             'final_defense_preserve_chance' => sprintf('最終防衛ラインで迎撃するとき、%d%%の確率で迎撃回数を消費しない。', $effects[0]['parameters']['chance_percent']),
             'launch_base_experience_double_chance' => sprintf('集落や海賊船へのミサイル攻撃で、%d%%の確率で発射基地の獲得EXPが2倍になる。', $effects[0]['parameters']['chance_percent']),
             default => throw new DomainException('Unknown Secretary Item effect type.'),
@@ -525,6 +533,11 @@ final class SecretaryItemGameplayContract
             }
         }
         $expected = match ($itemKey) {
+            SecretaryItemCatalog::ATTRACTION_TOWEL => [
+                'type' => 'supplemental_attraction', 'source_genre' => 'item',
+                'target' => 'post_natural_attraction', 'percent_per_level' => 10,
+                'cost_money_per_level' => 100,
+            ],
             'magic_white_flag' => ['type' => 'monster_missile_defense_bypass'],
             SecretaryItemCatalog::NYOWAMIYA_RIBBON => [
                 'type' => 'nyowamiya_ribbon', 'nyowamiya_type_weight_bonus' => 1,
@@ -772,8 +785,11 @@ final class SecretaryItemGameplayContract
     /** @return array<string, array<string, mixed>> */
     private function catalogDefinitions(mixed $rulesetKey): array
     {
-        if (in_array($rulesetKey, [self::V27_RULESET_KEY, self::V28_RULESET_KEY, self::V29_RULESET_KEY, self::V30_RULESET_KEY, self::V31_RULESET_KEY, self::V32_RULESET_KEY, self::V33_RULESET_KEY, self::V34_RULESET_KEY], true)) {
-            return $this->catalog->definitions();
+        if (in_array($rulesetKey, [self::V27_RULESET_KEY, self::V28_RULESET_KEY, self::V29_RULESET_KEY, self::V30_RULESET_KEY, self::V31_RULESET_KEY, self::V32_RULESET_KEY, self::V33_RULESET_KEY, self::V34_RULESET_KEY, self::V35_RULESET_KEY], true)) {
+            $version = (int) substr($rulesetKey, strlen('hakoniwa-2s-plus-v'));
+
+            return array_filter($this->catalog->definitions(),
+                static fn (array $definition): bool => ($definition['introduced_version'] ?? 16) <= $version);
         }
         $definitions = array_filter(
             $this->catalog->definitions(),

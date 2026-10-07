@@ -43,12 +43,14 @@ final class CurrentRulesetAuthoringInspector
         $files = [...self::DOMAIN_FILES, 'power-and-pizza.php', 'user-achievements.php'];
         foreach ($files as $file) {
             $directory = match ($file) {
-                'world-and-map.php', 'surface-ships.php' => 'release-4.15/',
+                'world-and-map.php', 'facilities.php', 'commands-and-production.php',
+                'terrain-and-disasters.php', 'turn-pipeline.php', 'monsters-and-military.php',
+                'lifecycle-and-karma.php', 'ocean-loop.php', 'facility-ranks.php' => 'release-4.18/',
+                'surface-ships.php' => 'release-4.15/',
                 'user-achievements.php' => 'island-secretary/',
-                'terrain-and-disasters.php' => 'natural-fire-fix/',
-                'secretary.php' => 'release-4.12/',
+                'secretary.php' => 'release-4.18/',
                 'power-and-pizza.php' => 'release-4.11.1/',
-                'economy-and-resources.php', 'facilities.php', 'commands-and-production.php' => 'release-4.11/',
+                'economy-and-resources.php' => 'release-4.11/',
                 default => 'current/',
             };
             $relativePath = $directory.$file;

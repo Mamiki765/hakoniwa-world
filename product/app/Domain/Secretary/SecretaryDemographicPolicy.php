@@ -28,6 +28,7 @@ final class SecretaryDemographicPolicy
             'hakoniwa-2s-plus-v32',
             'hakoniwa-2s-plus-v33',
             'hakoniwa-2s-plus-v34',
+            'hakoniwa-2s-plus-v35',
         ], true);
     }
 
@@ -41,6 +42,23 @@ final class SecretaryDemographicPolicy
     public function attractionMaximum(array $settings, int $base, int $level): int
     {
         return $this->addPerLevel($settings, $base, $level, 'attraction_maximum_per_level');
+    }
+
+    /** @param array<string, mixed> $settings */
+    public function capitalMaximum(array $settings, int $birthrateLevel, int $undergroundBonus = 0): int
+    {
+        $settlement = $settings['turn_processing']['settlement'];
+        $basis = $settlement['capital_maximum_basis'] ?? null;
+        if ($basis === null) {
+            return $settings['capital_growth_maximum_population'] + $undergroundBonus;
+        }
+        $bonus = $settlement['capital_maximum_attraction_bonus'] ?? null;
+        if ($basis !== 'effective_attraction_maximum' || ! is_int($bonus) || $bonus < 0) {
+            throw new DomainException('The capital population maximum contract is invalid.');
+        }
+
+        return $this->attractionMaximum($settings, $settlement['attraction_maximum_population'], $birthrateLevel)
+            + $bonus + $undergroundBonus;
     }
 
     /** @param array<string, mixed> $settings */

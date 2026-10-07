@@ -26,12 +26,40 @@ use App\Models\User;
 use App\Models\World;
 use DomainException;
 use Illuminate\Support\Facades\DB;
+use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\Concerns\UsesReusableSurfaceWorld;
 use Tests\TestCase;
 
 class TurnEconomyTest extends TestCase
 {
     use UsesReusableSurfaceWorld;
+
+    public static function fireStationMaintenanceBalances(): array
+    {
+        return ['exact fee' => [6, true], 'insufficient fee' => [5, false]];
+    }
+
+    #[DataProvider('fireStationMaintenanceBalances')]
+    public function test_fire_station_maintenance_records_only_paid_fees_and_abandons_unpaid_sea(int $money, bool $paid): void
+    {
+        $world = $this->lightweightWorld();
+        $nation = app(NationCreationService::class)->create(User::factory()->create(), $world, '消防維持国', '島主');
+        MapCell::query()->where('owner_nation_id', $nation->id)->update(['population' => 0]);
+        $station = MapCell::query()->where('owner_nation_id', $nation->id)->whereNull('facility_definition_id')->firstOrFail();
+        app(MapCellStateService::class)->transitionTerrain($station, TerrainDefinition::query()->where('key', 'sea')->sole());
+        app(MapCellStateService::class)->setFacility($station, FacilityDefinition::query()->where('key', 'undersea_fire_station')->sole());
+        $station->save();
+        $nation->update(['money' => $money]);
+        [$context, $run] = $this->context($world, $nation);
+        app(CompleteTurnEngine::class)->execute('nation_economy', $context);
+        $this->assertSame($paid ? 0 : $money, (int) $nation->fresh()->money);
+        $this->assertSame('sea', $station->fresh()->terrain()->value('key'));
+        $this->assertSame($paid ? 'undersea_fire_station' : null, $station->fresh()->facility()->value('key'));
+        $this->assertSame($paid ? $nation->id : null, $station->fresh()->owner_nation_id);
+        $this->assertSame($paid ? [['element_key' => 'undersea_fire_station', 'resource_key' => 'money', 'amount' => -6, 'count' => 1]] : [], $context->state->economicContributions($nation->id));
+        $this->assertSame($paid ? 0 : 1, DB::table('audit_events')->where('event_type', 'facility.undersea_fire_station_abandoned')
+            ->whereRaw("metadata->>'turn_run_id' = ?", [(string) $run->id])->count());
+    }
 
     public function test_underground_farms_and_factories_add_stackable_workforce_capacity_without_free_production(): void
     {

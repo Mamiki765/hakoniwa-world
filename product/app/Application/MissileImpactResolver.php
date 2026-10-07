@@ -92,6 +92,7 @@ final class MissileImpactResolver
         private readonly SurfaceShipCatalog $surfaceShips,
         private readonly SurfaceShipRemovalService $shipRemoval,
         private readonly FacilityScaleDamageService $facilityScaleDamage,
+        private readonly FacilityRankPolicy $facilityRanks,
         private readonly CentralFacilityDamageService $centralFacilityDamage,
         private readonly SurfaceShipCombatService $shipCombat,
     ) {}
@@ -757,6 +758,12 @@ final class MissileImpactResolver
         if (! is_array($points)) {
             throw new DomainException('The active ruleset has no KARMA impact categories.');
         }
+        if (($impact['effect'] ?? null) === 'settlement_population_damaged') {
+            return $points['settlement_or_facility'];
+        }
+        if (($impact['effect'] ?? null) === 'settlement_population_land_damaged') {
+            return $points['land_destroyed'];
+        }
         $removedFacility = $impact['removed_facility_key'] ?? null;
         if ($removedFacility === 'seabed_oil_field') {
             return $points['seabed_oil_field_destroyed'];
@@ -766,6 +773,9 @@ final class MissileImpactResolver
         }
         if ($removedFacility === 'undersea_city') {
             return $points['undersea_city_destroyed'];
+        }
+        if ($removedFacility === 'undersea_fire_station') {
+            return $points['undersea_fire_station_destroyed'];
         }
         if (($impact['effect'] ?? null) === 'terrain_destroyed') {
             return $points['land_destroyed'];
@@ -1387,6 +1397,14 @@ final class MissileImpactResolver
                 'firing_base_experience_applied' => $experience,
             ];
         }
+        $populationImpact = $this->populationImpact(
+            $context, $firingNation, $cell, $base, $missileKey,
+            FacilityRankPolicy::ORDINARY_TERRAIN_DESTRUCTION,
+            $queueItemId, $firingBase, $targetNationId, $targetNationName,
+        );
+        if ($populationImpact !== null) {
+            return $populationImpact;
+        }
         $facilityDamage = $this->facilityScaleDamage->apply(
             $context,
             $cell,
@@ -1661,6 +1679,14 @@ final class MissileImpactResolver
                     : null,
             ];
         }
+        $populationImpact = $this->populationImpact(
+            $context, $firingNation, $cell, $base, 'land_destruction_missile',
+            FacilityRankPolicy::LAND_DESTRUCTION,
+            null, $firingBase, $targetNationId, $targetNationName,
+        );
+        if ($populationImpact !== null) {
+            return $populationImpact;
+        }
         $facilityDamage = $this->facilityScaleDamage->apply(
             $context,
             $cell,
@@ -1849,6 +1875,55 @@ final class MissileImpactResolver
         ];
     }
 
+    /** @param array<string, mixed> $base
+     * @return array<string, mixed>|null
+     */
+    /**
+     * @param  array<string, mixed>  $base
+     * @return array<string, mixed>|null
+     */
+    private function populationImpact(
+        TurnContext $context,
+        ?Nation $firingNation,
+        MapCell $cell,
+        array $base,
+        string $missileKey,
+        string $kind,
+        ?int $queueItemId,
+        ?MapCell $firingBase,
+        ?int $targetNationId,
+        ?string $targetNationName,
+    ): ?array {
+        $before = (int) $cell->population;
+        $loss = $this->facilityScaleDamage->applyPopulation($context, $cell, $kind);
+        if ($loss === null) {
+            return null;
+        }
+        $this->markCellChanged($context, $cell);
+        $refugees = $firingNation !== null && $queueItemId !== null
+            ? $this->generateAndReceiveRefugees($context, $firingNation, $cell, intdiv($loss, 2), $missileKey, $queueItemId, $targetNationId) : 0;
+        $experience = $firingNation !== null && $firingBase !== null && $queueItemId !== null
+            ? $this->creditSettlementExperience($context, $firingNation, $firingBase, $missileKey, $loss, $targetNationId) : 0;
+        $effect = $kind === FacilityRankPolicy::LAND_DESTRUCTION ? 'settlement_population_land_damaged' : 'settlement_population_damaged';
+        $impact = [
+            ...$base,
+            'meaningful' => $loss > 0,
+            'effect' => $effect,
+            'target_nation_id' => $targetNationId,
+            'target_nation_name' => $targetNationName,
+            'preserved_facility_key' => 'city',
+            'before_population' => $before,
+            'after_population' => (int) $cell->population,
+            'from_terrain_key' => $cell->terrain->key,
+            'to_terrain_key' => $cell->terrain->key,
+            'refugees' => $refugees,
+            'firing_base_experience_applied' => $experience,
+        ];
+        $this->recordMeaningfulImpact($context, $firingNation, $cell, $missileKey, $effect, $impact, $targetNationId, $targetNationName);
+
+        return $impact;
+    }
+
     private function damageCapital(
         TurnContext $context,
         ?Nation $firingNation,
@@ -1862,6 +1937,14 @@ final class MissileImpactResolver
         }
         $before = $cell->population;
         $after = max($minimum, intdiv($before * (100 - $percentage), 100));
+        $limit = $this->facilityRanks->populationDamageLimit(
+            $context->ruleset->settings,
+            $missileKey === 'land_destruction_missile'
+                ? FacilityRankPolicy::LAND_DESTRUCTION : FacilityRankPolicy::ORDINARY_TERRAIN_DESTRUCTION,
+        );
+        if ($limit !== null) {
+            $after = max($after, $before - $limit);
+        }
         if ($after === $before) {
             return 0;
         }
@@ -1928,16 +2011,18 @@ final class MissileImpactResolver
             'generated_population' => $generated,
         ], 'public');
         $settlementKeys = $context->ruleset->settings['military']['refugees']['settlement_facility_keys'] ?? [];
+        $birthrateLevel = 0;
         $attractionMaximum = $context->ruleset->settings['turn_processing']['settlement']['attraction_maximum_population'];
         if ($this->demographics->enabled($context->ruleset->settings)
             && $context->state->hasSecretarySnapshot($recipient->id)) {
+            $birthrateLevel = $context->state->secretarySkillLevel(
+                $recipient->id,
+                SecretarySkillCatalog::DECLINING_BIRTHRATE_POLICY,
+            );
             $attractionMaximum = $this->demographics->attractionMaximum(
                 $context->ruleset->settings,
                 $attractionMaximum,
-                $context->state->secretarySkillLevel(
-                    $recipient->id,
-                    SecretarySkillCatalog::DECLINING_BIRTHRATE_POLICY,
-                ),
+                $birthrateLevel,
             );
         }
         $cells = MapCell::query()->where('owner_nation_id', $recipient->id)
@@ -1947,11 +2032,11 @@ final class MissileImpactResolver
         $remaining = $generated;
         foreach ($cells as $cell) {
             $maximum = $cell->facility?->key === 'capital'
-                ? $context->ruleset->settings['capital_growth_maximum_population']
-                    + $this->undergroundBenefits->capitalMaximumBonusForTurn(
-                        $context->state,
-                        $recipient->id,
-                    )
+                ? $this->demographics->capitalMaximum(
+                    $context->ruleset->settings,
+                    $birthrateLevel,
+                    $this->undergroundBenefits->capitalMaximumBonusForTurn($context->state, $recipient->id),
+                )
                 : $attractionMaximum;
             $applied = min($remaining, max(0, $maximum - $cell->population));
             if ($applied < 1) {
@@ -2026,7 +2111,7 @@ final class MissileImpactResolver
     /** @param array<string, mixed> $impact */
     private function collarQualifyingImpact(array $impact): bool
     {
-        return in_array($impact['removed_facility_key'] ?? null, ['village', 'town', 'city'], true)
+        return in_array($impact['removed_facility_key'] ?? $impact['preserved_facility_key'] ?? null, ['village', 'town', 'city'], true)
             || in_array($impact['effect'] ?? null, ['capital_damaged', 'capital_at_minimum'], true);
     }
 

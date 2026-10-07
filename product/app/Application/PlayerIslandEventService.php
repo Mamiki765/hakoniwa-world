@@ -43,6 +43,8 @@ final class PlayerIslandEventService
         'fire.damaged',
         'facility.partially_damaged',
         'fire.undersea_city_destroyed',
+        'fire.extinguished_undersea',
+        'facility.undersea_fire_station_abandoned',
         'oil.income',
         'oil.depleted',
         'population.decreased',
@@ -58,7 +60,7 @@ final class PlayerIslandEventService
         'command.forest_planted_private',
         'command.missile_base_built_private',
         'command.seabed_base_built_private',
-        'command.undersea_city_built_private',
+        'command.undersea_city_built_private', 'command.undersea_fire_station_built_private',
         'command.decoy_built_private',
         'command.logging_private',
         'command.capital_relocated',
@@ -95,7 +97,7 @@ final class PlayerIslandEventService
         'command.terrain_changed_public',
         'command.forest_planted_public',
         'command.seabed_base_built_public',
-        'command.undersea_city_built_public',
+        'command.undersea_city_built_public', 'command.undersea_fire_station_built_public',
         'command.facility_built_public',
         'command.logging_public',
         'command.capital_relocated_public',
@@ -106,6 +108,7 @@ final class PlayerIslandEventService
         'territory.influenced',
         'buried_treasure.created',
         'ship.pirate_attacked',
+        'ship.combat_hit',
         'disaster.triggered',
         'land_subsidence.triggered',
         'disaster.cell_damaged',
@@ -164,10 +167,12 @@ final class PlayerIslandEventService
         'command.forest_planted_private',
         'command.missile_base_built_private',
         'command.seabed_base_built_private',
-        'command.undersea_city_built_private',
+        'command.undersea_city_built_private', 'command.undersea_fire_station_built_private',
         'resource.undersea_city_maintenance_failed',
         'facility.undersea_city_abandoned',
         'fire.undersea_city_destroyed',
+        'fire.extinguished_undersea',
+        'facility.undersea_fire_station_abandoned',
         'command.decoy_built_private',
         'command.logging_private',
         'command.monument_launched',
@@ -316,6 +321,9 @@ final class PlayerIslandEventService
                 'summary' => $eventType === 'turn.summary'
                     ? $this->turnSummaryProjection($metadata)
                     : null,
+                'economic_contributions' => $eventType === 'turn.summary'
+                    ? $this->economicContributionProjection($metadata)
+                    : null,
                 '_metadata' => $metadata,
                 '_visibility' => (string) $row->visibility,
             ];
@@ -454,6 +462,13 @@ final class PlayerIslandEventService
             ->where('events.world_id', $world->id)
             ->where('events.visibility', 'public')
             ->whereIn('events.event_type', self::PUBLIC_ISLAND_EVENT_TYPES)
+            ->where(function (Builder $combat): void {
+                $combat->where('events.event_type', '!=', 'ship.combat_hit')
+                    ->orWhere(function (Builder $navalHit): void {
+                        $navalHit->whereRaw("events.metadata->>'combat_source' = ?", ['warship'])
+                            ->whereIn(DB::raw("events.metadata->>'ship_type_key'"), ['pirate', 'treasure']);
+                    });
+            })
             ->whereBetween('events.turn', [$rangeStart, $rangeEnd])
             ->where(function (Builder $historicalHostAttribution): void {
                 $this->constrainHistoricalHostAttribution($historicalHostAttribution);
@@ -521,7 +536,12 @@ final class PlayerIslandEventService
         // Historical ownership is taken only from the event snapshot.
         // Legacy damage rows without host_nation_id stay fail-closed.
         $query->whereNotIn('events.event_type', self::HOST_ISLAND_MONSTER_EVENT_TYPES)
-            ->orWhereRaw("events.metadata->>'host_nation_id' IS NOT NULL");
+            ->orWhereRaw("events.metadata->>'host_nation_id' IS NOT NULL")
+            ->orWhere(function (Builder $neutralDamage): void {
+                // JSON null records a neutral destination; a missing key does not.
+                $neutralDamage->whereIn('events.event_type', ['monster.damaged', 'monster.killed'])
+                    ->whereRaw("events.metadata->'host_nation_id' = 'null'::jsonb");
+            });
     }
 
     private function constrainPublicIslandDestination(Builder $query, int $nationId): void
@@ -569,6 +589,9 @@ final class PlayerIslandEventService
             }
 
             $metadata = $this->metadata($row->metadata);
+            if ($this->isNeutralMonsterDamage((string) $row->event_type, $metadata)) {
+                return true;
+            }
             $destinationNationId = $metadata[$destinationKey] ?? null;
             $snapshotKey = $destinationKey === 'host_nation_id'
                 ? 'host_nation_name'
@@ -634,6 +657,9 @@ final class PlayerIslandEventService
         object $row,
         array $destinationNationNames,
     ): ?string {
+        if ($this->isNeutralMonsterDamage($eventType, $metadata)) {
+            return '中立地';
+        }
         $destinationKey = match ($eventType) {
             'monster.damage_blocked', 'monster.damaged', 'monster.killed' => 'host_nation_id',
             'monster.defense_self_destructed' => 'defense_owner_nation_id',
@@ -658,6 +684,14 @@ final class PlayerIslandEventService
         }
 
         return is_string($row->event_nation_name) ? $row->event_nation_name : null;
+    }
+
+    /** @param array<string, mixed> $metadata */
+    private function isNeutralMonsterDamage(string $eventType, array $metadata): bool
+    {
+        return in_array($eventType, ['monster.damaged', 'monster.killed'], true)
+            && array_key_exists('host_nation_id', $metadata)
+            && $metadata['host_nation_id'] === null;
     }
 
     /** @return array{0: int, 1: int}|null */
@@ -744,6 +778,7 @@ final class PlayerIslandEventService
             'command.logging_public' => "こころなしか、{$nation}のどこかで森が減った気がします。",
             'command.seabed_base_built_public' => "{$nation}で海底基地が建設されたようです(?,?)。",
             'command.undersea_city_built_public' => "{$nation}で海底都市が建設されたようです(?,?)。",
+            'command.undersea_fire_station_built_public' => "{$nation}で海底消防署が建設されたようです(?,?)。",
             'command.facility_built_public' => $this->publicFacilityBuiltMessage($metadata),
             'command.capital_relocated_public' => sprintf(
                 '%sの首都が(%s,%s)から(%s,%s)へ移転しました。',
@@ -774,6 +809,7 @@ final class PlayerIslandEventService
                 $metadata['new_owner_nation_name'] ?? $nation,
             ),
             'buried_treasure.created' => $this->publicBuriedTreasureCreatedMessage($metadata),
+            'ship.combat_hit' => $this->publicNavalHitMessage($metadata),
             'ship.pirate_attacked' => match ($metadata['target_type'] ?? null) {
                 'settlement' => sprintf(
                     '%s(%s,%s)の集落が海賊船に襲撃され、%s人が連れ去られました。',
@@ -806,13 +842,11 @@ final class PlayerIslandEventService
                 $this->disasterCellDamageMessage($metadata),
             ),
             'capital.disaster_damaged' => sprintf(
-                '%s(%s,%s)で%sにより首都人口が%s%%減少し、%s人になりました。',
+                '%s(%s,%s)で%s',
                 $nation,
                 $x,
                 $y,
-                $this->disasterLabel($metadata['disaster_key'] ?? null),
-                number_format($this->integer($metadata, 'damage_percent')),
-                number_format($this->integer($metadata, 'after_population')),
+                $this->capitalDisasterDamageMessage($metadata),
             ),
             'facility.partially_damaged' => $this->publicFacilityPartialDamageMessage($metadata),
             'monster.spawned' => ($metadata['spawn_source'] ?? null) === 'world_aoi_disaster'
@@ -1065,7 +1099,7 @@ final class PlayerIslandEventService
             'award.granted' => ['nation_name', 'award_key', 'award_name'],
             'command.terrain_changed_public' => ['nation_name', 'command_key', 'x', 'y'],
             'command.forest_planted_public', 'command.logging_public',
-            'command.seabed_base_built_public', 'command.undersea_city_built_public',
+            'command.seabed_base_built_public', 'command.undersea_city_built_public', 'command.undersea_fire_station_built_public',
             'land_subsidence.triggered',
             'refugee_generated' => ['nation_name'],
             'command.facility_built_public' => [
@@ -1086,13 +1120,17 @@ final class PlayerIslandEventService
             'ship.pirate_attacked' => [
                 'nation_name', 'target_type', 'x', 'y', 'stolen_population', 'facility_key', 'evaded',
             ],
+            'ship.combat_hit' => ['ship_type_key', 'x', 'y', 'before_hp', 'after_hp'],
             'disaster.triggered' => ['disaster_key', 'center_x', 'center_y', 'sea_area_name', 'chunk_x', 'chunk_y', 'min_x', 'max_x', 'min_y', 'max_y'],
             'disaster.cell_damaged', 'fire.damaged' => [
                 'nation_name', 'x', 'y', 'disaster_key', 'from_terrain_key',
                 'to_terrain_key', 'removed_facility_key',
+                ...(($metadata['preserved_facility_key'] ?? null) === 'city'
+                    ? ['preserved_facility_key', 'before_population', 'after_population'] : []),
             ],
             'capital.disaster_damaged' => [
                 'nation_name', 'x', 'y', 'disaster_key', 'damage_percent', 'after_population',
+                'before_population', 'population_damage_kind',
             ],
             'facility.partially_damaged' => [
                 'nation_name', 'x', 'y', 'facility_key', 'damage_kind', 'source_key',
@@ -1473,14 +1511,14 @@ final class PlayerIslandEventService
                 number_format($this->integer($metadata, 'changed_to_shallow_count')),
             ),
             'disaster.cell_damaged' => $this->disasterCellDamageMessage($metadata),
-            'capital.disaster_damaged' => sprintf(
-                '%sにより首都人口が%s%%減少し、%s人になりました。',
-                $this->disasterLabel($metadata['disaster_key'] ?? null),
-                number_format($this->integer($metadata, 'damage_percent')),
-                number_format($this->integer($metadata, 'after_population')),
-            ),
+            'capital.disaster_damaged' => $this->capitalDisasterDamageMessage($metadata),
             'fire.prevented' => '周囲の森または記念碑が火災を防ぎました。',
             'fire.damaged' => '火災により施設または都市が荒地になりました。',
+            'fire.extinguished_undersea' => sprintf(
+                '火災が発生しましたが、海底消防の働きによって鎮火しました。費用は%s億円になります。',
+                number_format($this->integer($metadata, 'cost_money')),
+            ),
+            'facility.undersea_fire_station_abandoned' => '維持費を支払えず、海底消防署が海に戻りました。',
             'fire.undersea_city_destroyed' => sprintf(
                 '%sにあった海底都市は火災により消滅しました。',
                 $this->privateCellLocation($metadata),
@@ -1634,8 +1672,10 @@ final class PlayerIslandEventService
             'command.missile_base_built_private' => $this->privateConstructionMessage($metadata, 'ミサイル基地'),
             'command.seabed_base_built_public' => 'どこかで海底基地が建設されたようです(?,?)。',
             'command.undersea_city_built_public' => 'どこかで海底都市が建設されたようです(?,?)。',
+            'command.undersea_fire_station_built_public' => 'どこかで海底消防署が建設されたようです(?,?)。',
             'command.seabed_base_built_private' => $this->privateConstructionMessage($metadata, '海底基地'),
             'command.undersea_city_built_private' => $this->privateConstructionMessage($metadata, '海底都市'),
+            'command.undersea_fire_station_built_private' => $this->privateConstructionMessage($metadata, '海底消防署'),
             'command.decoy_built_public' => $this->constructionMessage($metadata, '防衛施設'),
             'command.decoy_built_private' => $this->privateConstructionMessage($metadata, 'ハリボテ'),
             'command.facility_built_public' => $this->publicFacilityBuiltMessage($metadata),
@@ -1889,6 +1929,42 @@ final class PlayerIslandEventService
         return $result;
     }
 
+    /** @param array<string, mixed> $metadata
+     * @return list<array{element_key: string, name: string, count: int|null, amount: int, unit: string}>|null
+     */
+    private function economicContributionProjection(array $metadata): ?array
+    {
+        if (! is_array($metadata['economic_contributions'] ?? null)) {
+            return null;
+        }
+        $rows = [];
+        foreach ($metadata['economic_contributions'] as $row) {
+            if (! is_array($row) || ! is_int($row['amount'] ?? null)) {
+                continue;
+            }
+            $name = match ($row['element_key'] ?? null) {
+                'tourist' => '観光船', 'fishing' => '漁船',
+                'attraction_towel' => '誘致支援タオル',
+                'pizzeria', 'undersea_fire_station' => $this->facilityLabel($row['element_key']),
+                default => null,
+            };
+            $unit = match ($row['resource_key'] ?? null) {
+                'money' => '億円', 'fish' => 'トン',
+                default => null,
+            };
+            if ($name === null || $unit === null) {
+                continue;
+            }
+            $rows[] = [
+                'element_key' => $row['element_key'], 'name' => $name,
+                'count' => is_int($row['count'] ?? null) && $row['count'] > 0 ? $row['count'] : null,
+                'amount' => $row['amount'], 'unit' => $unit,
+            ];
+        }
+
+        return $rows;
+    }
+
     /**
      * Owner pages contain both the Nation's safe public timeline and its
      * private detail rows. Suppress only known one-to-one public companions;
@@ -1958,7 +2034,7 @@ final class PlayerIslandEventService
         $prefix = match ($event['type'] ?? null) {
             'command.forest_planted_private' => 'terrain',
             'command.missile_base_built_private', 'command.seabed_base_built_private',
-            'command.undersea_city_built_private',
+            'command.undersea_city_built_private', 'command.undersea_fire_station_built_private',
             'command.decoy_built_private' => 'facility',
             default => null,
         };
@@ -1978,6 +2054,7 @@ final class PlayerIslandEventService
             'command.forest_planted_private', 'command.missile_base_built_private' => "forest:{$turn}",
             'command.seabed_base_built_private' => "seabed:{$turn}",
             'command.undersea_city_built_private' => "undersea-city:{$turn}",
+            'command.undersea_fire_station_built_private' => "undersea-fire-station:{$turn}",
             'command.decoy_built_private' => $this->ownerCoordinateKey('facility', $event),
             'command.logging_private' => "logging:{$turn}",
             'command.capital_relocated' => $this->ownerCoordinateKey('capital', $event),
@@ -2003,6 +2080,7 @@ final class PlayerIslandEventService
             'command.forest_planted_public' => "forest:{$turn}",
             'command.seabed_base_built_public' => "seabed:{$turn}",
             'command.undersea_city_built_public' => "undersea-city:{$turn}",
+            'command.undersea_fire_station_built_public' => "undersea-fire-station:{$turn}",
             'command.logging_public' => "logging:{$turn}",
             'command.capital_relocated_public' => $this->ownerCoordinateKey('capital', $event),
             'command.attraction_started_public' => "attraction:{$turn}",
@@ -2483,6 +2561,7 @@ final class PlayerIslandEventService
             'killed' => '怪獣を撃破しました',
             'blocked' => '硬化中の怪獣に防がれました',
             'capital_damaged' => '首都人口へ被害を与えました',
+            'settlement_population_damaged', 'settlement_population_land_damaged' => '都市人口へ被害を与えました',
             'capital_at_minimum' => '首都人口が最低人口のため効果はありませんでした',
             'water_facility_destroyed' => '水上施設を破壊しました',
             'ship_damaged' => '船に損傷を与えました',
@@ -2520,8 +2599,42 @@ final class PlayerIslandEventService
     }
 
     /** @param array<string, mixed> $metadata */
+    private function publicNavalHitMessage(array $metadata): string
+    {
+        $ship = ($metadata['ship_type_key'] ?? null) === 'pirate' ? '海賊船' : '宝船';
+        $result = $this->integer($metadata, 'after_hp') === 0
+            ? '撃沈しました。'
+            : sprintf('%sダメージを与えました。', number_format(max(0,
+                $this->integer($metadata, 'before_hp') - $this->integer($metadata, 'after_hp'))));
+
+        return sprintf('海域(%s,%s)の%sに艦砲射撃が命中し、%s',
+            number_format($this->integer($metadata, 'x')),
+            number_format($this->integer($metadata, 'y')), $ship, $result);
+    }
+
+    /** @param array<string, mixed> $metadata */
+    private function capitalDisasterDamageMessage(array $metadata): string
+    {
+        if (is_string($metadata['population_damage_kind'] ?? null)) {
+            return sprintf('%sにより首都人口が%s人減少し、%s人になりました。',
+                $this->disasterLabel($metadata['disaster_key'] ?? null),
+                number_format(max(0, $this->integer($metadata, 'before_population') - $this->integer($metadata, 'after_population'))),
+                number_format($this->integer($metadata, 'after_population')));
+        }
+
+        return sprintf('%sにより首都人口が%s%%減少し、%s人になりました。',
+            $this->disasterLabel($metadata['disaster_key'] ?? null),
+            number_format($this->integer($metadata, 'damage_percent')),
+            number_format($this->integer($metadata, 'after_population')));
+    }
+
+    /** @param array<string, mixed> $metadata */
     private function disasterCellDamageMessage(array $metadata): string
     {
+        if (($metadata['preserved_facility_key'] ?? null) === 'city') {
+            return sprintf('%sにより都市人口が%s人減少しました。', $this->disasterLabel($metadata['disaster_key'] ?? null),
+                number_format(max(0, $this->integer($metadata, 'before_population') - $this->integer($metadata, 'after_population'))));
+        }
         $removedFacilityKey = $metadata['removed_facility_key'] ?? null;
         if (is_string($removedFacilityKey) && $removedFacilityKey !== '') {
             return sprintf(
@@ -2573,6 +2686,7 @@ final class PlayerIslandEventService
             'build_defense_facility' => '防衛施設建設',
             'build_seabed_base' => '海底基地建設',
             'build_undersea_city' => '海底都市建設',
+            'build_undersea_fire_station' => '海底消防署建設',
             'build_ship' => '船建造',
             'scuttle_ship' => '廃船',
             'build_monument' => '記念碑建設',
@@ -2647,6 +2761,7 @@ final class PlayerIslandEventService
             'defense' => '防衛施設',
             'seabed_base' => '海底基地',
             'undersea_city' => '海底都市',
+            'undersea_fire_station' => '海底消防署',
             'monument' => '記念碑',
             'decoy' => 'ハリボテ',
             'central_bank' => '中央銀行',

@@ -12,6 +12,7 @@ use App\Application\NationLifecycleService;
 use App\Application\PlayerIslandEventService;
 use App\Application\SecretaryTurnService;
 use App\Application\Underground\UndergroundProfileService;
+use App\Domain\Facility\FacilityRankPolicy;
 use App\Domain\Facility\MissileBaseRules;
 use App\Domain\Map\GridCoordinate;
 use App\Domain\Map\MapCellStateService;
@@ -36,6 +37,66 @@ use Tests\Support\CommandAndMissileTestCase;
 final class MissileImpactAndSettlementTest extends CommandAndMissileTestCase
 {
     use UsesReusableSurfaceWorld;
+
+    public static function populationDamageCases(): array
+    {
+        return [
+            'normal large city' => ['missile', 'city', 25_000, 24_000, 500, 'settlement_or_facility'],
+            'PP large city' => ['pp_missile', 'city', 25_000, 24_000, 500, 'settlement_or_facility'],
+            'SPP large city' => ['spp_missile', 'city', 25_000, 24_000, 500, 'settlement_or_facility'],
+            'LDM large city' => ['land_destruction_missile', 'city', 25_000, 22_000, 0, 'land_destroyed'],
+            'large city demotion' => ['spp_missile', 'city', 20_001, 19_001, 500, 'settlement_or_facility'],
+            'capital fixed loss' => ['spp_missile', 'capital', 25_000, 24_000, 500, 'capital_above_minimum'],
+            'capital smaller existing loss' => ['spp_missile', 'capital', 900, 810, 45, 'capital_above_minimum'],
+            'capital smaller existing LDM loss' => ['land_destruction_missile', 'capital', 900, 630, 0, 'capital_above_minimum'],
+            'capital minimum' => ['spp_missile', 'capital', 100, 100, 0, 'capital_at_minimum'],
+        ];
+    }
+
+    #[DataProvider('populationDamageCases')]
+    public function test_population_damage_preserves_identity_and_uses_actual_loss_for_refugees_and_existing_karma(
+        string $missile, string $facility, int $before, int $after, int $refugees, string $karmaCategory,
+    ): void {
+        [$world, $user, $firing, $target] = $this->combatants('population damage');
+        $firing->update(['money' => 9_999, 'karma' => 0]);
+        $target->update(['karma' => 0]);
+        DB::table('secretary_skills')->where('skill_key', SecretarySkillCatalog::FINAL_DEFENSE_LINE)
+            ->update(['level' => 0, 'experience' => 0]);
+        $space = $this->surfaceMapSpace($world);
+        $base = $this->missileBase($firing);
+        $capitalRecord = $target->capital()->firstOrFail();
+        $cell = $facility === 'capital' ? $capitalRecord->cell()->with(['terrain', 'facility'])->firstOrFail()
+            : MapCell::query()->where('owner_nation_id', $target->id)->whereNull('facility_definition_id')
+                ->whereHas('terrain', fn ($query) => $query->where('key', 'plain'))->with(['terrain', 'facility'])->firstOrFail();
+        if ($facility === 'city') {
+            app(MapCellStateService::class)->setFacility($cell, FacilityDefinition::query()->where('key', 'city')->firstOrFail());
+        }
+        $cell->population = $before;
+        $cell->save();
+        $identity = $cell->only(['id', 'terrain_definition_id', 'facility_definition_id', 'owner_nation_id', 'x', 'y']);
+        $item = $this->queue(app(CommandQueueService::class), $user, $firing, $space, $missile, $cell);
+        $radius = $missile === 'spp_missile' ? 0 : ($missile === 'pp_missile' ? 1 : 2);
+        $seed = $this->seedForImpactSequence($item, $cell, $radius, [$cell]);
+
+        $context = $this->resolvePreparedKarmaMissileTurn($world, $firing, $target, $base, $item, 2, $seed);
+
+        $cell->refresh();
+        $this->assertSame($identity, $cell->only(array_keys($identity)));
+        $this->assertSame($after, (int) $cell->population);
+        $this->assertSame($capitalRecord->map_cell_id, $target->capital()->value('map_cell_id'));
+        $generated = DB::table('audit_events')->where('event_type', 'refugee_generated')
+            ->whereRaw("metadata->>'queue_item_id' = ?", [(string) $item->id]);
+        $this->assertSame($refugees > 0 ? 1 : 0, $generated->count());
+        if ($refugees > 0) {
+            $metadata = json_decode((string) $generated->value('metadata'), true, 512, JSON_THROW_ON_ERROR);
+            $this->assertSame($refugees, $metadata['generated_population']);
+        }
+        $this->assertSame($context->ruleset->settings['karma']['impact_points'][$karmaCategory],
+            $context->state->karmaLedgerForNation($firing->id)['crime_points']);
+        if ($facility === 'city') {
+            $this->assertSame($after > 20_000 ? 2 : 1, app(FacilityRankPolicy::class)->rank($context->ruleset->settings, 'city', (int) $cell->population));
+        }
+    }
 
     public function test_failed_command_continues_to_finance_and_idle_counter_changes_once_per_target_turn(): void
     {
@@ -590,7 +651,7 @@ final class MissileImpactAndSettlementTest extends CommandAndMissileTestCase
         $this->assertSame(0, DB::table('audit_events')->where('event_type', 'karma.refugee_bonus')->count());
     }
 
-    public function test_refugees_use_the_turn_start_birthrate_skill_attraction_capacity_without_raising_capital_capacity(): void
+    public function test_refugees_use_turn_start_birthrate_for_attraction_and_capital_capacity(): void
     {
         [$world, $firingUser, $firing, $target] = $this->combatants('birthrate-refugee');
         $firing->update(['karma' => 0]);
@@ -632,15 +693,15 @@ final class MissileImpactAndSettlementTest extends CommandAndMissileTestCase
         MapCell::query()->where('owner_nation_id', $firing->id)
             ->whereKeyNot($receivingCell->id)
             ->whereHas('facility', fn ($query) => $query->whereIn('key', $settlementKeys))
-            ->get()->each(function (MapCell $cell) use ($firingCapitalId, $effectiveMaximum, $world): void {
+            ->get()->each(function (MapCell $cell) use ($firingCapitalId, $effectiveMaximum): void {
                 $cell->population = $cell->id === $firingCapitalId
-                    ? $world->rulesetVersion()->sole()->settings['capital_growth_maximum_population']
+                    ? $effectiveMaximum + 15_000 - 200
                     : $effectiveMaximum;
                 $cell->version++;
                 $cell->save();
             });
         $targetCapital = $target->capital()->firstOrFail()->cell()->with(['terrain', 'facility'])->firstOrFail();
-        $targetCapital->update(['population' => 25_000]);
+        $targetCapital->update(['population' => 10_000]);
         $base = $this->missileBase($firing);
         $item = $this->queue(
             app(CommandQueueService::class),
@@ -675,14 +736,14 @@ final class MissileImpactAndSettlementTest extends CommandAndMissileTestCase
         $received = DB::table('audit_events')->where('event_type', 'refugee_received')
             ->whereRaw("metadata->>'queue_item_id' = ?", [(string) $item->id])->sole();
         $metadata = json_decode((string) $received->metadata, true, 512, JSON_THROW_ON_ERROR);
-        $this->assertSame(1_250, $metadata['generated_population']);
-        $this->assertSame(1_000, $metadata['received_population']);
-        $this->assertSame(250, $metadata['unreceived_population']);
-        $this->assertSame($effectiveMaximum, $receivingCell->fresh()->population);
+        $this->assertSame(500, $metadata['generated_population']);
+        $this->assertSame(500, $metadata['received_population']);
+        $this->assertSame(0, $metadata['unreceived_population']);
+        $this->assertSame($baseMaximum + 300, $receivingCell->fresh()->population);
         $this->assertSame(3_000, $underseaCity->fresh()->population);
         $this->assertSame('undersea_city', $underseaCity->fresh()->facility()->value('key'));
         $this->assertSame(
-            $world->rulesetVersion()->sole()->settings['capital_growth_maximum_population'],
+            $effectiveMaximum + 15_000,
             (int) MapCell::query()->whereKey($firingCapitalId)->value('population'),
         );
     }
@@ -1409,6 +1470,11 @@ final class MissileImpactAndSettlementTest extends CommandAndMissileTestCase
         $this->assertSame('pirate_sink', $treasure->source);
         $this->assertSame(1, DB::table('audit_events')->where('event_type', 'buried_treasure.created')
             ->where('visibility', 'public')->count());
+        $page = app(PlayerIslandEventService::class)->publicWorldPage($world, anchorTurn: 2);
+        $types = collect($page['groups'])->flatMap(static fn (array $group): array => $group['events'])->pluck('type');
+        $this->assertSame(1, $types->filter(static fn (string $type): bool => $type === 'missile.impact')->count());
+        $this->assertNotContains('ship.combat_hit', $types);
+        $this->assertNotContains('ship.sunk', $types);
     }
 
     public function test_navy_evades_normal_one_hp_missile_but_cannot_evade_instant_sink(): void

@@ -110,6 +110,29 @@ final class SecretaryItemEffectAggregator
         return $total;
     }
 
+    /** @return array{percent: int, cost_money: int}|null */
+    public function snapshotAttractionTowel(TurnState $state, int $nationId): ?array
+    {
+        $effects = $this->snapshotEffects($state, $nationId, 'supplemental_attraction');
+        if ($effects === []) {
+            return null;
+        }
+        if (count($effects) !== 1) {
+            throw new DomainException('Supplemental attraction must resolve to one equipped effect.');
+        }
+        $resolved = $effects[0];
+        $parameters = $resolved['effect']['parameters'];
+        if (($parameters['source_genre'] ?? null) !== 'item'
+            || ($parameters['target'] ?? null) !== 'post_natural_attraction'
+            || ($parameters['percent_per_level'] ?? null) !== 10
+            || ($parameters['cost_money_per_level'] ?? null) !== 100) {
+            throw new DomainException('Supplemental attraction snapshot is invalid.');
+        }
+
+        return ['percent' => $resolved['level'] * $parameters['percent_per_level'],
+            'cost_money' => $resolved['level'] * $parameters['cost_money_per_level']];
+    }
+
     /** @return array{chance_percent: int, multiplier: int, random_stream_version: int}|null */
     public function snapshotExperienceDouble(
         TurnState $state,

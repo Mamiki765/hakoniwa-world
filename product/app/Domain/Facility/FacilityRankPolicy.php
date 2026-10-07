@@ -48,11 +48,40 @@ final class FacilityRankPolicy
     public function rank(array $rulesetSettings, string $facilityKey, int $scale): int
     {
         $contract = $this->contract($rulesetSettings, $facilityKey);
+        $field = $facilityKey === 'city' ? 'rank_one_maximum_population' : 'rank_one_maximum_scale';
 
         return $contract !== null && $scale > $this->positiveInteger(
-            $contract['rank_one_maximum_scale'] ?? null,
-            "{$facilityKey}.rank_one_maximum_scale",
+            $contract[$field] ?? null,
+            "{$facilityKey}.{$field}",
         ) ? 2 : 1;
+    }
+
+    /** @param array<string, mixed> $rulesetSettings */
+    public function isLargeCity(array $rulesetSettings, ?string $facilityKey, int $population): bool
+    {
+        return $facilityKey === 'city' && $this->rank($rulesetSettings, $facilityKey, $population) === 2;
+    }
+
+    /** @param array<string, mixed> $rulesetSettings */
+    public function largeCityImmuneToDisaster(array $rulesetSettings, ?string $facilityKey, int $population, string $disaster): bool
+    {
+        return $this->isLargeCity($rulesetSettings, $facilityKey, $population)
+            && in_array($disaster, $this->contract($rulesetSettings, 'city')['immune_disaster_keys'] ?? [], true);
+    }
+
+    /** @param array<string, mixed> $settings */
+    public function populationDamageLimit(array $settings, string $damageKind): ?int
+    {
+        $contract = $this->contract($settings, 'city');
+        if ($contract === null) {
+            return null;
+        }
+        $damage = $this->contract($settings, $contract['population_damage_reference'])['damage_scale_loss'][$damageKind] ?? null;
+        if ($damage === null) {
+            return null;
+        }
+
+        return $damage * $contract['population_per_damage_unit'];
     }
 
     /** @param array<string, mixed> $rulesetSettings */
