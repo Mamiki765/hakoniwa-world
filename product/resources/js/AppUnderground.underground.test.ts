@@ -479,9 +479,9 @@ describe('Underground application operations', () => {
         expect(wrapper.get('.secretary-main-profile').text()).toContain('内政Lv1');
         expect(wrapper.get('.secretary-main-profile').text()).toContain('資金・食糧最大+1%');
         expect(wrapper.get('.secretary-main-profile').text()).toContain('討伐経験値0');
-        expect(wrapper.get('.secretary-no-image').text()).toBe('No image');
-        expect(wrapper.get('.secretary-image-preference-notice').text()).toContain('画像表示設定が未設定です');
-        await wrapper.get('.secretary-image-preference-notice button').trigger('click');
+        expect(wrapper.get('.secretary-no-image').text()).toBe('画像なし');
+        expect(wrapper.find('.secretary-image-preference-notice').exists()).toBe(false);
+        await wrapper.findAll('.site-header nav button').find((button) => button.text() === 'オプション')!.trigger('click');
         expect(wrapper.get('.image-settings').text()).toContain('一部で使用されているAI生成画像を表示する');
         expect(wrapper.get('.image-settings').text()).toContain('デフォルトの秘書画像の表示方法');
         await wrapper.get('.image-settings input[value="true"]').setValue();
@@ -496,12 +496,13 @@ describe('Underground application operations', () => {
         });
         await wrapper.findAll('.site-header nav button').find((button) => button.text() === 'ペリドット')!.trigger('click');
         await flushPromises();
+        await wrapper.get('.secretary-biography .secretary-profile-section-heading button').trigger('click');
         await wrapper.get('.secretary-biography textarea').setValue('更新した経歴');
         await wrapper.get('.secretary-biography form').trigger('submit');
         await flushPromises();
         expect(fetchMock.mock.calls.some(([path]) => String(path) === '/api/v1/secretaries/11?world_id=1')).toBe(true);
-        expect(wrapper.get<HTMLTextAreaElement>('.secretary-biography textarea').element.value).toBe('更新した経歴');
-        const initialTabs = wrapper.findAll('[role="tab"]');
+        expect(wrapper.get('.secretary-biography-text').text()).toBe('更新した経歴');
+        const initialTabs = wrapper.findAll('[role="tab"]:not([disabled])');
         expect(initialTabs.map((tab) => tab.text())).toEqual(['メイン', '熟練度', '装備', '倉庫', '実績', '設定']);
         await initialTabs[1]!.trigger('click');
         expect(wrapper.get('.secretary-section-title').text()).toBe('パッシブスキル');
@@ -529,7 +530,7 @@ describe('Underground application operations', () => {
 
         const secretaryGetCount = () => fetchMock.mock.calls.filter(([path]) => String(path) === '/api/v1/me/secretary?world_id=1').length;
         const beforeTabSwitch = secretaryGetCount();
-        const tabs = wrapper.findAll('[role="tab"]');
+        const tabs = wrapper.findAll('[role="tab"]:not([disabled])');
         expect(tabs.map((tab) => tab.text())).toEqual(['メイン', '熟練度', '装備', '倉庫', '実績', '設定']);
         expect(tabs[1]!.attributes('aria-selected')).toBe('true');
         await tabs[1]!.trigger('keydown', { key: 'ArrowRight' });
@@ -586,13 +587,14 @@ describe('Underground application operations', () => {
             String(path) === '/api/v1/me/secretary/profile' && init?.method === 'PATCH'
         ));
         expect(JSON.parse(String(nicknameRequests.at(-1)?.[1]?.body))).toEqual({ nickname: 'エメ' });
-        expect(wrapper.get('.secretary-name').text()).toBe('エメ');
+        expect(wrapper.get('.secretary-name').text()).toBe('エメラルド');
+        expect(wrapper.get('.secretary-nickname').text()).toBe('エメ');
         await wrapper.findAll('.site-header nav button').find((button) => button.text() === 'オプション')!.trigger('click');
         expect(wrapper.find('.secretary-rename-form').exists()).toBe(false);
         await wrapper.findAll('.site-header nav button')
             .find((button) => button.text() === 'エメラルド')!.trigger('click');
         await flushPromises();
-        expect(wrapper.get('.secretary-underground-entry button').text()).toBe('地下へ');
+        expect(wrapper.get('.secretary-underground-entry button').text()).toBe('地底へ');
         await wrapper.get('.secretary-underground-entry button').trigger('click');
         await flushPromises();
         expect(wrapper.get('.underground-story').text()).toContain('あなたの秘書は、暗く狭い場所で目を覚ました。');

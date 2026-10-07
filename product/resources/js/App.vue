@@ -20,6 +20,10 @@ import SecretaryEquipmentModal from './components/SecretaryEquipmentModal.vue';
 import TradingPostPanel from './components/TradingPostPanel.vue';
 import UndergroundPanel from './components/UndergroundPanel.vue';
 import SecretaryImageSlotsEditor from './components/SecretaryImageSlotsEditor.vue';
+import SecretaryMenu from './components/SecretaryMenu.vue';
+import SecretaryStatusOverview from './components/SecretaryStatusOverview.vue';
+import SecretaryEquippedItems from './components/SecretaryEquippedItems.vue';
+import type { SecretarySection } from './types';
 import UndergroundSurfaceMapView from './components/UndergroundSurfaceMap.vue';
 import { formatExactMoney } from './formatters/money';
 import { useMapState } from './state/mapState';
@@ -119,11 +123,9 @@ watch([announcementBody, announcementBodyFormat], () => {
 const nation = ref<Nation | null>(null);
 const secretary = ref<Secretary | null>(null);
 const pendingTicketGacha = ref<{ ticketId: number; requestKey: string } | null>(null);
-type SecretarySection = 'main' | 'skills' | 'equipment' | 'warehouse' | 'settings' | 'achievements';
 const secretarySection = ref<SecretarySection>('main');
 const viewedSecretaryProfile = ref<SecretaryProfile | null>(null);
 const viewedSecretaryWorldId = ref<number | null>(null);
-const secretaryBiography = ref('');
 const secretaryNickname = ref('');
 const secretaryProfileErrors = ref<Record<string, string>>({});
 const secretaryShowAiImages = ref(false);
@@ -206,33 +208,6 @@ function redirectFromUnavailableUnderground(): void {
     page.value = 'home';
 }
 
-const secretaryTabOrder = computed<SecretarySection[]>(() => viewedSecretaryProfile.value?.is_owner
-    ? ['main', 'skills', 'equipment', 'warehouse', 'achievements', 'settings']
-    : ['main']);
-const secretaryTabIds = {
-    main: 'secretary-tab-main',
-    skills: 'secretary-tab-skills',
-    equipment: 'secretary-tab-equipment',
-    warehouse: 'secretary-tab-warehouse',
-    settings: 'secretary-tab-settings',
-    achievements: 'secretary-tab-achievements',
-} as const;
-
-async function handleSecretaryTabKeydown(event: KeyboardEvent): Promise<void> {
-    const tabs = secretaryTabOrder.value;
-    const currentIndex = tabs.indexOf(secretarySection.value);
-    let nextIndex: number | null = null;
-    if (event.key === 'ArrowRight') nextIndex = (currentIndex + 1) % tabs.length;
-    if (event.key === 'ArrowLeft') nextIndex = (currentIndex - 1 + tabs.length) % tabs.length;
-    if (event.key === 'Home') nextIndex = 0;
-    if (event.key === 'End') nextIndex = tabs.length - 1;
-    if (nextIndex === null) return;
-
-    event.preventDefault();
-    secretarySection.value = tabs[nextIndex]!;
-    await nextTick();
-    document.getElementById(secretaryTabIds[secretarySection.value])?.focus();
-}
 const nationName = ref('');
 const nationOwnerName = ref('');
 const nationComment = ref('');
@@ -1250,7 +1225,6 @@ async function loadSecretary(): Promise<void> {
 function setViewedSecretaryProfile(profile: SecretaryProfile, worldId: number | null): void {
     viewedSecretaryProfile.value = profile;
     viewedSecretaryWorldId.value = worldId;
-    secretaryBiography.value = profile.biography;
     secretaryNickname.value = profile.nickname ?? '';
     if (profile.is_owner) profileSecretaryName.value = profile.name ?? '';
     if (profile.is_owner) profileSecretaryTitleKey.value = profile.equipped_title?.key ?? '';
@@ -1292,14 +1266,14 @@ async function reloadViewedSecretaryProfile(): Promise<void> {
     setViewedSecretaryProfile(profile, viewedSecretaryWorldId.value);
 }
 
-async function updateSecretaryBiography(): Promise<void> {
+async function updateSecretaryBiography(biography: string): Promise<void> {
     if (viewedSecretaryProfile.value?.is_owner !== true) return;
     busy.value = true;
     secretaryProfileErrors.value = {};
     try {
         const profile = await api<SecretaryProfile>('/api/v1/me/secretary/profile', {
             method: 'PATCH',
-            body: JSON.stringify({ biography: secretaryBiography.value }),
+            body: JSON.stringify({ biography }),
         });
         setViewedSecretaryProfile(profile, viewedSecretaryWorldId.value);
         await reloadViewedSecretaryProfile();
@@ -1332,10 +1306,6 @@ async function updateSecretaryNickname(): Promise<void> {
     } finally {
         busy.value = false;
     }
-}
-
-function openImageSettings(): void {
-    page.value = 'options';
 }
 
 async function saveSecretaryImagePreferences(): Promise<void> {
@@ -2479,94 +2449,16 @@ async function abandonNation(): Promise<void> {
                 </form>
             </template>
             <template v-else-if="viewedSecretaryProfile">
-                <h2 class="secretary-name">{{ viewedSecretaryProfile.battle_display_name }}</h2>
-                <nav class="secretary-tabs" role="tablist" aria-label="秘書メニュー">
-                    <button id="secretary-tab-main" type="button" role="tab" aria-controls="secretary-panel-main" :aria-selected="secretarySection === 'main'" :tabindex="secretarySection === 'main' ? 0 : -1" @click="secretarySection = 'main'" @keydown="handleSecretaryTabKeydown">メイン</button>
-                    <button v-if="viewedSecretaryProfile.is_owner" id="secretary-tab-skills" type="button" role="tab" aria-controls="secretary-panel-skills" :aria-selected="secretarySection === 'skills'" :tabindex="secretarySection === 'skills' ? 0 : -1" @click="secretarySection = 'skills'" @keydown="handleSecretaryTabKeydown">熟練度</button>
-                    <button v-if="viewedSecretaryProfile.is_owner" id="secretary-tab-equipment" type="button" role="tab" aria-controls="secretary-panel-equipment" :aria-selected="secretarySection === 'equipment'" :tabindex="secretarySection === 'equipment' ? 0 : -1" @click="secretarySection = 'equipment'" @keydown="handleSecretaryTabKeydown">装備</button>
-                    <button v-if="viewedSecretaryProfile.is_owner" id="secretary-tab-warehouse" type="button" role="tab" aria-controls="secretary-panel-warehouse" :aria-selected="secretarySection === 'warehouse'" :tabindex="secretarySection === 'warehouse' ? 0 : -1" @click="secretarySection = 'warehouse'" @keydown="handleSecretaryTabKeydown">倉庫</button>
-                    <button v-if="viewedSecretaryProfile.is_owner" id="secretary-tab-achievements" type="button" role="tab" aria-controls="secretary-panel-achievements" :aria-selected="secretarySection === 'achievements'" :tabindex="secretarySection === 'achievements' ? 0 : -1" @click="secretarySection = 'achievements'" @keydown="handleSecretaryTabKeydown">実績</button>
-                    <button v-if="viewedSecretaryProfile.is_owner" id="secretary-tab-settings" type="button" role="tab" aria-controls="secretary-panel-settings" :aria-selected="secretarySection === 'settings'" :tabindex="secretarySection === 'settings' ? 0 : -1" @click="secretarySection = 'settings'" @keydown="handleSecretaryTabKeydown">設定</button>
-                </nav>
+                <h2 class="secretary-name">{{ viewedSecretaryProfile.name }}</h2>
+                <p v-if="viewedSecretaryProfile.nickname" class="secretary-nickname">{{ viewedSecretaryProfile.nickname }}</p>
+                <SecretaryMenu v-model="secretarySection" :owner="viewedSecretaryProfile.is_owner" />
                 <section v-if="secretarySection === 'main'" id="secretary-panel-main" role="tabpanel" aria-labelledby="secretary-tab-main" class="secretary-main-profile">
-                    <div v-if="!viewedSecretaryProfile.viewer_preferences.configured" class="secretary-image-preference-notice">
-                        <span>画像表示設定が未設定です</span>
-                        <button v-if="viewedSecretaryProfile.viewer_preferences.can_update" type="button" @click="openImageSettings">設定する</button>
-                        <span v-else>（ログインすると設定できます）</span>
-                    </div>
-                    <div class="secretary-profile-hero">
-                        <div class="secretary-portrait-column">
-                            <div class="secretary-portrait-frame">
-                                <img
-                                    v-if="viewedSecretaryProfile.main_image.url"
-                                    :src="viewedSecretaryProfile.main_image.url"
-                                    :alt="`${viewedSecretaryProfile.name}のメイン画像`"
-                                >
-                                <span v-else class="secretary-no-image">No image</span>
-                                <details v-if="viewedSecretaryProfile.main_image.display === 'uploaded'" class="secretary-image-info">
-                                    <summary aria-label="画像について">ⓘ</summary>
-                                    <div>
-                                        <strong>画像について</strong>
-                                        <p>制作方法：{{ viewedSecretaryProfile.main_image.creation_method_label }}</p>
-                                        <p v-if="viewedSecretaryProfile.main_image.credit">作者・権利表記：{{ viewedSecretaryProfile.main_image.credit }}</p>
-                                    </div>
-                                </details>
-                            </div>
-                        </div>
-                        <section class="secretary-profile-summary" aria-label="秘書基本情報">
-                            <dl>
-                                <div><dt>内政Lv</dt><dd>{{ viewedSecretaryProfile.domestic_level }}</dd></div>
-                                <div v-if="viewedSecretaryProfile.combat_level !== null">
-                                    <dt>戦闘Lv</dt><dd>{{ viewedSecretaryProfile.combat_level }}</dd>
-                                </div>
-                                <div><dt>資金・食糧最大</dt><dd>+{{ viewedSecretaryProfile.capacity_bonus_percent }}%</dd></div>
-                                <div><dt>討伐経験値</dt><dd>{{ viewedSecretaryProfile.monster_experience }}</dd></div>
-                            </dl>
-                            <button
-                                v-if="viewedSecretaryProfile.viewer_preferences.can_update && viewedSecretaryProfile.viewer_preferences.configured"
-                                class="secretary-preferences-link"
-                                type="button"
-                                @click="openImageSettings"
-                            >
-                                画像表示設定
-                            </button>
-                            <div v-if="viewedSecretaryProfile.is_owner && secretary?.name" class="secretary-underground-entry">
-                                <button class="button primary" type="button" @click="openUnderground">地下へ</button>
-                            </div>
-                        </section>
-                        <section class="secretary-biography" aria-labelledby="secretary-biography-title">
-                            <h3 id="secretary-biography-title">経歴</h3>
-                            <form v-if="viewedSecretaryProfile.is_owner" @submit.prevent="updateSecretaryBiography">
-                                <textarea v-model="secretaryBiography" maxlength="1000" rows="10" aria-describedby="secretary-biography-count secretary-biography-error"></textarea>
-                                <small id="secretary-biography-count">{{ secretaryBiography.length }} / 1000文字。改行のみ表示へ反映します。</small>
-                                <span v-if="secretaryProfileErrors.biography" id="secretary-biography-error" class="field-error" role="alert">{{ secretaryProfileErrors.biography }}</span>
-                                <button class="button primary" type="submit" :disabled="busy">経歴を保存</button>
-                            </form>
-                            <p v-else-if="viewedSecretaryProfile.biography" class="secretary-biography-text">{{ viewedSecretaryProfile.biography }}</p>
-                            <p v-else class="empty-state">経歴はまだ公開されていません。</p>
-                        </section>
-                    </div>
-                    <section class="secretary-profile-equipment" aria-labelledby="secretary-profile-equipment-title">
-                        <div class="secretary-profile-section-heading">
-                            <h3 id="secretary-profile-equipment-title">装備</h3>
-                            <button v-if="viewedSecretaryProfile.is_owner" type="button" @click="secretarySection = 'equipment'">装備を変更</button>
-                        </div>
-                        <ol>
-                            <li v-for="slot in viewedSecretaryProfile.equipment.slots" :key="slot.slot">
-                                <span class="secretary-profile-slot">slot {{ slot.slot }}</span>
-                                <template v-if="slot.item">
-                                    <span class="secretary-profile-item-icon" aria-hidden="true">{{ slot.item.category_label.slice(0, 1) }}</span>
-                                    <div>
-                                        <strong>{{ slot.item.name }} <small>Lv.{{ slot.item.level }}</small></strong>
-                                        <p>{{ slot.item.effect_text || slot.item.category_label }}</p>
-                                    </div>
-                                </template>
-                                <span v-else class="empty-state">空きslot</span>
-                            </li>
-                        </ol>
-                    </section>
+                    <SecretaryStatusOverview
+                        :profile="viewedSecretaryProfile" :busy="busy" :biography-error="secretaryProfileErrors.biography"
+                        @save-biography="updateSecretaryBiography" @equipment="secretarySection = 'equipment'" @underground="openUnderground"
+                    />
                 </section>
-                <section v-else-if="secretarySection === 'skills' && secretary" id="secretary-panel-skills" role="tabpanel" aria-labelledby="secretary-tab-skills">
+                <section v-else-if="secretarySection === 'skills' && viewedSecretaryProfile.is_owner && secretary" id="secretary-panel-skills" role="tabpanel" aria-labelledby="secretary-tab-skills">
                     <h3 class="secretary-section-title">パッシブスキル</h3>
                     <dl class="secretary-skills">
                         <div v-for="skill in secretary.skills" :key="skill.key" class="secretary-skill">
@@ -2580,8 +2472,9 @@ async function abandonNation(): Promise<void> {
                         </div>
                     </dl>
                 </section>
-                <section v-else-if="secretarySection === 'equipment' && secretary" id="secretary-panel-equipment" role="tabpanel" aria-labelledby="secretary-tab-equipment">
-                    <h3 class="secretary-section-title">装備</h3>
+                <section v-else-if="secretarySection === 'equipment'" id="secretary-panel-equipment" role="tabpanel" aria-labelledby="secretary-tab-equipment">
+                    <template v-if="viewedSecretaryProfile.is_owner && secretary">
+                    <h3 class="secretary-section-title">地上の装備を変更</h3>
                     <ol class="secretary-equipment">
                         <li v-for="slot in secretary.equipment.slots" :key="slot.slot">
                             <button type="button" :aria-label="`装備 slot ${slot.slot} を変更`" @click="openEquipmentModal(slot.slot)">
@@ -2594,8 +2487,10 @@ async function abandonNation(): Promise<void> {
                     <ul class="equipment-category-limits" aria-label="装備数の上限">
                         <li v-for="limit in secretary.equipment.category_limits" :key="limit.category">{{ limit.label }}・{{ limit.maximum_equipped }}個まで</li>
                     </ul>
+                    </template>
+                    <SecretaryEquippedItems :profile="viewedSecretaryProfile" />
                 </section>
-                <section v-else-if="secretarySection === 'warehouse' && secretary" id="secretary-panel-warehouse" role="tabpanel" aria-labelledby="secretary-tab-warehouse">
+                <section v-else-if="secretarySection === 'warehouse' && viewedSecretaryProfile.is_owner && secretary" id="secretary-panel-warehouse" role="tabpanel" aria-labelledby="secretary-tab-warehouse">
                     <h3 class="secretary-section-title">倉庫 {{ secretary.inventory.used }} / {{ secretary.inventory.capacity }}</h3>
                     <ul class="secretary-warehouse">
                         <li v-for="item in secretary.inventory.items" :key="item.id">

@@ -722,6 +722,12 @@ describe('application lobby and island entry', () => {
                 battle_display_name: '公開秘書',
                 is_owner: false,
                 combat_level: 7,
+                underground_status: {
+                    growth_path_label: '戦技', max_hp: 500,
+                    stats: { vitality: 20, might: 40, finesse: 21, spirit: 15, agility: 10 },
+                    equipped: { weapon: { label: '護身用ナイフ', item_level: 1, quality_percent: null }, armor: null,
+                        accessory_1: null, accessory_2: null, accessory_3: null, resonance: null },
+                },
                 biography: "公開経歴1行目\n公開経歴2行目",
                 viewer_preferences: {
                     configured: false, show_ai_generated_images: null,
@@ -768,11 +774,17 @@ describe('application lobby and island entry', () => {
         await flushPromises();
         expect(wrapper.get('.secretary-name').text()).toBe('公開秘書');
         expect(wrapper.get('.secretary-profile-summary dl').text()).toContain('戦闘Lv7');
-        expect(wrapper.findAll('[role="tab"]').map((tab) => tab.text())).toEqual(['メイン']);
+        expect(wrapper.findAll('[role="tab"]').map((tab) => tab.text())).toEqual(['メイン', '装備']);
         expect(wrapper.get('.secretary-biography-text').text()).toContain('公開経歴2行目');
         expect(wrapper.findAll('.secretary-profile-equipment li')).toHaveLength(5);
         expect(wrapper.find('.secretary-portrait-column > button').exists()).toBe(false);
-        expect(wrapper.get('.secretary-image-preference-notice').text()).toContain('ログインすると設定できます');
+        expect(wrapper.get('.secretary-combat-stats').text()).toContain('武力40');
+        expect(wrapper.get('.secretary-underground-equipment').text()).toContain('護身用ナイフ');
+        expect(wrapper.find('.secretary-image-preference-notice').exists()).toBe(false);
+        await wrapper.get('#secretary-tab-equipment').trigger('click');
+        expect(wrapper.find('.secretary-equipment button').exists()).toBe(false);
+        expect(wrapper.findAll('.secretary-profile-equipment li')).toHaveLength(5);
+        expect(wrapper.find('#secretary-tab-warehouse').exists()).toBe(false);
     });
 
     it('refreshes an open public preview when bounds change without a turn advance', async () => {

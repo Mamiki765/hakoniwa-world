@@ -146,6 +146,19 @@ export interface Secretary {
     } | null;
 }
 
+export type SecretarySection = 'main' | 'skills' | 'equipment' | 'warehouse' | 'settings' | 'achievements';
+
+export interface SecretaryUndergroundStatus {
+    growth_path_label: string;
+    stats: Record<'vitality' | 'might' | 'finesse' | 'spirit' | 'agility', number>;
+    max_hp: number;
+    equipped: Record<'weapon' | 'armor' | 'accessory_1' | 'accessory_2' | 'accessory_3' | 'resonance', {
+        label: string;
+        item_level: number;
+        quality_percent: number | null;
+    } | null>;
+}
+
 export interface SecretaryProfile {
     id: number;
     name: string | null;
@@ -159,6 +172,7 @@ export interface SecretaryProfile {
     capacity_bonus_percent: number;
     monster_experience: number;
     combat_level: number | null;
+    underground_status?: SecretaryUndergroundStatus | null;
     biography: string;
     main_image: {
         display: 'uploaded' | 'silhouette' | 'peridot' | 'none';
