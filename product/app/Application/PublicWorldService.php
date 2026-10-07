@@ -10,6 +10,7 @@ use App\Models\MapSpace;
 use App\Models\MonsterDefinition;
 use App\Models\Nation;
 use App\Models\NationMonsterKillStat;
+use App\Models\Secretary;
 use App\Models\World;
 use App\Services\SeaAreaWeatherPresenter;
 use App\Support\MoneyFormatter;
@@ -28,6 +29,7 @@ final class PublicWorldService
         private readonly MonsterDisplayOrderResolver $monsterDisplayOrders,
         private readonly UndergroundSurfaceMapProjection $undergroundMaps,
         private readonly SeaAreaWeatherPresenter $weather,
+        private readonly SecretaryProfilePresenter $secretaryProfiles,
     ) {}
 
     /** @return array<string, mixed> */
@@ -68,12 +70,23 @@ final class PublicWorldService
     {
         $nations = $this->rankedNations($world)->values();
         $achievements = $this->achievements->forWorld($world, $nations);
+        $secretaries = Secretary::query()
+            ->join('nation_memberships', 'nation_memberships.user_id', '=', 'secretaries.user_id')
+            ->whereIn('nation_memberships.nation_id', $nations->pluck('id')->all())
+            ->where('nation_memberships.role', 'owner')
+            ->whereNotNull('secretaries.name')
+            ->get(['secretaries.id', 'secretaries.name', 'secretaries.nickname', 'nation_memberships.nation_id'])
+            ->keyBy('nation_id');
 
         return $nations->map(
             fn (Nation $nation, int $index): array => [
                 'rank' => $index + 1,
                 ...$this->publicNationFields($nation, $world),
                 'achievements' => $achievements[$nation->id],
+                'secretary' => isset($secretaries[$nation->id]) ? [
+                    'id' => $secretaries[$nation->id]->id,
+                    'display_name' => $this->secretaryProfiles->battleDisplayName($secretaries[$nation->id]),
+                ] : null,
             ],
         );
     }

@@ -13,7 +13,7 @@ final class CreateCompensationGrant extends Command
 {
     protected $signature = 'hakoniwa:compensation-grant
         {--world= : Exact World key}
-        {--nation= : Exact Nation name}
+        {--nation= : Exact non-abandoned Nation name}
         {--key= : Globally unique idempotency key}
         {--operator= : Operator identifier recorded with the grant}
         {--reason= : Player-visible reason}
@@ -47,7 +47,8 @@ final class CreateCompensationGrant extends Command
 
             return self::FAILURE;
         }
-        $nations = Nation::query()->where('world_id', $world->id)->where('name', $nationName)->get();
+        $nations = Nation::query()->where('world_id', $world->id)->where('name', $nationName)
+            ->where('state', '<>', 'abandoned')->get();
         if ($nations->count() !== 1) {
             $this->error("Exact Nation name '{$nationName}' matched {$nations->count()} rows in World '{$worldKey}'.");
 

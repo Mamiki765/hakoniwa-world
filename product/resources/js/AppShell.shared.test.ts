@@ -106,6 +106,7 @@ describe('application lobby and island entry', () => {
         expect(wrapper.find('.ranking-card').text()).not.toContain('活動状態');
         expect(wrapper.find('.ranking-card tbody').text()).toContain('公開島主');
         expect(wrapper.find('.ranking-owner-row').text()).toBe('公開島主：公開コメント');
+        expect(wrapper.find('.ranking-secretary-link').exists()).toBe(false);
         expect(wrapper.find('.ranking-card tbody button').text()).toContain('公開島 (100)');
         expect(wrapper.text()).toContain('重大ニュースはまだありません');
         expect(wrapper.text()).toContain('このターン範囲には公開島ログがありません');
@@ -712,6 +713,10 @@ describe('application lobby and island entry', () => {
         const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
             const path = String(input);
             const lobby = publicResponse(path);
+            if (path.endsWith('/rankings') && lobby) {
+                const { data } = await lobby.json();
+                return response([{ ...data[0], secretary: { id: 11, display_name: '公開愛称' } }]);
+            }
             if (lobby !== null) return lobby;
             if (path === '/api/v1/me') return response(null, 401);
             if (path === '/api/v1/public/nations/7') return response(detailWithManySpecies);
@@ -719,9 +724,16 @@ describe('application lobby and island entry', () => {
             if (path === '/api/v1/secretaries/11?world_id=1') return response({
                 ...unnamedSecretaryFixture.profile,
                 name: '公開秘書',
+                nickname: '公開愛称',
                 battle_display_name: '公開秘書',
                 is_owner: false,
                 combat_level: 7,
+                underground_status: {
+                    growth_path_label: '戦技', max_hp: 500,
+                    stats: { vitality: 20, might: 40, finesse: 21, spirit: 15, agility: 10 },
+                    equipped: { weapon: { label: '護身用ナイフ', item_level: 1, quality_percent: null }, armor: null,
+                        accessory_1: null, accessory_2: null, accessory_3: null, resonance: null },
+                },
                 biography: "公開経歴1行目\n公開経歴2行目",
                 viewer_preferences: {
                     configured: false, show_ai_generated_images: null,
@@ -734,7 +746,7 @@ describe('application lobby and island entry', () => {
         const wrapper = mount(App);
         await flushPromises();
 
-        await wrapper.find('.ranking-card tbody button').trigger('click');
+        await wrapper.get('.ranking-island button').trigger('click');
         await flushPromises();
         expect(scrollTo).toHaveBeenCalledWith({ top: 0, left: 0, behavior: 'auto' });
         expect(wrapper.text()).toContain('人口・面積・推定資金・食料合計・施設規模');
@@ -768,11 +780,25 @@ describe('application lobby and island entry', () => {
         await flushPromises();
         expect(wrapper.get('.secretary-name').text()).toBe('公開秘書');
         expect(wrapper.get('.secretary-profile-summary dl').text()).toContain('戦闘Lv7');
-        expect(wrapper.findAll('[role="tab"]').map((tab) => tab.text())).toEqual(['メイン']);
+        expect(wrapper.findAll('[role="tab"]').map((tab) => tab.text())).toEqual(['メイン', '装備']);
         expect(wrapper.get('.secretary-biography-text').text()).toContain('公開経歴2行目');
         expect(wrapper.findAll('.secretary-profile-equipment li')).toHaveLength(5);
         expect(wrapper.find('.secretary-portrait-column > button').exists()).toBe(false);
-        expect(wrapper.get('.secretary-image-preference-notice').text()).toContain('ログインすると設定できます');
+        expect(wrapper.get('.secretary-combat-stats').text()).toContain('武力40');
+        expect(wrapper.get('.secretary-underground-equipment').text()).toContain('護身用ナイフ');
+        expect(wrapper.find('.secretary-image-preference-notice').exists()).toBe(false);
+        await wrapper.get('#secretary-tab-equipment').trigger('click');
+        expect(wrapper.find('.secretary-equipment button').exists()).toBe(false);
+        expect(wrapper.findAll('.secretary-profile-equipment li')).toHaveLength(5);
+        expect(wrapper.find('#secretary-tab-warehouse').exists()).toBe(false);
+        await wrapper.findAll('.site-header nav button').find((button) => button.text() === 'TOP')!.trigger('click');
+        await flushPromises();
+        expect(wrapper.get('.ranking-owner-row').text()).toContain('公開島主 ＋ 公開愛称');
+        await wrapper.get('.ranking-secretary-link').trigger('click');
+        await flushPromises();
+        expect(wrapper.get('.secretary-name').text()).toBe('公開秘書');
+        expect(wrapper.find('.preview-page').exists()).toBe(false);
+        expect(fetchMock.mock.calls.some(([path]) => String(path) === '/api/v1/secretaries/11?world_id=1')).toBe(true);
     });
 
     it('refreshes an open public preview when bounds change without a turn advance', async () => {

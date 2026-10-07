@@ -3,6 +3,8 @@
 namespace Tests\Feature;
 
 use App\Application\NationCreationService;
+use App\Application\SecretaryNamingService;
+use App\Application\SecretaryProfileService;
 use App\Domain\Map\GridCoordinate;
 use App\Domain\Map\MapCellStateService;
 use App\Domain\Map\NationLandAreaCalculator;
@@ -34,6 +36,8 @@ class PublicLobbyApiTest extends TestCase
         $second = app(NationCreationService::class)->create(
             User::factory()->create(), $world, '第二国', '第二島主', '第二コメント',
         );
+        $secretary = app(SecretaryNamingService::class)->name($firstUser, 'ペリドット')['secretary'];
+        app(SecretaryProfileService::class)->updateBiography($firstUser, '', 'ペリ', true, false);
 
         MapCell::query()->whereIn('owner_nation_id', [$first->id, $second->id])->update(['population' => 0]);
         MapCell::query()->where('owner_nation_id', $first->id)->orderBy('id')->firstOrFail()->update(['population' => 1000]);
@@ -123,6 +127,8 @@ class PublicLobbyApiTest extends TestCase
             ->assertJsonPath('data.0.finance_only_turns', 2000)
             ->assertJsonPath('data.0.activity_status', 'finance_only');
         $rankingBody = $ranking->getContent();
+        $this->assertSame(['id' => $secretary->id, 'display_name' => 'ペリ'], $ranking->json('data.1.secretary'));
+        $this->assertNull($ranking->json('data.0.secretary'));
         $this->assertStringNotContainsString('"money":', $rankingBody);
         $this->assertStringNotContainsString('62728', $rankingBody);
         foreach (['food_resources', 'resources', 'food_capacity_tons', 'wheat', 'fish', 'monster_meat'] as $privateField) {
@@ -134,9 +140,11 @@ class PublicLobbyApiTest extends TestCase
             ->assertJsonMissingPath('data.achievements');
 
         MapCell::query()->where('owner_nation_id', $first->id)->orderBy('id')->firstOrFail()->update(['population' => 1500]);
+        app(SecretaryProfileService::class)->updateBiography($firstUser, '', '', true, false);
         $this->getJson("/api/v1/public/worlds/{$world->id}/rankings")
             ->assertOk()
-            ->assertJsonPath('data.0.id', $first->id);
+            ->assertJsonPath('data.0.id', $first->id)
+            ->assertJsonPath('data.0.secretary.display_name', 'ペリドット');
 
         MapCell::query()->where('owner_nation_id', $first->id)->orderBy('id')->firstOrFail()->update(['population' => 1000]);
         $neutral->update(['owner_nation_id' => null]);

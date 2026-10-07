@@ -17,6 +17,7 @@ final readonly class SecretaryProfilePresenter
         private AssetManifestResolver $assets,
         private SecretarySkillCatalog $catalog,
         private UserAchievementService $achievements,
+        private SecretaryUndergroundStatusPresenter $undergroundStatus,
     ) {}
 
     /** @return array<string, mixed> */
@@ -56,6 +57,7 @@ final readonly class SecretaryProfilePresenter
             'capacity_bonus_percent' => $level,
             'monster_experience' => (int) $secretary->surfaceState->monster_experience,
             'combat_level' => $secretary->undergroundProfile?->combat_level,
+            'underground_status' => $this->undergroundStatus->present($secretary->undergroundProfile),
             'biography' => $secretary->profile_biography,
             'main_image' => $image,
             'images' => $this->images($secretary, $viewer, $viewerPreferencesConfigured, $isOwner),

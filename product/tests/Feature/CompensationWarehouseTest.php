@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Application\CompensationWarehouseService;
+use App\Application\NationAbandonmentService;
 use App\Application\NationCreationService;
 use App\Application\ParadoxBalanceService;
 use App\Application\Underground\UndergroundProfileService;
@@ -154,7 +155,10 @@ final class CompensationWarehouseTest extends TestCase
 
     public function test_capacity_overflow_stays_pending_and_operator_command_is_confirmed_and_idempotent(): void
     {
-        [$user, $nation] = $this->registeredNation('配布操作島');
+        [$oldOwner, $oldNation] = $this->registeredNation('配布操作島');
+        app(NationAbandonmentService::class)->abandon($oldOwner, $oldNation, $oldNation->name);
+        $user = User::factory()->create();
+        $nation = app(NationCreationService::class)->create($user, $oldNation->world()->firstOrFail(), $oldNation->name, '配布島主');
         $ruleset = $nation->world()->firstOrFail()->rulesetVersion()->firstOrFail();
         $moneyCapacity = app(NationCapacityResolver::class)
             ->resolve($nation, $ruleset)->money;
@@ -174,6 +178,9 @@ final class CompensationWarehouseTest extends TestCase
         $this->artisan('hakoniwa:compensation-grant', $arguments)
             ->expectsOutputToContain("Re-run with --confirm={$token}")
             ->assertFailed();
+        $oldToken = "GRANT:{$nation->world()->value('key')}:N{$oldNation->id}:{$key}";
+        $this->artisan('hakoniwa:compensation-grant', [...$arguments, '--confirm' => $oldToken])
+            ->assertFailed();
         $this->artisan('hakoniwa:compensation-grant', [...$arguments, '--confirm' => $token])
             ->expectsOutputToContain('status=created')
             ->assertSuccessful();
@@ -182,6 +189,9 @@ final class CompensationWarehouseTest extends TestCase
             ->assertSuccessful();
 
         $grantId = (int) DB::table('compensation_grants')->where('grant_key', $key)->value('id');
+        $this->assertDatabaseHas('compensation_grants', [
+            'id' => $grantId, 'nation_id' => $nation->id, 'recipient_user_id' => $user->id,
+        ]);
         $this->actingAs($user)->postJson(
             "/api/v1/nations/{$nation->id}/compensation-grants/{$grantId}/claim",
             ['request_id' => (string) Str::uuid()],

@@ -8,6 +8,7 @@ use App\Application\SecretaryImageRetentionService;
 use App\Application\SecretaryItemGrantService;
 use App\Application\SecretaryNamingService;
 use App\Application\SecretaryProfilePresenter;
+use App\Application\Underground\UndergroundEquipmentCatalog;
 use App\Application\UserAchievementService;
 use App\Domain\Secretary\SecretaryItemCatalog;
 use App\Domain\Secretary\SecretarySkillCatalog;
@@ -17,6 +18,7 @@ use App\Models\SecretaryImage;
 use App\Models\SecretarySkill;
 use App\Models\UndergroundBattle;
 use App\Models\UndergroundBattleLog;
+use App\Models\UndergroundOwnedEquipment;
 use App\Models\UndergroundProfile;
 use App\Models\User;
 use App\Models\UserAchievement;
@@ -311,6 +313,54 @@ final class SecretaryPersistenceTest extends TestCase
         $this->assertSame(0, UserAchievement::query()->where('user_id', $user->id)->count());
     }
 
+    public function test_public_profile_shows_underground_combat_values_and_only_equipped_items_without_writing(): void
+    {
+        $world = $this->lightweightWorld();
+        $owner = User::factory()->create();
+        app(NationCreationService::class)->create($owner, $world, '公開能力島', '公開島主');
+        $this->actingAs($owner)->postJson('/api/v1/me/secretary/name', ['name' => '公開能力秘書'])->assertOk();
+        $secretary = $owner->secretary()->firstOrFail();
+        $profile = UndergroundProfile::query()->create([
+            'secretary_id' => $secretary->id, 'combat_level' => 2,
+            'growth_path_key' => 'martial_red', 'allocated_might_stp' => 3,
+            'growth_path_identity' => 'secretary-underground-growth-alpha-v1',
+            'underground_contract_completed_at' => now()->subMinute(),
+            'growth_path_selected_at' => now(),
+            'skill_tree_identity' => 'secretary-underground-skill-tree-alpha-v4',
+            'skill_points_total' => 20, 'skill_points_unspent' => 20, 'unspent_stp' => 2,
+            'shard_balance' => 123456, 'current_hp' => 17,
+            'custom_ai_rules' => [['private' => 'not public']],
+        ]);
+        $catalog = app(UndergroundEquipmentCatalog::class);
+        foreach (['weapon', null] as $slot) {
+            UndergroundOwnedEquipment::query()->create([
+                'underground_profile_id' => $profile->id,
+                'definition_key' => 'starter_knife', 'catalog_identity' => $catalog->identity(),
+                'instance_kind' => 'fixed', 'equipped_slot' => $slot, 'acquired_at' => now(),
+            ]);
+        }
+        $before = $profile->fresh()->getAttributes();
+        auth()->logout();
+        $response = $this->getJson("/api/v1/secretaries/{$secretary->id}?world_id={$world->id}")
+            ->assertOk()->assertJsonPath('data.is_owner', false)
+            ->assertJsonPath('data.underground_status.stats.vitality', 20)
+            ->assertJsonPath('data.underground_status.stats.might', 40)
+            ->assertJsonPath('data.underground_status.max_hp', 500)
+            ->assertJsonPath('data.underground_status.equipped.weapon.label', '護身用ナイフ')
+            ->assertJsonPath('data.underground_status.equipped.weapon.item_level', 1)
+            ->assertJsonPath('data.underground_status.equipped.armor', null)
+            ->assertJsonMissingPath('data.inventory');
+        $status = $response->json('data.underground_status');
+        $this->assertEqualsCanonicalizing(['growth_path_label', 'stats', 'max_hp', 'equipped'], array_keys($status));
+        $this->assertEqualsCanonicalizing(['label', 'item_level', 'quality_percent'], array_keys($status['equipped']['weapon']));
+        $this->assertSame($before, $profile->fresh()->getAttributes());
+        $this->assertSame(2, UndergroundOwnedEquipment::query()->where('underground_profile_id', $profile->id)->count());
+        $viewer = User::factory()->create();
+        $this->actingAs($viewer)->getJson("/api/v1/secretaries/{$secretary->id}?world_id={$world->id}")
+            ->assertOk()->assertJsonPath('data.is_owner', false)
+            ->assertJsonPath('data.underground_status.stats.might', 40);
+    }
+
     public function test_public_profile_uses_canonical_level_equipment_and_owner_fallback_preferences(): void
     {
         $this->installSecretaryFallbackAssets('peridot.png', 'silhouette.png');
@@ -344,6 +394,7 @@ final class SecretaryPersistenceTest extends TestCase
             ->assertJsonPath('data.capacity_bonus_percent', 20)
             ->assertJsonPath('data.monster_experience', 120)
             ->assertJsonPath('data.combat_level', 37)
+            ->assertJsonPath('data.underground_status', null)
             ->assertJsonCount(5, 'data.equipment.slots');
 
         $this->actingAs($owner)->patchJson('/api/v1/me/secretary/profile', [

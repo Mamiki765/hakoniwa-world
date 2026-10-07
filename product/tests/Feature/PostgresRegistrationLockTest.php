@@ -2,10 +2,12 @@
 
 namespace Tests\Feature;
 
+use App\Application\NationAbandonmentService;
 use App\Application\NationCreationService;
 use App\Domain\World\WorldMutationLock;
 use App\Models\User;
 use DomainException;
+use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\DatabaseMigrations;
 use Illuminate\Support\Facades\DB;
 use Tests\Concerns\CreatesTestWorlds;
@@ -83,6 +85,55 @@ class PostgresRegistrationLockTest extends TestCase
             'world_id' => $world->id,
         ]);
         $this->assertDatabaseCount('nation_creation_requests', 0);
+    }
+
+    public function test_name_reuse_upgrade_preserves_history_and_database_serializes_competing_names(): void
+    {
+        $world = $this->lightweightWorld();
+        $owner = User::factory()->create();
+        $archived = app(NationCreationService::class)->create($owner, $world, '再利用島', '旧島主');
+        app(NationAbandonmentService::class)->abandon($owner, $archived, $archived->name);
+        $before = $archived->fresh()->getAttributes();
+
+        // Recreate the supported pre-upgrade constraint without changing historical data.
+        DB::statement('DROP INDEX nations_world_id_name_unique');
+        DB::statement('ALTER TABLE nations ADD CONSTRAINT nations_world_id_name_unique UNIQUE (world_id, name)');
+        $migration = require database_path('migrations/2026_10_07_020000_allow_abandoned_nation_name_reuse.php');
+        DB::transaction(fn () => $migration->up());
+        $this->assertSame($before, $archived->fresh()->getAttributes());
+        $this->assertDatabaseHas('nation_creation_requests', ['nation_id' => $archived->id, 'status' => 'completed']);
+
+        // Bypass the application's World lock to exercise the independent DB guarantee.
+        $row = $before;
+        unset($row['id']);
+        $row['state'] = 'active';
+        $row['nation_number']++;
+        $probe = DB::connection(self::PROBE_CONNECTION);
+        $probe->statement("SET lock_timeout TO '100ms'");
+        DB::beginTransaction();
+        try {
+            DB::table('nations')->insert($row);
+            $row['nation_number']++;
+            try {
+                $probe->table('nations')->insert($row);
+                $this->fail('A concurrent duplicate name must wait for the first registration.');
+            } catch (QueryException $exception) {
+                $this->assertSame('55P03', $exception->errorInfo[0]);
+            }
+            DB::commit();
+            try {
+                $probe->table('nations')->insert($row);
+                $this->fail('A committed non-abandoned name must reject the competing registration.');
+            } catch (QueryException $exception) {
+                $this->assertSame('23505', $exception->errorInfo[0]);
+            }
+            $this->assertSame(2, DB::table('nations')->where('world_id', $world->id)->where('name', $archived->name)->count());
+        } finally {
+            while (DB::transactionLevel() > 0) {
+                DB::rollBack();
+            }
+            $probe->statement('RESET lock_timeout');
+        }
     }
 
     public function test_abandonment_fails_with_the_player_message_while_the_common_world_lock_is_held(): void

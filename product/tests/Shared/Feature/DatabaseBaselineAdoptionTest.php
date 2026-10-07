@@ -98,6 +98,8 @@ final class DatabaseBaselineAdoptionTest extends TestCase
     {
         // This test owns the pre-v28 baseline boundary; restore its exact schema
         // and skill constraint before adopting its marker. Later upgrades have their own tests.
+        DB::statement('DROP INDEX nations_world_id_name_unique');
+        DB::statement('ALTER TABLE nations ADD CONSTRAINT nations_world_id_name_unique UNIQUE (world_id, name)');
         Schema::table('underground_owned_equipment', fn ($table) => $table->dropColumn('quality_percent'));
         Schema::table('underground_profiles', static function ($table): void {
             $table->dropColumn([
