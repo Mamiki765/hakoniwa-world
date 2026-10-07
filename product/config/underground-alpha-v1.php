@@ -669,7 +669,7 @@ return [
         'minimum_level' => 100,
         'required_trial_key' => 'trial_02',
         'weapon_drop_chance_bps' => 1000,
-        'max_rounds' => 80,
+        'max_rounds' => 100,
         // Initial tuning values; measured with a fixed four-member party, without party-size scaling.
         'stages' => [
             'bahamul_beginner_1' => ['name' => '黒竜バハムル・初級1', 'level' => 150, 'item_level' => 130, 'previous' => null, 'abyssal_roar' => false,
@@ -742,7 +742,7 @@ return [
         'identity' => 'secretary-underground-mad-moon-v1',
         'key' => 'mad_moon',
         'required_ground' => 'yunagi_harbor',
-        'max_rounds' => 80,
+        'max_rounds' => 100,
         'reward_stage' => 'bahamul_intermediate_1',
         'guide' => ['level' => 1000, 'item_level' => 220, 'scale_bps' => 11500],
         'enemy' => [

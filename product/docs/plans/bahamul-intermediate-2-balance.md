@@ -2,6 +2,8 @@
 
 2026-10-07。Owner指定で測定・実装し、HP840,000を採用。独立checkoutの基点はGitHub main `2fbe0b5ba5cd709644addc2c41462ca83a494b25`（PR206 merge / application 4.15.0）。ローカル調整の完了後、Ownerの追加依頼により開発branchとmain向けDraft PRで共有する。merge、deploy、本番DB変更は対象外。
 
+初回の採用比較は当時の80round設定で行った履歴。Ownerの100round原則に合わせた4.16.1での再検証を末尾へ記載する。現在の異世界・狂月賛歌の上限は100roundで、HP840,000と敵能力・報酬・味方条件は維持する。
+
 ## 最終値と共通処理
 
 | 項目 | 中級1（基点main） | 中級2 |
@@ -34,7 +36,7 @@
 
 研磨は＋0固定能力の30%/段階、＋5で2.5倍（整数丸めあり）のまま。ランダムAffixは2枠・重複可・IL200で基準割合の成長を止め、通常の`S(IL)`でrating化する。Affix値・固有効果・研磨増分まで1.5倍にしていない。Qualityは未研磨原本から算出し、研磨・貸出同期でも保持する。IL210以下の基礎anchorと保存済みpayloadを変更せず、既存品の再抽選・migrationは行わない。
 
-## 味方と測定条件
+## 味方と測定条件（初回80round測定）
 
 Lv1000、通常武器・防具・アクセ3枠IL220、結晶IL210＋5。通常装備は**アーティファクト**（レリックへ引き上げない）、結晶はユニーク。武器は短剣・細剣・長剣・輝石杖。全快、MP100、覚醒ゲージ0、覚醒解放済み、上限80round。自然回復は各成長方針の本体設定を使う。
 
@@ -57,7 +59,7 @@ Lv1000、通常武器・防具・アクセ3枠IL220、結晶IL210＋5。通常�
 
 過去の一次資料は[4.4.0採用測定](https://github.com/Mamiki765/hakoniwa-world/blob/2fbe0b5ba5cd709644addc2c41462ca83a494b25/docs/archive/through-4.4.0/product/docs/plans/4.4.0-bahamul-polishing.md#L15-L67)と[PR164](https://github.com/Mamiki765/hakoniwa-world/pull/164)。黒爪・竜翼欠落の旧測定は使わない。現在はcombat identity v9、IL200超の武器/HP/rating倍率、Quality・貸出Affix保持・アクセ全枠仕様がある。過去の勝率を現行baselineとして流用せず、旧装備条件を現行式へ通した451000〜451015の16戦では11勝5全滅・平均46.06round（旧同seedは11勝5全滅・48.75round）だった。
 
-## baselineと候補比較
+## baselineと候補比較（80round）
 
 32seedは451000〜451015、452000〜452015。64seedはこれに453000〜453031を加える。すべて本体`AlphaV1CombatModel::fightPartySnapshots()`を呼び、別戦闘engineを作らない。同じPCの専用Docker、network none、2CPU、既存DBへの接続なしで実行した。
 
@@ -80,7 +82,7 @@ Lv1000、通常武器・防具・アクセ3枠IL220、結晶IL210＋5。通常�
 
 ＋0は少数比較であり一般的勝率を推定しない。80万では同8seedで0勝8全滅だったが、84万では3勝となった。HP変更が咆哮時期と覚醒・蘇生の経路を変えるため、難度が単調に動くとは限らない。
 
-## HP上積みの停止点
+## HP上積みの停止点（80roundでの採用履歴）
 
 Owner追加指定により、Aの他能力・装備・AI・同64seedを固定し、HPだけ20,000ずつ増加。基準80万からの累積増量と直前stepの増量を別々に敵残HPと比較した。全滅と時間切れの両方を対象にした。
 
@@ -106,20 +108,54 @@ Owner追加指定により、Aの他能力・装備・AI・同64seedを固定し
 測定器はローカル証拠とともに保持し、公開repoには入れない。以下のコマンドは測定したcheckoutでの再実行用で、公開repo単独には`measure.php`を含まない。checkoutの`product`を`/var/www/html`、local `.codex-tmp`を`/work-evidence`へマウントし、空env・network none・2CPUの同じPHP8.5.8依存環境で実行する。最終configのHPは840,000なので敵overrideは不要。
 
 ```sh
-php /work-evidence/measure.php --stage=bahamul_intermediate_2 --level=1000 --timing=timed --build=distributed --polish=5 --seed-set=all --output=reproduce-final
+php /work-evidence/measure.php --stage=bahamul_intermediate_2 --level=1000 --timing=timed --build=distributed --polish=5 --seed-set=all --rounds=80 --output=reproduce-original-80
 ```
 
 別checkoutで条件を再構成するときも、戦闘は本体の次の経路を使う。
 
 1. `UndergroundAlphaV1PlayerCatalog`の`stpEntitlement()`、`currentStats()`、`growthPath()`で上記のLv・配分比・自然回復を解決する。武器・防具は`hero`、アクセの主能力は戦技`might`、護身`vitality`、祝福`spirit`。石は戦技`might`、護身`guard`、祝福`healing`を上記seedで`UndergroundRuntimeEquipmentGenerator::generate()`し、`UndergroundEquipmentPolishing::apply(..., 5)`で研磨する。
 2. `UndergroundEquipmentCatalog::combatLoadout()`で装備を解決し、前提nodeを含む上記100SP/rank1技能を`UndergroundAlphaV1PlayerCatalog::playerSkillBuild()`で解決する。active技能とpassive modifier、全快HP・MP100・覚醒0をsnapshotへ設定する。対処AIは下表の上から順に`PriorityCombatAiConfiguration::normalizeRules()`へ通す。戦技2名は同じAIとする。
-3. `otherworldCatalog('bahamul_intermediate_2')`のcatalog、4人snapshot、敵key配列`['bahamul_intermediate_2']`を`AlphaV1CombatModel::fightPartySnapshots($catalog, $party, $enemyKeys, $seed, 80, 0)`へ渡す。64seedを一度ずつ使い、勝利・全滅・時間切れとroundを集計する。
+3. `otherworldCatalog('bahamul_intermediate_2')`のcatalog、4人snapshot、敵key配列`['bahamul_intermediate_2']`を`AlphaV1CombatModel::fightPartySnapshots()`へ渡す。上限は現在の`otherworld()['max_rounds']`から取得し、初回比較の再現時だけ明示して80を指定する。64seedを一度ずつ使い、勝利・全滅・時間切れとroundを集計する。
 
 | 役 | 条件 → 行動（上から優先） |
 |---|---|
 | 戦技 | 常時→覚醒、常時→奥義、ready→`executioner_cut`、ready→`severing_bleed`、ready→`armor_break_strike`、ready→`dagger_flurry`、ready→`precision_cut` |
 | 護身 | 大予告→覚醒、大予告→奥義、自分に`aegis`なし→`counter_stance`、自分HP60%以下かつready→`renewing_guard`、ready→`bulwark_strike`、ready→`unbroken_retort`、常時→`shield_bash` |
 | 祝福 | 大予告→覚醒、味方HP35%以下→奥義、味方HP80%以下かつready→`mending_prayer`（最低HPの味方）、自分MP50%以下→`crystal_cycle`、常時→`holy_bolt` |
+
+## 4.16.1：100roundへの統一と再検証
+
+2026-10-07、main `dadadc1e433139be7bdf55196424aad5f678d76d`（4.16.0）を確認し、Owner指定の[PR208](https://github.com/Mamiki765/hakoniwa-world/pull/208)のhead `3e0d7515bf84052c7d1169a62924936bf28f4f52`（4.16.1 / IL223研磨料金）へ統合した。上限の変更は`otherworld.max_rounds`と`mad_moon.max_rounds`の80→100のみ。通常探索・案内役決闘・試練の既存100は維持する。内部preflight・初回tutorialの短い専用上限は変更対象ではない。
+
+異世界の80は導入commit `4c3328265a0f06b6a0092ab8f79ec2268f0dee7c`で追加され、[PR164](https://github.com/Mamiki765/hakoniwa-world/pull/164)で採用された。commit説明・PR本文・config注記には80を選んだ理由がなく、**意図は不明**。バハムル導入前の通常PT探索は100だったが、既存バハムルを100から80へ短縮した変更ではない。PR207も上限を変更していない。測定器の旧80は当時の本体設定と一致していた。
+
+異世界の初級1・2・3、中級1・2は共通の上限設定を使うため、全5段階へ適用される。狂月賛歌は独立した設定を100に変更する。80round以前に終わる戦闘の挙動は変わらず、それまで時間切れだった戦闘は81〜100roundで勝利・全滅に移る可能性がある。全滅へ変わる場合は既存の敗北時G半減が適用される。時間切れの異世界は経験値・G・装備付与なし、輝石を消費せず再挑戦できる契約を維持する。狂月賛歌も撤退時報酬なし・通常待ち後の再挑戦を維持する。
+
+再測定は同じPC、PHP8.5.8、network none、2CPU、空env、既存DBへ接続せず、本体戦闘処理を使った。中級2のHP840,000・全能力・PT・装備seed・AI・技能・＋5を初回測定から変更していない。料金追加は戦闘能力・Quality・Affixの計算へ影響しない。測定器はconfigから上限を取得し、出力に`max_rounds`を保存する。
+
+| 条件 | 件数 | 80round：勝/全滅/時間切れ | 100round：勝/全滅/時間切れ | 平均round：80→100 | 勝利平均round |
+|---|---:|---:|---:|---:|---:|
+| 中級2・Lv1000・装備IL220・結晶210＋5・対処AI | 64 | 49 / 13 / 2 | **49 / 15 / 0** | 60.66 → 60.78 | 64.92（同値） |
+| 中級1・Lv666・武器180ユニーク・防具アクセ120・結晶180＋5・対処AI | 16 | 11 / 5 / 0 | **11 / 5 / 0** | 46.06 → 46.06 | 51.45（同値） |
+
+中級2の勝率は76.56%を維持し、敵の再調整は行わない。時間切れだったseed453014は81round全滅・敵残HP143,239、seed453030は87round全滅・敵残HP31,793へ移った。既存13全滅に加え、残った1人が倒された2戦が増える。フレア着弾round全滅10戦、護身奥義51戦（大予告一致50）、祝福奥義33戦（フレア後18）は同値。無対策寄り32戦は以前の80round時点で全戦全滅しており、上限だけの変更では延長対象にならない。再実行はしていない。
+
+中級2の残る62戦と中級1の16戦は、勝敗・round・最終状態に加え**全ログが旧測定と一致**。時間切れだった2戦も80roundまでのログが一致した。味方入力JSONとseed配列も完全一致を確認した。入力SHA-256は中級2 `664b927a1a46c03b6235ac77f85360d4080b635b4c705fb1367ecd6e33f006d1`、中級1 `4b75ff7697bb920fd6c6384bb4be11282243184d0c721adb5633ed0d31d97449`。
+
+追加測定は80戦（中級2の固定64seed、451000〜451015・452000〜452015・453000〜453031と、中級1の451000〜451015）。上限変更以外の候補探索・新しい最強装備の測定は行わない。狂月賛歌・他の初級段階の勝率は今回推定していない。
+
+```sh
+php /work-evidence/measure.php --stage=bahamul_intermediate_2 --level=1000 --timing=timed --build=distributed --polish=5 --seed-set=all --output=mid2-100
+php /work-evidence/measure.php --stage=bahamul_intermediate_1 --level=666 --gear-il=180 --weapon-tier=bahamul --weapon-rarity=unique --armor-il=120 --crystal-il=180 --polish=5 --timing=timed --build=distributed --seeds=16 --seed=451000 --output=mid1-100
+```
+
+全入力・全ログ・比較JSONは今回の独立作業dir `hakoniwa-version-4-16-0/.codex-tmp/`へ保存した。主要証拠は`mid2-100.json`、`mid1-100.json`、`round100-comparison.json`、`measure.php`、`compare.cjs`。旧80roundの資料は隣接する前回の独立checkout `hakoniwa-world/.codex-tmp/`を読み取り、変更しない。これらはlocal excludeで公開repoへ入れない。
+
+専用の一時PostgreSQL18.4、空`.env.testing`、既存DBに接続できないnetwork namespaceで既存代表5件 / 128 assertions PASS。異世界の本体呼出しへの100round配線・撤退後の輝石保持、狂月賛歌の撤退/敗北後再挑戦、IL223研磨決済・Quality/保存roll/貸出同期、中級2ローテーションを確認した。狂月賛歌の撤退代表は明示した1round fixtureを使うため、本番100roundでの勝率検証ではない。
+
+PR208の初回CIの失敗は、PT探索代表が貸出snapshotの戦闘開始時Lvを報酬後のリーダーLvと比較していたことによる。遭遇EXPでLvが上がると、正しく固定されたsnapshotでも失敗していた。既存代表をLv上昇直前のEXPに設定し、報酬によるLv上昇を必ず起こしたうえで、snapshotが事前に取得した開始時Lvを維持することを検証する。貸出元の能力・HP・EXP・覚醒・AI保持、報酬1回決算、再送時の保存snapshot保持は同じ代表で維持する。
+
+一時的に本体へ「snapshotを報酬後Lvで上書きする」故障を挿入すると、同代表は開始時Lvとの不一致を検出してFAIL。故障を取り除いた本体では1 test / 24 assertions PASSし、本体sourceが元commitと同一であることも確認した。新しい恒久test caseは追加しない。変更PHP3ファイルの構文・Pint、`git diff --check`もPASS。repository-wide PHPUnitはlocalで重複実行せず、最終headのGitHub Quality CIへ委ねる。
 
 無対策寄りの比較は、上表から明示的な奥義ruleを外し、覚醒ruleの条件を常時にする。本体の自動奥義判断は残す。＋0比較は研磨段階だけを0にする。敵HP候補の比較はstageの`max_hp`だけをローカルでoverrideし、戦闘処理や他の条件は同じにする。
 

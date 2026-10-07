@@ -17,6 +17,7 @@ use App\Application\Underground\UndergroundEquipmentService;
 use App\Application\Underground\UndergroundIntroService;
 use App\Application\Underground\UndergroundJournalService;
 use App\Application\Underground\UndergroundProfileService;
+use App\Application\Underground\UndergroundRuntimeCatalog;
 use App\Application\Underground\UndergroundRuntimeEquipmentGenerator;
 use App\Application\Underground\UndergroundRuntimeException;
 use App\Application\Underground\UndergroundRuntimeService;
@@ -124,6 +125,7 @@ final class UndergroundRuntimeTest extends TestCase
         $this->assertSame($xpBefore, $profile->fresh()->combat_xp);
         $this->assertSame(1, $profile->distorted_stone_balance);
         $this->assertCount(1, $combat->calls);
+        $this->assertSame(100, $combat->calls[0]['max_rounds']);
         $this->postJson('/api/v1/me/underground/otherworld/challenge', [
             'request_id' => (string) Str::uuid(), 'hunting_ground_key' => 'bahamul_beginner_1',
         ])->assertOk();
@@ -1760,6 +1762,9 @@ final class UndergroundRuntimeTest extends TestCase
         [$leader, $leaderSecretary] = $this->secretaryUser();
         $leader->forceFill(['visitor_code' => 'PTYLEAD1'])->save();
         $leaderProfile = $this->unlockExploration($leaderSecretary);
+        $leaderLevelBefore = $leaderProfile->combat_level;
+        // Any encounter reward crosses the level boundary; the battle must retain its starting snapshot.
+        $leaderProfile->update(['combat_xp' => app(UndergroundRuntimeCatalog::class)->xpCurve()['first_level_cost'] - 1]);
         [$owner, $borrowedSecretary] = $this->secretaryUser();
         $owner->forceFill(['visitor_code' => 'PTYLEND1'])->save();
         $borrowedProfile = $this->unlockExploration($borrowedSecretary, growthPathKey: 'blessing_green');
@@ -1793,7 +1798,8 @@ final class UndergroundRuntimeTest extends TestCase
         $this->assertSame(0, $battle->statistics['self']['ending_hp']);
         $this->assertSame(1, $leaderProfile->refresh()->current_hp);
         $this->assertSame(120, $borrowedMember['original_combat_level']);
-        $this->assertSame($leaderProfile->combat_level, $borrowedMember['effective_combat_level']);
+        $this->assertGreaterThan($leaderLevelBefore, $leaderProfile->combat_level);
+        $this->assertSame($leaderLevelBefore, $borrowedMember['effective_combat_level']);
         $this->assertSame($borrowedBefore, $borrowedProfile->refresh()->only(array_keys($borrowedBefore)));
         $this->assertSame(1, SecretaryLendingParticipation::query()->where('owner_user_id', $owner->id)->count());
         $this->assertSame(1, UndergroundParty::query()->count());
@@ -2403,7 +2409,7 @@ final class ScriptedUndergroundExplorationCombat implements AtomicUndergroundExp
 
 final class ScriptedUndergroundPartyCombat implements AtomicUndergroundPartyCombat
 {
-    /** @var list<array{player_snapshots: array<int, array<string, mixed>>, enemy_keys: list<string>}> */
+    /** @var list<array{player_snapshots: array<int, array<string, mixed>>, enemy_keys: list<string>, max_rounds: int}> */
     public array $calls = [];
 
     public function __construct(
@@ -2421,7 +2427,7 @@ final class ScriptedUndergroundPartyCombat implements AtomicUndergroundPartyComb
         int $maxRounds,
         int $naturalRecovery,
     ): PartyCombatResult {
-        $this->calls[] = ['player_snapshots' => $playerSnapshots, 'enemy_keys' => $enemyKeys];
+        $this->calls[] = ['player_snapshots' => $playerSnapshots, 'enemy_keys' => $enemyKeys, 'max_rounds' => $maxRounds];
         $winner = array_shift($this->outcomes) ?? 'player';
         $initial = [];
         $final = [];
