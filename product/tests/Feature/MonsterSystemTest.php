@@ -638,6 +638,41 @@ class MonsterSystemTest extends TestCase
             ->where('x', $fallbackDestination->x)->where('y', $fallbackDestination->y)->count());
     }
 
+    public function test_natural_spawn_uses_an_ordinary_city_and_excludes_the_population_rank_two_city(): void
+    {
+        [$world, $nation, $ruleset, $space] = $this->worldAndNation('大都市自然発生国');
+        MapCell::query()->where('owner_nation_id', $nation->id)->update(['population' => 0]);
+        $capital = $nation->capital()->firstOrFail()->cell()->firstOrFail();
+        $capital->update(['population' => 100_000]);
+        $targets = MapCell::query()->where('owner_nation_id', $nation->id)->whereKeyNot($capital->id)
+            ->whereHas('terrain', fn ($query) => $query->where('key', 'plain'))->orderBy('id')->limit(2)->get();
+        $this->assertCount(2, $targets);
+        [$ordinary, $large] = $targets->all();
+        $this->setCell($ordinary, 'plain', 'city', $nation->id, 20_000);
+        $this->setCell($large, 'plain', 'city', $nation->id, 20_001);
+        $ruleset = $this->guaranteeNaturalSpawn($ruleset);
+        $seedLabel = null;
+        foreach (range(0, 1_000) as $candidate) {
+            $label = "ordinary city before fallback {$candidate}";
+            if ((new TurnRandomStreamFactory(hash('sha256', $label)))->stream(
+                TurnRandomStreamFactory::monsterSpawn($nation->id, 'candidate', 1),
+            )->integer(0, 1) === 1) {
+                $seedLabel = $label;
+                break;
+            }
+        }
+        $this->assertNotNull($seedLabel, 'Removing the exclusion must select the second, large-city candidate.');
+        [$context] = $this->context($world, $ruleset, 2, $seedLabel, [$nation->id]);
+
+        $metrics = app(MonsterSpawnService::class)->spawnNatural($context, $space);
+
+        $this->assertSame(1, $metrics['monsters_spawned']);
+        $this->assertSame($ordinary->id, (int) MonsterOccupancy::query()->sole()->map_cell_id);
+        $this->assertSame(0, (int) $ordinary->fresh()->population);
+        $this->assertSame(20_001, (int) $large->fresh()->population);
+        $this->assertSame('city', $large->fresh()->facility()->value('key'));
+    }
+
     public function test_triggered_spawn_without_an_eligible_settlement_is_a_safe_audited_noop(): void
     {
         [$world, $nation, $ruleset, $space] = $this->worldAndNation('候補なし国');

@@ -132,6 +132,8 @@ final class MonsterSpawnService
                 continue;
             }
             if (! $occupied->has($cell->id)
+                && ! ($this->facilityRanks->isLargeCity($context->ruleset->settings, $cell->facility?->key, (int) $cell->population)
+                    && ($this->facilityRanks->contract($context->ruleset->settings, 'city')['exclude_normal_monster_spawn'] ?? false))
                 && ! $this->nationProtection->protects($context, $cell->x, $cell->y)) {
                 $candidatesByNation[$cell->owner_nation_id][] = $cell;
             }

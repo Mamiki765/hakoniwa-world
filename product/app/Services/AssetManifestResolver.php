@@ -31,6 +31,7 @@ final class AssetManifestResolver
         'tile.village' => 'land3.gif',
         'tile.town' => 'land4.gif',
         'tile.city' => 'land5.gif',
+        'tile.large_city' => 'city2.gif',
         'tile.capital' => 'capital.gif',
         'tile.farm' => 'land7.gif',
         'tile.factory' => 'land8.gif',

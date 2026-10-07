@@ -147,6 +147,34 @@ final class FacilityAndMapStateTest extends TestCase
         );
     }
 
+    public function test_city_rank_tracks_population_and_falls_back_to_the_existing_city_asset(): void
+    {
+        [$user, $nation, $space] = $this->nation('人口ランク国');
+        $settings = $nation->world()->with('rulesetVersion')->firstOrFail()->rulesetVersion->settings;
+        $city = FacilityDefinition::query()->where('key', 'city')->firstOrFail();
+        $cell = MapCell::query()->where('owner_nation_id', $nation->id)
+            ->whereNull('facility_definition_id')->whereHas('terrain', fn ($query) => $query->where('key', 'plain'))->firstOrFail();
+        app(MapCellStateService::class)->setFacility($cell, $city);
+        $cell->population = 20_000;
+        $cell->save();
+        $ranks = app(FacilityRankPolicy::class);
+        foreach ([20_000 => 1, 20_001 => 2] as $population => $rank) {
+            $cell->update(['population' => $population]);
+            $presented = $this->cellFromResponse(
+                $this->actingAs($user)->getJson($this->chunkUrl($space, $cell))->assertOk()->json('data.cells'), $cell,
+            );
+            $expected = $ranks->presentation($settings, $city, $population);
+            $this->assertSame('city', $presented['facility']);
+            $this->assertSame($expected['name'], $presented['facility_name']);
+            $this->assertSame($rank, collect($presented['details'])->keyBy('key')['facility_rank']['value']);
+            $this->assertSame('tile.city', $presented['asset']['key']);
+            $this->assertNull($cell->fresh()->facility_scale, 'Population must not be copied into industrial scale.');
+        }
+        $cell->update(['population' => 20_000]);
+        $this->assertFalse($ranks->isLargeCity($settings, $cell->facility?->key, (int) $cell->population));
+        $this->assertSame(1, $ranks->presentation($settings, $city, (int) $cell->population)['rank']);
+    }
+
     public function test_owner_sees_missile_state_and_other_viewers_receive_indistinguishable_forest(): void
     {
         [$owner, $nation, $mapSpace] = $this->nation('秘匿国');

@@ -585,6 +585,9 @@ final class DisasterTurnService
         $rules = $this->rules($context);
         $settings = $rules['fire'];
         $facilityKey = $cell->facility?->key;
+        if ($this->facilityRanks->largeCityImmuneToDisaster($context->ruleset->settings, $facilityKey, (int) $cell->population, 'fire')) {
+            return false;
+        }
         $unprotectedSeaFacility = in_array(
             $facilityKey,
             $settings['unprotected_sea_facility_keys'] ?? [],
@@ -742,6 +745,9 @@ final class DisasterTurnService
                 continue;
             }
             $facilityKey = $cell->facility?->key;
+            if ($this->facilityRanks->largeCityImmuneToDisaster($context->ruleset->settings, $facilityKey, (int) $cell->population, 'earthquake')) {
+                continue;
+            }
             $city = in_array($facilityKey, ['village', 'town', 'city', 'capital'], true)
                 && $cell->population >= $settings['minimum_city_population'];
             if (! $city && ! in_array($facilityKey, $settings['facility_keys'], true)) {

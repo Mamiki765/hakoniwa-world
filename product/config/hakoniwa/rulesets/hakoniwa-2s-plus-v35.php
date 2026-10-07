@@ -11,5 +11,6 @@ $rules['turn_processing']['undersea_fire_station_maintenance'] = (require __DIR_
 $rules['military'] = (require __DIR__.'/release-4.18/monsters-and-military.php')['payload']['military'];
 $rules['karma'] = (require __DIR__.'/release-4.18/lifecycle-and-karma.php')['payload']['karma'];
 $rules['ocean_loop'] = (require __DIR__.'/release-4.18/ocean-loop.php')['payload']['ocean_loop'];
+$rules['facility_rank_system'] = (require __DIR__.'/release-4.18/facility-ranks.php')['payload']['facility_rank_system'];
 
 return $rules;

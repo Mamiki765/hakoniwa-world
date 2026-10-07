@@ -174,6 +174,30 @@ class DisasterAndOilTurnTest extends TestCase
         $this->assertNull($station->fresh()->owner_nation_id);
     }
 
+    public function test_city_population_rank_is_immune_to_fire_and_earthquake_until_demotion(): void
+    {
+        [$world, $nation, $ruleset, $space] = $this->worldAndNation('大都市災害国');
+        $ruleset = $this->forceGlobal($ruleset, 'earthquake');
+        $ruleset = $this->updateRuleset($ruleset, static function (array &$settings): void {
+            $settings['turn_processing']['disasters']['fire']['probability'] = ['numerator' => 1, 'denominator' => 1];
+        });
+        $center = $this->boundsFor($world)->center();
+        $target = $this->cellAt($space, $center->x, $center->y);
+        $this->setCell($target, 'plain', 'city', $nation->id, 20_001);
+        $target = $target->fresh(['terrain', 'facility']);
+        [$context] = $this->context($world, $ruleset,
+            $this->seedForCenter(TurnRandomStreamFactory::GLOBAL_EARTHQUAKE_CENTER, $center->x, $center->y, $space), [$nation->id]);
+        $service = app(DisasterTurnService::class);
+        $this->assertFalse($service->processFire($context, $target));
+        $service->executeGlobal($context);
+        $this->assertSame('city', $target->fresh()->facility()->value('key'));
+        $this->assertSame(20_001, (int) $target->fresh()->population);
+        $target = $target->fresh(['terrain', 'facility']);
+        $target->update(['population' => 20_000]);
+        $this->assertTrue($service->processFire($context, $target));
+        $this->assertNull($target->fresh()->facility_definition_id);
+    }
+
     public function test_sea_area_typhoon_keeps_half_chance_wind_damage_and_neighboring_area_windbreaks(): void
     {
         [$world, $nation, $ruleset, $space] = $this->worldAndNation('海域風力国');
