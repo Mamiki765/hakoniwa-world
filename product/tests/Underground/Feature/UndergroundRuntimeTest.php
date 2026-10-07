@@ -17,6 +17,7 @@ use App\Application\Underground\UndergroundEquipmentService;
 use App\Application\Underground\UndergroundIntroService;
 use App\Application\Underground\UndergroundJournalService;
 use App\Application\Underground\UndergroundProfileService;
+use App\Application\Underground\UndergroundRuntimeEquipmentGenerator;
 use App\Application\Underground\UndergroundRuntimeException;
 use App\Application\Underground\UndergroundRuntimeService;
 use App\Application\Underground\UndergroundStarterEquipmentService;
@@ -1251,6 +1252,7 @@ final class UndergroundRuntimeTest extends TestCase
         $this->assertSame('generated', $item->instance_kind);
         $this->assertSame('exploration-drop:'.$requestId, $item->grant_key);
         $this->assertSame($battle->id, $item->source_battle_id);
+        $this->assertSame(app(UndergroundRuntimeEquipmentGenerator::class)->qualityPercent($item->generated_payload), $item->quality_percent);
         $this->assertEquals($item->generated_payload, $item->fresh()->generated_payload);
         $this->assertSame(1, count($combat->calls));
 

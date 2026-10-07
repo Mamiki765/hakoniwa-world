@@ -273,7 +273,7 @@ describe('Underground equipment navigation', () => {
         let bulkAttempts = 0;
         let vaultLoads = 0;
         const vaultPaths: string[] = [];
-        const previewItem = item({ name: 'プレビュー対象', rarity_label: 'サーバー希少', sell_price: 180 });
+        const previewItem = item({ name: 'プレビュー対象', rarity_label: 'サーバー希少', sell_price: 180, quality_percent: 0 });
         const bulkSellOptions = {
             rarities: [{ key: 'common', label: 'サーバー通常' }, { key: 'rare', label: 'サーバー希少' }],
             categories: [{ key: 'weapon', label: 'サーバー武器' }, { key: 'armor', label: 'サーバー防具' }, { key: 'accessory', label: 'サーバー装飾' }],
@@ -324,19 +324,23 @@ describe('Underground equipment navigation', () => {
         ]);
 
         await wrapper.get('input[type="number"]').setValue('30');
+        await wrapper.findAll('label').find(label => label.text() === 'Quality %以下')!.get('input').setValue('0');
         await wrapper.get('.underground-bulk-preview-button').trigger('click');
         await flushPromises();
 
         expect(previewPayloads).toEqual([{
             item_level_max: 30,
+            quality_percent_max: 0,
             rarities: ['common', 'rare'],
             categories: ['weapon', 'armor', 'accessory'],
             weapon_styles: ['dagger', 'rapier'],
         }]);
         expect(wrapper.get('.underground-bulk-sale-preview').text()).toContain('プレビュー対象');
         expect(wrapper.get('.underground-bulk-sale-preview').text()).toContain('180G');
+        expect(wrapper.get('.underground-bulk-sale-preview').text()).toContain('Quality 0%');
         const stored = JSON.parse(window.localStorage.getItem('hakoniwa.underground.vault.bulk-sell-preferences') ?? '{}') as Record<string, unknown>;
         expect(stored.item_level_max).toBe(30);
+        expect(stored.quality_percent_max).toBe(0);
 
         await wrapper.get('.underground-bulk-confirm-trigger').trigger('click');
         await flushPromises();

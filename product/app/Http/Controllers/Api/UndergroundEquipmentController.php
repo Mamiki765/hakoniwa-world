@@ -90,6 +90,7 @@ final class UndergroundEquipmentController extends Controller
             $request->array('rarities'),
             $request->array('categories'),
             $request->array('weapon_styles'),
+            $request->filled('quality_percent_max') ? $request->integer('quality_percent_max') : null,
         ));
     }
 

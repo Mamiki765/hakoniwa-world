@@ -271,6 +271,7 @@ final readonly class BorrowedSecretarySnapshotFactory
                 'generator_identity' => $row->generator_identity,
                 'generated_payload' => $row->generated_payload,
                 'polish_level' => $row->polish_level,
+                'quality_percent' => $row->quality_percent,
             ];
         }
         $skillTreeIdentity = $profile->skill_tree_identity;
@@ -980,7 +981,9 @@ final readonly class BorrowedSecretarySnapshotFactory
             $effective = $this->generated->generate(
                 $effectiveLevel, $tier, $rarity, $category, $style, $mainStat, $seed, $sourceIdentity,
                 $source['resonance_variant'] ?? null,
+                $definition['affixes'],
             );
+            $effective['quality_percent'] = $definition['quality_percent'] ?? null;
 
             return (new UndergroundEquipmentPolishing)->apply($effective, (int) ($definition['polish_level'] ?? 0));
         }

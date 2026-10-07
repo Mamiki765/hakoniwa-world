@@ -12,6 +12,7 @@ use RuntimeException;
 final class UndergroundRuntimeEquipmentGenerator
 {
     /**
+     * @param list<array<string, mixed>>|null $savedAffixes Original rolls for IL synchronization.
      * @return array<string, mixed>
      */
     public function generate(
@@ -24,6 +25,7 @@ final class UndergroundRuntimeEquipmentGenerator
         int $seed,
         string $sourceIdentity,
         ?string $resonanceVariant = null,
+        ?array $savedAffixes = null,
     ): array {
         $generator = $this->config();
         if ($itemLevel < $generator['item_level_min'] || $itemLevel > $generator['item_level_max']
@@ -96,6 +98,9 @@ final class UndergroundRuntimeEquipmentGenerator
         $affixCount = $resonance ? (int) $generator['resonance']['slots']
             : ($category === 'accessory' ? $this->accessoryAffixCount($random, $rarity)
                 : (int) ($rarity['weapon_armor_slots'] ?? -1));
+        if ($savedAffixes !== null) {
+            $affixCount = count($savedAffixes);
+        }
         $accessoryValueBps = $category === 'accessory'
             ? (int) ($rarity['accessory_value_bps'] ?? -1)
             : 10_000;
@@ -105,7 +110,8 @@ final class UndergroundRuntimeEquipmentGenerator
         }
 
         $eligible = $resonance ? ($generator['resonance']['affixes'] ?? null) : ($generator['affixes'] ?? null);
-        if (! is_array($eligible) || $eligible === [] || (! $resonance && count($eligible) < $affixCount)) {
+        if ($savedAffixes === null && (! is_array($eligible) || $eligible === []
+            || (! $resonance && count($eligible) < $affixCount))) {
             throw new RuntimeException('Underground generated equipment affix pool is invalid.');
         }
         $qualityMin = $generator['quality_min_bps'] ?? null;
@@ -117,12 +123,18 @@ final class UndergroundRuntimeEquipmentGenerator
 
         $affixes = [];
         for ($index = 0; $index < $affixCount; $index++) {
-            $keys = array_keys($eligible);
-            $selected = $random->integer("affix:key:{$index}", 0, count($keys) - 1);
-            $key = $keys[$selected];
-            $definition = $eligible[$key];
+            $saved = $savedAffixes[$index] ?? null;
+            if ($savedAffixes !== null) {
+                $key = $saved['key'];
+                $definition = $resonance ? $saved['label'] : $saved;
+            } else {
+                $keys = array_keys($eligible);
+                $selected = $random->integer("affix:key:{$index}", 0, count($keys) - 1);
+                $key = $keys[$selected];
+                $definition = $eligible[$key];
+            }
             if ($resonance) {
-                $quality = $random->integer("affix:quality:{$index}", $qualityMin, $qualityMax);
+                $quality = $saved['quality_bps'] ?? $random->integer("affix:quality:{$index}", $qualityMin, $qualityMax);
                 $percentageLevel = min($itemLevel, (int) $generator['resonance']['percentage_item_level_cap']);
                 $minimum = $this->interpolate($generator['resonance']['affix_min_bps'], $percentageLevel);
                 $maximum = $this->interpolate($generator['resonance']['affix_max_bps'], $percentageLevel);
@@ -140,7 +152,10 @@ final class UndergroundRuntimeEquipmentGenerator
             if (! is_array($definition)) {
                 throw new RuntimeException('Underground generated equipment affix definition is invalid.');
             }
-            $quality = $random->integer("affix:quality:{$index}", $qualityMin, $qualityMax);
+            $quality = $saved['quality_bps'] ?? $random->integer("affix:quality:{$index}", $qualityMin, $qualityMax);
+            if ($saved !== null && $saved['kind'] === 'modifier') {
+                $definition['minimum'] = $definition['maximum'] = $saved['raw_value'];
+            }
             $affixes[] = $this->rollAffix(
                 $random,
                 $index,
@@ -149,6 +164,7 @@ final class UndergroundRuntimeEquipmentGenerator
                 $itemLevel,
                 $quality,
                 $accessoryValueBps,
+                $saved['raw_value'] ?? null,
             );
         }
         foreach ($affixes as &$affix) {
@@ -264,6 +280,41 @@ final class UndergroundRuntimeEquipmentGenerator
         ];
     }
 
+    /** Calculate once from the original, unpolished payload; absent accessory slots score zero.
+     * @param  array<string, mixed>  $definition
+     */
+    public function qualityPercent(array $definition): int
+    {
+        $generator = $this->config();
+        $category = $definition['category'];
+        $rarity = $generator['rarities'][$definition['rarity']];
+        $resonance = $category === 'resonance';
+        $slots = $resonance ? (int) $generator['resonance']['slots']
+            : (int) $rarity[$category === 'accessory' ? 'accessory_slots' : 'weapon_armor_slots'];
+        $strength = $category === 'accessory' ? (int) $rarity['accessory_value_bps'] : 10_000;
+        $sum = 0.0;
+        $random = new UndergroundRandom(0);
+        foreach ($definition['affixes'] as $index => $affix) {
+            if ($resonance) {
+                $level = min($definition['item_level'], (int) $generator['resonance']['percentage_item_level_cap']);
+                $minimum = $this->interpolate($generator['resonance']['affix_min_bps'], $level);
+                $maximum = $this->interpolate($generator['resonance']['affix_max_bps'], $level);
+            } else {
+                $bounds = $generator['affixes'][$affix['key']];
+                $minimum = $this->rollAffix($random, $index, $affix['key'], $bounds,
+                    $definition['item_level'], $generator['quality_min_bps'], $strength,
+                    $bounds['minimum'] ?? null)['value'];
+                $maximum = $this->rollAffix($random, $index, $affix['key'], $bounds,
+                    $definition['item_level'], $generator['quality_max_bps'], $strength,
+                    $bounds['maximum'] ?? null)['value'];
+            }
+            $sum += $maximum === $minimum ? 1.0
+                : max(0.0, min(1.0, ($affix['value'] - $minimum) / ($maximum - $minimum)));
+        }
+
+        return (int) round($sum / $slots * $strength / 100, 0, PHP_ROUND_HALF_UP);
+    }
+
     /** @param array<string, mixed> $rarity */
     private function accessoryAffixCount(UndergroundRandom $random, array $rarity): int
     {
@@ -295,6 +346,7 @@ final class UndergroundRuntimeEquipmentGenerator
         int $itemLevel,
         int $qualityBps,
         int $accessoryValueBps,
+        ?int $rawValue = null,
     ): array {
         $label = $definition['label'] ?? null;
         $kind = $definition['kind'] ?? null;
@@ -315,7 +367,7 @@ final class UndergroundRuntimeEquipmentGenerator
             if (! is_int($minimum) || ! is_int($maximum) || $minimum < 1 || $maximum < $minimum) {
                 throw new RuntimeException("Underground generated equipment modifier affix [{$key}] is invalid.");
             }
-            $raw = $random->integer("affix:value:{$index}", $minimum, $maximum);
+            $raw = $rawValue ?? $random->integer("affix:value:{$index}", $minimum, $maximum);
             $itemLevelBps = min(20_000, 10_000 + (($itemLevel - 1) * 100));
             $numerator = $raw * $itemLevelBps * $qualityBps * $accessoryValueBps;
             $denominator = 1_000_000_000_000;
@@ -445,7 +497,7 @@ final class UndergroundRuntimeEquipmentGenerator
     {
         $config = config('underground-equipment.generator');
         if (! is_array($config)
-            || ($config['identity'] ?? null) !== 'secretary-underground-drop-equipment-alpha-v4') {
+            || ($config['identity'] ?? null) !== 'secretary-underground-drop-equipment-alpha-v5') {
             throw new RuntimeException('Underground generated equipment configuration is invalid.');
         }
 

@@ -338,6 +338,7 @@ final class UndergroundEquipmentCatalog
                 'catalog_identity' => $entry['catalog_identity'],
                 'instance_identity' => $entry['instance_identity'],
                 'polish_level' => (int) ($definition['polish_level'] ?? 0),
+                'quality_percent' => $definition['quality_percent'] ?? null,
             ];
         }
 

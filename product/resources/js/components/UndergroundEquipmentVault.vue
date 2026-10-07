@@ -45,6 +45,7 @@ interface BulkSellItem {
 }
 interface BulkSellPreferences {
     item_level_max?: unknown;
+    quality_percent_max?: unknown;
     rarities?: unknown;
     categories?: unknown;
     weapon_styles?: unknown;
@@ -74,6 +75,7 @@ const selectedRarityKeys = ref<string[]>([]);
 const selectedCategoryKeys = ref<string[]>([]);
 const selectedWeaponStyleKeys = ref<string[]>([]);
 const itemLevelMaxDraft = ref<string | number>('');
+const qualityPercentMaxDraft = ref<string | number>('');
 const bulkPreview = ref<BulkSellPreviewResponse | null>(null);
 const bulkPreviewLoading = ref(false);
 const bulkConfirmOpen = ref(false);
@@ -195,6 +197,7 @@ function persistBulkPreferences(): void {
         const raw = String(itemLevelMaxDraft.value).trim();
         window.localStorage.setItem(preferenceKey(bulkSellPreferenceKey), JSON.stringify({
             item_level_max: raw === '' ? null : Number(raw),
+            quality_percent_max: String(qualityPercentMaxDraft.value).trim() === '' ? null : Number(qualityPercentMaxDraft.value),
             rarities: selectedRarityKeys.value,
             categories: selectedCategoryKeys.value,
             weapon_styles: selectedWeaponStyleKeys.value,
@@ -220,6 +223,9 @@ function syncBulkSellOptions(options: BulkSellOptions | undefined): void {
     bulkSellOptions.value = normalized;
     const stored = readBulkPreferences();
     itemLevelMaxDraft.value = restoreItemLevelMax(stored?.item_level_max);
+    qualityPercentMaxDraft.value = typeof stored?.quality_percent_max === 'number'
+        && Number.isInteger(stored.quality_percent_max) && stored.quality_percent_max >= 0 && stored.quality_percent_max <= 100
+        ? String(stored.quality_percent_max) : '';
     selectedRarityKeys.value = restoreSelectedKeys(stored?.rarities, normalized.rarities);
     selectedCategoryKeys.value = restoreSelectedKeys(stored?.categories, normalized.categories);
     selectedWeaponStyleKeys.value = restoreSelectedKeys(stored?.weapon_styles, normalized.weapon_styles);
@@ -297,6 +303,12 @@ async function previewBulkSale(): Promise<void> {
         error.value = 'Item Lvを確認してください。';
         return;
     }
+    const qualityRaw = String(qualityPercentMaxDraft.value).trim();
+    const qualityPercentMax = qualityRaw === '' ? null : Number(qualityRaw);
+    if (qualityPercentMax !== null && (!Number.isInteger(qualityPercentMax) || qualityPercentMax < 0 || qualityPercentMax > 100)) {
+        error.value = 'Quality は 0〜100% で指定してください。';
+        return;
+    }
 
     bulkPreviewLoading.value = true;
     error.value = '';
@@ -305,6 +317,7 @@ async function previewBulkSale(): Promise<void> {
             method: 'POST',
             body: JSON.stringify({
                 item_level_max: itemLevelMax,
+                quality_percent_max: qualityPercentMax,
                 rarities: [...selectedRarityKeys.value],
                 categories: [...selectedCategoryKeys.value],
                 weapon_styles: [...selectedWeaponStyleKeys.value],
@@ -396,7 +409,7 @@ async function confirmSingleSale(): Promise<void> {
 }
 
 watch(
-    [selectedRarityKeys, selectedCategoryKeys, selectedWeaponStyleKeys, itemLevelMaxDraft],
+    [selectedRarityKeys, selectedCategoryKeys, selectedWeaponStyleKeys, itemLevelMaxDraft, qualityPercentMaxDraft],
     () => persistBulkPreferences(),
     { deep: true },
 );
@@ -486,6 +499,10 @@ async function changeInventory(next: 'equipment' | 'resonance'): Promise<void> {
                         <span>Item Lv以下</span>
                         <input v-model="itemLevelMaxDraft" type="number" min="1" inputmode="numeric" placeholder="未入力" :disabled="bulkFilterDisabled" @input="onBulkFilterChanged">
                     </label>
+                    <label>
+                        <span>Quality %以下</span>
+                        <input v-model="qualityPercentMaxDraft" type="number" min="0" max="100" inputmode="numeric" placeholder="未入力" :disabled="bulkFilterDisabled" @input="onBulkFilterChanged">
+                    </label>
                     <fieldset>
                         <legend>レアリティ</legend>
                         <label v-for="option in bulkSellOptions.rarities" :key="`rarity-${option.key}`">
@@ -522,7 +539,7 @@ async function changeInventory(next: 'equipment' | 'resonance'): Promise<void> {
                 </dl>
                 <ul class="underground-bulk-preview-list" aria-label="売却候補の装備">
                     <li v-for="item in bulkPreview.items" :key="item.id ?? item.instance_identity ?? item.key">
-                        <span><strong>{{ item.name }}</strong><small>Item Lv {{ item.item_level }}・{{ item.rarity_label ?? item.rarity }}</small></span>
+                        <span><strong>{{ item.name }}</strong><small>Item Lv {{ item.item_level }}・{{ item.rarity_label ?? item.rarity }}・Quality {{ item.quality_percent == null ? '—' : `${item.quality_percent}%` }}</small></span>
                         <strong>{{ item.sell_price.toLocaleString('ja-JP') }}G</strong>
                     </li>
                 </ul>

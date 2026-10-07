@@ -48,18 +48,15 @@ final class SurfaceVisibilityService
             ->where('nation_id', $viewerNationId)
             ->where('state', Ship::STATE_ACTIVE)
             ->whereHas('cell', static fn ($query) => $query->where('map_space_id', $mapSpace->id))
-            ->with(['cell:id,map_space_id,x,y', 'rulesetVersion:id,settings'])
+            ->with('cell:id,map_space_id,x,y')
             ->orderBy('id')
             ->get();
-        /** @var array<int, array<string, SurfaceShipDefinition>> $definitionsByRuleset */
-        $definitionsByRuleset = [];
+        // Ship ruleset_version_id remains immutable creation provenance.
+        $mapSpace->loadMissing('world.rulesetVersion');
+        $definitions = collect($this->ships->definitions($mapSpace->world->rulesetVersion->settings))
+            ->keyBy('key')->all();
         foreach ($viewerShips as $ship) {
-            if (! isset($definitionsByRuleset[$ship->ruleset_version_id])) {
-                $definitionsByRuleset[$ship->ruleset_version_id] = collect(
-                    $this->ships->definitions($ship->rulesetVersion->settings),
-                )->keyBy('key')->all();
-            }
-            $definition = $definitionsByRuleset[$ship->ruleset_version_id][$ship->ship_type_key] ?? null;
+            $definition = $definitions[$ship->ship_type_key] ?? null;
             $cell = $ship->cell;
             if (! $definition instanceof SurfaceShipDefinition || ! $cell instanceof MapCell) {
                 continue;
