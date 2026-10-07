@@ -895,6 +895,26 @@ final class SecretaryItemEffectsTest extends TestCase
         $this->assertSame(1, $longshotMetrics['secretary_bow_hits']);
         $this->assertSame('killed', $aoi->fresh()->state);
         $this->assertSame('secretary_longshot_bow', $aoi->fresh()->removal_reason);
+        $world->update(['current_turn' => $longshotContext->targetTurn]);
+        $killEvent = DB::table('audit_events')->where('event_type', 'monster.killed')
+            ->where('subject_id', $aoi->id)->sole();
+        $killMetadata = json_decode((string) $killEvent->metadata, true, 512, JSON_THROW_ON_ERROR);
+        $this->assertSame('public', $killEvent->visibility);
+        $this->assertArrayHasKey('host_nation_id', $killMetadata);
+        $this->assertNull($killMetadata['host_nation_id']);
+        $public = $this->getJson("/api/v1/public/worlds/{$world->id}/events")->assertOk();
+        $events = collect($public->json('data.groups'))->flatMap(static fn (array $group): array => $group['events']);
+        $shownKill = $events->firstWhere('id', (int) $killEvent->id);
+        $this->assertNotNull($shownKill, 'A neutral Aoi killed by a Secretary Bow must explain its public disappearance.');
+        $this->assertSame('monster.killed', $shownKill['type']);
+        $this->assertStringContainsString("({$neutralCell->x},{$neutralCell->y})", $shownKill['message']);
+        $this->assertStringContainsString((string) $aoi->definition()->value('name'), $shownKill['message']);
+        foreach (['damage_type', 'secretary_longshot_bow', 'killer_money', 'host_meat_food', 'secretary_monster_experience_awarded', 'firing_base_id'] as $hidden) {
+            $this->assertStringNotContainsString($hidden, (string) $public->getContent());
+        }
+        $island = $this->getJson("/api/v1/public/nations/{$longshotNation->id}/events")->assertOk();
+        $islandIds = collect($island->json('data.groups'))->flatMap(static fn (array $group): array => $group['events'])->pluck('id');
+        $this->assertNotContains((int) $killEvent->id, $islandIds);
 
         $this->equipBow($mechanicalUser, SecretaryItemCatalog::MECHANICAL_BOW, 10);
         $finisherTarget = $this->monster(

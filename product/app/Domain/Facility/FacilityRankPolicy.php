@@ -69,6 +69,21 @@ final class FacilityRankPolicy
             && in_array($disaster, $this->contract($rulesetSettings, 'city')['immune_disaster_keys'] ?? [], true);
     }
 
+    /** @param array<string, mixed> $settings */
+    public function populationDamageLimit(array $settings, string $damageKind): ?int
+    {
+        $contract = $this->contract($settings, 'city');
+        if ($contract === null) {
+            return null;
+        }
+        $damage = $this->contract($settings, $contract['population_damage_reference'])['damage_scale_loss'][$damageKind] ?? null;
+        if ($damage === null) {
+            return null;
+        }
+
+        return $damage * $contract['population_per_damage_unit'];
+    }
+
     /** @param array<string, mixed> $rulesetSettings */
     public function isRankTwo(array $rulesetSettings, string $facilityKey, ?int $scale): bool
     {

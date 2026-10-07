@@ -453,6 +453,10 @@ final class RulesetAuthoringValidator
                 'promotion_description' => '人口20,001人以上で自動的にランク2、20,000人以下で通常都市へ',
                 'immune_disaster_keys' => ['earthquake', 'fire'],
                 'exclude_normal_monster_spawn' => true,
+                'population_damage_reference' => 'farm',
+                'population_per_damage_unit' => 1000,
+                'minimum_population' => 0,
+                'capital_population_loss_policy' => 'minimum_of_existing_and_fixed_loss',
             ];
         }
         if ($authored !== $expected) {
@@ -1512,6 +1516,13 @@ final class RulesetAuthoringValidator
         }
         if ($actualTiers !== $expectedTiers) {
             throw new DomainException("{$spawnPath}.population_tiers must match the Owner-approved v21 uniform pools.");
+        }
+        if (($settings['version'] ?? 0) >= 35 && ($spawn['rescue'] ?? null) !== [
+            'monster_keys' => ['king_inora', 'nyowamiya', 'mecha_inora_zero'],
+            'empty_terrain_keys' => ['plain', 'wasteland'], 'large_city_facility_key' => 'city',
+            'eligibility' => 'existing_population_and_industrial_rank_conditions', 'trigger' => 'no_normal_candidate',
+        ]) {
+            throw new DomainException('Natural rescue spawning differs from the Owner decision.');
         }
         $rankTwoCondition = $spawn['rank_two_condition'] ?? null;
         if ($rankTwoCondition !== [

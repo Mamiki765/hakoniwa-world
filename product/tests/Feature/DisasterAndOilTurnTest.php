@@ -9,6 +9,7 @@ use App\Application\DisasterTurnService;
 use App\Application\DomesticCommandExecutor;
 use App\Application\NationCreationService;
 use App\Application\OceanWorldGenerator;
+use App\Application\PlayerIslandEventService;
 use App\Application\SecretaryTurnService;
 use App\Application\WorldExpansionService;
 use App\Domain\Map\GridCoordinate;
@@ -574,8 +575,8 @@ class DisasterAndOilTurnTest extends TestCase
         $expected = [
             'earthquake' => 9_000,
             'eruption' => 6_300,
-            'meteor_shower' => 630,
-            'meteor_shower-second' => 100,
+            'meteor_shower' => 3_300,
+            'meteor_shower-second' => 330,
         ];
 
         foreach ($expected as $step => $population) {
@@ -617,6 +618,67 @@ class DisasterAndOilTurnTest extends TestCase
         $this->assertTrue($minimumDamage['minimum_population_applied']);
         $this->assertSame(50, $minimumDamage['minimum_population_adjustment']);
         $this->assertSame(5, DB::table('audit_events')->where('event_type', 'capital.disaster_damaged')->count());
+    }
+
+    public function test_huge_meteor_population_damage_uses_farm_units_and_retains_capital_special_protection(): void
+    {
+        [$world, $nation, $ruleset, $space] = $this->worldAndNation('大都市被害国');
+        $capital = $nation->capital()->firstOrFail()->cell()->with(['terrain', 'facility'])->firstOrFail();
+        $city = MapCell::query()->where('owner_nation_id', $nation->id)->whereKeyNot($capital->id)
+            ->whereHas('terrain', fn ($query) => $query->where('key', 'plain'))->firstOrFail();
+        foreach (['city' => $city, 'capital' => $capital] as $facility => $cell) {
+            foreach ([0, 1, 2] as $distance) {
+                $this->setCell($cell, 'plain', $facility, $nation->id, 25_000);
+                $cell->refresh();
+                $identity = $cell->only(['id', 'terrain_definition_id', 'facility_definition_id', 'owner_nation_id', 'x', 'y']);
+                $coordinate = new GridCoordinate($cell->x, $cell->y);
+                $center = collect($coordinate->radius($distance))->first(fn (GridCoordinate $candidate): bool => $candidate->distanceTo($coordinate) === $distance && $candidate->x >= $space->min_x
+                    && $candidate->x <= $space->max_x && $candidate->y >= $space->min_y && $candidate->y <= $space->max_y);
+                $this->assertInstanceOf(GridCoordinate::class, $center);
+                [$context] = $this->context($world, $ruleset, hash('sha256', "population blast {$facility} {$distance}"), [$nation->id]);
+                $damaged = app(DisasterTurnService::class)->resolveHugeMeteorBlast(
+                    $context, $space, $center, $ruleset->settings['turn_processing']['disasters']['huge_meteor'],
+                    cellIndex: DisasterMutableCellIndex::fromCells([$cell->fresh(['terrain', 'facility'])], [$nation->id], TerrainDefinition::query()->get()),
+                );
+
+                $this->assertSame(1, $damaged);
+                $cell->refresh();
+                if ($facility === 'city' && $distance === 0) {
+                    $this->assertSame(0, (int) $cell->population);
+                    $this->assertNull($cell->facility_definition_id);
+                    $this->assertNull($cell->owner_nation_id);
+                    $this->assertSame('sea', $cell->terrain()->value('key'));
+                } else {
+                    $this->assertSame($identity, $cell->only(array_keys($identity)));
+                    $this->assertSame([0 => 2_500, 1 => 22_000, 2 => 24_000][$distance], (int) $cell->population);
+                }
+                if ($facility === 'capital' && $distance > 0) {
+                    $eventId = DB::table('audit_events')->where('event_type', 'capital.disaster_damaged')
+                        ->whereRaw("metadata->>'turn_run_id' = ?", [(string) $context->run->id])->value('id');
+                    $page = app(PlayerIslandEventService::class)->publicWorldPage($world, anchorTurn: $context->targetTurn);
+                    $event = collect($page['groups'])->flatMap(static fn (array $group): array => $group['events'])
+                        ->firstWhere('id', (int) $eventId);
+                    $this->assertNotNull($event);
+                    $this->assertStringContainsString(number_format(25_000 - $cell->population), $event['message']);
+                }
+            }
+        }
+        $this->setCell($city, 'plain', 'city', $nation->id, 25_000);
+        $ruleset = $this->forceGlobal($ruleset, 'meteor_shower');
+        [$meteorContext] = $this->context($world, $ruleset,
+            $this->seedForCenter(TurnRandomStreamFactory::GLOBAL_METEOR_SHOWER_CENTER, $city->x, $city->y, $space), [$nation->id]);
+        app(DisasterTurnService::class)->executeGlobal($meteorContext);
+        $this->assertSame(22_000, (int) $city->fresh()->population);
+        $this->assertSame('city', $city->fresh()->facility()->value('key'));
+        $populationEventId = DB::table('audit_events')->where('event_type', 'disaster.cell_damaged')
+            ->where('subject_id', $city->id)->whereRaw("metadata->>'turn_run_id' = ?", [(string) $meteorContext->run->id])->value('id');
+        $public = app(PlayerIslandEventService::class)->publicWorldPage($world, anchorTurn: $meteorContext->targetTurn);
+        $shown = collect($public['groups'])->flatMap(static fn (array $group): array => $group['events'])
+            ->firstWhere('id', (int) $populationEventId);
+        $this->assertNotNull($shown);
+        $this->assertStringContainsString(number_format(25_000 - $city->fresh()->population), $shown['message']);
+        $this->assertSame($capital->id, $nation->capital()->value('map_cell_id'));
+        $this->assertSame(0, DB::table('audit_events')->whereIn('event_type', ['refugee_generated', 'refugee_received'])->count());
     }
 
     public function test_fire_is_prevented_by_forest_then_damages_factory_and_capital(): void

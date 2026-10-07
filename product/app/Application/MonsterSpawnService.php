@@ -139,6 +139,32 @@ final class MonsterSpawnService
             }
         }
 
+        /** @var array<int, list<MapCell>> $rescueByNation */
+        $rescueByNation = [];
+        $rescue = $system['rescue'] ?? null;
+        if (is_array($rescue)) {
+            $blockedIds = array_values(array_filter($populationEligibleNationIds,
+                fn (int $id): bool => ($candidatesByNation[$id] ?? []) === []
+                    && $this->policy->rescuePool($system, $populationByNation[$id], isset($rankTwoNationIds[$id])) !== []));
+            if ($blockedIds !== []) {
+                $rescueCells = MapCell::query()->where('map_space_id', $space->id)
+                    ->whereIn('owner_nation_id', $blockedIds)
+                    ->whereDoesntHave('monsterOccupancy')->whereDoesntHave('ship')
+                    ->where(function ($query) use ($rescue): void {
+                        $query->whereHas('facility', fn ($facility) => $facility->where('key', $rescue['large_city_facility_key']))
+                            ->orWhere(fn ($empty) => $empty->whereNull('facility_definition_id')
+                                ->whereHas('terrain', fn ($terrain) => $terrain->whereIn('key', $rescue['empty_terrain_keys'])));
+                    })->with(['facility', 'terrain'])->orderBy('id')->lockForUpdate()->get();
+                foreach ($rescueCells as $cell) {
+                    $eligible = ($cell->facility === null && (int) $cell->population === 0)
+                        || $this->facilityRanks->isLargeCity($context->ruleset->settings, $cell->facility?->key, (int) $cell->population);
+                    if ($eligible && ! $this->nationProtection->protects($context, $cell->x, $cell->y)) {
+                        $rescueByNation[(int) $cell->owner_nation_id][] = $cell;
+                    }
+                }
+            }
+        }
+
         // All eligibility data above is a single pre-application snapshot. Applying a
         // spawn for one Nation cannot change another Nation's candidate set or draw.
         foreach ($nations as $nation) {
@@ -172,7 +198,12 @@ final class MonsterSpawnService
             }
 
             $candidates = $candidatesByNation[$nation->id] ?? [];
-            if ($candidates === []) {
+            $rescueSpawn = $candidates === [];
+            if ($rescueSpawn) {
+                $candidates = $rescueByNation[$nation->id] ?? [];
+                $pool = $this->policy->rescuePool($system, $population, isset($rankTwoNationIds[$nation->id]));
+            }
+            if ($candidates === [] || $pool === []) {
                 $metrics['blocked_no_settlement']++;
                 $this->events->record($context, 'monster.spawn_failed_no_settlement', $nation, [
                     'nation_id' => $nation->id,
@@ -255,6 +286,7 @@ final class MonsterSpawnService
                 'after_population' => 0,
                 'owner_preserved' => true,
                 'spawn_source' => MonsterSpawnSource::Natural->value,
+                'rescue_spawn' => $rescueSpawn,
             ]);
         }
 

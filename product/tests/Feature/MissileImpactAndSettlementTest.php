@@ -12,6 +12,7 @@ use App\Application\NationLifecycleService;
 use App\Application\PlayerIslandEventService;
 use App\Application\SecretaryTurnService;
 use App\Application\Underground\UndergroundProfileService;
+use App\Domain\Facility\FacilityRankPolicy;
 use App\Domain\Facility\MissileBaseRules;
 use App\Domain\Map\GridCoordinate;
 use App\Domain\Map\MapCellStateService;
@@ -36,6 +37,66 @@ use Tests\Support\CommandAndMissileTestCase;
 final class MissileImpactAndSettlementTest extends CommandAndMissileTestCase
 {
     use UsesReusableSurfaceWorld;
+
+    public static function populationDamageCases(): array
+    {
+        return [
+            'normal large city' => ['missile', 'city', 25_000, 24_000, 500, 'settlement_or_facility'],
+            'PP large city' => ['pp_missile', 'city', 25_000, 24_000, 500, 'settlement_or_facility'],
+            'SPP large city' => ['spp_missile', 'city', 25_000, 24_000, 500, 'settlement_or_facility'],
+            'LDM large city' => ['land_destruction_missile', 'city', 25_000, 22_000, 0, 'land_destroyed'],
+            'large city demotion' => ['spp_missile', 'city', 20_001, 19_001, 500, 'settlement_or_facility'],
+            'capital fixed loss' => ['spp_missile', 'capital', 25_000, 24_000, 500, 'capital_above_minimum'],
+            'capital smaller existing loss' => ['spp_missile', 'capital', 900, 810, 45, 'capital_above_minimum'],
+            'capital smaller existing LDM loss' => ['land_destruction_missile', 'capital', 900, 630, 0, 'capital_above_minimum'],
+            'capital minimum' => ['spp_missile', 'capital', 100, 100, 0, 'capital_at_minimum'],
+        ];
+    }
+
+    #[DataProvider('populationDamageCases')]
+    public function test_population_damage_preserves_identity_and_uses_actual_loss_for_refugees_and_existing_karma(
+        string $missile, string $facility, int $before, int $after, int $refugees, string $karmaCategory,
+    ): void {
+        [$world, $user, $firing, $target] = $this->combatants('population damage');
+        $firing->update(['money' => 9_999, 'karma' => 0]);
+        $target->update(['karma' => 0]);
+        DB::table('secretary_skills')->where('skill_key', SecretarySkillCatalog::FINAL_DEFENSE_LINE)
+            ->update(['level' => 0, 'experience' => 0]);
+        $space = $this->surfaceMapSpace($world);
+        $base = $this->missileBase($firing);
+        $capitalRecord = $target->capital()->firstOrFail();
+        $cell = $facility === 'capital' ? $capitalRecord->cell()->with(['terrain', 'facility'])->firstOrFail()
+            : MapCell::query()->where('owner_nation_id', $target->id)->whereNull('facility_definition_id')
+                ->whereHas('terrain', fn ($query) => $query->where('key', 'plain'))->with(['terrain', 'facility'])->firstOrFail();
+        if ($facility === 'city') {
+            app(MapCellStateService::class)->setFacility($cell, FacilityDefinition::query()->where('key', 'city')->firstOrFail());
+        }
+        $cell->population = $before;
+        $cell->save();
+        $identity = $cell->only(['id', 'terrain_definition_id', 'facility_definition_id', 'owner_nation_id', 'x', 'y']);
+        $item = $this->queue(app(CommandQueueService::class), $user, $firing, $space, $missile, $cell);
+        $radius = $missile === 'spp_missile' ? 0 : ($missile === 'pp_missile' ? 1 : 2);
+        $seed = $this->seedForImpactSequence($item, $cell, $radius, [$cell]);
+
+        $context = $this->resolvePreparedKarmaMissileTurn($world, $firing, $target, $base, $item, 2, $seed);
+
+        $cell->refresh();
+        $this->assertSame($identity, $cell->only(array_keys($identity)));
+        $this->assertSame($after, (int) $cell->population);
+        $this->assertSame($capitalRecord->map_cell_id, $target->capital()->value('map_cell_id'));
+        $generated = DB::table('audit_events')->where('event_type', 'refugee_generated')
+            ->whereRaw("metadata->>'queue_item_id' = ?", [(string) $item->id]);
+        $this->assertSame($refugees > 0 ? 1 : 0, $generated->count());
+        if ($refugees > 0) {
+            $metadata = json_decode((string) $generated->value('metadata'), true, 512, JSON_THROW_ON_ERROR);
+            $this->assertSame($refugees, $metadata['generated_population']);
+        }
+        $this->assertSame($context->ruleset->settings['karma']['impact_points'][$karmaCategory],
+            $context->state->karmaLedgerForNation($firing->id)['crime_points']);
+        if ($facility === 'city') {
+            $this->assertSame($after > 20_000 ? 2 : 1, app(FacilityRankPolicy::class)->rank($context->ruleset->settings, 'city', (int) $cell->population));
+        }
+    }
 
     public function test_failed_command_continues_to_finance_and_idle_counter_changes_once_per_target_turn(): void
     {

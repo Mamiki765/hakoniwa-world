@@ -224,6 +224,9 @@ class PlayerIslandEventApiTest extends TestCase
         $damagedWithoutHost = $this->audit('monster.damaged', $attacker, $attacker, 'public', 2, [
             'monster_key' => 'inora', 'x' => 12, 'y' => 8,
         ]);
+        $killedWithoutHost = $this->audit('monster.killed', $attacker, $attacker, 'public', 2, [
+            'monster_key' => 'aoi_inora', 'killer_nation_id' => $attacker->id, 'x' => 0, 'y' => 0,
+        ]);
         $damagedWithHost = $this->audit('monster.damaged', $attacker, $attacker, 'public', 2, [
             'monster_key' => 'inora', 'host_nation_id' => $host->id,
             'host_nation_name' => $host->name, 'x' => 12, 'y' => 8,
@@ -277,6 +280,7 @@ class PlayerIslandEventApiTest extends TestCase
         )->pluck('id');
         $this->assertNotContains($blockedWithoutHost, $attackerEventIds);
         $this->assertNotContains($damagedWithoutHost, $attackerEventIds);
+        $this->assertNotContains($killedWithoutHost, $attackerEventIds);
         $this->assertNotContains($damagedWithHost, $attackerEventIds);
         $this->assertNotContains($legacyDamagedWithHostId, $attackerEventIds);
         $this->assertNotContains($killedWithHost, $attackerEventIds);

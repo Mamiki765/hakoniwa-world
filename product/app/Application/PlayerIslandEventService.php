@@ -528,7 +528,12 @@ final class PlayerIslandEventService
         // Historical ownership is taken only from the event snapshot.
         // Legacy damage rows without host_nation_id stay fail-closed.
         $query->whereNotIn('events.event_type', self::HOST_ISLAND_MONSTER_EVENT_TYPES)
-            ->orWhereRaw("events.metadata->>'host_nation_id' IS NOT NULL");
+            ->orWhereRaw("events.metadata->>'host_nation_id' IS NOT NULL")
+            ->orWhere(function (Builder $neutralKill): void {
+                // JSON null records a neutral destination; a missing key does not.
+                $neutralKill->where('events.event_type', 'monster.killed')
+                    ->whereRaw("events.metadata->'host_nation_id' = 'null'::jsonb");
+            });
     }
 
     private function constrainPublicIslandDestination(Builder $query, int $nationId): void
@@ -576,6 +581,9 @@ final class PlayerIslandEventService
             }
 
             $metadata = $this->metadata($row->metadata);
+            if ($this->isNeutralMonsterKill((string) $row->event_type, $metadata)) {
+                return true;
+            }
             $destinationNationId = $metadata[$destinationKey] ?? null;
             $snapshotKey = $destinationKey === 'host_nation_id'
                 ? 'host_nation_name'
@@ -641,6 +649,9 @@ final class PlayerIslandEventService
         object $row,
         array $destinationNationNames,
     ): ?string {
+        if ($this->isNeutralMonsterKill($eventType, $metadata)) {
+            return '中立地';
+        }
         $destinationKey = match ($eventType) {
             'monster.damage_blocked', 'monster.damaged', 'monster.killed' => 'host_nation_id',
             'monster.defense_self_destructed' => 'defense_owner_nation_id',
@@ -665,6 +676,14 @@ final class PlayerIslandEventService
         }
 
         return is_string($row->event_nation_name) ? $row->event_nation_name : null;
+    }
+
+    /** @param array<string, mixed> $metadata */
+    private function isNeutralMonsterKill(string $eventType, array $metadata): bool
+    {
+        return $eventType === 'monster.killed'
+            && array_key_exists('host_nation_id', $metadata)
+            && $metadata['host_nation_id'] === null;
     }
 
     /** @return array{0: int, 1: int}|null */
@@ -814,13 +833,11 @@ final class PlayerIslandEventService
                 $this->disasterCellDamageMessage($metadata),
             ),
             'capital.disaster_damaged' => sprintf(
-                '%s(%s,%s)で%sにより首都人口が%s%%減少し、%s人になりました。',
+                '%s(%s,%s)で%s',
                 $nation,
                 $x,
                 $y,
-                $this->disasterLabel($metadata['disaster_key'] ?? null),
-                number_format($this->integer($metadata, 'damage_percent')),
-                number_format($this->integer($metadata, 'after_population')),
+                $this->capitalDisasterDamageMessage($metadata),
             ),
             'facility.partially_damaged' => $this->publicFacilityPartialDamageMessage($metadata),
             'monster.spawned' => ($metadata['spawn_source'] ?? null) === 'world_aoi_disaster'
@@ -1098,9 +1115,12 @@ final class PlayerIslandEventService
             'disaster.cell_damaged', 'fire.damaged' => [
                 'nation_name', 'x', 'y', 'disaster_key', 'from_terrain_key',
                 'to_terrain_key', 'removed_facility_key',
+                ...(($metadata['preserved_facility_key'] ?? null) === 'city'
+                    ? ['preserved_facility_key', 'before_population', 'after_population'] : []),
             ],
             'capital.disaster_damaged' => [
                 'nation_name', 'x', 'y', 'disaster_key', 'damage_percent', 'after_population',
+                'before_population', 'population_damage_kind',
             ],
             'facility.partially_damaged' => [
                 'nation_name', 'x', 'y', 'facility_key', 'damage_kind', 'source_key',
@@ -1481,12 +1501,7 @@ final class PlayerIslandEventService
                 number_format($this->integer($metadata, 'changed_to_shallow_count')),
             ),
             'disaster.cell_damaged' => $this->disasterCellDamageMessage($metadata),
-            'capital.disaster_damaged' => sprintf(
-                '%sにより首都人口が%s%%減少し、%s人になりました。',
-                $this->disasterLabel($metadata['disaster_key'] ?? null),
-                number_format($this->integer($metadata, 'damage_percent')),
-                number_format($this->integer($metadata, 'after_population')),
-            ),
+            'capital.disaster_damaged' => $this->capitalDisasterDamageMessage($metadata),
             'fire.prevented' => '周囲の森または記念碑が火災を防ぎました。',
             'fire.damaged' => '火災により施設または都市が荒地になりました。',
             'fire.extinguished_undersea' => sprintf(
@@ -2536,6 +2551,7 @@ final class PlayerIslandEventService
             'killed' => '怪獣を撃破しました',
             'blocked' => '硬化中の怪獣に防がれました',
             'capital_damaged' => '首都人口へ被害を与えました',
+            'settlement_population_damaged', 'settlement_population_land_damaged' => '都市人口へ被害を与えました',
             'capital_at_minimum' => '首都人口が最低人口のため効果はありませんでした',
             'water_facility_destroyed' => '水上施設を破壊しました',
             'ship_damaged' => '船に損傷を与えました',
@@ -2573,8 +2589,28 @@ final class PlayerIslandEventService
     }
 
     /** @param array<string, mixed> $metadata */
+    private function capitalDisasterDamageMessage(array $metadata): string
+    {
+        if (is_string($metadata['population_damage_kind'] ?? null)) {
+            return sprintf('%sにより首都人口が%s人減少し、%s人になりました。',
+                $this->disasterLabel($metadata['disaster_key'] ?? null),
+                number_format(max(0, $this->integer($metadata, 'before_population') - $this->integer($metadata, 'after_population'))),
+                number_format($this->integer($metadata, 'after_population')));
+        }
+
+        return sprintf('%sにより首都人口が%s%%減少し、%s人になりました。',
+            $this->disasterLabel($metadata['disaster_key'] ?? null),
+            number_format($this->integer($metadata, 'damage_percent')),
+            number_format($this->integer($metadata, 'after_population')));
+    }
+
+    /** @param array<string, mixed> $metadata */
     private function disasterCellDamageMessage(array $metadata): string
     {
+        if (($metadata['preserved_facility_key'] ?? null) === 'city') {
+            return sprintf('%sにより都市人口が%s人減少しました。', $this->disasterLabel($metadata['disaster_key'] ?? null),
+                number_format(max(0, $this->integer($metadata, 'before_population') - $this->integer($metadata, 'after_population'))));
+        }
         $removedFacilityKey = $metadata['removed_facility_key'] ?? null;
         if (is_string($removedFacilityKey) && $removedFacilityKey !== '') {
             return sprintf(

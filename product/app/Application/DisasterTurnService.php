@@ -951,6 +951,7 @@ final class DisasterTurnService
                     $damaged += $shipRemoved ? 1 : 0;
                 } elseif ($this->isCapital($cell)) {
                     $this->damageCapital($context, $cell, 'meteor_shower', 'deep_sea', [
+                        'population_damage_kind' => FacilityRankPolicy::LAND_DESTRUCTION,
                         'center_x' => $center->x, 'center_y' => $center->y,
                     ]);
                     $damaged++;
@@ -1085,9 +1086,9 @@ final class DisasterTurnService
                 if ($distance === 0) {
                     $this->damageCapital($context, $cell, $disasterKey, 'deep_sea', $eventMetadata);
                 } elseif ($distance === 1) {
-                    $this->damageCapital($context, $cell, $disasterKey, 'excavation_or_shallow', $eventMetadata);
+                    $this->damageCapital($context, $cell, $disasterKey, 'excavation_or_shallow', [...$eventMetadata, 'population_damage_kind' => FacilityRankPolicy::LAND_DESTRUCTION]);
                 } elseif ($this->hugeMeteorRingTwoTarget($cell, $settings)) {
-                    $this->damageCapital($context, $cell, $disasterKey, 'facility_or_wasteland', $eventMetadata);
+                    $this->damageCapital($context, $cell, $disasterKey, 'facility_or_wasteland', [...$eventMetadata, 'population_damage_kind' => FacilityRankPolicy::ORDINARY_TERRAIN_DESTRUCTION]);
                 } else {
                     continue;
                 }
@@ -1129,7 +1130,7 @@ final class DisasterTurnService
                     'wasteland',
                     false,
                     'disaster.cell_damaged',
-                    $eventMetadata,
+                    [...$eventMetadata, 'population_damage_kind' => FacilityRankPolicy::ORDINARY_TERRAIN_DESTRUCTION],
                     $cellIndex,
                 );
             } elseif ($cell->terrain->key === 'sea' || $cell->terrain->key === 'shallow'
@@ -1173,7 +1174,7 @@ final class DisasterTurnService
                     $distance === 0 ? 'sea' : 'shallow',
                     true,
                     'disaster.cell_damaged',
-                    $eventMetadata,
+                    $distance === 1 ? [...$eventMetadata, 'population_damage_kind' => FacilityRankPolicy::LAND_DESTRUCTION] : $eventMetadata,
                     $cellIndex,
                 );
             }
@@ -1439,6 +1440,11 @@ final class DisasterTurnService
         }
         $before = $cell->population;
         $cell->population = max($minimum, intdiv($before * (100 - $percentage), 100));
+        $kind = $extra['population_damage_kind'] ?? null;
+        $limit = is_string($kind) ? $this->facilityRanks->populationDamageLimit($context->ruleset->settings, $kind) : null;
+        if ($limit !== null) {
+            $cell->population = max($cell->population, $before - $limit);
+        }
         $minimumPopulationAdjustment = max(0, $cell->population - $before);
         $cell->version++;
         $this->saveChangedCell($context, $cell);
@@ -1486,6 +1492,24 @@ final class DisasterTurnService
         $beforeFacility = $cell->facility?->key;
         $beforeOwner = $cell->owner_nation_id;
         $beforePopulation = $cell->population;
+        $kind = $extra['population_damage_kind'] ?? ($disasterKey === 'meteor_shower' ? FacilityRankPolicy::LAND_DESTRUCTION : null);
+        $loss = is_string($kind) ? $this->facilityScaleDamage->applyPopulation($context, $cell, $kind) : null;
+        if ($loss !== null) {
+            $this->events->record($context, $eventType, $cell, [
+                'nation_id' => $beforeOwner,
+                'disaster_key' => $disasterKey,
+                'x' => $cell->x,
+                'y' => $cell->y,
+                'preserved_facility_key' => $beforeFacility,
+                'before_population' => $beforePopulation,
+                'after_population' => $cell->population,
+                'from_terrain_key' => $beforeTerrain,
+                'to_terrain_key' => $beforeTerrain,
+                ...$extra,
+            ]);
+
+            return $loss > 0;
+        }
         $targetOwner = $neutralizeOwner ? null : $beforeOwner;
         $monsterRemoved = $this->removeMonsterForTerrainEvent($context, $cell, $disasterKey);
         if ($beforeTerrain === $terrainKey && $beforeFacility === null
