@@ -142,7 +142,7 @@ final class UndergroundMadMoonTest extends UndergroundPlayerAccessTestCase
         $this->getJson('/api/v1/me/underground')->assertOk()->assertJsonPath('data.mad_moon.retry_available', true);
         $this->postJson('/api/v1/me/underground/mad-moon', ['request_id' => (string) Str::uuid()])->assertConflict();
         $profile->refresh()->update(['next_battle_at' => null]);
-        config(['underground-alpha-v1.mad_moon.max_rounds' => 80,
+        config(['underground-alpha-v1.mad_moon.max_rounds' => 100,
             'underground-alpha-v1.mad_moon.enemy.base_stats.might' => 1000000,
             'underground-alpha-v1.mad_moon.enemy.normal_attack.dodgeable' => false,
             'underground-alpha-v1.mad_moon.enemy.ai_rules' => [['conditions' => [['type' => 'always']], 'action' => 'normal_attack']]]);
