@@ -36,8 +36,8 @@ final class BahamulCombatTest extends TestCase
 
     public function test_middle_roar_fills_the_party_and_leaves_a_round_for_guard_before_the_shared_flare(): void
     {
-        $catalog = app(UndergroundAlphaV1PlayerCatalog::class)->otherworldCatalog('bahamul_intermediate_1');
-        $party = $this->observationParty($catalog, 'bahamul_intermediate_1');
+        $catalog = app(UndergroundAlphaV1PlayerCatalog::class)->otherworldCatalog('bahamul_intermediate_2');
+        $party = $this->observationParty($catalog, 'bahamul_intermediate_2');
         $party[1]['awakening']['growth_path'] = 'guardianship_blue';
         $party[1]['awakening']['technique_key'] = 'absolute_aegis';
         $party[1]['ai_rules'] = [
@@ -45,7 +45,7 @@ final class BahamulCombatTest extends TestCase
             ['conditions' => [['type' => 'enemy_major_telegraph']], 'action' => 'awakening_technique'],
             ['conditions' => [['type' => 'always']], 'action' => 'defend'],
         ];
-        $result = app(AlphaV1CombatModel::class)->fightPartySnapshots($catalog, $party, ['bahamul_intermediate_1'], 4405, 24, 0);
+        $result = app(AlphaV1CombatModel::class)->fightPartySnapshots($catalog, $party, ['bahamul_intermediate_2'], 4405, 24, 0);
         $rows = collect($result->actionLog);
         foreach (['bahamul_black_claw', 'bahamul_breath', 'bahamul_dragon_wing'] as $skill) {
             self::assertTrue($rows->where('actor_id', 'enemy:1')->where('action', $skill)->where('effect_type', 'damage')->isNotEmpty(), $skill);

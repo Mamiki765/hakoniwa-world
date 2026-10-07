@@ -29,6 +29,7 @@
 | 外部管理庫の現在地・作業引継ぎへの入口 | [current-status](../product/docs/handoffs/current-status.md) |
 | 取り違えを防ぐ現行contract | [current-contracts](../product/docs/handoffs/current-contracts.md) |
 | IL200超の装備計算・研磨 | [地底装備の倍率とrating](../product/docs/architecture/underground-equipment-scaling.md)、[プレイヤー向け装備手引き](../product/docs/manual/equipment.md) |
+| バハムル中級2の採用値・測定条件・候補比較 | [中級2バランス調整](../product/docs/plans/bahamul-intermediate-2-balance.md) |
 | 採用済みの未完作業と会話の構想 | [Owner判断・構想](../product/docs/plans/post-4.4.0-decisions-and-ideas.md) |
 | 地上アイテムの合成・育成・圧縮 | [地上アイテム拡張](../product/docs/plans/surface-item-expansion.md) |
 | 地上の配置・電力・上位産業・属性魔力 | [地上発展拡張](../product/docs/plans/surface-development-expansion.md) |
