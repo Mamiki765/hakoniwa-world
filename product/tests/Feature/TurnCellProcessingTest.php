@@ -549,7 +549,7 @@ class TurnCellProcessingTest extends TestCase
             $shipBatch,
         );
 
-        $this->assertSame(4, (new GridCoordinate($origin->x, $origin->y))->distanceTo(
+        $this->assertSame(6, (new GridCoordinate($origin->x, $origin->y))->distanceTo(
             new GridCoordinate($remote->x, $remote->y),
         ));
         $this->assertSame($west->id, $ship->fresh()->map_cell_id);
@@ -1893,6 +1893,8 @@ class TurnCellProcessingTest extends TestCase
                 'east' => $coordinate->neighbor(GridCoordinate::EAST),
                 'west' => $coordinate->neighbor(GridCoordinate::WEST),
                 'remote' => $coordinate->neighbor(GridCoordinate::EAST)
+                    ->neighbor(GridCoordinate::EAST)
+                    ->neighbor(GridCoordinate::EAST)
                     ->neighbor(GridCoordinate::EAST)
                     ->neighbor(GridCoordinate::EAST)
                     ->neighbor(GridCoordinate::EAST),
