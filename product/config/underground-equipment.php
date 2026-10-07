@@ -202,7 +202,7 @@ return [
         'identity' => 'secretary-underground-drop-equipment-alpha-v5',
         'legacy_identities' => ['secretary-underground-drop-equipment-alpha-v4', 'secretary-underground-drop-equipment-alpha-v3', 'secretary-underground-drop-equipment-alpha-v2', 'secretary-underground-drop-equipment-alpha-v1'],
         'item_level_min' => 1,
-        'item_level_max' => 220,
+        'item_level_max' => 223,
         'tiers' => [
             'bahamul' => [
                 'weapon_names' => ['dagger' => '黒竜の短剣', 'rapier' => '黒竜の細剣', 'longsword' => '黒竜の長剣', 'crystal_staff' => '黒竜の輝石杖'],
@@ -358,7 +358,7 @@ return [
         'resonance' => [
             'slots' => 2,
             'percentage_item_level_cap' => 200,
-            'stats' => [1 => 1, 120 => 5, 130 => 10, 150 => 20, 180 => 40, 210 => 60],
+            'stats' => [1 => 1, 120 => 5, 130 => 10, 150 => 20, 180 => 40, 210 => 60, 223 => 90],
             'intrinsic_bps' => [1 => 100, 130 => 600, 150 => 800, 180 => 1_000, 200 => 1_200],
             'affix_min_bps' => [1 => 100, 130 => 300, 150 => 400, 180 => 500, 200 => 600],
             'affix_max_bps' => [1 => 100, 130 => 400, 150 => 600, 180 => 800, 200 => 900],

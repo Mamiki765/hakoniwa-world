@@ -18,7 +18,7 @@ final class UndergroundEquipmentScaling
 
     public static function scaleBps(int $itemLevel): int
     {
-        if ($itemLevel < 1 || $itemLevel > 220) {
+        if ($itemLevel < 1 || $itemLevel > 223) {
             throw new InvalidArgumentException('Equipment item level is outside the supported generation range.');
         }
 

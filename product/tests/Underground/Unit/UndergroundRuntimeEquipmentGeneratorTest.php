@@ -167,9 +167,10 @@ final class UndergroundRuntimeEquipmentGeneratorTest extends TestCase
         $bahamul = $this->generate(210, 'bahamul', 'unique', 'weapon', 'longsword', null, 0);
         $this->assertGreaterThan($last['weapon_power'], $bahamul['weapon_power']);
 
-        $this->assertSame(220, $this->generate(220, 'hero', 'common', 'weapon', 'dagger', null, 0)['item_level']);
+        $maximumLevel = app(UndergroundEquipmentCatalog::class)->generatorItemLevelMax();
+        $this->assertSame($maximumLevel, $this->generate($maximumLevel, 'hero', 'common', 'weapon', 'dagger', null, 0)['item_level']);
 
-        foreach ([0, 221] as $itemLevel) {
+        foreach ([0, $maximumLevel + 1] as $itemLevel) {
             try {
                 $this->generate($itemLevel, 'shallow_caves', 'common', 'weapon', 'dagger', null, 0);
                 $this->fail("Item Lv {$itemLevel} should be rejected.");
