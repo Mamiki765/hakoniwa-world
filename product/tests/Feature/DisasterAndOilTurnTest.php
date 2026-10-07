@@ -9,6 +9,7 @@ use App\Application\DisasterTurnService;
 use App\Application\DomesticCommandExecutor;
 use App\Application\NationCreationService;
 use App\Application\OceanWorldGenerator;
+use App\Application\PlayerIslandEventService;
 use App\Application\SecretaryTurnService;
 use App\Application\WorldExpansionService;
 use App\Domain\Map\GridCoordinate;
@@ -93,6 +94,56 @@ class DisasterAndOilTurnTest extends TestCase
         $this->assertSame($burns ? 0 : 1, DB::table('audit_events')->where('event_type', 'fire.extinguished_undersea')
             ->whereRaw("metadata->>'turn_run_id' = ?", [(string) $run->id])->count());
         $this->assertSame([], $context->state->economicContributions($nation->id), 'Fire fees remain individual events.');
+    }
+
+    public function test_undersea_fire_attributes_foreign_payment_without_disclosing_the_target_to_payer(): void
+    {
+        [$world, $payer, $ruleset, $space] = $this->worldAndNation('消防所有国');
+        $owner = app(NationCreationService::class)->create(User::factory()->create(), $world, '被災国', '試験島主');
+        $ruleset = $this->updateRuleset($ruleset, static function (array &$settings): void {
+            $settings['turn_processing']['disasters']['fire']['probability'] = ['numerator' => 1, 'denominator' => 1];
+        });
+        $center = $this->boundsFor($world)->center();
+        $target = $this->cellAt($space, $center->x, $center->y);
+        $stationCoordinate = $center->ring(2)[0];
+        $station = $this->cellAt($space, $stationCoordinate->x, $stationCoordinate->y);
+        $this->setCell($target, 'sea', 'undersea_city', $owner->id, 3_000);
+        $this->setCell($station, 'sea', 'undersea_fire_station', $payer->id, 0);
+        $target = $target->fresh(['terrain', 'facility']);
+        $station = $station->fresh(['terrain', 'facility']);
+        $payer->update(['money' => 100]);
+        $owner->update(['money' => 77]);
+        [$context, $run] = $this->context($world, $ruleset, hash('sha256', 'foreign undersea fire'), [$payer->id, $owner->id]);
+        $index = DisasterMutableCellIndex::fromCells([$target, $station], [$payer->id, $owner->id], TerrainDefinition::all());
+
+        $this->assertFalse(app(DisasterTurnService::class)->processFire($context, $target, $index));
+        $this->assertSame('undersea_city', $target->fresh()->facility()->value('key'));
+        $this->assertSame(0, (int) $payer->fresh()->money);
+        $this->assertSame(77, (int) $owner->fresh()->money);
+        $receipt = DB::table('audit_events')->where('event_type', 'fire.undersea_extinguishing_paid')
+            ->whereRaw("metadata->>'turn_run_id' = ?", [(string) $run->id])->sole();
+        $this->assertSame($payer->id, $receipt->nation_id);
+        $this->assertSame(Nation::class, $receipt->subject_type);
+        $this->assertNull($receipt->x);
+        $this->assertNull($receipt->y);
+        $events = app(PlayerIslandEventService::class);
+        $payerEvents = collect($events->ownerPage($payer, anchorTurn: 2)['groups'])->pluck('events')->flatten(1);
+        $ownerEvents = collect($events->ownerPage($owner, anchorTurn: 2)['groups'])->pluck('events')->flatten(1);
+        $payment = $payerEvents->where('type', 'fire.undersea_extinguishing_paid')->sole();
+        $this->assertTrue($payment['confidential']);
+        $this->assertStringContainsString('100億円', $payment['message']);
+        $this->assertStringNotContainsString(sprintf('(%d,%d)', $target->x, $target->y), $payment['message']);
+        $this->assertStringNotContainsString($owner->name, $payment['message']);
+        $this->assertCount(0, $payerEvents->where('type', 'fire.extinguished_undersea'));
+        $extinguished = $ownerEvents->where('type', 'fire.extinguished_undersea')->sole();
+        $this->assertStringContainsString('所有国が支払いました', $extinguished['message']);
+        $this->assertCount(0, $ownerEvents->where('type', 'fire.undersea_extinguishing_paid'));
+        foreach ([$events->publicPage($world, anchorTurn: 2), $events->publicNationPage($payer, anchorTurn: 2), $events->publicNationPage($owner, anchorTurn: 2)] as $publicPage) {
+            $publicEvents = collect($publicPage['groups'])->pluck('events')->flatten(1);
+            $this->assertCount(0, $publicEvents->whereIn('type', ['fire.extinguished_undersea', 'fire.undersea_extinguishing_paid']));
+        }
+        $this->assertSame([], $context->state->economicContributions($payer->id));
+        $this->assertSame([], $context->state->economicContributions($owner->id));
     }
 
     public function test_undersea_station_is_fire_immune_and_cannot_protect_ground_facilities(): void

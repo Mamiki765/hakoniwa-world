@@ -707,7 +707,14 @@ final class DisasterTurnService
             $this->events->record($context, 'fire.extinguished_undersea', $cell, [
                 'nation_id' => $cell->owner_nation_id, 'x' => $cell->x, 'y' => $cell->y,
                 'cost_money' => $cost,
+                'payer_nation_id' => $payer->id,
             ], 'private');
+            if ((int) $payer->id !== (int) $cell->owner_nation_id) {
+                // Attribute the debit to its owner without disclosing the other nation's cell.
+                $this->events->record($context, 'fire.undersea_extinguishing_paid', $payer, [
+                    'nation_id' => $payer->id, 'cost_money' => $cost,
+                ], 'private');
+            }
 
             return true;
         }

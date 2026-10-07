@@ -44,6 +44,7 @@ final class PlayerIslandEventService
         'facility.partially_damaged',
         'fire.undersea_city_destroyed',
         'fire.extinguished_undersea',
+        'fire.undersea_extinguishing_paid',
         'facility.undersea_fire_station_abandoned',
         'oil.income',
         'oil.depleted',
@@ -171,6 +172,7 @@ final class PlayerIslandEventService
         'facility.undersea_city_abandoned',
         'fire.undersea_city_destroyed',
         'fire.extinguished_undersea',
+        'fire.undersea_extinguishing_paid',
         'facility.undersea_fire_station_abandoned',
         'command.decoy_built_private',
         'command.logging_private',
@@ -1489,8 +1491,9 @@ final class PlayerIslandEventService
             ),
             'fire.prevented' => '周囲の森または記念碑が火災を防ぎました。',
             'fire.damaged' => '火災により施設または都市が荒地になりました。',
-            'fire.extinguished_undersea' => sprintf(
-                '火災が発生しましたが、海底消防の働きによって鎮火しました。費用は%s億円になります。',
+            'fire.extinguished_undersea' => $this->underseaFireExtinguishedMessage($metadata),
+            'fire.undersea_extinguishing_paid' => sprintf(
+                '海底消防の消火費として%s億円を支払いました。',
                 number_format($this->integer($metadata, 'cost_money')),
             ),
             'facility.undersea_fire_station_abandoned' => '維持費を支払えず、海底消防署が海に戻りました。',
@@ -2414,6 +2417,21 @@ final class PlayerIslandEventService
             number_format($this->integer($metadata, 'y')),
             $facility,
         );
+    }
+
+    /** @param array<string, mixed> $metadata */
+    private function underseaFireExtinguishedMessage(array $metadata): string
+    {
+        $message = sprintf(
+            '火災が発生しましたが、海底消防の働きによって鎮火しました。費用は%s億円になります。',
+            number_format($this->integer($metadata, 'cost_money')),
+        );
+        if (isset($metadata['payer_nation_id'])
+            && $this->integer($metadata, 'payer_nation_id') !== $this->integer($metadata, 'nation_id')) {
+            $message .= '消火した海底消防署の所有国が支払いました。';
+        }
+
+        return $message;
     }
 
     /** @param array<string, mixed> $metadata */
