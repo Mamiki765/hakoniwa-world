@@ -102,6 +102,13 @@ class CompleteTurnIntegrationTest extends TestCase
             expectedVersion: 1,
         )['item'];
         $industrialGoods = ResourceDefinition::query()->where('key', 'industrial_goods')->firstOrFail();
+        $station = MapCell::query()->where('owner_nation_id', $nation->id)->whereNull('facility_definition_id')
+            ->whereKeyNot($factoryTarget->id)->firstOrFail();
+        app(MapCellStateService::class)->transitionTerrain($station, TerrainDefinition::query()->where('key', 'sea')->sole());
+        app(MapCellStateService::class)->setFacility($station, FacilityDefinition::query()->where('key', 'undersea_fire_station')->sole());
+        $station->population = 0;
+        $station->save();
+        $nation->increment('money', 6); // Fund the added fixture without changing the existing construction boundary.
         NationResource::query()->where('nation_id', $nation->id)
             ->where('resource_definition_id', $industrialGoods->id)->update(['amount' => 1_500]);
         NationResourceSalePolicy::query()->where('nation_id', $nation->id)
@@ -177,6 +184,9 @@ class CompleteTurnIntegrationTest extends TestCase
             $metadata = json_decode((string) $summaryRow->metadata, true, 512, JSON_THROW_ON_ERROR);
             $this->assertArrayHasKey('routine', $metadata);
             $summaryNationId = (int) $summaryRow->nation_id;
+            $this->assertEquals($summaryNationId === $nation->id
+                ? [['element_key' => 'undersea_fire_station', 'resource_key' => 'money', 'amount' => -6, 'count' => 1]]
+                : [], $metadata['economic_contributions']);
             $summaryEnd = [
                 'money' => (int) $world->nations()->whereKey($summaryNationId)->value('money'),
                 'population' => (int) MapCell::query()->where('owner_nation_id', $summaryNationId)->sum('population'),

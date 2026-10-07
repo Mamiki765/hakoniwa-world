@@ -767,6 +767,9 @@ final class MissileImpactResolver
         if ($removedFacility === 'undersea_city') {
             return $points['undersea_city_destroyed'];
         }
+        if ($removedFacility === 'undersea_fire_station') {
+            return $points['undersea_fire_station_destroyed'];
+        }
         if (($impact['effect'] ?? null) === 'terrain_destroyed') {
             return $points['land_destroyed'];
         }

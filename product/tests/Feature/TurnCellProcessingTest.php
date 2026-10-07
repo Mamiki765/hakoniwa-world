@@ -127,6 +127,7 @@ class TurnCellProcessingTest extends TestCase
             $moveEvent['resource_requested'], $moveEvent['resource_applied'], $moveEvent['resource_overflow'],
         ]);
         $overflowEvent = $this->event($run, 'resource.food_overflow_resolved');
+        $this->assertSame([['element_key' => 'fishing', 'resource_key' => 'fish', 'amount' => 0, 'count' => 1]], $context->state->economicContributions($nation->id));
         $this->assertSame(['fish', 8_400, 8_000, 8, 400], [
             $overflowEvent['resource_key'], $overflowEvent['requested_overflow_tons'],
             $overflowEvent['sold_tons'], $overflowEvent['revenue'], $overflowEvent['discarded_tons'],
@@ -686,6 +687,7 @@ class TurnCellProcessingTest extends TestCase
         $service->processCell($context, $space, $cells->first(), $cells->mapWithKeys(fn ($cell) => [$cell->x.':'.$cell->y => $cell])->all(), app(MonsterTurnService::class)->load($context), $batch);
         app(SecretaryTurnService::class)->flushExperience($context);
         $this->assertSame(21, $nation->fresh()->money);
+        $this->assertSame([['element_key' => 'tourist', 'resource_key' => 'money', 'amount' => 21, 'count' => 1]], $context->state->economicContributions($nation->id));
         $this->assertSame(21, $this->event($run, 'ship.moved')['money_requested']);
         $this->assertSame(10, $user->secretary()->sole()->skills()->where('skill_key', 'ship_operations')->value('level'));
     }

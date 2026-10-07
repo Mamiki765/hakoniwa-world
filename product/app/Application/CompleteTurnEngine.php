@@ -206,7 +206,7 @@ final class CompleteTurnEngine
         $resources = $this->resourceDefinitions($context);
         $wheat = $this->resourceDefinition($resources, 'wheat');
         $nationIds = $context->state->stableNationIds();
-        // Cell state stays unchanged during economy; keep these reads local to this phase.
+        // Keep these initial reads local to this phase; unpaid stations may be abandoned below.
         $populationByNation = $this->populationByNation($nationIds);
         $facilitiesByNation = ($nationIds === []
             ? new Collection
@@ -298,6 +298,7 @@ final class CompleteTurnEngine
                 $inputs['undersea_city_cells'],
                 $resources,
             );
+            $this->settleUnderseaFireStationMaintenance($context, $nation, $facilitiesByNation->get($nationId, []));
 
             $requiredNutrition = $economy['food_consumption'];
             $consumption = $this->consumeFood(
@@ -489,6 +490,37 @@ final class CompleteTurnEngine
             'industrial_goods_consumed' => $plan['industrial_goods_consumed'],
             'minerals_consumed' => $plan['minerals_consumed'],
         ];
+    }
+
+    /** @param iterable<MapCell> $facilities */
+    private function settleUnderseaFireStationMaintenance(TurnContext $context, Nation $nation, iterable $facilities): void
+    {
+        $settings = $context->ruleset->settings['turn_processing']['undersea_fire_station_maintenance'] ?? null;
+        if (! is_array($settings)) {
+            return;
+        }
+        $cost = (int) $settings['cost_money'];
+        foreach ($facilities as $cell) {
+            if ($cell->facility?->key !== $settings['facility_key']) {
+                continue;
+            }
+            if ((int) $nation->money >= $cost) {
+                $nation->decrement('money', $cost);
+                $context->state->addEconomicContribution($nation->id, 'undersea_fire_station', 'money', -$cost);
+
+                continue;
+            }
+            $this->cells->setFacility($cell, null);
+            $this->cells->transitionTerrain($cell, $this->terrainDefinition($context, $settings['failure_terrain_key']));
+            $cell->owner_nation_id = null;
+            $cell->population = 0;
+            $cell->version++;
+            $this->saveChangedCell($context, $cell);
+            $this->events->record($context, 'facility.undersea_fire_station_abandoned', $cell, [
+                'nation_id' => $nation->id, 'x' => $cell->x, 'y' => $cell->y,
+                'cost_money' => $cost,
+            ], 'private');
+        }
     }
 
     /** @return array<string, int> */
@@ -1167,6 +1199,7 @@ final class CompleteTurnEngine
                 'nation_name' => $nation->name,
                 'summary' => $summary,
                 'routine' => $context->state->routineSummaryMetrics($nationId),
+                'economic_contributions' => $context->state->economicContributions($nationId),
             ], 'nation');
         }
         $this->events->record($context, 'turn.completed', $context->world, [

@@ -594,6 +594,13 @@ export interface PlayerIslandEvent {
     importance: 'info' | 'notable' | 'warning';
     target_turn: number;
     confidential: boolean;
+    economic_contributions?: null | Array<{
+        element_key: string;
+        name: string;
+        count: number | null;
+        amount: number;
+        unit: string;
+    }>;
     summary: null | {
         money: { start: number; end: number; delta: number };
         population: { start: number; end: number; delta: number };

@@ -444,7 +444,7 @@ final class DomesticCommandExecutor
             if (! $adjacent['sea']) {
                 return ['reason' => CommandFailureReason::NoAdjacentDeepSea, 'observed' => $observed];
             }
-        } elseif (in_array($definition->key, ['build_seabed_base', 'build_undersea_city'], true)) {
+        } elseif (in_array($definition->key, ['build_seabed_base', 'build_undersea_city', 'build_undersea_fire_station'], true)) {
             if ($cell->owner_nation_id !== null && $cell->owner_nation_id !== $nation->id) {
                 return ['reason' => CommandFailureReason::ForeignOwned, 'observed' => $observed];
             }
@@ -486,7 +486,7 @@ final class DomesticCommandExecutor
             if (! $this->hasOwnedCellWithin($nation, $cell, 1, false)) {
                 return ['reason' => CommandFailureReason::NoAdjacentOwnedLand, 'observed' => $observed];
             }
-        } elseif (! in_array($definition->key, ['territory_expand', 'build_port', 'build_seabed_base', 'build_undersea_city'], true)) {
+        } elseif (! in_array($definition->key, ['territory_expand', 'build_port', 'build_seabed_base', 'build_undersea_city', 'build_undersea_fire_station'], true)) {
             if ($cell->owner_nation_id !== $nation->id
                 && ! ($definition->key === 'excavate' && in_array($cell->terrain->key, ['sea', 'shallow'], true))) {
                 return [
@@ -1118,7 +1118,7 @@ final class DomesticCommandExecutor
         );
         $monument = null;
         $population = 0;
-        if (in_array($definition->key, ['build_seabed_base', 'build_undersea_city'], true)) {
+        if (in_array($definition->key, ['build_seabed_base', 'build_undersea_city', 'build_undersea_fire_station'], true)) {
             $this->assignNationOwnership($context, $nation, $cell);
         }
         if ($definition->key === 'build_undersea_city') {
@@ -1159,7 +1159,7 @@ final class DomesticCommandExecutor
         $context->state->markMapChunkChanged($cell->map_chunk_id);
         $constructionVisibility = in_array(
             $definition->key,
-            ['build_missile_base', 'build_seabed_base', 'build_undersea_city', 'build_decoy', 'build_central_bank', 'build_central_granary'],
+            ['build_missile_base', 'build_seabed_base', 'build_undersea_city', 'build_undersea_fire_station', 'build_decoy', 'build_central_bank', 'build_central_granary'],
             true,
         ) ? 'private' : 'nation';
         $this->events->record($context, $expanded ? 'facility.expanded' : 'facility.constructed', $cell, [
@@ -1388,6 +1388,17 @@ final class DomesticCommandExecutor
                 'nation_id' => $nation->id, 'nation_name' => $nation->name,
             ], 'public');
             $this->events->record($context, 'command.undersea_city_built_private', $cell, $metadata, 'private');
+
+            return;
+        }
+        if ($definition->key === 'build_undersea_fire_station') {
+            if ($expanded) {
+                return;
+            }
+            $this->events->record($context, 'command.undersea_fire_station_built_public', $nation, [
+                'nation_id' => $nation->id, 'nation_name' => $nation->name,
+            ], 'public');
+            $this->events->record($context, 'command.undersea_fire_station_built_private', $cell, $metadata, 'private');
 
             return;
         }

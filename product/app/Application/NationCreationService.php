@@ -250,7 +250,7 @@ final class NationCreationService
                         ]);
                     }
                     $this->islands->apply($islandPlan, $mapSpace, $nation);
-                    if (in_array($rules['key'] ?? null, ['hakoniwa-2s-plus-v17', 'hakoniwa-2s-plus-v18', 'hakoniwa-2s-plus-v19', 'hakoniwa-2s-plus-v20', 'hakoniwa-2s-plus-v21', 'hakoniwa-2s-plus-v22', 'hakoniwa-2s-plus-v23', 'hakoniwa-2s-plus-v24', 'hakoniwa-2s-plus-v25', 'hakoniwa-2s-plus-v26', 'hakoniwa-2s-plus-v27', 'hakoniwa-2s-plus-v28', 'hakoniwa-2s-plus-v29', 'hakoniwa-2s-plus-v30', 'hakoniwa-2s-plus-v31', 'hakoniwa-2s-plus-v32', 'hakoniwa-2s-plus-v33', 'hakoniwa-2s-plus-v34'], true)) {
+                    if (in_array($rules['key'] ?? null, ['hakoniwa-2s-plus-v17', 'hakoniwa-2s-plus-v18', 'hakoniwa-2s-plus-v19', 'hakoniwa-2s-plus-v20', 'hakoniwa-2s-plus-v21', 'hakoniwa-2s-plus-v22', 'hakoniwa-2s-plus-v23', 'hakoniwa-2s-plus-v24', 'hakoniwa-2s-plus-v25', 'hakoniwa-2s-plus-v26', 'hakoniwa-2s-plus-v27', 'hakoniwa-2s-plus-v28', 'hakoniwa-2s-plus-v29', 'hakoniwa-2s-plus-v30', 'hakoniwa-2s-plus-v31', 'hakoniwa-2s-plus-v32', 'hakoniwa-2s-plus-v33', 'hakoniwa-2s-plus-v34', 'hakoniwa-2s-plus-v35'], true)) {
                         $nation->population_high_water = (int) $mapSpace->cells()
                             ->where('owner_nation_id', $nation->id)
                             ->sum('population');

@@ -1024,6 +1024,7 @@ final class RulesetAuthoringValidator
         $expected['foreign_wasteland_territory_expand'] = 1;
         $expected['impact_points']['facility_scale_damaged'] = 1;
         $expected['impact_points']['facility_scale_land_damaged'] = 3;
+        $expected['impact_points']['undersea_fire_station_destroyed'] = 3;
         if ($authored !== $expected) {
             throw new DomainException('ruleset.karma differs from the v13 Owner decision.');
         }
@@ -1187,7 +1188,7 @@ final class RulesetAuthoringValidator
             'monster_final_blow_experience' => 0,
         ];
         $expectedResistance = [
-            'facility_keys' => ['seabed_base', 'undersea_city'],
+            'facility_keys' => ['seabed_base', 'undersea_city', 'undersea_fire_station'],
             'ineffective_missile_keys' => ['missile', 'pp_missile', 'spp_missile'],
             'destructive_missile_keys' => ['land_destruction_missile'],
         ];
@@ -3093,6 +3094,22 @@ final class RulesetAuthoringValidator
         }
         if (($fire['unprotected_sea_facility_keys'] ?? null) !== ['undersea_city']) {
             throw new DomainException("{$firePath} must make undersea_city an unprotected normal-probability fire target.");
+        }
+        $protection = $this->map($fire['undersea_protection'] ?? null, "{$firePath}.undersea_protection");
+        if (($protection['facility_key'] ?? null) !== 'undersea_fire_station'
+            || ($protection['radius'] ?? null) !== 2
+            || ($protection['cost_money'] ?? null) !== 100
+            || ($protection['selection'] ?? null) !== 'affordable_owner_map_cell_id_ascending') {
+            throw new DomainException("{$firePath} differs from the undersea fire protection contract.");
+        }
+        $maintenance = $this->map($turn['undersea_fire_station_maintenance'] ?? null, "{$path}.undersea_fire_station_maintenance");
+        if (($maintenance['facility_key'] ?? null) !== 'undersea_fire_station'
+            || ($maintenance['cost_money'] ?? null) !== 6
+            || ($maintenance['settlement_order'] ?? null) !== 'map_cell_id_ascending'
+            || ($maintenance['settlement_stage'] ?? null) !== 'after_undersea_city_maintenance'
+            || ($maintenance['failure_terrain_key'] ?? null) !== 'sea'
+            || ($maintenance['failure_ownership_policy'] ?? null) !== 'neutral') {
+            throw new DomainException("{$path} differs from the undersea fire station maintenance contract.");
         }
 
         if (array_key_exists('land_subsidence', $disasters)) {

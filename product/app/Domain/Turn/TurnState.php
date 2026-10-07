@@ -12,6 +12,31 @@ final class TurnState
     /** @var list<int> */
     private array $stableNationIds = [];
 
+    /** @var array<int, array<string, array{element_key: string, resource_key: string, amount: int, count: int|null}>> */
+    private array $economicContributions = [];
+
+    /** Collect only completed credits/debits; callers retain their existing settlement and RNG order. */
+    public function addEconomicContribution(int $nationId, string $elementKey, string $resourceKey, int $amount, ?int $count = 1): void
+    {
+        if ($nationId < 1 || $elementKey === '' || $resourceKey === '' || ($count !== null && $count < 1)) {
+            throw new InvalidArgumentException('Turn economic contribution identity is invalid.');
+        }
+        $key = $elementKey.':'.$resourceKey;
+        $row = $this->economicContributions[$nationId][$key] ?? [
+            'element_key' => $elementKey, 'resource_key' => $resourceKey, 'amount' => 0,
+            'count' => $count === null ? null : 0,
+        ];
+        $row['amount'] += $amount;
+        $row['count'] = $count === null || $row['count'] === null ? null : $row['count'] + $count;
+        $this->economicContributions[$nationId][$key] = $row;
+    }
+
+    /** @return list<array{element_key: string, resource_key: string, amount: int, count: int|null}> */
+    public function economicContributions(int $nationId): array
+    {
+        return array_values($this->economicContributions[$nationId] ?? []);
+    }
+
     /** @var list<int> */
     private array $lifecycleNationIds = [];
 

@@ -624,6 +624,9 @@ final class DisasterTurnService
         if ($this->charms->protect($context, $cell, 'fire')) {
             return false;
         }
+        if ($unprotectedSeaFacility && $this->protectUnderseaFire($context, $cell, $settings, $cellIndex)) {
+            return false;
+        }
         if ($this->isCapital($cell)) {
             $this->damageCapital($context, $cell, 'fire', 'facility_or_wasteland', [
                 'draw' => $trigger['draw'],
@@ -666,6 +669,50 @@ final class DisasterTurnService
         ], $cellIndex);
 
         return true;
+    }
+
+    /** @param array<string, mixed> $settings */
+    private function protectUnderseaFire(
+        TurnContext $context,
+        MapCell $cell,
+        array $settings,
+        ?DisasterMutableCellIndex $cellIndex,
+    ): bool {
+        $protection = $settings['undersea_protection'] ?? null;
+        if (! is_array($protection)) {
+            return false;
+        }
+        $radius = (int) $protection['radius'];
+        $cost = (int) $protection['cost_money'];
+        $origin = new GridCoordinate((int) $cell->x, (int) $cell->y);
+        $candidates = $cellIndex?->cells() ?? MapCell::query()
+            ->where('map_space_id', $cell->map_space_id)
+            ->whereBetween('x', [$cell->x - $radius, $cell->x + $radius])
+            ->whereBetween('y', [$cell->y - $radius, $cell->y + $radius])
+            ->whereHas('facility', fn ($query) => $query->where('key', $protection['facility_key']))
+            ->orderBy('id')->lockForUpdate()->with('facility')->get()->all();
+        foreach ($candidates as $station) {
+            if ($station->facility?->key !== $protection['facility_key']
+                || $station->owner_nation_id === null
+                || $origin->distanceTo(new GridCoordinate((int) $station->x, (int) $station->y)) > $radius) {
+                continue;
+            }
+            $payer = Nation::query()->whereKey($station->owner_nation_id)
+                ->whereIn('state', ['active', 'recovery'])->lockForUpdate()->first();
+            if ($payer === null || (int) $payer->money < $cost) {
+                continue;
+            }
+            $payer->decrement('money', $cost);
+            // The first affordable station settles the single fire. Never charge overlaps twice.
+            $this->events->record($context, 'fire.extinguished_undersea', $cell, [
+                'nation_id' => $cell->owner_nation_id, 'x' => $cell->x, 'y' => $cell->y,
+                'cost_money' => $cost,
+            ], 'private');
+
+            return true;
+        }
+
+        return false;
     }
 
     /** @param array<string, mixed> $settings */

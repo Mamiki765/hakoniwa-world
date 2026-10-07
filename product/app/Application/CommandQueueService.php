@@ -1208,7 +1208,7 @@ final class CommandQueueService
 
             return $state['owner_nation_id'] === null && $adjacent['owned_land'] && $adjacent['sea'];
         }
-        if (in_array($definition->key, ['reclaim', 'build_seabed_base', 'build_undersea_city', 'excavate'], true)) {
+        if (in_array($definition->key, ['reclaim', 'build_seabed_base', 'build_undersea_city', 'build_undersea_fire_station', 'excavate'], true)) {
             return $state['owner_nation_id'] === null || $state['owner_nation_id'] === $nation->id;
         }
 
@@ -1573,7 +1573,7 @@ final class CommandQueueService
 
             return;
         }
-        if (in_array($definition->key, ['build_seabed_base', 'build_undersea_city'], true)) {
+        if (in_array($definition->key, ['build_seabed_base', 'build_undersea_city', 'build_undersea_fire_station'], true)) {
             if ($ownerNationId !== null && $ownerNationId !== $nation->id) {
                 throw new PlayerFacingCommandException('他国所有の海には建設できません。');
             }

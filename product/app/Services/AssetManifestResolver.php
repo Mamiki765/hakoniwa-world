@@ -47,6 +47,7 @@ final class AssetManifestResolver
         'tile.defense' => 'land10.gif',
         'tile.seabed_base' => 'seabed-base.png',
         'tile.undersea_city' => 'undersea-city.gif',
+        'tile.undersea_fire_station' => 'undersea-fire-station.gif',
         'tile.port' => 'port.gif',
         'tile.central_bank' => 'central-bank.gif',
         'tile.central_granary' => 'central-granary.gif',

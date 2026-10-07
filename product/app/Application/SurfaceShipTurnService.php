@@ -225,6 +225,11 @@ final class SurfaceShipTurnService
         $this->persistMovement($context, $origin, $destination, $ship, $ships);
 
         $reward = $this->settleReward($context, $nation, $definition);
+        if ($definition->key === 'tourist') {
+            $context->state->addEconomicContribution($nation->id, 'tourist', 'money', $reward['money_applied']);
+        } elseif ($definition->key === 'fishing') {
+            $context->state->addEconomicContribution($nation->id, 'fishing', $reward['resource_key'], $reward['resource_applied']);
+        }
         $experience = (int) $this->movement['secretary_experience_per_successful_move'];
         $this->secretaryExperience->awardSkill(
             $context,

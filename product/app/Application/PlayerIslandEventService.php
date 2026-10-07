@@ -43,6 +43,8 @@ final class PlayerIslandEventService
         'fire.damaged',
         'facility.partially_damaged',
         'fire.undersea_city_destroyed',
+        'fire.extinguished_undersea',
+        'facility.undersea_fire_station_abandoned',
         'oil.income',
         'oil.depleted',
         'population.decreased',
@@ -58,7 +60,7 @@ final class PlayerIslandEventService
         'command.forest_planted_private',
         'command.missile_base_built_private',
         'command.seabed_base_built_private',
-        'command.undersea_city_built_private',
+        'command.undersea_city_built_private', 'command.undersea_fire_station_built_private',
         'command.decoy_built_private',
         'command.logging_private',
         'command.capital_relocated',
@@ -95,7 +97,7 @@ final class PlayerIslandEventService
         'command.terrain_changed_public',
         'command.forest_planted_public',
         'command.seabed_base_built_public',
-        'command.undersea_city_built_public',
+        'command.undersea_city_built_public', 'command.undersea_fire_station_built_public',
         'command.facility_built_public',
         'command.logging_public',
         'command.capital_relocated_public',
@@ -164,10 +166,12 @@ final class PlayerIslandEventService
         'command.forest_planted_private',
         'command.missile_base_built_private',
         'command.seabed_base_built_private',
-        'command.undersea_city_built_private',
+        'command.undersea_city_built_private', 'command.undersea_fire_station_built_private',
         'resource.undersea_city_maintenance_failed',
         'facility.undersea_city_abandoned',
         'fire.undersea_city_destroyed',
+        'fire.extinguished_undersea',
+        'facility.undersea_fire_station_abandoned',
         'command.decoy_built_private',
         'command.logging_private',
         'command.monument_launched',
@@ -315,6 +319,9 @@ final class PlayerIslandEventService
                 'confidential' => in_array($eventType, self::CONFIDENTIAL_EVENT_TYPES, true),
                 'summary' => $eventType === 'turn.summary'
                     ? $this->turnSummaryProjection($metadata)
+                    : null,
+                'economic_contributions' => $eventType === 'turn.summary'
+                    ? $this->economicContributionProjection($metadata)
                     : null,
                 '_metadata' => $metadata,
                 '_visibility' => (string) $row->visibility,
@@ -744,6 +751,7 @@ final class PlayerIslandEventService
             'command.logging_public' => "こころなしか、{$nation}のどこかで森が減った気がします。",
             'command.seabed_base_built_public' => "{$nation}で海底基地が建設されたようです(?,?)。",
             'command.undersea_city_built_public' => "{$nation}で海底都市が建設されたようです(?,?)。",
+            'command.undersea_fire_station_built_public' => "{$nation}で海底消防署が建設されたようです(?,?)。",
             'command.facility_built_public' => $this->publicFacilityBuiltMessage($metadata),
             'command.capital_relocated_public' => sprintf(
                 '%sの首都が(%s,%s)から(%s,%s)へ移転しました。',
@@ -1065,7 +1073,7 @@ final class PlayerIslandEventService
             'award.granted' => ['nation_name', 'award_key', 'award_name'],
             'command.terrain_changed_public' => ['nation_name', 'command_key', 'x', 'y'],
             'command.forest_planted_public', 'command.logging_public',
-            'command.seabed_base_built_public', 'command.undersea_city_built_public',
+            'command.seabed_base_built_public', 'command.undersea_city_built_public', 'command.undersea_fire_station_built_public',
             'land_subsidence.triggered',
             'refugee_generated' => ['nation_name'],
             'command.facility_built_public' => [
@@ -1481,6 +1489,11 @@ final class PlayerIslandEventService
             ),
             'fire.prevented' => '周囲の森または記念碑が火災を防ぎました。',
             'fire.damaged' => '火災により施設または都市が荒地になりました。',
+            'fire.extinguished_undersea' => sprintf(
+                '火災が発生しましたが、海底消防の働きによって鎮火しました。費用は%s億円になります。',
+                number_format($this->integer($metadata, 'cost_money')),
+            ),
+            'facility.undersea_fire_station_abandoned' => '維持費を支払えず、海底消防署が海に戻りました。',
             'fire.undersea_city_destroyed' => sprintf(
                 '%sにあった海底都市は火災により消滅しました。',
                 $this->privateCellLocation($metadata),
@@ -1634,8 +1647,10 @@ final class PlayerIslandEventService
             'command.missile_base_built_private' => $this->privateConstructionMessage($metadata, 'ミサイル基地'),
             'command.seabed_base_built_public' => 'どこかで海底基地が建設されたようです(?,?)。',
             'command.undersea_city_built_public' => 'どこかで海底都市が建設されたようです(?,?)。',
+            'command.undersea_fire_station_built_public' => 'どこかで海底消防署が建設されたようです(?,?)。',
             'command.seabed_base_built_private' => $this->privateConstructionMessage($metadata, '海底基地'),
             'command.undersea_city_built_private' => $this->privateConstructionMessage($metadata, '海底都市'),
+            'command.undersea_fire_station_built_private' => $this->privateConstructionMessage($metadata, '海底消防署'),
             'command.decoy_built_public' => $this->constructionMessage($metadata, '防衛施設'),
             'command.decoy_built_private' => $this->privateConstructionMessage($metadata, 'ハリボテ'),
             'command.facility_built_public' => $this->publicFacilityBuiltMessage($metadata),
@@ -1889,6 +1904,41 @@ final class PlayerIslandEventService
         return $result;
     }
 
+    /** @param array<string, mixed> $metadata
+     * @return list<array{element_key: string, name: string, count: int|null, amount: int, unit: string}>|null
+     */
+    private function economicContributionProjection(array $metadata): ?array
+    {
+        if (! is_array($metadata['economic_contributions'] ?? null)) {
+            return null;
+        }
+        $rows = [];
+        foreach ($metadata['economic_contributions'] as $row) {
+            if (! is_array($row) || ! is_int($row['amount'] ?? null)) {
+                continue;
+            }
+            $name = match ($row['element_key'] ?? null) {
+                'tourist' => '観光船', 'fishing' => '漁船',
+                'pizzeria', 'undersea_fire_station' => $this->facilityLabel($row['element_key']),
+                default => null,
+            };
+            $unit = match ($row['resource_key'] ?? null) {
+                'money' => '億円', 'fish' => 'トン',
+                default => null,
+            };
+            if ($name === null || $unit === null) {
+                continue;
+            }
+            $rows[] = [
+                'element_key' => $row['element_key'], 'name' => $name,
+                'count' => is_int($row['count'] ?? null) && $row['count'] > 0 ? $row['count'] : null,
+                'amount' => $row['amount'], 'unit' => $unit,
+            ];
+        }
+
+        return $rows;
+    }
+
     /**
      * Owner pages contain both the Nation's safe public timeline and its
      * private detail rows. Suppress only known one-to-one public companions;
@@ -1958,7 +2008,7 @@ final class PlayerIslandEventService
         $prefix = match ($event['type'] ?? null) {
             'command.forest_planted_private' => 'terrain',
             'command.missile_base_built_private', 'command.seabed_base_built_private',
-            'command.undersea_city_built_private',
+            'command.undersea_city_built_private', 'command.undersea_fire_station_built_private',
             'command.decoy_built_private' => 'facility',
             default => null,
         };
@@ -1978,6 +2028,7 @@ final class PlayerIslandEventService
             'command.forest_planted_private', 'command.missile_base_built_private' => "forest:{$turn}",
             'command.seabed_base_built_private' => "seabed:{$turn}",
             'command.undersea_city_built_private' => "undersea-city:{$turn}",
+            'command.undersea_fire_station_built_private' => "undersea-fire-station:{$turn}",
             'command.decoy_built_private' => $this->ownerCoordinateKey('facility', $event),
             'command.logging_private' => "logging:{$turn}",
             'command.capital_relocated' => $this->ownerCoordinateKey('capital', $event),
@@ -2003,6 +2054,7 @@ final class PlayerIslandEventService
             'command.forest_planted_public' => "forest:{$turn}",
             'command.seabed_base_built_public' => "seabed:{$turn}",
             'command.undersea_city_built_public' => "undersea-city:{$turn}",
+            'command.undersea_fire_station_built_public' => "undersea-fire-station:{$turn}",
             'command.logging_public' => "logging:{$turn}",
             'command.capital_relocated_public' => $this->ownerCoordinateKey('capital', $event),
             'command.attraction_started_public' => "attraction:{$turn}",
@@ -2573,6 +2625,7 @@ final class PlayerIslandEventService
             'build_defense_facility' => '防衛施設建設',
             'build_seabed_base' => '海底基地建設',
             'build_undersea_city' => '海底都市建設',
+            'build_undersea_fire_station' => '海底消防署建設',
             'build_ship' => '船建造',
             'scuttle_ship' => '廃船',
             'build_monument' => '記念碑建設',
@@ -2647,6 +2700,7 @@ final class PlayerIslandEventService
             'defense' => '防衛施設',
             'seabed_base' => '海底基地',
             'undersea_city' => '海底都市',
+            'undersea_fire_station' => '海底消防署',
             'monument' => '記念碑',
             'decoy' => 'ハリボテ',
             'central_bank' => '中央銀行',

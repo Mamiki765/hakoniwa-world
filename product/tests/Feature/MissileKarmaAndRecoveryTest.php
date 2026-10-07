@@ -31,6 +31,21 @@ final class MissileKarmaAndRecoveryTest extends CommandAndMissileTestCase
 {
     use UsesReusableSurfaceWorld;
 
+    public function test_undersea_station_destruction_uses_existing_seabed_attack_and_karma_settlement(): void
+    {
+        [$world, $user, $firing, $target] = $this->combatants('消防破壊');
+        $firing->update(['money' => 9_999, 'karma' => 0]);
+        DB::table('secretary_skills')->where('skill_key', SecretarySkillCatalog::FINAL_DEFENSE_LINE)->update(['level' => 0, 'experience' => 0]);
+        $base = $this->missileBase($firing);
+        $station = $this->ownedWaterFacility($target, 'undersea_fire_station');
+        $item = $this->queue(app(CommandQueueService::class), $user, $firing, $this->surfaceMapSpace($world), 'land_destruction_missile', $station);
+        $this->resolvePreparedKarmaMissileTurn($world, $firing, $target, $base, $item, 2, $this->seedForImpactIndex($item, $station, 2, $station));
+        $this->assertSame(3, (int) $firing->fresh()->karma);
+        $this->assertSame('sea', $station->fresh()->terrain()->value('key'));
+        $this->assertNull($station->fresh()->facility_definition_id);
+        $this->assertNull($station->fresh()->owner_nation_id);
+    }
+
     public function test_v13_karma_ledger_uses_turn_start_decay_and_the_exact_settlement_order(): void
     {
         [$world, $_user, $newlyCriminal, $sanctioned] = $this->combatants('karma-ledger');

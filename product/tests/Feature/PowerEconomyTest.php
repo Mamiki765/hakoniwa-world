@@ -7,6 +7,7 @@ use App\Application\CompleteTurnEngine;
 use App\Application\DisasterTurnService;
 use App\Application\NationCreationService;
 use App\Application\SecretaryTurnService;
+use App\Domain\Economy\NationCapacityResolver;
 use App\Domain\Map\MapCellStateService;
 use App\Domain\Secretary\SecretaryItemCatalog;
 use App\Domain\Turn\TurnContext;
@@ -71,6 +72,8 @@ final class PowerEconomyTest extends TestCase
         $this->assertSame(7000, (int) $this->balance($nation, 'wheat')->amount);
         $this->assertSame(1320, (int) $this->balance($nation, 'power')->amount);
         $this->assertSame(16, (int) $nation->fresh()->money);
+        $this->assertSame([['element_key' => 'pizzeria', 'resource_key' => 'money', 'amount' => 16, 'count' => null]], $retry->state->economicContributions($nation->id));
+        $this->assertSame($first->state->economicContributions($nation->id), $retry->state->economicContributions($nation->id));
         $this->assertSame(2000, (int) $this->balance($nation, 'minerals')->amount);
         $this->assertSame(8 - $result['thermal']['oil_consumed'], (int) $this->balance($nation, 'oil')->amount);
         $this->assertSame(1200 + $result['generated_mw'], $result['consumed_mw'] + $result['stored_after_mw'] + $result['discarded_mw']);
@@ -80,6 +83,16 @@ final class PowerEconomyTest extends TestCase
         $skill = $user->secretary()->sole()->skills()->where('skill_key', 'energy_saving')->sole();
         $this->assertSame(3, (int) $skill->level);
         $this->assertSame(8, (int) $skill->experience);
+        // A successful operation at the money cap must report zero received, not requested revenue.
+        $capacity = app(NationCapacityResolver::class)->resolve($nation, $world->rulesetVersion()->sole());
+        $nation->update(['money' => $capacity->money]);
+        $this->balance($nation, 'wheat')->update(['amount' => 10_000]);
+        $this->balance($nation, 'power')->update(['amount' => 1_200]);
+        $cappedRun = $this->createRun($world);
+        $capped = $this->context($world, $nation, $cappedRun);
+        app(CompleteTurnEngine::class)->execute('nation_economy', $capped);
+        $this->assertGreaterThan(0, $this->settlement($cappedRun)['pizzeria_revenue']);
+        $this->assertSame([['element_key' => 'pizzeria', 'resource_key' => 'money', 'amount' => 0, 'count' => null]], $capped->state->economicContributions($nation->id));
     }
 
     public function test_disaster_leaves_wind_for_half_price_queued_repair_without_expansion(): void
@@ -146,6 +159,7 @@ final class PowerEconomyTest extends TestCase
         $result = $this->settlement($run);
         $this->assertSame(65, $result['discarded_mw']);
         $this->assertSame(0, $result['pizzeria_revenue']);
+        $this->assertSame([], $context->state->economicContributions($nation->id));
         $this->assertSame([], $context->state->pendingSecretaryExperience());
         $this->assertSame(0, (int) $this->balance($nation, 'oil')->amount);
         $this->assertSame(0, (int) $this->balance($nation, 'minerals')->amount);

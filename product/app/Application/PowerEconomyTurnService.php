@@ -114,6 +114,9 @@ final class PowerEconomyTurnService
         }
         $balance->update(['amount' => $plan['stored_after_mw']]);
         $credit = $this->assets->creditMoney($nation, $plan['pizzeria_revenue'], $context->ruleset);
+        if ($scales !== [] && $plan['food_consumed_tons'] > 0) {
+            $context->state->addEconomicContribution($nation->id, 'pizzeria', 'money', $credit->applied, null);
+        }
         $nation->refresh();
         if ($plan['consumed_mw'] > 0 && $context->state->hasSecretarySnapshot($nation->id)) {
             $context->state->awardSecretaryExperience($nation->id, SecretarySkillCatalog::ENERGY_SAVING, $plan['consumed_mw']);
