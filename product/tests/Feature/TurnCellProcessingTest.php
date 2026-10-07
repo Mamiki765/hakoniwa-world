@@ -549,7 +549,7 @@ class TurnCellProcessingTest extends TestCase
             $shipBatch,
         );
 
-        $this->assertSame(4, (new GridCoordinate($origin->x, $origin->y))->distanceTo(
+        $this->assertSame(6, (new GridCoordinate($origin->x, $origin->y))->distanceTo(
             new GridCoordinate($remote->x, $remote->y),
         ));
         $this->assertSame($west->id, $ship->fresh()->map_cell_id);
@@ -766,17 +766,17 @@ class TurnCellProcessingTest extends TestCase
         $port = MapCell::query()->where('owner_nation_id', $nation->id)
             ->whereNull('facility_definition_id')->firstOrFail();
         $this->facility($port, 'port', 'plain');
-        [$origin, $playerCell, $targetCell] = $this->eastwardSeaLine($space);
+        [$origin, $playerCell, $treasureCell] = $this->eastwardSeaLine($space);
         $originCoordinate = new GridCoordinate($origin->x, $origin->y);
-        $treasureCell = MapCell::query()->where('map_space_id', $space->id)
-            ->whereNotIn('id', [$origin->id, $playerCell->id, $targetCell->id])
+        $targetCell = MapCell::query()->where('map_space_id', $space->id)
+            ->whereNotIn('id', [$origin->id, $playerCell->id, $treasureCell->id])
             ->whereNull('owner_nation_id')->whereNull('facility_definition_id')->where('population', 0)
             ->whereDoesntHave('ship')->whereDoesntHave('monsterOccupancy')
             ->whereHas('terrain', fn ($query) => $query->where('key', 'sea'))
             ->orderBy('id')->get()->first(static fn (MapCell $cell): bool => $originCoordinate->distanceTo(
                 new GridCoordinate($cell->x, $cell->y),
-            ) <= 5);
-        if (! $treasureCell instanceof MapCell) {
+            ) === 5);
+        if (! $targetCell instanceof MapCell) {
             $this->fail('Surface test map did not provide a second NPC target within Warship range.');
         }
         $warship = Ship::query()->create([
@@ -1893,6 +1893,8 @@ class TurnCellProcessingTest extends TestCase
                 'east' => $coordinate->neighbor(GridCoordinate::EAST),
                 'west' => $coordinate->neighbor(GridCoordinate::WEST),
                 'remote' => $coordinate->neighbor(GridCoordinate::EAST)
+                    ->neighbor(GridCoordinate::EAST)
+                    ->neighbor(GridCoordinate::EAST)
                     ->neighbor(GridCoordinate::EAST)
                     ->neighbor(GridCoordinate::EAST)
                     ->neighbor(GridCoordinate::EAST),

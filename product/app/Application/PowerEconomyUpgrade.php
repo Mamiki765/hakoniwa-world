@@ -62,6 +62,13 @@ final class PowerEconomyUpgrade
         $this->publish($settings, $priorSettings, false);
     }
 
+    public function enableShipVisibility(): void
+    {
+        $settings = require config_path('hakoniwa/rulesets/hakoniwa-2s-plus-v34.php');
+        $priorSettings = require config_path('hakoniwa/rulesets/hakoniwa-2s-plus-v33.php');
+        $this->publish($settings, $priorSettings, false);
+    }
+
     /** @param array<string, mixed> $settings
      * @param  array<string, mixed>  $priorSettings
      */
@@ -99,6 +106,7 @@ final class PowerEconomyUpgrade
                     30 => $this->publisher->publishOilAndFleetSkills($settings),
                     31 => $this->publisher->publishSeaAreaWeather($settings),
                     32 => $this->publisher->publishNaturalFireTargets($settings),
+                    33 => $this->publisher->publishUserAchievements($settings),
                     default => $this->publisher->publish($settings),
                 };
                 if ($initializePower) {

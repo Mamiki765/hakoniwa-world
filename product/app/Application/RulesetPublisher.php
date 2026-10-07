@@ -89,6 +89,19 @@ final class RulesetPublisher
         return $this->publishSnapshot($settings);
     }
 
+    /** Historical migration only: accept the exact immutable v33 snapshot.
+     * @param  array<string, mixed>  $settings
+     */
+    public function publishUserAchievements(array $settings): RulesetVersion
+    {
+        $checksum = hash('sha256', json_encode($settings, JSON_THROW_ON_ERROR | JSON_PRESERVE_ZERO_FRACTION));
+        if ($checksum !== '299f11aab14c09450745b98f3fe0a54517b8c687abf4085e375bba2be356ac74') {
+            throw new DomainException('The user achievements migration requires the exact immutable v33 snapshot.');
+        }
+
+        return $this->publishSnapshot($settings);
+    }
+
     /** @param array<string, mixed> $settings */
     private function publishSnapshot(array $settings): RulesetVersion
     {

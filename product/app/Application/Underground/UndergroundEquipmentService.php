@@ -232,7 +232,11 @@ final readonly class UndergroundEquipmentService
         array $rarities,
         array $categories,
         array $weaponStyles,
+        ?int $qualityPercentMax = null,
     ): array {
+        if ($qualityPercentMax !== null && ($qualityPercentMax < 0 || $qualityPercentMax > 100)) {
+            throw new UndergroundRuntimeException('underground_bulk_sell_filter_invalid', 'Quality 条件を確認してください。');
+        }
         [$rarities, $categories, $weaponStyles] = $this->normalizeBulkSellFilters(
             $rarities,
             $categories,
@@ -241,6 +245,7 @@ final readonly class UndergroundEquipmentService
 
         return $this->withLockedOpenProfile($user, function (UndergroundProfile $profile) use (
             $itemLevelMax,
+            $qualityPercentMax,
             $rarities,
             $categories,
             $weaponStyles,
@@ -258,6 +263,7 @@ final readonly class UndergroundEquipmentService
                     $rarities,
                     $categories,
                     $weaponStyles,
+                    $qualityPercentMax,
                 ))
                 ->values()
                 ->all();
@@ -822,11 +828,16 @@ final readonly class UndergroundEquipmentService
         array $rarities,
         array $categories,
         array $weaponStyles,
+        ?int $qualityPercentMax,
     ): bool {
         if (($item['sellable'] ?? null) !== true || ($item['equipped_slot'] ?? null) !== null) {
             return false;
         }
         if ($itemLevelMax !== null && $item['item_level'] > $itemLevelMax) {
+            return false;
+        }
+        if ($qualityPercentMax !== null && (($item['quality_percent'] ?? null) === null
+            || $item['quality_percent'] > $qualityPercentMax)) {
             return false;
         }
         if (! in_array($this->rarityKey($item), $rarities, true)

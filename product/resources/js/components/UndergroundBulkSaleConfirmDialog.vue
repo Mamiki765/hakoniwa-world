@@ -58,7 +58,7 @@ function handleKeydown(event: KeyboardEvent): void {
             </header>
             <ul class="underground-bulk-confirm-list" aria-label="売却対象">
                 <li v-for="item in items" :key="item.id ?? item.instance_identity ?? item.key">
-                    <span>{{ item.name }}</span><span>{{ item.sell_price.toLocaleString('ja-JP') }}G</span>
+                    <span>{{ item.name }} <small>Quality {{ item.quality_percent == null ? '—' : `${item.quality_percent}%` }}</small></span><span>{{ item.sell_price.toLocaleString('ja-JP') }}G</span>
                 </li>
             </ul>
             <p>対象：{{ count.toLocaleString('ja-JP') }}個</p>

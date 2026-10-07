@@ -18,6 +18,7 @@ final class PreviewUndergroundBulkSellRequest extends FormRequest
     {
         return [
             'item_level_max' => ['nullable', 'integer', 'min:1'],
+            'quality_percent_max' => ['nullable', 'integer', 'min:0', 'max:100'],
             'rarities' => ['present', 'array', 'max:6'],
             'rarities.*' => ['string', 'distinct', Rule::in(UndergroundEquipmentService::BULK_SELL_RARITY_KEYS)],
             'categories' => ['present', 'array', 'max:'.count(UndergroundEquipmentService::BULK_SELL_CATEGORY_KEYS)],

@@ -323,6 +323,7 @@ final readonly class UndergroundEquipmentDropService
             'instance_identity' => $payload['instance_identity'],
             'generator_identity' => $payload['generator_identity'],
             'generated_payload' => $payload,
+            'quality_percent' => $this->generator->qualityPercent($payload),
             'source_battle_id' => $sourceBattleId,
             'source_skip_settlement_id' => $sourceSkipSettlementId,
             'source_skip_batch_id' => $sourceSkipBatchId,

@@ -170,6 +170,7 @@ final class BorrowedSecretarySnapshotFactoryTest extends TestCase
             'instance_identity' => $generated['instance_identity'],
             'generator_identity' => $generated['generator_identity'],
             'generated_payload' => $generated,
+            'quality_percent' => app(UndergroundRuntimeEquipmentGenerator::class)->qualityPercent($generated),
             'source_battle_id' => $sourceBattle->id,
             'acquired_at' => Carbon::now(),
         ]);
@@ -197,6 +198,8 @@ final class BorrowedSecretarySnapshotFactoryTest extends TestCase
             'acquired_at' => Carbon::now(),
         ]);
         $before = $item->fresh()->toArray();
+        // An affix pool reorder must not reroll the lender's affix kinds.
+        config(['underground-equipment.generator.affixes' => array_reverse(config('underground-equipment.generator.affixes'), true)]);
 
         $projectionCalls = [];
         $factory = $this->instrumentedFactory($projectionCalls);
@@ -228,6 +231,7 @@ final class BorrowedSecretarySnapshotFactoryTest extends TestCase
         $this->assertSame($generated['instance_identity'], $snapshot['original_equipment'][0]['instance_identity']);
         $this->assertSame(3, $snapshot['effective_equipment']['item_level']);
         $this->assertSame($generated['instance_identity'], $snapshot['effective_equipment']['items'][0]['instance_identity']);
+        $this->assertSame($item->quality_percent, $snapshot['effective_equipment']['items'][0]['quality_percent']);
         $this->assertCount(1, $snapshot['effective_equipment']['items']);
         $this->assertSame(
             array_column($generated['affixes'], 'key'),

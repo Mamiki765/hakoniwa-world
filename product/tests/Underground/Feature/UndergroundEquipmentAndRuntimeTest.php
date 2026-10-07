@@ -77,6 +77,7 @@ final class UndergroundEquipmentAndRuntimeTest extends UndergroundPlayerAccessTe
             'grant_key' => 'drop:polishing-feature', 'instance_kind' => 'generated',
             'instance_identity' => $generated['instance_identity'], 'generator_identity' => $generated['generator_identity'],
             'generated_payload' => $generated, 'source_battle_id' => $sourceBattle->id, 'acquired_at' => now(),
+            'quality_percent' => app(UndergroundRuntimeEquipmentGenerator::class)->qualityPercent($generated),
         ]);
         $this->putJson('/api/v1/me/underground/equipment/equipped', [
             'request_id' => (string) Str::uuid(), 'item_id' => $item->id,
@@ -103,6 +104,14 @@ final class UndergroundEquipmentAndRuntimeTest extends UndergroundPlayerAccessTe
         $final = $this->getJson('/api/v1/me/underground/equipment/polishing')->assertOk()
             ->assertJsonPath('data.next_price', null)->assertJsonPath('data.next_item', null)->json('data.item');
         $this->assertSame($generated['instance_identity'], $final['instance_identity']);
+        $quality = app(UndergroundRuntimeEquipmentGenerator::class)->qualityPercent($generated);
+        $this->assertSame($quality, $final['quality_percent']);
+        // Upgrade a polished legacy item from its immutable original payload.
+        $qualityMigration = require database_path('migrations/2026_10_07_010000_add_equipment_quality.php');
+        $qualityMigration->down();
+        $qualityMigration->up();
+        $this->assertSame($quality, $item->fresh()->quality_percent);
+        $this->assertSame(5, $item->fresh()->polish_level);
         $this->assertSame(intdiv($generated['base']['stats']['vitality'] * 5, 2), $final['stats']['vitality']);
         $this->assertSame($generated['unique_effect']['value_bps'] + 50, $final['unique_effect']['value_bps']);
         $this->assertSame(array_column($generated['affixes'], 'key'), array_column($final['affixes'], 'key'));
@@ -117,6 +126,7 @@ final class UndergroundEquipmentAndRuntimeTest extends UndergroundPlayerAccessTe
         $borrowedCrystal = collect($synced['effective_equipment']['items'])->firstWhere('equipped_slot', 'resonance');
         $this->assertSame(180, $borrowedCrystal['item_level']);
         $this->assertSame(5, $borrowedCrystal['polish_level']);
+        $this->assertSame($quality, $borrowedCrystal['quality_percent']);
         $this->assertSame(90, $synced['effective_equipment']['stats']['vitality'] - $unpolishedLending['effective_equipment']['stats']['vitality']);
         $this->assertSame(30, $synced['effective_equipment']['stats']['spirit'] - $unpolishedLending['effective_equipment']['stats']['spirit']);
         $this->assertEquals($generated, $item->fresh()->generated_payload);
@@ -584,6 +594,7 @@ final class UndergroundEquipmentAndRuntimeTest extends UndergroundPlayerAccessTe
             'instance_identity' => $generated['instance_identity'],
             'generator_identity' => $generated['generator_identity'],
             'generated_payload' => $generated,
+            'quality_percent' => 0,
             'source_battle_id' => UndergroundBattle::query()
                 ->where('underground_profile_id', $profile->id)
                 ->where('activity_type', UndergroundBattle::ACTIVITY_TUTORIAL)
@@ -623,6 +634,12 @@ final class UndergroundEquipmentAndRuntimeTest extends UndergroundPlayerAccessTe
             'categories' => ['weapon', 'armor'],
             'weapon_styles' => ['dagger'],
         ];
+        $this->actingAs($user)->postJson('/api/v1/me/underground/equipment/vault/bulk-sell/preview', [
+            ...$filters, 'quality_percent_max' => 0,
+        ])->assertOk()->assertJsonPath('data.count', 1)->assertJsonPath('data.items.0.id', $generatedItem->id);
+        $this->postJson('/api/v1/me/underground/equipment/vault/bulk-sell/preview', [
+            ...$filters, 'quality_percent_max' => 101,
+        ])->assertUnprocessable();
         $this->actingAs($user)
             ->postJson('/api/v1/me/underground/equipment/vault/bulk-sell/preview', [
                 ...$filters,

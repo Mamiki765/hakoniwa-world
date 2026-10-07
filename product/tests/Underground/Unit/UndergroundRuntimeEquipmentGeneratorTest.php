@@ -11,6 +11,31 @@ use Tests\TestCase;
 
 final class UndergroundRuntimeEquipmentGeneratorTest extends TestCase
 {
+    public function test_quality_uses_final_roll_bounds_rarity_caps_and_original_empty_slots(): void
+    {
+        $generator = app(UndergroundRuntimeEquipmentGenerator::class);
+        $item = $this->generate(30, 'shallow_caves', 'rare', 'accessory', null, 'might', 7);
+        // IL30 Artifact HP range is 45..56; damage range is 149..433.
+        $item['affixes'] = [
+            ['key' => 'max_hp', 'value' => 56],
+            ['key' => 'physical_damage_bps', 'value' => 149],
+        ];
+        $this->assertSame(40, $generator->qualityPercent($item));
+        $item['affixes'][1]['value'] = 433;
+        $this->assertSame(80, $generator->qualityPercent($item));
+        array_pop($item['affixes']);
+        $this->assertSame(40, $generator->qualityPercent($item));
+        $item['affixes'] = [];
+        $this->assertSame(0, $generator->qualityPercent($item));
+        $synced = $generator->generate(10, 'shallow_caves', 'rare', 'accessory', null, 'might', 7,
+            'legacy-empty-accessory', savedAffixes: []);
+        $this->assertSame([], $synced['affixes']);
+
+        $item = $this->generate(1, 'shallow_caves', 'common', 'accessory', null, 'might', 7);
+        $item['affixes'] = [['key' => 'vitality', 'value' => 1]];
+        $this->assertSame(50, $generator->qualityPercent($item));
+    }
+
     public function test_resonance_keeps_fixed_effect_and_roll_quality_while_210_affixes_gain_rating(): void
     {
         config([
@@ -220,7 +245,7 @@ final class UndergroundRuntimeEquipmentGeneratorTest extends TestCase
             $item = $this->generate(40, 'black_crystal_cave', $rarity, 'accessory', null, 'spirit', 3);
             $keys = array_column($item['affixes'], 'key');
 
-            $this->assertLessThanOrEqual($maximumSlots, count($item['affixes']));
+            $this->assertCount($maximumSlots, $item['affixes']);
             $this->assertCount(count($keys), array_unique($keys));
         }
     }

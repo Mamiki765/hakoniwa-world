@@ -61,7 +61,7 @@ final readonly class UndergroundEquipmentLoadoutResolver
             throw new RuntimeException('Underground owned equipment catalog identity is unsupported.');
         }
         if ($row->instance_kind === 'fixed') {
-            return $this->catalog->definition($row->definition_key, $row->catalog_identity);
+            return [...$this->catalog->definition($row->definition_key, $row->catalog_identity), 'quality_percent' => null];
         }
         if ($row->instance_kind !== 'generated'
             || ! is_string($row->generator_identity)
@@ -77,6 +77,7 @@ final readonly class UndergroundEquipmentLoadoutResolver
             throw new RuntimeException('Underground generated equipment identity is inconsistent.');
         }
         $this->catalog->assertDefinition($definition, true, enforceCurrentGeneratorQuality: false);
+        $definition['quality_percent'] = $row->quality_percent;
 
         return $this->polishing->apply($definition, $row->polish_level);
     }

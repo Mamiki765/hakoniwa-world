@@ -199,8 +199,8 @@ return [
     'page_size' => 50,
     'definitions' => $definitions,
     'generator' => [
-        'identity' => 'secretary-underground-drop-equipment-alpha-v4',
-        'legacy_identities' => ['secretary-underground-drop-equipment-alpha-v3', 'secretary-underground-drop-equipment-alpha-v2', 'secretary-underground-drop-equipment-alpha-v1'],
+        'identity' => 'secretary-underground-drop-equipment-alpha-v5',
+        'legacy_identities' => ['secretary-underground-drop-equipment-alpha-v4', 'secretary-underground-drop-equipment-alpha-v3', 'secretary-underground-drop-equipment-alpha-v2', 'secretary-underground-drop-equipment-alpha-v1'],
         'item_level_min' => 1,
         'item_level_max' => 220,
         'tiers' => [
@@ -284,9 +284,9 @@ return [
         ],
         'rarities' => [
             'unique' => ['label' => 'ユニーク', 'weapon_armor_slots' => 3],
-            'common' => ['label' => 'レギュラー', 'weapon_armor_slots' => 1, 'accessory_slots' => 1, 'accessory_presence_bps' => 5_000, 'accessory_value_bps' => 5_000],
-            'uncommon' => ['label' => 'ハイクオリティ', 'weapon_armor_slots' => 2, 'accessory_slots' => 2, 'accessory_presence_bps' => 5_000, 'accessory_value_bps' => 5_000],
-            'rare' => ['label' => 'アーティファクト', 'weapon_armor_slots' => 3, 'accessory_slots' => 2, 'accessory_presence_bps' => 8_000, 'accessory_value_bps' => 8_000],
+            'common' => ['label' => 'レギュラー', 'weapon_armor_slots' => 1, 'accessory_slots' => 1, 'accessory_presence_bps' => 10_000, 'accessory_value_bps' => 5_000],
+            'uncommon' => ['label' => 'ハイクオリティ', 'weapon_armor_slots' => 2, 'accessory_slots' => 2, 'accessory_presence_bps' => 10_000, 'accessory_value_bps' => 5_000],
+            'rare' => ['label' => 'アーティファクト', 'weapon_armor_slots' => 3, 'accessory_slots' => 2, 'accessory_presence_bps' => 10_000, 'accessory_value_bps' => 8_000],
             'epic' => ['label' => 'レリック', 'weapon_armor_slots' => 4, 'accessory_slots' => 2, 'accessory_presence_bps' => 10_000, 'accessory_value_bps' => 10_000],
         ],
         'body_anchors' => [

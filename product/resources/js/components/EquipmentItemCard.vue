@@ -22,6 +22,7 @@ export interface EquipmentItem {
     rank: number;
     item_level: number;
     polish_level?: number;
+    quality_percent?: number | null;
     rarity: string;
     rarity_label?: string;
     buy_price?: number | null;
@@ -169,6 +170,7 @@ function affixValue(affix: EquipmentAffix): string {
                     {{ categoryLabel() }}<span v-if="styleLabel()">・{{ styleLabel() }}</span><span v-if="item.instance_kind === 'generated'">・生成装備</span>
                 </p>
                 <h3>{{ item.name }}<span v-if="item.polish_level"> +{{ item.polish_level }}</span></h3>
+                <small>Quality {{ item.quality_percent == null ? '—' : `${item.quality_percent}%` }}</small>
             </div>
             <span class="underground-equipment-rarity">{{ item.rarity_label ?? item.rarity }} / {{ rankLabel() }}</span>
         </header>

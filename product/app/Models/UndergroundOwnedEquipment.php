@@ -22,6 +22,7 @@ use Illuminate\Support\Carbon;
  * @property string|null $generator_identity
  * @property array<string, mixed>|null $generated_payload
  * @property int $polish_level
+ * @property int|null $quality_percent
  * @property int|null $source_battle_id
  * @property int|null $source_skip_settlement_id
  * @property int|null $source_skip_batch_id
@@ -39,7 +40,7 @@ final class UndergroundOwnedEquipment extends Model
         'underground_profile_id', 'definition_key', 'catalog_identity',
         'equipped_slot', 'grant_key', 'instance_kind', 'instance_identity',
         'generator_identity', 'generated_payload', 'source_battle_id',
-        'polish_level',
+        'polish_level', 'quality_percent',
         'source_skip_settlement_id', 'source_skip_batch_id', 'source_reward_index', 'acquired_at',
     ];
 
@@ -53,6 +54,7 @@ final class UndergroundOwnedEquipment extends Model
             'source_reward_index' => 'integer',
             'generated_payload' => 'array',
             'polish_level' => 'integer',
+            'quality_percent' => 'integer',
             'acquired_at' => 'immutable_datetime',
         ];
     }

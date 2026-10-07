@@ -25,6 +25,7 @@
 | 4.14.1 地図の上限・ピザ屋の収益表示 | [4.14.1 map details](../product/docs/releases/4.14.1-map-details.md) |
 | 4.14.2 帰港地・狂月賛歌の既読回想 | [4.14.2 recollections](../product/docs/releases/4.14.2-recollections.md) |
 | 4.14.3 秘書の肩書き表示・実績画面の配置 | [4.14.3 secretary title layout](../product/docs/releases/4.14.3-secretary-title-layout.md) |
+| 4.15.0 船の視界・アクセサリー全枠付与・装備Quality | [4.15.0 equipment quality / ship vision](../product/docs/releases/4.15.0-equipment-quality-ship-vision.md) |
 | 外部管理庫の現在地・作業引継ぎへの入口 | [current-status](../product/docs/handoffs/current-status.md) |
 | 取り違えを防ぐ現行contract | [current-contracts](../product/docs/handoffs/current-contracts.md) |
 | IL200超の装備計算・研磨 | [地底装備の倍率とrating](../product/docs/architecture/underground-equipment-scaling.md)、[プレイヤー向け装備手引き](../product/docs/manual/equipment.md) |

@@ -12,6 +12,7 @@ use App\Models\MapSpace;
 use App\Models\MonsterDefinition;
 use App\Models\Nation;
 use App\Models\NationAward;
+use App\Models\RulesetVersion;
 use App\Models\Ship;
 use App\Models\TerrainDefinition;
 use App\Models\User;
@@ -366,12 +367,12 @@ class PublicLobbyApiTest extends TestCase
 
             return ! $outsiderLand->contains(
                 static fn (GridCoordinate $land): bool => $land->distanceTo($coordinate) <= 3,
-            ) && collect($coordinate->ring(3))->contains(
+            ) && collect($coordinate->ring(5))->contains(
                 static fn (GridCoordinate $ring): bool => $neutralSeaByCoordinate->has($ring->x.':'.$ring->y),
             );
         });
         $this->assertInstanceOf(MapCell::class, $seabedBase);
-        $explorationSource = collect((new GridCoordinate($seabedBase->x, $seabedBase->y))->ring(3))
+        $explorationSource = collect((new GridCoordinate($seabedBase->x, $seabedBase->y))->ring(5))
             ->map(static fn (GridCoordinate $coordinate): ?MapCell => $neutralSeaByCoordinate->get(
                 $coordinate->x.':'.$coordinate->y,
             ))
@@ -453,18 +454,22 @@ class PublicLobbyApiTest extends TestCase
         }
         $this->assertSame($publicSea, $publicBase);
 
+        $currentRulesetId = $world->ruleset_version_id;
+        $world->update(['ruleset_version_id' => RulesetVersion::query()->where('version', 33)->sole()->id]);
         $ship = Ship::query()->create([
             'world_id' => $world->id,
             'ruleset_version_id' => $world->ruleset_version_id,
             'nation_id' => $outsiderNation->id,
             'map_cell_id' => $explorationSource->id,
-            'ship_type_key' => 'fishing',
-            'current_hp' => 1,
-            'max_hp' => 1,
+            'ship_type_key' => 'warship',
+            'current_hp' => 3,
+            'max_hp' => 3,
             'heading' => null,
             'state' => Ship::STATE_ACTIVE,
             'version' => 1,
         ]);
+        $world->update(['ruleset_version_id' => $currentRulesetId]);
+        $this->assertNotSame($world->ruleset_version_id, $ship->ruleset_version_id);
         $commandSupport = collect((new GridCoordinate($seabedBase->x, $seabedBase->y))->ring(2))
             ->map(static fn (GridCoordinate $coordinate): ?MapCell => $neutralSeaByCoordinate->get(
                 $coordinate->x.':'.$coordinate->y,
