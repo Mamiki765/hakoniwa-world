@@ -55,6 +55,7 @@ final class FreshInstallRebaselineTest extends TestCase
             '2026_10_06_010000_add_user_achievements',
             '2026_10_07_000000_publish_ship_visibility_v34',
             '2026_10_07_010000_add_equipment_quality',
+            '2026_10_07_020000_allow_abandoned_nation_name_reuse',
         ], DB::table('migrations')->orderBy('id')->pluck('migration')->all());
         $this->assertSame(['hakoniwa-2s-plus-v28', 'hakoniwa-2s-plus-v29', 'hakoniwa-2s-plus-v30', 'hakoniwa-2s-plus-v31', 'hakoniwa-2s-plus-v32', 'hakoniwa-2s-plus-v33', $current['key']], RulesetVersion::query()->orderBy('version')->pluck('key')->all());
         // The immutable baseline's nine-skill CHECK is verified at its own

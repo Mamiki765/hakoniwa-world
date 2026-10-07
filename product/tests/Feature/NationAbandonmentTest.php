@@ -333,7 +333,7 @@ final class NationAbandonmentTest extends TestCase
             ->assertJsonPath('data.groups.0.events.0.message', '沈降島は破棄され、忘れ去られた。');
     }
 
-    public function test_same_user_can_create_a_new_named_nation_while_old_requests_and_numbers_remain_historical(): void
+    public function test_same_user_can_reuse_an_abandoned_name_while_old_requests_and_numbers_remain_historical(): void
     {
         $world = $this->lightweightWorld();
         $owner = User::factory()->create();
@@ -347,19 +347,19 @@ final class NationAbandonmentTest extends TestCase
         $this->assertSame($first->id, $replayed->id);
         $this->assertSame('abandoned', $replayed->state);
 
-        try {
-            $service->create($owner, $world->fresh(), '初代島', '再利用島主', '', (string) Str::uuid());
-            $this->fail('An abandoned Nation name must remain reserved in its World.');
-        } catch (DomainException $exception) {
-            $this->assertNotSame('', $exception->getMessage());
-        }
-
-        $second = $service->create($owner, $world->fresh(), '二代目島', '二代目島主', '', $newRequestKey);
+        $second = $service->create($owner, $world->fresh(), '初代島', '二代目島主', '', $newRequestKey);
         $replayedAfterSecond = $service->create($owner, $world->fresh(), 'さらに別の入力', 'さらに別の入力', '', $oldRequestKey);
         $this->assertSame($first->id, $replayedAfterSecond->id);
         $this->assertSame('abandoned', $replayedAfterSecond->state);
         $this->assertSame('abandoned', $first->fresh()->state);
         $this->assertSame('active', $second->state);
+        $this->assertNotSame($first->id, $second->id);
+        $this->assertSame('初代島', $first->fresh()->name);
+        $this->assertSame($first->name, $second->name);
+        $this->assertNotSame(
+            DB::table('nation_creation_requests')->where('request_key', $oldRequestKey)->value('generation_seed'),
+            DB::table('nation_creation_requests')->where('request_key', $newRequestKey)->value('generation_seed'),
+        );
         $this->assertNotNull($second->capital);
         $this->assertGreaterThan($first->nation_number, $second->nation_number);
         $this->assertDatabaseHas('nation_memberships', [

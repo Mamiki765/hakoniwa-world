@@ -115,7 +115,8 @@ final class NationCreationService
                             'このWorldにはすでにNationがあります。',
                         );
                     }
-                    if (Nation::query()->where('world_id', $world->id)->where('name', $name)->exists()) {
+                    if (Nation::query()->where('world_id', $world->id)->where('name', $name)
+                        ->where('state', '<>', 'abandoned')->exists()) {
                         throw new NationNameConflictException('この島名はすでに使用されています。');
                     }
 
@@ -134,6 +135,12 @@ final class NationCreationService
                     $seed = hash('sha256', implode(':', [
                         $world->id, $user->id, mb_strtolower($name), config('hakoniwa.initial_island.generator_version'),
                     ]));
+                    if (DB::table('world_generation_runs')->where('map_space_id', $mapSpace->id)
+                        ->where('generator_id', config('hakoniwa.initial_island.generator_id'))
+                        ->where('generator_version', config('hakoniwa.initial_island.generator_version'))
+                        ->where('seed', $seed)->exists()) {
+                        $seed = hash('sha256', $seed.':nation:'.$nationNumber);
+                    }
 
                     DB::table('nation_creation_requests')->insert([
                         'request_key' => $requestKey, 'user_id' => $user->id, 'world_id' => $world->id,

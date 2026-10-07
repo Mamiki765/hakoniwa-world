@@ -8,6 +8,7 @@ use App\Application\InitialIslandPlan;
 use App\Application\NationCreationService;
 use App\Domain\Economy\NationCapacityResolver;
 use App\Domain\Map\GridCoordinate;
+use App\Domain\Nation\NationNameConflictException;
 use App\Models\BuriedTreasure;
 use App\Models\MapCell;
 use App\Models\MapSpace;
@@ -312,6 +313,30 @@ class NationCreationTest extends TestCase
             $this->assertSame($before['population'], MapCell::query()->sum('population'));
             $this->assertSame($origin->id, $ship->fresh()->map_cell_id);
             $this->assertSame(1, $ship->fresh()->version);
+        }
+    }
+
+    public function test_non_abandoned_nation_names_cannot_be_registered_again(): void
+    {
+        $world = $this->lightweightWorld();
+        $service = app(NationCreationService::class);
+        $nation = $service->create(User::factory()->create(), $world, '現存島', '元島主');
+        $applicant = User::factory()->create();
+
+        foreach (['active', 'dormant', 'recovery'] as $state) {
+            $nation->update([
+                'state' => $state,
+                'state_reason' => $state === 'dormant' ? 'manual' : null,
+                'state_started_turn' => $state === 'active' ? null : $world->current_turn,
+                'resume_at_turn' => $state === 'active' ? null : $world->current_turn + 60,
+            ]);
+            try {
+                $service->create($applicant, $world, $nation->name, '新島主');
+                $this->fail("A {$state} Nation name must remain reserved.");
+            } catch (NationNameConflictException) {
+                $this->assertDatabaseMissing('nation_memberships', ['user_id' => $applicant->id]);
+                $this->assertDatabaseCount('nation_creation_requests', 1);
+            }
         }
     }
 

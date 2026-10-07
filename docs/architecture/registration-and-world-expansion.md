@@ -126,7 +126,9 @@ registrationとturnが同じworldを更新するため、ロック階層を統�
 
 ## 再入植との境界
 
-ADR-0004で`sunken_archived`と呼んでいた旧案はADR-0014で廃止された。現行の`abandoned` Nationも旧領土・旧首都を地図へ巻き戻さず、本人が後日参加する場合は新規Nation登録を使う。旧国家名、初期資源、ランキング、称号、新規保護期間、同じnation_idを再利用する「再入植」機能は実装せず、B-15のDeferred境界に残す。
+ADR-0004で`sunken_archived`と呼んでいた旧案はADR-0014で廃止された。現行の`abandoned` Nationも旧領土・旧首都を地図へ巻き戻さず、本人が後日参加する場合は新規Nation登録を使う。初期資源、ランキング、称号、新規保護期間、同じnation_idを再利用する「再入植」機能は実装せず、B-15の境界に残す。
+
+4.17.0では新規登録に限り、同じWorldの`abandoned`島名を再利用できる。旧Nationの名前・ID・登録request・履歴を保持し、新しいNation IDとnumberを採番する。同じUser・World・名前の生成seedが既に記録されている場合だけ、新しいnation numberを加えてseedを区別し、旧生成履歴を残す。`active`・`dormant`・`recovery`の名前は予約され、登録のWorld lockと非廃棄島を対象にしたDB部分unique indexで同時登録の重複を防ぐ。島の改名は追加しない。名前で対象を指定する補填コマンドも非廃棄島だけを解決し、確認tokenはそのNation IDに結び付ける。
 
 ## Historical pre-implementation questions
 
