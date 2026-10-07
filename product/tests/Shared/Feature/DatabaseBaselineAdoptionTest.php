@@ -98,6 +98,7 @@ final class DatabaseBaselineAdoptionTest extends TestCase
     {
         // This test owns the pre-v28 baseline boundary; restore its exact schema
         // and skill constraint before adopting its marker. Later upgrades have their own tests.
+        Schema::table('underground_owned_equipment', fn ($table) => $table->dropColumn('quality_percent'));
         Schema::table('underground_profiles', static function ($table): void {
             $table->dropColumn([
                 'yunagi_harbor_intro_completed_at',

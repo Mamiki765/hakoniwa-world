@@ -12,7 +12,7 @@ use RuntimeException;
 final class UndergroundRuntimeEquipmentGenerator
 {
     /**
-     * @param list<array<string, mixed>>|null $savedAffixes Original rolls for IL synchronization.
+     * @param  list<array<string, mixed>>|null  $savedAffixes  Original rolls for IL synchronization.
      * @return array<string, mixed>
      */
     public function generate(
