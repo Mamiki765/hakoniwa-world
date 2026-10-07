@@ -1714,11 +1714,11 @@ final class CompleteTurnEngine
             && $context->state->hasAttraction($cell->owner_nation_id);
         $capital = $cell->facility?->key === 'capital';
         $ordinaryMaximum = $capital
-            ? $context->ruleset->settings['capital_growth_maximum_population']
-                + $this->undergroundBenefits->capitalMaximumBonusForTurn(
-                    $context->state,
-                    (int) $cell->owner_nation_id,
-                )
+            ? $this->demographics->capitalMaximum(
+                $context->ruleset->settings,
+                $birthrateLevel,
+                $this->undergroundBenefits->capitalMaximumBonusForTurn($context->state, (int) $cell->owner_nation_id),
+            )
             : ($demographicsEnabled ? $this->demographics->naturalMaximum(
                 $context->ruleset->settings,
                 $ordinaryMaximum,
@@ -1793,12 +1793,31 @@ final class CompleteTurnEngine
 
             return ['increase' => 0, 'decrease' => $loss, 'stage_transition' => 0];
         }
-        $maximumPopulation = $attraction && $cell->facility?->key !== 'capital'
+        $towel = ! $capital && ! $attraction && $before >= $ordinaryMaximum && $before < $attractionMaximum
+            ? $this->secretaryItems->snapshotAttractionTowel($context->state, (int) $cell->owner_nation_id)
+            : null;
+        $supplementalAttraction = false;
+        if ($towel !== null) {
+            $nationId = (int) $cell->owner_nation_id;
+            $paid = $context->state->supplementalAttractionPayment($nationId);
+            if ($paid === null) {
+                // The existing growth pass supplies eligibility. One guarded debit avoids a rescan or per-cell reads.
+                $paid = Nation::query()->whereKey($nationId)->where('money', '>=', $towel['cost_money'])
+                    ->decrement('money', $towel['cost_money']) === 1;
+                $context->state->setSupplementalAttractionPayment($nationId, $paid);
+                if ($paid) {
+                    $context->state->addEconomicContribution($nationId, 'attraction_towel', 'money', -$towel['cost_money'], null);
+                }
+            }
+            $supplementalAttraction = $paid;
+        }
+        $maximumPopulation = ($attraction || $supplementalAttraction) && ! $capital
             ? $attractionMaximum
             : $ordinaryMaximum;
         $indomitableBonus = 0;
         if ($before < $maximumPopulation) {
             $growthRules = match (true) {
+                $supplementalAttraction => $rules['post_ordinary_attraction_growth'],
                 ! $attraction => $rules['ordinary_growth'],
                 $before < $ordinaryMaximum => $rules['attraction_growth'],
                 default => $rules['post_ordinary_attraction_growth'],
@@ -1806,6 +1825,9 @@ final class CompleteTurnEngine
             $growth = $context->random->stream(TurnRandomStreamFactory::POPULATION_GROWTH)->integer(
                 $growthRules['minimum'], $growthRules['maximum'],
             );
+            if ($supplementalAttraction) {
+                $growth = intdiv($growth * $towel['percent'], 100);
+            }
             $populationEffect = $this->secretaryItems->singleSnapshotEffect(
                 $context->state, (int) $cell->owner_nation_id, 'population_growth_percent',
             );
@@ -1816,7 +1838,7 @@ final class CompleteTurnEngine
                 }
                 $growth += intdiv($growth * $percent, 100);
             }
-            if (! $attraction && $demographicsEnabled) {
+            if (! $attraction && ! $supplementalAttraction && $demographicsEnabled) {
                 $indomitableBonus = $this->demographics->indomitableBonus(
                     $context->ruleset->settings,
                     $before,

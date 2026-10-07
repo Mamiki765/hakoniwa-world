@@ -48,7 +48,7 @@ final class CurrentRulesetAuthoringInspector
                 'lifecycle-and-karma.php', 'ocean-loop.php', 'facility-ranks.php' => 'release-4.18/',
                 'surface-ships.php' => 'release-4.15/',
                 'user-achievements.php' => 'island-secretary/',
-                'secretary.php' => 'release-4.12/',
+                'secretary.php' => 'release-4.18/',
                 'power-and-pizza.php' => 'release-4.11.1/',
                 'economy-and-resources.php' => 'release-4.11/',
                 default => 'current/',

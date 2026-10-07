@@ -590,7 +590,7 @@ final class MissileImpactAndSettlementTest extends CommandAndMissileTestCase
         $this->assertSame(0, DB::table('audit_events')->where('event_type', 'karma.refugee_bonus')->count());
     }
 
-    public function test_refugees_use_the_turn_start_birthrate_skill_attraction_capacity_without_raising_capital_capacity(): void
+    public function test_refugees_use_turn_start_birthrate_for_attraction_and_capital_capacity(): void
     {
         [$world, $firingUser, $firing, $target] = $this->combatants('birthrate-refugee');
         $firing->update(['karma' => 0]);
@@ -632,15 +632,15 @@ final class MissileImpactAndSettlementTest extends CommandAndMissileTestCase
         MapCell::query()->where('owner_nation_id', $firing->id)
             ->whereKeyNot($receivingCell->id)
             ->whereHas('facility', fn ($query) => $query->whereIn('key', $settlementKeys))
-            ->get()->each(function (MapCell $cell) use ($firingCapitalId, $effectiveMaximum, $world): void {
+            ->get()->each(function (MapCell $cell) use ($firingCapitalId, $effectiveMaximum): void {
                 $cell->population = $cell->id === $firingCapitalId
-                    ? $world->rulesetVersion()->sole()->settings['capital_growth_maximum_population']
+                    ? $effectiveMaximum + 15_000 - 200
                     : $effectiveMaximum;
                 $cell->version++;
                 $cell->save();
             });
         $targetCapital = $target->capital()->firstOrFail()->cell()->with(['terrain', 'facility'])->firstOrFail();
-        $targetCapital->update(['population' => 25_000]);
+        $targetCapital->update(['population' => 10_000]);
         $base = $this->missileBase($firing);
         $item = $this->queue(
             app(CommandQueueService::class),
@@ -675,14 +675,14 @@ final class MissileImpactAndSettlementTest extends CommandAndMissileTestCase
         $received = DB::table('audit_events')->where('event_type', 'refugee_received')
             ->whereRaw("metadata->>'queue_item_id' = ?", [(string) $item->id])->sole();
         $metadata = json_decode((string) $received->metadata, true, 512, JSON_THROW_ON_ERROR);
-        $this->assertSame(1_250, $metadata['generated_population']);
-        $this->assertSame(1_000, $metadata['received_population']);
-        $this->assertSame(250, $metadata['unreceived_population']);
-        $this->assertSame($effectiveMaximum, $receivingCell->fresh()->population);
+        $this->assertSame(500, $metadata['generated_population']);
+        $this->assertSame(500, $metadata['received_population']);
+        $this->assertSame(0, $metadata['unreceived_population']);
+        $this->assertSame($baseMaximum + 300, $receivingCell->fresh()->population);
         $this->assertSame(3_000, $underseaCity->fresh()->population);
         $this->assertSame('undersea_city', $underseaCity->fresh()->facility()->value('key'));
         $this->assertSame(
-            $world->rulesetVersion()->sole()->settings['capital_growth_maximum_population'],
+            $effectiveMaximum + 15_000,
             (int) MapCell::query()->whereKey($firingCapitalId)->value('population'),
         );
     }

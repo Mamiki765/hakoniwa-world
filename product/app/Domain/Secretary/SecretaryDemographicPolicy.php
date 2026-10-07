@@ -45,6 +45,23 @@ final class SecretaryDemographicPolicy
     }
 
     /** @param array<string, mixed> $settings */
+    public function capitalMaximum(array $settings, int $birthrateLevel, int $undergroundBonus = 0): int
+    {
+        $settlement = $settings['turn_processing']['settlement'];
+        $basis = $settlement['capital_maximum_basis'] ?? null;
+        if ($basis === null) {
+            return $settings['capital_growth_maximum_population'] + $undergroundBonus;
+        }
+        $bonus = $settlement['capital_maximum_attraction_bonus'] ?? null;
+        if ($basis !== 'effective_attraction_maximum' || ! is_int($bonus) || $bonus < 0) {
+            throw new DomainException('The capital population maximum contract is invalid.');
+        }
+
+        return $this->attractionMaximum($settings, $settlement['attraction_maximum_population'], $birthrateLevel)
+            + $bonus + $undergroundBonus;
+    }
+
+    /** @param array<string, mixed> $settings */
     public function indomitableBonus(array $settings, int $population, int $level): int
     {
         if ($population < 0 || $level < 0) {

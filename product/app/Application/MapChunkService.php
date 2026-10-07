@@ -68,6 +68,7 @@ final class MapChunkService
             && $cell->owner_nation_id === $viewerNationId
             && in_array($cell->facility?->key, $settlement['population_facility_keys'], true));
         if ($ownedSettlements->isNotEmpty()) {
+            $level = 0;
             $natural = $settlement['ordinary_maximum_population'];
             $attraction = $settlement['attraction_maximum_population'];
             if ($this->demographics->enabled($rulesetSettings)) {
@@ -76,7 +77,7 @@ final class MapChunkService
                 $natural = $this->demographics->naturalMaximum($rulesetSettings, $natural, $level);
                 $attraction = $this->demographics->attractionMaximum($rulesetSettings, $attraction, $level);
             }
-            $capital = $rulesetSettings['capital_growth_maximum_population'];
+            $capital = $this->demographics->capitalMaximum($rulesetSettings, $level);
             if ($ownedSettlements->contains(static fn (MapCell $cell): bool => $cell->facility?->key === 'capital')) {
                 $capital += $this->undergroundBenefits->capitalMaximumBonus((int) $viewerNationId);
             }

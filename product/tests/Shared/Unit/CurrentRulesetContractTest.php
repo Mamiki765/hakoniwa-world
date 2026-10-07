@@ -40,9 +40,12 @@ final class CurrentRulesetContractTest extends TestCase
         $v34 = require config_path('hakoniwa/rulesets/hakoniwa-2s-plus-v34.php');
         $this->assertSame('b85940a9a596359a950e83420f39e59edbe7b803432ca7ad1fbcdb9ff54ecd8b', $this->checksum($v34));
         // The new facility must not reset unrelated production contracts.
-        foreach (['secretary', 'surface_ships', 'power_economy', 'resource_definitions'] as $domain) {
+        foreach (['surface_ships', 'power_economy', 'resource_definitions'] as $domain) {
             $this->assertSame($v34[$domain], $current[$domain]);
         }
+        $secretary = $current['secretary'];
+        unset($secretary['items']['attraction_towel']);
+        $this->assertSame($v34['secretary'], $secretary);
         $v30 = require config_path('hakoniwa/rulesets/hakoniwa-2s-plus-v30.php');
         $this->assertSame(self::V30_CHECKSUM, $this->checksum($v30));
         $predecessor = require config_path('hakoniwa/rulesets/hakoniwa-2s-plus-v29.php');

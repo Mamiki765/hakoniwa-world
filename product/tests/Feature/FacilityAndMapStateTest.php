@@ -283,6 +283,12 @@ final class FacilityAndMapStateTest extends TestCase
         );
         $this->assertSame($publicBefore, $publicAfter);
         $this->assertFalse(collect($publicAfter['details'])->keyBy('key')->has('population_maximum'));
+        $capital = $nation->capital()->sole()->cell()->sole();
+        $ownerCapital = $this->cellFromResponse(
+            $this->actingAs($user)->getJson($this->chunkUrl($mapSpace, $capital))->assertOk()->json('data.cells'), $capital,
+        );
+        $this->assertSame($attraction + 15_000,
+            collect($ownerCapital['details'])->keyBy('key')['population_maximum']['value']);
     }
 
     /** @return array{User, Nation, MapSpace} */

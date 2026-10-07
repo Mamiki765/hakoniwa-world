@@ -1,6 +1,11 @@
 <?php
 
 $domain = require __DIR__.'/../current/turn-pipeline.php';
+$domain['payload']['turn_processing']['settlement']['attraction_maximum_population'] = 25500;
+$domain['payload']['turn_processing']['settlement']['capital_maximum_basis'] = 'effective_attraction_maximum';
+$domain['payload']['turn_processing']['settlement']['capital_maximum_attraction_bonus'] = 15000;
+$domain['classification']['behavior'][] = 'capital_maximum_basis';
+$domain['classification']['data'][] = 'capital_maximum_attraction_bonus';
 $domain['payload']['turn_processing']['undersea_fire_station_maintenance'] = [
     'facility_key' => 'undersea_fire_station', 'cost_money' => 6,
     'settlement_order' => 'map_cell_id_ascending',

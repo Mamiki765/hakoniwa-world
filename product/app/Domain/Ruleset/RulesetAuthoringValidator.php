@@ -2764,6 +2764,12 @@ final class RulesetAuthoringValidator
             $this->integer($growth['unit_people'], "{$path}.settlement.{$growthKey}.unit_people", 1);
         }
         $attractionMaximum = $this->integer($settlement['attraction_maximum_population'], "{$path}.settlement.attraction_maximum_population", 1);
+        if (($settings['version'] ?? 0) >= 35
+            && (($settlement['capital_maximum_basis'] ?? null) !== 'effective_attraction_maximum'
+                || ($settlement['capital_maximum_attraction_bonus'] ?? null) !== 15000
+                || $settings['capital_growth_maximum_population'] !== $attractionMaximum + 15000)) {
+            throw new DomainException('The capital maximum must follow the effective attraction maximum.');
+        }
         if ($attractionMaximum < $largestOrdinaryMaximum) {
             throw new DomainException("{$path}.settlement attraction maximum cannot be below an ordinary maximum.");
         }
@@ -3110,6 +3116,7 @@ final class RulesetAuthoringValidator
         if (($protection['facility_key'] ?? null) !== 'undersea_fire_station'
             || ($protection['radius'] ?? null) !== 2
             || ($protection['cost_money'] ?? null) !== 100
+            || ($protection['target_owner'] ?? null) !== 'station_owner'
             || ($protection['selection'] ?? null) !== 'affordable_owner_map_cell_id_ascending') {
             throw new DomainException("{$firePath} differs from the undersea fire protection contract.");
         }

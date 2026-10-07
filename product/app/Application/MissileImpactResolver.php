@@ -1931,16 +1931,18 @@ final class MissileImpactResolver
             'generated_population' => $generated,
         ], 'public');
         $settlementKeys = $context->ruleset->settings['military']['refugees']['settlement_facility_keys'] ?? [];
+        $birthrateLevel = 0;
         $attractionMaximum = $context->ruleset->settings['turn_processing']['settlement']['attraction_maximum_population'];
         if ($this->demographics->enabled($context->ruleset->settings)
             && $context->state->hasSecretarySnapshot($recipient->id)) {
+            $birthrateLevel = $context->state->secretarySkillLevel(
+                $recipient->id,
+                SecretarySkillCatalog::DECLINING_BIRTHRATE_POLICY,
+            );
             $attractionMaximum = $this->demographics->attractionMaximum(
                 $context->ruleset->settings,
                 $attractionMaximum,
-                $context->state->secretarySkillLevel(
-                    $recipient->id,
-                    SecretarySkillCatalog::DECLINING_BIRTHRATE_POLICY,
-                ),
+                $birthrateLevel,
             );
         }
         $cells = MapCell::query()->where('owner_nation_id', $recipient->id)
@@ -1950,11 +1952,11 @@ final class MissileImpactResolver
         $remaining = $generated;
         foreach ($cells as $cell) {
             $maximum = $cell->facility?->key === 'capital'
-                ? $context->ruleset->settings['capital_growth_maximum_population']
-                    + $this->undergroundBenefits->capitalMaximumBonusForTurn(
-                        $context->state,
-                        $recipient->id,
-                    )
+                ? $this->demographics->capitalMaximum(
+                    $context->ruleset->settings,
+                    $birthrateLevel,
+                    $this->undergroundBenefits->capitalMaximumBonusForTurn($context->state, $recipient->id),
+                )
                 : $attractionMaximum;
             $applied = min($remaining, max(0, $maximum - $cell->population));
             if ($applied < 1) {
