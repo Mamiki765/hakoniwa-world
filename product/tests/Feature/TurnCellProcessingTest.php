@@ -44,6 +44,7 @@ use App\Models\World;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
+use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\Concerns\CreatesTestWorlds;
 use Tests\Concerns\UsesIndividualTestWorld;
 use Tests\TestCase;
@@ -759,7 +760,13 @@ class TurnCellProcessingTest extends TestCase
         $this->assertSame(50, $metadata['stolen_population']);
     }
 
-    public function test_stationary_warship_auto_attack_sinks_npc_ship_for_money_navy_exp_and_full_refugees(): void
+    public static function npcShipCombatBoundaries(): array
+    {
+        return ['one damage without sinking' => [2], 'sinking' => [1]];
+    }
+
+    #[DataProvider('npcShipCombatBoundaries')]
+    public function test_stationary_warship_auto_attack_resolves_npc_damage_and_public_result_once(int $pirateHp): void
     {
         $world = $this->lightweightWorld();
         $user = User::factory()->create();
@@ -824,7 +831,7 @@ class TurnCellProcessingTest extends TestCase
             'nation_id' => null,
             'map_cell_id' => $targetCell->id,
             'ship_type_key' => 'pirate',
-            'current_hp' => 1,
+            'current_hp' => $pirateHp,
             'max_hp' => 3,
             'population' => 6_000,
             'heading' => null,
@@ -861,25 +868,42 @@ class TurnCellProcessingTest extends TestCase
         );
         app(SecretaryTurnService::class)->flushExperience($context);
 
-        $this->assertSame(Ship::STATE_REMOVED, $pirate->fresh()->state);
+        $sunk = $pirateHp === 1;
+        $this->assertSame($sunk ? Ship::STATE_REMOVED : Ship::STATE_ACTIVE, $pirate->fresh()->state);
+        $this->assertSame($pirateHp - 1, (int) $pirate->fresh()->current_hp);
         $this->assertSame(Ship::STATE_ACTIVE, $treasureShip->fresh()->state);
         $this->assertSame([Ship::STATE_ACTIVE, 2], [$playerShip->fresh()->state, $playerShip->fresh()->current_hp]);
         $this->assertSame(80, $nation->fresh()->money);
-        $this->assertSame($populationBefore + 6_000, (int) MapCell::query()
+        $this->assertSame($populationBefore + ($sunk ? 6_000 : 0), (int) MapCell::query()
             ->where('owner_nation_id', $nation->id)->sum('population'));
         $this->assertSame($oilBefore, (int) NationResource::query()->where('nation_id', $nation->id)
             ->where('resource_definition_id', $oil->id)->value('amount'));
         $this->assertSame(3, $user->secretary()->firstOrFail()->skills()
             ->where('skill_key', SecretarySkillCatalog::NAVY)->value('experience'));
-        $treasure = BuriedTreasure::query()->where('map_cell_id', $targetCell->id)
-            ->where('state', BuriedTreasure::STATE_ACTIVE)->sole();
-        $this->assertSame('pirate_sink', $treasure->source);
-        $this->assertSame('wakuwaku_ticket', $treasure->reward_snapshot['item_key']);
+        if ($sunk) {
+            $treasure = BuriedTreasure::query()->where('map_cell_id', $targetCell->id)
+                ->where('state', BuriedTreasure::STATE_ACTIVE)->sole();
+            $this->assertSame('pirate_sink', $treasure->source);
+            $this->assertSame('wakuwaku_ticket', $treasure->reward_snapshot['item_key']);
+        } else {
+            $this->assertSame(0, BuriedTreasure::query()->where('map_cell_id', $targetCell->id)->count());
+        }
         $this->assertSame(1, DB::table('audit_events')->where('event_type', 'ship.warship_attacked')->count());
-        $this->assertSame(1, DB::table('audit_events')->where('event_type', 'buried_treasure.created')
+        $this->assertSame($sunk ? 1 : 0, DB::table('audit_events')->where('event_type', 'buried_treasure.created')
             ->where('visibility', 'public')->count());
         $this->assertSame($warship->id, DB::table('audit_events')->where('event_type', 'ship.warship_attacked')
             ->value('subject_id'));
+        $world->update(['current_turn' => $context->targetTurn]);
+        $public = $this->getJson("/api/v1/public/worlds/{$world->id}/events")->assertOk();
+        $combatEvents = collect($public->json('data.groups'))->flatMap(static fn (array $group): array => $group['events'])
+            ->whereIn('type', ['ship.combat_hit', 'ship.warship_attacked', 'ship.sunk'])->values();
+        $this->assertCount(1, $combatEvents);
+        $this->assertSame('ship.combat_hit', $combatEvents[0]['type']);
+        $this->assertStringContainsString("({$targetCell->x},{$targetCell->y})", $combatEvents[0]['message']);
+        $this->assertStringContainsString($sunk ? '撃沈' : '1ダメージ', $combatEvents[0]['message']);
+        foreach (['ship_id', 'attacker_nation_id', 'combat_source', 'before_hp', 'after_hp', 'experience', 'refugees_received', 'money_spent', 'navy_experience'] as $hidden) {
+            $this->assertStringNotContainsString($hidden, (string) $public->getContent());
+        }
 
         $nation->update(['money' => 19]);
         [$poorContext] = $this->context(

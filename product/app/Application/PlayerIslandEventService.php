@@ -108,6 +108,7 @@ final class PlayerIslandEventService
         'territory.influenced',
         'buried_treasure.created',
         'ship.pirate_attacked',
+        'ship.combat_hit',
         'disaster.triggered',
         'land_subsidence.triggered',
         'disaster.cell_damaged',
@@ -461,6 +462,13 @@ final class PlayerIslandEventService
             ->where('events.world_id', $world->id)
             ->where('events.visibility', 'public')
             ->whereIn('events.event_type', self::PUBLIC_ISLAND_EVENT_TYPES)
+            ->where(function (Builder $combat): void {
+                $combat->where('events.event_type', '!=', 'ship.combat_hit')
+                    ->orWhere(function (Builder $navalHit): void {
+                        $navalHit->whereRaw("events.metadata->>'combat_source' = ?", ['warship'])
+                            ->whereIn(DB::raw("events.metadata->>'ship_type_key'"), ['pirate', 'treasure']);
+                    });
+            })
             ->whereBetween('events.turn', [$rangeStart, $rangeEnd])
             ->where(function (Builder $historicalHostAttribution): void {
                 $this->constrainHistoricalHostAttribution($historicalHostAttribution);
@@ -529,9 +537,9 @@ final class PlayerIslandEventService
         // Legacy damage rows without host_nation_id stay fail-closed.
         $query->whereNotIn('events.event_type', self::HOST_ISLAND_MONSTER_EVENT_TYPES)
             ->orWhereRaw("events.metadata->>'host_nation_id' IS NOT NULL")
-            ->orWhere(function (Builder $neutralKill): void {
+            ->orWhere(function (Builder $neutralDamage): void {
                 // JSON null records a neutral destination; a missing key does not.
-                $neutralKill->where('events.event_type', 'monster.killed')
+                $neutralDamage->whereIn('events.event_type', ['monster.damaged', 'monster.killed'])
                     ->whereRaw("events.metadata->'host_nation_id' = 'null'::jsonb");
             });
     }
@@ -581,7 +589,7 @@ final class PlayerIslandEventService
             }
 
             $metadata = $this->metadata($row->metadata);
-            if ($this->isNeutralMonsterKill((string) $row->event_type, $metadata)) {
+            if ($this->isNeutralMonsterDamage((string) $row->event_type, $metadata)) {
                 return true;
             }
             $destinationNationId = $metadata[$destinationKey] ?? null;
@@ -649,7 +657,7 @@ final class PlayerIslandEventService
         object $row,
         array $destinationNationNames,
     ): ?string {
-        if ($this->isNeutralMonsterKill($eventType, $metadata)) {
+        if ($this->isNeutralMonsterDamage($eventType, $metadata)) {
             return '中立地';
         }
         $destinationKey = match ($eventType) {
@@ -679,9 +687,9 @@ final class PlayerIslandEventService
     }
 
     /** @param array<string, mixed> $metadata */
-    private function isNeutralMonsterKill(string $eventType, array $metadata): bool
+    private function isNeutralMonsterDamage(string $eventType, array $metadata): bool
     {
-        return $eventType === 'monster.killed'
+        return in_array($eventType, ['monster.damaged', 'monster.killed'], true)
             && array_key_exists('host_nation_id', $metadata)
             && $metadata['host_nation_id'] === null;
     }
@@ -801,6 +809,7 @@ final class PlayerIslandEventService
                 $metadata['new_owner_nation_name'] ?? $nation,
             ),
             'buried_treasure.created' => $this->publicBuriedTreasureCreatedMessage($metadata),
+            'ship.combat_hit' => $this->publicNavalHitMessage($metadata),
             'ship.pirate_attacked' => match ($metadata['target_type'] ?? null) {
                 'settlement' => sprintf(
                     '%s(%s,%s)の集落が海賊船に襲撃され、%s人が連れ去られました。',
@@ -1111,6 +1120,7 @@ final class PlayerIslandEventService
             'ship.pirate_attacked' => [
                 'nation_name', 'target_type', 'x', 'y', 'stolen_population', 'facility_key', 'evaded',
             ],
+            'ship.combat_hit' => ['ship_type_key', 'x', 'y', 'before_hp', 'after_hp'],
             'disaster.triggered' => ['disaster_key', 'center_x', 'center_y', 'sea_area_name', 'chunk_x', 'chunk_y', 'min_x', 'max_x', 'min_y', 'max_y'],
             'disaster.cell_damaged', 'fire.damaged' => [
                 'nation_name', 'x', 'y', 'disaster_key', 'from_terrain_key',
@@ -2586,6 +2596,20 @@ final class PlayerIslandEventService
             'fire' => '火災',
             default => '災害',
         };
+    }
+
+    /** @param array<string, mixed> $metadata */
+    private function publicNavalHitMessage(array $metadata): string
+    {
+        $ship = ($metadata['ship_type_key'] ?? null) === 'pirate' ? '海賊船' : '宝船';
+        $result = $this->integer($metadata, 'after_hp') === 0
+            ? '撃沈しました。'
+            : sprintf('%sダメージを与えました。', number_format(max(0,
+                $this->integer($metadata, 'before_hp') - $this->integer($metadata, 'after_hp'))));
+
+        return sprintf('海域(%s,%s)の%sに艦砲射撃が命中し、%s',
+            number_format($this->integer($metadata, 'x')),
+            number_format($this->integer($metadata, 'y')), $ship, $result);
     }
 
     /** @param array<string, mixed> $metadata */

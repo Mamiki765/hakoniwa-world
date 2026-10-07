@@ -880,7 +880,7 @@ final class SecretaryItemEffectsTest extends TestCase
         $this->equipBow($longshotUser, SecretaryItemCatalog::LONGSHOT_BOW, 10);
         $neutralCell = MapCell::query()->where('map_space_id', $this->surfaceMapSpace($world)->id)
             ->whereNull('owner_nation_id')->with(['terrain', 'facility'])->orderBy('id')->firstOrFail();
-        $aoi = $this->monster($world, $ruleset, $neutralCell, 1, 'aoi_inora');
+        $aoi = $this->monster($world, $ruleset, $neutralCell, 2, 'aoi_inora');
         $longshotContext = $this->context(
             $world,
             $this->bowHitSeed($longshotNation->id, SecretaryItemCatalog::LONGSHOT_BOW, 2_100),
@@ -893,6 +893,21 @@ final class SecretaryItemEffectsTest extends TestCase
             true,
         );
         $this->assertSame(1, $longshotMetrics['secretary_bow_hits']);
+        $this->assertSame('alive', $aoi->fresh()->state);
+        $this->assertSame(1, (int) $aoi->fresh()->current_hp);
+        $world->update(['current_turn' => $longshotContext->targetTurn]);
+        $damageEventId = DB::table('audit_events')->where('event_type', 'monster.damaged')
+            ->where('subject_id', $aoi->id)->value('id');
+        $damagePage = $this->getJson("/api/v1/public/worlds/{$world->id}/events")->assertOk();
+        $damageEvents = collect($damagePage->json('data.groups'))->flatMap(static fn (array $group): array => $group['events']);
+        $this->assertSame('monster.damaged', $damageEvents->firstWhere('id', (int) $damageEventId)['type'] ?? null);
+        $longshotContext = $this->context(
+            $world, $this->bowHitSeed($longshotNation->id, SecretaryItemCatalog::LONGSHOT_BOW, 2_100),
+            [$longshotNation->id], targetTurn: 3,
+        );
+        app(CompleteTurnEngine::class)->execute('prepare_turn', $longshotContext);
+        $longshotMetrics = app(SecretaryBowAttackService::class)->execute($longshotContext, $this->surfaceMapSpace($world), true);
+        $this->assertSame(1, $longshotMetrics['secretary_bow_kills']);
         $this->assertSame('killed', $aoi->fresh()->state);
         $this->assertSame('secretary_longshot_bow', $aoi->fresh()->removal_reason);
         $world->update(['current_turn' => $longshotContext->targetTurn]);

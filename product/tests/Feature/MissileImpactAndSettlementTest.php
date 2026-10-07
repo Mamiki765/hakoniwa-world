@@ -1470,6 +1470,11 @@ final class MissileImpactAndSettlementTest extends CommandAndMissileTestCase
         $this->assertSame('pirate_sink', $treasure->source);
         $this->assertSame(1, DB::table('audit_events')->where('event_type', 'buried_treasure.created')
             ->where('visibility', 'public')->count());
+        $page = app(PlayerIslandEventService::class)->publicWorldPage($world, anchorTurn: 2);
+        $types = collect($page['groups'])->flatMap(static fn (array $group): array => $group['events'])->pluck('type');
+        $this->assertSame(1, $types->filter(static fn (string $type): bool => $type === 'missile.impact')->count());
+        $this->assertNotContains('ship.combat_hit', $types);
+        $this->assertNotContains('ship.sunk', $types);
     }
 
     public function test_navy_evades_normal_one_hp_missile_but_cannot_evade_instant_sink(): void
