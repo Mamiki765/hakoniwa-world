@@ -545,6 +545,7 @@ export interface PublicRankingAchievements {
 export interface PublicRankingEntry extends PublicNationSummary {
     rank: number;
     achievements: PublicRankingAchievements;
+    secretary?: { id: number; display_name: string } | null;
 }
 
 export interface PublicEvent {

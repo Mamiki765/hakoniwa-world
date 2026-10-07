@@ -1942,7 +1942,9 @@ async function abandonNation(): Promise<void> {
                                     <td>{{ entry.survival_turns.toLocaleString() }}</td>
                                 </tr>
                                 <tr class="ranking-owner-row">
-                                    <td colspan="9">{{ entry.owner_name }}<template v-if="entry.comment">：{{ entry.comment }}</template></td>
+                                    <td colspan="9">
+                                        {{ entry.owner_name }}<template v-if="entry.secretary"> ＋ <button type="button" class="ranking-secretary-link" :disabled="busy" @click="openPublicSecretary(entry.secretary.id, entry.world_id)">{{ entry.secretary.display_name }}</button></template><template v-if="entry.comment">：{{ entry.comment }}</template>
+                                    </td>
                                 </tr>
                             </tbody>
                             <tbody v-if="rankings.length === 0"><tr><td colspan="10" class="empty-state">まだ島がありません。</td></tr></tbody>
@@ -2544,7 +2546,7 @@ async function abandonNation(): Promise<void> {
                         <form class="profile-form" @submit.prevent="updateSecretaryNickname">
                             <label for="secretary-nickname">愛称（任意）</label>
                             <input id="secretary-nickname" v-model="secretaryNickname" maxlength="6" autocomplete="off" aria-describedby="secretary-nickname-help secretary-nickname-error">
-                            <small id="secretary-nickname-help" class="field-hint">最大6文字。設定すると秘書画面と戦闘で名前より優先して表示します。</small>
+                            <small id="secretary-nickname-help" class="field-hint">最大6文字。秘書画面ではフルネームの下に表示し、戦闘では名前より優先して表示します。</small>
                             <span v-if="secretaryProfileErrors.nickname" id="secretary-nickname-error" class="field-error" role="alert">{{ secretaryProfileErrors.nickname }}</span>
                             <button class="button primary" type="submit" :disabled="busy">愛称を保存</button>
                         </form>

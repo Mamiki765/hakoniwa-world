@@ -883,6 +883,8 @@ html[data-theme="dark"] .compensation-banner, html[data-theme="dark"] .compensat
 .secretary-section-title { margin: 0; font-size: 1rem; }
 .secretary-panel { max-width: 1120px; margin-inline: auto; }
 .secretary-nickname { margin: -16px 0 24px; color: var(--muted); font-size: .85rem; }
+.ranking-owner-row .ranking-secretary-link { padding: 0; border: 0; background: transparent; color: var(--coral-dark); font: inherit; text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
+.ranking-secretary-link:focus-visible { outline: 2px solid var(--coral); outline-offset: 3px; }
 .secretary-tabs svg { width: 35%; height: auto; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
 .secretary-tabs .secretary-tab-settings { grid-column: 10; }
 .secretary-tabs button:hover:not(:disabled):not([aria-selected="true"]) { background: var(--hover-surface); color: var(--ink); }
