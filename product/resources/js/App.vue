@@ -207,7 +207,7 @@ function redirectFromUnavailableUnderground(): void {
 }
 
 const secretaryTabOrder = computed<SecretarySection[]>(() => viewedSecretaryProfile.value?.is_owner
-    ? ['main', 'skills', 'equipment', 'warehouse', 'settings', 'achievements']
+    ? ['main', 'skills', 'equipment', 'warehouse', 'achievements', 'settings']
     : ['main']);
 const secretaryTabIds = {
     main: 'secretary-tab-main',
@@ -2465,7 +2465,7 @@ async function abandonNation(): Promise<void> {
         />
 
         <section v-else-if="page === 'secretary' && (viewedSecretaryProfile || secretary)" class="panel secretary-panel">
-            <h1 class="secretary-page-title">秘書</h1>
+            <h1 class="secretary-page-title">{{ viewedSecretaryProfile?.equipped_title?.name ?? '秘書' }}</h1>
             <template v-if="viewedSecretaryProfile?.is_owner && secretary?.name === null">
                 <h2 class="secretary-name">？？？</h2>
                 <div class="secretary-story">
@@ -2485,8 +2485,8 @@ async function abandonNation(): Promise<void> {
                     <button v-if="viewedSecretaryProfile.is_owner" id="secretary-tab-skills" type="button" role="tab" aria-controls="secretary-panel-skills" :aria-selected="secretarySection === 'skills'" :tabindex="secretarySection === 'skills' ? 0 : -1" @click="secretarySection = 'skills'" @keydown="handleSecretaryTabKeydown">熟練度</button>
                     <button v-if="viewedSecretaryProfile.is_owner" id="secretary-tab-equipment" type="button" role="tab" aria-controls="secretary-panel-equipment" :aria-selected="secretarySection === 'equipment'" :tabindex="secretarySection === 'equipment' ? 0 : -1" @click="secretarySection = 'equipment'" @keydown="handleSecretaryTabKeydown">装備</button>
                     <button v-if="viewedSecretaryProfile.is_owner" id="secretary-tab-warehouse" type="button" role="tab" aria-controls="secretary-panel-warehouse" :aria-selected="secretarySection === 'warehouse'" :tabindex="secretarySection === 'warehouse' ? 0 : -1" @click="secretarySection = 'warehouse'" @keydown="handleSecretaryTabKeydown">倉庫</button>
-                    <button v-if="viewedSecretaryProfile.is_owner" id="secretary-tab-settings" type="button" role="tab" aria-controls="secretary-panel-settings" :aria-selected="secretarySection === 'settings'" :tabindex="secretarySection === 'settings' ? 0 : -1" @click="secretarySection = 'settings'" @keydown="handleSecretaryTabKeydown">設定</button>
                     <button v-if="viewedSecretaryProfile.is_owner" id="secretary-tab-achievements" type="button" role="tab" aria-controls="secretary-panel-achievements" :aria-selected="secretarySection === 'achievements'" :tabindex="secretarySection === 'achievements' ? 0 : -1" @click="secretarySection = 'achievements'" @keydown="handleSecretaryTabKeydown">実績</button>
+                    <button v-if="viewedSecretaryProfile.is_owner" id="secretary-tab-settings" type="button" role="tab" aria-controls="secretary-panel-settings" :aria-selected="secretarySection === 'settings'" :tabindex="secretarySection === 'settings' ? 0 : -1" @click="secretarySection = 'settings'" @keydown="handleSecretaryTabKeydown">設定</button>
                 </nav>
                 <section v-if="secretarySection === 'main'" id="secretary-panel-main" role="tabpanel" aria-labelledby="secretary-tab-main" class="secretary-main-profile">
                     <div v-if="!viewedSecretaryProfile.viewer_preferences.configured" class="secretary-image-preference-notice">
@@ -2515,7 +2515,6 @@ async function abandonNation(): Promise<void> {
                         </div>
                         <section class="secretary-profile-summary" aria-label="秘書基本情報">
                             <dl>
-                                <div v-if="viewedSecretaryProfile.equipped_title"><dt>肩書き</dt><dd>{{ viewedSecretaryProfile.equipped_title.name }}</dd></div>
                                 <div><dt>内政Lv</dt><dd>{{ viewedSecretaryProfile.domestic_level }}</dd></div>
                                 <div v-if="viewedSecretaryProfile.combat_level !== null">
                                     <dt>戦闘Lv</dt><dd>{{ viewedSecretaryProfile.combat_level }}</dd>
@@ -2614,22 +2613,26 @@ async function abandonNation(): Promise<void> {
                     </ul>
                     <p v-if="secretary.inventory.items.length === 0" class="empty-state">倉庫は空です。</p>
                 </section>
-                <section v-else-if="secretarySection === 'achievements' && viewedSecretaryProfile.is_owner && user" id="secretary-panel-achievements" role="tabpanel" aria-labelledby="secretary-tab-achievements">
-                    <h3 class="secretary-section-title">取得した実績</h3>
-                    <ul v-if="user.achievements?.length" aria-label="取得した実績">
-                        <li v-for="achievement in user.achievements" :key="achievement.key"><strong>{{ achievement.name }}</strong>：{{ achievement.description }}</li>
-                    </ul>
-                    <p v-else>まだ実績を取得していません。</p>
-                    <h3>秘書の肩書き</h3>
-                    <form v-if="user.titles?.length" class="profile-form secretary-title-form" @submit.prevent="equipSecretaryTitle">
-                        <label for="secretary-title">肩書き</label>
-                        <select id="secretary-title" v-model="profileSecretaryTitleKey" :disabled="busy" required>
-                            <option v-for="title in user.titles" :key="title.key" :value="title.key">{{ title.name }}</option>
-                        </select>
-                        <span v-if="secretaryProfileErrors.title_key" class="field-error" role="alert">{{ secretaryProfileErrors.title_key }}</span>
-                        <button class="button primary" type="submit" :disabled="busy">肩書きを装備</button>
-                    </form>
-                    <p v-else>まだ肩書きを取得していません。</p>
+                <section v-else-if="secretarySection === 'achievements' && viewedSecretaryProfile.is_owner && user" id="secretary-panel-achievements" role="tabpanel" aria-labelledby="secretary-tab-achievements" class="secretary-achievements">
+                    <section aria-labelledby="secretary-title-heading">
+                        <h3 id="secretary-title-heading" class="secretary-section-title">秘書の肩書き</h3>
+                        <form v-if="user.titles?.length" class="profile-form secretary-title-form" @submit.prevent="equipSecretaryTitle">
+                            <label for="secretary-title">肩書き</label>
+                            <select id="secretary-title" v-model="profileSecretaryTitleKey" :disabled="busy" required>
+                                <option v-for="title in user.titles" :key="title.key" :value="title.key">{{ title.name }}</option>
+                            </select>
+                            <span v-if="secretaryProfileErrors.title_key" class="field-error" role="alert">{{ secretaryProfileErrors.title_key }}</span>
+                            <button class="button primary" type="submit" :disabled="busy">肩書きを装備</button>
+                        </form>
+                        <p v-else>まだ肩書きを取得していません。</p>
+                    </section>
+                    <section aria-labelledby="secretary-achievements-heading">
+                        <h3 id="secretary-achievements-heading" class="secretary-section-title">取得した実績</h3>
+                        <ul v-if="user.achievements?.length" aria-label="取得した実績">
+                            <li v-for="achievement in user.achievements" :key="achievement.key"><strong>{{ achievement.name }}</strong>：{{ achievement.description }}</li>
+                        </ul>
+                        <p v-else>まだ実績を取得していません。</p>
+                    </section>
                 </section>
                 <section v-else-if="secretarySection === 'settings' && viewedSecretaryProfile.is_owner" id="secretary-panel-settings" role="tabpanel" aria-labelledby="secretary-tab-settings" class="secretary-settings">
                     <section class="secretary-basic-settings" aria-labelledby="secretary-basic-settings-title">

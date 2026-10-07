@@ -881,6 +881,8 @@ html[data-theme="dark"] .compensation-banner, html[data-theme="dark"] .compensat
 .secretary-panel .secretary-page-title { margin: 0 0 14px; font-family: inherit; font-size: 1.5rem; line-height: 1.25; }
 .secretary-name { margin: 0 0 24px; font-family: Georgia, "Yu Mincho", serif; font-size: clamp(2.3rem, 6vw, 5rem); line-height: 1; }
 .secretary-section-title { margin: 0; font-size: 1rem; }
+.secretary-achievements { display: grid; gap: 1.5rem; }
+.secretary-achievements > section { display: grid; gap: .75rem; }
 .secretary-tabs { display: flex; gap: 4px; margin: 0 0 18px; border-bottom: 1px solid var(--line); }
 .secretary-tabs button { min-height: 42px; padding: 8px 18px; border: 1px solid transparent; border-bottom: 0; background: transparent; color: var(--muted); cursor: pointer; font-weight: 850; }
 .secretary-tabs button[aria-selected="true"] { margin-bottom: -1px; border-color: var(--line); background: var(--input-surface); color: var(--navy); }
