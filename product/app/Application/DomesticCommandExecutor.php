@@ -670,7 +670,9 @@ final class DomesticCommandExecutor
     ): ?array {
         $observed = $this->emptyObservedState();
         if ($definition->key === 'attraction') {
-            return null;
+            return (int) $nation->money < $definition->cost_money
+                ? ['reason' => CommandFailureReason::InsufficientFunds, 'observed' => $observed]
+                : null;
         }
         if ($definition->key === 'build_ship') {
             try {

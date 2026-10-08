@@ -2218,6 +2218,7 @@ final class PlayerIslandEventService
 
         return match ($impact['effect'] ?? null) {
             'ineffective_barren_land' => '荒地',
+            'ineffective_mountain' => '山',
             'dormant_owner_protected' => '保護対象領地',
             default => '海',
         };
@@ -2582,6 +2583,7 @@ final class PlayerIslandEventService
             'defense_intercepted' => '防衛施設に迎撃されました',
             'secretary_intercepted' => '最終防衛ラインに迎撃されました',
             'ineffective_barren_land' => '被害のない土地へ落下しました',
+            'ineffective_mountain' => '山へ着弾し効果はありませんでした',
             'ineffective_sea' => '海へ落下し効果はありませんでした',
             default => '着弾結果が記録されました',
         };
