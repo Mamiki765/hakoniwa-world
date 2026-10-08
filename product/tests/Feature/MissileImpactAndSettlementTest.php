@@ -1475,6 +1475,16 @@ final class MissileImpactAndSettlementTest extends CommandAndMissileTestCase
         $this->assertSame(1, $types->filter(static fn (string $type): bool => $type === 'missile.impact')->count());
         $this->assertNotContains('ship.combat_hit', $types);
         $this->assertNotContains('ship.sunk', $types);
+        foreach ([
+            app(PlayerIslandEventService::class)->publicNationPage($firing, anchorTurn: 2),
+            app(PlayerIslandEventService::class)->ownerPage($firing, anchorTurn: 2),
+        ] as $islandPage) {
+            $islandTypes = collect($islandPage['groups'])->flatMap(
+                static fn (array $group): array => $group['events'],
+            )->pluck('type');
+            $this->assertNotContains('ship.combat_hit', $islandTypes);
+            $this->assertNotContains('ship.sunk', $islandTypes);
+        }
     }
 
     public function test_navy_evades_normal_one_hp_missile_but_cannot_evade_instant_sink(): void

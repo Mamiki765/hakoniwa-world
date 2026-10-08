@@ -905,6 +905,21 @@ class TurnCellProcessingTest extends TestCase
             $this->assertStringNotContainsString($hidden, (string) $public->getContent());
         }
 
+        foreach ([
+            $this->getJson("/api/v1/public/nations/{$nation->id}/events")->assertOk(),
+            $this->actingAs($user)->getJson("/api/v1/nations/{$nation->id}/events")->assertOk(),
+        ] as $islandResponse) {
+            $islandCombatEvents = collect($islandResponse->json('data.groups'))->flatMap(
+                static fn (array $group): array => $group['events'],
+            )->whereIn('type', ['ship.combat_hit', 'ship.warship_attacked', 'ship.sunk'])->values();
+            $this->assertSame($combatEvents->all(), $islandCombatEvents->map(
+                static fn (array $event): array => array_intersect_key($event, $combatEvents[0]),
+            )->all());
+            foreach (['ship_id', 'attacker_nation_id', 'combat_source', 'before_hp', 'after_hp', 'experience', 'refugees_received', 'money_spent', 'navy_experience'] as $hidden) {
+                $this->assertStringNotContainsString($hidden, (string) $islandResponse->getContent());
+            }
+        }
+
         $nation->update(['money' => 19]);
         [$poorContext] = $this->context(
             $world,

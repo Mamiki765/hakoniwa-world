@@ -558,11 +558,17 @@ final class PlayerIslandEventService
                     $related->whereRaw("events.metadata->>'sender_nation_id' = ?", [(string) $nationId])
                         ->orWhereRaw("events.metadata->>'receiver_nation_id' = ?", [(string) $nationId]);
                 });
+        })->orWhere(function (Builder $navalAttacker) use ($nationId): void {
+            $navalAttacker->where('events.event_type', 'ship.combat_hit')
+                ->whereRaw("events.metadata->>'combat_source' = ?", ['warship'])
+                ->whereIn(DB::raw("events.metadata->>'ship_type_key'"), ['pirate', 'treasure'])
+                ->whereRaw("events.metadata->>'attacker_nation_id' = ?", [(string) $nationId]);
         })->orWhere(function (Builder $ordinaryEvent) use ($nationId): void {
             $ordinaryEvent->whereNotIn('events.event_type', [
                 ...self::HOST_ISLAND_MONSTER_EVENT_TYPES,
                 ...self::CROSS_NATION_PUBLIC_EVENT_TYPES,
                 'monster.defense_self_destructed',
+                'ship.combat_hit',
             ])->where('events.nation_id', $nationId);
         });
     }
