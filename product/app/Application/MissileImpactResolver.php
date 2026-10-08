@@ -1454,6 +1454,9 @@ final class MissileImpactResolver
                 'to_terrain_key' => $beforeTerrain,
             ];
         }
+        if ($beforeTerrain === 'mountain') {
+            return [...$base, 'effect' => 'ineffective_mountain'];
+        }
         $isWater = in_array($beforeTerrain, ['sea', 'shallow'], true);
         if ($isWater && $beforeFacility === null) {
             return $base;
