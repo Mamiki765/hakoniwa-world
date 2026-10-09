@@ -29,6 +29,7 @@ final class SecretaryDemographicPolicy
             'hakoniwa-2s-plus-v33',
             'hakoniwa-2s-plus-v34',
             'hakoniwa-2s-plus-v35',
+            'hakoniwa-2s-plus-v36',
         ], true);
     }
 

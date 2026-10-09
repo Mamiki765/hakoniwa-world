@@ -905,16 +905,28 @@ class TurnCellProcessingTest extends TestCase
             $this->assertStringNotContainsString($hidden, (string) $public->getContent());
         }
 
-        foreach ([
-            $this->getJson("/api/v1/public/nations/{$nation->id}/events")->assertOk(),
-            $this->actingAs($user)->getJson("/api/v1/nations/{$nation->id}/events")->assertOk(),
-        ] as $islandResponse) {
-            $islandCombatEvents = collect($islandResponse->json('data.groups'))->flatMap(
-                static fn (array $group): array => $group['events'],
-            )->whereIn('type', ['ship.combat_hit', 'ship.warship_attacked', 'ship.sunk'])->values();
-            $this->assertSame($combatEvents->all(), $islandCombatEvents->map(
-                static fn (array $event): array => array_intersect_key($event, $combatEvents[0]),
-            )->all());
+        $publicIsland = $this->getJson("/api/v1/public/nations/{$nation->id}/events")->assertOk();
+        $publicIslandCombatEvents = collect($publicIsland->json('data.groups'))->flatMap(
+            static fn (array $group): array => $group['events'],
+        )->whereIn('type', ['ship.combat_hit', 'ship.warship_attacked', 'ship.sunk'])->values();
+        $this->assertSame($combatEvents->all(), $publicIslandCombatEvents->map(
+            static fn (array $event): array => array_intersect_key($event, $combatEvents[0]),
+        )->all());
+
+        $ownerIsland = $this->actingAs($user)->getJson("/api/v1/nations/{$nation->id}/events")->assertOk();
+        $ownerCombatEvents = collect($ownerIsland->json('data.groups'))->flatMap(
+            static fn (array $group): array => $group['events'],
+        )->whereIn('type', ['ship.combat_hit', 'ship.warship_attacked', 'ship.sunk'])->values();
+        $this->assertCount(2, $ownerCombatEvents);
+        $this->assertSame($combatEvents->all(), $ownerCombatEvents->where('type', 'ship.combat_hit')->values()->map(
+            static fn (array $event): array => array_intersect_key($event, $combatEvents[0]),
+        )->all());
+        $ownerDetails = $ownerCombatEvents->where('type', 'ship.warship_attacked')->values();
+        $this->assertCount(1, $ownerDetails);
+        $this->assertTrue($ownerDetails[0]['confidential']);
+        $this->assertStringContainsString('戦艦が射撃し、20億円を支払い、海軍経験値3を獲得しました。', $ownerDetails[0]['message']);
+
+        foreach ([$publicIsland, $ownerIsland] as $islandResponse) {
             foreach (['ship_id', 'attacker_nation_id', 'combat_source', 'before_hp', 'after_hp', 'experience', 'refugees_received', 'money_spent', 'navy_experience'] as $hidden) {
                 $this->assertStringNotContainsString($hidden, (string) $islandResponse->getContent());
             }
