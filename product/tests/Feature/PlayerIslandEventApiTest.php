@@ -1020,7 +1020,7 @@ class PlayerIslandEventApiTest extends TestCase
         $public = $this->getJson("/api/v1/public/worlds/{$world->id}/events")->assertOk();
         $publicTypes = collect($public->json('data.groups.0.events'))->pluck('type');
         $this->assertFalse($publicTypes->contains('missile.defense_intercepted'));
-        $this->assertFalse($publicTypes->contains('secretary.missile_intercepted'));
+        $this->assertTrue($publicTypes->contains('secretary.missile_intercepted'));
         $this->assertTrue($publicTypes->contains('missile.ineffective_aggregated'));
         $this->assertContains(
             'PPミサイルのうち3発は効果がありませんでした。',

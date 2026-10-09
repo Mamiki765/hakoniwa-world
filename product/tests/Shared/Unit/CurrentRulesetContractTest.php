@@ -28,8 +28,8 @@ final class CurrentRulesetContractTest extends TestCase
         $this->assertSame([$current['key']], array_keys($normalConfig['published_rulesets']));
         $this->assertSame($current, $normalConfig['published_rulesets'][$current['key']]);
         $this->assertSame($current['secretary'], $normalConfig['current_catalogs']['secretary']);
-        $this->assertSame('hakoniwa-2s-plus-v35', $current['key']);
-        $this->assertSame(35, $current['version']);
+        $this->assertSame('hakoniwa-2s-plus-v36', $current['key']);
+        $this->assertSame(36, $current['version']);
         $this->assertArrayNotHasKey('behavior', $current);
         $this->assertArrayNotHasKey('data', $current);
         $this->assertArrayNotHasKey('flavor', $current);

@@ -43,9 +43,10 @@ final class CurrentRulesetAuthoringInspector
         $files = [...self::DOMAIN_FILES, 'power-and-pizza.php', 'user-achievements.php'];
         foreach ($files as $file) {
             $directory = match ($file) {
-                'world-and-map.php', 'facilities.php', 'commands-and-production.php',
+                'world-and-map.php', 'lifecycle-and-karma.php' => 'release-4.18.3/',
+                'facilities.php', 'commands-and-production.php',
                 'terrain-and-disasters.php', 'turn-pipeline.php', 'monsters-and-military.php',
-                'lifecycle-and-karma.php', 'ocean-loop.php', 'facility-ranks.php' => 'release-4.18/',
+                'ocean-loop.php', 'facility-ranks.php' => 'release-4.18/',
                 'surface-ships.php' => 'release-4.15/',
                 'user-achievements.php' => 'island-secretary/',
                 'secretary.php' => 'release-4.18/',

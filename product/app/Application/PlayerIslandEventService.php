@@ -36,6 +36,7 @@ final class PlayerIslandEventService
         'facility.constructed',
         'facility.expanded',
         'command.buried_treasure',
+        'buried_treasure.collected', 'buried_treasure.collection_failed',
         'command.seabed_oil_search',
         'command.land_level_earthquake',
         'disaster.cell_damaged',
@@ -85,10 +86,32 @@ final class PlayerIslandEventService
         'secretary.missile_intercepted',
         'refugee_received',
         'karma.spp_self_destruct_setup',
+        'karma.alliance_money',
+        'secretary.disaster_charm_protected',
         'monster.item_drop_received',
         'monster.item_drop_inventory_full',
         'trading_post.sold_private',
         'turn.summary',
+    ];
+
+    /** Existing records whose safe facts may be public without changing stored visibility. */
+    private const PUBLIC_FACT_EVENT_TYPES = [
+        'command.territory_abandoned',
+        'fire.undersea_city_destroyed',
+        'facility.undersea_city_abandoned',
+        'facility.undersea_fire_station_abandoned',
+        'ship.built', 'ship.sunk',
+        'secretary.missile_intercepted',
+    ];
+
+    /** Existing admin records exposed only to their owning Nation. */
+    private const OWNER_TRADING_EVENT_TYPES = [
+        'trading_post.bid_placed', 'trading_post.outbid_refunded',
+        'trading_post.cancelled', 'trading_post.unsold_returned',
+    ];
+
+    private const OWNER_PUBLIC_DETAIL_EVENT_TYPES = [
+        'nation.emergency_farm_created', 'ship.warship_attacked',
     ];
 
     /** @var list<string> */
@@ -101,12 +124,17 @@ final class PlayerIslandEventService
         'command.facility_built_public',
         'command.logging_public',
         'command.capital_relocated_public',
+        'command.territory_abandoned',
         'command.attraction_started_public',
         'command.money_aid_public',
         'command.food_aid_public',
         'command.territory_expanded',
         'territory.influenced',
         'buried_treasure.created',
+        'fire.undersea_city_destroyed',
+        'facility.undersea_city_abandoned', 'facility.undersea_fire_station_abandoned',
+        'ship.built', 'ship.sunk', 'ship.npc_spawned',
+        'secretary.missile_intercepted',
         'ship.pirate_attacked',
         'ship.combat_hit',
         'disaster.triggered',
@@ -182,6 +210,11 @@ final class PlayerIslandEventService
         'monster.item_drop_received',
         'monster.item_drop_inventory_full',
         'trading_post.sold_private',
+        'buried_treasure.collected', 'buried_treasure.collection_failed',
+        'karma.alliance_money', 'secretary.disaster_charm_protected',
+        'trading_post.bid_placed', 'trading_post.outbid_refunded',
+        'trading_post.cancelled', 'trading_post.unsold_returned',
+        'nation.emergency_farm_created', 'ship.warship_attacked',
     ];
 
     /**
@@ -214,6 +247,14 @@ final class PlayerIslandEventService
                     $owned->whereIn('events.event_type', self::OWNER_EVENT_TYPES)
                         ->whereIn('events.visibility', ['nation', 'private'])
                         ->where('events.nation_id', $nation->id);
+                })->orWhere(function (Builder $trading) use ($nation): void {
+                    $trading->whereIn('events.event_type', self::OWNER_TRADING_EVENT_TYPES)
+                        ->where('events.visibility', 'admin')
+                        ->where('events.nation_id', $nation->id);
+                })->orWhere(function (Builder $detail) use ($nation): void {
+                    $detail->whereIn('events.event_type', self::OWNER_PUBLIC_DETAIL_EVENT_TYPES)
+                        ->where('events.visibility', 'public')
+                        ->where('events.nation_id', $nation->id);
                 })->orWhere(function (Builder $reward) use ($nation): void {
                     $reward->where('events.event_type', 'monster.reward_distributed')
                         // Legacy rows were public, but this branch remains role-gated.
@@ -223,14 +264,12 @@ final class PlayerIslandEventService
                                 ->orWhereRaw("events.metadata->>'host_nation_id' = ?", [(string) $nation->id]);
                         });
                 })->orWhere(function (Builder $public) use ($nation): void {
-                    $public->whereIn('events.event_type', self::PUBLIC_ISLAND_EVENT_TYPES)
-                        ->where('events.visibility', 'public')
-                        ->where(function (Builder $historicalHostAttribution): void {
-                            $this->constrainHistoricalHostAttribution($historicalHostAttribution);
-                        })
-                        ->where(function (Builder $destination) use ($nation): void {
-                            $this->constrainPublicIslandDestination($destination, $nation->id);
-                        });
+                    $this->constrainPublicEvents($public);
+                    $public->where(function (Builder $historicalHostAttribution): void {
+                        $this->constrainHistoricalHostAttribution($historicalHostAttribution);
+                    })->where(function (Builder $destination) use ($nation): void {
+                        $this->constrainPublicIslandDestination($destination, $nation->id);
+                    });
                 });
             })
             ->where(function (Builder $visible): void {
@@ -263,6 +302,9 @@ final class PlayerIslandEventService
             ]);
         $destinationNationNames = $this->publicDestinationNationNames($world, $rows->all());
         $rows = $this->filterResolvablePublicDestinations($rows, $destinationNationNames);
+        $rows = $rows->unique(static fn (object $row): string => $row->event_type === 'resource.undersea_city_maintenance_failed'
+            ? 'undersea-maintenance:'.$row->turn
+            : 'event:'.$row->id)->values();
         $coordinates = $this->subjectCoordinates($rows->all());
         $events = $rows->map(function (object $row) use ($coordinates, $destinationNationNames, $nation): array {
             $metadata = $this->metadata($row->metadata);
@@ -304,7 +346,7 @@ final class PlayerIslandEventService
                 $metadata['y'] ??= $coordinate['y'];
             }
             $message = $this->message($eventType, $metadata, $targetTurn, $nation->id);
-            if ($coordinate !== null && $eventType !== 'monster.reward_distributed') {
+            if ($coordinate !== null && ! in_array($eventType, ['monster.reward_distributed', 'resource.undersea_city_maintenance_failed'], true)) {
                 $coordinateText = sprintf('(%s,%s)', number_format($coordinate['x']), number_format($coordinate['y']));
                 if (! str_contains($message, $coordinateText)) {
                     $message = sprintf('%s%sで%s', $nation->name, $coordinateText, $message);
@@ -355,7 +397,7 @@ final class PlayerIslandEventService
     }
 
     /**
-     * Project the World news feed from public events only. Metadata and
+     * Project only approved public facts. Stored private detail metadata and
      * coordinates are deliberately never part of this public response.
      *
      * @return array{
@@ -460,8 +502,9 @@ final class PlayerIslandEventService
         $rows = DB::table('audit_events as events')
             ->leftJoin('nations as event_nations', 'event_nations.id', '=', 'events.nation_id')
             ->where('events.world_id', $world->id)
-            ->where('events.visibility', 'public')
-            ->whereIn('events.event_type', self::PUBLIC_ISLAND_EVENT_TYPES)
+            ->where(function (Builder $public): void {
+                $this->constrainPublicEvents($public);
+            })
             ->where(function (Builder $combat): void {
                 $combat->where('events.event_type', '!=', 'ship.combat_hit')
                     ->orWhere(function (Builder $navalHit): void {
@@ -518,7 +561,7 @@ final class PlayerIslandEventService
                 '_aggregation_key' => $this->publicAggregationKey($eventType, $rawMetadata),
             ];
         })->all();
-        $events = $this->aggregatePublicRefugees($events);
+        $events = $this->aggregatePublicFacts($events);
 
         return [
             'groups' => $this->groupByTurn($events),
@@ -529,6 +572,35 @@ final class PlayerIslandEventService
             'has_newer_page' => $page > 1,
             'has_older_page' => $rangeStart > 1,
         ];
+    }
+
+    private function constrainPublicEvents(Builder $query): void
+    {
+        $query->whereIn('events.event_type', self::PUBLIC_ISLAND_EVENT_TYPES)
+            ->where(function (Builder $visibility): void {
+                $visibility->where('events.visibility', 'public')
+                    ->orWhere(function (Builder $facts): void {
+                        $facts->whereIn('events.visibility', ['nation', 'private'])
+                            ->where(function (Builder $approved): void {
+                                $approved->whereIn('events.event_type', self::PUBLIC_FACT_EVENT_TYPES)
+                                    ->orWhere(function (Builder $central): void {
+                                        $central->where('events.event_type', 'facility.partially_damaged')
+                                            ->whereIn(DB::raw("events.metadata->>'facility_key'"), ['central_bank', 'central_granary'])
+                                            ->whereRaw("events.metadata->>'facility_destroyed' = 'true'");
+                                    });
+                            });
+                    });
+            })
+            ->where(function (Builder $central): void {
+                $central->where('events.event_type', '!=', 'facility.partially_damaged')
+                    ->orWhereRaw("COALESCE(events.metadata->>'facility_key', '') NOT IN (?, ?)", ['central_bank', 'central_granary'])
+                    ->orWhereRaw("events.metadata->>'facility_destroyed' = 'true'");
+            })
+            ->where(function (Builder $sinking): void {
+                // These two paths already publish the actual combat result.
+                $sinking->where('events.event_type', '!=', 'ship.sunk')
+                    ->orWhereRaw("COALESCE(events.metadata->>'removal_reason', '') NOT IN (?, ?)", ['missile', 'warship']);
+            });
     }
 
     private function constrainHistoricalHostAttribution(Builder $query): void
@@ -794,6 +866,7 @@ final class PlayerIslandEventService
                 $x,
                 $y,
             ),
+            'command.territory_abandoned' => "{$nation}({$x},{$y})の領土が放棄されました。",
             'command.attraction_started_public' => "{$nation}で誘致活動が行われました。",
             'command.money_aid_public' => sprintf(
                 '%sから%sへ%s億円の資金援助が行われました。',
@@ -815,6 +888,25 @@ final class PlayerIslandEventService
                 $metadata['new_owner_nation_name'] ?? $nation,
             ),
             'buried_treasure.created' => $this->publicBuriedTreasureCreatedMessage($metadata),
+            'fire.undersea_city_destroyed' => sprintf(
+                '%sの%sが火災により消滅しました(?,?)。',
+                $nation,
+                $this->facilityLabel($metadata['removed_facility_key'] ?? null, '海底施設'),
+            ),
+            'facility.undersea_city_abandoned' => "{$nation}の海底都市が破棄されました(?,?)。",
+            'facility.undersea_fire_station_abandoned' => "{$nation}の海底消防署が消滅し、海に戻りました(?,?)。",
+            'ship.built' => sprintf('%sが%sを建造しました。', $nation, $metadata['ship_name'] ?? '船'),
+            'ship.sunk' => sprintf('%s%sが沈没しました。', $nation === '島' ? '' : $nation.'の', $metadata['ship_name'] ?? '船'),
+            'ship.npc_spawned' => match ($metadata['ship_type_key'] ?? null) {
+                'pirate' => '海賊船が出現しました。',
+                'treasure' => '宝船が出現しました。',
+                default => '船が出現しました。',
+            },
+            'secretary.missile_intercepted' => sprintf(
+                '%sの%sがミサイルを迎撃しました。',
+                $nation,
+                is_string($metadata['secretary_name'] ?? null) ? '秘書の'.$metadata['secretary_name'] : '秘書',
+            ),
             'ship.combat_hit' => $this->publicNavalHitMessage($metadata),
             'ship.pirate_attacked' => match ($metadata['target_type'] ?? null) {
                 'settlement' => sprintf(
@@ -854,7 +946,9 @@ final class PlayerIslandEventService
                 $y,
                 $this->capitalDisasterDamageMessage($metadata),
             ),
-            'facility.partially_damaged' => $this->publicFacilityPartialDamageMessage($metadata),
+            'facility.partially_damaged' => in_array($metadata['facility_key'] ?? null, ['central_bank', 'central_granary'], true)
+                ? sprintf('%sの%sが消滅しました(?,?)。', $nation, $this->facilityLabel($metadata['facility_key']))
+                : $this->publicFacilityPartialDamageMessage($metadata),
             'monster.spawned' => ($metadata['spawn_source'] ?? null) === 'world_aoi_disaster'
                 ? "中立海域({$x},{$y})に{$monster}が出現しました。"
                 : "{$nation}({$x},{$y})に{$monster}が出現し、一帯を踏み荒らしました。",
@@ -1101,9 +1195,19 @@ final class PlayerIslandEventService
      */
     private function publicSafeMetadata(string $eventType, array $metadata): array
     {
+        if ($eventType === 'facility.partially_damaged'
+            && in_array($metadata['facility_key'] ?? null, ['central_bank', 'central_granary'], true)) {
+            return array_intersect_key($metadata, array_fill_keys(['nation_name', 'facility_key'], true));
+        }
         $keys = match ($eventType) {
             'award.granted' => ['nation_name', 'award_key', 'award_name'],
             'command.terrain_changed_public' => ['nation_name', 'command_key', 'x', 'y'],
+            'command.territory_abandoned' => ['nation_name', 'x', 'y'],
+            'fire.undersea_city_destroyed' => ['nation_name', 'removed_facility_key'],
+            'facility.undersea_city_abandoned', 'facility.undersea_fire_station_abandoned' => ['nation_name'],
+            'ship.built', 'ship.sunk' => ['nation_name', 'ship_name'],
+            'ship.npc_spawned' => ['ship_type_key'],
+            'secretary.missile_intercepted' => ['nation_name', 'secretary_name'],
             'command.forest_planted_public', 'command.logging_public',
             'command.seabed_base_built_public', 'command.undersea_city_built_public', 'command.undersea_fire_station_built_public',
             'land_subsidence.triggered',
@@ -1369,6 +1473,9 @@ final class PlayerIslandEventService
     /** @param array<string, mixed> $metadata */
     private function publicAggregationKey(string $eventType, array $metadata): ?string
     {
+        if ($eventType === 'secretary.missile_intercepted') {
+            return 'nation:'.(string) ($metadata['nation_id'] ?? 'unknown');
+        }
         if ($eventType !== 'refugee_generated') {
             return null;
         }
@@ -1384,23 +1491,23 @@ final class PlayerIslandEventService
     }
 
     /**
-     * Refugee audit rows remain impact-level records. The public projection
-     * shows one deliberately amount-free line per launch and target.
+     * Stored rows stay unchanged. Refugees are grouped per launch and target;
+     * secretary interception facts are grouped per Nation and turn, without counts.
      *
      * @param  list<array<string, mixed>>  $events
      * @return list<array<string, mixed>>
      */
-    private function aggregatePublicRefugees(array $events): array
+    private function aggregatePublicFacts(array $events): array
     {
         $result = [];
         $seen = [];
         foreach ($events as $event) {
-            if (($event['type'] ?? null) !== 'refugee_generated') {
+            if (! in_array($event['type'] ?? null, ['refugee_generated', 'secretary.missile_intercepted'], true)) {
                 $result[] = $event;
 
                 continue;
             }
-            $key = $event['target_turn'].':'.($event['_aggregation_key'] ?? 'unknown');
+            $key = $event['type'].':'.$event['target_turn'].':'.($event['_aggregation_key'] ?? 'unknown');
             if (isset($seen[$key])) {
                 continue;
             }
@@ -1497,6 +1604,24 @@ final class PlayerIslandEventService
             'facility.constructed' => $this->facilityLabel($metadata['facility_key'] ?? null).'を建設しました。',
             'facility.expanded' => $this->facilityExpandedMessage($metadata),
             'command.buried_treasure' => $this->buriedTreasureMessage($metadata),
+            'buried_treasure.collected' => sprintf(
+                '埋蔵宝%s個を回収し、アイテム%s個を入手しました。',
+                number_format($this->integer($metadata, 'treasure_count')),
+                number_format($this->integer($metadata, 'item_count')),
+            ),
+            'buried_treasure.collection_failed' => '倉庫がいっぱいのため、埋蔵宝を回収できませんでした。',
+            'trading_post.bid_placed' => sprintf('交易所で%s億円の入札を行いました。', number_format($this->integer($metadata, 'amount'))),
+            'trading_post.outbid_refunded' => sprintf('高値更新により、入札金%s億円が返金されました。', number_format($this->integer($metadata, 'refunded_money'))),
+            'trading_post.cancelled' => '交易所への出品を取り消しました。',
+            'trading_post.unsold_returned' => '交易所で売れ残った商品が返還されました。',
+            'karma.alliance_money' => sprintf('箱庭連合から対怪獣賞金%s億円を受け取りました。', number_format($this->integer($metadata, 'applied_money'))),
+            'secretary.disaster_charm_protected' => sprintf('秘書のお守りが%sの被害を防ぎました。', $this->disasterLabel($metadata['disaster_key'] ?? null)),
+            'nation.emergency_farm_created' => '冬眠中の食料確保のため、緊急農場が作られました。',
+            'ship.warship_attacked' => sprintf(
+                '戦艦が射撃し、%s億円を支払い、海軍経験値%sを獲得しました。',
+                number_format($this->integer($metadata, 'money_spent')),
+                number_format($this->integer($metadata, 'navy_experience')),
+            ),
             'command.seabed_oil_search' => $this->seabedOilSearchMessage($metadata),
             'command.land_level_earthquake' => sprintf(
                 '地ならし直後に地震が発生しました（中心 %s, %s）。',
@@ -1556,10 +1681,7 @@ final class PlayerIslandEventService
                 '%sで食料が不足しています！',
                 $metadata['nation_name'] ?? $metadata['audience_nation_name'] ?? '自国',
             ),
-            'resource.undersea_city_maintenance_failed' => sprintf(
-                '%sの海底都市は設備維持に必要な工業品または鉱物が不足し、人口が減少しました。',
-                $this->privateCellLocation($metadata),
-            ),
+            'resource.undersea_city_maintenance_failed' => '海底都市の設備維持に必要な工業品または鉱物が不足しています！',
             'famine.applied' => sprintf(
                 '飢餓により人口が%s人減少し、%s人になりました。',
                 number_format($this->integer($metadata, 'actual_loss')),
@@ -1788,9 +1910,10 @@ final class PlayerIslandEventService
             ),
             'missile.impact' => $this->missileImpactMessage($metadata),
             'karma.spp_self_destruct_setup' => sprintf(
-                '%s「%s様……先ほどのSPPミサイルの本数ですが……」（カルマ +20）',
+                '%s「%s様……先ほどのSPPミサイルの本数ですが……」（カルマ +%s）',
                 is_string($metadata['secretary_name'] ?? null) ? $metadata['secretary_name'] : '秘書',
                 $metadata['player_address'] ?? '島主',
+                number_format($this->integer($metadata, 'crime_points')),
             ),
             'refugee_generated' => sprintf(
                 'ミサイル被害により難民%s人が発生しました。',
@@ -1982,14 +2105,29 @@ final class PlayerIslandEventService
     private function preferOwnerEventDetails(array $events): array
     {
         $specializedGenericKeys = [];
+        $publicShipSinks = [];
         foreach ($events as $event) {
             $key = $this->specializedOwnerGenericKey($event);
             if ($key !== null) {
                 $specializedGenericKeys[$key] = true;
             }
+            $metadata = is_array($event['_metadata'] ?? null) ? $event['_metadata'] : [];
+            $shipId = $this->integer($metadata, 'ship_id');
+            if ($shipId > 0 && ($event['_visibility'] ?? null) === 'public'
+                && ((($event['type'] ?? null) === 'missile.impact' && ($metadata['effect'] ?? null) === 'ship_sunk')
+                    || (($event['type'] ?? null) === 'ship.combat_hit' && $this->integer($metadata, 'after_hp') === 0))) {
+                $publicShipSinks[$event['target_turn'].':'.$shipId] = true;
+            }
         }
 
-        $events = array_values(array_filter($events, function (array $event) use ($specializedGenericKeys): bool {
+        $events = array_values(array_filter($events, function (array $event) use ($specializedGenericKeys, $publicShipSinks): bool {
+            if (($event['type'] ?? null) === 'ship.sunk') {
+                $metadata = is_array($event['_metadata'] ?? null) ? $event['_metadata'] : [];
+                $shipId = $this->integer($metadata, 'ship_id');
+                if ($shipId > 0 && isset($publicShipSinks[$event['target_turn'].':'.$shipId])) {
+                    return false;
+                }
+            }
             if (! in_array($event['type'] ?? null, ['terrain.changed', 'facility.constructed', 'facility.expanded'], true)) {
                 return true;
             }

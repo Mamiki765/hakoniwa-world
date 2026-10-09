@@ -115,6 +115,19 @@ final class RulesetPublisher
         return $this->publishSnapshot($settings);
     }
 
+    /** Historical migration only: compare against the unchanged production v35 source.
+     * @param  array<string, mixed>  $settings
+     */
+    public function publishUnderseaFireStation(array $settings): RulesetVersion
+    {
+        $accepted = require config_path('hakoniwa/rulesets/hakoniwa-2s-plus-v35.php');
+        if ($settings !== $accepted) {
+            throw new DomainException('The undersea fire station migration requires the exact immutable v35 snapshot.');
+        }
+
+        return $this->publishSnapshot($settings);
+    }
+
     /** @param array<string, mixed> $settings */
     private function publishSnapshot(array $settings): RulesetVersion
     {

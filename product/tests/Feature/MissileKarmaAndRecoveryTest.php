@@ -713,7 +713,7 @@ final class MissileKarmaAndRecoveryTest extends CommandAndMissileTestCase
         $this->assertSame(0, $context->state->launchIntents()[0]->remainingShots());
     }
 
-    public function test_v13_spp_self_destruct_setup_adds_twenty_once_and_rejects_nonqualifying_end_states(): void
+    public function test_spp_self_destruct_setup_adds_thirty_once_and_rejects_nonqualifying_end_states(): void
     {
         [$world, $firingUser, $firing, $target] = $this->combatants('spp-hidden-crime');
         $firing->update(['money' => 9_999, 'karma' => 0]);
@@ -742,12 +742,12 @@ final class MissileKarmaAndRecoveryTest extends CommandAndMissileTestCase
         );
         $this->assertSame(2, $qualified['shots_fired']);
         $this->assertSame(1, (int) $qualifying->fresh()->current_hp);
-        $this->assertSame(20, $qualified['crime_points']);
-        $this->assertSame(20, (int) $firing->fresh()->karma);
+        $this->assertSame(30, $qualified['crime_points']);
+        $this->assertSame(30, (int) $firing->fresh()->karma);
         $special = DB::table('audit_events')->where('event_type', 'karma.spp_self_destruct_setup')->sole();
         $this->assertSame('private', $special->visibility);
         $this->assertSame(
-            '秘書「試験島主様……先ほどのSPPミサイルの本数ですが……」（カルマ +20）',
+            '秘書「試験島主様……先ほどのSPPミサイルの本数ですが……」（カルマ +30）',
             $special->message,
         );
 
