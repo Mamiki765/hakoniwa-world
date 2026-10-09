@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<!--BEGIN-->
+<title>箱庭 地上開発画面 試作</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=BIZ+UDPGothic:wght@400;700&family=DotGothic16&display=swap">
+<link rel="stylesheet" href="style.css">
+<!--HEAD-END-->
+</head>
+<body>
+<div id="protobar">
+    <strong class="proto-title">地上開発画面 試作</strong>
+    <div class="seg" role="tablist" aria-label="デザイン案">
+        <button type="button" data-variant="a" role="tab">案A 帳簿</button>
+        <button type="button" data-variant="b" role="tab">案B 俯瞰</button>
+        <button type="button" data-variant="c" role="tab">案C 片手</button>
+    </div>
+    <label class="proto-opt pc-only"><input type="checkbox" id="opt-phone"> スマホ幅で見る</label>
+    <label class="proto-opt">状態
+        <select id="opt-state">
+            <option value="normal">通常</option>
+            <option value="loading">読み込み中</option>
+            <option value="error">通信エラー</option>
+            <option value="empty">計画・ログが空</option>
+            <option value="poor">資金不足</option>
+        </select>
+    </label>
+    <label class="proto-opt">配色
+        <select id="opt-theme">
+            <option value="">端末に合わせる</option>
+            <option value="light">ライト</option>
+            <option value="dark">ダーク</option>
+        </select>
+    </label>
+    <span class="proto-note">固定データの試作です。操作はこの画面の中だけで、サーバーへは何も送りません。</span>
+</div>
+
+<div id="stage">
+<div id="app" data-variant="a" data-tab="inspect" data-island="closed" data-log="closed">
+
+    <header id="hud" aria-label="島の状況">
+        <div class="hud-name">
+            <b id="hud-title"></b>
+            <span id="hud-turn"></span>
+        </div>
+        <dl id="hud-stats"></dl>
+        <div class="hud-actions">
+            <button type="button" id="btn-island" class="quiet">収支と資源</button>
+            <button type="button" id="btn-log" class="quiet only-b">ログ<span class="badge" id="log-badge"></span></button>
+        </div>
+    </header>
+
+    <section id="map" aria-label="地図">
+        <div class="map-tools">
+            <button type="button" id="map-home" title="自分の首都へ戻る">自島へ</button>
+            <button type="button" id="map-in" aria-label="拡大">＋</button>
+            <button type="button" id="map-out" aria-label="縮小">−</button>
+            <label><input type="checkbox" id="map-territory" checked> 領土</label>
+            <label><input type="checkbox" id="map-plan" checked> 予約番号</label>
+        </div>
+        <div id="map-view" tabindex="0">
+            <div id="map-plane"></div>
+            <p id="map-status" role="status" hidden></p>
+        </div>
+    </section>
+
+    <section id="inspect" aria-label="選んだマスとコマンド">
+        <button type="button" class="sheet-close" id="inspect-close" aria-label="閉じる">×</button>
+        <div id="cell-info"></div>
+        <div id="cmd-area"></div>
+    </section>
+
+    <section id="plan" aria-label="開発計画">
+        <header class="pane-head">
+            <h2>開発計画</h2>
+            <span id="plan-count"></span>
+            <button type="button" id="plan-bulk" class="quiet">一括</button>
+        </header>
+        <div id="plan-tools" hidden></div>
+        <div id="plan-body"></div>
+    </section>
+
+    <section id="log" aria-label="島ログ">
+        <header class="pane-head">
+            <h2>島ログ</h2>
+            <div class="seg small" id="log-filter">
+                <button type="button" data-filter="all" class="on">すべて</button>
+                <button type="button" data-filter="important">重要のみ</button>
+            </div>
+            <button type="button" class="sheet-close only-b" id="log-close" aria-label="閉じる">×</button>
+        </header>
+        <div id="log-body"></div>
+    </section>
+
+    <section id="island" aria-label="収支と資源">
+        <header class="pane-head">
+            <h2>収支と資源</h2>
+            <button type="button" class="sheet-close" id="island-close" aria-label="閉じる">×</button>
+        </header>
+        <div id="island-body"></div>
+    </section>
+
+    <nav id="tabs" aria-label="表示の切り替え"></nav>
+
+    <div id="entry" hidden>
+        <form id="entry-form" class="dialog" aria-labelledby="entry-title">
+            <h3 id="entry-title"></h3>
+            <div id="entry-body"></div>
+            <div class="dialog-actions">
+                <button type="button" id="entry-cancel" class="quiet">やめる</button>
+                <button type="submit" class="primary">計画に入れる</button>
+            </div>
+        </form>
+    </div>
+    <div id="menu" hidden></div>
+    <p id="toast" role="status" hidden></p>
+</div>
+</div>
+<script src="data.js"></script>
+<script src="tiles.js"></script>
+<script src="app.js"></script>
+<!--END-->
+</body>
+</html>
