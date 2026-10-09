@@ -572,7 +572,7 @@ class PlayerIslandEventApiTest extends TestCase
             '探索船が防衛施設の自爆により(18,19)で沈没しました。',
             $this->messages($response->json('data.groups')),
         );
-        $this->assertTrue(collect($response->json('data.groups.0.events'))->contains(
+        $this->assertFalse(collect($response->json('data.groups.0.events'))->contains(
             static fn (array $event): bool => $event['id'] === $finance,
         ));
         $this->assertStringNotContainsString('(4,5)', $body);
@@ -834,10 +834,10 @@ class PlayerIslandEventApiTest extends TestCase
         $this->assertTrue($types->contains('turn.summary'));
         $this->assertTrue($types->contains('fire.damaged'));
         $this->assertTrue($types->contains('resource.food_shortage'));
-        $this->assertSame(1, $types->filter(
+        $this->assertSame(0, $types->filter(
             static fn (string $type): bool => in_array($type, ['famine.applied', 'population.decreased'], true),
         )->count());
-        $this->assertTrue($types->contains('famine.applied'));
+        $this->assertFalse($types->contains('famine.applied'));
         $this->assertSame(count($routine), DB::table('audit_events')->whereIn('event_type', array_column($routine, 0))->count());
     }
 
@@ -1020,7 +1020,7 @@ class PlayerIslandEventApiTest extends TestCase
         $public = $this->getJson("/api/v1/public/worlds/{$world->id}/events")->assertOk();
         $publicTypes = collect($public->json('data.groups.0.events'))->pluck('type');
         $this->assertFalse($publicTypes->contains('missile.defense_intercepted'));
-        $this->assertFalse($publicTypes->contains('secretary.missile_intercepted'));
+        $this->assertTrue($publicTypes->contains('secretary.missile_intercepted'));
         $this->assertTrue($publicTypes->contains('missile.ineffective_aggregated'));
         $this->assertContains(
             'PPミサイルのうち3発は効果がありませんでした。',

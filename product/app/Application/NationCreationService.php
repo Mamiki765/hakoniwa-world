@@ -10,6 +10,7 @@ use App\Domain\Nation\NationPlacementUnavailableException;
 use App\Domain\Nation\NationProfileText;
 use App\Domain\Nation\UserMembershipMutationLock;
 use App\Domain\Ruleset\CurrentRulesetGuard;
+use App\Domain\Secretary\SecretaryDemographicPolicy;
 use App\Domain\Turn\TurnAlreadyRunningException;
 use App\Domain\Turn\UnresolvedNextTurnRunException;
 use App\Domain\World\RegistrationWorldExpansionPlanner;
@@ -39,6 +40,7 @@ final class NationCreationService
         private readonly WorldMutationLock $worldMutationLock,
         private readonly NextProductionTurnRunGuard $turnRunGuard,
         private readonly SecretaryService $secretaries,
+        private readonly SecretaryDemographicPolicy $demographicPolicy,
         private readonly MonsterBehaviorResolver $monsterBehaviors,
         private readonly MonsterRemovalService $monsterRemoval,
         private readonly BuriedTreasureService $buriedTreasures,
@@ -250,7 +252,7 @@ final class NationCreationService
                         ]);
                     }
                     $this->islands->apply($islandPlan, $mapSpace, $nation);
-                    if (in_array($rules['key'] ?? null, ['hakoniwa-2s-plus-v17', 'hakoniwa-2s-plus-v18', 'hakoniwa-2s-plus-v19', 'hakoniwa-2s-plus-v20', 'hakoniwa-2s-plus-v21', 'hakoniwa-2s-plus-v22', 'hakoniwa-2s-plus-v23', 'hakoniwa-2s-plus-v24', 'hakoniwa-2s-plus-v25', 'hakoniwa-2s-plus-v26', 'hakoniwa-2s-plus-v27', 'hakoniwa-2s-plus-v28', 'hakoniwa-2s-plus-v29', 'hakoniwa-2s-plus-v30', 'hakoniwa-2s-plus-v31', 'hakoniwa-2s-plus-v32', 'hakoniwa-2s-plus-v33', 'hakoniwa-2s-plus-v34', 'hakoniwa-2s-plus-v35'], true)) {
+                    if ($this->demographicPolicy->enabled($rules)) {
                         $nation->population_high_water = (int) $mapSpace->cells()
                             ->where('owner_nation_id', $nation->id)
                             ->sum('population');

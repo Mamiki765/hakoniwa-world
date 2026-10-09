@@ -1019,7 +1019,7 @@ final class RulesetAuthoringValidator
                 'seabed_base_destroyed' => 3,
             ],
             'anti_monster_missile_keys' => ['missile', 'pp_missile', 'spp_missile'],
-            'spp_self_destruct_setup_points' => 20,
+            'spp_self_destruct_setup_points' => 30,
             'hostile_monument_points' => 15,
             'foreign_monster_kill_reduction' => 1,
             'victim_reduction_per_impact' => 1,

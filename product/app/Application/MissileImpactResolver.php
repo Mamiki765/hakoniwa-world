@@ -827,13 +827,13 @@ final class MissileImpactResolver
             }
             $nation = $launch['nation'];
             $points = $context->ruleset->settings['karma']['spp_self_destruct_setup_points'] ?? null;
-            if ($points !== 20) {
+            if ($points !== 30) {
                 throw new DomainException('The active ruleset has an invalid deliberate SPP KARMA contract.');
             }
             $context->state->addKarmaCrime($nation->id, $points);
             $snapshot = $context->state->secretarySnapshot($nation->id);
             $speaker = $snapshot['name'] ?? '秘書';
-            $message = $speaker.'「'.$nation->owner_name.'様……先ほどのSPPミサイルの本数ですが……」（カルマ +20）';
+            $message = $speaker.'「'.$nation->owner_name.'様……先ほどのSPPミサイルの本数ですが……」（カルマ +'.$points.'）';
             $this->events->record($context, 'karma.spp_self_destruct_setup', $nation, [
                 'nation_id' => $nation->id,
                 'player_address' => $nation->owner_name,
