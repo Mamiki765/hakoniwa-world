@@ -51,13 +51,11 @@ final class PlayerIslandEventService
         'population.decreased',
         'resource.food_shortage',
         'resource.undersea_city_maintenance_failed',
-        'famine.applied',
         'facility.undersea_city_abandoned',
         'facility.riot',
         'resource.automatic_sale',
         'resource.food_overflow_resolved',
         'capacity.overflow',
-        'command.finance',
         'command.forest_planted_private',
         'command.missile_base_built_private',
         'command.seabed_base_built_private',
@@ -280,9 +278,11 @@ final class PlayerIslandEventService
                 $visible->where('events.event_type', '!=', 'resource.automatic_sale')
                     ->orWhereRaw("COALESCE(events.metadata->>'sold', '0') <> '0'");
             })
-            ->where(function (Builder $deduplicated): void {
-                $deduplicated->where('events.event_type', '!=', 'population.decreased')
-                    ->orWhereRaw("COALESCE(events.metadata->>'reason', '') <> 'famine'");
+            ->where(function (Builder $visible): void {
+                $visible->where('events.event_type', '!=', 'population.decreased')
+                    ->orWhereRaw("COALESCE(events.metadata->>'reason', '') NOT IN (?, ?, ?)", [
+                        'famine', 'above_attraction_maximum', 'above_effective_capital_maximum',
+                    ]);
             });
 
         $rows = $query
