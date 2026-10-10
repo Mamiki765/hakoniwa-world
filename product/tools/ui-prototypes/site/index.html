@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<!--BEGIN-->
+<title>箱庭 全体ナビと地上の周辺 試作</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=BIZ+UDPGothic:wght@400;700&family=DotGothic16&display=swap">
+<link rel="stylesheet" href="../surface/style.css">
+<link rel="stylesheet" href="site.css">
+<!--HEAD-END-->
+</head>
+<body>
+<div id="protobar">
+    <strong class="proto-title">全体ナビと地上の周辺 試作</strong>
+    <label class="proto-opt pc-only"><input type="checkbox" id="opt-phone"> スマホ幅で見る</label>
+    <label class="proto-opt">状態
+        <select id="opt-state"><option value="member">ログイン済み・島あり</option><option value="guest">未ログイン</option><option value="noisland">ログイン済み・島なし</option><option value="under">地底にいるとき</option></select>
+    </label>
+    <label class="proto-opt">配色
+        <select id="opt-theme"><option value="">端末に合わせる</option><option value="light">ライト</option><option value="dark">ダーク</option></select>
+    </label>
+    <span class="proto-note">固定データの試作です。島名・人名・数値・文面は架空で、サーバーへは何も送りません。</span>
+</div>
+<div id="stage"><div id="site">
+    <header id="gnav"></header>
+    <main id="page"></main>
+    <div id="pop" hidden></div>
+</div></div>
+<script src="../surface/data.js"></script>
+<script src="../surface/tiles.js"></script>
+<script src="site.js"></script>
+<!--END-->
+</body>
+</html>

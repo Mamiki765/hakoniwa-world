@@ -1,0 +1,126 @@
+/* 全体ナビ: 上に1本。主な行き先は文字のまま並べ、通知とアカウントは右に寄せる。
+   地底にいるときは細い帯だけ残し、地底側の下端メニューと二重にならないようにする。 */
+#site { height: 100%; display: flex; flex-direction: column; background: var(--bg); position: relative; }
+#gnav { display: flex; align-items: center; gap: 4px 14px; padding: 0 14px; background: var(--bar); color: var(--bar-ink); min-height: 44px; flex-wrap: wrap; }
+#gnav .logo { font: 400 17px var(--f-game); display: flex; align-items: baseline; gap: 8px; }
+#gnav .logo small { font: 11px var(--f-body); opacity: .6; }
+#gnav nav { display: flex; gap: 2px; flex: 1; min-width: 0; overflow-x: auto; }
+#gnav button { background: transparent; color: inherit; border: 0; border-radius: 0; padding: 12px 12px 9px; border-bottom: 3px solid transparent; white-space: nowrap; position: relative; }
+#gnav button.on { border-bottom-color: var(--bar-ink); font-weight: 700; }
+#gnav button:hover { background: color-mix(in srgb, var(--bar-ink) 12%, transparent); }
+#gnav .right { display: flex; gap: 2px; align-items: center; }
+#gnav .n { position: absolute; top: 5px; right: 2px; min-width: 15px; height: 15px; border-radius: 8px; background: var(--bad); color: #fff; font: 10px/15px var(--f-game); text-align: center; }
+#gnav.thin { min-height: 30px; font-size: 12px; }
+#gnav.thin button { padding: 5px 10px; border: 0; }
+#page { flex: 1; min-height: 0; overflow: auto; }
+.wrap { max-width: 1120px; margin: 0 auto; padding: 12px 16px 28px; display: flex; flex-direction: column; gap: 12px; }
+.wrap > h1 { font: 400 24px var(--f-game); border-bottom: 2px solid var(--ink); padding-bottom: 6px; display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 14px; }
+.wrap > h1 small { font: 13px var(--f-body); color: var(--ink-2); }
+.wrap > h1 > :last-child:not(:first-child):not(small) { margin-left: auto; }
+.wrap > h1 button { font: 13px var(--f-body); }
+.box { background: var(--panel); border: 1px solid var(--line); border-radius: 3px; min-width: 0; }
+.box > header { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; padding: 5px 10px; background: var(--panel-2); border-bottom: 1px solid var(--line); min-height: 34px; }
+.box > header h2 { font: 400 15px var(--f-game); margin-right: auto; }
+.box > header small { color: var(--ink-2); }
+.box .body { padding: 8px 10px; }
+.cols { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr); gap: 12px; align-items: start; }
+.muted { color: var(--ink-2); font-size: 12px; }
+.err { color: var(--bad); font-size: 13px; }
+.ok { color: var(--good); font-size: 13px; }
+.subnav { display: flex; gap: 4px; flex-wrap: wrap; }
+.subnav button.on { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+table.t { width: 100%; border-collapse: collapse; font-size: 13px; }
+.t th, .t td { padding: 5px 8px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: middle; }
+.t thead th { font-weight: 400; font-size: 11px; color: var(--ink-2); }
+.t .r { text-align: right; font-family: var(--f-game); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.t td small { display: block; color: var(--ink-2); font-size: 12px; }
+.tw { overflow-x: auto; }
+.pill { font-size: 11px; border: 1px solid currentColor; border-radius: 2px; padding: 0 4px; white-space: nowrap; color: var(--ink-2); }
+.pill.good { color: var(--good); } .pill.bad { color: var(--bad); } .pill.you { color: var(--accent); }
+form.f { display: grid; gap: 8px; }
+form.f label { display: grid; gap: 2px; font-size: 13px; }
+form.f label.inline { display: flex; align-items: center; gap: 6px; }
+form.f input:not([type="checkbox"]):not([type="radio"]):not([type="range"]), form.f select, form.f textarea, .bid input { padding: 6px 8px; border: 1px solid var(--line); border-radius: 3px; background: var(--bg); color: var(--ink); font: inherit; min-width: 0; }
+form.f .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: end; }
+form.f .row > label { flex: 1 1 120px; }
+form.f .act { display: flex; gap: 8px; justify-content: flex-end; flex-wrap: wrap; }
+fieldset { border: 1px solid var(--line); border-radius: 3px; padding: 6px 10px; display: grid; gap: 4px; margin: 0; }
+legend { font-size: 12px; color: var(--ink-2); padding: 0 4px; }
+.bid { display: flex; gap: 4px; align-items: center; justify-content: flex-end; }
+.bid input { width: 84px; text-align: right; font-family: var(--f-game); }
+
+/* 観光 */
+.visit { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 12px; align-items: start; }
+.vmap { height: 440px; position: relative; overflow: hidden; background: var(--sea); border: 1px solid var(--line); touch-action: none; cursor: grab; }
+.vmap .plane { position: absolute; left: 0; top: 0; }
+.vstats { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 2px 14px; }
+.vstats div { display: flex; justify-content: space-between; gap: 8px; border-bottom: 1px dotted var(--line); font-size: 13px; }
+.vstats dt { color: var(--ink-2); } .vstats dd { font-family: var(--f-game); }
+.facts2 { display: grid; grid-template-columns: auto 1fr; gap: 2px 12px; font-size: 13px; }
+.facts2 dt { color: var(--ink-2); }
+
+/* 伝言板 */
+.msgs { display: grid; gap: 0; }
+.msgs li { padding: 5px 0; border-bottom: 1px dotted var(--line); font-size: 13px; }
+.msgs .meta { display: flex; gap: 8px; align-items: baseline; font-size: 12px; color: var(--ink-2); }
+.msgs .meta b { color: var(--ink); font-weight: 700; }
+.msgs li.secret { background: color-mix(in srgb, var(--paradox) 10%, transparent); padding-inline: 6px; }
+.msgs li.secret .meta b { color: var(--paradox); }
+.count.over { color: var(--bad); }
+
+/* 資源の売り方 */
+.pol { display: grid; grid-template-columns: 6em minmax(0, 1fr) auto; gap: 4px 10px; align-items: center; padding: 7px 0; border-bottom: 1px solid var(--line); }
+.pol .have { font: 13px var(--f-game); color: var(--ink-2); }
+.pol .seg button { padding: 3px 8px; font-size: 12px; }
+.pol .keep { display: flex; align-items: center; gap: 4px; font-size: 12px; }
+.pol .keep input { width: 90px; text-align: right; padding: 3px 6px; border: 1px solid var(--line); border-radius: 3px; background: var(--bg); color: var(--ink); font-family: var(--f-game); }
+.pol .res { grid-column: 1 / -1; font-size: 12px; color: var(--ink-2); }
+.gbar { height: 4px; background: var(--panel-2); } .gbar i { display: block; height: 100%; background: var(--accent); }
+
+/* 地下の施設枠 */
+.layers { display: grid; gap: 6px; }
+.layer { display: grid; grid-template-columns: 4em repeat(5, minmax(0, 1fr)); gap: 4px; align-items: stretch; }
+.layer > span { font: 12px var(--f-game); color: var(--ink-2); align-self: center; }
+.uslot { border: 1px solid var(--line); background: var(--panel-2); border-radius: 3px; padding: 6px 2px; font-size: 12px; text-align: center; min-height: 44px; }
+.uslot.lad { background: transparent; border-style: dashed; color: var(--ink-2); display: grid; place-items: center; }
+.uslot.on { outline: 2px solid var(--accent); }
+.uslot.built { background: var(--panel); font-weight: 700; }
+
+.grant { border-bottom: 1px solid var(--line); padding: 8px 0; display: grid; gap: 4px; }
+.grant .items { display: flex; flex-wrap: wrap; gap: 4px 14px; font: 13px var(--f-game); }
+.q { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 10px; padding: 6px 0; border-bottom: 1px solid var(--line); font-size: 13px; }
+.q .gbar { grid-column: 1 / -1; }
+.danger { border-color: var(--bad); } .danger > header h2 { color: var(--bad); }
+.state { display: grid; place-items: center; text-align: center; gap: 8px; padding: 26px 12px; border: 1px dashed var(--line); color: var(--ink-2); }
+.state b { font: 400 16px var(--f-game); color: var(--ink); }
+#pop { position: absolute; right: 10px; top: 46px; z-index: 30; width: min(320px, calc(100% - 20px)); background: var(--panel); border: 1px solid var(--line); border-radius: 4px; box-shadow: 0 8px 24px var(--shade); padding: 6px; display: grid; gap: 2px; }
+#pop button { border: 0; background: transparent; text-align: left; padding: 8px 10px; display: flex; justify-content: space-between; gap: 10px; }
+#pop button:hover { background: var(--panel-2); }
+#pop h3 { font: 400 12px var(--f-game); color: var(--ink-2); padding: 4px 10px 0; }
+.toc { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 6px; }
+.toc button { text-align: left; padding: 8px 10px; display: grid; gap: 1px; }
+.toc button small { color: var(--ink-2); font-size: 12px; }
+
+@container stage (max-width: 760px) {
+    #gnav { padding: 0 8px; gap: 0 6px; }
+    #gnav .logo { font-size: 14px; padding: 6px 0 2px; } #gnav .logo small { display: none; }
+    #gnav .right { margin-left: auto; }
+    #gnav nav { order: 3; flex-basis: 100%; }
+    #gnav button { padding: 8px 10px 6px; }
+    #gnav.thin nav { order: 0; flex-basis: auto; }
+    .wrap { padding: 8px 10px 20px; gap: 8px; }
+    .wrap > h1 { font-size: 20px; }
+    .cols, .visit { grid-template-columns: minmax(0, 1fr); }
+    .vmap { height: 300px; }
+    .pol { grid-template-columns: 5em minmax(0, 1fr); } .pol .keep { grid-column: 1 / -1; }
+    .pol .seg { grid-column: 1 / -1; display: flex; } .pol .seg button { flex: 1; min-height: 40px; }
+    table.lst, .lst tbody { display: block; } .lst thead { display: none; }
+    .lst tr { display: grid; grid-template-columns: 1fr 1fr; gap: 2px 10px; padding: 8px 0; border-bottom: 1px solid var(--line); }
+    .lst td { border: 0; padding: 0; } .lst td:first-child, .lst td:last-child { grid-column: 1 / -1; }
+    .lst td.r { text-align: left; } .lst td.r small { display: inline; margin-left: 6px; }
+    .lst .bid { justify-content: flex-start; } .lst .bid input { width: 110px; height: 40px; } .lst .bid button { min-height: 40px; flex: 1; }
+    .layer { grid-template-columns: 3em repeat(5, minmax(0, 1fr)); } .uslot { font-size: 10px; }
+    form.f .act button { flex: 1; min-height: 44px; }
+    .t .hide-sp { display: none; }
+    .bid input { width: 70px; }
+}
