@@ -202,3 +202,23 @@
     .ug-self-card .ug-next-level { margin-top: 6px; }
     .ug-companion { gap: 6px; }
 }
+
+/* ---- 拠点の枠: 画面の高さに収め、上に所持金、下にメニューを固定する。内容が少なくてもメニューは下端に残る。 ---- */
+#app:has(> main > .underground-panel.ug-panel) { display: flex; flex-direction: column; height: 100dvh; }
+#app:has(> main > .underground-panel.ug-panel) > .site-header { flex: none; }
+main:has(> .underground-panel.ug-panel) { flex: 1; min-height: 0; display: flex; flex-direction: column; width: 100%; max-width: none; margin: 0; padding: 0; }
+.underground-panel.ug-panel { flex: 1; min-height: 0; display: flex; flex-direction: column; width: min(1120px, 100%); margin: 0 auto; }
+.underground-panel.ug-panel > .ug-shell { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow-x: clip; overflow-y: auto; border-radius: 0; border-block: 0; box-shadow: none; }
+.underground-panel.ug-panel > .ug-shell > * { flex: none; }
+.underground-panel.ug-panel > .ug-shell > .ug-page-heading { position: sticky; top: 0; z-index: 21; background: var(--ug-surface); border-bottom: 1px solid var(--line); }
+.underground-panel.ug-panel > .ug-shell > .ug-navigation { margin-top: auto; padding-bottom: env(safe-area-inset-bottom, 0px); }
+
+/* ---- 地底の数字（所持金・能力値・HP・IL・品質など）の書体。差し替えるときはこの変数だけ変える。 ---- */
+.underground-panel { --ug-f-num: Georgia, "Yu Mincho", serif; }
+.underground-panel :is(
+    .ug-wallet dd, .ug-page-heading span, .ug-level strong, .ug-gauge-label strong, .ug-next-level strong,
+    .underground-status-table td, .ug-stp-inputs input, .ug-companion small, .ug-boss-countdown,
+    .underground-vitals dd, .underground-vitals strong, .underground-party-meter, .underground-equipment-card-stats dd, .underground-equipment-card-kicker small
+) { font-family: var(--ug-f-num); font-variant-numeric: tabular-nums; }
+
+.ug-stp-inputs .ug-stp-step { min-width: 34px; touch-action: manipulation; user-select: none; }

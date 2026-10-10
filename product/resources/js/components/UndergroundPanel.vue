@@ -1931,6 +1931,39 @@ function maximumStpDraft(stat: StatKey): number {
     return Math.min(2_147_483_647, stpDraft.value[stat] + stpDraftRemaining.value);
 }
 
+function stepStp(stat: StatKey, delta: number): boolean {
+    const next = Math.max(0, Math.min(maximumStpDraft(stat), stpDraft.value[stat] + delta));
+    if (next === stpDraft.value[stat]) return false;
+    stpDraft.value = { ...stpDraft.value, [stat]: next };
+    return true;
+}
+
+// ＋−は押しっぱなしで加速する。最初は1ずつ、押し続けるほど間隔が短く、歩幅が大きくなる。
+let stpHoldTimer: ReturnType<typeof setTimeout> | null = null;
+
+function beginStpHold(stat: StatKey, direction: 1 | -1, event: PointerEvent): void {
+    if (event.button !== 0) return;
+    endStpHold();
+    let ticks = 0;
+    const tick = (): void => {
+        const stride = ticks < 12 ? 1 : ticks < 30 ? 5 : 25;
+        if (!stepStp(stat, direction * stride) && !stepStp(stat, direction)) return;
+        ticks++;
+        stpHoldTimer = setTimeout(tick, ticks === 1 ? 350 : Math.max(40, 140 - ticks * 8));
+    };
+    tick();
+}
+
+function endStpHold(): void {
+    if (stpHoldTimer !== null) clearTimeout(stpHoldTimer);
+    stpHoldTimer = null;
+}
+
+// キーボード（EnterやSpace）で押したときは、1回ぶんだけ動かす。
+function stepStpFromKeyboard(stat: StatKey, direction: 1 | -1, event: MouseEvent): void {
+    if (event.detail === 0) stepStp(stat, direction);
+}
+
 function setStpShare(stat: StatKey, share: 0.5 | 1): void {
     stpDraft.value = { ...stpDraft.value, [stat]: Math.floor(maximumStpDraft(stat) * share) };
 }
@@ -2377,6 +2410,7 @@ onMounted(() => {
     void enter();
 });
 onUnmounted(() => {
+    endStpHold();
     if (cooldownTimer !== null) window.clearInterval(cooldownTimer);
 });
 </script>
@@ -3257,7 +3291,9 @@ onUnmounted(() => {
                                 <td class="underground-stp-control">
                                     <div class="ug-stp-inputs">
                                     <button type="button" :disabled="busy" :aria-label="`${label}に残りの50%を配分`" @click="setStpShare(key, 0.5)">50%</button>
+                                    <button type="button" class="ug-stp-step" :disabled="busy || stpDraft[key] <= 0" :aria-label="`${label}の配分を1減らす（押し続けると速くなります）`" @pointerdown="beginStpHold(key, -1, $event)" @pointerup="endStpHold" @pointerleave="endStpHold" @pointercancel="endStpHold" @click="stepStpFromKeyboard(key, -1, $event)">−</button>
                                     <input type="number" min="0" :max="maximumStpDraft(key)" step="1" inputmode="numeric" :value="stpDraft[key]" :disabled="busy" :aria-label="`${label}の今回の配分`" @input="setStpDraft(key, $event)">
+                                    <button type="button" class="ug-stp-step" :disabled="busy || stpDraft[key] >= maximumStpDraft(key)" :aria-label="`${label}の配分を1増やす（押し続けると速くなります）`" @pointerdown="beginStpHold(key, 1, $event)" @pointerup="endStpHold" @pointerleave="endStpHold" @pointercancel="endStpHold" @click="stepStpFromKeyboard(key, 1, $event)">＋</button>
                                     <button type="button" :disabled="busy" :aria-label="`${label}に残りの100%を配分`" @click="setStpShare(key, 1)">100%</button>
                                     </div>
                                 </td>
