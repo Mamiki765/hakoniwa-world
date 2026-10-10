@@ -1,0 +1,21 @@
+/* 管理ページ: 左に項目、右に作業。取り返しのつかない操作は必ず「内容を確かめる → 実行」の2段にする。 */
+#adm { height: 100%; display: grid; grid-template-columns: 200px minmax(0, 1fr); min-height: 0; }
+#amenu { background: var(--panel); border-right: 1px solid var(--line); padding: 8px; display: flex; flex-direction: column; gap: 2px; overflow: auto; }
+#amenu h1 { font: 400 15px var(--f-game); padding: 4px 8px 8px; }
+#amenu button { text-align: left; border: 0; background: transparent; padding: 7px 8px; display: flex; justify-content: space-between; gap: 6px; }
+#amenu button.on { background: var(--accent); color: var(--accent-ink); }
+#amenu .n { font: 11px var(--f-game); border: 1px solid currentColor; border-radius: 8px; padding: 0 5px; }
+.confirm { border: 2px solid var(--bad); }
+.confirm > header { background: color-mix(in srgb, var(--bad) 14%, var(--panel)); }
+.confirm > header h2 { color: var(--bad); }
+.sumlist { display: grid; grid-template-columns: auto 1fr; gap: 3px 14px; font-size: 13px; }
+.sumlist dt { color: var(--ink-2); }
+.checks { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 2px 10px; max-height: 180px; overflow: auto; border: 1px solid var(--line); padding: 6px; font-size: 13px; }
+.assets { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 6px; }
+.done { border: 1px solid var(--good); color: var(--good); padding: 8px 10px; font-size: 13px; }
+.turnbig { font: 34px/1 var(--f-game); }
+@container stage (max-width: 760px) {
+    #adm { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); }
+    #amenu { flex-direction: row; border-right: 0; border-bottom: 1px solid var(--line); padding: 4px; }
+    #amenu h1 { display: none; } #amenu button { white-space: nowrap; flex: none; }
+}
