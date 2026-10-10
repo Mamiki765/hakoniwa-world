@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
 import { ApiError, api } from '../api/client';
+import { newestCreatedAt } from '../state/ownBoardUnread';
 import type { MessageBoardEntry, MessageBoardTimeline } from '../types';
 
 const props = defineProps<{
@@ -23,8 +24,7 @@ let loadGeneration = 0;
 
 // いちばん新しい伝言の時刻。親が「新着あり」の印を出すのに使う。
 watch(timeline, (loaded) => {
-    const times = (loaded?.entries ?? []).map((entry) => entry.created_at);
-    emit('latest', times.length > 0 ? times.reduce((newest, time) => time > newest ? time : newest) : null);
+    if (loaded !== null) emit('latest', newestCreatedAt(loaded));
 });
 
 const bodyLength = computed(() => Array.from(body.value).length);

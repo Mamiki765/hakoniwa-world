@@ -28,6 +28,7 @@ import UndergroundSurfaceMapView from './components/UndergroundSurfaceMap.vue';
 import { formatExactMoney } from './formatters/money';
 import { useMapState } from './state/mapState';
 import { useLobbyRanking } from './state/lobbyRanking';
+import { useOwnBoardUnread } from './state/ownBoardUnread';
 import { useSurfaceLedger } from './state/surfaceLedger';
 import type {
     Announcement,
@@ -204,27 +205,15 @@ const page = ref<'home' | 'announcements' | 'inquiry' | 'admin-inquiries' | 'gui
 );
 
 
-// 伝言板の新着。最後に見た伝言の時刻をこの端末に覚えておき、それより新しい伝言があれば印を出す。
-const boardLatest = ref<string | null>(null);
-const boardSeen = ref<string | null>(null);
-const boardSeenKey = computed(() => nation.value === null ? null : `hakoniwa.message-board.seen:${nation.value.id}`);
-const boardUnread = computed(() => boardLatest.value !== null && (boardSeen.value === null || boardLatest.value > boardSeen.value));
-watch(boardSeenKey, (key) => {
-    boardLatest.value = null;
-    try {
-        boardSeen.value = key === null ? null : window.localStorage.getItem(key);
-    } catch {
-        boardSeen.value = null;
-    }
-}, { immediate: true });
-watch(() => [boardLatest.value, ledger.boardVisible.value, page.value] as const, ([latest, visible, currentPage]) => {
-    if (latest === null || !visible || currentPage !== 'island' || boardSeenKey.value === null) return;
-    boardSeen.value = latest;
-    try {
-        window.localStorage.setItem(boardSeenKey.value, latest);
-    } catch {
-        // 保存できなくても動く
-    }
+// 自分の島の伝言板の新着。開発画面の中の印と、上の帯の「自島へ」の印の両方に使う。
+// 「自島へ」を押しただけでは既読にせず、伝言板の本文を表示したときに既読にする。
+const ownBoard = useOwnBoardUnread(
+    computed(() => nation.value?.id ?? null),
+    computed(() => page.value === 'island' && nation.value?.capital != null && mapSpace.value !== null),
+);
+const boardUnread = ownBoard.unread;
+watch(() => [ownBoard.latest.value, ledger.boardVisible.value, page.value] as const, ([latest, visible, currentPage]) => {
+    if (latest !== null && visible && currentPage === 'island') ownBoard.markSeen();
 });
 
 watch(page, (nextPage) => {
@@ -1845,7 +1834,7 @@ async function abandonNation(): Promise<void> {
         </a>
         <nav aria-label="主要ナビゲーション">
             <button type="button" @click="page = 'home'">TOP</button>
-            <button v-if="nation" type="button" @click="openOwnIsland">自島へ</button>
+            <button v-if="nation" type="button" class="notification-anchor" :aria-label="boardUnread ? '自島へ（伝言板に新しい伝言があります）' : undefined" @click="openOwnIsland">自島へ<span v-if="boardUnread" class="notification-dot" aria-hidden="true" /></button>
             <button v-if="secretary" type="button" @click="openSecretary">{{ secretary.header_label }}</button>
             <button v-if="nation" type="button" @click="page = 'trading-post'">交易場</button>
             <button v-if="secretary" type="button" class="notification-anchor" :aria-label="distortedStoneReminder ? '地底（歪んだ輝石の初回受取があります）' : undefined" @click="openUnderground">地底<span v-if="distortedStoneReminder" class="notification-dot" aria-hidden="true" /></button>
@@ -2442,7 +2431,7 @@ async function abandonNation(): Promise<void> {
                         :nation-id="nation.id"
                         context="development"
                         @posted="refreshMyNation"
-                        @latest="boardLatest = $event"
+                        @latest="ownBoard.report(nation.id, $event)"
                     />
                 </div>
             </section>
