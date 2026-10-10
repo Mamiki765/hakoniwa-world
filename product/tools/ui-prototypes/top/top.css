@@ -1,0 +1,79 @@
+/* TOP: 左に島一覧（主役）、右にターン状況・お知らせ・ニュース。スマホは1列で、島一覧は表から行カードに変える。 */
+#top { height: 100%; overflow: auto; }
+.wrap { max-width: 1280px; margin: 0 auto; padding: 12px 16px 28px; display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 12px; grid-template-areas: "title title" "main side"; }
+.title { grid-area: title; display: flex; flex-wrap: wrap; align-items: center; gap: 8px 20px; border-bottom: 2px solid var(--ink); padding-bottom: 8px; }
+.title h1 { font: 400 28px/1.1 var(--f-game); margin: 0; }
+.title p { color: var(--ink-2); font-family: var(--f-game); }
+.title .enter { margin-left: auto; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; font-size: 13px; }
+.title .enter button { min-height: 36px; }
+.main { grid-area: main; min-width: 0; display: flex; flex-direction: column; gap: 12px; }
+.side { grid-area: side; min-width: 0; display: flex; flex-direction: column; gap: 12px; }
+.box { background: var(--panel); border: 1px solid var(--line); border-radius: 3px; min-width: 0; }
+.box > header { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; padding: 5px 10px; background: var(--panel-2); border-bottom: 1px solid var(--line); min-height: 34px; }
+.box > header h2 { font: 400 15px var(--f-game); margin-right: auto; }
+.box > header small { color: var(--ink-2); }
+.box .body { padding: 8px 10px; }
+
+/* ターン状況 */
+.turn { display: grid; grid-template-columns: auto 1fr; gap: 2px 12px; align-items: baseline; }
+.turn .now { font: 34px/1 var(--f-game); grid-row: span 2; }
+.turn .now small { font: 12px var(--f-body); color: var(--ink-2); display: block; margin-top: 2px; }
+.turn .next b { font: 400 20px var(--f-game); font-variant-numeric: tabular-nums; }
+.turn .sub { font-size: 12px; color: var(--ink-2); }
+.turn.late .next b { color: var(--bad); }
+.world { display: flex; gap: 16px; margin-top: 6px; padding-top: 6px; border-top: 1px dotted var(--line); font: 14px var(--f-game); }
+.world span b { font: 11px var(--f-body); font-weight: 400; color: var(--ink-2); margin-right: 5px; }
+.notice li { display: grid; grid-template-columns: auto 1fr; gap: 8px; padding: 3px 0; border-bottom: 1px dotted var(--line); font-size: 13px; }
+.notice time { font: 12px var(--f-game); color: var(--ink-2); }
+.notice button { border: 0; background: transparent; padding: 0; text-align: left; color: var(--accent); text-decoration: underline; }
+
+/* 島一覧（PCは表） */
+.rank-tools { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; font-size: 12px; }
+.rank-tools select, .rank-tools input { padding: 2px 6px; border: 1px solid var(--line); border-radius: 3px; background: var(--panel); }
+.rank-scroll { overflow-x: auto; }
+table.rank { width: 100%; border-collapse: collapse; font-size: 13px; }
+.rank th, .rank td { padding: 4px 8px; border-bottom: 1px solid var(--line); text-align: right; white-space: nowrap; }
+.rank thead th { font-weight: 400; font-size: 11px; color: var(--ink-2); background: var(--panel); position: sticky; top: 0; }
+.rank thead th button { border: 0; background: transparent; padding: 0; font-size: 11px; color: inherit; }
+.rank thead th button.on { color: var(--ink); font-weight: 700; }
+.rank td { font-family: var(--f-game); font-variant-numeric: tabular-nums; }
+.rank td.on { background: var(--panel-2); }
+.rank th.l, .rank td.l { text-align: left; }
+.rank td.no { color: var(--ink-2); width: 30px; }
+.rank tr.me td { box-shadow: inset 0 1px 0 var(--accent), inset 0 -1px 0 var(--accent); }
+.isl { font-family: var(--f-body); }
+.isl button { border: 0; background: transparent; padding: 0; font: 700 14px var(--f-body); color: var(--accent); text-decoration: underline; }
+.isl small { display: block; color: var(--ink-2); font-size: 12px; }
+.isl.dormant button { color: var(--ink-2); }
+.st { font: 11px var(--f-body); border: 1px solid currentColor; border-radius: 2px; padding: 0 4px; margin-left: 5px; white-space: nowrap; }
+.st.sleep { color: var(--ink-2); } .st.fin { color: var(--turn); } .st.karma { color: var(--bad); } .st.you { color: var(--accent); } .st.award { color: var(--paradox); }
+.cards { display: none; }
+
+/* ニュース */
+.news h3 { font: 400 12px var(--f-game); color: var(--ink-2); margin: 6px 0 2px; }
+.news p { display: grid; grid-template-columns: 14px 1fr; gap: 4px; font-size: 13px; padding: 1px 0; }
+.news p i { font-style: normal; font-family: var(--f-game); color: var(--line); text-align: center; }
+.news p.notable i { color: var(--accent); } .news p.warning, .news p.warning i { color: var(--bad); }
+.pager { display: flex; gap: 6px; justify-content: space-between; margin-top: 8px; font-size: 12px; }
+
+@container stage (max-width: 860px) {
+    .wrap { grid-template-columns: minmax(0, 1fr); grid-template-areas: "title" "side" "main"; padding: 8px 10px 20px; gap: 8px; }
+    .title h1 { font-size: 22px; }
+    .title .enter { margin-left: 0; flex-basis: 100%; }
+    .title .enter button { flex: 1; min-height: 44px; }
+    .side .news { display: none; }
+    /* スマホではターン→島一覧→お知らせ→出来事の順に並べ替える */
+    .side, .main { display: contents; }
+    .side > :nth-child(1) { order: 1; } .main > :nth-child(1) { order: 2; } .side > :nth-child(2) { order: 3; } .main > .news-m { order: 4; }
+    .main .news-m { display: block; }
+    .rank-scroll { display: none; }
+    .cards { display: block; }
+    .card { display: grid; grid-template-columns: 30px minmax(0, 1fr) auto; gap: 2px 8px; align-items: center; padding: 8px 10px; border-bottom: 1px solid var(--line); }
+    .card.me { box-shadow: inset 3px 0 0 var(--accent); }
+    .card .no { font: 16px var(--f-game); color: var(--ink-2); text-align: right; grid-row: span 2; }
+    .card .key { font: 16px var(--f-game); text-align: right; white-space: nowrap; }
+    .card .key small { font: 10px var(--f-body); color: var(--ink-2); display: block; }
+    .card .more { grid-column: 2 / -1; display: flex; flex-wrap: wrap; gap: 0 12px; font: 12px var(--f-game); color: var(--ink-2); }
+    .card .more b { font: 10px var(--f-body); font-weight: 400; margin-right: 3px; }
+}
+@container stage (min-width: 861px) { .main .news-m { display: none; } }
