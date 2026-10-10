@@ -370,6 +370,10 @@ html .sl h2 { font: var(--sl-w-head) 14px var(--sl-f-head); display: block; min-
     .sl.sl-visit { grid-template: "hud hud" auto "inspect map" minmax(0, 1fr) "inspect log" var(--sl-log-h, 210px) / var(--sl-col-l, 300px) minmax(0, 1fr); }
 }
 .sl-visit-comment { min-width: 0; max-width: 320px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; color: var(--sl-ink-2); }
+/* 上の1行は幅が狭いと項目を減らすので、公開情報の全項目をここにも出す（スマホでも欠けない）。 */
+.sl-visit-facts { padding: 6px 10px; border-bottom: 1px solid var(--sl-line); }
+html .sl .sl-visit-facts h3 { font: var(--sl-w-head) 12px var(--sl-f-head); color: var(--sl-ink-2); margin-bottom: 3px; }
+.sl .sl-visit-comment-full { margin-top: 4px; font-size: 12px; color: var(--sl-ink-2); overflow-wrap: anywhere; }
 .sl .sl-note { padding: 6px 10px; font-size: 12px; color: var(--sl-ink-2); border-bottom: 1px dotted var(--sl-line); }
 .sl-note span { display: block; }
 
