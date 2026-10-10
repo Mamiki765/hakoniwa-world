@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<!--BEGIN-->
+<title>箱庭 地底戦闘ログ 試作</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=BIZ+UDPGothic:wght@400;700&family=DotGothic16&display=swap">
+<link rel="stylesheet" href="style.css">
+<!--HEAD-END-->
+</head>
+<body>
+<div id="protobar">
+    <strong class="proto-title">地底 戦闘ログ 試作</strong>
+    <div class="seg" id="opt-scenario" aria-label="場面">
+        <button type="button" data-scenario="duel">1対1</button>
+        <button type="button" data-scenario="boss">4対1 ボス</button>
+        <button type="button" data-scenario="party">4対3</button>
+    </div>
+    <label class="proto-opt pc-only"><input type="checkbox" id="opt-phone"> スマホ幅で見る</label>
+    <label class="proto-opt">配色
+        <select id="opt-theme"><option value="">端末に合わせる</option><option value="dark">洞窟（暗）</option><option value="light">記録書（明）</option></select>
+    </label>
+    <span class="proto-note">固定データの試作です。戦闘は見せ方を試すための仮の計算で、サーバーへは何も送りません。</span>
+</div>
+<div id="stage">
+<div id="app" data-mode="read" data-detail="digest">
+    <header id="head">
+        <div class="head-title">
+            <small id="head-place"></small>
+            <h1 id="head-name"></h1>
+        </div>
+        <div class="head-opts">
+            <div class="seg" id="opt-mode" aria-label="見せ方">
+                <button type="button" data-mode="read">読む</button>
+                <button type="button" data-mode="play">再生</button>
+            </div>
+            <div class="seg" id="opt-detail" aria-label="行数">
+                <button type="button" data-detail="digest">要点</button>
+                <button type="button" data-detail="all">すべて</button>
+            </div>
+        </div>
+    </header>
+    <div id="body">
+        <section id="field" aria-label="戦況">
+            <div class="team" id="team-enemy" data-team="enemy"></div>
+            <div class="field-mid"><span id="round-now"></span></div>
+            <div class="team" id="team-player" data-team="player"></div>
+        </section>
+        <section id="log" aria-label="戦闘ログ"></section>
+    </div>
+    <nav id="ctrl" aria-label="操作"></nav>
+</div>
+</div>
+<script src="sim.js"></script>
+<script src="app.js"></script>
+<!--END-->
+</body>
+</html>
