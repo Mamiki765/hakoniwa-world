@@ -245,11 +245,24 @@ main:has(> .underground-panel.ug-panel) { flex: 1; min-height: 0; display: flex;
 .ug-playback-hp small { color: var(--muted); }
 .ug-playback-bar { height: 8px; border-radius: 4px; overflow: hidden; background: var(--paper-deep); }
 .ug-playback-bar i { display: block; height: 100%; background: #c94a4a; transition: width .35s ease-out; }
-.ug-playback-popup { position: absolute; right: .6rem; top: .1rem; font: 800 1.35rem var(--ug-f-num); color: var(--danger-strong); text-shadow: 0 1px 0 var(--paper), 0 0 6px var(--paper); pointer-events: none; animation: ug-popup 1.05s ease-out forwards; }
+/* 小さな数字が続けざまに出て、ラウンドが終わるとその合計が大きく残る。 */
+/* カードの下に、数字が出るための段を空けておく（名前やHPの文字に重ねない）。 */
+.ug-playback-card { padding-bottom: 3.4rem; }
+.ug-playback-popup { position: absolute; bottom: 1.5rem; font: 800 1rem var(--ug-f-num); color: var(--danger-strong); text-shadow: 0 1px 0 var(--paper), 0 0 5px var(--paper); pointer-events: none; animation: ug-popup .85s ease-out forwards; }
 .ug-playback-popup.is-heal { color: var(--success); }
-.ug-playback-popup.is-miss { color: var(--muted); font-size: 1rem; }
-.ug-playback-popup.is-critical { font-size: 1.8rem; }
-@keyframes ug-popup { 0% { opacity: 0; transform: translateY(8px) scale(.8); } 15% { opacity: 1; transform: translateY(-4px) scale(1.15); } 30% { transform: translateY(-8px) scale(1); } 100% { opacity: 0; transform: translateY(-30px); } }
+.ug-playback-popup.is-miss { color: var(--muted); font-size: .8rem; }
+.ug-playback-popup.is-critical { font-size: 1.6rem; color: var(--gold); -webkit-text-stroke: 1px var(--danger-strong); animation-name: ug-popup-critical; }
+@keyframes ug-popup { 0% { opacity: 0; transform: translateY(10px) scale(.7); } 20% { opacity: 1; transform: translateY(-2px) scale(1.1); } 100% { opacity: 0; transform: translateY(-26px); } }
+@keyframes ug-popup-critical { 0% { opacity: 0; transform: scale(2.2) rotate(-8deg); } 18% { opacity: 1; transform: scale(1) rotate(3deg); } 30% { transform: scale(1.25) rotate(-2deg); } 100% { opacity: 0; transform: translateY(-30px) scale(1); } }
+.ug-playback-card.is-flashing { animation: ug-flash .45s ease-out; }
+@keyframes ug-flash { 0% { background: var(--gold); transform: translateX(0); } 20% { transform: translateX(-5px); } 40% { transform: translateX(5px); } 60% { transform: translateX(-3px); } 100% { background: var(--paper); transform: translateX(0); } }
+.ug-playback-total { position: absolute; right: .6rem; left: .6rem; bottom: .3rem; display: flex; flex-wrap: wrap; align-items: baseline; justify-content: flex-end; gap: 0 .5rem; line-height: 1.05; pointer-events: none; animation: ug-total .35s ease-out; }
+.ug-playback-total b { font: 800 1.9rem var(--ug-f-num); text-shadow: 0 1px 0 var(--paper), 0 0 6px var(--paper); }
+.ug-playback-total b.is-damage { color: var(--danger-strong); }
+.ug-playback-total b.is-heal { color: var(--success); font-size: 1.3rem; }
+.ug-playback-total.is-critical b.is-damage { color: var(--gold); -webkit-text-stroke: 1px var(--danger-strong); font-size: 2.3rem; }
+.ug-playback-total small { flex-basis: 100%; text-align: right; font-size: .62rem; color: var(--muted); }
+@keyframes ug-total { 0% { opacity: 0; transform: scale(1.8); } 100% { opacity: 1; transform: scale(1); } }
 .ug-playback-lines { display: grid; gap: .25rem; margin: 0; padding: 0; list-style: none; min-height: 6.5rem; align-content: end; }
 .ug-playback-lines li { padding: .3rem .6rem; border-left: 3px solid var(--line); color: var(--muted); font-size: .9rem; white-space: pre-line; }
 .ug-playback-lines li.is-current { color: var(--ink); background: var(--paper-deep); border-left-color: var(--navy); font-size: 1rem; }
@@ -257,6 +270,6 @@ main:has(> .underground-panel.ug-panel) { flex: 1; min-height: 0; display: flex;
 .ug-playback-lines li.is-current.is-recovery { border-left-color: var(--success); }
 .ug-playback-note { margin: 0; color: var(--muted); font-size: .75rem; }
 @media (prefers-reduced-motion: reduce) {
-    .ug-playback-popup { animation: none; }
+    .ug-playback-popup, .ug-playback-total, .ug-playback-card.is-flashing { animation: none; }
     .ug-playback-bar i { transition: none; }
 }

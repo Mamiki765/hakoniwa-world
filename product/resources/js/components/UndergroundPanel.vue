@@ -972,7 +972,7 @@ function playbackHits(action: RoundAction): PlaybackHit[] {
     if (kind === null) return [];
     const party = currentPartyActors.value.length > 0;
     const ids = action.target_ids?.filter((id) => id !== '') ?? (action.target_id ? [action.target_id] : []);
-    let targetId: string | null = null;
+    let targetId: string | null;
     if (party) targetId = ids.length === 1 ? ids[0]! : kind === 'heal' && ids.length === 0 ? action.actor_id ?? null : null;
     else targetId = soloPlaybackTarget(action, kind);
     if (targetId === null) return [];
