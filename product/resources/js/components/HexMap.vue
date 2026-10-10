@@ -146,6 +146,12 @@ const tooltipDetails = computed(() => {
     ];
 });
 
+// 選んでいるマス（無ければ首都）のある海域。地図の隅に、その海域の天候を大きく出す。
+const focusSeaArea = computed(() => {
+    const point = props.selected ?? props.capital;
+    return props.seaAreas?.find((region) => region.chunk_x === Math.floor(point.x / 16) && region.chunk_y === Math.floor(point.y / 16)) ?? null;
+});
+
 function weatherDescription(area: SeaArea): string {
     const weather = area.weather;
     if (weather == null) return '';
@@ -599,14 +605,25 @@ function markAssetFailed(cell: MapCell): void {
                                 v-if="item.area.weather.asset.available && item.area.weather.asset.url && !failedWeatherAssets.has(item.area.weather.asset.url)"
                                 class="weather-icon"
                                 :href="item.area.weather.asset.url"
-                                :x="item.x + 4 / zoom" :y="item.y + 4 / zoom" :width="12 / zoom" :height="12 / zoom"
+                                :x="item.x + 4 / zoom" :y="item.y + 4 / zoom" :width="20 / zoom" :height="20 / zoom"
                                 @error="weatherAssetFailed(item.area.weather.asset.url)"
                             />
-                            <text v-else class="weather-icon-fallback" :x="item.x + 4 / zoom" :y="item.y + 14 / zoom" :font-size="12 / zoom">{{ item.area.weather.label.slice(0, 1) }}</text>
+                            <text v-else class="weather-icon-fallback" :x="item.x + 4 / zoom" :y="item.y + 20 / zoom" :font-size="18 / zoom">{{ item.area.weather.label.slice(0, 1) }}</text>
                         </template>
                     </g>
                 </svg>
             </div>
+            <p v-if="showSeaAreas && focusSeaArea?.weather" class="map-weather-chip" :class="`weather-${focusSeaArea.weather.key}`">
+                <img
+                    v-if="focusSeaArea.weather.asset.available && focusSeaArea.weather.asset.url && !failedWeatherAssets.has(focusSeaArea.weather.asset.url)"
+                    :src="focusSeaArea.weather.asset.url"
+                    alt=""
+                    width="24"
+                    height="24"
+                    @error="weatherAssetFailed(focusSeaArea.weather.asset.url)"
+                >
+                <span><small>{{ focusSeaArea.name }}</small><strong>{{ weatherDescription(focusSeaArea) }}</strong></span>
+            </p>
             <div
                 v-if="tooltipCell"
                 ref="tooltipElement"

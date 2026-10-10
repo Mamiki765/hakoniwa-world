@@ -72,7 +72,7 @@ describe('staggered square-image map', () => {
         } });
         expect(wrapper.findAll('.sea-area-border')).toHaveLength(1);
         expect(wrapper.get('.sea-area-border').classes()).toContain('weather-rain');
-        expect(wrapper.get('.weather-icon').attributes('width')).toBe('12');
+        expect(wrapper.get('.weather-icon').attributes('width')).toBe('20');
         expect(wrapper.get('.sea-area title').text()).toContain('第7ターン');
         await wrapper.get('.map-cell').trigger('click');
         expect(wrapper.emitted('select')?.[0]).toEqual([cell]);

@@ -1099,6 +1099,14 @@ html:is([data-theme="dark"], [data-theme="old-dark"]) .compensation-banner, html
 .sea-area-border.weather-meteor_shower { fill: rgba(125, 214, 78, .075); }
 .sea-area-border.weather-huge_meteor { fill: rgba(240, 94, 56, .10); }
 .weather-icon { image-rendering: pixelated; }
+/* 選んでいるマスの海域の天候を、地図の左下に大きく出す。 */
+.map-weather-chip { position: absolute; left: 8px; bottom: 8px; z-index: 12; display: flex; align-items: center; gap: 8px; margin: 0; padding: 5px 10px 5px 7px; border: 1px solid var(--sl-line, var(--line)); border-radius: 3px; background: color-mix(in srgb, var(--sl-panel, var(--paper)) 92%, transparent); color: var(--sl-ink, var(--ink)); box-shadow: 0 2px 8px rgba(0, 0, 0, .25); pointer-events: none; }
+.map-weather-chip img { width: 36px; height: 36px; image-rendering: pixelated; }
+.map-weather-chip span { display: grid; line-height: 1.25; }
+.map-weather-chip small { font-size: 11px; color: var(--sl-ink-2, var(--muted)); }
+.map-weather-chip strong { font-size: 14px; }
+.map-weather-chip:is(.weather-thunder, .weather-typhoon, .weather-huge_meteor) { border-color: var(--sl-bad, var(--danger)); }
+.map-weather-chip:is(.weather-thunder, .weather-typhoon, .weather-huge_meteor) strong { color: var(--sl-bad, var(--danger)); }
 .weather-icon-fallback { fill: #fff; stroke: #163543; stroke-width: 2px; paint-order: stroke; font-weight: 700; }
 [data-theme="dark"], [data-theme="old-dark"], [data-theme="black"] { --sea-area-line: #a1c0cb; }
 [data-theme="autumn"] { --sea-area-line: #6c4630; }
