@@ -280,11 +280,18 @@ describe('command plan workspace', () => {
         });
     });
 
-    it('shows twenty slots and inserts a command at the selected row', async () => {
-        let serverQueue = commandQueue();
+    it('inserts before a selected plan and advances without changing empty-slot insertion', async () => {
+        const oldPlan = item(90, 1, { command_name: '元の計画' });
+        let serverQueue = commandQueue(1, [oldPlan], 30);
+        const replies = [
+            commandQueue(2, [item(1, 1), { ...oldPlan, queue_position: 2 }], 30),
+            commandQueue(3, [item(1, 1), item(2, 2), { ...oldPlan, queue_position: 3 }], 30),
+            commandQueue(4, [item(1, 1), item(2, 2), { ...oldPlan, queue_position: 3 }, item(3, 5)], 30),
+            commandQueue(5, [item(1, 1), item(2, 2), { ...oldPlan, queue_position: 3 }, item(3, 5), item(4, 30)], 30),
+        ];
         const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
             if (init?.method === 'POST') {
-                serverQueue = commandQueue(2, [item(1, 5)]);
+                serverQueue = replies.shift()!;
                 return jsonResponse({
                     queue: serverQueue,
                     message: '開発計画に登録されました。実行はターン更新時に行われます。',
@@ -296,25 +303,41 @@ describe('command plan workspace', () => {
         const wrapper = mount(CommandQueuePanel, { props: { nationId: 1, mapSpaceId: 2, selected } });
         await flushPromises();
 
-        expect(wrapper.findAll('.plan-row')).toHaveLength(20);
-        expect(wrapper.findAll('.plan-row.automatic')).toHaveLength(20);
+        expect(wrapper.findAll('.plan-row')).toHaveLength(30);
+        expect(wrapper.findAll('.plan-row.automatic')).toHaveLength(29);
         expect(wrapper.get('.command-status').text()).toBe('未送信');
         expect(wrapper.get('.command-status').classes()).toContain('command-status--idle');
         expect(wrapper.get('.command-status').attributes('role')).toBe('status');
+        await wrapper.find('.plan-row').trigger('click');
+        await flushPromises();
+        await wrapper.find('.command-grid button').trigger('click');
+        await flushPromises();
+        const firstPost = fetchMock.mock.calls.find(([, init]) => init?.method === 'POST');
+        expect(JSON.parse(String(firstPost?.[1]?.body))).toMatchObject({ position: 1, expected_version: 1 });
+        expect(wrapper.findAll('.plan-row')[0]!.text()).toContain('整地');
+        expect(wrapper.findAll('.plan-row')[1]!.text()).toContain('元の計画');
+        expect(wrapper.get('.sl-insert-at').text()).toContain('元の計画の前');
+        const nextCatalog = fetchMock.mock.calls.filter(([path]) => String(path).includes('command-definitions')).at(-1);
+        expect(new URL(String(nextCatalog?.[0]), 'http://localhost').searchParams.get('position')).toBe('2');
+        await wrapper.find('.command-grid button').trigger('click');
+        await flushPromises();
+        expect(wrapper.findAll('.plan-row')[2]!.text()).toContain('元の計画');
+        expect(wrapper.emitted('queue')!.at(-1)![0]).toEqual(serverQueue);
+
         await wrapper.findAll('.plan-row')[4]!.trigger('click');
         await flushPromises();
         expect(wrapper.findAll('.plan-row')[4]!.classes()).toContain('selected');
         await wrapper.find('.command-grid button').trigger('click');
         await flushPromises();
 
-        const post = fetchMock.mock.calls.find(([, init]) => init?.method === 'POST');
+        const post = fetchMock.mock.calls.filter(([, init]) => init?.method === 'POST').at(-1);
         expect(JSON.parse(String(post?.[1]?.body))).toMatchObject({
             command_key: 'land_clear', target_x: 8, target_y: 7, position: 5,
-            expected_version: 1, quantity: 1, parameters: {},
+            expected_version: 3, quantity: 1, parameters: {},
         });
-        expect(wrapper.findAll('.plan-row')).toHaveLength(20);
+        expect(wrapper.findAll('.plan-row')).toHaveLength(30);
         expect(wrapper.findAll('.plan-row')[4]!.text()).toContain('整地');
-        expect(wrapper.findAll('.plan-row')[4]!.classes()).toContain('selected');
+        expect(wrapper.findAll('.plan-row')[5]!.attributes('aria-current')).toBe('true');
         expect(wrapper.findAll('.plan-row')[5]!.classes()).toContain('cursor');
         expect(wrapper.get('.command-status').text()).toBe('計画の5番に入れました');
         expect(wrapper.get('.command-status').classes()).toContain('command-status--success');
@@ -323,6 +346,14 @@ describe('command plan workspace', () => {
         expect(wrapper.text()).not.toContain('登録されました');
         expect(wrapper.find('.command-panel').exists()).toBe(true);
         expect(wrapper.find('.plan-panel').exists()).toBe(true);
+        await wrapper.findAll('.plan-row')[29]!.trigger('click');
+        await flushPromises();
+        await wrapper.find('.command-grid button').trigger('click');
+        await flushPromises();
+        expect(fetchMock.mock.calls.filter(([, init]) => init?.method === 'POST').map(([, init]) => (
+            JSON.parse(String(init?.body)) as { position: number }
+        ).position)).toEqual([1, 2, 5, 30]);
+        expect(wrapper.findAll('.plan-row')[29]!.attributes('aria-current')).toBe('true');
     });
 
     it('shows a concise player-facing validation error with semantic alert styling', async () => {
