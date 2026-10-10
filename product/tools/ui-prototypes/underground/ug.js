@@ -31,8 +31,10 @@
     ];
     const CAT = { weapon: '武器', armor: '防具', accessory: 'アクセサリー', resonance: '共鳴結晶' };
     const STYLE = { dagger: '短剣', rapier: '細身剣', longsword: '長剣', crystal_staff: '輝石杖' };
-    const RAR = { regular: 'レギュラー', high_quality: 'ハイクオリティ', artifact: 'アーティファクト', relic: 'レリック' };
-    const RAR_MULT = { regular: 1, high_quality: 1.6, artifact: 2.6, relic: 4.2 };
+    const RAR = { regular: 'レギュラー', high_quality: 'ハイクオリティ', artifact: 'アーティファクト', relic: 'レリック', unique: 'ユニーク' };
+    const RANK = ['regular', 'high_quality', 'artifact', 'relic', 'unique'];
+    const AFF = { weapon: ['筋力アップ', '技巧アップ', '精神力アップ', '物理攻撃力アップ', '魔法攻撃力アップ', 'critical率アップ', 'critical damageアップ', 'MP効率アップ'], armor: ['生命力アップ', '最大HPアップ', '物理防御アップ', '魔法防御アップ', '護壁力アップ', '治癒力アップ'], accessory: ['敏捷アップ', '筋力アップ', '精神力アップ', 'critical率アップ', 'MP効率アップ', '最大HPアップ'], resonance: ['単体攻撃強化', '範囲攻撃強化', '通常攻撃強化', '攻撃技強化'] };
+    const RAR_MULT = { regular: 1, high_quality: 1.6, artifact: 2.6, relic: 4.2, unique: 0 };
     const STAT = [['vitality', '生命'], ['might', '武力'], ['finesse', '技巧'], ['spirit', '精神'], ['agility', '敏捷']];
 
     // 保管庫の中身（仮）。装備中の6つを先頭に置く
@@ -40,15 +42,17 @@
     const mk = (cat, style, il, q, rar, o = {}) => {
         const base = cat === 'weapon' ? STYLE[style] : cat === 'armor' ? ['胸当て', '外套', '鎧'][Math.floor(rnd() * 3)] : cat === 'accessory' ? ['指輪', '首飾り', '耳飾り'][Math.floor(rnd() * 3)] : '共鳴結晶';
         const pre = il >= 200 ? '夕凪の' : il >= 150 ? '王国の' : il >= 100 ? '黒晶の' : '洞窟の';
-        ITEMS.push({ id: ITEMS.length + 1, cat, style: cat === 'weapon' ? style : null, il, q, rar, name: o.name ?? pre + base, price: Math.round(il * il * (q / 100) * RAR_MULT[rar] / 10) * 10, age: o.age ?? Math.floor(rnd() * 40), eq: o.eq ?? null, lock: !!o.lock });
+        ITEMS.push({ id: ITEMS.length + 1, cat, style: cat === 'weapon' ? style : null, il, q, rar, name: o.name ?? pre + base, price: Math.round(il * il * (q / 100) * RAR_MULT[rar] / 10) * 10, age: o.age ?? Math.floor(rnd() * 40), eq: o.eq ?? null, lock: !!o.lock,
+            aff: o.aff ?? Array.from({ length: cat === 'resonance' ? 2 + Math.floor(rnd() * 2) : 1 + Math.floor(rnd() * 3) }, () => ({ label: AFF[cat][Math.floor(rnd() * AFF[cat].length)], value: 3 + Math.floor(rnd() * (il / 12)) })) });
     };
     mk('weapon', 'longsword', 218, 96, 'artifact', { eq: '武器', age: 9 }); mk('armor', null, 210, 91, 'high_quality', { eq: '防具', age: 14 });
     mk('accessory', null, 205, 88, 'artifact', { eq: 'アクセサリー1', age: 20 }); mk('accessory', null, 198, 94, 'high_quality', { eq: 'アクセサリー2', age: 22 }); mk('accessory', null, 190, 80, 'regular', { eq: 'アクセサリー3', age: 31 });
-    mk('resonance', null, 200, 100, 'relic', { eq: '共鳴', age: 5, name: '黒竜の共鳴結晶' });
+    mk('resonance', null, 200, 100, 'relic', { eq: '共鳴', age: 5, name: '黒竜の共鳴結晶', aff: [{ label: '攻撃技強化', value: 18 }, { label: '攻撃技強化', value: 15 }, { label: '単体攻撃強化', value: 12 }] });
+    mk('weapon', 'longsword', 223, 100, 'unique', { name: 'グラム', age: 30 }); mk('weapon', 'longsword', 223, 100, 'unique', { name: 'エクスカリバー', age: 3 });
     for (let i = 0; i < 74; i++) {
         const roll = rnd(), cat = roll < 0.4 ? 'weapon' : roll < 0.68 ? 'armor' : roll < 0.95 ? 'accessory' : 'resonance';
         const rr = rnd(), rar = rr < 0.55 ? 'regular' : rr < 0.84 ? 'high_quality' : rr < 0.97 ? 'artifact' : 'relic';
-        mk(cat, Object.keys(STYLE)[Math.floor(rnd() * 4)], 120 + Math.floor(rnd() * 104), 60 + Math.floor(rnd() * 41), rar, { lock: rar === 'relic' });
+        mk(cat, Object.keys(STYLE)[Math.floor(rnd() * 4)], 120 + Math.floor(rnd() * 104), 60 + Math.floor(rnd() * 41), rar);
     }
     const GOODS = [
         { key: 'g1', cat: 'weapon', name: '夕凪の長剣', il: 200, price: 480000, text: '武力 +210' }, { key: 'g2', cat: 'weapon', name: '夕凪の輝石杖', il: 200, price: 480000, text: '精神 +210' },
@@ -64,7 +68,8 @@
         stp: 12, stat: { vitality: 412, might: 688, finesse: 240, spirit: 120, agility: 355 }, add: { vitality: 0, might: 0, finesse: 0, spirit: 0, agility: 0 },
         dest: 'yunagi', area: 'yunagi', skip: 1, cool: 0, msg: '', art: true, awake: false,
         party: [0, 1, 2], pslot: null, talk: 0, shopcat: 'weapon', amount: '',
-        f: { cats: new Set(), rars: new Set(), styles: new Set(), ilMax: '', qMax: '', weaker: false, dup: false, old: false }, sort: 'newest', sel: new Set(), shown: 40, confirm: false, sold: '',
+        sieve: { kind: 'aff', aff: '', il: '', q: '', rar: '' },
+        vcat: 'resonance', vshow: 'all', sort: 'il', shown: 40, confirm: false, sold: '',
     };
     const area = (k) => AREAS.find((a) => a.key === k);
     const meter = (v, max, cls = '') => { const r = max ? v / max : 0; return `<span class="meter ${cls || (r <= 0.25 ? 'crit' : r <= 0.5 ? 'low' : '')}"><span style="width:${r * 100}%"></span></span>`; };
@@ -75,52 +80,66 @@
     const hurt = () => S.hp / S.max < 0.25;
 
     // ---------- 保管庫 ----------
+    // 考え方: 条件は一度に1つだけ。「共鳴結晶のうち、攻撃技強化を持っていない物を売る」のような一文で決めて売り、
+    // 次の条件でもう一度ふるいにかける。複数の条件を重ねたいときは、売る操作を繰り返す。
     const equippedIl = (cat) => { const e = ITEMS.filter((x) => x.eq && x.cat === cat).map((x) => x.il); return e.length ? Math.min(...e) : 0; };
-    function filtered() {
-        const f = S.f, best = new Map();
-        ITEMS.forEach((x) => { const b = best.get(x.name); if (!b || x.il > b.il || (x.il === b.il && x.q > b.q)) best.set(x.name, x); });
-        const list = ITEMS.filter((x) => (!f.cats.size || f.cats.has(x.cat)) && (!f.rars.size || f.rars.has(x.rar)) && (!f.styles.size || (x.style && f.styles.has(x.style)))
-            && (f.ilMax === '' || x.il <= +f.ilMax) && (f.qMax === '' || x.q <= +f.qMax)
-            && (!f.weaker || (!x.eq && x.il < equippedIl(x.cat))) && (!f.dup || ITEMS.some((y) => y !== x && y.name === x.name && y.il >= x.il && y.q >= x.q && (y.il > x.il || y.q > x.q))) && (!f.old || x.age >= 14));
-        const order = { newest: (a, b) => a.age - b.age, oldest: (a, b) => b.age - a.age, il: (a, b) => b.il - a.il, rarity: (a, b) => RAR_MULT[b.rar] - RAR_MULT[a.rar] || b.il - a.il, quality: (a, b) => b.q - a.q, price: (a, b) => b.price - a.price }[S.sort];
-        return list.sort(order);
+    function ready() { const v = S.sieve; return v.kind === 'aff' ? !!v.aff : v.kind === 'il' ? v.il !== '' : v.kind === 'q' ? v.q !== '' : !!v.rar; }
+    function fate(x) {
+        if (x.eq) return 'eq';
+        if (x.rar === 'unique') return 'fixed';
+        if (x.lock) return 'lock';
+        if (x.cat !== S.vcat || !ready()) return 'keep';
+        const v = S.sieve;
+        const out = v.kind === 'aff' ? !x.aff.some((a) => a.label === v.aff) : v.kind === 'il' ? x.il < +v.il : v.kind === 'q' ? x.q < +v.q : RANK.indexOf(x.rar) < RANK.indexOf(v.rar);
+        return out ? 'sell' : 'keep';
     }
-    const sellable = (x) => !x.eq && !x.lock;
+    const FATE = { eq: '装備中', fixed: '一点物', lock: '保護', keep: '残す', sell: '売る' };
+    const selling = () => ITEMS.filter((x) => fate(x) === 'sell');
+    function sentence() {
+        const v = S.sieve, word = S.vcat === 'resonance' ? '効果' : 'エンチャント';
+        if (!ready()) return '';
+        return `${CAT[S.vcat]}のうち、${v.kind === 'aff' ? `「${v.aff}」を持っていない物` : v.kind === 'il' ? `装備Lvが${v.il}より低い物` : v.kind === 'q' ? `品質が${v.q}%より低い物` : `レア度が${RAR[v.rar]}より低い物`}`;
+    }
     function vault() {
-        const f = S.f, list = filtered(), can = list.filter(sellable);
-        const active = f.cats.size + f.rars.size + f.styles.size + (f.ilMax !== '' ? 1 : 0) + (f.qMax !== '' ? 1 : 0) + (f.weaker ? 1 : 0) + (f.dup ? 1 : 0) + (f.old ? 1 : 0);
-        const chips = (set, map, key) => Object.entries(map).map(([k, l]) => `<button type="button" class="chip ${set.has(k) ? 'on' : ''}" data-f="${key}" data-v="${k}">${l}</button>`).join('');
-        const tog = (k, l) => `<button type="button" class="chip ${f[k] ? 'on' : ''}" data-ft="${k}">${l}</button>`;
+        const cat = S.vcat, v = S.sieve, all = ITEMS.filter((x) => x.cat === cat), word = cat === 'resonance' ? '効果' : 'エンチャント';
+        const order = { newest: (a, b) => a.age - b.age, il: (a, b) => b.il - a.il, quality: (a, b) => b.q - a.q, price: (a, b) => b.price - a.price }[S.sort];
+        const nSell = all.filter((x) => fate(x) === 'sell').length;
+        const list = all.filter((x) => S.vshow === 'all' || (S.vshow === 'sell' ? fate(x) === 'sell' : fate(x) !== 'sell')).sort((a, b) => (fate(b) === 'sell') - (fate(a) === 'sell') || order(a, b));
+        const value = v.kind === 'aff' ? AFF[cat].map((a) => `<button type="button" class="chip ${v.aff === a ? 'on' : ''}" data-saff="${a}">${a}</button>`).join('')
+            : v.kind === 'il' ? `<label>装備Lvが <input type="number" id="s-il" inputmode="numeric" min="1" max="223" value="${v.il}" placeholder="—"> より低い</label>`
+            : v.kind === 'q' ? `<label>品質が <input type="number" id="s-q" inputmode="numeric" min="0" max="100" value="${v.q}" placeholder="—"> %より低い</label>`
+            : RANK.slice(1, 4).map((r) => `<button type="button" class="chip ${v.rar === r ? 'on' : ''}" data-srar="${r}">${RAR[r]}より低い</button>`).join('');
         return `<div class="page">
-            <details class="box pn fbox" id="fbox" ${S.fopen ? 'open' : ''}><summary>絞り込み${active ? `<span style="color:var(--gold)">${active}条件</span>` : ''}<button type="button" class="chip" data-fclear ${active ? '' : 'hidden'}>すべて外す</button></summary><div class="filters">
-                <div class="frow"><b>分類</b>${chips(f.cats, CAT, 'cats')}</div>
-                ${f.cats.has('weapon') || !f.cats.size ? `<div class="frow"><b>武器の種類</b>${chips(f.styles, STYLE, 'styles')}</div>` : ''}
-                <div class="frow"><b>レア度</b>${chips(f.rars, RAR, 'rars')}</div>
-                <div class="frow"><b>数値</b><label>装備Lv <input type="number" id="f-il" inputmode="numeric" min="1" max="223" value="${f.ilMax}" placeholder="上限"> 以下</label><label>品質 <input type="number" id="f-q" inputmode="numeric" min="0" max="100" value="${f.qMax}" placeholder="上限"> %以下</label></div>
-                <div class="frow"><b>売る候補</b>${tog('weaker', 'いま装備している物より装備Lvが低い')}${tog('dup', '同じ名前で、装備Lvも品質も上の物が別にある')}${tog('old', '入手から2週間以上')}</div>
-            </div></details>
-            <section class="box pn"><div class="vhead"><span class="cnt">${list.length}件<span class="muted">　保管 ${ITEMS.length}/500</span></span>
-                <label class="muted">並び順 <select id="v-sort">${[['newest', '入手が新しい順'], ['oldest', '入手が古い順'], ['il', '装備Lvが高い順'], ['rarity', 'レア度が高い順'], ['quality', '品質が高い順'], ['price', '売値が高い順']].map(([k, l]) => `<option value="${k}" ${S.sort === k ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
-                <button type="button" data-selall ${can.length ? '' : 'disabled'}>この${can.length}件を全部選ぶ</button></div>
-                <div class="items"><div class="it head"><span></span><span>名前</span><span class="n">装備Lv</span><span class="n">品質</span><span class="n">売値</span><span>保護</span></div>
-                ${list.slice(0, S.shown).map((x) => { const d = x.eq ? 0 : x.il - equippedIl(x.cat); return `<div class="it${S.sel.has(x.id) ? ' sel' : ''}${sellable(x) ? '' : ' fixed'}"><input type="checkbox" data-pick="${x.id}" ${S.sel.has(x.id) ? 'checked' : ''} ${sellable(x) ? '' : 'disabled'} aria-label="${h(x.name)}を選ぶ">
-                    <span class="nm"><b class="r-${x.rar}">${h(x.name)}</b>${x.eq ? `<span class="tag">装備中</span>` : ''}<small>${CAT[x.cat]}${x.style ? `・${STYLE[x.style]}` : ''}・${RAR[x.rar]}</small></span>
-                    <span class="n il" data-l="装備Lv">${x.il}${x.eq ? '' : `<em class="${d > 0 ? 'up' : 'dn'}">${d > 0 ? `▲${d}` : d < 0 ? `▼${-d}` : '＝'}</em>`}</span><span class="n q" data-l="品質">${x.q}%</span><span class="n price" data-l="売値">${n(x.price)}G</span>
-                    <button type="button" class="lock ${x.lock ? 'on' : ''}" data-lock="${x.id}" aria-label="${x.lock ? '保護を外す' : '保護する'}" ${x.eq ? 'disabled' : ''}>${x.lock ? '★' : '☆'}</button></div>`; }).join('') || '<p class="muted" style="padding:14px 4px">条件に合う装備がありません。</p>'}</div>
+            <section class="box pn"><h2>いらない物を売る</h2>
+                <div class="pick cats">${Object.entries(CAT).map(([c, l]) => `<button type="button" data-vcat="${c}" class="${c === cat ? 'on' : ''}">${l}<small>${ITEMS.filter((x) => x.cat === c).length}個</small></button>`).join('')}</div>
+                <div class="filters" style="margin-top:8px">
+                    <div class="frow"><b>何で選ぶ</b><span class="pick">${[['aff', `${word}がない`], ['il', '装備Lvが低い'], ['q', '品質が低い'], ['rar', 'レア度が低い']].map(([k2, l]) => `<button type="button" data-skind="${k2}" class="${v.kind === k2 ? 'on' : ''}">${l}</button>`).join('')}</span></div>
+                    <div class="frow"><b>${v.kind === 'aff' ? `この${word}` : '基準'}</b>${value}</div>
+                </div>
+                <p class="say">${ready() ? `${sentence()}を売ります。<b>${nSell}個</b>` : `${v.kind === 'aff' ? `残したい${word}を1つ選んでください。それを持っていない物が売る対象になります。` : '基準を入れてください。'}`}</p>
+                <p class="muted">条件は一度に1つです。もっと絞りたいときは、売ったあとに別の条件でもう一度売ります。</p></section>
+            <section class="box pn"><div class="vhead"><span class="pick">${[['all', `全部 ${all.length}`], ['sell', `売る ${nSell}`], ['keep', `残す ${all.length - nSell}`]].map(([k2, l]) => `<button type="button" data-vshow="${k2}" class="${S.vshow === k2 ? 'on' : ''}">${l}</button>`).join('')}</span>
+                <span class="cnt muted">保管 ${ITEMS.length}/500</span>
+                <label class="muted">並び順 <select id="v-sort">${[['il', '装備Lvが高い順'], ['quality', '品質が高い順'], ['price', '売値が高い順'], ['newest', '入手が新しい順']].map(([k2, l]) => `<option value="${k2}" ${S.sort === k2 ? 'selected' : ''}>${l}</option>`).join('')}</select></label></div>
+                <div class="items"><div class="it head"><span>扱い</span><span>名前</span><span class="n">装備Lv</span><span class="n">品質</span><span class="n">売値</span><span>保護</span></div>
+                ${list.slice(0, S.shown).map((x) => { const ft = fate(x), d = x.eq ? 0 : x.il - equippedIl(x.cat); return `<div class="it f-${ft}"><span class="fate">${FATE[ft]}</span>
+                    <span class="nm"><b class="r-${x.rar}">${h(x.name)}</b><small>${x.style ? `${STYLE[x.style]}・` : ''}${RAR[x.rar]}　${x.aff.map((a) => `<span class="${v.kind === 'aff' && a.label === v.aff ? 'hitaff' : ''}">${a.label} +${a.value}</span>`).join('、')}</small></span>
+                    <span class="n il" data-l="装備Lv">${x.il}${x.eq ? '' : `<em class="${d > 0 ? 'up' : 'dn'}">${d > 0 ? `▲${d}` : d < 0 ? `▼${-d}` : '＝'}</em>`}</span><span class="n q" data-l="品質">${x.q}%</span><span class="n price" data-l="売値">${x.rar === 'unique' ? '—' : `${n(x.price)}G`}</span>
+                    <button type="button" class="lock ${x.lock ? 'on' : ''}" data-lock="${x.id}" aria-label="${x.lock ? '保護を外す' : '保護する'}" ${x.eq || x.rar === 'unique' ? 'disabled' : ''}>${x.lock ? '★' : '☆'}</button></div>`; }).join('') || '<p class="muted" style="padding:14px 4px">該当する装備がありません。</p>'}</div>
                 ${list.length > S.shown ? `<p style="text-align:center;margin-top:8px"><button type="button" data-more>あと${list.length - S.shown}件を表示</button></p>` : ''}
-                <p class="muted" style="margin-top:8px">「売る候補」は候補を絞るだけで、不要かどうかは決めません。★で保護した装備と装備中の装備は、選択にも一括売却にも入りません。装備Lvの横の▲▼は、同じ分類でいま装備している物との差です。</p></section></div>`;
+                <p class="muted" style="margin-top:8px">売りたくない物は☆で保護すると、条件に関係なく残ります。装備中の物と、売れない一点物は常に残ります。</p></section></div>`;
     }
     function sellbar() {
         const bar = $('sellbar'), on = S.view === 'character' && S.sub.character === 'vault';
-        const picked = ITEMS.filter((x) => S.sel.has(x.id)), total = picked.reduce((s, x) => s + x.price, 0);
+        const picked = selling(), total = picked.reduce((s, x) => s + x.price, 0);
         bar.hidden = !on || (!picked.length && !S.sold);
         bar.className = S.sold && !picked.length ? 'done' : '';
         if (bar.hidden) return;
         if (!picked.length) { bar.innerHTML = `<span class="sum">${h(S.sold)}</span><button type="button" data-soldok>閉じる</button>`; return; }
         const top = picked.slice().sort((a, b) => b.price - a.price)[0];
         bar.innerHTML = S.confirm
-            ? `<span class="sum">${picked.length}件を<b>${n(total)}G</b>で売ります。元には戻せません。<span class="muted">一番高いのは ${h(top.name)}（Lv${top.il}・${RAR[top.rar]}）</span></span><button type="button" data-sellno>やめる</button><button type="button" class="primary" data-sellyes>売る</button>`
-            : `<span class="sum">${picked.length}件を選択中　合計<b>${n(total)}G</b></span><button type="button" data-selnone>選択を外す</button><button type="button" class="primary" data-sell>まとめて売る</button>`;
+            ? `<span class="sum">${sentence()}、${picked.length}個を<b>${n(total)}G</b>で売ります。元には戻せません。<span class="muted">一番高いのは ${h(top.name)}（Lv${top.il}・${RAR[top.rar]}）</span></span><button type="button" data-sellno>やめる</button><button type="button" class="primary" data-sellyes>売る</button>`
+            : `<span class="sum">売る ${picked.length}個　合計<b>${n(total)}G</b></span><button type="button" class="primary" data-sell>まとめて売る</button>`;
     }
 
     // ---------- 各画面 ----------
@@ -244,16 +263,16 @@
         else if (d.stp) S.add[d.stp] += +d.d;
         else if ('stpreset' in d) STAT.forEach(([k]) => { S.add[k] = 0; });
         else if ('stpok' in d) STAT.forEach(([k]) => { S.stat[k] += S.add[k]; S.stp -= S.add[k]; S.add[k] = 0; });
-        else if (d.f) { const set = S.f[d.f]; if (set.has(d.v)) set.delete(d.v); else set.add(d.v); S.shown = 40; }
-        else if (d.ft) { S.f[d.ft] = !S.f[d.ft]; S.shown = 40; }
-        else if ('fclear' in d) { S.f = { cats: new Set(), rars: new Set(), styles: new Set(), ilMax: '', qMax: '', weaker: false, dup: false, old: false }; }
-        else if ('selall' in d) filtered().filter(sellable).forEach((x) => S.sel.add(x.id));
-        else if ('selnone' in d) { S.sel.clear(); S.confirm = false; }
+        else if (d.vcat) { S.vcat = d.vcat; S.sieve.aff = ''; S.shown = 40; S.confirm = false; }
+        else if (d.skind) { S.sieve.kind = d.skind; S.confirm = false; }
+        else if (d.saff) { S.sieve.aff = S.sieve.aff === d.saff ? '' : d.saff; S.confirm = false; }
+        else if (d.srar) { S.sieve.rar = S.sieve.rar === d.srar ? '' : d.srar; S.confirm = false; }
+        else if (d.vshow) { S.vshow = d.vshow; S.shown = 40; }
         else if ('sell' in d) S.confirm = true;
         else if ('sellno' in d) S.confirm = false;
-        else if ('sellyes' in d) { const picked = ITEMS.filter((x) => S.sel.has(x.id)), total = picked.reduce((s, x) => s + x.price, 0); picked.forEach((x) => ITEMS.splice(ITEMS.indexOf(x), 1)); S.g += total; S.sel.clear(); S.confirm = false; S.sold = `${picked.length}件を売って ${n(total)}G を受け取りました。`; }
+        else if ('sellyes' in d) { const picked = selling(), total = picked.reduce((s, x) => s + x.price, 0); picked.forEach((x) => ITEMS.splice(ITEMS.indexOf(x), 1)); S.g += total; S.confirm = false; S.sold = `${picked.length}個を売って ${n(total)}G を受け取りました。別の条件で続けて売れます。`; }
         else if ('soldok' in d) S.sold = '';
-        else if (d.lock) { const x = ITEMS.find((i) => i.id === +d.lock); x.lock = !x.lock; if (x.lock) S.sel.delete(x.id); }
+        else if (d.lock) { const x = ITEMS.find((i) => i.id === +d.lock); x.lock = !x.lock; S.confirm = false; }
         else if ('more' in d) S.shown += 40;
         else if (d.shopcat) S.shopcat = d.shopcat;
         else if (d.buy) { const x = GOODS.find((g) => g.key === d.buy); S.g -= x.price; x.own = true; S.msg = `${x.name}を買いました。保管庫に入っています。`; }
@@ -268,10 +287,9 @@
     });
     document.addEventListener('change', (e) => {
         const t = e.target, keep = view.scrollTop;
-        if (t.dataset.pick) { const id = +t.dataset.pick; if (t.checked) S.sel.add(id); else S.sel.delete(id); S.confirm = false; }
-        else if (t.id === 'v-sort') S.sort = t.value;
-        else if (t.id === 'f-il') { S.f.ilMax = t.value; S.shown = 40; }
-        else if (t.id === 'f-q') { S.f.qMax = t.value; S.shown = 40; }
+        if (t.id === 'v-sort') S.sort = t.value;
+        else if (t.id === 's-il') { S.sieve.il = t.value; S.confirm = false; }
+        else if (t.id === 's-q') { S.sieve.q = t.value; S.confirm = false; }
         else if (t.id === 'amt') { S.amount = t.value; return; }
         else return;
         render(); view.scrollTop = keep;
@@ -281,7 +299,5 @@
     $('opt-theme').onchange = (e) => { if (e.target.value) document.documentElement.dataset.theme = e.target.value; else delete document.documentElement.dataset.theme; };
     const start = (location.hash || '').replace('#', '').split('-');
     if (views[start[0]]) { S.view = start[0]; if (start[1] && S.sub[start[0]]) S.sub[start[0]] = start[1]; }
-    S.fopen = $('stage').clientWidth > 760;
-    document.addEventListener('toggle', (e) => { if (e.target.id === 'fbox') S.fopen = e.target.open; }, true);
     render();
 })();
