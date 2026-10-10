@@ -499,7 +499,8 @@ function showPointerTooltip(cell: MapCell, event: PointerEvent): void {
     if (event.pointerType !== 'mouse' || activePointer !== null) return;
     const resumeHover = touchInput;
     touchInput = false;
-    if (resumeHover || event.type === 'pointerenter') void showTooltip(cell, event);
+    // マスに乗った瞬間はmouseenterが出すので、ここでは「指のあと、乗ったままマウスを動かした」ときだけ出す。
+    if (resumeHover && event.type === 'pointermove') void showTooltip(cell, event);
 }
 
 function assetIdentity(cell: MapCell): string {
