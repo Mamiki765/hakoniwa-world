@@ -286,6 +286,10 @@ body.phone #stage { flex: none; width: 390px; max-width: 100%; height: min(800px
     /* 案A: 地図を上に固定し、下を3つのタブで切り替える */
     #app[data-variant="a"] { grid-template: "hud" auto "map" minmax(0, 42%) "tabs" auto "panel" minmax(0, 1fr) / minmax(0, 1fr); }
     #app[data-variant="a"] #tabs { grid-area: tabs; display: flex; border-block: 1px solid var(--line); }
+    #app[data-variant="a"] #tabs .grow { flex: 0 0 48px; font-size: 16px; color: var(--ink-2); border-left: 1px solid var(--line); }
+    #app[data-variant="a"][data-grow="on"] { grid-template: "tabs" auto "panel" minmax(0, 1fr) / minmax(0, 1fr); }
+    #app[data-variant="a"][data-grow="on"] :is(#hud, #map) { display: none; }
+    #app[data-variant="a"][data-grow="on"] #tabs .grow { color: var(--accent); }
     #app[data-variant="a"] :is(#inspect, #plan, #log) { grid-area: panel; display: none; border: 0; }
     #app[data-variant="a"][data-tab="inspect"] #inspect, #app[data-variant="a"][data-tab="plan"] #plan, #app[data-variant="a"][data-tab="log"] #log { display: flex; }
     #app[data-variant="a"] #btn-island { padding: 2px 6px; font-size: 12px; }

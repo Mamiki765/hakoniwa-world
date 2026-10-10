@@ -340,11 +340,13 @@
         const tabs = S.variant === 'a'
             ? [['inspect', 'マス・コマンド'], ['plan', `計画 ${S.queue.length}`], ['log', 'ログ']]
             : [['map', '<span class="t-pc">マス</span><span class="t-phone">地図</span>'], ['plan', `計画 ${S.queue.length}`], ['log', 'ログ'], ['island', '島']];
-        $('tabs').innerHTML = tabs.map(([k, label]) => `<button type="button" data-tab="${k}" class="${app.dataset.tab === k ? 'on' : ''}">${label}</button>`).join('');
+        // 案Aのスマホ: 右端のつまみでパネルを上まで伸ばし、地図と島の状況を隠して入力に専念できる
+        const grow = S.variant === 'a' ? `<button type="button" class="grow" data-grow aria-pressed="${app.dataset.grow === 'on'}" aria-label="${app.dataset.grow === 'on' ? '地図を出す' : '上まで広げる'}">${app.dataset.grow === 'on' ? '︾' : '︽'}</button>` : '';
+        $('tabs').innerHTML = tabs.map(([k, label]) => `<button type="button" data-tab="${k}" class="${app.dataset.tab === k ? 'on' : ''}">${label}</button>`).join('') + grow;
     }
     function setTab(t) { app.dataset.tab = t; renderTabs(); if (t === 'map') requestAnimationFrame(() => centerOn(S.sel ?? D.CAPITAL)); }
     function setVariant(v) {
-        S.variant = v; app.dataset.variant = v; app.dataset.tab = v === 'c' ? 'map' : 'inspect';
+        S.variant = v; app.dataset.variant = v; app.dataset.grow = 'off'; app.dataset.tab = v === 'c' ? 'map' : 'inspect';
         app.dataset.log = 'closed'; app.dataset.island = 'closed';
         document.querySelectorAll('#protobar [data-variant]').forEach((b) => b.classList.toggle('on', b.dataset.variant === v));
         try { history.replaceState(null, '', `#${v}`); } catch { /* 埋め込み先では書けないことがある */ }
@@ -367,6 +369,7 @@
         const b = e.target.closest('button'); if (!b) { $('menu').hidden = true; return; }
         if (b.id !== 'plan-bulk') $('menu').hidden = true;
         if (b.dataset.variant) setVariant(b.dataset.variant);
+        else if ('grow' in b.dataset) { app.dataset.grow = app.dataset.grow === 'on' ? 'off' : 'on'; renderTabs(); if (app.dataset.grow === 'off') requestAnimationFrame(() => centerOn(S.sel ?? D.CAPITAL)); }
         else if (b.dataset.tab) setTab(b.dataset.tab);
         else if (b.dataset.group) { S.group = b.dataset.group; renderInspect(); }
         else if (b.dataset.cmd) openEntry(def(b.dataset.cmd));

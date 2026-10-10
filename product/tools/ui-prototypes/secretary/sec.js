@@ -20,24 +20,37 @@
         { id: 6, name: 'ため込みの護符', cat: '装飾', lv: 1, rar: 'cursed', rl: 'カースド', text: '食料の上限 +10%、資金繰り −2億円' },
         { id: 7, name: '機械仕掛けの弓', cat: '弓', lv: 8, rar: 'regular', rl: 'レギュラー', text: '怪獣へのミサイル命中 +8%' },
     ];
-    const UG = [['武器', '洞窟鋼の剣', 'Lv12 品質104%'], ['防具', '革の胸当て', 'Lv10 品質98%'], ['装飾1', '守りの指輪', 'Lv8'], ['装飾2', '輝石のお守り', 'Lv16'], ['装飾3', null, ''], ['共鳴', null, '']];
+    const UG = [['武器', '洞窟鋼の剣', 'IL 223・Quality 30%'], ['防具', '革の胸当て', 'IL 220・Quality 71%'], ['装飾品1', '守りの指輪', 'IL 116・Quality 59%'], ['装飾品2', '輝石のお守り', 'IL 209・Quality 42%'], ['装飾品3', null, ''], ['共鳴石', null, '']];
     const BIO = '北の小さな港町の生まれ。帳簿をつけるのが得意で、島主に請われて秘書になった。\n地底の入口を見つけてからは、昼は島の帳簿、夜は洞窟という二重生活を送っている。\n好きなものは焼き魚。苦手なものは台風。';
     const ACH = [['島の秘書', '秘書に名前を付けた', '2026/08/26'], ['はじめての討伐', '怪獣を初めて倒した', '2026/09/02'], ['深きを知る者', '試練2をクリアした', '2026/09/20']];
     const IMG = [['icon', 'アイコン', true], ['bust', 'バスト', true], ['full', '全身', true], ['aicon', '覚醒アイコン', false], ['abust', '覚醒バスト', false], ['afull', '覚醒全身', false]];
     const S = { title: '島の秘書', name: 'ノエル・アーデン', nick: 'ノエル', note: '', tickets: 2, mode: 'owner', tab: 'intro', view: 'full', bio: BIO, edit: false, slots: [2, 3, 5, 1, null], pick: null };
     const item = (id) => ITEMS.find((x) => x.id === id);
+    const TABICON = { intro: '▤', skills: '▥', equip: '⚔', store: '▣', award: '♛', set: '☰' };
 
     function render() {
         const owner = S.mode === 'owner', bare = S.mode === 'noimage';
-        const tabs = [['intro', '紹介'], ['skills', 'スキル'], ['equip', '装備'], ...(owner ? [['store', '倉庫'], ['award', '実績'], ['set', '設定']] : [])];
+        const tabs = [['intro', 'メイン'], ['skills', '熟練度'], ['equip', '装備'], ...(owner ? [['store', '倉庫'], ['award', '実績'], ['set', '設定']] : [])];
         if (!tabs.some((t) => t[0] === S.tab)) S.tab = 'intro';
-        const stat = [['体力', 86], ['力', 124], ['技', 71], ['精神', 48], ['素早さ', 93]];
-        const max = Math.max(...stat.map((x) => x[1]));
+        // 現行の秘書メイン（PBWのステータスシート風）の組み方に合わせる。能力名は地底の正式名称
+        const bless = [['最大HP', 25067], ['生命', 2206], ['武力', 1136], ['技巧', 2185], ['精神', 5789], ['敏捷', 962]];
+        const cell = (k, v, cls = '') => `<div class="sc ${cls}"><dt>${k}</dt><dd>${v}</dd></div>`;
         const body = {
-            intro: () => `<h2 class="sec-h">経歴${owner && !S.edit ? '<button type="button" data-edit>書き直す</button>' : ''}</h2>
+            intro: () => `<div class="main-top">
+                    <div class="art"><div class="frame ${S.view}">${bare ? '<span class="none">画像なし</span>' : `<svg viewBox="0 0 120 220" role="img" aria-label="秘書の立ち絵の枠"><path class="body" d="M60 14c14 0 24 11 24 26s-10 27-24 27-24-12-24-27 10-26 24-26zM22 214c0-70 8-134 38-134s38 64 38 134z"/><text x="60" y="${S.view === 'bust' ? 108 : 150}">立ち絵の枠</text></svg>`}
+                        ${bare ? '' : `<details class="imginfo"><summary aria-label="画像について">i</summary><div><b>画像について</b><br>制作方法: 自作<br>作者・権利表記: 島主</div></details>`}</div>
+                        ${bare ? '' : `<div class="seg small"><button type="button" data-art="full" class="${S.view === 'full' ? 'on' : ''}">全身</button><button type="button" data-art="bust" class="${S.view === 'bust' ? 'on' : ''}">バスト</button></div>`}</div>
+                    <div class="status"><h2 class="sh">ステータス</h2>
+                        <dl class="cells c2">${cell('内政Lv', SKILLS.reduce((s, x) => s + x[1], 0))}${cell('戦闘Lv', bare ? '—' : n(1129))}${cell('資金・食料上限', '+14%')}${cell('討伐経験値', n(25))}</dl>
+                        <h3 class="sh2">祝福</h3>
+                        ${bare ? '<p class="none">まだ地底に降りていません。</p>' : `<dl class="cells c3">${bless.map(([k, v]) => cell(k, n(v))).join('')}</dl><p class="cap">装備による加算を含む能力値</p>`}
+                        ${owner && !bare ? '<button type="button" class="primary go" data-dummy>地底へ</button>' : ''}</div></div>
+                <h2 class="sec-h">経歴${owner && !S.edit ? '<button type="button" class="link" data-edit>経歴を編集</button>' : ''}</h2>
                 ${S.edit ? `<form class="bio-edit" id="bio-form"><textarea id="bio-text" maxlength="1000" aria-label="経歴">${h(S.bio)}</textarea><div class="row"><span id="bio-count">${S.bio.length} / 1000文字</span><button type="button" data-cancel>やめる</button><button type="submit" class="primary">保存する</button></div></form>`
                     : S.bio ? `<p class="bio">${h(S.bio)}</p>` : '<p class="empty">経歴はまだ書かれていません。</p>'}
-                <h2 class="sec-h">地上の装備</h2><div class="slots">${S.slots.map((id) => { const x = item(id); return x ? `<div class="slot rar-${x.rar}"><small>${x.cat}・${x.rl} Lv${x.lv}</small><b>${h(x.name)}</b><span>${h(x.text)}</span></div>` : ''; }).join('')}</div>`,
+                <h2 class="sec-h">装備${owner ? '<button type="button" class="link" data-stab="equip">地上装備を変更</button>' : ''}</h2>
+                <div class="eq2"><section><h3 class="sh2">地上の装備</h3><ol class="geq">${S.slots.map((id, i) => { const x = item(id); return `<li><span class="no">${i + 1}</span>${x ? `<span class="ic rar-${x.rar}">${x.cat[0]}</span><span><b class="rar-${x.rar}">${h(x.name)}<small class="lvb">Lv.${x.lv}</small></b><small>${h(x.text)}</small></span>` : '<span class="ic none"></span><span class="muted">装備なし</span>'}</li>`; }).join('')}</ol></section>
+                    ${bare ? '' : `<section><h3 class="sh2">地底の装備</h3><dl class="ueq">${UG.map(([slot, name, sub]) => `<div><dt>${slot}</dt><dd>${name ? `<b>${h(name)}</b><small>${sub}</small>` : '<span class="muted">装備なし</span>'}</dd></div>`).join('')}</dl></section>`}</div>`,
             skills: () => `<p class="note" style="font-size:13px;color:var(--ink-2)">島の運営で勝手に育つ力です。${owner ? '' : '効果だけを公開しています。'}</p><div class="skills">${SKILLS.map(([name, lv, xp, eff, how]) => `<div class="skill"><b>${name}<small>${eff}${owner ? `　／　育て方: ${how}` : ''}</small></b><span class="lv">Lv${lv}</span>${owner ? (() => { const req = 400 + lv * 120, exp = Math.round(req * xp); return `<span class="bar"><span class="xp"><span><i>EXP</i>${n(exp)}<small>/${n(req)}</small></span><span><i>NEXT</i>${n(req - exp)}</span></span><span class="sb"><i style="width:${xp * 100}%"></i></span></span>`; })() : ''}</div>`).join('')}</div>`,
             equip: () => `<h2 class="sec-h">地上の装備 <small style="font:12px var(--f-body);color:var(--ink-2)">5枠・同じ分類は2つまで</small></h2>
                 <div class="slots">${S.slots.map((id, i) => { const x = item(id); return `<${owner ? 'button type="button"' : 'div'} class="slot ${x ? `rar-${x.rar}` : 'empty'}${S.pick === i ? ' pick' : ''}" data-slot="${i}"><small>${i + 1}枠目${x ? `・${x.cat}・${x.rl} Lv${x.lv}` : ''}</small><b>${x ? h(x.name) : '空き'}</b><span>${x ? h(x.text) : owner ? '押して装備を選ぶ' : ''}</span></${owner ? 'button' : 'div'}>`; }).join('')}</div>
@@ -56,24 +69,10 @@
         }[S.tab];
 
         $('sec').innerHTML = `<div class="sheet">
-            <div class="art"><div class="frame ${S.view}">${bare ? '<span class="none">画像なし</span>' : `<svg viewBox="0 0 120 220" role="img" aria-label="秘書の立ち絵の枠"><path class="body" d="M60 14c14 0 24 11 24 26s-10 27-24 27-24-12-24-27 10-26 24-26zM22 214c0-70 8-134 38-134s38 64 38 134z"/><text x="60" y="${S.view === 'bust' ? 108 : 150}">立ち絵の枠</text></svg>`}</div>
-                ${bare ? '' : `<div class="art-tools"><div class="seg small"><button type="button" data-art="full" class="${S.view === 'full' ? 'on' : ''}">全身</button><button type="button" data-art="bust" class="${S.view === 'bust' ? 'on' : ''}">バスト</button></div><details><summary aria-label="画像について">i</summary><div><b>画像について</b><br>制作方法: 自作<br>作者・権利表記: （ここに表記）</div></details></div>`}</div>
-            <div class="info">
-                <header class="who"><div><p class="ttl">${h(S.title)}</p><h1>${h(S.name)}</h1>${S.nick ? `<p class="nick">愛称「${h(S.nick)}」</p>` : ''}</div>
-                    <p class="isle">${owner ? '' : 'プレイヤー03の秘書　'}<button type="button" data-dummy>N7 試験島</button></p>
-                    ${owner && !bare ? '<button type="button" class="primary go" data-dummy>地底へ</button>' : ''}</header>
-                <div class="nums">
-                    <section class="blk"><h2>地上<small>島の運営</small></h2><dl>
-                        <div><dt>内政Lv</dt><dd class="lvl">${SKILLS.reduce((s, x) => s + x[1], 0)}</dd></div>
-                        <div><dt>資金・食料の上限</dt><dd class="lvl">+14%</dd></div>
-                        <div><dt>討伐経験値</dt><dd class="lvl">${n(3820)}</dd></div></dl></section>
-                    <section class="blk"><h2>地底<small>${bare ? '' : '戦技'}</small></h2>${bare ? '<p class="none">まだ地底に降りていません。</p>' : `<dl>
-                        <div><dt>戦闘Lv</dt><dd class="lvl">42</dd></div><div><dt>最大HP</dt><dd class="lvl">${n(1480)}</dd></div>
-                        ${stat.map(([k, v]) => `<div><dt>${k}</dt><span class="sb"><i style="width:${v / max * 100}%"></i></span><dd>${v}</dd></div>`).join('')}</dl>`}</section>
-                </div>
-                <nav class="stabs" aria-label="秘書ページの切り替え">${tabs.map(([k, l]) => `<button type="button" data-stab="${k}" class="${S.tab === k ? 'on' : ''}">${l}</button>`).join('')}</nav>
-                <div>${body()}</div>
-            </div></div>`;
+            <header class="who"><div><p class="ttl">${h(S.title)}</p><h1>${h(S.name)}</h1>${S.nick ? `<p class="nick">愛称「${h(S.nick)}」</p>` : ''}</div>
+                <p class="isle">${owner ? '' : 'プレイヤー03の秘書　'}<button type="button" data-dummy>N7 試験島</button></p></header>
+            <nav class="stabs" aria-label="秘書ページの切り替え">${tabs.filter(([k]) => k !== 'set').map(([k, l]) => `<button type="button" data-stab="${k}" class="${S.tab === k ? 'on' : ''}"><i aria-hidden="true">${TABICON[k]}</i>${l}</button>`).join('')}${owner ? `<button type="button" data-stab="set" class="setb ${S.tab === 'set' ? 'on' : ''}"><i aria-hidden="true">${TABICON.set}</i>設定</button>` : ''}</nav>
+            <div class="body">${body()}</div></div>`;
     }
     document.addEventListener('click', (e) => {
         const b = e.target.closest('button'); if (!b) return;
