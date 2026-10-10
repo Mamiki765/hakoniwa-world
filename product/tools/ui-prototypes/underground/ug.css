@@ -93,6 +93,8 @@
 .stat .step { display: inline-flex; gap: 4px; justify-content: flex-end; }
 .stat .step button { width: 36px; height: 34px; padding: 0; font: 16px var(--f-game); }
 .stp .stat { grid-template-columns: 3em minmax(0, 1fr) 4.5em auto; }
+.stat .step input { width: 64px; height: 34px; text-align: center; font: 15px var(--f-game); border: 1px solid var(--line-2); border-radius: 4px; background: var(--win-2); color: var(--gold); }
+.stat .step button { touch-action: none; user-select: none; -webkit-user-select: none; }
 .slots { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 6px; }
 .slot { border: 1px solid var(--line-2); border-radius: 8px; padding: 6px 8px; display: grid; gap: 1px; min-height: 54px; }
 .slot small { font-size: 11px; color: var(--ink-2); } .slot span { font: 12px var(--f-game); color: var(--ink-2); }
@@ -215,3 +217,5 @@ details.fbox[open] > summary { margin-bottom: 8px; }
 .say { margin-top: 8px; padding: 8px 10px; border: 1px solid var(--line-2); border-radius: 8px; background: var(--win-2); font-size: 14px; }
 .say b { font: 400 18px var(--f-game); color: var(--gold); margin-left: 6px; }
 .hitaff { color: var(--heal); }
+
+@container stage (max-width: 760px) { .stp .stat { grid-template-columns: 3em minmax(0, 1fr) auto; } .stp .stat .meter { display: none; } .stp .stat .v { text-align: left; } .stat .step button { width: 44px; height: 44px; } .stat .step input { height: 44px; width: 72px; } }
