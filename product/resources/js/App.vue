@@ -2481,7 +2481,8 @@ async function abandonNation(): Promise<void> {
             <nav class="sl-tabs" role="tablist" aria-label="表示の切り替え">
                 <button type="button" role="tab" :aria-selected="ledger.tab.value === 'inspect'" @click="ledger.showTab('inspect')">マス・コマンド</button>
                 <button type="button" role="tab" :aria-selected="ledger.tab.value === 'plan'" @click="ledger.showTab('plan')">計画 {{ authoritativeCommandQueue?.explicit_count ?? 0 }}</button>
-                <button type="button" role="tab" :aria-selected="ledger.tab.value === 'log'" @click="ledger.showTab('log')">ログ</button>
+                <button type="button" role="tab" :aria-selected="ledger.tab.value === 'log' && ledger.logPane.value === 'log'" @click="ledger.logPane.value = 'log'; ledger.showTab('log')">ログ</button>
+                <button type="button" role="tab" :aria-selected="ledger.tab.value === 'log' && ledger.logPane.value === 'board'" @click="ledger.logPane.value = 'board'; ledger.showTab('log')">伝言板</button>
                 <button type="button" class="grow" :aria-pressed="ledger.grow.value" :aria-label="ledger.grow.value ? '地図を出す' : '上まで広げる'" @click="ledger.grow.value = !ledger.grow.value">{{ ledger.grow.value ? '︾' : '︽' }}</button>
             </nav>
 
@@ -2631,7 +2632,8 @@ async function abandonNation(): Promise<void> {
 
             <nav class="sl-tabs" role="tablist" aria-label="表示の切り替え">
                 <button type="button" role="tab" :aria-selected="ledger.tab.value !== 'log'" @click="ledger.showTab('inspect')">マスの情報</button>
-                <button type="button" role="tab" :aria-selected="ledger.tab.value === 'log'" @click="ledger.showTab('log')">ログ・伝言板</button>
+                <button type="button" role="tab" :aria-selected="ledger.tab.value === 'log' && ledger.logPane.value === 'log'" @click="ledger.logPane.value = 'log'; ledger.showTab('log')">公開ログ</button>
+                <button type="button" role="tab" :aria-selected="ledger.tab.value === 'log' && ledger.logPane.value === 'board'" @click="ledger.logPane.value = 'board'; ledger.showTab('log')">伝言板</button>
                 <button type="button" class="grow" :aria-pressed="ledger.grow.value" :aria-label="ledger.grow.value ? '地図を出す' : '上まで広げる'" @click="ledger.grow.value = !ledger.grow.value">{{ ledger.grow.value ? '︾' : '︽' }}</button>
             </nav>
         </section>
