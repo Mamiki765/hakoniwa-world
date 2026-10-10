@@ -26,6 +26,8 @@
         };
     });
     const ME = 3;
+    // 一言コメント（現行の NationProfileText: 1行・100文字まで）。文面は仮
+    const COMMENTS = { 1: '首都の夜景が自慢です。観光どうぞ', 2: '怪獣はだいたい友達', 3: 'のんびり開発中。台風が来たら泣きます', 4: '港を広げています。交易歓迎', 6: '石ころしかない島から始めました', 7: '', 8: 'ミサイルは撃たれたら撃ち返します', 11: '鉄と火の島。採掘場増設中', 13: '（休止中）また戻ってきます' };
     const COLS = [['pop', '人口', '人'], ['area', '面積', 'マス'], ['money', '資金', '億円'], ['food', '食料', 'トン'], ['farm', '農場', '人'], ['factory', '工場', '人'], ['mine', '採掘場', '人'], ['turns', '生存', 'ターン']];
     const NEWS = [
         [127, [['notable', '北風島が繁栄賞を受賞しました。'], ['warning', 'こはる島(4,-12)に怪獣いのらが出現しました。'], ['info', '新島が発見されました。']]],
@@ -72,11 +74,14 @@
                     <div class="rank-tools"><label>並べ替え <select id="sort">${COLS.map(([k, l]) => `<option value="${k}" ${k === S.sort ? 'selected' : ''}>${l}</option>`).join('')}</select></label><input id="q" type="search" placeholder="島名・島主名でさがす" value="${h(S.q)}" aria-label="島名・島主名でさがす"></div></header>
                     ${list.length === 0 ? `<p class="empty">${S.mode === 'empty' ? 'まだ島がありません。最初の島を作ると、ここに並びます。' : '条件に合う島がありません。'}</p>` : `
                     <div class="rank-scroll"><table class="rank"><thead><tr><th>順位</th><th class="l">島と島主</th>${COLS.map(([k, l]) => `<th><button type="button" data-sort="${k}" class="${k === S.sort ? 'on' : ''}">${l}${k === S.sort ? ' ▼' : ''}</button></th>`).join('')}</tr></thead><tbody>
-                    ${list.map((x) => `<tr class="${x.id === ME && S.mode === 'member' ? 'me' : ''}"><td class="no">${rankOf.get(x.id)}</td><td class="l isl ${x.state}"><button type="button" data-open="${x.id}">${h(x.name)}</button>${badges(x)}<small>${h(x.owner)}${x.secretary ? ` ＋ ${h(x.secretary)}` : ''}</small></td>${COLS.map(([k, , u]) => `<td class="${k === S.sort ? 'on' : ''}">${k === 'farm' || k === 'factory' || k === 'mine' ? (x[k] ? `${n(x[k] / 1000)}千${u}` : '—') : `${n(x[k])}${k === 'turns' ? '' : u}`}</td>`).join('')}</tr>`).join('')}
+                    ${list.map((x) => { const me = x.id === ME && S.mode === 'member' ? ' me' : '', c = COMMENTS[x.id];
+                        // 箱庭の旧式: 上の行に島名と数値、下の行に島主＋秘書とコメントを数値の列まで割り込ませて出す
+                        return `<tr class="r1${me}"><td class="no" rowspan="2">${rankOf.get(x.id)}</td><td class="l isl ${x.state}"><button type="button" data-open="${x.id}">${h(x.name)}</button>${badges(x)}</td>${COLS.map(([k, , u]) => `<td class="${k === S.sort ? 'on' : ''}">${k === 'farm' || k === 'factory' || k === 'mine' ? (x[k] ? `${n(x[k] / 1000)}千${u}` : '保有せず') : `${n(x[k])}${k === 'turns' ? '' : u}`}</td>`).join('')}</tr>
+                        <tr class="r2${me}"><td class="l cmt" colspan="${COLS.length + 1}"><span class="who">${h(x.owner)}${x.secretary ? `<small>＋${h(x.secretary)}</small>` : ''}</span>${c ? `<span class="say">：${h(c)}</span>` : ''}</td></tr>`; }).join('')}
                     </tbody></table></div>
                     <div class="cards">${list.map((x) => `<div class="card ${x.id === ME && S.mode === 'member' ? 'me' : ''}"><span class="no">${rankOf.get(x.id)}</span><span class="isl ${x.state}"><button type="button" data-open="${x.id}">${h(x.name)}</button>${badges(x)}<small>${h(x.owner)}${x.secretary ? ` ＋ ${h(x.secretary)}` : ''}</small></span>
                         <span class="key">${n(x[S.sort])}<small>${col[1]}（${col[2]}）</small></span>
-                        <span class="more">${COLS.filter(([k]) => k !== S.sort && ['pop', 'area', 'money', 'food'].includes(k)).map(([k, l, u]) => `<span><b>${l}</b>${n(x[k])}${u}</span>`).join('')}</span></div>`).join('')}</div>`}
+                        ${COMMENTS[x.id] ? `<span class="say">${h(COMMENTS[x.id])}</span>` : ''}<span class="more">${COLS.filter(([k]) => k !== S.sort && ['pop', 'area', 'money', 'food'].includes(k)).map(([k, l, u]) => `<span><b>${l}</b>${n(x[k])}${u}</span>`).join('')}</span></div>`).join('')}</div>`}
                 </section>
                 ${newsBox('news-m')}
             </div></div>`;

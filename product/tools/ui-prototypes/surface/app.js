@@ -15,7 +15,7 @@
     let seq = 1;
     const S = {
         variant: 'a', sel: null, queue: D.QUEUE.map((q) => ({ id: seq++, ...q })), planSel: null,
-        group: 'land', zoom: 1, pan: { x: 0, y: 0 }, logFilter: 'all', mode: 'normal', allCmds: false,
+        comment: 'のんびり開発中。台風が来たら泣きます', group: 'land', zoom: 1, pan: { x: 0, y: 0 }, logFilter: 'all', mode: 'normal', allCmds: false,
     };
     const narrow = () => $('stage').clientWidth <= 760;
     const money = () => (S.mode === 'poor' ? 60 : D.NATION.money);
@@ -24,6 +24,8 @@
     function renderHud() {
         const N = D.NATION, m = money();
         $('hud-title').textContent = `N${N.nation_number} ${N.name}`;
+        // 一言コメント（島一覧で島主名の横に出る）。原作のように開発画面から気軽に書き換えられるようにする
+        $('hud-comment').innerHTML = `<button type="button" id="cmt-open" title="一言コメントを書き換える"><span class="t">${S.comment ? h(S.comment) : '一言コメントを書く'}</span><i aria-hidden="true">✎</i></button>`;
         $('hud-turn').textContent = `第${N.current_turn}ターン　次の更新 ${N.next_turn_at}`;
         const stat = (lv, label, value, unit, gauge, low) => `<div class="stat lv${lv}${low ? ' low' : ''}"><dt>${label}</dt><dd>${value}<small>${unit}</small></dd>${gauge == null ? '' : `<span class="gauge" aria-hidden="true"><i style="width:${Math.min(100, gauge * 100)}%"></i></span>`}</div>`;
         $('hud-stats').innerHTML = [
@@ -396,6 +398,8 @@
         else if (b.id === 'log-close') app.dataset.log = 'closed';
         else if (b.id === 'inspect-close') select(null);
         else if (b.id === 'entry-cancel') $('entry').hidden = true;
+        else if (b.closest('#cmt-open')) openComment();
+        else if (b.id === 'cmt-cancel') $('cmt').hidden = true;
         else if (b.id === 'plan-bulk') {
             const m = $('menu'), r = b.getBoundingClientRect(), a = app.getBoundingClientRect();
             m.innerHTML = '<button type="button" data-bulk="level">荒地と焦土を全て地ならし</button><button type="button" data-bulk="clear">荒地と焦土を全て整地</button><button type="button" data-bulk="reclaim">浅瀬を全て埋め立て</button><button type="button" data-bulk="cut" class="danger">選んだ行から下を全て取消</button>';
@@ -414,11 +418,11 @@
         const key = { clear: 'land_clear', level: 'land_level', reclaim: 'reclaim' }[kind];
         const terr = kind === 'reclaim' ? ['shallow'] : ['wasteland', 'scorched'];
         const targets = D.cells.filter((c) => c.owner_nation_id === D.OWN.id && terr.includes(c.terrain) && !c.facility).slice(0, D.QUEUE_LIMIT - S.queue.length);
-        // 行を選んでいればその後ろへ、選んでいなければ末尾へ入れる（立て直しで先頭付近に差し込む使い方を想定）
-        const pi = S.queue.findIndex((q) => q.id === S.planSel), at = pi >= 0 ? pi + 1 : S.queue.length;
+        // 一括は立て直し用: 何も選んでいなければ1番から、行を選んでいればその行の位置から入れ、元の計画は全部その下へ送る
+        const pi = S.queue.findIndex((q) => q.id === S.planSel), at = pi >= 0 ? pi : 0;
         S.queue.splice(at, 0, ...targets.map((c) => ({ id: seq++, command_key: key, quantity: 1, target_x: c.x, target_y: c.y })));
         renderPlan(); renderInspect();
-        toast(targets.length ? `${def(key).name}を${targets.length}件、計画の${pi >= 0 ? `${at + 1}番から` : '末尾に'}入れました。` : '対象のマスがありません。');
+        toast(targets.length ? `${def(key).name}を${targets.length}件、計画の${at + 1}番から入れました。元の計画はその下に送りました。` : '対象のマスがありません。');
     }
     $('entry-body').addEventListener('input', (e) => {
         if (e.target.id === 'entry-qty') { const v = Math.min(99, Math.max(1, Math.floor(+e.target.value || 1))); entry.qty = v; }
@@ -456,10 +460,20 @@
         ['l', 'r'].forEach((s) => { const v = localStorage.getItem(`proto-surface-col-${s}`); if (v) setCol(s, +v); });
         S.allCmds = localStorage.getItem('proto-surface-allcmds') === '1';
     } catch { /* 保存できなくても動く */ }
+    function openComment() {
+        const f = $('cmt'), i = $('cmt-text');
+        i.value = S.comment; $('cmt-count').textContent = `${i.value.length} / 100`; f.hidden = false; i.focus(); i.select();
+    }
+    $('cmt-text').addEventListener('input', (e) => { $('cmt-count').textContent = `${e.target.value.length} / 100`; });
+    $('cmt').addEventListener('submit', (e) => {
+        e.preventDefault();
+        S.comment = $('cmt-text').value.replace(/[\r\n]+/g, ' ').trim();
+        $('cmt').hidden = true; renderHud(); toast('一言コメントを書き換えました。島一覧にすぐ出ます。');
+    });
     $('opt-state').onchange = (e) => setMode(e.target.value);
     $('opt-phone').onchange = (e) => { document.body.classList.toggle('phone', e.target.checked); requestAnimationFrame(() => { renderTabs(); centerOn(S.sel ?? D.CAPITAL); }); };
     $('opt-theme').onchange = (e) => { if (e.target.value) document.documentElement.dataset.theme = e.target.value; else delete document.documentElement.dataset.theme; };
-    document.addEventListener('keydown', (e) => { if (e.key === 'Escape') { $('entry').hidden = true; $('menu').hidden = true; } });
+    document.addEventListener('keydown', (e) => { if (e.key === 'Escape') { $('entry').hidden = true; $('menu').hidden = true; $('cmt').hidden = true; } });
 
     // ---------- 起動 ----------
     app.dataset.territory = 'on'; app.dataset.planMarks = 'on'; app.dataset.sel = '0';

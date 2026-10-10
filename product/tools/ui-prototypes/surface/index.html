@@ -44,6 +44,7 @@
         <div class="hud-name">
             <b id="hud-title"></b>
             <span id="hud-turn"></span>
+            <span id="hud-comment"></span>
         </div>
         <dl id="hud-stats"></dl>
         <div class="hud-actions">
@@ -117,6 +118,11 @@
             </div>
         </form>
     </div>
+    <form id="cmt" class="dialog cmt-pop" hidden aria-label="一言コメント">
+        <label for="cmt-text">一言コメント <small>島一覧で島主名の横に出ます</small></label>
+        <input id="cmt-text" type="text" maxlength="100" autocomplete="off">
+        <div class="dialog-actions"><span id="cmt-count"></span><button type="button" id="cmt-cancel" class="quiet">やめる</button><button type="submit" class="primary">書き換える</button></div>
+    </form>
     <div id="menu" hidden></div>
     <p id="toast" role="status" hidden></p>
 </div>
