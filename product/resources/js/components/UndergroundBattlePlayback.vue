@@ -270,7 +270,7 @@ onBeforeUnmount(() => {
                     <strong>{{ combatant.name }}</strong>
                     <span v-if="vitals[combatant.id]" class="ug-playback-hp">HP {{ vitals[combatant.id]!.hp.toLocaleString('ja-JP') }}<small> / {{ vitals[combatant.id]!.max_hp.toLocaleString('ja-JP') }}</small></span>
                     <span v-else class="ug-playback-hp">HP —</span>
-                    <span v-if="vitals[combatant.id]" class="ug-playback-bar" aria-hidden="true"><i :style="{ width: `${hpPercent(combatant.id)}%` }" /></span>
+                    <span class="ug-playback-bar" :class="{ 'is-unknown': !vitals[combatant.id] }" aria-hidden="true"><i v-if="vitals[combatant.id]" :style="{ width: `${hpPercent(combatant.id)}%` }" /></span>
                     <span
                         v-for="popup in popups.filter((candidate) => candidate.targetId === combatant.id)"
                         :key="popup.id"
@@ -293,6 +293,5 @@ onBeforeUnmount(() => {
             </li>
             <li v-if="recentSteps.length === 0" class="ug-muted">ラウンドの開始時です。</li>
         </ol>
-        <p class="ug-playback-note">行動の途中のHPは、ログの数字を足し引きした見込みです。ラウンドの区切りで正しい値に合わせます。</p>
     </section>
 </template>

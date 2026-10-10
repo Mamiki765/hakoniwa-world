@@ -1,0 +1,25 @@
+/* 周辺の画面（交易場・お知らせ・オプション・アカウント・お問い合わせ・クレジット・管理）の枠。
+ * 大きな見出しと広い余白をやめ、開発画面やTOPと同じ密度に揃える。色は各テーマの値をそのまま使い、
+ * お知らせの本文（Markdownの見出し）には当てない。
+ * 見出しの書体だけトークン（New はゴシック、Old は Georgia系）で受ける。秘書と地底の枠は変えない。 */
+.panel:is(.trading-post-panel, .options-panel, .inquiry-page, .inquiry-admin-page, .credits-panel, .account-panel, .announcement-page, .admin-operations, .admin-turn, .guide-topic-admin) {
+    margin: 12px auto; padding: 14px 18px 22px; border-radius: var(--sl-radius); box-shadow: none;
+}
+.panel:is(.trading-post-panel, .options-panel, .inquiry-page, .inquiry-admin-page, .credits-panel, .account-panel, .announcement-page, .admin-operations, .guide-topic-admin) :is(h1, .section-heading h1, .trading-post-heading h1):not(.announcement-body *) {
+    margin: 0 0 10px; padding-bottom: 8px; border-bottom: 2px solid var(--ink);
+    font: var(--sl-w-head) 22px/1.2 var(--sl-f-head); letter-spacing: normal;
+}
+.panel:is(.trading-post-panel, .options-panel, .inquiry-page, .inquiry-admin-page, .credits-panel, .account-panel, .announcement-page, .admin-operations, .guide-topic-admin) h2:not(.announcement-body *) { font-size: 1.05rem; }
+.panel:is(.trading-post-panel, .options-panel, .inquiry-page, .inquiry-admin-page, .credits-panel, .account-panel, .announcement-page, .admin-operations, .guide-topic-admin) > .eyebrow,
+.panel:is(.trading-post-panel, .options-panel, .inquiry-page, .inquiry-admin-page, .credits-panel, .account-panel, .announcement-page, .admin-operations, .guide-topic-admin) :is(.section-heading, .trading-post-heading) .eyebrow { display: none; }
+.trading-post-panel .trading-post-heading { align-items: baseline; margin-bottom: 10px; border-bottom: 2px solid var(--ink); }
+.panel.trading-post-panel .trading-post-heading h1 { border-bottom: 0; margin: 0; padding-bottom: 6px; }
+.announcement-page > .section-heading { align-items: baseline; border-bottom: 2px solid var(--ink); margin-bottom: 10px; }
+.panel.announcement-page > .section-heading h1 { border-bottom: 0; margin: 0; padding-bottom: 6px; }
+.options-panel { gap: 16px; }
+.options-panel .options-section + .options-section { padding-top: 16px; }
+.panel.admin-turn { margin-bottom: 0; padding: 10px 18px; }
+@media (max-width: 760px) {
+    .panel:is(.trading-post-panel, .options-panel, .inquiry-page, .inquiry-admin-page, .credits-panel, .account-panel, .announcement-page, .admin-operations, .admin-turn, .guide-topic-admin) { margin: 0; padding: 10px 12px 18px; border-inline: 0; }
+    main:has(> .panel:is(.trading-post-panel, .options-panel, .inquiry-page, .inquiry-admin-page, .credits-panel, .account-panel, .announcement-page, .admin-operations, .guide-topic-admin):not([style*="display: none"])) { padding: 0; }
+}

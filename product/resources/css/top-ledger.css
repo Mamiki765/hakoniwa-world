@@ -126,7 +126,7 @@ html .tp-news-group h3 { font: var(--sl-w-head) 12px var(--sl-f-head); color: va
     .tp-card .isl small { display: block; color: var(--sl-ink-2); font-size: 12px; }
     .tp-card .key { font-size: 16px; text-align: right; white-space: nowrap; }
     .tp-card .key small { display: block; font: 10px var(--sl-f-body); color: var(--sl-ink-2); }
-    .tp-card .say { grid-column: 2 / -1; font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .tp-card .say { grid-column: 2 / -1; font-size: 12px; overflow-wrap: anywhere; }
     .tp-card .more { grid-column: 2 / -1; display: flex; flex-wrap: wrap; gap: 0 12px; font: 12px var(--sl-f-num); color: var(--sl-ink-2); }
     .tp-card .more b { font: 10px var(--sl-f-body); font-weight: 400; margin-right: 3px; }
 }
