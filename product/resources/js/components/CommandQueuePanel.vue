@@ -130,10 +130,10 @@ const tailPosition = computed(() => {
     if (last < limit) return last + 1;
     return queue.value.plan.find((slot) => slot.kind === 'automatic_finance')?.position ?? limit;
 });
-// 行を選んでいるとその後ろへ、空き枠を選んでいるとその枠へ、選んでいなければ末尾へ入る。
+// 行を選んでいるとその前へ、空き枠を選んでいるとその枠へ、選んでいなければ末尾へ入る。
 const insertPosition = computed(() => {
     if (!cursorPinned.value) return tailPosition.value;
-    return clampPosition(selectedItemId.value === null ? selectedPosition.value : selectedPosition.value + 1);
+    return clampPosition(selectedPosition.value);
 });
 const bulkPosition = computed(() => cursorPinned.value ? selectedPosition.value : 1);
 const queuedOnSelected = computed(() => {
@@ -525,10 +525,10 @@ async function addCommand(
             refreshAfterMutation = 2;
             return false;
         }
-        // 行を選んで入れたときは、入れた行を選び直す（続けて入れると、その後ろへ順に並ぶ）。
+        // 行を選んで入れたときは、成功後だけ次の行へ進める（続けた入力を登録順に並べる）。
         if (cursorPinned.value && insertPosition.value === submittedPosition) {
-            selectedItemId.value = result.queue.items.find((item) => item.queue_position === submittedPosition)?.id ?? null;
-            selectedPosition.value = clampPosition(submittedPosition, result.queue.limit);
+            selectedPosition.value = clampPosition(submittedPosition + 1, result.queue.limit);
+            selectedItemId.value = result.queue.items.find((item) => item.queue_position === selectedPosition.value)?.id ?? null;
         }
         applyServerQueue(result.queue);
         if (result.daily_quest?.completed_now === true) emit('dailyQuest', result.daily_quest);
@@ -877,7 +877,7 @@ onBeforeUnmount(() => {
                     <span class="sl-legend" aria-hidden="true"><span><i class="sl-mk" /> ターンを使う</span><span><i class="sl-mk free" /> 使わない</span></span>
                 </div>
                 <p class="sl-insert-at">
-                    <span v-if="selectedPlanItem">入れる位置 <b class="num">{{ insertPosition }}番</b>（{{ selectedPlanItem.position }}番 {{ selectedPlanItem.command_name }}の後ろ）</span>
+                    <span v-if="selectedPlanItem">入れる位置 <b class="num">{{ insertPosition }}番</b>（{{ selectedPlanItem.position }}番 {{ selectedPlanItem.command_name }}の前）</span>
                     <span v-else-if="cursorPinned">入れる位置 <b class="num">{{ insertPosition }}番</b>（選んだ空き枠）</span>
                     <span v-else>入れる位置 <b class="num">{{ insertPosition }}番</b>（末尾）</span>
                     <button v-if="cursorPinned" type="button" class="sl-quiet" @click="releaseCursor">末尾に戻す</button>
