@@ -14,6 +14,8 @@ const emit = defineEmits<{ updated: [] }>();
 const status = ref<TurnStatus | null>(null);
 const pendingTarget = ref<number | null>(null);
 const busy = ref(false);
+// 手動進行は取り消せないので、内容を確かめてから実行する。
+const confirming = ref(false);
 const message = ref('');
 const labels = { normal: '正常', delayed: '遅延', failed: '失敗・手動確認待ち', blocked: '停止・手動確認待ち' };
 
@@ -27,8 +29,19 @@ async function refresh(): Promise<void> {
     }
 }
 
+function requestAttempt(): void {
+    if (busy.value || status.value === null) return;
+    // 結果の確認・再試行は、同じターンをもう一度確かめるだけなのでそのまま進める。
+    if (pendingTarget.value !== null) {
+        void attempt();
+        return;
+    }
+    confirming.value = true;
+}
+
 async function attempt(): Promise<void> {
     if (busy.value || status.value === null) return;
+    confirming.value = false;
     const target = pendingTarget.value ?? status.value.current_turn + 1;
     pendingTarget.value = target;
     busy.value = true;
@@ -56,7 +69,12 @@ async function attempt(): Promise<void> {
         <p v-if="status">現在 T{{ status.current_turn }} ／ 次回予定 {{ new Date(status.next_scheduled_turn_at).toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo' }) }} JST ／ {{ labels[status.status] }}</p>
         <p v-if="message" role="status">{{ message }}</p>
         <p v-if="status && !status.calendar_initialized">Worldの予定起点が未設定です。運用手順に従って起点を設定すると手動進行を利用できます。</p>
-        <button :disabled="busy || (!status?.can_attempt && pendingTarget === null)" @click="attempt">{{ busy ? '進行結果を確認中…' : pendingTarget !== null ? `T${pendingTarget}の結果を確認・再試行` : 'Turn進行を試みる' }}</button>
+        <button v-if="!confirming" :disabled="busy || (!status?.can_attempt && pendingTarget === null)" @click="requestAttempt">{{ busy ? '進行結果を確認中…' : pendingTarget !== null ? `T${pendingTarget}の結果を確認・再試行` : 'Turn進行を試みる' }}</button>
+        <div v-if="confirming && status" class="admin-turn-confirm" role="alertdialog" aria-label="Turn進行の確認">
+            <p><strong>T{{ status.current_turn + 1 }}への進行を試みます。</strong>全島の計画が実行され、元には戻せません。</p>
+            <button class="button primary" :disabled="busy" @click="attempt">この内容で実行する</button>
+            <button :disabled="busy" @click="confirming = false">やめる</button>
+        </div>
         <button :disabled="busy" @click="refresh">状態を再読込</button>
         <small>次回予定時刻を過ぎた場合だけ、既存の手動実行を1ターン分試みます。</small>
     </section>
@@ -64,6 +82,8 @@ async function attempt(): Promise<void> {
 
 <style scoped>
 .admin-turn { margin-bottom: 1rem; }
+.admin-turn-confirm { margin: .5rem 0; padding: .75rem 1rem; border: 1px solid var(--sl-turn, #aa8736); border-radius: var(--sl-radius, 4px); background: var(--warning-surface, #fff9e9); color: var(--ink, #3d3526); }
+.admin-turn-confirm p { margin: 0 0 .5rem; }
 button { margin-right: .5rem; }
 small { display: block; margin-top: .5rem; }
 </style>
