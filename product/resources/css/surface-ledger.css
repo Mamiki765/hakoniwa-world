@@ -370,7 +370,7 @@ html .sl h2 { font: var(--sl-w-head) 14px var(--sl-f-head); display: block; min-
 
 /* ================= 観光（他の島を見る）: 計画の列が無い2列 ================= */
 @media (min-width: 761px) {
-    .sl.sl-visit { grid-template: "hud hud" auto "inspect map" minmax(0, 1fr) "inspect log" var(--sl-log-h, 210px) / var(--sl-col-l, 300px) minmax(0, 1fr); }
+    .sl.sl-visit { grid-template: "hud hud" auto "inspect map" minmax(0, 1fr) "inspect log" var(--sl-log-h, 210px) / var(--sl-l) minmax(0, 1fr); }
 }
 .sl-visit-comment { min-width: 0; max-width: 320px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; color: var(--sl-ink-2); }
 /* 上の1行は幅が狭いと項目を減らすので、公開情報の全項目をここにも出す（スマホでも欠けない）。 */
