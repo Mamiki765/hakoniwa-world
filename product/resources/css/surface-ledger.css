@@ -436,3 +436,10 @@ html .sl .sl-visit-facts h3 { font: var(--sl-w-head) 12px var(--sl-f-head); colo
     .sl-all input { width: 18px; height: 18px; }
     .sl .island-event-pagination button { min-height: 34px; }
 }
+
+/* タブレットほどの幅では、島の状況の数字を2段目に回して、3段に折れないようにする。 */
+@media (min-width: 761px) and (max-width: 1000px) {
+    .sl-hud { flex-wrap: wrap; }
+    .sl-hud-name { flex: 1; max-width: none; }
+    .sl-stats { order: 3; flex-basis: 100%; }
+}
