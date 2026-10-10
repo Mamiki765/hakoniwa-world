@@ -75,8 +75,11 @@ body.phone #stage { flex: none; width: 390px; max-width: 100%; height: min(800px
 #hud { display: flex; align-items: center; gap: 6px 16px; padding: 6px 12px; background: var(--panel); border-bottom: 1px solid var(--line); min-width: 0; }
 .hud-name { display: flex; flex-direction: column; line-height: 1.25; flex: none; }
 .hud-name b { font: 400 16px var(--f-game); }
-.hud-name span { font-size: 12px; color: var(--ink-2); }
-#hud-comment button { display: inline-flex; align-items: center; gap: 4px; max-width: 280px; border: 0; background: transparent; padding: 0; font-size: 12px; color: var(--ink-2); text-align: left; min-height: 0; }
+.hud-name > span { font-size: 12px; color: var(--ink-2); }
+/* 島名の右に一言コメント。行を増やさない */
+.hud-name .hud-row { display: flex; align-items: baseline; gap: 8px; min-width: 0; font-size: inherit; color: inherit; }
+#hud-comment { min-width: 0; }
+#hud-comment button { display: inline-flex; align-items: center; gap: 4px; max-width: 240px; border: 0; background: transparent; padding: 0; font-size: 12px; color: var(--ink-2); text-align: left; min-height: 0; }
 #hud-comment .t { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; border-bottom: 1px dotted var(--line); }
 #hud-comment i { font-style: normal; color: var(--accent); }
 #hud-comment button:hover .t { color: var(--ink); }
@@ -281,7 +284,7 @@ body.phone #stage { flex: none; width: 390px; max-width: 100%; height: min(800px
 @container stage (max-width: 760px) {
     /* スマホ: コメント本文は出さず、小さなボタンだけ */
     #hud-comment .t { display: none; }
-    #hud-comment button { margin-top: 2px; padding: 1px 8px; border: 1px solid var(--line); border-radius: 10px; font-size: 11px; }
+    #hud-comment button { padding: 0 7px; border: 1px solid var(--line); border-radius: 10px; font-size: 11px; line-height: 18px; }
     #hud-comment button::before { content: "一言"; }
     .cmt-pop { top: 40px; left: 8px; width: calc(100% - 16px); }
     #app[data-variant="a"] .col-grip { display: none; }
