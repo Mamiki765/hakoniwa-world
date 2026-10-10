@@ -426,3 +426,13 @@ html .sl .sl-visit-facts h3 { font: var(--sl-w-head) 12px var(--sl-f-head); colo
     .sl-dialog .popover-actions button { flex: 1; min-height: 44px; }
     .sl .sl-plan-tools button { padding: 5px 10px; }
 }
+
+/* スマホ幅では、指で押すボタンに押せるだけの高さを持たせる。 */
+@media (max-width: 760px) {
+    .sl .sl-hud-actions button, .sl .sl-hud-actions .daily-quest-trigger, .sl .map-toolbar button, .sl .sl-seg button { min-height: 32px; }
+    .sl .sl-comment { min-height: 28px; line-height: 26px; }
+    .sl .sl-insert-at button { min-height: 30px; padding: 0 10px; }
+    .sl-all { min-height: 30px; }
+    .sl-all input { width: 18px; height: 18px; }
+    .sl .island-event-pagination button { min-height: 34px; }
+}
