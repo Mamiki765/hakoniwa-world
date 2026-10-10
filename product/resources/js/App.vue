@@ -302,6 +302,9 @@ async function saveIslandComment(): Promise<void> {
         });
         if (requestGeneration !== nationStateGeneration || nation.value?.id !== targetNationId) return;
         nation.value = { ...nation.value, comment: updatedNation.comment };
+        rankings.value = rankings.value.map((entry) => entry.id === targetNationId
+            ? { ...entry, comment: updatedNation.comment }
+            : entry);
         islandCommentDraft.value = null;
     } catch (error) {
         const errors = validationErrors(error);

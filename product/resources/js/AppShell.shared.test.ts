@@ -1346,8 +1346,20 @@ describe('application lobby and island entry', () => {
         expect(wrapper.findAll('.plan-row')).toHaveLength(20);
         expect(fetchMock.mock.calls.filter(([path]) => String(path) === '/api/v1/me/nation')).toHaveLength(1);
 
+        await wrapper.get('button[aria-label="一言コメントを書き換える"]').trigger('click');
+        await wrapper.get('#sl-comment-text').setValue('<b>更新コメント</b>');
+        await wrapper.get('form[aria-label="一言コメント"]').trigger('submit');
+        await flushPromises();
+        const commentRequest = fetchMock.mock.calls.filter(([path]) => String(path) === '/api/v1/nations/3/profile').at(-1);
+        expect(JSON.parse(String(commentRequest?.[1]?.body))).toEqual({ comment: '<b>更新コメント</b>' });
+        expect(wrapper.get('.sl-comment').text()).toContain('<b>更新コメント</b>');
+
         const lobbyButton = wrapper.findAll('.site-header nav button').find((button) => button.text() === 'TOP')!;
         await lobbyButton.trigger('click');
+        const ownRankingComment = wrapper.get('.ranking-entry.me .ranking-owner-row');
+        expect(ownRankingComment.text()).toContain('<b>更新コメント</b>');
+        expect(ownRankingComment.find('b').exists()).toBe(false);
+        expect(wrapper.findAll('.ranking-owner-row').find((row) => row.text().includes('公開島主'))!.text()).toContain('公開コメント');
         const ownRankingButton = wrapper.findAll('.ranking-card tbody button').find((button) => button.text().includes('自島'))!;
         await ownRankingButton.trigger('click');
         await flushPromises();
@@ -1389,9 +1401,9 @@ describe('application lobby and island entry', () => {
         expect(wrapper.find('.nation-hud b').exists()).toBe(false);
         expect(wrapper.get('[role="meter"][aria-label="面積（安全面積）"]').attributes('aria-valuetext')).toBe('124 / 123 DANGER');
         expect(wrapper.get('[role="meter"][aria-label="食料（保管容量）"]').attributes('aria-valuetext')).toBe('10,000 / 999,900 DANGER');
-        const patchRequest = fetchMock.mock.calls.find(([path]) => String(path) === '/api/v1/nations/3/profile');
+        const patchRequest = fetchMock.mock.calls.filter(([path]) => String(path) === '/api/v1/nations/3/profile').at(-1);
         expect(JSON.parse(String(patchRequest?.[1]?.body))).toEqual({ owner_name: '更新島主', comment: '<b>更新コメント</b>' });
-        const patchIndex = fetchMock.mock.calls.findIndex(([path]) => String(path) === '/api/v1/nations/3/profile');
+        const patchIndex = fetchMock.mock.calls.findIndex((call) => call === patchRequest);
         expect(fetchMock.mock.calls.slice(patchIndex + 1).some(([path]) => String(path).includes('/api/v1/map-spaces/2/chunks/'))).toBe(true);
 
         const summaryCallCount = () => fetchMock.mock.calls.filter(([path]) => String(path).endsWith('/summary')).length;
