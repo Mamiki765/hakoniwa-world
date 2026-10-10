@@ -1601,8 +1601,17 @@ final readonly class AlphaV1CombatModel
             unset($actor->statuses[$consumeStatus]);
         }
         $hasDamageEffect = in_array('damage', array_column($skill['effects'], 'type'), true);
+        $attackTarget = $target;
+        if ($target->side === $actor->side) {
+            foreach ($skill['effects'] as $effect) {
+                if (($effect['type'] ?? null) === 'damage' && $this->partyTargetScope($effect) === 'single_enemy') {
+                    $attackTarget = $this->partyEffectTargets($effect, $actor, $target, $partyAllies, $partyEnemies)[0] ?? $target;
+                    break;
+                }
+            }
+        }
         $agilityComboHits = $hasDamageEffect
-            ? $this->agilityComboHits($actor, $target, $random, $round, $skillKey)
+            ? $this->agilityComboHits($actor, $attackTarget, $random, $round, $skillKey)
             : 1;
         $agilityComboPending = $agilityComboHits > 1;
         foreach ($skill['effects'] as $effect) {
