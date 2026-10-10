@@ -185,6 +185,7 @@ const dailyQuests = ref<DailyQuestProgress[]>([]);
 const hasIncompleteDailyQuests = computed(() => dailyQuests.value.some((quest) => !quest.completed));
 const selectedUndergroundSlot = ref<UndergroundFacilityTarget | null>(null);
 const ledger = useSurfaceLedger();
+const siteMenuOpen = ref(false);
 const ledgerParadox = ref<ParadoxBalance | null>(null);
 const islandCommentDraft = ref<string | null>(null);
 const islandCommentInput = ref<HTMLInputElement | null>(null);
@@ -1804,7 +1805,7 @@ async function abandonNation(): Promise<void> {
 </script>
 
 <template>
-    <header class="site-header">
+    <header class="site-header" :class="{ 'has-user': user !== null }">
         <a class="brand" href="#" @click.prevent="page = 'home'">
             箱庭諸島<span>２S＋</span><small class="app-version">ver {{ applicationVersion }}</small>
         </a>
@@ -1817,8 +1818,10 @@ async function abandonNation(): Promise<void> {
             <button type="button" @click="openOptions">オプション</button>
             <a href="/manual">マニュアル</a>
         </nav>
-        <div class="session-actions">
+        <button v-if="user" type="button" class="site-menu-toggle" :aria-expanded="siteMenuOpen" aria-controls="site-session-actions" aria-label="アカウントのメニュー" @click="siteMenuOpen = !siteMenuOpen">☰</button>
+        <div id="site-session-actions" class="session-actions" :class="{ open: siteMenuOpen }" @click="siteMenuOpen = false">
             <template v-if="user">
+                <small class="site-menu-version">ver {{ applicationVersion }}</small>
                 <div class="session-user-actions">
                     <div class="session-account-actions">
                         <span>{{ user.display_name }}</span>

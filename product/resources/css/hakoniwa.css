@@ -168,6 +168,7 @@ a { color: var(--navy); }
 .session-user-actions { display: grid; justify-items: end; }
 .session-account-actions { display: flex; align-items: center; justify-content: flex-end; gap: 5px; flex-wrap: wrap; }
 .session-account-actions > span { color: var(--muted); }
+.site-menu-toggle, .site-menu-version { display: none; }
 .session-actions .inquiry-shortcut { padding-block: 3px; color: var(--navy); font-size: .75rem; text-decoration: underline; text-underline-offset: 3px; }
 
 main { width: min(1560px, 100%); margin: 0 auto; padding: clamp(16px, 3vw, 46px); }
@@ -1418,4 +1419,23 @@ html:is([data-theme="dark"], [data-theme="old-dark"]) .compensation-banner, html
 
 @media (prefers-reduced-motion: reduce) {
     *, *::before, *::after { scroll-behavior: auto !important; transition: none !important; }
+}
+
+/* スマホ幅でログイン中は、上の帯を1行にする。アカウントまわりは右端の「☰」に畳む。 */
+@media (max-width: 760px) {
+    .site-header.has-user { min-height: 0; grid-template-columns: auto minmax(0, 1fr) auto; gap: 6px; padding: 4px 8px; }
+    .site-header.has-user .brand { font-size: .78rem; letter-spacing: .04em; }
+    .site-header.has-user .app-version { display: none; }
+    .site-header.has-user nav { order: 0; grid-column: auto; width: auto; min-width: 0; overflow-x: auto; flex-wrap: nowrap; scrollbar-width: none; }
+    .site-header.has-user nav::-webkit-scrollbar { display: none; }
+    .site-header.has-user :is(nav button, nav a) { min-height: 32px; padding: 4px 7px; font-size: .75rem; }
+    .site-header.has-user .site-menu-toggle { display: block; min-width: 36px; min-height: 32px; border: 1px solid var(--line); background: transparent; color: var(--ink); font: inherit; cursor: pointer; }
+    .site-header.has-user .session-actions { display: none; }
+    .site-header.has-user .session-actions.open { display: grid; justify-items: stretch; position: absolute; right: 8px; top: calc(100% + 2px); z-index: 60; min-width: 190px; padding: 6px; border: 1px solid var(--line); background: var(--paper); box-shadow: var(--shadow); font-size: .85rem; }
+    .site-header.has-user .session-actions.open :is(.session-user-actions, .session-account-actions) { display: grid; justify-items: stretch; gap: 2px; }
+    .site-header.has-user .session-actions.open .session-account-actions > :is(span, button:last-child) { display: block; }
+    .site-header.has-user .session-actions.open :is(button, a) { min-height: 40px; padding: 6px 10px; text-align: left; font-size: .85rem; }
+    .site-header.has-user .session-actions.open .session-account-actions > span { padding: 4px 10px; }
+    .site-header.has-user .session-actions.open :is(span, small, button, a) { justify-self: stretch; text-align: left; }
+    .site-header.has-user .site-menu-version { display: block; padding: 2px 10px; color: var(--muted); font-size: .7rem; }
 }
