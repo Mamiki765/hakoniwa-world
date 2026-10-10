@@ -22,7 +22,9 @@
     ];
     const UG = [['武器', '洞窟鋼の剣', 'Lv12 品質104%'], ['防具', '革の胸当て', 'Lv10 品質98%'], ['装飾1', '守りの指輪', 'Lv8'], ['装飾2', '輝石のお守り', 'Lv16'], ['装飾3', null, ''], ['共鳴', null, '']];
     const BIO = '北の小さな港町の生まれ。帳簿をつけるのが得意で、島主に請われて秘書になった。\n地底の入口を見つけてからは、昼は島の帳簿、夜は洞窟という二重生活を送っている。\n好きなものは焼き魚。苦手なものは台風。';
-    const S = { mode: 'owner', tab: 'intro', view: 'full', bio: BIO, edit: false, slots: [2, 3, 5, 1, null], pick: null };
+    const ACH = [['島の秘書', '秘書に名前を付けた', '2026/08/26'], ['はじめての討伐', '怪獣を初めて倒した', '2026/09/02'], ['深きを知る者', '試練2をクリアした', '2026/09/20']];
+    const IMG = [['icon', 'アイコン', true], ['bust', 'バスト', true], ['full', '全身', true], ['aicon', '覚醒アイコン', false], ['abust', '覚醒バスト', false], ['afull', '覚醒全身', false]];
+    const S = { title: '島の秘書', name: 'ノエル・アーデン', nick: 'ノエル', note: '', tickets: 2, mode: 'owner', tab: 'intro', view: 'full', bio: BIO, edit: false, slots: [2, 3, 5, 1, null], pick: null };
     const item = (id) => ITEMS.find((x) => x.id === id);
 
     function render() {
@@ -41,13 +43,23 @@
                 <div class="slots">${S.slots.map((id, i) => { const x = item(id); return `<${owner ? 'button type="button"' : 'div'} class="slot ${x ? `rar-${x.rar}` : 'empty'}${S.pick === i ? ' pick' : ''}" data-slot="${i}"><small>${i + 1}枠目${x ? `・${x.cat}・${x.rl} Lv${x.lv}` : ''}</small><b>${x ? h(x.name) : '空き'}</b><span>${x ? h(x.text) : owner ? '押して装備を選ぶ' : ''}</span></${owner ? 'button' : 'div'}>`; }).join('')}</div>
                 ${S.pick !== null ? `<div class="picker"><h3><span>${S.pick + 1}枠目に入れる装備</span><button type="button" data-pickclose class="quiet">閉じる</button></h3>${S.slots[S.pick] ? '<button type="button" class="it" data-put="0"><b>外す</b><span></span></button>' : ''}${ITEMS.filter((x) => !S.slots.includes(x.id)).map((x) => `<button type="button" class="it rar-${x.rar}" data-put="${x.id}"><span><b>${h(x.name)}</b>　${x.cat}・${x.rl} Lv${x.lv}</span><span>${h(x.text)}</span></button>`).join('') || '<p class="empty">入れられる装備が倉庫にありません。</p>'}</div>` : ''}
                 ${bare ? '' : `<h2 class="sec-h">地底の装備${owner ? '<button type="button" data-dummy>地底で変える</button>' : ''}</h2><div class="slots">${UG.map(([slot, name, sub]) => `<div class="slot ${name ? '' : 'empty'}"><small>${slot}</small><b>${name ?? '空き'}</b><span>${sub}</span></div>`).join('')}</div>`}`,
-        }[S.tab] ?? (() => `<p class="empty">「${tabs.find((t) => t[0] === S.tab)[1]}」は今回の試作では作っていません。紹介・スキル・装備の3つで紙面の組み方を確かめるための試作です。</p>`);
+            store: () => `<h2 class="sec-h">倉庫 <small style="font:12px var(--f-body);color:var(--ink-2)">${ITEMS.length + (S.tickets ? 1 : 0)} / 50</small></h2>
+                <div class="rows">${S.tickets ? `<div class="rowi"><span><b>わくわくチケット</b><small>チケット・レギュラー　引くと装備が1つ手に入る　×${S.tickets}</small></span><button type="button" class="primary" data-ticket>使う</button></div>` : ''}
+                ${ITEMS.map((x) => `<div class="rowi rar-${x.rar}"><span><b>${h(x.name)}</b><small>${x.cat}・${x.rl} Lv${x.lv}　${h(x.text)}${S.slots.includes(x.id) ? '　装備中' : ''}</small></span><button type="button" class="danger" data-sellitem="${x.id}" ${S.slots.includes(x.id) ? 'disabled' : ''}>${S.slots.includes(x.id) ? '装備中' : `${x.lv * 20}億円で売る`}</button></div>`).join('')}</div>
+                ${S.note ? `<p class="okmsg">${h(S.note)}</p>` : ''}<p class="note" style="font-size:12px;color:var(--ink-2);margin-top:6px">装備中の物は、外してから売れます。売った物は戻せません。</p>`,
+            award: () => `<h2 class="sec-h">肩書き</h2><div class="seg" style="flex-wrap:wrap">${['（なし）', ...ACH.map((a) => a[0])].map((t) => `<button type="button" data-title="${t}" class="${(S.title || '（なし）') === t ? 'on' : ''}">${t}</button>`).join('')}</div><p class="note" style="font-size:12px;color:var(--ink-2);margin-top:4px">名前の上に出ます。押すとすぐ変わります。</p>
+                <h2 class="sec-h">取得した実績</h2><div class="rows">${ACH.map(([t, d, at]) => `<div class="rowi"><span><b>${t}</b><small>${d}</small></span><span style="font:12px var(--f-game);color:var(--ink-2)">${at}</span></div>`).join('')}</div>`,
+            set: () => `<h2 class="sec-h">名前</h2><form class="setf" id="name-form"><label>フルネーム<input id="set-name" maxlength="40" value="${h(S.name)}" required></label><label>愛称（空でもよい）<input id="set-nick" maxlength="20" value="${h(S.nick)}"></label><button type="submit" class="primary">保存する</button></form>
+                ${S.note ? `<p class="okmsg">${h(S.note)}</p>` : ''}<p class="note" style="font-size:12px;color:var(--ink-2)">戦闘ログやパーティーには愛称が出ます。愛称が空ならフルネームが出ます。</p>
+                <h2 class="sec-h">画像</h2><div class="slots">${IMG.map(([k, l, has]) => `<div class="slot ${has ? '' : 'empty'}"><small>${l}</small><b>${has ? '登録済み' : '未登録'}</b><span>${has ? '制作方法: 自作' : '登録しないと通常の画像を使います'}</span><button type="button" data-dummy style="margin-top:4px">${has ? '替える' : '登録する'}</button></div>`).join('')}</div>
+                <p class="note" style="font-size:12px;color:var(--ink-2);margin-top:6px">画像を登録するときに、制作方法（自作・AI生成・依頼や許諾・その他）と、作者・権利表記を入れます。</p>`,
+        }[S.tab];
 
         $('sec').innerHTML = `<div class="sheet">
             <div class="art"><div class="frame ${S.view}">${bare ? '<span class="none">画像なし</span>' : `<svg viewBox="0 0 120 220" role="img" aria-label="秘書の立ち絵の枠"><path class="body" d="M60 14c14 0 24 11 24 26s-10 27-24 27-24-12-24-27 10-26 24-26zM22 214c0-70 8-134 38-134s38 64 38 134z"/><text x="60" y="${S.view === 'bust' ? 108 : 150}">立ち絵の枠</text></svg>`}</div>
                 ${bare ? '' : `<div class="art-tools"><div class="seg small"><button type="button" data-art="full" class="${S.view === 'full' ? 'on' : ''}">全身</button><button type="button" data-art="bust" class="${S.view === 'bust' ? 'on' : ''}">バスト</button></div><details><summary aria-label="画像について">i</summary><div><b>画像について</b><br>制作方法: 自作<br>作者・権利表記: （ここに表記）</div></details></div>`}</div>
             <div class="info">
-                <header class="who"><div><p class="ttl">島の秘書</p><h1>ノエル・アーデン</h1><p class="nick">愛称「ノエル」</p></div>
+                <header class="who"><div><p class="ttl">${h(S.title)}</p><h1>${h(S.name)}</h1>${S.nick ? `<p class="nick">愛称「${h(S.nick)}」</p>` : ''}</div>
                     <p class="isle">${owner ? '' : 'プレイヤー03の秘書　'}<button type="button" data-dummy>N7 試験島</button></p>
                     ${owner && !bare ? '<button type="button" class="primary go" data-dummy>地底へ</button>' : ''}</header>
                 <div class="nums">
@@ -66,7 +78,10 @@
     document.addEventListener('click', (e) => {
         const b = e.target.closest('button'); if (!b) return;
         const d = b.dataset;
-        if (d.stab) { S.tab = d.stab; S.pick = null; S.edit = false; }
+        if (d.stab) { S.tab = d.stab; S.pick = null; S.edit = false; S.note = ''; }
+        else if ('ticket' in d) { S.tickets--; S.note = 'わくわくチケットを使い、「怪獣よけのお香」を手に入れました（結果は仮）。'; }
+        else if (d.sellitem) { const i = ITEMS.findIndex((x) => x.id === +d.sellitem); S.note = `${ITEMS[i].name}を売りました。`; ITEMS.splice(i, 1); }
+        else if (d.title) S.title = d.title === '（なし）' ? '' : d.title;
         else if (d.art) S.view = d.art;
         else if ('edit' in d) S.edit = true;
         else if ('cancel' in d) S.edit = false;
@@ -78,7 +93,8 @@
         render();
     });
     document.addEventListener('input', (e) => { if (e.target.id === 'bio-text') $('bio-count').textContent = `${e.target.value.length} / 1000文字`; });
-    document.addEventListener('submit', (e) => { if (e.target.id !== 'bio-form') return; e.preventDefault(); S.bio = $('bio-text').value.trim(); S.edit = false; render(); });
+    document.addEventListener('submit', (e) => { if (e.target.id === 'name-form') { e.preventDefault(); S.name = $('set-name').value.trim() || S.name; S.nick = $('set-nick').value.trim(); S.note = '保存しました。'; render(); return; }
+        if (e.target.id !== 'bio-form') return; e.preventDefault(); S.bio = $('bio-text').value.trim(); S.edit = false; render(); });
     $('opt-state').onchange = (e) => { S.mode = e.target.value; S.pick = null; S.edit = false; render(); };
     $('opt-phone').onchange = (e) => document.body.classList.toggle('phone', e.target.checked);
     $('opt-theme').onchange = (e) => { if (e.target.value) document.documentElement.dataset.theme = e.target.value; else delete document.documentElement.dataset.theme; };
