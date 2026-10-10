@@ -13,6 +13,7 @@ import { ApiError, api } from '../api/client';
 import UndergroundAiEditor from './UndergroundAiEditor.vue';
 import UndergroundSkillTree from './UndergroundSkillTree.vue';
 import type { UndergroundSkillTree as SkillTree } from './undergroundSkills';
+import UndergroundBattlePlayback, { type PlaybackCombatant, type PlaybackHit, type PlaybackRound, type PlaybackVitals } from './UndergroundBattlePlayback.vue';
 import UndergroundCombatantCard from './UndergroundCombatantCard.vue';
 import UndergroundEquipmentShop from './UndergroundEquipmentShop.vue';
 import UndergroundEquipmentVault from './UndergroundEquipmentVault.vue';
@@ -945,6 +946,75 @@ const currentPartyActors = computed(() => {
     const party = currentBattle.value?.party;
     return party ? [...party.members, ...(party.enemies ?? [])] : [];
 });
+// ---- 再生: 1行動ずつ進めて、カードの上にダメージや回復の数字を出す ----
+const battleMode = ref<'read' | 'play'>('read');
+const playbackCombatants = computed<PlaybackCombatant[]>(() => {
+    const battle = currentBattle.value;
+    if (!battle) return [];
+    if (currentPartyActors.value.length > 0) {
+        return currentPartyActors.value.map((actor) => ({ id: actor.combatant_id, name: actor.display_name, side: actor.team }));
+    }
+    return [
+        { id: 'player', name: currentPlayerDisplayName.value, side: 'player' },
+        { id: 'enemy', name: battle.encounter_name, side: 'enemy' },
+    ];
+});
+
+function playbackVitals(value: StateEnvelope | null | undefined): Record<string, PlaybackVitals> | null {
+    if (!hasStateEnvelope(value)) return null;
+    const entries = Object.entries(value as Record<string, RoundState>);
+    return Object.fromEntries(entries.map(([id, entry]) => [id, { hp: entry.hp, max_hp: entry.max_hp }]));
+}
+
+// 数字を出す相手は、対象が1人に決まる行動だけ。複数が対象の行動は、合計か1人ぶんかをログから決められないので出さない。
+function playbackHits(action: RoundAction): PlaybackHit[] {
+    const kind = action.type === 'damage' || action.type === 'counter' ? 'damage' : action.type === 'recovery' ? 'heal' : null;
+    if (kind === null) return [];
+    const party = currentPartyActors.value.length > 0;
+    const ids = action.target_ids?.filter((id) => id !== '') ?? (action.target_id ? [action.target_id] : []);
+    let targetId: string | null = null;
+    if (party) targetId = ids.length === 1 ? ids[0]! : kind === 'heal' && ids.length === 0 ? action.actor_id ?? null : null;
+    else targetId = soloPlaybackTarget(action, kind);
+    if (targetId === null) return [];
+    if (action.evaded || action.complete_guarded) return [{ targetId, kind: 'miss', amount: 0, critical: false }];
+    const amount = action.amount ?? 0;
+    return amount > 0 ? [{ targetId, kind, amount, critical: action.critical === true }] : [];
+}
+
+// 1対1のログは、陣営が「秘書」「対戦相手」という表示名で入っている。名前が一致すればそれを使い、無ければ陣営から決める。
+function soloPlaybackTarget(action: RoundAction, kind: 'damage' | 'heal'): 'player' | 'enemy' | null {
+    const battle = currentBattle.value;
+    if (!battle) return null;
+    const sideOf = (name: string | null | undefined): 'player' | 'enemy' | null => name === currentPlayerDisplayName.value
+        ? 'player'
+        : name === battle.encounter_name ? 'enemy' : null;
+    const named = sideOf(action.target_name);
+    if (named !== null) return named;
+    const actor = action.side === 'player' || action.side === '秘書'
+        ? 'player'
+        : action.side === 'enemy' || action.side === '対戦相手' ? 'enemy' : sideOf(action.actor_name);
+    if (actor === null) return null;
+    return kind === 'heal' ? actor : actor === 'player' ? 'enemy' : 'player';
+}
+
+const playbackRounds = computed<PlaybackRound[]>(() => {
+    const battle = currentBattle.value;
+    if (!battle) return [];
+    return currentStructuredRounds.value.map((round, index) => ({
+        round: round.round,
+        start: playbackVitals(round.start_state) ?? (index === 0 ? playbackVitals(battle.initial_state) : null),
+        end: playbackVitals(round.end_state),
+        steps: actionGroups(round.actions).map((group) => ({
+            text: group.action.countdown ? `${group.action.countdown}` : actionNarrative(group.action, battle),
+            tone: actionTone(group.action),
+            highlight: actionHighlight(group.action),
+            hits: playbackHits(group.action),
+        })),
+    }));
+});
+const playbackAvailable = computed(() => playbackRounds.value.length > 0 && playbackRounds.value[0]!.start !== null);
+watch(() => currentBattle.value?.id, () => { battleMode.value = 'read'; });
+
 const finalBattleState = computed<StateEnvelope | null>(() => {
     const summaryFinalState = currentBattle.value?.summary?.final_state;
     if (hasStateEnvelope(summaryFinalState)) return summaryFinalState;
@@ -2433,8 +2503,19 @@ onUnmounted(() => {
                         <button type="button" class="underground-battle-detail-toggle" :aria-pressed="!detailVisible" title="会心・覚醒・予告・撃破などの要点だけを出します" @click="setBattleDetails(false)">要点</button>
                         <button type="button" :aria-pressed="detailVisible" @click="setBattleDetails(true)">すべて</button>
                     </div>
+                    <div v-if="playbackAvailable" class="underground-battle-filter underground-battle-mode" role="group" aria-label="戦闘ログの見方">
+                        <button type="button" :aria-pressed="battleMode === 'read'" @click="battleMode = 'read'">読む</button>
+                        <button type="button" :aria-pressed="battleMode === 'play'" @click="battleMode = 'play'">再生</button>
+                    </div>
                     <a class="underground-log-jump" href="#underground-battle-result">末尾へ</a>
                 </header>
+
+                <UndergroundBattlePlayback
+                    v-if="battleMode === 'play' && playbackAvailable"
+                    :rounds="playbackRounds"
+                    :combatants="playbackCombatants"
+                    :result-label="battleResultLabel(currentBattle.result)"
+                />
 
                 <UndergroundPartyBattleCards
                     v-if="currentPartyActors.length > 0"
@@ -2465,7 +2546,7 @@ onUnmounted(() => {
                     </div>
                 </section>
 
-                <div class="underground-rounds">
+                <div v-show="battleMode === 'read'" class="underground-rounds">
                     <p v-if="currentBattle.detail_message" class="status">{{ currentBattle.detail_message }}</p>
                     <article v-for="round in currentStructuredRounds" :key="round.round" class="underground-round">
                         <h2>{{ roundStartLabel(round) }}</h2>
