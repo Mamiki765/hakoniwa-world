@@ -276,6 +276,68 @@ describe('Underground party presentation controls', () => {
         expect(wrapper.find('img[src="/fixtures/awakening-healer-bust.webp"]').exists()).toBe(true);
         expect(wrapper.text()).toContain('生命讃歌');
         expect(wrapper.text()).toContain('AttackerのHP');
+        vi.useFakeTimers();
+        await wrapper.findAll('.underground-battle-mode button').find((button) => button.text() === '再生')!.trigger('click');
+        await wrapper.get('.ug-playback-play').trigger('click');
+        vi.advanceTimersByTime(510);
+        await wrapper.vm.$nextTick();
+        const card = (name: string) => wrapper.findAll('.ug-playback-card').find((candidate) => candidate.get('strong').text() === name)!;
+        expect(card('Healer').get('.ug-playback-hp').text()).toBe('HP 1,388 / 1,388');
+        vi.advanceTimersByTime(340);
+        await wrapper.vm.$nextTick();
+        expect(card('Leader').get('.ug-playback-hp').text()).toBe('HP 1,148 / 1,148');
+        expect(card('Leader').find('.ug-playback-popup.is-heal').text()).toBe('+1,148');
+        wrapper.unmount();
+    });
+
+    it('does not assign a same-name solo target to either combatant and restores the saved round result', async () => {
+        const state = (hp: number, max_hp: number) => ({ hp, max_hp, mp: 0, barrier: 0, statuses: [], role_stacks: { fighting_spirit: 0, grace: 0 } });
+        const battle = {
+            ...smallBattle('same-name-solo'), party: null, player_display_name: '洞窟狩人', encounter_name: '洞窟狩人',
+            detail_available: true, initial_state: { player: state(50, 100), enemy: state(100, 100) },
+            rounds: [{ round: 1, actions: [{ type: 'damage', side: '秘書', actor_name: '洞窟狩人', target_name: '洞窟狩人', label: '攻撃', amount: 25 }],
+                end_state: { player: state(50, 100), enemy: state(75, 100) } }],
+        };
+        stubUndergroundFetch(vi.fn((input: RequestInfo | URL) => Promise.resolve(response(
+            String(input).endsWith('/api/v1/me/underground/battles') ? [] : openState({ battle }),
+        ))));
+        const wrapper = mount(UndergroundPanel, { attachTo: document.body });
+        await flushPromises();
+        vi.useFakeTimers();
+        await wrapper.findAll('.underground-battle-mode button').find((button) => button.text() === '再生')!.trigger('click');
+        await wrapper.get('.ug-playback-play').trigger('click');
+        expect(wrapper.findAll('.ug-playback-hp').map((hp) => hp.text())).toEqual(['HP —', 'HP —']);
+        expect(wrapper.find('.ug-playback-popup').exists()).toBe(false);
+        vi.advanceTimersByTime(500);
+        await wrapper.vm.$nextTick();
+        expect(wrapper.findAll('.ug-playback-hp').map((hp) => hp.text())).toEqual(['HP 50 / 100', 'HP 75 / 100']);
+        wrapper.unmount();
+    });
+
+    it.each([true, false])('replays solo awakening from a saved awakened maximum and leaves missing HP unknown (snapshot=%s)', async (hasBoundary) => {
+        const state = (hp: number, max_hp: number, awakened = false) => ({ hp, max_hp, awakened, mp: 0, barrier: 0, statuses: [], role_stacks: { fighting_spirit: 0, grace: 0 } });
+        const battle = {
+            ...smallBattle('solo-awakening'), party: null, player_display_name: 'Leader', encounter_name: '敵', detail_available: true,
+            initial_state: { player: state(10, 100), enemy: state(100, 100) },
+            rounds: [{ round: 1, actions: [
+                { type: 'awakening', side: '秘書', actor_name: 'Leader', target_name: 'Leader', label: '覚醒', amount: 0 },
+                { type: 'damage', side: '対戦相手', actor_name: '敵', target_name: 'Leader', label: '攻撃', amount: 10 },
+            ], end_state: hasBoundary ? { player: state(120, 130, true), enemy: state(100, 100) } : null }],
+        };
+        stubUndergroundFetch(vi.fn((input: RequestInfo | URL) => Promise.resolve(response(
+            String(input).endsWith('/api/v1/me/underground/battles') ? [] : openState({ battle }),
+        ))));
+        const wrapper = mount(UndergroundPanel, { attachTo: document.body });
+        await flushPromises();
+        vi.useFakeTimers();
+        await wrapper.findAll('.underground-battle-mode button').find((button) => button.text() === '再生')!.trigger('click');
+        await wrapper.get('.ug-playback-play').trigger('click');
+        const hp = () => wrapper.get('.ug-playback-team.is-player .ug-playback-hp').text();
+        expect(hp()).toBe(hasBoundary ? 'HP 130 / 130' : 'HP —');
+        vi.advanceTimersByTime(170);
+        await wrapper.vm.$nextTick();
+        expect(hp()).toBe(hasBoundary ? 'HP 120 / 130' : 'HP —');
+        expect(wrapper.get('.ug-playback-team.is-player .ug-playback-popup').text()).toBe('−10');
         wrapper.unmount();
     });
 

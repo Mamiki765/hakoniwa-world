@@ -13,7 +13,7 @@ import { ApiError, api } from '../api/client';
 import UndergroundAiEditor from './UndergroundAiEditor.vue';
 import UndergroundSkillTree from './UndergroundSkillTree.vue';
 import type { UndergroundSkillTree as SkillTree } from './undergroundSkills';
-import UndergroundBattlePlayback, { type PlaybackCombatant, type PlaybackHit, type PlaybackRound, type PlaybackVitals } from './UndergroundBattlePlayback.vue';
+import UndergroundBattlePlayback, { type PlaybackCombatant, type PlaybackHit, type PlaybackRound, type PlaybackStep, type PlaybackVitals } from './UndergroundBattlePlayback.vue';
 import UndergroundCombatantCard from './UndergroundCombatantCard.vue';
 import UndergroundEquipmentShop from './UndergroundEquipmentShop.vue';
 import UndergroundEquipmentVault from './UndergroundEquipmentVault.vue';
@@ -74,6 +74,7 @@ interface RoundAction {
     important?: boolean;
     countdown?: number;
     major_telegraph?: boolean;
+    state?: RoundState | null;
 }
 
 interface RoundState {
@@ -968,26 +969,34 @@ function playbackVitals(value: StateEnvelope | null | undefined): Record<string,
 
 // 数字を出す相手は、対象が1人に決まる行動だけ。複数が対象の行動は、合計か1人ぶんかをログから決められないので出さない。
 function playbackHits(action: RoundAction): PlaybackHit[] {
-    const kind = action.type === 'damage' || action.type === 'counter' ? 'damage' : action.type === 'recovery' ? 'heal' : null;
+    const kind = action.type === 'damage' || action.type === 'counter' ? 'damage'
+        : action.type === 'recovery' || action.type === 'revival' ? 'heal' : null;
     if (kind === null) return [];
-    const party = currentPartyActors.value.length > 0;
-    const ids = action.target_ids?.filter((id) => id !== '') ?? (action.target_id ? [action.target_id] : []);
-    let targetId: string | null;
-    if (party) targetId = ids.length === 1 ? ids[0]! : kind === 'heal' && ids.length === 0 ? action.actor_id ?? null : null;
-    else targetId = soloPlaybackTarget(action, kind);
+    const targetId = playbackTargetId(action, kind);
     if (targetId === null) return [];
     if (action.evaded || action.complete_guarded) return [{ targetId, kind: 'miss', amount: 0, critical: false }];
-    const amount = action.amount ?? 0;
+    const amount = action.type === 'revival' ? Math.abs(action.amount ?? 0) : action.amount ?? 0;
     return amount > 0 ? [{ targetId, kind, amount, critical: action.critical === true }] : [];
+}
+
+function playbackTargetId(action: RoundAction, kind: 'damage' | 'heal'): string | null {
+    const party = currentPartyActors.value.length > 0;
+    const ids = action.target_ids?.filter((id) => id !== '') ?? (action.target_id ? [action.target_id] : []);
+    return party ? ids.length === 1 ? ids[0]! : kind === 'heal' && ids.length === 0 ? action.actor_id ?? null : null
+        : soloPlaybackTarget(action, kind);
 }
 
 // 1対1のログは、陣営が「秘書」「対戦相手」という表示名で入っている。名前が一致すればそれを使い、無ければ陣営から決める。
 function soloPlaybackTarget(action: RoundAction, kind: 'damage' | 'heal'): 'player' | 'enemy' | null {
     const battle = currentBattle.value;
     if (!battle) return null;
-    const sideOf = (name: string | null | undefined): 'player' | 'enemy' | null => name === currentPlayerDisplayName.value
-        ? 'player'
-        : name === battle.encounter_name ? 'enemy' : null;
+    if (action.target_id === 'player' || action.target_id === 'enemy') return action.target_id;
+    const sideOf = (name: string | null | undefined): 'player' | 'enemy' | null => {
+        const player = name === currentPlayerDisplayName.value;
+        const enemy = name === battle.encounter_name;
+        return player === enemy ? null : player ? 'player' : 'enemy';
+    };
+    if (action.target_name === currentPlayerDisplayName.value && action.target_name === battle.encounter_name) return null;
     const named = sideOf(action.target_name);
     if (named !== null) return named;
     const actor = action.side === 'player' || action.side === '秘書'
@@ -995,6 +1004,39 @@ function soloPlaybackTarget(action: RoundAction, kind: 'damage' | 'heal'): 'play
         : action.side === 'enemy' || action.side === '対戦相手' ? 'enemy' : sideOf(action.actor_name);
     if (actor === null) return null;
     return kind === 'heal' ? actor : actor === 'player' ? 'enemy' : 'player';
+}
+
+function playbackUpdates(action: RoundAction, end: StateEnvelope | null | undefined): PlaybackStep['updates'] {
+    if (action.type === 'awakening') {
+        const party = currentPartyActors.value.length > 0;
+        const actor = party ? action.actor_id : action.side === 'player' || action.side === '秘書' ? 'player' : null;
+        if (!actor) return [];
+        const snapshot = action.state;
+        if (snapshot && Number.isSafeInteger(snapshot.hp) && Number.isSafeInteger(snapshot.max_hp) && snapshot.max_hp > 0) {
+            return [{ targetId: actor, hp: snapshot.hp, max_hp: snapshot.max_hp }];
+        }
+        // Solo AlphaV1 logs omit the awakening snapshot. Awakening is the only
+        // in-battle max-HP change and fills HP once, so the awakened round-end
+        // maximum also describes that event. Never calculate it from display text.
+        const boundary = party ? null : soloState(end, 'player');
+        if (boundary?.awakened === true && Number.isSafeInteger(boundary.max_hp) && boundary.max_hp > 0) {
+            return [{ targetId: actor, hp: boundary.max_hp, max_hp: boundary.max_hp }];
+        }
+        return [{ targetId: actor, hp: null }];
+    }
+    if (action.type === 'revival' || action.revived === true) {
+        const targetId = playbackTargetId(action, 'heal');
+        const hp = Math.abs(action.amount ?? 0);
+        return targetId !== null && hp > 0 ? [{ targetId, hp }] : [];
+    }
+    const battle = currentBattle.value;
+    if (currentPartyActors.value.length === 0 && battle
+        && ['damage', 'counter', 'recovery'].includes(action.type)
+        && action.target_name === currentPlayerDisplayName.value && action.target_name === battle.encounter_name
+        && playbackTargetId(action, action.type === 'recovery' ? 'heal' : 'damage') === null) {
+        return [{ targetId: 'player', hp: null }, { targetId: 'enemy', hp: null }];
+    }
+    return [];
 }
 
 const playbackRounds = computed<PlaybackRound[]>(() => {
@@ -1009,6 +1051,7 @@ const playbackRounds = computed<PlaybackRound[]>(() => {
             tone: actionTone(group.action),
             highlight: actionHighlight(group.action),
             hits: playbackHits(group.action),
+            updates: playbackUpdates(group.action, round.end_state),
         })),
     }));
 });

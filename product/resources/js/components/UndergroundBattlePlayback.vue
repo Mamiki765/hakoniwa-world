@@ -18,6 +18,7 @@ export interface PlaybackStep {
     tone: string;
     highlight: string | null;
     hits: PlaybackHit[];
+    updates: Array<{ targetId: string; hp: number | null; max_hp?: number }>;
 }
 
 export interface PlaybackRound {
@@ -146,6 +147,14 @@ function applyStep(step: PlaybackStep): void {
         const hp = hit.kind === 'heal' ? target.hp + hit.amount : target.hp - hit.amount;
         nextVitals[hit.targetId] = { ...target, hp: Math.max(0, Math.min(target.max_hp, hp)) };
     }
+    for (const update of step.updates) {
+        if (update.hp === null) {
+            delete nextVitals[update.targetId];
+            continue;
+        }
+        const maxHp = update.max_hp ?? nextVitals[update.targetId]?.max_hp;
+        if (maxHp !== undefined) nextVitals[update.targetId] = { hp: update.hp, max_hp: maxHp };
+    }
     vitals.value = nextVitals;
     totals.value = nextTotals;
 }
@@ -259,8 +268,9 @@ onBeforeUnmount(() => {
                     :class="{ 'is-down': vitals[combatant.id]?.hp === 0, 'is-flashing': flashing.has(combatant.id) }"
                 >
                     <strong>{{ combatant.name }}</strong>
-                    <span class="ug-playback-hp">HP {{ (vitals[combatant.id]?.hp ?? 0).toLocaleString('ja-JP') }}<small> / {{ (vitals[combatant.id]?.max_hp ?? 0).toLocaleString('ja-JP') }}</small></span>
-                    <span class="ug-playback-bar" aria-hidden="true"><i :style="{ width: `${hpPercent(combatant.id)}%` }" /></span>
+                    <span v-if="vitals[combatant.id]" class="ug-playback-hp">HP {{ vitals[combatant.id]!.hp.toLocaleString('ja-JP') }}<small> / {{ vitals[combatant.id]!.max_hp.toLocaleString('ja-JP') }}</small></span>
+                    <span v-else class="ug-playback-hp">HP —</span>
+                    <span v-if="vitals[combatant.id]" class="ug-playback-bar" aria-hidden="true"><i :style="{ width: `${hpPercent(combatant.id)}%` }" /></span>
                     <span
                         v-for="popup in popups.filter((candidate) => candidate.targetId === combatant.id)"
                         :key="popup.id"

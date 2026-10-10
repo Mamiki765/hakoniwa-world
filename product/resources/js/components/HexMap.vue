@@ -495,6 +495,13 @@ async function showTooltip(cell: MapCell, event: Event): Promise<void> {
     };
 }
 
+function showPointerTooltip(cell: MapCell, event: PointerEvent): void {
+    if (event.pointerType !== 'mouse' || activePointer !== null) return;
+    const resumeHover = touchInput;
+    touchInput = false;
+    if (resumeHover || event.type === 'pointerenter') void showTooltip(cell, event);
+}
+
 function assetIdentity(cell: MapCell): string {
     return `${cell.x}:${cell.y}:${cell.asset.key}:${cell.asset.url ?? ''}`;
 }
@@ -567,6 +574,8 @@ function markAssetFailed(cell: MapCell): void {
                     :aria-label="item.cell.aria_label"
                     type="button"
                     @mouseenter="showTooltip(item.cell, $event)"
+                    @pointerenter="showPointerTooltip(item.cell, $event)"
+                    @pointermove="showPointerTooltip(item.cell, $event)"
                     @mouseleave="scheduleTooltipHide"
                     @focus="showTooltip(item.cell, $event)"
                     @blur="scheduleTooltipHide"
