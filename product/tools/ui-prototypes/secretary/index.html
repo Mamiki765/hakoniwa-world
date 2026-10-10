@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<!--BEGIN-->
+<title>箱庭 秘書ページ 試作</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=BIZ+UDPGothic:wght@400;700&family=DotGothic16&display=swap">
+<link rel="stylesheet" href="../surface/style.css">
+<link rel="stylesheet" href="sec.css">
+<!--HEAD-END-->
+</head>
+<body>
+<div id="protobar">
+    <strong class="proto-title">秘書ページ 試作</strong>
+    <label class="proto-opt pc-only"><input type="checkbox" id="opt-phone"> スマホ幅で見る</label>
+    <label class="proto-opt">見ている人
+        <select id="opt-state"><option value="owner">自分の秘書</option><option value="visitor">他の人の秘書（公開表示）</option><option value="noimage">画像なし・地底に未到達</option></select>
+    </label>
+    <label class="proto-opt">配色
+        <select id="opt-theme"><option value="">端末に合わせる</option><option value="light">ライト</option><option value="dark">ダーク</option></select>
+    </label>
+    <span class="proto-note">固定データの試作です。秘書の名前・経歴・装備名は架空で、立ち絵は枠だけです。サーバーへは何も送りません。</span>
+</div>
+<div id="stage"><div id="sec"></div></div>
+<script src="sec.js"></script>
+<!--END-->
+</body>
+</html>

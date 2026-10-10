@@ -36,9 +36,9 @@
         poor: 'それは手持ちが足りないね。預金は買い物に使えないから、銀行で下ろしておいで。',
     };
     const S = {
-        view: 'home', g: 12480, bank: 50000, tickets: 7, lv: 42, name: 'ルチル', hp: 1180, max: 1480, aw: 620, awMax: 1000, xp: 3200, stp: 5,
+        view: 'home', g: 12480, bank: 50000, tickets: 7, lv: 42, name: 'ノエル', hp: 1180, max: 1480, aw: 620, awMax: 1000, xp: 3200, stp: 5,
         dest: 'shallow_caves', tab: 'explore', area: 'shallow_caves', skip: 1, cat: 'weapon', talk: 'hello', cool: 0, inn: 120, msg: '',
-        mates: [{ name: 'ガーネット', hp: 2100, max: 2100 }, { name: 'セレス', hp: 640, max: 1050 }, { name: 'トパーズ', hp: 1200, max: 1200 }],
+        mates: [{ name: 'ブラム', hp: 2100, max: 2100 }, { name: 'セレス', hp: 640, max: 1050 }, { name: 'カイ', hp: 1200, max: 1200 }],
     };
     const area = (k) => AREAS.find((a) => a.key === k);
     const meter = (v, max, cls = '') => { const r = v / max; return `<div class="meter ${cls} ${cls ? '' : r <= 0.25 ? 'crit' : r <= 0.5 ? 'low' : ''}"><span style="width:${r * 100}%"></span></div>`; };

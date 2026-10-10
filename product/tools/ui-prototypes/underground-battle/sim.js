@@ -27,27 +27,27 @@
         duel: {
             title: '1対1', place: '浅い洞窟', encounter: '腐食スライム', seed: 7, context: '探索',
             actors: [
-                A('p1', 'ルチル', { max_hp: 1180, atk: 135, spd: 12, skills: ['slash', 'heavy'], look: 1, gauge: 620 }),
+                A('p1', 'ノエル', { max_hp: 1180, atk: 135, spd: 12, skills: ['slash', 'heavy'], look: 1, gauge: 620 }),
                 E('e1', '腐食スライム', { max_hp: 1500, atk: 80, spd: 7, skills: ['bite', 'acid'], look: 1 }),
             ],
         },
         boss: {
             title: '4対1（ボス）', place: '封印の地', encounter: '黒竜バハムル・初級1', seed: 21, context: '試練',
             actors: [
-                A('p1', 'ルチル', { max_hp: 1480, atk: 150, spd: 12, skills: ['slash', 'heavy'], look: 1, gauge: 760 }),
-                A('p2', 'ガーネット', { max_hp: 2100, atk: 95, spd: 8, skills: ['slash', 'taunt', 'ward'], look: 2, gauge: 300 }),
+                A('p1', 'ノエル', { max_hp: 1480, atk: 150, spd: 12, skills: ['slash', 'heavy'], look: 1, gauge: 760 }),
+                A('p2', 'ブラム', { max_hp: 2100, atk: 95, spd: 8, skills: ['slash', 'taunt', 'ward'], look: 2, gauge: 300 }),
                 A('p3', 'セレス', { max_hp: 1050, atk: 110, spd: 11, skills: ['bolt', 'heal'], look: 3, gauge: 480 }),
-                A('p4', 'トパーズ', { max_hp: 1200, atk: 125, spd: 14, skills: ['arrow', 'slash'], look: 4, gauge: 150 }),
+                A('p4', 'カイ', { max_hp: 1200, atk: 125, spd: 14, skills: ['arrow', 'slash'], look: 4, gauge: 150 }),
                 E('e1', '黒竜バハムル', { max_hp: 8600, atk: 170, spd: 9, skills: ['claw', 'wing', 'roar'], look: 9, boss: true }),
             ],
         },
         party: {
             title: '4対3', place: '浅い洞窟', encounter: '狂信者の一団', seed: 42, context: '探索',
             actors: [
-                A('p1', 'ルチル', { max_hp: 1180, atk: 135, spd: 12, skills: ['slash', 'heavy'], look: 1, gauge: 900 }),
-                A('p2', 'ガーネット', { max_hp: 1700, atk: 90, spd: 8, skills: ['slash', 'taunt', 'ward'], look: 2, gauge: 200 }),
+                A('p1', 'ノエル', { max_hp: 1180, atk: 135, spd: 12, skills: ['slash', 'heavy'], look: 1, gauge: 900 }),
+                A('p2', 'ブラム', { max_hp: 1700, atk: 90, spd: 8, skills: ['slash', 'taunt', 'ward'], look: 2, gauge: 200 }),
                 A('p3', 'セレス', { max_hp: 900, atk: 100, spd: 11, skills: ['bolt', 'heal'], look: 3, gauge: 350 }),
-                A('p4', 'トパーズ', { max_hp: 1000, atk: 115, spd: 14, skills: ['arrow', 'slash'], look: 4, gauge: 500 }),
+                A('p4', 'カイ', { max_hp: 1000, atk: 115, spd: 14, skills: ['arrow', 'slash'], look: 4, gauge: 500 }),
                 E('e1', '狂信者', { max_hp: 1300, atk: 85, spd: 9, skills: ['bite', 'chant'], look: 2 }),
                 E('e2', '再生肉塊', { max_hp: 2200, atk: 70, spd: 5, skills: ['bite', 'regen'], look: 3 }),
                 E('e3', '洞窟蟲', { max_hp: 700, atk: 100, spd: 13, skills: ['bite', 'acid'], look: 4 }),
