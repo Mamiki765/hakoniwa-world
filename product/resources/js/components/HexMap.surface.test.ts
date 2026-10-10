@@ -61,11 +61,6 @@ function trackPointerCapture(element: Element): { captured: number[]; released: 
     return { captured, released };
 }
 
-async function hover(element: Element): Promise<void> {
-    dispatchPointer(element, 'pointerenter', { pointerId: 1, pointerType: 'mouse', clientX: 0, clientY: 0 });
-    await flushPromises();
-}
-
 describe('staggered square-image map', () => {
     it('toggles an area perimeter and the recorded weather while keeping cells selectable', async () => {
         const cell = mapCell({ x: 0, y: 0 });
@@ -81,7 +76,7 @@ describe('staggered square-image map', () => {
         expect(wrapper.get('.sea-area title').text()).toContain('第7ターン');
         await wrapper.get('.map-cell').trigger('click');
         expect(wrapper.emitted('select')?.[0]).toEqual([cell]);
-        await hover(wrapper.get('.map-cell').element);
+        await wrapper.get('.map-cell').trigger('mouseenter');
         expect(wrapper.get('.cell-tooltip').text()).toContain('天候: 雨（第7ターン）');
         await wrapper.get('.weather-icon').trigger('error');
         expect(wrapper.get('.weather-icon-fallback').text()).toBe('雨');
@@ -94,7 +89,7 @@ describe('staggered square-image map', () => {
             weather: { key: 'sunny', label: '晴れ', turn: null, asset: { key: 'weather.sunny', url: null, available: false, fallback_label: '晴れ', fallback_style: '' } } }] });
         expect(wrapper.get('.sea-area title').text()).toBe('テスト海域・晴れ');
         expect(wrapper.get('.weather-icon-fallback').text()).toBe('晴');
-        await hover(wrapper.get('.map-cell').element);
+        await wrapper.get('.map-cell').trigger('mouseenter');
         expect(wrapper.get('.cell-tooltip').text()).toContain('天候: 晴れ');
         expect(wrapper.get('.cell-tooltip').text()).not.toContain('第null');
     });
@@ -106,7 +101,7 @@ describe('staggered square-image map', () => {
             loading: false, error: null, emptyChunks: [],
         } });
 
-        await hover(wrapper.get('.map-cell').element);
+        await wrapper.get('.map-cell').trigger('mouseenter');
 
         expect(wrapper.get('.cell-tooltip strong').text()).toBe('海底油田 (1,-1)');
         expect(wrapper.findAll('.cell-tooltip span').map((line) => line.text())).not.toContain('座標 x=1, y=-1');
@@ -153,7 +148,7 @@ describe('staggered square-image map', () => {
         } });
 
         const tile = wrapper.get('.map-cell');
-        await hover(tile.element);
+        await tile.trigger('mouseenter');
         const queuedLines = wrapper.findAll('.cell-tooltip span')
             .map((line) => line.text())
             .filter((line) => line.startsWith('['));
@@ -217,7 +212,7 @@ describe('staggered square-image map', () => {
             commandQueue, loading: false, error: null, emptyChunks: [],
         } });
         await flushPromises();
-        await hover(wrapper.get('.map-cell').element);
+        await wrapper.get('.map-cell').trigger('mouseenter');
 
         const lines = wrapper.findAll('.cell-tooltip span').map((line) => line.text());
         const seaIndex = lines.indexOf('海域: ウォーリアン海域');
@@ -269,7 +264,7 @@ describe('staggered square-image map', () => {
         expect(tiles[0]!.get('small').text()).toBe('N4');
         expect(tiles[1]!.find('img').exists()).toBe(false);
         expect(tiles[1]!.find('.tile-label').text()).toBe('森');
-        await hover(tiles[0]!.element);
+        await tiles[0]!.trigger('mouseenter');
         expect(wrapper.find('.cell-tooltip strong').text()).toBe('漁船 (0,0)');
         expect(wrapper.find('.cell-tooltip').text()).not.toContain('座標');
         expect(wrapper.find('.cell-tooltip').text()).toContain('人口');
@@ -313,7 +308,7 @@ describe('staggered square-image map', () => {
             loading: false, error: null, emptyChunks: [],
         } });
         await flushPromises();
-        await hover(wrapper.get('.map-cell').element);
+        await wrapper.get('.map-cell').trigger('mouseenter');
 
         expect(wrapper.find('.map-cell small').exists()).toBe(false);
         expect(wrapper.get('.cell-tooltip strong').text()).toBe('宝船 (0,0)');

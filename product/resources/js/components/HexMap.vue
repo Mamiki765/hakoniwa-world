@@ -364,16 +364,6 @@ function scheduleTooltipHide(): void {
     }, 120);
 }
 
-function hoverTooltip(cell: MapCell, event: PointerEvent): void {
-    if (event.pointerType === 'mouse') void showTooltip(cell, event);
-}
-function touchTooltip(event: PointerEvent): void {
-    if (event.pointerType === 'touch') { tooltipCell.value = null; cancelTooltipHide(); }
-}
-function focusTooltip(cell: MapCell, event: FocusEvent): void {
-    if ((event.currentTarget as HTMLElement).matches(':focus-visible')) void showTooltip(cell, event);
-}
-
 async function showTooltip(cell: MapCell, event: Event): Promise<void> {
     cancelTooltipHide();
     const target = event.currentTarget as HTMLElement;
@@ -478,10 +468,9 @@ function markAssetFailed(cell: MapCell): void {
                     :style="{ left: `${item.x}px`, top: `${item.y}px` }"
                     :aria-label="item.cell.aria_label"
                     type="button"
-                    @pointerenter="hoverTooltip(item.cell, $event)"
-                    @pointerdown="touchTooltip"
-                    @pointerleave="scheduleTooltipHide"
-                    @focus="focusTooltip(item.cell, $event)"
+                    @mouseenter="showTooltip(item.cell, $event)"
+                    @mouseleave="scheduleTooltipHide"
+                    @focus="showTooltip(item.cell, $event)"
                     @blur="scheduleTooltipHide"
                     @click="emit('select', item.cell)"
                 >

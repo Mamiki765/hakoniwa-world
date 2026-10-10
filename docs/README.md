@@ -14,7 +14,6 @@
 
 | 目的 | 入口 |
 |---|---|
-| 5.0.0 地上案A「帳簿」の実画面比較・検証・Claude向け判断待ち | [5.0.0 surface ledger](../product/docs/releases/5.0.0-surface-ledger.md) |
 | 4.10.0の採用PR・統合状況・検証・残る判断 | [4.10.0 release](../product/docs/releases/4.10.0.md) |
 | 4.11.0 電力・ピザの仕様表・決算・移行・画像の残件 | [4.11.0 power/pizza](../product/docs/releases/4.11.0-power-pizza.md) |
 | 4.11.1 資源予測の簡素化・ピザ金銭維持費削除・秘書条件表示 | [4.11.1 power/secretary](../product/docs/releases/4.11.1-power-secretary.md) |

@@ -43,8 +43,7 @@ html[data-theme="system"] {
     --toast-border: #2d6973;
 }
 
-html[data-theme="dark"],
-html[data-theme="old-dark"] {
+html[data-theme="dark"] {
     color-scheme: dark;
     --ink: #e5efea;
     --muted: #a5b6b0;
