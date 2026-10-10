@@ -203,7 +203,9 @@
     function cmdButton({ c, now }) {
         const lack = c.cost_money - money(), noPd = c.cost_paradox > D.NATION.paradox, full = S.queue.length >= D.QUEUE_LIMIT;
         const cost = lack > 0 ? `あと${n(lack)}億円` : `${n(c.cost_money)}億円${c.cost_paradox ? `<em>${c.cost_paradox}Pd</em>` : ''}`;
-        return `<button type="button" class="cmd${lack > 0 || noPd ? ' short' : ''}${now ? '' : ' later'}" data-cmd="${c.key}" ${lack > 0 || noPd || full ? 'disabled' : ''} ${now ? '' : 'title="いまの地形では使えません。前の計画で地形が変わる前提で入れます"'}>${mark(c)}<span class="nm">${h(c.name)}${c.suffix ? `<small>${h(c.suffix)}</small>` : ''}${now ? '' : '<small class="ltr">先読み</small>'}</span><span class="cost">${cost}</span></button>`;
+        // 資金・輝石が足りなくても予約はできる（ターン更新までに貯まるかもしれない）。止めるのは計画が一杯のときだけ
+        const tip = [now ? '' : 'いまの地形では使えません。前の計画で地形が変わる前提で入れます。', lack > 0 || noPd ? 'いまの資金・輝石では足りません。実行のときに足りなければ実行されません。' : ''].filter(Boolean).join('');
+        return `<button type="button" class="cmd${lack > 0 || noPd ? ' short' : ''}${now ? '' : ' later'}" data-cmd="${c.key}" ${full ? 'disabled' : ''} ${tip ? `title="${tip}"` : ''}>${mark(c)}<span class="nm">${h(c.name)}${c.suffix ? `<small>${h(c.suffix)}</small>` : ''}${now ? '' : '<small class="ltr">先読み</small>'}</span><span class="cost">${cost}</span></button>`;
     }
     function renderInspect() {
         const c = S.sel, info = $('cell-info');
@@ -402,7 +404,7 @@
         else if (b.id === 'cmt-cancel') $('cmt').hidden = true;
         else if (b.id === 'plan-bulk') {
             const m = $('menu'), r = b.getBoundingClientRect(), a = app.getBoundingClientRect();
-            m.innerHTML = '<button type="button" data-bulk="level">荒地と焦土を全て地ならし</button><button type="button" data-bulk="clear">荒地と焦土を全て整地</button><button type="button" data-bulk="reclaim">浅瀬を全て埋め立て</button><button type="button" data-bulk="cut" class="danger">選んだ行から下を全て取消</button>';
+            m.innerHTML = '<button type="button" data-bulk="level_all">荒地と焦土を全て地ならし</button><button type="button" data-bulk="clear_all">荒地と焦土を全て整地</button><button type="button" data-bulk="reclaim_level_all">浅瀬を全て埋め立て＋地ならし</button><button type="button" data-bulk="reclaim_clear_all">浅瀬を全て埋め立て＋整地</button><button type="button" data-bulk="cut" class="danger">選んだ行から下を全て取消</button>';
             m.hidden = false;
             m.style.right = `${Math.max(8, a.right - r.right)}px`;
             if (r.top - a.top > a.height / 2) { m.style.top = 'auto'; m.style.bottom = `${a.bottom - r.top + 4}px`; } else { m.style.bottom = 'auto'; m.style.top = `${r.bottom - a.top + 4}px`; }
@@ -415,14 +417,20 @@
             const cnt = S.queue.length - i; S.queue.splice(i); S.planSel = null; renderPlan(); renderInspect();
             return toast(`${cnt}件を取り消しました。`);
         }
-        const key = { clear: 'land_clear', level: 'land_level', reclaim: 'reclaim' }[kind];
-        const terr = kind === 'reclaim' ? ['shallow'] : ['wasteland', 'scorched'];
-        const targets = D.cells.filter((c) => c.owner_nation_id === D.OWN.id && terr.includes(c.terrain) && !c.facility).slice(0, D.QUEUE_LIMIT - S.queue.length);
+        // 現行APIの4種（clear_all / level_all / reclaim_clear_all / reclaim_level_all）。埋め立て系は1マスにつき埋め立て＋整地（地ならし）の2件
+        const keys = { clear_all: ['land_clear'], level_all: ['land_level'], reclaim_clear_all: ['reclaim', 'land_clear'], reclaim_level_all: ['reclaim', 'land_level'] }[kind];
+        const reclaim = kind.startsWith('reclaim_');
+        const cells = D.cells.filter((c) => (reclaim ? c.terrain === 'shallow' && applicable(c).some((x) => x.key === 'reclaim') : c.owner_nation_id === D.OWN.id && ['wasteland', 'scorched'].includes(c.terrain) && !c.facility));
+        const items = cells.flatMap((c) => keys.map((key) => ({ command_key: key, quantity: 1, target_x: c.x, target_y: c.y })));
+        if (!items.length) return toast('対象のマスがありません。');
         // 一括は立て直し用: 何も選んでいなければ1番から、行を選んでいればその行の位置から入れ、元の計画は全部その下へ送る
         const pi = S.queue.findIndex((q) => q.id === S.planSel), at = pi >= 0 ? pi : 0;
-        S.queue.splice(at, 0, ...targets.map((c) => ({ id: seq++, command_key: key, quantity: 1, target_x: c.x, target_y: c.y })));
+        // 現行APIは上限を超えた分を末尾から消す（入りきらない一括分も切る）。計画が消える一括は送らずに止めて知らせる
+        const over = S.queue.length + items.length - D.QUEUE_LIMIT;
+        if (over > 0) return toast(`${items.length}件を入れると上限${D.QUEUE_LIMIT}件を${over}件超え、計画の末尾が消えるので入れていません。空きは${D.QUEUE_LIMIT - S.queue.length}件です。`);
+        S.queue.splice(at, 0, ...items.map((x) => ({ id: seq++, ...x })));
         renderPlan(); renderInspect();
-        toast(targets.length ? `${def(key).name}を${targets.length}件、計画の${at + 1}番から入れました。元の計画はその下に送りました。` : '対象のマスがありません。');
+        toast(`${items.length}件を、計画の${at + 1}番から入れました。元の計画はその下に送りました。`);
     }
     $('entry-body').addEventListener('input', (e) => {
         if (e.target.id === 'entry-qty') { const v = Math.min(99, Math.max(1, Math.floor(+e.target.value || 1))); entry.qty = v; }
