@@ -293,6 +293,5 @@ onBeforeUnmount(() => {
             </li>
             <li v-if="recentSteps.length === 0" class="ug-muted">ラウンドの開始時です。</li>
         </ol>
-        <p class="ug-playback-note">行動の途中のHPは、ログの数字を足し引きした見込みです。ラウンドの区切りで正しい値に合わせます。</p>
     </section>
 </template>

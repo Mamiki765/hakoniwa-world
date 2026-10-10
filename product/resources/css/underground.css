@@ -268,7 +268,6 @@ main:has(> .underground-panel.ug-panel) { flex: 1; min-height: 0; display: flex;
 .ug-playback-lines li.is-current { color: var(--ink); background: var(--paper-deep); border-left-color: var(--navy); font-size: 1rem; }
 .ug-playback-lines li.is-current.is-impact, .ug-playback-lines li.is-current.is-critical { border-left-color: var(--danger-strong); }
 .ug-playback-lines li.is-current.is-recovery { border-left-color: var(--success); }
-.ug-playback-note { margin: 0; color: var(--muted); font-size: .75rem; }
 @media (prefers-reduced-motion: reduce) {
     .ug-playback-popup, .ug-playback-total, .ug-playback-card.is-flashing { animation: none; }
     .ug-playback-bar i { transition: none; }
