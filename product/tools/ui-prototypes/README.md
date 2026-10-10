@@ -1,7 +1,7 @@
 # UI試作品
 
 正式画面を置き換える前に、配置と操作の流れを比べるための独立した試作品を置く。
-本体の`resources/js`・Vite・Laravelには依存せず、buildも不要。
+本体の`resources/js`・Vite・Laravelには依存せず、buildも不要。`index.html`が各試作への入口。
 
 ## surface — 地上開発画面
 
