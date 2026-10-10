@@ -53,6 +53,9 @@ let activePointer: {
     originCell: HTMLElement | null;
 } | null = null;
 let suppressNextCellClick = false;
+// 2本指でつまんで拡大・縮小する。指の位置と、つまみ始めの倍率・指の間隔を持つ。
+const touchPoints = new Map<number, { x: number; y: number }>();
+let pinch: { startDistance: number; startZoom: number; worldX: number; worldY: number } | null = null;
 
 const positioned = computed(() => props.cells.map((cell) => {
     const pixel = gridToPixel(cell);
@@ -225,11 +228,65 @@ function fitWholeWorld(loadAll: boolean): void {
     if (loadAll) emit('requestAll');
 }
 
-function changeZoom(delta: number): void {
+function clampZoom(value: number): number {
     const minimumZoom = Math.min(0.45, wholeWorldTransform().zoom);
-    zoom.value = Math.min(2, Math.max(minimumZoom, Number((zoom.value + delta).toFixed(2))));
+    return Math.min(2, Math.max(minimumZoom, Number(value.toFixed(2))));
+}
+
+function changeZoom(delta: number): void {
+    zoom.value = clampZoom(zoom.value + delta);
     centerOnCapital();
     requestVisibleChunks();
+}
+
+// 画面上の一点（指の中点やマウスの位置）を動かさずに倍率を変える。
+function zoomAround(nextZoom: number, screenX: number, screenY: number, worldX: number, worldY: number): void {
+    wholeWorldView.value = false;
+    zoom.value = clampZoom(nextZoom);
+    pan.value = { x: screenX - worldX * zoom.value, y: screenY - worldY * zoom.value };
+    tooltipCell.value = null;
+    requestVisibleChunks();
+}
+
+function touchMidpoint(): { x: number; y: number; distance: number } | null {
+    const points = [...touchPoints.values()];
+    const bounds = viewport.value?.getBoundingClientRect();
+    if (points.length < 2 || bounds === undefined) return null;
+    const [first, second] = points as [{ x: number; y: number }, { x: number; y: number }];
+    return {
+        x: (first.x + second.x) / 2 - bounds.left,
+        y: (first.y + second.y) / 2 - bounds.top,
+        distance: Math.hypot(first.x - second.x, first.y - second.y),
+    };
+}
+
+function beginPinch(): void {
+    const middle = touchMidpoint();
+    if (middle === null || middle.distance <= 0) return;
+    // つまみ始めたら、1本指の移動は打ち切る。指を離したあとのタップ扱いも止める。
+    if (activePointer !== null) {
+        const { captureOwner, id } = activePointer;
+        if (captureOwner.hasPointerCapture?.(id)) captureOwner.releasePointerCapture?.(id);
+        activePointer = null;
+    }
+    dragging.value = false;
+    suppressNextCellClick = true;
+    pinch = {
+        startDistance: middle.distance,
+        startZoom: zoom.value,
+        worldX: (middle.x - pan.value.x) / zoom.value,
+        worldY: (middle.y - pan.value.y) / zoom.value,
+    };
+}
+
+function wheelZoom(event: WheelEvent): void {
+    if (event.target instanceof Element && event.target.closest('.cell-tooltip') !== null) return;
+    const bounds = viewport.value?.getBoundingClientRect();
+    if (bounds === undefined || event.deltaY === 0) return;
+    event.preventDefault();
+    const screenX = event.clientX - bounds.left;
+    const screenY = event.clientY - bounds.top;
+    zoomAround(zoom.value + (event.deltaY < 0 ? 0.1 : -0.1), screenX, screenY, (screenX - pan.value.x) / zoom.value, (screenY - pan.value.y) / zoom.value);
 }
 
 function requestVisibleChunks(): void {
@@ -259,6 +316,13 @@ function isPanExcludedTarget(target: EventTarget | null): boolean {
 
 function beginPan(event: PointerEvent): void {
     touchInput = event.pointerType === 'touch' || event.pointerType === 'pen';
+    if (event.pointerType === 'touch' && !isPanExcludedTarget(event.target)) {
+        touchPoints.set(event.pointerId, { x: event.clientX, y: event.clientY });
+        if (touchPoints.size === 2) {
+            beginPinch();
+            return;
+        }
+    }
     if (activePointer !== null || event.isPrimary === false || event.button !== 0 || isPanExcludedTarget(event.target)) return;
 
     const captureOwner = viewport.value;
@@ -281,6 +345,14 @@ function beginPan(event: PointerEvent): void {
 }
 
 function updatePan(event: PointerEvent): void {
+    if (touchPoints.has(event.pointerId)) touchPoints.set(event.pointerId, { x: event.clientX, y: event.clientY });
+    if (pinch !== null) {
+        const middle = touchMidpoint();
+        if (middle === null) return;
+        event.preventDefault();
+        zoomAround(pinch.startZoom * (middle.distance / pinch.startDistance), middle.x, middle.y, pinch.worldX, pinch.worldY);
+        return;
+    }
     if (activePointer === null || activePointer.id !== event.pointerId) return;
 
     if (!dragging.value) {
@@ -307,6 +379,11 @@ function updatePan(event: PointerEvent): void {
 }
 
 function finishPan(event: PointerEvent, cancelled: boolean): void {
+    touchPoints.delete(event.pointerId);
+    if (pinch !== null) {
+        if (touchPoints.size < 2) pinch = null;
+        return;
+    }
     if (activePointer === null || activePointer.id !== event.pointerId) return;
 
     const { captureOwner, originCell } = activePointer;
@@ -462,6 +539,7 @@ function markAssetFailed(cell: MapCell): void {
             @pointermove="updatePan"
             @pointerup="endPan"
             @pointercancel="cancelPan"
+            @wheel="wheelZoom"
             @click.capture="suppressDraggedCellClick"
         >
             <div class="map-plane" :style="{ transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})` }">
