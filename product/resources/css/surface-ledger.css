@@ -98,9 +98,12 @@ main.ledger-main { flex: 1; min-height: 0; display: flex; flex-direction: column
 main.ledger-main > .status { margin: 0; padding: 4px 12px; }
 .sl {
     --sl-row: 28px;
+    /* 保存した列幅が画面より広いときも、地図の幅を残す。 */
+    --sl-l: min(var(--sl-col-l, 300px), 30vw);
+    --sl-r: min(var(--sl-col-r, 320px), 32vw);
     position: relative; display: grid; overflow: hidden;
     flex: 1; min-height: 0;
-    grid-template: "hud hud hud" auto "inspect map plan" minmax(0, 1fr) "inspect log plan" var(--sl-log-h, 210px) / var(--sl-col-l, 300px) minmax(0, 1fr) var(--sl-col-r, 320px);
+    grid-template: "hud hud hud" auto "inspect map plan" minmax(0, 1fr) "inspect log plan" var(--sl-log-h, 210px) / var(--sl-l) minmax(0, 1fr) var(--sl-r);
     background: var(--sl-bg); color: var(--sl-ink); font: 14px/1.5 var(--sl-f-body);
 }
 .sl :is(h1, h2, h3, h4, p, dl, dd, ol, ul) { margin: 0; padding: 0; }
@@ -204,8 +207,8 @@ html .sl h2 { font: var(--sl-w-head) 14px var(--sl-f-head); display: block; min-
 
 /* ================= 列の境目 ================= */
 .sl-grip { position: absolute; top: 0; bottom: 0; width: 9px; z-index: 6; cursor: col-resize; touch-action: none; }
-.sl-grip[data-side="l"] { left: calc(var(--sl-col-l, 300px) - 4px); }
-.sl-grip[data-side="r"] { right: calc(var(--sl-col-r, 320px) - 4px); }
+.sl-grip[data-side="l"] { left: calc(var(--sl-l) - 4px); }
+.sl-grip[data-side="r"] { right: calc(var(--sl-r) - 4px); }
 .sl-grip::after { content: ""; position: absolute; left: 4px; top: 0; bottom: 0; width: 1px; background: transparent; }
 .sl-grip:is(:hover, .drag, :focus-visible)::after { background: var(--sl-accent); width: 3px; left: 3px; }
 
@@ -367,7 +370,7 @@ html .sl h2 { font: var(--sl-w-head) 14px var(--sl-f-head); display: block; min-
 
 /* ================= 観光（他の島を見る）: 計画の列が無い2列 ================= */
 @media (min-width: 761px) {
-    .sl.sl-visit { grid-template: "hud hud" auto "inspect map" minmax(0, 1fr) "inspect log" var(--sl-log-h, 210px) / var(--sl-col-l, 300px) minmax(0, 1fr); }
+    .sl.sl-visit { grid-template: "hud hud" auto "inspect map" minmax(0, 1fr) "inspect log" var(--sl-log-h, 210px) / var(--sl-l) minmax(0, 1fr); }
 }
 .sl-visit-comment { min-width: 0; max-width: 320px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; color: var(--sl-ink-2); }
 /* 上の1行は幅が狭いと項目を減らすので、公開情報の全項目をここにも出す（スマホでも欠けない）。 */
