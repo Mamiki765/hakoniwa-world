@@ -15,7 +15,7 @@
     let seq = 1;
     const S = {
         variant: 'a', sel: null, queue: D.QUEUE.map((q) => ({ id: seq++, ...q })), planSel: null,
-        group: 'land', zoom: 1, pan: { x: 0, y: 0 }, logFilter: 'all', mode: 'normal',
+        group: 'land', zoom: 1, pan: { x: 0, y: 0 }, logFilter: 'all', mode: 'normal', allCmds: false,
     };
     const narrow = () => $('stage').clientWidth <= 760;
     const money = () => (S.mode === 'poor' ? 60 : D.NATION.money);
@@ -130,6 +130,26 @@
             }
         };
         v.addEventListener('pointerup', end); v.addEventListener('pointercancel', end);
+        // マウスで載せたマスの詳細を、地図の上に小さく出す（指の操作では出さない）
+        const hv = $('hover');
+        v.addEventListener('pointermove', (e) => {
+            if (e.pointerType !== 'mouse' || ptr?.moved) { hv.hidden = true; return; }
+            const el = e.target.closest('.cell'); if (!el) { hv.hidden = true; return; }
+            const c = el.cell, r = v.getBoundingClientRect();
+            if (hv.cell !== c) {
+                hv.cell = c;
+                const queued = S.queue.map((q, i) => ({ q, i })).filter(({ q }) => q.target_x === c.x && q.target_y === c.y);
+                hv.innerHTML = `<b>${h(c.display_name)}</b> <small class="num">(${c.x}, ${c.y})</small>
+                    <p>${cellFacts(c).map(([k, val]) => `<span><i>${k}</i>${h(val)}</span>`).join('')}</p>
+                    ${queued.length ? `<p class="hv-q">予約 ${queued.map(({ q, i }) => `${i + 1}番 ${def(q.command_key).name}`).join('、')}</p>` : ''}`;
+            }
+            hv.hidden = false;
+            const x = e.clientX - r.left + 14, y = e.clientY - r.top + 14;
+            hv.style.left = `${Math.min(x, r.width - hv.offsetWidth - 6)}px`;
+            hv.style.top = `${y + hv.offsetHeight > r.height ? e.clientY - r.top - hv.offsetHeight - 10 : y}px`;
+        });
+        v.addEventListener('pointerleave', () => { hv.hidden = true; hv.cell = null; });
+        v.addEventListener('pointerdown', () => { hv.hidden = true; });
         v.addEventListener('keydown', (e) => {
             if (e.key !== 'Enter' && e.key !== ' ') return;
             const c = document.activeElement?.cell; if (c) { e.preventDefault(); select(c, false); }
@@ -150,6 +170,20 @@
     }
 
     // ---------- マス情報とコマンド ----------
+    const cellFacts = (c) => [
+        ['地形', c.terrain_name], ...(c.facility ? [['施設', c.facility_name]] : []),
+        ['所有', c.owner_name ? `${c.owner_name}（N${c.owner_nation_number}）` : 'なし'],
+        ...c.details.map((d) => [d.label, d.formatted]),
+        ...(c.monster ? [['怪獣', `${c.monster.name} HP${c.monster.current_hp}/${c.monster.spawned_max_hp}`]] : []),
+        ...(c.ship ? [['船', `${c.ship.name} HP${c.ship.current_hp}/${c.ship.max_hp}`]] : []),
+    ];
+    // 「全部出す」のときは、いまのマスでは意味のないコマンドも出す。埋め立て→埋め立て→地ならしのように、先の地形を見越して仕込むため
+    function listed(cell) {
+        const now = applicable(cell);
+        if (!S.allCmds || !cell) return now.map((c) => ({ c, now: true }));
+        const ok = new Set(now.map((c) => c.key));
+        return D.COMMANDS.filter((c) => ok.has(c.key) || (c.target_type === 'cell' && !c.danger)).map((c) => ({ c, now: ok.has(c.key) }));
+    }
     function applicable(cell) {
         return D.COMMANDS.filter((c) => {
             if (c.target_type === 'nation') return true;
@@ -164,40 +198,38 @@
         });
     }
     const mark = (c) => `<i class="mk${c.consumes_turn ? '' : ' free'}" title="${c.consumes_turn ? 'ターンを使う' : 'ターンを使わない'}"></i>`;
-    function cmdButton(c) {
+    function cmdButton({ c, now }) {
         const lack = c.cost_money - money(), noPd = c.cost_paradox > D.NATION.paradox, full = S.queue.length >= D.QUEUE_LIMIT;
         const cost = lack > 0 ? `あと${n(lack)}億円` : `${n(c.cost_money)}億円${c.cost_paradox ? `<em>${c.cost_paradox}Pd</em>` : ''}`;
-        return `<button type="button" class="cmd${lack > 0 || noPd ? ' short' : ''}" data-cmd="${c.key}" ${lack > 0 || noPd || full ? 'disabled' : ''}>${mark(c)}<span class="nm">${h(c.name)}${c.suffix ? `<small>${h(c.suffix)}</small>` : ''}</span><span class="cost">${cost}</span></button>`;
+        return `<button type="button" class="cmd${lack > 0 || noPd ? ' short' : ''}${now ? '' : ' later'}" data-cmd="${c.key}" ${lack > 0 || noPd || full ? 'disabled' : ''} ${now ? '' : 'title="いまの地形では使えません。前の計画で地形が変わる前提で入れます"'}>${mark(c)}<span class="nm">${h(c.name)}${c.suffix ? `<small>${h(c.suffix)}</small>` : ''}${now ? '' : '<small class="ltr">先読み</small>'}</span><span class="cost">${cost}</span></button>`;
     }
     function renderInspect() {
         const c = S.sel, info = $('cell-info');
         if (!c) {
             info.innerHTML = '<p class="empty">地図のマスを選ぶと、ここにそのマスの情報と使えるコマンドが出ます。</p>';
         } else {
-            const facts = [
-                ['地形', c.terrain_name], ...(c.facility ? [['施設', c.facility_name]] : []),
-                ['所有', c.owner_name ? `${c.owner_name}（N${c.owner_nation_number}）` : 'なし'],
-                ...c.details.map((d) => [d.label, d.formatted]),
-                ...(c.monster ? [['怪獣', `${c.monster.name} HP${c.monster.current_hp}/${c.monster.spawned_max_hp}`]] : []),
-                ...(c.ship ? [['船', `${c.ship.name} HP${c.ship.current_hp}/${c.ship.max_hp}`]] : []),
-            ];
+            const facts = cellFacts(c);
             const queued = S.queue.map((q, i) => ({ q, i })).filter(({ q }) => q.target_x === c.x && q.target_y === c.y);
             info.innerHTML = `<h3><img src="${T.tile(c)}" alt="">${h(c.display_name)}<small class="num">(${c.x}, ${c.y})</small></h3>
                 <p class="facts">${facts.map(([k, v]) => `<span><b>${k}</b>${h(v)}</span>`).join('')}</p>
                 ${queued.length ? `<p class="facts"><span><b>予約</b>${queued.map(({ q, i }) => `${i + 1}番 ${def(q.command_key).name}`).join('、')}</span></p>` : ''}`;
         }
-        const list = applicable(c);
-        const groups = D.GROUPS.filter((g) => list.some((x) => x.group === g.key));
+        const list = listed(c);
+        const groups = D.GROUPS.filter((g) => list.some((x) => x.c.group === g.key));
         if (!groups.some((g) => g.key === S.group)) S.group = groups[0]?.key;
         const legend = '<span class="legend"><span><i class="mk"></i> ターンを使う</span><span><i class="mk free"></i> 使わない</span></span>';
+        const pi = S.queue.findIndex((q) => q.id === S.planSel);
+        // 入れる位置。計画欄が見えないスマホ幅でも分かるよう、コマンドの上に小さく出す
+        const at = `<p class="insert-at">${pi >= 0 ? `<span>入れる位置 <b class="num">${pi + 2}番</b>（${pi + 1}番 ${h(def(S.queue[pi].command_key).name)}の後ろ）</span><button type="button" class="quiet" data-unpick>末尾に戻す</button>` : `<span>入れる位置 <b class="num">${S.queue.length + 1}番</b>（末尾）</span>`}</p>`;
+        const allBtn = c ? `<label class="all-cmds" title="いまの地形では使えないコマンドも出します"><input type="checkbox" data-allcmds ${S.allCmds ? 'checked' : ''}> 全部出す</label>` : '';
         const full = S.queue.length >= D.QUEUE_LIMIT ? `<p class="empty">計画が${D.QUEUE_LIMIT}件で一杯です。どれかを取り消すと追加できます。</p>` : '';
         let html;
         if (S.variant === 'a') {
             // 案A: 分類ごとに全部並べる。切り替えなしで見渡せる
-            html = `<div class="cmd-head"><strong>使えるコマンド</strong>${legend}</div>${full}` + groups.map((g) => `<div class="cmd-head"><span class="num">${g.name}</span></div><div class="cmds">${list.filter((x) => x.group === g.key).map(cmdButton).join('')}</div>`).join('');
+            html = `<div class="cmd-head"><strong>使えるコマンド</strong>${allBtn}${legend}</div>${at}${full}` + groups.map((g) => `<div class="cmd-head"><span class="num">${g.name}</span></div><div class="cmds">${list.filter((x) => x.c.group === g.key).map(cmdButton).join('')}</div>`).join('');
         } else {
-            html = `<div class="cmd-head"><div class="seg">${groups.map((g) => `<button type="button" data-group="${g.key}" class="${g.key === S.group ? 'on' : ''}">${g.name}</button>`).join('')}</div>${legend}</div>${full}
-                <div class="cmds">${list.filter((x) => x.group === S.group).map(cmdButton).join('')}</div>`;
+            html = `<div class="cmd-head"><div class="seg">${groups.map((g) => `<button type="button" data-group="${g.key}" class="${g.key === S.group ? 'on' : ''}">${g.name}</button>`).join('')}</div>${allBtn}${legend}</div>${at}${full}
+                <div class="cmds">${list.filter((x) => x.c.group === S.group).map(cmdButton).join('')}</div>`;
         }
         $('cmd-area').innerHTML = html;
     }
@@ -346,13 +378,14 @@
                 if (!narrow()) select(cellAt(q.target_x, q.target_y), true);
                 else if (S.variant === 'b') { select(null); centerOn(cellAt(q.target_x, q.target_y)); }
             }
-            renderPlan();
+            renderPlan(); renderInspect();
         }
         else if (b.dataset.act) planAction(b.dataset.act);
         else if (b.dataset.filter) { S.logFilter = b.dataset.filter; document.querySelectorAll('#log-filter button').forEach((x) => x.classList.toggle('on', x === b)); renderLog(); }
         else if (b.dataset.step) { entry.qty = Math.min(99, Math.max(1, entry.qty + +b.dataset.step)); drawEntry(); }
         else if (b.dataset.preset) { entry.qty = +b.dataset.preset; drawEntry(); }
         else if (b.dataset.bulk) bulk(b.dataset.bulk);
+        else if ('unpick' in b.dataset) { S.planSel = null; renderPlan(); renderInspect(); }
         else if ('retry' in b.dataset) { $('opt-state').value = 'normal'; setMode('normal'); toast('読み込み直しました。'); }
         else if (b.id === 'btn-island') app.dataset.island = app.dataset.island === 'open' ? 'closed' : 'open';
         else if (b.id === 'island-close') app.dataset.island = 'closed';
@@ -362,7 +395,7 @@
         else if (b.id === 'entry-cancel') $('entry').hidden = true;
         else if (b.id === 'plan-bulk') {
             const m = $('menu'), r = b.getBoundingClientRect(), a = app.getBoundingClientRect();
-            m.innerHTML = '<button type="button" data-bulk="clear">荒地と焦土を全て整地</button><button type="button" data-bulk="level">荒地と焦土を全て地ならし</button><button type="button" data-bulk="reclaim">浅瀬を全て埋め立て</button><button type="button" data-bulk="cut" class="danger">選んだ行から下を全て取消</button>';
+            m.innerHTML = '<button type="button" data-bulk="level">荒地と焦土を全て地ならし</button><button type="button" data-bulk="clear">荒地と焦土を全て整地</button><button type="button" data-bulk="reclaim">浅瀬を全て埋め立て</button><button type="button" data-bulk="cut" class="danger">選んだ行から下を全て取消</button>';
             m.hidden = false;
             m.style.right = `${Math.max(8, a.right - r.right)}px`;
             if (r.top - a.top > a.height / 2) { m.style.top = 'auto'; m.style.bottom = `${a.bottom - r.top + 4}px`; } else { m.style.bottom = 'auto'; m.style.top = `${r.bottom - a.top + 4}px`; }
@@ -378,9 +411,11 @@
         const key = { clear: 'land_clear', level: 'land_level', reclaim: 'reclaim' }[kind];
         const terr = kind === 'reclaim' ? ['shallow'] : ['wasteland', 'scorched'];
         const targets = D.cells.filter((c) => c.owner_nation_id === D.OWN.id && terr.includes(c.terrain) && !c.facility).slice(0, D.QUEUE_LIMIT - S.queue.length);
-        targets.forEach((c) => S.queue.push({ id: seq++, command_key: key, quantity: 1, target_x: c.x, target_y: c.y }));
+        // 行を選んでいればその後ろへ、選んでいなければ末尾へ入れる（立て直しで先頭付近に差し込む使い方を想定）
+        const pi = S.queue.findIndex((q) => q.id === S.planSel), at = pi >= 0 ? pi + 1 : S.queue.length;
+        S.queue.splice(at, 0, ...targets.map((c) => ({ id: seq++, command_key: key, quantity: 1, target_x: c.x, target_y: c.y })));
         renderPlan(); renderInspect();
-        toast(targets.length ? `${def(key).name}を${targets.length}件、計画の末尾に入れました。` : '対象のマスがありません。');
+        toast(targets.length ? `${def(key).name}を${targets.length}件、計画の${pi >= 0 ? `${at + 1}番から` : '末尾に'}入れました。` : '対象のマスがありません。');
     }
     $('entry-body').addEventListener('input', (e) => {
         if (e.target.id === 'entry-qty') { const v = Math.min(99, Math.max(1, Math.floor(+e.target.value || 1))); entry.qty = v; }
@@ -394,6 +429,30 @@
         if (editing) { editing.quantity = qty; renderPlan(); renderInspect(); return toast('数量を変えました。'); }
         addToPlan(d, qty, $('entry-nation')?.value ?? null);
     });
+    document.addEventListener('change', (e) => { if (e.target.matches('[data-allcmds]')) { S.allCmds = e.target.checked; try { localStorage.setItem('proto-surface-allcmds', S.allCmds ? '1' : ''); } catch { /* 保存できなくても動く */ } renderInspect(); } });
+    // 案Aの3列: 左右の列の幅を境目のつまみで変える。ダブルクリックで元に戻す
+    const COLS = { l: [220, 300, 460], r: [240, 320, 480] };
+    function setCol(side, w) {
+        const [min, base, max] = COLS[side], v = Math.round(Math.min(max, Math.max(min, w ?? base)));
+        app.style.setProperty(`--col-${side}`, `${v}px`);
+        try { localStorage.setItem(`proto-surface-col-${side}`, String(v)); } catch { /* 保存できなくても動く */ }
+    }
+    document.querySelectorAll('.col-grip').forEach((g) => {
+        const side = g.dataset.side;
+        g.addEventListener('pointerdown', (e) => {
+            e.preventDefault(); g.setPointerCapture(e.pointerId); g.classList.add('drag');
+            const start = e.clientX, w0 = parseFloat(getComputedStyle(app).getPropertyValue(`--col-${side}`)) || COLS[side][1];
+            const move = (ev) => setCol(side, w0 + (side === 'l' ? ev.clientX - start : start - ev.clientX));
+            const up = () => { g.classList.remove('drag'); g.removeEventListener('pointermove', move); g.removeEventListener('pointerup', up); centerOn(S.sel ?? D.CAPITAL); };
+            g.addEventListener('pointermove', move); g.addEventListener('pointerup', up);
+        });
+        g.addEventListener('dblclick', () => { setCol(side, null); centerOn(S.sel ?? D.CAPITAL); });
+        g.addEventListener('keydown', (e) => { if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') { e.preventDefault(); const cur = parseFloat(getComputedStyle(app).getPropertyValue(`--col-${side}`)) || COLS[side][1]; setCol(side, cur + ((e.key === 'ArrowRight') === (side === 'l') ? 20 : -20)); } });
+    });
+    try {
+        ['l', 'r'].forEach((s) => { const v = localStorage.getItem(`proto-surface-col-${s}`); if (v) setCol(s, +v); });
+        S.allCmds = localStorage.getItem('proto-surface-allcmds') === '1';
+    } catch { /* 保存できなくても動く */ }
     $('opt-state').onchange = (e) => setMode(e.target.value);
     $('opt-phone').onchange = (e) => { document.body.classList.toggle('phone', e.target.checked); requestAnimationFrame(() => { renderTabs(); centerOn(S.sel ?? D.CAPITAL); }); };
     $('opt-theme').onchange = (e) => { if (e.target.value) document.documentElement.dataset.theme = e.target.value; else delete document.documentElement.dataset.theme; };

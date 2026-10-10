@@ -52,6 +52,8 @@
         </div>
     </header>
 
+    <div class="col-grip" data-side="l" role="separator" aria-orientation="vertical" aria-label="左の列の幅（ダブルクリックで元に戻す）" tabindex="0"></div>
+    <div class="col-grip" data-side="r" role="separator" aria-orientation="vertical" aria-label="右の列の幅（ダブルクリックで元に戻す）" tabindex="0"></div>
     <section id="map" aria-label="地図">
         <div class="map-tools">
             <button type="button" id="map-home" title="自分の首都へ戻る">自島へ</button>
@@ -63,6 +65,7 @@
         <div id="map-view" tabindex="0">
             <div id="map-plane"></div>
             <p id="map-status" role="status" hidden></p>
+            <div id="hover" hidden></div>
         </div>
     </section>
 

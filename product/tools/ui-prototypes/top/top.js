@@ -6,13 +6,23 @@
     const h = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
     const names = ['北風島', 'こはる島', '試験島', 'みなと島', '月見島', '石ころ島', 'はじまりの島', '雲の上島', '南十字島', 'ねこやなぎ島', '鉄火島', '静かの島', '七色島', '風待ち島', 'どんぐり島', '朝凪島', '夕立島', '新島'];
     let seed = 11; const r = () => { seed = (seed * 1664525 + 1013904223) >>> 0; return seed / 4294967296; };
+    // 賞は現行の NationAwardCatalog の名称と並び順。本番は prize0〜10.gif を16×16で出す。ここでは仮の小さな札で代用する
+    const AWARD = {
+        turn: ['ターン賞', 'T', 'gold'], prosperity: ['繁栄賞', '繁', 'c1'], prosperity_great: ['超繁栄賞', '繁', 'c2'], prosperity_ultimate: ['究極繁栄賞', '繁', 'c3'],
+        peace: ['平和賞', '平', 'c1'], peace_great: ['超平和賞', '平', 'c2'], peace_ultimate: ['究極平和賞', '平', 'c3'],
+        calamity: ['災難賞', '災', 'c1'], calamity_great: ['超災難賞', '災', 'c2'], calamity_ultimate: ['究極災難賞', '災', 'c3'], monster_turn: ['討伐ターン賞', '討', 'gold'],
+    };
+    const AWARDED = {
+        0: [['turn', 3], ['prosperity'], ['prosperity_great'], ['peace']], 1: [['prosperity'], ['monster_turn', 2]], 2: [['prosperity'], ['calamity']],
+        3: [['prosperity'], ['peace'], ['peace_great']], 5: [['calamity'], ['calamity_great']], 7: [['peace']],
+    };
     const ISLANDS = names.map((name, i) => {
         const scale = Math.pow(0.86, i) * (0.85 + r() * 0.3);
         return {
             id: i + 1, name, owner: `プレイヤー${String(i + 1).padStart(2, '0')}`, secretary: i % 5 === 4 ? null : `秘書${String(i + 1).padStart(2, '0')}`,
             pop: Math.round(184000 * scale / 100) * 100, area: Math.round(20 + 70 * scale), money: Math.round(9000 * scale * (0.5 + r())),
             food: Math.round(90000 * scale * (0.4 + r()) / 100) * 100, farm: Math.round(160 * scale) * 1000, factory: Math.round(220 * scale * r()) * 1000, mine: Math.round(60 * scale * r()) * 1000,
-            turns: Math.round(900 * Math.pow(0.9, i) + r() * 40), state: i === 12 ? 'dormant' : 'active', fin: i === 15 ? 4 : 0, karma: i === 6 ? 12 : 0, awards: i === 0 ? 3 : i === 3 ? 1 : 0, kills: i === 1 ? 7 : 0,
+            turns: Math.round(900 * Math.pow(0.9, i) + r() * 40), state: i === 12 ? 'dormant' : 'active', fin: i === 15 ? 4 : 0, karma: i === 6 ? 12 : i === 10 ? 3 : 0, awards: AWARDED[i] ?? [], kills: i === 1 ? 7 : i === 0 ? 2 : 0,
         };
     });
     const ME = 3;
@@ -27,7 +37,14 @@
     ];
     const S = { mode: 'member', sort: 'pop', q: '' };
 
-    const badges = (x) => `${x.id === ME && S.mode === 'member' ? '<span class="st you">自分の島</span>' : ''}${x.state === 'dormant' ? '<span class="st sleep">休止中</span>' : ''}${x.fin ? `<span class="st fin">資金繰り${x.fin}</span>` : ''}${x.karma ? `<span class="st karma">カルマ${x.karma}</span>` : ''}${x.awards ? `<span class="st award">賞×${x.awards}</span>` : ''}${x.kills ? `<span class="st award">討伐×${x.kills}</span>` : ''}`;
+    // 島名のすぐ後ろに、賞の札を1つずつ並べ、同じ列にKARMAと資金繰りを置く
+    const marks = (x) => {
+        const aw = x.awards.map(([k, c]) => { const [name, ch, tier] = AWARD[k]; return `<span class="pz ${tier}" title="${name}${c ? `×${c}` : ''}" aria-label="${name}${c ? `${c}回` : ''}">${ch}${c ? `<small>${c >= 10 ? c : `×${c}`}</small>` : ''}</span>`; }).join('');
+        const kill = x.kills ? `<span class="pz mon" title="怪獣討伐 ${x.kills}体" aria-label="怪獣討伐${x.kills}体">獣<small>×${x.kills}</small></span>` : '';
+        const st = `${x.karma ? `<span class="st karma">KARMA ${x.karma}</span>` : ''}${x.fin ? `<span class="st fin">資金繰り ${x.fin}</span>` : ''}`;
+        return aw || kill || st ? `<span class="marks">${aw}${kill}${st}</span>` : '';
+    };
+    const badges = (x) => `${x.id === ME && S.mode === 'member' ? '<span class="st you">自分の島</span>' : ''}${x.state === 'dormant' ? '<span class="st sleep">休止中</span>' : ''}${marks(x)}`;
     const news = (groups) => groups.map(([t, evs]) => `<h3>第${t}ターン</h3>${evs.map(([imp, m]) => `<p class="${imp}"><i>${imp === 'warning' ? '！' : imp === 'notable' ? '◆' : '・'}</i><span>${h(m)}</span></p>`).join('')}`).join('');
 
     function render() {

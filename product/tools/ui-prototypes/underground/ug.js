@@ -59,7 +59,7 @@
         { key: 'g3', cat: 'armor', name: '夕凪の外套', il: 200, price: 420000, text: '生命 +190' }, { key: 'g4', cat: 'armor', name: '王城の鎧', il: 223, price: 900000, text: '生命 +260', lock: '試練3をクリアすると買えます' },
         { key: 'g5', cat: 'accessory', name: '潮騒の耳飾り', il: 190, price: 300000, text: '敏捷 +120' },
     ];
-    const TALKS = [['案内人', 'おや、買い物じゃなくてお喋りかい。珍しいね。'], ['案内人', 'この店の品は、あんたが潜った深さに合わせて仕入れてるんだ。浅いところで止まってると、棚も変わらないよ。'], ['案内人', '……まあ、無理はしないことさ。帰ってこない客ほど寂しいものはないからね。']];
+    const TALKS = [['リカ（案内人）', 'おや、買い物じゃなくてお喋りかい。珍しいね。'], ['リカ（案内人）', 'この店の品は、あんたが潜った深さに合わせて仕入れてるんだ。浅いところで止まってると、棚も変わらないよ。'], ['リカ（案内人）', '……まあ、無理はしないことさ。帰ってこない客ほど寂しいものはないからね。']];
     const CANDS = [['ワッフル', 1104, 22687, 'プレイヤー02'], ['レイ', 980, 15094, 'プレイヤー05'], ['アリエフ', 1210, 28347, 'プレイヤー09'], ['ミモザ', 870, 14200, 'プレイヤー11'], ['クロウ', 1002, 19950, 'プレイヤー14']];
 
     const S = {
@@ -150,6 +150,14 @@
             : `<span class="sum">売る ${picked.length}個　合計<b>${n(total)}G</b></span><button type="button" class="primary" data-sell>まとめて売る</button>`;
     }
 
+    // ホームに顔を出す二人。押すと会話へ。台詞は状況で変える（文面は仮）
+    function visitors() {
+        const rika = hurt() ? 'ちょっと、ボロボロじゃない。先に宿で休みなさい。' : S.stoneToday < 3 ? '歪んだ輝石、まだ受け取ってないでしょ。店に寄っていきなさい。' : '今日はどこへ潜るの？無理はしないでね。';
+        const aki = '珍しい結晶が入ったよ。見ていく？';
+        const one = (key, name, role, line, news) => `<button type="button" class="vis${news ? ' news' : ''}" data-visit="${key}" aria-label="${name}（${role}）と話す"><span class="say" data-role="${name}（${role}）">${h(line)}</span><span class="face" aria-hidden="true">${name[0]}</span><span class="tag">${name}<small>${role}</small></span></button>`;
+        return `<div class="visitors">${one('guide', 'リカ', '案内人', rika, hurt() || S.stoneToday < 3)}${one('merchant', 'アキ', '行商人', aki, true)}</div>`;
+    }
+
     // ---------- 各画面 ----------
     const views = {
         home() {
@@ -161,6 +169,7 @@
                     <p class="xp">次のLvまで ${n(S.xp)}${S.hp < S.max ? `　<button type="button" class="rest" data-rest ${S.g < S.inn ? 'disabled' : ''}>宿で休む ${S.inn}G</button>` : ''}</p></section>
                 <div class="alerts">${S.stp ? `<button type="button" data-jump="character:stp">STPが${S.stp}残っています</button>` : ''}${S.stoneToday < 3 ? '<button type="button" data-jump="shop:buy">歪んだ輝石を受け取れます</button>' : ''}${ITEMS.length >= 450 ? '<button type="button" data-jump="character:vault">保管庫がいっぱいに近い</button>' : ''}</div></div>
                 <div class="side-btns"><button type="button" data-awake title="通常と覚醒の姿を切り替える" aria-label="通常と覚醒の姿を切り替える">↻</button><button type="button" data-dummy="背景を選ぶ画面を開きます（試作では開きません）" title="背景を変える" aria-label="背景を変える">▦</button><button type="button" data-dummy="画像の制作方法と権利表記を出します（試作では出ません）" title="画像について" aria-label="画像について">i</button></div>
+                ${visitors()}
                 <div class="dock"><button type="button" class="party pn" data-jump="exchange:party" aria-label="パーティーを編成する"><span class="m"><i>${S.name[0]}</i><span>${h(S.name)}</span>${meter(S.hp, S.max)}</span>${S.party.map((i) => `<span class="m"><i>${CANDS[i][0][0]}</i><span>${h(CANDS[i][0])}</span>${meter(CANDS[i][2] * (i === 0 ? 0.84 : 1), CANDS[i][2])}</span>`).join('')}</button>
                     <section class="depart pn"><p class="to"><b>${h(d.name)}</b><button type="button" data-jump="adventure:explore">行き先</button></p>
                         <button type="button" class="primary big" data-go ${S.cool > 0 || hurt() ? 'disabled' : ''}>${goLabel()}</button>
@@ -220,9 +229,9 @@
         villa() { return subtabs('villa') + extra(S.sub.villa, SUB.villa.find((x) => x[0] === S.sub.villa)[1]); },
         // ---- 枠なしの全面表示 ----
         event() {
-            const lines = S.script ?? TALKS, [who, text] = lines[S.talk], last = S.talk === lines.length - 1, back = S.script ? 'villa' : 'shop';
+            const lines = S.script ?? TALKS, [who, text] = lines[S.talk], last = S.talk === lines.length - 1, back = S.script ? 'villa' : (S.from ?? 'shop');
             return `<div class="full"><div class="scene"><span class="ph">${S.script ? '場面の背景の枠' : '店の背景の枠'}</span>${figure(S.script ? '登場人物の立ち絵' : '案内人の立ち絵')}</div><button type="button" class="skipx" data-back="${back}">飛ばす</button>
-                <div class="msg pn"><span class="who">${who}</span>${h(text)}<div class="act"><button type="button" class="primary" ${last ? `data-back="${back}"` : 'data-talk'}>${last ? (S.script ? '別荘に戻る' : '店に戻る') : '次へ'}</button></div></div></div>`;
+                <div class="msg pn"><span class="who">${who}</span>${h(text)}<div class="act"><button type="button" class="primary" ${last ? `data-back="${back}"` : 'data-talk'}>${last ? (S.script ? '別荘に戻る' : back === 'home' ? 'ホームに戻る' : '店に戻る') : '次へ'}</button></div></div></div>`;
         },
         battle() {
             const d = area(S.dest);
@@ -302,11 +311,13 @@
         const d = b.dataset, keep = view.scrollTop;
         let top = false;
         if (d.view) { S.view = d.view; S.msg = ''; top = true; }
-        else if (d.sub) { S.sub[S.view] = d.sub; S.msg = ''; top = true; if (S.view === 'shop' && d.sub === 'guide') { S.view = 'event'; S.talk = 0; S.script = null; S.sub.shop = 'buy'; } }
+        else if (d.sub) { S.sub[S.view] = d.sub; S.msg = ''; top = true; if (S.view === 'shop' && d.sub === 'guide') { S.view = 'event'; S.talk = 0; S.script = null; S.from = 'shop'; S.sub.shop = 'buy'; } }
         else if (d.jump) { const [v, s] = d.jump.split(':'); S.view = v; S.sub[v] = s; S.msg = ''; top = true; }
         else if ('go' in d) depart(d.go || null);
         else if (d.back) { if ('win' in d) win(); S.view = d.back; top = true; }
         else if ('talk' in d) S.talk++;
+        else if (d.visit === 'guide') { S.view = 'event'; S.talk = 0; S.script = null; S.from = 'home'; top = true; }
+        else if (d.visit === 'merchant') { S.view = 'exchange'; S.sub.exchange = 'merchant'; S.msg = ''; top = true; }
         else if ('rest' in d) { S.g -= S.inn; S.hp = S.max; S.msg = '宿で休みました。'; }
         else if ('awake' in d) S.awake = !S.awake;
         else if (d.dummy) { S.msg = d.dummy; }

@@ -48,6 +48,12 @@ table.rank { width: 100%; border-collapse: collapse; font-size: 13px; }
 .st { font: 11px var(--f-body); border: 1px solid currentColor; border-radius: 2px; padding: 0 4px; margin-left: 5px; white-space: nowrap; }
 .st.sleep { color: var(--ink-2); } .st.fin { color: var(--turn); } .st.karma { color: var(--bad); } .st.you { color: var(--accent); } .st.award { color: var(--paradox); }
 .cards { display: none; }
+/* 賞の札（本番は16×16の画像）。KARMAと資金繰りも同じ列に並べる */
+.marks { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 2px; margin-left: 6px; vertical-align: middle; }
+.marks .st { margin-left: 2px; }
+.pz { display: inline-flex; align-items: center; justify-content: center; min-width: 16px; height: 16px; padding: 0 1px; font: 10px/1 var(--f-game); border-radius: 2px; color: #fff; background: #8a7a5a; cursor: help; white-space: nowrap; }
+.pz small { font-size: 8px; margin-left: 1px; }
+.pz.c1 { background: #9a6b3c; } .pz.c2 { background: #8d96a3; } .pz.c3 { background: #c9a227; color: #2b2100; } .pz.gold { background: #b0483c; } .pz.mon { background: #4f6b3a; }
 
 /* ニュース */
 .news h3 { font: 400 12px var(--f-game); color: var(--ink-2); margin: 6px 0 2px; }
