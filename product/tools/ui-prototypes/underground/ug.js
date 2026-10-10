@@ -81,7 +81,7 @@
         ITEMS.forEach((x) => { const b = best.get(x.name); if (!b || x.il > b.il || (x.il === b.il && x.q > b.q)) best.set(x.name, x); });
         const list = ITEMS.filter((x) => (!f.cats.size || f.cats.has(x.cat)) && (!f.rars.size || f.rars.has(x.rar)) && (!f.styles.size || (x.style && f.styles.has(x.style)))
             && (f.ilMax === '' || x.il <= +f.ilMax) && (f.qMax === '' || x.q <= +f.qMax)
-            && (!f.weaker || (!x.eq && x.il < equippedIl(x.cat))) && (!f.dup || best.get(x.name) !== x) && (!f.old || x.age >= 14));
+            && (!f.weaker || (!x.eq && x.il < equippedIl(x.cat))) && (!f.dup || ITEMS.some((y) => y !== x && y.name === x.name && y.il >= x.il && y.q >= x.q && (y.il > x.il || y.q > x.q))) && (!f.old || x.age >= 14));
         const order = { newest: (a, b) => a.age - b.age, oldest: (a, b) => b.age - a.age, il: (a, b) => b.il - a.il, rarity: (a, b) => RAR_MULT[b.rar] - RAR_MULT[a.rar] || b.il - a.il, quality: (a, b) => b.q - a.q, price: (a, b) => b.price - a.price }[S.sort];
         return list.sort(order);
     }
@@ -97,7 +97,7 @@
                 ${f.cats.has('weapon') || !f.cats.size ? `<div class="frow"><b>武器の種類</b>${chips(f.styles, STYLE, 'styles')}</div>` : ''}
                 <div class="frow"><b>レア度</b>${chips(f.rars, RAR, 'rars')}</div>
                 <div class="frow"><b>数値</b><label>装備Lv <input type="number" id="f-il" inputmode="numeric" min="1" max="223" value="${f.ilMax}" placeholder="上限"> 以下</label><label>品質 <input type="number" id="f-q" inputmode="numeric" min="0" max="100" value="${f.qMax}" placeholder="上限"> %以下</label></div>
-                <div class="frow"><b>まとめて</b>${tog('weaker', 'いま装備している物より装備Lvが低い')}${tog('dup', '同じ名前の中で一番良い物以外')}${tog('old', '入手から2週間以上')}</div>
+                <div class="frow"><b>売る候補</b>${tog('weaker', 'いま装備している物より装備Lvが低い')}${tog('dup', '同じ名前で、装備Lvも品質も上の物が別にある')}${tog('old', '入手から2週間以上')}</div>
             </div></details>
             <section class="box pn"><div class="vhead"><span class="cnt">${list.length}件<span class="muted">　保管 ${ITEMS.length}/500</span></span>
                 <label class="muted">並び順 <select id="v-sort">${[['newest', '入手が新しい順'], ['oldest', '入手が古い順'], ['il', '装備Lvが高い順'], ['rarity', 'レア度が高い順'], ['quality', '品質が高い順'], ['price', '売値が高い順']].map(([k, l]) => `<option value="${k}" ${S.sort === k ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
@@ -108,7 +108,7 @@
                     <span class="n il" data-l="装備Lv">${x.il}${x.eq ? '' : `<em class="${d > 0 ? 'up' : 'dn'}">${d > 0 ? `▲${d}` : d < 0 ? `▼${-d}` : '＝'}</em>`}</span><span class="n q" data-l="品質">${x.q}%</span><span class="n price" data-l="売値">${n(x.price)}G</span>
                     <button type="button" class="lock ${x.lock ? 'on' : ''}" data-lock="${x.id}" aria-label="${x.lock ? '保護を外す' : '保護する'}" ${x.eq ? 'disabled' : ''}>${x.lock ? '★' : '☆'}</button></div>`; }).join('') || '<p class="muted" style="padding:14px 4px">条件に合う装備がありません。</p>'}</div>
                 ${list.length > S.shown ? `<p style="text-align:center;margin-top:8px"><button type="button" data-more>あと${list.length - S.shown}件を表示</button></p>` : ''}
-                <p class="muted" style="margin-top:8px">★で保護した装備と装備中の装備は、選択にも一括売却にも入りません。装備Lvの横の▲▼は、同じ分類でいま装備している物との差です。</p></section></div>`;
+                <p class="muted" style="margin-top:8px">「売る候補」は候補を絞るだけで、不要かどうかは決めません。★で保護した装備と装備中の装備は、選択にも一括売却にも入りません。装備Lvの横の▲▼は、同じ分類でいま装備している物との差です。</p></section></div>`;
     }
     function sellbar() {
         const bar = $('sellbar'), on = S.view === 'character' && S.sub.character === 'vault';

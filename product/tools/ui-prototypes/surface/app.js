@@ -222,10 +222,10 @@
         $('plan-count').textContent = `${S.queue.length}/${D.QUEUE_LIMIT}件`;
         if (S.mode === 'loading') { body.innerHTML = '<p class="empty">計画を読み込み中…</p>'; return; }
         const { groups, next } = timeline();
-        const auto = `<div class="tg auto"><div class="tg-h"><span>第${next}ターンから</span></div><div class="pr" style="cursor:default"><span class="pr-n">—</span>${'<i class="mk free"></i>'}<span class="pr-name">資金繰り（自動）</span><span class="pr-at">+10億円</span></div></div>`;
+        const auto = `<div class="tg auto"><div class="tg-h"><span>第${next}ターンごろから</span></div><div class="pr" style="cursor:default"><span class="pr-n">—</span>${'<i class="mk free"></i>'}<span class="pr-name">資金繰り（自動）</span><span class="pr-at">+10億円</span></div></div>`;
         body.innerHTML = (groups.length ? '' : '<p class="empty">計画は空です。地図でマスを選び、コマンドを入れてください。</p>') + groups.map((g) => `
-            <div class="tg"><div class="tg-h"><span>第${g.from}${g.to > g.from ? `〜${g.to}` : ''}ターン</span></div>
-            ${g.items.map(({ q, d, pos }) => `<button type="button" class="pr${S.planSel === q.id ? ' on' : ''}" data-plan="${q.id}"><span class="pr-n">${pos}</span>${mark(d)}<span class="pr-name">${h(d.name)}${d.suffix ? h(d.suffix) : ''}${qtyText(q, d)}</span><span class="pr-at">${whereText(q, d)}</span></button>`).join('')}</div>`).join('') + auto;
+            <div class="tg"><div class="tg-h"><span>第${g.from}${g.to > g.from ? `〜${g.to}` : ''}ターンごろ</span></div>
+            ${g.items.map(({ q, d, pos }) => `<button type="button" class="pr${S.planSel === q.id ? ' on' : ''}" data-plan="${q.id}"><span class="pr-n">${pos}</span>${mark(d)}<span class="pr-name">${h(d.name)}${d.suffix ? h(d.suffix) : ''}${qtyText(q, d)}</span><span class="pr-at">${whereText(q, d)}</span></button>`).join('')}</div>`).join('') + auto + (groups.length ? '<p class="plan-note">ターンの数字は目安です。実行できなかった計画があると、後ろの計画が前に詰まります。</p>' : '');
         const tools = $('plan-tools'), i = S.queue.findIndex((q) => q.id === S.planSel);
         tools.hidden = i < 0;
         if (i >= 0) {

@@ -136,6 +136,8 @@ body.phone #stage { flex: none; width: 390px; max-width: 100%; height: min(800px
 .tg { border-bottom: 1px solid var(--line); }
 .tg-h { font: 12px var(--f-game); color: var(--ink-2); padding: 3px 10px 0; display: flex; gap: 6px; }
 .tg.auto .tg-h { padding-bottom: 6px; }
+.plan-note { padding: 6px 10px; font-size: 11px; color: var(--ink-2); }
+#app[data-variant="b"] .plan-note { flex: none; width: 150px; }
 .pr { display: grid; grid-template-columns: 22px auto 1fr auto; align-items: center; gap: 6px; width: 100%; text-align: left; border: 0; border-radius: 0; background: transparent; padding: 3px 10px; min-height: 30px; }
 .pr:hover { background: var(--panel-2); }
 .pr.on { background: var(--accent); color: var(--accent-ink); }
