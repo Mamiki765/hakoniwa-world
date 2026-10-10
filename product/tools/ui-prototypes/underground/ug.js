@@ -59,7 +59,9 @@
         { key: 'g3', cat: 'armor', name: '夕凪の外套', il: 200, price: 420000, text: '生命 +190' }, { key: 'g4', cat: 'armor', name: '王城の鎧', il: 223, price: 900000, text: '生命 +260', lock: '試練3をクリアすると買えます' },
         { key: 'g5', cat: 'accessory', name: '潮騒の耳飾り', il: 190, price: 300000, text: '敏捷 +120' },
     ];
-    const TALKS = [['リカ（案内人）', 'おや、買い物じゃなくてお喋りかい。珍しいね。'], ['リカ（案内人）', 'この店の品は、あんたが潜った深さに合わせて仕入れてるんだ。浅いところで止まってると、棚も変わらないよ。'], ['リカ（案内人）', '……まあ、無理はしないことさ。帰ってこない客ほど寂しいものはないからね。']];
+    // 案内人の名前はプレイヤーが名付けたもの（試作ではownerの付けた「リカ」を仮に入れる）。行商人はアキ・インキュバスで固定
+    const GUIDE = 'リカ';
+    const TALKS = [[`${GUIDE}（案内人）`, 'おや、買い物じゃなくてお喋りかい。珍しいね。'], [`${GUIDE}（案内人）`, 'この店の品は、あんたが潜った深さに合わせて仕入れてるんだ。浅いところで止まってると、棚も変わらないよ。'], [`${GUIDE}（案内人）`, '……まあ、無理はしないことさ。帰ってこない客ほど寂しいものはないからね。']];
     const CANDS = [['ワッフル', 1104, 22687, 'プレイヤー02'], ['レイ', 980, 15094, 'プレイヤー05'], ['アリエフ', 1210, 28347, 'プレイヤー09'], ['ミモザ', 870, 14200, 'プレイヤー11'], ['クロウ', 1002, 19950, 'プレイヤー14']];
 
     const S = {
@@ -152,7 +154,7 @@
 
     // ショップは案内人（リカ）、交流場は行商人（アキ）の店。本番の素材は scene-assets の background/430-guide-shop・npc/430-guide と background/430-aki-exchange・npc/430-aki
     const HOST = {
-        shop: { name: 'リカ', role: '案内人', bg: '店の背景（430-guide-shop）', fig: 'リカの立ち絵', talk: 'guide',
+        shop: { name: GUIDE, role: '案内人', bg: '店の背景（430-guide-shop）', fig: `${GUIDE}の立ち絵`, talk: 'guide',
             line: () => (S.sub.shop === 'bank' ? 'お金を預けるのね。負けても預金は減らないから安心しなさい。' : S.sub.shop === 'polish' ? '魔石をみがくの？ちょっと時間かかるわよ。' : S.stoneToday < 3 ? '歪んだ輝石、まだ受け取ってないでしょ。' : 'いらっしゃい。何か探してる？') },
         exchange: { name: 'アキ', role: '行商人', bg: '交流場の背景（430-aki-exchange）', fig: 'アキの立ち絵', talk: 'merchant',
             line: () => (S.sub.exchange === 'property' ? '土地の話かい？いい物件、押さえてあるよ。' : S.sub.exchange === 'party' ? '今日は誰と潜るんだい？' : '珍しい結晶が入ったよ。見ていく？') },
@@ -236,7 +238,7 @@
         // ---- 枠なしの全面表示 ----
         event() {
             const lines = S.script ?? TALKS, [who, text] = lines[S.talk], last = S.talk === lines.length - 1, back = S.script ? 'villa' : 'shop';
-            return `<div class="full"><div class="scene"><span class="ph">${S.script ? '場面の背景の枠' : '店の背景（430-guide-shop）'}</span>${figure(S.script ? '登場人物の立ち絵' : 'リカの立ち絵')}</div><button type="button" class="skipx" data-back="${back}">飛ばす</button>
+            return `<div class="full"><div class="scene"><span class="ph">${S.script ? '場面の背景の枠' : '店の背景（430-guide-shop）'}</span>${figure(S.script ? '登場人物の立ち絵' : `${GUIDE}の立ち絵`)}</div><button type="button" class="skipx" data-back="${back}">飛ばす</button>
                 <div class="msg pn"><span class="who">${who}</span>${h(text)}<div class="act"><button type="button" class="primary" ${last ? `data-back="${back}"` : 'data-talk'}>${last ? (S.script ? '別荘に戻る' : '店に戻る') : '次へ'}</button></div></div></div>`;
         },
         battle() {
