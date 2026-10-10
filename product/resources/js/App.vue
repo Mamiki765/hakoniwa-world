@@ -2587,6 +2587,22 @@ async function abandonNation(): Promise<void> {
                         {{ stat.name }} × {{ stat.kill_count.toLocaleString() }}（初T{{ stat.first_killed_turn }}／最終T{{ stat.last_killed_turn }}）
                     </span>
                 </p>
+                <section class="sl-visit-facts" aria-labelledby="sl-visit-facts-heading">
+                    <h3 id="sl-visit-facts-heading">島の公開情報</h3>
+                    <dl class="sl-kv">
+                        <div><dt>島主</dt><dd>{{ previewNation.owner_name }}</dd></div>
+                        <div><dt>KARMA</dt><dd :class="{ 'karma-text': previewNation.karma > 0 }">{{ previewNation.karma }}</dd></div>
+                        <div><dt>人口</dt><dd>{{ previewNation.total_population.toLocaleString() }}人</dd></div>
+                        <div><dt>面積</dt><dd>{{ previewNation.owned_land_cells.toLocaleString() }}セル</dd></div>
+                        <div><dt>推定資金</dt><dd>{{ previewNation.money_display }}</dd></div>
+                        <div><dt>食料</dt><dd>{{ previewNation.food_total_tons.toLocaleString() }}トン</dd></div>
+                        <div><dt>農場規模</dt><dd>{{ previewNation.farm_capacity_people.toLocaleString() }}人</dd></div>
+                        <div><dt>工場規模</dt><dd>{{ previewNation.factory_capacity_people.toLocaleString() }}人</dd></div>
+                        <div><dt>採掘場規模</dt><dd>{{ previewNation.mine_capacity_people.toLocaleString() }}人</dd></div>
+                        <div><dt>怪獣討伐</dt><dd>{{ previewNation.monster_final_blow_count.toLocaleString() }}体</dd></div>
+                    </dl>
+                    <p v-if="previewNation.comment" class="sl-visit-comment-full">「{{ previewNation.comment }}」</p>
+                </section>
                 <p class="sl-note">公開情報（人口・面積・推定資金・食料合計・施設規模）だけを表示しています。食料内訳、その他資源在庫・上限、非公開施設は取得していません。</p>
             </aside>
 
