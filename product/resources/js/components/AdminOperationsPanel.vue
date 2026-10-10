@@ -130,15 +130,18 @@ const stopLabels: Record<string, string> = {
             <p>30日を過ぎた記録があります。削除可能な範囲と保留理由を確認できます。</p>
             <button :disabled="locked" @click="selectSection('purge')">古いログを整理</button>
         </aside>
+        <div class="admin-layout">
         <nav class="admin-menu" aria-label="管理項目">
-            <button :disabled="locked" @click="selectSection('distribution')">配布</button>
-            <button :disabled="locked" @click="selectSection('abandonment')">島整理</button>
+            <button :disabled="locked" :aria-current="section === 'distribution' ? 'page' : undefined" @click="selectSection('distribution')">配布</button>
+            <button :disabled="locked" :aria-current="section === 'abandonment' ? 'page' : undefined" @click="selectSection('abandonment')">島整理</button>
             <button :disabled="locked" @click="emit('announcements')">お知らせ管理</button>
             <button :disabled="locked" @click="emit('guide')">案内人の会話</button>
             <button :disabled="locked" @click="emit('merchant')">行商人の会話</button>
             <button :disabled="locked" @click="emit('inquiries')">お問い合わせ一覧</button>
-            <button :disabled="locked" @click="selectSection('purge')">ログ整理</button>
+            <button :disabled="locked" :aria-current="section === 'purge' ? 'page' : undefined" @click="selectSection('purge')">ログ整理</button>
         </nav>
+        <div class="admin-work">
+        <p v-if="!section && !preview" class="admin-empty">左の項目から作業を選んでください。配布・島整理・ログの削除は、内容を確かめる画面を挟んでから実行します。</p>
 
         <form v-if="overview && section === 'distribution' && !preview" @submit.prevent="requestPreview('distribution', { target_kind: targetKind, selected_ids: selectedIds, manual_ids: manualIds, reason, assets })">
             <h2>配布</h2>
@@ -206,14 +209,31 @@ const stopLabels: Record<string, string> = {
                 <button v-if="!submitted" :disabled="busy" @click="preview = null">内容を変更する</button>
             </div>
         </section>
+        </div>
+        </div>
     </section>
 </template>
 
 <style scoped>
-.admin-operations { max-width: 1050px; margin: auto; }
-.admin-menu, .admin-actions { display: flex; gap: .65rem; flex-wrap: wrap; }
-.admin-menu { margin: 1.5rem 0; }
-.admin-notice, .admin-confirm { border: 1px solid #aa8736; background: #fff9e9; color: #3d3526; padding: 1rem; margin: 1rem 0; border-radius: .6rem; }
+/* 左に項目、右に作業。取り返しのつかない操作は「内容を確かめる → 実行する」の2段にする。 */
+.admin-operations { max-width: 1180px; margin: auto; }
+.admin-actions { display: flex; gap: .65rem; flex-wrap: wrap; }
+.admin-layout { display: grid; grid-template-columns: 200px minmax(0, 1fr); gap: 1rem; align-items: start; margin-top: 1rem; }
+.admin-menu { display: grid; gap: 2px; padding: 4px; border: 1px solid var(--sl-line); border-radius: var(--sl-radius); background: var(--sl-panel); }
+.admin-menu button { border: 0; border-left: 3px solid transparent; background: transparent; color: inherit; padding: .5rem .7rem; text-align: left; font: inherit; cursor: pointer; }
+.admin-menu button:hover:not(:disabled) { background: var(--sl-panel-2); }
+.admin-menu button[aria-current="page"] { border-left-color: var(--sl-accent); background: var(--sl-panel-2); font-weight: 700; }
+.admin-menu button:disabled { opacity: .5; cursor: default; }
+.admin-work { min-width: 0; }
+.admin-work h2 { margin-top: 0; }
+.admin-empty { color: var(--sl-ink-2); }
+.admin-notice, .admin-confirm { border: 1px solid var(--sl-turn); background: var(--warning-surface, #fff9e9); color: var(--ink, #3d3526); padding: 1rem; margin: 1rem 0; border-radius: var(--sl-radius); }
+@media (max-width: 760px) {
+    .admin-layout { grid-template-columns: minmax(0, 1fr); }
+    .admin-menu { display: flex; flex-wrap: nowrap; overflow-x: auto; }
+    .admin-menu button { flex: none; border-left: 0; border-bottom: 3px solid transparent; white-space: nowrap; }
+    .admin-menu button[aria-current="page"] { border-bottom-color: var(--sl-accent); }
+}
 fieldset { border: 0; padding: 0; display: grid; gap: 1rem; }
 fieldset > label, .admin-assets label { display: grid; gap: .4rem; }
 input, select, textarea { font: inherit; padding: .5rem; max-width: 100%; }

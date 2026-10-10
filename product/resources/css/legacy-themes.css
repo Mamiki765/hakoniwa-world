@@ -140,14 +140,14 @@ html[data-theme="autumn"] h2 {
     border-bottom: 2px solid #8b4513;
     padding: 0 5px 3px 25px;
 }
-html:is([data-theme="skyblue"], [data-theme="autumn"]) :is(.lobby-heading h1, .manual-content h1) {
+html:is([data-theme="skyblue"], [data-theme="autumn"]) :is(.manual-content h1) {
     font-family: sans-serif;
     font-style: italic;
     line-height: 1.3;
     padding-right: 40px;
     background-repeat: no-repeat;
 }
-html[data-theme="skyblue"] :is(.lobby-heading h1, .manual-content h1) {
+html[data-theme="skyblue"] :is(.manual-content h1) {
     margin: .5em 0 1em;
     font-size: clamp(24pt, 5vw, 32pt);
     font-weight: bold;
@@ -157,8 +157,8 @@ html[data-theme="skyblue"] :is(.lobby-heading h1, .manual-content h1) {
     background-image: url('../images/themes/skyblue/skb_bg_title.gif');
     background-position: 100% 100%;
 }
-html[data-theme="skyblue"] :is(.lobby-heading h1, .manual-content h1)::first-letter { color: #4169e1; font-size: 1.5em; }
-html[data-theme="autumn"] :is(.lobby-heading h1, .manual-content h1) {
+html[data-theme="skyblue"] :is(.manual-content h1)::first-letter { color: #4169e1; font-size: 1.5em; }
+html[data-theme="autumn"] :is(.manual-content h1) {
     margin: .5em 0 1em;
     font-size: clamp(24pt, 5vw, 38pt);
     font-weight: normal;
@@ -176,36 +176,13 @@ html:is([data-theme="skyblue"], [data-theme="autumn"]) :is(.site-header, .manual
 }
 html:is([data-theme="skyblue"], [data-theme="autumn"]) :is(.site-header nav button, .session-actions button):hover { color: var(--legacy-link-active); background: var(--hover-surface); }
 html:is([data-theme="skyblue"], [data-theme="autumn"]) :is(.panel, .ug-shell, .ug-self-card, .ug-credit-dialog, .resource-panel, .reward-toast) { border-radius: 0; box-shadow: none; }
-html:is([data-theme="skyblue"], [data-theme="autumn"]) .command-panel { background: var(--legacy-input-cell); }
-html:is([data-theme="skyblue"], [data-theme="autumn"]) :is(.plan-panel, .manual-content) { background: #fff; }
 html:is([data-theme="skyblue"], [data-theme="autumn"]) .policy-list form { background: var(--legacy-input-cell); }
-html:is([data-theme="skyblue"], [data-theme="autumn"]) :is(.world-stats, .nation-hud) {
-    --hud-gauge-surface: var(--paper-deep);
-    color: var(--ink);
-    background: var(--paper-deep);
-    border: 1px solid var(--legacy-th-border);
-}
-html:is([data-theme="skyblue"], [data-theme="autumn"]) :is(.world-stats div, .hud-primary > div) { border-color: var(--line); }
-html:is([data-theme="skyblue"], [data-theme="autumn"]) .hud-more { color: var(--ink); }
-html:is([data-theme="skyblue"], [data-theme="autumn"]) :is(.world-stats dt, .hakoniwa-calendar, .nation-hud .profile-owner, .turn-indicator, .hud-primary dt, .hud-capacity-limit, .hud-more span, .hud-details dt, .resource-forecast-note) { color: var(--muted); }
-html:is([data-theme="skyblue"], [data-theme="autumn"]) .hud-identity h1 { color: #a06040; }
-html:is([data-theme="skyblue"], [data-theme="autumn"]) .resource-forecast tbody th { color: var(--ink); }
-html:is([data-theme="skyblue"], [data-theme="autumn"]) :is(.resource-forecast, .hud-support) { background: var(--paper); border-color: var(--line); }
-html:is([data-theme="skyblue"], [data-theme="autumn"]) :is(.forecast-positive, .workforce-saturation) { color: var(--info); }
-html:is([data-theme="skyblue"], [data-theme="autumn"]) :is(.forecast-negative, .workforce-unemployment) { color: var(--danger); }
 html:is([data-theme="skyblue"], [data-theme="autumn"]) table { border-collapse: separate; border-spacing: 1px; }
 html:is([data-theme="skyblue"], [data-theme="autumn"]) :is(th, td) { font-size: 10pt; border: 1px solid var(--line); padding: 4px 6px; }
 html:is([data-theme="skyblue"], [data-theme="autumn"]) th { border-color: var(--legacy-th-border); background: var(--table-heading); color: var(--ink); }
 html:is([data-theme="skyblue"], [data-theme="autumn"]) td { background: var(--paper); }
-html:is([data-theme="skyblue"], [data-theme="autumn"]) .ranking-card td:first-child:not([colspan]) { background: var(--table-heading); color: var(--info); }
-html:is([data-theme="skyblue"], [data-theme="autumn"]) .ranking-card td:nth-child(2) { background: var(--legacy-name-cell); }
-html:is([data-theme="skyblue"], [data-theme="autumn"]) .ranking-card td:nth-child(n+3) { background: var(--paper-deep); }
-html:is([data-theme="skyblue"], [data-theme="autumn"]) .ranking-card .ranking-owner-row td { background: #fff; }
 html:is([data-theme="skyblue"], [data-theme="autumn"]) :is(input, select, textarea) { accent-color: var(--navy); }
 html[data-theme="autumn"] :is(option, input:focus) { background-color: #ffe4c4; }
 html[data-theme="skyblue"] hr { border: 1px dashed #4169e1; }
 html[data-theme="autumn"] hr { border: 0; border-top: 1px solid #a0522d; }
-html[data-theme="autumn"] .world-stats > div:first-child {
-    background: url('../images/themes/autumn/atm_icyo.gif') no-repeat 99% 10%;
-    border: 1px dashed #f5deb3;
-}
+html:is([data-theme="skyblue"], [data-theme="autumn"]) .manual-content { background: #fff; }

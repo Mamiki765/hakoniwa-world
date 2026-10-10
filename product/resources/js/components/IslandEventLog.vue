@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { onMounted, ref, watch } from 'vue';
+import { computed, onMounted, ref, watch } from 'vue';
 import { api } from '../api/client';
-import type { PlayerIslandEventPage, PublicEventPage } from '../types';
+import type { PlayerIslandEvent, PlayerIslandEventPage, PublicEvent, PublicEventPage } from '../types';
 
 const props = defineProps<{ nationId: number; audience: 'public' | 'owner' }>();
 const result = ref<PlayerIslandEventPage | PublicEventPage | null>(null);
@@ -9,6 +9,14 @@ const currentPage = ref(1);
 const anchorTurn = ref<number | null>(null);
 const loading = ref(false);
 const error = ref('');
+const importantOnly = ref(false);
+// 「重要のみ」は、お知らせ程度の出来事を畳む。ターンの収支は残す。
+const shownGroups = computed(() => (result.value?.groups ?? []).map((group) => ({
+    target_turn: group.target_turn,
+    events: (group.events as Array<PlayerIslandEvent | PublicEvent>).filter((event) => !importantOnly.value
+        || event.importance !== 'info'
+        || ('summary' in event && event.summary != null)),
+})).filter((group) => group.events.length > 0));
 
 function formatDelta(value: number): string {
     const sign = value > 0 ? '+' : value < 0 ? '-' : '±';
@@ -60,6 +68,10 @@ watch(() => [props.nationId, props.audience], resetAndLoad);
             <div>
                 <h2 :id="`island-events-heading-${props.audience}`">{{ props.audience === 'public' ? '公開島ログ' : '島ログ' }}</h2>
             </div>
+            <span class="island-events-filter sl-seg" role="group" aria-label="表示する出来事">
+                <button type="button" :aria-pressed="!importantOnly" @click="importantOnly = false">すべて</button>
+                <button type="button" :aria-pressed="importantOnly" @click="importantOnly = true">重要のみ</button>
+            </span>
             <span v-if="result?.turn_range">
                 第{{ result.turn_range.start }}〜{{ result.turn_range.end }}ターン
             </span>
@@ -75,8 +87,8 @@ watch(() => [props.nationId, props.audience], resetAndLoad);
             この{{ result?.turns_per_page ?? 12 }}ターンには表示できるログがありません。
         </p>
 
-        <div v-if="result?.groups.length" class="island-event-groups">
-            <section v-for="group in result.groups" :key="group.target_turn" class="island-event-group">
+        <div v-if="shownGroups.length" class="island-event-groups">
+            <section v-for="group in shownGroups" :key="group.target_turn" class="island-event-group">
                 <h3>第{{ group.target_turn }}ターン</h3>
                 <ol>
                     <li

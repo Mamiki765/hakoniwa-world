@@ -72,7 +72,7 @@ describe('staggered square-image map', () => {
         } });
         expect(wrapper.findAll('.sea-area-border')).toHaveLength(1);
         expect(wrapper.get('.sea-area-border').classes()).toContain('weather-rain');
-        expect(wrapper.get('.weather-icon').attributes('width')).toBe('12');
+        expect(wrapper.get('.weather-icon').attributes('width')).toBe('20');
         expect(wrapper.get('.sea-area title').text()).toContain('第7ターン');
         await wrapper.get('.map-cell').trigger('click');
         expect(wrapper.emitted('select')?.[0]).toEqual([cell]);
@@ -426,6 +426,15 @@ describe('staggered square-image map', () => {
         expect(wrapper.emitted('select')).toEqual([[cell]]);
         expect(capture.released).toEqual([1]);
         expect(wrapper.find('.map-viewport').classes()).not.toContain('is-dragging');
+        // A touch-compatible mouseenter must stay suppressed, but a real mouse
+        // moving over the same cell resumes hover without another click.
+        await tile.trigger('mouseenter');
+        expect(wrapper.find('.cell-tooltip').exists()).toBe(false);
+        dispatchPointer(tile.element, 'pointermove', { pointerId: 2, pointerType: 'mouse', clientX: 23, clientY: 22 });
+        await flushPromises();
+        expect(wrapper.get('.cell-tooltip').text()).toContain(cell.display_name);
+        expect(wrapper.emitted('select')).toEqual([[cell]]);
+        wrapper.unmount();
     });
 
     it('pans from a cell after crossing the threshold and captures the pointer', async () => {

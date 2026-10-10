@@ -1,0 +1,120 @@
+/* New Light／New Dark: まだ作り替えていない画面にも、新しい配色を先に当てる。
+ * 旧画面のCSSは下の変数で色を受けているので、値の組だけを差し替える（並びと書体は変えない）。
+ * これまでの色は Old Light／Old Dark（hakoniwa.css の値）で選べる。
+ * 警告・エラー・選択は、それぞれ別の色相で見分けがつくようにしてある。 */
+html[data-theme="light"],
+html[data-theme="system"] {
+    color-scheme: light;
+    --ink: #14263a;
+    --muted: #4a6078;
+    --paper: #f6f9fb;
+    --paper-deep: #d9e4eb;
+    --navy: #0b5d8c;
+    --navy-light: #2a7fb0;
+    --navy-solid: #0b5d8c;
+    --coral: #b86a00;
+    --coral-dark: #8a4f00;
+    --line: #a9bccb;
+    --gold: #d9a520;
+    --shadow: 0 8px 24px rgba(10, 25, 45, .14);
+    --canvas: #e4ecf1;
+    --canvas-accent: #d3e0e9;
+    --paper-overlay: rgba(246, 249, 251, .93);
+    --paper-soft-overlay: rgba(246, 249, 251, .84);
+    --input-surface: #ffffff;
+    --input-border: #8fa5b6;
+    --hover-surface: #eaf1f6;
+    --selected-surface: #dcebf7;
+    --table-heading: #dbe6ee;
+    --danger: #bf362e;
+    --danger-strong: #a32a23;
+    --danger-solid: #bf362e;
+    --danger-surface: #fbe6e3;
+    --warning: #7a5200;
+    --warning-surface: #fbefcf;
+    --info: #0b5d8c;
+    --success: #1f7534;
+    --success-surface: #e2f3e6;
+    --on-solid: #ffffff;
+    --toast-surface: #14263a;
+    --toast-ink: #e4ecf1;
+    --toast-border: #2e455d;
+}
+
+html[data-theme="dark"] {
+    color-scheme: dark;
+    --ink: #dbe6f0;
+    --muted: #8da3b9;
+    --paper: #121f2e;
+    --paper-deep: #1b2d41;
+    --navy: #5bb4e4;
+    --navy-light: #8fd0f2;
+    --navy-solid: #1d5f86;
+    --coral: #f0a63a;
+    --coral-dark: #f6bd6a;
+    --line: #2e455d;
+    --gold: #f4ca69;
+    --shadow: 0 8px 24px rgba(0, 0, 0, .5);
+    --canvas: #0a1420;
+    --canvas-accent: #132638;
+    --paper-overlay: rgba(18, 31, 46, .94);
+    --paper-soft-overlay: rgba(18, 31, 46, .85);
+    --input-surface: #0d1826;
+    --input-border: #4a6078;
+    --hover-surface: #1b2d41;
+    --selected-surface: #1f3a52;
+    --table-heading: #182a3d;
+    --danger: #f2776c;
+    --danger-strong: #ff9a90;
+    --danger-solid: #a8362d;
+    --danger-surface: #3a1f1f;
+    --warning: #f0c56a;
+    --warning-surface: #3a2f16;
+    --info: #7fbdf0;
+    --success: #63c279;
+    --success-surface: #14301f;
+    --on-solid: #ffffff;
+    --toast-surface: #060d15;
+    --toast-ink: #dbe6f0;
+    --toast-border: #2e455d;
+}
+
+@media (prefers-color-scheme: dark) {
+    html[data-theme="system"] {
+        color-scheme: dark;
+        --ink: #dbe6f0;
+        --muted: #8da3b9;
+        --paper: #121f2e;
+        --paper-deep: #1b2d41;
+        --navy: #5bb4e4;
+        --navy-light: #8fd0f2;
+        --navy-solid: #1d5f86;
+        --coral: #f0a63a;
+        --coral-dark: #f6bd6a;
+        --line: #2e455d;
+        --gold: #f4ca69;
+        --shadow: 0 8px 24px rgba(0, 0, 0, .5);
+        --canvas: #0a1420;
+        --canvas-accent: #132638;
+        --paper-overlay: rgba(18, 31, 46, .94);
+        --paper-soft-overlay: rgba(18, 31, 46, .85);
+        --input-surface: #0d1826;
+        --input-border: #4a6078;
+        --hover-surface: #1b2d41;
+        --selected-surface: #1f3a52;
+        --table-heading: #182a3d;
+        --danger: #f2776c;
+        --danger-strong: #ff9a90;
+        --danger-solid: #a8362d;
+        --danger-surface: #3a1f1f;
+        --warning: #f0c56a;
+        --warning-surface: #3a2f16;
+        --info: #7fbdf0;
+        --success: #63c279;
+        --success-surface: #14301f;
+        --on-solid: #ffffff;
+        --toast-surface: #060d15;
+        --toast-ink: #dbe6f0;
+        --toast-border: #2e455d;
+    }
+}

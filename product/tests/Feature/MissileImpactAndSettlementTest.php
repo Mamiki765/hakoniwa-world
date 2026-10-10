@@ -1402,16 +1402,17 @@ final class MissileImpactAndSettlementTest extends CommandAndMissileTestCase
         );
         $this->assertSame(1, DB::table('audit_events')->where('event_type', 'ship.missile_damaged')->count());
         $this->assertSame(1, DB::table('audit_events')->where('event_type', 'ship.sunk')->count());
-        $messages = collect(app(PlayerIslandEventService::class)->ownerPage($target->fresh(), 1, 2)['groups'])
-            ->flatMap(fn (array $group): array => $group['events'])->pluck('message');
+        $events = collect(app(PlayerIslandEventService::class)->ownerPage($target->fresh(), 1, 2)['groups'])
+            ->flatMap(fn (array $group): array => $group['events']);
+        $messages = $events->pluck('message');
         $this->assertTrue($messages->contains(
             static fn (string $message): bool => str_contains($message, '観光船がミサイル攻撃により')
                 && str_contains($message, '損傷しました'),
         ));
-        $this->assertTrue($messages->contains(
-            static fn (string $message): bool => str_contains($message, '観光船がミサイル攻撃により')
-                && str_contains($message, '沈没しました'),
-        ));
+        $this->assertSame(1, $events->where('type', 'missile.impact')->filter(
+            static fn (array $event): bool => str_contains($event['message'], '撃沈'),
+        )->count());
+        $this->assertFalse($events->contains('type', 'ship.sunk'));
     }
 
     public function test_normal_missile_sinks_a_pirate_through_the_canonical_impact_path(): void

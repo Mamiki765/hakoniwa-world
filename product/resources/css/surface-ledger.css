@@ -1,0 +1,428 @@
+/* 地上の開発画面（帳簿）。色・線・影・書体はすべて下のトークンで受け、画面側の規則には直接書かない。
+ * テーマは「トークンの値の組」で、data-theme ごとに1組ずつ持つ。
+ * 配置の考え方: 地図は常に海の色の上に置き、周囲の枠は細い罫線と小さな角丸だけで組む。タイルより目立つ装飾は置かない。 */
+
+/* ---- New Light（既定。light と、端末がライトのときの system） ---- */
+:root,
+html[data-theme="light"],
+html[data-theme="system"] {
+    --sl-bg: #e4ecf1; --sl-panel: #f6f9fb; --sl-panel-2: #d9e4eb; --sl-ink: #14263a; --sl-ink-2: #4a6078; --sl-line: #a9bccb;
+    --sl-accent: #0b5d8c; --sl-accent-ink: #ffffff;
+    --sl-turn: #b86a00; --sl-free: #12806f; --sl-good: #23803a; --sl-bad: #bf362e; --sl-paradox: #6f45b8;
+    --sl-bar: #14263a; --sl-bar-ink: #e4ecf1;
+    --sl-sea: #173f78; --sl-map-sel: #ffe36b; --sl-map-sel-2: #ffffff; --sl-map-own: rgba(255, 255, 255, .55); --sl-map-other: rgba(255, 150, 135, .8);
+    --sl-map-vision: #42d878; --sl-map-mark-ink: #14263a; --sl-map-tag: rgba(8, 28, 33, .78); --sl-map-tag-ink: #ffffff;
+    --sl-shade: rgba(10, 25, 45, .28); --sl-shadow: 0 8px 24px rgba(10, 25, 45, .28);
+    --sl-radius: 3px;
+    --sl-f-body: "BIZ UDPGothic", "Noto Sans CJK JP", "Hiragino Kaku Gothic ProN", "Yu Gothic UI", sans-serif;
+    --sl-f-head: var(--sl-f-body); --sl-w-head: 700;
+    --sl-f-num: var(--sl-f-body);
+}
+
+/* ---- New Dark ---- */
+html[data-theme="dark"] {
+    --sl-bg: #0a1420; --sl-panel: #121f2e; --sl-panel-2: #1b2d41; --sl-ink: #dbe6f0; --sl-ink-2: #8da3b9; --sl-line: #2e455d;
+    --sl-accent: #5bb4e4; --sl-accent-ink: #06121d;
+    --sl-turn: #f0a63a; --sl-free: #4ecdb9; --sl-good: #63c279; --sl-bad: #f2776c; --sl-paradox: #b594f0;
+    --sl-bar: #060d15; --sl-bar-ink: #dbe6f0;
+    --sl-sea: #173f78; --sl-map-sel: #ffe36b; --sl-map-sel-2: #ffffff; --sl-map-own: rgba(255, 255, 255, .55); --sl-map-other: rgba(255, 150, 135, .8);
+    --sl-map-vision: #42d878; --sl-map-mark-ink: #14263a; --sl-map-tag: rgba(8, 28, 33, .78); --sl-map-tag-ink: #ffffff;
+    --sl-shade: rgba(0, 0, 0, .5); --sl-shadow: 0 8px 24px rgba(0, 0, 0, .5);
+    --sl-radius: 3px;
+    --sl-f-body: "BIZ UDPGothic", "Noto Sans CJK JP", "Hiragino Kaku Gothic ProN", "Yu Gothic UI", sans-serif;
+    --sl-f-head: var(--sl-f-body); --sl-w-head: 700;
+    --sl-f-num: var(--sl-f-body);
+}
+@media (prefers-color-scheme: dark) {
+    html[data-theme="system"] {
+        --sl-bg: #0a1420; --sl-panel: #121f2e; --sl-panel-2: #1b2d41; --sl-ink: #dbe6f0; --sl-ink-2: #8da3b9; --sl-line: #2e455d;
+        --sl-accent: #5bb4e4; --sl-accent-ink: #06121d;
+        --sl-turn: #f0a63a; --sl-free: #4ecdb9; --sl-good: #63c279; --sl-bad: #f2776c; --sl-paradox: #b594f0;
+        --sl-bar: #060d15; --sl-bar-ink: #dbe6f0;
+        --sl-shade: rgba(0, 0, 0, .5); --sl-shadow: 0 8px 24px rgba(0, 0, 0, .5);
+    }
+}
+
+/* ---- Old Light / Old Dark: 旧画面の色と書体（Georgia系の見出し）をトークンの値として写す。
+ *      旧テーマの変数は hakoniwa.css が old-light / old-dark にも同じ値で出している。 ---- */
+html[data-theme="old-light"],
+html[data-theme="old-dark"] {
+    --sl-bg: var(--canvas); --sl-panel: var(--paper); --sl-panel-2: var(--paper-deep); --sl-ink: var(--ink); --sl-ink-2: var(--muted); --sl-line: var(--line);
+    --sl-accent: var(--navy-solid); --sl-accent-ink: var(--on-solid);
+    --sl-turn: var(--coral-dark); --sl-free: var(--success); --sl-good: var(--success); --sl-bad: var(--danger); --sl-paradox: var(--info);
+    --sl-bar: var(--toast-surface); --sl-bar-ink: var(--toast-ink);
+    --sl-sea: #83bccc; --sl-map-sel: var(--coral); --sl-map-sel-2: #ffffff; --sl-map-own: var(--gold); --sl-map-other: rgba(255, 150, 135, .8);
+    --sl-map-vision: #42d878; --sl-map-mark-ink: #14263a; --sl-map-tag: rgba(8, 28, 33, .78); --sl-map-tag-ink: #ffffff;
+    --sl-shade: rgba(18, 63, 73, .3); --sl-shadow: var(--shadow);
+    --sl-radius: 0px;
+    --sl-f-body: Inter, "Noto Sans JP", "Yu Gothic UI", sans-serif;
+    --sl-f-head: Georgia, "Yu Mincho", serif; --sl-w-head: 700;
+    --sl-f-num: var(--sl-f-body);
+}
+html[data-theme="old-dark"] { --sl-accent: var(--navy); --sl-accent-ink: var(--paper-deep); --sl-shade: rgba(0, 0, 0, .5); }
+
+/* ---- Black / SkyBlue / Autumn: それぞれの既存の配色をトークンへ写す ---- */
+html[data-theme="black"] {
+    --sl-bg: var(--canvas); --sl-panel: var(--paper); --sl-panel-2: var(--paper-deep); --sl-ink: var(--ink); --sl-ink-2: var(--muted); --sl-line: var(--line);
+    --sl-accent: var(--navy-solid); --sl-accent-ink: var(--on-solid);
+    --sl-turn: var(--gold); --sl-free: var(--coral); --sl-good: var(--success); --sl-bad: var(--danger); --sl-paradox: var(--navy-light);
+    --sl-bar: #1a1c1e; --sl-bar-ink: var(--ink);
+    --sl-sea: #173f78; --sl-map-sel: #ffe36b; --sl-map-sel-2: #ffffff; --sl-map-own: rgba(255, 255, 255, .55); --sl-map-other: rgba(255, 150, 135, .8);
+    --sl-map-vision: #42d878; --sl-map-mark-ink: #14263a; --sl-map-tag: rgba(8, 28, 33, .78); --sl-map-tag-ink: #ffffff;
+    --sl-shade: rgba(0, 0, 0, .5); --sl-shadow: 0 8px 24px rgba(0, 0, 0, .5);
+    --sl-radius: 3px;
+    --sl-f-body: Inter, "Noto Sans JP", "Yu Gothic UI", sans-serif;
+    --sl-f-head: var(--sl-f-body); --sl-w-head: 700;
+    --sl-f-num: var(--sl-f-body);
+}
+html[data-theme="skyblue"],
+html[data-theme="autumn"] {
+    --sl-bg: var(--canvas); --sl-panel: var(--paper); --sl-panel-2: var(--paper-deep); --sl-ink: var(--ink); --sl-ink-2: var(--muted); --sl-line: var(--line);
+    --sl-accent: var(--navy-solid); --sl-accent-ink: var(--on-solid);
+    --sl-turn: var(--warning); --sl-free: var(--success); --sl-good: var(--success); --sl-bad: var(--danger); --sl-paradox: var(--info);
+    --sl-bar: var(--navy-solid); --sl-bar-ink: var(--on-solid);
+    --sl-sea: #173f78; --sl-map-sel: #ffe36b; --sl-map-sel-2: #ffffff; --sl-map-own: rgba(255, 255, 255, .55); --sl-map-other: rgba(255, 150, 135, .8);
+    --sl-map-vision: #42d878; --sl-map-mark-ink: #14263a; --sl-map-tag: rgba(8, 28, 33, .78); --sl-map-tag-ink: #ffffff;
+    --sl-shade: rgba(0, 0, 0, .25); --sl-shadow: 0 4px 14px rgba(0, 0, 0, .25);
+    --sl-radius: 0px;
+    --sl-f-body: Inter, "Noto Sans JP", "Yu Gothic UI", sans-serif;
+    --sl-f-head: var(--sl-f-body); --sl-w-head: 700;
+    --sl-f-num: var(--sl-f-body);
+}
+
+/* ================= 枠 ================= */
+/* 開発画面は、全体ナビの下の残りの高さにぴったり収める（ページ全体はスクロールさせない）。 */
+#app:has(> main.ledger-main) { display: flex; flex-direction: column; height: 100dvh; }
+#app:has(> main.ledger-main) > .site-header { flex: none; }
+main.ledger-main { flex: 1; min-height: 0; display: flex; flex-direction: column; width: 100%; max-width: none; margin: 0; padding: 0; }
+main.ledger-main > .status { margin: 0; padding: 4px 12px; }
+.sl {
+    --sl-row: 28px;
+    /* 保存した列幅が画面より広いときも、地図の幅を残す。 */
+    --sl-l: min(var(--sl-col-l, 300px), 30vw);
+    --sl-r: min(var(--sl-col-r, 320px), 32vw);
+    position: relative; display: grid; overflow: hidden;
+    flex: 1; min-height: 0;
+    grid-template: "hud hud hud" auto "inspect map plan" minmax(0, 1fr) "inspect log plan" var(--sl-log-h, 210px) / var(--sl-l) minmax(0, 1fr) var(--sl-r);
+    background: var(--sl-bg); color: var(--sl-ink); font: 14px/1.5 var(--sl-f-body);
+}
+.sl :is(h1, h2, h3, h4, p, dl, dd, ol, ul) { margin: 0; padding: 0; }
+.sl :is(ol, ul) { list-style: none; }
+/* SkyBlue・Autumn の見出し飾り（背景画像つきのh2）は、帳簿の細い見出しには当てない。 */
+html .sl h2 { font: var(--sl-w-head) 14px var(--sl-f-head); display: block; min-height: 0; max-width: none; padding: 0; border: 0; background: none; color: inherit; line-height: inherit; letter-spacing: normal; text-shadow: none; }
+.sl :is(button, select, input, textarea) { font: inherit; color: inherit; }
+.sl button { cursor: pointer; border: 1px solid var(--sl-line); background: var(--sl-panel); border-radius: var(--sl-radius); padding: 3px 10px; min-height: 0; }
+.sl button:hover:not(:disabled) { border-color: var(--sl-accent); }
+.sl button:disabled { opacity: .5; cursor: default; }
+.sl button.sl-primary { background: var(--sl-accent); color: var(--sl-accent-ink); border-color: var(--sl-accent); font-weight: 700; }
+.sl button.sl-quiet { background: transparent; }
+.sl button:is(.sl-danger, .danger-action) { color: var(--sl-bad); }
+.sl :is(input, select, textarea) { border: 1px solid var(--sl-line); border-radius: var(--sl-radius); background: var(--sl-bg); padding: 4px 6px; }
+.sl :focus-visible { outline: 2px solid var(--sl-accent); outline-offset: 1px; }
+.sl .num, .sl-num { font-family: var(--sl-f-num); font-variant-numeric: tabular-nums; }
+.sl [hidden] { display: none !important; }
+.sl-empty { padding: 14px 10px; color: var(--sl-ink-2); font-size: 13px; }
+.sl-pane-head { display: flex; align-items: center; gap: 8px; padding: 3px 10px; min-height: 32px; background: var(--sl-panel-2); border-bottom: 1px solid var(--sl-line); }
+.sl-pane-head h2 { font: var(--sl-w-head) 14px var(--sl-f-head); margin-right: auto; }
+.sl-seg { display: inline-flex; }
+.sl .sl-seg button { border-radius: 0; margin-left: -1px; padding: 1px 9px; font-size: 12px; }
+.sl .sl-seg button:first-child { border-radius: var(--sl-radius) 0 0 var(--sl-radius); margin-left: 0; }
+.sl .sl-seg button:last-child { border-radius: 0 var(--sl-radius) var(--sl-radius) 0; }
+.sl .sl-seg button[aria-pressed="true"] { background: var(--sl-accent); color: var(--sl-accent-ink); border-color: var(--sl-accent); }
+.sl-mk { display: inline-block; width: 10px; height: 10px; flex: none; border: 2px solid var(--sl-turn); background: var(--sl-turn); }
+.sl-mk.free { border-color: var(--sl-free); background: transparent; }
+.sl .notification-dot { top: -3px; right: -3px; box-shadow: 0 0 0 2px var(--sl-panel); }
+
+/* ================= 島の状況 ================= */
+.sl-hud { grid-area: hud; display: flex; align-items: center; gap: 4px 16px; padding: 5px 12px; background: var(--sl-panel); border-bottom: 1px solid var(--sl-line); min-width: 0; }
+.sl-hud-name { display: flex; flex-direction: column; line-height: 1.25; flex: none; min-width: 0; max-width: 46%; }
+.sl-hud-row { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
+.sl-hud-row h1 { font: var(--sl-w-head) 16px var(--sl-f-head); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sl-hud-row h1.karma-name { color: var(--sl-bad); }
+.sl-hud .state-badge { margin: 0; padding: 0 5px; border: 1px solid currentColor; border-radius: var(--sl-radius); color: var(--sl-turn); font-size: 11px; font-weight: 400; }
+.sl-hud-sub { display: flex; gap: 10px; font-size: 12px; color: var(--sl-ink-2); white-space: nowrap; }
+.sl-hud-sub .karma-emphasis { color: var(--sl-bad); }
+.sl .sl-comment { display: inline-flex; align-items: center; gap: 4px; min-width: 0; max-width: 260px; border: 0; background: transparent; padding: 0; font-size: 12px; color: var(--sl-ink-2); text-align: left; }
+.sl-comment .t { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; border-bottom: 1px dotted var(--sl-line); }
+.sl-comment i { font-style: normal; color: var(--sl-accent); }
+.sl-comment:hover .t { color: var(--sl-ink); }
+.sl-comment .t-short { display: none; }
+.sl-stats { display: flex; flex-wrap: wrap; gap: 2px 14px; flex: 1; min-width: 0; }
+.sl-stat { display: grid; grid-template-columns: auto auto; column-gap: 6px; align-items: baseline; }
+.sl-stat dt { font-size: 11px; color: var(--sl-ink-2); }
+.sl-stat dd { font: 15px var(--sl-f-num); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.sl-stat dd small { font: 11px var(--sl-f-body); color: var(--sl-ink-2); margin-left: 1px; }
+.sl-stat.low dd { color: var(--sl-bad); }
+.sl-stat .hud-gauge { grid-column: 1 / -1; display: block; position: relative; flex: none; height: 3px; border-radius: 0; background: var(--sl-panel-2); color: var(--sl-accent); }
+.sl-stat .hud-gauge-fill { display: block; height: 100%; border-radius: 0; background: currentColor; }
+.sl-stat .hud-gauge.is-warning { color: var(--sl-bad); }
+.sl-stat .hud-gauge-danger { position: absolute; right: 0; top: -13px; transform: none; padding: 0 2px; background: var(--sl-panel); color: var(--sl-bad); font-size: 9px; line-height: 1; }
+.sl-hud-actions { display: flex; gap: 6px; flex: none; align-items: center; position: relative; }
+.sl-hud-actions button, .sl .daily-quest-trigger { margin: 0; padding: 2px 9px; background: transparent; border: 1px solid var(--sl-line); font-size: 13px; white-space: nowrap; position: relative; }
+.sl-hud-more { display: contents; }
+.sl .sl-hud-more-toggle { display: none; }
+.sl .sl-gift { color: var(--sl-turn); border-color: currentColor; }
+
+/* 一言コメントの書き換え・収支と資源 */
+.sl-pop { position: absolute; z-index: 30; background: var(--sl-panel); border: 1px solid var(--sl-line); border-radius: calc(var(--sl-radius) + 1px); box-shadow: var(--sl-shadow); }
+.sl-cmt { left: 12px; top: 50px; width: min(420px, calc(100% - 24px)); padding: 10px 12px; display: grid; gap: 6px; }
+.sl-cmt label { font: var(--sl-w-head) 14px var(--sl-f-head); }
+.sl-cmt label small { font: 11px var(--sl-f-body); color: var(--sl-ink-2); margin-left: 6px; }
+.sl-cmt input { width: 100%; padding: 6px 8px; background: var(--sl-panel); }
+.sl-cmt .sl-actions { display: flex; gap: 6px; align-items: center; }
+.sl-cmt .count { margin-right: auto; font-size: 12px; color: var(--sl-ink-2); }
+.sl-cmt .err { color: var(--sl-bad); font-size: 12px; }
+.sl-island { top: 50px; left: 12px; width: min(600px, calc(100% - 24px)); max-height: calc(100% - 62px); display: flex; flex-direction: column; min-height: 0; z-index: 20; }
+.sl-island-body { overflow: auto; min-height: 0; padding: 8px 10px 12px; display: flex; flex-direction: column; gap: 10px; }
+.sl-island table { border-collapse: collapse; width: 100%; font-size: 13px; }
+.sl-island :is(th, td) { padding: 2px 6px; border-bottom: 1px solid var(--sl-line); text-align: right; white-space: nowrap; }
+.sl-island th:first-child { text-align: left; font-weight: 400; }
+.sl-island thead th { font-size: 11px; color: var(--sl-ink-2); font-weight: 400; }
+.sl-island td { font-family: var(--sl-f-num); font-variant-numeric: tabular-nums; }
+.sl-island .forecast-positive { color: var(--sl-good); }
+.sl-island .forecast-negative { color: var(--sl-bad); }
+.sl-tbl-wrap { overflow-x: auto; }
+.sl-island h3 { font: var(--sl-w-head) 13px var(--sl-f-head); color: var(--sl-ink-2); }
+.sl-kv { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 2px 14px; font-size: 13px; }
+.sl-kv div { display: flex; justify-content: space-between; gap: 8px; border-bottom: 1px dotted var(--sl-line); }
+.sl-kv dt { color: var(--sl-ink-2); }
+.sl-kv dd { font-family: var(--sl-f-num); font-variant-numeric: tabular-nums; }
+.sl-kv .karma-text { color: var(--sl-bad); }
+.sl-workforce { font-size: 13px; }
+.sl-workforce.workforce-unemployment { color: var(--sl-bad); }
+/* 資源・売却方針（収支と資源の中に開いた状態で置く） */
+.sl .resource-panel { margin: 0; padding: 0; border: 0; background: transparent; }
+.sl .resource-panel-actions { display: none; }
+.sl .resource-policy-details > summary { font: var(--sl-w-head) 13px var(--sl-f-head); color: var(--sl-ink-2); cursor: pointer; padding: 2px 0; }
+.sl .policy-list { display: grid; gap: 6px; margin-top: 6px; }
+.sl .policy-list form { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 8px; align-items: center; padding: 6px 0; border-bottom: 1px dotted var(--sl-line); font-size: 13px; background: transparent; border-inline: 0; border-top: 0; }
+.sl .policy-list form > :is(.policy-direction, input[type="range"], .policy-lock-note) { grid-column: 1 / -1; }
+.sl .policy-direction { display: flex; justify-content: space-between; font-size: 11px; color: var(--sl-ink-2); }
+.sl .policy-resource { display: flex; gap: 8px; align-items: baseline; }
+.sl .policy-resource span, .sl .policy-current { font-size: 12px; color: var(--sl-ink-2); }
+.sl .policy-amount { display: flex; gap: 6px; align-items: center; font-size: 12px; }
+.sl .policy-amount input { width: 110px; }
+.sl .policy-list input[type="range"] { width: 100%; padding: 0; border: 0; accent-color: var(--sl-accent); }
+.sl .resource-policy-help, .sl .compact-message, .sl .policy-lock-note { font-size: 12px; color: var(--sl-ink-2); }
+
+/* ================= 列の境目 ================= */
+.sl-grip { position: absolute; top: 0; bottom: 0; width: 9px; z-index: 6; cursor: col-resize; touch-action: none; }
+.sl-grip[data-side="l"] { left: calc(var(--sl-l) - 4px); }
+.sl-grip[data-side="r"] { right: calc(var(--sl-r) - 4px); }
+.sl-grip::after { content: ""; position: absolute; left: 4px; top: 0; bottom: 0; width: 1px; background: transparent; }
+.sl-grip:is(:hover, .drag, :focus-visible)::after { background: var(--sl-accent); width: 3px; left: 3px; }
+
+/* ================= 地図 ================= */
+.sl-map { grid-area: map; display: flex; flex-direction: column; min-height: 0; min-width: 0; background: var(--sl-sea); position: relative; }
+.sl-map-switch { position: absolute; z-index: 4; right: 6px; top: 34px; background: var(--sl-panel); border-radius: var(--sl-radius); }
+.sl .map-stage { flex: 1; display: flex; flex-direction: column; height: auto; min-height: 0; background: var(--sl-sea); }
+.sl .map-toolbar { flex: none; display: flex; flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; gap: 4px 6px; align-items: center; padding: 3px 8px; background: var(--sl-panel); color: var(--sl-ink); border-bottom: 1px solid var(--sl-line); font-size: 12px; white-space: nowrap; }
+.sl .map-toolbar::-webkit-scrollbar { display: none; }
+.sl .map-toolbar button { flex: none; min-width: 0; min-height: 0; padding: 1px 8px; border: 1px solid var(--sl-line); background: var(--sl-panel); color: var(--sl-ink); }
+.sl .map-toolbar button[aria-pressed="true"] { background: var(--sl-accent); border-color: var(--sl-accent); color: var(--sl-accent-ink); }
+.sl .map-toolbar .map-cell-count { color: var(--sl-ink-2); font-size: 11px; margin-left: auto; }
+.sl .map-toolbar .error { color: var(--sl-bad); margin-left: 0; }
+.sl .map-viewport { flex: 1; min-height: 0; height: auto; background: var(--sl-sea); border: 0; }
+.sl .map-viewport:focus-visible { outline: 2px solid var(--sl-accent); outline-offset: -2px; }
+.sl .map-cell { background-color: var(--sl-sea); border-radius: 0; padding: 0; border: 0; transition: none; }
+.sl .map-cell::after { border: 0; }
+.sl .map-cell.owned-by-me::before { inset: 0; border: 1px solid var(--sl-map-own); }
+.sl .map-cell.owned:not(.owned-by-me)::before { content: ""; position: absolute; inset: 0; border: 1px solid var(--sl-map-other); z-index: 3; pointer-events: none; }
+.sl .map-stage[data-territory="off"] .map-cell::before { display: none; }
+.sl .map-cell.within-viewer-visibility::after { border: 2px solid var(--sl-map-vision); }
+.sl .map-cell.selected { box-shadow: none; outline: 2px solid var(--sl-map-sel); outline-offset: 0; z-index: 8; animation: sl-sel 1s steps(2) infinite; }
+@keyframes sl-sel { 50% { outline-color: var(--sl-map-sel-2); } }
+@media (prefers-reduced-motion: reduce) { .sl .map-cell.selected { animation: none; } }
+.sl .map-cell small { background: var(--sl-map-tag); color: var(--sl-map-tag-ink); border: 0; border-radius: 0; }
+.map-cell .plan-mark { position: absolute; right: 0; top: 0; z-index: 5; min-width: 13px; height: 13px; padding: 0 2px; background: var(--sl-map-sel); color: var(--sl-map-mark-ink); font: 10px/13px var(--sl-f-num); text-align: center; pointer-events: none; }
+.sl .cell-tooltip { width: auto; max-width: min(260px, calc(100% - 16px)); display: flex; flex-wrap: wrap; gap: 0 10px; padding: 4px 8px; border: 1px solid var(--sl-line); border-radius: var(--sl-radius); background: var(--sl-panel); color: var(--sl-ink); box-shadow: var(--sl-shadow); font-size: 12px; }
+.sl .cell-tooltip strong { flex-basis: 100%; color: var(--sl-ink); font-size: 13px; }
+.sl .map-empty-note { margin: 0; padding: 2px 8px; background: var(--sl-panel); color: var(--sl-ink-2); font-size: 11px; }
+/* 首都地下（地図と切り替え） */
+.sl-under { flex: 1; min-height: 0; overflow: auto; background: var(--sl-panel); }
+.sl .underground-map-card { margin: 0; padding: 10px 12px; border: 0; box-shadow: none; background: transparent; max-width: none; }
+.sl .underground-map-card h2 { font: var(--sl-w-head) 14px var(--sl-f-head); margin-bottom: 8px; }
+
+/* ================= マス情報とコマンド ================= */
+.sl .command-workspace { display: contents; }
+.sl-inspect, .sl-plan, .sl-log { background: var(--sl-panel); display: flex; flex-direction: column; min-height: 0; min-width: 0; }
+.sl-inspect { grid-area: inspect; border-right: 1px solid var(--sl-line); overflow: auto; }
+.sl .selected-cell, .sl-cell-info { padding: 6px 10px; border-bottom: 1px solid var(--sl-line); }
+.sl :is(.selected-cell, .sl-cell-info) h3 { font: var(--sl-w-head) 15px var(--sl-f-head); display: flex; align-items: center; gap: 8px; margin: 0; }
+.sl .selected-cell h3 img { width: 32px; height: 32px; image-rendering: pixelated; flex: none; }
+.sl .selected-cell > p { font-size: 13px; color: var(--sl-ink-2); }
+.sl :is(.selected-cell, .sl-cell-info) dl { display: grid; grid-template-columns: auto minmax(0, 1fr) auto minmax(0, 1fr); gap: 0 6px; margin-top: 3px; font-size: 13px; align-items: baseline; }
+.sl .selected-cell dt { color: var(--sl-ink-2); font-size: 12px; white-space: nowrap; }
+.sl .selected-cell dd { margin: 0 6px 0 0; font-weight: 400; overflow-wrap: anywhere; }
+.sl-cell-info p { font-size: 13px; color: var(--sl-ink-2); }
+.sl .sl-queued { padding: 3px 10px; border-bottom: 1px solid var(--sl-line); font-size: 13px; color: var(--sl-accent); }
+.sl-queued b { font-weight: 400; font-size: 12px; color: var(--sl-ink-2); margin-right: 6px; }
+.sl-ship { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; padding: 4px 10px; border-bottom: 1px solid var(--sl-line); font-size: 13px; }
+.sl-ship form { display: contents; }
+.sl-ship select { padding: 1px 4px; }
+.sl-ship .command-status { margin: 0; }
+.sl-cmd-area { flex: 1; display: flex; flex-direction: column; }
+.sl-cmd-head { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 8px; padding: 5px 10px 3px; position: sticky; top: 0; background: var(--sl-panel); z-index: 1; font-size: 13px; }
+.sl-cmd-head h3 { font: var(--sl-w-head) 14px var(--sl-f-head); }
+.sl-cmd-head.sub { position: static; padding: 4px 10px 0; color: var(--sl-ink-2); font-size: 12px; }
+.sl-cmd-head.sub .pd { margin-left: auto; color: var(--sl-paradox); }
+.sl-legend { font-size: 11px; color: var(--sl-ink-2); margin-left: auto; display: inline-flex; gap: 8px; align-items: center; }
+.sl-legend span { display: inline-flex; gap: 3px; align-items: center; }
+.sl-all { font-size: 11px; color: var(--sl-ink-2); display: inline-flex; align-items: center; gap: 3px; }
+.sl .sl-insert-at { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 8px; margin: 0 10px 2px; padding: 2px 0; font-size: 11px; color: var(--sl-ink-2); border-bottom: 1px dotted var(--sl-line); }
+.sl-insert-at b { color: var(--sl-ink); font-weight: 400; }
+.sl .sl-insert-at button { font-size: 11px; padding: 0 6px; }
+.sl .command-status { margin: 0 10px; font-size: 12px; color: var(--sl-ink-2); }
+.sl .command-status--idle { display: none; }
+.sl .command-status--success { color: var(--sl-good); }
+.sl .command-status--error { color: var(--sl-bad); }
+.sl-cmds { display: grid; grid-template-columns: 1fr; gap: 3px; padding: 3px 10px 8px; }
+.sl .sl-cmd { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 6px; text-align: left; padding: 2px 8px; min-height: 30px; }
+.sl-cmd .nm { min-width: 0; overflow-wrap: anywhere; line-height: 1.25; }
+.sl-cmd .nm small { font-size: 10px; color: var(--sl-ink-2); margin-left: 5px; }
+.sl-cmd .nm small.danger-suffix { color: var(--sl-bad); font-size: inherit; margin-left: 0; }
+.sl-cmd .nm small:is(.ltr, .warn, .after) { border: 1px solid var(--sl-line); border-radius: 2px; padding: 0 3px; }
+.sl-cmd .nm small.warn { color: var(--sl-turn); border-color: currentColor; }
+.sl-cmd .cost { font: 13px/1.2 var(--sl-f-num); font-variant-numeric: tabular-nums; white-space: nowrap; text-align: right; display: grid; }
+.sl-cmd .cost em { font-style: normal; color: var(--sl-paradox); }
+.sl-cmd .cost .shortfall { font-size: 10px; color: var(--sl-bad); }
+.sl .sl-cmd.short { color: var(--sl-ink-2); background: transparent; border-style: dashed; }
+.sl .sl-cmd.later { border-style: dotted; }
+
+/* ================= 開発計画（帳簿） ================= */
+.sl-plan { grid-area: plan; border-left: 1px solid var(--sl-line); position: relative; }
+.sl-plan-count { font-size: 12px; color: var(--sl-ink-2); }
+.sl-menu { position: absolute; z-index: 25; right: 6px; top: 34px; background: var(--sl-panel); border: 1px solid var(--sl-line); border-radius: calc(var(--sl-radius) + 1px); box-shadow: var(--sl-shadow); padding: 4px; display: flex; flex-direction: column; gap: 2px; min-width: 230px; }
+.sl .sl-menu button { border: 0; text-align: left; background: transparent; padding: 6px 10px; }
+.sl .sl-menu button:hover:not(:disabled) { background: var(--sl-panel-2); }
+.sl-plan-tools { display: flex; flex-wrap: wrap; gap: 4px; padding: 4px 8px; border-bottom: 1px solid var(--sl-line); align-items: center; font-size: 12px; }
+.sl-plan-tools-name { display: flex; flex-wrap: wrap; gap: 0 6px; margin-right: auto; min-width: 0; }
+.sl-plan-tools-name span { color: var(--sl-ink-2); }
+.sl-plan-tools-name strong { font-weight: 400; }
+.sl-plan-tools .up::before { content: "▲ "; }
+.sl-plan-tools .down::before { content: "▼ "; }
+.sl-plan-tools .plan-selection-actions { display: flex; gap: 4px; }
+.sl .sl-plan-tools button { padding: 0 8px; }
+.sl-plan-note { padding: 3px 10px; font-size: 11px; color: var(--sl-ink-2); border-bottom: 1px solid var(--sl-line); }
+.sl-plan-body { flex: 1; overflow: auto; min-height: 0; }
+.sl-pr { display: grid; grid-template-columns: 22px auto minmax(0, 1fr) auto; align-items: center; gap: 6px; padding: 0 10px; min-height: var(--sl-row); border-bottom: 1px solid color-mix(in srgb, var(--sl-line) 45%, transparent); cursor: pointer; }
+.sl-pr:hover { background: var(--sl-panel-2); }
+.sl-pr.automatic { color: var(--sl-ink-2); }
+.sl-pr.automatic .sl-pr-name { font-size: 12px; }
+.sl-pr.cursor { box-shadow: inset 3px 0 0 var(--sl-accent); }
+.sl-pr.selected { background: var(--sl-accent); color: var(--sl-accent-ink); }
+.sl-pr.selected :is(.sl-pr-n, .sl-pr-at) { color: inherit; opacity: .85; }
+.sl-pr-n { font: 13px var(--sl-f-num); font-variant-numeric: tabular-nums; text-align: right; color: var(--sl-ink-2); }
+.sl-pr-name { min-width: 0; line-height: 1.25; overflow-wrap: anywhere; }
+.sl-pr-name .danger-suffix { color: var(--sl-bad); }
+.sl-pr.selected .danger-suffix { color: inherit; }
+.sl-pr-at { font: 12px var(--sl-f-num); font-variant-numeric: tabular-nums; color: var(--sl-ink-2); white-space: nowrap; }
+.sl-qty { display: grid; gap: 6px; padding: 8px 10px; border-bottom: 1px solid var(--sl-line); background: var(--sl-panel-2); font-size: 13px; }
+.sl-qty .preset-row, .sl-dialog .preset-row { display: flex; flex-wrap: wrap; gap: 4px; }
+.sl :is(.sl-qty, .sl-dialog) .preset-row button { padding: 1px 9px; font-family: var(--sl-f-num); }
+.sl :is(.sl-qty, .sl-dialog) input[type="number"] { width: 80px; text-align: center; font: 16px var(--sl-f-num); }
+.sl-actions, .sl .popover-actions { display: flex; justify-content: flex-end; gap: 8px; }
+
+/* ================= 島ログ・伝言板 ================= */
+.sl-log { grid-area: log; border-top: 1px solid var(--sl-line); }
+.sl-log-body { flex: 1; overflow: auto; min-height: 0; }
+.sl .island-events-panel { margin: 0; padding: 0; border: 0; background: transparent; box-shadow: none; max-width: none; }
+.sl .island-events-heading { display: flex; align-items: center; gap: 8px; padding: 3px 10px; font-size: 12px; color: var(--sl-ink-2); border-bottom: 1px solid var(--sl-line); position: sticky; top: 0; background: var(--sl-panel); z-index: 1; }
+.sl .island-events-heading h2 { font: var(--sl-w-head) 13px var(--sl-f-head); color: var(--sl-ink); }
+.sl .island-events-heading > :first-child { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+.sl .island-events-filter { margin: 0 auto 0 0; gap: 0; }
+.sl .island-events-status, .sl .island-events-error, .sl .island-events-panel .empty-state { padding: 10px; font-size: 13px; color: var(--sl-ink-2); }
+.sl .island-event-group { padding: 5px 10px 7px; border-bottom: 1px solid var(--sl-line); }
+.sl .island-event-group h3 { font: var(--sl-w-head) 12px var(--sl-f-head); color: var(--sl-ink-2); margin-bottom: 2px; }
+.sl .island-event-group li { display: grid; grid-template-columns: 14px minmax(0, 1fr); gap: 4px; padding: 1px 0; font-size: 13px; border: 0; background: transparent; }
+.sl .island-event-mark { width: auto; height: auto; background: none; border-radius: 0; text-align: center; color: var(--sl-line); }
+.sl .island-event-mark::before { content: "・"; }
+.sl .importance-notable .island-event-mark { color: var(--sl-accent); }
+.sl .importance-notable .island-event-mark::before { content: "◆"; }
+.sl .importance-warning .island-event-mark::before { content: "！"; }
+.sl .importance-warning, .sl .importance-warning .island-event-mark { color: var(--sl-bad); }
+.sl .event-confidential-label { font-size: 11px; border: 1px solid currentColor; padding: 0 3px; margin-right: 4px; background: transparent; color: inherit; border-radius: 0; }
+.sl .delta-positive { color: var(--sl-good); }
+.sl .delta-negative { color: var(--sl-bad); }
+.sl .turn-economic-contributions { display: flex; flex-wrap: wrap; gap: 0 12px; font-size: 12px; color: var(--sl-ink-2); }
+.sl .island-event-pagination { display: flex; align-items: center; justify-content: center; gap: 10px; padding: 8px; font-size: 12px; }
+.sl .message-board { margin: 0; max-width: none; border: 0; box-shadow: none; background: transparent; }
+.sl .message-board-heading { display: none; }
+/* 伝言板は「島ログ／伝言板」の切り替えで出すので、旧画面で閉じていた人にも必ず中身を出す（閉じた状態の復元で隠さない）。 */
+.sl .message-board-content { display: block !important; padding: 8px 10px; font-size: 13px; }
+.sl .message-board textarea { width: 100%; background: var(--sl-bg); }
+
+/* ================= 入力ダイアログ・確認 ================= */
+.sl-backdrop { position: absolute; inset: 0; background: var(--sl-shade); display: grid; place-items: center; z-index: 40; padding: 16px; }
+.sl-dialog { background: var(--sl-panel); border: 1px solid var(--sl-line); border-radius: calc(var(--sl-radius) + 1px); padding: 14px; width: min(380px, 100%); max-height: 100%; overflow: auto; display: flex; flex-direction: column; gap: 10px; box-shadow: var(--sl-shadow); }
+.sl-dialog h3 { font: var(--sl-w-head) 16px var(--sl-f-head); }
+.sl-dialog header { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.sl .sl-dialog header button { border: 0; background: transparent; font-size: 18px; line-height: 1; padding: 2px 8px; }
+.sl-dialog form { display: flex; flex-direction: column; gap: 8px; }
+.sl-dialog label { display: grid; gap: 3px; font-size: 13px; }
+.sl-dialog select { width: 100%; padding: 6px; }
+.sl-dialog .command-entry-context { display: flex; flex-wrap: wrap; gap: 2px 14px; font-size: 13px; color: var(--sl-ink-2); }
+.sl-dialog .command-entry-context div { display: flex; gap: 4px; }
+.sl-dialog .command-entry-context dd { color: var(--sl-ink); font-family: var(--sl-f-num); }
+.sl-dialog :is(.shortfall, .command-status--error) { color: var(--sl-bad); font-size: 13px; margin: 0; }
+.sl-dialog .selector-cost { font-size: 13px; }
+.sl-dialog section ol { max-height: 180px; overflow: auto; font-size: 12px; margin: 4px 0; }
+
+/* ================= 観光（他の島を見る）: 計画の列が無い2列 ================= */
+@media (min-width: 761px) {
+    .sl.sl-visit { grid-template: "hud hud" auto "inspect map" minmax(0, 1fr) "inspect log" var(--sl-log-h, 210px) / var(--sl-l) minmax(0, 1fr); }
+}
+.sl-visit-comment { min-width: 0; max-width: 320px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; color: var(--sl-ink-2); }
+/* 上の1行は幅が狭いと項目を減らすので、公開情報の全項目をここにも出す（スマホでも欠けない）。 */
+.sl-visit-facts { padding: 6px 10px; border-bottom: 1px solid var(--sl-line); }
+html .sl .sl-visit-facts h3 { font: var(--sl-w-head) 12px var(--sl-f-head); color: var(--sl-ink-2); margin-bottom: 3px; }
+.sl .sl-visit-comment-full { margin-top: 4px; font-size: 12px; color: var(--sl-ink-2); overflow-wrap: anywhere; }
+.sl .sl-note { padding: 6px 10px; font-size: 12px; color: var(--sl-ink-2); border-bottom: 1px dotted var(--sl-line); }
+.sl-note span { display: block; }
+
+/* ================= スマホのタブ ================= */
+.sl-tabs { display: none; background: var(--sl-panel); }
+.sl .sl-tabs button { flex: 1; border: 0; border-radius: 0; background: transparent; padding: 6px 4px; font: var(--sl-w-head) 13px var(--sl-f-head); color: var(--sl-ink-2); border-bottom: 3px solid transparent; }
+.sl .sl-tabs button[aria-selected="true"] { color: var(--sl-ink); border-bottom-color: var(--sl-accent); }
+.sl .sl-tabs .grow { flex: 0 0 48px; font-size: 16px; color: var(--sl-ink-2); border-left: 1px solid var(--sl-line); }
+.sl[data-grow="on"] .sl-tabs .grow { color: var(--sl-accent); }
+.sl .lv-m { display: none; }
+
+/* 表示項目の出し分け: lv2 はスマホで隠す、lv3 は広い画面だけ */
+@media (max-width: 1180px) { .sl .lv3 { display: none; } }
+
+@media (max-width: 760px) {
+    .sl { --sl-row: 34px; grid-template: "hud" auto "map" minmax(0, 42%) "tabs" auto "panel" minmax(0, 1fr) / minmax(0, 1fr); min-height: 0; }
+    .sl[data-grow="on"] { grid-template: "tabs" auto "panel" minmax(0, 1fr) / minmax(0, 1fr); }
+    .sl[data-grow="on"] :is(.sl-hud, .sl-map) { display: none; }
+    .sl .lv2, .sl .lv3, .sl-grip { display: none; }
+    .sl .lv-m { display: inline; }
+    .sl-hud { padding: 4px 10px; gap: 2px 10px; flex-wrap: wrap; }
+    .sl-hud-name { flex: 1; max-width: none; }
+    .sl-hud-row h1 { font-size: 14px; }
+    .sl-hud-sub { display: none; }
+    .sl-stats { order: 3; flex-basis: 100%; gap: 2px 12px; }
+    .sl-stat dt { font-size: 10px; }
+    .sl-stat dd { font-size: 14px; }
+    /* スマホ: コメント本文は出さず、小さなボタンだけ */
+    .sl-comment .t, .sl-comment i { display: none; }
+    .sl-comment .t-short { display: inline; }
+    .sl .sl-comment { flex: none; padding: 0 7px; border: 1px solid var(--sl-line); border-radius: 10px; font-size: 11px; line-height: 18px; }
+    .sl-cmt { top: 36px; left: 8px; width: calc(100% - 16px); }
+    .sl-hud-actions button, .sl .daily-quest-trigger { padding: 1px 7px; font-size: 12px; }
+    .sl .sl-hud-more-toggle { display: inline-block; }
+    .sl-hud-more { display: none; }
+    .sl-hud-more.open { display: flex; flex-direction: column; gap: 2px; position: absolute; z-index: 25; right: 0; top: 26px; padding: 4px; min-width: 170px; background: var(--sl-panel); border: 1px solid var(--sl-line); border-radius: calc(var(--sl-radius) + 1px); box-shadow: var(--sl-shadow); }
+    .sl .sl-hud-more.open :is(button, .daily-quest-trigger) { border: 0; text-align: left; padding: 8px 10px; font-size: 14px; }
+    .sl .sl-hud-more.open .notification-dot { position: static; display: inline-block; margin-left: 6px; box-shadow: none; }
+    .sl-island { top: 0; left: 0; width: 100%; max-height: 100%; height: 100%; border: 0; border-radius: 0; }
+    .sl-map-switch { top: 30px; }
+    .sl-tabs { grid-area: tabs; display: flex; border-block: 1px solid var(--sl-line); }
+    .sl-inspect, .sl-plan, .sl-log { grid-area: panel; display: none; border: 0; }
+    .sl[data-tab="inspect"] .sl-inspect, .sl[data-tab="plan"] .sl-plan, .sl[data-tab="log"] .sl-log { display: flex; }
+    .sl .sl-cmd { min-height: 40px; }
+    .sl-backdrop { place-items: end stretch; padding: 0; }
+    .sl-dialog { width: 100%; border-radius: 10px 10px 0 0; padding-bottom: calc(14px + env(safe-area-inset-bottom, 0px)); }
+    .sl-dialog .popover-actions button { flex: 1; min-height: 44px; }
+    .sl .sl-plan-tools button { padding: 5px 10px; }
+}

@@ -92,10 +92,10 @@ describe('application lobby and island entry', () => {
 
         expect(window.location.pathname).toBe('/');
         expect(wrapper.find('.underground-panel').exists()).toBe(false);
-        expect(wrapper.text()).toContain('ターン更新（2時間ごと）');
+        expect(wrapper.text()).toContain('2時間ごとに更新');
         expect(wrapper.text()).toContain('公開島');
         expect(wrapper.text()).toContain('約500億円');
-        expect(wrapper.find('.ranking-card thead').text()).toBe('順位島名＋賞/討伐人口面積資金食料農場規模工場規模採掘場規模生存ターン');
+        expect(wrapper.find('.ranking-card thead').text()).toBe('順位島名＋賞/討伐人口面積資金食料農場工場採掘場生存');
         expect(wrapper.findAll('.ranking-card tbody')).toHaveLength(1);
         expect(wrapper.findAll('.ranking-card tbody tr')).toHaveLength(2);
         expect(wrapper.find('.ranking-card tbody').text()).toContain('17セル');
@@ -107,7 +107,8 @@ describe('application lobby and island entry', () => {
         expect(wrapper.find('.ranking-card tbody').text()).toContain('公開島主');
         expect(wrapper.find('.ranking-owner-row').text()).toBe('公開島主：公開コメント');
         expect(wrapper.find('.ranking-secretary-link').exists()).toBe(false);
-        expect(wrapper.find('.ranking-card tbody button').text()).toContain('公開島 (100)');
+        expect(wrapper.find('.ranking-card tbody button').text()).toBe('公開島');
+        expect(wrapper.find('.ranking-island').text()).toContain('資金繰り 100');
         expect(wrapper.text()).toContain('重大ニュースはまだありません');
         expect(wrapper.text()).toContain('このターン範囲には公開島ログがありません');
         expect(wrapper.text()).not.toContain('初期データを取得できません');
@@ -119,8 +120,8 @@ describe('application lobby and island entry', () => {
         expect(wrapper.find('.site-header nav').text()).not.toContain('利用ルール');
         expect(wrapper.find('.announcement-window').text()).toContain('ver 1.0.2のお知らせ');
         expect(wrapper.findAll('.announcement-window li')).toHaveLength(2);
-        expect(wrapper.find('.turn-status-card').text()).toContain('最終ターン更新');
-        expect(wrapper.find('.turn-status-card').text()).toContain('次回更新まで');
+        expect(wrapper.find('.turn-status-card').text()).toContain('前回');
+        expect(wrapper.find('.turn-status-card').text()).toContain('次の更新まで');
         expect(wrapper.find('.turn-countdown').exists()).toBe(true);
     });
 
@@ -298,7 +299,7 @@ describe('application lobby and island entry', () => {
         const wrapper = mount(App);
         await flushPromises();
 
-        await wrapper.find('.announcement-window .section-heading button').trigger('click');
+        await wrapper.find('.announcement-window header button').trigger('click');
         await flushPromises();
         expect(wrapper.find('.announcement-page').text()).toContain('運営からのお知らせ');
         expect(wrapper.find('.announcement-pager').text()).toContain('1ページ');
@@ -327,7 +328,7 @@ describe('application lobby and island entry', () => {
         const wrapper = mount(App);
         await flushPromises();
 
-        await wrapper.find('.announcement-window .section-heading button').trigger('click');
+        await wrapper.find('.announcement-window header button').trigger('click');
         await flushPromises();
         const pager = wrapper.findAll('.announcement-pager button');
         expect(pager[1]!.attributes('disabled')).toBeUndefined();
@@ -359,9 +360,9 @@ describe('application lobby and island entry', () => {
         await flushPromises();
 
         if (page === 1) {
-            await wrapper.find('.announcement-window .section-heading button').trigger('click');
+            await wrapper.find('.announcement-window header button').trigger('click');
         } else {
-            await wrapper.find('.announcement-window .section-heading button').trigger('click');
+            await wrapper.find('.announcement-window header button').trigger('click');
             await flushPromises();
             await wrapper.findAll('.announcement-pager button')[1]!.trigger('click');
         }
@@ -403,7 +404,7 @@ describe('application lobby and island entry', () => {
         await vi.advanceTimersByTimeAsync(2_000);
         await flushPromises();
         expect(summaryCalls).toBe(3);
-        expect(wrapper.find('.world-stats dd').text()).toBe('2');
+        expect(wrapper.find('.turn-status-card .turn-now').text()).toBe('2');
         expect(fetchMock.mock.calls.filter(([path]) => String(path).includes('/announcements/latest'))).toHaveLength(1);
         expect(fetchMock.mock.calls.filter(([path]) => String(path).endsWith('/rankings'))).toHaveLength(2);
         expect(fetchMock.mock.calls.filter(([path]) => String(path).endsWith('/events'))).toHaveLength(2);
@@ -624,7 +625,7 @@ describe('application lobby and island entry', () => {
         const wrapper = mount(App);
         await flushPromises();
 
-        await wrapper.find('.announcement-window .section-heading button').trigger('click');
+        await wrapper.find('.announcement-window header button').trigger('click');
         await flushPromises();
         const create = wrapper.findAll('.announcement-actions button').find((button) => button.text() === '新規作成')!;
         await create.trigger('click');
@@ -761,19 +762,13 @@ describe('application lobby and island entry', () => {
         expect(wrapper.text()).toContain('公開コメント');
         expect(wrapper.find('.monster-kill-marks').text()).toContain('怪獣10 × 11');
         expect(wrapper.find('.command-workspace').exists()).toBe(false);
-        const publicUndergroundMap = wrapper.get('.preview-page > .underground-map-card');
+        const publicUndergroundMap = wrapper.get('.preview-page .underground-map-card');
         expect(publicUndergroundMap.findAll('.underground-layer-row')).toHaveLength(2);
         expect(publicUndergroundMap.text()).not.toContain('(X-2, Y, -2)');
         await publicUndergroundMap.find('.underground-slot').trigger('click');
         expect(publicUndergroundMap.get('.underground-map-detail').text()).toContain('座標(10, 8, -2)');
-        expect(wrapper.find('.preview-page > .message-board').exists()).toBe(true);
-        const previewMap = wrapper.get('.preview-page > .preview-grid').element;
-        const previewUnderground = publicUndergroundMap.element;
-        const previewBoard = wrapper.get('.preview-page > .message-board').element;
-        const previewLog = wrapper.get('.preview-page > .island-events-panel').element;
-        expect(previewMap.compareDocumentPosition(previewUnderground) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-        expect(previewUnderground.compareDocumentPosition(previewBoard) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-        expect(previewBoard.compareDocumentPosition(previewLog) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+        expect(wrapper.find('.preview-page .message-board').exists()).toBe(true);
+        expect(wrapper.find('.preview-page .island-events-panel').exists()).toBe(true);
         expect(fetchMock.mock.calls.some(([path]) => String(path).includes('/api/v1/public/nations/7/map-spaces/2/chunks/'))).toBe(true);
 
         await wrapper.get('.preview-secretary-link').trigger('click');
@@ -993,7 +988,7 @@ describe('application lobby and island entry', () => {
 
         await wrapper.findAll('.site-header nav button').find((button) => button.text() === '自島へ')!.trigger('click');
         await flushPromises();
-        expect(wrapper.get('.compensation-banner').text()).toContain('1件の配布内容を確認する');
+        expect(wrapper.get('.compensation-banner').text()).toContain('1件');
         await wrapper.get('.compensation-banner').trigger('click');
         expect(wrapper.get('.compensation-modal').attributes('aria-modal')).toBe('true');
         expect(wrapper.get('.compensation-modal').text()).toContain('今回のお詫びです。');
@@ -1290,11 +1285,6 @@ describe('application lobby and island entry', () => {
         expect(wrapper.find('.underground-map-detail').exists()).toBe(false);
         expect(wrapper.findAll('.underground-entrance button')).toHaveLength(0);
         expect(wrapper.findAll('.underground-ladder button')).toHaveLength(0);
-        const workspaceElement = wrapper.get('.island-workspace-region').element;
-        const undergroundMapElement = undergroundMap.element;
-        const messageBoardElement = wrapper.get('.message-board').element;
-        expect(Boolean(workspaceElement.compareDocumentPosition(undergroundMapElement) & Node.DOCUMENT_POSITION_FOLLOWING)).toBe(true);
-        expect(Boolean(undergroundMapElement.compareDocumentPosition(messageBoardElement) & Node.DOCUMENT_POSITION_FOLLOWING)).toBe(true);
         await wrapper.findAll('.underground-slot')[0]!.trigger('click');
         await flushPromises();
         expect(wrapper.findAll('.underground-slot')[0]!.attributes('aria-pressed')).toBe('true');
@@ -1324,14 +1314,13 @@ describe('application lobby and island entry', () => {
         expect(wrapper.get('[role="meter"][aria-label="資金（保管容量）"]').attributes('aria-valuenow')).toBe('9999');
         expect(wrapper.get('[role="meter"][aria-label="食料（保管容量）"]').attributes('aria-valuetext')).toBe('10,000 / 999,900');
         expect(wrapper.find('.hud-primary').text()).toContain('食料10,000トン');
-        expect(wrapper.find('.hud-primary').text()).toContain('農場規模10,000人');
-        expect(wrapper.find('.hud-primary').text()).toContain('工場規模20,000人');
-        expect(wrapper.find('.hud-primary').text()).toContain('採掘場規模30,000人');
+        expect(wrapper.find('.hud-primary').text()).toContain('農場10,000人');
+        expect(wrapper.find('.hud-primary').text()).toContain('工場20,000人');
+        expect(wrapper.find('.hud-primary').text()).toContain('採掘場30,000人');
         expect(wrapper.find('.hud-money .hud-current-value').text()).toBe('62,728億円');
         expect(wrapper.find('.hud-money').text()).not.toContain('/');
         expect(wrapper.find('.hud-primary').text()).not.toContain('工業品');
         expect(wrapper.find('.hud-primary').text()).not.toContain('上限');
-        expect(wrapper.find('.hud-more').text()).toContain('詳細情報');
         expect(wrapper.findAll('.resource-forecast thead th').map((heading) => heading.text())).toEqual([
             '資源', '生産', '消費', '予測', '所持',
         ]);
@@ -1348,39 +1337,29 @@ describe('application lobby and island entry', () => {
         expect(wrapper.find('.hud-details').text()).toContain('工業品上限9,999,000ユニット');
         expect(wrapper.find('.hud-details').text()).toContain('鉱物上限9,999,000トン');
         expect(wrapper.find('.hud-details').text()).toContain('石油上限5,000万バレル');
-        expect(wrapper.find('.hud-more').text()).not.toContain('出来事は24ターンごとに');
-        expect(wrapper.find('.island-grid').exists()).toBe(true);
-        const workspaceScroll = wrapper.get('.island-workspace-scroll');
-        expect(workspaceScroll.attributes('role')).toBe('region');
-        expect(workspaceScroll.attributes('tabindex')).toBe('0');
-        expect(workspaceScroll.find('.island-grid').exists()).toBe(true);
-        expect(workspaceScroll.find('.command-panel').exists()).toBe(true);
-        expect(workspaceScroll.find('.map-column').exists()).toBe(true);
-        expect(workspaceScroll.find('.plan-panel').exists()).toBe(true);
-        expect(workspaceScroll.find('.island-events-panel').exists()).toBe(false);
-        const developmentBoard = wrapper.get('.island-page > .message-board').element;
-        const developmentLogs = wrapper.findAll('.island-page > .island-events-panel');
-        expect(developmentLogs).toHaveLength(1);
-        for (const log of developmentLogs) {
-            expect(developmentBoard.compareDocumentPosition(log.element) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-        }
-        const workspaceJumpButtons = wrapper.findAll('.workspace-jump button');
         expect(wrapper.getComponent(SalePolicyPanel).props('nationId')).toBe(ownerNationFixture.id);
-        expect(wrapper.find('.resource-panel .daily-quest-trigger').exists()).toBe(true);
-        expect(workspaceJumpButtons.every((button) => button.attributes('aria-controls') === workspaceScroll.attributes('id'))).toBe(true);
-        const scrollTo = vi.fn();
-        Object.defineProperty(workspaceScroll.element, 'scrollTo', { configurable: true, value: scrollTo });
-        await workspaceJumpButtons.find((button) => button.text() === '開発計画')!.trigger('click');
-        expect(scrollTo).toHaveBeenCalledWith({ left: expect.any(Number), behavior: 'smooth' });
+        expect(wrapper.find('.island-page .daily-quest-trigger').exists()).toBe(true);
         expect(wrapper.findAll('.island-events-panel')).toHaveLength(1);
         expect(wrapper.findAll('.island-events-panel').map((panel) => panel.get('h2').text()))
             .toEqual(['島ログ']);
-        expect(wrapper.find('.island-page > .message-board').exists()).toBe(true);
+        expect(wrapper.find('.island-page .message-board').exists()).toBe(true);
         expect(wrapper.findAll('.plan-row')).toHaveLength(20);
         expect(fetchMock.mock.calls.filter(([path]) => String(path) === '/api/v1/me/nation')).toHaveLength(1);
 
+        await wrapper.get('button[aria-label="一言コメントを書き換える"]').trigger('click');
+        await wrapper.get('#sl-comment-text').setValue('<b>更新コメント</b>');
+        await wrapper.get('form[aria-label="一言コメント"]').trigger('submit');
+        await flushPromises();
+        const commentRequest = fetchMock.mock.calls.filter(([path]) => String(path) === '/api/v1/nations/3/profile').at(-1);
+        expect(JSON.parse(String(commentRequest?.[1]?.body))).toEqual({ comment: '<b>更新コメント</b>' });
+        expect(wrapper.get('.sl-comment').text()).toContain('<b>更新コメント</b>');
+
         const lobbyButton = wrapper.findAll('.site-header nav button').find((button) => button.text() === 'TOP')!;
         await lobbyButton.trigger('click');
+        const ownRankingComment = wrapper.get('.ranking-entry.me .ranking-owner-row');
+        expect(ownRankingComment.text()).toContain('<b>更新コメント</b>');
+        expect(ownRankingComment.find('b').exists()).toBe(false);
+        expect(wrapper.findAll('.ranking-owner-row').find((row) => row.text().includes('公開島主'))!.text()).toContain('公開コメント');
         const ownRankingButton = wrapper.findAll('.ranking-card tbody button').find((button) => button.text().includes('自島'))!;
         await ownRankingButton.trigger('click');
         await flushPromises();
@@ -1422,9 +1401,9 @@ describe('application lobby and island entry', () => {
         expect(wrapper.find('.nation-hud b').exists()).toBe(false);
         expect(wrapper.get('[role="meter"][aria-label="面積（安全面積）"]').attributes('aria-valuetext')).toBe('124 / 123 DANGER');
         expect(wrapper.get('[role="meter"][aria-label="食料（保管容量）"]').attributes('aria-valuetext')).toBe('10,000 / 999,900 DANGER');
-        const patchRequest = fetchMock.mock.calls.find(([path]) => String(path) === '/api/v1/nations/3/profile');
+        const patchRequest = fetchMock.mock.calls.filter(([path]) => String(path) === '/api/v1/nations/3/profile').at(-1);
         expect(JSON.parse(String(patchRequest?.[1]?.body))).toEqual({ owner_name: '更新島主', comment: '<b>更新コメント</b>' });
-        const patchIndex = fetchMock.mock.calls.findIndex(([path]) => String(path) === '/api/v1/nations/3/profile');
+        const patchIndex = fetchMock.mock.calls.findIndex((call) => call === patchRequest);
         expect(fetchMock.mock.calls.slice(patchIndex + 1).some(([path]) => String(path).includes('/api/v1/map-spaces/2/chunks/'))).toBe(true);
 
         const summaryCallCount = () => fetchMock.mock.calls.filter(([path]) => String(path).endsWith('/summary')).length;

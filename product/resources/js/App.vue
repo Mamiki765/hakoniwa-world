@@ -27,6 +27,8 @@ import type { SecretarySection } from './types';
 import UndergroundSurfaceMapView from './components/UndergroundSurfaceMap.vue';
 import { formatExactMoney } from './formatters/money';
 import { useMapState } from './state/mapState';
+import { useLobbyRanking } from './state/lobbyRanking';
+import { useSurfaceLedger } from './state/surfaceLedger';
 import type {
     Announcement,
     CommandQueue,
@@ -41,6 +43,7 @@ import type {
     MajorNewsFeed,
     MapSpace,
     Nation,
+    ParadoxBalance,
     PublicEventPage,
     PublicNationDetail,
     PublicRankingEntry,
@@ -88,7 +91,7 @@ function handleApplicationVisibilityChange(): void {
         refreshDistortedStoneReminderForDay(true);
     }
 }
-const themeModes = ['system', 'light', 'dark', 'skyblue', 'autumn', 'black'] as const;
+const themeModes = ['system', 'light', 'dark', 'old-light', 'old-dark', 'skyblue', 'autumn', 'black'] as const;
 type ThemeMode = typeof themeModes[number];
 
 function normaliseThemeMode(value: string | undefined): ThemeMode {
@@ -182,6 +185,18 @@ const dailyQuestError = ref('');
 const dailyQuests = ref<DailyQuestProgress[]>([]);
 const hasIncompleteDailyQuests = computed(() => dailyQuests.value.some((quest) => !quest.completed));
 const selectedUndergroundSlot = ref<UndergroundFacilityTarget | null>(null);
+const ledger = useSurfaceLedger();
+const {
+    sort: rankingSort, query: rankingQuery, narrow: rankingNarrow, columns: rankingColumns, shown: shownRankings,
+    keyColumn: rankingKeyColumn, cardColumns: rankingCardColumns, sortColumns: rankingSortColumns,
+} = useLobbyRanking(rankings);
+const lobbyNewsTab = ref<'major' | 'log'>('major');
+const siteMenuOpen = ref(false);
+const ledgerParadox = ref<ParadoxBalance | null>(null);
+const islandCommentDraft = ref<string | null>(null);
+const islandCommentInput = ref<HTMLInputElement | null>(null);
+const islandCommentError = ref('');
+const islandCommentSaving = ref(false);
 const page = ref<'home' | 'announcements' | 'inquiry' | 'admin-inquiries' | 'guide-topics' | 'merchant-topics' | 'admin' | 'island' | 'preview' | 'trading-post' | 'secretary' | 'underground' | 'options' | 'account' | 'credits'>(
     window.location.pathname === '/credits'
         ? 'credits'
@@ -249,16 +264,55 @@ const map = useMapState();
 async function selectUndergroundSlot(target: UndergroundFacilityTarget): Promise<void> {
     map.clearSelection();
     selectedUndergroundSlot.value = target;
-    if (page.value !== 'island') return;
-    await nextTick();
-    scrollIslandWorkspaceTo('.command-panel');
+    if (page.value === 'island') ledger.showTab('inspect');
 }
 
 function selectSurfaceCell(cell: Parameters<typeof map.select>[0]): void {
     selectedUndergroundSlot.value = null;
     map.select(cell);
+    ledger.showTab('inspect');
 }
-const islandWorkspaceScroll = ref<HTMLElement | null>(null);
+
+function selectPreviewCell(cell: Parameters<typeof map.select>[0]): void {
+    map.select(cell);
+    ledger.showTab('inspect');
+}
+
+function openIslandComment(): void {
+    if (nation.value === null) return;
+    islandCommentError.value = '';
+    islandCommentDraft.value = nation.value.comment ?? '';
+    void nextTick(() => {
+        islandCommentInput.value?.focus();
+        islandCommentInput.value?.select();
+    });
+}
+
+// 一言コメントだけを書き換える。開発画面の選択や計画の表示はそのまま保つ。
+async function saveIslandComment(): Promise<void> {
+    if (nation.value === null || islandCommentDraft.value === null || islandCommentSaving.value) return;
+    const requestGeneration = nationStateGeneration;
+    const targetNationId = nation.value.id;
+    islandCommentSaving.value = true;
+    islandCommentError.value = '';
+    try {
+        const updatedNation = await api<Nation>(`/api/v1/nations/${targetNationId}/profile`, {
+            method: 'PATCH',
+            body: JSON.stringify({ comment: islandCommentDraft.value.replace(/[\r\n]+/g, ' ').trim() }),
+        });
+        if (requestGeneration !== nationStateGeneration || nation.value?.id !== targetNationId) return;
+        nation.value = { ...nation.value, comment: updatedNation.comment };
+        rankings.value = rankings.value.map((entry) => entry.id === targetNationId
+            ? { ...entry, comment: updatedNation.comment }
+            : entry);
+        islandCommentDraft.value = null;
+    } catch (error) {
+        const errors = validationErrors(error);
+        islandCommentError.value = errors.comment ?? (error instanceof Error ? error.message : '一言コメントを書き換えられませんでした。');
+    } finally {
+        islandCommentSaving.value = false;
+    }
+}
 const linkedProviders = computed(() => new Set(user.value?.providers.map((identity) => identity.provider) ?? []));
 const abandonmentConfirmed = computed(() => nation.value !== null
     && abandonmentConfirmationName.value === nation.value.name);
@@ -279,17 +333,6 @@ const nextTurnCountdown = computed(() => {
 });
 const turnStatusMessage = computed(() => matchTurnStatus(worldSummary.value?.turn_status));
 
-function scrollIslandWorkspaceTo(selector: string): void {
-    const scroller = islandWorkspaceScroll.value;
-    const section = scroller?.querySelector<HTMLElement>(selector);
-    if (!scroller || !section || typeof scroller.scrollTo !== 'function') return;
-
-    scroller.scrollTo({
-        left: section.offsetLeft,
-        behavior: window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth',
-    });
-}
-
 function formatForecastDelta(value: number): string {
     if (value === 0) return '0';
 
@@ -308,10 +351,6 @@ function formatPercentageTenths(value: number): string {
 
 function formatResource(amount: number, unitLabel: string | null): string {
     return `${amount.toLocaleString('ja-JP')}${unitLabel ?? ''}`;
-}
-
-function formatFacilityScale(population: number): string {
-    return population === 0 ? '保有せず' : `${population.toLocaleString('ja-JP')}人`;
 }
 
 function formatCompensationItem(item: CompensationGrant['items'][number], amount = item.remaining_amount): string {
@@ -1776,7 +1815,7 @@ async function abandonNation(): Promise<void> {
 </script>
 
 <template>
-    <header class="site-header">
+    <header class="site-header" :class="{ 'has-user': user !== null }">
         <a class="brand" href="#" @click.prevent="page = 'home'">
             箱庭諸島<span>２S＋</span><small class="app-version">ver {{ applicationVersion }}</small>
         </a>
@@ -1789,8 +1828,10 @@ async function abandonNation(): Promise<void> {
             <button type="button" @click="openOptions">オプション</button>
             <a href="/manual">マニュアル</a>
         </nav>
-        <div class="session-actions">
+        <button v-if="user" type="button" class="site-menu-toggle" :aria-expanded="siteMenuOpen" aria-controls="site-session-actions" aria-label="アカウントのメニュー" @click="siteMenuOpen = !siteMenuOpen">☰</button>
+        <div id="site-session-actions" class="session-actions" :class="{ open: siteMenuOpen }" @click="siteMenuOpen = false">
             <template v-if="user">
+                <small class="site-menu-version">ver {{ applicationVersion }}</small>
                 <div class="session-user-actions">
                     <div class="session-account-actions">
                         <span>{{ user.display_name }}</span>
@@ -1815,7 +1856,7 @@ async function abandonNation(): Promise<void> {
         </div>
     </header>
 
-    <main :class="{ 'map-main': page === 'island' || page === 'preview' }">
+    <main :class="{ 'ledger-main': page === 'island' || page === 'preview' }">
         <p v-if="busy" class="status" role="status">読み込み中…</p>
         <p v-if="message" class="status error" role="alert">{{ message }}</p>
 
@@ -1837,188 +1878,231 @@ async function abandonNation(): Promise<void> {
             @inquiries="openAdminInquiries(1)"
         />
 
-        <section v-if="page === 'home'" class="lobby">
-            <div class="lobby-heading">
+        <section v-if="page === 'home'" class="lobby tp">
+            <header class="tp-title">
                 <div>
                     <h1>箱庭諸島２S＋</h1>
                     <p>島と秘書とダンジョンと</p>
                 </div>
-                <div v-if="!user" class="compact-login">
-                    <p>島を運営するにはログインしてください。</p>
-                    <a class="button discord" href="/auth/discord/redirect">Discord</a>
-                    <a class="button google" href="/auth/google/redirect">Google</a>
+                <div v-if="!user" class="tp-enter compact-login">
+                    <span>島を運営するにはログインしてください。</span>
+                    <a class="tp-button primary" href="/auth/discord/redirect">Discordでログイン</a>
+                    <a class="tp-button" href="/auth/google/redirect">Googleでログイン</a>
                 </div>
-            </div>
+                <div v-else class="tp-enter">
+                    <button v-if="nation" type="button" class="tp-button primary" @click="openOwnIsland">自分の島へ（{{ nation.name }}）</button>
+                    <a v-else class="tp-button primary" href="#nation-form">最初の島を作る</a>
+                    <button v-if="secretary" type="button" class="tp-button" @click="openSecretary">{{ secretary.header_label }}</button>
+                    <button v-if="secretary" type="button" class="tp-button" @click="openUnderground">地底</button>
+                </div>
+            </header>
 
-            <dl class="world-stats">
-                <div>
-                    <dt>ターン更新（2時間ごと）</dt>
-                    <dd>{{ worldSummary?.current_turn ?? 1 }}</dd>
-                    <small class="hakoniwa-calendar">{{ worldSummary?.hakoniwa_calendar?.label ?? '箱庭歴 1年1月' }}</small>
+            <section class="tp-box tp-turn turn-status-card" :data-status="worldSummary?.turn_status ?? 'normal'" aria-label="ターン更新状況">
+                <header><h2>ターン</h2><small>2時間ごとに更新</small></header>
+                <div class="tp-body">
+                    <div class="tp-turn-grid">
+                        <div class="now num"><span class="turn-now">{{ worldSummary?.current_turn ?? 1 }}</span><small class="hakoniwa-calendar">{{ worldSummary?.hakoniwa_calendar?.label ?? '箱庭歴 1年1月' }}</small></div>
+                        <template v-if="worldSummary">
+                            <div v-if="worldSummary.turn_status === 'normal'" class="next">次の更新まで <strong class="turn-countdown num">{{ nextTurnCountdown }}</strong></div>
+                            <p v-else class="next late" role="status">{{ turnStatusMessage }}</p>
+                            <div class="sub">
+                                <time v-if="worldSummary.turn_status === 'normal'" :datetime="worldSummary.next_scheduled_turn_at">予定 {{ formatTurnTimestamp(worldSummary.next_scheduled_turn_at) }}</time>
+                                <span>前回 {{ formatTurnTimestamp(worldSummary.last_successful_turn_at) }}</span>
+                            </div>
+                        </template>
+                    </div>
+                    <dl class="world-stats tp-world">
+                        <div><dt>島</dt><dd>{{ (worldSummary?.nation_count ?? 0).toLocaleString() }}</dd></div>
+                        <div><dt>総人口</dt><dd>{{ (worldSummary?.total_population ?? 0).toLocaleString() }}人</dd></div>
+                    </dl>
                 </div>
-                <div><dt>島数</dt><dd>{{ (worldSummary?.nation_count ?? 0).toLocaleString() }}</dd></div>
-                <div><dt>総人口</dt><dd>{{ (worldSummary?.total_population ?? 0).toLocaleString() }}人</dd></div>
-            </dl>
-
-            <section v-if="worldSummary" class="turn-status-card" :data-status="worldSummary.turn_status" aria-label="ターン更新状況">
-                <div>
-                    <span>最終ターン更新</span>
-                    <strong>{{ formatTurnTimestamp(worldSummary.last_successful_turn_at) }}</strong>
-                </div>
-                <div v-if="worldSummary.turn_status === 'normal'">
-                    <span>次回更新まで</span>
-                    <strong class="turn-countdown">{{ nextTurnCountdown }}</strong>
-                    <time :datetime="worldSummary.next_scheduled_turn_at">予定 {{ formatTurnTimestamp(worldSummary.next_scheduled_turn_at) }}</time>
-                </div>
-                <p v-else role="status">{{ turnStatusMessage }}</p>
             </section>
 
-            <section class="announcement-window" aria-labelledby="latest-announcements-heading">
-                <div class="section-heading">
-                    <div><h2 id="latest-announcements-heading">お知らせ</h2></div>
-                    <button type="button" @click="openAnnouncements(1)">すべて表示</button>
+            <section class="tp-box tp-rank ranking-card" aria-labelledby="ranking-heading">
+                <header>
+                    <h2 id="ranking-heading">島一覧</h2>
+                    <div class="tp-rank-tools">
+                        <label>並べ替え
+                            <select v-model="rankingSort">
+                                <option v-for="column in rankingSortColumns" :key="column.key" :value="column.key">{{ column.label }}</option>
+                            </select>
+                        </label>
+                        <input v-model="rankingQuery" type="search" placeholder="島名・島主名でさがす" aria-label="島名・島主名でさがす">
+                    </div>
+                </header>
+                <div v-if="!rankingNarrow" class="ranking-scroll tp-rank-scroll">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th><button type="button" :class="{ on: rankingSort === 'rank' }" @click="rankingSort = 'rank'">順位</button></th>
+                                <th class="l">島名＋賞/討伐</th>
+                                <th v-for="column in rankingColumns" :key="column.key">
+                                    <button v-if="column.sortable" type="button" :class="{ on: rankingSort === column.key }" :aria-pressed="rankingSort === column.key" @click="rankingSort = column.key">{{ column.label }}<template v-if="rankingSort === column.key"> ▼</template></button>
+                                    <template v-else>{{ column.label }}</template>
+                                </th>
+                            </tr>
+                        </thead>
+                        <tbody v-for="entry in shownRankings" :key="entry.id" class="ranking-entry" :class="{ me: entry.id === nation?.id }">
+                            <tr class="ranking-primary-row">
+                                <td rowspan="2" class="ranking-rank num">{{ entry.rank }}</td>
+                                <td class="ranking-island l">
+                                    <button
+                                        type="button"
+                                        :class="{
+                                            'is-finance-only': entry.finance_only_turns > 0,
+                                            'is-dormant': entry.state === 'dormant',
+                                            'is-karma-positive': entry.karma > 0,
+                                        }"
+                                        @click="openPreview(entry.id)"
+                                    >
+                                        {{ entry.name }}
+                                    </button>
+                                    <span v-if="entry.id === nation?.id" class="tp-st you">自分の島</span>
+                                    <RankingAchievements v-if="entry.achievements" :achievements="entry.achievements" />
+                                    <span v-if="entry.state_label" class="state-badge tp-st sleep">{{ entry.state_label }}</span>
+                                    <span v-if="entry.karma_badge" class="karma-badge tp-st karma">{{ entry.karma_badge }}</span>
+                                    <span v-if="entry.state === 'active' && entry.finance_only_turns > 0" class="tp-st fin">資金繰り {{ entry.finance_only_turns }}</span>
+                                </td>
+                                <td v-for="column in rankingColumns" :key="column.key" class="num" :class="{ on: rankingSort === column.key }">{{ column.format(entry) }}</td>
+                            </tr>
+                            <tr class="ranking-owner-row">
+                                <td :colspan="rankingColumns.length + 1" class="l">
+                                    <span class="who">{{ entry.owner_name }}<template v-if="entry.secretary"> ＋ <button type="button" class="ranking-secretary-link" :disabled="busy" @click="openPublicSecretary(entry.secretary.id, entry.world_id)">{{ entry.secretary.display_name }}</button></template></span><template v-if="entry.comment">：{{ entry.comment }}</template>
+                                </td>
+                            </tr>
+                        </tbody>
+                        <tbody v-if="shownRankings.length === 0"><tr><td :colspan="rankingColumns.length + 2" class="empty-state l">{{ rankings.length === 0 ? 'まだ島がありません。' : '条件に合う島がありません。' }}</td></tr></tbody>
+                    </table>
                 </div>
-                <ol v-if="latestAnnouncements.length" class="announcement-list compact">
-                    <li v-for="announcement in latestAnnouncements" :key="announcement.id">
-                        <button type="button" @click="openAnnouncement(announcement.id)">{{ announcement.title }}</button>
-                        <time :datetime="announcement.created_at">{{ formatAnnouncementDate(announcement.created_at) }}</time>
+                <ol v-else class="tp-cards">
+                    <li v-for="entry in shownRankings" :key="entry.id" class="tp-card" :class="{ me: entry.id === nation?.id }">
+                        <span class="no num">{{ entry.rank }}</span>
+                        <span class="isl ranking-island">
+                            <button
+                                type="button"
+                                :class="{ 'is-dormant': entry.state === 'dormant', 'is-karma-positive': entry.karma > 0 }"
+                                @click="openPreview(entry.id)"
+                            >{{ entry.name }}</button>
+                            <span v-if="entry.id === nation?.id" class="tp-st you">自分の島</span>
+                            <RankingAchievements v-if="entry.achievements" :achievements="entry.achievements" />
+                            <span v-if="entry.state_label" class="state-badge tp-st sleep">{{ entry.state_label }}</span>
+                            <span v-if="entry.karma_badge" class="karma-badge tp-st karma">{{ entry.karma_badge }}</span>
+                            <span v-if="entry.state === 'active' && entry.finance_only_turns > 0" class="tp-st fin">資金繰り {{ entry.finance_only_turns }}</span>
+                            <small>{{ entry.owner_name }}<template v-if="entry.secretary"> ＋ <button type="button" class="ranking-secretary-link" :disabled="busy" @click="openPublicSecretary(entry.secretary.id, entry.world_id)">{{ entry.secretary.display_name }}</button></template></small>
+                        </span>
+                        <span class="key num">{{ rankingKeyColumn.format(entry) }}<small>{{ rankingKeyColumn.label }}</small></span>
+                        <span v-if="entry.comment" class="say">{{ entry.comment }}</span>
+                        <span class="more">
+                            <span v-for="column in rankingCardColumns" :key="column.key"><b>{{ column.label }}</b>{{ column.format(entry) }}</span>
+                        </span>
                     </li>
+                    <li v-if="shownRankings.length === 0" class="empty-state">{{ rankings.length === 0 ? 'まだ島がありません。' : '条件に合う島がありません。' }}</li>
                 </ol>
-                <p v-else class="empty-state">お知らせはまだありません。</p>
             </section>
 
-            <section v-if="user?.can_manage_inquiries" class="inquiry-window" aria-labelledby="inquiry-heading">
-                <div class="section-heading">
-                    <div><h2 id="inquiry-heading">お問い合わせ</h2></div>
-                    <button type="button" @click="adminOpened = true; page = 'admin'">管理ページへ</button>
-                    <button type="button" @click="openInquiry">お問い合わせを送る</button>
+            <section class="tp-box tp-notice announcement-window" aria-labelledby="latest-announcements-heading">
+                <header>
+                    <h2 id="latest-announcements-heading">お知らせ</h2>
+                    <button type="button" class="tp-quiet" @click="openAnnouncements(1)">すべて表示</button>
+                </header>
+                <div class="tp-body">
+                    <ol v-if="latestAnnouncements.length" class="tp-notice-list">
+                        <li v-for="announcement in latestAnnouncements" :key="announcement.id">
+                            <time :datetime="announcement.created_at">{{ formatAnnouncementDate(announcement.created_at) }}</time>
+                            <button type="button" @click="openAnnouncement(announcement.id)">{{ announcement.title }}</button>
+                        </li>
+                    </ol>
+                    <p v-else class="empty-state">お知らせはまだありません。</p>
                 </div>
-                <ol v-if="latestInquiries.length" class="inquiry-list compact">
-                    <li v-for="inquiry in latestInquiries" :key="inquiry.management_id">
-                        <button type="button" @click="openAdminInquiry(inquiry.management_id)">
-                            {{ inquiry.management_id }} [{{ inquiry.category_label }}] {{ inquiry.subject }}
-                        </button>
-                    </li>
-                </ol>
-                <p v-else class="empty-state">お問い合わせはまだありません。</p>
-                <button type="button" @click="openAdminInquiries(1)">すべて見る</button>
             </section>
 
-            <div class="lobby-grid">
-                <section class="ranking-card">
-                    <div class="section-heading">
-                        <div><h2>島一覧</h2></div>
-                        <span>誰でも閲覧できます</span>
-                    </div>
-                    <div class="ranking-scroll">
-                        <table>
-                            <thead><tr><th>順位</th><th>島名＋賞/討伐</th><th>人口</th><th>面積</th><th>資金</th><th>食料</th><th>農場規模</th><th>工場規模</th><th>採掘場規模</th><th>生存ターン</th></tr></thead>
-                            <tbody v-for="entry in rankings" :key="entry.id" class="ranking-entry">
-                                <tr class="ranking-primary-row">
-                                    <td rowspan="2" class="ranking-rank">{{ entry.rank }}</td>
-                                    <td class="ranking-island">
-                                        <button
-                                            type="button"
-                                            :class="{
-                                                'is-finance-only': entry.finance_only_turns > 0,
-                                                'is-dormant': entry.state === 'dormant',
-                                                'is-karma-positive': entry.karma > 0,
-                                            }"
-                                            @click="openPreview(entry.id)"
-                                        >
-                                            {{ entry.name }}<template v-if="entry.state === 'active' && entry.finance_only_turns > 0"> ({{ entry.finance_only_turns }})</template>
-                                        </button>
-                                        <RankingAchievements v-if="entry.achievements" :achievements="entry.achievements" />
-                                        <span v-if="entry.state_label" class="state-badge">{{ entry.state_label }}</span>
-                                        <span v-if="entry.karma_badge" class="karma-badge">{{ entry.karma_badge }}</span>
-                                    </td>
-                                    <td>{{ entry.total_population.toLocaleString() }}人</td>
-                                    <td>{{ entry.owned_land_cells.toLocaleString() }}セル</td>
-                                    <td>{{ entry.money_display }}</td>
-                                    <td>{{ entry.food_total_tons.toLocaleString() }}トン</td>
-                                    <td>{{ formatFacilityScale(entry.farm_capacity_people) }}</td>
-                                    <td>{{ formatFacilityScale(entry.factory_capacity_people) }}</td>
-                                    <td>{{ formatFacilityScale(entry.mine_capacity_people) }}</td>
-                                    <td>{{ entry.survival_turns.toLocaleString() }}</td>
-                                </tr>
-                                <tr class="ranking-owner-row">
-                                    <td colspan="9">
-                                        {{ entry.owner_name }}<template v-if="entry.secretary"> ＋ <button type="button" class="ranking-secretary-link" :disabled="busy" @click="openPublicSecretary(entry.secretary.id, entry.world_id)">{{ entry.secretary.display_name }}</button></template><template v-if="entry.comment">：{{ entry.comment }}</template>
-                                    </td>
-                                </tr>
-                            </tbody>
-                            <tbody v-if="rankings.length === 0"><tr><td colspan="10" class="empty-state">まだ島がありません。</td></tr></tbody>
-                        </table>
-                    </div>
-                </section>
+            <section v-if="user?.can_manage_inquiries" class="tp-box tp-inquiry inquiry-window" aria-labelledby="inquiry-heading">
+                <header>
+                    <h2 id="inquiry-heading">お問い合わせ</h2>
+                    <button type="button" class="tp-quiet" @click="adminOpened = true; page = 'admin'">管理ページへ</button>
+                    <button type="button" class="tp-quiet" @click="openInquiry">お問い合わせを送る</button>
+                </header>
+                <div class="tp-body">
+                    <ol v-if="latestInquiries.length" class="tp-notice-list single">
+                        <li v-for="inquiry in latestInquiries" :key="inquiry.management_id">
+                            <button type="button" @click="openAdminInquiry(inquiry.management_id)">
+                                {{ inquiry.management_id }} [{{ inquiry.category_label }}] {{ inquiry.subject }}
+                            </button>
+                        </li>
+                    </ol>
+                    <p v-else class="empty-state">お問い合わせはまだありません。</p>
+                    <button type="button" class="tp-quiet" @click="openAdminInquiries(1)">すべて見る</button>
+                </div>
+            </section>
 
-                <section class="events-card">
-                    <div class="section-heading">
-                        <div><h2>重大ニュース</h2></div>
+            <section class="tp-box tp-news" aria-labelledby="world-events-heading">
+                <header>
+                    <h2 id="world-events-heading">世界の出来事</h2>
+                    <div class="tp-seg" role="group" aria-label="出来事の種類">
+                        <button type="button" :aria-pressed="lobbyNewsTab === 'major'" @click="lobbyNewsTab = 'major'">重大ニュース</button>
+                        <button type="button" :aria-pressed="lobbyNewsTab === 'log'" @click="lobbyNewsTab = 'log'">公開島ログ</button>
                     </div>
+                </header>
+                <div v-show="lobbyNewsTab === 'major'" class="tp-body">
                     <template v-if="majorNews?.groups.length">
-                        <section v-for="group in majorNews.groups" :key="group.target_turn" class="public-event-group">
+                        <section v-for="group in majorNews.groups" :key="group.target_turn" class="tp-news-group">
                             <h3>第{{ group.target_turn }}ターン</h3>
-                            <ol class="event-list">
-                                <li v-for="event in group.events" :key="event.id">
-                                    <span class="event-mark" aria-hidden="true"></span>
-                                    <strong>{{ event.message }}</strong>
+                            <ol>
+                                <li v-for="event in group.events" :key="event.id" :class="`importance-${event.importance}`">
+                                    <i aria-hidden="true" /><span>{{ event.message }}</span>
                                 </li>
                             </ol>
                         </section>
                     </template>
                     <p v-else class="empty-state">重大ニュースはまだありません。</p>
-                </section>
-
-                <section class="events-card">
-                    <div class="section-heading">
-                        <div><h2>公開島ログ</h2></div>
-                    </div>
+                </div>
+                <div v-show="lobbyNewsTab === 'log'" class="tp-body">
                     <template v-if="publicEvents?.groups.length">
-                        <section v-for="group in publicEvents.groups" :key="group.target_turn" class="public-event-group">
+                        <section v-for="group in publicEvents.groups" :key="group.target_turn" class="tp-news-group">
                             <h3>第{{ group.target_turn }}ターン</h3>
-                            <ol class="event-list">
-                                <li v-for="event in group.events" :key="event.id">
-                                    <span class="event-mark" aria-hidden="true"></span>
-                                    <strong>{{ event.message }}</strong>
+                            <ol>
+                                <li v-for="event in group.events" :key="event.id" :class="`importance-${event.importance}`">
+                                    <i aria-hidden="true" /><span>{{ event.message }}</span>
                                 </li>
                             </ol>
                         </section>
                     </template>
                     <p v-else class="empty-state">このターン範囲には公開島ログがありません。</p>
-                    <nav v-if="publicEvents" class="event-pager" aria-label="公開島ログのページ">
+                    <nav v-if="publicEvents" class="tp-pager" aria-label="公開島ログのページ">
                         <button type="button" :disabled="!publicEvents.has_newer_page" @click="loadPublicEvents(publicEvents.page - 1)">新しい2ターン</button>
                         <span>{{ publicEvents.page }}ページ</span>
                         <button type="button" :disabled="!publicEvents.has_older_page" @click="loadPublicEvents(publicEvents.page + 1)">過去2ターン</button>
                     </nav>
-                    <p class="community-contact">
-                        <a href="/community-guidelines">禁止行為と連絡方法</a>
-                        <a v-if="worldSummary?.contact_url" :href="worldSummary.contact_url" rel="external nofollow">通報・異議申立て窓口</a>
-                    </p>
-                </section>
-            </div>
+                </div>
+                <p class="tp-contact">
+                    <a href="/community-guidelines">禁止行為と連絡方法</a>
+                    <a v-if="worldSummary?.contact_url" :href="worldSummary.contact_url" rel="external nofollow">通報・異議申立て窓口</a>
+                </p>
+            </section>
 
-            <form v-if="user && !nation" class="nation-form panel" @submit.prevent="createNation">
-                <h2>最初の島を作成</h2>
-                <label>
-                    島名
-                    <input v-model="nationName" minlength="2" maxlength="30" required aria-describedby="nation-name-help nation-name-error">
-                    <small id="nation-name-help" class="field-hint">2〜30文字。登録後の変更はできません。</small>
-                    <span v-if="registrationErrors.name" id="nation-name-error" class="field-error" role="alert">{{ registrationErrors.name }}</span>
-                </label>
-                <label>
-                    島主名
-                    <input v-model="nationOwnerName" minlength="1" maxlength="30" required aria-describedby="owner-name-help owner-name-error">
-                    <small id="owner-name-help" class="field-hint">1〜30文字。OAuth表示名とは別の公開名です。</small>
-                    <span v-if="registrationErrors.owner_name" id="owner-name-error" class="field-error" role="alert">{{ registrationErrors.owner_name }}</span>
-                </label>
-                <label>
-                    一言コメント
-                    <textarea v-model="nationComment" maxlength="100" rows="2" aria-describedby="comment-help comment-error" @keydown.enter.prevent></textarea>
-                    <small id="comment-help" class="field-hint">任意・100文字以内。改行はできません。</small>
-                    <span v-if="registrationErrors.comment" id="comment-error" class="field-error" role="alert">{{ registrationErrors.comment }}</span>
-                </label>
-                <button class="button primary" type="submit" :disabled="busy">島を作る</button>
+            <form v-if="user && !nation" id="nation-form" class="nation-form tp-box tp-create" @submit.prevent="createNation">
+                <header><h2>最初の島を作成</h2></header>
+                <div class="tp-body">
+                    <label>
+                        島名
+                        <input v-model="nationName" minlength="2" maxlength="30" required aria-describedby="nation-name-help nation-name-error">
+                        <small id="nation-name-help" class="field-hint">2〜30文字。登録後の変更はできません。</small>
+                        <span v-if="registrationErrors.name" id="nation-name-error" class="field-error" role="alert">{{ registrationErrors.name }}</span>
+                    </label>
+                    <label>
+                        島主名
+                        <input v-model="nationOwnerName" minlength="1" maxlength="30" required aria-describedby="owner-name-help owner-name-error">
+                        <small id="owner-name-help" class="field-hint">1〜30文字。OAuth表示名とは別の公開名です。</small>
+                        <span v-if="registrationErrors.owner_name" id="owner-name-error" class="field-error" role="alert">{{ registrationErrors.owner_name }}</span>
+                    </label>
+                    <label>
+                        一言コメント
+                        <textarea v-model="nationComment" maxlength="100" rows="2" aria-describedby="comment-help comment-error" @keydown.enter.prevent></textarea>
+                        <small id="comment-help" class="field-hint">任意・100文字以内。改行はできません。</small>
+                        <span v-if="registrationErrors.comment" id="comment-error" class="field-error" role="alert">{{ registrationErrors.comment }}</span>
+                    </label>
+                    <button class="tp-button primary" type="submit" :disabled="busy">島を作る</button>
+                </div>
             </form>
         </section>
 
@@ -2193,198 +2277,288 @@ async function abandonNation(): Promise<void> {
             </form>
         </section>
 
-        <section v-else-if="page === 'island' && nation?.capital && mapSpace" class="island-page">
-            <header class="nation-hud">
-                <div class="hud-identity">
-                    <h1 :class="{ 'karma-name': nation.karma_positive }">N{{ nation.nation_number }} {{ nation.name }}</h1>
-                    <p v-if="nation.state_label"><span class="state-badge">{{ nation.state_label }}</span><template v-if="nation.winter_theme_active"> 冬theme適用中</template></p>
-                    <p v-if="nation.karma_positive" class="karma-emphasis">KARMA:{{ nation.karma }}</p>
-                    <p class="turn-indicator">現在ターン {{ nation.current_turn }}</p>
-                    <p class="profile-owner">島主：{{ nation.owner_name }}</p>
-                    <p v-if="nation.comment" class="profile-comment">「{{ nation.comment }}」</p>
+        <section
+            v-else-if="page === 'island' && nation?.capital && mapSpace"
+            class="island-page sl"
+            :data-tab="ledger.tab.value"
+            :data-grow="ledger.grow.value ? 'on' : 'off'"
+            :style="ledger.style.value"
+        >
+            <header class="nation-hud sl-hud" aria-label="島の状況">
+                <div class="hud-identity sl-hud-name">
+                    <span class="sl-hud-row">
+                        <h1 :class="{ 'karma-name': nation.karma_positive }">N{{ nation.nation_number }} {{ nation.name }}</h1>
+                        <span v-if="nation.state_label" class="state-badge">{{ nation.state_label }}</span>
+                        <button type="button" class="sl-comment" title="一言コメントを書き換える" aria-label="一言コメントを書き換える" @click="openIslandComment">
+                            <span class="t profile-comment">{{ nation.comment || '一言コメントを書く' }}</span><i aria-hidden="true">✎</i><span class="t-short" aria-hidden="true">一言</span>
+                        </button>
+                        <span class="lv-m sl-hud-turn num">第{{ nation.current_turn }}ターン</span>
+                    </span>
+                    <span class="sl-hud-sub">
+                        <span class="turn-indicator">第{{ nation.current_turn }}ターン</span>
+                        <span class="profile-owner">島主：{{ nation.owner_name }}</span>
+                        <span v-if="nation.karma_positive" class="karma-emphasis">KARMA:{{ nation.karma }}</span>
+                        <span v-if="nation.winter_theme_active">冬theme適用中</span>
+                    </span>
                 </div>
-                <dl class="hud-primary">
-                    <div><dt>人口</dt><dd>{{ nation.total_population.toLocaleString() }}人</dd></div>
-                    <div class="hud-area">
-                        <dt>面積<HudResourceGauge label="面積（安全面積）" :value="nation.owned_land_cells" :capacity="nation.safe_land_cells" :danger="nation.owned_land_cells > nation.safe_land_cells" /></dt>
-                        <dd>{{ nation.owned_land_cells.toLocaleString() }}/{{ nation.safe_land_cells.toLocaleString() }}セル</dd>
+                <dl class="hud-primary sl-stats">
+                    <div class="sl-stat hud-money" :class="{ low: nation.money_is_at_capacity }">
+                        <dt>資金</dt><dd><strong class="hud-current-value">{{ formatExactMoney(nation.money) }}</strong></dd>
+                        <HudResourceGauge label="資金（保管容量）" :value="nation.money" :capacity="nation.money_capacity" :warning="nation.money_is_at_capacity" />
                     </div>
-                    <div class="hud-money">
-                        <dt>資金<HudResourceGauge label="資金（保管容量）" :value="nation.money" :capacity="nation.money_capacity" :warning="nation.money_is_at_capacity" /></dt>
-                        <dd><strong class="hud-current-value">{{ formatExactMoney(nation.money) }}</strong></dd>
+                    <div class="sl-stat hud-food" :class="{ low: foodShortage }">
+                        <dt>食料</dt><dd><strong class="hud-current-value">{{ formatResource(nation.total_food_tons, 'トン') }}</strong></dd>
+                        <HudResourceGauge label="食料（保管容量）" :value="nation.total_food_tons" :capacity="nation.food_capacity_tons" :danger="foodShortage" />
                     </div>
-                    <div class="hud-food">
-                        <dt>食料<HudResourceGauge label="食料（保管容量）" :value="nation.total_food_tons" :capacity="nation.food_capacity_tons" :danger="foodShortage" /></dt>
-                        <dd><strong class="hud-current-value">{{ formatResource(nation.total_food_tons, 'トン') }}</strong></dd>
+                    <div class="sl-stat"><dt>人口</dt><dd>{{ nation.total_population.toLocaleString() }}人</dd></div>
+                    <div class="sl-stat hud-area lv2" :class="{ low: nation.owned_land_cells > nation.safe_land_cells }">
+                        <dt>面積</dt><dd>{{ nation.owned_land_cells.toLocaleString() }}/{{ nation.safe_land_cells.toLocaleString() }}セル</dd>
+                        <HudResourceGauge label="面積（安全面積）" :value="nation.owned_land_cells" :capacity="nation.safe_land_cells" :danger="nation.owned_land_cells > nation.safe_land_cells" />
                     </div>
-                    <div><dt>農場規模</dt><dd>{{ nation.farm_capacity_people.toLocaleString() }}人</dd></div>
-                    <div><dt>工場規模</dt><dd>{{ nation.factory_capacity_people.toLocaleString() }}人</dd></div>
-                    <div><dt>採掘場規模</dt><dd>{{ nation.mine_capacity_people.toLocaleString() }}人</dd></div>
+                    <div v-if="ledgerParadox" class="sl-stat lv2"><dt>{{ ledgerParadox.name }}</dt><dd>{{ ledgerParadox.balance.toLocaleString() }}<small>{{ ledgerParadox.unit }}</small></dd></div>
+                    <div class="sl-stat lv3"><dt>農場</dt><dd>{{ nation.farm_capacity_people.toLocaleString() }}人</dd></div>
+                    <div class="sl-stat lv3"><dt>工場</dt><dd>{{ nation.factory_capacity_people.toLocaleString() }}人</dd></div>
+                    <div class="sl-stat lv3"><dt>採掘場</dt><dd>{{ nation.mine_capacity_people.toLocaleString() }}人</dd></div>
+                    <div class="sl-stat lv3" :class="{ low: nation.resource_forecast.workforce.status === 'unemployment' && nation.resource_forecast.workforce.percentage_tenths > 0 }">
+                        <dt>{{ nation.resource_forecast.workforce.label }}</dt><dd>{{ formatPercentageTenths(nation.resource_forecast.workforce.percentage_tenths) }}%</dd>
+                    </div>
                 </dl>
-                <details class="hud-more">
-                    <summary>詳細情報</summary>
-                    <div class="hud-more-grid">
-                        <section class="resource-forecast" aria-labelledby="resource-forecast-heading">
-                            <h2 id="resource-forecast-heading">資源推計</h2>
-                            <div class="resource-forecast-table-wrap">
-                                <table>
-                                    <thead>
-                                        <tr><th scope="col">資源</th><th scope="col">生産</th><th scope="col">消費</th><th scope="col">予測</th><th scope="col">所持</th></tr>
-                                    </thead>
-                                    <tbody>
-                                        <tr v-for="row in nation.resource_forecast.rows" :key="row.key">
-                                            <th scope="row">{{ row.key === 'food' ? '食料（小麦換算）' : row.name }}</th>
-                                            <td>{{ formatForecastRange(row.production, row.production_range) }}{{ row.key === 'power' ? '' : row.unit_label ?? '' }}</td>
-                                            <td>{{ formatForecastRange(row.consumption, row.consumption_range, false, true) }}{{ row.key === 'power' ? '' : row.unit_label ?? '' }}</td>
-                                            <td :class="{ 'forecast-positive': (row.delta_range?.minimum ?? row.delta) > 0, 'forecast-negative': (row.delta_range?.minimum ?? row.delta) < 0 }">{{ formatForecastRange(row.delta, row.delta_range, true) }}{{ row.key === 'power' ? '' : row.unit_label ?? '' }}</td>
-                                            <td>{{ row.holding.toLocaleString('ja-JP') }}{{ row.key === 'power' ? '' : row.unit_label ?? '' }}</td>
-                                        </tr>
-                                    </tbody>
-                                </table>
-                            </div>
-                            <p class="workforce-forecast" :class="`workforce-${nation.resource_forecast.workforce.status}`">
-                                <strong>{{ nation.resource_forecast.workforce.label }}</strong>
-                                {{ formatPercentageTenths(nation.resource_forecast.workforce.percentage_tenths) }}%
-                            </p>
-                        </section>
-                        <section class="hud-support" aria-labelledby="hud-support-heading">
-                            <h2 id="hud-support-heading">その他</h2>
-                            <dl class="hud-details">
-                                <div><dt>KARMA</dt><dd :class="{ 'karma-text': nation.karma_positive }">{{ nation.karma }}</dd></div>
-                                <div><dt>資金上限</dt><dd>{{ formatExactMoney(nation.money_capacity) }}</dd></div>
-                                <div><dt>食材上限</dt><dd>{{ formatResource(nation.food_capacity_tons, 'トン') }}</dd></div>
-                                <div v-for="resource in nation.food_resources" :key="`food:${resource.key}`">
-                                    <dt>{{ resource.name }}</dt><dd>{{ formatResource(resource.balance, resource.unit_label) }}</dd>
-                                </div>
-                                <div v-for="resource in nonFoodResources" :key="resource.key">
-                                    <template v-if="resource.capacity !== null">
-                                        <dt>{{ resource.name }}上限</dt>
-                                        <dd>{{ formatResource(resource.capacity, resource.unit_label) }}</dd>
-                                    </template>
-                                </div>
-                            </dl>
-                        </section>
-                    </div>
-                </details>
-            </header>
-            <button
-                v-if="!compensationHistory && compensationGrants.length > 0"
-                class="compensation-banner"
-                type="button"
-                @click="openCompensationWarehouse"
-            >
-                <span aria-hidden="true">🎁</span>
-                <span><strong>配布倉庫に受取可能な品があります</strong><small>{{ compensationGrants.length }}件の配布内容を確認する</small></span>
-                <span aria-hidden="true">›</span>
-            </button>
-            <SalePolicyPanel :key="`${nation.id}:${nation.current_turn}`" :nation-id="nation.id" :resources="nation.resources" :population="nation.total_population">
-                <template #actions>
-                    <ShipStatusWindow :nation-id="nation.id" />
-                    <button class="daily-quest-trigger notification-anchor" type="button" :aria-label="hasIncompleteDailyQuests ? 'デイリークエスト（未達成の項目があります）' : undefined" @click="openDailyQuests">デイリークエスト<span v-if="hasIncompleteDailyQuests" class="notification-dot" aria-hidden="true" /></button>
-                </template>
-            </SalePolicyPanel>
-            <div class="island-workspace-region">
-                <nav class="workspace-jump" aria-label="開発ワークスペース内の移動">
-                    <button type="button" aria-controls="island-development-workspace" @click="scrollIslandWorkspaceTo('.command-panel')">セル・コマンド</button>
-                    <button type="button" aria-controls="island-development-workspace" @click="scrollIslandWorkspaceTo('.map-column')">地図</button>
-                    <button type="button" aria-controls="island-development-workspace" @click="scrollIslandWorkspaceTo('.plan-panel')">開発計画</button>
-                </nav>
-                <div
-                    id="island-development-workspace"
-                    ref="islandWorkspaceScroll"
-                    class="island-workspace-scroll"
-                    role="region"
-                    aria-label="島開発ワークスペース（横スクロール）"
-                    tabindex="0"
-                >
-                    <div class="island-grid">
-                        <CommandQueuePanel
-                            :nation-id="nation.id"
-                            :map-space-id="mapSpace.id"
-                            :selected="map.selected.value"
-                            :selected-underground="selectedUndergroundSlot"
-                            :nation-state="nation.state"
-                            @queue="authoritativeCommandQueue = $event"
-                            @ship="map.updateSelectedShip"
-                            @daily-quest="handleDailyQuestProgress"
-                        />
-                        <div class="map-column">
-                            <HexMap
-                                :cells="map.visibleCells.value"
-                                :selected="map.selected.value"
-                                :capital="nation.capital"
-                                :bounds="mapSpace.bounds"
-                                :sea-areas="mapSpace.sea_areas"
-                                :own-nation-id="nation.id"
-                                :command-queue="authoritativeCommandQueue"
-                                :loading="map.loading.value"
-                                :error="map.error.value"
-                                :empty-chunks="map.emptyChunks.value"
-                                @select="selectSurfaceCell"
-                                @move="map.moveSelection"
-                                @request-range="map.loadVisibleRange"
-                                @request-all="map.loadAllChunks"
-                            />
-                        </div>
+                <div class="sl-hud-actions">
+                    <button type="button" :aria-expanded="ledger.islandSheetOpen.value" aria-controls="sl-island-sheet" @click="ledger.islandSheetOpen.value = !ledger.islandSheetOpen.value">収支と資源</button>
+                    <button type="button" class="sl-hud-more-toggle notification-anchor" :aria-expanded="ledger.menuOpen.value" @click="ledger.menuOpen.value = !ledger.menuOpen.value">
+                        島の用事<span v-if="hasIncompleteDailyQuests || (!compensationHistory && compensationGrants.length > 0)" class="notification-dot" aria-hidden="true" />
+                    </button>
+                    <div class="sl-hud-more" :class="{ open: ledger.menuOpen.value }" @click="ledger.menuOpen.value = false">
+                        <ShipStatusWindow :nation-id="nation.id" />
+                        <button class="daily-quest-trigger notification-anchor" type="button" :aria-label="hasIncompleteDailyQuests ? 'デイリークエスト（未達成の項目があります）' : undefined" @click="openDailyQuests">デイリークエスト<span v-if="hasIncompleteDailyQuests" class="notification-dot" aria-hidden="true" /></button>
+                        <button
+                            v-if="!compensationHistory && compensationGrants.length > 0"
+                            class="compensation-banner sl-gift"
+                            type="button"
+                            :title="`配布倉庫に受取可能な品があります（${compensationGrants.length}件）`"
+                            @click="openCompensationWarehouse"
+                        >
+                            <strong>配布倉庫</strong> <small>{{ compensationGrants.length }}件</small>
+                        </button>
                     </div>
                 </div>
-            </div>
-            <UndergroundSurfaceMapView
-                v-if="undergroundSurfaceMap"
-                :map="undergroundSurfaceMap"
-                :selected="selectedUndergroundSlot"
-                @select="selectUndergroundSlot"
+            </header>
+
+            <div
+                v-for="side in (['l', 'r'] as const)"
+                :key="side"
+                class="sl-grip"
+                :class="{ drag: ledger.draggingSide.value === side }"
+                :data-side="side"
+                role="separator"
+                aria-orientation="vertical"
+                :aria-label="side === 'l' ? '左の列の幅（ダブルクリックで元に戻す）' : '右の列の幅（ダブルクリックで元に戻す）'"
+                tabindex="0"
+                @pointerdown="ledger.beginGrip(side, $event)"
+                @dblclick="ledger.setColumn(side, null)"
+                @keydown="ledger.gripKeydown(side, $event)"
             />
-            <MessageBoard
-                :key="`development:${nation.id}`"
+
+            <section class="map-column sl-map" aria-label="地図">
+                <div v-if="undergroundSurfaceMap" class="sl-seg sl-map-switch" role="group" aria-label="地図の切り替え">
+                    <button type="button" :aria-pressed="ledger.mapPane.value === 'surface'" @click="ledger.mapPane.value = 'surface'">地上</button>
+                    <button type="button" :aria-pressed="ledger.mapPane.value === 'underground'" @click="ledger.mapPane.value = 'underground'">首都地下</button>
+                </div>
+                <HexMap
+                    v-show="ledger.mapPane.value === 'surface' || !undergroundSurfaceMap"
+                    :cells="map.visibleCells.value"
+                    :selected="map.selected.value"
+                    :capital="nation.capital"
+                    :bounds="mapSpace.bounds"
+                    :sea-areas="mapSpace.sea_areas"
+                    :own-nation-id="nation.id"
+                    :command-queue="authoritativeCommandQueue"
+                    :loading="map.loading.value"
+                    :error="map.error.value"
+                    :empty-chunks="map.emptyChunks.value"
+                    @select="selectSurfaceCell"
+                    @move="map.moveSelection"
+                    @request-range="map.loadVisibleRange"
+                    @request-all="map.loadAllChunks"
+                />
+                <div v-if="undergroundSurfaceMap" v-show="ledger.mapPane.value === 'underground'" class="sl-under">
+                    <UndergroundSurfaceMapView
+                        :map="undergroundSurfaceMap"
+                        :selected="selectedUndergroundSlot"
+                        @select="selectUndergroundSlot"
+                    />
+                </div>
+            </section>
+
+            <CommandQueuePanel
                 :nation-id="nation.id"
-                context="development"
-                @posted="refreshMyNation"
+                :map-space-id="mapSpace.id"
+                :selected="map.selected.value"
+                :selected-underground="selectedUndergroundSlot"
+                :nation-state="nation.state"
+                @queue="authoritativeCommandQueue = $event"
+                @ship="map.updateSelectedShip"
+                @daily-quest="handleDailyQuestProgress"
+                @paradox="ledgerParadox = $event"
             />
-            <IslandEventLog :key="`owner:${nation.id}:${nation.current_turn}`" :nation-id="nation.id" audience="owner" />
+
+            <section class="sl-log" aria-label="島ログと伝言板">
+                <header class="sl-pane-head">
+                    <div class="sl-seg" role="group" aria-label="表示の切り替え">
+                        <button type="button" :aria-pressed="ledger.logPane.value === 'log'" @click="ledger.logPane.value = 'log'">島ログ</button>
+                        <button type="button" :aria-pressed="ledger.logPane.value === 'board'" @click="ledger.logPane.value = 'board'">伝言板</button>
+                    </div>
+                </header>
+                <div v-show="ledger.logPane.value === 'log'" class="sl-log-body">
+                    <IslandEventLog :key="`owner:${nation.id}:${nation.current_turn}`" :nation-id="nation.id" audience="owner" />
+                </div>
+                <div v-show="ledger.logPane.value === 'board'" class="sl-log-body">
+                    <MessageBoard
+                        :key="`development:${nation.id}`"
+                        :nation-id="nation.id"
+                        context="development"
+                        @posted="refreshMyNation"
+                    />
+                </div>
+            </section>
+
+            <section v-show="ledger.islandSheetOpen.value" id="sl-island-sheet" class="sl-island sl-pop" aria-label="収支と資源">
+                <header class="sl-pane-head">
+                    <h2>収支と資源</h2>
+                    <button type="button" class="sl-quiet" aria-label="閉じる" @click="ledger.islandSheetOpen.value = false">×</button>
+                </header>
+                <div class="sl-island-body">
+                    <section class="resource-forecast" aria-labelledby="resource-forecast-heading">
+                        <h3 id="resource-forecast-heading">資源推計</h3>
+                        <div class="resource-forecast-table-wrap sl-tbl-wrap">
+                            <table>
+                                <thead>
+                                    <tr><th scope="col">資源</th><th scope="col">生産</th><th scope="col">消費</th><th scope="col">予測</th><th scope="col">所持</th></tr>
+                                </thead>
+                                <tbody>
+                                    <tr v-for="row in nation.resource_forecast.rows" :key="row.key">
+                                        <th scope="row">{{ row.key === 'food' ? '食料（小麦換算）' : row.name }}</th>
+                                        <td>{{ formatForecastRange(row.production, row.production_range) }}{{ row.key === 'power' ? '' : row.unit_label ?? '' }}</td>
+                                        <td>{{ formatForecastRange(row.consumption, row.consumption_range, false, true) }}{{ row.key === 'power' ? '' : row.unit_label ?? '' }}</td>
+                                        <td :class="{ 'forecast-positive': (row.delta_range?.minimum ?? row.delta) > 0, 'forecast-negative': (row.delta_range?.minimum ?? row.delta) < 0 }">{{ formatForecastRange(row.delta, row.delta_range, true) }}{{ row.key === 'power' ? '' : row.unit_label ?? '' }}</td>
+                                        <td>{{ row.holding.toLocaleString('ja-JP') }}{{ row.key === 'power' ? '' : row.unit_label ?? '' }}</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                        <p class="workforce-forecast sl-workforce" :class="`workforce-${nation.resource_forecast.workforce.status}`">
+                            <strong>{{ nation.resource_forecast.workforce.label }}</strong>
+                            {{ formatPercentageTenths(nation.resource_forecast.workforce.percentage_tenths) }}%
+                        </p>
+                    </section>
+                    <section class="hud-support" aria-labelledby="hud-support-heading">
+                        <h3 id="hud-support-heading">島のあらまし</h3>
+                        <dl class="hud-details sl-kv">
+                            <div><dt>島主</dt><dd>{{ nation.owner_name }}</dd></div>
+                            <div><dt>KARMA</dt><dd :class="{ 'karma-text': nation.karma_positive }">{{ nation.karma }}</dd></div>
+                            <div><dt>人口</dt><dd>{{ nation.total_population.toLocaleString() }}人</dd></div>
+                            <div><dt>面積（安全面積）</dt><dd>{{ nation.owned_land_cells.toLocaleString() }}/{{ nation.safe_land_cells.toLocaleString() }}セル</dd></div>
+                            <div><dt>農場規模</dt><dd>{{ nation.farm_capacity_people.toLocaleString() }}人</dd></div>
+                            <div><dt>工場規模</dt><dd>{{ nation.factory_capacity_people.toLocaleString() }}人</dd></div>
+                            <div><dt>採掘場規模</dt><dd>{{ nation.mine_capacity_people.toLocaleString() }}人</dd></div>
+                            <div><dt>資金上限</dt><dd>{{ formatExactMoney(nation.money_capacity) }}</dd></div>
+                            <div><dt>食材上限</dt><dd>{{ formatResource(nation.food_capacity_tons, 'トン') }}</dd></div>
+                            <div v-for="resource in nation.food_resources" :key="`food:${resource.key}`">
+                                <dt>{{ resource.name }}</dt><dd>{{ formatResource(resource.balance, resource.unit_label) }}</dd>
+                            </div>
+                            <template v-for="resource in nonFoodResources" :key="resource.key">
+                                <div v-if="resource.capacity !== null">
+                                    <dt>{{ resource.name }}上限</dt>
+                                    <dd>{{ formatResource(resource.capacity, resource.unit_label) }}</dd>
+                                </div>
+                            </template>
+                        </dl>
+                    </section>
+                    <SalePolicyPanel :key="`${nation.id}:${nation.current_turn}`" :nation-id="nation.id" :resources="nation.resources" :population="nation.total_population" />
+                </div>
+            </section>
+
+            <nav class="sl-tabs" role="tablist" aria-label="表示の切り替え">
+                <button type="button" role="tab" :aria-selected="ledger.tab.value === 'inspect'" @click="ledger.showTab('inspect')">マス・コマンド</button>
+                <button type="button" role="tab" :aria-selected="ledger.tab.value === 'plan'" @click="ledger.showTab('plan')">計画 {{ authoritativeCommandQueue?.explicit_count ?? 0 }}</button>
+                <button type="button" role="tab" :aria-selected="ledger.tab.value === 'log'" @click="ledger.showTab('log')">ログ</button>
+                <button type="button" class="grow" :aria-pressed="ledger.grow.value" :aria-label="ledger.grow.value ? '地図を出す' : '上まで広げる'" @click="ledger.grow.value = !ledger.grow.value">{{ ledger.grow.value ? '︾' : '︽' }}</button>
+            </nav>
+
+            <form v-if="islandCommentDraft !== null" class="sl-cmt sl-pop" aria-label="一言コメント" @submit.prevent="saveIslandComment" @keydown.esc.stop.prevent="islandCommentDraft = null">
+                <label for="sl-comment-text">一言コメント <small>島一覧で島主名の横に出ます</small></label>
+                <input id="sl-comment-text" ref="islandCommentInput" v-model="islandCommentDraft" type="text" maxlength="100" autocomplete="off">
+                <p v-if="islandCommentError" class="err" role="alert">{{ islandCommentError }}</p>
+                <div class="sl-actions">
+                    <span class="count num">{{ islandCommentDraft.length }} / 100</span>
+                    <button type="button" class="sl-quiet" @click="islandCommentDraft = null">やめる</button>
+                    <button type="submit" class="sl-primary" :disabled="islandCommentSaving">書き換える</button>
+                </div>
+            </form>
         </section>
 
-        <section v-else-if="page === 'preview' && previewNation?.capital && mapSpace" class="preview-page">
-            <header class="preview-heading">
-                <div>
-                    <h1 :class="{ 'karma-name': previewNation.karma > 0 }">N{{ previewNation.nation_number }} {{ previewNation.name }}</h1>
-                    <p v-if="previewNation.state_label"><span class="state-badge">{{ previewNation.state_label }}</span></p>
-                    <p v-if="previewNation.karma > 0" class="karma-emphasis">{{ previewNation.karma_badge }}</p>
-                    <p class="profile-owner">島主：{{ previewNation.owner_name }}</p>
-                    <p v-if="previewNation.comment" class="profile-comment">「{{ previewNation.comment }}」</p>
+        <section
+            v-else-if="page === 'preview' && previewNation?.capital && mapSpace"
+            class="preview-page sl sl-visit"
+            :data-tab="ledger.tab.value === 'log' ? 'log' : 'inspect'"
+            :data-grow="ledger.grow.value ? 'on' : 'off'"
+            :style="ledger.style.value"
+        >
+            <header class="preview-heading sl-hud" aria-label="島の公開情報">
+                <div class="sl-hud-name">
+                    <span class="sl-hud-row">
+                        <h1 :class="{ 'karma-name': previewNation.karma > 0 }">N{{ previewNation.nation_number }} {{ previewNation.name }}</h1>
+                        <span v-if="previewNation.state_label" class="state-badge">{{ previewNation.state_label }}</span>
+                        <span v-if="previewNation.comment" class="sl-visit-comment profile-comment">「{{ previewNation.comment }}」</span>
+                    </span>
+                    <span class="sl-hud-sub">
+                        <span class="profile-owner">島主：{{ previewNation.owner_name }}</span>
+                        <span v-if="previewNation.karma > 0" class="karma-emphasis">{{ previewNation.karma_badge }}</span>
+                    </span>
+                </div>
+                <dl class="sl-stats">
+                    <div class="sl-stat"><dt>人口</dt><dd>{{ previewNation.total_population.toLocaleString() }}人</dd></div>
+                    <div class="sl-stat"><dt>面積</dt><dd>{{ previewNation.owned_land_cells.toLocaleString() }}セル</dd></div>
+                    <div class="sl-stat"><dt>推定資金</dt><dd>{{ previewNation.money_display }}</dd></div>
+                    <div class="sl-stat lv2"><dt>食料</dt><dd>{{ previewNation.food_total_tons.toLocaleString() }}トン</dd></div>
+                    <div class="sl-stat lv2"><dt>KARMA</dt><dd :class="{ 'karma-text': previewNation.karma > 0 }">{{ previewNation.karma }}</dd></div>
+                    <div class="sl-stat lv3"><dt>農場規模</dt><dd>{{ previewNation.farm_capacity_people.toLocaleString() }}人</dd></div>
+                    <div class="sl-stat lv3"><dt>工場規模</dt><dd>{{ previewNation.factory_capacity_people.toLocaleString() }}人</dd></div>
+                    <div class="sl-stat lv3"><dt>採掘場規模</dt><dd>{{ previewNation.mine_capacity_people.toLocaleString() }}人</dd></div>
+                    <div class="sl-stat lv3"><dt>怪獣討伐</dt><dd>{{ previewNation.monster_final_blow_count.toLocaleString() }}体</dd></div>
+                </dl>
+                <div class="sl-hud-actions">
                     <button
                         v-if="previewNation.secretary_id !== null"
-                        class="button secondary preview-secretary-link"
+                        class="preview-secretary-link"
                         type="button"
                         @click="openPublicSecretary(previewNation.secretary_id, previewNation.world.id)"
                     >
                         秘書プロフィール
                     </button>
                 </div>
-                <dl>
-                    <div><dt>KARMA</dt><dd :class="{ 'karma-text': previewNation.karma > 0 }">{{ previewNation.karma }}</dd></div>
-                    <div><dt>人口</dt><dd>{{ previewNation.total_population.toLocaleString() }}人</dd></div>
-                    <div><dt>面積</dt><dd>{{ previewNation.owned_land_cells.toLocaleString() }}セル</dd></div>
-                    <div><dt>推定資金</dt><dd>{{ previewNation.money_display }}</dd></div>
-                    <div><dt>食料</dt><dd>{{ previewNation.food_total_tons.toLocaleString() }}トン</dd></div>
-                    <div><dt>農場規模</dt><dd>{{ previewNation.farm_capacity_people.toLocaleString() }}人</dd></div>
-                    <div><dt>工場規模</dt><dd>{{ previewNation.factory_capacity_people.toLocaleString() }}人</dd></div>
-                    <div><dt>採掘場規模</dt><dd>{{ previewNation.mine_capacity_people.toLocaleString() }}人</dd></div>
-                    <div><dt>怪獣討伐</dt><dd>{{ previewNation.monster_final_blow_count.toLocaleString() }}体</dd></div>
-                </dl>
-                <p v-if="previewNation.monster_kill_stats.length" class="monster-kill-marks">
-                    討伐印：
-                    <span v-for="stat in previewNation.monster_kill_stats" :key="stat.key">
-                        {{ stat.name }} × {{ stat.kill_count.toLocaleString() }}（初T{{ stat.first_killed_turn }}／最終T{{ stat.last_killed_turn }}）
-                    </span>
-                </p>
             </header>
-            <div class="preview-grid">
-                <aside class="preview-details">
-                    <CellDetails :cell="map.selected.value" />
-                    <p class="queue-notice">公開情報（人口・面積・推定資金・食料合計・施設規模）だけを表示しています。食料内訳、その他資源在庫・上限、非公開施設は取得していません。</p>
-                </aside>
+
+            <div
+                class="sl-grip"
+                :class="{ drag: ledger.draggingSide.value === 'l' }"
+                data-side="l"
+                role="separator"
+                aria-orientation="vertical"
+                aria-label="左の列の幅（ダブルクリックで元に戻す）"
+                tabindex="0"
+                @pointerdown="ledger.beginGrip('l', $event)"
+                @dblclick="ledger.setColumn('l', null)"
+                @keydown="ledger.gripKeydown('l', $event)"
+            />
+
+            <section class="preview-grid sl-map" aria-label="地図">
+                <div v-if="previewNation.underground_surface_map" class="sl-seg sl-map-switch" role="group" aria-label="地図の切り替え">
+                    <button type="button" :aria-pressed="ledger.mapPane.value === 'surface'" @click="ledger.mapPane.value = 'surface'">地上</button>
+                    <button type="button" :aria-pressed="ledger.mapPane.value === 'underground'" @click="ledger.mapPane.value = 'underground'">首都地下</button>
+                </div>
                 <HexMap
+                    v-show="ledger.mapPane.value === 'surface' || !previewNation.underground_surface_map"
                     :cells="map.visibleCells.value"
                     :selected="map.selected.value"
                     :capital="previewNation.capital"
@@ -2394,27 +2568,73 @@ async function abandonNation(): Promise<void> {
                     :loading="map.loading.value"
                     :error="map.error.value"
                     :empty-chunks="map.emptyChunks.value"
-                    @select="map.select"
+                    @select="selectPreviewCell"
                     @move="map.moveSelection"
                     @request-range="map.loadVisibleRange"
                     @request-all="map.loadAllChunks"
                 />
-            </div>
-            <UndergroundSurfaceMapView
-                v-if="previewNation.underground_surface_map"
-                :map="previewNation.underground_surface_map"
-                :selected="selectedUndergroundSlot"
-                @select="selectUndergroundSlot"
-            />
-            <MessageBoard
-                :key="`public:${previewNation.id}`"
-                :nation-id="previewNation.id"
-                context="public"
-                @posted="refreshMyNation"
-            />
-            <IslandEventLog :key="`public:${previewNation.id}:${previewNation.world.current_turn}`" :nation-id="previewNation.id" audience="public" />
-        </section>
+                <div v-if="previewNation.underground_surface_map" v-show="ledger.mapPane.value === 'underground'" class="sl-under">
+                    <UndergroundSurfaceMapView
+                        :map="previewNation.underground_surface_map"
+                        :selected="selectedUndergroundSlot"
+                        @select="selectUndergroundSlot"
+                    />
+                </div>
+            </section>
 
+            <aside class="preview-details sl-inspect" aria-label="選んだマスの公開情報">
+                <CellDetails :cell="map.selected.value" />
+                <p v-if="previewNation.monster_kill_stats.length" class="monster-kill-marks sl-note">
+                    討伐印：
+                    <span v-for="stat in previewNation.monster_kill_stats" :key="stat.key">
+                        {{ stat.name }} × {{ stat.kill_count.toLocaleString() }}（初T{{ stat.first_killed_turn }}／最終T{{ stat.last_killed_turn }}）
+                    </span>
+                </p>
+                <section class="sl-visit-facts" aria-labelledby="sl-visit-facts-heading">
+                    <h3 id="sl-visit-facts-heading">島の公開情報</h3>
+                    <dl class="sl-kv">
+                        <div><dt>島主</dt><dd>{{ previewNation.owner_name }}</dd></div>
+                        <div><dt>KARMA</dt><dd :class="{ 'karma-text': previewNation.karma > 0 }">{{ previewNation.karma }}</dd></div>
+                        <div><dt>人口</dt><dd>{{ previewNation.total_population.toLocaleString() }}人</dd></div>
+                        <div><dt>面積</dt><dd>{{ previewNation.owned_land_cells.toLocaleString() }}セル</dd></div>
+                        <div><dt>推定資金</dt><dd>{{ previewNation.money_display }}</dd></div>
+                        <div><dt>食料</dt><dd>{{ previewNation.food_total_tons.toLocaleString() }}トン</dd></div>
+                        <div><dt>農場規模</dt><dd>{{ previewNation.farm_capacity_people.toLocaleString() }}人</dd></div>
+                        <div><dt>工場規模</dt><dd>{{ previewNation.factory_capacity_people.toLocaleString() }}人</dd></div>
+                        <div><dt>採掘場規模</dt><dd>{{ previewNation.mine_capacity_people.toLocaleString() }}人</dd></div>
+                        <div><dt>怪獣討伐</dt><dd>{{ previewNation.monster_final_blow_count.toLocaleString() }}体</dd></div>
+                    </dl>
+                    <p v-if="previewNation.comment" class="sl-visit-comment-full">「{{ previewNation.comment }}」</p>
+                </section>
+                <p class="sl-note">公開情報（人口・面積・推定資金・食料合計・施設規模）だけを表示しています。食料内訳、その他資源在庫・上限、非公開施設は取得していません。</p>
+            </aside>
+
+            <section class="sl-log" aria-label="公開島ログと伝言板">
+                <header class="sl-pane-head">
+                    <div class="sl-seg" role="group" aria-label="表示の切り替え">
+                        <button type="button" :aria-pressed="ledger.logPane.value === 'log'" @click="ledger.logPane.value = 'log'">公開島ログ</button>
+                        <button type="button" :aria-pressed="ledger.logPane.value === 'board'" @click="ledger.logPane.value = 'board'">伝言板</button>
+                    </div>
+                </header>
+                <div v-show="ledger.logPane.value === 'log'" class="sl-log-body">
+                    <IslandEventLog :key="`public:${previewNation.id}:${previewNation.world.current_turn}`" :nation-id="previewNation.id" audience="public" />
+                </div>
+                <div v-show="ledger.logPane.value === 'board'" class="sl-log-body">
+                    <MessageBoard
+                        :key="`public:${previewNation.id}`"
+                        :nation-id="previewNation.id"
+                        context="public"
+                        @posted="refreshMyNation"
+                    />
+                </div>
+            </section>
+
+            <nav class="sl-tabs" role="tablist" aria-label="表示の切り替え">
+                <button type="button" role="tab" :aria-selected="ledger.tab.value !== 'log'" @click="ledger.showTab('inspect')">マスの情報</button>
+                <button type="button" role="tab" :aria-selected="ledger.tab.value === 'log'" @click="ledger.showTab('log')">ログ・伝言板</button>
+                <button type="button" class="grow" :aria-pressed="ledger.grow.value" :aria-label="ledger.grow.value ? '地図を出す' : '上まで広げる'" @click="ledger.grow.value = !ledger.grow.value">{{ ledger.grow.value ? '︾' : '︽' }}</button>
+            </nav>
+        </section>
 
         <TradingPostPanel v-else-if="user && nation && page === 'trading-post'" :nation-id="nation.id" :world-id="nation.world_id" />
 
@@ -2467,7 +2687,18 @@ async function abandonNation(): Promise<void> {
                             <dt class="secretary-skill-name">{{ skill.name }}</dt>
                             <dd class="secretary-skill-progress">
                                 <span>Lv{{ skill.level }}</span>
-                                <span>XP {{ skill.experience }} / {{ skill.required_experience }}</span>
+                                <span><i>EXP</i> {{ skill.experience.toLocaleString() }} / {{ skill.required_experience.toLocaleString() }}</span>
+                                <span><i>NEXT</i> {{ skill.remaining_experience.toLocaleString() }}</span>
+                            </dd>
+                            <dd
+                                class="secretary-skill-bar"
+                                role="progressbar"
+                                :aria-label="`${skill.name}の経験値`"
+                                aria-valuemin="0"
+                                :aria-valuemax="skill.required_experience"
+                                :aria-valuenow="Math.min(skill.experience, skill.required_experience)"
+                            >
+                                <span :style="{ width: `${skill.required_experience > 0 ? Math.min(100, skill.experience / skill.required_experience * 100) : 100}%` }" />
                             </dd>
                             <dd class="secretary-skill-effect">{{ skill.effect }}</dd>
                             <dd class="secretary-skill-experience-condition">{{ skill.experience_condition }}</dd>
@@ -2576,7 +2807,7 @@ async function abandonNation(): Promise<void> {
                             :checked="themeMode === 'system'"
                             @change="selectTheme('system')"
                         >
-                        <span><strong>システム設定に従う</strong><small>OS・ブラウザのライト／ダーク設定に合わせます。</small></span>
+                        <span><strong>端末に合わせる</strong><small>OS・ブラウザの設定に合わせて New Light／New Dark を選びます。</small></span>
                     </label>
                     <label class="theme-choice">
                         <input
@@ -2586,7 +2817,7 @@ async function abandonNation(): Promise<void> {
                             :checked="themeMode === 'light'"
                             @change="selectTheme('light')"
                         >
-                        <span><strong>ライトテーマ</strong><small>常に明るい配色で表示します。</small></span>
+                        <span><strong>New Light</strong><small>新しい画面の明るい配色です。</small></span>
                     </label>
                     <label class="theme-choice">
                         <input
@@ -2596,7 +2827,11 @@ async function abandonNation(): Promise<void> {
                             :checked="themeMode === 'dark'"
                             @change="selectTheme('dark')"
                         >
-                        <span><strong>ダークテーマ</strong><small>常に暗い紺・深緑系の配色で表示します。</small></span>
+                        <span><strong>New Dark</strong><small>新しい画面の暗い配色です。</small></span>
+                    </label>
+                    <label v-for="mode in (['old-light', 'old-dark'] as const)" :key="mode" class="theme-choice">
+                        <input type="radio" name="display-theme" :value="mode" :checked="themeMode === mode" @change="selectTheme(mode)">
+                        <span><strong>{{ mode === 'old-light' ? 'Old Light' : 'Old Dark' }}</strong><small>{{ mode === 'old-light' ? 'これまでの明るい配色と書体です。' : 'これまでの暗い紺・深緑系の配色と書体です。' }}</small></span>
                     </label>
                     <label v-for="mode in (['skyblue', 'autumn'] as const)" :key="mode" class="theme-choice">
                         <input type="radio" name="display-theme" :value="mode" :checked="themeMode === mode" @change="selectTheme(mode)">

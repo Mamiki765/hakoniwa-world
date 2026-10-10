@@ -202,3 +202,74 @@
     .ug-self-card .ug-next-level { margin-top: 6px; }
     .ug-companion { gap: 6px; }
 }
+
+/* ---- 拠点の枠: 画面の高さに収め、上に所持金、下にメニューを固定する。内容が少なくてもメニューは下端に残る。 ---- */
+#app:has(> main > .underground-panel.ug-panel) { display: flex; flex-direction: column; height: 100dvh; }
+#app:has(> main > .underground-panel.ug-panel) > .site-header { flex: none; }
+main:has(> .underground-panel.ug-panel) { flex: 1; min-height: 0; display: flex; flex-direction: column; width: 100%; max-width: none; margin: 0; padding: 0; }
+.underground-panel.ug-panel { flex: 1; min-height: 0; display: flex; flex-direction: column; width: min(1120px, 100%); margin: 0 auto; }
+.underground-panel.ug-panel > .ug-shell { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow-x: clip; overflow-y: auto; border-radius: 0; border-block: 0; box-shadow: none; }
+.underground-panel.ug-panel > .ug-shell > * { flex: none; }
+.underground-panel.ug-panel > .ug-shell > .ug-page-heading { position: sticky; top: 0; z-index: 21; background: var(--ug-surface); border-bottom: 1px solid var(--line); }
+.underground-panel.ug-panel > .ug-shell > .ug-navigation { margin-top: auto; padding-bottom: env(safe-area-inset-bottom, 0px); }
+
+/* ---- 地底の数字（所持金・能力値・HP・IL・品質など）の書体。差し替えるときはこの変数だけ変える。 ---- */
+.underground-panel { --ug-f-num: Georgia, "Yu Mincho", serif; }
+.underground-panel :is(
+    .ug-wallet dd, .ug-page-heading span, .ug-level strong, .ug-gauge-label strong, .ug-next-level strong,
+    .underground-status-table td, .ug-stp-inputs input, .ug-companion small, .ug-boss-countdown,
+    .underground-vitals dd, .underground-vitals strong, .underground-party-meter, .underground-equipment-card-stats dd, .underground-equipment-card-kicker small
+) { font-family: var(--ug-f-num); font-variant-numeric: tabular-nums; }
+
+.ug-stp-inputs .ug-stp-step { min-width: 34px; touch-action: manipulation; user-select: none; }
+
+/* ---- 戦闘の再生: 1行動ずつ進め、カードの上にダメージや回復の数字を出す ---- */
+.underground-battle-mode { margin-left: .5rem; }
+.ug-playback { display: grid; gap: .75rem; padding: 1rem 0; border-bottom: 1px solid var(--line); }
+.ug-playback-controls { display: flex; flex-wrap: wrap; gap: .4rem; align-items: center; }
+.ug-playback-controls button { min-height: 2.2rem; padding: .3rem .8rem; border: 1px solid var(--line); background: var(--input-surface); color: var(--ink); cursor: pointer; }
+.ug-playback-controls button:disabled { opacity: .5; cursor: default; }
+.ug-playback-controls .ug-playback-play { min-width: 7.5rem; background: var(--navy-solid); border-color: var(--navy-solid); color: var(--on-solid); font-weight: 800; }
+.ug-playback-speed { display: inline-flex; margin-left: auto; }
+.ug-playback-speed button { margin-left: -1px; }
+.ug-playback-speed button[aria-pressed="true"] { background: var(--navy-solid); border-color: var(--navy-solid); color: var(--on-solid); }
+.ug-playback-round { display: flex; gap: .75rem; align-items: baseline; margin: 0; }
+.ug-playback-round span { color: var(--muted); font-size: .85rem; }
+.ug-playback-field { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 1rem; }
+.ug-playback-team { display: grid; gap: .5rem; margin: 0; padding: 0; list-style: none; align-content: start; }
+.ug-playback-card { position: relative; display: grid; gap: .2rem; padding: .6rem .75rem; border: 1px solid var(--line); border-top: 3px solid var(--info); background: var(--paper); }
+.ug-playback-team.is-enemy .ug-playback-card { border-top-color: var(--coral); }
+.ug-playback-card.is-down { opacity: .55; }
+.ug-playback-card strong { overflow-wrap: anywhere; }
+.ug-playback-hp { font-family: var(--ug-f-num); font-variant-numeric: tabular-nums; }
+.ug-playback-hp small { color: var(--muted); }
+.ug-playback-bar { height: 8px; border-radius: 4px; overflow: hidden; background: var(--paper-deep); }
+.ug-playback-bar i { display: block; height: 100%; background: #c94a4a; transition: width .35s ease-out; }
+/* 小さな数字が続けざまに出て、ラウンドが終わるとその合計が大きく残る。 */
+/* カードの下に、数字が出るための段を空けておく（名前やHPの文字に重ねない）。 */
+.ug-playback-card { padding-bottom: 3.4rem; }
+.ug-playback-popup { position: absolute; bottom: 1.5rem; font: 800 1rem var(--ug-f-num); color: var(--danger-strong); text-shadow: 0 1px 0 var(--paper), 0 0 5px var(--paper); pointer-events: none; animation: ug-popup .85s ease-out forwards; }
+.ug-playback-popup.is-heal { color: var(--success); }
+.ug-playback-popup.is-miss { color: var(--muted); font-size: .8rem; }
+.ug-playback-popup.is-critical { font-size: 1.6rem; color: var(--gold); -webkit-text-stroke: 1px var(--danger-strong); animation-name: ug-popup-critical; }
+@keyframes ug-popup { 0% { opacity: 0; transform: translateY(10px) scale(.7); } 20% { opacity: 1; transform: translateY(-2px) scale(1.1); } 100% { opacity: 0; transform: translateY(-26px); } }
+@keyframes ug-popup-critical { 0% { opacity: 0; transform: scale(2.2) rotate(-8deg); } 18% { opacity: 1; transform: scale(1) rotate(3deg); } 30% { transform: scale(1.25) rotate(-2deg); } 100% { opacity: 0; transform: translateY(-30px) scale(1); } }
+.ug-playback-card.is-flashing { animation: ug-flash .45s ease-out; }
+@keyframes ug-flash { 0% { background: var(--gold); transform: translateX(0); } 20% { transform: translateX(-5px); } 40% { transform: translateX(5px); } 60% { transform: translateX(-3px); } 100% { background: var(--paper); transform: translateX(0); } }
+.ug-playback-total { position: absolute; right: .6rem; left: .6rem; bottom: .3rem; display: flex; flex-wrap: wrap; align-items: baseline; justify-content: flex-end; gap: 0 .5rem; line-height: 1.05; pointer-events: none; animation: ug-total .35s ease-out; }
+.ug-playback-total b { font: 800 1.9rem var(--ug-f-num); text-shadow: 0 1px 0 var(--paper), 0 0 6px var(--paper); }
+.ug-playback-total b.is-damage { color: var(--danger-strong); }
+.ug-playback-total b.is-heal { color: var(--success); font-size: 1.3rem; }
+.ug-playback-total.is-critical b.is-damage { color: var(--gold); -webkit-text-stroke: 1px var(--danger-strong); font-size: 2.3rem; }
+.ug-playback-total small { flex-basis: 100%; text-align: right; font-size: .62rem; color: var(--muted); }
+@keyframes ug-total { 0% { opacity: 0; transform: scale(1.8); } 100% { opacity: 1; transform: scale(1); } }
+.ug-playback-lines { display: grid; gap: .25rem; margin: 0; padding: 0; list-style: none; min-height: 6.5rem; align-content: end; }
+.ug-playback-lines li { padding: .3rem .6rem; border-left: 3px solid var(--line); color: var(--muted); font-size: .9rem; white-space: pre-line; }
+.ug-playback-lines li.is-current { color: var(--ink); background: var(--paper-deep); border-left-color: var(--navy); font-size: 1rem; }
+.ug-playback-lines li.is-current.is-impact, .ug-playback-lines li.is-current.is-critical { border-left-color: var(--danger-strong); }
+.ug-playback-lines li.is-current.is-recovery { border-left-color: var(--success); }
+.ug-playback-note { margin: 0; color: var(--muted); font-size: .75rem; }
+@media (prefers-reduced-motion: reduce) {
+    .ug-playback-popup, .ug-playback-total, .ug-playback-card.is-flashing { animation: none; }
+    .ug-playback-bar i { transition: none; }
+}

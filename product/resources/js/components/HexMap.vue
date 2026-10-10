@@ -33,6 +33,10 @@ const tooltipElement = ref<HTMLElement | null>(null);
 const wholeWorldView = ref(false);
 const showVisibility = ref(false);
 const showSeaAreas = ref(true);
+const showTerritory = ref(true);
+const showPlanMarks = ref(true);
+// 指で触ったあとに届くmouseenterでは、マスの詳細を出さない。
+let touchInput = false;
 const failedWeatherAssets = ref(new Set<string>());
 const tooltipPosition = ref({ x: 0, y: 0, placement: 'right' as 'right' | 'left' | 'bottom' | 'top' });
 const failedAssets = ref<Set<string>>(new Set());
@@ -49,6 +53,9 @@ let activePointer: {
     originCell: HTMLElement | null;
 } | null = null;
 let suppressNextCellClick = false;
+// 2本指でつまんで拡大・縮小する。指の位置と、つまみ始めの倍率・指の間隔を持つ。
+const touchPoints = new Map<number, { x: number; y: number }>();
+let pinch: { startDistance: number; startZoom: number; worldX: number; worldY: number } | null = null;
 
 const positioned = computed(() => props.cells.map((cell) => {
     const pixel = gridToPixel(cell);
@@ -93,6 +100,10 @@ const queuedCommandsByCoordinate = computed(() => {
     return index;
 });
 
+function firstPlanPosition(cell: MapCell): number | null {
+    return queuedCommandsByCoordinate.value.get(`${cell.x}:${cell.y}`)?.[0]?.queue_position ?? null;
+}
+
 function queuedCommandLines(cell: MapCell): string[] {
     return (queuedCommandsByCoordinate.value.get(`${cell.x}:${cell.y}`) ?? []).map((item) => {
         const quantity = item.quantity_semantics === 'ordinary' ? item.quantity : 1;
@@ -133,6 +144,12 @@ const tooltipDetails = computed(() => {
         ...(cell.facility === null ? ['施設: なし'] : []),
         ...detailLines,
     ];
+});
+
+// 選んでいるマス（無ければ首都）のある海域。地図の隅に、その海域の天候を大きく出す。
+const focusSeaArea = computed(() => {
+    const point = props.selected ?? props.capital;
+    return props.seaAreas?.find((region) => region.chunk_x === Math.floor(point.x / 16) && region.chunk_y === Math.floor(point.y / 16)) ?? null;
 });
 
 function weatherDescription(area: SeaArea): string {
@@ -217,11 +234,65 @@ function fitWholeWorld(loadAll: boolean): void {
     if (loadAll) emit('requestAll');
 }
 
-function changeZoom(delta: number): void {
+function clampZoom(value: number): number {
     const minimumZoom = Math.min(0.45, wholeWorldTransform().zoom);
-    zoom.value = Math.min(2, Math.max(minimumZoom, Number((zoom.value + delta).toFixed(2))));
+    return Math.min(2, Math.max(minimumZoom, Number(value.toFixed(2))));
+}
+
+function changeZoom(delta: number): void {
+    zoom.value = clampZoom(zoom.value + delta);
     centerOnCapital();
     requestVisibleChunks();
+}
+
+// 画面上の一点（指の中点やマウスの位置）を動かさずに倍率を変える。
+function zoomAround(nextZoom: number, screenX: number, screenY: number, worldX: number, worldY: number): void {
+    wholeWorldView.value = false;
+    zoom.value = clampZoom(nextZoom);
+    pan.value = { x: screenX - worldX * zoom.value, y: screenY - worldY * zoom.value };
+    tooltipCell.value = null;
+    requestVisibleChunks();
+}
+
+function touchMidpoint(): { x: number; y: number; distance: number } | null {
+    const points = [...touchPoints.values()];
+    const bounds = viewport.value?.getBoundingClientRect();
+    if (points.length < 2 || bounds === undefined) return null;
+    const [first, second] = points as [{ x: number; y: number }, { x: number; y: number }];
+    return {
+        x: (first.x + second.x) / 2 - bounds.left,
+        y: (first.y + second.y) / 2 - bounds.top,
+        distance: Math.hypot(first.x - second.x, first.y - second.y),
+    };
+}
+
+function beginPinch(): void {
+    const middle = touchMidpoint();
+    if (middle === null || middle.distance <= 0) return;
+    // つまみ始めたら、1本指の移動は打ち切る。指を離したあとのタップ扱いも止める。
+    if (activePointer !== null) {
+        const { captureOwner, id } = activePointer;
+        if (captureOwner.hasPointerCapture?.(id)) captureOwner.releasePointerCapture?.(id);
+        activePointer = null;
+    }
+    dragging.value = false;
+    suppressNextCellClick = true;
+    pinch = {
+        startDistance: middle.distance,
+        startZoom: zoom.value,
+        worldX: (middle.x - pan.value.x) / zoom.value,
+        worldY: (middle.y - pan.value.y) / zoom.value,
+    };
+}
+
+function wheelZoom(event: WheelEvent): void {
+    if (event.target instanceof Element && event.target.closest('.cell-tooltip') !== null) return;
+    const bounds = viewport.value?.getBoundingClientRect();
+    if (bounds === undefined || event.deltaY === 0) return;
+    event.preventDefault();
+    const screenX = event.clientX - bounds.left;
+    const screenY = event.clientY - bounds.top;
+    zoomAround(zoom.value + (event.deltaY < 0 ? 0.1 : -0.1), screenX, screenY, (screenX - pan.value.x) / zoom.value, (screenY - pan.value.y) / zoom.value);
 }
 
 function requestVisibleChunks(): void {
@@ -250,6 +321,14 @@ function isPanExcludedTarget(target: EventTarget | null): boolean {
 }
 
 function beginPan(event: PointerEvent): void {
+    touchInput = event.pointerType === 'touch' || event.pointerType === 'pen';
+    if (event.pointerType === 'touch' && !isPanExcludedTarget(event.target)) {
+        touchPoints.set(event.pointerId, { x: event.clientX, y: event.clientY });
+        if (touchPoints.size === 2) {
+            beginPinch();
+            return;
+        }
+    }
     if (activePointer !== null || event.isPrimary === false || event.button !== 0 || isPanExcludedTarget(event.target)) return;
 
     const captureOwner = viewport.value;
@@ -272,6 +351,14 @@ function beginPan(event: PointerEvent): void {
 }
 
 function updatePan(event: PointerEvent): void {
+    if (touchPoints.has(event.pointerId)) touchPoints.set(event.pointerId, { x: event.clientX, y: event.clientY });
+    if (pinch !== null) {
+        const middle = touchMidpoint();
+        if (middle === null) return;
+        event.preventDefault();
+        zoomAround(pinch.startZoom * (middle.distance / pinch.startDistance), middle.x, middle.y, pinch.worldX, pinch.worldY);
+        return;
+    }
     if (activePointer === null || activePointer.id !== event.pointerId) return;
 
     if (!dragging.value) {
@@ -298,6 +385,11 @@ function updatePan(event: PointerEvent): void {
 }
 
 function finishPan(event: PointerEvent, cancelled: boolean): void {
+    touchPoints.delete(event.pointerId);
+    if (pinch !== null) {
+        if (touchPoints.size < 2) pinch = null;
+        return;
+    }
     if (activePointer === null || activePointer.id !== event.pointerId) return;
 
     const { captureOwner, originCell } = activePointer;
@@ -365,6 +457,7 @@ function scheduleTooltipHide(): void {
 }
 
 async function showTooltip(cell: MapCell, event: Event): Promise<void> {
+    if (touchInput) return;
     cancelTooltipHide();
     const target = event.currentTarget as HTMLElement;
     const viewportElement = viewport.value;
@@ -402,6 +495,13 @@ async function showTooltip(cell: MapCell, event: Event): Promise<void> {
     };
 }
 
+function showPointerTooltip(cell: MapCell, event: PointerEvent): void {
+    if (event.pointerType !== 'mouse' || activePointer !== null) return;
+    const resumeHover = touchInput;
+    touchInput = false;
+    if (resumeHover || event.type === 'pointerenter') void showTooltip(cell, event);
+}
+
 function assetIdentity(cell: MapCell): string {
     return `${cell.x}:${cell.y}:${cell.asset.key}:${cell.asset.url ?? ''}`;
 }
@@ -416,7 +516,7 @@ function markAssetFailed(cell: MapCell): void {
 </script>
 
 <template>
-    <section class="map-stage" aria-label="世界地図">
+    <section class="map-stage" aria-label="世界地図" :data-territory="showTerritory ? 'on' : 'off'">
         <div class="map-toolbar">
             <button type="button" aria-label="自島へ戻る" @click="returnToCapital">自島へ</button>
             <button type="button" aria-label="世界全体を表示" @click="fitWholeWorld(true)">世界全体</button>
@@ -433,6 +533,10 @@ function markAssetFailed(cell: MapCell): void {
                 視界表示
             </button>
             <button type="button" class="sea-area-toggle" :aria-pressed="showSeaAreas" @click="showSeaAreas = !showSeaAreas">海域・天候</button>
+            <template v-if="commandQueue !== undefined">
+                <button type="button" class="territory-toggle" :aria-pressed="showTerritory" @click="showTerritory = !showTerritory">領土</button>
+                <button type="button" class="plan-mark-toggle" :aria-pressed="showPlanMarks" @click="showPlanMarks = !showPlanMarks">予約番号</button>
+            </template>
             <span class="map-cell-count">表示 {{ visiblePositioned.length }}/{{ cells.length }}セル</span>
             <span v-if="loading" role="status">読み込み中…</span>
             <span v-if="error" class="error" role="alert">{{ error }}</span>
@@ -448,6 +552,7 @@ function markAssetFailed(cell: MapCell): void {
             @pointermove="updatePan"
             @pointerup="endPan"
             @pointercancel="cancelPan"
+            @wheel="wheelZoom"
             @click.capture="suppressDraggedCellClick"
         >
             <div class="map-plane" :style="{ transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})` }">
@@ -469,6 +574,8 @@ function markAssetFailed(cell: MapCell): void {
                     :aria-label="item.cell.aria_label"
                     type="button"
                     @mouseenter="showTooltip(item.cell, $event)"
+                    @pointerenter="showPointerTooltip(item.cell, $event)"
+                    @pointermove="showPointerTooltip(item.cell, $event)"
                     @mouseleave="scheduleTooltipHide"
                     @focus="showTooltip(item.cell, $event)"
                     @blur="scheduleTooltipHide"
@@ -482,6 +589,7 @@ function markAssetFailed(cell: MapCell): void {
                     <small v-if="item.cell.ship?.owner_nation != null || item.cell.owner_nation_number !== null">
                         N{{ item.cell.ship?.owner_nation?.nation_number ?? item.cell.owner_nation_number }}
                     </small>
+                    <span v-if="showPlanMarks && firstPlanPosition(item.cell) !== null" class="plan-mark" aria-hidden="true">{{ firstPlanPosition(item.cell) }}</span>
                     <span v-if="item.cell.monster" class="monster-overlay" aria-hidden="true">
                         <span class="monster-fallback">{{ item.cell.monster.name.slice(0, 1) }}</span>
                         <img
@@ -506,14 +614,25 @@ function markAssetFailed(cell: MapCell): void {
                                 v-if="item.area.weather.asset.available && item.area.weather.asset.url && !failedWeatherAssets.has(item.area.weather.asset.url)"
                                 class="weather-icon"
                                 :href="item.area.weather.asset.url"
-                                :x="item.x + 4 / zoom" :y="item.y + 4 / zoom" :width="12 / zoom" :height="12 / zoom"
+                                :x="item.x + 4 / zoom" :y="item.y + 4 / zoom" :width="20 / zoom" :height="20 / zoom"
                                 @error="weatherAssetFailed(item.area.weather.asset.url)"
                             />
-                            <text v-else class="weather-icon-fallback" :x="item.x + 4 / zoom" :y="item.y + 14 / zoom" :font-size="12 / zoom">{{ item.area.weather.label.slice(0, 1) }}</text>
+                            <text v-else class="weather-icon-fallback" :x="item.x + 4 / zoom" :y="item.y + 20 / zoom" :font-size="18 / zoom">{{ item.area.weather.label.slice(0, 1) }}</text>
                         </template>
                     </g>
                 </svg>
             </div>
+            <p v-if="showSeaAreas && focusSeaArea?.weather" class="map-weather-chip" :class="`weather-${focusSeaArea.weather.key}`">
+                <img
+                    v-if="focusSeaArea.weather.asset.available && focusSeaArea.weather.asset.url && !failedWeatherAssets.has(focusSeaArea.weather.asset.url)"
+                    :src="focusSeaArea.weather.asset.url"
+                    alt=""
+                    width="24"
+                    height="24"
+                    @error="weatherAssetFailed(focusSeaArea.weather.asset.url)"
+                >
+                <span><small>{{ focusSeaArea.name }}</small><strong>{{ weatherDescription(focusSeaArea) }}</strong></span>
+            </p>
             <div
                 v-if="tooltipCell"
                 ref="tooltipElement"

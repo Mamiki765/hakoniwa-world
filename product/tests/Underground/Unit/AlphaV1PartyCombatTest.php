@@ -1086,10 +1086,30 @@ final class AlphaV1PartyCombatTest extends TestCase
 
         $healer['active_skills'] = ['healing_ray'];
         $healer['ai_rules'] = [['conditions' => [['type' => 'always']], 'action' => 'skill:healing_ray']];
-        $hybrid = $model->fightPartySnapshots($catalog, [$healer, $ally], ['party_target'], 718, 1, 0);
+        $hybrid = $model->fightPartySnapshots($catalog, [$healer, $ally], ['party_target'], 127, 1, 0);
         $hybridRows = collect($hybrid->actionLog)->where('action', 'healing_ray');
-        self::assertSame('enemy:1', $hybridRows->firstWhere('effect_type', 'damage')['target_id']);
+        $hybridDamage = $hybridRows->firstWhere('effect_type', 'damage');
+        self::assertSame('enemy:1', $hybridDamage['target_id']);
         self::assertSame('secretary:2', $hybridRows->firstWhere('effect_type', 'recovery')['target_id']);
+        self::assertGreaterThan(1, $hybridDamage['agility_combo_hits'] ?? 1);
+
+        // The same enemy must give the same combo even when the lowest-HP ally is the caster.
+        $selfHealer = [...$healer, 'current_hp' => 300];
+        $selfHybrid = $model->fightPartySnapshots($catalog, [$selfHealer, $ally], ['party_target'], 127, 1, 0);
+        $selfRows = collect($selfHybrid->actionLog)->where('action', 'healing_ray');
+        $selfDamage = $selfRows->firstWhere('effect_type', 'damage');
+        self::assertSame('secretary:1', $selfRows->firstWhere('effect_type', 'recovery')['target_id']);
+        self::assertSame($hybridDamage['agility_combo_hits'], $selfDamage['agility_combo_hits'] ?? 1);
+        self::assertSame($hybridDamage['amount'], $selfDamage['amount']);
+        self::assertSame($hybridRows->firstWhere('effect_type', 'recovery')['amount'],
+            $selfRows->firstWhere('effect_type', 'recovery')['amount']);
+
+        // Healing a slower ally must not grant a combo against an equally agile enemy.
+        $fastEnemy = $model->fightPartySnapshots($this->catalog(1_000_000, 1, 500),
+            [$healer, $ally], ['party_target'], 127, 1, 0);
+        $fastDamage = collect($fastEnemy->actionLog)->where('action', 'healing_ray')->firstWhere('effect_type', 'damage');
+        self::assertArrayNotHasKey('agility_combo_hits', $fastDamage);
+        self::assertSame($fastDamage['amount'] * $hybridDamage['agility_combo_hits'], $hybridDamage['amount']);
 
         $lethalSolo = $model->fightPlayerSnapshot($this->catalog(1, 1, 1), $healer,
             'party_target', 719, 1, 0);

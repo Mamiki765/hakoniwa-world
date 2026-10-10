@@ -98,7 +98,8 @@ describe('command plan workspace', () => {
         }));
         const wrapper = mount(CommandQueuePanel, { props: { nationId: 1, mapSpaceId: 2, selected } });
         await flushPromises();
-        expect(wrapper.findAll('.plan-turn-marker').slice(0, 4).map((marker) => marker.text())).toEqual(['1T', '0T', '1T', '自動']);
+        expect(wrapper.findAll('.plan-turn-marker').slice(0, 4).map((marker) => marker.attributes('aria-label')))
+            .toEqual(['ターンを使う', 'ターンを使わない', 'ターンを使う', '自動']);
         await wrapper.find('.plan-row').trigger('click');
         for (const position of [2, 3]) {
             await wrapper.findAll('.plan-selection-actions button').find((button) => button.text() === '下へ')!.trigger('click');
@@ -109,6 +110,39 @@ describe('command plan workspace', () => {
         await flushPromises();
         expect(deleted).toEqual(['/api/v1/nations/1/map-spaces/2/command-queue/11']);
         expect(wrapper.find('.plan-selection-toolbar').exists()).toBe(false);
+    });
+
+    it('does not register a command from a stale list while the list for the new insert position is still loading', async () => {
+        let resolveDefinitions!: (response: Response) => void;
+        let definitionReads = 0;
+        const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+            if (init?.method === 'POST') return Promise.resolve(jsonResponse({ queue: commandQueue(2, [item(1, 1), item(3, 2), item(2, 3)]) }, 201));
+            if (String(input).includes('command-definitions')) {
+                definitionReads++;
+                if (definitionReads === 1) return Promise.resolve(jsonResponse(catalog([definition()])));
+                return new Promise<Response>((resolve) => { resolveDefinitions = resolve; });
+            }
+            return Promise.resolve(jsonResponse(commandQueue(1, [item(1, 1), item(2, 2)])));
+        });
+        vi.stubGlobal('fetch', fetchMock);
+        const wrapper = mount(CommandQueuePanel, { props: { nationId: 1, mapSpaceId: 2, selected } });
+        await flushPromises();
+
+        // 行を選ぶと入れる位置が変わる。新しい位置の一覧が届くまで、古い一覧のボタンでは登録できない。
+        await wrapper.find('.plan-row').trigger('click');
+        await flushPromises();
+        expect(wrapper.get('.command-grid button').attributes('disabled')).toBeDefined();
+        await wrapper.get('.command-grid button').trigger('click');
+        await flushPromises();
+        expect(fetchMock.mock.calls.some(([, init]) => init?.method === 'POST')).toBe(false);
+
+        // 新しい位置では確認つきに変わっていた。届いたあとは、確認を挟んでからでないと登録されない。
+        resolveDefinitions(jsonResponse(catalog([definition({ confirmation_message: '防衛施設を自爆させます。' })])));
+        await flushPromises();
+        await wrapper.get('.command-grid button').trigger('click');
+        await flushPromises();
+        expect(wrapper.get('.command-modal').text()).toContain('防衛施設を自爆させます。');
+        expect(fetchMock.mock.calls.some(([, init]) => init?.method === 'POST')).toBe(false);
     });
 
     it('preserves a conflicted draft and updates its version only after explicit plan confirmation', async () => {
@@ -280,8 +314,9 @@ describe('command plan workspace', () => {
         });
         expect(wrapper.findAll('.plan-row')).toHaveLength(20);
         expect(wrapper.findAll('.plan-row')[4]!.text()).toContain('整地');
-        expect(wrapper.findAll('.plan-row')[5]!.classes()).toContain('selected');
-        expect(wrapper.get('.command-status').text()).toBe('送信完了');
+        expect(wrapper.findAll('.plan-row')[4]!.classes()).toContain('selected');
+        expect(wrapper.findAll('.plan-row')[5]!.classes()).toContain('cursor');
+        expect(wrapper.get('.command-status').text()).toBe('計画の5番に入れました');
         expect(wrapper.get('.command-status').classes()).toContain('command-status--success');
         expect(wrapper.get('.command-status').attributes('aria-live')).toBe('polite');
         expect(wrapper.text()).not.toContain('実行はターン更新時');
@@ -354,7 +389,7 @@ describe('command plan workspace', () => {
             expected_version: 3,
         });
         expect(wrapper.find('.plan-row-actions').exists()).toBe(false);
-        expect(wrapper.get('.plan-selection-toolbar').text()).toContain('1番を選択中');
+        expect(wrapper.get('.plan-selection-toolbar').text()).toContain('2番を選択中');
         expect(wrapper.find('.command-panel').exists()).toBe(true);
         expect(wrapper.find('.plan-panel').exists()).toBe(true);
 
@@ -710,7 +745,7 @@ describe('command plan workspace', () => {
 
         serverQueue = commandQueue(2, [item(1, 1)]);
         resolvePost(jsonResponse({ queue: serverQueue }, 201));
-        await vi.waitFor(() => expect(wrapper.get('.command-status').text()).toBe('送信完了'));
+        await vi.waitFor(() => expect(wrapper.get('.command-status').text()).toBe('計画の1番に入れました'));
         await vi.waitFor(() => expect(queueReads).toBe(2));
         expect(wrapper.find('.plan-row').text()).toContain('整地');
         expect(wrapper.findAll('.plan-row')[9]!.classes()).toContain('selected');
@@ -809,7 +844,7 @@ describe('command plan workspace', () => {
         await wrapper.find('.command-grid button').trigger('click');
         await flushPromises();
         expect(wrapper.findAll('.plan-row')[1]!.text()).toContain('整地');
-        expect(wrapper.findAll('.plan-row')[2]!.classes()).toContain('selected');
+        expect(wrapper.findAll('.plan-row')[2]!.classes()).toContain('cursor');
         expect(fetchMock.mock.calls.filter(([, init]) => init?.method === 'POST').map(([, init]) => (
             JSON.parse(String(init?.body)) as { position: number }
         ).position)).toEqual([2, 2]);
@@ -830,7 +865,7 @@ describe('command plan workspace', () => {
 
         await wrapper.find('.command-grid button').trigger('click');
         await flushPromises();
-        expect(wrapper.find('.plan-row').classes()).toContain('selected');
+        expect(wrapper.find('.plan-row').classes()).toContain('cursor');
         expect(wrapper.find('.plan-row').text()).toContain('整地');
     });
 
@@ -852,10 +887,10 @@ describe('command plan workspace', () => {
 
         await wrapper.find('.command-grid button').trigger('click');
         await flushPromises();
-        expect(wrapper.findAll('.plan-row')[1]!.classes()).toContain('selected');
+        expect(wrapper.findAll('.plan-row')[1]!.classes()).toContain('cursor');
         await wrapper.find('.command-grid button').trigger('click');
         await flushPromises();
-        expect(wrapper.findAll('.plan-row')[2]!.classes()).toContain('selected');
+        expect(wrapper.findAll('.plan-row')[2]!.classes()).toContain('cursor');
         expect(fetchMock.mock.calls.filter(([, init]) => init?.method === 'POST').map(([, init]) => (
             JSON.parse(String(init?.body)) as { position: number }
         ).position)).toEqual([1, 2]);
@@ -1049,7 +1084,7 @@ describe('command plan workspace', () => {
 
         await wrapper.findAll('.plan-row')[4]!.trigger('click');
         await flushPromises();
-        await wrapper.findAll('.bulk-actions button').find((button) => button.text() === '全て整地')!.trigger('click');
+        await wrapper.findAll('.bulk-actions button').find((button) => button.text() === '荒地と焦土を全て整地')!.trigger('click');
         await flushPromises();
 
         const bulk = fetchMock.mock.calls.find(([path, init]) => String(path).endsWith('/command-queue/bulk') && init?.method === 'POST');
@@ -1058,9 +1093,9 @@ describe('command plan workspace', () => {
             position: 5,
             expected_version: 7,
         });
-        expect(wrapper.get('.command-status').text()).toContain('31件目以降の3件を末尾から切り捨てました');
+        expect(wrapper.get('.command-status').text()).toContain('3件が押し出されて消えました');
 
-        await wrapper.findAll('.bulk-actions button').find((button) => button.text() === 'ここから下を削除')!.trigger('click');
+        await wrapper.findAll('.bulk-actions button').find((button) => button.text() === '選んだ行から下を全て取消')!.trigger('click');
         expect(wrapper.find('.command-modal').text()).toContain('5番以降をすべて削除');
         expect(fetchMock.mock.calls.some(([path, init]) => String(path).endsWith('/command-queue/from') && init?.method === 'DELETE')).toBe(false);
         await wrapper.find('.command-modal .danger-action').trigger('click');
