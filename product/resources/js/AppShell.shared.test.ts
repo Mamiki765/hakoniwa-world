@@ -762,19 +762,13 @@ describe('application lobby and island entry', () => {
         expect(wrapper.text()).toContain('公開コメント');
         expect(wrapper.find('.monster-kill-marks').text()).toContain('怪獣10 × 11');
         expect(wrapper.find('.command-workspace').exists()).toBe(false);
-        const publicUndergroundMap = wrapper.get('.preview-page > .underground-map-card');
+        const publicUndergroundMap = wrapper.get('.preview-page .underground-map-card');
         expect(publicUndergroundMap.findAll('.underground-layer-row')).toHaveLength(2);
         expect(publicUndergroundMap.text()).not.toContain('(X-2, Y, -2)');
         await publicUndergroundMap.find('.underground-slot').trigger('click');
         expect(publicUndergroundMap.get('.underground-map-detail').text()).toContain('座標(10, 8, -2)');
-        expect(wrapper.find('.preview-page > .message-board').exists()).toBe(true);
-        const previewMap = wrapper.get('.preview-page > .preview-grid').element;
-        const previewUnderground = publicUndergroundMap.element;
-        const previewBoard = wrapper.get('.preview-page > .message-board').element;
-        const previewLog = wrapper.get('.preview-page > .island-events-panel').element;
-        expect(previewMap.compareDocumentPosition(previewUnderground) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-        expect(previewUnderground.compareDocumentPosition(previewBoard) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-        expect(previewBoard.compareDocumentPosition(previewLog) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+        expect(wrapper.find('.preview-page .message-board').exists()).toBe(true);
+        expect(wrapper.find('.preview-page .island-events-panel').exists()).toBe(true);
         expect(fetchMock.mock.calls.some(([path]) => String(path).includes('/api/v1/public/nations/7/map-spaces/2/chunks/'))).toBe(true);
 
         await wrapper.get('.preview-secretary-link').trigger('click');

@@ -364,6 +364,14 @@ html .sl h2 { font: var(--sl-w-head) 14px var(--sl-f-head); display: block; min-
 .sl-dialog .selector-cost { font-size: 13px; }
 .sl-dialog section ol { max-height: 180px; overflow: auto; font-size: 12px; margin: 4px 0; }
 
+/* ================= 観光（他の島を見る）: 計画の列が無い2列 ================= */
+@media (min-width: 761px) {
+    .sl.sl-visit { grid-template: "hud hud" auto "inspect map" minmax(0, 1fr) "inspect log" var(--sl-log-h, 210px) / var(--sl-col-l, 300px) minmax(0, 1fr); }
+}
+.sl-visit-comment { min-width: 0; max-width: 320px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; color: var(--sl-ink-2); }
+.sl .sl-note { padding: 6px 10px; font-size: 12px; color: var(--sl-ink-2); border-bottom: 1px dotted var(--sl-line); }
+.sl-note span { display: block; }
+
 /* ================= スマホのタブ ================= */
 .sl-tabs { display: none; background: var(--sl-panel); }
 .sl .sl-tabs button { flex: 1; border: 0; border-radius: 0; background: transparent; padding: 6px 4px; font: var(--sl-w-head) 13px var(--sl-f-head); color: var(--sl-ink-2); border-bottom: 3px solid transparent; }

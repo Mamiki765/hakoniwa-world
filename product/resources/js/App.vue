@@ -273,6 +273,11 @@ function selectSurfaceCell(cell: Parameters<typeof map.select>[0]): void {
     ledger.showTab('inspect');
 }
 
+function selectPreviewCell(cell: Parameters<typeof map.select>[0]): void {
+    map.select(cell);
+    ledger.showTab('inspect');
+}
+
 function openIslandComment(): void {
     if (nation.value === null) return;
     islandCommentError.value = '';
@@ -1848,7 +1853,7 @@ async function abandonNation(): Promise<void> {
         </div>
     </header>
 
-    <main :class="{ 'map-main': page === 'preview', 'ledger-main': page === 'island' }">
+    <main :class="{ 'ledger-main': page === 'island' || page === 'preview' }">
         <p v-if="busy" class="status" role="status">読み込み中…</p>
         <p v-if="message" class="status error" role="alert">{{ message }}</p>
 
@@ -2489,47 +2494,68 @@ async function abandonNation(): Promise<void> {
             </form>
         </section>
 
-        <section v-else-if="page === 'preview' && previewNation?.capital && mapSpace" class="preview-page">
-            <header class="preview-heading">
-                <div>
-                    <h1 :class="{ 'karma-name': previewNation.karma > 0 }">N{{ previewNation.nation_number }} {{ previewNation.name }}</h1>
-                    <p v-if="previewNation.state_label"><span class="state-badge">{{ previewNation.state_label }}</span></p>
-                    <p v-if="previewNation.karma > 0" class="karma-emphasis">{{ previewNation.karma_badge }}</p>
-                    <p class="profile-owner">島主：{{ previewNation.owner_name }}</p>
-                    <p v-if="previewNation.comment" class="profile-comment">「{{ previewNation.comment }}」</p>
+        <section
+            v-else-if="page === 'preview' && previewNation?.capital && mapSpace"
+            class="preview-page sl sl-visit"
+            :data-tab="ledger.tab.value === 'log' ? 'log' : 'inspect'"
+            :data-grow="ledger.grow.value ? 'on' : 'off'"
+            :style="ledger.style.value"
+        >
+            <header class="preview-heading sl-hud" aria-label="島の公開情報">
+                <div class="sl-hud-name">
+                    <span class="sl-hud-row">
+                        <h1 :class="{ 'karma-name': previewNation.karma > 0 }">N{{ previewNation.nation_number }} {{ previewNation.name }}</h1>
+                        <span v-if="previewNation.state_label" class="state-badge">{{ previewNation.state_label }}</span>
+                        <span v-if="previewNation.comment" class="sl-visit-comment profile-comment">「{{ previewNation.comment }}」</span>
+                    </span>
+                    <span class="sl-hud-sub">
+                        <span class="profile-owner">島主：{{ previewNation.owner_name }}</span>
+                        <span v-if="previewNation.karma > 0" class="karma-emphasis">{{ previewNation.karma_badge }}</span>
+                    </span>
+                </div>
+                <dl class="sl-stats">
+                    <div class="sl-stat"><dt>人口</dt><dd>{{ previewNation.total_population.toLocaleString() }}人</dd></div>
+                    <div class="sl-stat"><dt>面積</dt><dd>{{ previewNation.owned_land_cells.toLocaleString() }}セル</dd></div>
+                    <div class="sl-stat"><dt>推定資金</dt><dd>{{ previewNation.money_display }}</dd></div>
+                    <div class="sl-stat lv2"><dt>食料</dt><dd>{{ previewNation.food_total_tons.toLocaleString() }}トン</dd></div>
+                    <div class="sl-stat lv2"><dt>KARMA</dt><dd :class="{ 'karma-text': previewNation.karma > 0 }">{{ previewNation.karma }}</dd></div>
+                    <div class="sl-stat lv3"><dt>農場規模</dt><dd>{{ previewNation.farm_capacity_people.toLocaleString() }}人</dd></div>
+                    <div class="sl-stat lv3"><dt>工場規模</dt><dd>{{ previewNation.factory_capacity_people.toLocaleString() }}人</dd></div>
+                    <div class="sl-stat lv3"><dt>採掘場規模</dt><dd>{{ previewNation.mine_capacity_people.toLocaleString() }}人</dd></div>
+                    <div class="sl-stat lv3"><dt>怪獣討伐</dt><dd>{{ previewNation.monster_final_blow_count.toLocaleString() }}体</dd></div>
+                </dl>
+                <div class="sl-hud-actions">
                     <button
                         v-if="previewNation.secretary_id !== null"
-                        class="button secondary preview-secretary-link"
+                        class="preview-secretary-link"
                         type="button"
                         @click="openPublicSecretary(previewNation.secretary_id, previewNation.world.id)"
                     >
                         秘書プロフィール
                     </button>
                 </div>
-                <dl>
-                    <div><dt>KARMA</dt><dd :class="{ 'karma-text': previewNation.karma > 0 }">{{ previewNation.karma }}</dd></div>
-                    <div><dt>人口</dt><dd>{{ previewNation.total_population.toLocaleString() }}人</dd></div>
-                    <div><dt>面積</dt><dd>{{ previewNation.owned_land_cells.toLocaleString() }}セル</dd></div>
-                    <div><dt>推定資金</dt><dd>{{ previewNation.money_display }}</dd></div>
-                    <div><dt>食料</dt><dd>{{ previewNation.food_total_tons.toLocaleString() }}トン</dd></div>
-                    <div><dt>農場規模</dt><dd>{{ previewNation.farm_capacity_people.toLocaleString() }}人</dd></div>
-                    <div><dt>工場規模</dt><dd>{{ previewNation.factory_capacity_people.toLocaleString() }}人</dd></div>
-                    <div><dt>採掘場規模</dt><dd>{{ previewNation.mine_capacity_people.toLocaleString() }}人</dd></div>
-                    <div><dt>怪獣討伐</dt><dd>{{ previewNation.monster_final_blow_count.toLocaleString() }}体</dd></div>
-                </dl>
-                <p v-if="previewNation.monster_kill_stats.length" class="monster-kill-marks">
-                    討伐印：
-                    <span v-for="stat in previewNation.monster_kill_stats" :key="stat.key">
-                        {{ stat.name }} × {{ stat.kill_count.toLocaleString() }}（初T{{ stat.first_killed_turn }}／最終T{{ stat.last_killed_turn }}）
-                    </span>
-                </p>
             </header>
-            <div class="preview-grid">
-                <aside class="preview-details">
-                    <CellDetails :cell="map.selected.value" />
-                    <p class="queue-notice">公開情報（人口・面積・推定資金・食料合計・施設規模）だけを表示しています。食料内訳、その他資源在庫・上限、非公開施設は取得していません。</p>
-                </aside>
+
+            <div
+                class="sl-grip"
+                :class="{ drag: ledger.draggingSide.value === 'l' }"
+                data-side="l"
+                role="separator"
+                aria-orientation="vertical"
+                aria-label="左の列の幅（ダブルクリックで元に戻す）"
+                tabindex="0"
+                @pointerdown="ledger.beginGrip('l', $event)"
+                @dblclick="ledger.setColumn('l', null)"
+                @keydown="ledger.gripKeydown('l', $event)"
+            />
+
+            <section class="preview-grid sl-map" aria-label="地図">
+                <div v-if="previewNation.underground_surface_map" class="sl-seg sl-map-switch" role="group" aria-label="地図の切り替え">
+                    <button type="button" :aria-pressed="ledger.mapPane.value === 'surface'" @click="ledger.mapPane.value = 'surface'">地上</button>
+                    <button type="button" :aria-pressed="ledger.mapPane.value === 'underground'" @click="ledger.mapPane.value = 'underground'">首都地下</button>
+                </div>
                 <HexMap
+                    v-show="ledger.mapPane.value === 'surface' || !previewNation.underground_surface_map"
                     :cells="map.visibleCells.value"
                     :selected="map.selected.value"
                     :capital="previewNation.capital"
@@ -2539,27 +2565,57 @@ async function abandonNation(): Promise<void> {
                     :loading="map.loading.value"
                     :error="map.error.value"
                     :empty-chunks="map.emptyChunks.value"
-                    @select="map.select"
+                    @select="selectPreviewCell"
                     @move="map.moveSelection"
                     @request-range="map.loadVisibleRange"
                     @request-all="map.loadAllChunks"
                 />
-            </div>
-            <UndergroundSurfaceMapView
-                v-if="previewNation.underground_surface_map"
-                :map="previewNation.underground_surface_map"
-                :selected="selectedUndergroundSlot"
-                @select="selectUndergroundSlot"
-            />
-            <MessageBoard
-                :key="`public:${previewNation.id}`"
-                :nation-id="previewNation.id"
-                context="public"
-                @posted="refreshMyNation"
-            />
-            <IslandEventLog :key="`public:${previewNation.id}:${previewNation.world.current_turn}`" :nation-id="previewNation.id" audience="public" />
-        </section>
+                <div v-if="previewNation.underground_surface_map" v-show="ledger.mapPane.value === 'underground'" class="sl-under">
+                    <UndergroundSurfaceMapView
+                        :map="previewNation.underground_surface_map"
+                        :selected="selectedUndergroundSlot"
+                        @select="selectUndergroundSlot"
+                    />
+                </div>
+            </section>
 
+            <aside class="preview-details sl-inspect" aria-label="選んだマスの公開情報">
+                <CellDetails :cell="map.selected.value" />
+                <p v-if="previewNation.monster_kill_stats.length" class="monster-kill-marks sl-note">
+                    討伐印：
+                    <span v-for="stat in previewNation.monster_kill_stats" :key="stat.key">
+                        {{ stat.name }} × {{ stat.kill_count.toLocaleString() }}（初T{{ stat.first_killed_turn }}／最終T{{ stat.last_killed_turn }}）
+                    </span>
+                </p>
+                <p class="sl-note">公開情報（人口・面積・推定資金・食料合計・施設規模）だけを表示しています。食料内訳、その他資源在庫・上限、非公開施設は取得していません。</p>
+            </aside>
+
+            <section class="sl-log" aria-label="公開島ログと伝言板">
+                <header class="sl-pane-head">
+                    <div class="sl-seg" role="group" aria-label="表示の切り替え">
+                        <button type="button" :aria-pressed="ledger.logPane.value === 'log'" @click="ledger.logPane.value = 'log'">公開島ログ</button>
+                        <button type="button" :aria-pressed="ledger.logPane.value === 'board'" @click="ledger.logPane.value = 'board'">伝言板</button>
+                    </div>
+                </header>
+                <div v-show="ledger.logPane.value === 'log'" class="sl-log-body">
+                    <IslandEventLog :key="`public:${previewNation.id}:${previewNation.world.current_turn}`" :nation-id="previewNation.id" audience="public" />
+                </div>
+                <div v-show="ledger.logPane.value === 'board'" class="sl-log-body">
+                    <MessageBoard
+                        :key="`public:${previewNation.id}`"
+                        :nation-id="previewNation.id"
+                        context="public"
+                        @posted="refreshMyNation"
+                    />
+                </div>
+            </section>
+
+            <nav class="sl-tabs" role="tablist" aria-label="表示の切り替え">
+                <button type="button" role="tab" :aria-selected="ledger.tab.value !== 'log'" @click="ledger.showTab('inspect')">マスの情報</button>
+                <button type="button" role="tab" :aria-selected="ledger.tab.value === 'log'" @click="ledger.showTab('log')">ログ・伝言板</button>
+                <button type="button" class="grow" :aria-pressed="ledger.grow.value" :aria-label="ledger.grow.value ? '地図を出す' : '上まで広げる'" @click="ledger.grow.value = !ledger.grow.value">{{ ledger.grow.value ? '︾' : '︽' }}</button>
+            </nav>
+        </section>
 
         <TradingPostPanel v-else-if="user && nation && page === 'trading-post'" :nation-id="nation.id" :world-id="nation.world_id" />
 
