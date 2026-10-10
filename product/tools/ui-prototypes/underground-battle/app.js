@@ -217,6 +217,10 @@
         else if (b.dataset.c === 'speed') { speed = speed === 1 ? 2 : speed === 2 ? 4 : 1; b.textContent = `速さ ${speed}×`; if (playing) start(); }
     });
     $('opt-phone').onchange = (e) => { document.body.classList.toggle('phone', e.target.checked); requestAnimationFrame(syncRead); };
+    // 数字と英字だけ書体を切り替える（日本語はドット風のまま）。地底の2つの試作で同じ設定を使う
+    const setNum = (v) => { document.documentElement.dataset.num = v; $('opt-num').value = v; try { localStorage.setItem('proto-ug-num', v); } catch { /* 保存できなくても動く */ } };
+    $('opt-num').onchange = (e) => setNum(e.target.value);
+    try { setNum(localStorage.getItem('proto-ug-num') || 'dot'); } catch { setNum('dot'); }
     $('opt-theme').onchange = (e) => { if (e.target.value) document.documentElement.dataset.theme = e.target.value; else delete document.documentElement.dataset.theme; };
     document.querySelector('#opt-detail [data-detail="digest"]').classList.add('on');
 

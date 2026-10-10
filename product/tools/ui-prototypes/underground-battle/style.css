@@ -31,6 +31,8 @@ button:hover:not(:disabled) { border-color: var(--line); }
 button:disabled { opacity: .45; cursor: default; }
 button.primary { background: var(--gold); color: var(--btn-ink); border-color: var(--gold); font-weight: 700; }
 :focus-visible { outline: 2px solid var(--gold); outline-offset: 1px; }
+/* 数字の書体の切り替え。Gelasioは日本語を持たないので、数字と英字だけが変わり、かなと漢字はドット風のまま */
+:root[data-num="serif"] { --f-game: "Gelasio", "Georgia", "DotGothic16", "BIZ UDPGothic", "Noto Sans CJK JP", serif; }
 .num { font-family: var(--f-game); font-variant-numeric: tabular-nums; }
 
 #protobar { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; padding: 8px 16px; background: var(--bar); color: var(--bar-ink); font-size: 12px; }
