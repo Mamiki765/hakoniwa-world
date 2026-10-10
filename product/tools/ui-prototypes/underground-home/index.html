@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<!--BEGIN-->
+<title>箱庭 地底ホーム 試作</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=BIZ+UDPGothic:wght@400;700&family=DotGothic16&display=swap">
+<link rel="stylesheet" href="../underground-battle/style.css">
+<link rel="stylesheet" href="home.css">
+<!--HEAD-END-->
+</head>
+<body>
+<div id="protobar">
+    <strong class="proto-title">地底ホーム 試作</strong>
+    <label class="proto-opt pc-only"><input type="checkbox" id="opt-phone"> スマホ幅で見る</label>
+    <label class="proto-opt">状態
+        <select id="opt-state"><option value="normal">通常</option><option value="hurt">HPが少ない</option><option value="poor">Gが足りない</option></select>
+    </label>
+    <label class="proto-opt">配色
+        <select id="opt-theme"><option value="">端末に合わせる</option><option value="dark">洞窟（暗）</option><option value="light">記録書（明）</option></select>
+    </label>
+    <span class="proto-note">固定データの試作です。立ち絵と背景は枠だけの仮置きで、サーバーへは何も送りません。</span>
+</div>
+<div id="stage">
+<div id="app" data-view="home">
+    <header id="wallet" class="win"></header>
+    <div id="frame">
+        <nav id="menu" class="win" aria-label="地底のメニュー"></nav>
+        <main id="view"></main>
+    </div>
+</div>
+</div>
+<script src="home.js"></script>
+<!--END-->
+</body>
+</html>
