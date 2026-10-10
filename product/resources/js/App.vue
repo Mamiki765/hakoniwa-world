@@ -2612,7 +2612,18 @@ async function abandonNation(): Promise<void> {
                             <dt class="secretary-skill-name">{{ skill.name }}</dt>
                             <dd class="secretary-skill-progress">
                                 <span>Lv{{ skill.level }}</span>
-                                <span>XP {{ skill.experience }} / {{ skill.required_experience }}</span>
+                                <span><i>EXP</i> {{ skill.experience.toLocaleString() }} / {{ skill.required_experience.toLocaleString() }}</span>
+                                <span><i>NEXT</i> {{ skill.remaining_experience.toLocaleString() }}</span>
+                            </dd>
+                            <dd
+                                class="secretary-skill-bar"
+                                role="progressbar"
+                                :aria-label="`${skill.name}の経験値`"
+                                aria-valuemin="0"
+                                :aria-valuemax="skill.required_experience"
+                                :aria-valuenow="Math.min(skill.experience, skill.required_experience)"
+                            >
+                                <span :style="{ width: `${skill.required_experience > 0 ? Math.min(100, skill.experience / skill.required_experience * 100) : 100}%` }" />
                             </dd>
                             <dd class="secretary-skill-effect">{{ skill.effect }}</dd>
                             <dd class="secretary-skill-experience-condition">{{ skill.experience_condition }}</dd>

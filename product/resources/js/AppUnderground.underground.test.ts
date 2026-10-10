@@ -517,10 +517,10 @@ describe('Underground application operations', () => {
         const agriculturalSkill = rowForSkill('agricultural_policy');
         const defenseSkill = rowForSkill('final_defense_line');
         expect(agriculturalSkill.get('.secretary-skill-name').text()).toBe('農業政策');
-        expect(agriculturalSkill.findAll('.secretary-skill-progress span').map((span) => span.text())).toEqual(['Lv0', 'XP 0 / 1']);
+        expect(agriculturalSkill.findAll('.secretary-skill-progress span').map((span) => span.text())).toEqual(['Lv0', 'EXP 0 / 1', 'NEXT 1']);
         expect(agriculturalSkill.get('.secretary-skill-effect').text()).toBe('小麦生産＋0.0%');
         expect(defenseSkill.get('.secretary-skill-name').text()).toBe('最終防衛ライン');
-        expect(defenseSkill.findAll('.secretary-skill-progress span').map((span) => span.text())).toEqual(['Lv1', 'XP 0 / 100']);
+        expect(defenseSkill.findAll('.secretary-skill-progress span').map((span) => span.text())).toEqual(['Lv1', 'EXP 0 / 100', 'NEXT 100']);
         expect(defenseSkill.get('.secretary-skill-effect').text()).toBe('防衛されなかったミサイルを1ターンにつき1発まで迎撃');
         expect(Object.fromEntries(skillRows.map((row) => [
             row.get('.secretary-skill-name').text(), row.get('.secretary-skill-effect').text(),
