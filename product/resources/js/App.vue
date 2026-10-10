@@ -203,6 +203,30 @@ const page = ref<'home' | 'announcements' | 'inquiry' | 'admin-inquiries' | 'gui
         : (window.location.pathname === '/underground' ? 'underground' : 'home'),
 );
 
+
+// 伝言板の新着。最後に見た伝言の時刻をこの端末に覚えておき、それより新しい伝言があれば印を出す。
+const boardLatest = ref<string | null>(null);
+const boardSeen = ref<string | null>(null);
+const boardSeenKey = computed(() => nation.value === null ? null : `hakoniwa.message-board.seen:${nation.value.id}`);
+const boardUnread = computed(() => boardLatest.value !== null && (boardSeen.value === null || boardLatest.value > boardSeen.value));
+watch(boardSeenKey, (key) => {
+    boardLatest.value = null;
+    try {
+        boardSeen.value = key === null ? null : window.localStorage.getItem(key);
+    } catch {
+        boardSeen.value = null;
+    }
+}, { immediate: true });
+watch(() => [boardLatest.value, ledger.boardVisible.value, page.value] as const, ([latest, visible, currentPage]) => {
+    if (latest === null || !visible || currentPage !== 'island' || boardSeenKey.value === null) return;
+    boardSeen.value = latest;
+    try {
+        window.localStorage.setItem(boardSeenKey.value, latest);
+    } catch {
+        // 保存できなくても動く
+    }
+});
+
 watch(page, (nextPage) => {
     if (nextPage !== 'underground' && window.location.pathname === '/underground') {
         window.history.replaceState({ page: nextPage }, '', '/');
@@ -2406,7 +2430,7 @@ async function abandonNation(): Promise<void> {
                 <header class="sl-pane-head">
                     <div class="sl-seg" role="group" aria-label="表示の切り替え">
                         <button type="button" :aria-pressed="ledger.logPane.value === 'log'" @click="ledger.logPane.value = 'log'">島ログ</button>
-                        <button type="button" :aria-pressed="ledger.logPane.value === 'board'" @click="ledger.logPane.value = 'board'">伝言板</button>
+                        <button type="button" class="notification-anchor" :aria-pressed="ledger.logPane.value === 'board'" :aria-label="boardUnread ? '伝言板（新しい伝言があります）' : undefined" @click="ledger.logPane.value = 'board'">伝言板<span v-if="boardUnread" class="notification-dot" aria-hidden="true" /></button>
                     </div>
                 </header>
                 <div v-show="ledger.logPane.value === 'log'" class="sl-log-body">
@@ -2418,6 +2442,7 @@ async function abandonNation(): Promise<void> {
                         :nation-id="nation.id"
                         context="development"
                         @posted="refreshMyNation"
+                        @latest="boardLatest = $event"
                     />
                 </div>
             </section>
@@ -2482,7 +2507,7 @@ async function abandonNation(): Promise<void> {
                 <button type="button" role="tab" :aria-selected="ledger.tab.value === 'inspect'" @click="ledger.showTab('inspect')">マス・コマンド</button>
                 <button type="button" role="tab" :aria-selected="ledger.tab.value === 'plan'" @click="ledger.showTab('plan')">計画 {{ authoritativeCommandQueue?.explicit_count ?? 0 }}</button>
                 <button type="button" role="tab" :aria-selected="ledger.tab.value === 'log' && ledger.logPane.value === 'log'" @click="ledger.logPane.value = 'log'; ledger.showTab('log')">ログ</button>
-                <button type="button" role="tab" :aria-selected="ledger.tab.value === 'log' && ledger.logPane.value === 'board'" @click="ledger.logPane.value = 'board'; ledger.showTab('log')">伝言板</button>
+                <button type="button" role="tab" :aria-selected="ledger.tab.value === 'log' && ledger.logPane.value === 'board'" class="notification-anchor" :aria-label="boardUnread ? '伝言板（新しい伝言があります）' : undefined" @click="ledger.logPane.value = 'board'; ledger.showTab('log')">伝言板<span v-if="boardUnread" class="notification-dot" aria-hidden="true" /></button>
                 <button type="button" class="grow" :aria-pressed="ledger.grow.value" :aria-label="ledger.grow.value ? '地図を出す' : '上まで広げる'" @click="ledger.grow.value = !ledger.grow.value">{{ ledger.grow.value ? '︾' : '︽' }}</button>
             </nav>
 
