@@ -92,10 +92,10 @@ describe('application lobby and island entry', () => {
 
         expect(window.location.pathname).toBe('/');
         expect(wrapper.find('.underground-panel').exists()).toBe(false);
-        expect(wrapper.text()).toContain('ターン更新（2時間ごと）');
+        expect(wrapper.text()).toContain('2時間ごとに更新');
         expect(wrapper.text()).toContain('公開島');
         expect(wrapper.text()).toContain('約500億円');
-        expect(wrapper.find('.ranking-card thead').text()).toBe('順位島名＋賞/討伐人口面積資金食料農場規模工場規模採掘場規模生存ターン');
+        expect(wrapper.find('.ranking-card thead').text()).toBe('順位島名＋賞/討伐人口面積資金食料農場工場採掘場生存');
         expect(wrapper.findAll('.ranking-card tbody')).toHaveLength(1);
         expect(wrapper.findAll('.ranking-card tbody tr')).toHaveLength(2);
         expect(wrapper.find('.ranking-card tbody').text()).toContain('17セル');
@@ -107,7 +107,8 @@ describe('application lobby and island entry', () => {
         expect(wrapper.find('.ranking-card tbody').text()).toContain('公開島主');
         expect(wrapper.find('.ranking-owner-row').text()).toBe('公開島主：公開コメント');
         expect(wrapper.find('.ranking-secretary-link').exists()).toBe(false);
-        expect(wrapper.find('.ranking-card tbody button').text()).toContain('公開島 (100)');
+        expect(wrapper.find('.ranking-card tbody button').text()).toBe('公開島');
+        expect(wrapper.find('.ranking-island').text()).toContain('資金繰り 100');
         expect(wrapper.text()).toContain('重大ニュースはまだありません');
         expect(wrapper.text()).toContain('このターン範囲には公開島ログがありません');
         expect(wrapper.text()).not.toContain('初期データを取得できません');
@@ -119,8 +120,8 @@ describe('application lobby and island entry', () => {
         expect(wrapper.find('.site-header nav').text()).not.toContain('利用ルール');
         expect(wrapper.find('.announcement-window').text()).toContain('ver 1.0.2のお知らせ');
         expect(wrapper.findAll('.announcement-window li')).toHaveLength(2);
-        expect(wrapper.find('.turn-status-card').text()).toContain('最終ターン更新');
-        expect(wrapper.find('.turn-status-card').text()).toContain('次回更新まで');
+        expect(wrapper.find('.turn-status-card').text()).toContain('前回');
+        expect(wrapper.find('.turn-status-card').text()).toContain('次の更新まで');
         expect(wrapper.find('.turn-countdown').exists()).toBe(true);
     });
 
@@ -298,7 +299,7 @@ describe('application lobby and island entry', () => {
         const wrapper = mount(App);
         await flushPromises();
 
-        await wrapper.find('.announcement-window .section-heading button').trigger('click');
+        await wrapper.find('.announcement-window header button').trigger('click');
         await flushPromises();
         expect(wrapper.find('.announcement-page').text()).toContain('運営からのお知らせ');
         expect(wrapper.find('.announcement-pager').text()).toContain('1ページ');
@@ -327,7 +328,7 @@ describe('application lobby and island entry', () => {
         const wrapper = mount(App);
         await flushPromises();
 
-        await wrapper.find('.announcement-window .section-heading button').trigger('click');
+        await wrapper.find('.announcement-window header button').trigger('click');
         await flushPromises();
         const pager = wrapper.findAll('.announcement-pager button');
         expect(pager[1]!.attributes('disabled')).toBeUndefined();
@@ -359,9 +360,9 @@ describe('application lobby and island entry', () => {
         await flushPromises();
 
         if (page === 1) {
-            await wrapper.find('.announcement-window .section-heading button').trigger('click');
+            await wrapper.find('.announcement-window header button').trigger('click');
         } else {
-            await wrapper.find('.announcement-window .section-heading button').trigger('click');
+            await wrapper.find('.announcement-window header button').trigger('click');
             await flushPromises();
             await wrapper.findAll('.announcement-pager button')[1]!.trigger('click');
         }
@@ -403,7 +404,7 @@ describe('application lobby and island entry', () => {
         await vi.advanceTimersByTimeAsync(2_000);
         await flushPromises();
         expect(summaryCalls).toBe(3);
-        expect(wrapper.find('.world-stats dd').text()).toBe('2');
+        expect(wrapper.find('.turn-status-card .turn-now').text()).toBe('2');
         expect(fetchMock.mock.calls.filter(([path]) => String(path).includes('/announcements/latest'))).toHaveLength(1);
         expect(fetchMock.mock.calls.filter(([path]) => String(path).endsWith('/rankings'))).toHaveLength(2);
         expect(fetchMock.mock.calls.filter(([path]) => String(path).endsWith('/events'))).toHaveLength(2);
@@ -624,7 +625,7 @@ describe('application lobby and island entry', () => {
         const wrapper = mount(App);
         await flushPromises();
 
-        await wrapper.find('.announcement-window .section-heading button').trigger('click');
+        await wrapper.find('.announcement-window header button').trigger('click');
         await flushPromises();
         const create = wrapper.findAll('.announcement-actions button').find((button) => button.text() === '新規作成')!;
         await create.trigger('click');

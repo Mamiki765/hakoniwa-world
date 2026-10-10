@@ -27,6 +27,7 @@ import type { SecretarySection } from './types';
 import UndergroundSurfaceMapView from './components/UndergroundSurfaceMap.vue';
 import { formatExactMoney } from './formatters/money';
 import { useMapState } from './state/mapState';
+import { useLobbyRanking } from './state/lobbyRanking';
 import { useSurfaceLedger } from './state/surfaceLedger';
 import type {
     Announcement,
@@ -185,6 +186,11 @@ const dailyQuests = ref<DailyQuestProgress[]>([]);
 const hasIncompleteDailyQuests = computed(() => dailyQuests.value.some((quest) => !quest.completed));
 const selectedUndergroundSlot = ref<UndergroundFacilityTarget | null>(null);
 const ledger = useSurfaceLedger();
+const {
+    sort: rankingSort, query: rankingQuery, narrow: rankingNarrow, columns: rankingColumns, shown: shownRankings,
+    keyColumn: rankingKeyColumn, cardColumns: rankingCardColumns, sortColumns: rankingSortColumns,
+} = useLobbyRanking(rankings);
+const lobbyNewsTab = ref<'major' | 'log'>('major');
 const siteMenuOpen = ref(false);
 const ledgerParadox = ref<ParadoxBalance | null>(null);
 const islandCommentDraft = ref<string | null>(null);
@@ -337,10 +343,6 @@ function formatPercentageTenths(value: number): string {
 
 function formatResource(amount: number, unitLabel: string | null): string {
     return `${amount.toLocaleString('ja-JP')}${unitLabel ?? ''}`;
-}
-
-function formatFacilityScale(population: number): string {
-    return population === 0 ? '保有せず' : `${population.toLocaleString('ja-JP')}人`;
 }
 
 function formatCompensationItem(item: CompensationGrant['items'][number], amount = item.remaining_amount): string {
@@ -1868,188 +1870,231 @@ async function abandonNation(): Promise<void> {
             @inquiries="openAdminInquiries(1)"
         />
 
-        <section v-if="page === 'home'" class="lobby">
-            <div class="lobby-heading">
+        <section v-if="page === 'home'" class="lobby tp">
+            <header class="tp-title">
                 <div>
                     <h1>箱庭諸島２S＋</h1>
                     <p>島と秘書とダンジョンと</p>
                 </div>
-                <div v-if="!user" class="compact-login">
-                    <p>島を運営するにはログインしてください。</p>
-                    <a class="button discord" href="/auth/discord/redirect">Discord</a>
-                    <a class="button google" href="/auth/google/redirect">Google</a>
+                <div v-if="!user" class="tp-enter compact-login">
+                    <span>島を運営するにはログインしてください。</span>
+                    <a class="tp-button primary" href="/auth/discord/redirect">Discordでログイン</a>
+                    <a class="tp-button" href="/auth/google/redirect">Googleでログイン</a>
                 </div>
-            </div>
+                <div v-else class="tp-enter">
+                    <button v-if="nation" type="button" class="tp-button primary" @click="openOwnIsland">自分の島へ（{{ nation.name }}）</button>
+                    <a v-else class="tp-button primary" href="#nation-form">最初の島を作る</a>
+                    <button v-if="secretary" type="button" class="tp-button" @click="openSecretary">{{ secretary.header_label }}</button>
+                    <button v-if="secretary" type="button" class="tp-button" @click="openUnderground">地底</button>
+                </div>
+            </header>
 
-            <dl class="world-stats">
-                <div>
-                    <dt>ターン更新（2時間ごと）</dt>
-                    <dd>{{ worldSummary?.current_turn ?? 1 }}</dd>
-                    <small class="hakoniwa-calendar">{{ worldSummary?.hakoniwa_calendar?.label ?? '箱庭歴 1年1月' }}</small>
+            <section class="tp-box tp-turn turn-status-card" :data-status="worldSummary?.turn_status ?? 'normal'" aria-label="ターン更新状況">
+                <header><h2>ターン</h2><small>2時間ごとに更新</small></header>
+                <div class="tp-body">
+                    <div class="tp-turn-grid">
+                        <div class="now num"><span class="turn-now">{{ worldSummary?.current_turn ?? 1 }}</span><small class="hakoniwa-calendar">{{ worldSummary?.hakoniwa_calendar?.label ?? '箱庭歴 1年1月' }}</small></div>
+                        <template v-if="worldSummary">
+                            <div v-if="worldSummary.turn_status === 'normal'" class="next">次の更新まで <strong class="turn-countdown num">{{ nextTurnCountdown }}</strong></div>
+                            <p v-else class="next late" role="status">{{ turnStatusMessage }}</p>
+                            <div class="sub">
+                                <time v-if="worldSummary.turn_status === 'normal'" :datetime="worldSummary.next_scheduled_turn_at">予定 {{ formatTurnTimestamp(worldSummary.next_scheduled_turn_at) }}</time>
+                                <span>前回 {{ formatTurnTimestamp(worldSummary.last_successful_turn_at) }}</span>
+                            </div>
+                        </template>
+                    </div>
+                    <dl class="world-stats tp-world">
+                        <div><dt>島</dt><dd>{{ (worldSummary?.nation_count ?? 0).toLocaleString() }}</dd></div>
+                        <div><dt>総人口</dt><dd>{{ (worldSummary?.total_population ?? 0).toLocaleString() }}人</dd></div>
+                    </dl>
                 </div>
-                <div><dt>島数</dt><dd>{{ (worldSummary?.nation_count ?? 0).toLocaleString() }}</dd></div>
-                <div><dt>総人口</dt><dd>{{ (worldSummary?.total_population ?? 0).toLocaleString() }}人</dd></div>
-            </dl>
-
-            <section v-if="worldSummary" class="turn-status-card" :data-status="worldSummary.turn_status" aria-label="ターン更新状況">
-                <div>
-                    <span>最終ターン更新</span>
-                    <strong>{{ formatTurnTimestamp(worldSummary.last_successful_turn_at) }}</strong>
-                </div>
-                <div v-if="worldSummary.turn_status === 'normal'">
-                    <span>次回更新まで</span>
-                    <strong class="turn-countdown">{{ nextTurnCountdown }}</strong>
-                    <time :datetime="worldSummary.next_scheduled_turn_at">予定 {{ formatTurnTimestamp(worldSummary.next_scheduled_turn_at) }}</time>
-                </div>
-                <p v-else role="status">{{ turnStatusMessage }}</p>
             </section>
 
-            <section class="announcement-window" aria-labelledby="latest-announcements-heading">
-                <div class="section-heading">
-                    <div><h2 id="latest-announcements-heading">お知らせ</h2></div>
-                    <button type="button" @click="openAnnouncements(1)">すべて表示</button>
+            <section class="tp-box tp-rank ranking-card" aria-labelledby="ranking-heading">
+                <header>
+                    <h2 id="ranking-heading">島一覧</h2>
+                    <div class="tp-rank-tools">
+                        <label>並べ替え
+                            <select v-model="rankingSort">
+                                <option v-for="column in rankingSortColumns" :key="column.key" :value="column.key">{{ column.label }}</option>
+                            </select>
+                        </label>
+                        <input v-model="rankingQuery" type="search" placeholder="島名・島主名でさがす" aria-label="島名・島主名でさがす">
+                    </div>
+                </header>
+                <div v-if="!rankingNarrow" class="ranking-scroll tp-rank-scroll">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th><button type="button" :class="{ on: rankingSort === 'rank' }" @click="rankingSort = 'rank'">順位</button></th>
+                                <th class="l">島名＋賞/討伐</th>
+                                <th v-for="column in rankingColumns" :key="column.key">
+                                    <button v-if="column.sortable" type="button" :class="{ on: rankingSort === column.key }" :aria-pressed="rankingSort === column.key" @click="rankingSort = column.key">{{ column.label }}<template v-if="rankingSort === column.key"> ▼</template></button>
+                                    <template v-else>{{ column.label }}</template>
+                                </th>
+                            </tr>
+                        </thead>
+                        <tbody v-for="entry in shownRankings" :key="entry.id" class="ranking-entry" :class="{ me: entry.id === nation?.id }">
+                            <tr class="ranking-primary-row">
+                                <td rowspan="2" class="ranking-rank num">{{ entry.rank }}</td>
+                                <td class="ranking-island l">
+                                    <button
+                                        type="button"
+                                        :class="{
+                                            'is-finance-only': entry.finance_only_turns > 0,
+                                            'is-dormant': entry.state === 'dormant',
+                                            'is-karma-positive': entry.karma > 0,
+                                        }"
+                                        @click="openPreview(entry.id)"
+                                    >
+                                        {{ entry.name }}
+                                    </button>
+                                    <span v-if="entry.id === nation?.id" class="tp-st you">自分の島</span>
+                                    <RankingAchievements v-if="entry.achievements" :achievements="entry.achievements" />
+                                    <span v-if="entry.state_label" class="state-badge tp-st sleep">{{ entry.state_label }}</span>
+                                    <span v-if="entry.karma_badge" class="karma-badge tp-st karma">{{ entry.karma_badge }}</span>
+                                    <span v-if="entry.state === 'active' && entry.finance_only_turns > 0" class="tp-st fin">資金繰り {{ entry.finance_only_turns }}</span>
+                                </td>
+                                <td v-for="column in rankingColumns" :key="column.key" class="num" :class="{ on: rankingSort === column.key }">{{ column.format(entry) }}</td>
+                            </tr>
+                            <tr class="ranking-owner-row">
+                                <td :colspan="rankingColumns.length + 1" class="l">
+                                    <span class="who">{{ entry.owner_name }}<template v-if="entry.secretary"> ＋ <button type="button" class="ranking-secretary-link" :disabled="busy" @click="openPublicSecretary(entry.secretary.id, entry.world_id)">{{ entry.secretary.display_name }}</button></template></span><template v-if="entry.comment">：{{ entry.comment }}</template>
+                                </td>
+                            </tr>
+                        </tbody>
+                        <tbody v-if="shownRankings.length === 0"><tr><td :colspan="rankingColumns.length + 2" class="empty-state l">{{ rankings.length === 0 ? 'まだ島がありません。' : '条件に合う島がありません。' }}</td></tr></tbody>
+                    </table>
                 </div>
-                <ol v-if="latestAnnouncements.length" class="announcement-list compact">
-                    <li v-for="announcement in latestAnnouncements" :key="announcement.id">
-                        <button type="button" @click="openAnnouncement(announcement.id)">{{ announcement.title }}</button>
-                        <time :datetime="announcement.created_at">{{ formatAnnouncementDate(announcement.created_at) }}</time>
+                <ol v-else class="tp-cards">
+                    <li v-for="entry in shownRankings" :key="entry.id" class="tp-card" :class="{ me: entry.id === nation?.id }">
+                        <span class="no num">{{ entry.rank }}</span>
+                        <span class="isl ranking-island">
+                            <button
+                                type="button"
+                                :class="{ 'is-dormant': entry.state === 'dormant', 'is-karma-positive': entry.karma > 0 }"
+                                @click="openPreview(entry.id)"
+                            >{{ entry.name }}</button>
+                            <span v-if="entry.id === nation?.id" class="tp-st you">自分の島</span>
+                            <RankingAchievements v-if="entry.achievements" :achievements="entry.achievements" />
+                            <span v-if="entry.state_label" class="state-badge tp-st sleep">{{ entry.state_label }}</span>
+                            <span v-if="entry.karma_badge" class="karma-badge tp-st karma">{{ entry.karma_badge }}</span>
+                            <span v-if="entry.state === 'active' && entry.finance_only_turns > 0" class="tp-st fin">資金繰り {{ entry.finance_only_turns }}</span>
+                            <small>{{ entry.owner_name }}<template v-if="entry.secretary"> ＋ <button type="button" class="ranking-secretary-link" :disabled="busy" @click="openPublicSecretary(entry.secretary.id, entry.world_id)">{{ entry.secretary.display_name }}</button></template></small>
+                        </span>
+                        <span class="key num">{{ rankingKeyColumn.format(entry) }}<small>{{ rankingKeyColumn.label }}</small></span>
+                        <span v-if="entry.comment" class="say">{{ entry.comment }}</span>
+                        <span class="more">
+                            <span v-for="column in rankingCardColumns" :key="column.key"><b>{{ column.label }}</b>{{ column.format(entry) }}</span>
+                        </span>
                     </li>
+                    <li v-if="shownRankings.length === 0" class="empty-state">{{ rankings.length === 0 ? 'まだ島がありません。' : '条件に合う島がありません。' }}</li>
                 </ol>
-                <p v-else class="empty-state">お知らせはまだありません。</p>
             </section>
 
-            <section v-if="user?.can_manage_inquiries" class="inquiry-window" aria-labelledby="inquiry-heading">
-                <div class="section-heading">
-                    <div><h2 id="inquiry-heading">お問い合わせ</h2></div>
-                    <button type="button" @click="adminOpened = true; page = 'admin'">管理ページへ</button>
-                    <button type="button" @click="openInquiry">お問い合わせを送る</button>
+            <section class="tp-box tp-notice announcement-window" aria-labelledby="latest-announcements-heading">
+                <header>
+                    <h2 id="latest-announcements-heading">お知らせ</h2>
+                    <button type="button" class="tp-quiet" @click="openAnnouncements(1)">すべて表示</button>
+                </header>
+                <div class="tp-body">
+                    <ol v-if="latestAnnouncements.length" class="tp-notice-list">
+                        <li v-for="announcement in latestAnnouncements" :key="announcement.id">
+                            <time :datetime="announcement.created_at">{{ formatAnnouncementDate(announcement.created_at) }}</time>
+                            <button type="button" @click="openAnnouncement(announcement.id)">{{ announcement.title }}</button>
+                        </li>
+                    </ol>
+                    <p v-else class="empty-state">お知らせはまだありません。</p>
                 </div>
-                <ol v-if="latestInquiries.length" class="inquiry-list compact">
-                    <li v-for="inquiry in latestInquiries" :key="inquiry.management_id">
-                        <button type="button" @click="openAdminInquiry(inquiry.management_id)">
-                            {{ inquiry.management_id }} [{{ inquiry.category_label }}] {{ inquiry.subject }}
-                        </button>
-                    </li>
-                </ol>
-                <p v-else class="empty-state">お問い合わせはまだありません。</p>
-                <button type="button" @click="openAdminInquiries(1)">すべて見る</button>
             </section>
 
-            <div class="lobby-grid">
-                <section class="ranking-card">
-                    <div class="section-heading">
-                        <div><h2>島一覧</h2></div>
-                        <span>誰でも閲覧できます</span>
-                    </div>
-                    <div class="ranking-scroll">
-                        <table>
-                            <thead><tr><th>順位</th><th>島名＋賞/討伐</th><th>人口</th><th>面積</th><th>資金</th><th>食料</th><th>農場規模</th><th>工場規模</th><th>採掘場規模</th><th>生存ターン</th></tr></thead>
-                            <tbody v-for="entry in rankings" :key="entry.id" class="ranking-entry">
-                                <tr class="ranking-primary-row">
-                                    <td rowspan="2" class="ranking-rank">{{ entry.rank }}</td>
-                                    <td class="ranking-island">
-                                        <button
-                                            type="button"
-                                            :class="{
-                                                'is-finance-only': entry.finance_only_turns > 0,
-                                                'is-dormant': entry.state === 'dormant',
-                                                'is-karma-positive': entry.karma > 0,
-                                            }"
-                                            @click="openPreview(entry.id)"
-                                        >
-                                            {{ entry.name }}<template v-if="entry.state === 'active' && entry.finance_only_turns > 0"> ({{ entry.finance_only_turns }})</template>
-                                        </button>
-                                        <RankingAchievements v-if="entry.achievements" :achievements="entry.achievements" />
-                                        <span v-if="entry.state_label" class="state-badge">{{ entry.state_label }}</span>
-                                        <span v-if="entry.karma_badge" class="karma-badge">{{ entry.karma_badge }}</span>
-                                    </td>
-                                    <td>{{ entry.total_population.toLocaleString() }}人</td>
-                                    <td>{{ entry.owned_land_cells.toLocaleString() }}セル</td>
-                                    <td>{{ entry.money_display }}</td>
-                                    <td>{{ entry.food_total_tons.toLocaleString() }}トン</td>
-                                    <td>{{ formatFacilityScale(entry.farm_capacity_people) }}</td>
-                                    <td>{{ formatFacilityScale(entry.factory_capacity_people) }}</td>
-                                    <td>{{ formatFacilityScale(entry.mine_capacity_people) }}</td>
-                                    <td>{{ entry.survival_turns.toLocaleString() }}</td>
-                                </tr>
-                                <tr class="ranking-owner-row">
-                                    <td colspan="9">
-                                        {{ entry.owner_name }}<template v-if="entry.secretary"> ＋ <button type="button" class="ranking-secretary-link" :disabled="busy" @click="openPublicSecretary(entry.secretary.id, entry.world_id)">{{ entry.secretary.display_name }}</button></template><template v-if="entry.comment">：{{ entry.comment }}</template>
-                                    </td>
-                                </tr>
-                            </tbody>
-                            <tbody v-if="rankings.length === 0"><tr><td colspan="10" class="empty-state">まだ島がありません。</td></tr></tbody>
-                        </table>
-                    </div>
-                </section>
+            <section v-if="user?.can_manage_inquiries" class="tp-box tp-inquiry inquiry-window" aria-labelledby="inquiry-heading">
+                <header>
+                    <h2 id="inquiry-heading">お問い合わせ</h2>
+                    <button type="button" class="tp-quiet" @click="adminOpened = true; page = 'admin'">管理ページへ</button>
+                    <button type="button" class="tp-quiet" @click="openInquiry">お問い合わせを送る</button>
+                </header>
+                <div class="tp-body">
+                    <ol v-if="latestInquiries.length" class="tp-notice-list single">
+                        <li v-for="inquiry in latestInquiries" :key="inquiry.management_id">
+                            <button type="button" @click="openAdminInquiry(inquiry.management_id)">
+                                {{ inquiry.management_id }} [{{ inquiry.category_label }}] {{ inquiry.subject }}
+                            </button>
+                        </li>
+                    </ol>
+                    <p v-else class="empty-state">お問い合わせはまだありません。</p>
+                    <button type="button" class="tp-quiet" @click="openAdminInquiries(1)">すべて見る</button>
+                </div>
+            </section>
 
-                <section class="events-card">
-                    <div class="section-heading">
-                        <div><h2>重大ニュース</h2></div>
+            <section class="tp-box tp-news" aria-labelledby="world-events-heading">
+                <header>
+                    <h2 id="world-events-heading">世界の出来事</h2>
+                    <div class="tp-seg" role="group" aria-label="出来事の種類">
+                        <button type="button" :aria-pressed="lobbyNewsTab === 'major'" @click="lobbyNewsTab = 'major'">重大ニュース</button>
+                        <button type="button" :aria-pressed="lobbyNewsTab === 'log'" @click="lobbyNewsTab = 'log'">公開島ログ</button>
                     </div>
+                </header>
+                <div v-show="lobbyNewsTab === 'major'" class="tp-body">
                     <template v-if="majorNews?.groups.length">
-                        <section v-for="group in majorNews.groups" :key="group.target_turn" class="public-event-group">
+                        <section v-for="group in majorNews.groups" :key="group.target_turn" class="tp-news-group">
                             <h3>第{{ group.target_turn }}ターン</h3>
-                            <ol class="event-list">
-                                <li v-for="event in group.events" :key="event.id">
-                                    <span class="event-mark" aria-hidden="true"></span>
-                                    <strong>{{ event.message }}</strong>
+                            <ol>
+                                <li v-for="event in group.events" :key="event.id" :class="`importance-${event.importance}`">
+                                    <i aria-hidden="true" /><span>{{ event.message }}</span>
                                 </li>
                             </ol>
                         </section>
                     </template>
                     <p v-else class="empty-state">重大ニュースはまだありません。</p>
-                </section>
-
-                <section class="events-card">
-                    <div class="section-heading">
-                        <div><h2>公開島ログ</h2></div>
-                    </div>
+                </div>
+                <div v-show="lobbyNewsTab === 'log'" class="tp-body">
                     <template v-if="publicEvents?.groups.length">
-                        <section v-for="group in publicEvents.groups" :key="group.target_turn" class="public-event-group">
+                        <section v-for="group in publicEvents.groups" :key="group.target_turn" class="tp-news-group">
                             <h3>第{{ group.target_turn }}ターン</h3>
-                            <ol class="event-list">
-                                <li v-for="event in group.events" :key="event.id">
-                                    <span class="event-mark" aria-hidden="true"></span>
-                                    <strong>{{ event.message }}</strong>
+                            <ol>
+                                <li v-for="event in group.events" :key="event.id" :class="`importance-${event.importance}`">
+                                    <i aria-hidden="true" /><span>{{ event.message }}</span>
                                 </li>
                             </ol>
                         </section>
                     </template>
                     <p v-else class="empty-state">このターン範囲には公開島ログがありません。</p>
-                    <nav v-if="publicEvents" class="event-pager" aria-label="公開島ログのページ">
+                    <nav v-if="publicEvents" class="tp-pager" aria-label="公開島ログのページ">
                         <button type="button" :disabled="!publicEvents.has_newer_page" @click="loadPublicEvents(publicEvents.page - 1)">新しい2ターン</button>
                         <span>{{ publicEvents.page }}ページ</span>
                         <button type="button" :disabled="!publicEvents.has_older_page" @click="loadPublicEvents(publicEvents.page + 1)">過去2ターン</button>
                     </nav>
-                    <p class="community-contact">
-                        <a href="/community-guidelines">禁止行為と連絡方法</a>
-                        <a v-if="worldSummary?.contact_url" :href="worldSummary.contact_url" rel="external nofollow">通報・異議申立て窓口</a>
-                    </p>
-                </section>
-            </div>
+                </div>
+                <p class="tp-contact">
+                    <a href="/community-guidelines">禁止行為と連絡方法</a>
+                    <a v-if="worldSummary?.contact_url" :href="worldSummary.contact_url" rel="external nofollow">通報・異議申立て窓口</a>
+                </p>
+            </section>
 
-            <form v-if="user && !nation" class="nation-form panel" @submit.prevent="createNation">
-                <h2>最初の島を作成</h2>
-                <label>
-                    島名
-                    <input v-model="nationName" minlength="2" maxlength="30" required aria-describedby="nation-name-help nation-name-error">
-                    <small id="nation-name-help" class="field-hint">2〜30文字。登録後の変更はできません。</small>
-                    <span v-if="registrationErrors.name" id="nation-name-error" class="field-error" role="alert">{{ registrationErrors.name }}</span>
-                </label>
-                <label>
-                    島主名
-                    <input v-model="nationOwnerName" minlength="1" maxlength="30" required aria-describedby="owner-name-help owner-name-error">
-                    <small id="owner-name-help" class="field-hint">1〜30文字。OAuth表示名とは別の公開名です。</small>
-                    <span v-if="registrationErrors.owner_name" id="owner-name-error" class="field-error" role="alert">{{ registrationErrors.owner_name }}</span>
-                </label>
-                <label>
-                    一言コメント
-                    <textarea v-model="nationComment" maxlength="100" rows="2" aria-describedby="comment-help comment-error" @keydown.enter.prevent></textarea>
-                    <small id="comment-help" class="field-hint">任意・100文字以内。改行はできません。</small>
-                    <span v-if="registrationErrors.comment" id="comment-error" class="field-error" role="alert">{{ registrationErrors.comment }}</span>
-                </label>
-                <button class="button primary" type="submit" :disabled="busy">島を作る</button>
+            <form v-if="user && !nation" id="nation-form" class="nation-form tp-box tp-create" @submit.prevent="createNation">
+                <header><h2>最初の島を作成</h2></header>
+                <div class="tp-body">
+                    <label>
+                        島名
+                        <input v-model="nationName" minlength="2" maxlength="30" required aria-describedby="nation-name-help nation-name-error">
+                        <small id="nation-name-help" class="field-hint">2〜30文字。登録後の変更はできません。</small>
+                        <span v-if="registrationErrors.name" id="nation-name-error" class="field-error" role="alert">{{ registrationErrors.name }}</span>
+                    </label>
+                    <label>
+                        島主名
+                        <input v-model="nationOwnerName" minlength="1" maxlength="30" required aria-describedby="owner-name-help owner-name-error">
+                        <small id="owner-name-help" class="field-hint">1〜30文字。OAuth表示名とは別の公開名です。</small>
+                        <span v-if="registrationErrors.owner_name" id="owner-name-error" class="field-error" role="alert">{{ registrationErrors.owner_name }}</span>
+                    </label>
+                    <label>
+                        一言コメント
+                        <textarea v-model="nationComment" maxlength="100" rows="2" aria-describedby="comment-help comment-error" @keydown.enter.prevent></textarea>
+                        <small id="comment-help" class="field-hint">任意・100文字以内。改行はできません。</small>
+                        <span v-if="registrationErrors.comment" id="comment-error" class="field-error" role="alert">{{ registrationErrors.comment }}</span>
+                    </label>
+                    <button class="tp-button primary" type="submit" :disabled="busy">島を作る</button>
+                </div>
             </form>
         </section>
 

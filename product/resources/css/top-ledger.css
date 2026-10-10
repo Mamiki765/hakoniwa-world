@@ -1,0 +1,132 @@
+/* TOPと島一覧。左に島一覧（主役）、右にターン・お知らせ・世界の出来事。スマホは1列で、島一覧は表から行カードに変える。
+ * 色・線・書体は surface-ledger.css のトークン（--sl-*）で受ける。 */
+main:has(> .tp) { width: 100%; max-width: none; padding: 0; background: var(--sl-bg); min-height: calc(100dvh - 64px); }
+.tp {
+    max-width: 1280px; margin: 0 auto; padding: 12px 16px 28px;
+    display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 12px; align-items: start;
+    grid-template-areas: "title title" "rank turn" "rank notice" "rank inquiry" "rank news" "create news";
+    grid-template-rows: auto auto auto auto auto 1fr;
+    color: var(--sl-ink); font: 14px/1.5 var(--sl-f-body);
+}
+.tp :is(h1, h2, h3, p, dl, dd, ol, ul) { margin: 0; padding: 0; }
+.tp :is(ol, ul) { list-style: none; }
+.tp :is(button, select, input, textarea) { font: inherit; color: inherit; }
+.tp .num { font-family: var(--sl-f-num); font-variant-numeric: tabular-nums; }
+.tp :focus-visible { outline: 2px solid var(--sl-accent); outline-offset: 1px; }
+.tp .empty-state { padding: 10px; color: var(--sl-ink-2); font-size: 13px; }
+.tp-title { grid-area: title; display: flex; flex-wrap: wrap; align-items: center; gap: 8px 20px; border-bottom: 2px solid var(--sl-ink); padding-bottom: 8px; }
+html .tp-title h1 { font: var(--sl-w-head) 26px/1.1 var(--sl-f-head); color: var(--sl-ink); background: none; border: 0; padding: 0; letter-spacing: normal; }
+.tp-title p { color: var(--sl-ink-2); font-size: 13px; }
+.tp-enter { margin-left: auto; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; font-size: 13px; }
+.tp-button { display: inline-flex; align-items: center; justify-content: center; min-height: 36px; padding: 4px 14px; border: 1px solid var(--sl-line); border-radius: var(--sl-radius); background: var(--sl-panel); color: var(--sl-ink); text-decoration: none; cursor: pointer; }
+.tp-button:hover:not(:disabled) { border-color: var(--sl-accent); }
+.tp-button.primary { background: var(--sl-accent); border-color: var(--sl-accent); color: var(--sl-accent-ink); font-weight: 700; }
+.tp-button:disabled { opacity: .5; cursor: default; }
+.tp .tp-quiet { border: 1px solid var(--sl-line); border-radius: var(--sl-radius); background: transparent; padding: 1px 9px; font-size: 12px; cursor: pointer; }
+.tp .tp-quiet:hover { border-color: var(--sl-accent); }
+
+.tp-box { background: var(--sl-panel); border: 1px solid var(--sl-line); border-radius: var(--sl-radius); min-width: 0; margin: 0; padding: 0; box-shadow: none; }
+.tp-box > header { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; padding: 4px 10px; background: var(--sl-panel-2); border-bottom: 1px solid var(--sl-line); min-height: 34px; }
+html .tp-box > header h2 { font: var(--sl-w-head) 14px var(--sl-f-head); margin-right: auto; color: var(--sl-ink); background: none; border: 0; padding: 0; min-height: 0; }
+.tp-box > header small { color: var(--sl-ink-2); font-size: 12px; }
+.tp-body { padding: 8px 10px; }
+.tp-turn { grid-area: turn; }
+.tp-rank { grid-area: rank; }
+.tp-notice { grid-area: notice; }
+.tp-inquiry { grid-area: inquiry; }
+.tp-news { grid-area: news; }
+.tp-create { grid-area: create; }
+
+/* ターン */
+.tp-turn-grid { display: grid; grid-template-columns: auto 1fr; gap: 2px 12px; align-items: baseline; }
+.tp-turn-grid .now { font-size: 34px; line-height: 1; grid-row: span 2; }
+.tp-turn-grid .now small { display: block; margin-top: 2px; font: 12px var(--sl-f-body); color: var(--sl-ink-2); }
+.tp-turn-grid .next { font-size: 13px; }
+.tp-turn-grid .next strong { font-size: 20px; font-weight: 400; }
+.tp-turn-grid .next.late { color: var(--sl-bad); }
+.tp-turn-grid .sub { display: flex; flex-wrap: wrap; gap: 0 10px; font-size: 12px; color: var(--sl-ink-2); }
+.tp .tp-world { display: flex; gap: 16px; margin-top: 6px; padding: 6px 0 0; border: 0; border-top: 1px dotted var(--sl-line); background: none; color: inherit; }
+.tp-world div { display: flex; align-items: baseline; gap: 5px; padding: 0; border: 0; }
+.tp-world dt { font-size: 11px; color: var(--sl-ink-2); }
+.tp-world dd { font: 14px var(--sl-f-num); font-variant-numeric: tabular-nums; }
+
+/* お知らせ・お問い合わせ */
+.tp-notice-list li { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 8px; padding: 3px 0; border-bottom: 1px dotted var(--sl-line); font-size: 13px; }
+.tp-notice-list.single li { grid-template-columns: minmax(0, 1fr); }
+.tp-notice-list time { font-size: 12px; color: var(--sl-ink-2); white-space: nowrap; }
+.tp-notice-list button { border: 0; background: transparent; padding: 0; text-align: left; color: var(--sl-accent); text-decoration: underline; cursor: pointer; overflow-wrap: anywhere; }
+.tp-inquiry .tp-body > .tp-quiet { margin-top: 6px; }
+
+/* 島一覧（PCは表） */
+.tp-rank-tools { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; font-size: 12px; }
+.tp-rank-tools :is(select, input) { padding: 2px 6px; border: 1px solid var(--sl-line); border-radius: var(--sl-radius); background: var(--sl-panel); }
+.tp-rank-scroll { overflow-x: auto; }
+.tp-rank table { width: 100%; border-collapse: collapse; font-size: 13px; }
+html .tp-rank :is(th, td) { padding: 4px 6px; border: 0; border-bottom: 1px solid var(--sl-line); text-align: right; white-space: nowrap; background: transparent; color: inherit; font-size: inherit; }
+html .tp-rank thead th { font-weight: 400; font-size: 11px; color: var(--sl-ink-2); background: var(--sl-panel); }
+.tp-rank thead th button { border: 0; background: transparent; padding: 0; font-size: 11px; color: inherit; cursor: pointer; }
+.tp-rank thead th button.on { color: var(--sl-ink); font-weight: 700; }
+html .tp-rank td.on { background: var(--sl-panel-2); }
+html .tp-rank :is(th, td).l { text-align: left; }
+html .tp-rank td.ranking-rank { width: 30px; color: var(--sl-ink-2); vertical-align: middle; }
+/* 2段組み: 上は島名と数値、下は島主＋秘書とコメントを数値の列まで */
+html .tp-rank .ranking-primary-row td:not(.ranking-rank) { border-bottom: 0; padding-bottom: 1px; }
+html .tp-rank .ranking-owner-row td { padding-top: 0; font-size: 12px; white-space: normal; overflow-wrap: anywhere; }
+.tp-rank .ranking-owner-row .who { color: var(--sl-ink-2); }
+html .tp-rank tbody.me td { background: color-mix(in srgb, var(--sl-accent) 7%, transparent); }
+html .tp-rank tbody.me td.ranking-rank { box-shadow: inset 3px 0 0 var(--sl-accent); }
+.tp .ranking-island > button { border: 0; background: transparent; padding: 0; font: 700 14px var(--sl-f-body); color: var(--sl-accent); text-decoration: underline; cursor: pointer; }
+.tp .ranking-island > button.is-dormant { color: var(--sl-ink-2); }
+.tp .ranking-island > button.is-karma-positive { color: var(--sl-bad); }
+.tp .ranking-secretary-link { border: 0; background: transparent; padding: 0; color: var(--sl-accent); text-decoration: underline; cursor: pointer; font-size: inherit; }
+.tp .tp-st { display: inline-block; margin: 0 0 0 5px; padding: 0 4px; border: 1px solid currentColor; border-radius: 2px; font: 11px var(--sl-f-body); white-space: nowrap; vertical-align: middle; }
+.tp-st.sleep { color: var(--sl-ink-2); }
+.tp-st.fin { color: var(--sl-turn); }
+.tp-st.karma { color: var(--sl-bad); }
+.tp-st.you { color: var(--sl-accent); }
+.tp .ranking-achievements { margin-left: 6px; vertical-align: middle; }
+
+/* 世界の出来事 */
+.tp-seg { display: inline-flex; }
+.tp-seg button { border: 1px solid var(--sl-line); background: var(--sl-panel); padding: 1px 9px; font-size: 12px; margin-left: -1px; cursor: pointer; border-radius: 0; }
+.tp-seg button:first-child { margin-left: 0; border-radius: var(--sl-radius) 0 0 var(--sl-radius); }
+.tp-seg button:last-child { border-radius: 0 var(--sl-radius) var(--sl-radius) 0; }
+.tp-seg button[aria-pressed="true"] { background: var(--sl-accent); border-color: var(--sl-accent); color: var(--sl-accent-ink); }
+html .tp-news-group h3 { font: var(--sl-w-head) 12px var(--sl-f-head); color: var(--sl-ink-2); margin: 6px 0 2px; }
+.tp-news-group li { display: grid; grid-template-columns: 14px minmax(0, 1fr); gap: 4px; padding: 1px 0; font-size: 13px; }
+.tp-news-group li i { font-style: normal; text-align: center; color: var(--sl-line); }
+.tp-news-group li i::before { content: "・"; }
+.tp-news-group li.importance-notable i { color: var(--sl-accent); }
+.tp-news-group li.importance-notable i::before { content: "◆"; }
+.tp-news-group li.importance-warning, .tp-news-group li.importance-warning i { color: var(--sl-bad); }
+.tp-news-group li.importance-warning i::before { content: "！"; }
+.tp-pager { display: flex; gap: 6px; align-items: center; justify-content: space-between; margin-top: 8px; font-size: 12px; }
+.tp-pager button { border: 1px solid var(--sl-line); border-radius: var(--sl-radius); background: var(--sl-panel); padding: 1px 9px; cursor: pointer; }
+.tp-pager button:disabled { opacity: .5; cursor: default; }
+.tp .tp-contact { display: flex; flex-wrap: wrap; gap: 4px 14px; padding: 6px 10px; border-top: 1px dotted var(--sl-line); font-size: 12px; }
+.tp-contact a { color: var(--sl-accent); }
+
+/* 最初の島を作る */
+.tp-create .tp-body { display: grid; gap: 10px; max-width: 520px; }
+.tp-create label { display: grid; gap: 3px; font-size: 13px; }
+.tp-create :is(input, textarea) { padding: 6px 8px; border: 1px solid var(--sl-line); border-radius: var(--sl-radius); background: var(--sl-bg); }
+.tp-create .field-hint { color: var(--sl-ink-2); font-size: 12px; }
+.tp-create .field-error { color: var(--sl-bad); font-size: 12px; }
+.tp-create .tp-button { justify-self: start; }
+
+@media (max-width: 860px) {
+    /* スマホではターン→島一覧→お知らせ→出来事の順 */
+    .tp { grid-template-columns: minmax(0, 1fr); grid-template-areas: "title" "turn" "create" "rank" "notice" "inquiry" "news"; grid-template-rows: none; padding: 8px 10px 20px; gap: 8px; }
+    html .tp-title h1 { font-size: 20px; }
+    .tp-enter { margin-left: 0; flex-basis: 100%; }
+    .tp-enter .tp-button { flex: 1; min-height: 44px; }
+    .tp-card { display: grid; grid-template-columns: 30px minmax(0, 1fr) auto; gap: 2px 8px; align-items: center; padding: 8px 10px; border-bottom: 1px solid var(--sl-line); }
+    .tp-card.me { box-shadow: inset 3px 0 0 var(--sl-accent); }
+    .tp-card .no { font-size: 16px; color: var(--sl-ink-2); text-align: right; grid-row: span 2; }
+    .tp-card .isl small { display: block; color: var(--sl-ink-2); font-size: 12px; }
+    .tp-card .key { font-size: 16px; text-align: right; white-space: nowrap; }
+    .tp-card .key small { display: block; font: 10px var(--sl-f-body); color: var(--sl-ink-2); }
+    .tp-card .say { grid-column: 2 / -1; font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .tp-card .more { grid-column: 2 / -1; display: flex; flex-wrap: wrap; gap: 0 12px; font: 12px var(--sl-f-num); color: var(--sl-ink-2); }
+    .tp-card .more b { font: 10px var(--sl-f-body); font-weight: 400; margin-right: 3px; }
+}
