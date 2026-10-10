@@ -345,7 +345,8 @@ html .sl h2 { font: var(--sl-w-head) 14px var(--sl-f-head); display: block; min-
 .sl .island-event-pagination { display: flex; align-items: center; justify-content: center; gap: 10px; padding: 8px; font-size: 12px; }
 .sl .message-board { margin: 0; max-width: none; border: 0; box-shadow: none; background: transparent; }
 .sl .message-board-heading { display: none; }
-.sl .message-board-content { padding: 8px 10px; font-size: 13px; }
+/* 伝言板は「島ログ／伝言板」の切り替えで出すので、旧画面で閉じていた人にも必ず中身を出す（閉じた状態の復元で隠さない）。 */
+.sl .message-board-content { display: block !important; padding: 8px 10px; font-size: 13px; }
 .sl .message-board textarea { width: 100%; background: var(--sl-bg); }
 
 /* ================= 入力ダイアログ・確認 ================= */
