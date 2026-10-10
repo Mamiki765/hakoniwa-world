@@ -72,3 +72,7 @@ html[data-theme="black"] .ug-meter-awakening > span { background: var(--awakenin
 html[data-theme="black"] :is(.compensation-banner, .compensation-grant, .compensation-modal) { border-color: var(--gold); }
 html[data-theme="black"] .underground-ai-mode-actions button[aria-pressed="true"] { border-color: var(--navy); box-shadow: 0 0 0 1px var(--navy) inset; }
 html[data-theme="black"] .underground-party-candidate.is-selected { border-color: var(--navy); box-shadow: inset 0 0 0 2px var(--navy); }
+html[data-theme="black"] .modal-backdrop { background: var(--backdrop); }
+html[data-theme="black"] :is(.world-stats, .map-toolbar) { color: var(--ink); background: var(--paper-deep); border-color: var(--line); }
+html[data-theme="black"] .world-stats div { border-color: var(--line); }
+html[data-theme="black"] :is(.world-stats dt, .hakoniwa-calendar) { color: var(--muted); }

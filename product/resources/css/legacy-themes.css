@@ -193,3 +193,11 @@ html[data-theme="autumn"] .world-stats > div:first-child {
     background: url('../images/themes/autumn/atm_icyo.gif') no-repeat 99% 10%;
     border: 1px dashed #f5deb3;
 }
+html:is([data-theme="skyblue"], [data-theme="autumn"]) .manual-content { background: #fff; }
+html:is([data-theme="skyblue"], [data-theme="autumn"]) .world-stats {
+    color: var(--ink);
+    background: var(--paper-deep);
+    border: 1px solid var(--legacy-th-border);
+}
+html:is([data-theme="skyblue"], [data-theme="autumn"]) .world-stats div { border-color: var(--line); }
+html:is([data-theme="skyblue"], [data-theme="autumn"]) :is(.world-stats dt, .hakoniwa-calendar) { color: var(--muted); }
