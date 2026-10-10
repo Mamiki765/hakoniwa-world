@@ -112,6 +112,39 @@ describe('command plan workspace', () => {
         expect(wrapper.find('.plan-selection-toolbar').exists()).toBe(false);
     });
 
+    it('does not register a command from a stale list while the list for the new insert position is still loading', async () => {
+        let resolveDefinitions!: (response: Response) => void;
+        let definitionReads = 0;
+        const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+            if (init?.method === 'POST') return Promise.resolve(jsonResponse({ queue: commandQueue(2, [item(1, 1), item(3, 2), item(2, 3)]) }, 201));
+            if (String(input).includes('command-definitions')) {
+                definitionReads++;
+                if (definitionReads === 1) return Promise.resolve(jsonResponse(catalog([definition()])));
+                return new Promise<Response>((resolve) => { resolveDefinitions = resolve; });
+            }
+            return Promise.resolve(jsonResponse(commandQueue(1, [item(1, 1), item(2, 2)])));
+        });
+        vi.stubGlobal('fetch', fetchMock);
+        const wrapper = mount(CommandQueuePanel, { props: { nationId: 1, mapSpaceId: 2, selected } });
+        await flushPromises();
+
+        // 行を選ぶと入れる位置が変わる。新しい位置の一覧が届くまで、古い一覧のボタンでは登録できない。
+        await wrapper.find('.plan-row').trigger('click');
+        await flushPromises();
+        expect(wrapper.get('.command-grid button').attributes('disabled')).toBeDefined();
+        await wrapper.get('.command-grid button').trigger('click');
+        await flushPromises();
+        expect(fetchMock.mock.calls.some(([, init]) => init?.method === 'POST')).toBe(false);
+
+        // 新しい位置では確認つきに変わっていた。届いたあとは、確認を挟んでからでないと登録されない。
+        resolveDefinitions(jsonResponse(catalog([definition({ confirmation_message: '防衛施設を自爆させます。' })])));
+        await flushPromises();
+        await wrapper.get('.command-grid button').trigger('click');
+        await flushPromises();
+        expect(wrapper.get('.command-modal').text()).toContain('防衛施設を自爆させます。');
+        expect(fetchMock.mock.calls.some(([, init]) => init?.method === 'POST')).toBe(false);
+    });
+
     it('preserves a conflicted draft and updates its version only after explicit plan confirmation', async () => {
         let serverQueue = commandQueue(7);
         const attempts: Array<Record<string, unknown>> = [];
