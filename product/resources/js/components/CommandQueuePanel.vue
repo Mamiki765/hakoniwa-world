@@ -72,6 +72,9 @@ const queue = ref<CommandQueue>({
     plan: [],
 });
 const refreshing = ref(false);
+// いま出ているコマンド一覧が、どの条件（マス・入れる位置）で取った物か。
+// 位置を変えた直後は一覧が古く、確認つき（自爆など）への切り替わりが反映されていないことがあるので、そろうまで登録させない。
+const definitionsKey = ref<string | null>(null);
 const mutating = ref(false);
 const busy = computed(() => refreshing.value || mutating.value);
 const commandStatus = ref<CommandStatus>({ kind: 'idle', text: '未送信' });
@@ -219,6 +222,8 @@ function refreshKey(position = insertPosition.value): string {
     return `${targetKey()}:${position}`;
 }
 
+const definitionsCurrent = computed(() => definitionsKey.value === refreshKey());
+
 watch(
     () => refreshKey(),
     (key) => {
@@ -288,6 +293,7 @@ async function refresh(positionOnly = false): Promise<void> {
 
         if (generation !== refreshGeneration) return;
         definitions.value = nextDefinitions.commands;
+        definitionsKey.value = requestedRefreshKey;
         paradox.value = nextDefinitions.paradox ?? null;
         emit('paradox', paradox.value);
         quantityContract.value = nextDefinitions.quantity_contract;
@@ -306,7 +312,7 @@ async function refresh(positionOnly = false): Promise<void> {
 }
 
 function chooseCommand(definition: CommandDefinition, event?: Event): void {
-    if (!definition.available || !hasSelectedTarget(definition)) return;
+    if (!definitionsCurrent.value || !definition.available || !hasSelectedTarget(definition)) return;
     const trigger = event?.currentTarget instanceof HTMLElement ? event.currentTarget : null;
     const frozen = freezeCommandContext();
     if (definition.confirmation_message) {
@@ -898,7 +904,7 @@ onBeforeUnmount(() => {
                             type="button"
                             class="sl-cmd"
                             :class="{ short: definition.shortfall_money > 0 || (definition.shortfall_paradox ?? 0) > 0, later: isLookahead(definition) }"
-                            :disabled="busy || !definition.available || queueIsFull"
+                            :disabled="busy || !definitionsCurrent || !definition.available || queueIsFull"
                             :title="definition.unavailable_reason ?? definition.description"
                             @click="chooseCommand(definition, $event)"
                         >
