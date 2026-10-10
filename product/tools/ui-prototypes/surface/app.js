@@ -425,11 +425,13 @@
         if (!items.length) return toast('対象のマスがありません。');
         // 一括は立て直し用: 何も選んでいなければ1番から、行を選んでいればその行の位置から入れ、元の計画は全部その下へ送る
         const pi = S.queue.findIndex((q) => q.id === S.planSel), at = pi >= 0 ? pi : 0;
-        // 現行APIは上限を超えた分を末尾から消す（入りきらない一括分も切る）。計画が消える一括は送らずに止めて知らせる
-        const over = S.queue.length + items.length - D.QUEUE_LIMIT;
-        if (over > 0) return toast(`${items.length}件を入れると上限${D.QUEUE_LIMIT}件を${over}件超え、計画の末尾が消えるので入れていません。空きは${D.QUEUE_LIMIT - S.queue.length}件です。`);
-        S.queue.splice(at, 0, ...items.map((x) => ({ id: seq++, ...x })));
+        // 昔の箱庭と同じく、上限を超えた分は押し出して消す（現行APIと同じ: 一括分は上限まで、下へ送った計画は末尾から取り消し）。消える計画があるときは先に警告し、OKなら押し出す
+        const keep = Math.min(items.length, D.QUEUE_LIMIT - at), drop = Math.max(0, at + keep + (S.queue.length - at) - D.QUEUE_LIMIT) + (items.length - keep);
+        if (drop > 0 && !confirm(`計画が上限${D.QUEUE_LIMIT}件を超えるため、${drop}件が押し出されて消えます（末尾の計画から）。入れますか？`)) return toast('一括は入れませんでした。');
+        S.queue.splice(at, 0, ...items.slice(0, keep).map((x) => ({ id: seq++, ...x })));
+        S.queue.splice(D.QUEUE_LIMIT);
         renderPlan(); renderInspect();
+        if (drop > 0) return toast(`${keep}件を計画の${at + 1}番から入れ、${drop}件を押し出して消しました。`);
         toast(`${items.length}件を、計画の${at + 1}番から入れました。元の計画はその下に送りました。`);
     }
     $('entry-body').addEventListener('input', (e) => {
