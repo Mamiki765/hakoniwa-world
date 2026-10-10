@@ -59,17 +59,18 @@
 .alerts button { font-size: 12px; border-radius: 14px; padding: 3px 10px; color: var(--gold); border-color: var(--gold); background: color-mix(in srgb, var(--win) 90%, transparent); }
 .side-btns { position: absolute; right: 10px; top: 12px; display: grid; gap: 6px; }
 .side-btns button { width: 38px; height: 38px; border-radius: 50%; padding: 0; background: color-mix(in srgb, var(--win) 90%, transparent); }
-/* ホームに顔を出す案内人と行商人 */
-.visitors { position: absolute; right: 60px; top: 12px; display: grid; gap: 10px; justify-items: end; z-index: 2; }
-.vis { display: grid; grid-template-columns: minmax(0, auto) 60px; gap: 0 8px; align-items: start; padding: 0; border: 0 !important; background: transparent !important; text-align: left; box-shadow: none; }
-.vis .face { grid-column: 2; grid-row: 1; width: 60px; height: 60px; border-radius: 50%; display: grid; place-items: center; font: 22px var(--f-game); color: var(--ink-2); background: var(--win-2); border: 1.5px dashed var(--line-2); position: relative; }
-.vis.news .face::after { content: "!"; position: absolute; right: -2px; top: -2px; width: 18px; height: 18px; border-radius: 50%; background: var(--gold); color: var(--bg); font: 12px/18px var(--f-game); text-align: center; }
-.vis .tag { grid-column: 2; grid-row: 2; margin-top: -10px; justify-self: center; position: relative; font: 12px/1 var(--f-game); padding: 3px 7px; border-radius: 10px; background: var(--win); border: 1px solid var(--gold); color: var(--ink); white-space: nowrap; }
-.vis .tag small { display: none; }
-.vis .say { grid-column: 1; grid-row: 1 / 3; align-self: center; max-width: 220px; font: 13px/1.5 var(--f-game); padding: 6px 10px; border-radius: 10px; background: color-mix(in srgb, var(--win) 94%, transparent); border: 1px solid var(--line-2); position: relative; }
-.vis .say::before { content: attr(data-role); display: block; font: 10px var(--f-body); color: var(--gold); }
-.vis .say::after { content: ""; position: absolute; right: -6px; top: 50%; margin-top: -5px; border: 5px solid transparent; border-left-color: var(--line-2); border-right: 0; }
-.vis:hover .face, .vis:focus-visible .face { border-color: var(--gold); color: var(--gold); }
+/* ショップと交流場: 店の主の背景と立ち絵を敷き、中身はその上に重ねる */
+.hosted { position: relative; min-height: calc(100% - 46px); display: grid; grid-template-columns: minmax(0, 1fr) minmax(220px, 30%); }
+.hosted .host-bg { position: absolute; inset: 0; z-index: 0; }
+.hosted-main { position: relative; z-index: 1; grid-column: 1; grid-row: 1; min-width: 0; }
+.hosted-main .box { background: color-mix(in srgb, var(--win) 93%, transparent); }
+.host { position: sticky; top: 46px; grid-column: 2; grid-row: 1; height: calc(100vh - 170px); min-height: 360px; z-index: 1; align-self: start; }
+.host .host-fig { right: 50%; transform: translateX(50%); height: 88%; bottom: 0; }
+.host-say { position: absolute; left: 8px; right: 12px; bottom: 14px; display: block; text-align: left; padding: 8px 12px; font: 14px/1.6 var(--f-game); }
+.host-say .who { display: block; color: var(--gold); font-size: 13px; }
+.host-say .who small { font: 10px var(--f-body); color: var(--ink-2); margin-left: 6px; }
+.host-say .go { display: block; text-align: right; font-size: 12px; color: var(--ink-2); }
+.host-say:hover .go { color: var(--gold); }
 .dock { position: absolute; left: 12px; right: 12px; bottom: 12px; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px; align-items: end; }
 .party { padding: 6px 8px; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; max-width: 520px; text-align: left; }
 .party .m { display: grid; grid-template-columns: 26px minmax(0, 1fr); gap: 1px 6px; align-items: center; font: 12px var(--f-game); }
@@ -181,11 +182,12 @@
     .plate { padding: 8px 10px; }
     .plate h2 { font-size: 17px; } .plate .lv strong { font-size: 20px; }
     .plate .gauge { grid-template-columns: 26px 1fr; } .plate .gauge b { grid-column: 1 / -1; text-align: right; font-size: 11px; }
-    .visitors { right: 6px; top: 142px; gap: 8px; }
-    .vis { grid-template-columns: 46px; }
-    .vis .say { display: none; }
-    .vis .face { grid-column: 1; width: 46px; height: 46px; font-size: 18px; }
-    .vis .tag { grid-column: 1; font-size: 11px; padding: 2px 6px; }
+    /* スマホ: 店の主は上に帯で出す（立ち絵は胸から上だけ見える） */
+    .hosted { grid-template-columns: minmax(0, 1fr); }
+    .host { position: relative; top: 0; grid-column: 1; grid-row: 1; height: 180px; min-height: 0; overflow: hidden; }
+    .hosted-main { grid-row: 2; }
+    .host .host-fig { right: 4px; left: auto; transform: none; height: 360px; bottom: auto; top: 14px; }
+    .host-say { left: 8px; right: 128px; bottom: 8px; font-size: 13px; padding: 6px 10px; }
     .dock { left: 8px; right: 8px; bottom: 8px; grid-template-columns: minmax(0, 1fr); gap: 6px; }
     .party { max-width: none; }
     .party .m { grid-template-columns: minmax(0, 1fr); justify-items: stretch; }
