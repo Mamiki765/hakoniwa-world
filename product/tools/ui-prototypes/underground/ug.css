@@ -219,3 +219,36 @@ details.fbox[open] > summary { margin-bottom: 8px; }
 .hitaff { color: var(--heal); }
 
 @container stage (max-width: 760px) { .stp .stat { grid-template-columns: 3em minmax(0, 1fr) auto; } .stp .stat .meter { display: none; } .stp .stat .v { text-align: left; } .stat .step button { width: 44px; height: 44px; } .stat .step input { height: 44px; width: 72px; } }
+
+/* 追加の画面（ug2.js） */
+.hrow { display: grid; grid-template-columns: 64px minmax(0, 1fr) auto; gap: 10px; align-items: center; width: 100%; text-align: left; border: 0; border-bottom: 1px solid var(--line-2); border-radius: 0; background: transparent; padding: 7px 4px; min-height: 48px; }
+.hrow:hover:not(:disabled) { background: var(--win-2); }
+.hrow .res { font: 13px var(--f-game); text-align: center; border: 1px solid currentColor; border-radius: 3px; padding: 1px 0; }
+.r-win { color: var(--gold); } .r-lose { color: var(--hp-crit); } .r-draw { color: var(--ink-2); }
+.hrow .nm { font: 15px var(--f-game); } .hrow small { display: block; font: 12px var(--f-body); color: var(--ink-2); }
+.hrow .rw { font: 13px var(--f-game); text-align: right; white-space: nowrap; }
+.tree { display: grid; gap: 6px; align-content: start; }
+.node { display: grid; gap: 0; text-align: left; padding: 6px 10px; border-radius: 8px; border-left: 4px solid var(--line-2); }
+.node span { font: 12px var(--f-game); color: var(--ink-2); }
+.node.got { border-left-color: var(--gold); } .node.on { outline: 2px solid var(--gold); }
+.rules { display: grid; gap: 6px; margin-top: 8px; }
+.rule { display: grid; grid-template-columns: 22px minmax(0, 1fr) auto; gap: 8px; align-items: center; border: 1px solid var(--line-2); border-radius: 8px; padding: 6px 8px; }
+.rule .no { font: 15px var(--f-game); color: var(--ink-2); text-align: right; }
+.rule .if { display: flex; flex-wrap: wrap; gap: 4px 8px; align-items: center; font-size: 13px; }
+.rule .cond, .rule .then { display: inline-flex; gap: 4px; align-items: center; }
+.rule i { font-style: normal; color: var(--ink-2); }
+.rule select, .rule input { padding: 4px 6px; border: 1px solid var(--line-2); border-radius: 4px; background: var(--win-2); color: var(--ink); font: 13px var(--f-body); }
+.rule input { width: 60px; text-align: right; font-family: var(--f-game); }
+.rule .then select { border-color: var(--gold); }
+.rule .x { border: 0; background: transparent; padding: 0 4px; color: var(--ink-2); }
+.rule .mv { display: inline-flex; gap: 2px; } .rule .mv button { width: 34px; height: 34px; padding: 0; }
+.prop { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 10px; align-items: center; padding: 8px 2px; border-bottom: 1px solid var(--line-2); }
+.prop b { font: 400 16px var(--f-game); } .prop small { display: block; font-size: 12px; color: var(--ink-2); }
+.prop .price { font: 15px var(--f-game); white-space: nowrap; }
+@container stage (max-width: 760px) {
+    .hrow { grid-template-columns: 56px minmax(0, 1fr); } .hrow .rw { grid-column: 2; text-align: left; }
+    .rule { grid-template-columns: 18px minmax(0, 1fr); } .rule .mv { grid-column: 2; justify-content: flex-end; }
+    .rule .mv button { width: 44px; height: 40px; }
+    .prop { grid-template-columns: minmax(0, 1fr) auto; } .prop > :last-child { grid-column: 1 / -1; justify-self: end; }
+}
+.rule i, .rule .cond { white-space: nowrap; }

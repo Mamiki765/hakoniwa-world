@@ -78,6 +78,10 @@
     const stub = (label) => `<div class="page"><section class="box pn"><h2>${label}</h2><p class="muted">この画面は今回の試作では作っていません。</p></section></div>`;
     const goLabel = () => (S.cool > 0 ? `あと${S.cool}秒` : '冒険に出る');
     const hurt = () => S.hp / S.max < 0.25;
+    // 追加の画面は ug2.js に置く。ここからは状態と部品を渡すだけ
+    const X = window.UG_EXTRA ?? {};
+    const ctx = { S, n, h, meter, figure, CAT, RAR, STAT, AREAS, ITEMS, area };
+    const extra = (key, label) => (X[key] ? `<div class="page">${X[key](ctx)}</div>` : stub(label));
 
     // ---------- 保管庫 ----------
     // 考え方: 条件は一度に1つだけ。「共鳴結晶のうち、攻撃技強化を持っていない物を売る」のような一文で決めて売り、
@@ -164,7 +168,7 @@
         },
         adventure() {
             const tab = S.sub.adventure;
-            if (tab === 'history') return subtabs('adventure') + stub('戦闘履歴');
+            if (tab === 'history') return subtabs('adventure') + extra('history', '戦闘履歴');
             const list = AREAS.filter((a) => a.tab === tab);
             if (!list.some((a) => a.key === S.area)) S.area = list[0].key;
             const a = area(S.area), canSkip = !a.locked && a.need && a.clears >= a.need, cost = (a.ticket ?? 1) * S.skip;
@@ -186,11 +190,11 @@
                 <div class="stats">${STAT.map(([k, l]) => `<div class="stat" data-row="${k}"><span>${l}</span>${meter(S.stat[k] + S.add[k], max, 'aw')}<span class="v">${n(S.stat[k] + S.add[k])}</span><span class="step"><button type="button" data-stp="${k}" data-d="-1" aria-label="${l}を減らす">−</button><input type="number" inputmode="numeric" min="0" data-stpin="${k}" value="${S.add[k]}" aria-label="${l}に足す数"><button type="button" data-stp="${k}" data-d="1" aria-label="${l}を増やす">＋</button></span></div>`).join('')}</div>
                 <p style="display:flex;gap:8px;justify-content:flex-end;margin-top:10px"><button type="button" data-stpreset>戻す</button><button type="button" class="primary" data-stpok>この配分で決める</button></p>
                 <p class="muted">＋と−は押しっぱなしにすると、だんだん速く増減します。数字を直接打ち込むこともできます。決めるまでは何度でもやり直せます。</p></section></div>`;
-            return subtabs('character') + stub(SUB.character.find((x) => x[0] === tab)[1]);
+            return subtabs('character') + extra(tab, SUB.character.find((x) => x[0] === tab)[1]);
         },
         shop() {
             const tab = S.sub.shop;
-            if (tab === 'polish') return subtabs('shop') + stub('魔石研磨');
+            if (tab === 'polish') return subtabs('shop') + extra('polish', '魔石研磨');
             if (tab === 'bank') return subtabs('shop') + `<div class="page"><section class="box pn"><h2>銀行</h2><div class="bank">
                 <dl class="kv"><dt>手持ち</dt><dd>${n(S.g)} G</dd><dt>預金</dt><dd>${n(S.bank)} G</dd></dl>
                 <div class="amt"><input id="amt" type="text" inputmode="numeric" placeholder="金額" value="${h(S.amount)}" aria-label="金額"><span>G</span></div>
@@ -207,18 +211,18 @@
         },
         exchange() {
             const tab = S.sub.exchange;
-            if (tab !== 'party') return subtabs('exchange') + stub(SUB.exchange.find((x) => x[0] === tab)[1]);
+            if (tab !== 'party') return subtabs('exchange') + extra(tab, SUB.exchange.find((x) => x[0] === tab)[1]);
             return subtabs('exchange') + `<div class="page"><section class="box pn"><h2>パーティー<span>${S.pslot === null ? '入れ替える枠を押してください' : `${S.pslot + 2}番目に入れる相手を下から選んでください`}</span></h2>
                 <div class="pslots"><div class="pslot"><small>リーダー</small><b>${h(S.name)}</b><span>Lv${n(S.lv)}　HP ${n(S.max)}</span></div>${S.party.map((ci, i) => `<button type="button" class="pslot ${S.pslot === i ? 'on' : ''}" data-pslot="${i}"><small>${i + 2}番目</small><b>${ci === null ? '空き' : h(CANDS[ci][0])}</b><span>${ci === null ? '' : `Lv${n(CANDS[ci][1])}　HP ${n(CANDS[ci][2])}`}</span></button>`).join('')}</div></section>
                 <section class="box pn"><h2>借りられる秘書</h2>${CANDS.map((c, i) => `<div class="cand"><span><b>${h(c[0])}</b> <span class="muted">${h(c[3])}の秘書</span></span><span class="n">Lv${n(c[1])}　HP ${n(c[2])}</span>${S.party.includes(i) ? '<span class="muted">編成中</span>' : `<button type="button" data-cand="${i}" ${S.pslot === null ? 'disabled' : ''}>入れる</button>`}</div>`).join('')}
                 ${S.pslot !== null && S.party[S.pslot] !== null ? '<p style="margin-top:8px"><button type="button" data-cand="-1">この枠を空ける</button></p>' : ''}</section></div>`;
         },
-        villa() { return subtabs('villa') + stub(SUB.villa.find((x) => x[0] === S.sub.villa)[1]); },
+        villa() { return subtabs('villa') + extra(S.sub.villa, SUB.villa.find((x) => x[0] === S.sub.villa)[1]); },
         // ---- 枠なしの全面表示 ----
         event() {
-            const [who, text] = TALKS[S.talk], last = S.talk === TALKS.length - 1;
-            return `<div class="full"><div class="scene"><span class="ph">店の背景の枠</span>${figure('案内人の立ち絵')}</div><button type="button" class="skipx" data-back="shop">飛ばす</button>
-                <div class="msg pn"><span class="who">${who}</span>${h(text)}<div class="act"><button type="button" class="primary" ${last ? 'data-back="shop"' : 'data-talk'}>${last ? '店に戻る' : '次へ'}</button></div></div></div>`;
+            const lines = S.script ?? TALKS, [who, text] = lines[S.talk], last = S.talk === lines.length - 1, back = S.script ? 'villa' : 'shop';
+            return `<div class="full"><div class="scene"><span class="ph">${S.script ? '場面の背景の枠' : '店の背景の枠'}</span>${figure(S.script ? '登場人物の立ち絵' : '案内人の立ち絵')}</div><button type="button" class="skipx" data-back="${back}">飛ばす</button>
+                <div class="msg pn"><span class="who">${who}</span>${h(text)}<div class="act"><button type="button" class="primary" ${last ? `data-back="${back}"` : 'data-talk'}>${last ? (S.script ? '別荘に戻る' : '店に戻る') : '次へ'}</button></div></div></div>`;
         },
         battle() {
             const d = area(S.dest);
@@ -298,7 +302,7 @@
         const d = b.dataset, keep = view.scrollTop;
         let top = false;
         if (d.view) { S.view = d.view; S.msg = ''; top = true; }
-        else if (d.sub) { S.sub[S.view] = d.sub; S.msg = ''; top = true; if (S.view === 'shop' && d.sub === 'guide') { S.view = 'event'; S.talk = 0; S.sub.shop = 'buy'; } }
+        else if (d.sub) { S.sub[S.view] = d.sub; S.msg = ''; top = true; if (S.view === 'shop' && d.sub === 'guide') { S.view = 'event'; S.talk = 0; S.script = null; S.sub.shop = 'buy'; } }
         else if (d.jump) { const [v, s] = d.jump.split(':'); S.view = v; S.sub[v] = s; S.msg = ''; top = true; }
         else if ('go' in d) depart(d.go || null);
         else if (d.back) { if ('win' in d) win(); S.view = d.back; top = true; }
@@ -330,6 +334,7 @@
         else if (d.bank) { const v = parseInt(String(S.amount).replace(/\D/g, ''), 10) || 0, have = d.bank === 'in' ? S.g : S.bank; if (!v) S.msg = '金額を入れてください。'; else if (v > have) S.msg = d.bank === 'in' ? '手持ちが足りません。' : '預金が足りません。'; else { S.g += d.bank === 'in' ? -v : v; S.bank += d.bank === 'in' ? v : -v; S.msg = `${n(v)}Gを${d.bank === 'in' ? '預けました' : '下ろしました'}。`; S.amount = ''; } }
         else if (d.pslot) S.pslot = S.pslot === +d.pslot ? null : +d.pslot;
         else if (d.cand) { S.party[S.pslot] = +d.cand < 0 ? null : +d.cand; S.pslot = null; }
+        else if (X.click?.(d, ctx, b)) { if (ctx.goto) { S.view = ctx.goto; ctx.goto = null; top = true; } }
         else return;
         render();
         view.scrollTop = top ? 0 : keep;
@@ -342,6 +347,7 @@
         else if (t.id === 's-q') { S.sieve.q = t.value; S.confirm = false; }
         else if (t.id === 's-rar') { S.sieve.rar = t.value; S.confirm = false; }
         else if (t.id === 'amt') { S.amount = t.value; return; }
+        else if (X.change?.(t, ctx)) { /* ug2.js 側で処理 */ }
         else return;
         render(); view.scrollTop = keep;
     });
