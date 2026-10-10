@@ -176,23 +176,7 @@ html:is([data-theme="skyblue"], [data-theme="autumn"]) :is(.site-header, .manual
 }
 html:is([data-theme="skyblue"], [data-theme="autumn"]) :is(.site-header nav button, .session-actions button):hover { color: var(--legacy-link-active); background: var(--hover-surface); }
 html:is([data-theme="skyblue"], [data-theme="autumn"]) :is(.panel, .ug-shell, .ug-self-card, .ug-credit-dialog, .resource-panel, .reward-toast) { border-radius: 0; box-shadow: none; }
-html:is([data-theme="skyblue"], [data-theme="autumn"]) .command-panel { background: var(--legacy-input-cell); }
-html:is([data-theme="skyblue"], [data-theme="autumn"]) :is(.plan-panel, .manual-content) { background: #fff; }
 html:is([data-theme="skyblue"], [data-theme="autumn"]) .policy-list form { background: var(--legacy-input-cell); }
-html:is([data-theme="skyblue"], [data-theme="autumn"]) :is(.world-stats, .nation-hud) {
-    --hud-gauge-surface: var(--paper-deep);
-    color: var(--ink);
-    background: var(--paper-deep);
-    border: 1px solid var(--legacy-th-border);
-}
-html:is([data-theme="skyblue"], [data-theme="autumn"]) :is(.world-stats div, .hud-primary > div) { border-color: var(--line); }
-html:is([data-theme="skyblue"], [data-theme="autumn"]) .hud-more { color: var(--ink); }
-html:is([data-theme="skyblue"], [data-theme="autumn"]) :is(.world-stats dt, .hakoniwa-calendar, .nation-hud .profile-owner, .turn-indicator, .hud-primary dt, .hud-capacity-limit, .hud-more span, .hud-details dt, .resource-forecast-note) { color: var(--muted); }
-html:is([data-theme="skyblue"], [data-theme="autumn"]) .hud-identity h1 { color: #a06040; }
-html:is([data-theme="skyblue"], [data-theme="autumn"]) .resource-forecast tbody th { color: var(--ink); }
-html:is([data-theme="skyblue"], [data-theme="autumn"]) :is(.resource-forecast, .hud-support) { background: var(--paper); border-color: var(--line); }
-html:is([data-theme="skyblue"], [data-theme="autumn"]) :is(.forecast-positive, .workforce-saturation) { color: var(--info); }
-html:is([data-theme="skyblue"], [data-theme="autumn"]) :is(.forecast-negative, .workforce-unemployment) { color: var(--danger); }
 html:is([data-theme="skyblue"], [data-theme="autumn"]) table { border-collapse: separate; border-spacing: 1px; }
 html:is([data-theme="skyblue"], [data-theme="autumn"]) :is(th, td) { font-size: 10pt; border: 1px solid var(--line); padding: 4px 6px; }
 html:is([data-theme="skyblue"], [data-theme="autumn"]) th { border-color: var(--legacy-th-border); background: var(--table-heading); color: var(--ink); }

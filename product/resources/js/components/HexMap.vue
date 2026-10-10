@@ -33,6 +33,10 @@ const tooltipElement = ref<HTMLElement | null>(null);
 const wholeWorldView = ref(false);
 const showVisibility = ref(false);
 const showSeaAreas = ref(true);
+const showTerritory = ref(true);
+const showPlanMarks = ref(true);
+// 指で触ったあとに届くmouseenterでは、マスの詳細を出さない。
+let touchInput = false;
 const failedWeatherAssets = ref(new Set<string>());
 const tooltipPosition = ref({ x: 0, y: 0, placement: 'right' as 'right' | 'left' | 'bottom' | 'top' });
 const failedAssets = ref<Set<string>>(new Set());
@@ -92,6 +96,10 @@ const queuedCommandsByCoordinate = computed(() => {
 
     return index;
 });
+
+function firstPlanPosition(cell: MapCell): number | null {
+    return queuedCommandsByCoordinate.value.get(`${cell.x}:${cell.y}`)?.[0]?.queue_position ?? null;
+}
 
 function queuedCommandLines(cell: MapCell): string[] {
     return (queuedCommandsByCoordinate.value.get(`${cell.x}:${cell.y}`) ?? []).map((item) => {
@@ -250,6 +258,7 @@ function isPanExcludedTarget(target: EventTarget | null): boolean {
 }
 
 function beginPan(event: PointerEvent): void {
+    touchInput = event.pointerType === 'touch' || event.pointerType === 'pen';
     if (activePointer !== null || event.isPrimary === false || event.button !== 0 || isPanExcludedTarget(event.target)) return;
 
     const captureOwner = viewport.value;
@@ -365,6 +374,7 @@ function scheduleTooltipHide(): void {
 }
 
 async function showTooltip(cell: MapCell, event: Event): Promise<void> {
+    if (touchInput) return;
     cancelTooltipHide();
     const target = event.currentTarget as HTMLElement;
     const viewportElement = viewport.value;
@@ -416,7 +426,7 @@ function markAssetFailed(cell: MapCell): void {
 </script>
 
 <template>
-    <section class="map-stage" aria-label="世界地図">
+    <section class="map-stage" aria-label="世界地図" :data-territory="showTerritory ? 'on' : 'off'">
         <div class="map-toolbar">
             <button type="button" aria-label="自島へ戻る" @click="returnToCapital">自島へ</button>
             <button type="button" aria-label="世界全体を表示" @click="fitWholeWorld(true)">世界全体</button>
@@ -433,6 +443,10 @@ function markAssetFailed(cell: MapCell): void {
                 視界表示
             </button>
             <button type="button" class="sea-area-toggle" :aria-pressed="showSeaAreas" @click="showSeaAreas = !showSeaAreas">海域・天候</button>
+            <template v-if="commandQueue !== undefined">
+                <button type="button" class="territory-toggle" :aria-pressed="showTerritory" @click="showTerritory = !showTerritory">領土</button>
+                <button type="button" class="plan-mark-toggle" :aria-pressed="showPlanMarks" @click="showPlanMarks = !showPlanMarks">予約番号</button>
+            </template>
             <span class="map-cell-count">表示 {{ visiblePositioned.length }}/{{ cells.length }}セル</span>
             <span v-if="loading" role="status">読み込み中…</span>
             <span v-if="error" class="error" role="alert">{{ error }}</span>
@@ -482,6 +496,7 @@ function markAssetFailed(cell: MapCell): void {
                     <small v-if="item.cell.ship?.owner_nation != null || item.cell.owner_nation_number !== null">
                         N{{ item.cell.ship?.owner_nation?.nation_number ?? item.cell.owner_nation_number }}
                     </small>
+                    <span v-if="showPlanMarks && firstPlanPosition(item.cell) !== null" class="plan-mark" aria-hidden="true">{{ firstPlanPosition(item.cell) }}</span>
                     <span v-if="item.cell.monster" class="monster-overlay" aria-hidden="true">
                         <span class="monster-fallback">{{ item.cell.monster.name.slice(0, 1) }}</span>
                         <img

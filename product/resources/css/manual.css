@@ -7,6 +7,7 @@
 
 :root,
 html[data-theme="light"],
+html[data-theme="old-light"],
 html[data-theme="system"] {
     color-scheme: light;
     --ink: #173840;
@@ -22,7 +23,8 @@ html[data-theme="system"] {
     --on-solid: #fff;
 }
 
-html[data-theme="dark"] {
+html[data-theme="dark"],
+html[data-theme="old-dark"] {
     color-scheme: dark;
     --ink: #e5efea;
     --paper: #14241f;
