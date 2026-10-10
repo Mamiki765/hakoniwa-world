@@ -521,7 +521,10 @@ html:is([data-theme="dark"], [data-theme="old-dark"]) .compensation-banner, html
 .underground-party-battle-card-body small { color: var(--muted); font-size: .6rem; overflow-wrap: anywhere; }
 .underground-party-meter.is-awakening[data-state="ready"] > span { color: #463500; font-weight: 900; text-shadow: 0 1px 0 #f8e79d; }
 .underground-party-meter.is-awakening[data-state="awakened"] > span { color: #fff; font-weight: 900; text-shadow: 0 1px 1px #3d1749; }
-.underground-battle-detail-toggle { justify-self: start; width: fit-content; min-height: 2rem; padding: .3rem .6rem; }
+.underground-battle-filter { justify-self: start; display: inline-flex; }
+.underground-battle-filter button { min-height: 2rem; padding: .3rem .8rem; border: 1px solid var(--line); background: var(--input-surface); color: var(--ink); cursor: pointer; margin-left: -1px; }
+.underground-battle-filter button:first-child { margin-left: 0; }
+.underground-battle-filter button[aria-pressed="true"] { background: var(--navy-solid); border-color: var(--navy-solid); color: var(--on-solid); font-weight: 800; }
 .underground-lending-settings { display: grid; gap: .45rem; padding: .8rem; border: 1px solid var(--line); border-radius: 10px; background: var(--paper); }
 .underground-lending-settings h2 { margin: 0; }
 .underground-battle-preview { display: grid; justify-items: center; gap: .75rem; max-width: 48rem; margin-inline: auto; text-align: center; }
@@ -568,7 +571,8 @@ html:is([data-theme="dark"], [data-theme="old-dark"]) .compensation-banner, html
 .underground-pending-request { margin: .4rem 0; padding: .55rem .7rem; border-left: 3px solid var(--coral); background: color-mix(in srgb, var(--input-surface) 88%, var(--coral) 12%); color: var(--muted); font-size: .78rem; }
 .underground-rounds { display: grid; gap: 0; }
 .underground-round { padding: 1.25rem 0; border-bottom: 1px solid var(--line); }
-.underground-round h2 { margin: 0 0 .75rem; font-size: 1.1rem; }
+/* 読んでいるラウンドの見出しを上に残す（どのラウンドの行動かを見失わない）。 */
+.underground-round h2 { position: sticky; top: var(--site-header-height, 80px); z-index: 3; margin: 0 0 .75rem; padding: .3rem 0; background: var(--paper); font-size: 1.1rem; }
 .underground-round-start { margin-bottom: .9rem; }
 .underground-round-action-heading { margin: 0 0 .55rem; color: var(--muted); font-size: .78rem; }
 .underground-action-log { display: grid; gap: .42rem; margin: 0; padding: 0; list-style: none; }
@@ -1376,3 +1380,5 @@ html:is([data-theme="dark"], [data-theme="old-dark"]) .compensation-banner, html
     .site-header.has-user .session-actions.open :is(span, small, button, a) { justify-self: stretch; text-align: left; }
     .site-header.has-user .site-menu-version { display: block; padding: 2px 10px; color: var(--muted); font-size: .7rem; }
 }
+
+@media (max-width: 760px) { .underground-round h2 { --site-header-height: 42px; } }

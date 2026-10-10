@@ -1524,8 +1524,8 @@ function togglePartyMember(candidate: PartyCandidate): void {
     selectedPartyMemberIds.value = current;
 }
 
-function toggleBattleDetails(): void {
-    detailVisible.value = !detailVisible.value;
+function setBattleDetails(visible: boolean): void {
+    detailVisible.value = visible;
     try { window.localStorage.setItem(detailPreferenceKey, String(detailVisible.value)); } catch { /* optional */ }
 }
 
@@ -2429,9 +2429,10 @@ onUnmounted(() => {
                     <h1>{{ currentBattle.encounter_name }}</h1>
                     <p v-if="currentBattle.build_name">{{ currentBattle.build_name }}で戦闘を開始した。</p>
                     <p v-else>{{ currentPlayerDisplayName }}は戦闘を開始した。</p>
-                    <button type="button" class="underground-battle-detail-toggle" :aria-pressed="detailVisible" @click="toggleBattleDetails">
-                        戦闘詳細を{{ detailVisible ? '隠す' : '表示' }}
-                    </button>
+                    <div class="underground-battle-filter" role="group" aria-label="戦闘ログに出す行動">
+                        <button type="button" class="underground-battle-detail-toggle" :aria-pressed="!detailVisible" title="会心・覚醒・予告・撃破などの要点だけを出します" @click="setBattleDetails(false)">要点</button>
+                        <button type="button" :aria-pressed="detailVisible" @click="setBattleDetails(true)">すべて</button>
+                    </div>
                     <a class="underground-log-jump" href="#underground-battle-result">末尾へ</a>
                 </header>
 
