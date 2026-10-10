@@ -1,13 +1,14 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref } from 'vue';
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
 import { ApiError, api } from '../api/client';
+import { newestCreatedAt } from '../state/ownBoardUnread';
 import type { MessageBoardEntry, MessageBoardTimeline } from '../types';
 
 const props = defineProps<{
     nationId: number;
     context: 'development' | 'public';
 }>();
-const emit = defineEmits<{ posted: [] }>();
+const emit = defineEmits<{ posted: []; latest: [createdAt: string | null] }>();
 
 const timeline = ref<MessageBoardTimeline | null>(null);
 const body = ref('');
@@ -20,6 +21,11 @@ const secretError = ref('');
 const collapsed = ref(false);
 let refreshTimer: ReturnType<typeof setInterval> | null = null;
 let loadGeneration = 0;
+
+// いちばん新しい伝言の時刻。親が「新着あり」の印を出すのに使う。
+watch(timeline, (loaded) => {
+    if (loaded !== null) emit('latest', newestCreatedAt(loaded));
+});
 
 const bodyLength = computed(() => Array.from(body.value).length);
 const secretBodyLength = computed(() => Array.from(secretBody.value).length);

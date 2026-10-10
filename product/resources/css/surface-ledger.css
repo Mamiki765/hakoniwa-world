@@ -426,3 +426,27 @@ html .sl .sl-visit-facts h3 { font: var(--sl-w-head) 12px var(--sl-f-head); colo
     .sl-dialog .popover-actions button { flex: 1; min-height: 44px; }
     .sl .sl-plan-tools button { padding: 5px 10px; }
 }
+
+/* スマホ幅では、指で押すボタンに押せるだけの高さを持たせる。 */
+@media (max-width: 760px) {
+    .sl .sl-hud-actions button, .sl .sl-hud-actions .daily-quest-trigger, .sl .map-toolbar button, .sl .sl-seg button { min-height: 32px; }
+    .sl .sl-comment { min-height: 28px; line-height: 26px; }
+    .sl .sl-insert-at button { min-height: 30px; padding: 0 10px; }
+    .sl-all { min-height: 30px; }
+    .sl-all input { width: 18px; height: 18px; }
+    .sl .island-event-pagination button { min-height: 34px; }
+}
+
+/* タブレットほどの幅では、島の状況の数字を2段目に回して、3段に折れないようにする。 */
+@media (min-width: 761px) and (max-width: 1000px) {
+    .sl-hud { flex-wrap: wrap; }
+    .sl-hud-name { flex: 1; max-width: none; }
+    .sl-stats { order: 3; flex-basis: 100%; }
+}
+
+/* スマホでは伝言板を下のタブに直接出す（ログの中の切り替えに隠さない）。 */
+@media (max-width: 760px) {
+    .sl-log > .sl-pane-head { display: none; }
+    .sl .sl-tabs button { font-size: 12px; padding-inline: 2px; }
+    .sl .sl-tabs .grow { flex-basis: 42px; }
+}
