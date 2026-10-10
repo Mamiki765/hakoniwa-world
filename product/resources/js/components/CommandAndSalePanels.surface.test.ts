@@ -79,9 +79,61 @@ const errorResponse = (
     headers: { 'Content-Type': 'application/json' },
 });
 
-afterEach(() => vi.unstubAllGlobals());
+afterEach(() => { vi.unstubAllGlobals(); localStorage.removeItem('hakoniwa_surface_all_commands'); });
 
 describe('command plan workspace', () => {
+    it('keeps resource shortages reservable and reveals only safe lookahead commands on request', async () => {
+        // Prevent the current-availability filter from blocking a valid future reservation.
+        const future = definition({ key: 'build_farm', name: 'Future', execution_preview_status: 'currently_unavailable' });
+        const shortage = definition({ key: 'land_level', name: 'Shortage', execution_preview_status: 'currently_unavailable', shortfall_money: 5 });
+        const destructive = definition({ key: 'territory_abandon', name: 'Destructive', execution_preview_status: 'currently_unavailable' });
+        const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => jsonResponse(
+            init?.method === 'POST' ? { queue: commandQueue(2, [item(1, 1)]) }
+                : String(input).includes('command-definitions') ? catalog([future, shortage, destructive]) : commandQueue(),
+        ));
+        vi.stubGlobal('fetch', fetchMock);
+        const wrapper = mount(CommandQueuePanel, { props: { nationId: 1, mapSpaceId: 2, selected } });
+        await flushPromises();
+        const commands = () => wrapper.findAll('.command-grid button');
+        expect(new Set(commands().map(button => button.find('strong').text()))).toEqual(new Set(['Shortage']));
+        expect(commands()[0]!.attributes('disabled')).toBeUndefined();
+        await wrapper.get('.surface-command-heading input').setValue(true);
+        expect(new Set(commands().map(button => button.find('strong').text()))).toEqual(new Set(['Future', 'Shortage']));
+        await commands().find(button => button.find('strong').text() === 'Future')!.trigger('click');
+        await flushPromises();
+        const post = fetchMock.mock.calls.find(([, init]) => init?.method === 'POST');
+        expect(JSON.parse(String(post?.[1]?.body))).toMatchObject({ command_key: 'build_farm', position: 1 });
+    });
+
+    it('inserts after a selected explicit position and appends beyond the last position without packing gaps', async () => {
+        // Sparse plans are supported: count and array indexes must not replace API positions.
+        let serverQueue = commandQueue(1, [item(12, 2, { command_name: 'Before' }), item(17, 7, { command_name: 'After' })]);
+        const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+            if (init?.method === 'POST') {
+                serverQueue = commandQueue(2, [item(12, 2), item(13, 3), item(17, 8)]);
+                return jsonResponse({ queue: serverQueue });
+            }
+            return jsonResponse(String(input).includes('command-definitions') ? catalog([definition()]) : serverQueue);
+        });
+        vi.stubGlobal('fetch', fetchMock);
+        const wrapper = mount(CommandQueuePanel, { props: { nationId: 1, mapSpaceId: 2, selected } });
+        await flushPromises();
+        await wrapper.findAll('.bulk-actions button').find(button => button.text() === '荒地と焦土を全て地ならし')!.trigger('click');
+        expect(fetchMock.mock.calls.some(([, init]) => init?.method === 'POST')).toBe(false);
+        expect(wrapper.get('.command-status').attributes('role')).toBe('alert');
+        await wrapper.findAll('.plan-row').find(row => row.text().includes('Before'))!.trigger('click');
+        await flushPromises();
+        await wrapper.get('.command-grid button').trigger('click');
+        await flushPromises();
+        const post = fetchMock.mock.calls.find(([, init]) => init?.method === 'POST');
+        expect(JSON.parse(String(post?.[1]?.body))).toMatchObject({ position: 3, expected_version: 1 });
+        const lastQueue = wrapper.emitted('queue')!.at(-1)![0] as CommandQueue;
+        expect(lastQueue.items.map(entry => entry.queue_position)).toEqual([2, 3, 8]);
+        await wrapper.get('.surface-insert-position button').trigger('click');
+        await flushPromises();
+        const queries = fetchMock.mock.calls.filter(([url]) => String(url).includes('command-definitions'));
+        expect(new URL(String(queries.at(-1)![0]), 'http://local').searchParams.get('position')).toBe('9');
+    });
     it('follows the same item through two moves and cancellation, distinguishing 1T, 0T and automatic slots', async () => {
         let serverQueue = commandQueue(1, [item(11, 1, { command_name: 'A' }), item(22, 2, { command_name: 'B', consumes_turn: false }), item(33, 3, { command_name: 'C' })]);
         const deleted: string[] = [];
@@ -100,6 +152,7 @@ describe('command plan workspace', () => {
         await flushPromises();
         expect(wrapper.findAll('.plan-turn-marker').slice(0, 4).map((marker) => marker.text())).toEqual(['1T', '0T', '1T', '自動']);
         await wrapper.find('.plan-row').trigger('click');
+        await flushPromises();
         for (const position of [2, 3]) {
             await wrapper.findAll('.plan-selection-actions button').find((button) => button.text() === '下へ')!.trigger('click');
             await flushPromises();
@@ -280,7 +333,7 @@ describe('command plan workspace', () => {
         });
         expect(wrapper.findAll('.plan-row')).toHaveLength(20);
         expect(wrapper.findAll('.plan-row')[4]!.text()).toContain('整地');
-        expect(wrapper.findAll('.plan-row')[5]!.classes()).toContain('selected');
+        expect(wrapper.findAll('.plan-row')[4]!.attributes('aria-current')).toBe('true');
         expect(wrapper.get('.command-status').text()).toBe('送信完了');
         expect(wrapper.get('.command-status').classes()).toContain('command-status--success');
         expect(wrapper.get('.command-status').attributes('aria-live')).toBe('polite');
@@ -354,7 +407,7 @@ describe('command plan workspace', () => {
             expected_version: 3,
         });
         expect(wrapper.find('.plan-row-actions').exists()).toBe(false);
-        expect(wrapper.get('.plan-selection-toolbar').text()).toContain('1番を選択中');
+        expect(wrapper.get('.plan-selection-toolbar').text()).toContain('2番を選択中');
         expect(wrapper.find('.command-panel').exists()).toBe(true);
         expect(wrapper.find('.plan-panel').exists()).toBe(true);
 
@@ -809,7 +862,7 @@ describe('command plan workspace', () => {
         await wrapper.find('.command-grid button').trigger('click');
         await flushPromises();
         expect(wrapper.findAll('.plan-row')[1]!.text()).toContain('整地');
-        expect(wrapper.findAll('.plan-row')[2]!.classes()).toContain('selected');
+        expect(wrapper.findAll('.plan-row')[1]!.attributes('aria-current')).toBe('true');
         expect(fetchMock.mock.calls.filter(([, init]) => init?.method === 'POST').map(([, init]) => (
             JSON.parse(String(init?.body)) as { position: number }
         ).position)).toEqual([2, 2]);
@@ -836,15 +889,17 @@ describe('command plan workspace', () => {
 
     it('advances from position one to two and then three only after successful posts', async () => {
         let posts = 0;
+        let serverQueue = commandQueue();
         const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
             if (init?.method === 'POST') {
                 posts++;
+                serverQueue = commandQueue(posts + 1, Array.from({ length: posts }, (_, index) => item(index + 1, index + 1)));
                 return jsonResponse({
-                    queue: commandQueue(posts + 1, Array.from({ length: posts }, (_, index) => item(index + 1, index + 1))),
+                    queue: serverQueue,
                     message: '登録しました。',
                 }, 201);
             }
-            return jsonResponse(String(input).includes('command-definitions') ? catalog([definition()]) : commandQueue());
+            return jsonResponse(String(input).includes('command-definitions') ? catalog([definition()]) : serverQueue);
         });
         vi.stubGlobal('fetch', fetchMock);
         const wrapper = mount(CommandQueuePanel, { props: { nationId: 1, mapSpaceId: 2, selected } });
@@ -852,10 +907,10 @@ describe('command plan workspace', () => {
 
         await wrapper.find('.command-grid button').trigger('click');
         await flushPromises();
-        expect(wrapper.findAll('.plan-row')[1]!.classes()).toContain('selected');
+        expect(wrapper.findAll('.plan-row')[0]!.attributes('aria-current')).toBe('true');
         await wrapper.find('.command-grid button').trigger('click');
         await flushPromises();
-        expect(wrapper.findAll('.plan-row')[2]!.classes()).toContain('selected');
+        expect(wrapper.findAll('.plan-row')[1]!.attributes('aria-current')).toBe('true');
         expect(fetchMock.mock.calls.filter(([, init]) => init?.method === 'POST').map(([, init]) => (
             JSON.parse(String(init?.body)) as { position: number }
         ).position)).toEqual([1, 2]);
@@ -951,6 +1006,7 @@ describe('command plan workspace', () => {
 
         await wrapper.find('.plan-row').trigger('click');
         await wrapper.find('.plan-row').trigger('keydown', { key: 'Escape' });
+        await flushPromises();
         expect(wrapper.find('.plan-row').classes()).toContain('selected');
         const cancel = wrapper.findAll('.plan-selection-actions button').find((button) => button.text() === '取消')!;
         await cancel.trigger('click');
@@ -1024,21 +1080,21 @@ describe('command plan workspace', () => {
     });
 
     it('starts bulk insertion and delete-from-here at the selected position with explicit feedback', async () => {
-        let serverQueue = commandQueue(7, [], 30);
+        let serverQueue = commandQueue(7, Array.from({ length: 30 }, (_, index) => item(index + 1, index + 1)), 30);
         const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
             const path = String(input);
             if (path.endsWith('/command-queue/bulk') && init?.method === 'POST') {
-                serverQueue = commandQueue(8, [item(101, 5), item(102, 6)], 30);
+                serverQueue = commandQueue(8, [item(1, 1), item(2, 2), item(3, 3), item(4, 4), item(101, 5), item(102, 6), item(103, 7), ...Array.from({ length: 23 }, (_, index) => item(index + 5, index + 8))], 30);
                 return jsonResponse({
                     queue: serverQueue,
-                    inserted_count: 2,
+                    inserted_count: 3,
                     truncated_count: 3,
-                    candidate_count: 5,
+                    candidate_count: 3,
                 });
             }
             if (path.endsWith('/command-queue/from') && init?.method === 'DELETE') {
                 serverQueue = commandQueue(9, [], 30);
-                return jsonResponse({ queue: serverQueue, deleted_count: 2 });
+                return jsonResponse({ queue: serverQueue, deleted_count: 23 });
             }
 
             return jsonResponse(path.includes('command-definitions') ? catalog([definition()]) : serverQueue);
@@ -1049,7 +1105,9 @@ describe('command plan workspace', () => {
 
         await wrapper.findAll('.plan-row')[4]!.trigger('click');
         await flushPromises();
-        await wrapper.findAll('.bulk-actions button').find((button) => button.text() === '全て整地')!.trigger('click');
+        await wrapper.findAll('.bulk-actions button').find((button) => button.text() === '荒地と焦土を全て整地')!.trigger('click');
+        expect(fetchMock.mock.calls.some(([path, init]) => String(path).endsWith('/command-queue/bulk') && init?.method === 'POST')).toBe(false);
+        await wrapper.get('.command-modal .danger-action').trigger('click');
         await flushPromises();
 
         const bulk = fetchMock.mock.calls.find(([path, init]) => String(path).endsWith('/command-queue/bulk') && init?.method === 'POST');
@@ -1058,17 +1116,17 @@ describe('command plan workspace', () => {
             position: 5,
             expected_version: 7,
         });
-        expect(wrapper.get('.command-status').text()).toContain('31件目以降の3件を末尾から切り捨てました');
+        expect(wrapper.get('.command-status').text()).toContain('3件');
 
         await wrapper.findAll('.bulk-actions button').find((button) => button.text() === 'ここから下を削除')!.trigger('click');
-        expect(wrapper.find('.command-modal').text()).toContain('5番以降をすべて削除');
+        expect(wrapper.find('.command-modal').text()).toContain('8番以降をすべて削除');
         expect(fetchMock.mock.calls.some(([path, init]) => String(path).endsWith('/command-queue/from') && init?.method === 'DELETE')).toBe(false);
         await wrapper.find('.command-modal .danger-action').trigger('click');
         await flushPromises();
 
         const deletion = fetchMock.mock.calls.find(([path, init]) => String(path).endsWith('/command-queue/from') && init?.method === 'DELETE');
-        expect(JSON.parse(String(deletion?.[1]?.body))).toEqual({ position: 5, expected_version: 8 });
-        expect(wrapper.get('.command-status').text()).toBe('2件を削除しました');
+        expect(JSON.parse(String(deletion?.[1]?.body))).toEqual({ position: 8, expected_version: 8 });
+        expect(wrapper.get('.command-status').text()).toContain('23件');
     });
 
     it('warns for the hidden defense variant and keeps the monument target optional', async () => {

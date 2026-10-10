@@ -2,6 +2,8 @@
 @import './underground.css';
 @import './legacy-themes.css';
 @import './black-theme.css';
+@import './surface-themes.css';
+@import './surface-ledger.css';
 
 /* Keep the Awakening card/frame in its normal state; only the progress fill changes when full. */
 .underground-awakening-gauge[data-full="true"] {

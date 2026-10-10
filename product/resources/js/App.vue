@@ -5,6 +5,8 @@ import { ApiError, api, apiEnvelope } from './api/client';
 import AnnouncementBody from './components/AnnouncementBody.vue';
 import CellDetails from './components/CellDetails.vue';
 import CommandQueuePanel from './components/CommandQueuePanel.vue';
+import SurfaceWorkspace from './components/SurfaceWorkspace.vue';
+import NationInlineComment from './components/NationInlineComment.vue';
 import GuideConversationTopicAdmin from './components/GuideConversationTopicAdmin.vue';
 import AdminOperationsPanel from './components/AdminOperationsPanel.vue';
 import AdminTurnControl from './components/AdminTurnControl.vue';
@@ -88,7 +90,7 @@ function handleApplicationVisibilityChange(): void {
         refreshDistortedStoneReminderForDay(true);
     }
 }
-const themeModes = ['system', 'light', 'dark', 'skyblue', 'autumn', 'black'] as const;
+const themeModes = ['system', 'light', 'dark', 'old-light', 'old-dark', 'skyblue', 'autumn', 'black'] as const;
 type ThemeMode = typeof themeModes[number];
 
 function normaliseThemeMode(value: string | undefined): ThemeMode {
@@ -251,14 +253,14 @@ async function selectUndergroundSlot(target: UndergroundFacilityTarget): Promise
     selectedUndergroundSlot.value = target;
     if (page.value !== 'island') return;
     await nextTick();
-    scrollIslandWorkspaceTo('.command-panel');
+    await surfaceWorkspace.value?.showCommands();
 }
 
 function selectSurfaceCell(cell: Parameters<typeof map.select>[0]): void {
     selectedUndergroundSlot.value = null;
     map.select(cell);
 }
-const islandWorkspaceScroll = ref<HTMLElement | null>(null);
+const surfaceWorkspace = ref<InstanceType<typeof SurfaceWorkspace> | null>(null);
 const linkedProviders = computed(() => new Set(user.value?.providers.map((identity) => identity.provider) ?? []));
 const abandonmentConfirmed = computed(() => nation.value !== null
     && abandonmentConfirmationName.value === nation.value.name);
@@ -278,17 +280,6 @@ const nextTurnCountdown = computed(() => {
     return [hours, minutes, seconds].map((part) => String(part).padStart(2, '0')).join(':');
 });
 const turnStatusMessage = computed(() => matchTurnStatus(worldSummary.value?.turn_status));
-
-function scrollIslandWorkspaceTo(selector: string): void {
-    const scroller = islandWorkspaceScroll.value;
-    const section = scroller?.querySelector<HTMLElement>(selector);
-    if (!scroller || !section || typeof scroller.scrollTo !== 'function') return;
-
-    scroller.scrollTo({
-        left: section.offsetLeft,
-        behavior: window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth',
-    });
-}
 
 function formatForecastDelta(value: number): string {
     if (value === 0) return '0';
@@ -2196,12 +2187,14 @@ async function abandonNation(): Promise<void> {
         <section v-else-if="page === 'island' && nation?.capital && mapSpace" class="island-page">
             <header class="nation-hud">
                 <div class="hud-identity">
-                    <h1 :class="{ 'karma-name': nation.karma_positive }">N{{ nation.nation_number }} {{ nation.name }}</h1>
+                    <div class="surface-island-title">
+                        <h1 :class="{ 'karma-name': nation.karma_positive }">N{{ nation.nation_number }} {{ nation.name }}</h1>
+                        <NationInlineComment :nation-id="nation.id" :comment="nation.comment" @saved="nation.comment = $event" />
+                    </div>
                     <p v-if="nation.state_label"><span class="state-badge">{{ nation.state_label }}</span><template v-if="nation.winter_theme_active"> 冬theme適用中</template></p>
                     <p v-if="nation.karma_positive" class="karma-emphasis">KARMA:{{ nation.karma }}</p>
                     <p class="turn-indicator">現在ターン {{ nation.current_turn }}</p>
                     <p class="profile-owner">島主：{{ nation.owner_name }}</p>
-                    <p v-if="nation.comment" class="profile-comment">「{{ nation.comment }}」</p>
                 </div>
                 <dl class="hud-primary">
                     <div><dt>人口</dt><dd>{{ nation.total_population.toLocaleString() }}人</dd></div>
@@ -2250,6 +2243,9 @@ async function abandonNation(): Promise<void> {
                         <section class="hud-support" aria-labelledby="hud-support-heading">
                             <h2 id="hud-support-heading">その他</h2>
                             <dl class="hud-details">
+                                <div class="surface-mobile-stats"><dt>農場規模</dt><dd>{{ nation.farm_capacity_people.toLocaleString() }}人</dd></div>
+                                <div class="surface-mobile-stats"><dt>工場規模</dt><dd>{{ nation.factory_capacity_people.toLocaleString() }}人</dd></div>
+                                <div class="surface-mobile-stats"><dt>採掘場規模</dt><dd>{{ nation.mine_capacity_people.toLocaleString() }}人</dd></div>
                                 <div><dt>KARMA</dt><dd :class="{ 'karma-text': nation.karma_positive }">{{ nation.karma }}</dd></div>
                                 <div><dt>資金上限</dt><dd>{{ formatExactMoney(nation.money_capacity) }}</dd></div>
                                 <div><dt>食材上限</dt><dd>{{ formatResource(nation.food_capacity_tons, 'トン') }}</dd></div>
@@ -2283,52 +2279,37 @@ async function abandonNation(): Promise<void> {
                     <button class="daily-quest-trigger notification-anchor" type="button" :aria-label="hasIncompleteDailyQuests ? 'デイリークエスト（未達成の項目があります）' : undefined" @click="openDailyQuests">デイリークエスト<span v-if="hasIncompleteDailyQuests" class="notification-dot" aria-hidden="true" /></button>
                 </template>
             </SalePolicyPanel>
-            <div class="island-workspace-region">
-                <nav class="workspace-jump" aria-label="開発ワークスペース内の移動">
-                    <button type="button" aria-controls="island-development-workspace" @click="scrollIslandWorkspaceTo('.command-panel')">セル・コマンド</button>
-                    <button type="button" aria-controls="island-development-workspace" @click="scrollIslandWorkspaceTo('.map-column')">地図</button>
-                    <button type="button" aria-controls="island-development-workspace" @click="scrollIslandWorkspaceTo('.plan-panel')">開発計画</button>
-                </nav>
-                <div
-                    id="island-development-workspace"
-                    ref="islandWorkspaceScroll"
-                    class="island-workspace-scroll"
-                    role="region"
-                    aria-label="島開発ワークスペース（横スクロール）"
-                    tabindex="0"
-                >
-                    <div class="island-grid">
-                        <CommandQueuePanel
-                            :nation-id="nation.id"
-                            :map-space-id="mapSpace.id"
-                            :selected="map.selected.value"
-                            :selected-underground="selectedUndergroundSlot"
-                            :nation-state="nation.state"
-                            @queue="authoritativeCommandQueue = $event"
-                            @ship="map.updateSelectedShip"
-                            @daily-quest="handleDailyQuestProgress"
-                        />
-                        <div class="map-column">
-                            <HexMap
-                                :cells="map.visibleCells.value"
-                                :selected="map.selected.value"
-                                :capital="nation.capital"
-                                :bounds="mapSpace.bounds"
-                                :sea-areas="mapSpace.sea_areas"
-                                :own-nation-id="nation.id"
-                                :command-queue="authoritativeCommandQueue"
-                                :loading="map.loading.value"
-                                :error="map.error.value"
-                                :empty-chunks="map.emptyChunks.value"
-                                @select="selectSurfaceCell"
-                                @move="map.moveSelection"
-                                @request-range="map.loadVisibleRange"
-                                @request-all="map.loadAllChunks"
-                            />
-                        </div>
-                    </div>
-                </div>
-            </div>
+            <SurfaceWorkspace ref="surfaceWorkspace">
+                <CommandQueuePanel
+                    :nation-id="nation.id"
+                    :map-space-id="mapSpace.id"
+                    :selected="map.selected.value"
+                    :selected-underground="selectedUndergroundSlot"
+                    :nation-state="nation.state"
+                    @queue="authoritativeCommandQueue = $event"
+                    @ship="map.updateSelectedShip"
+                    @daily-quest="handleDailyQuestProgress"
+                />
+                <template #map>
+                    <HexMap
+                        :cells="map.visibleCells.value"
+                        :selected="map.selected.value"
+                        :capital="nation.capital"
+                        :bounds="mapSpace.bounds"
+                        :sea-areas="mapSpace.sea_areas"
+                        :own-nation-id="nation.id"
+                        :command-queue="authoritativeCommandQueue"
+                        :loading="map.loading.value"
+                        :error="map.error.value"
+                        :empty-chunks="map.emptyChunks.value"
+                        @select="selectSurfaceCell"
+                        @move="map.moveSelection"
+                        @request-range="map.loadVisibleRange"
+                        @request-all="map.loadAllChunks"
+                    />
+                </template>
+                <template #log><IslandEventLog :key="`owner:${nation.id}:${nation.current_turn}`" :nation-id="nation.id" audience="owner" /></template>
+            </SurfaceWorkspace>
             <UndergroundSurfaceMapView
                 v-if="undergroundSurfaceMap"
                 :map="undergroundSurfaceMap"
@@ -2341,7 +2322,6 @@ async function abandonNation(): Promise<void> {
                 context="development"
                 @posted="refreshMyNation"
             />
-            <IslandEventLog :key="`owner:${nation.id}:${nation.current_turn}`" :nation-id="nation.id" audience="owner" />
         </section>
 
         <section v-else-if="page === 'preview' && previewNation?.capital && mapSpace" class="preview-page">
@@ -2586,7 +2566,7 @@ async function abandonNation(): Promise<void> {
                             :checked="themeMode === 'light'"
                             @change="selectTheme('light')"
                         >
-                        <span><strong>ライトテーマ</strong><small>常に明るい配色で表示します。</small></span>
+                        <span><strong>New Light</strong><small>常に明るい配色で表示します。</small></span>
                     </label>
                     <label class="theme-choice">
                         <input
@@ -2596,7 +2576,11 @@ async function abandonNation(): Promise<void> {
                             :checked="themeMode === 'dark'"
                             @change="selectTheme('dark')"
                         >
-                        <span><strong>ダークテーマ</strong><small>常に暗い紺・深緑系の配色で表示します。</small></span>
+                        <span><strong>New Dark</strong><small>常に暗い配色で表示します。</small></span>
+                    </label>
+                    <label v-for="mode in (['old-light', 'old-dark'] as const)" :key="mode" class="theme-choice">
+                        <input type="radio" name="display-theme" :value="mode" :checked="themeMode === mode" @change="selectTheme(mode)">
+                        <span><strong>{{ mode === 'old-light' ? 'Old Light' : 'Old Dark' }}</strong><small>従来の配色と見出しの書体です。</small></span>
                     </label>
                     <label v-for="mode in (['skyblue', 'autumn'] as const)" :key="mode" class="theme-choice">
                         <input type="radio" name="display-theme" :value="mode" :checked="themeMode === mode" @change="selectTheme(mode)">

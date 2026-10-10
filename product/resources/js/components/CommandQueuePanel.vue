@@ -77,6 +77,10 @@ const shipStatus = ref<CommandStatus>({ kind: 'idle', text: '未変更' });
 const shipHeading = ref<number | null>(null);
 const selectedPosition = ref(1);
 const selectedItemId = ref<number | null>(null);
+const hasPlanSelection = ref(false);
+const showAllCommands = ref(false);
+try { showAllCommands.value = localStorage.getItem('hakoniwa_surface_all_commands') === 'true'; } catch { /* Optional preference. */ }
+watch(showAllCommands, value => { try { localStorage.setItem('hakoniwa_surface_all_commands', String(value)); } catch { /* Optional preference. */ } });
 const pendingNeedsConfirmation = ref(false);
 const draggedItemId = ref<number | null>(null);
 const pendingDefinition = ref<CommandDefinition | null>(null);
@@ -95,8 +99,25 @@ let disposed = false;
 
 const basePath = (nationId = props.nationId, mapSpaceId = props.mapSpaceId) => `/api/v1/nations/${nationId}/map-spaces/${mapSpaceId}`;
 const applicableDefinitions = computed(() => definitions.value.filter(
-    (definition) => definition.applicable && (definition.command_group ?? 'normal') === activeCommandGroup.value,
+    (definition) => definition.applicable && (definition.command_group ?? 'normal') === activeCommandGroup.value
+        && (showAllCommands.value || !isLookahead(definition))
+        && !(isLookahead(definition) && (definition.key === 'territory_abandon' || definition.command_suffix_tone === 'danger')),
 ));
+// The API does not separate terrain failures from resource failures. Keep shortages
+// visible conservatively; do not parse warning text or duplicate terrain rules.
+function isLookahead(definition: CommandDefinition): boolean {
+    return definition.execution_preview_status === 'currently_unavailable'
+        && definition.shortfall_money === 0 && definition.shortfall_paradox === 0;
+}
+const insertionPosition = computed(() => {
+    if (selectedPlanItem.value !== null) return selectedPlanItem.value.position + 1;
+    if (hasPlanSelection.value) return selectedPosition.value;
+    return Math.max(0, ...queue.value.items.map(item => item.queue_position)) + 1;
+});
+const bulkPosition = computed(() => hasPlanSelection.value ? selectedPosition.value : 1);
+const canInsert = computed(() => insertionPosition.value <= queue.value.limit && queue.value.explicit_count < queue.value.limit);
+function clearPlanSelection(): void { selectedItemId.value = null; hasPlanSelection.value = false; }
+
 const pendingQuantityIsValid = computed(() => quantityIsValid(pendingQuantity.value));
 const editingQuantityIsValid = computed(() => quantityIsValid(editingQuantity.value));
 const pendingCostMoney = computed(() => {
@@ -165,11 +186,14 @@ watch(
         props.selectedUnderground?.slot_index,
         props.nationId,
         props.mapSpaceId,
-        selectedPosition.value,
     ],
     () => requestRefresh(),
     { immediate: true },
 );
+watch(insertionPosition, () => {
+    // A cursor change only changes the preview, never the authoritative queue.
+    if (!refreshing.value && !mutating.value) void refresh(false);
+});
 
 function requestRefresh(): void {
     if (mutating.value) {
@@ -179,7 +203,7 @@ function requestRefresh(): void {
     void refresh();
 }
 
-async function refresh(): Promise<void> {
+async function refresh(includeQueue = true): Promise<void> {
     const generation = ++refreshGeneration;
     activeRefreshController?.abort();
     const controller = new AbortController();
@@ -189,7 +213,7 @@ async function refresh(): Promise<void> {
         ? null
         : { x: props.selected.x, y: props.selected.y };
     const path = basePath(props.nationId, props.mapSpaceId);
-    const query = new URLSearchParams({ position: String(selectedPosition.value) });
+    const query = new URLSearchParams();
     if (selected !== null) {
         query.set('target_x', String(selected.x));
         query.set('target_y', String(selected.y));
@@ -200,17 +224,18 @@ async function refresh(): Promise<void> {
 
     refreshing.value = true;
     try {
-        const [nextDefinitions, nextQueue] = await Promise.all([
-            api<CommandCatalog>(`${path}/command-definitions?${query}`, { signal: controller.signal }),
-            api<CommandQueue>(`${path}/command-queue`, { signal: controller.signal }),
-        ]);
-
+        if (includeQueue) {
+            const nextQueue = await api<CommandQueue>(`${path}/command-queue`, { signal: controller.signal });
+            if (generation !== refreshGeneration) return;
+            applyServerQueue(nextQueue);
+        }
+        query.set('position', String(Math.min(insertionPosition.value, queue.value.limit)));
+        const nextDefinitions = await api<CommandCatalog>(`${path}/command-definitions?${query}`, { signal: controller.signal });
         if (generation !== refreshGeneration) return;
         definitions.value = nextDefinitions.commands;
         paradox.value = nextDefinitions.paradox ?? null;
         if (underground !== null) activeCommandGroup.value = 'normal';
         quantityContract.value = nextDefinitions.quantity_contract;
-        applyServerQueue(nextQueue);
     } catch (error) {
         if (generation !== refreshGeneration || isAbortError(error)) return;
         setCommandError(playerFacingReason(error, '開発計画を取得できませんでした'));
@@ -218,12 +243,15 @@ async function refresh(): Promise<void> {
         if (generation === refreshGeneration) {
             if (activeRefreshController === controller) activeRefreshController = null;
             refreshing.value = false;
+            if (query.has('position') && Number(query.get('position')) !== Math.min(insertionPosition.value, queue.value.limit)) {
+                void refresh(false);
+            }
         }
     }
 }
 
 function chooseCommand(definition: CommandDefinition, event?: Event): void {
-    if (!definition.available || !hasSelectedTarget(definition)) return;
+    if (!definition.available || !hasSelectedTarget(definition) || !canInsert.value) return;
     const trigger = event?.currentTarget instanceof HTMLElement ? event.currentTarget : null;
     const frozen = freezeCommandContext();
     if (definition.confirmation_message) {
@@ -251,7 +279,7 @@ function freezeCommandContext(): FrozenCommandContext {
         targetShipId: selected?.ship?.is_owner === true ? selected.ship.id : null,
         targetLayer: underground?.layer ?? null,
         targetSlotIndex: underground?.slot_index ?? null,
-        position: selectedPosition.value,
+        position: insertionPosition.value,
         queueVersion: queue.value.version,
     };
 }
@@ -282,7 +310,33 @@ function prepareCommand(
     void addCommand(definition, definition.quantity_default ?? quantityContract.value.default, {}, frozen);
 }
 
-async function bulkInsert(action: 'clear_all' | 'level_all' | 'reclaim_clear_all' | 'reclaim_level_all'): Promise<void> {
+function confirmBulk(action: 'clear_all' | 'level_all' | 'reclaim_clear_all' | 'reclaim_level_all'): void {
+    if (busy.value) return;
+    const position = bulkPosition.value;
+    // The current bulk endpoint packs existing sparse positions. Do not discard
+    // a player's automatic slots; preserving them requires a server decision.
+    const positions = queue.value.items.map(item => item.queue_position).sort((left, right) => left - right);
+    if (positions.some((value, index) => value !== index + 1) || position > positions.length + 1) {
+        setCommandError('空き枠を含む計画では一括登録を利用できません。空き枠への登録は個別に行ってください。');
+        return;
+    }
+    const version = queue.value.version;
+    const context = queueContext();
+    confirmation.value = {
+        message: `${position}番から一括登録します。空きは${queue.value.limit - queue.value.explicit_count}件です。入りきらない分は末尾から取り消されます。`,
+        confirmLabel: '一括登録する',
+        action: () => {
+            confirmation.value = null;
+            if (!isCurrentQueueContext(context) || version !== queue.value.version) {
+                setCommandError('計画が更新されています。もう一度確認してください');
+                return;
+            }
+            void bulkInsert(action, position, version);
+        },
+    };
+}
+
+async function bulkInsert(action: 'clear_all' | 'level_all' | 'reclaim_clear_all' | 'reclaim_level_all', position: number, version: number): Promise<void> {
     if (busy.value) return;
     const context = queueContext();
     beginMutation();
@@ -297,9 +351,9 @@ async function bulkInsert(action: 'clear_all' | 'level_all' | 'reclaim_clear_all
             method: 'POST',
             body: JSON.stringify({
                 action,
-                position: selectedPosition.value,
+                position,
                 request_key: crypto.randomUUID(),
-                expected_version: queue.value.version,
+                expected_version: version,
             }),
         });
         if (!isCurrentQueueContext(context)) {
@@ -309,7 +363,7 @@ async function bulkInsert(action: 'clear_all' | 'level_all' | 'reclaim_clear_all
         applyServerQueue(result.queue);
         if (result.daily_quest?.completed_now === true) emit('dailyQuest', result.daily_quest);
         commandStatus.value = result.truncated_count > 0
-            ? { kind: 'success', text: `${result.inserted_count}件を登録し、31件目以降の${result.truncated_count}件を末尾から切り捨てました` }
+            ? { kind: 'success', text: `${result.inserted_count}件を登録し、末尾の${result.truncated_count}件を取り消しました` }
             : { kind: 'success', text: `${result.inserted_count}件を登録しました` };
     } catch (error) {
         if (!isCurrentQueueContext(context) || isAbortError(error)) refreshRequestedAfterMutation = true;
@@ -388,6 +442,7 @@ async function addCommand(
     if (busy.value) return false;
     const context: QueueContext = { nationId: frozen.nationId, mapSpaceId: frozen.mapSpaceId };
     const submittedPosition = frozen.position;
+    const selectionAtSubmission = { id: selectedItemId.value, position: selectedPosition.value, active: hasPlanSelection.value };
     const path = basePath(context.nationId, context.mapSpaceId);
     beginMutation();
 
@@ -412,12 +467,15 @@ async function addCommand(
             refreshRequestedAfterMutation = true;
             return false;
         }
-        selectedItemId.value = null;
+        const inserted = result.queue.items.find(item => item.queue_position === submittedPosition);
+        if (inserted && selectedItemId.value === selectionAtSubmission.id
+            && selectedPosition.value === selectionAtSubmission.position && hasPlanSelection.value === selectionAtSubmission.active) {
+            selectedItemId.value = inserted.id;
+            hasPlanSelection.value = true;
+            selectedPosition.value = submittedPosition;
+        }
         applyServerQueue(result.queue);
         if (result.daily_quest?.completed_now === true) emit('dailyQuest', result.daily_quest);
-        if (selectedPosition.value === submittedPosition) {
-            selectedPosition.value = clampPosition(submittedPosition + 1, result.queue.limit);
-        }
         setCommandSuccess();
         return true;
     } catch (error) {
@@ -459,6 +517,7 @@ function trapCommandDialogFocus(event: KeyboardEvent): void {
 }
 
 function selectPlanSlot(slot: EffectivePlanSlot): void {
+    hasPlanSelection.value = true;
     selectedPosition.value = slot.position;
     selectedItemId.value = slot.kind === 'explicit' ? slot.id : null;
 }
@@ -492,7 +551,7 @@ async function move(itemId: number, delta: number): Promise<void> {
     if (source === undefined) return;
     const destination = source.queue_position + delta;
     if (destination < 1 || destination > queue.value.limit) return;
-    const target = queue.value.plan[destination - 1];
+    const target = queue.value.plan.find(slot => slot.position === destination);
     if (target !== undefined) await dropFromKeyboard(source.id, target);
 }
 
@@ -554,6 +613,7 @@ async function mutateQueue(method: 'PUT' | 'PATCH' | 'DELETE', path: string, bod
             return false;
         }
         selectedItemId.value = followItemId;
+        if (followItemId !== null) hasPlanSelection.value = true;
         applyServerQueue(nextQueue);
         setCommandSuccess();
         return true;
@@ -581,7 +641,7 @@ function applyServerQueue(nextQueue: CommandQueue): void {
     if (selectedItemId.value !== null) {
         const selected = nextQueue.items.find((item) => item.id === selectedItemId.value);
         if (selected) selectedPosition.value = selected.queue_position;
-        else selectedItemId.value = null;
+        else clearPlanSelection();
     }
     synchronizeEditingItem(nextQueue);
 }
@@ -631,12 +691,15 @@ function beginMutation(): void {
 }
 
 async function finishMutation(): Promise<void> {
+    let refreshed = false;
     while (!disposed) {
         await nextTick();
         if (!refreshRequestedAfterMutation) break;
         refreshRequestedAfterMutation = false;
         await refresh();
+        refreshed = true;
     }
+    if (!disposed && !refreshed) await refresh(false);
     mutating.value = false;
 }
 
@@ -722,7 +785,8 @@ onBeforeUnmount(() => {
                     </form>
                 </section>
                 <section class="available-commands">
-                    <h3>適用できるコマンド</h3>
+                    <div class="surface-command-heading"><h3>開発コマンド</h3><label><input v-model="showAllCommands" type="checkbox"> 全部出す</label></div>
+                    <p class="surface-insert-position">入れる位置 <strong>{{ insertionPosition }}番</strong>（{{ hasPlanSelection ? selectedPlanItem ? `${selectedPlanItem.position}番の後ろ` : '空き枠' : '末尾' }}）<button v-if="hasPlanSelection" type="button" @click="clearPlanSelection">末尾に戻す</button></p>
                     <div v-if="!selectedUnderground" class="command-group-tabs" role="tablist" aria-label="コマンド種別">
                         <button
                             type="button"
@@ -761,7 +825,7 @@ onBeforeUnmount(() => {
                             v-for="definition in applicableDefinitions"
                             :key="definition.key"
                             type="button"
-                            :disabled="busy || !definition.available || queue.explicit_count >= queue.limit"
+                            :disabled="busy || !definition.available || !canInsert"
                             :title="definition.unavailable_reason ?? definition.description"
                             @click="chooseCommand(definition, $event)"
                         >
@@ -777,6 +841,8 @@ onBeforeUnmount(() => {
                             <span v-if="definition.initial_facility_capacity">初期 {{ definition.initial_facility_capacity.formatted }}</span>
                             <span v-if="definition.shortfall_money > 0" class="shortfall">資金が{{ formatExactMoney(definition.shortfall_money) }}不足</span>
                             <span v-if="(definition.shortfall_paradox ?? 0) > 0" class="shortfall">輝石が{{ definition.shortfall_paradox }} Pd不足</span>
+                            <span v-if="isLookahead(definition)" class="surface-lookahead">先読み</span>
+                            <span v-else-if="definition.execution_preview_status === 'executable_after_queue'" class="surface-lookahead">計画後に実行可能</span>
                             <span v-if="definition.execution_warnings.length" class="shortfall">注意事項あり</span>
                         </button>
                     </div>
@@ -795,13 +861,16 @@ onBeforeUnmount(() => {
                     </div>
                     <span>{{ queue.explicit_count }}件登録</span>
                 </div>
-                <div v-if="!selectedUnderground" class="bulk-actions" aria-label="開発計画の一括操作">
-                    <button type="button" :disabled="busy" @click="bulkInsert('clear_all')">全て整地</button>
-                    <button type="button" :disabled="busy" @click="bulkInsert('level_all')">全て地ならし</button>
-                    <button type="button" :disabled="busy" @click="bulkInsert('reclaim_clear_all')">浅瀬全て埋め立て＋整地</button>
-                    <button type="button" :disabled="busy" @click="bulkInsert('reclaim_level_all')">浅瀬全て埋め立て＋地ならし</button>
+                <details v-if="!selectedUnderground" class="surface-bulk-menu">
+                    <summary>一括操作</summary>
+                    <div class="bulk-actions" aria-label="開発計画の一括操作">
+                    <button type="button" :disabled="busy" @click="confirmBulk('level_all')">荒地と焦土を全て地ならし</button>
+                    <button type="button" :disabled="busy" @click="confirmBulk('clear_all')">荒地と焦土を全て整地</button>
+                    <button type="button" :disabled="busy" @click="confirmBulk('reclaim_clear_all')">浅瀬全て埋め立て＋整地</button>
+                    <button type="button" :disabled="busy" @click="confirmBulk('reclaim_level_all')">浅瀬全て埋め立て＋地ならし</button>
                     <button type="button" class="danger-action" :disabled="busy" @click="confirmCancelFrom">ここから下を削除</button>
-                </div>
+                    </div>
+                </details>
                 <section v-if="selectedPlanItem" class="plan-selection-toolbar" aria-label="選択中の計画を編集">
                     <div>
                         <span>{{ selectedPlanItem.position }}番を選択中</span>
@@ -814,16 +883,16 @@ onBeforeUnmount(() => {
                         <button type="button" class="danger-action" :disabled="busy" @click="cancel(selectedPlanItem.id)">取消</button>
                     </div>
                 </section>
-                <p v-else-if="selectedPlanSlot?.kind === 'automatic_finance'" class="queue-notice plan-selection-note">{{ selectedPlanSlot.position }}番は、空き枠で自動実行される資金繰りです。</p>
+                <p v-else-if="hasPlanSelection && selectedPlanSlot?.kind === 'automatic_finance'" class="queue-notice plan-selection-note">{{ selectedPlanSlot.position }}番は、空き枠で自動実行される資金繰りです。</p>
                 <ol class="plan-list">
                     <li
                         v-for="slot in queue.plan"
                         :key="slot.kind === 'explicit' ? `item-${slot.id}` : `auto-${slot.position}`"
                         class="plan-row"
-                        :class="{ selected: selectedPosition === slot.position, automatic: slot.kind === 'automatic_finance' }"
+                        :class="{ selected: hasPlanSelection && selectedPosition === slot.position, automatic: slot.kind === 'automatic_finance' }"
                         :draggable="slot.kind === 'explicit' && !busy"
                         tabindex="0"
-                        :aria-current="selectedPosition === slot.position ? 'true' : undefined"
+                        :aria-current="hasPlanSelection && selectedPosition === slot.position ? 'true' : undefined"
                         @click="selectPlanSlot(slot)"
                         @dblclick="slot.kind === 'explicit' && openQuantityEditor(slot)"
                         @contextmenu.prevent="slot.kind === 'explicit' && cancel(slot.id)"

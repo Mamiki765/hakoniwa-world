@@ -1,0 +1,218 @@
+/* Theme values for the surface ledger. Existing theme and cookie identities are retained. */
+:root, html[data-theme="system"], html[data-theme="light"] {
+    --surface-bg: #e4ecf1;
+    --surface-panel: #f6f9fb;
+    --surface-panel-alt: #d9e4eb;
+    --surface-ink: #14263a;
+    --surface-muted: #4a6078;
+    --surface-line: #a9bccb;
+    --surface-accent: #0b5d8c;
+    --surface-solid: #0b5d8c;
+    --surface-on-solid: #ffffff;
+    --surface-input: #f6f9fb;
+    --surface-selected: #d8e9f5;
+    --surface-danger: #bf362e;
+    --surface-warning: #8a5200;
+    --surface-success: #23803a;
+    --surface-shadow: none;
+    --surface-sea: #173f78;
+    --surface-selection: #ffe36b;
+    --surface-backdrop: rgb(0 0 0 / 45%);
+    --surface-emphasis: #8a5200;
+    --surface-emphasis-strong: #8a5200;
+    --surface-font-body: "Yu Gothic UI", "Hiragino Kaku Gothic ProN", sans-serif;
+    --surface-font-heading: var(--surface-font-body);
+    --surface-font-numeric: var(--surface-font-body);
+    --surface-radius: 3px;
+}
+
+html[data-theme="dark"] {
+    --surface-bg: #0a1420;
+    --surface-panel: #121f2e;
+    --surface-panel-alt: #1b2d41;
+    --surface-ink: #dbe6f0;
+    --surface-muted: #8da3b9;
+    --surface-line: #2e455d;
+    --surface-accent: #5bb4e4;
+    --surface-solid: #1b2d41;
+    --surface-on-solid: #dbe6f0;
+    --surface-input: #121f2e;
+    --surface-selected: #224260;
+    --surface-danger: #f2776c;
+    --surface-warning: #f0a63a;
+    --surface-success: #63c279;
+    --surface-shadow: none;
+    --surface-sea: #173f78;
+    --surface-selection: #ffe36b;
+    --surface-backdrop: rgb(0 0 0 / 45%);
+    --surface-emphasis: #f0a63a;
+    --surface-emphasis-strong: #f0a63a;
+    --surface-font-body: "Yu Gothic UI", "Hiragino Kaku Gothic ProN", sans-serif;
+    --surface-font-heading: var(--surface-font-body);
+    --surface-font-numeric: var(--surface-font-body);
+    --surface-radius: 3px;
+}
+
+html[data-theme="old-light"] {
+    --surface-bg: #edf2ec;
+    --surface-panel: #fffdf4;
+    --surface-panel-alt: #f3f0e4;
+    --surface-ink: #172a2b;
+    --surface-muted: #657675;
+    --surface-line: #c8d2ca;
+    --surface-accent: #123f49;
+    --surface-solid: #123f49;
+    --surface-on-solid: #fff;
+    --surface-input: #fff;
+    --surface-selected: #fff8f2;
+    --surface-danger: #962f27;
+    --surface-warning: #674600;
+    --surface-success: #246b48;
+    --surface-shadow: 0 16px 40px rgba(18, 63, 73, .1);
+    --surface-sea: #83bccc;
+    --surface-selection: #f4c967;
+    --surface-backdrop: rgb(0 0 0 / 45%);
+    --surface-emphasis: #df654f;
+    --surface-emphasis-strong: #a23b2f;
+    --surface-font-body: Inter, "Noto Sans JP", "Yu Gothic UI", sans-serif;
+    --surface-font-heading: Georgia, "Yu Mincho", serif;
+    --surface-font-numeric: var(--surface-font-body);
+    --surface-radius: 6px;
+}
+
+html[data-theme="old-dark"] {
+    --surface-bg: #081412;
+    --surface-panel: #14241f;
+    --surface-panel-alt: #0d1b18;
+    --surface-ink: #e5efea;
+    --surface-muted: #a5b6b0;
+    --surface-line: #3a514b;
+    --surface-accent: #8bc7cc;
+    --surface-solid: #0e3b43;
+    --surface-on-solid: #fff;
+    --surface-input: #0b1816;
+    --surface-selected: #35241f;
+    --surface-danger: #ff9f91;
+    --surface-warning: #f2d27b;
+    --surface-success: #83dca5;
+    --surface-shadow: 0 16px 40px rgba(0, 0, 0, .38);
+    --surface-sea: #83bccc;
+    --surface-selection: #f4ca69;
+    --surface-backdrop: rgb(0 0 0 / 45%);
+    --surface-emphasis: #f07a63;
+    --surface-emphasis-strong: #ff9b86;
+    --surface-font-body: Inter, "Noto Sans JP", "Yu Gothic UI", sans-serif;
+    --surface-font-heading: Georgia, "Yu Mincho", serif;
+    --surface-font-numeric: var(--surface-font-body);
+    --surface-radius: 6px;
+}
+
+html[data-theme="skyblue"] {
+    --surface-bg: #f0f8ff;
+    --surface-panel: #fff;
+    --surface-panel-alt: #e0ffff;
+    --surface-ink: #333;
+    --surface-muted: #4682b4;
+    --surface-line: #00bfff;
+    --surface-accent: #4169e1;
+    --surface-solid: #000080;
+    --surface-on-solid: #fff;
+    --surface-input: #fff;
+    --surface-selected: #ffe4b5;
+    --surface-danger: #b00000;
+    --surface-warning: #805400;
+    --surface-success: #008b8b;
+    --surface-shadow: none;
+    --surface-sea: #83bccc;
+    --surface-selection: #daa520;
+    --surface-backdrop: rgb(0 0 0 / 45%);
+    --surface-emphasis: #008b8b;
+    --surface-emphasis-strong: #008b8b;
+    --surface-font-body: sans-serif;
+    --surface-font-heading: var(--surface-font-body);
+    --surface-font-numeric: var(--surface-font-body);
+    --surface-radius: 3px;
+}
+
+html[data-theme="autumn"] {
+    --surface-bg: #fff;
+    --surface-panel: #fff;
+    --surface-panel-alt: #faebd7;
+    --surface-ink: #8b0000;
+    --surface-muted: #a0522d;
+    --surface-line: #ffa07a;
+    --surface-accent: #cd5c5c;
+    --surface-solid: #8b4513;
+    --surface-on-solid: #fff;
+    --surface-input: #fff;
+    --surface-selected: #ffe4b5;
+    --surface-danger: #b00000;
+    --surface-warning: #8b4513;
+    --surface-success: #8b4513;
+    --surface-shadow: none;
+    --surface-sea: #83bccc;
+    --surface-selection: #daa520;
+    --surface-backdrop: rgb(0 0 0 / 45%);
+    --surface-emphasis: #cd853f;
+    --surface-emphasis-strong: #8b4513;
+    --surface-font-body: sans-serif;
+    --surface-font-heading: var(--surface-font-body);
+    --surface-font-numeric: var(--surface-font-body);
+    --surface-radius: 3px;
+}
+
+html[data-theme="black"] {
+    --surface-bg: #24272a;
+    --surface-panel: #34373b;
+    --surface-panel-alt: #42474e;
+    --surface-ink: #e2e2e5;
+    --surface-muted: #c2c7cf;
+    --surface-line: #8c9198;
+    --surface-accent: #96cbff;
+    --surface-solid: #96cbff;
+    --surface-on-solid: #003353;
+    --surface-input: #24272a;
+    --surface-selected: #004a76;
+    --surface-danger: #ffb4ab;
+    --surface-warning: #ffdf93;
+    --surface-success: #7ef8d5;
+    --surface-shadow: 0 16px 40px rgb(0 0 0 / 30%);
+    --surface-sea: #83bccc;
+    --surface-selection: #edc148;
+    --surface-backdrop: rgb(0 0 0 / 72%);
+    --surface-emphasis: #5fdbb9;
+    --surface-emphasis-strong: #7ef8d5;
+    --surface-font-body: Inter, "Noto Sans JP", "Yu Gothic UI", sans-serif;
+    --surface-font-heading: var(--surface-font-body);
+    --surface-font-numeric: var(--surface-font-body);
+    --surface-radius: 3px;
+}
+
+@media (prefers-color-scheme: dark) {
+    html[data-theme="system"] {
+    --surface-bg: #0a1420;
+    --surface-panel: #121f2e;
+    --surface-panel-alt: #1b2d41;
+    --surface-ink: #dbe6f0;
+    --surface-muted: #8da3b9;
+    --surface-line: #2e455d;
+    --surface-accent: #5bb4e4;
+    --surface-solid: #1b2d41;
+    --surface-on-solid: #dbe6f0;
+    --surface-input: #121f2e;
+    --surface-selected: #224260;
+    --surface-danger: #f2776c;
+    --surface-warning: #f0a63a;
+    --surface-success: #63c279;
+    --surface-shadow: none;
+    --surface-sea: #173f78;
+    --surface-selection: #ffe36b;
+    --surface-backdrop: rgb(0 0 0 / 45%);
+    --surface-emphasis: #f0a63a;
+    --surface-emphasis-strong: #f0a63a;
+    --surface-font-body: "Yu Gothic UI", "Hiragino Kaku Gothic ProN", sans-serif;
+    --surface-font-heading: var(--surface-font-body);
+    --surface-font-numeric: var(--surface-font-body);
+    --surface-radius: 3px;
+    }
+}
