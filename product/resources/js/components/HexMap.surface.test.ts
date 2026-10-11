@@ -141,6 +141,20 @@ describe('staggered square-image map', () => {
         expect(publicMap.find('.territory-toggle').exists()).toBe(false);
         expect(publicMap.find('.plan-mark-toggle').exists()).toBe(false);
         expect(publicMap.findAll('.within-viewer-visibility')).toHaveLength(0);
+        expect(publicMap.get('.map-stage').attributes('data-territory')).toBe('on');
+        expect(localStorage.getItem('hakoniwa.map.territory')).toBe('0');
+
+        // 開発画面ではqueue取得前のnullでも切り替えを提供し、保存したOFFを使う。
+        await publicMap.setProps({ ownNationId: 18, commandQueue: null });
+        expect(publicMap.get('.territory-toggle').attributes('aria-pressed')).toBe('false');
+        expect(publicMap.get('.map-stage').attributes('data-territory')).toBe('off');
+        await publicMap.setProps({ commandQueue: undefined });
+        expect(publicMap.find('.territory-toggle').exists()).toBe(false);
+        expect(publicMap.get('.map-stage').attributes('data-territory')).toBe('on');
+        expect(localStorage.getItem('hakoniwa.map.territory')).toBe('0');
+        await publicMap.setProps({ commandQueue });
+        expect(publicMap.get('.territory-toggle').attributes('aria-pressed')).toBe('false');
+        expect(publicMap.get('.map-stage').attributes('data-territory')).toBe('off');
         publicMap.unmount();
     });
 

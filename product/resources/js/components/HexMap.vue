@@ -54,6 +54,8 @@ const wholeWorldView = ref(false);
 const showVisibility = displayPreference('visibility', false);
 const showSeaAreas = displayPreference('weather', true);
 const showTerritory = displayPreference('territory', true);
+// 切り替えがない観光画面では枠を表示し、開発画面の保存設定は保持する。
+const effectiveShowTerritory = computed(() => props.commandQueue === undefined || showTerritory.value);
 const showPlanMarks = displayPreference('planMarks', true);
 // 指で触ったあとに届くmouseenterでは、マスの詳細を出さない。
 let touchInput = false;
@@ -537,7 +539,7 @@ function markAssetFailed(cell: MapCell): void {
 </script>
 
 <template>
-    <section class="map-stage" aria-label="世界地図" :data-territory="showTerritory ? 'on' : 'off'">
+    <section class="map-stage" aria-label="世界地図" :data-territory="effectiveShowTerritory ? 'on' : 'off'">
         <div class="map-toolbar">
             <button type="button" aria-label="自島へ戻る" @click="returnToCapital">自島へ</button>
             <button type="button" aria-label="世界全体を表示" @click="fitWholeWorld(true)">世界全体</button>
