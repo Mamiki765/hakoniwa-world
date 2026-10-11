@@ -191,7 +191,7 @@ const {
     sort: rankingSort, query: rankingQuery, narrow: rankingNarrow, columns: rankingColumns, shown: shownRankings,
     keyColumn: rankingKeyColumn, cardColumns: rankingCardColumns, sortColumns: rankingSortColumns,
 } = useLobbyRanking(rankings);
-const lobbyNewsTab = ref<'major' | 'log'>('major');
+const lobbyNewsTab = ref<'major' | 'log'>('log');
 const siteMenuOpen = ref(false);
 const ledgerParadox = ref<ParadoxBalance | null>(null);
 const islandCommentDraft = ref<string | null>(null);
@@ -1879,7 +1879,9 @@ async function abandonNation(): Promise<void> {
             v-if="user?.can_manage_inquiries && worlds[0]"
             v-show="page === 'home' || page === 'admin'"
             :world-id="worlds[0].id"
+            :admin-link="page === 'home'"
             @updated="loadPublicLobby"
+            @admin="adminOpened = true; page = 'admin'"
         />
 
         <AdminOperationsPanel

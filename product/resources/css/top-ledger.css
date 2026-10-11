@@ -116,7 +116,7 @@ html .tp-news-group h3 { font: var(--sl-w-head) 12px var(--sl-f-head); color: va
 
 @media (max-width: 860px) {
     /* スマホではターン→島一覧→お知らせ→出来事の順 */
-    .tp { grid-template-columns: minmax(0, 1fr); grid-template-areas: "title" "turn" "create" "rank" "notice" "inquiry" "news"; grid-template-rows: none; padding: 8px 10px 20px; gap: 8px; }
+    .tp { grid-template-columns: minmax(0, 1fr); grid-template-areas: "title" "turn" "create" "notice" "inquiry" "rank" "news"; grid-template-rows: none; padding: 8px 10px 20px; gap: 8px; }
     html .tp-title h1 { font-size: 20px; }
     .tp-enter { margin-left: 0; flex-basis: 100%; }
     .tp-enter .tp-button { flex: 1; min-height: 44px; }
