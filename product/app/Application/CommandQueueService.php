@@ -926,6 +926,7 @@ final class CommandQueueService
                     'policies' => array_map(static fn (array $plan): array => [
                         'inserted_count' => $plan['inserted_count'], 'cancelled_count' => $plan['cancelled_count'],
                         'skipped_count' => $plan['skipped_count'],
+                        'cancelled_items' => $plan['cancelled_items'],
                     ], $plans),
                 ];
             }
@@ -1061,6 +1062,9 @@ final class CommandQueueService
             'dropped' => [...array_map($generated, array_slice($candidates, $inserted)), ...array_map($existing, array_slice($suffix, $suffixCount))],
             'inserted_count' => $inserted, 'skipped_count' => count($candidates) - $inserted,
             'cancelled_count' => max(0, count($suffix) - $suffixCount),
+            'cancelled_items' => array_map(static fn (NationCommandQueueItem $item): array => [
+                'id' => $item->id, 'queue_position' => (int) $item->queue_position,
+            ], array_slice($suffix, $suffixCount)),
         ];
     }
 

@@ -36,14 +36,21 @@ UI 実装担当向け。認証済み本人の API を使う。表示設定・配
   "available_count":1,
   "overflow_required":true,
   "policies":{
-    "overflow":{"inserted_count":3,"cancelled_count":2,"skipped_count":0},
-    "fill_available":{"inserted_count":1,"cancelled_count":0,"skipped_count":2}
+    "overflow":{"inserted_count":3,"cancelled_count":2,"skipped_count":0,"cancelled_items":[{"id":128,"queue_position":28},{"id":129,"queue_position":29}]},
+    "fill_available":{"inserted_count":1,"cancelled_count":0,"skipped_count":2,"cancelled_items":[]}
   }
 }
 ```
 
 件数の単位は**計画行**。埋立て系は1セル=2候補。`available_count` は未使用枠数。
 `cancelled_count` は押し出される既存計画、`skipped_count` は入らない新候補。
+各 `policies.{policy}.cancelled_items` は、サーバーの apply 合成経路から返す**取り消される既存計画の確定集合**。
+要素は `{id: integer, queue_position: integer}`、挿入前の位置順。生成候補の切捨ては含めず、`fill_available` は空配列。
+消失行の表示は、同じ `expected_version` の `GET {base}` 応答 `data.items` を **id で照合**し、
+既存の `command_name`、`command_suffix`、`quantity`、座標・target context 等を使用する。
+`queue_position` も挿入前の行位置を示す。件数から末尾を独自推定してはならない。
+表示中の queue version が異なる、または対象 id/位置を照合できない場合は queue を取得し直して再 preview する。
+apply はこの集合を決めた snapshot を lock 下で再検証するため、古い確認から別の計画を黙って消さない。
 2計画組を分割しないため、空き1枠だけなら埋立て系は0件追加する。
 
 `overflow_required=false` なら UI の確認を挟まず `overflow` で apply できる。
@@ -96,8 +103,14 @@ token は actor・Nation・map space・action・position・version・候補/キ�
 トグル要求ではなく希望状態の指定。解除は false。
 既存 `POST /api/v1/me/underground/requests` で、この PUT method/path 用の receipt を取得し、
 `X-Underground-Receipt` を送る（24時間の既存受付契約）。所有 profile の lock と既存 mutation fingerprint/UUID 台帳を使う。
+receipt の取得入力は `{"method":"PUT","path":"/api/v1/me/underground/equipment/items/123/protection"}`。
+取得応答は `data={request_id,token,expires_at,format}`。`request_id` を PUT 本文へ、`token` を上記 header へ渡す。
 同じ UUID の逆状態への使い回しは409 `underground_request_conflict`、他人の item は409 `underground_equipment_not_owned`。
 応答は既存 mutation state (`operation=equipment_protection`, 残高, 装備 summary)。非装備品の状態は vault を再取得する。
+PUT 成功応答の形は `data={operation:"equipment_protection",shard_balance,banked_shard_balance,vault:{used,capacity,rating_requirement_bps,equipped}}`。
+`equipped` は slot ごとの所有品 projection／null。保護を設定した非装備品そのものはこの PUT 応答へ含めない。
+`GET /api/v1/me/underground/equipment/vault?page=1&inventory=equipment`（結晶は `inventory=resonance`）で、
+`data.items[*].id` と `data.items[*].is_protected` を読み直す。`is_protected` は boolean。
 保護中でも装備・取り外し・研磨は可能。売却保護以外のゲーム能力は変えない。
 
 売却のサーバー保証：

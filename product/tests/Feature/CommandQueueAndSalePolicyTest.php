@@ -96,6 +96,11 @@ class CommandQueueAndSalePolicyTest extends TestCase
             ->assertJsonPath('data.policies.fill_available.cancelled_count', 0)->json('data');
         $this->assertSame(7, $queue->fresh()->version);
         $this->assertSame(29, $queue->items()->where('status', 'queued')->count());
+        $expectedCancelledItems = NationCommandQueueItem::query()->where('nation_command_queue_id', $queue->id)
+            ->whereBetween('queue_position', [28, 29])->orderBy('queue_position')->get()
+            ->map(fn (NationCommandQueueItem $item): array => ['id' => $item->id, 'queue_position' => (int) $item->queue_position])->all();
+        $this->assertSame($expectedCancelledItems, $preview['policies']['overflow']['cancelled_items']);
+        $this->assertSame([], $preview['policies']['fill_available']['cancelled_items']);
         $response = $this->actingAs($user)->postJson($path.'/bulk', [
             'action' => 'clear_all',
             'position' => 5,
@@ -118,7 +123,8 @@ class CommandQueueAndSalePolicyTest extends TestCase
             ->where('nation_command_queue_id', $queue->id)->where('status', 'queued')
             ->whereBetween('queue_position', [1, 4])->orderBy('queue_position')->pluck('id')->all());
         $this->assertSame(8, NationCommandQueueItem::query()->whereKey($oldFifthId)->value('queue_position'));
-        $this->assertSame(2, NationCommandQueueItem::query()->where('status', 'cancelled')->count());
+        $this->assertSame(array_column($preview['policies']['overflow']['cancelled_items'], 'id'),
+            NationCommandQueueItem::query()->where('status', 'cancelled')->orderBy('id')->pluck('id')->all());
 
         $this->deleteJson($path.'/from', [
             'position' => 7,
