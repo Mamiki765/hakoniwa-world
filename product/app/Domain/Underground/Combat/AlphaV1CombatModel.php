@@ -3189,7 +3189,7 @@ final readonly class AlphaV1CombatModel
                 actionId: $actionId,
                 targetState: $state,
                 targetIds: [$state->combatantId],
-            );
+            ) + ['mp_source' => $source];
         }
         if ($effectiveGain > 0) {
             $actionLog[] = $this->logRow(
@@ -3203,7 +3203,7 @@ final readonly class AlphaV1CombatModel
                 actionId: $actionId,
                 targetState: $state,
                 targetIds: [$state->combatantId],
-            );
+            ) + ['mp_source' => $source];
         }
         if (! $recordMetrics) {
             return;
@@ -3312,6 +3312,7 @@ final readonly class AlphaV1CombatModel
         ?string $actionId = null,
         bool $forced = false,
     ): bool {
+        $mpBefore = $player->mp;
         if (! ($forced ? $this->awakening->forceActivate($player, $this->rules) : $this->awakening->tryActivate($player, $this->rules))) {
             return false;
         }
@@ -3323,6 +3324,9 @@ final readonly class AlphaV1CombatModel
             'action' => 'awakening',
             'effect_type' => 'awakening',
             'amount' => 0,
+            'mp_source' => 'awakening',
+            'mp_recovered' => $player->mp - $mpBefore,
+            'actor_mp' => $player->mp,
             'message' => $player->awakeningMessage,
             'normal_stats' => $player->normalStats,
             'awakened_stats' => $player->stats,
