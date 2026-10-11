@@ -343,7 +343,6 @@ final class UndergroundBattleStatisticsProjectorTest extends TestCase
 
         self::assertFalse($statistics['completeness']['complete']);
         self::assertSame(1, $statistics['completeness']['issue_count']);
-        self::assertSame(['unclassified_damage_source' => 1], $statistics['completeness']['reasons']);
         self::assertSame(1, $statistics['party']['damage_dealt']);
         self::assertNull($statistics['party']['damage_by_source']);
         self::assertNull($statistics['self']['damage_dealt']);

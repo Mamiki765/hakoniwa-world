@@ -4,6 +4,7 @@ namespace Tests\Underground\Feature;
 
 use App\Application\SecretaryLendingService;
 use App\Application\Underground\UndergroundProfileService;
+use App\Application\Underground\UndergroundStarterEquipmentService;
 use App\Models\Secretary;
 use App\Models\SecretaryLendingSetting;
 use App\Models\UndergroundOwnedEquipment;
@@ -30,6 +31,21 @@ final class SecretaryLendingCandidatesTest extends TestCase
             'skill_points_total' => 20, 'skill_points_unspent' => 20,
             'skill_tree_identity' => 'secretary-underground-skill-tree-alpha-v4',
         ]);
+        app(UndergroundStarterEquipmentService::class)->reconcile($profile);
+        DB::table('underground_owned_equipment')->insert([
+            'underground_profile_id' => $profile->id,
+            'definition_key' => 'bronze_rapier',
+            'catalog_identity' => 'secretary-underground-shop-equipment-alpha-v2',
+            'equipped_slot' => null,
+            'grant_key' => null,
+            'instance_kind' => 'fixed',
+            'acquired_at' => now(),
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+        $equippedCount = UndergroundOwnedEquipment::query()->where('underground_profile_id', $profile->id)
+            ->whereNotNull('equipped_slot')->count();
+        $this->assertGreaterThan(0, $equippedCount);
         $service = app(SecretaryLendingService::class);
         $service->update($owner, true);
         DB::enableQueryLog();
@@ -39,15 +55,10 @@ final class SecretaryLendingCandidatesTest extends TestCase
         foreach (DB::getQueryLog() as $query) {
             $this->assertStringNotContainsString('underground_owned_equipment', $query['query']);
         }
-        DB::flushQueryLog();
+        DB::disableQueryLog();
         $candidates = $service->publicCandidates($viewer, $self->id);
         $this->assertSame([$borrowed->id], array_column($candidates, 'secretary_id'));
-        foreach (DB::getQueryLog() as $query) {
-            if (str_contains($query['query'], 'underground_owned_equipment')) {
-                $this->assertStringContainsString('"equipped_slot" is not null', $query['query']);
-            }
-        }
-        DB::disableQueryLog();
+        $this->assertCount($equippedCount, $candidates[0]['equipment']);
     }
 
     public function test_mismatched_legacy_flags_project_as_off_and_one_setting_synchronizes_both_columns(): void
