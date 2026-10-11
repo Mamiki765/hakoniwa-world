@@ -663,8 +663,8 @@ export interface MessageBoardTimeline {
         latest_limit: 16;
         body_max_characters: 140;
         cooldown_seconds: 10;
-        secret_cost_money?: 100;
-        secret_cost_display?: '100億円';
+        secret_cost_money?: 0 | 100;
+        secret_cost_display?: '0億円' | '100億円';
     };
 }
 

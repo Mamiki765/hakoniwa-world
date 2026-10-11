@@ -422,6 +422,11 @@ final class UndergroundEquipmentAndRuntimeTest extends UndergroundPlayerAccessTe
             'underground-alpha-v1.exploration.drop.profiles.elite.presence_bps' => 0,
             'underground-alpha-v1.exploration.drop.profiles.rare.presence_bps' => 0,
         ]);
+        // 装備解除のHP上限処理をLv1で確認するため、探索の敵とXPを固定する。
+        $encounter = config('underground-alpha-v1.exploration.grounds.shallow_caves.encounters.subterranean_rat');
+        $encounter['weight'] = 10_000;
+        $encounter['xp'] = 0;
+        config(['underground-alpha-v1.exploration.grounds.shallow_caves.encounters' => ['subterranean_rat' => $encounter]]);
         $explorationRequest = (string) Str::uuid();
         $this->actingAs($user)->postJson('/api/v1/me/underground/explore', [
             'request_id' => $explorationRequest,
@@ -430,6 +435,7 @@ final class UndergroundEquipmentAndRuntimeTest extends UndergroundPlayerAccessTe
         ])->assertOk();
         $equipmentBattle = UndergroundBattle::query()
             ->where('request_id', $explorationRequest)->sole();
+        $this->assertSame(0, $equipmentBattle->xp_awarded);
         $combatLoadout = app(UndergroundEquipmentLoadoutResolver::class)
             ->combatLoadout($profile->fresh());
         $this->assertSame('iron_dagger', $combatLoadout['key']);

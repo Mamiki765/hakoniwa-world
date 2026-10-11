@@ -111,7 +111,21 @@ describe('MessageBoard', () => {
         expect(wrapper.find('.message-author-owner script').exists()).toBe(false);
         expect(wrapper.find('.message-author-other_nation').text()).toContain('他島・N3 他島');
         expect(wrapper.find('.message-author-visitor').text()).toContain('観光客(ID:A8K2Q7XZ)');
-        expect(wrapper.find('.secret-form').text()).toContain('費用 100億円');
+        wrapper.unmount();
+    });
+
+    it.each([
+        { cost: 100, display: '100億円' },
+        { cost: 0, display: '0億円' },
+    ])('renders the server-provided secret cost $display beside the composer', async ({ cost, display }) => {
+        vi.stubGlobal('fetch', vi.fn(async () => response({
+            ...ownerTimeline,
+            contract: { ...ownerTimeline.contract, secret_cost_money: cost, secret_cost_display: display },
+        })));
+        const wrapper = mount(MessageBoard, { props: { nationId: 2, context: 'public' } });
+        await flushPromises();
+
+        expect(wrapper.find('label[for="message-board-secret-body"]').text()).toMatch(new RegExp(`\\b${display}`));
         wrapper.unmount();
     });
 
