@@ -25,6 +25,7 @@ final class MessageBoardService
         private readonly VisitorCodeAllocator $visitorCodes,
         private readonly MessageBoardAuditRecorder $audit,
         private readonly CurrentRulesetGuard $rulesetGuard,
+        private readonly AnnouncementAdminAuthorizer $adminAuthorizer,
     ) {}
 
     /** @return array<string, mixed> */
@@ -40,6 +41,7 @@ final class MessageBoardService
             && $viewerNation->id !== $board->id
             && $this->isReachable($viewerNation)
             && $this->isReachable($board);
+        $secretCost = $canSendSecret ? $this->secretCostMoney($viewer) : null;
 
         $messages = IslandMessage::query()
             ->where(function (Builder $query) use ($board, $viewerOwnsBoard): void {
@@ -87,8 +89,8 @@ final class MessageBoardService
                 'body_max_characters' => MessageBoardContract::BODY_MAX_CHARACTERS,
                 'cooldown_seconds' => MessageBoardContract::COOLDOWN_SECONDS,
                 ...($canSendSecret ? [
-                    'secret_cost_money' => MessageBoardContract::SECRET_COST_MONEY,
-                    'secret_cost_display' => '100億円',
+                    'secret_cost_money' => $secretCost,
+                    'secret_cost_display' => $secretCost.'億円',
                 ] : []),
             ],
         ];
@@ -194,11 +196,12 @@ final class MessageBoardService
 
             $now = now();
             $this->assertCooldown($lockedUser, $now);
-            if ((int) $sender->money < MessageBoardContract::SECRET_COST_MONEY) {
+            $cost = $this->secretCostMoney($lockedUser);
+            if ((int) $sender->money < $cost) {
                 throw new MessageBoardValidationException('money', '秘密通信には100億円必要です。');
             }
 
-            $sender->money = (int) $sender->money - MessageBoardContract::SECRET_COST_MONEY;
+            $sender->money = (int) $sender->money - $cost;
             $sender->save();
             $message = IslandMessage::query()->create([
                 'public_id' => (string) Str::uuid(),
@@ -221,11 +224,16 @@ final class MessageBoardService
                 $sender,
                 $lockedTarget,
                 $message,
-                MessageBoardContract::SECRET_COST_MONEY,
+                $cost,
             );
         }, 3);
 
         return $this->timeline($target->fresh(), $user->fresh());
+    }
+
+    private function secretCostMoney(?User $user): int
+    {
+        return $this->adminAuthorizer->allows($user) ? 0 : MessageBoardContract::SECRET_COST_MONEY;
     }
 
     private function validBody(string $body): string

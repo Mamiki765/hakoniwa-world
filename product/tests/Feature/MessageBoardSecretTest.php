@@ -34,13 +34,21 @@ class MessageBoardSecretTest extends TestCase
         $world = $this->lightweightWorld();
         [$senderOwner, $sender] = $this->ownerAndNation($world, 'A島', 500);
         [$recipientOwner, $recipient] = $this->ownerAndNation($world, 'B島', 700);
+        config(['hakoniwa.admin.discord_user_id' => $recipientOwner->authIdentities()->sole()->provider_user_id]);
         [$unrelatedOwner] = $this->ownerAndNation($world, 'C島', 900);
         $tourist = $this->user('tourist-secret');
         $secretBody = 'この本文は両島主だけが読めます';
 
         $senderResponse = $this->actingAs($senderOwner)
-            ->postJson("/api/v1/nations/{$recipient->id}/message-board/secret", ['body' => $secretBody])
+            ->postJson("/api/v1/nations/{$recipient->id}/message-board/secret", [
+                'body' => $secretBody,
+                'is_admin' => true,
+                'author_user_id' => $recipientOwner->id,
+                'secret_cost_money' => 0,
+            ])
             ->assertCreated()
+            ->assertJsonPath('data.contract.secret_cost_money', 100)
+            ->assertJsonPath('data.contract.secret_cost_display', '100億円')
             ->assertJsonPath('data.entries.0.kind', 'secret')
             ->assertJsonPath('data.entries.0.direction', 'incoming')
             ->assertJsonPath('data.entries.0.body', $secretBody)
@@ -50,6 +58,7 @@ class MessageBoardSecretTest extends TestCase
         $this->assertSame(400, $sender->fresh()->money);
         $this->assertSame(700, $recipient->fresh()->money);
         $this->assertSame(1, IslandMessage::query()->count());
+        $this->assertSame($senderOwner->id, IslandMessage::query()->sole()->author_user_id);
 
         $recipientEntry = $this->actingAs($recipientOwner)
             ->getJson("/api/v1/nations/{$recipient->id}/message-board")
@@ -106,7 +115,45 @@ class MessageBoardSecretTest extends TestCase
         $this->assertNull($audit->message);
         $this->assertSame($world->id, $audit->world_id);
         $this->assertSame($world->id, json_decode($audit->metadata, true, 512, JSON_THROW_ON_ERROR)['world_id']);
+        $this->assertSame(100, json_decode($audit->metadata, true, 512, JSON_THROW_ON_ERROR)['cost_money']);
         $this->assertStringNotContainsString($secretBody, (string) $audit->metadata);
+    }
+
+    public function test_admin_secret_is_free_even_without_funds_and_keeps_existing_posting_permissions(): void
+    {
+        Carbon::setTestNow('2026-08-11 15:30:00');
+        $world = $this->lightweightWorld();
+        [$admin, $sender] = $this->ownerAndNation($world, '管理島', 0);
+        [, $target] = $this->ownerAndNation($world, '返信先', 700);
+        config(['hakoniwa.admin.discord_user_id' => $admin->authIdentities()->sole()->provider_user_id]);
+
+        $this->actingAs($admin)->getJson("/api/v1/nations/{$target->id}/message-board")
+            ->assertOk()
+            ->assertJsonPath('data.viewer.can_send_secret', true)
+            ->assertJsonPath('data.contract.secret_cost_money', 0)
+            ->assertJsonPath('data.contract.secret_cost_display', '0億円');
+        $this->postJson("/api/v1/nations/{$sender->id}/message-board/secret", ['body' => 'self'])
+            ->assertUnprocessable();
+        $this->postJson("/api/v1/nations/{$target->id}/message-board/secret", ['body' => 'お問い合わせへの返信'])
+            ->assertCreated()
+            ->assertJsonPath('data.entries.0.body', 'お問い合わせへの返信')
+            ->assertJsonPath('data.contract.secret_cost_money', 0)
+            ->assertJsonPath('data.contract.secret_cost_display', '0億円');
+        $this->assertSame(0, $sender->fresh()->money);
+        $this->assertSame(700, $target->fresh()->money);
+        $this->assertSame($admin->id, IslandMessage::query()->sole()->author_user_id);
+        $audit = DB::table('audit_events')->where('event_type', 'message_board.secret_sent')->sole();
+        $this->assertSame(0, json_decode($audit->metadata, true, 512, JSON_THROW_ON_ERROR)['cost_money']);
+
+        $this->postJson("/api/v1/nations/{$target->id}/message-board/secret", ['body' => '連続送信'])
+            ->assertStatus(429);
+        $this->assertSame(1, IslandMessage::query()->count());
+        Carbon::setTestNow(now()->addSeconds(10));
+        $this->postJson("/api/v1/nations/{$target->id}/message-board", ['body' => '公開返信'])
+            ->assertCreated();
+        $this->assertSame(0, $sender->fresh()->money);
+        $this->assertSame(700, $target->fresh()->money);
+        $this->assertSame(2, IslandMessage::query()->count());
     }
 
     public function test_normal_and_secret_share_cooldown_without_partial_money_or_message_changes(): void
@@ -139,6 +186,7 @@ class MessageBoardSecretTest extends TestCase
         [$owner, $sender] = $this->ownerAndNation($world, '送信元', 99);
         [, $target] = $this->ownerAndNation($world, '送信先', 500);
         $tourist = $this->user('secret-tourist-reject');
+        config(['hakoniwa.admin.discord_user_id' => 'secret-tourist-reject']);
 
         $this->actingAs($tourist)->postJson("/api/v1/nations/{$target->id}/message-board/secret", ['body' => '不可'])
             ->assertForbidden();
