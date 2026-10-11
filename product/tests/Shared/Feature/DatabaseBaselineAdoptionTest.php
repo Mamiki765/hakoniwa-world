@@ -100,7 +100,12 @@ final class DatabaseBaselineAdoptionTest extends TestCase
         // and skill constraint before adopting its marker. Later upgrades have their own tests.
         DB::statement('DROP INDEX nations_world_id_name_unique');
         DB::statement('ALTER TABLE nations ADD CONSTRAINT nations_world_id_name_unique UNIQUE (world_id, name)');
-        Schema::table('underground_owned_equipment', fn ($table) => $table->dropColumn('quality_percent'));
+        Schema::table('underground_owned_equipment', fn ($table) => $table->dropColumn(['quality_percent', 'is_protected']));
+        Schema::table('nation_command_queue_bulk_requests', fn ($table) => $table->dropColumn('request_fingerprint'));
+        preg_match('/CONSTRAINT underground_intro_requests_operation_check (CHECK .+),\r?$/m',
+            (string) file_get_contents(database_path('schema/pgsql-schema.sql')), $operationConstraint);
+        DB::statement('ALTER TABLE underground_intro_requests DROP CONSTRAINT underground_intro_requests_operation_check');
+        DB::statement('ALTER TABLE underground_intro_requests ADD CONSTRAINT underground_intro_requests_operation_check '.$operationConstraint[1]);
         Schema::table('underground_profiles', static function ($table): void {
             $table->dropColumn([
                 'yunagi_harbor_intro_completed_at',

@@ -174,6 +174,8 @@ Route::prefix('api/v1')->middleware(['auth', PrivateApiResponse::class])->group(
         Route::post('/equipment/shop/purchase', [UndergroundEquipmentController::class, 'purchase']);
         Route::post('/equipment/items/{itemId}/sell', [UndergroundEquipmentController::class, 'sell'])
             ->whereNumber('itemId');
+        Route::put('/equipment/items/{itemId}/protection', [UndergroundEquipmentController::class, 'protection'])
+            ->whereNumber('itemId');
         Route::get('/equipment/vault', [UndergroundEquipmentController::class, 'vault']);
         Route::post('/equipment/vault/bulk-sell/preview', [UndergroundEquipmentController::class, 'previewBulkSell']);
         Route::post('/equipment/vault/bulk-sell', [UndergroundEquipmentController::class, 'bulkSell']);
@@ -222,6 +224,7 @@ Route::prefix('api/v1')->middleware(['auth', PrivateApiResponse::class])->group(
     Route::get('/nations/{nation}/map-spaces/{mapSpace}/command-queue', [CommandQueueController::class, 'index']);
     Route::post('/nations/{nation}/map-spaces/{mapSpace}/command-queue', [CommandQueueController::class, 'store']);
     Route::post('/nations/{nation}/map-spaces/{mapSpace}/command-queue/bulk', [CommandQueueController::class, 'bulk']);
+    Route::post('/nations/{nation}/map-spaces/{mapSpace}/command-queue/bulk/preview', [CommandQueueController::class, 'bulkPreview']);
     Route::delete('/nations/{nation}/map-spaces/{mapSpace}/command-queue/from', [CommandQueueController::class, 'cancelFrom']);
     Route::put('/nations/{nation}/map-spaces/{mapSpace}/command-queue/reorder', [CommandQueueController::class, 'reorder']);
     Route::patch('/nations/{nation}/map-spaces/{mapSpace}/command-queue/{item}', [CommandQueueController::class, 'update']);

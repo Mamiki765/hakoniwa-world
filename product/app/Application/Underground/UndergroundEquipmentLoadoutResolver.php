@@ -161,6 +161,7 @@ final readonly class UndergroundEquipmentLoadoutResolver
             'catalog_identity' => $row->catalog_identity,
             'sell_price' => $this->catalog->sellPrice($definition),
             'equipped_slot' => $row->equipped_slot,
+            'is_protected' => $row->is_protected,
             'acquired_at' => $row->acquired_at->toIso8601String(),
         ];
     }

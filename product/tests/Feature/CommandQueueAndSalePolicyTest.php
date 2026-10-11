@@ -87,11 +87,21 @@ class CommandQueueAndSalePolicyTest extends TestCase
             ->where('queue_position', 5)->valueOrFail('id');
 
         $path = "/api/v1/nations/{$nation->id}/map-spaces/{$mapSpace->id}/command-queue";
+        $preview = $this->actingAs($user)->postJson($path.'/bulk/preview', [
+            'action' => 'clear_all', 'position' => 5, 'expected_version' => 7,
+        ])->assertOk()->assertJsonPath('data.candidate_count', 3)
+            ->assertJsonPath('data.available_count', 1)->assertJsonPath('data.overflow_required', true)
+            ->assertJsonPath('data.policies.overflow.cancelled_count', 2)
+            ->assertJsonPath('data.policies.fill_available.inserted_count', 1)
+            ->assertJsonPath('data.policies.fill_available.cancelled_count', 0)->json('data');
+        $this->assertSame(7, $queue->fresh()->version);
+        $this->assertSame(29, $queue->items()->where('status', 'queued')->count());
         $response = $this->actingAs($user)->postJson($path.'/bulk', [
             'action' => 'clear_all',
             'position' => 5,
-            'request_key' => (string) Str::uuid(),
+            'request_key' => $preview['request_key'],
             'expected_version' => 7,
+            'preview_token' => $preview['preview_token'], 'overflow_policy' => 'overflow',
         ])->assertOk()
             ->assertJsonPath('data.inserted_count', 3)
             ->assertJsonPath('data.truncated_count', 2)
@@ -116,6 +126,50 @@ class CommandQueueAndSalePolicyTest extends TestCase
         ])->assertOk()
             ->assertJsonPath('data.deleted_count', 24)
             ->assertJsonPath('data.queue.explicit_count', 6);
+    }
+
+    public function test_bulk_preview_rejects_changed_candidates_and_fill_preserves_existing_plans_and_replay_policy(): void
+    {
+        [$user, $nation, $mapSpace] = $this->nation('Bulk preview');
+        $plain = TerrainDefinition::query()->where('key', 'plain')->firstOrFail();
+        $wasteland = TerrainDefinition::query()->where('key', 'wasteland')->firstOrFail();
+        $state = app(MapCellStateService::class);
+        $cells = MapCell::query()->where('owner_nation_id', $nation->id)->whereNull('facility_definition_id')->with('terrain')->get();
+        foreach ($cells as $cell) {
+            $state->transitionTerrain($cell, $plain);
+            $cell->save();
+        }
+        $target = $cells->first();
+        $state->transitionTerrain($target, $wasteland);
+        $target->save();
+        $path = "/api/v1/nations/{$nation->id}/map-spaces/{$mapSpace->id}/command-queue";
+        $version = 1;
+        foreach (range(1, 29) as $position) {
+            $result = app(CommandQueueService::class)->add($user, $nation, $mapSpace, 'finance', 0, 0, (string) Str::uuid(), $version);
+            $version = $result['queue']->version;
+        }
+        $existingIds = NationCommandQueueItem::query()->where('status', 'queued')->orderBy('queue_position')->pluck('id')->all();
+        $input = ['action' => 'clear_all', 'position' => 5, 'expected_version' => $version];
+        $preview = $this->actingAs($user)->postJson($path.'/bulk/preview', $input)->assertOk()
+            ->assertJsonPath('data.overflow_required', false)->json('data');
+        $state->transitionTerrain($cells[1], $wasteland);
+        $cells[1]->save();
+        $payload = [...$input, 'request_key' => $preview['request_key'], 'preview_token' => $preview['preview_token'], 'overflow_policy' => 'overflow'];
+        $this->postJson($path.'/bulk', $payload)->assertConflict()->assertJsonPath('code', 'bulk_plan_preview_changed');
+        $this->assertSame($existingIds, NationCommandQueueItem::query()->where('status', 'queued')->orderBy('queue_position')->pluck('id')->all());
+        $preview = $this->postJson($path.'/bulk/preview', $input)->assertOk()->json('data');
+        $payload = [...$input, 'request_key' => $preview['request_key'], 'preview_token' => $preview['preview_token'], 'overflow_policy' => 'fill_available'];
+        $this->postJson($path.'/bulk', [...$payload, 'position' => 6])->assertConflict()->assertJsonPath('code', 'bulk_plan_preview_changed');
+        $this->travel(61)->minutes();
+        $this->postJson($path.'/bulk', $payload)->assertConflict()->assertJsonPath('code', 'bulk_plan_preview_changed');
+        $this->travelBack();
+        $response = $this->postJson($path.'/bulk', $payload)->assertOk()->assertJsonPath('data.inserted_count', 1)
+            ->assertJsonPath('data.cancelled_count', 0)->assertJsonPath('data.skipped_count', 1);
+        $ids = collect($response->json('data.queue.items'))->where('command_key', 'finance')->pluck('id')->all();
+        $this->assertSame($existingIds, $ids);
+        $this->assertSame('land_clear', $response->json('data.queue.items.4.command_key'));
+        $this->postJson($path.'/bulk', $payload)->assertOk()->assertJsonPath('data.duplicate', true)->assertJsonPath('data.skipped_count', 1);
+        $this->postJson($path.'/bulk', [...$payload, 'overflow_policy' => 'overflow'])->assertConflict()->assertJsonPath('code', 'command_request_conflict');
     }
 
     public function test_bulk_generated_tail_is_truncated_at_thirty_and_duplicate_or_stale_requests_do_not_mutate_it(): void
@@ -410,11 +464,17 @@ class CommandQueueAndSalePolicyTest extends TestCase
         }
 
         $path = "/api/v1/nations/{$nation->id}/map-spaces/{$mapSpace->id}/command-queue/bulk";
+        $preview = $this->actingAs($user)->postJson($path.'/preview', [
+            'action' => 'reclaim_clear_all', 'position' => 30, 'expected_version' => 1,
+        ])->assertOk()->assertJsonPath('data.available_count', 1)
+            ->assertJsonPath('data.policies.fill_available.inserted_count', 0)
+            ->assertJsonPath('data.policies.fill_available.cancelled_count', 0)->json('data');
         $this->actingAs($user)->postJson($path, [
             'action' => 'reclaim_clear_all',
             'position' => 30,
-            'request_key' => (string) Str::uuid(),
+            'request_key' => $preview['request_key'],
             'expected_version' => 1,
+            'preview_token' => $preview['preview_token'], 'overflow_policy' => 'fill_available',
         ])->assertOk()
             ->assertJsonPath('data.candidate_count', 2)
             ->assertJsonPath('data.inserted_count', 0)

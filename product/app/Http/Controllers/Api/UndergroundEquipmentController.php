@@ -91,6 +91,8 @@ final class UndergroundEquipmentController extends Controller
             $request->array('categories'),
             $request->array('weapon_styles'),
             $request->filled('quality_percent_max') ? $request->integer('quality_percent_max') : null,
+            $request->array('filter_modes'),
+            $request->array('affix_keys'),
         ));
     }
 
@@ -103,6 +105,15 @@ final class UndergroundEquipmentController extends Controller
             $request->string('request_id')->value(),
             $request->string('catalog_identity')->value(),
             $request->array('items'),
+        ));
+    }
+
+    public function protection(UndergroundIntroMutationRequest $request, int $itemId, UndergroundEquipmentService $service): JsonResponse
+    {
+        $request->validate(['is_protected' => ['required', 'boolean']]);
+
+        return $this->respond(fn (): array => $service->setProtection(
+            $request->user(), $request->string('request_id')->value(), $itemId, $request->boolean('is_protected'),
         ));
     }
 
