@@ -72,13 +72,14 @@ return [
                 'undersea_city_destroyed' => 3,
                 'facility_scale_damaged' => 1,
                 'facility_scale_land_damaged' => 3,
+                'undersea_fire_station_destroyed' => 3,
             ],
             'anti_monster_missile_keys' => [
                 0 => 'missile',
                 1 => 'pp_missile',
                 2 => 'spp_missile',
             ],
-            'spp_self_destruct_setup_points' => 20,
+            'spp_self_destruct_setup_points' => 30,
             'hostile_monument_points' => 15,
             'foreign_monster_kill_reduction' => 1,
             'victim_reduction_per_impact' => 1,
@@ -152,6 +153,7 @@ return [
             29 => 'foreign_wasteland_territory_expand',
             30 => 'facility_scale_damaged',
             31 => 'facility_scale_land_damaged',
+            32 => 'undersea_fire_station_destroyed',
         ],
         'flavor' => [
             0 => 'dormant_visual_theme',

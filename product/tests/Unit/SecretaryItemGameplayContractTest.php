@@ -49,7 +49,15 @@ final class SecretaryItemGameplayContractTest extends TestCase
         $this->assertSame(21_000, $demographics->attractionMaximum($settings, 20_000, 10));
         $this->assertSame(225, $demographics->indomitableBonus($settings, 9_000, 10));
         $this->assertSame(51_500, $demographics->capitalMaximum($settings, 10, 10_000));
-        $historical = require config_path('hakoniwa/rulesets/hakoniwa-2s-plus-v34.php');
+        // Exercise the saved v34 capital contract with a focused fixture;
+        // it is never registered or published as a complete historical Ruleset.
+        $historical = $settings;
+        $historical['key'] = 'hakoniwa-2s-plus-v34';
+        $historical['version'] = 34;
+        unset($historical['secretary']['items']['attraction_towel']);
+        unset($historical['turn_processing']['settlement']['capital_maximum_basis'],
+            $historical['turn_processing']['settlement']['capital_maximum_attraction_bonus']);
+        $historical['capital_growth_maximum_population'] = 25000;
         $contract->validate($historical);
         $this->assertSame(35_000, $demographics->capitalMaximum($historical, 10, 10_000));
         $towel = $catalog->definition(SecretaryItemCatalog::ATTRACTION_TOWEL);

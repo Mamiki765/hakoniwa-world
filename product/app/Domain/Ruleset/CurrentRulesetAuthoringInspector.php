@@ -23,6 +23,8 @@ final class CurrentRulesetAuthoringInspector
         'facility-ranks.php',
         'central-facilities.php',
         'ocean-loop.php',
+        'power-and-pizza.php',
+        'user-achievements.php',
     ];
 
     private const CLASSIFICATIONS = ['behavior', 'data', 'flavor'];
@@ -40,22 +42,9 @@ final class CurrentRulesetAuthoringInspector
         $classifiedPaths = [];
         $counts = array_fill_keys(self::CLASSIFICATIONS, 0);
 
-        $files = [...self::DOMAIN_FILES, 'power-and-pizza.php', 'user-achievements.php'];
+        $files = self::DOMAIN_FILES;
         foreach ($files as $file) {
-            $directory = match ($file) {
-                'world-and-map.php', 'lifecycle-and-karma.php' => 'release-4.18.3/',
-                'facilities.php', 'commands-and-production.php',
-                'terrain-and-disasters.php', 'turn-pipeline.php', 'monsters-and-military.php',
-                'ocean-loop.php', 'facility-ranks.php' => 'release-4.18/',
-                'surface-ships.php' => 'release-4.15/',
-                'user-achievements.php' => 'island-secretary/',
-                'secretary.php' => 'release-4.18/',
-                'power-and-pizza.php' => 'release-4.11.1/',
-                'economy-and-resources.php' => 'release-4.11/',
-                default => 'current/',
-            };
-            $relativePath = $directory.$file;
-            $domain = require config_path('hakoniwa/rulesets/'.$relativePath);
+            $domain = require config_path('hakoniwa/rulesets/current/'.$file);
             if (! is_array($domain) || array_keys($domain) !== ['payload', 'classification']) {
                 throw new DomainException("Current Ruleset domain {$file} must contain only payload and classification.");
             }

@@ -14,13 +14,13 @@ use App\Models\MapSpace;
 use App\Models\MonsterDefinition;
 use App\Models\Nation;
 use App\Models\NationAward;
-use App\Models\RulesetVersion;
 use App\Models\Ship;
 use App\Models\TerrainDefinition;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Tests\Concerns\CreatesTestWorlds;
+use Tests\Support\SyntheticHistoricalRulesetSnapshot;
 use Tests\TestCase;
 
 class PublicLobbyApiTest extends TestCase
@@ -463,7 +463,14 @@ class PublicLobbyApiTest extends TestCase
         $this->assertSame($publicSea, $publicBase);
 
         $currentRulesetId = $world->ruleset_version_id;
-        $world->update(['ruleset_version_id' => RulesetVersion::query()->where('version', 33)->sole()->id]);
+        $historical = SyntheticHistoricalRulesetSnapshot::create('visibility-ship-history', 33,
+            static function (array $settings): array {
+                $settings['surface_ships']['definitions']['exploration']['visibility_radius'] = 3;
+                $settings['surface_ships']['definitions']['warship']['visibility_radius'] = 5;
+
+                return $settings;
+            });
+        $world->update(['ruleset_version_id' => $historical->id]);
         $ship = Ship::query()->create([
             'world_id' => $world->id,
             'ruleset_version_id' => $world->ruleset_version_id,

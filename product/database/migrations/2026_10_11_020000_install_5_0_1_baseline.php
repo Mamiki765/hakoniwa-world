@@ -14,6 +14,6 @@ return new class extends Migration
 
     public function down(): void
     {
-        throw new RuntimeException('The accepted 4.9.0 baseline is forward-only. Restore a reviewed backup instead of rolling back user data.');
+        throw new RuntimeException('The accepted 5.0.1 baseline is forward-only. Restore a reviewed backup instead of rolling back user data.');
     }
 };
