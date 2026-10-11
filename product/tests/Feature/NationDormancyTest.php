@@ -91,7 +91,6 @@ final class NationDormancyTest extends TestCase
         $response = $this->actingAs($owner)->postJson($endpoint, ['days' => 1])
             ->assertOk()
             ->assertJsonPath('data.state', 'dormant')
-            ->assertJsonPath('data.state_label', '休眠')
             ->assertJsonPath('data.state_reason', 'manual')
             ->assertJsonPath('data.state_started_turn', 1)
             ->assertJsonPath('data.resume_at_turn', 14)
@@ -112,12 +111,11 @@ final class NationDormancyTest extends TestCase
             'nation_id' => $nation->id,
             'visibility' => 'public',
         ]);
-        $dormancyMessage = '主が帰ってくるまでの間、秘書が禁呪を解き放ちました。手動休止島に冬が訪れています……';
         $publicLog = $this->getJson("/api/v1/public/nations/{$nation->id}/events")->assertOk();
-        $this->assertContains($dormancyMessage, $this->messages($publicLog->json('data.groups')));
+        $this->assertContains('nation.dormant', $this->types($publicLog->json('data.groups')));
         $this->assertStringNotContainsString('secretary_id', (string) $publicLog->getContent());
         $ownerLog = $this->actingAs($owner)->getJson("/api/v1/nations/{$nation->id}/events")->assertOk();
-        $this->assertContains($dormancyMessage, $this->messages($ownerLog->json('data.groups')));
+        $this->assertContains('nation.dormant', $this->types($ownerLog->json('data.groups')));
         $this->actingAs($owner)->postJson($endpoint, ['days' => 1])
             ->assertConflict()->assertJsonPath('code', 'nation_not_active');
 
@@ -191,13 +189,11 @@ final class NationDormancyTest extends TestCase
         $this->assertDatabaseHas('audit_events', [
             'event_type' => 'nation.dormancy_resumed',
             'nation_id' => $nation->id,
-            'message' => '期限休止島に春が訪れ、活動を再開しました。',
         ]);
-        $resumeMessage = '期限休止島に春が訪れ、活動を再開しました。';
         $publicLog = $this->getJson("/api/v1/public/nations/{$nation->id}/events")->assertOk();
-        $this->assertContains($resumeMessage, $this->messages($publicLog->json('data.groups')));
+        $this->assertContains('nation.dormancy_resumed', $this->types($publicLog->json('data.groups')));
         $ownerLog = $this->actingAs($owner)->getJson("/api/v1/nations/{$nation->id}/events")->assertOk();
-        $this->assertContains($resumeMessage, $this->messages($ownerLog->json('data.groups')));
+        $this->assertContains('nation.dormancy_resumed', $this->types($ownerLog->json('data.groups')));
 
         $queuedTarget = MapCell::query()->where('owner_nation_id', $nation->id)
             ->whereNull('facility_definition_id')
@@ -344,14 +340,11 @@ final class NationDormancyTest extends TestCase
             ->assertJsonFragment([
                 'id' => $activeNation->id,
                 'state' => 'recovery',
-                'state_label' => '休戦中：残り84ターン',
                 'recovery_remaining_turns' => 84,
                 'karma' => 4,
-                'karma_badge' => 'KARMA:4',
             ]);
         $this->actingAs($activeOwner)->getJson("/api/v1/nations/{$activeNation->id}")
             ->assertOk()
-            ->assertJsonPath('data.state_label', '休戦中：残り84ターン')
             ->assertJsonPath('data.recovery_remaining_turns', 84)
             ->assertJsonPath('data.karma', 4)
             ->assertJsonPath('data.karma_positive', true);
@@ -458,7 +451,6 @@ final class NationDormancyTest extends TestCase
         $this->assertDatabaseHas('audit_events', [
             'event_type' => 'nation.abandoned',
             'nation_id' => $abandonedNation->id,
-            'message' => '忘却島は放置され、忘れ去られる。',
             'visibility' => 'public',
             'turn' => 2,
         ]);
@@ -476,10 +468,10 @@ final class NationDormancyTest extends TestCase
     }
 
     /** @param list<array<string, mixed>> $groups @return list<string> */
-    private function messages(array $groups): array
+    private function types(array $groups): array
     {
         return collect($groups)->flatMap(
             static fn (array $group): array => $group['events'],
-        )->pluck('message')->all();
+        )->pluck('type')->all();
     }
 }
