@@ -476,13 +476,15 @@ abstract class CommandAndMissileTestCase extends TestCase
     }
 
     /** @param callable(): mixed $action */
-    protected function assertPlayerFacing(callable $action, string $message): void
+    protected function assertPlayerFacing(callable $action, ?string $message = null): void
     {
         try {
             $action();
             $this->fail('Expected a player-facing command rejection.');
         } catch (PlayerFacingCommandException $exception) {
-            $this->assertSame($message, $exception->getMessage());
+            if ($message !== null) {
+                $this->assertSame($message, $exception->getMessage());
+            }
         }
     }
 
