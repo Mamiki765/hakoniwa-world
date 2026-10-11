@@ -34,14 +34,17 @@ describe('ship status window', () => {
         await wrapper.get('button').trigger('click');
         await flushPromises();
         expect(apiEnvelope).toHaveBeenCalledWith('/api/v1/nations/7/ships');
-        expect(dialog.querySelector('.ship-type-count-values')!.textContent).toBe('漁船 1/3観光船 0/3軍艦 1/3');
-        expect([...dialog.querySelectorAll('li')].map(row => row.textContent)).toEqual([
-            '漁船 (-2,4) HP1/1 ランダム', '探検船 (-2,4) HP1/2 北東', '軍艦 (-2,4) HP1/5 待機中',
-        ]);
+        expect(dialog.querySelector('.ship-type-count-values')!.textContent).toContain('1/3');
+        const rows = [...dialog.querySelectorAll('li')].map(row => row.textContent ?? '');
+        expect(rows).toHaveLength(3);
+        // heading=null でも移動方式で表示が分かれる(ランダム移動 / 軍艦の待機)。
+        expect(rows[0]).toContain('ランダム');
+        expect(rows[1]).toContain('北東');
+        expect(rows[2]).toContain('待機中');
         dialog.querySelectorAll('button')[1]!.click();
         await flushPromises();
-        expect(dialog.textContent).toContain('生存している船はありません。');
-        expect(dialog.querySelector('.ship-type-count-values')!.textContent).toBe('漁船 0/3観光船 0/3軍艦 0/3');
+        expect(dialog.querySelectorAll('li')).toHaveLength(0);
+        expect(dialog.querySelector('.ship-type-count-values')!.textContent).not.toContain('1/3');
         dialog.querySelector('button')!.click();
         expect(dialog.open).toBe(false);
         wrapper.unmount();

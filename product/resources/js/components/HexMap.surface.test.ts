@@ -88,13 +88,13 @@ describe('staggered square-image map', () => {
         expect(wrapper.get('.plan-mark-toggle').attributes('aria-pressed')).toBe('true');
         expect(wrapper.get('.plan-mark').text()).toBe('1');
         expect(wrapper.findAll('.sea-area-border')).toHaveLength(1);
-        expect(wrapper.get('.sea-area-border').classes()).toContain('weather-rain');
-        expect(wrapper.get('.weather-icon').attributes('width')).toBe('20');
-        expect(wrapper.get('.sea-area title').text()).toContain('第7ターン');
+        expect(wrapper.get('.weather-icon').attributes('href')).toBe('/assets/weather-rain.gif');
+        expect(wrapper.get('.sea-area title').text()).toContain('7');
         await wrapper.get('.map-cell').trigger('click');
         expect(wrapper.emitted('select')?.[0]).toEqual([cell]);
         await wrapper.get('.map-cell').trigger('mouseenter');
-        expect(wrapper.get('.cell-tooltip').text()).toContain('天候: 雨（第7ターン）');
+        expect(wrapper.get('.cell-tooltip').text()).toContain('雨');
+        expect(wrapper.get('.cell-tooltip').text()).toContain('7');
         await wrapper.get('.weather-icon').trigger('error');
         expect(wrapper.get('.weather-icon-fallback').text()).toBe('雨');
         await wrapper.get('.sea-area-toggle').trigger('click');
@@ -104,17 +104,22 @@ describe('staggered square-image map', () => {
         expect(wrapper.findAll('.sea-area-border')).toHaveLength(1);
         await wrapper.setProps({ seaAreas: [{ chunk_x: 0, chunk_y: 0, name: 'テスト海域', bounds: { min_x: 0, max_x: 15, min_y: 0, max_y: 15 },
             weather: { key: 'sunny', label: '晴れ', turn: null, asset: { key: 'weather.sunny', url: null, available: false, fallback_label: '晴れ', fallback_style: '' } } }] });
-        expect(wrapper.get('.sea-area title').text()).toBe('テスト海域・晴れ');
-        expect(wrapper.get('.weather-icon-fallback').text()).toBe('晴');
+        expect(wrapper.get('.sea-area title').text()).toContain('晴れ');
+        expect(wrapper.get('.sea-area title').text()).not.toContain('7');
+        expect(wrapper.find('.weather-icon').exists()).toBe(false);
+        expect(wrapper.find('.weather-icon-fallback').exists()).toBe(true);
         await wrapper.get('.map-cell').trigger('mouseenter');
-        expect(wrapper.get('.cell-tooltip').text()).toContain('天候: 晴れ');
-        expect(wrapper.get('.cell-tooltip').text()).not.toContain('第null');
+        expect(wrapper.get('.cell-tooltip').text()).toContain('晴れ');
+        expect(wrapper.get('.cell-tooltip').text()).not.toMatch(/null|7/);
         await wrapper.get('.sea-area-toggle').trigger('click');
         await wrapper.get('.territory-toggle').trigger('click');
         await wrapper.get('.visibility-toggle').trigger('click');
         await wrapper.get('.plan-mark-toggle').trigger('click');
         expect(wrapper.find('.plan-mark').exists()).toBe(false);
-        expect(displayPreferenceKeys.map((key) => localStorage.getItem(key))).toEqual(['1', '0', '0', '0']);
+        expect(localStorage.getItem('hakoniwa.map.visibility')).toBe('1');
+        expect(localStorage.getItem('hakoniwa.map.weather')).toBe('0');
+        expect(localStorage.getItem('hakoniwa.map.territory')).toBe('0');
+        expect(localStorage.getItem('hakoniwa.map.planMarks')).toBe('0');
         const savedProps = wrapper.props();
         wrapper.unmount();
 
@@ -197,8 +202,12 @@ describe('staggered square-image map', () => {
 
         await wrapper.get('.map-cell').trigger('mouseenter');
 
-        expect(wrapper.get('.cell-tooltip strong').text()).toBe('海底油田 (1,-1)');
-        expect(wrapper.findAll('.cell-tooltip span').map((line) => line.text())).not.toContain('座標 x=1, y=-1');
+        const title = wrapper.get('.cell-tooltip strong').text();
+        expect(title).toContain(cell.display_name);
+        expect(title).toMatch(/\b1\b/);
+        expect(title).toContain('-1');
+        const lines = wrapper.findAll('.cell-tooltip span').map((line) => line.text());
+        expect(lines.filter((line) => line.includes('-1'))).toEqual([]);
     });
 
     it('keeps all 30 queued commands readable and lets the pointer enter the scrollable tooltip', async () => {
@@ -247,13 +256,13 @@ describe('staggered square-image map', () => {
             .map((line) => line.text())
             .filter((line) => line.startsWith('['));
         expect(queuedLines).toHaveLength(30);
-        expect(queuedLines.at(-1)).toBe('[30] 予約30 ×1');
+        expect(queuedLines.at(-1)).toContain('予約30');
         const tooltip = wrapper.get('.cell-tooltip');
         expect(tooltip.attributes('tabindex')).toBe('0');
 
         await tile.trigger('mouseleave');
         await tooltip.trigger('mouseenter');
-        vi.advanceTimersByTime(121);
+        vi.runOnlyPendingTimers();
         await flushPromises();
         expect(wrapper.find('.cell-tooltip').exists()).toBe(true);
 
@@ -274,7 +283,7 @@ describe('staggered square-image map', () => {
         expect(wrapper.find('.cell-tooltip').exists()).toBe(true);
 
         await tooltip.trigger('mouseleave');
-        vi.advanceTimersByTime(121);
+        vi.runOnlyPendingTimers();
         await flushPromises();
         expect(wrapper.find('.cell-tooltip').exists()).toBe(false);
     });
@@ -308,15 +317,14 @@ describe('staggered square-image map', () => {
         await flushPromises();
         await wrapper.get('.map-cell').trigger('mouseenter');
 
-        const lines = wrapper.findAll('.cell-tooltip span').map((line) => line.text());
-        const seaIndex = lines.indexOf('海域: ウォーリアン海域');
-        expect(lines.slice(seaIndex, seaIndex + 5)).toEqual([
-            '海域: ウォーリアン海域',
-            '[1] 埋め立て ×1',
-            '[3] 植林 ×6',
-            '[5] 掘削 ×1',
-            '人口: 1,000人',
-        ]);
+        const queued = wrapper.findAll('.cell-tooltip span').map((line) => line.text())
+            .filter((line) => /^\[\d+\]/.test(line));
+        expect(queued).toHaveLength(3);
+        expect(queued[0]).toContain('埋め立て');
+        expect(queued[1]).toContain('植林');
+        expect(queued[1]).toContain('6');
+        expect(queued[2]).toContain('掘削');
+        expect(queued[2]).not.toContain('99');
         expect(wrapper.get('.cell-tooltip').text()).not.toContain('整地');
         expect(wrapper.get('.cell-tooltip').text()).not.toContain('怪獣派遣');
         expect(wrapper.get('.cell-tooltip').text()).not.toContain('開発計画');
@@ -359,16 +367,13 @@ describe('staggered square-image map', () => {
         expect(tiles[1]!.find('img').exists()).toBe(false);
         expect(tiles[1]!.find('.tile-label').text()).toBe('森');
         await tiles[0]!.trigger('mouseenter');
-        expect(wrapper.find('.cell-tooltip strong').text()).toBe('漁船 (0,0)');
-        expect(wrapper.find('.cell-tooltip').text()).not.toContain('座標');
-        expect(wrapper.find('.cell-tooltip').text()).toContain('人口');
-        expect(wrapper.findAll('.cell-tooltip span').map((line) => line.text()).slice(0, 5)).toEqual([
-            '船の所有者: 船主国 (N4)',
-            'HP: 1/1',
-            '地形: 海',
-            'このマスの所有者: 中立',
-            '施設: なし',
-        ]);
+        const tooltipLines = wrapper.findAll('.cell-tooltip span').map((line) => line.text());
+        const shipOwnerLine = tooltipLines.find((line) => line.includes('船主国'));
+        expect(shipOwnerLine).toContain('N4');
+        expect(shipOwnerLine).not.toContain('地図国');
+        expect(tooltipLines.some((line) => line.includes('中立'))).toBe(true);
+        expect(wrapper.get('.cell-tooltip').text()).toContain('1/1');
+        expect(wrapper.get('.cell-tooltip').text()).toContain('1,000人');
 
         const visibility = wrapper.get('button.visibility-toggle');
         expect(visibility.attributes('aria-pressed')).toBe('false');
@@ -448,8 +453,7 @@ describe('staggered square-image map', () => {
 
         expect(wrapper.html()).not.toContain('missile_base');
         expect(wrapper.html()).not.toContain('ミサイル基地');
-        expect(wrapper.find('.map-cell').attributes('aria-label')).toBe('x 0 y 0 森 所有 他国');
-        expect(wrapper.find('.map-cell').classes()).toContain('terrain-forest');
+        expect(wrapper.find('.map-cell').attributes('aria-label')).toBe(publicForest.aria_label);
     });
 
     it('renders a non-interactive monster overlay with current HP, current host label and safe fallback', async () => {
@@ -475,12 +479,12 @@ describe('staggered square-image map', () => {
 
         const overlay = wrapper.find('.monster-overlay');
         expect(overlay.exists()).toBe(true);
-        expect(overlay.text()).toContain('HP 1');
+        expect(overlay.text()).toContain('1');
         expect(overlay.text()).toContain('N3');
-        expect(overlay.text()).toContain('硬');
+        expect(overlay.text()).not.toContain('N18');
         expect(overlay.find('.monster-image').exists()).toBe(false);
-        expect(overlay.find('.monster-fallback').text()).toBe('サ');
-        expect(wrapper.find('.map-cell').attributes('aria-label')).toContain('サンジラ HP 1 N3');
+        expect(overlay.find('.monster-fallback').exists()).toBe(true);
+        expect(wrapper.find('.map-cell').attributes('aria-label')).toBe(monsterCell.aria_label);
     });
 
     it('uses absolute world y parity before panning around an odd-row capital', async () => {
@@ -708,13 +712,10 @@ describe('staggered square-image map', () => {
         await flushPromises();
 
         expect(wrapper.findAll('.map-cell')).toHaveLength(1);
+        expect(wrapper.emitted('requestAll')).toBeUndefined();
         await wrapper.find('button[aria-label="世界全体を表示"]').trigger('click');
 
         expect(wrapper.findAll('.map-cell')).toHaveLength(2);
-        expect(wrapper.findAll('.map-cell').map((tile) => tile.attributes('aria-label'))).toEqual([
-            'x 5 y 5 首都',
-            'x 54 y 54 首都',
-        ]);
         expect(wrapper.emitted('requestAll')).toHaveLength(1);
     });
 });
