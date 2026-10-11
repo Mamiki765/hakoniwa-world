@@ -509,7 +509,9 @@ html:is([data-theme="dark"], [data-theme="old-dark"]) .compensation-banner, html
 .underground-party-meter.is-awakening progress::-moz-progress-bar { background: #c9a227; }
 .underground-party-meter.is-awakening[data-state="awakened"] progress::-webkit-progress-value { background: #a65ac2; }
 .underground-party-meter.is-awakening[data-state="awakened"] progress::-moz-progress-bar { background: #a65ac2; }
-.underground-party-meter > span { position: absolute; inset: 0; display: flex; flex-wrap: wrap; align-content: center; justify-content: center; align-items: center; color: var(--ink); font-size: 1em; font-variant-numeric: tabular-nums; line-height: 1.15; text-shadow: 0 1px 1px var(--panel); pointer-events: none; }
+.underground-party-meter > span { position: absolute; inset: 0; display: flex; flex-wrap: wrap; align-content: center; justify-content: center; align-items: center; color: var(--ink); font-size: 1em; font-variant-numeric: tabular-nums; line-height: 1.15; text-shadow: 0 1px 1px var(--paper); pointer-events: none; }
+/* HP・MPの数字は、色の付いたゲージの上でも空のゲージの上でも読めるよう、白い字に濃い縁を付ける。 */
+.underground-party-meter:is(.is-hp, .is-mp) > span { color: #fff; font-weight: 700; text-shadow: 0 0 2px #000, 0 1px 1px #000, 0 0 4px rgba(0, 0, 0, .7); }
 .underground-party-battle-card-body small { color: var(--muted); font-size: .6rem; overflow-wrap: anywhere; }
 .underground-party-meter.is-awakening[data-state="ready"] > span { color: #463500; font-weight: 900; text-shadow: 0 1px 0 #f8e79d; }
 .underground-party-meter.is-awakening[data-state="awakened"] > span { color: #fff; font-weight: 900; text-shadow: 0 1px 1px #3d1749; }
