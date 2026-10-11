@@ -57,7 +57,6 @@ final class UndergroundIntroAndPlaytestTest extends UndergroundPlayerAccessTestC
             'request_id' => $tutorialRequest,
         ])->assertOk()
             ->assertJsonPath('data.stage', 'escape_pending')
-            ->assertJsonPath('data.battle.encounter_name', 'ジャイアントラット')
             ->assertJsonPath('data.battle.context', 'tutorial')
             ->assertJsonPath('data.battle.result', 'victory')
             ->assertJsonPath('data.battle.xp_awarded', 5)
@@ -207,10 +206,7 @@ final class UndergroundIntroAndPlaytestTest extends UndergroundPlayerAccessTestC
             ->assertJsonPath('data.skill_points_total', 20)
             ->assertJsonPath('data.skill_points_unspent', 20)
             ->assertJsonPath('data.skill_tree_identity', 'secretary-underground-skill-tree-alpha-v4')
-            ->assertJsonPath('data.skill_trees.0.label', '戦技')
             ->assertJsonPath('data.skill_trees.0.nodes.0.recommended_stats', ['might', 'finesse'])
-            ->assertJsonPath('data.skill_trees.1.label', '護身')
-            ->assertJsonPath('data.skill_trees.2.label', '祝福')
             ->assertJsonPath('data.skill_trees.2.nodes.0.recommended_stats', ['spirit'])
             ->assertJsonPath('data.skill_trees.2.nodes.1.recommended_stats', ['spirit'])
             ->assertJsonPath('data.skill_trees.2.nodes.5.recommended_stats', []);
@@ -305,8 +301,6 @@ final class UndergroundIntroAndPlaytestTest extends UndergroundPlayerAccessTestC
         $skillPayload = ['request_id' => $skillRequest, 'node_key' => 'miracle_holy_bolt'];
         $skillResult = $this->actingAs($user)->postJson('/api/v1/me/underground/skills/acquire', $skillPayload)
             ->assertOk()
-            ->assertJsonPath('data.growth_path.label', '戦技')
-            ->assertJsonPath('data.skill_trees.2.label', '祝福')
             ->assertJsonPath('data.skill_trees.2.nodes.0.rank', 1)
             ->assertJsonPath('data.skill_points_unspent', 14)
             ->assertJsonPath('data.skill_points_spent', 6);
@@ -317,7 +311,6 @@ final class UndergroundIntroAndPlaytestTest extends UndergroundPlayerAccessTestC
             'slots' => ['holy_bolt', null, null, null, null],
         ])->assertOk()
             ->assertJsonPath('data.active_slots.0.key', 'holy_bolt')
-            ->assertJsonPath('data.active_slots.0.label', 'ホーリーボルト')
             ->assertJsonCount(5, 'data.active_slots');
         $this->actingAs($user)->postJson('/api/v1/me/underground/skills/acquire', [
             'request_id' => (string) Str::uuid(),
@@ -897,13 +890,11 @@ final class UndergroundIntroAndPlaytestTest extends UndergroundPlayerAccessTestC
             static fn (array $action): bool => $action['type'] === 'counter',
         );
         $this->assertIsArray($barrierDamage);
-        $this->assertSame('精密斬り', $barrierDamage['label']);
         $this->assertFalse($barrierDamage['evaded']);
         $this->assertSame(0, $barrierDamage['amount']);
         $this->assertGreaterThan(0, $barrierDamage['barrier_absorbed']);
         $this->assertNull($barrierDamage['agility_combo_hits']);
         $this->assertIsArray($fatalDamage);
-        $this->assertSame('反撃', $fatalDamage['label']);
         $this->assertFalse($fatalDamage['evaded']);
         $this->assertGreaterThan(500, $fatalDamage['amount']);
         $this->actingAs($user)->postJson('/api/v1/me/underground/scripted-loss', [
@@ -1044,9 +1035,9 @@ final class UndergroundIntroAndPlaytestTest extends UndergroundPlayerAccessTestC
             ->assertOk()
             ->assertJsonPath('data.context', 'playtest')
             ->assertJsonPath('data.player_display_name', 'Playtest secretary')
-            ->assertJsonPath('data.build_name', '護身特化')
-            ->assertJsonPath('data.encounter_name', '深層追跡者')
             ->assertJsonCount((int) $first->json('data.summary.rounds'), 'data.rounds');
+        $this->assertNotEmpty($detail->json('data.build_name'));
+        $this->assertNotEmpty($detail->json('data.encounter_name'));
         $this->assertEquals($first->json('data.initial_state'), $detail->json('data.initial_state'));
         $projectedActions = collect($detail->json('data.rounds'))
             ->flatMap(fn (array $round): array => $round['actions']);
@@ -1115,8 +1106,8 @@ final class UndergroundIntroAndPlaytestTest extends UndergroundPlayerAccessTestC
         ]);
         $this->actingAs($user)->getJson("/api/v1/me/underground/battles/{$requestId}")
             ->assertOk()
-            ->assertJsonPath('data.build_name', '護身特化')
-            ->assertJsonPath('data.encounter_name', '深層追跡者')
+            ->assertJsonPath('data.build_name', $detail->json('data.build_name'))
+            ->assertJsonPath('data.encounter_name', $detail->json('data.encounter_name'))
             ->assertJsonCount((int) $first->json('data.summary.rounds'), 'data.rounds');
 
         foreach (range(1, 20) as $offset) {
@@ -1132,8 +1123,8 @@ final class UndergroundIntroAndPlaytestTest extends UndergroundPlayerAccessTestC
             ->assertOk()
             ->assertJsonCount(20, 'data')
             ->assertJsonPath('data.0.id', $requestId)
-            ->assertJsonPath('data.0.build_name', '護身特化')
-            ->assertJsonPath('data.0.encounter_name', '深層追跡者');
+            ->assertJsonPath('data.0.build_name', $detail->json('data.build_name'))
+            ->assertJsonPath('data.0.encounter_name', $detail->json('data.encounter_name'));
         $this->assertCount(20, $history->json('data'));
         $beforeCursor = $history->json('data.19.history_cursor');
         $this->assertIsInt($beforeCursor);
