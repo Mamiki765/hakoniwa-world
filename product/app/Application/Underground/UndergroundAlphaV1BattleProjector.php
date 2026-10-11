@@ -66,6 +66,7 @@ final class UndergroundAlphaV1BattleProjector
                         '生命・武力・技巧・精神・敏捷が30%上昇した！',
                     ],
                     'amount' => 0,
+                    ...$this->mpFields($row),
                 ];
 
                 continue;
@@ -188,6 +189,7 @@ final class UndergroundAlphaV1BattleProjector
                 ? $message
                 : ($row['equipment_effect_label'] ?? $this->actionLabel($action, $catalog)),
             'amount' => abs($amount),
+            ...$this->mpFields($row),
             'critical' => (bool) ($row['critical'] ?? false),
             'evaded' => (bool) ($row['evaded'] ?? false),
             'guarded' => (bool) ($row['guarded'] ?? false),
@@ -198,6 +200,19 @@ final class UndergroundAlphaV1BattleProjector
                 ? $row['agility_combo_hits']
                 : null,
         ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $row
+     * @return array<string, mixed>
+     */
+    private function mpFields(array $row): array
+    {
+        if (! in_array($row['effect_type'] ?? $row['kind'] ?? null, ['mp_cost', 'mp_recovery', 'awakening'], true)) {
+            return [];
+        }
+
+        return array_intersect_key($row, ['mp_source' => true, 'actor_mp' => true, 'mp_recovered' => true]);
     }
 
     /** @return array<string, mixed> */

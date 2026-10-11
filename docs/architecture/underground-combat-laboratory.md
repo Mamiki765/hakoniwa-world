@@ -92,6 +92,28 @@ alpha-v1はpure immutable manifest/snapshot/validator/simulatorであり、DB、
 
 current combat identityは`secretary-underground-alpha-v5`、skill tree identityは`secretary-underground-skill-tree-alpha-v2`。3.9.3のv4から3.10.0の技能・MP・会心・対象選択・持続回復・蘇生・行動継続へ更新する。`AlphaV1*`と`foundation-v1.json`は既存canonical implementation lineageであり、file名からpersisted identityを推測しない。過去battleの保存済みsummary/detailの再取得は保持し、旧戦闘engineの並行運用や過去勝敗の再計算は行わない。SP移行は3.10.0のforward migrationを正本とする。
 
+### MP表示用のログ契約
+
+MPの現在値は既存の`initial_state`、各roundの`start_state` / `end_state`、最終結果を使う。Soloは`player` / `enemy`、Partyはcombatant ID別のstateに`mp`があり、Soloの本人最終MPは`summary.final_mp`。Party projector直後には`summary.final_state[id].mp`があるが、通常の保存・返却経路では`UndergroundBattleStorage::compactSnapshot`が`summary.final_state`を削除し、`detailPresentation`も復元しない。クライアントのParty最終MPは詳細ログの最後の有効な`round.end_state[id].mp`を使い、詳細欠測時は推測しない。最大値は`AlphaV1CombatRules::MAX_MP = 10_000`で固定。全行動のHP/MP snapshotや最大MP fieldは追加しない。
+
+新規の`mp_cost` / `mp_recovery` rowには、実際の呼出し元を表す任意field `mp_source?: string`を保持する。`amount`は従来どおり非負の実消費量・実回復量（overflowを含まない）で、表示符号は`mp_cost`が`-NMP`、`mp_recovery`が`+NMP`。`actor_mp?: number`はMPが変化した本人の処理後の現在値であり、技の使用者と回復対象が異なる場合もこのrowの本人へ適用する。Partyの本人は`actor_id` / `target_id`、Soloは`side` / `target_name`から既存の対応を使う。
+
+| `mp_source` | 現行の根拠 | popup |
+|---|---|---|
+| `natural` | round開始の自然回復 | 出さない |
+| `skill_cost` | 技能の実MP消費 | 青系で`-NMP` |
+| `skill_recovery` | 即時MP回復、およびルシド (`lucid_dream`) 等の継続MP回復 | 青系で`+NMP` |
+| `awakening_technique` | 無窮再演 (`limitless_reprise`) の実MP回復 | 青系で`+NMP` |
+| `awakening` | 通常/強制覚醒の既存`awakening`イベント | 下記の実回復量だけ青系で`+NMP` |
+
+覚醒は`changeMp`を通らず全回復するため、既存`awakening`イベントに`mp_source: 'awakening'`、`mp_recovered?: number`（覚醒後MP−覚醒直前MP）、`actor_mp`を追加する。`amount: 0`は維持し、別の`mp_recovery`イベントやmetric加算は行わない。`mp_recovered: 0`は回復なしを意味し、popupを出さない。将来MP吸収が実装されたときも、増減の符号はrowのtypeから決め、sourceを技能消費だけに限定しない。今回、敵・技能・MP drain処理は追加しない。
+
+Solo projectorは上記のMP fieldを明示転送し、Party projectorは既存のrowコピーで転送する。presentation versionはSolo v2 / Party v3を維持する。field欠測は0や`natural`と同義ではない。過去ログの`mp_source`欠測は金額・文言・round位置から推測せず、MP popupを抑止する。古い覚醒の`mp_recovered`欠測も回復量を推測せず抑止する。既知のsourceがある場合だけ表示し、未知のsourceはUIが契約を受け入れるまで安全側で抑止する。保存済みログの書換え・再計算・migrationは行わない。
+
+UI担当ラピスへの接続点: `UndergroundPanel.vue`の`RoundAction`へ上記の任意fieldを追加し、`actionGroups()`の`group.action`だけでなく`group.source`内のMP rowを読む。技能の宣言・消費・damage等をまとめたgroupでは、消費rowが`group.action`から消えるためである。回復量と符号は上記のfieldを使い、HPの`amount`に混ぜない。自然回復popupは禁止し、現在値はMP rowと既存round境界から更新する。画面・再生UIの実装はこのバックエンド契約変更の範囲外。
+
+ログ注釈とprojectionのみの追加であり、戦闘結果・計算・metric・RNG・イベント数・orderingは維持する。Ruleset v36とcombat identityは変更しない。
+
 ### 任意決闘「夢の女王」
 
 Application 4.1.0では、輝きの王国解禁後に案内人へ挑む任意決闘を追加する。定義は既存`underground-alpha-v1.php`の`guide_duel`、content identityは`secretary-underground-guide-duel-v1`。参加者数にかかわらず固定能力の敵1体と戦う。既存のPT snapshot準備・pure combat・projector・battle historyをsoloにも再利用し、導入の`true_name_story_battle`は変更しない。

@@ -79,6 +79,16 @@ final class UndergroundPartyBattleProjectorTest extends TestCase
         foreach ($costs as $cost) {
             self::assertContains($cost['action_id'], array_column($decisions, 'action_id'));
         }
+        $rawCost = collect($result->actionLog)->firstWhere('effect_type', 'mp_cost');
+        self::assertIsArray($rawCost);
+        self::assertSame(['skill_cost', $rawCost['amount'], $rawCost['actor_mp']],
+            [$costs[0]['mp_source'], $costs[0]['amount'], $costs[0]['actor_mp']]);
+        $rawRecovery = collect($result->actionLog)->firstWhere('effect_type', 'mp_recovery');
+        self::assertIsArray($rawRecovery);
+        $recovery = collect($actions)->firstWhere('type', 'mp_recovery');
+        self::assertIsArray($recovery);
+        self::assertSame(['skill_recovery', $rawRecovery['amount'], $rawRecovery['actor_mp']],
+            [$recovery['mp_source'], $recovery['amount'], $recovery['actor_mp']]);
         $revivals = array_values(array_filter($actions, static fn (array $row): bool => $row['kind'] === 'revival'));
         self::assertNotEmpty($revivals);
         self::assertSame('borrowed:2', $revivals[0]['actor_id']);
@@ -95,5 +105,23 @@ final class UndergroundPartyBattleProjectorTest extends TestCase
         self::assertSame($result->finalStates['borrowed:2'], $portraits[2]['state']);
         $awakenings = array_values(array_filter($actions, static fn (array $row): bool => $row['kind'] === 'awakening'));
         self::assertSame(['覚醒する。'], $awakenings[0]['lines']);
+        self::assertSame(['awakening', 0, 10_000], [$awakenings[0]['mp_source'], $awakenings[0]['mp_recovered'], $awakenings[0]['actor_mp']]);
+    }
+
+    public function test_legacy_mp_rows_do_not_infer_missing_source_or_awakening_recovery(): void
+    {
+        $fixture = PartyPresentationFixture::create();
+        $rows = [
+            ['round' => 1, 'effect_type' => 'mp_recovery', 'amount' => 300, 'actor_mp' => 9400, 'message' => 'MP回復'],
+            ['round' => 1, 'kind' => 'awakening', 'amount' => 0, 'message' => 'HP/MPが全回復した！'],
+        ];
+        $party = new PartyCombatResult('player', 1, $rows, [], []);
+        $partyProjection = (new UndergroundPartyBattleProjector)->project($party, $fixture['member_snapshots'], $fixture['catalog']);
+        $actions = $partyProjection['rounds'][0]['actions'];
+        self::assertSame(9400, $actions[0]['actor_mp']);
+        self::assertArrayNotHasKey('mp_source', $actions[0]);
+        self::assertArrayNotHasKey('mp_source', $actions[1]);
+        self::assertArrayNotHasKey('mp_recovered', $actions[1]);
+        self::assertSame($rows, $party->actionLog);
     }
 }

@@ -948,6 +948,28 @@ final class UndergroundCombatBuildTest extends TestCase
         $this->assertSame($result->mpSkillRecovery, $result->crystalCycleRecovery);
         $this->assertGreaterThan(0, $result->mpOverflow);
         $this->assertLessThanOrEqual(AlphaV1CombatRules::MAX_MP, $result->finalMp);
+
+        $mpRows = array_values(array_filter($result->actionLog,
+            static fn (array $row): bool => in_array($row['effect_type'] ?? null, ['mp_cost', 'mp_recovery'], true)));
+        $this->assertEqualsCanonicalizing(['skill_cost', 'natural', 'skill_recovery'], array_unique(array_column($mpRows, 'mp_source')));
+        $projected = (new UndergroundAlphaV1BattleProjector)->project($result, new AlphaV1BuildCatalog($manifest));
+        $mpActions = array_values(array_filter(array_merge(...array_column($projected['rounds'], 'actions')),
+            static fn (array $row): bool => in_array($row['type'], ['mp_cost', 'mp_recovery'], true)));
+        $this->assertSame(
+            array_map(static fn (array $row): array => [$row['effect_type'], $row['mp_source'], $row['amount'], $row['actor_mp']], $mpRows),
+            array_map(static fn (array $row): array => [$row['type'], $row['mp_source'], $row['amount'], $row['actor_mp']], $mpActions),
+        );
+        $legacyRows = [
+            ['round' => 1, 'effect_type' => 'mp_recovery', 'amount' => 300, 'actor_mp' => 9400, 'message' => 'MP回復'],
+            ['round' => 1, 'kind' => 'awakening', 'amount' => 0, 'message' => 'HP/MPが全回復した！'],
+        ];
+        $legacy = new BuildCombatResult(...array_replace(get_object_vars($result), ['actionLog' => $legacyRows]));
+        $legacyProjection = (new UndergroundAlphaV1BattleProjector)->project($legacy, new AlphaV1BuildCatalog($manifest));
+        $legacyActions = $legacyProjection['rounds'][0]['actions'];
+        $this->assertSame(9400, $legacyActions[0]['actor_mp']);
+        $this->assertArrayNotHasKey('mp_source', $legacyActions[0]);
+        $this->assertArrayNotHasKey('mp_source', $legacyActions[1]);
+        $this->assertArrayNotHasKey('mp_recovered', $legacyActions[1]);
     }
 
     public function test_fighting_spirit_and_grace_require_effective_defense_or_recovery(): void
@@ -1614,12 +1636,38 @@ final class UndergroundCombatBuildTest extends TestCase
         $this->assertTrue($result->awakening['triggered']);
         $this->assertTrue($result->awakening['technique']['used']);
         $this->assertSame(1, $result->actionUsage['awakening_technique']);
+        $techniqueRecovery = collect($result->actionLog)->firstWhere('mp_source', 'awakening_technique');
+        $this->assertIsArray($techniqueRecovery);
+        $this->assertSame('mp_recovery', $techniqueRecovery['effect_type']);
         $lastRound = collect($result->actionLog)->last(
             static fn (array $row): bool => ($row['kind'] ?? null) === 'round_end',
         );
         $this->assertIsArray($lastRound);
         $this->assertSame($catalog->skill('holy_lance')['cooldown'], $lastRound['player']['cooldowns']['holy_lance']);
         $this->assertSame(0, $lastRound['player']['cooldowns']['severing_bleed']);
+    }
+
+    public function test_awakening_logs_actual_mp_recovery_without_an_extra_recovery_event(): void
+    {
+        $catalog = $this->awakeningCatalog(enemyDefends: true);
+        $snapshot = $this->awakeningPlayerSnapshot('free_black', currentHp: 300, skills: ['holy_lance']);
+        $snapshot['ai_rules'] = [
+            ['conditions' => [['type' => 'round_gte', 'round' => 2]], 'action' => 'awakening'],
+            ['conditions' => [['type' => 'always']], 'action' => 'skill:holy_lance'],
+        ];
+        $result = $this->model()->fightPlayerSnapshot($catalog, $snapshot, 'awakening_target', 127, 2, 0);
+        $awakenings = collect($result->actionLog)->where('kind', 'awakening');
+        $this->assertCount(1, $awakenings);
+        $row = $awakenings->first();
+        $this->assertIsArray($row);
+        $this->assertSame(['awakening', $catalog->skill('holy_lance')['mp_cost'], AlphaV1CombatRules::MAX_MP, 0],
+            [$row['mp_source'], $row['mp_recovered'], $row['actor_mp'], $row['amount']]);
+        $this->assertSame(0, collect($result->actionLog)->where('effect_type', 'mp_recovery')->count());
+        $projected = (new UndergroundAlphaV1BattleProjector)->project($result, $catalog);
+        $action = collect(array_merge(...array_column($projected['rounds'], 'actions')))->firstWhere('type', 'awakening');
+        $this->assertIsArray($action);
+        $this->assertSame([$row['mp_source'], $row['mp_recovered'], $row['actor_mp']],
+            [$action['mp_source'], $action['mp_recovered'], $action['actor_mp']]);
     }
 
     public function test_each_growth_path_exposes_its_existing_and_additional_awakening_techniques(): void

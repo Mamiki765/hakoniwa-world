@@ -192,6 +192,7 @@ final class AlphaV1PartyCombatTest extends TestCase
         foreach ($awakenings as $row) {
             self::assertSame($row['state']['max_hp'], $row['state']['hp']);
             self::assertSame(AlphaV1CombatRules::MAX_MP, $row['state']['mp']);
+            self::assertSame(['awakening', 0, AlphaV1CombatRules::MAX_MP], [$row['mp_source'], $row['mp_recovered'], $row['actor_mp']]);
             self::assertArrayNotHasKey('effective_healing', $row);
         }
         self::assertSame(0, $result->metrics['effective_healing']);
@@ -1012,6 +1013,9 @@ final class AlphaV1PartyCombatTest extends TestCase
             $periodicHealing->first()['effect_source'] ?? null,
             $periodicHealing->first()['periodic_status_key'] ?? null,
         ]);
+        $periodicMp = $actions->where('effect_type', 'mp_recovery')->whereNull('action_id')->first();
+        self::assertIsArray($periodicMp);
+        self::assertSame('skill_recovery', $periodicMp['mp_source']);
         $mercy = $actions->first(static fn (array $row): bool => ($row['kind'] ?? null) === 'decision' && ($row['action_key'] ?? null) === 'heart_of_mercy');
         self::assertIsArray($mercy);
         self::assertGreaterThanOrEqual(4, $mercy['round']);
