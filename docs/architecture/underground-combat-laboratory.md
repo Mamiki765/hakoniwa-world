@@ -94,7 +94,7 @@ current combat identityは`secretary-underground-alpha-v5`、skill tree identity
 
 ### MP表示用のログ契約
 
-MPの現在値は既存の`initial_state`、各roundの`start_state` / `end_state`、最終結果を使う。Soloは`player` / `enemy`、Partyはcombatant ID別のstateに`mp`があり、Solo最終値は`summary.final_mp`、Party最終値は`summary.final_state[id].mp`。最大値は`AlphaV1CombatRules::MAX_MP = 10_000`で固定。全行動のHP/MP snapshotや最大MP fieldは追加しない。
+MPの現在値は既存の`initial_state`、各roundの`start_state` / `end_state`、最終結果を使う。Soloは`player` / `enemy`、Partyはcombatant ID別のstateに`mp`があり、Soloの本人最終MPは`summary.final_mp`。Party projector直後には`summary.final_state[id].mp`があるが、通常の保存・返却経路では`UndergroundBattleStorage::compactSnapshot`が`summary.final_state`を削除し、`detailPresentation`も復元しない。クライアントのParty最終MPは詳細ログの最後の有効な`round.end_state[id].mp`を使い、詳細欠測時は推測しない。最大値は`AlphaV1CombatRules::MAX_MP = 10_000`で固定。全行動のHP/MP snapshotや最大MP fieldは追加しない。
 
 新規の`mp_cost` / `mp_recovery` rowには、実際の呼出し元を表す任意field `mp_source?: string`を保持する。`amount`は従来どおり非負の実消費量・実回復量（overflowを含まない）で、表示符号は`mp_cost`が`-NMP`、`mp_recovery`が`+NMP`。`actor_mp?: number`はMPが変化した本人の処理後の現在値であり、技の使用者と回復対象が異なる場合もこのrowの本人へ適用する。Partyの本人は`actor_id` / `target_id`、Soloは`side` / `target_name`から既存の対応を使う。
 
