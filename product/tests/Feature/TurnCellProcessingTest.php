@@ -55,31 +55,11 @@ class TurnCellProcessingTest extends TestCase
     use RefreshDatabase;
     use UsesIndividualTestWorld;
 
-    public function test_surface_ship_cell_event_moves_once_settles_rewards_and_applies_fuel_and_lifecycle_rules(): void
+    public function test_surface_fishing_ship_moves_once_and_resolves_food_overflow_by_sale_and_discard(): void
     {
-        $world = $this->lightweightWorld();
-        $user = User::factory()->create();
-        $nation = app(NationCreationService::class)->create($user, $world, '航行試験国', '航行島主');
-        $user->secretary()->sole()->skills()->where('skill_key', 'ship_operations')->update(['level' => 20]);
-        $user->secretary()->sole()->skills()->where('skill_key', 'navy')->update(['level' => 100]);
-        $space = $this->surfaceMapSpace($world);
-        $port = MapCell::query()->where('owner_nation_id', $nation->id)
-            ->whereHas('terrain', fn ($query) => $query->where('key', 'plain'))->firstOrFail();
-        $this->facility($port, 'port', 'plain');
+        [$world, $user, $nation, $space, , $oil] = $this->surfaceShipNation('航行試験国');
         [$origin, $destination, $later] = $this->eastwardSeaLine($space);
-        $ship = Ship::query()->create([
-            'world_id' => $world->id,
-            'ruleset_version_id' => $world->ruleset_version_id,
-            'nation_id' => $nation->id,
-            'map_cell_id' => $origin->id,
-            'ship_type_key' => 'fishing',
-            'current_hp' => 1,
-            'max_hp' => 1,
-            'heading' => GridCoordinate::EAST,
-            'state' => Ship::STATE_ACTIVE,
-            'version' => 1,
-        ]);
-        $oil = ResourceDefinition::query()->where('key', 'oil')->firstOrFail();
+        $ship = $this->surfaceShip($world, $nation, $origin, 'fishing', 1, 1);
         $fish = ResourceDefinition::query()->where('key', 'fish')->firstOrFail();
         $wheat = ResourceDefinition::query()->where('key', 'wheat')->firstOrFail();
         $foodCapacity = app(NationCapacityResolver::class)
@@ -88,10 +68,6 @@ class TurnCellProcessingTest extends TestCase
             ->whereHas('definition', fn ($query) => $query->where('category', 'food'))
             ->update(['amount' => 0]);
         NationResource::query()->updateOrCreate(
-            ['nation_id' => $nation->id, 'resource_definition_id' => $oil->id],
-            ['amount' => 5],
-        );
-        NationResource::query()->updateOrCreate(
             ['nation_id' => $nation->id, 'resource_definition_id' => $fish->id],
             ['amount' => 0],
         );
@@ -99,7 +75,6 @@ class TurnCellProcessingTest extends TestCase
             ['nation_id' => $nation->id, 'resource_definition_id' => $wheat->id],
             ['amount' => $foodCapacity],
         );
-        $nation->update(['money' => 0]);
 
         [$context, $run] = $this->context(
             $world,
@@ -110,49 +85,40 @@ class TurnCellProcessingTest extends TestCase
         $metrics = app(CompleteTurnEngine::class)->execute('process_cells', $context)->metrics;
         app(SecretaryTurnService::class)->flushExperience($context);
 
-        $this->assertSame([1, 1, 1, 0, 4, 0, 8], [
+        // One move per Turn, one unit of fuel, and the whole catch overflows a full food store.
+        $this->assertSame([1, 1, 1, 0, 4, 0], [
             $metrics['ship_events'], $metrics['ship_moves'], $metrics['ship_secretary_experience'],
             $metrics['ship_fish_applied'],
             (int) NationResource::query()->where('nation_id', $nation->id)
                 ->where('resource_definition_id', $oil->id)->value('amount'),
             (int) NationResource::query()->where('nation_id', $nation->id)
                 ->where('resource_definition_id', $fish->id)->value('amount'),
-            (int) $nation->fresh()->money,
         ]);
         $this->assertSame($foodCapacity, (int) NationResource::query()
             ->where('nation_id', $nation->id)
             ->whereHas('definition', fn ($query) => $query->where('category', 'food'))
             ->sum('amount'));
         $moveEvent = $this->event($run, 'ship.moved');
-        $this->assertSame([8_400, 0, 8_400], [
-            $moveEvent['resource_requested'], $moveEvent['resource_applied'], $moveEvent['resource_overflow'],
-        ]);
+        $this->assertSame(0, $moveEvent['resource_applied']);
+        $this->assertSame($moveEvent['resource_requested'], $moveEvent['resource_overflow']);
         $overflowEvent = $this->event($run, 'resource.food_overflow_resolved');
         $this->assertSame([['element_key' => 'fishing', 'resource_key' => 'fish', 'amount' => 0, 'count' => 1]], $context->state->economicContributions($nation->id));
+        // 8,400 t overflow: whole 1,000 t batches are sold at 1 per batch and the 400 t remainder is discarded.
         $this->assertSame(['fish', 8_400, 8_000, 8, 400], [
             $overflowEvent['resource_key'], $overflowEvent['requested_overflow_tons'],
             $overflowEvent['sold_tons'], $overflowEvent['revenue'], $overflowEvent['discarded_tons'],
         ]);
+        $this->assertSame($overflowEvent['revenue'], (int) $nation->fresh()->money);
         $this->assertSame($destination->id, $ship->fresh()->map_cell_id);
         $this->assertSame(1, $user->secretary()->firstOrFail()->skills()
             ->where('skill_key', SecretarySkillCatalog::SHIP_OPERATIONS)->value('experience'));
+    }
 
-        [$fuelOrigin, $fuelDestination, $fuelLater] = $this->eastwardSeaLine(
-            $space,
-            [$origin->id, $destination->id, $later->id],
-        );
-        $fuelShip = Ship::query()->create([
-            'world_id' => $world->id,
-            'ruleset_version_id' => $world->ruleset_version_id,
-            'nation_id' => $nation->id,
-            'map_cell_id' => $fuelOrigin->id,
-            'ship_type_key' => 'warship',
-            'current_hp' => 2,
-            'max_hp' => 3,
-            'heading' => GridCoordinate::EAST,
-            'state' => Ship::STATE_ACTIVE,
-            'version' => 1,
-        ]);
+    public function test_surface_ship_fuel_shortage_damage_cannot_be_evaded_by_navy(): void
+    {
+        [$world, , $nation, $space, , $oil] = $this->surfaceShipNation('燃料不足国');
+        [$fuelOrigin, $fuelDestination] = $this->eastwardSeaLine($space);
+        $fuelShip = $this->surfaceShip($world, $nation, $fuelOrigin, 'warship', 2, 3);
         NationResource::query()->where('nation_id', $nation->id)
             ->where('resource_definition_id', $oil->id)->update(['amount' => 0]);
         $fuelLabel = TurnRandomStreamFactory::shipMovement($fuelShip->id, 'fuel_shortage_damage', 1);
@@ -176,29 +142,38 @@ class TurnCellProcessingTest extends TestCase
             $fuelShip->fresh()->current_hp, $fuelShip->fresh()->map_cell_id,
         ]);
         $this->assertContains((int) $fuelOrigin->map_chunk_id, $fuelContext->state->changedMapChunkIds());
+    }
 
+    public function test_surface_ship_pauses_without_spending_fuel_while_its_nation_is_in_recovery(): void
+    {
+        [$world, , $nation, $space, , $oil] = $this->surfaceShipNation('休戦航行国');
+        [$origin, $destination] = $this->eastwardSeaLine($space);
+        $ship = $this->surfaceShip($world, $nation, $origin, 'warship', 2, 3);
         $nation->update([
             'state' => 'recovery',
             'state_started_turn' => 1,
             'resume_at_turn' => 86,
         ]);
-        NationResource::query()->where('nation_id', $nation->id)
-            ->where('resource_definition_id', $oil->id)->update(['amount' => 5]);
         [$pausedContext] = $this->context(
             $world,
             $nation->fresh(),
-            [$fuelOrigin->id, $fuelDestination->id],
+            [$origin->id, $destination->id],
             hash('sha256', 'recovery ship pause'),
         );
         $paused = app(CompleteTurnEngine::class)->execute('process_cells', $pausedContext)->metrics;
-        $this->assertSame([1, 0, 5, $fuelOrigin->id], [
+        $this->assertSame([1, 0, 5, $origin->id], [
             $paused['ship_events'], $paused['ship_moves'],
             (int) NationResource::query()->where('nation_id', $nation->id)
                 ->where('resource_definition_id', $oil->id)->value('amount'),
-            $fuelShip->fresh()->map_cell_id,
+            $ship->fresh()->map_cell_id,
         ]);
+    }
 
-        $nation->update(['state' => 'active', 'state_started_turn' => null, 'resume_at_turn' => null]);
+    public function test_surface_ship_port_loss_applies_from_the_next_turn(): void
+    {
+        [$world, , $nation, $space, $port, $oil] = $this->surfaceShipNation('港喪失国');
+        [$fuelOrigin, $fuelDestination, $fuelLater] = $this->eastwardSeaLine($space);
+        $ship = $this->surfaceShip($world, $nation, $fuelOrigin, 'warship', 2, 3);
         [$snapshotContext] = $this->context(
             $world,
             $nation->fresh(),
@@ -228,7 +203,7 @@ class TurnCellProcessingTest extends TestCase
         $this->assertSame([1, 0, $fuelDestination->id, 2], [
             $shipBatch->metrics()['ship_moves'],
             $shipBatch->metrics()['ship_no_port'],
-            $fuelShip->fresh()->map_cell_id,
+            $ship->fresh()->map_cell_id,
             (int) NationResource::query()->where('nation_id', $nation->id)
                 ->where('resource_definition_id', $oil->id)->value('amount'),
         ]);
@@ -244,7 +219,7 @@ class TurnCellProcessingTest extends TestCase
             $afterPortLoss['ship_events'],
             $afterPortLoss['ship_moves'],
             $afterPortLoss['ship_no_port'],
-            $fuelShip->fresh()->map_cell_id,
+            $ship->fresh()->map_cell_id,
             (int) NationResource::query()->where('nation_id', $nation->id)
                 ->where('resource_definition_id', $oil->id)->value('amount'),
         ]);
@@ -1988,6 +1963,44 @@ class TurnCellProcessingTest extends TestCase
     private function underseaCity(MapCell $cell, int $population): void
     {
         $this->mutateCell($cell, 'sea', 'undersea_city', $population);
+    }
+
+    /** @return array{World, User, Nation, MapSpace, MapCell, ResourceDefinition} */
+    private function surfaceShipNation(string $name): array
+    {
+        $world = $this->lightweightWorld();
+        $user = User::factory()->create();
+        $nation = app(NationCreationService::class)->create($user, $world, $name, '航行島主');
+        $user->secretary()->sole()->skills()->where('skill_key', 'ship_operations')->update(['level' => 20]);
+        $user->secretary()->sole()->skills()->where('skill_key', 'navy')->update(['level' => 100]);
+        $space = $this->surfaceMapSpace($world);
+        $port = MapCell::query()->where('owner_nation_id', $nation->id)
+            ->whereHas('terrain', fn ($query) => $query->where('key', 'plain'))->firstOrFail();
+        $this->facility($port, 'port', 'plain');
+        $oil = ResourceDefinition::query()->where('key', 'oil')->firstOrFail();
+        NationResource::query()->updateOrCreate(
+            ['nation_id' => $nation->id, 'resource_definition_id' => $oil->id],
+            ['amount' => 5],
+        );
+        $nation->update(['money' => 0]);
+
+        return [$world, $user, $nation->fresh(), $space, $port, $oil];
+    }
+
+    private function surfaceShip(World $world, Nation $nation, MapCell $cell, string $type, int $hp, int $maxHp): Ship
+    {
+        return Ship::query()->create([
+            'world_id' => $world->id,
+            'ruleset_version_id' => $world->ruleset_version_id,
+            'nation_id' => $nation->id,
+            'map_cell_id' => $cell->id,
+            'ship_type_key' => $type,
+            'current_hp' => $hp,
+            'max_hp' => $maxHp,
+            'heading' => GridCoordinate::EAST,
+            'state' => Ship::STATE_ACTIVE,
+            'version' => 1,
+        ]);
     }
 
     private function facility(MapCell $cell, string $facilityKey, string $terrainKey): void
