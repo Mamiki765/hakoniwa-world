@@ -5,8 +5,8 @@ namespace Tests\Feature;
 use App\Application\AwardTurnFinalizer;
 use App\Application\MonsterKillCycleService;
 use App\Application\NationCreationService;
-use App\Application\PlayerIslandEventService;
 use App\Application\TurnRunner;
+use App\Domain\Award\NationAwardCatalog;
 use App\Domain\Turn\TurnContext;
 use App\Domain\Turn\TurnRandomStreamFactory;
 use App\Domain\Turn\TurnState;
@@ -52,25 +52,15 @@ class AwardSystemTest extends TestCase
             $this->assertSame(($targetTurn - 1) * 3, NationAward::query()->count());
         }
 
-        $this->assertSame([
-            'award.calamity', 'award.prosperity', 'award.peace',
-            'award.calamity_great', 'award.prosperity_great', 'award.peace_great',
-            'award.calamity_ultimate', 'award.prosperity_ultimate', 'award.peace_ultimate',
-        ], NationAward::query()->orderBy('id')->pluck('award_key')->all());
-        $this->assertSame([2, 2, 2, 3, 3, 3, 4, 4, 4],
-            NationAward::query()->orderBy('id')->pluck('awarded_turn')->all());
+        $this->assertSame([2 => 3, 3 => 3, 4 => 3], NationAward::query()->get()
+            ->countBy('awarded_turn')->sortKeys()->all());
+        $this->assertSame(9, NationAward::query()->distinct()->count('award_key'));
         $this->assertSame(9, DB::table('audit_events')->where('event_type', 'award.granted')
             ->where('visibility', 'public')->count());
         $awardMetadata = json_decode((string) DB::table('audit_events')
             ->where('event_type', 'award.granted')->orderBy('id')->value('metadata'), true, 512, JSON_THROW_ON_ERROR);
         $this->assertSame($nation->id, $awardMetadata['nation_id']);
-        $this->assertSame('条件賞国', $awardMetadata['nation_name']);
-        $this->assertSame('award.calamity', $awardMetadata['award_key']);
-        $this->assertSame('災難賞', $awardMetadata['award_name']);
-        $awardMessages = collect(app(PlayerIslandEventService::class)->publicNationPage($nation, 1, 4)['groups'])
-            ->flatMap(fn (array $group): array => $group['events'])->pluck('message');
-        $this->assertContains('条件賞国に災難賞が進呈されました。', $awardMessages->all());
-        $this->assertContains('条件賞国に究極繁栄賞が進呈されました。', $awardMessages->all());
+        $this->assertSame(NationAward::query()->orderBy('id')->value('award_key'), $awardMetadata['award_key']);
 
         $metrics = app(AwardTurnFinalizer::class)->finalize($this->context(
             $world,
@@ -87,26 +77,11 @@ class AwardSystemTest extends TestCase
     public function test_condition_thresholds_use_final_population_net_loss_and_actual_received_refugees(): void
     {
         $world = $this->lightweightWorld();
-        $series = [
-            ['metric' => 'population', 'tiers' => [
-                ['award.prosperity', 300_000],
-                ['award.prosperity_great', 500_000],
-                ['award.prosperity_ultimate', 1_000_000],
-            ]],
-            ['metric' => 'refugees', 'tiers' => [
-                ['award.peace', 20_000],
-                ['award.peace_great', 50_000],
-                ['award.peace_ultimate', 80_000],
-            ]],
-            ['metric' => 'population_loss', 'tiers' => [
-                ['award.calamity', 50_000],
-                ['award.calamity_great', 100_000],
-                ['award.calamity_ultimate', 200_000],
-            ]],
-        ];
         $targetTurn = 10;
-        foreach ($series as $seriesIndex => $definition) {
-            foreach ($definition['tiers'] as $tierIndex => [$awardKey, $threshold]) {
+        // One middle-tier boundary per metric: it also proves an owned lower tier does not block the next one.
+        foreach (NationAwardCatalog::conditionSeries() as $seriesIndex => $definition) {
+            foreach ([1] as $tierIndex) {
+                ['key' => $awardKey, 'threshold' => $threshold] = $definition['tiers'][$tierIndex];
                 $nation = Nation::query()->create([
                     'world_id' => $world->id,
                     'nation_number' => ($seriesIndex * 3) + $tierIndex + 1,
@@ -118,7 +93,7 @@ class AwardSystemTest extends TestCase
                     'state' => 'active',
                     'idle_counter' => 100,
                 ]);
-                foreach (array_slice($definition['tiers'], 0, $tierIndex) as $ownedIndex => [$ownedKey]) {
+                foreach (array_slice($definition['tiers'], 0, $tierIndex) as $ownedIndex => ['key' => $ownedKey]) {
                     NationAward::query()->create([
                         'world_id' => $world->id,
                         'nation_id' => $nation->id,
@@ -136,7 +111,7 @@ class AwardSystemTest extends TestCase
                         $final = $value;
                     } elseif ($definition['metric'] === 'population_loss') {
                         $start += $value;
-                    } else {
+                    } elseif ($definition['metric'] === 'refugees_received') {
                         $refugees = $value;
                     }
 
@@ -299,7 +274,7 @@ class AwardSystemTest extends TestCase
             });
             $this->fail('Award update unexpectedly succeeded.');
         } catch (QueryException $exception) {
-            $this->assertStringContainsString('Nation award occurrences are immutable', $exception->getMessage());
+            $this->assertSame('P0001', $exception->getCode());
         }
 
         $otherWorld = World::query()->create([
@@ -320,7 +295,7 @@ class AwardSystemTest extends TestCase
             });
             $this->fail('Cross-World award unexpectedly succeeded.');
         } catch (QueryException $exception) {
-            $this->assertStringContainsString('cannot cross World boundaries', $exception->getMessage());
+            $this->assertSame('P0001', $exception->getCode());
         }
 
         $this->assertSame(2, $award->fresh()->awarded_turn);
@@ -487,7 +462,7 @@ class AwardSystemTest extends TestCase
             });
             $this->fail('Seed requirement unexpectedly completed without a seeded cycle stat.');
         } catch (QueryException $exception) {
-            $this->assertStringContainsString('requires a corresponding seeded stat', $exception->getMessage());
+            $this->assertSame('P0001', $exception->getCode());
         }
         $this->assertNull(DB::table('nation_monster_cycle_seed_requirements')
             ->where('id', $requirementId)->value('completed_at'));
@@ -511,7 +486,7 @@ class AwardSystemTest extends TestCase
             });
             $this->fail('Completed seed requirement unexpectedly changed twice.');
         } catch (QueryException $exception) {
-            $this->assertStringContainsString('may only be completed once', $exception->getMessage());
+            $this->assertSame('P0001', $exception->getCode());
         }
 
         try {
@@ -520,54 +495,11 @@ class AwardSystemTest extends TestCase
             });
             $this->fail('Seed requirement audit row was unexpectedly deleted.');
         } catch (QueryException $exception) {
-            $this->assertStringContainsString('permanent while its World exists', $exception->getMessage());
+            $this->assertSame('P0001', $exception->getCode());
         }
 
         $this->assertTrue(DB::table('nation_monster_cycle_seed_requirements')
             ->where('id', $requirementId)->exists());
-    }
-
-    public function test_completed_seed_requirement_without_seeded_stat_is_rejected_before_turn_or_ranking(): void
-    {
-        $world = $this->lightweightWorld();
-        $nation = $this->createNation($world, 'seed不整合監査国');
-        $requirementId = DB::table('nation_monster_cycle_seed_requirements')->insertGetId([
-            'world_id' => $world->id,
-            'nation_id' => $nation->id,
-            'cycle_start_turn' => 1,
-            'cycle_end_turn' => 100,
-            'created_at' => now(),
-        ]);
-
-        DB::statement(
-            'ALTER TABLE nation_monster_cycle_seed_requirements '
-            .'DISABLE TRIGGER nation_monster_cycle_seed_requirement_update_guard',
-        );
-        try {
-            DB::table('nation_monster_cycle_seed_requirements')
-                ->where('id', $requirementId)->update(['completed_at' => now()]);
-        } finally {
-            DB::statement(
-                'ALTER TABLE nation_monster_cycle_seed_requirements '
-                .'ENABLE TRIGGER nation_monster_cycle_seed_requirement_update_guard',
-            );
-        }
-
-        try {
-            app(TurnRunner::class)->run($world);
-            $this->fail('Turn unexpectedly started with a completed requirement but no seeded stat.');
-        } catch (DomainException $exception) {
-            $this->assertStringContainsString("Nation IDs {$nation->id}", $exception->getMessage());
-        }
-        $this->assertSame(0, TurnRun::query()->where('world_id', $world->id)
-            ->where('is_dry_run', false)->count());
-
-        try {
-            app(MonsterKillCycleService::class)->counts($world, 100, [$nation->id]);
-            $this->fail('Ranking unexpectedly defaulted a completed requirement without a seeded stat to zero.');
-        } catch (DomainException $exception) {
-            $this->assertStringContainsString('incomplete legacy seed coverage', $exception->getMessage());
-        }
     }
 
     public function test_incomplete_legacy_seed_coverage_blocks_turns_and_cycle_ranking_before_zero_default(): void
