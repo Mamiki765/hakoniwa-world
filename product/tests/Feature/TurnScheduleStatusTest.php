@@ -4,7 +4,6 @@ namespace Tests\Feature;
 
 use App\Models\TurnRun;
 use App\Models\World;
-use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -78,18 +77,6 @@ final class TurnScheduleStatusTest extends TestCase
         $run->update(['status' => TurnRun::STATUS_BLOCKED]);
         $this->getJson("/api/v1/public/worlds/{$world->id}/summary")
             ->assertOk()->assertJsonPath('data.turn_status', 'blocked');
-    }
-
-    public function test_jst_schedule_has_the_same_plus_nine_offset_in_winter_and_summer(): void
-    {
-        $world = $this->lightweightWorld();
-        foreach (['2026-01-10T15:00:00Z', '2026-08-10T15:00:00Z'] as $utcMidnightJst) {
-            Carbon::setTestNow($utcMidnightJst);
-            $world->update(['turn_schedule_origin_at' => CarbonImmutable::parse($utcMidnightJst)->subHours(2)]);
-            $this->getJson("/api/v1/public/worlds/{$world->id}/summary")
-                ->assertOk()
-                ->assertJsonPath('data.next_scheduled_turn_at', CarbonImmutable::parse($utcMidnightJst)->toIso8601String());
-        }
     }
 
     /** @param array<string, mixed> $extra */

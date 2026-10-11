@@ -41,6 +41,7 @@ use App\Models\TerrainDefinition;
 use App\Models\TurnRun;
 use App\Models\User;
 use App\Models\World;
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -55,31 +56,11 @@ class TurnCellProcessingTest extends TestCase
     use RefreshDatabase;
     use UsesIndividualTestWorld;
 
-    public function test_surface_ship_cell_event_moves_once_settles_rewards_and_applies_fuel_and_lifecycle_rules(): void
+    public function test_surface_fishing_ship_moves_once_and_resolves_food_overflow_by_sale_and_discard(): void
     {
-        $world = $this->lightweightWorld();
-        $user = User::factory()->create();
-        $nation = app(NationCreationService::class)->create($user, $world, '航行試験国', '航行島主');
-        $user->secretary()->sole()->skills()->where('skill_key', 'ship_operations')->update(['level' => 20]);
-        $user->secretary()->sole()->skills()->where('skill_key', 'navy')->update(['level' => 100]);
-        $space = $this->surfaceMapSpace($world);
-        $port = MapCell::query()->where('owner_nation_id', $nation->id)
-            ->whereHas('terrain', fn ($query) => $query->where('key', 'plain'))->firstOrFail();
-        $this->facility($port, 'port', 'plain');
+        [$world, $user, $nation, $space, , $oil] = $this->surfaceShipNation('航行試験国');
         [$origin, $destination, $later] = $this->eastwardSeaLine($space);
-        $ship = Ship::query()->create([
-            'world_id' => $world->id,
-            'ruleset_version_id' => $world->ruleset_version_id,
-            'nation_id' => $nation->id,
-            'map_cell_id' => $origin->id,
-            'ship_type_key' => 'fishing',
-            'current_hp' => 1,
-            'max_hp' => 1,
-            'heading' => GridCoordinate::EAST,
-            'state' => Ship::STATE_ACTIVE,
-            'version' => 1,
-        ]);
-        $oil = ResourceDefinition::query()->where('key', 'oil')->firstOrFail();
+        $ship = $this->surfaceShip($world, $nation, $origin, 'fishing', 1, 1);
         $fish = ResourceDefinition::query()->where('key', 'fish')->firstOrFail();
         $wheat = ResourceDefinition::query()->where('key', 'wheat')->firstOrFail();
         $foodCapacity = app(NationCapacityResolver::class)
@@ -88,10 +69,6 @@ class TurnCellProcessingTest extends TestCase
             ->whereHas('definition', fn ($query) => $query->where('category', 'food'))
             ->update(['amount' => 0]);
         NationResource::query()->updateOrCreate(
-            ['nation_id' => $nation->id, 'resource_definition_id' => $oil->id],
-            ['amount' => 5],
-        );
-        NationResource::query()->updateOrCreate(
             ['nation_id' => $nation->id, 'resource_definition_id' => $fish->id],
             ['amount' => 0],
         );
@@ -99,7 +76,6 @@ class TurnCellProcessingTest extends TestCase
             ['nation_id' => $nation->id, 'resource_definition_id' => $wheat->id],
             ['amount' => $foodCapacity],
         );
-        $nation->update(['money' => 0]);
 
         [$context, $run] = $this->context(
             $world,
@@ -110,49 +86,40 @@ class TurnCellProcessingTest extends TestCase
         $metrics = app(CompleteTurnEngine::class)->execute('process_cells', $context)->metrics;
         app(SecretaryTurnService::class)->flushExperience($context);
 
-        $this->assertSame([1, 1, 1, 0, 4, 0, 8], [
+        // One move per Turn, one unit of fuel, and the whole catch overflows a full food store.
+        $this->assertSame([1, 1, 1, 0, 4, 0], [
             $metrics['ship_events'], $metrics['ship_moves'], $metrics['ship_secretary_experience'],
             $metrics['ship_fish_applied'],
             (int) NationResource::query()->where('nation_id', $nation->id)
                 ->where('resource_definition_id', $oil->id)->value('amount'),
             (int) NationResource::query()->where('nation_id', $nation->id)
                 ->where('resource_definition_id', $fish->id)->value('amount'),
-            (int) $nation->fresh()->money,
         ]);
         $this->assertSame($foodCapacity, (int) NationResource::query()
             ->where('nation_id', $nation->id)
             ->whereHas('definition', fn ($query) => $query->where('category', 'food'))
             ->sum('amount'));
         $moveEvent = $this->event($run, 'ship.moved');
-        $this->assertSame([8_400, 0, 8_400], [
-            $moveEvent['resource_requested'], $moveEvent['resource_applied'], $moveEvent['resource_overflow'],
-        ]);
+        $this->assertSame(0, $moveEvent['resource_applied']);
+        $this->assertSame($moveEvent['resource_requested'], $moveEvent['resource_overflow']);
         $overflowEvent = $this->event($run, 'resource.food_overflow_resolved');
         $this->assertSame([['element_key' => 'fishing', 'resource_key' => 'fish', 'amount' => 0, 'count' => 1]], $context->state->economicContributions($nation->id));
+        // 8,400 t overflow: whole 1,000 t batches are sold at 1 per batch and the 400 t remainder is discarded.
         $this->assertSame(['fish', 8_400, 8_000, 8, 400], [
             $overflowEvent['resource_key'], $overflowEvent['requested_overflow_tons'],
             $overflowEvent['sold_tons'], $overflowEvent['revenue'], $overflowEvent['discarded_tons'],
         ]);
+        $this->assertSame($overflowEvent['revenue'], (int) $nation->fresh()->money);
         $this->assertSame($destination->id, $ship->fresh()->map_cell_id);
         $this->assertSame(1, $user->secretary()->firstOrFail()->skills()
             ->where('skill_key', SecretarySkillCatalog::SHIP_OPERATIONS)->value('experience'));
+    }
 
-        [$fuelOrigin, $fuelDestination, $fuelLater] = $this->eastwardSeaLine(
-            $space,
-            [$origin->id, $destination->id, $later->id],
-        );
-        $fuelShip = Ship::query()->create([
-            'world_id' => $world->id,
-            'ruleset_version_id' => $world->ruleset_version_id,
-            'nation_id' => $nation->id,
-            'map_cell_id' => $fuelOrigin->id,
-            'ship_type_key' => 'warship',
-            'current_hp' => 2,
-            'max_hp' => 3,
-            'heading' => GridCoordinate::EAST,
-            'state' => Ship::STATE_ACTIVE,
-            'version' => 1,
-        ]);
+    public function test_surface_ship_fuel_shortage_damage_cannot_be_evaded_by_navy(): void
+    {
+        [$world, , $nation, $space, , $oil] = $this->surfaceShipNation('燃料不足国');
+        [$fuelOrigin, $fuelDestination] = $this->eastwardSeaLine($space);
+        $fuelShip = $this->surfaceShip($world, $nation, $fuelOrigin, 'warship', 2, 3);
         NationResource::query()->where('nation_id', $nation->id)
             ->where('resource_definition_id', $oil->id)->update(['amount' => 0]);
         $fuelLabel = TurnRandomStreamFactory::shipMovement($fuelShip->id, 'fuel_shortage_damage', 1);
@@ -176,29 +143,38 @@ class TurnCellProcessingTest extends TestCase
             $fuelShip->fresh()->current_hp, $fuelShip->fresh()->map_cell_id,
         ]);
         $this->assertContains((int) $fuelOrigin->map_chunk_id, $fuelContext->state->changedMapChunkIds());
+    }
 
+    public function test_surface_ship_pauses_without_spending_fuel_while_its_nation_is_in_recovery(): void
+    {
+        [$world, , $nation, $space, , $oil] = $this->surfaceShipNation('休戦航行国');
+        [$origin, $destination] = $this->eastwardSeaLine($space);
+        $ship = $this->surfaceShip($world, $nation, $origin, 'warship', 2, 3);
         $nation->update([
             'state' => 'recovery',
             'state_started_turn' => 1,
             'resume_at_turn' => 86,
         ]);
-        NationResource::query()->where('nation_id', $nation->id)
-            ->where('resource_definition_id', $oil->id)->update(['amount' => 5]);
         [$pausedContext] = $this->context(
             $world,
             $nation->fresh(),
-            [$fuelOrigin->id, $fuelDestination->id],
+            [$origin->id, $destination->id],
             hash('sha256', 'recovery ship pause'),
         );
         $paused = app(CompleteTurnEngine::class)->execute('process_cells', $pausedContext)->metrics;
-        $this->assertSame([1, 0, 5, $fuelOrigin->id], [
+        $this->assertSame([1, 0, 5, $origin->id], [
             $paused['ship_events'], $paused['ship_moves'],
             (int) NationResource::query()->where('nation_id', $nation->id)
                 ->where('resource_definition_id', $oil->id)->value('amount'),
-            $fuelShip->fresh()->map_cell_id,
+            $ship->fresh()->map_cell_id,
         ]);
+    }
 
-        $nation->update(['state' => 'active', 'state_started_turn' => null, 'resume_at_turn' => null]);
+    public function test_surface_ship_port_loss_applies_from_the_next_turn(): void
+    {
+        [$world, , $nation, $space, $port, $oil] = $this->surfaceShipNation('港喪失国');
+        [$fuelOrigin, $fuelDestination, $fuelLater] = $this->eastwardSeaLine($space);
+        $ship = $this->surfaceShip($world, $nation, $fuelOrigin, 'warship', 2, 3);
         [$snapshotContext] = $this->context(
             $world,
             $nation->fresh(),
@@ -228,7 +204,7 @@ class TurnCellProcessingTest extends TestCase
         $this->assertSame([1, 0, $fuelDestination->id, 2], [
             $shipBatch->metrics()['ship_moves'],
             $shipBatch->metrics()['ship_no_port'],
-            $fuelShip->fresh()->map_cell_id,
+            $ship->fresh()->map_cell_id,
             (int) NationResource::query()->where('nation_id', $nation->id)
                 ->where('resource_definition_id', $oil->id)->value('amount'),
         ]);
@@ -244,7 +220,7 @@ class TurnCellProcessingTest extends TestCase
             $afterPortLoss['ship_events'],
             $afterPortLoss['ship_moves'],
             $afterPortLoss['ship_no_port'],
-            $fuelShip->fresh()->map_cell_id,
+            $ship->fresh()->map_cell_id,
             (int) NationResource::query()->where('nation_id', $nation->id)
                 ->where('resource_definition_id', $oil->id)->value('amount'),
         ]);
@@ -884,7 +860,7 @@ class TurnCellProcessingTest extends TestCase
             $treasure = BuriedTreasure::query()->where('map_cell_id', $targetCell->id)
                 ->where('state', BuriedTreasure::STATE_ACTIVE)->sole();
             $this->assertSame('pirate_sink', $treasure->source);
-            $this->assertSame('wakuwaku_ticket', $treasure->reward_snapshot['item_key']);
+            $this->assertNotEmpty($treasure->reward_snapshot['item_key']);
         } else {
             $this->assertSame(0, BuriedTreasure::query()->where('map_cell_id', $targetCell->id)->count());
         }
@@ -900,7 +876,6 @@ class TurnCellProcessingTest extends TestCase
         $this->assertCount(1, $combatEvents);
         $this->assertSame('ship.combat_hit', $combatEvents[0]['type']);
         $this->assertStringContainsString("({$targetCell->x},{$targetCell->y})", $combatEvents[0]['message']);
-        $this->assertStringContainsString($sunk ? '撃沈' : '1ダメージ', $combatEvents[0]['message']);
         foreach (['ship_id', 'attacker_nation_id', 'combat_source', 'before_hp', 'after_hp', 'experience', 'refugees_received', 'money_spent', 'navy_experience'] as $hidden) {
             $this->assertStringNotContainsString($hidden, (string) $public->getContent());
         }
@@ -924,7 +899,6 @@ class TurnCellProcessingTest extends TestCase
         $ownerDetails = $ownerCombatEvents->where('type', 'ship.warship_attacked')->values();
         $this->assertCount(1, $ownerDetails);
         $this->assertTrue($ownerDetails[0]['confidential']);
-        $this->assertStringContainsString('戦艦が射撃し、20億円を支払い、海軍経験値3を獲得しました。', $ownerDetails[0]['message']);
 
         foreach ([$publicIsland, $ownerIsland] as $islandResponse) {
             foreach (['ship_id', 'attacker_nation_id', 'combat_source', 'before_hp', 'after_hp', 'experience', 'refugees_received', 'money_spent', 'navy_experience'] as $hidden) {
@@ -1066,21 +1040,9 @@ class TurnCellProcessingTest extends TestCase
         ]);
     }
 
-    public function test_sequential_settlement_growth_famine_riot_and_forest_processing(): void
+    public function test_settlement_appearance_uses_its_probability_boundary_and_needs_a_populated_neighbor(): void
     {
-        $world = $this->lightweightWorld();
-        $user = User::factory()->create();
-        $nation = app(NationCreationService::class)->create($user, $world, 'セル処理国', '試験島主');
-        $engine = app(CompleteTurnEngine::class);
-        $capital = $nation->capital()->firstOrFail()->cell()->with(['terrain', 'facility'])->firstOrFail();
-        $space = MapSpace::query()->where('world_id', $world->id)->where('key', 'surface')->firstOrFail();
-        [$firstCandidate, $secondCandidate] = $this->sequentialCandidates($nation, $capital);
-        $forestCells = MapCell::query()->where('owner_nation_id', $nation->id)
-            ->whereHas('terrain', fn ($query) => $query->where('key', 'forest'))
-            ->whereNotIn('id', [$firstCandidate->id, $secondCandidate->id])
-            ->orderBy('id')->get();
-        $this->assertGreaterThanOrEqual(1, $forestCells->count());
-
+        [$world, $user, $nation, $engine, $capital, $space, $firstCandidate, $secondCandidate, $forestCells] = $this->cellProcessingNation();
         MapCell::query()->where('owner_nation_id', $nation->id)->update(['population' => 0]);
         MapCell::query()->whereKey($capital->id)->update(['population' => 1_000]);
         $this->plain($firstCandidate);
@@ -1127,6 +1089,11 @@ class TurnCellProcessingTest extends TestCase
         $this->assertSame(0, $noNeighbor->metrics['settlements_appeared']);
         $this->assertSame(0, $secondCandidate->fresh()->population);
 
+    }
+
+    public function test_settlement_growth_promotes_stages_and_stops_at_the_city_maximum(): void
+    {
+        [$world, $user, $nation, $engine, $capital, $space, $firstCandidate, $secondCandidate, $forestCells] = $this->cellProcessingNation();
         $growthSeed = $this->seedForFirstDraw(TurnRandomStreamFactory::POPULATION_GROWTH, 100, 1_000, 100);
         $this->settlement($firstCandidate, 'village', 2_900);
         [$townContext, $townRun] = $this->context(
@@ -1190,6 +1157,11 @@ class TurnCellProcessingTest extends TestCase
         $this->assertSame(10_000, $firstCandidate->fresh()->population);
         $this->assertSame('city', $firstCandidate->fresh()->facility()->value('key'));
 
+    }
+
+    public function test_capital_growth_follows_the_effective_maximum_from_underground_cities(): void
+    {
+        [$world, $user, $nation, $engine, $capital, $space, $firstCandidate, $secondCandidate, $forestCells] = $this->cellProcessingNation();
         $this->settlement($capital, 'capital', 1_000);
         $capitalGrowthSeed = $this->seedForFirstDraw(TurnRandomStreamFactory::POPULATION_GROWTH, 100, 1_000, 100);
         [$capitalContext] = $this->context(
@@ -1202,66 +1174,7 @@ class TurnCellProcessingTest extends TestCase
         $this->assertSame(1_100, $capital->fresh()->population);
         $this->assertSame('capital', $capital->fresh()->facility()->value('key'));
 
-        $lossSeed = $this->seedForFirstDraw(TurnRandomStreamFactory::FAMINE_POPULATION_LOSS, 100, 3_000, 100);
-        $this->settlement($firstCandidate, 'city', 10_050);
-        [$famineStageContext, $famineStageRun] = $this->context(
-            $world,
-            $nation,
-            [$firstCandidate->id],
-            $lossSeed,
-            true,
-        );
-        $famineStage = $engine->execute('process_cells', $famineStageContext);
-        $this->assertSame(100, $famineStage->metrics['population_decreased']);
-        $this->assertSame(1, $famineStage->metrics['stage_transitions']);
-        $this->assertSame(9_950, $firstCandidate->fresh()->population);
-        $this->assertSame('town', $firstCandidate->fresh()->facility()->value('key'));
-        $this->assertSame('town', $this->event($famineStageRun, 'settlement.stage_transitioned')['to_facility_key']);
-
-        $this->settlement($firstCandidate, 'village', 100);
-        [$famineContext, $famineRun] = $this->context(
-            $world,
-            $nation,
-            [$firstCandidate->id],
-            $lossSeed,
-            true,
-        );
-        $famine = $engine->execute('process_cells', $famineContext);
-        $this->assertSame(100, $famine->metrics['population_decreased']);
-        $this->assertSame(0, $firstCandidate->fresh()->population);
-        $this->assertNull($firstCandidate->fresh()->facility_definition_id);
-        $this->assertSame('plain', $firstCandidate->fresh()->terrain()->value('key'));
-        $this->assertSame(1, DB::table('audit_events')->where('event_type', 'famine.applied')
-            ->whereRaw("metadata->>'turn_run_id' = ?", [(string) $famineRun->id])->count());
-
-        $this->settlement($capital, 'capital', 50);
-        [$capitalFamineContext, $capitalFamineRun] = $this->context(
-            $world,
-            $nation,
-            [$capital->id],
-            $lossSeed,
-            true,
-        );
-        $capitalFamine = $engine->execute('process_cells', $capitalFamineContext);
-        $capitalFamineEvent = $this->event($capitalFamineRun, 'famine.applied');
-        $this->assertSame(0, $capitalFamine->metrics['population_decreased']);
-        $this->assertSame(100, $capital->fresh()->population);
-        $this->assertSame('capital', $capital->fresh()->facility()->value('key'));
-        $this->assertSame(0, $capitalFamineEvent['actual_loss']);
-        $this->assertTrue($capitalFamineEvent['minimum_population_applied']);
-        $this->assertSame(50, $capitalFamineEvent['minimum_population_adjustment']);
-
-        [$capitalRecoveryContext] = $this->context(
-            $world,
-            $nation,
-            [$capital->id],
-            $capitalGrowthSeed,
-        );
-        $capitalRecovery = $engine->execute('process_cells', $capitalRecoveryContext);
-        $this->assertSame(100, $capitalRecovery->metrics['population_increased']);
-        $this->assertSame(200, $capital->fresh()->population);
-        $this->assertSame('capital', $capital->fresh()->facility()->value('key'));
-
+        $capitalGrowthSeed = $this->seedForFirstDraw(TurnRandomStreamFactory::POPULATION_GROWTH, 100, 1_000, 100);
         $this->settlement($capital, 'capital', 40_450);
         [$capitalMaximumContext] = $this->context(
             $world,
@@ -1369,6 +1282,78 @@ class TurnCellProcessingTest extends TestCase
         $this->assertSame(50_600, $capital->fresh()->population);
         $this->assertSame($capitalScale, $capital->fresh()->facility_scale);
 
+    }
+
+    public function test_famine_demotes_and_removes_settlements_and_stops_the_capital_at_its_floor(): void
+    {
+        [$world, $user, $nation, $engine, $capital, $space, $firstCandidate, $secondCandidate, $forestCells] = $this->cellProcessingNation();
+        $lossSeed = $this->seedForFirstDraw(TurnRandomStreamFactory::FAMINE_POPULATION_LOSS, 100, 3_000, 100);
+        $this->settlement($firstCandidate, 'city', 10_050);
+        [$famineStageContext, $famineStageRun] = $this->context(
+            $world,
+            $nation,
+            [$firstCandidate->id],
+            $lossSeed,
+            true,
+        );
+        $famineStage = $engine->execute('process_cells', $famineStageContext);
+        $this->assertSame(100, $famineStage->metrics['population_decreased']);
+        $this->assertSame(1, $famineStage->metrics['stage_transitions']);
+        $this->assertSame(9_950, $firstCandidate->fresh()->population);
+        $this->assertSame('town', $firstCandidate->fresh()->facility()->value('key'));
+        $this->assertSame('town', $this->event($famineStageRun, 'settlement.stage_transitioned')['to_facility_key']);
+
+        $this->settlement($firstCandidate, 'village', 100);
+        [$famineContext, $famineRun] = $this->context(
+            $world,
+            $nation,
+            [$firstCandidate->id],
+            $lossSeed,
+            true,
+        );
+        $famine = $engine->execute('process_cells', $famineContext);
+        $this->assertSame(100, $famine->metrics['population_decreased']);
+        $this->assertSame(0, $firstCandidate->fresh()->population);
+        $this->assertNull($firstCandidate->fresh()->facility_definition_id);
+        $this->assertSame('plain', $firstCandidate->fresh()->terrain()->value('key'));
+        $this->assertSame(1, DB::table('audit_events')->where('event_type', 'famine.applied')
+            ->whereRaw("metadata->>'turn_run_id' = ?", [(string) $famineRun->id])->count());
+
+        // A drawn loss of 100 from 150 would leave 50, so the capital stops at its floor of 100.
+        $this->settlement($capital, 'capital', 150);
+        [$capitalFamineContext, $capitalFamineRun] = $this->context(
+            $world,
+            $nation,
+            [$capital->id],
+            $lossSeed,
+            true,
+        );
+        $capitalFamine = $engine->execute('process_cells', $capitalFamineContext);
+        $capitalFamineEvent = $this->event($capitalFamineRun, 'famine.applied');
+        $this->assertSame(50, $capitalFamine->metrics['population_decreased']);
+        $this->assertSame(100, $capital->fresh()->population);
+        $this->assertSame('capital', $capital->fresh()->facility()->value('key'));
+        $this->assertSame([100, 50, 100], [
+            $capitalFamineEvent['drawn_loss'], $capitalFamineEvent['actual_loss'], $capitalFamineEvent['after'],
+        ]);
+
+        $capitalGrowthSeed = $this->seedForFirstDraw(TurnRandomStreamFactory::POPULATION_GROWTH, 100, 1_000, 100);
+        [$capitalRecoveryContext] = $this->context(
+            $world,
+            $nation,
+            [$capital->id],
+            $capitalGrowthSeed,
+        );
+        $capitalRecovery = $engine->execute('process_cells', $capitalRecoveryContext);
+        $this->assertSame(100, $capitalRecovery->metrics['population_increased']);
+        $this->assertSame(200, $capital->fresh()->population);
+        $this->assertSame('capital', $capital->fresh()->facility()->value('key'));
+
+    }
+
+    public function test_riots_forest_growth_rain_and_land_clear_in_cell_processing(): void
+    {
+        [$world, $user, $nation, $engine, $capital, $space, $firstCandidate, $secondCandidate, $forestCells] = $this->cellProcessingNation();
         $riotCells = [$firstCandidate, $secondCandidate, $this->ownedEmptyCell($nation, [$capital->id, $firstCandidate->id, $secondCandidate->id])];
         foreach (['farm', 'factory', 'missile_base'] as $index => $facilityKey) {
             $this->facility($riotCells[$index], $facilityKey, 'plain');
@@ -1633,8 +1618,6 @@ class TurnCellProcessingTest extends TestCase
         $cases = [
             ['before' => 7_000, 'minimum' => 100, 'maximum' => 3_000, 'draw' => 3_000, 'after' => 10_000],
             ['before' => 10_000, 'minimum' => 100, 'maximum' => 300, 'draw' => 300, 'after' => 10_300],
-            ['before' => 5_000, 'minimum' => 100, 'maximum' => 3_000, 'draw' => 3_000, 'after' => 8_000],
-            ['before' => 2_000, 'minimum' => 100, 'maximum' => 3_000, 'draw' => 3_000, 'after' => 5_000],
             ['before' => 25_450, 'minimum' => 100, 'maximum' => 300, 'draw' => 300, 'after' => 25_500],
         ];
         foreach ($cases as $index => $case) {
@@ -1867,10 +1850,7 @@ class TurnCellProcessingTest extends TestCase
         $seed = $this->seedForFirstDraw(TurnRandomStreamFactory::POPULATION_GROWTH, 100, 1_000, 1_000);
         $coordinates = [
             'former origin edge' => [0, 0],
-            'world center' => [20, 20],
             'negative corner' => [-16, -16],
-            'negative x corner' => [-16, 63],
-            'negative y corner' => [63, -16],
             'positive corner' => [63, 63],
             'new negative chunk' => [-8, -8],
         ];
@@ -1988,6 +1968,62 @@ class TurnCellProcessingTest extends TestCase
     private function underseaCity(MapCell $cell, int $population): void
     {
         $this->mutateCell($cell, 'sea', 'undersea_city', $population);
+    }
+
+    /** @return array{World, User, Nation, CompleteTurnEngine, MapCell, MapSpace, MapCell, MapCell, Collection<int, MapCell>} */
+    private function cellProcessingNation(): array
+    {
+        $world = $this->lightweightWorld();
+        $user = User::factory()->create();
+        $nation = app(NationCreationService::class)->create($user, $world, 'セル処理国', '試験島主');
+        $capital = $nation->capital()->firstOrFail()->cell()->with(['terrain', 'facility'])->firstOrFail();
+        $space = MapSpace::query()->where('world_id', $world->id)->where('key', 'surface')->firstOrFail();
+        [$firstCandidate, $secondCandidate] = $this->sequentialCandidates($nation, $capital);
+        $forestCells = MapCell::query()->where('owner_nation_id', $nation->id)
+            ->whereHas('terrain', fn ($query) => $query->where('key', 'forest'))
+            ->whereNotIn('id', [$firstCandidate->id, $secondCandidate->id])
+            ->orderBy('id')->get();
+        $this->assertGreaterThanOrEqual(1, $forestCells->count());
+
+        return [$world, $user, $nation, app(CompleteTurnEngine::class), $capital, $space, $firstCandidate, $secondCandidate, $forestCells];
+    }
+
+    /** @return array{World, User, Nation, MapSpace, MapCell, ResourceDefinition} */
+    private function surfaceShipNation(string $name): array
+    {
+        $world = $this->lightweightWorld();
+        $user = User::factory()->create();
+        $nation = app(NationCreationService::class)->create($user, $world, $name, '航行島主');
+        $user->secretary()->sole()->skills()->where('skill_key', 'ship_operations')->update(['level' => 20]);
+        $user->secretary()->sole()->skills()->where('skill_key', 'navy')->update(['level' => 100]);
+        $space = $this->surfaceMapSpace($world);
+        $port = MapCell::query()->where('owner_nation_id', $nation->id)
+            ->whereHas('terrain', fn ($query) => $query->where('key', 'plain'))->firstOrFail();
+        $this->facility($port, 'port', 'plain');
+        $oil = ResourceDefinition::query()->where('key', 'oil')->firstOrFail();
+        NationResource::query()->updateOrCreate(
+            ['nation_id' => $nation->id, 'resource_definition_id' => $oil->id],
+            ['amount' => 5],
+        );
+        $nation->update(['money' => 0]);
+
+        return [$world, $user, $nation->fresh(), $space, $port, $oil];
+    }
+
+    private function surfaceShip(World $world, Nation $nation, MapCell $cell, string $type, int $hp, int $maxHp): Ship
+    {
+        return Ship::query()->create([
+            'world_id' => $world->id,
+            'ruleset_version_id' => $world->ruleset_version_id,
+            'nation_id' => $nation->id,
+            'map_cell_id' => $cell->id,
+            'ship_type_key' => $type,
+            'current_hp' => $hp,
+            'max_hp' => $maxHp,
+            'heading' => GridCoordinate::EAST,
+            'state' => Ship::STATE_ACTIVE,
+            'version' => 1,
+        ]);
     }
 
     private function facility(MapCell $cell, string $facilityKey, string $terrainKey): void

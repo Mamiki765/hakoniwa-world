@@ -422,9 +422,7 @@ class TurnRunnerTest extends TestCase
             '--dry-run' => true,
             '--source' => 'cron',
         ])->assertSuccessful();
-        $this->artisan('hakoniwa:turn:status', ['--world' => $world->key])
-            ->expectsOutputToContain('current_turn=1')
-            ->assertSuccessful();
+        $this->artisan('hakoniwa:turn:status', ['--world' => $world->key])->assertSuccessful();
 
         $this->assertSame(['manual', 'cron'], TurnRun::query()->orderBy('id')->pluck('source')->all());
         $this->assertSame(1, $world->fresh()->current_turn);

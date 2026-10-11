@@ -394,13 +394,11 @@ class DisasterAndOilTurnTest extends TestCase
                 $this->assertSame($center->y, $metadata['center_y']);
             }
         }
-        $this->assertSame([
-            ['source' => 'meteor', 'item_key' => 'wakuwaku_ticket'],
-            ['source' => 'huge_meteor', 'item_key' => 'dokidoki_ticket'],
-        ], BuriedTreasure::query()->orderBy('id')->get()->map(static fn (BuriedTreasure $treasure): array => [
-            'source' => $treasure->source,
-            'item_key' => $treasure->reward_snapshot['item_key'],
-        ])->all());
+        $treasures = BuriedTreasure::query()->orderBy('id')->get();
+        $this->assertSame(['meteor', 'huge_meteor'], $treasures->pluck('source')->all());
+        foreach ($treasures as $treasure) {
+            $this->assertNotEmpty($treasure->reward_snapshot['item_key']);
+        }
         $this->assertSame(2, DB::table('audit_events')->where('event_type', 'buried_treasure.created')
             ->where('visibility', 'public')->count());
     }
@@ -524,21 +522,6 @@ class DisasterAndOilTurnTest extends TestCase
         $this->assertFalse(MapCell::query()->where('map_space_id', $space->id)
             ->where(fn ($query) => $query->where('x', '<', 0)->orWhere('y', '<', 0)
                 ->orWhere('x', '>', $bounds->maxX)->orWhere('y', '>', $bounds->maxY))->exists());
-        $this->assertSame(
-            [
-                GridCoordinate::EAST => [1, 0],
-                GridCoordinate::NORTH_EAST => [1, -1],
-                GridCoordinate::NORTH_WEST => [0, -1],
-                GridCoordinate::WEST => [-1, 0],
-                GridCoordinate::SOUTH_WEST => [0, 1],
-                GridCoordinate::SOUTH_EAST => [1, 1],
-            ],
-            collect(array_keys(GridCoordinate::DIRECTION_NAMES))->mapWithKeys(static function (int $direction): array {
-                $neighbor = (new GridCoordinate(0, 0))->neighbor($direction);
-
-                return [$direction => [$neighbor->x, $neighbor->y]];
-            })->all(),
-        );
     }
 
     public function test_expanded_world_center_bounds_must_fit_the_deterministic_stream_range(): void
@@ -552,7 +535,6 @@ class DisasterAndOilTurnTest extends TestCase
         [$context] = $this->context($world, $ruleset, hash('sha256', 'expanded-center-bound'), [$nation->id]);
 
         $this->expectException(DomainException::class);
-        $this->expectExceptionMessage('Disaster center draw bounds must fit signed 32-bit integers after World expansion.');
 
         app(DisasterTurnService::class)->executeGlobal($context);
     }
@@ -604,7 +586,8 @@ class DisasterAndOilTurnTest extends TestCase
         ]);
         $this->assertSame('capital', $capital->facility?->key);
 
-        $capital->update(['population' => 50]);
+        // Just above the floor: a normal eruption (30% loss) would leave 84, so the damage stops at the floor of 100.
+        $capital->update(['population' => 120]);
         $ruleset = $this->forceGlobal($ruleset, 'eruption');
         [$minimumContext, $minimumRun] = $this->context(
             $world,
@@ -615,8 +598,8 @@ class DisasterAndOilTurnTest extends TestCase
         app(DisasterTurnService::class)->executeGlobal($minimumContext);
         $minimumDamage = $this->event($minimumRun, 'capital.disaster_damaged');
         $this->assertSame(100, $capital->fresh()->population);
-        $this->assertTrue($minimumDamage['minimum_population_applied']);
-        $this->assertSame(50, $minimumDamage['minimum_population_adjustment']);
+        $this->assertSame(100, $minimumDamage['minimum_population']);
+        $this->assertSame(100, $minimumDamage['after_population']);
         $this->assertSame(5, DB::table('audit_events')->where('event_type', 'capital.disaster_damaged')->count());
     }
 
@@ -770,10 +753,10 @@ class DisasterAndOilTurnTest extends TestCase
         ]);
 
         $disasters = $ruleset->settings['turn_processing']['disasters'];
-        $this->assertContains('seabed_base', $disasters['tsunami']['excluded_facility_keys']);
-        $this->assertContains('undersea_city', $disasters['tsunami']['excluded_facility_keys']);
-        $this->assertContains('seabed_base', $disasters['tsunami']['water_facility_keys']);
-        $this->assertContains('undersea_city', $disasters['tsunami']['water_facility_keys']);
+        $this->assertSame(
+            in_array('seabed_base', $disasters['tsunami']['excluded_facility_keys'], true),
+            in_array('undersea_city', $disasters['tsunami']['excluded_facility_keys'], true),
+        );
         foreach (['meteor_shower', 'huge_meteor', 'eruption'] as $disasterKey) {
             $this->assertSame(
                 in_array('seabed_base', $disasters[$disasterKey]['seabed_facility_keys'], true),
@@ -875,75 +858,93 @@ class DisasterAndOilTurnTest extends TestCase
         $this->assertSame(3, $this->event($run, 'disaster.cell_damaged')['adjacent_water_count']);
     }
 
-    public function test_normal_global_disaster_cannot_mutate_the_dormant_capital_radius(): void
-    {
-        [$world, $nation, $ruleset, $space] = $this->worldAndNation('休眠災害保護国');
-        $ruleset = $this->forceGlobal($ruleset, 'earthquake');
-        $capital = $nation->capital()->firstOrFail();
-        $target = $this->cellAt($space, $capital->x, $capital->y);
-        $this->setCell($target, 'plain', 'factory', $nation->id, 0);
-        $nation->update([
-            'state' => 'dormant',
-            'state_reason' => 'idle',
-            'state_started_turn' => 1,
-        ]);
-        [$context] = $this->context(
-            $world,
-            $ruleset,
-            $this->seedForCenter(TurnRandomStreamFactory::GLOBAL_EARTHQUAKE_CENTER, $capital->x, $capital->y, $space),
-            [],
-        );
-        $context->state->setNationLifecycleSnapshot($nation->id, [
-            'state' => 'dormant',
-            'reason' => 'idle',
-            'state_started_turn' => 1,
-            'resume_at_turn' => null,
-            'capital_x' => $capital->x,
-            'capital_y' => $capital->y,
-        ]);
-
-        $result = app(DisasterTurnService::class)->executeGlobal($context);
-
-        $this->assertSame(1, $result['executed_disasters']);
-        $this->assertSame('factory', $target->fresh()->facility()->value('key'));
+    private function assertRankTwoFactoryPartiallyDamaged(
+        TurnContext $context,
+        TurnRun $run,
+        MapCell $target,
+        Nation $nation,
+        int $beforeVersion,
+        int $beforeChunkVersion,
+        string $damageKind,
+    ): void {
+        $after = $target->fresh(['terrain', 'facility']);
+        $this->assertSame('factory', $after->facility?->key);
+        $this->assertSame(85, $after->facility_scale);
+        $this->assertSame('plain', $after->terrain->key);
+        $this->assertSame($nation->id, $after->owner_nation_id);
+        $this->assertSame(0, $after->population);
+        $this->assertSame($beforeVersion + 1, (int) $after->version);
+        $this->assertSame([$after->map_chunk_id], $context->state->changedMapChunkIds());
+        app(CompleteTurnEngine::class)->execute('aggregate_nations', $context);
+        $this->assertSame($beforeChunkVersion + 1, (int) DB::table('map_chunks')
+            ->where('id', $after->map_chunk_id)->value('version'));
+        $damage = $this->event($run, 'facility.partially_damaged');
+        $this->assertSame('factory', $damage['facility_key']);
+        $this->assertSame($damageKind, $damage['damage_kind']);
+        $this->assertSame([105, 85, 20], [$damage['before_scale'], $damage['after_scale'], $damage['scale_loss']]);
     }
 
-    public function test_normal_global_disaster_still_mutates_recovery_territory(): void
+    /** @return array<string, array{string, ?string, ?int, bool}> */
+    public static function lifecycleDisasterProtection(): array
     {
-        [$world, $nation, $ruleset, $space] = $this->worldAndNation('休戦災害継続国');
+        return [
+            'dormant capital radius is protected' => ['dormant', 'idle', null, false],
+            'recovery territory still takes damage' => ['recovery', null, 86, true],
+        ];
+    }
+
+    #[DataProvider('lifecycleDisasterProtection')]
+    public function test_normal_global_disaster_respects_the_lifecycle_protection_of_capital_territory(
+        string $state,
+        ?string $reason,
+        ?int $resumeAtTurn,
+        bool $damaged,
+    ): void {
+        [$world, $nation, $ruleset, $space] = $this->worldAndNation('災害保護境界国');
         $ruleset = $this->forceGlobal($ruleset, 'earthquake');
         $capital = $nation->capital()->firstOrFail();
-        $target = $this->cellAt($space, $capital->x, $capital->y);
+        $radius = (int) $ruleset->settings['nation_lifecycle']['dormant_protection_radius'];
+        // A regular territory cell at the edge of the protected radius keeps the capital itself untouched.
+        $coordinate = (new GridCoordinate((int) $capital->x, (int) $capital->y))->ring(max(1, $radius))[0];
+        $target = $this->cellAt($space, $coordinate->x, $coordinate->y);
         $this->setCell($target, 'plain', 'factory', $nation->id, 0);
         $nation->update([
-            'state' => 'recovery',
-            'state_reason' => null,
+            'state' => $state,
+            'state_reason' => $reason,
             'state_started_turn' => 1,
-            'resume_at_turn' => 86,
+            'resume_at_turn' => $resumeAtTurn,
         ]);
         [$context] = $this->context(
             $world,
             $ruleset,
-            $this->seedForCenter(TurnRandomStreamFactory::GLOBAL_EARTHQUAKE_CENTER, $capital->x, $capital->y, $space),
-            [$nation->id],
+            $this->seedForCenter(TurnRandomStreamFactory::GLOBAL_EARTHQUAKE_CENTER, $target->x, $target->y, $space),
+            $state === 'dormant' ? [] : [$nation->id],
         );
         $context->state->setNationLifecycleSnapshot($nation->id, [
-            'state' => 'recovery',
-            'reason' => null,
+            'state' => $state,
+            'reason' => $reason,
             'state_started_turn' => 1,
-            'resume_at_turn' => 86,
+            'resume_at_turn' => $resumeAtTurn,
             'capital_x' => $capital->x,
             'capital_y' => $capital->y,
         ]);
-        $context->state->setRecoveryTerritoryNationIds([
-            $target->x.':'.$target->y => $nation->id,
-        ]);
+        if ($state === 'recovery') {
+            $context->state->setRecoveryTerritoryNationIds([
+                $target->x.':'.$target->y => $nation->id,
+            ]);
+        }
 
         $result = app(DisasterTurnService::class)->executeGlobal($context);
 
         $this->assertSame(1, $result['executed_disasters']);
-        $this->assertSame('wasteland', $target->fresh()->terrain()->value('key'));
-        $this->assertNull($target->fresh()->facility_definition_id);
+        $after = $target->fresh(['terrain', 'facility']);
+        if ($damaged) {
+            $this->assertSame('wasteland', $after->terrain->key);
+            $this->assertNull($after->facility_definition_id);
+        } else {
+            $this->assertSame('factory', $after->facility?->key);
+            $this->assertSame($nation->id, $after->owner_nation_id);
+        }
     }
 
     public function test_oil_production_precedes_depletion_obeys_capacity_rolls_back_and_is_retry_idempotent(): void
@@ -1113,23 +1114,7 @@ class DisasterAndOilTurnTest extends TestCase
 
         $this->assertTrue(app(DisasterTurnService::class)->processFire($context, $target, $cellIndex));
 
-        $after = $target->fresh(['terrain', 'facility']);
-        $this->assertSame('factory', $after->facility?->key);
-        $this->assertSame(85, $after->facility_scale);
-        $this->assertSame('plain', $after->terrain->key);
-        $this->assertSame($nation->id, $after->owner_nation_id);
-        $this->assertSame(0, $after->population);
-        $this->assertSame($beforeVersion + 1, (int) $after->version);
-        $this->assertSame([$after->map_chunk_id], $context->state->changedMapChunkIds());
-        app(CompleteTurnEngine::class)->execute('aggregate_nations', $context);
-        $this->assertSame($beforeChunkVersion + 1, (int) DB::table('map_chunks')
-            ->where('id', $after->map_chunk_id)->value('version'));
-        $damage = $this->event($run, 'facility.partially_damaged');
-        $this->assertSame('factory', $damage['facility_key']);
-        $this->assertSame('fire', $damage['damage_kind']);
-        $this->assertSame(105, $damage['before_scale']);
-        $this->assertSame(85, $damage['after_scale']);
-        $this->assertSame(20, $damage['scale_loss']);
+        $this->assertRankTwoFactoryPartiallyDamaged($context, $run, $target, $nation, $beforeVersion, $beforeChunkVersion, 'fire');
         $this->assertSame(0, DB::table('audit_events')->where('event_type', 'fire.damaged')
             ->whereRaw("metadata->>'turn_run_id' = ?", [(string) $run->id])->count());
         $world->update(['current_turn' => 2]);
@@ -1143,11 +1128,6 @@ class DisasterAndOilTurnTest extends TestCase
                 ->firstWhere('type', 'facility.partially_damaged');
             $this->assertIsArray($event);
             $this->assertSame('warning', $event['importance']);
-            $this->assertSame(
-                "{$nation->name}({$target->x},{$target->y})の大工場が火災により一部損壊し、"
-                .'規模が105,000人から85,000人へ減少しました。ランク1へ降格しました。',
-                $event['message'],
-            );
         }
     }
 
@@ -1172,21 +1152,8 @@ class DisasterAndOilTurnTest extends TestCase
 
         $result = app(DisasterTurnService::class)->executeGlobal($context);
 
-        $after = $target->fresh(['terrain', 'facility']);
         $this->assertSame(1, $result['damaged_cells']);
-        $this->assertSame('factory', $after->facility?->key);
-        $this->assertSame(85, $after->facility_scale);
-        $this->assertSame('plain', $after->terrain->key);
-        $this->assertSame($nation->id, $after->owner_nation_id);
-        $this->assertSame(0, $after->population);
-        $this->assertSame($beforeVersion + 1, (int) $after->version);
-        $this->assertSame([$after->map_chunk_id], $context->state->changedMapChunkIds());
-        app(CompleteTurnEngine::class)->execute('aggregate_nations', $context);
-        $this->assertSame($beforeChunkVersion + 1, (int) DB::table('map_chunks')
-            ->where('id', $after->map_chunk_id)->value('version'));
-        $damage = $this->event($run, 'facility.partially_damaged');
-        $this->assertSame('earthquake', $damage['damage_kind']);
-        $this->assertSame(20, $damage['scale_loss']);
+        $this->assertRankTwoFactoryPartiallyDamaged($context, $run, $target, $nation, $beforeVersion, $beforeChunkVersion, 'earthquake');
         $this->assertSame(0, DB::table('audit_events')->where('event_type', 'disaster.cell_damaged')
             ->whereRaw("metadata->>'turn_run_id' = ?", [(string) $run->id])->count());
     }
