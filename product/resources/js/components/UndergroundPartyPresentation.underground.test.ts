@@ -349,7 +349,7 @@ describe('Underground party presentation controls', () => {
         wrapper.unmount();
     });
 
-    it('replays MP from the log: no number for natural recovery or a row without a source, a blue number for a skill cost', async () => {
+    it('updates MP without popups for skill costs, natural recovery or missing sources and keeps special recovery popups', async () => {
         const state = (mp: number) => ({ hp: 100, max_hp: 100, mp, barrier: 0, statuses: [], role_stacks: { fighting_spirit: 0, grace: 0 } });
         const mpRow = (type: string, amount: number, actor_mp: number, mp_source?: string) => ({
             type, side: '秘書', actor_name: 'Leader', label: 'MP', amount, actor_mp, ...(mp_source ? { mp_source } : {}),
@@ -362,7 +362,10 @@ describe('Underground party presentation controls', () => {
                 mpRow('mp_cost', 800, 4500, 'skill_cost'),
                 // 出どころの無い古い記録。金額があっても、何の増減かを推測して数字を出さない。
                 mpRow('mp_recovery', 200, 4700),
-            ], end_state: { player: state(4700), enemy: state(0) } }],
+                mpRow('mp_recovery', 500, 5200, 'skill_recovery'),
+                mpRow('mp_recovery', 1000, 6200, 'awakening_technique'),
+                { ...mpRow('awakening', 0, 10000, 'awakening'), mp_recovered: 3800, state: state(10000) },
+            ], end_state: { player: state(10000), enemy: state(0) } }],
         };
         stubUndergroundFetch(vi.fn((input: RequestInfo | URL) => Promise.resolve(response(
             String(input).endsWith('/api/v1/me/underground/battles') ? [] : openState({ battle }),
@@ -379,11 +382,23 @@ describe('Underground party presentation controls', () => {
         vi.advanceTimersByTime(170);
         await wrapper.vm.$nextTick();
         expect(mp()).toBe('MP 4,500');
-        expect(mpPopups()).toEqual(['−800MP']);
+        expect(mpPopups()).toEqual([]);
         vi.advanceTimersByTime(170);
         await wrapper.vm.$nextTick();
         expect(mp()).toBe('MP 4,700');
-        expect(mpPopups()).toEqual(['−800MP']);
+        expect(mpPopups()).toEqual([]);
+        vi.advanceTimersByTime(170);
+        await wrapper.vm.$nextTick();
+        expect(mp()).toBe('MP 5,200');
+        expect(mpPopups()).toEqual(['+500MP']);
+        vi.advanceTimersByTime(170);
+        await wrapper.vm.$nextTick();
+        expect(mp()).toBe('MP 6,200');
+        expect(mpPopups()).toEqual(['+500MP', '+1,000MP']);
+        vi.advanceTimersByTime(170);
+        await wrapper.vm.$nextTick();
+        expect(mp()).toBe('MP 10,000');
+        expect(mpPopups()).toEqual(['+500MP', '+1,000MP', '+3,800MP']);
         wrapper.unmount();
     });
 

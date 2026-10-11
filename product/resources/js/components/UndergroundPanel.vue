@@ -1012,8 +1012,8 @@ function soloPlaybackTarget(action: RoundAction, kind: 'damage' | 'heal'): 'play
     return kind === 'heal' ? actor : actor === 'player' ? 'enemy' : 'player';
 }
 
-// 数字を出すMPの増減。自然回復と、出どころの分からない古い記録は数字を出さない。
-const mpPopupSources = new Set(['skill_cost', 'skill_recovery', 'awakening_technique']);
+// 数字を出すMPの増減。技消費・自然回復と、出どころの分からない古い記録は数字を出さない。
+const mpPopupSources = new Set(['skill_recovery', 'awakening_technique']);
 
 function playbackMpOwner(row: RoundAction): string | null {
     if (currentPartyActors.value.length > 0) {
