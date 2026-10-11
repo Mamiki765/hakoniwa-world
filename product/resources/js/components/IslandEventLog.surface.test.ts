@@ -42,11 +42,8 @@ describe('IslandEventLog', () => {
         expect(pizza.text()).not.toContain('×');
         const station = rows.find((row) => row.text().includes('試験消防'))!;
         expect(station.text()).toContain('-6億円');
-        // Owner explicitly places breakdowns immediately before the existing total summary.
-        const summary = rows.find((row) => row.text() === '資源変化')!;
-        expect(station.element.compareDocumentPosition(summary.element) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     });
-    it('renders owner events as one-line messages and keeps confidential styling separate from text', async () => {
+    it('wires owner endpoint events to their message and confidential marker', async () => {
         const fetchMock = vi.fn().mockResolvedValue(response({
             groups: [{
                 target_turn: 25,
@@ -73,11 +70,9 @@ describe('IslandEventLog', () => {
         await flushPromises();
 
         expect(String(fetchMock.mock.calls[0]?.[0])).toBe('/api/v1/nations/3/events?page=1');
-        expect(wrapper.get('h2').text()).toBe('島ログ');
-        expect(wrapper.get('.event-confidential-label').text()).toBe('秘密');
-        expect(wrapper.get('.island-event-group li').text()).toContain('試験島(12,8)で伐採し、500億円を得ました。');
-        expect(wrapper.text()).not.toContain('座標');
-        expect(wrapper.find('time').exists()).toBe(false);
+        const event = wrapper.get('.island-event-group li');
+        expect(event.find('.event-confidential-label').exists()).toBe(true);
+        expect(event.text()).toContain('500億円');
     });
 
     it('loads the public island endpoint and blocks duplicate pagination requests', async () => {

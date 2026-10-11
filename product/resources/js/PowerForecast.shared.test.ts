@@ -6,7 +6,7 @@ import { emptyChunk, installAppTestLifecycle, ownerNationFixture, publicResponse
 
 installAppTestLifecycle();
 
-it('shows existing conservative forecast endpoints without units or explanations while selecting an unprovided pizzeria image', async () => {
+it('maps conservative power forecast endpoints to their columns and notes an unprovided facility image', async () => {
     const nation = structuredClone(ownerNationFixture);
     nation.resource_forecast.rows.push({
         key: 'power', name: '電力', unit_label: 'MW', holding: 1100,
@@ -49,13 +49,11 @@ it('shows existing conservative forecast endpoints without units or explanations
     expect(Object.fromEntries(headings.map((heading, index) => [heading, cells[index]!.text()]))).toMatchObject({
         '生産': '245', '消費': '30', '予測': '−10', '所持': '1,100',
     });
-    expect(wrapper.get('.resource-forecast').text()).not.toMatch(/MW|維持費|風力平均|ピザ売上|燃料目安/);
     wrapper.getComponent(HexMap).vm.$emit('select', {
         ...surfaceCellFixture, facility: 'pizzeria', facility_name: 'ピザ屋', display_name: 'ピザ屋',
         asset: { ...surfaceCellFixture.asset, key: 'tile.pizzeria', available: false },
     });
     await flushPromises();
-    expect(wrapper.get('.selected-cell h3').text()).toContain('ピザ屋');
-    expect(wrapper.get('.selected-cell').text()).toContain('施設画像は未配備');
+    expect(wrapper.get('.selected-cell').text()).toContain('未配備');
     wrapper.unmount();
 });

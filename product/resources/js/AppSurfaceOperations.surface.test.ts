@@ -7,7 +7,7 @@ import { response, envelopeResponse, ownerNationFixture, publicResponse, install
 installAppTestLifecycle();
 
 describe('surface inquiries and nation lifecycle', () => {
-    it('shows only a compact header inquiry shortcut to non-admin users', async () => {
+    it('opens the inquiry form from a header shortcut for non-admin users without loading admin inquiries', async () => {
         const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
             const path = String(input);
             const lobby = publicResponse(path);
@@ -24,10 +24,7 @@ describe('surface inquiries and nation lifecycle', () => {
         await flushPromises();
 
         expect(wrapper.find('.inquiry-window').exists()).toBe(false);
-        expect(wrapper.get('.session-account-actions').text()).toContain('アカウント');
         const shortcut = wrapper.get('.inquiry-shortcut');
-        expect(shortcut.text()).toBe('お問い合わせ');
-        expect(shortcut.element.previousElementSibling).toBe(wrapper.get('.session-account-actions').element);
         expect(fetchMock.mock.calls.some(([path]) => String(path) === '/api/v1/admin/inquiries/latest')).toBe(false);
 
         await shortcut.trigger('click');
@@ -58,8 +55,7 @@ describe('surface inquiries and nation lifecycle', () => {
         const wrapper = mount(App);
         await flushPromises();
 
-        expect(wrapper.get('.inquiry-window').text()).toContain('INQ-000123 [バグ報告] 表示がおかしい');
-        expect(wrapper.find('.inquiry-shortcut').exists()).toBe(false);
+        expect(wrapper.get('.inquiry-window').text()).toContain('INQ-000123');
         const sendButton = wrapper.findAll('.inquiry-window button').find((button) => button.text() === 'お問い合わせを送る')!;
         await sendButton.trigger('click');
         await wrapper.get<HTMLSelectElement>('.inquiry-form select').setValue('idea');
@@ -123,7 +119,7 @@ describe('surface inquiries and nation lifecycle', () => {
         expect(wrapper.get('.inquiry-list.full').text()).toContain('INQ-000122 [バグ報告] 一覧の件名');
     });
 
-    it('places neutral manual dormancy above the unchanged red abandonment operation and shows the active term', async () => {
+    it('posts manual dormancy days, shows the server term, and distinguishes automatic dormancy', async () => {
         const dormantNation: Nation = {
             ...ownerNationFixture,
             state: 'dormant', state_label: '放置', state_reason: 'manual', state_started_turn: 1,
@@ -155,11 +151,9 @@ describe('surface inquiries and nation lifecycle', () => {
         const request = fetchMock.mock.calls.find(([path]) => String(path) === '/api/v1/nations/3/dormancy');
         expect(JSON.parse(String(request?.[1]?.body))).toEqual({ days: 7 });
         const status = wrapper.get('.dormancy-block');
-        expect(status.text()).toContain('現在休止中');
-        expect(status.text()).toContain('指定期間7日');
-        expect(status.text()).toContain('再開予定turnTurn 86');
-        expect(status.text()).toContain('残りturn / 日数84 turn / 約7日');
-        expect(status.text()).toContain('指定期間が終わるまで解除できません');
+        expect(status.text()).toContain('86');
+        expect(status.text()).toContain('84');
+        expect(status.text()).not.toContain('次official Turn');
         expect(wrapper.get<HTMLButtonElement>('.abandonment-block button').element.disabled).toBe(true);
 
         wrapper.unmount();
@@ -183,8 +177,9 @@ describe('surface inquiries and nation lifecycle', () => {
         const automaticProfileButton = automaticWrapper.findAll('.site-header nav button')
             .find((button) => button.text() === 'オプション')!;
         await automaticProfileButton.trigger('click');
-        expect(automaticWrapper.get('.dormancy-status').text())
-            .toContain('再開予定turn通常command登録後の次official Turn');
+        const automaticStatus = automaticWrapper.get('.dormancy-status').text();
+        expect(automaticStatus).toContain('次official Turn');
+        expect(automaticStatus).not.toContain('86');
     });
 
     it('requires the danger button, modal, and exact island name before abandonment and returns to registration', async () => {

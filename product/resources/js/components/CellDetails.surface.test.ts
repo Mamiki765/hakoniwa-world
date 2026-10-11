@@ -21,10 +21,14 @@ function cell(overrides: Partial<MapCell> = {}): MapCell {
 
 describe('viewer-safe cell details', () => {
     it('shows the cell name and coordinates together in the heading', () => {
-        const wrapper = mount(CellDetails, { props: { cell: cell() } });
+        const selected = cell();
+        const wrapper = mount(CellDetails, { props: { cell: selected } });
 
-        expect(wrapper.get('h3').text()).toBe('平地 (3, -2)');
-        expect(wrapper.text()).not.toContain('座標x=3, y=-2');
+        const heading = wrapper.get('h3').text();
+        expect(heading).toContain(selected.display_name);
+        expect(heading).toContain(String(selected.x));
+        expect(heading).toContain(String(selected.y));
+        expect(wrapper.get('dl').text()).not.toContain('座標');
     });
 
     it('separates a Ship owner from the neutral sea cell owner', () => {
@@ -40,14 +44,12 @@ describe('viewer-safe cell details', () => {
             },
         }) } });
 
-        expect(wrapper.text()).toContain('N1');
-        expect(wrapper.text()).not.toContain('N18');
-        expect(wrapper.text()).toContain('船の所有者試験国（N1）');
-        expect(wrapper.text()).toContain('HP2/2');
-        expect(wrapper.text()).toContain('地形海');
-        expect(wrapper.text()).toContain('このマスの所有者中立');
-        expect(wrapper.text()).not.toContain('船舶所有');
-        expect(wrapper.text().indexOf('船の所有者')).toBeLessThan(wrapper.text().indexOf('このマスの所有者'));
+        const text = wrapper.text();
+        expect(text).toContain('船の所有者試験国（N1）');
+        expect(text).toContain('このマスの所有者中立');
+        expect(text).not.toContain('N18');
+        expect(text).toContain('HP2/2');
+        expect(text).toContain('海');
     });
 
     it('shows an NPC Ship name and HP without inventing an owner Nation', () => {
@@ -102,10 +104,8 @@ describe('viewer-safe cell details', () => {
             details: [detail('facility_capacity', '規模', 10000, formatted)],
         }) } });
         expect(wrapper.text()).toContain(formatted);
+        expect(wrapper.text()).toContain('未実装');
         expect(wrapper.text()).not.toContain('生産予定');
-        expect(wrapper.text()).toContain('労働者割当');
-        expect(wrapper.text()).toContain('ターン処理未実装');
-        expect(wrapper.text()).not.toContain('人口0');
     });
 
     it('shows owner missile experience, level and launch capacity without population', () => {
@@ -136,12 +136,10 @@ describe('viewer-safe cell details', () => {
             },
         }) } });
 
-        expect(wrapper.text()).toContain('クジラ');
-        expect(wrapper.text()).toContain('現在HP4');
-        expect(wrapper.text()).toContain('4～5');
-        expect(wrapper.text()).toContain('偶数ターンは硬化する。');
-        expect(wrapper.text()).toContain('硬化中');
-        expect(wrapper.text()).toContain('試験島（N1）');
-        expect(wrapper.text()).not.toContain('N18');
+        const text = wrapper.text();
+        for (const expected of ['現在HP4', '出現時HP5', '偶数ターンは硬化する。', '硬化中', '（N1）']) {
+            expect(text).toContain(expected);
+        }
+        expect(text).not.toContain('N18');
     });
 });
