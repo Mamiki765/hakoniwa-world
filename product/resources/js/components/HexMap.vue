@@ -23,6 +23,26 @@ const emit = defineEmits<{
     requestAll: [];
 }>();
 
+// 表示の選択だけを端末に保存する。視界や領土の情報そのものは保存しない。
+function displayPreference(key: 'visibility' | 'weather' | 'territory' | 'planMarks', fallback: boolean) {
+    const enabled = ref(fallback);
+    const storageKey = `hakoniwa.map.${key}`;
+    try {
+        const stored = window.localStorage.getItem(storageKey);
+        if (stored === '1' || stored === '0') enabled.value = stored === '1';
+    } catch {
+        // 保存が使えない場合は従来の既定で表示する。
+    }
+    watch(enabled, (value) => {
+        try {
+            window.localStorage.setItem(storageKey, value ? '1' : '0');
+        } catch {
+            // 保存できなくても、その画面での切り替えは使える。
+        }
+    }, { flush: 'sync' });
+    return enabled;
+}
+
 const zoom = ref(1);
 const pan = ref({ x: 0, y: 0 });
 const dragging = ref(false);
@@ -31,10 +51,12 @@ const viewportSize = ref({ width: 900, height: 600 });
 const tooltipCell = ref<MapCell | null>(null);
 const tooltipElement = ref<HTMLElement | null>(null);
 const wholeWorldView = ref(false);
-const showVisibility = ref(false);
-const showSeaAreas = ref(true);
-const showTerritory = ref(true);
-const showPlanMarks = ref(true);
+const showVisibility = displayPreference('visibility', false);
+const showSeaAreas = displayPreference('weather', true);
+const showTerritory = displayPreference('territory', true);
+// 切り替えがない観光画面では枠を表示し、開発画面の保存設定は保持する。
+const effectiveShowTerritory = computed(() => props.commandQueue === undefined || showTerritory.value);
+const showPlanMarks = displayPreference('planMarks', true);
 // 指で触ったあとに届くmouseenterでは、マスの詳細を出さない。
 let touchInput = false;
 const failedWeatherAssets = ref(new Set<string>());
@@ -517,7 +539,7 @@ function markAssetFailed(cell: MapCell): void {
 </script>
 
 <template>
-    <section class="map-stage" aria-label="世界地図" :data-territory="showTerritory ? 'on' : 'off'">
+    <section class="map-stage" aria-label="世界地図" :data-territory="effectiveShowTerritory ? 'on' : 'off'">
         <div class="map-toolbar">
             <button type="button" aria-label="自島へ戻る" @click="returnToCapital">自島へ</button>
             <button type="button" aria-label="世界全体を表示" @click="fitWholeWorld(true)">世界全体</button>
@@ -567,7 +589,7 @@ function markAssetFailed(cell: MapCell): void {
                             selected: selected?.x === item.cell.x && selected?.y === item.cell.y,
                             owned: item.cell.owner_nation_id !== null,
                             'owned-by-me': ownNationId !== undefined && item.cell.owner_nation_id === ownNationId,
-                            'within-viewer-visibility': showVisibility && item.cell.within_viewer_visibility,
+                            'within-viewer-visibility': ownNationId !== undefined && showVisibility && item.cell.within_viewer_visibility,
                             capital: item.cell.facility === 'capital',
                         },
                     ]"
