@@ -389,6 +389,7 @@ describe('command plan workspace', () => {
         await flushPromises();
 
         const rows = wrapper.findAll('.plan-row');
+        expect(rows[0]!.attributes('draggable')).toBe('true');
         await rows[0]!.trigger('dragstart');
         await rows[1]!.trigger('drop');
         await flushPromises();
