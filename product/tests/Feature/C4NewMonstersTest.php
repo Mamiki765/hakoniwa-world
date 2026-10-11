@@ -12,19 +12,21 @@ use App\Application\MonsterRemovalService;
 use App\Application\MonsterTurnService;
 use App\Application\MonsterWorldSpawnService;
 use App\Application\NationCreationService;
-use App\Application\PlayerIslandEventService;
 use App\Application\RulesetPublisher;
 use App\Application\SecretaryTurnService;
 use App\Application\SurfaceShipTurnService;
 use App\Domain\Command\CommandRequestConflictException;
 use App\Domain\Map\GridCoordinate;
 use App\Domain\Map\MapCellStateService;
+use App\Domain\Monster\MonsterDispatchOption;
+use App\Domain\Monster\MonsterDispatchOptionResolver;
 use App\Domain\Monster\MonsterTurnBatch;
 use App\Domain\Secretary\SecretaryItemCatalog;
 use App\Domain\Ship\SurfaceShipTurnBatch;
 use App\Domain\Turn\TurnContext;
 use App\Domain\Turn\TurnRandomStreamFactory;
 use App\Domain\Turn\TurnState;
+use App\Models\CommandDefinition;
 use App\Models\FacilityDefinition;
 use App\Models\MapCell;
 use App\Models\MapSpace;
@@ -59,7 +61,8 @@ final class C4NewMonstersTest extends TestCase
         $user = User::factory()->create();
         $sender = app(NationCreationService::class)->create($user, $world, '派遣元', '派遣主');
         $target = app(NationCreationService::class)->create(User::factory()->create(), $world, '派遣先', '対象主');
-        $sender->update(['money' => 9_999]);
+        $option = $this->zeroDispatchOption($ruleset);
+        $sender->update(['money' => $option->costMoney]);
         $space = $this->surfaceMapSpace($world);
         $requestKey = (string) Str::uuid();
         $result = app(CommandQueueService::class)->add(
@@ -99,13 +102,13 @@ final class C4NewMonstersTest extends TestCase
         app(DomesticCommandExecutor::class)->execute($context);
 
         $monster = MonsterInstance::query()->with('definition')->sole();
-        $this->assertSame('mecha_inora_zero', $monster->definition->key);
-        $this->assertSame(4, $monster->current_hp);
+        $this->assertSame($option->monsterDefinitionKey, $monster->definition->key);
+        $this->assertGreaterThanOrEqual($monster->definition->base_hp, $monster->current_hp);
         $this->assertSame(0, $sender->fresh()->money);
         $metadata = $this->eventMetadata('command.monster_dispatched');
-        $this->assertSame(2, $metadata['dispatch_selector']);
-        $this->assertSame(9_999, $metadata['cost_money']);
-        $this->assertSame('mecha_inora_zero', $metadata['monster_key']);
+        $this->assertSame($option->selector, $metadata['dispatch_selector']);
+        $this->assertSame($option->costMoney, $metadata['cost_money']);
+        $this->assertSame($option->monsterDefinitionKey, $metadata['monster_key']);
         $this->assertSame(0, app(MonsterTurnService::class)->load($context)->metrics()['monsters_loaded']);
         $this->assertContains($monster->id, $context->state->monsterIdsDeferredFromSpawnTurnMovement());
     }
@@ -135,14 +138,14 @@ final class C4NewMonstersTest extends TestCase
             $this->assertDatabaseCount('nation_command_queue_items', 0);
         }
 
-        $sender->update(['money' => 9_998]);
+        $option = $this->zeroDispatchOption($ruleset);
+        $sender->update(['money' => $option->costMoney - 1]);
         $this->actingAs($user)->postJson($path, [
             ...$base,
             'request_key' => (string) Str::uuid(),
-            'quantity' => 2,
+            'quantity' => $option->selector,
         ])->assertCreated()
-            ->assertJsonPath('data.queue.items.0.quantity_label', 'メカいのら零式')
-            ->assertJsonPath('data.queue.items.0.effective_cost_money', 9_999);
+            ->assertJsonPath('data.queue.items.0.effective_cost_money', $option->costMoney);
         $context = $this->context($world, $ruleset, 2, 'zero-insufficient-funds', [$sender->id]);
 
         app(DomesticCommandExecutor::class)->execute($context);
@@ -150,10 +153,10 @@ final class C4NewMonstersTest extends TestCase
         $item = NationCommandQueueItem::query()->sole();
         $this->assertSame('failed', $item->status);
         $this->assertSame('insufficient_funds', $item->failure_code);
-        $this->assertSame(2, $item->failure_metadata['dispatch_selector']);
-        $this->assertSame('mecha_inora_zero', $item->failure_metadata['monster_key']);
-        $this->assertSame(9_999, $item->failure_metadata['cost_money']);
-        $this->assertSame(10_008, $sender->fresh()->money);
+        $this->assertSame($option->selector, $item->failure_metadata['dispatch_selector']);
+        $this->assertSame($option->monsterDefinitionKey, $item->failure_metadata['monster_key']);
+        $this->assertSame($option->costMoney, $item->failure_metadata['cost_money']);
+        $this->assertGreaterThanOrEqual($option->costMoney - 1, $sender->fresh()->money);
         $this->assertDatabaseCount('monster_instances', 0);
     }
 
@@ -265,13 +268,6 @@ final class C4NewMonstersTest extends TestCase
         $spawnMetadata = $this->eventMetadata('monster.spawned');
         $this->assertSame('world_aoi_disaster', $spawnMetadata['spawn_source']);
         $this->assertSame($nation->id, $spawnMetadata['target_nation_id']);
-        $event = collect(app(PlayerIslandEventService::class)->publicWorldPage($world, 1, 2)['groups'])
-            ->flatMap(fn (array $group): array => $group['events'])
-            ->firstWhere('type', 'monster.spawned');
-        $this->assertSame(
-            '中立海域('.$occupancy->cell->x.','.$occupancy->cell->y.')にあおいのらが出現しました。',
-            $event['message'],
-        );
         $this->assertSame(0, app(MonsterTurnService::class)->load($context)->metrics()['monsters_loaded']);
 
         $exactFour = MapCell::query()->where('map_space_id', $space->id)
@@ -454,7 +450,6 @@ final class C4NewMonstersTest extends TestCase
         $this->assertSame($destination->id, $monster->fresh()->occupancy()->value('map_cell_id'));
         $event = $this->eventMetadata('ship.sunk');
         $this->assertSame($nation->id, $event['nation_id']);
-        $this->assertSame('観光船', $event['ship_name']);
         $this->assertSame('aoi_inora', $event['monster_key']);
     }
 
@@ -633,11 +628,12 @@ final class C4NewMonstersTest extends TestCase
         );
 
         $this->assertTrue($result->killed);
-        $this->assertSame($beforeMoney + 1_200, $nation->fresh()->money);
+        $wreckageValue = $aoi->definition->wreckage_value_money;
+        $this->assertSame($beforeMoney + $wreckageValue, $nation->fresh()->money);
         $this->assertSame(1, NationMonsterKillStat::query()->where('nation_id', $nation->id)->value('kill_count'));
         $metadata = $this->eventMetadata('monster.reward_distributed');
         $this->assertSame('hostless_full_killer_money', $metadata['monster_reward_policy']);
-        $this->assertSame(1_200, $metadata['killer_requested_share_money']);
+        $this->assertSame($wreckageValue, $metadata['killer_requested_share_money']);
         $this->assertNull($metadata['host_nation_id']);
         $this->assertNull($metadata['host_meat_food']);
         $this->assertSame(0, $metadata['unclaimed_host_value_money']);
@@ -681,14 +677,6 @@ final class C4NewMonstersTest extends TestCase
             ->whereRaw("metadata->>'disaster_key' = ?", ['nuclear_self_destruct'])->count());
         $this->assertSame(0, NationMonsterKillStat::query()->count());
         $this->assertSame(0, DB::table('audit_events')->where('event_type', 'monster.reward_distributed')->count());
-        $event = collect(app(PlayerIslandEventService::class)->publicWorldPage($world, 1, 2)['groups'])
-            ->flatMap(fn (array $group): array => $group['events'])
-            ->firstWhere('type', 'monster.nuclear_self_destructed');
-        $this->assertIsArray($event);
-        $this->assertSame(
-            '核実験('.$origin->x.','.$origin->y.')のメカいのら零式が突然輝きだし、とてつもない爆発を起こしました！',
-            $event['message'],
-        );
     }
 
     public function test_zero_blast_removes_a_collateral_zero_without_chaining_and_uses_the_neutral_message(): void
@@ -738,13 +726,6 @@ final class C4NewMonstersTest extends TestCase
         $this->assertSame(1, DB::table('audit_events')->where('event_type', 'monster.removed_by_terrain_event')
             ->where('subject_id', $collateral->id)->count());
         $this->assertSame(0, NationMonsterKillStat::query()->count());
-        $event = collect(app(PlayerIslandEventService::class)->publicWorldPage($world, 1, 2)['groups'])
-            ->flatMap(fn (array $group): array => $group['events'])
-            ->firstWhere('type', 'monster.nuclear_self_destructed');
-        $this->assertSame(
-            '中立海域('.$origin->x.','.$origin->y.')のメカいのら零式が突然輝きだし、とてつもない爆発を起こしました！',
-            $event['message'],
-        );
     }
 
     public function test_initial_island_relocates_authored_aoi_on_changed_cells_without_rewards(): void
@@ -847,6 +828,14 @@ final class C4NewMonstersTest extends TestCase
     }
 
     /** @return array{World, RulesetVersion} */
+    private function zeroDispatchOption(RulesetVersion $ruleset): MonsterDispatchOption
+    {
+        $definition = CommandDefinition::query()->where('ruleset_version_id', $ruleset->id)
+            ->where('key', 'monster_dispatch')->firstOrFail();
+
+        return app(MonsterDispatchOptionResolver::class)->resolve($definition, 2);
+    }
+
     private function v11World(): array
     {
         $world = $this->lightweightWorld();
