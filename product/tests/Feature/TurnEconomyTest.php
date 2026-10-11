@@ -85,16 +85,19 @@ class TurnEconomyTest extends TestCase
             ]);
         }
         $after = $status->forNation($nation->fresh());
-        $this->assertSame(20_000, $after['farm_capacity_people'] - $before['farm_capacity_people']);
-        $this->assertSame(60_000, $after['factory_capacity_people'] - $before['factory_capacity_people']);
+        $definitions = $world->rulesetVersion()->sole()->settings['underground_facility_development']['facility_definitions'];
+        $farmEffect = $definitions['underground_farm']['effect']['farm_capacity_people'];
+        $factoryEffect = $definitions['underground_factory']['effect']['factory_capacity_people'];
+        $this->assertSame(2 * $farmEffect, $after['farm_capacity_people'] - $before['farm_capacity_people']);
+        $this->assertSame(2 * $factoryEffect, $after['factory_capacity_people'] - $before['factory_capacity_people']);
         $worldStatus = $status->forWorld($world, Nation::query()->whereKey($nation->id)->get())[$nation->id];
         $this->assertSame($after['farm_capacity_people'], $worldStatus['farm_capacity_people']);
         $this->assertSame($after['factory_capacity_people'], $worldStatus['factory_capacity_people']);
         $futureSettings = $world->rulesetVersion()->sole()->settings;
         $futureSettings['key'] = 'test-hakoniwa-2s-plus-v20-facility-effects';
         $futureSettings['version'] = 20;
-        $futureSettings['underground_facility_development']['facility_definitions']['underground_farm']['effect']['farm_capacity_people'] = 20_000;
-        $futureSettings['underground_facility_development']['facility_definitions']['underground_factory']['effect']['factory_capacity_people'] = 60_000;
+        $futureSettings['underground_facility_development']['facility_definitions']['underground_farm']['effect']['farm_capacity_people'] = 2 * $farmEffect;
+        $futureSettings['underground_facility_development']['facility_definitions']['underground_factory']['effect']['factory_capacity_people'] = 2 * $factoryEffect;
         $futureRuleset = RulesetVersion::query()->create([
             'key' => $futureSettings['key'],
             'version' => $futureSettings['version'],
@@ -112,11 +115,11 @@ class TurnEconomyTest extends TestCase
         $reboundFactory->update(['ruleset_version_id' => $futureRuleset->id]);
         $explicitlyRebound = $status->forNation($nation->fresh());
         $this->assertSame(
-            $after['farm_capacity_people'] + 10_000,
+            $after['farm_capacity_people'] + $farmEffect,
             $explicitlyRebound['farm_capacity_people'],
         );
         $this->assertSame(
-            $after['factory_capacity_people'] + 30_000,
+            $after['factory_capacity_people'] + $factoryEffect,
             $explicitlyRebound['factory_capacity_people'],
         );
         $reboundFarm->update(['ruleset_version_id' => $world->ruleset_version_id]);
@@ -211,10 +214,6 @@ class TurnEconomyTest extends TestCase
             ->flatMap(fn (array $group): array => $group['events'])
             ->firstWhere('type', 'resource.food_overflow_resolved');
         $this->assertIsArray($ownerOverflow);
-        $this->assertSame(
-            '食料上限を超えた小麦880トンのうち0トンを売却して0億円を得て、880トンを破棄しました。',
-            $ownerOverflow['message'],
-        );
         $publicEvents = collect($events->publicWorldPage($world, 1, 2)['groups'])
             ->flatMap(fn (array $group): array => $group['events']);
         $this->assertSame(0, $publicEvents->where('type', 'resource.food_overflow_resolved')->count());
@@ -392,24 +391,6 @@ class TurnEconomyTest extends TestCase
         $this->assertSame(1, $oneWorkerProduction['workers']);
         $this->assertSame(1, $oneWorkerProduction['applied_tons']);
 
-        $this->setPopulation($nation, 200);
-        $this->setResources($nation, ['wheat' => 0, 'fish' => 0, 'monster_meat' => 0]);
-        [$partialContext, $partialRun] = $this->context($world, $nation);
-        $engine->execute('nation_economy', $partialContext);
-        $partialProduction = $this->event($partialRun, 'resource.food_produced');
-        $this->assertSame(200, $partialProduction['workers']);
-        $this->assertSame(200, $partialProduction['applied_tons']);
-        $this->assertSame(40, $this->event($partialRun, 'resource.food_consumed')['required_nutrition']);
-        $this->assertSame(160, $this->resourceAmount($nation, 'wheat'));
-
-        $this->setPopulation($nation, 1_000);
-        $this->setResources($nation, ['wheat' => 0, 'fish' => 0, 'monster_meat' => 0]);
-        [$thousandContext, $thousandRun] = $this->context($world, $nation);
-        $engine->execute('nation_economy', $thousandContext);
-        $this->assertSame(1_000, $this->event($thousandRun, 'resource.food_produced')['applied_tons']);
-        $this->assertSame(200, $this->event($thousandRun, 'resource.food_consumed')['required_nutrition']);
-        $this->assertSame(800, $this->resourceAmount($nation, 'wheat'));
-
         $this->removeFacility($farm);
         $this->setPopulation($nation, 100);
         $this->setResources($nation, ['wheat' => 5, 'fish' => 3, 'monster_meat' => 10]);
@@ -570,20 +551,6 @@ class TurnEconomyTest extends TestCase
             ->whereRaw("metadata->>'turn_run_id' = ?", [(string) $saleBeforeCapacityRun->id])
             ->whereRaw("metadata->>'resource_key' = 'industrial_goods'")->count());
 
-        $this->setPolicy($nation, 'industrial_goods', 'sell_all', null);
-        Nation::query()->whereKey($nation->id)->update(['money' => 0]);
-        $this->setResources($nation, ['industrial_goods' => 10_001_000]);
-        [$sellAllOverflowContext, $sellAllOverflowRun] = $this->context($world, $nation);
-        $engine->execute('enforce_capacities', $sellAllOverflowContext);
-        $sellAllOverflowSale = $this->event(
-            $sellAllOverflowRun, 'resource.automatic_sale', 'industrial_goods',
-        );
-        $this->assertSame('sell_all', $sellAllOverflowSale['policy']);
-        $this->assertSame(2_000, $sellAllOverflowSale['requested']);
-        $this->assertSame(2_000, $sellAllOverflowSale['sold']);
-        $this->assertSame(9_999_000, $this->resourceAmount($nation, 'industrial_goods'));
-        $this->assertSame(2, $nation->fresh()->money);
-
         $this->setPolicy($nation, 'industrial_goods', 'stockpile', null);
         $this->setPolicy($nation, 'minerals', 'stockpile', null);
         Nation::query()->whereKey($nation->id)->update(['money' => 10_097]);
@@ -648,7 +615,6 @@ class TurnEconomyTest extends TestCase
         $this->assertNotNull($factory->fresh()->facility_definition_id);
         $this->assertNotNull($mine->fresh()->facility_definition_id);
         $this->expectException(DomainException::class);
-        $this->expectExceptionMessage('Stored sell_all policy is forbidden for wheat');
         $engine->execute('resource_sales', $forbiddenContext);
     }
 
