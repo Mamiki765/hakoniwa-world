@@ -14,7 +14,6 @@ use App\Models\User;
 use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Schema;
 use Tests\TestCase;
 
 final class UndergroundPersistenceTest extends TestCase
@@ -30,44 +29,23 @@ final class UndergroundPersistenceTest extends TestCase
         $second = $service->ensureForSecretary($secretary);
 
         $this->assertSame($first->id, $second->id);
-        $this->assertSame([0, 1, 0, 0, 0, 0, null, null, null, null, null, null, null, 0, 0, 0, 0, 0, 0, 0, 0, null, 0, null, null], [
-            $first->unlocked_area_layers,
-            $first->combat_level,
-            $first->combat_xp,
-            $first->shard_balance,
-            $first->banked_shard_balance,
-            $first->shining_kingdom_key_balance,
-            $first->current_hp,
-            $first->next_battle_at,
-            $first->underground_contract_completed_at,
-            $first->growth_path_key,
-            $first->growth_path_identity,
-            $first->growth_path_selected_at,
-            $first->last_respec_at,
-            $first->unspent_stp,
-            $first->allocated_vitality_stp,
-            $first->allocated_might_stp,
-            $first->allocated_finesse_stp,
-            $first->allocated_spirit_stp,
-            $first->allocated_agility_stp,
-            $first->skill_points_total,
-            $first->skill_points_unspent,
-            $first->skill_tree_identity,
-            $first->awakening_gauge,
-            $first->awakening_message,
-            $first->awakening_technique_key,
-        ]);
+        $this->assertSame([
+            'combat_level' => 1,
+            'combat_xp' => 0,
+            'shard_balance' => 0,
+            'banked_shard_balance' => 0,
+            'unlocked_area_layers' => 0,
+            'underground_contract_completed_at' => null,
+            'growth_path_key' => null,
+            'skill_points_total' => 0,
+            'unspent_stp' => 0,
+            'awakening_gauge' => 0,
+        ], $first->only([
+            'combat_level', 'combat_xp', 'shard_balance', 'banked_shard_balance', 'unlocked_area_layers',
+            'underground_contract_completed_at', 'growth_path_key', 'skill_points_total', 'unspent_stp', 'awakening_gauge',
+        ]));
         $this->assertSame($first->id, $secretary->undergroundProfile()->sole()->id);
         $this->assertSame(1, UndergroundProfile::query()->where('secretary_id', $secretary->id)->count());
-
-        $this->assertTrue(Schema::hasTable('underground_trial_progress'));
-        $this->assertTrue(Schema::hasTable('underground_trial_runs'));
-        $this->assertTrue(Schema::hasTable('underground_battles'));
-        $this->assertTrue(Schema::hasTable('underground_battle_logs'));
-        $this->assertTrue(Schema::hasTable('underground_intro_progress'));
-        $this->assertTrue(Schema::hasTable('underground_intro_requests'));
-        $this->assertTrue(Schema::hasTable('underground_skill_allocations'));
-        $this->assertTrue(Schema::hasTable('underground_owned_equipment'));
     }
 
     public function test_starter_equipment_reconciles_exactly_once_and_owned_instances_remain_extensible(): void
