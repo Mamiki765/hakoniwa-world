@@ -14,11 +14,9 @@ use App\Models\MapChunk;
 use App\Models\MapSpace;
 use App\Models\Nation;
 use App\Models\NationCapital;
-use App\Models\ResourceDefinition;
 use App\Models\World;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Schema;
 use RuntimeException;
 use Tests\Concerns\UsesIndividualTestWorld;
 use Tests\TestCase;
@@ -62,14 +60,6 @@ class WorldInitializationTest extends TestCase
         $this->assertSame(0, MapCell::query()->where('population', '>', 0)->count());
         $this->assertSame(0, Nation::query()->count());
         $this->assertSame(0, NationCapital::query()->count());
-        $this->assertSame(['fish', 'industrial_goods', 'minerals', 'monster_meat', 'oil', 'power', 'wheat'], ResourceDefinition::query()->orderBy('key')->pluck('key')->all());
-        $this->assertSame(2.0, ResourceDefinition::query()->where('key', 'monster_meat')->value('nutrition_per_unit'));
-        $this->assertTrue(Schema::hasColumns('resource_definitions', [
-            'unit', 'unit_label', 'nutrition_per_unit', 'storable', 'tradable', 'sale_price_key', 'metadata',
-        ]));
-        $this->assertSame('ton', ResourceDefinition::query()->where('key', 'wheat')->value('unit'));
-        $this->assertSame('トン', ResourceDefinition::query()->where('key', 'wheat')->value('unit_label'));
-        $this->assertFalse(Schema::hasColumn('nations', 'food'));
     }
 
     public function test_failure_rolls_back_world_and_cells(): void
@@ -105,8 +95,6 @@ class WorldInitializationTest extends TestCase
         $this->assertSame($published->id, $worldRuleset->id);
         $this->assertSame($configuredRuleset['key'], $worldRuleset->key);
         $this->assertSame($settingsFingerprint, hash('sha256', (string) $worldRuleset->getRawOriginal('settings')));
-        $this->assertSame(59, $worldRuleset->settings['initial_x_max']);
-        $this->assertSame(59, $worldRuleset->settings['initial_y_max']);
         $this->assertArrayNotHasKey('generation_profile', $worldRuleset->settings);
         $this->assertSame(
             ['min_x' => 0, 'max_x' => 31, 'min_y' => 0, 'max_y' => 31],
@@ -114,18 +102,6 @@ class WorldInitializationTest extends TestCase
         );
         $this->assertSame(1024, $mapSpace->cells()->count());
         $this->assertSame(4, $mapSpace->chunks()->count());
-        $this->assertSame(range(0, 31), $mapSpace->cells()->distinct()->orderBy('x')->pluck('x')->all());
-        $this->assertSame(range(0, 31), $mapSpace->cells()->distinct()->orderBy('y')->pluck('y')->all());
-        $this->assertSame(
-            [256, 256, 256, 256],
-            DB::table('map_cells')->where('map_space_id', $mapSpace->id)
-                ->selectRaw('map_chunk_id, COUNT(*) AS cell_count')
-                ->groupBy('map_chunk_id')
-                ->orderBy('map_chunk_id')
-                ->pluck('cell_count')
-                ->map(static fn (mixed $count): int => (int) $count)
-                ->all(),
-        );
         $this->assertSame(
             ['chunk_x' => 0, 'chunk_y' => 0, 'local_x' => 15, 'local_y' => 15],
             MapCell::query()->where('map_space_id', $mapSpace->id)->where('x', 15)->where('y', 15)

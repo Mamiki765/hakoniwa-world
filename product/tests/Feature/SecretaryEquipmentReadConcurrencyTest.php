@@ -6,10 +6,9 @@ use App\Application\SecretaryEquipmentService;
 use App\Domain\Secretary\SecretaryEquipmentConflictException;
 use App\Domain\Secretary\SecretaryItemCatalog;
 use App\Models\Secretary;
+use App\Models\SecretaryItemInstance;
 use App\Models\User;
-use Illuminate\Database\Events\QueryExecuted;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
 
 final class SecretaryEquipmentReadConcurrencyTest extends TestCase
@@ -32,12 +31,10 @@ final class SecretaryEquipmentReadConcurrencyTest extends TestCase
         $injectChange = true;
         $changed = false;
 
-        // The SELECT has fetched its rows. Inject another tab's completed
+        // The item rows have been fetched. Inject another tab's completed
         // unequip before options can return its optimistic-lock token.
-        DB::listen(static function (QueryExecuted $query) use (&$injectChange, &$changed, $service, $user, $versionBefore): void {
-            if (! $injectChange
-                || ! str_starts_with($query->sql, 'select')
-                || ! str_contains($query->sql, 'from "secretary_item_instances"')) {
+        SecretaryItemInstance::retrieved(static function () use (&$injectChange, &$changed, $service, $user, $versionBefore): void {
+            if (! $injectChange) {
                 return;
             }
             $injectChange = false;

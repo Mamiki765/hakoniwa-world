@@ -12,13 +12,14 @@ final class ProductionConfigCacheEntrypointTest extends TestCase
         $dockerfile = file_get_contents(dirname(__DIR__, 2).'/Dockerfile');
 
         $this->assertIsString($entrypoint);
-        $this->assertStringContainsString('[ "${APP_ENV:-}" = "production" ]', $entrypoint);
-        $this->assertStringContainsString('[ "${1:-}" = "apache2-foreground" ]', $entrypoint);
-        $this->assertStringContainsString("php artisan config:clear\n    php artisan config:cache", $entrypoint);
-        $this->assertLessThan(
-            strpos($entrypoint, 'exec "$@"'),
-            strpos($entrypoint, 'php artisan config:cache'),
-        );
+        $clear = strpos($entrypoint, 'php artisan config:clear');
+        $cache = strpos($entrypoint, 'php artisan config:cache');
+        $exec = strpos($entrypoint, 'exec "$@"');
+        $this->assertIsInt($clear);
+        $this->assertIsInt($cache);
+        $this->assertIsInt($exec);
+        $this->assertLessThan($cache, $clear);
+        $this->assertLessThan($exec, $cache);
         $this->assertIsString($dockerfile);
         $this->assertStringNotContainsString('config:cache', $dockerfile);
     }

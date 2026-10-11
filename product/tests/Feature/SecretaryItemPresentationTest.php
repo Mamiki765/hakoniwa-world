@@ -80,31 +80,20 @@ final class SecretaryItemPresentationTest extends TestCase
             ->assertJsonPath('data.inventory.items.0.effect_text', null)
             ->assertJsonPath('data.inventory.items.1.effect_text', null);
 
-        $this->actingAs($user)->getJson("/api/v1/me/secretary?world_id={$historicalWorld->id}")
+        $ownedTexts = $this->effectTexts($this->actingAs($user)->getJson("/api/v1/me/secretary?world_id={$historicalWorld->id}")
             ->assertOk()
             ->assertJsonPath('data.effect_context.source', 'owned_world')
             ->assertJsonPath('data.effect_context.world_id', $historicalWorld->id)
             ->assertJsonPath('data.effect_context.ruleset_version_id', $historicalWorld->ruleset_version_id)
             ->assertJsonPath('data.effect_context.ruleset_key', 'historical-secretary-item-snapshot-v15')
             ->assertJsonPath('data.effect_context.ruleset_version', 15)
-            ->assertJsonPath(
-                'data.inventory.items.0.effect_text',
-                '10%の確率で、自領の地上にいる怪獣に1ダメージを与える。',
-            )->assertJsonPath(
-                'data.inventory.items.1.effect_text',
-                '資金繰りの際、追加で3億円を得る。',
-            );
+            ->json('data.inventory.items'));
+        $this->assertCount(2, array_filter($ownedTexts, static fn (?string $text): bool => $text !== null && $text !== ''));
 
-        $this->actingAs($user)
+        // The equipment options route projects the same texts from the same explicit context.
+        $this->assertSame($ownedTexts, $this->effectTexts($this->actingAs($user)
             ->getJson("/api/v1/me/secretary/equipment/1/options?world_id={$historicalWorld->id}")
-            ->assertOk()
-            ->assertJsonPath(
-                'data.items.0.effect_text',
-                '10%の確率で、自領の地上にいる怪獣に1ダメージを与える。',
-            )->assertJsonPath(
-                'data.items.1.effect_text',
-                '資金繰りの際、追加で3億円を得る。',
-            );
+            ->assertOk()->json('data.items')));
 
         $this->actingAs($user)->postJson('/api/v1/me/secretary/name', ['name' => 'ペリドット'])
             ->assertOk()
@@ -112,10 +101,7 @@ final class SecretaryItemPresentationTest extends TestCase
             ->assertJsonPath('data.inventory.items.0.effect_text', null);
         $this->actingAs($user)->getJson("/api/v1/me/secretary?world_id={$historicalWorld->id}")
             ->assertOk()
-            ->assertJsonPath(
-                'data.inventory.items.0.effect_text',
-                '10%の確率で、自領の地上にいる怪獣に1ダメージを与える。',
-            );
+            ->assertJsonPath('data.inventory.items.0.effect_text', $ownedTexts[0]);
 
         $historicalNation->update([
             'state' => 'dormant',
@@ -130,13 +116,8 @@ final class SecretaryItemPresentationTest extends TestCase
         $this->actingAs($user)->getJson("/api/v1/me/secretary?world_id={$historicalWorld->id}")
             ->assertOk()
             ->assertJsonPath('data.effect_context.world_id', $historicalWorld->id)
-            ->assertJsonPath(
-                'data.inventory.items.0.effect_text',
-                '10%の確率で、自領の地上にいる怪獣に1ダメージを与える。',
-            )->assertJsonPath(
-                'data.inventory.items.1.effect_text',
-                '資金繰りの際、追加で3億円を得る。',
-            );
+            ->assertJsonPath('data.inventory.items.0.effect_text', $ownedTexts[0])
+            ->assertJsonPath('data.inventory.items.1.effect_text', $ownedTexts[1]);
         $this->actingAs($user)->getJson('/api/v1/me/secretary?world_id=999999')
             ->assertUnprocessable()
             ->assertJsonPath('code', 'secretary_equipment_invalid');
@@ -190,6 +171,15 @@ final class SecretaryItemPresentationTest extends TestCase
             $options['items'][0]['effect_text'],
         );
         $this->assertSame('資金繰りの際、追加で2億円を得る。', $options['items'][1]['effect_text']);
+    }
+
+    /**
+     * @param  list<array<string, mixed>>  $items
+     * @return list<string|null>
+     */
+    private function effectTexts(array $items): array
+    {
+        return array_column($items, 'effect_text');
     }
 
     /** @return array{World, Nation} */

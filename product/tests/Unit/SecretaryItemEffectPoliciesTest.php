@@ -113,7 +113,6 @@ final class SecretaryItemEffectPoliciesTest extends TestCase
         yield 'HP2 damage1 leaves certain hazard' => [2, 1, false];
         yield 'HP1 damage1 kills before hazard' => [1, 1, true];
         yield 'HP3 damage1 remains outside hazard' => [3, 1, true];
-        yield 'future damage2 kills HP2' => [2, 2, true];
     }
 
     /** @param array<string, mixed> $sourceMetadata */

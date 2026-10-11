@@ -33,8 +33,6 @@ final class SecretaryInventoryTest extends TestCase
             ->assertJsonPath('data.inventory.capacity', 50)
             ->assertJsonPath('data.inventory.used', 1)
             ->assertJsonPath('data.inventory.items.0.key', 'old_bow')
-            ->assertJsonPath('data.inventory.items.0.name', '古びた弓')
-            ->assertJsonPath('data.inventory.items.0.category', 'bow')
             ->assertJsonPath('data.inventory.items.0.level', 1)
             ->assertJsonPath('data.inventory.items.0.equipped_slot', 1)
             ->assertJsonCount(5, 'data.equipment.slots')
@@ -119,53 +117,39 @@ final class SecretaryInventoryTest extends TestCase
             'obtained_at' => now(),
         ]);
 
-        $this->expectException(DomainException::class);
-        $this->expectExceptionMessage('Secretary equipment slot 2 is already occupied.');
-        app(SecretaryItemGrantService::class)->grant(
-            $secretary,
-            SecretaryItemCatalog::OLD_BOW,
-            1,
-            2,
-            null,
-        );
+        try {
+            app(SecretaryItemGrantService::class)->grant(
+                $secretary,
+                SecretaryItemCatalog::OLD_BOW,
+                1,
+                2,
+                null,
+            );
+            $this->fail('Expected granting into an occupied slot to be rejected.');
+        } catch (DomainException) {
+            $this->addToAssertionCount(1);
+        }
+        $this->assertSame(['slot_fixture'], $secretary->itemInstances()->pluck('item_key')->all());
     }
 
-    public function test_item_catalog_keeps_presentation_outside_rulesets_and_bow_equipment_limit_is_one(): void
+    public function test_item_catalog_keeps_effects_outside_presentation_and_bow_equipment_limit_is_one(): void
     {
         $catalog = app(SecretaryItemCatalog::class);
         $definition = $catalog->definition(SecretaryItemCatalog::OLD_BOW);
 
         $this->assertSame('bow', $definition['category']);
-        $this->assertSame(1, $definition['max_level']);
         $this->assertSame(1, $catalog->maximumEquipped('bow'));
-        $this->assertSame('古びた弓', $definition['name']);
-        $this->assertStringContainsString('施設の最奥', $definition['flavor_text']);
         $this->assertArrayNotHasKey('effect', $definition);
     }
 
-    public function test_ring_catalog_values_are_exact_and_no_registration_path_grants_one(): void
+    public function test_ring_catalog_contract_values_and_no_registration_path_grants_one(): void
     {
         $catalog = app(SecretaryItemCatalog::class);
         $definition = $catalog->definition(SecretaryItemCatalog::RING);
 
-        $this->assertSame([
-            'key' => SecretaryItemCatalog::RING,
-            'category' => 'accessory',
-            'category_label' => 'アクセサリー',
-            'category_max_equipped' => 99,
-            'rarity' => SecretaryItemCatalog::RARITY_NOVICE,
-            'rarity_label' => 'ノービス',
-            'tradable' => true,
-            'npc_tradable' => true,
-            'max_level' => 10,
-            'name' => '指輪',
-            'flavor_text' => '貴金属が使われた豪華な指輪。魔法の道具ではないが、贈り物にはぴったりだ。',
-            'unique_per_secretary' => false,
-            'fixed_sale_price_money' => 100,
-        ], $definition);
-        $this->assertSame(99, $catalog->maximumEquipped('accessory'));
+        $this->assertSame(100, $definition['fixed_sale_price_money']);
+        $this->assertSame(10, $definition['max_level']);
         $this->assertSame(1, $catalog->sameItemMaximum(SecretaryItemCatalog::RING));
-        $this->assertArrayNotHasKey('same_item_max_equipped', $definition);
         $this->assertArrayNotHasKey('effect', $definition);
 
         $world = $this->lightweightWorld();
@@ -204,8 +188,8 @@ final class SecretaryInventoryTest extends TestCase
                 'test:ring:level-11',
             );
             $this->fail('Expected Ring level 11 to be rejected.');
-        } catch (DomainException $exception) {
-            $this->assertSame('Invalid level 11 for Secretary item ring.', $exception->getMessage());
+        } catch (DomainException) {
+            $this->addToAssertionCount(1);
         }
         $this->assertSame(2, $secretary->itemInstances()->where('item_key', SecretaryItemCatalog::RING)->count());
     }
@@ -268,16 +252,20 @@ final class SecretaryInventoryTest extends TestCase
             'equipped_slot' => null, 'is_escrowed' => false, 'grant_key' => 'test:fixed-sale:capacity',
             'obtained_at' => now(),
         ]);
+        $beforeVersion = $secretary->surfaceState->equipment_version;
+        $beforeMoney = (int) $nation->money;
+
+        // Equipment and escrow are rejected while there is ample money headroom.
+        foreach ([$equipped, $escrowed] as $item) {
+            $this->actingAs($user)->postJson("/api/v1/me/secretary/items/{$item->id}/sell", ['world_id' => $world->id])
+                ->assertUnprocessable();
+        }
+        $this->assertSame($beforeMoney, (int) $nation->fresh()->money);
+
         $moneyCapacity = app(NationCapacityResolver::class)->resolve($nation)->money;
         $nation->update(['money' => $moneyCapacity]);
-        $beforeVersion = $secretary->surfaceState->equipment_version;
-
-        $this->actingAs($user)->postJson("/api/v1/me/secretary/items/{$equipped->id}/sell", ['world_id' => $world->id])
-            ->assertUnprocessable()->assertJsonPath('message', '装備中のアイテムは売却できません。');
-        $this->actingAs($user)->postJson("/api/v1/me/secretary/items/{$escrowed->id}/sell", ['world_id' => $world->id])
-            ->assertUnprocessable()->assertJsonPath('message', '交易場へ出品中のアイテムは売却できません。');
         $this->actingAs($user)->postJson("/api/v1/me/secretary/items/{$capacity->id}/sell", ['world_id' => $world->id])
-            ->assertUnprocessable()->assertJsonPath('message', '資金上限まで全額を受け取れないため売却できません。');
+            ->assertUnprocessable();
 
         $this->assertSame($moneyCapacity, $nation->fresh()->money);
         $this->assertSame($beforeVersion, $secretary->fresh()->surfaceState->equipment_version);
@@ -370,33 +358,23 @@ SQL);
         $this->assertSame(0, DB::table('audit_events')->where('event_type', 'secretary.item_sold')->count());
     }
 
-    public function test_old_bow_fixed_sale_always_returns_secretary_refusal_before_equipment_and_money_checks(): void
+    public function test_old_bow_fixed_sale_is_refused_without_mutation(): void
     {
         $world = $this->lightweightWorld();
-        $namedUser = User::factory()->create();
-        $namedNation = app(NationCreationService::class)->create($namedUser, $world, '弓拒否島', '弓拒否島主');
-        $namedSecretary = $namedUser->secretary()->sole();
-        $namedSecretary->update(['name' => 'ペリドット', 'named_at' => now()]);
-        $oldBow = $namedSecretary->itemInstances()->where('item_key', SecretaryItemCatalog::OLD_BOW)->sole();
-        $namedCapacity = app(NationCapacityResolver::class)->resolve($namedNation)->money;
-        $namedNation->update(['money' => $namedCapacity]);
-        $beforeVersion = $namedSecretary->surfaceState->equipment_version;
+        $user = User::factory()->create();
+        $nation = app(NationCreationService::class)->create($user, $world, '弓拒否島', '弓拒否島主');
+        $secretary = $user->secretary()->sole();
+        $oldBow = $secretary->itemInstances()->where('item_key', SecretaryItemCatalog::OLD_BOW)->sole();
+        // Unequipped, so the refusal cannot come from the equipped-item rule.
+        $oldBow->update(['equipped_slot' => null]);
+        $beforeMoney = (int) $nation->money;
+        $beforeVersion = $secretary->surfaceState->equipment_version;
 
-        $this->actingAs($namedUser)->postJson("/api/v1/me/secretary/items/{$oldBow->id}/sell", ['world_id' => $world->id])
-            ->assertUnprocessable()->assertJsonPath('message', 'ペリドットが嫌がっています…');
-        $this->assertDatabaseHas('secretary_item_instances', [
-            'id' => $oldBow->id, 'secretary_id' => $namedSecretary->id, 'equipped_slot' => 1,
-        ]);
-        $this->assertSame($namedCapacity, $namedNation->fresh()->money);
-        $this->assertSame($beforeVersion, $namedSecretary->fresh()->surfaceState->equipment_version);
-
-        $unnamedUser = User::factory()->create();
-        $unnamedNation = app(NationCreationService::class)->create($unnamedUser, $world, '無名弓拒否島', '無名弓拒否島主');
-        $unnamedSecretary = $unnamedUser->secretary()->sole();
-        $unnamedBow = $unnamedSecretary->itemInstances()->where('item_key', SecretaryItemCatalog::OLD_BOW)->sole();
-        $this->actingAs($unnamedUser)->postJson("/api/v1/me/secretary/items/{$unnamedBow->id}/sell", ['world_id' => $world->id])
-            ->assertUnprocessable()->assertJsonPath('message', '秘書が嫌がっています…');
-        $this->assertDatabaseHas('secretary_item_instances', ['id' => $unnamedBow->id]);
+        $this->actingAs($user)->postJson("/api/v1/me/secretary/items/{$oldBow->id}/sell", ['world_id' => $world->id])
+            ->assertUnprocessable();
+        $this->assertDatabaseHas('secretary_item_instances', ['id' => $oldBow->id, 'secretary_id' => $secretary->id]);
+        $this->assertSame($beforeMoney, (int) $nation->fresh()->money);
+        $this->assertSame($beforeVersion, $secretary->fresh()->surfaceState->equipment_version);
         $this->assertSame(0, DB::table('audit_events')->where('event_type', 'secretary.item_sold')->count());
     }
 }

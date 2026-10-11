@@ -176,32 +176,31 @@ final class CompensationWarehouseTest extends TestCase
             '--g' => '7',
         ];
         $this->artisan('hakoniwa:compensation-grant', $arguments)
-            ->expectsOutputToContain("Re-run with --confirm={$token}")
+            ->expectsOutputToContain($token)
             ->assertFailed();
+        $this->assertDatabaseCount('compensation_grants', 0);
         $oldToken = "GRANT:{$nation->world()->value('key')}:N{$oldNation->id}:{$key}";
         $this->artisan('hakoniwa:compensation-grant', [...$arguments, '--confirm' => $oldToken])
             ->assertFailed();
         $this->artisan('hakoniwa:compensation-grant', [...$arguments, '--confirm' => $token])
-            ->expectsOutputToContain('status=created')
             ->assertSuccessful();
         $this->artisan('hakoniwa:compensation-grant', [...$arguments, '--confirm' => $token])
-            ->expectsOutputToContain('status=already_exists')
             ->assertSuccessful();
+        $this->assertSame(1, DB::table('compensation_grants')->where('grant_key', $key)->count());
 
         $grantId = (int) DB::table('compensation_grants')->where('grant_key', $key)->value('id');
         $this->assertDatabaseHas('compensation_grants', [
             'id' => $grantId, 'nation_id' => $nation->id, 'recipient_user_id' => $user->id,
         ]);
-        $this->actingAs($user)->postJson(
+        $claim = $this->actingAs($user)->postJson(
             "/api/v1/nations/{$nation->id}/compensation-grants/{$grantId}/claim",
             ['request_id' => (string) Str::uuid()],
         )->assertOk()
             ->assertJsonPath('data.grant.status', 'partial')
-            ->assertJsonPath('data.applied_now.0.applied', 2)
-            ->assertJsonPath('data.applied_now.0.remaining', 8)
-            ->assertJsonPath('data.applied_now.1.asset_key', 'underground_g')
-            ->assertJsonPath('data.applied_now.1.applied', 0)
-            ->assertJsonPath('data.applied_now.1.remaining', 7);
+            ->json('data');
+        $applied = collect($claim['applied_now'])->keyBy('asset_key');
+        $this->assertSame([2, 8], [$applied['money']['applied'], $applied['money']['remaining']]);
+        $this->assertSame([0, 7], [$applied['underground_g']['applied'], $applied['underground_g']['remaining']]);
         $this->assertSame($moneyCapacity, (int) $nation->fresh()->money);
         $this->assertDatabaseHas('compensation_grant_items', [
             'compensation_grant_id' => $grantId,

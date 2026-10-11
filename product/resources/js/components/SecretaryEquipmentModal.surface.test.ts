@@ -43,7 +43,7 @@ const props = {
 afterEach(() => document.body.replaceChildren());
 
 describe('SecretaryEquipmentModal', () => {
-    it('renders the accessible native-scroll selection list in authoritative order without flavor text', async () => {
+    it('lists the authoritative candidates with the current item selected and submits the chosen item id', async () => {
         const trigger = document.createElement('button');
         document.body.append(trigger);
         trigger.focus();
@@ -52,15 +52,13 @@ describe('SecretaryEquipmentModal', () => {
 
         const dialog = wrapper.get('[role="dialog"]');
         expect(dialog.attributes('aria-modal')).toBe('true');
-        expect(dialog.attributes('aria-labelledby')).toBe('equipment-modal-title-2');
+        expect(dialog.find(`#${dialog.attributes('aria-labelledby')}`).exists()).toBe(true);
         expect(document.activeElement).toBe(wrapper.get('.equipment-modal-close').element);
-        expect(wrapper.get('.equipment-options-scroll').attributes('data-native-scroll')).toBe('true');
-        const rows = wrapper.findAll('.equipment-option-row');
-        expect(rows.map((row) => row.text())).toEqual(['外す', '古びた弓Lv1', '指輪Lv3装備効果の説明']);
-        expect(wrapper.text()).not.toContain('貴金属');
-        expect(wrapper.findAll<HTMLInputElement>('input[type="radio"]')[1]!.element.checked).toBe(true);
+        for (const item of options.items) expect(wrapper.text()).toContain(item.name);
+        const radioFor = (id: number) => wrapper.get<HTMLInputElement>(`input[type="radio"][value="${id}"]`);
+        expect(radioFor(options.current_item!.id).element.checked).toBe(true);
 
-        await wrapper.findAll<HTMLInputElement>('input[type="radio"]')[2]!.setValue(true);
+        await radioFor(31).setValue(true);
         await wrapper.get('.equipment-modal-footer button').trigger('click');
         expect(wrapper.emitted('selectionChange')).toHaveLength(1);
         expect(wrapper.emitted('submit')).toEqual([[31]]);
@@ -81,22 +79,20 @@ describe('SecretaryEquipmentModal', () => {
         }
     });
 
-    it('keeps the footer outside the scroll region and handles loading errors and fresh-choice state', async () => {
+    it('blocks submission while a fresh choice is required, submitting, or loading', async () => {
         const wrapper = mount(SecretaryEquipmentModal, {
             props: { ...props, requireFreshChoice: true, error: '更新競合です。' },
         });
-        expect(wrapper.get('.equipment-options-scroll').element.contains(wrapper.get('.equipment-modal-footer').element)).toBe(false);
         expect(wrapper.get('[role="alert"]').text()).toBe('更新競合です。');
         expect(wrapper.get<HTMLButtonElement>('.equipment-modal-footer button').element.disabled).toBe(true);
 
         await wrapper.findAll<HTMLInputElement>('input[type="radio"]')[0]!.setValue(true);
         expect(wrapper.emitted('selectionChange')).toHaveLength(1);
         await wrapper.setProps({ requireFreshChoice: false, submitting: true });
-        expect(wrapper.get('.equipment-modal-footer button').text()).toBe('変更中…');
         expect(wrapper.get<HTMLButtonElement>('.equipment-modal-footer button').element.disabled).toBe(true);
 
         await wrapper.setProps({ loading: true, submitting: false, options: null, error: '' });
-        expect(wrapper.get('[role="status"]').text()).toContain('読み込んでいます');
+        expect(wrapper.find('[role="status"]').exists()).toBe(true);
         expect(wrapper.get<HTMLButtonElement>('.equipment-modal-footer button').element.disabled).toBe(true);
     });
 

@@ -36,26 +36,29 @@ describe('Underground party battle cards', () => {
             { team: 'player', combatant_id: 'secretary:1', display_name: '自分', icon_url: '/icon', portrait_url: '/portrait', state: { hp: 5, max_hp: 10, mp: 2, awakening_unlocked: true, awakening_gauge: 1000, awakening_gauge_max: 1000 }, awakening_state: 'ready' },
             { team: 'enemy', combatant_id: 'enemy:1', display_name: '敵', icon_url: '/enemy-icon', portrait_url: '/enemy-portrait', state: { hp: 10, max_hp: 10, mp: 0 } },
         ], portraitEvents: [{ type: 'start', round: 1, combatant_id: 'secretary:1' }], portraitEventType: 'start' } });
-        expect(wrapper.findAll('.underground-party-large-art')).toHaveLength(1);
-        expect(wrapper.findAll('.underground-party-icon')).toHaveLength(2);
-        expect(wrapper.findAll('.underground-party-team')).toHaveLength(2);
-        expect(wrapper.findAll('.underground-party-team').at(0)!.text()).toContain('PARTY');
-        expect(wrapper.findAll('.underground-party-team').at(1)!.text()).toContain('ENEMY');
-        expect(wrapper.text()).toContain('Ready');
+        const largeArt = wrapper.findAll('.underground-party-large-art');
+        expect(largeArt.map((image) => image.attributes('src'))).toEqual(['/portrait']);
+        const icons = wrapper.findAll('.underground-party-icon').map((image) => image.attributes('src'));
+        expect(icons).toHaveLength(2);
+        expect(icons).toEqual(expect.arrayContaining(['/icon', '/enemy-icon']));
+        expect(wrapper.find('.underground-party-team[data-team="player"] [data-combatant-id="secretary:1"]').exists()).toBe(true);
+        expect(wrapper.find('.underground-party-team[data-team="enemy"] [data-combatant-id="enemy:1"]').exists()).toBe(true);
+        const cardGauge = wrapper.get('[data-combatant-id="secretary:1"] .underground-party-meter.is-awakening');
+        expect(cardGauge.attributes('data-state')).toBe('ready');
+        expect(cardGauge.get('progress').attributes('value')).toBe('1000');
+        expect(cardGauge.get('progress').attributes('max')).toBe('1000');
         expect(wrapper.text()).toContain('5/10');
-        expect(wrapper.text()).not.toContain('2/10000');
-        expect(wrapper.get('.underground-party-portrait-awakening').text()).toContain('覚醒Ready');
-        expect(wrapper.get('.underground-party-portrait-awakening progress').attributes('aria-label')).toBe('覚醒ゲージ 100%、Ready');
-        expect(wrapper.text()).not.toContain('1000/1000');
+        expect(wrapper.get('.underground-party-portrait-awakening .underground-party-meter').attributes('data-state')).toBe('ready');
         expect(wrapper.text()).not.toContain('secretary:1');
     });
 
-    it('labels an active awakening as Awaken without exposing the raw gauge value', () => {
+    it('marks an active awakening without exposing the raw gauge value', () => {
+        const state = { hp: 10, max_hp: 10, mp: 10000, awakening_gauge: 8500, awakening_gauge_max: 10000, awakened: true };
         const wrapper = mount(UndergroundPartyBattleCards, { props: { actors: [
-            { team: 'player', combatant_id: 'secretary:1', display_name: '自分', state: { hp: 10, max_hp: 10, mp: 10000, awakening_gauge: 8500, awakening_gauge_max: 10000, awakened: true }, awakening_state: 'awakened' },
+            { team: 'player', combatant_id: 'secretary:1', display_name: '自分', state, awakening_state: 'awakened' },
         ] } });
-        expect(wrapper.text()).toContain('Awaken!');
-        expect(wrapper.text()).not.toContain('8500/10000');
+        expect(wrapper.get('.underground-party-meter.is-awakening').attributes('data-state')).toBe('awakened');
+        expect(wrapper.text()).not.toContain(String(state.awakening_gauge));
     });
 
     it('renders the saved portrait-event gauge instead of current actor state and hides a locked gauge', () => {
@@ -106,15 +109,12 @@ describe('Underground party battle cards', () => {
                 { type: 'awakening', round: 3, combatant_id: 'secretary:1', image_ref: { url: '/current', creation_method_label: '自作', credit: 'Owner credit' } },
             ],
         } });
-        expect(wrapper.find('.underground-party-teams').exists()).toBe(false);
-        expect(wrapper.findAll('.underground-party-large-art')).toHaveLength(1);
-        expect(wrapper.text()).not.toContain('画像：©');
+        expect(wrapper.findAll('.underground-party-large-art').map((image) => image.attributes('src'))).toEqual(['/current']);
         const info = wrapper.get('.underground-party-image-info');
         expect(info.attributes('open')).toBeUndefined();
-        expect(info.get('summary').text()).toBe('ⓘ');
         await info.get('summary').trigger('click');
         expect(info.attributes('open')).toBeDefined();
-        expect(info.text()).toContain('制作方法：自作');
-        expect(wrapper.text()).toContain('Owner credit');
+        expect(info.text()).toContain('自作');
+        expect(info.text()).toContain('Owner credit');
     });
 });

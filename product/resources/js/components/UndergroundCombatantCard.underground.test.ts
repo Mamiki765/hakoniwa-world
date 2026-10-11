@@ -7,11 +7,14 @@ describe('Underground combatant card', () => {
         const state = { hp: 6220, max_hp: 8000, mp: 10000, barrier: 754, statuses: [], role_stacks: { fighting_spirit: 0, grace: 0 } };
         const wrapper = mount(UndergroundCombatantCard, { props: { name: '秘書', side: 'player', state } });
         const hp = wrapper.get('.underground-matchup-vitals label');
-        expect(hp.text()).toBe('HP 6,220 +754/ 8,000');
-        expect(hp.get('progress').attributes('value')).toBe('6220');
-        expect(hp.get('progress').attributes('max')).toBe('8000');
+        const meter = hp.get('progress');
+        expect(hp.text()).toContain(state.barrier.toLocaleString());
+        expect(meter.attributes('value')).toBe(String(state.hp));
+        expect(meter.attributes('max')).toBe(String(state.max_hp));
         await wrapper.setProps({ state: { ...state, barrier: 0 } });
-        expect(hp.text()).toBe('HP 6,220/ 8,000');
+        expect(hp.text()).not.toContain(state.barrier.toLocaleString());
+        expect(meter.attributes('value')).toBe(String(state.hp));
+        expect(meter.attributes('max')).toBe(String(state.max_hp));
     });
 
     it('keeps awakening progress visual while exposing only its percentage to assistive technology', () => {

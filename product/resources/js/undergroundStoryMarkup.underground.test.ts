@@ -3,7 +3,14 @@ import { renderUndergroundStory } from './undergroundStoryMarkup';
 
 describe('Trial story annotations', () => {
     it('renders emphasis and ruby while escaping names and unrecognized HTML', () => {
-        expect(renderUndergroundStory('《《魔王の娘》》と|悪魔《サキュバス》 <img src=x onerror=alert(1)>'))
-            .toBe('<em class="underground-story-emphasis">魔王の娘</em>と<ruby>悪魔<rt>サキュバス</rt></ruby> &lt;img src=x onerror=alert(1)&gt;');
+        const container = document.createElement('div');
+        container.innerHTML = renderUndergroundStory('《《魔王の娘》》と|悪魔《サキュバス》 <img src=x onerror=alert(1)>');
+
+        expect(container.querySelector('em')?.textContent).toBe('魔王の娘');
+        const ruby = container.querySelector('ruby');
+        expect(ruby?.querySelector('rt')?.textContent).toBe('サキュバス');
+        expect(ruby?.textContent).toBe('悪魔サキュバス');
+        expect(container.querySelector('img')).toBeNull();
+        expect(container.textContent).toContain('<img src=x onerror=alert(1)>');
     });
 });

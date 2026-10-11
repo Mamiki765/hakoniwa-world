@@ -53,7 +53,9 @@ final class BahamulCombatTest extends TestCase
         self::assertTrue($rows->where('action', 'status:weakened_strike')->isNotEmpty());
         self::assertCount(1, $rows->where('action', 'charged_attack_roar'));
         $countdown = $rows->where('action', 'charged_attack_countdown');
-        self::assertSame([5, 4, 3, 2, 1], $countdown->pluck('countdown')->all());
+        $countdownRounds = $catalog->enemy('bahamul_intermediate_2')['charged_attack']['countdown_rounds'];
+        self::assertGreaterThan(1, $countdownRounds);
+        self::assertSame(range($countdownRounds, 1), $countdown->pluck('countdown')->all());
         self::assertSame([1], $countdown->where('major_telegraph', true)->pluck('countdown')->all());
         $majorRound = $countdown->where('countdown', 1)->first()['round'];
         self::assertSame([$majorRound], $rows->where('kind', 'awakening_technique')->where('action', 'absolute_aegis')->pluck('round')->all());

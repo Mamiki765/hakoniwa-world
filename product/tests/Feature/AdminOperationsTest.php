@@ -11,11 +11,9 @@ use App\Models\CompensationGrant;
 use App\Models\NationResource;
 use App\Models\ResourceDefinition;
 use App\Models\User;
-use Illuminate\Database\Events\QueryExecuted;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
-use RuntimeException;
 use Tests\Concerns\CreatesTestWorlds;
 use Tests\TestCase;
 
@@ -92,20 +90,11 @@ final class AdminOperationsTest extends TestCase
         $this->assertCount(3, $preview['auctions']);
         $this->assertSame('active', $target->fresh()->state);
 
-        $connection = DB::connection();
-        $original = $connection->getEventDispatcher();
-        $events = clone $original;
-        $connection->setEventDispatcher($events);
-        $events->listen(QueryExecuted::class, static function (QueryExecuted $query): void {
-            if (str_starts_with($query->sql, 'delete from "nation_capitals"')) {
-                throw new RuntimeException('cleanup interrupted after auction settlement');
-            }
-        });
-        try {
-            $this->postJson($endpoint.'/apply', ['token' => $preview['token']])->assertServerError();
-        } finally {
-            $connection->setEventDispatcher($original);
-        }
+        // Fail inside the abandonment step, after auction settlement already ran in the same transaction.
+        $capital = DB::table('nation_capitals')->where('nation_id', $target->id)->sole();
+        DB::table('nation_capitals')->where('nation_id', $target->id)->delete();
+        $this->postJson($endpoint.'/apply', ['token' => $preview['token']])->assertConflict();
+        DB::table('nation_capitals')->insert((array) $capital);
         $this->assertSame('active', $target->fresh()->state);
         $this->assertSame(AuctionListing::STATUS_ACTIVE, AuctionListing::query()->findOrFail($sold)->status);
         $this->postJson($endpoint.'/apply', ['token' => $preview['token']])->assertOk()->assertJsonPath('data.settled_auction_count', 3);

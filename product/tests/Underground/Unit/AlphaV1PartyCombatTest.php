@@ -9,6 +9,7 @@ use App\Domain\Underground\Combat\AlphaV1CombatRules;
 use App\Domain\Underground\Combat\BuildCombatState;
 use App\Domain\Underground\Combat\CanonicalCombatOrchestrator;
 use App\Domain\Underground\Combat\DeterministicEquipmentGenerator;
+use App\Domain\Underground\Combat\PartyCombatResult;
 use App\Domain\Underground\Combat\PriorityCombatAi;
 use App\Domain\Underground\Combat\UndergroundAwakening;
 use App\Domain\Underground\Combat\UndergroundBuildValidator;
@@ -610,34 +611,9 @@ final class AlphaV1PartyCombatTest extends TestCase
 
     public function test_standard_party_healer_uses_ally_hp_condition_when_own_hp_is_high(): void
     {
-        $catalog = $this->catalog(enemyHp: 1_000_000, enemyPower: 1, enemyAgility: 1);
-        $healer = $this->player('borrowed:2', currentHp: 1_100);
-        $healer['active_skills'] = ['mending_prayer'];
-        $healer['ai_mode'] = 'default';
-        $healer['ai_rules'] = [[
-            'conditions' => [
-                ['type' => 'own_hp_lte', 'percent' => 55],
-                ['type' => 'skill_ready', 'skill' => 'mending_prayer'],
-            ],
-            'action' => 'skill:mending_prayer',
-        ], [
-            'conditions' => [['type' => 'always']],
-            'action' => 'normal_attack',
-        ]];
-        $result = $this->model()->fightPartySnapshots(
-            $catalog,
-            [$this->player('secretary:1', currentHp: 1), $healer],
-            ['party_target'],
-            387,
-            1,
-            0,
-        );
+        $result = $this->defaultHealerParty(leaderHp: 1, healerHp: 1_100, seed: 387);
 
-        $decision = collect($result->actionLog)->first(
-            static fn (array $row): bool => ($row['kind'] ?? null) === 'decision'
-                && ($row['actor_id'] ?? null) === 'borrowed:2',
-        );
-        self::assertIsArray($decision);
+        $decision = $this->firstDecisionOf($result, 'borrowed:2');
         self::assertSame('mending_prayer', $decision['action_key']);
         self::assertSame('secretary:1', $decision['target_id']);
         $recovery = collect($result->actionLog)->first(
@@ -650,69 +626,18 @@ final class AlphaV1PartyCombatTest extends TestCase
 
     public function test_standard_party_healer_uses_ally_hp_condition_to_heal_self_when_lowest(): void
     {
-        $catalog = $this->catalog(enemyHp: 1_000_000, enemyPower: 1, enemyAgility: 1);
-        $healer = $this->player('borrowed:2', currentHp: 1);
-        $healer['active_skills'] = ['mending_prayer'];
-        $healer['ai_mode'] = 'default';
-        $healer['ai_rules'] = [[
-            'conditions' => [
-                ['type' => 'own_hp_lte', 'percent' => 55],
-                ['type' => 'skill_ready', 'skill' => 'mending_prayer'],
-            ],
-            'action' => 'skill:mending_prayer',
-        ], [
-            'conditions' => [['type' => 'always']],
-            'action' => 'normal_attack',
-        ]];
-        $result = $this->model()->fightPartySnapshots(
-            $catalog,
-            [$this->player('secretary:1', currentHp: 1_100), $healer],
-            ['party_target'],
-            388,
-            1,
-            0,
-        );
+        $result = $this->defaultHealerParty(leaderHp: 1_100, healerHp: 1, seed: 388);
 
-        $decision = collect($result->actionLog)->first(
-            static fn (array $row): bool => ($row['kind'] ?? null) === 'decision'
-                && ($row['actor_id'] ?? null) === 'borrowed:2',
-        );
-        self::assertIsArray($decision);
+        $decision = $this->firstDecisionOf($result, 'borrowed:2');
         self::assertSame('mending_prayer', $decision['action_key']);
         self::assertSame('borrowed:2', $decision['target_id']);
     }
 
     public function test_standard_party_healer_skips_ally_heal_when_everyone_is_above_threshold(): void
     {
-        $catalog = $this->catalog(enemyHp: 1_000_000, enemyPower: 1, enemyAgility: 1);
-        $healer = $this->player('borrowed:2', currentHp: 1_100);
-        $healer['active_skills'] = ['mending_prayer'];
-        $healer['ai_mode'] = 'default';
-        $healer['ai_rules'] = [[
-            'conditions' => [
-                ['type' => 'own_hp_lte', 'percent' => 55],
-                ['type' => 'skill_ready', 'skill' => 'mending_prayer'],
-            ],
-            'action' => 'skill:mending_prayer',
-        ], [
-            'conditions' => [['type' => 'always']],
-            'action' => 'normal_attack',
-        ]];
-        $result = $this->model()->fightPartySnapshots(
-            $catalog,
-            [$this->player('secretary:1', currentHp: 1_100), $healer],
-            ['party_target'],
-            389,
-            1,
-            0,
-        );
+        $result = $this->defaultHealerParty(leaderHp: 1_100, healerHp: 1_100, seed: 389);
 
-        $decision = collect($result->actionLog)->first(
-            static fn (array $row): bool => ($row['kind'] ?? null) === 'decision'
-                && ($row['actor_id'] ?? null) === 'borrowed:2',
-        );
-        self::assertIsArray($decision);
-        self::assertSame('normal_attack', $decision['action_key']);
+        self::assertSame('normal_attack', $this->firstDecisionOf($result, 'borrowed:2')['action_key']);
     }
 
     public function test_healer_awakening_revives_every_defeated_ally_at_full_hp(): void
@@ -803,7 +728,9 @@ final class AlphaV1PartyCombatTest extends TestCase
         self::assertSame('enemy:1', $counter['actor_id']);
         self::assertSame('secretary:1', $counter['target_id']);
         self::assertSame(['secretary:1'], $counter['target_ids']);
-        self::assertIsString($counter['action_id'] ?? null);
+        $playerActionIds = collect($result->actionLog)->where('actor_id', 'secretary:1')
+            ->where('effect_type', 'damage')->pluck('action_id')->all();
+        self::assertContains($counter['action_id'] ?? null, $playerActionIds);
 
         $lifesteal = collect($result->actionLog)->first(
             static fn (array $row): bool => ($row['action'] ?? null) === 'lifesteal',
@@ -812,7 +739,7 @@ final class AlphaV1PartyCombatTest extends TestCase
         self::assertSame('secretary:1', $lifesteal['actor_id']);
         self::assertSame('secretary:1', $lifesteal['target_id']);
         self::assertSame(['secretary:1'], $lifesteal['target_ids']);
-        self::assertIsString($lifesteal['action_id'] ?? null);
+        self::assertContains($lifesteal['action_id'] ?? null, $playerActionIds);
     }
 
     public function test_party_draining_cut_heals_only_its_own_actor(): void
@@ -896,14 +823,13 @@ final class AlphaV1PartyCombatTest extends TestCase
                 $player = $this->player('secretary:1', currentHp: 1000);
                 $player['stats']['finesse'] = 40;
                 $player['stats'][$unrelatedStat] = $unrelatedValue;
-                $player['active_skills'] = [$skill];
                 $player['ai_rules'] = [
                     ['conditions' => [['type' => 'always']], 'action' => 'skill:'.$skill],
                     ['conditions' => [['type' => 'always']], 'action' => 'defend'],
                 ];
-                $result = $this->model()->fightPartySnapshots($catalog, [$player], ['party_target'], 3100, 20, 1000);
-                $samples[] = collect($result->actionLog)->where('actor_id', 'secretary:1')->where('action', $skill)->where('effect_type', 'damage')->pluck('amount')->all();
+                $samples[] = $this->skillDamageSample($catalog, $player, $skill, 1000);
             }
+            // Only the unrelated stat changed, so every sampled amount (including criticals) must match.
             self::assertNotEmpty($samples[0]);
             self::assertSame($samples[0], $samples[1]);
         }
@@ -921,12 +847,11 @@ final class AlphaV1PartyCombatTest extends TestCase
             $player['stats']['vitality'] = $vitality;
             $player['stats']['might'] = $might;
             $player['stats']['finesse'] = 40;
-            $player['active_skills'] = ['shield_bash'];
             $player['ai_rules'] = [['conditions' => [['type' => 'always']], 'action' => 'skill:shield_bash']];
-            $result = $this->model()->fightPartySnapshots($catalog, [$player], ['party_target'], 3100, 20, 0);
-            $samples[] = collect($result->actionLog)->where('actor_id', 'secretary:1')->where('action', 'shield_bash')->where('effect_type', 'damage')->pluck('amount')->all();
+            $samples[] = $this->skillDamageSample($catalog, $player, 'shield_bash', 0);
         }
-        self::assertCount(20, $samples[0]);
+        // Equal vitality + might totals must give identical attack and critical amounts.
+        self::assertNotEmpty($samples[0]);
         self::assertSame($samples[0], $samples[1]);
     }
 
@@ -1121,6 +1046,60 @@ final class AlphaV1PartyCombatTest extends TestCase
         self::assertGreaterThan(400, $lethalSolo->playerRemainingHp);
         self::assertNotNull(collect($lethalSolo->actionLog)->where('action', 'healing_ray')
             ->firstWhere('effect_type', 'recovery'));
+    }
+
+    /**
+     * Fights a fixed 20-round sample window and returns the player's damage amounts for one skill.
+     *
+     * @param  array<string, mixed>  $player
+     * @return list<int>
+     */
+    private function skillDamageSample(AlphaV1BuildCatalog $catalog, array $player, string $skill, int $naturalRecovery): array
+    {
+        $player['active_skills'] = [$skill];
+        $result = $this->model()->fightPartySnapshots($catalog, [$player], ['party_target'], 3100, 20, $naturalRecovery);
+
+        return collect($result->actionLog)->where('actor_id', 'secretary:1')->where('action', $skill)
+            ->where('effect_type', 'damage')->pluck('amount')->values()->all();
+    }
+
+    /** A default-mode healer whose authored own_hp rule must adapt to party ally HP. */
+    private function defaultHealerParty(int $leaderHp, int $healerHp, int $seed): PartyCombatResult
+    {
+        $healer = $this->player('borrowed:2', currentHp: $healerHp);
+        $healer['active_skills'] = ['mending_prayer'];
+        $healer['ai_mode'] = 'default';
+        $healer['ai_rules'] = [[
+            'conditions' => [
+                ['type' => 'own_hp_lte', 'percent' => 55],
+                ['type' => 'skill_ready', 'skill' => 'mending_prayer'],
+            ],
+            'action' => 'skill:mending_prayer',
+        ], [
+            'conditions' => [['type' => 'always']],
+            'action' => 'normal_attack',
+        ]];
+
+        return $this->model()->fightPartySnapshots(
+            $this->catalog(enemyHp: 1_000_000, enemyPower: 1, enemyAgility: 1),
+            [$this->player('secretary:1', currentHp: $leaderHp), $healer],
+            ['party_target'],
+            $seed,
+            1,
+            0,
+        );
+    }
+
+    /** @return array<string, mixed> */
+    private function firstDecisionOf(PartyCombatResult $result, string $actorId): array
+    {
+        $decision = collect($result->actionLog)->first(
+            static fn (array $row): bool => ($row['kind'] ?? null) === 'decision'
+                && ($row['actor_id'] ?? null) === $actorId,
+        );
+        self::assertIsArray($decision);
+
+        return $decision;
     }
 
     private function catalog(

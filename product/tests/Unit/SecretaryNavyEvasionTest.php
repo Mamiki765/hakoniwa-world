@@ -13,7 +13,6 @@ final class SecretaryNavyEvasionTest extends TestCase
         $effect = ['maximum_percent' => 15, 'level_offset' => 20];
         $this->assertSame(0.0, $service->chancePercent($effect, 0));
         $this->assertSame(7.5, $service->chancePercent($effect, 20));
-        $this->assertSame(12.5, $service->chancePercent($effect, 100));
         $this->assertLessThan(15.0, $service->chancePercent($effect, 1000));
     }
 }

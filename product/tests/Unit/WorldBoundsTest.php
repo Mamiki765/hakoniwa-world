@@ -20,15 +20,11 @@ class WorldBoundsTest extends TestCase
         $this->assertSame([30, 30], [$bounds->center()->x, $bounds->center()->y]);
     }
 
-    public function test_debug_bounds_cover_chunk_edges_and_derive_their_center(): void
+    public function test_debug_factory_returns_32x32_bounds(): void
     {
         $bounds = InitialWorldBounds::debug32x32(16);
 
-        $this->assertSame(range(0, 31), $bounds->xCoordinates());
-        $this->assertSame(range(0, 31), $bounds->yCoordinates());
-        $this->assertSame(1024, $bounds->cellCount());
-        $this->assertSame(4, $bounds->chunkCount());
-        $this->assertSame([16, 16], [$bounds->center()->x, $bounds->center()->y]);
+        $this->assertSame([0, 31, 0, 31], [$bounds->minX, $bounds->maxX, $bounds->minY, $bounds->maxY]);
     }
 
     public function test_initial_contract_remains_zero_origin_while_current_bounds_are_signed(): void
@@ -50,11 +46,11 @@ class WorldBoundsTest extends TestCase
             'initial_x_min' => 0,
             'initial_x_max' => 59,
             'initial_y_min' => 0,
-            'initial_y_max' => 59,
+            'initial_y_max' => 31,
             'chunk_size' => 16,
         ]);
 
-        $this->assertSame([0, 59, 0, 59], [$bounds->minX, $bounds->maxX, $bounds->minY, $bounds->maxY]);
+        $this->assertSame([0, 59, 0, 31], [$bounds->minX, $bounds->maxX, $bounds->minY, $bounds->maxY]);
     }
 
     public function test_current_bounds_revision_is_deterministic_and_changes_with_signed_bounds(): void

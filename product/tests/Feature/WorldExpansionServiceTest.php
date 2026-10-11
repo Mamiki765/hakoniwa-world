@@ -99,16 +99,11 @@ final class WorldExpansionServiceTest extends TestCase
         $publicEvent = DB::table('audit_events')->where('event_type', 'world.expanded_public')->sole();
         $this->assertNull($publicEvent->actor_user_id);
         $this->assertSame('public', $publicEvent->visibility);
-        $this->assertSame('{}', (string) $publicEvent->metadata);
         $this->assertSame([], json_decode((string) $publicEvent->metadata, true, flags: JSON_THROW_ON_ERROR));
         $publicNews = $this->getJson("/api/v1/public/worlds/{$world->id}/major-news")
             ->assertOk()
             ->assertJsonPath('data.groups.0.target_turn', $world->current_turn)
-            ->assertJsonPath('data.groups.0.events.0.type', 'world.expanded_public')
-            ->assertJsonPath(
-                'data.groups.0.events.0.message',
-                '大きな地響きが鳴り響き、世界がより広くなりました',
-            );
+            ->assertJsonPath('data.groups.0.events.0.type', 'world.expanded_public');
         foreach (['before_bounds', 'after_bounds', 'actor_user_id', 'reason', 'metadata'] as $privateField) {
             $this->assertStringNotContainsString($privateField, $publicNews->getContent());
         }
@@ -127,17 +122,17 @@ final class WorldExpansionServiceTest extends TestCase
         $world = app(OceanWorldGenerator::class)->initialize();
         $service = app(WorldExpansionService::class);
         $steps = [
-            '60 to 64' => [$this->bounds(0, 59, 0, 59), $this->bounds(0, 63, 0, 63), 4096, 16],
-            'left' => [$this->bounds(0, 63, 0, 63), $this->bounds(-16, 63, 0, 63), 5120, 20],
-            'down' => [$this->bounds(-16, 63, 0, 63), $this->bounds(-16, 63, 0, 79), 6400, 25],
-            'right' => [$this->bounds(-16, 63, 0, 79), $this->bounds(-16, 79, 0, 79), 7680, 30],
-            'up' => [$this->bounds(-16, 79, 0, 79), $this->bounds(-16, 79, -16, 79), 9216, 36],
+            '60 to 64' => [$this->bounds(0, 59, 0, 59), $this->bounds(0, 63, 0, 63)],
+            'left' => [$this->bounds(0, 63, 0, 63), $this->bounds(-16, 63, 0, 63)],
+            'down' => [$this->bounds(-16, 63, 0, 63), $this->bounds(-16, 63, 0, 79)],
+            'right' => [$this->bounds(-16, 63, 0, 79), $this->bounds(-16, 79, 0, 79)],
+            'up' => [$this->bounds(-16, 79, 0, 79), $this->bounds(-16, 79, -16, 79)],
         ];
 
-        foreach ($steps as $name => [$before, $target, $cellCount, $chunkCount]) {
+        foreach ($steps as $name => [$before, $target]) {
             $mapSpace = $service->expand($world->fresh(), $before, $target);
-            $this->assertSame($cellCount, $mapSpace->cells()->count(), $name);
-            $this->assertSame($chunkCount, $mapSpace->chunks()->count(), $name);
+            $this->assertSame($target->cellCount(), $mapSpace->cells()->count(), $name);
+            $this->assertSame($target->chunkCount(), $mapSpace->chunks()->count(), $name);
             app(MapSpaceCoveragePreflight::class)->assertComplete($mapSpace);
             $this->addToAssertionCount(1);
         }
@@ -150,8 +145,7 @@ final class WorldExpansionServiceTest extends TestCase
         $this->assertCellLocation($world, 79, -1, 4, -1, 15, 15);
 
         $events = DB::table('audit_events')->where('event_type', 'world.expanded')->orderBy('id')->get();
-        $this->assertSame(5, $events->count());
-        $this->assertSame(5, DB::table('audit_events')->where('event_type', 'world.expanded_public')->count());
+        $this->assertCount(count($steps), $events);
         $this->assertSame(
             [0, 4, 5, 5, 6],
             $events->map(static fn (object $event): int => (int) json_decode(
@@ -217,28 +211,19 @@ final class WorldExpansionServiceTest extends TestCase
         );
     }
 
-    public function test_unexpected_preexisting_target_only_cell_is_corruption_not_an_ignored_duplicate(): void
-    {
+    #[DataProvider('corruptedCoverageCases')]
+    public function test_unexpected_preexisting_target_only_cell_is_corruption_not_an_ignored_duplicate(
+        string $corruption,
+        string $expectedMessage,
+        int $expectedCellCount,
+    ): void {
         $world = app(OceanWorldGenerator::class)->initialize();
         $mapSpace = $this->surfaceMapSpace($world);
-        $location = app(ChunkCoordinateService::class)->locate(60, 0);
-        $chunkId = (int) $mapSpace->chunks()->where('chunk_x', 3)->where('chunk_y', 0)->valueOrFail('id');
-        $now = now();
-        DB::table('map_cells')->insert([
-            'map_space_id' => $mapSpace->id,
-            'map_chunk_id' => $chunkId,
-            'x' => 60,
-            'y' => 0,
-            ...$location,
-            'terrain_definition_id' => TerrainDefinition::query()->where('key', 'sea')->valueOrFail('id'),
-            'facility_definition_id' => null,
-            'owner_nation_id' => null,
-            'population' => 0,
-            'state' => 'generated',
-            'version' => 1,
-            'created_at' => $now,
-            'updated_at' => $now,
-        ]);
+        if ($corruption === 'missing_current_cell') {
+            $mapSpace->cells()->where('x', 59)->where('y', 59)->delete();
+        } else {
+            $this->insertTargetOnlyCell($mapSpace);
+        }
 
         try {
             app(WorldExpansionService::class)->expand(
@@ -246,14 +231,23 @@ final class WorldExpansionServiceTest extends TestCase
                 $this->bounds(0, 59, 0, 59),
                 $this->bounds(0, 63, 0, 63),
             );
-            $this->fail('Expected corrupt target-only cell rejection.');
+            $this->fail('Expected corrupt coverage rejection.');
         } catch (DomainException $exception) {
-            $this->assertStringContainsString('outside current MapSpace bounds', $exception->getMessage());
+            $this->assertStringContainsString($expectedMessage, $exception->getMessage());
         }
 
-        $this->assertSame(3601, $mapSpace->cells()->count());
+        $this->assertSame($expectedCellCount, $mapSpace->cells()->count());
         $this->assertSame(59, $mapSpace->fresh()->max_x);
         $this->assertSame(0, DB::table('audit_events')->where('event_type', 'world.expanded')->count());
+    }
+
+    /** @return array<string, array{string, string, int}> */
+    public static function corruptedCoverageCases(): array
+    {
+        return [
+            'unexpected target-only cell' => ['target_only_cell', 'outside current MapSpace bounds', 3601],
+            'missing current cell' => ['missing_current_cell', 'MapSpace coverage has 3599 coordinates', 3599],
+        ];
     }
 
     public function test_an_unresolved_non_dry_turn_run_blocks_expansion(): void
@@ -351,6 +345,28 @@ final class WorldExpansionServiceTest extends TestCase
     private function bounds(int $minX, int $maxX, int $minY, int $maxY): MapBounds
     {
         return new MapBounds($minX, $maxX, $minY, $maxY, 16);
+    }
+
+    private function insertTargetOnlyCell(MapSpace $mapSpace): void
+    {
+        $location = app(ChunkCoordinateService::class)->locate(60, 0);
+        $chunkId = (int) $mapSpace->chunks()->where('chunk_x', 3)->where('chunk_y', 0)->valueOrFail('id');
+        $now = now();
+        DB::table('map_cells')->insert([
+            'map_space_id' => $mapSpace->id,
+            'map_chunk_id' => $chunkId,
+            'x' => 60,
+            'y' => 0,
+            ...$location,
+            'terrain_definition_id' => TerrainDefinition::query()->where('key', 'sea')->valueOrFail('id'),
+            'facility_definition_id' => null,
+            'owner_nation_id' => null,
+            'population' => 0,
+            'state' => 'generated',
+            'version' => 1,
+            'created_at' => $now,
+            'updated_at' => $now,
+        ]);
     }
 
     /** @return list<array<string, mixed>> */

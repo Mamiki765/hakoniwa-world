@@ -104,26 +104,34 @@ final class FirstProductionReleaseTest extends TestCase
         config(['hakoniwa.community.contact_url' => 'https://example.test/contact']);
 
         foreach (['/', '/manual', '/community-guidelines'] as $path) {
-            $this->get($path)->assertOk()
-                ->assertSee('data-theme="system"', false);
+            $this->assertSame('system', $this->themeOf($this->get($path)->assertOk()->getContent()));
         }
-        foreach (['system', 'light', 'dark', 'skyblue', 'autumn', 'black'] as $theme) {
-            $this->withUnencryptedCookie('hakoniwa_theme', $theme)->get('/manual')->assertOk()
-                ->assertSee("data-theme=\"{$theme}\"", false);
-        }
-        $this->withUnencryptedCookie('hakoniwa_theme', 'wat')->get('/manual')->assertOk()
-            ->assertSee('data-theme="system"', false);
+        // A known theme cookie is reflected server-side; an unknown one falls back to the default.
+        $this->assertSame('dark', $this->themeOf($this->withUnencryptedCookie('hakoniwa_theme', 'dark')->get('/manual')->assertOk()->getContent()));
+        $this->assertSame('system', $this->themeOf($this->withUnencryptedCookie('hakoniwa_theme', 'wat')->get('/manual')->assertOk()->getContent()));
 
-        $manual = $this->get('/manual')->assertOk()
-            ->assertSee('href="/manual/beginner"', false)
-            ->assertSee('href="/credits"', false)
-            ->assertSee('href="/community-guidelines"', false);
-        preg_match_all('/href="(\/manual(?:\/[a-z-]+)?|\/credits|\/community-guidelines)"/', $manual->getContent(), $links);
-        foreach (array_unique($links[1]) as $path) {
+        $manual = $this->get('/manual')->assertOk()->getContent();
+        $links = $this->hrefsOf($manual);
+        foreach (['/manual/beginner', '/credits', '/community-guidelines'] as $required) {
+            $this->assertContains($required, $links);
+        }
+        foreach (array_filter($links, static fn (string $href): bool => preg_match('#^(/manual(/[a-z-]+)?|/credits|/community-guidelines)$#', $href) === 1) as $path) {
             $this->get($path)->assertOk();
         }
-        $this->get('/community-guidelines')->assertOk()
-            ->assertSee('href="https://example.test/contact"', false);
+        $this->assertContains('https://example.test/contact', $this->hrefsOf($this->get('/community-guidelines')->assertOk()->getContent()));
+    }
+
+    private function themeOf(string $html): ?string
+    {
+        return preg_match('/\bdata-theme\s*=\s*["\']?([a-z]+)/', $html, $match) === 1 ? $match[1] : null;
+    }
+
+    /** @return list<string> */
+    private function hrefsOf(string $html): array
+    {
+        preg_match_all('/\bhref\s*=\s*["\']([^"\']+)["\']/', $html, $matches);
+
+        return array_values(array_unique($matches[1]));
     }
 
     private function turnRun(World $world, string $status, bool $isDryRun, string $seed): TurnRun

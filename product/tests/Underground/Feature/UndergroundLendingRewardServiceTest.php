@@ -185,18 +185,12 @@ final class UndergroundLendingRewardServiceTest extends TestCase
         [$owner, $borrowed] = $this->secretary();
         [$leader, $leaderSecretary] = $this->secretary();
         $service = app(UndergroundLendingRewardService::class);
-        foreach (['trial', 'playtest'] as $type) {
+        foreach (['trial', 'playtest'] as $key => $type) {
             $party = $service->createSnapshot($leader, $leaderSecretary, $type, 'content', 'content', 5, [], [
                 $this->member('self', $leaderSecretary, $leader, 5, 5),
                 $this->member('borrowed_secretary', $borrowed, $owner, 5, 5),
             ]);
-            $battle = $this->battle(
-                $leader,
-                $party,
-                random_int(1, 1000),
-                UndergroundBattle::RESULT_VICTORY,
-                UndergroundBattle::ACTIVITY_EXPLORATION,
-            );
+            $battle = $this->battle($leader, $party, $key + 1);
             try {
                 $service->settle($battle, $party);
                 $this->fail('Expected ineligible battle to be rejected.');

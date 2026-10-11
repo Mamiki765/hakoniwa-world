@@ -27,16 +27,10 @@ final class SurfaceParadoxDailyRewardTest extends TestCase
 
         $this->actingAs($user)->getJson('/api/v1/me')
             ->assertOk()
-            ->assertJsonPath('data.paradox.name', '輝石')
             ->assertJsonPath('data.paradox.unit', 'Pd')
-            ->assertJsonPath(
-                'data.paradox.description',
-                '触れると懐かしい気持ちになる不思議な宝石。それぞれのエルフごとに相性の良い輝石が存在する。貴重な施設やコマンドの使用に使用する',
-            )
             ->assertJsonPath('data.paradox.balance', 0);
 
         $this->assertDatabaseMissing('resource_definitions', ['key' => 'paradox']);
-        $this->assertDatabaseMissing('resource_definitions', ['name' => '輝石']);
     }
 
     public function test_daily_login_is_a_jst_idempotent_mutation_and_is_separate_from_lending_cap(): void
@@ -100,15 +94,12 @@ final class SurfaceParadoxDailyRewardTest extends TestCase
         $four = $quests->recordUndergroundBattles($user->id, 4, 'test-battle-group-a');
         $this->assertSame(4, $four['progress']);
         $this->assertFalse($four['completed_now']);
-        $this->actingAs($user)->getJson('/api/v1/me/daily-quests')
-            ->assertOk()
-            ->assertJsonPath('data.0.key', DailyQuestService::DEVELOPMENT_OPENED)
-            ->assertJsonPath('data.0.completed', true)
-            ->assertJsonPath('data.1.key', DailyQuestService::UNDERGROUND_BATTLES)
-            ->assertJsonPath('data.1.progress', 4)
-            ->assertJsonPath('data.1.target', 10)
-            ->assertJsonPath('data.2.key', DailyQuestService::COMMAND_REGISTERED)
-            ->assertJsonPath('data.2.progress', 0);
+        $listed = collect($this->actingAs($user)->getJson('/api/v1/me/daily-quests')
+            ->assertOk()->json('data'))->keyBy('key');
+        $this->assertTrue($listed[DailyQuestService::DEVELOPMENT_OPENED]['completed']);
+        $this->assertSame(4, $listed[DailyQuestService::UNDERGROUND_BATTLES]['progress']);
+        $this->assertSame(10, $listed[DailyQuestService::UNDERGROUND_BATTLES]['target']);
+        $this->assertSame(0, $listed[DailyQuestService::COMMAND_REGISTERED]['progress']);
         $duplicate = $quests->recordUndergroundBattles($user->id, 4, 'test-battle-group-a');
         $this->assertSame(4, $duplicate['progress']);
         $six = $quests->recordUndergroundBattles($user->id, 6, 'test-battle-group-b');
@@ -122,7 +113,6 @@ final class SurfaceParadoxDailyRewardTest extends TestCase
 
         $command = $quests->recordCommandRegistered($user->id, 'item:123');
         $this->assertSame(DailyQuestService::COMMAND_REGISTERED, $command['key']);
-        $this->assertSame('コマンドを登録する', $command['label']);
         $this->assertSame(1, $command['progress']);
         $this->assertTrue($command['completed_now']);
         $this->assertSame(15, $command['paradox_balance']);
@@ -137,10 +127,8 @@ final class SurfaceParadoxDailyRewardTest extends TestCase
         $this->assertSame(0, $staleCommandRetry['progress']);
         $this->assertFalse($staleCommandRetry['completed_now']);
         $this->assertSame(0, $staleBattleRetry['progress']);
-        $this->getJson('/api/v1/me/daily-quests')->assertOk()
-            ->assertJsonPath('data.0.progress', 0)
-            ->assertJsonPath('data.1.progress', 0)
-            ->assertJsonPath('data.2.progress', 0);
+        $this->assertSame([0, 0, 0], collect($this->getJson('/api/v1/me/daily-quests')->assertOk()->json('data'))
+            ->pluck('progress')->all());
         $this->assertDatabaseMissing('user_daily_quest_progress', ['canonical_day' => '2026-09-10']);
 
         $this->assertDatabaseCount('user_daily_quest_progress', 3);

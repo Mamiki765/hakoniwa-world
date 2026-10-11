@@ -223,6 +223,9 @@ final class PostgresUndergroundRuntimeConcurrencyTest extends TestCase
         $this->openExploration($user, $secretary);
         $profile->refresh();
         $profile->update(['shard_balance' => 10_000]);
+        $catalog = app(UndergroundEquipmentCatalog::class);
+        $ironDaggerDefinition = $catalog->definition('iron_dagger');
+        $ironDaggerSellPrice = $catalog->sellPrice($ironDaggerDefinition);
 
         $purchase = [
             'operation' => 'equipment_purchase',
@@ -238,7 +241,8 @@ final class PostgresUndergroundRuntimeConcurrencyTest extends TestCase
         $purchaseConflict = collect($purchaseResults)->firstWhere('status', 'conflict');
         $this->assertIsArray($purchaseConflict);
         $this->assertSame('underground_equipment_already_owned', $purchaseConflict['error_code']);
-        $this->assertSame(9_880, $profile->fresh()->shard_balance);
+        $balanceAfterPurchase = 10_000 - $ironDaggerDefinition['buy_price'];
+        $this->assertSame($balanceAfterPurchase, $profile->fresh()->shard_balance);
         $ironDagger = UndergroundOwnedEquipment::query()
             ->where('underground_profile_id', $profile->id)
             ->where('definition_key', 'iron_dagger')->sole();
@@ -254,7 +258,8 @@ final class PostgresUndergroundRuntimeConcurrencyTest extends TestCase
         ];
         $saleResults = $this->runConcurrentOperations($user, $secretary, [$sale, $sale]);
         $this->assertSame(['ok', 'ok'], array_column($saleResults, 'status'));
-        $this->assertSame([9_940, 9_940], array_column($saleResults, 'shard_balance'));
+        $balanceAfterSale = $balanceAfterPurchase + $ironDaggerSellPrice;
+        $this->assertSame([$balanceAfterSale, $balanceAfterSale], array_column($saleResults, 'shard_balance'));
         $this->assertDatabaseMissing('underground_owned_equipment', ['id' => $ironDagger->id]);
         $this->assertSame(1, UndergroundIntroRequest::query()
             ->where('underground_profile_id', $profile->id)
@@ -271,8 +276,8 @@ final class PostgresUndergroundRuntimeConcurrencyTest extends TestCase
         ]);
         $bulkSale = [
             'operation' => 'equipment_bulk_sell',
-            'catalog_identity' => app(UndergroundEquipmentCatalog::class)->identity(),
-            'items' => [['id' => $bulkDagger->id, 'sell_price' => 60]],
+            'catalog_identity' => $catalog->identity(),
+            'items' => [['id' => $bulkDagger->id, 'sell_price' => $ironDaggerSellPrice]],
         ];
         $bulkResults = $this->runConcurrentOperations($user, $secretary, [
             ['request_id' => (string) Str::uuid()] + $bulkSale,
@@ -284,7 +289,7 @@ final class PostgresUndergroundRuntimeConcurrencyTest extends TestCase
         $bulkConflict = collect($bulkResults)->firstWhere('status', 'conflict');
         $this->assertIsArray($bulkConflict);
         $this->assertSame('underground_bulk_sell_preview_changed', $bulkConflict['error_code']);
-        $this->assertSame(10_000, $profile->fresh()->shard_balance);
+        $this->assertSame($balanceAfterSale + $ironDaggerSellPrice, $profile->fresh()->shard_balance);
         $this->assertDatabaseMissing('underground_owned_equipment', ['id' => $bulkDagger->id]);
         $this->assertSame(1, UndergroundIntroRequest::query()
             ->where('underground_profile_id', $profile->id)
@@ -324,7 +329,7 @@ final class PostgresUndergroundRuntimeConcurrencyTest extends TestCase
         $this->assertIsArray($conflict);
         $this->assertIsArray($success);
         $this->assertSame('underground_vault_full', $conflict['error_code']);
-        $price = $success['definition_key'] === 'steel_dagger' ? 360 : 100;
+        $price = $catalog->definition($success['definition_key'])['buy_price'];
         $this->assertSame(10_000 - $price, $profile->fresh()->shard_balance);
         $this->assertSame(500, UndergroundOwnedEquipment::query()
             ->where('underground_profile_id', $profile->id)->count());

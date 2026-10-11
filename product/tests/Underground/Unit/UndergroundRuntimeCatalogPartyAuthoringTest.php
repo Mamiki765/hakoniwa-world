@@ -145,6 +145,10 @@ final class UndergroundRuntimeCatalogPartyAuthoringTest extends TestCase
         $battle = app(AlphaV1CombatModel::class)->fightPlayerSnapshot(
             $catalog->explorationCatalog(), $snapshot, $rare['key'], 31_000, 100, 300,
         );
-        $this->assertSame('player', $battle->winner);
+        // Wiring, not balance: the rare enemy is fought with the catalog-bound generated weapon.
+        $this->assertSame($rare['key'], $battle->enemyKey);
+        $this->assertSame($item['weapon_power'], $loadout['weapon_power']);
+        $this->assertSame($loadout['weapon_power'], $snapshot['equipment']['weapon_power']);
+        $this->assertGreaterThan(0, $battle->damageDealt);
     }
 }

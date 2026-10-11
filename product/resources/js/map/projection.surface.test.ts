@@ -24,17 +24,18 @@ describe('staggered square-tile x/y grid', () => {
         expect(gridToPixel({ x: 0, y: 59 }).x).toBe(0);
     });
 
-    it('keeps all 60 rows equally wide without cumulative drift', () => {
-        const rows = Array.from({ length: 60 }, (_, y) => {
+    it('keeps every row equally wide without cumulative drift', () => {
+        const tileWidth = gridToPixel({ x: 1, y: 0 }).x - gridToPixel({ x: 0, y: 0 }).x;
+        const lastX = 99;
+        const rows = Array.from({ length: 101 }, (_, index) => {
+            const y = index - 50;
             const first = gridToPixel({ x: 0, y });
-            const last = gridToPixel({ x: 59, y });
-            return { left: first.x, width: last.x - first.x + 32 };
+            const last = gridToPixel({ x: lastX, y });
+            return { left: first.x, width: last.x - first.x };
         });
 
-        expect(new Set(rows.map((row) => row.width))).toEqual(new Set([1920]));
-        expect(new Set(rows.map((row) => row.left))).toEqual(new Set([0, 16]));
-        expect(gridToPixel({ x: 59, y: 59 })).toEqual({ x: 1888, y: 1888 });
-        expect(gridToPixel({ x: 59, y: 58 })).toEqual({ x: 1904, y: 1856 });
+        expect(new Set(rows.map((row) => row.width))).toEqual(new Set([lastX * tileWidth]));
+        expect(new Set(rows.map((row) => row.left)).size).toBe(2);
     });
 
     it('moves through the specified six neighbors on even and odd rows', () => {

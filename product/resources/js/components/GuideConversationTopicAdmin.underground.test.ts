@@ -51,7 +51,8 @@ describe('Guide conversation topic admin', () => {
         const wrapper = mount(GuideConversationTopicAdmin);
         await flushPromises();
 
-        expect(wrapper.findAll('select option').map((option) => option.text())).toEqual(['常時', '試練1初回クリア']);
+        expect(wrapper.findAll<HTMLOptionElement>('select option').map((option) => option.element.value))
+            .toEqual(expect.arrayContaining(unlockOptions.map((option) => option.key)));
 
         const textareas = wrapper.findAll('textarea');
         await textareas[0]!.setValue('新しい話題');
@@ -75,8 +76,8 @@ describe('Guide conversation topic admin', () => {
                 enabled: true,
             }),
         });
-        expect(wrapper.text()).toContain('会話トピックを登録しました。');
-        expect(wrapper.text()).toContain('既存の話題');
+        expect(apiMock).toHaveBeenNthCalledWith(3, '/api/v1/admin/guide-conversation-topics');
+        expect(wrapper.text()).toContain(topic.initial_line);
     });
 
     it('prefills, updates, and deletes an existing topic', async () => {
@@ -102,13 +103,14 @@ describe('Guide conversation topic admin', () => {
         await wrapper.get('form').trigger('submit');
         await flushPromises();
 
-        expect(apiMock).toHaveBeenNthCalledWith(2, '/api/v1/admin/guide-conversation-topics/7', expect.objectContaining({ method: 'PATCH' }));
-        expect(wrapper.text()).toContain('会話トピックを更新しました。');
+        expect(apiMock).toHaveBeenNthCalledWith(2, `/api/v1/admin/guide-conversation-topics/${topic.id}`, expect.objectContaining({ method: 'PATCH' }));
+        expect(apiMock).toHaveBeenNthCalledWith(3, '/api/v1/admin/guide-conversation-topics');
+        expect(wrapper.text()).toContain(updated.initial_line);
         await wrapper.findAll('button').find((button) => button.text() === '削除')!.trigger('click');
         await flushPromises();
 
-        expect(apiMock).toHaveBeenNthCalledWith(4, '/api/v1/admin/guide-conversation-topics/7', { method: 'DELETE' });
-        expect(wrapper.text()).toContain('会話トピックを削除しました。');
-        expect(wrapper.text()).toContain('会話トピックはまだありません。');
+        expect(apiMock).toHaveBeenNthCalledWith(4, `/api/v1/admin/guide-conversation-topics/${topic.id}`, { method: 'DELETE' });
+        expect(apiMock).toHaveBeenNthCalledWith(5, '/api/v1/admin/guide-conversation-topics');
+        expect(wrapper.text()).not.toContain(updated.initial_line);
     });
 });

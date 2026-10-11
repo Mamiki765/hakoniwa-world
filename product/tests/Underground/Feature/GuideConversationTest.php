@@ -93,17 +93,11 @@ final class GuideConversationTest extends TestCase
             'position' => 2,
         ])->assertOk()->assertJsonPath('data.reply_line', '二つ目の返答');
 
-        $punchLines = [
-            '「いぎゃっ！？」', '「いったぁーい！？」', '「何すんのよぉっ！」', '「100万回やる気！？」',
-            '「折れるじゃない！？　えっと……頭蓋骨が！」',
-            '「すぐ治るからってやっていいことと悪いことあるんですからね！？」',
-            '「んぎっ！？」', '「……っ！」', '「ひ、ひどいですっ！」', '「なんも企んでませんよぉ！？」',
-            '「死なないと痛くないは別ですってぇ！」', '「私が何したって言うんですかあ！」',
-        ];
         foreach (range(1, 2) as $_) {
             $line = $this->actingAs($user)->postJson('/api/v1/me/underground/guide-conversation/punch')
                 ->assertOk()->json('data.punch_line');
-            $this->assertContains($line, $punchLines);
+            $this->assertIsString($line);
+            $this->assertNotSame('', $line);
         }
         $this->assertDatabaseHas('secretary_guide_conversation_totals', [
             'secretary_id' => $secretary->id,

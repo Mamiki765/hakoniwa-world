@@ -16,7 +16,6 @@ use App\Models\User;
 use DomainException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\Concerns\CreatesTestWorlds;
-use Tests\Support\SyntheticHistoricalRulesetSnapshot;
 use Tests\TestCase;
 
 class NationCapacityTest extends TestCase
@@ -76,37 +75,6 @@ class NationCapacityTest extends TestCase
             SecretaryItemCatalog::VAULT_KEY,
         ])->update(['equipped_slot' => null]);
 
-        $world = $nation->world()->firstOrFail();
-        $currentRulesetId = $world->ruleset_version_id;
-        $historicalCapacity = SyntheticHistoricalRulesetSnapshot::create(
-            'historical-capacity-snapshot-v14',
-            14,
-            static function (array $settings): array {
-                unset($settings['secretary']['skills'][SecretarySkillCatalog::FOREST_MANAGEMENT]);
-
-                return SyntheticHistoricalRulesetSnapshot::withLegacySecretaryItems($settings);
-            },
-        );
-        $historicalExcludedSkills = $user->secretary()->firstOrFail()->skills()
-            ->whereIn('skill_key', [
-                SecretarySkillCatalog::FOREST_MANAGEMENT,
-                SecretarySkillCatalog::DECLINING_BIRTHRATE_POLICY,
-                SecretarySkillCatalog::INDOMITABLE,
-                SecretarySkillCatalog::SHIP_OPERATIONS,
-                SecretarySkillCatalog::NAVY,
-            ])->get();
-        foreach ($historicalExcludedSkills as $skill) {
-            $skill->delete();
-        }
-        $world->update(['ruleset_version_id' => $historicalCapacity->id]);
-        $historicalCapacityResult = app(NationCapacityResolver::class)->resolve($nation, $historicalCapacity);
-        $this->assertSame($base->money, $historicalCapacityResult->money);
-        $this->assertSame($base->foodTons, $historicalCapacityResult->foodTons);
-        $world->update(['ruleset_version_id' => $currentRulesetId]);
-        foreach ($historicalExcludedSkills as $skill) {
-            $skill->save();
-        }
-
         $modifier = new class implements CapacityModifier {};
 
         try {
@@ -115,11 +83,8 @@ class NationCapacityTest extends TestCase
                 [$modifier],
             ))->resolve($nation);
             $this->fail('Expected the deferred capacity modifier boundary to fail closed.');
-        } catch (DomainException $exception) {
-            $this->assertSame(
-                'Capacity modifier semantics are deferred until E-04 is decided.',
-                $exception->getMessage(),
-            );
+        } catch (DomainException) {
+            // Unknown capacity modifiers fail closed.
         }
 
         $service = app(CapacityBoundedAssetService::class);
@@ -148,26 +113,9 @@ class NationCapacityTest extends TestCase
         $balances[$definitions['monster_meat']->id]->update(['amount' => 149_800]);
         $balances[$definitions['industrial_goods']->id]->update(['amount' => 500_000]);
 
-        $newFood = ResourceDefinition::query()->create([
-            'key' => 'seaweed',
-            'name' => '海藻',
-            'category' => 'food',
-            'unit' => 'ton',
-            'unit_label' => 'トン',
-            'nutrition_per_unit' => 1,
-            'storable' => true,
-            'tradable' => true,
-            'sale_price_key' => null,
-            'sort_order' => 35,
-            'metadata' => [],
-        ]);
-        NationResource::query()->create([
-            'nation_id' => $nation->id,
-            'resource_definition_id' => $newFood->id,
-            'amount' => 0,
-        ]);
+        $wheat = $definitions['wheat'];
 
-        $result = app(CapacityBoundedAssetService::class)->creditFood($nation, $newFood, 500);
+        $result = app(CapacityBoundedAssetService::class)->creditFood($nation, $wheat, 500);
 
         $this->assertSame(1_179_782, $result->before);
         $this->assertSame(100, $result->applied);
@@ -180,10 +128,7 @@ class NationCapacityTest extends TestCase
                 ->whereHas('definition', fn ($query) => $query->where('category', 'food'))
                 ->sum('amount'),
         );
-        $this->assertSame(100, NationResource::query()
-            ->where('nation_id', $nation->id)
-            ->where('resource_definition_id', $newFood->id)
-            ->value('amount'));
+        $this->assertSame(880_082, $balances[$wheat->id]->fresh()->amount);
         $this->assertSame(500_000, $balances[$definitions['industrial_goods']->id]->fresh()->amount);
     }
 

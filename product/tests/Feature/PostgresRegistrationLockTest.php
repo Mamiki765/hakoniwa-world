@@ -70,8 +70,8 @@ class PostgresRegistrationLockTest extends TestCase
         try {
             app(NationCreationService::class)->create($user, $world, '競合登録国', '試験島主');
             $this->fail('Registration unexpectedly passed the World mutation lock.');
-        } catch (DomainException $exception) {
-            $this->assertStringContainsString('World', $exception->getMessage());
+        } catch (DomainException) {
+            // Rejected while the World lock is held; no writes are checked below.
         } finally {
             $released = $probe->selectOne(
                 'SELECT pg_advisory_unlock(hashtextextended(?, 0)) AS released',
@@ -130,7 +130,7 @@ class PostgresRegistrationLockTest extends TestCase
         }
     }
 
-    public function test_abandonment_fails_with_the_player_message_while_the_common_world_lock_is_held(): void
+    public function test_abandonment_fails_with_world_updating_while_the_common_world_lock_is_held(): void
     {
         $world = $this->lightweightWorld();
         $owner = User::factory()->create();
@@ -147,8 +147,7 @@ class PostgresRegistrationLockTest extends TestCase
             $this->actingAs($owner)
                 ->postJson("/api/v1/nations/{$nation->id}/abandon", ['confirmation_name' => $nation->name])
                 ->assertConflict()
-                ->assertJsonPath('code', 'world_updating')
-                ->assertJsonPath('message', 'このWorldは現在更新中です。後でもう一度実行してください。');
+                ->assertJsonPath('code', 'world_updating');
         } finally {
             $released = $probe->selectOne(
                 'SELECT pg_advisory_unlock(hashtextextended(?, 0)) AS released',

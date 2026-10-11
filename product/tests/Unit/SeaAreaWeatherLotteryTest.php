@@ -9,14 +9,18 @@ final class SeaAreaWeatherLotteryTest extends TestCase
 {
     public function test_exclusive_disaster_probability_boundaries_ignore_normal_weight_changes(): void
     {
-        $settings = config('hakoniwa.ruleset.turn_processing.sea_area_weather');
+        $settings = [
+            'denominator' => 100,
+            'fixed_probabilities' => ['typhoon' => 3, 'meteor_shower' => 2],
+            'normal_weights' => ['sunny' => 4, 'cloudy' => 3, 'rain' => 2, 'snow' => 1, 'thunder' => 1],
+        ];
         $lottery = new SeaAreaWeatherLottery;
-        $terminal = ['numerator' => 1, 'denominator' => 200];
+        $terminal = ['numerator' => 1, 'denominator' => 40];
         $intervals = $lottery->disasterIntervals($settings, $terminal);
-        $this->assertSame(['denominator' => 10000, 'typhoon' => 140, 'meteor_shower' => 55, 'huge_meteor' => 50], $intervals);
+        $this->assertSame(['denominator' => 200, 'typhoon' => 6, 'meteor_shower' => 4, 'huge_meteor' => 5], $intervals);
         // Each side of all exclusive intervals catches conditional-rate reduction and overlaps.
-        $cases = [0 => 'typhoon', 139 => 'typhoon', 140 => 'meteor_shower', 194 => 'meteor_shower',
-            195 => 'huge_meteor', 244 => 'huge_meteor', 245 => null, 9999 => null];
+        $cases = [0 => 'typhoon', 5 => 'typhoon', 6 => 'meteor_shower', 9 => 'meteor_shower',
+            10 => 'huge_meteor', 14 => 'huge_meteor', 15 => null, 199 => null];
         foreach ($cases as $draw => $expected) {
             $this->assertSame($expected, $lottery->selectDisaster($intervals, $draw));
         }
@@ -25,24 +29,19 @@ final class SeaAreaWeatherLotteryTest extends TestCase
         $this->assertSame($intervals, $lottery->disasterIntervals($settings, $terminal));
         $settings['normal_weights'] = ['sunny' => 0, 'cloudy' => 0, 'rain' => 9, 'snow' => 0, 'thunder' => 0];
         $this->assertSame($intervals, $lottery->disasterIntervals($settings, $terminal));
-        foreach ($cases as $draw => $expected) {
-            $this->assertSame($expected, $lottery->selectDisaster($intervals, $draw));
-        }
     }
 
     public function test_normal_weather_is_selected_only_from_the_final_relative_weights(): void
     {
-        $settings = config('hakoniwa.ruleset.turn_processing.sea_area_weather');
-        $weights = $settings['normal_weights'];
-        $this->assertSame(['sunny' => 45, 'cloudy' => 25, 'rain' => 20, 'snow' => 5, 'thunder' => 3], $weights);
+        $weights = ['sunny' => 3, 'cloudy' => 2, 'rain' => 1, 'snow' => 1, 'thunder' => 2];
         $lottery = new SeaAreaWeatherLottery;
         $counts = array_fill_keys(array_keys($weights), 0);
-        for ($draw = 0; $draw < 98; $draw++) {
+        for ($draw = 0; $draw < array_sum($weights); $draw++) {
             $counts[$lottery->selectNormal($weights, $draw)]++;
         }
         $this->assertSame($weights, $counts);
-        foreach ([44 => 'sunny', 45 => 'cloudy', 69 => 'cloudy', 70 => 'rain', 89 => 'rain',
-            90 => 'snow', 94 => 'snow', 95 => 'thunder', 97 => 'thunder'] as $draw => $expected) {
+        foreach ([2 => 'sunny', 3 => 'cloudy', 4 => 'cloudy', 5 => 'rain', 6 => 'snow',
+            7 => 'thunder', 8 => 'thunder'] as $draw => $expected) {
             $this->assertSame($expected, $lottery->selectNormal(array_reverse($weights, true), $draw));
         }
     }

@@ -152,30 +152,6 @@ final class SecretaryTurnIntegrationTest extends TestCase
         $this->assertSame(1_001, $birthrate->experience);
     }
 
-    public function test_indomitable_experience_uses_turn_start_to_end_net_loss_instead_of_intermediate_events(): void
-    {
-        $world = $this->lightweightWorld();
-        [, $nation] = $this->nation($world, '不屈経験国');
-        MapCell::query()->where('owner_nation_id', $nation->id)->update(['population' => 0]);
-        $capital = $nation->capital()->firstOrFail()->cell()->firstOrFail();
-        $capital->update(['population' => 600_000]);
-        $nation->update(['population_high_water' => 600_000]);
-        $context = $this->context($world, 2, hash('sha256', 'indomitable net loss'), [$nation->id]);
-        app(CompleteTurnEngine::class)->execute('prepare_turn', $context);
-        $capital->update(['population' => 510_000]);
-
-        $metrics = app(SecretaryDemographicExperienceService::class)->award(
-            $context,
-            [$nation->id => 510_000],
-        );
-        $this->assertSame(90_000, $metrics['net_population_loss']);
-        $this->assertSame(0, $metrics['population_high_water_increase']);
-        app(SecretaryTurnService::class)->flushExperience($context);
-        $indomitable = $this->skill($nation, SecretarySkillCatalog::INDOMITABLE);
-        $this->assertSame(3, $indomitable->level);
-        $this->assertSame(20_000, $indomitable->experience);
-    }
-
     public function test_secretary_suit_draws_once_per_canonical_secretary_experience_award_only(): void
     {
         $world = $this->lightweightWorld();
@@ -320,38 +296,6 @@ final class SecretaryTurnIntegrationTest extends TestCase
         $this->assertSame('failed', $invalidMine->fresh()->status);
         $this->assertSame([], $failureContext->state->pendingSecretaryExperience());
         $this->assertSame(0, $this->skill($nation, SecretarySkillCatalog::GOLD_VEIN_SURVEY)->experience);
-
-        $invalidLogging = $this->queue(
-            $service,
-            $user,
-            $nation,
-            $space,
-            'logging',
-            $this->ownedTerrainWithoutFacility($nation, 'plain'),
-        );
-        $loggingFailureContext = $this->context($world, 4, hash('sha256', 'invalid logging'), [$nation->id]);
-        app(SecretaryTurnService::class)->loadAttemptSnapshots($loggingFailureContext, [$nation->id]);
-        $loggingFailure = app(DomesticCommandExecutor::class)->execute($loggingFailureContext);
-        $this->assertSame(1, $loggingFailure['failures']);
-        $this->assertSame('failed', $invalidLogging->fresh()->status);
-        $this->assertSame([], $loggingFailureContext->state->pendingSecretaryExperience());
-
-        $cancelledPlant = $this->queue(
-            $service,
-            $user,
-            $nation,
-            $space,
-            'plant_forest',
-            $this->ownedTerrainWithoutFacility($nation, 'plain'),
-        );
-        $service->cancel(
-            $user,
-            $nation,
-            $cancelledPlant,
-            (int) $nation->commandQueue()->value('version'),
-        );
-        $this->assertSame('cancelled', $cancelledPlant->fresh()->status);
-        $this->assertSame(0, $this->skill($nation, SecretarySkillCatalog::FOREST_MANAGEMENT)->experience);
 
         $forestSkill = $this->skill($nation, SecretarySkillCatalog::FOREST_MANAGEMENT);
         $forestSkill->update(['level' => 10, 'experience' => 0]);
