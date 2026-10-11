@@ -9,10 +9,21 @@ interface RankingColumn {
     card: boolean;
     value: (entry: PublicRankingEntry) => number;
     format: (entry: PublicRankingEntry) => string;
+    /** 値に応じて付ける見た目の印。 */
+    tone?: (entry: PublicRankingEntry) => string | undefined;
+    /** 表のセルに添える補足（title）。 */
+    hint?: (entry: PublicRankingEntry) => string | undefined;
 }
 
 const number = (value: number): string => value.toLocaleString('ja-JP');
 const facility = (people: number): string => people === 0 ? '保有せず' : `${number(people)}人`;
+// 未集計（null）は「なし」（集計済みの0体）と見分けがつくよう、別の記号にする。
+const monsterCount = (entry: PublicRankingEntry): number | null => entry.alive_monster_count ?? null;
+const monsters = (entry: PublicRankingEntry): string => {
+    const count = monsterCount(entry);
+    if (count === null) return '—';
+    return count === 0 ? 'なし' : `${number(count)}体`;
+};
 
 // 資金は公開用の大まかな表記しか無いので、並べ替えには使わない。
 const columns: RankingColumn[] = [
@@ -23,6 +34,8 @@ const columns: RankingColumn[] = [
     { key: 'farm', label: '農場', sortable: true, card: false, value: (entry) => entry.farm_capacity_people, format: (entry) => facility(entry.farm_capacity_people) },
     { key: 'factory', label: '工場', sortable: true, card: false, value: (entry) => entry.factory_capacity_people, format: (entry) => facility(entry.factory_capacity_people) },
     { key: 'mine', label: '採掘場', sortable: true, card: false, value: (entry) => entry.mine_capacity_people, format: (entry) => facility(entry.mine_capacity_people) },
+    // 未集計の島は並べ替えで最後に回す。
+    { key: 'monsters', label: '怪獣', sortable: true, card: true, value: (entry) => monsterCount(entry) ?? -1, format: monsters, tone: (entry) => (monsterCount(entry) ?? 0) > 0 ? 'monster-present' : undefined, hint: (entry) => monsterCount(entry) === null ? '次のターン更新で集計されます' : undefined },
     { key: 'survival', label: '生存', sortable: true, card: false, value: (entry) => entry.survival_turns, format: (entry) => number(entry.survival_turns) },
 ];
 

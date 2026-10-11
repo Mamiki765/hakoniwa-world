@@ -95,7 +95,7 @@ describe('application lobby and island entry', () => {
         expect(wrapper.text()).toContain('2時間ごとに更新');
         expect(wrapper.text()).toContain('公開島');
         expect(wrapper.text()).toContain('約500億円');
-        expect(wrapper.find('.ranking-card thead').text()).toBe('順位島名＋賞/討伐人口面積資金食料農場工場採掘場生存');
+        expect(wrapper.find('.ranking-card thead').text()).toBe('順位島名＋賞/討伐人口面積資金食料農場工場採掘場怪獣生存');
         expect(wrapper.findAll('.ranking-card tbody')).toHaveLength(1);
         expect(wrapper.findAll('.ranking-card tbody tr')).toHaveLength(2);
         expect(wrapper.find('.ranking-card tbody').text()).toContain('17セル');
@@ -172,6 +172,60 @@ describe('application lobby and island entry', () => {
         expect(wrapper.find('.ranking-owner-row').text()).toBe('休止島主');
         expect(wrapper.find('.ranking-card').text()).not.toContain('活動状態');
         expect(wrapper.find('.ranking-card tbody').text()).toContain('保有せず');
+    });
+
+    it('shows alive monster counts and keeps an uncounted island apart from zero', async () => {
+        const baseRanking = {
+            world_id: 1, state: 'active', state_label: '', recovery_remaining_turns: null, karma: 0, karma_badge: null,
+            total_population: 1000, territory_cell_count: 19, owned_land_cells: 17,
+            money_display: '約500億円', money_bucket: '500', food_total_tons: 10_000,
+            farm_capacity_people: 10_000, factory_capacity_people: 30_000, mine_capacity_people: 5_000,
+            registered_turn: 1, survival_turns: 10, finance_only_turns: 0, activity_status: 'active',
+            last_updated_turn: 11, comment: '', achievements: { awards: [], monster_kills: null },
+        };
+        let counted = true;
+        vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+            const path = String(input);
+            if (path.endsWith('/summary')) return response({
+                id: 1, key: 'shared-world', name: '箱庭諸島２S＋', current_turn: 501, nation_count: 3, total_population: 3000, contact_url: null,
+                hakoniwa_calendar: { year: 42, month: 9, label: '箱庭歴 42年9月' },
+                turn_status: 'normal', last_successful_turn_at: '2026-08-09T13:00:00Z',
+                next_scheduled_turn_at: '2099-08-09T15:00:00Z', turn_schedule_timezone: 'Asia/Tokyo',
+                monster_counts: counted
+                    ? { counted_turn: 501, total_alive_count: 8, land_alive_count: 6, sea_alive_count: 2 }
+                    : null,
+            });
+            if (path.endsWith('/rankings')) return response([
+                { ...baseRanking, rank: 1, id: 31, nation_number: 3, name: '新入島', owner_name: '新入島主', alive_monster_count: null, monster_counted_turn: 501 },
+                { ...baseRanking, rank: 2, id: 25, nation_number: 2, name: '平和島', owner_name: '平和島主', alive_monster_count: 0, monster_counted_turn: 501 },
+                { ...baseRanking, rank: 3, id: 17, nation_number: 1, name: '襲来島', owner_name: '襲来島主', alive_monster_count: 2, monster_counted_turn: 501 },
+            ]);
+            return publicResponse(path) ?? response(null, 401);
+        }));
+        const wrapper = mount(App);
+        await flushPromises();
+
+        const worldMonsters = wrapper.get('.world-monsters dd');
+        expect(worldMonsters.text()).toBe('8体うち海獣2');
+        expect(worldMonsters.classes()).toContain('monster-present');
+
+        const monsterIndex = wrapper.findAll('.ranking-card thead th').findIndex((th) => th.text() === '怪獣');
+        expect(monsterIndex).toBeGreaterThan(0);
+        const monsterCell = (row: number) => wrapper.findAll('.ranking-primary-row')[row]!.findAll('td')[monsterIndex]!;
+        expect(monsterCell(0).text()).toBe('—');
+        expect(monsterCell(1).text()).toBe('なし');
+        expect(monsterCell(2).text()).toBe('2体');
+        expect(monsterCell(2).classes()).toContain('monster-present');
+        expect(monsterCell(1).classes()).not.toContain('monster-present');
+
+        await wrapper.get('.ranking-card thead th:nth-child(' + (monsterIndex + 1) + ') button').trigger('click');
+        expect(wrapper.findAll('.ranking-island > button').map((button) => button.text())).toEqual(['襲来島', '平和島', '新入島']);
+
+        counted = false;
+        const uncounted = mount(App);
+        await flushPromises();
+        expect(uncounted.get('.world-monsters dd').text()).toBe('集計待ち');
+        uncounted.unmount();
     });
 
     it('renders recovery and KARMA while keeping zero and negative values unaccented', async () => {

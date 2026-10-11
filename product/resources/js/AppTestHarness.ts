@@ -30,6 +30,7 @@ export const publicDetail: PublicNationDetail = {
     last_updated_turn: 1, comment: '公開コメント', world: { id: 1, name: '箱庭諸島２S＋', current_turn: 1 },
     capital: { x: 12, y: 8 }, secretary_id: 11,
     underground_surface_map: null,
+    alive_monster_count: null, monster_counted_turn: null,
     monster_final_blow_count: 1,
     monster_kill_stats: [{
         key: 'inora', name: 'いのら', kill_count: 1, first_killed_turn: 12, last_killed_turn: 12,

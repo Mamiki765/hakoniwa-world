@@ -336,6 +336,8 @@ const foodShortage = computed(() => {
     const food = nation.value?.resource_forecast.rows.find((row) => row.key === 'food');
     return food !== undefined && food.holding + food.production < food.consumption;
 });
+// 古いserverの応答では項目自体が無いので、未集計と同じに扱う。
+const worldMonsters = computed(() => worldSummary.value?.monster_counts ?? null);
 const nextTurnCountdown = computed(() => {
     if (worldSummary.value?.turn_status !== 'normal') return null;
     const remaining = Math.max(0, new Date(worldSummary.value.next_scheduled_turn_at).getTime() - clockNow.value);
@@ -1931,6 +1933,11 @@ async function abandonNation(): Promise<void> {
                     <dl class="world-stats tp-world">
                         <div><dt>島</dt><dd>{{ (worldSummary?.nation_count ?? 0).toLocaleString() }}</dd></div>
                         <div><dt>総人口</dt><dd>{{ (worldSummary?.total_population ?? 0).toLocaleString() }}人</dd></div>
+                        <div v-if="worldSummary" class="world-monsters">
+                            <dt>怪獣</dt>
+                            <dd v-if="worldMonsters" :class="{ 'monster-present': worldMonsters.total_alive_count > 0 }" :title="`ターン${worldMonsters.counted_turn}の更新時点`">{{ worldMonsters.total_alive_count.toLocaleString() }}体<small v-if="worldMonsters.sea_alive_count > 0">うち海獣{{ worldMonsters.sea_alive_count.toLocaleString() }}</small></dd>
+                            <dd v-else class="pending" title="次のターン更新で集計されます">集計待ち</dd>
+                        </div>
                     </dl>
                 </div>
             </section>
@@ -1980,7 +1987,7 @@ async function abandonNation(): Promise<void> {
                                     <span v-if="entry.karma_badge" class="karma-badge tp-st karma">{{ entry.karma_badge }}</span>
                                     <span v-if="entry.state === 'active' && entry.finance_only_turns > 0" class="tp-st fin">資金繰り {{ entry.finance_only_turns }}</span>
                                 </td>
-                                <td v-for="column in rankingColumns" :key="column.key" class="num" :class="{ on: rankingSort === column.key }">{{ column.format(entry) }}</td>
+                                <td v-for="column in rankingColumns" :key="column.key" class="num" :class="[{ on: rankingSort === column.key }, column.tone?.(entry)]" :title="column.hint?.(entry)">{{ column.format(entry) }}</td>
                             </tr>
                             <tr class="ranking-owner-row">
                                 <td :colspan="rankingColumns.length + 1" class="l">
@@ -2007,10 +2014,10 @@ async function abandonNation(): Promise<void> {
                             <span v-if="entry.state === 'active' && entry.finance_only_turns > 0" class="tp-st fin">資金繰り {{ entry.finance_only_turns }}</span>
                             <small>{{ entry.owner_name }}<template v-if="entry.secretary"> ＋ <button type="button" class="ranking-secretary-link" :disabled="busy" @click="openPublicSecretary(entry.secretary.id, entry.world_id)">{{ entry.secretary.display_name }}</button></template></small>
                         </span>
-                        <span class="key num">{{ rankingKeyColumn.format(entry) }}<small>{{ rankingKeyColumn.label }}</small></span>
+                        <span class="key num" :class="rankingKeyColumn.tone?.(entry)" :title="rankingKeyColumn.hint?.(entry)">{{ rankingKeyColumn.format(entry) }}<small>{{ rankingKeyColumn.label }}</small></span>
                         <span v-if="entry.comment" class="say">{{ entry.comment }}</span>
                         <span class="more">
-                            <span v-for="column in rankingCardColumns" :key="column.key"><b>{{ column.label }}</b>{{ column.format(entry) }}</span>
+                            <span v-for="column in rankingCardColumns" :key="column.key" :class="column.tone?.(entry)" :title="column.hint?.(entry)"><b>{{ column.label }}</b>{{ column.format(entry) }}</span>
                         </span>
                     </li>
                     <li v-if="shownRankings.length === 0" class="empty-state">{{ rankings.length === 0 ? 'まだ島がありません。' : '条件に合う島がありません。' }}</li>
