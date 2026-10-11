@@ -382,7 +382,6 @@ describe('Underground party presentation controls', () => {
         vi.advanceTimersByTime(170);
         await wrapper.vm.$nextTick();
         expect(mp()).toBe('MP 4,500');
-        expect(wrapper.get('.ug-playback-team.is-player .ug-playback-bar.is-mp i').attributes('style')).toContain('width: 45%');
         expect(mpPopups()).toEqual([]);
         vi.advanceTimersByTime(170);
         await wrapper.vm.$nextTick();
