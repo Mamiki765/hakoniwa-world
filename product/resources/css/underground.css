@@ -250,6 +250,10 @@ main:has(> .underground-panel.ug-panel) { flex: 1; min-height: 0; display: flex;
 .ug-playback-card { padding-bottom: 3.4rem; }
 .ug-playback-popup { position: absolute; bottom: 1.5rem; font: 800 1rem var(--ug-f-num); color: var(--danger-strong); text-shadow: 0 1px 0 var(--paper), 0 0 5px var(--paper); pointer-events: none; animation: ug-popup .85s ease-out forwards; }
 .ug-playback-popup.is-heal { color: var(--success); }
+.ug-playback-popup.is-mp { color: var(--info); font-size: .9rem; }
+.ug-playback-mp { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: .5rem; font: .78rem var(--ug-f-num); font-variant-numeric: tabular-nums; color: var(--muted); }
+.ug-playback-bar.is-mp { height: 4px; }
+.ug-playback-bar.is-mp i { background: var(--info); }
 .ug-playback-popup.is-miss { color: var(--muted); font-size: .8rem; }
 .ug-playback-popup.is-critical { font-size: 1.6rem; color: var(--gold); -webkit-text-stroke: 1px var(--danger-strong); animation-name: ug-popup-critical; }
 @keyframes ug-popup { 0% { opacity: 0; transform: translateY(10px) scale(.7); } 20% { opacity: 1; transform: translateY(-2px) scale(1.1); } 100% { opacity: 0; transform: translateY(-26px); } }

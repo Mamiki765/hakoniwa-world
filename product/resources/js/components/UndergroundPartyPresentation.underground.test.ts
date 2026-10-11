@@ -341,6 +341,44 @@ describe('Underground party presentation controls', () => {
         wrapper.unmount();
     });
 
+    it('replays MP from the log: no number for natural recovery or a row without a source, a blue number for a skill cost', async () => {
+        const state = (mp: number) => ({ hp: 100, max_hp: 100, mp, barrier: 0, statuses: [], role_stacks: { fighting_spirit: 0, grace: 0 } });
+        const mpRow = (type: string, amount: number, actor_mp: number, mp_source?: string) => ({
+            type, side: '秘書', actor_name: 'Leader', label: 'MP', amount, actor_mp, ...(mp_source ? { mp_source } : {}),
+        });
+        const battle = {
+            ...smallBattle('solo-mp'), party: null, player_display_name: 'Leader', encounter_name: '敵', detail_available: true,
+            initial_state: { player: state(5000), enemy: state(0) },
+            rounds: [{ round: 1, actions: [
+                mpRow('mp_recovery', 300, 5300, 'natural'),
+                mpRow('mp_cost', 800, 4500, 'skill_cost'),
+                // 出どころの無い古い記録。金額があっても、何の増減かを推測して数字を出さない。
+                mpRow('mp_recovery', 200, 4700),
+            ], end_state: { player: state(4700), enemy: state(0) } }],
+        };
+        stubUndergroundFetch(vi.fn((input: RequestInfo | URL) => Promise.resolve(response(
+            String(input).endsWith('/api/v1/me/underground/battles') ? [] : openState({ battle }),
+        ))));
+        const wrapper = mount(UndergroundPanel, { attachTo: document.body });
+        await flushPromises();
+        vi.useFakeTimers();
+        await wrapper.findAll('.underground-battle-mode button').find((button) => button.text() === '再生')!.trigger('click');
+        await wrapper.get('.ug-playback-play').trigger('click');
+        const mp = () => wrapper.get('.ug-playback-team.is-player .ug-playback-mp').text();
+        const mpPopups = () => wrapper.findAll('.ug-playback-team.is-player .ug-playback-popup.is-mp').map((popup) => popup.text());
+        expect(mp()).toBe('MP 5,300');
+        expect(mpPopups()).toEqual([]);
+        vi.advanceTimersByTime(170);
+        await wrapper.vm.$nextTick();
+        expect(mp()).toBe('MP 4,500');
+        expect(mpPopups()).toEqual(['−800MP']);
+        vi.advanceTimersByTime(170);
+        await wrapper.vm.$nextTick();
+        expect(mp()).toBe('MP 4,700');
+        expect(mpPopups()).toEqual(['−800MP']);
+        wrapper.unmount();
+    });
+
     it('renders each damage target and the normalized barrier gain in the party narrative', async () => {
         const battle = {
             ...smallBattle('heavenrend-targets'),
