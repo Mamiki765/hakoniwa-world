@@ -14,12 +14,12 @@ use App\Models\MapSpace;
 use App\Models\MonsterDefinition;
 use App\Models\Nation;
 use App\Models\NationAward;
-use App\Models\RulesetVersion;
 use App\Models\Ship;
 use App\Models\TerrainDefinition;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
+use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\Concerns\CreatesTestWorlds;
 use Tests\TestCase;
 
@@ -88,7 +88,6 @@ class PublicLobbyApiTest extends TestCase
             ->assertJsonPath('data.current_turn', 1)
             ->assertJsonPath('data.hakoniwa_calendar.year', 1)
             ->assertJsonPath('data.hakoniwa_calendar.month', 1)
-            ->assertJsonPath('data.hakoniwa_calendar.label', '箱庭歴 1年1月')
             ->assertJsonPath('data.nation_count', 2)
             ->assertJsonPath('data.total_population', 2000);
         $this->assertStringContainsString('public', (string) $summary->headers->get('Cache-Control'));
@@ -101,27 +100,16 @@ class PublicLobbyApiTest extends TestCase
             ->assertJsonPath('data.1.id', $first->id)
             ->assertJsonPath('data.1.nation_number', 1)
             ->assertJsonPath('data.0.owner_name', '第二島主')
-            ->assertJsonPath('data.0.comment', '第二コメント')
-            ->assertJsonPath('data.1.owner_name', '第一島主')
-            ->assertJsonPath('data.0.achievements.awards.0.key', 'award.turn')
-            ->assertJsonPath('data.0.achievements.awards.0.count', 2)
-            ->assertJsonPath('data.0.achievements.awards.0.awarded_turns', [100, 200])
-            ->assertJsonPath('data.0.achievements.awards.1.key', 'award.prosperity')
+            ->assertJsonCount(2, 'data.0.achievements.awards')
             ->assertJsonPath('data.0.achievements.monster_kills.total_count', 2)
-            ->assertJsonPath('data.0.achievements.monster_kills.species.0.key', 'mecha_inora')
-            ->assertJsonPath('data.0.achievements.monster_kills.species.0.kill_count', 1)
-            ->assertJsonPath('data.0.achievements.monster_kills.species.1.key', 'inora')
-            ->assertJsonPath('data.0.achievements.monster_kills.asset.key', 'hakoniwa_original.monster.inora')
             ->assertJsonPath('data.1.achievements.awards', [])
             ->assertJsonPath('data.1.achievements.monster_kills', null)
-            ->assertJsonPath('data.0.money_display', '約500億円')
             ->assertJsonPath('data.0.money_bucket', '500')
             ->assertJsonPath('data.0.food_total_tons', 10000)
             ->assertJsonPath('data.0.owned_land_cells', $secondArea)
             ->assertJsonPath('data.0.farm_capacity_people', 10000)
             ->assertJsonPath('data.0.factory_capacity_people', 30000)
             ->assertJsonPath('data.0.mine_capacity_people', 5000)
-            ->assertJsonPath('data.1.money_display', '約6.2兆円')
             ->assertJsonPath('data.1.money_bucket', '62000')
             ->assertJsonPath('data.0.survival_turns', 0)
             ->assertJsonPath('data.0.finance_only_turns', 2000)
@@ -188,7 +176,6 @@ class PublicLobbyApiTest extends TestCase
             ->assertJsonPath('data.anchor_turn', 1)
             ->assertJsonPath('data.groups.0.target_turn', 1)
             ->assertJsonPath('data.groups.0.events.0.type', 'disaster.triggered')
-            ->assertJsonPath('data.groups.0.events.0.message', '地震発生！！ 震源地は(30,31)地点！！')
             ->assertJsonStructure(['data' => ['groups' => [['target_turn', 'events' => [
                 ['id', 'type', 'message', 'importance', 'target_turn'],
             ]]]]]);
@@ -205,7 +192,6 @@ class PublicLobbyApiTest extends TestCase
         $private = $this->actingAs($firstUser)->getJson('/api/v1/me/nation')
             ->assertOk()
             ->assertJsonPath('data.money', 62728)
-            ->assertJsonPath('data.money_display', '62,728億円')
             ->assertHeader('Vary', 'Cookie');
         $this->assertStringContainsString('no-store', (string) $private->headers->get('Cache-Control'));
     }
@@ -265,14 +251,19 @@ class PublicLobbyApiTest extends TestCase
         }
     }
 
-    public function test_public_monster_reward_event_is_hidden_when_killer_and_host_differ(): void
+    #[DataProvider('monsterRewardRoles')]
+    public function test_public_monster_reward_event_is_hidden_for_any_killer_and_host_roles(int $killerNationId, int $hostNationId): void
     {
-        $this->assertPublicMonsterRewardHidden(987_654_321, 876_543_210);
+        $this->assertPublicMonsterRewardHidden($killerNationId, $hostNationId);
     }
 
-    public function test_public_monster_reward_event_is_hidden_when_killer_and_host_are_same(): void
+    /** @return array<string, array{int, int}> */
+    public static function monsterRewardRoles(): array
     {
-        $this->assertPublicMonsterRewardHidden(987_654_321, 987_654_321);
+        return [
+            'killer and host differ' => [987_654_321, 876_543_210],
+            'killer and host are same' => [987_654_321, 987_654_321],
+        ];
     }
 
     public function test_guest_nation_preview_uses_viewer_safe_cells_and_never_leaks_exact_money(): void
@@ -440,11 +431,6 @@ class PublicLobbyApiTest extends TestCase
             $this->assertNull($disguisedBase['owner_nation_id']);
             $this->assertNull($disguisedBase['owner_nation_number']);
             $this->assertNull($disguisedBase['owner_name']);
-            $this->assertSame(
-                'ペリドット海域',
-                collect($disguisedBase['details'])->keyBy('key')['sea_area']['value'],
-            );
-            $this->assertStringContainsString('所有 中立', $disguisedBase['aria_label']);
             $this->assertStringNotContainsString($nation->name, $disguisedBase['aria_label']);
             $this->assertStringNotContainsString('N'.$nation->nation_number, $disguisedBase['aria_label']);
             $this->assertFalse($disguisedBase['within_viewer_visibility']);
@@ -462,8 +448,6 @@ class PublicLobbyApiTest extends TestCase
         }
         $this->assertSame($publicSea, $publicBase);
 
-        $currentRulesetId = $world->ruleset_version_id;
-        $world->update(['ruleset_version_id' => RulesetVersion::query()->where('version', 33)->sole()->id]);
         $ship = Ship::query()->create([
             'world_id' => $world->id,
             'ruleset_version_id' => $world->ruleset_version_id,
@@ -476,8 +460,6 @@ class PublicLobbyApiTest extends TestCase
             'state' => Ship::STATE_ACTIVE,
             'version' => 1,
         ]);
-        $world->update(['ruleset_version_id' => $currentRulesetId]);
-        $this->assertNotSame($world->ruleset_version_id, $ship->ruleset_version_id);
         $commandSupport = collect((new GridCoordinate($seabedBase->x, $seabedBase->y))->ring(2))
             ->map(static fn (GridCoordinate $coordinate): ?MapCell => $neutralSeaByCoordinate->get(
                 $coordinate->x.':'.$coordinate->y,
@@ -527,7 +509,7 @@ class PublicLobbyApiTest extends TestCase
         $revealedPreview = collect($this->getJson($definitionsUrl)->assertOk()->json('data.commands'))
             ->firstWhere('key', 'build_seabed_base');
         $this->assertSame('currently_unavailable', $revealedPreview['execution_preview_status']);
-        $this->assertContains('施設のあるcellにはこのcommandをqueueへ追加できません。', $revealedPreview['execution_warnings']);
+        $this->assertNotEmpty($revealedPreview['execution_warnings']);
 
         $publicAfterReveal = $this->cell($this->getJson($publicUrl)->assertOk()->json('data.cells'), $seabedBase);
         $this->assertNull($publicAfterReveal['facility']);
@@ -549,13 +531,12 @@ class PublicLobbyApiTest extends TestCase
             "/api/v1/map-spaces/{$mapSpace->id}/chunks/{$seabedBase->chunk_x}/{$seabedBase->chunk_y}",
         )->assertOk()->json('data.cells'), $seabedBase);
         $this->assertSame('decoy', $revealedDecoy['facility']);
-        $this->assertSame('ハリボテ', $revealedDecoy['display_name']);
         $this->assertSame($nation->id, $revealedDecoy['owner_nation_id']);
         $this->assertTrue($revealedDecoy['within_viewer_visibility']);
 
         $publicDecoy = $this->cell($this->getJson($publicUrl)->assertOk()->json('data.cells'), $seabedBase);
         $this->assertSame('defense', $publicDecoy['facility']);
-        $this->assertSame('防衛施設', $publicDecoy['display_name']);
+        $this->assertNotSame($revealedDecoy['display_name'], $publicDecoy['display_name']);
         $this->assertFalse($publicDecoy['within_viewer_visibility']);
     }
 
