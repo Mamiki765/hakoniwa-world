@@ -135,19 +135,17 @@ final class OceanLoopTest extends TestCase
     public function test_remote_buried_treasure_reveal_is_drawn_once_per_cell(): void
     {
         $world = $this->lightweightWorld();
-        $viewer = app(NationCreationService::class)->create(
-            User::factory()->create(),
-            $world,
-            '遠隔発見国',
-            '遠隔発見島主',
-        );
-        $space = $this->surfaceMapSpace($world);
-        $cell = $this->remoteSea($space, [$viewer->id]);
-        $otherCell = $this->remoteSea($space, [$viewer->id], [$cell->id]);
-        $context = $this->context($world, [$viewer->id], 2, 'buried-treasure-cell-reveal');
-        $settings = $context->ruleset->settings['ocean_loop']['buried_treasure'];
+        $context = $this->context($world, [], 2, 'buried-treasure-cell-reveal');
+        $viewerNationId = 1;
+        $cellId = 201;
+        $otherCellId = 202;
+        $settings = [
+            'stream_version' => 1,
+            'remote_reveal_probability' => ['numerator' => 1, 'denominator' => 5],
+        ];
         $streamVersion = $settings['stream_version'];
-        $seed = hash('sha256', 'ocean-cell-reveal-fixed-fixture');
+        // Fixed identities keep the old per-treasure draws at 1 (miss) and 0 (hit), regardless of DB sequences.
+        $seed = hash('sha256', 'ocean-cell-reveal-regression-1');
 
         $context->run->update([
             'random_seed' => $seed,
@@ -158,19 +156,19 @@ final class OceanLoopTest extends TestCase
         $world->update(['current_turn' => 2]);
 
         $first = new BuriedTreasure;
-        $first->forceFill(['id' => 101, 'map_cell_id' => $cell->id]);
+        $first->forceFill(['id' => 101, 'map_cell_id' => $cellId]);
         $second = new BuriedTreasure;
-        $second->forceFill(['id' => 102, 'map_cell_id' => $cell->id]);
+        $second->forceFill(['id' => 102, 'map_cell_id' => $cellId]);
         $resolver = app(BuriedTreasureRevealResolver::class);
         $singleResult = $resolver->remoteVisibleCellIds(
             $world->fresh(),
-            $viewer->id,
+            $viewerNationId,
             new EloquentCollection([$first]),
             $settings,
         );
         $multipleResult = $resolver->remoteVisibleCellIds(
             $world->fresh(),
-            $viewer->id,
+            $viewerNationId,
             new EloquentCollection([$first, $second]),
             $settings,
         );
@@ -180,14 +178,14 @@ final class OceanLoopTest extends TestCase
             $singleResult,
             $resolver->remoteVisibleCellIds(
                 $world->fresh(),
-                $viewer->id,
+                $viewerNationId,
                 new EloquentCollection([$first]),
                 $settings,
             ),
         );
         $this->assertNotSame(
-            TurnRandomStreamFactory::treasureCellReveal($cell->id, $viewer->id, $streamVersion),
-            TurnRandomStreamFactory::treasureCellReveal($otherCell->id, $viewer->id, $streamVersion),
+            TurnRandomStreamFactory::treasureCellReveal($cellId, $viewerNationId, $streamVersion),
+            TurnRandomStreamFactory::treasureCellReveal($otherCellId, $viewerNationId, $streamVersion),
         );
     }
 
