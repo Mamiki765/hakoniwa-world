@@ -872,45 +872,6 @@ class DomesticCommandExecutionTest extends TestCase
         $this->assertSame(200, $factoryTarget->fresh()->facility_scale);
     }
 
-    public function test_turn_execution_discards_a_legacy_staged_item_and_continues_with_the_normal_queue(): void
-    {
-        $world = $this->lightweightWorld();
-        [$user, $nation] = $this->createNation($world, 'ターン復旧国');
-        $space = MapSpace::query()->where('world_id', $world->id)->where('key', 'surface')->firstOrFail();
-        $forest = MapCell::query()->where('owner_nation_id', $nation->id)
-            ->whereHas('terrain', fn ($query) => $query->where('key', 'forest'))
-            ->firstOrFail();
-        $plain = MapCell::query()->where('owner_nation_id', $nation->id)
-            ->whereHas('terrain', fn ($query) => $query->where('key', 'plain'))
-            ->whereNull('facility_definition_id')
-            ->orderBy('id')
-            ->firstOrFail();
-        $first = $this->queue($user, $nation, $space, 'land_clear', $forest, 1, 1);
-        $second = $this->queue($user, $nation, $space, 'plant_forest', $plain, 1, 2);
-        $third = $this->queue($user, $nation, $space, 'build_farm', $plain, 1, 3);
-        $second->update(['status' => 'cancelled', 'queue_position' => null, 'cancelled_at' => now()]);
-        $first->update(['queue_position' => 1001]);
-        $third->update(['queue_position' => 2]);
-
-        $seed = $this->seedWithFirstDraw(TurnRandomStreamFactory::LAND_CLEAR_BURIED_TREASURE, 1_000, 10);
-        $result = app(DomesticCommandExecutor::class)->execute($this->context($world, [$nation->id], $seed));
-
-        $this->assertSame(1, $result['successes']);
-        $this->assertSame(2, $result['removed']);
-        $this->assertSame('cancelled', $first->fresh()->status);
-        $this->assertSame('legacy_staged_position_discarded', $first->fresh()->failure_metadata['reason']);
-        $this->assertSame(1001, $first->fresh()->failure_metadata['original_queue_position']);
-        $this->assertSame('cancelled', $second->fresh()->status);
-        $this->assertSame('completed', $third->fresh()->status);
-        $remaining = NationCommandQueueItem::query()->where('nation_command_queue_id', $nation->commandQueue->id)
-            ->where('status', 'queued')->with('definition')->orderBy('queue_position')->get();
-        $this->assertCount(0, $remaining);
-        $event = DB::table('audit_events')->where('event_type', 'command.queue_removed')
-            ->where('subject_id', $first->id)->firstOrFail();
-        $this->assertSame('admin', $event->visibility);
-        $this->assertSame('legacy_staged_position_discarded', json_decode($event->metadata, true)['reason']);
-    }
-
     public function test_terrain_commands_cannot_remove_the_nation_capital(): void
     {
         $world = $this->lightweightWorld();

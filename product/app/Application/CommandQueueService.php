@@ -70,7 +70,6 @@ final class CommandQueueService
     public function __construct(
         private readonly CommandParametersValidator $parameters,
         private readonly CurrentRulesetGuard $rulesetGuard,
-        private readonly LegacyCommandQueueOrder $legacyOrder,
         private readonly CommandQuantitySemantics $quantitySemantics,
         private readonly NationCommandTargetService $nationTargets,
         private readonly TerritoryExpansionPolicy $territoryExpansion,
@@ -284,7 +283,6 @@ final class CommandQueueService
                 $position,
             );
             $this->assertVersion($queue, $expectedVersion);
-            $this->repairLegacyStagedItems($user, $queue);
 
             $activeItems = NationCommandQueueItem::query()
                 ->where('nation_command_queue_id', $queue->id)
@@ -547,7 +545,6 @@ final class CommandQueueService
             [$lockedNation] = $this->lockActiveOwnerAfterWorld($user, $nation, $world);
             $queue = NationCommandQueue::query()->where('nation_id', $lockedNation->id)->lockForUpdate()->firstOrFail();
             $this->assertVersion($queue, $expectedVersion);
-            $this->repairLegacyStagedItems($user, $queue);
             $activeItems = NationCommandQueueItem::query()
                 ->where('nation_command_queue_id', $queue->id)
                 ->where('status', 'queued')
@@ -616,7 +613,6 @@ final class CommandQueueService
             [$lockedNation] = $this->lockActiveOwnerAfterWorld($user, $nation, $world);
             $queue = NationCommandQueue::query()->where('nation_id', $lockedNation->id)->lockForUpdate()->firstOrFail();
             $this->assertVersion($queue, $expectedVersion);
-            $this->repairLegacyStagedItems($user, $queue);
             $item = NationCommandQueueItem::query()->whereKey($item->id)->lockForUpdate()->firstOrFail();
             if ($item->nation_command_queue_id !== $queue->id || $item->status !== 'queued') {
                 throw new PlayerFacingCommandException('編集できないcommandです。');
@@ -649,7 +645,6 @@ final class CommandQueueService
             [$lockedNation] = $this->lockActiveOwnerAfterWorld($user, $nation, $world);
             $queue = NationCommandQueue::query()->where('nation_id', $lockedNation->id)->lockForUpdate()->firstOrFail();
             $this->assertVersion($queue, $expectedVersion);
-            $this->repairLegacyStagedItems($user, $queue);
             $activeItems = NationCommandQueueItem::query()
                 ->where('nation_command_queue_id', $queue->id)
                 ->where('status', 'queued')
@@ -705,7 +700,6 @@ final class CommandQueueService
             [$lockedNation] = $this->lockActiveOwnerAfterWorld($user, $nation, $world);
             $queue = NationCommandQueue::query()->where('nation_id', $lockedNation->id)->lockForUpdate()->firstOrFail();
             $this->assertVersion($queue, $expectedVersion);
-            $this->repairLegacyStagedItems($user, $queue);
             $item = NationCommandQueueItem::query()->whereKey($item->id)->lockForUpdate()->firstOrFail();
             if ($item->nation_command_queue_id !== $queue->id || $item->status !== 'queued') {
                 throw new PlayerFacingCommandException('取消できないcommandです。');
@@ -849,10 +843,6 @@ final class CommandQueueService
                 ];
             }
             $this->assertVersion($queue, $expectedVersion);
-            $legacyDiscarded = 0;
-            if (! $previewOnly && $claims === null) {
-                $legacyDiscarded = $this->repairLegacyStagedItems($user, $queue);
-            }
 
             $commandKeys = match ($action) {
                 'clear_all' => ['land_clear'],
@@ -897,13 +887,12 @@ final class CommandQueueService
                     ];
                 }
             }
-            $rawActiveItems = NationCommandQueueItem::query()
+            $activeItems = NationCommandQueueItem::query()
                 ->where('nation_command_queue_id', $queue->id)->where('status', 'queued')
                 ->orderBy('queue_position')->orderBy('id')->with('definition')->lockForUpdate()->get();
-            $activeItems = $this->legacyOrder->project($rawActiveItems);
             $snapshot = hash('sha256', json_encode([
                 $world->ruleset_version_id, $queue->version, $limit,
-                $rawActiveItems->map(fn (NationCommandQueueItem $item): array => $item->getAttributes())->all(),
+                $activeItems->map(fn (NationCommandQueueItem $item): array => $item->getAttributes())->all(),
                 array_map(static fn (array $candidate): array => [$candidate['definition']->id, $candidate['x'], $candidate['y']], $candidates),
             ], JSON_THROW_ON_ERROR));
             $plans = [];
@@ -934,13 +923,8 @@ final class CommandQueueService
                 if (! hash_equals($claims['snapshot'], $snapshot)) {
                     throw new BulkPlanPreviewChangedException;
                 }
-                $legacyDiscarded = $this->repairLegacyStagedItems($user, $queue);
             }
             if ($candidates === []) {
-                if ($legacyDiscarded > 0) {
-                    $queue->increment('version');
-                    $queue->refresh();
-                }
                 $this->recordBulkRequest($queue, $requestKey, $action, $position, 0, 0, 0, $requestFingerprint);
 
                 return [
@@ -1083,7 +1067,6 @@ final class CommandQueueService
             [$lockedNation] = $this->lockActiveOwnerAfterWorld($user, $nation, $world);
             $queue = NationCommandQueue::query()->where('nation_id', $lockedNation->id)->lockForUpdate()->firstOrFail();
             $this->assertVersion($queue, $expectedVersion);
-            $legacyDiscarded = $this->repairLegacyStagedItems($user, $queue);
             $items = NationCommandQueueItem::query()->where('nation_command_queue_id', $queue->id)
                 ->where('status', 'queued')->where('queue_position', '>=', $position)
                 ->orderBy('queue_position')->lockForUpdate()->get();
@@ -1091,7 +1074,7 @@ final class CommandQueueService
                 $item->update(['status' => 'cancelled', 'queue_position' => null, 'cancelled_at' => now()]);
                 $this->audit($user, 'command.cancelled', $item, ['reason' => 'cancel_from_position']);
             }
-            if ($items->isNotEmpty() || $legacyDiscarded > 0) {
+            if ($items->isNotEmpty()) {
                 $this->compact($queue);
                 $queue->increment('version');
                 $queue->refresh();
@@ -1166,7 +1149,6 @@ final class CommandQueueService
             'items' => fn ($query) => $query->where('status', 'queued')->orderBy('queue_position'),
             'items.definition',
         ]);
-        $queue->setRelation('items', $this->legacyOrder->project($queue->items));
 
         return $queue;
     }
@@ -2199,31 +2181,6 @@ final class CommandQueueService
             NationCommandQueueItem::query()->whereKey($item->id)
                 ->update(['queue_position' => $index + 1]);
         }
-    }
-
-    private function repairLegacyStagedItems(User $user, NationCommandQueue $queue): int
-    {
-        $items = NationCommandQueueItem::query()
-            ->where('nation_command_queue_id', $queue->id)
-            ->where('status', 'queued')
-            ->orderBy('queue_position')
-            ->orderBy('id')
-            ->lockForUpdate()
-            ->get();
-        $discarded = $this->legacyOrder->discard($items);
-        if ($discarded->isEmpty()) {
-            return 0;
-        }
-
-        foreach ($discarded as $item) {
-            $this->audit($user, 'command.cancelled', $item, [
-                'reason' => LegacyCommandQueueOrder::DISCARD_REASON,
-                'original_queue_position' => (int) $item->getAttribute('legacy_original_queue_position'),
-            ]);
-        }
-        $this->compact($queue);
-
-        return $discarded->count();
     }
 
     /** @param array<int, int|null> $occupied */

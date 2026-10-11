@@ -66,6 +66,12 @@ player queue mutation前は既存transaction/lock境界内でrepairし、turn ex
 
 `null`、0以下、queue limit超過だが`1000`以下、31–1000はschema constraintだけからlegacy stagingと断定できないため今回のautomatic discardへ広げない。duplicate non-null positionは既存unique constraintが拒否する。completed/failed/cancelled historical rowはposition値にかかわらず変更しない。
 
+### 追記（5.0.1）: 修復コードの撤去
+
+5.0.1時点で本番の`status=queued AND queue_position>1000`は0件だった。現行writerは上記のとおりnull退避で正規positionを書き直し、`>1000`を再生成する経路はない。本番は1つだけで、5.0.1以降はこの残骸が生まれない前提に立つ。
+
+そのため上記の自動cancel（player mutation前、turn execution前）とplain GET projectionでの除外を撤去した。通常のadd/reposition/reorder/cancel/cancel-from/bulk/compactとlock、通常操作で`1000`超の位置を作らないこと（`HotfixCommandQueueCorruptionTest::test_normal_queue_mutations_never_create_legacy_staged_positions`）は維持する。過去に記録された`failure_metadata.reason = legacy_staged_position_discarded`の行とauditはそのまま残る。
+
 ## Consequences
 
 - missileでHP 0になったmonster、land destruction等でremoveされたmonsterはnormal passで行動しない。survivor、通常防衛またはSecretary interceptionで無傷の別monsterはordinary pass後に行動する。
