@@ -585,6 +585,7 @@ abstract class CommandAndMissileTestCase extends TestCase
         MapCell $aim,
         int $radius,
         array $desired,
+        int $searchLimit = 10_000,
     ): string {
         $candidates = (new GridCoordinate($aim->x, $aim->y))->radius($radius);
         $coordinates = array_map(
@@ -599,7 +600,7 @@ abstract class CommandAndMissileTestCase extends TestCase
         }, $desired);
         $label = TurnRandomStreamFactory::missileImpact($item->id);
 
-        for ($candidate = 0; $candidate < 10_000; $candidate++) {
+        for ($candidate = 0; $candidate < $searchLimit; $candidate++) {
             $seed = hash('sha256', "{$label}:{$candidate}");
             $stream = (new TurnRandomStreamFactory($seed))->stream($label);
             $draws = array_map(
