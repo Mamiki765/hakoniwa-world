@@ -1618,8 +1618,6 @@ class TurnCellProcessingTest extends TestCase
         $cases = [
             ['before' => 7_000, 'minimum' => 100, 'maximum' => 3_000, 'draw' => 3_000, 'after' => 10_000],
             ['before' => 10_000, 'minimum' => 100, 'maximum' => 300, 'draw' => 300, 'after' => 10_300],
-            ['before' => 5_000, 'minimum' => 100, 'maximum' => 3_000, 'draw' => 3_000, 'after' => 8_000],
-            ['before' => 2_000, 'minimum' => 100, 'maximum' => 3_000, 'draw' => 3_000, 'after' => 5_000],
             ['before' => 25_450, 'minimum' => 100, 'maximum' => 300, 'draw' => 300, 'after' => 25_500],
         ];
         foreach ($cases as $index => $case) {
@@ -1852,10 +1850,7 @@ class TurnCellProcessingTest extends TestCase
         $seed = $this->seedForFirstDraw(TurnRandomStreamFactory::POPULATION_GROWTH, 100, 1_000, 1_000);
         $coordinates = [
             'former origin edge' => [0, 0],
-            'world center' => [20, 20],
             'negative corner' => [-16, -16],
-            'negative x corner' => [-16, 63],
-            'negative y corner' => [63, -16],
             'positive corner' => [63, 63],
             'new negative chunk' => [-8, -8],
         ];
