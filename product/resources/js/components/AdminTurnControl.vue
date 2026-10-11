@@ -9,8 +9,8 @@ interface TurnStatus {
     can_attempt: boolean;
     calendar_initialized: boolean;
 }
-const props = defineProps<{ worldId: number }>();
-const emit = defineEmits<{ updated: [] }>();
+const props = defineProps<{ worldId: number; adminLink?: boolean }>();
+const emit = defineEmits<{ updated: []; admin: [] }>();
 const status = ref<TurnStatus | null>(null);
 const pendingTarget = ref<number | null>(null);
 const busy = ref(false);
@@ -84,6 +84,7 @@ async function attempt(): Promise<void> {
             <button :disabled="busy" @click="confirmTarget = null">やめる</button>
         </div>
         <button :disabled="busy" @click="refresh">状態を再読込</button>
+        <button v-if="adminLink" type="button" class="admin-turn-link" @click="emit('admin')">管理ページへ</button>
         <small>次回予定時刻を過ぎた場合だけ、既存の手動実行を1ターン分試みます。</small>
     </section>
 </template>
@@ -93,5 +94,8 @@ async function attempt(): Promise<void> {
 .admin-turn-confirm { margin: .5rem 0; padding: .75rem 1rem; border: 1px solid var(--sl-turn, #aa8736); border-radius: var(--sl-radius, 4px); background: var(--warning-surface, #fff9e9); color: var(--ink, #3d3526); }
 .admin-turn-confirm p { margin: 0 0 .5rem; }
 button { margin-right: .5rem; }
+/* 広い画面では、すぐ横のお問い合わせ欄に同じ入口がある。狭い画面だけ、ここにも出す。 */
+.admin-turn-link { display: none; }
+@media (max-width: 860px) { .admin-turn-link { display: inline-block; } }
 small { display: block; margin-top: .5rem; }
 </style>
