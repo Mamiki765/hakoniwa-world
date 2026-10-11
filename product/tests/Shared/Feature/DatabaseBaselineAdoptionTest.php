@@ -10,6 +10,7 @@ use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use RuntimeException;
 use Tests\Concerns\CreatesTestWorlds;
 use Tests\Concerns\UsesIndividualTestWorld;
@@ -56,13 +57,17 @@ final class DatabaseBaselineAdoptionTest extends TestCase
         $before = $this->businessState();
         $ledgerBefore = DB::table('migrations')->orderBy('id')->get()->all();
 
-        $this->assertSame(0, Artisan::call('migrate', ['--force' => true]));
+        $this->assertSame(0, Artisan::call('migrate', [
+            '--force' => true, '--path' => ['database/migrations/'.CurrentDatabaseBaseline::MIGRATION.'.php'],
+        ]));
         $this->assertSame($before, $this->businessState());
         $this->assertEquals($ledgerBefore, DB::table('migrations')->where('migration', '<>', CurrentDatabaseBaseline::MIGRATION)->orderBy('id')->get()->all());
         $this->assertSame(1, DB::table('migrations')->where('migration', CurrentDatabaseBaseline::MIGRATION)->count());
         $this->assertSame($viewBefore, DB::selectOne("SELECT pg_get_viewdef('hakoniwa_diagnostic.baseline_probe'::regclass) AS definition")->definition);
         $this->assertSame($user->secretary()->sole()->surfaceState->monster_experience, (int) DB::table('hakoniwa_diagnostic.baseline_probe')->sole()->monster_experience);
-        $this->assertSame(0, Artisan::call('migrate', ['--force' => true]));
+        $this->assertSame(0, Artisan::call('migrate', [
+            '--force' => true, '--path' => ['database/migrations/'.CurrentDatabaseBaseline::MIGRATION.'.php'],
+        ]));
         $this->assertSame($before, $this->businessState());
     }
 
@@ -93,10 +98,32 @@ final class DatabaseBaselineAdoptionTest extends TestCase
         $this->assertEquals($ledgerBefore, DB::table('migrations')->orderBy('id')->get()->all());
     }
 
+    public function test_forward_snapshot_migration_preserves_world_data_and_does_not_hide_schema_drift(): void
+    {
+        $world = $this->lightweightWorld();
+        $this->sourceReleaseLedger();
+        $before = $world->fresh()->getAttributes();
+        app(CurrentDatabaseBaseline::class)->assertExisting();
+        $this->assertSame(0, Artisan::call('migrate', ['--force' => true]));
+        $after = $world->fresh()->getAttributes();
+        $this->assertNull($after['monster_count_snapshot']);
+        unset($after['monster_count_snapshot']);
+        $this->assertSame($before, $after);
+        app(CurrentDatabaseBaseline::class)->assertExisting();
+        $this->assertSame(0, Artisan::call('migrate', ['--force' => true]));
+        DB::statement('ALTER TABLE worlds ALTER COLUMN monster_count_snapshot TYPE json USING monster_count_snapshot::json');
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage('Database differs');
+        app(CurrentDatabaseBaseline::class)->assertExisting();
+    }
+
     private function sourceReleaseLedger(): void
     {
-        // Only the ledger boundary is simulated. The supported source already
-        // has the complete 5.0.1 schema, catalog and immutable current snapshot.
+        // The supported source has the complete 5.0.1 schema, catalog and
+        // immutable current snapshot. Remove the later display-only extension
+        // and simulate the source ledger to represent that adoption boundary.
+        Schema::table('worlds', fn ($table) => $table->dropColumn('monster_count_snapshot'));
+        DB::table('migrations')->where('migration', CurrentDatabaseBaseline::MONSTER_COUNT_MIGRATION)->delete();
         DB::table('migrations')->where('migration', CurrentDatabaseBaseline::MIGRATION)->delete();
         $migrations = json_decode((string) file_get_contents(database_path('baselines/5_0_1_migrations.json')), true, 512, JSON_THROW_ON_ERROR);
         foreach ($migrations as $migration) {

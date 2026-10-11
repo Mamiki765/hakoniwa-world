@@ -30,6 +30,7 @@ final class PublicWorldService
         private readonly UndergroundSurfaceMapProjection $undergroundMaps,
         private readonly SeaAreaWeatherPresenter $weather,
         private readonly SecretaryProfilePresenter $secretaryProfiles,
+        private readonly WorldMonsterCountSnapshot $monsterCounts,
     ) {}
 
     /** @return array<string, mixed> */
@@ -42,6 +43,7 @@ final class PublicWorldService
             'key' => $world->key,
             'name' => $world->name,
             'current_turn' => $world->current_turn,
+            'monster_counts' => $this->monsterCounts->forWorld($world),
             'hakoniwa_calendar' => $this->calendar->forTurn((int) $world->current_turn),
             'nation_count' => $world->nations()->whereIn('state', ['active', 'dormant', 'recovery'])->count(),
             'contact_url' => $this->contactUrl(),
@@ -259,6 +261,7 @@ final class PublicWorldService
             'finance_only_turns' => $financeOnlyTurns,
             'activity_status' => $activityStatus,
             'last_updated_turn' => $world->current_turn,
+            ...$this->monsterCounts->forNation($world, $nation->id),
         ];
     }
 }

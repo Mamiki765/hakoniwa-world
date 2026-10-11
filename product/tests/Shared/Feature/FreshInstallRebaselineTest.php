@@ -43,9 +43,12 @@ final class FreshInstallRebaselineTest extends TestCase
         $this->assertArrayHasKey($current['key'], config('hakoniwa.published_rulesets'));
         $this->assertSame($current['key'], $ruleset->key);
         $this->assertSame($current['version'], $ruleset->version);
-        $this->assertSame([CurrentDatabaseBaseline::MIGRATION], DB::table('migrations')->orderBy('id')->pluck('migration')->all());
+        $this->assertSame([
+            CurrentDatabaseBaseline::MIGRATION, CurrentDatabaseBaseline::MONSTER_COUNT_MIGRATION,
+        ], DB::table('migrations')->orderBy('id')->pluck('migration')->all());
         $this->assertSame([$current['key']], RulesetVersion::query()->orderBy('version')->pluck('key')->all());
         app(CurrentDatabaseBaseline::class)->assertExisting();
+        $this->assertTrue(Schema::hasColumn('worlds', 'monster_count_snapshot'));
         $nationIdColumn = DB::selectOne(<<<'SQL'
 SELECT is_nullable
   FROM information_schema.columns

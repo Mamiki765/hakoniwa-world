@@ -56,3 +56,9 @@ Code rollback after marker adoption requires an explicit release recovery decisi
 A later semantic Ruleset change uses the normal immutable snapshot/version and forward
 migration contract. Baseline adoption does not reset Ruleset numbering or authorize rewriting
 published snapshots. See [current Ruleset baseline](current-ruleset-baseline.md).
+
+The later [public living monster snapshot](public-monster-counts.md) is an independent
+forward migration after the install marker. Its completed-schema manifest substitutes only
+the measured `worlds` definition when that migration is recorded. The fixed 5.0.1 dump and
+adoption structures remain the authority before this extension; all other structure checks
+remain exact.
