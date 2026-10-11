@@ -23,3 +23,7 @@
     .panel:is(.trading-post-panel, .options-panel, .inquiry-page, .inquiry-admin-page, .credits-panel, .account-panel, .announcement-page, .admin-operations, .admin-turn, .guide-topic-admin) { margin: 0; padding: 10px 12px 18px; border-inline: 0; }
     main:has(> .panel:is(.trading-post-panel, .options-panel, .inquiry-page, .inquiry-admin-page, .credits-panel, .account-panel, .announcement-page, .admin-operations, .guide-topic-admin):not([style*="display: none"])) { padding: 0; }
 }
+
+/* お知らせ本文の # 見出しは、ページ用の大きな見出しの指定に引っ張られず、本文の見出しの大きさで出す。 */
+.panel .announcement-markdown h1 { margin: 1.4em 0 .5em; font-family: inherit; font-size: 1.6rem; line-height: 1.4; }
+.panel .announcement-markdown > h1:first-child { margin-top: 0; }

@@ -130,3 +130,11 @@ html .tp-news-group h3 { font: var(--sl-w-head) 12px var(--sl-f-head); color: va
     .tp-card .more { grid-column: 2 / -1; display: flex; flex-wrap: wrap; gap: 0 12px; font: 12px var(--sl-f-num); color: var(--sl-ink-2); }
     .tp-card .more b { font: 10px var(--sl-f-body); font-weight: 400; margin-right: 3px; }
 }
+
+/* スマホ幅では、指で押すボタンに押せるだけの高さを持たせる。 */
+@media (max-width: 860px) {
+    .tp .tp-quiet, .tp-seg button, .tp-pager button, .tp-rank-tools :is(select, input) { min-height: 34px; }
+    .tp .ranking-island > button { padding-block: 6px; }
+    .tp .ranking-secretary-link { padding-block: 6px; }
+    .tp-notice-list button { padding-block: 5px; }
+}

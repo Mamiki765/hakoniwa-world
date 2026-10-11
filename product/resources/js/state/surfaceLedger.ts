@@ -1,4 +1,4 @@
-import { computed, ref } from 'vue';
+import { computed, onBeforeUnmount, ref } from 'vue';
 
 export type LedgerTab = 'inspect' | 'plan' | 'log';
 type Side = 'l' | 'r';
@@ -31,6 +31,16 @@ export function useSurfaceLedger() {
     const mapPane = ref<'surface' | 'underground'>('surface');
     const columns = ref<Record<Side, number>>({ l: clampWidth('l', readStoredWidth('l')), r: clampWidth('r', readStoredWidth('r')) });
     const draggingSide = ref<Side | null>(null);
+    // タブで切り替える狭い画面かどうか（CSSの切り替えと同じ幅）。
+    const media = typeof window.matchMedia === 'function' ? window.matchMedia('(max-width: 760px)') : null;
+    const narrow = ref(media?.matches === true);
+    const onMediaChange = (event: MediaQueryListEvent): void => {
+        narrow.value = event.matches;
+    };
+    media?.addEventListener?.('change', onMediaChange);
+    onBeforeUnmount(() => media?.removeEventListener?.('change', onMediaChange));
+    // 伝言板がいま画面に出ているか。
+    const boardVisible = computed(() => logPane.value === 'board' && (!narrow.value || tab.value === 'log'));
     const style = computed(() => ({
         '--sl-col-l': `${columns.value.l}px`,
         '--sl-col-r': `${columns.value.r}px`,
@@ -74,5 +84,5 @@ export function useSurfaceLedger() {
         tab.value = next;
     }
 
-    return { tab, grow, islandSheetOpen, menuOpen, logPane, mapPane, columns, style, draggingSide, setColumn, beginGrip, gripKeydown, showTab };
+    return { narrow, boardVisible, tab, grow, islandSheetOpen, menuOpen, logPane, mapPane, columns, style, draggingSide, setColumn, beginGrip, gripKeydown, showTab };
 }

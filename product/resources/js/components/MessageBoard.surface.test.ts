@@ -79,6 +79,26 @@ describe('MessageBoard', () => {
         wrapper.unmount();
     });
 
+    it('tells the parent the newest entry only once a load succeeded and the entries are on screen', async () => {
+        // 取得に失敗したまま「表示した」と伝えると、読めていない伝言が既読になる。
+        vi.useFakeTimers();
+        let fail = true;
+        vi.stubGlobal('fetch', vi.fn(async () => {
+            if (fail) throw new TypeError('offline');
+            return response(guestTimeline);
+        }));
+        const wrapper = mount(MessageBoard, { props: { nationId: 2, context: 'development' } });
+        await flushPromises();
+        expect(wrapper.emitted('latest')).toBeUndefined();
+        expect(wrapper.emitted('shown')?.at(-1)).toEqual([false]);
+
+        fail = false;
+        await vi.advanceTimersByTimeAsync(60_000);
+        expect(wrapper.emitted('latest')?.at(-1)).toEqual([{ at: '2026-08-11T12:00:00+09:00', keys: ['placeholder-1'] }]);
+        expect(wrapper.emitted('shown')?.at(-1)).toEqual([true]);
+        wrapper.unmount();
+    });
+
     it('uses text labels plus owner/other/tourist/secret classes and never renders body HTML', async () => {
         vi.stubGlobal('fetch', vi.fn(async () => response(ownerTimeline)));
         const wrapper = mount(MessageBoard, { props: { nationId: 2, context: 'public' } });

@@ -272,3 +272,20 @@ main:has(> .underground-panel.ug-panel) { flex: 1; min-height: 0; display: flex;
     .ug-playback-popup, .ug-playback-total, .ug-playback-card.is-flashing { animation: none; }
     .ug-playback-bar i { transition: none; }
 }
+
+/* スマホ幅では、指で押すボタンに押せるだけの高さを持たせる。 */
+@media (max-width: 760px) {
+    .ug-shell .ug-quick-rest { min-height: 32px; padding: 4px 10px; }
+    .ug-shell .ug-self-card .ug-text-button { min-height: 36px; padding: 8px 0 4px; font-size: .8rem; align-items: center; }
+    .ug-shell .ug-page-content button:not(.ug-primary), .ug-shell .ug-stp-inputs button { min-height: 36px; }
+}
+
+/* 狭い画面のホーム: ボタンを押せる高さにしたぶんカードが背景より高くなることがあるので、
+   背景は16:9を下限にして、カードが入りきる高さまで伸ばす（カードやボタンを切らない）。 */
+@media (max-width: 760px) {
+    .ug-home .ug-scene { aspect-ratio: auto; min-height: 56.25cqw; }
+    .ug-home .ug-scene-content { height: auto; min-height: 56.25cqw; }
+}
+@media (max-width: 360px) {
+    .ug-navigation button { font-size: .66rem; white-space: nowrap; padding-inline: 0; }
+}

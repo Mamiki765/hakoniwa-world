@@ -56,6 +56,50 @@ html[data-theme="old-dark"] {
     }
 }
 
+/* New Light／New Dark: ゲーム本体と同じ新しい配色。これまでの色は old-light／old-dark（上の値）で出る。 */
+html[data-theme="light"],
+html[data-theme="system"] {
+    --ink: #14263a;
+    --paper: #f6f9fb;
+    --paper-deep: #e4ecf1;
+    --navy: #0b5d8c;
+    --navy-solid: #0b5d8c;
+    --coral: #b86a00;
+    --line: #a9bccb;
+    --heading-line: #d9e4eb;
+    --warning-surface: #fbefcf;
+    --shadow: 0 8px 24px rgba(10, 25, 45, .14);
+    --on-solid: #fff;
+}
+html[data-theme="dark"] {
+    --ink: #dbe6f0;
+    --paper: #121f2e;
+    --paper-deep: #0a1420;
+    --navy: #5bb4e4;
+    --navy-solid: #1d5f86;
+    --coral: #f0a63a;
+    --line: #2e455d;
+    --heading-line: #2e455d;
+    --warning-surface: #3a2f16;
+    --shadow: 0 8px 24px rgba(0, 0, 0, .5);
+    --on-solid: #fff;
+}
+@media (prefers-color-scheme: dark) {
+    html[data-theme="system"] {
+        --ink: #dbe6f0;
+        --paper: #121f2e;
+        --paper-deep: #0a1420;
+        --navy: #5bb4e4;
+        --navy-solid: #1d5f86;
+        --coral: #f0a63a;
+        --line: #2e455d;
+        --heading-line: #2e455d;
+        --warning-surface: #3a2f16;
+        --shadow: 0 8px 24px rgba(0, 0, 0, .5);
+        --on-solid: #fff;
+    }
+}
+
 * { box-sizing: border-box; }
 html { color: var(--ink); background: var(--paper-deep); }
 body { margin: 0; line-height: 1.8; }
