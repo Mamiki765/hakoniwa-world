@@ -28,6 +28,9 @@ final class SyntheticHistoricalRulesetSnapshot
     /** @return array<string, mixed> */
     public static function withLegacySecretaryItems(array $settings): array
     {
+        // The legacy item/skill fixture predates the demographic capital basis.
+        unset($settings['turn_processing']['settlement']['capital_maximum_basis'],
+            $settings['turn_processing']['settlement']['capital_maximum_attraction_bonus']);
         $settings['secretary']['skills'] = array_intersect_key($settings['secretary']['skills'], array_flip([
             'agricultural_policy', 'specialty_development', 'gold_vein_survey',
             'forest_management', 'final_defense_line',
