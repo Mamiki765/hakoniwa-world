@@ -96,12 +96,12 @@ current combat identityは`secretary-underground-alpha-v5`、skill tree identity
 
 MPの現在値は既存の`initial_state`、各roundの`start_state` / `end_state`、最終結果を使う。Soloは`player` / `enemy`、Partyはcombatant ID別のstateに`mp`があり、Soloの本人最終MPは`summary.final_mp`。Party projector直後には`summary.final_state[id].mp`があるが、通常の保存・返却経路では`UndergroundBattleStorage::compactSnapshot`が`summary.final_state`を削除し、`detailPresentation`も復元しない。クライアントのParty最終MPは詳細ログの最後の有効な`round.end_state[id].mp`を使い、詳細欠測時は推測しない。最大値は`AlphaV1CombatRules::MAX_MP = 10_000`で固定。全行動のHP/MP snapshotや最大MP fieldは追加しない。
 
-新規の`mp_cost` / `mp_recovery` rowには、実際の呼出し元を表す任意field `mp_source?: string`を保持する。`amount`は従来どおり非負の実消費量・実回復量（overflowを含まない）で、表示符号は`mp_cost`が`-NMP`、`mp_recovery`が`+NMP`。`actor_mp?: number`はMPが変化した本人の処理後の現在値であり、技の使用者と回復対象が異なる場合もこのrowの本人へ適用する。Partyの本人は`actor_id` / `target_id`、Soloは`side` / `target_name`から既存の対応を使う。
+新規の`mp_cost` / `mp_recovery` rowには、実際の呼出し元を表す任意field `mp_source?: string`を保持する。`amount`は従来どおり非負の実消費量・実回復量（overflowを含まない）で、popupの有無は下表の`mp_source`で判定する。`actor_mp?: number`はMPが変化した本人の処理後の現在値であり、技の使用者と回復対象が異なる場合もこのrowの本人へ適用する。Partyの本人は`actor_id` / `target_id`、Soloは`side` / `target_name`から既存の対応を使う。
 
 | `mp_source` | 現行の根拠 | popup |
 |---|---|---|
 | `natural` | round開始の自然回復 | 出さない |
-| `skill_cost` | 技能の実MP消費 | 青系で`-NMP` |
+| `skill_cost` | 技能の実MP消費 | 出さない |
 | `skill_recovery` | 即時MP回復、およびルシド (`lucid_dream`) 等の継続MP回復 | 青系で`+NMP` |
 | `awakening_technique` | 無窮再演 (`limitless_reprise`) の実MP回復 | 青系で`+NMP` |
 | `awakening` | 通常/強制覚醒の既存`awakening`イベント | 下記の実回復量だけ青系で`+NMP` |
@@ -110,7 +110,7 @@ MPの現在値は既存の`initial_state`、各roundの`start_state` / `end_stat
 
 Solo projectorは上記のMP fieldを明示転送し、Party projectorは既存のrowコピーで転送する。presentation versionはSolo v2 / Party v3を維持する。field欠測は0や`natural`と同義ではない。過去ログの`mp_source`欠測は金額・文言・round位置から推測せず、MP popupを抑止する。古い覚醒の`mp_recovered`欠測も回復量を推測せず抑止する。既知のsourceがある場合だけ表示し、未知のsourceはUIが契約を受け入れるまで安全側で抑止する。保存済みログの書換え・再計算・migrationは行わない。
 
-UI担当ラピスへの接続点: `UndergroundPanel.vue`の`RoundAction`へ上記の任意fieldを追加し、`actionGroups()`の`group.action`だけでなく`group.source`内のMP rowを読む。技能の宣言・消費・damage等をまとめたgroupでは、消費rowが`group.action`から消えるためである。回復量と符号は上記のfieldを使い、HPの`amount`に混ぜない。自然回復popupは禁止し、現在値はMP rowと既存round境界から更新する。画面・再生UIの実装はこのバックエンド契約変更の範囲外。
+UI担当ラピスへの接続点: `UndergroundPanel.vue`の`RoundAction`へ上記の任意fieldを追加し、`actionGroups()`の`group.action`だけでなく`group.source`内のMP rowを読む。技能の宣言・消費・damage等をまとめたgroupでは、消費rowが`group.action`から消えるためである。回復量と符号は上記のfieldを使い、HPの`amount`に混ぜない。技消費と自然回復はpopupを出さず、現在値・ゲージはMP rowと既存round境界から更新する。画面・再生UIの実装はこのバックエンド契約変更の範囲外。
 
 ログ注釈とprojectionのみの追加であり、戦闘結果・計算・metric・RNG・イベント数・orderingは維持する。Ruleset v36とcombat identityは変更しない。
 
