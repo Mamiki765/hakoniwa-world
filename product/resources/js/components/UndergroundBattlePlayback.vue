@@ -79,6 +79,8 @@ const finished = ref(false);
 // ラウンドの行動が出そろい、そのラウンドの合計を大きく出している状態。
 const settled = ref(false);
 const vitals = ref<Record<string, PlaybackVitals>>({});
+// MPはHPと別に持つ。HPの対象が決められず不明になっても、分かっているMPは消さない。
+const mpValues = ref<Record<string, number>>({});
 const totals = ref<Record<string, RoundTotal>>({});
 const popups = ref<Popup[]>([]);
 const flashing = ref<Set<string>>(new Set());
@@ -95,6 +97,11 @@ const roundDone = computed(() => currentRound.value !== null && stepIndex.value 
 
 function cloneVitals(source: Record<string, PlaybackVitals> | null): Record<string, PlaybackVitals> {
     return Object.fromEntries(Object.entries(source ?? {}).map(([id, value]) => [id, { ...value }]));
+}
+
+function syncMp(source: Record<string, PlaybackVitals> | null): void {
+    const known = Object.entries(source ?? {}).flatMap(([id, value]) => value.mp === undefined ? [] : [[id, value.mp] as const]);
+    if (known.length > 0) mpValues.value = { ...mpValues.value, ...Object.fromEntries(known) };
 }
 
 function later(callback: () => void, delay: number): void {
@@ -120,6 +127,7 @@ function enterRound(index: number): void {
     totals.value = {};
     const round = props.rounds[index];
     if (round?.start) vitals.value = { ...vitals.value, ...cloneVitals(round.start) };
+    syncMp(round?.start ?? null);
 }
 
 function reset(): void {
@@ -127,6 +135,7 @@ function reset(): void {
     clearTransient();
     finished.value = false;
     vitals.value = {};
+    mpValues.value = {};
     enterRound(0);
 }
 
@@ -178,13 +187,14 @@ function applyStep(step: PlaybackStep): void {
         const maxHp = update.max_hp ?? nextVitals[update.targetId]?.max_hp;
         if (maxHp !== undefined) nextVitals[update.targetId] = { ...nextVitals[update.targetId], hp: update.hp, max_hp: maxHp };
     }
+    const nextMp = { ...mpValues.value };
     for (const change of step.mp ?? []) {
         if (change.delta !== 0) showMpPopup(change);
-        const target = nextVitals[change.targetId];
-        if (target === undefined) continue;
-        const mp = change.value ?? (target.mp === undefined ? undefined : Math.max(0, Math.min(MAX_MP, target.mp + change.delta)));
-        if (mp !== undefined) nextVitals[change.targetId] = { ...target, mp };
+        const current = nextMp[change.targetId];
+        const mp = change.value ?? (current === undefined ? undefined : Math.max(0, Math.min(MAX_MP, current + change.delta)));
+        if (mp !== undefined) nextMp[change.targetId] = mp;
     }
+    mpValues.value = nextMp;
     vitals.value = nextVitals;
     totals.value = nextTotals;
 }
@@ -192,6 +202,7 @@ function applyStep(step: PlaybackStep): void {
 function settleRound(): void {
     const round = currentRound.value;
     if (round?.end) vitals.value = { ...vitals.value, ...cloneVitals(round.end) };
+    syncMp(round?.end ?? null);
     settled.value = true;
     if (roundIndex.value + 1 >= props.rounds.length) finished.value = true;
 }
@@ -254,6 +265,8 @@ function jumpToResult(): void {
     for (const round of props.rounds) {
         if (round.start) vitals.value = { ...vitals.value, ...cloneVitals(round.start) };
         if (round.end) vitals.value = { ...vitals.value, ...cloneVitals(round.end) };
+        syncMp(round.start);
+        syncMp(round.end);
     }
     roundIndex.value = last;
     stepIndex.value = props.rounds[last]!.steps.length - 1;
@@ -268,7 +281,7 @@ function hpPercent(id: string): number {
 }
 
 function mpPercent(id: string): number {
-    const mp = vitals.value[id]?.mp;
+    const mp = mpValues.value[id];
     return mp === undefined ? 0 : Math.max(0, Math.min(100, mp / MAX_MP * 100));
 }
 
@@ -306,8 +319,8 @@ onBeforeUnmount(() => {
                     <span v-if="vitals[combatant.id]" class="ug-playback-hp">HP {{ vitals[combatant.id]!.hp.toLocaleString('ja-JP') }}<small> / {{ vitals[combatant.id]!.max_hp.toLocaleString('ja-JP') }}</small></span>
                     <span v-else class="ug-playback-hp">HP —</span>
                     <span class="ug-playback-bar" :class="{ 'is-unknown': !vitals[combatant.id] }" aria-hidden="true"><i v-if="vitals[combatant.id]" :style="{ width: `${hpPercent(combatant.id)}%` }" /></span>
-                    <span v-if="vitals[combatant.id]?.mp !== undefined" class="ug-playback-mp">
-                        <span>MP {{ vitals[combatant.id]!.mp!.toLocaleString('ja-JP') }}</span>
+                    <span v-if="mpValues[combatant.id] !== undefined" class="ug-playback-mp">
+                        <span>MP {{ mpValues[combatant.id]!.toLocaleString('ja-JP') }}</span>
                         <span class="ug-playback-bar is-mp" aria-hidden="true"><i :style="{ width: `${mpPercent(combatant.id)}%` }" /></span>
                     </span>
                     <span

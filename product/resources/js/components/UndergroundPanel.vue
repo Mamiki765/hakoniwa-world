@@ -1019,8 +1019,10 @@ function playbackMpOwner(row: RoundAction): string | null {
     if (currentPartyActors.value.length > 0) {
         return (row.type === 'mp_recovery' ? row.target_id || row.actor_id : row.actor_id) || null;
     }
-    if (row.type === 'mp_recovery' && row.target_name) return soloPlaybackTarget(row, 'heal');
-    return row.side === 'player' || row.side === '秘書' ? 'player' : row.side === 'enemy' || row.side === '対戦相手' ? 'enemy' : null;
+    // 1対1では、MPが動いた本人はログの陣営で決まる。名前は秘書と敵で同じことがあるので、陣営が無いときだけ使う。
+    if (row.side === 'player' || row.side === '秘書') return 'player';
+    if (row.side === 'enemy' || row.side === '対戦相手') return 'enemy';
+    return row.type === 'mp_recovery' ? soloPlaybackTarget(row, 'heal') : null;
 }
 
 // ひとまとめにした行動の中のMPの行も読む（技の消費は、まとめた先の行動からは見えなくなるため）。
