@@ -1,7 +1,8 @@
 import { flushPromises, mount } from '@vue/test-utils';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { defineComponent, h, ref } from 'vue';
-import { useOwnBoardUnread } from './ownBoardUnread';
+import { newestIncoming, useOwnBoardUnread } from './ownBoardUnread';
+import type { MessageBoardTimeline } from '../types';
 
 beforeEach(() => {
     vi.useFakeTimers();
@@ -12,9 +13,11 @@ afterEach(() => {
     vi.unstubAllGlobals();
 });
 
-const timeline = (createdAt: string[]) => new Response(JSON.stringify({ data: {
-    entries: createdAt.map((time, index) => ({ key: `entry-${index}`, created_at: time, kind: 'secret_placeholder', text: '--秘密通信あり--' })),
-} }), { status: 200 });
+const board = (entries: unknown[]) => ({ entries, viewer: { author_type: 'owner' } }) as unknown as MessageBoardTimeline;
+const received = (key: string, time: string) => ({ key, created_at: time, kind: 'secret', direction: 'incoming' });
+const timeline = (createdAt: string[]) => new Response(JSON.stringify({
+    data: board(createdAt.map((time, index) => received(`entry-${index}`, time))),
+}), { status: 200 });
 
 it('keeps one poller for the own island, keeps unread across a failed fetch, and never carries another island over', async () => {
     const nationId = ref<number | null>(3);
@@ -26,23 +29,23 @@ it('keeps one poller for the own island, keeps unread across a failed fetch, and
         if (fail) throw new TypeError('offline');
         return timeline(String(input).includes('/nations/3/') ? ['2026-10-11T07:00:00+09:00'] : []);
     }));
-    let board!: ReturnType<typeof useOwnBoardUnread>;
+    let unreadState!: ReturnType<typeof useOwnBoardUnread>;
     const wrapper = mount(defineComponent({
         setup() {
-            board = useOwnBoardUnread(nationId, boardMounted);
+            unreadState = useOwnBoardUnread(nationId, boardMounted);
             return () => h('i');
         },
     }));
     await flushPromises();
     await vi.advanceTimersByTimeAsync(0);
     expect(requested).toEqual(['/api/v1/nations/3/message-board']);
-    expect(board.unread.value).toBe(true);
+    expect(unreadState.unread.value).toBe(true);
 
     // 取得に失敗しても、未読の印は消えない。
     fail = true;
     await vi.advanceTimersByTimeAsync(60_000);
     expect(requested).toHaveLength(2);
-    expect(board.unread.value).toBe(true);
+    expect(unreadState.unread.value).toBe(true);
     fail = false;
 
     // 開発画面の伝言板が出ているあいだは、ここでは読まない（二重に取らない）。
@@ -51,29 +54,46 @@ it('keeps one poller for the own island, keeps unread across a failed fetch, and
     expect(requested).toHaveLength(2);
 
     // 伝言板を画面に出しても、本文を取得して表示できていなければ既読にしない（取得失敗・読み込み中）。
-    board.markSeen();
-    board.setBodyShown(3, false);
-    board.markSeen();
-    expect(board.unread.value).toBe(true);
+    unreadState.markSeen();
+    unreadState.setBodyShown(3, false);
+    unreadState.markSeen();
+    expect(unreadState.unread.value).toBe(true);
     expect(window.localStorage.getItem('hakoniwa.message-board.seen:3')).toBeNull();
 
     // 取得できて本文を表示したら既読。読み込み直しても既読のまま。
-    board.report(3, '2026-10-11T07:00:00+09:00');
-    board.markSeen();
-    expect(board.unread.value).toBe(true);
-    board.setBodyShown(3, true);
-    board.markSeen();
-    expect(board.unread.value).toBe(false);
-    expect(window.localStorage.getItem('hakoniwa.message-board.seen:3')).toBe('2026-10-11T07:00:00+09:00');
+    const first = received('entry-0', '2026-10-11T07:00:00+09:00');
+    unreadState.report(3, newestIncoming(board([first])));
+    unreadState.markSeen();
+    expect(unreadState.unread.value).toBe(true);
+    unreadState.setBodyShown(3, true);
+    unreadState.markSeen();
+    expect(unreadState.unread.value).toBe(false);
+    expect(window.localStorage.getItem('hakoniwa.message-board.seen:3')).toContain('2026-10-11T07:00:00+09:00');
+
+    // 自分が送った伝言（送信した秘密通信、島主としての書き込み）は、新しくても新着にしない。
+    const sent = [
+        { key: 'sent-secret', created_at: '2026-10-11T08:00:00+09:00', kind: 'secret', direction: 'outgoing' },
+        { key: 'sent-public', created_at: '2026-10-11T08:30:00+09:00', kind: 'public', author: { type: 'owner' } },
+    ];
+    unreadState.setBodyShown(3, false);
+    unreadState.report(3, newestIncoming(board([...sent, first])));
+    expect(unreadState.unread.value).toBe(false);
+
+    // 見た伝言と同じ秒に、別の伝言が届いたら新着。送信では既読にならず、表示したら既読。
+    unreadState.report(3, newestIncoming(board([...sent, first, received('entry-same-second', '2026-10-11T07:00:00+09:00')])));
+    expect(unreadState.unread.value).toBe(true);
+    unreadState.setBodyShown(3, true);
+    unreadState.markSeen();
+    expect(unreadState.unread.value).toBe(false);
 
     // 別の島へ切り替わったら、前の島の新着や既読を持ち越さない。別の島あての報告も受け取らない。
     boardMounted.value = false;
     nationId.value = 8;
     await flushPromises();
-    board.report(3, '2026-10-11T09:00:00+09:00');
+    unreadState.report(3, newestIncoming(board([received('late', '2026-10-11T09:00:00+09:00')])));
     await vi.advanceTimersByTimeAsync(0);
     expect(requested.at(-1)).toBe('/api/v1/nations/8/message-board');
-    expect(board.unread.value).toBe(false);
+    expect(unreadState.unread.value).toBe(false);
 
     wrapper.unmount();
     await vi.advanceTimersByTimeAsync(180_000);

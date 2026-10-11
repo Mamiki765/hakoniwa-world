@@ -1,14 +1,14 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
 import { ApiError, api } from '../api/client';
-import { newestCreatedAt } from '../state/ownBoardUnread';
+import { newestIncoming, type BoardMark } from '../state/ownBoardUnread';
 import type { MessageBoardEntry, MessageBoardTimeline } from '../types';
 
 const props = defineProps<{
     nationId: number;
     context: 'development' | 'public';
 }>();
-const emit = defineEmits<{ posted: []; latest: [createdAt: string | null]; shown: [shown: boolean] }>();
+const emit = defineEmits<{ posted: []; latest: [mark: BoardMark | null]; shown: [shown: boolean] }>();
 
 const timeline = ref<MessageBoardTimeline | null>(null);
 const body = ref('');
@@ -22,9 +22,9 @@ const collapsed = ref(false);
 let refreshTimer: ReturnType<typeof setInterval> | null = null;
 let loadGeneration = 0;
 
-// いちばん新しい伝言の時刻。親が「新着あり」の印を出すのに使う。
+// いちばん新しい「届いた伝言」。親が「新着あり」の印を出すのに使う。
 watch(timeline, (loaded) => {
-    if (loaded !== null) emit('latest', newestCreatedAt(loaded));
+    if (loaded !== null) emit('latest', newestIncoming(loaded));
 });
 // 本文（伝言の一覧）をいま出せているか。読み込み中と取得失敗のあいだは出せていない。
 watch(() => timeline.value !== null && !loading.value && error.value === '', (shown) => emit('shown', shown), { immediate: true });

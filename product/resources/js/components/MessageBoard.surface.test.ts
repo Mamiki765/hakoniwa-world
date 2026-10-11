@@ -94,7 +94,7 @@ describe('MessageBoard', () => {
 
         fail = false;
         await vi.advanceTimersByTimeAsync(60_000);
-        expect(wrapper.emitted('latest')?.at(-1)).toEqual(['2026-08-11T12:00:00+09:00']);
+        expect(wrapper.emitted('latest')?.at(-1)).toEqual([{ at: '2026-08-11T12:00:00+09:00', keys: ['placeholder-1'] }]);
         expect(wrapper.emitted('shown')?.at(-1)).toEqual([true]);
         wrapper.unmount();
     });

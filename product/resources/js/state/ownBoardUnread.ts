@@ -5,9 +5,42 @@ import type { MessageBoardTimeline } from '../types';
 const POLL_INTERVAL_MS = 60_000;
 const seenKey = (nationId: number): string => `hakoniwa.message-board.seen:${nationId}`;
 
-export function newestCreatedAt(timeline: MessageBoardTimeline | null): string | null {
-    const times = (timeline?.entries ?? []).map((entry) => entry.created_at);
-    return times.length > 0 ? times.reduce((newest, time) => time > newest ? time : newest) : null;
+/** いちばん新しい「届いた伝言」の時刻と、その時刻に届いた伝言。同じ秒に何件か届いても数え落とさない。 */
+export interface BoardMark {
+    at: string;
+    keys: string[];
+}
+
+/**
+ * 通知の対象になる、いちばん新しい伝言。自分が送ったもの（送信した秘密通信、島主としての書き込み）は数えない。
+ */
+export function newestIncoming(timeline: MessageBoardTimeline | null): BoardMark | null {
+    const ownBoard = timeline?.viewer.author_type === 'owner';
+    const incoming = (timeline?.entries ?? []).filter((entry) => !(
+        (entry.kind === 'secret' && entry.direction === 'outgoing')
+        || (ownBoard && entry.kind === 'public' && entry.author.type === 'owner')
+    ));
+    if (incoming.length === 0) return null;
+    const at = incoming.reduce((newest, entry) => entry.created_at > newest ? entry.created_at : newest, incoming[0]!.created_at);
+    return { at, keys: incoming.filter((entry) => entry.created_at === at).map((entry) => entry.key) };
+}
+
+/** mark に、seen ではまだ見ていない伝言があるか。 */
+function hasUnseen(mark: BoardMark | null, seen: BoardMark | null): boolean {
+    if (mark === null) return false;
+    if (seen === null || mark.at > seen.at) return true;
+    return mark.at === seen.at && mark.keys.some((key) => !seen.keys.includes(key));
+}
+
+function readSeen(nationId: number): BoardMark | null {
+    try {
+        const stored: unknown = JSON.parse(window.localStorage.getItem(seenKey(nationId)) ?? 'null');
+        if (typeof stored !== 'object' || stored === null) return null;
+        const { at, keys } = stored as { at?: unknown; keys?: unknown };
+        return typeof at === 'string' && Array.isArray(keys) ? { at, keys: keys.filter((key): key is string => typeof key === 'string') } : null;
+    } catch {
+        return null;
+    }
 }
 
 /**
@@ -19,13 +52,13 @@ export function newestCreatedAt(timeline: MessageBoardTimeline | null): string |
  */
 export function useOwnBoardUnread(nationId: Ref<number | null>, boardMounted: Ref<boolean>) {
     // 通知用: 新着があるかどうかを決める、いちばん新しい伝言の時刻。
-    const latest = ref<string | null>(null);
+    const latest = ref<BoardMark | null>(null);
     // 表示用: 伝言板の部品が実際に取得して、いま本文として出している伝言のうち、いちばん新しい時刻。
     // 既読にするのはここまで。取得に失敗した・読み込み中のあいだは null のまま。
-    const displayed = ref<string | null>(null);
+    const displayed = ref<BoardMark | null>(null);
     const bodyShown = ref(false);
-    const seen = ref<string | null>(null);
-    const unread = computed(() => latest.value !== null && (seen.value === null || latest.value > seen.value));
+    const seen = ref<BoardMark | null>(null);
+    const unread = computed(() => hasUnseen(latest.value, seen.value));
     let timer: ReturnType<typeof setTimeout> | null = null;
     let generation = 0;
     let lastUpdatedAt = 0;
@@ -50,7 +83,7 @@ export function useOwnBoardUnread(nationId: Ref<number | null>, boardMounted: Re
                 const timeline = await api<MessageBoardTimeline>(`/api/v1/nations/${targetNationId}/message-board`);
                 // 取得中に島や画面が変わっていたら、その結果は使わない。
                 if (requestGeneration !== generation) return;
-                latest.value = newestCreatedAt(timeline);
+                latest.value = newestIncoming(timeline);
                 lastUpdatedAt = Date.now();
             } catch {
                 // 取得に失敗しても、いまの未読の印は消さない。次の回でまた確かめる。
@@ -61,10 +94,10 @@ export function useOwnBoardUnread(nationId: Ref<number | null>, boardMounted: Re
     }
 
     /** 開発画面の伝言板が取り直せた結果を受け取る（取得に失敗したときは呼ばれない）。 */
-    function report(targetNationId: number, createdAt: string | null): void {
+    function report(targetNationId: number, mark: BoardMark | null): void {
         if (nationId.value !== targetNationId) return;
-        latest.value = createdAt;
-        displayed.value = createdAt;
+        latest.value = mark;
+        displayed.value = mark;
         lastUpdatedAt = Date.now();
     }
 
@@ -78,11 +111,11 @@ export function useOwnBoardUnread(nationId: Ref<number | null>, boardMounted: Re
     function markSeen(): void {
         const targetNationId = nationId.value;
         const shownUpTo = bodyShown.value ? displayed.value : null;
-        if (targetNationId === null || shownUpTo === null) return;
-        if (seen.value !== null && seen.value >= shownUpTo) return;
-        seen.value = shownUpTo;
+        if (targetNationId === null || shownUpTo === null || !hasUnseen(shownUpTo, seen.value)) return;
+        // 同じ秒のうち、すでに見た伝言も覚えたままにする。
+        seen.value = seen.value?.at === shownUpTo.at ? { at: shownUpTo.at, keys: [...new Set([...seen.value.keys, ...shownUpTo.keys])] } : shownUpTo;
         try {
-            window.localStorage.setItem(seenKey(targetNationId), shownUpTo);
+            window.localStorage.setItem(seenKey(targetNationId), JSON.stringify(seen.value));
         } catch {
             // 保存できなくても動く
         }
@@ -103,11 +136,7 @@ export function useOwnBoardUnread(nationId: Ref<number | null>, boardMounted: Re
             displayed.value = null;
             bodyShown.value = false;
             lastUpdatedAt = 0;
-            try {
-                seen.value = targetNationId === null ? null : window.localStorage.getItem(seenKey(targetNationId));
-            } catch {
-                seen.value = null;
-            }
+            seen.value = targetNationId === null ? null : readSeen(targetNationId);
         }
         if (targetNationId === null || mounted) return;
         schedule(Math.max(0, POLL_INTERVAL_MS - (Date.now() - lastUpdatedAt)));
