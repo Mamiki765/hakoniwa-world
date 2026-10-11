@@ -8,7 +8,7 @@ const props = defineProps<{
     nationId: number;
     context: 'development' | 'public';
 }>();
-const emit = defineEmits<{ posted: []; latest: [createdAt: string | null] }>();
+const emit = defineEmits<{ posted: []; latest: [createdAt: string | null]; shown: [shown: boolean] }>();
 
 const timeline = ref<MessageBoardTimeline | null>(null);
 const body = ref('');
@@ -26,6 +26,8 @@ let loadGeneration = 0;
 watch(timeline, (loaded) => {
     if (loaded !== null) emit('latest', newestCreatedAt(loaded));
 });
+// 本文（伝言の一覧）をいま出せているか。読み込み中と取得失敗のあいだは出せていない。
+watch(() => timeline.value !== null && !loading.value && error.value === '', (shown) => emit('shown', shown), { immediate: true });
 
 const bodyLength = computed(() => Array.from(body.value).length);
 const secretBodyLength = computed(() => Array.from(secretBody.value).length);

@@ -18,7 +18,12 @@ export function newestCreatedAt(timeline: MessageBoardTimeline | null): string |
  * ほかの画面にいるあいだだけ、ここが同じAPIを1分ごとに読む。タイマーは常に1本だけ。
  */
 export function useOwnBoardUnread(nationId: Ref<number | null>, boardMounted: Ref<boolean>) {
+    // 通知用: 新着があるかどうかを決める、いちばん新しい伝言の時刻。
     const latest = ref<string | null>(null);
+    // 表示用: 伝言板の部品が実際に取得して、いま本文として出している伝言のうち、いちばん新しい時刻。
+    // 既読にするのはここまで。取得に失敗した・読み込み中のあいだは null のまま。
+    const displayed = ref<string | null>(null);
+    const bodyShown = ref(false);
     const seen = ref<string | null>(null);
     const unread = computed(() => latest.value !== null && (seen.value === null || latest.value > seen.value));
     let timer: ReturnType<typeof setTimeout> | null = null;
@@ -55,20 +60,29 @@ export function useOwnBoardUnread(nationId: Ref<number | null>, boardMounted: Re
         if (nationId.value === targetNationId && !boardMounted.value) schedule(POLL_INTERVAL_MS);
     }
 
-    /** 開発画面の伝言板が取り直した結果を受け取る。 */
+    /** 開発画面の伝言板が取り直せた結果を受け取る（取得に失敗したときは呼ばれない）。 */
     function report(targetNationId: number, createdAt: string | null): void {
         if (nationId.value !== targetNationId) return;
         latest.value = createdAt;
+        displayed.value = createdAt;
         lastUpdatedAt = Date.now();
     }
 
-    /** 伝言板の本文を表示したときに呼ぶ。 */
+    /** 伝言板の部品が、いま本文を出せているか（読み込み中・取得失敗のあいだは false）。 */
+    function setBodyShown(targetNationId: number, shown: boolean): void {
+        if (nationId.value !== targetNationId) return;
+        bodyShown.value = shown;
+    }
+
+    /** 伝言板が画面に出ているときに呼ぶ。本文として表示できている分だけを既読にする。 */
     function markSeen(): void {
         const targetNationId = nationId.value;
-        if (targetNationId === null || latest.value === null || seen.value === latest.value) return;
-        seen.value = latest.value;
+        const shownUpTo = bodyShown.value ? displayed.value : null;
+        if (targetNationId === null || shownUpTo === null) return;
+        if (seen.value !== null && seen.value >= shownUpTo) return;
+        seen.value = shownUpTo;
         try {
-            window.localStorage.setItem(seenKey(targetNationId), latest.value);
+            window.localStorage.setItem(seenKey(targetNationId), shownUpTo);
         } catch {
             // 保存できなくても動く
         }
@@ -79,8 +93,15 @@ export function useOwnBoardUnread(nationId: Ref<number | null>, boardMounted: Re
     watch([nationId, boardMounted] as const, ([targetNationId, mounted], previous) => {
         generation++;
         stop();
+        // 伝言板の部品が外れたら、表示できている分は無くなる。
+        if (!mounted) {
+            displayed.value = null;
+            bodyShown.value = false;
+        }
         if (previous === undefined || previous[0] !== targetNationId) {
             latest.value = null;
+            displayed.value = null;
+            bodyShown.value = false;
             lastUpdatedAt = 0;
             try {
                 seen.value = targetNationId === null ? null : window.localStorage.getItem(seenKey(targetNationId));
@@ -97,5 +118,5 @@ export function useOwnBoardUnread(nationId: Ref<number | null>, boardMounted: Re
         stop();
     });
 
-    return { unread, latest, report, markSeen };
+    return { unread, latest, displayed, bodyShown, report, setBodyShown, markSeen };
 }

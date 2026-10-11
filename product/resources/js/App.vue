@@ -212,8 +212,9 @@ const ownBoard = useOwnBoardUnread(
     computed(() => page.value === 'island' && nation.value?.capital != null && mapSpace.value !== null),
 );
 const boardUnread = ownBoard.unread;
-watch(() => [ownBoard.latest.value, ledger.boardVisible.value, page.value] as const, ([latest, visible, currentPage]) => {
-    if (latest !== null && visible && currentPage === 'island') ownBoard.markSeen();
+// 既読にするのは、伝言板が画面に出ていて、本文を取得して表示できている分だけ。
+watch(() => [ownBoard.displayed.value, ownBoard.bodyShown.value, ledger.boardVisible.value, page.value] as const, ([displayed, shown, visible, currentPage]) => {
+    if (displayed !== null && shown && visible && currentPage === 'island') ownBoard.markSeen();
 });
 
 watch(page, (nextPage) => {
@@ -2432,6 +2433,7 @@ async function abandonNation(): Promise<void> {
                         context="development"
                         @posted="refreshMyNation"
                         @latest="ownBoard.report(nation.id, $event)"
+                        @shown="ownBoard.setBodyShown(nation.id, $event)"
                     />
                 </div>
             </section>

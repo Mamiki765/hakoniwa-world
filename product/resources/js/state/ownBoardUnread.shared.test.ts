@@ -50,8 +50,18 @@ it('keeps one poller for the own island, keeps unread across a failed fetch, and
     await vi.advanceTimersByTimeAsync(180_000);
     expect(requested).toHaveLength(2);
 
-    // 伝言板の本文を表示したら既読。読み込み直しても既読のまま。
+    // 伝言板を画面に出しても、本文を取得して表示できていなければ既読にしない（取得失敗・読み込み中）。
+    board.markSeen();
+    board.setBodyShown(3, false);
+    board.markSeen();
+    expect(board.unread.value).toBe(true);
+    expect(window.localStorage.getItem('hakoniwa.message-board.seen:3')).toBeNull();
+
+    // 取得できて本文を表示したら既読。読み込み直しても既読のまま。
     board.report(3, '2026-10-11T07:00:00+09:00');
+    board.markSeen();
+    expect(board.unread.value).toBe(true);
+    board.setBodyShown(3, true);
     board.markSeen();
     expect(board.unread.value).toBe(false);
     expect(window.localStorage.getItem('hakoniwa.message-board.seen:3')).toBe('2026-10-11T07:00:00+09:00');
