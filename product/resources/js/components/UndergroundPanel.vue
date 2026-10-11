@@ -13,7 +13,7 @@ import { ApiError, api } from '../api/client';
 import UndergroundAiEditor from './UndergroundAiEditor.vue';
 import UndergroundSkillTree from './UndergroundSkillTree.vue';
 import type { UndergroundSkillTree as SkillTree } from './undergroundSkills';
-import UndergroundBattlePlayback, { type PlaybackCombatant, type PlaybackHit, type PlaybackRound, type PlaybackStep, type PlaybackVitals } from './UndergroundBattlePlayback.vue';
+import UndergroundBattlePlayback, { type PlaybackCombatant, type PlaybackHit, type PlaybackMpChange, type PlaybackRound, type PlaybackStep, type PlaybackVitals } from './UndergroundBattlePlayback.vue';
 import UndergroundCombatantCard from './UndergroundCombatantCard.vue';
 import UndergroundEquipmentShop from './UndergroundEquipmentShop.vue';
 import UndergroundEquipmentVault from './UndergroundEquipmentVault.vue';
@@ -73,6 +73,10 @@ interface RoundAction {
     revive_hp_bps?: number | null;
     important?: boolean;
     countdown?: number;
+    // MPが増減した行にだけ付く。古い記録には無い（無いものを推測しない）。
+    mp_source?: string;
+    actor_mp?: number;
+    mp_recovered?: number;
     major_telegraph?: boolean;
     state?: RoundState | null;
 }
@@ -964,7 +968,9 @@ const playbackCombatants = computed<PlaybackCombatant[]>(() => {
 function playbackVitals(value: StateEnvelope | null | undefined): Record<string, PlaybackVitals> | null {
     if (!hasStateEnvelope(value)) return null;
     const entries = Object.entries(value as Record<string, RoundState>);
-    return Object.fromEntries(entries.map(([id, entry]) => [id, { hp: entry.hp, max_hp: entry.max_hp }]));
+    return Object.fromEntries(entries.map(([id, entry]) => [id, Number.isSafeInteger(entry.mp)
+        ? { hp: entry.hp, max_hp: entry.max_hp, mp: entry.mp }
+        : { hp: entry.hp, max_hp: entry.max_hp }]));
 }
 
 // 数字を出す相手は、対象が1人に決まる行動だけ。複数が対象の行動は、合計か1人ぶんかをログから決められないので出さない。
@@ -1004,6 +1010,38 @@ function soloPlaybackTarget(action: RoundAction, kind: 'damage' | 'heal'): 'play
         : action.side === 'enemy' || action.side === '対戦相手' ? 'enemy' : sideOf(action.actor_name);
     if (actor === null) return null;
     return kind === 'heal' ? actor : actor === 'player' ? 'enemy' : 'player';
+}
+
+// 数字を出すMPの増減。自然回復と、出どころの分からない古い記録は数字を出さない。
+const mpPopupSources = new Set(['skill_cost', 'skill_recovery', 'awakening_technique']);
+
+function playbackMpOwner(row: RoundAction): string | null {
+    if (currentPartyActors.value.length > 0) {
+        return (row.type === 'mp_recovery' ? row.target_id || row.actor_id : row.actor_id) || null;
+    }
+    // 1対1では、MPが動いた本人はログの陣営で決まる。名前は秘書と敵で同じことがあるので、陣営が無いときだけ使う。
+    if (row.side === 'player' || row.side === '秘書') return 'player';
+    if (row.side === 'enemy' || row.side === '対戦相手') return 'enemy';
+    return row.type === 'mp_recovery' ? soloPlaybackTarget(row, 'heal') : null;
+}
+
+// ひとまとめにした行動の中のMPの行も読む（技の消費は、まとめた先の行動からは見えなくなるため）。
+function playbackMp(rows: RoundAction[]): PlaybackMpChange[] {
+    return rows.flatMap((row): PlaybackMpChange[] => {
+        const value = Number.isSafeInteger(row.actor_mp) ? row.actor_mp! : null;
+        let delta = 0;
+        if (row.type === 'awakening') {
+            if (row.mp_source !== 'awakening') return [];
+            delta = Number.isSafeInteger(row.mp_recovered) ? Math.max(0, row.mp_recovered!) : 0;
+        } else if (row.type === 'mp_cost' || row.type === 'mp_recovery') {
+            const amount = Number.isSafeInteger(row.amount) ? Math.max(0, row.amount!) : 0;
+            if (row.mp_source !== undefined && mpPopupSources.has(row.mp_source)) delta = row.type === 'mp_cost' ? -amount : amount;
+        } else {
+            return [];
+        }
+        const targetId = playbackMpOwner(row);
+        return targetId === null || (delta === 0 && value === null) ? [] : [{ targetId, delta, value }];
+    });
 }
 
 function playbackUpdates(action: RoundAction, end: StateEnvelope | null | undefined): PlaybackStep['updates'] {
@@ -1052,6 +1090,7 @@ const playbackRounds = computed<PlaybackRound[]>(() => {
             highlight: actionHighlight(group.action),
             hits: playbackHits(group.action),
             updates: playbackUpdates(group.action, round.end_state),
+            mp: playbackMp(group.source),
         })),
     }));
 });

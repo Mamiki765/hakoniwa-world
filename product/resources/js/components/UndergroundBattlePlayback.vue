@@ -4,7 +4,20 @@ import { computed, onBeforeUnmount, ref, watch } from 'vue';
 export interface PlaybackVitals {
     hp: number;
     max_hp: number;
+    // ログにMPが無い（古い記録など）ときは持たない。そのときMPは表示しない。
+    mp?: number;
 }
+
+// 自然回復以外でMPが増減したとき。delta が 0 なら数字は出さず、現在値だけ合わせる。
+export interface PlaybackMpChange {
+    targetId: string;
+    delta: number;
+    // 増減のあとの現在値。ログに無ければ null（delta から見込みを出す）。
+    value: number | null;
+}
+
+// MPの上限は戦闘ルールで固定（サーバーの AlphaV1CombatRules::MAX_MP と同じ値）。
+const MAX_MP = 10_000;
 
 export interface PlaybackHit {
     targetId: string;
@@ -19,6 +32,7 @@ export interface PlaybackStep {
     highlight: string | null;
     hits: PlaybackHit[];
     updates: Array<{ targetId: string; hp: number | null; max_hp?: number }>;
+    mp?: PlaybackMpChange[];
 }
 
 export interface PlaybackRound {
@@ -44,7 +58,7 @@ interface Popup {
     id: number;
     targetId: string;
     text: string;
-    kind: PlaybackHit['kind'];
+    kind: PlaybackHit['kind'] | 'mp';
     critical: boolean;
     // 小さな数字が重ならないよう、出る位置を少しずつずらす。
     offset: number;
@@ -65,6 +79,8 @@ const finished = ref(false);
 // ラウンドの行動が出そろい、そのラウンドの合計を大きく出している状態。
 const settled = ref(false);
 const vitals = ref<Record<string, PlaybackVitals>>({});
+// MPはHPと別に持つ。HPの対象が決められず不明になっても、分かっているMPは消さない。
+const mpValues = ref<Record<string, number>>({});
 const totals = ref<Record<string, RoundTotal>>({});
 const popups = ref<Popup[]>([]);
 const flashing = ref<Set<string>>(new Set());
@@ -80,7 +96,12 @@ const enemies = computed(() => props.combatants.filter((combatant) => combatant.
 const roundDone = computed(() => currentRound.value !== null && stepIndex.value >= currentRound.value.steps.length - 1);
 
 function cloneVitals(source: Record<string, PlaybackVitals> | null): Record<string, PlaybackVitals> {
-    return Object.fromEntries(Object.entries(source ?? {}).map(([id, value]) => [id, { hp: value.hp, max_hp: value.max_hp }]));
+    return Object.fromEntries(Object.entries(source ?? {}).map(([id, value]) => [id, { ...value }]));
+}
+
+function syncMp(source: Record<string, PlaybackVitals> | null): void {
+    const known = Object.entries(source ?? {}).flatMap(([id, value]) => value.mp === undefined ? [] : [[id, value.mp] as const]);
+    if (known.length > 0) mpValues.value = { ...mpValues.value, ...Object.fromEntries(known) };
 }
 
 function later(callback: () => void, delay: number): void {
@@ -106,6 +127,7 @@ function enterRound(index: number): void {
     totals.value = {};
     const round = props.rounds[index];
     if (round?.start) vitals.value = { ...vitals.value, ...cloneVitals(round.start) };
+    syncMp(round?.start ?? null);
 }
 
 function reset(): void {
@@ -113,6 +135,7 @@ function reset(): void {
     clearTransient();
     finished.value = false;
     vitals.value = {};
+    mpValues.value = {};
     enterRound(0);
 }
 
@@ -129,6 +152,15 @@ function showPopup(hit: PlaybackHit): void {
             flashing.value = new Set([...flashing.value].filter((targetId) => targetId !== hit.targetId));
         }, 450);
     }
+}
+
+function showMpPopup(change: PlaybackMpChange): void {
+    const id = ++popupSequence;
+    const text = `${change.delta > 0 ? '+' : '−'}${Math.abs(change.delta).toLocaleString('ja-JP')}MP`;
+    popups.value = [...popups.value, { id, targetId: change.targetId, text, kind: 'mp', critical: false, offset: (id * 37) % 70 }];
+    later(() => {
+        popups.value = popups.value.filter((popup) => popup.id !== id);
+    }, 900);
 }
 
 // 行動の途中のHPは、ログの数字を足し引きした見込み。ラウンドの区切りで正しい値に戻す。
@@ -153,8 +185,16 @@ function applyStep(step: PlaybackStep): void {
             continue;
         }
         const maxHp = update.max_hp ?? nextVitals[update.targetId]?.max_hp;
-        if (maxHp !== undefined) nextVitals[update.targetId] = { hp: update.hp, max_hp: maxHp };
+        if (maxHp !== undefined) nextVitals[update.targetId] = { ...nextVitals[update.targetId], hp: update.hp, max_hp: maxHp };
     }
+    const nextMp = { ...mpValues.value };
+    for (const change of step.mp ?? []) {
+        if (change.delta !== 0) showMpPopup(change);
+        const current = nextMp[change.targetId];
+        const mp = change.value ?? (current === undefined ? undefined : Math.max(0, Math.min(MAX_MP, current + change.delta)));
+        if (mp !== undefined) nextMp[change.targetId] = mp;
+    }
+    mpValues.value = nextMp;
     vitals.value = nextVitals;
     totals.value = nextTotals;
 }
@@ -162,6 +202,7 @@ function applyStep(step: PlaybackStep): void {
 function settleRound(): void {
     const round = currentRound.value;
     if (round?.end) vitals.value = { ...vitals.value, ...cloneVitals(round.end) };
+    syncMp(round?.end ?? null);
     settled.value = true;
     if (roundIndex.value + 1 >= props.rounds.length) finished.value = true;
 }
@@ -224,6 +265,8 @@ function jumpToResult(): void {
     for (const round of props.rounds) {
         if (round.start) vitals.value = { ...vitals.value, ...cloneVitals(round.start) };
         if (round.end) vitals.value = { ...vitals.value, ...cloneVitals(round.end) };
+        syncMp(round.start);
+        syncMp(round.end);
     }
     roundIndex.value = last;
     stepIndex.value = props.rounds[last]!.steps.length - 1;
@@ -235,6 +278,11 @@ function jumpToResult(): void {
 function hpPercent(id: string): number {
     const value = vitals.value[id];
     return value === undefined || value.max_hp <= 0 ? 0 : Math.max(0, Math.min(100, value.hp / value.max_hp * 100));
+}
+
+function mpPercent(id: string): number {
+    const mp = mpValues.value[id];
+    return mp === undefined ? 0 : Math.max(0, Math.min(100, mp / MAX_MP * 100));
 }
 
 watch(() => props.rounds, reset, { immediate: true });
@@ -271,12 +319,16 @@ onBeforeUnmount(() => {
                     <span v-if="vitals[combatant.id]" class="ug-playback-hp">HP {{ vitals[combatant.id]!.hp.toLocaleString('ja-JP') }}<small> / {{ vitals[combatant.id]!.max_hp.toLocaleString('ja-JP') }}</small></span>
                     <span v-else class="ug-playback-hp">HP —</span>
                     <span class="ug-playback-bar" :class="{ 'is-unknown': !vitals[combatant.id] }" aria-hidden="true"><i v-if="vitals[combatant.id]" :style="{ width: `${hpPercent(combatant.id)}%` }" /></span>
+                    <span v-if="mpValues[combatant.id] !== undefined" class="ug-playback-mp">
+                        <span>MP {{ mpValues[combatant.id]!.toLocaleString('ja-JP') }}</span>
+                        <span class="ug-playback-bar is-mp" aria-hidden="true"><i :style="{ width: `${mpPercent(combatant.id)}%` }" /></span>
+                    </span>
                     <span
                         v-for="popup in popups.filter((candidate) => candidate.targetId === combatant.id)"
                         :key="popup.id"
                         class="ug-playback-popup"
                         :class="[`is-${popup.kind}`, { 'is-critical': popup.critical }]"
-                        :style="{ right: `${8 + popup.offset}px` }"
+                        :style="popup.kind === 'mp' ? { left: `${8 + popup.offset}px` } : { right: `${8 + popup.offset}px` }"
                         aria-hidden="true"
                     >{{ popup.text }}</span>
                     <span v-if="settled && totals[combatant.id]" class="ug-playback-total" :class="{ 'is-critical': totals[combatant.id]!.critical }">
