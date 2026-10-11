@@ -10,6 +10,8 @@ final class CurrentDatabaseBaseline
 {
     public const MIGRATION = '2026_10_11_020000_install_5_0_1_baseline';
 
+    public const MONSTER_COUNT_MIGRATION = '2026_10_11_030000_add_world_monster_count_snapshot';
+
     /** @return array<string, string> */
     public function structure(): array
     {
@@ -89,6 +91,21 @@ SQL);
             JSON_THROW_ON_ERROR,
         );
         $actual = $this->structure();
+        $applied = DB::table('migrations')->pluck('migration')->all();
+        if (in_array(self::MONSTER_COUNT_MIGRATION, $applied, true)) {
+            if (! in_array(self::MIGRATION, $applied, true)) {
+                throw new RuntimeException('Monster count snapshots require the accepted 5.0.1 baseline marker first.');
+            }
+            // Only the exact, measured worlds definition changes after this
+            // forward migration. Every other baseline object remains strict.
+            $extension = json_decode(
+                (string) file_get_contents(database_path('baselines/monster_count_structure.json')),
+                true, 512, JSON_THROW_ON_ERROR,
+            );
+            foreach ($expected as $key => $variant) {
+                $expected[$key] = array_replace($variant, $extension);
+            }
+        }
         // Production's migration ancestry and a fresh dump differ in physical
         // column order and PostgreSQL's literal-array CHECK representation.
         // Match complete reviewed structures; never normalize or omit guarantees.

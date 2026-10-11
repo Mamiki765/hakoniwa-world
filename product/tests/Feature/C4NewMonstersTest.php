@@ -16,6 +16,7 @@ use App\Application\PlayerIslandEventService;
 use App\Application\RulesetPublisher;
 use App\Application\SecretaryTurnService;
 use App\Application\SurfaceShipTurnService;
+use App\Application\WorldMonsterCountSnapshot;
 use App\Domain\Command\CommandRequestConflictException;
 use App\Domain\Map\GridCoordinate;
 use App\Domain\Map\MapCellStateService;
@@ -405,6 +406,10 @@ final class C4NewMonstersTest extends TestCase
         $this->assertSame('plain', $metadata['pre_impact_terrain_key']);
         $this->assertSame('village', $metadata['pre_impact_facility_key']);
         $this->assertSame(4_300, $metadata['before_population']);
+        app(WorldMonsterCountSnapshot::class)->record($world, $context->targetTurn);
+        $this->assertSame(1, $world->monster_count_snapshot['total_alive_count']);
+        $this->assertSame(1, $world->monster_count_snapshot['sea_alive_count']);
+        $this->assertSame(0, $world->monster_count_snapshot['nation_counts'][$nation->id]);
         $movementLabel = TurnRandomStreamFactory::monsterMovement($monster->id, 1);
         $expectedStream = (new TurnRandomStreamFactory($seed))->stream($movementLabel);
         $expectedStream->integer(0, 5);

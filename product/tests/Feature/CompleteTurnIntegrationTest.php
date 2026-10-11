@@ -529,6 +529,7 @@ class CompleteTurnIntegrationTest extends TestCase
     {
         return [
             'current_turn' => $world->fresh()->current_turn,
+            'monster_count_snapshot' => $world->fresh()->monster_count_snapshot,
             'money' => $world->nations()->whereKey($nationId)->value('money'),
             'population_high_water' => $world->nations()->whereKey($nationId)->value('population_high_water'),
             'secretary_skills' => $this->secretarySkillSnapshot($nationId),
@@ -553,6 +554,7 @@ class CompleteTurnIntegrationTest extends TestCase
     private function deterministicGameplayResult(World $world, int $nationId, int $itemId): array
     {
         return [
+            'monster_count_snapshot' => $world->fresh()->monster_count_snapshot,
             'money' => $world->nations()->whereKey($nationId)->value('money'),
             'population_high_water' => $world->nations()->whereKey($nationId)->value('population_high_water'),
             'secretary_skills' => $this->secretarySkillSnapshot($nationId),

@@ -472,6 +472,10 @@ final class NationDormancyTest extends TestCase
         $finalize = collect($run->phase_results)->firstWhere('phase', 'finalize_turn')['metrics'];
         $this->assertSame(1, $finalize['entered_dormant']);
         $this->assertSame(1, $finalize['abandoned']);
+        $snapshot = $world->fresh()->monster_count_snapshot;
+        $this->assertSame(2, $snapshot['counted_turn']);
+        $this->assertArrayHasKey($idleNation->id, $snapshot['nation_counts']);
+        $this->assertArrayNotHasKey($abandonedNation->id, $snapshot['nation_counts']);
         $this->assertSame(0, NationMembership::query()->where('nation_id', $abandonedNation->id)->count());
     }
 
