@@ -22,6 +22,7 @@ use App\Models\BuriedTreasure;
 use App\Models\FacilityDefinition;
 use App\Models\MapCell;
 use App\Models\MonsterOccupancy;
+use App\Models\NationCommandQueueItem;
 use App\Models\NationMembership;
 use App\Models\NationUndergroundFacility;
 use App\Models\Ship;
@@ -1443,20 +1444,25 @@ final class MissileImpactAndSettlementTest extends CommandAndMissileTestCase
         $owner->secretary()->sole()->skills()->where('skill_key', 'navy')->update(['level' => 20]);
         $missiles = $world->rulesetVersion()->sole()->settings['military']['missiles'];
         $item = $this->queue(app(CommandQueueService::class), $user, $firing, $space, 'missile', $cell);
-        $candidates = (new GridCoordinate($cell->x, $cell->y))->radius($missiles['missile']['deviation_radius']);
-        $aimIndex = array_search($cell->x.':'.$cell->y, array_map(
-            static fn (GridCoordinate $candidate): string => $candidate->x.':'.$candidate->y,
-            $candidates,
-        ), true);
-        $impactLabel = TurnRandomStreamFactory::missileImpact($item->id);
-        for ($probe = 0; $probe < 100_000; $probe++) {
-            $seed = hash('sha256', "navy missile {$probe}");
-            $streams = new TurnRandomStreamFactory($seed);
-            if ($streams->stream($impactLabel)->integer(0, count($candidates) - 1) === $aimIndex
-                && $streams->stream(TurnRandomStreamFactory::secretaryNavyEvasion($ship->id, 1))->integer(0, 999999) < 75000) {
-                break;
+        // Both seeds hit the ship and also win the navy evasion roll, so only the instant-sink guard differs.
+        $hitAndEvadeSeed = function (NationCommandQueueItem $queued, int $radius) use ($cell, $ship): string {
+            $candidates = (new GridCoordinate($cell->x, $cell->y))->radius($radius);
+            $aimIndex = array_search($cell->x.':'.$cell->y, array_map(
+                static fn (GridCoordinate $candidate): string => $candidate->x.':'.$candidate->y,
+                $candidates,
+            ), true);
+            $impactLabel = TurnRandomStreamFactory::missileImpact($queued->id);
+            for ($probe = 0; $probe < 100_000; $probe++) {
+                $seed = hash('sha256', "navy missile {$queued->id} {$probe}");
+                $streams = new TurnRandomStreamFactory($seed);
+                if ($streams->stream($impactLabel)->integer(0, count($candidates) - 1) === $aimIndex
+                    && $streams->stream(TurnRandomStreamFactory::secretaryNavyEvasion($ship->id, 1))->integer(0, 999999) < 75000) {
+                    return $seed;
+                }
             }
-        }
+            $this->fail('No seed hits the ship and wins the navy evasion roll.');
+        };
+        $seed = $hitAndEvadeSeed($item, $missiles['missile']['deviation_radius']);
         for ($attempt = 0; $attempt < 2; $attempt++) {
             $context = $this->context($world, 2, $seed, [$firing->id, $target->id]);
             app(SecretaryTurnService::class)->loadAttemptSnapshots($context, [$firing->id, $target->id]);
@@ -1471,12 +1477,7 @@ final class MissileImpactAndSettlementTest extends CommandAndMissileTestCase
         }
         $item->delete();
         $sinkItem = $this->queue(app(CommandQueueService::class), $user, $firing, $space, 'land_destruction_missile', $cell);
-        $sinkSeed = $this->seedForImpactIndex(
-            $sinkItem,
-            $cell,
-            $missiles['land_destruction_missile']['deviation_radius'],
-            $cell,
-        );
+        $sinkSeed = $hitAndEvadeSeed($sinkItem, $missiles['land_destruction_missile']['deviation_radius']);
         $context = $this->context($world, 2, $sinkSeed, [$firing->id, $target->id]);
         app(SecretaryTurnService::class)->loadAttemptSnapshots($context, [$firing->id, $target->id]);
         $this->resolveMissile($context, $base);

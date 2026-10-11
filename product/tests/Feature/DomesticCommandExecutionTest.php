@@ -1386,6 +1386,7 @@ class DomesticCommandExecutionTest extends TestCase
         $item = $this->queue($user, $nation, $space, 'excavate', $target, 5);
         $seed = $this->seedWithFirstDraw(TurnRandomStreamFactory::SEABED_OIL_SEARCH, 100, 3);
         $context = $this->context($world, [$nation->id], $seed);
+        app(SecretaryTurnService::class)->loadAttemptSnapshots($context, [$nation->id]);
 
         app(DomesticCommandExecutor::class)->execute($context);
 
@@ -1409,6 +1410,8 @@ class DomesticCommandExecutionTest extends TestCase
         $this->assertSame($version, $target->fresh()->version);
         $this->assertSame(209, $nation->fresh()->money);
         $this->assertSame(1, DB::table('audit_events')->where('event_type', 'command.seabed_oil_search')->count());
+        // The replay above must not award the success experience a second time.
+        $this->assertSame(1, $context->state->pendingSecretaryExperience()[$nation->id]['oil_development']);
 
         $this->setCellState($target, 'sea', null);
         Nation::query()->whereKey($nation->id)->update(['money' => 999]);
