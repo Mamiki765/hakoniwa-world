@@ -8,6 +8,7 @@ const worldBounds = { min_x: 0, max_x: 59, min_y: 0, max_y: 59 };
 afterEach(() => {
     vi.useRealTimers();
     vi.unstubAllGlobals();
+    window.localStorage.clear();
 });
 
 function mapCell(overrides: Partial<MapCell> = {}): MapCell {
@@ -83,6 +84,11 @@ describe('staggered square-image map', () => {
         await wrapper.get('.sea-area-toggle').trigger('click');
         expect(wrapper.find('.sea-area-overlay').exists()).toBe(false);
         expect(wrapper.get('.sea-area-toggle').attributes('aria-pressed')).toBe('false');
+        // 切り替えはこの端末に覚えていて、地図を開き直しても同じ。
+        const reopened = mount(HexMap, { props: { ...wrapper.props() } });
+        expect(reopened.get('.sea-area-toggle').attributes('aria-pressed')).toBe('false');
+        expect(reopened.find('.sea-area-overlay').exists()).toBe(false);
+        reopened.unmount();
         await wrapper.get('.sea-area-toggle').trigger('click');
         expect(wrapper.findAll('.sea-area-border')).toHaveLength(1);
         await wrapper.setProps({ seaAreas: [{ chunk_x: 0, chunk_y: 0, name: 'テスト海域', bounds: { min_x: 0, max_x: 15, min_y: 0, max_y: 15 },

@@ -31,10 +31,20 @@ const viewportSize = ref({ width: 900, height: 600 });
 const tooltipCell = ref<MapCell | null>(null);
 const tooltipElement = ref<HTMLElement | null>(null);
 const wholeWorldView = ref(false);
-const showVisibility = ref(false);
-const showSeaAreas = ref(true);
-const showTerritory = ref(true);
-const showPlanMarks = ref(true);
+// 地図の表示の切り替えは、この端末に覚えておき、次に開いたときも同じにする。
+const DISPLAY_STORAGE_KEY = 'hakoniwa.map.display';
+const storedDisplay = readStoredDisplay();
+const showVisibility = ref(storedDisplay.visibility ?? false);
+const showSeaAreas = ref(storedDisplay.seaAreas ?? true);
+const showTerritory = ref(storedDisplay.territory ?? true);
+const showPlanMarks = ref(storedDisplay.planMarks ?? true);
+watch([showVisibility, showSeaAreas, showTerritory, showPlanMarks], ([visibility, seaAreas, territory, planMarks]) => {
+    try {
+        window.localStorage.setItem(DISPLAY_STORAGE_KEY, JSON.stringify({ visibility, seaAreas, territory, planMarks }));
+    } catch {
+        // 保存できなくても動く
+    }
+});
 // 指で触ったあとに届くmouseenterでは、マスの詳細を出さない。
 let touchInput = false;
 const failedWeatherAssets = ref(new Set<string>());
@@ -70,6 +80,16 @@ const seaAreaOverlays = computed(() => {
         return { area, points: seaAreaOutline(area.bounds, origin), x: topLeft.x - origin.x, y: topLeft.y - origin.y };
     });
 });
+
+function readStoredDisplay(): Partial<Record<'visibility' | 'seaAreas' | 'territory' | 'planMarks', boolean>> {
+    try {
+        const stored: unknown = JSON.parse(window.localStorage.getItem(DISPLAY_STORAGE_KEY) ?? '{}');
+        if (typeof stored !== 'object' || stored === null) return {};
+        return Object.fromEntries(Object.entries(stored).filter(([, value]) => typeof value === 'boolean'));
+    } catch {
+        return {};
+    }
+}
 
 function weatherAssetFailed(url: string): void {
     failedWeatherAssets.value = new Set([...failedWeatherAssets.value, url]);
