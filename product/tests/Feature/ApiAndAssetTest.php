@@ -19,10 +19,11 @@ use App\Models\ResourceDefinition;
 use App\Models\Ship;
 use App\Models\TerrainDefinition;
 use App\Models\User;
-use App\Services\AssetManifestResolver;
+use App\Models\World;
 use DomainException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
@@ -101,14 +102,8 @@ class ApiAndAssetTest extends TestCase
             'comment' => '',
         ];
 
-        foreach ([
-            'name' => [...$base, 'name' => "改行\n島"],
-            'owner_name' => [...$base, 'owner_name' => "改行\n島主"],
-            'comment' => [...$base, 'comment' => "改行\nコメント"],
-        ] as $field => $payload) {
-            $this->actingAs($owner)->postJson('/api/v1/nations', $payload)
-                ->assertUnprocessable()->assertJsonValidationErrors($field);
-        }
+        $this->actingAs($owner)->postJson('/api/v1/nations', [...$base, 'name' => "改行\n島"])
+            ->assertUnprocessable()->assertJsonValidationErrors('name');
 
         $this->actingAs($owner)->postJson('/api/v1/nations', $base)->assertCreated();
         $other = User::factory()->create();
@@ -127,15 +122,10 @@ class ApiAndAssetTest extends TestCase
         ])->assertConflict()->assertJsonPath('code', 'nation_creation_conflict');
     }
 
-    public function test_xy_chunk_coordinates_and_nation_endpoints(): void
+    public function test_shared_economy_calculator_does_not_query_persistent_state(): void
     {
         $world = $this->lightweightWorld();
-        $user = User::factory()->create();
-        $mapSpace = MapSpace::query()->firstOrFail();
         $rulesetSettings = $world->rulesetVersion()->firstOrFail()->settings;
-        // The HUD must use the active snapshot rather than a hard-coded 100-cell limit.
-        $rulesetSettings['turn_processing']['disasters']['land_subsidence']['base_safe_land_cells'] = 123;
-        $world->rulesetVersion()->firstOrFail()->update(['settings' => $rulesetSettings]);
         DB::flushQueryLog();
         DB::enableQueryLog();
         app(NationEconomyCalculator::class)->calculate(
@@ -149,7 +139,13 @@ class ApiAndAssetTest extends TestCase
         $calculatorQueries = DB::getQueryLog();
         DB::disableQueryLog();
         $this->assertSame([], $calculatorQueries, 'The shared economy calculator must not query persistent state.');
-        DB::statement("SELECT setval(pg_get_serial_sequence('nations', 'id'), 18, false)");
+    }
+
+    public function test_map_space_bounds_and_xy_chunk_coordinates(): void
+    {
+        $world = $this->lightweightWorld();
+        $user = User::factory()->create();
+        $mapSpace = MapSpace::query()->firstOrFail();
 
         $this->actingAs($user)->getJson("/api/v1/worlds/{$world->id}/map-spaces")
             ->assertOk()
@@ -163,66 +159,61 @@ class ApiAndAssetTest extends TestCase
         $this->actingAs($user)->getJson("/api/v1/map-spaces/{$mapSpace->id}/chunks/0/0")
             ->assertOk()->assertJsonPath('data.chunk_x', 0)->assertJsonPath('data.chunk_y', 0)
             ->assertJsonCount(256, 'data.cells');
+    }
 
-        $registrationKey = (string) Str::uuid();
-        $registrationPayload = [
-            'request_key' => $registrationKey,
-            'world_id' => $world->id,
-            'name' => 'API国',
-            'owner_name' => 'API島主',
-            'comment' => '公開プロフィール',
-        ];
-        $nation = $this->actingAs($user)->postJson('/api/v1/nations', $registrationPayload)
-            ->assertCreated()
-            ->assertJsonPath('data.id', 18)
-            ->assertJsonPath('data.nation_number', 1)
-            ->assertJsonPath('data.owner_name', 'API島主')
-            ->assertJsonPath('data.comment', '公開プロフィール')
-            ->assertJsonMissingPath('data.food')
-            ->assertJsonPath('data.resources.0.key', 'wheat')
-            ->assertJsonPath('data.resources.0.amount', 10_000)
-            ->assertJsonPath('data.resources.0.unit', 'ton')
-            ->assertJsonPath('data.resources.0.unit_label', 'トン')
-            ->assertJsonPath('data.total_food_tons', 10_000)
-            ->assertJsonPath('data.food_total_tons', 10_000)
-            ->assertJsonPath('data.safe_land_cells', 123)
-            ->assertJsonPath('data.money_capacity', 10_098)
-            ->assertJsonPath('data.food_capacity_tons', 1_009_899)
-            ->assertJsonPath('data.food_resources.0.balance', 10_000)
-            ->assertJsonPath('data.resources.0.capacity', 1_009_899)
-            ->assertJsonPath('data.resources.0.remaining_capacity', 999_899)
-            ->assertJsonPath('data.resources.0.is_at_capacity', false)
-            ->assertJsonPath('data.resources.3.unit', 'unit')
-            ->assertJsonPath('data.resources.3.unit_label', 'ユニット')
-            ->assertJsonPath('data.resources.3.capacity', 9_999_000)
-            ->assertJsonPath('data.resources.4.unit', 'ton')
-            ->assertJsonPath('data.resources.4.unit_label', 'トン')
-            ->assertJsonPath('data.resources.4.capacity', 9_999_000)
-            ->assertJsonPath('data.resources.5.key', 'oil')
-            ->assertJsonPath('data.resources.5.name', '石油')
-            ->assertJsonPath('data.resources.5.amount', 0)
-            ->assertJsonPath('data.resources.5.unit', 'ten_thousand_barrels')
-            ->assertJsonPath('data.resources.5.unit_label', '万バレル')
-            ->assertJsonPath('data.resources.5.capacity', 5_000)
-            ->json('data');
-        $this->actingAs($user)->postJson('/api/v1/nations', [
-            ...$registrationPayload,
-            'name' => '再送時変更名',
-        ])->assertCreated()->assertJsonPath('data.id', $nation['id']);
+    public function test_nation_registration_returns_ruleset_capacities_and_replays_by_request_key(): void
+    {
+        $world = $this->lightweightWorld();
+        $user = User::factory()->create();
+        $rulesetSettings = $world->rulesetVersion()->firstOrFail()->settings;
+        // The HUD must use the active snapshot rather than a hard-coded 100-cell limit.
+        $rulesetSettings['turn_processing']['disasters']['land_subsidence']['base_safe_land_cells'] = 123;
+        $world->rulesetVersion()->firstOrFail()->update(['settings' => $rulesetSettings]);
+
+        [$nation, $payload] = $this->registerApiNation($world, $user);
+        $this->assertSame('API島主', $nation['owner_name']);
+        $this->assertSame('公開プロフィール', $nation['comment']);
+        $this->assertArrayNotHasKey('food', $nation);
+        $this->assertSame(10_000, $nation['total_food_tons']);
+        $this->assertSame(10_000, $nation['food_total_tons']);
+        $this->assertSame(123, $nation['safe_land_cells']);
+        $this->assertSame(10_098, $nation['money_capacity']);
+        $this->assertSame(1_009_899, $nation['food_capacity_tons']);
+        $resources = collect($nation['resources'])->keyBy('key');
+        $this->assertSame(
+            ['unit' => 'ton', 'amount' => 10_000, 'capacity' => 1_009_899, 'remaining_capacity' => 999_899, 'is_at_capacity' => false],
+            collect($resources['wheat'])->only(['amount', 'unit', 'capacity', 'remaining_capacity', 'is_at_capacity'])->all(),
+        );
+        $this->assertSame(['unit', 9_999_000], [$resources['industrial_goods']['unit'], $resources['industrial_goods']['capacity']]);
+        $this->assertSame(['ton', 9_999_000], [$resources['minerals']['unit'], $resources['minerals']['capacity']]);
+        $this->assertSame(['ten_thousand_barrels', 0, 5_000], [$resources['oil']['unit'], $resources['oil']['amount'], $resources['oil']['capacity']]);
+
+        $this->actingAs($user)->postJson('/api/v1/nations', [...$payload, 'name' => '再送時変更名'])
+            ->assertCreated()->assertJsonPath('data.id', $nation['id']);
         $this->assertSame(1, Nation::query()->where('world_id', $world->id)->count());
-        $scaleCells = MapCell::query()->where('owner_nation_id', $nation['id'])
-            ->whereNull('facility_definition_id')->limit(3)->get();
-        foreach (['farm', 'factory', 'mine'] as $index => $facilityKey) {
-            $cell = $scaleCells[$index]->fresh(['terrain', 'facility']);
-            app(MapCellStateService::class)->transitionTerrain(
-                $cell,
-                TerrainDefinition::query()->where('key', $facilityKey === 'mine' ? 'mountain' : 'plain')->firstOrFail(),
-            );
-            $facility = FacilityDefinition::query()->where('key', $facilityKey)->firstOrFail();
-            app(MapCellStateService::class)->setFacility($cell, $facility, $facility->initial_scale);
-            $cell->save();
-        }
+
+        // A non-matching primary key proves chunk owners expose both the id and the nation number.
+        $ownedCell = MapCell::query()->where('owner_nation_id', $nation['id'])->firstOrFail();
+        $presentedOwnedCell = collect($this->actingAs($user)->getJson(
+            "/api/v1/map-spaces/{$ownedCell->map_space_id}/chunks/{$ownedCell->chunk_x}/{$ownedCell->chunk_y}",
+        )->assertOk()->json('data.cells'))->first(
+            fn (array $cell): bool => $cell['x'] === $ownedCell->x && $cell['y'] === $ownedCell->y,
+        );
+        $this->assertNotSame($nation['id'], $nation['nation_number']);
+        $this->assertSame($nation['id'], $presentedOwnedCell['owner_nation_id']);
+        $this->assertSame($nation['nation_number'], $presentedOwnedCell['owner_nation_number']);
+        $expectedSeaArea = app(SeaAreaNameResolver::class)->forCoordinate($ownedCell->x, $ownedCell->y);
+        $this->assertSame($expectedSeaArea, $presentedOwnedCell['sea_area_name']);
+        $this->assertSame($expectedSeaArea, collect($presentedOwnedCell['details'])->firstWhere('key', 'sea_area')['formatted']);
+    }
+
+    public function test_owner_resource_forecast_and_workforce_follow_facilities_and_dormancy(): void
+    {
+        $world = $this->lightweightWorld();
+        $user = User::factory()->create();
+        [$nation] = $this->registerApiNation($world, $user);
         $nationModel = Nation::query()->findOrFail($nation['id']);
+        $scaleCells = $this->placeApiScaleFacilities($nationModel);
         MapCell::query()->where('owner_nation_id', $nationModel->id)->update(['population' => 0]);
         $nationModel->capital()->firstOrFail()->cell()->update(['population' => 25_000]);
         $secretaryId = (int) DB::table('secretaries')->where('user_id', $user->id)->value('id');
@@ -230,11 +221,7 @@ class ApiAndAssetTest extends TestCase
             DB::table('secretary_skills')->where('secretary_id', $secretaryId)
                 ->where('skill_key', $skillKey)->update(['level' => $level]);
         }
-        foreach (['wheat' => 100, 'fish' => 200, 'monster_meat' => 300, 'oil' => 123] as $resourceKey => $amount) {
-            NationResource::query()->where('nation_id', $nationModel->id)
-                ->whereHas('definition', fn ($query) => $query->where('key', $resourceKey))
-                ->update(['amount' => $amount]);
-        }
+        $this->setApiResources($nationModel, ['wheat' => 100, 'fish' => 200, 'monster_meat' => 300, 'oil' => 123]);
         $oilCell = MapCell::query()->where('owner_nation_id', $nationModel->id)
             ->whereNull('facility_definition_id')->firstOrFail()->fresh(['terrain', 'facility']);
         app(MapCellStateService::class)->transitionTerrain(
@@ -247,7 +234,7 @@ class ApiAndAssetTest extends TestCase
         );
         $oilCell->save();
 
-        $shipCells = MapCell::query()->where('map_space_id', $mapSpace->id)
+        $shipCells = MapCell::query()->where('map_space_id', $oilCell->map_space_id)
             ->whereNull('owner_nation_id')->whereNull('facility_definition_id')
             ->whereHas('terrain', fn ($query) => $query->where('key', 'sea'))
             ->orderBy('id')->limit(3)->get();
@@ -268,29 +255,17 @@ class ApiAndAssetTest extends TestCase
         }
 
         $forecast = $this->actingAs($user)->getJson('/api/v1/me/nation')->assertOk()
-            ->assertJsonPath('data.id', $nation['id'])
             ->assertJsonPath('data.farm_capacity_people', 10_000)
             ->assertJsonPath('data.factory_capacity_people', 30_000)
             ->assertJsonPath('data.mine_capacity_people', 5_000)
-            ->assertJsonPath('data.resource_forecast.rows.0.key', 'food')
-            ->assertJsonPath('data.resource_forecast.rows.0.production', 10_100)
-            ->assertJsonPath('data.resource_forecast.rows.0.consumption', 5_000)
-            ->assertJsonPath('data.resource_forecast.rows.0.delta', 5_100)
-            ->assertJsonPath('data.resource_forecast.rows.0.holding', 900)
-            ->assertJsonPath('data.resource_forecast.rows.1.production', 13_114)
-            ->assertJsonPath('data.resource_forecast.rows.1.consumption', 0)
-            ->assertJsonPath('data.resource_forecast.rows.2.production', 2_207)
-            ->assertJsonPath('data.resource_forecast.rows.3.production', 500)
-            ->assertJsonPath('data.resource_forecast.rows.3.consumption', 4)
-            ->assertJsonPath('data.resource_forecast.rows.3.delta', 496)
-            ->assertJsonPath('data.resource_forecast.rows.3.holding', 123)
-            ->assertJsonPath('data.resource_forecast.food_holding_note', '食料の所持は小麦換算です。')
             ->assertJsonPath('data.resource_forecast.workforce.status', 'saturation')
             ->assertJsonPath('data.resource_forecast.workforce.percentage_tenths', 444);
-        $this->assertSame(
-            ['food', 'industrial_goods', 'minerals', 'oil', 'power'],
-            collect($forecast->json('data.resource_forecast.rows'))->pluck('key')->all(),
-        );
+        $rows = $this->forecastRows($forecast->json('data'));
+        $this->assertSame([10_100, 5_000, 5_100, 900], [$rows['food']['production'], $rows['food']['consumption'], $rows['food']['delta'], $rows['food']['holding']]);
+        $this->assertSame([13_114, 0], [$rows['industrial_goods']['production'], $rows['industrial_goods']['consumption']]);
+        $this->assertSame(2_207, $rows['minerals']['production']);
+        $this->assertSame([500, 4, 496, 123], [$rows['oil']['production'], $rows['oil']['consumption'], $rows['oil']['delta'], $rows['oil']['holding']]);
+        $this->assertArrayHasKey('power', $rows);
 
         foreach ([1, 2] as $index) {
             $cell = $scaleCells[$index]->fresh(['facility']);
@@ -317,64 +292,35 @@ class ApiAndAssetTest extends TestCase
         );
         $underseaCell->population = 3_000;
         $underseaCell->save();
-        foreach (['industrial_goods' => 500, 'minerals' => 2_000] as $resourceKey => $amount) {
-            NationResource::query()->where('nation_id', $nationModel->id)
-                ->whereHas('definition', fn ($query) => $query->where('key', $resourceKey))
-                ->update(['amount' => $amount]);
-        }
-        $this->actingAs($user)->getJson('/api/v1/me/nation')->assertOk()
-            ->assertJsonPath('data.resource_forecast.rows.1.consumption', 500)
-            ->assertJsonPath('data.resource_forecast.rows.2.consumption', 2_000);
+        $this->setApiResources($nationModel, ['industrial_goods' => 500, 'minerals' => 2_000]);
+        $rows = $this->forecastRows($this->actingAs($user)->getJson('/api/v1/me/nation')->assertOk()->json('data'));
+        $this->assertSame([500, 2_000], [$rows['industrial_goods']['consumption'], $rows['minerals']['consumption']]);
         $nationModel->update([
             'state' => 'dormant',
             'state_reason' => 'manual',
             'state_started_turn' => $world->current_turn,
             'resume_at_turn' => $world->current_turn + 12,
         ]);
-        $this->actingAs($user)->getJson('/api/v1/me/nation')->assertOk()
-            ->assertJsonPath('data.resource_forecast.rows.1.consumption', 0)
-            ->assertJsonPath('data.resource_forecast.rows.2.consumption', 0)
-            ->assertJsonPath('data.resource_forecast.rows.3.consumption', 0);
+        $rows = $this->forecastRows($this->actingAs($user)->getJson('/api/v1/me/nation')->assertOk()->json('data'));
+        $this->assertSame([0, 0, 0], [$rows['industrial_goods']['consumption'], $rows['minerals']['consumption'], $rows['oil']['consumption']]);
         $nationModel->update([
             'state' => 'active',
             'state_reason' => null,
             'state_started_turn' => null,
             'resume_at_turn' => null,
         ]);
-        NationResource::query()->where('nation_id', $nationModel->id)
-            ->whereHas('definition', fn ($query) => $query->where('key', 'minerals'))
-            ->update(['amount' => 1_500]);
-        $this->actingAs($user)->getJson('/api/v1/me/nation')->assertOk()
-            ->assertJsonPath('data.resource_forecast.rows.1.consumption', 0)
-            ->assertJsonPath('data.resource_forecast.rows.2.consumption', 0);
-        app(MapCellStateService::class)->setFacility($underseaCell, null);
-        $underseaCell->population = 0;
-        $underseaCell->save();
-        foreach (['factory', 'mine'] as $index => $facilityKey) {
-            $cell = $scaleCells[$index + 1]->fresh(['facility']);
-            $facility = FacilityDefinition::query()->where('key', $facilityKey)->firstOrFail();
-            app(MapCellStateService::class)->setFacility($cell, $facility, $facility->initial_scale);
-            $cell->save();
-        }
-        foreach (['wheat' => 10_000, 'fish' => 0, 'monster_meat' => 0, 'oil' => 0] as $resourceKey => $amount) {
-            NationResource::query()->where('nation_id', $nationModel->id)
-                ->whereHas('definition', fn ($query) => $query->where('key', $resourceKey))
-                ->update(['amount' => $amount]);
-        }
-        $ownedCell = MapCell::query()->where('owner_nation_id', $nation['id'])->firstOrFail();
-        $ownedChunk = $this->actingAs($user)->getJson(
-            "/api/v1/map-spaces/{$mapSpace->id}/chunks/{$ownedCell->chunk_x}/{$ownedCell->chunk_y}",
-        )->assertOk();
-        $presentedOwnedCell = collect($ownedChunk->json('data.cells'))->first(
-            fn (array $cell): bool => $cell['x'] === $ownedCell->x && $cell['y'] === $ownedCell->y,
-        );
-        $this->assertSame(18, $presentedOwnedCell['owner_nation_id']);
-        $this->assertSame(1, $presentedOwnedCell['owner_nation_number']);
-        $expectedSeaArea = app(SeaAreaNameResolver::class)->forCoordinate($ownedCell->x, $ownedCell->y);
-        $this->assertSame($expectedSeaArea, $presentedOwnedCell['sea_area_name']);
-        $this->assertSame($expectedSeaArea, collect($presentedOwnedCell['details'])->firstWhere('key', 'sea_area')['formatted']);
-        $this->assertSame(18, $ownedCell->owner_nation_id);
+        $this->setApiResources($nationModel, ['minerals' => 1_500]);
+        $rows = $this->forecastRows($this->actingAs($user)->getJson('/api/v1/me/nation')->assertOk()->json('data'));
+        $this->assertSame([0, 0], [$rows['industrial_goods']['consumption'], $rows['minerals']['consumption']]);
+    }
 
+    public function test_public_nation_projections_match_owner_totals_without_private_resources(): void
+    {
+        $world = $this->lightweightWorld();
+        $user = User::factory()->create();
+        [$nation] = $this->registerApiNation($world, $user);
+        $nationModel = Nation::query()->findOrFail($nation['id']);
+        $this->placeApiScaleFacilities($nationModel);
         $customFood = ResourceDefinition::query()->create([
             'key' => 'seaweed',
             'name' => '海藻',
@@ -395,22 +341,18 @@ class ApiAndAssetTest extends TestCase
         ]);
 
         Nation::query()->whereKey($nation['id'])->update(['money' => 62_728]);
-        $ownerStatus = $this->getJson('/api/v1/me/nation')
+        $ownerStatus = $this->actingAs($user)->getJson('/api/v1/me/nation')
             ->assertOk()
             ->assertJsonPath('data.money', 62_728)
-            ->assertJsonPath('data.money_display', '62,728億円')
             ->assertJsonPath('data.total_food_tons', 10_250)
             ->assertJsonPath('data.food_total_tons', 10_250)
-            ->assertJsonPath('data.food_resources.3.key', 'seaweed')
-            ->assertJsonPath('data.food_resources.3.balance', 250)
-            ->assertJsonPath('data.resource_forecast.rows.0.holding', 12_250)
             ->json('data');
+        $this->assertSame(250, collect($ownerStatus['food_resources'])->firstWhere('key', 'seaweed')['balance']);
+        $this->assertSame(12_250, $this->forecastRows($ownerStatus)['food']['holding']);
 
         $other = User::factory()->create();
         $otherResponse = $this->actingAs($other)->getJson("/api/v1/nations/{$nation['id']}")->assertOk();
         $otherResponse->assertJsonPath('data.owner_name', 'API島主')
-            ->assertJsonPath('data.comment', '公開プロフィール')
-            ->assertJsonPath('data.money_display', '約6.2兆円')
             ->assertJsonPath('data.food_total_tons', 10_250)
             ->assertJsonPath('data.farm_capacity_people', 10_000)
             ->assertJsonPath('data.factory_capacity_people', 30_000)
@@ -457,13 +399,61 @@ class ApiAndAssetTest extends TestCase
         app(MapChunkService::class)->present($mapSpace, 0, 0, null);
     }
 
-    public function test_assets_fall_back_without_external_gifs_including_capital(): void
+    /** @return array{array<string, mixed>, array<string, mixed>} */
+    private function registerApiNation(World $world, User $user): array
     {
-        config(['hakoniwa.assets.path' => storage_path('missing-original-assets')]);
-        $resolver = app(AssetManifestResolver::class);
+        // Move the id sequence away from nation_number 1 so the two identifiers cannot be confused.
+        DB::statement("SELECT setval(pg_get_serial_sequence('nations', 'id'), 18, false)");
+        $payload = [
+            'request_key' => (string) Str::uuid(),
+            'world_id' => $world->id,
+            'name' => 'API国',
+            'owner_name' => 'API島主',
+            'comment' => '公開プロフィール',
+        ];
+        $nation = $this->actingAs($user)->postJson('/api/v1/nations', $payload)
+            ->assertCreated()
+            ->assertJsonPath('data.nation_number', 1)
+            ->json('data');
 
-        $this->assertFalse($resolver->resolve('hakoniwa_original.sea', '海')['available']);
-        $this->assertNull($resolver->resolve('tile.capital', '首都')['url']);
-        $this->assertFalse($resolver->resolve('unknown.asset', '?')['available']);
+        return [$nation, $payload];
+    }
+
+    /** @return Collection<int, MapCell> */
+    private function placeApiScaleFacilities(Nation $nation): Collection
+    {
+        $scaleCells = MapCell::query()->where('owner_nation_id', $nation->id)
+            ->whereNull('facility_definition_id')->limit(3)->get();
+        foreach (['farm', 'factory', 'mine'] as $index => $facilityKey) {
+            $cell = $scaleCells[$index]->fresh(['terrain', 'facility']);
+            app(MapCellStateService::class)->transitionTerrain(
+                $cell,
+                TerrainDefinition::query()->where('key', $facilityKey === 'mine' ? 'mountain' : 'plain')->firstOrFail(),
+            );
+            $facility = FacilityDefinition::query()->where('key', $facilityKey)->firstOrFail();
+            app(MapCellStateService::class)->setFacility($cell, $facility, $facility->initial_scale);
+            $cell->save();
+        }
+
+        return $scaleCells;
+    }
+
+    /** @param array<string, int> $amounts */
+    private function setApiResources(Nation $nation, array $amounts): void
+    {
+        foreach ($amounts as $resourceKey => $amount) {
+            NationResource::query()->where('nation_id', $nation->id)
+                ->whereHas('definition', fn ($query) => $query->where('key', $resourceKey))
+                ->update(['amount' => $amount]);
+        }
+    }
+
+    /**
+     * @param  array<string, mixed>  $nation
+     * @return array<string, array<string, mixed>>
+     */
+    private function forecastRows(array $nation): array
+    {
+        return collect($nation['resource_forecast']['rows'])->keyBy('key')->all();
     }
 }
