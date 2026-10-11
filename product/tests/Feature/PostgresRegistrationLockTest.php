@@ -87,21 +87,13 @@ class PostgresRegistrationLockTest extends TestCase
         $this->assertDatabaseCount('nation_creation_requests', 0);
     }
 
-    public function test_name_reuse_upgrade_preserves_history_and_database_serializes_competing_names(): void
+    public function test_name_reuse_preserves_history_and_database_serializes_competing_names(): void
     {
         $world = $this->lightweightWorld();
         $owner = User::factory()->create();
         $archived = app(NationCreationService::class)->create($owner, $world, '再利用島', '旧島主');
         app(NationAbandonmentService::class)->abandon($owner, $archived, $archived->name);
         $before = $archived->fresh()->getAttributes();
-
-        // Recreate the supported pre-upgrade constraint without changing historical data.
-        DB::statement('DROP INDEX nations_world_id_name_unique');
-        DB::statement('ALTER TABLE nations ADD CONSTRAINT nations_world_id_name_unique UNIQUE (world_id, name)');
-        $migration = require database_path('migrations/2026_10_07_020000_allow_abandoned_nation_name_reuse.php');
-        DB::transaction(fn () => $migration->up());
-        $this->assertSame($before, $archived->fresh()->getAttributes());
-        $this->assertDatabaseHas('nation_creation_requests', ['nation_id' => $archived->id, 'status' => 'completed']);
 
         // Bypass the application's World lock to exercise the independent DB guarantee.
         $row = $before;
@@ -128,6 +120,8 @@ class PostgresRegistrationLockTest extends TestCase
                 $this->assertSame('23505', $exception->errorInfo[0]);
             }
             $this->assertSame(2, DB::table('nations')->where('world_id', $world->id)->where('name', $archived->name)->count());
+            $this->assertSame($before, $archived->fresh()->getAttributes());
+            $this->assertDatabaseHas('nation_creation_requests', ['nation_id' => $archived->id, 'status' => 'completed']);
         } finally {
             while (DB::transactionLevel() > 0) {
                 DB::rollBack();

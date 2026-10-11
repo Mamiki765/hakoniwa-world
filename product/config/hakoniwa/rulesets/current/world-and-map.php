@@ -2,8 +2,8 @@
 
 return [
     'payload' => [
-        'key' => 'hakoniwa-2s-plus-v27',
-        'version' => 27,
+        'key' => 'hakoniwa-2s-plus-v36',
+        'version' => 36,
         'chunk_size' => 16,
         'initial_x_min' => 0,
         'initial_x_max' => 59,

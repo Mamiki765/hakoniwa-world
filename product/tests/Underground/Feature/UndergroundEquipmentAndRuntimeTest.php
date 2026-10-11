@@ -113,10 +113,6 @@ final class UndergroundEquipmentAndRuntimeTest extends UndergroundPlayerAccessTe
         $this->assertSame($generated['instance_identity'], $final['instance_identity']);
         $quality = app(UndergroundRuntimeEquipmentGenerator::class)->qualityPercent($generated);
         $this->assertSame($quality, $final['quality_percent']);
-        // Upgrade a polished legacy item from its immutable original payload.
-        $qualityMigration = require database_path('migrations/2026_10_07_010000_add_equipment_quality.php');
-        $qualityMigration->down();
-        $qualityMigration->up();
         $this->assertSame($quality, $item->fresh()->quality_percent);
         $this->assertSame(5, $item->fresh()->polish_level);
         $this->assertSame((int) round($generated['base']['stats']['vitality'] * 2.5), $final['stats']['vitality']);

@@ -1075,6 +1075,121 @@ return [
                     'settlement_overbuild' => true,
                 ],
             ],
+            35 => [
+                'key' => 'build_wind_power',
+                'name' => '風力発電所建設',
+                'description' => '45〜135MWを発電します。増築はありません。被災した設備を建築費の半額で修理できます。',
+                'target_type' => 'cell',
+                'target_terrain_keys' => [
+                    0 => 'plain',
+                ],
+                'target_facility_keys' => [
+                ],
+                'requires_empty_facility' => true,
+                'cost_money' => 200,
+                'required_resources' => [
+                ],
+                'execution_phase' => 'facility',
+                'result_terrain_key' => null,
+                'result_facility_key' => 'wind_power',
+                'sort_order' => 153,
+                'metadata' => [
+                    'consumes_turn' => true,
+                    'execution_deferred' => false,
+                ],
+            ],
+            36 => [
+                'key' => 'build_condenser',
+                'name' => 'コンデンサ建設',
+                'description' => '電力を1,200MWまで次のターンへ持ち越せます。増築はありません。',
+                'target_type' => 'cell',
+                'target_terrain_keys' => [
+                    0 => 'plain',
+                ],
+                'target_facility_keys' => [
+                ],
+                'requires_empty_facility' => true,
+                'cost_money' => 300,
+                'required_resources' => [
+                ],
+                'execution_phase' => 'facility',
+                'result_terrain_key' => null,
+                'result_facility_key' => 'condenser',
+                'sort_order' => 154,
+                'metadata' => [
+                    'consumes_turn' => true,
+                    'execution_deferred' => false,
+                ],
+            ],
+            37 => [
+                'key' => 'build_pizzeria',
+                'name' => 'ピザ屋建設',
+                'description' => '食料と電力から売上を得ます。同じ場所で増築でき、人口は使いません。',
+                'target_type' => 'cell',
+                'target_terrain_keys' => [
+                    0 => 'plain',
+                ],
+                'target_facility_keys' => [
+                ],
+                'requires_empty_facility' => true,
+                'cost_money' => 100,
+                'required_resources' => [
+                ],
+                'execution_phase' => 'facility',
+                'result_terrain_key' => null,
+                'result_facility_key' => 'pizzeria',
+                'sort_order' => 155,
+                'metadata' => [
+                    'consumes_turn' => true,
+                    'execution_deferred' => false,
+                ],
+            ],
+            38 => [
+                'key' => 'build_thermal_power',
+                'name' => '火力発電所建設',
+                'description' => '石油を優先し、不足分は鉱物を使って半分の出力で発電します。200MWから600MWまで増築できます。',
+                'target_type' => 'cell',
+                'target_terrain_keys' => [
+                    0 => 'plain',
+                ],
+                'target_facility_keys' => [
+                ],
+                'requires_empty_facility' => true,
+                'cost_money' => 300,
+                'required_resources' => [
+                ],
+                'execution_phase' => 'facility',
+                'result_terrain_key' => null,
+                'result_facility_key' => 'thermal_power',
+                'sort_order' => 156,
+                'metadata' => [
+                    'consumes_turn' => true,
+                    'execution_deferred' => false,
+                ],
+            ],
+            39 => [
+                'key' => 'build_undersea_fire_station',
+                'name' => '海底消防署建設',
+                'description' => '自国領から3hex以内の海に建設します。維持費は毎ターン6億円。周囲2hexの海底施設の火災を1件100億円で防ぎます。',
+                'target_type' => 'cell',
+                'target_terrain_keys' => [
+                    0 => 'sea',
+                ],
+                'target_facility_keys' => [
+                ],
+                'requires_empty_facility' => true,
+                'cost_money' => 1000,
+                'required_resources' => [
+                ],
+                'execution_phase' => 'facility',
+                'result_terrain_key' => 'sea',
+                'result_facility_key' => 'undersea_fire_station',
+                'sort_order' => 126,
+                'metadata' => [
+                    'consumes_turn' => true,
+                    'execution_deferred' => false,
+                ],
+            ],
         ],
         'production_definitions' => [
             0 => [

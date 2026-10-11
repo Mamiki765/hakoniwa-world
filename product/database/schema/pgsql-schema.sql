@@ -2,10 +2,10 @@
 -- PostgreSQL database dump
 --
 
-\restrict AIHFphxJP48UpE3pFUEXLH31hK9jVCb4eqFdqiUNflydUNPiXW2UCB06T64hwuO
+\restrict Q3LQLrFiwNT9eNOjUhXS5htkFYThYabBnadfRnVobhzKBAkd84F0ohx7gDryyZA
 
--- Dumped from database version 18.4 (Debian 18.4-1.pgdg12+1)
--- Dumped by pg_dump version 18.4 (Debian 18.4-1.pgdg12+1)
+-- Dumped from database version 18.4
+-- Dumped by pg_dump version 18.4
 
 SET statement_timeout = 0;
 SET lock_timeout = 0;
@@ -18,8 +18,6 @@ SET check_function_bodies = false;
 SET xmloption = content;
 SET client_min_messages = warning;
 SET row_security = off;
-
-
 
 --
 -- Name: enforce_queue_item_world_ruleset_match(); Type: FUNCTION; Schema: public; Owner: -
@@ -574,7 +572,7 @@ CREATE TABLE public.announcements (
     updated_at timestamp(0) with time zone,
     deleted_at timestamp(0) with time zone,
     body_format character varying(255) DEFAULT 'plain_text'::character varying NOT NULL,
-    CONSTRAINT announcements_body_format_check CHECK (((body_format)::text = ANY ((ARRAY['plain_text'::character varying, 'markdown'::character varying])::text[])))
+    CONSTRAINT announcements_body_format_check CHECK (((body_format)::text = ANY (ARRAY[('plain_text'::character varying)::text, ('markdown'::character varying)::text])))
 );
 
 
@@ -793,7 +791,7 @@ CREATE TABLE public.buried_treasures (
     created_at timestamp(0) without time zone,
     updated_at timestamp(0) without time zone,
     CONSTRAINT buried_treasures_reward_check CHECK ((jsonb_typeof(reward_snapshot) = 'object'::text)),
-    CONSTRAINT buried_treasures_source_check CHECK (((source)::text = ANY ((ARRAY['pirate_sink'::character varying, 'treasure_ship_sink'::character varying, 'meteor'::character varying, 'huge_meteor'::character varying, 'natural'::character varying])::text[]))),
+    CONSTRAINT buried_treasures_source_check CHECK (((source)::text = ANY (ARRAY[('pirate_sink'::character varying)::text, ('treasure_ship_sink'::character varying)::text, ('meteor'::character varying)::text, ('huge_meteor'::character varying)::text, ('natural'::character varying)::text]))),
     CONSTRAINT buried_treasures_state_check CHECK (((((state)::text = 'active'::text) AND (resolved_by_nation_id IS NULL) AND (resolved_turn IS NULL) AND (resolution_reason IS NULL) AND (resolved_at IS NULL)) OR (((state)::text = 'collected'::text) AND (resolved_by_nation_id IS NOT NULL) AND (resolved_turn IS NOT NULL) AND ((resolution_reason)::text = 'collected'::text) AND (resolved_at IS NOT NULL)) OR (((state)::text = 'removed'::text) AND (resolved_by_nation_id IS NULL) AND (resolved_turn IS NOT NULL) AND (resolution_reason IS NOT NULL) AND (resolved_at IS NOT NULL)))),
     CONSTRAINT buried_treasures_turn_check CHECK (((created_turn >= 1) AND ((resolved_turn IS NULL) OR (resolved_turn >= created_turn))))
 );
@@ -932,7 +930,7 @@ CREATE TABLE public.compensation_grant_items (
     created_at timestamp(0) without time zone,
     updated_at timestamp(0) without time zone,
     CONSTRAINT compensation_grant_items_amount_check CHECK (((amount > 0) AND (claimed_amount >= 0) AND (claimed_amount <= amount))),
-    CONSTRAINT compensation_grant_items_asset_check CHECK (((asset_key)::text = ANY ((ARRAY['money'::character varying, 'wheat'::character varying, 'fish'::character varying, 'meat'::character varying, 'oil'::character varying, 'paradox'::character varying, 'skip_ticket'::character varying, 'underground_g'::character varying])::text[])))
+    CONSTRAINT compensation_grant_items_asset_check CHECK (((asset_key)::text = ANY (ARRAY[('money'::character varying)::text, ('wheat'::character varying)::text, ('fish'::character varying)::text, ('meat'::character varying)::text, ('oil'::character varying)::text, ('paradox'::character varying)::text, ('skip_ticket'::character varying)::text, ('underground_g'::character varying)::text])))
 );
 
 
@@ -972,7 +970,7 @@ CREATE TABLE public.compensation_grants (
     created_at timestamp(0) without time zone,
     updated_at timestamp(0) without time zone,
     expires_at timestamp with time zone NOT NULL,
-    CONSTRAINT compensation_grants_status_check CHECK (((status)::text = ANY ((ARRAY['pending'::character varying, 'partial'::character varying, 'claimed'::character varying, 'expired'::character varying])::text[])))
+    CONSTRAINT compensation_grants_status_check CHECK (((status)::text = ANY (ARRAY[('pending'::character varying)::text, ('partial'::character varying)::text, ('claimed'::character varying)::text, ('expired'::character varying)::text])))
 );
 
 
@@ -1234,7 +1232,10 @@ CREATE TABLE public.map_chunks (
     created_at timestamp(0) without time zone,
     updated_at timestamp(0) without time zone,
     chunk_x integer NOT NULL,
-    chunk_y integer NOT NULL
+    chunk_y integer NOT NULL,
+    weather_key character varying(255),
+    weather_turn bigint,
+    CONSTRAINT map_chunks_weather_check CHECK ((((weather_key IS NULL) AND (weather_turn IS NULL)) OR ((weather_key IS NOT NULL) AND (weather_turn IS NOT NULL) AND (weather_turn >= 0) AND ((weather_key)::text = ANY ((ARRAY['sunny'::character varying, 'cloudy'::character varying, 'rain'::character varying, 'snow'::character varying, 'thunder'::character varying, 'typhoon'::character varying, 'meteor_shower'::character varying, 'huge_meteor'::character varying])::text[])))))
 );
 
 
@@ -1648,7 +1649,8 @@ CREATE TABLE public.nation_command_queue_bulk_requests (
     candidate_count integer NOT NULL,
     inserted_count integer NOT NULL,
     truncated_count integer NOT NULL,
-    created_at timestamp(0) with time zone NOT NULL
+    created_at timestamp(0) with time zone NOT NULL,
+    request_fingerprint character varying(64)
 );
 
 
@@ -1705,7 +1707,7 @@ CREATE TABLE public.nation_command_queue_items (
     paradox_execution_count integer DEFAULT 0 NOT NULL,
     CONSTRAINT nation_command_queue_items_quantity_check CHECK (((quantity >= 1) AND (quantity <= 99))),
     CONSTRAINT nation_command_queue_items_request_fingerprint_check CHECK (((request_fingerprint IS NULL) OR (request_fingerprint ~ '^[0-9a-f]{64}$'::text))),
-    CONSTRAINT nation_command_queue_items_target_context_check CHECK (((((target_context)::text = 'surface_cell'::text) AND (command_definition_id IS NOT NULL) AND (underground_command_key IS NULL) AND (target_x IS NOT NULL) AND (target_y IS NOT NULL) AND (target_layer IS NULL) AND (target_slot_index IS NULL)) OR (((target_context)::text = 'underground_slot'::text) AND (command_definition_id IS NULL) AND ((underground_command_key)::text = ANY ((ARRAY['build_underground_city'::character varying, 'build_underground_farm'::character varying, 'build_underground_factory'::character varying, 'build_underground_missile_base'::character varying, 'remove_underground_facility'::character varying])::text[])) AND (target_x IS NULL) AND (target_y IS NULL) AND (target_layer >= 1) AND ((target_slot_index >= 0) AND (target_slot_index <= 3)))))
+    CONSTRAINT nation_command_queue_items_target_context_check CHECK (((((target_context)::text = 'surface_cell'::text) AND (command_definition_id IS NOT NULL) AND (underground_command_key IS NULL) AND (target_x IS NOT NULL) AND (target_y IS NOT NULL) AND (target_layer IS NULL) AND (target_slot_index IS NULL)) OR (((target_context)::text = 'underground_slot'::text) AND (command_definition_id IS NULL) AND ((underground_command_key)::text = ANY (ARRAY[('build_underground_city'::character varying)::text, ('build_underground_farm'::character varying)::text, ('build_underground_factory'::character varying)::text, ('build_underground_missile_base'::character varying)::text, ('remove_underground_facility'::character varying)::text])) AND (target_x IS NULL) AND (target_y IS NULL) AND (target_layer >= 1) AND ((target_slot_index >= 0) AND (target_slot_index <= 3)))))
 );
 
 
@@ -2027,7 +2029,7 @@ CREATE TABLE public.nation_underground_facilities (
     facility_key character varying(64) NOT NULL,
     created_at timestamp(0) without time zone,
     updated_at timestamp(0) without time zone,
-    CONSTRAINT nation_underground_facilities_key_check CHECK (((facility_key)::text = ANY ((ARRAY['underground_city'::character varying, 'underground_farm'::character varying, 'underground_factory'::character varying, 'underground_missile_base'::character varying])::text[]))),
+    CONSTRAINT nation_underground_facilities_key_check CHECK (((facility_key)::text = ANY (ARRAY[('underground_city'::character varying)::text, ('underground_farm'::character varying)::text, ('underground_factory'::character varying)::text, ('underground_missile_base'::character varying)::text]))),
     CONSTRAINT nation_underground_facilities_layer_check CHECK ((layer >= 1)),
     CONSTRAINT nation_underground_facilities_slot_check CHECK (((slot_index >= 0) AND (slot_index <= 3)))
 );
@@ -2100,6 +2102,18 @@ CREATE SEQUENCE public.nations_id_seq
 --
 
 ALTER SEQUENCE public.nations_id_seq OWNED BY public.nations.id;
+
+
+--
+-- Name: oil_discovery_backfills; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.oil_discovery_backfills (
+    world_id bigint NOT NULL,
+    cutoff_audit_id bigint NOT NULL,
+    cutoff_turn bigint NOT NULL,
+    applied_at timestamp(0) without time zone
+);
 
 
 --
@@ -2238,10 +2252,11 @@ CREATE TABLE public.secretaries (
     main_image_updated_at timestamp(0) with time zone,
     nickname character varying(6),
     portrait_preference character varying(16) DEFAULT 'full_body'::character varying NOT NULL,
+    equipped_title_key character varying(255),
     CONSTRAINT secretaries_main_image_state_check CHECK ((((main_image_path IS NULL) AND (main_image_mime_type IS NULL) AND (main_image_creation_method IS NULL) AND (main_image_credit IS NULL) AND (main_image_updated_at IS NULL)) OR (((main_image_path)::text ~ '^[0-9a-f]{64}\.(png|jpg|webp|gif)$'::text) AND ((main_image_mime_type)::text = ANY (ARRAY[('image/png'::character varying)::text, ('image/jpeg'::character varying)::text, ('image/webp'::character varying)::text, ('image/gif'::character varying)::text])) AND ((main_image_creation_method)::text = ANY (ARRAY[('self_made'::character varying)::text, ('ai_generated'::character varying)::text, ('commissioned_or_permitted'::character varying)::text, ('other'::character varying)::text])) AND ((main_image_credit IS NULL) OR (char_length((main_image_credit)::text) <= 160)) AND (main_image_updated_at IS NOT NULL)))),
     CONSTRAINT secretaries_name_state_check CHECK ((((name IS NULL) AND (named_at IS NULL)) OR ((name IS NOT NULL) AND (named_at IS NOT NULL)))),
     CONSTRAINT secretaries_nickname_check CHECK (((nickname IS NULL) OR ((char_length((nickname)::text) >= 1) AND (char_length((nickname)::text) <= 6)))),
-    CONSTRAINT secretaries_portrait_preference_check CHECK (((portrait_preference)::text = ANY ((ARRAY['full_body'::character varying, 'bust'::character varying])::text[]))),
+    CONSTRAINT secretaries_portrait_preference_check CHECK (((portrait_preference)::text = ANY (ARRAY[('full_body'::character varying)::text, ('bust'::character varying)::text]))),
     CONSTRAINT secretaries_profile_biography_length_check CHECK ((char_length(profile_biography) <= 1000))
 );
 
@@ -2349,11 +2364,11 @@ CREATE TABLE public.secretary_images (
     credit character varying(160),
     created_at timestamp(0) without time zone,
     updated_at timestamp(0) without time zone,
-    CONSTRAINT secretary_images_creation_method_check CHECK (((creation_method)::text = ANY ((ARRAY['self_made'::character varying, 'ai_generated'::character varying, 'commissioned_or_permitted'::character varying, 'other'::character varying])::text[]))),
+    CONSTRAINT secretary_images_creation_method_check CHECK (((creation_method)::text = ANY (ARRAY[('self_made'::character varying)::text, ('ai_generated'::character varying)::text, ('commissioned_or_permitted'::character varying)::text, ('other'::character varying)::text]))),
     CONSTRAINT secretary_images_credit_length_check CHECK (((char_length((credit)::text) >= 1) AND (char_length((credit)::text) <= 160))),
-    CONSTRAINT secretary_images_mime_check CHECK (((mime_type)::text = ANY ((ARRAY['image/png'::character varying, 'image/jpeg'::character varying, 'image/webp'::character varying, 'image/gif'::character varying])::text[]))),
+    CONSTRAINT secretary_images_mime_check CHECK (((mime_type)::text = ANY (ARRAY[('image/png'::character varying)::text, ('image/jpeg'::character varying)::text, ('image/webp'::character varying)::text, ('image/gif'::character varying)::text]))),
     CONSTRAINT secretary_images_path_check CHECK (((path)::text ~ '^[0-9a-f]{64}\.(png|jpg|webp|gif)$'::text)),
-    CONSTRAINT secretary_images_slot_check CHECK (((slot)::text = ANY ((ARRAY['icon'::character varying, 'bust'::character varying, 'full_body'::character varying, 'awakening_icon'::character varying, 'awakening_bust'::character varying, 'awakening_full_body'::character varying])::text[])))
+    CONSTRAINT secretary_images_slot_check CHECK (((slot)::text = ANY (ARRAY[('icon'::character varying)::text, ('bust'::character varying)::text, ('full_body'::character varying)::text, ('awakening_icon'::character varying)::text, ('awakening_bust'::character varying)::text, ('awakening_full_body'::character varying)::text])))
 );
 
 
@@ -2507,7 +2522,7 @@ CREATE TABLE public.secretary_lending_participations (
     settled_at timestamp(0) with time zone NOT NULL,
     created_at timestamp(0) without time zone,
     updated_at timestamp(0) without time zone,
-    CONSTRAINT secretary_lending_participation_result_check CHECK (((result)::text = ANY ((ARRAY['victory'::character varying, 'defeat'::character varying, 'withdrawal'::character varying])::text[]))),
+    CONSTRAINT secretary_lending_participation_result_check CHECK (((result)::text = ANY (ARRAY[('victory'::character varying)::text, ('defeat'::character varying)::text, ('withdrawal'::character varying)::text]))),
     CONSTRAINT secretary_lending_participation_ticket_check CHECK ((ticket_delta = ANY (ARRAY[0, 1])))
 );
 
@@ -2577,7 +2592,7 @@ CREATE TABLE public.secretary_skills (
     created_at timestamp(0) with time zone,
     updated_at timestamp(0) with time zone,
     CONSTRAINT secretary_skills_experience_check CHECK ((experience >= 0)),
-    CONSTRAINT secretary_skills_key_check CHECK (((skill_key)::text = ANY ((ARRAY['agricultural_policy'::character varying, 'specialty_development'::character varying, 'gold_vein_survey'::character varying, 'forest_management'::character varying, 'final_defense_line'::character varying, 'declining_birthrate_policy'::character varying, 'indomitable'::character varying, 'ship_operations'::character varying, 'navy'::character varying])::text[]))),
+    CONSTRAINT secretary_skills_key_check CHECK (((skill_key)::text = ANY ((ARRAY['agricultural_policy'::character varying, 'specialty_development'::character varying, 'gold_vein_survey'::character varying, 'oil_development'::character varying, 'forest_management'::character varying, 'final_defense_line'::character varying, 'declining_birthrate_policy'::character varying, 'indomitable'::character varying, 'ship_operations'::character varying, 'navy'::character varying, 'energy_saving'::character varying])::text[]))),
     CONSTRAINT secretary_skills_level_check CHECK ((level >= 0))
 );
 
@@ -2652,7 +2667,7 @@ CREATE TABLE public.ships (
     updated_at timestamp(0) without time zone,
     population bigint,
     CONSTRAINT ships_heading_check CHECK (((heading IS NULL) OR ((heading >= 0) AND (heading <= 5)))),
-    CONSTRAINT ships_hp_check CHECK ((((max_hp >= 1) AND (max_hp <= 32767)) AND ((current_hp >= 0) AND (current_hp <= max_hp)))),
+    CONSTRAINT ships_hp_check CHECK (((max_hp >= 1) AND (max_hp <= 32767) AND ((current_hp >= 0) AND (current_hp <= max_hp)))),
     CONSTRAINT ships_ocean_population_check CHECK (((((ship_type_key)::text = 'pirate'::text) AND (nation_id IS NULL) AND (population > 0)) OR (((ship_type_key)::text <> 'pirate'::text) AND (population IS NULL)))),
     CONSTRAINT ships_state_check CHECK (((((state)::text = 'active'::text) AND (map_cell_id IS NOT NULL) AND (current_hp >= 1) AND (removal_reason IS NULL) AND (removed_at IS NULL)) OR (((state)::text = 'removed'::text) AND (map_cell_id IS NULL) AND (removal_reason IS NOT NULL) AND (removed_at IS NOT NULL)))),
     CONSTRAINT ships_version_check CHECK ((version >= 1))
@@ -2874,7 +2889,7 @@ CREATE TABLE public.underground_battles (
     statistics jsonb,
     compaction_version smallint,
     compacted_at timestamp(0) with time zone,
-    CONSTRAINT underground_battles_activity_type_check CHECK (((activity_type)::text = ANY ((ARRAY['exploration'::character varying, 'trial'::character varying, 'tutorial'::character varying, 'story'::character varying, 'playtest'::character varying, 'guide_duel'::character varying])::text[]))),
+    CONSTRAINT underground_battles_activity_type_check CHECK (((activity_type)::text = ANY ((ARRAY['exploration'::character varying, 'trial'::character varying, 'tutorial'::character varying, 'story'::character varying, 'playtest'::character varying, 'guide_duel'::character varying, 'event_battle'::character varying])::text[]))),
     CONSTRAINT underground_battles_combat_level_after_positive CHECK ((combat_level_after >= 1)),
     CONSTRAINT underground_battles_combat_level_before_positive CHECK ((combat_level_before >= 1)),
     CONSTRAINT underground_battles_combat_xp_after_non_negative CHECK ((combat_xp_after >= 0)),
@@ -2932,7 +2947,7 @@ CREATE TABLE public.underground_content_clear_progress (
     updated_at timestamp(0) without time zone,
     first_cleared_at timestamp(0) with time zone,
     CONSTRAINT underground_content_clear_progress_count_check CHECK (((actual_clear_count >= 0) AND (total_clear_count >= actual_clear_count))),
-    CONSTRAINT underground_content_clear_progress_type_check CHECK (((content_type)::text = ANY ((ARRAY['hunting_ground'::character varying, 'trial'::character varying, 'guide_duel'::character varying])::text[])))
+    CONSTRAINT underground_content_clear_progress_type_check CHECK (((content_type)::text = ANY (ARRAY[('hunting_ground'::character varying)::text, ('trial'::character varying)::text, ('guide_duel'::character varying)::text])))
 );
 
 
@@ -3017,7 +3032,7 @@ CREATE TABLE public.underground_intro_requests (
     updated_at timestamp(0) without time zone,
     result_payload jsonb,
     CONSTRAINT underground_intro_requests_fingerprint_check CHECK ((request_fingerprint ~ '^[0-9a-f]{64}$'::text)),
-    CONSTRAINT underground_intro_requests_operation_check CHECK (((operation)::text = ANY ((ARRAY['entry'::character varying, 'advance'::character varying, 'tutorial'::character varying, 'shopkeeper_name'::character varying, 'scripted_loss'::character varying, 'contract'::character varying, 'growth_path'::character varying, 'inn_rest'::character varying, 'bank_transfer'::character varying, 'playtest'::character varying, 'stp_allocate'::character varying, 'skill_acquire'::character varying, 'active_loadout'::character varying, 'awakening_message'::character varying, 'equipment_purchase'::character varying, 'equipment_sell'::character varying, 'equipment_equip'::character varying, 'equipment_unequip'::character varying, 'respec'::character varying, 'equipment_bulk_sell'::character varying, 'ai_configuration'::character varying, 'awakening_technique'::character varying, 'recollection_read'::character varying, 'rental_party'::character varying, 'residence_purchase'::character varying, 'lounge_event'::character varying, 'home_background'::character varying, 'guide_conversation'::character varying, 'distorted_stone_purchase'::character varying, 'equipment_polish'::character varying])::text[]))),
+    CONSTRAINT underground_intro_requests_operation_check CHECK ((((operation)::text = ANY (ARRAY[('entry'::character varying)::text, ('advance'::character varying)::text, ('tutorial'::character varying)::text, ('shopkeeper_name'::character varying)::text, ('scripted_loss'::character varying)::text, ('contract'::character varying)::text, ('growth_path'::character varying)::text, ('inn_rest'::character varying)::text, ('bank_transfer'::character varying)::text, ('playtest'::character varying)::text, ('stp_allocate'::character varying)::text, ('skill_acquire'::character varying)::text, ('active_loadout'::character varying)::text, ('awakening_message'::character varying)::text, ('equipment_purchase'::character varying)::text, ('equipment_sell'::character varying)::text, ('equipment_equip'::character varying)::text, ('equipment_unequip'::character varying)::text, ('respec'::character varying)::text, ('equipment_bulk_sell'::character varying)::text, ('ai_configuration'::character varying)::text, ('awakening_technique'::character varying)::text, ('recollection_read'::character varying)::text, ('rental_party'::character varying)::text, ('residence_purchase'::character varying)::text, ('lounge_event'::character varying)::text, ('home_background'::character varying)::text, ('guide_conversation'::character varying)::text, ('distorted_stone_purchase'::character varying)::text, ('equipment_polish'::character varying)::text])) OR ((operation)::text = 'equipment_protection'::text))),
     CONSTRAINT underground_intro_requests_result_check CHECK ((((operation)::text = 'guide_conversation'::text) = (result_payload IS NOT NULL))),
     CONSTRAINT underground_intro_requests_stage_check CHECK (((resulting_stage)::text = ANY (ARRAY[('not_started'::character varying)::text, ('initial_descent'::character varying)::text, ('tutorial_ready'::character varying)::text, ('escape_pending'::character varying)::text, ('returned_after_tutorial'::character varying)::text, ('shopkeeper_encounter'::character varying)::text, ('shopkeeper_naming'::character varying)::text, ('special_loss_pending'::character varying)::text, ('special_loss_complete'::character varying)::text, ('shop_explanation'::character varying)::text, ('contract_ready'::character varying)::text, ('crystal_selection'::character varying)::text, ('growth_path_selected'::character varying)::text, ('underground_open'::character varying)::text])))
 );
@@ -3065,11 +3080,13 @@ CREATE TABLE public.underground_owned_equipment (
     source_reward_index bigint,
     source_skip_batch_id bigint,
     polish_level integer DEFAULT 0 NOT NULL,
+    quality_percent smallint,
+    is_protected boolean DEFAULT false NOT NULL,
     CONSTRAINT underground_equipment_polish_check CHECK (((polish_level >= 0) AND ((polish_level = 0) OR (((instance_kind)::text = 'generated'::text) AND ((generated_payload ->> 'category'::text) = 'resonance'::text))))),
     CONSTRAINT underground_equipment_provenance_check CHECK ((((source_battle_id IS NULL) OR (source_battle_id > 0)) AND ((source_skip_settlement_id IS NULL) OR (source_skip_settlement_id > 0)) AND ((source_skip_batch_id IS NULL) OR (source_skip_batch_id > 0)) AND (((instance_kind)::text <> 'generated'::text) OR (source_battle_id IS NOT NULL) OR (source_reward_index IS NOT NULL)))),
     CONSTRAINT underground_owned_equipment_identity_check CHECK ((((definition_key)::text <> ''::text) AND ((catalog_identity)::text <> ''::text))),
     CONSTRAINT underground_owned_equipment_instance_check CHECK (((((instance_kind)::text = 'fixed'::text) AND (instance_identity IS NULL) AND (generator_identity IS NULL) AND (generated_payload IS NULL) AND (source_battle_id IS NULL) AND (source_skip_settlement_id IS NULL) AND (source_skip_batch_id IS NULL) AND (source_reward_index IS NULL)) OR (((instance_kind)::text = 'generated'::text) AND (instance_identity IS NOT NULL) AND (generator_identity IS NOT NULL) AND (generated_payload IS NOT NULL) AND (grant_key IS NOT NULL) AND (((source_battle_id IS NOT NULL) AND (source_skip_settlement_id IS NULL) AND (source_skip_batch_id IS NULL) AND ((source_reward_index IS NULL) OR (source_reward_index >= 1))) OR ((source_battle_id IS NULL) AND (source_skip_settlement_id IS NOT NULL) AND (source_skip_batch_id IS NULL) AND (source_reward_index >= 1)) OR ((source_battle_id IS NULL) AND (source_skip_settlement_id IS NULL) AND (source_skip_batch_id IS NOT NULL) AND (source_reward_index >= 1)))))),
-    CONSTRAINT underground_owned_equipment_slot_check CHECK (((equipped_slot IS NULL) OR ((equipped_slot)::text = ANY ((ARRAY['weapon'::character varying, 'armor'::character varying, 'accessory_1'::character varying, 'accessory_2'::character varying, 'accessory_3'::character varying, 'resonance'::character varying])::text[]))))
+    CONSTRAINT underground_owned_equipment_slot_check CHECK (((equipped_slot IS NULL) OR ((equipped_slot)::text = ANY (ARRAY[('weapon'::character varying)::text, ('armor'::character varying)::text, ('accessory_1'::character varying)::text, ('accessory_2'::character varying)::text, ('accessory_3'::character varying)::text, ('resonance'::character varying)::text]))))
 );
 
 
@@ -3149,7 +3166,7 @@ CREATE TABLE public.underground_party_members (
     created_at timestamp(0) without time zone,
     updated_at timestamp(0) without time zone,
     CONSTRAINT underground_party_members_level_check CHECK (((original_level >= 1) AND (effective_level >= 1) AND (effective_level <= original_level))),
-    CONSTRAINT underground_party_members_source_check CHECK (((source_type)::text = ANY ((ARRAY['self'::character varying, 'borrowed_secretary'::character varying, 'companion'::character varying])::text[])))
+    CONSTRAINT underground_party_members_source_check CHECK (((source_type)::text = ANY (ARRAY[('self'::character varying)::text, ('borrowed_secretary'::character varying)::text, ('companion'::character varying)::text])))
 );
 
 
@@ -3223,10 +3240,15 @@ CREATE TABLE public.underground_profiles (
     polishing_tutorial_completed_at timestamp(0) with time zone,
     otherworld_discovered_at timestamp(0) with time zone,
     yunagi_harbor_key_balance bigint DEFAULT '0'::bigint NOT NULL,
+    yunagi_harbor_intro_completed_at timestamp(0) with time zone,
+    mad_moon_unlocked_at timestamp(0) with time zone,
+    mad_moon_intro_completed_at timestamp(0) with time zone,
+    mad_moon_cleared_at timestamp(0) with time zone,
+    mad_moon_victory_scene_completed_at timestamp(0) with time zone,
     CONSTRAINT underground_otherworld_balances_check CHECK (((distorted_stone_balance >= 0) AND (distorted_stone_purchase_count >= 0))),
     CONSTRAINT underground_profiles_awakening_gauge_check CHECK (((awakening_gauge >= 0) AND (awakening_gauge <= 1000))),
-    CONSTRAINT underground_profiles_awakening_message_check CHECK (((awakening_message IS NULL) OR (((char_length((awakening_message)::text) >= 1) AND (char_length((awakening_message)::text) <= 100)) AND ((awakening_message)::text !~ '[\r\n]'::text)))),
-    CONSTRAINT underground_profiles_awakening_technique_check CHECK (((awakening_technique_key IS NULL) OR (((growth_path_key)::text = 'martial_red'::text) AND ((awakening_technique_key)::text = ANY ((ARRAY['decisive_heavenrend'::character varying, 'shura_bloodline'::character varying])::text[]))) OR (((growth_path_key)::text = 'guardianship_blue'::text) AND ((awakening_technique_key)::text = ANY ((ARRAY['absolute_aegis'::character varying, 'fortress_strike'::character varying])::text[]))) OR (((growth_path_key)::text = 'blessing_green'::text) AND ((awakening_technique_key)::text = ANY ((ARRAY['life_requiem'::character varying, 'judgment_light'::character varying])::text[]))) OR (((growth_path_key)::text = 'free_black'::text) AND ((awakening_technique_key)::text = ANY ((ARRAY['limitless_reprise'::character varying, 'formless_strike'::character varying])::text[]))))),
+    CONSTRAINT underground_profiles_awakening_message_check CHECK (((awakening_message IS NULL) OR ((char_length((awakening_message)::text) >= 1) AND (char_length((awakening_message)::text) <= 100) AND ((awakening_message)::text !~ '[\r\n]'::text)))),
+    CONSTRAINT underground_profiles_awakening_technique_check CHECK (((awakening_technique_key IS NULL) OR (((growth_path_key)::text = 'martial_red'::text) AND ((awakening_technique_key)::text = ANY (ARRAY[('decisive_heavenrend'::character varying)::text, ('shura_bloodline'::character varying)::text]))) OR (((growth_path_key)::text = 'guardianship_blue'::text) AND ((awakening_technique_key)::text = ANY (ARRAY[('absolute_aegis'::character varying)::text, ('fortress_strike'::character varying)::text]))) OR (((growth_path_key)::text = 'blessing_green'::text) AND ((awakening_technique_key)::text = ANY (ARRAY[('life_requiem'::character varying)::text, ('judgment_light'::character varying)::text]))) OR (((growth_path_key)::text = 'free_black'::text) AND ((awakening_technique_key)::text = ANY (ARRAY[('limitless_reprise'::character varying)::text, ('formless_strike'::character varying)::text]))))),
     CONSTRAINT underground_profiles_banked_shard_balance_non_negative CHECK ((banked_shard_balance >= 0)),
     CONSTRAINT underground_profiles_combat_level_positive CHECK ((combat_level >= 1)),
     CONSTRAINT underground_profiles_combat_xp_non_negative CHECK ((combat_xp >= 0)),
@@ -3289,8 +3311,8 @@ CREATE TABLE public.underground_receipt_rollups (
     deleted_receipt_count bigint DEFAULT '0'::bigint NOT NULL,
     last_deletion jsonb,
     CONSTRAINT underground_receipt_rollups_counts_check CHECK (((verified_through_id > 0) AND (aggregation_version > 0) AND (receipt_count > 0) AND ((battle_count >= 0) AND (battle_count <= receipt_count)) AND ((victory_count >= 0) AND (victory_count <= battle_count)) AND ((damage_dealt_known_count >= 0) AND (damage_dealt_known_count <= battle_count)) AND ((damage_received_known_count >= 0) AND (damage_received_known_count <= battle_count)) AND (damage_dealt_sum >= 0) AND (damage_received_sum >= 0) AND (skip_tickets_used >= 0))),
-    CONSTRAINT underground_receipt_rollups_deletion_check CHECK ((((deleted_through_id >= 0) AND (deleted_through_id <= verified_through_id)) AND ((deleted_receipt_count >= 0) AND (deleted_receipt_count <= receipt_count)))),
-    CONSTRAINT underground_receipt_rollups_stream_check CHECK (((stream)::text = ANY ((ARRAY['battle'::character varying, 'skip'::character varying, 'bulk_skip'::character varying, 'intro_request'::character varying])::text[])))
+    CONSTRAINT underground_receipt_rollups_deletion_check CHECK (((deleted_through_id >= 0) AND (deleted_through_id <= verified_through_id) AND ((deleted_receipt_count >= 0) AND (deleted_receipt_count <= receipt_count)))),
+    CONSTRAINT underground_receipt_rollups_stream_check CHECK (((stream)::text = ANY (ARRAY[('battle'::character varying)::text, ('skip'::character varying)::text, ('bulk_skip'::character varying)::text, ('intro_request'::character varying)::text])))
 );
 
 
@@ -3358,7 +3380,7 @@ CREATE TABLE public.underground_skip_batches (
     settled_at timestamp(0) with time zone NOT NULL,
     created_at timestamp(0) without time zone,
     updated_at timestamp(0) without time zone,
-    CONSTRAINT underground_skip_batches_cost_check CHECK (((execution_count >= 1) AND (ticket_cost >= 1) AND ((content_type)::text = ANY ((ARRAY['hunting_ground'::character varying, 'trial'::character varying])::text[])))),
+    CONSTRAINT underground_skip_batches_cost_check CHECK (((execution_count >= 1) AND (ticket_cost >= 1) AND ((content_type)::text = ANY (ARRAY[('hunting_ground'::character varying)::text, ('trial'::character varying)::text])))),
     CONSTRAINT underground_skip_batches_fingerprint_check CHECK ((request_fingerprint ~ '^[0-9a-f]{64}$'::text)),
     CONSTRAINT underground_skip_batches_progression_check CHECK (((combat_level_before >= 1) AND (combat_level_after >= combat_level_before) AND (combat_xp_after >= combat_xp_before) AND (shard_balance_after >= shard_balance_before)))
 );
@@ -3516,6 +3538,39 @@ ALTER SEQUENCE public.underground_trial_runs_id_seq OWNED BY public.underground_
 
 
 --
+-- Name: user_achievements; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.user_achievements (
+    id bigint NOT NULL,
+    user_id bigint NOT NULL,
+    achievement_key character varying(255) NOT NULL,
+    title_key character varying(255) NOT NULL,
+    acquired_at timestamp(0) with time zone NOT NULL,
+    maria_sent_at timestamp(0) with time zone
+);
+
+
+--
+-- Name: user_achievements_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.user_achievements_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: user_achievements_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.user_achievements_id_seq OWNED BY public.user_achievements.id;
+
+
+--
 -- Name: user_daily_login_claims; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -3565,7 +3620,7 @@ CREATE TABLE public.user_daily_quest_activities (
     created_at timestamp(0) without time zone,
     updated_at timestamp(0) without time zone,
     CONSTRAINT user_daily_quest_activity_amount_check CHECK ((amount > 0)),
-    CONSTRAINT user_daily_quest_activity_key_check CHECK (((quest_key)::text = ANY ((ARRAY['development_opened'::character varying, 'underground_battles'::character varying, 'command_registered'::character varying])::text[])))
+    CONSTRAINT user_daily_quest_activity_key_check CHECK (((quest_key)::text = ANY (ARRAY[('development_opened'::character varying)::text, ('underground_battles'::character varying)::text, ('command_registered'::character varying)::text])))
 );
 
 
@@ -3603,7 +3658,7 @@ CREATE TABLE public.user_daily_quest_progress (
     completed_at timestamp(0) with time zone,
     created_at timestamp(0) without time zone,
     updated_at timestamp(0) without time zone,
-    CONSTRAINT user_daily_quest_progress_key_check CHECK (((quest_key)::text = ANY ((ARRAY['development_opened'::character varying, 'underground_battles'::character varying, 'command_registered'::character varying])::text[]))),
+    CONSTRAINT user_daily_quest_progress_key_check CHECK (((quest_key)::text = ANY (ARRAY[('development_opened'::character varying)::text, ('underground_battles'::character varying)::text, ('command_registered'::character varying)::text]))),
     CONSTRAINT user_daily_quest_progress_value_check CHECK (((progress <= target) AND (target > 0) AND (((completed_at IS NULL) AND (paradox_awarded = 0)) OR ((completed_at IS NOT NULL) AND (progress = target) AND (paradox_awarded > 0)))))
 );
 
@@ -3710,7 +3765,7 @@ CREATE TABLE public.user_paradox_ledger (
     created_at timestamp(0) without time zone,
     updated_at timestamp(0) without time zone,
     CONSTRAINT user_paradox_ledger_delta_check CHECK (((delta <> 0) AND (balance_before >= 0) AND (balance_after >= 0) AND (balance_after = (balance_before + delta)))),
-    CONSTRAINT user_paradox_ledger_source_check CHECK (((source_kind)::text = ANY ((ARRAY['daily_login'::character varying, 'daily_quest'::character varying, 'command'::character varying, 'compensation'::character varying, 'underground_respec'::character varying])::text[])))
+    CONSTRAINT user_paradox_ledger_source_check CHECK (((source_kind)::text = ANY (ARRAY[('daily_login'::character varying)::text, ('daily_quest'::character varying)::text, ('command'::character varying)::text, ('compensation'::character varying)::text, ('underground_respec'::character varying)::text])))
 );
 
 
@@ -4400,6 +4455,13 @@ ALTER TABLE ONLY public.underground_trial_progress ALTER COLUMN id SET DEFAULT n
 --
 
 ALTER TABLE ONLY public.underground_trial_runs ALTER COLUMN id SET DEFAULT nextval('public.underground_trial_runs_id_seq'::regclass);
+
+
+--
+-- Name: user_achievements id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.user_achievements ALTER COLUMN id SET DEFAULT nextval('public.user_achievements_id_seq'::regclass);
 
 
 --
@@ -5112,19 +5174,19 @@ ALTER TABLE ONLY public.nations
 
 
 --
--- Name: nations nations_world_id_name_unique; Type: CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.nations
-    ADD CONSTRAINT nations_world_id_name_unique UNIQUE (world_id, name);
-
-
---
 -- Name: nations nations_world_id_nation_number_unique; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.nations
     ADD CONSTRAINT nations_world_id_nation_number_unique UNIQUE (world_id, nation_number);
+
+
+--
+-- Name: oil_discovery_backfills oil_discovery_backfills_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.oil_discovery_backfills
+    ADD CONSTRAINT oil_discovery_backfills_pkey PRIMARY KEY (world_id);
 
 
 --
@@ -5720,6 +5782,22 @@ ALTER TABLE ONLY public.underground_trial_runs
 
 
 --
+-- Name: user_achievements user_achievements_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.user_achievements
+    ADD CONSTRAINT user_achievements_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: user_achievements user_achievements_user_id_achievement_key_unique; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.user_achievements
+    ADD CONSTRAINT user_achievements_user_id_achievement_key_unique UNIQUE (user_id, achievement_key);
+
+
+--
 -- Name: user_daily_login_claims user_daily_login_claims_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -6182,6 +6260,13 @@ CREATE INDEX nation_monster_cycle_stats_world_id_cycle_start_turn_kill_count ON 
 --
 
 CREATE INDEX nation_monster_kill_stats_world_id_nation_id_index ON public.nation_monster_kill_stats USING btree (world_id, nation_id);
+
+
+--
+-- Name: nations_world_id_name_unique; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX nations_world_id_name_unique ON public.nations USING btree (world_id, name) WHERE ((state)::text <> 'abandoned'::text);
 
 
 --
@@ -7159,6 +7244,14 @@ ALTER TABLE ONLY public.nations
 
 
 --
+-- Name: oil_discovery_backfills oil_discovery_backfills_world_id_foreign; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.oil_discovery_backfills
+    ADD CONSTRAINT oil_discovery_backfills_world_id_foreign FOREIGN KEY (world_id) REFERENCES public.worlds(id) ON DELETE RESTRICT;
+
+
+--
 -- Name: production_definitions production_definitions_facility_definition_id_foreign; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -7527,6 +7620,14 @@ ALTER TABLE ONLY public.underground_trial_runs
 
 
 --
+-- Name: user_achievements user_achievements_user_id_foreign; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.user_achievements
+    ADD CONSTRAINT user_achievements_user_id_foreign FOREIGN KEY (user_id) REFERENCES public.users(id) ON DELETE RESTRICT;
+
+
+--
 -- Name: user_daily_login_claims user_daily_login_claims_user_id_foreign; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -7642,4 +7743,4 @@ ALTER TABLE ONLY public.worlds
 -- PostgreSQL database dump complete
 --
 
-\unrestrict AIHFphxJP48UpE3pFUEXLH31hK9jVCb4eqFdqiUNflydUNPiXW2UCB06T64hwuO
+\unrestrict Q3LQLrFiwNT9eNOjUhXS5htkFYThYabBnadfRnVobhzKBAkd84F0ohx7gDryyZA

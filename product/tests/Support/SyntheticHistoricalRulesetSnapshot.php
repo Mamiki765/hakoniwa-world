@@ -10,7 +10,7 @@ final class SyntheticHistoricalRulesetSnapshot
     public static function create(string $key, int $version, ?callable $mutate = null): RulesetVersion
     {
         /** @var array<string, mixed> $settings */
-        $settings = require config_path('hakoniwa/rulesets/hakoniwa-2s-plus-v27.php');
+        $settings = config('hakoniwa.ruleset');
         $settings['key'] = $key;
         $settings['version'] = $version;
         if ($mutate !== null) {

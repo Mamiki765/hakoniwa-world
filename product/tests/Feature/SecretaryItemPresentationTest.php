@@ -241,7 +241,7 @@ final class SecretaryItemPresentationTest extends TestCase
     private function historicalRuleset(string $key, int $version): array
     {
         /** @var array<string, mixed> $settings */
-        $settings = require config_path('hakoniwa/rulesets/hakoniwa-2s-plus-v27.php');
+        $settings = config('hakoniwa.ruleset');
         $settings['key'] = $key;
         $settings['version'] = $version;
 

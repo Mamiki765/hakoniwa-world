@@ -10,7 +10,6 @@ use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Schema;
 use RuntimeException;
 use Tests\Concerns\CreatesTestWorlds;
 use Tests\Concerns\UsesIndividualTestWorld;
@@ -50,7 +49,7 @@ final class DatabaseBaselineAdoptionTest extends TestCase
             'phase_results' => [],
             'failure_context' => [],
         ]);
-        $this->legacyLedger();
+        $this->sourceReleaseLedger();
         DB::statement('CREATE SCHEMA hakoniwa_diagnostic');
         DB::statement('CREATE VIEW hakoniwa_diagnostic.baseline_probe AS SELECT secretary_id, monster_experience FROM public.secretary_surface_states');
         $viewBefore = DB::selectOne("SELECT pg_get_viewdef('hakoniwa_diagnostic.baseline_probe'::regclass) AS definition")->definition;
@@ -69,7 +68,7 @@ final class DatabaseBaselineAdoptionTest extends TestCase
 
     public function test_adoption_refuses_schema_or_ledger_drift_without_repairing_business_data(): void
     {
-        $this->legacyLedger();
+        $this->sourceReleaseLedger();
         $before = $this->businessState();
         $ledgerBefore = DB::table('migrations')->orderBy('id')->get()->all();
         DB::statement('ALTER TABLE users ALTER COLUMN display_name TYPE text');
@@ -82,53 +81,24 @@ final class DatabaseBaselineAdoptionTest extends TestCase
         $this->assertSame($before, $this->businessState());
         $this->assertEquals($ledgerBefore, DB::table('migrations')->orderBy('id')->get()->all());
         DB::statement('ALTER TABLE users ALTER COLUMN display_name TYPE character varying(255)');
-        DB::table('migrations')->where('migration', '2026_09_23_030000_install_4_4_0')->delete();
+        DB::table('migrations')->where('migration', '2026_10_11_010000_add_vault_protection_and_bulk_plan_fingerprint')->delete();
         $ledgerBefore = DB::table('migrations')->orderBy('id')->get()->all();
         try {
             app(CurrentDatabaseBaseline::class)->install();
-            $this->fail('An incomplete legacy ledger must require baseline completion.');
+            $this->fail('An incomplete 5.0.1 ledger must require release completion.');
         } catch (RuntimeException $exception) {
-            $this->assertStringContainsString('Complete the accepted 4.9.0 migration chain', $exception->getMessage());
+            $this->assertStringContainsString('Complete 5.0.1 with its fixed release code', $exception->getMessage());
         }
         $this->assertSame($before, $this->businessState());
         $this->assertEquals($ledgerBefore, DB::table('migrations')->orderBy('id')->get()->all());
     }
 
-    private function legacyLedger(): void
+    private function sourceReleaseLedger(): void
     {
-        // This test owns the pre-v28 baseline boundary; restore its exact schema
-        // and skill constraint before adopting its marker. Later upgrades have their own tests.
-        DB::statement('DROP INDEX nations_world_id_name_unique');
-        DB::statement('ALTER TABLE nations ADD CONSTRAINT nations_world_id_name_unique UNIQUE (world_id, name)');
-        Schema::table('underground_owned_equipment', fn ($table) => $table->dropColumn(['quality_percent', 'is_protected']));
-        Schema::table('nation_command_queue_bulk_requests', fn ($table) => $table->dropColumn('request_fingerprint'));
-        preg_match('/CONSTRAINT underground_intro_requests_operation_check (CHECK .+),\r?$/m',
-            (string) file_get_contents(database_path('schema/pgsql-schema.sql')), $operationConstraint);
-        DB::statement('ALTER TABLE underground_intro_requests DROP CONSTRAINT underground_intro_requests_operation_check');
-        DB::statement('ALTER TABLE underground_intro_requests ADD CONSTRAINT underground_intro_requests_operation_check '.$operationConstraint[1]);
-        Schema::table('underground_profiles', static function ($table): void {
-            $table->dropColumn([
-                'yunagi_harbor_intro_completed_at',
-                'mad_moon_unlocked_at',
-                'mad_moon_intro_completed_at',
-                'mad_moon_cleared_at',
-                'mad_moon_victory_scene_completed_at',
-            ]);
-        });
-        DB::statement('ALTER TABLE underground_battles DROP CONSTRAINT underground_battles_activity_type_check');
-        DB::statement("ALTER TABLE underground_battles ADD CONSTRAINT underground_battles_activity_type_check CHECK (activity_type = ANY ((ARRAY['exploration'::character varying, 'trial'::character varying, 'tutorial'::character varying, 'story'::character varying, 'playtest'::character varying, 'guide_duel'::character varying])::text[]))");
-        DB::statement('ALTER TABLE map_chunks DROP CONSTRAINT map_chunks_weather_check');
-        Schema::table('map_chunks', static function ($table): void {
-            $table->dropColumn(['weather_key', 'weather_turn']);
-        });
-        Schema::drop('oil_discovery_backfills');
-        Schema::drop('user_achievements');
-        Schema::table('secretaries', fn ($table) => $table->dropColumn('equipped_title_key'));
-        DB::table('secretary_skills')->whereIn('skill_key', ['energy_saving', 'oil_development'])->delete();
-        DB::statement('ALTER TABLE secretary_skills DROP CONSTRAINT secretary_skills_key_check');
-        DB::statement("ALTER TABLE secretary_skills ADD CONSTRAINT secretary_skills_key_check CHECK (skill_key = ANY ((ARRAY['agricultural_policy'::character varying, 'specialty_development'::character varying, 'gold_vein_survey'::character varying, 'forest_management'::character varying, 'final_defense_line'::character varying, 'declining_birthrate_policy'::character varying, 'indomitable'::character varying, 'ship_operations'::character varying, 'navy'::character varying])::text[]))");
+        // Only the ledger boundary is simulated. The supported source already
+        // has the complete 5.0.1 schema, catalog and immutable current snapshot.
         DB::table('migrations')->where('migration', CurrentDatabaseBaseline::MIGRATION)->delete();
-        $migrations = json_decode((string) file_get_contents(database_path('baselines/4_9_0_migrations.json')), true, 512, JSON_THROW_ON_ERROR);
+        $migrations = json_decode((string) file_get_contents(database_path('baselines/5_0_1_migrations.json')), true, 512, JSON_THROW_ON_ERROR);
         foreach ($migrations as $migration) {
             DB::table('migrations')->insert(['migration' => $migration, 'batch' => 1]);
         }
