@@ -28,11 +28,22 @@ interface BulkSellOption {
     key: string;
     label: string;
 }
+interface BulkAffixOption extends BulkSellOption {
+    kind: string;
+}
 interface BulkSellOptions {
     rarities: BulkSellOption[];
     categories: BulkSellOption[];
     weapon_styles: BulkSellOption[];
+    affixes: BulkAffixOption[];
 }
+// 条件ごとに「該当するもの」を売るか「該当しないもの」を売るか。
+type FilterMode = 'match' | 'exclude';
+const filterModeKeys = ['item_level_max', 'quality_percent_max', 'rarities', 'categories', 'weapon_styles', 'affix_keys'] as const;
+type FilterModeKey = typeof filterModeKeys[number];
+const defaultFilterModes = (): Record<FilterModeKey, FilterMode> => ({
+    item_level_max: 'match', quality_percent_max: 'match', rarities: 'match', categories: 'match', weapon_styles: 'match', affix_keys: 'match',
+});
 interface BulkSellPreviewResponse {
     catalog_identity: string;
     items: EquipmentItem[];
@@ -49,6 +60,8 @@ interface BulkSellPreferences {
     rarities?: unknown;
     categories?: unknown;
     weapon_styles?: unknown;
+    affix_keys?: unknown;
+    filter_modes?: unknown;
 }
 
 const bulkSellPreferenceKey = 'hakoniwa.underground.vault.bulk-sell-preferences';
@@ -74,6 +87,8 @@ const bulkSellOptions = ref<BulkSellOptions | null>(null);
 const selectedRarityKeys = ref<string[]>([]);
 const selectedCategoryKeys = ref<string[]>([]);
 const selectedWeaponStyleKeys = ref<string[]>([]);
+const selectedAffixKeys = ref<string[]>([]);
+const filterModes = ref(defaultFilterModes());
 const itemLevelMaxDraft = ref<string | number>('');
 const qualityPercentMaxDraft = ref<string | number>('');
 const bulkPreview = ref<BulkSellPreviewResponse | null>(null);
@@ -137,6 +152,10 @@ function normalizeBulkOptions(options: BulkSellOptions | undefined): BulkSellOpt
         rarities: normalizeBulkOptionList(options.rarities),
         categories: normalizeBulkOptionList(options.categories),
         weapon_styles: normalizeBulkOptionList(options.weapon_styles),
+        affixes: normalizeBulkOptionList(options.affixes).map((option) => ({
+            ...option,
+            kind: String((options.affixes as unknown as Array<Record<string, unknown>>).find((affix) => affix.key === option.key)?.kind ?? ''),
+        })),
     };
 }
 
@@ -184,6 +203,21 @@ function restoreSelectedKeys(value: unknown, options: BulkSellOption[]): string[
     return selected;
 }
 
+function restoreFilterModes(value: unknown): Record<FilterModeKey, FilterMode> {
+    const modes = defaultFilterModes();
+    if (typeof value !== 'object' || value === null) return modes;
+    for (const key of filterModeKeys) {
+        if ((value as Record<string, unknown>)[key] === 'exclude') modes[key] = 'exclude';
+    }
+    return modes;
+}
+
+// 名前が同じで種類の違うエンチャントは、割合か固定値かを添えて見分けられるようにする。
+function affixOptionLabel(option: BulkAffixOption): string {
+    const sameName = (bulkSellOptions.value?.affixes ?? []).filter((other) => other.label === option.label).length > 1;
+    return sameName ? `${option.label}（${option.kind === 'modifier' ? '割合' : '固定値'}）` : option.label;
+}
+
 function restoreItemLevelMax(value: unknown): string {
     if (typeof value === 'number' && Number.isInteger(value) && value >= 1) return String(value);
     if (typeof value !== 'string' || !/^\d+$/.test(value.trim())) return '';
@@ -201,6 +235,8 @@ function persistBulkPreferences(): void {
             rarities: selectedRarityKeys.value,
             categories: selectedCategoryKeys.value,
             weapon_styles: selectedWeaponStyleKeys.value,
+            affix_keys: selectedAffixKeys.value,
+            filter_modes: filterModes.value,
         }));
     } catch {
         // Private browsing or a disabled storage area should not block the vault.
@@ -229,6 +265,12 @@ function syncBulkSellOptions(options: BulkSellOptions | undefined): void {
     selectedRarityKeys.value = restoreSelectedKeys(stored?.rarities, normalized.rarities);
     selectedCategoryKeys.value = restoreSelectedKeys(stored?.categories, normalized.categories);
     selectedWeaponStyleKeys.value = restoreSelectedKeys(stored?.weapon_styles, normalized.weapon_styles);
+    // エンチャントは、何も選んでいなければ条件に使わない。
+    const validAffixKeys = new Set(optionKeys(normalized.affixes));
+    selectedAffixKeys.value = Array.isArray(stored?.affix_keys)
+        ? [...new Set(stored.affix_keys.filter((key): key is string => typeof key === 'string' && validAffixKeys.has(key)))]
+        : [];
+    filterModes.value = restoreFilterModes(stored?.filter_modes);
     bulkOptionsInitialized.value = true;
     if (changed) invalidateBulkPreview();
 }
@@ -321,6 +363,8 @@ async function previewBulkSale(): Promise<void> {
                 rarities: [...selectedRarityKeys.value],
                 categories: [...selectedCategoryKeys.value],
                 weapon_styles: [...selectedWeaponStyleKeys.value],
+                affix_keys: [...selectedAffixKeys.value],
+                filter_modes: { ...filterModes.value },
             }),
         });
     } catch (caught) {
@@ -374,7 +418,7 @@ async function confirmBulkSale(): Promise<void> {
 
 function openSingleSale(item: EquipmentItem): void {
     if (busy.value || item.category !== 'resonance' || item.equipped_slot !== null
-        || item.sellable === false || item.id === undefined || item.sell_price < 1) return;
+        || item.is_protected === true || item.sellable === false || item.id === undefined || item.sell_price < 1) return;
     singleSaleTarget.value = item;
 }
 
@@ -409,7 +453,7 @@ async function confirmSingleSale(): Promise<void> {
 }
 
 watch(
-    [selectedRarityKeys, selectedCategoryKeys, selectedWeaponStyleKeys, itemLevelMaxDraft, qualityPercentMaxDraft],
+    [selectedRarityKeys, selectedCategoryKeys, selectedWeaponStyleKeys, selectedAffixKeys, filterModes, itemLevelMaxDraft, qualityPercentMaxDraft],
     () => persistBulkPreferences(),
     { deep: true },
 );
@@ -444,6 +488,33 @@ async function mutate(action: 'equip' | 'unequip', item?: EquipmentItem, selecte
     } finally {
         busy.value = false;
     }
+}
+
+// ★を付けた装備は、売却の候補に入らない（サーバー側でも売却を止める）。装備・取り外しはできる。
+async function setProtection(item: EquipmentItem, next: boolean): Promise<void> {
+    if (busy.value || item.id === undefined) return;
+    const fingerprint = `protection:${item.id}:${next}`;
+    const request = pending.value?.fingerprint === fingerprint ? pending.value : { fingerprint, requestId: requestId() };
+    pending.value = request;
+    busy.value = true;
+    error.value = '';
+    try {
+        const result = await api<MutationResponse>(`/api/v1/me/underground/equipment/items/${item.id}/protection`, {
+            method: 'PUT', body: JSON.stringify({ request_id: request.requestId, is_protected: next }),
+        });
+        emit('updated', result);
+        pending.value = null;
+        await loadVault();
+    } catch (caught) {
+        error.value = mutationError(caught);
+    } finally {
+        busy.value = false;
+    }
+}
+
+function clearAffixes(): void {
+    selectedAffixKeys.value = [];
+    onBulkFilterChanged();
 }
 
 onMounted(() => { void loadVault(); });
@@ -481,7 +552,7 @@ async function changeInventory(next: 'equipment' | 'resonance'): Promise<void> {
                 <div class="underground-equipped-slot-grid">
                     <article v-for="slot in equipmentSlots" :key="slot" class="underground-equipped-slot">
                         <h3>{{ slotLabel(slot) }}</h3>
-                        <p v-if="vault.equipped[slot]"><strong>{{ vault.equipped[slot]!.name }}</strong></p><p v-else class="underground-equipment-empty">空き</p>
+                        <p v-if="vault.equipped[slot]"><strong><span v-if="vault.equipped[slot]!.is_protected" class="underground-protect-mark" aria-label="保護中">★</span>{{ vault.equipped[slot]!.name }}</strong></p><p v-else class="underground-equipment-empty">空き</p>
                         <button v-if="vault.equipped[slot] && slot !== 'weapon'" class="button secondary" type="button" :disabled="busy" @click="mutate('unequip', vault.equipped[slot]!)">外す</button>
                         <small v-if="slot === 'weapon' && vault.equipped[slot]">武器は常に1つ必要です</small>
                     </article>
@@ -491,20 +562,34 @@ async function changeInventory(next: 'equipment' | 'resonance'): Promise<void> {
                 <header>
                     <div>
                         <h2 id="underground-bulk-sale-title">装備のまとめ売り</h2>
-                        <p>条件に一致する未装備の装備をサーバーで確認します。</p>
+                        <p>条件に合う未装備の装備を、売却の候補にします。<span class="underground-protect-mark" aria-hidden="true">★</span>を付けた装備は候補に入りません。</p>
                     </div>
                 </header>
                 <div class="underground-bulk-sale-options">
-                    <label>
-                        <span>Item Lv以下</span>
-                        <input v-model="itemLevelMaxDraft" type="number" min="1" inputmode="numeric" placeholder="未入力" :disabled="bulkFilterDisabled" @input="onBulkFilterChanged">
-                    </label>
-                    <label>
-                        <span>Quality %以下</span>
-                        <input v-model="qualityPercentMaxDraft" type="number" min="0" max="100" inputmode="numeric" placeholder="未入力" :disabled="bulkFilterDisabled" @input="onBulkFilterChanged">
-                    </label>
+                    <div class="underground-bulk-numbers">
+                        <div class="underground-bulk-number">
+                            <label for="underground-bulk-item-level">Item Lv</label>
+                            <input id="underground-bulk-item-level" v-model="itemLevelMaxDraft" type="number" min="1" inputmode="numeric" placeholder="未入力" :disabled="bulkFilterDisabled" @input="onBulkFilterChanged">
+                            <select v-model="filterModes.item_level_max" class="underground-bulk-mode" aria-label="Item Lvの条件の向き" :disabled="bulkFilterDisabled" @change="onBulkFilterChanged">
+                                <option value="match">以下のもの</option>
+                                <option value="exclude">より高いもの</option>
+                            </select>
+                        </div>
+                        <div class="underground-bulk-number">
+                            <label for="underground-bulk-quality">Quality %</label>
+                            <input id="underground-bulk-quality" v-model="qualityPercentMaxDraft" type="number" min="0" max="100" inputmode="numeric" placeholder="未入力" :disabled="bulkFilterDisabled" @input="onBulkFilterChanged">
+                            <select v-model="filterModes.quality_percent_max" class="underground-bulk-mode" aria-label="Qualityの条件の向き" :disabled="bulkFilterDisabled" @change="onBulkFilterChanged">
+                                <option value="match">以下のもの</option>
+                                <option value="exclude">より高いもの</option>
+                            </select>
+                        </div>
+                    </div>
                     <fieldset>
                         <legend>レアリティ</legend>
+                        <select v-model="filterModes.rarities" class="underground-bulk-mode" aria-label="レアリティの条件の向き" :disabled="bulkFilterDisabled" @change="onBulkFilterChanged">
+                            <option value="match">該当するもの</option>
+                            <option value="exclude">該当しないもの</option>
+                        </select>
                         <label v-for="option in bulkSellOptions.rarities" :key="`rarity-${option.key}`">
                             <input v-model="selectedRarityKeys" type="checkbox" :value="option.key" :disabled="bulkFilterDisabled" @change="onBulkFilterChanged">
                             <span>{{ option.label }}</span>
@@ -512,6 +597,10 @@ async function changeInventory(next: 'equipment' | 'resonance'): Promise<void> {
                     </fieldset>
                     <fieldset>
                         <legend>カテゴリ</legend>
+                        <select v-model="filterModes.categories" class="underground-bulk-mode" aria-label="カテゴリの条件の向き" :disabled="bulkFilterDisabled" @change="onBulkFilterChanged">
+                            <option value="match">該当するもの</option>
+                            <option value="exclude">該当しないもの</option>
+                        </select>
                         <label v-for="option in bulkSellOptions.categories" :key="`category-${option.key}`">
                             <input v-model="selectedCategoryKeys" type="checkbox" :value="option.key" :disabled="bulkFilterDisabled" @change="onBulkFilterChanged">
                             <span>{{ option.label }}</span>
@@ -519,11 +608,35 @@ async function changeInventory(next: 'equipment' | 'resonance'): Promise<void> {
                     </fieldset>
                     <fieldset v-if="bulkSellOptions.weapon_styles.length > 0">
                         <legend>武器スタイル</legend>
+                        <select v-model="filterModes.weapon_styles" class="underground-bulk-mode" aria-label="武器スタイルの条件の向き" :disabled="bulkFilterDisabled" @change="onBulkFilterChanged">
+                            <option value="match">該当するもの</option>
+                            <option value="exclude">該当しないもの</option>
+                        </select>
                         <label v-for="option in bulkSellOptions.weapon_styles" :key="`weapon-style-${option.key}`">
                             <input v-model="selectedWeaponStyleKeys" type="checkbox" :value="option.key" :disabled="bulkFilterDisabled" @change="onBulkFilterChanged">
                             <span>{{ option.label }}</span>
                         </label>
                     </fieldset>
+                    <details v-if="bulkSellOptions.affixes.length > 0" class="underground-bulk-affixes">
+                        <summary>
+                            <span>エンチャント</span>
+                            <strong v-if="selectedAffixKeys.length > 0">{{ selectedAffixKeys.length }}件指定中・{{ filterModes.affix_keys === 'match' ? '持つもの' : '持たないもの' }}</strong>
+                            <small v-else>指定なし</small>
+                        </summary>
+                        <div class="underground-bulk-affix-tools">
+                            <select v-model="filterModes.affix_keys" class="underground-bulk-mode" aria-label="エンチャントの条件の向き" :disabled="bulkFilterDisabled" @change="onBulkFilterChanged">
+                                <option value="match">どれかを持つもの</option>
+                                <option value="exclude">どれも持たないもの</option>
+                            </select>
+                            <button class="button secondary" type="button" :disabled="bulkFilterDisabled || selectedAffixKeys.length === 0" @click="clearAffixes">指定を外す</button>
+                        </div>
+                        <div class="underground-bulk-affix-list">
+                            <label v-for="option in bulkSellOptions.affixes" :key="`affix-${option.key}`">
+                                <input v-model="selectedAffixKeys" type="checkbox" :value="option.key" :disabled="bulkFilterDisabled" @change="onBulkFilterChanged">
+                                <span>{{ affixOptionLabel(option) }}</span>
+                            </label>
+                        </div>
+                    </details>
                 </div>
                 <button class="button primary underground-bulk-preview-button" type="button" :disabled="bulkFilterDisabled" @click="previewBulkSale">
                     {{ bulkPreviewLoading ? '候補を確認中…' : '売却候補をプレビュー' }}
@@ -560,6 +673,17 @@ async function changeInventory(next: 'equipment' | 'resonance'): Promise<void> {
                 <EquipmentItemCard v-for="(item, index) in vault.items" :key="itemKey(item, index)" :item="item" mode="vault" :disabled="busy || item.equipped_slot !== null" @action="mutate('equip', item, selectedSlotFor(item))">
                     <template #status>
                         <span v-if="item.equipped_slot" class="underground-equipment-equipped">{{ slotLabel(item.equipped_slot) }}として装備中</span><span v-else>未装備</span>
+                        <button
+                            v-if="item.id !== undefined && item.sellable !== false"
+                            type="button"
+                            class="underground-protect-toggle"
+                            :aria-pressed="item.is_protected === true"
+                            :disabled="busy"
+                            :title="item.is_protected ? '保護を外すと、売却できるようになります。' : '保護すると、売却の候補に入らなくなります。'"
+                            @click="setProtection(item, item.is_protected !== true)"
+                        >
+                            {{ item.is_protected ? '★ 保護中' : '☆ 保護する' }}
+                        </button>
                         <label v-if="item.category === 'accessory' && !item.equipped_slot" class="underground-accessory-target">
                             <span>装備先</span>
                             <select v-model="accessoryTargetSlot" :disabled="busy" aria-label="アクセサリー装備先">
@@ -568,7 +692,8 @@ async function changeInventory(next: 'equipment' | 'resonance'): Promise<void> {
                         </label>
                     </template>
                     <template #price>
-                        <button v-if="inventory === 'resonance' && item.sellable !== false && !item.equipped_slot" class="button secondary" type="button" :disabled="busy" @click="openSingleSale(item)">売却する</button>
+                        <span v-if="inventory === 'resonance' && item.is_protected && item.sellable !== false && !item.equipped_slot">保護中は売却できません</span>
+                        <button v-else-if="inventory === 'resonance' && item.sellable !== false && !item.equipped_slot" class="button secondary" type="button" :disabled="busy" @click="openSingleSale(item)">売却する</button>
                         <span v-else-if="item.sellable === false">売却不可</span>
                     </template>
                     <template #action>{{ item.equipped_slot ? '装備中' : '装備する' }}</template>

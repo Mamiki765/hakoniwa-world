@@ -1089,18 +1089,23 @@ describe('command plan workspace', () => {
         expect(wrapper.find('.plan-panel').classes()).not.toContain('mobile-peer-expanded');
     });
 
-    it('starts bulk insertion and delete-from-here at the selected position with explicit feedback', async () => {
-        let serverQueue = commandQueue(7, [], 30);
+    it('asks before a bulk insertion overflows, sends the chosen policy with the preview, and deletes from the selected position', async () => {
+        let serverQueue = commandQueue(7, [item(201, 29), item(202, 30)], 30);
         const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
             const path = String(input);
-            if (path.endsWith('/command-queue/bulk') && init?.method === 'POST') {
-                serverQueue = commandQueue(8, [item(101, 5), item(102, 6)], 30);
+            if (path.endsWith('/command-queue/bulk/preview') && init?.method === 'POST') {
                 return jsonResponse({
-                    queue: serverQueue,
-                    inserted_count: 2,
-                    truncated_count: 3,
-                    candidate_count: 5,
+                    preview_token: 'preview-token', request_key: 'preview-key', expected_version: 7,
+                    candidate_count: 3, available_count: 1, overflow_required: true,
+                    policies: {
+                        overflow: { inserted_count: 3, cancelled_count: 1, skipped_count: 0, cancelled_items: [{ id: 202, queue_position: 30 }] },
+                        fill_available: { inserted_count: 1, cancelled_count: 0, skipped_count: 2, cancelled_items: [] },
+                    },
                 });
+            }
+            if (path.endsWith('/command-queue/bulk') && init?.method === 'POST') {
+                serverQueue = commandQueue(8, [item(101, 5), item(201, 29), item(202, 30)], 30);
+                return jsonResponse({ queue: serverQueue, inserted_count: 1, cancelled_count: 0, skipped_count: 2, candidate_count: 3 });
             }
             if (path.endsWith('/command-queue/from') && init?.method === 'DELETE') {
                 serverQueue = commandQueue(9, [], 30);
@@ -1118,13 +1123,25 @@ describe('command plan workspace', () => {
         await wrapper.findAll('.bulk-actions button').find((button) => button.text() === '荒地と焦土を全て整地')!.trigger('click');
         await flushPromises();
 
-        const bulk = fetchMock.mock.calls.find(([path, init]) => String(path).endsWith('/command-queue/bulk') && init?.method === 'POST');
-        expect(JSON.parse(String(bulk?.[1]?.body))).toMatchObject({
+        // 溢れるときは、選ぶまで計画を変えない。消える計画は、サーバーが返したidのものだけを見せる。
+        const bulkCalls = () => fetchMock.mock.calls.filter(([path, init]) => String(path).endsWith('/command-queue/bulk') && init?.method === 'POST');
+        expect(bulkCalls()).toHaveLength(0);
+        expect(wrapper.findAll('.sl-bulk-lost li')).toHaveLength(1);
+        expect(wrapper.get('.sl-bulk-lost li').text()).toContain('30');
+        await wrapper.get('.sl-bulk-choice .bulk-fill').trigger('click');
+        await flushPromises();
+
+        expect(bulkCalls()).toHaveLength(1);
+        expect(JSON.parse(String(bulkCalls()[0]?.[1]?.body))).toEqual({
             action: 'clear_all',
             position: 5,
             expected_version: 7,
+            request_key: 'preview-key',
+            preview_token: 'preview-token',
+            overflow_policy: 'fill_available',
         });
-        expect(wrapper.get('.command-status').text()).toContain('3件が押し出されて消えました');
+        expect(wrapper.find('.sl-bulk-choice').exists()).toBe(false);
+        expect(wrapper.get('.command-status').text()).toContain('2件は入りきらず見送りました');
 
         await wrapper.findAll('.bulk-actions button').find((button) => button.text() === '選んだ行から下を全て取消')!.trigger('click');
         expect(wrapper.find('.command-modal').text()).toContain('5番以降をすべて削除');

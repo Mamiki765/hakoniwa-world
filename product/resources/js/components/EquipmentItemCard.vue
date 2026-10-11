@@ -56,6 +56,7 @@ export interface EquipmentItem {
     effect_text?: string | null;
     equippable?: boolean;
     sellable?: boolean;
+    is_protected?: boolean;
     description?: string;
     commemorative_effects?: string[];
     acquired_at?: string;

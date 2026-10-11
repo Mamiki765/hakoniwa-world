@@ -356,6 +356,18 @@ html .sl h2 { font: var(--sl-w-head) 14px var(--sl-f-head); display: block; min-
 .sl-backdrop { position: absolute; inset: 0; background: var(--sl-shade); display: grid; place-items: center; z-index: 40; padding: 16px; }
 .sl-dialog { background: var(--sl-panel); border: 1px solid var(--sl-line); border-radius: calc(var(--sl-radius) + 1px); padding: 14px; width: min(380px, 100%); max-height: 100%; overflow: auto; display: flex; flex-direction: column; gap: 10px; box-shadow: var(--sl-shadow); }
 .sl-dialog h3 { font: var(--sl-w-head) 16px var(--sl-f-head); }
+/* 一括で入りきらないときの3択 */
+.sl-bulk-lost { display: flex; flex-direction: column; gap: 4px; min-height: 0; }
+.sl-bulk-lost strong { font-size: 12px; }
+.sl-bulk-lost ul { list-style: none; margin: 0; padding: 0; max-height: 9.5em; overflow: auto; border: 1px solid var(--sl-line); border-radius: var(--sl-radius); }
+.sl-bulk-lost li { display: flex; align-items: baseline; gap: 8px; padding: 3px 8px; font-size: 13px; }
+.sl-bulk-lost li + li { border-top: 1px solid var(--sl-line); }
+.sl-bulk-lost li > .num:first-child { min-width: 1.6em; text-align: right; }
+.sl-bulk-lost li small { margin-left: 4px; }
+.sl-bulk-options { display: flex; flex-direction: column; gap: 6px; }
+.sl .sl-bulk-options button { display: flex; flex-direction: column; align-items: flex-start; gap: 1px; text-align: left; padding: 8px 10px; min-height: 44px; }
+.sl .sl-bulk-options button.sl-quiet { align-items: center; justify-content: center; }
+.sl-bulk-options small { font-size: 12px; font-weight: 400; opacity: .85; }
 .sl-dialog header { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .sl .sl-dialog header button { border: 0; background: transparent; font-size: 18px; line-height: 1; padding: 2px 8px; }
 .sl-dialog form { display: flex; flex-direction: column; gap: 8px; }

@@ -91,7 +91,7 @@ async function purchase(item: EquipmentItem): Promise<void> {
 }
 
 function askSell(item: EquipmentItem): void {
-    if (busy.value || item.id === undefined || item.equipped_slot !== null || item.sell_price <= 0) return;
+    if (busy.value || item.id === undefined || item.equipped_slot !== null || item.is_protected === true || item.sell_price <= 0) return;
     confirmItem.value = item;
 }
 
@@ -151,10 +151,10 @@ onMounted(() => { void loadShop(); });
                 <header><div><p class="eyebrow">Owned Items</p><h2 id="underground-equipment-owned-title">売却リスト</h2></div><p>装備中のアイテムは外してから売却できます。</p></header>
                 <p v-if="shop.owned_items.length === 0" class="status">所有アイテムはありません。</p>
                 <div class="underground-equipment-card-grid">
-                    <EquipmentItemCard v-for="item in shop.owned_items" :key="item.id" :item="item" mode="owned" :disabled="busy || item.id === undefined || item.equipped_slot !== null || item.sell_price <= 0" @action="askSell(item)">
+                    <EquipmentItemCard v-for="item in shop.owned_items" :key="item.id" :item="item" mode="owned" :disabled="busy || item.id === undefined || item.equipped_slot !== null || item.is_protected === true || item.sell_price <= 0" @action="askSell(item)">
                         <template #status><span v-if="item.equipped_slot" class="underground-equipment-equipped">{{ slotLabel(item.equipped_slot) }}として装備中</span><span v-else>未装備</span></template>
                         <template #price><span>購入価格 {{ item.buy_price === null || item.buy_price === undefined ? '非売品' : `${item.buy_price.toLocaleString('ja-JP')}G` }}</span><span>売却価格 {{ item.sell_price.toLocaleString('ja-JP') }}G</span></template>
-                        <template #action>{{ item.equipped_slot ? '装備中' : item.sell_price <= 0 ? '売却不可' : '売却する' }}</template>
+                        <template #action>{{ item.equipped_slot ? '装備中' : item.is_protected ? '★ 保護中' : item.sell_price <= 0 ? '売却不可' : '売却する' }}</template>
                     </EquipmentItemCard>
                 </div>
             </section>
