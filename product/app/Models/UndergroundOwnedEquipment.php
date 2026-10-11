@@ -23,6 +23,7 @@ use Illuminate\Support\Carbon;
  * @property array<string, mixed>|null $generated_payload
  * @property int $polish_level
  * @property int|null $quality_percent
+ * @property bool $is_protected
  * @property int|null $source_battle_id
  * @property int|null $source_skip_settlement_id
  * @property int|null $source_skip_batch_id
@@ -34,13 +35,13 @@ final class UndergroundOwnedEquipment extends Model
 {
     protected $table = 'underground_owned_equipment';
 
-    protected $attributes = ['polish_level' => 0];
+    protected $attributes = ['polish_level' => 0, 'is_protected' => false];
 
     protected $fillable = [
         'underground_profile_id', 'definition_key', 'catalog_identity',
         'equipped_slot', 'grant_key', 'instance_kind', 'instance_identity',
         'generator_identity', 'generated_payload', 'source_battle_id',
-        'polish_level', 'quality_percent',
+        'polish_level', 'quality_percent', 'is_protected',
         'source_skip_settlement_id', 'source_skip_batch_id', 'source_reward_index', 'acquired_at',
     ];
 
@@ -55,6 +56,7 @@ final class UndergroundOwnedEquipment extends Model
             'generated_payload' => 'array',
             'polish_level' => 'integer',
             'quality_percent' => 'integer',
+            'is_protected' => 'boolean',
             'acquired_at' => 'immutable_datetime',
         ];
     }

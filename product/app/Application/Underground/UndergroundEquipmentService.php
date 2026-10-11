@@ -224,6 +224,8 @@ final readonly class UndergroundEquipmentService
      * @param  array<mixed>  $rarities
      * @param  array<mixed>  $categories
      * @param  array<mixed>  $weaponStyles
+     * @param  array<string, mixed>  $filterModes
+     * @param  array<mixed>  $affixKeys
      * @return array<string, mixed>
      */
     public function bulkSellPreview(
@@ -233,6 +235,8 @@ final readonly class UndergroundEquipmentService
         array $categories,
         array $weaponStyles,
         ?int $qualityPercentMax = null,
+        array $filterModes = [],
+        array $affixKeys = [],
     ): array {
         if ($qualityPercentMax !== null && ($qualityPercentMax < 0 || $qualityPercentMax > 100)) {
             throw new UndergroundRuntimeException('underground_bulk_sell_filter_invalid', 'Quality 条件を確認してください。');
@@ -242,6 +246,8 @@ final readonly class UndergroundEquipmentService
             $categories,
             $weaponStyles,
         );
+        $filterModes = $this->normalizeFilterModes($filterModes);
+        $affixKeys = $this->normalizeBulkSellFilterGroup($affixKeys, array_column($this->catalog->affixOptions(), 'key'), 'affix');
 
         return $this->withLockedOpenProfile($user, function (UndergroundProfile $profile) use (
             $itemLevelMax,
@@ -249,6 +255,8 @@ final readonly class UndergroundEquipmentService
             $rarities,
             $categories,
             $weaponStyles,
+            $filterModes,
+            $affixKeys,
         ): array {
             $requirementBps = $this->loadout->ratingRequirementBps($profile);
             $items = UndergroundOwnedEquipment::query()
@@ -264,6 +272,8 @@ final readonly class UndergroundEquipmentService
                     $categories,
                     $weaponStyles,
                     $qualityPercentMax,
+                    $filterModes,
+                    $affixKeys,
                 ))
                 ->values()
                 ->all();
@@ -357,6 +367,9 @@ final readonly class UndergroundEquipmentService
                 if (! $item instanceof UndergroundOwnedEquipment) {
                     throw new UndergroundRuntimeException('underground_equipment_not_owned', '売却する装備を確認してください。');
                 }
+                if ($item->is_protected) {
+                    throw new UndergroundRuntimeException('underground_equipment_protected', '保護中の装備は売却できません。');
+                }
                 try {
                     $definition = $this->loadout->definitionForRow($item);
                 } catch (RuntimeException) {
@@ -424,6 +437,9 @@ final readonly class UndergroundEquipmentService
 
                 $sellPrice = 0;
                 foreach ($items as $item) {
+                    if ($item->is_protected) {
+                        throw new UndergroundRuntimeException('underground_bulk_sell_preview_changed', '売却候補に保護中の装備があります。previewし直してください。');
+                    }
                     if ($item->equipped_slot !== null) {
                         throw new UndergroundRuntimeException(
                             'underground_bulk_sell_preview_changed',
@@ -477,6 +493,21 @@ final readonly class UndergroundEquipmentService
                 $profile->save();
             },
         );
+    }
+
+    /** @return array<string, mixed> */
+    public function setProtection(User $user, string $requestId, int $itemId, bool $isProtected): array
+    {
+        return $this->mutate($user, $requestId, 'equipment_protection', [
+            'item_id' => $itemId, 'is_protected' => $isProtected,
+        ], function (UndergroundProfile $profile) use ($itemId, $isProtected): void {
+            $item = UndergroundOwnedEquipment::query()->whereKey($itemId)
+                ->where('underground_profile_id', $profile->id)->lockForUpdate()->first();
+            if (! $item instanceof UndergroundOwnedEquipment) {
+                throw new UndergroundRuntimeException('underground_equipment_not_owned', '保護する装備を確認してください。');
+            }
+            $item->update(['is_protected' => $isProtected]);
+        });
     }
 
     /** @return array<string, mixed> */
@@ -743,7 +774,9 @@ final readonly class UndergroundEquipmentService
      * @return array{
      *   rarities: list<array{key: string, label: string}>,
      *   categories: list<array{key: string, label: string}>,
-     *   weapon_styles: list<array{key: string, label: string}>
+     *   weapon_styles: list<array{key: string, label: string}>,
+     *   affixes: list<array{key: string, label: string, kind: string, target: string}>,
+     *   filter_modes: list<string>
      * }
      */
     private function bulkSellOptions(string $inventory): array
@@ -765,6 +798,8 @@ final readonly class UndergroundEquipmentService
                 ['key' => 'accessory', 'label' => 'アクセサリー'],
             ],
             'weapon_styles' => $inventory === 'resonance' ? [] : $this->catalog->weaponStyleOptions(),
+            'affixes' => $this->catalog->affixOptions($inventory),
+            'filter_modes' => ['match', 'exclude'],
         ];
     }
 
@@ -821,6 +856,8 @@ final readonly class UndergroundEquipmentService
      * @param  list<string>  $rarities
      * @param  list<string>  $categories
      * @param  list<string>  $weaponStyles
+     * @param  array<string, string>  $filterModes
+     * @param  list<string>  $affixKeys
      */
     private function matchesBulkSellFilters(
         array $item,
@@ -829,24 +866,54 @@ final readonly class UndergroundEquipmentService
         array $categories,
         array $weaponStyles,
         ?int $qualityPercentMax,
+        array $filterModes,
+        array $affixKeys,
     ): bool {
-        if (($item['sellable'] ?? null) !== true || ($item['equipped_slot'] ?? null) !== null) {
+        if (($item['sellable'] ?? null) !== true || ($item['equipped_slot'] ?? null) !== null || ($item['is_protected'] ?? false)) {
             return false;
         }
-        if ($itemLevelMax !== null && $item['item_level'] > $itemLevelMax) {
-            return false;
+        $conditions = [
+            'rarities' => in_array($this->rarityKey($item), $rarities, true),
+            'categories' => in_array($item['category'], $categories, true),
+        ];
+        if ($itemLevelMax !== null) {
+            $conditions['item_level_max'] = $item['item_level'] <= $itemLevelMax;
         }
-        if ($qualityPercentMax !== null && (($item['quality_percent'] ?? null) === null
-            || $item['quality_percent'] > $qualityPercentMax)) {
-            return false;
+        if ($qualityPercentMax !== null) {
+            // Missing quality is not a measured value, in either mode.
+            if (($item['quality_percent'] ?? null) === null) {
+                return false;
+            }
+            $conditions['quality_percent_max'] = $item['quality_percent'] <= $qualityPercentMax;
         }
-        if (! in_array($this->rarityKey($item), $rarities, true)
-            || ! in_array($item['category'], $categories, true)) {
-            return false;
+        if ($item['category'] === 'weapon') {
+            $conditions['weapon_styles'] = in_array($item['weapon_style'], $weaponStyles, true);
+        }
+        if ($affixKeys !== []) {
+            $conditions['affix_keys'] = array_intersect($affixKeys, array_column($item['affixes'], 'key')) !== [];
+        }
+        foreach ($conditions as $key => $matches) {
+            if (($filterModes[$key] ?? 'match') === 'exclude' ? $matches : ! $matches) {
+                return false;
+            }
         }
 
-        return $item['category'] !== 'weapon'
-            || in_array($item['weapon_style'], $weaponStyles, true);
+        return true;
+    }
+
+    /** @param array<string, mixed> $modes
+     * @return array<string, string>
+     */
+    private function normalizeFilterModes(array $modes): array
+    {
+        foreach ($modes as $key => $mode) {
+            if (! in_array($key, ['item_level_max', 'quality_percent_max', 'rarities', 'categories', 'weapon_styles', 'affix_keys'], true)
+                || ! in_array($mode, ['match', 'exclude'], true)) {
+                throw new UndergroundRuntimeException('underground_bulk_sell_filter_invalid', 'まとめ売りの条件方向を確認してください。');
+            }
+        }
+
+        return $modes;
     }
 
     /** @param array<string, mixed> $item */

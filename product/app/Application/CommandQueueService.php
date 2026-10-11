@@ -3,6 +3,7 @@
 namespace App\Application;
 
 use App\Application\Underground\UndergroundFacilityService;
+use App\Domain\Command\BulkPlanPreviewChangedException;
 use App\Domain\Command\CapitalCorePolicy;
 use App\Domain\Command\CommandParametersValidator;
 use App\Domain\Command\CommandQueueLimit;
@@ -40,9 +41,12 @@ use App\Models\User;
 use App\Models\World;
 use DomainException;
 use Illuminate\Auth\Access\AuthorizationException;
+use Illuminate\Contracts\Encryption\DecryptException;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 
 final class CommandQueueService
 {
@@ -741,9 +745,13 @@ final class CommandQueueService
         }, 3);
     }
 
-    /**
-     * @return array{queue: NationCommandQueue, inserted_count: int, truncated_count: int, candidate_count: int, duplicate: bool, daily_quest: array<string, int|string|bool>|null}
-     */
+    /** @return array<string, mixed> */
+    public function bulkPreview(User $user, Nation $nation, MapSpace $mapSpace, string $action, int $position, int $expectedVersion): array
+    {
+        return $this->bulkInsert($user, $nation, $mapSpace, $action, $position, (string) Str::uuid(), $expectedVersion, previewOnly: true);
+    }
+
+    /** @return array<string, mixed> */
     public function bulkInsert(
         User $user,
         Nation $nation,
@@ -752,8 +760,11 @@ final class CommandQueueService
         int $position,
         string $requestKey,
         int $expectedVersion,
+        string $overflowPolicy = 'overflow',
+        ?string $previewToken = null,
+        bool $previewOnly = false,
     ): array {
-        return DB::transaction(function () use ($user, $nation, $mapSpace, $action, $position, $requestKey, $expectedVersion): array {
+        return DB::transaction(function () use ($user, $nation, $mapSpace, $action, $position, $requestKey, $expectedVersion, $overflowPolicy, $previewToken, $previewOnly): array {
             $this->membership($user, $nation);
             $this->assertMapSpace($nation, $mapSpace);
             $world = $this->lockWorldForQueue($nation);
@@ -768,6 +779,9 @@ final class CommandQueueService
             ], true)) {
                 throw new PlayerFacingCommandException('利用できない一括操作です。');
             }
+            if (! in_array($overflowPolicy, ['overflow', 'fill_available'], true)) {
+                throw new PlayerFacingCommandException('利用できない溢れ方針です。');
+            }
 
             $queue = NationCommandQueue::query()->firstOrCreate(
                 ['nation_id' => $lockedNation->id],
@@ -778,12 +792,33 @@ final class CommandQueueService
                 throw new DomainException('queueとmap spaceが一致しません。');
             }
 
+            $claims = null;
+            $requestFingerprint = null;
+            if ($previewToken !== null) {
+                try {
+                    $claims = json_decode(Crypt::decryptString($previewToken), true, 512, JSON_THROW_ON_ERROR);
+                } catch (DecryptException|\JsonException) {
+                    throw new BulkPlanPreviewChangedException;
+                }
+                if (! is_array($claims) || ($claims['format'] ?? null) !== 1
+                    || ($claims['actor_id'] ?? null) !== $user->id || ($claims['nation_id'] ?? null) !== $nation->id
+                    || ($claims['map_space_id'] ?? null) !== $mapSpace->id || ($claims['action'] ?? null) !== $action
+                    || ($claims['position'] ?? null) !== $position || ($claims['request_key'] ?? null) !== $requestKey
+                    || ($claims['expected_version'] ?? null) !== $expectedVersion) {
+                    throw new BulkPlanPreviewChangedException;
+                }
+                $requestFingerprint = hash('sha256', $previewToken.':'.$overflowPolicy);
+            }
+
             $firstDerivedRequestKey = $this->derivedBulkRequestKey($requestKey, 0);
             $completedRequest = DB::table('nation_command_queue_bulk_requests')
                 ->where('nation_command_queue_id', $queue->id)
                 ->where('request_key', $requestKey)
-                ->first(['candidate_count', 'inserted_count', 'truncated_count']);
+                ->first(['candidate_count', 'inserted_count', 'truncated_count', 'request_fingerprint']);
             if ($completedRequest !== null) {
+                if ($completedRequest->request_fingerprint !== $requestFingerprint) {
+                    throw new CommandRequestConflictException;
+                }
                 $insertedCount = (int) $completedRequest->inserted_count;
 
                 return [
@@ -791,11 +826,16 @@ final class CommandQueueService
                     'inserted_count' => $insertedCount,
                     'truncated_count' => (int) $completedRequest->truncated_count,
                     'candidate_count' => (int) $completedRequest->candidate_count,
+                    'cancelled_count' => max(0, (int) $completedRequest->truncated_count - ((int) $completedRequest->candidate_count - $insertedCount)),
+                    'skipped_count' => (int) $completedRequest->candidate_count - $insertedCount,
                     'duplicate' => true,
                     'daily_quest' => $insertedCount > 0
                         ? $this->dailyQuests->currentStatus($user->id, DailyQuestService::COMMAND_REGISTERED)
                         : null,
                 ];
+            }
+            if ($claims !== null && ($claims['expires_at'] ?? 0) <= now()->timestamp) {
+                throw new BulkPlanPreviewChangedException;
             }
             if (NationCommandQueueItem::query()->where('nation_command_queue_id', $queue->id)
                 ->where('request_key', $firstDerivedRequestKey)->exists()) {
@@ -809,7 +849,10 @@ final class CommandQueueService
                 ];
             }
             $this->assertVersion($queue, $expectedVersion);
-            $legacyDiscarded = $this->repairLegacyStagedItems($user, $queue);
+            $legacyDiscarded = 0;
+            if (! $previewOnly && $claims === null) {
+                $legacyDiscarded = $this->repairLegacyStagedItems($user, $queue);
+            }
 
             $commandKeys = match ($action) {
                 'clear_all' => ['land_clear'],
@@ -854,52 +897,67 @@ final class CommandQueueService
                     ];
                 }
             }
+            $rawActiveItems = NationCommandQueueItem::query()
+                ->where('nation_command_queue_id', $queue->id)->where('status', 'queued')
+                ->orderBy('queue_position')->orderBy('id')->with('definition')->lockForUpdate()->get();
+            $activeItems = $this->legacyOrder->project($rawActiveItems);
+            $snapshot = hash('sha256', json_encode([
+                $world->ruleset_version_id, $queue->version, $limit,
+                $rawActiveItems->map(fn (NationCommandQueueItem $item): array => $item->getAttributes())->all(),
+                array_map(static fn (array $candidate): array => [$candidate['definition']->id, $candidate['x'], $candidate['y']], $candidates),
+            ], JSON_THROW_ON_ERROR));
+            $plans = [];
+            foreach (['overflow', 'fill_available'] as $policy) {
+                $plans[$policy] = $this->bulkPlan($activeItems, $candidates, $position, $limit, str_starts_with($action, 'reclaim_') ? 2 : 1, $policy);
+            }
+            if ($previewOnly) {
+                $expiresAt = now()->addHour()->timestamp;
+                $previewClaims = [
+                    'format' => 1, 'actor_id' => $user->id, 'nation_id' => $nation->id, 'map_space_id' => $mapSpace->id,
+                    'action' => $action, 'position' => $position, 'request_key' => $requestKey,
+                    'expected_version' => $queue->version, 'expires_at' => $expiresAt, 'snapshot' => $snapshot,
+                ];
+
+                return [
+                    'preview_token' => Crypt::encryptString(json_encode($previewClaims, JSON_THROW_ON_ERROR)),
+                    'request_key' => $requestKey, 'expected_version' => $queue->version, 'expires_at' => $expiresAt,
+                    'candidate_count' => count($candidates), 'available_count' => max(0, $limit - $activeItems->count()),
+                    'queue_limit' => $limit, 'overflow_required' => count($candidates) > max(0, $limit - $activeItems->count()),
+                    'policies' => array_map(static fn (array $plan): array => [
+                        'inserted_count' => $plan['inserted_count'], 'cancelled_count' => $plan['cancelled_count'],
+                        'skipped_count' => $plan['skipped_count'],
+                        'cancelled_items' => $plan['cancelled_items'],
+                    ], $plans),
+                ];
+            }
+            if ($claims !== null) {
+                if (! hash_equals($claims['snapshot'], $snapshot)) {
+                    throw new BulkPlanPreviewChangedException;
+                }
+                $legacyDiscarded = $this->repairLegacyStagedItems($user, $queue);
+            }
             if ($candidates === []) {
                 if ($legacyDiscarded > 0) {
                     $queue->increment('version');
                     $queue->refresh();
                 }
-                $this->recordBulkRequest($queue, $requestKey, $action, $position, 0, 0, 0);
+                $this->recordBulkRequest($queue, $requestKey, $action, $position, 0, 0, 0, $requestFingerprint);
 
                 return [
                     'queue' => $queue,
                     'inserted_count' => 0,
                     'truncated_count' => 0,
                     'candidate_count' => 0,
+                    'cancelled_count' => 0,
+                    'skipped_count' => 0,
                     'duplicate' => false,
                     'daily_quest' => null,
                 ];
             }
 
-            $activeItems = NationCommandQueueItem::query()
-                ->where('nation_command_queue_id', $queue->id)->where('status', 'queued')
-                ->orderBy('queue_position')->orderBy('id')->with('definition')->lockForUpdate()->get();
-            $prefix = $activeItems->filter(fn (NationCommandQueueItem $item): bool => (int) $item->queue_position < $position)->all();
-            $suffix = $activeItems->filter(fn (NationCommandQueueItem $item): bool => (int) $item->queue_position >= $position)->all();
-            $generated = array_map(static fn (array $candidate): array => ['generated' => $candidate], $candidates);
-            $generatedCapacity = max(0, $limit - count($prefix));
-            $generatedToKeep = min(count($generated), $generatedCapacity);
-            if (str_starts_with($action, 'reclaim_')) {
-                $generatedToKeep -= $generatedToKeep % count($commandKeys);
-            }
-            $keptGenerated = array_slice($generated, 0, $generatedToKeep);
-            $keptSuffixCount = max(0, $limit - count($prefix) - count($keptGenerated));
-            $merged = [
-                ...array_map(static fn (NationCommandQueueItem $item): array => ['existing' => $item], $prefix),
-                ...$keptGenerated,
-                ...array_map(
-                    static fn (NationCommandQueueItem $item): array => ['existing' => $item],
-                    array_slice($suffix, 0, $keptSuffixCount),
-                ),
-            ];
-            $dropped = [
-                ...array_slice($generated, $generatedToKeep),
-                ...array_map(
-                    static fn (NationCommandQueueItem $item): array => ['existing' => $item],
-                    array_slice($suffix, $keptSuffixCount),
-                ),
-            ];
-            $kept = array_slice($merged, 0, $limit);
+            $plan = $plans[$overflowPolicy];
+            $kept = $plan['kept'];
+            $dropped = $plan['dropped'];
             $this->assertNoNewDangerousOverbuildEffects(
                 $queue,
                 $activeItems,
@@ -965,6 +1023,7 @@ final class CommandQueueService
                 count($candidates),
                 $insertedCount,
                 count($dropped),
+                $requestFingerprint,
             );
 
             return [
@@ -972,12 +1031,41 @@ final class CommandQueueService
                 'inserted_count' => $insertedCount,
                 'truncated_count' => count($dropped),
                 'candidate_count' => count($candidates),
+                'cancelled_count' => $plan['cancelled_count'],
+                'skipped_count' => $plan['skipped_count'],
                 'duplicate' => false,
                 'daily_quest' => $insertedCount > 0
                     ? $this->dailyQuests->recordCommandRegistered($user->id, 'bulk:'.$queue->id.':'.$requestKey)
                     : null,
             ];
         }, 3);
+    }
+
+    /**
+     * @param  Collection<int, NationCommandQueueItem>  $activeItems
+     * @param  list<array{definition: CommandDefinition, x: int, y: int}>  $candidates
+     * @return array<string, mixed>
+     */
+    private function bulkPlan(Collection $activeItems, array $candidates, int $position, int $limit, int $groupSize, string $policy): array
+    {
+        $prefix = $activeItems->filter(fn (NationCommandQueueItem $item): bool => (int) $item->queue_position < $position)->values()->all();
+        $suffix = $activeItems->filter(fn (NationCommandQueueItem $item): bool => (int) $item->queue_position >= $position)->values()->all();
+        $capacity = $policy === 'fill_available' ? max(0, $limit - $activeItems->count()) : max(0, $limit - count($prefix));
+        $inserted = min(count($candidates), $capacity);
+        $inserted -= $inserted % $groupSize;
+        $suffixCount = max(0, $limit - count($prefix) - $inserted);
+        $existing = static fn (NationCommandQueueItem $item): array => ['existing' => $item];
+        $generated = static fn (array $candidate): array => ['generated' => $candidate];
+
+        return [
+            'kept' => [...array_map($existing, $prefix), ...array_map($generated, array_slice($candidates, 0, $inserted)), ...array_map($existing, array_slice($suffix, 0, $suffixCount))],
+            'dropped' => [...array_map($generated, array_slice($candidates, $inserted)), ...array_map($existing, array_slice($suffix, $suffixCount))],
+            'inserted_count' => $inserted, 'skipped_count' => count($candidates) - $inserted,
+            'cancelled_count' => max(0, count($suffix) - $suffixCount),
+            'cancelled_items' => array_map(static fn (NationCommandQueueItem $item): array => [
+                'id' => $item->id, 'queue_position' => (int) $item->queue_position,
+            ], array_slice($suffix, $suffixCount)),
+        ];
     }
 
     /** @return array{queue: NationCommandQueue, deleted_count: int} */
@@ -1033,6 +1121,7 @@ final class CommandQueueService
         int $candidateCount,
         int $insertedCount,
         int $truncatedCount,
+        ?string $requestFingerprint = null,
     ): void {
         DB::table('nation_command_queue_bulk_requests')->insert([
             'nation_command_queue_id' => $queue->id,
@@ -1042,6 +1131,7 @@ final class CommandQueueService
             'candidate_count' => $candidateCount,
             'inserted_count' => $insertedCount,
             'truncated_count' => $truncatedCount,
+            'request_fingerprint' => $requestFingerprint,
             'created_at' => now(),
         ]);
     }

@@ -45,6 +45,25 @@ final class UndergroundEquipmentCatalog
             : throw new RuntimeException('Underground equipment catalog identity is invalid.');
     }
 
+    /** @return list<array{key: string, label: string, kind: string, target: string}> */
+    public function affixOptions(?string $inventory = null): array
+    {
+        $options = [];
+        $generator = $this->data()['generator'];
+        if ($inventory !== 'resonance') {
+            foreach ($generator['affixes'] as $key => $affix) {
+                $options[] = ['key' => $key, 'label' => $affix['label'], 'kind' => $affix['kind'], 'target' => $affix['target']];
+            }
+        }
+        if ($inventory !== 'equipment') {
+            foreach ($generator['resonance']['affixes'] as $key => $label) {
+                $options[] = ['key' => $key, 'label' => $label, 'kind' => 'modifier', 'target' => $key];
+            }
+        }
+
+        return $options;
+    }
+
     /** @return list<string> */
     public function supportedIdentities(): array
     {

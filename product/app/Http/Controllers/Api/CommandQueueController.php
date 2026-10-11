@@ -9,6 +9,7 @@ use App\Application\NationCommandTargetService;
 use App\Application\ParadoxBalanceService;
 use App\Application\SurfaceVisibilityService;
 use App\Application\Underground\UndergroundFacilityService;
+use App\Domain\Command\BulkPlanPreviewChangedException;
 use App\Domain\Command\CommandQueueLimit;
 use App\Domain\Command\CommandRequestConflictException;
 use App\Domain\Command\DevelopmentPlanQuantity;
@@ -457,6 +458,24 @@ final class CommandQueueController extends Controller
         }
     }
 
+    public function bulkPreview(Request $request, Nation $nation, MapSpace $mapSpace, CommandQueueService $service): JsonResponse
+    {
+        $limit = $this->queueLimit($nation);
+        $validated = $request->validate([
+            'action' => ['required', 'string', 'in:clear_all,level_all,reclaim_clear_all,reclaim_level_all'],
+            'position' => ['required', 'integer', 'min:1', "max:{$limit}"],
+            'expected_version' => ['required', 'integer', 'min:1'],
+        ]);
+
+        try {
+            return response()->json(['data' => $service->bulkPreview(
+                $request->user(), $nation, $mapSpace, $validated['action'], $validated['position'], $validated['expected_version'],
+            )]);
+        } catch (DomainException $exception) {
+            return $this->domainError($exception);
+        }
+    }
+
     public function bulk(Request $request, Nation $nation, MapSpace $mapSpace, CommandQueueService $service): JsonResponse
     {
         $limit = $this->queueLimit($nation);
@@ -465,6 +484,8 @@ final class CommandQueueController extends Controller
             'position' => ['required', 'integer', 'min:1', "max:{$limit}"],
             'request_key' => ['required', 'uuid'],
             'expected_version' => ['required', 'integer', 'min:1'],
+            'overflow_policy' => ['required_with:preview_token', 'string', 'in:overflow,fill_available'],
+            'preview_token' => ['required_with:overflow_policy', 'string', 'max:10000'],
         ]);
 
         try {
@@ -476,6 +497,8 @@ final class CommandQueueController extends Controller
                 $validated['position'],
                 $validated['request_key'],
                 $validated['expected_version'],
+                $validated['overflow_policy'] ?? 'overflow',
+                $validated['preview_token'] ?? null,
             );
 
             return response()->json(['data' => [
@@ -483,6 +506,8 @@ final class CommandQueueController extends Controller
                 'inserted_count' => $result['inserted_count'],
                 'truncated_count' => $result['truncated_count'],
                 'candidate_count' => $result['candidate_count'],
+                'cancelled_count' => $result['cancelled_count'] ?? 0,
+                'skipped_count' => $result['skipped_count'] ?? 0,
                 'duplicate' => $result['duplicate'],
                 'daily_quest' => $result['daily_quest'],
             ]]);
@@ -701,11 +726,16 @@ final class CommandQueueController extends Controller
         if ($exception instanceof CommandRequestConflictException) {
             $payload['code'] = CommandRequestConflictException::ERROR_CODE;
         }
+        if ($exception instanceof BulkPlanPreviewChangedException) {
+            $payload['code'] = BulkPlanPreviewChangedException::ERROR_CODE;
+            $payload['message'] = $exception->getMessage();
+        }
 
         return response()->json(
             $payload,
             $exception instanceof OptimisticLockException
                 || $exception instanceof ResetRequiredException
+                || $exception instanceof BulkPlanPreviewChangedException
                 || $exception instanceof CommandRequestConflictException ? 409 : 422,
         );
     }
