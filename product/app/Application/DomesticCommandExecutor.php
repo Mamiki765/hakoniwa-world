@@ -72,7 +72,6 @@ final class DomesticCommandExecutor
         private readonly DisasterTurnService $disasters,
         private readonly MonsterSpawnService $monsterSpawn,
         private readonly NationIdleCounterFinalizer $idleCounters,
-        private readonly LegacyCommandQueueOrder $legacyOrder,
         private readonly TerritoryExpansionPolicy $territoryExpansion,
         private readonly CapitalCorePolicy $capitalCores,
         private readonly ChunkCoordinateService $chunks,
@@ -127,10 +126,8 @@ final class DomesticCommandExecutor
                 ->where('nation_id', $nation->id)
                 ->lockForUpdate()
                 ->first();
-            $legacyDiscarded = $queue === null ? 0 : $this->discardLegacyStagedQueue($context, $queue);
             $consumedTurn = false;
-            $queueMutated = $legacyDiscarded > 0;
-            $metrics['removed'] += $legacyDiscarded;
+            $queueMutated = false;
 
             while (! $consumedTurn) {
                 $item = $queue === null ? null : NationCommandQueueItem::query()
@@ -2337,28 +2334,6 @@ final class DomesticCommandExecutor
             return;
         }
         $this->writeCompactedPositions($items);
-    }
-
-    private function discardLegacyStagedQueue(TurnContext $context, NationCommandQueue $queue): int
-    {
-        $items = $this->lockedQueuedItems($queue);
-        if ($items->isEmpty()) {
-            return 0;
-        }
-        $discarded = $this->legacyOrder->discard($items);
-        if ($discarded->isEmpty()) {
-            return 0;
-        }
-        foreach ($discarded as $item) {
-            $this->events->record($context, 'command.queue_removed', $item, [
-                'nation_id' => $queue->nation_id,
-                'reason' => LegacyCommandQueueOrder::DISCARD_REASON,
-                'original_queue_position' => (int) $item->getAttribute('legacy_original_queue_position'),
-            ], visibility: 'admin');
-        }
-        $this->compact($queue);
-
-        return $discarded->count();
     }
 
     /** @return Collection<int, NationCommandQueueItem> */

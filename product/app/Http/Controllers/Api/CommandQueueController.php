@@ -4,7 +4,6 @@ namespace App\Http\Controllers\Api;
 
 use App\Application\CommandQuantitySemantics;
 use App\Application\CommandQueueService;
-use App\Application\LegacyCommandQueueOrder;
 use App\Application\NationCommandTargetService;
 use App\Application\ParadoxBalanceService;
 use App\Application\SurfaceVisibilityService;
@@ -38,7 +37,6 @@ use Illuminate\Http\Request;
 final class CommandQueueController extends Controller
 {
     public function __construct(
-        private readonly LegacyCommandQueueOrder $legacyOrder,
         private readonly CommandQuantitySemantics $quantitySemantics,
         private readonly NationCommandTargetService $nationTargets,
     ) {}
@@ -591,7 +589,7 @@ final class CommandQueueController extends Controller
         $nation = $queue->nation()->firstOrFail();
         $mapSpace = MapSpace::query()->findOrFail($queue->map_space_id);
         $projectionMemo = new SurfaceCommandProjectionMemo;
-        $items = $this->legacyOrder->project($queue->items)
+        $items = $queue->items
             ->map(function (NationCommandQueueItem $item) use ($queue, $nation, $service, $mapSpace, $projectionMemo): array {
                 $definition = $service->definitionForItem($item);
                 $cell = $item->target_context === 'surface_cell'
