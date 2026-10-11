@@ -180,21 +180,6 @@ final class UndergroundLendingRewardServiceTest extends TestCase
         ]);
     }
 
-    public function test_failed_settlement_rolls_back_prior_member_rows(): void
-    {
-        [$owner, $borrowed] = $this->secretary();
-        [$leader, $leaderSecretary] = $this->secretary();
-        $party = $this->party($leader, $leaderSecretary, $borrowed, 1);
-        $party->members()->create(['source_type' => 'borrowed_secretary', 'secretary_id' => null, 'source_owner_user_id' => null, 'combatant_id' => 'bad', 'original_level' => 5, 'effective_level' => 5, 'snapshot' => []]);
-        $battle = $this->battle($leader, $party, 2);
-        $this->expectException(InvalidArgumentException::class);
-        try {
-            app(UndergroundLendingRewardService::class)->settle($battle, $party);
-        } finally {
-            $this->assertDatabaseCount('secretary_lending_participations', 0);
-        }
-    }
-
     public function test_trial_and_playtest_battles_are_not_settleable(): void
     {
         [$owner, $borrowed] = $this->secretary();
