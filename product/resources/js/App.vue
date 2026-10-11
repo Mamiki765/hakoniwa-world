@@ -213,8 +213,9 @@ const ownBoard = useOwnBoardUnread(
 );
 const boardUnread = ownBoard.unread;
 // 既読にするのは、伝言板が画面に出ていて、本文を取得して表示できている分だけ。
-watch(() => [ownBoard.displayed.value, ownBoard.bodyShown.value, ledger.boardVisible.value, page.value] as const, ([displayed, shown, visible, currentPage]) => {
-    if (displayed !== null && shown && visible && currentPage === 'island') ownBoard.markSeen();
+// ページが裏にあるあいだは既読にしない。前面へ戻ったときに、表示できている分をあらためて既読にする。
+watch(() => [ownBoard.displayed.value, ownBoard.bodyShown.value, ledger.boardVisible.value, page.value, ownBoard.pageVisible.value] as const, ([displayed, shown, visible, currentPage, pageVisible]) => {
+    if (displayed !== null && shown && visible && currentPage === 'island' && pageVisible) ownBoard.markSeen();
 });
 
 watch(page, (nextPage) => {

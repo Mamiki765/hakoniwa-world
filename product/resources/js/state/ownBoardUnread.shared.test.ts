@@ -86,6 +86,19 @@ it('keeps one poller for the own island, keeps unread across a failed fetch, and
     unreadState.markSeen();
     expect(unreadState.unread.value).toBe(false);
 
+    // ページが別のブラウザタブの裏にあるあいだに届いた伝言は、伝言板を開いたままでも既読にしない。前面へ戻ったら既読にできる。
+    const visibility = vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('hidden');
+    document.dispatchEvent(new Event('visibilitychange'));
+    unreadState.report(3, newestIncoming(board([received('while-hidden', '2026-10-11T08:45:00+09:00')])));
+    unreadState.markSeen();
+    expect(unreadState.unread.value).toBe(true);
+    visibility.mockReturnValue('visible');
+    document.dispatchEvent(new Event('visibilitychange'));
+    expect(unreadState.pageVisible.value).toBe(true);
+    unreadState.markSeen();
+    expect(unreadState.unread.value).toBe(false);
+    visibility.mockRestore();
+
     // 別の島へ切り替わったら、前の島の新着や既読を持ち越さない。別の島あての報告も受け取らない。
     boardMounted.value = false;
     nationId.value = 8;

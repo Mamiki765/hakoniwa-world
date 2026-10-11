@@ -57,6 +57,12 @@ export function useOwnBoardUnread(nationId: Ref<number | null>, boardMounted: Re
     // 既読にするのはここまで。取得に失敗した・読み込み中のあいだは null のまま。
     const displayed = ref<BoardMark | null>(null);
     const bodyShown = ref(false);
+    // このページがいま前面に出ているか。別のブラウザタブの裏にあるあいだは、届いた伝言を読んだことにしない。
+    const pageVisible = ref(document.visibilityState === 'visible');
+    const onVisibilityChange = (): void => {
+        pageVisible.value = document.visibilityState === 'visible';
+    };
+    document.addEventListener('visibilitychange', onVisibilityChange);
     const seen = ref<BoardMark | null>(null);
     const unread = computed(() => hasUnseen(latest.value, seen.value));
     let timer: ReturnType<typeof setTimeout> | null = null;
@@ -110,7 +116,7 @@ export function useOwnBoardUnread(nationId: Ref<number | null>, boardMounted: Re
     /** 伝言板が画面に出ているときに呼ぶ。本文として表示できている分だけを既読にする。 */
     function markSeen(): void {
         const targetNationId = nationId.value;
-        const shownUpTo = bodyShown.value ? displayed.value : null;
+        const shownUpTo = bodyShown.value && pageVisible.value ? displayed.value : null;
         if (targetNationId === null || shownUpTo === null || !hasUnseen(shownUpTo, seen.value)) return;
         // 同じ秒のうち、すでに見た伝言も覚えたままにする。
         seen.value = seen.value?.at === shownUpTo.at ? { at: shownUpTo.at, keys: [...new Set([...seen.value.keys, ...shownUpTo.keys])] } : shownUpTo;
@@ -143,9 +149,10 @@ export function useOwnBoardUnread(nationId: Ref<number | null>, boardMounted: Re
     }, { immediate: true });
 
     onBeforeUnmount(() => {
+        document.removeEventListener('visibilitychange', onVisibilityChange);
         generation++;
         stop();
     });
 
-    return { unread, latest, displayed, bodyShown, report, setBodyShown, markSeen };
+    return { unread, latest, displayed, bodyShown, pageVisible, report, setBodyShown, markSeen };
 }
