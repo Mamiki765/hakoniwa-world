@@ -227,9 +227,14 @@ describe('Underground equipment navigation', () => {
 
     it('shows five slots and sends the selected accessory target slot', async () => {
         const equipPayloads: Array<Record<string, unknown>> = [];
+        const protectionPayloads: Array<Record<string, unknown>> = [];
         const accessory = item();
         const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
             const path = String(input);
+            if (path === '/api/v1/me/underground/equipment/items/7/protection' && init?.method === 'PUT') {
+                protectionPayloads.push(JSON.parse(String(init.body)) as Record<string, unknown>);
+                return response({ operation: 'equipment_protection', shard_balance: 100, banked_shard_balance: 200, vault: { used: 2, capacity: 500, equipped } });
+            }
             if (path === '/api/v1/me/underground/equipment/equipped' && init?.method === 'PUT') {
                 equipPayloads.push(JSON.parse(String(init.body)) as Record<string, unknown>);
                 return response({
@@ -241,7 +246,7 @@ describe('Underground equipment navigation', () => {
             if (path.startsWith('/api/v1/me/underground/equipment/vault')) {
                 return response({
                     catalog_identity: 'test-catalog', used: 2, capacity: 500, equipped,
-                    items: [accessory], page: 1, per_page: 50, last_page: 1, total: 1,
+                    items: [{ ...accessory, is_protected: protectionPayloads.at(-1)?.is_protected === true }], page: 1, per_page: 50, last_page: 1, total: 1,
                 });
             }
             return response(null, 404);
@@ -251,6 +256,14 @@ describe('Underground equipment navigation', () => {
         const wrapper = mount(UndergroundEquipmentVault);
         await flushPromises();
 
+        // ★は「いまの逆」ではなく、望む状態を送り、サーバーが返した状態を表示する。
+        expect(wrapper.get('.underground-protect-toggle').attributes('aria-pressed')).toBe('false');
+        await wrapper.get('.underground-protect-toggle').trigger('click');
+        await flushPromises();
+        expect(protectionPayloads).toHaveLength(1);
+        expect(protectionPayloads[0]).toMatchObject({ is_protected: true });
+        expect(wrapper.get('.underground-protect-toggle').attributes('aria-pressed')).toBe('true');
+
         expect(wrapper.text()).toContain('アクセサリー1');
         expect(wrapper.text()).toContain('アクセサリー3');
         expect(wrapper.get('.underground-equipment-card').text()).toContain('アーティファクト');
@@ -258,7 +271,7 @@ describe('Underground equipment navigation', () => {
         expect(wrapper.get('.underground-equipment-card').text()).toContain('生成装備');
 
         await wrapper.get('select[aria-label="アクセサリー装備先"]').setValue('accessory_3');
-        await wrapper.get('.underground-equipment-card .button').trigger('click');
+        await wrapper.get('.underground-equipment-card .button.secondary').trigger('click');
         await flushPromises();
 
         expect(equipPayloads).toHaveLength(1);
@@ -278,6 +291,11 @@ describe('Underground equipment navigation', () => {
             rarities: [{ key: 'common', label: 'サーバー通常' }, { key: 'rare', label: 'サーバー希少' }],
             categories: [{ key: 'weapon', label: 'サーバー武器' }, { key: 'armor', label: 'サーバー防具' }, { key: 'accessory', label: 'サーバー装飾' }],
             weapon_styles: [{ key: 'dagger', label: 'サーバー短剣' }, { key: 'rapier', label: 'サーバー細身剣' }],
+            filter_modes: ['match', 'exclude'],
+            affixes: [
+                { key: 'physical_damage_bps', label: 'サーバー物理', kind: 'modifier', target: 'physical_damage' },
+                { key: 'max_hp', label: 'サーバー体力', kind: 'flat', target: 'max_hp' },
+            ],
         };
         const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
             const path = String(input);
@@ -323,8 +341,13 @@ describe('Underground equipment navigation', () => {
             '/api/v1/me/underground/equipment/vault?page=2&sort=newest',
         ]);
 
-        await wrapper.get('input[type="number"]').setValue('30');
-        await wrapper.findAll('label').find(label => label.text() === 'Quality %以下')!.get('input').setValue('0');
+        await wrapper.get('#underground-bulk-item-level').setValue('30');
+        await wrapper.get('#underground-bulk-quality').setValue('0');
+        // 条件の向きとエンチャントは、選んだとおりにサーバーへ送る（逆向きで送ると、残したい装備が売却候補になる）。
+        await wrapper.get('select[aria-label="武器スタイルの条件の向き"]').setValue('exclude');
+        await wrapper.get('select[aria-label="エンチャントの条件の向き"]').setValue('exclude');
+        await wrapper.findAll('.underground-bulk-affix-list label').find((label) => label.text() === 'サーバー物理')!.get('input').setValue(true);
+        expect(wrapper.get('.underground-bulk-affixes summary').text()).toContain('1件指定中');
         await wrapper.get('.underground-bulk-preview-button').trigger('click');
         await flushPromises();
 
@@ -334,6 +357,11 @@ describe('Underground equipment navigation', () => {
             rarities: ['common', 'rare'],
             categories: ['weapon', 'armor', 'accessory'],
             weapon_styles: ['dagger', 'rapier'],
+            affix_keys: ['physical_damage_bps'],
+            filter_modes: {
+                item_level_max: 'match', quality_percent_max: 'match', rarities: 'match', categories: 'match',
+                weapon_styles: 'exclude', affix_keys: 'exclude',
+            },
         }]);
         expect(wrapper.get('.underground-bulk-sale-preview').text()).toContain('プレビュー対象');
         expect(wrapper.get('.underground-bulk-sale-preview').text()).toContain('180G');

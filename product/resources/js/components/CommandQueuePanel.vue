@@ -373,61 +373,119 @@ function prepareCommand(
 
 type BulkAction = 'clear_all' | 'level_all' | 'reclaim_clear_all' | 'reclaim_level_all';
 
-// 一括は入れる位置から差し込み、元の計画をその下へ送る。上限を超えた分は末尾から押し出されて消えるので、
-// 後ろに計画があるときは送る前に確かめる。正確な件数はserverしか知らないため、ここでは数えない。
-function requestBulk(action: BulkAction): void {
+type BulkPolicy = 'overflow' | 'fill_available';
+interface BulkPolicyPreview {
+    inserted_count: number;
+    cancelled_count: number;
+    skipped_count: number;
+    cancelled_items: Array<{ id: number; queue_position: number }>;
+}
+interface BulkPreview {
+    preview_token: string;
+    request_key: string;
+    expected_version: number;
+    candidate_count: number;
+    available_count: number;
+    overflow_required: boolean;
+    policies: Record<BulkPolicy, BulkPolicyPreview>;
+}
+interface BulkChoice {
+    action: BulkAction;
+    position: number;
+    preview: BulkPreview;
+    // 溢れさせたときに消える、いまの計画（サーバーが決めた集合を、表示中の計画と突き合わせたもの）。
+    cancelledItems: CommandQueueItem[];
+}
+const bulkChoice = ref<BulkChoice | null>(null);
+
+// 一括は選んだ行の前へ差し込む。何件入り、何が溢れるかはサーバーに確かめる。
+// 溢れないならそのまま入れ、溢れるときだけ、どうするかを選んでもらう。
+async function requestBulk(action: BulkAction): Promise<void> {
     bulkOpen.value = false;
     if (busy.value) return;
     const position = bulkPosition.value;
-    if (!queue.value.items.some((item) => item.queue_position >= position)) {
-        void bulkInsert(action, position);
-        return;
-    }
-    confirmation.value = {
-        message: `計画の${position}番から一括で入れ、いまの計画はその下へ送ります。空きは${queue.value.limit - queue.value.explicit_count}件です。入りきらない分は末尾の計画から押し出されて消えます。入れますか？`,
-        confirmLabel: '一括で入れる',
-        action: () => {
-            confirmation.value = null;
-            void bulkInsert(action, position);
-        },
-    };
-}
-
-async function bulkInsert(action: BulkAction, position = bulkPosition.value): Promise<void> {
-    if (busy.value) return;
     const context = queueContext();
     beginMutation();
     try {
-        const result = await api<{
-            queue: CommandQueue;
-            inserted_count: number;
-            truncated_count: number;
-            candidate_count: number;
-            daily_quest: DailyQuestProgress | null;
-        }>(`${basePath()}/command-queue/bulk`, {
+        const preview = await api<BulkPreview>(`${basePath()}/command-queue/bulk/preview`, {
             method: 'POST',
-            body: JSON.stringify({
-                action,
-                position,
-                request_key: crypto.randomUUID(),
-                expected_version: queue.value.version,
-            }),
+            body: JSON.stringify({ action, position, expected_version: queue.value.version }),
         });
         if (!isCurrentQueueContext(context)) {
             refreshAfterMutation = 2;
             return;
         }
-        applyServerQueue(result.queue);
-        if (result.daily_quest?.completed_now === true) emit('dailyQuest', result.daily_quest);
-        commandStatus.value = result.truncated_count > 0
-            ? { kind: 'success', text: `${result.inserted_count}件を${position}番から入れ、${result.truncated_count}件が押し出されて消えました` }
-            : { kind: 'success', text: `${result.inserted_count}件を${position}番から入れました` };
+        if (preview.candidate_count === 0) {
+            commandStatus.value = { kind: 'success', text: '一括で入れられるマスがありません' };
+            return;
+        }
+        if (!preview.overflow_required) {
+            await applyBulk(action, position, preview, 'overflow', context);
+            return;
+        }
+        // 消える計画は、同じ版の計画とidで突き合わせる。合わなければ取り直して、もう一度選んでもらう。
+        const cancelledItems = preview.policies.overflow.cancelled_items.flatMap((cancelled) => queue.value.items
+            .filter((item) => item.id === cancelled.id && item.queue_position === cancelled.queue_position));
+        if (preview.expected_version !== queue.value.version || cancelledItems.length !== preview.policies.overflow.cancelled_items.length) {
+            setCommandError('開発計画が更新されたため再読み込みしました。もう一度、一括を選んでください');
+            refreshAfterMutation = 2;
+            return;
+        }
+        bulkChoice.value = { action, position, preview, cancelledItems };
     } catch (error) {
         if (!isCurrentQueueContext(context) || isAbortError(error)) refreshAfterMutation = 2;
         else handleMutationError(error);
     } finally {
         await finishMutation();
     }
+}
+
+async function chooseBulk(policy: BulkPolicy): Promise<void> {
+    const choice = bulkChoice.value;
+    if (choice === null || busy.value) return;
+    bulkChoice.value = null;
+    const context = queueContext();
+    beginMutation();
+    try {
+        await applyBulk(choice.action, choice.position, choice.preview, policy, context);
+    } catch (error) {
+        // 確認のあいだに計画や島が変わっていたら、何も変えずに取り直す。前の選択を自動でやり直さない。
+        if (!isCurrentQueueContext(context) || isAbortError(error)) refreshAfterMutation = 2;
+        else handleMutationError(error);
+    } finally {
+        await finishMutation();
+    }
+}
+
+async function applyBulk(action: BulkAction, position: number, preview: BulkPreview, policy: BulkPolicy, context: QueueContext): Promise<void> {
+    const result = await api<{
+        queue: CommandQueue;
+        inserted_count: number;
+        cancelled_count: number;
+        skipped_count: number;
+        daily_quest: DailyQuestProgress | null;
+    }>(`${basePath()}/command-queue/bulk`, {
+        method: 'POST',
+        body: JSON.stringify({
+            action,
+            position,
+            expected_version: preview.expected_version,
+            request_key: preview.request_key,
+            preview_token: preview.preview_token,
+            overflow_policy: policy,
+        }),
+    });
+    if (!isCurrentQueueContext(context)) {
+        refreshAfterMutation = 2;
+        return;
+    }
+    applyServerQueue(result.queue);
+    if (result.daily_quest?.completed_now === true) emit('dailyQuest', result.daily_quest);
+    const notes = [
+        result.cancelled_count > 0 ? `後ろの${result.cancelled_count}件が押し出されて消えました` : '',
+        result.skipped_count > 0 ? `${result.skipped_count}件は入りきらず見送りました` : '',
+    ].filter((note) => note !== '');
+    commandStatus.value = { kind: 'success', text: [`${result.inserted_count}件を${position}番から入れました`, ...notes].join('。') };
 }
 
 function confirmCancelFrom(): void {
@@ -1079,6 +1137,38 @@ onBeforeUnmount(() => {
                         <button type="submit" class="sl-primary" :disabled="busy || pendingNeedsConfirmation || !pendingQuantityIsValid || !parametersAreValid">計画に入れる</button>
                     </div>
                 </form>
+            </section>
+        </div>
+        <div v-if="bulkChoice" class="command-modal-backdrop sl-backdrop" role="presentation" @click.self="bulkChoice = null">
+            <section class="command-modal sl-dialog sl-bulk-choice" role="alertdialog" aria-modal="true" aria-labelledby="bulk-choice-title">
+                <h3 id="bulk-choice-title">計画が入りきりません</h3>
+                <p>
+                    <span class="num">{{ bulkChoice.position }}</span>番から<span class="num">{{ bulkChoice.preview.candidate_count }}</span>件を入れようとしていますが、
+                    空きは<span class="num">{{ bulkChoice.preview.available_count }}</span>件です。
+                </p>
+                <div class="sl-bulk-lost">
+                    <strong>全部入れると消える計画（{{ bulkChoice.cancelledItems.length }}件）</strong>
+                    <ul>
+                        <li v-for="item in bulkChoice.cancelledItems" :key="item.id">
+                            <span class="num">{{ item.queue_position }}</span>
+                            <span>{{ item.command_name }}<small v-if="item.command_suffix">{{ item.command_suffix }}</small></span>
+                            <span v-if="item.target_x !== null && item.target_y !== null" class="num">({{ item.target_x }},{{ item.target_y }})</span>
+                            <span v-if="item.quantity_semantics === 'ordinary' && item.quantity > 1" class="num">×{{ item.quantity }}</span>
+                        </li>
+                    </ul>
+                </div>
+                <div class="sl-bulk-options">
+                    <button type="button" class="bulk-fill" :disabled="busy || bulkChoice.preview.policies.fill_available.inserted_count === 0" @click="chooseBulk('fill_available')">
+                        <strong>入るところまで入れる</strong>
+                        <small v-if="bulkChoice.preview.policies.fill_available.inserted_count > 0">{{ bulkChoice.preview.policies.fill_available.inserted_count }}件を入れ、残り{{ bulkChoice.preview.policies.fill_available.skipped_count }}件は見送ります。いまの計画は消えません。</small>
+                        <small v-else>空きが足りないため、1件も入りません。</small>
+                    </button>
+                    <button type="button" class="danger-action bulk-overflow" :disabled="busy" @click="chooseBulk('overflow')">
+                        <strong>全部入れて、溢れた分は消す</strong>
+                        <small>{{ bulkChoice.preview.policies.overflow.inserted_count }}件を入れ、この{{ bulkChoice.preview.policies.overflow.cancelled_count }}件が消えます。</small>
+                    </button>
+                    <button type="button" class="sl-quiet" @click="bulkChoice = null">やめる</button>
+                </div>
             </section>
         </div>
         <div v-if="confirmation" class="command-modal-backdrop sl-backdrop" role="presentation" @click.self="confirmation = null">
