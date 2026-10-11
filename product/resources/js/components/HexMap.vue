@@ -24,7 +24,7 @@ const emit = defineEmits<{
 }>();
 
 // 表示の選択だけを端末に保存する。視界や領土の情報そのものは保存しない。
-function displayPreference(key: 'visibility' | 'weather' | 'territory', fallback: boolean) {
+function displayPreference(key: 'visibility' | 'weather' | 'territory' | 'planMarks', fallback: boolean) {
     const enabled = ref(fallback);
     const storageKey = `hakoniwa.map.${key}`;
     try {
@@ -54,7 +54,7 @@ const wholeWorldView = ref(false);
 const showVisibility = displayPreference('visibility', false);
 const showSeaAreas = displayPreference('weather', true);
 const showTerritory = displayPreference('territory', true);
-const showPlanMarks = ref(true);
+const showPlanMarks = displayPreference('planMarks', true);
 // 指で触ったあとに届くmouseenterでは、マスの詳細を出さない。
 let touchInput = false;
 const failedWeatherAssets = ref(new Set<string>());

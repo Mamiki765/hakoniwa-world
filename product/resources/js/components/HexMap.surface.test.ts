@@ -4,7 +4,7 @@ import type { CommandQueue, MapCell } from '../types';
 import HexMap from './HexMap.vue';
 
 const worldBounds = { min_x: 0, max_x: 59, min_y: 0, max_y: 59 };
-const displayPreferenceKeys = ['visibility', 'weather', 'territory'].map((key) => `hakoniwa.map.${key}`);
+const displayPreferenceKeys = ['visibility', 'weather', 'territory', 'planMarks'].map((key) => `hakoniwa.map.${key}`);
 
 beforeEach(() => displayPreferenceKeys.forEach((key) => localStorage.removeItem(key)));
 
@@ -69,13 +69,24 @@ function trackPointerCapture(element: Element): { captured: number[]; released: 
 describe('staggered square-image map', () => {
     it('toggles an area perimeter and the recorded weather while keeping cells selectable', async () => {
         const cell = mapCell({ x: 0, y: 0, within_viewer_visibility: true });
+        const commandQueue: CommandQueue = {
+            version: 1, limit: 30, explicit_count: 1, plan: [],
+            items: [{
+                id: 1, command_key: 'plant', command_name: '植林', queue_position: 1,
+                target_context: 'surface_cell', target_x: 0, target_y: 0, target_layer: null, target_slot_index: null,
+                quantity: 1, quantity_semantics: 'ordinary', quantity_label: null, consumes_turn: true,
+                parameters: {}, status: 'queued', queued_at: null,
+            }],
+        };
         const wrapper = mount(HexMap, { props: {
             cells: [cell, mapCell({ x: 1 })], selected: null, capital: { x: 0, y: 0 }, bounds: worldBounds,
-            ownNationId: 18, commandQueue: null,
+            ownNationId: 18, commandQueue,
             loading: false, error: null, emptyChunks: [],
             seaAreas: [{ chunk_x: 0, chunk_y: 0, name: 'テスト海域', bounds: { min_x: 0, max_x: 15, min_y: 0, max_y: 15 },
                 weather: { key: 'rain', label: '雨', turn: 7, asset: { key: 'weather.rain', url: '/assets/weather-rain.gif', available: true, fallback_label: '雨', fallback_style: '' } } }],
         } });
+        expect(wrapper.get('.plan-mark-toggle').attributes('aria-pressed')).toBe('true');
+        expect(wrapper.get('.plan-mark').text()).toBe('1');
         expect(wrapper.findAll('.sea-area-border')).toHaveLength(1);
         expect(wrapper.get('.sea-area-border').classes()).toContain('weather-rain');
         expect(wrapper.get('.weather-icon').attributes('width')).toBe('20');
@@ -101,7 +112,9 @@ describe('staggered square-image map', () => {
         await wrapper.get('.sea-area-toggle').trigger('click');
         await wrapper.get('.territory-toggle').trigger('click');
         await wrapper.get('.visibility-toggle').trigger('click');
-        expect(displayPreferenceKeys.map((key) => localStorage.getItem(key))).toEqual(['1', '0', '0']);
+        await wrapper.get('.plan-mark-toggle').trigger('click');
+        expect(wrapper.find('.plan-mark').exists()).toBe(false);
+        expect(displayPreferenceKeys.map((key) => localStorage.getItem(key))).toEqual(['1', '0', '0', '0']);
         const savedProps = wrapper.props();
         wrapper.unmount();
 
@@ -113,11 +126,20 @@ describe('staggered square-image map', () => {
         expect(reopened.get('.visibility-toggle').attributes('aria-pressed')).toBe('true');
         expect(reopened.findAll('.map-cell')[0]!.classes()).toContain('within-viewer-visibility');
         expect(reopened.findAll('.map-cell')[1]!.classes()).not.toContain('within-viewer-visibility');
+        expect(reopened.get('.plan-mark-toggle').attributes('aria-pressed')).toBe('false');
+        expect(reopened.find('.plan-mark').exists()).toBe(false);
+        await reopened.get('.plan-mark-toggle').trigger('click');
         reopened.unmount();
+
+        const enabledAgain = mount(HexMap, { props: savedProps });
+        expect(enabledAgain.get('.plan-mark-toggle').attributes('aria-pressed')).toBe('true');
+        expect(enabledAgain.get('.plan-mark').text()).toBe('1');
+        enabledAgain.unmount();
 
         const publicMap = mount(HexMap, { props: { ...savedProps, ownNationId: undefined, commandQueue: undefined } });
         expect(publicMap.find('.visibility-toggle').exists()).toBe(false);
         expect(publicMap.find('.territory-toggle').exists()).toBe(false);
+        expect(publicMap.find('.plan-mark-toggle').exists()).toBe(false);
         expect(publicMap.findAll('.within-viewer-visibility')).toHaveLength(0);
         publicMap.unmount();
     });
@@ -132,6 +154,7 @@ describe('staggered square-image map', () => {
         expect(invalid.get('.visibility-toggle').attributes('aria-pressed')).toBe('false');
         expect(invalid.get('.sea-area-toggle').attributes('aria-pressed')).toBe('true');
         expect(invalid.get('.territory-toggle').attributes('aria-pressed')).toBe('true');
+        expect(invalid.get('.plan-mark-toggle').attributes('aria-pressed')).toBe('true');
         invalid.unmount();
 
         vi.spyOn(window, 'localStorage', 'get').mockImplementation(() => { throw new DOMException('Storage is disabled', 'SecurityError'); });
@@ -139,12 +162,15 @@ describe('staggered square-image map', () => {
         expect(unavailable.get('.visibility-toggle').attributes('aria-pressed')).toBe('false');
         expect(unavailable.get('.sea-area-toggle').attributes('aria-pressed')).toBe('true');
         expect(unavailable.get('.territory-toggle').attributes('aria-pressed')).toBe('true');
+        expect(unavailable.get('.plan-mark-toggle').attributes('aria-pressed')).toBe('true');
         await unavailable.get('.visibility-toggle').trigger('click');
         await unavailable.get('.sea-area-toggle').trigger('click');
         await unavailable.get('.territory-toggle').trigger('click');
+        await unavailable.get('.plan-mark-toggle').trigger('click');
         expect(unavailable.get('.visibility-toggle').attributes('aria-pressed')).toBe('true');
         expect(unavailable.get('.sea-area-toggle').attributes('aria-pressed')).toBe('false');
         expect(unavailable.get('.territory-toggle').attributes('aria-pressed')).toBe('false');
+        expect(unavailable.get('.plan-mark-toggle').attributes('aria-pressed')).toBe('false');
         unavailable.unmount();
     });
 
