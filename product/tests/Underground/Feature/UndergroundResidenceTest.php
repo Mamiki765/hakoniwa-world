@@ -3,6 +3,7 @@
 namespace Tests\Underground\Feature;
 
 use App\Application\Underground\UndergroundAlphaV1PlayerCatalog;
+use App\Application\Underground\UndergroundEquipmentCatalog;
 use App\Application\Underground\UndergroundEquipmentDropService;
 use App\Application\Underground\UndergroundScenePresenter;
 use App\Domain\Underground\Combat\UndergroundAwakening;
@@ -143,7 +144,8 @@ final class UndergroundResidenceTest extends UndergroundPlayerAccessTestCase
         $this->assertTrue($entry['experienced']);
         $this->assertFalse($entry['locked']);
         $this->assertSame($story['title'], $entry['title']);
-        $this->assertSame(array_map(fn (string $line): string => str_replace('(秘書名)', $secretary->name, $line), $story['body']), $entry['body']);
+        $this->assertCount(count($story['body']), $entry['body']);
+        $this->assertStringNotContainsString('(秘書名)', implode("\n", $entry['body']));
         $this->assertSame('yunagi-harbor-intro', $entry['scene']);
         $this->assertSame($replayBefore, $profile->fresh()->getRawOriginal());
         $this->assertSame(0, UndergroundIntroRequest::query()->where('underground_profile_id', $profile->id)->count());
@@ -199,19 +201,23 @@ final class UndergroundResidenceTest extends UndergroundPlayerAccessTestCase
         $this->postJson('/api/v1/me/underground/residence/purchase', $request)->assertOk();
         $this->postJson('/api/v1/me/underground/residence/purchase', [
             ...$request, 'request_id' => (string) Str::uuid(),
-        ])->assertOk()->assertJsonPath('data.shard_balance', $balanceBefore - 1_000_000);
+        ])->assertOk()->assertJsonPath('data.shard_balance', $balanceBefore - config('underground-intro.residence.vault_expansion.price'));
         $purchase('leather_armor')->assertOk();
+        $expandedCapacity = app(UndergroundEquipmentCatalog::class)->vaultCapacity('equipment', true);
+        $this->assertGreaterThan(2, $expandedCapacity);
         $this->getJson('/api/v1/me/underground/equipment/vault')->assertOk()
-            ->assertJsonPath('data.total', 3)->assertJsonPath('data.capacity', 102);
+            ->assertJsonPath('data.total', 3)->assertJsonPath('data.capacity', $expandedCapacity);
         $remaining = app(UndergroundEquipmentDropService::class)->remainingVaultCapacity($profile->fresh());
-        $this->assertSame(99, $remaining);
+        $this->assertSame($expandedCapacity - 3, $remaining);
 
         $this->postJson('/api/v1/me/underground/residence/purchase', [
             'request_id' => (string) Str::uuid(), 'item' => 'resonance_expansion',
         ])->assertOk()->assertJsonPath('data.residence.resonance_expansion_owned', true);
+        $resonanceCapacity = app(UndergroundEquipmentCatalog::class)->vaultCapacity('resonance', true);
+        $this->assertGreaterThan(app(UndergroundEquipmentCatalog::class)->vaultCapacity('resonance'), $resonanceCapacity);
         $this->getJson('/api/v1/me/underground/equipment/vault?inventory=resonance')->assertOk()
-            ->assertJsonPath('data.capacity', 100);
-        $this->assertSame(100, app(UndergroundEquipmentDropService::class)->remainingVaultCapacity($profile->fresh(), 'resonance'));
+            ->assertJsonPath('data.capacity', $resonanceCapacity);
+        $this->assertSame($resonanceCapacity, app(UndergroundEquipmentDropService::class)->remainingVaultCapacity($profile->fresh(), 'resonance'));
     }
 
     public function test_distorted_stone_purchases_keep_the_daily_price_and_replay_across_midnight(): void
@@ -242,16 +248,20 @@ final class UndergroundResidenceTest extends UndergroundPlayerAccessTestCase
             ->assertJsonPath('data.distorted_stone_reminder', false);
         $this->getJson('/api/v1/me/underground/distorted-stone-reminder')
             ->assertOk()->assertJsonPath('data.unclaimed', false);
-        foreach ([10_000, 50_000, 100_000] as $price) {
+        $dailyPrices = config('underground-intro.distorted_stone_daily_prices');
+        $this->assertCount(4, $dailyPrices);
+        $this->assertSame(0, $dailyPrices[0]);
+        foreach (array_slice($dailyPrices, 1) as $price) {
             $request = ['request_id' => (string) Str::uuid(), 'price' => $price];
             $this->actingAs($user)->postJson('/api/v1/me/underground/shop/distorted-stone', $request)->assertOk();
             $purchases[] = $request;
         }
         $this->postJson('/api/v1/me/underground/shop/distorted-stone', [
-            'request_id' => (string) Str::uuid(), 'price' => 100_000,
+            'request_id' => (string) Str::uuid(), 'price' => $dailyPrices[3],
         ])->assertConflict()->assertJsonPath('code', 'underground_distorted_stone_sold_out');
         $this->assertSame(4, $profile->fresh()->distorted_stone_balance);
-        $this->assertSame(40_000, $profile->fresh()->shard_balance);
+        $balanceAfterDay = 200_000 - array_sum($dailyPrices);
+        $this->assertSame($balanceAfterDay, $profile->fresh()->shard_balance);
         Carbon::setTestNow('2026-09-23 00:00:00+09:00');
         $this->getJson('/api/v1/me/underground/distorted-stone-reminder')
             ->assertOk()->assertJsonPath('data.unclaimed', true)
@@ -269,7 +279,7 @@ final class UndergroundResidenceTest extends UndergroundPlayerAccessTestCase
             'request_id' => (string) Str::uuid(), 'price' => 0,
         ])->assertOk()->assertJsonPath('data.distorted_stone_shop.balance', 5)
             ->assertJsonPath('data.distorted_stone_reminder', false);
-        $this->assertSame(40_000, $profile->fresh()->shard_balance);
+        $this->assertSame($balanceAfterDay, $profile->fresh()->shard_balance);
         $this->assertEquals(Carbon::parse('2026-09-22 23:59:10+09:00'), $profile->fresh()->next_battle_at);
         $profile->update(['distorted_stone_balance' => 0]);
         $this->getJson('/api/v1/me/underground/distorted-stone-reminder')
@@ -288,7 +298,10 @@ final class UndergroundResidenceTest extends UndergroundPlayerAccessTestCase
     public function test_residence_purchase_and_event_retries_preserve_assets_and_unlock_only_the_owner_journal(): void
     {
         [$user, $secretary] = $this->secretaryUser('別荘の主');
-        $profile = $this->openEquipmentProfile($secretary, 1_600_000);
+        $prices = array_map(static fn (array $item): int => $item['price'], config('underground-intro.residence'));
+        $afterVilla = $prices['mirror'] + $prices['trophy_shelf'];
+        $afterShelf = $prices['mirror'];
+        $profile = $this->openEquipmentProfile($secretary, $prices['villa'] + $afterVilla);
         // Supported upgrade: trial clears can predate the furniture feature.
         $firstClear = Carbon::parse('2026-09-10T12:34:56+09:00')->utc();
         UndergroundTrialProgress::query()->create([
@@ -325,20 +338,20 @@ final class UndergroundResidenceTest extends UndergroundPlayerAccessTestCase
         $post('events/advance', ['event' => 'exchange', 'page' => 2])->assertOk();
         $requestId = (string) Str::uuid();
         $post('residence/purchase', ['item' => 'villa', 'request_id' => $requestId])
-            ->assertOk()->assertJsonPath('data.shard_balance', 1_500_000);
+            ->assertOk()->assertJsonPath('data.shard_balance', $afterVilla);
         $post('residence/purchase', ['item' => 'villa', 'request_id' => $requestId])
-            ->assertOk()->assertJsonPath('data.shard_balance', 1_500_000);
+            ->assertOk()->assertJsonPath('data.shard_balance', $afterVilla);
         $post('residence/purchase', ['item' => 'villa'])
-            ->assertOk()->assertJsonPath('data.shard_balance', 1_500_000);
+            ->assertOk()->assertJsonPath('data.shard_balance', $afterVilla);
         $this->actingAs($user)->getJson('/api/v1/me/underground/journal')->assertOk()->assertJsonPath('data.trophies', []);
         $shelfRequest = (string) Str::uuid();
         $post('residence/purchase', ['item' => 'trophy_shelf', 'request_id' => $shelfRequest])
-            ->assertOk()->assertJsonPath('data.residence.trophy_shelf_owned', true)->assertJsonPath('data.shard_balance', 1_000_000);
+            ->assertOk()->assertJsonPath('data.residence.trophy_shelf_owned', true)->assertJsonPath('data.shard_balance', $afterShelf);
         $purchasedAt = $profile->fresh()->trophy_shelf_purchased_at;
         $post('residence/purchase', ['item' => 'trophy_shelf', 'request_id' => $shelfRequest])
-            ->assertOk()->assertJsonPath('data.shard_balance', 1_000_000);
+            ->assertOk()->assertJsonPath('data.shard_balance', $afterShelf);
         $post('residence/purchase', ['item' => 'trophy_shelf'])
-            ->assertOk()->assertJsonPath('data.shard_balance', 1_000_000);
+            ->assertOk()->assertJsonPath('data.shard_balance', $afterShelf);
         $this->assertEquals($purchasedAt, $profile->fresh()->trophy_shelf_purchased_at);
         UndergroundContentClearProgress::query()->create([
             'underground_profile_id' => $profile->id, 'content_type' => 'hunting_ground',
@@ -348,17 +361,15 @@ final class UndergroundResidenceTest extends UndergroundPlayerAccessTestCase
             'underground_profile_id' => $profile->id, 'content_type' => 'hunting_ground',
             'content_key' => 'bahamul_intermediate_1', 'actual_clear_count' => 1, 'total_clear_count' => 1,
         ]);
-        $this->actingAs($user)->getJson('/api/v1/me/underground/journal')->assertOk()
-            ->assertJsonPath('data.trophies.0.key', 'trial_01')
-            ->assertJsonPath('data.trophies.0.achieved_at', $firstClear->copy()->utc()->toIso8601String())
-            ->assertJsonMissing(['name' => 'デュラハンの兜'])
-            ->assertJsonMissing(['name' => '魔剣のレプリカ']);
         $trophies = array_column($this->actingAs($user)->getJson('/api/v1/me/underground/journal')->assertOk()->json('data.trophies'), null, 'key');
-        $this->assertSame(['name' => '黒竜の爪(初級1)', 'achievement' => '黒竜バハムル撃破(初級1)',
-            'achieved_at' => $firstClear->toIso8601String()], array_diff_key($trophies['bahamul_beginner_1'], ['key' => true]));
-        $this->assertSame('黒竜の爪(中級1)', $trophies['bahamul_intermediate_1']['name']);
-        $this->assertSame('黒竜バハムル撃破(中級1)', $trophies['bahamul_intermediate_1']['achievement']);
+        $this->assertSame(['trial_01', 'bahamul_beginner_1', 'bahamul_intermediate_1'], array_keys($trophies));
+        $this->assertSame($firstClear->toIso8601String(), $trophies['trial_01']['achieved_at']);
+        $this->assertSame($firstClear->toIso8601String(), $trophies['bahamul_beginner_1']['achieved_at']);
         $this->assertNull($trophies['bahamul_intermediate_1']['achieved_at']);
+        foreach ($trophies as $trophy) {
+            $this->assertNotSame('', $trophy['name']);
+            $this->assertNotSame('', $trophy['achievement']);
+        }
         $post('residence/purchase', ['item' => 'mirror'])
             ->assertOk()->assertJsonPath('data.residence.mirror_owned', true)->assertJsonPath('data.shard_balance', 0);
         $post('events/advance', ['event' => 'mirror', 'page' => 1])

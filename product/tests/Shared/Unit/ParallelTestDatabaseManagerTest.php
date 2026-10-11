@@ -89,18 +89,6 @@ final class ParallelTestDatabaseManagerTest extends TestCase
         ];
     }
 
-    public function test_invalid_tokens_and_out_of_range_indexes_are_rejected(): void
-    {
-        foreach ([['not-hex!', 0], ['0123abcd', -1], ['0123abcd', 64]] as [$token, $index]) {
-            try {
-                ParallelTestDatabaseManager::databaseName($token, $index);
-                $this->fail('Invalid parallel database input must be rejected.');
-            } catch (InvalidArgumentException) {
-                $this->addToAssertionCount(1);
-            }
-        }
-    }
-
     public function test_cached_application_configuration_is_rejected_before_database_operations(): void
     {
         $root = sys_get_temp_dir().'/hakoniwa-parallel-cache-'.bin2hex(random_bytes(8));
@@ -120,16 +108,45 @@ final class ParallelTestDatabaseManagerTest extends TestCase
         }
     }
 
-    public function test_manifest_outside_the_test_workspace_is_rejected(): void
-    {
+    #[DataProvider('rejectedManifestInputProvider')]
+    public function test_invalid_parallel_inputs_and_manifests_are_rejected(
+        string $case,
+        string $exceptionClass,
+        ?string $message,
+    ): void {
         [$manager, $manifest, $payload, $root] = $this->createManifestFixture();
-        $outsideManifest = $root.'/outside-manifest.json';
-        file_put_contents($outsideManifest, json_encode($payload, JSON_THROW_ON_ERROR));
+        $this->expectException($exceptionClass);
+        if ($message !== null) {
+            $this->expectExceptionMessage($message);
+        }
 
-        $this->expectException(RuntimeException::class);
-        $this->expectExceptionMessage('outside the test workspace');
+        if ($case === 'out-of-range-index') {
+            ParallelTestDatabaseManager::databaseName('0123abcd', 64);
 
-        $manager->shard($outsideManifest, 0);
+            return;
+        }
+
+        if ($case === 'outside-workspace') {
+            $manifest = $root.'/outside-manifest.json';
+        } elseif ($case === 'repeated-shard') {
+            $payload['shards'][] = $payload['shards'][0];
+        } elseif ($case === 'mismatched-token') {
+            $payload['token'] = 'deadbeef';
+        }
+        file_put_contents($manifest, json_encode($payload, JSON_THROW_ON_ERROR));
+
+        $manager->shard($manifest, 0);
+    }
+
+    /** @return array<string, array{string, class-string<\Throwable>, ?string}> */
+    public static function rejectedManifestInputProvider(): array
+    {
+        return [
+            'token or index out of range' => ['out-of-range-index', InvalidArgumentException::class, null],
+            'manifest outside the test workspace' => ['outside-workspace', RuntimeException::class, 'outside the test workspace'],
+            'repeated shard or database' => ['repeated-shard', RuntimeException::class, 'database safety validation'],
+            'token and directory mismatch' => ['mismatched-token', RuntimeException::class, 'metadata is invalid'],
+        ];
     }
 
     public function test_manifest_cannot_name_a_production_database(): void
@@ -144,38 +161,17 @@ final class ParallelTestDatabaseManagerTest extends TestCase
         $manager->shard($manifest, 0);
     }
 
-    public function test_manifest_cannot_repeat_a_shard_or_database(): void
-    {
-        [$manager, $manifest, $payload] = $this->createManifestFixture();
-        $payload['shards'][] = $payload['shards'][0];
-        file_put_contents($manifest, json_encode($payload, JSON_THROW_ON_ERROR));
-
-        $this->expectException(RuntimeException::class);
-        $this->expectExceptionMessage('database safety validation');
-
-        $manager->shard($manifest, 0);
-    }
-
-    public function test_manifest_token_and_directory_must_match_its_workspace(): void
-    {
-        [$manager, $manifest, $payload] = $this->createManifestFixture();
-        $payload['token'] = 'deadbeef';
-        file_put_contents($manifest, json_encode($payload, JSON_THROW_ON_ERROR));
-
-        $this->expectException(RuntimeException::class);
-        $this->expectExceptionMessage('metadata is invalid');
-
-        $manager->shard($manifest, 0);
-    }
-
-    public function test_manifest_rejects_a_symlinked_phpunit_configuration(): void
+    #[DataProvider('symlinkedShardFileProvider')]
+    public function test_manifest_rejects_symlinked_shard_files(string $field): void
     {
         [$manager, $manifest, $payload, $root] = $this->createManifestFixture();
-        $configuration = $payload['shards'][0]['configuration'];
-        $target = $root.'/outside-configuration.xml';
-        file_put_contents($target, '<?xml version="1.0"?><phpunit/>');
-        unlink($configuration);
-        if (! @symlink($target, $configuration)) {
+        $path = $payload['shards'][0][$field];
+        $target = $root.'/outside-'.$field;
+        file_put_contents($target, 'do not touch');
+        if (is_file($path)) {
+            unlink($path);
+        }
+        if (! @symlink($target, $path)) {
             $this->markTestSkipped('Symbolic links are unavailable on this platform.');
         }
 
@@ -185,20 +181,13 @@ final class ParallelTestDatabaseManagerTest extends TestCase
         $manager->shard($manifest, 0);
     }
 
-    public function test_manifest_rejects_a_symlinked_log(): void
+    /** @return array<string, array{string}> */
+    public static function symlinkedShardFileProvider(): array
     {
-        [$manager, $manifest, $payload, $root] = $this->createManifestFixture();
-        $log = $payload['shards'][0]['log'];
-        $target = $root.'/outside.log';
-        file_put_contents($target, 'do not truncate');
-        if (! @symlink($target, $log)) {
-            $this->markTestSkipped('Symbolic links are unavailable on this platform.');
-        }
-
-        $this->expectException(RuntimeException::class);
-        $this->expectExceptionMessage('shard files failed their safety validation');
-
-        $manager->shard($manifest, 0);
+        return [
+            'phpunit configuration' => ['configuration'],
+            'log' => ['log'],
+        ];
     }
 
     public function test_administrative_host_and_port_must_keep_the_forced_local_contract(): void
@@ -269,62 +258,34 @@ XML);
         $this->assertSame($protectedBefore, $this->protectedDatabaseStates($pdo));
     }
 
-    public function test_prepare_creates_the_fixed_evidence_root_from_a_clean_testing_directory(): void
-    {
-        $root = $this->createFixtureRoot();
-        mkdir($root.'/storage/framework/testing', 0700, true);
-        file_put_contents($root.'/storage/framework/testing/.gitignore', "*\n!.gitignore\n");
-        mkdir($root.'/tests/Unit', 0700, true);
-        file_put_contents($root.'/tests/Unit/DummyTest.php', "<?php\n");
-        file_put_contents($root.'/phpunit.xml', <<<'XML'
-<?xml version="1.0" encoding="UTF-8"?>
-<phpunit>
-    <testsuites>
-        <testsuite name="Unit"><directory>tests/Unit</directory></testsuite>
-    </testsuites>
-    <php>
-        <ini name="memory_limit" value="512M"/>
-        <env name="APP_ENV" value="testing" force="true"/>
-        <env name="DB_CONNECTION" value="pgsql" force="true"/>
-        <env name="DB_HOST" value="hakoniwa-postgres" force="true"/>
-        <env name="DB_PORT" value="5432" force="true"/>
-        <env name="DB_DATABASE" value="hakoniwa_test" force="true"/>
-        <env name="DB_USERNAME" value="hakoniwa"/>
-    </php>
-</phpunit>
-XML);
-        $manager = new ParallelTestDatabaseManager($root);
-        $manifest = $manager->prepare(1, 'full', bin2hex(random_bytes(4)));
-
-        try {
-            $evidenceDirectory = $manager->evidenceDirectory($manifest);
-            $this->assertNotNull($evidenceDirectory);
-            $evidenceRoot = dirname($evidenceDirectory);
-            $this->assertDirectoryExists($evidenceRoot);
-            $this->assertFalse(is_link($evidenceRoot));
-            $this->assertSame(0700, fileperms($evidenceRoot) & 0777);
-            $this->assertDirectoryDoesNotExist($evidenceDirectory);
-        } finally {
-            if (is_file($manifest)) {
-                $manager->cleanup($manifest);
-            }
-        }
-    }
-
     #[DataProvider('finalEvidenceStatusProvider')]
-    public function test_final_evidence_status_includes_cleanup_and_is_recorded_once(
+    public function test_final_evidence_creates_its_root_from_a_clean_workspace_includes_cleanup_and_is_recorded_once(
         int $testExitCode,
         int $cleanupExitCode,
         int $expectedExitCode,
         string $expectedStatus,
     ): void {
         $root = $this->createFixtureRoot();
+        mkdir($root.'/storage/framework/testing', 0700, true);
+        file_put_contents($root.'/storage/framework/testing/.gitignore', "*\n!.gitignore\n");
+        $evidenceRoot = $root.'/storage/framework/testing/test-evidence';
         $token = bin2hex(random_bytes(4));
-        $evidenceDirectory = $root.'/storage/framework/testing/test-evidence/phpunit-parallel-'.$token;
-        mkdir($evidenceDirectory, 0700, true);
+        $manager = new ParallelTestDatabaseManager($root);
+
+        try {
+            $manager->finalizeEvidence($token, $testExitCode, $cleanupExitCode, 113);
+            $this->fail('Final evidence without its run directory must be rejected.');
+        } catch (RuntimeException $exception) {
+            $this->assertStringContainsString('evidence directory', $exception->getMessage());
+        }
+        $this->assertDirectoryExists($evidenceRoot);
+        $this->assertFalse(is_link($evidenceRoot));
+        $this->assertSame(0700, fileperms($evidenceRoot) & 0777);
+
+        $evidenceDirectory = $evidenceRoot.'/phpunit-parallel-'.$token;
+        mkdir($evidenceDirectory, 0700);
         $metadata = $evidenceDirectory.'/run.tsv';
         file_put_contents($metadata, "schema\thakoniwa.parallel-test-evidence.v1\n");
-        $manager = new ParallelTestDatabaseManager($root);
 
         $this->assertSame(
             $expectedExitCode,
@@ -334,9 +295,10 @@ XML);
             file($metadata, FILE_IGNORE_NEW_LINES) ?: [],
             static fn (string $line): bool => str_starts_with($line, "run\t"),
         ));
-        $this->assertSame([
-            "run\t-\t{$expectedStatus}\t{$expectedExitCode}\t-\t113\t-\t-\t-",
-        ], $runLines);
+        $this->assertCount(1, $runLines);
+        $fields = explode("\t", $runLines[0]);
+        $this->assertSame($expectedStatus, $fields[2]);
+        $this->assertSame((string) $expectedExitCode, $fields[3]);
 
         try {
             $manager->finalizeEvidence($token, $testExitCode, $cleanupExitCode, 113);

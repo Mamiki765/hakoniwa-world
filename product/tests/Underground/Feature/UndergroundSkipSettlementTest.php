@@ -139,7 +139,10 @@ final class UndergroundSkipSettlementTest extends TestCase
         $this->assertDatabaseCount('underground_parties', 0);
         $this->assertDatabaseCount('secretary_lending_participations', 0);
         $this->assertEquals($trialProgress->first_cleared_at, $trialProgress->refresh()->first_cleared_at);
-        $this->assertCount(10, $result['settlement']->reward_snapshot['encounters']);
+        $this->assertCount(
+            count(config('underground-runtime.trials.trial_01.encounters')),
+            $result['settlement']->reward_snapshot['encounters'],
+        );
         $this->assertSame([], $result['settlement']->reward_snapshot['drops']);
         $this->assertSame(10, $result['daily_quest']['progress']);
         $this->assertTrue($result['daily_quest']['completed_now']);
@@ -361,18 +364,22 @@ final class UndergroundSkipSettlementTest extends TestCase
             'execution_count' => 2,
         ];
 
-        $this->actingAs($user)->postJson('/api/v1/me/underground/skip/hunting-ground', $payload)
+        $first = $this->actingAs($user)->postJson('/api/v1/me/underground/skip/hunting-ground', $payload)
             ->assertOk()
             ->assertJsonPath('data.id', $requestId)
             ->assertJsonPath('data.duplicate', false)
             ->assertJsonPath('data.execution_count', 2)
             ->assertJsonPath('data.ticket_cost', 2)
-            ->assertJsonPath('data.rewards.ticket_balance_after', 2);
-        $this->actingAs($user)->postJson('/api/v1/me/underground/skip/hunting-ground', $payload)
+            ->assertJsonPath('data.rewards.ticket_balance_after', 2)
+            ->json('data');
+        $replay = $this->actingAs($user)->postJson('/api/v1/me/underground/skip/hunting-ground', $payload)
             ->assertOk()
-            ->assertJsonPath('data.id', $requestId)
             ->assertJsonPath('data.duplicate', true)
-            ->assertJsonPath('data.execution_count', 2);
+            ->json('data');
+        $this->assertSame(
+            array_diff_key($first, ['duplicate' => true]),
+            array_diff_key($replay, ['duplicate' => true]),
+        );
 
         $this->assertDatabaseCount('underground_skip_batches', 1);
         $this->assertDatabaseCount('user_skip_ticket_ledger', 1);

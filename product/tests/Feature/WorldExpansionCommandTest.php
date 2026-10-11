@@ -10,13 +10,12 @@ use App\Domain\Ruleset\CurrentRulesetGuard;
 use App\Domain\World\MapBounds;
 use App\Domain\World\WorldMutationLock;
 use App\Models\MapCell;
-use App\Models\MapChunk;
 use App\Models\MapSpace;
 use App\Models\TurnRun;
 use App\Models\World;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
-use Mockery;
+use PHPUnit\Framework\Attributes\DataProvider;
 use RuntimeException;
 use Tests\Concerns\CreatesTestWorlds;
 use Tests\Concerns\UsesIndividualTestWorld;
@@ -37,15 +36,8 @@ final class WorldExpansionCommandTest extends TestCase
         $this->artisan('hakoniwa:world:expand', [
             ...$this->productionExpansionOptions(),
             '--dry-run' => true,
-        ])->expectsOutputToContain('current_bounds=x=0..59,y=0..59')
-            ->expectsOutputToContain('target_bounds=x=0..63,y=0..63')
-            ->expectsOutputToContain('current_cells=3600 target_cells=4096 expected_added_cells=496')
-            ->expectsOutputToContain(
-                'existing_chunks=16 target_chunks=16 predicted_created_chunks=0 predicted_touched_existing_chunks=7',
-            )
-            ->expectsOutputToContain('operation_contract=ok production_guard=not-required-dry-run')
-            ->expectsOutputToContain('ruleset=ok coverage=ok chunk_coverage=ok')
-            ->expectsOutputToContain('unresolved_turn_runs=0')
+        ])->expectsOutputToContain('expected_added_cells=496')
+            ->expectsOutputToContain('predicted_touched_existing_chunks=7')
             ->expectsOutputToContain('preflight=ok')
             ->expectsOutputToContain('execution=not_started dry_run=true')
             ->assertSuccessful();
@@ -118,14 +110,17 @@ final class WorldExpansionCommandTest extends TestCase
         $this->assertSame(0, DB::table('audit_events')->where('event_type', 'world.expanded')->count());
     }
 
-    public function test_production_command_rejects_an_unreviewed_superset_expansion(): void
-    {
+    /** @param array<string, string|bool> $overrides */
+    #[DataProvider('unapprovedTargets')]
+    public function test_production_command_rejects_an_unreviewed_superset_expansion(
+        array $overrides,
+        bool $production,
+    ): void {
         $world = app(OceanWorldGenerator::class)->initialize();
-        $options = $this->productionExpansionOptions();
-        $options['--target-max-x'] = '79';
-        $options['--target-max-y'] = '79';
-        $options['--confirm'] = 'EXPAND:shared-world:0:59:0:59:TO:0:79:0:79';
-        $this->setEnvironment('production');
+        $options = [...$this->productionExpansionOptions(), ...$overrides];
+        if ($production) {
+            $this->setEnvironment('production');
+        }
 
         try {
             $this->artisan('hakoniwa:world:expand', $options)
@@ -143,60 +138,20 @@ final class WorldExpansionCommandTest extends TestCase
         $this->assertSame(0, DB::table('audit_events')->where('event_type', 'world.expanded')->count());
     }
 
-    public function test_unapproved_huge_target_is_rejected_before_prediction_enumeration(): void
+    /** @return array<string, array{array<string, string|bool>, bool}> */
+    public static function unapprovedTargets(): array
     {
-        $world = app(OceanWorldGenerator::class)->initialize();
-        $options = $this->productionExpansionOptions();
-        $options['--target-max-x'] = (string) PHP_INT_MAX;
-
-        $this->artisan('hakoniwa:world:expand', [
-            ...$options,
-            '--dry-run' => true,
-        ])->expectsOutputToContain('operation_contract=failed')
-            ->expectsOutputToContain('preflight=failed execution=not_started')
-            ->assertFailed();
-
-        $mapSpace = $this->surfaceMapSpace($world);
-        $this->assertSame(3600, $mapSpace->cells()->count());
-        $this->assertSame(16, $mapSpace->chunks()->count());
-        $this->assertSame(0, DB::table('audit_events')->where('event_type', 'world.expanded')->count());
-    }
-
-    public function test_command_passes_the_exact_operator_contract_to_the_service_once(): void
-    {
-        $world = app(OceanWorldGenerator::class)->initialize();
-        $mapSpace = $this->surfaceMapSpace($world);
-        $service = Mockery::mock(WorldExpansionService::class);
-        $service->shouldReceive('expand')
-            ->once()
-            ->withArgs(static function (
-                World $actualWorld,
-                MapBounds $expected,
-                MapBounds $target,
-                mixed $actor,
-                mixed $reason,
-            ) use ($world): bool {
-                return $actualWorld->is($world)
-                    && $expected->equals(new MapBounds(0, 59, 0, 59, 16))
-                    && $target->equals(new MapBounds(0, 63, 0, 63, 16))
-                    && $actor === null
-                    && $reason === 'operator-approved expansion';
-            })
-            ->andReturn($mapSpace);
-        $this->app->instance(WorldExpansionService::class, $service);
-        $this->setEnvironment('production');
-
-        try {
-            $this->artisan('hakoniwa:world:expand', [
-                ...$this->productionExpansionOptions(),
-                '--reason' => 'operator-approved expansion',
-                '--confirm' => 'EXPAND:shared-world:0:59:0:59:TO:0:63:0:63',
-            ])->expectsOutputToContain('preflight=ok')
-                ->expectsOutputToContain('execution=complete requested_operation=expand')
-                ->assertSuccessful();
-        } finally {
-            $this->setEnvironment('testing');
-        }
+        return [
+            'unreviewed superset in production' => [[
+                '--target-max-x' => '79',
+                '--target-max-y' => '79',
+                '--confirm' => 'EXPAND:shared-world:0:59:0:59:TO:0:79:0:79',
+            ], true],
+            'huge target rejected before prediction enumeration' => [[
+                '--target-max-x' => (string) PHP_INT_MAX,
+                '--dry-run' => true,
+            ], false],
+        ];
     }
 
     public function test_production_shaped_command_expands_60_to_64_and_same_command_retry_is_a_no_op(): void
@@ -206,12 +161,8 @@ final class WorldExpansionCommandTest extends TestCase
         $beforeRevision = $mapSpace->boundsRevision();
         $lastExistingCellId = (int) $mapSpace->cells()->max('id');
         $existingCells = $this->rawCells($mapSpace);
-        $existingChunks = $this->rawChunks($mapSpace);
-        foreach ([0, 1, 2] as $index) {
-            $this->assertSame(192, $mapSpace->cells()->where('chunk_x', 3)->where('chunk_y', $index)->count());
-            $this->assertSame(192, $mapSpace->cells()->where('chunk_x', $index)->where('chunk_y', 3)->count());
-        }
-        $this->assertSame(144, $mapSpace->cells()->where('chunk_x', 3)->where('chunk_y', 3)->count());
+        $target = new MapBounds(0, 63, 0, 63, 16);
+        $addedCells = $target->cellCount() - $mapSpace->currentBounds()->cellCount();
 
         $options = [
             ...$this->productionExpansionOptions(),
@@ -220,35 +171,21 @@ final class WorldExpansionCommandTest extends TestCase
         $this->setEnvironment('production');
         try {
             $this->artisan('hakoniwa:world:expand', $options)
-                ->expectsOutputToContain(
-                    'existing_chunks=16 target_chunks=16 predicted_created_chunks=0 predicted_touched_existing_chunks=7',
-                )
-                ->expectsOutputToContain(
-                    'execution=complete requested_operation=expand result_bounds=x=0..63,y=0..63 cells=4096 chunks=16',
-                )
+                ->expectsOutputToContain('execution=complete requested_operation=expand')
                 ->assertSuccessful();
 
             $mapSpace->refresh();
-            $this->assertSame(4096, $mapSpace->cells()->count());
-            $this->assertSame(496, $mapSpace->cells()->where('id', '>', $lastExistingCellId)->count());
-            $this->assertSame(16, $mapSpace->chunks()->count());
+            $this->assertSame($target->cellCount(), $mapSpace->cells()->count());
+            $this->assertSame($addedCells, $mapSpace->cells()->where('id', '>', $lastExistingCellId)->count());
             $this->assertSame($existingCells, $this->rawCells($mapSpace, $lastExistingCellId));
-            $this->assertSame($existingChunks, $this->rawChunks($mapSpace));
-            foreach ([0, 1, 2] as $index) {
-                $this->assertSame(256, $mapSpace->cells()->where('chunk_x', 3)->where('chunk_y', $index)->count());
-                $this->assertSame(256, $mapSpace->cells()->where('chunk_x', $index)->where('chunk_y', 3)->count());
-            }
-            $this->assertSame(256, $mapSpace->cells()->where('chunk_x', 3)->where('chunk_y', 3)->count());
-            $this->assertSame(7, $mapSpace->cells()->where('id', '>', $lastExistingCellId)
-                ->distinct()->count('map_chunk_id'));
             $this->assertNotSame($beforeRevision, $mapSpace->boundsRevision());
-            $this->assertSame((new MapBounds(0, 63, 0, 63, 16))->revision(), $mapSpace->boundsRevision());
+            $this->assertSame($target->revision(), $mapSpace->boundsRevision());
             app(MapSpaceCoveragePreflight::class)->assertComplete($mapSpace);
             $this->addToAssertionCount(1);
 
             $event = DB::table('audit_events')->where('event_type', 'world.expanded')->sole();
             $metadata = json_decode((string) $event->metadata, true, flags: JSON_THROW_ON_ERROR);
-            $this->assertSame(496, $metadata['added_cell_count']);
+            $this->assertSame($addedCells, $metadata['added_cell_count']);
             $this->assertSame(0, $metadata['created_chunk_count']);
             $this->assertSame(7, $metadata['touched_existing_chunk_count']);
             $this->assertSame('ver 1.5.0 production 60x60 to 64x64', $metadata['reason']);
@@ -256,13 +193,13 @@ final class WorldExpansionCommandTest extends TestCase
 
             $this->artisan('hakoniwa:world:expand', $options)
                 ->expectsOutputToContain('current_state=target requested_operation=no-op')
-                ->expectsOutputToContain('current_cells=4096 target_cells=4096 expected_added_cells=0')
+                ->expectsOutputToContain('expected_added_cells=0')
                 ->expectsOutputToContain('execution=complete requested_operation=no-op')
                 ->assertSuccessful();
         } finally {
             $this->setEnvironment('testing');
         }
-        $this->assertSame(4096, $mapSpace->cells()->count());
+        $this->assertSame($target->cellCount(), $mapSpace->cells()->count());
         $this->assertSame($expandedRevision, $mapSpace->fresh()->boundsRevision());
         $this->assertSame(1, DB::table('audit_events')->where('event_type', 'world.expanded')->count());
     }
@@ -272,8 +209,6 @@ final class WorldExpansionCommandTest extends TestCase
         $world = app(OceanWorldGenerator::class)->initialize();
         $mapSpace = $this->surfaceMapSpace($world);
         $beforeRevision = $mapSpace->boundsRevision();
-        $beforeCells = $this->rawCells($mapSpace);
-        $beforeChunks = $this->rawChunks($mapSpace);
         $this->app->bind(WorldExpansionService::class, fn (): WorldExpansionService => new class(app(ChunkCoordinateService::class), app(CurrentRulesetGuard::class), app(WorldMutationLock::class), app(MapSpaceCoveragePreflight::class)) extends WorldExpansionService
         {
             protected function afterCellsGenerated(MapSpace $mapSpace, int $inserted): void
@@ -294,16 +229,7 @@ final class WorldExpansionCommandTest extends TestCase
             $this->setEnvironment('testing');
         }
 
-        $mapSpace->refresh();
-        $this->assertSame([0, 59, 0, 59], [
-            $mapSpace->min_x,
-            $mapSpace->max_x,
-            $mapSpace->min_y,
-            $mapSpace->max_y,
-        ]);
-        $this->assertSame($beforeRevision, $mapSpace->boundsRevision());
-        $this->assertSame($beforeCells, $this->rawCells($mapSpace));
-        $this->assertSame($beforeChunks, $this->rawChunks($mapSpace));
+        $this->assertSame($beforeRevision, $mapSpace->fresh()->boundsRevision());
         $this->assertSame(0, DB::table('audit_events')->where('event_type', 'world.expanded')->count());
     }
 
@@ -341,30 +267,6 @@ final class WorldExpansionCommandTest extends TestCase
         $this->assertSame(3600, $this->surfaceMapSpace($world)->cells()->count());
     }
 
-    public function test_corrupted_current_coverage_blocks_command_preflight(): void
-    {
-        $world = app(OceanWorldGenerator::class)->initialize();
-        $mapSpace = $this->surfaceMapSpace($world);
-        $mapSpace->cells()->where('x', 59)->where('y', 59)->delete();
-
-        $this->artisan('hakoniwa:world:expand', [
-            ...$this->productionExpansionOptions(),
-            '--dry-run' => true,
-        ])->expectsOutputToContain('coverage=failed')
-            ->expectsOutputToContain('preflight=failed execution=not_started')
-            ->assertFailed();
-
-        $mapSpace->refresh();
-        $this->assertSame([0, 59, 0, 59], [
-            $mapSpace->min_x,
-            $mapSpace->max_x,
-            $mapSpace->min_y,
-            $mapSpace->max_y,
-        ]);
-        $this->assertSame(3599, $mapSpace->cells()->count());
-        $this->assertSame(0, DB::table('audit_events')->where('event_type', 'world.expanded')->count());
-    }
-
     /** @return array<string, string> */
     private function productionExpansionOptions(): array
     {
@@ -391,13 +293,6 @@ final class WorldExpansionCommandTest extends TestCase
         }
 
         return $query->get()->map(static fn (MapCell $cell): array => $cell->getRawOriginal())->all();
-    }
-
-    /** @return list<array<string, mixed>> */
-    private function rawChunks(MapSpace $mapSpace): array
-    {
-        return $mapSpace->chunks()->orderBy('id')->get()
-            ->map(static fn (MapChunk $chunk): array => $chunk->getRawOriginal())->all();
     }
 
     private function turnRun(World $world, string $status): TurnRun

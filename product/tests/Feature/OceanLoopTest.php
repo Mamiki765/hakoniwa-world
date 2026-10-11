@@ -49,10 +49,7 @@ final class OceanLoopTest extends TestCase
         $space = $this->surfaceMapSpace($world);
         $cell = $this->remoteSea($space, [$first->id, $second->id]);
         $context = $this->context($world, [$first->id, $second->id], 2, 'buried-treasure-visibility');
-        $this->assertSame(
-            ['numerator' => 1, 'denominator' => 100],
-            $context->ruleset->settings['ocean_loop']['buried_treasure']['natural_spawn']['probability'],
-        );
+        $treasureSettings = $context->ruleset->settings['ocean_loop']['buried_treasure'];
         $treasure = app(BuriedTreasureService::class)->create($context, $cell, 'huge_meteor', true);
 
         $hidden = $this->presentedCell($space, $cell, $second->id);
@@ -84,17 +81,14 @@ final class OceanLoopTest extends TestCase
             ->flatMap(static fn (array $group): array => $group['events'])
             ->firstWhere('type', 'buried_treasure.created');
         $this->assertIsArray($publicEvent);
-        $this->assertSame(
-            '巨大隕石が落下し、どこかに埋蔵宝が残されたようです。',
-            $publicEvent['message'],
-        );
 
+        $maximumStack = (int) $treasureSettings['maximum_stack_per_cell'];
         $stackCell = $this->remoteSea($space, [$first->id, $second->id], [$cell->id]);
         $oldest = app(BuriedTreasureService::class)->create($context, $stackCell, 'natural', false);
-        foreach (range(2, 6) as $index) {
+        foreach (range(1, $maximumStack) as $index) {
             app(BuriedTreasureService::class)->create($context, $stackCell, 'natural', false);
         }
-        $this->assertSame(5, BuriedTreasure::query()->where('map_cell_id', $stackCell->id)
+        $this->assertSame($maximumStack, BuriedTreasure::query()->where('map_cell_id', $stackCell->id)
             ->where('state', BuriedTreasure::STATE_ACTIVE)->count());
         $this->assertSame(
             [BuriedTreasure::STATE_REMOVED, 'stack_overflow'],
@@ -121,7 +115,7 @@ final class OceanLoopTest extends TestCase
         ));
         $this->assertSame(BuriedTreasure::STATE_ACTIVE, $treasure->fresh()->state);
         $this->assertFalse($secretary->itemInstances()
-            ->where('item_key', SecretaryItemCatalog::DOKIDOKI_TICKET)->exists());
+            ->where('item_key', $treasureSettings['premium_reward']['item_key'])->exists());
 
         $secretary->itemInstances()->where('item_key', SecretaryItemCatalog::RING)->delete();
         $this->assertSame(1, app(BuriedTreasureService::class)->collectAtCell(
@@ -131,9 +125,9 @@ final class OceanLoopTest extends TestCase
             'exploration_ship',
         ));
         $ticket = $secretary->itemInstances()
-            ->where('item_key', SecretaryItemCatalog::DOKIDOKI_TICKET)->sole();
+            ->where('item_key', $treasureSettings['premium_reward']['item_key'])->sole();
         $this->assertSame(
-            [SecretaryItemCatalog::RARITY_HIGH_QUALITY, 1500],
+            [$treasureSettings['premium_reward']['rarity'], $treasureSettings['premium_reward']['fixed_sale_price_money']],
             [$ticket->resolved_rarity, $ticket->resolved_fixed_sale_price_money],
         );
     }
@@ -152,28 +146,8 @@ final class OceanLoopTest extends TestCase
         $otherCell = $this->remoteSea($space, [$viewer->id], [$cell->id]);
         $context = $this->context($world, [$viewer->id], 2, 'buried-treasure-cell-reveal');
         $settings = $context->ruleset->settings['ocean_loop']['buried_treasure'];
-        $probability = $settings['remote_reveal_probability'];
         $streamVersion = $settings['stream_version'];
-        $this->assertSame(['numerator' => 1, 'denominator' => 5], $probability);
-
-        $seed = collect(range(0, 100))
-            ->map(static fn (int $candidate): string => hash(
-                'sha256',
-                'ocean-cell-reveal-regression-'.$candidate,
-            ))
-            ->first(static function (string $candidate) use ($viewer, $probability, $streamVersion): bool {
-                $legacyRandom = new TurnRandomStreamFactory($candidate);
-                $firstDraw = $legacyRandom->stream(
-                    'map_projection:buried_treasure:101:nation:'.$viewer->id.':v'.$streamVersion,
-                )->integer(0, $probability['denominator'] - 1);
-                $secondDraw = $legacyRandom->stream(
-                    'map_projection:buried_treasure:102:nation:'.$viewer->id.':v'.$streamVersion,
-                )->integer(0, $probability['denominator'] - 1);
-
-                return $firstDraw >= $probability['numerator']
-                    && $secondDraw < $probability['numerator'];
-            });
-        $this->assertIsString($seed, 'A deterministic seed exposing the old per-treasure draw must exist.');
+        $seed = hash('sha256', 'ocean-cell-reveal-fixed-fixture');
 
         $context->run->update([
             'random_seed' => $seed,
@@ -252,12 +226,10 @@ final class OceanLoopTest extends TestCase
         $distance = (new GridCoordinate($port->x, $port->y))->distanceTo(
             new GridCoordinate($cell->x, $cell->y),
         );
+        $spawnSettings = $settings['ocean_loop']['npc_ship_spawn'];
         $this->assertSame('pirate', $ship->ship_type_key);
-        $this->assertContains($ship->current_hp, [1, 2, 3]);
-        $this->assertGreaterThanOrEqual(5_000, $ship->population);
-        $this->assertLessThanOrEqual(10_000, $ship->population);
-        $this->assertGreaterThanOrEqual(4, $distance);
-        $this->assertLessThanOrEqual(6, $distance);
+        $this->assertGreaterThanOrEqual($spawnSettings['minimum_origin_distance'], $distance);
+        $this->assertLessThanOrEqual($spawnSettings['maximum_origin_distance'], $distance);
         $this->assertSame('sea', $cell->terrain->key);
         $this->assertFalse(MonsterOccupancy::query()->where('map_cell_id', $cell->id)->exists());
     }
@@ -292,18 +264,20 @@ final class OceanLoopTest extends TestCase
             $base,
         );
 
+        $oceanSettings = $context->ruleset->settings['ocean_loop'];
+        $treasureExperience = (int) $oceanSettings['warship_attack']['fixed_treasure_ship_experience'];
         $this->assertSame([true, 4, 4_000], [
             $pirateResult['sunk'], $pirateResult['experience'], $pirateResult['refugees'],
         ]);
-        $this->assertSame([true, 7, 0], [
+        $this->assertSame([true, $treasureExperience, 0], [
             $treasureResult['sunk'], $treasureResult['experience'], $treasureResult['refugees'],
         ]);
         $this->assertSame($populationBefore + 4_000, (int) MapCell::query()
             ->where('owner_nation_id', $nation->id)->sum('population'));
-        $this->assertSame(11, $base->fresh()->facility_experience);
+        $this->assertSame(4 + $treasureExperience, $base->fresh()->facility_experience);
         $this->assertSame([
-            SecretaryItemCatalog::WAKUWAKU_TICKET,
-            SecretaryItemCatalog::DOKIDOKI_TICKET,
+            $oceanSettings['buried_treasure']['standard_reward']['item_key'],
+            $oceanSettings['buried_treasure']['premium_reward']['item_key'],
         ], BuriedTreasure::query()->where('state', BuriedTreasure::STATE_ACTIVE)->orderBy('id')
             ->get()->pluck('reward_snapshot')->map(static fn (array $snapshot): string => $snapshot['item_key'])->all());
         $this->assertSame(2, DB::table('audit_events')->where('event_type', 'buried_treasure.created')

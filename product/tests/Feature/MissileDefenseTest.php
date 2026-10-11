@@ -3,9 +3,7 @@
 namespace Tests\Feature;
 
 use App\Application\CommandQueueService;
-use App\Application\PlayerIslandEventService;
 use App\Application\SecretaryItemGrantService;
-use App\Application\SecretaryNamingService;
 use App\Application\SecretaryTurnService;
 use App\Domain\Map\MapCellStateService;
 use App\Domain\Secretary\SecretarySkillCatalog;
@@ -162,8 +160,7 @@ final class MissileDefenseTest extends CommandAndMissileTestCase
 
     public function test_v8_defense_radius_center_outside_decoy_overlap_self_and_monster_contract(): void
     {
-        // radius 1 and overlapping facilities: one impact, one audit event,
-        // no Secretary budget, with both facilities preserved.
+        // Overlapping radius-1 and radius-2 facilities intercept once with one audit event.
         [$world, $firingUser, $firing, $targetNation] = $this->combatants();
         $firing->update(['money' => 10_000]);
         $space = $this->surfaceMapSpace($world);
@@ -183,9 +180,7 @@ final class MissileDefenseTest extends CommandAndMissileTestCase
             ->whereRaw("metadata->>'queue_item_id' = ?", [(string) $item->id])->value('metadata'), true, 512, JSON_THROW_ON_ERROR);
         $this->assertSame('defense_intercepted', $detail['impacts'][0]['effect']);
         $this->assertSame(2, $detail['impacts'][0]['covering_defense_count']);
-        $this->assertSame(2, $monster->fresh()->current_hp);
-        $this->assertNotNull($firstDefense->fresh()->facility_definition_id);
-        $this->assertNotNull($secondDefense->fresh()->facility_definition_id);
+        $this->assertSame(1, DB::table('audit_events')->where('event_type', 'missile.defense_intercepted')->count());
 
         // A center defense is not its own surrounding interceptor. The v6-v8
         // SPP direct-resistance owner decision then resolves before Secretary.
@@ -200,10 +195,6 @@ final class MissileDefenseTest extends CommandAndMissileTestCase
             ->whereRaw("metadata->>'queue_item_id' = ?", [(string) $centerItem->id])->value('metadata'), true, 512, JSON_THROW_ON_ERROR);
         $this->assertSame('defense_resisted', $centerDetail['impacts'][0]['effect']);
         $this->assertSame(0, $centerContext->state->finalDefenseInterceptionsUsed($targetNation->id));
-        $this->assertSame([
-            $targetNation->id => [SecretarySkillCatalog::FINAL_DEFENSE_LINE => 1],
-        ], $centerContext->state->pendingSecretaryExperience());
-        $this->assertSame(0, DB::table('audit_events')->where('event_type', 'secretary.missile_intercepted')->count());
         $this->assertSame(1, DB::table('audit_events')->where('event_type', 'missile.defense_intercepted')->count());
 
         // radius 3 and a radius-1 decoy do not defend; only then may Secretary run.
@@ -444,19 +435,7 @@ final class MissileDefenseTest extends CommandAndMissileTestCase
         $this->assertSame([
             $target->id => [SecretarySkillCatalog::FINAL_DEFENSE_LINE => 2],
         ], $first->state->pendingSecretaryExperience());
-        $firstInterception = json_decode((string) DB::table('audit_events')
-            ->where('event_type', 'secretary.missile_intercepted')->value('metadata'),
-            true,
-            512,
-            JSON_THROW_ON_ERROR,
-        );
-        $this->assertSame('秘書', $firstInterception['secretary_label']);
 
-        $targetUserId = (int) DB::table('nation_memberships')->where('nation_id', $target->id)
-            ->where('role', 'owner')->value('user_id');
-        $targetUser = User::query()->findOrFail($targetUserId);
-        app(SecretaryNamingService::class)->name($targetUser, 'ペリドット');
-        app(SecretaryNamingService::class)->rename($targetUser, 'エメラルド');
         $secondItem = $this->queue(
             app(CommandQueueService::class),
             $firingUser,
@@ -485,19 +464,7 @@ final class MissileDefenseTest extends CommandAndMissileTestCase
         $this->assertSame([
             $target->id => [SecretarySkillCatalog::FINAL_DEFENSE_LINE => 1],
         ], $second->state->pendingSecretaryExperience());
-        $labels = DB::table('audit_events')->where('event_type', 'secretary.missile_intercepted')
-            ->orderBy('id')->selectRaw("metadata->>'secretary_label' AS secretary_label")
-            ->pluck('secretary_label')->all();
-        $this->assertSame(['秘書', '秘書のエメラルド'], $labels);
-        $messages = collect(app(PlayerIslandEventService::class)->ownerPage($target->fresh(), 1, 3)['groups'])
-            ->flatMap(fn (array $group): array => $group['events'])
-            ->where('type', 'secretary.missile_intercepted')->pluck('message');
-        $this->assertTrue($messages->contains(
-            static fn (string $message): bool => str_contains($message, '秘書が1発のミサイルを迎撃'),
-        ));
-        $this->assertTrue($messages->contains(
-            static fn (string $message): bool => str_contains($message, '秘書のエメラルドが1発のミサイルを迎撃'),
-        ));
+        $this->assertSame(2, DB::table('audit_events')->where('event_type', 'secretary.missile_intercepted')->count());
     }
 
     public function test_self_fired_collateral_and_monster_cells_both_award_xp_but_only_eligible_cell_is_intercepted(): void

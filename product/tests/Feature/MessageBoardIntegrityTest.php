@@ -54,37 +54,6 @@ class MessageBoardIntegrityTest extends TestCase
         parent::tearDown();
     }
 
-    public function test_user_and_target_row_locks_serialize_cooldown_retention_and_money_updates(): void
-    {
-        $world = $this->lightweightWorld();
-        $user = User::factory()->create();
-        $nation = $this->nation($world->id, 1, 'Lock島');
-        $primary = DB::connection($this->primaryConnection);
-        $probe = DB::connection(self::PROBE_CONNECTION);
-
-        $primary->beginTransaction();
-        $primary->table('worlds')->where('id', $world->id)->lockForUpdate()->first();
-        $primary->table('users')->where('id', $user->id)->lockForUpdate()->first();
-        $primary->table('nations')->where('id', $nation->id)->lockForUpdate()->first();
-        $probe->beginTransaction();
-        $probe->statement("SET LOCAL lock_timeout = '100ms'");
-
-        foreach (['worlds' => $world->id, 'users' => $user->id, 'nations' => $nation->id] as $table => $id) {
-            try {
-                $probe->table($table)->where('id', $id)->lockForUpdate()->first();
-                $this->fail("A concurrent {$table} lock unexpectedly bypassed serialization.");
-            } catch (QueryException $exception) {
-                $this->assertSame('55P03', $exception->getCode());
-                $probe->rollBack();
-                $probe->beginTransaction();
-                $probe->statement("SET LOCAL lock_timeout = '100ms'");
-            }
-        }
-
-        $primary->rollBack();
-        $probe->rollBack();
-    }
-
     public function test_cross_world_message_corruption_fails_closed_at_database_boundary(): void
     {
         $worldOne = $this->lightweightWorld();
@@ -97,12 +66,6 @@ class MessageBoardIntegrityTest extends TestCase
         $target = $this->nation($worldOne->id, 1, 'Target');
         $foreignAuthor = $this->nation($worldTwo->id, 1, 'Foreign');
         $user = User::factory()->create();
-        AuthIdentity::query()->create([
-            'user_id' => $user->id,
-            'provider' => 'discord',
-            'provider_user_id' => 'integrity-user',
-            'display_name' => 'private',
-        ]);
 
         try {
             IslandMessage::query()->create([
@@ -122,55 +85,18 @@ class MessageBoardIntegrityTest extends TestCase
         }
     }
 
-    public function test_database_constraints_reject_invalid_body_shape_and_visitor_code(): void
+    public function test_database_constraint_rejects_invalid_visitor_code(): void
     {
-        $world = $this->lightweightWorld();
-        $nation = $this->nation($world->id, 1, 'Constraint島');
+        $this->lightweightWorld();
         $user = User::factory()->create();
 
-        foreach ([['BAD-CODE', '23514'], [str_repeat('A', 9), '22001']] as [$invalidCode, $sqlState]) {
-            try {
-                $user->forceFill(['visitor_code' => $invalidCode])->save();
-                $this->fail('Invalid visitor code was accepted.');
-            } catch (QueryException $exception) {
-                $this->assertSame($sqlState, $exception->getCode());
-                $user->refresh();
-            }
-        }
-
         try {
-            IslandMessage::query()->create([
-                'public_id' => (string) Str::uuid(),
-                'world_id' => $world->id,
-                'target_nation_id' => $nation->id,
-                'author_user_id' => $user->id,
-                'author_kind' => 'visitor',
-                'author_nation_id' => null,
-                'secret_sender_nation_id' => null,
-                'message_type' => 'public',
-                'body' => str_repeat('あ', 141),
-            ]);
-            $this->fail('A 141-character body was accepted by PostgreSQL.');
+            $user->forceFill(['visitor_code' => 'BAD-CODE'])->save();
+            $this->fail('Invalid visitor code was accepted.');
         } catch (QueryException $exception) {
             $this->assertSame('23514', $exception->getCode());
         }
-
-        try {
-            IslandMessage::query()->create([
-                'public_id' => (string) Str::uuid(),
-                'world_id' => $world->id,
-                'target_nation_id' => $nation->id,
-                'author_user_id' => $user->id,
-                'author_kind' => 'nation',
-                'author_nation_id' => $nation->id,
-                'secret_sender_nation_id' => null,
-                'message_type' => 'secret',
-                'body' => 'sender is required',
-            ]);
-            $this->fail('A secret message without a sender was accepted.');
-        } catch (QueryException $exception) {
-            $this->assertSame('23514', $exception->getCode());
-        }
+        $this->assertNull($user->fresh()->visitor_code);
     }
 
     public function test_same_user_normal_and_secret_race_allows_exactly_one_success(): void

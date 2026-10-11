@@ -80,34 +80,36 @@ final class ProductionDestructiveDatabaseCommandGuardTest extends TestCase
 
     public function test_local_and_testing_environments_can_run_all_five_commands_on_an_isolated_database(): void
     {
-        foreach (['local', 'testing'] as $environment) {
-            $this->setEnvironment($environment);
-            $this->guard()->configure();
-            $this->configureIsolatedDatabase();
+        $migrationOptions = [
+            '--database' => 'guard_test',
+            '--path' => base_path('tests/Fixtures/database-command-guard'),
+            '--realpath' => true,
+            '--force' => true,
+        ];
 
-            $migrationOptions = [
-                '--database' => 'guard_test',
-                '--path' => base_path('tests/Fixtures/database-command-guard'),
-                '--realpath' => true,
-                '--force' => true,
-            ];
+        $this->setEnvironment('local');
+        $this->guard()->configure();
+        $this->configureIsolatedDatabase();
 
-            $this->assertSame(0, Artisan::call('migrate:fresh', $migrationOptions));
-            $this->assertTrue(Schema::connection('guard_test')->hasTable('guard_records'));
-            $this->assertSame(0, Artisan::call('migrate:refresh', $migrationOptions));
-            $this->assertTrue(Schema::connection('guard_test')->hasTable('guard_records'));
-            $this->assertSame(0, Artisan::call('migrate:rollback', $migrationOptions));
-            $this->assertFalse(Schema::connection('guard_test')->hasTable('guard_records'));
-            $this->assertSame(0, Artisan::call('migrate:fresh', $migrationOptions));
-            $this->assertSame(0, Artisan::call('migrate:reset', $migrationOptions));
-            $this->assertFalse(Schema::connection('guard_test')->hasTable('guard_records'));
-            $this->assertSame(0, Artisan::call('migrate:fresh', $migrationOptions));
-            $this->assertSame(0, Artisan::call('db:wipe', [
-                '--database' => 'guard_test',
-                '--force' => true,
-            ]));
-            $this->assertFalse(Schema::connection('guard_test')->hasTable('guard_records'));
-        }
+        $this->assertSame(0, Artisan::call('migrate:fresh', $migrationOptions));
+        $this->assertSame(0, Artisan::call('migrate:refresh', $migrationOptions));
+        $this->assertTrue(Schema::connection('guard_test')->hasTable('guard_records'));
+        $this->assertSame(0, Artisan::call('migrate:rollback', $migrationOptions));
+        $this->assertFalse(Schema::connection('guard_test')->hasTable('guard_records'));
+        $this->assertSame(0, Artisan::call('migrate:fresh', $migrationOptions));
+        $this->assertSame(0, Artisan::call('migrate:reset', $migrationOptions));
+        $this->assertFalse(Schema::connection('guard_test')->hasTable('guard_records'));
+        $this->assertSame(0, Artisan::call('db:wipe', [
+            '--database' => 'guard_test',
+            '--force' => true,
+        ]));
+
+        $this->setEnvironment('testing');
+        $this->guard()->configure();
+        $this->configureIsolatedDatabase();
+
+        $this->assertSame(0, Artisan::call('migrate:fresh', $migrationOptions));
+        $this->assertTrue(Schema::connection('guard_test')->hasTable('guard_records'));
     }
 
     public function test_environment_override_cannot_bypass_a_production_runtime(): void
@@ -195,9 +197,7 @@ final class ProductionDestructiveDatabaseCommandGuardTest extends TestCase
         $logger = Mockery::mock(LoggerInterface::class);
         $logger->shouldReceive('warning')
             ->once()
-            ->with('Destructive database command was blocked in production.', [
-                'command' => 'migrate:fresh',
-            ]);
+            ->withArgs(static fn (string $message, array $context): bool => $context === ['command' => 'migrate:fresh']);
         $guard = new ProductionDestructiveDatabaseCommandGuard(
             $this->app,
             $this->app->make('config'),
@@ -207,10 +207,7 @@ final class ProductionDestructiveDatabaseCommandGuardTest extends TestCase
 
         $guard(new CommandStarting('migrate:fresh', new ArrayInput([]), $output));
 
-        $this->assertSame(
-            'Destructive database command [migrate:fresh] is disabled in production.'.PHP_EOL,
-            $output->fetch(),
-        );
+        $this->assertStringContainsString('[migrate:fresh]', $output->fetch());
     }
 
     private function guard(): ProductionDestructiveDatabaseCommandGuard

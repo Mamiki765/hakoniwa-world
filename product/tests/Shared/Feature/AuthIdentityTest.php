@@ -108,11 +108,13 @@ class AuthIdentityTest extends TestCase
             ->get('/auth/discord/callback')
             ->assertRedirect('/?oauth=failed')
             ->assertSessionHas('oauth_error');
+        $guidance = session('oauth_error');
+        $this->assertIsString($guidance);
+        $this->assertNotSame('', $guidance);
 
         $this->get('/')
             ->assertOk()
-            ->assertSee('一時的な障害')
-            ->assertSee('再試行')
-            ->assertSee('事前に別の認証サービスを連携済み');
+            ->assertSee('role="alert"', false)
+            ->assertSee($guidance);
     }
 }

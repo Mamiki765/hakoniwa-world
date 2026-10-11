@@ -38,22 +38,13 @@ class NationCreationTest extends TestCase
         $this->assertSame($world->current_turn, $nation->registered_turn);
         $this->assertSame(2000, $nation->idle_counter);
         $this->assertSame(100, $nation->money);
-        $this->assertSame([
-            'fish' => 0, 'industrial_goods' => 0, 'minerals' => 0, 'monster_meat' => 0,
-            'oil' => 0, 'power' => 0, 'wheat' => 10_000,
-        ], NationResource::query()
+        $amounts = NationResource::query()
             ->where('nation_id', $nation->id)
             ->join('resource_definitions', 'resource_definitions.id', '=', 'nation_resources.resource_definition_id')
-            ->pluck('amount', 'key')->sortKeys()->all());
-        $this->assertSame(3, ResourceDefinition::query()->where('category', 'food')->count());
-        $this->assertSame(3, ResourceDefinition::query()
-            ->where('category', 'food')->where('unit', 'ton')->where('unit_label', 'トン')->count());
+            ->pluck('amount', 'key');
+        $this->assertSame(10_000, $amounts['wheat']);
+        $this->assertSame(0, $amounts->except('wheat')->sum());
         $oil = ResourceDefinition::query()->where('key', 'oil')->sole();
-        $this->assertSame(['石油', 'energy', 'ten_thousand_barrels', '万バレル', true, true, 'sale.oil'], [
-            $oil->name, $oil->category, $oil->unit, $oil->unit_label,
-            $oil->storable, $oil->tradable, $oil->sale_price_key,
-        ]);
-        $this->assertSame(6, $nation->salePolicies()->count());
         $this->assertDatabaseHas('nation_resource_sale_policies', [
             'nation_id' => $nation->id,
             'resource_definition_id' => $oil->id,

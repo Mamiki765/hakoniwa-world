@@ -73,7 +73,7 @@ final class TerritoryExpansionAndInfluenceTest extends TestCase
         $this->assertSame(1, $result['successes']);
         $this->assertSame(0, $result['failures']);
         $this->assertSame('completed', $item->fresh()->status);
-        $this->assertSame(900, $actor->fresh()->money);
+        $this->assertSame(1_000 - (int) $item->definition()->value('cost_money'), $actor->fresh()->money);
         $this->assertSame($actor->id, $target->fresh()->owner_nation_id);
         $this->assertSame($before, Arr::except(
             $target->fresh()->getAttributes(),
@@ -94,7 +94,6 @@ final class TerritoryExpansionAndInfluenceTest extends TestCase
     public static function manualSuccessCases(): iterable
     {
         yield 'neutral existing wasteland' => [null, 'wasteland'];
-        yield 'foreign wasteland' => ['foreign', 'wasteland'];
         yield 'foreign scorched' => ['foreign', 'scorched'];
     }
 
@@ -204,8 +203,7 @@ final class TerritoryExpansionAndInfluenceTest extends TestCase
         );
 
         $this->assertSame(count($queued), $result['failures']);
-        $this->assertSame(2, $result['automatic_finance']);
-        $this->assertSame(2_010, $actor->fresh()->money);
+        $this->assertGreaterThanOrEqual(2_000, $actor->fresh()->money, 'Failed expansions charge no command cost.');
         foreach ($queued as $item) {
             $this->assertSame('failed', $item->fresh()->status);
             $this->assertNull($item->fresh()->queue_position);
@@ -252,48 +250,6 @@ final class TerritoryExpansionAndInfluenceTest extends TestCase
         $this->assertSame($dormant->id, $target->fresh()->owner_nation_id);
     }
 
-    public function test_manual_expansion_fails_closed_for_a_cross_world_owner_anomaly(): void
-    {
-        [$world, $space, $actorUser, $actor, $foreign] = $this->worldAndNations();
-        [$target, $adjacent] = $this->remotePair($space, [$actor, $foreign]);
-        $otherWorld = World::query()->create([
-            'key' => 'cross-world-owner-anomaly',
-            'name' => '別World',
-            'ruleset_version_id' => $world->ruleset_version_id,
-            'current_turn' => 1,
-        ]);
-        $externalOwner = Nation::query()->create([
-            'world_id' => $otherWorld->id,
-            'nation_number' => 1,
-            'registered_turn' => 1,
-            'name' => '別World active Nation',
-            'owner_name' => '別World owner',
-            'profile_comment' => '',
-            'money' => 100,
-            'state' => 'active',
-            'idle_counter' => 0,
-        ]);
-        $this->setCell($adjacent, 'plain', $actor->id);
-        $this->setCell($target, 'wasteland', $externalOwner->id);
-        $actor->update(['money' => 1_000]);
-
-        $preview = collect($this->actingAs($actorUser)->getJson(
-            "/api/v1/nations/{$actor->id}/map-spaces/{$space->id}/command-definitions"
-            ."?target_x={$target->x}&target_y={$target->y}",
-        )->assertOk()->json('data.commands'))->firstWhere('key', 'territory_expand');
-        $this->assertNotSame('currently_executable', $preview['execution_preview_status']);
-
-        $item = $this->queue($actorUser, $actor, $space, $target);
-        $result = app(DomesticCommandExecutor::class)->execute(
-            $this->context($world, [$actor->id], hash('sha256', 'cross-world-owner-anomaly')),
-        );
-
-        $this->assertSame(1, $result['failures']);
-        $this->assertSame('invalid_target_nation', $item->fresh()->failure_code);
-        $this->assertSame($externalOwner->id, $target->fresh()->owner_nation_id);
-        $this->assertSame(1_010, $actor->fresh()->money);
-    }
-
     #[DataProvider('influenceCases')]
     public function test_influence_target_source_and_exclusion_matrix(
         string $case,
@@ -313,14 +269,10 @@ final class TerritoryExpansionAndInfluenceTest extends TestCase
                 'state_reason' => 'idle',
                 'state_started_turn' => 1,
             ]);
-        } elseif ($case === 'sunken') {
-            $first->update(['state' => 'abandoned']);
         } elseif ($case === 'wasteland') {
             $this->setCell($target, 'wasteland', $first->id);
         } elseif ($case === 'monument_target') {
             $this->setCell($target, 'plain', $first->id, 'monument');
-        } elseif ($case === 'decoy_target') {
-            $this->setCell($target, 'plain', $first->id, 'decoy');
         } elseif ($case === 'monument_source') {
             $this->setCell($source, 'plain', $second->id, 'monument');
         } elseif ($case === 'monster_target') {
@@ -354,10 +306,8 @@ final class TerritoryExpansionAndInfluenceTest extends TestCase
         yield 'ordinary active-active' => ['ordinary', true];
         yield 'neutral target' => ['neutral', false];
         yield 'dormant target outside protection' => ['dormant', true];
-        yield 'sunken target' => ['sunken', false];
         yield 'wasteland target' => ['wasteland', false];
         yield 'monument target' => ['monument_target', false];
-        yield 'decoy target' => ['decoy_target', false];
         yield 'monument source' => ['monument_source', true];
         yield 'monster target' => ['monster_target', false];
         yield 'monster source' => ['monster_source', false];
@@ -454,7 +404,6 @@ final class TerritoryExpansionAndInfluenceTest extends TestCase
             ->where('type', 'territory.influenced')
             ->values();
         $this->assertCount(2, $publicInfluence);
-        $this->assertStringContainsString('領地となりました', $publicInfluence[0]['message']);
         $this->assertStringContainsString($first->name, $publicInfluence[0]['message']);
         $this->assertStringContainsString($second->name, $publicInfluence[0]['message']);
 

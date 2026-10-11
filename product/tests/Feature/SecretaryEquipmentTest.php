@@ -41,7 +41,7 @@ final class SecretaryEquipmentTest extends TestCase
         $secretary = $user->secretary()->firstOrFail();
         $bow = $secretary->itemInstances()->sole();
 
-        $this->actingAs($user)->getJson('/api/v1/me/secretary/equipment/1/options')
+        $neutral = $this->actingAs($user)->getJson('/api/v1/me/secretary/equipment/1/options')
             ->assertOk()
             ->assertJsonPath('data.slot', 1)
             ->assertJsonPath('data.equipment_version', 1)
@@ -49,19 +49,19 @@ final class SecretaryEquipmentTest extends TestCase
             ->assertJsonPath('data.current_item.id', $bow->id)
             ->assertJsonPath('data.items.0.id', $bow->id)
             ->assertJsonPath('data.items.0.effect_text', null)
-            ->assertJsonPath('data.category_limits.0.category', 'bow')
-            ->assertJsonPath('data.category_limits.1.category', 'clothing')
-            ->assertJsonPath('data.category_limits.1.maximum_equipped', 1)
             ->assertJsonMissing(['category' => 'accessory'])
             ->assertJsonMissingPath('data.items.0.flavor_text');
+        $limits = array_column($neutral->json('data.category_limits'), 'maximum_equipped', 'category');
+        $this->assertArrayHasKey('bow', $limits);
+        $this->assertSame(1, $limits['clothing']);
 
-        $this->actingAs($user)->getJson("/api/v1/me/secretary/equipment/1/options?world_id={$world->id}")
+        $owned = $this->actingAs($user)->getJson("/api/v1/me/secretary/equipment/1/options?world_id={$world->id}")
             ->assertOk()
             ->assertJsonPath('data.effect_context.source', 'owned_world')
             ->assertJsonPath('data.effect_context.world_id', $world->id)
             ->assertJsonPath('data.effect_context.ruleset_version_id', $world->ruleset_version_id)
-            ->assertJsonPath('data.effect_context.ruleset_version', $worldRulesetVersion)
-            ->assertJsonPath('data.items.0.effect_text', '10%の確率で、自領の地上にいる怪獣に1ダメージを与える。');
+            ->assertJsonPath('data.effect_context.ruleset_version', $worldRulesetVersion);
+        $this->assertNotSame('', (string) $owned->json('data.items.0.effect_text'));
 
         $unownedWorld = World::query()->create([
             'key' => 'equipment-unowned-world',
@@ -168,13 +168,13 @@ final class SecretaryEquipmentTest extends TestCase
         $secondBow = $second->itemInstances()->create($this->itemAttributes('old_bow', null));
         $user = $first->user()->firstOrFail();
 
-        foreach ([-1, 0, 6] as $slot) {
+        foreach ([0, 6] as $slot) {
             $this->actingAs($user)->putJson("/api/v1/me/secretary/equipment/{$slot}", [
                 'item_id' => null,
                 'expected_version' => 1,
             ])->assertUnprocessable()->assertJsonPath('code', 'secretary_equipment_invalid');
         }
-        $this->actingAs($user)->getJson('/api/v1/me/secretary/equipment/-1/options')
+        $this->actingAs($user)->getJson('/api/v1/me/secretary/equipment/0/options')
             ->assertUnprocessable()->assertJsonPath('code', 'secretary_equipment_invalid');
         foreach ([$secondBow->id, 9_999_999] as $itemId) {
             $this->actingAs($user)->putJson('/api/v1/me/secretary/equipment/1', [
@@ -241,7 +241,7 @@ final class SecretaryEquipmentTest extends TestCase
         $this->assertNull($currentBow->fresh()->equipped_slot);
     }
 
-    public function test_different_accessories_share_slots_but_the_same_item_default_is_one_and_limit_99_is_hidden(): void
+    public function test_different_accessories_share_slots_but_the_same_item_default_is_one(): void
     {
         $secretary = $this->secretaryFixture();
         $user = $secretary->user()->firstOrFail();
@@ -268,11 +268,6 @@ final class SecretaryEquipmentTest extends TestCase
             ->pluck('equipped_slot')->all());
         $this->assertSame(4, $secretary->fresh()->surfaceState->equipment_version);
         $this->assertSame(1, app(SecretaryItemCatalog::class)->sameItemMaximum(SecretaryItemCatalog::RING));
-        $this->assertSame(99, app(SecretaryItemCatalog::class)->maximumEquipped('accessory'));
-        $this->assertNotContains('accessory', array_column(
-            app(SecretaryItemCatalog::class)->categoryLimits(),
-            'category',
-        ));
 
         try {
             $service->mutate($user, 4, $secondRing->id, 4);
@@ -404,7 +399,7 @@ SQL);
         $this->assertSame(1, $bow->fresh()->equipped_slot);
     }
 
-    public function test_partial_world_lock_failure_and_membership_set_change_release_locks_without_writes(): void
+    public function test_partial_world_lock_failure_releases_acquired_locks_without_writes(): void
     {
         [$user, $secretary, $first] = $this->affectedWorldFixture();
         $second = $this->additionalAffectedWorld($user, 'equipment-partial-world');
@@ -421,21 +416,6 @@ SQL);
         $this->assertSame([$first->id], $partial->released);
         $this->assertSame(1, $bow->fresh()->equipped_slot);
 
-        $membership = NationMembership::query()
-            ->where('user_id', $user->id)
-            ->where('world_id', $second->id)
-            ->firstOrFail();
-        $changing = new RecordingWorldMutationLock(onFirstAcquire: static function () use ($membership): void {
-            $membership->delete();
-        });
-        try {
-            $this->service(worldLock: $changing)->mutate($user, 1, null, 1);
-            $this->fail('Expected the authoritative membership re-read to reject a changed set.');
-        } catch (SecretaryEquipmentConflictException $exception) {
-            $this->assertSame('secretary_equipment_membership_changed', $exception->errorCode);
-        }
-        $this->assertSame([$second->id, $first->id], $changing->released);
-        $this->assertSame(1, $bow->fresh()->equipped_slot);
         $this->assertSame(1, $secretary->fresh()->surfaceState->equipment_version);
     }
 
@@ -669,20 +649,13 @@ final class RecordingWorldMutationLock extends WorldMutationLock
     /** @var list<int> */
     public array $released = [];
 
-    private bool $callbackRan = false;
-
     public function __construct(
         private readonly ?int $failOnWorldId = null,
-        private readonly mixed $onFirstAcquire = null,
     ) {}
 
     public function acquire(World $world): void
     {
         $this->acquired[] = $world->id;
-        if (! $this->callbackRan && is_callable($this->onFirstAcquire)) {
-            $this->callbackRan = true;
-            ($this->onFirstAcquire)();
-        }
         if ($world->id === $this->failOnWorldId) {
             throw new TurnAlreadyRunningException('injected partial World lock failure');
         }

@@ -14,7 +14,7 @@ afterEach(() => {
 });
 
 describe('Secretary image slots editor', () => {
-    it('renders six independent image and credit inputs with the portrait preference', () => {
+    it('renders independent normal and awakening image slots with the portrait preference', () => {
         const profile = {
             portrait_preference: 'full_body',
             images: {
@@ -23,14 +23,14 @@ describe('Secretary image slots editor', () => {
         } as SecretaryProfile;
         const wrapper = mount(SecretaryImageSlotsEditor, { props: { profile } });
 
-        expect(wrapper.findAll('.secretary-image-slot')).toHaveLength(6);
-        expect(wrapper.findAll('input[type="file"]')).toHaveLength(6);
-        expect(wrapper.findAll('input[placeholder="作者名・権利表記"]')).toHaveLength(6);
-        expect(wrapper.findAll('[data-slot="full_body"], [data-slot="awakening_full_body"]')).toHaveLength(2);
-        expect(wrapper.get<HTMLSelectElement>('label select').element.value).toBe('full_body');
-        expect(wrapper.text()).toContain('バストアップと全身は3:4');
-        expect(wrapper.text()).toContain('覚醒画像がない場合は通常画像');
-        expect(wrapper.text()).toContain('全身画像がない場合も、登録済みのバストアップ');
+        for (const base of ['icon', 'bust', 'full_body']) {
+            for (const slot of [base, `awakening_${base}`]) {
+                const slotElement = wrapper.get(`[data-slot="${slot}"]`);
+                expect(slotElement.findAll('input[type="file"]')).toHaveLength(1);
+                expect(slotElement.findAll('input[type="text"], input:not([type])')).toHaveLength(1);
+            }
+        }
+        expect(wrapper.get<HTMLSelectElement>('label select').element.value).toBe(profile.portrait_preference);
         expect(wrapper.text()).toContain('Artist A');
     });
 

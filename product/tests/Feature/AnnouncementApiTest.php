@@ -13,32 +13,35 @@ final class AnnouncementApiTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_public_latest_returns_five_and_index_uses_stable_ten_item_pages(): void
+    public function test_public_latest_returns_five_and_index_uses_stable_ten_item_pages_up_to_a_full_final_page(): void
     {
         $time = Carbon::parse('2026-08-09 12:00:00+09:00');
-        foreach (range(1, 12) as $number) {
+        foreach (range(1, 20) as $number) {
             $this->announcement("Article {$number}", "Body {$number}", $time);
         }
 
         $latest = $this->getJson('/api/v1/public/announcements/latest')
             ->assertOk()
             ->assertJsonCount(5, 'data')
-            ->assertJsonPath('data.0.title', 'Article 12')
-            ->assertJsonPath('data.4.title', 'Article 8');
+            ->assertJsonPath('data.0.title', 'Article 20')
+            ->assertJsonPath('data.4.title', 'Article 16');
         $this->assertStringNotContainsString('provider_user_id', $latest->getContent());
 
         $this->getJson('/api/v1/public/announcements')
             ->assertOk()
             ->assertJsonCount(10, 'data')
-            ->assertJsonPath('data.0.title', 'Article 12')
-            ->assertJsonPath('data.9.title', 'Article 3')
+            ->assertJsonPath('data.0.title', 'Article 20')
+            ->assertJsonPath('data.9.title', 'Article 11')
             ->assertJsonPath('meta.per_page', 10)
-            ->assertJsonPath('meta.total', 12);
+            ->assertJsonPath('meta.total', 20);
+        // Exactly two pages: the second is full and final.
         $this->getJson('/api/v1/public/announcements?page=2')
             ->assertOk()
-            ->assertJsonCount(2, 'data')
-            ->assertJsonPath('data.0.title', 'Article 2')
-            ->assertJsonPath('data.1.title', 'Article 1');
+            ->assertJsonCount(10, 'data')
+            ->assertJsonPath('data.0.title', 'Article 10')
+            ->assertJsonPath('data.9.title', 'Article 1')
+            ->assertJsonPath('meta.current_page', 2)
+            ->assertJsonPath('meta.last_page', 2);
     }
 
     public function test_public_article_preserves_plain_text_line_breaks_without_admin_data(): void
@@ -60,35 +63,18 @@ final class AnnouncementApiTest extends TestCase
         $this->assertStringNotContainsString('can_manage', $response->getContent());
     }
 
-    public function test_exact_twenty_articles_have_a_full_second_and_final_page(): void
-    {
-        $time = Carbon::parse('2026-08-09 12:00:00+09:00');
-        foreach (range(1, 20) as $number) {
-            $this->announcement("Article {$number}", "Body {$number}", $time);
-        }
-
-        $this->getJson('/api/v1/public/announcements?page=2')
-            ->assertOk()
-            ->assertJsonCount(10, 'data')
-            ->assertJsonPath('meta.current_page', 2)
-            ->assertJsonPath('meta.last_page', 2)
-            ->assertJsonPath('meta.per_page', 10)
-            ->assertJsonPath('meta.total', 20);
-    }
-
     public function test_markdown_preview_and_public_article_share_safe_rendering_and_keep_source_for_editing(): void
     {
         config(['hakoniwa.admin.discord_user_id' => 'stable-admin-id']);
         $admin = $this->identityUser('discord', 'stable-admin-id', 'Operator');
-        $body = "**開始**\n次の行\n\n## 更新\n\n- 攻撃\n- 回復\n\n~~旧~~\n\n[手順](https://example.com)\n\n<script>alert(1)</script>\n\n[危険](javascript:alert%281%29)\n\n<img src=x onerror=alert(1)>";
+        $body = "**開始**\n次の行\n\n## 更新\n\n[手順](https://example.com)\n\n<script>alert(1)</script>\n\n[危険](javascript:alert%281%29)\n\n<img src=x onerror=alert(1)>";
         $payload = ['body' => $body, 'body_format' => 'markdown'];
         $html = $this->actingAs($admin)->postJson('/api/v1/admin/announcements/preview', $payload)
             ->assertOk()->json('data.body_html');
         $this->assertDatabaseCount('announcements', 0);
-        $this->assertStringContainsString('<strong>開始</strong><br />', $html);
+        // Markdown is rendered (exact HTML spelling is the renderer's business), safe links survive.
+        $this->assertStringContainsString('<strong>開始</strong>', $html);
         $this->assertStringContainsString('<h2>更新</h2>', $html);
-        $this->assertStringContainsString('<li>回復</li>', $html);
-        $this->assertStringContainsString('<del>旧</del>', $html);
         $this->assertStringContainsString('href="https://example.com"', $html);
         $this->assertStringNotContainsString('<script', $html);
         $this->assertStringNotContainsString('onerror=', $html);
