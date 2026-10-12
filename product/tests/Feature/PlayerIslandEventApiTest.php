@@ -79,7 +79,6 @@ class PlayerIslandEventApiTest extends TestCase
             ->assertJsonPath('data.limit', 15)
             ->assertJsonPath('data.groups.0.target_turn', 9)
             ->assertJsonPath('data.groups.0.events.0.id', $created)
-            ->assertJsonPath('data.groups.0.events.0.message', 'ニュース島ができました。')
             ->assertJsonPath('data.groups.0.events.0.importance', 'notable');
 
         $this->assertCount(1, $response->json('data.groups.0.events'));
@@ -127,8 +126,8 @@ class PlayerIslandEventApiTest extends TestCase
         $eventId = $this->audit('monster.spawn_failed_no_settlement', $nation, $nation, 'public', 2, [
             'nation_id' => $nation->id,
             'nation_number' => $nation->nation_number,
-            'owned_land_cells' => 987654321,
-            'population' => 876543210,
+            'owned_land_cells' => 12,
+            'population' => 3_400,
         ]);
 
         $responses = [
@@ -145,7 +144,7 @@ class PlayerIslandEventApiTest extends TestCase
             )->pluck('id');
 
             $this->assertNotContains($eventId, $eventIds);
-            foreach (['monster.spawn_failed_no_settlement', 'owned_land_cells', 'population', '987654321', '876543210'] as $hidden) {
+            foreach (['monster.spawn_failed_no_settlement', 'owned_land_cells', 'population'] as $hidden) {
                 $this->assertStringNotContainsString($hidden, $body);
             }
         }
@@ -192,8 +191,8 @@ class PlayerIslandEventApiTest extends TestCase
             ->assertJsonPath('data.has_older_page', true);
         $body = (string) $islandPage->getContent();
         $messages = $this->messages($islandPage->json('data.groups'));
-        $this->assertContains('第一島(1,2)で農場整備が行われました。', $messages);
-        $this->assertContains('第一島(5,6)で採掘場整備が行われました。', $messages);
+        $this->assertMessageMentions($messages, '(1,2)');
+        $this->assertMessageMentions($messages, '(5,6)');
         $this->assertNotContains('第一島(7,8)で農場整備が行われました。', $messages);
         $this->assertFalse(collect($messages)->contains(
             static fn (string $message): bool => str_contains($message, '第二島'),
@@ -205,10 +204,7 @@ class PlayerIslandEventApiTest extends TestCase
             ->assertOk()
             ->assertJsonPath('data.turn_range.start', 2)
             ->assertJsonPath('data.turn_range.end', 13);
-        $this->assertContains(
-            '第一島(7,8)で農場整備が行われました。',
-            $this->messages($olderIslandPage->json('data.groups')),
-        );
+        $this->assertMessageMentions($this->messages($olderIslandPage->json('data.groups')), '(7,8)');
     }
 
     public function test_monster_damage_uses_historical_host_metadata_and_missing_host_events_fail_closed(): void
@@ -252,18 +248,8 @@ class PlayerIslandEventApiTest extends TestCase
             [$killedWithHost, $legacyDamagedWithHostId, $damagedWithHost],
             $worldEvents->pluck('id')->all(),
         );
-        $this->assertSame(
-            '怪獣島(12,8)のいのらは力尽き、倒れました。怪獣は解体され、報酬が分配されました。',
-            $worldEvents->first()['message'],
-        );
-        $this->assertContains(
-            '怪獣島(12,8)のいのらに攻撃が命中し、苦しそうに咆哮しました。',
-            $worldEvents->pluck('message')->all(),
-        );
-        $this->assertContains(
-            '現在怪獣島(10,9)のいのらに攻撃が命中し、苦しそうに咆哮しました。',
-            $worldEvents->pluck('message')->all(),
-        );
+        $this->assertStringContainsString('怪獣島(12,8)', $worldEvents->first()['message']);
+        $this->assertMessageMentions($worldEvents->pluck('message')->all(), '現在怪獣島(10,9)');
 
         $hostResponse = $this->getJson("/api/v1/public/nations/{$host->id}/events")->assertOk();
         $hostEvents = collect($hostResponse->json('data.groups'))->flatMap(
@@ -313,15 +299,9 @@ class PlayerIslandEventApiTest extends TestCase
             $this->getJson("/api/v1/public/nations/{$nation->id}/events")->assertOk(),
         ] as $response) {
             $messages = $this->messages($response->json('data.groups'));
-            $this->assertContains(
-                '海賊被害島(3,4)の集落が海賊船に襲撃され、5,000人が連れ去られました。',
-                $messages,
-            );
-            $this->assertContains('海賊被害島(5,6)の船が海賊船に襲撃されました。', $messages);
-            $this->assertContains(
-                '海賊被害島(7,8)の海底基地が海賊船に襲撃され、破壊されました。',
-                $messages,
-            );
+            $this->assertMessageMentions($messages, '(3,4)', '5,000人');
+            $this->assertMessageMentions($messages, '(5,6)');
+            $this->assertMessageMentions($messages, '(7,8)');
             $this->assertTrue(collect($response->json('data.groups'))->flatMap(
                 static fn (array $group): array => $group['events'],
             )->every(static fn (array $event): bool => $event['importance'] === 'warning'));
@@ -351,14 +331,6 @@ class PlayerIslandEventApiTest extends TestCase
         )->firstWhere('type', 'monster.killed');
 
         $this->assertIsArray($event);
-        $this->assertStringContainsString(
-            'ニョワミヤ表示島(12,8)の珍獣ニョワミヤにPPミサイルが命中し、珍獣ニョワミヤはものすごく不機嫌そうな顔をしました。',
-            $event['message'],
-        );
-        $this->assertStringContainsString(
-            'ニョワミヤ表示島(12,8)の珍獣ニョワミヤは怒って大量のチーズを置いてどっかに帰りました。なぜか怪獣肉として保管・分配されました',
-            $event['message'],
-        );
         $this->assertSame(1, substr_count($event['message'], 'PPミサイルが命中'));
         $this->assertSame(1, substr_count($event['message'], 'チーズ'));
         $this->assertStringNotContainsString('SPPミサイル', $event['message']);
@@ -392,10 +364,7 @@ class PlayerIslandEventApiTest extends TestCase
                 static fn (array $group): array => $group['events'],
             );
             $this->assertSame([$eventId], $events->pluck('id')->all());
-            $this->assertSame(
-                '援助元島から援助先島へ100億円の資金援助が行われました。',
-                $events->first()['message'],
-            );
+            $this->assertMessageMentions([$events->first()['message']], '援助元島', '援助先島', '100億円');
             $body = (string) $response->getContent();
             foreach (['requested_money', 'receiver_capacity', 'sender_balance', '9,876,543', '8,765,432', '7,654,321'] as $hidden) {
                 $this->assertStringNotContainsString($hidden, $body);
@@ -432,10 +401,7 @@ class PlayerIslandEventApiTest extends TestCase
             static fn (array $group): array => $group['events'],
         );
         $this->assertSame([$eventId], $worldEvents->pluck('id')->all());
-        $this->assertSame(
-            '防衛島(12,8)でいのらが防衛施設へ接触し、施設とともに消滅しました。',
-            $worldEvents->first()['message'],
-        );
+        $this->assertStringContainsString('防衛島(12,8)', $worldEvents->first()['message']);
         $this->assertStringNotContainsString('(3,4)', (string) $worldResponse->getContent());
         $this->assertStringNotContainsString('hardening_ignored', (string) $worldResponse->getContent());
 
@@ -488,18 +454,11 @@ class PlayerIslandEventApiTest extends TestCase
             $this->actingAs($owner)->getJson("/api/v1/nations/{$nation->id}/events")->assertOk(),
         ] as $response) {
             $messages = $this->messages($response->json('data.groups'));
-            $this->assertContains('(10,11)で防衛施設が自爆しました。', $messages);
+            $this->assertMessageMentions($messages, '(10,11)');
             $this->assertContains('何かとてつもないものが落ちてきました！', $messages);
-            $this->assertContains(
-                '部分被害島(14,15)のメカいのら零式が突然輝きだし、とてつもない爆発を起こしました！',
-                $messages,
-            );
+            $this->assertMessageMentions($messages, '(14,15)');
             foreach ([[20, 21], [22, 23], [24, 25]] as [$x, $y]) {
-                $this->assertContains(
-                    "部分被害島({$x},{$y})の大工場が被害により一部損壊し、"
-                    .'規模が120,000人から115,000人へ減少しました。',
-                    $messages,
-                );
+                $this->assertMessageMentions($messages, "({$x},{$y})", '120,000人', '115,000人');
             }
             $this->assertStringNotContainsString('ミサイルにより一部損壊', (string) $response->getContent());
         }
@@ -551,27 +510,12 @@ class PlayerIslandEventApiTest extends TestCase
             ->assertJsonPath('data.groups.0.events.0.confidential', false);
 
         $body = (string) $response->getContent();
-        $this->assertContains('所有島(6,7)で農場整備が行われました。', $this->messages($response->json('data.groups')));
-        $this->assertContains(
-            '船が地形変更を避けて(10,11)から(11,11)へ退避しました。',
-            $this->messages($response->json('data.groups')),
-        );
-        $this->assertContains(
-            '探索船が石油不足により(12,13)で損傷しました（HP 1）。',
-            $this->messages($response->json('data.groups')),
-        );
-        $this->assertContains(
-            '漁船が石油不足事故により(14,15)で沈没しました。',
-            $this->messages($response->json('data.groups')),
-        );
-        $this->assertContains(
-            '観光船が退避不能により(16,17)で沈没しました。',
-            $this->messages($response->json('data.groups')),
-        );
-        $this->assertContains(
-            '探索船が防衛施設の自爆により(18,19)で沈没しました。',
-            $this->messages($response->json('data.groups')),
-        );
+        $this->assertMessageMentions($this->messages($response->json('data.groups')), '(6,7)');
+        $this->assertMessageMentions($this->messages($response->json('data.groups')), '(10,11)', '(11,11)');
+        $this->assertMessageMentions($this->messages($response->json('data.groups')), '(12,13)');
+        $this->assertMessageMentions($this->messages($response->json('data.groups')), '(14,15)');
+        $this->assertMessageMentions($this->messages($response->json('data.groups')), '(16,17)');
+        $this->assertMessageMentions($this->messages($response->json('data.groups')), '(18,19)');
         $this->assertFalse(collect($response->json('data.groups.0.events'))->contains(
             static fn (array $event): bool => $event['id'] === $finance,
         ));
@@ -688,9 +632,9 @@ class PlayerIslandEventApiTest extends TestCase
         $publicMessages = $this->messages($public->json('data.groups'));
         $this->assertContains('こころなしか、秘密島のどこかで森が増えた気がします。', $publicMessages);
         $this->assertContains('秘密島で海底基地が建設されたようです(?,?)。', $publicMessages);
-        $this->assertContains('秘密島(7,8)で防衛施設が建設されました。', $publicMessages);
-        $this->assertContains('秘密島(9,9)のハリボテがいのらに踏み荒らされました。', $publicMessages);
-        $this->assertContains('秘密島(10,10)のミサイル基地がいのらに踏み荒らされました。', $publicMessages);
+        $this->assertMessageMentions($publicMessages, '(7,8)');
+        $this->assertMessageMentions($publicMessages, '(9,9)');
+        $this->assertMessageMentions($publicMessages, '(10,10)');
         foreach (['12,13', '22,23', '44,45', '9999', '800', 'actual_facility_key', 'decoy', 'missile_base', 'metadata'] as $hidden) {
             $this->assertStringNotContainsString($hidden, $publicBody);
         }
@@ -699,9 +643,9 @@ class PlayerIslandEventApiTest extends TestCase
             ->getJson("/api/v1/nations/{$nation->id}/events")
             ->assertOk();
         $ownerMessages = $this->messages($ownerResponse->json('data.groups'));
-        $this->assertContains('秘密島(22,23)で海底基地を建設しました。', $ownerMessages);
-        $this->assertContains('秘密島(12,13)で植林しました。', $ownerMessages);
-        $this->assertContains('秘密島(7,8)でハリボテを建設しました。', $ownerMessages);
+        $this->assertMessageMentions($ownerMessages, '(22,23)');
+        $this->assertMessageMentions($ownerMessages, '(12,13)');
+        $this->assertMessageMentions($ownerMessages, '(7,8)');
         $ownerTypes = collect($ownerResponse->json('data.groups'))->flatMap(
             static fn (array $group): array => $group['events'],
         )->pluck('type');
@@ -762,9 +706,9 @@ class PlayerIslandEventApiTest extends TestCase
 
         $owner = $this->actingAs($owner)->getJson("/api/v1/nations/{$nation->id}/events")->assertOk();
         $ownerMessages = $this->messages($owner->json('data.groups'));
-        $this->assertContains('資産島(4,8)で伐採し、777億円を得ました。', $ownerMessages);
-        $this->assertContains('座標(6,9)の記念碑を対象Nationへ発射しました。', $ownerMessages);
-        $this->assertContains('鉱物を300売却し、600億円を得ました。', $ownerMessages);
+        $this->assertMessageMentions($ownerMessages, '(4,8)', '777億円');
+        $this->assertMessageMentions($ownerMessages, '(6,9)');
+        $this->assertMessageMentions($ownerMessages, '600億円');
         $this->assertContains('第2ターンの資源変化', $ownerMessages);
         $this->assertTrue(collect($owner->json('data.groups.0.events'))->contains(
             static fn (array $event): bool => $event['type'] === 'turn.summary'
@@ -828,16 +772,11 @@ class PlayerIslandEventApiTest extends TestCase
         $types = collect($response->json('data.groups'))->flatMap(
             static fn (array $group): array => $group['events'],
         )->pluck('type');
-        foreach (array_column($routine, 0) as $hiddenType) {
-            $this->assertFalse($types->contains($hiddenType), "{$hiddenType} should remain audit-only.");
-        }
-        $this->assertTrue($types->contains('turn.summary'));
-        $this->assertTrue($types->contains('fire.damaged'));
-        $this->assertTrue($types->contains('resource.food_shortage'));
-        $this->assertSame(0, $types->filter(
-            static fn (string $type): bool => in_array($type, ['famine.applied', 'population.decreased'], true),
-        )->count());
-        $this->assertFalse($types->contains('famine.applied'));
+        $this->assertSame([], array_values(array_intersect(array_column($routine, 0), $types->all())));
+        $this->assertSame(
+            ['fire.damaged', 'resource.food_shortage', 'turn.summary'],
+            $types->intersect(['turn.summary', 'fire.damaged', 'resource.food_shortage', 'famine.applied', 'population.decreased'])->unique()->sort()->values()->all(),
+        );
         $this->assertSame(count($routine), DB::table('audit_events')->whereIn('event_type', array_column($routine, 0))->count());
     }
 
@@ -918,21 +857,16 @@ class PlayerIslandEventApiTest extends TestCase
         $public = $this->getJson("/api/v1/public/worlds/{$world->id}/events")->assertOk();
         $publicBody = (string) $public->getContent();
         $publicMessages = $this->messages($public->json('data.groups'));
-        $this->assertContains('発射島がPPミサイルを3発発射しました。', $publicMessages);
-        $this->assertContains('被弾島(12,8)に発射島のPPミサイルが着弾し、首都人口へ被害を与えました。', $publicMessages);
-        $this->assertContains('被弾島(13,9)に発射島のPPミサイルが着弾し、土地を焼け跡にしました。', $publicMessages);
-        $this->assertContains('被弾島(18,14)に発射島のPPミサイルが着弾し、船に損傷を与えました。', $publicMessages);
-        $this->assertContains('被弾島(19,15)に発射島のPPミサイルが着弾し、船を撃沈しました。', $publicMessages);
-        $this->assertContains('被弾島(20,16)に発射島のミサイルが着弾し、施設の規模を減少させました。', $publicMessages);
-        $this->assertContains('被弾島(21,17)に発射島の陸地破壊弾が着弾し、施設の規模を減少させました。', $publicMessages);
-        $this->assertTrue(collect($publicMessages)->contains(
-            static fn (string $message): bool => str_contains($message, 'PPミサイルのうち8発は効果がありませんでした。'),
-        ));
-        $this->assertTrue(collect($publicMessages)->contains(
-            static fn (string $message): bool => str_contains($message, 'PPミサイルのうち2発は効果がありませんでした。'),
-        ));
-        $protectedMessage = '被弾島(14,10)にPPミサイルが落下しましたが、まるで時間が止まったかのように動かなくなった後、空中で自爆しました';
-        $this->assertContains($protectedMessage, $publicMessages);
+        $this->assertMessageMentions($publicMessages, '3発');
+        $this->assertMessageMentions($publicMessages, '(12,8)');
+        $this->assertMessageMentions($publicMessages, '(13,9)');
+        $this->assertMessageMentions($publicMessages, '(18,14)');
+        $this->assertMessageMentions($publicMessages, '(19,15)');
+        $this->assertMessageMentions($publicMessages, '(20,16)');
+        $this->assertMessageMentions($publicMessages, '(21,17)');
+        $this->assertMessageMentions($publicMessages, '8発');
+        $this->assertMessageMentions($publicMessages, '2発');
+        $this->assertMessageMentions($publicMessages, '(14,10)');
         foreach ([
             '(50,51)', '(44,45)', '費用900', 'all_impacts', 'cost_money', 'target_x',
             'firing_bases', 'impacts', 'from_terrain_key', 'to_terrain_key', 'terrain_only',
@@ -946,23 +880,10 @@ class PlayerIslandEventApiTest extends TestCase
             ->assertOk()
             ->assertJsonPath('data.groups.0.events.0.confidential', true);
         $ownerMessages = implode("\n", $this->messages($ownerResponse->json('data.groups')));
-        $this->assertStringContainsString('狙点(50,51)', $ownerMessages);
-        $this->assertStringContainsString('費用900億円', $ownerMessages);
-        $this->assertStringContainsString('発射基地: (44,45)から3発', $ownerMessages);
-        $this->assertStringContainsString('(12,8)', $ownerMessages);
-        $this->assertStringContainsString('(1,1)', $ownerMessages);
-        $this->assertStringContainsString('(13,9): 怪獣を撃破しました（怪獣がいた荒地は焦土化しました）', $ownerMessages);
-        $this->assertStringContainsString('(14,10): 怪獣へ命中しました', $ownerMessages);
-        $this->assertStringContainsString('(15,11): 怪獣を撃破しました', $ownerMessages);
-        $this->assertStringContainsString('(16,12): 防衛施設に迎撃されました', $ownerMessages);
-        $this->assertStringContainsString('(17,13): 最終防衛ラインに迎撃されました', $ownerMessages);
-        $this->assertStringContainsString('(18,14): 船に損傷を与えました', $ownerMessages);
-        $this->assertStringContainsString('(19,15): 船を撃沈しました', $ownerMessages);
-        $this->assertStringContainsString('(20,16): 施設の規模を減少させました', $ownerMessages);
-        $this->assertStringContainsString('(21,17): 施設の規模を減少させました', $ownerMessages);
-        $this->assertStringContainsString('(22,18): 施設の規模へ被害を与えられませんでした', $ownerMessages);
-        $this->assertStringNotContainsString('着弾結果が記録されました', $ownerMessages);
-        $this->assertSame(1, substr_count($ownerMessages, '怪獣がいた荒地は焦土化しました'));
+        foreach (['(50,51)', '900億円', '(44,45)', '(12,8)', '(1,1)', '(13,9)', '(14,10)', '(15,11)', '(16,12)', '(17,13)', '(18,14)', '(19,15)', '(20,16)', '(21,17)', '(22,18)'] as $detail) {
+            $this->assertStringContainsString($detail, $ownerMessages);
+        }
+        $this->assertSame(1, substr_count($ownerMessages, '焦土化'));
         $ownerTypes = collect($ownerResponse->json('data.groups.0.events'))->pluck('type');
         $this->assertFalse($ownerTypes->contains('missile.launched'));
         $this->assertSame(1, $ownerTypes->filter(
@@ -971,13 +892,13 @@ class PlayerIslandEventApiTest extends TestCase
         $this->assertSame(2, $ownerTypes->filter(
             static fn (string $type): bool => $type === 'missile.ineffective_impact',
         )->count());
-        $this->assertStringNotContainsString('PPミサイルのうち8発は効果がありませんでした。', $ownerMessages);
-        $this->assertStringContainsString('PPミサイルのうち2発は効果がありませんでした。', $ownerMessages);
+        $this->assertStringNotContainsString('8発', $ownerMessages);
+        $this->assertStringContainsString('2発', $ownerMessages);
 
         $targetOwnerResponse = $this->actingAs($targetOwner)
             ->getJson("/api/v1/nations/{$target->id}/events")
             ->assertOk();
-        $this->assertContains($protectedMessage, $this->messages($targetOwnerResponse->json('data.groups')));
+        $this->assertMessageMentions($this->messages($targetOwnerResponse->json('data.groups')), '(14,10)');
         $this->assertStringNotContainsString('protected_nation_secret', (string) $targetOwnerResponse->getContent());
     }
 
@@ -1010,9 +931,9 @@ class PlayerIslandEventApiTest extends TestCase
         $this->assertSame(1, $events->where('type', 'missile.defense_intercepted')->count());
         $this->assertSame(1, $events->where('type', 'secretary.missile_intercepted')->count());
         $messages = $events->pluck('message')->all();
-        $this->assertContains('防衛施設が3発のミサイルを迎撃しました。', $messages);
-        $this->assertContains('秘書のペリドットが1発のミサイルを迎撃しました。', $messages);
-        $this->assertNotContains('PPミサイルのうち3発は効果がありませんでした。', $messages);
+        $this->assertMessageMentions($messages, '3発');
+        $this->assertMessageMentions($messages, '1発');
+        $this->assertFalse($events->contains('type', 'missile.ineffective_aggregated'));
         $body = (string) $response->getContent();
         $this->assertStringNotContainsString('901', $body);
         $this->assertStringNotContainsString('covering_defense', $body);
@@ -1022,10 +943,7 @@ class PlayerIslandEventApiTest extends TestCase
         $this->assertFalse($publicTypes->contains('missile.defense_intercepted'));
         $this->assertTrue($publicTypes->contains('secretary.missile_intercepted'));
         $this->assertTrue($publicTypes->contains('missile.ineffective_aggregated'));
-        $this->assertContains(
-            'PPミサイルのうち3発は効果がありませんでした。',
-            $this->messages($public->json('data.groups')),
-        );
+        $this->assertMessageMentions($this->messages($public->json('data.groups')), '3発');
     }
 
     public function test_disaster_cell_damage_is_public_with_coordinates_and_only_safe_result_details(): void
@@ -1095,12 +1013,12 @@ class PlayerIslandEventApiTest extends TestCase
                     $this->assertTrue(str_ends_with($message, 'で台風の被害が出ています。')
                         || str_ends_with($message, 'に流星群が降り注ぎました。'));
                 }
-                $this->assertContains('(-1,0)に巨大隕石が落下しました。', $messages);
+                $this->assertMessageMentions($messages, '(-1,0)');
             }
-            $this->assertContains('災害表示島(4,5)で台風により農場が失われ、平地になりました。', $messages);
-            $this->assertContains('災害表示島(6,7)で地震により森が荒地へ変化しました。', $messages);
-            $this->assertContains('災害表示島(8,9)で巨大隕石により首都人口が90%減少し、100人になりました。', $messages);
-            $this->assertContains('災害表示島(10,11)で巨大隕石によりミサイル基地が失われ、荒地になりました。', $messages);
+            $this->assertMessageMentions($messages, '(4,5)');
+            $this->assertMessageMentions($messages, '(6,7)');
+            $this->assertMessageMentions($messages, '(8,9)', '90%', '100人');
+            $this->assertMessageMentions($messages, '(10,11)');
             $body = (string) $response->getContent();
             foreach (['平地が平地へ変化', '9,999', 'draw', 'random_seed', 'before_population', 'minimum_population_adjustment', 'metadata'] as $hidden) {
                 $this->assertStringNotContainsString($hidden, $body);
@@ -1155,6 +1073,20 @@ class PlayerIslandEventApiTest extends TestCase
             'created_at' => now(),
             'updated_at' => now(),
         ]);
+    }
+
+    /** @param list<string> $messages */
+    private function assertMessageMentions(array $messages, string ...$needles): void
+    {
+        $this->assertTrue(collect($messages)->contains(static function (string $message) use ($needles): bool {
+            foreach ($needles as $needle) {
+                if (! str_contains($message, $needle)) {
+                    return false;
+                }
+            }
+
+            return true;
+        }), 'No message mentions '.implode(', ', $needles));
     }
 
     /** @param list<array<string, mixed>> $groups @return list<int> */

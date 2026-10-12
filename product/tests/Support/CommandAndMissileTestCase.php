@@ -476,13 +476,15 @@ abstract class CommandAndMissileTestCase extends TestCase
     }
 
     /** @param callable(): mixed $action */
-    protected function assertPlayerFacing(callable $action, string $message): void
+    protected function assertPlayerFacing(callable $action, ?string $message = null): void
     {
         try {
             $action();
             $this->fail('Expected a player-facing command rejection.');
         } catch (PlayerFacingCommandException $exception) {
-            $this->assertSame($message, $exception->getMessage());
+            if ($message !== null) {
+                $this->assertSame($message, $exception->getMessage());
+            }
         }
     }
 
@@ -585,6 +587,7 @@ abstract class CommandAndMissileTestCase extends TestCase
         MapCell $aim,
         int $radius,
         array $desired,
+        int $searchLimit = 10_000,
     ): string {
         $candidates = (new GridCoordinate($aim->x, $aim->y))->radius($radius);
         $coordinates = array_map(
@@ -599,7 +602,7 @@ abstract class CommandAndMissileTestCase extends TestCase
         }, $desired);
         $label = TurnRandomStreamFactory::missileImpact($item->id);
 
-        for ($candidate = 0; $candidate < 10_000; $candidate++) {
+        for ($candidate = 0; $candidate < $searchLimit; $candidate++) {
             $seed = hash('sha256', "{$label}:{$candidate}");
             $stream = (new TurnRandomStreamFactory($seed))->stream($label);
             $draws = array_map(

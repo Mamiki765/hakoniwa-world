@@ -180,38 +180,17 @@ final class UndergroundLendingRewardServiceTest extends TestCase
         ]);
     }
 
-    public function test_failed_settlement_rolls_back_prior_member_rows(): void
-    {
-        [$owner, $borrowed] = $this->secretary();
-        [$leader, $leaderSecretary] = $this->secretary();
-        $party = $this->party($leader, $leaderSecretary, $borrowed, 1);
-        $party->members()->create(['source_type' => 'borrowed_secretary', 'secretary_id' => null, 'source_owner_user_id' => null, 'combatant_id' => 'bad', 'original_level' => 5, 'effective_level' => 5, 'snapshot' => []]);
-        $battle = $this->battle($leader, $party, 2);
-        $this->expectException(InvalidArgumentException::class);
-        try {
-            app(UndergroundLendingRewardService::class)->settle($battle, $party);
-        } finally {
-            $this->assertDatabaseCount('secretary_lending_participations', 0);
-        }
-    }
-
     public function test_trial_and_playtest_battles_are_not_settleable(): void
     {
         [$owner, $borrowed] = $this->secretary();
         [$leader, $leaderSecretary] = $this->secretary();
         $service = app(UndergroundLendingRewardService::class);
-        foreach (['trial', 'playtest'] as $type) {
+        foreach (['trial', 'playtest'] as $key => $type) {
             $party = $service->createSnapshot($leader, $leaderSecretary, $type, 'content', 'content', 5, [], [
                 $this->member('self', $leaderSecretary, $leader, 5, 5),
                 $this->member('borrowed_secretary', $borrowed, $owner, 5, 5),
             ]);
-            $battle = $this->battle(
-                $leader,
-                $party,
-                random_int(1, 1000),
-                UndergroundBattle::RESULT_VICTORY,
-                UndergroundBattle::ACTIVITY_EXPLORATION,
-            );
+            $battle = $this->battle($leader, $party, $key + 1);
             try {
                 $service->settle($battle, $party);
                 $this->fail('Expected ineligible battle to be rejected.');

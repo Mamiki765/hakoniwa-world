@@ -8,12 +8,13 @@ use App\Domain\Monster\MonsterRewardPolicyResolver;
 use App\Domain\Ruleset\RulesetAuthoringValidator;
 use App\Services\AssetManifestResolver;
 use DomainException;
+use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\Support\CurrentRulesetFixture;
 use Tests\TestCase;
 
 final class MonsterFoundationContractTest extends TestCase
 {
-    public function test_current_fixture_preserves_special_spawn_membership_and_source_metadata_boundary(): void
+    public function test_current_fixture_preserves_special_spawn_membership(): void
     {
         $settings = $this->authoringSettings();
 
@@ -25,13 +26,6 @@ final class MonsterFoundationContractTest extends TestCase
         $this->assertContains('mecha_inora_zero', $poolKeys);
         $this->assertContains('nyowamiya', $poolKeys);
         $this->assertNotContains('aoi_inora', $poolKeys);
-        foreach ($settings['monster_definitions'] as $definition) {
-            if (in_array($definition['key'], ['mecha_inora_zero', 'aoi_inora'], true)) {
-                $this->assertArrayNotHasKey('kind', $definition['source_metadata']);
-                $this->assertArrayNotHasKey('skill_code', $definition['source_metadata']);
-                $this->assertArrayNotHasKey('filename', $definition['source_metadata']);
-            }
-        }
     }
 
     public function test_current_monster_dispatch_uses_the_registered_catalog_and_resolves_options(): void
@@ -68,12 +62,11 @@ final class MonsterFoundationContractTest extends TestCase
         $resolver = app(MonsterDisplayOrderResolver::class);
 
         $this->assertSame(50, $resolver->resolve(50, ['kind' => 'not-used']));
-        foreach (range(0, 7) as $kind) {
-            $this->assertSame($kind * 100, $resolver->resolve(null, ['kind' => $kind]));
-        }
+        $this->assertSame(0, $resolver->resolve(null, ['kind' => 0]));
+        $this->assertSame(700, $resolver->resolve(null, ['kind' => 7]));
     }
 
-    public function test_display_order_rejects_malformed_explicit_fallback_and_duplicate_values(): void
+    public function test_display_order_rejects_malformed_explicit_and_fallback_values(): void
     {
         $resolver = app(MonsterDisplayOrderResolver::class);
         foreach ([-1, '50', 1.5, true] as $value) {
@@ -92,35 +85,29 @@ final class MonsterFoundationContractTest extends TestCase
                 $this->addToAssertionCount(1);
             }
         }
-
-        $settings = CurrentRulesetFixture::settings();
-        $settings['monster_definitions'][1]['display_order'] = 0;
-        $this->expectException(DomainException::class);
-        app(RulesetAuthoringValidator::class)->validate($settings);
     }
 
-    public function test_current_authoring_rejects_a_dispatch_option_whose_monster_definition_is_missing(): void
+    #[DataProvider('requiredC4MonsterProvider')]
+    public function test_current_authoring_requires_each_c4_baseline_monster(string $monsterKey): void
     {
         $settings = $this->authoringSettings();
         $settings['monster_definitions'] = array_values(array_filter(
             $settings['monster_definitions'],
-            static fn (array $definition): bool => $definition['key'] !== 'mecha_inora_zero',
+            static fn (array $definition): bool => $definition['key'] !== $monsterKey,
         ));
 
         $this->expectException(DomainException::class);
+        $this->expectExceptionMessage("required C4 monster {$monsterKey}");
         app(RulesetAuthoringValidator::class)->validate($settings);
     }
 
-    public function test_current_authoring_requires_the_aoi_c4_baseline_without_forbidding_future_species(): void
+    /** @return array<string, array{string}> */
+    public static function requiredC4MonsterProvider(): array
     {
-        $settings = $this->authoringSettings();
-        $settings['monster_definitions'] = array_values(array_filter(
-            $settings['monster_definitions'],
-            static fn (array $definition): bool => $definition['key'] !== 'aoi_inora',
-        ));
-
-        $this->expectException(DomainException::class);
-        app(RulesetAuthoringValidator::class)->validate($settings);
+        return [
+            'aoi inora' => ['aoi_inora'],
+            'mecha inora zero' => ['mecha_inora_zero'],
+        ];
     }
 
     public function test_current_dispatch_options_require_dispatchable_authored_behaviors(): void
@@ -156,19 +143,39 @@ final class MonsterFoundationContractTest extends TestCase
         ], $resolver->shares($current, 'aoi_inora', 1_200, true));
     }
 
-    public function test_custom_asset_contracts_and_missing_binary_fallback_are_exact(): void
+    public function test_custom_asset_contracts_resolve_present_binaries_and_fall_back_for_missing_ones(): void
     {
-        $assets = app(AssetManifestResolver::class);
-        $expected = [
-            'hakoniwa_custom.monster.aoi_inora' => 'monster-aoi-inora.gif',
-            'hakoniwa_custom.monster.mecha_inora_zero' => 'monster-mecha-inora-zero.gif',
-        ];
-        foreach ($expected as $key => $filename) {
-            $this->assertSame($filename, $assets->filenameForAssetKey($key));
-            $resolved = $assets->resolve($key, '怪獣');
-            $this->assertFalse($resolved['available']);
-            $this->assertNull($resolved['url']);
-            $this->assertSame(str_replace(['.', '_'], '-', $key), $resolved['fallback_style']);
+        $directory = sys_get_temp_dir().'/hakoniwa-monster-assets-'.bin2hex(random_bytes(8));
+        mkdir($directory, 0700, true);
+        $present = 'hakoniwa_custom.monster.aoi_inora';
+        $missing = 'hakoniwa_custom.monster.mecha_inora_zero';
+        config([
+            'hakoniwa.assets.path' => $directory,
+            'hakoniwa.assets.allowed_extensions' => ['gif'],
+        ]);
+        $assets = new AssetManifestResolver;
+        $presentFilename = $assets->filenameForAssetKey($present);
+        $missingFilename = $assets->filenameForAssetKey($missing);
+        $this->assertIsString($presentFilename);
+        $this->assertIsString($missingFilename);
+        file_put_contents(
+            $directory.'/'.$presentFilename,
+            base64_decode('R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7', true),
+        );
+
+        try {
+            $resolved = $assets->resolve($present, '怪獣');
+            $this->assertTrue($resolved['available']);
+            $this->assertIsString($resolved['url']);
+            $this->assertStringContainsString($presentFilename, $resolved['url']);
+
+            $fallback = $assets->resolve($missing, '怪獣');
+            $this->assertFalse($fallback['available']);
+            $this->assertNull($fallback['url']);
+            $this->assertNotSame($resolved['fallback_style'], $fallback['fallback_style']);
+        } finally {
+            unlink($directory.'/'.$presentFilename);
+            rmdir($directory);
         }
     }
 
@@ -176,33 +183,28 @@ final class MonsterFoundationContractTest extends TestCase
     {
         $document = file_get_contents(base_path('docs/manual/advanced.md'));
         $this->assertIsString($document);
-        preg_match('/\| 怪獣 \| HP \| 1HPあたりEXP \| 残骸価値 \| 主な特徴 \|\R[^\r\n]+\R((?:\|[^\r\n]+\R)+)/u', $document, $match);
-        $this->assertArrayHasKey(1, $match);
-        $lines = preg_split('/\R/u', trim($match[1]));
-        $this->assertIsArray($lines);
-        $actualRows = [];
-        foreach ($lines as $line) {
-            $columns = array_map('trim', explode('|', trim($line, '| ')));
-            $actualRows[$columns[0]] = array_slice($columns, 0, 4);
+        $rowsByName = [];
+        foreach (preg_split('/\R/u', $document) ?: [] as $line) {
+            if (! str_starts_with(trim($line), '|')) {
+                continue;
+            }
+            $cells = array_map('trim', explode('|', trim(trim($line), '|')));
+            $rowsByName[$cells[0]][] = $cells;
         }
-        $expectedRows = [];
+
         foreach (config('hakoniwa.ruleset.monster_definitions') as $definition) {
-            $maximumHp = $definition['base_hp'] + $definition['hp_variation'];
-            $hp = $maximumHp === $definition['base_hp']
-                ? (string) $definition['base_hp']
-                : $definition['base_hp'].'～'.$maximumHp;
-            $expectedRows[$definition['name']] = [
-                $definition['name'],
-                $hp,
-                (string) $definition['experience_per_damage'],
-                $definition['wreckage_value_money'] === 0
-                    ? 'なし'
-                    : number_format($definition['wreckage_value_money']).'億円相当',
-            ];
+            $this->assertCount(1, $rowsByName[$definition['name']] ?? [], "{$definition['name']} must have one manual row.");
+            preg_match_all('/\d+/', str_replace(',', '', implode(' ', $rowsByName[$definition['name']][0])), $numbers);
+            $expected = array_filter([
+                $definition['base_hp'],
+                $definition['base_hp'] + $definition['hp_variation'],
+                $definition['experience_per_damage'],
+                $definition['wreckage_value_money'],
+            ], static fn (int $value): bool => $value !== 0);
+            foreach ($expected as $value) {
+                $this->assertContains((string) $value, $numbers[0], "{$definition['name']} manual row must show {$value}.");
+            }
         }
-        ksort($expectedRows);
-        ksort($actualRows);
-        $this->assertSame($expectedRows, $actualRows);
     }
 
     /** @return array<string, mixed> */

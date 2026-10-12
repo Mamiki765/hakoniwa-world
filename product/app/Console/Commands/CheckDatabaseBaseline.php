@@ -21,7 +21,7 @@ final class CheckDatabaseBaseline extends Command
 
             return self::FAILURE;
         }
-        $this->info('The database matches the accepted 4.9.0 baseline. No business data or migration ledger was changed.');
+        $this->info('The database matches the accepted 5.0.1 baseline. No business data or migration ledger was changed.');
 
         return self::SUCCESS;
     }

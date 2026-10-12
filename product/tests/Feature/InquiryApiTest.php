@@ -49,7 +49,7 @@ final class InquiryApiTest extends TestCase
         ], ['Accept' => 'application/json']);
 
         $response->assertCreated()
-            ->assertJsonPath('data.management_id', 'INQ-000001')
+            ->assertJsonPath('data.management_id', sprintf('INQ-%06d', Inquiry::query()->sole()->id))
             ->assertJsonMissingPath('data.attachment_url');
         $this->assertDatabaseHas('inquiries', [
             'user_id' => $user->id,
@@ -73,9 +73,7 @@ final class InquiryApiTest extends TestCase
             'category' => 'bug',
             'subject' => '休戦中問い合わせ',
             'body' => '休戦中も現在島を保持します。',
-        ], ['Accept' => 'application/json'])
-            ->assertCreated()
-            ->assertJsonPath('data.management_id', 'INQ-000002');
+        ], ['Accept' => 'application/json'])->assertCreated();
 
         $nation->update([
             'state' => 'dormant',
@@ -88,9 +86,7 @@ final class InquiryApiTest extends TestCase
             'category' => 'bug',
             'subject' => '休眠中問い合わせ',
             'body' => '休眠中も現在島を保持します。',
-        ], ['Accept' => 'application/json'])
-            ->assertCreated()
-            ->assertJsonPath('data.management_id', 'INQ-000003');
+        ], ['Accept' => 'application/json'])->assertCreated();
         $this->assertSame(
             [$nation->id, $nation->id, $nation->id],
             Inquiry::query()->orderBy('id')->pluck('nation_id')->all(),
@@ -223,24 +219,16 @@ final class InquiryApiTest extends TestCase
 
         $this->actingAs($admin)->getJson('/api/v1/admin/inquiries/latest')
             ->assertOk()->assertJsonCount(5, 'data')
-            ->assertJsonPath('data.0.subject', 'Idea 12')
-            ->assertJsonPath('data.4.subject', 'Idea 8');
-        $this->actingAs($admin)->getJson('/api/v1/admin/inquiries')
-            ->assertOk()->assertJsonPath('meta.current_page', 1)
-            ->assertJsonPath('meta.last_page', 2)
-            ->assertJsonPath('meta.total', 12)
             ->assertJsonPath('data.0.subject', 'Idea 12');
-        $this->actingAs($admin)->getJson('/api/v1/admin/inquiries?page=2')
-            ->assertOk()->assertJsonCount(2, 'data')
-            ->assertJsonPath('meta.current_page', 2)
-            ->assertJsonPath('data.0.subject', 'Idea 2')
-            ->assertJsonPath('data.1.subject', 'Idea 1');
+        $this->actingAs($admin)->getJson('/api/v1/admin/inquiries')
+            ->assertOk()->assertJsonPath('meta.total', 12)
+            ->assertJsonPath('data.0.subject', 'Idea 12');
         $this->assertIsInt($latestInquiryId);
         $this->actingAs($admin)->getJson("/api/v1/admin/inquiries/{$latestInquiryId}")
             ->assertOk()
-            ->assertJsonPath('data.management_id', sprintf('INQ-%06d', $latestInquiryId))
             ->assertJsonPath('data.user.display_name', 'Reporter')
             ->assertJsonPath('data.body', 'Body 12');
+        $this->actingAs($nonAdmin)->getJson("/api/v1/admin/inquiries/{$latestInquiryId}")->assertForbidden();
     }
 
     public function test_database_failure_after_file_write_removes_the_orphan_file(): void

@@ -44,25 +44,11 @@ final class FreshInstallRebaselineTest extends TestCase
         $this->assertSame($current['key'], $ruleset->key);
         $this->assertSame($current['version'], $ruleset->version);
         $this->assertSame([
-            CurrentDatabaseBaseline::MIGRATION,
-            '2026_10_03_000000_publish_power_economy_v28',
-            '2026_10_04_000000_publish_pizzeria_maintenance_removal_v29',
-            '2026_10_04_010000_publish_oil_and_fleet_skills_v30',
-            '2026_10_04_020000_add_yunagi_harbor_intro_completion',
-            '2026_10_04_020000_publish_sea_area_weather_v31',
-            '2026_10_04_030000_add_mad_moon_event_progress',
-            '2026_10_06_000000_publish_natural_fire_targets_v32',
-            '2026_10_06_010000_add_user_achievements',
-            '2026_10_07_000000_publish_ship_visibility_v34',
-            '2026_10_07_010000_add_equipment_quality',
-            '2026_10_07_020000_allow_abandoned_nation_name_reuse',
-            '2026_10_07_030000_publish_undersea_fire_station_v35',
-            '2026_10_09_000000_publish_spp_karma_v36',
-            '2026_10_11_010000_add_vault_protection_and_bulk_plan_fingerprint',
+            CurrentDatabaseBaseline::MIGRATION, CurrentDatabaseBaseline::MONSTER_COUNT_MIGRATION,
         ], DB::table('migrations')->orderBy('id')->pluck('migration')->all());
-        $this->assertSame(['hakoniwa-2s-plus-v28', 'hakoniwa-2s-plus-v29', 'hakoniwa-2s-plus-v30', 'hakoniwa-2s-plus-v31', 'hakoniwa-2s-plus-v32', 'hakoniwa-2s-plus-v33', 'hakoniwa-2s-plus-v34', 'hakoniwa-2s-plus-v35', $current['key']], RulesetVersion::query()->orderBy('version')->pluck('key')->all());
-        // The immutable baseline's nine-skill CHECK is verified at its own
-        // adoption boundary. This current install includes the v28 extension.
+        $this->assertSame([$current['key']], RulesetVersion::query()->orderBy('version')->pluck('key')->all());
+        app(CurrentDatabaseBaseline::class)->assertExisting();
+        $this->assertTrue(Schema::hasColumn('worlds', 'monster_count_snapshot'));
         $nationIdColumn = DB::selectOne(<<<'SQL'
 SELECT is_nullable
   FROM information_schema.columns

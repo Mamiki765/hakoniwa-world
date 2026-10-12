@@ -486,6 +486,22 @@ export interface PublicWorldSummary {
     last_successful_turn_at: string | null;
     next_scheduled_turn_at: string;
     turn_schedule_timezone: 'Asia/Tokyo';
+    /** 最新のターン末集計。nullはまだ集計が無い（0体とは別）。 */
+    monster_counts: PublicWorldMonsterCounts | null;
+}
+
+export interface PublicWorldMonsterCounts {
+    counted_turn: number;
+    /** 海獣を含む世界全体。島ごとの合計ではない（中立陸の個体も含む）。 */
+    total_alive_count: number;
+    land_alive_count: number;
+    sea_alive_count: number;
+}
+
+/** 島に公開上帰属する通常怪獣の数。nullは未集計で、0体とは別。 */
+export interface PublicNationMonsterCount {
+    alive_monster_count: number | null;
+    monster_counted_turn: number | null;
 }
 
 export interface PublicNationSummary {
@@ -542,7 +558,7 @@ export interface PublicRankingAchievements {
     monster_kills: PublicMonsterKillAchievement | null;
 }
 
-export interface PublicRankingEntry extends PublicNationSummary {
+export interface PublicRankingEntry extends PublicNationSummary, PublicNationMonsterCount {
     rank: number;
     achievements: PublicRankingAchievements;
     secretary?: { id: number; display_name: string } | null;
@@ -571,7 +587,7 @@ export interface MajorNewsFeed {
     limit: number;
 }
 
-export interface PublicNationDetail extends PublicNationSummary {
+export interface PublicNationDetail extends PublicNationSummary, PublicNationMonsterCount {
     world: { id: number; name: string; current_turn: number };
     capital: { x: number; y: number } | null;
     secretary_id: number | null;

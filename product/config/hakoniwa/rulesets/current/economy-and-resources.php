@@ -1,48 +1,5 @@
 <?php
 
-$behavior = [
-    0 => '/resource_definitions/*/unit',
-    1 => 'applies_after_sale_policy',
-    2 => 'behavior',
-    3 => 'category',
-    4 => 'converts_unsold_to_money',
-    5 => 'default_sale_policy',
-    6 => 'event_type',
-    7 => 'key',
-    8 => 'produced_by',
-    9 => 'sale_price_key',
-    10 => 'sort_order',
-    11 => 'storable',
-    12 => 'tradable',
-];
-
-$data = [
-    0 => 'base_food_capacity_tons',
-    1 => 'base_money_capacity',
-    2 => 'fish',
-    3 => 'industrial_goods',
-    4 => 'initial_money',
-    5 => 'inventory_units',
-    6 => 'minerals',
-    7 => 'money_units',
-    8 => 'monster_meat',
-    9 => 'nutrition_per_unit',
-    10 => 'oil',
-    11 => 'sale.fish',
-    12 => 'sale.industrial_goods',
-    13 => 'sale.minerals',
-    14 => 'sale.monster_meat',
-    15 => 'sale.oil',
-    16 => 'sale.wheat',
-    17 => 'wheat',
-];
-
-$flavor = [
-    0 => 'name',
-    1 => 'nutrition_is_provisional',
-    2 => 'unit_label',
-];
-
 return [
     'payload' => [
         'initial_money' => 100,
@@ -136,6 +93,20 @@ return [
                 ],
                 'unit_label' => '万バレル',
             ],
+            6 => [
+                'key' => 'power',
+                'name' => '電力',
+                'category' => 'energy',
+                'unit' => 'MW',
+                'nutrition_per_unit' => null,
+                'storable' => true,
+                'tradable' => false,
+                'sale_price_key' => 'sale.power',
+                'sort_order' => 70,
+                'metadata' => [
+                ],
+                'unit_label' => 'MW',
+            ],
         ],
         'resource_sale_prices' => [
             'sale.wheat' => 1,
@@ -144,6 +115,7 @@ return [
             'sale.industrial_goods' => 1,
             'sale.minerals' => 1,
             'sale.oil' => 2,
+            'sale.power' => 0,
         ],
         'initial_resources' => [
             'wheat' => 10000,
@@ -152,6 +124,7 @@ return [
             'industrial_goods' => 0,
             'minerals' => 0,
             'oil' => 0,
+            'power' => 0,
         ],
         'default_sale_policy' => 'stockpile',
         'base_money_capacity' => 9999,
@@ -186,6 +159,7 @@ return [
             'industrial_goods' => 9999000,
             'minerals' => 9999000,
             'oil' => 5000,
+            'power' => 0,
         ],
         'resource_capacity_overflow' => [
             'behavior' => 'sell_stockpile_overflow_then_discard_unsold',
@@ -195,8 +169,47 @@ return [
         ],
     ],
     'classification' => [
-        'behavior' => $behavior,
-        'data' => $data,
-        'flavor' => $flavor,
+        'behavior' => [
+            0 => '/resource_definitions/*/unit',
+            1 => 'applies_after_sale_policy',
+            2 => 'behavior',
+            3 => 'category',
+            4 => 'converts_unsold_to_money',
+            5 => 'default_sale_policy',
+            6 => 'event_type',
+            7 => 'key',
+            8 => 'produced_by',
+            9 => 'sale_price_key',
+            10 => 'sort_order',
+            11 => 'storable',
+            12 => 'tradable',
+        ],
+        'data' => [
+            0 => 'base_food_capacity_tons',
+            1 => 'base_money_capacity',
+            2 => 'fish',
+            3 => 'industrial_goods',
+            4 => 'initial_money',
+            5 => 'inventory_units',
+            6 => 'minerals',
+            7 => 'money_units',
+            8 => 'monster_meat',
+            9 => 'nutrition_per_unit',
+            10 => 'oil',
+            11 => 'sale.fish',
+            12 => 'sale.industrial_goods',
+            13 => 'sale.minerals',
+            14 => 'sale.monster_meat',
+            15 => 'sale.oil',
+            16 => 'sale.wheat',
+            17 => 'wheat',
+            18 => 'power',
+            19 => 'sale.power',
+        ],
+        'flavor' => [
+            0 => 'name',
+            1 => 'nutrition_is_provisional',
+            2 => 'unit_label',
+        ],
     ],
 ];

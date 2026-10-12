@@ -58,6 +58,10 @@ return [
                     'facility_keys' => [
                         0 => 'factory',
                         1 => 'decoy',
+                        2 => 'wind_power',
+                        3 => 'thermal_power',
+                        4 => 'condenser',
+                        5 => 'pizzeria',
                     ],
                     'damage_probability' => [
                         'numerator' => 1,
@@ -83,29 +87,30 @@ return [
                         2 => 'missile_base',
                         3 => 'defense',
                         4 => 'decoy',
+                        5 => 'wind_power',
+                        6 => 'thermal_power',
+                        7 => 'condenser',
+                        8 => 'pizzeria',
                     ],
                     'excluded_facility_keys' => [
                         0 => 'seabed_base',
                         1 => 'monument',
                         2 => 'undersea_city',
+                        3 => 'undersea_fire_station',
                     ],
                     'water_facility_keys' => [
                         0 => 'seabed_base',
                         1 => 'undersea_city',
+                        2 => 'undersea_fire_station',
                     ],
                     'internal_denominator' => 12,
                     'adjacent_water_offset' => 1,
                 ],
                 'typhoon' => [
-                    'probability' => [
-                        'numerator' => 400,
-                        'denominator' => 2000,
-                    ],
-                    'center_padding' => 5,
-                    'radius' => 10,
                     'facility_keys' => [
                         0 => 'farm',
                         1 => 'decoy',
+                        2 => 'wind_power',
                     ],
                     'internal_denominator' => 12,
                     'base_damage_threshold' => 6,
@@ -114,12 +119,6 @@ return [
                     ],
                 ],
                 'meteor_shower' => [
-                    'probability' => [
-                        'numerator' => 200,
-                        'denominator' => 2000,
-                    ],
-                    'center_padding' => 5,
-                    'radius' => 10,
                     'continuation_probability' => [
                         'numerator' => 1,
                         'denominator' => 2,
@@ -128,6 +127,7 @@ return [
                         0 => 'seabed_oil_field',
                         1 => 'seabed_base',
                         2 => 'undersea_city',
+                        3 => 'undersea_fire_station',
                     ],
                 ],
                 'huge_meteor' => [
@@ -141,6 +141,7 @@ return [
                         0 => 'seabed_oil_field',
                         1 => 'seabed_base',
                         2 => 'undersea_city',
+                        3 => 'undersea_fire_station',
                     ],
                 ],
                 'eruption' => [
@@ -154,6 +155,7 @@ return [
                         0 => 'seabed_oil_field',
                         1 => 'seabed_base',
                         2 => 'undersea_city',
+                        3 => 'undersea_fire_station',
                     ],
                 ],
                 'fire' => [
@@ -165,12 +167,20 @@ return [
                     'facility_keys' => [
                         0 => 'factory',
                         1 => 'decoy',
+                        2 => 'pizzeria',
                     ],
                     'protection_facility_keys' => [
                         0 => 'monument',
                     ],
                     'unprotected_sea_facility_keys' => [
                         0 => 'undersea_city',
+                    ],
+                    'undersea_protection' => [
+                        'facility_key' => 'undersea_fire_station',
+                        'radius' => 2,
+                        'cost_money' => 100,
+                        'selection' => 'affordable_owner_map_cell_id_ascending',
+                        'target_owner' => 'station_owner',
                     ],
                 ],
                 'land_subsidence' => [
@@ -198,8 +208,24 @@ return [
                 ],
                 'depleted_terrain_key' => 'sea',
             ],
+            'sea_area_weather' => [
+                'stream_version' => 1,
+                'denominator' => 10000,
+                'fixed_probabilities' => [
+                    'typhoon' => 140,
+                    'meteor_shower' => 55,
+                ],
+                'normal_weights' => [
+                    'sunny' => 45,
+                    'cloudy' => 25,
+                    'rain' => 20,
+                    'snow' => 5,
+                    'thunder' => 3,
+                ],
+                'rain_forest_growth_multiplier' => 2,
+            ],
         ],
-        'capital_growth_maximum_population' => 25000,
+        'capital_growth_maximum_population' => 40500,
         'capital_damage_percentages' => [
             'facility_or_wasteland' => 10,
             'excavation_or_shallow' => 30,
@@ -234,6 +260,8 @@ return [
             22 => 'output_resource_key',
             23 => 'stream_version',
             24 => '/turn_processing/disasters/fire/unprotected_sea_facility_keys/*',
+            25 => 'selection',
+            26 => 'target_owner',
         ],
         'data' => [
             0 => 'adjacent_water_offset',
@@ -260,6 +288,15 @@ return [
             21 => 'reward_maximum_money',
             22 => 'reward_minimum_money',
             23 => 'success_threshold_per_cost_unit',
+            24 => '/turn_processing/sea_area_weather/fixed_probabilities/typhoon',
+            25 => '/turn_processing/sea_area_weather/fixed_probabilities/meteor_shower',
+            26 => '/turn_processing/sea_area_weather/normal_weights/sunny',
+            27 => '/turn_processing/sea_area_weather/normal_weights/cloudy',
+            28 => '/turn_processing/sea_area_weather/normal_weights/rain',
+            29 => '/turn_processing/sea_area_weather/normal_weights/snow',
+            30 => '/turn_processing/sea_area_weather/normal_weights/thunder',
+            31 => 'rain_forest_growth_multiplier',
+            32 => 'cost_money',
         ],
         'flavor' => [
             0 => 'label',

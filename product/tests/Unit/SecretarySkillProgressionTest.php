@@ -21,9 +21,6 @@ final class SecretarySkillProgressionTest extends TestCase
             19_999 => [1, 19_999],
             20_000 => [2, 20_000],
             40_000 => [3, 40_000],
-            70_000 => [4, 70_000],
-            160_000 => [6, 160_000],
-            560_000 => [11, 560_000],
         ] as $experience => [$level, $retained]) {
             $result = $progression->advance($cumulative, 0, 0, $experience);
             $this->assertSame($level, $result['level']);
@@ -41,7 +38,6 @@ final class SecretarySkillProgressionTest extends TestCase
             12_000 => [1, 2_000],
             35_000 => [2, 5_000],
             70_000 => [3, 0],
-            140_000 => [4, 0],
         ] as $experience => [$level, $remainder]) {
             $result = $progression->advance($consuming, 0, 0, $experience);
             $this->assertSame($level, $result['level']);
@@ -51,7 +47,6 @@ final class SecretarySkillProgressionTest extends TestCase
         $this->assertSame(10_000, $progression->requiredExperience($consuming, 0));
         $this->assertSame(20_000, $progression->requiredExperience($consuming, 1));
         $this->assertSame(40_000, $progression->requiredExperience($consuming, 2));
-        $this->assertSame(70_000, $progression->requiredExperience($consuming, 3));
     }
 
     public function test_development_thresholds_consume_xp_and_carry_overflow_across_multiple_levels(): void

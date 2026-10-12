@@ -8,7 +8,9 @@ use RuntimeException;
 
 final class CurrentDatabaseBaseline
 {
-    public const MIGRATION = '2026_10_02_000000_install_4_9_0_baseline';
+    public const MIGRATION = '2026_10_11_020000_install_5_0_1_baseline';
+
+    public const MONSTER_COUNT_MIGRATION = '2026_10_11_030000_add_world_monster_count_snapshot';
 
     /** @return array<string, string> */
     public function structure(): array
@@ -83,12 +85,27 @@ SQL);
     public function assertStructure(): void
     {
         $expected = json_decode(
-            (string) file_get_contents(database_path('baselines/4_9_0_structure.json')),
+            (string) file_get_contents(database_path('baselines/5_0_1_structure.json')),
             true,
             512,
             JSON_THROW_ON_ERROR,
         );
         $actual = $this->structure();
+        $applied = DB::table('migrations')->pluck('migration')->all();
+        if (in_array(self::MONSTER_COUNT_MIGRATION, $applied, true)) {
+            if (! in_array(self::MIGRATION, $applied, true)) {
+                throw new RuntimeException('Monster count snapshots require the accepted 5.0.1 baseline marker first.');
+            }
+            // Only the exact, measured worlds definition changes after this
+            // forward migration. Every other baseline object remains strict.
+            $extension = json_decode(
+                (string) file_get_contents(database_path('baselines/monster_count_structure.json')),
+                true, 512, JSON_THROW_ON_ERROR,
+            );
+            foreach ($expected as $key => $variant) {
+                $expected[$key] = array_replace($variant, $extension);
+            }
+        }
         // Production's migration ancestry and a fresh dump differ in physical
         // column order and PostgreSQL's literal-array CHECK representation.
         // Match complete reviewed structures; never normalize or omit guarantees.
@@ -97,9 +114,9 @@ SQL);
                 return;
             }
         }
-        $production = $expected['production_4_9_0'];
+        $production = $expected['production_5_0_1'];
         $differences = array_keys(array_diff_assoc($production, $actual) + array_diff_assoc($actual, $production));
-        throw new RuntimeException('Database differs from the accepted 4.9.0 baseline: '.implode(', ', $differences).'. Do not reset or repair data automatically.');
+        throw new RuntimeException('Database differs from the accepted 5.0.1 baseline: '.implode(', ', $differences).'. Do not reset or repair data automatically.');
     }
 
     public function assertExisting(): void
@@ -108,14 +125,14 @@ SQL);
         $applied = DB::table('migrations')->pluck('migration')->all();
         if (! in_array(self::MIGRATION, $applied, true)) {
             $required = json_decode(
-                (string) file_get_contents(database_path('baselines/4_9_0_migrations.json')),
+                (string) file_get_contents(database_path('baselines/5_0_1_migrations.json')),
                 true,
                 512,
                 JSON_THROW_ON_ERROR,
             );
             $missing = array_diff($required, $applied);
             if ($missing !== []) {
-                throw new RuntimeException('Complete the accepted 4.9.0 migration chain before adopting this baseline. Missing: '.implode(', ', $missing));
+                throw new RuntimeException('Complete 5.0.1 with its fixed release code before adopting this baseline. Missing: '.implode(', ', $missing));
             }
         }
 

@@ -53,7 +53,7 @@ final class FacilityAndMapStateTest extends TestCase
 
     public function test_cell_state_values_are_separate_and_reset_with_terrain_or_facility(): void
     {
-        [$user, $nation] = $this->nation('状態国');
+        [, $nation] = $this->nation('状態国');
         $forest = MapCell::query()->where('owner_nation_id', $nation->id)
             ->whereHas('terrain', fn ($query) => $query->where('key', 'forest'))->firstOrFail();
 
@@ -77,15 +77,19 @@ final class FacilityAndMapStateTest extends TestCase
         $this->assertNull($forest->facility_scale);
         $this->assertNull($forest->facility_experience);
         $this->assertNull($forest->facility_operational_state);
-        $this->assertNotNull($user->id);
     }
 
     public function test_facility_scale_above_maximum_is_rejected(): void
     {
+        $settings = RulesetVersion::query()->where('key', config('hakoniwa.ruleset.key'))->firstOrFail()->settings;
         $farm = FacilityDefinition::query()->where('key', 'farm')->firstOrFail();
+        $maximum = app(FacilityRankPolicy::class)->maximumScale($settings, $farm);
+        $capacities = app(FacilityCapacityService::class);
 
+        $this->assertSame(100, $maximum);
+        $this->assertSame($maximum, $capacities->validateScale($farm, $maximum, $maximum));
         $this->expectException(DomainException::class);
-        app(FacilityCapacityService::class)->validateScale($farm, 51);
+        $capacities->validateScale($farm, $maximum + 1, $maximum);
     }
 
     public function test_rank_two_contract_drives_scale_boundaries_capacity_and_shared_map_details(): void
@@ -125,12 +129,10 @@ final class FacilityAndMapStateTest extends TestCase
             $cell,
         );
         $details = collect($presented['details'])->keyBy('key');
-        $this->assertSame('大農場', $presented['facility_name']);
-        $this->assertSame('大農場', $presented['display_name']);
+        $this->assertSame($ranks->presentation($settings, $farm, 51)['name'], $presented['facility_name']);
         $this->assertSame('tile.farm', $presented['asset']['key']);
         $this->assertSame(2, $details['facility_rank']['value']);
-        $this->assertSame('51,000人規模', $details['facility_capacity']['formatted']);
-        $this->assertSame('森3個分の台風耐性', $details['facility_effect']['formatted']);
+        $this->assertSame(51_000, $details['facility_capacity']['value']);
 
         $cell->update(['facility_scale' => 50]);
         $presentedAfterDowngrade = $this->cellFromResponse(
@@ -138,13 +140,10 @@ final class FacilityAndMapStateTest extends TestCase
             $cell,
         );
         $downgradeDetails = collect($presentedAfterDowngrade['details'])->keyBy('key');
-        $this->assertSame('農場', $presentedAfterDowngrade['facility_name']);
+        $this->assertSame($ranks->presentation($settings, $farm, 50)['name'], $presentedAfterDowngrade['facility_name']);
         $this->assertSame(1, $downgradeDetails['facility_rank']['value']);
-        $this->assertSame('50,000人規模', $downgradeDetails['facility_capacity']['formatted']);
-        $this->assertSame(
-            '50,000人規模で再度農場整備するとランク2へ',
-            $downgradeDetails['facility_promotion']['formatted'],
-        );
+        $this->assertSame(50_000, $downgradeDetails['facility_capacity']['value']);
+        $this->assertTrue($downgradeDetails->has('facility_promotion'));
     }
 
     public function test_city_rank_tracks_population_and_falls_back_to_the_existing_city_asset(): void
@@ -238,7 +237,8 @@ final class FacilityAndMapStateTest extends TestCase
         [$user, $nation, $mapSpace] = $this->nation('施設国');
         $cell = MapCell::query()->where('owner_nation_id', $nation->id)->whereNull('facility_definition_id')
             ->whereHas('terrain', fn ($query) => $query->where('key', 'plain'))->firstOrFail();
-        app(MapCellStateService::class)->setFacility($cell, FacilityDefinition::query()->where('key', 'factory')->firstOrFail());
+        $factory = FacilityDefinition::query()->where('key', 'factory')->firstOrFail();
+        app(MapCellStateService::class)->setFacility($cell, $factory);
         $cell->save();
 
         $presented = $this->cellFromResponse(
@@ -246,7 +246,11 @@ final class FacilityAndMapStateTest extends TestCase
             $cell,
         );
         $details = collect($presented['details'])->keyBy('key');
-        $this->assertSame('30,000人規模', $details['facility_capacity']['formatted']);
+        $this->assertSame('人', $details['facility_capacity']['unit']);
+        $this->assertSame(
+            app(FacilityCapacityService::class)->capacityPeople($factory, (int) $cell->facility_scale),
+            $details['facility_capacity']['value'],
+        );
         $this->assertFalse($details->has('planned_production'));
         $this->assertFalse($details->has('population'));
     }

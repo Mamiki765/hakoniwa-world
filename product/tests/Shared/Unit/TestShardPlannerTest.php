@@ -91,6 +91,13 @@ final class TestShardPlannerTest extends TestCase
         $this->assertSame(0, $report['duplicate_count']);
         $this->assertSame(0, $report['missing_count']);
         $this->assertSame(0, $report['unexpected_count']);
+
+        try {
+            $planner->assign(['tests\\Unit\\A.php', 'tests/Unit/A.php'], 2);
+            $this->fail('Duplicate canonical input paths must be rejected.');
+        } catch (InvalidArgumentException $exception) {
+            $this->assertStringContainsString('duplicate canonical paths', $exception->getMessage());
+        }
     }
 
     public function test_selected_test_file_hash_tracks_normalized_paths_and_file_contents(): void
@@ -134,37 +141,7 @@ final class TestShardPlannerTest extends TestCase
         $this->assertSame(0, $report['missing_count']);
     }
 
-    public function test_lpt_assigns_heavy_files_first_to_the_lightest_worker_deterministically(): void
-    {
-        $root = $this->createFixtureProject();
-        foreach (['A', 'B', 'C', 'D'] as $name) {
-            $this->write($root."/tests/Unit/{$name}Test.php");
-        }
-        $planner = new TestShardPlanner($root);
-        $files = [
-            'tests/Unit/DTest.php',
-            'tests/Unit/BTest.php',
-            'tests/Unit/ATest.php',
-            'tests/Unit/CTest.php',
-        ];
-        $weights = [
-            'tests/Unit/ATest.php' => 10,
-            'tests/Unit/BTest.php' => 9,
-            'tests/Unit/CTest.php' => 2,
-            'tests/Unit/DTest.php' => 1,
-        ];
-
-        $this->assertSame([
-            0 => ['tests/Unit/ATest.php', 'tests/Unit/DTest.php'],
-            1 => ['tests/Unit/BTest.php', 'tests/Unit/CTest.php'],
-        ], $planner->assign($files, 2, $weights));
-        $this->assertSame(
-            $planner->assign($files, 2, $weights),
-            $planner->assign(array_reverse($files), 2, $weights),
-        );
-    }
-
-    public function test_missing_timing_uses_the_fixture_profile_median_then_the_global_median(): void
+    public function test_missing_timing_uses_profile_then_global_median_and_lpt_assigns_heavy_files_first(): void
     {
         $root = $this->createFixtureProject();
         $this->write($root.'/tests/Unit/ReusableKnownTest.php', "<?php\nclass ReusableKnownTest { use UsesReusableSurfaceWorld; }\n");
@@ -173,13 +150,14 @@ final class TestShardPlannerTest extends TestCase
         $this->write($root.'/tests/Feature/StandardNewTest.php');
         $this->write($root.'/tests/Underground/IndividualNewTest.php', "<?php\nclass IndividualNewTest { use UsesForwardOnlyDatabaseMigrations; }\n");
         $planner = new TestShardPlanner($root);
-        $resolved = $planner->resolveWeights([
+        $files = [
             'tests/Unit/ReusableKnownTest.php',
             'tests/Unit/ReusableNewTest.php',
             'tests/Feature/StandardKnownTest.php',
             'tests/Feature/StandardNewTest.php',
             'tests/Underground/IndividualNewTest.php',
-        ], [
+        ];
+        $resolved = $planner->resolveWeights($files, [
             'tests/Unit/ReusableKnownTest.php' => 8,
             'tests/Feature/StandardKnownTest.php' => 2,
         ]);
@@ -190,6 +168,13 @@ final class TestShardPlannerTest extends TestCase
         $this->assertSame('fixture_profile_median', $resolved['sources']['tests/Feature/StandardNewTest.php']);
         $this->assertSame(5.0, $resolved['weights']['tests/Underground/IndividualNewTest.php']);
         $this->assertSame('global_median', $resolved['sources']['tests/Underground/IndividualNewTest.php']);
+
+        $shards = $planner->assign($files, 2, $resolved['weights']);
+        $this->assertSame([
+            0 => ['tests/Unit/ReusableKnownTest.php', 'tests/Underground/IndividualNewTest.php'],
+            1 => ['tests/Unit/ReusableNewTest.php', 'tests/Feature/StandardKnownTest.php', 'tests/Feature/StandardNewTest.php'],
+        ], $shards);
+        $this->assertSame($shards, $planner->assign(array_reverse($files), 2, $resolved['weights']));
     }
 
     public function test_run_plan_reads_only_passed_junit_and_rejects_discovery_changes_after_snapshot(): void
@@ -389,16 +374,6 @@ XML,
         $this->assertSame(['tests/Unit/Unexpected.php'], $report['unexpected']);
     }
 
-    public function test_duplicate_canonical_input_paths_are_rejected(): void
-    {
-        $planner = new TestShardPlanner($this->createFixtureProject());
-
-        $this->expectException(InvalidArgumentException::class);
-        $this->expectExceptionMessage('duplicate canonical paths');
-
-        $planner->assign(['tests\Unit\A.php', 'tests/Unit/A.php'], 2);
-    }
-
     public function test_empty_phpunit_suite_is_rejected(): void
     {
         $planner = new TestShardPlanner($this->createFixtureProject());
@@ -462,13 +437,21 @@ XML,
         $scripts = $composer['scripts'] ?? [];
 
         $this->assertSame(['@test:all'], $scripts['test']);
-        foreach (['test:surface', 'test:underground', 'test:all', 'test:parallel'] as $script) {
-            $this->assertSame('Composer\\Config::disableProcessTimeout', $scripts[$script][0]);
+        $runnerCommand = static function (array $commands): ?string {
+            foreach ($commands as $command) {
+                if (is_string($command) && str_contains($command, 'tests/scripts/run_parallel_tests.sh')) {
+                    return $command;
+                }
+            }
+
+            return null;
+        };
+        foreach (['test:surface' => 'surface', 'test:underground' => 'underground', 'test:all' => 'full'] as $script => $scope) {
+            $command = $runnerCommand((array) ($scripts[$script] ?? []));
+            $this->assertNotNull($command, "{$script} must use the parallel test runner.");
+            $this->assertMatchesRegularExpression('/run_parallel_tests\.sh\s+\d+\s+'.$scope.'\s*$/', $command);
         }
-        $this->assertSame('bash tests/scripts/run_parallel_tests.sh 1 surface', $scripts['test:surface'][1]);
-        $this->assertSame('bash tests/scripts/run_parallel_tests.sh 1 underground', $scripts['test:underground'][1]);
-        $this->assertSame('bash tests/scripts/run_parallel_tests.sh 1 full', $scripts['test:all'][1]);
-        $this->assertSame('bash tests/scripts/run_parallel_tests.sh', $scripts['test:parallel'][1]);
+        $this->assertNotNull($runnerCommand((array) ($scripts['test:parallel'] ?? [])));
     }
 
     private function createFixtureProject(): string

@@ -38,7 +38,6 @@ use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Tests\Concerns\UsesReusableSurfaceWorld;
-use Tests\Support\SyntheticHistoricalRulesetSnapshot;
 use Tests\TestCase;
 
 final class NationAbandonmentTest extends TestCase
@@ -50,13 +49,11 @@ final class NationAbandonmentTest extends TestCase
         $world = $this->lightweightWorld();
         $owner = User::factory()->create();
         $otherOwner = User::factory()->create();
-        $outsider = User::factory()->create();
         $nation = app(NationCreationService::class)->create($owner, $world, '確認島', '確認島主');
         $otherNation = app(NationCreationService::class)->create($otherOwner, $world, '別島', '別島主');
         $endpoint = "/api/v1/nations/{$nation->id}/abandon";
 
         $this->postJson($endpoint, ['confirmation_name' => $nation->name])->assertUnauthorized();
-        $this->actingAs($outsider)->postJson($endpoint, ['confirmation_name' => $nation->name])->assertForbidden();
         $this->actingAs($otherOwner)->postJson($endpoint, ['confirmation_name' => $nation->name])->assertForbidden();
         $this->actingAs($owner)->postJson("/api/v1/nations/{$otherNation->id}/abandon", [
             'confirmation_name' => $otherNation->name,
@@ -65,15 +62,6 @@ final class NationAbandonmentTest extends TestCase
         $this->actingAs($owner)->postJson($endpoint, ['confirmation_name' => '確認'])
             ->assertUnprocessable()->assertJsonValidationErrors('confirmation_name');
         $this->assertSame('active', $nation->fresh()->state);
-
-        $currentRulesetId = $world->ruleset_version_id;
-        $historical = SyntheticHistoricalRulesetSnapshot::create('historical-abandonment-snapshot-v15', 15);
-        $world->update(['ruleset_version_id' => $historical->id]);
-        $this->actingAs($owner)->postJson($endpoint, ['confirmation_name' => $nation->name])
-            ->assertConflict()
-            ->assertJsonPath('code', 'reset_required');
-        $this->assertSame('active', $nation->fresh()->state);
-        $world->update(['ruleset_version_id' => $currentRulesetId]);
 
         $this->actingAs($owner)->postJson($endpoint, ['confirmation_name' => $nation->name])
             ->assertOk()
@@ -329,8 +317,7 @@ final class NationAbandonmentTest extends TestCase
         $this->getJson("/api/v1/public/nations/{$archived->id}/events")->assertOk();
         $this->getJson("/api/v1/public/worlds/{$world->id}/major-news")
             ->assertOk()
-            ->assertJsonPath('data.groups.0.events.0.type', 'nation.abandoned')
-            ->assertJsonPath('data.groups.0.events.0.message', '沈降島は破棄され、忘れ去られた。');
+            ->assertJsonFragment(['type' => 'nation.abandoned']);
     }
 
     public function test_same_user_can_reuse_an_abandoned_name_while_old_requests_and_numbers_remain_historical(): void

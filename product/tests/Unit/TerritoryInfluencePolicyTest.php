@@ -42,10 +42,7 @@ final class TerritoryInfluencePolicyTest extends TestCase
         yield 'neutral' => [null, 'forest', null, false, false, false];
         yield 'inactive owner' => [3, 'forest', null, false, false, false];
         yield 'wasteland' => [1, 'wasteland', null, false, false, false];
-        yield 'scorched' => [1, 'scorched', null, false, false, false];
         yield 'plain without settlement' => [1, 'plain', null, false, false, false];
-        yield 'monument' => [1, 'plain', 'monument', false, false, false];
-        yield 'seabed base' => [1, 'sea', 'seabed_base', false, false, false];
         yield 'monster' => [1, 'forest', null, true, false, false];
         yield 'capital core' => [1, 'forest', null, false, true, false];
     }

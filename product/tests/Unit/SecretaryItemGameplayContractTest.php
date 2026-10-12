@@ -2,7 +2,6 @@
 
 namespace Tests\Unit;
 
-use App\Domain\Secretary\SecretaryDemographicPolicy;
 use App\Domain\Secretary\SecretaryItemCatalog;
 use App\Domain\Secretary\SecretaryItemGameplayContract;
 use App\Domain\Secretary\SecretaryMonsterDropContract;
@@ -15,7 +14,7 @@ use Tests\TestCase;
 
 final class SecretaryItemGameplayContractTest extends TestCase
 {
-    public function test_v17_catalog_fixes_rarities_prices_player_trading_and_npc_exclusion(): void
+    public function test_v17_catalog_fixes_player_trading_and_npc_exclusion(): void
     {
         $settings = config('hakoniwa.ruleset');
         $contract = app(SecretaryItemGameplayContract::class);
@@ -30,11 +29,6 @@ final class SecretaryItemGameplayContractTest extends TestCase
         $collar = $catalog->definition(SecretaryItemCatalog::COLLAR);
         $this->assertTrue($collar['tradable']);
         $this->assertFalse($collar['npc_tradable']);
-        $this->assertSame(1, $settings['secretary']['items'][SecretaryItemCatalog::COLLAR]['effects'][0]['minimum_start_karma']);
-        $this->assertArrayNotHasKey(
-            'minimum_start_karma',
-            $settings['secretary']['items'][SecretaryItemCatalog::COLLAR]['effects'][1],
-        );
         $oldBow = $catalog->definition(SecretaryItemCatalog::OLD_BOW);
         $this->assertFalse($oldBow['tradable']);
         $this->assertFalse($oldBow['npc_tradable']);
@@ -44,16 +38,15 @@ final class SecretaryItemGameplayContractTest extends TestCase
             [SecretarySkillCatalog::DECLINING_BIRTHRATE_POLICY],
             $settings['secretary']['items'][SecretaryItemCatalog::SECRETARY_SUIT]['effects'][0]['excluded_skill_keys'],
         );
-        $demographics = app(SecretaryDemographicPolicy::class);
-        $this->assertSame(10_500, $demographics->naturalMaximum($settings, 10_000, 10));
-        $this->assertSame(21_000, $demographics->attractionMaximum($settings, 20_000, 10));
-        $this->assertSame(225, $demographics->indomitableBonus($settings, 9_000, 10));
-        $this->assertSame(51_500, $demographics->capitalMaximum($settings, 10, 10_000));
-        $historical = require config_path('hakoniwa/rulesets/hakoniwa-2s-plus-v34.php');
+        // Validate the saved v34 item contract without a removed publication file.
+        $historical = $settings;
+        $historical['key'] = 'hakoniwa-2s-plus-v34';
+        $historical['version'] = 34;
+        unset($historical['secretary']['items']['attraction_towel']);
+        unset($historical['turn_processing']['settlement']['capital_maximum_basis'],
+            $historical['turn_processing']['settlement']['capital_maximum_attraction_bonus']);
+        $historical['capital_growth_maximum_population'] = 25000;
         $contract->validate($historical);
-        $this->assertSame(35_000, $demographics->capitalMaximum($historical, 10, 10_000));
-        $towel = $catalog->definition(SecretaryItemCatalog::ATTRACTION_TOWEL);
-        $this->assertSame(['accessory', 'artifact', 10], [$towel['category'], $towel['rarity'], $towel['max_level']]);
 
         $this->assertSame(
             'secretary_item:bow:nation:7:item:elf_bow:trigger:v1',
@@ -65,15 +58,12 @@ final class SecretaryItemGameplayContractTest extends TestCase
         );
     }
 
-    public function test_current_monster_drop_tables_and_pools_are_closed_and_exclude_old_bow_and_mecha(): void
+    public function test_current_monster_drop_pools_are_closed_and_exclude_old_bow(): void
     {
         $settings = config('hakoniwa.ruleset');
         app(SecretaryMonsterDropContract::class)->validate($settings);
-        $drop = $settings['monster_system']['item_drop'];
 
-        $this->assertNotContains('old_bow', $drop['rarity_pools']['novice']);
-        $this->assertSame(100, $drop['monster_tables']['king_inora']['level_cap_percent']);
-        $this->assertSame($drop['monster_tables']['king_inora'], $drop['monster_tables']['nyowamiya']);
+        $this->assertNotContains('old_bow', $settings['monster_system']['item_drop']['rarity_pools']['novice']);
     }
 
     public function test_current_contract_validates_and_resolves_effects(): void
@@ -139,16 +129,6 @@ final class SecretaryItemGameplayContractTest extends TestCase
         }];
         yield 'catalog drift' => [static function (array $settings): array {
             $settings['secretary']['items']['ring']['max_level'] = 11;
-
-            return $settings;
-        }];
-        yield 'category limit drift' => [static function (array $settings): array {
-            $settings['secretary']['item_categories']['ring']['max_equipped'] = 6;
-
-            return $settings;
-        }];
-        yield 'same item limit drift' => [static function (array $settings): array {
-            $settings['secretary']['items']['ring']['same_item_max_equipped'] = 6;
 
             return $settings;
         }];

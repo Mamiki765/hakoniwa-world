@@ -175,8 +175,9 @@ return [
                         'multiplier' => 100,
                     ],
                     'effect' => [
-                        'type' => 'placeholder',
-                        'display' => '準備中',
+                        'type' => 'ship_reward_multiplier',
+                        'per_mille_per_level' => 10,
+                        'rounding' => 'floor_after_multiplier',
                     ],
                     'experience_source' => [
                         'type' => 'successful_ship_movement',
@@ -193,12 +194,51 @@ return [
                         'multiplier' => 30,
                     ],
                     'effect' => [
-                        'type' => 'placeholder',
-                        'display' => '効果なし',
+                        'type' => 'warship_damage_evasion',
+                        'maximum_percent' => 15,
+                        'level_offset' => 20,
+                        'random_stream_version' => 1,
                     ],
                     'experience_source' => [
                         'type' => 'successful_warship_hit',
                         'target_experience' => 'normal_missile_hit_equivalent',
+                    ],
+                ],
+                'energy_saving' => [
+                    'key' => 'energy_saving',
+                    'name' => '省エネ研究',
+                    'initial_level' => 0,
+                    'level_requirement' => [
+                        'basis' => 'next_level_squared',
+                        'multiplier' => 3,
+                        'divisor' => 2,
+                    ],
+                    'effect' => [
+                        'type' => 'power_consumption_ratio',
+                        'base' => 1000,
+                        'numerator_per_level' => 5,
+                        'denominator_per_level' => 7,
+                    ],
+                    'experience_source' => [
+                        'type' => 'actual_power_consumption',
+                        'points_per_mw' => 1,
+                    ],
+                ],
+                'oil_development' => [
+                    'key' => 'oil_development',
+                    'name' => '油田開発',
+                    'initial_level' => 0,
+                    'level_requirement' => [
+                        'basis' => 'next_level_squared',
+                        'multiplier' => 1,
+                    ],
+                    'effect' => [
+                        'type' => 'oil_field_production_addition',
+                        'units_per_level_per_field' => 1,
+                    ],
+                    'experience_source' => [
+                        'type' => 'successful_oil_discovery',
+                        'points_per_discovery' => 1,
                     ],
                 ],
             ],
@@ -1020,6 +1060,7 @@ return [
                                 3 => 'forest_management',
                                 4 => 'indomitable',
                                 5 => 'ship_operations',
+                                6 => 'oil_development',
                             ],
                             'excluded_skill_keys' => [
                                 0 => 'declining_birthrate_policy',
@@ -1055,6 +1096,7 @@ return [
                                 3 => 'forest_management',
                                 4 => 'indomitable',
                                 5 => 'ship_operations',
+                                6 => 'oil_development',
                             ],
                             'excluded_skill_keys' => [
                                 0 => 'declining_birthrate_policy',
@@ -1090,6 +1132,7 @@ return [
                                 3 => 'forest_management',
                                 4 => 'indomitable',
                                 5 => 'ship_operations',
+                                6 => 'oil_development',
                             ],
                             'excluded_skill_keys' => [
                                 0 => 'declining_birthrate_policy',
@@ -1180,6 +1223,24 @@ return [
                         ],
                     ],
                     'gacha_exception' => true,
+                ],
+                'attraction_towel' => [
+                    'key' => 'attraction_towel',
+                    'category' => 'accessory',
+                    'rarity' => 'artifact',
+                    'tradable' => true,
+                    'npc_tradable' => false,
+                    'max_level' => 10,
+                    'effects' => [
+                        0 => [
+                            'type' => 'supplemental_attraction',
+                            'source_genre' => 'item',
+                            'target' => 'post_natural_attraction',
+                            'percent_per_level' => 10,
+                            'cost_money_per_level' => 100,
+                        ],
+                    ],
+                    'gacha_exception' => false,
                 ],
             ],
             'ticket_gacha' => [
@@ -1326,10 +1387,19 @@ return [
             36 => '/secretary/ticket_gacha/wakuwaku_ticket/rarity_weights_basis_points/artifact',
             37 => '/secretary/ticket_gacha/dokidoki_ticket/rarity_weights_basis_points/high_quality',
             38 => '/secretary/ticket_gacha/dokidoki_ticket/rarity_weights_basis_points/artifact',
+            39 => '/secretary/skills/energy_saving/level_requirement/divisor',
+            40 => '/secretary/skills/energy_saving/effect/base',
+            41 => '/secretary/skills/energy_saving/effect/numerator_per_level',
+            42 => '/secretary/skills/energy_saving/effect/denominator_per_level',
+            43 => '/secretary/skills/energy_saving/experience_source/points_per_mw',
+            44 => 'units_per_level_per_field',
+            45 => 'points_per_discovery',
+            46 => 'maximum_percent',
+            47 => 'level_offset',
+            48 => 'cost_money_per_level',
         ],
         'flavor' => [
             0 => 'name',
-            1 => 'display',
         ],
     ],
 ];

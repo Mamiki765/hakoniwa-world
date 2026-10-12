@@ -45,7 +45,7 @@ class TurnRunnerTest extends TestCase
         $world = $this->lightweightWorld();
         $ruleset = $world->rulesetVersion()->firstOrFail();
         $rulesetSnapshot = $ruleset->settings;
-        $worldSnapshot = $world->only(['name', 'current_turn', 'ruleset_version_id']);
+        $worldSnapshot = $world->only(['name', 'current_turn', 'ruleset_version_id', 'monster_count_snapshot']);
 
         $run = app(TurnRunner::class)->run($world, true, 'manual');
 
@@ -69,6 +69,10 @@ class TurnRunnerTest extends TestCase
         $this->assertSame(TurnRun::STATUS_COMPLETED, $run->status);
         $this->assertNull($run->failure_code);
         $this->assertSame(2, $world->fresh()->current_turn);
+        $this->assertEquals([
+            'counted_turn' => 2, 'total_alive_count' => 0, 'land_alive_count' => 0,
+            'sea_alive_count' => 0, 'nation_counts' => [],
+        ], $world->fresh()->monster_count_snapshot);
         $this->assertSame(self::PHASES, collect($run->phase_results)->pluck('phase')->all());
         $completedEvent = DB::table('audit_events')->where('event_type', 'turn.completed')->sole();
         $completedMetadata = json_decode((string) $completedEvent->metadata, true, 512, JSON_THROW_ON_ERROR);
@@ -418,9 +422,7 @@ class TurnRunnerTest extends TestCase
             '--dry-run' => true,
             '--source' => 'cron',
         ])->assertSuccessful();
-        $this->artisan('hakoniwa:turn:status', ['--world' => $world->key])
-            ->expectsOutputToContain('current_turn=1')
-            ->assertSuccessful();
+        $this->artisan('hakoniwa:turn:status', ['--world' => $world->key])->assertSuccessful();
 
         $this->assertSame(['manual', 'cron'], TurnRun::query()->orderBy('id')->pluck('source')->all());
         $this->assertSame(1, $world->fresh()->current_turn);

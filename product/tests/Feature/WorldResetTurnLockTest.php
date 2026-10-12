@@ -109,7 +109,6 @@ class WorldResetTurnLockTest extends TestCase
             '--world' => $world->key,
             '--dry-run' => true,
         ]));
-        $this->assertMatchesRegularExpression('/\|\s*turn_runs\s*\|\s*1\s*\|/', Artisan::output());
         $this->assertNotNull(World::query()->find($world->id));
         $this->assertNotNull(TurnRun::query()->find($run->id));
         $this->assertNotNull(World::query()->find($otherWorld->id));

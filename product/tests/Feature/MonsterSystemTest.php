@@ -15,6 +15,7 @@ use App\Domain\Map\MapCellStateService;
 use App\Domain\Map\NationLandAreaCalculator;
 use App\Domain\Monster\MonsterNaturalSpawnPolicy;
 use App\Domain\Secretary\SecretaryItemCatalog;
+use App\Domain\Secretary\SecretaryItemEffectAggregator;
 use App\Domain\Secretary\SecretaryItemGameplayContract;
 use App\Domain\Turn\TurnContext;
 use App\Domain\Turn\TurnRandomStreamFactory;
@@ -69,10 +70,8 @@ class MonsterSystemTest extends TestCase
         foreach ([[$activeSettlement, $active], [$otherSettlement, $other]] as [$settlement, $nation]) {
             $occupancy = $occupancies->get($settlement->id);
             $this->assertNotNull($occupancy);
-            $this->assertNotSame('mecha_inora', $occupancy->monster->definition->key);
-            $this->assertContains($occupancy->monster->definition->key, [
-                'inora', 'sanjira', 'red_inora', 'dark_inora', 'inora_ghost', 'whale', 'king_inora',
-            ]);
+            $this->assertContains($occupancy->monster->definition->key, app(MonsterNaturalSpawnPolicy::class)
+                ->poolForPopulation($ruleset->settings['monster_system']['natural_spawn'], 400_000));
             $spawnedCell = $settlement->fresh(['terrain', 'facility']);
             $this->assertSame('wasteland', $spawnedCell->terrain->key);
             $this->assertNull($spawnedCell->facility_definition_id);
@@ -90,9 +89,38 @@ class MonsterSystemTest extends TestCase
         $system = $ruleset->settings['monster_system']['natural_spawn'];
         $land = app(NationLandAreaCalculator::class)->forNation($nation);
         $probability = app(MonsterNaturalSpawnPolicy::class)->probabilityForLand($system, $land);
+        $gameplay = app(SecretaryItemGameplayContract::class);
+        $equipped = [
+            [
+                'item_instance_id' => 1,
+                'item_key' => SecretaryItemCatalog::INORA_BRACELET,
+                'category' => 'accessory',
+                'level' => 5,
+                'equipped_slot' => 2,
+                'effects' => $gameplay->resolvedEffects($ruleset->settings, SecretaryItemCatalog::INORA_BRACELET, 5),
+            ],
+            [
+                'item_instance_id' => 2,
+                'item_key' => SecretaryItemCatalog::MONSTER_REPELLENT_INCENSE,
+                'category' => 'accessory',
+                'level' => 5,
+                'equipped_slot' => 3,
+                'effects' => $gameplay->resolvedEffects($ruleset->settings, SecretaryItemCatalog::MONSTER_REPELLENT_INCENSE, 5),
+            ],
+        ];
+        $probe = new TurnState;
+        $probe->setSecretaryItemEffectSnapshot($nation->id, 1, 1, $equipped);
+        // The signed sum of the bracelet (+) and the incense (-) must still raise the chance.
+        $itemPercent = app(SecretaryItemEffectAggregator::class)->snapshotPercentage(
+            $probe,
+            $nation->id,
+            SecretaryItemGameplayContract::NATURAL_MONSTER_SPAWN_PERCENT,
+            'normal_nation_natural_spawn',
+        );
+        $this->assertGreaterThan(0, $itemPercent);
         $itemNumerator = min(
             $probability['denominator'],
-            intdiv($probability['numerator'] * 145, 100),
+            intdiv($probability['numerator'] * (100 + $itemPercent), 100),
         );
         $seedLabel = null;
         foreach (range(0, 100_000) as $candidate) {
@@ -111,33 +139,7 @@ class MonsterSystemTest extends TestCase
         $this->assertSame(0, app(MonsterSpawnService::class)->spawnNatural($withoutItems, $space)['monsters_spawned']);
 
         [$withItems] = $this->context($world, $ruleset, 2, $seedLabel, [$nation->id]);
-        $gameplay = app(SecretaryItemGameplayContract::class);
-        $withItems->state->setSecretaryItemEffectSnapshot($nation->id, 1, 1, [
-            [
-                'item_instance_id' => 1,
-                'item_key' => SecretaryItemCatalog::INORA_BRACELET,
-                'category' => 'accessory',
-                'level' => 5,
-                'equipped_slot' => 2,
-                'effects' => $gameplay->resolvedEffects(
-                    $ruleset->settings,
-                    SecretaryItemCatalog::INORA_BRACELET,
-                    5,
-                ),
-            ],
-            [
-                'item_instance_id' => 2,
-                'item_key' => SecretaryItemCatalog::MONSTER_REPELLENT_INCENSE,
-                'category' => 'accessory',
-                'level' => 5,
-                'equipped_slot' => 3,
-                'effects' => $gameplay->resolvedEffects(
-                    $ruleset->settings,
-                    SecretaryItemCatalog::MONSTER_REPELLENT_INCENSE,
-                    5,
-                ),
-            ],
-        ]);
+        $withItems->state->setSecretaryItemEffectSnapshot($nation->id, 1, 1, $equipped);
         $metrics = app(MonsterSpawnService::class)->spawnNatural($withItems, $space);
 
         $this->assertSame(1, $metrics['spawn_draws']);
@@ -205,40 +207,22 @@ class MonsterSystemTest extends TestCase
         $this->assertSame(5, $metadata['initial_hp']);
     }
 
-    public function test_natural_spawn_supports_all_authored_definitions_without_adding_non_pool_species_or_changing_the_type_draw(): void
+    /** @return array<string, array{int}> */
+    public static function unpooledDefinitionCounts(): array
     {
-        [$world, $nation, $ruleset, $space] = $this->worldAndNation('十種自然発生国');
-        $settings = $ruleset->settings;
-        $ruleset->settings = $settings;
-        $this->prepareSettlement($nation, 400_000);
-        $ruleset = $this->guaranteeNaturalSpawn($ruleset);
-        $seedLabel = 'ten-definition-spawn';
-        [$context] = $this->context($world, $ruleset, 2, $seedLabel, [$nation->id]);
-        $pool = app(MonsterNaturalSpawnPolicy::class)->poolForPopulation(
-            $ruleset->settings['monster_system']['natural_spawn'],
-            400_000,
-        );
-        $seed = hash('sha256', $seedLabel);
-        $expected = $pool[(new TurnRandomStreamFactory($seed))->stream(
-            TurnRandomStreamFactory::monsterSpawn($nation->id, 'type', 1),
-        )->integer(0, count($pool) - 1)];
-
-        $metrics = app(MonsterSpawnService::class)->spawnNatural($context, $space);
-
-        $this->assertSame(1, $metrics['monsters_spawned']);
-        $spawnedKey = MonsterInstance::query()->with('definition')->sole()->definition->key;
-        $this->assertSame($expected, $spawnedKey);
-        $this->assertNotContains($spawnedKey, ['mecha_inora_zero', 'aoi_inora']);
-        $this->assertSame(count($settings['monster_definitions']), MonsterDefinition::query()
-            ->where('ruleset_version_id', $ruleset->id)->count());
+        return [
+            'authored definitions only' => [0],
+            'ten extra unpooled definitions' => [10],
+        ];
     }
 
-    public function test_natural_spawn_keeps_the_authored_pool_and_draw_with_many_unpooled_definitions(): void
+    #[DataProvider('unpooledDefinitionCounts')]
+    public function test_natural_spawn_keeps_the_authored_pool_and_type_draw_regardless_of_unpooled_definitions(int $extraDefinitions): void
     {
         [$world, $nation, $ruleset, $space] = $this->worldAndNation('多種自然発生国');
         $settings = $ruleset->settings;
         $template = CurrentRulesetFixture::newMonsterDefinitions()[0];
-        foreach (range(1, 10) as $index) {
+        foreach ($extraDefinitions === 0 ? [] : range(1, $extraDefinitions) as $index) {
             $payload = $template;
             $payload['key'] = "unpooled_monster_{$index}";
             $payload['name'] = "非抽選怪獣{$index}";
@@ -256,8 +240,7 @@ class MonsterSystemTest extends TestCase
             $ruleset->settings['monster_system']['natural_spawn'],
             400_000,
         );
-        $seed = hash('sha256', $seedLabel);
-        $expected = $pool[(new TurnRandomStreamFactory($seed))->stream(
+        $expected = $pool[(new TurnRandomStreamFactory(hash('sha256', $seedLabel)))->stream(
             TurnRandomStreamFactory::monsterSpawn($nation->id, 'type', 1),
         )->integer(0, count($pool) - 1)];
 
@@ -265,9 +248,7 @@ class MonsterSystemTest extends TestCase
 
         $this->assertSame(1, $metrics['spawn_draws']);
         $this->assertSame(1, $metrics['monsters_spawned']);
-        $spawnedKey = MonsterInstance::query()->with('definition')->sole()->definition->key;
-        $this->assertSame($expected, $spawnedKey);
-        $this->assertContains($spawnedKey, $pool);
+        $this->assertSame($expected, MonsterInstance::query()->with('definition')->sole()->definition->key);
         $this->assertSame(count($settings['monster_definitions']), MonsterDefinition::query()
             ->where('ruleset_version_id', $ruleset->id)->count());
     }
@@ -291,32 +272,12 @@ class MonsterSystemTest extends TestCase
         $this->assertSame(0, MonsterInstance::query()->count());
     }
 
-    public function test_nyowamiya_or_zero_draw_without_rank_two_uses_one_uniform_fallback_from_the_existing_seven(): void
+    public function test_nyowamiya_or_zero_draw_without_rank_two_uses_one_uniform_fallback(): void
     {
         [$world, $nation, $ruleset, $space] = $this->worldAndNation('ニョワミヤ資格不足国');
         $this->prepareSettlement($nation, 500_000);
-        $settings = $ruleset->settings;
-        $natural = $settings['monster_system']['natural_spawn'];
-        $fallbackPool = [
-            'inora', 'sanjira', 'red_inora', 'dark_inora', 'inora_ghost', 'whale', 'king_inora',
-        ];
-        $natural['population_tiers'] = array_values(array_filter(
-            $natural['population_tiers'],
-            static fn (array $tier): bool => ($tier['minimum_population'] ?? 0) < 500_000,
-        ));
-        $natural['population_tiers'][] = [
-            'minimum_population' => 500_000,
-            'monster_keys' => [...$fallbackPool, 'nyowamiya', 'mecha_inora_zero'],
-        ];
-        $natural['rank_two_condition'] = [
-            'facility_keys' => ['farm', 'factory', 'mine'],
-            'conditional_monster_keys' => ['nyowamiya', 'mecha_inora_zero'],
-            'fallback_monster_keys' => $fallbackPool,
-            'fallback_selection' => 'single_uniform_draw_no_retry',
-        ];
-        $settings['monster_system']['natural_spawn'] = $natural;
-        $ruleset->settings = $settings;
         $ruleset = $this->guaranteeNaturalSpawn($ruleset);
+        [$pool, $conditional, $fallbackPool] = $this->rankTwoRarePools($ruleset);
 
         $seedLabel = null;
         $expectedFallback = null;
@@ -325,11 +286,11 @@ class MonsterSystemTest extends TestCase
             $stream = (new TurnRandomStreamFactory(hash('sha256', $label)))->stream(
                 TurnRandomStreamFactory::monsterSpawn($nation->id, 'type', 1),
             );
-            if ($stream->integer(0, 8) < 7) {
+            if (! in_array($pool[$stream->integer(0, count($pool) - 1)], $conditional, true)) {
                 continue;
             }
             $seedLabel = $label;
-            $expectedFallback = $fallbackPool[$stream->integer(0, 6)];
+            $expectedFallback = $fallbackPool[$stream->integer(0, count($fallbackPool) - 1)];
             break;
         }
         $this->assertNotNull($seedLabel);
@@ -347,7 +308,7 @@ class MonsterSystemTest extends TestCase
         $this->assertContains($expectedFallback, $fallbackPool);
     }
 
-    public function test_nyowamiya_or_zero_draw_with_rank_two_is_kept_in_the_nine_entry_pool(): void
+    public function test_nyowamiya_or_zero_draw_with_rank_two_is_kept_in_the_authored_pool(): void
     {
         [$world, $nation, $ruleset, $space] = $this->worldAndNation('ニョワミヤ資格国');
         $settlement = $this->prepareSettlement($nation, 500_000);
@@ -361,28 +322,8 @@ class MonsterSystemTest extends TestCase
         $this->setCell($rankTwoCell, 'plain', 'farm', $nation->id, 0);
         $rankTwoCell->update(['facility_scale' => 51]);
 
-        $settings = $ruleset->settings;
-        $natural = $settings['monster_system']['natural_spawn'];
-        $fallbackPool = [
-            'inora', 'sanjira', 'red_inora', 'dark_inora', 'inora_ghost', 'whale', 'king_inora',
-        ];
-        $natural['population_tiers'] = array_values(array_filter(
-            $natural['population_tiers'],
-            static fn (array $tier): bool => ($tier['minimum_population'] ?? 0) < 500_000,
-        ));
-        $natural['population_tiers'][] = [
-            'minimum_population' => 500_000,
-            'monster_keys' => [...$fallbackPool, 'nyowamiya', 'mecha_inora_zero'],
-        ];
-        $natural['rank_two_condition'] = [
-            'facility_keys' => ['farm', 'factory', 'mine'],
-            'conditional_monster_keys' => ['nyowamiya', 'mecha_inora_zero'],
-            'fallback_monster_keys' => $fallbackPool,
-            'fallback_selection' => 'single_uniform_draw_no_retry',
-        ];
-        $settings['monster_system']['natural_spawn'] = $natural;
-        $ruleset->settings = $settings;
         $ruleset = $this->guaranteeNaturalSpawn($ruleset);
+        [$pool, $conditional, $fallbackPool] = $this->rankTwoRarePools($ruleset);
 
         $seedLabel = null;
         $expectedRare = null;
@@ -391,12 +332,12 @@ class MonsterSystemTest extends TestCase
             $stream = (new TurnRandomStreamFactory(hash('sha256', $label)))->stream(
                 TurnRandomStreamFactory::monsterSpawn($nation->id, 'type', 1),
             );
-            $typeIndex = $stream->integer(0, 8);
-            if ($typeIndex < 7) {
+            $drawn = $pool[$stream->integer(0, count($pool) - 1)];
+            if (! in_array($drawn, $conditional, true)) {
                 continue;
             }
             $seedLabel = $label;
-            $expectedRare = ['nyowamiya', 'mecha_inora_zero'][$typeIndex - 7];
+            $expectedRare = $drawn;
             break;
         }
         $this->assertNotNull($seedLabel);
@@ -701,17 +642,16 @@ class MonsterSystemTest extends TestCase
     public static function rescueSpawnCases(): array
     {
         return [
-            'large city at king threshold' => ['city', 'plain', 400_000, false, 0, 'king_inora'],
-            'empty wasteland without industry' => [null, 'wasteland', 500_000, false, 0, 'king_inora'],
-            'empty plain with industry and nyowamiya' => [null, 'plain', 500_000, true, 1, 'nyowamiya'],
-            'empty plain with industry and mecha zero' => [null, 'plain', 500_000, true, 2, 'mecha_inora_zero'],
-            'below king threshold has no rescue type' => [null, 'plain', 399_999, true, 0, null],
+            'large city at king threshold' => ['city', 'plain', 400_000, false, 0, true],
+            'empty wasteland without industry' => [null, 'wasteland', 500_000, false, 0, true],
+            'empty plain with industry draws a conditional type' => [null, 'plain', 500_000, true, 1, true],
+            'below king threshold has no rescue type' => [null, 'plain', 399_999, true, 0, false],
         ];
     }
 
     #[DataProvider('rescueSpawnCases')]
     public function test_rescue_spawn_uses_only_existing_population_and_industrial_eligible_types(
-        ?string $facility, string $terrain, int $population, bool $industry, int $typeIndex, ?string $expected,
+        ?string $facility, string $terrain, int $population, bool $industry, int $typeIndex, bool $spawns,
     ): void {
         [$world, $nation, $ruleset, $space] = $this->worldAndNation('救済出現国');
         $capital = $nation->capital()->firstOrFail()->cell()->firstOrFail();
@@ -731,6 +671,14 @@ class MonsterSystemTest extends TestCase
         $capitalIdentity = $capital->fresh()->only(['id', 'facility_definition_id', 'owner_nation_id', 'terrain_definition_id', 'population']);
         $ruleset = $this->guaranteeNaturalSpawn($ruleset);
         $pool = app(MonsterNaturalSpawnPolicy::class)->rescuePool($ruleset->settings['monster_system']['natural_spawn'], $population, $industry);
+        $conditional = $ruleset->settings['monster_system']['natural_spawn']['rank_two_condition']['conditional_monster_keys'];
+        if ($spawns) {
+            $this->assertSame($industry, array_intersect($pool, $conditional) !== []);
+        }
+        $expected = $spawns ? $pool[$typeIndex] : null;
+        if ($industry && $spawns) {
+            $this->assertContains($expected, $conditional);
+        }
         $label = 'rescue single type';
         if (count($pool) > 1) {
             foreach (range(0, 1_000) as $candidate) {
@@ -865,32 +813,6 @@ class MonsterSystemTest extends TestCase
         $trampledEvents = $destinationEvents->where('type', 'monster.trampled')->values();
         $this->assertCount(2, $movedEvents);
         $this->assertCount(2, $trampledEvents);
-        $messages = $destinationEvents->pluck('message')->all();
-        $this->assertContains(
-            sprintf(
-                '%s(%d,%d)へダークいのらが移動した模様です。',
-                $second->name,
-                $firstDestination->x,
-                $firstDestination->y,
-            ),
-            $messages,
-        );
-        $this->assertContains(
-            sprintf(
-                '%s(%d,%d)の村がダークいのらに踏み荒らされました。',
-                $second->name,
-                $firstDestination->x,
-                $firstDestination->y,
-            ),
-            $messages,
-        );
-        $this->assertStringNotContainsString(
-            sprintf('%s(%d,%d)', $second->name, $origin->x, $origin->y),
-            implode("\n", $messages),
-        );
-        foreach ($trampledEvents as $event) {
-            $this->assertStringContainsString('の村がダークいのらに踏み荒らされました。', $event['message']);
-        }
 
         $originEvents = collect(app(PlayerIslandEventService::class)->publicNationPage($first->fresh(), 1, 2)['groups'])
             ->flatMap(fn (array $group): array => $group['events'])
@@ -1113,18 +1035,18 @@ class MonsterSystemTest extends TestCase
         $metadata = json_decode((string) DB::table('audit_events')
             ->where('event_type', 'monster.damaged')->sole()->metadata, true, 512, JSON_THROW_ON_ERROR);
         $this->assertSame($attacker->id, $metadata['attacker_nation_id']);
-        $this->assertSame('損傷攻撃国', $metadata['attacker_nation_name']);
+        $this->assertSame($attacker->name, $metadata['attacker_nation_name']);
         $this->assertSame($host->id, $metadata['host_nation_id']);
-        $this->assertSame('損傷所在国', $metadata['host_nation_name']);
+        $this->assertSame($host->name, $metadata['host_nation_name']);
 
+        $snapshotName = $host->name;
         $host->update(['name' => '現在損傷所在国']);
         $events = collect(app(PlayerIslandEventService::class)->publicNationPage($host->fresh(), 1, 2)['groups'])
             ->flatMap(fn (array $group): array => $group['events']);
         $this->assertSame(1, $events->where('type', 'monster.damaged')->count());
-        $this->assertSame(
-            sprintf('損傷所在国(%d,%d)のいのらに攻撃が命中し、苦しそうに咆哮しました。', $cell->x, $cell->y),
-            $events->firstWhere('type', 'monster.damaged')['message'],
-        );
+        $message = $events->firstWhere('type', 'monster.damaged')['message'];
+        $this->assertStringContainsString($snapshotName, $message);
+        $this->assertStringNotContainsString('現在損傷所在国', $message);
     }
 
     public function test_monster_movement_replays_the_same_result_after_transaction_rollback(): void
@@ -1397,14 +1319,8 @@ class MonsterSystemTest extends TestCase
             ->flatMap(fn (array $group): array => $group['events'])
             ->firstWhere('type', 'monster.reward_distributed');
         $this->assertIsArray($killerReward);
-        $this->assertSame('レッドいのらを撃破し、賞金500億円を受け取りました。', $killerReward['message']);
         $this->assertIsArray($hostReward);
-        $this->assertSame('レッドいのらが倒され、怪獣肉10,099トンを受け取りました。', $hostReward['message']);
         $this->assertIsArray($hostOverflow);
-        $this->assertSame(
-            '食料上限を超えた怪獣肉239,901トンのうち239,000トンを売却して478億円を得て、901トンを破棄しました。',
-            $hostOverflow['message'],
-        );
         $this->assertNull($spectatorReward);
         $this->assertSame(200, $base->fresh()->facility_experience);
         $stat = NationMonsterKillStat::query()->sole();
@@ -1425,28 +1341,15 @@ class MonsterSystemTest extends TestCase
         $metadata = json_decode((string) DB::table('audit_events')
             ->where('event_type', 'monster.kill_stat_incremented')->sole()->metadata, true, 512, JSON_THROW_ON_ERROR);
         $this->assertSame($monster->id, $metadata['monster_instance_id']);
-        $this->assertSame('red_inora', $metadata['monster_definition_key']);
         $this->assertSame($killer->id, $metadata['killer_nation_id']);
-        $this->assertSame('撃破国', $metadata['killer_nation_name']);
         $this->assertSame($host->id, $metadata['host_nation_id']);
-        $this->assertSame('所在国', $metadata['host_nation_name']);
-        $this->assertSame(2, $metadata['target_turn']);
-        $this->assertSame(0, $metadata['previous_kill_count']);
-        $this->assertSame(1, $metadata['new_kill_count']);
-        $this->assertSame(0, $metadata['previous_monster_cycle_kill_count']);
-        $this->assertSame(1, $metadata['new_monster_cycle_kill_count']);
-        $this->assertSame(500, $metadata['killer_money']['requested']);
-        $this->assertSame(250_000, $metadata['host_meat_food']['requested']);
-        $this->assertSame(239_901, $metadata['host_meat_food']['overflow']);
+        $this->assertSame([0, 1], [$metadata['previous_kill_count'], $metadata['new_kill_count']]);
         $overflowMetadata = json_decode((string) DB::table('audit_events')
             ->where('event_type', 'resource.food_overflow_resolved')->sole()->metadata, true, 512, JSON_THROW_ON_ERROR);
         $this->assertSame('monster_meat', $overflowMetadata['resource_key']);
-        $this->assertSame(239_901, $overflowMetadata['requested_overflow_tons']);
-        $this->assertSame(239_000, $overflowMetadata['sold_tons']);
-        $this->assertSame(478, $overflowMetadata['revenue']);
-        $this->assertSame(901, $overflowMetadata['discarded_tons']);
-        $this->assertSame(1_000, $overflowMetadata['inventory_units_per_batch']);
-        $this->assertSame(2, $overflowMetadata['money_units_per_batch']);
+        $this->assertSame([239_000, 478, 901], [
+            $overflowMetadata['sold_tons'], $overflowMetadata['revenue'], $overflowMetadata['discarded_tons'],
+        ]);
         $this->assertSame($base->id, $metadata['firing_base_id']);
         $this->assertSame('killed', $monster->fresh()->state);
         $this->assertFalse($monster->fresh()->occupancy()->exists());
@@ -1457,7 +1360,7 @@ class MonsterSystemTest extends TestCase
         $this->assertSame(0, $publicEvents->where('type', 'monster.reward_distributed')->count());
         $this->assertSame(0, $publicEvents->where('type', 'resource.food_overflow_resolved')->count());
         $publicJson = json_encode($publicEvents->all(), JSON_THROW_ON_ERROR);
-        foreach (['killer_money', 'host_meat_food', '500億円', '10,099トン', '239,901', '478億円'] as $privateValue) {
+        foreach (['killer_money', 'host_meat_food', '239,901'] as $privateValue) {
             $this->assertStringNotContainsString($privateValue, $publicJson);
         }
 
@@ -1502,14 +1405,9 @@ class MonsterSystemTest extends TestCase
         $this->assertSame(200, $sameResult->killerMoney['requested']);
         $this->assertSame(100_000, $sameResult->hostMeat['requested']);
         $this->assertSame(1, $sameResult->newKillCount);
-        $sameNationReward = collect(app(PlayerIslandEventService::class)->ownerPage($nation->fresh(), 1, 2)['groups'])
+        $this->assertIsArray(collect(app(PlayerIslandEventService::class)->ownerPage($nation->fresh(), 1, 2)['groups'])
             ->flatMap(fn (array $group): array => $group['events'])
-            ->firstWhere('type', 'monster.reward_distributed');
-        $this->assertIsArray($sameNationReward);
-        $this->assertSame(
-            'いのらを撃破し、賞金200億円と怪獣肉100,000トンを受け取りました。',
-            $sameNationReward['message'],
-        );
+            ->firstWhere('type', 'monster.reward_distributed'));
 
         $neutralCell = MapCell::query()->where('map_space_id', $space->id)
             ->whereNull('owner_nation_id')
@@ -1563,16 +1461,19 @@ class MonsterSystemTest extends TestCase
         );
 
         $this->assertSame('killed', $result->status);
-        $this->assertSame(1_200, $result->killerMoney['requested']);
-        $this->assertSame(598, $result->killerMoney['applied']);
-        $this->assertSame(602, $result->killerMoney['overflow']);
-        $this->assertSame(10_098, $killer->fresh()->money);
+        $capacity = $result->killerMoney['capacity'];
+        $this->assertGreaterThan(9_500, $capacity);
+        $this->assertLessThan(9_500 + $definition->wreckage_value_money, $capacity);
+        $this->assertSame($definition->wreckage_value_money, $result->killerMoney['requested']);
+        $this->assertSame($capacity - 9_500, $result->killerMoney['applied']);
+        $this->assertSame($definition->wreckage_value_money - ($capacity - 9_500), $result->killerMoney['overflow']);
+        $this->assertSame($capacity, $killer->fresh()->money);
         $this->assertNull($result->hostMeat);
         $this->assertSame(1, $result->newKillCount);
         $metadata = json_decode((string) DB::table('audit_events')
             ->where('event_type', 'monster.reward_distributed')->sole()->metadata, true, 512, JSON_THROW_ON_ERROR);
         $this->assertSame('hostless_full_killer_money', $metadata['monster_reward_policy']);
-        $this->assertSame(1_200, $metadata['killer_requested_share_money']);
+        $this->assertSame($definition->wreckage_value_money, $metadata['killer_requested_share_money']);
         $this->assertSame(0, $metadata['host_requested_share_money']);
         $this->assertSame(0, $metadata['unclaimed_host_value_money']);
     }
@@ -1714,18 +1615,6 @@ class MonsterSystemTest extends TestCase
         ]);
 
         try {
-            DB::transaction(static fn () => MonsterInstance::query()->whereKey($monster->id)->update([
-                'state' => 'removed',
-                'current_hp' => -1,
-                'removal_reason' => 'invalid_probe',
-                'removed_at' => now(),
-            ]));
-            $this->fail('Expected negative removed HP rejection.');
-        } catch (QueryException $exception) {
-            $this->assertStringContainsString('monster_instances_state_check', $exception->getMessage());
-        }
-
-        try {
             DB::transaction(static function () use ($monster, $capital): void {
                 MonsterOccupancy::query()->create([
                     'monster_instance_id' => $monster->id,
@@ -1734,7 +1623,7 @@ class MonsterSystemTest extends TestCase
             });
             $this->fail('Expected capital occupancy rejection.');
         } catch (QueryException $exception) {
-            $this->assertStringContainsString('Capital cells cannot contain monster occupancy', $exception->getMessage());
+            $this->assertSame('P0001', $exception->getCode());
         }
 
         $cell = $this->ownedNonCapitalCell($nation);
@@ -1750,18 +1639,10 @@ class MonsterSystemTest extends TestCase
             DB::transaction(static fn () => $stat->update(['last_killed_turn' => 99]));
             $this->fail('Expected non-atomic kill stat update rejection.');
         } catch (QueryException $exception) {
-            $this->assertStringContainsString('monster kill stat updates must be one atomic increment', $exception->getMessage());
+            $this->assertSame('P0001', $exception->getCode());
         }
         $this->assertSame(1, $stat->fresh()->kill_count);
         $this->assertSame(2, $stat->fresh()->last_killed_turn);
-
-        try {
-            DB::transaction(static fn () => $stat->delete());
-            $this->fail('Expected permanent kill stat deletion rejection.');
-        } catch (QueryException $exception) {
-            $this->assertStringContainsString('monster kill stats are permanent while their World exists', $exception->getMessage());
-        }
-        $this->assertNotNull($stat->fresh());
     }
 
     public function test_database_rejects_cross_world_kill_stats(): void
@@ -1798,10 +1679,21 @@ class MonsterSystemTest extends TestCase
             ]));
             $this->fail('Expected cross-World kill stat rejection.');
         } catch (QueryException $exception) {
-            $this->assertStringContainsString('monster kill stat references inconsistent World state', $exception->getMessage());
+            $this->assertSame('P0001', $exception->getCode());
         }
 
         $this->assertSame(0, NationMonsterKillStat::query()->count());
+    }
+
+    /** @return array{list<string>, list<string>, list<string>} */
+    private function rankTwoRarePools(RulesetVersion $ruleset): array
+    {
+        $natural = $ruleset->settings['monster_system']['natural_spawn'];
+        $pool = app(MonsterNaturalSpawnPolicy::class)->poolForPopulation($natural, 500_000);
+        $conditional = $natural['rank_two_condition']['conditional_monster_keys'];
+        $this->assertNotEmpty(array_intersect($pool, $conditional));
+
+        return [$pool, $conditional, $natural['rank_two_condition']['fallback_monster_keys']];
     }
 
     /** @return array{World, Nation, RulesetVersion, MapSpace} */

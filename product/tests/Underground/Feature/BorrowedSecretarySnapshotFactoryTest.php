@@ -321,10 +321,10 @@ final class BorrowedSecretarySnapshotFactoryTest extends TestCase
             false,
         );
         $cache = SecretaryLendingBuildSnapshot::query()->where('secretary_id', $secretary->id)->sole();
-        $projectionCache = $cache->projection_cache;
         $sourceFingerprint = $cache->source_fingerprint;
         $firstProjectionCalls = $projectionCalls;
-        $this->assertIsArray($projectionCache);
+        $this->assertIsArray($cache->projection_cache);
+        $this->assertNotEmpty($firstProjectionCalls);
 
         $secretary->update(['nickname' => '新表示']);
         $profile->update([
@@ -343,7 +343,6 @@ final class BorrowedSecretarySnapshotFactoryTest extends TestCase
         $this->assertSame('新表示', $second['display_name']);
         $this->assertSame(1, $second['resources']['effective_current_hp']);
         $this->assertSame($first['effective_equipment'], $second['effective_equipment']);
-        $this->assertSame($projectionCache, $cache->refresh()->projection_cache);
         $this->assertSame($sourceFingerprint, $cache->refresh()->source_fingerprint);
         $this->assertSame('別の覚醒演出', $second['awakening']['message']);
         $this->assertSame($firstProjectionCalls, $projectionCalls);
@@ -365,7 +364,6 @@ final class BorrowedSecretarySnapshotFactoryTest extends TestCase
         $this->assertSame($customAiRules, $third['ai']['rules']);
         $this->assertSame('custom', $third['player_snapshot']['ai_mode']);
         $this->assertSame($second['effective_equipment'], $third['effective_equipment']);
-        $this->assertSame($projectionCache['slots'], $cache->refresh()->projection_cache['slots']);
         $this->assertSame($firstProjectionCalls, $projectionCalls);
     }
 

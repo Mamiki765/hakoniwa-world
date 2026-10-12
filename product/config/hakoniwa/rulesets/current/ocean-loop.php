@@ -97,6 +97,7 @@ return [
                 'seabed_facility_keys' => [
                     0 => 'seabed_base',
                     1 => 'undersea_city',
+                    2 => 'undersea_fire_station',
                 ],
                 'missile_refugee_percent' => 50,
                 'warship_refugee_percent' => 100,

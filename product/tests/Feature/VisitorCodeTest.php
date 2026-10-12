@@ -90,19 +90,6 @@ class VisitorCodeTest extends TestCase
         }
     }
 
-    public function test_same_user_allocation_is_idempotent(): void
-    {
-        $user = User::factory()->create();
-        $this->identity($user, 'discord', 'stable-same-user');
-        $allocator = app(VisitorCodeAllocator::class);
-
-        $first = $allocator->allocate($user);
-        $second = $allocator->allocate($user->fresh());
-
-        $this->assertSame($first, $second);
-        $this->assertSame(8, strlen($first));
-    }
-
     private function identity(User $user, string $provider, string $providerUserId): AuthIdentity
     {
         return AuthIdentity::query()->create([

@@ -13,6 +13,7 @@ use App\Models\World;
 use Illuminate\Support\Facades\DB;
 use RuntimeException;
 use Tests\Concerns\UsesReusableSurfaceWorld;
+use Tests\Support\SyntheticHistoricalRulesetSnapshot;
 use Tests\TestCase;
 
 final class OilDiscoveryExperienceBackfillTest extends TestCase
@@ -97,9 +98,14 @@ final class OilDiscoveryExperienceBackfillTest extends TestCase
 
     private function historicalRun(World $world, int $version, int $turn, bool $dry = false): TurnRun
     {
+        // This saved-evidence probe uses only the numeric online-XP cutover.
+        $key = 'synthetic-oil-discovery-v'.$version;
+        $snapshot = RulesetVersion::query()->where('key', $key)->first()
+            ?? SyntheticHistoricalRulesetSnapshot::create($key, $version);
+
         return TurnRun::query()->create([
             'world_id' => $world->id, 'target_turn' => $turn,
-            'ruleset_version_id' => RulesetVersion::query()->where('version', $version)->sole()->id,
+            'ruleset_version_id' => $snapshot->id,
             'random_seed' => hash('sha256', "backfill {$turn}"), 'source' => 'manual', 'is_dry_run' => $dry,
             'status' => $dry ? TurnRun::STATUS_DRY_RUN : TurnRun::STATUS_COMPLETED,
             'attempt_count' => 1, 'pipeline' => [], 'phase_results' => [], 'failure_context' => [],

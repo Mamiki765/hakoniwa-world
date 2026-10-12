@@ -332,13 +332,17 @@ final class MonsterDispatchTurnTest extends TestCase
             ->update(['population' => 0]);
         $capital = $target->capital()->firstOrFail();
         $capitalCoordinate = new GridCoordinate($capital->x, $capital->y);
-        $mapSpaceId = $capital->cell()->valueOrFail('map_space_id');
-        $candidate = MapCell::query()->where('map_space_id', $mapSpaceId)
+        $space = MapSpace::query()->findOrFail($capital->cell()->valueOrFail('map_space_id'));
+        // Keep every movement direction on the board; a corner can draw off-map steps for every attempt.
+        $candidate = MapCell::query()->where('map_space_id', $space->id)
             ->whereNull('owner_nation_id')
             ->whereNull('facility_definition_id')->with(['terrain', 'facility'])->orderBy('id')->get()
-            ->first(fn (MapCell $cell): bool => $capitalCoordinate->distanceTo(
-                new GridCoordinate($cell->x, $cell->y),
-            ) > 2);
+            ->first(function (MapCell $cell) use ($capitalCoordinate, $space): bool {
+                $coordinate = new GridCoordinate($cell->x, $cell->y);
+
+                return $capitalCoordinate->distanceTo($coordinate) > 2
+                    && count($coordinate->neighborsWithin($space->min_x, $space->max_x, $space->min_y, $space->max_y)) === 6;
+            });
         $this->assertInstanceOf(MapCell::class, $candidate);
         $this->setCell($candidate, 'plain', 'village', $target->id, 1_000);
 

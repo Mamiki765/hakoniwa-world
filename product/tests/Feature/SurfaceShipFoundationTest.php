@@ -22,7 +22,6 @@ use App\Services\MapCellPresenter;
 use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Schema;
 use Tests\Concerns\CreatesTestWorlds;
 use Tests\Support\SyntheticHistoricalRulesetSnapshot;
 use Tests\TestCase;
@@ -42,7 +41,6 @@ final class SurfaceShipFoundationTest extends TestCase
             ->whereHas('terrain', fn ($query) => $query->where('key', 'sea'))
             ->orderBy('id')->limit(9)->get();
         $this->assertCount(9, $cells);
-        $this->assertTrue(Schema::hasTable('ships'));
 
         $fishing = [];
         foreach (range(0, 2) as $index) {
@@ -51,11 +49,6 @@ final class SurfaceShipFoundationTest extends TestCase
         $shipView = app(MapCellPresenter::class)->present($cells[0]->fresh(), $nation->id, 1);
         $this->assertNull($shipView['owner_nation_id']);
         $this->assertSame($nation->nation_number, $shipView['ship']['owner_nation']['nation_number']);
-        $this->assertStringContainsString('このマスの所有者 中立', $shipView['aria_label']);
-        $this->assertStringContainsString(
-            "船の所有者 {$nation->name} N{$nation->nation_number}",
-            $shipView['aria_label'],
-        );
         $this->assertCount(3, $nation->ships()->where('state', Ship::STATE_ACTIVE)
             ->where('ship_type_key', 'fishing')->get());
         $this->assertConstraintRejects(
@@ -171,15 +164,12 @@ final class SurfaceShipFoundationTest extends TestCase
         $this->assertNull($treasure->nation);
 
         $view = app(MapCellPresenter::class)->present($cells[0]->fresh(), $nation->id, 1);
-        $this->assertSame(['pirate', '海賊船', 2, 3, null], [
+        $this->assertSame(['pirate', 2, 3, null], [
             $view['ship']['key'],
-            $view['ship']['name'],
             $view['ship']['current_hp'],
             $view['ship']['max_hp'],
             $view['ship']['owner_nation'],
         ]);
-        $this->assertStringContainsString('船 海賊船 HP 2/3', $view['aria_label']);
-        $this->assertStringNotContainsString('船の所有者', $view['aria_label']);
 
         $buildCommand = CommandDefinition::query()
             ->where('ruleset_version_id', $world->ruleset_version_id)
@@ -304,13 +294,14 @@ final class SurfaceShipFoundationTest extends TestCase
         $capacity = app(SurfaceShipCatalog::class)->capacityPerType($world->rulesetVersion->settings);
         config(['hakoniwa.ruleset.surface_ships.capacity_per_type' => $capacity + 1]);
         $response = $this->actingAs($owner)->getJson($path)->assertOk();
-        $rows = $response->json('data');
-        $this->assertSame([$fishing->id, $warship->id], array_column($rows, 'id'));
+        $rows = collect($response->json('data'))->keyBy('id');
+        $this->assertEqualsCanonicalizing([$fishing->id, $warship->id], $rows->keys()->all());
+        $fishingRow = $rows[$fishing->id];
         $this->assertSame([$cells[1]->x, $cells[1]->y, 1, 1, 2], [
-            $rows[0]['x'], $rows[0]['y'], $rows[0]['current_hp'], $rows[0]['max_hp'], $rows[0]['heading'],
+            $fishingRow['x'], $fishingRow['y'], $fishingRow['current_hp'], $fishingRow['max_hp'], $fishingRow['heading'],
         ]);
-        $this->assertNull($rows[1]['heading']);
-        $this->assertSame('heading_only', $rows[1]['movement_mode']);
+        $this->assertNull($rows[$warship->id]['heading']);
+        $this->assertSame('heading_only', $rows[$warship->id]['movement_mode']);
         $types = collect($response->json('meta.ship_types'))->keyBy('key');
         $this->assertSame([1, $capacity], [$types['fishing']['count'], $types['fishing']['capacity']]);
         $this->assertSame([1, $capacity], [$types['warship']['count'], $types['warship']['capacity']]);

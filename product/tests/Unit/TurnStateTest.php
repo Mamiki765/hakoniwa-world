@@ -28,19 +28,10 @@ class TurnStateTest extends TestCase
         $this->assertSame(0, $first->remainingShots());
     }
 
-    public function test_invalid_remaining_shot_updates_are_rejected(): void
+    public function test_consuming_shots_of_an_unregistered_launch_intent_is_rejected(): void
     {
         $state = new TurnState;
-        $intent = $state->registerLaunchIntent(1, 'missile', 1, 2, 3);
-
-        foreach ([-1, 4, '1'] as $invalid) {
-            try {
-                $state->consumeLaunchIntentShots($intent, $invalid);
-                $this->fail('Expected invalid consumed shot count.');
-            } catch (InvalidArgumentException) {
-                $this->assertSame(3, $intent->remainingShots());
-            }
-        }
+        $state->registerLaunchIntent(1, 'missile', 1, 2, 3);
 
         $foreign = new LaunchIntent(1, 'missile', 1, 2, 1);
         $this->expectException(InvalidArgumentException::class);

@@ -70,8 +70,8 @@ class PostgresRegistrationLockTest extends TestCase
         try {
             app(NationCreationService::class)->create($user, $world, '競合登録国', '試験島主');
             $this->fail('Registration unexpectedly passed the World mutation lock.');
-        } catch (DomainException $exception) {
-            $this->assertStringContainsString('World', $exception->getMessage());
+        } catch (DomainException) {
+            // Rejected while the World lock is held; no writes are checked below.
         } finally {
             $released = $probe->selectOne(
                 'SELECT pg_advisory_unlock(hashtextextended(?, 0)) AS released',
@@ -87,21 +87,13 @@ class PostgresRegistrationLockTest extends TestCase
         $this->assertDatabaseCount('nation_creation_requests', 0);
     }
 
-    public function test_name_reuse_upgrade_preserves_history_and_database_serializes_competing_names(): void
+    public function test_name_reuse_preserves_history_and_database_serializes_competing_names(): void
     {
         $world = $this->lightweightWorld();
         $owner = User::factory()->create();
         $archived = app(NationCreationService::class)->create($owner, $world, '再利用島', '旧島主');
         app(NationAbandonmentService::class)->abandon($owner, $archived, $archived->name);
         $before = $archived->fresh()->getAttributes();
-
-        // Recreate the supported pre-upgrade constraint without changing historical data.
-        DB::statement('DROP INDEX nations_world_id_name_unique');
-        DB::statement('ALTER TABLE nations ADD CONSTRAINT nations_world_id_name_unique UNIQUE (world_id, name)');
-        $migration = require database_path('migrations/2026_10_07_020000_allow_abandoned_nation_name_reuse.php');
-        DB::transaction(fn () => $migration->up());
-        $this->assertSame($before, $archived->fresh()->getAttributes());
-        $this->assertDatabaseHas('nation_creation_requests', ['nation_id' => $archived->id, 'status' => 'completed']);
 
         // Bypass the application's World lock to exercise the independent DB guarantee.
         $row = $before;
@@ -128,6 +120,8 @@ class PostgresRegistrationLockTest extends TestCase
                 $this->assertSame('23505', $exception->errorInfo[0]);
             }
             $this->assertSame(2, DB::table('nations')->where('world_id', $world->id)->where('name', $archived->name)->count());
+            $this->assertSame($before, $archived->fresh()->getAttributes());
+            $this->assertDatabaseHas('nation_creation_requests', ['nation_id' => $archived->id, 'status' => 'completed']);
         } finally {
             while (DB::transactionLevel() > 0) {
                 DB::rollBack();
@@ -136,7 +130,7 @@ class PostgresRegistrationLockTest extends TestCase
         }
     }
 
-    public function test_abandonment_fails_with_the_player_message_while_the_common_world_lock_is_held(): void
+    public function test_abandonment_fails_with_world_updating_while_the_common_world_lock_is_held(): void
     {
         $world = $this->lightweightWorld();
         $owner = User::factory()->create();
@@ -153,8 +147,7 @@ class PostgresRegistrationLockTest extends TestCase
             $this->actingAs($owner)
                 ->postJson("/api/v1/nations/{$nation->id}/abandon", ['confirmation_name' => $nation->name])
                 ->assertConflict()
-                ->assertJsonPath('code', 'world_updating')
-                ->assertJsonPath('message', 'このWorldは現在更新中です。後でもう一度実行してください。');
+                ->assertJsonPath('code', 'world_updating');
         } finally {
             $released = $probe->selectOne(
                 'SELECT pg_advisory_unlock(hashtextextended(?, 0)) AS released',

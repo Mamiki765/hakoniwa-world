@@ -44,8 +44,8 @@ final class UndergroundExplorationDropTest extends TestCase
         $this->assertSame($first, $replay);
         $this->assertSame('generated', $first['status']);
         $this->assertSame('common', $first['payload']['rarity']);
-        $this->assertGreaterThanOrEqual(5, $first['payload']['item_level']);
-        $this->assertLessThanOrEqual(15, $first['payload']['item_level']);
+        $this->assertGreaterThanOrEqual($encounter['item_level_min'], $first['payload']['item_level']);
+        $this->assertLessThanOrEqual($encounter['item_level_max'], $first['payload']['item_level']);
         $this->assertContains($first['payload']['category'], ['weapon', 'armor', 'accessory']);
         $this->assertNull($first['payload']['unique_effect']);
         $this->assertNotSame($first['payload']['instance_identity'], $otherSource['payload']['instance_identity']);

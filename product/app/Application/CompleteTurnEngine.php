@@ -88,6 +88,7 @@ final class CompleteTurnEngine
         private readonly TradingPostTurnService $tradingPost,
         private readonly UndergroundFacilityBenefits $undergroundBenefits,
         private readonly SeaAreaWeatherService $weather,
+        private readonly WorldMonsterCountSnapshot $monsterCounts,
     ) {}
 
     public function execute(string $phase, TurnContext $context): TurnPhaseResult
@@ -1182,6 +1183,7 @@ final class CompleteTurnEngine
         $awardMetrics = $this->awards->finalize($context);
         $lifecycleMetrics = $this->nationLifecycle->finalize($context);
         $karmaMetrics = $this->karma->finalize($context);
+        $monsterCountMetrics = $this->monsterCounts->record($context->world, $context->targetTurn);
         foreach ($this->summaryRecords($context->state->lifecycleNationIds()) as $nationId => $record) {
             $nation = $record['nation'];
             $start = $context->state->nationStartSummary($nationId);
@@ -1227,6 +1229,7 @@ final class CompleteTurnEngine
             ...$lifecycleMetrics,
             ...$karmaResultMetrics,
             ...$awardMetrics,
+            ...$monsterCountMetrics,
         ];
     }
 

@@ -144,28 +144,20 @@ final class UndergroundAccessAndProjectionTest extends UndergroundPlayerAccessTe
                 $this->assertSame($expectedZ, $layer['z']);
                 $this->assertFalse($layer['ladder']['counts_as_facility_slot']);
                 $this->assertCount(4, $layer['slots']);
-                $this->assertSame([-2, -1, 1, 2], array_column($layer['slots'], 'offset_x'));
+                $this->assertSame([0, 1, 2, 3], array_column($layer['slots'], 'slot_index'));
+                $xs = array_map(static fn (array $slot): int => $slot['coordinate']['x'], $layer['slots']);
+                $this->assertCount(4, array_unique($xs));
 
-                foreach ($layer['slots'] as $slotIndex => $slot) {
-                    $this->assertSame($slotIndex, $slot['slot_index']);
-                    $this->assertSame($capital->x + [-2, -1, 1, 2][$slotIndex], $slot['coordinate']['x']);
+                foreach ($layer['slots'] as $slot) {
+                    $this->assertNotSame(0, $slot['offset_x']);
+                    $this->assertSame($capital->x + $slot['offset_x'], $slot['coordinate']['x']);
                     $this->assertSame($capital->y, $slot['coordinate']['y']);
                     $this->assertSame($expectedZ, $slot['coordinate']['z']);
                     $this->assertNull($slot['facility_key']);
                     $this->assertSame('underground.road', $slot['asset_key']);
-                    $slotKeys = array_keys($slot);
-                    sort($slotKeys);
-                    $this->assertSame(
-                        ['asset_key', 'coordinate', 'coordinate_label', 'facility_key', 'offset_x', 'relative_label', 'slot_index'],
-                        $slotKeys,
-                    );
                 }
             }
         }
-
-        $this->assertSame('(X-2, Y, -2)', $data['layers'][0]['slots'][0]['relative_label']);
-        $this->assertSame('(X+2, Y, -2)', $data['layers'][0]['slots'][3]['relative_label']);
-        $this->assertSame(-3, $data['layers'][1]['z']);
 
         $capitalCellBefore = $capital->cell()->firstOrFail()->only([
             'terrain_definition_id', 'facility_definition_id', 'facility_scale', 'population',

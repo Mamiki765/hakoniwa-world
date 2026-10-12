@@ -15,83 +15,56 @@ final class DefaultInquiryAttachmentStackTest extends TestCase
         }
 
         $compose = file_get_contents($repositoryRoot.'/compose.yml');
-
         $this->assertIsString($compose);
-        $this->assertStringContainsString(
-            '- hakoniwa_inquiry_attachments:/srv/bot-assets/hakoniwa-inquiries',
-            $compose,
-        );
-        $this->assertStringContainsString(
-            "hakoniwa_inquiry_attachments:\n    name: hakoniwa_inquiry_attachments",
-            str_replace("\r\n", "\n", $compose),
-        );
-        $this->assertStringContainsString(
-            'HAKONIWA_INQUIRY_ATTACHMENT_PATH: ${HAKONIWA_INQUIRY_ATTACHMENT_PATH:-/srv/bot-assets/hakoniwa-inquiries}',
-            $compose,
-        );
-        $this->assertStringContainsString(
-            'HAKONIWA_INQUIRY_ATTACHMENT_BASE_URL: ${HAKONIWA_INQUIRY_ATTACHMENT_BASE_URL:-/hakoniwa-inquiries}',
-            $compose,
-        );
-        $this->assertStringContainsString(
-            '- hakoniwa_secretary_images:/srv/bot-assets/hakoniwa-secretaries',
-            $compose,
-        );
-        $this->assertStringContainsString(
-            "hakoniwa_secretary_images:\n    name: hakoniwa_secretary_images",
-            str_replace("\r\n", "\n", $compose),
-        );
-        $this->assertStringContainsString(
-            'HAKONIWA_SECRETARY_IMAGE_PATH: ${HAKONIWA_SECRETARY_IMAGE_PATH:-/srv/bot-assets/hakoniwa-secretaries}',
-            $compose,
-        );
-        $this->assertStringContainsString(
-            'HAKONIWA_SECRETARY_IMAGE_BASE_URL: ${HAKONIWA_SECRETARY_IMAGE_BASE_URL:-/hakoniwa-secretaries}',
-            $compose,
-        );
+        $compose = str_replace("\r\n", "\n", $compose);
+
+        foreach ([
+            'hakoniwa_inquiry_attachments' => 'HAKONIWA_INQUIRY_ATTACHMENT_PATH',
+            'hakoniwa_secretary_images' => 'HAKONIWA_SECRETARY_IMAGE_PATH',
+        ] as $volume => $pathVariable) {
+            $this->assertSame(
+                1,
+                preg_match('/^\s*-\s*'.$volume.':(?<path>\S+?)\s*$/m', $compose, $mount),
+                "{$volume} must be mounted as a named volume.",
+            );
+            $this->assertMatchesRegularExpression('/^\s+'.$volume.':\s*\n\s+name:\s*'.$volume.'\s*$/m', $compose);
+            $this->assertSame(
+                1,
+                preg_match('/^\s*'.$pathVariable.':\s*\$\{'.$pathVariable.':-(?<path>[^}]+)\}/m', $compose, $environment),
+                "{$pathVariable} must default to a configured path.",
+            );
+            $this->assertSame($mount['path'], $environment['path'], "{$pathVariable} must point at the persisted volume.");
+        }
     }
 
     public function test_apache_serves_public_attachment_paths_without_indexing(): void
     {
         $productRoot = dirname(__DIR__, 2);
         $apache = file_get_contents($productRoot.'/docker/apache-vhost.conf');
-
         $this->assertIsString($apache);
-        $this->assertStringContainsString(
-            'Alias "/hakoniwa-inquiries/" "/srv/bot-assets/hakoniwa-inquiries/"',
-            $apache,
-        );
-        $matched = preg_match(
-            '/<Directory "\/srv\/bot-assets\/hakoniwa-inquiries">(?<directives>.*?)<\/Directory>/s',
-            $apache,
-            $matches,
-        );
-        $this->assertSame(1, $matched);
-        $directives = $matches['directives'];
-        $this->assertStringContainsString('AllowOverride None', $directives);
-        $this->assertStringContainsString('Options -Indexes -ExecCGI -Includes', $directives);
-        $this->assertStringContainsString('SetHandler none', $directives);
-        $this->assertStringContainsString('Require all granted', $directives);
-        $this->assertStringContainsString('Header always set Cache-Control "private, no-store, max-age=0"', $directives);
-        $this->assertStringContainsString('Header always set X-Content-Type-Options "nosniff"', $directives);
 
-        $this->assertStringContainsString(
-            'Alias "/hakoniwa-secretaries/" "/srv/bot-assets/hakoniwa-secretaries/"',
-            $apache,
-        );
-        $matched = preg_match(
-            '/<Directory "\/srv\/bot-assets\/hakoniwa-secretaries">(?<directives>.*?)<\/Directory>/s',
-            $apache,
-            $matches,
-        );
-        $this->assertSame(1, $matched);
-        $directives = $matches['directives'];
-        $this->assertStringContainsString('AllowOverride None', $directives);
-        $this->assertStringContainsString('Options -Indexes -ExecCGI -Includes', $directives);
-        $this->assertStringContainsString('SetHandler none', $directives);
-        $this->assertStringContainsString('Require all granted', $directives);
-        $this->assertStringContainsString('Header always set Cache-Control "public, max-age=31536000, immutable"', $directives);
-        $this->assertStringContainsString('Header always set X-Content-Type-Options "nosniff"', $directives);
+        foreach ([
+            'hakoniwa-inquiries' => '/Cache-Control\s+"[^"]*\bprivate\b[^"]*\bno-store\b/',
+            'hakoniwa-secretaries' => '/Cache-Control\s+"[^"]*\bpublic\b/',
+        ] as $directory => $cachePolicy) {
+            $root = '/srv/bot-assets/'.$directory;
+            $this->assertMatchesRegularExpression(
+                '#Alias\s+"?/'.$directory.'/"?\s+"?'.$root.'/"?#',
+                $apache,
+            );
+            $this->assertSame(
+                1,
+                preg_match('#<Directory "'.$root.'">(?<directives>.*?)</Directory>#s', $apache, $matches),
+            );
+            $directives = $matches['directives'];
+            $this->assertMatchesRegularExpression('/^\s*AllowOverride\s+None\b/m', $directives);
+            foreach (['-Indexes', '-ExecCGI', '-Includes'] as $option) {
+                $this->assertMatchesRegularExpression('/^\s*Options\b[^\n]*\s'.preg_quote($option, '/').'\b/m', $directives);
+            }
+            $this->assertMatchesRegularExpression('/^\s*SetHandler\s+none\b/m', $directives);
+            $this->assertMatchesRegularExpression('/X-Content-Type-Options\s+"nosniff"/', $directives);
+            $this->assertMatchesRegularExpression($cachePolicy, $directives);
+        }
     }
 
     public function test_development_compose_uses_test_only_environment_and_safe_source_mounts(): void
@@ -106,18 +79,11 @@ final class DefaultInquiryAttachmentStackTest extends TestCase
         $compose = file_get_contents($developmentComposePath);
 
         $this->assertIsString($compose);
-        $this->assertStringContainsString('hakoniwa-dev:', $compose);
-        $this->assertStringContainsString('target: development', $compose);
-        $this->assertStringContainsString('APP_ENV: testing', $compose);
-        $this->assertStringContainsString('DB_DATABASE: hakoniwa_test', $compose);
-        $this->assertStringContainsString('./product/app:/var/www/html/app:ro', $compose);
-        $this->assertStringContainsString('./product/docs:/var/www/html/docs:ro', $compose);
-        $this->assertStringContainsString('./product/docker:/var/www/html/docker:ro', $compose);
-        $this->assertStringContainsString('./product/tests:/var/www/html/tests:ro', $compose);
-        $this->assertStringNotContainsString('./product:/var/www/html', $compose);
-        $this->assertStringNotContainsString(':/var/www/html/vendor', $compose);
-        $this->assertStringNotContainsString(':/var/www/html/storage', $compose);
-        $this->assertStringNotContainsString(':/var/www/html/bootstrap/cache', $compose);
-        $this->assertStringNotContainsString(':/var/www/html/public/build', $compose);
+        $this->assertMatchesRegularExpression('/^\s*APP_ENV:\s*testing\s*$/m', $compose);
+        $this->assertMatchesRegularExpression('/^\s*DB_DATABASE:\s*hakoniwa_test\s*$/m', $compose);
+        $this->assertDoesNotMatchRegularExpression('#:/var/www/html/?(:|\s|$)#m', $compose);
+        foreach (['vendor', 'storage', 'bootstrap/cache', 'public/build'] as $generated) {
+            $this->assertStringNotContainsString(':/var/www/html/'.$generated, $compose);
+        }
     }
 }

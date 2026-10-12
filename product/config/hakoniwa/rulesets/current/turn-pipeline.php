@@ -58,7 +58,7 @@ return [
                     'maximum' => 3000,
                     'unit_people' => 1,
                 ],
-                'attraction_maximum_population' => 20000,
+                'attraction_maximum_population' => 25500,
                 'post_ordinary_attraction_growth' => [
                     'minimum' => 100,
                     'maximum' => 300,
@@ -89,6 +89,8 @@ return [
                     0 => 'capital',
                     1 => 'undersea_city',
                 ],
+                'capital_maximum_basis' => 'effective_attraction_maximum',
+                'capital_maximum_attraction_bonus' => 15000,
             ],
             'famine' => [
                 'loss_minimum' => 100,
@@ -204,6 +206,14 @@ return [
                 'after' => 'resource_production',
                 'before' => 'resource_sales',
             ],
+            'undersea_fire_station_maintenance' => [
+                'facility_key' => 'undersea_fire_station',
+                'cost_money' => 6,
+                'settlement_order' => 'map_cell_id_ascending',
+                'settlement_stage' => 'after_undersea_city_maintenance',
+                'failure_terrain_key' => 'sea',
+                'failure_ownership_policy' => 'neutral',
+            ],
         ],
         'turn_resolution' => [
             'normal_monster_stage' => 'after_ordinary_surface_cell_events',
@@ -260,6 +270,10 @@ return [
             46 => 'settlement_order',
             47 => 'failure_population_loss',
             48 => '/turn_processing/territory_influence/acquisition_land_limit',
+            49 => 'capital_maximum_basis',
+            50 => 'settlement_stage',
+            51 => 'failure_terrain_key',
+            52 => 'failure_ownership_policy',
         ],
         'data' => [
             0 => 'attempts_per_eligible_target',
@@ -284,6 +298,8 @@ return [
             19 => 'loss_per_turn',
             20 => 'base_units_per_resource',
             21 => 'substitution_units_per_shortage',
+            22 => 'capital_maximum_attraction_bonus',
+            23 => 'cost_money',
         ],
         'flavor' => [
         ],

@@ -13,8 +13,16 @@ return [
         ],
     ],
     'classification' => [
-        'behavior' => ['condition', 'title_key'],
-        'data' => [],
-        'flavor' => ['name', 'description', 'title_name'],
+        'behavior' => [
+            0 => 'condition',
+            1 => 'title_key',
+        ],
+        'data' => [
+        ],
+        'flavor' => [
+            0 => 'name',
+            1 => 'description',
+            2 => 'title_name',
+        ],
     ],
 ];

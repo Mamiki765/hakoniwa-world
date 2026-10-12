@@ -799,6 +799,20 @@ return [
                     ],
                     'fallback_selection' => 'single_uniform_draw_no_retry',
                 ],
+                'rescue' => [
+                    'monster_keys' => [
+                        0 => 'king_inora',
+                        1 => 'nyowamiya',
+                        2 => 'mecha_inora_zero',
+                    ],
+                    'empty_terrain_keys' => [
+                        0 => 'plain',
+                        1 => 'wasteland',
+                    ],
+                    'large_city_facility_key' => 'city',
+                    'eligibility' => 'existing_population_and_industrial_rank_conditions',
+                    'trigger' => 'no_normal_candidate',
+                ],
             ],
             'movement' => [
                 'candidate_attempts_per_action' => 3,
@@ -1069,6 +1083,7 @@ return [
                 'facility_keys' => [
                     0 => 'seabed_base',
                     1 => 'undersea_city',
+                    2 => 'undersea_fire_station',
                 ],
                 'ineffective_missile_keys' => [
                     0 => 'missile',
@@ -1196,6 +1211,11 @@ return [
             87 => 'defeat_terrain_key',
             88 => 'target_weight',
             89 => '/monster_system/item_drop/rarity_pools/high_quality/*',
+            90 => '/monster_system/natural_spawn/rescue/monster_keys/*',
+            91 => '/monster_system/natural_spawn/rescue/empty_terrain_keys/*',
+            92 => 'large_city_facility_key',
+            93 => 'eligibility',
+            94 => 'trigger',
         ],
         'data' => [
             0 => '/monster_definitions/2/natural_spawn_tier',

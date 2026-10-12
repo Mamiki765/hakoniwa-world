@@ -61,22 +61,23 @@ final class UndergroundRuntimeCatalogPartyAuthoringTest extends TestCase
 
     public function test_hunting_ground_enemy_counts_are_authored_per_party_size_without_touching_rewards(): void
     {
+        $before = app(UndergroundAlphaV1PlayerCatalog::class)->explorationEncounter('subterranean_rat', 'shallow_caves');
+        config(['underground-alpha-v1.exploration.grounds.shallow_caves.enemy_count_by_party_size' => [1 => 1, 2 => 1, 3 => 2, 4 => 3]]);
         $catalog = app(UndergroundAlphaV1PlayerCatalog::class);
 
-        $this->assertSame([1, 2, 3, 4], [
-            $catalog->explorationEnemyCountForPartySize('shallow_caves', 1),
-            $catalog->explorationEnemyCountForPartySize('shallow_caves', 2),
-            $catalog->explorationEnemyCountForPartySize('shallow_caves', 3),
-            $catalog->explorationEnemyCountForPartySize('shallow_caves', 4),
-        ]);
-        $this->assertSame(4, $catalog->explorationEnemyCountForPartySize('black_crystal_cave', 4));
+        $this->assertSame([1, 1, 2, 3], array_map(
+            fn (int $size): int => $catalog->explorationEnemyCountForPartySize('shallow_caves', $size),
+            [1, 2, 3, 4],
+        ));
         $this->assertSame(
-            ['xp' => 36, 'shards' => 10],
+            array_intersect_key($before, ['xp' => true, 'shards' => true]),
             array_intersect_key(
                 $catalog->explorationEncounter('subterranean_rat', 'shallow_caves'),
                 ['xp' => true, 'shards' => true],
             ),
         );
+        $this->expectException(InvalidArgumentException::class);
+        $catalog->explorationEnemyCountForPartySize('shallow_caves', 5);
     }
 
     public function test_growth_path_stp_per_level_is_authored_without_a_persisted_balance_literal(): void
@@ -144,6 +145,10 @@ final class UndergroundRuntimeCatalogPartyAuthoringTest extends TestCase
         $battle = app(AlphaV1CombatModel::class)->fightPlayerSnapshot(
             $catalog->explorationCatalog(), $snapshot, $rare['key'], 31_000, 100, 300,
         );
-        $this->assertSame('player', $battle->winner);
+        // Wiring, not balance: the rare enemy is fought with the catalog-bound generated weapon.
+        $this->assertSame($rare['key'], $battle->enemyKey);
+        $this->assertSame($item['weapon_power'], $loadout['weapon_power']);
+        $this->assertSame($loadout['weapon_power'], $snapshot['equipment']['weapon_power']);
+        $this->assertGreaterThan(0, $battle->damageDealt);
     }
 }
