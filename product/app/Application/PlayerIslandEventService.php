@@ -2,7 +2,6 @@
 
 namespace App\Application;
 
-use App\Models\FacilityDefinition;
 use App\Models\MapCell;
 use App\Models\Nation;
 use App\Models\NationCommandQueueItem;
@@ -13,8 +12,11 @@ use Illuminate\Support\Facades\DB;
 
 final class PlayerIslandEventService
 {
-    /** @var array<string,mixed>|null */
-    private ?array $expandedFacilityNames = null;
+    /** @var array<int, array<string, string>> */
+    private array $facilityNamesByRuleset = [];
+
+    /** @var array<string, string> */
+    private array $facilityNames = [];
 
     public const OWNER_TURNS_PER_PAGE = 12;
 
@@ -306,6 +308,7 @@ final class PlayerIslandEventService
             ? 'undersea-maintenance:'.$row->turn
             : 'event:'.$row->id)->values();
         $coordinates = $this->subjectCoordinates($rows->all());
+        $this->useFacilityNames($world);
         $events = $rows->map(function (object $row) use ($coordinates, $destinationNationNames, $nation): array {
             $metadata = $this->metadata($row->metadata);
             $eventType = (string) $row->event_type;
@@ -536,6 +539,7 @@ final class PlayerIslandEventService
 
         $destinationNationNames = $this->publicDestinationNationNames($world, $rows->all());
         $rows = $this->filterResolvablePublicDestinations($rows, $destinationNationNames);
+        $this->useFacilityNames($world);
         $events = $rows->map(function (object $row) use ($destinationNationNames): array {
             $rawMetadata = $this->metadata($row->metadata);
             $eventType = (string) $row->event_type;
@@ -1436,7 +1440,7 @@ final class PlayerIslandEventService
     {
         $facilityKey = $metadata['facility_key'] ?? null;
         $facilityName = is_string($metadata['facility_name'] ?? null) && $metadata['facility_name'] !== ''
-            ? $metadata['facility_name'] : $this->expandedFacilityName($facilityKey);
+            ? $metadata['facility_name'] : $this->facilityLabel($facilityKey);
         if (in_array($facilityKey, ['central_bank', 'central_granary'], true)) {
             return sprintf(
                 '%s(%s,%s)で%s整備が行われました。（Lv %s → %s）',
@@ -1797,15 +1801,15 @@ final class PlayerIslandEventService
                 number_format($this->integer($metadata, 'y')),
             ),
             'command.missile_base_built_public' => 'こころなしか、どこかで森が増えた気がします。',
-            'command.missile_base_built_private' => $this->privateConstructionMessage($metadata, 'ミサイル基地'),
+            'command.missile_base_built_private' => $this->privateConstructionMessage($metadata, $this->facilityLabel('missile_base')),
             'command.seabed_base_built_public' => 'どこかで海底基地が建設されたようです(?,?)。',
             'command.undersea_city_built_public' => 'どこかで海底都市が建設されたようです(?,?)。',
             'command.undersea_fire_station_built_public' => 'どこかで海底消防署が建設されたようです(?,?)。',
-            'command.seabed_base_built_private' => $this->privateConstructionMessage($metadata, '海底基地'),
-            'command.undersea_city_built_private' => $this->privateConstructionMessage($metadata, '海底都市'),
-            'command.undersea_fire_station_built_private' => $this->privateConstructionMessage($metadata, '海底消防署'),
-            'command.decoy_built_public' => $this->constructionMessage($metadata, '防衛施設'),
-            'command.decoy_built_private' => $this->privateConstructionMessage($metadata, 'ハリボテ'),
+            'command.seabed_base_built_private' => $this->privateConstructionMessage($metadata, $this->facilityLabel('seabed_base')),
+            'command.undersea_city_built_private' => $this->privateConstructionMessage($metadata, $this->facilityLabel('undersea_city')),
+            'command.undersea_fire_station_built_private' => $this->privateConstructionMessage($metadata, $this->facilityLabel('undersea_fire_station')),
+            'command.decoy_built_public' => $this->constructionMessage($metadata, $this->facilityLabel('defense')),
+            'command.decoy_built_private' => $this->privateConstructionMessage($metadata, $this->facilityLabel('decoy')),
             'command.facility_built_public' => $this->publicFacilityBuiltMessage($metadata),
             'command.logging_public' => 'こころなしか、どこかで森が減った気がします。',
             'command.logging_private' => sprintf(
@@ -2881,39 +2885,26 @@ final class PlayerIslandEventService
         };
     }
 
-    private function expandedFacilityName(mixed $key): string
+    private function useFacilityNames(World $world): void
     {
-        if (! is_string($key)) {
-            return $this->facilityLabel($key);
+        $rulesetId = (int) $world->ruleset_version_id;
+        if (! array_key_exists($rulesetId, $this->facilityNamesByRuleset)) {
+            $names = [];
+            foreach ($world->rulesetVersion->settings['facility_definitions'] ?? [] as $key => $definition) {
+                $name = $definition['name'] ?? null;
+                if (is_string($key) && is_string($name) && $name !== '') {
+                    $names[$key] = $name;
+                }
+            }
+            $this->facilityNamesByRuleset[$rulesetId] = $names;
         }
-        $this->expandedFacilityNames ??= FacilityDefinition::query()->pluck('name', 'key')->all();
-        $name = $this->expandedFacilityNames[$key] ?? null;
 
-        return is_string($name) && $name !== '' ? $name : $this->facilityLabel($key);
+        $this->facilityNames = $this->facilityNamesByRuleset[$rulesetId];
     }
 
     private function facilityLabel(mixed $key, string $fallback = '施設'): string
     {
-        return match ($key) {
-            'capital' => '首都',
-            'village' => '村',
-            'town' => '町',
-            'city' => '都市',
-            'farm' => '農場',
-            'factory' => '工場',
-            'mine' => '採掘場',
-            'missile_base' => 'ミサイル基地',
-            'seabed_oil_field' => '海底油田',
-            'defense' => '防衛施設',
-            'seabed_base' => '海底基地',
-            'undersea_city' => '海底都市',
-            'undersea_fire_station' => '海底消防署',
-            'monument' => '記念碑',
-            'decoy' => 'ハリボテ',
-            'central_bank' => '中央銀行',
-            'central_granary' => '中央穀倉',
-            default => $fallback,
-        };
+        return is_string($key) ? ($this->facilityNames[$key] ?? $fallback) : $fallback;
     }
 
     private function resourceLabel(mixed $key): string
