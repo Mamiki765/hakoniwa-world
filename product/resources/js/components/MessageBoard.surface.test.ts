@@ -123,7 +123,7 @@ describe('MessageBoard', () => {
         const wrapper = mount(MessageBoard, { props: { nationId: 2, context: 'public' } });
         await flushPromises();
 
-        expect(wrapper.find('label[for="message-board-secret-body"]').text()).toMatch(new RegExp(`\\b${display}`));
+        expect(wrapper.find('.message-board-secret-toggle').text()).toBe(`秘密（${display}）`);
         wrapper.unmount();
     });
 
@@ -132,7 +132,7 @@ describe('MessageBoard', () => {
         const wrapper = mount(MessageBoard, { props: { nationId: 2, context: 'public' } });
         await flushPromises();
         const normal = wrapper.find<HTMLTextAreaElement>('#message-board-body');
-        const button = wrapper.find<HTMLButtonElement>('.message-board-form:not(.secret-form) button');
+        const button = wrapper.find<HTMLButtonElement>('.message-board-form button');
 
         await normal.setValue(`${'あ'.repeat(100)}${'A'.repeat(39)}😀`);
         expect(wrapper.find('#message-board-counter').text()).toBe('140 / 140');
@@ -146,6 +146,29 @@ describe('MessageBoard', () => {
         wrapper.unmount();
     });
 
+    it('puts the single composer above the timeline and posts publicly while the secret box is unchecked', async () => {
+        const fetchMock = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => response(
+            ownerTimeline, init?.method === 'POST' ? 201 : 200,
+        ));
+        vi.stubGlobal('fetch', fetchMock);
+        const wrapper = mount(MessageBoard, { props: { nationId: 2, context: 'public' } });
+        await flushPromises();
+
+        const form = wrapper.find('.message-board-form').element;
+        const timeline = wrapper.find('.message-board-timeline').element;
+        expect(form.compareDocumentPosition(timeline) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+        expect(wrapper.find<HTMLInputElement>('#message-board-secret').element.checked).toBe(false);
+        expect(wrapper.find('.message-board-form button').text()).toBe('投稿');
+
+        await wrapper.find('#message-board-body').setValue('公開の伝言');
+        await wrapper.find('.message-board-form').trigger('submit');
+        await flushPromises();
+
+        const request = fetchMock.mock.calls.find(([, init]) => init?.method === 'POST');
+        expect(String(request?.[0])).toBe('/api/v1/nations/2/message-board');
+        wrapper.unmount();
+    });
+
     it('keeps failed posts out of the timeline and shows cooldown guidance', async () => {
         const fetchMock = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
             if (init?.method === 'POST') return response(null, 429, '次の投稿まで7秒お待ちください。');
@@ -156,7 +179,7 @@ describe('MessageBoard', () => {
         await flushPromises();
 
         await wrapper.find('#message-board-body').setValue('frontend-only-message');
-        await wrapper.find('.message-board-form:not(.secret-form)').trigger('submit');
+        await wrapper.find('.message-board-form').trigger('submit');
         await flushPromises();
 
         expect(wrapper.text()).toContain('次の投稿まで7秒お待ちください。');
@@ -182,7 +205,7 @@ describe('MessageBoard', () => {
         const wrapper = mount(MessageBoard, { props: { nationId: 2, context: 'public' } });
         await flushPromises();
         await wrapper.find('#message-board-body').setValue('client draft');
-        await wrapper.find('.message-board-form:not(.secret-form)').trigger('submit');
+        await wrapper.find('.message-board-form').trigger('submit');
         await flushPromises();
 
         expect(wrapper.find('.message-board-body').text()).toBe('server-normalized');
@@ -214,7 +237,7 @@ describe('MessageBoard', () => {
         await flushPromises();
         await vi.advanceTimersByTimeAsync(60_000);
         await wrapper.find('#message-board-body').setValue('投稿成功');
-        await wrapper.find('.message-board-form:not(.secret-form)').trigger('submit');
+        await wrapper.find('.message-board-form').trigger('submit');
         await flushPromises();
         expect(wrapper.find('.message-board-body').text()).toBe('投稿成功');
 
@@ -240,9 +263,13 @@ describe('MessageBoard', () => {
         vi.stubGlobal('fetch', fetchMock);
         const wrapper = mount(MessageBoard, { props: { nationId: 2, context: 'public' } });
         await flushPromises();
-        const secret = wrapper.find<HTMLTextAreaElement>('#message-board-secret-body');
+        expect(wrapper.findAll('form')).toHaveLength(1);
+        expect(wrapper.findAll('textarea')).toHaveLength(1);
+        await wrapper.find('#message-board-secret').setValue(true);
+        const secret = wrapper.find<HTMLTextAreaElement>('#message-board-body');
 
         const secretButton = () => wrapper.find<HTMLButtonElement>('.secret-form button');
+        expect(secretButton().text()).toBe('秘密通信を送る');
         await secret.setValue(`${'秘'.repeat(139)}😀`);
         expect(secretButton().attributes('disabled')).toBeUndefined();
         await secret.setValue(`${'秘'.repeat(140)}😀`);
@@ -257,6 +284,9 @@ describe('MessageBoard', () => {
         expect(wrapper.find('.message-board-timeline').text()).toContain('送信島');
         expect(wrapper.find('.message-board-body').text()).toBe('秘密本文');
         expect(secret.element.value).toBe('');
+        // 送れたら次の書き込みで費用を払わないようチェックを外す。
+        expect(wrapper.find<HTMLInputElement>('#message-board-secret').element.checked).toBe(false);
+        expect(wrapper.find('.message-board-form button').text()).toBe('投稿');
         wrapper.unmount();
     });
 
@@ -279,7 +309,7 @@ describe('MessageBoard', () => {
 
         expect(wrapper.find('.message-secret').text()).toContain('[N2 受信島への秘密通信]');
         expect(wrapper.find('.message-board-body').text()).toBe('送信済み本文');
-        expect(wrapper.find('.secret-form').exists()).toBe(false);
+        expect(wrapper.find('#message-board-secret').exists()).toBe(false);
         wrapper.unmount();
     });
 
@@ -293,11 +323,13 @@ describe('MessageBoard', () => {
         await flushPromises();
         const originalCount = wrapper.findAll('.message-board-timeline li').length;
 
-        await wrapper.find('#message-board-secret-body').setValue('再送する秘密');
+        await wrapper.find('#message-board-secret').setValue(true);
+        await wrapper.find('#message-board-body').setValue('再送する秘密');
         await wrapper.find('.secret-form').trigger('submit');
         await flushPromises();
 
-        expect(wrapper.find<HTMLTextAreaElement>('#message-board-secret-body').element.value).toBe('再送する秘密');
+        expect(wrapper.find<HTMLTextAreaElement>('#message-board-body').element.value).toBe('再送する秘密');
+        expect(wrapper.find<HTMLInputElement>('#message-board-secret').element.checked).toBe(true);
         expect(wrapper.findAll('.message-board-timeline li')).toHaveLength(originalCount);
         expect(wrapper.text()).toContain('送信に失敗しました。');
         wrapper.unmount();

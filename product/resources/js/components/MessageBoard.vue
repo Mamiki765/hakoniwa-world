@@ -12,12 +12,12 @@ const emit = defineEmits<{ posted: []; latest: [mark: BoardMark | null]; shown: 
 
 const timeline = ref<MessageBoardTimeline | null>(null);
 const body = ref('');
-const secretBody = ref('');
+// 入力欄はひとつ。チェックを入れたときだけ秘密通信として送る（費用がかかる）。
+const secret = ref(false);
 const loading = ref(true);
 const posting = ref(false);
 const error = ref('');
 const postError = ref('');
-const secretError = ref('');
 const collapsed = ref(false);
 let refreshTimer: ReturnType<typeof setInterval> | null = null;
 let loadGeneration = 0;
@@ -29,10 +29,12 @@ watch(timeline, (loaded) => {
 // 本文（伝言の一覧）をいま出せているか。読み込み中と取得失敗のあいだは出せていない。
 watch(() => timeline.value !== null && !loading.value && error.value === '', (shown) => emit('shown', shown), { immediate: true });
 
+const canPost = computed(() => timeline.value?.viewer.can_post === true);
+const canSendSecret = computed(() => timeline.value?.viewer.can_send_secret === true);
+// 通常投稿ができず秘密通信だけ送れるときは、秘密に固定する。
+const sendsSecret = computed(() => canSendSecret.value && (secret.value || !canPost.value));
 const bodyLength = computed(() => Array.from(body.value).length);
-const secretBodyLength = computed(() => Array.from(secretBody.value).length);
 const bodyInvalid = computed(() => bodyLength.value < 1 || bodyLength.value > 140);
-const secretBodyInvalid = computed(() => secretBodyLength.value < 1 || secretBodyLength.value > 140);
 const preferenceKey = computed(() => `hakoniwa.message-board.collapsed:${props.context}`);
 const contentId = computed(() => `message-board-content-${props.context}-${props.nationId}`);
 
@@ -77,39 +79,25 @@ async function load(showLoading = true): Promise<void> {
     }
 }
 
-async function postPublic(): Promise<void> {
+async function post(): Promise<void> {
     if (bodyInvalid.value || posting.value) return;
+    const asSecret = sendsSecret.value;
+    if (!asSecret && !canPost.value) return;
     posting.value = true;
     loadGeneration++;
     postError.value = '';
     try {
-        timeline.value = await api<MessageBoardTimeline>(`/api/v1/nations/${props.nationId}/message-board`, {
+        const path = `/api/v1/nations/${props.nationId}/message-board${asSecret ? '/secret' : ''}`;
+        timeline.value = await api<MessageBoardTimeline>(path, {
             method: 'POST',
             body: JSON.stringify({ body: body.value }),
         });
         body.value = '';
+        // 次の書き込みでうっかり費用を払わないよう、送れたらチェックを外す。
+        secret.value = false;
         emit('posted');
     } catch (caught) {
-        postError.value = apiMessage(caught, '伝言を投稿できませんでした。');
-    } finally {
-        posting.value = false;
-    }
-}
-
-async function postSecret(): Promise<void> {
-    if (secretBodyInvalid.value || posting.value) return;
-    posting.value = true;
-    loadGeneration++;
-    secretError.value = '';
-    try {
-        timeline.value = await api<MessageBoardTimeline>(`/api/v1/nations/${props.nationId}/message-board/secret`, {
-            method: 'POST',
-            body: JSON.stringify({ body: secretBody.value }),
-        });
-        secretBody.value = '';
-        emit('posted');
-    } catch (caught) {
-        secretError.value = apiMessage(caught, '秘密通信を送信できませんでした。');
+        postError.value = apiMessage(caught, asSecret ? '秘密通信を送信できませんでした。' : '伝言を投稿できませんでした。');
     } finally {
         posting.value = false;
     }
@@ -161,6 +149,46 @@ function formatDate(value: string): string {
         </header>
 
         <div v-show="!collapsed" :id="contentId" class="message-board-content">
+            <form
+                v-if="canPost || canSendSecret"
+                class="message-board-form"
+                :class="{ 'secret-form': sendsSecret }"
+                @submit.prevent="post"
+            >
+                <label for="message-board-body" class="message-board-form-label">{{ sendsSecret ? '秘密通信' : '伝言を書く' }}</label>
+                <textarea
+                    id="message-board-body"
+                    v-model="body"
+                    rows="3"
+                    :aria-invalid="bodyLength > 140"
+                    aria-describedby="message-board-counter message-board-error"
+                ></textarea>
+                <div class="message-board-form-footer">
+                    <label v-if="canSendSecret" class="message-board-secret-toggle">
+                        <input
+                            id="message-board-secret"
+                            type="checkbox"
+                            :checked="sendsSecret"
+                            :disabled="!canPost"
+                            @change="secret = ($event.target as HTMLInputElement).checked"
+                        >
+                        <span>秘密（{{ timeline?.contract.secret_cost_display }}）</span>
+                    </label>
+                    <span
+                        id="message-board-counter"
+                        class="character-counter"
+                        :class="{ over: bodyLength > 140 }"
+                    >{{ bodyLength }} / 140</span>
+                    <button class="button primary" type="submit" :disabled="bodyInvalid || posting">
+                        {{ sendsSecret ? '秘密通信を送る' : '投稿' }}
+                    </button>
+                </div>
+                <p v-if="postError" id="message-board-error" class="field-error" role="alert">{{ postError }}</p>
+            </form>
+            <p v-else-if="timeline && !timeline.viewer.authenticated" class="message-board-read-only">
+                閲覧のみです。投稿にはログインが必要です。
+            </p>
+
             <p v-if="loading" class="message-board-status" role="status">伝言板を読み込んでいます…</p>
             <p v-else-if="error" class="field-error" role="alert">{{ error }}</p>
             <ol v-else-if="timeline?.entries.length" class="message-board-timeline" aria-label="最新16件の伝言">
@@ -183,49 +211,6 @@ function formatDate(value: string): string {
                 </li>
             </ol>
             <p v-else class="empty-state">伝言はまだありません。</p>
-
-            <form v-if="timeline?.viewer.can_post" class="message-board-form" @submit.prevent="postPublic">
-                <label for="message-board-body">通常伝言（プレーンテキスト）</label>
-                <textarea
-                    id="message-board-body"
-                    v-model="body"
-                    rows="3"
-                    :aria-invalid="bodyLength > 140"
-                    aria-describedby="message-board-counter message-board-error"
-                ></textarea>
-                <div class="message-board-form-footer">
-                    <span
-                        id="message-board-counter"
-                        class="character-counter"
-                        :class="{ over: bodyLength > 140 }"
-                    >{{ bodyLength }} / 140</span>
-                    <button class="button primary" type="submit" :disabled="bodyInvalid || posting">投稿</button>
-                </div>
-                <p v-if="postError" id="message-board-error" class="field-error" role="alert">{{ postError }}</p>
-            </form>
-            <p v-else-if="timeline && !timeline.viewer.authenticated" class="message-board-read-only">
-                閲覧のみです。投稿にはログインが必要です。
-            </p>
-
-            <form v-if="timeline?.viewer.can_send_secret" class="message-board-form secret-form" @submit.prevent="postSecret">
-                <label for="message-board-secret-body">秘密通信（費用 {{ timeline.contract.secret_cost_display }}）</label>
-                <textarea
-                    id="message-board-secret-body"
-                    v-model="secretBody"
-                    rows="3"
-                    :aria-invalid="secretBodyLength > 140"
-                    aria-describedby="message-board-secret-counter message-board-secret-error"
-                ></textarea>
-                <div class="message-board-form-footer">
-                    <span
-                        id="message-board-secret-counter"
-                        class="character-counter"
-                        :class="{ over: secretBodyLength > 140 }"
-                    >{{ secretBodyLength }} / 140</span>
-                    <button class="button primary" type="submit" :disabled="secretBodyInvalid || posting">秘密通信を送る</button>
-                </div>
-                <p v-if="secretError" id="message-board-secret-error" class="field-error" role="alert">{{ secretError }}</p>
-            </form>
         </div>
     </section>
 </template>

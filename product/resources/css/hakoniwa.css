@@ -1179,7 +1179,7 @@ html:is([data-theme="dark"], [data-theme="old-dark"]) .compensation-banner, html
 .message-author-other_nation .message-board-meta strong,
 .message-author-visitor .message-board-meta strong { color: var(--navy); }
 .message-board-body { margin: 5px 0 0; white-space: pre-wrap; overflow-wrap: anywhere; }
-.message-board-form { display: grid; gap: 7px; margin-top: 18px; padding-top: 16px; border-top: 1px solid var(--line); }
+.message-board-form { display: grid; gap: 7px; margin-bottom: 18px; padding-bottom: 16px; border-bottom: 1px solid var(--line); }
 .message-board-form label { font-weight: 800; }
 .message-board-form textarea { width: 100%; min-height: 84px; resize: vertical; padding: 10px; border: 1px solid var(--line); background: var(--input-surface); color: var(--ink); }
 .message-board-form textarea[aria-invalid="true"] { border-color: var(--coral); outline-color: var(--coral); }
@@ -1187,6 +1187,10 @@ html:is([data-theme="dark"], [data-theme="old-dark"]) .compensation-banner, html
 .character-counter { color: var(--muted); font-variant-numeric: tabular-nums; }
 .character-counter.over { color: var(--coral); font-weight: 900; }
 .secret-form { color: var(--ink); }
+.message-board-form.secret-form textarea { border-color: var(--ink); background: rgba(31,42,46,.06); }
+.message-board-form-footer .character-counter { margin-left: auto; }
+.message-board-secret-toggle { display: inline-flex; align-items: center; gap: 6px; min-height: 40px; font-weight: 700; cursor: pointer; }
+.message-board-secret-toggle input { width: 18px; height: 18px; margin: 0; }
 .message-board-read-only, .message-board-status { color: var(--muted); }
 
 .resource-panel { margin: 10px 0; padding: 10px 12px; border: 1px solid var(--line); background: var(--paper); }
