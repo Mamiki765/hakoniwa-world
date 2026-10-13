@@ -24,6 +24,7 @@ use App\Models\TurnRun;
 use App\Models\User;
 use App\Models\World;
 use Illuminate\Support\Facades\DB;
+use PHPUnit\Framework\Attributes\DataProvider;
 use RuntimeException;
 use Tests\Concerns\UsesReusableSurfaceWorld;
 use Tests\TestCase;
@@ -487,6 +488,98 @@ final class TradingPostApiTest extends TestCase
         $this->assertSame($moneyCapacity, $capacityBidderNation->fresh()->money);
         $this->assertDatabaseHas('audit_events', ['event_type' => 'trading_post.bid_placed']);
         $this->assertDatabaseHas('audit_events', ['event_type' => 'trading_post.outbid_refunded']);
+    }
+
+    /**
+     * Normal sale preferences must not discard incoming overflow that can still
+     * be sold. Each case also preserves one legitimate unsold remainder boundary.
+     */
+    #[DataProvider('nonStockpileOverflowCases')]
+    public function test_non_food_delivery_sells_overflow_independently_of_sale_preferences(
+        string $policy,
+        string $resourceKey,
+        bool $moneyLimited,
+    ): void {
+        $world = $this->lightweightWorld();
+        [$seller, $sellerNation] = $this->ownerAndNation($world, '超過売島');
+        [$buyer, $buyerNation] = $this->ownerAndNation($world, '超過買島');
+        $resource = $this->resource($resourceKey);
+        $ruleset = $world->rulesetVersion()->sole();
+        $rate = $ruleset->settings['inventory_sale_rates'][$resourceKey];
+        $inventoryBatch = $rate['inventory_units'];
+        $moneyBatch = $rate['money_units'];
+        $quantity = $moneyLimited ? 3 * $inventoryBatch : 2 * $inventoryBatch - 1;
+        $winningBid = $moneyLimited ? 3 * $moneyBatch - 1 : 101;
+        $capacity = app(NationCapacityResolver::class)->resolve($buyerNation, $ruleset);
+        $resourceCapacity = $capacity->resource($resourceKey);
+        $this->assertIsInt($resourceCapacity);
+        $moneyBeforeBid = $moneyLimited ? $capacity->money : 1_000;
+        $buyerNation->update(['money' => $moneyBeforeBid]);
+        $this->setResource($sellerNation, $resource, $quantity);
+        $this->setResource($buyerNation, $resource, $resourceCapacity);
+
+        $escrow = $policy === 'keep_amount' ? $inventoryBatch : 0;
+        if ($escrow > 0) {
+            $this->actingAs($buyer)->postJson($this->listingUrl($buyerNation), [
+                'product_type' => 'resource', 'resource_definition_id' => $resource->id,
+                'quantity' => $escrow, 'start_price' => 1,
+                'duration_turns' => TradingPostRules::fromSettings($ruleset->settings)->maximumDurationTurns,
+                'auto_relist' => false,
+            ])->assertCreated();
+        }
+        $keepAmount = $policy === 'keep_amount' ? $resourceCapacity - $escrow : null;
+        $this->actingAs($buyer)->putJson(
+            "/api/v1/nations/{$buyerNation->id}/resources/{$resource->id}/sale-policy",
+            ['policy' => $policy, 'keep_amount' => $keepAmount, 'expected_version' => 1],
+        )->assertOk();
+        $duration = TradingPostRules::fromSettings($ruleset->settings)->minimumDurationTurns;
+        $listingId = (int) $this->actingAs($seller)->postJson($this->listingUrl($sellerNation), [
+            'product_type' => 'resource', 'resource_definition_id' => $resource->id,
+            'quantity' => $quantity, 'start_price' => $winningBid,
+            'duration_turns' => $duration, 'auto_relist' => false,
+        ])->assertCreated()->json('data.id');
+        $this->actingAs($buyer)->postJson($this->bidUrl($buyerNation, $listingId), ['amount' => $winningBid])->assertOk();
+
+        app(CompleteTurnEngine::class)->execute('enforce_capacities', $this->context(
+            $world, (int) $world->current_turn + $duration,
+            [$sellerNation->id, $buyerNation->id], 'non-stockpile-overflow-'.$policy,
+        ));
+        $sold = ($moneyLimited ? 2 : 1) * $inventoryBatch;
+        $revenue = ($moneyLimited ? 2 : 1) * $moneyBatch;
+        $discarded = $quantity - $sold;
+        $this->assertSame($resourceCapacity - $escrow, $this->resourceAmount($buyerNation, $resource));
+        $this->assertSame($moneyBeforeBid - $winningBid + $revenue, (int) $buyerNation->fresh()->money);
+        $settlement = json_decode((string) DB::table('audit_events')->where('event_type', 'trading_post.sold')
+            ->where('subject_id', $listingId)->value('metadata'), true, 512, JSON_THROW_ON_ERROR);
+        $this->assertSame(0, $settlement['stored_quantity']);
+        $this->assertSame($sold, $settlement['overflow_sold_quantity']);
+        $this->assertSame($discarded, $settlement['overflow_discarded_quantity']);
+        $sale = DB::table('audit_events')->where('event_type', 'resource.automatic_sale')
+            ->where('nation_id', $buyerNation->id)->sole();
+        $saleMetadata = json_decode((string) $sale->metadata, true, 512, JSON_THROW_ON_ERROR);
+        $this->assertSame('nation', $sale->visibility);
+        $this->assertSame([$policy, $keepAmount, $sold, $revenue], [
+            $saleMetadata['policy'], $saleMetadata['keep_amount'], $saleMetadata['sold'], $saleMetadata['revenue'],
+        ]);
+        $overflows = DB::table('audit_events')->where('event_type', 'capacity.overflow')
+            ->where('nation_id', $buyerNation->id)->get();
+        if ($discarded > 0) {
+            $overflow = $overflows->sole();
+            $metadata = json_decode((string) $overflow->metadata, true, 512, JSON_THROW_ON_ERROR);
+            $this->assertSame('nation', $overflow->visibility);
+            $this->assertSame([$sold, $discarded], [$metadata['sold'], $metadata['overflow']]);
+        } else {
+            $this->assertCount(0, $overflows);
+        }
+    }
+
+    /** @return array<string, array{string, string, bool}> */
+    public static function nonStockpileOverflowCases(): array
+    {
+        return [
+            'keep_amount_with_limited_money_capacity' => ['keep_amount', 'oil', true],
+            'sell_all_with_unsalable_fractional_batch' => ['sell_all', 'industrial_goods', false],
+        ];
     }
 
     public function test_settlement_is_rollback_safe_delivers_once_pays_ninety_percent_and_precedes_capacity_enforcement(): void

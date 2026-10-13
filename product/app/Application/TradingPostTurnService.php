@@ -320,42 +320,40 @@ final class TradingPostTurnService
                 ->where('nation_id', $winner->id)
                 ->where('resource_definition_id', $resource->id)
                 ->lockForUpdate()
-                ->value('policy');
-            $policy = $storedPolicy ?? $settings['default_sale_policy'];
+                ->first(['policy', 'keep_amount']);
+            $policy = $storedPolicy?->policy ?? $settings['default_sale_policy'];
             if (! SalePolicy::isSupported($policy)) {
                 throw new DomainException("Stored sale policy for {$resource->key} is invalid.");
             }
-            if ($policy === SalePolicy::Stockpile->value) {
-                $rate = $this->inventorySaleRate($settings['inventory_sale_rates'], $resource->key);
-                $quote = $this->sales->plan(
-                    $overflowQuantity,
-                    (int) $winner->money,
-                    $this->boundedAssets->liquidMoneyCapacity($winner, $capacity->money),
-                    $rate['inventory_units'],
-                    $rate['money_units'],
-                );
-                $soldQuantity = $quote->inventorySold;
-                $discardedQuantity = $quote->inventoryRemaining;
-                if ($quote->appliedMoney > 0) {
-                    $winner->increment('money', $quote->appliedMoney);
-                }
-                if ($soldQuantity > 0) {
-                    $this->events->record($context, 'resource.automatic_sale', $winner, [
-                        'resource_key' => $resource->key,
-                        'policy' => $policy,
-                        'keep_amount' => null,
-                        'before' => $before + $listing->quantity,
-                        'requested' => $overflowQuantity,
-                        'sold' => $soldQuantity,
-                        'revenue' => $quote->appliedMoney,
-                        'after' => $before + $storedQuantity,
-                        'sale_reason' => 'capacity_overflow',
-                        'source' => 'trading_post_delivery',
-                        'resource_capacity' => $resourceCapacity,
-                        'resource_escrow' => $resourceEscrow,
-                        'money_capacity' => $capacity->money,
-                    ]);
-                }
+            $rate = $this->inventorySaleRate($settings['inventory_sale_rates'], $resource->key);
+            $quote = $this->sales->plan(
+                $overflowQuantity,
+                (int) $winner->money,
+                $this->boundedAssets->liquidMoneyCapacity($winner, $capacity->money),
+                $rate['inventory_units'],
+                $rate['money_units'],
+            );
+            $soldQuantity = $quote->inventorySold;
+            $discardedQuantity = $quote->inventoryRemaining;
+            if ($quote->appliedMoney > 0) {
+                $winner->increment('money', $quote->appliedMoney);
+            }
+            if ($soldQuantity > 0) {
+                $this->events->record($context, 'resource.automatic_sale', $winner, [
+                    'resource_key' => $resource->key,
+                    'policy' => $policy,
+                    'keep_amount' => $storedPolicy?->keep_amount,
+                    'before' => $before + $listing->quantity,
+                    'requested' => $overflowQuantity,
+                    'sold' => $soldQuantity,
+                    'revenue' => $quote->appliedMoney,
+                    'after' => $before + $storedQuantity,
+                    'sale_reason' => 'capacity_overflow',
+                    'source' => 'trading_post_delivery',
+                    'resource_capacity' => $resourceCapacity,
+                    'resource_escrow' => $resourceEscrow,
+                    'money_capacity' => $capacity->money,
+                ]);
             }
             if ($discardedQuantity > 0) {
                 $this->events->record($context, 'capacity.overflow', $winner, [
