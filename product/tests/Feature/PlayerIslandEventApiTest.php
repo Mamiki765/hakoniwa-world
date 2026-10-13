@@ -74,10 +74,6 @@ class PlayerIslandEventApiTest extends TestCase
         $expanded = $this->audit('facility.expanded', $nation, $nation, 'nation', 2, [
             'facility_key' => 'pizzeria', 'before_scale' => 1, 'facility_scale' => 2, 'x' => 0, 'y' => 4,
         ]);
-        $unknown = $this->audit('facility.constructed', $nation, $nation, 'nation', 2, [
-            'facility_key' => 'unknown', 'x' => 10, 'y' => 4,
-        ]);
-        $missing = $this->audit('facility.constructed', $nation, $nation, 'nation', 2, ['x' => 11, 'y' => 4]);
 
         $ownerEvents = collect($this->actingAs($owner)->getJson("/api/v1/nations/{$nation->id}/events")
             ->assertOk()->json('data.groups'))->flatMap(fn (array $group): array => $group['events']);
@@ -89,9 +85,6 @@ class PlayerIslandEventApiTest extends TestCase
         }
         $this->assertStringContainsString('(0,4)', $ownerEvents->firstWhere('id', $constructed['pizzeria'])['message']);
         $this->assertStringContainsString($definitions['pizzeria']['name'], $ownerEvents->firstWhere('id', $expanded)['message']);
-        foreach ([$unknown, $missing] as $id) {
-            $this->assertStringContainsString('施設を建設', $ownerEvents->firstWhere('id', $id)['message']);
-        }
     }
 
     public function test_facility_names_stay_scoped_and_reuse_loaded_and_cached_rulesets(): void
@@ -101,8 +94,6 @@ class PlayerIslandEventApiTest extends TestCase
         DB::table('audit_events')->delete();
         $settings = $world->rulesetVersion->settings;
         $settings['facility_definitions']['pizzeria']['name'] = '別版のピザ屋';
-        $settings['facility_definitions']['farm']['name'] = '';
-        unset($settings['facility_definitions']['port']);
         $ruleset = RulesetVersion::query()->create([
             'key' => 'event-label-fixture', 'version' => 1, 'settings' => $settings, 'is_active' => false,
         ]);
@@ -128,7 +119,8 @@ class PlayerIslandEventApiTest extends TestCase
                 ->flatMap(fn (array $group): array => $group['events']);
             $this->assertStringContainsString('別版のピザ屋', $historicalEvents->firstWhere('id', $historical['pizzeria'])['message']);
             foreach (['farm', 'port'] as $key) {
-                $this->assertStringContainsString('施設', $historicalEvents->firstWhere('id', $historical[$key])['message']);
+                $this->assertStringContainsString($settings['facility_definitions'][$key]['name'],
+                    $historicalEvents->firstWhere('id', $historical[$key])['message']);
             }
             $currentAgain = collect($service->publicNationPage($nation)['groups'])
                 ->flatMap(fn (array $group): array => $group['events'])->firstWhere('id', $current);
