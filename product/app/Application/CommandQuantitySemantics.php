@@ -17,13 +17,12 @@ final class CommandQuantitySemantics
     ) {}
 
     /** @var list<string> */
-    private const QUANTITY_COMMAND_KEYS = [
+    private const REPEATED_FACILITY_BUILD_KEYS = [
         'build_farm', 'build_factory', 'build_mine',
         'build_fast_farm', 'build_fast_factory', 'build_fast_mine',
         'build_central_bank', 'build_central_granary',
         'build_pizzeria',
         'build_thermal_power',
-        'missile', 'pp_missile', 'land_destruction_missile', 'spp_missile',
     ];
 
     public const ORDINARY = 'ordinary';
@@ -37,7 +36,8 @@ final class CommandQuantitySemantics
         if (is_string($definition->metadata['quantity_selects_catalog'] ?? null)) {
             return self::SELECTOR;
         }
-        if (in_array($definition->key, self::QUANTITY_COMMAND_KEYS, true)
+        if ($this->isRepeatedFacilityBuild($definition->key)
+            || in_array($definition->key, ['missile', 'pp_missile', 'land_destruction_missile', 'spp_missile'], true)
             || is_string($definition->metadata['oil_search_effect_key'] ?? null)
             || is_int($definition->metadata['transfer_money_per_quantity'] ?? null)
             || is_int($definition->metadata['transfer_food_tons_per_quantity'] ?? null)) {
@@ -45,6 +45,11 @@ final class CommandQuantitySemantics
         }
 
         return self::UNUSED;
+    }
+
+    public function isRepeatedFacilityBuild(string $commandKey): bool
+    {
+        return in_array($commandKey, self::REPEATED_FACILITY_BUILD_KEYS, true);
     }
 
     public function presentationDefault(CommandDefinition $definition): ?int

@@ -53,15 +53,6 @@ use Illuminate\Support\Facades\DB;
 final class DomesticCommandExecutor
 {
     /** @var list<string> */
-    private const QUANTITY_COMMANDS = [
-        'build_farm', 'build_factory', 'build_mine',
-        'build_fast_farm', 'build_fast_factory', 'build_fast_mine',
-        'build_central_bank', 'build_central_granary',
-        'build_pizzeria',
-        'build_thermal_power',
-    ];
-
-    /** @var list<string> */
     private const CAPITAL_DESTRUCTIVE_COMMANDS = ['land_clear', 'land_level', 'excavate', 'territory_abandon'];
 
     public function __construct(
@@ -76,6 +67,7 @@ final class DomesticCommandExecutor
         private readonly CapitalCorePolicy $capitalCores,
         private readonly ChunkCoordinateService $chunks,
         private readonly NationCommandTargetService $nationTargets,
+        private readonly CommandQuantitySemantics $quantitySemantics,
         private readonly SecretaryItemGameplayContract $secretaryItems,
         private readonly SecretaryProductionBonus $secretaryProduction,
         private readonly SecretaryRingFinanceBonus $ringFinance,
@@ -219,7 +211,7 @@ final class DomesticCommandExecutor
 
                 $consumedTurn = (bool) ($definition->metadata['consumes_turn'] ?? true);
                 $remainingQuantity = $item->quantity;
-                if (in_array($definition->key, self::QUANTITY_COMMANDS, true) && $item->quantity > 1) {
+                if ($this->quantitySemantics->isRepeatedFacilityBuild($definition->key) && $item->quantity > 1) {
                     $remainingQuantity = $item->quantity - 1;
                     $item->update([
                         'quantity' => $remainingQuantity,
@@ -790,7 +782,7 @@ final class DomesticCommandExecutor
 
     private function isMatchingQuantityFacility(CommandDefinition $definition, MapCell $cell): bool
     {
-        return in_array($definition->key, self::QUANTITY_COMMANDS, true)
+        return $this->quantitySemantics->isRepeatedFacilityBuild($definition->key)
             && $definition->result_facility_key !== null
             && $cell->facility?->key === $definition->result_facility_key;
     }
