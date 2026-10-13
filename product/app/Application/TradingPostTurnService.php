@@ -321,7 +321,7 @@ final class TradingPostTurnService
                 ->where('resource_definition_id', $resource->id)
                 ->lockForUpdate()
                 ->first(['policy', 'keep_amount']);
-            $policy = $storedPolicy?->policy ?? $settings['default_sale_policy'];
+            $policy = $storedPolicy->policy ?? $settings['default_sale_policy'];
             if (! SalePolicy::isSupported($policy)) {
                 throw new DomainException("Stored sale policy for {$resource->key} is invalid.");
             }
