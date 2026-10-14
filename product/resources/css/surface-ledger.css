@@ -288,6 +288,8 @@ html .sl h2 { font: var(--sl-w-head) 14px var(--sl-f-head); display: block; min-
 .sl-cmd .cost .shortfall { font-size: 10px; color: var(--sl-bad); }
 .sl .sl-cmd.short { color: var(--sl-ink-2); background: transparent; border-style: dashed; }
 .sl .sl-cmd.later { border-style: dotted; }
+.sl .sl-ship-build-note { margin: 0 10px; font-size: 11px; color: var(--sl-ink-2); }
+.sl-dialog .sl-ship-build-note { margin: 0; font-size: 12px; }
 
 /* ================= 開発計画（帳簿） ================= */
 .sl-plan { grid-area: plan; border-left: 1px solid var(--sl-line); position: relative; }
@@ -316,6 +318,8 @@ html .sl h2 { font: var(--sl-w-head) 14px var(--sl-f-head); display: block; min-
 .sl-pr-name { min-width: 0; line-height: 1.25; overflow-wrap: anywhere; }
 .sl-pr-name .danger-suffix { color: var(--sl-bad); }
 .sl-pr.selected .danger-suffix { color: inherit; }
+.sl-pr-via { margin-left: 5px; font-size: 10px; border: 1px solid currentColor; border-radius: 2px; padding: 0 3px; color: var(--sl-ink-2); }
+.sl-pr.selected .sl-pr-via { color: inherit; }
 .sl-pr-at { font: 12px var(--sl-f-num); font-variant-numeric: tabular-nums; color: var(--sl-ink-2); white-space: nowrap; }
 .sl-qty { display: grid; gap: 6px; padding: 8px 10px; border-bottom: 1px solid var(--sl-line); background: var(--sl-panel-2); font-size: 13px; }
 .sl-qty .preset-row, .sl-dialog .preset-row { display: flex; flex-wrap: wrap; gap: 4px; }

@@ -19,6 +19,7 @@ use App\Domain\Command\WindPowerRepairPolicy;
 use App\Domain\Concurrency\OptimisticLockException;
 use App\Domain\Facility\FacilityCapacityService;
 use App\Domain\Ruleset\ResetRequiredException;
+use App\Domain\Ship\SurfaceShipCatalog;
 use App\Domain\Underground\Facility\UndergroundCommandCatalog;
 use App\Domain\Underground\Facility\UndergroundCommandDefinition;
 use App\Http\Controllers\Controller;
@@ -29,6 +30,7 @@ use App\Models\MapSpace;
 use App\Models\Nation;
 use App\Models\NationCommandQueue;
 use App\Models\NationCommandQueueItem;
+use App\Models\Ship;
 use App\Services\MapCellPresenter;
 use DomainException;
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
@@ -40,6 +42,8 @@ final class CommandQueueController extends Controller
     public function __construct(
         private readonly CommandQuantitySemantics $quantitySemantics,
         private readonly NationCommandTargetService $nationTargets,
+        private readonly SurfaceShipCatalog $ships,
+        private readonly UnderseaConstructionPolicy $underseaConstruction,
     ) {}
 
     public function definitions(
@@ -604,8 +608,17 @@ final class CommandQueueController extends Controller
         $nation = $queue->nation()->firstOrFail();
         $mapSpace = MapSpace::query()->findOrFail($queue->map_space_id);
         $projectionMemo = new SurfaceCommandProjectionMemo;
+        $constructionShipIds = $queue->items->pluck('parameters.construction_ship_id')
+            ->filter(static fn (mixed $id): bool => is_int($id) && $id > 0)->unique()->values();
+        if ($constructionShipIds->isNotEmpty()) {
+            $queue->loadMissing('items.definition.rulesetVersion');
+        }
+        /** @var EloquentCollection<int, Ship> $constructionShips */
+        $constructionShips = $constructionShipIds->isEmpty() ? new EloquentCollection : Ship::query()
+            ->where('world_id', $nation->world_id)->where('nation_id', $nation->id)
+            ->whereKey($constructionShipIds->all())->get()->keyBy('id');
         $items = $queue->items
-            ->map(function (NationCommandQueueItem $item) use ($queue, $nation, $service, $mapSpace, $projectionMemo): array {
+            ->map(function (NationCommandQueueItem $item) use ($queue, $nation, $service, $mapSpace, $projectionMemo, $constructionShips): array {
                 $definition = $service->definitionForItem($item);
                 $cell = $item->target_context === 'surface_cell'
                     ? MapCell::query()->where('map_space_id', $queue->map_space_id)
@@ -647,7 +660,10 @@ final class CommandQueueController extends Controller
                     'quantity_label' => $definition instanceof UndergroundCommandDefinition
                         ? null
                         : $this->quantitySemantics->label($definition, $item->quantity),
-                    'effective_cost_money' => $this->effectiveCostMoney($definition, $item, $projected, $nation->id),
+                    'effective_cost_money' => $this->effectiveCostMoney(
+                        $definition, $item, $projected, $nation->id,
+                        $constructionShips->get($item->parameters['construction_ship_id'] ?? null),
+                    ),
                     'consumes_turn' => (bool) ($definition->metadata['consumes_turn'] ?? true),
                     'parameters' => $item->parameters === [] ? (object) [] : $item->parameters,
                     'status' => $item->status,
@@ -692,6 +708,7 @@ final class CommandQueueController extends Controller
         NationCommandQueueItem $item,
         ?array $projected,
         int $nationId,
+        ?Ship $constructionShip,
     ): int {
         if (! $definition instanceof CommandDefinition) {
             return $definition->cost_money;
@@ -700,7 +717,17 @@ final class CommandQueueController extends Controller
             return WindPowerRepairPolicy::costMoney($definition, $projected['facility_key'], $projected['facility_operational_state']);
         }
 
-        return $this->quantitySemantics->effectiveCostMoney($definition, $item->quantity);
+        $cost = $this->quantitySemantics->effectiveCostMoney($definition, $item->quantity);
+        if ($constructionShip !== null && $this->underseaConstruction->appliesTo($definition)) {
+            // Saved plans retain their requested price after the ship moves or sinks.
+            // Position and survival are rechecked by command execution, not this projection.
+            $shipDefinition = $this->ships->definition($definition->rulesetVersion->settings, $constructionShip->ship_type_key);
+            if ($shipDefinition->underseaConstruction) {
+                $cost *= $shipDefinition->constructionCostMultiplier;
+            }
+        }
+
+        return $cost;
     }
 
     private function loadQueue(NationCommandQueue $queue): NationCommandQueue

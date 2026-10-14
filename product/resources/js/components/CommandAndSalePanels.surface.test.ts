@@ -242,6 +242,7 @@ describe('command plan workspace', () => {
                 id: 9, key: 'warship', name: '戦艦', asset_key: 'ship.warship', current_hp: 5, max_hp: 5,
                 public_state: 'active', owner_nation: { nation_number: 1, name: '操作国' }, is_owner: true,
                 heading: null, destination: { x: 12, y: 7 }, version: 3,
+                movement_mode: 'heading_only',
             },
         };
         const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -256,6 +257,7 @@ describe('command plan workspace', () => {
         await flushPromises();
 
         const order = wrapper.get('.sl-ship-order');
+        expect(fetchMock.mock.calls.some(([input]) => String(input).endsWith('/ships'))).toBe(false);
         expect(order.text()).toContain('目的地 (12,7)');
         // 経路のターン数ではなく、直線の距離として出す。
         expect(order.text()).toContain('直線4マス');
@@ -374,6 +376,86 @@ describe('command plan workspace', () => {
             target_y: 7,
             target_ship_id: 9,
         });
+    });
+
+    it('offers the ship-backed build only on the own construction ship cell and sends its id only from that list', async () => {
+        const shipCell = {
+            ...selected,
+            terrain: 'sea',
+            terrain_name: '海',
+            display_name: '海底工作船',
+            ship: {
+                id: 31,
+                key: 'undersea_construction',
+                undersea_construction: true,
+                movement_mode: 'heading_only',
+                name: '海底工作船',
+                asset_key: 'ship.undersea_construction',
+                current_hp: 1,
+                max_hp: 1,
+                public_state: 'active',
+                owner_nation: { nation_number: 1, name: '操作国' },
+                is_owner: true,
+                heading: null,
+                version: 1,
+            },
+        } satisfies MapCell;
+        const shipParameter = {
+            construction_ship_id: {
+                label: undefined as unknown as string, type: 'integer' as const, input_semantics: 'number' as const,
+                options: [], minimum: 1, maximum: undefined as unknown as number, required: false,
+            },
+        };
+        const normalBase = definition({
+            key: 'build_seabed_base', name: '海底基地', cost_money: 300, parameters: shipParameter,
+            execution_preview_status: 'currently_unavailable', available: true,
+            unavailable_reason: '建設対象の3hex以内に自国陸地がありません。',
+            execution_warnings: ['建設対象の3hex以内に自国陸地がありません。'],
+        });
+        const shipBase = definition({ key: 'build_seabed_base', name: '海底基地', cost_money: 900, parameters: shipParameter });
+        const definitionUrls: string[] = [];
+        const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+            const url = String(input);
+            if (init?.method === 'POST') return jsonResponse({ queue: commandQueue(2) }, 201);
+            if (!url.includes('command-definitions')) return jsonResponse(commandQueue());
+            definitionUrls.push(url);
+            return jsonResponse(catalog(url.includes('construction_ship_id=31')
+                ? [shipBase, definition({ key: 'land_clear', name: '整地' })]
+                : [normalBase]));
+        });
+        vi.stubGlobal('fetch', fetchMock);
+        const wrapper = mount(CommandQueuePanel, { props: { nationId: 1, mapSpaceId: 2, selected: shipCell } });
+        await flushPromises();
+
+        expect(definitionUrls.some((url) => url.includes('construction_ship_id=31'))).toBe(true);
+        expect(definitionUrls.some((url) => !url.includes('construction_ship_id'))).toBe(true);
+        const shipButtons = wrapper.findAll('.command-grid').at(-1)!.findAll('button');
+        expect(shipButtons).toHaveLength(1);
+        expect(shipButtons[0]!.text()).toContain('900');
+
+        await shipButtons[0]!.trigger('click');
+        await flushPromises();
+        const dialog = wrapper.get('[role="dialog"]');
+        expect(dialog.text()).toContain('海底工作船');
+        expect(dialog.find('input[type="number"]').exists()).toBe(false);
+        await dialog.get('form').trigger('submit');
+        await flushPromises();
+        const posts = () => fetchMock.mock.calls.filter(([, init]) => init?.method === 'POST')
+            .map(([, init]) => JSON.parse(String(init?.body)) as { command_key: string; parameters: Record<string, number> });
+        expect(posts()[0]).toMatchObject({ command_key: 'build_seabed_base', parameters: { construction_ship_id: 31 } });
+
+        await wrapper.get('.sl-all input').setValue(true);
+        await wrapper.get('.command-grid button').trigger('click');
+        await flushPromises();
+        await wrapper.get('[role="dialog"] form').trigger('submit');
+        await flushPromises();
+        expect(posts()[1]).toMatchObject({ command_key: 'build_seabed_base' });
+        expect(posts()[1]!.parameters).toEqual({});
+
+        await wrapper.setProps({ selected: { ...shipCell, ship: { ...shipCell.ship, key: 'fishing', undersea_construction: false } } });
+        await flushPromises();
+        expect(definitionUrls.at(-1)).not.toContain('construction_ship_id');
+        expect(wrapper.text()).not.toContain('海底工作船で建てる');
     });
 
     it('inserts before a selected plan and advances without changing empty-slot insertion', async () => {

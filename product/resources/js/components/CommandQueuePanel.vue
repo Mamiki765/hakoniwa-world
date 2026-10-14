@@ -36,6 +36,8 @@ interface FrozenCommandContext extends QueueContext {
     targetX: number | null;
     targetY: number | null;
     targetShipId: number | null;
+    // 海底工作船で建てるときだけ入る。通常の建設コマンドに、この船のIDを付けて送る。
+    constructionShipId: number | null;
     targetLayer: number | null;
     targetSlotIndex: number | null;
     position: number;
@@ -57,6 +59,9 @@ const emit = defineEmits<{
 }>();
 
 const definitions = ref<CommandDefinition[]>([]);
+// 選んだマスに自国の海底工作船がいるときの、工作船を使う建設コマンド（費用はサーバーが船込みで出す）。
+const shipDefinitions = ref<CommandDefinition[]>([]);
+const CONSTRUCTION_SHIP_PARAMETER = 'construction_ship_id';
 const paradox = ref<ParadoxBalance | null>(null);
 const ALL_COMMANDS_STORAGE_KEY = 'hakoniwa-surface-all-commands';
 const allCommands = ref(readAllCommandsPreference());
@@ -125,13 +130,20 @@ function isLookahead(definition: CommandDefinition): boolean {
 const listedDefinitions = computed(() => definitions.value.filter(
     (definition) => definition.applicable && (allCommands.value || !isLookahead(definition)),
 ));
-const commandGroups = computed(() => ([
-    { key: 'normal', label: '通常' },
-    { key: 'paradox', label: '輝石' },
-] as const).map((group) => ({
-    ...group,
-    definitions: listedDefinitions.value.filter((definition) => (definition.command_group ?? 'normal') === group.key),
-})).filter((group) => group.definitions.length > 0));
+const commandGroups = computed(() => [
+    ...([
+        { key: 'normal', label: '通常' },
+        { key: 'paradox', label: '輝石' },
+    ] as const).map((group) => ({
+        ...group,
+        definitions: listedDefinitions.value.filter((definition) => (definition.command_group ?? 'normal') === group.key),
+    })),
+    {
+        key: 'construction_ship' as const,
+        label: '海底工作船で建てる',
+        definitions: shipDefinitions.value.filter((definition) => allCommands.value || !isLookahead(definition)),
+    },
+].filter((group) => group.definitions.length > 0));
 const tailPosition = computed(() => {
     const limit = Math.max(1, queue.value.limit);
     const last = queue.value.items.reduce((position, item) => Math.max(position, item.queue_position), 0);
@@ -163,7 +175,7 @@ const pendingCostMoney = computed(() => {
 });
 const ownShip = computed(() => props.selected?.ship?.is_owner === true ? props.selected.ship : null);
 const nationActive = computed(() => (props.nationState ?? 'active') === 'active');
-const ownShipMovementMode = computed(() => ownShips.value.find((ship) => ship.id === ownShip.value?.id)?.movement_mode ?? null);
+const ownShipMovementMode = computed(() => ownShip.value?.movement_mode ?? ownShips.value.find((ship) => ship.id === ownShip.value?.id)?.movement_mode ?? null);
 const ownShipDestinationDistance = computed(() => {
     const destination = ownShip.value?.destination;
     return props.selected === null || destination == null ? null : hexDistance(props.selected, destination);
@@ -186,6 +198,9 @@ const destinationCandidates = computed(() => {
         .sort((left, right) => left.distance - right.distance || left.ship.sort_order - right.ship.sort_order || left.ship.id - right.ship.id);
 });
 const chosenDestinationShip = computed(() => destinationCandidates.value.find((candidate) => candidate.ship.id === destinationShipId.value) ?? null);
+const constructionShip = computed(() => (props.selectedUnderground ?? null) === null && ownShip.value?.undersea_construction === true
+    ? ownShip.value
+    : null);
 const selectedPlanSlot = computed(() => cursorPinned.value
     ? queue.value.plan.find((slot) => slot.position === selectedPosition.value) ?? null
     : null);
@@ -221,11 +236,11 @@ watch(
     { immediate: true },
 );
 
-// 船の欄か目的地の欄を出すマスを選んだときだけ、自国船一覧を取り直す（位置・版・移動方式はターンで変わる）。
+// 目的地を選ぶときに一覧を取り直す。選択中の自国船は地図の移動方式と版を使う。
 watch(
-    () => `${props.nationId}:${nationActive.value && (ownShip.value !== null || destinationCell.value !== null)}:${props.selected?.x}:${props.selected?.y}`,
+    () => `${props.nationId}:${nationActive.value && destinationCell.value !== null}:${props.selected?.x}:${props.selected?.y}`,
     () => {
-        if (!nationActive.value || (ownShip.value === null && destinationCell.value === null)) return;
+        if (!nationActive.value || destinationCell.value === null) return;
         void loadOwnShips();
     },
     { immediate: true },
@@ -341,6 +356,7 @@ function targetKey(): string {
         props.selected?.y,
         props.selectedUnderground?.layer,
         props.selectedUnderground?.slot_index,
+        constructionShip.value?.id,
     ].join(':');
 }
 
@@ -379,8 +395,10 @@ async function refresh(positionOnly = false): Promise<void> {
         : { x: props.selected.x, y: props.selected.y };
     const path = basePath(props.nationId, props.mapSpaceId);
     const queueContextKey = `${props.nationId}:${props.mapSpaceId}`;
-    const definitionsUrl = (position: number): string => {
+    const constructionShipId = selected === null ? null : constructionShip.value?.id ?? null;
+    const definitionsUrl = (position: number, shipId: number | null = null): string => {
         const query = new URLSearchParams({ position: String(position) });
+        if (shipId !== null) query.set(CONSTRUCTION_SHIP_PARAMETER, String(shipId));
         if (selected !== null) {
             query.set('target_x', String(selected.x));
             query.set('target_y', String(selected.y));
@@ -390,10 +408,18 @@ async function refresh(positionOnly = false): Promise<void> {
         }
         return `${path}/command-definitions?${query}`;
     };
+    // 工作船がいるマスだけ、船を使った場合の一覧も並べて取る（通常の一覧はそのまま）。
+    const loadDefinitions = (position: number): Promise<[CommandCatalog, CommandCatalog | null]> => Promise.all([
+        api<CommandCatalog>(definitionsUrl(position), { signal: controller.signal }),
+        constructionShipId === null
+            ? Promise.resolve(null)
+            : api<CommandCatalog>(definitionsUrl(position, constructionShipId), { signal: controller.signal }),
+    ]);
 
     if (!activeRefreshPositionOnly) refreshing.value = true;
     try {
         let nextDefinitions: CommandCatalog;
+        let nextShipDefinitions: CommandCatalog | null;
         let nextQueue: CommandQueue | null = null;
         requestedTargetKey = targetKey();
         if (loadedQueueContext !== queueContextKey) {
@@ -404,21 +430,24 @@ async function refresh(positionOnly = false): Promise<void> {
             releaseCursor();
             applyServerQueue(nextQueue);
             requestedRefreshKey = refreshKey();
-            nextDefinitions = await api<CommandCatalog>(definitionsUrl(insertPosition.value), { signal: controller.signal });
+            [nextDefinitions, nextShipDefinitions] = await loadDefinitions(insertPosition.value);
             nextQueue = null;
         } else if (activeRefreshPositionOnly) {
             requestedRefreshKey = refreshKey();
-            nextDefinitions = await api<CommandCatalog>(definitionsUrl(insertPosition.value), { signal: controller.signal });
+            [nextDefinitions, nextShipDefinitions] = await loadDefinitions(insertPosition.value);
         } else {
             requestedRefreshKey = refreshKey();
-            [nextDefinitions, nextQueue] = await Promise.all([
-                api<CommandCatalog>(definitionsUrl(insertPosition.value), { signal: controller.signal }),
+            [[nextDefinitions, nextShipDefinitions], nextQueue] = await Promise.all([
+                loadDefinitions(insertPosition.value),
                 api<CommandQueue>(`${path}/command-queue`, { signal: controller.signal }),
             ]);
         }
 
         if (generation !== refreshGeneration) return;
         definitions.value = nextDefinitions.commands;
+        shipDefinitions.value = (nextShipDefinitions?.commands ?? []).filter(
+            (definition) => definition.applicable && CONSTRUCTION_SHIP_PARAMETER in definition.parameters,
+        );
         definitionsKey.value = requestedRefreshKey;
         paradox.value = nextDefinitions.paradox ?? null;
         emit('paradox', paradox.value);
@@ -437,10 +466,10 @@ async function refresh(positionOnly = false): Promise<void> {
     }
 }
 
-function chooseCommand(definition: CommandDefinition, event?: Event): void {
+function chooseCommand(definition: CommandDefinition, event?: Event, viaConstructionShip = false): void {
     if (!definitionsCurrent.value || !definition.available || !hasSelectedTarget(definition)) return;
     const trigger = event?.currentTarget instanceof HTMLElement ? event.currentTarget : null;
-    const frozen = freezeCommandContext();
+    const frozen = freezeCommandContext(viaConstructionShip);
     if (definition.confirmation_message) {
         confirmation.value = {
             message: definition.confirmation_message,
@@ -455,7 +484,7 @@ function chooseCommand(definition: CommandDefinition, event?: Event): void {
     prepareCommand(definition, trigger, frozen);
 }
 
-function freezeCommandContext(): FrozenCommandContext {
+function freezeCommandContext(viaConstructionShip = false): FrozenCommandContext {
     const underground = props.selectedUnderground ?? null;
     const selected = underground !== null || props.selected === null ? null : props.selected;
     return {
@@ -464,6 +493,7 @@ function freezeCommandContext(): FrozenCommandContext {
         targetX: selected?.x ?? null,
         targetY: selected?.y ?? null,
         targetShipId: selected?.ship?.is_owner === true ? selected.ship.id : null,
+        constructionShipId: viaConstructionShip ? constructionShip.value?.id ?? null : null,
         targetLayer: underground?.layer ?? null,
         targetSlotIndex: underground?.slot_index ?? null,
         position: insertPosition.value,
@@ -480,9 +510,12 @@ function prepareCommand(
     pendingQuantity.value = definition.quantity_default;
     commandParameters.value = Object.fromEntries(Object.entries(definition.parameters).map(([key, schema]) => [
         key,
-        schema.default ?? null,
+        key === CONSTRUCTION_SHIP_PARAMETER ? frozen.constructionShipId : schema.default ?? null,
     ]));
-    if (definition.quantity_semantics !== 'unused' || Object.keys(definition.parameters).length > 0 || definition.execution_warnings.length > 0) {
+    if (definition.quantity_semantics !== 'unused'
+        || inputParameterKeys(definition).length > 0
+        || definition.execution_warnings.length > 0
+        || frozen.constructionShipId !== null) {
         commandTrigger.value = trigger;
         pendingCommandContext.value = frozen;
         pendingDefinition.value = definition;
@@ -648,6 +681,19 @@ async function cancelFromSelected(): Promise<void> {
     } finally {
         await finishMutation();
     }
+}
+
+// 工作船のIDは選んだマスの船で決まるので、入力欄には出さない。
+function inputParameterKeys(definition: CommandDefinition): string[] {
+    return Object.keys(definition.parameters).filter((key) => key !== CONSTRUCTION_SHIP_PARAMETER);
+}
+const pendingInputParameters = computed(() => {
+    const definition = pendingDefinition.value;
+    if (definition === null) return {};
+    return Object.fromEntries(inputParameterKeys(definition).map((key) => [key, definition.parameters[key]!]));
+});
+function usesConstructionShip(item: CommandQueueItem): boolean {
+    return item.parameters[CONSTRUCTION_SHIP_PARAMETER] != null;
 }
 
 const parametersAreValid = computed(() => {
@@ -1036,7 +1082,7 @@ onBeforeUnmount(() => {
                 <p>{{ selectedUnderground.coordinate_label }}・{{ selectedUnderground.facility_key === null ? '空き施設枠' : '建築済み施設枠' }}</p>
             </section>
             <CellDetails v-else :cell="selected" />
-            <p v-if="queuedOnSelected.length" class="sl-queued"><b>予約</b>{{ queuedOnSelected.map((item) => `${item.queue_position}番 ${item.command_name}`).join('、') }}</p>
+            <p v-if="queuedOnSelected.length" class="sl-queued"><b>予約</b>{{ queuedOnSelected.map((item) => `${item.queue_position}番 ${item.command_name}${usesConstructionShip(item) ? '（工作船）' : ''}`).join('、') }}</p>
             <section v-if="ownShip" class="sl-ship" aria-label="選択中の自国Ship操作">
                 <p v-if="!nationActive">休止・復興中は船の指示を変更できません。</p>
                 <template v-else>
@@ -1098,6 +1144,7 @@ onBeforeUnmount(() => {
                         <span>{{ group.label }}</span>
                         <span v-if="group.key === 'paradox' && paradox" class="pd num" :title="paradox.description">{{ paradox.name }} {{ paradox.balance.toLocaleString() }} {{ paradox.unit }}</span>
                     </div>
+                    <p v-if="group.key === 'construction_ship'" class="sl-ship-build-note">このマスの工作船で建てます。陸地からの距離は問わず、費用は通常より高くなります。</p>
                     <div class="command-grid sl-cmds">
                         <button
                             v-for="definition in group.definitions"
@@ -1107,7 +1154,7 @@ onBeforeUnmount(() => {
                             :class="{ short: definition.shortfall_money > 0 || (definition.shortfall_paradox ?? 0) > 0, later: isLookahead(definition) }"
                             :disabled="busy || !definitionsCurrent || !definition.available || queueIsFull"
                             :title="definition.unavailable_reason ?? definition.description"
-                            @click="chooseCommand(definition, $event)"
+                            @click="chooseCommand(definition, $event, group.key === 'construction_ship')"
                         >
                             <i class="sl-mk" :class="{ free: !definition.consumes_turn }" :title="definition.consumes_turn ? 'ターンを使う' : 'ターンを使わない'" />
                             <span class="nm">
@@ -1204,6 +1251,7 @@ onBeforeUnmount(() => {
                         >{{ slot.command_suffix }}</span>
                         <template v-if="slot.kind === 'explicit' && slot.quantity_semantics === 'ordinary'"> ×{{ slot.quantity }}</template>
                         <template v-else-if="slot.kind === 'explicit' && slot.quantity_semantics === 'selector'">（{{ slot.quantity_label }}）</template>
+                        <small v-if="slot.kind === 'explicit' && usesConstructionShip(slot)" class="sl-pr-via">工作船</small>
                     </span>
                     <span v-if="slot.kind === 'explicit' && slot.target_context === 'underground_slot'" class="sl-pr-at">地下{{ slot.target_layer }}層・slot {{ slot.target_slot_index }}</span>
                     <span v-else-if="slot.kind === 'explicit' && slot.target_x !== null && slot.target_y !== null" class="sl-pr-at">({{ slot.target_x }}, {{ slot.target_y }})</span>
@@ -1230,7 +1278,9 @@ onBeforeUnmount(() => {
                     <div><dt>対象</dt><dd>{{ pendingTargetLabel }}</dd></div>
                     <div><dt>入れる位置</dt><dd>{{ pendingCommandContext.position }}番</dd></div>
                     <div><dt>ターン</dt><dd>{{ pendingDefinition.consumes_turn ? '使う' : '使わない' }}</dd></div>
+                    <div v-if="pendingCommandContext.constructionShipId !== null"><dt>建て方</dt><dd>海底工作船（{{ formatExactMoney(pendingDefinition.cost_money) }}）</dd></div>
                 </dl>
+                <p v-if="pendingCommandContext.constructionShipId !== null" class="sl-ship-build-note">実行するターンに工作船がこのマスにいないと、建設は失敗します。</p>
                 <p v-if="commandStatus.kind === 'error'" class="command-status command-status--error" role="alert" aria-live="assertive">
                     {{ commandStatus.text }}
                 </p>
@@ -1267,7 +1317,7 @@ onBeforeUnmount(() => {
                             <input v-model.number="pendingQuantity" type="number" step="1" :min="quantityContract.minimum" :max="quantityContract.maximum" required>
                         </label>
                     </template>
-                    <label v-for="(schema, key) in pendingDefinition.parameters" :key="key">
+                    <label v-for="(schema, key) in pendingInputParameters" :key="key">
                         {{ schema.label }}
                         <select v-if="schema.input_semantics === 'nation_selector'" v-model.number="commandParameters[key]" class="nation-target-select" :required="schema.required && !schema.nullable">
                             <option :value="null">対象島なし</option>

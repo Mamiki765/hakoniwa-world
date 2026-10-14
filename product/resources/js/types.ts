@@ -788,7 +788,7 @@ export interface MonsterOverlay {
 
 export interface ShipOverlay {
     id: number;
-    key: 'fishing' | 'tourist' | 'exploration' | 'pirate' | 'treasure' | 'warship';
+    key: 'fishing' | 'tourist' | 'exploration' | 'pirate' | 'treasure' | 'warship' | 'undersea_construction';
     name: string;
     asset_key: string;
     current_hp: number;
@@ -800,6 +800,8 @@ export interface ShipOverlay {
     // 自国の船だけ。他国・匿名の地図では null。
     destination?: { x: number; y: number } | null;
     version: number | null;
+    movement_mode?: string | null;
+    undersea_construction?: boolean;
 }
 
 // 進路・目的地の変更APIが返す、船の指示と版。heading と destination は同時に非 null にならない。
