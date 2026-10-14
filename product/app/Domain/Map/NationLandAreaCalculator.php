@@ -73,7 +73,12 @@ final class NationLandAreaCalculator
 
     public function isLand(MapCell $cell): bool
     {
-        return ! in_array($cell->terrain->key, self::EXCLUDED_TERRAIN_KEYS, true);
+        return $this->isLandTerrain($cell->terrain->key);
+    }
+
+    public function isLandTerrain(string $terrainKey): bool
+    {
+        return ! in_array($terrainKey, self::EXCLUDED_TERRAIN_KEYS, true);
     }
 
     /** @return Collection<int, MapCell> */

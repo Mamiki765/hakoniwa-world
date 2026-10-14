@@ -233,7 +233,7 @@ final class CommandQueueController extends Controller
                                     $projectionMemo,
                                 );
                         }
-                        if (in_array($definition->key, ['build_port', 'build_wind_power'], true)) {
+                        if (in_array($definition->key, ['build_port', 'build_wind_power', 'reclaim', 'excavate'], true)) {
                             $targetProjectedExecutable = $service->projectedTargetMatches(
                                 $definition,
                                 $projected,
@@ -245,9 +245,11 @@ final class CommandQueueController extends Controller
                                 $projectionMemo,
                             );
                             if ($currentlyExecutable && ! $targetProjectedExecutable) {
-                                $unavailableReason = $definition->key === 'build_wind_power'
-                                    ? '予約済みcommand後は風力発電所の建設・修理条件を満たしません。'
-                                    : '予約済みcommand後は港の建設条件を満たしません。';
+                                $unavailableReason = match ($definition->key) {
+                                    'build_wind_power' => '予約済みcommand後は風力発電所の建設・修理条件を満たしません。',
+                                    'build_port' => '予約済みcommand後は港の建設条件を満たしません。',
+                                    default => '予約済みcommand後は対象・距離条件を満たしません。',
+                                };
                             } elseif (! $currentlyExecutable) {
                                 $projectedExecutable = $targetProjectedExecutable;
                             }

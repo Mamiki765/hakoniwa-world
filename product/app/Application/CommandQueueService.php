@@ -21,6 +21,7 @@ use App\Domain\Command\WindPowerRepairPolicy;
 use App\Domain\Concurrency\OptimisticLockException;
 use App\Domain\Facility\FacilityRankPolicy;
 use App\Domain\Map\GridCoordinate;
+use App\Domain\Map\OwnedLandProximity;
 use App\Domain\Monster\MonsterDispatchOptionResolver;
 use App\Domain\Ruleset\CurrentRulesetGuard;
 use App\Domain\Underground\Facility\UndergroundCommandCatalog;
@@ -83,6 +84,7 @@ final class CommandQueueService
         private readonly FacilityRankPolicy $facilityRanks,
         private readonly DailyQuestService $dailyQuests,
         private readonly UnderseaConstructionPolicy $underseaConstruction,
+        private readonly OwnedLandProximity $ownedLand,
     ) {}
 
     /**
@@ -1287,7 +1289,25 @@ final class CommandQueueService
             return ($state['owner_nation_id'] === null || $state['owner_nation_id'] === $nation->id)
                 && $this->underseaConstruction->hasNearbyOwnedLand($nation, $cell);
         }
-        if (in_array($definition->key, ['reclaim', 'excavate'], true)) {
+        if ($definition->key === 'reclaim'
+            || ($definition->key === 'excavate' && in_array($state['terrain_key'], ['sea', 'shallow'], true))) {
+            return ($state['owner_nation_id'] === null || $state['owner_nation_id'] === $nation->id)
+                && $this->ownedLand->within(
+                    $nation,
+                    $cell,
+                    $definition->key === 'reclaim' ? 1 : 3,
+                    $definition->key !== 'reclaim',
+                    fn (MapCell $nearby): array => $this->projectCellStateBeforePosition(
+                        $nearby,
+                        $queue,
+                        $beforePosition,
+                        $nation,
+                        $mapSpace,
+                        projectionMemo: $projectionMemo,
+                    ),
+                );
+        }
+        if ($definition->key === 'excavate') {
             return $state['owner_nation_id'] === null || $state['owner_nation_id'] === $nation->id;
         }
 
@@ -1632,8 +1652,8 @@ final class CommandQueueService
             if ($ownerNationId !== null && $ownerNationId !== $nation->id) {
                 throw new PlayerFacingCommandException('他国所有の水域は埋め立てできません。');
             }
-            if (! $this->hasOwnedCellWithin($nation, $mapSpace, $cell, 1, false)) {
-                throw new PlayerFacingCommandException('埋め立て対象の隣に自国領がありません。');
+            if (! $this->ownedLand->within($nation, $cell, 1, false)) {
+                throw new PlayerFacingCommandException('埋め立て対象の隣に自国陸地がありません。');
             }
 
             return;
@@ -1667,8 +1687,8 @@ final class CommandQueueService
             if ($terrainKey === 'sea' && $facilityKey !== null) {
                 throw new PlayerFacingCommandException('施設のある海では油田探索できません。');
             }
-            if (! $this->hasOwnedCellWithin($nation, $mapSpace, $cell, 3)) {
-                throw new PlayerFacingCommandException('掘削対象の3hex以内に自国領がありません。');
+            if (! $this->ownedLand->within($nation, $cell, 3)) {
+                throw new PlayerFacingCommandException('掘削対象の3hex以内に自国陸地がありません。');
             }
 
             return;

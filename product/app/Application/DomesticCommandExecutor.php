@@ -20,6 +20,7 @@ use App\Domain\Facility\FacilityRankPolicy;
 use App\Domain\Map\ChunkCoordinateService;
 use App\Domain\Map\GridCoordinate;
 use App\Domain\Map\MapCellStateService;
+use App\Domain\Map\OwnedLandProximity;
 use App\Domain\Monster\MonsterDispatchOptionResolver;
 use App\Domain\Nation\NationProtectionPolicy;
 use App\Domain\Secretary\SecretaryItemGameplayContract;
@@ -85,6 +86,7 @@ final class DomesticCommandExecutor
         private readonly ParadoxBalanceService $paradox,
         private readonly BuriedTreasureService $buriedTreasures,
         private readonly UnderseaConstructionPolicy $underseaConstruction,
+        private readonly OwnedLandProximity $ownedLand,
     ) {}
 
     /**
@@ -474,7 +476,7 @@ final class DomesticCommandExecutor
             if ($this->hasForeignAdjacentCell($nation, $cell)) {
                 return ['reason' => CommandFailureReason::ForeignAdjacentWater, 'observed' => $observed];
             }
-            if (! $this->hasOwnedCellWithin($nation, $cell, 1, false)) {
+            if (! $this->ownedLand->within($nation, $cell, 1, false)) {
                 return ['reason' => CommandFailureReason::NoAdjacentOwnedLand, 'observed' => $observed];
             }
         } elseif (! in_array($definition->key, ['territory_expand', 'build_port', 'build_seabed_base', 'build_undersea_city', 'build_undersea_fire_station'], true)) {
@@ -543,7 +545,7 @@ final class DomesticCommandExecutor
             if ($cell->owner_nation_id !== null && $cell->owner_nation_id !== $nation->id) {
                 return ['reason' => CommandFailureReason::ForeignOwned, 'observed' => $observed];
             }
-            if (! $this->hasOwnedCellWithin($nation, $cell, 3, true)) {
+            if (! $this->ownedLand->within($nation, $cell, 3)) {
                 return ['reason' => CommandFailureReason::MissingAdjacentTerritory, 'observed' => $observed];
             }
             if ($cell->terrain->key === 'sea') {
