@@ -2421,7 +2421,7 @@ async function abandonNation(): Promise<void> {
                 :selected-underground="selectedUndergroundSlot"
                 :nation-state="nation.state"
                 @queue="authoritativeCommandQueue = $event"
-                @ship="map.updateSelectedShip"
+                @ship="map.updateShipCourse"
                 @daily-quest="handleDailyQuestProgress"
                 @paradox="ledgerParadox = $event"
             />

@@ -462,3 +462,7 @@ html .sl .sl-visit-facts h3 { font: var(--sl-w-head) 12px var(--sl-f-head); colo
     .sl .sl-tabs button { font-size: 12px; padding-inline: 2px; }
     .sl .sl-tabs .grow { flex-basis: 42px; }
 }
+.sl-ship-order { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 6px; margin: 0; width: 100%; }
+.sl-ship-order small { color: var(--sl-ink-2); }
+.map-cell .ship-destination-flag { position: absolute; left: 5px; top: 3px; z-index: 5; width: 2px; height: 16px; background: var(--sl-map-mark-ink); filter: drop-shadow(0 0 1px #ffffff); pointer-events: none; }
+.map-cell .ship-destination-flag::after { content: ""; position: absolute; left: 2px; top: 0; border-left: 10px solid var(--sl-map-sel); border-top: 5px solid transparent; border-bottom: 5px solid transparent; }

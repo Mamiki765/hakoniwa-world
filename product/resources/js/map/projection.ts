@@ -42,3 +42,14 @@ export function neighbor(coordinate: GridCoordinate, direction: number): GridCoo
 
     return { x: coordinate.x + vector.x, y: coordinate.y + vector.y };
 }
+
+// 六角マスの直線距離。サーバーの GridCoordinate::distanceTo と同じ数え方で、通れるかどうかは見ない。
+export function hexDistance(from: GridCoordinate, to: GridCoordinate): number {
+    const cube = ({ x, y }: GridCoordinate) => {
+        const first = x - floorDiv(y + 1, 2);
+        return [first, y, -first - y] as const;
+    };
+    const [ax, ay, az] = cube(from);
+    const [bx, by, bz] = cube(to);
+    return Math.max(Math.abs(ax - bx), Math.abs(ay - by), Math.abs(az - bz));
+}

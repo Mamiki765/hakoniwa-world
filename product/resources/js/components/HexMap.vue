@@ -57,6 +57,8 @@ const showTerritory = displayPreference('territory', true);
 // 切り替えがない観光画面では枠を表示し、開発画面の保存設定は保持する。
 const effectiveShowTerritory = computed(() => props.commandQueue === undefined || showTerritory.value);
 const showPlanMarks = displayPreference('planMarks', true);
+// 自国の船を選んでいるあいだだけ、その船の目的地に旗を出す。
+const shipDestination = computed(() => props.selected?.ship?.is_owner === true ? props.selected.ship.destination ?? null : null);
 // 指で触ったあとに届くmouseenterでは、マスの詳細を出さない。
 let touchInput = false;
 const failedWeatherAssets = ref(new Set<string>());
@@ -613,6 +615,7 @@ function markAssetFailed(cell: MapCell): void {
                         N{{ item.cell.ship?.owner_nation?.nation_number ?? item.cell.owner_nation_number }}
                     </small>
                     <span v-if="showPlanMarks && firstPlanPosition(item.cell) !== null" class="plan-mark" aria-hidden="true">{{ firstPlanPosition(item.cell) }}</span>
+                    <span v-if="shipDestination?.x === item.cell.x && shipDestination?.y === item.cell.y" class="ship-destination-flag" title="選択中の船の目的地" />
                     <span v-if="item.cell.monster" class="monster-overlay" aria-hidden="true">
                         <span class="monster-fallback">{{ item.cell.monster.name.slice(0, 1) }}</span>
                         <img
