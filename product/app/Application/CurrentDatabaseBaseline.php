@@ -14,8 +14,10 @@ final class CurrentDatabaseBaseline
 
     public const SHIP_DESTINATION_MIGRATION = '2026_10_14_000000_add_ship_destinations';
 
+    public const CAPITAL_RELOCATION_MIGRATION = '2026_10_14_000000_add_last_capital_relocation_turn_to_nations';
+
     /** @return array<string, string> */
-    public function structure(): array
+    public function structure(bool $excludeCapitalRelocationTurn = false): array
     {
         if (DB::connection()->getDriverName() !== 'pgsql') {
             throw new RuntimeException('The current baseline requires PostgreSQL.');
@@ -36,6 +38,7 @@ SELECT 'table:' || c.relname AS object_key,
            LEFT JOIN pg_attrdef d ON d.adrelid = a.attrelid AND d.adnum = a.attnum
            LEFT JOIN pg_collation coll ON coll.oid = a.attcollation
            WHERE a.attrelid = c.oid AND a.attnum > 0 AND NOT a.attisdropped
+             AND NOT (c.relname = 'nations' AND a.attname = 'last_capital_relocation_turn' AND CAST(? AS boolean))
          ), '[]'::jsonb),
          'constraints', COALESCE((
            SELECT jsonb_agg(jsonb_build_array(
@@ -75,7 +78,7 @@ SELECT 'function:' || p.proname || '(' || pg_get_function_identity_arguments(p.o
 FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
 WHERE n.nspname = 'public' AND p.prokind = 'f'
 ORDER BY object_key
-SQL);
+SQL, [$excludeCapitalRelocationTurn]);
         $objects = [];
         foreach ($rows as $row) {
             $objects[$row->object_key] = hash('sha256', $row->definition);
@@ -92,8 +95,34 @@ SQL);
             512,
             JSON_THROW_ON_ERROR,
         );
-        $actual = $this->structure();
         $applied = DB::table('migrations')->pluck('migration')->all();
+        $hasCapitalRelocationTurn = in_array(self::CAPITAL_RELOCATION_MIGRATION, $applied, true);
+        if ($hasCapitalRelocationTurn) {
+            if (! in_array(self::MIGRATION, $applied, true)) {
+                throw new RuntimeException('Capital relocation history requires the accepted 5.0.1 baseline marker first.');
+            }
+            $column = DB::selectOne(<<<'SQL'
+SELECT jsonb_build_array(
+    format_type(a.atttypid, a.atttypmod), a.attnotnull,
+    pg_get_expr(d.adbin, d.adrelid), a.attidentity, a.attgenerated, coll.collname,
+    a.attnum = (SELECT max(attnum) FROM pg_attribute WHERE attrelid = c.oid AND NOT attisdropped)
+)::text AS definition
+FROM pg_attribute a
+JOIN pg_class c ON c.oid = a.attrelid
+JOIN pg_namespace n ON n.oid = c.relnamespace
+LEFT JOIN pg_attrdef d ON d.adrelid = a.attrelid AND d.adnum = a.attnum
+LEFT JOIN pg_collation coll ON coll.oid = a.attcollation
+WHERE n.nspname = 'public' AND c.relname = 'nations'
+  AND a.attname = 'last_capital_relocation_turn' AND NOT a.attisdropped
+SQL);
+            if ($column?->definition !== '["bigint", false, null, "", "", null, true]') {
+                throw new RuntimeException('Database differs from the capital relocation history extension.');
+            }
+        }
+        // Validate the appended column separately so every accepted baseline's
+        // original column order, defaults, constraints, indexes and triggers
+        // still match their complete fingerprints without rebuilding a baseline.
+        $actual = $this->structure(excludeCapitalRelocationTurn: $hasCapitalRelocationTurn);
         if (in_array(self::MONSTER_COUNT_MIGRATION, $applied, true)) {
             if (! in_array(self::MIGRATION, $applied, true)) {
                 throw new RuntimeException('Monster count snapshots require the accepted 5.0.1 baseline marker first.');
