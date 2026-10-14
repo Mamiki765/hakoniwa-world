@@ -21,10 +21,8 @@ const advance = async (wrapper: VueWrapper, ms: number) => {
     await wrapper.vm.$nextTick();
 };
 const shown = (wrapper: VueWrapper) => {
-    const label = wrapper.get('.ug-playback-round').text();
-    const round = Number(/第(\d+)/.exec(label)?.[1]);
-    const steps = Number(/(\d+) \//.exec(label)?.[1] ?? rounds[round - 1]!.steps.length);
-    return { round, steps };
+    const playback = wrapper.vm as unknown as { roundIndex: number; stepIndex: number };
+    return { round: playback.roundIndex + 1, steps: playback.stepIndex + 1 };
 };
 // 合計は、画面に出した行動だけを足した値と一致するはず。
 const expectedTotal = (wrapper: VueWrapper) => {
