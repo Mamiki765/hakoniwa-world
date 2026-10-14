@@ -19,6 +19,19 @@ final class SurfaceCommandProjectionMemo
     /** @var array<string, bool> */
     private array $currentLandDistances = [];
 
+    /** @var array<string, SurfaceLandProjection> */
+    private array $landProjections = [];
+
+    public function landProjection(string $key): ?SurfaceLandProjection
+    {
+        return $this->landProjections[$key] ?? null;
+    }
+
+    public function putLandProjection(string $key, SurfaceLandProjection $projection): void
+    {
+        $this->landProjections[$key] = $projection;
+    }
+
     public function currentLandDistance(string $key): ?bool
     {
         return $this->currentLandDistances[$key] ?? null;

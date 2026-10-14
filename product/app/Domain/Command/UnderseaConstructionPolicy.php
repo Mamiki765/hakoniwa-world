@@ -12,11 +12,11 @@ final class UnderseaConstructionPolicy
 
     public function appliesTo(string $commandKey): bool
     {
-        return in_array($commandKey, ['build_seabed_base', 'build_undersea_city', 'build_undersea_fire_station'], true);
+        return LandDevelopmentDistancePolicy::isUnderseaConstruction($commandKey);
     }
 
     public function hasNearbyOwnedLand(Nation $nation, MapCell $target): bool
     {
-        return $this->ownedLand->within($nation, $target, 3);
+        return $this->ownedLand->within($nation, $target, LandDevelopmentDistancePolicy::WATER_RADIUS);
     }
 }

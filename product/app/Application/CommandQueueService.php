@@ -10,11 +10,13 @@ use App\Domain\Command\CommandParametersValidator;
 use App\Domain\Command\CommandQueueLimit;
 use App\Domain\Command\CommandRequestConflictException;
 use App\Domain\Command\DevelopmentPlanQuantity;
+use App\Domain\Command\LandDevelopmentDistancePolicy;
 use App\Domain\Command\MissileTargetPolicy;
 use App\Domain\Command\OwnerFacilityOverbuildPolicy;
 use App\Domain\Command\PlayerFacingCommandException;
 use App\Domain\Command\SettlementOverbuildPolicy;
 use App\Domain\Command\SurfaceCommandProjectionMemo;
+use App\Domain\Command\SurfaceLandProjection;
 use App\Domain\Command\TerritoryExpansionFacts;
 use App\Domain\Command\TerritoryExpansionPolicy;
 use App\Domain\Command\UnderseaConstructionPolicy;
@@ -1173,6 +1175,13 @@ final class CommandQueueService
         ?SurfaceCommandProjectionMemo $projectionMemo = null,
     ): array {
         $projectionMemo ??= new SurfaceCommandProjectionMemo;
+        $landProjection = $projectionMemo->landProjection($this->landProjectionKey($queue, $nation, $mapSpace));
+        if ($initialState === null && $landProjection?->canResolve($beforePosition)) {
+            $projected = $landProjection->stateBefore($cell->x, $cell->y, $beforePosition);
+            if ($projected !== null) {
+                return $projected;
+            }
+        }
         $state = $initialState ?? [
             'terrain_key' => $cell->terrain->key,
             'facility_key' => $cell->facility?->key,
@@ -1200,37 +1209,26 @@ final class CommandQueueService
                 || $item->target_y !== $cell->y) {
                 continue;
             }
-            $definition = $item->definition;
-            $matches = $definition->key === 'territory_expand'
-                ? $this->projectedTerritoryTargetMatches(
-                    $definition,
-                    $state,
-                    $cell,
-                    $queue,
-                    (int) $item->queue_position,
-                    $nation,
-                    $mapSpace,
-                    $projectionMemo,
-                )
-                : $this->projectedTargetMatches(
-                    $definition,
-                    $state,
-                    $nation,
-                    $mapSpace,
-                    $cell,
-                    $queue,
-                    (int) $item->queue_position,
-                    $projectionMemo,
-                );
-            if (! $matches) {
-                continue;
-            }
-            $state = $this->applyProjectedResult($definition, $state, $nation);
+            $state = $this->projectQueuedCellResult($item, $state, $cell, $queue, $nation, $mapSpace, $projectionMemo);
         }
 
         $projectionMemo->put($memoKey, $state);
 
         return $state;
+    }
+
+    /**
+     * @param  array{terrain_key: string, facility_key: string|null, owner_nation_id: int|null, facility_operational_state: string|null}  $state
+     * @return array{terrain_key: string, facility_key: string|null, owner_nation_id: int|null, facility_operational_state: string|null}
+     */
+    private function projectQueuedCellResult(NationCommandQueueItem $item, array $state, MapCell $cell, NationCommandQueue $queue, Nation $nation, MapSpace $mapSpace, SurfaceCommandProjectionMemo $projectionMemo): array
+    {
+        $definition = $item->definition;
+        $matches = $definition->key === 'territory_expand'
+            ? $this->projectedTerritoryTargetMatches($definition, $state, $cell, $queue, (int) $item->queue_position, $nation, $mapSpace, $projectionMemo)
+            : $this->projectedTargetMatches($definition, $state, $nation, $mapSpace, $cell, $queue, (int) $item->queue_position, $projectionMemo);
+
+        return $matches ? $this->applyProjectedResult($definition, $state, $nation) : $state;
     }
 
     /**
@@ -1289,14 +1287,10 @@ final class CommandQueueService
 
             return $state['owner_nation_id'] === null && $adjacent['owned_land'] && $adjacent['sea'];
         }
-        if ($this->underseaConstruction->appliesTo($definition->key)) {
+        if (LandDevelopmentDistancePolicy::requirement($definition->key, $state['terrain_key']) !== null) {
             return ($state['owner_nation_id'] === null || $state['owner_nation_id'] === $nation->id)
-                && $this->currentLandDistanceReasonCode($nation, $definition, $cell, projectionMemo: $projectionMemo) === null;
-        }
-        if ($definition->key === 'reclaim'
-            || ($definition->key === 'excavate' && in_array($state['terrain_key'], ['sea', 'shallow'], true))) {
-            return ($state['owner_nation_id'] === null || $state['owner_nation_id'] === $nation->id)
-                && $this->currentLandDistanceReasonCode($nation, $definition, $cell, $state['terrain_key'], $projectionMemo) === null;
+                && $this->projectedLandDistanceReasonCode($nation, $mapSpace, $definition, $cell, $state['terrain_key'], $queue, $beforePosition, $projectionMemo) === null
+                && ($definition->key !== 'reclaim' || ! $this->projectedForeignAdjacentCell($nation, $mapSpace, $cell, $queue, $beforePosition, $projectionMemo));
         }
         if ($definition->key === 'excavate') {
             return $state['owner_nation_id'] === null || $state['owner_nation_id'] === $nation->id;
@@ -1647,7 +1641,7 @@ final class CommandQueueService
             if ($ownerNationId !== null && $ownerNationId !== $nation->id) {
                 throw new PlayerFacingCommandException('他国所有の水域は埋め立てできません。');
             }
-            if (! $this->hasCurrentOwnedLandWithin($nation, $cell, 1, false, $projectionMemo)) {
+            if (! $this->hasCurrentOwnedLandWithin($nation, $cell, LandDevelopmentDistancePolicy::RECLAMATION_RADIUS, false, $projectionMemo)) {
                 throw new PlayerFacingCommandException('埋め立て対象の隣に自国陸地がありません。');
             }
 
@@ -1682,7 +1676,7 @@ final class CommandQueueService
             if ($terrainKey === 'sea' && $facilityKey !== null) {
                 throw new PlayerFacingCommandException('施設のある海では油田探索できません。');
             }
-            if (! $this->hasCurrentOwnedLandWithin($nation, $cell, 3, projectionMemo: $projectionMemo)) {
+            if (! $this->hasCurrentOwnedLandWithin($nation, $cell, LandDevelopmentDistancePolicy::WATER_RADIUS, projectionMemo: $projectionMemo)) {
                 throw new PlayerFacingCommandException('掘削対象の3hex以内に自国陸地がありません。');
             }
 
@@ -2052,17 +2046,123 @@ final class CommandQueueService
      */
     public function currentLandDistanceReasonCode(Nation $nation, CommandDefinition $definition, MapCell $cell, ?string $terrainKey = null, ?SurfaceCommandProjectionMemo $projectionMemo = null): ?string
     {
-        if ($this->underseaConstruction->appliesTo($definition->key)) {
-            $inRange = $this->hasCurrentOwnedLandWithin($nation, $cell, 3, projectionMemo: $projectionMemo);
-        } elseif ($definition->key === 'reclaim') {
-            $inRange = $this->hasCurrentOwnedLandWithin($nation, $cell, 1, false, $projectionMemo);
-        } elseif ($definition->key === 'excavate' && in_array($terrainKey ?? $cell->terrain->key, ['sea', 'shallow'], true)) {
-            $inRange = $this->hasCurrentOwnedLandWithin($nation, $cell, 3, projectionMemo: $projectionMemo);
-        } else {
+        $requirement = LandDevelopmentDistancePolicy::requirement($definition->key, $terrainKey ?? $cell->terrain->key);
+        if ($requirement === null) {
             return null;
         }
+        [$radius, $includeCenter] = $requirement;
+        $inRange = $this->hasCurrentOwnedLandWithin($nation, $cell, $radius, $includeCenter, $projectionMemo);
 
         return $inRange ? null : 'out_of_land_range';
+    }
+
+    /** @return 'out_of_land_range'|null */
+    public function projectedLandDistanceReasonCode(Nation $nation, MapSpace $mapSpace, CommandDefinition $definition, MapCell $cell, string $terrainKey, NationCommandQueue $queue, int $beforePosition, ?SurfaceCommandProjectionMemo $projectionMemo = null): ?string
+    {
+        $requirement = LandDevelopmentDistancePolicy::requirement($definition->key, $terrainKey);
+        if ($requirement === null) {
+            return null;
+        }
+        [$radius, $includeCenter] = $requirement;
+        $projectionMemo ??= new SurfaceCommandProjectionMemo;
+        $key = $this->landProjectionKey($queue, $nation, $mapSpace);
+        $projection = $projectionMemo->landProjection($key);
+        if ($projection === null && ($beforePosition <= 1 || $queue->items->isEmpty())) {
+            return $this->hasCurrentOwnedLandWithin($nation, $cell, $radius, $includeCenter, $projectionMemo)
+                ? null : 'out_of_land_range';
+        }
+        $coordinates = (new GridCoordinate($cell->x, $cell->y))->radius($radius);
+        if ($projection === null || ! collect($coordinates)->every(fn (GridCoordinate $point): bool => $projection->covers($point->x, $point->y))) {
+            $projection = $this->buildLandProjection($nation, $mapSpace, $cell, $queue, $projectionMemo);
+        }
+        $inRange = $this->ownedLand->withinProjected(
+            $nation,
+            $cell,
+            $radius,
+            $includeCenter,
+            fn (int $x, int $y): ?array => $projection->stateBefore($x, $y, $beforePosition),
+        );
+
+        return $inRange ? null : 'out_of_land_range';
+    }
+
+    private function landProjectionKey(NationCommandQueue $queue, Nation $nation, MapSpace $mapSpace): string
+    {
+        return spl_object_id($queue).':'.$nation->id.':'.$mapSpace->id;
+    }
+
+    private function projectedForeignAdjacentCell(Nation $nation, MapSpace $mapSpace, MapCell $cell, NationCommandQueue $queue, int $beforePosition, SurfaceCommandProjectionMemo $projectionMemo): bool
+    {
+        $projection = $projectionMemo->landProjection($this->landProjectionKey($queue, $nation, $mapSpace));
+        $neighbors = $projection === null ? $this->projectedNeighborCells($mapSpace, $cell, $projectionMemo) : null;
+        foreach ((new GridCoordinate($cell->x, $cell->y))->neighborsWithin($mapSpace->min_x, $mapSpace->max_x, $mapSpace->min_y, $mapSpace->max_y) as $point) {
+            $neighbor = $projection?->cell($point->x, $point->y)
+                ?? $neighbors?->first(fn (MapCell $candidate): bool => $candidate->x === $point->x && $candidate->y === $point->y);
+            if ($neighbor === null) {
+                continue;
+            }
+            $state = $this->projectCellStateBeforePosition($neighbor, $queue, $beforePosition, $nation, $mapSpace, projectionMemo: $projectionMemo);
+            if ($state['owner_nation_id'] !== null && $state['owner_nation_id'] !== $nation->id) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private function buildLandProjection(Nation $nation, MapSpace $mapSpace, MapCell $target, NationCommandQueue $queue, SurfaceCommandProjectionMemo $projectionMemo): SurfaceLandProjection
+    {
+        // Read only the requested radius and queued targets/dependencies, never the whole map.
+        $points = [];
+        $addCoordinates = static function (int $x, int $y, int $radius) use (&$points): void {
+            foreach ((new GridCoordinate($x, $y))->radius($radius) as $point) {
+                $points[$point->x.':'.$point->y] = $point;
+            }
+        };
+        $addCoordinates($target->x, $target->y, max(LandDevelopmentDistancePolicy::WATER_RADIUS, LandDevelopmentDistancePolicy::RECLAMATION_RADIUS));
+        foreach ($queue->items as $item) {
+            if ($item->target_context !== 'surface_cell' || $item->target_x === null || $item->target_y === null) {
+                continue;
+            }
+            $radius = LandDevelopmentDistancePolicy::requirement($item->definition->key, 'sea')[0]
+                ?? (in_array($item->definition->key, ['build_port', 'territory_expand'], true) ? 1 : 0);
+            $addCoordinates($item->target_x, $item->target_y, $radius);
+        }
+        $rows = [];
+        foreach ($points as $point) {
+            $rows[$point->y][] = $point->x;
+        }
+        $cells = MapCell::query()->where('map_space_id', $mapSpace->id)
+            ->where(function ($query) use ($rows): void {
+                foreach ($rows as $y => $xs) {
+                    $query->orWhere(fn ($row) => $row->where('y', $y)->whereIn('x', $xs));
+                }
+            })->with(['terrain', 'facility'])->get();
+        $projection = new SurfaceLandProjection($cells, array_fill_keys(array_keys($points), true));
+        $projectionMemo->putLandProjection($this->landProjectionKey($queue, $nation, $mapSpace), $projection);
+
+        // A chronological pass resolves reclamation chains without recursive distance calls.
+        foreach ($queue->items->sortBy('queue_position') as $item) {
+            if ($item->target_context !== 'surface_cell' || $item->target_x === null || $item->target_y === null) {
+                continue;
+            }
+            $cell = $projection->cell($item->target_x, $item->target_y);
+            if ($cell === null) {
+                continue;
+            }
+            $position = (int) $item->queue_position;
+            $projection->advanceTo($position);
+            $state = $projection->stateBefore($cell->x, $cell->y, $position);
+            if ($state !== null) {
+                $after = $this->projectQueuedCellResult($item, $state, $cell, $queue, $nation, $mapSpace, $projectionMemo);
+                if ($after !== $state) {
+                    $projection->record($cell, $position, $after);
+                }
+            }
+        }
+        $projection->finish();
+
+        return $projection;
     }
 
     private function hasCurrentOwnedLandWithin(Nation $nation, MapCell $cell, int $radius, bool $includeCenter = true, ?SurfaceCommandProjectionMemo $projectionMemo = null): bool
@@ -2080,7 +2180,7 @@ final class CommandQueueService
 
     private function assertUnderseaConstructionDistance(Nation $nation, MapCell $cell, ?SurfaceCommandProjectionMemo $projectionMemo = null): void
     {
-        if (! $this->hasCurrentOwnedLandWithin($nation, $cell, 3, projectionMemo: $projectionMemo)) {
+        if (! $this->hasCurrentOwnedLandWithin($nation, $cell, LandDevelopmentDistancePolicy::WATER_RADIUS, projectionMemo: $projectionMemo)) {
             throw new PlayerFacingCommandException('建設対象の3hex以内に自国陸地がありません。');
         }
     }

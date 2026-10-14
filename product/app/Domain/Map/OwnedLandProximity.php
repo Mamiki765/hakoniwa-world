@@ -32,4 +32,21 @@ final class OwnedLandProximity
             }))
             ->exists();
     }
+
+    /** @param callable(int, int): (array{terrain_key: string, owner_nation_id: int|null}|null) $stateAt */
+    public function withinProjected(Nation $nation, MapCell $target, int $radius, bool $includeCenter, callable $stateAt): bool
+    {
+        foreach ((new GridCoordinate($target->x, $target->y))->radius($radius) as $coordinate) {
+            if (! $includeCenter && $coordinate->x === $target->x && $coordinate->y === $target->y) {
+                continue;
+            }
+            $state = $stateAt($coordinate->x, $coordinate->y);
+            if ($state !== null && $state['owner_nation_id'] === $nation->id
+                && $this->landArea->isLandTerrain($state['terrain_key'])) {
+                return true;
+            }
+        }
+
+        return false;
+    }
 }

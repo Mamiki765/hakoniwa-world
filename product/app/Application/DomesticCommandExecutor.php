@@ -7,6 +7,7 @@ use App\Application\Underground\UndergroundFacilityService;
 use App\Domain\Command\CapitalCorePolicy;
 use App\Domain\Command\CapitalDestructionPolicy;
 use App\Domain\Command\CommandFailureReason;
+use App\Domain\Command\LandDevelopmentDistancePolicy;
 use App\Domain\Command\MissileTargetPolicy;
 use App\Domain\Command\OwnerFacilityOverbuildPolicy;
 use App\Domain\Command\PlayerFacingCommandException;
@@ -473,7 +474,7 @@ final class DomesticCommandExecutor
             if ($this->hasForeignAdjacentCell($nation, $cell)) {
                 return ['reason' => CommandFailureReason::ForeignAdjacentWater, 'observed' => $observed];
             }
-            if (! $this->ownedLand->within($nation, $cell, 1, false)) {
+            if (! $this->ownedLand->within($nation, $cell, LandDevelopmentDistancePolicy::RECLAMATION_RADIUS, false)) {
                 return ['reason' => CommandFailureReason::NoAdjacentOwnedLand, 'observed' => $observed];
             }
         } elseif (! in_array($definition->key, ['territory_expand', 'build_port', 'build_seabed_base', 'build_undersea_city', 'build_undersea_fire_station'], true)) {
@@ -542,7 +543,7 @@ final class DomesticCommandExecutor
             if ($cell->owner_nation_id !== null && $cell->owner_nation_id !== $nation->id) {
                 return ['reason' => CommandFailureReason::ForeignOwned, 'observed' => $observed];
             }
-            if (! $this->ownedLand->within($nation, $cell, 3)) {
+            if (! $this->ownedLand->within($nation, $cell, LandDevelopmentDistancePolicy::WATER_RADIUS)) {
                 return ['reason' => CommandFailureReason::MissingAdjacentTerritory, 'observed' => $observed];
             }
             if ($cell->terrain->key === 'sea') {
