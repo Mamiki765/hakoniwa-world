@@ -199,7 +199,7 @@ final class CommandQueueController extends Controller
                     $unavailableReason = null;
                     $distanceReasonCode = $cell === null || $definition->target_type !== 'cell'
                         ? null
-                        : $service->currentLandDistanceReasonCode($nation, $definition, $cell, $visibleState['terrain_key'] ?? null);
+                        : $service->currentLandDistanceReasonCode($nation, $definition, $cell, $visibleState['terrain_key'] ?? null, $projectionMemo);
                     $projectedExecutable = false;
                     $currentlyExecutable = false;
                     if ($definition->target_type === 'cell' && $cell !== null) {
@@ -211,6 +211,7 @@ final class CommandQueueController extends Controller
                                 $cell,
                                 $visibleState,
                                 $rulesetSettings,
+                                $projectionMemo,
                             );
                             $currentlyExecutable = true;
                         } catch (PlayerFacingCommandException $exception) {

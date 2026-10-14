@@ -16,6 +16,19 @@ final class SurfaceCommandProjectionMemo
     /** @var array<string, bool>|null */
     private ?array $terrainWater = null;
 
+    /** @var array<string, bool> */
+    private array $currentLandDistances = [];
+
+    public function currentLandDistance(string $key): ?bool
+    {
+        return $this->currentLandDistances[$key] ?? null;
+    }
+
+    public function putCurrentLandDistance(string $key, bool $inRange): void
+    {
+        $this->currentLandDistances[$key] = $inRange;
+    }
+
     /** @return array{terrain_key: string, facility_key: string|null, owner_nation_id: int|null, facility_operational_state: string|null}|null */
     public function get(string $key): ?array
     {

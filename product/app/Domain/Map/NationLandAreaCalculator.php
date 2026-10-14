@@ -5,6 +5,7 @@ namespace App\Domain\Map;
 use App\Models\MapCell;
 use App\Models\Nation;
 use App\Models\World;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection;
 
 final class NationLandAreaCalculator
@@ -74,6 +75,15 @@ final class NationLandAreaCalculator
     public function isLand(MapCell $cell): bool
     {
         return ! in_array($cell->terrain->key, self::EXCLUDED_TERRAIN_KEYS, true);
+    }
+
+    /**
+     * @param  Builder<MapCell>  $query
+     * @return Builder<MapCell>
+     */
+    public function whereLand(Builder $query): Builder
+    {
+        return $query->whereHas('terrain', fn ($terrain) => $terrain->whereNotIn('key', self::EXCLUDED_TERRAIN_KEYS));
     }
 
     /** @return Collection<int, MapCell> */

@@ -1291,12 +1291,12 @@ final class CommandQueueService
         }
         if ($this->underseaConstruction->appliesTo($definition->key)) {
             return ($state['owner_nation_id'] === null || $state['owner_nation_id'] === $nation->id)
-                && $this->underseaConstruction->hasNearbyOwnedLand($nation, $cell);
+                && $this->currentLandDistanceReasonCode($nation, $definition, $cell, projectionMemo: $projectionMemo) === null;
         }
         if ($definition->key === 'reclaim'
             || ($definition->key === 'excavate' && in_array($state['terrain_key'], ['sea', 'shallow'], true))) {
             return ($state['owner_nation_id'] === null || $state['owner_nation_id'] === $nation->id)
-                && $this->currentLandDistanceReasonCode($nation, $definition, $cell, $state['terrain_key']) === null;
+                && $this->currentLandDistanceReasonCode($nation, $definition, $cell, $state['terrain_key'], $projectionMemo) === null;
         }
         if ($definition->key === 'excavate') {
             return $state['owner_nation_id'] === null || $state['owner_nation_id'] === $nation->id;
@@ -1543,6 +1543,7 @@ final class CommandQueueService
         MapCell $cell,
         ?array $visibleState = null,
         ?array $rulesetSettings = null,
+        ?SurfaceCommandProjectionMemo $projectionMemo = null,
     ): void {
         $state = $visibleState ?? [
             'terrain_key' => $cell->terrain->key,
@@ -1646,7 +1647,7 @@ final class CommandQueueService
             if ($ownerNationId !== null && $ownerNationId !== $nation->id) {
                 throw new PlayerFacingCommandException('他国所有の水域は埋め立てできません。');
             }
-            if (! $this->ownedLand->within($nation, $cell, 1, false)) {
+            if (! $this->hasCurrentOwnedLandWithin($nation, $cell, 1, false, $projectionMemo)) {
                 throw new PlayerFacingCommandException('埋め立て対象の隣に自国陸地がありません。');
             }
 
@@ -1670,7 +1671,7 @@ final class CommandQueueService
             if ($ownerNationId !== null && $ownerNationId !== $nation->id) {
                 throw new PlayerFacingCommandException('他国所有の海には建設できません。');
             }
-            $this->assertUnderseaConstructionDistance($nation, $cell);
+            $this->assertUnderseaConstructionDistance($nation, $cell, $projectionMemo);
 
             return;
         }
@@ -1681,7 +1682,7 @@ final class CommandQueueService
             if ($terrainKey === 'sea' && $facilityKey !== null) {
                 throw new PlayerFacingCommandException('施設のある海では油田探索できません。');
             }
-            if (! $this->ownedLand->within($nation, $cell, 3)) {
+            if (! $this->hasCurrentOwnedLandWithin($nation, $cell, 3, projectionMemo: $projectionMemo)) {
                 throw new PlayerFacingCommandException('掘削対象の3hex以内に自国陸地がありません。');
             }
 
@@ -2049,14 +2050,14 @@ final class CommandQueueService
      *
      * @return 'out_of_land_range'|null
      */
-    public function currentLandDistanceReasonCode(Nation $nation, CommandDefinition $definition, MapCell $cell, ?string $terrainKey = null): ?string
+    public function currentLandDistanceReasonCode(Nation $nation, CommandDefinition $definition, MapCell $cell, ?string $terrainKey = null, ?SurfaceCommandProjectionMemo $projectionMemo = null): ?string
     {
         if ($this->underseaConstruction->appliesTo($definition->key)) {
-            $inRange = $this->underseaConstruction->hasNearbyOwnedLand($nation, $cell);
+            $inRange = $this->hasCurrentOwnedLandWithin($nation, $cell, 3, projectionMemo: $projectionMemo);
         } elseif ($definition->key === 'reclaim') {
-            $inRange = $this->ownedLand->within($nation, $cell, 1, false);
+            $inRange = $this->hasCurrentOwnedLandWithin($nation, $cell, 1, false, $projectionMemo);
         } elseif ($definition->key === 'excavate' && in_array($terrainKey ?? $cell->terrain->key, ['sea', 'shallow'], true)) {
-            $inRange = $this->ownedLand->within($nation, $cell, 3);
+            $inRange = $this->hasCurrentOwnedLandWithin($nation, $cell, 3, projectionMemo: $projectionMemo);
         } else {
             return null;
         }
@@ -2064,9 +2065,22 @@ final class CommandQueueService
         return $inRange ? null : 'out_of_land_range';
     }
 
-    private function assertUnderseaConstructionDistance(Nation $nation, MapCell $cell): void
+    private function hasCurrentOwnedLandWithin(Nation $nation, MapCell $cell, int $radius, bool $includeCenter = true, ?SurfaceCommandProjectionMemo $projectionMemo = null): bool
     {
-        if (! $this->underseaConstruction->hasNearbyOwnedLand($nation, $cell)) {
+        $key = implode(':', [$nation->id, $cell->map_space_id, $cell->x, $cell->y, $radius, (int) $includeCenter]);
+        $cached = $projectionMemo?->currentLandDistance($key);
+        if ($cached !== null) {
+            return $cached;
+        }
+        $inRange = $this->ownedLand->within($nation, $cell, $radius, $includeCenter);
+        $projectionMemo?->putCurrentLandDistance($key, $inRange);
+
+        return $inRange;
+    }
+
+    private function assertUnderseaConstructionDistance(Nation $nation, MapCell $cell, ?SurfaceCommandProjectionMemo $projectionMemo = null): void
+    {
+        if (! $this->hasCurrentOwnedLandWithin($nation, $cell, 3, projectionMemo: $projectionMemo)) {
             throw new PlayerFacingCommandException('建設対象の3hex以内に自国陸地がありません。');
         }
     }
