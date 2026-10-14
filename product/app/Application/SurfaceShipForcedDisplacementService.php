@@ -4,6 +4,7 @@ namespace App\Application;
 
 use App\Domain\Facility\FacilityVisibilityPolicy;
 use App\Domain\Map\GridCoordinate;
+use App\Domain\Ship\SurfaceShipCatalog;
 use App\Domain\Turn\TurnContext;
 use App\Domain\Turn\TurnRandomStreamFactory;
 use App\Models\MapCell;
@@ -19,6 +20,7 @@ final class SurfaceShipForcedDisplacementService
         private readonly SurfaceShipRemovalService $removal,
         private readonly TurnEventRecorder $events,
         private readonly NationRecoveryExitService $recoveryExit,
+        private readonly SurfaceShipCatalog $catalog,
     ) {}
 
     public function displace(
@@ -60,12 +62,13 @@ final class SurfaceShipForcedDisplacementService
                 'acting_nation_id' => (int) $actingNation->id,
             ]);
             if ($foreign) {
-                $crimePoints = (int) $settings['foreign_destroy_karma'];
+                $crimePoints = $this->catalog->definition($context->ruleset->settings, $ship->ship_type_key)->foreignSinkKarma
+                    ?? (int) $settings['foreign_destroy_karma'];
                 $context->state->addKarmaCrime(
                     (int) $actingNation->id,
                     $crimePoints,
                 );
-                if ($actingNation->state === 'recovery') {
+                if ($crimePoints > 0 && $actingNation->state === 'recovery') {
                     $this->recoveryExit->exitForCrime($context, $actingNation, $crimePoints, $queueItemId);
                 }
             }

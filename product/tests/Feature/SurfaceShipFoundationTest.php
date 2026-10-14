@@ -176,7 +176,7 @@ final class SurfaceShipFoundationTest extends TestCase
             ->where('key', 'build_ship')
             ->firstOrFail();
         $this->assertSame(
-            ['fishing', 'tourist', 'exploration', 'warship'],
+            ['fishing', 'tourist', 'exploration', 'warship', 'undersea_construction'],
             array_map(
                 static fn (SurfaceShipDefinition $definition): string => $definition->key,
                 app(SurfaceShipCatalog::class)->options($buildCommand),
