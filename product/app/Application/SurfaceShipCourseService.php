@@ -3,16 +3,21 @@
 namespace App\Application;
 
 use App\Domain\Concurrency\OptimisticLockException;
+use App\Domain\Map\GridCoordinate;
 use App\Domain\Nation\UserMembershipMutationLock;
 use App\Domain\Ruleset\CurrentRulesetGuard;
 use App\Domain\World\WorldMutationLock;
+use App\Models\MapCell;
+use App\Models\MapSpace;
 use App\Models\Nation;
 use App\Models\NationMembership;
 use App\Models\Ship;
 use App\Models\User;
 use App\Models\World;
+use App\Services\MapCellPresenter;
 use DomainException;
 use Illuminate\Auth\Access\AuthorizationException;
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\DB;
 
 final class SurfaceShipCourseService
@@ -22,6 +27,7 @@ final class SurfaceShipCourseService
         private readonly UserMembershipMutationLock $membershipMutationLock,
         private readonly WorldMutationLock $worldMutationLock,
         private readonly NextProductionTurnRunGuard $turnRunGuard,
+        private readonly SurfaceVisibilityService $visibility,
     ) {}
 
     public function update(
@@ -30,6 +36,28 @@ final class SurfaceShipCourseService
         Ship $ship,
         ?int $heading,
         int $expectedVersion,
+    ): Ship {
+        return $this->updateCourse($user, $nation, $ship, $heading, null, $expectedVersion, false);
+    }
+
+    public function updateDestination(
+        User $user,
+        Nation $nation,
+        Ship $ship,
+        ?GridCoordinate $destination,
+        int $expectedVersion,
+    ): Ship {
+        return $this->updateCourse($user, $nation, $ship, null, $destination, $expectedVersion, true);
+    }
+
+    private function updateCourse(
+        User $user,
+        Nation $nation,
+        Ship $ship,
+        ?int $heading,
+        ?GridCoordinate $destination,
+        int $expectedVersion,
+        bool $destinationCommand,
     ): Ship {
         $this->authorize($user, $nation);
         if ($heading !== null && ($heading < 0 || $heading > 5)) {
@@ -40,7 +68,7 @@ final class SurfaceShipCourseService
         try {
             $this->worldMutationLock->acquire($world);
             try {
-                return DB::transaction(function () use ($user, $nation, $ship, $heading, $expectedVersion, $world): Ship {
+                return DB::transaction(function () use ($user, $nation, $ship, $heading, $destination, $expectedVersion, $destinationCommand, $world): Ship {
                     $lockedWorld = World::query()->whereKey($world->id)->lockForUpdate()->firstOrFail();
                     $ruleset = $lockedWorld->rulesetVersion()->firstOrFail();
                     $this->rulesetGuard->assertMutable($lockedWorld, $ruleset);
@@ -62,15 +90,34 @@ final class SurfaceShipCourseService
                     if ((int) $lockedShip->version !== $expectedVersion) {
                         throw new OptimisticLockException('Shipが他の操作で更新されました。再読込してください。');
                     }
-                    if ($lockedShip->heading === $heading) {
+                    $cell = $lockedShip->cell()->firstOrFail();
+                    if ($destination !== null) {
+                        $space = MapSpace::query()->findOrFail($cell->map_space_id);
+                        $target = $space->currentBounds()->contains($destination->x, $destination->y)
+                            ? MapCell::query()->where('map_space_id', $space->id)
+                                ->where('x', $destination->x)->where('y', $destination->y)
+                                ->with(['terrain', 'facility'])->first()
+                            : null;
+                        if (! $target instanceof MapCell) {
+                            throw new DomainException('目的地は地上の海のマスを指定してください。');
+                        }
+                        $visible = $this->visibility->visibleCoordinates($space, new Collection([$target]), (int) $lockedNation->id);
+                        if (MapCellPresenter::visibleState($target, (int) $lockedNation->id, isset($visible[$target->x.':'.$target->y]))['terrain_key'] !== 'sea') {
+                            throw new DomainException('目的地は地上の海のマスを指定してください。');
+                        }
+                    }
+                    $before = $lockedShip->course();
+                    if ($lockedShip->heading === $heading
+                        && $lockedShip->destination_x === $destination?->x
+                        && $lockedShip->destination_y === $destination?->y) {
                         return $lockedShip;
                     }
-                    $before = $lockedShip->heading;
                     $lockedShip->heading = $heading;
+                    $lockedShip->destination_x = $destination?->x;
+                    $lockedShip->destination_y = $destination?->y;
                     $lockedShip->version++;
                     $lockedShip->save();
                     $occurredAt = now();
-                    $cell = $lockedShip->cell()->firstOrFail(['x', 'y']);
                     DB::table('audit_events')->insert([
                         'actor_user_id' => $user->id,
                         'world_id' => $lockedWorld->id,
@@ -80,7 +127,7 @@ final class SurfaceShipCourseService
                         'y' => $cell->y,
                         'message' => null,
                         'visibility' => 'admin',
-                        'event_type' => 'ship.heading.updated',
+                        'event_type' => $destinationCommand ? 'ship.destination.updated' : 'ship.heading.updated',
                         'severity' => 'info',
                         'subject_type' => Ship::class,
                         'subject_id' => $lockedShip->id,
@@ -88,8 +135,8 @@ final class SurfaceShipCourseService
                             'world_id' => (int) $lockedWorld->id,
                             'target_turn' => (int) $lockedWorld->current_turn,
                             'nation_id' => (int) $lockedNation->id,
-                            'before' => $before,
-                            'after' => $heading,
+                            'before' => $before[$destinationCommand ? 'destination' : 'heading'],
+                            'after' => $lockedShip->course()[$destinationCommand ? 'destination' : 'heading'],
                         ], JSON_THROW_ON_ERROR),
                         'occurred_at' => $occurredAt,
                         'created_at' => $occurredAt,

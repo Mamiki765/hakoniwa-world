@@ -288,6 +288,9 @@ html .sl h2 { font: var(--sl-w-head) 14px var(--sl-f-head); display: block; min-
 .sl-cmd .cost .shortfall { font-size: 10px; color: var(--sl-bad); }
 .sl .sl-cmd.short { color: var(--sl-ink-2); background: transparent; border-style: dashed; }
 .sl .sl-cmd.later { border-style: dotted; }
+.sl-cmd .note { grid-column: 2 / -1; font-size: 11px; line-height: 1.3; color: var(--sl-ink-2); }
+.sl .sl-ship-build-note { margin: 0 10px; font-size: 11px; color: var(--sl-ink-2); }
+.sl-dialog .sl-ship-build-note { margin: 0; font-size: 12px; }
 
 /* ================= 開発計画（帳簿） ================= */
 .sl-plan { grid-area: plan; border-left: 1px solid var(--sl-line); position: relative; }
@@ -316,6 +319,8 @@ html .sl h2 { font: var(--sl-w-head) 14px var(--sl-f-head); display: block; min-
 .sl-pr-name { min-width: 0; line-height: 1.25; overflow-wrap: anywhere; }
 .sl-pr-name .danger-suffix { color: var(--sl-bad); }
 .sl-pr.selected .danger-suffix { color: inherit; }
+.sl-pr-via { margin-left: 5px; font-size: 10px; border: 1px solid currentColor; border-radius: 2px; padding: 0 3px; color: var(--sl-ink-2); }
+.sl-pr.selected .sl-pr-via { color: inherit; }
 .sl-pr-at { font: 12px var(--sl-f-num); font-variant-numeric: tabular-nums; color: var(--sl-ink-2); white-space: nowrap; }
 .sl-qty { display: grid; gap: 6px; padding: 8px 10px; border-bottom: 1px solid var(--sl-line); background: var(--sl-panel-2); font-size: 13px; }
 .sl-qty .preset-row, .sl-dialog .preset-row { display: flex; flex-wrap: wrap; gap: 4px; }
@@ -462,3 +467,7 @@ html .sl .sl-visit-facts h3 { font: var(--sl-w-head) 12px var(--sl-f-head); colo
     .sl .sl-tabs button { font-size: 12px; padding-inline: 2px; }
     .sl .sl-tabs .grow { flex-basis: 42px; }
 }
+.sl-ship-order { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 6px; margin: 0; width: 100%; }
+.sl-ship-order small { color: var(--sl-ink-2); }
+.map-cell .ship-destination-flag { position: absolute; left: 5px; top: 3px; z-index: 5; width: 2px; height: 16px; background: var(--sl-map-mark-ink); filter: drop-shadow(0 0 1px #ffffff); pointer-events: none; }
+.map-cell .ship-destination-flag::after { content: ""; position: absolute; left: 2px; top: 0; border-left: 10px solid var(--sl-map-sel); border-top: 5px solid transparent; border-bottom: 5px solid transparent; }

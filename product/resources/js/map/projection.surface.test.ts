@@ -3,6 +3,7 @@ import {
     floorDiv,
     floorMod,
     gridToPixel,
+    hexDistance,
     neighbor,
 } from './projection';
 
@@ -57,5 +58,15 @@ describe('staggered square-tile x/y grid', () => {
         ]);
         expect(gridToPixel({ x: 10, y: -2 })).toEqual({ x: 336, y: -64 });
         expect(gridToPixel({ x: 10, y: -1 })).toEqual({ x: 320, y: -32 });
+    });
+
+    it('counts straight-line hex distance the same way as the server, including odd and negative rows', () => {
+        for (const origin of [{ x: 0, y: 0 }, { x: 10, y: -1 }]) {
+            expect(hexDistance(origin, origin)).toBe(0);
+            for (let direction = 0; direction < 6; direction++) expect(hexDistance(origin, neighbor(origin, direction))).toBe(1);
+        }
+        expect(hexDistance({ x: 0, y: 0 }, { x: 4, y: 4 })).toBe(6);
+        expect(hexDistance({ x: 4, y: 4 }, { x: 0, y: 0 })).toBe(6);
+        expect(hexDistance({ x: -20, y: -16 }, { x: -16, y: -12 })).toBe(6);
     });
 });

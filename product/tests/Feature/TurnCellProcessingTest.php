@@ -1351,6 +1351,31 @@ class TurnCellProcessingTest extends TestCase
 
     }
 
+    public function test_famine_riot_preserves_seabed_base_and_still_destroys_land_facility(): void
+    {
+        [$world, , $nation, $engine, , , $farm, $seabedBase] = $this->cellProcessingNation();
+        $this->facility($farm, 'farm', 'plain');
+        $this->facility($seabedBase, 'seabed_base', 'sea');
+        $before = $seabedBase->fresh()->only([
+            'terrain_definition_id', 'facility_definition_id', 'facility_scale', 'owner_nation_id', 'version',
+        ]);
+        $ruleset = $world->rulesetVersion()->sole();
+        $settings = $ruleset->settings;
+        // Force a riot in this isolated context; do not couple eligibility to balance probability.
+        $settings['turn_processing']['riot']['probability'] = ['numerator' => 1, 'denominator' => 1];
+        $ruleset->settings = $settings;
+        [$context, $run] = $this->context($world, $nation, [$farm->id, $seabedBase->id], hash('sha256', 'riot eligibility'), true, $ruleset);
+
+        $result = $engine->execute('process_cells', $context);
+
+        $this->assertSame(1, $result->metrics['riots']);
+        $this->assertSame('wasteland', $farm->fresh()->terrain()->value('key'));
+        $this->assertNull($farm->fresh()->facility_definition_id);
+        $this->assertSame($before, $seabedBase->fresh()->only(array_keys($before)));
+        $this->assertSame(1, DB::table('audit_events')->where('event_type', 'facility.riot')
+            ->whereRaw("metadata->>'turn_run_id' = ?", [(string) $run->id])->count());
+    }
+
     public function test_riots_forest_growth_rain_and_land_clear_in_cell_processing(): void
     {
         [$world, $user, $nation, $engine, $capital, $space, $firstCandidate, $secondCandidate, $forestCells] = $this->cellProcessingNation();

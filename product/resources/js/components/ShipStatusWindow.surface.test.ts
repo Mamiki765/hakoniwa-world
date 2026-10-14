@@ -12,7 +12,7 @@ afterEach(() => {
 
 describe('ship status window', () => {
     it('loads the complete fleet on open, shows directions and waiting warships, and refreshes removed ships', async () => {
-        const fishing = { id: 1, name: '漁船', x: -2, y: 4, current_hp: 1, max_hp: 1, heading: null, movement_mode: 'heading_or_random' };
+        const fishing = { id: 1, name: '漁船', x: -2, y: 4, current_hp: 1, max_hp: 1, heading: null, destination: null, movement_mode: 'heading_or_random' };
         const types = [
             { key: 'fishing', name: '漁船', count: 1, capacity: 3 },
             { key: 'tourist', name: '観光船', count: 0, capacity: 3 },
@@ -22,6 +22,7 @@ describe('ship status window', () => {
             fishing,
             { ...fishing, id: 2, name: '探検船', heading: 1, current_hp: 1, max_hp: 2 },
             { ...fishing, id: 3, name: '軍艦', movement_mode: 'heading_only', max_hp: 5 },
+            { ...fishing, id: 4, name: '軍艦', movement_mode: 'heading_only', destination: { x: 3, y: -1 }, max_hp: 5 },
         ], meta: { ship_types: types } }).mockResolvedValueOnce({ data: [], meta: {
             ship_types: types.map(type => ({ ...type, count: 0 })),
         } });
@@ -36,11 +37,13 @@ describe('ship status window', () => {
         expect(apiEnvelope).toHaveBeenCalledWith('/api/v1/nations/7/ships');
         expect(dialog.querySelector('.ship-type-count-values')!.textContent).toContain('1/3');
         const rows = [...dialog.querySelectorAll('li')].map(row => row.textContent ?? '');
-        expect(rows).toHaveLength(3);
-        // heading=null でも移動方式で表示が分かれる(ランダム移動 / 軍艦の待機)。
-        expect(rows[0]).toContain('ランダム');
+        expect(rows).toHaveLength(4);
+        // 指示がなければ移動方式で表示が分かれる(おまかせ / 軍艦の待機)。目的地は進路より先に出す。
+        expect(rows[0]).toContain('おまかせ');
         expect(rows[1]).toContain('北東');
-        expect(rows[2]).toContain('待機中');
+        expect(rows[2]).toContain('待機');
+        expect(rows[3]).toContain('目的地 (3,-1)');
+        expect(rows[3]).not.toContain('待機');
         dialog.querySelectorAll('button')[1]!.click();
         await flushPromises();
         expect(dialog.querySelectorAll('li')).toHaveLength(0);

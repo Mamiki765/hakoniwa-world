@@ -137,17 +137,36 @@ final class SurfaceShipTurnService
         $candidates = $this->movementCandidates($space, $origin, $cellsByCoordinate, $monsters, $ships);
         $heading = $isNpc ? null : $ship->heading;
         $destination = $heading === null ? null : ($candidates[$heading] ?? null);
+        $destinationOrder = $isNpc ? null : $ship->course()['destination'];
+        $destinationEndReason = null;
+        if ($destinationOrder !== null) {
+            $coordinate = new GridCoordinate($destinationOrder['x'], $destinationOrder['y']);
+            $target = $cellsByCoordinate[$coordinate->x.':'.$coordinate->y] ?? null;
+            if (! $target instanceof MapCell || $target->terrain->key !== $this->movement['terrain_key']) {
+                $destinationEndReason = 'terrain_changed';
+            } elseif ($target->id === $origin->id) {
+                $destinationEndReason = 'arrived';
+            } else {
+                $destination = $this->closestCandidate($candidates, $coordinate);
+                if (! $destination instanceof MapCell
+                    || (new GridCoordinate($destination->x, $destination->y))->distanceTo($coordinate)
+                        >= (new GridCoordinate($origin->x, $origin->y))->distanceTo($coordinate)) {
+                    $destination = null;
+                    $destinationEndReason = 'blocked';
+                }
+            }
+        }
         $headingBlocked = $heading !== null && ! $destination instanceof MapCell;
         if ($headingBlocked) {
             $ship->heading = null;
         }
-        if (! $destination instanceof MapCell && $candidates !== [] && $heading === null
+        if (! $destination instanceof MapCell && $candidates !== [] && $heading === null && $destinationOrder === null
             && $definition->movementMode === 'sparkle_or_random') {
             $destination = $this->explorationDestination(
                 $context, $space, $origin, $candidates, $cellsByCoordinate, (int) $ship->nation_id,
             );
         }
-        if (! $destination instanceof MapCell && $candidates !== []
+        if (! $destination instanceof MapCell && $candidates !== [] && $destinationEndReason !== 'arrived'
             && in_array($definition->movementMode, ['heading_or_random', 'sparkle_or_random', 'random_drift'], true)) {
             $candidateList = array_values($candidates);
             $stream = $context->random->stream(TurnRandomStreamFactory::shipMovement(
@@ -158,13 +177,30 @@ final class SurfaceShipTurnService
             $destination = $candidateList[$stream->integer(0, count($candidateList) - 1)];
         }
         if (! $destination instanceof MapCell) {
-            if ($headingBlocked) {
+            $courseChanged = $headingBlocked;
+            $destinationNation = null;
+            if ($destinationEndReason !== null) {
+                $canFinish = $destinationEndReason === 'arrived';
+                if (! $canFinish) {
+                    $destinationNation = Nation::query()->whereKey($ship->nation_id)->where('state', 'active')->lockForUpdate()->first();
+                    $canFinish = $destinationNation instanceof Nation && (int) $this->lockedBalance(
+                        $destinationNation, $this->resources[$this->movement['fuel_resource_key']],
+                    )->amount >= $definition->movementOilUnits;
+                }
+                if ($canFinish) {
+                    $this->finishDestination($context, $origin, $ship, $definition, $destinationEndReason);
+                    $courseChanged = true;
+                }
+            }
+            if ($courseChanged) {
                 $ship->version++;
                 $ship->save();
             }
-            $ships->count('ship_blocked');
+            if ($destinationEndReason !== 'arrived') {
+                $ships->count('ship_blocked');
+            }
             if (! $isNpc && $definition->combatRole === 'warship') {
-                $nation = Nation::query()->whereKey($ship->nation_id)->where('state', 'active')->lockForUpdate()->first();
+                $nation = $destinationNation ?? Nation::query()->whereKey($ship->nation_id)->where('state', 'active')->lockForUpdate()->first();
                 if ($nation instanceof Nation) {
                     $this->warshipAttack($context, $origin, $ship, $nation, $cellsByCoordinate, $monsters, $ships);
                 }
@@ -221,6 +257,11 @@ final class SurfaceShipTurnService
             return;
         }
 
+        if ($destinationEndReason !== null) {
+            $this->finishDestination($context, $origin, $ship, $definition, $destinationEndReason);
+        } elseif ($destinationOrder !== null && $destination->x === $destinationOrder['x'] && $destination->y === $destinationOrder['y']) {
+            $this->finishDestination($context, $destination, $ship, $definition, 'arrived');
+        }
         $oil->decrement('amount', $definition->movementOilUnits);
         $this->persistMovement($context, $origin, $destination, $ship, $ships);
 
@@ -298,6 +339,13 @@ final class SurfaceShipTurnService
             return null;
         }
         $targetCoordinate = new GridCoordinate((int) $target->cell->x, (int) $target->cell->y);
+
+        return $this->closestCandidate($candidates, $targetCoordinate);
+    }
+
+    /** @param array<int, MapCell> $candidates */
+    private function closestCandidate(array $candidates, GridCoordinate $targetCoordinate): ?MapCell
+    {
         uasort($candidates, static fn (MapCell $left, MapCell $right): int => [
             (new GridCoordinate((int) $left->x, (int) $left->y))->distanceTo($targetCoordinate), (int) $left->id,
         ] <=> [
@@ -305,6 +353,32 @@ final class SurfaceShipTurnService
         ]);
 
         return reset($candidates) ?: null;
+    }
+
+    private function finishDestination(
+        TurnContext $context,
+        MapCell $cell,
+        Ship $ship,
+        SurfaceShipDefinition $definition,
+        string $reason,
+    ): void {
+        $destination = $ship->course()['destination'];
+        if ($destination === null) {
+            return;
+        }
+        $ship->destination_x = null;
+        $ship->destination_y = null;
+        $context->state->markMapChunkChanged((int) $cell->map_chunk_id);
+        $this->events->record($context, 'ship.destination.ended', $ship, [
+            'nation_id' => (int) $ship->nation_id,
+            'ship_id' => (int) $ship->id,
+            'ship_name' => $definition->name,
+            'reason' => $reason,
+            'destination_x' => $destination['x'],
+            'destination_y' => $destination['y'],
+            'x' => (int) $cell->x,
+            'y' => (int) $cell->y,
+        ], 'nation');
     }
 
     /** @param array<string, MapCell> $cellsByCoordinate */

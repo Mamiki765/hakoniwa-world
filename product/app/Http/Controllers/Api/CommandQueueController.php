@@ -9,15 +9,19 @@ use App\Application\ParadoxBalanceService;
 use App\Application\SurfaceVisibilityService;
 use App\Application\Underground\UndergroundFacilityService;
 use App\Domain\Command\BulkPlanPreviewChangedException;
+use App\Domain\Command\CapitalRelocationCooldown;
 use App\Domain\Command\CommandQueueLimit;
 use App\Domain\Command\CommandRequestConflictException;
 use App\Domain\Command\DevelopmentPlanQuantity;
+use App\Domain\Command\LandDevelopmentDistancePolicy;
 use App\Domain\Command\PlayerFacingCommandException;
 use App\Domain\Command\SurfaceCommandProjectionMemo;
+use App\Domain\Command\UnderseaConstructionPolicy;
 use App\Domain\Command\WindPowerRepairPolicy;
 use App\Domain\Concurrency\OptimisticLockException;
 use App\Domain\Facility\FacilityCapacityService;
 use App\Domain\Ruleset\ResetRequiredException;
+use App\Domain\Ship\SurfaceShipCatalog;
 use App\Domain\Underground\Facility\UndergroundCommandCatalog;
 use App\Domain\Underground\Facility\UndergroundCommandDefinition;
 use App\Http\Controllers\Controller;
@@ -28,6 +32,7 @@ use App\Models\MapSpace;
 use App\Models\Nation;
 use App\Models\NationCommandQueue;
 use App\Models\NationCommandQueueItem;
+use App\Models\Ship;
 use App\Services\MapCellPresenter;
 use DomainException;
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
@@ -39,6 +44,8 @@ final class CommandQueueController extends Controller
     public function __construct(
         private readonly CommandQuantitySemantics $quantitySemantics,
         private readonly NationCommandTargetService $nationTargets,
+        private readonly SurfaceShipCatalog $ships,
+        private readonly UnderseaConstructionPolicy $underseaConstruction,
     ) {}
 
     public function definitions(
@@ -51,11 +58,14 @@ final class CommandQueueController extends Controller
         UndergroundFacilityService $undergroundFacilities,
         UndergroundCommandCatalog $undergroundCommands,
         ParadoxBalanceService $paradox,
+        UnderseaConstructionPolicy $underseaConstruction,
     ): JsonResponse {
         try {
             $queue = $service->queueFor($request->user(), $nation, $mapSpace);
             $world = $nation->world()->with('rulesetVersion')->firstOrFail();
             $rulesetSettings = $world->rulesetVersion->settings;
+            $request->validate(['construction_ship_id' => ['sometimes', 'integer', 'min:1']]);
+            $constructionShipId = $request->has('construction_ship_id') ? $request->integer('construction_ship_id') : null;
             $position = max(1, min(
                 $this->queueLimit($nation),
                 $request->integer('position', 1),
@@ -124,6 +134,8 @@ final class CommandQueueController extends Controller
                                     ? 'currently_executable'
                                     : 'currently_unavailable',
                                 'execution_warnings' => $warnings,
+                                'distance_reason_code' => null,
+                                'projected_distance_reason_code' => null,
                             ];
                         },
                     )
@@ -146,7 +158,7 @@ final class CommandQueueController extends Controller
                     ->where('x', $request->integer('target_x'))
                     ->where('y', $request->integer('target_y'))
                     ->with(['terrain', 'facility', 'ship'])
-                    ->withExists('ship')
+                    ->withExists(['ship', 'monsterOccupancy'])
                     ->first();
             }
             $nationTargetOptions = $this->nationTargets->options($nation);
@@ -190,12 +202,25 @@ final class CommandQueueController extends Controller
                 ->keyBy('key');
             $paradoxPresentation = $paradox->presentFor($request->user()->id);
             $paradoxBalance = $paradoxPresentation['balance'];
+            $relocationRemainingTurns = CapitalRelocationCooldown::remainingTurns(
+                $nation->last_capital_relocation_turn,
+                $world->current_turn,
+            );
             $definitions = $definitions
-                ->map(function (CommandDefinition $definition) use ($cell, $nation, $mapSpace, $service, $capacities, $queue, $position, $nationTargetOptions, $monsterDispatchTargetOptions, $projected, $resultFacilities, $visibleState, $projectionMemo, $rulesetSettings, $paradoxBalance): array {
+                ->map(function (CommandDefinition $definition) use ($cell, $nation, $mapSpace, $service, $capacities, $queue, $position, $nationTargetOptions, $monsterDispatchTargetOptions, $projected, $resultFacilities, $visibleState, $projectionMemo, $rulesetSettings, $paradoxBalance, $constructionShipId, $underseaConstruction, $relocationRemainingTurns): array {
+                    $constructionParameters = $constructionShipId !== null && isset($definition->metadata['parameters']['construction_ship_id'])
+                        ? ['construction_ship_id' => $constructionShipId] : [];
                     $ownerOverbuildEffect = $projected === null
                         ? null
                         : $service->projectedOwnerOverbuildEffect($definition, $nation, $projected);
                     $unavailableReason = null;
+                    $distanceReasonCode = $cell === null || $definition->target_type !== 'cell'
+                        ? null
+                        : $service->currentLandDistanceReasonCode($nation, $definition, $cell, $visibleState['terrain_key'] ?? null, $projectionMemo, $constructionParameters);
+                    $projectedDistanceReasonCode = $cell === null || $definition->target_type !== 'cell'
+                        || ! in_array($projected['terrain_key'], $definition->target_terrain_keys, true)
+                        ? null
+                        : $service->projectedLandDistanceReasonCode($nation, $mapSpace, $definition, $cell, $projected['terrain_key'], $queue, $position, $projectionMemo, $constructionParameters);
                     $projectedExecutable = false;
                     $currentlyExecutable = false;
                     if ($definition->target_type === 'cell' && $cell !== null) {
@@ -207,6 +232,8 @@ final class CommandQueueController extends Controller
                                 $cell,
                                 $visibleState,
                                 $rulesetSettings,
+                                $constructionParameters,
+                                $projectionMemo,
                             );
                             $currentlyExecutable = true;
                         } catch (PlayerFacingCommandException $exception) {
@@ -231,9 +258,11 @@ final class CommandQueueController extends Controller
                                     $queue,
                                     $position,
                                     $projectionMemo,
+                                    $constructionParameters,
                                 );
                         }
-                        if (in_array($definition->key, ['build_port', 'build_wind_power'], true)) {
+                        if (in_array($definition->key, ['build_port', 'build_wind_power', 'reclaim', 'excavate'], true)
+                            || LandDevelopmentDistancePolicy::isUnderseaConstruction($definition)) {
                             $targetProjectedExecutable = $service->projectedTargetMatches(
                                 $definition,
                                 $projected,
@@ -243,15 +272,28 @@ final class CommandQueueController extends Controller
                                 $queue,
                                 $position,
                                 $projectionMemo,
+                                $constructionParameters,
                             );
                             if ($currentlyExecutable && ! $targetProjectedExecutable) {
-                                $unavailableReason = $definition->key === 'build_wind_power'
-                                    ? '予約済みcommand後は風力発電所の建設・修理条件を満たしません。'
-                                    : '予約済みcommand後は港の建設条件を満たしません。';
+                                $unavailableReason = match ($definition->key) {
+                                    'build_wind_power' => '予約済みcommand後は風力発電所の建設・修理条件を満たしません。',
+                                    'build_port' => '予約済みcommand後は港の建設条件を満たしません。',
+                                    default => '予約済みcommand後は対象・距離条件を満たしません。',
+                                };
                             } elseif (! $currentlyExecutable) {
                                 $projectedExecutable = $targetProjectedExecutable;
                             }
                         }
+                    }
+
+                    if ($distanceReasonCode !== null && ! $projectedExecutable) {
+                        $unavailableReason ??= '現在の自国陸地からの距離条件を満たしません。';
+                    }
+
+                    $cooldownRemainingTurns = $definition->key === 'relocate_capital' ? $relocationRemainingTurns : null;
+                    if ($cooldownRemainingTurns > 0) {
+                        $projectedExecutable = false;
+                        $unavailableReason = "次の遷都まであと{$cooldownRemainingTurns}ターン必要です。";
                     }
 
                     $resultFacility = $definition->result_facility_key === null
@@ -282,6 +324,13 @@ final class CommandQueueController extends Controller
                         $projected['facility_key'] ?? null,
                         $projected['facility_operational_state'] ?? null,
                     );
+                    if ($cell !== null && $constructionParameters !== []) {
+                        try {
+                            $presentedCost *= $underseaConstruction->costMultiplier($nation, $definition, $cell, $constructionParameters);
+                        } catch (PlayerFacingCommandException) {
+                            // The target validation already supplies the unavailable reason.
+                        }
+                    }
                     $shortfall = max(0, $presentedCost - $nation->money);
                     $paradoxCost = $definition->metadata['cost_paradox'] ?? 0;
                     if (! is_int($paradoxCost) || $paradoxCost < 0) {
@@ -335,6 +384,7 @@ final class CommandQueueController extends Controller
                         'available' => $applicable,
                         'shortfall_money' => $shortfall,
                         'shortfall_paradox' => $paradoxShortfall,
+                        'cooldown_remaining_turns' => $cooldownRemainingTurns,
                         'unavailable_reason' => ! $applicable
                             ? ($requiresNationTarget ? '選択可能な対象島がありません。' : '対象セルを選択してください。')
                             : null,
@@ -344,6 +394,8 @@ final class CommandQueueController extends Controller
                                 ? 'executable_after_queue'
                                 : ($warnings === [] ? 'currently_executable' : 'currently_unavailable')),
                         'execution_warnings' => $warnings,
+                        'distance_reason_code' => $distanceReasonCode,
+                        'projected_distance_reason_code' => $projectedDistanceReasonCode,
                     ];
                 })
                 ->values();
@@ -589,10 +641,20 @@ final class CommandQueueController extends Controller
         $nation = $queue->nation()->firstOrFail();
         $mapSpace = MapSpace::query()->findOrFail($queue->map_space_id);
         $projectionMemo = new SurfaceCommandProjectionMemo;
+        $constructionShipIds = $queue->items->pluck('parameters.construction_ship_id')
+            ->filter(static fn (mixed $id): bool => is_int($id) && $id > 0)->unique()->values();
+        if ($constructionShipIds->isNotEmpty()) {
+            $queue->loadMissing('items.definition.rulesetVersion');
+        }
+        /** @var EloquentCollection<int, Ship> $constructionShips */
+        $constructionShips = $constructionShipIds->isEmpty() ? new EloquentCollection : Ship::query()
+            ->where('world_id', $nation->world_id)->where('nation_id', $nation->id)
+            ->whereKey($constructionShipIds->all())->get()->keyBy('id');
         $items = $queue->items
-            ->map(function (NationCommandQueueItem $item) use ($queue, $nation, $service, $mapSpace, $projectionMemo): array {
+            ->map(function (NationCommandQueueItem $item) use ($queue, $nation, $service, $mapSpace, $projectionMemo, $constructionShips): array {
                 $definition = $service->definitionForItem($item);
-                $cell = $item->target_context === 'surface_cell'
+                $followsShip = array_key_exists('construction_ship_id', $item->parameters);
+                $cell = $item->target_context === 'surface_cell' && ! $followsShip
                     ? MapCell::query()->where('map_space_id', $queue->map_space_id)
                         ->where('x', $item->target_x)->where('y', $item->target_y)
                         ->with(['terrain', 'facility'])->first()
@@ -620,8 +682,8 @@ final class CommandQueueController extends Controller
                         : ($effect === 'monument_flight' && is_string($targetName) ? "（{$targetName}）" : null),
                     'command_suffix_tone' => $effect === 'defense_self_destruct' ? 'danger' : null,
                     'queue_position' => $item->queue_position,
-                    'target_x' => $item->target_x,
-                    'target_y' => $item->target_y,
+                    'target_x' => $followsShip ? null : $item->target_x,
+                    'target_y' => $followsShip ? null : $item->target_y,
                     'target_context' => $item->target_context,
                     'target_layer' => $item->target_layer,
                     'target_slot_index' => $item->target_slot_index,
@@ -632,7 +694,10 @@ final class CommandQueueController extends Controller
                     'quantity_label' => $definition instanceof UndergroundCommandDefinition
                         ? null
                         : $this->quantitySemantics->label($definition, $item->quantity),
-                    'effective_cost_money' => $this->effectiveCostMoney($definition, $item, $projected, $nation->id),
+                    'effective_cost_money' => $this->effectiveCostMoney(
+                        $definition, $item, $projected, $nation->id,
+                        $constructionShips->get($item->parameters['construction_ship_id'] ?? null),
+                    ),
                     'consumes_turn' => (bool) ($definition->metadata['consumes_turn'] ?? true),
                     'parameters' => $item->parameters === [] ? (object) [] : $item->parameters,
                     'status' => $item->status,
@@ -677,6 +742,7 @@ final class CommandQueueController extends Controller
         NationCommandQueueItem $item,
         ?array $projected,
         int $nationId,
+        ?Ship $constructionShip,
     ): int {
         if (! $definition instanceof CommandDefinition) {
             return $definition->cost_money;
@@ -685,7 +751,17 @@ final class CommandQueueController extends Controller
             return WindPowerRepairPolicy::costMoney($definition, $projected['facility_key'], $projected['facility_operational_state']);
         }
 
-        return $this->quantitySemantics->effectiveCostMoney($definition, $item->quantity);
+        $cost = $this->quantitySemantics->effectiveCostMoney($definition, $item->quantity);
+        if ($constructionShip !== null && $this->underseaConstruction->appliesTo($definition)) {
+            // Saved plans retain their requested price after the ship moves or sinks.
+            // Position and survival are rechecked by command execution, not this projection.
+            $shipDefinition = $this->ships->definition($definition->rulesetVersion->settings, $constructionShip->ship_type_key);
+            if ($shipDefinition->underseaConstruction) {
+                $cost *= $shipDefinition->constructionCostMultiplier;
+            }
+        }
+
+        return $cost;
     }
 
     private function loadQueue(NationCommandQueue $queue): NationCommandQueue

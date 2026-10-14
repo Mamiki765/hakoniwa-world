@@ -5,6 +5,8 @@ namespace Tests\Feature;
 use App\Application\CommandQueueService;
 use App\Application\DomesticCommandExecutor;
 use App\Application\PlayerIslandEventService;
+use App\Domain\Command\CapitalRelocationCooldown;
+use App\Domain\Command\LandDevelopmentDistancePolicy;
 use App\Domain\Economy\NationCapacityResolver;
 use App\Domain\Map\GridCoordinate;
 use App\Domain\Map\MapCellStateService;
@@ -13,13 +15,16 @@ use App\Domain\Secretary\SecretarySkillCatalog;
 use App\Models\CommandDefinition;
 use App\Models\FacilityDefinition;
 use App\Models\MapCell;
+use App\Models\MapSpace;
 use App\Models\MonsterOccupancy;
 use App\Models\Nation;
 use App\Models\TerrainDefinition;
 use App\Models\User;
 use App\Models\World;
 use App\Services\MapCellPresenter;
+use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use PHPUnit\Framework\Attributes\DataProvider;
 use RuntimeException;
 use Tests\Concerns\UsesReusableSurfaceWorld;
@@ -28,6 +33,300 @@ use Tests\Support\CommandAndMissileTestCase;
 final class SurfaceCommandAndAidExecutionTest extends CommandAndMissileTestCase
 {
     use UsesReusableSurfaceWorld;
+
+    public function test_rejected_capital_excavation_keeps_the_owned_land_origin_for_the_next_plan(): void
+    {
+        $world = $this->lightweightWorld();
+        [$user, $nation] = $this->nation($world, '首都起点国');
+        $space = $this->surfaceMapSpace($world);
+        $capital = $nation->capital()->sole()->cell()->with(['terrain', 'facility'])->sole();
+        foreach (MapCell::query()->where('owner_nation_id', $nation->id)->whereKeyNot($capital->id)->get() as $cell) {
+            $this->landOriginCell($space, $cell->x, $cell->y, 'sea', null);
+        }
+        $target = $this->landOriginCell($space, $capital->x + 1, $capital->y, 'shallow', null);
+        $nation->update(['money' => 1000]);
+        $capitalBefore = $capital->getAttributes();
+        $service = app(CommandQueueService::class);
+        $commands = collect($this->actingAs($user)->getJson(
+            "/api/v1/nations/{$nation->id}/map-spaces/{$space->id}/command-definitions",
+        )->assertOk()->json('data.commands'));
+        $this->assertNull($commands->firstWhere('key', 'reclaim')['distance_reason_code']);
+        $this->assertNull($commands->firstWhere('key', 'finance')['distance_reason_code']);
+        $this->assertNull($commands->firstWhere('key', 'reclaim')['projected_distance_reason_code']);
+        $this->assertNull($commands->firstWhere('key', 'finance')['projected_distance_reason_code']);
+        $blocked = $this->queue($service, $user, $nation, $space, 'excavate', $capital);
+        $this->assertSame('queued', $blocked->status);
+        $this->assertSame('currently_unavailable', $this->waterDevelopmentPreview($user, $nation, $space, $capital, 'excavate')['execution_preview_status']);
+        $reclaim = $this->queue($service, $user, $nation, $space, 'reclaim', $target);
+        $this->assertSame('currently_executable', $this->waterDevelopmentPreview($user, $nation, $space, $target, 'reclaim', 2)['execution_preview_status']);
+        app(DomesticCommandExecutor::class)->execute($this->context($world, 2, hash('sha256', 'protected capital remains an origin'), [$nation->id]));
+        $this->assertSame('capital_protected', $blocked->fresh()->failure_code);
+        $this->assertSame('completed', $reclaim->fresh()->status);
+        $this->assertSame('wasteland', $target->fresh()->terrain()->value('key'));
+        $this->assertSame($nation->id, $target->fresh()->owner_nation_id);
+        $this->assertSame(850, (int) $nation->fresh()->money);
+        $this->assertSame($capitalBefore, $capital->fresh()->getAttributes());
+    }
+
+    public static function landOriginCommands(): array
+    {
+        return [
+            'reclaim' => ['reclaim', 'shallow', LandDevelopmentDistancePolicy::RECLAMATION_RADIUS, 'wasteland'],
+            'shallow excavation' => ['excavate', 'shallow', LandDevelopmentDistancePolicy::WATER_RADIUS, 'sea'],
+            'oil search' => ['excavate', 'sea', LandDevelopmentDistancePolicy::WATER_RADIUS, 'sea'],
+        ];
+    }
+
+    public function test_monster_blocked_excavation_preserves_the_land_origin_for_reclaim(): void
+    {
+        [$world, $user, $nation, , $space, $target, $anchor] = $this->landOriginFixture('shallow', LandDevelopmentDistancePolicy::RECLAMATION_RADIUS);
+        $this->monster($world, $anchor);
+        $before = $anchor->fresh()->getAttributes();
+        $service = app(CommandQueueService::class);
+        $blocked = $this->queue($service, $user, $nation, $space, 'excavate', $anchor);
+        $reclaim = $this->queue($service, $user, $nation, $space, 'reclaim', $target);
+        $preview = $this->waterDevelopmentPreview($user, $nation, $space, $target, 'reclaim', 2);
+        $this->assertSame('currently_executable', $preview['execution_preview_status']);
+        $this->assertNull($preview['projected_distance_reason_code']);
+        app(DomesticCommandExecutor::class)->execute($this->context($world, 2, hash('sha256', 'occupied origin retained'), [$nation->id]));
+        $this->assertSame('occupied_by_monster', $blocked->fresh()->failure_code);
+        $this->assertSame('completed', $reclaim->fresh()->status);
+        $this->assertSame($before, $anchor->fresh()->getAttributes());
+    }
+
+    public function test_reclaim_forecast_does_not_reveal_hidden_foreign_undersea_ownership(): void
+    {
+        [, $user, $nation, $foreign, $space, $target, , , $base] = $this->landOriginFixture('shallow', LandDevelopmentDistancePolicy::RECLAMATION_RADIUS);
+        $this->landOriginCell($space, $base->x, $base->y, 'sea', null);
+        $this->queue(app(CommandQueueService::class), $user, $nation, $space, 'finance', null);
+        $keys = array_flip(['available', 'execution_preview_status', 'execution_warnings', 'distance_reason_code', 'projected_distance_reason_code']);
+        $before = [];
+        foreach ([1, 2] as $position) {
+            $before[$position] = array_intersect_key($this->waterDevelopmentPreview($user, $nation, $space, $target, 'reclaim', $position), $keys);
+            $this->assertSame('currently_executable', $before[$position]['execution_preview_status']);
+        }
+        $hidden = $this->landOriginCell($space, $base->x, $base->y, 'sea', $foreign->id, 'seabed_base');
+        $this->assertNull(MapCellPresenter::visibleState($hidden, $nation->id)['owner_nation_id']);
+        foreach ([1, 2] as $position) {
+            $this->assertSame($before[$position], array_intersect_key($this->waterDevelopmentPreview($user, $nation, $space, $target, 'reclaim', $position), $keys));
+        }
+        // A real sight source reveals the neighbor; its known ownership can block the preview.
+        $this->landOriginCell($space, $base->x - 1, $base->y, 'wasteland', $nation->id);
+        $this->assertSame('currently_unavailable', $this->waterDevelopmentPreview($user, $nation, $space, $target, 'reclaim', 2)['execution_preview_status']);
+    }
+
+    #[DataProvider('landOriginCommands')]
+    public function test_water_development_uses_owned_land_at_its_existing_distance_boundary(
+        string $commandKey,
+        string $terrainKey,
+        int $radius,
+        string $resultTerrain,
+    ): void {
+        [$world, $user, $nation, $foreign, $space, $target, $anchor, $outer, $base] = $this->landOriginFixture($terrainKey, $radius);
+        $service = app(CommandQueueService::class);
+        $baseBefore = $base->getAttributes();
+        $this->landOriginCell($space, $anchor->x, $anchor->y, 'shallow', $nation->id);
+        $outer->update(['owner_nation_id' => $nation->id]);
+
+        $preview = $this->waterDevelopmentPreview($user, $nation, $space, $target, $commandKey);
+        $this->assertTrue($preview['available']);
+        $this->assertSame('currently_unavailable', $preview['execution_preview_status']);
+        $this->assertSame('out_of_land_range', $preview['distance_reason_code']);
+        $tooFar = $this->queue($service, $user, $nation, $space, $commandKey, $target);
+        $this->assertSame('queued', $tooFar->status, 'Future plans remain registrable outside the current distance condition.');
+        app(DomesticCommandExecutor::class)->execute($this->context($world, 2, hash('sha256', $commandKey.$terrainKey.' water anchors'), [$nation->id]));
+        $this->assertSame($commandKey === 'reclaim' ? 'no_adjacent_owned_land' : 'missing_adjacent_territory', $tooFar->fresh()->failure_code);
+        $this->assertSame($terrainKey, $target->fresh()->terrain()->value('key'));
+
+        $this->landOriginCell($space, $anchor->x, $anchor->y, 'wasteland', $foreign->id);
+        $this->assertSame('currently_unavailable', $this->waterDevelopmentPreview($user, $nation, $space, $target, $commandKey)['execution_preview_status']);
+        $foreignOnly = $this->queue($service, $user, $nation, $space, $commandKey, $target);
+        app(DomesticCommandExecutor::class)->execute($this->context($world, 3, hash('sha256', $commandKey.$terrainKey.' foreign anchor'), [$nation->id]));
+        $this->assertSame('failed', $foreignOnly->fresh()->status);
+        $this->assertSame($terrainKey, $target->fresh()->terrain()->value('key'));
+
+        $this->landOriginCell($space, $anchor->x, $anchor->y, 'forest', $nation->id);
+        if ($commandKey === 'excavate' && $terrainKey === 'shallow') {
+            $target = $this->landOriginCell($space, $target->x, $target->y, 'shallow', $nation->id, 'port');
+        }
+        $preview = $this->waterDevelopmentPreview($user, $nation, $space, $target, $commandKey);
+        $this->assertSame('currently_executable', $preview['execution_preview_status']);
+        $this->assertNull($preview['distance_reason_code']);
+        $valid = $this->queue($service, $user, $nation, $space, $commandKey, $target);
+        $moneyBefore = (int) $nation->fresh()->money;
+        app(DomesticCommandExecutor::class)->execute($this->context($world, 4, hash('sha256', $commandKey.$terrainKey.' land boundary'), [$nation->id]));
+        $this->assertSame('completed', $valid->fresh()->status);
+        $this->assertSame($resultTerrain, $target->fresh()->terrain()->value('key'));
+        $this->assertSame($moneyBefore - (int) $valid->definition()->value('cost_money'), (int) $nation->fresh()->money);
+        $this->assertSame($baseBefore, $base->fresh()->getAttributes());
+    }
+
+    public static function landOriginPredecessors(): array
+    {
+        return [
+            'reclaim after terrain loss' => ['reclaim', LandDevelopmentDistancePolicy::RECLAMATION_RADIUS, 'excavate', 'shallow'],
+            'water excavation after ownership loss' => ['excavate', LandDevelopmentDistancePolicy::WATER_RADIUS, 'territory_abandon', 'shallow'],
+            'undersea construction' => ['build_undersea_fire_station', LandDevelopmentDistancePolicy::WATER_RADIUS, 'territory_abandon', 'sea'],
+        ];
+    }
+
+    #[DataProvider('landOriginPredecessors')]
+    public function test_land_distance_projects_origins_and_execution_rechecks_after_queued_changes(
+        string $commandKey,
+        int $radius,
+        string $removeAnchor,
+        string $terrainKey,
+    ): void {
+        [$world, $user, $nation, $foreign, $space, $target, $anchor, $outer, $base] = $this->landOriginFixture($terrainKey, $radius);
+        $service = app(CommandQueueService::class);
+        $baseBefore = $base->getAttributes();
+        $this->assertSame('currently_executable', $this->waterDevelopmentPreview($user, $nation, $space, $target, $commandKey)['execution_preview_status']);
+        $this->queue($service, $user, $nation, $space, $removeAnchor, $anchor);
+        $afterLoss = $this->queue($service, $user, $nation, $space, $commandKey, $target);
+        $preview = $this->waterDevelopmentPreview($user, $nation, $space, $target, $commandKey, 2);
+        $this->assertTrue($preview['available']);
+        $this->assertSame('currently_unavailable', $preview['execution_preview_status']);
+        $this->assertNull($preview['distance_reason_code']);
+        $this->assertSame('out_of_land_range', $preview['projected_distance_reason_code']);
+        app(DomesticCommandExecutor::class)->execute($this->context($world, 2, hash('sha256', $commandKey.' remove anchor'), [$nation->id]));
+        if ($removeAnchor === 'excavate') {
+            app(DomesticCommandExecutor::class)->execute($this->context($world, 3, hash('sha256', $commandKey.' after anchor loss'), [$nation->id]));
+        }
+        $this->assertSame('failed', $afterLoss->fresh()->status);
+        $this->assertSame('out_of_land_range', $this->waterDevelopmentPreview($user, $nation, $space, $target, $commandKey)['distance_reason_code']);
+
+        // Prior reclamation creates a projected origin; current distance stays separate.
+        $anchor = $this->landOriginCell($space, $anchor->x, $anchor->y, 'shallow', $nation->id);
+        $outer->update(['owner_nation_id' => $nation->id]);
+        $gain = $this->queue($service, $user, $nation, $space, 'reclaim', $anchor);
+        $afterGain = $this->queue($service, $user, $nation, $space, $commandKey, $target);
+        $this->assertSame('currently_unavailable', $this->waterDevelopmentPreview($user, $nation, $space, $target, $commandKey, 1)['execution_preview_status']);
+        $preview = $this->waterDevelopmentPreview($user, $nation, $space, $target, $commandKey, 2);
+        $this->assertTrue($preview['available']);
+        $this->assertSame('executable_after_queue', $preview['execution_preview_status']);
+        $this->assertSame('out_of_land_range', $preview['distance_reason_code']);
+        $this->assertNull($preview['projected_distance_reason_code']);
+        $this->assertSame('queued', $afterGain->status);
+        $definition = CommandDefinition::query()->where('ruleset_version_id', $world->ruleset_version_id)->where('key', $commandKey)->sole();
+        $state = ['terrain_key' => $terrainKey, 'facility_key' => null, 'owner_nation_id' => $nation->id, 'facility_operational_state' => null];
+        $this->assertTrue($service->projectedTargetMatches($definition, $state, $nation, $space, $target, $service->queueFor($user, $nation, $space), 2));
+        app(DomesticCommandExecutor::class)->execute($this->context($world, 4, hash('sha256', $commandKey.' gain anchor'), [$nation->id]));
+        $this->assertSame('completed', $gain->fresh()->status);
+        $preview = $this->waterDevelopmentPreview($user, $nation, $space, $target, $commandKey);
+        $this->assertSame('currently_executable', $preview['execution_preview_status']);
+        $this->assertNull($preview['distance_reason_code']);
+        app(DomesticCommandExecutor::class)->execute($this->context($world, 5, hash('sha256', $commandKey.' after anchor gain'), [$nation->id]));
+        $this->assertSame('completed', $afterGain->fresh()->status);
+
+        $target = $this->landOriginCell($space, $target->x, $target->y, $terrainKey, $nation->id);
+        $anchor = $this->landOriginCell($space, $anchor->x, $anchor->y, 'shallow', $foreign->id);
+        $invalid = $this->queue($service, $user, $nation, $space, 'reclaim', $anchor);
+        $afterInvalid = $this->queue($service, $user, $nation, $space, $commandKey, $target);
+        $this->assertSame('currently_unavailable', $this->waterDevelopmentPreview($user, $nation, $space, $target, $commandKey, 2)['execution_preview_status']);
+        $projected = $service->projectCellStateBeforePosition($target, $service->queueFor($user, $nation, $space), 3, $nation, $space);
+        $this->assertSame([$terrainKey, $nation->id], [$projected['terrain_key'], $projected['owner_nation_id']]);
+        app(DomesticCommandExecutor::class)->execute($this->context($world, 6, hash('sha256', $commandKey.' invalid anchor gain'), [$nation->id]));
+        $this->assertSame('failed', $invalid->fresh()->status);
+        $this->assertSame('failed', $afterInvalid->fresh()->status);
+        $this->assertSame($baseBefore, $base->fresh()->getAttributes());
+    }
+
+    public static function reclamationChainOrigins(): array
+    {
+        return [
+            'owned land' => [true, false],
+            'foreign land' => [false, false],
+            'foreign neighbor blocks first reclaim' => [true, true],
+        ];
+    }
+
+    #[DataProvider('reclamationChainOrigins')]
+    public function test_land_distance_resolves_reclamation_dependencies_in_order(bool $ownedOrigin, bool $foreignNeighbor): void
+    {
+        [$world, $user, $nation, $foreign, $space, $target, , , $base] = $this->landOriginFixture('sea', LandDevelopmentDistancePolicy::WATER_RADIUS);
+        $radius = LandDevelopmentDistancePolicy::WATER_RADIUS;
+        $this->landOriginCell($space, $target->x + $radius + 1, $target->y, 'wasteland', $ownedOrigin ? $nation->id : $foreign->id);
+        if ($foreignNeighbor) {
+            $this->landOriginCell($space, $target->x + $radius, $target->y + 1, 'sea', $foreign->id);
+        }
+        $executable = $ownedOrigin && ! $foreignNeighbor;
+        $buildCost = CommandDefinition::query()->where('ruleset_version_id', $world->ruleset_version_id)->where('key', 'build_seabed_base')->value('cost_money');
+        $nation->update(['money' => $nation->money + $buildCost]);
+        $service = app(CommandQueueService::class);
+        $items = [];
+        foreach (range($radius, 1) as $offset) {
+            $cell = $this->landOriginCell($space, $target->x + $offset, $target->y, 'shallow', $nation->id);
+            $items[] = $this->queue($service, $user, $nation, $space, 'reclaim', $cell);
+        }
+        foreach (['reclaim', 'excavate', 'build_seabed_base'] as $commandKey) {
+            $preview = $this->waterDevelopmentPreview($user, $nation, $space, $target, $commandKey, $radius + 1);
+            $this->assertTrue($preview['available']);
+            $this->assertSame('out_of_land_range', $preview['distance_reason_code']);
+            $this->assertSame($executable ? null : 'out_of_land_range', $preview['projected_distance_reason_code']);
+            $this->assertSame($executable ? 'executable_after_queue' : 'currently_unavailable', $preview['execution_preview_status']);
+        }
+        $items[] = $this->queue($service, $user, $nation, $space, 'build_seabed_base', $target);
+        foreach (range(2, $radius + 2) as $turn) {
+            app(DomesticCommandExecutor::class)->execute($this->context($world, $turn, hash('sha256', 'reclamation chain '.$turn), [$nation->id]));
+        }
+        foreach ($items as $item) {
+            $this->assertSame($executable ? 'completed' : 'failed', $item->fresh()->status, (string) $item->fresh()->failure_code);
+        }
+        $this->assertSame('sea', $target->fresh()->terrain()->value('key'));
+        $this->assertSame('seabed_base', $base->fresh()->facility()->value('key'));
+    }
+
+    /** @return array{World, User, Nation, Nation, MapSpace, MapCell, MapCell, MapCell, MapCell} */
+    private function landOriginFixture(string $terrainKey, int $radius): array
+    {
+        $margin = $radius + 1;
+        $world = $this->lightweightWorld();
+        [$user, $nation] = $this->nation($world, '陸地起点国');
+        [, $foreign] = $this->nation($world, '他国起点');
+        $space = $this->surfaceMapSpace($world);
+        $owned = MapCell::query()->where('map_space_id', $space->id)->whereNotNull('owner_nation_id')->get(['x', 'y']);
+        $target = MapCell::query()->where('map_space_id', $space->id)
+            ->whereBetween('x', [$space->min_x + $margin, $space->max_x - $margin])
+            ->whereBetween('y', [$space->min_y + $margin, $space->max_y - $margin])
+            ->whereNull('owner_nation_id')->orderBy('id')->get()
+            ->first(static fn (MapCell $candidate): bool => ! $owned->contains(
+                static fn (MapCell $cell): bool => (new GridCoordinate($candidate->x, $candidate->y))
+                    ->distanceTo(new GridCoordinate($cell->x, $cell->y)) <= $radius + 4,
+            ));
+        $this->assertInstanceOf(MapCell::class, $target);
+        $target = $this->landOriginCell($space, $target->x, $target->y, $terrainKey, $nation->id);
+        $anchor = $this->landOriginCell($space, $target->x + $radius, $target->y, 'wasteland', $nation->id);
+        $outer = $this->landOriginCell($space, $target->x + $radius + 1, $target->y, 'wasteland', null);
+        $base = $this->landOriginCell($space, $target->x - 1, $target->y, 'sea', $nation->id, 'seabed_base');
+        $this->landOriginCell($space, $target->x, $target->y - 1, 'shallow', $nation->id);
+        $this->landOriginCell($space, $target->x, $target->y + 1, 'sea', $nation->id);
+        $nation->update(['money' => 5000]);
+
+        return [$world, $user, $nation, $foreign, $space, $target, $anchor, $outer, $base];
+    }
+
+    private function landOriginCell(MapSpace $space, int $x, int $y, string $terrainKey, ?int $ownerId, ?string $facilityKey = null): MapCell
+    {
+        $cell = MapCell::query()->where('map_space_id', $space->id)->where('x', $x)->where('y', $y)->firstOrFail();
+        app(MapCellStateService::class)->setFacility($cell, null);
+        app(MapCellStateService::class)->transitionTerrain($cell, TerrainDefinition::query()->where('key', $terrainKey)->sole());
+        if ($facilityKey !== null) {
+            app(MapCellStateService::class)->setFacility($cell, FacilityDefinition::query()->where('key', $facilityKey)->sole());
+        }
+        $cell->owner_nation_id = $ownerId;
+        $cell->population = 0;
+        $cell->save();
+
+        return $cell->fresh(['terrain', 'facility']);
+    }
+
+    /** @return array<string, mixed> */
+    private function waterDevelopmentPreview(User $user, Nation $nation, MapSpace $space, MapCell $target, string $commandKey, int $position = 1): array
+    {
+        return collect($this->actingAs($user)->getJson(
+            "/api/v1/nations/{$nation->id}/map-spaces/{$space->id}/command-definitions?target_x={$target->x}&target_y={$target->y}&position={$position}",
+        )->assertOk()->json('data.commands'))->firstWhere('key', $commandKey);
+    }
 
     public static function underseaConstructionCommands(): array
     {
@@ -43,18 +342,20 @@ final class SurfaceCommandAndAidExecutionTest extends CommandAndMissileTestCase
         string $commandKey,
         string $facilityKey,
     ): void {
+        $radius = LandDevelopmentDistancePolicy::WATER_RADIUS;
+        $margin = $radius + 1;
         $world = $this->lightweightWorld();
         [$user, $nation] = $this->nation($world, '距離検証国');
         [, $foreign] = $this->nation($world, '他国陸地');
         $space = $this->surfaceMapSpace($world);
         $owned = MapCell::query()->where('map_space_id', $space->id)->whereNotNull('owner_nation_id')->get(['x', 'y']);
         $target = MapCell::query()->where('map_space_id', $space->id)
-            ->whereBetween('x', [$space->min_x + 4, $space->max_x - 4])
-            ->whereBetween('y', [$space->min_y + 4, $space->max_y - 4])
+            ->whereBetween('x', [$space->min_x + $margin, $space->max_x - $margin])
+            ->whereBetween('y', [$space->min_y + $margin, $space->max_y - $margin])
             ->whereNull('owner_nation_id')->orderBy('id')->get()
             ->first(static fn (MapCell $candidate): bool => ! $owned->contains(
                 static fn (MapCell $cell): bool => (new GridCoordinate($candidate->x, $candidate->y))
-                    ->distanceTo(new GridCoordinate($cell->x, $cell->y)) <= 7,
+                    ->distanceTo(new GridCoordinate($cell->x, $cell->y)) <= $radius + 4,
             ));
         $this->assertInstanceOf(MapCell::class, $target);
         $setCell = function (int $x, int $y, string $terrainKey, Nation $owner, ?string $facility = null): MapCell {
@@ -73,7 +374,7 @@ final class SurfaceCommandAndAidExecutionTest extends CommandAndMissileTestCase
         };
         $target = $setCell($target->x, $target->y, 'sea', $nation);
         $target->update(['owner_nation_id' => null]);
-        $nearLand = $setCell($target->x + 3, $target->y, 'wasteland', $nation);
+        $nearLand = $setCell($target->x + $radius, $target->y, 'wasteland', $nation);
         $setCell($target->x + 1, $target->y, 'shallow', $nation);
         $setCell($target->x - 2, $target->y, 'plain', $foreign);
         $existing = [
@@ -89,13 +390,18 @@ final class SurfaceCommandAndAidExecutionTest extends CommandAndMissileTestCase
         $definition = CommandDefinition::query()->where('ruleset_version_id', $world->ruleset_version_id)->where('key', $commandKey)->sole();
 
         $service->validateTarget($nation, $space, $definition, $target);
+        $this->assertNull($this->waterDevelopmentPreview($user, $nation, $space, $target, $commandKey)['distance_reason_code']);
         $item = $this->queue($service, $user, $nation, $space, $commandKey, $target);
         $queue = $nation->commandQueue()->sole();
         $targetState = ['terrain_key' => 'sea', 'facility_key' => null, 'owner_nation_id' => null, 'facility_operational_state' => null];
         $this->assertTrue($service->projectedTargetMatches($definition, $targetState, $nation, $space, $target, $queue, 2));
         // Land can be abandoned after registration. Execution must recheck it.
         $nearLand->update(['owner_nation_id' => null]);
-        $farLand = $setCell($target->x + 4, $target->y, 'mountain', $nation);
+        $farLand = $setCell($target->x + $radius + 1, $target->y, 'mountain', $nation);
+        $preview = $this->waterDevelopmentPreview($user, $nation, $space, $target, $commandKey, 2);
+        $this->assertTrue($preview['available']);
+        $this->assertSame('out_of_land_range', $preview['distance_reason_code']);
+        $this->assertSame('currently_unavailable', $preview['execution_preview_status']);
         $farItem = $this->queue($service, $user, $nation, $space, $commandKey, $target);
         $this->assertSame('queued', $farItem->status);
         $this->assertPlayerFacing(fn () => $service->validateTarget($nation, $space, $definition, $target));
@@ -259,6 +565,159 @@ final class SurfaceCommandAndAidExecutionTest extends CommandAndMissileTestCase
         $this->assertIsArray($relocated);
         $this->assertStringContainsString("({$capital->x},{$capital->y})", $relocated['message']);
         $this->assertStringContainsString("({$cityTarget->x},{$cityTarget->y})", $relocated['message']);
+    }
+
+    public function test_capital_relocation_cooldown_rechecks_queued_commands_at_expiry(): void
+    {
+        $successTurn = 20;
+        $lastBlockedTurn = $successTurn + CapitalRelocationCooldown::TURNS - 1;
+        $firstAllowedTurn = $lastBlockedTurn + 1;
+        $world = $this->lightweightWorld();
+        [$user, $nation] = $this->nation($world, '遷都間隔国');
+        $space = $this->surfaceMapSpace($world);
+        $capital = $nation->capital()->sole()->cell()->sole();
+        $city = $this->placeFacilityAtDistance($space, $capital, $nation, 1, 'city');
+        $nextCity = $this->placeFacilityAtDistance($space, $capital, $nation, 2, 'city');
+        $city->update(['population' => 12_345]);
+        $nation->update(['money' => 50_000]);
+        $service = app(CommandQueueService::class);
+        $executor = app(DomesticCommandExecutor::class);
+
+        $this->assertNull($nation->fresh()->last_capital_relocation_turn);
+        $this->assertSame(0, $this->relocationDefinition($user, $nation, $space, $city)['cooldown_remaining_turns']);
+        $first = $this->queue($service, $user, $nation, $space, 'relocate_capital', $city);
+        $second = $this->queue($service, $user, $nation, $space, 'relocate_capital', $nextCity);
+        $third = $this->queue($service, $user, $nation, $space, 'relocate_capital', $nextCity);
+        $world->update(['current_turn' => $successTurn - 1]);
+        $executor->execute($this->context($world, $successTurn, hash('sha256', 'first relocation'), [$nation->id]));
+        $this->assertSame('completed', $first->fresh()->status);
+        $this->assertSame($successTurn, $nation->fresh()->last_capital_relocation_turn);
+        $this->assertSame('queued', $second->fresh()->status);
+        $this->assertSame(12_345, $city->fresh()->population);
+        $world->update(['current_turn' => $successTurn]);
+        $definition = $this->relocationDefinition($user, $nation, $space, $nextCity);
+        $this->assertGreaterThan(0, $definition['cooldown_remaining_turns']);
+        $this->assertSame('currently_unavailable', $definition['execution_preview_status']);
+        $this->assertNotEmpty($definition['execution_warnings']);
+
+        $executor->execute($this->context($world, $successTurn + 1, hash('sha256', 'queued relocations'), [$nation->id]));
+        $world->update(['current_turn' => $successTurn + 1]);
+        $definition = $this->relocationDefinition($user, $nation, $space, $nextCity);
+        foreach ([$second, $third] as $blocked) {
+            $this->assertSame('capital_relocation_cooldown', $blocked->fresh()->failure_code);
+            $this->assertSame($definition['cooldown_remaining_turns'], $blocked->fresh()->failure_metadata['observed']['cooldown_remaining_turns']);
+        }
+        $this->assertSame($city->id, $nation->capital()->value('map_cell_id'));
+        $this->assertSame('city', $nextCity->fresh()->facility()->value('key'));
+        $this->assertSame($successTurn, $nation->fresh()->last_capital_relocation_turn);
+
+        $world->update(['current_turn' => $lastBlockedTurn - 1]);
+        $beforeExpiry = $this->queue($service, $user, $nation, $space, 'relocate_capital', $nextCity);
+        $executor->execute($this->context($world, $lastBlockedTurn, hash('sha256', 'relocation before expiry'), [$nation->id]));
+        $this->assertSame('capital_relocation_cooldown', $beforeExpiry->fresh()->failure_code);
+        $this->assertSame($successTurn, $nation->fresh()->last_capital_relocation_turn);
+        $world->update(['current_turn' => $lastBlockedTurn]);
+        $definition = $this->relocationDefinition($user, $nation, $space, $nextCity);
+        $this->assertSame(1, $definition['cooldown_remaining_turns']);
+        $this->assertSame($definition['cooldown_remaining_turns'], $beforeExpiry->fresh()->failure_metadata['observed']['cooldown_remaining_turns']);
+        $this->assertSame('currently_unavailable', $definition['execution_preview_status']);
+        $atExpiry = $this->queue($service, $user, $nation, $space, 'relocate_capital', $nextCity);
+        $executor->execute($this->context($world, $firstAllowedTurn, hash('sha256', 'relocation at expiry'), [$nation->id]));
+        $this->assertSame('completed', $atExpiry->fresh()->status);
+        $this->assertSame($nextCity->id, $nation->capital()->value('map_cell_id'));
+        $this->assertSame($firstAllowedTurn, $nation->fresh()->last_capital_relocation_turn);
+    }
+
+    public function test_failed_capital_relocation_does_not_start_or_extend_the_cooldown(): void
+    {
+        $successTurn = 21;
+        $expiryTurn = $successTurn + CapitalRelocationCooldown::TURNS;
+        $world = $this->lightweightWorld();
+        [$user, $nation] = $this->nation($world, '遷都再試行国');
+        $space = $this->surfaceMapSpace($world);
+        $capital = $nation->capital()->sole()->cell()->sole();
+        $city = $this->placeFacilityAtDistance($space, $capital, $nation, 1, 'city');
+        $service = app(CommandQueueService::class);
+        $executor = app(DomesticCommandExecutor::class);
+        $nation->update(['money' => 0]);
+        $world->update(['current_turn' => $successTurn - 2]);
+        $failedFirst = $this->queue($service, $user, $nation, $space, 'relocate_capital', $city);
+        $executor->execute($this->context($world, $successTurn - 1, hash('sha256', 'unfunded first relocation'), [$nation->id]));
+        $this->assertSame('insufficient_funds', $failedFirst->fresh()->failure_code);
+        $this->assertNull($nation->fresh()->last_capital_relocation_turn);
+        $this->assertSame($capital->id, $nation->capital()->value('map_cell_id'));
+
+        $nation->update(['money' => 50_000]);
+        $world->update(['current_turn' => $successTurn - 1]);
+        $first = $this->queue($service, $user, $nation, $space, 'relocate_capital', $city);
+        $executor->execute($this->context($world, $successTurn, hash('sha256', 'funded first relocation'), [$nation->id]));
+        $this->assertSame('completed', $first->fresh()->status);
+        $this->assertSame($successTurn, $nation->fresh()->last_capital_relocation_turn);
+        $nation->update(['money' => 0]);
+        $world->update(['current_turn' => $expiryTurn - 1]);
+        $failedLater = $this->queue($service, $user, $nation, $space, 'relocate_capital', $capital);
+        $executor->execute($this->context($world, $expiryTurn, hash('sha256', 'unfunded later relocation'), [$nation->id]));
+        $this->assertSame('insufficient_funds', $failedLater->fresh()->failure_code);
+        $this->assertSame($successTurn, $nation->fresh()->last_capital_relocation_turn);
+        $this->assertSame($city->id, $nation->capital()->value('map_cell_id'));
+
+        $nation->update(['money' => 50_000]);
+        $world->update(['current_turn' => $expiryTurn]);
+        $definition = $this->relocationDefinition($user, $nation, $space, $capital);
+        $this->assertSame(0, $definition['cooldown_remaining_turns']);
+        $this->assertSame('currently_executable', $definition['execution_preview_status']);
+        $retry = $this->queue($service, $user, $nation, $space, 'relocate_capital', $capital);
+        $executor->execute($this->context($world, $expiryTurn + 1, hash('sha256', 'later relocation retry'), [$nation->id]));
+        $this->assertSame('completed', $retry->fresh()->status);
+        $this->assertSame($expiryTurn + 1, $nation->fresh()->last_capital_relocation_turn);
+    }
+
+    public function test_capital_relocation_migration_preserves_existing_islands_without_inferring_success_history(): void
+    {
+        $world = $this->lightweightWorld();
+        [$user, $nation] = $this->nation($world, '既存遷都国');
+        $space = $this->surfaceMapSpace($world);
+        $capital = $nation->capital()->sole()->cell()->sole();
+        $city = $this->placeFacilityAtDistance($space, $capital, $nation, 1, 'city');
+        $nation->update(['money' => 50_000]);
+        $service = app(CommandQueueService::class);
+        $item = $this->queue($service, $user, $nation, $space, 'relocate_capital', $city);
+        $world->update(['current_turn' => 19]);
+        app(DomesticCommandExecutor::class)->execute($this->context($world, 20, hash('sha256', 'historical relocation'), [$nation->id]));
+        $this->assertSame('completed', $item->fresh()->status);
+        $beforeNation = $nation->fresh()->getAttributes();
+        unset($beforeNation['last_capital_relocation_turn']);
+        $beforeCapital = $nation->capital()->sole()->getAttributes();
+        $beforeCells = [$capital->fresh()->getAttributes(), $city->fresh()->getAttributes()];
+
+        // Recreate the supported pre-column schema with an actual success log.
+        // PostgreSQL rolls this DDL back with the reusable fixture transaction.
+        Schema::table('nations', static function (Blueprint $table): void {
+            $table->dropColumn('last_capital_relocation_turn');
+        });
+        $migration = require database_path('migrations/2026_10_14_000000_add_last_capital_relocation_turn_to_nations.php');
+        $migration->up();
+        $this->assertSame($beforeNation + ['last_capital_relocation_turn' => null], $nation->fresh()->getAttributes());
+        $this->assertSame($beforeCapital, $nation->capital()->sole()->getAttributes());
+        $this->assertSame($beforeCells, [$capital->fresh()->getAttributes(), $city->fresh()->getAttributes()]);
+        $world->update(['current_turn' => 20]);
+        $this->assertSame(0, $this->relocationDefinition($user, $nation, $space, $capital)['cooldown_remaining_turns']);
+        $firstRecorded = $this->queue($service, $user, $nation, $space, 'relocate_capital', $capital);
+        app(DomesticCommandExecutor::class)->execute($this->context($world, 21, hash('sha256', 'first recorded relocation'), [$nation->id]));
+        $this->assertSame('completed', $firstRecorded->fresh()->status);
+        $this->assertSame(21, $nation->fresh()->last_capital_relocation_turn);
+    }
+
+    /** @return array<string, mixed> */
+    private function relocationDefinition(User $user, Nation $nation, MapSpace $space, MapCell $cell): array
+    {
+        $commands = $this->actingAs($user)->getJson(
+            "/api/v1/nations/{$nation->id}/map-spaces/{$space->id}/command-definitions?target_x={$cell->x}&target_y={$cell->y}",
+        )->assertOk()->json('data.commands');
+        $definition = collect($commands)->firstWhere('key', 'relocate_capital');
+        $this->assertIsArray($definition);
+
+        return $definition;
     }
 
     public function test_undersea_city_command_is_atomic_near_territory_retry_safe_and_disguised(): void

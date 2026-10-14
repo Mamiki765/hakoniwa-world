@@ -2,6 +2,7 @@
 
 namespace App\Application;
 
+use App\Domain\Command\CapitalRelocationCooldown;
 use App\Models\MapCell;
 use App\Models\Nation;
 use App\Models\NationCommandQueueItem;
@@ -76,6 +77,7 @@ final class PlayerIslandEventService
         'ship.built',
         'ship.retired',
         'ship.forced_displaced',
+        'ship.destination.ended',
         'ship.fuel_shortage_damaged',
         'ship.missile_damaged',
         'ship.attack_evaded',
@@ -192,6 +194,7 @@ final class PlayerIslandEventService
 
     /** @var list<string> */
     private const CONFIDENTIAL_EVENT_TYPES = [
+        'ship.destination.ended',
         'command.forest_planted_private',
         'command.missile_base_built_private',
         'command.seabed_base_built_private',
@@ -1858,6 +1861,11 @@ final class PlayerIslandEventService
                 number_format($this->integer($metadata, 'x')),
                 number_format($this->integer($metadata, 'y')),
             ),
+            'ship.destination.ended' => match ($metadata['reason'] ?? null) {
+                'arrived' => ($metadata['ship_name'] ?? '船').'が目的地に到着しました。',
+                'terrain_changed' => ($metadata['ship_name'] ?? '船').'の目的地が海でなくなったため、目的地指示を解除しました。',
+                default => ($metadata['ship_name'] ?? '船').'が目的地へ近づけないため、目的地指示を解除しました。',
+            },
             'ship.forced_displaced' => sprintf(
                 '船が地形変更を避けて(%s,%s)から(%s,%s)へ退避しました。',
                 number_format($this->integer($metadata, 'from_x')),
@@ -2019,6 +2027,7 @@ final class PlayerIslandEventService
             'facility_exists', 'facility_not_empty' => 'すでに施設が存在するため実行できませんでした。',
             'no_target', 'target_missing' => '対象地点が存在しないため実行できませんでした。',
             'capital_protected' => '首都を変更できないため実行できませんでした。',
+            'capital_relocation_cooldown' => sprintf('前回の遷都から%dターン経過していないため実行できませんでした。', CapitalRelocationCooldown::TURNS),
             'invalid_target_nation' => '対象Nationがactiveではないか存在しないため実行できませんでした。',
             'same_nation_target' => '自国を対象にできないcommandのため実行できませんでした。',
             'invalid_parameter' => 'commandの指定内容が不正なため実行できませんでした。',

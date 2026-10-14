@@ -1183,6 +1183,7 @@ class DomesticCommandExecutionTest extends TestCase
         $nation->update(['money' => 1_000]);
         $target = $this->remoteWaterTarget($space);
         $this->setCellState($target, 'shallow', $nation->id);
+        $this->setCellState($this->cellAt($space, $target->x + 3, $target->y), 'wasteland', $nation->id);
         $item = $this->queue($user, $nation, $space, 'excavate', $target->fresh(['terrain', 'facility']));
 
         $result = app(DomesticCommandExecutor::class)->execute(

@@ -5,7 +5,10 @@ namespace App\Application;
 use App\Application\Underground\UndergroundFacilityBenefits;
 use App\Application\Underground\UndergroundFacilityService;
 use App\Domain\Command\CapitalCorePolicy;
+use App\Domain\Command\CapitalDestructionPolicy;
+use App\Domain\Command\CapitalRelocationCooldown;
 use App\Domain\Command\CommandFailureReason;
+use App\Domain\Command\LandDevelopmentDistancePolicy;
 use App\Domain\Command\MissileTargetPolicy;
 use App\Domain\Command\OwnerFacilityOverbuildPolicy;
 use App\Domain\Command\PlayerFacingCommandException;
@@ -20,6 +23,7 @@ use App\Domain\Facility\FacilityRankPolicy;
 use App\Domain\Map\ChunkCoordinateService;
 use App\Domain\Map\GridCoordinate;
 use App\Domain\Map\MapCellStateService;
+use App\Domain\Map\OwnedLandProximity;
 use App\Domain\Monster\MonsterDispatchOptionResolver;
 use App\Domain\Nation\NationProtectionPolicy;
 use App\Domain\Secretary\SecretaryItemGameplayContract;
@@ -52,9 +56,6 @@ use Illuminate\Support\Facades\DB;
 
 final class DomesticCommandExecutor
 {
-    /** @var list<string> */
-    private const CAPITAL_DESTRUCTIVE_COMMANDS = ['land_clear', 'land_level', 'excavate', 'territory_abandon'];
-
     public function __construct(
         private readonly MapCellStateService $cells,
         private readonly NationCapacityResolver $capacities,
@@ -85,6 +86,7 @@ final class DomesticCommandExecutor
         private readonly ParadoxBalanceService $paradox,
         private readonly BuriedTreasureService $buriedTreasures,
         private readonly UnderseaConstructionPolicy $underseaConstruction,
+        private readonly OwnedLandProximity $ownedLand,
     ) {}
 
     /**
@@ -148,6 +150,7 @@ final class DomesticCommandExecutor
                 }
 
                 $definition = $this->queuedCommandDefinitions->resolve($item);
+                $executionCoordinates = [];
                 if ($item->target_context === 'underground_slot') {
                     if (! $definition instanceof UndergroundCommandDefinition) {
                         throw new DomainException('Underground queue item definition is invalid.');
@@ -188,14 +191,17 @@ final class DomesticCommandExecutor
                     $scuttleShip = $definition->key === 'scuttle_ship'
                         ? $this->lockedScuttleShip($context, $nation, $item)
                         : null;
-                    $cellQuery = MapCell::query()->where('map_space_id', $queue->map_space_id);
                     if ($scuttleShip instanceof Ship && $scuttleShip->map_cell_id !== null) {
-                        $cellQuery->whereKey($scuttleShip->map_cell_id);
+                        $cell = MapCell::query()->where('map_space_id', $queue->map_space_id)
+                            ->whereKey($scuttleShip->map_cell_id)->lockForUpdate()->with(['terrain', 'facility'])->firstOrFail();
                     } else {
-                        $cellQuery->where('x', $item->target_x)->where('y', $item->target_y);
+                        $cell = $this->surfaceTargetCell($nation, $queue, $item, $definition)
+                            ?? throw new DomainException('The validated command target disappeared while locked.');
                     }
-                    $cell = $cellQuery->lockForUpdate()->with(['terrain', 'facility'])->firstOrFail();
                     $before = $this->cellSnapshot($cell);
+                    if (array_key_exists('construction_ship_id', $item->parameters)) {
+                        $executionCoordinates = ['x' => $cell->x, 'y' => $cell->y];
+                    }
                     $executionCost = $this->executionCost($nation, $item, $definition, $cell);
                     $this->deductCostAndResources($nation, $item, $definition, $executionCost);
                     $meaningfulActivity = $this->apply(
@@ -267,6 +273,7 @@ final class DomesticCommandExecutor
                     'consumes_turn' => $consumedTurn,
                     'meaningful_activity' => $meaningfulActivity,
                     'remaining_quantity' => $remainingQuantity,
+                    ...$executionCoordinates,
                     'before' => $before,
                     'after' => $after,
                 ], static fn (mixed $value): bool => $value !== null));
@@ -341,7 +348,7 @@ final class DomesticCommandExecutor
     /**
      * @return array{
      *     reason: CommandFailureReason,
-     *     observed: array{terrain: string|null, facility: string|null, owner_nation_id: int|null, owner_nation_name: string|null, monster_id: int|null}
+     *     observed: array<string, int|string|null>
      * }|null
      */
     private function validationFailure(
@@ -373,13 +380,11 @@ final class DomesticCommandExecutor
         if ($definition->target_type === 'nation') {
             return $this->nationCommandValidationFailure($context, $nation, $queue, $item, $definition);
         }
-        $cell = MapCell::query()
-            ->where('map_space_id', $queue->map_space_id)
-            ->where('x', $item->target_x)
-            ->where('y', $item->target_y)
-            ->lockForUpdate()
-            ->with(['terrain', 'facility', 'ownerNation'])
-            ->first();
+        try {
+            $cell = $this->surfaceTargetCell($nation, $queue, $item, $definition);
+        } catch (PlayerFacingCommandException) {
+            return ['reason' => CommandFailureReason::InvalidParameter, 'observed' => $this->emptyObservedState()];
+        }
         if ($cell === null) {
             return [
                 'reason' => CommandFailureReason::NoTarget,
@@ -391,6 +396,15 @@ final class DomesticCommandExecutor
             ->lockForUpdate()
             ->first(['id', 'monster_instance_id']);
         $observed = $this->observedState($cell, $occupancy?->monster_instance_id);
+        if (array_key_exists('construction_ship_id', $item->parameters)) {
+            $observed['x'] = $cell->x;
+            $observed['y'] = $cell->y;
+        }
+        try {
+            $constructionCostMultiplier = $this->underseaConstruction->costMultiplier($nation, $definition, $cell, $item->parameters, true);
+        } catch (PlayerFacingCommandException) {
+            return ['reason' => CommandFailureReason::InvalidParameter, 'observed' => $observed];
+        }
         if ($definition->key === 'scuttle_ship') {
             return $this->lockedScuttleShip($context, $nation, $item) instanceof Ship
                 ? null
@@ -435,14 +449,14 @@ final class DomesticCommandExecutor
             if (! $adjacent['sea']) {
                 return ['reason' => CommandFailureReason::NoAdjacentDeepSea, 'observed' => $observed];
             }
-        } elseif ($this->underseaConstruction->appliesTo($definition->key)) {
+        } elseif ($this->underseaConstruction->appliesTo($definition)) {
             if ($cell->owner_nation_id !== null && $cell->owner_nation_id !== $nation->id) {
                 return ['reason' => CommandFailureReason::ForeignOwned, 'observed' => $observed];
             }
             if ($cell->terrain->key !== 'sea') {
                 return ['reason' => CommandFailureReason::InvalidTerrain, 'observed' => $observed];
             }
-            if (! $this->underseaConstruction->hasNearbyOwnedLand($nation, $cell)) {
+            if (! isset($item->parameters['construction_ship_id']) && ! $this->underseaConstruction->hasNearbyOwnedLand($nation, $cell)) {
                 return ['reason' => CommandFailureReason::MissingAdjacentTerritory, 'observed' => $observed];
             }
             if ($definition->key === 'build_undersea_city') {
@@ -457,8 +471,7 @@ final class DomesticCommandExecutor
                 }
             }
         }
-        if ($cell->facility?->key === 'capital'
-            && in_array($definition->key, self::CAPITAL_DESTRUCTIVE_COMMANDS, true)) {
+        if (CapitalDestructionPolicy::protects($definition->key, $cell->facility?->key)) {
             return ['reason' => CommandFailureReason::CapitalProtected, 'observed' => $observed];
         }
         if (SettlementOverbuildPolicy::protectsCapital($definition->key, $cell->facility?->key, $definition->metadata)) {
@@ -474,10 +487,10 @@ final class DomesticCommandExecutor
             if ($this->hasForeignAdjacentCell($nation, $cell)) {
                 return ['reason' => CommandFailureReason::ForeignAdjacentWater, 'observed' => $observed];
             }
-            if (! $this->hasOwnedCellWithin($nation, $cell, 1, false)) {
+            if (! $this->ownedLand->within($nation, $cell, LandDevelopmentDistancePolicy::RECLAMATION_RADIUS, false)) {
                 return ['reason' => CommandFailureReason::NoAdjacentOwnedLand, 'observed' => $observed];
             }
-        } elseif (! in_array($definition->key, ['territory_expand', 'build_port', 'build_seabed_base', 'build_undersea_city', 'build_undersea_fire_station'], true)) {
+        } elseif (! in_array($definition->key, ['territory_expand', 'build_port'], true) && ! $this->underseaConstruction->appliesTo($definition)) {
             if ($cell->owner_nation_id !== $nation->id
                 && ! ($definition->key === 'excavate' && in_array($cell->terrain->key, ['sea', 'shallow'], true))) {
                 return [
@@ -519,6 +532,15 @@ final class DomesticCommandExecutor
             && ! in_array($cell->facility?->key, $definition->target_facility_keys, true)) {
             return ['reason' => CommandFailureReason::InvalidFacility, 'observed' => $observed];
         }
+        if ($definition->key === 'relocate_capital') {
+            $remaining = CapitalRelocationCooldown::remainingTurns($nation->last_capital_relocation_turn, $context->targetTurn);
+            if ($remaining > 0) {
+                return [
+                    'reason' => CommandFailureReason::CapitalRelocationCooldown,
+                    'observed' => [...$observed, 'cooldown_remaining_turns' => $remaining],
+                ];
+            }
+        }
         if ($definition->key === 'build_monument'
             && ! MonumentDefinition::query()->whereKey($item->quantity)->exists()) {
             return ['reason' => CommandFailureReason::InvalidParameter, 'observed' => $observed];
@@ -543,7 +565,7 @@ final class DomesticCommandExecutor
             if ($cell->owner_nation_id !== null && $cell->owner_nation_id !== $nation->id) {
                 return ['reason' => CommandFailureReason::ForeignOwned, 'observed' => $observed];
             }
-            if (! $this->hasOwnedCellWithin($nation, $cell, 3, true)) {
+            if (! $this->ownedLand->within($nation, $cell, LandDevelopmentDistancePolicy::WATER_RADIUS)) {
                 return ['reason' => CommandFailureReason::MissingAdjacentTerritory, 'observed' => $observed];
             }
             if ($cell->terrain->key === 'sea') {
@@ -565,6 +587,7 @@ final class DomesticCommandExecutor
                 return ['reason' => CommandFailureReason::InvalidParameter, 'observed' => $observed];
             }
         }
+        $requiredMoney *= $constructionCostMultiplier;
         if ((int) $nation->money < $requiredMoney) {
             return ['reason' => CommandFailureReason::InsufficientFunds, 'observed' => $observed];
         }
@@ -829,12 +852,30 @@ final class DomesticCommandExecutor
             ->count() >= $maximum;
     }
 
+    private function surfaceTargetCell(
+        Nation $nation,
+        NationCommandQueue $queue,
+        NationCommandQueueItem $item,
+        CommandDefinition $definition,
+    ): ?MapCell {
+        $query = MapCell::query()->where('map_space_id', $queue->map_space_id);
+        if (array_key_exists('construction_ship_id', $item->parameters)) {
+            $ship = $this->underseaConstruction->constructionShip($nation, $definition, $item->parameters, true);
+            $query->whereKey($ship->map_cell_id);
+        } else {
+            $query->where('x', $item->target_x)->where('y', $item->target_y);
+        }
+
+        return $query->lockForUpdate()->with(['terrain', 'facility', 'ownerNation'])->first();
+    }
+
     private function executionCost(
         Nation $nation,
         NationCommandQueueItem $item,
         CommandDefinition $definition,
         MapCell $cell,
     ): int {
+        $constructionCostMultiplier = $this->underseaConstruction->costMultiplier($nation, $definition, $cell, $item->parameters, true);
         if (in_array($definition->key, MissileImpactResolver::MISSILE_KEYS, true)) {
             return 0;
         }
@@ -847,7 +888,7 @@ final class DomesticCommandExecutor
             return $this->surfaceShips->resolve($definition, $item->quantity)->buildCostMoney;
         }
         if (! $this->isSeabedOilSearch($definition, $cell)) {
-            return WindPowerRepairPolicy::costMoney($definition, $cell->facility?->key, $cell->facility_operational_state);
+            return WindPowerRepairPolicy::costMoney($definition, $cell->facility?->key, $cell->facility_operational_state) * $constructionCostMultiplier;
         }
 
         if ($definition->cost_money < 1) {
@@ -1111,7 +1152,7 @@ final class DomesticCommandExecutor
         );
         $monument = null;
         $population = 0;
-        if (in_array($definition->key, ['build_seabed_base', 'build_undersea_city', 'build_undersea_fire_station'], true)) {
+        if ($this->underseaConstruction->appliesTo($definition)) {
             $this->assignNationOwnership($context, $nation, $cell);
         }
         if ($definition->key === 'build_undersea_city') {
@@ -1632,6 +1673,7 @@ final class DomesticCommandExecutor
         $old->save();
         $target->save();
         $capital->update(['map_cell_id' => $target->id, 'x' => $target->x, 'y' => $target->y]);
+        $nation->update(['last_capital_relocation_turn' => $context->targetTurn]);
         $context->state->markMapChunkChanged($old->map_chunk_id);
         $context->state->markMapChunkChanged($target->map_chunk_id);
         $this->events->record($context, 'command.capital_relocated', $target, [
@@ -2222,13 +2264,14 @@ final class DomesticCommandExecutor
         array $observed,
     ): void {
         $definition = $this->queuedCommandDefinitions->resolve($item);
+        $followsShip = array_key_exists('construction_ship_id', $item->parameters);
         $metadata = [
             'nation_id' => $nation->id,
             'nation_name' => $nation->name,
             'command_key' => $definition->key,
             'command_name' => $definition->name,
-            'x' => $item->target_x,
-            'y' => $item->target_y,
+            'x' => $followsShip ? ($observed['x'] ?? null) : $item->target_x,
+            'y' => $followsShip ? ($observed['y'] ?? null) : $item->target_y,
             'layer' => $item->target_layer,
             'slot_index' => $item->target_slot_index,
             'failure_reason' => $reason->value,

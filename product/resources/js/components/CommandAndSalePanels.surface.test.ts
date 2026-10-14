@@ -201,7 +201,7 @@ describe('command plan workspace', () => {
             },
         };
         const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
-            if (init?.method === 'PATCH') return jsonResponse({ id: 9, heading: 0, version: 2 });
+            if (init?.method === 'PATCH') return jsonResponse({ id: 9, heading: 0, destination: null, version: 2 });
 
             return jsonResponse(String(input).includes('command-definitions') ? catalog([]) : commandQueue());
         });
@@ -220,11 +220,125 @@ describe('command plan workspace', () => {
         expect(String(patchRequest?.[0])).toBe('/api/v1/nations/1/ships/9/heading');
         expect(JSON.parse(String(patchRequest?.[1]?.body))).toEqual({ heading: 0, expected_version: 1 });
         expect(wrapper.emitted('ship')?.[0]?.[0]).toMatchObject({ id: 9, heading: 0, version: 2 });
-        expect(controls.text()).toContain('進路を変更しました');
+        expect(controls.text()).toContain('進路を東にしました');
+        // 親が応答で地図の船を置き換えても、結果の表示は消えない。
+        await wrapper.setProps({ selected: { ...shipSelected, ship: { ...shipSelected.ship!, heading: 0, version: 2 } } });
+        expect(wrapper.get('[aria-label="選択中の自国Ship操作"]').text()).toContain('進路を東にしました');
 
         await wrapper.setProps({ nationState: 'recovery' });
-        expect(wrapper.get('[aria-label="選択中の自国Ship操作"]').text()).toContain('休止・復興中は進路を変更できません');
+        expect(wrapper.get('[aria-label="選択中の自国Ship操作"]').text()).toContain('休止・復興中は船の指示を変更できません');
         expect(wrapper.find('[aria-label="選択中の自国Ship操作"] form').exists()).toBe(false);
+    });
+
+    const ownShipRow = (overrides: Record<string, unknown> = {}) => ({
+        id: 9, name: '戦艦', sort_order: 6, x: 8, y: 7, current_hp: 5, max_hp: 5,
+        heading: null, destination: null, version: 1, movement_mode: 'heading_only', ...overrides,
+    });
+
+    it('shows the selected own Ship destination and clears it back to the type-specific idle order', async () => {
+        const shipSelected: MapCell = {
+            ...selected, terrain: 'sea', terrain_name: '海', display_name: '戦艦',
+            ship: {
+                id: 9, key: 'warship', name: '戦艦', asset_key: 'ship.warship', current_hp: 5, max_hp: 5,
+                public_state: 'active', owner_nation: { nation_number: 1, name: '操作国' }, is_owner: true,
+                heading: null, destination: { x: 12, y: 7 }, version: 3,
+                movement_mode: 'heading_only',
+            },
+        };
+        const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+            if (init?.method === 'PATCH') return jsonResponse({ id: 9, heading: null, destination: null, version: 4 });
+            if (String(input).endsWith('/ships')) return jsonResponse([ownShipRow({ destination: { x: 12, y: 7 }, version: 3 })]);
+            return jsonResponse(String(input).includes('command-definitions') ? catalog([]) : commandQueue());
+        });
+        vi.stubGlobal('fetch', fetchMock);
+        const wrapper = mount(CommandQueuePanel, {
+            props: { nationId: 1, mapSpaceId: 2, selected: shipSelected, nationState: 'active' },
+        });
+        await flushPromises();
+
+        const order = wrapper.get('.sl-ship-order');
+        expect(fetchMock.mock.calls.some(([input]) => String(input).endsWith('/ships'))).toBe(false);
+        expect(order.text()).toContain('目的地 (12,7)');
+        // 経路のターン数ではなく、直線の距離として出す。
+        expect(order.text()).toContain('直線4マス');
+        await order.get('button').trigger('click');
+        await flushPromises();
+
+        const patch = fetchMock.mock.calls.find(([, init]) => init?.method === 'PATCH');
+        expect(String(patch?.[0])).toBe('/api/v1/nations/1/ships/9/destination');
+        expect(JSON.parse(String(patch?.[1]?.body))).toEqual({ destination: null, expected_version: 3 });
+        expect(wrapper.emitted('ship')?.[0]?.[0]).toEqual({ id: 9, heading: null, destination: null, version: 4 });
+        expect(wrapper.get('[aria-label="選択中の自国Ship操作"]').text()).toContain('指示を解除しました。待機します');
+    });
+
+    it('sends the nearest own Ship to a selected sea cell and reports rejected or stale orders', async () => {
+        const sea: MapCell = { ...selected, x: 12, y: 7, terrain: 'sea', terrain_name: '海', display_name: '海', owner_nation_id: null };
+        const near = ownShipRow({ id: 5, name: '探索船', x: 10, y: 7, version: 2, movement_mode: 'sparkle_or_random', sort_order: 3 });
+        const far = ownShipRow({ id: 9, x: 2, y: 7, heading: 1, version: 6 });
+        let patchResponse = () => jsonResponse({ id: 5, heading: null, destination: { x: 12, y: 7 }, version: 3 });
+        let listFails = false;
+        const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+            if (init?.method === 'PATCH') return patchResponse();
+            if (String(input).endsWith('/ships')) return listFails ? errorResponse('error', 500) : jsonResponse([far, near]);
+            return jsonResponse(String(input).includes('command-definitions') ? catalog([]) : commandQueue());
+        });
+        vi.stubGlobal('fetch', fetchMock);
+        const wrapper = mount(CommandQueuePanel, {
+            props: { nationId: 1, mapSpaceId: 2, selected: sea, nationState: 'active' },
+        });
+        await flushPromises();
+
+        const section = () => wrapper.get('[aria-label="このマスを船の目的地にする"]');
+        const options = section().findAll('option').map((option) => option.text());
+        expect(options[0]).toContain('探索船 (10,7)・直線2マス');
+        expect(options[1]).toContain('戦艦 (2,7)・直線10マス');
+        await section().get('form').trigger('submit');
+        await flushPromises();
+
+        const patch = fetchMock.mock.calls.find(([, init]) => init?.method === 'PATCH');
+        expect(String(patch?.[0])).toBe('/api/v1/nations/1/ships/5/destination');
+        expect(JSON.parse(String(patch?.[1]?.body))).toEqual({ destination: { x: 12, y: 7 }, expected_version: 2 });
+        expect(wrapper.emitted('ship')?.[0]?.[0]).toEqual({ id: 5, heading: null, destination: { x: 12, y: 7 }, version: 3 });
+        expect(section().text()).toContain('探索船 (10,7) の目的地を (12,7) にしました');
+        expect(section().findAll('option')[0]!.text()).toContain('・目的地');
+        expect(section().get('button[type="submit"]').attributes('disabled')).toBeDefined();
+
+        // 進路を持つ船へ出しても、送るのは目的地だけ。拒否理由はサーバーの文をそのまま出す。
+        await section().get('select').setValue('9');
+        patchResponse = () => errorResponse('目的地は地上の海のマスを指定してください。', 422);
+        await section().get('form').trigger('submit');
+        await flushPromises();
+        expect(section().get('[role="alert"]').text()).toBe('目的地は地上の海のマスを指定してください。');
+
+        patchResponse = () => errorResponse('Shipが他の操作で更新されました。再読込してください。', 409);
+        const listCalls = () => fetchMock.mock.calls.filter(([input]) => String(input).endsWith('/ships')).length;
+        const before = listCalls();
+        await section().get('form').trigger('submit');
+        await flushPromises();
+        expect(listCalls()).toBe(before + 1);
+        expect(section().get('[role="alert"]').text()).toContain('もう一度操作してください');
+        // 読み直した版を地図の船へも渡し、次の操作が同じ409にならないようにする。
+        expect(wrapper.emitted('ship')?.map(([course]) => course)).toContainEqual({ id: 9, heading: 1, destination: null, version: 6 });
+
+        // 読み直しに失敗したら、古い版を地図へ渡さず、再操作も促さない。
+        const emittedBefore = wrapper.emitted('ship')?.length ?? 0;
+        listFails = true;
+        await section().get('form').trigger('submit');
+        await flushPromises();
+        expect(section().get('[role="alert"]').text()).toContain('マップを再読込してください');
+        expect(wrapper.emitted('ship')?.length ?? 0).toBe(emittedBefore);
+        listFails = false;
+
+        // ルールの切り替え待ちは、何度押しても通らないので読み直さない。
+        patchResponse = () => errorResponse('reset', 409, { code: 'reset_required' });
+        const beforeReset = listCalls();
+        await section().get('form').trigger('submit');
+        await flushPromises();
+        expect(listCalls()).toBe(beforeReset);
+        expect(section().get('[role="alert"]').text()).toBe('この島は現在のルールでは変更できません');
+
+        await wrapper.setProps({ nationState: 'recovery' });
+        expect(wrapper.find('[aria-label="このマスを船の目的地にする"]').exists()).toBe(false);
     });
 
     it('keeps the selected Ship identity frozen while confirming a scuttle command', async () => {
@@ -280,6 +394,86 @@ describe('command plan workspace', () => {
             target_y: 7,
             target_ship_id: 9,
         });
+    });
+
+    it('offers the ship-backed build only on the own construction ship cell and sends its id only from that list', async () => {
+        const shipCell = {
+            ...selected,
+            terrain: 'sea',
+            terrain_name: '海',
+            display_name: '海底工作船',
+            ship: {
+                id: 31,
+                key: 'undersea_construction',
+                undersea_construction: true,
+                movement_mode: 'heading_only',
+                name: '海底工作船',
+                asset_key: 'ship.undersea_construction',
+                current_hp: 1,
+                max_hp: 1,
+                public_state: 'active',
+                owner_nation: { nation_number: 1, name: '操作国' },
+                is_owner: true,
+                heading: null,
+                version: 1,
+            },
+        } satisfies MapCell;
+        const shipParameter = {
+            construction_ship_id: {
+                label: undefined as unknown as string, type: 'integer' as const, input_semantics: 'number' as const,
+                options: [], minimum: 1, maximum: undefined as unknown as number, required: false,
+            },
+        };
+        const normalBase = definition({
+            key: 'build_seabed_base', name: '海底基地', cost_money: 300, parameters: shipParameter,
+            execution_preview_status: 'currently_unavailable', available: true,
+            unavailable_reason: '建設対象の3hex以内に自国陸地がありません。',
+            execution_warnings: ['建設対象の3hex以内に自国陸地がありません。'],
+        });
+        const shipBase = definition({ key: 'build_seabed_base', name: '海底基地', cost_money: 900, parameters: shipParameter });
+        const definitionUrls: string[] = [];
+        const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+            const url = String(input);
+            if (init?.method === 'POST') return jsonResponse({ queue: commandQueue(2) }, 201);
+            if (!url.includes('command-definitions')) return jsonResponse(commandQueue());
+            definitionUrls.push(url);
+            return jsonResponse(catalog(url.includes('construction_ship_id=31')
+                ? [shipBase, definition({ key: 'land_clear', name: '整地' })]
+                : [normalBase]));
+        });
+        vi.stubGlobal('fetch', fetchMock);
+        const wrapper = mount(CommandQueuePanel, { props: { nationId: 1, mapSpaceId: 2, selected: shipCell } });
+        await flushPromises();
+
+        expect(definitionUrls.some((url) => url.includes('construction_ship_id=31'))).toBe(true);
+        expect(definitionUrls.some((url) => !url.includes('construction_ship_id'))).toBe(true);
+        const shipButtons = wrapper.findAll('.command-grid').at(-1)!.findAll('button');
+        expect(shipButtons).toHaveLength(1);
+        expect(shipButtons[0]!.text()).toContain('900');
+
+        await shipButtons[0]!.trigger('click');
+        await flushPromises();
+        const dialog = wrapper.get('[role="dialog"]');
+        expect(dialog.text()).toContain('海底工作船');
+        expect(dialog.find('input[type="number"]').exists()).toBe(false);
+        await dialog.get('form').trigger('submit');
+        await flushPromises();
+        const posts = () => fetchMock.mock.calls.filter(([, init]) => init?.method === 'POST')
+            .map(([, init]) => JSON.parse(String(init?.body)) as { command_key: string; parameters: Record<string, number> });
+        expect(posts()[0]).toMatchObject({ command_key: 'build_seabed_base', parameters: { construction_ship_id: 31 } });
+
+        await wrapper.get('.sl-all input').setValue(true);
+        await wrapper.get('.command-grid button').trigger('click');
+        await flushPromises();
+        await wrapper.get('[role="dialog"] form').trigger('submit');
+        await flushPromises();
+        expect(posts()[1]).toMatchObject({ command_key: 'build_seabed_base' });
+        expect(posts()[1]!.parameters).toEqual({});
+
+        await wrapper.setProps({ selected: { ...shipCell, ship: { ...shipCell.ship, key: 'fishing', undersea_construction: false } } });
+        await flushPromises();
+        expect(definitionUrls.at(-1)).not.toContain('construction_ship_id');
+        expect(wrapper.text()).not.toContain('海底工作船で建てる');
     });
 
     it('inserts before a selected plan and advances without changing empty-slot insertion', async () => {
@@ -523,6 +717,56 @@ describe('command plan workspace', () => {
         await flushPromises();
 
         expect(wrapper.find('.command-grid button').exists()).toBe(false);
+    });
+
+    it('hides off-condition commands regardless of funds, keeps far land development listed, and does not force a dialog for an after-plan command', async () => {
+        window.localStorage.removeItem('hakoniwa-surface-all-commands');
+        const unavailable = (key: string, warnings: string[], overrides: Partial<CommandDefinition> = {}) => definition({
+            key, name: key, execution_preview_status: 'currently_unavailable', execution_warnings: warnings, ...overrides,
+        });
+        const commands = [
+            unavailable('terrain_only', ['terrain']),
+            unavailable('terrain_and_money', ['terrain', 'money'], { shortfall_money: 9 }),
+            unavailable('money_only', ['money'], { shortfall_money: 9 }),
+            unavailable('reclaim', ['distance'], { distance_reason_code: 'out_of_land_range', projected_distance_reason_code: 'out_of_land_range' }),
+            unavailable('excavate', ['distance'], { distance_reason_code: 'out_of_land_range', projected_distance_reason_code: 'out_of_land_range' }),
+            definition({
+                key: 'after_plan', name: 'after_plan', execution_preview_status: 'executable_after_queue', execution_warnings: ['after'],
+                distance_reason_code: 'out_of_land_range', projected_distance_reason_code: null,
+            }),
+        ];
+        const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+            if (init?.method === 'POST') return jsonResponse({ queue: commandQueue(2) }, 201);
+            return jsonResponse(String(input).includes('command-definitions') ? catalog(commands) : commandQueue());
+        });
+        vi.stubGlobal('fetch', fetchMock);
+        const wrapper = mount(CommandQueuePanel, { props: { nationId: 1, mapSpaceId: 2, selected } });
+        await flushPromises();
+        const button = (key: string) => wrapper.findAll('.command-grid button').find((candidate) => candidate.find('.nm').text().startsWith(key));
+
+        // 地形などが合わない物は、資金が足りても足りなくても既定で隠れる。資金だけの不足は出る。
+        expect(button('terrain_only')).toBeUndefined();
+        expect(button('terrain_and_money')).toBeUndefined();
+        expect(button('money_only')!.find('.ltr').exists()).toBe(false);
+        expect(button('money_only')!.find('.note').exists()).toBe(false);
+        // 計画後も遠い埋め立て・掘削は既定で残り、札とスマホ向けの1行が付く。距離の言い方は種類で変わる。
+        const reclaimNote = button('reclaim')!.find('.note');
+        const excavateNote = button('excavate')!.find('.note');
+        expect(button('reclaim')!.find('.ltr').exists()).toBe(true);
+        expect(reclaimNote.exists() && excavateNote.exists()).toBe(true);
+        expect(reclaimNote.text()).not.toBe(excavateNote.text());
+        // 前の計画で陸地ができる物は「計画後」だけで、ダイアログを挟まず登録する。
+        expect(button('after_plan')!.find('.after').exists()).toBe(true);
+        expect(button('after_plan')!.find('.note').exists()).toBe(false);
+        await button('after_plan')!.trigger('click');
+        await flushPromises();
+        expect(wrapper.find('[role="dialog"]').exists()).toBe(false);
+        expect(fetchMock.mock.calls.some(([, init]) => init?.method === 'POST')).toBe(true);
+
+        await wrapper.get('.sl-all input').setValue(true);
+        expect(button('terrain_only')!.find('.ltr').exists()).toBe(true);
+        expect(button('terrain_and_money')!.find('.ltr').exists()).toBe(true);
+        window.localStorage.removeItem('hakoniwa-surface-all-commands');
     });
 
     it('uses command-specific defaults and requires an explicit selector choice', async () => {
