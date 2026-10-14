@@ -221,6 +221,9 @@ describe('command plan workspace', () => {
         expect(JSON.parse(String(patchRequest?.[1]?.body))).toEqual({ heading: 0, expected_version: 1 });
         expect(wrapper.emitted('ship')?.[0]?.[0]).toMatchObject({ id: 9, heading: 0, version: 2 });
         expect(controls.text()).toContain('進路を東にしました');
+        // 親が応答で地図の船を置き換えても、結果の表示は消えない。
+        await wrapper.setProps({ selected: { ...shipSelected, ship: { ...shipSelected.ship!, heading: 0, version: 2 } } });
+        expect(wrapper.get('[aria-label="選択中の自国Ship操作"]').text()).toContain('進路を東にしました');
 
         await wrapper.setProps({ nationState: 'recovery' });
         expect(wrapper.get('[aria-label="選択中の自国Ship操作"]').text()).toContain('休止・復興中は船の指示を変更できません');
@@ -263,7 +266,7 @@ describe('command plan workspace', () => {
         expect(String(patch?.[0])).toBe('/api/v1/nations/1/ships/9/destination');
         expect(JSON.parse(String(patch?.[1]?.body))).toEqual({ destination: null, expected_version: 3 });
         expect(wrapper.emitted('ship')?.[0]?.[0]).toEqual({ id: 9, heading: null, destination: null, version: 4 });
-        expect(wrapper.get('[aria-label="選択中の自国Ship操作"]').text()).toContain('指示を解除しました（待機）');
+        expect(wrapper.get('[aria-label="選択中の自国Ship操作"]').text()).toContain('指示を解除しました。待機します');
     });
 
     it('sends the nearest own Ship to a selected sea cell and reports rejected or stale orders', async () => {

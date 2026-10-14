@@ -206,7 +206,7 @@ const pendingTargetLabel = computed(() => {
 
 // 選んだマスが変わったら、前の船操作の結果は消す。変更直後に同じ船の指示が変わっても、結果の表示は残す。
 watch(
-    () => [ownShip.value?.id, props.selected?.x, props.selected?.y],
+    () => `${ownShip.value?.id}:${props.selected?.x}:${props.selected?.y}`,
     () => {
         shipStatus.value = { kind: 'idle', text: '' };
         destinationStatus.value = { kind: 'idle', text: '' };
@@ -214,7 +214,7 @@ watch(
     { immediate: true },
 );
 watch(
-    () => [ownShip.value?.id, ownShip.value?.heading, ownShip.value?.destination?.x, ownShip.value?.destination?.y],
+    () => `${ownShip.value?.id}:${ownShip.value?.heading}:${ownShip.value?.destination?.x}:${ownShip.value?.destination?.y}`,
     () => {
         shipHeading.value = ownShip.value?.heading ?? null;
     },
@@ -223,7 +223,7 @@ watch(
 
 // 船の欄か目的地の欄を出すマスを選んだときだけ、自国船一覧を取り直す（位置・版・移動方式はターンで変わる）。
 watch(
-    () => [props.nationId, nationActive.value && (ownShip.value !== null || destinationCell.value !== null), props.selected?.x, props.selected?.y],
+    () => `${props.nationId}:${nationActive.value && (ownShip.value !== null || destinationCell.value !== null)}:${props.selected?.x}:${props.selected?.y}`,
     () => {
         if (!nationActive.value || (ownShip.value === null && destinationCell.value === null)) return;
         void loadOwnShips();
@@ -321,7 +321,8 @@ async function clearShipCourse(): Promise<void> {
     const ship = ownShip.value;
     if (ship === null) return;
     const idle = shipIdleLabel(ownShipMovementMode.value);
-    await sendShipCourse(ship, ship.destination != null ? 'destination' : 'heading', null, shipStatus, () => `指示を解除しました（${idle}）`);
+    const result = idle === '待機' ? '待機します' : `${idle}に戻ります`;
+    await sendShipCourse(ship, ship.destination != null ? 'destination' : 'heading', null, shipStatus, () => `指示を解除しました。${result}`);
 }
 
 async function setShipDestination(): Promise<void> {
