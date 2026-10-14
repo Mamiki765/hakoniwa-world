@@ -321,7 +321,7 @@ onBeforeUnmount(() => {
                 <button v-for="option in [1, 2, 4]" :key="option" type="button" :aria-pressed="speed === option" @click="speed = option">×{{ option }}</button>
             </span>
         </div>
-        <p class="ug-playback-round" aria-live="polite">
+        <p class="ug-playback-round" aria-live="polite" :data-round-index="roundIndex" :data-shown-steps="Math.max(0, stepIndex + 1)">
             <strong v-if="currentRound">第{{ currentRound.round }}ラウンド</strong>
             <span v-if="finished">{{ resultLabel }}</span>
             <span v-else-if="currentRound">{{ Math.max(0, stepIndex + 1) }} / {{ currentRound.steps.length }} 行動</span>
