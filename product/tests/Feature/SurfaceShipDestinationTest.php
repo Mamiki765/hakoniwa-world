@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Application\BuriedTreasureService;
+use App\Application\CurrentDatabaseBaseline;
 use App\Application\MonsterTurnService;
 use App\Application\NationCreationService;
 use App\Application\PlayerIslandEventService;
@@ -29,6 +30,7 @@ use App\Models\World;
 use App\Services\MapCellPresenter;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
+use RuntimeException;
 use Tests\Concerns\CreatesTestWorlds;
 use Tests\Concerns\UsesIndividualTestWorld;
 use Tests\TestCase;
@@ -231,6 +233,11 @@ final class SurfaceShipDestinationTest extends TestCase
         unset($attributes['destination_x'], $attributes['destination_y']);
         $this->assertSame((array) $before, $attributes);
         $this->assertSame(['heading' => GridCoordinate::EAST, 'destination' => null, 'version' => 7], $ship->fresh()->course());
+        app(CurrentDatabaseBaseline::class)->assertExisting();
+        DB::statement('ALTER TABLE ships ALTER COLUMN destination_x TYPE bigint');
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage('Database differs');
+        app(CurrentDatabaseBaseline::class)->assertExisting();
     }
 
     /** @return array{World, User, Nation, MapCell, MapCell} */
