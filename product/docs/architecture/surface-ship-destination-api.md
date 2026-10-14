@@ -27,7 +27,7 @@ Content-Type: application/json
 
 `heading`: 0〜5 または null（既存の方向定義）、`destination`: `{x,y}` または null、`version`: 正の整数。両方が同時に非 null にはならない。解除後は両方 null になり、船種の通常挙動に戻る。
 
-自国船一覧 `GET /api/v1/nations/{nation}/ships` の各行に `destination` と `version` を追加する。所有者向け地図の `ship` も同じ値を返す。他国・匿名向け地図では heading・destination・version を全て null にする。mutation のレスポンスで手元の船情報を置き換え、409 時は一覧を再取得してから再操作する。
+自国船一覧 `GET /api/v1/nations/{nation}/ships` の各行に `destination` と `version` を追加する。所有者向け地図の `ship` は `movement_mode` も返し、選択中の船の移動方式を得るためだけの一覧再取得を省く。目的地候補を選ぶときと409の再取得では一覧を使う。所有者向け地図の `ship` も同じ値を返す。他国・匿名向け地図では heading・destination・version を全て null にする。mutation のレスポンスで手元の船情報を置き換え、409 時は一覧を再取得してから再操作する。
 
 | status | 条件 |
 | --- | --- |
