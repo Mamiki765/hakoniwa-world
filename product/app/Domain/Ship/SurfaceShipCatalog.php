@@ -58,6 +58,14 @@ final class SurfaceShipCatalog
                     'heading_or_random',
                 ),
                 combatRole: $this->enumString($value, 'combat_role', ['none', 'pirate', 'warship'], 'none'),
+                capacityPerNation: array_key_exists('capacity_per_nation', $value)
+                    ? $this->positiveInteger($value, 'capacity_per_nation') : null,
+                visibleOnlyInSight: $this->boolean($value, 'visible_only_in_sight', false),
+                underseaConstruction: $this->boolean($value, 'undersea_construction', false),
+                constructionCostMultiplier: array_key_exists('construction_cost_multiplier', $value)
+                    ? $this->positiveInteger($value, 'construction_cost_multiplier') : 1,
+                foreignSinkKarma: array_key_exists('foreign_sink_karma', $value)
+                    ? $this->nonNegativeInteger($value, 'foreign_sink_karma') : null,
             );
         }
 
@@ -117,8 +125,11 @@ final class SurfaceShipCatalog
     }
 
     /** @param array<string, mixed> $settings */
-    public function capacityPerType(array $settings): int
+    public function capacityPerType(array $settings, ?SurfaceShipDefinition $definition = null): int
     {
+        if ($definition?->capacityPerNation !== null) {
+            return $definition->capacityPerNation;
+        }
         $section = $settings['surface_ships'] ?? null;
         $capacity = is_array($section) ? ($section['capacity_per_type'] ?? null) : null;
         if (! is_int($capacity) || $capacity < 1) {
@@ -126,6 +137,18 @@ final class SurfaceShipCatalog
         }
 
         return $capacity;
+    }
+
+    /** @param array<string, mixed> $settings */
+    public function definition(array $settings, string $key): SurfaceShipDefinition
+    {
+        foreach ($this->definitions($settings) as $definition) {
+            if ($definition->key === $key) {
+                return $definition;
+            }
+        }
+
+        throw new DomainException('Surface Ship type is unavailable.');
     }
 
     /** @return array<string, mixed> */

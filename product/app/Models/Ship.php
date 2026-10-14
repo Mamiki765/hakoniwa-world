@@ -18,6 +18,8 @@ use Illuminate\Support\Carbon;
  * @property int $max_hp
  * @property int|null $population
  * @property int|null $heading
+ * @property int|null $destination_x
+ * @property int|null $destination_y
  * @property string $state
  * @property int $version
  * @property string|null $removal_reason
@@ -35,7 +37,7 @@ final class Ship extends Model
 
     protected $fillable = [
         'world_id', 'ruleset_version_id', 'nation_id', 'map_cell_id', 'ship_type_key', 'current_hp', 'max_hp',
-        'population', 'heading', 'state', 'version', 'removal_reason', 'removed_at',
+        'population', 'heading', 'destination_x', 'destination_y', 'state', 'version', 'removal_reason', 'removed_at',
     ];
 
     /** @return array<string, string> */
@@ -47,6 +49,8 @@ final class Ship extends Model
             'max_hp' => 'integer',
             'population' => 'integer',
             'heading' => 'integer',
+            'destination_x' => 'integer',
+            'destination_y' => 'integer',
             'version' => 'integer',
             'removed_at' => 'datetime',
         ];
@@ -57,6 +61,18 @@ final class Ship extends Model
     {
         return self::query()->where('world_id', $worldId)
             ->where('nation_id', $nationId)->where('state', self::STATE_ACTIVE);
+    }
+
+    /** @return array{heading: int|null, destination: array{x: int, y: int}|null, version: int} */
+    public function course(): array
+    {
+        return [
+            'heading' => $this->heading,
+            'destination' => $this->destination_x === null || $this->destination_y === null
+                ? null
+                : ['x' => $this->destination_x, 'y' => $this->destination_y],
+            'version' => (int) $this->version,
+        ];
     }
 
     /** @return BelongsTo<World, $this> */

@@ -8,7 +8,6 @@ use App\Application\DomesticCommandExecutor;
 use App\Application\MonsterTurnService;
 use App\Application\NationCreationService;
 use App\Application\OceanWorldGenerator;
-use App\Application\RulesetPublisher;
 use App\Application\SecretaryTurnService;
 use App\Application\SurfaceShipTurnService;
 use App\Application\WorldExpansionService;
@@ -1352,7 +1351,7 @@ class TurnCellProcessingTest extends TestCase
 
     }
 
-    public function test_v37_famine_riot_preserves_seabed_base_and_still_destroys_land_facility(): void
+    public function test_famine_riot_preserves_seabed_base_and_still_destroys_land_facility(): void
     {
         [$world, , $nation, $engine, , , $farm, $seabedBase] = $this->cellProcessingNation();
         $this->facility($farm, 'farm', 'plain');
@@ -1360,15 +1359,12 @@ class TurnCellProcessingTest extends TestCase
         $before = $seabedBase->fresh()->only([
             'terrain_definition_id', 'facility_definition_id', 'facility_scale', 'owner_nation_id', 'version',
         ]);
-        $draft = require config_path('hakoniwa/rulesets/hakoniwa-2s-plus-v37.php');
-        config([
-            'hakoniwa.ruleset' => $draft,
-            'hakoniwa.published_rulesets' => [$draft['key'] => $draft],
-        ]);
-        $ruleset = app(RulesetPublisher::class)->publish($draft);
-        $world->update(['ruleset_version_id' => $ruleset->id]);
-        $seed = $this->seedForRepeatedDraw(TurnRandomStreamFactory::FACILITY_RIOT, 0, 3, [0, 0]);
-        [$context, $run] = $this->context($world, $nation, [$farm->id, $seabedBase->id], $seed, true);
+        $ruleset = $world->rulesetVersion()->sole();
+        $settings = $ruleset->settings;
+        // Force a riot in this isolated context; do not couple eligibility to balance probability.
+        $settings['turn_processing']['riot']['probability'] = ['numerator' => 1, 'denominator' => 1];
+        $ruleset->settings = $settings;
+        [$context, $run] = $this->context($world, $nation, [$farm->id, $seabedBase->id], hash('sha256', 'riot eligibility'), true, $ruleset);
 
         $result = $engine->execute('process_cells', $context);
 

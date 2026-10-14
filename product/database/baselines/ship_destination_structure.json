@@ -1,0 +1,14 @@
+{
+    "upgraded_5_0_1": {
+        "table:ships": "5a8d9bb526dd54027814f06fcee0e0a38b0a3a98c88cac98e7a5ce4bdee041cd"
+    },
+    "restored_5_0_1": {
+        "table:ships": "5a8d9bb526dd54027814f06fcee0e0a38b0a3a98c88cac98e7a5ce4bdee041cd"
+    },
+    "production_5_0_1": {
+        "table:ships": "a598f8c2fcfd94addb9cde71cb769dadd73829d116a3ca6e259a5eda37275940"
+    },
+    "fresh_5_0_1": {
+        "table:ships": "5a8d9bb526dd54027814f06fcee0e0a38b0a3a98c88cac98e7a5ce4bdee041cd"
+    }
+}

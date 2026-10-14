@@ -120,8 +120,10 @@ final class DatabaseBaselineAdoptionTest extends TestCase
     private function sourceReleaseLedger(): void
     {
         // The supported source has the complete 5.0.1 schema, catalog and
-        // immutable current snapshot. Remove the later display-only extension
-        // and simulate the source ledger to represent that adoption boundary.
+        // immutable current snapshot. Remove later extensions and simulate the
+        // source ledger to represent that adoption boundary.
+        DB::statement('ALTER TABLE ships DROP CONSTRAINT ships_course_check, DROP COLUMN destination_x, DROP COLUMN destination_y');
+        DB::table('migrations')->where('migration', CurrentDatabaseBaseline::SHIP_DESTINATION_MIGRATION)->delete();
         Schema::table('worlds', fn ($table) => $table->dropColumn('monster_count_snapshot'));
         DB::table('migrations')->where('migration', CurrentDatabaseBaseline::MONSTER_COUNT_MIGRATION)->delete();
         DB::table('migrations')->where('migration', CurrentDatabaseBaseline::MIGRATION)->delete();
