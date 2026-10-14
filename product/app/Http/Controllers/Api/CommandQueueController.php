@@ -9,6 +9,7 @@ use App\Application\ParadoxBalanceService;
 use App\Application\SurfaceVisibilityService;
 use App\Application\Underground\UndergroundFacilityService;
 use App\Domain\Command\BulkPlanPreviewChangedException;
+use App\Domain\Command\CapitalRelocationCooldown;
 use App\Domain\Command\CommandQueueLimit;
 use App\Domain\Command\CommandRequestConflictException;
 use App\Domain\Command\DevelopmentPlanQuantity;
@@ -198,8 +199,12 @@ final class CommandQueueController extends Controller
                 ->keyBy('key');
             $paradoxPresentation = $paradox->presentFor($request->user()->id);
             $paradoxBalance = $paradoxPresentation['balance'];
+            $relocationRemainingTurns = CapitalRelocationCooldown::remainingTurns(
+                $nation->last_capital_relocation_turn,
+                $world->current_turn,
+            );
             $definitions = $definitions
-                ->map(function (CommandDefinition $definition) use ($cell, $nation, $mapSpace, $service, $capacities, $queue, $position, $nationTargetOptions, $monsterDispatchTargetOptions, $projected, $resultFacilities, $visibleState, $projectionMemo, $rulesetSettings, $paradoxBalance, $constructionShipId, $underseaConstruction): array {
+                ->map(function (CommandDefinition $definition) use ($cell, $nation, $mapSpace, $service, $capacities, $queue, $position, $nationTargetOptions, $monsterDispatchTargetOptions, $projected, $resultFacilities, $visibleState, $projectionMemo, $rulesetSettings, $paradoxBalance, $constructionShipId, $underseaConstruction, $relocationRemainingTurns): array {
                     $constructionParameters = $constructionShipId !== null && isset($definition->metadata['parameters']['construction_ship_id'])
                         ? ['construction_ship_id' => $constructionShipId] : [];
                     $ownerOverbuildEffect = $projected === null
@@ -264,6 +269,12 @@ final class CommandQueueController extends Controller
                                 $projectedExecutable = $targetProjectedExecutable;
                             }
                         }
+                    }
+
+                    $cooldownRemainingTurns = $definition->key === 'relocate_capital' ? $relocationRemainingTurns : null;
+                    if ($cooldownRemainingTurns > 0) {
+                        $projectedExecutable = false;
+                        $unavailableReason = "次の遷都まであと{$cooldownRemainingTurns}ターン必要です。";
                     }
 
                     $resultFacility = $definition->result_facility_key === null
@@ -354,6 +365,7 @@ final class CommandQueueController extends Controller
                         'available' => $applicable,
                         'shortfall_money' => $shortfall,
                         'shortfall_paradox' => $paradoxShortfall,
+                        'cooldown_remaining_turns' => $cooldownRemainingTurns,
                         'unavailable_reason' => ! $applicable
                             ? ($requiresNationTarget ? '選択可能な対象島がありません。' : '対象セルを選択してください。')
                             : null,

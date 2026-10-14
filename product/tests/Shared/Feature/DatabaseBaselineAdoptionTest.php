@@ -117,6 +117,15 @@ final class DatabaseBaselineAdoptionTest extends TestCase
         app(CurrentDatabaseBaseline::class)->assertExisting();
     }
 
+    public function test_capital_relocation_schema_extension_preserves_strict_column_validation(): void
+    {
+        app(CurrentDatabaseBaseline::class)->assertExisting();
+        DB::statement('ALTER TABLE nations ALTER COLUMN last_capital_relocation_turn TYPE text');
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage('Database differs');
+        app(CurrentDatabaseBaseline::class)->assertExisting();
+    }
+
     private function sourceReleaseLedger(): void
     {
         // The supported source has the complete 5.0.1 schema, catalog and
@@ -125,7 +134,9 @@ final class DatabaseBaselineAdoptionTest extends TestCase
         DB::statement('ALTER TABLE ships DROP CONSTRAINT ships_course_check, DROP COLUMN destination_x, DROP COLUMN destination_y');
         DB::table('migrations')->where('migration', CurrentDatabaseBaseline::SHIP_DESTINATION_MIGRATION)->delete();
         Schema::table('worlds', fn ($table) => $table->dropColumn('monster_count_snapshot'));
+        Schema::table('nations', fn ($table) => $table->dropColumn('last_capital_relocation_turn'));
         DB::table('migrations')->where('migration', CurrentDatabaseBaseline::MONSTER_COUNT_MIGRATION)->delete();
+        DB::table('migrations')->where('migration', CurrentDatabaseBaseline::CAPITAL_RELOCATION_MIGRATION)->delete();
         DB::table('migrations')->where('migration', CurrentDatabaseBaseline::MIGRATION)->delete();
         $migrations = json_decode((string) file_get_contents(database_path('baselines/5_0_1_migrations.json')), true, 512, JSON_THROW_ON_ERROR);
         foreach ($migrations as $migration) {

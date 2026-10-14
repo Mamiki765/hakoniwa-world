@@ -2,6 +2,7 @@
 
 namespace App\Application;
 
+use App\Domain\Command\CapitalRelocationCooldown;
 use App\Models\MapCell;
 use App\Models\Nation;
 use App\Models\NationCommandQueueItem;
@@ -2026,6 +2027,7 @@ final class PlayerIslandEventService
             'facility_exists', 'facility_not_empty' => 'すでに施設が存在するため実行できませんでした。',
             'no_target', 'target_missing' => '対象地点が存在しないため実行できませんでした。',
             'capital_protected' => '首都を変更できないため実行できませんでした。',
+            'capital_relocation_cooldown' => sprintf('前回の遷都から%dターン経過していないため実行できませんでした。', CapitalRelocationCooldown::TURNS),
             'invalid_target_nation' => '対象Nationがactiveではないか存在しないため実行できませんでした。',
             'same_nation_target' => '自国を対象にできないcommandのため実行できませんでした。',
             'invalid_parameter' => 'commandの指定内容が不正なため実行できませんでした。',
