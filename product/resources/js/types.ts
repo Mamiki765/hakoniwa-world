@@ -788,7 +788,7 @@ export interface MonsterOverlay {
 
 export interface ShipOverlay {
     id: number;
-    key: 'fishing' | 'tourist' | 'exploration' | 'pirate' | 'treasure' | 'warship';
+    key: 'fishing' | 'tourist' | 'exploration' | 'pirate' | 'treasure' | 'warship' | 'undersea_construction';
     name: string;
     asset_key: string;
     current_hp: number;
