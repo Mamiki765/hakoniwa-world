@@ -232,6 +232,13 @@ final class TerritoryExpansionAndInfluenceTest extends TestCase
             'state_reason' => 'idle',
             'state_started_turn' => 1,
         ]);
+        // The forecast must agree with execution, or later plans would count this cell as owned land.
+        $preview = collect($this->actingAs($actorUser)->getJson(
+            "/api/v1/nations/{$actor->id}/map-spaces/{$space->id}/command-definitions?target_x={$target->x}&target_y={$target->y}&position=1",
+        )->assertOk()->json('data.commands'))->firstWhere('key', 'territory_expand');
+        $this->assertTrue($preview['available']);
+        $this->assertSame('currently_unavailable', $preview['execution_preview_status']);
+        $this->assertGreaterThan($preview['shortfall_money'] > 0 ? 1 : 0, count($preview['execution_warnings']));
         $item = $this->queue($actorUser, $actor, $space, $target);
         $context = $this->context($world, [$actor->id], hash('sha256', 'dormant-territory-protection'));
         $context->state->setNationLifecycleSnapshot($dormant->id, [

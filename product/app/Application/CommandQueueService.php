@@ -1754,7 +1754,7 @@ final class CommandQueueService
                 $world,
                 new GridCoordinate($cell->x, $cell->y),
                 $nation->id,
-            ),
+            ) || $this->dormantCapitalProtected($world, new GridCoordinate($cell->x, $cell->y)),
             adjacentActorTerritory: $adjacentActorTerritory,
             definitionTargetTerrainKeys: $definition->target_terrain_keys,
             definitionRequiresEmptyFacility: $definition->requires_empty_facility,
@@ -1763,6 +1763,22 @@ final class CommandQueueService
         if ($reason !== null) {
             throw new PlayerFacingCommandException($this->territoryExpansion->message($reason));
         }
+    }
+
+    // Turn execution rejects expansion near a dormant Nation's capital (NationProtectionPolicy).
+    private function dormantCapitalProtected(World $world, GridCoordinate $target): bool
+    {
+        $radius = $world->rulesetVersion->settings['nation_lifecycle']['dormant_protection_radius'] ?? null;
+        if (! is_int($radius) || $radius < 0) {
+            throw new DomainException('The current Ruleset has an invalid dormant protection radius.');
+        }
+
+        return NationCapital::query()
+            ->whereHas('nation', fn ($query) => $query
+                ->where('world_id', $world->id)
+                ->where('state', 'dormant'))
+            ->get(['x', 'y'])
+            ->contains(static fn (NationCapital $capital): bool => (new GridCoordinate((int) $capital->x, (int) $capital->y))->distanceTo($target) <= $radius);
     }
 
     private function capitalCoreProtected(World $world, GridCoordinate $target, int $newOwnerNationId): bool
