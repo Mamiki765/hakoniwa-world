@@ -341,7 +341,7 @@ describe('staggered square-image map', () => {
                 id: 4, key: 'fishing', name: '漁船', asset_key: 'ship.fishing',
                 current_hp: 1, max_hp: 1, public_state: 'active',
                 owner_nation: { nation_number: 4, name: '船主国' },
-                is_owner: true, heading: null, version: 1,
+                is_owner: true, heading: null, destination: { x: 1, y: 0 }, version: 1,
             },
             asset: { key: 'ship.fishing', url: '/tiles/fishing.gif?v=1-1', available: true, fallback_label: '漁船', fallback_style: 'ship-fishing' },
             aria_label: 'x 0 y 0 漁船 このマスの所有者 中立 船 漁船 HP 1/1 船の所有者 船主国 N4',
@@ -366,6 +366,9 @@ describe('staggered square-image map', () => {
         expect(tiles[0]!.get('small').text()).toBe('N4');
         expect(tiles[1]!.find('img').exists()).toBe(false);
         expect(tiles[1]!.find('.tile-label').text()).toBe('森');
+        // 自国の船を選んでいるあいだだけ、その目的地のマスに旗が出る。
+        expect(tiles[1]!.find('.ship-destination-flag').exists()).toBe(true);
+        expect(wrapper.findAll('.ship-destination-flag')).toHaveLength(1);
         await tiles[0]!.trigger('mouseenter');
         const tooltipLines = wrapper.findAll('.cell-tooltip span').map((line) => line.text());
         const shipOwnerLine = tooltipLines.find((line) => line.includes('船主国'));
@@ -388,6 +391,8 @@ describe('staggered square-image map', () => {
         expect(wrapper.emitted('move')).toEqual([[1]]);
         await tiles[1]!.trigger('click');
         expect(wrapper.emitted('select')?.[0]).toEqual([fallback]);
+        await wrapper.setProps({ selected: fallback });
+        expect(wrapper.find('.ship-destination-flag').exists()).toBe(false);
     });
 
     it('renders an NPC Ship tooltip without an owner line or Nation badge', async () => {

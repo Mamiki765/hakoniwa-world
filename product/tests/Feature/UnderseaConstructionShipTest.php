@@ -59,6 +59,8 @@ final class UnderseaConstructionShipTest extends CommandAndMissileTestCase
         $this->assertSame($command->cost_money * 3, $commands->firstWhere('key', $commandKey)['cost_money']);
         $this->assertSame('currently_executable', $commands->firstWhere('key', $commandKey)['execution_preview_status']);
         $item = $this->queue($service, $user, $nation, $this->surfaceMapSpace($world), $commandKey, $target, $quantity, parameters: $params);
+        $plan = $this->getJson('/api/v1/nations/'.$nation->id.'/map-spaces/'.$this->surfaceMapSpace($world)->id.'/command-queue')->assertOk();
+        $this->assertSame($commands->firstWhere('key', $commandKey)['cost_money'], collect($plan->json('data.items'))->firstWhere('id', $item->id)['effective_cost_money']);
         $context = $this->context($world, 2, hash('sha256', 'working ship '.$commandKey), [$nation->id]);
         app(DomesticCommandExecutor::class)->execute($context);
         $this->assertSame('completed', $item->fresh()->status);
@@ -81,6 +83,8 @@ final class UnderseaConstructionShipTest extends CommandAndMissileTestCase
         $this->assertPlayerFacing($enqueue);
         $ship->update(['nation_id' => $nation->id]);
         $item = $enqueue();
+        $path = '/api/v1/nations/'.$nation->id.'/map-spaces/'.$this->surfaceMapSpace($world)->id.'/command-queue';
+        $plannedCost = $this->actingAs($user)->getJson($path)->assertOk()->json('data.items.0.effective_cost_money');
         // Even a valid nearby land anchor cannot rescue a plan whose selected Ship is gone.
         $land = MapCell::query()->where('map_space_id', $target->map_space_id)->where('x', $target->x + 1)->where('y', $target->y)->sole();
         app(MapCellStateService::class)->transitionTerrain($land, TerrainDefinition::query()->where('key', 'plain')->sole());
@@ -91,6 +95,7 @@ final class UnderseaConstructionShipTest extends CommandAndMissileTestCase
         $this->assertPlayerFacing(fn () => $this->queue($service, $user, $nation, $this->surfaceMapSpace($world), 'build_undersea_fire_station', $ordinaryCell, parameters: ['construction_ship_id' => $ordinary->id]));
         $context = $this->context($world, 2, hash('sha256', 'missing working ship'), [$nation->id]);
         app(SurfaceShipRemovalService::class)->sinkAtCell($context, $target, 'test');
+        $this->getJson($path)->assertOk()->assertJsonPath('data.items.0.effective_cost_money', $plannedCost);
         $money = (int) $nation->fresh()->money;
         app(DomesticCommandExecutor::class)->execute($context);
         $this->assertSame('invalid_parameter', $item->fresh()->failure_code);
@@ -122,7 +127,11 @@ final class UnderseaConstructionShipTest extends CommandAndMissileTestCase
         $this->assertStringNotContainsString($name, json_encode($hidden, JSON_UNESCAPED_UNICODE));
         $visible = $presenter->present($cell->fresh(), $viewer->id, 1, withinViewerVisibility: true);
         $this->assertSame($name, $visible['ship']['name']);
-        $this->assertSame($work->id, $presenter->present($cell->fresh(), $owner->id, 1)['ship']['id']);
+        $ownShip = $presenter->present($cell->fresh(), $owner->id, 1)['ship'];
+        $this->assertSame($work->id, $ownShip['id']);
+        $this->assertTrue($ownShip['undersea_construction']);
+        $this->assertSame($ownShip['movement_mode'], app(SurfaceShipCatalog::class)->definition($world->rulesetVersion->settings, $work->ship_type_key)->movementMode);
+        $this->assertSame([false, null], [$visible['ship']['undersea_construction'], $visible['ship']['movement_mode']]);
         $this->assertNull($presenter->present($cell->fresh(), null, 1)['ship']);
         $ordinaryCell = $this->remoteSea($world, $cell->id);
         $ordinary = $this->ship($world, $owner, $ordinaryCell, 'fishing');

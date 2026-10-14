@@ -1,20 +1,12 @@
 <script setup lang="ts">
 import { ref } from 'vue';
 import { apiEnvelope } from '../api/client';
+import { shipInstructionLabel } from '../formatters/shipInstruction';
+import type { OwnShipStatus } from '../types';
 
 const props = defineProps<{ nationId: number }>();
-interface ShipStatus {
-    id: number;
-    name: string;
-    x: number;
-    y: number;
-    current_hp: number;
-    max_hp: number;
-    heading: number | null;
-    movement_mode: string;
-}
 const dialog = ref<HTMLDialogElement | null>(null);
-const ships = ref<ShipStatus[]>([]);
+const ships = ref<OwnShipStatus[]>([]);
 interface ShipTypeCount {
     key: string;
     name: string;
@@ -25,11 +17,6 @@ const shipTypes = ref<ShipTypeCount[]>([]);
 const loading = ref(false);
 const error = ref('');
 
-function headingLabel(ship: ShipStatus): string {
-    if (ship.heading === null) return ship.movement_mode === 'heading_only' ? '待機中' : 'ランダム';
-    return ['東', '北東', '北西', '西', '南西', '南東'][ship.heading] ?? '';
-}
-
 async function load(): Promise<void> {
     if (loading.value) return;
     loading.value = true;
@@ -37,7 +24,7 @@ async function load(): Promise<void> {
     ships.value = [];
     shipTypes.value = [];
     try {
-        const result = await apiEnvelope<ShipStatus[]>(`/api/v1/nations/${props.nationId}/ships`);
+        const result = await apiEnvelope<OwnShipStatus[]>(`/api/v1/nations/${props.nationId}/ships`);
         ships.value = result.data;
         shipTypes.value = (result.meta?.ship_types ?? []) as ShipTypeCount[];
     } catch (cause) {
@@ -77,7 +64,7 @@ function closeOnBackdrop(event: MouseEvent): void {
             <p v-else-if="error" class="status error" role="alert">{{ error }}</p>
             <p v-else-if="ships.length === 0">生存している船はありません。</p>
             <ul v-else class="ship-status-list">
-                <li v-for="ship in ships" :key="ship.id">{{ ship.name }} ({{ ship.x }},{{ ship.y }}) HP{{ ship.current_hp }}/{{ ship.max_hp }} {{ headingLabel(ship) }}</li>
+                <li v-for="ship in ships" :key="ship.id">{{ ship.name }} ({{ ship.x }},{{ ship.y }}) HP{{ ship.current_hp }}/{{ ship.max_hp }} {{ shipInstructionLabel(ship, ship.movement_mode) }}</li>
             </ul>
             <button type="button" :disabled="loading" @click="load">更新</button>
         </dialog>
