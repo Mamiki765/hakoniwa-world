@@ -288,6 +288,7 @@ html .sl h2 { font: var(--sl-w-head) 14px var(--sl-f-head); display: block; min-
 .sl-cmd .cost .shortfall { font-size: 10px; color: var(--sl-bad); }
 .sl .sl-cmd.short { color: var(--sl-ink-2); background: transparent; border-style: dashed; }
 .sl .sl-cmd.later { border-style: dotted; }
+.sl-cmd .note { grid-column: 2 / -1; font-size: 11px; line-height: 1.3; color: var(--sl-ink-2); }
 .sl .sl-ship-build-note { margin: 0 10px; font-size: 11px; color: var(--sl-ink-2); }
 .sl-dialog .sl-ship-build-note { margin: 0; font-size: 12px; }
 

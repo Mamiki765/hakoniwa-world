@@ -905,6 +905,12 @@ export interface CommandDefinition {
     unavailable_reason: string | null;
     execution_preview_status: 'target_required' | 'currently_executable' | 'currently_unavailable' | 'executable_after_queue';
     execution_warnings: string[];
+    /** 遷都の待ち時間。遷都以外は null。 */
+    cooldown_remaining_turns?: number | null;
+    /** いまの自国の陸地から見た距離条件。null は「距離の条件がない／満たす」で、実行できる保証ではない。 */
+    distance_reason_code?: 'out_of_land_range' | null;
+    /** 入れる位置より前の計画を当てはめたあとの距離条件。意味は distance_reason_code と同じ。 */
+    projected_distance_reason_code?: 'out_of_land_range' | null;
 }
 
 export interface DevelopmentPlanQuantityContract {

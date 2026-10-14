@@ -5,8 +5,10 @@ namespace App\Application;
 use App\Application\Underground\UndergroundFacilityBenefits;
 use App\Application\Underground\UndergroundFacilityService;
 use App\Domain\Command\CapitalCorePolicy;
+use App\Domain\Command\CapitalDestructionPolicy;
 use App\Domain\Command\CapitalRelocationCooldown;
 use App\Domain\Command\CommandFailureReason;
+use App\Domain\Command\LandDevelopmentDistancePolicy;
 use App\Domain\Command\MissileTargetPolicy;
 use App\Domain\Command\OwnerFacilityOverbuildPolicy;
 use App\Domain\Command\PlayerFacingCommandException;
@@ -21,6 +23,7 @@ use App\Domain\Facility\FacilityRankPolicy;
 use App\Domain\Map\ChunkCoordinateService;
 use App\Domain\Map\GridCoordinate;
 use App\Domain\Map\MapCellStateService;
+use App\Domain\Map\OwnedLandProximity;
 use App\Domain\Monster\MonsterDispatchOptionResolver;
 use App\Domain\Nation\NationProtectionPolicy;
 use App\Domain\Secretary\SecretaryItemGameplayContract;
@@ -53,9 +56,6 @@ use Illuminate\Support\Facades\DB;
 
 final class DomesticCommandExecutor
 {
-    /** @var list<string> */
-    private const CAPITAL_DESTRUCTIVE_COMMANDS = ['land_clear', 'land_level', 'excavate', 'territory_abandon'];
-
     public function __construct(
         private readonly MapCellStateService $cells,
         private readonly NationCapacityResolver $capacities,
@@ -86,6 +86,7 @@ final class DomesticCommandExecutor
         private readonly ParadoxBalanceService $paradox,
         private readonly BuriedTreasureService $buriedTreasures,
         private readonly UnderseaConstructionPolicy $underseaConstruction,
+        private readonly OwnedLandProximity $ownedLand,
     ) {}
 
     /**
@@ -463,8 +464,7 @@ final class DomesticCommandExecutor
                 }
             }
         }
-        if ($cell->facility?->key === 'capital'
-            && in_array($definition->key, self::CAPITAL_DESTRUCTIVE_COMMANDS, true)) {
+        if (CapitalDestructionPolicy::protects($definition->key, $cell->facility?->key)) {
             return ['reason' => CommandFailureReason::CapitalProtected, 'observed' => $observed];
         }
         if (SettlementOverbuildPolicy::protectsCapital($definition->key, $cell->facility?->key, $definition->metadata)) {
@@ -480,7 +480,7 @@ final class DomesticCommandExecutor
             if ($this->hasForeignAdjacentCell($nation, $cell)) {
                 return ['reason' => CommandFailureReason::ForeignAdjacentWater, 'observed' => $observed];
             }
-            if (! $this->hasOwnedCellWithin($nation, $cell, 1, false)) {
+            if (! $this->ownedLand->within($nation, $cell, LandDevelopmentDistancePolicy::RECLAMATION_RADIUS, false)) {
                 return ['reason' => CommandFailureReason::NoAdjacentOwnedLand, 'observed' => $observed];
             }
         } elseif (! in_array($definition->key, ['territory_expand', 'build_port'], true) && ! $this->underseaConstruction->appliesTo($definition)) {
@@ -558,7 +558,7 @@ final class DomesticCommandExecutor
             if ($cell->owner_nation_id !== null && $cell->owner_nation_id !== $nation->id) {
                 return ['reason' => CommandFailureReason::ForeignOwned, 'observed' => $observed];
             }
-            if (! $this->hasOwnedCellWithin($nation, $cell, 3, true)) {
+            if (! $this->ownedLand->within($nation, $cell, LandDevelopmentDistancePolicy::WATER_RADIUS)) {
                 return ['reason' => CommandFailureReason::MissingAdjacentTerritory, 'observed' => $observed];
             }
             if ($cell->terrain->key === 'sea') {

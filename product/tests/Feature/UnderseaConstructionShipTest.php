@@ -58,6 +58,8 @@ final class UnderseaConstructionShipTest extends CommandAndMissileTestCase
         $commands = collect($preview->assertOk()->json('data.commands'));
         $this->assertSame($command->cost_money * 3, $commands->firstWhere('key', $commandKey)['cost_money']);
         $this->assertSame('currently_executable', $commands->firstWhere('key', $commandKey)['execution_preview_status']);
+        $this->assertNull($commands->firstWhere('key', $commandKey)['distance_reason_code']);
+        $this->assertNull($commands->firstWhere('key', $commandKey)['projected_distance_reason_code']);
         $item = $this->queue($service, $user, $nation, $this->surfaceMapSpace($world), $commandKey, $target, $quantity, parameters: $params);
         $plan = $this->getJson('/api/v1/nations/'.$nation->id.'/map-spaces/'.$this->surfaceMapSpace($world)->id.'/command-queue')->assertOk();
         $this->assertSame($commands->firstWhere('key', $commandKey)['cost_money'], collect($plan->json('data.items'))->firstWhere('id', $item->id)['effective_cost_money']);

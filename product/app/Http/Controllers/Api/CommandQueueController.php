@@ -13,6 +13,7 @@ use App\Domain\Command\CapitalRelocationCooldown;
 use App\Domain\Command\CommandQueueLimit;
 use App\Domain\Command\CommandRequestConflictException;
 use App\Domain\Command\DevelopmentPlanQuantity;
+use App\Domain\Command\LandDevelopmentDistancePolicy;
 use App\Domain\Command\PlayerFacingCommandException;
 use App\Domain\Command\SurfaceCommandProjectionMemo;
 use App\Domain\Command\UnderseaConstructionPolicy;
@@ -133,6 +134,8 @@ final class CommandQueueController extends Controller
                                     ? 'currently_executable'
                                     : 'currently_unavailable',
                                 'execution_warnings' => $warnings,
+                                'distance_reason_code' => null,
+                                'projected_distance_reason_code' => null,
                             ];
                         },
                     )
@@ -155,7 +158,7 @@ final class CommandQueueController extends Controller
                     ->where('x', $request->integer('target_x'))
                     ->where('y', $request->integer('target_y'))
                     ->with(['terrain', 'facility', 'ship'])
-                    ->withExists('ship')
+                    ->withExists(['ship', 'monsterOccupancy'])
                     ->first();
             }
             $nationTargetOptions = $this->nationTargets->options($nation);
@@ -211,6 +214,13 @@ final class CommandQueueController extends Controller
                         ? null
                         : $service->projectedOwnerOverbuildEffect($definition, $nation, $projected);
                     $unavailableReason = null;
+                    $distanceReasonCode = $cell === null || $definition->target_type !== 'cell'
+                        ? null
+                        : $service->currentLandDistanceReasonCode($nation, $definition, $cell, $visibleState['terrain_key'] ?? null, $projectionMemo, $constructionParameters);
+                    $projectedDistanceReasonCode = $cell === null || $definition->target_type !== 'cell'
+                        || ! in_array($projected['terrain_key'], $definition->target_terrain_keys, true)
+                        ? null
+                        : $service->projectedLandDistanceReasonCode($nation, $mapSpace, $definition, $cell, $projected['terrain_key'], $queue, $position, $projectionMemo, $constructionParameters);
                     $projectedExecutable = false;
                     $currentlyExecutable = false;
                     if ($definition->target_type === 'cell' && $cell !== null) {
@@ -223,6 +233,7 @@ final class CommandQueueController extends Controller
                                 $visibleState,
                                 $rulesetSettings,
                                 $constructionParameters,
+                                $projectionMemo,
                             );
                             $currentlyExecutable = true;
                         } catch (PlayerFacingCommandException $exception) {
@@ -250,7 +261,8 @@ final class CommandQueueController extends Controller
                                     $constructionParameters,
                                 );
                         }
-                        if (in_array($definition->key, ['build_port', 'build_wind_power'], true)) {
+                        if (in_array($definition->key, ['build_port', 'build_wind_power', 'reclaim', 'excavate'], true)
+                            || LandDevelopmentDistancePolicy::isUnderseaConstruction($definition)) {
                             $targetProjectedExecutable = $service->projectedTargetMatches(
                                 $definition,
                                 $projected,
@@ -260,15 +272,22 @@ final class CommandQueueController extends Controller
                                 $queue,
                                 $position,
                                 $projectionMemo,
+                                $constructionParameters,
                             );
                             if ($currentlyExecutable && ! $targetProjectedExecutable) {
-                                $unavailableReason = $definition->key === 'build_wind_power'
-                                    ? '予約済みcommand後は風力発電所の建設・修理条件を満たしません。'
-                                    : '予約済みcommand後は港の建設条件を満たしません。';
+                                $unavailableReason = match ($definition->key) {
+                                    'build_wind_power' => '予約済みcommand後は風力発電所の建設・修理条件を満たしません。',
+                                    'build_port' => '予約済みcommand後は港の建設条件を満たしません。',
+                                    default => '予約済みcommand後は対象・距離条件を満たしません。',
+                                };
                             } elseif (! $currentlyExecutable) {
                                 $projectedExecutable = $targetProjectedExecutable;
                             }
                         }
+                    }
+
+                    if ($distanceReasonCode !== null && ! $projectedExecutable) {
+                        $unavailableReason ??= '現在の自国陸地からの距離条件を満たしません。';
                     }
 
                     $cooldownRemainingTurns = $definition->key === 'relocate_capital' ? $relocationRemainingTurns : null;
@@ -375,6 +394,8 @@ final class CommandQueueController extends Controller
                                 ? 'executable_after_queue'
                                 : ($warnings === [] ? 'currently_executable' : 'currently_unavailable')),
                         'execution_warnings' => $warnings,
+                        'distance_reason_code' => $distanceReasonCode,
+                        'projected_distance_reason_code' => $projectedDistanceReasonCode,
                     ];
                 })
                 ->values();

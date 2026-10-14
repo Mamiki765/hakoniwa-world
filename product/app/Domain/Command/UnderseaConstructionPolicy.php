@@ -2,8 +2,7 @@
 
 namespace App\Domain\Command;
 
-use App\Domain\Map\GridCoordinate;
-use App\Domain\Map\NationLandAreaCalculator;
+use App\Domain\Map\OwnedLandProximity;
 use App\Domain\Ship\SurfaceShipCatalog;
 use App\Models\CommandDefinition;
 use App\Models\MapCell;
@@ -13,14 +12,13 @@ use App\Models\Ship;
 final class UnderseaConstructionPolicy
 {
     public function __construct(
-        private readonly NationLandAreaCalculator $landArea,
+        private readonly OwnedLandProximity $ownedLand,
         private readonly SurfaceShipCatalog $ships,
     ) {}
 
     public function appliesTo(CommandDefinition $command): bool
     {
-        return ($command->metadata['construction_context'] ?? null) === 'undersea'
-            && $command->target_type === 'cell' && $command->result_facility_key !== null;
+        return LandDevelopmentDistancePolicy::isUnderseaConstruction($command);
     }
 
     /** @param array<string, mixed> $parameters */
@@ -60,18 +58,6 @@ final class UnderseaConstructionPolicy
 
     public function hasNearbyOwnedLand(Nation $nation, MapCell $target): bool
     {
-        $coordinates = (new GridCoordinate($target->x, $target->y))->radius(3);
-
-        return MapCell::query()
-            ->where('map_space_id', $target->map_space_id)
-            ->where('owner_nation_id', $nation->id)
-            ->where(function ($query) use ($coordinates): void {
-                foreach ($coordinates as $coordinate) {
-                    $query->orWhere(fn ($pair) => $pair->where('x', $coordinate->x)->where('y', $coordinate->y));
-                }
-            })
-            ->with('terrain')
-            ->get()
-            ->contains(fn (MapCell $cell): bool => $this->landArea->isLand($cell));
+        return $this->ownedLand->within($nation, $target, LandDevelopmentDistancePolicy::WATER_RADIUS);
     }
 }

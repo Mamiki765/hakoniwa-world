@@ -121,14 +121,38 @@ let activeRefreshPositionOnly = false;
 let disposed = false;
 
 const basePath = (nationId = props.nationId, mapSpaceId = props.mapSpaceId) => `/api/v1/nations/${nationId}/map-spaces/${mapSpaceId}`;
-// いまの地形では合わないコマンド。資金・輝石の不足だけの物は含めない（不足でも予約できる）。
-function isLookahead(definition: CommandDefinition): boolean {
+// 資金・輝石の不足を除いても、まだ警告が残るか（地形・所有・距離・待ち時間など）。
+// 「計画後」の案内は良い知らせなので数えない。文言ではなく件数で見る。
+function conditionWarnings(definition: CommandDefinition): string[] {
+    const warnings = definition.execution_preview_status === 'executable_after_queue'
+        ? definition.execution_warnings.slice(1)
+        : definition.execution_warnings;
+    const moneyWarnings = (definition.shortfall_money > 0 ? 1 : 0) + ((definition.shortfall_paradox ?? 0) > 0 ? 1 : 0);
+    return warnings.slice(0, Math.max(0, warnings.length - moneyWarnings));
+}
+// 計画のあとでも自国の陸地から遠い。既定の一覧から消さず「範囲外」で残す。
+function isOutOfRange(definition: CommandDefinition): boolean {
     return definition.execution_preview_status === 'currently_unavailable'
-        && definition.shortfall_money === 0
-        && (definition.shortfall_paradox ?? 0) === 0;
+        && definition.projected_distance_reason_code === 'out_of_land_range';
+}
+// いまの条件でも計画のあとでも合わないコマンド（資金だけの不足は含めない）。既定では隠す。
+function isOutOfCondition(definition: CommandDefinition): boolean {
+    return definition.execution_preview_status === 'currently_unavailable'
+        && !isOutOfRange(definition)
+        && conditionWarnings(definition).length > 0;
+}
+// ボタンの下に出す1行（スマホでも読める）。理由の種類が分かる物だけ。
+function commandNote(definition: CommandDefinition): string | null {
+    if (isOutOfRange(definition)) {
+        return definition.key === 'reclaim' ? '自国の陸地の隣が条件です' : '自国の陸地から3マス以内が条件です';
+    }
+    if ((definition.cooldown_remaining_turns ?? 0) > 0) {
+        return `次の遷都まであと${definition.cooldown_remaining_turns}ターン`;
+    }
+    return null;
 }
 const listedDefinitions = computed(() => definitions.value.filter(
-    (definition) => definition.applicable && (allCommands.value || !isLookahead(definition)),
+    (definition) => definition.applicable && (allCommands.value || !isOutOfCondition(definition)),
 ));
 const commandGroups = computed(() => [
     ...([
@@ -141,7 +165,7 @@ const commandGroups = computed(() => [
     {
         key: 'construction_ship' as const,
         label: '海底工作船で建てる',
-        definitions: shipDefinitions.value.filter((definition) => allCommands.value || !isLookahead(definition)),
+        definitions: shipDefinitions.value.filter((definition) => allCommands.value || !isOutOfCondition(definition)),
     },
 ].filter((group) => group.definitions.length > 0));
 const tailPosition = computed(() => {
@@ -166,6 +190,14 @@ const queuedOnSelected = computed(() => {
 const queueIsFull = computed(() => queue.value.explicit_count >= queue.value.limit);
 const pendingQuantityIsValid = computed(() => quantityIsValid(pendingQuantity.value));
 const editingQuantityIsValid = computed(() => quantityIsValid(editingQuantity.value));
+// 入力ダイアログの赤字。「計画後」の案内は良い知らせなので、赤字にせず別の注記で出す。
+const pendingWarnings = computed(() => {
+    const definition = pendingDefinition.value;
+    if (definition === null) return [];
+    return definition.execution_preview_status === 'executable_after_queue'
+        ? definition.execution_warnings.slice(1)
+        : definition.execution_warnings;
+});
 const pendingCostMoney = computed(() => {
     const definition = pendingDefinition.value;
     if (definition === null) return 0;
@@ -523,7 +555,9 @@ function prepareCommand(
     ]));
     if (definition.quantity_semantics !== 'unused'
         || inputParameterKeys(definition).length > 0
-        || definition.execution_warnings.length > 0
+        || conditionWarnings(definition).length > 0
+        || definition.shortfall_money > 0
+        || (definition.shortfall_paradox ?? 0) > 0
         || frozen.constructionShipId !== null) {
         commandTrigger.value = trigger;
         pendingCommandContext.value = frozen;
@@ -1127,7 +1161,7 @@ onBeforeUnmount(() => {
             <section class="available-commands sl-cmd-area">
                 <div class="sl-cmd-head">
                     <h3>使えるコマンド</h3>
-                    <label v-if="selected || selectedUnderground" class="sl-all" title="いまの地形では使えないコマンドも出します">
+                    <label v-if="selected || selectedUnderground" class="sl-all" title="いまの条件では実行されないコマンドも出します">
                         <input type="checkbox" :checked="allCommands" @change="setAllCommands(($event.target as HTMLInputElement).checked)"> 全部出す
                     </label>
                     <span class="sl-legend" aria-hidden="true"><span><i class="sl-mk" /> ターンを使う</span><span><i class="sl-mk free" /> 使わない</span></span>
@@ -1160,7 +1194,7 @@ onBeforeUnmount(() => {
                             :key="definition.key"
                             type="button"
                             class="sl-cmd"
-                            :class="{ short: definition.shortfall_money > 0 || (definition.shortfall_paradox ?? 0) > 0, later: isLookahead(definition) }"
+                            :class="{ short: definition.shortfall_money > 0 || (definition.shortfall_paradox ?? 0) > 0, later: isOutOfCondition(definition) || isOutOfRange(definition) }"
                             :disabled="busy || !definitionsCurrent || !definition.available || queueIsFull"
                             :title="definition.unavailable_reason ?? definition.description"
                             @click="chooseCommand(definition, $event, group.key === 'construction_ship')"
@@ -1171,7 +1205,8 @@ onBeforeUnmount(() => {
                                     v-if="definition.command_suffix"
                                     :class="{ 'danger-suffix': definition.command_suffix_tone === 'danger' }"
                                 >{{ definition.command_suffix }}</small>
-                                <small v-if="isLookahead(definition)" class="ltr" title="いまの地形では使えません。前の計画で地形が変わる前提で入れます。">先読み</small>
+                                <small v-if="isOutOfRange(definition)" class="ltr">範囲外</small>
+                                <small v-else-if="isOutOfCondition(definition)" class="ltr" title="いまの条件では実行されません。予約はできます。">条件外</small>
                                 <small v-else-if="definition.execution_preview_status === 'executable_after_queue'" class="after" title="前の計画のあとなら実行できます。">計画後</small>
                                 <small v-if="definition.initial_facility_capacity" class="cap">初期 {{ definition.initial_facility_capacity.formatted }}</small>
                             </span>
@@ -1180,11 +1215,12 @@ onBeforeUnmount(() => {
                                 <span v-if="definition.shortfall_money > 0" class="shortfall">資金が{{ formatExactMoney(definition.shortfall_money) }}不足</span>
                                 <span v-if="(definition.shortfall_paradox ?? 0) > 0" class="shortfall">輝石が{{ definition.shortfall_paradox }} Pd不足</span>
                             </span>
+                            <span v-if="commandNote(definition)" class="note">{{ commandNote(definition) }}</span>
                         </button>
                     </div>
                 </template>
                 <p v-if="commandGroups.length === 0" class="empty-state sl-empty">
-                    {{ selectedUnderground ? 'この地下施設枠で登録できるコマンドはありません。' : selected ? 'このセルでいま使えるコマンドはありません。「全部出す」で先読みのコマンドを出せます。' : '地図のマスを選ぶと、そのマスで使えるコマンドが出ます。' }}
+                    {{ selectedUnderground ? 'この地下施設枠で登録できるコマンドはありません。' : selected ? 'このマスでいま使えるコマンドはありません。「全部出す」で条件外のコマンドも出せます。' : '地図のマスを選ぶと、そのマスで使えるコマンドが出ます。' }}
                 </p>
             </section>
         </aside>
@@ -1294,7 +1330,8 @@ onBeforeUnmount(() => {
                     {{ commandStatus.text }}
                 </p>
                 <form @submit.prevent="addPendingCommand">
-                    <p v-for="warning in pendingDefinition.execution_warnings" :key="warning" class="shortfall">{{ warning }}</p>
+                    <p v-if="pendingDefinition.execution_preview_status === 'executable_after_queue'" class="selector-cost">前の計画のあとなら実行できます。</p>
+                    <p v-for="warning in pendingWarnings" :key="warning" class="shortfall">{{ warning }}</p>
                     <p v-if="(pendingDefinition.cost_paradox ?? 0) > 0" class="selector-cost">必要な輝石 {{ pendingDefinition.cost_paradox }} Pd</p>
                     <section v-if="pendingNeedsConfirmation" aria-label="最新計画の再確認">
                         <p>入力と対象は保持しています。最新の計画を確認してください（この位置へ挿入します）。</p>
