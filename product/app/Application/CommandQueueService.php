@@ -1754,7 +1754,7 @@ final class CommandQueueService
                 $world,
                 new GridCoordinate($cell->x, $cell->y),
                 $nation->id,
-            ) || $this->dormantCapitalProtected($world, new GridCoordinate($cell->x, $cell->y)),
+            ),
             adjacentActorTerritory: $adjacentActorTerritory,
             definitionTargetTerrainKeys: $definition->target_terrain_keys,
             definitionRequiresEmptyFacility: $definition->requires_empty_facility,
@@ -1765,45 +1765,43 @@ final class CommandQueueService
         }
     }
 
-    // Turn execution rejects expansion near a dormant Nation's capital (NationProtectionPolicy).
-    private function dormantCapitalProtected(World $world, GridCoordinate $target): bool
-    {
-        $radius = $world->rulesetVersion->settings['nation_lifecycle']['dormant_protection_radius'] ?? null;
-        if (! is_int($radius) || $radius < 0) {
-            throw new DomainException('The current Ruleset has an invalid dormant protection radius.');
-        }
-
-        return NationCapital::query()
-            ->whereHas('nation', fn ($query) => $query
-                ->where('world_id', $world->id)
-                ->where('state', 'dormant'))
-            ->get(['x', 'y'])
-            ->contains(static fn (NationCapital $capital): bool => (new GridCoordinate((int) $capital->x, (int) $capital->y))->distanceTo($target) <= $radius);
-    }
-
+    // Mirrors the capital-core transfer rule and, for Turn execution parity, NationProtectionPolicy's dormant radius.
     private function capitalCoreProtected(World $world, GridCoordinate $target, int $newOwnerNationId): bool
     {
-        $transfer = $world->rulesetVersion->settings['territory_transfer']['capital_core'] ?? null;
-        if (! is_array($transfer) || ($transfer['ownership_transfer_protected'] ?? false) !== true) {
+        $settings = $world->rulesetVersion->settings;
+        $transfer = $settings['territory_transfer']['capital_core'] ?? null;
+        $transferProtected = is_array($transfer) && ($transfer['ownership_transfer_protected'] ?? false) === true;
+        $ownerStates = $transferProtected && is_array($transfer['owner_states'] ?? null) ? $transfer['owner_states'] : [];
+        $dormantRadius = $settings['nation_lifecycle']['dormant_protection_radius'] ?? null;
+        if (! is_int($dormantRadius) || $dormantRadius < 0) {
+            throw new DomainException('The current Ruleset has an invalid dormant protection radius.');
+        }
+        $capitals = NationCapital::query()
+            ->join('nations', 'nations.id', '=', 'nation_capitals.nation_id')
+            ->where('nations.world_id', $world->id)
+            ->whereIn('nations.state', [...$ownerStates, 'dormant'])
+            ->orderBy('nation_capitals.nation_id')
+            ->get(['nation_capitals.nation_id', 'nation_capitals.x', 'nation_capitals.y', 'nations.state']);
+        foreach ($capitals as $capital) {
+            if ($capital->getAttribute('state') === 'dormant'
+                && (new GridCoordinate((int) $capital->x, (int) $capital->y))->distanceTo($target) <= $dormantRadius) {
+                return true;
+            }
+        }
+        if (! $transferProtected) {
             return false;
         }
-        $ownerStates = is_array($transfer['owner_states'] ?? null) ? $transfer['owner_states'] : [];
-        $capitals = NationCapital::query()
-            ->whereHas('nation', fn ($query) => $query
-                ->where('world_id', $world->id)
-                ->whereIn('state', $ownerStates))
-            ->orderBy('nation_id')
-            ->get(['nation_id', 'x', 'y'])
-            ->map(static fn (NationCapital $capital): array => [
-                'nation_id' => (int) $capital->nation_id,
-                'x' => (int) $capital->x,
-                'y' => (int) $capital->y,
-            ])->all();
 
         return $this->capitalCores->protectsTransfer(
             $target,
             $newOwnerNationId,
-            $capitals,
+            $capitals
+                ->filter(static fn (NationCapital $capital): bool => in_array($capital->getAttribute('state'), $ownerStates, true))
+                ->map(static fn (NationCapital $capital): array => [
+                    'nation_id' => (int) $capital->nation_id,
+                    'x' => (int) $capital->x,
+                    'y' => (int) $capital->y,
+                ])->values()->all(),
             (int) ($transfer['radius'] ?? 0),
         );
     }
