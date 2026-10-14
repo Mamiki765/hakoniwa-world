@@ -47,7 +47,6 @@ use App\Models\TerrainDefinition;
 use App\Models\User;
 use App\Models\UserMonumentDesign;
 use DomainException;
-use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\DB;
 
 final class DomesticCommandExecutor
@@ -76,6 +75,7 @@ final class DomesticCommandExecutor
         private readonly NationProtectionPolicy $nationProtection,
         private readonly UndergroundFacilityService $undergroundFacilities,
         private readonly QueuedCommandDefinitionResolver $queuedCommandDefinitions,
+        private readonly CommandQueueCompactor $queueCompactor,
         private readonly UndergroundFacilityBenefits $undergroundBenefits,
         private readonly SurfaceShipCatalog $surfaceShips,
         private readonly SurfaceShipBuildService $surfaceShipBuild,
@@ -235,7 +235,7 @@ final class DomesticCommandExecutor
                         'failure_code' => null,
                         'failure_metadata' => [],
                     ]);
-                    $this->compact($queue);
+                    $this->queueCompactor->compact($queue);
                     $metrics['removed']++;
                     $this->events->record($context, 'command.queue_removed', $item, [
                         'nation_id' => $nation->id,
@@ -2253,7 +2253,7 @@ final class DomesticCommandExecutor
             'failure_code' => $reason->value,
             'failure_metadata' => $metadata,
         ]);
-        $this->compact($queue);
+        $this->queueCompactor->compact($queue);
         $this->events->record($context, 'command.failed', $item, $metadata);
         if ($reason === CommandFailureReason::CeasefireProhibited) {
             $this->events->record($context, 'command.ceasefire_blocked', $item, $metadata, 'nation', 'warning');
@@ -2317,38 +2317,6 @@ final class DomesticCommandExecutor
                 }
             })
             ->exists();
-    }
-
-    private function compact(NationCommandQueue $queue): void
-    {
-        $items = $this->lockedQueuedItems($queue);
-        if ($items->isEmpty()) {
-            return;
-        }
-        $this->writeCompactedPositions($items);
-    }
-
-    /** @return Collection<int, NationCommandQueueItem> */
-    private function lockedQueuedItems(NationCommandQueue $queue): Collection
-    {
-        return NationCommandQueueItem::query()
-            ->where('nation_command_queue_id', $queue->id)
-            ->where('status', 'queued')
-            ->orderBy('queue_position')
-            ->orderBy('id')
-            ->lockForUpdate()
-            ->get();
-    }
-
-    /** @param Collection<int, NationCommandQueueItem> $items */
-    private function writeCompactedPositions(Collection $items): void
-    {
-        NationCommandQueueItem::query()->whereIn('id', $items->modelKeys())
-            ->update(['queue_position' => null]);
-        foreach ($items as $index => $queuedItem) {
-            NationCommandQueueItem::query()->whereKey($queuedItem->id)
-                ->update(['queue_position' => $index + 1]);
-        }
     }
 
     private function hasOwnedCellWithin(
