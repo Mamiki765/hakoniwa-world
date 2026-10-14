@@ -246,18 +246,21 @@ watch(
     { immediate: true },
 );
 
-async function loadOwnShips(): Promise<void> {
+// 読み直せたら true。失敗・中断・古い応答では false（手元の一覧は前のまま）。
+async function loadOwnShips(): Promise<boolean> {
     ownShipsController?.abort();
     const controller = new AbortController();
     ownShipsController = controller;
     const nationId = props.nationId;
     try {
         const rows = await api<OwnShipStatus[]>(`/api/v1/nations/${nationId}/ships`, { signal: controller.signal });
-        if (controller !== ownShipsController || nationId !== props.nationId) return;
+        if (controller !== ownShipsController || nationId !== props.nationId) return false;
         ownShips.value = Array.isArray(rows) ? rows : [];
+        return true;
     } catch (error) {
-        if (controller !== ownShipsController || isAbortError(error)) return;
+        if (controller !== ownShipsController || isAbortError(error)) return false;
         if (destinationCell.value !== null) destinationStatus.value = { kind: 'error', text: '船の一覧を読み込めませんでした' };
+        return false;
     } finally {
         if (controller === ownShipsController) ownShipsController = null;
     }
@@ -288,11 +291,17 @@ async function sendShipCourse(
         applyShipCourse(course);
         status.value = { kind: 'success', text: successText(course) };
     } catch (error) {
-        if (error instanceof ApiError && error.status === 409) {
-            // 版のずれ・ターン処理中など。最新の船を読み直して、地図の船の版もそろえる。
-            await loadOwnShips();
-            for (const row of ownShips.value) emit('ship', { id: row.id, heading: row.heading, destination: row.destination, version: row.version });
-            status.value = { kind: 'error', text: '船の状態を読み直しました。もう一度操作してください' };
+        if (error instanceof ApiError && error.status === 409 && error.code === 'reset_required') {
+            // 再操作しても通らないので、読み直しや再操作は促さない。
+            status.value = { kind: 'error', text: 'この島は現在のルールでは変更できません' };
+        } else if (error instanceof ApiError && error.status === 409) {
+            // 版のずれ・ターン処理中など。最新の船を読み直せたときだけ、地図の船の版もそろえて再操作を促す。
+            if (await loadOwnShips()) {
+                for (const row of ownShips.value) emit('ship', { id: row.id, heading: row.heading, destination: row.destination, version: row.version });
+                status.value = { kind: 'error', text: '船の状態を読み直しました。もう一度操作してください' };
+            } else {
+                status.value = { kind: 'error', text: '船の状態を読み直せませんでした。マップを再読込してください' };
+            }
         } else {
             status.value = { kind: 'error', text: shipFailureReason(error) };
         }

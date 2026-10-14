@@ -274,9 +274,10 @@ describe('command plan workspace', () => {
         const near = ownShipRow({ id: 5, name: '探索船', x: 10, y: 7, version: 2, movement_mode: 'sparkle_or_random', sort_order: 3 });
         const far = ownShipRow({ id: 9, x: 2, y: 7, heading: 1, version: 6 });
         let patchResponse = () => jsonResponse({ id: 5, heading: null, destination: { x: 12, y: 7 }, version: 3 });
+        let listFails = false;
         const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
             if (init?.method === 'PATCH') return patchResponse();
-            if (String(input).endsWith('/ships')) return jsonResponse([far, near]);
+            if (String(input).endsWith('/ships')) return listFails ? errorResponse('error', 500) : jsonResponse([far, near]);
             return jsonResponse(String(input).includes('command-definitions') ? catalog([]) : commandQueue());
         });
         vi.stubGlobal('fetch', fetchMock);
@@ -316,6 +317,23 @@ describe('command plan workspace', () => {
         expect(section().get('[role="alert"]').text()).toContain('もう一度操作してください');
         // 読み直した版を地図の船へも渡し、次の操作が同じ409にならないようにする。
         expect(wrapper.emitted('ship')?.map(([course]) => course)).toContainEqual({ id: 9, heading: 1, destination: null, version: 6 });
+
+        // 読み直しに失敗したら、古い版を地図へ渡さず、再操作も促さない。
+        const emittedBefore = wrapper.emitted('ship')?.length ?? 0;
+        listFails = true;
+        await section().get('form').trigger('submit');
+        await flushPromises();
+        expect(section().get('[role="alert"]').text()).toContain('マップを再読込してください');
+        expect(wrapper.emitted('ship')?.length ?? 0).toBe(emittedBefore);
+        listFails = false;
+
+        // ルールの切り替え待ちは、何度押しても通らないので読み直さない。
+        patchResponse = () => errorResponse('reset', 409, { code: 'reset_required' });
+        const beforeReset = listCalls();
+        await section().get('form').trigger('submit');
+        await flushPromises();
+        expect(listCalls()).toBe(beforeReset);
+        expect(section().get('[role="alert"]').text()).toBe('この島は現在のルールでは変更できません');
 
         await wrapper.setProps({ nationState: 'recovery' });
         expect(wrapper.find('[aria-label="このマスを船の目的地にする"]').exists()).toBe(false);
