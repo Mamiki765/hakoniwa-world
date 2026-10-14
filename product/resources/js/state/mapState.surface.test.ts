@@ -210,4 +210,26 @@ describe('lazy map chunk loading', () => {
         await stale;
         expect(map.visibleCells.value).toEqual([]);
     });
+
+    it('applies a ship course change to the loaded cell carrying that own ship even when another cell is selected', async () => {
+        const ship = {
+            id: 9, key: 'fishing' as const, name: '漁船', asset_key: 'ship.fishing', current_hp: 1, max_hp: 1,
+            public_state: 'active' as const, owner_nation: { nation_number: 1, name: '操作国' }, is_owner: true,
+            heading: 2, destination: null, version: 3,
+        };
+        vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+            const chunk = chunkFromPath(String(input));
+            if (chunk.chunk_x === 0 && chunk.chunk_y === 0) chunk.cells = [{ ...chunk.cells[0]!, terrain: 'sea', ship }];
+            return response(chunk);
+        }));
+        const map = useMapState();
+        await map.loadAround(mapSpace, 16, 16);
+        expect(map.selected.value?.ship ?? null).toBeNull();
+
+        map.updateShipCourse({ id: 9, heading: null, destination: { x: 20, y: 18 }, version: 4 });
+
+        const carrier = map.visibleCells.value.find((cell) => cell.ship?.id === 9);
+        expect(carrier?.ship).toMatchObject({ heading: null, destination: { x: 20, y: 18 }, version: 4 });
+        expect(map.selected.value?.ship ?? null).toBeNull();
+    });
 });

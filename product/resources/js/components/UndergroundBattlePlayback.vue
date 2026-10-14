@@ -76,8 +76,11 @@ const stepIndex = ref(-1);
 const playing = ref(false);
 const speed = ref(1);
 const finished = ref(false);
-// ラウンドの行動が出そろい、そのラウンドの合計を大きく出している状態。
+// ラウンドの行動が出そろい、ラウンド終わりの値に合わせた状態。
 const settled = ref(false);
+// そのラウンドの合計を大きく出している状態。連続再生の途中では出さず、
+// 1ラウンドだけ送ったとき・止めたとき・最後まで再生したときに出す。
+const showingTotals = ref(false);
 const vitals = ref<Record<string, PlaybackVitals>>({});
 // MPはHPと別に持つ。HPの対象が決められず不明になっても、分かっているMPは消さない。
 const mpValues = ref<Record<string, number>>({});
@@ -124,6 +127,7 @@ function enterRound(index: number): void {
     roundIndex.value = index;
     stepIndex.value = -1;
     settled.value = false;
+    showingTotals.value = false;
     totals.value = {};
     const round = props.rounds[index];
     if (round?.start) vitals.value = { ...vitals.value, ...cloneVitals(round.start) };
@@ -207,13 +211,15 @@ function settleRound(): void {
     if (roundIndex.value + 1 >= props.rounds.length) finished.value = true;
 }
 
-// 1ラウンドぶんの行動を続けざまに出す。出そろったら、そのラウンドの合計を大きく残す。
+// 1ラウンドぶんの行動を続けざまに出す。連続再生ならそのまま次のラウンドの行動へ続け、
+// そうでなければ（1ラウンド送り・最後のラウンド）そのラウンドの合計を大きく残す。
 function runRound(continueAfter: boolean): void {
     if (finished.value) {
         playing.value = false;
         return;
     }
     if (roundDone.value && settled.value) enterRound(roundIndex.value + 1);
+    showingTotals.value = false;
     const tick = (): void => {
         timer = null;
         const round = currentRound.value;
@@ -226,8 +232,12 @@ function runRound(continueAfter: boolean): void {
             timer = setTimeout(() => {
                 timer = null;
                 settleRound();
-                if (continueAfter && playing.value && !finished.value) timer = setTimeout(() => runRound(true), 1400 / speed.value);
-                else playing.value = false;
+                if (continueAfter && playing.value && !finished.value) {
+                    runRound(true);
+                    return;
+                }
+                playing.value = false;
+                showingTotals.value = true;
             }, 500 / speed.value);
             return;
         }
@@ -243,9 +253,17 @@ function stop(): void {
     timer = null;
 }
 
+// 連続再生を手で止めたときは、そこまでに出した行動の合計を出す。合計は行動を出すたびに
+// 足しているので、攻撃の途中で止めても表示済みの範囲と食い違わない。
+function pause(): void {
+    stop();
+    if (roundDone.value && !settled.value) settleRound();
+    showingTotals.value = stepIndex.value >= 0;
+}
+
 function togglePlay(): void {
     if (playing.value) {
-        stop();
+        pause();
         return;
     }
     if (finished.value) reset();
@@ -272,6 +290,7 @@ function jumpToResult(): void {
     stepIndex.value = props.rounds[last]!.steps.length - 1;
     totals.value = {};
     settled.value = true;
+    showingTotals.value = false;
     finished.value = true;
 }
 
@@ -302,7 +321,7 @@ onBeforeUnmount(() => {
                 <button v-for="option in [1, 2, 4]" :key="option" type="button" :aria-pressed="speed === option" @click="speed = option">×{{ option }}</button>
             </span>
         </div>
-        <p class="ug-playback-round" aria-live="polite">
+        <p class="ug-playback-round" aria-live="polite" :data-round-index="roundIndex" :data-shown-steps="Math.max(0, stepIndex + 1)">
             <strong v-if="currentRound">第{{ currentRound.round }}ラウンド</strong>
             <span v-if="finished">{{ resultLabel }}</span>
             <span v-else-if="currentRound">{{ Math.max(0, stepIndex + 1) }} / {{ currentRound.steps.length }} 行動</span>
@@ -331,10 +350,10 @@ onBeforeUnmount(() => {
                         :style="popup.kind === 'mp' ? { left: `${8 + popup.offset}px` } : { right: `${8 + popup.offset}px` }"
                         aria-hidden="true"
                     >{{ popup.text }}</span>
-                    <span v-if="settled && totals[combatant.id]" class="ug-playback-total" :class="{ 'is-critical': totals[combatant.id]!.critical }">
+                    <span v-if="showingTotals && totals[combatant.id]" class="ug-playback-total" :class="{ 'is-critical': totals[combatant.id]!.critical }">
                         <b v-if="totals[combatant.id]!.damage > 0" class="is-damage">−{{ totals[combatant.id]!.damage.toLocaleString('ja-JP') }}</b>
                         <b v-if="totals[combatant.id]!.heal > 0" class="is-heal">+{{ totals[combatant.id]!.heal.toLocaleString('ja-JP') }}</b>
-                        <small>このラウンドの合計</small>
+                        <small>{{ roundDone ? 'このラウンドの合計' : 'ここまでの合計' }}</small>
                     </span>
                 </li>
             </ul>

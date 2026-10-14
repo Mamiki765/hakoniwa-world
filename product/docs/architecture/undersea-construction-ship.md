@@ -40,6 +40,10 @@ undersea_construction: boolean;
 construction_cost_multiplier: number;
 ```
 
+所有者向け地図の `ship` にも `undersea_construction: boolean` と `movement_mode: string` を返す。UIは船種名・keyではなく能力flagで建設操作を選ぶ。他国向けはそれぞれfalse・nullとし、視界外で工作船自体を返さない条件は維持する。
+
+保存済み計画の `effective_cost_money` は工作船の倍率を含む。指定船が移動・沈没しても価格表示は保持し、実行時の生存・位置判定とは分ける。参照船は計画全体でまとめて取得する。
+
 `meta.ship_types[].capacity` は種類別の実上限。工作船は1、既存船は従来の上限。建造 command の selector は既存 `quantity_options` から取得し、UI に番号を固定しない。
 
 ## 移行と境界

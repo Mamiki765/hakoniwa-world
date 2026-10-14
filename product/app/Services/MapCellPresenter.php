@@ -273,6 +273,8 @@ final class MapCellPresenter
             ],
             'is_owner' => $isOwner,
             ...($isOwner ? $ship->course() : ['heading' => null, 'destination' => null, 'version' => null]),
+            'movement_mode' => $isOwner ? $definition->movementMode : null,
+            'undersea_construction' => $isOwner && $definition->underseaConstruction,
         ];
     }
 

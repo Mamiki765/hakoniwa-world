@@ -6,6 +6,7 @@ use App\Application\CommandQueueService;
 use App\Application\DomesticCommandExecutor;
 use App\Application\PlayerIslandEventService;
 use App\Domain\Command\LandDevelopmentDistancePolicy;
+use App\Domain\Command\CapitalRelocationCooldown;
 use App\Domain\Economy\NationCapacityResolver;
 use App\Domain\Map\GridCoordinate;
 use App\Domain\Map\MapCellStateService;
@@ -21,7 +22,9 @@ use App\Models\TerrainDefinition;
 use App\Models\User;
 use App\Models\World;
 use App\Services\MapCellPresenter;
+use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use PHPUnit\Framework\Attributes\DataProvider;
 use RuntimeException;
 use Tests\Concerns\UsesReusableSurfaceWorld;
@@ -524,6 +527,159 @@ final class SurfaceCommandAndAidExecutionTest extends CommandAndMissileTestCase
         $this->assertIsArray($relocated);
         $this->assertStringContainsString("({$capital->x},{$capital->y})", $relocated['message']);
         $this->assertStringContainsString("({$cityTarget->x},{$cityTarget->y})", $relocated['message']);
+    }
+
+    public function test_capital_relocation_cooldown_rechecks_queued_commands_at_expiry(): void
+    {
+        $successTurn = 20;
+        $lastBlockedTurn = $successTurn + CapitalRelocationCooldown::TURNS - 1;
+        $firstAllowedTurn = $lastBlockedTurn + 1;
+        $world = $this->lightweightWorld();
+        [$user, $nation] = $this->nation($world, '遷都間隔国');
+        $space = $this->surfaceMapSpace($world);
+        $capital = $nation->capital()->sole()->cell()->sole();
+        $city = $this->placeFacilityAtDistance($space, $capital, $nation, 1, 'city');
+        $nextCity = $this->placeFacilityAtDistance($space, $capital, $nation, 2, 'city');
+        $city->update(['population' => 12_345]);
+        $nation->update(['money' => 50_000]);
+        $service = app(CommandQueueService::class);
+        $executor = app(DomesticCommandExecutor::class);
+
+        $this->assertNull($nation->fresh()->last_capital_relocation_turn);
+        $this->assertSame(0, $this->relocationDefinition($user, $nation, $space, $city)['cooldown_remaining_turns']);
+        $first = $this->queue($service, $user, $nation, $space, 'relocate_capital', $city);
+        $second = $this->queue($service, $user, $nation, $space, 'relocate_capital', $nextCity);
+        $third = $this->queue($service, $user, $nation, $space, 'relocate_capital', $nextCity);
+        $world->update(['current_turn' => $successTurn - 1]);
+        $executor->execute($this->context($world, $successTurn, hash('sha256', 'first relocation'), [$nation->id]));
+        $this->assertSame('completed', $first->fresh()->status);
+        $this->assertSame($successTurn, $nation->fresh()->last_capital_relocation_turn);
+        $this->assertSame('queued', $second->fresh()->status);
+        $this->assertSame(12_345, $city->fresh()->population);
+        $world->update(['current_turn' => $successTurn]);
+        $definition = $this->relocationDefinition($user, $nation, $space, $nextCity);
+        $this->assertGreaterThan(0, $definition['cooldown_remaining_turns']);
+        $this->assertSame('currently_unavailable', $definition['execution_preview_status']);
+        $this->assertNotEmpty($definition['execution_warnings']);
+
+        $executor->execute($this->context($world, $successTurn + 1, hash('sha256', 'queued relocations'), [$nation->id]));
+        $world->update(['current_turn' => $successTurn + 1]);
+        $definition = $this->relocationDefinition($user, $nation, $space, $nextCity);
+        foreach ([$second, $third] as $blocked) {
+            $this->assertSame('capital_relocation_cooldown', $blocked->fresh()->failure_code);
+            $this->assertSame($definition['cooldown_remaining_turns'], $blocked->fresh()->failure_metadata['observed']['cooldown_remaining_turns']);
+        }
+        $this->assertSame($city->id, $nation->capital()->value('map_cell_id'));
+        $this->assertSame('city', $nextCity->fresh()->facility()->value('key'));
+        $this->assertSame($successTurn, $nation->fresh()->last_capital_relocation_turn);
+
+        $world->update(['current_turn' => $lastBlockedTurn - 1]);
+        $beforeExpiry = $this->queue($service, $user, $nation, $space, 'relocate_capital', $nextCity);
+        $executor->execute($this->context($world, $lastBlockedTurn, hash('sha256', 'relocation before expiry'), [$nation->id]));
+        $this->assertSame('capital_relocation_cooldown', $beforeExpiry->fresh()->failure_code);
+        $this->assertSame($successTurn, $nation->fresh()->last_capital_relocation_turn);
+        $world->update(['current_turn' => $lastBlockedTurn]);
+        $definition = $this->relocationDefinition($user, $nation, $space, $nextCity);
+        $this->assertSame(1, $definition['cooldown_remaining_turns']);
+        $this->assertSame($definition['cooldown_remaining_turns'], $beforeExpiry->fresh()->failure_metadata['observed']['cooldown_remaining_turns']);
+        $this->assertSame('currently_unavailable', $definition['execution_preview_status']);
+        $atExpiry = $this->queue($service, $user, $nation, $space, 'relocate_capital', $nextCity);
+        $executor->execute($this->context($world, $firstAllowedTurn, hash('sha256', 'relocation at expiry'), [$nation->id]));
+        $this->assertSame('completed', $atExpiry->fresh()->status);
+        $this->assertSame($nextCity->id, $nation->capital()->value('map_cell_id'));
+        $this->assertSame($firstAllowedTurn, $nation->fresh()->last_capital_relocation_turn);
+    }
+
+    public function test_failed_capital_relocation_does_not_start_or_extend_the_cooldown(): void
+    {
+        $successTurn = 21;
+        $expiryTurn = $successTurn + CapitalRelocationCooldown::TURNS;
+        $world = $this->lightweightWorld();
+        [$user, $nation] = $this->nation($world, '遷都再試行国');
+        $space = $this->surfaceMapSpace($world);
+        $capital = $nation->capital()->sole()->cell()->sole();
+        $city = $this->placeFacilityAtDistance($space, $capital, $nation, 1, 'city');
+        $service = app(CommandQueueService::class);
+        $executor = app(DomesticCommandExecutor::class);
+        $nation->update(['money' => 0]);
+        $world->update(['current_turn' => $successTurn - 2]);
+        $failedFirst = $this->queue($service, $user, $nation, $space, 'relocate_capital', $city);
+        $executor->execute($this->context($world, $successTurn - 1, hash('sha256', 'unfunded first relocation'), [$nation->id]));
+        $this->assertSame('insufficient_funds', $failedFirst->fresh()->failure_code);
+        $this->assertNull($nation->fresh()->last_capital_relocation_turn);
+        $this->assertSame($capital->id, $nation->capital()->value('map_cell_id'));
+
+        $nation->update(['money' => 50_000]);
+        $world->update(['current_turn' => $successTurn - 1]);
+        $first = $this->queue($service, $user, $nation, $space, 'relocate_capital', $city);
+        $executor->execute($this->context($world, $successTurn, hash('sha256', 'funded first relocation'), [$nation->id]));
+        $this->assertSame('completed', $first->fresh()->status);
+        $this->assertSame($successTurn, $nation->fresh()->last_capital_relocation_turn);
+        $nation->update(['money' => 0]);
+        $world->update(['current_turn' => $expiryTurn - 1]);
+        $failedLater = $this->queue($service, $user, $nation, $space, 'relocate_capital', $capital);
+        $executor->execute($this->context($world, $expiryTurn, hash('sha256', 'unfunded later relocation'), [$nation->id]));
+        $this->assertSame('insufficient_funds', $failedLater->fresh()->failure_code);
+        $this->assertSame($successTurn, $nation->fresh()->last_capital_relocation_turn);
+        $this->assertSame($city->id, $nation->capital()->value('map_cell_id'));
+
+        $nation->update(['money' => 50_000]);
+        $world->update(['current_turn' => $expiryTurn]);
+        $definition = $this->relocationDefinition($user, $nation, $space, $capital);
+        $this->assertSame(0, $definition['cooldown_remaining_turns']);
+        $this->assertSame('currently_executable', $definition['execution_preview_status']);
+        $retry = $this->queue($service, $user, $nation, $space, 'relocate_capital', $capital);
+        $executor->execute($this->context($world, $expiryTurn + 1, hash('sha256', 'later relocation retry'), [$nation->id]));
+        $this->assertSame('completed', $retry->fresh()->status);
+        $this->assertSame($expiryTurn + 1, $nation->fresh()->last_capital_relocation_turn);
+    }
+
+    public function test_capital_relocation_migration_preserves_existing_islands_without_inferring_success_history(): void
+    {
+        $world = $this->lightweightWorld();
+        [$user, $nation] = $this->nation($world, '既存遷都国');
+        $space = $this->surfaceMapSpace($world);
+        $capital = $nation->capital()->sole()->cell()->sole();
+        $city = $this->placeFacilityAtDistance($space, $capital, $nation, 1, 'city');
+        $nation->update(['money' => 50_000]);
+        $service = app(CommandQueueService::class);
+        $item = $this->queue($service, $user, $nation, $space, 'relocate_capital', $city);
+        $world->update(['current_turn' => 19]);
+        app(DomesticCommandExecutor::class)->execute($this->context($world, 20, hash('sha256', 'historical relocation'), [$nation->id]));
+        $this->assertSame('completed', $item->fresh()->status);
+        $beforeNation = $nation->fresh()->getAttributes();
+        unset($beforeNation['last_capital_relocation_turn']);
+        $beforeCapital = $nation->capital()->sole()->getAttributes();
+        $beforeCells = [$capital->fresh()->getAttributes(), $city->fresh()->getAttributes()];
+
+        // Recreate the supported pre-column schema with an actual success log.
+        // PostgreSQL rolls this DDL back with the reusable fixture transaction.
+        Schema::table('nations', static function (Blueprint $table): void {
+            $table->dropColumn('last_capital_relocation_turn');
+        });
+        $migration = require database_path('migrations/2026_10_14_000000_add_last_capital_relocation_turn_to_nations.php');
+        $migration->up();
+        $this->assertSame($beforeNation + ['last_capital_relocation_turn' => null], $nation->fresh()->getAttributes());
+        $this->assertSame($beforeCapital, $nation->capital()->sole()->getAttributes());
+        $this->assertSame($beforeCells, [$capital->fresh()->getAttributes(), $city->fresh()->getAttributes()]);
+        $world->update(['current_turn' => 20]);
+        $this->assertSame(0, $this->relocationDefinition($user, $nation, $space, $capital)['cooldown_remaining_turns']);
+        $firstRecorded = $this->queue($service, $user, $nation, $space, 'relocate_capital', $capital);
+        app(DomesticCommandExecutor::class)->execute($this->context($world, 21, hash('sha256', 'first recorded relocation'), [$nation->id]));
+        $this->assertSame('completed', $firstRecorded->fresh()->status);
+        $this->assertSame(21, $nation->fresh()->last_capital_relocation_turn);
+    }
+
+    /** @return array<string, mixed> */
+    private function relocationDefinition(User $user, Nation $nation, MapSpace $space, MapCell $cell): array
+    {
+        $commands = $this->actingAs($user)->getJson(
+            "/api/v1/nations/{$nation->id}/map-spaces/{$space->id}/command-definitions?target_x={$cell->x}&target_y={$cell->y}",
+        )->assertOk()->json('data.commands');
+        $definition = collect($commands)->firstWhere('key', 'relocate_capital');
+        $this->assertIsArray($definition);
+
+        return $definition;
     }
 
     public function test_undersea_city_command_is_atomic_near_territory_retry_safe_and_disguised(): void

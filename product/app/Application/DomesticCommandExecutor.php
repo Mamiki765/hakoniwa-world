@@ -6,6 +6,7 @@ use App\Application\Underground\UndergroundFacilityBenefits;
 use App\Application\Underground\UndergroundFacilityService;
 use App\Domain\Command\CapitalCorePolicy;
 use App\Domain\Command\CapitalDestructionPolicy;
+use App\Domain\Command\CapitalRelocationCooldown;
 use App\Domain\Command\CommandFailureReason;
 use App\Domain\Command\LandDevelopmentDistancePolicy;
 use App\Domain\Command\MissileTargetPolicy;
@@ -342,7 +343,7 @@ final class DomesticCommandExecutor
     /**
      * @return array{
      *     reason: CommandFailureReason,
-     *     observed: array{terrain: string|null, facility: string|null, owner_nation_id: int|null, owner_nation_name: string|null, monster_id: int|null}
+     *     observed: array<string, int|string|null>
      * }|null
      */
     private function validationFailure(
@@ -523,6 +524,15 @@ final class DomesticCommandExecutor
         if ($definition->target_facility_keys !== []
             && ! in_array($cell->facility?->key, $definition->target_facility_keys, true)) {
             return ['reason' => CommandFailureReason::InvalidFacility, 'observed' => $observed];
+        }
+        if ($definition->key === 'relocate_capital') {
+            $remaining = CapitalRelocationCooldown::remainingTurns($nation->last_capital_relocation_turn, $context->targetTurn);
+            if ($remaining > 0) {
+                return [
+                    'reason' => CommandFailureReason::CapitalRelocationCooldown,
+                    'observed' => [...$observed, 'cooldown_remaining_turns' => $remaining],
+                ];
+            }
         }
         if ($definition->key === 'build_monument'
             && ! MonumentDefinition::query()->whereKey($item->quantity)->exists()) {
@@ -1639,6 +1649,7 @@ final class DomesticCommandExecutor
         $old->save();
         $target->save();
         $capital->update(['map_cell_id' => $target->id, 'x' => $target->x, 'y' => $target->y]);
+        $nation->update(['last_capital_relocation_turn' => $context->targetTurn]);
         $context->state->markMapChunkChanged($old->map_chunk_id);
         $context->state->markMapChunkChanged($target->map_chunk_id);
         $this->events->record($context, 'command.capital_relocated', $target, [
