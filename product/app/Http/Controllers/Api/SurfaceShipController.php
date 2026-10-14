@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Application\SurfaceShipCourseService;
 use App\Domain\Concurrency\OptimisticLockException;
+use App\Domain\Map\GridCoordinate;
 use App\Domain\Ruleset\ResetRequiredException;
 use App\Domain\Ship\SurfaceShipCatalog;
 use App\Domain\Turn\TurnAlreadyRunningException;
@@ -47,7 +48,7 @@ final class SurfaceShipController extends Controller
                 'y' => $ship->cell->y,
                 'current_hp' => $ship->current_hp,
                 'max_hp' => $ship->max_hp,
-                'heading' => $ship->heading,
+                ...$ship->course(),
                 'movement_mode' => $definition->movementMode,
             ];
         }
@@ -101,8 +102,38 @@ final class SurfaceShipController extends Controller
 
         return response()->json(['data' => [
             'id' => (int) $updated->id,
-            'heading' => $updated->heading,
-            'version' => (int) $updated->version,
+            ...$updated->course(),
         ]]);
+    }
+
+    public function updateDestination(
+        Request $request,
+        Nation $nation,
+        Ship $ship,
+        SurfaceShipCourseService $service,
+    ): JsonResponse {
+        $validated = $request->validate([
+            'destination' => ['present', 'nullable', 'array:x,y', 'size:2'],
+            'destination.x' => ['required_with:destination', 'integer', 'between:-2147483648,2147483647'],
+            'destination.y' => ['required_with:destination', 'integer', 'between:-2147483648,2147483647'],
+            'expected_version' => ['required', 'integer', 'min:1'],
+        ]);
+        $destination = $validated['destination'];
+        try {
+            $updated = $service->updateDestination(
+                $request->user(), $nation, $ship,
+                $destination === null ? null : new GridCoordinate((int) $destination['x'], (int) $destination['y']),
+                $validated['expected_version'],
+            );
+        } catch (OptimisticLockException|ResetRequiredException|TurnAlreadyRunningException|UnresolvedNextTurnRunException $exception) {
+            return response()->json([
+                'message' => $exception->getMessage(),
+                ...($exception instanceof ResetRequiredException ? ['code' => ResetRequiredException::ERROR_CODE] : []),
+            ], 409);
+        } catch (DomainException $exception) {
+            return response()->json(['message' => $exception->getMessage()], 422);
+        }
+
+        return response()->json(['data' => ['id' => (int) $updated->id, ...$updated->course()]]);
     }
 }
