@@ -89,11 +89,15 @@ final class SurfaceCommandAndAidExecutionTest extends CommandAndMissileTestCase
 
         $service->validateTarget($nation, $space, $definition, $target);
         $item = $this->queue($service, $user, $nation, $space, $commandKey, $target);
+        $queue = $nation->commandQueue()->sole();
+        $targetState = ['terrain_key' => 'sea', 'facility_key' => null, 'owner_nation_id' => $nation->id, 'facility_operational_state' => null];
+        $this->assertTrue($service->projectedTargetMatches($definition, $targetState, $nation, $space, $target, $queue, 2));
         // Land can be abandoned after registration. Execution must recheck it.
         $nearLand->update(['owner_nation_id' => null]);
         $farLand = $setCell($target->x + 4, $target->y, 'mountain', $nation);
         $this->assertPlayerFacing(fn () => $this->queue($service, $user, $nation, $space, $commandKey, $target));
         $this->assertPlayerFacing(fn () => $service->validateTarget($nation, $space, $definition, $target));
+        $this->assertFalse($service->projectedTargetMatches($definition, $targetState, $nation, $space, $target, $queue, 2));
         app(DomesticCommandExecutor::class)->execute($this->context($world, 2, hash('sha256', $commandKey.' distance four'), [$nation->id]));
         $this->assertSame('missing_adjacent_territory', $item->fresh()->failure_code);
         $this->assertNull($target->fresh()->facility_definition_id);

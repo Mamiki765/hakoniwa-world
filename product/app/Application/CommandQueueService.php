@@ -1286,7 +1286,11 @@ final class CommandQueueService
 
             return $state['owner_nation_id'] === null && $adjacent['owned_land'] && $adjacent['sea'];
         }
-        if (in_array($definition->key, ['reclaim', 'build_seabed_base', 'build_undersea_city', 'build_undersea_fire_station', 'excavate'], true)) {
+        if ($this->underseaConstruction->appliesTo($definition->key)) {
+            return ($state['owner_nation_id'] === null || $state['owner_nation_id'] === $nation->id)
+                && $this->underseaConstruction->hasNearbyOwnedLand($nation, $cell);
+        }
+        if (in_array($definition->key, ['reclaim', 'excavate'], true)) {
             return $state['owner_nation_id'] === null || $state['owner_nation_id'] === $nation->id;
         }
 
