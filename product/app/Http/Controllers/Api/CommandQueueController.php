@@ -653,7 +653,8 @@ final class CommandQueueController extends Controller
         $items = $queue->items
             ->map(function (NationCommandQueueItem $item) use ($queue, $nation, $service, $mapSpace, $projectionMemo, $constructionShips): array {
                 $definition = $service->definitionForItem($item);
-                $cell = $item->target_context === 'surface_cell'
+                $followsShip = array_key_exists('construction_ship_id', $item->parameters);
+                $cell = $item->target_context === 'surface_cell' && ! $followsShip
                     ? MapCell::query()->where('map_space_id', $queue->map_space_id)
                         ->where('x', $item->target_x)->where('y', $item->target_y)
                         ->with(['terrain', 'facility'])->first()
@@ -681,8 +682,8 @@ final class CommandQueueController extends Controller
                         : ($effect === 'monument_flight' && is_string($targetName) ? "（{$targetName}）" : null),
                     'command_suffix_tone' => $effect === 'defense_self_destruct' ? 'danger' : null,
                     'queue_position' => $item->queue_position,
-                    'target_x' => $item->target_x,
-                    'target_y' => $item->target_y,
+                    'target_x' => $followsShip ? null : $item->target_x,
+                    'target_y' => $followsShip ? null : $item->target_y,
                     'target_context' => $item->target_context,
                     'target_layer' => $item->target_layer,
                     'target_slot_index' => $item->target_slot_index,

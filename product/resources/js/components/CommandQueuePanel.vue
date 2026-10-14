@@ -164,7 +164,7 @@ const commandGroups = computed(() => [
     })),
     {
         key: 'construction_ship' as const,
-        label: '海底工作船で建てる',
+        label: '真下に建築',
         definitions: shipDefinitions.value.filter((definition) => allCommands.value || !isOutOfCondition(definition)),
     },
 ].filter((group) => group.definitions.length > 0));
@@ -244,6 +244,7 @@ const selectedPlanItem = computed(() => {
 const pendingTargetLabel = computed(() => {
     const context = pendingCommandContext.value;
     if (context === null) return '';
+    if (context.constructionShipId !== null) return '工作船の真下';
     if (context.targetLayer !== null && context.targetSlotIndex !== null) {
         return `地下${context.targetLayer}層・slot ${context.targetSlotIndex}`;
     }
@@ -1187,7 +1188,6 @@ onBeforeUnmount(() => {
                         <span>{{ group.label }}</span>
                         <span v-if="group.key === 'paradox' && paradox" class="pd num" :title="paradox.description">{{ paradox.name }} {{ paradox.balance.toLocaleString() }} {{ paradox.unit }}</span>
                     </div>
-                    <p v-if="group.key === 'construction_ship'" class="sl-ship-build-note">このマスの工作船で建てます。陸地からの距離は問わず、費用は通常より高くなります。</p>
                     <div class="command-grid sl-cmds">
                         <button
                             v-for="definition in group.definitions"
@@ -1299,6 +1299,7 @@ onBeforeUnmount(() => {
                         <small v-if="slot.kind === 'explicit' && usesConstructionShip(slot)" class="sl-pr-via">工作船</small>
                     </span>
                     <span v-if="slot.kind === 'explicit' && slot.target_context === 'underground_slot'" class="sl-pr-at">地下{{ slot.target_layer }}層・slot {{ slot.target_slot_index }}</span>
+                    <span v-else-if="slot.kind === 'explicit' && usesConstructionShip(slot)" class="sl-pr-at">工作船の真下</span>
                     <span v-else-if="slot.kind === 'explicit' && slot.target_x !== null && slot.target_y !== null" class="sl-pr-at">({{ slot.target_x }}, {{ slot.target_y }})</span>
                     <span v-else-if="slot.kind === 'explicit'" class="sl-pr-at">島全体</span>
                     <span v-else class="sl-pr-at">空き枠</span>
@@ -1325,7 +1326,6 @@ onBeforeUnmount(() => {
                     <div><dt>ターン</dt><dd>{{ pendingDefinition.consumes_turn ? '使う' : '使わない' }}</dd></div>
                     <div v-if="pendingCommandContext.constructionShipId !== null"><dt>建て方</dt><dd>海底工作船（{{ formatExactMoney(pendingDefinition.cost_money) }}）</dd></div>
                 </dl>
-                <p v-if="pendingCommandContext.constructionShipId !== null" class="sl-ship-build-note">実行するターンに工作船がこのマスにいないと、建設は失敗します。</p>
                 <p v-if="commandStatus.kind === 'error'" class="command-status command-status--error" role="alert" aria-live="assertive">
                     {{ commandStatus.text }}
                 </p>
@@ -1339,7 +1339,7 @@ onBeforeUnmount(() => {
                             <li v-for="slot in queue.plan" :key="slot.position">
                                 {{ slot.position }}番：{{ slot.command_name }}<strong v-if="slot.position === pendingCommandContext.position"> ← 挿入位置</strong>
                                 <small v-if="slot.kind === 'explicit'">
-                                    ×{{ slot.quantity }}・{{ slot.target_context === 'underground_slot' ? `地下${slot.target_layer}層 slot ${slot.target_slot_index}` : `x=${slot.target_x}, y=${slot.target_y}` }}
+                                    ×{{ slot.quantity }}・{{ usesConstructionShip(slot) ? '工作船の真下' : slot.target_context === 'underground_slot' ? `地下${slot.target_layer}層 slot ${slot.target_slot_index}` : `x=${slot.target_x}, y=${slot.target_y}` }}
                                 </small>
                             </li>
                         </ol>
@@ -1391,7 +1391,8 @@ onBeforeUnmount(() => {
                         <li v-for="item in bulkChoice.cancelledItems" :key="item.id">
                             <span class="num">{{ item.queue_position }}</span>
                             <span>{{ item.command_name }}<small v-if="item.command_suffix">{{ item.command_suffix }}</small></span>
-                            <span v-if="item.target_x !== null && item.target_y !== null" class="num">({{ item.target_x }},{{ item.target_y }})</span>
+                            <span v-if="usesConstructionShip(item)" class="num">工作船の真下</span>
+                            <span v-else-if="item.target_x !== null && item.target_y !== null" class="num">({{ item.target_x }},{{ item.target_y }})</span>
                             <span v-if="item.quantity_semantics === 'ordinary' && item.quantity > 1" class="num">×{{ item.quantity }}</span>
                         </li>
                     </ul>

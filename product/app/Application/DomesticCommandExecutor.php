@@ -150,6 +150,7 @@ final class DomesticCommandExecutor
                 }
 
                 $definition = $this->queuedCommandDefinitions->resolve($item);
+                $executionCoordinates = [];
                 if ($item->target_context === 'underground_slot') {
                     if (! $definition instanceof UndergroundCommandDefinition) {
                         throw new DomainException('Underground queue item definition is invalid.');
@@ -190,14 +191,17 @@ final class DomesticCommandExecutor
                     $scuttleShip = $definition->key === 'scuttle_ship'
                         ? $this->lockedScuttleShip($context, $nation, $item)
                         : null;
-                    $cellQuery = MapCell::query()->where('map_space_id', $queue->map_space_id);
                     if ($scuttleShip instanceof Ship && $scuttleShip->map_cell_id !== null) {
-                        $cellQuery->whereKey($scuttleShip->map_cell_id);
+                        $cell = MapCell::query()->where('map_space_id', $queue->map_space_id)
+                            ->whereKey($scuttleShip->map_cell_id)->lockForUpdate()->with(['terrain', 'facility'])->firstOrFail();
                     } else {
-                        $cellQuery->where('x', $item->target_x)->where('y', $item->target_y);
+                        $cell = $this->surfaceTargetCell($nation, $queue, $item, $definition)
+                            ?? throw new DomainException('The validated command target disappeared while locked.');
                     }
-                    $cell = $cellQuery->lockForUpdate()->with(['terrain', 'facility'])->firstOrFail();
                     $before = $this->cellSnapshot($cell);
+                    if (array_key_exists('construction_ship_id', $item->parameters)) {
+                        $executionCoordinates = ['x' => $cell->x, 'y' => $cell->y];
+                    }
                     $executionCost = $this->executionCost($nation, $item, $definition, $cell);
                     $this->deductCostAndResources($nation, $item, $definition, $executionCost);
                     $meaningfulActivity = $this->apply(
@@ -269,6 +273,7 @@ final class DomesticCommandExecutor
                     'consumes_turn' => $consumedTurn,
                     'meaningful_activity' => $meaningfulActivity,
                     'remaining_quantity' => $remainingQuantity,
+                    ...$executionCoordinates,
                     'before' => $before,
                     'after' => $after,
                 ], static fn (mixed $value): bool => $value !== null));
@@ -375,13 +380,11 @@ final class DomesticCommandExecutor
         if ($definition->target_type === 'nation') {
             return $this->nationCommandValidationFailure($context, $nation, $queue, $item, $definition);
         }
-        $cell = MapCell::query()
-            ->where('map_space_id', $queue->map_space_id)
-            ->where('x', $item->target_x)
-            ->where('y', $item->target_y)
-            ->lockForUpdate()
-            ->with(['terrain', 'facility', 'ownerNation'])
-            ->first();
+        try {
+            $cell = $this->surfaceTargetCell($nation, $queue, $item, $definition);
+        } catch (PlayerFacingCommandException) {
+            return ['reason' => CommandFailureReason::InvalidParameter, 'observed' => $this->emptyObservedState()];
+        }
         if ($cell === null) {
             return [
                 'reason' => CommandFailureReason::NoTarget,
@@ -393,6 +396,10 @@ final class DomesticCommandExecutor
             ->lockForUpdate()
             ->first(['id', 'monster_instance_id']);
         $observed = $this->observedState($cell, $occupancy?->monster_instance_id);
+        if (array_key_exists('construction_ship_id', $item->parameters)) {
+            $observed['x'] = $cell->x;
+            $observed['y'] = $cell->y;
+        }
         try {
             $constructionCostMultiplier = $this->underseaConstruction->costMultiplier($nation, $definition, $cell, $item->parameters, true);
         } catch (PlayerFacingCommandException) {
@@ -843,6 +850,23 @@ final class DomesticCommandExecutor
             ->where('id', '<>', $target->id)
             ->whereHas('facility', fn ($query) => $query->where('key', $facilityKey))
             ->count() >= $maximum;
+    }
+
+    private function surfaceTargetCell(
+        Nation $nation,
+        NationCommandQueue $queue,
+        NationCommandQueueItem $item,
+        CommandDefinition $definition,
+    ): ?MapCell {
+        $query = MapCell::query()->where('map_space_id', $queue->map_space_id);
+        if (array_key_exists('construction_ship_id', $item->parameters)) {
+            $ship = $this->underseaConstruction->constructionShip($nation, $definition, $item->parameters, true);
+            $query->whereKey($ship->map_cell_id);
+        } else {
+            $query->where('x', $item->target_x)->where('y', $item->target_y);
+        }
+
+        return $query->lockForUpdate()->with(['terrain', 'facility', 'ownerNation'])->first();
     }
 
     private function executionCost(
@@ -2240,13 +2264,14 @@ final class DomesticCommandExecutor
         array $observed,
     ): void {
         $definition = $this->queuedCommandDefinitions->resolve($item);
+        $followsShip = array_key_exists('construction_ship_id', $item->parameters);
         $metadata = [
             'nation_id' => $nation->id,
             'nation_name' => $nation->name,
             'command_key' => $definition->key,
             'command_name' => $definition->name,
-            'x' => $item->target_x,
-            'y' => $item->target_y,
+            'x' => $followsShip ? ($observed['x'] ?? null) : $item->target_x,
+            'y' => $followsShip ? ($observed['y'] ?? null) : $item->target_y,
             'layer' => $item->target_layer,
             'slot_index' => $item->target_slot_index,
             'failure_reason' => $reason->value,
