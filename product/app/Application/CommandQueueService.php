@@ -79,6 +79,7 @@ final class CommandQueueService
         private readonly UndergroundFacilityService $undergroundFacilities,
         private readonly UndergroundCommandCatalog $undergroundCommands,
         private readonly QueuedCommandDefinitionResolver $queuedCommandDefinitions,
+        private readonly CommandQueueCompactor $queueCompactor,
         private readonly FacilityRankPolicy $facilityRanks,
         private readonly DailyQuestService $dailyQuests,
         private readonly UnderseaConstructionPolicy $underseaConstruction,
@@ -300,7 +301,7 @@ final class CommandQueueService
             }
             if ($activeItems->contains(static fn (NationCommandQueueItem $item): bool => $item->queue_position === null || $item->queue_position < 1 || $item->queue_position > $limit
             )) {
-                $this->compact($queue);
+                $this->queueCompactor->compact($queue);
                 $activeItems = NationCommandQueueItem::query()
                     ->where('nation_command_queue_id', $queue->id)
                     ->where('status', 'queued')
@@ -732,7 +733,7 @@ final class CommandQueueService
                 MapSpace::query()->findOrFail($queue->map_space_id),
             );
             $item->update(['status' => 'cancelled', 'queue_position' => null, 'cancelled_at' => now()]);
-            $this->compact($queue);
+            $this->queueCompactor->compact($queue);
             $queue->increment('version');
             $queue->refresh();
             $this->audit($user, 'command.cancelled', $item, []);
@@ -1077,7 +1078,7 @@ final class CommandQueueService
                 $this->audit($user, 'command.cancelled', $item, ['reason' => 'cancel_from_position']);
             }
             if ($items->isNotEmpty()) {
-                $this->compact($queue);
+                $this->queueCompactor->compact($queue);
                 $queue->increment('version');
                 $queue->refresh();
             }
@@ -2170,27 +2171,6 @@ final class CommandQueueService
     {
         if ($queue->version !== $expectedVersion) {
             throw new OptimisticLockException('command queueが他の操作で更新されました。再読込してください。');
-        }
-    }
-
-    private function compact(NationCommandQueue $queue): void
-    {
-        $items = NationCommandQueueItem::query()
-            ->where('nation_command_queue_id', $queue->id)
-            ->where('status', 'queued')
-            ->orderBy('queue_position')
-            ->orderBy('id')
-            ->lockForUpdate()
-            ->get();
-        if ($items->isEmpty()) {
-            return;
-        }
-
-        NationCommandQueueItem::query()->whereIn('id', $items->modelKeys())
-            ->update(['queue_position' => null]);
-        foreach ($items as $index => $item) {
-            NationCommandQueueItem::query()->whereKey($item->id)
-                ->update(['queue_position' => $index + 1]);
         }
     }
 
