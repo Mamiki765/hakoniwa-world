@@ -12,6 +12,7 @@ use App\Domain\Command\PlayerFacingCommandException;
 use App\Domain\Command\SettlementOverbuildPolicy;
 use App\Domain\Command\TerritoryExpansionFacts;
 use App\Domain\Command\TerritoryExpansionPolicy;
+use App\Domain\Command\UnderseaConstructionPolicy;
 use App\Domain\Command\WindPowerRepairPolicy;
 use App\Domain\Economy\CapacityBoundedAssetService;
 use App\Domain\Economy\NationCapacityResolver;
@@ -83,6 +84,7 @@ final class DomesticCommandExecutor
         private readonly FacilityRankPolicy $facilityRanks,
         private readonly ParadoxBalanceService $paradox,
         private readonly BuriedTreasureService $buriedTreasures,
+        private readonly UnderseaConstructionPolicy $underseaConstruction,
     ) {}
 
     /**
@@ -433,14 +435,14 @@ final class DomesticCommandExecutor
             if (! $adjacent['sea']) {
                 return ['reason' => CommandFailureReason::NoAdjacentDeepSea, 'observed' => $observed];
             }
-        } elseif (in_array($definition->key, ['build_seabed_base', 'build_undersea_city', 'build_undersea_fire_station'], true)) {
+        } elseif ($this->underseaConstruction->appliesTo($definition->key)) {
             if ($cell->owner_nation_id !== null && $cell->owner_nation_id !== $nation->id) {
                 return ['reason' => CommandFailureReason::ForeignOwned, 'observed' => $observed];
             }
             if ($cell->terrain->key !== 'sea') {
                 return ['reason' => CommandFailureReason::InvalidTerrain, 'observed' => $observed];
             }
-            if (! $this->hasOwnedCellWithin($nation, $cell, 3, true)) {
+            if (! $this->underseaConstruction->hasNearbyOwnedLand($nation, $cell)) {
                 return ['reason' => CommandFailureReason::MissingAdjacentTerritory, 'observed' => $observed];
             }
             if ($definition->key === 'build_undersea_city') {

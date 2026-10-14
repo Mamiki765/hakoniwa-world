@@ -16,6 +16,7 @@ use App\Domain\Command\SettlementOverbuildPolicy;
 use App\Domain\Command\SurfaceCommandProjectionMemo;
 use App\Domain\Command\TerritoryExpansionFacts;
 use App\Domain\Command\TerritoryExpansionPolicy;
+use App\Domain\Command\UnderseaConstructionPolicy;
 use App\Domain\Command\WindPowerRepairPolicy;
 use App\Domain\Concurrency\OptimisticLockException;
 use App\Domain\Facility\FacilityRankPolicy;
@@ -80,6 +81,7 @@ final class CommandQueueService
         private readonly QueuedCommandDefinitionResolver $queuedCommandDefinitions,
         private readonly FacilityRankPolicy $facilityRanks,
         private readonly DailyQuestService $dailyQuests,
+        private readonly UnderseaConstructionPolicy $underseaConstruction,
     ) {}
 
     /**
@@ -314,7 +316,8 @@ final class CommandQueueService
             }
 
             // A queue item is a future plan. Registration proves only that the
-            // coordinate and parameters are structurally valid; the locked
+            // coordinate and parameters are structurally valid, except for
+            // undersea construction's required nearby owned land; the locked
             // target state and assets are revalidated immediately before execution.
             if ($definition instanceof CommandDefinition) {
                 $this->nationTargets->validateRegistration($lockedNation, $definition, $parameters);
@@ -330,6 +333,9 @@ final class CommandQueueService
                 $this->undergroundFacilities->assertProjectedCommand($definition, $projectedFacility);
             } else {
                 $target = $this->targetCell($mapSpace, $targetX, $targetY);
+                if ($this->underseaConstruction->appliesTo($definition->key)) {
+                    $this->assertUnderseaConstructionDistance($lockedNation, $target);
+                }
                 if (SettlementOverbuildPolicy::protectsCapital($definition->key, $target->facility?->key, $definition->metadata)) {
                     throw new PlayerFacingCommandException('首都を通常建設commandで上書きすることはできません。');
                 }
@@ -1645,13 +1651,11 @@ final class CommandQueueService
 
             return;
         }
-        if (in_array($definition->key, ['build_seabed_base', 'build_undersea_city', 'build_undersea_fire_station'], true)) {
+        if ($this->underseaConstruction->appliesTo($definition->key)) {
             if ($ownerNationId !== null && $ownerNationId !== $nation->id) {
                 throw new PlayerFacingCommandException('他国所有の海には建設できません。');
             }
-            if (! $this->hasOwnedCellWithin($nation, $mapSpace, $cell, 3)) {
-                throw new PlayerFacingCommandException('建設対象の3hex以内に自国領がありません。');
-            }
+            $this->assertUnderseaConstructionDistance($nation, $cell);
 
             return;
         }
@@ -2023,6 +2027,13 @@ final class CommandQueueService
         }
 
         return [$targetX, $targetY];
+    }
+
+    private function assertUnderseaConstructionDistance(Nation $nation, MapCell $cell): void
+    {
+        if (! $this->underseaConstruction->hasNearbyOwnedLand($nation, $cell)) {
+            throw new PlayerFacingCommandException('建設対象の3hex以内に自国陸地がありません。');
+        }
     }
 
     private function hasOwnedCellWithin(Nation $nation, MapSpace $mapSpace, MapCell $cell, int $radius, bool $includeCenter = true): bool
