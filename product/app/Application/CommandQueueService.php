@@ -1269,7 +1269,7 @@ final class CommandQueueService
             return $state['owner_nation_id'] === null;
         }
         if ($definition->key === 'excavate'
-            && in_array($state['terrain_key'], ['sea', 'shallow'], true)
+            && $state['terrain_key'] === 'sea'
             && $state['facility_key'] !== null) {
             return false;
         }

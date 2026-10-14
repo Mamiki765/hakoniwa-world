@@ -69,6 +69,9 @@ final class SurfaceCommandAndAidExecutionTest extends CommandAndMissileTestCase
         $this->assertSame($terrainKey, $target->fresh()->terrain()->value('key'));
 
         $this->landOriginCell($space, $anchor->x, $anchor->y, 'forest', $nation->id);
+        if ($commandKey === 'excavate' && $terrainKey === 'shallow') {
+            $target = $this->landOriginCell($space, $target->x, $target->y, 'shallow', $nation->id, 'port');
+        }
         $this->assertSame('currently_executable', $this->waterDevelopmentPreview($user, $nation, $space, $target, $commandKey)['execution_preview_status']);
         $valid = $this->queue($service, $user, $nation, $space, $commandKey, $target);
         $moneyBefore = (int) $nation->fresh()->money;
