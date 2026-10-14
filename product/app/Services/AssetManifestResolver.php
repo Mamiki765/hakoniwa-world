@@ -60,6 +60,7 @@ final class AssetManifestResolver
         'ship.pirate' => 'ship-pirate.gif',
         'ship.treasure' => 'ship-treasure.gif',
         'ship.warship' => 'ship-warship.gif',
+        'ship.undersea_construction' => 'ship-undersea-workboat.gif',
         'map.buried_treasure.sparkle' => 'buried-treasure-sparkle.gif',
         'tile.monument.peace' => 'monument0.gif',
         'tile.monument.prosperity' => 'monument0.gif',
