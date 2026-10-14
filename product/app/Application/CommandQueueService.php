@@ -1580,7 +1580,7 @@ final class CommandQueueService
                     'facility_key' => $facilityKey,
                     'owner_nation_id' => $ownerNationId,
                 ],
-                $this->hasOwnedCellWithin($nation, $mapSpace, $cell, 1, false),
+                $ownerNationId !== $nation->id && $this->hasOwnedCellWithin($nation, $mapSpace, $cell, 1, false),
             );
 
             return;
