@@ -24,6 +24,7 @@ enum CommandFailureReason: string
     case InvalidFacilityScale = 'invalid_facility_scale';
     case FacilityLimitReached = 'facility_limit_reached';
     case CapitalProtected = 'capital_protected';
+    case CapitalRelocationCooldown = 'capital_relocation_cooldown';
     case NoTarget = 'no_target';
     case InvalidTargetNation = 'invalid_target_nation';
     case SameNationTarget = 'same_nation_target';
