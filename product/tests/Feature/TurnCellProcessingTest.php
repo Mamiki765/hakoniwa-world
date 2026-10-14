@@ -8,6 +8,7 @@ use App\Application\DomesticCommandExecutor;
 use App\Application\MonsterTurnService;
 use App\Application\NationCreationService;
 use App\Application\OceanWorldGenerator;
+use App\Application\RulesetPublisher;
 use App\Application\SecretaryTurnService;
 use App\Application\SurfaceShipTurnService;
 use App\Application\WorldExpansionService;
@@ -1349,6 +1350,34 @@ class TurnCellProcessingTest extends TestCase
         $this->assertSame(200, $capital->fresh()->population);
         $this->assertSame('capital', $capital->fresh()->facility()->value('key'));
 
+    }
+
+    public function test_v37_famine_riot_preserves_seabed_base_and_still_destroys_land_facility(): void
+    {
+        [$world, , $nation, $engine, , , $farm, $seabedBase] = $this->cellProcessingNation();
+        $this->facility($farm, 'farm', 'plain');
+        $this->facility($seabedBase, 'seabed_base', 'sea');
+        $before = $seabedBase->fresh()->only([
+            'terrain_definition_id', 'facility_definition_id', 'facility_scale', 'owner_nation_id', 'version',
+        ]);
+        $draft = require config_path('hakoniwa/rulesets/hakoniwa-2s-plus-v37.php');
+        config([
+            'hakoniwa.ruleset' => $draft,
+            'hakoniwa.published_rulesets' => [$draft['key'] => $draft],
+        ]);
+        $ruleset = app(RulesetPublisher::class)->publish($draft);
+        $world->update(['ruleset_version_id' => $ruleset->id]);
+        $seed = $this->seedForRepeatedDraw(TurnRandomStreamFactory::FACILITY_RIOT, 0, 3, [0, 0]);
+        [$context, $run] = $this->context($world, $nation, [$farm->id, $seabedBase->id], $seed, true);
+
+        $result = $engine->execute('process_cells', $context);
+
+        $this->assertSame(1, $result->metrics['riots']);
+        $this->assertSame('wasteland', $farm->fresh()->terrain()->value('key'));
+        $this->assertNull($farm->fresh()->facility_definition_id);
+        $this->assertSame($before, $seabedBase->fresh()->only(array_keys($before)));
+        $this->assertSame(1, DB::table('audit_events')->where('event_type', 'facility.riot')
+            ->whereRaw("metadata->>'turn_run_id' = ?", [(string) $run->id])->count());
     }
 
     public function test_riots_forest_growth_rain_and_land_clear_in_cell_processing(): void
