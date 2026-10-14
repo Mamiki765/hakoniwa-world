@@ -39,7 +39,7 @@ final class SurfaceCommandAndAidExecutionTest extends CommandAndMissileTestCase
     }
 
     #[DataProvider('underseaConstructionCommands')]
-    public function test_undersea_construction_requires_owned_land_within_three_hex_at_registration_and_execution(
+    public function test_undersea_construction_requires_owned_land_within_three_hex_for_predictions_and_execution_but_preserves_future_plans(
         string $commandKey,
         string $facilityKey,
     ): void {
@@ -72,6 +72,7 @@ final class SurfaceCommandAndAidExecutionTest extends CommandAndMissileTestCase
             return $cell->fresh(['terrain', 'facility']);
         };
         $target = $setCell($target->x, $target->y, 'sea', $nation);
+        $target->update(['owner_nation_id' => null]);
         $nearLand = $setCell($target->x + 3, $target->y, 'wasteland', $nation);
         $setCell($target->x + 1, $target->y, 'shallow', $nation);
         $setCell($target->x - 2, $target->y, 'plain', $foreign);
@@ -90,28 +91,35 @@ final class SurfaceCommandAndAidExecutionTest extends CommandAndMissileTestCase
         $service->validateTarget($nation, $space, $definition, $target);
         $item = $this->queue($service, $user, $nation, $space, $commandKey, $target);
         $queue = $nation->commandQueue()->sole();
-        $targetState = ['terrain_key' => 'sea', 'facility_key' => null, 'owner_nation_id' => $nation->id, 'facility_operational_state' => null];
+        $targetState = ['terrain_key' => 'sea', 'facility_key' => null, 'owner_nation_id' => null, 'facility_operational_state' => null];
         $this->assertTrue($service->projectedTargetMatches($definition, $targetState, $nation, $space, $target, $queue, 2));
         // Land can be abandoned after registration. Execution must recheck it.
         $nearLand->update(['owner_nation_id' => null]);
         $farLand = $setCell($target->x + 4, $target->y, 'mountain', $nation);
-        $this->assertPlayerFacing(fn () => $this->queue($service, $user, $nation, $space, $commandKey, $target));
+        $farItem = $this->queue($service, $user, $nation, $space, $commandKey, $target);
+        $this->assertSame('queued', $farItem->status);
         $this->assertPlayerFacing(fn () => $service->validateTarget($nation, $space, $definition, $target));
         $this->assertFalse($service->projectedTargetMatches($definition, $targetState, $nation, $space, $target, $queue, 2));
+        $projected = $service->projectCellStateBeforePosition($target, $queue->fresh(['items.definition']), 3, $nation, $space);
+        $this->assertNull($projected['facility_key']);
+        $this->assertNull($projected['owner_nation_id']);
         app(DomesticCommandExecutor::class)->execute($this->context($world, 2, hash('sha256', $commandKey.' distance four'), [$nation->id]));
         $this->assertSame('missing_adjacent_territory', $item->fresh()->failure_code);
+        $this->assertSame('missing_adjacent_territory', $farItem->fresh()->failure_code);
         $this->assertNull($target->fresh()->facility_definition_id);
         $this->assertSame(10_000, $capital->fresh()->population);
 
         // Even with owned sea, shallow, and all three existing facilities nearby,
         // foreign/neutral land cannot provide a construction origin.
         $farLand->update(['owner_nation_id' => null]);
-        $this->assertPlayerFacing(fn () => $this->queue($service, $user, $nation, $space, $commandKey, $target));
+        $facilityOnly = $this->queue($service, $user, $nation, $space, $commandKey, $target);
         $this->assertPlayerFacing(fn () => $service->validateTarget($nation, $space, $definition, $target));
+        app(DomesticCommandExecutor::class)->execute($this->context($world, 3, hash('sha256', $commandKey.' facilities only'), [$nation->id]));
+        $this->assertSame('missing_adjacent_territory', $facilityOnly->fresh()->failure_code);
         $nearLand->update(['owner_nation_id' => $nation->id]);
         $service->validateTarget($nation, $space, $definition, $target);
         $success = $this->queue($service, $user, $nation, $space, $commandKey, $target);
-        app(DomesticCommandExecutor::class)->execute($this->context($world, 3, hash('sha256', $commandKey.' distance three'), [$nation->id]));
+        app(DomesticCommandExecutor::class)->execute($this->context($world, 4, hash('sha256', $commandKey.' distance three'), [$nation->id]));
         $this->assertSame('completed', $success->fresh()->status);
         $this->assertSame($facilityKey, $target->fresh()->facility()->value('key'));
         $this->assertSame($nation->id, $target->fresh()->owner_nation_id);
@@ -324,11 +332,6 @@ final class SurfaceCommandAndAidExecutionTest extends CommandAndMissileTestCase
 
         $capital->update(['population' => 3100]);
         $nation->update(['money' => 1000]);
-        $temporaryLand = MapCell::query()->where('map_space_id', $space->id)
-            ->where('x', $farTarget->x - 1)->where('y', $farTarget->y)->firstOrFail();
-        app(MapCellStateService::class)->transitionTerrain($temporaryLand, TerrainDefinition::query()->where('key', 'plain')->sole());
-        $temporaryLand->owner_nation_id = $nation->id;
-        $temporaryLand->save();
         $tooFar = $this->queue(
             app(CommandQueueService::class),
             $user,
@@ -337,7 +340,6 @@ final class SurfaceCommandAndAidExecutionTest extends CommandAndMissileTestCase
             'build_undersea_city',
             $farTarget,
         );
-        $temporaryLand->update(['owner_nation_id' => null]);
         app(DomesticCommandExecutor::class)->execute($this->context(
             $world,
             4,

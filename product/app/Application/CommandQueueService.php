@@ -316,8 +316,7 @@ final class CommandQueueService
             }
 
             // A queue item is a future plan. Registration proves only that the
-            // coordinate and parameters are structurally valid, except for
-            // undersea construction's required nearby owned land; the locked
+            // coordinate and parameters are structurally valid; the locked
             // target state and assets are revalidated immediately before execution.
             if ($definition instanceof CommandDefinition) {
                 $this->nationTargets->validateRegistration($lockedNation, $definition, $parameters);
@@ -333,9 +332,6 @@ final class CommandQueueService
                 $this->undergroundFacilities->assertProjectedCommand($definition, $projectedFacility);
             } else {
                 $target = $this->targetCell($mapSpace, $targetX, $targetY);
-                if ($this->underseaConstruction->appliesTo($definition->key)) {
-                    $this->assertUnderseaConstructionDistance($lockedNation, $target);
-                }
                 if (SettlementOverbuildPolicy::protectsCapital($definition->key, $target->facility?->key, $definition->metadata)) {
                     throw new PlayerFacingCommandException('首都を通常建設commandで上書きすることはできません。');
                 }
