@@ -12,6 +12,8 @@ final class CurrentDatabaseBaseline
 
     public const MONSTER_COUNT_MIGRATION = '2026_10_11_030000_add_world_monster_count_snapshot';
 
+    public const SHIP_DESTINATION_MIGRATION = '2026_10_14_000000_add_ship_destinations';
+
     /** @return array<string, string> */
     public function structure(): array
     {
@@ -100,6 +102,27 @@ SQL);
             // forward migration. Every other baseline object remains strict.
             $extension = json_decode(
                 (string) file_get_contents(database_path('baselines/monster_count_structure.json')),
+                true, 512, JSON_THROW_ON_ERROR,
+            );
+            foreach ($expected as $key => $variant) {
+                $expected[$key] = array_replace($variant, $extension);
+            }
+        }
+        if (in_array(self::SHIP_DESTINATION_MIGRATION, $applied, true)) {
+            if (! in_array(self::MIGRATION, $applied, true)) {
+                throw new RuntimeException('Ship destinations require the accepted 5.0.1 baseline marker first.');
+            }
+            $extension = json_decode(
+                (string) file_get_contents(database_path('baselines/ship_destination_structure.json')),
+                true, 512, JSON_THROW_ON_ERROR,
+            );
+            foreach ($expected as $key => $variant) {
+                $expected[$key] = array_replace($variant, $extension[$key]);
+            }
+        }
+        if (in_array('2026_10_14_130000_publish_undersea_construction_ship_ruleset', $applied, true)) {
+            $extension = json_decode(
+                (string) file_get_contents(database_path('baselines/undersea_construction_ship_structure.json')),
                 true, 512, JSON_THROW_ON_ERROR,
             );
             foreach ($expected as $key => $variant) {

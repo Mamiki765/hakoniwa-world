@@ -30,7 +30,7 @@ final class SurfaceShipBuildService
         CommandDefinition $command,
     ): ?CommandFailureReason {
         $definition = $this->catalog->resolve($command, $item->quantity);
-        $capacity = $this->catalog->capacityPerType($context->ruleset->settings);
+        $capacity = $this->catalog->capacityPerType($context->ruleset->settings, $definition);
         $activeShips = Ship::activeForNation($context->world->id, $nation->id)
             ->where('ship_type_key', $definition->key)
             ->limit($capacity)
@@ -65,7 +65,7 @@ final class SurfaceShipBuildService
         CommandDefinition $command,
     ): array {
         $definition = $this->catalog->resolve($command, $item->quantity);
-        $capacity = $this->catalog->capacityPerType($context->ruleset->settings);
+        $capacity = $this->catalog->capacityPerType($context->ruleset->settings, $definition);
         $activeShips = Ship::activeForNation($context->world->id, $nation->id)
             ->where('ship_type_key', $definition->key)
             ->limit($capacity)

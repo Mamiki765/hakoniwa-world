@@ -27,7 +27,7 @@ class RulesetAuthoringValidatorTest extends TestCase
             'asset_key' => 'ship.research',
             'player_buildable' => false,
             'build_selector' => null,
-            'sort_order' => 70,
+            'sort_order' => max(array_column($settings['surface_ships']['definitions'], 'sort_order')) + 1,
             'build_cost_money' => 0,
             'maximum_hp' => 2,
             'movement_oil_units' => 0,

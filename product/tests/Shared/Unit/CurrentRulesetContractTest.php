@@ -17,10 +17,10 @@ final class CurrentRulesetContractTest extends TestCase
         $this->assertSame([$current['key']], array_keys($normalConfig['published_rulesets']));
         $this->assertSame($current, $normalConfig['published_rulesets'][$current['key']]);
         $this->assertSame($current['secretary'], $normalConfig['current_catalogs']['secretary']);
-        $this->assertSame('hakoniwa-2s-plus-v36', $current['key']);
-        $this->assertSame(36, $current['version']);
-        // A representation-only rebaseline must retain the complete production snapshot.
-        $this->assertSame('bbe3b65812bf337da0617577b38528a6583439bd9d672efe83cf67b249004308', $this->checksum($current));
+        $this->assertSame('hakoniwa-2s-plus-v37', $current['key']);
+        $this->assertSame(37, $current['version']);
+        // Authoring the next generation must retain the complete immutable predecessor.
+        $this->assertSame('bbe3b65812bf337da0617577b38528a6583439bd9d672efe83cf67b249004308', $this->checksum(require config_path('hakoniwa/rulesets/hakoniwa-2s-plus-v36.php')));
         $this->assertArrayNotHasKey('behavior', $current);
         $this->assertArrayNotHasKey('data', $current);
         $this->assertArrayNotHasKey('flavor', $current);

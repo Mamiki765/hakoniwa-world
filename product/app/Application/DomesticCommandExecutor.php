@@ -392,6 +392,11 @@ final class DomesticCommandExecutor
             ->lockForUpdate()
             ->first(['id', 'monster_instance_id']);
         $observed = $this->observedState($cell, $occupancy?->monster_instance_id);
+        try {
+            $constructionCostMultiplier = $this->underseaConstruction->costMultiplier($nation, $definition, $cell, $item->parameters, true);
+        } catch (PlayerFacingCommandException) {
+            return ['reason' => CommandFailureReason::InvalidParameter, 'observed' => $observed];
+        }
         if ($definition->key === 'scuttle_ship') {
             return $this->lockedScuttleShip($context, $nation, $item) instanceof Ship
                 ? null
@@ -436,14 +441,14 @@ final class DomesticCommandExecutor
             if (! $adjacent['sea']) {
                 return ['reason' => CommandFailureReason::NoAdjacentDeepSea, 'observed' => $observed];
             }
-        } elseif ($this->underseaConstruction->appliesTo($definition->key)) {
+        } elseif ($this->underseaConstruction->appliesTo($definition)) {
             if ($cell->owner_nation_id !== null && $cell->owner_nation_id !== $nation->id) {
                 return ['reason' => CommandFailureReason::ForeignOwned, 'observed' => $observed];
             }
             if ($cell->terrain->key !== 'sea') {
                 return ['reason' => CommandFailureReason::InvalidTerrain, 'observed' => $observed];
             }
-            if (! $this->underseaConstruction->hasNearbyOwnedLand($nation, $cell)) {
+            if (! isset($item->parameters['construction_ship_id']) && ! $this->underseaConstruction->hasNearbyOwnedLand($nation, $cell)) {
                 return ['reason' => CommandFailureReason::MissingAdjacentTerritory, 'observed' => $observed];
             }
             if ($definition->key === 'build_undersea_city') {
@@ -477,7 +482,7 @@ final class DomesticCommandExecutor
             if (! $this->ownedLand->within($nation, $cell, LandDevelopmentDistancePolicy::RECLAMATION_RADIUS, false)) {
                 return ['reason' => CommandFailureReason::NoAdjacentOwnedLand, 'observed' => $observed];
             }
-        } elseif (! in_array($definition->key, ['territory_expand', 'build_port', 'build_seabed_base', 'build_undersea_city', 'build_undersea_fire_station'], true)) {
+        } elseif (! in_array($definition->key, ['territory_expand', 'build_port'], true) && ! $this->underseaConstruction->appliesTo($definition)) {
             if ($cell->owner_nation_id !== $nation->id
                 && ! ($definition->key === 'excavate' && in_array($cell->terrain->key, ['sea', 'shallow'], true))) {
                 return [
@@ -565,6 +570,7 @@ final class DomesticCommandExecutor
                 return ['reason' => CommandFailureReason::InvalidParameter, 'observed' => $observed];
             }
         }
+        $requiredMoney *= $constructionCostMultiplier;
         if ((int) $nation->money < $requiredMoney) {
             return ['reason' => CommandFailureReason::InsufficientFunds, 'observed' => $observed];
         }
@@ -835,6 +841,7 @@ final class DomesticCommandExecutor
         CommandDefinition $definition,
         MapCell $cell,
     ): int {
+        $constructionCostMultiplier = $this->underseaConstruction->costMultiplier($nation, $definition, $cell, $item->parameters, true);
         if (in_array($definition->key, MissileImpactResolver::MISSILE_KEYS, true)) {
             return 0;
         }
@@ -847,7 +854,7 @@ final class DomesticCommandExecutor
             return $this->surfaceShips->resolve($definition, $item->quantity)->buildCostMoney;
         }
         if (! $this->isSeabedOilSearch($definition, $cell)) {
-            return WindPowerRepairPolicy::costMoney($definition, $cell->facility?->key, $cell->facility_operational_state);
+            return WindPowerRepairPolicy::costMoney($definition, $cell->facility?->key, $cell->facility_operational_state) * $constructionCostMultiplier;
         }
 
         if ($definition->cost_money < 1) {
@@ -1111,7 +1118,7 @@ final class DomesticCommandExecutor
         );
         $monument = null;
         $population = 0;
-        if (in_array($definition->key, ['build_seabed_base', 'build_undersea_city', 'build_undersea_fire_station'], true)) {
+        if ($this->underseaConstruction->appliesTo($definition)) {
             $this->assignNationOwnership($context, $nation, $cell);
         }
         if ($definition->key === 'build_undersea_city') {

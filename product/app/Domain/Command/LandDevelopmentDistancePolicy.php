@@ -2,25 +2,31 @@
 
 namespace App\Domain\Command;
 
+use App\Models\CommandDefinition;
+
 final class LandDevelopmentDistancePolicy
 {
     public const RECLAMATION_RADIUS = 1;
 
     public const WATER_RADIUS = 3;
 
-    public static function isUnderseaConstruction(string $commandKey): bool
+    public static function isUnderseaConstruction(CommandDefinition $command): bool
     {
-        return in_array($commandKey, ['build_seabed_base', 'build_undersea_city', 'build_undersea_fire_station'], true);
+        return ($command->metadata['construction_context'] ?? null) === 'undersea'
+            && $command->target_type === 'cell' && $command->result_facility_key !== null;
     }
 
-    /** @return array{int, bool}|null */
-    public static function requirement(string $commandKey, string $terrainKey): ?array
+    /**
+     * @param  array<string, mixed>  $parameters
+     * @return array{int, bool}|null
+     */
+    public static function requirement(CommandDefinition $command, string $terrainKey, array $parameters = []): ?array
     {
-        if ($commandKey === 'reclaim') {
+        if ($command->key === 'reclaim') {
             return [self::RECLAMATION_RADIUS, false];
         }
-        if (self::isUnderseaConstruction($commandKey)
-            || ($commandKey === 'excavate' && in_array($terrainKey, ['sea', 'shallow'], true))) {
+        if ((self::isUnderseaConstruction($command) && ! isset($parameters['construction_ship_id']))
+            || ($command->key === 'excavate' && in_array($terrainKey, ['sea', 'shallow'], true))) {
             return [self::WATER_RADIUS, true];
         }
 

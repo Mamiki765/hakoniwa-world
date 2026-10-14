@@ -15,6 +15,7 @@ use App\Domain\Command\DevelopmentPlanQuantity;
 use App\Domain\Command\LandDevelopmentDistancePolicy;
 use App\Domain\Command\PlayerFacingCommandException;
 use App\Domain\Command\SurfaceCommandProjectionMemo;
+use App\Domain\Command\UnderseaConstructionPolicy;
 use App\Domain\Command\WindPowerRepairPolicy;
 use App\Domain\Concurrency\OptimisticLockException;
 use App\Domain\Facility\FacilityCapacityService;
@@ -52,11 +53,14 @@ final class CommandQueueController extends Controller
         UndergroundFacilityService $undergroundFacilities,
         UndergroundCommandCatalog $undergroundCommands,
         ParadoxBalanceService $paradox,
+        UnderseaConstructionPolicy $underseaConstruction,
     ): JsonResponse {
         try {
             $queue = $service->queueFor($request->user(), $nation, $mapSpace);
             $world = $nation->world()->with('rulesetVersion')->firstOrFail();
             $rulesetSettings = $world->rulesetVersion->settings;
+            $request->validate(['construction_ship_id' => ['sometimes', 'integer', 'min:1']]);
+            $constructionShipId = $request->has('construction_ship_id') ? $request->integer('construction_ship_id') : null;
             $position = max(1, min(
                 $this->queueLimit($nation),
                 $request->integer('position', 1),
@@ -194,18 +198,20 @@ final class CommandQueueController extends Controller
             $paradoxPresentation = $paradox->presentFor($request->user()->id);
             $paradoxBalance = $paradoxPresentation['balance'];
             $definitions = $definitions
-                ->map(function (CommandDefinition $definition) use ($cell, $nation, $mapSpace, $service, $capacities, $queue, $position, $nationTargetOptions, $monsterDispatchTargetOptions, $projected, $resultFacilities, $visibleState, $projectionMemo, $rulesetSettings, $paradoxBalance): array {
+                ->map(function (CommandDefinition $definition) use ($cell, $nation, $mapSpace, $service, $capacities, $queue, $position, $nationTargetOptions, $monsterDispatchTargetOptions, $projected, $resultFacilities, $visibleState, $projectionMemo, $rulesetSettings, $paradoxBalance, $constructionShipId, $underseaConstruction): array {
+                    $constructionParameters = $constructionShipId !== null && isset($definition->metadata['parameters']['construction_ship_id'])
+                        ? ['construction_ship_id' => $constructionShipId] : [];
                     $ownerOverbuildEffect = $projected === null
                         ? null
                         : $service->projectedOwnerOverbuildEffect($definition, $nation, $projected);
                     $unavailableReason = null;
                     $distanceReasonCode = $cell === null || $definition->target_type !== 'cell'
                         ? null
-                        : $service->currentLandDistanceReasonCode($nation, $definition, $cell, $visibleState['terrain_key'] ?? null, $projectionMemo);
+                        : $service->currentLandDistanceReasonCode($nation, $definition, $cell, $visibleState['terrain_key'] ?? null, $projectionMemo, $constructionParameters);
                     $projectedDistanceReasonCode = $cell === null || $definition->target_type !== 'cell'
                         || ! in_array($projected['terrain_key'], $definition->target_terrain_keys, true)
                         ? null
-                        : $service->projectedLandDistanceReasonCode($nation, $mapSpace, $definition, $cell, $projected['terrain_key'], $queue, $position, $projectionMemo);
+                        : $service->projectedLandDistanceReasonCode($nation, $mapSpace, $definition, $cell, $projected['terrain_key'], $queue, $position, $projectionMemo, $constructionParameters);
                     $projectedExecutable = false;
                     $currentlyExecutable = false;
                     if ($definition->target_type === 'cell' && $cell !== null) {
@@ -217,6 +223,7 @@ final class CommandQueueController extends Controller
                                 $cell,
                                 $visibleState,
                                 $rulesetSettings,
+                                $constructionParameters,
                                 $projectionMemo,
                             );
                             $currentlyExecutable = true;
@@ -242,10 +249,11 @@ final class CommandQueueController extends Controller
                                     $queue,
                                     $position,
                                     $projectionMemo,
+                                    $constructionParameters,
                                 );
                         }
                         if (in_array($definition->key, ['build_port', 'build_wind_power', 'reclaim', 'excavate'], true)
-                            || LandDevelopmentDistancePolicy::isUnderseaConstruction($definition->key)) {
+                            || LandDevelopmentDistancePolicy::isUnderseaConstruction($definition)) {
                             $targetProjectedExecutable = $service->projectedTargetMatches(
                                 $definition,
                                 $projected,
@@ -255,6 +263,7 @@ final class CommandQueueController extends Controller
                                 $queue,
                                 $position,
                                 $projectionMemo,
+                                $constructionParameters,
                             );
                             if ($currentlyExecutable && ! $targetProjectedExecutable) {
                                 $unavailableReason = match ($definition->key) {
@@ -300,6 +309,13 @@ final class CommandQueueController extends Controller
                         $projected['facility_key'] ?? null,
                         $projected['facility_operational_state'] ?? null,
                     );
+                    if ($cell !== null && $constructionParameters !== []) {
+                        try {
+                            $presentedCost *= $underseaConstruction->costMultiplier($nation, $definition, $cell, $constructionParameters);
+                        } catch (PlayerFacingCommandException) {
+                            // The target validation already supplies the unavailable reason.
+                        }
+                    }
                     $shortfall = max(0, $presentedCost - $nation->money);
                     $paradoxCost = $definition->metadata['cost_paradox'] ?? 0;
                     if (! is_int($paradoxCost) || $paradoxCost < 0) {

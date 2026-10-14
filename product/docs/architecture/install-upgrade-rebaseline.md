@@ -62,3 +62,20 @@ forward migration after the install marker. Its completed-schema manifest substi
 the measured `worlds` definition when that migration is recorded. The fixed 5.0.1 dump and
 adoption structures remain the authority before this extension; all other structure checks
 remain exact.
+
+[Ship destination orders](surface-ship-destination-api.md) add a later independent forward
+migration. When its marker is recorded, `ship_destination_structure.json` substitutes only
+the complete `ships` definition for each accepted baseline variant. It preserves the known
+HP CHECK grouping difference; all other objects remain exact. No live production schema was
+read or changed to derive this extension.
+
+On isolated PostgreSQL 18.4, the fresh pre-extension `ships` hash matched
+`cc8b9c0f3f9207ece5fe5099b66ef81b6dfd632b8e2b5593dc2df73058325e48`.
+Reconstructing the fixed ship DDL from `191b8850` and the NPC/ocean additions recorded at
+`7c24078b` matched the complete saved production-variant hash
+`51dd7a2e9279e4c5c4075486318ec2df236539e9bfe79bd7acad190d45c83257` before any extension.
+Applying the actual new migration yielded, respectively,
+`5a8d9bb526dd54027814f06fcee0e0a38b0a3a98c88cac98e7a5ce4bdee041cd` and
+`a598f8c2fcfd94addb9cde71cb769dadd73829d116a3ca6e259a5eda37275940`.
+Acceptance continues to require a complete known structure, including the new columns and
+exclusivity constraint; it does not discard or normalize differences.
