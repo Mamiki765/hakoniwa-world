@@ -1438,6 +1438,7 @@ final class CommandQueueService
                     'target_context' => 'surface_cell',
                     'target_x' => $candidate['x'],
                     'target_y' => $candidate['y'],
+                    'parameters' => [],
                     'status' => 'queued',
                 ]);
                 $item->setRelation('definition', $candidate['definition']);
