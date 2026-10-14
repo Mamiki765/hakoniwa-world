@@ -8,6 +8,12 @@
 
 他国視界外と匿名 viewer には地図の船・船名・船 asset を返さない。他国視界内では船名も返し、自国には常時返す。通常船の公開表示は維持する。
 
+## 画像
+
+既存の `asset_key: ship.undersea_construction` は `AssetManifestResolver` で `ship-undersea-workboat.gif` へ解決する。採用Bの元GIF（32×32・不透明・1フレーム）はGit外のread-only tile asset directoryで管理し、他の船と同じ `/assets/hakoniwa-tiles/ship-undersea-workboat.gif?v=<mtime>-<size>` 形式で配信する。画像バイナリ・ホスト固有パスをdefinitionやGitへ追加せず、既存の存在・形式検査と欠落時fallbackを使う。
+
+## 建設対象
+
 対象は Ruleset の建設 command metadata に `construction_context: undersea` と明示した施設建設。現在は海底基地・海底都市・海底消防署。runtime はこの分類を参照し、施設名・海タイル・秘密表示だけから対象を広げない。将来の海底施設も通常建設 command に同じ分類と parameter schema を付けて共通経路へ接続する。石油探索・掘削・油田生成は対象外。
 
 ## API と型
