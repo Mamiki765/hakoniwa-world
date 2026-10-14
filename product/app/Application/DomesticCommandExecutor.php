@@ -5,6 +5,7 @@ namespace App\Application;
 use App\Application\Underground\UndergroundFacilityBenefits;
 use App\Application\Underground\UndergroundFacilityService;
 use App\Domain\Command\CapitalCorePolicy;
+use App\Domain\Command\CapitalDestructionPolicy;
 use App\Domain\Command\CommandFailureReason;
 use App\Domain\Command\MissileTargetPolicy;
 use App\Domain\Command\OwnerFacilityOverbuildPolicy;
@@ -53,9 +54,6 @@ use Illuminate\Support\Facades\DB;
 
 final class DomesticCommandExecutor
 {
-    /** @var list<string> */
-    private const CAPITAL_DESTRUCTIVE_COMMANDS = ['land_clear', 'land_level', 'excavate', 'territory_abandon'];
-
     public function __construct(
         private readonly MapCellStateService $cells,
         private readonly NationCapacityResolver $capacities,
@@ -459,8 +457,7 @@ final class DomesticCommandExecutor
                 }
             }
         }
-        if ($cell->facility?->key === 'capital'
-            && in_array($definition->key, self::CAPITAL_DESTRUCTIVE_COMMANDS, true)) {
+        if (CapitalDestructionPolicy::protects($definition->key, $cell->facility?->key)) {
             return ['reason' => CommandFailureReason::CapitalProtected, 'observed' => $observed];
         }
         if (SettlementOverbuildPolicy::protectsCapital($definition->key, $cell->facility?->key, $definition->metadata)) {

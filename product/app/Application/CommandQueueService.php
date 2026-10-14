@@ -5,6 +5,7 @@ namespace App\Application;
 use App\Application\Underground\UndergroundFacilityService;
 use App\Domain\Command\BulkPlanPreviewChangedException;
 use App\Domain\Command\CapitalCorePolicy;
+use App\Domain\Command\CapitalDestructionPolicy;
 use App\Domain\Command\CommandParametersValidator;
 use App\Domain\Command\CommandQueueLimit;
 use App\Domain\Command\CommandRequestConflictException;
@@ -1252,6 +1253,9 @@ final class CommandQueueService
         if (! in_array($state['terrain_key'], $definition->target_terrain_keys, true)) {
             return false;
         }
+        if (CapitalDestructionPolicy::protects($definition->key, $state['facility_key'])) {
+            return false;
+        }
         if (SettlementOverbuildPolicy::protectsCapital($definition->key, $state['facility_key'], $definition->metadata)) {
             return false;
         }
@@ -1595,6 +1599,9 @@ final class CommandQueueService
         }
         if (! in_array($terrainKey, $definition->target_terrain_keys, true)) {
             throw new PlayerFacingCommandException('対象地形ではこのcommandをqueueへ追加できません。');
+        }
+        if (CapitalDestructionPolicy::protects($definition->key, $facilityKey)) {
+            throw new PlayerFacingCommandException('首都を破壊するcommandは実行できません。');
         }
         $facilityExpansion = false;
         if ($this->facilityExpansionCommand($definition)

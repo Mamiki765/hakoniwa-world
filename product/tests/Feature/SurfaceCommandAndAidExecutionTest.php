@@ -30,6 +30,33 @@ final class SurfaceCommandAndAidExecutionTest extends CommandAndMissileTestCase
 {
     use UsesReusableSurfaceWorld;
 
+    public function test_rejected_capital_excavation_keeps_the_owned_land_origin_for_the_next_plan(): void
+    {
+        $world = $this->lightweightWorld();
+        [$user, $nation] = $this->nation($world, '首都起点国');
+        $space = $this->surfaceMapSpace($world);
+        $capital = $nation->capital()->sole()->cell()->with(['terrain', 'facility'])->sole();
+        foreach (MapCell::query()->where('owner_nation_id', $nation->id)->whereKeyNot($capital->id)->get() as $cell) {
+            $this->landOriginCell($space, $cell->x, $cell->y, 'sea', null);
+        }
+        $target = $this->landOriginCell($space, $capital->x + 1, $capital->y, 'shallow', null);
+        $nation->update(['money' => 1000]);
+        $capitalBefore = $capital->getAttributes();
+        $service = app(CommandQueueService::class);
+        $blocked = $this->queue($service, $user, $nation, $space, 'excavate', $capital);
+        $this->assertSame('queued', $blocked->status);
+        $this->assertSame('currently_unavailable', $this->waterDevelopmentPreview($user, $nation, $space, $capital, 'excavate')['execution_preview_status']);
+        $reclaim = $this->queue($service, $user, $nation, $space, 'reclaim', $target);
+        $this->assertSame('currently_executable', $this->waterDevelopmentPreview($user, $nation, $space, $target, 'reclaim', 2)['execution_preview_status']);
+        app(DomesticCommandExecutor::class)->execute($this->context($world, 2, hash('sha256', 'protected capital remains an origin'), [$nation->id]));
+        $this->assertSame('capital_protected', $blocked->fresh()->failure_code);
+        $this->assertSame('completed', $reclaim->fresh()->status);
+        $this->assertSame('wasteland', $target->fresh()->terrain()->value('key'));
+        $this->assertSame($nation->id, $target->fresh()->owner_nation_id);
+        $this->assertSame(850, (int) $nation->fresh()->money);
+        $this->assertSame($capitalBefore, $capital->fresh()->getAttributes());
+    }
+
     public static function landOriginCommands(): array
     {
         return [
