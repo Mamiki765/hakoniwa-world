@@ -591,6 +591,19 @@ final class RulesetAuthoringValidator
             $requiredKeys[] = 'movement_mode';
             $requiredKeys[] = 'combat_role';
             $this->requireKeys($definition, $requiredKeys, $path);
+            foreach (['capacity_per_nation', 'construction_cost_multiplier'] as $field) {
+                if (array_key_exists($field, $definition)) {
+                    $this->integer($definition[$field], $path.'.'.$field, 1);
+                }
+            }
+            foreach (['visible_only_in_sight', 'undersea_construction'] as $field) {
+                if (array_key_exists($field, $definition)) {
+                    $this->boolean($definition[$field], $path.'.'.$field);
+                }
+            }
+            if (array_key_exists('foreign_sink_karma', $definition)) {
+                $this->integer($definition['foreign_sink_karma'], $path.'.foreign_sink_karma', 0);
+            }
             $playerBuildable = $this->boolean($definition['player_buildable'], "{$path}.player_buildable");
             $buildSelector = $definition['build_selector'];
             if ($playerBuildable) {

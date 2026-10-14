@@ -20,6 +20,11 @@ final readonly class SurfaceShipDefinition
         public int $visibilityRadius,
         public string $movementMode,
         public string $combatRole,
+        public ?int $capacityPerNation = null,
+        public bool $visibleOnlyInSight = false,
+        public bool $underseaConstruction = false,
+        public int $constructionCostMultiplier = 1,
+        public ?int $foreignSinkKarma = null,
     ) {}
 
     /** @return array{value: int, key: string, label: string, cost_money: int} */

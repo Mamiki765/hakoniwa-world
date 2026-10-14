@@ -106,6 +106,15 @@ SQL);
                 $expected[$key] = array_replace($variant, $extension);
             }
         }
+        if (in_array('2026_10_14_130000_publish_undersea_construction_ship_ruleset', $applied, true)) {
+            $extension = json_decode(
+                (string) file_get_contents(database_path('baselines/undersea_construction_ship_structure.json')),
+                true, 512, JSON_THROW_ON_ERROR,
+            );
+            foreach ($expected as $key => $variant) {
+                $expected[$key] = array_replace($variant, $extension);
+            }
+        }
         // Production's migration ancestry and a fresh dump differ in physical
         // column order and PostgreSQL's literal-array CHECK representation.
         // Match complete reviewed structures; never normalize or omit guarantees.

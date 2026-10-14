@@ -716,7 +716,8 @@ final class MissileImpactResolver
             $context->state->addAllianceMoney($intent->nationId, $allianceMoney);
         }
         $points = ($impact['effect'] ?? null) === 'ship_sunk'
-            ? $this->shipMissileImpactSettings($context)['foreign_sink_karma']
+            ? ($this->surfaceShips->definition($context->ruleset->settings, $impact['ship_type_key'])->foreignSinkKarma
+                ?? $this->shipMissileImpactSettings($context)['foreign_sink_karma'])
             : 0;
         if ($points > 0) {
             $context->state->addKarmaCrime($intent->nationId, $points);

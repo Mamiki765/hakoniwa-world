@@ -68,6 +68,15 @@ final class RulesetPublisher
     public function assertPublished(array $settings): RulesetVersion
     {
         $this->validator->validate($settings);
+
+        return $this->assertPublishedSnapshot($settings);
+    }
+
+    /** Verify a trusted immutable predecessor without authoring it as current.
+     * @param  array<string, mixed>  $settings
+     */
+    public function assertPublishedSnapshot(array $settings): RulesetVersion
+    {
         $key = $settings['key'] ?? null;
         $version = $settings['version'] ?? null;
         if (! is_string($key) || $key === '' || ! is_int($version) || $version < 1) {

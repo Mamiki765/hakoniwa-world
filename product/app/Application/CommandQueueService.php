@@ -333,6 +333,7 @@ final class CommandQueueService
                 $this->undergroundFacilities->assertProjectedCommand($definition, $projectedFacility);
             } else {
                 $target = $this->targetCell($mapSpace, $targetX, $targetY);
+                $this->underseaConstruction->costMultiplier($lockedNation, $definition, $target, $parameters, true);
                 if (SettlementOverbuildPolicy::protectsCapital($definition->key, $target->facility?->key, $definition->metadata)) {
                     throw new PlayerFacingCommandException('首都を通常建設commandで上書きすることはできません。');
                 }
@@ -1218,6 +1219,7 @@ final class CommandQueueService
                     $queue,
                     (int) $item->queue_position,
                     $projectionMemo,
+                    $item->parameters,
                 );
             if (! $matches) {
                 continue;
@@ -1232,6 +1234,7 @@ final class CommandQueueService
 
     /**
      * @param  array{terrain_key: string, facility_key: string|null, owner_nation_id: int|null, facility_operational_state: string|null}  $state
+     * @param  array<string, mixed>  $parameters
      */
     public function projectedTargetMatches(
         CommandDefinition $definition,
@@ -1242,8 +1245,14 @@ final class CommandQueueService
         NationCommandQueue $queue,
         int $beforePosition,
         ?SurfaceCommandProjectionMemo $projectionMemo = null,
+        array $parameters = [],
     ): bool {
         $projectionMemo ??= new SurfaceCommandProjectionMemo;
+        try {
+            $this->underseaConstruction->costMultiplier($nation, $definition, $cell, $parameters);
+        } catch (PlayerFacingCommandException) {
+            return false;
+        }
         if ($definition->key === 'scuttle_ship') {
             return false;
         }
@@ -1283,9 +1292,9 @@ final class CommandQueueService
 
             return $state['owner_nation_id'] === null && $adjacent['owned_land'] && $adjacent['sea'];
         }
-        if ($this->underseaConstruction->appliesTo($definition->key)) {
+        if ($this->underseaConstruction->appliesTo($definition)) {
             return ($state['owner_nation_id'] === null || $state['owner_nation_id'] === $nation->id)
-                && $this->underseaConstruction->hasNearbyOwnedLand($nation, $cell);
+                && (isset($parameters['construction_ship_id']) || $this->underseaConstruction->hasNearbyOwnedLand($nation, $cell));
         }
         if (in_array($definition->key, ['reclaim', 'excavate'], true)) {
             return $state['owner_nation_id'] === null || $state['owner_nation_id'] === $nation->id;
@@ -1404,7 +1413,7 @@ final class CommandQueueService
         }
         if ($definition->key === 'territory_expand') {
             $state['owner_nation_id'] = $nation->id;
-        } elseif ($definition->key === 'build_port') {
+        } elseif ($definition->key === 'build_port' || $this->underseaConstruction->appliesTo($definition)) {
             $state['owner_nation_id'] = $nation->id;
         } elseif ($definition->key === 'territory_abandon') {
             $state['owner_nation_id'] = null;
@@ -1524,6 +1533,7 @@ final class CommandQueueService
     /**
      * @param  array{terrain_key: string, facility_key: string|null, owner_nation_id: int|null, facility_operational_state: string|null}|null  $visibleState
      * @param  array<string, mixed>|null  $rulesetSettings
+     * @param  array<string, mixed>  $parameters
      */
     public function validateTarget(
         Nation $nation,
@@ -1532,7 +1542,9 @@ final class CommandQueueService
         MapCell $cell,
         ?array $visibleState = null,
         ?array $rulesetSettings = null,
+        array $parameters = [],
     ): void {
+        $this->underseaConstruction->costMultiplier($nation, $definition, $cell, $parameters);
         $state = $visibleState ?? [
             'terrain_key' => $cell->terrain->key,
             'facility_key' => $cell->facility?->key,
@@ -1652,11 +1664,13 @@ final class CommandQueueService
 
             return;
         }
-        if ($this->underseaConstruction->appliesTo($definition->key)) {
+        if ($this->underseaConstruction->appliesTo($definition)) {
             if ($ownerNationId !== null && $ownerNationId !== $nation->id) {
                 throw new PlayerFacingCommandException('他国所有の海には建設できません。');
             }
-            $this->assertUnderseaConstructionDistance($nation, $cell);
+            if (! isset($parameters['construction_ship_id'])) {
+                $this->assertUnderseaConstructionDistance($nation, $cell);
+            }
 
             return;
         }

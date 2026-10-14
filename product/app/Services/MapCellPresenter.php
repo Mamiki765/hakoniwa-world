@@ -68,7 +68,7 @@ final class MapCellPresenter
             : ($visibleState['facility_key'] === $cell->facility?->key
                 ? $cell->facility
                 : $this->facility($visibleState['facility_key']));
-        $ship = $this->ship($cell, $viewerNationId);
+        $ship = $this->ship($cell, $viewerNationId, $withinViewerVisibility);
         $displayDefinition = $facility ?? $terrain;
         $centralPresentation = $facility !== null
             && $facility->key === $cell->facility?->key
@@ -241,7 +241,7 @@ final class MapCellPresenter
     }
 
     /** @return array<string, mixed>|null */
-    private function ship(MapCell $cell, ?int $viewerNationId): ?array
+    private function ship(MapCell $cell, ?int $viewerNationId, bool $withinViewerVisibility): ?array
     {
         $ship = $cell->ship;
         if (! $ship instanceof Ship) {
@@ -255,6 +255,9 @@ final class MapCellPresenter
         }
         $owner = $ship->nation;
         $isOwner = $viewerNationId !== null && $viewerNationId === $ship->nation_id;
+        if ($definition->visibleOnlyInSight && ! $isOwner && ! $withinViewerVisibility) {
+            return null;
+        }
 
         return [
             'id' => $ship->id,

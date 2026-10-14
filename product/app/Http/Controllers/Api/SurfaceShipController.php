@@ -49,12 +49,14 @@ final class SurfaceShipController extends Controller
                 'max_hp' => $ship->max_hp,
                 'heading' => $ship->heading,
                 'movement_mode' => $definition->movementMode,
+                'key' => $definition->key,
+                'undersea_construction' => $definition->underseaConstruction,
+                'construction_cost_multiplier' => $definition->constructionCostMultiplier,
             ];
         }
         usort($rows, static fn (array $left, array $right): int => [$left['sort_order'], $left['id']] <=> [$right['sort_order'], $right['id']]);
 
         $settings = $nation->world()->with('rulesetVersion')->firstOrFail()->rulesetVersion->settings;
-        $capacity = $catalog->capacityPerType($settings);
         $shipTypes = [];
         foreach ($catalog->definitions($settings) as $definition) {
             if (! $definition->playerBuildable) {
@@ -64,7 +66,7 @@ final class SurfaceShipController extends Controller
                 'key' => $definition->key,
                 'name' => $definition->name,
                 'count' => $ships->where('ship_type_key', $definition->key)->count(),
-                'capacity' => $capacity,
+                'capacity' => $catalog->capacityPerType($settings, $definition),
             ];
         }
 
