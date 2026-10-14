@@ -3,8 +3,10 @@
 namespace Tests\Feature;
 
 use App\Application\NationCreationService;
+use App\Application\PlayerIslandEventService;
 use App\Domain\Map\SeaAreaNameResolver;
 use App\Models\Nation;
+use App\Models\RulesetVersion;
 use App\Models\User;
 use App\Models\World;
 use Illuminate\Database\Eloquent\Model;
@@ -41,6 +43,9 @@ class PlayerIslandEventApiTest extends TestCase
         $this->assertSame([0, 110, -6], array_column($rows, 'amount'));
         $this->assertSame([3, null, 1], array_column($rows, 'count'));
         $this->assertSame(['トン', '億円', '億円'], array_column($rows, 'unit'));
+        $definitions = $world->rulesetVersion->settings['facility_definitions'];
+        $this->assertSame($definitions['pizzeria']['name'], $rows[1]['name']);
+        $this->assertSame($definitions['undersea_fire_station']['name'], $rows[2]['name']);
         $this->assertNull($events->firstWhere('id', $old)['economic_contributions']);
         $this->assertSame(4, $events->firstWhere('id', $summary)['summary']['money']['delta']);
         $this->assertTrue($events->contains('id', $overflow));
@@ -50,6 +55,85 @@ class PlayerIslandEventApiTest extends TestCase
         $this->assertStringContainsString('100億円', $fireEvent['message']);
         $public = collect($this->getJson("/api/v1/public/nations/{$nation->id}/events")->assertOk()->json('data.groups'))->flatMap(fn (array $group): array => $group['events']);
         $this->assertEmpty($public->whereIn('id', [$old, $summary, $fire, $overflow]));
+    }
+
+    public function test_facility_construction_uses_ruleset_names_for_new_and_existing_facilities(): void
+    {
+        [$world, $owner, $nation] = $this->nation('名称表示島');
+        $world->update(['current_turn' => 2]);
+        DB::table('audit_events')->delete();
+        $definitions = $world->rulesetVersion->settings['facility_definitions'];
+        $constructed = [];
+        // These newer facilities were absent from the old label table; farm covers existing names.
+        foreach (['pizzeria', 'wind_power', 'condenser', 'thermal_power', 'port', 'farm'] as $index => $key) {
+            $constructed[$key] = $this->audit('facility.constructed', $nation, $nation, 'nation', 2, [
+                'facility_key' => $key, 'x' => $index, 'y' => 4,
+            ]);
+            $this->publicFacility($nation, 2, $index, 4, $key);
+        }
+        $expanded = $this->audit('facility.expanded', $nation, $nation, 'nation', 2, [
+            'facility_key' => 'pizzeria', 'before_scale' => 1, 'facility_scale' => 2, 'x' => 0, 'y' => 4,
+        ]);
+
+        $ownerEvents = collect($this->actingAs($owner)->getJson("/api/v1/nations/{$nation->id}/events")
+            ->assertOk()->json('data.groups'))->flatMap(fn (array $group): array => $group['events']);
+        $publicMessages = $this->messages($this->getJson("/api/v1/public/nations/{$nation->id}/events")
+            ->assertOk()->json('data.groups'));
+        foreach ($constructed as $key => $id) {
+            $this->assertStringContainsString($definitions[$key]['name'], $ownerEvents->firstWhere('id', $id)['message']);
+            $this->assertMessageMentions($publicMessages, $definitions[$key]['name']);
+        }
+        $this->assertStringContainsString('(0,4)', $ownerEvents->firstWhere('id', $constructed['pizzeria'])['message']);
+        $this->assertStringContainsString($definitions['pizzeria']['name'], $ownerEvents->firstWhere('id', $expanded)['message']);
+    }
+
+    public function test_facility_names_stay_scoped_and_reuse_loaded_and_cached_rulesets(): void
+    {
+        [$world, , $nation] = $this->nation('現行名称島');
+        $world->update(['current_turn' => 2]);
+        DB::table('audit_events')->delete();
+        $settings = $world->rulesetVersion->settings;
+        $settings['facility_definitions']['pizzeria']['name'] = '別版のピザ屋';
+        $ruleset = RulesetVersion::query()->create([
+            'key' => 'event-label-fixture', 'version' => 1, 'settings' => $settings, 'is_active' => false,
+        ]);
+        $otherWorld = World::query()->create([
+            'key' => 'event-label-fixture', 'name' => '別版の世界', 'ruleset_version_id' => $ruleset->id, 'current_turn' => 2,
+        ])->load('rulesetVersion');
+        $current = $this->publicFacility($nation, 2, 0, 4, 'pizzeria');
+        $historical = [];
+        foreach (['pizzeria', 'farm', 'port'] as $index => $key) {
+            $historical[$key] = $this->audit('command.facility_built_public', $otherWorld, null, 'public', 2, [
+                'nation_name' => '別版の島', 'facility_key' => $key, 'x' => $index, 'y' => 4,
+            ]);
+        }
+        $service = app(PlayerIslandEventService::class);
+        DB::enableQueryLog();
+        DB::flushQueryLog();
+        try {
+            $currentEvents = collect($service->ownerPage($nation, anchorTurn: 2)['groups'])
+                ->flatMap(fn (array $group): array => $group['events']);
+            $this->assertStringContainsString($world->rulesetVersion->settings['facility_definitions']['pizzeria']['name'],
+                $currentEvents->firstWhere('id', $current)['message']);
+            $historicalEvents = collect($service->publicWorldPage($otherWorld)['groups'])
+                ->flatMap(fn (array $group): array => $group['events']);
+            $this->assertStringContainsString('別版のピザ屋', $historicalEvents->firstWhere('id', $historical['pizzeria'])['message']);
+            foreach (['farm', 'port'] as $key) {
+                $this->assertStringContainsString($settings['facility_definitions'][$key]['name'],
+                    $historicalEvents->firstWhere('id', $historical[$key])['message']);
+            }
+            $currentAgain = collect($service->publicNationPage($nation)['groups'])
+                ->flatMap(fn (array $group): array => $group['events'])->firstWhere('id', $current);
+            $this->assertStringContainsString($world->rulesetVersion->settings['facility_definitions']['pizzeria']['name'], $currentAgain['message']);
+            $service->publicWorldPage($otherWorld->fresh());
+            $queries = collect(DB::getQueryLog());
+            // One cold Ruleset load, none per facility/event/page or for the preloaded other Ruleset.
+            $this->assertCount(1, $queries->filter(fn (array $query): bool => str_contains($query['query'], '"ruleset_versions"')));
+            $this->assertCount(0, $queries->filter(fn (array $query): bool => str_contains($query['query'], '"facility_definitions"')));
+        } finally {
+            DB::disableQueryLog();
+            DB::flushQueryLog();
+        }
     }
 
     public function test_major_news_is_a_fixed_public_lifecycle_feed_and_excludes_commands_awards_and_turn_completion(): void
