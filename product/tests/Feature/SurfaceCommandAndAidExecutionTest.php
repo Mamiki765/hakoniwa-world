@@ -77,6 +77,44 @@ final class SurfaceCommandAndAidExecutionTest extends CommandAndMissileTestCase
         ];
     }
 
+    public function test_monster_blocked_excavation_preserves_the_land_origin_for_reclaim(): void
+    {
+        [$world, $user, $nation, , $space, $target, $anchor] = $this->landOriginFixture('shallow', LandDevelopmentDistancePolicy::RECLAMATION_RADIUS);
+        $this->monster($world, $anchor);
+        $before = $anchor->fresh()->getAttributes();
+        $service = app(CommandQueueService::class);
+        $blocked = $this->queue($service, $user, $nation, $space, 'excavate', $anchor);
+        $reclaim = $this->queue($service, $user, $nation, $space, 'reclaim', $target);
+        $preview = $this->waterDevelopmentPreview($user, $nation, $space, $target, 'reclaim', 2);
+        $this->assertSame('currently_executable', $preview['execution_preview_status']);
+        $this->assertNull($preview['projected_distance_reason_code']);
+        app(DomesticCommandExecutor::class)->execute($this->context($world, 2, hash('sha256', 'occupied origin retained'), [$nation->id]));
+        $this->assertSame('occupied_by_monster', $blocked->fresh()->failure_code);
+        $this->assertSame('completed', $reclaim->fresh()->status);
+        $this->assertSame($before, $anchor->fresh()->getAttributes());
+    }
+
+    public function test_reclaim_forecast_does_not_reveal_hidden_foreign_undersea_ownership(): void
+    {
+        [, $user, $nation, $foreign, $space, $target, , , $base] = $this->landOriginFixture('shallow', LandDevelopmentDistancePolicy::RECLAMATION_RADIUS);
+        $this->landOriginCell($space, $base->x, $base->y, 'sea', null);
+        $this->queue(app(CommandQueueService::class), $user, $nation, $space, 'finance', null);
+        $keys = array_flip(['available', 'execution_preview_status', 'execution_warnings', 'distance_reason_code', 'projected_distance_reason_code']);
+        $before = [];
+        foreach ([1, 2] as $position) {
+            $before[$position] = array_intersect_key($this->waterDevelopmentPreview($user, $nation, $space, $target, 'reclaim', $position), $keys);
+            $this->assertSame('currently_executable', $before[$position]['execution_preview_status']);
+        }
+        $hidden = $this->landOriginCell($space, $base->x, $base->y, 'sea', $foreign->id, 'seabed_base');
+        $this->assertNull(MapCellPresenter::visibleState($hidden, $nation->id)['owner_nation_id']);
+        foreach ([1, 2] as $position) {
+            $this->assertSame($before[$position], array_intersect_key($this->waterDevelopmentPreview($user, $nation, $space, $target, 'reclaim', $position), $keys));
+        }
+        // A real sight source reveals the neighbor; its known ownership can block the preview.
+        $this->landOriginCell($space, $base->x - 1, $base->y, 'wasteland', $nation->id);
+        $this->assertSame('currently_unavailable', $this->waterDevelopmentPreview($user, $nation, $space, $target, 'reclaim', 2)['execution_preview_status']);
+    }
+
     #[DataProvider('landOriginCommands')]
     public function test_water_development_uses_owned_land_at_its_existing_distance_boundary(
         string $commandKey,

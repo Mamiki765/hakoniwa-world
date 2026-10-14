@@ -44,6 +44,7 @@ use App\Models\Ship;
 use App\Models\TerrainDefinition;
 use App\Models\User;
 use App\Models\World;
+use App\Services\MapCellPresenter;
 use DomainException;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Contracts\Encryption\DecryptException;
@@ -88,6 +89,7 @@ final class CommandQueueService
         private readonly DailyQuestService $dailyQuests,
         private readonly UnderseaConstructionPolicy $underseaConstruction,
         private readonly OwnedLandProximity $ownedLand,
+        private readonly SurfaceVisibilityService $visibility,
     ) {}
 
     /**
@@ -1225,6 +1227,20 @@ final class CommandQueueService
     private function projectQueuedCellResult(NationCommandQueueItem $item, array $state, MapCell $cell, NationCommandQueue $queue, Nation $nation, MapSpace $mapSpace, SurfaceCommandProjectionMemo $projectionMemo): array
     {
         $definition = $item->definition;
+        if ($definition->target_type === 'cell' && $definition->key !== 'territory_expand'
+            && ! in_array($definition->key, MissileImpactResolver::MISSILE_KEYS, true)) {
+            $occupied = $projectionMemo->monsterOccupied($cell->id);
+            if ($occupied === null) {
+                $exists = $cell->getAttribute('monster_occupancy_exists');
+                $occupied = $exists === null
+                    ? MonsterOccupancy::query()->where('map_cell_id', $cell->id)->exists()
+                    : (bool) $exists;
+                $projectionMemo->putMonsterOccupied($cell->id, $occupied);
+            }
+            if ($occupied) {
+                return $state;
+            }
+        }
         $matches = $definition->key === 'territory_expand'
             ? $this->projectedTerritoryTargetMatches($definition, $state, $cell, $queue, (int) $item->queue_position, $nation, $mapSpace, $projectionMemo)
             : $this->projectedTargetMatches($definition, $state, $nation, $mapSpace, $cell, $queue, (int) $item->queue_position, $projectionMemo, $item->parameters);
@@ -2003,6 +2019,7 @@ final class CommandQueueService
             ->where('x', $x)
             ->where('y', $y)
             ->with(['terrain', 'facility'])
+            ->withExists('monsterOccupancy')
             ->first();
         if ($cell === null) {
             throw new PlayerFacingCommandException('target cellが存在しません。');
@@ -2113,20 +2130,43 @@ final class CommandQueueService
     private function projectedForeignAdjacentCell(Nation $nation, MapSpace $mapSpace, MapCell $cell, NationCommandQueue $queue, int $beforePosition, SurfaceCommandProjectionMemo $projectionMemo): bool
     {
         $projection = $projectionMemo->landProjection($this->landProjectionKey($queue, $nation, $mapSpace));
-        $neighbors = $projection === null ? $this->projectedNeighborCells($mapSpace, $cell, $projectionMemo) : null;
+        $key = $nation->id.':'.$mapSpace->id.':'.$cell->id;
+        $visibleNeighbors = $projectionMemo->visibleNeighbors($key);
+        if ($projection === null && $visibleNeighbors === null) {
+            $visibleNeighbors = $this->visibleProjectionStates($nation, $mapSpace, $this->projectedNeighborCells($mapSpace, $cell, $projectionMemo));
+            $projectionMemo->putVisibleNeighbors($key, $visibleNeighbors);
+        }
         foreach ((new GridCoordinate($cell->x, $cell->y))->neighborsWithin($mapSpace->min_x, $mapSpace->max_x, $mapSpace->min_y, $mapSpace->max_y) as $point) {
-            $neighbor = $projection?->cell($point->x, $point->y)
-                ?? $neighbors?->first(fn (MapCell $candidate): bool => $candidate->x === $point->x && $candidate->y === $point->y);
-            if ($neighbor === null) {
+            $state = $projection === null
+                ? ($visibleNeighbors[$point->x.':'.$point->y] ?? null)
+                : $projection->stateBefore($point->x, $point->y, $beforePosition);
+            if ($state === null) {
                 continue;
             }
-            $state = $this->projectCellStateBeforePosition($neighbor, $queue, $beforePosition, $nation, $mapSpace, projectionMemo: $projectionMemo);
             if ($state['owner_nation_id'] !== null && $state['owner_nation_id'] !== $nation->id) {
                 return true;
             }
         }
 
         return false;
+    }
+
+    /**
+     * @param  Collection<int, MapCell>  $cells
+     * @return array<string, array{terrain_key: string, facility_key: string|null, owner_nation_id: int|null, facility_operational_state: string|null}>
+     */
+    private function visibleProjectionStates(Nation $nation, MapSpace $mapSpace, Collection $cells): array
+    {
+        $needsSight = $cells->contains(fn (MapCell $cell): bool => $cell->owner_nation_id !== $nation->id
+            && MapCellPresenter::visibleState($cell, $nation->id)['facility_key'] !== $cell->facility?->key);
+        $visible = $needsSight ? $this->visibility->visibleCoordinates($mapSpace, $cells, $nation->id) : [];
+        $states = [];
+        foreach ($cells as $cell) {
+            $key = $cell->x.':'.$cell->y;
+            $states[$key] = MapCellPresenter::visibleState($cell, $nation->id, isset($visible[$key]));
+        }
+
+        return $states;
     }
 
     private function buildLandProjection(Nation $nation, MapSpace $mapSpace, MapCell $target, NationCommandQueue $queue, SurfaceCommandProjectionMemo $projectionMemo): SurfaceLandProjection
@@ -2156,8 +2196,11 @@ final class CommandQueueService
                 foreach ($rows as $y => $xs) {
                     $query->orWhere(fn ($row) => $row->where('y', $y)->whereIn('x', $xs));
                 }
-            })->with(['terrain', 'facility'])->get();
-        $projection = new SurfaceLandProjection($cells, array_fill_keys(array_keys($points), true));
+            })->with(['terrain', 'facility'])->withExists('monsterOccupancy')->get();
+        foreach ($cells as $cell) {
+            $projectionMemo->putMonsterOccupied($cell->id, (bool) $cell->getAttribute('monster_occupancy_exists'));
+        }
+        $projection = new SurfaceLandProjection($cells, array_fill_keys(array_keys($points), true), $this->visibleProjectionStates($nation, $mapSpace, $cells));
         $projectionMemo->putLandProjection($this->landProjectionKey($queue, $nation, $mapSpace), $projection);
 
         // A chronological pass resolves reclamation chains without recursive distance calls.

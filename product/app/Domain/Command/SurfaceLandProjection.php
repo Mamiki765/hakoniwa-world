@@ -20,18 +20,14 @@ final class SurfaceLandProjection
     /**
      * @param  Collection<int, MapCell>  $cells
      * @param  array<string, true>  $coordinates
+     * @param  array<string, array{terrain_key: string, facility_key: string|null, owner_nation_id: int|null, facility_operational_state: string|null}>  $initialStates
      */
-    public function __construct(Collection $cells, private readonly array $coordinates)
+    public function __construct(Collection $cells, private readonly array $coordinates, array $initialStates)
     {
         foreach ($cells as $cell) {
             $key = $cell->x.':'.$cell->y;
             $this->cells[$key] = $cell;
-            $this->changes[$key][0] = [
-                'terrain_key' => $cell->terrain->key,
-                'facility_key' => $cell->facility?->key,
-                'owner_nation_id' => $cell->owner_nation_id,
-                'facility_operational_state' => $cell->facility_operational_state,
-            ];
+            $this->changes[$key][0] = $initialStates[$key];
         }
     }
 

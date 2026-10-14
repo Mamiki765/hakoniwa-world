@@ -22,6 +22,34 @@ final class SurfaceCommandProjectionMemo
     /** @var array<string, SurfaceLandProjection> */
     private array $landProjections = [];
 
+    /** @var array<int, bool> */
+    private array $monsterOccupancies = [];
+
+    public function monsterOccupied(int $cellId): ?bool
+    {
+        return $this->monsterOccupancies[$cellId] ?? null;
+    }
+
+    public function putMonsterOccupied(int $cellId, bool $occupied): void
+    {
+        $this->monsterOccupancies[$cellId] = $occupied;
+    }
+
+    /** @var array<string, array<string, array{terrain_key: string, facility_key: string|null, owner_nation_id: int|null, facility_operational_state: string|null}>> */
+    private array $visibleNeighbors = [];
+
+    /** @return array<string, array{terrain_key: string, facility_key: string|null, owner_nation_id: int|null, facility_operational_state: string|null}>|null */
+    public function visibleNeighbors(string $key): ?array
+    {
+        return $this->visibleNeighbors[$key] ?? null;
+    }
+
+    /** @param array<string, array{terrain_key: string, facility_key: string|null, owner_nation_id: int|null, facility_operational_state: string|null}> $states */
+    public function putVisibleNeighbors(string $key, array $states): void
+    {
+        $this->visibleNeighbors[$key] = $states;
+    }
+
     public function landProjection(string $key): ?SurfaceLandProjection
     {
         return $this->landProjections[$key] ?? null;
