@@ -1227,6 +1227,10 @@ final class CommandQueueService
     private function projectQueuedCellResult(NationCommandQueueItem $item, array $state, MapCell $cell, NationCommandQueue $queue, Nation $nation, MapSpace $mapSpace, SurfaceCommandProjectionMemo $projectionMemo): array
     {
         $definition = $item->definition;
+        // Ship movement is resolved by the Turn, so its construction is not a fixed-cell forecast.
+        if (array_key_exists('construction_ship_id', $item->parameters)) {
+            return $state;
+        }
         if ($definition->target_type === 'cell' && $definition->key !== 'territory_expand'
             && ! in_array($definition->key, MissileImpactResolver::MISSILE_KEYS, true)) {
             $occupied = $projectionMemo->monsterOccupied($cell->id);

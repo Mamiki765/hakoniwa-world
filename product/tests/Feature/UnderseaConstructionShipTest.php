@@ -62,14 +62,30 @@ final class UnderseaConstructionShipTest extends CommandAndMissileTestCase
         $this->assertNull($commands->firstWhere('key', $commandKey)['projected_distance_reason_code']);
         $item = $this->queue($service, $user, $nation, $this->surfaceMapSpace($world), $commandKey, $target, $quantity, parameters: $params);
         $plan = $this->getJson('/api/v1/nations/'.$nation->id.'/map-spaces/'.$this->surfaceMapSpace($world)->id.'/command-queue')->assertOk();
-        $this->assertSame($commands->firstWhere('key', $commandKey)['cost_money'], collect($plan->json('data.items'))->firstWhere('id', $item->id)['effective_cost_money']);
+        $planned = collect($plan->json('data.items'))->firstWhere('id', $item->id);
+        $this->assertSame($commands->firstWhere('key', $commandKey)['cost_money'], $planned['effective_cost_money']);
+        $this->assertSame([null, null, $ship->id], [$planned['target_x'], $planned['target_y'], $planned['parameters']['construction_ship_id']]);
+        if ($commandKey === 'build_seabed_base') {
+            $queue = $item->queue()->with('items.definition')->sole();
+            $projection = $service->projectCellStateBeforePosition($target, $queue, 2, $nation, $this->surfaceMapSpace($world));
+            $this->assertNull($projection['facility_key']);
+            $this->assertNull($projection['owner_nation_id']);
+        }
+        $buildCell = $this->remoteSea($world, $target->id);
+        $ship->update(['map_cell_id' => $buildCell->id]);
         $context = $this->context($world, 2, hash('sha256', 'working ship '.$commandKey), [$nation->id]);
         app(DomesticCommandExecutor::class)->execute($context);
         $this->assertSame('completed', $item->fresh()->status);
-        $this->assertSame($facilityKey, $target->fresh()->facility?->key);
-        $this->assertSame($nation->id, $target->fresh()->owner_nation_id);
+        $this->assertSame($facilityKey, $buildCell->fresh()->facility?->key);
+        $this->assertSame($nation->id, $buildCell->fresh()->owner_nation_id);
+        $this->assertNull($target->fresh()->facility_definition_id);
+        $this->assertNull($target->fresh()->owner_nation_id);
+        $this->assertSame([$target->x, $target->y], [$item->fresh()->target_x, $item->fresh()->target_y]);
         $this->assertSame(100_000 - $command->cost_money * $quantity * 3, (int) $nation->fresh()->money);
-        $this->assertSame([$target->id, Ship::STATE_ACTIVE, 1], [$ship->fresh()->map_cell_id, $ship->fresh()->state, $ship->fresh()->current_hp]);
+        $this->assertSame([$buildCell->id, Ship::STATE_ACTIVE, 1], [$ship->fresh()->map_cell_id, $ship->fresh()->state, $ship->fresh()->current_hp]);
+        $event = DB::table('audit_events')->where('event_type', 'command.success')->where('subject_id', $item->id)->sole();
+        $metadata = json_decode($event->metadata, true, flags: JSON_THROW_ON_ERROR);
+        $this->assertSame([$buildCell->x, $buildCell->y, $buildCell->id], [$event->x, $event->y, $metadata['after']['cell_id']]);
 
     }
 
@@ -165,7 +181,7 @@ final class UnderseaConstructionShipTest extends CommandAndMissileTestCase
         }
     }
 
-    public function test_heading_only_movement_spends_ten_oil_and_invalidates_a_plan_at_the_old_location(): void
+    public function test_heading_only_movement_spends_ten_oil_and_construction_follows_before_next_movement(): void
     {
         $world = $this->lightweightWorld();
         [$user, $nation] = $this->nation($world, '工作船航行');
@@ -180,16 +196,50 @@ final class UnderseaConstructionShipTest extends CommandAndMissileTestCase
         $this->assertSame($origin->id, $ship->fresh()->map_cell_id);
         $this->assertSame(30, $oil->fresh()->amount);
         $ship->update(['heading' => GridCoordinate::EAST]);
+        $nation->update(['money' => 100_000]);
+        // The finance predecessor consumes Turn 3 while the ship moves; construction waits for Turn 4.
+        $this->queue(app(CommandQueueService::class), $user, $nation->fresh(), $this->surfaceMapSpace($world), 'finance', null);
+        $item = $this->queue(app(CommandQueueService::class), $user, $nation->fresh(), $this->surfaceMapSpace($world), 'build_undersea_fire_station', $origin, parameters: ['construction_ship_id' => $ship->id]);
         $this->executeCellResolution($this->context($world, 3, hash('sha256', 'working ship heading'), [$nation->id]), $origin);
         $this->assertSame($destination->id, $ship->fresh()->map_cell_id);
         $this->assertSame(20, $oil->fresh()->amount);
         $this->assertSame(1, $ship->fresh()->current_hp);
-        // Plans reference both a Ship identity and a fixed target coordinate.
-        $item = $this->queue(app(CommandQueueService::class), $user, $nation->fresh(), $this->surfaceMapSpace($world), 'build_undersea_fire_station', $destination, parameters: ['construction_ship_id' => $ship->id]);
-        $ship->refresh()->update(['map_cell_id' => $origin->id]);
-        app(DomesticCommandExecutor::class)->execute($this->context($world, 4, hash('sha256', 'working ship moved before building'), [$nation->id]));
-        $this->assertSame('invalid_parameter', $item->fresh()->failure_code);
-        $this->assertNull($destination->fresh()->facility_definition_id);
+        $this->assertSame('queued', $item->fresh()->status);
+        $context = $this->context($world, 4, hash('sha256', 'working ship moved before building'), [$nation->id]);
+        app(DomesticCommandExecutor::class)->execute($context);
+        $this->assertSame('completed', $item->fresh()->status);
+        $this->assertNull($origin->fresh()->facility_definition_id);
+        $this->assertSame('undersea_fire_station', $destination->fresh()->facility?->key);
+        $next = MapCell::query()->where('map_space_id', $origin->map_space_id)->where('x', $destination->x + 1)->where('y', $destination->y)->sole();
+        app(MapCellStateService::class)->transitionTerrain($next, TerrainDefinition::query()->where('key', 'sea')->sole());
+        $this->executeCellResolution($context, $destination);
+        $this->assertSame($next->id, $ship->fresh()->map_cell_id);
+        $this->assertSame(10, $oil->fresh()->amount);
+        $this->assertSame('undersea_fire_station', $destination->fresh()->facility?->key);
+        $this->assertNull($next->fresh()->facility_definition_id);
+    }
+
+    public function test_moved_construction_rechecks_the_new_cell_and_records_its_failure_location(): void
+    {
+        $world = $this->lightweightWorld();
+        [$user, $nation] = $this->nation($world, '移動先の建設条件');
+        $origin = $this->remoteSea($world);
+        $target = $this->remoteSea($world, $origin->id);
+        $ship = $this->ship($world, $nation, $origin);
+        $item = $this->queue(app(CommandQueueService::class), $user, $nation, $this->surfaceMapSpace($world), 'build_seabed_base', $origin, parameters: ['construction_ship_id' => $ship->id]);
+        app(MapCellStateService::class)->setFacility($target, FacilityDefinition::query()->where('key', 'seabed_base')->sole());
+        $target->update(['owner_nation_id' => $nation->id]);
+        $ship->update(['map_cell_id' => $target->id]);
+        $money = $item->definition->cost_money * 3;
+        $nation->update(['money' => $money]);
+        app(DomesticCommandExecutor::class)->execute($this->context($world, 2, hash('sha256', 'blocked construction destination'), [$nation->id]));
+        $this->assertSame('facility_exists', $item->fresh()->failure_code);
+        $this->assertSame([$target->x, $target->y], [$item->fresh()->failure_metadata['x'], $item->fresh()->failure_metadata['y']]);
+        $this->assertNull($origin->fresh()->facility_definition_id);
+        $this->assertSame('seabed_base', $target->fresh()->facility?->key);
+        $capacity = app(NationCapacityResolver::class)->resolve($nation, $world->rulesetVersion)->money;
+        $finance = min($world->rulesetVersion->settings['turn_processing']['automatic_finance_money'], max(0, $capacity - $money));
+        $this->assertSame($money + $finance, (int) $nation->fresh()->money);
     }
 
     public function test_sinking_the_working_ship_does_not_add_karma_or_destroy_the_facility_below_it(): void

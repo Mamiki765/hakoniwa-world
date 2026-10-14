@@ -32,9 +32,11 @@
 }
 ```
 
-`parameters.construction_ship_id?: number` は正の整数。省略時は通常建設。`target_ship_id` は既存の船廃棄用 field なので流用しない。ID を付けた場合、登録と予測で対象船を確認し、実行時にも World・所有・船種・生存・固定した対象座標との一致を lock 下で再確認する。船の移動・撃沈後に通常建設へ fallback せず失敗する。
+`parameters.construction_ship_id?: number` は正の整数。省略時は通常建設。`target_ship_id` は既存の船廃棄用 field なので流用しない。ID を付けた場合、登録と現在条件の予測では指定船が選択マスにいることを確認し、実行時には World・所有・船種・生存を lock 下で再確認して、その時点の船の現在マスの真下へ建設する。移動だけでは失敗しない。沈没・不存在・他所有・非工作船なら通常建設へ fallback せず失敗する。
 
-工作船経由では距離条件のみを置換する。地形、施設占有、所有、首都からの人口移住、資金、通常の建設処理は既存経路を共有し、通常費用の3倍を支払う。船は消費しない。ID なしの計画は船が同じ場所にいても通常費用。掘削等の非対象 command へ ID を添えると登録は422になる。
+公式Turnは `development_commands` → `process_cells` の順。工作船建設は前者でその時点の位置を解決し、船の通常移動は後者で行う。同じTurnの通常移動先へ先に建設する処理や、追加の移動処理はない。予約待ちの間に以前のTurnで移動した場合は、移動後の位置を使う。
+
+工作船経由では建設先を実行時の船の真下へ解決し、距離条件を置換する。地形、施設占有、所有、首都からの人口移住、資金はその実行先で通常どおり再判定し、既存の建設処理で通常費用の3倍を支払う。船は消費しない。ID なしの計画は予約座標と通常費用を維持し、船が同じ場所にいても通常建設のまま。掘削・油田探索等の非対象 command へ ID を添えると登録は422になる。
 
 既存 `GET .../command-definitions` には任意の query `construction_ship_id=123` を追加できる。対象 command の通常の `cost_money`・`shortfall_money`・`execution_preview_status` に工作船経由の予測を反映する。対象 command の `parameters` にも ID の schema を返す。
 
@@ -48,7 +50,9 @@ construction_cost_multiplier: number;
 
 所有者向け地図の `ship` にも `undersea_construction: boolean` と `movement_mode: string` を返す。UIは船種名・keyではなく能力flagで建設操作を選ぶ。他国向けはそれぞれfalse・nullとし、視界外で工作船自体を返さない条件は維持する。
 
-保存済み計画の `effective_cost_money` は工作船の倍率を含む。指定船が移動・沈没しても価格表示は保持し、実行時の生存・位置判定とは分ける。参照船は計画全体でまとめて取得する。
+保存済み計画の `effective_cost_money` は工作船の倍率を含む。指定船が移動・沈没しても価格表示は保持する。参照船は計画全体でまとめて取得する。工作船指定の queue API の `target_x` / `target_y` は null とし、`parameters.construction_ship_id` を対象として「工作船の真下」と表示する。登録時の座標は request identity と既存台帳のため保存するが、固定建設先として表示・実行・後続計画のマス状態予測に使用しない。船の将来位置は予測しない。成功・失敗ログの座標は実行時に解決した建設先を使い、指定船が無効なら座標を返さない。
+
+画面の操作名は「真下に建築」。旧「実行ターンにこのマスにいないと失敗」の注意文は使わない。画面担当は `construction_ship_id` 付き計画を固定座標や「島全体」として表示せず、確認・計画・履歴を「工作船の真下」に揃える。
 
 `meta.ship_types[].capacity` は種類別の実上限。工作船は1、既存船は従来の上限。建造 command の selector は既存 `quantity_options` から取得し、UI に番号を固定しない。
 
