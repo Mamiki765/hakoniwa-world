@@ -1,7 +1,7 @@
 import { computed, reactive, ref } from 'vue';
 import { api } from '../api/client';
 import { floorDiv, neighbor } from '../map/projection';
-import type { MapCell, MapChunk, MapSpace, ShipOverlay } from '../types';
+import type { MapCell, MapChunk, MapSpace, ShipCourse } from '../types';
 
 const CHUNK_SIZE = 16;
 
@@ -217,12 +217,17 @@ export function useMapState() {
         selected.value = cells.get(key(next.x, next.y)) ?? selected.value;
     }
 
-    function updateSelectedShip(ship: ShipOverlay): void {
-        const current = selected.value;
-        if (current === null || current.ship?.id !== ship.id) return;
-        const updated = { ...current, ship };
-        cells.set(key(current.x, current.y), updated);
-        selected.value = updated;
+    // 進路・目的地の変更結果を、その船が載っている読み込み済みのマスへ反映する。選択中のマス以外の船も対象。
+    function updateShipCourse(course: ShipCourse): void {
+        for (const [cellKey, cell] of cells) {
+            if (cell.ship?.id !== course.id || !cell.ship.is_owner) continue;
+            const updated = {
+                ...cell,
+                ship: { ...cell.ship, heading: course.heading, destination: course.destination, version: course.version },
+            };
+            cells.set(cellKey, updated);
+            if (selected.value?.x === cell.x && selected.value?.y === cell.y) selected.value = updated;
+        }
     }
 
     return {
@@ -239,6 +244,6 @@ export function useMapState() {
         select,
         clearSelection,
         moveSelection,
-        updateSelectedShip,
+        updateShipCourse,
     };
 }

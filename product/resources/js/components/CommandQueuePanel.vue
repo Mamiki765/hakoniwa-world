@@ -2,6 +2,8 @@
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue';
 import { ApiError, api } from '../api/client';
 import { formatExactMoney } from '../formatters/money';
+import { SHIP_HEADING_LABELS, shipIdleLabel, shipInstructionLabel } from '../formatters/shipInstruction';
+import { hexDistance } from '../map/projection';
 import type {
     CommandCatalog,
     CommandDefinition,
@@ -11,8 +13,9 @@ import type {
     EffectivePlanSlot,
     MapCell,
     Nation,
+    OwnShipStatus,
     ParadoxBalance,
-    ShipOverlay,
+    ShipCourse,
     UndergroundFacilityTarget,
 } from '../types';
 import CellDetails from './CellDetails.vue';
@@ -48,7 +51,7 @@ const props = defineProps<{
 }>();
 const emit = defineEmits<{
     queue: [queue: CommandQueue];
-    ship: [ship: ShipOverlay];
+    ship: [course: ShipCourse];
     dailyQuest: [quest: DailyQuestProgress];
     paradox: [balance: ParadoxBalance | null];
 }>();
@@ -78,8 +81,13 @@ const definitionsKey = ref<string | null>(null);
 const mutating = ref(false);
 const busy = computed(() => refreshing.value || mutating.value);
 const commandStatus = ref<CommandStatus>({ kind: 'idle', text: '未送信' });
-const shipStatus = ref<CommandStatus>({ kind: 'idle', text: '未変更' });
+const shipStatus = ref<CommandStatus>({ kind: 'idle', text: '' });
+// 進路セレクトの選択。null は「まだ選んでいない」（いまの指示が目的地・おまかせ・待機のとき）。
 const shipHeading = ref<number | null>(null);
+const ownShips = ref<OwnShipStatus[]>([]);
+let ownShipsController: AbortController | null = null;
+const destinationShipId = ref<number | null>(null);
+const destinationStatus = ref<CommandStatus>({ kind: 'idle', text: '' });
 const selectedPosition = ref(1);
 const selectedItemId = ref<number | null>(null);
 // 行を選んでいないあいだは、入れる位置が計画の末尾に付いていく。
@@ -154,6 +162,30 @@ const pendingCostMoney = computed(() => {
         ?? definition.cost_money;
 });
 const ownShip = computed(() => props.selected?.ship?.is_owner === true ? props.selected.ship : null);
+const nationActive = computed(() => (props.nationState ?? 'active') === 'active');
+const ownShipMovementMode = computed(() => ownShips.value.find((ship) => ship.id === ownShip.value?.id)?.movement_mode ?? null);
+const ownShipDestinationDistance = computed(() => {
+    const destination = ownShip.value?.destination;
+    return props.selected === null || destination == null ? null : hexDistance(props.selected, destination);
+});
+// 目的地にできるのは、表示上の海のマス。自国の船がいるマスでは、その船の欄を出す。
+const destinationCell = computed(() => {
+    const cell = props.selected;
+    if (cell === null || (props.selectedUnderground ?? null) !== null || ownShip.value !== null || cell.terrain !== 'sea') return null;
+    return cell;
+});
+const destinationCandidates = computed(() => {
+    const cell = destinationCell.value;
+    if (cell === null) return [];
+    return ownShips.value
+        .map((ship) => ({
+            ship,
+            distance: hexDistance(ship, cell),
+            here: ship.destination?.x === cell.x && ship.destination?.y === cell.y,
+        }))
+        .sort((left, right) => left.distance - right.distance || left.ship.sort_order - right.ship.sort_order || left.ship.id - right.ship.id);
+});
+const chosenDestinationShip = computed(() => destinationCandidates.value.find((candidate) => candidate.ship.id === destinationShipId.value) ?? null);
 const selectedPlanSlot = computed(() => cursorPinned.value
     ? queue.value.plan.find((slot) => slot.position === selectedPosition.value) ?? null
     : null);
@@ -172,39 +204,133 @@ const pendingTargetLabel = computed(() => {
     return '島全体';
 });
 
+// 選んだマスが変わったら、前の船操作の結果は消す。変更直後に同じ船の指示が変わっても、結果の表示は残す。
 watch(
-    () => [ownShip.value?.id, ownShip.value?.heading],
+    () => `${ownShip.value?.id}:${props.selected?.x}:${props.selected?.y}`,
+    () => {
+        shipStatus.value = { kind: 'idle', text: '' };
+        destinationStatus.value = { kind: 'idle', text: '' };
+    },
+    { immediate: true },
+);
+watch(
+    () => `${ownShip.value?.id}:${ownShip.value?.heading}:${ownShip.value?.destination?.x}:${ownShip.value?.destination?.y}`,
     () => {
         shipHeading.value = ownShip.value?.heading ?? null;
-        shipStatus.value = { kind: 'idle', text: '未変更' };
     },
     { immediate: true },
 );
 
-async function updateShipHeading(): Promise<void> {
-    const ship = ownShip.value;
-    if (busy.value || (props.nationState ?? 'active') !== 'active' || ship === null || ship.version === null) return;
+// 船の欄か目的地の欄を出すマスを選んだときだけ、自国船一覧を取り直す（位置・版・移動方式はターンで変わる）。
+watch(
+    () => `${props.nationId}:${nationActive.value && (ownShip.value !== null || destinationCell.value !== null)}:${props.selected?.x}:${props.selected?.y}`,
+    () => {
+        if (!nationActive.value || (ownShip.value === null && destinationCell.value === null)) return;
+        void loadOwnShips();
+    },
+    { immediate: true },
+);
+watch(
+    () => props.nationId,
+    () => {
+        ownShips.value = [];
+    },
+);
+watch(
+    destinationCandidates,
+    (candidates) => {
+        if (!candidates.some((candidate) => candidate.ship.id === destinationShipId.value)) {
+            destinationShipId.value = candidates[0]?.ship.id ?? null;
+        }
+    },
+    { immediate: true },
+);
+
+async function loadOwnShips(): Promise<void> {
+    ownShipsController?.abort();
+    const controller = new AbortController();
+    ownShipsController = controller;
+    const nationId = props.nationId;
+    try {
+        const rows = await api<OwnShipStatus[]>(`/api/v1/nations/${nationId}/ships`, { signal: controller.signal });
+        if (controller !== ownShipsController || nationId !== props.nationId) return;
+        ownShips.value = Array.isArray(rows) ? rows : [];
+    } catch (error) {
+        if (controller !== ownShipsController || isAbortError(error)) return;
+        if (destinationCell.value !== null) destinationStatus.value = { kind: 'error', text: '船の一覧を読み込めませんでした' };
+    } finally {
+        if (controller === ownShipsController) ownShipsController = null;
+    }
+}
+
+function applyShipCourse(course: ShipCourse): void {
+    ownShips.value = ownShips.value.map((ship) => ship.id === course.id
+        ? { ...ship, heading: course.heading, destination: course.destination, version: course.version }
+        : ship);
+    emit('ship', course);
+}
+
+// 進路・目的地の変更は予約ではなく即時に保存する。成功したら手元の一覧と地図の船を応答で置き換える。
+async function sendShipCourse(
+    ship: { id: number; version: number | null },
+    kind: 'heading' | 'destination',
+    value: number | { x: number; y: number } | null,
+    status: typeof shipStatus,
+    successText: (course: ShipCourse) => string,
+): Promise<void> {
+    if (busy.value || !nationActive.value || ship.version === null) return;
     beginMutation();
     try {
-        const result = await api<{ id: number; heading: number | null; version: number }>(
-            `/api/v1/nations/${props.nationId}/ships/${ship.id}/heading`,
-            {
-                method: 'PATCH',
-                body: JSON.stringify({ heading: shipHeading.value, expected_version: ship.version }),
-            },
-        );
-        emit('ship', { ...ship, heading: result.heading, version: result.version });
-        shipStatus.value = { kind: 'success', text: '進路を変更しました' };
+        const course = await api<ShipCourse>(`/api/v1/nations/${props.nationId}/ships/${ship.id}/${kind}`, {
+            method: 'PATCH',
+            body: JSON.stringify({ [kind]: value, expected_version: ship.version }),
+        });
+        applyShipCourse(course);
+        status.value = { kind: 'success', text: successText(course) };
     } catch (error) {
-        shipStatus.value = {
-            kind: 'error',
-            text: error instanceof ApiError && error.status === 409
-                ? 'Shipが更新されています。マップを再読込してください'
-                : playerFacingReason(error, '進路を変更できませんでした'),
-        };
+        if (error instanceof ApiError && error.status === 409) {
+            // 版のずれ・ターン処理中など。最新の船を読み直して、地図の船の版もそろえる。
+            await loadOwnShips();
+            for (const row of ownShips.value) emit('ship', { id: row.id, heading: row.heading, destination: row.destination, version: row.version });
+            status.value = { kind: 'error', text: '船の状態を読み直しました。もう一度操作してください' };
+        } else {
+            status.value = { kind: 'error', text: shipFailureReason(error) };
+        }
     } finally {
         await finishMutation();
     }
+}
+
+function shipFailureReason(error: unknown): string {
+    if (error instanceof ApiError && error.status === 422) {
+        const message = Object.values(error.errors).flat().find((text) => text.trim() !== '') ?? error.message;
+        const concise = message.replace(/\s+/g, ' ').trim();
+        if (concise !== '') return concise.length <= 100 ? concise : `${concise.slice(0, 99)}…`;
+    }
+    return '船の指示を変更できませんでした';
+}
+
+async function updateShipHeading(): Promise<void> {
+    const ship = ownShip.value;
+    const heading = shipHeading.value;
+    if (ship === null || heading === null) return;
+    await sendShipCourse(ship, 'heading', heading, shipStatus, () => `進路を${SHIP_HEADING_LABELS[heading]}にしました`);
+}
+
+async function clearShipCourse(): Promise<void> {
+    const ship = ownShip.value;
+    if (ship === null) return;
+    const idle = shipIdleLabel(ownShipMovementMode.value);
+    const result = idle === '待機' ? '待機します' : `${idle}に戻ります`;
+    await sendShipCourse(ship, ship.destination != null ? 'destination' : 'heading', null, shipStatus, () => `指示を解除しました。${result}`);
+}
+
+async function setShipDestination(): Promise<void> {
+    const cell = destinationCell.value;
+    const ship = chosenDestinationShip.value?.ship;
+    if (cell === null || ship === undefined) return;
+    const target = { x: cell.x, y: cell.y };
+    await sendShipCourse(ship, 'destination', target, destinationStatus, () => `${ship.name} (${ship.x},${ship.y}) の目的地を (${target.x},${target.y}) にしました`);
 }
 
 function targetKey(): string {
@@ -894,6 +1020,8 @@ function playerFacingReason(error: unknown, fallback: string): string {
 
 onBeforeUnmount(() => {
     disposed = true;
+    ownShipsController?.abort();
+    ownShipsController = null;
     refreshGeneration++;
     activeRefreshController?.abort();
     activeRefreshController = null;
@@ -910,21 +1038,36 @@ onBeforeUnmount(() => {
             <CellDetails v-else :cell="selected" />
             <p v-if="queuedOnSelected.length" class="sl-queued"><b>予約</b>{{ queuedOnSelected.map((item) => `${item.queue_position}番 ${item.command_name}`).join('、') }}</p>
             <section v-if="ownShip" class="sl-ship" aria-label="選択中の自国Ship操作">
-                <p v-if="(nationState ?? 'active') !== 'active'">休止・復興中は進路を変更できません。</p>
-                <form v-else @submit.prevent="updateShipHeading">
-                    <label for="sl-ship-heading">船の進路</label>
-                    <select id="sl-ship-heading" v-model="shipHeading">
-                        <option :value="null">random</option>
-                        <option :value="0">東</option>
-                        <option :value="1">北東</option>
-                        <option :value="2">北西</option>
-                        <option :value="3">西</option>
-                        <option :value="4">南西</option>
-                        <option :value="5">南東</option>
+                <p v-if="!nationActive">休止・復興中は船の指示を変更できません。</p>
+                <template v-else>
+                    <p class="sl-ship-order">
+                        <b>船の指示</b>
+                        <span>{{ shipInstructionLabel(ownShip, ownShipMovementMode) }}</span>
+                        <small v-if="ownShipDestinationDistance !== null">直線{{ ownShipDestinationDistance }}マス</small>
+                        <button v-if="ownShip.heading !== null || ownShip.destination != null" type="button" :disabled="busy" @click="clearShipCourse">解除</button>
+                    </p>
+                    <form @submit.prevent="updateShipHeading">
+                        <label for="sl-ship-heading">進路</label>
+                        <select id="sl-ship-heading" v-model="shipHeading">
+                            <option :value="null" disabled>選ぶ</option>
+                            <option v-for="(label, heading) in SHIP_HEADING_LABELS" :key="heading" :value="heading">{{ label }}</option>
+                        </select>
+                        <button type="submit" :disabled="busy || shipHeading === null || shipHeading === ownShip.heading">進路を変更</button>
+                    </form>
+                </template>
+                <p v-if="shipStatus.text" class="command-status" :class="`command-status--${shipStatus.kind}`" :role="shipStatus.kind === 'error' ? 'alert' : 'status'">{{ shipStatus.text }}</p>
+            </section>
+            <section v-else-if="destinationCell && nationActive && (destinationCandidates.length > 0 || destinationStatus.text)" class="sl-ship" aria-label="このマスを船の目的地にする">
+                <form v-if="destinationCandidates.length > 0" @submit.prevent="setShipDestination">
+                    <label for="sl-ship-destination">自国の船</label>
+                    <select id="sl-ship-destination" v-model="destinationShipId">
+                        <option v-for="candidate in destinationCandidates" :key="candidate.ship.id" :value="candidate.ship.id">
+                            {{ candidate.ship.name }} ({{ candidate.ship.x }},{{ candidate.ship.y }})・直線{{ candidate.distance }}マス{{ candidate.here ? '・目的地' : '' }}
+                        </option>
                     </select>
-                    <button type="submit" :disabled="busy || shipHeading === ownShip.heading">進路を変更</button>
-                    <p class="command-status" :class="`command-status--${shipStatus.kind}`" aria-live="polite">{{ shipStatus.text }}</p>
+                    <button type="submit" :disabled="busy || chosenDestinationShip === null || chosenDestinationShip.here">目的地にする</button>
                 </form>
+                <p v-if="destinationStatus.text" class="command-status" :class="`command-status--${destinationStatus.kind}`" :role="destinationStatus.kind === 'error' ? 'alert' : 'status'">{{ destinationStatus.text }}</p>
             </section>
             <section class="available-commands sl-cmd-area">
                 <div class="sl-cmd-head">
