@@ -16,6 +16,7 @@ use App\Domain\Command\SettlementOverbuildPolicy;
 use App\Domain\Command\SurfaceCommandProjectionMemo;
 use App\Domain\Command\TerritoryExpansionFacts;
 use App\Domain\Command\TerritoryExpansionPolicy;
+use App\Domain\Command\UnderseaConstructionPolicy;
 use App\Domain\Command\WindPowerRepairPolicy;
 use App\Domain\Concurrency\OptimisticLockException;
 use App\Domain\Facility\FacilityRankPolicy;
@@ -81,6 +82,7 @@ final class CommandQueueService
         private readonly CommandQueueCompactor $queueCompactor,
         private readonly FacilityRankPolicy $facilityRanks,
         private readonly DailyQuestService $dailyQuests,
+        private readonly UnderseaConstructionPolicy $underseaConstruction,
     ) {}
 
     /**
@@ -1281,7 +1283,11 @@ final class CommandQueueService
 
             return $state['owner_nation_id'] === null && $adjacent['owned_land'] && $adjacent['sea'];
         }
-        if (in_array($definition->key, ['reclaim', 'build_seabed_base', 'build_undersea_city', 'build_undersea_fire_station', 'excavate'], true)) {
+        if ($this->underseaConstruction->appliesTo($definition->key)) {
+            return ($state['owner_nation_id'] === null || $state['owner_nation_id'] === $nation->id)
+                && $this->underseaConstruction->hasNearbyOwnedLand($nation, $cell);
+        }
+        if (in_array($definition->key, ['reclaim', 'excavate'], true)) {
             return $state['owner_nation_id'] === null || $state['owner_nation_id'] === $nation->id;
         }
 
@@ -1646,13 +1652,11 @@ final class CommandQueueService
 
             return;
         }
-        if (in_array($definition->key, ['build_seabed_base', 'build_undersea_city', 'build_undersea_fire_station'], true)) {
+        if ($this->underseaConstruction->appliesTo($definition->key)) {
             if ($ownerNationId !== null && $ownerNationId !== $nation->id) {
                 throw new PlayerFacingCommandException('他国所有の海には建設できません。');
             }
-            if (! $this->hasOwnedCellWithin($nation, $mapSpace, $cell, 3)) {
-                throw new PlayerFacingCommandException('建設対象の3hex以内に自国領がありません。');
-            }
+            $this->assertUnderseaConstructionDistance($nation, $cell);
 
             return;
         }
@@ -2024,6 +2028,13 @@ final class CommandQueueService
         }
 
         return [$targetX, $targetY];
+    }
+
+    private function assertUnderseaConstructionDistance(Nation $nation, MapCell $cell): void
+    {
+        if (! $this->underseaConstruction->hasNearbyOwnedLand($nation, $cell)) {
+            throw new PlayerFacingCommandException('建設対象の3hex以内に自国陸地がありません。');
+        }
     }
 
     private function hasOwnedCellWithin(Nation $nation, MapSpace $mapSpace, MapCell $cell, int $radius, bool $includeCenter = true): bool

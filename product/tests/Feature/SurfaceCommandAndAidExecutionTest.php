@@ -29,6 +29,103 @@ final class SurfaceCommandAndAidExecutionTest extends CommandAndMissileTestCase
 {
     use UsesReusableSurfaceWorld;
 
+    public static function underseaConstructionCommands(): array
+    {
+        return [
+            'base' => ['build_seabed_base', 'seabed_base'],
+            'city' => ['build_undersea_city', 'undersea_city'],
+            'fire station' => ['build_undersea_fire_station', 'undersea_fire_station'],
+        ];
+    }
+
+    #[DataProvider('underseaConstructionCommands')]
+    public function test_undersea_construction_requires_owned_land_within_three_hex_for_predictions_and_execution_but_preserves_future_plans(
+        string $commandKey,
+        string $facilityKey,
+    ): void {
+        $world = $this->lightweightWorld();
+        [$user, $nation] = $this->nation($world, '距離検証国');
+        [, $foreign] = $this->nation($world, '他国陸地');
+        $space = $this->surfaceMapSpace($world);
+        $owned = MapCell::query()->where('map_space_id', $space->id)->whereNotNull('owner_nation_id')->get(['x', 'y']);
+        $target = MapCell::query()->where('map_space_id', $space->id)
+            ->whereBetween('x', [$space->min_x + 4, $space->max_x - 4])
+            ->whereBetween('y', [$space->min_y + 4, $space->max_y - 4])
+            ->whereNull('owner_nation_id')->orderBy('id')->get()
+            ->first(static fn (MapCell $candidate): bool => ! $owned->contains(
+                static fn (MapCell $cell): bool => (new GridCoordinate($candidate->x, $candidate->y))
+                    ->distanceTo(new GridCoordinate($cell->x, $cell->y)) <= 7,
+            ));
+        $this->assertInstanceOf(MapCell::class, $target);
+        $setCell = function (int $x, int $y, string $terrainKey, Nation $owner, ?string $facility = null): MapCell {
+            $cell = MapCell::query()->where('map_space_id', $this->surfaceMapSpace($owner->world)->id)
+                ->where('x', $x)->where('y', $y)->firstOrFail();
+            app(MapCellStateService::class)->setFacility($cell, null);
+            app(MapCellStateService::class)->transitionTerrain($cell, TerrainDefinition::query()->where('key', $terrainKey)->sole());
+            if ($facility !== null) {
+                app(MapCellStateService::class)->setFacility($cell, FacilityDefinition::query()->where('key', $facility)->sole());
+            }
+            $cell->owner_nation_id = $owner->id;
+            $cell->population = $facility === 'undersea_city' ? 3000 : 0;
+            $cell->save();
+
+            return $cell->fresh(['terrain', 'facility']);
+        };
+        $target = $setCell($target->x, $target->y, 'sea', $nation);
+        $target->update(['owner_nation_id' => null]);
+        $nearLand = $setCell($target->x + 3, $target->y, 'wasteland', $nation);
+        $setCell($target->x + 1, $target->y, 'shallow', $nation);
+        $setCell($target->x - 2, $target->y, 'plain', $foreign);
+        $existing = [
+            $setCell($target->x - 1, $target->y, 'sea', $nation, 'undersea_city'),
+            $setCell($target->x, $target->y - 1, 'sea', $nation, 'seabed_base'),
+            $setCell($target->x, $target->y + 1, 'sea', $nation, 'undersea_fire_station'),
+        ];
+        $before = array_map(static fn (MapCell $cell): array => $cell->getAttributes(), $existing);
+        $capital = $nation->capital()->sole()->cell()->sole();
+        $capital->update(['population' => 10_000]);
+        $nation->update(['money' => 50_000]);
+        $service = app(CommandQueueService::class);
+        $definition = CommandDefinition::query()->where('ruleset_version_id', $world->ruleset_version_id)->where('key', $commandKey)->sole();
+
+        $service->validateTarget($nation, $space, $definition, $target);
+        $item = $this->queue($service, $user, $nation, $space, $commandKey, $target);
+        $queue = $nation->commandQueue()->sole();
+        $targetState = ['terrain_key' => 'sea', 'facility_key' => null, 'owner_nation_id' => null, 'facility_operational_state' => null];
+        $this->assertTrue($service->projectedTargetMatches($definition, $targetState, $nation, $space, $target, $queue, 2));
+        // Land can be abandoned after registration. Execution must recheck it.
+        $nearLand->update(['owner_nation_id' => null]);
+        $farLand = $setCell($target->x + 4, $target->y, 'mountain', $nation);
+        $farItem = $this->queue($service, $user, $nation, $space, $commandKey, $target);
+        $this->assertSame('queued', $farItem->status);
+        $this->assertPlayerFacing(fn () => $service->validateTarget($nation, $space, $definition, $target));
+        $this->assertFalse($service->projectedTargetMatches($definition, $targetState, $nation, $space, $target, $queue, 2));
+        $projected = $service->projectCellStateBeforePosition($target, $queue->fresh(['items.definition']), 3, $nation, $space);
+        $this->assertNull($projected['facility_key']);
+        $this->assertNull($projected['owner_nation_id']);
+        app(DomesticCommandExecutor::class)->execute($this->context($world, 2, hash('sha256', $commandKey.' distance four'), [$nation->id]));
+        $this->assertSame('missing_adjacent_territory', $item->fresh()->failure_code);
+        $this->assertSame('missing_adjacent_territory', $farItem->fresh()->failure_code);
+        $this->assertNull($target->fresh()->facility_definition_id);
+        $this->assertSame(10_000, $capital->fresh()->population);
+
+        // Even with owned sea, shallow, and all three existing facilities nearby,
+        // foreign/neutral land cannot provide a construction origin.
+        $farLand->update(['owner_nation_id' => null]);
+        $facilityOnly = $this->queue($service, $user, $nation, $space, $commandKey, $target);
+        $this->assertPlayerFacing(fn () => $service->validateTarget($nation, $space, $definition, $target));
+        app(DomesticCommandExecutor::class)->execute($this->context($world, 3, hash('sha256', $commandKey.' facilities only'), [$nation->id]));
+        $this->assertSame('missing_adjacent_territory', $facilityOnly->fresh()->failure_code);
+        $nearLand->update(['owner_nation_id' => $nation->id]);
+        $service->validateTarget($nation, $space, $definition, $target);
+        $success = $this->queue($service, $user, $nation, $space, $commandKey, $target);
+        app(DomesticCommandExecutor::class)->execute($this->context($world, 4, hash('sha256', $commandKey.' distance three'), [$nation->id]));
+        $this->assertSame('completed', $success->fresh()->status);
+        $this->assertSame($facilityKey, $target->fresh()->facility()->value('key'));
+        $this->assertSame($nation->id, $target->fresh()->owner_nation_id);
+        $this->assertSame($before, array_map(static fn (MapCell $cell): array => $cell->fresh()->getAttributes(), $existing));
+    }
+
     public function test_undersea_station_uses_canonical_construction_ownership_and_visibility(): void
     {
         $world = $this->lightweightWorld();
