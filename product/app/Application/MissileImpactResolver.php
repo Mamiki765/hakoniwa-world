@@ -9,7 +9,6 @@ use App\Domain\Map\GridCoordinate;
 use App\Domain\Map\MapCellStateService;
 use App\Domain\Monster\MonsterBehaviorResolver;
 use App\Domain\Nation\NationProtectionPolicy;
-use App\Domain\Secretary\SecretaryDemographicPolicy;
 use App\Domain\Secretary\SecretaryItemEffectAggregator;
 use App\Domain\Secretary\SecretaryItemGameplayContract;
 use App\Domain\Secretary\SecretaryItemProbability;
@@ -20,7 +19,6 @@ use App\Domain\Ship\SurfaceShipTurnBatch;
 use App\Domain\Turn\LaunchIntent;
 use App\Domain\Turn\TurnContext;
 use App\Domain\Turn\TurnRandomStreamFactory;
-use App\Models\FacilityDefinition;
 use App\Models\MapCell;
 use App\Models\MapSpace;
 use App\Models\MonsterInstance;
@@ -87,7 +85,7 @@ final class MissileImpactResolver
         private readonly SecretaryExperienceAwardService $secretaryExperience,
         private readonly SecretaryItemProbability $itemProbability,
         private readonly SecretaryItemEffectAggregator $secretaryItems,
-        private readonly SecretaryDemographicPolicy $demographics,
+        private readonly NationRefugeeReceptionService $refugeeReception,
         private readonly UndergroundFacilityBenefits $undergroundBenefits,
         private readonly SurfaceShipCatalog $surfaceShips,
         private readonly SurfaceShipRemovalService $shipRemoval,
@@ -2014,50 +2012,11 @@ final class MissileImpactResolver
             'queue_item_id' => $queueItemId,
             'generated_population' => $generated,
         ], 'public');
-        $settlementKeys = $context->ruleset->settings['military']['refugees']['settlement_facility_keys'] ?? [];
-        $birthrateLevel = 0;
-        $attractionMaximum = $context->ruleset->settings['turn_processing']['settlement']['attraction_maximum_population'];
-        if ($this->demographics->enabled($context->ruleset->settings)
-            && $context->state->hasSecretarySnapshot($recipient->id)) {
-            $birthrateLevel = $context->state->secretarySkillLevel(
-                $recipient->id,
-                SecretarySkillCatalog::DECLINING_BIRTHRATE_POLICY,
-            );
-            $attractionMaximum = $this->demographics->attractionMaximum(
-                $context->ruleset->settings,
-                $attractionMaximum,
-                $birthrateLevel,
-            );
+        $reception = $this->refugeeReception->receivePopulation($context, $recipient, $generated);
+        foreach ($reception['changed_cell_ids'] as $changedCellId) {
+            $this->changedCellIds[$changedCellId] = true;
         }
-        $cells = MapCell::query()->where('owner_nation_id', $recipient->id)
-            ->whereHas('facility', fn ($query) => $query->whereIn('key', $settlementKeys))
-            ->with(['terrain', 'facility'])->orderBy('id')->lockForUpdate()->get()
-            ->sortByDesc(fn (MapCell $cell): bool => $cell->facility?->key === 'capital');
-        $remaining = $generated;
-        foreach ($cells as $cell) {
-            $maximum = $cell->facility?->key === 'capital'
-                ? $this->demographics->capitalMaximum(
-                    $context->ruleset->settings,
-                    $birthrateLevel,
-                    $this->undergroundBenefits->capitalMaximumBonusForTurn($context->state, $recipient->id),
-                )
-                : $attractionMaximum;
-            $applied = min($remaining, max(0, $maximum - $cell->population));
-            if ($applied < 1) {
-                continue;
-            }
-            $cell->population += $applied;
-            $this->syncSettlementFacility($context, $cell);
-            $cell->version++;
-            $cell->save();
-            $this->markCellChanged($context, $cell);
-            $remaining -= $applied;
-            if ($remaining === 0) {
-                break;
-            }
-        }
-        $received = $generated - $remaining;
-        $context->state->addRefugeesReceived($recipient->id, $received);
+        $received = $reception['received'];
         $this->events->record($context, 'refugee_received', $recipient, [
             'nation_id' => $recipient->id,
             'source_nation_id' => $sourceNationId,
@@ -2065,26 +2024,10 @@ final class MissileImpactResolver
             'queue_item_id' => $queueItemId,
             'generated_population' => $generated,
             'received_population' => $received,
-            'unreceived_population' => $remaining,
+            'unreceived_population' => $generated - $received,
         ], 'nation');
 
         return $received;
-    }
-
-    private function syncSettlementFacility(TurnContext $context, MapCell $cell): void
-    {
-        if ($cell->facility?->key === 'capital') {
-            return;
-        }
-        foreach ($context->ruleset->settings['turn_processing']['settlement']['stages'] as $stage) {
-            if ($cell->population >= $stage['minimum_population'] && $cell->population <= $stage['maximum_population']) {
-                $facility = FacilityDefinition::query()->where('key', $stage['facility_key'])->firstOrFail();
-                $this->cells->setFacility($cell, $facility);
-
-                return;
-            }
-        }
-        $this->cells->setFacility($cell, FacilityDefinition::query()->where('key', 'city')->firstOrFail());
     }
 
     /** @return array{item: array<string, mixed>, effect: array<string, mixed>}|null */
