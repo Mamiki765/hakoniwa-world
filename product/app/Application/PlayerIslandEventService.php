@@ -76,6 +76,7 @@ final class PlayerIslandEventService
         'ship.built',
         'ship.retired',
         'ship.forced_displaced',
+        'ship.destination.ended',
         'ship.fuel_shortage_damaged',
         'ship.missile_damaged',
         'ship.attack_evaded',
@@ -192,6 +193,7 @@ final class PlayerIslandEventService
 
     /** @var list<string> */
     private const CONFIDENTIAL_EVENT_TYPES = [
+        'ship.destination.ended',
         'command.forest_planted_private',
         'command.missile_base_built_private',
         'command.seabed_base_built_private',
@@ -1858,6 +1860,11 @@ final class PlayerIslandEventService
                 number_format($this->integer($metadata, 'x')),
                 number_format($this->integer($metadata, 'y')),
             ),
+            'ship.destination.ended' => match ($metadata['reason'] ?? null) {
+                'arrived' => ($metadata['ship_name'] ?? '船').'が目的地に到着しました。',
+                'terrain_changed' => ($metadata['ship_name'] ?? '船').'の目的地が海でなくなったため、目的地指示を解除しました。',
+                default => ($metadata['ship_name'] ?? '船').'が目的地へ近づけないため、目的地指示を解除しました。',
+            },
             'ship.forced_displaced' => sprintf(
                 '船が地形変更を避けて(%s,%s)から(%s,%s)へ退避しました。',
                 number_format($this->integer($metadata, 'from_x')),

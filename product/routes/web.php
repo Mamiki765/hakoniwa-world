@@ -214,6 +214,7 @@ Route::prefix('api/v1')->middleware(['auth', PrivateApiResponse::class])->group(
     Route::patch('/nations/{nation}/profile', [NationProfileController::class, 'update']);
     Route::get('/nations/{nation}/ships', [SurfaceShipController::class, 'index']);
     Route::patch('/nations/{nation}/ships/{ship}/heading', [SurfaceShipController::class, 'updateHeading']);
+    Route::patch('/nations/{nation}/ships/{ship}/destination', [SurfaceShipController::class, 'updateDestination']);
     Route::post('/nations/{nation}/abandon', [NationAbandonmentController::class, 'store']);
     Route::post('/nations/{nation}/dormancy', [NationDormancyController::class, 'store']);
     Route::get('/me/nation', [ApiController::class, 'myNation']);

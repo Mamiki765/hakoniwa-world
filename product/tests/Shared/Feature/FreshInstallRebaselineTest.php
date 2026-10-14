@@ -45,6 +45,7 @@ final class FreshInstallRebaselineTest extends TestCase
         $this->assertSame($current['version'], $ruleset->version);
         $this->assertSame([
             CurrentDatabaseBaseline::MIGRATION, CurrentDatabaseBaseline::MONSTER_COUNT_MIGRATION,
+            CurrentDatabaseBaseline::SHIP_DESTINATION_MIGRATION,
             '2026_10_14_130000_publish_undersea_construction_ship_ruleset',
         ], DB::table('migrations')->orderBy('id')->pluck('migration')->all());
         $this->assertSame([$current['key']], RulesetVersion::query()->orderBy('version')->pluck('key')->all());
