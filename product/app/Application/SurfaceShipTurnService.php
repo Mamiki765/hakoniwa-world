@@ -178,12 +178,13 @@ final class SurfaceShipTurnService
         }
         if (! $destination instanceof MapCell) {
             $courseChanged = $headingBlocked;
+            $destinationNation = null;
             if ($destinationEndReason !== null) {
                 $canFinish = $destinationEndReason === 'arrived';
                 if (! $canFinish) {
-                    $nation = Nation::query()->whereKey($ship->nation_id)->where('state', 'active')->lockForUpdate()->first();
-                    $canFinish = $nation instanceof Nation && (int) $this->lockedBalance(
-                        $nation, $this->resources[$this->movement['fuel_resource_key']],
+                    $destinationNation = Nation::query()->whereKey($ship->nation_id)->where('state', 'active')->lockForUpdate()->first();
+                    $canFinish = $destinationNation instanceof Nation && (int) $this->lockedBalance(
+                        $destinationNation, $this->resources[$this->movement['fuel_resource_key']],
                     )->amount >= $definition->movementOilUnits;
                 }
                 if ($canFinish) {
@@ -199,7 +200,7 @@ final class SurfaceShipTurnService
                 $ships->count('ship_blocked');
             }
             if (! $isNpc && $definition->combatRole === 'warship') {
-                $nation = Nation::query()->whereKey($ship->nation_id)->where('state', 'active')->lockForUpdate()->first();
+                $nation = $destinationNation ?? Nation::query()->whereKey($ship->nation_id)->where('state', 'active')->lockForUpdate()->first();
                 if ($nation instanceof Nation) {
                     $this->warshipAttack($context, $origin, $ship, $nation, $cellsByCoordinate, $monsters, $ships);
                 }
