@@ -719,6 +719,56 @@ describe('command plan workspace', () => {
         expect(wrapper.find('.command-grid button').exists()).toBe(false);
     });
 
+    it('hides off-condition commands regardless of funds, keeps far land development listed, and does not force a dialog for an after-plan command', async () => {
+        window.localStorage.removeItem('hakoniwa-surface-all-commands');
+        const unavailable = (key: string, warnings: string[], overrides: Partial<CommandDefinition> = {}) => definition({
+            key, name: key, execution_preview_status: 'currently_unavailable', execution_warnings: warnings, ...overrides,
+        });
+        const commands = [
+            unavailable('terrain_only', ['terrain']),
+            unavailable('terrain_and_money', ['terrain', 'money'], { shortfall_money: 9 }),
+            unavailable('money_only', ['money'], { shortfall_money: 9 }),
+            unavailable('reclaim', ['distance'], { distance_reason_code: 'out_of_land_range', projected_distance_reason_code: 'out_of_land_range' }),
+            unavailable('excavate', ['distance'], { distance_reason_code: 'out_of_land_range', projected_distance_reason_code: 'out_of_land_range' }),
+            definition({
+                key: 'after_plan', name: 'after_plan', execution_preview_status: 'executable_after_queue', execution_warnings: ['after'],
+                distance_reason_code: 'out_of_land_range', projected_distance_reason_code: null,
+            }),
+        ];
+        const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+            if (init?.method === 'POST') return jsonResponse({ queue: commandQueue(2) }, 201);
+            return jsonResponse(String(input).includes('command-definitions') ? catalog(commands) : commandQueue());
+        });
+        vi.stubGlobal('fetch', fetchMock);
+        const wrapper = mount(CommandQueuePanel, { props: { nationId: 1, mapSpaceId: 2, selected } });
+        await flushPromises();
+        const button = (key: string) => wrapper.findAll('.command-grid button').find((candidate) => candidate.find('.nm').text().startsWith(key));
+
+        // 地形などが合わない物は、資金が足りても足りなくても既定で隠れる。資金だけの不足は出る。
+        expect(button('terrain_only')).toBeUndefined();
+        expect(button('terrain_and_money')).toBeUndefined();
+        expect(button('money_only')!.find('.ltr').exists()).toBe(false);
+        expect(button('money_only')!.find('.note').exists()).toBe(false);
+        // 計画後も遠い埋め立て・掘削は既定で残り、札とスマホ向けの1行が付く。距離の言い方は種類で変わる。
+        const reclaimNote = button('reclaim')!.find('.note');
+        const excavateNote = button('excavate')!.find('.note');
+        expect(button('reclaim')!.find('.ltr').exists()).toBe(true);
+        expect(reclaimNote.exists() && excavateNote.exists()).toBe(true);
+        expect(reclaimNote.text()).not.toBe(excavateNote.text());
+        // 前の計画で陸地ができる物は「計画後」だけで、ダイアログを挟まず登録する。
+        expect(button('after_plan')!.find('.after').exists()).toBe(true);
+        expect(button('after_plan')!.find('.note').exists()).toBe(false);
+        await button('after_plan')!.trigger('click');
+        await flushPromises();
+        expect(wrapper.find('[role="dialog"]').exists()).toBe(false);
+        expect(fetchMock.mock.calls.some(([, init]) => init?.method === 'POST')).toBe(true);
+
+        await wrapper.get('.sl-all input').setValue(true);
+        expect(button('terrain_only')!.find('.ltr').exists()).toBe(true);
+        expect(button('terrain_and_money')!.find('.ltr').exists()).toBe(true);
+        window.localStorage.removeItem('hakoniwa-surface-all-commands');
+    });
+
     it('uses command-specific defaults and requires an explicit selector choice', async () => {
         const commands = [
             definition({ key: 'missile', name: 'ミサイル', quantity_semantics: 'ordinary', quantity_default: 99 }),
