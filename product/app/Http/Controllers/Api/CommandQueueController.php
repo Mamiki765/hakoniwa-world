@@ -124,6 +124,7 @@ final class CommandQueueController extends Controller
                                     ? 'currently_executable'
                                     : 'currently_unavailable',
                                 'execution_warnings' => $warnings,
+                                'distance_reason_code' => null,
                             ];
                         },
                     )
@@ -196,6 +197,9 @@ final class CommandQueueController extends Controller
                         ? null
                         : $service->projectedOwnerOverbuildEffect($definition, $nation, $projected);
                     $unavailableReason = null;
+                    $distanceReasonCode = $cell === null || $definition->target_type !== 'cell'
+                        ? null
+                        : $service->currentLandDistanceReasonCode($nation, $definition, $cell, $visibleState['terrain_key'] ?? null);
                     $projectedExecutable = false;
                     $currentlyExecutable = false;
                     if ($definition->target_type === 'cell' && $cell !== null) {
@@ -254,6 +258,11 @@ final class CommandQueueController extends Controller
                                 $projectedExecutable = $targetProjectedExecutable;
                             }
                         }
+                    }
+
+                    if ($distanceReasonCode !== null) {
+                        $projectedExecutable = false;
+                        $unavailableReason ??= '現在の自国陸地からの距離条件を満たしません。';
                     }
 
                     $resultFacility = $definition->result_facility_key === null
@@ -346,6 +355,7 @@ final class CommandQueueController extends Controller
                                 ? 'executable_after_queue'
                                 : ($warnings === [] ? 'currently_executable' : 'currently_unavailable')),
                         'execution_warnings' => $warnings,
+                        'distance_reason_code' => $distanceReasonCode,
                     ];
                 })
                 ->values();

@@ -1296,20 +1296,7 @@ final class CommandQueueService
         if ($definition->key === 'reclaim'
             || ($definition->key === 'excavate' && in_array($state['terrain_key'], ['sea', 'shallow'], true))) {
             return ($state['owner_nation_id'] === null || $state['owner_nation_id'] === $nation->id)
-                && $this->ownedLand->within(
-                    $nation,
-                    $cell,
-                    $definition->key === 'reclaim' ? 1 : 3,
-                    $definition->key !== 'reclaim',
-                    fn (MapCell $nearby): array => $this->projectCellStateBeforePosition(
-                        $nearby,
-                        $queue,
-                        $beforePosition,
-                        $nation,
-                        $mapSpace,
-                        projectionMemo: $projectionMemo,
-                    ),
-                );
+                && $this->currentLandDistanceReasonCode($nation, $definition, $cell, $state['terrain_key']) === null;
         }
         if ($definition->key === 'excavate') {
             return $state['owner_nation_id'] === null || $state['owner_nation_id'] === $nation->id;
@@ -2055,6 +2042,26 @@ final class CommandQueueService
         }
 
         return [$targetX, $targetY];
+    }
+
+    /**
+     * The terrain selects the command context; origins always use current cells.
+     *
+     * @return 'out_of_land_range'|null
+     */
+    public function currentLandDistanceReasonCode(Nation $nation, CommandDefinition $definition, MapCell $cell, ?string $terrainKey = null): ?string
+    {
+        if ($this->underseaConstruction->appliesTo($definition->key)) {
+            $inRange = $this->underseaConstruction->hasNearbyOwnedLand($nation, $cell);
+        } elseif ($definition->key === 'reclaim') {
+            $inRange = $this->ownedLand->within($nation, $cell, 1, false);
+        } elseif ($definition->key === 'excavate' && in_array($terrainKey ?? $cell->terrain->key, ['sea', 'shallow'], true)) {
+            $inRange = $this->ownedLand->within($nation, $cell, 3);
+        } else {
+            return null;
+        }
+
+        return $inRange ? null : 'out_of_land_range';
     }
 
     private function assertUnderseaConstructionDistance(Nation $nation, MapCell $cell): void

@@ -43,6 +43,11 @@ final class SurfaceCommandAndAidExecutionTest extends CommandAndMissileTestCase
         $nation->update(['money' => 1000]);
         $capitalBefore = $capital->getAttributes();
         $service = app(CommandQueueService::class);
+        $commands = collect($this->actingAs($user)->getJson(
+            "/api/v1/nations/{$nation->id}/map-spaces/{$space->id}/command-definitions",
+        )->assertOk()->json('data.commands'));
+        $this->assertNull($commands->firstWhere('key', 'reclaim')['distance_reason_code']);
+        $this->assertNull($commands->firstWhere('key', 'finance')['distance_reason_code']);
         $blocked = $this->queue($service, $user, $nation, $space, 'excavate', $capital);
         $this->assertSame('queued', $blocked->status);
         $this->assertSame('currently_unavailable', $this->waterDevelopmentPreview($user, $nation, $space, $capital, 'excavate')['execution_preview_status']);
@@ -82,6 +87,7 @@ final class SurfaceCommandAndAidExecutionTest extends CommandAndMissileTestCase
         $preview = $this->waterDevelopmentPreview($user, $nation, $space, $target, $commandKey);
         $this->assertTrue($preview['available']);
         $this->assertSame('currently_unavailable', $preview['execution_preview_status']);
+        $this->assertSame('out_of_land_range', $preview['distance_reason_code']);
         $tooFar = $this->queue($service, $user, $nation, $space, $commandKey, $target);
         $this->assertSame('queued', $tooFar->status, 'Future plans remain registrable outside the current distance condition.');
         app(DomesticCommandExecutor::class)->execute($this->context($world, 2, hash('sha256', $commandKey.$terrainKey.' water anchors'), [$nation->id]));
@@ -99,7 +105,9 @@ final class SurfaceCommandAndAidExecutionTest extends CommandAndMissileTestCase
         if ($commandKey === 'excavate' && $terrainKey === 'shallow') {
             $target = $this->landOriginCell($space, $target->x, $target->y, 'shallow', $nation->id, 'port');
         }
-        $this->assertSame('currently_executable', $this->waterDevelopmentPreview($user, $nation, $space, $target, $commandKey)['execution_preview_status']);
+        $preview = $this->waterDevelopmentPreview($user, $nation, $space, $target, $commandKey);
+        $this->assertSame('currently_executable', $preview['execution_preview_status']);
+        $this->assertNull($preview['distance_reason_code']);
         $valid = $this->queue($service, $user, $nation, $space, $commandKey, $target);
         $moneyBefore = (int) $nation->fresh()->money;
         app(DomesticCommandExecutor::class)->execute($this->context($world, 4, hash('sha256', $commandKey.$terrainKey.' land boundary'), [$nation->id]));
@@ -112,18 +120,20 @@ final class SurfaceCommandAndAidExecutionTest extends CommandAndMissileTestCase
     public static function landOriginPredecessors(): array
     {
         return [
-            'reclaim after terrain loss' => ['reclaim', 1, 'excavate'],
-            'water excavation after ownership loss' => ['excavate', 3, 'territory_abandon'],
+            'reclaim after terrain loss' => ['reclaim', 1, 'excavate', 'shallow'],
+            'water excavation after ownership loss' => ['excavate', 3, 'territory_abandon', 'shallow'],
+            'undersea construction' => ['build_undersea_fire_station', 3, 'territory_abandon', 'sea'],
         ];
     }
 
     #[DataProvider('landOriginPredecessors')]
-    public function test_water_development_predictions_use_only_successful_preceding_land_changes(
+    public function test_land_distance_guidance_uses_current_land_and_execution_rechecks_after_queued_changes(
         string $commandKey,
         int $radius,
         string $removeAnchor,
+        string $terrainKey,
     ): void {
-        [$world, $user, $nation, $foreign, $space, $target, $anchor, $outer, $base] = $this->landOriginFixture('shallow', $radius);
+        [$world, $user, $nation, $foreign, $space, $target, $anchor, $outer, $base] = $this->landOriginFixture($terrainKey, $radius);
         $service = app(CommandQueueService::class);
         $baseBefore = $base->getAttributes();
         $this->assertSame('currently_executable', $this->waterDevelopmentPreview($user, $nation, $space, $target, $commandKey)['execution_preview_status']);
@@ -131,35 +141,45 @@ final class SurfaceCommandAndAidExecutionTest extends CommandAndMissileTestCase
         $afterLoss = $this->queue($service, $user, $nation, $space, $commandKey, $target);
         $preview = $this->waterDevelopmentPreview($user, $nation, $space, $target, $commandKey, 2);
         $this->assertTrue($preview['available']);
-        $this->assertSame('currently_unavailable', $preview['execution_preview_status']);
-        $projected = $service->projectCellStateBeforePosition($target, $service->queueFor($user, $nation, $space), 3, $nation, $space);
-        $this->assertSame(['shallow', $nation->id], [$projected['terrain_key'], $projected['owner_nation_id']]);
+        $this->assertSame('currently_executable', $preview['execution_preview_status']);
+        $this->assertNull($preview['distance_reason_code']);
         app(DomesticCommandExecutor::class)->execute($this->context($world, 2, hash('sha256', $commandKey.' remove anchor'), [$nation->id]));
         if ($removeAnchor === 'excavate') {
             app(DomesticCommandExecutor::class)->execute($this->context($world, 3, hash('sha256', $commandKey.' after anchor loss'), [$nation->id]));
         }
         $this->assertSame('failed', $afterLoss->fresh()->status);
+        $this->assertSame('out_of_land_range', $this->waterDevelopmentPreview($user, $nation, $space, $target, $commandKey)['distance_reason_code']);
 
-        // A valid earlier reclamation creates both the terrain and ownership
-        // needed for the next plan, although it is outside today's land range.
+        // A planned reclamation does not change today's distance guidance.
+        // Once it actually completes, the queued command is revalidated.
         $anchor = $this->landOriginCell($space, $anchor->x, $anchor->y, 'shallow', $nation->id);
         $outer->update(['owner_nation_id' => $nation->id]);
         $gain = $this->queue($service, $user, $nation, $space, 'reclaim', $anchor);
         $afterGain = $this->queue($service, $user, $nation, $space, $commandKey, $target);
         $this->assertSame('currently_unavailable', $this->waterDevelopmentPreview($user, $nation, $space, $target, $commandKey, 1)['execution_preview_status']);
-        $this->assertSame('executable_after_queue', $this->waterDevelopmentPreview($user, $nation, $space, $target, $commandKey, 2)['execution_preview_status']);
+        $preview = $this->waterDevelopmentPreview($user, $nation, $space, $target, $commandKey, 2);
+        $this->assertTrue($preview['available']);
+        $this->assertSame('currently_unavailable', $preview['execution_preview_status']);
+        $this->assertSame('out_of_land_range', $preview['distance_reason_code']);
+        $this->assertSame('queued', $afterGain->status);
+        $definition = CommandDefinition::query()->where('ruleset_version_id', $world->ruleset_version_id)->where('key', $commandKey)->sole();
+        $state = ['terrain_key' => $terrainKey, 'facility_key' => null, 'owner_nation_id' => $nation->id, 'facility_operational_state' => null];
+        $this->assertFalse($service->projectedTargetMatches($definition, $state, $nation, $space, $target, $service->queueFor($user, $nation, $space), 2));
         app(DomesticCommandExecutor::class)->execute($this->context($world, 4, hash('sha256', $commandKey.' gain anchor'), [$nation->id]));
         $this->assertSame('completed', $gain->fresh()->status);
+        $preview = $this->waterDevelopmentPreview($user, $nation, $space, $target, $commandKey);
+        $this->assertSame('currently_executable', $preview['execution_preview_status']);
+        $this->assertNull($preview['distance_reason_code']);
         app(DomesticCommandExecutor::class)->execute($this->context($world, 5, hash('sha256', $commandKey.' after anchor gain'), [$nation->id]));
         $this->assertSame('completed', $afterGain->fresh()->status);
 
-        $target = $this->landOriginCell($space, $target->x, $target->y, 'shallow', $nation->id);
+        $target = $this->landOriginCell($space, $target->x, $target->y, $terrainKey, $nation->id);
         $anchor = $this->landOriginCell($space, $anchor->x, $anchor->y, 'shallow', $foreign->id);
         $invalid = $this->queue($service, $user, $nation, $space, 'reclaim', $anchor);
         $afterInvalid = $this->queue($service, $user, $nation, $space, $commandKey, $target);
         $this->assertSame('currently_unavailable', $this->waterDevelopmentPreview($user, $nation, $space, $target, $commandKey, 2)['execution_preview_status']);
         $projected = $service->projectCellStateBeforePosition($target, $service->queueFor($user, $nation, $space), 3, $nation, $space);
-        $this->assertSame(['shallow', $nation->id], [$projected['terrain_key'], $projected['owner_nation_id']]);
+        $this->assertSame([$terrainKey, $nation->id], [$projected['terrain_key'], $projected['owner_nation_id']]);
         app(DomesticCommandExecutor::class)->execute($this->context($world, 6, hash('sha256', $commandKey.' invalid anchor gain'), [$nation->id]));
         $this->assertSame('failed', $invalid->fresh()->status);
         $this->assertSame('failed', $afterInvalid->fresh()->status);
@@ -277,6 +297,7 @@ final class SurfaceCommandAndAidExecutionTest extends CommandAndMissileTestCase
         $definition = CommandDefinition::query()->where('ruleset_version_id', $world->ruleset_version_id)->where('key', $commandKey)->sole();
 
         $service->validateTarget($nation, $space, $definition, $target);
+        $this->assertNull($this->waterDevelopmentPreview($user, $nation, $space, $target, $commandKey)['distance_reason_code']);
         $item = $this->queue($service, $user, $nation, $space, $commandKey, $target);
         $queue = $nation->commandQueue()->sole();
         $targetState = ['terrain_key' => 'sea', 'facility_key' => null, 'owner_nation_id' => null, 'facility_operational_state' => null];
@@ -284,6 +305,10 @@ final class SurfaceCommandAndAidExecutionTest extends CommandAndMissileTestCase
         // Land can be abandoned after registration. Execution must recheck it.
         $nearLand->update(['owner_nation_id' => null]);
         $farLand = $setCell($target->x + 4, $target->y, 'mountain', $nation);
+        $preview = $this->waterDevelopmentPreview($user, $nation, $space, $target, $commandKey, 2);
+        $this->assertTrue($preview['available']);
+        $this->assertSame('out_of_land_range', $preview['distance_reason_code']);
+        $this->assertSame('currently_unavailable', $preview['execution_preview_status']);
         $farItem = $this->queue($service, $user, $nation, $space, $commandKey, $target);
         $this->assertSame('queued', $farItem->status);
         $this->assertPlayerFacing(fn () => $service->validateTarget($nation, $space, $definition, $target));
