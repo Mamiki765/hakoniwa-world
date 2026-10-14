@@ -269,8 +269,7 @@ final class MapCellPresenter
                 'name' => $owner->name,
             ],
             'is_owner' => $isOwner,
-            'heading' => $isOwner ? $ship->heading : null,
-            'version' => $isOwner ? $ship->version : null,
+            ...($isOwner ? $ship->course() : ['heading' => null, 'destination' => null, 'version' => null]),
         ];
     }
 
