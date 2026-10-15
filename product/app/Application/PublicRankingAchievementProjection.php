@@ -3,21 +3,17 @@
 namespace App\Application;
 
 use App\Domain\Award\NationAwardCatalog;
-use App\Domain\Monster\MonsterDisplayOrderResolver;
-use App\Models\MonsterDefinition;
 use App\Models\Nation;
 use App\Models\NationAward;
-use App\Models\NationMonsterKillStat;
 use App\Models\World;
 use App\Services\AssetManifestResolver;
-use DomainException;
 use Illuminate\Database\Eloquent\Collection;
 
 final class PublicRankingAchievementProjection
 {
     public function __construct(
         private readonly AssetManifestResolver $assets,
-        private readonly MonsterDisplayOrderResolver $monsterDisplayOrders,
+        private readonly PublicMonsterKillProjection $monsterKills,
     ) {}
 
     /**
@@ -104,40 +100,9 @@ final class PublicRankingAchievementProjection
      */
     private function projectMonsterKills(World $world, array $nationIds, array $projection): array
     {
-        $rows = NationMonsterKillStat::query()
-            ->where('world_id', $world->id)
-            ->whereIn('nation_id', $nationIds)
-            ->where('kill_count', '>', 0)
-            ->with('definition')
-            ->get()
-            ->groupBy('nation_id');
+        $rows = $this->monsterKills->forWorld($world, $nationIds);
         foreach ($nationIds as $nationId) {
-            $stats = $rows->get($nationId, collect());
-            $definitions = $stats->map(function (NationMonsterKillStat $stat) use ($world): MonsterDefinition {
-                $definition = $stat->definition;
-                if (! $definition instanceof MonsterDefinition || $definition->ruleset_version_id !== $world->ruleset_version_id) {
-                    throw new DomainException('Public monster achievement references a missing or cross-ruleset definition.');
-                }
-
-                return $definition;
-            });
-            $orders = $this->monsterDisplayOrders->uniqueOrders($definitions);
-            $species = [];
-            foreach ($stats as $stat) {
-                $definition = $stat->definition;
-                $species[] = [
-                    'key' => $definition->key,
-                    'name' => $definition->name,
-                    'kill_count' => $stat->kill_count,
-                    'display_order' => $orders[$definition->id],
-                    'asset_key' => $definition->asset_key,
-                ];
-            }
-            usort($species, static function (array $left, array $right): int {
-                $byOrder = $left['display_order'] <=> $right['display_order'];
-
-                return $byOrder !== 0 ? $byOrder : $left['key'] <=> $right['key'];
-            });
+            $species = $rows[$nationId];
             if ($species === []) {
                 continue;
             }
