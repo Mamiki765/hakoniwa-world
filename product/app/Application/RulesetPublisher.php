@@ -19,7 +19,14 @@ final class RulesetPublisher
     /** @param array<string, mixed> $settings */
     public function publish(array $settings): RulesetVersion
     {
-        $this->validator->validate($settings);
+        // Fresh installs replay the append-only 5.2.0 migration before the 5.3.0
+        // upgrade. Permit only its exact frozen predecessor, never historical authoring.
+        $replayingPredecessor = config('hakoniwa.ruleset.key') === 'hakoniwa-2s-plus-v38'
+            && ($settings['key'] ?? null) === 'hakoniwa-2s-plus-v37'
+            && $settings === require config_path('hakoniwa/rulesets/hakoniwa-2s-plus-v37.php');
+        if (! $replayingPredecessor) {
+            $this->validator->validate($settings);
+        }
 
         return $this->publishSnapshot($settings);
     }

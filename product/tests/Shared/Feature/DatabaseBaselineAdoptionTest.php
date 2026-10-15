@@ -131,6 +131,9 @@ final class DatabaseBaselineAdoptionTest extends TestCase
         // The supported source has the complete 5.0.1 schema, catalog and
         // immutable current snapshot. Remove later extensions and simulate the
         // source ledger to represent that adoption boundary.
+        DB::statement('ALTER TABLE nations DROP CONSTRAINT nations_ecopo_nonnegative, DROP COLUMN ecopo');
+        DB::table('migrations')->where('migration', CurrentDatabaseBaseline::ECOPO_MIGRATION)->delete();
+        DB::table('migrations')->where('migration', '2026_10_15_010000_publish_ecopo_ruleset')->delete();
         DB::statement('ALTER TABLE ships DROP CONSTRAINT ships_course_check, DROP COLUMN destination_x, DROP COLUMN destination_y');
         DB::table('migrations')->where('migration', CurrentDatabaseBaseline::SHIP_DESTINATION_MIGRATION)->delete();
         Schema::table('worlds', fn ($table) => $table->dropColumn('monster_count_snapshot'));

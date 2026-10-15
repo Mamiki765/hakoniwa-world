@@ -50,6 +50,7 @@ final class SurfaceShipTurnService
         private readonly BuriedTreasureService $buriedTreasures,
         private readonly SecretaryProductionBonus $secretaryProduction,
         private readonly SecretaryNavyEvasionService $navyEvasion,
+        private readonly EcopoService $ecopo,
     ) {}
 
     public function load(TurnContext $context, MapSpace $space): SurfaceShipTurnBatch
@@ -710,6 +711,13 @@ final class SurfaceShipTurnService
         $money = $moneyUnits > 0
             ? $this->boundedAssets->creditMoney($nation, $moneyUnits, $context->ruleset)
             : null;
+
+        if ($money !== null) {
+            $this->ecopo->discardedMoney($context, $nation, $money->overflow, 'ship_movement_reward');
+        }
+        if ($resource !== null && $rewardResource->category !== 'food') {
+            $this->ecopo->discardedResource($context, $nation, $rewardResource->key, $resource->overflow, 'ship_movement_reward');
+        }
 
         return [
             'resource_key' => $definition->movementRewardResourceKey,

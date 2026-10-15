@@ -33,6 +33,7 @@ final class TradingPostTurnService
         private readonly NationCapacityResolver $capacities,
         private readonly InventorySalePlanner $sales,
         private readonly FoodOverflowResolver $foodOverflow,
+        private readonly EcopoService $ecopo,
     ) {}
 
     /** @return array<string, int> */
@@ -153,6 +154,7 @@ final class TradingPostTurnService
             $credit = $this->boundedAssets->creditMoney($seller, $sellerProceedsRequested, $context->ruleset);
             $sellerProceeds = $credit->applied;
             $sellerProceedsOverflow = $credit->overflow;
+            $this->ecopo->discardedMoney($context, $seller, $credit->overflow, 'trading_post_proceeds');
         }
         $this->events->record($context, 'trading_post.sold', $listing, [
             'nation_id' => $winner->id,
@@ -356,6 +358,7 @@ final class TradingPostTurnService
                 ]);
             }
             if ($discardedQuantity > 0) {
+                $this->ecopo->discardedResource($context, $winner, $resource->key, $discardedQuantity, 'trading_post_delivery');
                 $this->events->record($context, 'capacity.overflow', $winner, [
                     'asset' => 'resource',
                     'resource_key' => $resource->key,

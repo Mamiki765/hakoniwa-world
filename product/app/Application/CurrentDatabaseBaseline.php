@@ -16,8 +16,10 @@ final class CurrentDatabaseBaseline
 
     public const CAPITAL_RELOCATION_MIGRATION = '2026_10_14_000000_add_last_capital_relocation_turn_to_nations';
 
+    public const ECOPO_MIGRATION = '2026_10_15_000000_add_nation_ecopo';
+
     /** @return array<string, string> */
-    public function structure(bool $excludeCapitalRelocationTurn = false): array
+    public function structure(bool $excludeCapitalRelocationTurn = false, bool $excludeEcopo = false): array
     {
         if (DB::connection()->getDriverName() !== 'pgsql') {
             throw new RuntimeException('The current baseline requires PostgreSQL.');
@@ -39,6 +41,7 @@ SELECT 'table:' || c.relname AS object_key,
            LEFT JOIN pg_collation coll ON coll.oid = a.attcollation
            WHERE a.attrelid = c.oid AND a.attnum > 0 AND NOT a.attisdropped
              AND NOT (c.relname = 'nations' AND a.attname = 'last_capital_relocation_turn' AND CAST(? AS boolean))
+             AND NOT (c.relname = 'nations' AND a.attname = 'ecopo' AND CAST(? AS boolean))
          ), '[]'::jsonb),
          'constraints', COALESCE((
            SELECT jsonb_agg(jsonb_build_array(
@@ -46,6 +49,7 @@ SELECT 'table:' || c.relname AS object_key,
              pg_get_constraintdef(k.oid)
            ) ORDER BY k.conname)
            FROM pg_constraint k WHERE k.conrelid = c.oid
+             AND NOT (c.relname = 'nations' AND k.conname IN ('nations_ecopo_nonnegative', 'nations_ecopo_not_null') AND CAST(? AS boolean))
          ), '[]'::jsonb),
          'indexes', COALESCE((
            SELECT jsonb_agg(jsonb_build_array(
@@ -78,7 +82,7 @@ SELECT 'function:' || p.proname || '(' || pg_get_function_identity_arguments(p.o
 FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
 WHERE n.nspname = 'public' AND p.prokind = 'f'
 ORDER BY object_key
-SQL, [$excludeCapitalRelocationTurn]);
+SQL, [$excludeCapitalRelocationTurn, $excludeEcopo, $excludeEcopo]);
         $objects = [];
         foreach ($rows as $row) {
             $objects[$row->object_key] = hash('sha256', $row->definition);
@@ -96,6 +100,10 @@ SQL, [$excludeCapitalRelocationTurn]);
             JSON_THROW_ON_ERROR,
         );
         $applied = DB::table('migrations')->pluck('migration')->all();
+        $hasEcopo = in_array(self::ECOPO_MIGRATION, $applied, true);
+        if ($hasEcopo) {
+            $this->assertEcopoExtension();
+        }
         $hasCapitalRelocationTurn = in_array(self::CAPITAL_RELOCATION_MIGRATION, $applied, true);
         if ($hasCapitalRelocationTurn) {
             if (! in_array(self::MIGRATION, $applied, true)) {
@@ -105,7 +113,8 @@ SQL, [$excludeCapitalRelocationTurn]);
 SELECT jsonb_build_array(
     format_type(a.atttypid, a.atttypmod), a.attnotnull,
     pg_get_expr(d.adbin, d.adrelid), a.attidentity, a.attgenerated, coll.collname,
-    a.attnum = (SELECT max(attnum) FROM pg_attribute WHERE attrelid = c.oid AND NOT attisdropped)
+    a.attnum = (SELECT max(attnum) FROM pg_attribute WHERE attrelid = c.oid AND NOT attisdropped
+        AND NOT (attname = 'ecopo' AND CAST(? AS boolean)))
 )::text AS definition
 FROM pg_attribute a
 JOIN pg_class c ON c.oid = a.attrelid
@@ -114,7 +123,7 @@ LEFT JOIN pg_attrdef d ON d.adrelid = a.attrelid AND d.adnum = a.attnum
 LEFT JOIN pg_collation coll ON coll.oid = a.attcollation
 WHERE n.nspname = 'public' AND c.relname = 'nations'
   AND a.attname = 'last_capital_relocation_turn' AND NOT a.attisdropped
-SQL);
+SQL, [$hasEcopo]);
             if ($column?->definition !== '["bigint", false, null, "", "", null, true]') {
                 throw new RuntimeException('Database differs from the capital relocation history extension.');
             }
@@ -122,7 +131,7 @@ SQL);
         // Validate the appended column separately so every accepted baseline's
         // original column order, defaults, constraints, indexes and triggers
         // still match their complete fingerprints without rebuilding a baseline.
-        $actual = $this->structure(excludeCapitalRelocationTurn: $hasCapitalRelocationTurn);
+        $actual = $this->structure(excludeCapitalRelocationTurn: $hasCapitalRelocationTurn, excludeEcopo: $hasEcopo);
         if (in_array(self::MONSTER_COUNT_MIGRATION, $applied, true)) {
             if (! in_array(self::MIGRATION, $applied, true)) {
                 throw new RuntimeException('Monster count snapshots require the accepted 5.0.1 baseline marker first.');
@@ -169,6 +178,32 @@ SQL);
         $production = $expected['production_5_0_1'];
         $differences = array_keys(array_diff_assoc($production, $actual) + array_diff_assoc($actual, $production));
         throw new RuntimeException('Database differs from the accepted 5.0.1 baseline: '.implode(', ', $differences).'. Do not reset or repair data automatically.');
+    }
+
+    private function assertEcopoExtension(): void
+    {
+        $column = DB::selectOne(<<<'SQL'
+SELECT jsonb_build_array(
+    format_type(a.atttypid, a.atttypmod), a.attnotnull,
+    pg_get_expr(d.adbin, d.adrelid), a.attidentity, a.attgenerated, coll.collname,
+    a.attnum = (SELECT max(attnum) FROM pg_attribute WHERE attrelid = c.oid AND NOT attisdropped)
+)::text AS definition
+FROM pg_attribute a
+JOIN pg_class c ON c.oid = a.attrelid
+JOIN pg_namespace n ON n.oid = c.relnamespace
+LEFT JOIN pg_attrdef d ON d.adrelid = a.attrelid AND d.adnum = a.attnum
+LEFT JOIN pg_collation coll ON coll.oid = a.attcollation
+WHERE n.nspname = 'public' AND c.relname = 'nations' AND a.attname = 'ecopo' AND NOT a.attisdropped
+SQL);
+        $constraint = DB::selectOne(<<<'SQL'
+SELECT pg_get_constraintdef(oid) AS definition, convalidated
+FROM pg_constraint WHERE conrelid = 'public.nations'::regclass AND conname = 'nations_ecopo_nonnegative'
+SQL);
+        $expectedColumn = ['bigint', true, "'0'::bigint", '', '', null, true];
+        if (json_decode($column->definition ?? 'null', true, 512, JSON_THROW_ON_ERROR) !== $expectedColumn
+            || $constraint?->definition !== 'CHECK ((ecopo >= 0))' || ! $constraint->convalidated) {
+            throw new RuntimeException('Database differs from the Ecopo extension.');
+        }
     }
 
     public function assertExisting(): void

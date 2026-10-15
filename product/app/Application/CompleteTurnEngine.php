@@ -89,6 +89,7 @@ final class CompleteTurnEngine
         private readonly UndergroundFacilityBenefits $undergroundBenefits,
         private readonly SeaAreaWeatherService $weather,
         private readonly WorldMonsterCountSnapshot $monsterCounts,
+        private readonly EcopoService $ecopo,
     ) {}
 
     public function execute(string $phase, TurnContext $context): TurnPhaseResult
@@ -1071,6 +1072,7 @@ final class CompleteTurnEngine
                 $discarded = $afterSale - $after;
                 if ($discarded > 0) {
                     $balance->update(['amount' => $after]);
+                    $this->ecopo->discardedResource($context, $nation, $resourceKey, $discarded, 'post_sale_inventory_capacity');
                     $metrics['overflow_reports']++;
                     $this->events->record($context, $resourceOverflowEvent, $nation, [
                         'asset' => 'resource',
@@ -1181,6 +1183,7 @@ final class CompleteTurnEngine
         $secretaryMetrics = $this->secretaries->flushExperience($context);
         $charmMetrics = $this->secretaries->flushCharmCharges($context);
         $awardMetrics = $this->awards->finalize($context);
+        $ecopoMetrics = $this->ecopo->exchangeForTurn($context);
         $lifecycleMetrics = $this->nationLifecycle->finalize($context);
         $karmaMetrics = $this->karma->finalize($context);
         $monsterCountMetrics = $this->monsterCounts->record($context->world, $context->targetTurn);
@@ -1226,6 +1229,7 @@ final class CompleteTurnEngine
             'secretary_population_high_water_increase' => $demographicMetrics['population_high_water_increase'],
             'secretary_net_population_loss' => $demographicMetrics['net_population_loss'],
             'secretary_demographic_nations_awarded' => $demographicMetrics['nations_awarded'],
+            ...$ecopoMetrics,
             ...$lifecycleMetrics,
             ...$karmaResultMetrics,
             ...$awardMetrics,

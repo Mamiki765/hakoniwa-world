@@ -16,6 +16,7 @@ final class KarmaTurnService
         private readonly CapacityBoundedAssetService $boundedAssets,
         private readonly TurnEventRecorder $events,
         private readonly SecretaryItemEffectAggregator $secretaryItems,
+        private readonly EcopoService $ecopo,
     ) {}
 
     /** @return array{karma_snapshots: int, turn_start_monsters: int} */
@@ -65,6 +66,7 @@ final class KarmaTurnService
             }
             $nation = Nation::query()->whereKey($nationId)->lockForUpdate()->firstOrFail();
             $credit = $this->boundedAssets->creditMoney($nation, $ledger['alliance_money'], $context->ruleset);
+            $this->ecopo->discardedMoney($context, $nation, $credit->overflow, 'alliance_money');
             $metrics['nations']++;
             $metrics['requested'] += $credit->requested;
             $metrics['applied'] += $credit->applied;

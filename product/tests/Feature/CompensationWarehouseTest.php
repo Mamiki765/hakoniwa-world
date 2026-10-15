@@ -200,6 +200,7 @@ final class CompensationWarehouseTest extends TestCase
             ->json('data');
         $applied = collect($claim['applied_now'])->keyBy('asset_key');
         $this->assertSame([2, 8], [$applied['money']['applied'], $applied['money']['remaining']]);
+        $this->assertSame(0, (int) $nation->fresh()->ecopo);
         $this->assertSame([0, 7], [$applied['underground_g']['applied'], $applied['underground_g']['remaining']]);
         $this->assertSame($moneyCapacity, (int) $nation->fresh()->money);
         $this->assertDatabaseHas('compensation_grant_items', [

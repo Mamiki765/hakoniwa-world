@@ -7,6 +7,7 @@ use App\Application\NationCreationService;
 use App\Application\PlayerIslandEventService;
 use App\Application\TradingPostTurnService;
 use App\Domain\Economy\CapacityBoundedAssetService;
+use App\Domain\Economy\EcopoRules;
 use App\Domain\Economy\NationCapacityResolver;
 use App\Domain\Secretary\SecretaryItemCatalog;
 use App\Domain\Secretary\SecretaryItemGameplayContract;
@@ -554,6 +555,8 @@ final class TradingPostApiTest extends TestCase
         $this->assertSame(0, $settlement['stored_quantity']);
         $this->assertSame($sold, $settlement['overflow_sold_quantity']);
         $this->assertSame($discarded, $settlement['overflow_discarded_quantity']);
+        $rules = EcopoRules::fromSettings($ruleset->settings);
+        $this->assertSame($rules->resourcePoints($resourceKey, $discarded), (int) $buyerNation->fresh()->ecopo);
         $sale = DB::table('audit_events')->where('event_type', 'resource.automatic_sale')
             ->where('nation_id', $buyerNation->id)->sole();
         $saleMetadata = json_decode((string) $sale->metadata, true, 512, JSON_THROW_ON_ERROR);
@@ -686,6 +689,8 @@ final class TradingPostApiTest extends TestCase
         $this->assertSame(90, $capacityMetadata['seller_proceeds_requested']);
         $this->assertSame(10, $capacityMetadata['seller_proceeds']);
         $this->assertSame(80, $capacityMetadata['seller_proceeds_overflow']);
+        $pointsPerMoney = $world->rulesetVersion->settings['ecopo']['points_per_money'];
+        $this->assertSame($capacityMetadata['seller_proceeds_overflow'] * $pointsPerMoney, (int) $capacitySellerNation->fresh()->ecopo);
         $this->assertSame(11, $capacityMetadata['trading_fee']);
         $this->assertSame(3, DB::table('audit_events')->where('event_type', 'trading_post.sold')->count());
 
@@ -726,6 +731,7 @@ final class TradingPostApiTest extends TestCase
         $this->assertSame(0, $foodMetadata['stored_quantity']);
         $this->assertSame(0, $foodMetadata['overflow_sold_quantity']);
         $this->assertSame(100, $foodMetadata['overflow_discarded_quantity']);
+        $this->assertSame($foodMetadata['overflow_discarded_quantity'], (int) $capacityBuyerNation->fresh()->ecopo);
         $this->assertDatabaseHas('audit_events', [
             'event_type' => 'resource.food_overflow_resolved',
             'nation_id' => $capacityBuyerNation->id,
