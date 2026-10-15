@@ -90,9 +90,7 @@ final class SecretaryBowAttackService
         }
         $occupancies = MonsterOccupancy::query()
             ->whereHas('monster', fn ($query) => $query
-                ->where('world_id', $context->world->id)->where('state', 'alive')
-                ->whereHas('definition', fn ($definition) => $definition
-                    ->where('ruleset_version_id', $context->ruleset->id)))
+                ->where('world_id', $context->world->id)->where('state', 'alive'))
             ->whereHas('cell', fn ($cell) => $cell->where('map_space_id', $surface->id))
             ->with(['monster.definition', 'cell'])->orderBy('id')->lockForUpdate()->get();
         $ribbonNationIds = array_values(array_filter(

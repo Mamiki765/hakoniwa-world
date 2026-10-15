@@ -21,7 +21,7 @@ actorはspawn元Nationを保持しない。hostは常に現在cellの`owner_nati
 
 ## Turn order and determinism
 
-`calculate_terrain_context`がsurface cell orderを専用shuffle streamで固定する。ver 1.5.0-beta.3のcurrent v5では、このphaseはterrain/sea-edgeを計算せず、全cell IDのorderだけを保持する。immutableな旧rulesetのsame-seed retryだけは旧計算を条件付きで再現する。`process_cells`は全cellとrelationを一括取得し、怪獣occupancy/definitionもWorld単位でbatch loadする。各cellでは怪獣actorを通常の人口・facility処理より先に実行し、actorが存在したcellの通常処理を終える。
+`calculate_terrain_context`がsurface cell orderを専用shuffle streamで固定する。ver 1.5.0-beta.3のcurrent v5では、このphaseはterrain/sea-edgeを計算せず、全cell IDのorderだけを保持する。immutableな旧rulesetのsame-seed retryだけは旧計算を条件付きで再現する。`process_cells`は全cellとrelationを一括取得し、怪獣occupancy/definitionもWorld単位でbatch loadする。World移行前の定義を参照する生存個体も含め、個体に保存された定義で移動・弓の対象判定・damage・除去を処理する。船の占有判定と軍艦もこの完全なbatchを使う。各cellでは怪獣actorを通常の人口・facility処理より先に実行し、actorが存在したcellの通常処理を終える。
 
 movement、spawn trigger/candidate/type/HPは用途別labelled random streamを使い、raw seed/drawはpublic API/event projectionへ出さない。移動先が後続cellなら同じturnに再行動できる逐次因果を保ち、definition上限はturn-local `MonsterTurnBatch`で制限する。`moves_taken`はDBにもAPIにも置かない。
 
@@ -29,12 +29,12 @@ movement、spawn trigger/candidate/type/HPは用途別labelled random streamを�
 
 ## Integrity and concurrency
 
-- WorldのrulesetとdefinitionのrulesetをDB triggerで一致させる。
+- 新規個体と個体のWorld・definition・出現時HPの変更では、WorldのrulesetとdefinitionのrulesetをDB triggerで一致させる。World移行後も既存個体の出現時定義・出現時HPは保持する。
 - HPをdefinition範囲とinstance state checkで制約する。
 - occupancyはalive、同一World、surface、非CapitalをDB triggerで検証する。
 - cellとmonsterはlock順を固定し、occupancyのcell/monster一意制約で二重配置を拒否する。
 - kill statはWorld/Nation/definitionのunique scopeで、初回count/version 1、以後のatomic incrementだけを許す。Nation/definitionのWorld整合とcross-World拒否をDBで保証する。
-- 個別撃破tableは持たず、instance lock下のalive→killed成立時だけ永久statと現在の100 turn周期statを同じtransactionでupsertする。retryとtransaction rollbackは二重加算や部分更新を残さない。
+- 個別撃破tableは持たず、instance lock下のalive→killed成立時だけ永久statと現在の100 turn周期statを同じtransactionでupsertする。移行前の定義を持つ個体の新しい討伐記録は、Worldの現行Rulesetの同じ怪獣keyへ結ぶ。既存stat・死亡個体・使用済みsnapshotは移し替えない。retryとtransaction rollbackは二重加算や部分更新を残さない。
 - 途中区間の既存Nationはmigrationでseed要求を固定し、全要求の明示完了までnon-dry TurnRun作成と周期順位の0件defaultを拒否する。要求行は完了を一度だけ許し、World存続中の削除を拒否する。
 - published `roadmap-pr21-v1`を追加するだけでhistorical ruleset/Worldをrepointしない。
 
