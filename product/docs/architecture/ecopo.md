@@ -23,7 +23,7 @@ v38の`ecopo.points_per_money`は1億円につき1000点。資源は既存の`in
 
 Turnの`finalize_turn`内、lifecycleがmembershipを終了する前に、1000万点ごとに1Pdへ交換し端数を残す。Pdは現在の島ownerの既存`ParadoxBalanceService`へ付与する。既存ledgerの`compensation`（付与）分類を使い、`metadata.reason=ecopo_exchange`と`ecopo:{world_id}:{target_turn}:{nation_id}`で出所と一意性を識別する。新たなPd台帳・balance系統・source CHECKの変更は行わない。
 
-本人の島ログには`ecopo.exchanged`として「突然ニョワミヤが現れエコポ○○○点回収し輝石○Pd置いていきました」を表示する。`ecopo.credited`は同transactionの監査根拠で、資源動態や通常の本人ログへ各破棄の新しい行を増やさない。
+本人の島ログには`ecopo.exchanged`として「突然ニョワミヤが現れエコポを○○○点回収し輝石を○Pd置いていきました」を表示する。`ecopo.credited`は同transactionの監査根拠で、資源動態や通常の本人ログへ各破棄の新しい行を増やさない。
 
 ## 移行と固定境界
 

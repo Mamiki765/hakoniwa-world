@@ -420,7 +420,7 @@ describe('application lobby and island entry', () => {
         const ownerNation = {
             id: 3, world_id: 1, nation_number: 1, name: '自島', owner_name: '自島主', comment: '',
             money: 500, money_display: '500億円', money_capacity: 9999, money_remaining_capacity: 9499,
-            money_is_at_capacity: false, total_food_tons: 10000, food_total_tons: 10000,
+            money_is_at_capacity: false, ecopo: 0, total_food_tons: 10000, food_total_tons: 10000,
             food_capacity_tons: 999900, food_remaining_capacity_tons: 989900, food_is_at_capacity: false,
             farm_capacity_people: 10000, factory_capacity_people: 20000, mine_capacity_people: 30000,
             resource_forecast: resourceForecastFixture,
@@ -996,7 +996,7 @@ describe('application lobby and island entry', () => {
 
     const ownerHudNation: Nation = {
         id: 3, world_id: 1, nation_number: 1, name: '自島', owner_name: '自島主', comment: '自島コメント', money: 62728, money_display: '62,728億円',
-        money_capacity: 9999, money_remaining_capacity: 0, money_is_at_capacity: true,
+        money_capacity: 9999, money_remaining_capacity: 0, money_is_at_capacity: true, ecopo: 0,
         total_food_tons: 10000, food_total_tons: 10000,
         food_capacity_tons: 999900, food_remaining_capacity_tons: 989900, food_is_at_capacity: false,
         farm_capacity_people: 10000, factory_capacity_people: 20000, mine_capacity_people: 30000,
