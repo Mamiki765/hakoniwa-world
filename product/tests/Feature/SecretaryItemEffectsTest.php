@@ -39,6 +39,7 @@ use Illuminate\Database\Events\QueryExecuted;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
+use PHPUnit\Framework\Attributes\DataProvider;
 use RuntimeException;
 use Tests\Concerns\CreatesTestWorlds;
 use Tests\TestCase;
@@ -849,8 +850,18 @@ final class SecretaryItemEffectsTest extends TestCase
             ->where('nation_id', $elfNation->id)->count());
     }
 
-    public function test_longshot_bow_reaches_a_neutral_aoi_and_explains_the_public_kill(): void
+    public static function livingMonsterRulesetHistories(): array
     {
+        return ['current' => [false], 'v36 to v37' => [true]];
+    }
+
+    #[DataProvider('livingMonsterRulesetHistories')]
+    public function test_longshot_bow_reaches_a_neutral_aoi_and_explains_the_public_kill(bool $upgrade): void
+    {
+        $next = config('hakoniwa.ruleset');
+        if ($upgrade) {
+            config(['hakoniwa.ruleset' => require config_path('hakoniwa/rulesets/hakoniwa-2s-plus-v36.php')]);
+        }
         $world = $this->lightweightWorld();
         [$longshotUser, $longshotNation] = $this->nation($world, '遠当て弓国');
         $ruleset = $this->switchToItemRuleset($world);
@@ -860,6 +871,13 @@ final class SecretaryItemEffectsTest extends TestCase
         $neutralCell = MapCell::query()->where('map_space_id', $this->surfaceMapSpace($world)->id)
             ->whereNull('owner_nation_id')->with(['terrain', 'facility'])->orderBy('id')->firstOrFail();
         $aoi = $this->monster($world, $ruleset, $neutralCell, 2, 'aoi_inora');
+        $definitionId = $aoi->monster_definition_id;
+        $snapshot = $ruleset->getAttributes();
+        if ($upgrade) {
+            config(['hakoniwa.ruleset' => $next]);
+            (require database_path('migrations/2026_10_14_130000_publish_undersea_construction_ship_ruleset.php'))->up();
+            $world->refresh()->unsetRelation('rulesetVersion');
+        }
         $longshotContext = $this->context(
             $world,
             $this->bowHitSeed($longshotNation->id, SecretaryItemCatalog::LONGSHOT_BOW, 2_100),
@@ -909,6 +927,13 @@ final class SecretaryItemEffectsTest extends TestCase
         $island = $this->getJson("/api/v1/public/nations/{$longshotNation->id}/events")->assertOk();
         $islandIds = collect($island->json('data.groups'))->flatMap(static fn (array $group): array => $group['events'])->pluck('id');
         $this->assertNotContains((int) $killEvent->id, $islandIds);
+        $this->assertSame($definitionId, $aoi->fresh()->monster_definition_id);
+        $this->assertSame($snapshot, $ruleset->fresh()->getAttributes());
+        $this->assertDatabaseHas('nation_monster_kill_stats', [
+            'nation_id' => $longshotNation->id, 'kill_count' => 1,
+            'monster_definition_id' => MonsterDefinition::query()->where('ruleset_version_id', $world->ruleset_version_id)
+                ->where('key', $aoi->definition->key)->sole()->id,
+        ]);
     }
 
     public function test_mechanical_bow_finisher_kills_its_target_without_a_drop(): void
