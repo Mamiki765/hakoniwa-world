@@ -12,6 +12,7 @@ use App\Domain\Command\LandDevelopmentDistancePolicy;
 use App\Domain\Command\MissileTargetPolicy;
 use App\Domain\Command\OwnerFacilityOverbuildPolicy;
 use App\Domain\Command\PlayerFacingCommandException;
+use App\Domain\Command\PortAdjacencyResolver;
 use App\Domain\Command\SettlementOverbuildPolicy;
 use App\Domain\Command\TerritoryExpansionFacts;
 use App\Domain\Command\TerritoryExpansionPolicy;
@@ -88,6 +89,7 @@ final class DomesticCommandExecutor
         private readonly UnderseaConstructionPolicy $underseaConstruction,
         private readonly OwnedLandProximity $ownedLand,
         private readonly EcopoService $ecopo,
+        private readonly PortAdjacencyResolver $portAdjacency,
     ) {}
 
     /**
@@ -2400,25 +2402,8 @@ final class DomesticCommandExecutor
             (new GridCoordinate($cell->x, $cell->y))->radius(1),
             static fn (GridCoordinate $coordinate): bool => $coordinate->x !== $cell->x || $coordinate->y !== $cell->y,
         ));
-        $neighbors = MapCell::query()
-            ->where('map_space_id', $cell->map_space_id)
-            ->where(function ($query) use ($coordinates): void {
-                foreach ($coordinates as $coordinate) {
-                    $query->orWhere(fn ($pair) => $pair->where('x', $coordinate->x)->where('y', $coordinate->y));
-                }
-            })
-            ->with('terrain')
-            ->get();
 
-        return [
-            'owned_land' => $neighbors->contains(
-                static fn (MapCell $neighbor): bool => $neighbor->owner_nation_id === $nation->id
-                    && ! $neighbor->terrain->is_water,
-            ),
-            'sea' => $neighbors->contains(
-                static fn (MapCell $neighbor): bool => $neighbor->terrain->key === 'sea',
-            ),
-        ];
+        return $this->portAdjacency->currentFacts($nation, (int) $cell->map_space_id, $coordinates);
     }
 
     /** @return array<string, int|string|null> */
