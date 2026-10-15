@@ -130,6 +130,7 @@ final class LivingMonsterRulesetUpgradeTest extends CommandAndMissileTestCase
         ], ['amount' => 100]);
         config(['hakoniwa.ruleset' => $next]);
         (require database_path('migrations/2026_10_14_130000_publish_undersea_construction_ship_ruleset.php'))->up();
+        (require database_path('migrations/2026_10_15_010000_publish_ecopo_ruleset.php'))->up();
         $world->refresh()->unsetRelation('rulesetVersion');
 
         return [$world, $nation, $monster, $ship];
