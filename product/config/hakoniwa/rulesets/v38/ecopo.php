@@ -13,7 +13,7 @@ return [
         ],
     ],
     'classification' => [
-        'behavior' => ['behavior', 'exchange_stage', 'excluded_resource_keys'],
+        'behavior' => ['behavior', 'exchange_stage', '/ecopo/excluded_resource_keys/*'],
         'data' => ['points_per_money', 'points_per_paradox'],
         'flavor' => ['name', 'unit'],
     ],

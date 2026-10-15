@@ -1014,6 +1014,8 @@ final class SurfaceCommandAndAidExecutionTest extends CommandAndMissileTestCase
         $this->assertSame($capacity->foodTons, (int) DB::table('nation_resources')
             ->where('nation_id', $receiver->id)->where('resource_definition_id', $wheatId)->value('amount'));
         $this->assertSame(4, $sender->fresh()->idle_counter);
+        $this->assertSame(0, (int) $sender->fresh()->ecopo);
+        $this->assertSame(0, (int) $receiver->fresh()->ecopo);
         $this->assertSame('completed', $moneyAid->fresh()->status);
         $this->assertSame('completed', $foodAid->fresh()->status);
         $this->assertSame(0, (int) DB::table('audit_events')->where('event_type', 'command.money_aid_transferred')

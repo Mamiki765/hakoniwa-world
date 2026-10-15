@@ -38,6 +38,7 @@ final readonly class EcopoRules
             $key = $resource['key'];
             if (in_array($key, $rules['excluded_resource_keys'], true)) {
                 $points[$key] = 0;
+
                 continue;
             }
             $rate = $settings['inventory_sale_rates'][$key] ?? null;

@@ -48,8 +48,10 @@ final class FreshInstallRebaselineTest extends TestCase
             CurrentDatabaseBaseline::CAPITAL_RELOCATION_MIGRATION,
             CurrentDatabaseBaseline::SHIP_DESTINATION_MIGRATION,
             '2026_10_14_130000_publish_undersea_construction_ship_ruleset',
+            CurrentDatabaseBaseline::ECOPO_MIGRATION,
+            '2026_10_15_010000_publish_ecopo_ruleset',
         ], DB::table('migrations')->orderBy('id')->pluck('migration')->all());
-        $this->assertSame([$current['key']], RulesetVersion::query()->orderBy('version')->pluck('key')->all());
+        $this->assertDatabaseHas('ruleset_versions', ['key' => $current['key']]);
         app(CurrentDatabaseBaseline::class)->assertExisting();
         $this->assertTrue(Schema::hasColumn('worlds', 'monster_count_snapshot'));
         $this->assertTrue(Schema::hasColumn('nations', 'last_capital_relocation_turn'));

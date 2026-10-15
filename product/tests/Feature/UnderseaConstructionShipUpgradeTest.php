@@ -27,7 +27,7 @@ final class UnderseaConstructionShipUpgradeTest extends CommandAndMissileTestCas
     #[DataProvider('publicAchievementEndpoints')]
     public function test_public_achievements_survive_upgrade_and_combine_kills_of_the_same_species(bool $rankings): void
     {
-        $next = config('hakoniwa.ruleset');
+        $next = require config_path('hakoniwa/rulesets/hakoniwa-2s-plus-v37.php');
         config(['hakoniwa.ruleset' => require config_path('hakoniwa/rulesets/hakoniwa-2s-plus-v36.php')]);
         $world = $this->lightweightWorld();
         [, $nation] = $this->nation($world, '討伐実績移行');
@@ -82,7 +82,7 @@ final class UnderseaConstructionShipUpgradeTest extends CommandAndMissileTestCas
 
     public function test_upgrade_keeps_assets_ship_provenance_and_original_queue_request_identity(): void
     {
-        $next = config('hakoniwa.ruleset');
+        $next = require config_path('hakoniwa/rulesets/hakoniwa-2s-plus-v37.php');
         config(['hakoniwa.ruleset' => require config_path('hakoniwa/rulesets/hakoniwa-2s-plus-v36.php')]);
         $world = $this->lightweightWorld();
         [$user, $nation] = $this->nation($world, '前方移行');
@@ -116,7 +116,7 @@ final class UnderseaConstructionShipUpgradeTest extends CommandAndMissileTestCas
 
     public function test_upgrade_refuses_an_unresolved_production_turn(): void
     {
-        $next = config('hakoniwa.ruleset');
+        $next = require config_path('hakoniwa/rulesets/hakoniwa-2s-plus-v37.php');
         config(['hakoniwa.ruleset' => require config_path('hakoniwa/rulesets/hakoniwa-2s-plus-v36.php')]);
         $world = $this->lightweightWorld();
         $context = $this->context($world, $world->current_turn + 1, hash('sha256', 'unresolved before upgrade'), []);

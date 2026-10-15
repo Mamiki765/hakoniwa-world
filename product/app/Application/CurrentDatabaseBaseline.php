@@ -49,7 +49,7 @@ SELECT 'table:' || c.relname AS object_key,
              pg_get_constraintdef(k.oid)
            ) ORDER BY k.conname)
            FROM pg_constraint k WHERE k.conrelid = c.oid
-             AND NOT (c.relname = 'nations' AND k.conname = 'nations_ecopo_nonnegative' AND CAST(? AS boolean))
+             AND NOT (c.relname = 'nations' AND k.conname IN ('nations_ecopo_nonnegative', 'nations_ecopo_not_null') AND CAST(? AS boolean))
          ), '[]'::jsonb),
          'indexes', COALESCE((
            SELECT jsonb_agg(jsonb_build_array(
@@ -199,7 +199,8 @@ SQL);
 SELECT pg_get_constraintdef(oid) AS definition, convalidated
 FROM pg_constraint WHERE conrelid = 'public.nations'::regclass AND conname = 'nations_ecopo_nonnegative'
 SQL);
-        if ($column?->definition !== '["bigint", true, "0", "", "", null, true]'
+        $expectedColumn = ['bigint', true, "'0'::bigint", '', '', null, true];
+        if (json_decode($column->definition ?? 'null', true, 512, JSON_THROW_ON_ERROR) !== $expectedColumn
             || $constraint?->definition !== 'CHECK ((ecopo >= 0))' || ! $constraint->convalidated) {
             throw new RuntimeException('Database differs from the Ecopo extension.');
         }
