@@ -35,6 +35,28 @@ final class NationRefugeeReceptionService
         if ($generated < 1) {
             return ['received' => 0, 'changed_cell_ids' => []];
         }
+        $reception = $this->receivePopulation($context, $recipient, $generated);
+        $received = $reception['received'];
+        $this->events->record($context, 'refugee_received', $recipient, [
+            'nation_id' => (int) $recipient->id,
+            'source_key' => $sourceKey,
+            'source_x' => (int) $source->x,
+            'source_y' => (int) $source->y,
+            'generated_population' => $generated,
+            'received_population' => $received,
+            'unreceived_population' => $generated - $received,
+            ...$metadata,
+        ], 'nation');
+
+        return $reception;
+    }
+
+    /** @return array{received: int, changed_cell_ids: list<int>} */
+    public function receivePopulation(TurnContext $context, Nation $recipient, int $generated): array
+    {
+        if ($generated < 1) {
+            return ['received' => 0, 'changed_cell_ids' => []];
+        }
         $settlementKeys = $context->ruleset->settings['military']['refugees']['settlement_facility_keys'] ?? [];
         $birthrateLevel = 0;
         $attractionMaximum = $context->ruleset->settings['turn_processing']['settlement']['attraction_maximum_population'];
@@ -78,16 +100,6 @@ final class NationRefugeeReceptionService
         }
         $received = $generated - $remaining;
         $context->state->addRefugeesReceived((int) $recipient->id, $received);
-        $this->events->record($context, 'refugee_received', $recipient, [
-            'nation_id' => (int) $recipient->id,
-            'source_key' => $sourceKey,
-            'source_x' => (int) $source->x,
-            'source_y' => (int) $source->y,
-            'generated_population' => $generated,
-            'received_population' => $received,
-            'unreceived_population' => $remaining,
-            ...$metadata,
-        ], 'nation');
 
         return ['received' => $received, 'changed_cell_ids' => $changedCellIds];
     }

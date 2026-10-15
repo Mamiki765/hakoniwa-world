@@ -707,6 +707,13 @@ final class MissileImpactAndSettlementTest extends CommandAndMissileTestCase
         $this->assertSame(500, $metadata['generated_population']);
         $this->assertSame(500, $metadata['received_population']);
         $this->assertSame(0, $metadata['unreceived_population']);
+        $this->assertSame('nation', $received->visibility);
+        $this->assertSame($target->id, $metadata['source_nation_id']);
+        $this->assertSame($item->definition->key, $metadata['missile_key']);
+        $this->assertSame($metadata['received_population'], $context->state->refugeesReceivedForNation($firing->id));
+        // Both recipients must refresh the turn-local population index after the impact.
+        $this->assertContains((int) $firingCapitalId, $metrics['changed_cell_ids']);
+        $this->assertContains((int) $receivingCell->id, $metrics['changed_cell_ids']);
         $this->assertSame($baseMaximum + 300, $receivingCell->fresh()->population);
         $this->assertSame(3_000, $underseaCity->fresh()->population);
         $this->assertSame('undersea_city', $underseaCity->fresh()->facility()->value('key'));
