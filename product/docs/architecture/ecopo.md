@@ -31,7 +31,7 @@ Turnの`finalize_turn`内、lifecycleがmembershipを終了する前に、1000�
 
 fresh installではappend-onlyの5.2.0 migrationがv37を要求する。この**固定原文と完全一致するpayloadだけ**を既存publisherで再生できるようにする。変更したhistorical payloadのauthoringや過去Worldのmutationを許可するものではない。新しい列とCHECKはbaseline verifierで正確に検証し、それ以外の既存schema fingerprintは維持する。
 
-生存怪獣のRuleset境界問題は別の5.2.2緊急修正担当の範囲。このPRでは修正を重複実装せず、5.3.0を適用する前にその修正の取り込みと確認を必要とする。本番適用は行わない。
+Ruleset移行後も生存怪獣の出現時定義と履歴を保持し、Turnの対象にする。新しい討伐統計は現在のWorld catalogに記録する。5.3.0にはこの境界修正（#279）を取り込み済みで、v36→v37→v38移行後の公式Turn・討伐・怪獣と船の占有分離は既存の `LivingMonsterRulesetUpgradeTest` で確認する。本番適用は行わない。
 
 ## 過去分のpreview可否
 
