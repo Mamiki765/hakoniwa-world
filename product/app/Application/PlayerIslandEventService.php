@@ -1711,7 +1711,7 @@ final class PlayerIslandEventService
                 number_format($this->integer($metadata, 'revenue')),
             ),
             'ecopo.exchanged' => sprintf(
-                '突然ニョワミヤが現れエコポ%s点回収し輝石%sPd置いていきました',
+                '突然ニョワミヤが現れエコポを%s点回収し輝石を%sPd置いていきました',
                 number_format($this->integer($metadata, 'collected_points')),
                 number_format($this->integer($metadata, 'paradox')),
             ),

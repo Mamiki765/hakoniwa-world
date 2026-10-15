@@ -2498,6 +2498,7 @@ async function abandonNation(): Promise<void> {
                                     <dd>{{ formatResource(resource.capacity, resource.unit_label) }}</dd>
                                 </div>
                             </template>
+                            <div title="上限超過で破棄した資源・資金から貯まり、1,000万点ごとにターン末で1Pdへ交換されます"><dt>エコポ</dt><dd>{{ nation.ecopo.toLocaleString('ja-JP') }}点</dd></div>
                         </dl>
                     </section>
                     <SalePolicyPanel :key="`${nation.id}:${nation.current_turn}`" :nation-id="nation.id" :resources="nation.resources" :population="nation.total_population" />
