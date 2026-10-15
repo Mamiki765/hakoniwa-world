@@ -30,14 +30,28 @@ final class InquiryApiTest extends TestCase
         ])->assertUnprocessable()->assertJsonValidationErrors('category');
     }
 
-    public function test_authenticated_user_can_submit_without_attachment_and_server_metadata_cannot_be_spoofed(): void
+    public function test_authenticated_user_can_submit_after_loading_lobby_and_server_metadata_cannot_be_spoofed(): void
     {
+        $this->freezeTime();
         $world = $this->lightweightWorld();
         $world->update(['current_turn' => 42]);
         $user = User::factory()->create();
         $nation = app(NationCreationService::class)->create($user, $world->fresh(), '問い合わせ島', '問い合わせ島主');
 
-        $response = $this->actingAs($user)->post('/api/v1/inquiries', [
+        $this->actingAs($user);
+        // The lobby loads these routes before the player can submit an inquiry.
+        foreach ([
+            '/api/v1/public/worlds',
+            '/api/v1/public/announcements/latest',
+            "/api/v1/public/worlds/{$world->id}/summary",
+            "/api/v1/public/worlds/{$world->id}/rankings",
+            "/api/v1/public/worlds/{$world->id}/major-news",
+            "/api/v1/public/worlds/{$world->id}/events",
+        ] as $url) {
+            $this->getJson($url)->assertOk();
+        }
+
+        $response = $this->post('/api/v1/inquiries', [
             'submission_key' => (string) Str::uuid(),
             'category' => 'bug',
             'subject' => '表示がおかしい',
@@ -262,8 +276,9 @@ SQL);
         Storage::disk('inquiry_attachments')->assertDirectoryEmpty('/');
     }
 
-    public function test_submission_is_authenticated_idempotent_and_rate_limited(): void
+    public function test_submission_is_authenticated_idempotent_and_rate_limited_per_user(): void
     {
+        $this->freezeTime();
         $this->lightweightWorld();
         $payload = [
             'submission_key' => (string) Str::uuid(),
@@ -275,19 +290,38 @@ SQL);
 
         $user = User::factory()->create();
         $this->actingAs($user)->postJson('/api/v1/inquiries', $payload)->assertCreated();
-        $this->actingAs($user)->postJson('/api/v1/inquiries', $payload)->assertOk();
+        $response = $this->postJson('/api/v1/inquiries', $payload)->assertOk();
         $this->assertDatabaseCount('inquiries', 1);
 
-        $this->actingAs($user)->postJson('/api/v1/inquiries', [
-            ...$payload,
-            'submission_key' => (string) Str::uuid(),
-            'subject' => '要望 1',
-        ])->assertCreated();
-        $this->actingAs($user)->postJson('/api/v1/inquiries', [
+        // Exercise the configured budget without pinning its numeric value here.
+        $remaining = $response->headers->get('X-RateLimit-Remaining');
+        $this->assertNotNull($remaining);
+        for ($attempt = 0; $attempt < (int) $remaining; $attempt++) {
+            $this->postJson('/api/v1/inquiries', [
+                ...$payload,
+                'submission_key' => (string) Str::uuid(),
+            ])->assertCreated();
+        }
+        $inquiryCount = Inquiry::query()->count();
+
+        $this->postJson('/api/v1/inquiries', [
             ...$payload,
             'submission_key' => (string) Str::uuid(),
             'subject' => 'rate limited',
         ])->assertTooManyRequests();
+        $this->assertDatabaseCount('inquiries', $inquiryCount);
+
+        // Another user on the same IP must retain their own submission budget.
+        $otherUser = User::factory()->create();
+        $otherSubmissionKey = (string) Str::uuid();
+        $this->actingAs($otherUser)->postJson('/api/v1/inquiries', [
+            ...$payload,
+            'submission_key' => $otherSubmissionKey,
+        ])->assertCreated();
+        $this->assertDatabaseHas('inquiries', [
+            'submission_key' => $otherSubmissionKey,
+            'user_id' => $otherUser->id,
+        ]);
     }
 
     private function admin(string $providerUserId): User
