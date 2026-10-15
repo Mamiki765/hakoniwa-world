@@ -39,24 +39,27 @@ final class UnderseaConstructionShipTest extends CommandAndMissileTestCase
     }
 
     #[DataProvider('underseaCommands')]
-    public function test_ship_builds_undersea_facilities_through_existing_commands_and_stays_at_triple_cost(
+    public function test_ship_builds_undersea_facilities_through_existing_commands_and_stays_at_configured_cost(
         string $commandKey, string $facilityKey, int $quantity,
     ): void {
         $world = $this->lightweightWorld();
         [$user, $nation] = $this->nation($world, '工作船建設');
         $target = $this->remoteSea($world);
         $ship = $this->ship($world, $nation, $target);
-        $nation->update(['money' => 100_000]);
+        $definition = app(SurfaceShipCatalog::class)->definition($world->rulesetVersion->settings, $ship->ship_type_key);
         $capital = $nation->capital()->sole()->cell()->sole();
         $capital->update(['population' => 10_000]);
         $command = CommandDefinition::query()->where('ruleset_version_id', $world->ruleset_version_id)->where('key', $commandKey)->sole();
+        $cost = $command->cost_money * $definition->constructionCostMultiplier;
+        $money = $cost * $quantity + 10_000;
+        $nation->update(['money' => $money]);
         $service = app(CommandQueueService::class);
         $params = ['construction_ship_id' => $ship->id];
         $this->assertPlayerFacing(fn () => $this->queue($service, $user, $nation, $this->surfaceMapSpace($world), 'excavate', $target, parameters: $params));
         $service->validateTarget($nation, $this->surfaceMapSpace($world), $command, $target, parameters: $params);
         $preview = $this->actingAs($user)->getJson('/api/v1/nations/'.$nation->id.'/map-spaces/'.$this->surfaceMapSpace($world)->id.'/command-definitions?target_x='.$target->x.'&target_y='.$target->y.'&construction_ship_id='.$ship->id);
         $commands = collect($preview->assertOk()->json('data.commands'));
-        $this->assertSame($command->cost_money * 3, $commands->firstWhere('key', $commandKey)['cost_money']);
+        $this->assertSame($cost, $commands->firstWhere('key', $commandKey)['cost_money']);
         $this->assertSame('currently_executable', $commands->firstWhere('key', $commandKey)['execution_preview_status']);
         $this->assertNull($commands->firstWhere('key', $commandKey)['distance_reason_code']);
         $this->assertNull($commands->firstWhere('key', $commandKey)['projected_distance_reason_code']);
@@ -81,8 +84,8 @@ final class UnderseaConstructionShipTest extends CommandAndMissileTestCase
         $this->assertNull($target->fresh()->facility_definition_id);
         $this->assertNull($target->fresh()->owner_nation_id);
         $this->assertSame([$target->x, $target->y], [$item->fresh()->target_x, $item->fresh()->target_y]);
-        $this->assertSame(100_000 - $command->cost_money * $quantity * 3, (int) $nation->fresh()->money);
-        $this->assertSame([$buildCell->id, Ship::STATE_ACTIVE, 1], [$ship->fresh()->map_cell_id, $ship->fresh()->state, $ship->fresh()->current_hp]);
+        $this->assertSame($money - $cost * $quantity, (int) $nation->fresh()->money);
+        $this->assertSame([$buildCell->id, Ship::STATE_ACTIVE, $definition->maximumHp], [$ship->fresh()->map_cell_id, $ship->fresh()->state, $ship->fresh()->current_hp]);
         $event = DB::table('audit_events')->where('event_type', 'command.success')->where('subject_id', $item->id)->sole();
         $metadata = json_decode($event->metadata, true, flags: JSON_THROW_ON_ERROR);
         $this->assertSame([$buildCell->x, $buildCell->y, $buildCell->id], [$event->x, $event->y, $metadata['after']['cell_id']]);
@@ -161,15 +164,15 @@ final class UnderseaConstructionShipTest extends CommandAndMissileTestCase
         $world = $this->lightweightWorld();
         [$user, $nation] = $this->nation($world, '造船国');
         $this->ownedWaterFacility($nation, 'port');
-        $nation->update(['money' => 30_000]);
-        $command = CommandDefinition::query()->where('ruleset_version_id', $world->ruleset_version_id)->where('key', 'build_ship')->sole();
         $definition = app(SurfaceShipCatalog::class)->definition($world->rulesetVersion->settings, 'undersea_construction');
+        $money = $definition->buildCostMoney * 3;
+        $nation->update(['money' => $money]);
         $item = $this->queue(app(CommandQueueService::class), $user, $nation, $this->surfaceMapSpace($world), 'build_ship', null, $definition->selector);
         app(DomesticCommandExecutor::class)->execute($this->context($world, 2, hash('sha256', 'build working ship'), [$nation->id]));
         $this->assertSame('completed', $item->fresh()->status);
-        $this->assertSame(20_000, (int) $nation->fresh()->money);
+        $this->assertSame($money - $definition->buildCostMoney, (int) $nation->fresh()->money);
         $ship = Ship::activeForNation($world->id, $nation->id)->sole();
-        $this->assertSame([1, 1, null], [$ship->current_hp, $ship->max_hp, $ship->heading]);
+        $this->assertSame([$definition->maximumHp, $definition->maximumHp, null], [$ship->current_hp, $ship->max_hp, $ship->heading]);
         $again = $this->queue(app(CommandQueueService::class), $user, $nation->fresh(), $this->surfaceMapSpace($world), 'build_ship', null, $definition->selector);
         app(DomesticCommandExecutor::class)->execute($this->context($world, 3, hash('sha256', 'second working ship'), [$nation->id]));
         $this->assertSame('ship_capacity_reached', $again->fresh()->failure_code);
@@ -181,7 +184,7 @@ final class UnderseaConstructionShipTest extends CommandAndMissileTestCase
         }
     }
 
-    public function test_heading_only_movement_spends_ten_oil_and_construction_follows_before_next_movement(): void
+    public function test_heading_only_movement_spends_configured_oil_and_construction_follows_before_next_movement(): void
     {
         $world = $this->lightweightWorld();
         [$user, $nation] = $this->nation($world, '工作船航行');
@@ -190,11 +193,13 @@ final class UnderseaConstructionShipTest extends CommandAndMissileTestCase
         $destination = MapCell::query()->where('map_space_id', $origin->map_space_id)->where('x', $origin->x + 1)->where('y', $origin->y)->sole();
         app(MapCellStateService::class)->transitionTerrain($destination, TerrainDefinition::query()->where('key', 'sea')->sole());
         $ship = $this->ship($world, $nation, $origin);
+        $definition = app(SurfaceShipCatalog::class)->definition($world->rulesetVersion->settings, $ship->ship_type_key);
         $oil = NationResource::query()->where('nation_id', $nation->id)->whereHas('definition', fn ($q) => $q->where('key', 'oil'))->sole();
-        $oil->update(['amount' => 30]);
+        $initialOil = $definition->movementOilUnits * 3;
+        $oil->update(['amount' => $initialOil]);
         $this->executeCellResolution($this->context($world, 2, hash('sha256', 'working ship no heading'), [$nation->id]), $origin);
         $this->assertSame($origin->id, $ship->fresh()->map_cell_id);
-        $this->assertSame(30, $oil->fresh()->amount);
+        $this->assertSame($initialOil, $oil->fresh()->amount);
         $ship->update(['heading' => GridCoordinate::EAST]);
         $nation->update(['money' => 100_000]);
         // The finance predecessor consumes Turn 3 while the ship moves; construction waits for Turn 4.
@@ -202,8 +207,8 @@ final class UnderseaConstructionShipTest extends CommandAndMissileTestCase
         $item = $this->queue(app(CommandQueueService::class), $user, $nation->fresh(), $this->surfaceMapSpace($world), 'build_undersea_fire_station', $origin, parameters: ['construction_ship_id' => $ship->id]);
         $this->executeCellResolution($this->context($world, 3, hash('sha256', 'working ship heading'), [$nation->id]), $origin);
         $this->assertSame($destination->id, $ship->fresh()->map_cell_id);
-        $this->assertSame(20, $oil->fresh()->amount);
-        $this->assertSame(1, $ship->fresh()->current_hp);
+        $this->assertSame($initialOil - $definition->movementOilUnits, $oil->fresh()->amount);
+        $this->assertSame($definition->maximumHp, $ship->fresh()->current_hp);
         $this->assertSame('queued', $item->fresh()->status);
         $context = $this->context($world, 4, hash('sha256', 'working ship moved before building'), [$nation->id]);
         app(DomesticCommandExecutor::class)->execute($context);
@@ -214,7 +219,7 @@ final class UnderseaConstructionShipTest extends CommandAndMissileTestCase
         app(MapCellStateService::class)->transitionTerrain($next, TerrainDefinition::query()->where('key', 'sea')->sole());
         $this->executeCellResolution($context, $destination);
         $this->assertSame($next->id, $ship->fresh()->map_cell_id);
-        $this->assertSame(10, $oil->fresh()->amount);
+        $this->assertSame($initialOil - 2 * $definition->movementOilUnits, $oil->fresh()->amount);
         $this->assertSame('undersea_fire_station', $destination->fresh()->facility?->key);
         $this->assertNull($next->fresh()->facility_definition_id);
     }
@@ -230,7 +235,8 @@ final class UnderseaConstructionShipTest extends CommandAndMissileTestCase
         app(MapCellStateService::class)->setFacility($target, FacilityDefinition::query()->where('key', 'seabed_base')->sole());
         $target->update(['owner_nation_id' => $nation->id]);
         $ship->update(['map_cell_id' => $target->id]);
-        $money = $item->definition->cost_money * 3;
+        $definition = app(SurfaceShipCatalog::class)->definition($world->rulesetVersion->settings, $ship->ship_type_key);
+        $money = $item->definition->cost_money * $definition->constructionCostMultiplier;
         $nation->update(['money' => $money]);
         app(DomesticCommandExecutor::class)->execute($this->context($world, 2, hash('sha256', 'blocked construction destination'), [$nation->id]));
         $this->assertSame('facility_exists', $item->fresh()->failure_code);
@@ -248,6 +254,8 @@ final class UnderseaConstructionShipTest extends CommandAndMissileTestCase
         $base = $this->missileBase($firing);
         $target = $this->remoteSea($world);
         $ship = $this->ship($world, $targetNation, $target);
+        // One remaining HP makes this a sinking case regardless of the catalog maximum.
+        $ship->update(['current_hp' => 1]);
         app(MapCellStateService::class)->setFacility($target, FacilityDefinition::query()->where('key', 'seabed_base')->sole());
         $target->owner_nation_id = $targetNation->id;
         $target->save();
@@ -265,21 +273,23 @@ final class UnderseaConstructionShipTest extends CommandAndMissileTestCase
         $this->assertSame($targetNation->id, $target->fresh()->owner_nation_id);
     }
 
-    public function test_ship_construction_requires_the_full_tripled_cost_before_charging(): void
+    public function test_ship_construction_requires_the_full_configured_cost_before_charging(): void
     {
         $world = $this->lightweightWorld();
         [$user, $nation] = $this->nation($world, '工作船資金');
         $target = $this->remoteSea($world);
         $ship = $this->ship($world, $nation, $target);
+        $definition = app(SurfaceShipCatalog::class)->definition($world->rulesetVersion->settings, $ship->ship_type_key);
         $cost = CommandDefinition::query()->where('ruleset_version_id', $world->ruleset_version_id)->where('key', 'build_seabed_base')->value('cost_money');
-        $nation->update(['money' => $cost * 2]);
+        $money = $cost * $definition->constructionCostMultiplier - 1;
+        $nation->update(['money' => $money]);
         $item = $this->queue(app(CommandQueueService::class), $user, $nation, $this->surfaceMapSpace($world), 'build_seabed_base', $target, parameters: ['construction_ship_id' => $ship->id]);
         app(DomesticCommandExecutor::class)->execute($this->context($world, 2, hash('sha256', 'working ship insufficient funds'), [$nation->id]));
         $this->assertSame('insufficient_funds', $item->fresh()->failure_code);
         $this->assertNull($target->fresh()->facility_definition_id);
         $capacity = app(NationCapacityResolver::class)->resolve($nation, $world->rulesetVersion)->money;
-        $expectedFinance = min($world->rulesetVersion->settings['turn_processing']['automatic_finance_money'], max(0, $capacity - $cost * 2));
-        $this->assertSame($cost * 2 + $expectedFinance, $nation->fresh()->money);
+        $expectedFinance = min($world->rulesetVersion->settings['turn_processing']['automatic_finance_money'], max(0, $capacity - $money));
+        $this->assertSame($money + $expectedFinance, $nation->fresh()->money);
         $this->assertSame(Ship::STATE_ACTIVE, $ship->fresh()->state);
     }
 

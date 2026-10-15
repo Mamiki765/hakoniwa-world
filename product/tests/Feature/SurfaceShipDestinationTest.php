@@ -112,6 +112,9 @@ final class SurfaceShipDestinationTest extends TestCase
     {
         [$world, $owner, $nation, $origin] = $this->fixture();
         $ship = $this->ship($world, $nation, $origin, 'exploration');
+        $definition = app(SurfaceShipCatalog::class)->definition($world->rulesetVersion->settings, $ship->ship_type_key);
+        $initialOil = $definition->movementOilUnits * 3;
+        $this->oil($nation)->update(['amount' => $initialOil]);
         $goal = $this->cell($origin, 2);
         $ship->update(['destination_x' => $goal->x, 'destination_y' => $goal->y]);
         $context = $this->context($world, $nation, 2);
@@ -128,7 +131,7 @@ final class SurfaceShipDestinationTest extends TestCase
         $this->assertNull($ship->fresh()->course()['destination']);
         $this->assertSame('arrived', $this->endReason($ship));
         $this->assertSame(2, DB::table('audit_events')->where('subject_id', $ship->id)->where('event_type', 'ship.moved')->count());
-        $this->assertSame(8, $this->oil($nation)->fresh()->amount);
+        $this->assertSame($initialOil - 2 * $definition->movementOilUnits, $this->oil($nation)->fresh()->amount);
         $this->move($this->context($world, $nation, 4), $ship);
         $this->assertSame($this->cell($origin, 1)->id, $ship->fresh()->map_cell_id);
     }
