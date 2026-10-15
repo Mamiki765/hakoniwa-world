@@ -87,6 +87,7 @@ final class DomesticCommandExecutor
         private readonly BuriedTreasureService $buriedTreasures,
         private readonly UnderseaConstructionPolicy $underseaConstruction,
         private readonly OwnedLandProximity $ownedLand,
+        private readonly EcopoService $ecopo,
     ) {}
 
     /**
@@ -1518,6 +1519,7 @@ final class DomesticCommandExecutor
         if ($income->applied > 0) {
             $nation->update(['money' => $income->after]);
         }
+        $this->ecopo->discardedMoney($context, $nation, $income->overflow, 'logging_income');
         $this->cells->setFacility($cell, null);
         $this->cells->transitionTerrain($cell, TerrainDefinition::query()->where('key', 'plain')->firstOrFail());
         $cell->population = 0;
@@ -2180,6 +2182,7 @@ final class DomesticCommandExecutor
             $nation->update(['money' => $addition->after]);
             $applied = $addition->applied;
             $overflow = $addition->overflow;
+            $this->ecopo->discardedMoney($context, $nation, $overflow, 'buried_treasure_money');
         }
         $this->events->record($context, 'command.buried_treasure', $item, [
             'nation_id' => $nation->id,
@@ -2249,6 +2252,7 @@ final class DomesticCommandExecutor
                 'resolved_money_capacity' => $capacity,
             ];
         }
+        $this->ecopo->discardedMoney($context, $nation, $base->overflow + $bonus->overflow, 'finance');
         $this->events->record($context, $eventType, $nation, $metadata);
     }
 

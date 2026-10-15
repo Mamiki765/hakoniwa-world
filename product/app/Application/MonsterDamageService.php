@@ -37,6 +37,7 @@ final class MonsterDamageService
         private readonly SecretaryMonsterDropService $itemDrops,
         private readonly MapCellStateService $cells,
         private readonly MonsterBehaviorResolver $behaviors,
+        private readonly EcopoService $ecopo,
     ) {}
 
     public function applyDamage(
@@ -217,6 +218,7 @@ final class MonsterDamageService
                 $killerMoney = $this->boundedAssets
                     ->creditMoney($killerNation, $killerShare, $context->ruleset)
                     ->toArray();
+                $this->ecopo->discardedMoney($context, $killerNation, $killerMoney['overflow'], 'monster_reward');
                 if ($hostNation !== null) {
                     $meat = ResourceDefinition::query()->where('key', 'monster_meat')->firstOrFail();
                     $hostMeatCredit = $this->boundedAssets

@@ -22,6 +22,7 @@ final class FoodOverflowResolver
         private readonly CapacityBoundedAssetService $boundedAssets,
         private readonly InventorySalePlanner $sales,
         private readonly TurnEventRecorder $events,
+        private readonly EcopoService $ecopo,
     ) {}
 
     /**
@@ -168,6 +169,8 @@ final class FoodOverflowResolver
         if ($quote->appliedMoney > 0) {
             $lockedNation->increment('money', $quote->appliedMoney);
         }
+
+        $this->ecopo->discardedResource($context, $lockedNation, $resource->key, $quote->inventoryRemaining, 'food_overflow');
 
         $resolution = [
             'requested_overflow_tons' => $foodCredit->overflow,
