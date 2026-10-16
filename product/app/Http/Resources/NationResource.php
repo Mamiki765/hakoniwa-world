@@ -72,6 +72,7 @@ class NationResource extends JsonResource
             'owner_name' => $this->owner_name,
             'comment' => $this->profile_comment,
             'money' => $this->when($isOwner, (int) $this->money),
+            'ecopo' => $this->when($isOwner, (int) $this->ecopo),
             'money_display' => $isOwner ? $money->exact((int) $this->money) : $publicMoney['display'],
             'money_bucket' => $this->when(! $isOwner, $publicMoney['bucket']),
             'money_capacity' => $this->when($isOwner, $capacities?->money),

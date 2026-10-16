@@ -11,6 +11,7 @@ use App\Domain\Monster\MonsterRewardPolicyResolver;
 use App\Domain\Secretary\SecretaryItemGameplayContract;
 use App\Domain\Turn\TurnContext;
 use App\Models\MapCell;
+use App\Models\MonsterDefinition;
 use App\Models\MonsterInstance;
 use App\Models\Nation;
 use App\Models\NationMonsterKillStat;
@@ -37,6 +38,7 @@ final class MonsterDamageService
         private readonly SecretaryMonsterDropService $itemDrops,
         private readonly MapCellStateService $cells,
         private readonly MonsterBehaviorResolver $behaviors,
+        private readonly EcopoService $ecopo,
     ) {}
 
     public function applyDamage(
@@ -217,6 +219,7 @@ final class MonsterDamageService
                 $killerMoney = $this->boundedAssets
                     ->creditMoney($killerNation, $killerShare, $context->ruleset)
                     ->toArray();
+                $this->ecopo->discardedMoney($context, $killerNation, $killerMoney['overflow'], 'monster_reward');
                 if ($hostNation !== null) {
                     $meat = ResourceDefinition::query()->where('key', 'monster_meat')->firstOrFail();
                     $hostMeatCredit = $this->boundedAssets
@@ -345,6 +348,15 @@ final class MonsterDamageService
         Nation $killerNation,
         MonsterInstance $monster,
     ): array {
+        // The instance keeps its spawn definition; a new kill belongs to the
+        // current World catalog, as required by the kill-stat identity guard.
+        $definitionId = $monster->monster_definition_id;
+        if ($monster->definition->ruleset_version_id !== $context->ruleset->id) {
+            $definitionId = MonsterDefinition::query()
+                ->where('ruleset_version_id', $context->ruleset->id)
+                ->where('key', $monster->definition->key)
+                ->sole()->id;
+        }
         $row = DB::selectOne(<<<'SQL'
 INSERT INTO nation_monster_kill_stats (
     world_id, nation_id, monster_definition_id, kill_count,
@@ -359,7 +371,7 @@ RETURNING id, kill_count
 SQL, [
             $context->world->id,
             $killerNation->id,
-            $monster->monster_definition_id,
+            $definitionId,
             $context->targetTurn,
             $context->targetTurn,
         ]);

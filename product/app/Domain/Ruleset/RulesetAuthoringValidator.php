@@ -5,6 +5,7 @@ namespace App\Domain\Ruleset;
 use App\Domain\Command\CommandQueueLimit;
 use App\Domain\Command\DevelopmentPlanQuantity;
 use App\Domain\Command\MissileTargetPolicy;
+use App\Domain\Economy\EcopoRules;
 use App\Domain\Economy\PowerEconomyCalculator;
 use App\Domain\Economy\SalePolicy;
 use App\Domain\Facility\FacilityVisibilityPolicy;
@@ -320,6 +321,10 @@ final class RulesetAuthoringValidator
         }
 
         $resourceKeys = $this->validateResources($settings);
+        if ($version >= 38 && ! array_key_exists('ecopo', $settings)) {
+            throw new DomainException('The Ecopo contract is required for this Ruleset.');
+        }
+        EcopoRules::fromSettings($settings);
         if (isset($settings['power_economy'])) {
             (new PowerEconomyCalculator)->storageCapacity($settings, 0);
         }

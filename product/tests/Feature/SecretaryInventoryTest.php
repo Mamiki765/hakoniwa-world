@@ -270,6 +270,7 @@ final class SecretaryInventoryTest extends TestCase
         $this->assertSame($moneyCapacity, $nation->fresh()->money);
         $this->assertSame($beforeVersion, $secretary->fresh()->surfaceState->equipment_version);
         $this->assertSame(3, SecretaryItemInstance::query()->whereIn('id', [$equipped->id, $escrowed->id, $capacity->id])->count());
+        $this->assertSame(0, (int) $nation->fresh()->ecopo);
         $this->assertSame(0, DB::table('audit_events')->where('event_type', 'secretary.item_sold')->count());
     }
 

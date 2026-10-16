@@ -58,6 +58,7 @@ final class PlayerIslandEventService
         'facility.riot',
         'resource.automatic_sale',
         'resource.food_overflow_resolved',
+        'ecopo.exchanged',
         'capacity.overflow',
         'command.forest_planted_private',
         'command.missile_base_built_private',
@@ -1708,6 +1709,11 @@ final class PlayerIslandEventService
                 $this->resourceLabel($metadata['resource_key'] ?? null),
                 number_format($this->integer($metadata, 'sold')),
                 number_format($this->integer($metadata, 'revenue')),
+            ),
+            'ecopo.exchanged' => sprintf(
+                '突然ニョワミヤが現れエコポを%s点回収し輝石を%sPd置いていきました',
+                number_format($this->integer($metadata, 'collected_points')),
+                number_format($this->integer($metadata, 'paradox')),
             ),
             'resource.food_overflow_resolved' => sprintf(
                 '食料上限を超えた%s%sトンのうち%sトンを売却して%s億円を得て、%sトンを破棄しました。',

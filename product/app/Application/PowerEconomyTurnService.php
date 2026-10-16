@@ -23,6 +23,7 @@ final class PowerEconomyTurnService
         private readonly NationCapacityResolver $capacities,
         private readonly CapacityBoundedAssetService $assets,
         private readonly TurnEventRecorder $events,
+        private readonly EcopoService $ecopo,
     ) {}
 
     /** @param iterable<MapCell> $facilities
@@ -114,6 +115,7 @@ final class PowerEconomyTurnService
         }
         $balance->update(['amount' => $plan['stored_after_mw']]);
         $credit = $this->assets->creditMoney($nation, $plan['pizzeria_revenue'], $context->ruleset);
+        $this->ecopo->discardedMoney($context, $nation, $credit->overflow, 'pizzeria_revenue');
         if ($scales !== [] && $plan['food_consumed_tons'] > 0) {
             $context->state->addEconomicContribution($nation->id, 'pizzeria', 'money', $credit->applied, null);
         }

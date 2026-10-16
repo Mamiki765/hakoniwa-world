@@ -42,9 +42,7 @@ final class MonsterTurnService
         $occupancies = MonsterOccupancy::query()
             ->whereHas('monster', fn ($query) => $query
                 ->where('world_id', $context->world->id)
-                ->where('state', 'alive')
-                ->whereHas('definition', fn ($definition) => $definition
-                    ->where('ruleset_version_id', $context->ruleset->id)))
+                ->where('state', 'alive'))
             ->with(['monster.definition'])
             ->orderBy('id')
             ->lockForUpdate()

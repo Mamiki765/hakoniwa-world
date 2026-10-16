@@ -112,14 +112,14 @@ Route::prefix('api/v1')->middleware(['auth', PrivateApiResponse::class])->group(
     Route::get('/me', [ApiController::class, 'me']);
     Route::get('/me/compensation-grants', [CompensationWarehouseController::class, 'mine']);
     Route::post('/me/compensation-grants/{compensationGrant}/claim', [CompensationWarehouseController::class, 'claimMine']);
-    Route::post('/me/daily-login', [DailyRewardController::class, 'login'])->middleware('throttle:30,1');
+    Route::post('/me/daily-login', [DailyRewardController::class, 'login'])->middleware('throttle:30,1,daily-rewards:');
     Route::get('/me/daily-quests', [DailyRewardController::class, 'quests']);
     Route::post('/me/daily-quests/development-opened', [DailyRewardController::class, 'developmentOpened'])
-        ->middleware('throttle:30,1');
+        ->middleware('throttle:30,1,daily-rewards:');
     Route::get('/me/secretary', [SecretaryController::class, 'show']);
     Route::get('/me/monument-design', [UserMonumentDesignController::class, 'show']);
     Route::post('/me/monument-design', [UserMonumentDesignController::class, 'save'])
-        ->middleware('throttle:10,1');
+        ->middleware('throttle:10,1,monument-design:');
     Route::post('/me/secretary/name', [SecretaryController::class, 'name']);
     Route::patch('/me/secretary/name', [SecretaryController::class, 'rename']);
     Route::patch('/me/secretary/title', [SecretaryController::class, 'updateTitle']);
@@ -200,8 +200,8 @@ Route::prefix('api/v1')->middleware(['auth', PrivateApiResponse::class])->group(
     Route::post('/me/secretary/items/{item}/sell', [SecretaryController::class, 'sellItem'])
         ->where('item', '-?\d+');
     Route::post('/me/secretary/tickets/draw', [SecretaryTicketGachaController::class, 'draw'])
-        ->middleware('throttle:20,1');
-    Route::post('/inquiries', [InquiryController::class, 'store'])->middleware('throttle:3,1');
+        ->middleware('throttle:20,1,secretary-ticket-gacha:');
+    Route::post('/inquiries', [InquiryController::class, 'store'])->middleware('throttle:3,1,inquiries:');
     Route::get('/worlds', [ApiController::class, 'worlds']);
     Route::get('/worlds/{world}/trading-post', [TradingPostController::class, 'index']);
     Route::get('/worlds/{world}/map-spaces', [ApiController::class, 'mapSpaces']);

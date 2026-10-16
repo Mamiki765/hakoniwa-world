@@ -12,6 +12,7 @@ use App\Domain\Command\LandDevelopmentDistancePolicy;
 use App\Domain\Command\MissileTargetPolicy;
 use App\Domain\Command\OwnerFacilityOverbuildPolicy;
 use App\Domain\Command\PlayerFacingCommandException;
+use App\Domain\Command\PortAdjacencyResolver;
 use App\Domain\Command\SettlementOverbuildPolicy;
 use App\Domain\Command\TerritoryExpansionFacts;
 use App\Domain\Command\TerritoryExpansionPolicy;
@@ -87,6 +88,8 @@ final class DomesticCommandExecutor
         private readonly BuriedTreasureService $buriedTreasures,
         private readonly UnderseaConstructionPolicy $underseaConstruction,
         private readonly OwnedLandProximity $ownedLand,
+        private readonly EcopoService $ecopo,
+        private readonly PortAdjacencyResolver $portAdjacency,
     ) {}
 
     /**
@@ -1518,6 +1521,7 @@ final class DomesticCommandExecutor
         if ($income->applied > 0) {
             $nation->update(['money' => $income->after]);
         }
+        $this->ecopo->discardedMoney($context, $nation, $income->overflow, 'logging_income');
         $this->cells->setFacility($cell, null);
         $this->cells->transitionTerrain($cell, TerrainDefinition::query()->where('key', 'plain')->firstOrFail());
         $cell->population = 0;
@@ -2180,6 +2184,7 @@ final class DomesticCommandExecutor
             $nation->update(['money' => $addition->after]);
             $applied = $addition->applied;
             $overflow = $addition->overflow;
+            $this->ecopo->discardedMoney($context, $nation, $overflow, 'buried_treasure_money');
         }
         $this->events->record($context, 'command.buried_treasure', $item, [
             'nation_id' => $nation->id,
@@ -2249,6 +2254,7 @@ final class DomesticCommandExecutor
                 'resolved_money_capacity' => $capacity,
             ];
         }
+        $this->ecopo->discardedMoney($context, $nation, $base->overflow + $bonus->overflow, 'finance');
         $this->events->record($context, $eventType, $nation, $metadata);
     }
 
@@ -2396,25 +2402,8 @@ final class DomesticCommandExecutor
             (new GridCoordinate($cell->x, $cell->y))->radius(1),
             static fn (GridCoordinate $coordinate): bool => $coordinate->x !== $cell->x || $coordinate->y !== $cell->y,
         ));
-        $neighbors = MapCell::query()
-            ->where('map_space_id', $cell->map_space_id)
-            ->where(function ($query) use ($coordinates): void {
-                foreach ($coordinates as $coordinate) {
-                    $query->orWhere(fn ($pair) => $pair->where('x', $coordinate->x)->where('y', $coordinate->y));
-                }
-            })
-            ->with('terrain')
-            ->get();
 
-        return [
-            'owned_land' => $neighbors->contains(
-                static fn (MapCell $neighbor): bool => $neighbor->owner_nation_id === $nation->id
-                    && ! $neighbor->terrain->is_water,
-            ),
-            'sea' => $neighbors->contains(
-                static fn (MapCell $neighbor): bool => $neighbor->terrain->key === 'sea',
-            ),
-        ];
+        return $this->portAdjacency->currentFacts($nation, (int) $cell->map_space_id, $coordinates);
     }
 
     /** @return array<string, int|string|null> */

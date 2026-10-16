@@ -403,6 +403,7 @@ export interface Nation {
     money_capacity: number;
     money_remaining_capacity: number;
     money_is_at_capacity: boolean;
+    ecopo: number;
     total_food_tons: number;
     food_total_tons: number;
     food_capacity_tons: number;

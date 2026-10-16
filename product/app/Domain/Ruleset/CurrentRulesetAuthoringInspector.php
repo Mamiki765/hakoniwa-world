@@ -43,10 +43,17 @@ final class CurrentRulesetAuthoringInspector
         $counts = array_fill_keys(self::CLASSIFICATIONS, 0);
 
         $files = self::DOMAIN_FILES;
+        $directories = [];
+        if (in_array($publishedPayload['key'] ?? null, ['hakoniwa-2s-plus-v37', 'hakoniwa-2s-plus-v38'], true)) {
+            $directories = array_fill_keys(['world-and-map.php', 'commands-and-production.php', 'surface-ships.php', 'turn-pipeline.php'], 'v37');
+        }
+        if (($publishedPayload['key'] ?? null) === 'hakoniwa-2s-plus-v38') {
+            $files[] = 'ecopo.php';
+            $directories['world-and-map.php'] = 'v38';
+            $directories['ecopo.php'] = 'v38';
+        }
         foreach ($files as $file) {
-            $directory = ($publishedPayload['key'] ?? null) === 'hakoniwa-2s-plus-v37'
-                && in_array($file, ['world-and-map.php', 'commands-and-production.php', 'surface-ships.php', 'turn-pipeline.php'], true)
-                    ? 'v37' : 'current';
+            $directory = $directories[$file] ?? 'current';
             $domain = require config_path('hakoniwa/rulesets/'.$directory.'/'.$file);
             if (! is_array($domain) || array_keys($domain) !== ['payload', 'classification']) {
                 throw new DomainException("Current Ruleset domain {$file} must contain only payload and classification.");
