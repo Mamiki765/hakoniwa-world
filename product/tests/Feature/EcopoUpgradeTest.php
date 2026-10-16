@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Application\CommandQueueService;
 use App\Application\CurrentDatabaseBaseline;
+use App\Application\RulesetPublisher;
 use App\Domain\Turn\UnresolvedNextTurnRunException;
 use App\Models\NationResource;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -18,7 +19,9 @@ final class EcopoUpgradeTest extends CommandAndMissileTestCase
 
     public function test_upgrade_initializes_points_without_reinterpreting_assets_and_preserves_queue_identity(): void
     {
-        $next = config('hakoniwa.ruleset');
+        // This append-only migration always upgrades v37 to the frozen v38,
+        // even after the application's current Ruleset advances.
+        $next = require config_path('hakoniwa/rulesets/hakoniwa-2s-plus-v38.php');
         config(['hakoniwa.ruleset' => require config_path('hakoniwa/rulesets/hakoniwa-2s-plus-v37.php')]);
         $world = $this->lightweightWorld();
         [$user, $nation] = $this->nation($world, 'エコポ前方移行');
@@ -45,7 +48,10 @@ final class EcopoUpgradeTest extends CommandAndMissileTestCase
         }
         $pending->run->update(['is_dry_run' => true, 'status' => 'dry_run']);
         $migration->up();
-        $this->assertSame($next['key'], $world->fresh()->rulesetVersion->key);
+        $this->assertSame(
+            app(RulesetPublisher::class)->assertPublishedSnapshot($next)->id,
+            $world->fresh()->ruleset_version_id,
+        );
         $this->assertSame($snapshot, $world->rulesetVersion->fresh()->getAttributes());
         $this->assertSame($money, $nation->fresh()->money);
         $this->assertSame($inventory, NationResource::query()->where('nation_id', $nation->id)->orderBy('id')->pluck('amount', 'resource_definition_id')->all());
@@ -55,10 +61,11 @@ final class EcopoUpgradeTest extends CommandAndMissileTestCase
         $this->assertSame($before, $after);
         $migration->up();
         $this->assertSame(0, (int) $nation->fresh()->ecopo);
-        app(CurrentDatabaseBaseline::class)->assertExisting();
+        // Check this schema extension independently of the latest runtime catalog.
+        app(CurrentDatabaseBaseline::class)->assertStructure();
         DB::statement('ALTER TABLE nations DROP CONSTRAINT nations_ecopo_nonnegative');
         $this->expectException(\RuntimeException::class);
         $this->expectExceptionMessage('Database differs');
-        app(CurrentDatabaseBaseline::class)->assertExisting();
+        app(CurrentDatabaseBaseline::class)->assertStructure();
     }
 }

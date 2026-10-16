@@ -17,10 +17,9 @@ final class CurrentRulesetContractTest extends TestCase
         $this->assertSame([$current['key']], array_keys($normalConfig['published_rulesets']));
         $this->assertSame($current, $normalConfig['published_rulesets'][$current['key']]);
         $this->assertSame($current['secretary'], $normalConfig['current_catalogs']['secretary']);
-        $this->assertSame('hakoniwa-2s-plus-v38', $current['key']);
-        $this->assertSame(38, $current['version']);
-        // Authoring the next generation must retain the complete immutable predecessor.
+        // Production-used snapshots stay fixed independently of the current selection.
         $this->assertSame('f23a9c641323ae7067e8d898a00f22c5eaacecc229a8a085f71bd49f3eb6ac94', $this->checksum(require config_path('hakoniwa/rulesets/hakoniwa-2s-plus-v37.php')));
+        $this->assertSame('7d4cd4232fe4ffcfe082db7ee5ab5e8c05f45538c5ae8ccc0abb2bf0e9fcce64', $this->checksum(require config_path('hakoniwa/rulesets/hakoniwa-2s-plus-v38.php')));
         $this->assertArrayNotHasKey('behavior', $current);
         $this->assertArrayNotHasKey('data', $current);
         $this->assertArrayNotHasKey('flavor', $current);
@@ -33,6 +32,12 @@ final class CurrentRulesetContractTest extends TestCase
     {
         $coverage = app(CurrentRulesetAuthoringInspector::class)->inspect(config('hakoniwa.ruleset'));
         $this->assertSame($coverage['leaves'], $coverage['behavior'] + $coverage['data'] + $coverage['flavor']);
+
+        // Omitting a fragment while preparing the next release must fail coverage.
+        config(['hakoniwa.ruleset_authoring_domains' => array_slice(config('hakoniwa.ruleset_authoring_domains'), 1)]);
+        $this->expectException(DomainException::class);
+        $this->expectExceptionMessage('domain leaves do not exactly match the published payload');
+        app(CurrentRulesetAuthoringInspector::class)->inspect(config('hakoniwa.ruleset'));
     }
 
     public function test_public_inspector_rejects_string_and_numeric_associative_collections(): void
