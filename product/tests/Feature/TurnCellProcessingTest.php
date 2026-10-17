@@ -471,7 +471,8 @@ class TurnCellProcessingTest extends TestCase
             ->where('item_key', 'wakuwaku_ticket')->exists());
     }
 
-    public function test_exploration_ship_ignores_treasure_outside_its_visibility_and_uses_normal_movement(): void
+    #[DataProvider('untrackedTreasureCases')]
+    public function test_exploration_ship_uses_normal_movement_without_a_visible_treasure(bool $hasRemoteTreasure): void
     {
         $world = $this->lightweightWorld();
         $user = User::factory()->create();
@@ -510,7 +511,9 @@ class TurnCellProcessingTest extends TestCase
             [$origin->id, $east->id, $west->id, $remote->id],
             $seed,
         );
-        $treasure = app(BuriedTreasureService::class)->create($context, $remote, 'natural', false);
+        $treasure = $hasRemoteTreasure
+            ? app(BuriedTreasureService::class)->create($context, $remote, 'natural', false)
+            : null;
         $ships = app(SurfaceShipTurnService::class);
         $shipBatch = $ships->load($context, $space);
         $monsterBatch = app(MonsterTurnService::class)->load($context);
@@ -531,7 +534,15 @@ class TurnCellProcessingTest extends TestCase
             new GridCoordinate($remote->x, $remote->y),
         ));
         $this->assertSame($west->id, $ship->fresh()->map_cell_id);
-        $this->assertSame(BuriedTreasure::STATE_ACTIVE, $treasure->fresh()->state);
+        if ($treasure !== null) {
+            $this->assertSame(BuriedTreasure::STATE_ACTIVE, $treasure->fresh()->state);
+        }
+    }
+
+    /** @return array<string, array{bool}> */
+    public static function untrackedTreasureCases(): array
+    {
+        return ['no_treasure' => [false], 'outside_normal_visibility' => [true]];
     }
 
     public function test_pirate_stationary_attack_halves_a_uniformly_eligible_settlement_and_keeps_the_population(): void

@@ -4,21 +4,26 @@ namespace Tests\Feature;
 
 use App\Application\BuriedTreasureService;
 use App\Application\CurrentDatabaseBaseline;
+use App\Application\DomesticCommandExecutor;
 use App\Application\MonsterTurnService;
 use App\Application\NationCreationService;
 use App\Application\PlayerIslandEventService;
+use App\Application\SecretaryItemGrantService;
 use App\Application\SecretaryTurnService;
 use App\Application\SurfaceShipTurnService;
 use App\Domain\Map\GridCoordinate;
 use App\Domain\Map\MapCellStateService;
+use App\Domain\Secretary\SecretaryItemCatalog;
 use App\Domain\Ship\SurfaceShipCatalog;
 use App\Domain\Turn\TurnContext;
 use App\Domain\Turn\TurnRandomStreamFactory;
 use App\Domain\Turn\TurnState;
 use App\Models\BuriedTreasure;
+use App\Models\CommandDefinition;
 use App\Models\FacilityDefinition;
 use App\Models\MapCell;
 use App\Models\Nation;
+use App\Models\NationCommandQueue;
 use App\Models\NationCommandQueueItem;
 use App\Models\NationResource;
 use App\Models\ResourceDefinition;
@@ -30,6 +35,7 @@ use App\Models\World;
 use App\Services\MapCellPresenter;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
+use PHPUnit\Framework\Attributes\DataProvider;
 use RuntimeException;
 use Tests\Concerns\CreatesTestWorlds;
 use Tests\Concerns\UsesIndividualTestWorld;
@@ -134,6 +140,112 @@ final class SurfaceShipDestinationTest extends TestCase
         $this->assertSame($initialOil - 2 * $definition->movementOilUnits, $this->oil($nation)->fresh()->amount);
         $this->move($this->context($world, $nation, 4), $ship);
         $this->assertSame($this->cell($origin, 1)->id, $ship->fresh()->map_cell_id);
+    }
+
+    #[DataProvider('nonDeepSeaTreasureTerrains')]
+    public function test_explorer_ignores_non_deep_sea_treasure_and_collects_a_deep_sea_target(string $terrainKey): void
+    {
+        [$world, $owner, $nation] = $this->fixture();
+        [$shore, $shallowCell, $origin, $seaCell] = $this->coastalTreasureRoute($nation);
+        $nation->update(['money' => 3 * CommandDefinition::query()
+            ->where('ruleset_version_id', $world->ruleset_version_id)->where('key', 'reclaim')->value('cost_money')]);
+        $context = $this->context($world, $nation, 2);
+        $treasures = app(BuriedTreasureService::class);
+        $shallowTreasure = $treasures->create($context, $shallowCell, 'natural', false);
+        // Extend the real coast, then reclaim the treasure's sea cell through the public queue.
+        $this->reclaim($owner, $nation, $shore, $context);
+        if ($shallowCell->fresh()->terrain->key === 'sea') {
+            $this->reclaim($owner, $nation, $shallowCell, $this->context($world, $nation, 3));
+        }
+        $this->assertSame('shallow', $shallowCell->fresh()->terrain->key);
+        $this->assertNull($shallowCell->fresh()->owner_nation_id);
+        $this->assertSame(BuriedTreasure::STATE_ACTIVE, $shallowTreasure->fresh()->state);
+
+        if ($terrainKey === 'wasteland') {
+            // A full inventory also legitimately preserves treasure when shallow becomes owned land.
+            $secretary = $owner->secretary()->sole();
+            $freeSlots = SecretaryItemGrantService::INVENTORY_CAPACITY - $secretary->itemInstances()->count();
+            for ($slot = 1; $slot <= $freeSlots; $slot++) {
+                $secretary->itemInstances()->create([
+                    'item_key' => SecretaryItemCatalog::RING, 'level' => 1, 'equipped_slot' => null,
+                    'grant_key' => 'test:non-deep-sea-full:'.$slot, 'obtained_at' => now(),
+                ]);
+            }
+            $this->reclaim($owner, $nation, $shallowCell, $this->context($world, $nation, 4));
+            $secretary->itemInstances()->where('grant_key', 'like', 'test:non-deep-sea-full:%')->delete();
+            $this->assertSame($nation->id, $shallowCell->fresh()->owner_nation_id);
+        }
+        $this->assertSame($terrainKey, $shallowCell->fresh()->terrain->key);
+        $this->assertSame(BuriedTreasure::STATE_ACTIVE, $shallowTreasure->fresh()->state);
+        $ship = $this->ship($world, $nation, $origin, 'exploration');
+        $definition = app(SurfaceShipCatalog::class)->definition($world->rulesetVersion->settings, $ship->ship_type_key);
+        $initialOil = 3 * $definition->movementOilUnits;
+        $this->oil($nation)->update(['amount' => $initialOil]);
+        $sailingContext = $this->context($world, $nation, 5);
+        $seaTreasure = $treasures->create($sailingContext, $seaCell, 'natural', false);
+
+        foreach (range(5, 7) as $turn) {
+            $metrics = $this->move($turn === 5 ? $sailingContext : $this->context($world, $nation, $turn), $ship);
+            $this->assertSame(1, $metrics['ship_moves']);
+            $this->assertNotSame($shallowCell->id, $ship->fresh()->map_cell_id);
+        }
+
+        $this->assertSame($seaCell->id, $ship->fresh()->map_cell_id);
+        $this->assertSame(BuriedTreasure::STATE_COLLECTED, $seaTreasure->fresh()->state);
+        $this->assertSame(BuriedTreasure::STATE_ACTIVE, $shallowTreasure->fresh()->state);
+        $this->assertSame($terrainKey, $shallowCell->fresh()->terrain->key);
+        $this->assertSame($initialOil - 3 * $definition->movementOilUnits, $this->oil($nation)->fresh()->amount);
+        $this->assertSame(1, $owner->secretary()->sole()->itemInstances()
+            ->where('item_key', $seaTreasure->reward_snapshot['item_key'])->count());
+        $this->assertNull($ship->fresh()->course()['heading']);
+        $this->assertNull($ship->fresh()->course()['destination']);
+    }
+
+    /** @return array<string, array{string}> */
+    public static function nonDeepSeaTreasureTerrains(): array
+    {
+        return ['shallow' => ['shallow'], 'reclaimed_land' => ['wasteland']];
+    }
+
+    #[DataProvider('treasureFacilityCases')]
+    public function test_explorer_respects_deep_sea_facility_entry_rules_when_selecting_treasure(
+        string $facilityKey,
+        bool $canEnter,
+    ): void {
+        [$world, $owner, $nation, $origin] = $this->fixture();
+        $ship = $this->ship($world, $nation, $origin, 'exploration');
+        $context = $this->context($world, $nation, 2);
+        $treasures = app(BuriedTreasureService::class);
+        $nearCell = $this->cell($origin, 1);
+        $nearTreasure = $treasures->create($context, $nearCell, 'natural', false);
+        app(MapCellStateService::class)->setFacility(
+            $nearCell,
+            FacilityDefinition::query()->where('key', $facilityKey)->firstOrFail(),
+        );
+        $nearCell->owner_nation_id = $nation->id;
+        $nearCell->save();
+        $farCell = $this->cell($origin, 3);
+        $farTreasure = $treasures->create($context, $farCell, 'natural', false);
+
+        // The public facility blocks the direct east step, so its sea detour takes one extra move.
+        foreach (range(2, $canEnter ? 2 : 5) as $turn) {
+            $this->move($turn === 2 ? $context : $this->context($world, $nation, $turn), $ship);
+        }
+
+        $this->assertSame($canEnter ? $nearCell->id : $farCell->id, $ship->fresh()->map_cell_id);
+        $this->assertSame($canEnter ? BuriedTreasure::STATE_COLLECTED : BuriedTreasure::STATE_ACTIVE, $nearTreasure->fresh()->state);
+        $this->assertSame($canEnter ? BuriedTreasure::STATE_ACTIVE : BuriedTreasure::STATE_COLLECTED, $farTreasure->fresh()->state);
+        $this->assertSame(1, $owner->secretary()->sole()->itemInstances()
+            ->where('item_key', $nearTreasure->reward_snapshot['item_key'])->count());
+    }
+
+    /** @return array<string, array{string, bool}> */
+    public static function treasureFacilityCases(): array
+    {
+        return [
+            'public_facility_blocks_entry' => ['seabed_oil_field', false],
+            'disguised_sea_facility_allows_entry' => ['seabed_base', true],
+        ];
     }
 
     public function test_blocked_last_step_clears_without_arrival_and_warship_still_attacks(): void
@@ -282,6 +394,57 @@ final class SurfaceShipDestinationTest extends TestCase
             'current_hp' => $definition->maximumHp, 'max_hp' => $definition->maximumHp,
             'state' => Ship::STATE_ACTIVE, 'version' => 1,
         ]);
+    }
+
+    /** @return array{MapCell, MapCell, MapCell, MapCell} */
+    private function coastalTreasureRoute(Nation $nation): array
+    {
+        $space = $this->surfaceMapSpace($nation->world()->firstOrFail());
+        $cells = MapCell::query()->where('map_space_id', $space->id)
+            ->with('terrain')->orderBy('id')->get()->keyBy(fn (MapCell $cell): string => $cell->x.':'.$cell->y);
+        foreach ($cells as $shore) {
+            if ($shore->terrain->key !== 'shallow' || $shore->owner_nation_id !== null
+                || $shore->facility_definition_id !== null) {
+                continue;
+            }
+            $coordinate = new GridCoordinate($shore->x, $shore->y);
+            $adjacentLand = collect($coordinate->neighborsWithin($space->min_x, $space->max_x, $space->min_y, $space->max_y))
+                ->map(fn (GridCoordinate $neighbor): ?MapCell => $cells->get($neighbor->x.':'.$neighbor->y))
+                ->contains(fn (?MapCell $cell): bool => $cell?->owner_nation_id === $nation->id && ! $cell->terrain->is_water);
+            if (! $adjacentLand) {
+                continue;
+            }
+            foreach (array_keys(GridCoordinate::DIRECTION_NAMES) as $heading) {
+                $route = [];
+                $next = $coordinate;
+                foreach (range(0, 4) as $step) {
+                    $next = $next->neighbor($heading);
+                    $cell = $cells->get($next->x.':'.$next->y);
+                    if ($cell === null || $cell->terrain->key !== 'sea' || $cell->owner_nation_id !== null
+                        || $cell->facility_definition_id !== null) {
+                        break;
+                    }
+                    $route[] = $cell;
+                }
+                if (count($route) === 5) {
+                    return [$shore, $route[0], $route[1], $route[4]];
+                }
+            }
+        }
+        $this->fail('No reclaimable coast with an open sea route for treasure tracking.');
+    }
+
+    private function reclaim(User $owner, Nation $nation, MapCell $cell, TurnContext $context): void
+    {
+        $this->actingAs($owner)->postJson("/api/v1/nations/{$nation->id}/map-spaces/{$cell->map_space_id}/command-queue", [
+            'command_key' => 'reclaim', 'target_x' => $cell->x, 'target_y' => $cell->y,
+            'position' => 1, 'request_key' => fake()->uuid(),
+            'expected_version' => NationCommandQueue::query()->where('nation_id', $nation->id)->value('version') ?? 1,
+        ])->assertCreated();
+        $metrics = app(DomesticCommandExecutor::class)->execute($context);
+        $this->assertSame(1, $metrics['successes'], json_encode(NationCommandQueueItem::query()
+            ->whereHas('queue', fn ($query) => $query->where('nation_id', $nation->id))
+            ->orderByDesc('id')->value('failure_metadata'), JSON_THROW_ON_ERROR));
     }
 
     private function cell(MapCell $origin, int $dx): MapCell
