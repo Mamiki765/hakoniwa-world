@@ -197,7 +197,7 @@ final class UndergroundFacilityBenefits
             $query->where('facility_key', $facilityKey);
         }
         foreach ($query->get(['id', 'nation_id', 'ruleset_version_id', 'layer', 'slot_index', 'facility_key']) as $facility) {
-            $ruleset = $facility->nation?->world?->rulesetVersion;
+            $ruleset = $facility->nation->world->rulesetVersion;
             if (! $ruleset instanceof RulesetVersion) {
                 throw new DomainException('Underground facility current World Ruleset is missing.');
             }

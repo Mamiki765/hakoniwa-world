@@ -71,7 +71,8 @@ final class QueuedCommandDefinitionResolver
             ->join('nations', 'nations.world_id', '=', 'worlds.id')
             ->join('nation_command_queues', 'nation_command_queues.nation_id', '=', 'nations.id')
             ->where('nation_command_queues.id', $item->nation_command_queue_id)
-            ->first(['ruleset_versions.*']);
+            ->select('ruleset_versions.*')
+            ->first();
 
         return $ruleset ?? throw new DomainException('Queue item current World Ruleset is missing.');
     }

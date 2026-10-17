@@ -186,7 +186,10 @@ final class MapCellPresenter
         ];
     }
 
-    /** @return array<string, mixed>|null */
+    /**
+     * @param  array<string, mixed>  $rulesetSettings
+     * @return array<string, mixed>|null
+     */
     private function monster(MapCell $cell, int $currentTurn, bool $hideOwnership, array $rulesetSettings): ?array
     {
         $instance = $cell->monsterOccupancy?->monster;
