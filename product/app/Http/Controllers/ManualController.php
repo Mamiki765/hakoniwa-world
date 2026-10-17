@@ -123,7 +123,7 @@ final class ManualController extends Controller
                 'facilities' => $indexes->facilities(),
                 'ships' => $indexes->ships(),
                 'commands' => $indexes->commands(),
-                'skills' => $indexes->skills(),
+                default => $indexes->skills(),
             }])->render();
         }, $html) ?? $html;
     }

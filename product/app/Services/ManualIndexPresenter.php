@@ -13,7 +13,10 @@ use App\Domain\Underground\Facility\UndergroundCommandCatalog;
  */
 final class ManualIndexPresenter
 {
-    /** @param array<string, mixed>|null $settings */
+    /**
+     * @param  array<string, mixed>|null  $settings
+     * @param  array<string, mixed>|null  $notes
+     */
     public function __construct(
         private readonly SurfaceShipCatalog $ships,
         private readonly UndergroundCommandCatalog $undergroundCommands,
