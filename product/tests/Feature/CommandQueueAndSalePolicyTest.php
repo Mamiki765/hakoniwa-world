@@ -1829,6 +1829,45 @@ class CommandQueueAndSalePolicyTest extends TestCase
         $this->assertSame(99, $updatedAudit['new_quantity']);
     }
 
+    public function test_attraction_uses_the_shared_quantity_contract_edit_cancel_and_original_request_replay(): void
+    {
+        [$owner, $nation, $space] = $this->nation('Repeated attraction');
+        $target = $nation->capital()->sole()->cell()->sole();
+        $base = "/api/v1/nations/{$nation->id}/map-spaces/{$space->id}";
+        $path = "{$base}/command-queue";
+        $money = (int) $nation->money;
+        $catalog = collect($this->actingAs($owner)->getJson(
+            "{$base}/command-definitions?target_x={$target->x}&target_y={$target->y}",
+        )->assertOk()->json('data.commands'))->firstWhere('key', 'attraction');
+        $this->assertSame('ordinary', $catalog['quantity_semantics']);
+        $this->assertSame(1, $catalog['quantity_default']);
+        $this->assertTrue($catalog['consumes_turn']);
+
+        $request = [
+            'command_key' => 'attraction', 'quantity' => 99,
+            'request_key' => (string) Str::uuid(), 'expected_version' => 1,
+        ];
+        $this->postJson($path, [...$request, 'quantity' => 100])->assertUnprocessable();
+        $created = $this->postJson($path, $request)->assertCreated()
+            ->assertJsonPath('data.queue.items.0.quantity', 99)
+            ->assertJsonPath('data.queue.items.0.quantity_semantics', 'ordinary');
+        $itemId = $created->json('data.item_id');
+        $fingerprint = NationCommandQueueItem::query()->findOrFail($itemId)->request_fingerprint;
+        $this->postJson($path, $request)->assertOk()->assertJsonPath('data.item_id', $itemId);
+        $this->assertSame($money, (int) $nation->fresh()->money, 'Scheduling does not prepay 99 executions.');
+
+        $this->patchJson("{$path}/{$itemId}", ['quantity' => 2, 'expected_version' => 2])->assertOk()
+            ->assertJsonPath('data.items.0.quantity', 2);
+        $this->patchJson("{$path}/{$itemId}", ['quantity' => 100, 'expected_version' => 3])->assertUnprocessable();
+        $this->deleteJson("{$path}/{$itemId}", ['expected_version' => 3])->assertOk()
+            ->assertJsonCount(0, 'data.items');
+        $this->assertSame('cancelled', NationCommandQueueItem::query()->findOrFail($itemId)->status);
+        $this->assertSame($fingerprint, NationCommandQueueItem::query()->findOrFail($itemId)->request_fingerprint);
+        $this->postJson($path, $request)->assertOk()->assertJsonPath('data.item_id', $itemId);
+        $this->assertSame($money, (int) $nation->fresh()->money);
+        $this->assertSame(1, NationCommandQueueItem::query()->count());
+    }
+
     public function test_command_specific_defaults_and_selector_are_validated_at_registration(): void
     {
         [$owner, $nation, $mapSpace] = $this->nation('選択数量国');

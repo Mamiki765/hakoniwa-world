@@ -2100,6 +2100,15 @@ final class RulesetAuthoringValidator
             }
             $this->persistedNonNegativeInteger($definition['sort_order'], "{$path}.sort_order");
             $metadata = $this->map($definition['metadata'], "{$path}.metadata");
+            if (array_key_exists('repeat_quantity', $metadata)) {
+                $this->boolean($metadata['repeat_quantity'], "{$path}.metadata.repeat_quantity");
+                if ($commandKey !== 'attraction'
+                    || $metadata['repeat_quantity'] !== true
+                    || ($metadata['consumes_turn'] ?? null) !== true
+                    || array_key_exists('quantity_selects_catalog', $metadata)) {
+                    throw new DomainException("{$path}.metadata.repeat_quantity is only supported for turn-consuming attraction.");
+                }
+            }
             if (in_array($commandKey, [
                 'build_fast_farm', 'build_fast_factory', 'build_fast_mine',
                 'build_central_bank', 'build_central_granary',

@@ -2,8 +2,10 @@
 
 namespace Tests\Shared\Unit;
 
+use App\Application\CommandQuantitySemantics;
 use App\Domain\Ruleset\CurrentRulesetAuthoringInspector;
 use App\Domain\Ruleset\RulesetAuthoringValidator;
+use App\Models\CommandDefinition;
 use DomainException;
 use Tests\TestCase;
 
@@ -26,6 +28,17 @@ final class CurrentRulesetContractTest extends TestCase
         $summary = app(RulesetAuthoringValidator::class)->validate($current);
         $this->assertSame($current['key'], $summary['key']);
         $this->assertSame($current['version'], $summary['version']);
+    }
+
+    public function test_attraction_repetition_is_authored_only_in_the_release_draft_not_the_frozen_predecessor(): void
+    {
+        $previous = require config_path('hakoniwa/rulesets/hakoniwa-2s-plus-v38.php');
+        $semantics = app(CommandQuantitySemantics::class);
+        $old = new CommandDefinition(collect($previous['command_definitions'])->firstWhere('key', 'attraction'));
+        $current = new CommandDefinition(collect(config('hakoniwa.ruleset.command_definitions'))->firstWhere('key', 'attraction'));
+        $this->assertSame(CommandQuantitySemantics::UNUSED, $semantics->for($old));
+        $this->assertSame(CommandQuantitySemantics::ORDINARY, $semantics->for($current));
+        $this->assertFalse($semantics->isRepeatedFacilityBuild($current->key));
     }
 
     public function test_current_domain_authoring_classifies_every_scalar_leaf_exactly_once(): void

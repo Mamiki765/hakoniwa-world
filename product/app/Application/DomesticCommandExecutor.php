@@ -222,7 +222,7 @@ final class DomesticCommandExecutor
 
                 $consumedTurn = (bool) ($definition->metadata['consumes_turn'] ?? true);
                 $remainingQuantity = $item->quantity;
-                if ($this->quantitySemantics->isRepeatedFacilityBuild($definition->key) && $item->quantity > 1) {
+                if ($definition instanceof CommandDefinition && $this->quantitySemantics->repeatsAfterSuccess($definition) && $item->quantity > 1) {
                     $remainingQuantity = $item->quantity - 1;
                     $item->update([
                         'quantity' => $remainingQuantity,
