@@ -813,6 +813,115 @@ describe('application lobby and island entry', () => {
         wrapper.unmount();
     });
 
+    it.each([
+        { refreshTurn: 1, nextNationId: 8 }, { refreshTurn: 2, nextNationId: 8 },
+        { refreshTurn: 1, nextNationId: 7 }, { refreshTurn: 2, nextNationId: 7 },
+    ])('keeps a newly opened N$nextNationId preview when a delayed turn $refreshTurn refresh returns', async ({ refreshTurn, nextNationId }) => {
+        vi.useFakeTimers();
+        vi.setSystemTime(new Date('2026-08-09T12:00:00Z'));
+        vi.spyOn(window, 'scrollTo').mockImplementation(() => undefined);
+        let summaryCalls = 0;
+        let detailCalls = 0;
+        let resolveOldDetail!: (result: Response) => void;
+        const oldDetail = new Promise<Response>((resolve) => { resolveOldDetail = resolve; });
+        const nextDetail: PublicNationDetail = {
+            ...publicDetail, id: nextNationId, name: '次の島', capital: { x: 40, y: 40 },
+            map_space: { ...publicDetail.map_space, bounds_revision: 'next-bounds' },
+        };
+        const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+            const path = String(input);
+            const lobby = publicResponse(path);
+            if (path.endsWith('/summary') && lobby) {
+                const { data } = await lobby.json();
+                return response({ ...data, current_turn: ++summaryCalls === 1 ? 1 : refreshTurn });
+            }
+            if (path.endsWith('/rankings') && lobby) {
+                const { data } = await lobby.json();
+                return response([...data, { ...data[0], id: 8, nation_number: 2, name: nextDetail.name }]);
+            }
+            if (lobby !== null) return lobby;
+            if (path === '/api/v1/me') return response(null, 401);
+            if (path === '/api/v1/public/nations/7') {
+                detailCalls++;
+                return detailCalls === 2 ? oldDetail : response(detailCalls > 2 && nextNationId === 7 ? nextDetail : publicDetail);
+            }
+            if (path === '/api/v1/public/nations/8') return response(nextDetail);
+            if (path.includes('/chunks/')) return response(emptyChunk);
+            return response(null, 404);
+        });
+        vi.stubGlobal('fetch', fetchMock);
+        const wrapper = mount(App);
+        await flushPromises();
+        await wrapper.findAll('.ranking-island button')[0]!.trigger('click');
+        await flushPromises();
+        await vi.advanceTimersByTimeAsync(60_000);
+        await flushPromises();
+        expect(detailCalls).toBe(2);
+
+        await wrapper.findAll('.site-header nav button').find((button) => button.text() === 'TOP')!.trigger('click');
+        await wrapper.findAll('.ranking-island button')[nextNationId === 7 ? 0 : 1]!.trigger('click');
+        await flushPromises();
+        const chunkCallsBeforeOldResponse = fetchMock.mock.calls.filter(([path]) => String(path).includes('/chunks/')).length;
+        resolveOldDetail(response({
+            ...publicDetail, name: '遅れた旧島',
+            map_space: { ...publicDetail.map_space, bounds_revision: 'stale-bounds' },
+        }));
+        await flushPromises();
+
+        expect(wrapper.get('.preview-heading h1').text()).toContain(nextDetail.name);
+        expect(wrapper.findComponent(HexMap).props('capital')).toEqual(nextDetail.capital);
+        expect(fetchMock.mock.calls.filter(([path]) => String(path).includes('/chunks/'))).toHaveLength(chunkCallsBeforeOldResponse);
+        wrapper.unmount();
+    });
+
+    it.each([1, 2])('keeps the latest preview response when turn %i refreshes finish in reverse order', async (refreshTurn) => {
+        vi.useFakeTimers();
+        vi.setSystemTime(new Date('2026-08-09T12:00:00Z'));
+        vi.spyOn(window, 'scrollTo').mockImplementation(() => undefined);
+        let summaryCalls = 0;
+        let detailCalls = 0;
+        let resolveOldDetail!: (result: Response) => void;
+        const oldDetail = new Promise<Response>((resolve) => { resolveOldDetail = resolve; });
+        const latestDetail: PublicNationDetail = {
+            ...publicDetail, name: '最新の島情報', capital: { x: 40, y: 40 },
+            map_space: { ...publicDetail.map_space, bounds_revision: 'latest-bounds' },
+        };
+        const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+            const path = String(input);
+            const lobby = publicResponse(path);
+            if (path.endsWith('/summary') && lobby) {
+                const { data } = await lobby.json();
+                return response({ ...data, current_turn: ++summaryCalls === 1 ? 1 : refreshTurn });
+            }
+            if (lobby !== null) return lobby;
+            if (path === '/api/v1/me') return response(null, 401);
+            if (path === '/api/v1/public/nations/7') {
+                detailCalls++;
+                return detailCalls === 2 ? oldDetail : response(detailCalls === 1 ? publicDetail : latestDetail);
+            }
+            if (path.includes('/chunks/')) return response(emptyChunk);
+            return response(null, 404);
+        });
+        vi.stubGlobal('fetch', fetchMock);
+        const wrapper = mount(App);
+        await flushPromises();
+        await wrapper.get('.ranking-island button').trigger('click');
+        await flushPromises();
+        await vi.advanceTimersByTimeAsync(120_000);
+        await flushPromises();
+        expect(detailCalls).toBe(3);
+        expect(wrapper.get('.preview-heading h1').text()).toContain(latestDetail.name);
+        resolveOldDetail(response({
+            ...publicDetail, name: '遅れた旧情報',
+            map_space: { ...publicDetail.map_space, bounds_revision: 'stale-bounds' },
+        }));
+        await flushPromises();
+
+        expect(wrapper.get('.preview-heading h1').text()).toContain(latestDetail.name);
+        expect(wrapper.findComponent(HexMap).props('capital')).toEqual(latestDetail.capital);
+        wrapper.unmount();
+    });
+
     it('keeps the trading post browsable, disables new mutations, and allows zero-bid cancellation while dormant', async () => {
         const dormantOwnListing: TradingPostListing = {
             id: 82,
