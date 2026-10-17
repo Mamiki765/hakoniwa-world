@@ -23,7 +23,10 @@ final class MonsterRemovalService
 
     private int $removedCount = 0;
 
-    public function __construct(private readonly TurnEventRecorder $events) {}
+    public function __construct(
+        private readonly TurnEventRecorder $events,
+        private readonly CurrentMonsterDefinitionResolver $monsterDefinitions,
+    ) {}
 
     /** Discard objects mutated by the previous transaction before any phase runs. */
     public function resetForAttempt(): void
@@ -56,6 +59,10 @@ final class MonsterRemovalService
             ->orderBy('id')
             ->lockForUpdate()
             ->get();
+        $this->monsterDefinitions->applyAll(
+            $occupancies->map(static fn (MonsterOccupancy $occupancy) => $occupancy->monster),
+            $context->ruleset,
+        );
         $this->useBatch(new MonsterTurnBatch($occupancies), $context);
 
         return $occupancies->count();
@@ -140,6 +147,7 @@ final class MonsterRemovalService
             throw new DomainException('Only an alive occupied monster can be removed from the World.');
         }
 
+        $this->monsterDefinitions->resolve($monster, $monster->world()->firstOrFail()->rulesetVersion()->firstOrFail());
         $occupancy->setRelation('monster', $monster);
         $this->markRemoved($occupancy, $monster, $reason);
 
@@ -166,7 +174,7 @@ final class MonsterRemovalService
         array $metadata,
     ): bool {
         $monster = $occupancy->monster;
-        $definition = $monster->definition;
+        $definition = $this->monsterDefinitions->resolve($monster, $context->ruleset);
         $this->markRemoved($occupancy, $monster, $reason);
         $context->state->markMapChunkChanged($cell->map_chunk_id);
         $this->events->record($context, $eventType, $monster, [

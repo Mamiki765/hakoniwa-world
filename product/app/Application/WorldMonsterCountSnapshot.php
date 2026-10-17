@@ -11,7 +11,10 @@ use App\Services\MapCellPresenter;
 
 final class WorldMonsterCountSnapshot
 {
-    public function __construct(private readonly MonsterBehaviorResolver $behaviors) {}
+    public function __construct(
+        private readonly MonsterBehaviorResolver $behaviors,
+        private readonly CurrentMonsterDefinitionResolver $monsterDefinitions,
+    ) {}
 
     /**
      * Called after lifecycle removals, inside the official Turn transaction.
@@ -27,6 +30,7 @@ final class WorldMonsterCountSnapshot
             ->whereHas('occupancy.cell', fn ($query) => $query->whereIn('map_space_id', MapSpace::query()
                 ->select('id')->where('world_id', $world->id)->where('key', config('hakoniwa.world.map_space_key'))))
             ->with(['definition', 'occupancy.cell.terrain', 'occupancy.cell.facility'])->orderBy('id')->get();
+        $this->monsterDefinitions->applyAll($monsters, $world->rulesetVersion()->firstOrFail());
         $seaCount = 0;
         $resolved = [];
         foreach ($monsters as $monster) {

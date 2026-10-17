@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Application\CurrentMonsterDefinitionResolver;
 use App\Application\UserMonumentDesignService;
 use App\Domain\Economy\PowerEconomyCalculator;
 use App\Domain\Facility\FacilityCapacityService;
@@ -36,6 +37,7 @@ final class MapCellPresenter
         private readonly SurfaceShipCatalog $ships,
         private readonly UserMonumentDesignService $monumentDesigns,
         private readonly PowerEconomyCalculator $power,
+        private readonly CurrentMonsterDefinitionResolver $currentMonsterDefinitions,
     ) {}
 
     /**
@@ -126,7 +128,7 @@ final class MapCellPresenter
             $centralPresentation,
             $populationMaximums,
         );
-        $monster = $this->monster($cell, $currentTurn, $neutralizeOwnership);
+        $monster = $this->monster($cell, $currentTurn, $neutralizeOwnership, $rulesetSettings);
 
         return [
             'x' => $cell->x,
@@ -185,14 +187,14 @@ final class MapCellPresenter
     }
 
     /** @return array<string, mixed>|null */
-    private function monster(MapCell $cell, int $currentTurn, bool $hideOwnership): ?array
+    private function monster(MapCell $cell, int $currentTurn, bool $hideOwnership, array $rulesetSettings): ?array
     {
         $instance = $cell->monsterOccupancy?->monster;
         if ($instance === null || $instance->state !== 'alive') {
             return null;
         }
 
-        $definition = $instance->definition;
+        $definition = $this->currentMonsterDefinitions->forSettings($instance, $rulesetSettings);
         $hardened = $this->hardening->isHardened($definition, $currentTurn);
         $assetKey = $hardened && $definition->hardened_asset_key !== null
             ? $definition->hardened_asset_key

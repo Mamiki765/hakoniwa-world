@@ -638,21 +638,19 @@ final class CommandQueueController extends Controller
     /** @return array<string, mixed> */
     private function serializeQueue(NationCommandQueue $queue, CommandQueueService $service): array
     {
-        $nation = $queue->nation()->firstOrFail();
+        $nation = $queue->nation()->with('world.rulesetVersion')->firstOrFail();
+        $currentRuleset = $nation->world->rulesetVersion;
         $mapSpace = MapSpace::query()->findOrFail($queue->map_space_id);
         $projectionMemo = new SurfaceCommandProjectionMemo;
         $constructionShipIds = $queue->items->pluck('parameters.construction_ship_id')
             ->filter(static fn (mixed $id): bool => is_int($id) && $id > 0)->unique()->values();
-        if ($constructionShipIds->isNotEmpty()) {
-            $queue->loadMissing('items.definition.rulesetVersion');
-        }
         /** @var EloquentCollection<int, Ship> $constructionShips */
         $constructionShips = $constructionShipIds->isEmpty() ? new EloquentCollection : Ship::query()
             ->where('world_id', $nation->world_id)->where('nation_id', $nation->id)
             ->whereKey($constructionShipIds->all())->get()->keyBy('id');
         $items = $queue->items
-            ->map(function (NationCommandQueueItem $item) use ($queue, $nation, $service, $mapSpace, $projectionMemo, $constructionShips): array {
-                $definition = $service->definitionForItem($item);
+            ->map(function (NationCommandQueueItem $item) use ($queue, $nation, $service, $mapSpace, $projectionMemo, $constructionShips, $currentRuleset): array {
+                $definition = $service->definitionForItem($item, $currentRuleset);
                 $followsShip = array_key_exists('construction_ship_id', $item->parameters);
                 $cell = $item->target_context === 'surface_cell' && ! $followsShip
                     ? MapCell::query()->where('map_space_id', $queue->map_space_id)
@@ -666,6 +664,7 @@ final class CommandQueueController extends Controller
                     $nation,
                     $mapSpace,
                     projectionMemo: $projectionMemo,
+                    currentRuleset: $currentRuleset,
                 );
                 $effect = $projected === null || ! $definition instanceof CommandDefinition
                     ? null
