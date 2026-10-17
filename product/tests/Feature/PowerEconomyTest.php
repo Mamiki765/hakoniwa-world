@@ -27,6 +27,7 @@ use App\Models\User;
 use App\Models\World;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
+use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\Concerns\UsesReusableSurfaceWorld;
 use Tests\TestCase;
 
@@ -103,7 +104,19 @@ final class PowerEconomyTest extends TestCase
         $this->assertSame([['element_key' => 'pizzeria', 'resource_key' => 'money', 'amount' => 0, 'count' => null]], $capped->state->economicContributions($nation->id));
     }
 
-    public function test_consumed_power_uses_one_snapshotted_suit_award_and_replays_after_rollback(): void
+    /** @return array<string, array{string}> */
+    public static function energyExperienceSuits(): array
+    {
+        return [
+            'general' => [SecretaryItemCatalog::SECRETARY_SUIT],
+            'peace regular' => ['chancellor_suit'],
+            'peace high quality' => ['grand_chancellor_suit'],
+            'peace artifact' => ['star_chancellor_suit'],
+        ];
+    }
+
+    #[DataProvider('energyExperienceSuits')]
+    public function test_consumed_power_uses_one_snapshotted_suit_award_and_replays_after_rollback(string $itemKey): void
     {
         $world = $this->lightweightWorld();
         $user = User::factory()->create();
@@ -116,8 +129,8 @@ final class PowerEconomyTest extends TestCase
         }
         $secretary = $user->secretary()->sole();
         $suit = $secretary->itemInstances()->create([
-            'item_key' => SecretaryItemCatalog::SECRETARY_SUIT,
-            'level' => app(SecretaryItemCatalog::class)->definition(SecretaryItemCatalog::SECRETARY_SUIT)['max_level'],
+            'item_key' => $itemKey,
+            'level' => app(SecretaryItemCatalog::class)->definition($itemKey)['max_level'],
             'equipped_slot' => 2, 'grant_key' => 'test:power:experience-suit', 'obtained_at' => now(),
         ]);
         $run = $this->createRun($world);
@@ -151,6 +164,10 @@ final class PowerEconomyTest extends TestCase
                 $context = $this->context($world->fresh(), $nation->fresh(), $run);
                 $suit->fresh()->update(['equipped_slot' => null]);
                 $this->assertNull($suit->fresh()->equipped_slot);
+                // Maximum-population XP remains excluded and must not advance the shared passive stream.
+                app(SecretaryExperienceAwardService::class)->awardSkill(
+                    $context, $nation->id, SecretarySkillCatalog::DECLINING_BIRTHRATE_POLICY,
+                );
                 app(CompleteTurnEngine::class)->execute('nation_economy', $context);
                 $attempts[$attempt] = [
                     'settlement' => $this->settlement($run),
@@ -172,9 +189,12 @@ final class PowerEconomyTest extends TestCase
         $this->assertGreaterThan(1, $result['settlement']['consumed_mw']);
         $expectedExperience = $result['settlement']['consumed_mw'] * $effect['multiplier'];
         $this->assertSame([
-            $nation->id => [SecretarySkillCatalog::ENERGY_SAVING => $expectedExperience],
+            $nation->id => [
+                SecretarySkillCatalog::DECLINING_BIRTHRATE_POLICY => 1,
+                SecretarySkillCatalog::ENERGY_SAVING => $expectedExperience,
+            ],
         ], $result['pending']);
-        $this->assertSame($expectedExperience, $result['flush']['experience_awarded']);
+        $this->assertSame($expectedExperience + 1, $result['flush']['experience_awarded']);
         $this->assertEquals($expectedRandom->stream($stream), $result['random']);
     }
 
