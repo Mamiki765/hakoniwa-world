@@ -2,8 +2,8 @@
 
 namespace Tests\Unit;
 
-use App\Domain\Secretary\SecretaryItemCatalog;
 use App\Domain\Secretary\SecretaryDemographicPolicy;
+use App\Domain\Secretary\SecretaryItemCatalog;
 use App\Domain\Secretary\SecretaryItemGameplayContract;
 use App\Domain\Secretary\SecretaryMonsterDropContract;
 use App\Domain\Secretary\SecretarySkillCatalog;

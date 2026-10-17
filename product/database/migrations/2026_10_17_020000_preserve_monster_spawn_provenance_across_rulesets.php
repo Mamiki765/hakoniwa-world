@@ -7,7 +7,7 @@ return new class extends Migration
 {
     public function up(): void
     {
-        DB::unprepared(<<<'SQL'
+        $sql = <<<'SQL'
 CREATE OR REPLACE FUNCTION public.validate_monster_instance_world_ruleset() RETURNS trigger
     LANGUAGE plpgsql
     AS $$
@@ -90,7 +90,9 @@ BEGIN
     RETURN NEW;
 END;
 $$;
-SQL);
+SQL;
+        // Keep the measured function body stable on CRLF checkouts as well.
+        DB::unprepared(str_replace("\r\n", "\n", $sql));
     }
 
     public function down(): void

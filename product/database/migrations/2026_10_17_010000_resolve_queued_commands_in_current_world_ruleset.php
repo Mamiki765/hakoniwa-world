@@ -9,7 +9,7 @@ return new class extends Migration
 
     public function up(): void
     {
-        DB::unprepared(<<<'SQL'
+        $sql = <<<'SQL'
 CREATE OR REPLACE FUNCTION public.enforce_queue_item_world_ruleset_match() RETURNS trigger
     LANGUAGE plpgsql
     AS $$
@@ -55,7 +55,9 @@ BEGIN
     RETURN NEW;
 END;
 $$;
-SQL);
+SQL;
+        // Keep the measured function body stable on CRLF checkouts as well.
+        DB::unprepared(str_replace("\r\n", "\n", $sql));
     }
 
     public function down(): void

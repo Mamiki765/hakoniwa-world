@@ -11,7 +11,6 @@ use App\Domain\Monster\MonsterRewardPolicyResolver;
 use App\Domain\Secretary\SecretaryItemGameplayContract;
 use App\Domain\Turn\TurnContext;
 use App\Models\MapCell;
-use App\Models\MonsterDefinition;
 use App\Models\MonsterInstance;
 use App\Models\Nation;
 use App\Models\NationMonsterKillStat;

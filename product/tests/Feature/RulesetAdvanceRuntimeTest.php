@@ -376,8 +376,7 @@ final class RulesetAdvanceRuntimeTest extends CommandAndMissileTestCase
         $space = $fixture['space'];
         $settings = $next->settings['military']['missiles']['missile'];
         $candidates = (new GridCoordinate($fixture['missile']->target_x, $fixture['missile']->target_y))->radius($settings['deviation_radius']);
-        $index = array_key_first(array_filter($candidates, fn (GridCoordinate $coordinate): bool =>
-            $coordinate->x < $space->min_x || $coordinate->y < $space->min_y));
+        $index = array_key_first(array_filter($candidates, fn (GridCoordinate $coordinate): bool => $coordinate->x < $space->min_x || $coordinate->y < $space->min_y));
         $this->assertIsInt($index, 'The fixture aims at a map corner so a legal deviation can miss the map.');
         $context = $this->context($fixture['world']->fresh(), $fixture['world']->current_turn + 3,
             $this->seedForDrawIndex($fixture['missile'], count($candidates), $index), [$fixture['nation']->id]);
@@ -518,7 +517,7 @@ final class RulesetAdvanceRuntimeTest extends CommandAndMissileTestCase
     private function sequences(): array
     {
         $sequences = [];
-        foreach (DB::select("SELECT schemaname, sequencename FROM pg_sequences WHERE schemaname = current_schema()") as $row) {
+        foreach (DB::select('SELECT schemaname, sequencename FROM pg_sequences WHERE schemaname = current_schema()') as $row) {
             $name = '"'.str_replace('"', '""', $row->schemaname).'"."'.str_replace('"', '""', $row->sequencename).'"';
             $value = DB::selectOne('SELECT last_value, is_called FROM '.$name);
             $sequences[] = ['name' => $name, 'value' => (int) $value->last_value, 'called' => (bool) $value->is_called];
