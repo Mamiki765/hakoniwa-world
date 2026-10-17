@@ -558,14 +558,7 @@ final class CommandQueueService
             [$lockedNation] = $this->lockActiveOwnerAfterWorld($user, $nation, $world);
             $queue = NationCommandQueue::query()->where('nation_id', $lockedNation->id)->lockForUpdate()->firstOrFail();
             $this->assertVersion($queue, $expectedVersion);
-            $activeItems = NationCommandQueueItem::query()
-                ->where('nation_command_queue_id', $queue->id)
-                ->where('status', 'queued')
-                ->orderBy('queue_position')
-                ->orderBy('id')
-                ->with('definition')
-                ->lockForUpdate()
-                ->get();
+            $activeItems = $this->lockedItemsForPositioning($queue);
             $currentIds = $activeItems->pluck('id')
                 ->map(static fn (mixed $id): int => (int) $id)
                 ->sort()
@@ -581,35 +574,12 @@ final class CommandQueueService
             if (collect($positions)->contains(static fn (mixed $position): bool => $position < 1 || $position > $limit)) {
                 throw new PlayerFacingCommandException("開発計画の位置は1から{$limit}の範囲で指定してください。");
             }
-            $placementsById = collect($placements)->keyBy('id');
-            $proposedItems = $activeItems->map(static function (NationCommandQueueItem $item) use ($placementsById): NationCommandQueueItem {
-                $proposed = clone $item;
-                $proposed->queue_position = (int) $placementsById->get($item->id)['position'];
-
-                return $proposed;
-            });
-            $this->undergroundFacilities->assertProjectedSequences($queue, $proposedItems);
-            $this->assertNoNewDangerousOverbuildEffects(
-                $queue,
-                $activeItems,
-                $proposedItems,
-                $lockedNation,
-                MapSpace::query()->findOrFail($queue->map_space_id),
-            );
-
-            if ($currentIds !== []) {
-                NationCommandQueueItem::query()->whereIn('id', $currentIds)
-                    ->update(['queue_position' => null]);
-                foreach ($placements as $placement) {
-                    NationCommandQueueItem::query()->whereKey($placement['id'])
-                        ->update(['queue_position' => $placement['position']]);
-                }
+            $positionsById = [];
+            foreach ($placements as $placement) {
+                $positionsById[$placement['id']] = (int) $placement['position'];
             }
-            $queue->increment('version');
-            $queue->refresh();
-            $this->audit($user, 'command.reordered', $queue, ['placements' => $placements]);
 
-            return $queue;
+            return $this->applyPositioning($user, $lockedNation, $queue, $activeItems, $positionsById, ['placements' => $placements]);
         }, 3);
     }
 
@@ -658,14 +628,7 @@ final class CommandQueueService
             [$lockedNation] = $this->lockActiveOwnerAfterWorld($user, $nation, $world);
             $queue = NationCommandQueue::query()->where('nation_id', $lockedNation->id)->lockForUpdate()->firstOrFail();
             $this->assertVersion($queue, $expectedVersion);
-            $activeItems = NationCommandQueueItem::query()
-                ->where('nation_command_queue_id', $queue->id)
-                ->where('status', 'queued')
-                ->orderBy('queue_position')
-                ->orderBy('id')
-                ->with('definition')
-                ->lockForUpdate()
-                ->get();
+            $activeItems = $this->lockedItemsForPositioning($queue);
             $current = $activeItems->pluck('id')
                 ->map(static fn (mixed $id): int => (int) $id)
                 ->all();
@@ -676,33 +639,68 @@ final class CommandQueueService
             if ($expected !== $received) {
                 throw new PlayerFacingCommandException('reorder対象が現在のqueueと一致しません。');
             }
-            $positionsById = collect($orderedIds)->flip();
-            $proposedItems = $activeItems->map(static function (NationCommandQueueItem $item) use ($positionsById): NationCommandQueueItem {
-                $proposed = clone $item;
-                $proposed->queue_position = (int) $positionsById->get($item->id) + 1;
-
-                return $proposed;
-            });
-            $this->undergroundFacilities->assertProjectedSequences($queue, $proposedItems);
-            $this->assertNoNewDangerousOverbuildEffects(
-                $queue,
-                $activeItems,
-                $proposedItems,
-                $lockedNation,
-                MapSpace::query()->findOrFail($queue->map_space_id),
-            );
-
-            NationCommandQueueItem::query()->whereIn('id', $orderedIds)
-                ->update(['queue_position' => null]);
+            $positionsById = [];
             foreach ($orderedIds as $index => $id) {
-                NationCommandQueueItem::query()->whereKey($id)->update(['queue_position' => $index + 1]);
+                $positionsById[$id] = $index + 1;
             }
-            $queue->increment('version');
-            $queue->refresh();
-            $this->audit($user, 'command.reordered', $queue, ['ordered_ids' => $orderedIds]);
 
-            return $queue;
+            return $this->applyPositioning($user, $lockedNation, $queue, $activeItems, $positionsById, ['ordered_ids' => $orderedIds]);
         }, 3);
+    }
+
+    /** @return Collection<int, NationCommandQueueItem> */
+    private function lockedItemsForPositioning(NationCommandQueue $queue): Collection
+    {
+        return NationCommandQueueItem::query()
+            ->where('nation_command_queue_id', $queue->id)
+            ->where('status', 'queued')
+            ->orderBy('queue_position')
+            ->orderBy('id')
+            ->with('definition')
+            ->lockForUpdate()
+            ->get();
+    }
+
+    /**
+     * @param  Collection<int, NationCommandQueueItem>  $activeItems
+     * @param  array<int, int>  $positionsById
+     * @param  array<string, mixed>  $auditMetadata
+     */
+    private function applyPositioning(
+        User $user,
+        Nation $nation,
+        NationCommandQueue $queue,
+        Collection $activeItems,
+        array $positionsById,
+        array $auditMetadata,
+    ): NationCommandQueue {
+        $proposedItems = $activeItems->map(static function (NationCommandQueueItem $item) use ($positionsById): NationCommandQueueItem {
+            $proposed = clone $item;
+            $proposed->queue_position = $positionsById[$item->id];
+
+            return $proposed;
+        });
+        $this->undergroundFacilities->assertProjectedSequences($queue, $proposedItems);
+        $this->assertNoNewDangerousOverbuildEffects(
+            $queue,
+            $activeItems,
+            $proposedItems,
+            $nation,
+            MapSpace::query()->findOrFail($queue->map_space_id),
+        );
+
+        if ($positionsById !== []) {
+            NationCommandQueueItem::query()->whereIn('id', array_keys($positionsById))
+                ->update(['queue_position' => null]);
+            foreach ($positionsById as $id => $position) {
+                NationCommandQueueItem::query()->whereKey($id)->update(['queue_position' => $position]);
+            }
+        }
+        $queue->increment('version');
+        $queue->refresh();
+        $this->audit($user, 'command.reordered', $queue, $auditMetadata);
+
+        return $queue;
     }
 
     public function cancel(User $user, Nation $nation, NationCommandQueueItem $item, int $expectedVersion): NationCommandQueue

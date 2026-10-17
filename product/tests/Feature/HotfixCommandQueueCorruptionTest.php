@@ -6,9 +6,11 @@ use App\Application\NationCreationService;
 use App\Models\MapCell;
 use App\Models\MapSpace;
 use App\Models\Nation;
+use App\Models\NationCommandQueue;
 use App\Models\NationCommandQueueItem;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Tests\Concerns\CreatesTestWorlds;
 use Tests\TestCase;
@@ -38,20 +40,37 @@ class HotfixCommandQueueCorruptionTest extends TestCase
         [$owner, $nation, $mapSpace] = $this->nation('正常配置国');
         [$path, $ids] = $this->queuedPlans($owner, $nation, $mapSpace, 3);
 
+        $placements = [
+            ['id' => $ids[2], 'position' => 3],
+            ['id' => $ids[0], 'position' => 10],
+            ['id' => $ids[1], 'position' => 30],
+        ];
         $this->putJson($path.'/reorder', [
-            'placements' => [
-                ['id' => $ids[2], 'position' => 3],
-                ['id' => $ids[0], 'position' => 10],
-                ['id' => $ids[1], 'position' => 30],
-            ],
+            'placements' => $placements,
             'expected_version' => 4,
         ])->assertOk();
 
         $this->assertSame([3, 10, 30], $this->queuedPositions());
+        $this->assertSame(5, (int) NationCommandQueue::query()->where('nation_id', $nation->id)->valueOrFail('version'));
+        $sparseAudit = DB::table('audit_events')->where('event_type', 'command.reordered')->sole();
+        $this->assertSame(['placements' => $placements], json_decode((string) $sparseAudit->metadata, true, 512, JSON_THROW_ON_ERROR));
+
+        $this->putJson($path.'/reorder', [
+            'ordered_ids' => array_reverse($ids),
+            'expected_version' => 4,
+        ])->assertConflict();
+        $this->assertSame([3, 10, 30], $this->queuedPositions());
+        $this->assertSame(1, DB::table('audit_events')->where('event_type', 'command.reordered')->count());
+
         $this->putJson($path.'/reorder', [
             'ordered_ids' => array_reverse($ids),
             'expected_version' => 5,
         ])->assertOk();
+        $this->assertSame([1, 2, 3], $this->queuedPositions());
+        $this->assertSame(6, (int) NationCommandQueue::query()->where('nation_id', $nation->id)->valueOrFail('version'));
+        $denseAudit = DB::table('audit_events')->where('event_type', 'command.reordered')->orderByDesc('id')->firstOrFail();
+        $this->assertSame(['ordered_ids' => array_reverse($ids)], json_decode((string) $denseAudit->metadata, true, 512, JSON_THROW_ON_ERROR));
+
         $this->deleteJson($path.'/'.$ids[0], ['expected_version' => 6])
             ->assertOk()
             ->assertJsonPath('data.items.0.queue_position', 1)
