@@ -2,6 +2,7 @@
 
 namespace Tests\Unit;
 
+use App\Domain\Secretary\SecretaryDemographicPolicy;
 use App\Domain\Secretary\SecretaryItemCatalog;
 use App\Domain\Secretary\SecretaryItemGameplayContract;
 use App\Domain\Secretary\SecretaryMonsterDropContract;
@@ -10,10 +11,45 @@ use App\Domain\Turn\TurnRandomStreamFactory;
 use DomainException;
 use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\Support\CurrentRulesetFixture;
+use Tests\Support\SyntheticHistoricalRulesetSnapshot;
 use Tests\TestCase;
 
 final class SecretaryItemGameplayContractTest extends TestCase
 {
+    public function test_next_generation_retains_item_and_demographic_capabilities(): void
+    {
+        $current = CurrentRulesetFixture::settings();
+        $next = $current;
+        $next['version']++;
+        $next['key'] = 'hakoniwa-2s-plus-v'.$next['version'];
+        $contract = app(SecretaryItemGameplayContract::class);
+
+        $this->assertSame($contract->validatedEffectCatalog($current), $contract->validatedEffectCatalog($next));
+        $this->assertTrue(app(SecretaryDemographicPolicy::class)->enabled($next));
+    }
+
+    public function test_canonical_item_contract_rejects_a_key_version_mismatch(): void
+    {
+        $settings = CurrentRulesetFixture::settings();
+        $settings['version']++;
+
+        $this->expectException(DomainException::class);
+        $this->expectExceptionMessage('key and version must agree');
+        app(SecretaryItemGameplayContract::class)->validate($settings);
+    }
+
+    public function test_noncanonical_legacy_snapshot_retains_its_item_shape(): void
+    {
+        $settings = SyntheticHistoricalRulesetSnapshot::withLegacySecretaryItems(CurrentRulesetFixture::settings());
+        $settings['key'] = 'historical-item-snapshot';
+        $settings['version'] = 15;
+        $contract = app(SecretaryItemGameplayContract::class);
+
+        $this->assertSame([SecretaryItemCatalog::OLD_BOW, SecretaryItemCatalog::RING],
+            array_keys($contract->validatedEffectCatalog($settings)));
+        $this->assertFalse(app(SecretaryDemographicPolicy::class)->enabled($settings));
+    }
+
     public function test_v17_catalog_fixes_player_trading_and_npc_exclusion(): void
     {
         $settings = config('hakoniwa.ruleset');

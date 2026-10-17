@@ -131,6 +131,17 @@ final class DatabaseBaselineAdoptionTest extends TestCase
         // The supported source has the complete 5.0.1 schema, catalog and
         // immutable current snapshot. Remove later extensions and simulate the
         // source ledger to represent that adoption boundary.
+        $source = file_get_contents(database_path('schema/pgsql-schema.sql'));
+        foreach ([
+            CurrentDatabaseBaseline::QUEUE_RULESET_RESOLUTION_MIGRATION => 'enforce_queue_item_world_ruleset_match',
+            CurrentDatabaseBaseline::MONSTER_SPAWN_PROVENANCE_MIGRATION => 'validate_monster_instance_world_ruleset',
+        ] as $migration => $function) {
+            if ($source === false || preg_match('/CREATE FUNCTION public\.'.preg_quote($function, '/').'\(\).*?^\$\$;/ms', $source, $matches) !== 1) {
+                throw new RuntimeException("The canonical {$function} trigger is missing.");
+            }
+            DB::unprepared(str_replace('CREATE FUNCTION', 'CREATE OR REPLACE FUNCTION', $matches[0]));
+            DB::table('migrations')->where('migration', $migration)->delete();
+        }
         DB::statement('ALTER TABLE nations DROP CONSTRAINT nations_ecopo_nonnegative, DROP COLUMN ecopo');
         DB::table('migrations')->where('migration', CurrentDatabaseBaseline::ECOPO_MIGRATION)->delete();
         DB::table('migrations')->where('migration', '2026_10_15_010000_publish_ecopo_ruleset')->delete();

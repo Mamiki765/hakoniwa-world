@@ -23,6 +23,7 @@ final class MapChunkService
         private readonly SecretaryTurnService $secretaries,
         private readonly SecretaryDemographicPolicy $demographics,
         private readonly UndergroundFacilityBenefits $undergroundBenefits,
+        private readonly CurrentMonsterDefinitionResolver $currentMonsterDefinitions,
     ) {}
 
     /** @return array<string, mixed> */
@@ -62,6 +63,10 @@ final class MapChunkService
 
         $world = $mapSpace->world()->with('rulesetVersion')->firstOrFail();
         $rulesetSettings = $world->rulesetVersion->settings;
+        $this->currentMonsterDefinitions->applyAll(
+            $cells->map(fn (MapCell $cell) => $cell->monsterOccupancy?->monster)->filter(),
+            $world->rulesetVersion,
+        );
         $populationMaximums = null;
         $settlement = $rulesetSettings['turn_processing']['settlement'];
         $ownedSettlements = $cells->filter(static fn (MapCell $cell): bool => $viewerNationId !== null

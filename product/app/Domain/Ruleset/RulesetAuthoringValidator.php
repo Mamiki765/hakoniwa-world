@@ -1084,15 +1084,15 @@ final class RulesetAuthoringValidator
 
         $missiles = $this->map($military['missiles'], "{$path}.missiles");
         $expected = [
-            'missile' => [20, 2, 'scorched', true],
-            'pp_missile' => [50, 1, 'scorched', true],
-            'land_destruction_missile' => [100, 2, null, false],
-            'spp_missile' => [500, 0, 'scorched', true],
+            'missile' => [2, 'scorched', true],
+            'pp_missile' => [1, 'scorched', true],
+            'land_destruction_missile' => [2, null, false],
+            'spp_missile' => [0, 'scorched', true],
         ];
         if (array_keys($missiles) !== array_keys($expected)) {
             throw new DomainException("{$path}.missiles must contain the canonical PR22 missile keys.");
         }
-        foreach ($expected as $key => [$cost, $deviation, $terrain, $refugees]) {
+        foreach ($expected as $key => [$deviation, $terrain, $refugees]) {
             $definitionPath = "{$path}.missiles.{$key}";
             $definition = $this->map($missiles[$key], $definitionPath);
             $this->requireKeys($definition, [
@@ -1103,8 +1103,8 @@ final class RulesetAuthoringValidator
                 "{$definitionPath}.deviation_radius",
                 0,
             );
+            $this->integer($definition['cost_money_per_shot'], "{$definitionPath}.cost_money_per_shot", 1);
             if ($validatedDeviation > 2
-                || $this->integer($definition['cost_money_per_shot'], "{$definitionPath}.cost_money_per_shot", 1) !== $cost
                 || $validatedDeviation !== $deviation
                 || $definition['creates_terrain'] !== $terrain
                 || $this->boolean($definition['refugees'], "{$definitionPath}.refugees") !== $refugees) {
@@ -2313,16 +2313,16 @@ final class RulesetAuthoringValidator
             $section['facility_definitions'],
             'ruleset.underground_facility_development.facility_definitions',
         );
-        $expectedEffects = [
-            'underground_city' => ['capital_maximum_population_bonus' => 10_000],
-            'underground_farm' => ['farm_capacity_people' => 10_000],
-            'underground_factory' => ['factory_capacity_people' => 30_000],
-            'underground_missile_base' => ['missile_launch_capacity' => 1],
+        $expectedEffectKeys = [
+            'underground_city' => 'capital_maximum_population_bonus',
+            'underground_farm' => 'farm_capacity_people',
+            'underground_factory' => 'factory_capacity_people',
+            'underground_missile_base' => 'missile_launch_capacity',
         ];
-        if (array_keys($facilities) !== array_keys($expectedEffects)) {
+        if (array_keys($facilities) !== array_keys($expectedEffectKeys)) {
             throw new DomainException('Ruleset v19 Underground facility definition keys are invalid.');
         }
-        foreach ($expectedEffects as $facilityKey => $expectedEffect) {
+        foreach ($expectedEffectKeys as $facilityKey => $expectedEffectKey) {
             $path = "ruleset.underground_facility_development.facility_definitions.{$facilityKey}";
             $facility = $this->map($facilities[$facilityKey], $path);
             $this->requireKeys($facility, ['name', 'effect'], $path);
@@ -2332,17 +2332,18 @@ final class RulesetAuthoringValidator
                 $this->persistedString($effectKey, "{$path}.effect key");
                 $this->integer($value, "{$path}.effect.{$effectKey}", 1);
             }
-            if ($effect !== $expectedEffect) {
+            if (array_keys($effect) !== [$expectedEffectKey]
+                || ($facilityKey === 'underground_missile_base' && $effect[$expectedEffectKey] !== 1)) {
                 throw new DomainException("{$path}.effect differs from the v19 Underground facility contract.");
             }
         }
 
         $expectedCommands = [
-            'build_underground_city' => ['build', 'underground_city', 1000, 1],
-            'build_underground_farm' => ['build', 'underground_farm', 1000, 2],
-            'build_underground_factory' => ['build', 'underground_factory', 1000, 3],
-            'build_underground_missile_base' => ['build', 'underground_missile_base', 1000, 4],
-            'remove_underground_facility' => ['remove', null, 50, 5],
+            'build_underground_city' => ['build', 'underground_city', 1],
+            'build_underground_farm' => ['build', 'underground_farm', 2],
+            'build_underground_factory' => ['build', 'underground_factory', 3],
+            'build_underground_missile_base' => ['build', 'underground_missile_base', 4],
+            'remove_underground_facility' => ['remove', null, 5],
         ];
         $definitions = $this->list(
             $section['command_definitions'],
@@ -2375,8 +2376,7 @@ final class RulesetAuthoringValidator
                 || $definition['target_type'] !== 'underground_slot'
                 || $definition['action'] !== $expected[0]
                 || $definition['facility_key'] !== $expected[1]
-                || $definition['cost_money'] !== $expected[2]
-                || $definition['sort_order'] !== $expected[3]
+                || $definition['sort_order'] !== $expected[2]
                 || $definition['execution_phase'] !== 'underground_facility'
                 || count($metadata) !== 3
                 || $metadata['consumes_turn'] !== true

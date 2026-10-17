@@ -2,8 +2,8 @@
 
 namespace App\Application\Underground;
 
+use App\Application\QueuedCommandDefinitionResolver;
 use App\Domain\Command\PlayerFacingCommandException;
-use App\Domain\Underground\Facility\UndergroundCommandCatalog;
 use App\Domain\Underground\Facility\UndergroundCommandDefinition;
 use App\Models\Nation;
 use App\Models\NationCommandQueue;
@@ -20,7 +20,7 @@ use Illuminate\Database\Eloquent\Collection;
 
 final readonly class UndergroundFacilityService
 {
-    public function __construct(private UndergroundCommandCatalog $catalog) {}
+    public function __construct(private QueuedCommandDefinitionResolver $queuedCommandDefinitions) {}
 
     public function assertEntitled(User $user, Nation $nation, int $layer, int $slotIndex): void
     {
@@ -83,6 +83,7 @@ final readonly class UndergroundFacilityService
     /** @param Collection<int, NationCommandQueueItem> $items */
     public function assertProjectedSequences(NationCommandQueue $queue, Collection $items): void
     {
+        $ruleset = $this->currentRulesetForQueue($queue);
         /** @var array<string, string|null> $facilityKeys */
         $facilityKeys = [];
         foreach ($items->sortBy('queue_position') as $item) {
@@ -101,7 +102,7 @@ final readonly class UndergroundFacilityService
                     $item->target_slot_index,
                 );
             }
-            $definition = $this->definitionForItem($item);
+            $definition = $this->definitionForItem($item, $ruleset);
             $this->assertProjectedCommand($definition, $facilityKeys[$slotKey]);
             $facilityKeys[$slotKey] = $definition->action === 'remove'
                 ? null
@@ -119,6 +120,7 @@ final readonly class UndergroundFacilityService
         $items = $queue->relationLoaded('items')
             ? $queue->items
             : $queue->items()->where('status', 'queued')->with('definition')->get();
+        $ruleset = $this->currentRulesetForQueue($queue);
         foreach ($items->sortBy('queue_position') as $item) {
             if ($item->status !== 'queued'
                 || (int) $item->queue_position >= $beforePosition
@@ -130,7 +132,7 @@ final readonly class UndergroundFacilityService
             if (! is_string($item->underground_command_key)) {
                 continue;
             }
-            $definition = $this->definitionForItem($item);
+            $definition = $this->definitionForItem($item, $ruleset);
             $action = $definition->action;
             if ($action === 'build' && $facilityKey === null) {
                 $facilityKey = $definition->facility_key;
@@ -183,18 +185,24 @@ final readonly class UndergroundFacilityService
         ]);
     }
 
-    private function definitionForItem(NationCommandQueueItem $item): UndergroundCommandDefinition
-    {
-        if (! is_string($item->underground_command_key)) {
+    private function definitionForItem(
+        NationCommandQueueItem $item,
+        RulesetVersion $currentRuleset,
+    ): UndergroundCommandDefinition {
+        $definition = $this->queuedCommandDefinitions->resolve($item, $currentRuleset);
+        if (! $definition instanceof UndergroundCommandDefinition) {
             throw new DomainException('Underground queue item command identity is invalid.');
         }
-        $ruleset = $item->relationLoaded('requestRulesetVersion')
-            ? $item->requestRulesetVersion
-            : $item->requestRulesetVersion()->first();
-        if (! $ruleset instanceof RulesetVersion) {
-            throw new DomainException('Underground queue item Ruleset provenance is missing.');
-        }
 
-        return $this->catalog->get($ruleset->settings, $item->underground_command_key);
+        return $definition;
+    }
+
+    private function currentRulesetForQueue(NationCommandQueue $queue): RulesetVersion
+    {
+        $ruleset = $queue->nation()->with('world.rulesetVersion')->first()?->world?->rulesetVersion;
+
+        return $ruleset instanceof RulesetVersion
+            ? $ruleset
+            : throw new DomainException('Underground queue current World Ruleset is missing.');
     }
 }
