@@ -6,27 +6,6 @@ use DomainException;
 
 final class CurrentRulesetAuthoringInspector
 {
-    /** @var list<string> */
-    private const DOMAIN_FILES = [
-        'world-and-map.php',
-        'lifecycle-and-karma.php',
-        'economy-and-resources.php',
-        'terrain-and-disasters.php',
-        'facilities.php',
-        'commands-and-production.php',
-        'turn-pipeline.php',
-        'monsters-and-military.php',
-        'secretary.php',
-        'trading-post.php',
-        'underground-facilities.php',
-        'surface-ships.php',
-        'facility-ranks.php',
-        'central-facilities.php',
-        'ocean-loop.php',
-        'power-and-pizza.php',
-        'user-achievements.php',
-    ];
-
     private const CLASSIFICATIONS = ['behavior', 'data', 'flavor'];
 
     /**
@@ -42,19 +21,15 @@ final class CurrentRulesetAuthoringInspector
         $classifiedPaths = [];
         $counts = array_fill_keys(self::CLASSIFICATIONS, 0);
 
-        $files = self::DOMAIN_FILES;
-        $directories = [];
-        if (in_array($publishedPayload['key'] ?? null, ['hakoniwa-2s-plus-v37', 'hakoniwa-2s-plus-v38'], true)) {
-            $directories = array_fill_keys(['world-and-map.php', 'commands-and-production.php', 'surface-ships.php', 'turn-pipeline.php'], 'v37');
-        }
-        if (($publishedPayload['key'] ?? null) === 'hakoniwa-2s-plus-v38') {
-            $files[] = 'ecopo.php';
-            $directories['world-and-map.php'] = 'v38';
-            $directories['ecopo.php'] = 'v38';
+        $files = config('hakoniwa.ruleset_authoring_domains');
+        if (! is_array($files) || ! array_is_list($files) || $files === []) {
+            throw new DomainException('Current Ruleset authoring domains must be a non-empty list.');
         }
         foreach ($files as $file) {
-            $directory = $directories[$file] ?? 'current';
-            $domain = require config_path('hakoniwa/rulesets/'.$directory.'/'.$file);
+            if (! is_string($file) || $file === '') {
+                throw new DomainException('Current Ruleset authoring domains must contain file paths.');
+            }
+            $domain = require config_path('hakoniwa/rulesets/'.$file);
             if (! is_array($domain) || array_keys($domain) !== ['payload', 'classification']) {
                 throw new DomainException("Current Ruleset domain {$file} must contain only payload and classification.");
             }

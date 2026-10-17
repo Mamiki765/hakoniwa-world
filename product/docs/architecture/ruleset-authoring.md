@@ -77,8 +77,12 @@ data, while `null` may disable a path and therefore express behavior.
 
 ## Mechanical validation
 
-`CurrentRulesetAuthoringInspector` is inspection-only. It owns semantic classification of
-scalar leaves and never composes runtime settings. A selector is a field name or an absolute
+`CurrentRulesetAuthoringInspector` is inspection-only. It reads the explicit fragment paths
+in `hakoniwa.ruleset_authoring_domains`, selected beside the runtime entrypoint in
+`config/hakoniwa.php`. A new current generation updates that selection without adding
+version-name branches to the inspector. These paths are inspection metadata, outside the
+immutable published payload, and never compose runtime settings. The inspector owns semantic
+classification of scalar leaves. A selector is a field name or an absolute
 JSON-pointer-like path where `*` matches exactly one numeric list index, never an associative
 key. The inspector rejects:
 
