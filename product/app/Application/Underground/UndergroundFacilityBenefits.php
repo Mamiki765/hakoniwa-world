@@ -5,6 +5,7 @@ namespace App\Application\Underground;
 use App\Domain\Turn\TurnState;
 use App\Domain\Underground\Facility\UndergroundCommandCatalog;
 use App\Models\NationUndergroundFacility;
+use App\Models\RulesetVersion;
 use DomainException;
 use Illuminate\Database\Eloquent\Collection;
 
@@ -188,7 +189,7 @@ final class UndergroundFacilityBenefits
 
         $query = NationUndergroundFacility::query()
             ->whereIn('nation_id', $nationIds)
-            ->with('rulesetVersion')
+            ->with('nation.world.rulesetVersion')
             ->orderBy('nation_id')
             ->orderBy('layer')
             ->orderBy('slot_index');
@@ -196,11 +197,14 @@ final class UndergroundFacilityBenefits
             $query->where('facility_key', $facilityKey);
         }
         foreach ($query->get(['id', 'nation_id', 'ruleset_version_id', 'layer', 'slot_index', 'facility_key']) as $facility) {
-            $ruleset = $facility->rulesetVersion;
+            $ruleset = $facility->nation->world->rulesetVersion;
+            if (! $ruleset instanceof RulesetVersion) {
+                throw new DomainException('Underground facility current World Ruleset is missing.');
+            }
             $effect = $this->commands->forFacility($ruleset->settings, $facility->facility_key)->effect;
             $snapshots[(int) $facility->nation_id][] = [
                 'id' => (int) $facility->id,
-                'ruleset_version_id' => (int) $facility->ruleset_version_id,
+                'ruleset_version_id' => (int) $ruleset->id,
                 'layer' => (int) $facility->layer,
                 'slot_index' => (int) $facility->slot_index,
                 'facility_key' => (string) $facility->facility_key,

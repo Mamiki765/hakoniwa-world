@@ -24,6 +24,7 @@ final class PowerEconomyTurnService
         private readonly CapacityBoundedAssetService $assets,
         private readonly TurnEventRecorder $events,
         private readonly EcopoService $ecopo,
+        private readonly SecretaryExperienceAwardService $experience,
     ) {}
 
     /** @param iterable<MapCell> $facilities
@@ -121,7 +122,7 @@ final class PowerEconomyTurnService
         }
         $nation->refresh();
         if ($plan['consumed_mw'] > 0 && $context->state->hasSecretarySnapshot($nation->id)) {
-            $context->state->awardSecretaryExperience($nation->id, SecretarySkillCatalog::ENERGY_SAVING, $plan['consumed_mw']);
+            $this->experience->awardSkill($context, $nation->id, SecretarySkillCatalog::ENERGY_SAVING, $plan['consumed_mw']);
         }
         $this->events->record($context, 'resource.power_settled', $nation, [
             ...$plan, 'resource_key' => 'power', 'wind_count' => count($windIds),

@@ -914,11 +914,22 @@ class CommandQueueAndSalePolicyTest extends TestCase
         $item->update(['status' => 'cancelled', 'queue_position' => null, 'cancelled_at' => now()]);
         $this->assertSame('cancelled', $item->fresh()->status);
 
-        // A World switch can retain finalized requests referencing its predecessor.
-        // Reading that history is valid; status-only reactivation must still check
-        // the current World/definition identity, without executing historical PHP.
+        // A status-only reactivation may retain its source definition when the
+        // current World still has the same key; request provenance stays unchanged.
         $other = SyntheticHistoricalRulesetSnapshot::create('synthetic-next-world-snapshot', 28);
+        $sourceIdentity = $item->only(['command_definition_id', 'request_ruleset_version_id', 'request_fingerprint']);
+        $replacement = $item->definition()->sole()->replicate();
+        $replacement->ruleset_version_id = $other->id;
+        $replacement->save();
         $nation->world()->firstOrFail()->update(['ruleset_version_id' => $other->id]);
+        $item->update(['status' => 'queued', 'queue_position' => 1, 'cancelled_at' => null]);
+        $this->assertSame('queued', $item->fresh()->status);
+        $this->assertSame($sourceIdentity, $item->fresh()->only(array_keys($sourceIdentity)));
+        $item->update(['status' => 'cancelled', 'queue_position' => null, 'cancelled_at' => now()]);
+
+        // Finalized history remains readable, but missing current keys cannot reactivate.
+        $missing = SyntheticHistoricalRulesetSnapshot::create('synthetic-missing-command-snapshot', 29);
+        $nation->world()->firstOrFail()->update(['ruleset_version_id' => $missing->id]);
         try {
             DB::transaction(static function () use ($item): void {
                 DB::table('nation_command_queue_items')->where('id', $item->id)->update([
@@ -928,9 +939,10 @@ class CommandQueueAndSalePolicyTest extends TestCase
             $this->fail('A status-only update bypassed the current World Ruleset guard.');
         } catch (QueryException $exception) {
             $this->assertSame('23514', $exception->errorInfo[0]);
-            $this->assertStringContainsString('does not match World ruleset', $exception->getMessage());
+            $this->assertStringContainsString('has no matching command key in World ruleset', $exception->getMessage());
         }
         $this->assertSame('cancelled', $item->fresh()->status);
+        $this->assertSame($sourceIdentity, $item->fresh()->only(array_keys($sourceIdentity)));
     }
 
     public function test_queue_read_validates_ruleset_without_locking_the_shared_world(): void
@@ -1815,6 +1827,45 @@ class CommandQueueAndSalePolicyTest extends TestCase
         $this->assertCount(2, $updatedAudit);
         $this->assertSame(1, $updatedAudit['old_quantity']);
         $this->assertSame(99, $updatedAudit['new_quantity']);
+    }
+
+    public function test_attraction_uses_the_shared_quantity_contract_edit_cancel_and_original_request_replay(): void
+    {
+        [$owner, $nation, $space] = $this->nation('Repeated attraction');
+        $target = $nation->capital()->sole()->cell()->sole();
+        $base = "/api/v1/nations/{$nation->id}/map-spaces/{$space->id}";
+        $path = "{$base}/command-queue";
+        $money = (int) $nation->money;
+        $catalog = collect($this->actingAs($owner)->getJson(
+            "{$base}/command-definitions?target_x={$target->x}&target_y={$target->y}",
+        )->assertOk()->json('data.commands'))->firstWhere('key', 'attraction');
+        $this->assertSame('ordinary', $catalog['quantity_semantics']);
+        $this->assertSame(1, $catalog['quantity_default']);
+        $this->assertTrue($catalog['consumes_turn']);
+
+        $request = [
+            'command_key' => 'attraction', 'quantity' => 99,
+            'request_key' => (string) Str::uuid(), 'expected_version' => 1,
+        ];
+        $this->postJson($path, [...$request, 'quantity' => 100])->assertUnprocessable();
+        $created = $this->postJson($path, $request)->assertCreated()
+            ->assertJsonPath('data.queue.items.0.quantity', 99)
+            ->assertJsonPath('data.queue.items.0.quantity_semantics', 'ordinary');
+        $itemId = $created->json('data.item_id');
+        $fingerprint = NationCommandQueueItem::query()->findOrFail($itemId)->request_fingerprint;
+        $this->postJson($path, $request)->assertOk()->assertJsonPath('data.item_id', $itemId);
+        $this->assertSame($money, (int) $nation->fresh()->money, 'Scheduling does not prepay 99 executions.');
+
+        $this->patchJson("{$path}/{$itemId}", ['quantity' => 2, 'expected_version' => 2])->assertOk()
+            ->assertJsonPath('data.items.0.quantity', 2);
+        $this->patchJson("{$path}/{$itemId}", ['quantity' => 100, 'expected_version' => 3])->assertUnprocessable();
+        $this->deleteJson("{$path}/{$itemId}", ['expected_version' => 3])->assertOk()
+            ->assertJsonCount(0, 'data.items');
+        $this->assertSame('cancelled', NationCommandQueueItem::query()->findOrFail($itemId)->status);
+        $this->assertSame($fingerprint, NationCommandQueueItem::query()->findOrFail($itemId)->request_fingerprint);
+        $this->postJson($path, $request)->assertOk()->assertJsonPath('data.item_id', $itemId);
+        $this->assertSame($money, (int) $nation->fresh()->money);
+        $this->assertSame(1, NationCommandQueueItem::query()->count());
     }
 
     public function test_command_specific_defaults_and_selector_are_validated_at_registration(): void

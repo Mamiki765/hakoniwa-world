@@ -35,12 +35,14 @@ abstract class TestCase extends BaseTestCase
                 return;
             }
             // psql's plain schema loader leaves existing functions intact after migrate:fresh.
-            // Restore the canonical trigger body before replaying migrations in the next profile.
+            // Restore the canonical trigger bodies before replaying migrations in the next profile.
             $source = file_get_contents(database_path('schema/pgsql-schema.sql'));
-            if ($source === false || preg_match('/CREATE FUNCTION public\.validate_surface_ship_identity\(\).*?^\$\$;/ms', $source, $matches) !== 1) {
-                throw new RuntimeException('The canonical Ship identity trigger is missing.');
+            foreach (['validate_surface_ship_identity', 'enforce_queue_item_world_ruleset_match', 'validate_monster_instance_world_ruleset'] as $function) {
+                if ($source === false || preg_match('/CREATE FUNCTION public\.'.preg_quote($function, '/').'\(\).*?^\$\$;/ms', $source, $matches) !== 1) {
+                    throw new RuntimeException("The canonical {$function} trigger is missing.");
+                }
+                $connection->unprepared(str_replace('CREATE FUNCTION', 'CREATE OR REPLACE FUNCTION', $matches[0]));
             }
-            $connection->unprepared(str_replace('CREATE FUNCTION', 'CREATE OR REPLACE FUNCTION', $matches[0]));
         });
         $application['events']->listen(
             [MigrationsEnded::class, NoPendingMigrations::class],

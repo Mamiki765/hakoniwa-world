@@ -6,10 +6,15 @@ use App\Application\CommandQueueService;
 use App\Application\CompleteTurnEngine;
 use App\Application\DisasterTurnService;
 use App\Application\NationCreationService;
+use App\Application\PlayerIslandEventService;
+use App\Application\SecretaryExperienceAwardService;
 use App\Application\SecretaryTurnService;
 use App\Domain\Economy\NationCapacityResolver;
+use App\Domain\Map\GridCoordinate;
 use App\Domain\Map\MapCellStateService;
 use App\Domain\Secretary\SecretaryItemCatalog;
+use App\Domain\Secretary\SecretaryItemEffectAggregator;
+use App\Domain\Secretary\SecretarySkillCatalog;
 use App\Domain\Turn\TurnContext;
 use App\Domain\Turn\TurnRandomStreamFactory;
 use App\Domain\Turn\TurnState;
@@ -17,12 +22,14 @@ use App\Models\FacilityDefinition;
 use App\Models\MapCell;
 use App\Models\Nation;
 use App\Models\NationResource;
+use App\Models\SecretarySkill;
 use App\Models\TerrainDefinition;
 use App\Models\TurnRun;
 use App\Models\User;
 use App\Models\World;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
+use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\Concerns\UsesReusableSurfaceWorld;
 use Tests\TestCase;
 
@@ -99,6 +106,100 @@ final class PowerEconomyTest extends TestCase
         $this->assertSame([['element_key' => 'pizzeria', 'resource_key' => 'money', 'amount' => 0, 'count' => null]], $capped->state->economicContributions($nation->id));
     }
 
+    /** @return array<string, array{string}> */
+    public static function energyExperienceSuits(): array
+    {
+        return [
+            'general' => [SecretaryItemCatalog::SECRETARY_SUIT],
+            'peace regular' => ['chancellor_suit'],
+            'peace high quality' => ['grand_chancellor_suit'],
+            'peace artifact' => ['star_chancellor_suit'],
+        ];
+    }
+
+    #[DataProvider('energyExperienceSuits')]
+    public function test_consumed_power_uses_one_snapshotted_suit_award_and_replays_after_rollback(string $itemKey): void
+    {
+        $world = $this->lightweightWorld();
+        $user = User::factory()->create();
+        $nation = app(NationCreationService::class)->create($user, $world, 'Energy suit nation', 'Energy suit island');
+        MapCell::query()->where('owner_nation_id', $nation->id)->update(['population' => 0]);
+        $this->facility($nation, 'pizzeria');
+        $nation->update(['money' => 0]);
+        foreach (['wheat' => 10_000, 'fish' => 0, 'monster_meat' => 0, 'power' => 1_200] as $key => $amount) {
+            $this->balance($nation, $key)->update(['amount' => $amount]);
+        }
+        $secretary = $user->secretary()->sole();
+        $suit = $secretary->itemInstances()->create([
+            'item_key' => $itemKey,
+            'level' => app(SecretaryItemCatalog::class)->definition($itemKey)['max_level'],
+            'equipped_slot' => 2, 'grant_key' => 'test:power:experience-suit', 'obtained_at' => now(),
+        ]);
+        $run = $this->createRun($world);
+        $effect = app(SecretaryItemEffectAggregator::class)->snapshotExperienceDouble(
+            $this->context($world, $nation, $run)->state, $nation->id,
+            SecretaryExperienceAwardService::PASSIVE_SKILL, SecretarySkillCatalog::ENERGY_SAVING,
+        );
+        $this->assertNotNull($effect);
+        $this->assertGreaterThan(0, $effect['chance_percent']);
+        $stream = TurnRandomStreamFactory::secretaryExperience(
+            $nation->id, SecretaryExperienceAwardService::PASSIVE_SKILL, $effect['random_stream_version'],
+        );
+        $seed = null;
+        for ($attempt = 0; $attempt < 10_000; $attempt++) {
+            $candidate = hash('sha256', "power suit success {$attempt}");
+            $random = new TurnRandomStreamFactory($candidate);
+            if ($random->stream($stream)->integer(1, 100) <= $effect['chance_percent']) {
+                $seed = $candidate;
+                break;
+            }
+        }
+        $this->assertIsString($seed);
+        $run->update(['random_seed' => $seed]);
+        // Reference state advances once for the whole consumed-MW batch, not once per MW.
+        $expectedRandom = new TurnRandomStreamFactory($seed);
+        $expectedRandom->stream($stream)->integer(1, 100);
+        $attempts = [];
+        foreach (['first', 'retry'] as $attempt) {
+            DB::beginTransaction();
+            try {
+                $context = $this->context($world->fresh(), $nation->fresh(), $run);
+                $suit->fresh()->update(['equipped_slot' => null]);
+                $this->assertNull($suit->fresh()->equipped_slot);
+                // Maximum-population XP remains excluded and must not advance the shared passive stream.
+                app(SecretaryExperienceAwardService::class)->awardSkill(
+                    $context, $nation->id, SecretarySkillCatalog::DECLINING_BIRTHRATE_POLICY,
+                );
+                app(CompleteTurnEngine::class)->execute('nation_economy', $context);
+                $attempts[$attempt] = [
+                    'settlement' => $this->settlement($run),
+                    'balances' => NationResource::query()->where('nation_id', $nation->id)
+                        ->orderBy('id')->pluck('amount', 'resource_definition_id')->all(),
+                    'money' => (int) $nation->fresh()->money,
+                    'pending' => $context->state->pendingSecretaryExperience(),
+                    'random' => clone $context->random->stream($stream),
+                    'flush' => app(SecretaryTurnService::class)->flushExperience($context),
+                    'skills' => SecretarySkill::query()->where('secretary_id', $secretary->id)
+                        ->orderBy('skill_key')->get(['skill_key', 'level', 'experience'])->toArray(),
+                ];
+            } finally {
+                DB::rollBack();
+            }
+        }
+        $this->assertEquals($attempts['first'], $attempts['retry']);
+        $result = $attempts['retry'];
+        $this->assertGreaterThan(1, $result['settlement']['consumed_mw']);
+        $expectedExperience = $result['settlement']['consumed_mw'] * $effect['multiplier'];
+        $this->assertSame([
+            $nation->id => [
+                SecretarySkillCatalog::DECLINING_BIRTHRATE_POLICY => 1,
+                SecretarySkillCatalog::ENERGY_SAVING => $expectedExperience,
+            ],
+        ], $result['pending']);
+        $this->assertSame($expectedExperience + 1, $result['flush']['experience_awarded']);
+        $this->assertEquals($expectedRandom->stream($stream), $result['random']);
+    }
+
     public function test_disaster_leaves_wind_for_half_price_queued_repair_without_expansion(): void
     {
         $world = $this->lightweightWorld();
@@ -149,6 +250,11 @@ final class PowerEconomyTest extends TestCase
         foreach (['thermal_power', 'seabed_oil_field', 'pizzeria'] as $key) {
             $this->facility($nation, $key);
         }
+        $user->secretary()->sole()->itemInstances()->create([
+            'item_key' => SecretaryItemCatalog::SECRETARY_SUIT,
+            'level' => app(SecretaryItemCatalog::class)->definition(SecretaryItemCatalog::SECRETARY_SUIT)['max_level'],
+            'equipped_slot' => 2, 'grant_key' => 'test:power:zero-consumption-suit', 'obtained_at' => now(),
+        ]);
         foreach (['wheat' => 0, 'fish' => 0, 'monster_meat' => 0, 'oil' => 0, 'minerals' => 1000, 'power' => 35] as $key => $amount) {
             $this->balance($nation, $key)->update(['amount' => $amount]);
         }
@@ -159,12 +265,23 @@ final class PowerEconomyTest extends TestCase
         $this->assertSame(['minimum' => 0, 'maximum' => 0], $power['consumption_range']);
         $run = $this->createRun($world);
         $context = $this->context($world, $nation, $run);
+        $effect = app(SecretaryItemEffectAggregator::class)->snapshotExperienceDouble(
+            $context->state, $nation->id,
+            SecretaryExperienceAwardService::PASSIVE_SKILL, SecretarySkillCatalog::ENERGY_SAVING,
+        );
+        $this->assertNotNull($effect);
+        $stream = TurnRandomStreamFactory::secretaryExperience(
+            $nation->id, SecretaryExperienceAwardService::PASSIVE_SKILL, $effect['random_stream_version'],
+        );
+        $expectedRandom = new TurnRandomStreamFactory($run->random_seed);
         app(CompleteTurnEngine::class)->execute('nation_economy', $context);
         $result = $this->settlement($run);
         $this->assertSame(65, $result['discarded_mw']);
         $this->assertSame(0, $result['pizzeria_revenue']);
         $this->assertSame([], $context->state->economicContributions($nation->id));
         $this->assertSame([], $context->state->pendingSecretaryExperience());
+        $this->assertEquals($expectedRandom->stream($stream), $context->random->stream($stream));
+        $this->assertSame(0, app(SecretaryTurnService::class)->flushExperience($context)['experience_awarded']);
         $this->assertSame(0, (int) $this->balance($nation, 'oil')->amount);
         $this->assertSame(0, (int) $this->balance($nation, 'minerals')->amount);
         $this->assertSame(0, (int) $this->balance($nation, 'power')->amount);
@@ -173,6 +290,67 @@ final class PowerEconomyTest extends TestCase
         app(CompleteTurnEngine::class)->execute('enforce_capacities', $context);
         $this->assertSame($money, (int) $nation->fresh()->money);
         $this->assertSame(0, DB::table('audit_events')->where('event_type', 'resource.automatic_sale')->whereRaw("metadata->>'resource_key' = 'power'")->count());
+    }
+
+    public function test_huge_meteor_condenser_loss_reports_discarded_power_with_its_resource_name_and_unit(): void
+    {
+        $world = $this->lightweightWorld();
+        $user = User::factory()->create();
+        $nation = app(NationCreationService::class)->create($user, $world, 'Power storage', 'Condenser island');
+        MapCell::query()->where('owner_nation_id', $nation->id)->update(['population' => 0]);
+        $condenser = $this->facility($nation, 'condenser');
+        $this->facility($nation, 'pizzeria');
+        foreach (['wheat', 'fish', 'monster_meat', 'oil', 'minerals'] as $key) {
+            $this->balance($nation, $key)->update(['amount' => 0]);
+        }
+        // A retained balance below the condenser capacity, not excess generation.
+        $stored = min(1086, app(NationCapacityResolver::class)->resolve($nation)->resources['power']);
+        $this->assertGreaterThan(0, $stored);
+        $power = $this->balance($nation, 'power');
+        $power->update(['amount' => $stored]);
+        $run = $this->createRun($world);
+        $context = $this->context($world, $nation, $run);
+        app(CompleteTurnEngine::class)->execute('nation_economy', $context);
+        $settlement = $this->settlement($run);
+        $this->assertSame($stored, $settlement['stored_after_mw']);
+        $this->assertSame(0, $settlement['discarded_mw']);
+
+        // A huge meteor's blast occurs after economy in the Turn pipeline.
+        // Fix its center here; weather/impact lottery coverage lives in its own tests.
+        app(DisasterTurnService::class)->resolveHugeMeteorBlast(
+            $context,
+            $this->surfaceMapSpace($world),
+            new GridCoordinate($condenser->x, $condenser->y),
+            $context->ruleset->settings['turn_processing']['disasters']['huge_meteor'],
+        );
+        $this->assertNull($condenser->fresh()->facility_definition_id);
+        $this->assertNull($condenser->fresh()->owner_nation_id);
+        $this->assertSame('sea', $condenser->fresh()->terrain->key);
+        $damage = DB::table('audit_events')->where('event_type', 'disaster.cell_damaged')
+            ->whereRaw("metadata->>'turn_run_id' = ?", [(string) $run->id])
+            ->whereRaw("metadata->>'removed_facility_key' = 'condenser'")->sole();
+        $this->assertSame('huge_meteor', json_decode($damage->metadata, true, 512, JSON_THROW_ON_ERROR)['disaster_key']);
+        $money = (int) $nation->fresh()->money;
+        app(CompleteTurnEngine::class)->execute('resource_sales', $context);
+        app(CompleteTurnEngine::class)->execute('enforce_capacities', $context);
+        $this->assertSame(0, (int) $power->fresh()->amount);
+        $this->assertSame($money, (int) $nation->fresh()->money);
+        $this->assertSame(0, DB::table('audit_events')->where('event_type', 'resource.automatic_sale')->whereRaw("metadata->>'resource_key' = 'power'")->count());
+        $overflow = DB::table('audit_events')->where('event_type', 'capacity.overflow')
+            ->whereRaw("metadata->>'turn_run_id' = ?", [(string) $run->id])
+            ->whereRaw("metadata->>'resource_key' = 'power'")->sole();
+        $metadata = json_decode($overflow->metadata, true, 512, JSON_THROW_ON_ERROR);
+        $this->assertSame('post_sale_inventory_capacity', $metadata['source']);
+        $this->assertSame($stored, $metadata['before']);
+        $this->assertSame($stored, $metadata['overflow']);
+        $this->assertSame(0, $metadata['capacity']);
+        $this->assertSame(0, $metadata['after']);
+        $world->update(['current_turn' => $run->target_turn]);
+        $events = collect(app(PlayerIslandEventService::class)->ownerPage($nation, anchorTurn: $run->target_turn)['groups'])
+            ->flatMap(fn (array $group): array => $group['events']);
+        $message = $events->firstWhere('id', $overflow->id)['message'];
+        $this->assertStringContainsString($power->definition->name, $message);
+        $this->assertStringContainsString(number_format($stored).$power->definition->unit_label, $message);
     }
 
     private function facility(Nation $nation, string $key): MapCell

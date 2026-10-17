@@ -324,10 +324,12 @@ final class SurfaceShipTurnService
         $allCells = new EloquentCollection(array_values($cellsByCoordinate));
         $visible = $this->visibility->visibleCoordinates($space, $allCells, $nationId);
         $treasures = BuriedTreasure::query()->where('world_id', $context->world->id)
-            ->where('state', BuriedTreasure::STATE_ACTIVE)->with('cell')->orderBy('id')->get()
-            ->filter(fn (BuriedTreasure $treasure): bool => isset(
-                $visible[$treasure->cell->x.':'.$treasure->cell->y],
-            ))
+            ->where('state', BuriedTreasure::STATE_ACTIVE)->with(['cell.terrain', 'cell.facility'])->orderBy('id')->get()
+            ->filter(fn (BuriedTreasure $treasure): bool => $treasure->cell->terrain->key === 'sea'
+                && $this->canOccupy($treasure->cell, false, false)
+                && isset(
+                    $visible[$treasure->cell->x.':'.$treasure->cell->y],
+                ))
             ->sortBy(fn (BuriedTreasure $treasure): array => [
                 (new GridCoordinate((int) $origin->x, (int) $origin->y))->distanceTo(
                     new GridCoordinate((int) $treasure->cell->x, (int) $treasure->cell->y),

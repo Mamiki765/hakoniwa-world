@@ -93,6 +93,7 @@ final class MissileImpactResolver
         private readonly FacilityRankPolicy $facilityRanks,
         private readonly CentralFacilityDamageService $centralFacilityDamage,
         private readonly SurfaceShipCombatService $shipCombat,
+        private readonly CurrentMonsterDefinitionResolver $monsterDefinitions,
     ) {}
 
     /** @param array<string, MapCell>|null $surfaceCellsByCoordinate */
@@ -518,6 +519,10 @@ final class MissileImpactResolver
         if ($intent->definitionKey === 'spp_missile' && $cellIds !== []) {
             $occupancies = MonsterOccupancy::query()->whereIn('map_cell_id', $cellIds)
                 ->with(['cell', 'monster.definition'])->orderBy('monster_instance_id')->lockForUpdate()->get();
+            $this->monsterDefinitions->applyAll(
+                $occupancies->map(static fn (MonsterOccupancy $occupancy) => $occupancy->monster),
+                $context->ruleset,
+            );
             foreach ($occupancies as $occupancy) {
                 $monster = $occupancy->monster;
                 $hostNationId = $occupancy->cell->owner_nation_id;
@@ -1295,6 +1300,7 @@ final class MissileImpactResolver
         $occupancy = MonsterOccupancy::query()->where('map_cell_id', $cell->id)
             ->with('monster.definition')->lockForUpdate()->first();
         if ($occupancy !== null) {
+            $this->monsterDefinitions->resolve($occupancy->monster, $context->ruleset);
             $result = $this->monsterDamage->applyDamage(
                 $occupancy->monster,
                 1,

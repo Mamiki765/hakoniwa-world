@@ -34,6 +34,7 @@ final class MonsterTurnService
         private readonly NationProtectionPolicy $nationProtection,
         private readonly SecretaryItemEffectAggregator $secretaryItems,
         private readonly SurfaceShipRemovalService $shipRemoval,
+        private readonly CurrentMonsterDefinitionResolver $currentDefinitions,
     ) {}
 
     public function load(TurnContext $context): MonsterTurnBatch
@@ -47,6 +48,7 @@ final class MonsterTurnService
             ->orderBy('id')
             ->lockForUpdate()
             ->get();
+        $this->currentDefinitions->applyAll($occupancies->map(fn ($occupancy) => $occupancy->monster), $context->ruleset);
         $behaviorByDefinitionId = [];
         foreach ($occupancies as $occupancy) {
             $definition = $occupancy->monster->definition;

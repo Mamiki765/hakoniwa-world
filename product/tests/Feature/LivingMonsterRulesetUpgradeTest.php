@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Application\CompleteTurnEngine;
 use App\Application\MonsterTurnService;
+use App\Application\RulesetPublisher;
 use App\Application\SurfaceShipTurnService;
 use App\Application\TurnRunner;
 use App\Domain\Map\GridCoordinate;
@@ -88,7 +89,6 @@ final class LivingMonsterRulesetUpgradeTest extends CommandAndMissileTestCase
     private function upgradedSeaEncounter(string $shipType): array
     {
         $next = config('hakoniwa.ruleset');
-        config(['hakoniwa.ruleset' => require config_path('hakoniwa/rulesets/hakoniwa-2s-plus-v36.php')]);
         $world = $this->lightweightWorld();
         [, $nation] = $this->nation($world, '生存怪獣移行');
         $port = MapCell::query()->where('owner_nation_id', $nation->id)->whereNull('facility_definition_id')
@@ -128,9 +128,11 @@ final class LivingMonsterRulesetUpgradeTest extends CommandAndMissileTestCase
         NationResource::query()->updateOrCreate([
             'nation_id' => $nation->id, 'resource_definition_id' => ResourceDefinition::query()->where('key', $fuel)->sole()->id,
         ], ['amount' => 100]);
+        $next['version']++;
+        $next['key'] = 'hakoniwa-2s-plus-v'.$next['version'];
         config(['hakoniwa.ruleset' => $next]);
-        (require database_path('migrations/2026_10_14_130000_publish_undersea_construction_ship_ruleset.php'))->up();
-        (require database_path('migrations/2026_10_15_010000_publish_ecopo_ruleset.php'))->up();
+        $published = app(RulesetPublisher::class)->publish($next);
+        $world->update(['ruleset_version_id' => $published->id]);
         $world->refresh()->unsetRelation('rulesetVersion');
 
         return [$world, $nation, $monster, $ship];

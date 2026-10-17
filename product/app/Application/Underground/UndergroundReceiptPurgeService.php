@@ -36,8 +36,9 @@ final class UndergroundReceiptPurgeService
             ($apply ? $profileQuery->lockForUpdate() : $profileQuery->sharedLock())->firstOrFail(['id']);
             $identity = ['underground_profile_id' => $profileId, 'stream' => $stream];
             $checkpoint = DB::table('underground_receipt_rollups')->where($identity)->first();
-            if ($checkpoint !== null && (int) $checkpoint->aggregation_version !== UndergroundReceiptRollupService::VERSION) {
-                throw new RuntimeException('Unsupported receipt aggregation version.');
+            $legacyBattlePrefix = $stream === 'battle' && $checkpoint !== null && (int) $checkpoint->aggregation_version === 1;
+            if (! $legacyBattlePrefix) {
+                UndergroundReceiptRollupService::assertCheckpointVersion($stream, $checkpoint);
             }
             $from = (int) ($checkpoint->deleted_through_id ?? 0);
             $verified = (int) ($checkpoint->verified_through_id ?? 0);
@@ -61,11 +62,13 @@ final class UndergroundReceiptPurgeService
             $ids = [];
             $partyIds = [];
             $to = $from;
-            $reason = $candidates->count() === $batchSize ? 'batch_limit' : 'no_more_receipts';
+            $reason = $legacyBattlePrefix ? 'statistics_upgrade_required' : ($candidates->count() === $batchSize ? 'batch_limit' : 'no_more_receipts');
             $stoppedAt = null;
             $oldest = null;
             foreach ($candidates as $candidate) {
-                $blocker = $this->rollups->preparationBlocker($stream, $candidate, $cutoff);
+                // Preserve the admin status/preview payload while refusing to
+                // delete any prefix whose saved statistics use the old scope.
+                $blocker = $legacyBattlePrefix ? 'statistics_upgrade_required' : $this->rollups->preparationBlocker($stream, $candidate, $cutoff);
                 if ($blocker === null && (int) $candidate->id > $verified) {
                     $blocker = 'unverified_receipt';
                 }

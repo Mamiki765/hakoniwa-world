@@ -2324,6 +2324,66 @@ class DomesticCommandExecutionTest extends TestCase
         $this->assertSame(3, Ship::query()->where('state', Ship::STATE_ACTIVE)->count());
     }
 
+    public function test_repeating_attraction_debits_once_retains_the_head_and_cancels_only_future_executions(): void
+    {
+        $world = $this->lightweightWorld();
+        [$user, $nation] = $this->createNation($world, 'Attraction cancellation');
+        $space = $this->surfaceMapSpace($world);
+        $service = app(CommandQueueService::class);
+        $item = $service->add($user, $nation, $space, 'attraction', null, null, (string) Str::uuid(), 1,
+            quantity: 99, quantityProvided: true)['item'];
+        $price = $item->definition()->sole()->cost_money;
+        $nation->update(['money' => $price * 3]);
+        $beforeResources = $nation->resourceBalances()->orderBy('resource_definition_id')->pluck('amount', 'resource_definition_id')->all();
+        $fingerprint = $item->request_fingerprint;
+        $following = $service->add($user, $nation, $space, 'finance', null, null, (string) Str::uuid(), 2)['item'];
+        $context = $this->context($world, [$nation->id], hash('sha256', 'attraction cancel'));
+        $metrics = app(DomesticCommandExecutor::class)->execute($context);
+        $this->assertSame([1, 0, 1], [$metrics['successes'], $metrics['failures'], $metrics['quantity_decrements']]);
+        $this->assertTrue($context->state->hasAttraction($nation->id));
+        $this->assertSame(['queued', 98, 1], [$item->fresh()->status, $item->fresh()->quantity, $item->fresh()->queue_position]);
+        $this->assertSame(['queued', 2], [$following->fresh()->status, $following->fresh()->queue_position]);
+        $this->assertSame($price * 2, (int) $nation->fresh()->money);
+        $service->cancel($user, $nation, $item, (int) $nation->commandQueue()->value('version'));
+        $this->assertSame($price * 2, (int) $nation->fresh()->money, 'No refund or prepayment exists for future repetitions.');
+        $this->assertSame('cancelled', $item->fresh()->status);
+        $this->assertSame($fingerprint, $item->fresh()->request_fingerprint);
+        $this->assertSame(1, $following->fresh()->queue_position);
+        $next = $this->context($world, [$nation->id], hash('sha256', 'after attraction cancel'), targetTurn: 3);
+        app(DomesticCommandExecutor::class)->execute($next);
+        $this->assertFalse($next->state->hasAttraction($nation->id));
+        $this->assertSame('completed', $following->fresh()->status);
+        $this->assertSame($beforeResources, $nation->resourceBalances()->orderBy('resource_definition_id')->pluck('amount', 'resource_definition_id')->all());
+    }
+
+    public function test_repeating_attraction_funds_shortage_removes_all_remaining_repetitions_and_runs_the_next_plan(): void
+    {
+        $world = $this->lightweightWorld();
+        [$user, $nation] = $this->createNation($world, 'Attraction shortage');
+        $space = $this->surfaceMapSpace($world);
+        $service = app(CommandQueueService::class);
+        $item = $service->add($user, $nation, $space, 'attraction', null, null, (string) Str::uuid(), 1,
+            quantity: 99, quantityProvided: true)['item'];
+        $price = $item->definition()->sole()->cost_money;
+        $nation->update(['money' => $price * 2]);
+        $following = $service->add($user, $nation, $space, 'finance', null, null, (string) Str::uuid(), 2)['item'];
+        $executor = app(DomesticCommandExecutor::class);
+        $executor->execute($this->context($world, [$nation->id], hash('sha256', 'attraction before shortage')));
+        $this->assertSame(98, $item->fresh()->quantity);
+        $nation->update(['money' => $price - 1]);
+        $context = $this->context($world, [$nation->id], hash('sha256', 'attraction shortage'), targetTurn: 3);
+        $metrics = $executor->execute($context);
+        $this->assertSame([1, 1, 0], [$metrics['successes'], $metrics['failures'], $metrics['quantity_decrements']]);
+        $this->assertSame(['failed', 'insufficient_funds', 98, null], [
+            $item->fresh()->status, $item->fresh()->failure_code, $item->fresh()->quantity, $item->fresh()->queue_position,
+        ]);
+        $this->assertFalse($context->state->hasAttraction($nation->id));
+        $this->assertSame('completed', $following->fresh()->status);
+        $this->assertSame($price - 1 + $context->ruleset->settings['turn_processing']['automatic_finance_money'], (int) $nation->fresh()->money);
+        $this->assertSame(1, DB::table('audit_events')->where('event_type', 'command.attraction_started')->count());
+        $this->assertSame(1, DB::table('audit_events')->where('event_type', 'command.quantity_decremented')->where('subject_id', $item->id)->count());
+    }
+
     /** @return array{User, Nation} */
     private function createNation(World $world, string $name): array
     {

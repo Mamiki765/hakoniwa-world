@@ -10,6 +10,27 @@ use Tests\TestCase;
 
 class RulesetAuthoringValidatorTest extends TestCase
 {
+    public function test_underground_amounts_and_missile_prices_are_authored_data(): void
+    {
+        $settings = config('hakoniwa.ruleset');
+        foreach (['underground_city', 'underground_farm', 'underground_factory'] as $key) {
+            $effect = &$settings['underground_facility_development']['facility_definitions'][$key]['effect'];
+            $effect[array_key_first($effect)]++;
+            unset($effect);
+        }
+        foreach ($settings['underground_facility_development']['command_definitions'] as &$command) {
+            $command['cost_money']++;
+        }
+        unset($command);
+        foreach ($settings['military']['missiles'] as &$missile) {
+            $missile['cost_money_per_shot']++;
+        }
+        unset($missile);
+
+        app(RulesetAuthoringValidator::class)->validate($settings);
+        $this->addToAssertionCount(1);
+    }
+
     public function test_balance_values_and_additional_ship_are_validated_from_the_authored_payload(): void
     {
         $settings = config('hakoniwa.ruleset');
@@ -67,6 +88,33 @@ class RulesetAuthoringValidatorTest extends TestCase
     public static function invalidCurrentRulesetProvider(): array
     {
         return [
+            'repeated quantity must consume one turn' => [
+                static function (array $settings): array {
+                    foreach ($settings['command_definitions'] as &$command) {
+                        if ($command['key'] === 'attraction') {
+                            $command['metadata']['repeat_quantity'] = true;
+                            $command['metadata']['consumes_turn'] = false;
+                        }
+                    }
+                    unset($command);
+
+                    return $settings;
+                },
+                'repeat_quantity is only supported for turn-consuming attraction',
+            ],
+            'repeated quantity flag must be boolean' => [
+                static function (array $settings): array {
+                    foreach ($settings['command_definitions'] as &$command) {
+                        if ($command['key'] === 'attraction') {
+                            $command['metadata']['repeat_quantity'] = 'true';
+                        }
+                    }
+                    unset($command);
+
+                    return $settings;
+                },
+                'metadata.repeat_quantity must be a boolean',
+            ],
             'missing required top-level key' => [
                 static function (array $settings): array {
                     unset($settings['initial_money']);

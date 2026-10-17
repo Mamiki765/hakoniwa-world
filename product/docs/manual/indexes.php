@@ -88,7 +88,7 @@ return [
         'build_fast_factory' => ['group' => 'fast', 'note' => '輝石も使って、ターンを使わずに工場を建てる・増設します。'],
         'build_fast_mine' => ['group' => 'fast', 'note' => '輝石も使って、ターンを使わずに採掘場を建てる・増設します。'],
         'finance' => ['group' => 'people', 'note' => '何もせずに少し資金を得ます。計画が空のターンは自動でこれになります。'],
-        'attraction' => ['group' => 'people', 'note' => 'そのターンは人口が増えやすくなります。'],
+        'attraction' => ['group' => 'people', 'note' => '数量の回数だけ、毎ターン人口が増えやすくなります。失敗すると残りの回数は取り消されます。'],
         'relocate_capital' => ['group' => 'people', 'note' => '自国の都市を新しい首都にします。遷都のあとしばらくは次の遷都ができません。'],
         'build_port' => ['group' => 'sea', 'note' => '港を建てます。'],
         'build_ship' => ['group' => 'sea', 'note' => '船の種類を選び、港の近くの海に船を造ります。'],
