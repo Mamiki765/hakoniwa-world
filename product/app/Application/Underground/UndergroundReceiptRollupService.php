@@ -17,6 +17,8 @@ final class UndergroundReceiptRollupService
 {
     public const VERSION = 1;
 
+    public const BATTLE_VERSION = 2;
+
     public const STREAMS = ['battle', 'skip', 'bulk_skip', 'intro_request'];
 
     private const TABLE = 'underground_receipt_rollups';
@@ -32,7 +34,9 @@ final class UndergroundReceiptRollupService
     /** @return array<string, int> */
     public function totals(int $profileId): array
     {
-        $pieces = DB::table(self::TABLE)->where('underground_profile_id', $profileId)->select(self::METRICS);
+        $pieces = DB::table(self::TABLE)->where('underground_profile_id', $profileId)->select(self::METRICS)
+            ->selectRaw("CASE WHEN stream = 'battle' AND aggregation_version = 1 THEN 1 ELSE 0 END AS legacy_battle_prefix,
+                CASE WHEN aggregation_version <> CASE WHEN stream = 'battle' THEN ".self::BATTLE_VERSION.' ELSE '.self::VERSION.' END THEN 1 ELSE 0 END AS unsupported_prefix');
         foreach (self::STREAMS as $stream) {
             $pieces->unionAll($this->sourceTotals($profileId, $stream)->whereRaw(
                 'id > COALESCE((SELECT verified_through_id FROM '.self::TABLE.' WHERE underground_profile_id = ? AND stream = ?), 0)',
@@ -42,8 +46,16 @@ final class UndergroundReceiptRollupService
 
         // One SQL statement: saved totals, every watermark and the remaining
         // receipts must share the same snapshot while a collector commits.
-        return $this->metrics(DB::query()->fromSub($pieces, 'journal_parts')
-            ->selectRaw($this->sumColumns())->first());
+        $row = DB::query()->fromSub($pieces, 'journal_parts')
+            ->selectRaw($this->sumColumns().', COALESCE(SUM(legacy_battle_prefix), 0) AS legacy_battle_prefix, COALESCE(SUM(unsupported_prefix), 0) AS unsupported_prefix')->first();
+        if ((int) $row->legacy_battle_prefix > 0) {
+            self::assertCheckpointVersion('battle', (object) ['aggregation_version' => 1]);
+        }
+        if ((int) $row->unsupported_prefix > 0) {
+            throw new RuntimeException('Unsupported receipt aggregation version.');
+        }
+
+        return $this->metrics($row);
     }
 
     /**
@@ -70,9 +82,7 @@ final class UndergroundReceiptRollupService
             // ID. Never replace this with SKIP LOCKED and jump over a writer.
             UndergroundProfile::query()->whereKey($profileId)->lockForUpdate()->firstOrFail(['id']);
             $checkpoint = DB::table(self::TABLE)->where('underground_profile_id', $profileId)->where('stream', $stream)->first();
-            if ($checkpoint !== null && (int) $checkpoint->aggregation_version !== self::VERSION) {
-                throw new RuntimeException('Unsupported receipt aggregation version.');
-            }
+            self::assertCheckpointVersion($stream, $checkpoint);
             $from = (int) ($checkpoint->verified_through_id ?? 0);
             $columns = ['id', $finishedColumn];
             if ($stream === 'battle') {
@@ -111,7 +121,7 @@ final class UndergroundReceiptRollupService
                 $values = [
                     ...$after,
                     'verified_through_id' => $to,
-                    'aggregation_version' => self::VERSION,
+                    'aggregation_version' => self::versionForStream($stream),
                     'lifetime_statistics' => json_encode($statisticsAfter, JSON_THROW_ON_ERROR),
                     'verified_at' => $now,
                     'last_batch' => json_encode([
@@ -147,6 +157,105 @@ final class UndergroundReceiptRollupService
                 'receipts' => $count, 'applied' => $apply && $count > 0,
                 'stop_reason' => $stopReason, 'delta' => $delta,
             ];
+        }, 1);
+    }
+
+    public static function versionForStream(string $stream): int
+    {
+        return match ($stream) {
+            'battle' => self::BATTLE_VERSION,
+            'skip', 'bulk_skip', 'intro_request' => self::VERSION,
+            default => throw new InvalidArgumentException('Unknown receipt stream.'),
+        };
+    }
+
+    public static function assertCheckpointVersion(string $stream, ?stdClass $checkpoint): void
+    {
+        if ($checkpoint === null || (int) $checkpoint->aggregation_version === self::versionForStream($stream)) {
+            return;
+        }
+        if ($stream === 'battle' && (int) $checkpoint->aggregation_version === 1) {
+            throw new UndergroundRuntimeException('underground_statistics_upgrade_required', '戦闘統計の更新を確認中です。冒険日誌は更新完了後に利用できます。');
+        }
+
+        throw new RuntimeException('Unsupported receipt aggregation version.');
+    }
+
+    /**
+     * Explicit, bounded repair of a fully retained v1 prefix. Never settles a
+     * battle, advances a boundary, deletes receipts or runs automatically.
+     *
+     * @return array<string, mixed>
+     */
+    public function rebuildBattlePrefix(int $profileId, int $maxReceipts = 1_000, bool $apply = false): array
+    {
+        if ($profileId < 1 || $maxReceipts < 1 || $maxReceipts > 1_000) {
+            throw new InvalidArgumentException('Specify an existing profile and a rebuild limit between 1 and 1000.');
+        }
+        $this->assertSourceSequence('underground_battles');
+
+        return DB::transaction(function () use ($profileId, $maxReceipts, $apply): array {
+            UndergroundProfile::query()->whereKey($profileId)->lockForUpdate()->firstOrFail(['id']);
+            $identity = ['underground_profile_id' => $profileId, 'stream' => 'battle'];
+            $checkpoint = DB::table(self::TABLE)->where($identity)->first();
+            $result = ['profile_id' => $profileId, 'stream' => 'battle', 'applied' => false,
+                'verified_through_id' => (int) ($checkpoint->verified_through_id ?? 0)];
+            if ($checkpoint === null || (int) $checkpoint->aggregation_version === self::BATTLE_VERSION) {
+                return [...$result, 'stop_reason' => $checkpoint === null ? 'no_checkpoint' : 'already_current'];
+            }
+            if ((int) $checkpoint->aggregation_version !== self::VERSION) {
+                throw new RuntimeException('Unsupported receipt aggregation version.');
+            }
+            if ((int) $checkpoint->deleted_through_id !== 0 || (int) $checkpoint->deleted_receipt_count !== 0) {
+                throw new RuntimeException('Cannot rebuild a battle prefix after receipt deletion.');
+            }
+            $through = (int) $checkpoint->verified_through_id;
+            $expectedCount = (int) $checkpoint->receipt_count;
+            if ($expectedCount > $maxReceipts) {
+                throw new RuntimeException('Battle prefix exceeds the rebuild limit.');
+            }
+            $rows = DB::table('underground_battles')->where('underground_profile_id', $profileId)
+                ->where('id', '<=', $through)->orderBy('id')->limit($maxReceipts + 1)
+                ->get(['id', 'finished_at', 'activity_type', 'compaction_version', 'statistics_version', 'statistics']);
+            if ($rows->count() !== $expectedCount || (int) $rows->last()?->id !== $through) {
+                throw new RuntimeException('Battle prefix source receipt count does not match its checkpoint.');
+            }
+            foreach ($rows as $row) {
+                if ($this->preparationBlocker('battle', $row, CarbonImmutable::now()->addSecond()) !== null
+                    || ($row->statistics !== null && (int) $row->statistics_version !== UndergroundBattleStatisticsProjector::VERSION)) {
+                    throw new RuntimeException('Battle prefix contains an unprepared receipt.');
+                }
+            }
+            $legacy = $this->metrics($this->sourceTotals($profileId, 'battle', true)->where('id', '<=', $through)->first());
+            $legacyStatistics = $this->statistics->range($profileId, 0, $through, true);
+            if ($this->metrics($checkpoint) !== $legacy || $checkpoint->lifetime_statistics === null
+                || json_decode($checkpoint->lifetime_statistics, true, 512, JSON_THROW_ON_ERROR) != $legacyStatistics) {
+                throw new RuntimeException('Legacy battle rollup does not match the retained source prefix.');
+            }
+            $totals = $this->metrics($this->sourceTotals($profileId, 'battle')->where('id', '<=', $through)->first());
+            $statistics = $this->statistics->range($profileId, 0, $through);
+            if ($apply) {
+                $now = now();
+                DB::table(self::TABLE)->where($identity)->update([
+                    ...$totals, 'aggregation_version' => self::BATTLE_VERSION,
+                    'lifetime_statistics' => json_encode($statistics, JSON_THROW_ON_ERROR),
+                    'verified_at' => $now, 'updated_at' => $now,
+                    'last_batch' => json_encode(['operation' => 'rebuild_battle_prefix', 'previous_version' => self::VERSION,
+                        'from_exclusive' => 0, 'through_inclusive' => $through, 'totals' => $totals], JSON_THROW_ON_ERROR),
+                ]);
+                $saved = DB::table(self::TABLE)->where($identity)->first();
+                if ($saved === null || (int) $saved->aggregation_version !== self::BATTLE_VERSION
+                    || (int) $saved->verified_through_id !== $through || (int) $saved->deleted_through_id !== 0
+                    || (int) $saved->deleted_receipt_count !== 0 || $this->metrics($saved) !== $totals
+                    || json_decode($saved->lifetime_statistics, true, 512, JSON_THROW_ON_ERROR) != $statistics
+                    || $this->metrics($this->sourceTotals($profileId, 'battle')->where('id', '<=', $through)->first()) !== $totals
+                    || $this->statistics->range($profileId, 0, $through) != $statistics) {
+                    throw new RuntimeException('Battle prefix rebuild verification failed.');
+                }
+            }
+
+            return [...$result, 'applied' => $apply, 'stop_reason' => $apply ? 'rebuilt' : 'ready',
+                'totals' => $totals, 'lifetime_statistics' => $statistics];
         }, 1);
     }
 
@@ -188,7 +297,7 @@ final class UndergroundReceiptRollupService
         return null;
     }
 
-    private function sourceTotals(int $profileId, string $stream): Builder
+    private function sourceTotals(int $profileId, string $stream, bool $legacyScope = false): Builder
     {
         [$table, $finishedColumn] = $this->source($stream);
         $query = DB::table($table)->where('underground_profile_id', $profileId)->whereNotNull($finishedColumn);
@@ -198,11 +307,11 @@ final class UndergroundReceiptRollupService
             return $query->selectRaw('COUNT(*) AS receipt_count, 0::bigint AS battle_count, 0::bigint AS victory_count,
                 0::bigint AS damage_dealt_sum, 0::bigint AS damage_dealt_known_count,
                 0::bigint AS damage_received_sum, 0::bigint AS damage_received_known_count,
-                '.$tickets.' AS skip_tickets_used');
+                '.$tickets.' AS skip_tickets_used, 0 AS legacy_battle_prefix, 0 AS unsupported_prefix');
         }
-        // Keep the existing journal's scope and legacy self/party semantics.
+        // Share the lifetime scope while preserving legacy self/party semantics.
         // Story/duel receipts advance the boundary but contribute no journal battle.
-        $included = UndergroundLifetimeStatistics::JOURNAL_SCOPE;
+        $included = $legacyScope ? UndergroundLifetimeStatistics::LEGACY_JOURNAL_SCOPE : UndergroundLifetimeStatistics::JOURNAL_SCOPE;
         $dealt = "CASE WHEN statistics IS NULL AND underground_party_id IS NULL THEN damage_dealt ELSE (statistics->'self'->>'damage_dealt')::bigint END";
         $received = "CASE WHEN statistics IS NULL AND underground_party_id IS NULL THEN damage_received ELSE (statistics->'self'->>'damage_received')::bigint END";
 
@@ -213,7 +322,7 @@ final class UndergroundReceiptRollupService
             COUNT(CASE WHEN {$included} THEN {$dealt} END) AS damage_dealt_known_count,
             COALESCE(SUM(CASE WHEN {$included} THEN {$received} END), 0) AS damage_received_sum,
             COUNT(CASE WHEN {$included} THEN {$received} END) AS damage_received_known_count,
-            0::bigint AS skip_tickets_used");
+            0::bigint AS skip_tickets_used, 0 AS legacy_battle_prefix, 0 AS unsupported_prefix");
     }
 
     private function sumColumns(): string
