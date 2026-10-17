@@ -395,6 +395,68 @@ final class MissileImpactAndSettlementTest extends CommandAndMissileTestCase
         $this->assertSame(1, $context->state->nationActivity($firing->id)['missile_shots_fired']);
     }
 
+    public static function mixedLaunchSourceOrders(): array
+    {
+        return [
+            'surface first' => [false],
+            'underground first' => [true],
+        ];
+    }
+
+    #[DataProvider('mixedLaunchSourceOrders')]
+    public function test_mixed_launch_sources_share_the_remaining_budget_and_launch_record(bool $undergroundFirst): void
+    {
+        [$world, $user, $firing, $target] = $this->combatants('mixed source budget');
+        $space = $this->surfaceMapSpace($world);
+        $surfaceBase = $this->missileBase($firing);
+        $undergroundBase = NationUndergroundFacility::query()->create([
+            'nation_id' => $firing->id,
+            'ruleset_version_id' => $world->ruleset_version_id,
+            'layer' => 1,
+            'slot_index' => 0,
+            'facility_key' => 'underground_missile_base',
+        ]);
+        $capital = $target->capital()->firstOrFail()->cell()->firstOrFail();
+        $item = $this->queue(app(CommandQueueService::class), $user, $firing, $space, 'spp_missile', $capital, 2);
+        $context = $this->context($world, 2, hash('sha256', 'mixed source budget'), [$firing->id, $target->id]);
+        app(SecretaryTurnService::class)->loadAttemptSnapshots($context, [$firing->id, $target->id]);
+        app(DomesticCommandExecutor::class)->execute($context);
+        $cost = $context->ruleset->settings['military']['missiles']['spp_missile']['cost_money_per_shot'];
+        $firing->update(['money' => $cost]);
+        $resolver = app(MissileImpactResolver::class);
+        $resolver->begin($this->missileCellIndex($world));
+        $metrics = [];
+        foreach ($undergroundFirst ? ['underground', 'surface'] : ['surface', 'underground'] as $source) {
+            $metrics[] = $source === 'surface'
+                ? $resolver->processBase($context, $space, $surfaceBase)
+                : $resolver->processUndergroundBasesForNation($context, $space, $firing->id);
+        }
+        $finalize = $resolver->finalize($context);
+
+        $this->assertSame([1, 0], array_column($metrics, 'shots_fired'));
+        $this->assertSame([$cost, 0], array_column($metrics, 'money_spent'));
+        $this->assertSame([], $metrics[1]['changed_cell_ids']);
+        $this->assertSame(0, $firing->fresh()->money);
+        $this->assertSame('completed', $item->fresh()->status);
+        $this->assertSame(1, $finalize['launches']);
+        $this->assertSame(1, $finalize['shots_fired']);
+        $detail = json_decode((string) DB::table('audit_events')->where('event_type', 'missile.launch_detail')
+            ->where('nation_id', $firing->id)->sole()->metadata, true, 512, JSON_THROW_ON_ERROR);
+        $this->assertSame($cost, $detail['cost_money']);
+        $this->assertSame(1, $detail['remaining_shots']);
+        $this->assertCount(1, $detail['impacts']);
+        // The winning source is part of the private launch audit contract.
+        $this->assertSame([1], array_column($detail['firing_bases'], 'fired_shots'));
+        $this->assertSame(
+            [$undergroundFirst ? 'underground_missile_base' : 'surface_missile_base'],
+            array_column($detail['firing_bases'], 'source_kind'),
+        );
+        $this->assertSame(
+            [$undergroundFirst ? $undergroundBase->id : $surfaceBase->id],
+            array_column($detail['firing_bases'], 'source_id'),
+        );
+    }
+
     public function test_empty_queue_automatic_finance_increments_idle_counter_once_per_target_turn(): void
     {
         $world = $this->lightweightWorld();
