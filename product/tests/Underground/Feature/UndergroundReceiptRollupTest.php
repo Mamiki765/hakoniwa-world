@@ -23,6 +23,7 @@ use Carbon\CarbonInterface;
 use Illuminate\Database\Events\QueryExecuted;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use PHPUnit\Framework\Attributes\DataProvider;
@@ -375,6 +376,57 @@ final class UndergroundReceiptRollupTest extends TestCase
         $this->assertSame([$tail->id], UndergroundBattle::query()->where('underground_profile_id', $profile->id)->pluck('id')->all());
         $this->assertSame($after['damage_dealt'], $journal->forUser($user)['damage_dealt']);
         $this->assertDatabaseMissing('underground_battles', ['id' => $normal->id]);
+    }
+
+    public function test_default_aggregate_command_reports_legacy_battle_and_continues_independent_streams_and_profiles(): void
+    {
+        [$user, $legacyProfile] = $this->profile();
+        $this->legacyBattlePrefix($legacyProfile);
+        $old = CarbonImmutable::now()->subDays(40);
+        $this->skip($legacyProfile, $user, $old, false);
+        $this->skip($legacyProfile, $user, $old, true);
+        DB::table('underground_intro_requests')->insert([
+            'underground_profile_id' => $legacyProfile->id, 'request_id' => (string) Str::uuid(),
+            'request_fingerprint' => str_repeat('c', 64), 'operation' => 'bank_transfer',
+            'resulting_stage' => 'underground_open', 'created_at' => $old, 'updated_at' => $old,
+        ]);
+        [, $regularProfile] = $this->profile();
+        $regularBattle = $this->battle($regularProfile, $old);
+        $legacyCheckpoint = DB::table('underground_receipt_rollups')->where('underground_profile_id', $legacyProfile->id)->first();
+        $sourceTables = ['underground_battles', 'underground_skip_settlements', 'underground_skip_batches', 'underground_intro_requests'];
+        $sources = [];
+        foreach ($sourceTables as $table) {
+            $sources[$table] = DB::table($table)->orderBy('id')->get()->all();
+        }
+        $resources = [$legacyProfile->fresh()->getRawOriginal(), $regularProfile->fresh()->getRawOriginal()];
+
+        $this->assertSame(1, Artisan::call('hakoniwa:underground:receipts:aggregate', ['--apply' => true]));
+        foreach (['skip', 'bulk_skip', 'intro_request'] as $stream) {
+            $this->assertDatabaseHas('underground_receipt_rollups', [
+                'underground_profile_id' => $legacyProfile->id, 'stream' => $stream,
+                'aggregation_version' => 1, 'receipt_count' => 1,
+            ]);
+        }
+        $this->assertDatabaseHas('underground_receipt_rollups', [
+            'underground_profile_id' => $regularProfile->id, 'stream' => 'battle',
+            'aggregation_version' => 2, 'verified_through_id' => $regularBattle->id, 'receipt_count' => 1,
+        ]);
+        $rows = [];
+        foreach (explode("\n", trim(Artisan::output())) as $line) {
+            if (str_starts_with($line, '{')) {
+                $rows[] = json_decode($line, true, 512, JSON_THROW_ON_ERROR);
+            }
+        }
+        $blocked = array_values(array_filter($rows, static fn (array $row): bool => $row['profile_id'] === $legacyProfile->id && $row['stream'] === 'battle'));
+        $this->assertCount(1, $blocked);
+        $this->assertSame('statistics_upgrade_required', $blocked[0]['stop_reason']);
+        $this->assertFalse($blocked[0]['applied']);
+        $this->assertEquals($legacyCheckpoint, DB::table('underground_receipt_rollups')
+            ->where('underground_profile_id', $legacyProfile->id)->where('stream', 'battle')->first());
+        foreach ($sourceTables as $table) {
+            $this->assertEquals($sources[$table], DB::table($table)->orderBy('id')->get()->all());
+        }
+        $this->assertSame($resources, [$legacyProfile->fresh()->getRawOriginal(), $regularProfile->fresh()->getRawOriginal()]);
     }
 
     #[DataProvider('unrebuildableBattlePrefixes')]
