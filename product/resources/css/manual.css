@@ -95,7 +95,7 @@ blockquote p { margin: .2rem 0; }
 .manual-table-scroll { max-width: 100%; overflow-x: auto; margin: 1rem 0; }
 .manual-table-scroll:focus-visible { outline: 2px solid var(--navy); outline-offset: 2px; }
 .manual-content table { width: 100%; border-collapse: collapse; }
-.manual-content th, .manual-content td { padding: .55rem .75rem; border: 1px solid var(--line); text-align: left; vertical-align: top; overflow-wrap: anywhere; }
+.manual-content th, .manual-content td { padding: .55rem .75rem; border: 1px solid var(--line); text-align: left; vertical-align: top; overflow-wrap: break-word; min-width: 4.5em; }
 .manual-content th { background: var(--table-heading, var(--paper-deep)); white-space: nowrap; }
 
 /* 施設・コマンドの索引（Ruleset から組む） */

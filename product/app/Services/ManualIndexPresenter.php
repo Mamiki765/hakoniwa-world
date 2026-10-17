@@ -139,6 +139,114 @@ final class ManualIndexPresenter
         return $this->nonEmpty($groups);
     }
 
+    /**
+     * 怪獣の一覧。HP・経験値・残骸の価値・出てくる人口は Ruleset から読み、特徴の文章だけを重ねる。
+     *
+     * @return list<array{name: string, hp: string, experience: string, wreckage: string, appearance: string, note: string}>
+     */
+    public function monsters(): array
+    {
+        $settings = $this->settings();
+        $notes = $this->notes()['monsters'];
+        $tiers = $settings['monster_system']['natural_spawn']['population_tiers'] ?? [];
+        $rankTwoKeys = $settings['monster_system']['natural_spawn']['rank_two_condition']['conditional_monster_keys'] ?? [];
+        $definitions = array_filter(
+            $settings['monster_definitions'] ?? [],
+            static fn (array $definition): bool => ($definition['visibility'] ?? null) === 'public',
+        );
+        usort($definitions, static fn (array $left, array $right): int => $left['display_order'] <=> $right['display_order']);
+
+        $rows = [];
+        foreach ($definitions as $definition) {
+            $key = (string) $definition['key'];
+            $note = $notes[$key] ?? [];
+            $low = (int) $definition['base_hp'];
+            $high = $low + (int) $definition['hp_variation'];
+            $appearance = [];
+            $tier = $definition['natural_spawn_tier'] ?? null;
+            if (is_int($tier) && isset($tiers[$tier - 1]['minimum_population'])) {
+                $appearance[] = '人口'.$this->population((int) $tiers[$tier - 1]['minimum_population']).'以上の島'
+                    .(in_array($key, $rankTwoKeys, true) ? '（ランク2の農場・工場・採掘場があるとき）' : '');
+            }
+            $worldSpawn = $definition['source_metadata']['behavior']['world_spawn'] ?? null;
+            if (is_array($worldSpawn) && isset($worldSpawn['minimum_nation_population'])) {
+                $appearance[] = '人口'.$this->population((int) $worldSpawn['minimum_nation_population']).'以上の島の近くの海';
+            }
+            if (($definition['source_metadata']['behavior']['dispatchable'] ?? false) === true) {
+                $appearance[] = '怪獣派遣';
+            }
+            $rows[] = [
+                'name' => (string) $definition['name'],
+                'hp' => $low === $high ? (string) $low : "{$low}〜{$high}",
+                'experience' => number_format((int) ($definition['experience_per_damage'] ?? 0)),
+                'wreckage' => (int) $definition['wreckage_value_money'] > 0 ? $this->money((int) $definition['wreckage_value_money']).'相当' : 'なし',
+                'appearance' => implode('、', $appearance),
+                'note' => (string) ($note['note'] ?? $definition['skill_description'] ?? ''),
+            ];
+        }
+
+        return $rows;
+    }
+
+    /**
+     * ミサイルを撃てる基地の、Lvごとの累積経験値と1ターンに撃てる本数。
+     *
+     * @return list<array{name: string, levels: list<array{level: int, experience: string, shots: int}>}>
+     */
+    public function launchBases(): array
+    {
+        $settings = $this->settings();
+        $bases = [];
+        foreach ($settings['military']['launch_base_facility_keys'] ?? [] as $key) {
+            $definition = $settings['facility_definitions'][$key] ?? null;
+            if (! is_array($definition) || ! isset($definition['launch_capacity_by_level'])) {
+                continue;
+            }
+            $thresholds = array_values($definition['level_thresholds'] ?? []);
+            $levels = [];
+            $from = (int) ($definition['initial_experience'] ?? 0);
+            foreach ($definition['launch_capacity_by_level'] as $level => $shots) {
+                $next = $thresholds[(int) $level - 1] ?? null;
+                $levels[] = [
+                    'level' => (int) $level,
+                    'experience' => $next === null ? number_format($from).'〜' : number_format($from).'〜'.number_format((int) $next - 1),
+                    'shots' => (int) $shots,
+                ];
+                $from = (int) ($next ?? $from);
+            }
+            $bases[] = ['name' => (string) $definition['name'], 'levels' => $levels];
+        }
+
+        return $bases;
+    }
+
+    /**
+     * 台風で農場を失う確率を、周りの森などの数ごとに並べる。
+     *
+     * @return list<array{protection: int, farm: string, large_farm: string}>
+     */
+    public function typhoon(): array
+    {
+        $settings = $this->settings();
+        $typhoon = $settings['turn_processing']['disasters']['typhoon'] ?? [];
+        $denominator = (int) ($typhoon['internal_denominator'] ?? 0);
+        $base = (int) ($typhoon['base_damage_threshold'] ?? 0);
+        $large = (int) ($settings['facility_rank_system']['definitions']['farm']['typhoon_damage_threshold'] ?? $base);
+        if ($denominator <= 0) {
+            return [];
+        }
+        $chance = static fn (int $threshold, int $protection): string => max(0, $threshold - $protection) === 0
+            ? 'なし'
+            : max(0, $threshold - $protection).'/'.$denominator;
+
+        $rows = [];
+        foreach (range(0, 6) as $protection) {
+            $rows[] = ['protection' => $protection, 'farm' => $chance($base, $protection), 'large_farm' => $chance($large, $protection)];
+        }
+
+        return $rows;
+    }
+
     /** @param array<string, mixed> $definition */
     private function commandCost(array $definition): string
     {
@@ -179,6 +287,11 @@ final class ManualIndexPresenter
         }
 
         return 'other';
+    }
+
+    private function population(int $people): string
+    {
+        return $people % 10_000 === 0 ? number_format(intdiv($people, 10_000)).'万人' : number_format($people).'人';
     }
 
     private function money(int $money): string

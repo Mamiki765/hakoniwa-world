@@ -52,6 +52,9 @@ final class ManualController extends Controller
         'ships' => 'manual.ship-index',
         'commands' => 'manual.command-index',
         'skills' => 'manual.skill-index',
+        'monsters' => 'manual.monster-index',
+        'launch-bases' => 'manual.launch-base-index',
+        'typhoon' => 'manual.typhoon-index',
     ];
 
     public function __invoke(ManualIndexPresenter $indexes, ?string $section = null): View|RedirectResponse
@@ -100,20 +103,32 @@ final class ManualController extends Controller
         return $section === 'index' ? '/manual' : "/manual/{$section}";
     }
 
-    /** 本文中の `{{ruleset:trading_post.player.active_listing_limit}}` を、いまの Ruleset の数値に置き換える。 */
+    /**
+     * 本文中の `{{ruleset:trading_post.player.active_listing_limit}}` を、いまの Ruleset の数値に置き換える。
+     * `{{ruleset:パス/100}}` や `{{ruleset:パス*1000}}` のように、一度だけ割る・掛けることもできる（百分率や人数への換算用）。
+     * 地底の決まりは `{{underground:skip.trial.actual_clears_required}}` のように config/underground-runtime.php から読む。
+     */
     private function withRulesetValues(string $markdown): string
     {
-        return preg_replace_callback('/\{\{ruleset:([a-z0-9_.]+)\}\}/', static function (array $match): string {
-            $value = data_get(config('hakoniwa.ruleset', []), $match[1]);
+        return preg_replace_callback('#\{\{(ruleset|underground):([a-z0-9_.]+)(?:([*/])([1-9][0-9]*))?\}\}#', static function (array $match): string {
+            $source = $match[1] === 'ruleset' ? config('hakoniwa.ruleset', []) : config('underground-runtime', []);
+            $value = data_get($source, $match[2]);
+            if (! is_int($value)) {
+                return '（ゲーム画面で確認してください）';
+            }
+            $factor = (int) ($match[4] ?? 1);
+            $number = ($match[3] ?? '') === '/' ? $value / $factor : $value * $factor;
 
-            return is_int($value) ? number_format($value) : '（ゲーム画面で確認してください）';
+            return is_int($number) || floor($number) === $number
+                ? number_format((int) $number)
+                : rtrim(rtrim(number_format($number, 2), '0'), '.');
         }, $markdown) ?? $markdown;
     }
 
     /** 本文中の段落 `[[index:名前]]` を、Ruleset から組んだ索引の表に置き換える。 */
     private function withIndexes(string $html, ManualIndexPresenter $indexes): string
     {
-        return preg_replace_callback('#<p>\[\[index:([a-z]+)\]\]</p>#', function (array $match) use ($indexes): string {
+        return preg_replace_callback('#<p>\[\[index:([a-z-]+)\]\]</p>#', function (array $match) use ($indexes): string {
             $view = self::INDEX_PLACEHOLDERS[$match[1]] ?? null;
             if ($view === null) {
                 return '';
@@ -123,6 +138,9 @@ final class ManualController extends Controller
                 'facilities' => $indexes->facilities(),
                 'ships' => $indexes->ships(),
                 'commands' => $indexes->commands(),
+                'monsters' => $indexes->monsters(),
+                'launch-bases' => $indexes->launchBases(),
+                'typhoon' => $indexes->typhoon(),
                 default => $indexes->skills(),
             }])->render();
         }, $html) ?? $html;

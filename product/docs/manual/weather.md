@@ -10,13 +10,14 @@
 
 ## 天候の種類
 
-| 天候 | 起きること |
-|---|---|
-| 晴れ・曇り・雪・雷 | 特に何も起きません |
-| 雨 | その海域の森がよく育ちます |
-| 台風 | その海域の農場・風力発電所・ハリボテなどが、吹き飛ばされることがあります |
-| 流星群 | その海域のどこかに、いくつか隕石が落ちます |
-| 終末 | その海域のどこかに**巨大隕石**が落ちます |
+| 天候 | 起きること | 起きやすさ |
+|---|---|---|
+| 台風 | その海域の農場・風力発電所・ハリボテが、吹き飛ばされることがあります | {{ruleset:turn_processing.sea_area_weather.fixed_probabilities.typhoon/100}}% |
+| 流星群 | その海域のどこかに、いくつか隕石が落ちます | {{ruleset:turn_processing.sea_area_weather.fixed_probabilities.meteor_shower/100}}% |
+| 終末 | その海域のどこかに**巨大隕石**が落ちます | 約0.3% |
+| 晴れ・曇り・雨・雪・雷 | 雨のときは、その海域の森がよく育ちます。ほかは何も起きません | 残り |
+
+確率は、一つの海域・1回の更新あたりです。どれも決まった値で、島の大きさや人口では変わりません。災害にならなかったときは、晴れ{{ruleset:turn_processing.sea_area_weather.normal_weights.sunny}}・曇り{{ruleset:turn_processing.sea_area_weather.normal_weights.cloudy}}・雨{{ruleset:turn_processing.sea_area_weather.normal_weights.rain}}・雪{{ruleset:turn_processing.sea_area_weather.normal_weights.snow}}・雷{{ruleset:turn_processing.sea_area_weather.normal_weights.thunder}}の割合で決まります。
 
 ### 終末（巨大隕石）
 
@@ -26,7 +27,11 @@
 
 ### 台風への備え
 
-農場の周りに森や記念碑があると、台風で失う危険が下がります。農場を大きく育ててランク2の大農場にすると、さらに強くなります。
+台風の海域にある農場は、周りの6マスにある森・記念碑・中央銀行・中央穀倉の数が多いほど、失いにくくなります。大農場はさらに失いにくくなります。
+
+[[index:typhoon]]
+
+**当たってしまえば、大農場もなくなります。** 規模が減るだけで耐える、というわけではありません。風力発電所とハリボテは、農場と同じ確率です。
 
 ## 天候のほかの災害
 
@@ -48,7 +53,16 @@
 
 ## ランク2の施設は少し強い
 
-農場・工場・採掘場を上限まで育てると、ランク2（大農場・大工場・大採掘場）になります。ランク2は一部の災害やミサイルを、規模が減るだけで耐えます。ただし怪獣に踏まれたときや、巨大隕石の真下になったときは耐えられません。規模が減ってランク1に戻ると、強さもなくなります。
+農場・工場・採掘場を上限まで育てると、ランク2（大農場・大工場・大採掘場）になります。ランク2は一部の災害やミサイルを、全部失うかわりに規模が減るだけで耐えます。
+
+| 被害 | 大農場 | 大工場 | 大採掘場 |
+|---|---:|---:|---:|
+| ミサイルなどで荒地・焼け野原になる | −{{ruleset:facility_rank_system.definitions.farm.damage_scale_loss.ordinary_terrain_destruction*1000}}人 | −{{ruleset:facility_rank_system.definitions.factory.damage_scale_loss.ordinary_terrain_destruction*1000}}人 | もともと効きません |
+| 陸地破壊弾・隕石などで陸地がえぐられる | −{{ruleset:facility_rank_system.definitions.farm.damage_scale_loss.land_destruction*1000}}人 | −{{ruleset:facility_rank_system.definitions.factory.damage_scale_loss.land_destruction*1000}}人 | −{{ruleset:facility_rank_system.definitions.mine.damage_scale_loss.land_destruction*1000}}人 |
+| 火災・地震 | ― | −{{ruleset:facility_rank_system.definitions.factory.damage_scale_loss.fire*1000}}人 | ― |
+
+- 巨大隕石の真下になったときと、怪獣に踏まれたときは耐えられません。巨大隕石の周りなら、上の表のとおり耐えます
+- 規模が減ってランク1に戻ると、この強さもなくなります。増設してまた上限を超えれば、ランク2に戻ります
 
 ## 被害に遭ったら
 

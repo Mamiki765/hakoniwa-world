@@ -30,7 +30,7 @@
 - 入札がなければ取り消せます。**一度でも入札が入ったら取り消せません**
 - 売れなかったものは戻ってきます。「自動再出品」を選ぶと、同じ条件でもう一度出品します
 
-売れたときは、落札額から手数料を引いた額を受け取ります。
+売れたときに受け取れるのは、落札額の{{ruleset:trading_post.player.seller_proceeds_denominator}}分の{{ruleset:trading_post.player.seller_proceeds_numerator}}です。億円より細かい端数は切り捨てます。残りは手数料です。
 
 ## 箱庭連合の出品
 
