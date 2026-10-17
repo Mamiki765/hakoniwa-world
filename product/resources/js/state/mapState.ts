@@ -158,6 +158,7 @@ export function useMapState() {
         nextSource: MapSource = { kind: 'private' },
     ): Promise<void> {
         resetForMapSpace(nextMapSpace);
+        const requestGeneration = generation;
         source = nextSource;
         loading.value = true;
         const centerX = floorDiv(x, CHUNK_SIZE);
@@ -171,6 +172,7 @@ export function useMapState() {
         }
 
         await loadChunks(coordinates);
+        if (requestGeneration !== generation) return;
         selected.value = cells.get(key(x, y)) ?? visibleCells.value[0] ?? null;
         loading.value = inFlightChunks.size > 0;
     }

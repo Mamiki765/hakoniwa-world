@@ -72,6 +72,7 @@ final class UndergroundMadMoonTest extends UndergroundPlayerAccessTestCase
             ->firstWhere('key', 'mad_moon_intro');
         $this->assertFalse($unread['experienced']);
         $this->assertArrayNotHasKey('body', $unread);
+        $journalBefore = $this->getJson('/api/v1/me/underground/journal')->assertOk()->json('data');
         $request = ['request_id' => (string) Str::uuid()];
         $battle = $this->actingAs($user)->postJson('/api/v1/me/underground/mad-moon', $request)->assertOk()
             ->assertJsonPath('data.result', 'victory')->assertJsonPath('data.current_hp_before', 123)
@@ -91,9 +92,20 @@ final class UndergroundMadMoonTest extends UndergroundPlayerAccessTestCase
         $this->assertSame($battle['awakening']['gauge_after'], $profile->fresh()->awakening_gauge);
         $this->assertCount(2, $battle['party']['members']);
         $this->assertFalse($battle['initial_state']['npc:guide']['awakening_unlocked']);
+        $receipt = UndergroundBattle::query()->where('underground_profile_id', $profile->id)
+            ->where('request_id', $request['request_id'])->firstOrFail();
+        $this->assertSame(UndergroundBattle::ACTIVITY_EVENT, $receipt->activity_type);
+        $this->assertSame('mad_moon', $receipt->activity_key);
+        $journalAfter = $this->getJson('/api/v1/me/underground/journal')->assertOk()
+            ->assertJsonPath('data.battle_count', $journalBefore['battle_count'] + 1)
+            ->assertJsonPath('data.victory_count', $journalBefore['victory_count'] + 1)
+            ->assertJsonPath('data.damage_dealt', $journalBefore['damage_dealt'] + $receipt->statistics['self']['damage_dealt'])
+            ->assertJsonPath('data.favorite_skills.known_battles', $journalBefore['favorite_skills']['known_battles'] + 1)
+            ->json('data');
         $this->postJson('/api/v1/me/underground/mad-moon', $request)->assertOk()->assertJsonPath('data.id', $request['request_id'])
             ->assertJsonPath('data.unspent_stp_after', $battle['unspent_stp_after']);
         $this->assertSame($beforeGold + $battle['shard_delta'], $profile->fresh()->shard_balance);
+        $this->assertSame($journalAfter, $this->getJson('/api/v1/me/underground/journal')->assertOk()->json('data'));
         $this->assertSame(0, Artisan::call('underground:statistics', ['--activity' => [UndergroundBattle::ACTIVITY_EVENT]]));
         $eventReport = json_decode(explode("\n", trim(Artisan::output()))[0], true, 512, JSON_THROW_ON_ERROR);
         $this->assertSame(1, $eventReport['battle_count']);

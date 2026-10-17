@@ -2,6 +2,7 @@
 
 namespace App\Domain\Secretary;
 
+use App\Domain\Ruleset\CanonicalRulesetGeneration;
 use DomainException;
 
 final class SecretaryItemGameplayContract
@@ -48,52 +49,6 @@ final class SecretaryItemGameplayContract
 
     public const RING_STACKING = 'sum_equipped_levels';
 
-    private const V16_RULESET_KEY = 'hakoniwa-2s-plus-v16';
-
-    private const V17_RULESET_KEY = 'hakoniwa-2s-plus-v17';
-
-    private const V18_RULESET_KEY = 'hakoniwa-2s-plus-v18';
-
-    private const V19_RULESET_KEY = 'hakoniwa-2s-plus-v19';
-
-    private const V20_RULESET_KEY = 'hakoniwa-2s-plus-v20';
-
-    private const V21_RULESET_KEY = 'hakoniwa-2s-plus-v21';
-
-    private const V22_RULESET_KEY = 'hakoniwa-2s-plus-v22';
-
-    private const V23_RULESET_KEY = 'hakoniwa-2s-plus-v23';
-
-    private const V24_RULESET_KEY = 'hakoniwa-2s-plus-v24';
-
-    private const V25_RULESET_KEY = 'hakoniwa-2s-plus-v25';
-
-    private const V26_RULESET_KEY = 'hakoniwa-2s-plus-v26';
-
-    private const V27_RULESET_KEY = 'hakoniwa-2s-plus-v27';
-
-    private const V28_RULESET_KEY = 'hakoniwa-2s-plus-v28';
-
-    private const V29_RULESET_KEY = 'hakoniwa-2s-plus-v29';
-
-    private const V30_RULESET_KEY = 'hakoniwa-2s-plus-v30';
-
-    private const V31_RULESET_KEY = 'hakoniwa-2s-plus-v31';
-
-    private const V32_RULESET_KEY = 'hakoniwa-2s-plus-v32';
-
-    private const V33_RULESET_KEY = 'hakoniwa-2s-plus-v33';
-
-    private const V34_RULESET_KEY = 'hakoniwa-2s-plus-v34';
-
-    private const V35_RULESET_KEY = 'hakoniwa-2s-plus-v35';
-
-    private const V36_RULESET_KEY = 'hakoniwa-2s-plus-v36';
-
-    private const V37_RULESET_KEY = 'hakoniwa-2s-plus-v37';
-
-    private const V38_RULESET_KEY = 'hakoniwa-2s-plus-v38';
-
     public function __construct(private readonly SecretaryItemCatalog $catalog) {}
 
     /** @param array<string, mixed> $settings */
@@ -121,11 +76,11 @@ final class SecretaryItemGameplayContract
             );
         }
 
-        $rulesetKey = $settings['key'] ?? null;
-        $formal = in_array($rulesetKey, [self::V16_RULESET_KEY, self::V17_RULESET_KEY, self::V18_RULESET_KEY, self::V19_RULESET_KEY, self::V20_RULESET_KEY, self::V21_RULESET_KEY, self::V22_RULESET_KEY, self::V23_RULESET_KEY, self::V24_RULESET_KEY, self::V25_RULESET_KEY, self::V26_RULESET_KEY, self::V27_RULESET_KEY, self::V28_RULESET_KEY, self::V29_RULESET_KEY, self::V30_RULESET_KEY, self::V31_RULESET_KEY, self::V32_RULESET_KEY, self::V33_RULESET_KEY, self::V34_RULESET_KEY, self::V35_RULESET_KEY, self::V36_RULESET_KEY, self::V37_RULESET_KEY, self::V38_RULESET_KEY], true);
-        $v17 = in_array($rulesetKey, [self::V17_RULESET_KEY, self::V18_RULESET_KEY, self::V19_RULESET_KEY, self::V20_RULESET_KEY, self::V21_RULESET_KEY, self::V22_RULESET_KEY, self::V23_RULESET_KEY, self::V24_RULESET_KEY, self::V25_RULESET_KEY, self::V26_RULESET_KEY, self::V27_RULESET_KEY, self::V28_RULESET_KEY, self::V29_RULESET_KEY, self::V30_RULESET_KEY, self::V31_RULESET_KEY, self::V32_RULESET_KEY, self::V33_RULESET_KEY, self::V34_RULESET_KEY, self::V35_RULESET_KEY, self::V36_RULESET_KEY, self::V37_RULESET_KEY, self::V38_RULESET_KEY], true);
-        $v27 = in_array($rulesetKey, [self::V27_RULESET_KEY, self::V28_RULESET_KEY, self::V29_RULESET_KEY, self::V30_RULESET_KEY, self::V31_RULESET_KEY, self::V32_RULESET_KEY, self::V33_RULESET_KEY, self::V34_RULESET_KEY, self::V35_RULESET_KEY, self::V36_RULESET_KEY, self::V37_RULESET_KEY, self::V38_RULESET_KEY], true);
-        $v26 = $rulesetKey === self::V26_RULESET_KEY || $v27;
+        $generation = CanonicalRulesetGeneration::fromSettings($settings);
+        $formal = $generation >= 16;
+        $v17 = $generation >= 17;
+        $v27 = $generation >= 27;
+        $v26 = $generation >= 26;
         $secretary = $this->map($settings['secretary'] ?? null, 'ruleset.secretary');
         if ($formal) {
             $rarities = $this->map($secretary['item_rarities'] ?? null, 'ruleset.secretary.item_rarities');
@@ -158,7 +113,7 @@ final class SecretaryItemGameplayContract
         $expectedCategories = $formal
             ? ['accessory', 'bow', 'clothing', ...($v26 ? ['ticket'] : [])]
             : ['bow', 'ring'];
-        $catalogDefinitions = $this->catalogDefinitions($rulesetKey);
+        $catalogDefinitions = $this->catalogDefinitions($generation);
         $expectedItems = $formal
             ? array_keys($catalogDefinitions)
             : [SecretaryItemCatalog::OLD_BOW, SecretaryItemCatalog::RING];
@@ -229,7 +184,7 @@ final class SecretaryItemGameplayContract
             }
             foreach ($effects as $index => $effect) {
                 if ($v27 && ($catalogDefinitions[$itemKey]['introduced_version'] ?? 16) >= 27) {
-                    $this->validateV27Effect($itemKey, $this->map($effect, "{$path}.effects.{$index}"), "{$path}.effects.{$index}", in_array($rulesetKey, [self::V30_RULESET_KEY, self::V31_RULESET_KEY, self::V32_RULESET_KEY, self::V33_RULESET_KEY, self::V34_RULESET_KEY, self::V35_RULESET_KEY, self::V36_RULESET_KEY, self::V37_RULESET_KEY, self::V38_RULESET_KEY], true));
+                    $this->validateV27Effect($itemKey, $this->map($effect, "{$path}.effects.{$index}"), "{$path}.effects.{$index}", $generation >= 30, $generation >= 39);
                 } else {
                     $this->validateEffect(
                         $itemKey,
@@ -457,7 +412,7 @@ final class SecretaryItemGameplayContract
     }
 
     /** @param array<string, mixed> $effect */
-    private function validateV27Effect(string $itemKey, array $effect, string $path, bool $oilDevelopment): void
+    private function validateV27Effect(string $itemKey, array $effect, string $path, bool $oilDevelopment, bool $energySaving): void
     {
         $charms = [
             'fire_charm' => 'fire', 'wave_charm' => 'tsunami',
@@ -510,7 +465,7 @@ final class SecretaryItemGameplayContract
                 throw new DomainException("{$path} chance exceeds 100 percent.");
             }
             $skills = match ($group) {
-                'peace' => ['agricultural_policy', 'specialty_development', 'gold_vein_survey', 'forest_management', 'indomitable', 'ship_operations', ...($oilDevelopment ? [SecretarySkillCatalog::OIL_DEVELOPMENT] : [])],
+                'peace' => ['agricultural_policy', 'specialty_development', 'gold_vein_survey', 'forest_management', 'indomitable', 'ship_operations', ...($oilDevelopment ? [SecretarySkillCatalog::OIL_DEVELOPMENT] : []), ...($energySaving ? [SecretarySkillCatalog::ENERGY_SAVING] : [])],
                 'combat' => ['final_defense_line', 'navy'],
                 default => [],
             };
@@ -789,27 +744,25 @@ final class SecretaryItemGameplayContract
     }
 
     /** @return array<string, array<string, mixed>> */
-    private function catalogDefinitions(mixed $rulesetKey): array
+    private function catalogDefinitions(?int $generation): array
     {
-        if (in_array($rulesetKey, [self::V27_RULESET_KEY, self::V28_RULESET_KEY, self::V29_RULESET_KEY, self::V30_RULESET_KEY, self::V31_RULESET_KEY, self::V32_RULESET_KEY, self::V33_RULESET_KEY, self::V34_RULESET_KEY, self::V35_RULESET_KEY, self::V36_RULESET_KEY, self::V37_RULESET_KEY, self::V38_RULESET_KEY], true)) {
-            $version = (int) substr($rulesetKey, strlen('hakoniwa-2s-plus-v'));
-
+        if ($generation >= 27) {
             return array_filter($this->catalog->definitions(),
-                static fn (array $definition): bool => ($definition['introduced_version'] ?? 16) <= $version);
+                static fn (array $definition): bool => ($definition['introduced_version'] ?? 16) <= $generation);
         }
         $definitions = array_filter(
             $this->catalog->definitions(),
             static fn (array $definition): bool => ($definition['introduced_version'] ?? 16) <= 26,
         );
-        if ($rulesetKey === self::V26_RULESET_KEY) {
+        if ($generation === 26) {
             return $definitions;
         }
-        if (in_array($rulesetKey, [self::V17_RULESET_KEY, self::V18_RULESET_KEY, self::V19_RULESET_KEY, self::V20_RULESET_KEY, self::V21_RULESET_KEY, self::V22_RULESET_KEY, self::V23_RULESET_KEY, self::V24_RULESET_KEY, self::V25_RULESET_KEY], true)) {
+        if ($generation >= 17) {
             unset($definitions[SecretaryItemCatalog::WAKUWAKU_TICKET], $definitions[SecretaryItemCatalog::DOKIDOKI_TICKET]);
 
             return $definitions;
         }
-        if ($rulesetKey !== self::V16_RULESET_KEY) {
+        if ($generation !== 16) {
             return [];
         }
         $v16Keys = [

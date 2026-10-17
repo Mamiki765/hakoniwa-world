@@ -36,7 +36,7 @@ final class CommandQuantitySemantics
         if (is_string($definition->metadata['quantity_selects_catalog'] ?? null)) {
             return self::SELECTOR;
         }
-        if ($this->isRepeatedFacilityBuild($definition->key)
+        if ($this->repeatsAfterSuccess($definition)
             || in_array($definition->key, ['missile', 'pp_missile', 'land_destruction_missile', 'spp_missile'], true)
             || is_string($definition->metadata['oil_search_effect_key'] ?? null)
             || is_int($definition->metadata['transfer_money_per_quantity'] ?? null)
@@ -50,6 +50,12 @@ final class CommandQuantitySemantics
     public function isRepeatedFacilityBuild(string $commandKey): bool
     {
         return in_array($commandKey, self::REPEATED_FACILITY_BUILD_KEYS, true);
+    }
+
+    public function repeatsAfterSuccess(CommandDefinition $definition): bool
+    {
+        return $this->isRepeatedFacilityBuild($definition->key)
+            || ($definition->metadata['repeat_quantity'] ?? false) === true;
     }
 
     public function presentationDefault(CommandDefinition $definition): ?int

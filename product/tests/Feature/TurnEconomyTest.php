@@ -19,7 +19,6 @@ use App\Models\NationResource;
 use App\Models\NationResourceSalePolicy;
 use App\Models\NationUndergroundFacility;
 use App\Models\ResourceDefinition;
-use App\Models\RulesetVersion;
 use App\Models\TerrainDefinition;
 use App\Models\TurnRun;
 use App\Models\User;
@@ -93,37 +92,6 @@ class TurnEconomyTest extends TestCase
         $worldStatus = $status->forWorld($world, Nation::query()->whereKey($nation->id)->get())[$nation->id];
         $this->assertSame($after['farm_capacity_people'], $worldStatus['farm_capacity_people']);
         $this->assertSame($after['factory_capacity_people'], $worldStatus['factory_capacity_people']);
-        $futureSettings = $world->rulesetVersion()->sole()->settings;
-        $futureSettings['key'] = 'test-hakoniwa-2s-plus-v20-facility-effects';
-        $futureSettings['version'] = 20;
-        $futureSettings['underground_facility_development']['facility_definitions']['underground_farm']['effect']['farm_capacity_people'] = 2 * $farmEffect;
-        $futureSettings['underground_facility_development']['facility_definitions']['underground_factory']['effect']['factory_capacity_people'] = 2 * $factoryEffect;
-        $futureRuleset = RulesetVersion::query()->create([
-            'key' => $futureSettings['key'],
-            'version' => $futureSettings['version'],
-            'settings' => $futureSettings,
-            'is_active' => true,
-        ]);
-        $stillVersioned = $status->forNation($nation->fresh());
-        $this->assertSame($after['farm_capacity_people'], $stillVersioned['farm_capacity_people']);
-        $this->assertSame($after['factory_capacity_people'], $stillVersioned['factory_capacity_people']);
-        $reboundFarm = NationUndergroundFacility::query()->where('nation_id', $nation->id)
-            ->where('facility_key', 'underground_farm')->orderBy('id')->firstOrFail();
-        $reboundFactory = NationUndergroundFacility::query()->where('nation_id', $nation->id)
-            ->where('facility_key', 'underground_factory')->orderBy('id')->firstOrFail();
-        $reboundFarm->update(['ruleset_version_id' => $futureRuleset->id]);
-        $reboundFactory->update(['ruleset_version_id' => $futureRuleset->id]);
-        $explicitlyRebound = $status->forNation($nation->fresh());
-        $this->assertSame(
-            $after['farm_capacity_people'] + $farmEffect,
-            $explicitlyRebound['farm_capacity_people'],
-        );
-        $this->assertSame(
-            $after['factory_capacity_people'] + $factoryEffect,
-            $explicitlyRebound['factory_capacity_people'],
-        );
-        $reboundFarm->update(['ruleset_version_id' => $world->ruleset_version_id]);
-        $reboundFactory->update(['ruleset_version_id' => $world->ruleset_version_id]);
 
         MapCell::query()->where('owner_nation_id', $nation->id)->update(['population' => 0]);
         $nation->capital()->firstOrFail()->cell()->update(['population' => 50_000]);

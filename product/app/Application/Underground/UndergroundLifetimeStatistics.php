@@ -9,7 +9,9 @@ use stdClass;
 /** Bounded by metric/action kinds, never by receipts or calendar buckets. */
 final class UndergroundLifetimeStatistics
 {
-    public const JOURNAL_SCOPE = "(activity_type IN ('exploration', 'trial', 'playtest') OR (activity_type = 'tutorial' AND activity_key = 'first_descent_tutorial'))";
+    public const LEGACY_JOURNAL_SCOPE = "(activity_type IN ('exploration', 'trial', 'playtest') OR (activity_type = 'tutorial' AND activity_key = 'first_descent_tutorial'))";
+
+    public const JOURNAL_SCOPE = '('.self::LEGACY_JOURNAL_SCOPE." OR (activity_type = 'event_battle' AND activity_key = 'mad_moon'))";
 
     private const SELF_SUMS = [
         'effective_healing', 'effective_healing_received',
@@ -27,10 +29,10 @@ final class UndergroundLifetimeStatistics
     private const MAPS = ['self' => ['damage_by_source', 'healing_by_source', 'action_usage'], 'party' => ['damage_by_source', 'healing_by_source']];
 
     /** @return array<string, mixed> */
-    public function range(int $profileId, int $from, int $through): array
+    public function range(int $profileId, int $from, int $through, bool $legacyScope = false): array
     {
         $totals = [];
-        foreach ($this->source($profileId)->where('id', '>', $from)->where('id', '<=', $through)->orderBy('id')->cursor() as $row) {
+        foreach ($this->source($profileId, $legacyScope)->where('id', '>', $from)->where('id', '<=', $through)->orderBy('id')->cursor() as $row) {
             $totals = $this->add($totals, $row);
         }
 
@@ -43,12 +45,15 @@ final class UndergroundLifetimeStatistics
         // One SQL snapshot contains both the saved prefix and its unaggregated
         // tail. The marker sorts first; no concurrent collector can duplicate it.
         $prefix = DB::table('underground_receipt_rollups')->where('underground_profile_id', $profileId)->where('stream', 'battle')
-            ->selectRaw('0::bigint AS id, lifetime_statistics AS statistics, TRUE AS saved, NULL::bigint AS underground_party_id, 0 AS damage_dealt, 0 AS damage_received, 0 AS healing_done');
+            ->selectRaw('0::bigint AS id, lifetime_statistics AS statistics, TRUE AS saved, NULL::bigint AS underground_party_id, 0 AS damage_dealt, 0 AS damage_received, 0 AS healing_done, aggregation_version');
         $tail = $this->source($profileId)->whereRaw("id > COALESCE((SELECT verified_through_id FROM underground_receipt_rollups WHERE underground_profile_id = ? AND stream = 'battle'), 0)", [$profileId]);
         // UNION column order is explicit, independent of the source helper.
-        $tail->select(['id', 'statistics', DB::raw('FALSE AS saved'), 'underground_party_id', 'damage_dealt', 'damage_received', 'healing_done']);
+        $tail->select(['id', 'statistics', DB::raw('FALSE AS saved'), 'underground_party_id', 'damage_dealt', 'damage_received', 'healing_done', DB::raw(UndergroundReceiptRollupService::BATTLE_VERSION.' AS aggregation_version')]);
         $totals = [];
         foreach ($prefix->unionAll($tail)->orderBy('id')->cursor() as $row) {
+            if ($row->saved) {
+                UndergroundReceiptRollupService::assertCheckpointVersion('battle', $row);
+            }
             $totals = $row->saved ? (json_decode($row->statistics ?? '[]', true, 512, JSON_THROW_ON_ERROR)) : $this->add($totals, $row);
         }
 
@@ -102,10 +107,10 @@ final class UndergroundLifetimeStatistics
         return $left;
     }
 
-    private function source(int $profileId): Builder
+    private function source(int $profileId, bool $legacyScope = false): Builder
     {
         return DB::table('underground_battles')->where('underground_profile_id', $profileId)->whereNotNull('finished_at')
-            ->whereRaw(self::JOURNAL_SCOPE)
+            ->whereRaw($legacyScope ? self::LEGACY_JOURNAL_SCOPE : self::JOURNAL_SCOPE)
             ->select(['id', 'statistics', 'underground_party_id', 'damage_dealt', 'damage_received', 'healing_done']);
     }
 

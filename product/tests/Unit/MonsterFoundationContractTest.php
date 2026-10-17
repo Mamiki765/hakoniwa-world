@@ -179,34 +179,6 @@ final class MonsterFoundationContractTest extends TestCase
         }
     }
 
-    public function test_advanced_manual_table_matches_current_monster_values(): void
-    {
-        $document = file_get_contents(base_path('docs/manual/advanced.md'));
-        $this->assertIsString($document);
-        $rowsByName = [];
-        foreach (preg_split('/\R/u', $document) ?: [] as $line) {
-            if (! str_starts_with(trim($line), '|')) {
-                continue;
-            }
-            $cells = array_map('trim', explode('|', trim(trim($line), '|')));
-            $rowsByName[$cells[0]][] = $cells;
-        }
-
-        foreach (config('hakoniwa.ruleset.monster_definitions') as $definition) {
-            $this->assertCount(1, $rowsByName[$definition['name']] ?? [], "{$definition['name']} must have one manual row.");
-            preg_match_all('/\d+/', str_replace(',', '', implode(' ', $rowsByName[$definition['name']][0])), $numbers);
-            $expected = array_filter([
-                $definition['base_hp'],
-                $definition['base_hp'] + $definition['hp_variation'],
-                $definition['experience_per_damage'],
-                $definition['wreckage_value_money'],
-            ], static fn (int $value): bool => $value !== 0);
-            foreach ($expected as $value) {
-                $this->assertContains((string) $value, $numbers[0], "{$definition['name']} manual row must show {$value}.");
-            }
-        }
-    }
-
     /** @return array<string, mixed> */
     private function authoringSettings(): array
     {

@@ -3,9 +3,11 @@
 namespace App\Providers;
 
 use App\Application\CompleteTurnEngine;
+use App\Application\CurrentMonsterDefinitionResolver;
 use App\Application\InitialIslandGenerator;
 use App\Application\LegacyInspiredInitialIslandGenerator;
 use App\Application\MonsterRemovalService;
+use App\Application\QueuedCommandDefinitionResolver;
 use App\Application\Underground\AtomicUndergroundCombat;
 use App\Application\Underground\AtomicUndergroundExplorationCombat;
 use App\Application\Underground\AtomicUndergroundPartyCombat;
@@ -55,6 +57,8 @@ class AppServiceProvider extends ServiceProvider
         // MonsterTurnService and its disaster resolver must mutate one shared
         // turn-local occupancy index during defense self-destruct blasts.
         $this->app->singleton(MonsterRemovalService::class);
+        $this->app->singleton(CurrentMonsterDefinitionResolver::class);
+        $this->app->singleton(QueuedCommandDefinitionResolver::class);
         $this->app->bind(TurnPipeline::class, function ($app): TurnPipeline {
             $engine = $app->make(CompleteTurnEngine::class);
 

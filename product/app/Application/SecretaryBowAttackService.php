@@ -34,6 +34,7 @@ final class SecretaryBowAttackService
         private readonly SecretaryItemTargetSafetyPolicy $safety,
         private readonly MonsterDamageService $damage,
         private readonly SecretaryItemEffectAggregator $secretaryItems,
+        private readonly CurrentMonsterDefinitionResolver $monsterDefinitions,
     ) {}
 
     /** @return array<string, int> */
@@ -93,6 +94,10 @@ final class SecretaryBowAttackService
                 ->where('world_id', $context->world->id)->where('state', 'alive'))
             ->whereHas('cell', fn ($cell) => $cell->where('map_space_id', $surface->id))
             ->with(['monster.definition', 'cell'])->orderBy('id')->lockForUpdate()->get();
+        $this->monsterDefinitions->applyAll(
+            $occupancies->map(static fn (MonsterOccupancy $occupancy) => $occupancy->monster),
+            $context->ruleset,
+        );
         $ribbonNationIds = array_values(array_filter(
             $context->state->stableNationIds(),
             fn (int $nationId): bool => $this->secretaryItems->hasSnapshotEffect(

@@ -2,6 +2,7 @@
 
 namespace App\Domain\Secretary;
 
+use App\Domain\Ruleset\CanonicalRulesetGeneration;
 use DomainException;
 
 final class SecretaryDemographicPolicy
@@ -9,30 +10,7 @@ final class SecretaryDemographicPolicy
     /** @param array<string, mixed> $settings */
     public function enabled(array $settings): bool
     {
-        return in_array($settings['key'] ?? null, [
-            'hakoniwa-2s-plus-v17',
-            'hakoniwa-2s-plus-v18',
-            'hakoniwa-2s-plus-v19',
-            'hakoniwa-2s-plus-v20',
-            'hakoniwa-2s-plus-v21',
-            'hakoniwa-2s-plus-v22',
-            'hakoniwa-2s-plus-v23',
-            'hakoniwa-2s-plus-v24',
-            'hakoniwa-2s-plus-v25',
-            'hakoniwa-2s-plus-v26',
-            'hakoniwa-2s-plus-v27',
-            'hakoniwa-2s-plus-v28',
-            'hakoniwa-2s-plus-v29',
-            'hakoniwa-2s-plus-v30',
-            'hakoniwa-2s-plus-v31',
-            'hakoniwa-2s-plus-v32',
-            'hakoniwa-2s-plus-v33',
-            'hakoniwa-2s-plus-v34',
-            'hakoniwa-2s-plus-v35',
-            'hakoniwa-2s-plus-v36',
-            'hakoniwa-2s-plus-v37',
-            'hakoniwa-2s-plus-v38',
-        ], true);
+        return CanonicalRulesetGeneration::fromSettings($settings) >= 17;
     }
 
     /** @param array<string, mixed> $settings */

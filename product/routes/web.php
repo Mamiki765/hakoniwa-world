@@ -53,7 +53,7 @@ Route::get('/assets/hakoniwa-original/{filename}', AssetController::class)
     ->where('filename', '[A-Za-z0-9_-]+\.(?:gif|png|webp)');
 
 Route::get('/manual/{section?}', ManualController::class)
-    ->where('section', 'beginner|intermediate|economy|advanced|disasters|ships|trading-post|secretary|underground|combat|equipment|faq');
+    ->where('section', '[a-z-]+');
 Route::get('/community-guidelines', CommunityGuidelinesController::class);
 
 Route::prefix('api/v1/public')

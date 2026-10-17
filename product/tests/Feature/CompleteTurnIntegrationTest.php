@@ -527,6 +527,62 @@ class CompleteTurnIntegrationTest extends TestCase
         $this->assertSame($capturedResult, $this->deterministicGameplayResult($world, $nation->id, $item->id));
     }
 
+    public function test_repeating_attraction_rolls_back_and_retries_the_same_official_run_before_finishing_in_order(): void
+    {
+        $world = $this->lightweightWorld();
+        $user = User::factory()->create();
+        $nation = app(NationCreationService::class)->create($user, $world, 'Attraction retry', 'Test owner');
+        $space = $this->surfaceMapSpace($world);
+        $service = app(CommandQueueService::class);
+        $item = $service->add($user, $nation, $space, 'attraction', null, null, (string) Str::uuid(), 1,
+            quantity: 2, quantityProvided: true)['item'];
+        $price = $item->definition()->sole()->cost_money;
+        $nation->update(['money' => $price * 5]);
+        $following = $service->add($user, $nation, $space, 'finance', null, null, (string) Str::uuid(), 2)['item'];
+        $fingerprint = $item->request_fingerprint;
+        $snapshot = $this->gameplaySnapshot($world, $nation->id, $item->id);
+        $captured = null;
+        $capture = function () use (&$captured, $world, $nation, $item): void {
+            $captured = $this->deterministicGameplayResult($world, $nation->id, $item->id);
+        };
+        $engine = app(CompleteTurnEngine::class);
+        $pipeline = new TurnPipeline(array_map(
+            static fn (string $key): TurnPhase => $key === 'finalize_turn'
+                ? new CapturingFailingCompleteTurnPhase($key, $engine, $capture)
+                : new GameplayTurnPhase($key, $engine),
+            TurnPipeline::CANONICAL_PHASE_KEYS,
+        ));
+        $seed = hash('sha256', 'repeating attraction official retry');
+        $runner = new TurnRunner($pipeline, new WorldMutationLock, new Pr11FixedTurnSeedGenerator($seed),
+            app(CurrentRulesetGuard::class), app(MonsterKillCycleService::class));
+        try {
+            $runner->run($world);
+            $this->fail('Expected the injected finalization failure.');
+        } catch (RuntimeException $exception) {
+            $this->assertSame('injected failure after gameplay mutations', $exception->getMessage());
+        }
+        $failed = TurnRun::query()->where('world_id', $world->id)->where('is_dry_run', false)->sole();
+        $this->assertSame(TurnRun::STATUS_FAILED, $failed->status);
+        $this->assertSame($snapshot, $this->gameplaySnapshot($world, $nation->id, $item->id));
+        $completed = app(TurnRunner::class)->run($world->fresh());
+        $this->assertSame([$failed->id, $seed, 2], [$completed->id, $completed->random_seed, $completed->attempt_count]);
+        $this->assertSame($captured, $this->deterministicGameplayResult($world, $nation->id, $item->id));
+        $this->assertSame(['queued', 1, 1], [$item->fresh()->status, $item->fresh()->quantity, $item->fresh()->queue_position]);
+        $this->assertSame(['queued', 2], [$following->fresh()->status, $following->fresh()->queue_position]);
+        app(TurnRunner::class)->run($world->fresh());
+        $this->assertSame(['completed', 1, null], [$item->fresh()->status, $item->fresh()->quantity, $item->fresh()->queue_position]);
+        $this->assertSame(['queued', 1], [$following->fresh()->status, $following->fresh()->queue_position]);
+        app(TurnRunner::class)->run($world->fresh());
+        $this->assertSame('completed', $following->fresh()->status);
+        $this->assertSame($fingerprint, $item->fresh()->request_fingerprint);
+        $successes = DB::table('audit_events')->where('event_type', 'command.success')->where('subject_id', $item->id)
+            ->orderBy('id')->get()->map(fn ($event): array => json_decode($event->metadata, true, 512, JSON_THROW_ON_ERROR));
+        $this->assertCount(2, $successes);
+        $this->assertSame([$price, $price], $successes->pluck('cost_money')->all());
+        $this->assertSame([true, true], $successes->pluck('consumes_turn')->all());
+        $this->assertSame(1, DB::table('audit_events')->where('event_type', 'command.quantity_decremented')->where('subject_id', $item->id)->count());
+    }
+
     /** @return array<string, mixed> */
     private function gameplaySnapshot(World $world, int $nationId, int $itemId): array
     {

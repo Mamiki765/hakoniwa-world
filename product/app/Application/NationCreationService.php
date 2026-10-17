@@ -20,6 +20,7 @@ use App\Models\MapSpace;
 use App\Models\MonsterOccupancy;
 use App\Models\Nation;
 use App\Models\NationMembership;
+use App\Models\RulesetVersion;
 use App\Models\User;
 use App\Models\World;
 use Illuminate\Support\Facades\DB;
@@ -44,6 +45,7 @@ final class NationCreationService
         private readonly MonsterBehaviorResolver $monsterBehaviors,
         private readonly MonsterRemovalService $monsterRemoval,
         private readonly BuriedTreasureService $buriedTreasures,
+        private readonly CurrentMonsterDefinitionResolver $monsterDefinitions,
     ) {}
 
     public function create(
@@ -164,7 +166,7 @@ final class NationCreationService
                         'idle_counter' => $initialIdleCounter,
                     ]);
                     $this->resources->initialize($nation);
-                    $islandSelection = $this->firstSafeIslandPlan($mapSpace, $nation, $seed);
+                    $islandSelection = $this->firstSafeIslandPlan($mapSpace, $nation, $seed, $ruleset);
                     if ($islandSelection === null) {
                         $before = $mapSpace->currentBounds();
                         $target = $this->expansionPlanner->nextBounds($before);
@@ -176,7 +178,7 @@ final class NationCreationService
                             'nation_registration_capacity',
                         );
                         $mapSpace = $mapSpace->fresh();
-                        $islandSelection = $this->firstSafeIslandPlan($mapSpace, $nation, $seed);
+                        $islandSelection = $this->firstSafeIslandPlan($mapSpace, $nation, $seed, $ruleset);
                     }
                     if ($islandSelection === null) {
                         throw new NationPlacementUnavailableException(
@@ -199,6 +201,10 @@ final class NationCreationService
                         ->orderBy('id')
                         ->lockForUpdate()
                         ->get();
+                    $this->monsterDefinitions->applyAll(
+                        $occupancies->map(static fn (MonsterOccupancy $occupancy) => $occupancy->monster),
+                        $ruleset,
+                    );
                     foreach ($occupancies as $occupancy) {
                         $monster = $occupancy->monster;
                         $behavior = $this->monsterBehaviors->forDefinition($monster->definition);
@@ -307,6 +313,7 @@ final class NationCreationService
         MapSpace $mapSpace,
         Nation $nation,
         string $seed,
+        RulesetVersion $ruleset,
     ): ?array {
         $offset = 0;
         do {
@@ -321,7 +328,7 @@ final class NationCreationService
                 } catch (NationPlacementUnavailableException) {
                     continue;
                 }
-                if ($this->hasUndisplaceableMonster($plan)) {
+                if ($this->hasUndisplaceableMonster($plan, $ruleset)) {
                     continue;
                 }
 
@@ -333,7 +340,7 @@ final class NationCreationService
         return null;
     }
 
-    private function hasUndisplaceableMonster(InitialIslandPlan $plan): bool
+    private function hasUndisplaceableMonster(InitialIslandPlan $plan, RulesetVersion $ruleset): bool
     {
         $occupancies = MonsterOccupancy::query()
             ->whereIn('map_cell_id', $plan->changedCellIds)
@@ -341,6 +348,10 @@ final class NationCreationService
             ->orderBy('id')
             ->lockForUpdate()
             ->get();
+        $this->monsterDefinitions->applyAll(
+            $occupancies->map(static fn (MonsterOccupancy $occupancy) => $occupancy->monster),
+            $ruleset,
+        );
         foreach ($occupancies as $occupancy) {
             if (! $this->monsterBehaviors->forDefinition($occupancy->monster->definition)
                 ->islandCreationDisplaceable) {

@@ -9,6 +9,7 @@ use App\Application\Underground\UndergroundLifetimeStatistics;
 use App\Application\Underground\UndergroundProfileService;
 use App\Application\Underground\UndergroundReceiptPurgeService;
 use App\Application\Underground\UndergroundReceiptRollupService;
+use App\Application\Underground\UndergroundRuntimeException;
 use App\Domain\Underground\Combat\PriorityCombatAiConfiguration;
 use App\Models\Secretary;
 use App\Models\UndergroundBattle;
@@ -22,8 +23,10 @@ use Carbon\CarbonInterface;
 use Illuminate\Database\Events\QueryExecuted;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
+use PHPUnit\Framework\Attributes\DataProvider;
 use RuntimeException;
 use Tests\TestCase;
 
@@ -55,12 +58,17 @@ final class UndergroundReceiptRollupTest extends TestCase
 
         $this->battle($profile, $old, ['damage_dealt' => 12, 'damage_received' => 4]);
         $this->battle($profile, $old, [
-            'activity_type' => UndergroundBattle::ACTIVITY_EVENT, 'activity_key' => 'mad_moon', 'damage_dealt' => 9_999,
+            'activity_type' => UndergroundBattle::ACTIVITY_EVENT, 'activity_key' => 'mad_moon', 'damage_dealt' => 37,
+        ]);
+        $this->battle($profile, $old, [
+            'activity_type' => UndergroundBattle::ACTIVITY_EVENT, 'activity_key' => 'another_event', 'damage_dealt' => 9_999,
         ]);
         $this->battle($profile, $old, [
             'activity_type' => 'tutorial', 'activity_key' => 'first_descent_tutorial', 'damage_dealt' => 2,
         ]);
-        $lastBattle = $this->battle($profile, $old, ['activity_type' => 'guide_duel', 'damage_dealt' => 9_999]);
+        $lastBattle = $this->battle($profile, $old, [
+            'activity_type' => UndergroundBattle::ACTIVITY_GUIDE_DUEL, 'activity_key' => 'dream_queen', 'damage_dealt' => 9_999,
+        ]);
         $this->skip($profile, $user, $old, false);
         $this->skip($profile, $user, $old, true);
         $profile->update(['trophy_shelf_purchased_at' => $old]);
@@ -77,8 +85,9 @@ final class UndergroundReceiptRollupTest extends TestCase
         $before = $journal->forUser($user);
         $resources = $profile->fresh()->getRawOriginal();
         $sourceRows = DB::table('underground_battles')->where('underground_profile_id', $profile->id)->orderBy('id')->get()->all();
-        $this->assertSame(3, $before['battle_count']);
-        $this->assertSame(14, $before['damage_dealt']);
+        $this->assertSame(4, $before['battle_count']);
+        $this->assertSame(4, $before['victory_count']);
+        $this->assertSame(51, $before['damage_dealt']);
         $this->assertSame(1, $before['damage_dealt_unknown_battles']);
         $this->assertSame(4, $before['skip_tickets_used']);
 
@@ -117,8 +126,8 @@ final class UndergroundReceiptRollupTest extends TestCase
 
         $this->battle($profile, CarbonImmutable::now(), ['damage_dealt' => 5]);
         $after = $journal->forUser($user);
-        $this->assertSame(4, $after['battle_count']);
-        $this->assertSame(19, $after['damage_dealt']);
+        $this->assertSame(5, $after['battle_count']);
+        $this->assertSame(56, $after['damage_dealt']);
         $this->assertSame(1, $after['damage_dealt_unknown_battles']);
     }
 
@@ -196,22 +205,43 @@ final class UndergroundReceiptRollupTest extends TestCase
     {
         [$user, $profile] = $this->profile();
         $old = CarbonImmutable::now()->subDays(40);
-        $known = $this->battle($profile, $old, ['statistics_version' => 1, 'statistics' => [
-            'party' => ['damage_dealt' => 70, 'effective_healing' => 20],
-            'self' => ['damage_dealt' => 35, 'maximum_hit' => 25, 'maximum_hit_action_key' => 'combo',
-                'maximum_hit_damage_source' => 'direct', 'effective_healing' => 7,
-                'complete_guard_count' => 1, 'damage_prevented' => 4, 'action_usage' => ['combo' => 2]],
-        ]]);
+        $known = $this->battle($profile, $old, [
+            'activity_type' => UndergroundBattle::ACTIVITY_EVENT, 'activity_key' => 'mad_moon',
+            'statistics_version' => 1, 'statistics' => [
+                'party' => ['damage_dealt' => 70, 'effective_healing' => 20],
+                'self' => ['damage_dealt' => 35, 'maximum_hit' => 25, 'maximum_hit_action_key' => 'combo',
+                    'maximum_hit_damage_source' => 'direct', 'effective_healing' => 7,
+                    'complete_guard_count' => 1, 'damage_prevented' => 4, 'action_usage' => ['combo' => 2]],
+            ],
+        ]);
         $unknown = $this->battle($profile, $old, ['statistics_version' => 1, 'statistics' => [
             'party' => ['damage_dealt' => 100, 'effective_healing' => 30],
             'self' => ['damage_dealt' => null, 'maximum_hit' => null, 'effective_healing' => null],
             'completeness' => ['reasons' => ['legacy_party_self_attribution_unavailable' => 1]],
         ]]);
+        // The event category alone, and the separate guide duel, do not qualify.
+        foreach ([UndergroundBattle::ACTIVITY_EVENT => 'another_event', UndergroundBattle::ACTIVITY_GUIDE_DUEL => 'dream_queen'] as $type => $key) {
+            $this->battle($profile, $old, ['activity_type' => $type, 'activity_key' => $key,
+                'statistics_version' => 1, 'statistics' => [
+                    'self' => ['maximum_hit' => 9_999, 'maximum_hit_action_key' => 'excluded_action',
+                        'effective_healing' => 9_999, 'action_usage' => ['excluded_action' => 99]],
+                    'party' => ['damage_dealt' => 9_999, 'effective_healing' => 9_999],
+                ],
+            ]);
+        }
         $statistics = app(UndergroundLifetimeStatistics::class);
         $before = $statistics->totals($profile->id);
-        app(UndergroundReceiptRollupService::class)->aggregate($profile->id, 'battle', CarbonImmutable::now()->subDays(30), 500, true);
         $journal = app(UndergroundJournalService::class);
         $journalBefore = $journal->forUser($user);
+        $this->assertSame(2, $journalBefore['battle_count']);
+        $this->assertSame(35, $journalBefore['damage_dealt']);
+        $this->assertSame(25, $journalBefore['maximum_hit']['value']);
+        $this->assertSame(2, $journalBefore['favorite_skills']['entries'][0]['count']);
+        $rollups = app(UndergroundReceiptRollupService::class);
+        $rollups->aggregate($profile->id, 'battle', CarbonImmutable::now()->subDays(30), 500, true);
+        $this->assertSame($journalBefore, $journal->forUser($user));
+        $this->assertSame(0, $rollups->aggregate($profile->id, 'battle', CarbonImmutable::now()->subDays(30), 500, true)['receipts']);
+        $this->assertSame($journalBefore, $journal->forUser($user));
         app(UndergroundReceiptPurgeService::class)->purge($profile->id, 'battle', CarbonImmutable::now()->subDays(30), 500, true);
         $after = $statistics->totals($profile->id);
         $this->assertEquals($before, $after);
@@ -279,6 +309,187 @@ final class UndergroundReceiptRollupTest extends TestCase
         $this->assertSame('legacy_statistics_pending', $result['stop_reason']);
         $this->assertSame($unprepared->id, $result['stopped_at_id']);
         $this->assertSame(2, UndergroundBattle::query()->where('underground_profile_id', $profile->id)->count());
+    }
+
+    public function test_legacy_battle_prefix_requires_explicit_verified_rebuild_before_reading_or_retention(): void
+    {
+        [$user, $profile] = $this->profile();
+        [$normal, $mem] = $this->legacyBattlePrefix($profile);
+        $tail = $this->battle($profile, CarbonImmutable::now(), ['damage_dealt' => 11]);
+        $rollups = app(UndergroundReceiptRollupService::class);
+        $statistics = app(UndergroundLifetimeStatistics::class);
+        $journal = app(UndergroundJournalService::class);
+        $cutoff = CarbonImmutable::now()->subDays(30);
+        $saved = DB::table('underground_receipt_rollups')->where('underground_profile_id', $profile->id)->first();
+        $sources = UndergroundBattle::query()->where('underground_profile_id', $profile->id)->orderBy('id')->get()->toArray();
+        $resources = $profile->fresh()->getRawOriginal();
+        foreach ([
+            fn () => $journal->forUser($user),
+            fn () => $statistics->totals($profile->id),
+            fn () => $rollups->aggregate($profile->id, 'battle', $cutoff, 500, true),
+        ] as $operation) {
+            try {
+                $operation();
+                $this->fail('A v1 prefix must not be treated as complete lifetime statistics.');
+            } catch (UndergroundRuntimeException $exception) {
+                $this->assertSame('underground_statistics_upgrade_required', $exception->errorCode);
+            }
+        }
+        foreach ([false, true] as $apply) {
+            $blocked = app(UndergroundReceiptPurgeService::class)->purge($profile->id, 'battle', $cutoff, 500, $apply);
+            $this->assertSame('statistics_upgrade_required', $blocked['stop_reason']);
+            $this->assertSame(0, $blocked['candidates']);
+            $this->assertFalse($blocked['applied']);
+            $this->assertSame(2, $blocked['old_receipts_in_scan']);
+        }
+        $preview = $rollups->rebuildBattlePrefix($profile->id);
+        $this->assertFalse($preview['applied']);
+        $this->assertSame('ready', $preview['stop_reason']);
+        $this->assertSame(2, $preview['totals']['battle_count']);
+        $this->assertSame(22, $preview['totals']['damage_dealt_sum']);
+        $this->assertEquals($saved, DB::table('underground_receipt_rollups')->where('underground_profile_id', $profile->id)->first());
+        $rebuilt = $rollups->rebuildBattlePrefix($profile->id, 1_000, true);
+        $this->assertTrue($rebuilt['applied']);
+        $this->assertDatabaseHas('underground_receipt_rollups', [
+            'underground_profile_id' => $profile->id, 'stream' => 'battle', 'aggregation_version' => 2,
+            'verified_through_id' => $mem->id, 'receipt_count' => 2, 'deleted_through_id' => 0,
+        ]);
+        $after = $journal->forUser($user);
+        $this->assertSame(3, $after['battle_count']);
+        $this->assertSame(33, $after['damage_dealt']);
+        $this->assertSame(40, $after['maximum_hit']['value']);
+        $this->assertSame(2, $after['favorite_skills']['entries'][0]['count']);
+        $current = DB::table('underground_receipt_rollups')->where('underground_profile_id', $profile->id)->first();
+        $this->assertSame('already_current', $rollups->rebuildBattlePrefix($profile->id, 1_000, true)['stop_reason']);
+        $this->assertEquals($current, DB::table('underground_receipt_rollups')->where('underground_profile_id', $profile->id)->first());
+        $this->assertSame($after, $journal->forUser($user));
+        $this->assertSame($resources, $profile->fresh()->getRawOriginal());
+        $this->assertSame($sources, UndergroundBattle::query()->where('underground_profile_id', $profile->id)->orderBy('id')->get()->toArray());
+
+        // Other receipt streams keep their v1 persistence contract.
+        $this->skip($profile, $user, CarbonImmutable::now()->subDays(40), false);
+        $rollups->aggregate($profile->id, 'skip', $cutoff, 500, true);
+        $this->assertDatabaseHas('underground_receipt_rollups', [
+            'underground_profile_id' => $profile->id, 'stream' => 'skip', 'aggregation_version' => 1,
+        ]);
+        app(UndergroundReceiptPurgeService::class)->purge($profile->id, 'battle', $cutoff, 500, true);
+        $this->assertSame([$tail->id], UndergroundBattle::query()->where('underground_profile_id', $profile->id)->pluck('id')->all());
+        $this->assertSame($after['damage_dealt'], $journal->forUser($user)['damage_dealt']);
+        $this->assertDatabaseMissing('underground_battles', ['id' => $normal->id]);
+    }
+
+    public function test_default_aggregate_command_reports_legacy_battle_and_continues_independent_streams_and_profiles(): void
+    {
+        [$user, $legacyProfile] = $this->profile();
+        $this->legacyBattlePrefix($legacyProfile);
+        $old = CarbonImmutable::now()->subDays(40);
+        $this->skip($legacyProfile, $user, $old, false);
+        $this->skip($legacyProfile, $user, $old, true);
+        DB::table('underground_intro_requests')->insert([
+            'underground_profile_id' => $legacyProfile->id, 'request_id' => (string) Str::uuid(),
+            'request_fingerprint' => str_repeat('c', 64), 'operation' => 'bank_transfer',
+            'resulting_stage' => 'underground_open', 'created_at' => $old, 'updated_at' => $old,
+        ]);
+        [, $regularProfile] = $this->profile();
+        $regularBattle = $this->battle($regularProfile, $old);
+        $legacyCheckpoint = DB::table('underground_receipt_rollups')->where('underground_profile_id', $legacyProfile->id)->first();
+        $sourceTables = ['underground_battles', 'underground_skip_settlements', 'underground_skip_batches', 'underground_intro_requests'];
+        $sources = [];
+        foreach ($sourceTables as $table) {
+            $sources[$table] = DB::table($table)->orderBy('id')->get()->all();
+        }
+        $resources = [$legacyProfile->fresh()->getRawOriginal(), $regularProfile->fresh()->getRawOriginal()];
+
+        $this->assertSame(1, Artisan::call('hakoniwa:underground:receipts:aggregate', ['--apply' => true]));
+        foreach (['skip', 'bulk_skip', 'intro_request'] as $stream) {
+            $this->assertDatabaseHas('underground_receipt_rollups', [
+                'underground_profile_id' => $legacyProfile->id, 'stream' => $stream,
+                'aggregation_version' => 1, 'receipt_count' => 1,
+            ]);
+        }
+        $this->assertDatabaseHas('underground_receipt_rollups', [
+            'underground_profile_id' => $regularProfile->id, 'stream' => 'battle',
+            'aggregation_version' => 2, 'verified_through_id' => $regularBattle->id, 'receipt_count' => 1,
+        ]);
+        $rows = [];
+        foreach (explode("\n", trim(Artisan::output())) as $line) {
+            if (str_starts_with($line, '{')) {
+                $rows[] = json_decode($line, true, 512, JSON_THROW_ON_ERROR);
+            }
+        }
+        $blocked = array_values(array_filter($rows, static fn (array $row): bool => $row['profile_id'] === $legacyProfile->id && $row['stream'] === 'battle'));
+        $this->assertCount(1, $blocked);
+        $this->assertSame('statistics_upgrade_required', $blocked[0]['stop_reason']);
+        $this->assertFalse($blocked[0]['applied']);
+        $this->assertEquals($legacyCheckpoint, DB::table('underground_receipt_rollups')
+            ->where('underground_profile_id', $legacyProfile->id)->where('stream', 'battle')->first());
+        foreach ($sourceTables as $table) {
+            $this->assertEquals($sources[$table], DB::table($table)->orderBy('id')->get()->all());
+        }
+        $this->assertSame($resources, [$legacyProfile->fresh()->getRawOriginal(), $regularProfile->fresh()->getRawOriginal()]);
+    }
+
+    #[DataProvider('unrebuildableBattlePrefixes')]
+    public function test_battle_prefix_rebuild_preserves_source_and_checkpoint_when_safety_cannot_be_proven(string $failure): void
+    {
+        [, $profile] = $this->profile();
+        [$normal, $mem] = $this->legacyBattlePrefix($profile);
+        $checkpoint = DB::table('underground_receipt_rollups')->where('underground_profile_id', $profile->id);
+        match ($failure) {
+            'deleted' => $checkpoint->update(['deleted_through_id' => $normal->id, 'deleted_receipt_count' => 1]),
+            'missing' => $normal->delete(),
+            'meaning' => $checkpoint->update(['battle_count' => 2]),
+            'unprepared' => $mem->update(['compaction_version' => null, 'compacted_at' => null]),
+            'version' => $checkpoint->update(['aggregation_version' => 99]),
+            'limit' => null,
+        };
+        $before = $checkpoint->first();
+        $sources = UndergroundBattle::query()->where('underground_profile_id', $profile->id)->orderBy('id')->get()->toArray();
+        try {
+            app(UndergroundReceiptRollupService::class)->rebuildBattlePrefix($profile->id, $failure === 'limit' ? 1 : 1_000, true);
+            $this->fail('An unproven source prefix must not be rebuilt.');
+        } catch (RuntimeException $exception) {
+            $this->assertStringContainsString(match ($failure) {
+                'deleted' => 'receipt deletion', 'missing' => 'receipt count', 'meaning' => 'does not match',
+                'unprepared' => 'unprepared receipt', 'version' => 'Unsupported', 'limit' => 'rebuild limit',
+            }, $exception->getMessage());
+        }
+        $this->assertEquals($before, $checkpoint->first());
+        $this->assertSame($sources, UndergroundBattle::query()->where('underground_profile_id', $profile->id)->orderBy('id')->get()->toArray());
+    }
+
+    public static function unrebuildableBattlePrefixes(): array
+    {
+        return array_map(static fn (string $failure): array => [$failure], ['deleted', 'missing', 'meaning', 'unprepared', 'version', 'limit']);
+    }
+
+    public function test_failed_battle_prefix_rebuild_rolls_back_and_retry_replaces_instead_of_adding(): void
+    {
+        [, $profile] = $this->profile();
+        [, $mem] = $this->legacyBattlePrefix($profile);
+        $checkpoint = DB::table('underground_receipt_rollups')->where('underground_profile_id', $profile->id);
+        $before = $checkpoint->first();
+        $connection = DB::connection();
+        $original = $connection->getEventDispatcher();
+        $events = clone $original;
+        $connection->setEventDispatcher($events);
+        $events->listen(QueryExecuted::class, static function (QueryExecuted $query): void {
+            if (str_starts_with($query->sql, 'update "underground_receipt_rollups"')) {
+                throw new RuntimeException('interrupted battle prefix rebuild');
+            }
+        });
+        try {
+            app(UndergroundReceiptRollupService::class)->rebuildBattlePrefix($profile->id, 1_000, true);
+            $this->fail('Expected the rebuild to roll back.');
+        } catch (RuntimeException $exception) {
+            $this->assertSame('interrupted battle prefix rebuild', $exception->getMessage());
+        } finally {
+            $connection->setEventDispatcher($original);
+        }
+        $this->assertEquals($before, $checkpoint->first());
+        $this->assertDatabaseHas('underground_battles', ['id' => $mem->id]);
+        app(UndergroundReceiptRollupService::class)->rebuildBattlePrefix($profile->id, 1_000, true);
+        $this->assertSame(22, app(UndergroundReceiptRollupService::class)->totals($profile->id)['damage_dealt_sum']);
     }
 
     public function test_interrupted_purge_resumes_after_committed_prefix_without_reaggregating(): void
@@ -353,6 +564,32 @@ final class UndergroundReceiptRollupTest extends TestCase
         $profile->update(['villa_purchased_at' => now(), 'shard_balance' => 1_234, 'banked_shard_balance' => 5_678]);
 
         return [$user, $profile];
+    }
+
+    /** @return array{UndergroundBattle, UndergroundBattle} */
+    private function legacyBattlePrefix(UndergroundProfile $profile): array
+    {
+        $old = CarbonImmutable::now()->subDays(40);
+        $normal = $this->battle($profile, $old, ['damage_dealt' => 5]);
+        $legacyStatistics = app(UndergroundLifetimeStatistics::class)->range($profile->id, 0, $normal->id);
+        $mem = $this->battle($profile, $old, [
+            'activity_type' => UndergroundBattle::ACTIVITY_EVENT, 'activity_key' => 'mad_moon',
+            'statistics_version' => 1, 'statistics' => [
+                'self' => ['damage_dealt' => 17, 'damage_received' => 0, 'maximum_hit' => 40,
+                    'maximum_hit_action_key' => 'combo', 'action_usage' => ['combo' => 2]],
+                'party' => ['damage_dealt' => 70],
+            ],
+        ]);
+        DB::table('underground_receipt_rollups')->insert([
+            'underground_profile_id' => $profile->id, 'stream' => 'battle', 'aggregation_version' => 1,
+            'verified_through_id' => $mem->id, 'receipt_count' => 2, 'battle_count' => 1, 'victory_count' => 1,
+            'damage_dealt_sum' => 5, 'damage_dealt_known_count' => 1,
+            'damage_received_sum' => 0, 'damage_received_known_count' => 1,
+            'lifetime_statistics' => json_encode($legacyStatistics, JSON_THROW_ON_ERROR),
+            'last_batch' => '{}', 'verified_at' => now(), 'created_at' => now(), 'updated_at' => now(),
+        ]);
+
+        return [$normal, $mem];
     }
 
     /** @param array<string, mixed> $overrides */

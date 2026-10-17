@@ -1,11 +1,32 @@
 <?php
 
-$currentRuleset = require __DIR__.'/hakoniwa/rulesets/hakoniwa-2s-plus-v38.php';
+$currentRuleset = require __DIR__.'/hakoniwa/rulesets/hakoniwa-2s-plus-v39.php';
 
 return [
-    'application_version' => '5.3.0',
+    'application_version' => '5.4.0',
     'ruleset' => $currentRuleset,
     'published_rulesets' => [$currentRuleset['key'] => $currentRuleset],
+    // Inspection metadata only; these fragments never compose the runtime snapshot.
+    'ruleset_authoring_domains' => [
+        'v39/world-and-map.php',
+        'current/lifecycle-and-karma.php',
+        'current/economy-and-resources.php',
+        'current/terrain-and-disasters.php',
+        'current/facilities.php',
+        'v39/commands-and-production.php',
+        'v37/turn-pipeline.php',
+        'current/monsters-and-military.php',
+        'v39/secretary.php',
+        'current/trading-post.php',
+        'current/underground-facilities.php',
+        'v37/surface-ships.php',
+        'current/facility-ranks.php',
+        'current/central-facilities.php',
+        'current/ocean-loop.php',
+        'current/power-and-pizza.php',
+        'current/user-achievements.php',
+        'v38/ecopo.php',
+    ],
     'current_catalogs' => [
         'secretary' => $currentRuleset['secretary'],
     ],
