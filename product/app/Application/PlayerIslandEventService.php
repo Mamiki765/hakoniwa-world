@@ -2931,6 +2931,7 @@ final class PlayerIslandEventService
             'fish' => '魚',
             'monster_meat' => '怪獣肉',
             'oil' => '石油',
+            'power' => '電力',
             default => '資源',
         };
     }
@@ -2941,6 +2942,7 @@ final class PlayerIslandEventService
             'industrial_goods' => 'ユニット',
             'minerals', 'wheat', 'fish', 'monster_meat' => 'トン',
             'oil' => '万バレル',
+            'power' => 'MW',
             default => '',
         };
     }

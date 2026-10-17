@@ -6,9 +6,11 @@ use App\Application\CommandQueueService;
 use App\Application\CompleteTurnEngine;
 use App\Application\DisasterTurnService;
 use App\Application\NationCreationService;
+use App\Application\PlayerIslandEventService;
 use App\Application\SecretaryExperienceAwardService;
 use App\Application\SecretaryTurnService;
 use App\Domain\Economy\NationCapacityResolver;
+use App\Domain\Map\GridCoordinate;
 use App\Domain\Map\MapCellStateService;
 use App\Domain\Secretary\SecretaryItemCatalog;
 use App\Domain\Secretary\SecretaryItemEffectAggregator;
@@ -288,6 +290,67 @@ final class PowerEconomyTest extends TestCase
         app(CompleteTurnEngine::class)->execute('enforce_capacities', $context);
         $this->assertSame($money, (int) $nation->fresh()->money);
         $this->assertSame(0, DB::table('audit_events')->where('event_type', 'resource.automatic_sale')->whereRaw("metadata->>'resource_key' = 'power'")->count());
+    }
+
+    public function test_huge_meteor_condenser_loss_reports_discarded_power_with_its_resource_name_and_unit(): void
+    {
+        $world = $this->lightweightWorld();
+        $user = User::factory()->create();
+        $nation = app(NationCreationService::class)->create($user, $world, 'Power storage', 'Condenser island');
+        MapCell::query()->where('owner_nation_id', $nation->id)->update(['population' => 0]);
+        $condenser = $this->facility($nation, 'condenser');
+        $this->facility($nation, 'pizzeria');
+        foreach (['wheat', 'fish', 'monster_meat', 'oil', 'minerals'] as $key) {
+            $this->balance($nation, $key)->update(['amount' => 0]);
+        }
+        // A retained balance below the condenser capacity, not excess generation.
+        $stored = min(1086, app(NationCapacityResolver::class)->resolve($nation)->resources['power']);
+        $this->assertGreaterThan(0, $stored);
+        $power = $this->balance($nation, 'power');
+        $power->update(['amount' => $stored]);
+        $run = $this->createRun($world);
+        $context = $this->context($world, $nation, $run);
+        app(CompleteTurnEngine::class)->execute('nation_economy', $context);
+        $settlement = $this->settlement($run);
+        $this->assertSame($stored, $settlement['stored_after_mw']);
+        $this->assertSame(0, $settlement['discarded_mw']);
+
+        // A huge meteor's blast occurs after economy in the Turn pipeline.
+        // Fix its center here; weather/impact lottery coverage lives in its own tests.
+        app(DisasterTurnService::class)->resolveHugeMeteorBlast(
+            $context,
+            $this->surfaceMapSpace($world),
+            new GridCoordinate($condenser->x, $condenser->y),
+            $context->ruleset->settings['turn_processing']['disasters']['huge_meteor'],
+        );
+        $this->assertNull($condenser->fresh()->facility_definition_id);
+        $this->assertNull($condenser->fresh()->owner_nation_id);
+        $this->assertSame('sea', $condenser->fresh()->terrain->key);
+        $damage = DB::table('audit_events')->where('event_type', 'disaster.cell_damaged')
+            ->whereRaw("metadata->>'turn_run_id' = ?", [(string) $run->id])
+            ->whereRaw("metadata->>'removed_facility_key' = 'condenser'")->sole();
+        $this->assertSame('huge_meteor', json_decode($damage->metadata, true, 512, JSON_THROW_ON_ERROR)['disaster_key']);
+        $money = (int) $nation->fresh()->money;
+        app(CompleteTurnEngine::class)->execute('resource_sales', $context);
+        app(CompleteTurnEngine::class)->execute('enforce_capacities', $context);
+        $this->assertSame(0, (int) $power->fresh()->amount);
+        $this->assertSame($money, (int) $nation->fresh()->money);
+        $this->assertSame(0, DB::table('audit_events')->where('event_type', 'resource.automatic_sale')->whereRaw("metadata->>'resource_key' = 'power'")->count());
+        $overflow = DB::table('audit_events')->where('event_type', 'capacity.overflow')
+            ->whereRaw("metadata->>'turn_run_id' = ?", [(string) $run->id])
+            ->whereRaw("metadata->>'resource_key' = 'power'")->sole();
+        $metadata = json_decode($overflow->metadata, true, 512, JSON_THROW_ON_ERROR);
+        $this->assertSame('post_sale_inventory_capacity', $metadata['source']);
+        $this->assertSame($stored, $metadata['before']);
+        $this->assertSame($stored, $metadata['overflow']);
+        $this->assertSame(0, $metadata['capacity']);
+        $this->assertSame(0, $metadata['after']);
+        $world->update(['current_turn' => $run->target_turn]);
+        $events = collect(app(PlayerIslandEventService::class)->ownerPage($nation, anchorTurn: $run->target_turn)['groups'])
+            ->flatMap(fn (array $group): array => $group['events']);
+        $message = $events->firstWhere('id', $overflow->id)['message'];
+        $this->assertStringContainsString($power->definition->name, $message);
+        $this->assertStringContainsString(number_format($stored).$power->definition->unit_label, $message);
     }
 
     private function facility(Nation $nation, string $key): MapCell
