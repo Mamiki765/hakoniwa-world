@@ -219,10 +219,11 @@ watch(() => [ownBoard.displayed.value, ownBoard.bodyShown.value, ledger.boardVis
 });
 
 watch(page, (nextPage) => {
+    mapViewGeneration++;
     if (nextPage !== 'underground' && window.location.pathname === '/underground') {
         window.history.replaceState({ page: nextPage }, '', '/');
     }
-});
+}, { flush: 'sync' });
 
 function canOpenUnderground(): boolean {
     return user.value !== null && secretary.value !== null;
@@ -271,6 +272,8 @@ let summaryRetryTimer: ReturnType<typeof setTimeout> | null = null;
 let summaryFallbackTimer: ReturnType<typeof setInterval> | null = null;
 let turnViewCurrentTurn: number | null = null;
 let nationStateGeneration = 0;
+let mapViewGeneration = 0;
+let turnViewRefreshGeneration = 0;
 const summaryRetryDelays = [2_000, 3_000, 5_000, 10_000, 15_000, 30_000] as const;
 const maximumTimeoutDelay = 2_147_000_000;
 const csrfToken = document.querySelector<HTMLMetaElement>('meta[name="csrf-token"]')?.content ?? '';
@@ -772,11 +775,23 @@ function previewMapRequestSource(previewNationId: number) {
 }
 
 async function refreshTurnDependentViewsIfNeeded(summary: PublicWorldSummary): Promise<boolean> {
+    const requestGeneration = ++turnViewRefreshGeneration;
+    const mapViewRequestGeneration = mapViewGeneration;
+    const currentPage = page.value;
+    const currentNation = nation.value;
+    const currentPreview = currentPage === 'preview' ? previewNation.value : null;
+    // Reopening the same island also invalidates a refresh from its previous visit.
+    const isCurrentMapView = () => requestGeneration === turnViewRefreshGeneration
+        && mapViewRequestGeneration === mapViewGeneration
+        && page.value === currentPage
+        && (currentPage !== 'preview' || previewNation.value?.id === currentPreview?.id)
+        && (currentPage !== 'island' || nation.value?.id === currentNation?.id);
+
     if (turnViewCurrentTurn === summary.current_turn) {
-        const currentPreview = page.value === 'preview' ? previewNation.value : null;
         if (currentPreview !== null) {
             try {
                 const refreshedPreview = await api<PublicNationDetail>(`/api/v1/public/nations/${currentPreview.id}`);
+                if (!isCurrentMapView()) return false;
                 const nextMapSpace = refreshedPreview.map_space;
                 const mapNeedsReload = mapSpace.value?.id !== nextMapSpace.id
                     || mapSpace.value?.bounds_revision !== nextMapSpace.bounds_revision
@@ -793,17 +808,17 @@ async function refreshTurnDependentViewsIfNeeded(summary: PublicWorldSummary): P
                     previewMapRequestSource(refreshedPreview.id),
                 );
 
-                return map.error.value === null;
+                return isCurrentMapView() && map.error.value === null;
             } catch {
                 return false;
             }
         }
 
-        const currentNation = nation.value;
         if (page.value !== 'island' || currentNation === null || currentNation.capital === null) return true;
 
         try {
             const spaces = await api<MapSpace[]>(`/api/v1/worlds/${currentNation.world_id}/map-spaces`);
+            if (!isCurrentMapView()) return false;
             const nextMapSpace = spaces.find((space) => space.key === 'surface') ?? spaces[0] ?? null;
             if (nextMapSpace === null) return false;
 
@@ -816,7 +831,7 @@ async function refreshTurnDependentViewsIfNeeded(summary: PublicWorldSummary): P
 
             await map.loadAround(nextMapSpace, currentNation.capital.x, currentNation.capital.y, { kind: 'private' });
 
-            return map.error.value === null;
+            return isCurrentMapView() && map.error.value === null;
         } catch {
             return false;
         }
@@ -824,9 +839,7 @@ async function refreshTurnDependentViewsIfNeeded(summary: PublicWorldSummary): P
 
     const world = worlds.value[0];
     if (world === undefined) return false;
-    const currentNation = nation.value;
     const nationRequestGeneration = nationStateGeneration;
-    const currentPreview = page.value === 'preview' ? previewNation.value : null;
     const ownerMapSpaceRequest = page.value === 'island' && currentNation !== null
         ? api<MapSpace[]>(`/api/v1/worlds/${currentNation.world_id}/map-spaces`)
         : Promise.resolve(null);
@@ -852,6 +865,7 @@ async function refreshTurnDependentViewsIfNeeded(summary: PublicWorldSummary): P
         ownerMapSpaceRequest,
         ownerUndergroundMapRequest,
     ] as const);
+    if (requestGeneration !== turnViewRefreshGeneration) return false;
 
     let refreshed = true;
     if (rankingResult.status === 'fulfilled') rankings.value = rankingResult.value;
@@ -872,6 +886,8 @@ async function refreshTurnDependentViewsIfNeeded(summary: PublicWorldSummary): P
     } else {
         refreshed = false;
     }
+
+    if (!isCurrentMapView()) return false;
 
     let refreshedPreview = currentPreview;
     if (previewResult.status === 'fulfilled') {
@@ -937,6 +953,7 @@ async function refreshTurnDependentViewsIfNeeded(summary: PublicWorldSummary): P
         if (map.error.value !== null) refreshed = false;
     }
 
+    if (!isCurrentMapView()) return false;
     if (refreshed) turnViewCurrentTurn = summary.current_turn;
 
     return refreshed;
@@ -1204,6 +1221,7 @@ async function loadPublicEvents(pageNumber: number): Promise<void> {
 async function openOwnIsland(): Promise<void> {
     const currentNation = nation.value;
     if (currentNation?.capital === null || currentNation === null) return;
+    mapViewGeneration++;
     busy.value = true;
     message.value = '';
     try {
@@ -1235,6 +1253,7 @@ async function openPreview(nationId: number): Promise<void> {
         await openOwnIsland();
         return;
     }
+    mapViewGeneration++;
     busy.value = true;
     message.value = '';
     try {
