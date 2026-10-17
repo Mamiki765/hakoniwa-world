@@ -3,7 +3,7 @@
 $currentRuleset = require __DIR__.'/hakoniwa/rulesets/hakoniwa-2s-plus-v39.php';
 
 return [
-    'application_version' => '5.3.0',
+    'application_version' => '5.4.0',
     'ruleset' => $currentRuleset,
     'published_rulesets' => [$currentRuleset['key'] => $currentRuleset],
     // Inspection metadata only; these fragments never compose the runtime snapshot.
