@@ -207,9 +207,10 @@ final class ManualIndexPresenter
             $from = (int) ($definition['initial_experience'] ?? 0);
             foreach ($definition['launch_capacity_by_level'] as $level => $shots) {
                 $next = $thresholds[(int) $level - 1] ?? null;
+                $to = $next === null ? (int) ($definition['maximum_experience'] ?? $from) : (int) $next - 1;
                 $levels[] = [
                     'level' => (int) $level,
-                    'experience' => $next === null ? number_format($from).'〜' : number_format($from).'〜'.number_format((int) $next - 1),
+                    'experience' => $to <= $from ? number_format($from) : number_format($from).'〜'.number_format($to),
                     'shots' => (int) $shots,
                 ];
                 $from = (int) ($next ?? $from);
