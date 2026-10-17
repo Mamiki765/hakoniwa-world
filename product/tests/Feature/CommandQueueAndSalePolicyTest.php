@@ -914,11 +914,22 @@ class CommandQueueAndSalePolicyTest extends TestCase
         $item->update(['status' => 'cancelled', 'queue_position' => null, 'cancelled_at' => now()]);
         $this->assertSame('cancelled', $item->fresh()->status);
 
-        // A World switch can retain finalized requests referencing its predecessor.
-        // Reading that history is valid; status-only reactivation must still check
-        // the current World/definition identity, without executing historical PHP.
+        // A status-only reactivation may retain its source definition when the
+        // current World still has the same key; request provenance stays unchanged.
         $other = SyntheticHistoricalRulesetSnapshot::create('synthetic-next-world-snapshot', 28);
+        $sourceIdentity = $item->only(['command_definition_id', 'request_ruleset_version_id', 'request_fingerprint']);
+        $replacement = $item->definition()->sole()->replicate();
+        $replacement->ruleset_version_id = $other->id;
+        $replacement->save();
         $nation->world()->firstOrFail()->update(['ruleset_version_id' => $other->id]);
+        $item->update(['status' => 'queued', 'queue_position' => 1, 'cancelled_at' => null]);
+        $this->assertSame('queued', $item->fresh()->status);
+        $this->assertSame($sourceIdentity, $item->fresh()->only(array_keys($sourceIdentity)));
+        $item->update(['status' => 'cancelled', 'queue_position' => null, 'cancelled_at' => now()]);
+
+        // Finalized history remains readable, but missing current keys cannot reactivate.
+        $missing = SyntheticHistoricalRulesetSnapshot::create('synthetic-missing-command-snapshot', 29);
+        $nation->world()->firstOrFail()->update(['ruleset_version_id' => $missing->id]);
         try {
             DB::transaction(static function () use ($item): void {
                 DB::table('nation_command_queue_items')->where('id', $item->id)->update([
@@ -928,9 +939,10 @@ class CommandQueueAndSalePolicyTest extends TestCase
             $this->fail('A status-only update bypassed the current World Ruleset guard.');
         } catch (QueryException $exception) {
             $this->assertSame('23514', $exception->errorInfo[0]);
-            $this->assertStringContainsString('does not match World ruleset', $exception->getMessage());
+            $this->assertStringContainsString('has no matching command key in World ruleset', $exception->getMessage());
         }
         $this->assertSame('cancelled', $item->fresh()->status);
+        $this->assertSame($sourceIdentity, $item->fresh()->only(array_keys($sourceIdentity)));
     }
 
     public function test_queue_read_validates_ruleset_without_locking_the_shared_world(): void

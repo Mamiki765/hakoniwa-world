@@ -195,6 +195,7 @@ final class CommandQueueController extends Controller
                 $mapSpace,
                 $visibleState,
                 $projectionMemo,
+                currentRuleset: $world->rulesetVersion,
             );
             $resultFacilities = FacilityDefinition::query()
                 ->whereIn('key', $definitions->pluck('result_facility_key')->filter()->unique()->values())

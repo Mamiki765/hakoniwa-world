@@ -1209,7 +1209,8 @@ final class CommandQueueService
             return $cached;
         }
 
-        $currentRuleset ??= $this->currentRulesetForNation($nation);
+        $currentRuleset ??= $this->currentRulesetForNation($nation, $projectionMemo);
+        $projectionMemo->putCurrentRuleset($nation->id, $currentRuleset);
         foreach ($queue->items as $item) {
             if ($item->target_context !== 'surface_cell'
                 || $item->queue_position >= $beforePosition
@@ -1582,9 +1583,15 @@ final class CommandQueueService
             : throw new DomainException('Surface queue item command identity is invalid.');
     }
 
-    private function currentRulesetForNation(Nation $nation): RulesetVersion
+    private function currentRulesetForNation(Nation $nation, ?SurfaceCommandProjectionMemo $projectionMemo = null): RulesetVersion
     {
-        return $nation->world()->with('rulesetVersion')->firstOrFail()->rulesetVersion;
+        $ruleset = $projectionMemo?->currentRuleset($nation->id);
+        if ($ruleset === null) {
+            $ruleset = $nation->world()->with('rulesetVersion')->firstOrFail()->rulesetVersion;
+            $projectionMemo?->putCurrentRuleset($nation->id, $ruleset);
+        }
+
+        return $ruleset;
     }
 
     /**
@@ -2220,7 +2227,7 @@ final class CommandQueueService
 
     private function buildLandProjection(Nation $nation, MapSpace $mapSpace, MapCell $target, NationCommandQueue $queue, SurfaceCommandProjectionMemo $projectionMemo): SurfaceLandProjection
     {
-        $currentRuleset = $this->currentRulesetForNation($nation);
+        $currentRuleset = $this->currentRulesetForNation($nation, $projectionMemo);
         // Read only the requested radius and queued targets/dependencies, never the whole map.
         $points = [];
         $addCoordinates = static function (int $x, int $y, int $radius) use (&$points): void {
