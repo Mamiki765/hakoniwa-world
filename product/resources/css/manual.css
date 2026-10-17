@@ -1,132 +1,147 @@
+@import './new-theme.css';
 @import './legacy-themes.css';
 @import './black-theme.css';
 
-:root {
-    font-family: "Hiragino Kaku Gothic ProN", "Yu Gothic", sans-serif;
-}
-
-:root,
-html[data-theme="light"],
-html[data-theme="old-light"],
-html[data-theme="system"] {
+/* マニュアルと利用ルールの画面。色は new-theme.css（New Light／New Dark）と同じ変数で受ける。
+ * Old Light／Old Dark はゲーム本体と同じく、これまでのマニュアルの色の組で出す。 */
+html[data-theme="old-light"] {
     color-scheme: light;
     --ink: #173840;
+    --muted: #4d6a70;
     --paper: #fff;
     --paper-deep: #f3f0e8;
+    --canvas: #f3f0e8;
     --navy: #176b73;
     --navy-solid: #123f49;
     --coral: #e96b50;
     --line: #d7d1c4;
     --heading-line: #e8e2d6;
+    --table-heading: #f3f0e8;
+    --hover-surface: #f7f4ee;
+    --selected-surface: #fff;
     --warning-surface: #f5e6df;
     --shadow: 10px 10px 0 rgba(18, 63, 73, .07);
     --on-solid: #fff;
 }
-
-html[data-theme="dark"],
 html[data-theme="old-dark"] {
     color-scheme: dark;
     --ink: #e5efea;
+    --muted: #9db3ad;
     --paper: #14241f;
     --paper-deep: #081412;
+    --canvas: #081412;
     --navy: #8bc7cc;
     --navy-solid: #0e3b43;
     --coral: #f07a63;
     --line: #3a514b;
     --heading-line: #3a514b;
+    --table-heading: #0f1c18;
+    --hover-surface: #1b2f29;
+    --selected-surface: #1b2f29;
     --warning-surface: #3c211d;
     --shadow: 10px 10px 0 rgba(0, 0, 0, .3);
     --on-solid: #fff;
 }
 
-@media (prefers-color-scheme: dark) {
-    html[data-theme="system"] {
-        color-scheme: dark;
-        --ink: #e5efea;
-        --paper: #14241f;
-        --paper-deep: #081412;
-        --navy: #8bc7cc;
-        --navy-solid: #0e3b43;
-        --coral: #f07a63;
-        --line: #3a514b;
-        --heading-line: #3a514b;
-        --warning-surface: #3c211d;
-        --shadow: 10px 10px 0 rgba(0, 0, 0, .3);
-        --on-solid: #fff;
-    }
-}
-
-/* New Light／New Dark: ゲーム本体と同じ新しい配色。これまでの色は old-light／old-dark（上の値）で出る。 */
-html[data-theme="light"],
-html[data-theme="system"] {
-    --ink: #14263a;
-    --paper: #f6f9fb;
-    --paper-deep: #e4ecf1;
-    --navy: #0b5d8c;
-    --navy-solid: #0b5d8c;
-    --coral: #b86a00;
-    --line: #a9bccb;
-    --heading-line: #d9e4eb;
-    --warning-surface: #fbefcf;
-    --shadow: 0 8px 24px rgba(10, 25, 45, .14);
-    --on-solid: #fff;
-}
-html[data-theme="dark"] {
-    --ink: #dbe6f0;
-    --paper: #121f2e;
-    --paper-deep: #0a1420;
-    --navy: #5bb4e4;
-    --navy-solid: #1d5f86;
-    --coral: #f0a63a;
-    --line: #2e455d;
-    --heading-line: #2e455d;
-    --warning-surface: #3a2f16;
-    --shadow: 0 8px 24px rgba(0, 0, 0, .5);
-    --on-solid: #fff;
-}
-@media (prefers-color-scheme: dark) {
-    html[data-theme="system"] {
-        --ink: #dbe6f0;
-        --paper: #121f2e;
-        --paper-deep: #0a1420;
-        --navy: #5bb4e4;
-        --navy-solid: #1d5f86;
-        --coral: #f0a63a;
-        --line: #2e455d;
-        --heading-line: #2e455d;
-        --warning-surface: #3a2f16;
-        --shadow: 0 8px 24px rgba(0, 0, 0, .5);
-        --on-solid: #fff;
-    }
-}
-
 * { box-sizing: border-box; }
-html { color: var(--ink); background: var(--paper-deep); }
-body { margin: 0; line-height: 1.8; }
+html { color: var(--ink); background: var(--canvas, var(--paper-deep)); }
+body { margin: 0; font-family: Inter, "Noto Sans JP", "Hiragino Kaku Gothic ProN", "Yu Gothic UI", sans-serif; line-height: 1.85; }
 a { color: var(--navy); text-underline-offset: 3px; }
-.manual-header { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 1rem; padding: 1rem clamp(1rem, 4vw, 3rem); color: var(--on-solid); background: var(--navy-solid); }
-.manual-header a { color: var(--on-solid); font-size: 1.15rem; font-weight: 800; text-decoration: none; }
-.manual-layout { display: grid; grid-template-columns: 220px minmax(0, 760px); justify-content: center; gap: 2rem; padding: 2rem 1rem 4rem; }
-.manual-layout nav { display: grid; align-content: start; gap: .35rem; position: sticky; top: 1rem; height: fit-content; }
-.manual-layout nav a { padding: .65rem .8rem; border-left: 3px solid transparent; text-decoration: none; }
-.manual-layout nav a.current { border-color: var(--coral); color: var(--ink); background: var(--paper); font-weight: 800; }
+a:focus-visible, summary:focus-visible { outline: 2px solid var(--navy); outline-offset: 2px; }
+
+/* 上の帯 */
+.manual-header { display: flex; flex-wrap: wrap; align-items: baseline; gap: .4rem 1rem; padding: .9rem clamp(1rem, 4vw, 2.5rem); color: var(--on-solid); background: var(--navy-solid); }
+.manual-header a { color: var(--on-solid); font-weight: 800; text-decoration: none; }
+.manual-header > a:first-child { font-size: 1.15rem; }
+.manual-header > span { opacity: .85; }
+.manual-header-links { display: flex; gap: 1rem; margin-left: auto; font-size: .92rem; }
+.manual-header-links a { font-weight: 600; }
+
+/* 本文の組み */
+.manual-layout { display: grid; grid-template-columns: 228px minmax(0, 780px); justify-content: center; gap: 2rem; padding: 2rem 1rem 4rem; }
+.manual-side { position: sticky; top: 1rem; align-self: start; max-height: calc(100vh - 2rem); overflow-y: auto; }
+.manual-toc { display: none; }
+.manual-toc-group { margin: 1.1rem 0 .25rem; color: var(--muted); font-size: .8rem; font-weight: 700; letter-spacing: .08em; }
+.manual-toc-group:first-child { margin-top: 0; }
+.manual-side ul, .manual-toc ul { margin: 0; padding: 0; list-style: none; }
+.manual-side li + li, .manual-toc li + li { margin-top: 0; }
+.manual-side a, .manual-toc a { display: block; padding: .4rem .7rem; border-left: 3px solid transparent; color: var(--ink); text-decoration: none; line-height: 1.5; }
+.manual-side a:hover, .manual-toc a:hover { background: var(--hover-surface); }
+.manual-side a.current, .manual-toc a.current { border-color: var(--coral); background: var(--paper); font-weight: 800; }
+
 .manual-content, .standalone-content { min-width: 0; padding: clamp(1.25rem, 4vw, 3rem); border: 1px solid var(--line); background: var(--paper); box-shadow: var(--shadow); }
-.standalone-content { max-width: 800px; margin: 2rem auto 4rem; }
-h1 { margin-top: 0; font-family: Georgia, "Yu Mincho", serif; font-size: clamp(2rem, 6vw, 3.8rem); line-height: 1.2; }
-h2 { margin-top: 2.4rem; padding-bottom: .35rem; border-bottom: 2px solid var(--heading-line); }
-h3 { margin-top: 1.8rem; }
-li + li { margin-top: .25rem; }
-.manual-table-scroll { max-width: 100%; overflow-x: auto; }
+.standalone-content { max-width: 820px; margin: 2rem auto 4rem; }
+
+/* 見出しと本文 */
+h1 { margin: 0 0 1rem; font-family: Georgia, "Yu Mincho", serif; font-size: clamp(1.9rem, 5.5vw, 3rem); line-height: 1.25; }
+h2 { margin: 2.6rem 0 .8rem; padding-bottom: .35rem; border-bottom: 2px solid var(--heading-line, var(--line)); font-size: 1.35rem; line-height: 1.45; scroll-margin-top: 1rem; }
+h3 { margin: 1.8rem 0 .5rem; font-size: 1.1rem; }
+p { margin: .7rem 0; }
+ul, ol { padding-left: 1.4rem; }
+li + li { margin-top: .3rem; }
+strong { color: var(--ink); }
+blockquote { margin: 1.2rem 0; padding: .7rem 1rem; border-left: 4px solid var(--coral); background: var(--warning-surface); }
+blockquote p { margin: .2rem 0; }
+.manual-article > p:first-of-type { font-size: 1.05rem; }
+
+/* ページ内の目次 */
+.manual-onpage { margin: 0 0 1.6rem; padding: .7rem 1rem; border: 1px solid var(--line); background: var(--table-heading, var(--paper-deep)); }
+.manual-onpage p { margin: 0 0 .3rem; color: var(--muted); font-size: .82rem; font-weight: 700; }
+.manual-onpage ul { display: flex; flex-wrap: wrap; gap: .3rem 1.1rem; margin: 0; padding: 0; list-style: none; }
+.manual-onpage li + li { margin-top: 0; }
+.manual-onpage a { font-size: .95rem; }
+
+/* 表 */
+.manual-table-scroll { max-width: 100%; overflow-x: auto; margin: 1rem 0; }
 .manual-table-scroll:focus-visible { outline: 2px solid var(--navy); outline-offset: 2px; }
-.manual-content table { width: 100%; min-width: 36rem; border-collapse: collapse; table-layout: fixed; }
-.manual-content th, .manual-content td { padding: .65rem .75rem; border: 1px solid var(--line); text-align: left; vertical-align: top; overflow-wrap: anywhere; }
-.manual-content th { background: var(--paper-deep); }
+.manual-content table { width: 100%; border-collapse: collapse; }
+.manual-content th, .manual-content td { padding: .55rem .75rem; border: 1px solid var(--line); text-align: left; vertical-align: top; overflow-wrap: anywhere; }
+.manual-content th { background: var(--table-heading, var(--paper-deep)); white-space: nowrap; }
+
+/* 施設・コマンドの索引（Ruleset から組む） */
+.manual-index-group + .manual-index-group { margin-top: 1.8rem; }
+.manual-index-group h3 { margin: 0 0 .6rem; padding-left: .6rem; border-left: 4px solid var(--coral); }
+.manual-index-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 330px), 1fr)); gap: .7rem; margin: 0; padding: 0; list-style: none; }
+.manual-index-list li + li { margin-top: 0; }
+.manual-index-item { padding: .7rem .9rem; border: 1px solid var(--line); background: var(--paper); line-height: 1.7; }
+.manual-index-item p { margin: .3rem 0 0; font-size: .95rem; }
+.manual-index-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: .2rem .7rem; }
+.manual-index-head strong { font-size: 1.05rem; }
+.manual-index-cost { margin-left: auto; font-family: Georgia, "Yu Mincho", serif; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.manual-turn { padding: 0 .45rem; border: 1px solid var(--line); border-radius: 999px; color: var(--muted); font-size: .78rem; white-space: nowrap; }
+.manual-turn-free { border-color: var(--coral); color: var(--coral); font-weight: 700; }
+.manual-index-meta span, .manual-index-rank span { display: inline-block; margin-right: .5rem; padding: 0 .4rem; background: var(--table-heading, var(--paper-deep)); color: var(--muted); font-size: .78rem; font-weight: 700; }
+.manual-index-rank { color: var(--muted); }
+
+/* 前へ・次へ */
+.manual-pager { display: grid; grid-template-columns: 1fr 1fr; gap: .8rem; margin-top: 3rem; padding-top: 1.2rem; border-top: 1px solid var(--line); }
+.manual-pager a { display: block; padding: .6rem .9rem; border: 1px solid var(--line); text-decoration: none; line-height: 1.5; }
+.manual-pager a:hover { background: var(--hover-surface); }
+.manual-pager small { display: block; color: var(--muted); font-size: .78rem; }
+.manual-pager-next { grid-column: 2; text-align: right; }
+
+/* 利用ルール */
 .contact-action a { display: inline-block; padding: .75rem 1rem; color: var(--on-solid); background: var(--navy-solid); font-weight: 800; text-decoration: none; }
 .contact-unavailable { padding: .75rem 1rem; background: var(--warning-surface); }
 
-@media (max-width: 720px) {
-    .manual-layout { grid-template-columns: 1fr; }
-    .manual-layout nav { position: static; grid-template-columns: repeat(2, 1fr); }
-    .manual-content th, .manual-content td { padding: .55rem; }
+@media (max-width: 760px) {
+    .manual-layout { grid-template-columns: minmax(0, 1fr); gap: .8rem; padding: .8rem .6rem 3rem; }
+    .manual-side { display: none; }
+    .manual-toc { display: block; border: 1px solid var(--line); background: var(--paper); }
+    .manual-toc summary { display: flex; gap: .8rem; align-items: baseline; padding: .7rem 1rem; font-weight: 800; cursor: pointer; }
+    .manual-toc-current { overflow: hidden; color: var(--muted); font-weight: 400; font-size: .9rem; text-overflow: ellipsis; white-space: nowrap; }
+    .manual-toc nav { padding: 0 .6rem .8rem; }
+    .manual-content { padding: 1.1rem 1rem 1.5rem; box-shadow: none; }
+    .manual-header-links { margin-left: 0; }
+    .manual-content th, .manual-content td { padding: .45rem .55rem; }
+    .manual-pager { grid-template-columns: 1fr; }
+    .manual-pager-next { grid-column: 1; }
     .standalone-content { margin: 1rem; }
 }
+
+.manual-chips { display: flex; flex-wrap: wrap; gap: .4rem; margin: .8rem 0; padding: 0; list-style: none; }
+.manual-chips li { margin: 0; padding: .1rem .7rem; border: 1px solid var(--line); background: var(--table-heading, var(--paper-deep)); font-size: .95rem; }
+.manual-index-jump { display: flex; flex-wrap: wrap; gap: .4rem; margin: 0 0 1.2rem; }
+.manual-index-jump a { padding: .15rem .7rem; border: 1px solid var(--line); border-radius: 999px; font-size: .9rem; text-decoration: none; }
+.manual-index-jump a:hover { background: var(--hover-surface); }
+.manual-index-group h3 { scroll-margin-top: 1rem; }
