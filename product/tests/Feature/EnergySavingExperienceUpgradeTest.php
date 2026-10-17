@@ -26,7 +26,7 @@ final class EnergySavingExperienceUpgradeTest extends CommandAndMissileTestCase
         config(['hakoniwa.ruleset' => $previous]);
         $world = $this->lightweightWorld();
         [$user, $nation] = $this->nation($world, 'Energy upgrade nation');
-        $item = $this->queue(app(CommandQueueService::class), $user, $nation, $this->surfaceMapSpace($world), 'finance', null);
+        $item = $this->queue(app(CommandQueueService::class), $user, $nation, $this->surfaceMapSpace($world), 'attraction', null);
         $this->assertNotEmpty($item->request_fingerprint);
         $cell = MapCell::query()->where('map_space_id', $this->surfaceMapSpace($world)->id)
             ->whereNull('owner_nation_id')->whereNull('facility_definition_id')
@@ -77,5 +77,18 @@ final class EnergySavingExperienceUpgradeTest extends CommandAndMissileTestCase
         $this->assertSame($worldAfter, $world->fresh()->getAttributes());
         $this->assertSame($rulesetCount, RulesetVersion::query()->count());
         $assertPreserved();
+
+        // The old request remains quantity 1, while edits use the new current definition.
+        $originalDefinitionId = $item->command_definition_id;
+        $originalRequestVersionId = $item->request_ruleset_version_id;
+        $service = app(CommandQueueService::class);
+        $service->updateQuantity($user, $nation, $item, 99, (int) $nation->commandQueue()->value('version'));
+        $replayed = $service->add($user, $nation, $this->surfaceMapSpace($world), 'attraction', null, null,
+            $item->request_key, 1, quantity: 1, quantityProvided: true);
+        $this->assertTrue($replayed['duplicate']);
+        $this->assertSame($item->id, $replayed['item']->id);
+        $this->assertSame([99, $originalDefinitionId, $originalRequestVersionId], [
+            $item->fresh()->quantity, $item->fresh()->command_definition_id, $item->fresh()->request_ruleset_version_id,
+        ]);
     }
 }

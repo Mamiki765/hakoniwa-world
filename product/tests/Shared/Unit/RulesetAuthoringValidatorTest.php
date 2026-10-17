@@ -88,6 +88,33 @@ class RulesetAuthoringValidatorTest extends TestCase
     public static function invalidCurrentRulesetProvider(): array
     {
         return [
+            'repeated quantity must consume one turn' => [
+                static function (array $settings): array {
+                    foreach ($settings['command_definitions'] as &$command) {
+                        if ($command['key'] === 'attraction') {
+                            $command['metadata']['repeat_quantity'] = true;
+                            $command['metadata']['consumes_turn'] = false;
+                        }
+                    }
+                    unset($command);
+
+                    return $settings;
+                },
+                'repeat_quantity is only supported for turn-consuming attraction',
+            ],
+            'repeated quantity flag must be boolean' => [
+                static function (array $settings): array {
+                    foreach ($settings['command_definitions'] as &$command) {
+                        if ($command['key'] === 'attraction') {
+                            $command['metadata']['repeat_quantity'] = 'true';
+                        }
+                    }
+                    unset($command);
+
+                    return $settings;
+                },
+                'metadata.repeat_quantity must be a boolean',
+            ],
             'missing required top-level key' => [
                 static function (array $settings): array {
                     unset($settings['initial_money']);

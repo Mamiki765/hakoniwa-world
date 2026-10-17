@@ -13,7 +13,7 @@ return [
         'current/economy-and-resources.php',
         'current/terrain-and-disasters.php',
         'current/facilities.php',
-        'v37/commands-and-production.php',
+        'v39/commands-and-production.php',
         'v37/turn-pipeline.php',
         'current/monsters-and-military.php',
         'v39/secretary.php',
