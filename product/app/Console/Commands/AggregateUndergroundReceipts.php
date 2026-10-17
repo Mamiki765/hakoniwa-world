@@ -3,6 +3,7 @@
 namespace App\Console\Commands;
 
 use App\Application\Underground\UndergroundReceiptRollupService;
+use App\Application\Underground\UndergroundRuntimeException;
 use App\Models\UndergroundProfile;
 use Carbon\CarbonImmutable;
 use Illuminate\Console\Command;
@@ -54,7 +55,20 @@ final class AggregateUndergroundReceipts extends Command
             foreach ($profiles->lazyById(100) as $profile) {
                 $found = true;
                 foreach ($streams as $selectedStream) {
-                    $result = $rollups->aggregate($profile->id, $selectedStream, $cutoff, $batch, $apply);
+                    try {
+                        $result = $rollups->aggregate($profile->id, $selectedStream, $cutoff, $batch, $apply);
+                    } catch (UndergroundRuntimeException $exception) {
+                        if ($exception->errorCode !== 'underground_statistics_upgrade_required') {
+                            throw $exception;
+                        }
+                        $this->line(json_encode([
+                            'profile_id' => $profile->id, 'stream' => $selectedStream,
+                            'stop_reason' => 'statistics_upgrade_required', 'applied' => false,
+                        ], JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES));
+                        $blocked = true;
+
+                        continue;
+                    }
                     $this->line(json_encode($result, JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES));
                     $blocked = $blocked || in_array($result['stop_reason'], [
                         'unfinished_receipt', 'unclassified_activity', 'legacy_statistics_pending',
@@ -65,7 +79,7 @@ final class AggregateUndergroundReceipts extends Command
                 throw new InvalidArgumentException('The requested Underground profile does not exist.');
             }
             if ($blocked) {
-                $this->warn('A prefix stopped at an unprepared receipt. No boundary skipped that receipt; inspect the reported stream before continuing.');
+                $this->warn('Some receipt prefixes are blocked; inspect the reported stop reasons.');
 
                 return self::FAILURE;
             }
