@@ -211,6 +211,31 @@ describe('lazy map chunk loading', () => {
         expect(map.visibleCells.value).toEqual([]);
     });
 
+    it('keeps the selected cell on the new island when an older loadAround finishes last', async () => {
+        let releaseOldChunks!: () => void;
+        const oldChunks = new Promise<void>((resolve) => { releaseOldChunks = resolve; });
+        vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+            const path = String(input);
+            if (path.startsWith('/api/v1/public/nations/7/')) await oldChunks;
+            return response(chunkFromPath(path));
+        }));
+        const map = useMapState();
+        const oldLoad = map.loadAround(mapSpace, 16, 16, { kind: 'public', nationId: 7 });
+
+        await map.loadAround(mapSpace, 32, 32, { kind: 'public', nationId: 8 });
+        const chosenCell = map.visibleCells.value.find((cell) => cell.x === 48 && cell.y === 48)!;
+        map.select(chosenCell);
+        expect(map.selected.value).toEqual(chosenCell);
+        expect(map.loading.value).toBe(false);
+
+        releaseOldChunks();
+        await oldLoad;
+
+        expect(map.selected.value).toEqual(chosenCell);
+        expect(map.visibleCells.value).not.toContainEqual(expect.objectContaining({ x: 0, y: 0 }));
+        expect(map.loading.value).toBe(false);
+    });
+
     it('applies a ship course change to the loaded cell carrying that own ship even when another cell is selected', async () => {
         const ship = {
             id: 9, key: 'fishing' as const, name: '漁船', asset_key: 'ship.fishing', current_hp: 1, max_hp: 1,
