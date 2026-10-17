@@ -3,10 +3,24 @@
 namespace App\Domain\Command;
 
 use App\Models\MapCell;
+use App\Models\RulesetVersion;
 use Illuminate\Database\Eloquent\Collection;
 
 final class SurfaceCommandProjectionMemo
 {
+    /** @var array<int, RulesetVersion> */
+    private array $currentRulesets = [];
+
+    public function currentRuleset(int $nationId): ?RulesetVersion
+    {
+        return $this->currentRulesets[$nationId] ?? null;
+    }
+
+    public function putCurrentRuleset(int $nationId, RulesetVersion $ruleset): void
+    {
+        $this->currentRulesets[$nationId] = $ruleset;
+    }
+
     /** @var array<string, array{terrain_key: string, facility_key: string|null, owner_nation_id: int|null, facility_operational_state: string|null}> */
     private array $states = [];
 

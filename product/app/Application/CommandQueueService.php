@@ -139,12 +139,13 @@ final class CommandQueueService
                 ->with(['definition.rulesetVersion', 'requestRulesetVersion'])
                 ->first();
             if ($duplicate !== null) {
-                $duplicateDefinition = $this->definitionForItem($duplicate);
-                if ($commandKey !== $duplicateDefinition->key) {
-                    throw new CommandRequestConflictException;
-                }
                 $requestRuleset = $duplicate->requestRulesetVersion;
                 if ($requestRuleset === null) {
+                    throw new CommandRequestConflictException;
+                }
+                // Retry identity uses the original request contract, not current gameplay.
+                $duplicateDefinition = $this->definitionForItem($duplicate, $requestRuleset);
+                if ($commandKey !== $duplicateDefinition->key) {
                     throw new CommandRequestConflictException;
                 }
                 $requestDefinition = $duplicateDefinition;
@@ -409,6 +410,7 @@ final class CommandQueueService
                 return $proposed;
             });
             $proposedItem = new NationCommandQueueItem([
+                'command_definition_id' => $definition instanceof CommandDefinition ? $definition->id : null,
                 'queue_position' => $position,
                 'target_context' => $targetContext,
                 'underground_command_key' => $definition instanceof UndergroundCommandDefinition
@@ -604,7 +606,8 @@ final class CommandQueueService
             if ($item->target_context === 'underground_slot') {
                 throw new PlayerFacingCommandException('地下施設commandの数量は変更できません。');
             }
-            $this->quantitySemantics->assertEditable($item->definition);
+            $definition = $this->surfaceDefinitionForItem($item, $world->rulesetVersion);
+            $this->quantitySemantics->assertEditable($definition);
             $quantity = DevelopmentPlanQuantity::normalize($quantity, true);
             $oldQuantity = $item->quantity;
             $item->update(['quantity' => $quantity]);
@@ -1176,6 +1179,7 @@ final class CommandQueueService
         MapSpace $mapSpace,
         ?array $initialState = null,
         ?SurfaceCommandProjectionMemo $projectionMemo = null,
+        ?RulesetVersion $currentRuleset = null,
     ): array {
         $projectionMemo ??= new SurfaceCommandProjectionMemo;
         $landProjection = $projectionMemo->landProjection($this->landProjectionKey($queue, $nation, $mapSpace));
@@ -1205,6 +1209,8 @@ final class CommandQueueService
             return $cached;
         }
 
+        $currentRuleset ??= $this->currentRulesetForNation($nation, $projectionMemo);
+        $projectionMemo->putCurrentRuleset($nation->id, $currentRuleset);
         foreach ($queue->items as $item) {
             if ($item->target_context !== 'surface_cell'
                 || $item->queue_position >= $beforePosition
@@ -1212,7 +1218,7 @@ final class CommandQueueService
                 || $item->target_y !== $cell->y) {
                 continue;
             }
-            $state = $this->projectQueuedCellResult($item, $state, $cell, $queue, $nation, $mapSpace, $projectionMemo);
+            $state = $this->projectQueuedCellResult($item, $state, $cell, $queue, $nation, $mapSpace, $projectionMemo, $currentRuleset);
         }
 
         $projectionMemo->put($memoKey, $state);
@@ -1224,9 +1230,9 @@ final class CommandQueueService
      * @param  array{terrain_key: string, facility_key: string|null, owner_nation_id: int|null, facility_operational_state: string|null}  $state
      * @return array{terrain_key: string, facility_key: string|null, owner_nation_id: int|null, facility_operational_state: string|null}
      */
-    private function projectQueuedCellResult(NationCommandQueueItem $item, array $state, MapCell $cell, NationCommandQueue $queue, Nation $nation, MapSpace $mapSpace, SurfaceCommandProjectionMemo $projectionMemo): array
+    private function projectQueuedCellResult(NationCommandQueueItem $item, array $state, MapCell $cell, NationCommandQueue $queue, Nation $nation, MapSpace $mapSpace, SurfaceCommandProjectionMemo $projectionMemo, RulesetVersion $currentRuleset): array
     {
-        $definition = $item->definition;
+        $definition = $this->surfaceDefinitionForItem($item, $currentRuleset);
         // Ship movement is resolved by the Turn, so its construction is not a fixed-cell forecast.
         if (array_key_exists('construction_ship_id', $item->parameters)) {
             return $state;
@@ -1460,6 +1466,7 @@ final class CommandQueueService
             } else {
                 $candidate = $entry['generated'];
                 $item = new NationCommandQueueItem([
+                    'command_definition_id' => $candidate['definition']->id,
                     'target_context' => 'surface_cell',
                     'target_x' => $candidate['x'],
                     'target_y' => $candidate['y'],
@@ -1486,18 +1493,21 @@ final class CommandQueueService
         Nation $nation,
         MapSpace $mapSpace,
     ): void {
+        $currentRuleset = $this->currentRulesetForNation($nation);
         try {
             $before = $this->projectedOwnerOverbuildEffectsByItem(
                 $queue,
                 $currentItems,
                 $nation,
                 $mapSpace,
+                $currentRuleset,
             );
             $after = $this->projectedOwnerOverbuildEffectsByItem(
                 $queue,
                 $proposedItems,
                 $nation,
                 $mapSpace,
+                $currentRuleset,
             );
             foreach ($after as $itemId => $effect) {
                 if (in_array($effect, self::DANGEROUS_OWNER_OVERBUILD_EFFECTS, true)
@@ -1521,6 +1531,7 @@ final class CommandQueueService
         Collection $items,
         Nation $nation,
         MapSpace $mapSpace,
+        RulesetVersion $currentRuleset,
     ): array {
         $queue->setRelation(
             'items',
@@ -1531,8 +1542,8 @@ final class CommandQueueService
             if (! $item->exists || $item->target_context !== 'surface_cell') {
                 continue;
             }
-            $item->loadMissing('definition');
-            $declaredEffect = $item->definition->metadata['owner_overbuild_effect'] ?? null;
+            $definition = $this->surfaceDefinitionForItem($item, $currentRuleset);
+            $declaredEffect = $definition->metadata['owner_overbuild_effect'] ?? null;
             if (! in_array($declaredEffect, self::DANGEROUS_OWNER_OVERBUILD_EFFECTS, true)) {
                 continue;
             }
@@ -1543,8 +1554,9 @@ final class CommandQueueService
                 (int) $item->queue_position,
                 $nation,
                 $mapSpace,
+                currentRuleset: $currentRuleset,
             );
-            $effects[$item->id] = $this->projectedOwnerOverbuildEffect($item->definition, $nation, $state);
+            $effects[$item->id] = $this->projectedOwnerOverbuildEffect($definition, $nation, $state);
         }
 
         return $effects;
@@ -1552,8 +1564,34 @@ final class CommandQueueService
 
     public function definitionForItem(
         NationCommandQueueItem $item,
+        ?RulesetVersion $currentRuleset = null,
     ): CommandDefinition|UndergroundCommandDefinition {
-        return $this->queuedCommandDefinitions->resolve($item);
+        $definition = $this->queuedCommandDefinitions->resolve($item, $currentRuleset);
+        if ($definition instanceof CommandDefinition && $currentRuleset !== null) {
+            $definition->setRelation('rulesetVersion', $currentRuleset);
+        }
+
+        return $definition;
+    }
+
+    private function surfaceDefinitionForItem(NationCommandQueueItem $item, RulesetVersion $currentRuleset): CommandDefinition
+    {
+        $definition = $this->definitionForItem($item, $currentRuleset);
+
+        return $definition instanceof CommandDefinition
+            ? $definition
+            : throw new DomainException('Surface queue item command identity is invalid.');
+    }
+
+    private function currentRulesetForNation(Nation $nation, ?SurfaceCommandProjectionMemo $projectionMemo = null): RulesetVersion
+    {
+        $ruleset = $projectionMemo?->currentRuleset($nation->id);
+        if ($ruleset === null) {
+            $ruleset = $nation->world()->with('rulesetVersion')->firstOrFail()->rulesetVersion;
+            $projectionMemo?->putCurrentRuleset($nation->id, $ruleset);
+        }
+
+        return $ruleset;
     }
 
     /**
@@ -2189,6 +2227,7 @@ final class CommandQueueService
 
     private function buildLandProjection(Nation $nation, MapSpace $mapSpace, MapCell $target, NationCommandQueue $queue, SurfaceCommandProjectionMemo $projectionMemo): SurfaceLandProjection
     {
+        $currentRuleset = $this->currentRulesetForNation($nation, $projectionMemo);
         // Read only the requested radius and queued targets/dependencies, never the whole map.
         $points = [];
         $addCoordinates = static function (int $x, int $y, int $radius) use (&$points): void {
@@ -2201,8 +2240,9 @@ final class CommandQueueService
             if ($item->target_context !== 'surface_cell' || $item->target_x === null || $item->target_y === null) {
                 continue;
             }
-            $radius = LandDevelopmentDistancePolicy::requirement($item->definition, 'sea', $item->parameters)[0]
-                ?? (in_array($item->definition->key, ['build_port', 'territory_expand'], true) ? 1 : 0);
+            $definition = $this->surfaceDefinitionForItem($item, $currentRuleset);
+            $radius = LandDevelopmentDistancePolicy::requirement($definition, 'sea', $item->parameters)[0]
+                ?? (in_array($definition->key, ['build_port', 'territory_expand'], true) ? 1 : 0);
             $addCoordinates($item->target_x, $item->target_y, $radius);
         }
         $rows = [];
@@ -2234,7 +2274,7 @@ final class CommandQueueService
             $projection->advanceTo($position);
             $state = $projection->stateBefore($cell->x, $cell->y, $position);
             if ($state !== null) {
-                $after = $this->projectQueuedCellResult($item, $state, $cell, $queue, $nation, $mapSpace, $projectionMemo);
+                $after = $this->projectQueuedCellResult($item, $state, $cell, $queue, $nation, $mapSpace, $projectionMemo, $currentRuleset);
                 if ($after !== $state) {
                     $projection->record($cell, $position, $after);
                 }

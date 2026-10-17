@@ -11,7 +11,6 @@ use App\Domain\Monster\MonsterRewardPolicyResolver;
 use App\Domain\Secretary\SecretaryItemGameplayContract;
 use App\Domain\Turn\TurnContext;
 use App\Models\MapCell;
-use App\Models\MonsterDefinition;
 use App\Models\MonsterInstance;
 use App\Models\Nation;
 use App\Models\NationMonsterKillStat;
@@ -39,6 +38,7 @@ final class MonsterDamageService
         private readonly MapCellStateService $cells,
         private readonly MonsterBehaviorResolver $behaviors,
         private readonly EcopoService $ecopo,
+        private readonly CurrentMonsterDefinitionResolver $currentDefinitions,
     ) {}
 
     public function applyDamage(
@@ -104,6 +104,7 @@ final class MonsterDamageService
             if ($killerNation !== null && $killerNation->world_id !== $context->world->id) {
                 throw new DomainException('Monster killer Nation cannot cross World boundaries.');
             }
+            $this->currentDefinitions->resolve($locked, $context->ruleset);
             $hostNationSnapshot = $hostCell->owner_nation_id === null
                 ? null
                 : Nation::query()->whereKey($hostCell->owner_nation_id)->first(['id', 'name']);
@@ -350,13 +351,7 @@ final class MonsterDamageService
     ): array {
         // The instance keeps its spawn definition; a new kill belongs to the
         // current World catalog, as required by the kill-stat identity guard.
-        $definitionId = $monster->monster_definition_id;
-        if ($monster->definition->ruleset_version_id !== $context->ruleset->id) {
-            $definitionId = MonsterDefinition::query()
-                ->where('ruleset_version_id', $context->ruleset->id)
-                ->where('key', $monster->definition->key)
-                ->sole()->id;
-        }
+        $definitionId = $this->currentDefinitions->resolve($monster, $context->ruleset)->id;
         $row = DB::selectOne(<<<'SQL'
 INSERT INTO nation_monster_kill_stats (
     world_id, nation_id, monster_definition_id, kill_count,

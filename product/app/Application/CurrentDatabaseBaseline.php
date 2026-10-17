@@ -18,6 +18,10 @@ final class CurrentDatabaseBaseline
 
     public const ECOPO_MIGRATION = '2026_10_15_000000_add_nation_ecopo';
 
+    public const QUEUE_RULESET_RESOLUTION_MIGRATION = '2026_10_17_010000_resolve_queued_commands_in_current_world_ruleset';
+
+    public const MONSTER_SPAWN_PROVENANCE_MIGRATION = '2026_10_17_020000_preserve_monster_spawn_provenance_across_rulesets';
+
     /** @return array<string, string> */
     public function structure(bool $excludeCapitalRelocationTurn = false, bool $excludeEcopo = false): array
     {
@@ -161,6 +165,30 @@ SQL, [$hasEcopo]);
         if (in_array('2026_10_14_130000_publish_undersea_construction_ship_ruleset', $applied, true)) {
             $extension = json_decode(
                 (string) file_get_contents(database_path('baselines/undersea_construction_ship_structure.json')),
+                true, 512, JSON_THROW_ON_ERROR,
+            );
+            foreach ($expected as $key => $variant) {
+                $expected[$key] = array_replace($variant, $extension);
+            }
+        }
+        if (in_array(self::QUEUE_RULESET_RESOLUTION_MIGRATION, $applied, true)) {
+            if (! in_array(self::MIGRATION, $applied, true)) {
+                throw new RuntimeException('Current World queue command resolution requires the accepted 5.0.1 baseline marker first.');
+            }
+            $extension = json_decode(
+                (string) file_get_contents(database_path('baselines/current_world_queue_ruleset_structure.json')),
+                true, 512, JSON_THROW_ON_ERROR,
+            );
+            foreach ($expected as $key => $variant) {
+                $expected[$key] = array_replace($variant, $extension);
+            }
+        }
+        if (in_array(self::MONSTER_SPAWN_PROVENANCE_MIGRATION, $applied, true)) {
+            if (! in_array(self::MIGRATION, $applied, true)) {
+                throw new RuntimeException('Monster spawn provenance requires the accepted 5.0.1 baseline marker first.');
+            }
+            $extension = json_decode(
+                (string) file_get_contents(database_path('baselines/monster_spawn_provenance_structure.json')),
                 true, 512, JSON_THROW_ON_ERROR,
             );
             foreach ($expected as $key => $variant) {

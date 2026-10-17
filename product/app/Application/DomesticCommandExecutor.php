@@ -152,7 +152,7 @@ final class DomesticCommandExecutor
                     continue;
                 }
 
-                $definition = $this->queuedCommandDefinitions->resolve($item);
+                $definition = $this->queuedCommandDefinitions->resolve($item, $context->ruleset);
                 $executionCoordinates = [];
                 if ($item->target_context === 'underground_slot') {
                     if (! $definition instanceof UndergroundCommandDefinition) {
@@ -173,7 +173,7 @@ final class DomesticCommandExecutor
                     $this->undergroundFacilities->execute(
                         $nation,
                         $definition,
-                        (int) $item->request_ruleset_version_id,
+                        (int) $context->ruleset->id,
                         $item->target_layer,
                         $item->target_slot_index,
                     );
@@ -360,7 +360,7 @@ final class DomesticCommandExecutor
         NationCommandQueue $queue,
         NationCommandQueueItem $item,
     ): ?array {
-        $definition = $this->queuedCommandDefinitions->resolve($item);
+        $definition = $this->queuedCommandDefinitions->resolve($item, $context->ruleset);
         if ($definition instanceof CommandDefinition
             && $definition->ruleset_version_id !== $nation->world()->value('ruleset_version_id')) {
             return [
@@ -2269,7 +2269,7 @@ final class DomesticCommandExecutor
         CommandFailureReason $reason,
         array $observed,
     ): void {
-        $definition = $this->queuedCommandDefinitions->resolve($item);
+        $definition = $this->queuedCommandDefinitions->resolve($item, $context->ruleset);
         $followsShip = array_key_exists('construction_ship_id', $item->parameters);
         $metadata = [
             'nation_id' => $nation->id,
