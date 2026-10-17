@@ -331,11 +331,11 @@ final class SurfaceShipTurnService
                     $visible[$treasure->cell->x.':'.$treasure->cell->y],
                 ))
             ->sortBy(fn (BuriedTreasure $treasure): array => [
-                    (new GridCoordinate((int) $origin->x, (int) $origin->y))->distanceTo(
-                        new GridCoordinate((int) $treasure->cell->x, (int) $treasure->cell->y),
-                    ),
-                    (int) $treasure->id,
-                ]);
+                (new GridCoordinate((int) $origin->x, (int) $origin->y))->distanceTo(
+                    new GridCoordinate((int) $treasure->cell->x, (int) $treasure->cell->y),
+                ),
+                (int) $treasure->id,
+            ]);
         /** @var BuriedTreasure|null $target */
         $target = $treasures->first();
         if (! $target instanceof BuriedTreasure) {
