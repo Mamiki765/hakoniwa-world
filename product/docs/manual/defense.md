@@ -89,6 +89,8 @@ KARMAは、ほかの島への攻撃で上がる値です。ふだんは0で、�
 | 陸地や海底油田を壊した | ＋{{ruleset:karma.impact_points.land_destroyed}} |
 | 船を沈めた（これは相手のKARMAに関係なく上がります） | ＋{{ruleset:surface_ships.missile_impact.foreign_sink_karma}} |
 
+その他、破壊的な行動をするとKARMAが大きく蓄積します。
+
 **怪獣がいる範囲を狙ったミサイル・PPミサイル・SPPミサイルは、外れてほかの島を壊しても上がりません。** 陸地破壊弾は上がります。
 
 ### 下がるとき
