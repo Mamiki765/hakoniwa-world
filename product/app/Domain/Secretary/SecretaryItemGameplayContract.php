@@ -184,7 +184,7 @@ final class SecretaryItemGameplayContract
             }
             foreach ($effects as $index => $effect) {
                 if ($v27 && ($catalogDefinitions[$itemKey]['introduced_version'] ?? 16) >= 27) {
-                    $this->validateV27Effect($itemKey, $this->map($effect, "{$path}.effects.{$index}"), "{$path}.effects.{$index}", $generation >= 30);
+                    $this->validateV27Effect($itemKey, $this->map($effect, "{$path}.effects.{$index}"), "{$path}.effects.{$index}", $generation >= 30, $generation >= 39);
                 } else {
                     $this->validateEffect(
                         $itemKey,
@@ -412,7 +412,7 @@ final class SecretaryItemGameplayContract
     }
 
     /** @param array<string, mixed> $effect */
-    private function validateV27Effect(string $itemKey, array $effect, string $path, bool $oilDevelopment): void
+    private function validateV27Effect(string $itemKey, array $effect, string $path, bool $oilDevelopment, bool $energySaving): void
     {
         $charms = [
             'fire_charm' => 'fire', 'wave_charm' => 'tsunami',
@@ -465,7 +465,7 @@ final class SecretaryItemGameplayContract
                 throw new DomainException("{$path} chance exceeds 100 percent.");
             }
             $skills = match ($group) {
-                'peace' => ['agricultural_policy', 'specialty_development', 'gold_vein_survey', 'forest_management', 'indomitable', 'ship_operations', ...($oilDevelopment ? [SecretarySkillCatalog::OIL_DEVELOPMENT] : [])],
+                'peace' => ['agricultural_policy', 'specialty_development', 'gold_vein_survey', 'forest_management', 'indomitable', 'ship_operations', ...($oilDevelopment ? [SecretarySkillCatalog::OIL_DEVELOPMENT] : []), ...($energySaving ? [SecretarySkillCatalog::ENERGY_SAVING] : [])],
                 'combat' => ['final_defense_line', 'navy'],
                 default => [],
             };

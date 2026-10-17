@@ -52,6 +52,7 @@ final class FreshInstallRebaselineTest extends TestCase
             '2026_10_15_010000_publish_ecopo_ruleset',
             CurrentDatabaseBaseline::QUEUE_RULESET_RESOLUTION_MIGRATION,
             CurrentDatabaseBaseline::MONSTER_SPAWN_PROVENANCE_MIGRATION,
+            '2026_10_17_030000_publish_energy_saving_experience_ruleset',
         ], DB::table('migrations')->orderBy('id')->pluck('migration')->all());
         $this->assertDatabaseHas('ruleset_versions', ['key' => $current['key']]);
         app(CurrentDatabaseBaseline::class)->assertExisting();

@@ -75,7 +75,7 @@ final class SecretaryItemGameplayContractTest extends TestCase
             $settings['secretary']['items'][SecretaryItemCatalog::SECRETARY_SUIT]['effects'][0]['excluded_skill_keys'],
         );
         // Validate the saved v34 item contract without a removed publication file.
-        $historical = $settings;
+        $historical = require config_path('hakoniwa/rulesets/hakoniwa-2s-plus-v38.php');
         $historical['key'] = 'hakoniwa-2s-plus-v34';
         $historical['version'] = 34;
         unset($historical['secretary']['items']['attraction_towel']);
@@ -92,6 +92,32 @@ final class SecretaryItemGameplayContractTest extends TestCase
             'secretary_item:bow:nation:7:item:gem_bow:target:v1',
             TurnRandomStreamFactory::secretaryBow(7, 'gem_bow', 'target', 1),
         );
+    }
+
+    public function test_peace_suit_energy_eligibility_preserves_the_frozen_predecessors(): void
+    {
+        $contract = app(SecretaryItemGameplayContract::class);
+        $suits = ['chancellor_suit', 'grand_chancellor_suit', 'star_chancellor_suit'];
+        // These exact generations are retained append-only migration payloads.
+        foreach ([36, 37, 38] as $generation) {
+            $frozen = require config_path("hakoniwa/rulesets/hakoniwa-2s-plus-v{$generation}.php");
+            $contract->validate($frozen);
+            foreach ($suits as $itemKey) {
+                $this->assertNotContains(SecretarySkillCatalog::ENERGY_SAVING,
+                    $frozen['secretary']['items'][$itemKey]['effects'][0]['eligible_skill_keys']);
+            }
+        }
+        $current = CurrentRulesetFixture::settings();
+        $contract->validate($current);
+        foreach ($suits as $itemKey) {
+            $effect = $current['secretary']['items'][$itemKey]['effects'][0];
+            $this->assertContains(SecretarySkillCatalog::ENERGY_SAVING, $effect['eligible_skill_keys']);
+            $this->assertSame([SecretarySkillCatalog::DECLINING_BIRTHRATE_POLICY], $effect['excluded_skill_keys']);
+        }
+        $frozen['secretary']['items'][$suits[0]]['effects'][0]['eligible_skill_keys'][] = SecretarySkillCatalog::ENERGY_SAVING;
+        $this->expectException(DomainException::class);
+        $this->expectExceptionMessage('differs from the surface suit contract');
+        $contract->validate($frozen);
     }
 
     public function test_current_monster_drop_pools_are_closed_and_exclude_old_bow(): void
