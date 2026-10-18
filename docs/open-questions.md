@@ -16,7 +16,7 @@
 | missile / commands / combat | B-03、B-05、B-12、B-13 | Capital operational damage、防壁・占領抵抗、またはv12のdistance 2休眠保護を変更する将来combatを実装する前に停止する。ver 2.4.0のKARMA/recoveryはADR-0015で決定済み。 |
 | lifecycle / automatic turn operations | T-02 | ver 2.4.0はADR-0014/ADR-0015によりdormant/recoveryを専用Jobではなくofficial Turn開始/終端へ統合する。将来専用scheduler/batchへ変更する前に停止し、production cronと手動retry境界はD-02を維持する。 |
 | public release | — | RELEASE-01、AUTH-05、B-14、D-03、D-04、D-05、D-07はPR23 owner decisionで決定済み。 |
-| Underground 3.0.0 / post-release | UG-05 | E-01/UG-01〜04によりpure combat、Secretary-owned persistence/runtime、正式intro、通常探索、growth/STP、有限SPとplayer Skill Tree、案内人の部屋と複合再振り、Nation-owned facility・surface bridgeまで実装済み。party boundaryはUG-05、party敵AoEの被damage覚醒ゲージはUG-06で決定済み。marketはUG-05で停止する。 |
+| Underground 3.0.0 / post-release | — | E-01/UG-01〜04の所有境界を維持する。partyと即決露店はUG-05、party敵AoEの被damage覚醒ゲージはUG-06で決定済み。 |
 | post-MVP deferred | AUTH-06〜AUTH-09、B-08、D-06、D-08、C-02、C-04、E-02、E-04〜E-06、E-08〜E-09 | 別のowner-approved roadmapまで実装しない。E-07も承認済み実績連携以外へ拡張しない。 |
 
 ## Decided architecture
@@ -312,13 +312,12 @@
 
 ### UG-05 party・market
 
-- Status: Open
-- Required before: 地底marketの最初の実装
-- Open decision: 地底marketのtransactionと不正対策をOwnerが決定する。
+- Status: Decided
+- Owner decision (2026-10-18): 地底の交流場へ即決露店を追加する。同時active 5件、期限7日、NPC売値以上、手数料10%（受取floor(price×9/10)）。支払いは手持ちGのみ。出品中は保管庫枠を使い、装備・売却・研磨・保護変更を禁止する。購入IL上限は装備可能な全所持装備・共鳴結晶の最大ILで、ロック内で購入時に再検査する。代金と品物移動、履歴snapshot、受付結果を同一transactionで保存し、プロフィールID順の排他で購入・取消・期限切れ・受領を直列化する。島放棄はactiveを取り下げ、秘書の品物と未受取代金を保持する。
 - Decision: partyは自分のSecretary 1人に、公開・貸出可能な他UserのSecretaryを最大3人まで加えた最大4 actorとする。actorは表示名ではなく`team`と`combatant_id`で結び、Trialは従来どおりsoloを維持する。借用snapshotとLeader level capはbattle開始時に固定し、貸出側へ戦闘状態を書き戻さない。探索のenemy数と通常報酬を別authorityとし、通常報酬はLeaderだけ、貸出報酬は決着したborrowed参加10回ごとにskip ticket 1枚、canonical dayあたり100枚までとする。Boss人数補正は`none`またはcontent-authored tableとする。skipはcontent別に管理し、狩場はactual combat win 50回で1回1枚、Trialはactual full clear 5周で1周10枚を解禁する。skipはcombat・cooldown・貸出参加を発生させず、通常勝利と共通のrepeatable reward settlementだけをsettleし、first-clear等のone-time stateを再発させない。既存`execution_count`を使う一操作最大1,000回の任意回数・周回数も同じ決算経路を使う。総clear数には加えるが、解禁用actual countへは加えない。対応するplayer actionだけ、最低HP割合の生存味方または有効な挑発を受けていない敵をstable orderで選べる。候補がなければ次ruleへ進む。application 3.9.3では敵の単体敵対actionは、生存中の有効な挑発sourceを優先し、それがなければ生存playerからbattle RNGで決定的に1人を選ぶ。実targetはactionごとに一度だけ決め、damage・effect・logで再抽選しない。self、全体、明示target、round-endはこの抽選を消費しない。
-- Boundary: 過去の1対1 battle logを再計算・書換えず、party presentationはv3として分離する。companion育成、market transactionと不正対策は別decisionとして扱う。UG-04のNation-owned facility・surface bridge決定をparty/marketへ拡張しない。
-- Deferred: companion framework、market transaction、market不正対策。
-- Decision record: `docs/roadmap/3.0.0-alpha-underground.md`
+- Boundary: 過去の1対1 battle logを再計算・書換えず、party presentationはv3として分離する。UG-04のNation-owned facility・surface bridge決定をparty/marketへ拡張しない。入札・買い注文・交渉は今回含めない。
+- Deferred: companion framework。
+- Decision record: `docs/roadmap/3.0.0-alpha-underground.md`、`product/docs/releases/5.5.0-market-synthesis.md`
 
 ### UG-06 party敵AoEと覚醒ゲージ
 

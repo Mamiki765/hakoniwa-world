@@ -17,6 +17,7 @@ use App\Models\Secretary;
 use App\Models\SecretaryItemInstance;
 use App\Models\User;
 use App\Models\World;
+use Closure;
 use DomainException;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\DB;
@@ -107,6 +108,73 @@ class SecretaryEquipmentService
             throw new SecretaryEquipmentValidationException('装備versionを確認してください。');
         }
 
+        return $this->withLockedSurfaceState($user, function (Secretary $secretary) use ($user, $slot, $itemId, $expectedVersion): Secretary {
+            /** @var Collection<int, SecretaryItemInstance> $items */
+            $items = SecretaryItemInstance::query()
+                ->where('secretary_id', $secretary->id)
+                ->orderBy('id')
+                ->lockForUpdate()
+                ->get();
+            if ($secretary->surfaceState->equipment_version !== $expectedVersion) {
+                throw new SecretaryEquipmentConflictException(
+                    'secretary_equipment_version_conflict',
+                    '装備状態が更新されています。最新の状態から選び直してください。',
+                );
+            }
+
+            $selected = null;
+            if ($itemId !== null) {
+                $selected = $items->firstWhere('id', $itemId);
+                if (! $selected instanceof SecretaryItemInstance) {
+                    throw new SecretaryEquipmentValidationException('選択したアイテムは装備できません。');
+                }
+                if ($selected->equipped_slot !== null && $selected->equipped_slot !== $slot) {
+                    throw new SecretaryEquipmentValidationException('別のslotに装備中のアイテムは選択できません。');
+                }
+                if ($selected->is_escrowed) {
+                    throw new SecretaryEquipmentValidationException('交易場へ出品中のアイテムは装備できません。');
+                }
+            }
+
+            $current = $items->first(
+                static fn (SecretaryItemInstance $item): bool => $item->equipped_slot === $slot,
+            );
+            $proposed = $this->proposedState($items, $slot, $selected);
+            $this->assertValidState($proposed);
+
+            $currentId = $current instanceof SecretaryItemInstance ? $current->id : null;
+            if ($currentId === $itemId) {
+                return $secretary->load(['skills', 'itemInstances']);
+            }
+
+            if ($current instanceof SecretaryItemInstance) {
+                $current->equipped_slot = null;
+                $current->save();
+            }
+            if ($selected instanceof SecretaryItemInstance) {
+                $selected->equipped_slot = $slot;
+                $selected->save();
+            }
+
+            $previousVersion = $secretary->surfaceState->equipment_version;
+            $secretary->surfaceState->equipment_version = $previousVersion + 1;
+            $secretary->surfaceState->save();
+            $this->recordMutation($user, $secretary, $slot, $current, $selected, $previousVersion);
+
+            return $secretary->fresh(['skills', 'itemInstances']);
+        });
+    }
+
+    /**
+     * Share the equipment mutation lock order with synthesis of equipped items.
+     *
+     * @template T
+     *
+     * @param  Closure(Secretary): T  $mutation
+     * @return T
+     */
+    public function withLockedSurfaceState(User $user, Closure $mutation): mixed
+    {
         $this->membershipMutationLock->acquire($user);
         /** @var list<World> $acquiredWorlds */
         $acquiredWorlds = [];
@@ -140,12 +208,10 @@ class SecretaryEquipmentService
 
             return DB::transaction(function () use (
                 $user,
-                $slot,
-                $itemId,
-                $expectedVersion,
+                $mutation,
                 $worldIds,
                 $frozenMemberships,
-            ): Secretary {
+            ): mixed {
                 /** @var Collection<int, World> $lockedWorlds */
                 $lockedWorlds = $worldIds === []
                     ? new Collection
@@ -185,59 +251,7 @@ class SecretaryEquipmentService
                 }
                 $secretary->lockSurfaceState();
 
-                /** @var Collection<int, SecretaryItemInstance> $items */
-                $items = SecretaryItemInstance::query()
-                    ->where('secretary_id', $secretary->id)
-                    ->orderBy('id')
-                    ->lockForUpdate()
-                    ->get();
-                if ($secretary->surfaceState->equipment_version !== $expectedVersion) {
-                    throw new SecretaryEquipmentConflictException(
-                        'secretary_equipment_version_conflict',
-                        '装備状態が更新されています。最新の状態から選び直してください。',
-                    );
-                }
-
-                $selected = null;
-                if ($itemId !== null) {
-                    $selected = $items->firstWhere('id', $itemId);
-                    if (! $selected instanceof SecretaryItemInstance) {
-                        throw new SecretaryEquipmentValidationException('選択したアイテムは装備できません。');
-                    }
-                    if ($selected->equipped_slot !== null && $selected->equipped_slot !== $slot) {
-                        throw new SecretaryEquipmentValidationException('別のslotに装備中のアイテムは選択できません。');
-                    }
-                    if ($selected->is_escrowed) {
-                        throw new SecretaryEquipmentValidationException('交易場へ出品中のアイテムは装備できません。');
-                    }
-                }
-
-                $current = $items->first(
-                    static fn (SecretaryItemInstance $item): bool => $item->equipped_slot === $slot,
-                );
-                $proposed = $this->proposedState($items, $slot, $selected);
-                $this->assertValidState($proposed);
-
-                $currentId = $current instanceof SecretaryItemInstance ? $current->id : null;
-                if ($currentId === $itemId) {
-                    return $secretary->load(['skills', 'itemInstances']);
-                }
-
-                if ($current instanceof SecretaryItemInstance) {
-                    $current->equipped_slot = null;
-                    $current->save();
-                }
-                if ($selected instanceof SecretaryItemInstance) {
-                    $selected->equipped_slot = $slot;
-                    $selected->save();
-                }
-
-                $previousVersion = $secretary->surfaceState->equipment_version;
-                $secretary->surfaceState->equipment_version = $previousVersion + 1;
-                $secretary->surfaceState->save();
-                $this->recordMutation($user, $secretary, $slot, $current, $selected, $previousVersion);
-
-                return $secretary->fresh(['skills', 'itemInstances']);
+                return $mutation($secretary);
             }, 3);
         } finally {
             foreach (array_reverse($acquiredWorlds) as $world) {
@@ -358,7 +372,7 @@ class SecretaryEquipmentService
             } catch (DomainException $exception) {
                 throw new SecretaryEquipmentValidationException('選択したアイテムは装備できません。', previous: $exception);
             }
-            if ($item->level < 1 || $item->level > $definition['max_level']) {
+            if ($item->level < 1 || $item->level > $this->catalog->maximumRetainedLevel($item->item_key)) {
                 throw new SecretaryEquipmentValidationException('選択したアイテムは装備できません。');
             }
             $category = $definition['category'];

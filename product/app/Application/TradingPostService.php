@@ -458,7 +458,7 @@ final class TradingPostService
             ->orderBy('id')
             ->get(['id', 'item_key'])
             ->all();
-        if (count($ownedItems) + count($incomingListings) >= SecretaryItemGrantService::INVENTORY_CAPACITY) {
+        if (count($ownedItems) + count($incomingListings) >= SecretaryItemGrantService::capacity($secretary)) {
             throw new DomainException('秘書の倉庫に落札アイテムを受け取る空きがありません。');
         }
         if (! is_string($listing->item_key)) {

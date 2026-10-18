@@ -31,8 +31,7 @@ final class SecretaryItemEffectAggregator
         foreach ($items as $item) {
             $itemKey = $item['item_key'];
             $level = $item['level'];
-            $definition = $this->catalog->definition($itemKey);
-            if ($level < 1 || $level > $definition['max_level']) {
+            if ($level < 1 || $level > $this->catalog->maximumRetainedLevel($itemKey)) {
                 throw new DomainException("Secretary Item {$itemKey} has an invalid equipped level.");
             }
             $effects = $effectCatalog[$itemKey]
@@ -79,6 +78,20 @@ final class SecretaryItemEffectAggregator
     public function hasSnapshotEffect(TurnState $state, int $nationId, string $effectType): bool
     {
         return $this->snapshotEffects($state, $nationId, $effectType) !== [];
+    }
+
+    public function snapshotPopulationGrowthPercent(TurnState $state, int $nationId): int
+    {
+        $total = 0;
+        foreach ($this->snapshotEffects($state, $nationId, 'population_growth_percent') as $resolved) {
+            $percent = $resolved['effect']['parameters']['percent'] ?? null;
+            if (! is_int($percent) || $percent < 0) {
+                throw new DomainException('Secretary population growth Item snapshot is invalid.');
+            }
+            $total += $percent;
+        }
+
+        return $total;
     }
 
     /** @return array<string, mixed>|null */

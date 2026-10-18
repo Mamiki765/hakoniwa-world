@@ -98,7 +98,7 @@ final readonly class UndergroundIntroService
         $secretaryId = Secretary::query()->where('user_id', $user->id)->value('id');
         $profile = $secretaryId === null ? null : UndergroundProfile::query()
             ->where('secretary_id', (int) $secretaryId)
-            ->first(['otherworld_discovered_at', 'distorted_stone_purchase_day', 'distorted_stone_purchase_count']);
+            ->first(['id', 'otherworld_discovered_at', 'distorted_stone_purchase_day', 'distorted_stone_purchase_count']);
         $window = $this->distortedStoneDailyWindow();
 
         return [
@@ -107,6 +107,7 @@ final readonly class UndergroundIntroService
                 $this->distortedStonePurchasedToday($profile, $window['day']),
             ),
             ...$window,
+            'market_attention' => app(UndergroundMarketService::class)->attentionForProfile($profile),
         ];
     }
 
@@ -1865,6 +1866,7 @@ final readonly class UndergroundIntroService
                 ? max(0, $this->nextLevelXp($profile) - $profile->combat_xp)
                 : 100,
             'shard_balance' => $profile instanceof UndergroundProfile ? $profile->shard_balance : 0,
+            'market_attention' => app(UndergroundMarketService::class)->attentionForProfile($profile),
             'banked_shard_balance' => $profile instanceof UndergroundProfile
                 ? $profile->banked_shard_balance
                 : 0,

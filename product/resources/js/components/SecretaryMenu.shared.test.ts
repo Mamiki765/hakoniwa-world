@@ -4,14 +4,12 @@ import { nextTick } from 'vue';
 import SecretaryMenu from './SecretaryMenu.vue';
 
 describe('secretary menu access', () => {
-    it('keeps synthesis inert and skips it during keyboard navigation', async () => {
+    it('opens synthesis next to the warehouse for the owner', async () => {
         const wrapper = mount(SecretaryMenu, { props: { owner: true, modelValue: 'warehouse' }, attachTo: document.body });
-        const synthesis = wrapper.get<HTMLButtonElement>('[aria-label="合成（未実装）"]');
-        expect(synthesis.element.disabled).toBe(true);
-        synthesis.element.click();
-        expect(wrapper.emitted('update:modelValue')).toBeUndefined();
         await wrapper.get('#secretary-tab-warehouse').trigger('keydown', { key: 'ArrowRight' });
-        expect(wrapper.emitted('update:modelValue')?.[0]).toEqual(['achievements']);
+        expect(wrapper.emitted('update:modelValue')?.[0]).toEqual(['synthesis']);
+        await wrapper.get('#secretary-tab-synthesis').trigger('click');
+        expect(wrapper.emitted('update:modelValue')?.at(-1)).toEqual(['synthesis']);
         await wrapper.setProps({ modelValue: 'achievements' });
         await wrapper.get('#secretary-tab-achievements').trigger('keydown', { key: 'End' });
         expect(wrapper.emitted('update:modelValue')?.at(-1)).toEqual(['settings']);

@@ -73,7 +73,7 @@ function polish(): void {
     } });
 }
 function equip(item: EquipmentItem): void {
-    if (pending.value || !item.id) return;
+    if (pending.value || item.is_listed || !item.id) return;
     void submit({ path: '/api/v1/me/underground/equipment/equipped', method: 'PUT',
         body: { request_id: crypto.randomUUID(), item_id: item.id, target_slot: 'resonance' } });
 }
@@ -124,9 +124,10 @@ onMounted(async () => {
             <div class="ug-polishing-crystals">
                 <EquipmentItemCard
                     v-for="item in vault?.items ?? []" :key="item.id" :item="item" mode="owned"
-                    :disabled="busy || Boolean(pending) || item.equipped_slot === 'resonance'" @action="equip(item)"
+                    :disabled="busy || Boolean(pending) || item.is_listed || item.equipped_slot === 'resonance'" @action="equip(item)"
                 >
-                    <template #action>{{ item.equipped_slot === 'resonance' ? '装備中' : 'この結晶を装備する' }}</template>
+                    <template #status><span v-if="item.is_listed">露店に出品中</span></template>
+                    <template #action>{{ item.is_listed ? '出品中' : item.equipped_slot === 'resonance' ? '装備中' : 'この結晶を装備する' }}</template>
                 </EquipmentItemCard>
             </div>
             <nav v-if="vault && vault.last_page > 1" aria-label="結晶庫のページ">

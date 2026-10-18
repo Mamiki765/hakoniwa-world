@@ -74,7 +74,7 @@ const sortOptions = [
     { key: 'category', label: '武器・防具・アクセサリー順' },
 ];
 
-const emit = defineEmits<{ updated: [value: MutationResponse] }>();
+const emit = defineEmits<{ updated: [value: MutationResponse]; market: [] }>();
 const vault = ref<VaultResponse | null>(null);
 const busy = ref(false);
 const loading = ref(true);
@@ -418,13 +418,13 @@ async function confirmBulkSale(): Promise<void> {
 
 function openSingleSale(item: EquipmentItem): void {
     if (busy.value || item.category !== 'resonance' || item.equipped_slot !== null
-        || item.is_protected === true || item.sellable === false || item.id === undefined || item.sell_price < 1) return;
+        || item.is_listed || item.is_protected === true || item.sellable === false || item.id === undefined || item.sell_price < 1) return;
     singleSaleTarget.value = item;
 }
 
 async function confirmSingleSale(): Promise<void> {
     const item = singleSaleTarget.value;
-    if (!item || item.id === undefined || busy.value) return;
+    if (!item || item.id === undefined || item.is_listed || busy.value) return;
     const fingerprint = `${item.id}:${item.sell_price}`;
     const request = singleSalePending.value?.fingerprint === fingerprint
         ? singleSalePending.value
@@ -464,7 +464,7 @@ function mutationError(caught: unknown): string {
 }
 
 async function mutate(action: 'equip' | 'unequip', item?: EquipmentItem, selectedSlot?: EquipmentSlot): Promise<void> {
-    if (busy.value || (action === 'equip' && item?.id === undefined)) return;
+    if (busy.value || item?.is_listed || (action === 'equip' && item?.id === undefined)) return;
     const slot = action === 'equip'
         ? item?.category === 'accessory' ? (selectedSlot ?? 'accessory_1') : item?.category
         : item?.equipped_slot;
@@ -492,7 +492,7 @@ async function mutate(action: 'equip' | 'unequip', item?: EquipmentItem, selecte
 
 // ★を付けた装備は、売却の候補に入らない（サーバー側でも売却を止める）。装備・取り外しはできる。
 async function setProtection(item: EquipmentItem, next: boolean): Promise<void> {
-    if (busy.value || item.id === undefined) return;
+    if (busy.value || item.is_listed || item.id === undefined) return;
     const fingerprint = `protection:${item.id}:${next}`;
     const request = pending.value?.fingerprint === fingerprint ? pending.value : { fingerprint, requestId: requestId() };
     pending.value = request;
@@ -562,7 +562,7 @@ async function changeInventory(next: 'equipment' | 'resonance'): Promise<void> {
                 <header>
                     <div>
                         <h2 id="underground-bulk-sale-title">装備のまとめ売り</h2>
-                        <p>条件に合う未装備の装備を、売却の候補にします。<span class="underground-protect-mark" aria-hidden="true">★</span>を付けた装備は候補に入りません。</p>
+                        <p>条件に合う未装備の装備を、売却の候補にします。出品中や<span class="underground-protect-mark" aria-hidden="true">★</span>を付けた装備は候補に入りません。</p>
                     </div>
                 </header>
                 <div class="underground-bulk-sale-options">
@@ -670,15 +670,15 @@ async function changeInventory(next: 'equipment' | 'resonance'): Promise<void> {
                 <div><button v-if="vault.page > 1" class="button secondary" type="button" :disabled="loading" @click="loadVault(vault.page - 1)">前へ</button><span> {{ vault.page }} / {{ vault.last_page }} </span><button v-if="vault.page < vault.last_page" class="button secondary" type="button" :disabled="loading" @click="loadVault(vault.page + 1)">次へ</button></div>
             </div>
             <div class="underground-equipment-card-grid underground-vault-items">
-                <EquipmentItemCard v-for="(item, index) in vault.items" :key="itemKey(item, index)" :item="item" mode="vault" :disabled="busy || item.equipped_slot !== null" @action="mutate('equip', item, selectedSlotFor(item))">
+                <EquipmentItemCard v-for="(item, index) in vault.items" :key="itemKey(item, index)" :item="item" mode="vault" :disabled="busy || item.is_listed || item.equipped_slot !== null" @action="mutate('equip', item, selectedSlotFor(item))">
                     <template #status>
-                        <span v-if="item.equipped_slot" class="underground-equipment-equipped">{{ slotLabel(item.equipped_slot) }}として装備中</span><span v-else>未装備</span>
+                        <span v-if="item.is_listed">露店に出品中</span><span v-else-if="item.equipped_slot" class="underground-equipment-equipped">{{ slotLabel(item.equipped_slot) }}として装備中</span><span v-else>未装備</span>
                         <button
                             v-if="item.id !== undefined && item.sellable !== false"
                             type="button"
                             class="underground-protect-toggle"
                             :aria-pressed="item.is_protected === true"
-                            :disabled="busy"
+                            :disabled="busy || item.is_listed"
                             :title="item.is_protected ? '保護を外すと、売却できるようになります。' : '保護すると、売却の候補に入らなくなります。'"
                             @click="setProtection(item, item.is_protected !== true)"
                         >
@@ -686,17 +686,19 @@ async function changeInventory(next: 'equipment' | 'resonance'): Promise<void> {
                         </button>
                         <label v-if="item.category === 'accessory' && !item.equipped_slot" class="underground-accessory-target">
                             <span>装備先</span>
-                            <select v-model="accessoryTargetSlot" :disabled="busy" aria-label="アクセサリー装備先">
+                            <select v-model="accessoryTargetSlot" :disabled="busy || item.is_listed" aria-label="アクセサリー装備先">
                                 <option v-for="slot in accessorySlots" :key="slot" :value="slot">{{ slotLabel(slot) }}</option>
                             </select>
                         </label>
                     </template>
                     <template #price>
-                        <span v-if="inventory === 'resonance' && item.is_protected && item.sellable !== false && !item.equipped_slot">保護中は売却できません</span>
+                        <span v-if="item.is_listed">取り下げは交流場の露店で行えます</span>
+                        <span v-else-if="inventory === 'resonance' && item.is_protected && item.sellable !== false && !item.equipped_slot">保護中は売却できません</span>
                         <button v-else-if="inventory === 'resonance' && item.sellable !== false && !item.equipped_slot" class="button secondary" type="button" :disabled="busy" @click="openSingleSale(item)">売却する</button>
                         <span v-else-if="item.sellable === false">売却不可</span>
+                        <button v-if="item.listable" class="link-button" type="button" :disabled="busy" @click="emit('market')">露店で出品する</button>
                     </template>
-                    <template #action>{{ item.equipped_slot ? '装備中' : '装備する' }}</template>
+                    <template #action>{{ item.is_listed ? '出品中' : item.equipped_slot ? '装備中' : '装備する' }}</template>
                 </EquipmentItemCard>
             </div>
             <UndergroundBulkSaleConfirmDialog

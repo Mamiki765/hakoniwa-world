@@ -38,6 +38,8 @@ class SecretaryItemCatalog
 
     public const LOVE_EMBLEM = 'love_emblem';
 
+    public const SUCCUBUS_EMBLEM = 'succubus_emblem';
+
     public const TWIN_STAR_EMBLEM = 'twin_star_emblem';
 
     public const CRESCENT_EMBLEM = 'crescent_emblem';
@@ -89,6 +91,7 @@ class SecretaryItemCatalog
      *   tradable: bool,
      *   npc_tradable: bool,
      *   max_level: int,
+     *   synthesis_level_cap?: int,
      *   name: string,
      *   flavor_text: string,
      *   unique_per_secretary: bool,
@@ -105,6 +108,13 @@ class SecretaryItemCatalog
         }
 
         return $definition;
+    }
+
+    public function maximumRetainedLevel(string $itemKey): int
+    {
+        $definition = $this->definition($itemKey);
+
+        return $definition['synthesis_level_cap'] ?? $definition['max_level'];
     }
 
     /**
@@ -144,6 +154,7 @@ class SecretaryItemCatalog
      *   tradable: bool,
      *   npc_tradable: bool,
      *   max_level: int,
+     *   synthesis_level_cap?: int,
      *   name: string,
      *   flavor_text: string,
      *   unique_per_secretary: bool,
@@ -396,6 +407,7 @@ class SecretaryItemCatalog
             'magic_white_flag' => ['accessory', self::RARITY_HIGH_QUALITY, 1, '魔法の白旗', '「……この世界の白旗はちゃんと降参の意味ですよね？」秘書はそう、不安そうに呟いた。'],
             self::NYOWAMIYA_RIBBON => ['accessory', self::RARITY_HIGH_QUALITY, 1, 'ニョワミヤリボン', '怪獣を愛でたいあなたに！ニョワミヤリボン！'],
             self::LOVE_EMBLEM => ['accessory', self::RARITY_ARTIFACT, 1, '愛の紋章', '星瞬く夜に誰が祈る？'],
+            self::SUCCUBUS_EMBLEM => ['accessory', self::RARITY_RELIC, 1, '夢魔の紋章', '人間よ、快楽だけを貪る獣に帰れ。もう何も暗い事を考えなくて良い様に。'],
             self::TWIN_STAR_EMBLEM => ['accessory', self::RARITY_ARTIFACT, 1, '双子星の紋章', '星降る夜に誰が願う？'],
             self::CRESCENT_EMBLEM => ['accessory', self::RARITY_ARTIFACT, 1, '三日月の紋章', '月満ちる夜に誰が笑う？'],
         ];
@@ -417,6 +429,7 @@ class SecretaryItemCatalog
                 'introduced_version' => 27,
             ];
         }
+        $definitions[self::SUCCUBUS_EMBLEM]['introduced_version'] = 40;
         $definitions[self::ATTRACTION_TOWEL] = [
             'key' => self::ATTRACTION_TOWEL,
             'category' => 'accessory',
@@ -435,6 +448,10 @@ class SecretaryItemCatalog
             $rarity = $definition['rarity'];
             $definitions[$key] = [
                 ...$definition,
+                ...(in_array($key, [
+                    'fire_charm', 'wave_charm', 'wind_charm', 'quake_charm', 'star_charm',
+                    self::WAKUWAKU_TICKET, self::DOKIDOKI_TICKET,
+                ], true) ? ['synthesis_level_cap' => 9999] : []),
                 'rarity_label' => self::RARITIES[$rarity]['label'],
                 'fixed_sale_price_money' => self::RARITIES[$rarity]['fixed_sale_price_money'],
             ];

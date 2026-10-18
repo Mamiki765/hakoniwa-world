@@ -2,6 +2,7 @@
 
 namespace App\Application;
 
+use App\Application\Underground\UndergroundMarketService;
 use App\Domain\Map\MapCellStateService;
 use App\Models\MapCell;
 use App\Models\MapChunk;
@@ -156,6 +157,7 @@ SQL, [$capitalCubeX, $oldCapital['y'], $capitalCubeSum, $radius]);
         }
 
         $capital->delete();
+        app(UndergroundMarketService::class)->settleForAbandonment((int) $membership->user_id);
         $membership->delete();
         $nation->money = 0;
         $nation->idle_counter = 0;

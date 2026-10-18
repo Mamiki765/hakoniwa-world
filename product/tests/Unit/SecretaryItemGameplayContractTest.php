@@ -194,6 +194,11 @@ final class SecretaryItemGameplayContractTest extends TestCase
 
             return $settings;
         }];
+        yield 'synthesis level cap drift' => [static function (array $settings): array {
+            $settings['secretary']['items']['fire_charm']['synthesis_level_cap']++;
+
+            return $settings;
+        }];
         yield 'float finance bonus' => [static function (array $settings): array {
             $settings['secretary']['items']['ring']['effects'][0]['bonus_money_per_level'] = 1.0;
 

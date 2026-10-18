@@ -9,6 +9,7 @@ use App\Application\MonsterDamageService;
 use App\Application\NationCreationService;
 use App\Application\SecretaryBowAttackService;
 use App\Application\SecretaryDisasterCharmService;
+use App\Application\SecretaryEquipmentService;
 use App\Application\SecretaryExperienceAwardService;
 use App\Application\SecretaryItemGrantService;
 use App\Application\SecretaryItemSaleService;
@@ -49,40 +50,98 @@ final class SecretaryItemEffectsTest extends TestCase
     use CreatesTestWorlds;
     use RefreshDatabase;
 
-    public function test_ticket_draw_consumes_one_ticket_and_replays_the_same_result(): void
-    {
+    #[DataProvider('ticketDrawCapacityCases')]
+    public function test_ticket_draw_consumes_the_requested_charges_and_replays_the_same_result(
+        int $ticketLevel,
+        int $freeSlots,
+        ?int $drawCount,
+        int $maximumDrawCount,
+        bool $accepted,
+    ): void {
         $world = $this->lightweightWorld();
         [$user] = $this->nation($world, 'チケット検証島');
         $this->switchToItemRuleset($world);
         $secretary = $user->secretary()->sole();
         $ticket = $secretary->itemInstances()->create([
             'item_key' => SecretaryItemCatalog::WAKUWAKU_TICKET,
-            'level' => 1, 'equipped_slot' => null,
+            'level' => $ticketLevel, 'equipped_slot' => null,
             'grant_key' => 'test:ticket-draw', 'obtained_at' => now(),
         ]);
 
         $service = app(SecretaryTicketGachaService::class);
+        $capacity = app(SecretaryItemGrantService::class)->capacity($secretary);
+        $usedBefore = $capacity - $freeSlots;
+        while ($secretary->itemInstances()->count() < $usedBefore) {
+            $secretary->itemInstances()->create([
+                'item_key' => SecretaryItemCatalog::RING, 'level' => 1, 'equipped_slot' => null,
+                'obtained_at' => now(),
+            ]);
+        }
+        $inventory = $this->actingAs($user)->getJson('/api/v1/me/secretary')->assertOk()->json('data.inventory.items');
+        $this->assertSame($maximumDrawCount, collect($inventory)->firstWhere('id', $ticket->id)['max_draw_count']);
         $requestKey = (string) Str::uuid();
-        $first = $service->draw($user, $ticket->id, $requestKey);
-        $this->assertCount(1, $first);
-        $this->assertContains($first[0]['rarity'], ['regular', 'high_quality', 'artifact']);
-        $this->assertFalse((bool) config('hakoniwa.ruleset.secretary.items.'.$first[0]['key'].'.gacha_exception'));
-        $this->assertNull($ticket->fresh());
-        $this->assertSame($first, $service->draw($user, $ticket->id, $requestKey));
+        $payload = ['ticket_item_id' => $ticket->id, 'request_key' => $requestKey,
+            ...($drawCount === null ? [] : ['draw_count' => $drawCount])];
+        if (! $accepted) {
+            $this->actingAs($user)->postJson('/api/v1/me/secretary/tickets/draw', $payload)->assertUnprocessable();
+            $this->assertSame($ticketLevel, $ticket->fresh()->level);
+            $this->assertSame($usedBefore, $secretary->itemInstances()->count());
+            $this->assertSame(0, DB::table('secretary_gacha_draws')->where('secretary_id', $secretary->id)->count());
+
+            return;
+        }
+        $first = $this->actingAs($user)->postJson('/api/v1/me/secretary/tickets/draw', $payload)->assertOk()->json('data');
+        $effectiveCount = $drawCount ?? $ticketLevel;
+        $remaining = $ticketLevel - $effectiveCount;
+        $this->assertCount($effectiveCount, $first['items']);
+        foreach ($first['items'] as $item) {
+            $this->assertContains($item['rarity'], ['regular', 'high_quality', 'artifact']);
+            $this->assertFalse((bool) config('hakoniwa.ruleset.secretary.items.'.$item['key'].'.gacha_exception'));
+        }
+        $this->assertSame($remaining === 0 ? null : $remaining, $ticket->fresh()?->level);
+        $this->assertSame($remaining === 0 ? null : ['item_id' => $ticket->id, 'remaining_level' => $remaining], $first['ticket']);
+        $this->assertSame(['used' => $usedBefore + $effectiveCount - ($remaining === 0 ? 1 : 0), 'capacity' => $capacity], $first['warehouse']);
+        $this->assertSame($first, $service->draw($user, $ticket->id, $requestKey, $drawCount));
+        $this->actingAs($user)->postJson('/api/v1/me/secretary/tickets/draw', [
+            ...$payload, 'draw_count' => $effectiveCount + 1,
+        ])->assertConflict()->assertJsonPath('code', 'request_conflict');
+        $this->assertSame($first['warehouse']['used'], $secretary->itemInstances()->count());
         $this->assertSame(1, DB::table('secretary_gacha_draws')->where('secretary_id', $secretary->id)->count());
     }
 
-    public function test_charm_charge_uses_turn_snapshot_and_rollback_retry_does_not_keep_consumption(): void
+    public static function ticketDrawCapacityCases(): array
+    {
+        return [
+            'full Lv1 with no free slot' => [1, 0, null, 1, true],
+            'Lv2 with no free slot' => [2, 0, 1, 0, false],
+            'full Lv3 frees its own slot' => [3, 2, 3, 3, true],
+            'partial Lv4 uses only free slots' => [4, 2, 2, 2, true],
+            'partial cannot borrow the retained ticket slot' => [4, 2, 3, 2, false],
+            'synthesized ticket retains unused charges' => [9999, 2, 2, 2, true],
+        ];
+    }
+
+    #[DataProvider('charmChargeLevels')]
+    public function test_charm_charge_uses_turn_snapshot_and_rollback_retry_does_not_keep_consumption(int $charmLevel): void
     {
         $world = $this->lightweightWorld();
         [$user, $nation] = $this->nation($world, 'お守り検証島');
         $this->switchToItemRuleset($world);
         $world = $world->fresh();
         $secretary = $user->secretary()->sole();
-        $charm = $secretary->itemInstances()->create([
-            'item_key' => 'fire_charm', 'level' => 2, 'equipped_slot' => 2,
-            'grant_key' => 'test:fire-charm-retry', 'obtained_at' => now(),
-        ]);
+        $charm = app(SecretaryItemGrantService::class)->grant(
+            $secretary, 'fire_charm', $charmLevel, null, 'test:fire-charm-retry',
+        );
+        $this->assertInstanceOf(SecretaryItemInstance::class, $charm);
+        app(SecretaryEquipmentService::class)->mutate(
+            $user, 2, $charm->id, (int) $secretary->surfaceState()->value('equipment_version'),
+        );
+        $inventory = $this->actingAs($user)->getJson('/api/v1/me/secretary?world_id='.$world->id)
+            ->assertOk()->json('data.inventory.items');
+        $this->assertNotNull(collect($inventory)->firstWhere('id', $charm->id)['effect_text']);
+        app(SecretaryItemEffectAggregator::class)->capacityPercentages(
+            $world->rulesetVersion()->sole(), [['item_key' => 'fire_charm', 'level' => $charmLevel]],
+        );
         $cell = MapCell::query()->where('owner_nation_id', $nation->id)->orderBy('id')->firstOrFail();
         $context = $this->context($world, hash('sha256', 'charm rollback retry'), [$nation->id]);
         $service = app(SecretaryDisasterCharmService::class);
@@ -93,7 +152,7 @@ final class SecretaryItemEffectsTest extends TestCase
         });
 
         try {
-            DB::transaction(function () use ($context, $turnSecretaries, $service, $cell, $charm, &$queries): void {
+            DB::transaction(function () use ($context, $turnSecretaries, $service, $cell, $charm, $charmLevel, &$queries): void {
                 $turnSecretaries->loadAttemptSnapshots($context, [$cell->owner_nation_id]);
                 $before = count($queries);
                 $this->assertTrue($service->protect($context, $cell, 'fire'));
@@ -103,26 +162,31 @@ final class SecretaryItemEffectsTest extends TestCase
                     static fn (string $sql): bool => str_contains($sql, 'secretary_item_instances')
                         || str_contains($sql, 'secretary_surface_states'),
                 )));
-                $this->assertSame(2, $charm->fresh()->level);
+                $this->assertSame($charmLevel, $charm->fresh()->level);
                 $this->assertSame(['charges_used' => 1, 'items_changed' => 1],
                     $turnSecretaries->flushCharmCharges($context));
-                $this->assertSame(1, $charm->fresh()->level);
+                $this->assertSame($charmLevel - 1, $charm->fresh()->level);
 
                 throw new RuntimeException('force attempt rollback');
             });
         } catch (RuntimeException $exception) {
             $this->assertSame('force attempt rollback', $exception->getMessage());
         }
-        $this->assertSame(2, $charm->fresh()->level);
+        $this->assertSame($charmLevel, $charm->fresh()->level);
 
         $retry = $this->retryContext($context);
         $turnSecretaries->loadAttemptSnapshots($retry, [$nation->id]);
         $this->assertSame(0, $retry->state->secretaryCharmChargesUsed($charm->id));
         $this->assertTrue($service->protect($retry, $cell, 'fire'));
-        $this->assertSame(2, $charm->fresh()->level);
+        $this->assertSame($charmLevel, $charm->fresh()->level);
         $this->assertSame(1, $retry->state->secretaryCharmChargesUsed($charm->id));
         $turnSecretaries->flushCharmCharges($retry);
-        $this->assertSame(1, $charm->fresh()->level);
+        $this->assertSame($charmLevel - 1, $charm->fresh()->level);
+    }
+
+    public static function charmChargeLevels(): array
+    {
+        return ['normal acquisition level' => [2], 'synthesized maximum level' => [9999]];
     }
 
     public function test_suit_with_base_100_and_zero_per_level_chance_always_doubles_experience(): void

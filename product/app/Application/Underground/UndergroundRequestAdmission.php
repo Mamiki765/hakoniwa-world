@@ -121,7 +121,7 @@ final class UndergroundRequestAdmission
     /** @param array<string, mixed> $claims */
     private function hasStoredResult(array $claims): bool
     {
-        foreach (['underground_battles', 'underground_skip_settlements', 'underground_skip_batches', 'underground_intro_requests'] as $table) {
+        foreach (['underground_battles', 'underground_skip_settlements', 'underground_skip_batches', 'underground_intro_requests', 'underground_market_receipts'] as $table) {
             if (DB::table($table)->where('underground_profile_id', $claims['profile_id'])->where('request_id', $claims['request_id'])->exists()) {
                 return true;
             }

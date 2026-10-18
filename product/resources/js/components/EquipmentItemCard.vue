@@ -57,6 +57,10 @@ export interface EquipmentItem {
     equippable?: boolean;
     sellable?: boolean;
     is_protected?: boolean;
+    is_listed?: boolean;
+    listable?: boolean;
+    listable_reason?: string | null;
+    market_minimum_price?: number;
     description?: string;
     commemorative_effects?: string[];
     acquired_at?: string;

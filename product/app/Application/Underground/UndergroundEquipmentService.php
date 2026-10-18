@@ -77,9 +77,13 @@ final readonly class UndergroundEquipmentService
             'item_id' => $itemId, 'level' => $expectedLevel, 'price' => $quotedPrice,
         ], function (UndergroundProfile $profile) use ($itemId, $expectedLevel, $quotedPrice): void {
             $item = UndergroundOwnedEquipment::query()->whereKey($itemId)
-                ->where('underground_profile_id', $profile->id)->where('equipped_slot', 'resonance')
+                ->where('underground_profile_id', $profile->id)
                 ->lockForUpdate()->first();
-            if (! $item instanceof UndergroundOwnedEquipment || $item->polish_level !== $expectedLevel) {
+            if ($item instanceof UndergroundOwnedEquipment) {
+                $this->assertNotListed($item);
+            }
+            if (! $item instanceof UndergroundOwnedEquipment || $item->equipped_slot !== 'resonance'
+                || $item->polish_level !== $expectedLevel) {
                 throw new UndergroundRuntimeException('underground_polishing_changed', '装備中の結晶か研磨段階が変わりました。確認し直してください。');
             }
             $definition = $this->loadout->definitionForRow($item);
@@ -367,6 +371,7 @@ final readonly class UndergroundEquipmentService
                 if (! $item instanceof UndergroundOwnedEquipment) {
                     throw new UndergroundRuntimeException('underground_equipment_not_owned', '売却する装備を確認してください。');
                 }
+                $this->assertNotListed($item);
                 if ($item->is_protected) {
                     throw new UndergroundRuntimeException('underground_equipment_protected', '保護中の装備は売却できません。');
                 }
@@ -437,6 +442,9 @@ final readonly class UndergroundEquipmentService
 
                 $sellPrice = 0;
                 foreach ($items as $item) {
+                    if ($item->is_listed) {
+                        throw new UndergroundRuntimeException('underground_bulk_sell_preview_changed', '売却候補に出品中の装備があります。previewし直してください。');
+                    }
                     if ($item->is_protected) {
                         throw new UndergroundRuntimeException('underground_bulk_sell_preview_changed', '売却候補に保護中の装備があります。previewし直してください。');
                     }
@@ -506,6 +514,7 @@ final readonly class UndergroundEquipmentService
             if (! $item instanceof UndergroundOwnedEquipment) {
                 throw new UndergroundRuntimeException('underground_equipment_not_owned', '保護する装備を確認してください。');
             }
+            $this->assertNotListed($item);
             $item->update(['is_protected' => $isProtected]);
         });
     }
@@ -536,6 +545,7 @@ final readonly class UndergroundEquipmentService
                 if (! $item instanceof UndergroundOwnedEquipment) {
                     throw new UndergroundRuntimeException('underground_equipment_not_owned', '装備するitemを確認してください。');
                 }
+                $this->assertNotListed($item);
                 try {
                     $definition = $this->loadout->definitionForRow($item);
                 } catch (RuntimeException) {
@@ -582,6 +592,7 @@ final readonly class UndergroundEquipmentService
                     ->lockForUpdate()
                     ->first();
                 if ($equipped instanceof UndergroundOwnedEquipment) {
+                    $this->assertNotListed($equipped);
                     $equipped->equipped_slot = null;
                     $equipped->save();
                 }
@@ -604,6 +615,7 @@ final readonly class UndergroundEquipmentService
             ->lockForUpdate()
             ->first();
         if ($current instanceof UndergroundOwnedEquipment && $current->id !== $item->id) {
+            $this->assertNotListed($current);
             $current->equipped_slot = null;
             $current->save();
         }
@@ -626,6 +638,16 @@ final readonly class UndergroundEquipmentService
             $profile->allocatedStp(),
             $this->loadout->combatLoadout($profile),
         );
+    }
+
+    private function assertNotListed(UndergroundOwnedEquipment $item): void
+    {
+        if ($item->is_listed) {
+            throw new UndergroundRuntimeException(
+                'underground_equipment_listed',
+                '出品中の装備は変更できません。出品を取り消してから操作してください。',
+            );
+        }
     }
 
     /**
@@ -869,7 +891,8 @@ final readonly class UndergroundEquipmentService
         array $filterModes,
         array $affixKeys,
     ): bool {
-        if (($item['sellable'] ?? null) !== true || ($item['equipped_slot'] ?? null) !== null || ($item['is_protected'] ?? false)) {
+        if (($item['sellable'] ?? null) !== true || ($item['equipped_slot'] ?? null) !== null
+            || ($item['is_protected'] ?? false) || ($item['is_listed'] ?? false)) {
             return false;
         }
         $conditions = [

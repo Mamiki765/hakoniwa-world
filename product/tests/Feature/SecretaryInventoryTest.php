@@ -14,6 +14,7 @@ use DomainException;
 use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
+use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\Concerns\CreatesTestWorlds;
 use Tests\TestCase;
 
@@ -48,11 +49,14 @@ final class SecretaryInventoryTest extends TestCase
         $this->assertDatabaseCount('secretary_item_instances', 0);
     }
 
-    public function test_capacity_rejects_the_fifty_first_item_preserves_existing_rows_and_records_private_audit(): void
+    #[DataProvider('warehouseExpansions')]
+    public function test_capacity_rejects_the_next_item_preserves_existing_rows_and_records_private_audit(int $expansions): void
     {
         $secretary = Secretary::query()->create(['user_id' => User::factory()->create()->id]);
+        $secretary->surfaceState->update(['item_capacity_expansions' => $expansions]);
+        $capacity = SecretaryItemGrantService::capacity($secretary);
         $now = now();
-        DB::table('secretary_item_instances')->insert(collect(range(1, 50))->map(fn (int $number): array => [
+        DB::table('secretary_item_instances')->insert(collect(range(1, $capacity))->map(fn (int $number): array => [
             'secretary_id' => $secretary->id,
             'item_key' => "capacity_fixture_{$number}",
             'level' => 1,
@@ -72,13 +76,19 @@ final class SecretaryInventoryTest extends TestCase
         );
 
         $this->assertNull($result);
-        $this->assertSame(50, $secretary->itemInstances()->count());
+        $this->assertSame($capacity, $secretary->itemInstances()->count());
         $this->assertDatabaseHas('audit_events', [
             'event_type' => 'secretary.inventory_full',
             'visibility' => 'private',
             'subject_type' => Secretary::class,
             'subject_id' => $secretary->id,
         ]);
+    }
+
+    /** @return array<string, array{int}> */
+    public static function warehouseExpansions(): array
+    {
+        return ['initial' => [0], 'expanded' => [1]];
     }
 
     public function test_database_rejects_two_items_in_the_same_secretary_slot(): void

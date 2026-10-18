@@ -16,6 +16,7 @@ import type { UndergroundSkillTree as SkillTree } from './undergroundSkills';
 import UndergroundBattlePlayback, { type PlaybackCombatant, type PlaybackHit, type PlaybackMpChange, type PlaybackRound, type PlaybackStep, type PlaybackVitals } from './UndergroundBattlePlayback.vue';
 import UndergroundCombatantCard from './UndergroundCombatantCard.vue';
 import UndergroundEquipmentShop from './UndergroundEquipmentShop.vue';
+import UndergroundMarket, { type MarketAttention } from './UndergroundMarket.vue';
 import UndergroundEquipmentVault from './UndergroundEquipmentVault.vue';
 import UndergroundEquipmentPolishing from './UndergroundEquipmentPolishing.vue';
 import UndergroundPartyBuilder, { type PartyCandidate } from './UndergroundPartyBuilder.vue';
@@ -507,6 +508,7 @@ interface UndergroundState {
     shopkeeper_name: string | null;
     distorted_stone_shop?: { balance: number; day: string; reset_after_ms: number; purchased_today: number; daily_limit: number; next_price: number | null; unlocked: boolean };
     distorted_stone_reminder?: boolean;
+    market_attention?: MarketAttention;
     polishing_tutorial_completed?: boolean;
     otherworld?: {
         stages: Array<{ key: string; name: string; recommended_level: number; item_level: number; locked: boolean; unlock_condition: string | null; cleared: boolean }>;
@@ -588,6 +590,7 @@ const emit = defineEmits<{
     returnToSecretary: [];
     dailyQuest: [quest: DailyQuestProgress];
     distortedStoneReminder: [unclaimed: boolean];
+    marketAttention: [attention: boolean];
 }>();
 const state = ref<UndergroundState | null>(null);
 const busy = ref(false);
@@ -641,14 +644,15 @@ const pendingAwakeningMessageMutation = ref<PendingMutation | null>(null);
 const pendingAwakeningTechniqueMutation = ref<PendingMutation | null>(null);
 const awakeningMessageDraft = ref('');
 const awakeningTechniqueDraft = ref<string | null>(null);
-type View = 'home' | 'adventure' | 'otherworld' | 'trials' | 'secret' | 'history' | 'playtest' | 'character' | 'status' | 'skills' | 'shop' | 'polishing' | 'bank' | 'guide' | 'ai' | 'vault' | 'party' | 'property' | 'merchant' | 'villa' | 'recollections' | 'trophies';
+type View = 'home' | 'adventure' | 'otherworld' | 'trials' | 'secret' | 'history' | 'playtest' | 'character' | 'status' | 'skills' | 'shop' | 'polishing' | 'bank' | 'guide' | 'ai' | 'vault' | 'party' | 'property' | 'market' | 'merchant' | 'villa' | 'recollections' | 'trophies';
 const equipmentView = ref<View>('home');
+const marketInitialPane = ref<'browse' | 'sell'>('browse');
 const tabs: Record<UndergroundDestination, Array<{ key: View; label: string }>> = {
     home: [],
     adventure: [{ key: 'adventure', label: '探索' }, { key: 'trials', label: '試練' }, { key: 'secret', label: '秘密の場所' }, { key: 'otherworld', label: '異世界の戦い' }, { key: 'history', label: '戦闘履歴' }, { key: 'playtest', label: '力試し' }],
     character: [{ key: 'character', label: '能力' }, { key: 'status', label: 'STP配分' }, { key: 'skills', label: 'スキル・覚醒' }, { key: 'vault', label: '装備・保管庫' }, { key: 'ai', label: '戦法' }],
     shop: [{ key: 'shop', label: '装備を買う' }, { key: 'polishing', label: '魔石研磨' }, { key: 'bank', label: '銀行' }, { key: 'guide', label: '案内人と話す' }],
-    exchange: [{ key: 'party', label: 'パーティー' }, { key: 'property', label: '不動産' }, { key: 'merchant', label: '行商人と話す' }],
+    exchange: [{ key: 'party', label: 'パーティー' }, { key: 'property', label: '不動産' }, { key: 'market', label: '露店' }, { key: 'merchant', label: '行商人と話す' }],
     villa: [{ key: 'villa', label: '冒険日誌' }, { key: 'recollections', label: '回想' }, { key: 'trophies', label: 'トロフィー棚' }],
 };
 const currentDestination = computed<UndergroundDestination>(() => undergroundDestinations.find(destination =>
@@ -723,6 +727,7 @@ function navigate(destination: UndergroundDestination): void {
 function selectTab(view: View): void {
     loungeReplay.value = null;
     selectedRecollectionKey.value = null;
+    if (view === 'market') marketInitialPane.value = 'browse';
     if (view === 'merchant') { equipmentView.value = view; void loadMerchantTopics(); }
     else if (view === 'guide') openGuide();
     else if (view === 'recollections') {
@@ -730,6 +735,10 @@ function selectTab(view: View): void {
         selectedRecollectionKey.value = null;
         equipmentView.value = view;
     } else equipmentView.value = view;
+}
+function openMarketSell(): void {
+    selectTab('market');
+    marketInitialPane.value = 'sell';
 }
 async function advanceLounge(): Promise<void> {
     if (loungeReplay.value) { loungeReplay.value = null; return; }
@@ -1215,6 +1224,7 @@ watch(state, (current) => {
     if (typeof current?.distorted_stone_reminder === 'boolean') {
         emit('distortedStoneReminder', current.distorted_stone_reminder);
     }
+    if (current?.market_attention) emit('marketAttention', hasMarketAttention(current.market_attention));
     if (!current || partySelectionHydrated.value) return;
     selectedPartyMemberIds.value = (current.rental_party ?? []).map((member) => member.secretary_id);
     partySelectionHydrated.value = true;
@@ -1315,7 +1325,26 @@ function refresh(returnIfTutorialAlreadyFinished = true): Promise<void> {
     return pending;
 }
 
-function refreshDistortedStoneReminder(): Promise<{ unclaimed: boolean; day: string; reset_after_ms: number }> {
+function hasMarketAttention(attention: MarketAttention | null | undefined): boolean {
+    return (attention?.unclaimed_count ?? 0) + (attention?.unseen_expired_count ?? 0) > 0;
+}
+const marketAttentionVisible = computed(() => hasMarketAttention(state.value?.market_attention));
+async function refreshMarketAttention(): Promise<void> {
+    try {
+        const current = await api<UndergroundState>('/api/v1/me/underground', { cache: 'no-store' });
+        if (state.value && current.market_attention) state.value = { ...state.value, market_attention: current.market_attention };
+    } catch {
+        // The red dot is a convenience; the market screen itself shows the latest listings.
+    }
+}
+function applyMarketBalance(carried: number): void {
+    if (state.value) state.value = { ...state.value, shard_balance: carried };
+}
+function tabHasDot(key: View): boolean {
+    return (key === 'polishing' && !!state.value?.distorted_stone_reminder) || (key === 'market' && marketAttentionVisible.value);
+}
+
+function refreshDistortedStoneReminder(): Promise<{ unclaimed: boolean; day: string; reset_after_ms: number; market_attention?: MarketAttention }> {
     const pending = stateRefreshQueue.then(async () => {
         const previousState = state.value;
         const current = await api<UndergroundState>('/api/v1/me/underground', { cache: 'no-store' });
@@ -1326,6 +1355,7 @@ function refreshDistortedStoneReminder(): Promise<{ unclaimed: boolean; day: str
                 ...state.value,
                 distorted_stone_shop: current.distorted_stone_shop,
                 distorted_stone_reminder: current.distorted_stone_reminder,
+                market_attention: current.market_attention,
             };
         }
         const shop = state.value?.distorted_stone_shop ?? current.distorted_stone_shop;
@@ -1334,6 +1364,7 @@ function refreshDistortedStoneReminder(): Promise<{ unclaimed: boolean; day: str
             unclaimed: state.value?.distorted_stone_reminder ?? current.distorted_stone_reminder ?? false,
             day: shop.day,
             reset_after_ms: shop.reset_after_ms,
+            market_attention: state.value?.market_attention ?? current.market_attention,
         };
     });
     stateRefreshQueue = pending.then(() => {}, () => {});
@@ -2893,7 +2924,7 @@ onUnmounted(() => {
                 </div>
                 <header v-if="currentDestination !== 'home'" class="ug-page-heading"><h1>{{ pageTitle }}</h1><span>{{ state.shard_balance.toLocaleString('ja-JP') }} G</span></header>
                 <nav v-if="pageTabs.length && !activeLoungeEvent && !(selectedRecollection && (equipmentView === 'recollections' || guideMode === 'recollections' && equipmentView === 'guide'))" class="ug-tabs" aria-label="画面内の切り替え">
-                    <button v-for="tab in pageTabs" :key="tab.key" type="button" :class="{ 'notification-anchor': tab.key === 'polishing' && state.distorted_stone_reminder }" :aria-current="equipmentView === tab.key ? 'page' : undefined" @click="selectTab(tab.key)">{{ tab.label }}<span v-if="tab.key === 'polishing' && state.distorted_stone_reminder" class="notification-dot" aria-hidden="true" /></button>
+                    <button v-for="tab in pageTabs" :key="tab.key" type="button" :class="{ 'notification-anchor': tabHasDot(tab.key) }" :aria-current="equipmentView === tab.key ? 'page' : undefined" @click="selectTab(tab.key)">{{ tab.label }}<span v-if="tabHasDot(tab.key)" class="notification-dot" aria-hidden="true" /></button>
                 </nav>
                 <template v-if="activeLoungeEvent">
                     <UndergroundScene :scene="state.visuals?.scenes[activeLoungeEvent.scene]" :show-ai="state.visuals?.show_ai ?? false" />
@@ -2986,6 +3017,7 @@ onUnmounted(() => {
                                 <strong v-else class="ug-sold-out">本日売り切れ</strong>
                             </section>
                             <UndergroundEquipmentShop v-if="equipmentView === 'shop'" @updated="applyEquipmentMutation" />
+                            <UndergroundMarket v-if="equipmentView === 'market'" :attention="state.market_attention" :initial-pane="marketInitialPane" @balance="applyMarketBalance" @attention="refreshMarketAttention" />
                             <UndergroundEquipmentPolishing v-if="equipmentView === 'polishing'" :balance="state.shard_balance" @updated="applyEquipmentMutation" />
             <section v-if="equipmentView === 'guide' || equipmentView === 'recollections' && state.residence?.villa_owned" class="underground-guide-room" aria-label="案内人">
                 <div v-if="equipmentView === 'guide'" class="underground-guide-actions">
@@ -3211,7 +3243,7 @@ onUnmounted(() => {
                 :configuration="state.ai"
                 @updated="applyAiMutation"
             />
-            <UndergroundEquipmentVault v-if="equipmentView === 'vault'" @updated="applyEquipmentMutation" />
+            <UndergroundEquipmentVault v-if="equipmentView === 'vault'" @updated="applyEquipmentMutation" @market="openMarketSell" />
 
 
                 <section v-if="equipmentView === 'character'" class="underground-character-pane" aria-labelledby="underground-character-title">
@@ -3552,7 +3584,7 @@ onUnmounted(() => {
                     </footer>
                 </section>
             </div>
-                <UndergroundNavigation :current="currentDestination" :exchange-discovered="(state.residence?.exchange_intro_page ?? 0) >= 2" :distorted-stone-reminder="state.distorted_stone_reminder" @navigate="navigate" />
+                <UndergroundNavigation :current="currentDestination" :exchange-discovered="(state.residence?.exchange_intro_page ?? 0) >= 2" :distorted-stone-reminder="state.distorted_stone_reminder" :market-attention="marketAttentionVisible" @navigate="navigate" />
             </div>
         </template>
     </section>
