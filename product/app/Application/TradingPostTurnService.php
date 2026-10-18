@@ -327,13 +327,12 @@ final class TradingPostTurnService
             if (! SalePolicy::isSupported($policy)) {
                 throw new DomainException("Stored sale policy for {$resource->key} is invalid.");
             }
-            $rate = $this->inventorySaleRate($settings['inventory_sale_rates'], $resource->key);
-            $quote = $this->sales->plan(
+            $quote = $this->sales->planForResource(
+                $settings['inventory_sale_rates'],
+                $resource->key,
                 $overflowQuantity,
                 (int) $winner->money,
                 $this->boundedAssets->liquidMoneyCapacity($winner, $capacity->money),
-                $rate['inventory_units'],
-                $rate['money_units'],
             );
             $soldQuantity = $quote->inventorySold;
             $discardedQuantity = $quote->inventoryRemaining;
@@ -534,7 +533,7 @@ final class TradingPostTurnService
     ): AuctionListing {
         $resourceKey = $rules->npcResourceKeys[$stream->integer(0, count($rules->npcResourceKeys) - 1)];
         $resource = ResourceDefinition::query()->where('key', $resourceKey)->firstOrFail();
-        $rate = $this->inventorySaleRate($context->ruleset->settings['inventory_sale_rates'], $resourceKey);
+        $rate = $this->sales->rateForResource($context->ruleset->settings['inventory_sale_rates'], $resourceKey);
         $targetValue = $stream->integer($rules->npcResourceValueMinimum, $rules->npcResourceValueMaximum);
         $quantity = intdiv($targetValue * $rate['inventory_units'], $rate['money_units']);
         $baseValue = intdiv($quantity * $rate['money_units'], $rate['inventory_units']);
@@ -592,24 +591,6 @@ final class TradingPostTurnService
             'auto_relist' => false,
             'status' => AuctionListing::STATUS_ACTIVE,
         ]);
-    }
-
-    /**
-     * @param  array<string, mixed>  $rates
-     * @return array{inventory_units: int, money_units: int}
-     */
-    private function inventorySaleRate(array $rates, string $resourceKey): array
-    {
-        $rate = $rates[$resourceKey] ?? null;
-        if (! is_array($rate)
-            || ! is_int($rate['inventory_units'] ?? null)
-            || ! is_int($rate['money_units'] ?? null)
-            || $rate['inventory_units'] < 1
-            || $rate['money_units'] < 1) {
-            throw new DomainException("Inventory sale rate is missing or invalid for {$resourceKey}.");
-        }
-
-        return $rate;
     }
 
     private function sellerProceeds(int $amount, TradingPostRules $rules): int
