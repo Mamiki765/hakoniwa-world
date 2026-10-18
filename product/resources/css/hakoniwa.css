@@ -1418,3 +1418,52 @@ html:is([data-theme="dark"], [data-theme="old-dark"]) .compensation-banner, html
     .underground-market-rows li > span:nth-child(2) { grid-column: 1; color: var(--muted); font-size: .85rem; }
     .underground-market-rows li > :last-child { grid-column: 2; grid-row: 1 / span 2; }
 }
+
+/* 5.5.0 合成・倉庫拡張・チケット回数 */
+.secretary-warehouse-capacity { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: .5rem; }
+.secretary-warehouse-max { color: var(--muted); font-size: .85rem; }
+.secretary-synthesis { display: grid; gap: .9rem; }
+.secretary-synthesis-heading { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: .5rem; }
+.secretary-synthesis-heading p { margin: 0; font-variant-numeric: tabular-nums; }
+.secretary-synthesis-tabs, .secretary-synthesis-filter, .secretary-ticket-shortcuts { display: flex; flex-wrap: wrap; gap: .4rem; }
+.secretary-synthesis-group { display: grid; gap: .5rem; }
+.secretary-synthesis-group h4 { margin: 0; font-size: 1rem; }
+.secretary-synthesis-list { display: grid; gap: .5rem; margin: 0; padding: 0; list-style: none; }
+.secretary-synthesis-list li { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: .6rem; padding: .7rem .8rem; border: 1px solid var(--line); background: var(--paper); }
+.secretary-synthesis-list li > div:first-child { min-width: 0; flex: 1 1 16rem; }
+.secretary-synthesis-list p { margin: .25rem 0 0; }
+.secretary-synthesis-levels { color: var(--muted); font-size: .85rem; overflow-wrap: anywhere; }
+.secretary-synthesis-note { color: var(--muted); font-size: .85rem; }
+.secretary-synthesis-actions { display: flex; align-items: center; gap: .5rem; }
+.link-button { padding: 0; border: 0; background: none; color: var(--navy); text-decoration: underline; cursor: pointer; font: inherit; }
+.secretary-recipe { display: grid; gap: .35rem; padding: .8rem; border: 1px solid var(--line); background: var(--paper); scroll-margin: 4rem; }
+.secretary-recipe > header { display: flex; flex-wrap: wrap; align-items: baseline; gap: .6rem; }
+.secretary-recipe p { margin: 0; }
+.secretary-recipe-formula span.owned { font-weight: 700; }
+.secretary-recipe-crafted { color: var(--navy); font-size: .8rem; font-weight: 900; }
+.secretary-recipe.rarity-relic, .secretary-synthesis-list li.rarity-relic { border: 2px solid #b48a2c; background: linear-gradient(135deg, color-mix(in srgb, #b48a2c 14%, var(--paper)), var(--paper) 60%); }
+.secretary-recipe-stack-list { display: grid; gap: .3rem; margin: 0; padding: 0; list-style: none; }
+.secretary-recipe-stack-list li { display: flex; flex-wrap: wrap; gap: .3rem .8rem; padding: .45rem .7rem; border: 1px solid var(--line); background: var(--paper); scroll-margin: 4rem; }
+.secretary-recipe-stack-list li span { color: var(--muted); font-size: .85rem; }
+.secretary-recipe.highlighted, .secretary-recipe-stack-list li.highlighted { outline: 3px solid var(--navy); outline-offset: 2px; }
+.secretary-synthesis-dialog { display: grid; gap: .8rem; width: min(100%, 30rem); max-height: calc(100dvh - 2rem); overflow: auto; padding: 1.1rem; border: 1px solid var(--navy); background: var(--paper); color: var(--ink); box-shadow: var(--shadow); }
+.secretary-synthesis-dialog h2 { font-size: 1.2rem; }
+.secretary-synthesis-dialog dl { display: grid; gap: .3rem; margin: 0; }
+.secretary-synthesis-dialog dl div { display: flex; justify-content: space-between; gap: 1rem; }
+.secretary-synthesis-dialog dt { color: var(--muted); }
+.secretary-synthesis-dialog dd { margin: 0; font-weight: 900; font-variant-numeric: tabular-nums; text-align: right; }
+.secretary-synthesis-dialog footer { display: flex; justify-content: end; gap: .55rem; }
+.secretary-synthesis-materials { margin: 0; padding-left: 1.2rem; font-size: .9rem; }
+.secretary-ticket-count { display: flex; align-items: center; gap: .4rem; }
+.secretary-ticket-count input { flex: 1; min-width: 0; }
+.secretary-synthesis-done { text-align: center; }
+.secretary-synthesis-done-eyebrow { margin: 0; color: var(--muted); font-size: .8rem; letter-spacing: .1em; }
+.secretary-synthesis-done.relic { border: 2px solid #b48a2c; animation: synthesis-relic-glow 1.6s ease-out 1; }
+.secretary-synthesis-done.relic h2 { color: #8a6416; }
+@keyframes synthesis-relic-glow { from { box-shadow: 0 0 0 0 rgb(180 138 44 / 70%); } to { box-shadow: 0 0 0 1.4rem rgb(180 138 44 / 0%), var(--shadow); } }
+@media (prefers-reduced-motion: reduce) { .secretary-synthesis-done.relic { animation: none; } }
+@media (max-width: 560px) {
+    .secretary-synthesis-dialog footer { justify-content: stretch; }
+    .secretary-synthesis-dialog footer .button { flex: 1; min-height: 2.8rem; }
+    .secretary-synthesis-actions { width: 100%; justify-content: space-between; }
+}
