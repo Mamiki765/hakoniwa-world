@@ -93,7 +93,7 @@ final readonly class UndergroundEquipmentLoadoutResolver
             $row->is_listed => 'この装備はすでに出品中です。',
             $row->equipped_slot !== null => '装備中の品は外してから出品してください。',
             $definition['sellable'] !== true => '通常売却できない品は出品できません。',
-            $definition['rarity'] === 'unique' => 'ユニーク品は出品できません。',
+            $definition['rarity'] === 'unique' && $definition['category'] !== 'resonance' => 'ユニーク品は出品できません。',
             default => null,
         };
 

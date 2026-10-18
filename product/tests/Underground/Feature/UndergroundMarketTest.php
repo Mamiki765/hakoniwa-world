@@ -2,8 +2,8 @@
 
 namespace Tests\Underground\Feature;
 
-use App\Application\Underground\UndergroundEquipmentCatalog;
 use App\Application\Underground\UndergroundAlphaV1PlayerCatalog;
+use App\Application\Underground\UndergroundEquipmentCatalog;
 use App\Application\Underground\UndergroundMarketService;
 use App\Application\Underground\UndergroundRuntimeEquipmentGenerator;
 use App\Application\Underground\UndergroundStarterEquipmentService;
@@ -110,7 +110,7 @@ final class UndergroundMarketTest extends UndergroundPlayerAccessTestCase
         $owned = $this->fixed($buyerProfile, 'steel_dagger');
         $this->fixed($buyerProfile, 'demon_sword_gram');
         $cap = app(UndergroundEquipmentCatalog::class)->definition($owned->definition_key)['item_level'];
-        $item = $this->generated($sellerProfile, $cap + 5);
+        $item = $this->generated($sellerProfile, $cap + 5, 'resonance');
         $price = app(UndergroundEquipmentCatalog::class)->sellPrice($item->generated_payload);
         $listing = $this->listing($seller, $item, $price);
         $blocked = $this->actingAs($buyer)->getJson('/api/v1/me/underground/market')->assertOk()

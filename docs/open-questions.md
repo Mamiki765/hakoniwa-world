@@ -317,7 +317,7 @@
 - Decision: partyは自分のSecretary 1人に、公開・貸出可能な他UserのSecretaryを最大3人まで加えた最大4 actorとする。actorは表示名ではなく`team`と`combatant_id`で結び、Trialは従来どおりsoloを維持する。借用snapshotとLeader level capはbattle開始時に固定し、貸出側へ戦闘状態を書き戻さない。探索のenemy数と通常報酬を別authorityとし、通常報酬はLeaderだけ、貸出報酬は決着したborrowed参加10回ごとにskip ticket 1枚、canonical dayあたり100枚までとする。Boss人数補正は`none`またはcontent-authored tableとする。skipはcontent別に管理し、狩場はactual combat win 50回で1回1枚、Trialはactual full clear 5周で1周10枚を解禁する。skipはcombat・cooldown・貸出参加を発生させず、通常勝利と共通のrepeatable reward settlementだけをsettleし、first-clear等のone-time stateを再発させない。既存`execution_count`を使う一操作最大1,000回の任意回数・周回数も同じ決算経路を使う。総clear数には加えるが、解禁用actual countへは加えない。対応するplayer actionだけ、最低HP割合の生存味方または有効な挑発を受けていない敵をstable orderで選べる。候補がなければ次ruleへ進む。application 3.9.3では敵の単体敵対actionは、生存中の有効な挑発sourceを優先し、それがなければ生存playerからbattle RNGで決定的に1人を選ぶ。実targetはactionごとに一度だけ決め、damage・effect・logで再抽選しない。self、全体、明示target、round-endはこの抽選を消費しない。
 - Boundary: 過去の1対1 battle logを再計算・書換えず、party presentationはv3として分離する。UG-04のNation-owned facility・surface bridge決定をparty/marketへ拡張しない。入札・買い注文・交渉は今回含めない。
 - Deferred: companion framework。
-- Decision record: `docs/roadmap/3.0.0-alpha-underground.md`、`product/docs/releases/5.5.0-market-synthesis.md`（依頼ID `lapis-2026-10-18-release-550`）
+- Decision record: `docs/roadmap/3.0.0-alpha-underground.md`、`product/docs/releases/5.5.0-market-synthesis.md`
 
 ### UG-06 party敵AoEと覚醒ゲージ
 

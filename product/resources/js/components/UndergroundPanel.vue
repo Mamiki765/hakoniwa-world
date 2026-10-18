@@ -1344,7 +1344,7 @@ function tabHasDot(key: View): boolean {
     return (key === 'polishing' && !!state.value?.distorted_stone_reminder) || (key === 'market' && marketAttentionVisible.value);
 }
 
-function refreshDistortedStoneReminder(): Promise<{ unclaimed: boolean; day: string; reset_after_ms: number }> {
+function refreshDistortedStoneReminder(): Promise<{ unclaimed: boolean; day: string; reset_after_ms: number; market_attention?: MarketAttention }> {
     const pending = stateRefreshQueue.then(async () => {
         const previousState = state.value;
         const current = await api<UndergroundState>('/api/v1/me/underground', { cache: 'no-store' });
@@ -1355,6 +1355,7 @@ function refreshDistortedStoneReminder(): Promise<{ unclaimed: boolean; day: str
                 ...state.value,
                 distorted_stone_shop: current.distorted_stone_shop,
                 distorted_stone_reminder: current.distorted_stone_reminder,
+                market_attention: current.market_attention,
             };
         }
         const shop = state.value?.distorted_stone_shop ?? current.distorted_stone_shop;
@@ -1363,6 +1364,7 @@ function refreshDistortedStoneReminder(): Promise<{ unclaimed: boolean; day: str
             unclaimed: state.value?.distorted_stone_reminder ?? current.distorted_stone_reminder ?? false,
             day: shop.day,
             reset_after_ms: shop.reset_after_ms,
+            market_attention: state.value?.market_attention ?? current.market_attention,
         };
     });
     stateRefreshQueue = pending.then(() => {}, () => {});

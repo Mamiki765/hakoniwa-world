@@ -1645,6 +1645,7 @@ class TurnCellProcessingTest extends TestCase
     #[DataProvider('populationGrowthEmblemCases')]
     public function test_attraction_growth_uses_distinct_pre_and_post_ordinary_ranges_and_clamps(
         array $itemKeys,
+        int $expectedPreOrdinaryAttractionPopulation,
         int $expectedAttractionPopulation,
         int $expectedNaturalPopulation,
     ): void {
@@ -1664,7 +1665,7 @@ class TurnCellProcessingTest extends TestCase
         }
 
         $cases = [
-            ['before' => 7_000, 'minimum' => 100, 'maximum' => 3_000, 'draw' => 3_000, 'after' => 10_000],
+            ['before' => 7_000, 'minimum' => 100, 'maximum' => 3_000, 'draw' => 3_000, 'after' => $expectedPreOrdinaryAttractionPopulation],
             ['before' => 10_000, 'minimum' => 100, 'maximum' => 300, 'draw' => 300, 'after' => $expectedAttractionPopulation],
             ['before' => 25_450, 'minimum' => 100, 'maximum' => 300, 'draw' => 300, 'after' => 25_500],
         ];
@@ -1708,14 +1709,14 @@ class TurnCellProcessingTest extends TestCase
         );
     }
 
-    /** @return array<string, array{list<string>, int, int}> */
+    /** @return array<string, array{list<string>, int, int, int}> */
     public static function populationGrowthEmblemCases(): array
     {
         return [
-            'no emblem' => [[], 10_300, 2_000],
-            'love adds ten percent' => [[SecretaryItemCatalog::LOVE_EMBLEM], 10_330, 2_100],
-            'succubus doubles growth' => [[SecretaryItemCatalog::SUCCUBUS_EMBLEM], 10_600, 3_000],
-            'both add one hundred ten percent' => [[SecretaryItemCatalog::LOVE_EMBLEM, SecretaryItemCatalog::SUCCUBUS_EMBLEM], 10_630, 3_100],
+            'no emblem' => [[], 10_000, 10_300, 2_000],
+            'love adds ten percent' => [[SecretaryItemCatalog::LOVE_EMBLEM], 10_300, 10_330, 2_100],
+            'succubus doubles growth' => [[SecretaryItemCatalog::SUCCUBUS_EMBLEM], 13_000, 10_600, 3_000],
+            'both add one hundred ten percent' => [[SecretaryItemCatalog::LOVE_EMBLEM, SecretaryItemCatalog::SUCCUBUS_EMBLEM], 13_300, 10_630, 3_100],
         ];
     }
 

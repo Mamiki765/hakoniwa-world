@@ -19,6 +19,7 @@ import ShipStatusWindow from './components/ShipStatusWindow.vue';
 import SecretaryEquipmentModal from './components/SecretaryEquipmentModal.vue';
 import TradingPostPanel from './components/TradingPostPanel.vue';
 import UndergroundPanel from './components/UndergroundPanel.vue';
+import type { MarketAttention } from './components/UndergroundMarket.vue';
 import SecretaryImageSlotsEditor from './components/SecretaryImageSlotsEditor.vue';
 import SecretaryMenu from './components/SecretaryMenu.vue';
 import SecretarySynthesis from './components/SecretarySynthesis.vue';
@@ -479,11 +480,11 @@ async function loadDistortedStoneReminder(): Promise<void> {
     try {
         const reminder = undergroundPanel.value
             ? await undergroundPanel.value.refreshDistortedStoneReminder()
-            : await api<{ unclaimed: boolean; day: string; reset_after_ms: number; market_attention?: { unclaimed_count: number; unseen_expired_count: number } }>('/api/v1/me/underground/distorted-stone-reminder', { cache: 'no-store' });
+            : await api<{ unclaimed: boolean; day: string; reset_after_ms: number; market_attention?: MarketAttention }>('/api/v1/me/underground/distorted-stone-reminder', { cache: 'no-store' });
         if (!distortedStoneReminderStopped && revision === distortedStoneReminderRevision) {
             distortedStoneReminder.value = reminder.unclaimed;
         }
-        const attention = (reminder as { market_attention?: { unclaimed_count: number; unseen_expired_count: number } }).market_attention;
+        const attention = reminder.market_attention;
         if (attention) marketAttention.value = attention.unclaimed_count + attention.unseen_expired_count > 0;
         distortedStoneReminderDay = reminder.day;
         distortedStoneReminderDeadline = performance.now() + reminder.reset_after_ms;
