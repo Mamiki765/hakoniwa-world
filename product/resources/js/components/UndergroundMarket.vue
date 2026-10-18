@@ -301,7 +301,7 @@ onMounted(() => { void load(); });
                     <template #action>{{ listing.is_own ? '自分の出品' : listing.blocked_reasons.length ? '買えません' : '買う' }}</template>
                 </EquipmentItemCard>
             </div>
-            <nav class="island-event-pagination" aria-label="露店のページ">
+            <nav v-if="market.page > 1 || market.has_more" class="island-event-pagination" aria-label="露店のページ">
                 <button type="button" :disabled="loading || busy || market.page <= 1" @click="showPage(market.page - 1)">前のページ</button>
                 <span>{{ market.page }}ページ</span>
                 <button type="button" :disabled="loading || busy || !market.has_more" @click="showPage(market.page + 1)">次のページ</button>
