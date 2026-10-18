@@ -1394,8 +1394,10 @@ html:is([data-theme="dark"], [data-theme="old-dark"]) .compensation-banner, html
 /* 5.5.0 露店 */
 .underground-market { display: grid; gap: 1rem; }
 .underground-market-filters { display: flex; flex-wrap: wrap; align-items: end; gap: .5rem .8rem; padding: .7rem; border: 1px solid var(--line); background: var(--paper); }
-.underground-market-filters label { display: grid; gap: .2rem; font-size: .8rem; color: var(--muted); }
-.underground-market-filters input[type="number"] { width: 5.5rem; }
+.underground-market-filters label { display: flex; align-items: center; gap: .3rem; font-size: .85rem; color: var(--muted); }
+.underground-market-filters input[type="number"] { width: 5rem; }
+.underground-market-filters select, .underground-market-filters input[type="number"] { min-height: 2.2rem; padding: .2rem .4rem; border: 1px solid var(--line); background: var(--input-surface, var(--paper)); color: var(--ink); font: inherit; }
+.underground-market-filters button[type="submit"] { min-height: 2.2rem; padding: .3rem .8rem; border: 1px solid var(--navy-solid); background: var(--navy-solid); color: var(--on-solid); font: inherit; font-weight: 800; cursor: pointer; }
 .underground-market-check { display: flex !important; align-items: center; gap: .35rem; color: inherit !important; }
 .underground-market-cap { margin: 0; font-size: .9rem; }
 .underground-market-price { font-weight: 900; font-variant-numeric: tabular-nums; }
@@ -1416,7 +1418,7 @@ html:is([data-theme="dark"], [data-theme="old-dark"]) .compensation-banner, html
 @media (max-width: 560px) {
     .underground-market-rows li { grid-template-columns: minmax(0, 1fr) auto; }
     .underground-market-rows li > span:nth-child(2) { grid-column: 1; color: var(--muted); font-size: .85rem; }
-    .underground-market-rows li > :last-child { grid-column: 2; grid-row: 1 / span 2; }
+    .underground-market-rows li > :nth-child(3) { grid-column: 2; grid-row: 1 / span 2; }
 }
 
 /* 5.5.0 合成・倉庫拡張・チケット回数 */
@@ -1426,6 +1428,10 @@ html:is([data-theme="dark"], [data-theme="old-dark"]) .compensation-banner, html
 .secretary-synthesis-heading { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: .5rem; }
 .secretary-synthesis-heading p { margin: 0; font-variant-numeric: tabular-nums; }
 .secretary-synthesis-tabs, .secretary-synthesis-filter, .secretary-ticket-shortcuts { display: flex; flex-wrap: wrap; gap: .4rem; }
+.secretary-synthesis-tabs button, .secretary-synthesis-filter button, .secretary-ticket-shortcuts button { min-height: 2.4rem; padding: .35rem .9rem; border: 1px solid var(--line); background: var(--paper); color: var(--ink); font: inherit; font-weight: 800; cursor: pointer; }
+.secretary-synthesis-tabs button[aria-pressed="true"], .secretary-synthesis-filter button[aria-pressed="true"] { border-color: var(--navy-solid); background: var(--navy-solid); color: var(--on-solid); }
+.secretary-synthesis-heading .secretary-section-title { font-size: 1.25rem; }
+.secretary-synthesis-group h4 { color: var(--muted); font-size: .85rem; letter-spacing: .05em; }
 .secretary-synthesis-group { display: grid; gap: .5rem; }
 .secretary-synthesis-group h4 { margin: 0; font-size: 1rem; }
 .secretary-synthesis-list { display: grid; gap: .5rem; margin: 0; padding: 0; list-style: none; }
