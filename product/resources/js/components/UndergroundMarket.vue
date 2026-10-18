@@ -13,7 +13,7 @@ interface MarketListing {
     item: EquipmentItem;
     seller: { secretary_name: string; island_name: string | null };
     price: number;
-    expires_at: string;
+    expires_at: string | null;
     is_own: boolean;
     purchasable: boolean;
     blocked_reasons: string[];
@@ -28,7 +28,7 @@ interface MarketResponse {
 }
 type ListableItem = EquipmentItem;
 interface VaultResponse { items: ListableItem[]; listing_limit: number; active_count: number }
-interface MineListing { id: number; item?: EquipmentItem; item_snapshot?: EquipmentItem; price: number; proceeds?: number; expires_at?: string; sold_at?: string; expired_at?: string; claimed?: boolean; seen?: boolean }
+interface MineListing { id: number; item?: EquipmentItem; item_snapshot?: EquipmentItem; price: number; proceeds?: number; expires_at?: string | null; sold_at?: string; expired_at?: string; claimed?: boolean; seen?: boolean }
 interface MineResponse {
     listing_limit: number;
     active: MineListing[];
@@ -86,11 +86,6 @@ const sellProceeds = computed(() => (sellPrice.value && sellPrice.value > 0 ? pr
 const sellPriceValid = computed(() => !!sellTarget.value && !!sellPrice.value && Number.isInteger(sellPrice.value)
     && sellPrice.value >= (sellTarget.value.market_minimum_price ?? 1));
 
-function daysLeft(iso: string | undefined): string {
-    if (!iso) return '';
-    const hours = Math.max(0, Math.round((Date.parse(iso) - Date.now()) / 3_600_000));
-    return hours >= 24 ? `残り${Math.floor(hours / 24)}日` : `残り${hours}時間`;
-}
 function requestId(): string { return crypto.randomUUID(); }
 function action(fingerprint: string): { fingerprint: string; requestId: string } {
     const current = pending.value?.fingerprint === fingerprint ? pending.value : { fingerprint, requestId: requestId() };
@@ -293,7 +288,7 @@ onMounted(() => { void load(); });
                     :disabled="busy || listing.is_own || !listing.purchasable || listing.blocked_reasons.length > 0"
                     @action="confirmBuy = listing"
                 >
-                    <template #status><span>{{ listing.seller.secretary_name }}<template v-if="listing.seller.island_name">（{{ listing.seller.island_name }}）</template>・{{ daysLeft(listing.expires_at) }}</span></template>
+                    <template #status><span>{{ listing.seller.secretary_name }}<template v-if="listing.seller.island_name">（{{ listing.seller.island_name }}）</template></span></template>
                     <template #price>
                         <span class="underground-market-price">{{ yen(listing.price) }}</span>
                         <span v-for="code in listing.blocked_reasons" :key="code" class="underground-equipment-unaffordable">{{ reason(code) }}</span>
@@ -309,7 +304,7 @@ onMounted(() => { void load(); });
         </template>
 
         <template v-if="pane === 'sell'">
-            <p v-if="listable" class="underground-market-cap">出品中 {{ listable.active_count }} / {{ listable.listing_limit }}件。出品は{{ listable.listing_limit }}件まで、期限は7日です。売れると手数料10%を引いた額が届きます。</p>
+            <p v-if="listable" class="underground-market-cap">出品中 {{ listable.active_count }} / {{ listable.listing_limit }}件。出品は{{ listable.listing_limit }}件までです。売れると手数料10%を引いた額が届きます。</p>
             <p v-if="listable && !canList" class="status">出品枠がいっぱいです。出品を取り下げるか、売れるまでお待ちください。</p>
             <p v-if="!loading && vault.length === 0" class="status">出品できる装備がありません。</p>
             <div class="underground-equipment-card-grid">
@@ -346,13 +341,13 @@ onMounted(() => { void load(); });
                 <ul class="underground-market-rows">
                     <li v-for="listing in mine.active" :key="listing.id">
                         <span>{{ listing.item?.name }} IL{{ listing.item?.item_level }}</span>
-                        <span>{{ yen(listing.price) }}・{{ daysLeft(listing.expires_at) }}</span>
+                        <span>{{ yen(listing.price) }}</span>
                         <button type="button" :disabled="busy" @click="cancel(listing)">取り下げる</button>
                     </li>
                 </ul>
             </section>
             <section v-if="mine.expired.length" class="underground-market-section" aria-labelledby="market-expired-title">
-                <header><h2 id="market-expired-title">期限切れ</h2></header>
+                <header><h2 id="market-expired-title">過去の期限切れ</h2></header>
                 <p>売れ残った品物は保管庫に戻っています。</p>
                 <ul class="underground-market-rows">
                     <li v-for="listing in mine.expired" :key="listing.id">

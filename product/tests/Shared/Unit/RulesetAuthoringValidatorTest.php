@@ -27,7 +27,6 @@ class RulesetAuthoringValidatorTest extends TestCase
         }
         unset($missile);
         $settings['underground_market']['listing_limit']++;
-        $settings['underground_market']['duration_hours']++;
         $settings['underground_market']['proceeds_numerator']--;
         $settings['underground_market']['page_size']++;
         $settings['secretary']['warehouse']['expansion_cost_paradox']++;
@@ -96,6 +95,14 @@ class RulesetAuthoringValidatorTest extends TestCase
     public static function invalidCurrentRulesetProvider(): array
     {
         return [
+            'market listings have no expiration' => [
+                static function (array $settings): array {
+                    $settings['underground_market']['listing_expiration'] = 'timed';
+
+                    return $settings;
+                },
+                'listing_expiration must be none',
+            ],
             'market proceeds cannot create money' => [
                 static function (array $settings): array {
                     $settings['underground_market']['proceeds_numerator'] = $settings['underground_market']['proceeds_denominator'] + 1;

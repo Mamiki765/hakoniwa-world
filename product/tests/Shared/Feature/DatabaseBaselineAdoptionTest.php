@@ -134,6 +134,7 @@ final class DatabaseBaselineAdoptionTest extends TestCase
             'capital history column' => ['ALTER TABLE nations ALTER COLUMN last_capital_relocation_turn TYPE text'],
             'warehouse expansion constraint' => ['ALTER TABLE secretary_surface_states DROP CONSTRAINT secretary_warehouse_expansions_check'],
             'market receipt replay uniqueness' => ['ALTER TABLE underground_market_receipts DROP CONSTRAINT underground_market_receipts_underground_profile_id_request_id_u'],
+            'market listings permit no deadline' => ['ALTER TABLE underground_market_listings ALTER COLUMN expires_at SET NOT NULL'],
         ];
     }
 
@@ -156,6 +157,8 @@ final class DatabaseBaselineAdoptionTest extends TestCase
         DB::table('migrations')->whereIn('migration', [
             CurrentDatabaseBaseline::MARKET_SYNTHESIS_MIGRATION,
             '2026_10_18_010000_publish_market_synthesis_ruleset',
+            CurrentDatabaseBaseline::INDEFINITE_MARKET_MIGRATION,
+            '2026_10_18_030000_publish_indefinite_market_ruleset',
         ])->delete();
         foreach ([
             CurrentDatabaseBaseline::QUEUE_RULESET_RESOLUTION_MIGRATION => 'enforce_queue_item_world_ruleset_match',

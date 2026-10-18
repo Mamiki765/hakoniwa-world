@@ -24,6 +24,8 @@ final class CurrentDatabaseBaseline
 
     public const MARKET_SYNTHESIS_MIGRATION = '2026_10_18_000000_add_market_synthesis_and_warehouse_expansion';
 
+    public const INDEFINITE_MARKET_MIGRATION = '2026_10_18_020000_make_underground_market_listings_indefinite';
+
     /** @return array<string, string> */
     public function structure(bool $excludeCapitalRelocationTurn = false, bool $excludeEcopo = false): array
     {
@@ -207,6 +209,19 @@ SQL, [$hasEcopo]);
             );
             foreach ($expected as $key => $variant) {
                 $expected[$key] = array_replace($variant, $extension[$key]);
+                ksort($expected[$key]);
+            }
+        }
+        if (in_array(self::INDEFINITE_MARKET_MIGRATION, $applied, true)) {
+            if (! in_array(self::MARKET_SYNTHESIS_MIGRATION, $applied, true)) {
+                throw new RuntimeException('Indefinite listings require the market schema first.');
+            }
+            $extension = json_decode(
+                (string) file_get_contents(database_path('baselines/indefinite_market_structure.json')),
+                true, 512, JSON_THROW_ON_ERROR,
+            );
+            foreach ($expected as $key => $variant) {
+                $expected[$key] = array_replace($variant, $extension);
                 ksort($expected[$key]);
             }
         }

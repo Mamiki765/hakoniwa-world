@@ -16,7 +16,7 @@ use Illuminate\Support\Carbon;
  * @property string $status
  * @property array<string,mixed> $item_snapshot
  * @property array<string,mixed> $seller_snapshot
- * @property Carbon $expires_at
+ * @property Carbon|null $expires_at
  * @property Carbon|null $sold_at
  * @property Carbon|null $expired_at
  * @property Carbon|null $proceeds_claimed_at

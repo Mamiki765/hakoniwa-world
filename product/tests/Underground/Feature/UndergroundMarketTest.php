@@ -12,6 +12,7 @@ use App\Models\UndergroundOwnedEquipment;
 use App\Models\UndergroundProfile;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Tests\Support\UndergroundPlayerAccessTestCase;
 
@@ -137,7 +138,7 @@ final class UndergroundMarketTest extends UndergroundPlayerAccessTestCase
         $this->assertDatabaseHas('underground_market_listings', ['id' => $listing['id'], 'status' => 'active']);
     }
 
-    public function test_expired_gets_release_equipment_without_marking_unshown_or_other_owners_listings_seen(): void
+    public function test_legacy_expired_history_stays_released_without_marking_unshown_or_other_owners_listings_seen(): void
     {
         [$seller, $sellerProfile] = $this->participant('期限切れを見る秘書');
         [$other, $otherProfile] = $this->participant('別の出品者');
@@ -145,8 +146,13 @@ final class UndergroundMarketTest extends UndergroundPlayerAccessTestCase
         $secondItem = $this->fixed($sellerProfile, 'leather_armor');
         $first = $this->listing($seller, $firstItem, 100);
         $second = $this->listing($seller, $secondItem, 100);
-        $foreign = $this->listing($other, $this->fixed($otherProfile, 'iron_dagger'), 100);
-        $this->travel(config('hakoniwa.ruleset.underground_market.duration_hours') + 1)->hours();
+        $foreignItem = $this->fixed($otherProfile, 'iron_dagger');
+        $foreign = $this->listing($other, $foreignItem, 100);
+        // These are supported terminal rows from the former v40 expiration path.
+        UndergroundMarketListing::query()->whereIn('id', [$first['id'], $second['id'], $foreign['id']])->update([
+            'status' => 'expired', 'expires_at' => now()->subDay(), 'expired_at' => now()->subDay(),
+        ]);
+        UndergroundOwnedEquipment::query()->whereIn('id', [$firstItem->id, $secondItem->id, $foreignItem->id])->update(['is_listed' => false]);
 
         $this->actingAs($seller)->getJson('/api/v1/me/underground/market/mine')->assertOk()
             ->assertJsonCount(2, 'data.expired')->assertJsonPath('data.active', []);
@@ -165,6 +171,95 @@ final class UndergroundMarketTest extends UndergroundPlayerAccessTestCase
         $this->assertNull(UndergroundMarketListing::query()->findOrFail($second['id'])->seen_by_seller_at);
         $this->assertNull(UndergroundMarketListing::query()->findOrFail($foreign['id'])->seen_by_seller_at);
         $this->assertSame(1, app(UndergroundMarketService::class)->attentionForProfile($otherProfile)['unseen_expired_count']);
+    }
+
+    public function test_active_listings_keep_their_slots_past_legacy_deadlines_until_purchase_or_cancellation(): void
+    {
+        [$seller, $sellerProfile] = $this->participant('長く出品する秘書');
+        [$buyer, $buyerProfile] = $this->participant('後から買う秘書');
+        $this->fixed($buyerProfile, 'polished_steel_dagger');
+        $limit = config('hakoniwa.ruleset.underground_market.listing_limit');
+        $listings = [];
+        $items = [];
+        for ($index = 0; $index < $limit; $index++) {
+            $items[] = $item = $this->fixed($sellerProfile, 'iron_dagger');
+            $listings[] = $listing = $this->listing($seller, $item, 100);
+            $this->assertNull($listing['expires_at']);
+        }
+        // An active v40 row can still carry its original deadline until migration.
+        UndergroundMarketListing::query()->whereKey($listings[0]['id'])->update(['expires_at' => now()->subDay()]);
+        $this->travel(400)->days();
+
+        $this->actingAs($seller)->getJson('/api/v1/me/underground/market/mine')->assertOk()
+            ->assertJsonCount($limit, 'data.active')->assertJsonPath('data.expired', [])
+            ->assertJsonPath('data.active.0.expires_at', null);
+        $this->getJson('/api/v1/me/underground/market')->assertOk()->assertJsonCount($limit, 'data.listings');
+        $this->assertSame(0, app(UndergroundMarketService::class)->attentionForProfile($sellerProfile)['unseen_expired_count']);
+        foreach ($items as $item) {
+            $this->assertTrue($item->fresh()->is_listed);
+        }
+        $extra = $this->fixed($sellerProfile, 'iron_dagger');
+        $this->postJson('/api/v1/me/underground/market/listings', [
+            'request_id' => (string) Str::uuid(), 'equipment_id' => $extra->id, 'price' => 100,
+        ])->assertUnprocessable()->assertJsonPath('code', 'listing_limit');
+
+        $purchase = ['request_id' => (string) Str::uuid(), 'expected_price' => 100];
+        $path = '/api/v1/me/underground/market/listings/'.$listings[0]['id'].'/purchase';
+        $result = $this->actingAs($buyer)->postJson($path, $purchase)->assertOk();
+        $this->postJson($path, $purchase)->assertOk()->assertExactJson($result->json());
+        $this->assertSame($buyerProfile->id, $items[0]->fresh()->underground_profile_id);
+        $this->assertSame(4_900, $buyerProfile->fresh()->shard_balance);
+        $this->actingAs($seller)->deleteJson('/api/v1/me/underground/market/listings/'.$listings[1]['id'])
+            ->assertOk()->assertJsonPath('data.status', 'cancelled');
+        $this->assertFalse($items[1]->fresh()->is_listed);
+        $this->assertSame(0, app(UndergroundMarketService::class)->attentionForProfile($sellerProfile)['unseen_expired_count']);
+    }
+
+    public function test_indefinite_migration_changes_only_active_deadlines_and_preserves_terminal_assets_and_receipts(): void
+    {
+        [$seller, $sellerProfile] = $this->participant('移行する出品者');
+        [$buyer, $buyerProfile] = $this->participant('移行する購入者');
+        $this->fixed($buyerProfile, 'polished_steel_dagger');
+        $items = [];
+        $listings = [];
+        foreach (['active', 'sold', 'cancelled', 'expired'] as $status) {
+            $items[$status] = $item = $this->fixed($sellerProfile, 'iron_dagger');
+            $listings[$status] = $this->listing($seller, $item, 100);
+        }
+        $this->actingAs($buyer)->postJson('/api/v1/me/underground/market/listings/'.$listings['sold']['id'].'/purchase', [
+            'request_id' => (string) Str::uuid(), 'expected_price' => 100,
+        ])->assertOk();
+        $this->actingAs($seller)->deleteJson('/api/v1/me/underground/market/listings/'.$listings['cancelled']['id'])->assertOk();
+        UndergroundMarketListing::query()->whereKey($listings['expired']['id'])->update(['status' => 'expired', 'expired_at' => now()->subDay()]);
+        $items['expired']->update(['is_listed' => false]);
+        $deadline = now()->subDay();
+        DB::table('underground_market_listings')->update(['expires_at' => $deadline]);
+        DB::statement('ALTER TABLE underground_market_listings ALTER COLUMN expires_at SET NOT NULL');
+        $receipt = DB::table('underground_market_receipts')
+            ->whereRaw("result_snapshot->'listing'->>'id' = ?", [(string) $listings['active']['id']])->sole();
+        $snapshot = json_decode($receipt->result_snapshot, true, 512, JSON_THROW_ON_ERROR);
+        $snapshot['listing']['expires_at'] = $deadline->toIso8601String();
+        DB::table('underground_market_receipts')->where('id', $receipt->id)->update(['result_snapshot' => json_encode($snapshot, JSON_THROW_ON_ERROR)]);
+        $readRows = static fn (string $table): array => DB::table($table)->orderBy('id')->get()->map(static fn (object $row): array => (array) $row)->all();
+        $terminalBefore = DB::table('underground_market_listings')->where('status', '<>', 'active')->orderBy('id')->get()->all();
+        $assetsBefore = [$readRows('underground_profiles'), $readRows('underground_owned_equipment'), $readRows('underground_market_receipts')];
+
+        $migration = require database_path('migrations/2026_10_18_020000_make_underground_market_listings_indefinite.php');
+        DB::transaction(static function () use ($migration): void {
+            $migration->up();
+        });
+
+        $this->assertNull(UndergroundMarketListing::query()->findOrFail($listings['active']['id'])->expires_at);
+        $this->assertEquals($terminalBefore, DB::table('underground_market_listings')->where('status', '<>', 'active')->orderBy('id')->get()->all());
+        $this->assertSame($assetsBefore, [$readRows('underground_profiles'), $readRows('underground_owned_equipment'), $readRows('underground_market_receipts')]);
+        $this->assertTrue($items['active']->fresh()->is_listed);
+        $this->assertSame($buyerProfile->id, $items['sold']->fresh()->underground_profile_id);
+        $this->postJson('/api/v1/me/underground/market/listings', [
+            'request_id' => $receipt->request_id, 'equipment_id' => $items['active']->id, 'price' => 100,
+        ])->assertOk()->assertJsonPath('data.listing.expires_at', $deadline->toIso8601String());
+        $this->getJson('/api/v1/me/underground/market/mine')->assertOk()
+            ->assertJsonCount(1, 'data.active')->assertJsonCount(1, 'data.sold')->assertJsonCount(1, 'data.expired')
+            ->assertJsonPath('data.active.0.expires_at', null)->assertJsonPath('data.unclaimed_total', 90);
     }
 
     /** @return array{User, UndergroundProfile} */
