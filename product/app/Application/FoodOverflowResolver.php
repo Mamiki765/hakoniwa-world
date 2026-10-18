@@ -151,20 +151,12 @@ final class FoodOverflowResolver
         if ($foodCredit->capacity !== $capacity->foodTons) {
             throw new DomainException('Food capacity changed while resolving hard-cap overflow.');
         }
-        $rate = $context->ruleset->settings['inventory_sale_rates'][$resource->key] ?? null;
-        if (! is_array($rate)
-            || ! is_int($rate['inventory_units'] ?? null)
-            || $rate['inventory_units'] < 1
-            || ! is_int($rate['money_units'] ?? null)
-            || $rate['money_units'] < 1) {
-            throw new DomainException("Inventory sale rate is missing or invalid for {$resource->key}.");
-        }
-        $quote = $this->sales->plan(
+        $quote = $this->sales->planForResource(
+            $context->ruleset->settings['inventory_sale_rates'] ?? [],
+            $resource->key,
             $foodCredit->overflow,
             (int) $lockedNation->money,
             $this->boundedAssets->liquidMoneyCapacity($lockedNation, $capacity->money),
-            $rate['inventory_units'],
-            $rate['money_units'],
         );
         if ($quote->appliedMoney > 0) {
             $lockedNation->increment('money', $quote->appliedMoney);
@@ -189,8 +181,8 @@ final class FoodOverflowResolver
                 ...$resolution,
                 'money_before' => $quote->moneyBefore,
                 'money_after' => $quote->moneyAfter,
-                'inventory_units_per_batch' => $rate['inventory_units'],
-                'money_units_per_batch' => $rate['money_units'],
+                'inventory_units_per_batch' => $quote->inventoryUnitsPerBatch,
+                'money_units_per_batch' => $quote->moneyUnitsPerBatch,
             ],
             'nation',
             $quote->inventoryRemaining > 0 ? 'warning' : 'info',

@@ -54,18 +54,24 @@ class EconomyBoundaryTest extends TestCase
     public function test_inventory_sale_requires_room_for_the_complete_authored_revenue_batch(): void
     {
         $planner = new InventorySalePlanner(new CappedAddition);
+        $rates = [
+            'other' => ['inventory_units' => 1_000, 'money_units' => 1],
+            'fixture' => ['inventory_units' => 7, 'money_units' => 3],
+        ];
 
-        $blocked = $planner->plan(2_500, 9_998, 9_999, 1_000, 2);
+        $blocked = $planner->planForResource($rates, 'fixture', 17, 98, 100);
         $this->assertSame(0, $blocked->inventorySold);
-        $this->assertSame(2_500, $blocked->inventoryRemaining);
+        $this->assertSame(17, $blocked->inventoryRemaining);
         $this->assertSame(0, $blocked->appliedMoney);
-        $this->assertSame(4, $blocked->overflowMoney);
+        $this->assertSame(6, $blocked->overflowMoney);
 
-        $sold = $planner->plan(2_500, 9_997, 9_999, 1_000, 2);
-        $this->assertSame(1_000, $sold->inventorySold);
-        $this->assertSame(1_500, $sold->inventoryRemaining);
-        $this->assertSame(2, $sold->appliedMoney);
-        $this->assertSame(2, $sold->overflowMoney);
+        $sold = $planner->planForResource($rates, 'fixture', 17, 97, 100);
+        $this->assertSame(7, $sold->inventorySold);
+        $this->assertSame(10, $sold->inventoryRemaining);
+        $this->assertSame(3, $sold->appliedMoney);
+        $this->assertSame(3, $sold->overflowMoney);
+        $this->assertSame(100, $sold->moneyAfter);
+        $this->assertSame([7, 3], [$sold->inventoryUnitsPerBatch, $sold->moneyUnitsPerBatch]);
     }
 
     public function test_undersea_city_maintenance_is_all_or_nothing_with_one_way_two_for_one_substitution(): void
