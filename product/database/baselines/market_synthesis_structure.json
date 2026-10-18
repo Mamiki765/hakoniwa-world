@@ -1,0 +1,54 @@
+{
+  "upgraded_5_0_1": {
+    "sequence:secretary_synthesis_receipts_id_seq": "e5310bdaf55055497496ec52c382da22e840a59a8d82a393b18211bd89b121ef",
+    "sequence:secretary_warehouse_expansion_receipts_id_seq": "e5310bdaf55055497496ec52c382da22e840a59a8d82a393b18211bd89b121ef",
+    "sequence:underground_market_listings_id_seq": "e5310bdaf55055497496ec52c382da22e840a59a8d82a393b18211bd89b121ef",
+    "sequence:underground_market_receipts_id_seq": "e5310bdaf55055497496ec52c382da22e840a59a8d82a393b18211bd89b121ef",
+    "table:secretary_surface_states": "b5c89196adf57b81706c7eb01d61b921ecc882739d659462cf74b8149f0535a5",
+    "table:secretary_synthesis_receipts": "c01d4ae129773dcd2b84da2c87c4d1f56244625f050664385120e01d2d654d24",
+    "table:secretary_warehouse_expansion_receipts": "5c47388d9dcabef7412c4c68700d114f8c49a732482ee1e95dde9b25bc18029c",
+    "table:underground_market_listings": "b207286db72f97d39c1850d8401697dbe28a0b671186b4e5562cc28e2199f0b4",
+    "table:underground_market_receipts": "57befcb0bf6e4f7fbdd60b0d6e5039b45b4ee5298fea251f250c24d9e57458bc",
+    "table:underground_owned_equipment": "2d020076f2c7d7c9312075bae7d39b851dd353620e2e8f280205860c05d68ec7",
+    "table:user_paradox_ledger": "df4ec975070ddc7928284f29135b32e3428eacf33e9de6e986f363bebf27e3ce"
+  },
+  "restored_5_0_1": {
+    "sequence:secretary_synthesis_receipts_id_seq": "e5310bdaf55055497496ec52c382da22e840a59a8d82a393b18211bd89b121ef",
+    "sequence:secretary_warehouse_expansion_receipts_id_seq": "e5310bdaf55055497496ec52c382da22e840a59a8d82a393b18211bd89b121ef",
+    "sequence:underground_market_listings_id_seq": "e5310bdaf55055497496ec52c382da22e840a59a8d82a393b18211bd89b121ef",
+    "sequence:underground_market_receipts_id_seq": "e5310bdaf55055497496ec52c382da22e840a59a8d82a393b18211bd89b121ef",
+    "table:secretary_surface_states": "b5c89196adf57b81706c7eb01d61b921ecc882739d659462cf74b8149f0535a5",
+    "table:secretary_synthesis_receipts": "c01d4ae129773dcd2b84da2c87c4d1f56244625f050664385120e01d2d654d24",
+    "table:secretary_warehouse_expansion_receipts": "5c47388d9dcabef7412c4c68700d114f8c49a732482ee1e95dde9b25bc18029c",
+    "table:underground_market_listings": "b207286db72f97d39c1850d8401697dbe28a0b671186b4e5562cc28e2199f0b4",
+    "table:underground_market_receipts": "57befcb0bf6e4f7fbdd60b0d6e5039b45b4ee5298fea251f250c24d9e57458bc",
+    "table:underground_owned_equipment": "2d020076f2c7d7c9312075bae7d39b851dd353620e2e8f280205860c05d68ec7",
+    "table:user_paradox_ledger": "df4ec975070ddc7928284f29135b32e3428eacf33e9de6e986f363bebf27e3ce"
+  },
+  "production_5_0_1": {
+    "sequence:secretary_synthesis_receipts_id_seq": "e5310bdaf55055497496ec52c382da22e840a59a8d82a393b18211bd89b121ef",
+    "sequence:secretary_warehouse_expansion_receipts_id_seq": "e5310bdaf55055497496ec52c382da22e840a59a8d82a393b18211bd89b121ef",
+    "sequence:underground_market_listings_id_seq": "e5310bdaf55055497496ec52c382da22e840a59a8d82a393b18211bd89b121ef",
+    "sequence:underground_market_receipts_id_seq": "e5310bdaf55055497496ec52c382da22e840a59a8d82a393b18211bd89b121ef",
+    "table:secretary_surface_states": "b5c89196adf57b81706c7eb01d61b921ecc882739d659462cf74b8149f0535a5",
+    "table:secretary_synthesis_receipts": "c01d4ae129773dcd2b84da2c87c4d1f56244625f050664385120e01d2d654d24",
+    "table:secretary_warehouse_expansion_receipts": "5c47388d9dcabef7412c4c68700d114f8c49a732482ee1e95dde9b25bc18029c",
+    "table:underground_market_listings": "b207286db72f97d39c1850d8401697dbe28a0b671186b4e5562cc28e2199f0b4",
+    "table:underground_market_receipts": "57befcb0bf6e4f7fbdd60b0d6e5039b45b4ee5298fea251f250c24d9e57458bc",
+    "table:underground_owned_equipment": "6db6e95891f3157786222dc1ee10ec55871709f653d3ef300cde810fd5964e59",
+    "table:user_paradox_ledger": "df4ec975070ddc7928284f29135b32e3428eacf33e9de6e986f363bebf27e3ce"
+  },
+  "fresh_5_0_1": {
+    "sequence:secretary_synthesis_receipts_id_seq": "e5310bdaf55055497496ec52c382da22e840a59a8d82a393b18211bd89b121ef",
+    "sequence:secretary_warehouse_expansion_receipts_id_seq": "e5310bdaf55055497496ec52c382da22e840a59a8d82a393b18211bd89b121ef",
+    "sequence:underground_market_listings_id_seq": "e5310bdaf55055497496ec52c382da22e840a59a8d82a393b18211bd89b121ef",
+    "sequence:underground_market_receipts_id_seq": "e5310bdaf55055497496ec52c382da22e840a59a8d82a393b18211bd89b121ef",
+    "table:secretary_surface_states": "b5c89196adf57b81706c7eb01d61b921ecc882739d659462cf74b8149f0535a5",
+    "table:secretary_synthesis_receipts": "c01d4ae129773dcd2b84da2c87c4d1f56244625f050664385120e01d2d654d24",
+    "table:secretary_warehouse_expansion_receipts": "5c47388d9dcabef7412c4c68700d114f8c49a732482ee1e95dde9b25bc18029c",
+    "table:underground_market_listings": "b207286db72f97d39c1850d8401697dbe28a0b671186b4e5562cc28e2199f0b4",
+    "table:underground_market_receipts": "57befcb0bf6e4f7fbdd60b0d6e5039b45b4ee5298fea251f250c24d9e57458bc",
+    "table:underground_owned_equipment": "2d020076f2c7d7c9312075bae7d39b851dd353620e2e8f280205860c05d68ec7",
+    "table:user_paradox_ledger": "df4ec975070ddc7928284f29135b32e3428eacf33e9de6e986f363bebf27e3ce"
+  }
+}

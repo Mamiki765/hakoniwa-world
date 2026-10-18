@@ -11,6 +11,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
+use PHPUnit\Framework\Attributes\DataProvider;
 use RuntimeException;
 use Tests\Concerns\CreatesTestWorlds;
 use Tests\Concerns\UsesIndividualTestWorld;
@@ -117,13 +118,23 @@ final class DatabaseBaselineAdoptionTest extends TestCase
         app(CurrentDatabaseBaseline::class)->assertExisting();
     }
 
-    public function test_capital_relocation_schema_extension_preserves_strict_column_validation(): void
+    #[DataProvider('forwardExtensionDriftProvider')]
+    public function test_forward_schema_extensions_preserve_strict_validation(string $drift): void
     {
         app(CurrentDatabaseBaseline::class)->assertExisting();
-        DB::statement('ALTER TABLE nations ALTER COLUMN last_capital_relocation_turn TYPE text');
+        DB::statement($drift);
         $this->expectException(RuntimeException::class);
         $this->expectExceptionMessage('Database differs');
         app(CurrentDatabaseBaseline::class)->assertExisting();
+    }
+
+    public static function forwardExtensionDriftProvider(): array
+    {
+        return [
+            'capital history column' => ['ALTER TABLE nations ALTER COLUMN last_capital_relocation_turn TYPE text'],
+            'warehouse expansion constraint' => ['ALTER TABLE secretary_surface_states DROP CONSTRAINT secretary_warehouse_expansions_check'],
+            'market receipt replay uniqueness' => ['ALTER TABLE underground_market_receipts DROP CONSTRAINT underground_market_receipts_underground_profile_id_request_id_u'],
+        ];
     }
 
     private function sourceReleaseLedger(): void
@@ -132,6 +143,20 @@ final class DatabaseBaselineAdoptionTest extends TestCase
         // immutable current snapshot. Remove later extensions and simulate the
         // source ledger to represent that adoption boundary.
         $source = file_get_contents(database_path('schema/pgsql-schema.sql'));
+        foreach (['underground_market_receipts', 'underground_market_listings', 'secretary_synthesis_receipts', 'secretary_warehouse_expansion_receipts'] as $table) {
+            Schema::drop($table);
+        }
+        DB::statement('ALTER TABLE underground_owned_equipment DROP COLUMN is_listed, DROP COLUMN source_market_listing_id');
+        DB::statement('ALTER TABLE secretary_surface_states DROP CONSTRAINT secretary_warehouse_expansions_check, DROP COLUMN item_capacity_expansions');
+        if ($source === false || preg_match('/^\s*CONSTRAINT user_paradox_ledger_source_check (CHECK[^\r\n]+)\r?$/m', $source, $matches) !== 1) {
+            throw new RuntimeException('The canonical Paradox source constraint is missing.');
+        }
+        DB::statement('ALTER TABLE user_paradox_ledger DROP CONSTRAINT user_paradox_ledger_source_check');
+        DB::statement('ALTER TABLE user_paradox_ledger ADD CONSTRAINT user_paradox_ledger_source_check '.$matches[1]);
+        DB::table('migrations')->whereIn('migration', [
+            CurrentDatabaseBaseline::MARKET_SYNTHESIS_MIGRATION,
+            '2026_10_18_010000_publish_market_synthesis_ruleset',
+        ])->delete();
         foreach ([
             CurrentDatabaseBaseline::QUEUE_RULESET_RESOLUTION_MIGRATION => 'enforce_queue_item_world_ruleset_match',
             CurrentDatabaseBaseline::MONSTER_SPAWN_PROVENANCE_MIGRATION => 'validate_monster_instance_world_ruleset',

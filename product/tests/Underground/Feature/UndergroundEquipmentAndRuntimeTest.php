@@ -176,7 +176,7 @@ final class UndergroundEquipmentAndRuntimeTest extends UndergroundPlayerAccessTe
         $this->getJson('/api/v1/me/underground/equipment/vault?inventory=resonance')->assertOk()
             ->assertJsonPath('data.total', 1)->assertJsonPath('data.capacity', 50)
             ->assertJsonPath('data.items.0.id', $items['resonance']->id)
-            ->assertJsonPath('data.items.0.listable', false)
+            ->assertJsonPath('data.items.0.listable', true)
             ->assertJsonPath('data.items.0.market_minimum_price', $items['resonance']->generated_payload['sell_price'])
             ->assertJsonPath('data.bulk_sell_options.categories.0.key', 'resonance');
         foreach ($items as $slot => $item) {
