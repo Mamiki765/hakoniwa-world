@@ -84,6 +84,7 @@ final class DomesticCommandExecutor
         private readonly SurfaceShipBuildService $surfaceShipBuild,
         private readonly SurfaceShipForcedDisplacementService $surfaceShipDisplacement,
         private readonly FacilityRankPolicy $facilityRanks,
+        private readonly CentralFacilityLimit $centralFacilityLimit,
         private readonly ParadoxBalanceService $paradox,
         private readonly BuriedTreasureService $buriedTreasures,
         private readonly UnderseaConstructionPolicy $underseaConstruction,
@@ -578,7 +579,12 @@ final class DomesticCommandExecutor
                 return ['reason' => CommandFailureReason::FacilityExists, 'observed' => $observed];
             }
         }
-        if ($this->hasOtherCentralFacility($context, $nation, $definition, $cell)) {
+        if ($this->centralFacilityLimit->reachedMaximum(
+            $context->ruleset->settings,
+            $nation,
+            $definition,
+            $cell,
+        ) !== null) {
             return ['reason' => CommandFailureReason::FacilityLimitReached, 'observed' => $observed];
         }
         $requiredMoney = WindPowerRepairPolicy::costMoney($definition, $cell->facility?->key, $cell->facility_operational_state);
@@ -828,31 +834,6 @@ final class DomesticCommandExecutor
         }
 
         return $cost;
-    }
-
-    private function hasOtherCentralFacility(
-        TurnContext $context,
-        Nation $nation,
-        CommandDefinition $definition,
-        MapCell $target,
-    ): bool {
-        $facilityKey = $definition->result_facility_key;
-        $contract = is_string($facilityKey)
-            ? ($context->ruleset->settings['central_facilities']['definitions'][$facilityKey] ?? null)
-            : null;
-        if (! is_array($contract)) {
-            return false;
-        }
-        $maximum = $contract['maximum_per_nation'] ?? null;
-        if (! is_int($maximum) || $maximum < 1) {
-            throw new DomainException("Central facility {$facilityKey} has an invalid Nation limit.");
-        }
-
-        return MapCell::query()
-            ->where('owner_nation_id', $nation->id)
-            ->where('id', '<>', $target->id)
-            ->whereHas('facility', fn ($query) => $query->where('key', $facilityKey))
-            ->count() >= $maximum;
     }
 
     private function surfaceTargetCell(

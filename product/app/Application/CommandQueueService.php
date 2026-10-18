@@ -87,6 +87,7 @@ final class CommandQueueService
         private readonly QueuedCommandDefinitionResolver $queuedCommandDefinitions,
         private readonly CommandQueueCompactor $queueCompactor,
         private readonly FacilityRankPolicy $facilityRanks,
+        private readonly CentralFacilityLimit $centralFacilityLimit,
         private readonly DailyQuestService $dailyQuests,
         private readonly UnderseaConstructionPolicy $underseaConstruction,
         private readonly OwnedLandProximity $ownedLand,
@@ -368,12 +369,15 @@ final class CommandQueueService
                         $mapSpace,
                         $projectionMemo,
                     );
-                    $this->assertCentralFacilityLimit(
-                        $definition,
-                        $target,
+                    $maximum = $this->centralFacilityLimit->reachedMaximum(
                         $ruleset->settings,
                         $lockedNation,
+                        $definition,
+                        $target,
                     );
+                    if ($maximum !== null) {
+                        throw new PlayerFacingCommandException("中央施設は1島に同じ種類を{$maximum}個まで建設できます。");
+                    }
                 }
                 $ownerOverbuildEffect = OwnerFacilityOverbuildPolicy::effectForState(
                     $definition,
@@ -1986,36 +1990,6 @@ final class CommandQueueService
         $maximumScale = $this->facilityRanks->maximumScale($rulesetSettings, $facility);
         if ($target->facility_scale >= $maximumScale) {
             throw new PlayerFacingCommandException('施設の規模が上限に達しています。');
-        }
-    }
-
-    /**
-     * @param  array<string, mixed>  $rulesetSettings
-     */
-    private function assertCentralFacilityLimit(
-        CommandDefinition $definition,
-        MapCell $target,
-        array $rulesetSettings,
-        Nation $nation,
-    ): void {
-        $facilityKey = $definition->result_facility_key;
-        $contract = is_string($facilityKey)
-            ? ($rulesetSettings['central_facilities']['definitions'][$facilityKey] ?? null)
-            : null;
-        if (! is_array($contract)) {
-            return;
-        }
-        $maximum = $contract['maximum_per_nation'] ?? null;
-        if (! is_int($maximum) || $maximum < 1) {
-            throw new DomainException("Central facility {$facilityKey} has an invalid Nation limit.");
-        }
-        $existing = MapCell::query()
-            ->where('owner_nation_id', $nation->id)
-            ->where('id', '<>', $target->id)
-            ->whereHas('facility', fn ($query) => $query->where('key', $facilityKey))
-            ->count();
-        if ($existing >= $maximum) {
-            throw new PlayerFacingCommandException("中央施設は1島に同じ種類を{$maximum}個まで建設できます。");
         }
     }
 
