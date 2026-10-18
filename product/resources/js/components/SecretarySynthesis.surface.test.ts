@@ -28,7 +28,7 @@ afterEach(() => { vi.unstubAllGlobals(); });
 describe('secretary synthesis', () => {
     it('lists what can be merged now and links to the recipe book with every recipe visible', async () => {
         vi.stubGlobal('fetch', vi.fn(async () => json(synthesis)));
-        const wrapper = mount(SecretarySynthesis, { attachTo: document.body });
+        const wrapper = mount(SecretarySynthesis, { attachTo: document.body, props: { warehouse: synthesis.warehouse } });
         await flushPromises();
         expect(wrapper.text()).toContain('Lv9,995 ×1個・倉庫が2つ空きます');
         expect(wrapper.text()).toContain('残り2個はそのまま');
@@ -40,6 +40,8 @@ describe('secretary synthesis', () => {
         expect(wrapper.get('#synthesis-recipe-stack\\:fire_charm').classes()).toContain('highlighted');
         await wrapper.findAll('button').find(button => button.text() === '作ったことがある')!.trigger('click');
         expect(wrapper.find('#synthesis-recipe-stack\\:fire_charm').exists()).toBe(false);
+        await wrapper.setProps({ warehouse: { used: synthesis.warehouse.used, capacity: 150 } });
+        expect(wrapper.text()).toContain(`倉庫 ${synthesis.warehouse.used} / 150`);
         wrapper.unmount();
     });
 

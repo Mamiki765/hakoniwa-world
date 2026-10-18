@@ -57,4 +57,40 @@ describe('underground market stalls', () => {
         expect(wrapper.find('[role="dialog"]').exists()).toBe(false);
         expect(calls.filter(call => call.url.startsWith('/api/v1/me/underground/market?')).length).toBe(2);
     });
+
+    it('loads another page and returns to the first page when searching again', async () => {
+        const fetch = vi.fn(async (url: string) => {
+            const page = Number(new URL(url, 'https://example.test').searchParams.get('page'));
+            return json({ ...market, page, has_more: page === 1 });
+        });
+        vi.stubGlobal('fetch', fetch);
+        const wrapper = mount(UndergroundMarket);
+        await flushPromises();
+        const pageButton = (label: string) => wrapper.findAll('button').find(button => button.text() === label)!;
+        expect(pageButton('前のページ').attributes('disabled')).toBeDefined();
+        await pageButton('次のページ').trigger('click');
+        await flushPromises();
+        expect(wrapper.get('[aria-label="露店のページ"]').text()).toContain('2ページ');
+        expect(pageButton('次のページ').attributes('disabled')).toBeDefined();
+        expect(pageButton('前のページ').attributes('disabled')).toBeUndefined();
+        await wrapper.get('select').setValue('weapon');
+        await wrapper.get('form').trigger('submit');
+        await flushPromises();
+        const query = new URL(String(fetch.mock.calls.at(-1)?.[0]), 'https://example.test').searchParams;
+        expect(query.get('page')).toBe('1');
+        expect(query.get('category')).toBe('weapon');
+        expect(query.get('purchasable_only')).toBe('1');
+    });
+
+    it('uses listable limits before opening my listings and blocks a full stall', async () => {
+        const listable = { items: [{ ...item(3, 100), listable: true, market_minimum_price: 1200 }], listing_limit: 3, active_count: 3 };
+        const fetch = vi.fn(async (url: string) => json(url.endsWith('/listable') ? listable : market));
+        vi.stubGlobal('fetch', fetch);
+        const wrapper = mount(UndergroundMarket, { props: { initialPane: 'sell' } });
+        await flushPromises();
+        expect(wrapper.text()).toContain(`出品中 ${listable.active_count} / ${listable.listing_limit}件`);
+        expect(wrapper.text()).toContain(`出品は${listable.listing_limit}件まで`);
+        expect(wrapper.get('.underground-equipment-card-grid button').attributes('disabled')).toBeDefined();
+        expect(fetch.mock.calls.some(([url]) => url.endsWith('/mine'))).toBe(false);
+    });
 });

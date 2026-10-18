@@ -1833,16 +1833,10 @@ final class CompleteTurnEngine
             $growth = $context->random->stream(TurnRandomStreamFactory::POPULATION_GROWTH)->integer(
                 $growthRules['minimum'], $growthRules['maximum'],
             );
-            $populationEffect = $this->secretaryItems->singleSnapshotEffect(
-                $context->state, (int) $cell->owner_nation_id, 'population_growth_percent',
+            $populationPercent = $this->secretaryItems->snapshotPopulationGrowthPercent(
+                $context->state, (int) $cell->owner_nation_id,
             );
-            if ($populationEffect !== null) {
-                $percent = $populationEffect['parameters']['percent'] ?? null;
-                if (! is_int($percent) || $percent < 0) {
-                    throw new DomainException('Secretary population growth Item snapshot is invalid.');
-                }
-                $growth += intdiv($growth * $percent, 100);
-            }
+            $growth += intdiv($growth * $populationPercent, 100);
             if ($supplementalAttraction) {
                 $growth = intdiv($growth * $towel['percent'], 100);
             }

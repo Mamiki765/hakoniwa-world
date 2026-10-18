@@ -82,6 +82,29 @@ final readonly class UndergroundEquipmentLoadoutResolver
         return $this->polishing->apply($definition, $row->polish_level);
     }
 
+    /**
+     * @param  array<string, mixed>|null  $definition
+     * @return array{listable: bool, listable_reason: string|null, market_minimum_price: int, is_listed: bool}
+     */
+    public function marketListability(UndergroundOwnedEquipment $row, ?array $definition = null): array
+    {
+        $definition ??= $this->definitionForRow($row);
+        $reason = match (true) {
+            $row->is_listed => 'この装備はすでに出品中です。',
+            $row->equipped_slot !== null => '装備中の品は外してから出品してください。',
+            $definition['sellable'] !== true => '通常売却できない品は出品できません。',
+            $definition['rarity'] === 'unique' => 'ユニーク品は出品できません。',
+            default => null,
+        };
+
+        return [
+            'listable' => $reason === null,
+            'listable_reason' => $reason,
+            'market_minimum_price' => $this->catalog->sellPrice($definition),
+            'is_listed' => $row->is_listed,
+        ];
+    }
+
     /** @return array<string, mixed> */
     public function projectOwned(UndergroundOwnedEquipment $row, ?int $requirementBps = null): array
     {
@@ -160,6 +183,7 @@ final readonly class UndergroundEquipmentLoadoutResolver
             'generator_identity' => $row->generator_identity,
             'catalog_identity' => $row->catalog_identity,
             'sell_price' => $this->catalog->sellPrice($definition),
+            ...$this->marketListability($row, $definition),
             'equipped_slot' => $row->equipped_slot,
             'is_protected' => $row->is_protected,
             'acquired_at' => $row->acquired_at->toIso8601String(),

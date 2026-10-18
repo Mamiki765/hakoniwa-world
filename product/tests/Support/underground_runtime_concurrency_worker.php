@@ -2,6 +2,7 @@
 
 use App\Application\Underground\UndergroundEquipmentService;
 use App\Application\Underground\UndergroundIntroService;
+use App\Application\Underground\UndergroundMarketService;
 use App\Application\Underground\UndergroundRuntimeException;
 use App\Application\Underground\UndergroundRuntimeService;
 use App\Models\UndergroundBattle;
@@ -137,6 +138,19 @@ try {
             'request_id' => $payload['request_id'],
             'shard_balance' => $result['shard_balance'],
             'banked_shard_balance' => $result['banked_shard_balance'],
+        ], JSON_THROW_ON_ERROR));
+    } elseif (($payload['operation'] ?? 'explore') === 'market_purchase') {
+        $result = app(UndergroundMarketService::class)->purchase(
+            $user,
+            (string) $payload['request_id'],
+            (int) $payload['listing_id'],
+            (int) $payload['expected_price'],
+        );
+        fwrite(STDOUT, json_encode([
+            'status' => 'ok',
+            'user_id' => $user->id,
+            'equipment_id' => $result['equipment_id'],
+            'paid' => $result['paid'],
         ], JSON_THROW_ON_ERROR));
     } elseif (($payload['operation'] ?? 'explore') === 'equipment_purchase') {
         $result = app(UndergroundEquipmentService::class)->purchase(

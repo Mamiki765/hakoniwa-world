@@ -176,6 +176,8 @@ final class UndergroundEquipmentAndRuntimeTest extends UndergroundPlayerAccessTe
         $this->getJson('/api/v1/me/underground/equipment/vault?inventory=resonance')->assertOk()
             ->assertJsonPath('data.total', 1)->assertJsonPath('data.capacity', 50)
             ->assertJsonPath('data.items.0.id', $items['resonance']->id)
+            ->assertJsonPath('data.items.0.listable', false)
+            ->assertJsonPath('data.items.0.market_minimum_price', $items['resonance']->generated_payload['sell_price'])
             ->assertJsonPath('data.bulk_sell_options.categories.0.key', 'resonance');
         foreach ($items as $slot => $item) {
             $request = ['request_id' => (string) Str::uuid(), 'item_id' => $item->id];
@@ -577,10 +579,39 @@ final class UndergroundEquipmentAndRuntimeTest extends UndergroundPlayerAccessTe
         $this->putJson($path.'/protection', $payload)->assertOk();
         $this->putJson($path.'/protection', [...$payload, 'is_protected' => false])->assertConflict()->assertJsonPath('code', 'underground_request_conflict');
         $vault = $this->getJson('/api/v1/me/underground/equipment/vault')->assertOk()->json('data.items');
-        $this->assertTrue(collect($vault)->firstWhere('id', $item->id)['is_protected']);
+        $projected = collect($vault)->firstWhere('id', $item->id);
+        $this->assertTrue($projected['is_protected']);
+        $this->assertTrue($projected['listable']);
+        $this->assertFalse($projected['is_listed']);
+        $this->assertNull($projected['listable_reason']);
+        $this->assertSame($projected['sell_price'], $projected['market_minimum_price']);
         $this->postJson($path.'/sell', ['request_id' => (string) Str::uuid()])->assertConflict()->assertJsonPath('code', 'underground_equipment_protected');
         $this->assertTrue($item->fresh()->is_protected);
         $this->assertSame(100, $profile->fresh()->shard_balance);
+
+        // The market keeps the owned row and locks its mutation until cancellation or sale.
+        $item->update(['is_listed' => true]);
+        $listed = collect($this->getJson('/api/v1/me/underground/equipment/vault')->assertOk()->json('data.items'))
+            ->firstWhere('id', $item->id);
+        $this->assertTrue($listed['is_listed']);
+        $this->assertFalse($listed['listable']);
+        $this->assertNotNull($listed['listable_reason']);
+        $this->putJson($path.'/protection', ['request_id' => (string) Str::uuid(), 'is_protected' => false])
+            ->assertConflict()->assertJsonPath('code', 'underground_equipment_listed');
+        $this->putJson('/api/v1/me/underground/equipment/equipped', [
+            'request_id' => (string) Str::uuid(), 'item_id' => $item->id,
+        ])->assertConflict()->assertJsonPath('code', 'underground_equipment_listed');
+        $this->postJson($path.'/sell', ['request_id' => (string) Str::uuid()])
+            ->assertConflict()->assertJsonPath('code', 'underground_equipment_listed');
+        $this->postJson('/api/v1/me/underground/equipment/polishing', [
+            'request_id' => (string) Str::uuid(), 'item_id' => $item->id, 'level' => 0, 'price' => 1,
+        ])->assertConflict()->assertJsonPath('code', 'underground_equipment_listed');
+        $this->assertTrue($item->fresh()->is_protected);
+        $this->assertNull($item->fresh()->equipped_slot);
+        $this->assertSame(0, $item->fresh()->polish_level);
+        $this->assertSame(100, $profile->fresh()->shard_balance);
+        $item->update(['is_listed' => false]);
+
         $this->putJson($path.'/protection', ['request_id' => (string) Str::uuid(), 'is_protected' => false])->assertOk();
         $this->postJson($path.'/sell', ['request_id' => (string) Str::uuid()])->assertOk();
         $this->assertDatabaseMissing('underground_owned_equipment', ['id' => $item->id]);
@@ -717,6 +748,17 @@ final class UndergroundEquipmentAndRuntimeTest extends UndergroundPlayerAccessTe
         $this->putJson("/api/v1/me/underground/equipment/items/{$generatedItem->id}/protection", [
             'request_id' => (string) Str::uuid(), 'is_protected' => false,
         ])->assertOk();
+        $generatedItem->update(['is_listed' => true]);
+        $this->postJson('/api/v1/me/underground/equipment/vault/bulk-sell/preview', $filters)
+            ->assertOk()->assertJsonPath('data.count', 1)->assertJsonPath('data.items.0.id', $fixed['iron_dagger']->id);
+        $this->postJson('/api/v1/me/underground/equipment/vault/bulk-sell', [
+            'request_id' => (string) Str::uuid(), 'catalog_identity' => $preview->json('data.catalog_identity'),
+            'items' => $previewItems->map(fn (array $item): array => ['id' => $item['id'], 'sell_price' => $item['sell_price']])->all(),
+        ])->assertConflict()->assertJsonPath('code', 'underground_bulk_sell_preview_changed');
+        $this->assertNotNull($fixed['iron_dagger']->fresh());
+        $this->assertTrue($generatedItem->fresh()->is_listed);
+        $this->assertSame(100, $profile->fresh()->shard_balance);
+        $generatedItem->update(['is_listed' => false]);
         $this->assertSame(60, $previewItems->firstWhere('id', $fixed['iron_dagger']->id)['sell_price']);
         $this->assertSame($generated['sell_price'], $previewItems->firstWhere('id', $generatedItem->id)['sell_price']);
         $this->assertSame(60 + $generated['sell_price'], $preview->json('data.total_sell_price'));

@@ -386,6 +386,7 @@ final class RulesetAuthoringValidator
         (new SecretaryMonsterDropContract(new SecretaryItemCatalog))->validate($dropSettings);
         $this->validateMilitary($settings, $facilityKeys, $version);
         $this->validateSecretary($settings, $resourceKeys, $commandKeys, $authoredKey);
+        $this->validateMarketSynthesisAndWarehouse($settings);
 
         return [
             'key' => $authoredKey,
@@ -893,6 +894,111 @@ final class RulesetAuthoringValidator
         ]) {
             throw new DomainException('The v14+ Ruleset Secretary capacity bonus differs from the Owner decision.');
         }
+    }
+
+    /** @param array<string, mixed> $settings */
+    private function validateMarketSynthesisAndWarehouse(array $settings): void
+    {
+        if (CanonicalRulesetGeneration::fromSettings($settings) < 40) {
+            return;
+        }
+        $marketPath = 'ruleset.underground_market';
+        $market = $this->map($settings['underground_market'] ?? null, $marketPath);
+        $this->requireKeys($market, ['listing_limit', 'duration_hours', 'proceeds_numerator', 'proceeds_denominator', 'page_size'], $marketPath);
+        foreach (['listing_limit', 'duration_hours', 'proceeds_denominator', 'page_size'] as $key) {
+            $this->integer($market[$key], $marketPath.'.'.$key, 1);
+            $this->persistedNonNegativeInteger($market[$key], $marketPath.'.'.$key);
+        }
+        $numerator = $this->persistedNonNegativeInteger($market['proceeds_numerator'], $marketPath.'.proceeds_numerator');
+        if ($numerator > $market['proceeds_denominator']) {
+            throw new DomainException($marketPath.'.proceeds_numerator cannot exceed proceeds_denominator.');
+        }
+
+        $warehousePath = 'ruleset.secretary.warehouse';
+        $warehouse = $this->map($settings['secretary']['warehouse'] ?? null, $warehousePath);
+        $this->requireKeys($warehouse, ['base_capacity', 'expansion_slots', 'expansion_cost_paradox', 'max_expansions'], $warehousePath);
+        foreach (['base_capacity', 'expansion_slots', 'expansion_cost_paradox', 'max_expansions'] as $key) {
+            $this->integer($warehouse[$key], $warehousePath.'.'.$key, 1);
+            $this->persistedNonNegativeInteger($warehouse[$key], $warehousePath.'.'.$key);
+        }
+        if ($warehouse['max_expansions'] > 4) {
+            throw new DomainException($warehousePath.'.max_expansions exceeds the persisted range 1..4.');
+        }
+        if ($warehouse['base_capacity'] + $warehouse['expansion_slots'] * $warehouse['max_expansions'] > self::POSTGRESQL_INTEGER_MAX) {
+            throw new DomainException($warehousePath.' maximum capacity must fit the PostgreSQL integer range.');
+        }
+
+        $synthesisPath = 'ruleset.secretary.synthesis';
+        $synthesis = $this->map($settings['secretary']['synthesis'] ?? null, $synthesisPath);
+        $this->requireKeys($synthesis, ['recipes'], $synthesisPath);
+        $recipes = $this->map($synthesis['recipes'], $synthesisPath.'.recipes');
+        $items = $settings['secretary']['items'];
+        foreach ($recipes as $recipeKey => $authored) {
+            $path = $synthesisPath.'.recipes.'.$recipeKey;
+            $recipe = $this->map($authored, $path);
+            $this->requireKeys($recipe, ['key', 'kind'], $path);
+            $key = $this->persistedString($recipe['key'], $path.'.key');
+            if ($key !== $recipeKey || mb_strlen($key) > 128) {
+                throw new DomainException($path.'.key must match its recipe key and fit 128 characters.');
+            }
+            if ($recipe['kind'] === 'stack') {
+                $this->requireKeys($recipe, ['item_key', 'level_cap'], $path);
+                $itemKey = $this->reference($recipe['item_key'], array_keys($items), $path.'.item_key');
+                if ($key !== 'stack:'.$itemKey || ! isset($items[$itemKey]['synthesis_level_cap'])) {
+                    throw new DomainException($path.' must reference a stackable canonical item and its stack recipe key.');
+                }
+                $cap = $this->integer($recipe['level_cap'], $path.'.level_cap', 1);
+                if ($cap > 9999 || $cap > $items[$itemKey]['synthesis_level_cap']) {
+                    throw new DomainException($path.'.level_cap cannot exceed the retained item cap or 9999.');
+                }
+            } elseif ($recipe['kind'] === 'fixed') {
+                $this->requireKeys($recipe, ['inputs', 'output', 'cost_money'], $path);
+                if ($this->integer($recipe['cost_money'], $path.'.cost_money', 0) !== 0) {
+                    throw new DomainException($path.'.cost_money has no supported nonzero payment handler.');
+                }
+                $inputs = $this->list($recipe['inputs'], $path.'.inputs');
+                $inputKeys = [];
+                $totalCount = 0;
+                foreach ($inputs as $index => $authoredInput) {
+                    $inputPath = $path.'.inputs.'.$index;
+                    $input = $this->map($authoredInput, $inputPath);
+                    $this->requireKeys($input, ['item_key', 'level', 'count'], $inputPath);
+                    $itemKey = $this->validateSynthesisItemLevel($input, $items, $inputPath);
+                    if (in_array($itemKey, $inputKeys, true)) {
+                        throw new DomainException($path.'.inputs must not repeat an item_key.');
+                    }
+                    $inputKeys[] = $itemKey;
+                    $totalCount += $this->integer($input['count'], $inputPath.'.count', 1);
+                    if ($totalCount > 250) {
+                        throw new DomainException($path.'.inputs must fit the API material limit 2..250.');
+                    }
+                }
+                if ($totalCount < 2) {
+                    throw new DomainException($path.'.inputs must fit the API material limit 2..250.');
+                }
+                $output = $this->map($recipe['output'], $path.'.output');
+                $this->requireKeys($output, ['item_key', 'level'], $path.'.output');
+                $this->validateSynthesisItemLevel($output, $items, $path.'.output');
+            } else {
+                throw new DomainException($path.'.kind has no supported synthesis handler.');
+            }
+        }
+    }
+
+    /**
+     * @param  array<string, mixed>  $item
+     * @param  array<string, mixed>  $items
+     */
+    private function validateSynthesisItemLevel(array $item, array $items, string $path): string
+    {
+        $itemKey = $this->reference($item['item_key'], array_keys($items), $path.'.item_key');
+        $level = $this->integer($item['level'], $path.'.level', 1);
+        $maximum = $items[$itemKey]['synthesis_level_cap'] ?? $items[$itemKey]['max_level'];
+        if ($level > $maximum || $level > 9999) {
+            throw new DomainException($path.'.level exceeds the retained item level range.');
+        }
+
+        return $itemKey;
     }
 
     /**

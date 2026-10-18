@@ -37,6 +37,7 @@ interface SynthesisResult {
     first_craft: boolean;
 }
 
+const props = defineProps<{ warehouse?: { used: number; capacity: number } }>();
 const emit = defineEmits<{ changed: [] ; expand: [] }>();
 const data = ref<SynthesisResponse | null>(null);
 const pane = ref<'craft' | 'recipes'>('craft');
@@ -49,6 +50,7 @@ const celebration = ref<SynthesisResult | null>(null);
 const highlighted = ref<string | null>(null);
 const pending = ref<{ fingerprint: string; requestId: string } | null>(null);
 
+const warehouse = computed(() => props.warehouse ?? data.value?.warehouse);
 const recipeByKey = computed(() => new Map((data.value?.recipes ?? []).map(recipe => [recipe.key, recipe])));
 const fixedRecipes = computed(() => (data.value?.recipes ?? []).filter(recipe => recipe.kind === 'fixed' && (recipeFilter.value === 'all' || recipe.crafted)));
 const stackRecipes = computed(() => (data.value?.recipes ?? []).filter(recipe => recipe.kind === 'stack' && (recipeFilter.value === 'all' || recipe.crafted)));
@@ -123,7 +125,7 @@ onMounted(() => { void load(); });
     <div class="secretary-synthesis">
         <header class="secretary-synthesis-heading">
             <h3 class="secretary-section-title">合成</h3>
-            <p v-if="data">倉庫 {{ data.warehouse.used }} / {{ data.warehouse.capacity }} <button type="button" class="link-button" @click="emit('expand')">倉庫を広げる</button></p>
+            <p v-if="warehouse">倉庫 {{ warehouse.used }} / {{ warehouse.capacity }} <button type="button" class="link-button" @click="emit('expand')">倉庫を広げる</button></p>
         </header>
         <nav class="secretary-synthesis-tabs" aria-label="合成の切り替え">
             <button type="button" :aria-pressed="pane === 'craft'" @click="pane = 'craft'">合成する</button>

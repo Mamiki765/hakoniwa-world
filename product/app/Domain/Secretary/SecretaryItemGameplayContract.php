@@ -81,6 +81,7 @@ final class SecretaryItemGameplayContract
         $v17 = $generation >= 17;
         $v27 = $generation >= 27;
         $v26 = $generation >= 26;
+        $synthesis = $generation >= 40;
         $secretary = $this->map($settings['secretary'] ?? null, 'ruleset.secretary');
         if ($formal) {
             $rarities = $this->map($secretary['item_rarities'] ?? null, 'ruleset.secretary.item_rarities');
@@ -137,23 +138,27 @@ final class SecretaryItemGameplayContract
             $path = "ruleset.secretary.items.{$itemKey}";
             $item = $this->map($authored, $path);
             if ($formal) {
+                $catalog = $catalogDefinitions[$itemKey];
                 $this->exactKeys($item, [
                     'key', 'category', 'rarity', 'tradable', 'npc_tradable', 'max_level', 'effects',
                     ...($v27 ? ['gacha_exception'] : []),
+                    ...($synthesis && isset($catalog['synthesis_level_cap']) ? ['synthesis_level_cap'] : []),
                 ], $path);
-                $catalog = $catalogDefinitions[$itemKey];
                 if (($item['key'] ?? null) !== $itemKey
                     || ($item['category'] ?? null) !== $catalog['category']
                     || $this->integer($item['max_level'] ?? null, "{$path}.max_level", 1) !== $catalog['max_level']
                     || ($item['rarity'] ?? null) !== $catalog['rarity']
                     || ($item['tradable'] ?? null) !== $catalog['tradable']
                     || ($item['npc_tradable'] ?? null) !== $catalog['npc_tradable']
+                    || ($synthesis && isset($catalog['synthesis_level_cap'])
+                        && ($item['synthesis_level_cap'] ?? null) !== $catalog['synthesis_level_cap'])
                     || $this->catalog->sameItemMaximum($itemKey) !== 1
                     || ($v27 && ($item['gacha_exception'] ?? null) !== in_array($itemKey, [
                         SecretaryItemCatalog::OLD_BOW,
                         SecretaryItemCatalog::WAKUWAKU_TICKET,
                         SecretaryItemCatalog::DOKIDOKI_TICKET,
                         SecretaryItemCatalog::LOVE_EMBLEM,
+                        SecretaryItemCatalog::SUCCUBUS_EMBLEM,
                         SecretaryItemCatalog::TWIN_STAR_EMBLEM,
                         SecretaryItemCatalog::CRESCENT_EMBLEM,
                     ], true))) {
@@ -227,8 +232,7 @@ final class SecretaryItemGameplayContract
         if ($effects === []) {
             return [];
         }
-        $catalog = $this->catalog->definition($itemKey);
-        if ($level < 1 || $level > $catalog['max_level']) {
+        if ($level < 1 || $level > $this->catalog->maximumRetainedLevel($itemKey)) {
             throw new DomainException("Secretary item {$itemKey} level is outside the global catalog.");
         }
 
@@ -503,7 +507,7 @@ final class SecretaryItemGameplayContract
             SecretaryItemCatalog::NYOWAMIYA_RIBBON => [
                 'type' => 'nyowamiya_ribbon', 'nyowamiya_type_weight_bonus' => 1,
             ],
-            SecretaryItemCatalog::LOVE_EMBLEM => [
+            SecretaryItemCatalog::LOVE_EMBLEM, SecretaryItemCatalog::SUCCUBUS_EMBLEM => [
                 'type' => 'population_growth_percent', 'percent' => $effect['percent'] ?? null,
                 'applies_to' => ['ordinary', 'attraction'],
             ],

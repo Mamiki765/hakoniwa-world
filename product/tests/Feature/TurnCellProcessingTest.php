@@ -1641,8 +1641,13 @@ class TurnCellProcessingTest extends TestCase
             ->whereRaw("metadata->>'turn_run_id' = ?", [(string) $run->id])->count());
     }
 
-    public function test_attraction_growth_uses_distinct_pre_and_post_ordinary_ranges_and_clamps(): void
-    {
+    /** @param list<string> $itemKeys */
+    #[DataProvider('populationGrowthEmblemCases')]
+    public function test_attraction_growth_uses_distinct_pre_and_post_ordinary_ranges_and_clamps(
+        array $itemKeys,
+        int $expectedAttractionPopulation,
+        int $expectedNaturalPopulation,
+    ): void {
         $world = $this->lightweightWorld();
         $user = User::factory()->create();
         $nation = app(NationCreationService::class)->create($user, $world, '誘致成長国', '誘致島主');
@@ -1651,9 +1656,16 @@ class TurnCellProcessingTest extends TestCase
             ->whereKeyNot($capitalId)->firstOrFail();
         $engine = app(CompleteTurnEngine::class);
 
+        foreach ($itemKeys as $index => $itemKey) {
+            $user->secretary()->sole()->itemInstances()->create([
+                'item_key' => $itemKey, 'level' => 1, 'equipped_slot' => $index + 2,
+                'obtained_at' => now(),
+            ]);
+        }
+
         $cases = [
             ['before' => 7_000, 'minimum' => 100, 'maximum' => 3_000, 'draw' => 3_000, 'after' => 10_000],
-            ['before' => 10_000, 'minimum' => 100, 'maximum' => 300, 'draw' => 300, 'after' => 10_300],
+            ['before' => 10_000, 'minimum' => 100, 'maximum' => 300, 'draw' => 300, 'after' => $expectedAttractionPopulation],
             ['before' => 25_450, 'minimum' => 100, 'maximum' => 300, 'draw' => 300, 'after' => 25_500],
         ];
         foreach ($cases as $index => $case) {
@@ -1677,16 +1689,34 @@ class TurnCellProcessingTest extends TestCase
         }
 
         $this->settlement($cell, 'village', 1_000);
+        $naturalSeed = $this->seedForFirstDraw(TurnRandomStreamFactory::POPULATION_GROWTH, 100, 1_000, 1_000);
         [$ordinaryContext] = $this->context(
             $world,
             $nation,
             [$cell->id],
-            $this->seedForFirstDraw(TurnRandomStreamFactory::POPULATION_GROWTH, 100, 1_000, 1_000),
+            $naturalSeed,
         );
 
         $engine->execute('process_cells', $ordinaryContext);
 
-        $this->assertSame(2_000, $cell->fresh()->population);
+        $this->assertSame($expectedNaturalPopulation, $cell->fresh()->population);
+        $expectedGrowthStream = (new TurnRandomStreamFactory($naturalSeed))->stream(TurnRandomStreamFactory::POPULATION_GROWTH);
+        $expectedGrowthStream->integer(100, 1_000);
+        $this->assertSame(
+            $expectedGrowthStream->integer(0, 1_000_000),
+            $ordinaryContext->random->stream(TurnRandomStreamFactory::POPULATION_GROWTH)->integer(0, 1_000_000),
+        );
+    }
+
+    /** @return array<string, array{list<string>, int, int}> */
+    public static function populationGrowthEmblemCases(): array
+    {
+        return [
+            'no emblem' => [[], 10_300, 2_000],
+            'love adds ten percent' => [[SecretaryItemCatalog::LOVE_EMBLEM], 10_330, 2_100],
+            'succubus doubles growth' => [[SecretaryItemCatalog::SUCCUBUS_EMBLEM], 10_600, 3_000],
+            'both add one hundred ten percent' => [[SecretaryItemCatalog::LOVE_EMBLEM, SecretaryItemCatalog::SUCCUBUS_EMBLEM], 10_630, 3_100],
+        ];
     }
 
     public function test_attraction_towel_uses_post_natural_growth_and_charges_once_only_for_eligible_turns(): void

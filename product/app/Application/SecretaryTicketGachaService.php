@@ -22,13 +22,13 @@ final readonly class SecretaryTicketGachaService
         private SecretaryItemGrantService $grants,
     ) {}
 
-    /** @return list<array{key: string, name: string, level: int, rarity: string}> */
-    public function draw(User $user, int $ticketId, string $requestKey): array
+    /** @return array<string, mixed> */
+    public function draw(User $user, int $ticketId, string $requestKey, ?int $requestedDrawCount = null): array
     {
         $world = World::query()->where('key', config('hakoniwa.world.key'))->firstOrFail();
         $this->worldMutationLock->acquire($world);
         try {
-            return DB::transaction(function () use ($user, $world, $ticketId, $requestKey): array {
+            return DB::transaction(function () use ($user, $world, $ticketId, $requestKey, $requestedDrawCount): array {
                 $lockedWorld = World::query()->whereKey($world->id)->lockForUpdate()->firstOrFail();
                 $ruleset = $lockedWorld->rulesetVersion()->firstOrFail();
                 $this->rulesetGuard->assertMutable($lockedWorld, $ruleset);
@@ -45,11 +45,19 @@ final readonly class SecretaryTicketGachaService
                     ->where('request_key', $requestKey)
                     ->lockForUpdate()->first();
                 if ($previous !== null) {
+                    $snapshot = json_decode($previous->result_snapshot, true, 512, JSON_THROW_ON_ERROR);
+                    // Pre-5.5.0 receipts contain only the drawn item list.
+                    $sameCount = array_is_list($snapshot)
+                        ? $requestedDrawCount === null || $requestedDrawCount === (int) $previous->ticket_level
+                        : ($snapshot['request_draw_count'] ?? null) === $requestedDrawCount;
+                    if (! $sameCount) {
+                        throw new DomainException('同じ受付キーが別の抽選回数に使用されています。', 409);
+                    }
                     if ((int) $previous->ticket_item_instance_id !== $ticketId) {
-                        throw new DomainException('この抽選IDは別のチケットに使用されています。');
+                        throw new DomainException('この抽選IDは別のチケットに使用されています。', 409);
                     }
 
-                    return json_decode($previous->result_snapshot, true, 512, JSON_THROW_ON_ERROR);
+                    return array_is_list($snapshot) ? ['items' => $snapshot] : $snapshot['result'];
                 }
 
                 $ticket = SecretaryItemInstance::query()->whereKey($ticketId)
@@ -64,10 +72,13 @@ final readonly class SecretaryTicketGachaService
                 if (! is_array($settings) || ! is_array($authoredItems)) {
                     throw new DomainException('このRulesetではチケット抽選を利用できません。');
                 }
-                $drawCount = (int) $ticket->level;
+                $ticketLevel = (int) $ticket->level;
+                $drawCount = $requestedDrawCount ?? $ticketLevel;
                 $used = $secretary->itemInstances()->count();
-                if ($drawCount < 1 || $drawCount > $this->catalog->definition($ticket->item_key)['max_level']
-                    || $used - 1 + $drawCount > SecretaryItemGrantService::INVENTORY_CAPACITY) {
+                $capacity = $this->grants->capacity($secretary);
+                if ($ticketLevel < 1 || $ticketLevel > $this->catalog->maximumRetainedLevel($ticket->item_key)
+                    || $drawCount < 1 || $drawCount > $ticketLevel
+                    || $drawCount > self::maximumDrawCount($ticketLevel, $used, $capacity)) {
                     throw new DomainException('抽選結果を受け取る倉庫の空きがありません。');
                 }
 
@@ -86,7 +97,13 @@ final readonly class SecretaryTicketGachaService
                     }
                 }
 
-                $ticket->delete();
+                $remainingLevel = $ticketLevel - $drawCount;
+                if ($remainingLevel === 0) {
+                    $ticket->delete();
+                } else {
+                    $ticket->level = $remainingLevel;
+                    $ticket->save();
+                }
                 $result = [];
                 for ($index = 1; $index <= $drawCount; $index++) {
                     $rarity = $this->drawRarity($weights);
@@ -112,22 +129,39 @@ final readonly class SecretaryTicketGachaService
                     ];
                 }
 
+                $response = [
+                    'items' => $result,
+                    'ticket' => $remainingLevel === 0 ? null : [
+                        'item_id' => $ticketId, 'remaining_level' => $remainingLevel,
+                    ],
+                    'warehouse' => ['used' => $used + $drawCount - ($remainingLevel === 0 ? 1 : 0), 'capacity' => $capacity],
+                ];
                 DB::table('secretary_gacha_draws')->insert([
                     'secretary_id' => $secretary->id,
                     'request_key' => $requestKey,
                     'ticket_item_instance_id' => $ticketId,
                     'ticket_key' => $ticket->item_key,
-                    'ticket_level' => $drawCount,
-                    'result_snapshot' => json_encode($result, JSON_THROW_ON_ERROR),
+                    'ticket_level' => $ticketLevel,
+                    'result_snapshot' => json_encode([
+                        'request_draw_count' => $requestedDrawCount,
+                        'result' => $response,
+                    ], JSON_THROW_ON_ERROR),
                     'created_at' => now(),
                     'updated_at' => now(),
                 ]);
 
-                return $result;
+                return $response;
             }, 3);
         } finally {
             $this->worldMutationLock->release($world);
         }
+    }
+
+    public static function maximumDrawCount(int $ticketLevel, int $used, int $capacity): int
+    {
+        $free = $capacity - $used;
+
+        return $ticketLevel <= $free + 1 ? $ticketLevel : max(0, $free);
     }
 
     /** @param array<string, mixed> $weights */

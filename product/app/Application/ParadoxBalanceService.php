@@ -96,7 +96,7 @@ final class ParadoxBalanceService
         array $metadata,
         bool $allowInsufficient = false,
     ): ?array {
-        if (! in_array($sourceKind, ['daily_login', 'daily_quest', 'command', 'compensation', 'underground_respec'], true)) {
+        if (! in_array($sourceKind, ['daily_login', 'daily_quest', 'command', 'compensation', 'underground_respec', 'secretary_warehouse_expansion'], true)) {
             throw new DomainException('Unknown Paradox ledger source.');
         }
 

@@ -646,6 +646,7 @@ const awakeningMessageDraft = ref('');
 const awakeningTechniqueDraft = ref<string | null>(null);
 type View = 'home' | 'adventure' | 'otherworld' | 'trials' | 'secret' | 'history' | 'playtest' | 'character' | 'status' | 'skills' | 'shop' | 'polishing' | 'bank' | 'guide' | 'ai' | 'vault' | 'party' | 'property' | 'market' | 'merchant' | 'villa' | 'recollections' | 'trophies';
 const equipmentView = ref<View>('home');
+const marketInitialPane = ref<'browse' | 'sell'>('browse');
 const tabs: Record<UndergroundDestination, Array<{ key: View; label: string }>> = {
     home: [],
     adventure: [{ key: 'adventure', label: '探索' }, { key: 'trials', label: '試練' }, { key: 'secret', label: '秘密の場所' }, { key: 'otherworld', label: '異世界の戦い' }, { key: 'history', label: '戦闘履歴' }, { key: 'playtest', label: '力試し' }],
@@ -726,6 +727,7 @@ function navigate(destination: UndergroundDestination): void {
 function selectTab(view: View): void {
     loungeReplay.value = null;
     selectedRecollectionKey.value = null;
+    if (view === 'market') marketInitialPane.value = 'browse';
     if (view === 'merchant') { equipmentView.value = view; void loadMerchantTopics(); }
     else if (view === 'guide') openGuide();
     else if (view === 'recollections') {
@@ -733,6 +735,10 @@ function selectTab(view: View): void {
         selectedRecollectionKey.value = null;
         equipmentView.value = view;
     } else equipmentView.value = view;
+}
+function openMarketSell(): void {
+    selectTab('market');
+    marketInitialPane.value = 'sell';
 }
 async function advanceLounge(): Promise<void> {
     if (loungeReplay.value) { loungeReplay.value = null; return; }
@@ -3009,7 +3015,7 @@ onUnmounted(() => {
                                 <strong v-else class="ug-sold-out">本日売り切れ</strong>
                             </section>
                             <UndergroundEquipmentShop v-if="equipmentView === 'shop'" @updated="applyEquipmentMutation" />
-                            <UndergroundMarket v-if="equipmentView === 'market'" :attention="state.market_attention" @balance="applyMarketBalance" @attention="refreshMarketAttention" />
+                            <UndergroundMarket v-if="equipmentView === 'market'" :attention="state.market_attention" :initial-pane="marketInitialPane" @balance="applyMarketBalance" @attention="refreshMarketAttention" />
                             <UndergroundEquipmentPolishing v-if="equipmentView === 'polishing'" :balance="state.shard_balance" @updated="applyEquipmentMutation" />
             <section v-if="equipmentView === 'guide' || equipmentView === 'recollections' && state.residence?.villa_owned" class="underground-guide-room" aria-label="案内人">
                 <div v-if="equipmentView === 'guide'" class="underground-guide-actions">
@@ -3235,7 +3241,7 @@ onUnmounted(() => {
                 :configuration="state.ai"
                 @updated="applyAiMutation"
             />
-            <UndergroundEquipmentVault v-if="equipmentView === 'vault'" @updated="applyEquipmentMutation" />
+            <UndergroundEquipmentVault v-if="equipmentView === 'vault'" @updated="applyEquipmentMutation" @market="openMarketSell" />
 
 
                 <section v-if="equipmentView === 'character'" class="underground-character-pane" aria-labelledby="underground-character-title">

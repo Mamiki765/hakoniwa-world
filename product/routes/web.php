@@ -19,11 +19,14 @@ use App\Http\Controllers\Api\PlayerEventController;
 use App\Http\Controllers\Api\PublicApiController;
 use App\Http\Controllers\Api\SalePolicyController;
 use App\Http\Controllers\Api\SecretaryController;
+use App\Http\Controllers\Api\SecretarySynthesisController;
 use App\Http\Controllers\Api\SecretaryTicketGachaController;
+use App\Http\Controllers\Api\SecretaryWarehouseController;
 use App\Http\Controllers\Api\SurfaceShipController;
 use App\Http\Controllers\Api\TradingPostController;
 use App\Http\Controllers\Api\UndergroundEquipmentController;
 use App\Http\Controllers\Api\UndergroundIntroController;
+use App\Http\Controllers\Api\UndergroundMarketController;
 use App\Http\Controllers\Api\UndergroundRequestAdmissionController;
 use App\Http\Controllers\Api\UserMonumentDesignController;
 use App\Http\Controllers\AppController;
@@ -168,6 +171,14 @@ Route::prefix('api/v1')->middleware(['auth', PrivateApiResponse::class])->group(
         Route::post('/trial/withdraw', [UndergroundIntroController::class, 'withdrawTrial']);
         Route::post('/inn/rest', [UndergroundIntroController::class, 'restAtInn']);
         Route::post('/bank/transfer', [UndergroundIntroController::class, 'bankTransfer']);
+        Route::get('/market', [UndergroundMarketController::class, 'index']);
+        Route::get('/market/listable', [UndergroundMarketController::class, 'listable']);
+        Route::get('/market/mine', [UndergroundMarketController::class, 'mine']);
+        Route::post('/market/listings', [UndergroundMarketController::class, 'store']);
+        Route::post('/market/listings/{listingId}/purchase', [UndergroundMarketController::class, 'purchase'])->whereNumber('listingId');
+        Route::delete('/market/listings/{listingId}', [UndergroundMarketController::class, 'cancel'])->whereNumber('listingId');
+        Route::post('/market/proceeds/claim', [UndergroundMarketController::class, 'claim']);
+        Route::post('/market/expired/seen', [UndergroundMarketController::class, 'seen']);
         Route::get('/equipment/shop', [UndergroundEquipmentController::class, 'shop']);
         Route::get('/equipment/polishing', [UndergroundEquipmentController::class, 'polishing']);
         Route::post('/equipment/polishing', [UndergroundEquipmentController::class, 'polish']);
@@ -199,6 +210,9 @@ Route::prefix('api/v1')->middleware(['auth', PrivateApiResponse::class])->group(
         ->where('slot', '-?\d+');
     Route::post('/me/secretary/items/{item}/sell', [SecretaryController::class, 'sellItem'])
         ->where('item', '-?\d+');
+    Route::get('/me/secretary/synthesis', [SecretarySynthesisController::class, 'index']);
+    Route::post('/me/secretary/synthesis', [SecretarySynthesisController::class, 'store']);
+    Route::post('/me/secretary/warehouse/expand', [SecretaryWarehouseController::class, 'expand']);
     Route::post('/me/secretary/tickets/draw', [SecretaryTicketGachaController::class, 'draw'])
         ->middleware('throttle:20,1,secretary-ticket-gacha:');
     Route::post('/inquiries', [InquiryController::class, 'store'])->middleware('throttle:3,1,inquiries:');

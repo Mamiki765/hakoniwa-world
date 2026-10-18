@@ -2744,7 +2744,7 @@ async function abandonNation(): Promise<void> {
                 <p v-if="viewedSecretaryProfile.nickname" class="secretary-nickname">{{ viewedSecretaryProfile.nickname }}</p>
                 <SecretaryMenu v-model="secretarySection" :owner="viewedSecretaryProfile.is_owner" />
                 <SecretaryWarehouseExpandDialog v-if="warehouseExpandOpen && secretary" :warehouse="secretary.inventory" @close="warehouseExpandOpen = false" @expanded="onWarehouseExpanded" />
-                <SecretaryTicketDrawDialog v-if="ticketDrawTarget" :name="`${ticketDrawTarget.name} Lv${ticketDrawTarget.level.toLocaleString('ja-JP')}`" :level="ticketDrawTarget.level" :max-draw-count="ticketDrawTarget.max_draw_count ?? Math.min(ticketDrawTarget.level, (secretary?.inventory.capacity ?? 0) - (secretary?.inventory.used ?? 0) + 1)" :busy="busy" @cancel="ticketDrawTarget = null" @draw="drawSecretaryTicket" />
+                <SecretaryTicketDrawDialog v-if="ticketDrawTarget" :name="`${ticketDrawTarget.name} Lv${ticketDrawTarget.level.toLocaleString('ja-JP')}`" :level="ticketDrawTarget.level" :max-draw-count="ticketDrawTarget.max_draw_count ?? 0" :busy="busy" @cancel="ticketDrawTarget = null" @draw="drawSecretaryTicket" />
                 <section v-if="secretarySection === 'main'" id="secretary-panel-main" role="tabpanel" aria-labelledby="secretary-tab-main" class="secretary-main-profile">
                     <SecretaryStatusOverview
                         :profile="viewedSecretaryProfile" :busy="busy" :biography-error="secretaryProfileErrors.biography"
@@ -2817,7 +2817,7 @@ async function abandonNation(): Promise<void> {
                     <p v-if="secretary.inventory.items.length === 0" class="empty-state">倉庫は空です。</p>
                 </section>
                 <section v-else-if="secretarySection === 'synthesis' && viewedSecretaryProfile.is_owner && secretary" id="secretary-panel-synthesis" role="tabpanel" aria-labelledby="secretary-tab-synthesis">
-                    <SecretarySynthesis @changed="loadSecretary" @expand="warehouseExpandOpen = true" />
+                    <SecretarySynthesis :warehouse="secretary.inventory" @changed="loadSecretary" @expand="warehouseExpandOpen = true" />
                 </section>
                 <section v-else-if="secretarySection === 'achievements' && viewedSecretaryProfile.is_owner && user" id="secretary-panel-achievements" role="tabpanel" aria-labelledby="secretary-tab-achievements" class="secretary-achievements">
                     <section aria-labelledby="secretary-title-heading">

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue';
+import { computed, nextTick, onMounted, ref } from 'vue';
 import { ApiError, api } from '../api/client';
 import EquipmentItemCard, { type EquipmentItem } from './EquipmentItemCard.vue';
 
@@ -26,8 +26,8 @@ interface MarketResponse {
     page: number;
     has_more: boolean;
 }
-type ListableItem = EquipmentItem & { market_minimum_price?: number; listable?: boolean; listable_reason?: string | null; is_listed?: boolean };
-interface VaultResponse { items: ListableItem[] }
+type ListableItem = EquipmentItem;
+interface VaultResponse { items: ListableItem[]; listing_limit: number; active_count: number }
 interface MineListing { id: number; item?: EquipmentItem; item_snapshot?: EquipmentItem; price: number; proceeds?: number; expires_at?: string; sold_at?: string; expired_at?: string; claimed?: boolean; seen?: boolean }
 interface MineResponse {
     listing_limit: number;
@@ -37,13 +37,15 @@ interface MineResponse {
     unclaimed_total: number;
 }
 
-const props = defineProps<{ attention?: MarketAttention | null }>();
+type Pane = 'browse' | 'sell' | 'mine';
+const props = defineProps<{ attention?: MarketAttention | null; initialPane?: 'browse' | 'sell' }>();
 const emit = defineEmits<{ balance: [carried: number]; attention: [] }>();
 
-type Pane = 'browse' | 'sell' | 'mine';
-const pane = ref<Pane>('browse');
+const pane = ref<Pane>(props.initialPane ?? 'browse');
 const market = ref<MarketResponse | null>(null);
-const vault = ref<ListableItem[]>([]);
+const listable = ref<VaultResponse | null>(null);
+const vault = computed(() => listable.value?.items ?? []);
+const canList = computed(() => listable.value !== null && listable.value.active_count < listable.value.listing_limit);
 const mine = ref<MineResponse | null>(null);
 const loading = ref(false);
 const busy = ref(false);
@@ -57,6 +59,7 @@ const ilMin = ref<number | null>(null);
 const qualityMin = ref<number | null>(null);
 const purchasableOnly = ref(true);
 const sort = ref<'newest' | 'price' | 'item_level'>('newest');
+const page = ref(1);
 
 const confirmBuy = ref<MarketListing | null>(null);
 const sellTarget = ref<ListableItem | null>(null);
@@ -101,20 +104,23 @@ function message(caught: unknown, fallback: string): string {
 }
 
 async function loadMarket(): Promise<void> {
-    const query = new URLSearchParams({ sort: sort.value, page: '1' });
+    const query = new URLSearchParams({ sort: sort.value, page: String(page.value) });
     if (purchasableOnly.value) query.set('purchasable_only', '1');
     if (category.value !== 'all') query.set('category', category.value);
     if (category.value === 'weapon' && weaponStyle.value !== 'all') query.set('weapon_style', weaponStyle.value);
     if (ilMin.value) query.set('il_min', String(ilMin.value));
     if (qualityMin.value) query.set('quality_min', String(qualityMin.value));
     market.value = await api<MarketResponse>(`/api/v1/me/underground/market?${query}`);
+    page.value = market.value.page;
     emit('balance', market.value.carried_shards);
 }
 async function loadVault(): Promise<void> {
-    vault.value = (await api<VaultResponse>('/api/v1/me/underground/market/listable')).items;
+    listable.value = await api<VaultResponse>('/api/v1/me/underground/market/listable');
 }
 async function loadMine(): Promise<void> {
     mine.value = await api<MineResponse>('/api/v1/me/underground/market/mine');
+    await nextTick();
+    if (pane.value !== 'mine') return;
     const unseen = mine.value.expired.filter(listing => listing.seen === false).map(listing => listing.id);
     if (unseen.length > 0) {
         await api('/api/v1/me/underground/market/expired/seen', { method: 'POST', body: JSON.stringify({ listing_ids: unseen }) });
@@ -137,6 +143,15 @@ async function load(): Promise<void> {
 function show(next: Pane): void {
     pane.value = next;
     notice.value = '';
+    void load();
+}
+function search(): void {
+    page.value = 1;
+    void load();
+}
+function showPage(next: number): void {
+    if (loading.value || busy.value || !market.value || next < 1 || (next > market.value.page && !market.value.has_more)) return;
+    page.value = next;
     void load();
 }
 
@@ -164,12 +179,13 @@ async function buy(): Promise<void> {
 }
 
 function startSell(item: ListableItem): void {
+    if (!canList.value || item.listable === false) return;
     sellTarget.value = item;
     sellPrice.value = item.market_minimum_price ?? null;
 }
 async function list(): Promise<void> {
     const item = sellTarget.value;
-    if (!item || item.id === undefined || !sellPriceValid.value || busy.value) return;
+    if (!item || item.id === undefined || !sellPriceValid.value || !canList.value || busy.value) return;
     const current = action(`list:${item.id}:${sellPrice.value}`);
     busy.value = true;
     error.value = '';
@@ -251,7 +267,7 @@ onMounted(() => { void load(); });
         <p v-if="error" class="status error" role="alert">{{ error }}</p>
 
         <template v-if="pane === 'browse' && market">
-            <form class="underground-market-filters" @submit.prevent="loadMarket">
+            <form class="underground-market-filters" @submit.prevent="search">
                 <label>種類
                     <select v-model="category"><option v-for="(label, key) in categoryLabels" :key="key" :value="key">{{ label }}</option></select>
                 </label>
@@ -285,13 +301,19 @@ onMounted(() => { void load(); });
                     <template #action>{{ listing.is_own ? '自分の出品' : listing.blocked_reasons.length ? '買えません' : '買う' }}</template>
                 </EquipmentItemCard>
             </div>
+            <nav class="island-event-pagination" aria-label="露店のページ">
+                <button type="button" :disabled="loading || busy || market.page <= 1" @click="showPage(market.page - 1)">前のページ</button>
+                <span>{{ market.page }}ページ</span>
+                <button type="button" :disabled="loading || busy || !market.has_more" @click="showPage(market.page + 1)">次のページ</button>
+            </nav>
         </template>
 
         <template v-if="pane === 'sell'">
-            <p class="underground-market-cap">出品は{{ mine?.listing_limit ?? 5 }}件まで、期限は7日です。売れると手数料10%を引いた額が届きます。</p>
+            <p v-if="listable" class="underground-market-cap">出品中 {{ listable.active_count }} / {{ listable.listing_limit }}件。出品は{{ listable.listing_limit }}件まで、期限は7日です。売れると手数料10%を引いた額が届きます。</p>
+            <p v-if="listable && !canList" class="status">出品枠がいっぱいです。出品を取り下げるか、売れるまでお待ちください。</p>
             <p v-if="!loading && vault.length === 0" class="status">出品できる装備がありません。</p>
             <div class="underground-equipment-card-grid">
-                <EquipmentItemCard v-for="item in vault" :key="item.id" :item="item" mode="owned" :disabled="busy || item.listable === false" @action="startSell(item)">
+                <EquipmentItemCard v-for="item in vault" :key="item.id" :item="item" mode="owned" :disabled="busy || !canList || item.listable === false" @action="startSell(item)">
                     <template #status>
                         <span v-if="item.is_listed">出品中</span>
                         <span v-else-if="item.listable === false">{{ item.listable_reason ?? '出品できません' }}</span>
@@ -368,7 +390,7 @@ onMounted(() => { void load(); });
                 <p v-if="sellPrice !== null && !sellPriceValid" class="status error">NPC売値以上の整数を入れてください。</p>
                 <footer>
                     <button class="button secondary" type="button" :disabled="busy" @click="sellTarget = null">やめる</button>
-                    <button class="button primary" type="submit" :disabled="busy || !sellPriceValid">{{ busy ? '処理中…' : '出品する' }}</button>
+                    <button class="button primary" type="submit" :disabled="busy || !canList || !sellPriceValid">{{ busy ? '処理中…' : '出品する' }}</button>
                 </footer>
             </form>
         </div>
