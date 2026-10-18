@@ -162,6 +162,7 @@ describe('Underground application operations', () => {
         vi.setSystemTime(new Date('2026-09-23T15:04:59Z'));
         const visibility = vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('visible');
         let unclaimed = true;
+        let marketAttention = { unclaimed_count: 0, unclaimed_total: 0, unseen_expired_count: 0 };
         let shopDay = '2026-09-23';
         let resetAfterMs = 1_000;
         let delayedState: Promise<Response> | null = null;
@@ -174,6 +175,7 @@ describe('Underground application operations', () => {
             skill_trees: null, active_slots: [], passive_modifiers: {},
             growth_path: null, battle: null, trial: null, otherworld_unlocked: true, polishing_tutorial_completed: true,
             distorted_stone_reminder: unclaimed,
+            market_attention: marketAttention,
             distorted_stone_shop: {
                 balance: unclaimed ? 0 : 1, day: shopDay, reset_after_ms: resetAfterMs, purchased_today: unclaimed ? 0 : 1,
                 daily_limit: 4, next_price: unclaimed ? 0 : 10_000, unlocked: true,
@@ -186,7 +188,7 @@ describe('Underground application operations', () => {
             if (path === '/api/v1/me/secretary?world_id=1') return response({
                 ...unnamedSecretaryFixture, name: 'ペリドット', named_at: '2026-09-22T00:00:00Z', header_label: 'ペリドット',
             });
-            if (path === '/api/v1/me/underground/distorted-stone-reminder') return response({ unclaimed, day: shopDay, reset_after_ms: resetAfterMs });
+            if (path === '/api/v1/me/underground/distorted-stone-reminder') return response({ unclaimed, day: shopDay, reset_after_ms: resetAfterMs, market_attention: marketAttention });
             if (path === '/api/v1/me/underground') {
                 const pending = delayedState;
                 delayedState = null;
@@ -224,6 +226,19 @@ describe('Underground application operations', () => {
             await flushPromises();
             expect(dots()).toEqual([false, false, false]);
 
+            marketAttention = { unclaimed_count: 1, unclaimed_total: 7200, unseen_expired_count: 0 };
+            window.dispatchEvent(new Event('pageshow'));
+            await flushPromises();
+            const exchangeButton = () => wrapper.findAll('.ug-navigation button').find(button => button.text().includes('交流場'))!;
+            expect(headerButton().find('.notification-dot').exists()).toBe(true);
+            expect(exchangeButton().find('.notification-dot').exists()).toBe(true);
+            marketAttention = { unclaimed_count: 0, unclaimed_total: 0, unseen_expired_count: 0 };
+            const refreshed = await wrapper.getComponent(UndergroundPanel).vm.refreshDistortedStoneReminder();
+            await flushPromises();
+            expect(refreshed.market_attention).toEqual(marketAttention);
+            expect(headerButton().find('.notification-dot').exists()).toBe(false);
+            expect(exchangeButton().find('.notification-dot').exists()).toBe(false);
+
             await wrapper.findAll('.site-header nav button').find(button => button.text() === 'TOP')!.trigger('click');
             await flushPromises();
             const previousDayState = response(state());
@@ -245,6 +260,11 @@ describe('Underground application operations', () => {
             await openUndergroundView(wrapper, 'ショップ', '魔石研磨');
             expect(dots()).toEqual([true, true, true]);
             // A purchase made before midnight must not overwrite the newer daily state.
+            // Ask the server again just before midnight instead of ticking the panel's
+            // per-second cooldown timer through an entire day.
+            resetAfterMs = 1_000;
+            window.dispatchEvent(new Event('pageshow'));
+            await flushPromises();
             let resolvePurchase!: (value: Response) => void;
             delayedPurchase = new Promise<Response>(resolve => { resolvePurchase = resolve; });
             await wrapper.get('[aria-label="歪んだ輝石"] button').trigger('click');
@@ -253,7 +273,7 @@ describe('Underground application operations', () => {
             unclaimed = true;
             shopDay = '2026-09-25';
             resetAfterMs = 86_400_000;
-            await vi.advanceTimersByTimeAsync(86_395_000);
+            await vi.advanceTimersByTimeAsync(1_000);
             await flushPromises();
             resolvePurchase(previousDayPurchase);
             await flushPromises();

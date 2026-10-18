@@ -26,6 +26,14 @@ class RulesetAuthoringValidatorTest extends TestCase
             $missile['cost_money_per_shot']++;
         }
         unset($missile);
+        $settings['underground_market']['listing_limit']++;
+        $settings['underground_market']['duration_hours']++;
+        $settings['underground_market']['proceeds_numerator']--;
+        $settings['underground_market']['page_size']++;
+        $settings['secretary']['warehouse']['expansion_cost_paradox']++;
+        $settings['secretary']['warehouse']['expansion_slots']++;
+        $settings['secretary']['synthesis']['recipes']['stack:fire_charm']['level_cap']--;
+        $settings['secretary']['synthesis']['recipes']['succubus_emblem']['inputs'][0]['count']++;
 
         app(RulesetAuthoringValidator::class)->validate($settings);
         $this->addToAssertionCount(1);
@@ -88,6 +96,39 @@ class RulesetAuthoringValidatorTest extends TestCase
     public static function invalidCurrentRulesetProvider(): array
     {
         return [
+            'market proceeds cannot create money' => [
+                static function (array $settings): array {
+                    $settings['underground_market']['proceeds_numerator'] = $settings['underground_market']['proceeds_denominator'] + 1;
+
+                    return $settings;
+                },
+                'proceeds_numerator cannot exceed proceeds_denominator',
+            ],
+            'warehouse expansions fit persisted range' => [
+                static function (array $settings): array {
+                    $settings['secretary']['warehouse']['max_expansions'] = 5;
+
+                    return $settings;
+                },
+                'max_expansions exceeds the persisted range',
+            ],
+            'stack level cap fits retained item levels' => [
+                static function (array $settings): array {
+                    $settings['secretary']['synthesis']['recipes']['stack:fire_charm']['level_cap'] = 10000;
+
+                    return $settings;
+                },
+                'level_cap cannot exceed the retained item cap or 9999',
+            ],
+            'fixed recipe cannot count one material twice' => [
+                static function (array $settings): array {
+                    $inputs = &$settings['secretary']['synthesis']['recipes']['succubus_emblem']['inputs'];
+                    $inputs[1] = $inputs[0];
+
+                    return $settings;
+                },
+                'inputs must not repeat an item_key',
+            ],
             'repeated quantity must consume one turn' => [
                 static function (array $settings): array {
                     foreach ($settings['command_definitions'] as &$command) {

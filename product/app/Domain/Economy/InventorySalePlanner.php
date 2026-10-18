@@ -8,6 +8,43 @@ final class InventorySalePlanner
 {
     public function __construct(private readonly CappedAddition $addition) {}
 
+    /** @param array<string, mixed> $rates */
+    public function planForResource(
+        array $rates,
+        string $resourceKey,
+        int $inventoryUnits,
+        int $moneyBefore,
+        int $moneyCapacity,
+    ): InventorySaleQuote {
+        $rate = $this->rateForResource($rates, $resourceKey);
+
+        return $this->plan(
+            $inventoryUnits,
+            $moneyBefore,
+            $moneyCapacity,
+            $rate['inventory_units'],
+            $rate['money_units'],
+        );
+    }
+
+    /**
+     * @param  array<string, mixed>  $rates
+     * @return array{inventory_units: int, money_units: int}
+     */
+    public function rateForResource(array $rates, string $resourceKey): array
+    {
+        $rate = $rates[$resourceKey] ?? null;
+        if (! is_array($rate)
+            || ! is_int($rate['inventory_units'] ?? null)
+            || $rate['inventory_units'] < 1
+            || ! is_int($rate['money_units'] ?? null)
+            || $rate['money_units'] < 1) {
+            throw new DomainException("Inventory sale rate is missing or invalid for {$resourceKey}.");
+        }
+
+        return $rate;
+    }
+
     public function plan(
         int $inventoryUnits,
         int $moneyBefore,

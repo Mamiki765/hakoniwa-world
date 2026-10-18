@@ -5,6 +5,7 @@ namespace Tests\Underground\Feature;
 use App\Application\SecretaryLendingService;
 use App\Application\Underground\UndergroundEquipmentCatalog;
 use App\Application\Underground\UndergroundIntroService;
+use App\Application\Underground\UndergroundMarketService;
 use App\Application\Underground\UndergroundProfileService;
 use App\Application\Underground\UndergroundStarterEquipmentService;
 use App\Models\Secretary;
@@ -13,6 +14,7 @@ use App\Models\UndergroundBattle;
 use App\Models\UndergroundBattleLog;
 use App\Models\UndergroundIntroProgress;
 use App\Models\UndergroundIntroRequest;
+use App\Models\UndergroundMarketListing;
 use App\Models\UndergroundOwnedEquipment;
 use App\Models\UndergroundProfile;
 use App\Models\UndergroundTrialProgress;
@@ -215,6 +217,62 @@ final class PostgresUndergroundRuntimeConcurrencyTest extends TestCase
         $this->assertSame(1, UndergroundIntroRequest::query()
             ->where('underground_profile_id', $profile->id)
             ->where('operation', 'bank_transfer')->count());
+    }
+
+    public function test_two_buyers_overlapping_on_the_seller_profile_settle_only_one_market_purchase(): void
+    {
+        [$seller, $sellerSecretary, $sellerProfile] = $this->undergroundFixture();
+        $this->openExploration($seller, $sellerSecretary);
+        $buyers = [];
+        for ($index = 0; $index < 2; $index++) {
+            [$user, $secretary, $profile] = $this->undergroundFixture();
+            $this->openExploration($user, $secretary);
+            $profile->update(['shard_balance' => 1_000]);
+            $buyers[] = [$user, $profile];
+        }
+        $item = UndergroundOwnedEquipment::query()->create([
+            'underground_profile_id' => $sellerProfile->id, 'definition_key' => 'leather_armor',
+            'catalog_identity' => app(UndergroundEquipmentCatalog::class)->identity(),
+            'instance_kind' => 'fixed', 'acquired_at' => now(),
+        ]);
+        $price = app(UndergroundEquipmentCatalog::class)->sellPrice(
+            app(UndergroundEquipmentCatalog::class)->definition($item->definition_key),
+        ) + 7;
+        $listing = app(UndergroundMarketService::class)->create($seller, (string) Str::uuid(), $item->id, $price)['listing'];
+
+        // Both distinct buyers must reach the seller row lock before either can settle.
+        $results = $this->runConcurrentOperations($seller, $sellerSecretary, array_map(
+            static fn (array $buyer): array => [
+                'user_id' => $buyer[0]->id, 'operation' => 'market_purchase',
+                'request_id' => (string) Str::uuid(), 'listing_id' => $listing['id'], 'expected_price' => $price,
+            ],
+            $buyers,
+        ));
+        $statuses = array_column($results, 'status');
+        sort($statuses);
+        $this->assertSame(['conflict', 'ok'], $statuses);
+        $success = collect($results)->firstWhere('status', 'ok');
+        $conflict = collect($results)->firstWhere('status', 'conflict');
+        $this->assertIsArray($success);
+        $this->assertIsArray($conflict);
+        $this->assertSame('listing_unavailable', $conflict['error_code']);
+        $this->assertSame($item->id, $success['equipment_id']);
+        $this->assertSame($price, $success['paid']);
+        foreach ($buyers as [$buyer, $profile]) {
+            $won = $buyer->id === $success['user_id'];
+            $this->assertSame($won ? 1_000 - $price : 1_000, $profile->fresh()->shard_balance);
+            if ($won) {
+                $this->assertSame($profile->id, $item->fresh()->underground_profile_id);
+                $this->assertSame($profile->id, UndergroundMarketListing::query()->findOrFail($listing['id'])->buyer_profile_id);
+            }
+        }
+        $this->assertSame(100, $sellerProfile->fresh()->shard_balance);
+        $this->assertFalse($item->fresh()->is_listed);
+        $this->assertSame(1, UndergroundOwnedEquipment::query()->where('source_market_listing_id', $listing['id'])->count());
+        $this->assertDatabaseHas('underground_market_listings', ['id' => $listing['id'], 'status' => 'sold']);
+        $this->assertSame(1, DB::table('underground_market_receipts')->whereIn('underground_profile_id', array_map(
+            static fn (array $buyer): int => $buyer[1]->id, $buyers,
+        ))->count());
     }
 
     public function test_equipment_mutations_serialize_duplicate_settlement_last_vault_slot_and_slot_swap(): void
@@ -746,7 +804,7 @@ final class PostgresUndergroundRuntimeConcurrencyTest extends TestCase
                 $workers[] = $this->startWorker(
                     $directory,
                     (string) $index,
-                    ['user_id' => $user->id] + $payloads[$index],
+                    $payloads[$index] + ['user_id' => $user->id],
                     $goPath,
                 );
             }

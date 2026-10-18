@@ -12,16 +12,20 @@ final class SecretaryItemPresenter
     public function __construct(
         private readonly SecretaryItemCatalog $catalog,
         private readonly SecretaryItemGameplayContract $gameplay,
+        private readonly SecretaryItemGrantService $grants,
+        private readonly SecretaryWarehouseService $warehouse,
     ) {}
 
     /** @return array{effect_context: array<string, mixed>|null, equipment_version: int, inventory: array{capacity: int, used: int, items: list<array<string, mixed>>}, equipment: array{slot_count: int, slots: list<array<string, mixed>>, category_limits: list<array{category: string, label: string, maximum_equipped: int}>}} */
     public function present(Secretary $secretary, ?SecretaryItemEffectProjection $projection = null): array
     {
         $secretary->loadMissing('itemInstances');
+        $used = $secretary->itemInstances->count();
+        $capacity = $this->grants->capacity($secretary);
         $items = $secretary->itemInstances->sortBy([
             ['obtained_at', 'asc'],
             ['id', 'asc'],
-        ])->values()->map(fn (SecretaryItemInstance $item): array => $this->item($item, $projection));
+        ])->values()->map(fn (SecretaryItemInstance $item): array => $this->item($item, $projection, $used, $capacity));
         $equipped = $items->filter(fn (array $item): bool => $item['equipped_slot'] !== null)
             ->keyBy('equipped_slot');
         $slots = collect(range(1, SecretaryItemGrantService::EQUIPMENT_SLOT_COUNT))
@@ -32,8 +36,7 @@ final class SecretaryItemPresenter
             'effect_context' => $projection?->context,
             'equipment_version' => $secretary->surfaceState->equipment_version,
             'inventory' => [
-                'capacity' => SecretaryItemGrantService::INVENTORY_CAPACITY,
-                'used' => $items->count(),
+                ...$this->warehouse->present($secretary, $used),
                 'items' => $items->all(),
             ],
             'equipment' => [
@@ -48,6 +51,8 @@ final class SecretaryItemPresenter
     private function item(
         SecretaryItemInstance $item,
         ?SecretaryItemEffectProjection $projection,
+        int $used,
+        int $capacity,
     ): array {
         $definition = $this->catalog->definitionWithResolvedEconomics(
             $item->item_key,
@@ -69,6 +74,11 @@ final class SecretaryItemPresenter
             'equipped_slot' => $item->equipped_slot,
             'is_equipped' => $item->equipped_slot !== null,
             'is_escrowed' => $item->is_escrowed,
+            ...($definition['category'] === 'ticket' ? [
+                'max_draw_count' => $item->is_escrowed || $item->equipped_slot !== null
+                    ? 0
+                    : SecretaryTicketGachaService::maximumDrawCount($item->level, $used, $capacity),
+            ] : []),
             'effect_text' => $projection === null
                 ? null
                 : $this->gameplay->effectText($projection->rulesetSettings, $item->item_key, $item->level),

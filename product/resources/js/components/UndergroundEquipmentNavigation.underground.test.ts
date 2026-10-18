@@ -83,6 +83,45 @@ describe('Underground equipment navigation', () => {
         wrapper.unmount();
     });
 
+    it('keeps listed equipment visible but unavailable in the vault and crystal chooser', async () => {
+        const listedAccessory = item({ is_listed: true, listable: false });
+        const listedCrystal = item({ id: 8, category: 'resonance', name: '出品中の共鳴結晶', is_listed: true, listable: false });
+        const mutations: string[] = [];
+        stubUndergroundFetch(vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+            const url = new URL(String(input), 'http://localhost');
+            if (init?.method && init.method !== 'GET') mutations.push(String(input));
+            if (url.pathname.endsWith('/polishing')) {
+                return response({ shard_balance: 100, item: null, next_item: null, next_price: null, maximum_level: 5 });
+            }
+            return response({ catalog_identity: 'test-catalog', used: 1, capacity: 500, equipped,
+                items: [url.searchParams.get('inventory') === 'resonance' ? listedCrystal : listedAccessory],
+                page: 1, per_page: 50, last_page: 1, total: 1 });
+        }));
+        const wrapper = mount(UndergroundEquipmentVault);
+        await flushPromises();
+        const card = wrapper.get('.underground-vault-items .underground-equipment-card');
+        expect(card.text()).toContain('露店に出品中');
+        expect(card.findAll('button').every(button => button.attributes('disabled') !== undefined)).toBe(true);
+        expect(card.get('select[aria-label="アクセサリー装備先"]').attributes('disabled')).toBeDefined();
+        await wrapper.findAll('button').find(button => button.text() === '共鳴結晶')!.trigger('click');
+        await flushPromises();
+        expect(wrapper.text()).toContain(listedCrystal.name);
+        expect(wrapper.findAll('button').some(button => button.text() === '売却する')).toBe(false);
+        wrapper.unmount();
+
+        const polishing = mount(UndergroundEquipmentPolishing, { props: { balance: 100 } });
+        await flushPromises();
+        const dialog = polishing.get('dialog').element as HTMLDialogElement;
+        dialog.showModal = () => { dialog.open = true; };
+        await polishing.findAll('button').find(button => button.text() === '共鳴結晶を装備する')!.trigger('click');
+        await flushPromises();
+        const crystalCard = polishing.get('.ug-polishing-crystals .underground-equipment-card');
+        expect(crystalCard.text()).toContain('露店に出品中');
+        expect(crystalCard.get('button').attributes('disabled')).toBeDefined();
+        expect(mutations).toHaveLength(0);
+        polishing.unmount();
+    });
+
     it('keeps the same polishing intent after a paid response is lost', async () => {
         const crystal = item({ category: 'resonance', name: '堅鱗の黒竜晶', equipped_slot: 'resonance', polish_level: 0 });
         const requests: unknown[] = [];
@@ -225,7 +264,7 @@ describe('Underground equipment navigation', () => {
     it('shows five slots and sends the selected accessory target slot', async () => {
         const equipPayloads: Array<Record<string, unknown>> = [];
         const protectionPayloads: Array<Record<string, unknown>> = [];
-        const accessory = item();
+        const accessory = item({ listable: true });
         const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
             const path = String(input);
             if (path === '/api/v1/me/underground/equipment/items/7/protection' && init?.method === 'PUT') {
@@ -268,6 +307,8 @@ describe('Underground equipment navigation', () => {
         expect(equipPayloads).toHaveLength(1);
         expect(equipPayloads[0]).toMatchObject({ item_id: 7, target_slot: 'accessory_3' });
         expect(typeof equipPayloads[0]?.request_id).toBe('string');
+        await wrapper.findAll('button').find(button => button.text() === '露店で出品する')!.trigger('click');
+        expect(wrapper.emitted('market')).toHaveLength(1);
         wrapper.unmount();
     });
 

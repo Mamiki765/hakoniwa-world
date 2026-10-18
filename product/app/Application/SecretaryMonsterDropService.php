@@ -55,7 +55,7 @@ final class SecretaryMonsterDropService
             $message = '倉庫がいっぱいのため、怪獣の戦利品を受け取れませんでした。';
             $this->events->record($context, 'monster.item_drop_inventory_full', $recipient, [
                 'nation_id' => (int) $recipient->id,
-                'inventory_capacity' => SecretaryItemGrantService::INVENTORY_CAPACITY,
+                'inventory_capacity' => $result['inventory_capacity'],
                 'inventory_used' => $result['inventory_used'],
             ], 'private', 'warning', $message);
 

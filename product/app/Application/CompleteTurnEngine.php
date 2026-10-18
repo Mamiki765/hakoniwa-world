@@ -938,13 +938,12 @@ final class CompleteTurnEngine
                         : 0,
                     default => 0,
                 };
-                $rate = $this->inventorySaleRate($rates, $resource->key);
-                $quote = $this->salePlanner->plan(
+                $quote = $this->salePlanner->planForResource(
+                    $rates,
+                    $resource->key,
                     $requested,
                     (int) $nation->money,
                     $liquidMoneyCapacity,
-                    $rate['inventory_units'],
-                    $rate['money_units'],
                 );
                 $sold = $quote->inventorySold;
                 $revenue = $quote->appliedMoney;
@@ -1039,13 +1038,12 @@ final class CompleteTurnEngine
                         throw new DomainException("Stored sale policy for {$resource->key} is invalid.");
                     }
                     if ($resource->tradable) {
-                        $rate = $this->inventorySaleRate($settings['inventory_sale_rates'], $resourceKey);
-                        $quote = $this->salePlanner->plan(
+                        $quote = $this->salePlanner->planForResource(
+                            $settings['inventory_sale_rates'],
+                            $resourceKey,
                             $overflow,
                             (int) $nation->money,
                             $liquidMoneyCapacity,
-                            $rate['inventory_units'],
-                            $rate['money_units'],
                         );
                         if ($quote->inventorySold > 0) {
                             $balance->decrement('amount', $quote->inventorySold);
@@ -1136,24 +1134,6 @@ final class CompleteTurnEngine
         }
 
         return $metrics;
-    }
-
-    /**
-     * @param  array<string, mixed>  $rates
-     * @return array{inventory_units: int, money_units: int}
-     */
-    private function inventorySaleRate(array $rates, string $resourceKey): array
-    {
-        $rate = $rates[$resourceKey] ?? null;
-        if (! is_array($rate)
-            || ! is_int($rate['inventory_units'] ?? null)
-            || $rate['inventory_units'] < 1
-            || ! is_int($rate['money_units'] ?? null)
-            || $rate['money_units'] < 1) {
-            throw new DomainException("Inventory sale rate is missing or invalid for {$resourceKey}.");
-        }
-
-        return $rate;
     }
 
     /** @param array<string, mixed> $settings */
@@ -1833,16 +1813,10 @@ final class CompleteTurnEngine
             $growth = $context->random->stream(TurnRandomStreamFactory::POPULATION_GROWTH)->integer(
                 $growthRules['minimum'], $growthRules['maximum'],
             );
-            $populationEffect = $this->secretaryItems->singleSnapshotEffect(
-                $context->state, (int) $cell->owner_nation_id, 'population_growth_percent',
+            $populationPercent = $this->secretaryItems->snapshotPopulationGrowthPercent(
+                $context->state, (int) $cell->owner_nation_id,
             );
-            if ($populationEffect !== null) {
-                $percent = $populationEffect['parameters']['percent'] ?? null;
-                if (! is_int($percent) || $percent < 0) {
-                    throw new DomainException('Secretary population growth Item snapshot is invalid.');
-                }
-                $growth += intdiv($growth * $percent, 100);
-            }
+            $growth += intdiv($growth * $populationPercent, 100);
             if ($supplementalAttraction) {
                 $growth = intdiv($growth * $towel['percent'], 100);
             }
