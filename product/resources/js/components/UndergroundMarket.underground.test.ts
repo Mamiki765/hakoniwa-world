@@ -34,6 +34,7 @@ describe('underground market stalls', () => {
         expect(wrapper.text()).toContain('手持ちのGが足りません');
         const buttons = wrapper.findAll('.underground-equipment-card-grid button').filter(button => ['買う', '買えません'].includes(button.text()));
         expect(buttons.map(button => [button.text(), button.attributes('disabled') !== undefined])).toEqual([['買う', false], ['買えません', true]]);
+        expect(wrapper.find('[aria-label="露店のページ"]').exists()).toBe(false);
     });
 
     it('confirms a purchase with the expected price and refreshes when someone else bought it first', async () => {
