@@ -19,6 +19,37 @@ final class SecretaryItemGrantService
 
     public function __construct(private readonly SecretaryItemCatalog $catalog) {}
 
+    public static function capacity(Secretary $secretary): int
+    {
+        $rules = self::warehouseRules();
+
+        return $rules['base_capacity'] + $rules['expansion_slots'] * (int) $secretary->surfaceState->item_capacity_expansions;
+    }
+
+    /** @return array{base_capacity: int, expansion_slots: int, expansion_cost_paradox: int, max_expansions: int} */
+    public static function warehouseRules(): array
+    {
+        $rules = config('hakoniwa.ruleset.secretary.warehouse');
+        if ($rules === null) {
+            return ['base_capacity' => self::INVENTORY_CAPACITY, 'expansion_slots' => 0, 'expansion_cost_paradox' => 0, 'max_expansions' => 0];
+        }
+        if (! is_array($rules)) {
+            throw new DomainException('Secretary warehouse rules are invalid.');
+        }
+        foreach (['base_capacity', 'expansion_slots', 'expansion_cost_paradox', 'max_expansions'] as $key) {
+            if (! isset($rules[$key]) || ! is_int($rules[$key]) || $rules[$key] < 1) {
+                throw new DomainException('Secretary warehouse rules are invalid.');
+            }
+        }
+
+        return [
+            'base_capacity' => $rules['base_capacity'],
+            'expansion_slots' => $rules['expansion_slots'],
+            'expansion_cost_paradox' => $rules['expansion_cost_paradox'],
+            'max_expansions' => $rules['max_expansions'],
+        ];
+    }
+
     public function grantStarterOldBow(Secretary $secretary): ?SecretaryItemInstance
     {
         return $this->grant(
@@ -53,7 +84,7 @@ final class SecretaryItemGrantService
             $resolvedRarity,
             $resolvedFixedSalePriceMoney,
         );
-        if ($level < 1 || $level > $definition['max_level']) {
+        if ($level < 1 || $level > $this->catalog->maximumRetainedLevel($itemKey)) {
             throw new DomainException("Invalid level {$level} for Secretary item {$itemKey}.");
         }
         if ($equippedSlot !== null && ($equippedSlot < 1 || $equippedSlot > self::EQUIPMENT_SLOT_COUNT)) {
@@ -100,7 +131,7 @@ final class SecretaryItemGrantService
      * The callback only draws an Item and level; it must not mutate inventory.
      *
      * @param  Closure(): array{item_key: string, level: int}  $generate
-     * @return array{status: 'granted'|'already_granted', item: SecretaryItemInstance}|array{status: 'inventory_full', inventory_used: int}
+     * @return array{status: 'granted'|'already_granted', item: SecretaryItemInstance}|array{status: 'inventory_full', inventory_used: int, inventory_capacity: int}
      */
     public function grantGenerated(int $secretaryId, string $grantKey, Closure $generate): array
     {
@@ -117,8 +148,8 @@ final class SecretaryItemGrantService
                 return ['status' => 'already_granted', 'item' => $existing];
             }
             $used = $locked->itemInstances()->count();
-            if ($used >= self::INVENTORY_CAPACITY) {
-                return ['status' => 'inventory_full', 'inventory_used' => $used];
+            if ($used >= self::capacity($locked)) {
+                return ['status' => 'inventory_full', 'inventory_used' => $used, 'inventory_capacity' => self::capacity($locked)];
             }
 
             $generated = $generate();
@@ -156,7 +187,7 @@ final class SecretaryItemGrantService
         }
 
         $used = $knownInventoryUsage ?? $locked->itemInstances()->count();
-        if ($used >= self::INVENTORY_CAPACITY) {
+        if ($used >= self::capacity($locked)) {
             $this->recordInventoryFull($locked, $itemKey, $grantKey, $used);
 
             return null;
@@ -211,7 +242,7 @@ final class SecretaryItemGrantService
                 'user_id' => $secretary->user_id,
                 'item_key' => $itemKey,
                 'grant_key' => $grantKey,
-                'capacity' => self::INVENTORY_CAPACITY,
+                'capacity' => self::capacity($secretary),
                 'used' => $used,
             ], JSON_THROW_ON_ERROR),
             'occurred_at' => $occurredAt,

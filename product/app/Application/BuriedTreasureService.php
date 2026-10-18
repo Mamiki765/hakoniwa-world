@@ -164,7 +164,7 @@ final class BuriedTreasureService
             $this->validateRewardSnapshot($snapshot, ($snapshot['item_key'] ?? null) === SecretaryItemCatalog::DOKIDOKI_TICKET);
             $required += (int) $snapshot['quantity'];
         }
-        if ($secretary->itemInstances()->count() + $required > SecretaryItemGrantService::INVENTORY_CAPACITY) {
+        if ($secretary->itemInstances()->count() + $required > SecretaryItemGrantService::capacity($secretary)) {
             $this->events->record($context, 'buried_treasure.collection_failed', $cell, [
                 'nation_id' => (int) $nation->id, 'x' => (int) $cell->x, 'y' => (int) $cell->y,
                 'reason' => 'secretary_inventory_full', 'treasure_count' => $treasures->count(),

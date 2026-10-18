@@ -166,7 +166,7 @@ final class SecretaryTurnService
             if ($slot < 1 || $slot > 5 || isset($slots[$slot])) {
                 throw new DomainException("Secretary {$secretary->id} has invalid or duplicate equipped slots.");
             }
-            if ($level < 1 || $level > $definition['max_level']) {
+            if ($level < 1 || $level > $this->items->maximumRetainedLevel($row->item_key)) {
                 throw new DomainException("Secretary Item {$row->id} has a level outside the global catalog.");
             }
             $slots[$slot] = true;

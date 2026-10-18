@@ -8,6 +8,7 @@ use Illuminate\Database\Eloquent\Model;
  * @property int $secretary_id
  * @property int $monster_experience
  * @property int $equipment_version
+ * @property int $item_capacity_expansions
  */
 final class SecretarySurfaceState extends Model
 {
@@ -15,10 +16,10 @@ final class SecretarySurfaceState extends Model
 
     public $incrementing = false;
 
-    protected $fillable = ['secretary_id', 'monster_experience', 'equipment_version'];
+    protected $fillable = ['secretary_id', 'monster_experience', 'equipment_version', 'item_capacity_expansions'];
 
     protected function casts(): array
     {
-        return ['secretary_id' => 'integer', 'monster_experience' => 'integer', 'equipment_version' => 'integer'];
+        return ['secretary_id' => 'integer', 'monster_experience' => 'integer', 'equipment_version' => 'integer', 'item_capacity_expansions' => 'integer'];
     }
 }

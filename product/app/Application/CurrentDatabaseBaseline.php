@@ -22,6 +22,8 @@ final class CurrentDatabaseBaseline
 
     public const MONSTER_SPAWN_PROVENANCE_MIGRATION = '2026_10_17_020000_preserve_monster_spawn_provenance_across_rulesets';
 
+    public const MARKET_SYNTHESIS_MIGRATION = '2026_10_18_000000_add_market_synthesis_and_warehouse_expansion';
+
     /** @return array<string, string> */
     public function structure(bool $excludeCapitalRelocationTurn = false, bool $excludeEcopo = false): array
     {
@@ -193,6 +195,19 @@ SQL, [$hasEcopo]);
             );
             foreach ($expected as $key => $variant) {
                 $expected[$key] = array_replace($variant, $extension);
+            }
+        }
+        if (in_array(self::MARKET_SYNTHESIS_MIGRATION, $applied, true)) {
+            if (! in_array(self::MIGRATION, $applied, true)) {
+                throw new RuntimeException('Market and synthesis require the accepted 5.0.1 baseline marker first.');
+            }
+            $extension = json_decode(
+                (string) file_get_contents(database_path('baselines/market_synthesis_structure.json')),
+                true, 512, JSON_THROW_ON_ERROR,
+            );
+            foreach ($expected as $key => $variant) {
+                $expected[$key] = array_replace($variant, $extension[$key]);
+                ksort($expected[$key]);
             }
         }
         // Production's migration ancestry and a fresh dump differ in physical

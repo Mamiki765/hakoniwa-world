@@ -19,8 +19,12 @@ import ShipStatusWindow from './components/ShipStatusWindow.vue';
 import SecretaryEquipmentModal from './components/SecretaryEquipmentModal.vue';
 import TradingPostPanel from './components/TradingPostPanel.vue';
 import UndergroundPanel from './components/UndergroundPanel.vue';
+import type { MarketAttention } from './components/UndergroundMarket.vue';
 import SecretaryImageSlotsEditor from './components/SecretaryImageSlotsEditor.vue';
 import SecretaryMenu from './components/SecretaryMenu.vue';
+import SecretarySynthesis from './components/SecretarySynthesis.vue';
+import SecretaryTicketDrawDialog from './components/SecretaryTicketDrawDialog.vue';
+import SecretaryWarehouseExpandDialog from './components/SecretaryWarehouseExpandDialog.vue';
 import SecretaryStatusOverview from './components/SecretaryStatusOverview.vue';
 import SecretaryEquippedItems from './components/SecretaryEquippedItems.vue';
 import type { SecretarySection } from './types';
@@ -126,7 +130,9 @@ watch([announcementBody, announcementBodyFormat], () => {
 });
 const nation = ref<Nation | null>(null);
 const secretary = ref<Secretary | null>(null);
-const pendingTicketGacha = ref<{ ticketId: number; requestKey: string } | null>(null);
+const pendingTicketGacha = ref<{ ticketId: number; drawCount: number; requestKey: string } | null>(null);
+const ticketDrawTarget = ref<Secretary['inventory']['items'][number] | null>(null);
+const warehouseExpandOpen = ref(false);
 const secretarySection = ref<SecretarySection>('main');
 const viewedSecretaryProfile = ref<SecretaryProfile | null>(null);
 const viewedSecretaryWorldId = ref<number | null>(null);
@@ -171,6 +177,7 @@ const pendingCompensationClaim = ref<{ grantId: number; requestId: string } | nu
 const compensationError = ref('');
 const undergroundSurfaceMap = ref<UndergroundSurfaceMap | null>(null);
 const distortedStoneReminder = ref(false);
+const marketAttention = ref(false);
 const undergroundPanel = ref<InstanceType<typeof UndergroundPanel> | null>(null);
 let distortedStoneReminderDay: string | null = null;
 let distortedStoneReminderDeadline: number | null = null;
@@ -473,10 +480,12 @@ async function loadDistortedStoneReminder(): Promise<void> {
     try {
         const reminder = undergroundPanel.value
             ? await undergroundPanel.value.refreshDistortedStoneReminder()
-            : await api<{ unclaimed: boolean; day: string; reset_after_ms: number }>('/api/v1/me/underground/distorted-stone-reminder', { cache: 'no-store' });
+            : await api<{ unclaimed: boolean; day: string; reset_after_ms: number; market_attention?: MarketAttention }>('/api/v1/me/underground/distorted-stone-reminder', { cache: 'no-store' });
         if (!distortedStoneReminderStopped && revision === distortedStoneReminderRevision) {
             distortedStoneReminder.value = reminder.unclaimed;
         }
+        const attention = reminder.market_attention;
+        if (attention) marketAttention.value = attention.unclaimed_count + attention.unseen_expired_count > 0;
         distortedStoneReminderDay = reminder.day;
         distortedStoneReminderDeadline = performance.now() + reminder.reset_after_ms;
         distortedStoneReminderRetries = 0;
@@ -1507,28 +1516,40 @@ async function sellSecretaryItem(item: Secretary['inventory']['items'][number]):
     }
 }
 
-async function useSecretaryTicket(item: Secretary['inventory']['items'][number]): Promise<void> {
+function useSecretaryTicket(item: Secretary['inventory']['items'][number]): void {
     if (secretary.value === null || busy.value || item.is_equipped || item.is_escrowed) return;
-    if (!window.confirm(`${item.name} Lv${item.level}を使って${item.level}点を抽選しますか？`)) return;
-    if (pendingTicketGacha.value?.ticketId !== item.id) {
-        pendingTicketGacha.value = { ticketId: item.id, requestKey: crypto.randomUUID() };
+    ticketDrawTarget.value = item;
+}
+
+async function drawSecretaryTicket(drawCount: number): Promise<void> {
+    const item = ticketDrawTarget.value;
+    if (secretary.value === null || item === null || busy.value) return;
+    if (pendingTicketGacha.value?.ticketId !== item.id || pendingTicketGacha.value.drawCount !== drawCount) {
+        pendingTicketGacha.value = { ticketId: item.id, drawCount, requestKey: crypto.randomUUID() };
     }
     const request = pendingTicketGacha.value;
     busy.value = true;
     message.value = '';
     try {
-        const result = await api<{ items: { name: string; level: number }[] }>(
+        const result = await api<{ items: { name: string; level: number }[]; ticket?: { item_id: number; remaining_level: number } | null }>(
             '/api/v1/me/secretary/tickets/draw',
-            { method: 'POST', body: JSON.stringify({ ticket_item_id: item.id, request_key: request.requestKey }) },
+            { method: 'POST', body: JSON.stringify({ ticket_item_id: item.id, request_key: request.requestKey, draw_count: drawCount }) },
         );
         await loadSecretary();
         pendingTicketGacha.value = null;
-        message.value = `抽選結果：${result.items.map(drawn => `${drawn.name} Lv${drawn.level}`).join('、')}`;
+        ticketDrawTarget.value = null;
+        const remaining = result.ticket ? `（チケット残り Lv${result.ticket.remaining_level.toLocaleString('ja-JP')}）` : '';
+        message.value = `抽選結果：${result.items.map(drawn => `${drawn.name} Lv${drawn.level}`).join('、')}${remaining}`;
     } catch (error) {
         message.value = error instanceof Error ? error.message : 'チケットを使用できませんでした。';
     } finally {
         busy.value = false;
     }
+}
+
+async function onWarehouseExpanded(): Promise<void> {
+    warehouseExpandOpen.value = false;
+    await loadSecretary();
 }
 
 async function openSecretary(): Promise<void> {
@@ -1860,7 +1881,7 @@ async function abandonNation(): Promise<void> {
             <button v-if="nation" type="button" class="notification-anchor" :aria-label="boardUnread ? '自島へ（伝言板に新しい伝言があります）' : undefined" @click="openOwnIsland">自島へ<span v-if="boardUnread" class="notification-dot" aria-hidden="true" /></button>
             <button v-if="secretary" type="button" @click="openSecretary">{{ secretary.header_label }}</button>
             <button v-if="nation" type="button" @click="page = 'trading-post'">交易場</button>
-            <button v-if="secretary" type="button" class="notification-anchor" :aria-label="distortedStoneReminder ? '地底（歪んだ輝石の初回受取があります）' : undefined" @click="openUnderground">地底<span v-if="distortedStoneReminder" class="notification-dot" aria-hidden="true" /></button>
+            <button v-if="secretary" type="button" class="notification-anchor" :aria-label="distortedStoneReminder ? '地底（歪んだ輝石の初回受取があります）' : marketAttention ? '地底（露店にお知らせがあります）' : undefined" @click="openUnderground">地底<span v-if="distortedStoneReminder || marketAttention" class="notification-dot" aria-hidden="true" /></button>
             <button type="button" @click="openOptions">オプション</button>
             <a href="/manual">マニュアル</a>
         </nav>
@@ -2702,6 +2723,7 @@ async function abandonNation(): Promise<void> {
             @return-to-secretary="returnFromUnderground"
             @daily-quest="handleDailyQuestProgress"
             @distorted-stone-reminder="updateDistortedStoneReminder"
+            @market-attention="marketAttention = $event"
         />
 
         <section v-else-if="page === 'secretary' && (viewedSecretaryProfile || secretary)" class="panel secretary-panel">
@@ -2722,6 +2744,8 @@ async function abandonNation(): Promise<void> {
                 <h2 class="secretary-name">{{ viewedSecretaryProfile.name }}</h2>
                 <p v-if="viewedSecretaryProfile.nickname" class="secretary-nickname">{{ viewedSecretaryProfile.nickname }}</p>
                 <SecretaryMenu v-model="secretarySection" :owner="viewedSecretaryProfile.is_owner" />
+                <SecretaryWarehouseExpandDialog v-if="warehouseExpandOpen && secretary" :warehouse="secretary.inventory" @close="warehouseExpandOpen = false" @expanded="onWarehouseExpanded" />
+                <SecretaryTicketDrawDialog v-if="ticketDrawTarget" :name="`${ticketDrawTarget.name} Lv${ticketDrawTarget.level.toLocaleString('ja-JP')}`" :level="ticketDrawTarget.level" :max-draw-count="ticketDrawTarget.max_draw_count ?? 0" :busy="busy" @cancel="ticketDrawTarget = null" @draw="drawSecretaryTicket" />
                 <section v-if="secretarySection === 'main'" id="secretary-panel-main" role="tabpanel" aria-labelledby="secretary-tab-main" class="secretary-main-profile">
                     <SecretaryStatusOverview
                         :profile="viewedSecretaryProfile" :busy="busy" :biography-error="secretaryProfileErrors.biography"
@@ -2772,7 +2796,11 @@ async function abandonNation(): Promise<void> {
                     <SecretaryEquippedItems :profile="viewedSecretaryProfile" />
                 </section>
                 <section v-else-if="secretarySection === 'warehouse' && viewedSecretaryProfile.is_owner && secretary" id="secretary-panel-warehouse" role="tabpanel" aria-labelledby="secretary-tab-warehouse">
-                    <h3 class="secretary-section-title">倉庫 {{ secretary.inventory.used }} / {{ secretary.inventory.capacity }}</h3>
+                    <div class="secretary-warehouse-capacity">
+                        <h3 class="secretary-section-title">倉庫 {{ secretary.inventory.used }} / {{ secretary.inventory.capacity }}</h3>
+                        <button v-if="secretary.inventory.next_cost_paradox != null" class="button secondary" type="button" :disabled="busy" @click="warehouseExpandOpen = true">倉庫を広げる（{{ secretary.inventory.next_cost_paradox }}Pdで+50）</button>
+                        <span v-else-if="secretary.inventory.max_expansions !== undefined" class="secretary-warehouse-max">最大です</span>
+                    </div>
                     <ul class="secretary-warehouse">
                         <li v-for="item in secretary.inventory.items" :key="item.id">
                             <div class="secretary-warehouse-heading">
@@ -2788,6 +2816,9 @@ async function abandonNation(): Promise<void> {
                         </li>
                     </ul>
                     <p v-if="secretary.inventory.items.length === 0" class="empty-state">倉庫は空です。</p>
+                </section>
+                <section v-else-if="secretarySection === 'synthesis' && viewedSecretaryProfile.is_owner && secretary" id="secretary-panel-synthesis" role="tabpanel" aria-labelledby="secretary-tab-synthesis">
+                    <SecretarySynthesis :warehouse="secretary.inventory" @changed="loadSecretary" @expand="warehouseExpandOpen = true" />
                 </section>
                 <section v-else-if="secretarySection === 'achievements' && viewedSecretaryProfile.is_owner && user" id="secretary-panel-achievements" role="tabpanel" aria-labelledby="secretary-tab-achievements" class="secretary-achievements">
                     <section aria-labelledby="secretary-title-heading">

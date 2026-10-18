@@ -128,9 +128,13 @@ export interface Secretary {
     equipment_version: number;
     skills: SecretarySkill[];
     inventory: {
-        capacity: 50;
+        capacity: number;
         used: number;
         items: SecretaryItem[];
+        expansions?: number;
+        max_expansions?: number;
+        next_cost_paradox?: number | null;
+        paradox_balance?: number;
     };
     equipment: {
         slot_count: 5;
@@ -146,7 +150,7 @@ export interface Secretary {
     } | null;
 }
 
-export type SecretarySection = 'main' | 'skills' | 'equipment' | 'warehouse' | 'settings' | 'achievements';
+export type SecretarySection = 'main' | 'skills' | 'equipment' | 'warehouse' | 'synthesis' | 'settings' | 'achievements';
 
 export interface SecretaryUndergroundStatus {
     growth_path_label: string;
@@ -269,6 +273,7 @@ export interface SecretaryItem {
     effect_text: string | null;
     flavor_text: string;
     obtained_at: string;
+    max_draw_count?: number;
 }
 
 export interface TradingPostListing {

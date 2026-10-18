@@ -9,7 +9,8 @@ use Illuminate\Support\Carbon;
 
 /**
  * Source IDs are durable provenance, not foreign keys to live receipts.
- * The exclusive non-null source column identifies battle / skip / bulk skip.
+ * The exclusive non-null reward source identifies battle / skip / bulk skip.
+ * Market listing provenance records the most recent transfer independently.
  *
  * @property int $id
  * @property int $underground_profile_id
@@ -24,6 +25,8 @@ use Illuminate\Support\Carbon;
  * @property int $polish_level
  * @property int|null $quality_percent
  * @property bool $is_protected
+ * @property bool $is_listed
+ * @property int|null $source_market_listing_id
  * @property int|null $source_battle_id
  * @property int|null $source_skip_settlement_id
  * @property int|null $source_skip_batch_id
@@ -35,13 +38,13 @@ final class UndergroundOwnedEquipment extends Model
 {
     protected $table = 'underground_owned_equipment';
 
-    protected $attributes = ['polish_level' => 0, 'is_protected' => false];
+    protected $attributes = ['polish_level' => 0, 'is_protected' => false, 'is_listed' => false];
 
     protected $fillable = [
         'underground_profile_id', 'definition_key', 'catalog_identity',
         'equipped_slot', 'grant_key', 'instance_kind', 'instance_identity',
         'generator_identity', 'generated_payload', 'source_battle_id',
-        'polish_level', 'quality_percent', 'is_protected',
+        'polish_level', 'quality_percent', 'is_protected', 'is_listed', 'source_market_listing_id',
         'source_skip_settlement_id', 'source_skip_batch_id', 'source_reward_index', 'acquired_at',
     ];
 
@@ -57,6 +60,8 @@ final class UndergroundOwnedEquipment extends Model
             'polish_level' => 'integer',
             'quality_percent' => 'integer',
             'is_protected' => 'boolean',
+            'is_listed' => 'boolean',
+            'source_market_listing_id' => 'integer',
             'acquired_at' => 'immutable_datetime',
         ];
     }
