@@ -1390,3 +1390,31 @@ html:is([data-theme="dark"], [data-theme="old-dark"]) .compensation-banner, html
 }
 
 @media (max-width: 760px) { .underground-round h2 { --site-header-height: 42px; } }
+
+/* 5.5.0 露店 */
+.underground-market { display: grid; gap: 1rem; }
+.underground-market-filters { display: flex; flex-wrap: wrap; align-items: end; gap: .5rem .8rem; padding: .7rem; border: 1px solid var(--line); background: var(--paper); }
+.underground-market-filters label { display: grid; gap: .2rem; font-size: .8rem; color: var(--muted); }
+.underground-market-filters input[type="number"] { width: 5.5rem; }
+.underground-market-check { display: flex !important; align-items: center; gap: .35rem; color: inherit !important; }
+.underground-market-cap { margin: 0; font-size: .9rem; }
+.underground-market-price { font-weight: 900; font-variant-numeric: tabular-nums; }
+.underground-market-over-cap { opacity: .55; }
+.underground-market-section { display: grid; gap: .5rem; }
+.underground-market-section > header { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: .5rem; }
+.underground-market-rows { display: grid; gap: .35rem; margin: 0; padding: 0; list-style: none; }
+.underground-market-rows li { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; gap: .6rem; padding: .5rem .7rem; border: 1px solid var(--line); background: var(--paper); }
+.underground-market-rows li > span:first-child { min-width: 0; overflow-wrap: anywhere; }
+.underground-market-done { color: var(--muted); font-size: .8rem; }
+.underground-market-new { color: var(--danger, #c0392b); font-weight: 900; font-size: .8rem; }
+.underground-market-summary { display: grid; gap: .3rem; margin: .6rem 0; }
+.underground-market-summary div { display: flex; justify-content: space-between; gap: 1rem; }
+.underground-market-summary dt { color: var(--muted); }
+.underground-market-summary dd { margin: 0; font-weight: 900; font-variant-numeric: tabular-nums; }
+.underground-market-price-input { display: flex; align-items: center; gap: .4rem; }
+.underground-market-price-input input { flex: 1; min-width: 0; }
+@media (max-width: 560px) {
+    .underground-market-rows li { grid-template-columns: minmax(0, 1fr) auto; }
+    .underground-market-rows li > span:nth-child(2) { grid-column: 1; color: var(--muted); font-size: .85rem; }
+    .underground-market-rows li > :last-child { grid-column: 2; grid-row: 1 / span 2; }
+}

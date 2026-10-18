@@ -171,6 +171,7 @@ const pendingCompensationClaim = ref<{ grantId: number; requestId: string } | nu
 const compensationError = ref('');
 const undergroundSurfaceMap = ref<UndergroundSurfaceMap | null>(null);
 const distortedStoneReminder = ref(false);
+const marketAttention = ref(false);
 const undergroundPanel = ref<InstanceType<typeof UndergroundPanel> | null>(null);
 let distortedStoneReminderDay: string | null = null;
 let distortedStoneReminderDeadline: number | null = null;
@@ -473,10 +474,12 @@ async function loadDistortedStoneReminder(): Promise<void> {
     try {
         const reminder = undergroundPanel.value
             ? await undergroundPanel.value.refreshDistortedStoneReminder()
-            : await api<{ unclaimed: boolean; day: string; reset_after_ms: number }>('/api/v1/me/underground/distorted-stone-reminder', { cache: 'no-store' });
+            : await api<{ unclaimed: boolean; day: string; reset_after_ms: number; market_attention?: { unclaimed_count: number; unseen_expired_count: number } }>('/api/v1/me/underground/distorted-stone-reminder', { cache: 'no-store' });
         if (!distortedStoneReminderStopped && revision === distortedStoneReminderRevision) {
             distortedStoneReminder.value = reminder.unclaimed;
         }
+        const attention = (reminder as { market_attention?: { unclaimed_count: number; unseen_expired_count: number } }).market_attention;
+        if (attention) marketAttention.value = attention.unclaimed_count + attention.unseen_expired_count > 0;
         distortedStoneReminderDay = reminder.day;
         distortedStoneReminderDeadline = performance.now() + reminder.reset_after_ms;
         distortedStoneReminderRetries = 0;
@@ -1860,7 +1863,7 @@ async function abandonNation(): Promise<void> {
             <button v-if="nation" type="button" class="notification-anchor" :aria-label="boardUnread ? '自島へ（伝言板に新しい伝言があります）' : undefined" @click="openOwnIsland">自島へ<span v-if="boardUnread" class="notification-dot" aria-hidden="true" /></button>
             <button v-if="secretary" type="button" @click="openSecretary">{{ secretary.header_label }}</button>
             <button v-if="nation" type="button" @click="page = 'trading-post'">交易場</button>
-            <button v-if="secretary" type="button" class="notification-anchor" :aria-label="distortedStoneReminder ? '地底（歪んだ輝石の初回受取があります）' : undefined" @click="openUnderground">地底<span v-if="distortedStoneReminder" class="notification-dot" aria-hidden="true" /></button>
+            <button v-if="secretary" type="button" class="notification-anchor" :aria-label="distortedStoneReminder ? '地底（歪んだ輝石の初回受取があります）' : marketAttention ? '地底（露店にお知らせがあります）' : undefined" @click="openUnderground">地底<span v-if="distortedStoneReminder || marketAttention" class="notification-dot" aria-hidden="true" /></button>
             <button type="button" @click="openOptions">オプション</button>
             <a href="/manual">マニュアル</a>
         </nav>
@@ -2702,6 +2705,7 @@ async function abandonNation(): Promise<void> {
             @return-to-secretary="returnFromUnderground"
             @daily-quest="handleDailyQuestProgress"
             @distorted-stone-reminder="updateDistortedStoneReminder"
+            @market-attention="marketAttention = $event"
         />
 
         <section v-else-if="page === 'secretary' && (viewedSecretaryProfile || secretary)" class="panel secretary-panel">
