@@ -375,11 +375,7 @@ final readonly class UndergroundEquipmentService
                 if ($item->is_protected) {
                     throw new UndergroundRuntimeException('underground_equipment_protected', '保護中の装備は売却できません。');
                 }
-                try {
-                    $definition = $this->loadout->definitionForRow($item);
-                } catch (RuntimeException) {
-                    throw new UndergroundRuntimeException('underground_equipment_identity_invalid', '装備のidentityを確認できません。');
-                }
+                $definition = $this->definitionForMutation($item);
                 if ($definition['sellable'] !== true) {
                     throw new UndergroundRuntimeException('underground_equipment_not_sellable', 'この装備は通常売却できません。');
                 }
@@ -454,14 +450,7 @@ final readonly class UndergroundEquipmentService
                             '売却候補に装備中のitemがあります。previewし直してください。',
                         );
                     }
-                    try {
-                        $definition = $this->loadout->definitionForRow($item);
-                    } catch (RuntimeException) {
-                        throw new UndergroundRuntimeException(
-                            'underground_equipment_identity_invalid',
-                            '装備のidentityを確認できません。',
-                        );
-                    }
+                    $definition = $this->definitionForMutation($item);
                     if ($definition['sellable'] !== true) {
                         throw new UndergroundRuntimeException(
                             'underground_bulk_sell_preview_changed',
@@ -546,11 +535,7 @@ final readonly class UndergroundEquipmentService
                     throw new UndergroundRuntimeException('underground_equipment_not_owned', '装備するitemを確認してください。');
                 }
                 $this->assertNotListed($item);
-                try {
-                    $definition = $this->loadout->definitionForRow($item);
-                } catch (RuntimeException) {
-                    throw new UndergroundRuntimeException('underground_equipment_identity_invalid', '装備のidentityを確認できません。');
-                }
+                $definition = $this->definitionForMutation($item);
                 if (($definition['equippable'] ?? true) !== true) {
                     throw new UndergroundRuntimeException('underground_equipment_not_equippable', 'この記念品は装備できません。');
                 }
@@ -638,6 +623,16 @@ final readonly class UndergroundEquipmentService
             $profile->allocatedStp(),
             $this->loadout->combatLoadout($profile),
         );
+    }
+
+    /** @return array<string, mixed> */
+    private function definitionForMutation(UndergroundOwnedEquipment $item): array
+    {
+        try {
+            return $this->loadout->definitionForRow($item);
+        } catch (RuntimeException) {
+            throw new UndergroundRuntimeException('underground_equipment_identity_invalid', '装備のidentityを確認できません。');
+        }
     }
 
     private function assertNotListed(UndergroundOwnedEquipment $item): void
