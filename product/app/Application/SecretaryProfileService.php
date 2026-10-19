@@ -253,23 +253,13 @@ final readonly class SecretaryProfileService
             || $this->imageRetention->isRetained($path)) {
             return;
         }
+        $exceptionClass = null;
         try {
             if (Storage::disk(self::IMAGE_DISK)->delete($path)) {
                 return;
             }
         } catch (Throwable $exception) {
-            $message = $slot === null && $secretary !== null
-                ? 'Secretary main image replacement left an orphaned previous file.'
-                : 'Secretary image replacement left an orphaned previous file.';
-            Log::error($message, [
-                'secretary_id' => $secretary?->id,
-                'old_path' => $path,
-                'current_path' => $currentPath,
-                'slot' => $slot,
-                'exception_class' => $exception::class,
-            ]);
-
-            return;
+            $exceptionClass = $exception::class;
         }
 
         $message = $slot === null && $secretary !== null
@@ -280,7 +270,7 @@ final readonly class SecretaryProfileService
             'old_path' => $path,
             'current_path' => $currentPath,
             'slot' => $slot,
-            'exception_class' => null,
+            'exception_class' => $exceptionClass,
         ]);
     }
 
