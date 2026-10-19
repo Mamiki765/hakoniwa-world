@@ -104,3 +104,10 @@ export async function apiEnvelope<T>(path: string, init: RequestInit = {}): Prom
 
     return { data: payload.data as T, meta: payload.meta };
 }
+
+// Field name -> first message, for forms that show errors next to each input.
+export function validationErrors(error: unknown): Record<string, string> {
+    if (!(error instanceof ApiError)) return {};
+
+    return Object.fromEntries(Object.entries(error.errors).map(([key, messages]) => [key, messages[0] ?? '入力を確認してください。']));
+}

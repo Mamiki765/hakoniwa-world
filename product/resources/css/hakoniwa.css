@@ -754,10 +754,12 @@ html:is([data-theme="dark"], [data-theme="old-dark"]) .compensation-banner, html
 .underground-equipment-card { display: grid; align-content: start; gap: .65rem; min-width: 0; padding: .85rem; border: 1px solid var(--line); background: var(--paper); box-shadow: 3px 3px 0 rgba(18, 63, 73, .06); }
 .underground-equipment-card[data-owned="true"] { border-color: var(--coral); }
 .underground-equipment-card[data-locked="true"] { border-color: var(--line); background: var(--paper-deep); }
-.underground-equipment-card-heading { display: flex; align-items: start; justify-content: space-between; gap: .6rem; }
+/* A narrow card moves the long rarity label above the name instead of squeezing the name. */
+.underground-equipment-card-heading { display: flex; flex-wrap: wrap-reverse; align-items: start; justify-content: space-between; gap: .2rem .6rem; }
+.underground-equipment-card-heading > :first-child { flex: 1 1 9rem; min-width: 0; }
 .underground-equipment-card-heading h3 { overflow-wrap: anywhere; }
 .underground-equipment-card-kicker { color: var(--muted); font-size: .72rem; font-weight: 800; }
-.underground-equipment-rarity { color: var(--muted); font-size: .7rem; white-space: nowrap; }
+.underground-equipment-rarity { margin-left: auto; color: var(--muted); font-size: .7rem; white-space: nowrap; }
 .underground-equipment-card-stats { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .25rem .55rem; margin: 0; font-size: .8rem; }
 .underground-equipment-card-stats div { display: flex; justify-content: space-between; gap: .5rem; }
 .underground-equipment-card-stats dt { color: var(--muted); }
@@ -775,7 +777,7 @@ html:is([data-theme="dark"], [data-theme="old-dark"]) .compensation-banner, html
 .underground-equipment-owned-list > header { display: flex; align-items: start; justify-content: space-between; gap: 1rem; }
 .underground-equipment-owned-list > header p { color: var(--muted); font-size: .8rem; }
 .underground-confirm-backdrop { z-index: 70; padding: 1rem; }
-.underground-confirm-dialog { display: grid; gap: .9rem; width: min(100%, 30rem); max-height: calc(100dvh - 2rem); overflow: auto; padding: 1.1rem; border: 1px solid var(--navy); background: var(--paper); color: var(--ink); box-shadow: var(--shadow); }
+.underground-confirm-dialog { display: grid; grid-template-columns: minmax(0, 1fr); gap: .9rem; width: min(100%, 30rem); max-height: calc(100dvh - 2rem); overflow: auto; padding: 1.1rem; border: 1px solid var(--navy); background: var(--paper); color: var(--ink); box-shadow: var(--shadow); }
 .underground-confirm-dialog > header { display: flex; align-items: start; justify-content: space-between; gap: 1rem; }
 .underground-confirm-dialog > header h2 { font-size: 1.2rem; }
 .underground-confirm-dialog > footer { display: flex; justify-content: end; gap: .55rem; }
@@ -1407,12 +1409,15 @@ html:is([data-theme="dark"], [data-theme="old-dark"]) .compensation-banner, html
 .underground-market-rows { display: grid; gap: .35rem; margin: 0; padding: 0; list-style: none; }
 .underground-market-rows li { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; gap: .6rem; padding: .5rem .7rem; border: 1px solid var(--line); background: var(--paper); }
 .underground-market-rows li > span:first-child { min-width: 0; overflow-wrap: anywhere; }
+.underground-market-rows button, .underground-market-price-input input { min-height: 2.2rem; padding: .3rem .8rem; border: 1px solid var(--line); background: var(--input-surface, var(--paper)); color: var(--ink); font: inherit; }
+.underground-market-rows button { font-weight: 800; cursor: pointer; }
+.underground-market-rows button:disabled { opacity: .55; cursor: default; }
 .underground-market-done { color: var(--muted); font-size: .8rem; }
 .underground-market-new { color: var(--danger, #c0392b); font-weight: 900; font-size: .8rem; }
 .underground-market-summary { display: grid; gap: .3rem; margin: .6rem 0; }
 .underground-market-summary div { display: flex; justify-content: space-between; gap: 1rem; }
 .underground-market-summary dt { color: var(--muted); }
-.underground-market-summary dd { margin: 0; font-weight: 900; font-variant-numeric: tabular-nums; }
+.underground-market-summary dd { margin: 0; font-weight: 900; font-variant-numeric: tabular-nums; text-align: right; }
 .underground-market-price-input { display: flex; align-items: center; gap: .4rem; }
 .underground-market-price-input input { flex: 1; min-width: 0; }
 @media (max-width: 560px) {
