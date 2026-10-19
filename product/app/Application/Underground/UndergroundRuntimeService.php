@@ -739,6 +739,7 @@ STORY;
             $xpAwarded = 0;
             $shardsAwarded = 0;
             $stpAwarded = 0;
+            $distortedStonesAwarded = 0;
             $encounterCounts = [];
             $encounterSnapshots = [];
             $executions = [];
@@ -755,6 +756,7 @@ STORY;
                 $reward = $this->applyRepeatableReward($profile, $encounter['xp'], $victoryReward['shards']);
                 $this->awardExplorationKeys($profile, $huntingGround, $victoryReward['keys']);
                 $profile->distorted_stone_balance += $victoryReward['distorted_stones'];
+                $distortedStonesAwarded += $victoryReward['distorted_stones'];
                 $xpAwarded += $encounter['xp'];
                 $shardsAwarded += $victoryReward['shards'];
                 $stpAwarded += $reward['stp_awarded'];
@@ -825,6 +827,7 @@ STORY;
                 'encounters' => $encounterSnapshots,
                 'encounter_counts' => $encounterCounts,
                 'stp_awarded' => $stpAwarded,
+                'distorted_stones' => $distortedStonesAwarded,
                 'equipment_granted_count' => $equipmentGranted,
                 'vault_full_count' => $vaultFull,
                 'drops' => $drops,
