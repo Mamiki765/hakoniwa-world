@@ -1952,16 +1952,12 @@ STORY;
             $seed,
             $resultType === UndergroundBattle::RESULT_VICTORY,
         );
-        $xpAwarded = match ($resultType) {
-            UndergroundBattle::RESULT_VICTORY => $encounter['xp'],
-            UndergroundBattle::RESULT_WITHDRAWAL => intdiv($encounter['xp'], 4),
-            default => 0,
-        };
-        $shardDelta = match ($resultType) {
-            UndergroundBattle::RESULT_VICTORY => $victoryReward['shards'],
-            UndergroundBattle::RESULT_DEFEAT => intdiv($profile->shard_balance, 2) - $profile->shard_balance,
-            default => 0,
-        };
+        ['xp_awarded' => $xpAwarded, 'shard_delta' => $shardDelta] = $this->battleRewardAmounts(
+            $resultType,
+            $encounter['xp'],
+            $victoryReward['shards'],
+            $profile->shard_balance,
+        );
         $rewardSettlement = $this->applyRepeatableReward($profile, $xpAwarded, $shardDelta);
         $this->awardExplorationKeys($profile, $huntingGround, $victoryReward['keys']);
         $profile->distorted_stone_balance += $victoryReward['distorted_stones'];
@@ -2532,16 +2528,13 @@ STORY;
             $resultType === UndergroundBattle::RESULT_VICTORY,
             $baseShardReward,
         );
-        $xpAwarded = match ($resultType) {
-            UndergroundBattle::RESULT_VICTORY => $averagedReward['xp'],
-            UndergroundBattle::RESULT_WITHDRAWAL => $otherworld ? 0 : intdiv($averagedReward['xp'], 4),
-            default => 0,
-        };
-        $shardDelta = match ($resultType) {
-            UndergroundBattle::RESULT_VICTORY => $victoryReward['shards'],
-            UndergroundBattle::RESULT_DEFEAT => intdiv($profile->shard_balance, 2) - $profile->shard_balance,
-            default => 0,
-        };
+        ['xp_awarded' => $xpAwarded, 'shard_delta' => $shardDelta] = $this->battleRewardAmounts(
+            $resultType,
+            $averagedReward['xp'],
+            $victoryReward['shards'],
+            $profile->shard_balance,
+            grantWithdrawalXp: ! $otherworld,
+        );
         $rewardSettlement = $this->applyRepeatableReward($profile, $xpAwarded, $shardDelta);
         $this->awardExplorationKeys($profile, $huntingGround, $victoryReward['keys']);
         $profile->distorted_stone_balance += $victoryReward['distorted_stones'];
@@ -2899,16 +2892,12 @@ STORY;
         $xpBefore = $profile->combat_xp;
         $shardsBefore = $profile->shard_balance;
         $unspentStpBefore = $profile->unspent_stp;
-        $xpAwarded = match ($resultType) {
-            UndergroundBattle::RESULT_VICTORY => $reward['xp'],
-            UndergroundBattle::RESULT_WITHDRAWAL => intdiv($reward['xp'], 4),
-            default => 0,
-        };
-        $shardDelta = match ($resultType) {
-            UndergroundBattle::RESULT_VICTORY => $reward['shards'],
-            UndergroundBattle::RESULT_DEFEAT => intdiv($profile->shard_balance, 2) - $profile->shard_balance,
-            default => 0,
-        };
+        ['xp_awarded' => $xpAwarded, 'shard_delta' => $shardDelta] = $this->battleRewardAmounts(
+            $resultType,
+            $reward['xp'],
+            $reward['shards'],
+            $profile->shard_balance,
+        );
         $rewardSettlement = $this->applyRepeatableReward($profile, $xpAwarded, $shardDelta);
         $distortedStones = $resultType === UndergroundBattle::RESULT_VICTORY
             ? $this->rollTrialDistortedStone($trial['distorted_stone_chance_bps'], $seed)
@@ -4184,6 +4173,28 @@ STORY;
         ]);
 
         return $balance->balance;
+    }
+
+    /** @return array{xp_awarded: int, shard_delta: int} */
+    private function battleRewardAmounts(
+        string $resultType,
+        int $victoryXp,
+        int $victoryShards,
+        int $carriedShards,
+        bool $grantWithdrawalXp = true,
+    ): array {
+        return [
+            'xp_awarded' => match ($resultType) {
+                UndergroundBattle::RESULT_VICTORY => $victoryXp,
+                UndergroundBattle::RESULT_WITHDRAWAL => $grantWithdrawalXp ? intdiv($victoryXp, 4) : 0,
+                default => 0,
+            },
+            'shard_delta' => match ($resultType) {
+                UndergroundBattle::RESULT_VICTORY => $victoryShards,
+                UndergroundBattle::RESULT_DEFEAT => intdiv($carriedShards, 2) - $carriedShards,
+                default => 0,
+            },
+        ];
     }
 
     /**
