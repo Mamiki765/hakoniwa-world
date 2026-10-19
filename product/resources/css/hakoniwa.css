@@ -246,13 +246,8 @@ main { width: min(1560px, 100%); margin: 0 auto; padding: clamp(16px, 3vw, 46px)
 .ship-status-modal { width: min(480px, calc(100% - 32px)); }
 .ship-status-modal::backdrop { background: rgb(21 30 27 / 72%); }
 .ship-status-list { display: grid; gap: 8px; margin: 0; padding: 0; list-style: none; font-variant-numeric: tabular-nums; }
-.ship-status-row { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 8px; }
-.ship-status-row > * { white-space: nowrap; }
-.ship-status-row .given-name { white-space: normal; }
-.ship-name-button { margin-left: auto; padding: 0 6px; font-size: .78rem; }
-.ship-name-form { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; margin-top: 4px; }
-.ship-name-form input { flex: 1 1 6em; min-width: 0; }
-.ship-name-form small { flex-basis: 100%; color: var(--muted); font-size: .75rem; }
+/* 名前つきの船は1行に収まらないことがあるので、はみ出さず折り返す。 */
+.ship-status-list li { overflow-wrap: anywhere; }
 .ship-type-counts { display: grid; gap: 4px; color: var(--muted); font-size: .8rem; }
 .ship-type-counts p { margin: 0; }
 .ship-type-count-values { display: flex; flex-wrap: wrap; gap: 4px 12px; }
@@ -1087,8 +1082,6 @@ html:is([data-theme="dark"], [data-theme="old-dark"]) .compensation-banner, html
 .island-event-pagination { display: flex; align-items: center; justify-content: center; gap: 12px; margin-top: 18px; }
 .island-event-pagination > span { color: var(--muted); font-size: .76rem; white-space: nowrap; }
 .selected-cell h3 { margin: 0 0 12px; }
-.given-name { overflow-wrap: anywhere; }
-.given-name small { margin-left: 6px; font-size: .78em; font-weight: 400; opacity: .75; }
 .selected-cell h3 img { width: 32px; height: 32px; margin-right: 8px; vertical-align: middle; image-rendering: pixelated; }
 .selected-cell dl { display: grid; grid-template-columns: 66px 1fr; gap: 8px 10px; font-size: .83rem; }
 .selected-cell dt { color: var(--muted); }

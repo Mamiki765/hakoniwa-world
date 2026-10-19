@@ -1,15 +1,9 @@
 import { flushPromises, mount } from '@vue/test-utils';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { api, apiEnvelope } from '../api/client';
+import { apiEnvelope } from '../api/client';
 import ShipStatusWindow from './ShipStatusWindow.vue';
 
-vi.mock('../api/client', () => ({ api: vi.fn(), apiEnvelope: vi.fn(), validationErrors: () => ({}) }));
-
-function button(root: ParentNode, label: string): HTMLButtonElement {
-    const found = [...root.querySelectorAll('button')].find((candidate) => candidate.textContent?.trim() === label || candidate.getAttribute('aria-label') === label);
-    if (found === undefined) throw new Error(`button ${label} not found`);
-    return found;
-}
+vi.mock('../api/client', () => ({ apiEnvelope: vi.fn() }));
 
 afterEach(() => {
     vi.restoreAllMocks();
@@ -26,7 +20,7 @@ describe('ship status window', () => {
         ];
         vi.mocked(apiEnvelope).mockResolvedValueOnce({ data: [
             fishing,
-            { ...fishing, id: 2, name: '探検船', heading: 1, current_hp: 1, max_hp: 2 },
+            { ...fishing, id: 2, name: '探検船', custom_name: 'エスポワール', heading: 1, current_hp: 1, max_hp: 2 },
             { ...fishing, id: 3, name: '軍艦', movement_mode: 'heading_only', max_hp: 5 },
             { ...fishing, id: 4, name: '軍艦', movement_mode: 'heading_only', destination: { x: 3, y: -1 }, max_hp: 5 },
         ], meta: { ship_types: types } }).mockResolvedValueOnce({ data: [], meta: {
@@ -47,56 +41,18 @@ describe('ship status window', () => {
         // 指示がなければ移動方式で表示が分かれる(おまかせ / 軍艦の待機)。目的地は進路より先に出す。
         expect(rows[0]).toContain('おまかせ');
         expect(rows[1]).toContain('北東');
+        // 名前は船種の前に添えるだけ。名前のない船は今まで通り。
+        expect(rows[1]).toMatch(/^エスポワール 探検船 \(-2,4\)/);
+        expect(rows[0]).toMatch(/^漁船 \(-2,4\)/);
         expect(rows[2]).toContain('待機');
         expect(rows[3]).toContain('目的地 (3,-1)');
         expect(rows[3]).not.toContain('待機');
-        button(dialog, '更新').click();
+        dialog.querySelectorAll('button')[1]!.click();
         await flushPromises();
         expect(dialog.querySelectorAll('li')).toHaveLength(0);
         expect(dialog.querySelector('.ship-type-count-values')!.textContent).not.toContain('1/3');
-        button(dialog, '閉じる').click();
+        dialog.querySelector('button')!.click();
         expect(dialog.open).toBe(false);
-        wrapper.unmount();
-    });
-
-    it('leads with a given name, keeps type and position beside it, and renames or clears one ship', async () => {
-        const base = { name: '海底工作船', current_hp: 3, max_hp: 3, heading: null, destination: null, movement_mode: 'heading_or_random' };
-        vi.mocked(apiEnvelope).mockResolvedValueOnce({ data: [
-            { ...base, id: 5, custom_name: 'エスポワール', x: 2, y: 3 },
-            { ...base, id: 6, custom_name: null, x: 4, y: 5 },
-        ], meta: { ship_types: [] } });
-        const wrapper = mount(ShipStatusWindow, { props: { nationId: 7 }, attachTo: document.body });
-        const dialog = document.querySelector('dialog')!;
-        dialog.showModal = () => { dialog.open = true; };
-        await wrapper.get('button').trigger('click');
-        await flushPromises();
-        const rows = () => [...dialog.querySelectorAll('li')];
-        expect(rows()[0]!.querySelector('.given-name')!.textContent).toBe('エスポワール海底工作船 (2,3)');
-        expect(rows()[1]!.querySelector('.given-name')).toBeNull();
-        expect(rows()[1]!.textContent).toContain('海底工作船 (4,5)');
-
-        vi.mocked(api).mockResolvedValueOnce({ id: 6, custom_name: 'ルミナ号' });
-        button(rows()[1]!, '名前をつける').click();
-        await flushPromises();
-        const input = rows()[1]!.querySelector('input')!;
-        input.value = 'ルミナ号';
-        input.dispatchEvent(new Event('input'));
-        rows()[1]!.querySelector('form')!.dispatchEvent(new Event('submit'));
-        await flushPromises();
-        expect(api).toHaveBeenLastCalledWith('/api/v1/nations/7/ships/6/name', expect.objectContaining({ method: 'PATCH', body: JSON.stringify({ name: 'ルミナ号' }) }));
-        expect(rows()[1]!.querySelector('.given-name')!.textContent).toContain('ルミナ号');
-
-        vi.mocked(api).mockResolvedValueOnce({ id: 5, custom_name: null });
-        button(rows()[0]!, '名前を変える').click();
-        await flushPromises();
-        const rename = rows()[0]!.querySelector('input')!;
-        expect(rename.value).toBe('エスポワール');
-        rename.value = '  ';
-        rename.dispatchEvent(new Event('input'));
-        rows()[0]!.querySelector('form')!.dispatchEvent(new Event('submit'));
-        await flushPromises();
-        expect(api).toHaveBeenLastCalledWith('/api/v1/nations/7/ships/5/name', expect.objectContaining({ body: JSON.stringify({ name: null }) }));
-        expect(rows()[0]!.querySelector('.given-name')).toBeNull();
         wrapper.unmount();
     });
 });

@@ -256,5 +256,10 @@ describe('lazy map chunk loading', () => {
         const carrier = map.visibleCells.value.find((cell) => cell.ship?.id === 9);
         expect(carrier?.ship).toMatchObject({ heading: null, destination: { x: 20, y: 18 }, version: 4 });
         expect(map.selected.value?.ship ?? null).toBeNull();
+
+        map.renameShip({ id: 9, custom_name: 'エスポワール' });
+        expect(map.visibleCells.value.find((cell) => cell.ship?.id === 9)?.ship).toMatchObject({ custom_name: 'エスポワール', version: 4 });
+        map.renameCapital({ x: 16, y: 16, capital_name: 'ルミナ' });
+        expect(map.selected.value?.capital_name).toBe('ルミナ');
     });
 });

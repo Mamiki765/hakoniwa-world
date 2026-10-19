@@ -673,8 +673,7 @@ function markAssetFailed(cell: MapCell): void {
                 @focusin="cancelTooltipHide"
                 @focusout="scheduleTooltipHide"
             >
-                <strong v-if="cellGivenName(tooltipCell)" class="given-name">{{ cellGivenName(tooltipCell) }}<small>{{ tooltipCell.display_name }} ({{ tooltipCell.x }},{{ tooltipCell.y }})</small></strong>
-                <strong v-else>{{ tooltipCell.display_name }} ({{ tooltipCell.x }},{{ tooltipCell.y }})</strong>
+                <strong>{{ cellGivenName(tooltipCell) ? `${cellGivenName(tooltipCell)} ` : '' }}{{ tooltipCell.display_name }} ({{ tooltipCell.x }},{{ tooltipCell.y }})</strong>
                 <span v-for="line in tooltipDetails" :key="line">{{ line }}</span>
             </div>
         </div>

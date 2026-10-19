@@ -232,6 +232,27 @@ export function useMapState() {
         }
     }
 
+    // 名前の変更を、読み込み済みのマスと選択中のマスへ反映する。
+    function replaceCells(matches: (cell: MapCell) => boolean, change: (cell: MapCell) => MapCell): void {
+        for (const [cellKey, cell] of cells) {
+            if (!matches(cell)) continue;
+            const updated = change(cell);
+            cells.set(cellKey, updated);
+            if (selected.value?.x === cell.x && selected.value?.y === cell.y) selected.value = updated;
+        }
+    }
+
+    function renameShip(ship: { id: number; custom_name: string | null }): void {
+        replaceCells(
+            (cell) => cell.ship?.id === ship.id && cell.ship.is_owner,
+            (cell) => ({ ...cell, ship: cell.ship == null ? cell.ship : { ...cell.ship, custom_name: ship.custom_name } }),
+        );
+    }
+
+    function renameCapital(capital: { x: number; y: number; capital_name: string | null }): void {
+        replaceCells((cell) => cell.x === capital.x && cell.y === capital.y, (cell) => ({ ...cell, capital_name: capital.capital_name }));
+    }
+
     return {
         visibleCells,
         selected,
@@ -247,5 +268,7 @@ export function useMapState() {
         clearSelection,
         moveSelection,
         updateShipCourse,
+        renameShip,
+        renameCapital,
     };
 }

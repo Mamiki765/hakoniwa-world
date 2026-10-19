@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { nextTick, ref } from 'vue';
-import { api, apiEnvelope, validationErrors } from '../api/client';
-import { GIVEN_NAME_MAX_LENGTH } from '../formatters/givenName';
+import { ref } from 'vue';
+import { apiEnvelope } from '../api/client';
+import { shipListLabel } from '../formatters/givenName';
 import { shipInstructionLabel } from '../formatters/shipInstruction';
 import type { OwnShipStatus } from '../types';
 
@@ -17,16 +17,11 @@ interface ShipTypeCount {
 const shipTypes = ref<ShipTypeCount[]>([]);
 const loading = ref(false);
 const error = ref('');
-const namingId = ref<number | null>(null);
-const nameDraft = ref('');
-const nameSaving = ref(false);
-const nameError = ref('');
 
 async function load(): Promise<void> {
     if (loading.value) return;
     loading.value = true;
     error.value = '';
-    namingId.value = null;
     ships.value = [];
     shipTypes.value = [];
     try {
@@ -37,32 +32,6 @@ async function load(): Promise<void> {
         error.value = cause instanceof Error ? cause.message : '船一覧を読み込めませんでした。';
     } finally {
         loading.value = false;
-    }
-}
-
-function startNaming(ship: OwnShipStatus): void {
-    namingId.value = ship.id;
-    nameDraft.value = ship.custom_name ?? '';
-    nameError.value = '';
-    void nextTick(() => document.getElementById(`ship-name-${ship.id}`)?.focus());
-}
-
-// 名前だけを書き換える。空なら名前を外して、今まで通り船種と座標で表示する。
-async function saveName(ship: OwnShipStatus): Promise<void> {
-    if (nameSaving.value) return;
-    nameSaving.value = true;
-    nameError.value = '';
-    try {
-        const updated = await api<{ id: number; custom_name: string | null }>(`/api/v1/nations/${props.nationId}/ships/${ship.id}/name`, {
-            method: 'PATCH',
-            body: JSON.stringify({ name: nameDraft.value.trim() === '' ? null : nameDraft.value }),
-        });
-        ships.value = ships.value.map((row) => row.id === updated.id ? { ...row, custom_name: updated.custom_name } : row);
-        namingId.value = null;
-    } catch (cause) {
-        nameError.value = validationErrors(cause).name ?? (cause instanceof Error ? cause.message : '名前を変更できませんでした。');
-    } finally {
-        nameSaving.value = false;
     }
 }
 
@@ -96,21 +65,7 @@ function closeOnBackdrop(event: MouseEvent): void {
             <p v-else-if="error" class="status error" role="alert">{{ error }}</p>
             <p v-else-if="ships.length === 0">生存している船はありません。</p>
             <ul v-else class="ship-status-list">
-                <li v-for="ship in ships" :key="ship.id">
-                    <span class="ship-status-row">
-                        <strong v-if="ship.custom_name" class="given-name">{{ ship.custom_name }}<small>{{ ship.name }} ({{ ship.x }},{{ ship.y }})</small></strong>
-                        <span v-else>{{ ship.name }} ({{ ship.x }},{{ ship.y }})</span>
-                        <span>HP{{ ship.current_hp }}/{{ ship.max_hp }} {{ shipInstructionLabel(ship, ship.movement_mode) }}</span>
-                        <button v-if="namingId !== ship.id" type="button" class="ship-name-button" @click="startNaming(ship)">{{ ship.custom_name ? '名前を変える' : '名前をつける' }}</button>
-                    </span>
-                    <form v-if="namingId === ship.id" class="ship-name-form" @submit.prevent="saveName(ship)">
-                        <input :id="`ship-name-${ship.id}`" v-model="nameDraft" :maxlength="GIVEN_NAME_MAX_LENGTH" :aria-label="`${ship.name} (${ship.x},${ship.y})の名前`" placeholder="名前なし" :aria-describedby="`ship-name-help-${ship.id}`" @keydown.esc.stop.prevent="namingId = null">
-                        <button type="submit" :disabled="nameSaving">保存</button>
-                        <button type="button" :disabled="nameSaving" @click="namingId = null">やめる</button>
-                        <small :id="`ship-name-help-${ship.id}`">{{ GIVEN_NAME_MAX_LENGTH }}文字まで。空にすると名前を外します。地図やログで他の島からも見えます。</small>
-                        <span v-if="nameError" class="field-error" role="alert">{{ nameError }}</span>
-                    </form>
-                </li>
+                <li v-for="ship in ships" :key="ship.id">{{ shipListLabel(ship) }} HP{{ ship.current_hp }}/{{ ship.max_hp }} {{ shipInstructionLabel(ship, ship.movement_mode) }}</li>
             </ul>
             <button type="button" :disabled="loading" @click="load">更新</button>
         </dialog>

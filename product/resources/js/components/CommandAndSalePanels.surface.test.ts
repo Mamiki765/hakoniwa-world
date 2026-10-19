@@ -271,6 +271,56 @@ describe('command plan workspace', () => {
         expect(wrapper.get('[aria-label="選択中の自国Ship操作"]').text()).toContain('指示を解除しました。待機します');
     });
 
+    it('names the selected own Ship and capital from a small button, even while the island is dormant', async () => {
+        const shipSelected: MapCell = {
+            ...selected, terrain: 'sea', terrain_name: '海', display_name: '漁船',
+            ship: {
+                id: 9, key: 'fishing', name: '漁船', custom_name: null, asset_key: 'ship.fishing', current_hp: 5, max_hp: 5,
+                public_state: 'active', owner_nation: { nation_number: 1, name: '操作国' }, is_owner: true,
+                heading: null, destination: null, version: 3,
+            },
+        };
+        const capital: MapCell = { ...selected, x: 3, y: 3, facility: 'capital', facility_name: '首都', display_name: '首都', capital_name: 'ルミナ' };
+        const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+            if (init?.method === 'PATCH' && String(input).endsWith('/name')) return jsonResponse({ id: 9, custom_name: 'エスポワール' });
+            if (init?.method === 'PATCH') return jsonResponse({ id: 1, capital_name: null });
+            return jsonResponse(String(input).includes('command-definitions') ? catalog([]) : commandQueue());
+        });
+        vi.stubGlobal('fetch', fetchMock);
+        const wrapper = mount(CommandQueuePanel, { props: { nationId: 1, mapSpaceId: 2, selected: shipSelected, nationState: 'dormant' } });
+        await flushPromises();
+
+        await wrapper.get('.sl-name button').trigger('click');
+        expect(wrapper.get('.sl-name').text()).not.toContain('名前をつける');
+        await wrapper.get('.sl-name input').setValue('エスポワール');
+        await wrapper.get('.sl-name form').trigger('submit');
+        await flushPromises();
+        const shipPatch = fetchMock.mock.calls.find(([, init]) => init?.method === 'PATCH');
+        expect(String(shipPatch?.[0])).toBe('/api/v1/nations/1/ships/9/name');
+        expect(JSON.parse(String(shipPatch?.[1]?.body))).toEqual({ name: 'エスポワール' });
+        expect(wrapper.emitted('shipName')?.[0]?.[0]).toEqual({ id: 9, custom_name: 'エスポワール' });
+        expect(wrapper.find('.sl-name input').exists()).toBe(false);
+
+        await wrapper.setProps({ selected: capital });
+        await flushPromises();
+        expect(wrapper.get('.sl-name button').text()).toBe('名前を変える');
+        await wrapper.get('.sl-name button').trigger('click');
+        expect((wrapper.get('.sl-name input').element as HTMLInputElement).value).toBe('ルミナ');
+        await wrapper.get('.sl-name input').setValue('  ');
+        await wrapper.get('.sl-name form').trigger('submit');
+        await flushPromises();
+        const capitalPatch = fetchMock.mock.calls.filter(([, init]) => init?.method === 'PATCH').at(-1);
+        expect(String(capitalPatch?.[0])).toBe('/api/v1/nations/1/profile');
+        expect(JSON.parse(String(capitalPatch?.[1]?.body))).toEqual({ capital_name: null });
+        expect(wrapper.emitted('capitalName')?.[0]?.[0]).toEqual({ x: 3, y: 3, capital_name: null });
+
+        // 他の島の首都や、ただの陸地には出さない。
+        await wrapper.setProps({ selected: { ...capital, owner_nation_id: 2 } });
+        expect(wrapper.find('.sl-name').exists()).toBe(false);
+        await wrapper.setProps({ selected });
+        expect(wrapper.find('.sl-name').exists()).toBe(false);
+    });
+
     it('sends the nearest own Ship to a selected sea cell and reports rejected or stale orders', async () => {
         const sea: MapCell = { ...selected, x: 12, y: 7, terrain: 'sea', terrain_name: '海', display_name: '海', owner_nation_id: null };
         const near = ownShipRow({ id: 5, name: '探索船', x: 10, y: 7, version: 2, movement_mode: 'sparkle_or_random', sort_order: 3 });
