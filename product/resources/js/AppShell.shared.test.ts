@@ -1456,7 +1456,7 @@ describe('application lobby and island entry', () => {
         await wrapper.find('.profile-form').trigger('submit');
         await flushPromises();
         const patchRequest = fetchMock.mock.calls.filter(([path]) => String(path) === '/api/v1/nations/3/profile').at(-1);
-        expect(JSON.parse(String(patchRequest?.[1]?.body))).toEqual({ owner_name: '更新島主', comment: '<b>更新コメント</b>' });
+        expect(JSON.parse(String(patchRequest?.[1]?.body))).toEqual({ owner_name: '更新島主', comment: '<b>更新コメント</b>', capital_name: null });
         const patchIndex = fetchMock.mock.calls.findIndex((call) => call === patchRequest);
         expect(fetchMock.mock.calls.slice(patchIndex + 1).some(([path]) => String(path).includes('/api/v1/map-spaces/2/chunks/'))).toBe(true);
         await navButton(wrapper, '自島へ').trigger('click');

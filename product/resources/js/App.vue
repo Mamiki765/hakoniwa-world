@@ -32,6 +32,7 @@ import SecretaryEquippedItems from './components/SecretaryEquippedItems.vue';
 import type { SecretarySection } from './types';
 import UndergroundSurfaceMapView from './components/UndergroundSurfaceMap.vue';
 import { formatAnnouncementDate } from './formatters/date';
+import { GIVEN_NAME_MAX_LENGTH } from './formatters/givenName';
 import { formatExactMoney } from './formatters/money';
 import { useMapState } from './state/mapState';
 import { useLobbyRanking } from './state/lobbyRanking';
@@ -244,6 +245,7 @@ const nationComment = ref('');
 const nationRegistrationRequestKey = ref(crypto.randomUUID());
 const profileOwnerName = ref('');
 const profileComment = ref('');
+const profileCapitalName = ref('');
 const abandonmentModalOpen = ref(false);
 const abandonmentConfirmationName = ref('');
 const abandonmentError = ref('');
@@ -412,6 +414,7 @@ onMounted(async () => {
         if (page.value === 'options' && nation.value !== null) {
             profileOwnerName.value = nation.value.owner_name;
             profileComment.value = nation.value.comment;
+            profileCapitalName.value = nation.value.capital_name ?? '';
         }
         try {
             await loadSecretary();
@@ -1614,6 +1617,7 @@ function openOptions(): void {
     if (nation.value !== null) {
         profileOwnerName.value = nation.value.owner_name;
         profileComment.value = nation.value.comment;
+        profileCapitalName.value = nation.value.capital_name ?? '';
         profileSecretaryName.value = secretary.value?.name ?? '';
     }
     profileErrors.value = {};
@@ -1665,6 +1669,7 @@ async function updateProfile(): Promise<void> {
             body: JSON.stringify({
                 owner_name: profileOwnerName.value,
                 comment: profileComment.value,
+                capital_name: profileCapitalName.value.trim() === '' ? null : profileCapitalName.value,
             }),
         });
         if (requestGeneration !== nationStateGeneration) return;
@@ -2805,6 +2810,12 @@ async function abandonNation(): Promise<void> {
                         <input v-model="profileOwnerName" minlength="1" maxlength="30" required aria-describedby="profile-owner-help profile-owner-error">
                         <small id="profile-owner-help" class="field-hint">1〜30文字。公開ロビーや島previewへ表示されます。</small>
                         <span v-if="profileErrors.owner_name" id="profile-owner-error" class="field-error" role="alert">{{ profileErrors.owner_name }}</span>
+                    </label>
+                    <label>
+                        首都の名前
+                        <input v-model="profileCapitalName" :maxlength="GIVEN_NAME_MAX_LENGTH" placeholder="名前なし" aria-describedby="profile-capital-help profile-capital-error">
+                        <small id="profile-capital-help" class="field-hint">{{ GIVEN_NAME_MAX_LENGTH }}文字まで、空なら「首都」のまま。地図やログに表示されます。</small>
+                        <span v-if="profileErrors.capital_name" id="profile-capital-error" class="field-error" role="alert">{{ profileErrors.capital_name }}</span>
                     </label>
                     <label>
                         一言コメント

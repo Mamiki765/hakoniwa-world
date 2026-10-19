@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue';
 import { ApiError, api } from '../api/client';
+import { shipListLabel } from '../formatters/givenName';
 import { formatExactMoney } from '../formatters/money';
 import { SHIP_HEADING_LABELS, shipIdleLabel, shipInstructionLabel } from '../formatters/shipInstruction';
 import { hexDistance } from '../map/projection';
@@ -387,7 +388,7 @@ async function setShipDestination(): Promise<void> {
     const ship = chosenDestinationShip.value?.ship;
     if (cell === null || ship === undefined) return;
     const target = { x: cell.x, y: cell.y };
-    await sendShipCourse(ship, 'destination', target, destinationStatus, () => `${ship.name} (${ship.x},${ship.y}) の目的地を (${target.x},${target.y}) にしました`);
+    await sendShipCourse(ship, 'destination', target, destinationStatus, () => `${shipListLabel(ship)} の目的地を (${target.x},${target.y}) にしました`);
 }
 
 function targetKey(): string {
@@ -1152,7 +1153,7 @@ onBeforeUnmount(() => {
                     <label for="sl-ship-destination">自国の船</label>
                     <select id="sl-ship-destination" v-model="destinationShipId">
                         <option v-for="candidate in destinationCandidates" :key="candidate.ship.id" :value="candidate.ship.id">
-                            {{ candidate.ship.name }} ({{ candidate.ship.x }},{{ candidate.ship.y }})・直線{{ candidate.distance }}マス{{ candidate.here ? '・目的地' : '' }}
+                            {{ shipListLabel(candidate.ship) }}・直線{{ candidate.distance }}マス{{ candidate.here ? '・目的地' : '' }}
                         </option>
                     </select>
                     <button type="submit" :disabled="busy || chosenDestinationShip === null || chosenDestinationShip.here">目的地にする</button>

@@ -1667,10 +1667,12 @@ final class DomesticCommandExecutor
             'x' => $target->x, 'y' => $target->y,
             'old_population_preserved' => $old->population,
             'new_population_preserved' => $target->population,
+            'capital_name' => $nation->capital_name,
         ]);
         $this->events->record($context, 'command.capital_relocated_public', $target, [
             'nation_id' => $nation->id,
             'nation_name' => $nation->name,
+            'capital_name' => $nation->capital_name,
             'from_x' => $old->x,
             'from_y' => $old->y,
             'x' => $target->x,

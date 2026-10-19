@@ -20,6 +20,7 @@ use Illuminate\Support\Carbon;
  * @property int|null $heading
  * @property int|null $destination_x
  * @property int|null $destination_y
+ * @property string|null $custom_name
  * @property string $state
  * @property int $version
  * @property string|null $removal_reason

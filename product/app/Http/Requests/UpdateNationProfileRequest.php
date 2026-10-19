@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests;
 
+use App\Domain\Nation\GivenName;
 use App\Domain\Nation\NationProfileText;
 use App\Models\Nation;
 use App\Models\NationMembership;
@@ -36,13 +37,17 @@ final class UpdateNationProfileRequest extends FormRequest
                 'sometimes', 'string', 'max:'.NationProfileText::COMMENT_MAX_LENGTH,
                 'regex:'.NationProfileText::SINGLE_LINE_PATTERN,
             ],
+            'capital_name' => [
+                'sometimes', 'nullable', 'string', 'max:'.GivenName::MAX_LENGTH,
+                'regex:'.NationProfileText::SINGLE_LINE_PATTERN,
+            ],
         ];
     }
 
     protected function prepareForValidation(): void
     {
         $values = [];
-        foreach (['owner_name', 'comment'] as $key) {
+        foreach (['owner_name', 'comment', 'capital_name'] as $key) {
             $value = $this->input($key);
             if ($this->exists($key)) {
                 $values[$key] = $key === 'comment' && $value === null
@@ -56,6 +61,6 @@ final class UpdateNationProfileRequest extends FormRequest
     /** @return array<string, string> */
     public function attributes(): array
     {
-        return ['owner_name' => '島主名', 'comment' => '一言コメント'];
+        return ['owner_name' => '島主名', 'comment' => '一言コメント', 'capital_name' => '首都の名前'];
     }
 }

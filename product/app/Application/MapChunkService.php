@@ -39,7 +39,7 @@ final class MapChunkService
                 'facility',
                 'monumentDefinition',
                 'monumentDesign',
-                'ownerNation:id,nation_number,name',
+                'ownerNation:id,nation_number,name,capital_name',
                 'ship.nation:id,nation_number,name',
                 'ship.rulesetVersion:id,settings',
                 'monsterOccupancy.monster.definition',
