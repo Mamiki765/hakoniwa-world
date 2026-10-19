@@ -14,6 +14,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\Concerns\CreatesTestWorlds;
+use Tests\Concerns\InteractsWithJsonWorkers;
 use Tests\Concerns\UsesForwardOnlyDatabaseMigrations;
 use Tests\TestCase;
 
@@ -24,6 +25,7 @@ final class PostgresSecretaryEquipmentConcurrencyTest extends TestCase
         UsesForwardOnlyDatabaseMigrations::runDatabaseMigrations insteadof DatabaseMigrations;
         UsesForwardOnlyDatabaseMigrations::refreshTestDatabase insteadof DatabaseMigrations;
     }
+    use InteractsWithJsonWorkers;
 
     private const PROBE_CONNECTION = 'pgsql-secretary-equipment-probe';
 
@@ -241,24 +243,15 @@ final class PostgresSecretaryEquipmentConcurrencyTest extends TestCase
     private function startWorker(string $directory, string $label, array $spec): array
     {
         $databasePath = $directory.'/database-'.$label;
-        $pipes = [];
-        $process = proc_open([
+        $worker = $this->startJsonWorker([
             PHP_BINARY,
             base_path('tests/Support/secretary_equipment_concurrency_worker.php'),
             $databasePath,
             $spec['operation'],
             json_encode($spec['payload'], JSON_THROW_ON_ERROR),
-        ], [
-            0 => ['pipe', 'r'],
-            1 => ['pipe', 'w'],
-            2 => ['pipe', 'w'],
-        ], $pipes, base_path());
-        $this->assertIsResource($process);
-        fclose($pipes[0]);
-        stream_set_blocking($pipes[1], false);
-        stream_set_blocking($pipes[2], false);
+        ]);
 
-        return ['process' => $process, 'pipes' => $pipes, 'database_path' => $databasePath];
+        return $worker + ['database_path' => $databasePath];
     }
 
     private function waitForFile(string $path, string $label): void
@@ -301,38 +294,7 @@ final class PostgresSecretaryEquipmentConcurrencyTest extends TestCase
      */
     private function finishWorker(array &$worker): array
     {
-        $stdout = '';
-        $stderr = '';
-        $exitCode = -1;
-        $deadline = microtime(true) + 30;
-        do {
-            $out = stream_get_contents($worker['pipes'][1]);
-            $err = stream_get_contents($worker['pipes'][2]);
-            $stdout .= is_string($out) ? $out : '';
-            $stderr .= is_string($err) ? $err : '';
-            $status = proc_get_status($worker['process']);
-            if (! $status['running']) {
-                $exitCode = (int) $status['exitcode'];
-                break;
-            }
-            if (microtime(true) >= $deadline) {
-                $this->fail('Secretary equipment worker did not finish within 30 seconds.');
-            }
-            usleep(10_000);
-        } while (true);
-
-        $stdout .= (string) stream_get_contents($worker['pipes'][1]);
-        $stderr .= (string) stream_get_contents($worker['pipes'][2]);
-        fclose($worker['pipes'][1]);
-        fclose($worker['pipes'][2]);
-        $closeCode = proc_close($worker['process']);
-        if ($exitCode === -1) {
-            $exitCode = $closeCode;
-        }
-        unset($worker['process'], $worker['pipes']);
-        $this->assertSame(0, $exitCode, $stderr."\n".$stdout);
-
-        return json_decode($stdout, true, 512, JSON_THROW_ON_ERROR);
+        return $this->finishJsonWorker($worker, 30, 'Secretary equipment worker did not finish within 30 seconds.');
     }
 
     /** @param array<string, mixed> $worker */
@@ -341,16 +303,7 @@ final class PostgresSecretaryEquipmentConcurrencyTest extends TestCase
         if (! isset($worker['process']) || ! is_resource($worker['process'])) {
             return;
         }
-        $status = proc_get_status($worker['process']);
-        if ($status['running']) {
-            proc_terminate($worker['process']);
-        }
-        foreach ($worker['pipes'] as $pipe) {
-            if (is_resource($pipe)) {
-                fclose($pipe);
-            }
-        }
-        proc_close($worker['process']);
+        $this->terminateWorkerProcess($worker);
         unset($worker['process'], $worker['pipes']);
     }
 }
