@@ -37,28 +37,7 @@ final class MonsterRewardPolicyResolver
         if ($wreckageValue < 0) {
             throw new DomainException('Monster wreckage value cannot be negative.');
         }
-        $definitions = $rulesetSettings['monster_definitions'] ?? null;
-        if (! is_array($definitions) || ! array_is_list($definitions)) {
-            throw new DomainException('Monster reward resolution requires loaded ruleset definitions.');
-        }
-
-        $matched = [];
-        foreach ($definitions as $definition) {
-            if (is_array($definition) && ($definition['key'] ?? null) === $monsterKey) {
-                $matched[] = $definition;
-            }
-        }
-        if (count($matched) !== 1) {
-            throw new DomainException('Monster reward resolution requires one matching ruleset definition.');
-        }
-        $sourceMetadata = $matched[0]['source_metadata'] ?? null;
-        if (! is_array($sourceMetadata) || array_is_list($sourceMetadata)) {
-            throw new DomainException('Monster reward resolution requires definition source metadata.');
-        }
-        if (! array_key_exists(self::METADATA_KEY, $sourceMetadata)) {
-            throw new DomainException('Monster reward policy must be explicitly authored.');
-        }
-        $policy = $this->validate($sourceMetadata[self::METADATA_KEY]);
+        $policy = $this->policyForMonster($rulesetSettings, $monsterKey);
 
         if ($policy === self::HOSTLESS_FULL_KILLER_MONEY && ! $hostNationExists) {
             return [
@@ -80,5 +59,33 @@ final class MonsterRewardPolicyResolver
             'host_share' => $hostNationExists ? $remainder : 0,
             'unclaimed_share' => $hostNationExists ? 0 : $remainder,
         ];
+    }
+
+    /** @param array<string, mixed> $rulesetSettings */
+    private function policyForMonster(array $rulesetSettings, string $monsterKey): string
+    {
+        $definitions = $rulesetSettings['monster_definitions'] ?? null;
+        if (! is_array($definitions) || ! array_is_list($definitions)) {
+            throw new DomainException('Monster reward resolution requires loaded ruleset definitions.');
+        }
+
+        $matched = [];
+        foreach ($definitions as $definition) {
+            if (is_array($definition) && ($definition['key'] ?? null) === $monsterKey) {
+                $matched[] = $definition;
+            }
+        }
+        if (count($matched) !== 1) {
+            throw new DomainException('Monster reward resolution requires one matching ruleset definition.');
+        }
+        $sourceMetadata = $matched[0]['source_metadata'] ?? null;
+        if (! is_array($sourceMetadata) || array_is_list($sourceMetadata)) {
+            throw new DomainException('Monster reward resolution requires definition source metadata.');
+        }
+        if (! array_key_exists(self::METADATA_KEY, $sourceMetadata)) {
+            throw new DomainException('Monster reward policy must be explicitly authored.');
+        }
+
+        return $this->validate($sourceMetadata[self::METADATA_KEY]);
     }
 }
