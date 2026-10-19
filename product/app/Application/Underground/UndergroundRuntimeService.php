@@ -489,15 +489,7 @@ STORY;
                         'shards' => $victoryReward['shards'],
                     ]],
                     'stp_awarded' => $reward['stp_awarded'],
-                    'shining_kingdom_key' => [
-                        'label' => $huntingGround['key_label'],
-                        'balance_before' => $keyBalanceBefore,
-                        'entry_cost' => $huntingGround['entry_key_cost'],
-                        'awarded' => $victoryReward['keys'],
-                        'balance_after' => $this->explorationKeyBalance($profile, $huntingGround),
-                    ],
-                    'treasure' => $victoryReward['treasure'],
-                    'distorted_stones' => $victoryReward['distorted_stones'],
+                    ...$this->explorationBonusSnapshot($profile, $huntingGround, $keyBalanceBefore, $victoryReward),
                     'drops' => [['status' => 'pending']],
                 ],
                 'settled_at' => $settledAt,
@@ -2061,15 +2053,7 @@ STORY;
                 'current_hp_after' => $profile->current_hp,
                 'max_hp_after' => $maxHpAfter,
                 'banked_shard_balance' => $profile->banked_shard_balance,
-                'shining_kingdom_key' => [
-                    'label' => $huntingGround['key_label'],
-                    'balance_before' => $keyBalanceBefore,
-                    'entry_cost' => $huntingGround['entry_key_cost'],
-                    'awarded' => $victoryReward['keys'],
-                    'balance_after' => $this->explorationKeyBalance($profile, $huntingGround),
-                ],
-                'treasure' => $victoryReward['treasure'],
-                'distorted_stones' => $victoryReward['distorted_stones'],
+                ...$this->explorationBonusSnapshot($profile, $huntingGround, $keyBalanceBefore, $victoryReward),
                 'awakening' => $result->awakening,
                 'drop' => [
                     'identity' => $this->alphaV1Catalog->explorationDropConfig()['identity'],
@@ -2652,15 +2636,7 @@ STORY;
                 'current_hp_after' => $profile->current_hp,
                 'max_hp_after' => $maxHpAfter,
                 'banked_shard_balance' => $profile->banked_shard_balance,
-                'shining_kingdom_key' => [
-                    'label' => $huntingGround['key_label'],
-                    'balance_before' => $keyBalanceBefore,
-                    'entry_cost' => $huntingGround['entry_key_cost'],
-                    'awarded' => $victoryReward['keys'],
-                    'balance_after' => $this->explorationKeyBalance($profile, $huntingGround),
-                ],
-                'treasure' => $victoryReward['treasure'],
-                'distorted_stones' => $victoryReward['distorted_stones'],
+                ...$this->explorationBonusSnapshot($profile, $huntingGround, $keyBalanceBefore, $victoryReward),
                 'awakening' => $leaderFinalAwakening,
                 'party_awakening' => $result->awakening,
                 'drop' => [
@@ -3785,6 +3761,30 @@ STORY;
         }
         $field = $huntingGround['key_balance_field'];
         $profile->{$field} -= $totalCost;
+    }
+
+    /**
+     * @param  array<string, mixed>  $huntingGround
+     * @param  array<string, mixed>  $victoryReward
+     * @return array<string, mixed>
+     */
+    private function explorationBonusSnapshot(
+        UndergroundProfile $profile,
+        array $huntingGround,
+        int $keyBalanceBefore,
+        array $victoryReward,
+    ): array {
+        return [
+            'shining_kingdom_key' => [
+                'label' => $huntingGround['key_label'],
+                'balance_before' => $keyBalanceBefore,
+                'entry_cost' => $huntingGround['entry_key_cost'],
+                'awarded' => $victoryReward['keys'],
+                'balance_after' => $this->explorationKeyBalance($profile, $huntingGround),
+            ],
+            'treasure' => $victoryReward['treasure'],
+            'distorted_stones' => $victoryReward['distorted_stones'],
+        ];
     }
 
     /** @param array<string, mixed> $huntingGround */
