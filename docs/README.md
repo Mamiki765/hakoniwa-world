@@ -2,6 +2,16 @@
 
 通常の再開で読むのは現在地と、今回の作業に必要な文書だけです。過去のrelease順に全docsを読む必要はありません。
 
+## 最新コードと過去資料の読み分け
+
+現在の設定は[現行Rulesetの確認方法](../product/docs/architecture/current-ruleset-baseline.md)と[authoring](../product/docs/architecture/ruleset-authoring.md)に従い、対象HEADの[config](../product/config/hakoniwa.php)から確認します。コードの版、PRの統合状態、本番への適用状態は別の証拠です。
+
+- 露店・合成・チケット部分使用・倉庫拡張は[5.5.0](../product/docs/releases/5.5.0-market-synthesis.md)、露店の無期限化は[5.5.1](../product/docs/releases/5.5.1-indefinite-market.md)を参照します。5.5.0の7日期限は5.5.1で置き換わります。
+- fresh構築とsupported upgradeは[現行install/upgrade境界](../product/docs/architecture/install-upgrade-rebaseline.md)と[5.0.1 rebaselineの承認・検証記録](../product/docs/plans/5.0.1-ruleset-rebaseline.md)を入口にします。旧v27の手順を現行treeへ戻しません。
+- 古い構想帳や`current-contracts`の「地上合成は未実装」「露店・圧縮条件は未決」は、上記5.5系の採用範囲について後続決定に置き換わっています。弓・スーツ育成や自由な効果合成まで採用済みと読み替えません。
+
+以下の版別資料と[文書一覧](documentation-inventory.md)には固定時点の記録も含みます。「現在」「未完」の語やcheckboxだけで現在の作業を決めず、後続決定とコードを照合してください。archiveの時点・元path・外部管理庫への移管は文書一覧の案内を使います。
+
 ## 地上・地下・地底の基本原則
 
 - 対象地形・所有者の条件を満たす地上の通常施設建設は、村・町・都市を置換できる。新しい地上施設を追加するときは、[共通の置換許可リスト](../product/app/Domain/Command/SettlementOverbuildPolicy.php)へ追加し、[予告・計画登録](../product/app/Application/CommandQueueService.php)と[Turn実行](../product/app/Application/DomesticCommandExecutor.php)で同じ判定を使う。首都や他の施設を置換対象へ広げず、所有者・地形の検証を維持する。同種施設の増設・修理は各施設の既存契約に従う。
@@ -31,11 +41,11 @@
 | IL200超の装備計算・研磨 | [地底装備の倍率とrating](../product/docs/architecture/underground-equipment-scaling.md) |
 | バハムル中級2の採用値・測定条件・候補比較 | [中級2バランス調整](../product/docs/plans/bahamul-intermediate-2-balance.md) |
 | 採用済みの未完作業と会話の構想 | [Owner判断・構想](../product/docs/plans/post-4.4.0-decisions-and-ideas.md) |
-| 地上アイテムの合成・育成・圧縮 | [地上アイテム拡張](../product/docs/plans/surface-item-expansion.md) |
+| 地上アイテムの採用済み合成・圧縮と、未採用の育成構想 | [5.5.0実装範囲](../product/docs/releases/5.5.0-market-synthesis.md)、[地上アイテム拡張の構想](../product/docs/plans/surface-item-expansion.md) |
 | 地上の配置・電力・上位産業・属性魔力 | [地上発展拡張](../product/docs/plans/surface-development-expansion.md) |
 | T01〜T12の元の範囲・途中記録 | [4.4.1予定表](../product/docs/plans/4.4.1-todo.md)、[実装・検証記録](../product/docs/releases/4.4.1-chat-implementation.md)。古いcheckboxを現在の未実装判定に使わない |
 | 本番の観測、証拠の限界、運用残件 | [deployment status](../product/docs/operations/current-deployment.md) |
-| v27基準のfresh構築・既存DB採用・撤去した互換性 | [4.9.1 baseline consolidation](../product/docs/plans/4.9.1-v27-baseline-consolidation.md)、[本番構造差の修正](../product/docs/plans/4.9.2-baseline-structure-fix.md) |
+| fresh構築・既存DB採用・撤去した互換性 | [現行install/upgrade境界](../product/docs/architecture/install-upgrade-rebaseline.md)、[5.0.1 rebaseline](../product/docs/plans/5.0.1-ruleset-rebaseline.md)。[4.9.1](../product/docs/plans/4.9.1-v27-baseline-consolidation.md)・[4.9.2](../product/docs/plans/4.9.2-baseline-structure-fix.md)は前段の履歴 |
 | 実装前の設計gate | [open-questions](open-questions.md)。全Open/Deferredを現在のTODOへ昇格させない |
 | 文書整理の進捗と未分類範囲 | [documentation-inventory](documentation-inventory.md) |
 

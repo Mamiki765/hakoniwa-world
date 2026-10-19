@@ -1,6 +1,30 @@
-# 文書の分類：4.4.1
+# 文書の分類と確認先
+
+## 現在の確認先
+
+2026-10-19、5.5.1作業コードを基準に現行文書とarchiveを読み取り確認した。以下は資料の扱いを整理する案内であり、本番適用の証拠や新たな実装指示ではない。
+
+| 対象 | 現在の確認先・扱い |
+|---|---|
+| 露店・地上合成・チケット部分使用・倉庫拡張 | [5.5.0](../product/docs/releases/5.5.0-market-synthesis.md)、[5.5.1](../product/docs/releases/5.5.1-indefinite-market.md)。旧構想帳の未実装・条件未決表記をこの採用範囲へ戻さない |
+| Rulesetの版・保存・authoring | [current baseline](../product/docs/architecture/current-ruleset-baseline.md)、[authoring](../product/docs/architecture/ruleset-authoring.md)と対象HEADのconfig。旧設定管理のv5やRuleset archiveのv16という「現在」は当時の記録であり、現行版や旧retry互換処理を指定しない |
+| T10・fresh構築・supported upgrade | [現行install/upgrade境界](../product/docs/architecture/install-upgrade-rebaseline.md)、[5.0.1 rebaseline](../product/docs/plans/5.0.1-ruleset-rebaseline.md)。旧T10の最終方針待ちは後続実装で更新済み。保存済みsnapshot・履歴identityの削除許可ではない |
+| DB問い合わせ調査 | [最終記録](../product/docs/testing/post-5.0.1-nplus1.md)から固定SHAの初回・追記台帳へ進む。旧台帳の未適用・未測定を現在の未修正判定に使わない |
+| 運用・本番観測 | [deployment status](../product/docs/operations/current-deployment.md)は記録日時の観測と証拠の限界。purge・cron等の現在稼働をコードや古い未確認表記から推定せず、操作は別の明示承認を要する |
+
+電力・ピザは後続4.11系、帰港地の背景・メムは4.14系で実装記録がある。旧構想帳の項目全体を未実装へ戻さず、未採用の合体・属性魔力や未確認の画像配備とは分ける。固定値監査の原本・既存成果物が存在することと、候補全件の処理完了も区別する。
+
+## archiveと原文保全
+
+archive内の「current」「未完」や旧root相対リンクは、その資料の固定時点と元pathを示す。通常のrepository rootからのリンクと同じ意味で一括修正しない。Rulesetの旧数値・旧compatibility pathを現行仕様として復活させず、上の現行baselineへ進む。
+
+旧handoffは[現在地の入口](../product/docs/handoffs/current-status.md)から外部管理庫の原文保全manifestへ移管されている。古いarchive索引の同path配置という説明だけで欠落と判定しない。pre-4.4.1の旧READMEには移管時に固定原文URLへ更新したリンクがあり、元blobの確認にはmanifestとGitの固定原文を使う。今回、歴史本文の移動・削除・書換えとhandoff編集は行わない。
+
+## 4.4.1の分類履歴
 
 2026-09-27。対象は通常検索に入る`docs/`・`product/docs/`のMarkdown全件。起点の非archive 217件を確認し、過去の開発本文125件を`docs/archive/through-4.4.0/`へ元の相対pathを保って移動した。通常側に残る37件の旧pathは既存リンク向けの短い案内であり、過去本文ではない。先行して移動済みの8件は`pre-4.4.1/`にあり、今回読み直していない。今回もarchiveの本文は閲覧・検索していない。
+
+以下の分類・件数・「今回」は2026-09-27時点の記録として保持する。現在の未完一覧ではない。
 
 ## 現行
 
