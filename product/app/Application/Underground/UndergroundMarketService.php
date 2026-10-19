@@ -2,6 +2,7 @@
 
 namespace App\Application\Underground;
 
+use App\Domain\Economy\SellerProceedsCalculator;
 use App\Domain\Underground\Intro\UndergroundIntroStage;
 use App\Models\NationMembership;
 use App\Models\Secretary;
@@ -16,7 +17,11 @@ use Illuminate\Support\Str;
 /** All writers lock profiles in ID order, then listings, then equipment. */
 final readonly class UndergroundMarketService
 {
-    public function __construct(private UndergroundEquipmentLoadoutResolver $loadout, private UndergroundEquipmentCatalog $catalog) {}
+    public function __construct(
+        private UndergroundEquipmentLoadoutResolver $loadout,
+        private UndergroundEquipmentCatalog $catalog,
+        private SellerProceedsCalculator $proceeds,
+    ) {}
 
     /**
      * @param  array<string,mixed>  $filters
@@ -125,8 +130,7 @@ final readonly class UndergroundMarketService
                     $this->fail('below_minimum_price', 'NPC売値以上の価格を指定してください。');
                 }
                 $rules = $this->rules();
-                $proceeds = intdiv($price, $rules['proceeds_denominator']) * $rules['proceeds_numerator']
-                    + intdiv(($price % $rules['proceeds_denominator']) * $rules['proceeds_numerator'], $rules['proceeds_denominator']);
+                $proceeds = $this->proceeds->calculate($price, $rules['proceeds_numerator'], $rules['proceeds_denominator']);
                 $snapshot = $this->loadout->projectOwned($item);
                 $listing = UndergroundMarketListing::query()->create([
                     'seller_profile_id' => $profile->id, 'equipment_id' => $item->id,
