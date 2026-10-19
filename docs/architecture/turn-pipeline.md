@@ -2,7 +2,7 @@
 
 ## 現行の起動と正本
 
-2026-10-19、5.5.1候補のコードと照合。正式な順序は[TurnPipeline::CANONICAL_PHASE_KEYS](../../product/app/Domain/Turn/TurnPipeline.php)、実行内容は[CompleteTurnEngine](../../product/app/Application/CompleteTurnEngine.php)、transaction・冪等性・retryは[TurnRunner](../../product/app/Application/TurnRunner.php)を正本とする。[AppServiceProvider](../../product/app/Providers/AppServiceProvider.php)は同じ12キーを`GameplayTurnPhase`へ接続する。旧`turn-runner-scaffold.md`は過去本文への案内であり、現行の実行仕様ではない。
+2026-10-19、5.6.0候補のコードと照合。正式な順序は[TurnPipeline::CANONICAL_PHASE_KEYS](../../product/app/Domain/Turn/TurnPipeline.php)、実行内容は[CompleteTurnEngine](../../product/app/Application/CompleteTurnEngine.php)、transaction・冪等性・retryは[TurnRunner](../../product/app/Application/TurnRunner.php)を正本とする。[AppServiceProvider](../../product/app/Providers/AppServiceProvider.php)は同じ12キーを`GameplayTurnPhase`へ接続する。旧`turn-runner-scaffold.md`は過去本文への案内であり、現行の実行仕様ではない。
 
 起動は[host cronのthin trigger](../operations/turn-cron.md)から既存Artisan command・TurnRunnerへ入る。Laravel schedulerがWorldごとのjobを投入する実装ではなく、`routes/console.php`にもその登録はない。CLIのmanualとcronに加え、管理画面の[手動Turn](../../product/docs/operations/4.4.0-admin-operations.md#worldの予定起点と手動turn)も同じTurnRunnerへ接続し、予定時刻・target再送・未解決Turn guardを維持する。
 

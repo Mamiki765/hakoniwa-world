@@ -1,8 +1,8 @@
 # 露店・地上合成・チケット・倉庫APIの入口
 
-2026-10-19、`release/5.5.1` の `93bb230b8cff546e43d1b89baf4c7cd916ff616f` と照合した本体側の技術索引。コード統合と本番適用は別であり、本書は適用済みの証拠ではない。
+2026-10-19、`release/5.6.0` の `93bb230b8cff546e43d1b89baf4c7cd916ff616f` と照合した本体側の技術索引。コード統合と本番適用は別であり、本書は適用済みの証拠ではない。
 
-初回合意とJSON例は[5.5.0の記録](../releases/5.5.0-market-synthesis.md)に出所を残す。現行のHTTP契約は本体の[route](../../routes/web.php)、各controller・service、画面の型と既存テストを照合する。巨大なJSON例や別の定義authorityを本書へ複製しない。5.5.0の7日期限は[5.5.1の無期限化](../releases/5.5.1-indefinite-market.md)で更新された。
+初回合意とJSON例は[5.5.0の記録](../releases/5.5.0-market-synthesis.md)に出所を残す。現行のHTTP契約は本体の[route](../../routes/web.php)、各controller・service、画面の型と既存テストを照合する。巨大なJSON例や別の定義authorityを本書へ複製しない。5.5.0の7日期限は[5.6.0の無期限化](../releases/5.6.0.md)で更新された。
 
 ## 共通の受付と再送
 
