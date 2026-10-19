@@ -45,19 +45,7 @@ final readonly class SecretaryTicketGachaService
                     ->where('request_key', $requestKey)
                     ->lockForUpdate()->first();
                 if ($previous !== null) {
-                    $snapshot = json_decode($previous->result_snapshot, true, 512, JSON_THROW_ON_ERROR);
-                    // Pre-5.5.0 receipts contain only the drawn item list.
-                    $sameCount = array_is_list($snapshot)
-                        ? $requestedDrawCount === null || $requestedDrawCount === (int) $previous->ticket_level
-                        : ($snapshot['request_draw_count'] ?? null) === $requestedDrawCount;
-                    if (! $sameCount) {
-                        throw new DomainException('同じ受付キーが別の抽選回数に使用されています。', 409);
-                    }
-                    if ((int) $previous->ticket_item_instance_id !== $ticketId) {
-                        throw new DomainException('この抽選IDは別のチケットに使用されています。', 409);
-                    }
-
-                    return array_is_list($snapshot) ? ['items' => $snapshot] : $snapshot['result'];
+                    return $this->replayResult($previous, $ticketId, $requestedDrawCount);
                 }
 
                 $ticket = SecretaryItemInstance::query()->whereKey($ticketId)
@@ -86,16 +74,7 @@ final readonly class SecretaryTicketGachaService
                 if (! is_array($weights) || array_sum($weights) !== 10_000) {
                     throw new DomainException('チケット抽選の排出率が不正です。');
                 }
-                $pools = [];
-                foreach ($authoredItems as $itemKey => $authored) {
-                    if (! is_array($authored) || ($authored['gacha_exception'] ?? true) !== false) {
-                        continue;
-                    }
-                    $rarity = $authored['rarity'] ?? null;
-                    if (is_string($rarity)) {
-                        $pools[$rarity][] = $itemKey;
-                    }
-                }
+                $pools = $this->itemPoolsByRarity($authoredItems);
 
                 $remainingLevel = $ticketLevel - $drawCount;
                 if ($remainingLevel === 0) {
@@ -162,6 +141,44 @@ final readonly class SecretaryTicketGachaService
         $free = $capacity - $used;
 
         return $ticketLevel <= $free + 1 ? $ticketLevel : max(0, $free);
+    }
+
+    /** @return array<string, mixed> */
+    private function replayResult(\stdClass $previous, int $ticketId, ?int $requestedDrawCount): array
+    {
+        $snapshot = json_decode($previous->result_snapshot, true, 512, JSON_THROW_ON_ERROR);
+        // Pre-5.5.0 receipts contain only the drawn item list.
+        $sameCount = array_is_list($snapshot)
+            ? $requestedDrawCount === null || $requestedDrawCount === (int) $previous->ticket_level
+            : ($snapshot['request_draw_count'] ?? null) === $requestedDrawCount;
+        if (! $sameCount) {
+            throw new DomainException('同じ受付キーが別の抽選回数に使用されています。', 409);
+        }
+        if ((int) $previous->ticket_item_instance_id !== $ticketId) {
+            throw new DomainException('この抽選IDは別のチケットに使用されています。', 409);
+        }
+
+        return array_is_list($snapshot) ? ['items' => $snapshot] : $snapshot['result'];
+    }
+
+    /**
+     * @param  array<array-key, mixed>  $authoredItems
+     * @return array<string, list<array-key>>
+     */
+    private function itemPoolsByRarity(array $authoredItems): array
+    {
+        $pools = [];
+        foreach ($authoredItems as $itemKey => $authored) {
+            if (! is_array($authored) || ($authored['gacha_exception'] ?? true) !== false) {
+                continue;
+            }
+            $rarity = $authored['rarity'] ?? null;
+            if (is_string($rarity)) {
+                $pools[$rarity][] = $itemKey;
+            }
+        }
+
+        return $pools;
     }
 
     /** @param array<string, mixed> $weights */
