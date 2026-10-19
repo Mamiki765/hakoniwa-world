@@ -225,8 +225,7 @@ final readonly class SecretarySynthesisService
         } else {
             $selected = [];
             foreach ($recipe['inputs'] as $input) {
-                $matches = $eligible->where('item_key', $input['item_key'])->where('level', $input['level'])
-                    ->whereNull('equipped_slot')->sortBy('id')->take($input['count']);
+                $matches = $this->matchingUnequippedMaterials($eligible, $input)->sortBy('id')->take($input['count']);
                 if ($matches->count() !== $input['count']) {
                     return null;
                 }
@@ -271,8 +270,7 @@ final readonly class SecretarySynthesisService
         if ($recipe['kind'] === 'fixed') {
             $presented['inputs'] = array_map(fn (array $input): array => [
                 ...$input, 'name' => $this->catalog->definition($input['item_key'])['name'],
-                'owned_count' => $items->where('item_key', $input['item_key'])->where('level', $input['level'])
-                    ->whereNull('equipped_slot')->where('is_escrowed', false)->count(),
+                'owned_count' => $this->matchingUnequippedMaterials($items, $input)->where('is_escrowed', false)->count(),
             ], $recipe['inputs']);
             $presented['output'] = [
                 ...$recipe['output'], 'name' => $definition['name'],
@@ -282,6 +280,17 @@ final readonly class SecretarySynthesisService
         }
 
         return $presented;
+    }
+
+    /**
+     * @param  Collection<int, SecretaryItemInstance>  $items
+     * @param  array<string, mixed>  $input
+     * @return Collection<int, SecretaryItemInstance>
+     */
+    private function matchingUnequippedMaterials(Collection $items, array $input): Collection
+    {
+        return $items->where('item_key', $input['item_key'])->where('level', $input['level'])
+            ->whereNull('equipped_slot');
     }
 
     private function invalidMaterials(): SecretaryInventoryException
