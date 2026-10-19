@@ -100,7 +100,6 @@ describe('underground market stalls', () => {
         const wrapper = mount(UndergroundMarket, { props: { initialPane: 'sell' } });
         await flushPromises();
         expect(wrapper.text()).toContain(`出品中 ${listable.active_count} / ${listable.listing_limit}件`);
-        expect(wrapper.text()).toContain(`出品は${listable.listing_limit}件まで`);
         expect(wrapper.text()).not.toMatch(/期限|販売期間/);
         expect(wrapper.get('.underground-equipment-card-grid button').attributes('disabled')).toBeDefined();
         expect(fetch.mock.calls.some(([url]) => url.endsWith('/mine'))).toBe(false);

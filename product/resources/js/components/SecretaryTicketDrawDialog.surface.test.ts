@@ -10,6 +10,13 @@ describe('ticket draw count', () => {
         await wrapper.get('form').trigger('submit');
         expect(wrapper.emitted('draw')?.[0]).toEqual([10]);
         expect(wrapper.text()).toContain('残り Lv9,989');
+        expect(wrapper.text()).toContain('倉庫の空きの都合');
+    });
+
+    it('does not blame the warehouse when the ticket level is the limit', () => {
+        const wrapper = mount(SecretaryTicketDrawDialog, { props: { name: 'わくわくチケット Lv3', level: 3, maxDrawCount: 3, busy: false } });
+        expect(wrapper.text()).not.toContain('倉庫の空きの都合');
+        expect(wrapper.text()).toContain('使い切ります');
     });
 
     it('explains why a full warehouse cannot draw', () => {
