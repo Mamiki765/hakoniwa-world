@@ -1707,7 +1707,7 @@ final readonly class AlphaV1CombatModel
         return match ($scope) {
             'self' => [$actor],
             'single_ally' => [$target->side === $actor->side && $target->alive()
-                ? $target : ($this->lowestHpRatioTarget($partyAllies) ?? $actor)],
+                ? $target : ($this->ai->lowestHpRatioTarget($partyAllies) ?? $actor)],
             'fallen_ally' => array_slice(array_values(array_filter($partyAllies,
                 static fn (BuildCombatState $state): bool => ! $state->alive())), 0, 1),
             'all_allies' => array_values(array_filter($partyAllies, static fn (BuildCombatState $state): bool => $state->alive())),
@@ -1772,23 +1772,6 @@ final readonly class AlphaV1CombatModel
         }
 
         return $scope;
-    }
-
-    /** @param list<BuildCombatState> $targets */
-    private function lowestHpRatioTarget(array $targets): ?BuildCombatState
-    {
-        $selected = null;
-        foreach ($targets as $target) {
-            if (! $target->alive()) {
-                continue;
-            }
-            if (! $selected instanceof BuildCombatState
-                || $target->hp * $selected->maxHp < $selected->hp * $target->maxHp) {
-                $selected = $target;
-            }
-        }
-
-        return $selected;
     }
 
     private function partyActionId(BuildCombatState $actor, int $round, int $decisionIndex): string
