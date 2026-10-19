@@ -54,7 +54,7 @@ CRON_TZ=Asia/Tokyo
 15 3 * * * /usr/bin/flock -n /run/lock/hakoniwa-underground-log-prune.lock /usr/bin/env HAKONIWA_PROJECT_DIR=/opt/hakoniwa-world /opt/hakoniwa-world/product/docker/cron/prune-underground-battle-logs.sh >> /var/log/hakoniwa-underground-log-prune.log 2>&1
 ```
 
-このjobは`expires_at <= now`の`underground_battle_logs`だけを削除する。`underground_battles`のcompact record、damage/recovery summary、request idempotency identityは保持し、期限後もcompact summaryを表示できる。03:15 JSTの独立jobであり、Turn command、TurnRun、World lock、failed/blocked Turnのmanual retry contractには触れない。非ゼロ終了時は同じcommandをoperatorが原因確認後に明示実行し、shell側でretry loopを作らない。
+このjobは`expires_at <= now`の`underground_battle_logs`と期限切れbattle image参照をbounded batchで整理する。`underground_battles`のcompact record、damage/recovery summary、request idempotency identityは保持し、期限後もcompact summaryを表示できる。03:15 JSTの独立jobであり、Turn command、TurnRun、World lock、failed/blocked Turnのmanual retry contractには触れない。非ゼロ終了時は同じcommandをoperatorが原因確認後に明示実行し、shell側でretry loopを作らない。
 
 ## Maria achievement sync（導入時のみ）
 
@@ -69,6 +69,17 @@ Ownerが導入を決めた時だけ、Mariaの実行envへ `HAKONIWA_LINK_SECRET
 ```
 
 一回最大25件で、失敗した取得行は未送信のまま残し、次回に再試行する。`flock` は同じhost上での重複起動を避ける。送信先やtokenが未設定ならcommandは何も送らない。既存のTurn cronとretry contractは変更しない。
+
+## Receipt retention preview
+
+`product/docker/cron/preview-underground-receipts.sh`は、既存host/Compose経路で`hakoniwa:underground:receipts:purge --batch=100`を`www-data`として呼ぶread-only reminderである。引数を受け取らず、`--apply`を転送しない。設定例を用意しただけで、本番cronに現在登録済みとは判断しない。
+
+```sh
+HAKONIWA_PROJECT_DIR=/opt/hakoniwa-world \
+/opt/hakoniwa-world/product/docker/cron/preview-underground-receipts.sh
+```
+
+定期登録の有無・頻度はoperatorが確認する。receiptの集約→検証→手動purge、戦闘snapshot縮約、audit compactionは[保持整理runbook](../../product/docs/operations/receipt-audit-retention.md)に従う。詳細battle logの期限削除とは別であり、このwrapperに自動DELETE・retry loopを足さない。
 
 ## Pre-registration checks
 

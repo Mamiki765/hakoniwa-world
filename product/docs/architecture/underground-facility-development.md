@@ -14,9 +14,15 @@ The facility feature does not add a second scheduler, a second missile engine, U
 
 ## Surface Ruleset boundary
 
-Surface Ruleset v19 is the in-development Ruleset for release/3.1.0. It may still be revised as needed while release/3.1.0 is in development and freezes only when 3.1.0 is released to main/production.
+Use the target HEAD's [configured current Ruleset and authoring contract](current-ruleset-baseline.md). Facility and Underground command definitions remain in the dedicated `underground_facility_development` section, absent from Surface `command_definitions`. A queued Underground item has no Surface `command_definition_id`; its `underground_command_key` identifies the command and `request_ruleset_version_id` preserves request provenance for duplicate validation.
 
-The final 3.1.0 contract keeps Underground facility and command definitions in the in-development v19 payload and does not add v20. They remain in the dedicated `underground_facility_development` section and are deliberately absent from Surface `command_definitions`. A queued Underground item has no Surface `command_definition_id`; its existing `request_ruleset_version_id` and `underground_command_key` reproduce the exact Underground definition used at reservation. v19 may be completed only because it has not yet reached main/production; it freezes when 3.1.0 is released.
+Since the current-World resolution adopted in [5.4.0](../releases/5.4.0-queue-provenance-energy.md), display, queue projection and official execution resolve that stable command key against the current World Ruleset. This does not rewrite the stored request identity or reinterpret a duplicate request using current values. [QueuedCommandDefinitionResolver](../../app/Application/QueuedCommandDefinitionResolver.php) is the shared resolution path.
+
+### Historical introduction: release/3.1.0
+
+At introduction, v19 was the in-development Ruleset for release/3.1.0 and could be completed before that release without adding v20; it froze at release. That historical draft status is not permission to edit v19 now. The original design resolved queued Underground values from the reservation snapshot; the later current-World contract above supersedes that part while retaining request provenance.
+
+## Definition isolation
 
 This separation is enforced on both boundaries:
 
@@ -39,7 +45,7 @@ The canonical Underground facility target is `(nation_id, layer, slot_index)`. P
 - `slot_index` (`0..3`)
 - `facility_key`
 
-Empty slots have no row. `ruleset_version_id + facility_key` identifies the versioned facility definition, so a later Ruleset cannot silently change an existing facility's effect; moving existing facilities to another definition requires an explicit migration. A unique constraint on `(nation_id, layer, slot_index)` prevents concurrent double occupancy. The Nation foreign key cascades on deletion, so a replacement Nation never inherits the previous Nation's facilities. Secretary-owned `unlocked_area_layers` remains independent and is not deleted with a Nation.
+Empty slots have no row. Stored `ruleset_version_id + facility_key` retains the construction provenance. Current effects resolve `facility_key` through the Nation's current World Ruleset in [UndergroundFacilityBenefits](../../app/Application/Underground/UndergroundFacilityBenefits.php); a World Ruleset advance does not rewrite the facility row. A unique constraint on `(nation_id, layer, slot_index)` prevents concurrent double occupancy. The Nation foreign key cascades on deletion, so a replacement Nation never inherits the previous Nation's facilities. Secretary-owned `unlocked_area_layers` remains independent and is not deleted with a Nation.
 
 The entrance and fixed ladders are presentation elements, not facility targets. Only the four slots in each unlocked layer can be selected.
 
@@ -47,7 +53,7 @@ The entrance and fixed ladders are presentation elements, not facility targets. 
 
 Reservation uses the existing Nation development queue, request fingerprint, version check, ordering, and locking. It does not debit money or mutate a facility.
 
-The queue stores `target_context`, `target_layer`, `target_slot_index`, `underground_command_key`, and the existing request Ruleset provenance for Underground items. Queue projection, duplicate reconstruction, and Turn execution resolve the command from that recorded Ruleset snapshot, never from a latest unversioned config. A small slot projection evaluates prior queued Underground commands for the same slot, allowing sequences such as remove then build while rejecting impossible projected sequences. Surface cell projection remains separate.
+The queue stores `target_context`, `target_layer`, `target_slot_index`, `underground_command_key`, and request Ruleset provenance for Underground items. Queue projection and Turn execution use the current World Ruleset, not a latest unversioned config; duplicate validation retains the original request Ruleset and fingerprint. A small slot projection evaluates prior queued Underground commands for the same slot, allowing sequences such as remove then build while rejecting impossible projected sequences. Surface cell projection remains separate.
 
 At official Turn execution, `DomesticCommandExecutor` revalidates ownership, Secretary entitlement, Trial 1 first clear, unlocked layer, slot range, and current occupancy. Money debit and facility mutation occur in the existing Turn transaction. Success consumes one Turn; failure follows the existing domestic-command failure, queue-removal, and automatic-finance semantics.
 

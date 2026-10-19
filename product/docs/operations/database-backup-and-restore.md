@@ -1,6 +1,14 @@
 # PostgreSQL backup and restore
 
-## ver 2.6.1 deployment source boundary
+## 現行の適用前確認
+
+現行treeのfresh install / supported upgrade境界は[Installation and baseline adoption](../architecture/install-upgrade-rebaseline.md)と、そこから参照するreleaseの承認・検証記録を正本とする。下記2.xのsource境界は各版当時の履歴であり、現在のDBをその版へ戻す手順ではない。
+
+承認されたdeploy・migrationの前に、対象の実DB・適用済みmigration・WorldのRuleset・未解決の公式Turnを確認し、対応するbackupと復旧先を確定する。本書の[Production wrapper](#production-wrapper)で取得したobject名・size・MD5と、独立したpassphrase回復経路を記録する。DB外の問い合わせ添付・秘書画像は別backupの対象であり、このdumpに含まれない。復元検証は下記rehearsalの隔離DBで行い、production restoreは対象・復元時点・停止範囲を明示した別の承認・手順とする。
+
+文書やrepositoryの版は本番適用の証拠ではない。[本番観測の履歴と確認限界](current-deployment.md)を参照し、古いsnapshotを現在の状態として使用しない。今回の文書整理ではbackup・restore・DB照会・本番操作を実行していない。
+
+## 履歴: ver 2.6.1 deployment source boundary
 
 The supported direct source for ver 2.6.1 is a database already migrated to final v16 by
 ver 2.6.0. The 2.6.1 current tree has no direct v15-or-earlier upgrade path and applies no
@@ -14,7 +22,7 @@ Ruleset/definition rows, historical World references, request/TurnRun identity, 
 or any other business history. It does not authorize a production backup, restore,
 migration, deploy, or Turn execution.
 
-## ver 2.5.0 upgrade recovery boundary
+## 履歴: ver 2.5.0 upgrade recovery boundary
 
 The supported direct ver 2.5.0 source is an exact application 2.4.0/v13 database. Before the
 forward-only v13-to-v14 migration, obtain and verify the PostgreSQL backup below, confirm zero
@@ -28,10 +36,11 @@ directory snapshot, resolve the cause, re-run preflight, and perform a forward r
 This section is a recovery design; it does not authorize a production backup, restore,
 migration, deploy, image deletion, or Turn execution.
 
-## ver 2.4.0 upgrade recovery boundary
+## 履歴: ver 2.4.0 upgrade recovery boundary
 
 The supported direct ver 2.4.0 source is an operator-declared application 2.3.1 database in
-the exact v11 state documented in `../architecture/install-upgrade-rebaseline.md`. Before
+the exact v11 state documented in that release's fixed `install-upgrade-rebaseline.md`
+(the current [document](../architecture/install-upgrade-rebaseline.md) describes the later baseline). Before
 crossing that boundary, obtain a verified backup with the production wrapper below and keep
 the exact object name, size, MD5, and independent passphrase-recovery evidence. The upgrade
 preflight must also report zero unresolved non-dry `pending`, `running`, `failed`, or
@@ -45,7 +54,7 @@ cause there, verify the source contract again, and perform a forward re-upgrade.
 defines the recovery design; it does not authorize a production backup, restore, migration,
 deploy, or Turn execution.
 
-## Production契約（ver 1.3.2）
+## Production契約（ver 1.3.2導入、現行wrapperの契約）
 
 ver 1.3.2はgameplay、public API contract、ruleset、database schema、World/Nation gameplay stateを変更せず、production PostgreSQL backupの取得、暗号化、off-host保存、検証、local保持だけを自動化する。
 

@@ -1,6 +1,8 @@
 # DB N+1調査の追加追跡: release更新・遷都クールダウン
 
-2026-10-14追記。[元の固定SHA監査](nplus1-audit.md)を再実行せず、新しいproduct/app変更経路だけを確認した。テスト整理とは別成果物であり、この担当はアプリ本体・テスト・DBを変更していない。
+2026-10-14追記。[元の固定SHA監査](post-5.0.1-nplus1-audit.md)を再実行せず、新しいproduct/app変更経路だけを確認した。テスト整理とは別成果物であり、この担当はアプリ本体・テスト・DBを変更していない。
+
+以下の「現HEAD」「未適用」は追記時点の固定SHAに対する記録。後続の採否・適用は[最終記録](post-5.0.1-nplus1.md)を参照し、現在の未修正判定には現行コードとの照合を要する。
 
 ## 現HEADと追加範囲
 
@@ -48,11 +50,13 @@ PR266はbackend差分0件なので、frontend描画や既存API全体の性能�
 
 | 証拠 | before | after |
 |---|---|---|
-| 実行metadata | [qa/nplus1-before.json](qa/nplus1-before.json) | [qa/nplus1-after.json](qa/nplus1-after.json) |
-| 対象query | [qa/nplus1-before-queries.json](qa/nplus1-before-queries.json): 2件 | [qa/nplus1-after-queries.json](qa/nplus1-after-queries.json): 1件 |
-| PHPUnit結果 | [qa/nplus1-before.log](qa/nplus1-before.log): exit 0、1 test / 11 assertions | [qa/nplus1-after.log](qa/nplus1-after.log): exit 0、1 test / 11 assertions |
+| 実行metadata | `qa/nplus1-before.json` | `qa/nplus1-after.json` |
+| 対象query | `qa/nplus1-before-queries.json`: 2件 | `qa/nplus1-after-queries.json`: 1件 |
+| PHPUnit結果 | `qa/nplus1-before.log`: exit 0、1 test / 11 assertions | `qa/nplus1-after.log`: exit 0、1 test / 11 assertions |
 
-実行filterは同じ既存`test_blocked_last_step_clears_without_arrival_and_warship_still_attacks`。beforeは既存testにSQL listenerを足した一時readonly override、afterはさらに[qa/ship-nation-reuse.php](qa/ship-nation-reuse.php)をserviceへreadonly overrideしている。repo本体を上書きした測定ではない。このoverrideのdestinationNation再利用は[別patch候補](blocked-warship-nation-reuse.patch)と一致する。
+上表と以下の一時override・patchは当時のローカル証拠名であり、repositoryへ収録されたファイルへのリンクではない。現在の保存実体の有無は本記録だけでは確認できない。
+
+実行filterは同じ既存`test_blocked_last_step_clears_without_arrival_and_warship_still_attacks`。beforeは既存testにSQL listenerを足した一時readonly override、afterはさらに`qa/ship-nation-reuse.php`をserviceへreadonly overrideしている。repo本体を上書きした測定ではない。このoverrideのdestinationNation再利用は当時の別patch候補`blocked-warship-nation-reuse.patch`と一致する。
 
 保存ログの2件/1件はいずれも次のSQLとbindingsだった。
 

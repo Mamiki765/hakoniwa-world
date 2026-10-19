@@ -1,5 +1,7 @@
 # 設定管理
 
+本書には初期公開からv5等の導入時点の設計・移行記録を含む。版番号や旧payload互換処理を現在のruntime仕様と解釈しない。現行の版・supported upgradeは[Current Ruleset baseline](../../product/docs/architecture/current-ruleset-baseline.md)、[authoring](../../product/docs/architecture/ruleset-authoring.md)、[install/upgrade境界](../../product/docs/architecture/install-upgrade-rebaseline.md)と対象HEADのコードから確認する。以下の歴史記録を、撤去済み互換性の復活や本番操作の許可に使わない。
+
 ## 状態
 
 各Worldが不変の`ruleset_version_id`を参照することをproduction基盤として確定する。`hakoniwa-2s-plus-v1`を初期公開版の正本とし、初期配置、初期資源、command definition、production definitionを含むsettings全体をimmutable snapshotとして公開する。初期版の承認記録はGit、pull request、ruleset validator、CI、merge履歴とし、application内の公開画面は作らない。

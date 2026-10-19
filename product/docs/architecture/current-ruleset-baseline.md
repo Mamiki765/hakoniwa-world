@@ -13,7 +13,7 @@ Do not copy a concrete generation into this document merely because it is curren
 For the repository state being reviewed, resolve the exact current Ruleset from:
 
 1. `config/hakoniwa.php` for the configured application and Ruleset entrypoint;
-2. that entrypoint and its bounded changed-domain fragments;
+2. that entrypoint, its explicit predecessor dependencies, and bounded changed-domain fragments;
 3. the current Ruleset validator and checksum/contract tests; and
 4. the exact Git head under review.
 
@@ -40,8 +40,10 @@ Normal application configuration loads one canonical current Ruleset entrypoint.
 draft may explicitly reuse unchanged fields from the exact immutable predecessor and replace
 only reviewed changed domains.
 
-It must not introduce recursive inheritance, a dynamic historical catalog, a second runtime
-Ruleset authority, or an unversioned gameplay definition source.
+An immutable predecessor can retain its own frozen dependencies. This explicit composition is
+allowed; generic recursive inheritance, a dynamic historical catalog, a second runtime Ruleset
+authority, and an unversioned gameplay definition source are not. A domain in `current/` can
+still belong to those frozen dependencies and is not automatically safe to edit.
 
 Historical source bytes, published database snapshots, and provenance remain available from
 their recorded authorities. Unsupported historical PHP is not reconstructed from Markdown.

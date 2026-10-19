@@ -1,12 +1,14 @@
-# 箱庭実績・肩書きとMariachangの取得連携（Draft）
+# 箱庭実績・肩書きとMariachangの取得連携
 
-確認日: 2026-10-06。調査起点はWorld `main` @ `1ecf8265eca44a638f031ff6ffee219b958f912a`（v32）、Mariachang `master` @ `7a7d984230311ec381ba0f3561951baea1352996`。World [Draft #204](https://github.com/Mamiki765/hakoniwa-world/pull/204)は未merge・未deploy。Maria [#21](https://github.com/Mamiki765/Mariachang/pull/21)はOwnerがmerge済み（`5283df6b84f7e03bc4d756b48688ce4278cca567`）。Maria本体の更新と、Worldからの実績連携の有効化は別の作業であり、Worldの実DB付与・実連携通知は未検証。
+2026-10-19照合: World [#204](https://github.com/Mamiki765/hakoniwa-world/pull/204)は2026-10-06にmerge済み（merge SHA `98bf48f75d16c80565b431f8e664b8d8c9f7bd2b`、GitHub metadataで確認）。現行treeに`user_achievements`、命名時の取得・肩書き、`hakoniwa:sync-maria-achievements`、Composeの接続設定転送がある。**コードの統合と、本番のsecret・cron・実連携の有効化は別の証拠である。** 今回、本番設定・同期cron・実付与・通知は照会/実行しておらず、現在の稼働状態は未確認。旧記録の「cron未登録」を現在も未登録と断定しない。
+
+導入調査の履歴（2026-10-06）: World `main` @ `1ecf8265eca44a638f031ff6ffee219b958f912a`（v32）、Mariachang `master` @ `7a7d984230311ec381ba0f3561951baea1352996`が起点。当時World #204はDraft・未merge・未deploy、Maria [#21](https://github.com/Mamiki765/Mariachang/pull/21)はOwnerがmerge済み（`5283df6b84f7e03bc4d756b48688ce4278cca567`）と記録した。Maria本体の更新とWorld連携の受入を分けた判断、当時のWorld実DB付与・実通知未検証という確認限界を保持する。
 
 ## Ownerが承認した範囲（2026-10-06）
 
 Ownerは箱庭と雨宿りの両方で実績を取得する仕組みと、最初の「島の秘書」の実装を依頼した。対応する肩書きは箱庭の秘書だけが取得・装備し、Mariaには実績だけを連動させる。非所属・退会者もMariaで取得し通知だけを抑止すること、起動時一回の所属取得とjoin/remove cache更新を使うことも確認済み。[E-07](../../../docs/open-questions.md#e-07-mariachangへの実績取得連携)はこの範囲をDecidedとする。
 
-承認はこの実績連携の実装・Draftレビューまでで、追加20候補や他のMaria連携、任意のDiscord送信を承認した意味ではない。Worldのmerge/deploy・DB適用と、本番の専用secret設定・cron登録による連携有効化は別のOwner承認・作業として扱う。以下をauthentication・data ownership・一方向連携・failure isolationのDecision recordとし、承認範囲外のMaria連携はDeferredを維持する。
+当時の承認はこの実績連携の実装・Draftレビューまでで、追加20候補や他のMaria連携、任意のDiscord送信を承認した意味ではない。その後のWorld mergeは冒頭のとおり。本番deploy・DB適用と、専用secret設定・cron登録による連携有効化は別のOwner承認・作業として扱う。以下をauthentication・data ownership・一方向連携・failure isolationのDecision recordとし、承認範囲外のMaria連携はDeferredを維持する。
 
 ## 確定した取得・表示
 
@@ -16,7 +18,7 @@ Ownerは箱庭と雨宿りの両方で実績を取得する仕組みと、最初
 
 `GET /api/v1/me` で自分の取得済み実績と肩書きを返す。秘書画面のsubheaderに「実績」tabを置き、一覧と肩書き選択を表示する。秘書プロフィールには装備中の肩書きを表示する。新規命名の応答だけが新規取得情報を持ち、既存の報酬toastで表示する。再読込・再命名・装備変更で取得toastを再表示しない。
 
-定義はcanonical Ruleset v33 draftの `user_achievements.island_secretary`。適用済みv32のpayload/checksumは変更しない。新migrationは既存のWorld lock・未完了Turn guardでv32→v33に進める。アプリversionは現行のままで、Draftは新release公開を意味しない。
+導入実装はcanonical v33 draftへ`user_achievements.island_secretary`を追加し、既存World lock・未完了Turn guardでv32→v33へ進めるforward migrationを含んだ。適用済みv32のpayload/checksumは変更しなかった。これは当時の実装履歴であり、本番適用の証明や、現行treeにv33移行を再作成する指示ではない。現在の定義は対象WorldのRulesetを参照し、fresh/upgradeは[現行install境界](../architecture/install-upgrade-rebaseline.md)に従う。
 
 ## 最小の連携
 
@@ -24,27 +26,29 @@ Ownerは箱庭と雨宿りの両方で実績を取得する仕組みと、最初
 
 箱庭の `hakoniwa:sync-maria-achievements` が、Discord紐づけ済み・`maria_sent_at` が空の取得行を一回最大25件送る。現行の[host cron方式](../../../docs/operations/turn-cron.md)で独立jobを毎分登録し、hostの `flock` で重複起動を避ける導入案。Laravel schedulerが本番で動いている証拠は確認していないため、それを前提にしない。取得・ターン更新のtransaction外で接続し、外部障害は箱庭の取得やターン進行を止めない。受け付け成功時だけ `maria_sent_at` を保存し、失敗は次回へ残す。汎用イベント基盤・別の履歴テーブルは作らない。
 
-Mariaの既存Expressに `POST /internal/hakoniwa/achievement` を加える。専用Bearer認証後、Discord IDと既知の実績keyだけを受け付け、`island_secretary` を既存実績ID **151** に対応させる。Draft #21の `/hakoniwa` 用150「島主」はそのまま。HTTPと通常コマンドは共通の初回読込Promiseで同じ実績JSONを使い、片方のcache上書き・取得喪失を防ぐ。HTTPだけのqueueは置かず、既存 `unlockAchievements` の取得済み判定を使う。
+Mariaの#21で採用した受信口は既存Expressの `POST /internal/hakoniwa/achievement`。専用Bearer認証後、Discord IDと既知の実績keyだけを受け付け、`island_secretary` を既存実績ID **151** に対応させる。#21の `/hakoniwa` 用150「島主」はそのまま。HTTPと通常コマンドは共通の初回読込Promiseで同じ実績JSONを使い、片方のcache上書き・取得喪失を防ぐ。HTTPだけのqueueは置かず、既存 `unlockAchievements` の取得済み判定を使う。
 
 Mariaの取得行がない人にも、既存関数が行を作って実績を保存する。非所属・退会済みでもMaria実績を取得し、通知だけを抑止する。Mariaに肩書きは追加しない。既存cache/dirty・毎分DB保存・shutdown保存は変更しない。`accepted:true` はこの既存経路での受付完了であり、DB書込み完了の応答ではない。受付後、毎分保存前にprocessが強制終了すると未保存分を失う既存の窓がある。今回の最小実装はこの保存基盤を作り直さない。
 
 ## 所属判定と通知
 
-既存envの非秘密設定から雨宿り `1025416221757276242` を確認できた。`GUILD_IDS` と `MEE6_GUILD_ID` が一致する。Maria DBには現在所属者を保証する専用リストがない。points・mee6・実績行の存在は所属判定に使わない。
+以下の構成・設定の観測は2026-10-06の導入調査記録であり、今回Mariaの設定・DB・接続を再照会したものではない。
+
+当時の非秘密設定から雨宿り `1025416221757276242` を確認できた。`GUILD_IDS` と `MEE6_GUILD_ID` が一致した。Maria DBには当時、現在所属者を保証する専用リストがなかった。points・mee6・実績行の存在は所属判定に使わない。
 
 既存Clientには `GuildMembers` intentがある。起動時に雨宿りのメンバーを一回fetchし、以降はDiscord.jsのjoin/removeによるmember cache更新を使う。実績ごとのfetch・polling・大きなretryは追加しない。初期取得未完了・取得失敗は非所属と区別し、通知を抑止する。どちらも実績の取得・保存は続ける。
 
-この所属確認は雨宿り向けの通常・隠し実績通知にも共通で適用する。他guildの運用範囲には拡張しない。現在所属している新規取得者には既存設定のpublic/dm/noneと通知先を使う。production public設定のchannelは `1421521075337953321`。今回、channelへの試験送信はしていない。Maria側で既に取得済みなら再送しても通知しない。後日の加入だけで過去実績を通知し直す処理はない。
+この所属確認は雨宿り向けの通常・隠し実績通知にも共通で適用する。他guildの運用範囲には拡張しない。現在所属している新規取得者には既存設定のpublic/dm/noneと通知先を使う。当時のproduction public設定のchannelは `1421521075337953321`だった。今回、channelへの試験送信や設定確認はしていない。Maria側で既に取得済みなら再送しても通知しない。後日の加入だけで過去実績を通知し直す処理はない。
 
-## 導入時の設定（Owner作業）
+## 導入時の設定（Owner作業、現在の稼働証拠ではない）
 
-両containerは既存 `apps_default` networkを共有し、Mariaの3000/tcpはhost公開なし。内部候補URLは `http://mariachang:3000/internal/hakoniwa/achievement`。読み取りで接続構成を確認しただけで、実付与APIは呼んでいない。
+導入調査時は両containerが既存 `apps_default` networkを共有し、Mariaの3000/tcpはhost公開なしだった。内部候補URLは `http://mariachang:3000/internal/hakoniwa/achievement`。当時は読み取りで接続構成を確認しただけで実付与APIを呼ばず、今回も再接続・実付与を行っていない。
 
-1. Draftレビュー後、通常のbackup・migration手順でWorldのschema/v33を適用する。未完了Turnでは既存guardが移行を拒否する。既命名者の補填もこのmigration内で行い、外部通信しない。
+1. 当時の導入は通常のbackup・migration手順でWorldのschema/v33を適用し、未完了Turnを既存guardで拒否し、既命名者の補填は同じmigration内で外部通信なしに行うものだった。既存環境へ旧migrationを再実行しない。現在の導入/upgradeは対象環境の適用履歴と現行install境界から判断する。
 2. Ownerが新しい専用共有secretを用意し、Maria実行envの `HAKONIWA_LINK_SECRET` とWorldのroot `.env` の `MARIA_ACHIEVEMENTS_TOKEN` に同じ値を置く。Worldの `MARIA_ACHIEVEMENTS_URL` に上記内部URLを設定する。`compose.yml` のWeb serviceはこの2変数を転送する。本番の別Compose fileにも同じ環境設定が必要。通常の導入手順でWeb containerを再作成し、実行envへ反映する。Composeを使わないLaravel実行時は `product/.env` 側に設定する。既存Bot TOKEN・DB資格情報は転用しない。秘密値をGitやPRへ置かない。
 3. Mariaを更新して既存起動処理・一回のmember cache取得を確認する。上記host cron手順の専用wrapperで送信commandを毎分呼ぶjobをOwnerが登録する。今回、実cron登録はしていない。未設定なら送信commandは何もしない。設定済み環境では補填行も送信対象になり、Mariaで初取得かつ現所属なら既存通知が出る。
 
-新しい資格情報の生成・配置、merge/deploy、migration適用、host cron有効化は今回行っていない。送信済み後のDiscordアカウント付け替えまで再配布する仕様は追加していない。
+この文書照合では新しい資格情報の生成・配置、merge/deploy、migration適用、host cron有効化、実送信を行っていない。送信済み後のDiscordアカウント付け替えまで再配布する仕様は追加していない。
 
 ## 次の20候補の実現性（未採用・未実装）
 

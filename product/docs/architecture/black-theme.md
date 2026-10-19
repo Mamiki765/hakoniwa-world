@@ -6,6 +6,8 @@
 
 `_references/yamanity/repository/`にある`mjtakenon/hakoniwa`の次のファイルを読んだ。
 
+下のpathは参考にした第三者repository内の原pathであり、hakoniwa-world本体の配置ではない。本体の独立実装は`product/resources/`配下にある。
+
 - `app/resources/css/themes.scss`：Darkの色と前景・背景の組。
 - `app/resources/css/app.scss`：通常・主色・警告・エラーボタンのhover、入力・select。
 - `app/resources/js/ThemeList.json`、`components/ThemeSwitcher.vue`、`components/ThemeSettings.vue`：テーマ区分とsurface variant上の表示。

@@ -1,15 +1,35 @@
 # ターン処理パイプライン
 
-> PR #7 note: 下記の推奨フェーズ表は初期設計案であり、実装順の正本ではない。
-> 箱庭諸島2＋のsourceから確認した因果順と現在の安全なscaffoldは
-> `docs/architecture/turn-runner-scaffold.md`を正本とする。未決定の同時解決規則を
-> この初期案から暗黙に採用してはならない。
+## 現行の起動と正本
 
-## 目的
+2026-10-19、5.5.1候補のコードと照合。正式な順序は[TurnPipeline::CANONICAL_PHASE_KEYS](../../product/app/Domain/Turn/TurnPipeline.php)、実行内容は[CompleteTurnEngine](../../product/app/Application/CompleteTurnEngine.php)、transaction・冪等性・retryは[TurnRunner](../../product/app/Application/TurnRunner.php)を正本とする。[AppServiceProvider](../../product/app/Providers/AppServiceProvider.php)は同じ12キーを`GameplayTurnPhase`へ接続する。旧`turn-runner-scaffold.md`は過去本文への案内であり、現行の実行仕様ではない。
+
+起動は[host cronのthin trigger](../operations/turn-cron.md)から既存Artisan command・TurnRunnerへ入る。Laravel schedulerがWorldごとのjobを投入する実装ではなく、`routes/console.php`にもその登録はない。CLIのmanualとcronに加え、管理画面の[手動Turn](../../product/docs/operations/4.4.0-admin-operations.md#worldの予定起点と手動turn)も同じTurnRunnerへ接続し、予定時刻・target再送・未解決Turn guardを維持する。
+
+| 順序 | canonical key |
+|---:|---|
+| 1 | `prepare_turn` |
+| 2 | `calculate_terrain_context` |
+| 3 | `resolve_territory_influence` |
+| 4 | `nation_economy` |
+| 5 | `resource_sales` |
+| 6 | `development_commands` |
+| 7 | `process_cells` |
+| 8 | `settle_deferred_effects` |
+| 9 | `global_disasters` |
+| 10 | `aggregate_nations` |
+| 11 | `enforce_capacities` |
+| 12 | `finalize_turn` |
+
+World advisory lock、同じtargetのrun identity、保存seedとRulesetを共有し、ゲーム状態と`current_turn`を一つのtransactionで確定する。C1は同一invocation内の限定的な再試行、後続cronによるfailed/blockedの自動再開は行わない。exactな条件は上記TurnRunnerとcron手順に従う。
+
+## PR #7初期案（履歴）: 目的
+
+以下の「初期案」各節は採用前の比較・提案を保存したもの。推奨13フェーズ、Scheduler、command状態名、outboxは現在の実装済みcontractではない。未決の同時解決規則や新しい仕組みをこの案から暗黙に採用しない。
 
 箱庭諸島2＋が持つ共有世界の処理順と、やまにてぃが持つApplication Service・DB transactionの方向性を、再実行可能で監査できる独立設計へ置き換える。
 
-## 実行入口
+## 初期案（履歴）: 実行入口
 
 Schedulerは、next_turn_atを過ぎた稼働中worldごとにturn jobを投入する。Webリクエストはターンを直接進めない。管理者の手動実行も同じApplication Serviceを使い、理由と実行者を監査する。
 
@@ -20,7 +40,7 @@ Schedulerは、next_turn_atを過ぎた稼働中worldごとにturn jobを投入�
 - ruleset_version、乱数seed、予定時刻、実行元を固定する。
 - 既に完了した同一runは再適用せず結果を返す。
 
-## 推奨フェーズ
+## 初期案（履歴）: 推奨フェーズ
 
 | 順序 | フェーズ | 主な処理 | 主な出力 |
 |---:|---|---|---|
@@ -40,13 +60,13 @@ Schedulerは、next_turn_atを過ぎた稼働中worldごとにturn jobを投入�
 
 この順序は暫定である。特に領土を命令前後のどちらで解決するか、人口増加と災害の前後、攻撃と防御施設の同時性はゲーム仕様として決定し、ruleset版とテストで固定する。
 
-## 箱庭諸島2＋との差
+## 初期案（履歴）: 箱庭諸島2＋との差
 
 旧C版は国境判定を先に行い、国家単位の収支・先頭命令、全セル処理、難民、世界災害、集計を続ける。共有世界という性質は残すが、配列全走査、順位ID再割当、ファイル保存を前提にしない。
 
 やまにてぃは維持・生産、国内計画、他島計画、災害、セル処理、集計という有用な分割を持つ。一方、全島・全セルを一括ロードし、実行seedや多重起動防止を記録しない点は採らない。
 
-## 命令の状態遷移
+## 初期案（履歴）: 命令の状態遷移
 
 commandはqueued、accepted、executed、failed、cancelled、expiredを持つ。登録時検証とターン時検証を分ける。登録後に所有権や資金が変わるため、ターン時の再検証が正本となる。
 
@@ -62,7 +82,7 @@ bounded integerはrejection sampling、順列はstable inputに対するdetermin
 
 ## transactionと再試行
 
-A-07のDecisionとして、1世界1ターンのゲーム状態、domain event、outbox、`current_turn`を1つのPostgreSQL transactionで確定する。全phase成功時だけcommitし、途中例外ではゲーム状態をすべてrollbackする。`turn_runs`の開始・失敗監査はこのtransaction外へ残せるが、失敗したphaseのゲーム状態は残さない。
+A-07のDecisionとして、1世界1ターンのゲーム状態、audit event、`current_turn`を1つのPostgreSQL transactionで確定する。全phase成功時だけcommitし、途中例外ではゲーム状態をすべてrollbackする。`turn_runs`の開始・失敗監査はこのtransaction外へ残せるが、失敗したphaseのゲーム状態は残さない。初期案のoutboxは現行schemaの構成要素ではない。
 
 transaction内で外部HTTP通信、通知送信、長時間の外部I/Oを行わない。通知配送等はcommit後の別境界とする。phaseごとの所要時間を`turn_runs`へ記録し、実command、全cell処理、災害を追加後にadvisory lock保持時間とtransaction時間を計測する。
 
@@ -81,7 +101,9 @@ transaction内で外部HTTP通信、通知送信、長時間の外部I/Oを行�
 
 ## 外部障害
 
-Discord webhook、メール、分析基盤はturn transaction内で呼ばない。通知内容をoutbox_messagesへ保存してcommitし、別workerが指数backoff、最大試行、dead-letter状態で配送する。通知失敗は管理画面に表示するが、世界を停止しない。
+外部HTTP・通知送信をturn transactionへ追加しない。現行schemaに`outbox_messages`はなく、汎用通知worker・指数backoff・dead-letter基盤が実装済みと扱わない。Maria実績連携は[別commandとhost job](../../product/docs/plans/maria-achievement-link.md)で、取得・Turn transactionの外から送信する個別経路である。
+
+履歴として残す初期案は「通知内容をoutbox_messagesへ保存してcommitし、別workerが指数backoff、最大試行、dead-letter状態で配送する。通知失敗は管理画面に表示するが、世界を停止しない」という構想だった。今回の文書整理はその採用・実装を指示しない。
 
 ## 国家休眠とターン対象
 
@@ -107,12 +129,14 @@ PR21では`process_cells`の各cellでmonster actorを人口・facility処理よ
 
 `process_cells` metricsはmonster loaded/actions/moves/trample/defense/max movesとcombat counterを、`global_disasters` metricsはNation eligibility/draw/spawn/no candidate/terrain removalを含む。exact順序とterrain event表は`docs/architecture/monster-system.md`および`product/docs/monster-audit-pr21.md`を正本とする。
 
-## 必須テスト
+## 検証観点
+
+以下は既存のTurn・lifecycle・RNGテストを選ぶための観点。変更に無関係な恒久ケースや初期案のoutboxテストを追加する指示ではない。
 
 - 同じ入力とseedの再現性。
-- job二重投入時に1回だけ確定すること。
-- フェーズ途中例外で状態・event・outboxが全て戻ること。
-- 通知失敗でもターンが完了すること。
+- 重複trigger時に1回だけ確定すること。
+- フェーズ途中例外でゲーム状態・audit event・`current_turn`が全て戻ること。
+- transaction外の連携失敗がターンを再適用しないこと。
 - 同時国家登録とターン開始の締切境界。
 - manual 1/7日のexact resume Turnと期限前非解除、non-manual queue復帰。
 - dormant heartbeatのqueue保持、finance/counter、通常economy停止。
