@@ -371,6 +371,7 @@ class ApiAndAssetTest extends TestCase
         foreach ([
             'total_population', 'territory_cell_count', 'owned_land_cells', 'food_total_tons',
             'farm_capacity_people', 'factory_capacity_people', 'mine_capacity_people',
+            'recovery_remaining_turns', 'survival_turns', 'finance_only_turns', 'activity_status',
         ] as $field) {
             $this->assertSame($ownerStatus[$field], $publicRanking[$field]);
             $this->assertSame($ownerStatus[$field], $publicDetail[$field]);
