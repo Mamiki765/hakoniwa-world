@@ -251,7 +251,7 @@ main { width: min(1560px, 100%); margin: 0 auto; padding: clamp(16px, 3vw, 46px)
 .ship-status-row .given-name { white-space: normal; }
 .ship-name-button { margin-left: auto; padding: 0 6px; font-size: .78rem; }
 .ship-name-form { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; margin-top: 4px; }
-.ship-name-form input { flex: 1 1 10em; min-width: 0; }
+.ship-name-form input { flex: 1 1 6em; min-width: 0; }
 .ship-name-form small { flex-basis: 100%; color: var(--muted); font-size: .75rem; }
 .ship-type-counts { display: grid; gap: 4px; color: var(--muted); font-size: .8rem; }
 .ship-type-counts p { margin: 0; }
