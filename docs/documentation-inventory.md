@@ -11,6 +11,8 @@
 | T10・fresh構築・supported upgrade | [現行install/upgrade境界](../product/docs/architecture/install-upgrade-rebaseline.md)、[5.0.1 rebaseline](../product/docs/plans/5.0.1-ruleset-rebaseline.md)。旧T10の最終方針待ちは後続実装で更新済み。保存済みsnapshot・履歴identityの削除許可ではない |
 | DB問い合わせ調査 | [最終記録](../product/docs/testing/post-5.0.1-nplus1.md)から固定SHAの初回・追記台帳へ進む。旧台帳の未適用・未測定を現在の未修正判定に使わない |
 | 運用・本番観測 | [deployment status](../product/docs/operations/current-deployment.md)は記録日時の観測と証拠の限界。purge・cron等の現在稼働をコードや古い未確認表記から推定せず、操作は別の明示承認を要する |
+| Receipt・戦闘snapshot・routine auditの保持整理 | [現行runbook](../product/docs/operations/receipt-audit-retention.md)。aggregate・purge・compactionの対象、preview/apply、順序と停止条件をコードに接続。本番の登録・削除実績は未再確認 |
+| 5.4.0の現在版解決・来歴保持・省エネXP | [release記録](../product/docs/releases/5.4.0-queue-provenance-energy.md)。3 migration・採用PR・元request/spawn来歴と現在値の境界を確認する。main統合と本番適用は別の証拠 |
 
 電力・ピザは後続4.11系、帰港地の背景・メムは4.14系で実装記録がある。旧構想帳の項目全体を未実装へ戻さず、未採用の合体・属性魔力や未確認の画像配備とは分ける。固定値監査の原本・既存成果物が存在することと、候補全件の処理完了も区別する。
 
@@ -18,7 +20,7 @@
 
 archive内の「current」「未完」や旧root相対リンクは、その資料の固定時点と元pathを示す。通常のrepository rootからのリンクと同じ意味で一括修正しない。Rulesetの旧数値・旧compatibility pathを現行仕様として復活させず、上の現行baselineへ進む。
 
-旧handoffは[現在地の入口](../product/docs/handoffs/current-status.md)から外部管理庫の原文保全manifestへ移管されている。古いarchive索引の同path配置という説明だけで欠落と判定しない。pre-4.4.1の旧READMEには移管時に固定原文URLへ更新したリンクがあり、元blobの確認にはmanifestとGitの固定原文を使う。今回、歴史本文の移動・削除・書換えとhandoff編集は行わない。
+旧handoffは[現在地の入口](../product/docs/handoffs/current-status.md)から外部管理庫の原文保全manifestへ移管されている。古いarchive索引の同path配置という説明だけで欠落と判定しない。pre-4.4.1の旧READMEには移管時に固定原文URLへ更新したリンクがあり、元blobの確認にはmanifestとGitの固定原文を使う。今回、archiveと移管済み原文の移動・削除・書換えは行っていない。本体の`current-contracts.md`だけは、5.5.1候補に照合した技術表（地上合成・倉庫・露店・バハムル中級2）を更新し、元の照合時点と今回の範囲を冒頭へ残した。作業引継ぎの入口`current-status.md`や外部の作業状態は編集していない。
 
 ## 4.4.1の分類履歴
 

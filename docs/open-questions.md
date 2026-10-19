@@ -2,11 +2,13 @@
 
 本書は実装前に確認する設計索引である。実装済みの判断と、現在作業を止める未決事項を分離する。
 
-- `Status: Decided`: 方針と実装境界を決定済み。記載した`Decision record`を正本とする。
+- `Status: Decided`: 方針と実装境界を決定済み。本項の`Decision`・後続amendmentと、`Decision record`の現行設計・採用済みADRを確認する。
 - `Status: Open`: `Required before`に到達する前にowner判断が必要。
 - `Status: Deferred`: 現在のroadmapへ含めず、別のowner承認まで拡張境界だけを維持する。
 
 `Open`または`Deferred`を実装中の仮定で確定してはならない。関連する選択肢、影響、provenanceを報告して判断を得る。
+
+`Decision record`中の「履歴案内」は、本文をarchiveへ移した旧pathの案内ファイルを示す。現在の契約本文の代わりではなく、判断経緯の出所として保持する。通常作業では本書の有効な判断要約と現行code・設計を使い、過去本文の確認はOwnerが指定した調査範囲で行う。履歴の未完・初期案を現在の作業へ自動昇格させない。
 
 ## Current blocking gates
 
@@ -35,7 +37,7 @@
 - Status: Decided
 - Implemented: Yes
 - Decision: 箱庭専用PostgreSQLを使用し、Nextcloud用MariaDBと分離する。
-- Decision record: `docs/architecture/target-architecture.md`
+- Decision record: `docs/architecture/target-architecture.md`（履歴案内）
 
 ### A-04 国家登録地点
 
@@ -58,7 +60,7 @@
 - Decision: 各Worldは固定した`ruleset_version_id`を参照し、productionへrelease済みのruleset payloadを上書きしない。release branchで制作中かつproduction未releaseのRulesetはrelease完成形のため変更でき、source上の`published_rulesets`名やpublication migrationだけではfreezeを意味しない。pre-release runtimeは最新active rulesetだけを保証し、historical Worldはread-only、mutationは`reset_required`とする。
 - Implementation provenance: PR16でpre-release reset/runtime例外を記録し、PR17で`CurrentRulesetGuard`とlatest-only runtimeを実装し、PR19まで同じ境界を維持した。
 - Rebaseline: PR23で`hakoniwa-2s-plus-v1`をcanonical rulesetとし、go-live後はpre-release reset例外を終了する。以後のdata保護契約はRELEASE-01を正本とする。
-- Decision record: `docs/architecture/configuration-management.md`、`docs/architecture/target-architecture.md`、`docs/decisions/ADR-0008-first-production-release.md`
+- Decision record: `docs/architecture/configuration-management.md`、`docs/architecture/target-architecture.md`（履歴案内）、`docs/decisions/ADR-0008-first-production-release.md`
 
 ### A-10 認証方式
 
@@ -121,7 +123,7 @@
 - Status: Decided
 - Implemented: Yes
 - Decision: initial populationは1,000人、地図上に存在するCapitalのminimum populationは100人、ordinary growth capは25,000人とする。
-- Decision record: `docs/architecture/capital-and-territory.md`、`product/docs/disaster-oil-audit-pr15.md`
+- Decision record: `docs/architecture/capital-and-territory.md`、`product/docs/disaster-oil-audit-pr15.md`（履歴案内）
 
 ### B-06 初期Territoryへ含められる地形
 
@@ -170,35 +172,35 @@
 - Status: Decided
 - Implemented: Yes
 - Decision: phase固有のrandomized sequential causalityを維持し、暗黙のsimultaneous resolutionを導入しない。
-- Decision record: `docs/reference-analysis/hakoniwa-2plus-turn-processing.md`
+- Decision record: `docs/reference-analysis/hakoniwa-2plus-turn-processing.md`（履歴案内）
 
 ### A-07 1ターンのtransaction規模
 
 - Status: Decided
 - Implemented: Yes
 - Decision: 同じWorldの1 turnを1 PostgreSQL transactionとWorld advisory lockで処理し、外部I/Oはtransaction外へ分離する。
-- Decision record: `docs/architecture/turn-runner-scaffold.md`、`docs/architecture/turn-pipeline.md`
+- Decision record: `docs/architecture/turn-runner-scaffold.md`（履歴案内）、`docs/architecture/turn-pipeline.md`
 
 ### POP-01 population random rangeのcanonical化
 
 - Status: Decided
 - Implemented: Yes
 - Decision: legacyの100人単位rangeをcanonical 1人単位のinclusive integer rangeへ変換する。
-- Decision record: `docs/reference-analysis/hakoniwa-2plus-turn-processing.md`
+- Decision record: `docs/reference-analysis/hakoniwa-2plus-turn-processing.md`（履歴案内）
 
 ### B-09 災害抽選単位
 
 - Status: Decided
 - Implemented: Yes
 - Decision: World単位、successful command単位、cell単位の抽選を混在させず、versioned deterministic streamで既存契約どおり処理する。
-- Decision record: `product/docs/disaster-oil-audit-pr15.md`、`docs/reference-analysis/hakoniwa-2plus-turn-processing.md`
+- Decision record: `product/docs/disaster-oil-audit-pr15.md`（履歴案内）、`docs/reference-analysis/hakoniwa-2plus-turn-processing.md`（履歴案内）
 
 ### DISASTER-01 Nation単位の地盤沈下
 
 - Status: Decided
 - Implemented: Yes
 - Decision: active Nationごとに有効な安全面積を超えた場合に2/100を独立判定し、World事前snapshotから海岸変化を確定する。現行の基礎安全面積は100 cellsで、resolverは将来のNation別補正を受けられる境界を持つ。
-- Decision record: `product/docs/land-subsidence-audit-pr18.md`
+- Decision record: `product/docs/land-subsidence-audit-pr18.md`（履歴案内）
 
 ### T-01 乱数seedと再現方式
 
@@ -212,64 +214,64 @@
 - Status: Decided
 - Implemented: Yes
 - Decision: queue limitはruleset値、positionは1始まり、optimistic concurrencyとrequest keyを使用し、資金・資源は実行時に再検証する。
-- Decision record: `docs/architecture/roadmap-pr2-systems.md`
+- Decision record: `docs/architecture/roadmap-pr2-systems.md`（履歴案内）
 
 ### RES-01 food生産量のton換算
 
 - Status: Decided
 - Implemented: Yes
 - Decision: legacy food 1 unitを100 tons、farm scale 1の生産を1,000 tonsへ変換し、非負整数切捨てを維持する。
-- Decision record: `docs/reference-analysis/hakoniwa-2plus-turn-processing.md`
+- Decision record: `docs/reference-analysis/hakoniwa-2plus-turn-processing.md`（履歴案内）
 
 ### CMD-01 箱庭諸島2＋コマンドの採否
 
 - Status: Decided
 - Implemented: Yes
 - Decision: 整地、地ならし、埋め立て、掘削、農場、工場、採掘場を別々のversioned commandとして採用する。
-- Decision record: `docs/architecture/roadmap-pr2-systems.md`、`product/docs/command-audit-pr14.md`
+- Decision record: `docs/architecture/roadmap-pr2-systems.md`（履歴案内）、`product/docs/command-audit-pr14.md`（履歴案内）
 
 ### CMD-02 地ならし由来の即時地震
 
 - Status: Decided
 - Implemented: Yes
 - Decision: successful `land_level`ごとに5/2000をcommand内で抽選し、通常global earthquakeと独立して完結させる。
-- Decision record: `product/docs/disaster-oil-audit-pr15.md`、`docs/reference-analysis/hakoniwa-2plus-turn-processing.md`
+- Decision record: `product/docs/disaster-oil-audit-pr15.md`（履歴案内）、`docs/reference-analysis/hakoniwa-2plus-turn-processing.md`（履歴案内）
 
 ### B-16 settlement_seed
 
 - Status: Decided
 - Implemented: Yes
 - Decision: randomized sequential cell processingで村発生、人口成長、飢餓減少を処理する。`hakoniwa-2s-plus-v5`では海際度を廃止し、通常settlementを位置不問の100〜1,000人増加・通常上限10,000人、誘致を上限前100〜3,000人・以後100〜300人・最終上限20,000人とする。Capitalはidentityを維持し、minimum 100、ordinary growth cap 25,000を適用する。
-- Decision record: `docs/architecture/capital-and-territory.md`、`product/docs/ver-1.5.0-beta3-sea-edge-removal.md`
+- Decision record: `docs/architecture/capital-and-territory.md`、`product/docs/ver-1.5.0-beta3-sea-edge-removal.md`（履歴案内）
 
 ### B-17 緊急農場
 
 - Status: Decided
 - Implemented: ver 2.4.0 dormant entry/heartbeat recovery only. Player command remains excluded.
 - Decision: 汎用のemergency farm commandは導入しない。dormant Nationのfarm capacityが0の場合だけ、首都distance 2以内のallowlist候補から`distance, y, x`順・乱数なしで最小農場を1つ作る。
-- Decision record: `docs/architecture/roadmap-pr2-systems.md`、`docs/decisions/ADR-0014-ver-2.4.0-nation-dormancy.md`
+- Decision record: `docs/architecture/roadmap-pr2-systems.md`（履歴案内）、`docs/decisions/ADR-0014-ver-2.4.0-nation-dormancy.md`
 
 ### E-03 追加資源
 
 - Status: Decided
 - Implemented: Yes
 - Decision: catalog/rulesetから`industrial_goods`と`minerals`を追加し、PR19時点で双方のunit、capacity、production、sale、overflow契約を実装済みとする。
-- Decision record: `product/docs/resource-profile-audit-pr19.md`、`docs/future-systems/resources.md`
+- Decision record: `product/docs/resource-profile-audit-pr19.md`（履歴案内）、`docs/future-systems/resources.md`
 
 ### E-01 地下
 
 - Status: Decided
-- Implemented: Partially; application `3.9.2`までに正式intro・契約・4 growth path・通常探索・growth/STP・有限SP・player Skill Tree、Trial 1/2・覚醒、Nation-owned施設とread-only surface bridge、正式equipment・装備Shop・アクセサリー3枠・500枠宝物庫、浅層・黒晶洞・輝きの王国と戦闘用宝物庫、Item Lv・rarity・affix・generated drop、案内人の部屋と複合再振り、条件指定型の宝物庫まとめ売り、Secretaryごとのcustom AI、battle単位のnormalized rule/hash snapshot、作戦編集画面、非同期borrowed Secretary partyを実装済み。marketは未実装。
+- Implemented: application `3.9.2`までに正式intro・契約・4 growth path・通常探索・growth/STP・有限SP・player Skill Tree、Trial 1/2・覚醒、Nation-owned施設とread-only surface bridge、正式equipment・装備Shop・アクセサリー3枠・基本500枠宝物庫、浅層・黒晶洞・輝きの王国と戦闘用宝物庫、Item Lv・rarity・affix・generated drop、案内人の部屋と複合再振り、条件指定型の宝物庫まとめ売り、Secretaryごとのcustom AI、battle単位のnormalized rule/hash snapshot、作戦編集画面、非同期borrowed Secretary partyを実装済み。後続の宝物庫増築で通常装備600枠まで、5.5.0で地底交流場の即決露店、5.5.1でactive出品の無期限化を実装した（UG-05）。ロードマップ全体の採用・完了を意味しない。
 - Decision: 地下roadmapを`release/3.0.0-alpha`として開始し、Turn非依存の任意side gameをmodular monolith内の独立domainとして育てる。後続releaseもSecretary-owned progression、canonical combat、versioned content identity、request idempotencyを再利用し、Surface RulesetやWorld Turnへ地下戦闘runtimeを混在させない。
-- Decision record: `docs/roadmap/3.0.0-alpha-underground.md`、`docs/architecture/underground-combat-laboratory.md`
+- Decision record: `docs/roadmap/3.0.0-alpha-underground.md`（履歴案内）、`docs/architecture/underground-combat-laboratory.md`
 
 ### E-07 Mariachangへの実績取得連携
 
 - Status: Decided
-- Implemented: WorldのDraft PR #204に「島の秘書」の取得・肩書き・補填と送信経路を実装。Maria側の受信・既存付与経路はPR #21でmerge済み。Worldのmain・productionには未適用。
+- Implemented: 「島の秘書」の取得・肩書き・補填と送信経路を実装したWorld PR #204は2026-10-06にmainへmerge済み（merge SHA `98bf48f75d16c80565b431f8e664b8d8c9f7bd2b`、2026-10-19のGitHub metadataで照合）。Maria側の受信・既存付与経路はPR #21でmerge済み。現在の本番secret・同期cron・実付与/実通知は今回未確認で、コード統合から有効化の状態を推測しない。
 - Decision: 2026-10-06のOwner判断により実績は箱庭とMariaの両方で取得し、対応する肩書きは箱庭の秘書だけが取得・装備する。非所属・退会者もMariaで取得し、通知だけを抑止する。所属は起動時一回の取得とDiscord.jsのjoin/remove cache更新で判定し、取得不能も通知を抑止する。
 - Integration boundary: 既存Discord identityと専用Bearer認証で箱庭の取得行をMariaの既存付与・保存経路へ送る一方向連携とする。外部通信は取得transaction外で行い、失敗は再送対象に残して箱庭の取得やTurn進行を止めない。
-- Boundary: 承認範囲は「島の秘書」の実績連携。追加実績、汎用連携、任意のDiscord送信は含めない。Worldのmerge/deploy・DB適用、専用secret設定・cron登録による連携有効化は別のOwner承認・作業とし、承認範囲外のMaria連携は別roadmapまでDeferredを維持する。
+- Boundary: 承認範囲は「島の秘書」の実績連携。追加実績、汎用連携、任意のDiscord送信は含めない。Worldのmergeは確認済みだが、本番deploy・DB適用、専用secret設定・cron登録による連携有効化は別のOwner承認・作業として扱う。文書整合を理由に有効化や実送信を行わず、承認範囲外のMaria連携は別roadmapまでDeferredを維持する。
 - Decision record: `product/docs/plans/maria-achievement-link.md`
 
 ## Underground RPG gates
@@ -279,7 +281,7 @@
 - Status: Decided
 - Implemented: Yes
 - Decision: `secretary-underground-alpha-v0`はplayer-inaccessible、DB-free、surface-independentな1対1laboratoryとする。恒久gateはdeterminism、same-input/seed replay、合法状態、abnormal=0、max-round/stalemate、report再現性、scenario相対semanticとする。10,000-seed win rateとprovisional rangeは観測値でありbalance targetではない。Tutorialは別fixtureとし、PR1では実装しない。
-- Decision record: `docs/architecture/underground-combat-laboratory.md`、`docs/roadmap/3.0.0-alpha-underground.md`
+- Decision record: `docs/architecture/underground-combat-laboratory.md`、`docs/roadmap/3.0.0-alpha-underground.md`（履歴案内）
 
 ### UG-02 Underground persistenceとdata ownership
 
@@ -287,7 +289,7 @@
 - Implemented: Yes; PR102 persistence foundation only.
 - Decision: 地底RPGの恒久進行、将来のcombat/exploration progression、装備、探索基地、地下箱庭の解禁済みarea layer、Secretary固有の地下状態はSecretary-ownedとし、Nationの破棄・再作成を越えて保持する。PR102はSecretaryと1:1のlazy-created profileへ非負の`unlocked_area_layers`だけを保存し、`1 layer = 4 facility slots`をstorageせず派生する。梯子はslotではなく、空slot/cell row、surface World/Nation/MapCell/Turn identity、combat XP/level/checkpointを保存しない。profile初回作成は既存unique FKによる競合作成処理を用い、作成後はprofile rowで直列化する（4.4.0の[ロック隔離](../product/docs/architecture/secretary-lock-boundaries.md)で親Secretary row lockから変更）。Secretaryが正式に削除された場合だけcurrent child lifecycleと同じcascadeで削除する。pure combat coreへEloquentを持ち込まない。
 - Future boundary: 実際に解禁slotへ置く地下施設はNation-ownedとする。Nation破棄時に施設は消えるがSecretaryの解禁layer entitlementは残り、同じSecretaryの新Nationでは空配置から同じslot capacityを利用できる。施設、persistent combat run、request idempotency、resume、API/UIはPR102では実装しない。
-- Decision record: `docs/architecture/underground-combat-laboratory.md`、`docs/roadmap/3.0.0-alpha-underground.md`
+- Decision record: `docs/architecture/underground-combat-laboratory.md`、`docs/roadmap/3.0.0-alpha-underground.md`（履歴案内）
 
 ### UG-03 first player-accessible alpha
 
@@ -296,11 +298,12 @@
 - Decided backend portion: defeatは輝石の欠片を`floor(balance / 2)`まで減らしてrunを終了する。trialのdefeatまたはbattle後の明示的な帰還は次回battle 1へresetするが、既に解禁したtrialは失わない。browser close/logoutはtrialの戦闘間progressを保持する。各trialは固有の明示的`content_identity`を持ち、active runは開始時のidentityを保存する。同じtrial自身のgameplay content identityだけが変わった場合、次回access時にそのrunをcurrent identity / battle 1へ無penaltyでresetする。application/runtime versionや別trialのidentity変更ではresetせず、XP、欠片、trial unlock、first clear、`unlocked_area_layers`を保持する。trialのfirst clearだけが`unlocked_area_layers`を1増やし、capacityは1 layer = 4 slotsから派生し、次のtrialをsequentialにunlockする。同じtrialの再clearでlayerを重複取得しない。battle詳細action logは終了から1時間保持し、履歴一覧は最新20件のcompact summaryだけを取得する。期限後も`underground_battles`のcompact summaryとidempotency/audit identityは保持し、個別詳細は安全な期限切れ案内へ劣化する。player-facing playtest logはsettlement時の自己完結projectionを保存し、current catalogへ再依存しない。
 - Application `3.3.0` respec contract: 案内人の部屋から、SP全返却・active slot解除・STP全返却・成長方針再選択を一つのtransactionで行う。費用は現在Combat Lv × 10 Gを手持ち欠片だけから支払い、24時間に1回とする。Lv/XP、装備、Trial clear、覚醒、解禁、intro履歴は維持し、current HPは新max HPを超える場合だけ下方clampする。active Trial中は拒否し、UUID idempotencyとprofile lockで二重決済を防ぐ。
 - Application `4.5.0` respec amendment: 通常の費用である現在Combat Lv × 10 Gと、再振り後24時間の待ち時間は維持する。待ち時間中は追加で10Pdを支払うと再振りでき、待ち時間が終了していればPdを消費しない。active Trial中の拒否、profile lock、UUID idempotencyは同じ契約を適用し、G・Pd・再振りを一つのtransactionで確定する（Ownerの2026-09-27指示）。
+- Equipment capacity amendment: 上の500枠は基本容量。通常装備の宝物庫は増築(1)で+100の600枠、別の共鳴結晶庫は基本50枠から+50の100枠となる。`UndergroundEquipmentCatalog::vaultCapacityForProfile()`が購入済み拡張を反映し、露店も同じ保管上限を使う。地上アイテム倉庫の最大250枠とは別。
 - Application `4.5.0` Trial 3 first-clear equipment: エクスカリバーは宝物庫が満杯でも初回クリア時に一度だけ即時付与する。この確定報酬に限り通常の保管上限を1枠超えてよい。通常の装備ドロップは確定報酬付与後の空き枠で判定し、満杯なら従来どおり`vault_full`とする（Ownerの2026-09-27決定）。
 - Application `3.3.0` bulk sale contract: 宝物庫のItem Lv・rarity・category・canonical weapon style条件をserver側で解決し、装備中itemと通常売却不可itemを除外した具体的item集合とcanonical価格をpreviewする。confirmはpreviewしたIDと価格だけを再検証し、追加取得itemを含めず、全件validation後の同一transactionでdeleteと手持ち欠片creditを行う。UUID idempotencyとprofile lockでretry・concurrent requestの二重creditを防ぐ。
 - Application `3.4.0` custom AI contract: Secretaryごとに有効設定は1つ、`null`はdefault preset、`[]`はcustom empty、最大16 rules・各rule最大2 AND条件、empty conditionはalways、jumpはforward-onlyとする。成立actionが現在使用不能なら次ruleへ進み、全rule後だけcanonicalな習得済みattackから通常攻撃へdeterministic fallbackする。覚醒は通常actionを消費せずdefault presetのHP 20%条件から起動する。Trial中の変更はbattle間だけ許可し、battle snapshotへ実使用normalized rules全文とSHA-256を固定する。Underground combat identityは`secretary-underground-alpha-v3`、Surface Rulesetは`hakoniwa-2s-plus-v19`を維持する。
 - Remaining boundary: Trial 3以降、unique、enhancement、enchant、manual combat、companion、marketはcustom AI scopeへ含めない。production deploy / migrationは別Owner gateとする。
-- Decision record: `docs/roadmap/3.0.0-alpha-underground.md`、`docs/architecture/underground-combat-laboratory.md`
+- Decision record: `docs/roadmap/3.0.0-alpha-underground.md`（履歴案内）、`docs/architecture/underground-combat-laboratory.md`
 
 ### UG-04 Nation-owned facility・surface bridge
 
@@ -308,7 +311,7 @@
 - Implemented: PR116
 - Decision: 解禁layer entitlementはSecretary-owned、地下施設はNation-ownedとする。canonical targetは`(layer, slot_index)`、1 layerは4 slot、入口・梯子はtarget外とし、MapCell/MapSpace/3D persistenceは作らない。build/removeは通常Nation developmentとしてofficial Turnを1 Turn消費し、建築1000億、撤去50億、refundなし、直接overbuildなし、同種複数可とする。施設効果は地底都市が首都effective maximum +10,000、地底農場がaggregate farm workforce capacity +10,000、地底工場がaggregate factory workforce capacity +30,000、地底ミサイル基地が既存pipelineのlaunch capacity +1。Surfaceへはaggregate benefitだけを渡し、facility scaleやUnderground MapCellへ変換しない。地下command/facility定義は制作中のRuleset v19にversioned contractとして含め、Surface command catalogとは分離する。
 - Provenance: UG-02で決定したownership境界を維持し、PR116のOwner decisionでplacement/lifecycle/effect/Surface bridge/Ruleset関係を確定した。
-- Decision record: `docs/roadmap/3.0.0-alpha-underground.md`、`product/docs/architecture/underground-facility-development.md`
+- Decision record: `docs/roadmap/3.0.0-alpha-underground.md`（履歴案内）、`product/docs/architecture/underground-facility-development.md`
 
 ### UG-05 party・market
 
@@ -317,7 +320,7 @@
 - Decision: partyは自分のSecretary 1人に、公開・貸出可能な他UserのSecretaryを最大3人まで加えた最大4 actorとする。actorは表示名ではなく`team`と`combatant_id`で結び、Trialは従来どおりsoloを維持する。借用snapshotとLeader level capはbattle開始時に固定し、貸出側へ戦闘状態を書き戻さない。探索のenemy数と通常報酬を別authorityとし、通常報酬はLeaderだけ、貸出報酬は決着したborrowed参加10回ごとにskip ticket 1枚、canonical dayあたり100枚までとする。Boss人数補正は`none`またはcontent-authored tableとする。skipはcontent別に管理し、狩場はactual combat win 50回で1回1枚、Trialはactual full clear 5周で1周10枚を解禁する。skipはcombat・cooldown・貸出参加を発生させず、通常勝利と共通のrepeatable reward settlementだけをsettleし、first-clear等のone-time stateを再発させない。既存`execution_count`を使う一操作最大1,000回の任意回数・周回数も同じ決算経路を使う。総clear数には加えるが、解禁用actual countへは加えない。対応するplayer actionだけ、最低HP割合の生存味方または有効な挑発を受けていない敵をstable orderで選べる。候補がなければ次ruleへ進む。application 3.9.3では敵の単体敵対actionは、生存中の有効な挑発sourceを優先し、それがなければ生存playerからbattle RNGで決定的に1人を選ぶ。実targetはactionごとに一度だけ決め、damage・effect・logで再抽選しない。self、全体、明示target、round-endはこの抽選を消費しない。
 - Boundary: 過去の1対1 battle logを再計算・書換えず、party presentationはv3として分離する。UG-04のNation-owned facility・surface bridge決定をparty/marketへ拡張しない。入札・買い注文・交渉は今回含めない。
 - Deferred: companion framework。
-- Decision record: `docs/roadmap/3.0.0-alpha-underground.md`、`product/docs/releases/5.5.0-market-synthesis.md`、`product/docs/releases/5.5.1-indefinite-market.md`
+- Decision record: `docs/roadmap/3.0.0-alpha-underground.md`（履歴案内）、`product/docs/releases/5.5.0-market-synthesis.md`、`product/docs/releases/5.5.1-indefinite-market.md`
 
 ### UG-06 party敵AoEと覚醒ゲージ
 
@@ -332,7 +335,7 @@
 - Owner decision (2026-09-14): 輝きの王国解禁後にsolo／レンタルPTで無料挑戦する。夢の女王はHP351400・毎round1254回復。開幕に味方全員を強制覚醒・全回復し、女王の奥義を先行する。初めて25%以下になった行動の終了時に2回目の奥義を割り込ませ、それまではHP1で耐える。以後は通常どおり撃破できる。
 - Settlement: 決闘前のHP・MP・覚醒を保持し、EXP・G・通常drop・貸出参加報酬・日課進行を与えない。LeaderのSecretaryごとの初勝利で装備・売却不可の記念品を一度だけ付与する。所持効果はない。
 - Scope: 通常の戦闘、導入の既存story battle、unique装備効果の一般実装は変更しない。
-- Decision record: `product/docs/releases/4.1.0-guide-duel.md`
+- Decision record: `product/docs/releases/4.1.0-guide-duel.md`（履歴案内）
 
 ## Monster/combat gates
 
@@ -348,14 +351,14 @@
 - Status: Decided
 - Implemented: Yes
 - Decision: 8種のHP、movement上限、硬化parity、Nation単位の自然出現、人口pool、報酬値を`roadmap-pr21-v1`へ固定する。cell順の一回pass、移動先cellが未処理なら同turn再行動できるsource-derived因果を採用し、legacy cell encodingと永続`moves_taken`は採用しない。
-- Decision record: `product/docs/monster-audit-pr21.md`、`docs/architecture/monster-system.md`
+- Decision record: `product/docs/monster-audit-pr21.md`（履歴案内）、`docs/architecture/monster-system.md`
 
 ### MONSTER-03 terrain-changing disasterとの相互作用
 
 - Status: Decided
 - Implemented: Yes
 - Decision: earthquake、tsunami、typhoon、fire、riotはoccupancyを維持して怪獣cellを通常対象から除外する。meteor shower、huge meteor、eruption、land subsidence、terrain-destruction missile、administrative terrain overwriteは先にoccupancyを報酬なしで除去してから地形を変更する。防衛施設接触は怪獣を明示除去して一度だけ巨大隕石相当blastを解決し、killer・報酬・kill statを作らない。
-- Decision record: `product/docs/monster-audit-pr21.md`、`docs/decisions/ADR-0007-monster-actor-and-occupancy.md`
+- Decision record: `product/docs/monster-audit-pr21.md`（履歴案内）、`docs/decisions/ADR-0007-monster-actor-and-occupancy.md`
 
 ### MONSTER-04 共有Worldの自然出現・報酬・討伐統計
 
@@ -363,28 +366,28 @@
 - Implemented: Yes
 - Decision: 自然出現はeligibleなactive Nationごとに1 turn 1回、`min(10,000, owned_land_cells * 2) / 10,000`で判定する。人口100,000未満は出現なし、100,000〜249,999はinora/sanjira、250,000〜399,999はさらにred/dark/ghost、400,000以上はさらにwhale/kingを加えたuniform poolからsettlementへ最大1体出現させ、mechaは自然出現させない。Nation attributed final blowではkillerへ価値の切捨て半分を賞金、死亡時cell ownerへ残りを現行sale contractと同価値の怪獣肉（1億円=500トン）としてcapacity上限付きで配分する。`nation_monster_kill_stats`のWorld/Nation/definition別countを種類別討伐数、`SUM(kill_count)`を総トドメ数、count>0をkill markの正本とし、個別撃破はstructured eventだけへ残す。PR21ではawardを実装せず、後続のAWARD-01でver 1.3.0として実装する。
 - Asset decision: 箱庭諸島2＋の原GIFは`_references/hakoniwa-2plus/assets/hakogif`で監査するが、Git、`product/public`、container imageへ収録せず、既存のGit外read-only tile asset directoryから原名・GIF形式のまま配信する。`monster4.gif`はkind 2/6の硬化状態専用とし、不足時はAPIと画面を失敗させず安全なCSS fallbackを使う。
-- Decision record: `product/docs/monster-audit-pr21.md`、`docs/architecture/monster-system.md`、`docs/assets/tile-asset-mapping.md`、`docs/reference-analysis/license-and-provenance.md`
+- Decision record: `product/docs/monster-audit-pr21.md`（履歴案内）、`docs/architecture/monster-system.md`、`docs/assets/tile-asset-mapping.md`、`docs/reference-analysis/license-and-provenance.md`
 
 ### AWARD-01 Nation awards
 
 - Status: Decided
 - Decision: owner提示のver 1.3.0条件表を正本とし、災難50,000/100,000/200,000人純減、繁栄300,000/500,000/1,000,000人最終人口、平和20,000/50,000/80,000人実受入とする。各系列は下位から1 turn 1段階、一度限りで取消なし。100 turnごとの人口最大全Nationへturn賞、同区間のNation attributed final blow最大全Nationへ最大0を除き討伐turn賞を反復付与する。公開TOPだけへ全受賞turn、種類別永久討伐count、stable source kind由来markを表示する。pre-1.3.0の周期countはmigrationが固定した全要求Nationへのexplicit operator seedだけとし、完了までnon-dry turnと周期順位をfail closedにする。award backfillは行わず、gameplay bonusもない。
 - Implemented: ver 1.3.0
-- Decision record: `docs/decisions/ADR-0009-ver-1.3.0-awards-and-classic-top.md`、`product/docs/operations/ver-1.3.0-monster-cycle-seed.md`
+- Decision record: `docs/decisions/ADR-0009-ver-1.3.0-awards-and-classic-top.md`、`product/docs/operations/ver-1.3.0-monster-cycle-seed.md`（履歴案内）
 
 ### B-02 Capitalへの複数被害
 
 - Status: Decided
 - Implemented: Partially; disaster path is implemented, combat path is not.
 - Decision: 各event開始時点の現在人口へ割合damageを逐次適用し、各event後にfloorとminimum 100を適用する。
-- Decision record: `docs/architecture/capital-and-territory.md`、`product/docs/disaster-oil-audit-pr15.md`
+- Decision record: `docs/architecture/capital-and-territory.md`、`product/docs/disaster-oil-audit-pr15.md`（履歴案内）
 
 ### B-19 Capitalと怪獣・戦闘damage
 
 - Status: Decided
 - Implemented: Boundary only
 - Decision: 怪獣はCapitalへ侵入できない。combat damageでもCapital identityを維持し、荒地化相当10%、一段階掘削相当30%、深海化相当90%を逐次適用する。
-- Decision record: `docs/architecture/capital-and-territory.md`、`product/docs/disaster-oil-audit-pr15.md`
+- Decision record: `docs/architecture/capital-and-territory.md`、`product/docs/disaster-oil-audit-pr15.md`（履歴案内）
 
 ### B-03 Capital機能停止と復旧
 
@@ -406,21 +409,21 @@
 - Implemented: Yes
 - Decision: `hakoniwa-2s-plus-v3`ではactive Nation間だけを対象に、共有surface cell shuffle順で各対象cellを1回訪問し、6方向から1方向だけを専用乱数streamで選ぶ。失敗時の再抽選は行わず、成功したowner変更は即時反映して後続cellから観測できる。`territory_expand`は従来の中立陸地取得に加え、隣接自領がある別active Nation所有のwasteland/scorchedだけを取得できる。各active NationのCapitalからhex distance 2以内は他Nationへのownership transferを禁止するが、core内cellは外側へのinfluence sourceとして通常どおり機能する。neutral、dormant、sunken、monster occupancyは今回のinfluence対象にしない。Ruleset v24以降では取得側の現在陸地面積が地盤沈下の安全面積以上なら自動取得せず、同一phase内の取得・喪失を逐次反映する。上限側が土地を失う処理、手動拡張、抽選順は変更しない。
 - Remaining Open/Deferred: 防壁都市・占領抵抗はB-05、dormant territory占領はB-12、dormant Capital保護はB-13、報復・反撃は別roadmapの判断を維持する。
-- Decision record: `product/docs/territory-expansion-influence-ver-1.4.0.md`、`docs/reference-analysis/hakoniwa-2plus-world-map.md`
+- Decision record: `product/docs/territory-expansion-influence-ver-1.4.0.md`（履歴案内）、`docs/reference-analysis/hakoniwa-2plus-world-map.md`（履歴案内）
 
 ### MISSILE-01 launch intentと基地単位解決
 
 - Status: Decided
 - Implemented: Yes
 - Decision: 箱庭諸島2＋sourceには基地射程があるが、PR22ではowner decisionにより射程制限を採用しない。World内のactive Nation所有cellは距離にかかわらずtargetにでき、randomized cell processing中に各基地はcurrent owner、facility、level/capacity、残弾、資金を再検証する一方、targetとの距離は検証しない。intent登録だけでは通常command成功とせず、Nation単位で1発以上実発射された場合だけidle counterをresetする。全intentが0発ならidle counterを維持し、process_cells後のautomatic financeは追加しない。距離制限は必要時に新しいversioned rulesetとして検討し、未使用metadataやextension hookを先行実装しない。報復・反撃systemはPR22範囲外とする。
-- Decision record: `docs/reference-analysis/hakoniwa-2plus-turn-processing.md`、`product/docs/command-audit-pr22.md`
+- Decision record: `docs/reference-analysis/hakoniwa-2plus-turn-processing.md`（履歴案内）、`product/docs/command-audit-pr22.md`（履歴案内）
 
 ### B-10 ミサイル可視性
 
 - Status: Decided
 - Implemented: Yes
 - Decision: 発射Nation、弾種、発射数と意味のある着弾はpublic、効果のない着弾はlaunch単位で集約する。発射Nationには狙点、費用、弾種、全着弾結果をprivate詳細として表示する。SPPを含む全弾種で発射Nationを公開する。
-- Decision record: `docs/reference-analysis/hakoniwa-2plus-turn-processing.md`、`product/docs/command-audit-pr22.md`
+- Decision record: `docs/reference-analysis/hakoniwa-2plus-turn-processing.md`（履歴案内）、`product/docs/command-audit-pr22.md`（履歴案内）
 
 ### B-12 dormant国家への攻撃詳細
 
@@ -474,35 +477,35 @@
 - Status: Decided
 - Implemented: ver 1.6.0 manual abandonment、ver 2.4.0 automatic abandonment
 - Decision: manualは既存の危険領域button、modal、現在の島名完全一致を維持する。automaticはidle 2160到達Turn終端から同じinternal cleanup operationをsystem actorで呼ぶ。どちらも単一transactionでsurface map、monster、現役asset、Capital、membershipを終了し、Nation、Secretary、歴史recordを保持する。
-- Decision record: `product/docs/ver-1.6.0-nation-lifecycle.md`、`docs/decisions/ADR-0014-ver-2.4.0-nation-dormancy.md`
+- Decision record: `product/docs/ver-1.6.0-nation-lifecycle.md`（履歴案内）、`docs/decisions/ADR-0014-ver-2.4.0-nation-dormancy.md`
 
 ### B-15 再入植
 
 - Status: Decided
 - Implemented: ver 1.6.0で、owner本人による手動破棄後の最小再登録を実装。
 - Decision: owner本人が手動破棄した後、同じUserは同じWorldへ通常のNation作成経路から別の新しいNationを登録できる。旧Nationはphysical deleteせず`abandoned`として歴史を保持し、旧membershipを終了する。新規登録は新しいrequest keyと新しいNation numberを使い、historical creation requestを保持する。将来、島をまたいで保持するゲーム上のデータはAccount/Userに紐づく「秘書」側の永続データとして扱い、Nation AからNation Bへ直接移送しない。この将来境界はsecretary/account gameplay schema、item、proficiency、turn反映、bonus、ranking・award引き継ぎ、保護期間を今回決定または実装するものではない。
-- Decision record: `product/docs/ver-1.6.0-nation-lifecycle.md`
+- Decision record: `product/docs/ver-1.6.0-nation-lifecycle.md`（履歴案内）
 
 ### SECRETARY-01 User永続Secretary v1
 
 - Status: Decided
 - Implemented: ver 2.0.0でUser永続Secretary、命名、4 passive skill、turn attempt batch load、transactional XP、ruleset v7、forward migrationを実装する。
 - Decision: SecretaryはNationではなくUserへ1:1で所属し、最初のNation登録成功時にidempotentに作成する。abandon/re-registerを跨いで同じ状態を保持する。production migrationはactive/abandonedを問わずNation登録履歴のあるUserだけをbackfillし、履歴のないUserは将来の初回登録成功まで作成しない。命名前も効果とXPを有効にし、v1の詳細gameplay contractはADR-0011を正本とする。
-- Decision record: `docs/decisions/ADR-0010-product-generations-and-2x-identity.md`、`docs/decisions/ADR-0011-secretary-v1-contract.md`、`docs/roadmap/2.x.md`
+- Decision record: `docs/decisions/ADR-0010-product-generations-and-2x-identity.md`、`docs/decisions/ADR-0011-secretary-v1-contract.md`、`docs/roadmap/2.x.md`（履歴案内）
 
 ### SECRETARY-02 Secretary rename
 
 - Status: Decided
 - Implemented: ver 2.1.0で既存の命名済みSecretaryをプロフィール編集から何度でも改名できる。
 - Decision: ADR-0011のver 2.0.0一度だけ命名contractは歴史として維持する。ver 2.1.0ではUser所有・1 User = 1 Secretaryを変えず、plain text 1〜30文字、duplicate可、skill/XP不変、abandon/re-register後も保持する。rename APIはrowを作成せず、private auditへold/new nameとSecretary/User ID、時刻を残す。過去logと実行中attemptは保存済みname snapshotを維持し、次attemptから最新名をloadする。
-- Decision record: `docs/decisions/ADR-0012-ver-2.1.0-defense-and-secretary-rename.md`、`docs/roadmap/2.x.md`
+- Decision record: `docs/decisions/ADR-0012-ver-2.1.0-defense-and-secretary-rename.md`、`docs/roadmap/2.x.md`（履歴案内）
 
 ### SECRETARY-03 公開プロフィールと秘書Lvcapacity bonus
 
 - Status: Decided
 - Implemented: ver 2.5.0で公開「メイン」プロフィール、3:4メイン画像、画像制作metadata、viewer単位のAI画像表示設定、1000文字の経歴、現在装備5slot表示、秘書Lvcapacity bonus、ruleset v14、exact v13→v14 forward migrationを実装する。
 - Decision: 秘書Lvは既存4 passive skill levelの合計であり、独立XP/level systemを作らない。v14では資金capacityと食料capacityへ秘書Lvと同じpercentを乗算し、既存の非負整数切捨てとcanonical capacity/credit経路を維持する。E-04のgeneric ModifierはDeferredのままとし、この確定済み1種類だけを局所的に解決する。画像はUser永続Secretaryへ最新1枚だけ保持し、既存問い合わせ画像のvalidation/storage boundaryを共有するが、公開disk/URL/cache policyは分離する。AI画像の非表示はviewer presentationであり、保存fileを削除しない。
-- Decision record: `docs/decisions/ADR-0016-ver-2.5.0-secretary-profile.md`、`product/docs/ver-2.5.0-secretary-profile.md`、`docs/roadmap/2.x.md`
+- Decision record: `docs/decisions/ADR-0016-ver-2.5.0-secretary-profile.md`、`product/docs/ver-2.5.0-secretary-profile.md`（履歴案内）、`docs/roadmap/2.x.md`（履歴案内）
 
 ### D-01 scheduler・queue基盤
 
@@ -530,7 +533,8 @@
 - Status: Decided
 - Implemented: PR23のTOP全体ログはpublic visibilityだけをpaginationする。event retentionとは分離する。
 - Decision: player turn event、gameplay audit event、moderation記録を初期版では自動削除しない。application/web server運用logは30日を目安に保持し、分析専用基盤は作らない。event 100万件または実測性能問題を再判断gateとする。
-- Decision record: `docs/decisions/ADR-0008-first-production-release.md`、`docs/future-systems/event-log-and-notifications.md`
+- Current manual path: 自動的な全audit削除は採用しない。一方、現行`audit:compact-routine-events`は明示cutoffとpreviewの確認後、`--apply`で完了済み非dry Turnに属する限定allowlistをsummary/帰属不明集約へ保存し、対応する元行だけを削除する。receiptの集約・手動purgeや詳細battle logの期限整理とは対象が異なる。現在の本番cron・整理実績は未再確認で、旧資料の未実施を現在の未実施と断定しない。
+- Decision record: `docs/decisions/ADR-0008-first-production-release.md`、`product/docs/operations/receipt-audit-retention.md`（現行手順）、`docs/future-systems/event-log-and-notifications.md`（将来案）
 
 ### D-07 moderation
 

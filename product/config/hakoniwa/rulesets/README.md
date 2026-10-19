@@ -9,9 +9,12 @@ snapshots remain immutable in their recorded Git/database authority. Markdown su
 not reproduce them, and test fixtures must never be registered or published as gameplay
 Rulesets.
 
-The configured entrypoint loads complete domains from `current/`, without loading historical
-entrypoints or release fragments. Retired upgrade sources remain in Git. Saved database
-snapshots and their definitions retain their IDs and continue to interpret historical work.
+The configured entrypoint resolves one complete payload, either from domain files or by the
+explicit immutable-predecessor composition described below. Follow that entrypoint and its
+dependencies rather than assuming `current/` is the editable release draft: a file there can
+still be shared by frozen predecessors. Unsupported retired upgrade sources remain in Git.
+Saved database snapshots and their definitions retain their IDs and continue to interpret
+historical work.
 Test fixtures describe the specific historical behavior they exercise without loading
 retired authoring sources or registering them as current gameplay Rulesets.
 
@@ -20,6 +23,8 @@ When a release begins from an Owner-confirmed production Ruleset `N`:
 - semantic Ruleset changes may be authored as the single release draft `N+1`;
 - unchanged fields are reused from the exact immutable predecessor and only bounded changed
   domains are composed into the new complete payload;
+- that predecessor may retain its own frozen dependencies; editing a shared ancestor must not
+  change any production-used snapshot;
 - the release does not create a generic historical-authoring catalog or inheritance
   framework; and
 - later features, PRs, and stabilization in that same unreleased release continue to amend

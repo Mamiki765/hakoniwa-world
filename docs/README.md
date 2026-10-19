@@ -36,6 +36,13 @@
 | 4.14.2 帰港地・狂月賛歌の既読回想 | [4.14.2 recollections](../product/docs/releases/4.14.2-recollections.md) |
 | 4.14.3 秘書の肩書き表示・実績画面の配置 | [4.14.3 secretary title layout](../product/docs/releases/4.14.3-secretary-title-layout.md) |
 | 4.15.0 船の視界・アクセサリー全枠付与・装備Quality | [4.15.0 equipment quality / ship vision](../product/docs/releases/4.15.0-equipment-quality-ship-vision.md) |
+| 4.18.3 ログの公開区分・SPPカルマ | [4.18.3 log visibility](../product/docs/releases/4.18.3-log-visibility.md) |
+| 5.1.2 Ruleset由来の施設名・交易配送・計画処理の統合 | [5.1.2](../product/docs/releases/5.1.2.md) |
+| 5.2.0 遷都間隔・船の目的地・海底工作船 | [5.2.0](../product/docs/releases/5.2.0.md) |
+| 5.3.0 エコポ・旧版怪獣の継続・API制限枠 | [5.3.0](../product/docs/releases/5.3.0.md) |
+| 5.4.0 queue・怪獣・地下施設の現在版解決と来歴、省エネXP、3 migration | [5.4.0 queue / provenance / energy](../product/docs/releases/5.4.0-queue-provenance-energy.md) |
+| 5.5.0 地底露店・地上合成・チケット部分使用・倉庫拡張 | [5.5.0 market / synthesis](../product/docs/releases/5.5.0-market-synthesis.md) |
+| 5.5.1 露店の無期限化と統合・検証の記録 | [5.5.1 indefinite market](../product/docs/releases/5.5.1-indefinite-market.md) |
 | 外部管理庫の現在地・作業引継ぎへの入口 | [current-status](../product/docs/handoffs/current-status.md) |
 | 取り違えを防ぐ現行contract | [current-contracts](../product/docs/handoffs/current-contracts.md) |
 | IL200超の装備計算・研磨 | [地底装備の倍率とrating](../product/docs/architecture/underground-equipment-scaling.md) |
@@ -45,13 +52,14 @@
 | 地上の配置・電力・上位産業・属性魔力 | [地上発展拡張](../product/docs/plans/surface-development-expansion.md) |
 | T01〜T12の元の範囲・途中記録 | [4.4.1予定表](../product/docs/plans/4.4.1-todo.md)、[実装・検証記録](../product/docs/releases/4.4.1-chat-implementation.md)。古いcheckboxを現在の未実装判定に使わない |
 | 本番の観測、証拠の限界、運用残件 | [deployment status](../product/docs/operations/current-deployment.md) |
+| Receiptの集約・手動purge、戦闘snapshot縮約、限定routine audit整理 | [保持整理runbook](../product/docs/operations/receipt-audit-retention.md)。preview、明示apply、保持条件を分け、本番稼働は別確認 |
 | fresh構築・既存DB採用・撤去した互換性 | [現行install/upgrade境界](../product/docs/architecture/install-upgrade-rebaseline.md)、[5.0.1 rebaseline](../product/docs/plans/5.0.1-ruleset-rebaseline.md)。[4.9.1](../product/docs/plans/4.9.1-v27-baseline-consolidation.md)・[4.9.2](../product/docs/plans/4.9.2-baseline-structure-fix.md)は前段の履歴 |
 | 実装前の設計gate | [open-questions](open-questions.md)。全Open/Deferredを現在のTODOへ昇格させない |
 | 文書整理の進捗と未分類範囲 | [documentation-inventory](documentation-inventory.md) |
 
 ## 対象ごとの現行資料
 
-- 実績・肩書き、既命名者の補填、Mariaの既存保存・通知への連携は[実績連携の草案](../product/docs/plans/maria-achievement-link.md)を参照します。Draft実装までで、導入・実付与・実通知は行っていません。次の20候補は未採用です。
+- 実績・肩書き、既命名者の補填、Mariaの既存保存・通知への連携は[実績連携の設計と導入履歴](../product/docs/plans/maria-achievement-link.md)を参照します。World #204はmerge済みです。現在の本番secret・同期cron・実付与/実通知は今回未確認で、merge事実から有効化済みとも未有効とも断定しません。次の20候補は未採用です。
 
 - Rulesetを変更する場合は[authoring](../product/docs/architecture/ruleset-authoring.md)と実際のconfig・validator・consumerを確認します。過去版の調整値を永久不変の契約にしません。
 - 地上と地下のlockは[Secretary lock boundaries](../product/docs/architecture/secretary-lock-boundaries.md)、管理操作は[管理運用](../product/docs/operations/4.4.0-admin-operations.md)を入口にします。Git merge、checkout、稼働image、production DBの適用状態は別の証拠です。
