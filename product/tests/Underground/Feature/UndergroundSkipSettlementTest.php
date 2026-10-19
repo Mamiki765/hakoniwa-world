@@ -245,6 +245,7 @@ final class UndergroundSkipSettlementTest extends TestCase
         $this->assertSame(50, $batch->reward_snapshot['equipment_granted_count']);
         $this->assertCount(50, $batch->reward_snapshot['encounters']);
         $this->assertSame(0, $batch->reward_snapshot['vault_full_count']);
+        $this->assertSame(0, $batch->reward_snapshot['distorted_stones']);
         $this->assertSame(50, $batch->reward_snapshot['ticket_balance_after']);
         $this->assertSame($afterFirst, $profile->refresh()->only(array_keys($afterFirst)));
         $this->assertSame(50, UndergroundContentClearProgress::query()->where('underground_profile_id', $profile->id)->value('actual_clear_count'));
@@ -340,6 +341,8 @@ final class UndergroundSkipSettlementTest extends TestCase
         $this->assertSame(0, UserSkipTicketBalance::query()->where('user_id', $user->id)->value('balance'));
         $this->assertSame(3, $first['batch']->reward_snapshot['equipment_granted_count']);
         $this->assertSame(3, $profile->refresh()->distorted_stone_balance);
+        $this->assertSame(3, $runtime->projectSkipBatch($first['batch'], false)['rewards']['distorted_stones']);
+        $this->assertSame($first['batch']->reward_snapshot, $retry['batch']->reward_snapshot);
         $this->assertSame(3, UndergroundOwnedEquipment::query()
             ->where('source_skip_batch_id', $first['batch']->id)
             ->count());
@@ -371,6 +374,7 @@ final class UndergroundSkipSettlementTest extends TestCase
             ->assertJsonPath('data.execution_count', 2)
             ->assertJsonPath('data.ticket_cost', 2)
             ->assertJsonPath('data.rewards.ticket_balance_after', 2)
+            ->assertJsonPath('data.rewards.distorted_stones', 0)
             ->json('data');
         $replay = $this->actingAs($user)->postJson('/api/v1/me/underground/skip/hunting-ground', $payload)
             ->assertOk()
