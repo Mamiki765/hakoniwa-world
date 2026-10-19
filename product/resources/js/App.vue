@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import stories from '../stories/intro.json';
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
-import { ApiError, api, apiEnvelope } from './api/client';
+import { ApiError, api, apiEnvelope, validationErrors } from './api/client';
 import AnnouncementBody from './components/AnnouncementBody.vue';
 import CellDetails from './components/CellDetails.vue';
 import CommandQueuePanel from './components/CommandQueuePanel.vue';
@@ -23,12 +23,15 @@ import type { MarketAttention } from './components/UndergroundMarket.vue';
 import SecretaryImageSlotsEditor from './components/SecretaryImageSlotsEditor.vue';
 import SecretaryMenu from './components/SecretaryMenu.vue';
 import SecretarySynthesis from './components/SecretarySynthesis.vue';
+import InquiryFormPage from './components/InquiryFormPage.vue';
+import AdminInquiriesPage, { type AdminInquiriesRequest } from './components/AdminInquiriesPage.vue';
 import SecretaryTicketDrawDialog from './components/SecretaryTicketDrawDialog.vue';
 import SecretaryWarehouseExpandDialog from './components/SecretaryWarehouseExpandDialog.vue';
 import SecretaryStatusOverview from './components/SecretaryStatusOverview.vue';
 import SecretaryEquippedItems from './components/SecretaryEquippedItems.vue';
 import type { SecretarySection } from './types';
 import UndergroundSurfaceMapView from './components/UndergroundSurfaceMap.vue';
+import { formatAnnouncementDate } from './formatters/date';
 import { formatExactMoney } from './formatters/money';
 import { useMapState } from './state/mapState';
 import { useLobbyRanking } from './state/lobbyRanking';
@@ -42,8 +45,6 @@ import type {
     CurrentUser,
     DailyLoginReward,
     DailyQuestProgress,
-    InquiryDetail,
-    InquirySubmission,
     InquirySummary,
     MajorNewsFeed,
     MapSpace,
@@ -153,17 +154,8 @@ const equipmentError = ref('');
 const equipmentRequireFreshChoice = ref(false);
 let equipmentRequestGeneration = 0;
 const latestInquiries = ref<InquirySummary[]>([]);
-const inquiryItems = ref<InquirySummary[]>([]);
-const inquiryDetail = ref<InquiryDetail | null>(null);
-const inquiryPageNumber = ref(1);
-const inquiryLastPage = ref(1);
-const inquiryCategory = ref<InquirySummary['category']>('bug');
-const inquirySubject = ref('');
-const inquiryBody = ref('');
-const inquiryAttachment = ref<HTMLInputElement | null>(null);
-const inquirySubmissionKey = ref(crypto.randomUUID());
-const inquiryErrors = ref<Record<string, string>>({});
-const inquiryConfirmation = ref<InquirySubmission | null>(null);
+const inquiryFormKey = ref(0);
+const adminInquiriesRequest = ref<AdminInquiriesRequest>({ page: 1 });
 const previewNation = ref<PublicNationDetail | null>(null);
 const mapSpace = ref<MapSpace | null>(null);
 const authoritativeCommandQueue = ref<CommandQueue | null>(null);
@@ -384,14 +376,6 @@ function formatCompensationItem(item: CompensationGrant['items'][number], amount
     return item.asset_key === 'money'
         ? formatExactMoney(amount)
         : `${amount.toLocaleString('ja-JP')}${item.unit}`;
-}
-
-function formatAnnouncementDate(value: string): string {
-    return new Intl.DateTimeFormat('ja-JP', {
-        dateStyle: 'medium',
-        timeStyle: 'short',
-        timeZone: 'Asia/Tokyo',
-    }).format(new Date(value));
 }
 
 function formatTurnTimestamp(value: string | null): string {
@@ -1140,77 +1124,20 @@ async function loadLatestInquiries(): Promise<void> {
 }
 
 function openInquiry(): void {
-    inquiryCategory.value = 'bug';
-    inquirySubject.value = '';
-    inquiryBody.value = '';
-    inquirySubmissionKey.value = crypto.randomUUID();
-    inquiryErrors.value = {};
-    inquiryConfirmation.value = null;
-    if (inquiryAttachment.value !== null) inquiryAttachment.value.value = '';
+    inquiryFormKey.value += 1;
     page.value = 'inquiry';
 }
 
-async function submitInquiry(): Promise<void> {
-    busy.value = true;
-    message.value = '';
-    inquiryErrors.value = {};
-    const form = new FormData();
-    form.append('submission_key', inquirySubmissionKey.value);
-    form.append('category', inquiryCategory.value);
-    form.append('subject', inquirySubject.value);
-    form.append('body', inquiryBody.value);
-    const attachment = inquiryAttachment.value?.files?.[0];
-    if (attachment !== undefined) form.append('attachment', attachment);
-
-    try {
-        inquiryConfirmation.value = await api<InquirySubmission>('/api/v1/inquiries', {
-            method: 'POST',
-            body: form,
-        });
-        inquirySubmissionKey.value = crypto.randomUUID();
-    } catch (error) {
-        inquiryErrors.value = validationErrors(error);
-        if (Object.keys(inquiryErrors.value).length === 0) {
-            message.value = error instanceof Error ? error.message : 'お問い合わせを送信できませんでした。';
-        }
-    } finally {
-        busy.value = false;
-    }
+function openAdminInquiries(pageNumber = 1): void {
+    if (!user.value?.can_manage_inquiries) return;
+    adminInquiriesRequest.value = { page: pageNumber };
+    page.value = 'admin-inquiries';
 }
 
-async function openAdminInquiries(pageNumber = 1): Promise<void> {
+function openAdminInquiry(managementId: string): void {
     if (!user.value?.can_manage_inquiries) return;
-    busy.value = true;
-    message.value = '';
-    try {
-        const envelope = await apiEnvelope<InquirySummary[]>(`/api/v1/admin/inquiries?page=${pageNumber}`);
-        inquiryItems.value = envelope.data;
-        const currentPage = Number(envelope.meta?.current_page ?? pageNumber);
-        const lastPage = Number(envelope.meta?.last_page ?? currentPage);
-        inquiryPageNumber.value = Number.isInteger(currentPage) && currentPage > 0 ? currentPage : pageNumber;
-        inquiryLastPage.value = Number.isInteger(lastPage) && lastPage > 0 ? lastPage : inquiryPageNumber.value;
-        inquiryDetail.value = null;
-        page.value = 'admin-inquiries';
-    } catch (error) {
-        message.value = error instanceof Error ? error.message : 'お問い合わせ一覧を取得できませんでした。';
-    } finally {
-        busy.value = false;
-    }
-}
-
-async function openAdminInquiry(managementId: string): Promise<void> {
-    if (!user.value?.can_manage_inquiries) return;
-    busy.value = true;
-    message.value = '';
-    try {
-        const id = Number(managementId.replace('INQ-', ''));
-        inquiryDetail.value = await api<InquiryDetail>(`/api/v1/admin/inquiries/${id}`);
-        page.value = 'admin-inquiries';
-    } catch (error) {
-        message.value = error instanceof Error ? error.message : 'お問い合わせ詳細を取得できませんでした。';
-    } finally {
-        busy.value = false;
-    }
+    adminInquiriesRequest.value = { managementId };
+    page.value = 'admin-inquiries';
 }
 
 async function loadPublicEvents(pageNumber: number): Promise<void> {
@@ -1674,12 +1601,6 @@ async function createNation(): Promise<void> {
             : '';
         busy.value = false;
     }
-}
-
-function validationErrors(error: unknown): Record<string, string> {
-    if (!(error instanceof ApiError)) return {};
-
-    return Object.fromEntries(Object.entries(error.errors).map(([key, messages]) => [key, messages[0] ?? '入力を確認してください。']));
 }
 
 function selectTheme(selectedTheme: ThemeMode): void {
@@ -2170,82 +2091,14 @@ async function abandonNation(): Promise<void> {
             </form>
         </section>
 
-        <section v-else-if="user && page === 'inquiry'" class="panel inquiry-page">
-            <h1>お問い合わせ</h1>
-            <div v-if="inquiryConfirmation" class="inquiry-confirmation" role="status">
-                <h2>送信しました</h2>
-                <p>管理番号 <strong>{{ inquiryConfirmation.management_id }}</strong></p>
-                <button type="button" @click="page = 'home'">TOPへ戻る</button>
-            </div>
-            <form v-else class="inquiry-form" enctype="multipart/form-data" @submit.prevent="submitInquiry">
-                <label>種類
-                    <select v-model="inquiryCategory" required>
-                        <option value="bug">バグ報告</option>
-                        <option value="request">要望</option>
-                        <option value="idea">アイデア</option>
-                        <option value="secretary_fan_art">秘書のファンアート</option>
-                        <option value="other">その他</option>
-                    </select>
-                    <span v-if="inquiryErrors.category" class="field-error" role="alert">{{ inquiryErrors.category }}</span>
-                </label>
-                <label>件名
-                    <input v-model="inquirySubject" maxlength="160" required>
-                    <span v-if="inquiryErrors.subject" class="field-error" role="alert">{{ inquiryErrors.subject }}</span>
-                </label>
-                <label>本文（プレーンテキスト）
-                    <textarea v-model="inquiryBody" maxlength="20000" rows="10" required></textarea>
-                    <span v-if="inquiryErrors.body" class="field-error" role="alert">{{ inquiryErrors.body }}</span>
-                </label>
-                <label>添付画像（任意・1枚・最大10MB）
-                    <input ref="inquiryAttachment" type="file" accept="image/png,image/jpeg,image/webp,image/gif">
-                    <small class="field-hint">PNG、JPEG、WebP、GIF。添付画像に個人情報などを含む画像は添付しないでください。</small>
-                    <span v-if="inquiryErrors.attachment" class="field-error" role="alert">{{ inquiryErrors.attachment }}</span>
-                </label>
-                <div class="inquiry-actions">
-                    <button class="button primary" type="submit" :disabled="busy">送信</button>
-                    <button type="button" :disabled="busy" @click="page = 'home'">キャンセル</button>
-                </div>
-            </form>
-        </section>
+        <InquiryFormPage v-else-if="user && page === 'inquiry'" :key="inquiryFormKey" @home="page = 'home'" @message="message = $event" />
 
-        <section v-else-if="user?.can_manage_inquiries && page === 'admin-inquiries'" class="panel inquiry-admin-page">
-            <div class="section-heading">
-                <div><p class="eyebrow">INQUIRIES</p><h1>お問い合わせ管理</h1></div>
-                <button type="button" @click="page = 'home'">TOPへ戻る</button>
-            </div>
-            <article v-if="inquiryDetail" class="inquiry-detail">
-                <p><strong>{{ inquiryDetail.management_id }}</strong> [{{ inquiryDetail.category_label }}]</p>
-                <h2>{{ inquiryDetail.subject }}</h2>
-                <dl>
-                    <div><dt>User</dt><dd>#{{ inquiryDetail.user.id }} {{ inquiryDetail.user.display_name }}</dd></div>
-                    <div><dt>Nation</dt><dd>{{ inquiryDetail.nation ? `N${inquiryDetail.nation.nation_number} ${inquiryDetail.nation.name}` : 'なし' }}</dd></div>
-                    <div><dt>投稿ターン</dt><dd>{{ inquiryDetail.world.submitted_turn }}</dd></div>
-                    <div><dt>アプリ版</dt><dd>{{ inquiryDetail.application_version }}</dd></div>
-                    <div><dt>投稿日時</dt><dd>{{ formatAnnouncementDate(inquiryDetail.created_at) }}</dd></div>
-                </dl>
-                <p class="inquiry-body">{{ inquiryDetail.body }}</p>
-                <a v-if="inquiryDetail.attachment_url" :href="inquiryDetail.attachment_url" target="_blank" rel="noopener">
-                    <img class="inquiry-attachment" :src="inquiryDetail.attachment_url" alt="お問い合わせ添付画像">
-                </a>
-                <button type="button" :disabled="busy" @click="openAdminInquiries(inquiryPageNumber)">一覧へ戻る</button>
-            </article>
-            <template v-else>
-                <ol v-if="inquiryItems.length" class="inquiry-list full">
-                    <li v-for="inquiry in inquiryItems" :key="inquiry.management_id">
-                        <button type="button" @click="openAdminInquiry(inquiry.management_id)">
-                            {{ inquiry.management_id }} [{{ inquiry.category_label }}] {{ inquiry.subject }}
-                        </button>
-                        <time :datetime="inquiry.created_at">{{ formatAnnouncementDate(inquiry.created_at) }}</time>
-                    </li>
-                </ol>
-                <p v-else class="empty-state">お問い合わせはまだありません。</p>
-                <nav class="inquiry-pager" aria-label="お問い合わせのページ">
-                    <button type="button" :disabled="inquiryPageNumber <= 1" @click="openAdminInquiries(inquiryPageNumber - 1)">前へ</button>
-                    <span>{{ inquiryPageNumber }}ページ</span>
-                    <button type="button" :disabled="inquiryPageNumber >= inquiryLastPage" @click="openAdminInquiries(inquiryPageNumber + 1)">次へ</button>
-                </nav>
-            </template>
-        </section>
+        <AdminInquiriesPage
+            v-else-if="user?.can_manage_inquiries && page === 'admin-inquiries'"
+            :request="adminInquiriesRequest"
+            @home="page = 'home'"
+            @message="message = $event"
+        />
 
         <GuideConversationTopicAdmin
             v-else-if="user?.can_manage_guide_topics && page === 'guide-topics'"
