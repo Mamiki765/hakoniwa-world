@@ -134,6 +134,8 @@ final class DatabaseBaselineAdoptionTest extends TestCase
             'capital history column' => ['ALTER TABLE nations ALTER COLUMN last_capital_relocation_turn TYPE text'],
             'warehouse expansion constraint' => ['ALTER TABLE secretary_surface_states DROP CONSTRAINT secretary_warehouse_expansions_check'],
             'market receipt replay uniqueness' => ['ALTER TABLE underground_market_receipts DROP CONSTRAINT underground_market_receipts_underground_profile_id_request_id_u'],
+            'market listings permit no deadline' => ['ALTER TABLE underground_market_listings ALTER COLUMN expires_at SET NOT NULL'],
+            'given name length' => ['ALTER TABLE ships ALTER COLUMN custom_name TYPE varchar(64)'],
         ];
     }
 
@@ -147,6 +149,9 @@ final class DatabaseBaselineAdoptionTest extends TestCase
             Schema::drop($table);
         }
         DB::statement('ALTER TABLE underground_owned_equipment DROP COLUMN is_listed, DROP COLUMN source_market_listing_id');
+        DB::statement('ALTER TABLE ships DROP COLUMN custom_name');
+        DB::statement('ALTER TABLE nations DROP COLUMN capital_name');
+        DB::table('migrations')->where('migration', CurrentDatabaseBaseline::GIVEN_NAMES_MIGRATION)->delete();
         DB::statement('ALTER TABLE secretary_surface_states DROP CONSTRAINT secretary_warehouse_expansions_check, DROP COLUMN item_capacity_expansions');
         if ($source === false || preg_match('/^\s*CONSTRAINT user_paradox_ledger_source_check (CHECK[^\r\n]+)\r?$/m', $source, $matches) !== 1) {
             throw new RuntimeException('The canonical Paradox source constraint is missing.');
@@ -156,6 +161,8 @@ final class DatabaseBaselineAdoptionTest extends TestCase
         DB::table('migrations')->whereIn('migration', [
             CurrentDatabaseBaseline::MARKET_SYNTHESIS_MIGRATION,
             '2026_10_18_010000_publish_market_synthesis_ruleset',
+            CurrentDatabaseBaseline::INDEFINITE_MARKET_MIGRATION,
+            '2026_10_18_030000_publish_indefinite_market_ruleset',
         ])->delete();
         foreach ([
             CurrentDatabaseBaseline::QUEUE_RULESET_RESOLUTION_MIGRATION => 'enforce_queue_item_world_ruleset_match',

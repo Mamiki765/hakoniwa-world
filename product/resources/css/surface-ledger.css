@@ -261,6 +261,9 @@ html .sl h2 { font: var(--sl-w-head) 14px var(--sl-f-head); display: block; min-
 .sl-ship form { display: contents; }
 .sl-ship select { padding: 1px 4px; }
 .sl-ship .command-status { margin: 0; }
+.sl .sl-name { padding: 2px 10px; }
+.sl-name input { width: 12em; min-width: 0; padding: 1px 4px; }
+.sl .sl-name button { padding: 1px 8px; font-size: 12px; }
 .sl-cmd-area { flex: 1; display: flex; flex-direction: column; }
 .sl-cmd-head { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 8px; padding: 5px 10px 3px; position: sticky; top: 0; background: var(--sl-panel); z-index: 1; font-size: 13px; }
 .sl-cmd-head h3 { font: var(--sl-w-head) 14px var(--sl-f-head); }

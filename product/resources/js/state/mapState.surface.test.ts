@@ -256,5 +256,121 @@ describe('lazy map chunk loading', () => {
         const carrier = map.visibleCells.value.find((cell) => cell.ship?.id === 9);
         expect(carrier?.ship).toMatchObject({ heading: null, destination: { x: 20, y: 18 }, version: 4 });
         expect(map.selected.value?.ship ?? null).toBeNull();
+
+    });
+
+    it('keeps a newer ship course when the renamed accessible label arrives late', async () => {
+        const ship = {
+            id: 9, key: 'fishing' as const, name: '漁船', custom_name: null, asset_key: 'ship.fishing',
+            current_hp: 5, max_hp: 5, public_state: 'active' as const, is_owner: true,
+            owner_nation: { nation_number: 1, name: '操作国' }, heading: 2, destination: null, version: 3,
+        };
+        const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+            const chunk = chunkFromPath(String(input));
+            if (chunk.chunk_x === 0 && chunk.chunk_y === 0) chunk.cells[0]!.ship = ship;
+            return response(chunk);
+        });
+        vi.stubGlobal('fetch', fetchMock);
+        const map = useMapState();
+        await map.loadAround(mapSpace, 16, 16);
+        map.select(map.visibleCells.value.find((cell) => cell.ship?.id === 9)!);
+
+        let release!: (value: Response) => void;
+        fetchMock.mockImplementationOnce(() => new Promise<Response>((resolve) => { release = resolve; }));
+        const refresh = map.renameShip({ id: 9, custom_name: '新しい名前' });
+        await Promise.resolve();
+        expect(fetchMock).toHaveBeenCalledTimes(10);
+        map.updateShipCourse({ id: 9, heading: null, destination: { x: 20, y: 18 }, version: 4 });
+
+        const oldChunk = chunkFromPath('/chunks/0/0');
+        oldChunk.cells = [{ ...oldChunk.cells[0]!, ship: { ...ship, custom_name: '新しい名前' }, aria_label: '船 新しい名前 漁船 HP 5/5' }];
+        release(response(oldChunk));
+        await refresh;
+        const expected = { custom_name: '新しい名前', heading: null, destination: { x: 20, y: 18 }, version: 4 };
+        expect(map.selected.value?.ship).toMatchObject(expected);
+        expect(map.visibleCells.value.find((cell) => cell.ship?.id === 9)?.ship).toMatchObject(expected);
+        expect(map.selected.value?.aria_label).toBe(oldChunk.cells[0]!.aria_label);
+    });
+
+    it.each(['ship', 'capital'] as const)('keeps the latest %s name and label when rename responses arrive out of order', async (kind) => {
+        const namedChunk = (name: string) => {
+            const chunk = chunkFromPath('/chunks/0/0');
+            chunk.cells = [{ ...chunk.cells[0]!, aria_label: `${kind} ${name}`,
+                facility: kind === 'capital' ? 'capital' : null,
+                capital_name: kind === 'capital' ? name : null,
+                ship: kind === 'ship' ? {
+                    id: 9, key: 'fishing', name: '漁船', custom_name: name, asset_key: 'ship.fishing',
+                    current_hp: 5, max_hp: 5, public_state: 'active', is_owner: true,
+                    owner_nation: { nation_number: 1, name: '操作国' }, heading: null, destination: null, version: 4,
+                } : null,
+            }];
+            return chunk;
+        };
+        const fetchMock = vi.fn(async (input: RequestInfo | URL) => response(
+            String(input).endsWith('/chunks/0/0') ? namedChunk('最初') : chunkFromPath(String(input)),
+        ));
+        vi.stubGlobal('fetch', fetchMock);
+        const map = useMapState();
+        await map.loadAround(mapSpace, 0, 0);
+        const rename = (name: string) => kind === 'ship'
+            ? map.renameShip({ id: 9, custom_name: name })
+            : map.renameCapital({ x: 0, y: 0, capital_name: name });
+
+        let release!: (value: Response) => void;
+        fetchMock.mockImplementationOnce(() => new Promise<Response>((resolve) => { release = resolve; }));
+        const olderRefresh = rename('一回目');
+        await Promise.resolve();
+        fetchMock.mockResolvedValueOnce(response(namedChunk('二回目')));
+        await rename('二回目');
+        release(response(namedChunk('一回目')));
+        await olderRefresh;
+
+        expect(kind === 'ship' ? map.selected.value?.ship?.custom_name : map.selected.value?.capital_name).toBe('二回目');
+        expect(map.selected.value?.aria_label).toBe(`${kind} 二回目`);
+        expect(map.visibleCells.value.find((cell) => cell.x === 0 && cell.y === 0)?.aria_label).toBe(`${kind} 二回目`);
+    });
+
+    it('refreshes the renamed ship and capital with their authoritative accessible labels without clearing the map', async () => {
+        let shipName: string | null = null;
+        let capitalName: string | null = '旧都';
+        let shipLabel = '名前なしの船、HP 5/5';
+        let capitalLabel = '旧都 首都、所有 操作国';
+        const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+            const chunk = chunkFromPath(String(input));
+            if (chunk.chunk_x === 0 && chunk.chunk_y === 0) {
+                chunk.cells = [{ ...chunk.cells[0]!, aria_label: shipLabel, ship: {
+                    id: 9, key: 'fishing', name: '漁船', custom_name: shipName, asset_key: 'ship.fishing',
+                    current_hp: 5, max_hp: 5, public_state: 'active', is_owner: true,
+                    owner_nation: { nation_number: 1, name: '操作国' }, heading: null, destination: null, version: 4,
+                } }];
+            }
+            if (chunk.chunk_x === 1 && chunk.chunk_y === 1) {
+                chunk.cells = [{ ...chunk.cells[0]!, facility: 'capital', capital_name: capitalName, aria_label: capitalLabel }];
+            }
+            return response(chunk);
+        });
+        vi.stubGlobal('fetch', fetchMock);
+        const map = useMapState();
+        await map.loadAround(mapSpace, 16, 16);
+        map.select(map.visibleCells.value.find((cell) => cell.ship?.id === 9)!);
+
+        shipName = 'エスポワール';
+        shipLabel = '船 エスポワール 漁船、HP 5/5';
+        await map.renameShip({ id: 9, custom_name: shipName });
+        expect(map.selected.value?.ship).toMatchObject({ custom_name: shipName, version: 4 });
+        expect(map.selected.value?.aria_label).toBe(shipLabel);
+        expect(map.visibleCells.value.find((cell) => cell.ship?.id === 9)?.aria_label).toBe(shipLabel);
+
+        map.select(map.visibleCells.value.find((cell) => cell.x === 16 && cell.y === 16)!);
+        capitalName = null;
+        capitalLabel = '首都、所有 操作国';
+        await map.renameCapital({ x: 16, y: 16, capital_name: capitalName });
+        expect(map.selected.value?.capital_name).toBeNull();
+        expect(map.selected.value?.aria_label).toBe(capitalLabel);
+        expect(map.visibleCells.value.find((cell) => cell.x === 16 && cell.y === 16)?.aria_label).toBe(capitalLabel);
+        expect(map.visibleCells.value).toHaveLength(9);
+        expect(fetchMock).toHaveBeenCalledTimes(11);
+        expect(fetchMock.mock.calls.filter(([path]) => String(path).endsWith('/chunks/0/0'))).toHaveLength(2);
+        expect(fetchMock.mock.calls.filter(([path]) => String(path).endsWith('/chunks/1/1'))).toHaveLength(2);
     });
 });

@@ -24,8 +24,12 @@ final class CurrentDatabaseBaseline
 
     public const MARKET_SYNTHESIS_MIGRATION = '2026_10_18_000000_add_market_synthesis_and_warehouse_expansion';
 
+    public const INDEFINITE_MARKET_MIGRATION = '2026_10_18_020000_make_underground_market_listings_indefinite';
+
+    public const GIVEN_NAMES_MIGRATION = '2026_10_19_000000_add_ship_and_capital_given_names';
+
     /** @return array<string, string> */
-    public function structure(bool $excludeCapitalRelocationTurn = false, bool $excludeEcopo = false): array
+    public function structure(bool $excludeCapitalRelocationTurn = false, bool $excludeEcopo = false, bool $excludeGivenNames = false): array
     {
         if (DB::connection()->getDriverName() !== 'pgsql') {
             throw new RuntimeException('The current baseline requires PostgreSQL.');
@@ -48,6 +52,8 @@ SELECT 'table:' || c.relname AS object_key,
            WHERE a.attrelid = c.oid AND a.attnum > 0 AND NOT a.attisdropped
              AND NOT (c.relname = 'nations' AND a.attname = 'last_capital_relocation_turn' AND CAST(? AS boolean))
              AND NOT (c.relname = 'nations' AND a.attname = 'ecopo' AND CAST(? AS boolean))
+             AND NOT (((c.relname = 'ships' AND a.attname = 'custom_name')
+               OR (c.relname = 'nations' AND a.attname = 'capital_name')) AND CAST(? AS boolean))
          ), '[]'::jsonb),
          'constraints', COALESCE((
            SELECT jsonb_agg(jsonb_build_array(
@@ -88,7 +94,7 @@ SELECT 'function:' || p.proname || '(' || pg_get_function_identity_arguments(p.o
 FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
 WHERE n.nspname = 'public' AND p.prokind = 'f'
 ORDER BY object_key
-SQL, [$excludeCapitalRelocationTurn, $excludeEcopo, $excludeEcopo]);
+SQL, [$excludeCapitalRelocationTurn, $excludeEcopo, $excludeGivenNames, $excludeEcopo]);
         $objects = [];
         foreach ($rows as $row) {
             $objects[$row->object_key] = hash('sha256', $row->definition);
@@ -106,9 +112,16 @@ SQL, [$excludeCapitalRelocationTurn, $excludeEcopo, $excludeEcopo]);
             JSON_THROW_ON_ERROR,
         );
         $applied = DB::table('migrations')->pluck('migration')->all();
+        $hasGivenNames = in_array(self::GIVEN_NAMES_MIGRATION, $applied, true);
+        if ($hasGivenNames) {
+            if (! in_array(self::MIGRATION, $applied, true)) {
+                throw new RuntimeException('Given names require the accepted 5.0.1 baseline marker first.');
+            }
+            $this->assertGivenNamesExtension();
+        }
         $hasEcopo = in_array(self::ECOPO_MIGRATION, $applied, true);
         if ($hasEcopo) {
-            $this->assertEcopoExtension();
+            $this->assertEcopoExtension($hasGivenNames);
         }
         $hasCapitalRelocationTurn = in_array(self::CAPITAL_RELOCATION_MIGRATION, $applied, true);
         if ($hasCapitalRelocationTurn) {
@@ -120,7 +133,8 @@ SELECT jsonb_build_array(
     format_type(a.atttypid, a.atttypmod), a.attnotnull,
     pg_get_expr(d.adbin, d.adrelid), a.attidentity, a.attgenerated, coll.collname,
     a.attnum = (SELECT max(attnum) FROM pg_attribute WHERE attrelid = c.oid AND NOT attisdropped
-        AND NOT (attname = 'ecopo' AND CAST(? AS boolean)))
+        AND NOT (attname = 'ecopo' AND CAST(? AS boolean))
+        AND NOT (attname = 'capital_name' AND CAST(? AS boolean)))
 )::text AS definition
 FROM pg_attribute a
 JOIN pg_class c ON c.oid = a.attrelid
@@ -129,7 +143,7 @@ LEFT JOIN pg_attrdef d ON d.adrelid = a.attrelid AND d.adnum = a.attnum
 LEFT JOIN pg_collation coll ON coll.oid = a.attcollation
 WHERE n.nspname = 'public' AND c.relname = 'nations'
   AND a.attname = 'last_capital_relocation_turn' AND NOT a.attisdropped
-SQL, [$hasEcopo]);
+SQL, [$hasEcopo, $hasGivenNames]);
             if ($column?->definition !== '["bigint", false, null, "", "", null, true]') {
                 throw new RuntimeException('Database differs from the capital relocation history extension.');
             }
@@ -137,7 +151,11 @@ SQL, [$hasEcopo]);
         // Validate the appended column separately so every accepted baseline's
         // original column order, defaults, constraints, indexes and triggers
         // still match their complete fingerprints without rebuilding a baseline.
-        $actual = $this->structure(excludeCapitalRelocationTurn: $hasCapitalRelocationTurn, excludeEcopo: $hasEcopo);
+        $actual = $this->structure(
+            excludeCapitalRelocationTurn: $hasCapitalRelocationTurn,
+            excludeEcopo: $hasEcopo,
+            excludeGivenNames: $hasGivenNames,
+        );
         if (in_array(self::MONSTER_COUNT_MIGRATION, $applied, true)) {
             if (! in_array(self::MIGRATION, $applied, true)) {
                 throw new RuntimeException('Monster count snapshots require the accepted 5.0.1 baseline marker first.');
@@ -210,6 +228,19 @@ SQL, [$hasEcopo]);
                 ksort($expected[$key]);
             }
         }
+        if (in_array(self::INDEFINITE_MARKET_MIGRATION, $applied, true)) {
+            if (! in_array(self::MARKET_SYNTHESIS_MIGRATION, $applied, true)) {
+                throw new RuntimeException('Indefinite listings require the market schema first.');
+            }
+            $extension = json_decode(
+                (string) file_get_contents(database_path('baselines/indefinite_market_structure.json')),
+                true, 512, JSON_THROW_ON_ERROR,
+            );
+            foreach ($expected as $key => $variant) {
+                $expected[$key] = array_replace($variant, $extension);
+                ksort($expected[$key]);
+            }
+        }
         // Production's migration ancestry and a fresh dump differ in physical
         // column order and PostgreSQL's literal-array CHECK representation.
         // Match complete reviewed structures; never normalize or omit guarantees.
@@ -223,13 +254,36 @@ SQL, [$hasEcopo]);
         throw new RuntimeException('Database differs from the accepted 5.0.1 baseline: '.implode(', ', $differences).'. Do not reset or repair data automatically.');
     }
 
-    private function assertEcopoExtension(): void
+    private function assertGivenNamesExtension(): void
+    {
+        // Their position is irrelevant: structure() leaves both columns out.
+        foreach (['ships' => 'custom_name', 'nations' => 'capital_name'] as $table => $name) {
+            $column = DB::selectOne(<<<'SQL'
+SELECT jsonb_build_array(
+    format_type(a.atttypid, a.atttypmod), a.attnotnull,
+    pg_get_expr(d.adbin, d.adrelid), a.attidentity, a.attgenerated, coll.collname
+)::text AS definition
+FROM pg_attribute a
+JOIN pg_class c ON c.oid = a.attrelid
+JOIN pg_namespace n ON n.oid = c.relnamespace
+LEFT JOIN pg_attrdef d ON d.adrelid = a.attrelid AND d.adnum = a.attnum
+LEFT JOIN pg_collation coll ON coll.oid = a.attcollation
+WHERE n.nspname = 'public' AND c.relname = ? AND a.attname = ? AND NOT a.attisdropped
+SQL, [$table, $name]);
+            if ($column?->definition !== '["character varying(16)", false, null, "", "", "default"]') {
+                throw new RuntimeException('Database differs from the given names extension.');
+            }
+        }
+    }
+
+    private function assertEcopoExtension(bool $hasGivenNames): void
     {
         $column = DB::selectOne(<<<'SQL'
 SELECT jsonb_build_array(
     format_type(a.atttypid, a.atttypmod), a.attnotnull,
     pg_get_expr(d.adbin, d.adrelid), a.attidentity, a.attgenerated, coll.collname,
-    a.attnum = (SELECT max(attnum) FROM pg_attribute WHERE attrelid = c.oid AND NOT attisdropped)
+    a.attnum = (SELECT max(attnum) FROM pg_attribute WHERE attrelid = c.oid AND NOT attisdropped
+        AND NOT (attname = 'capital_name' AND CAST(? AS boolean)))
 )::text AS definition
 FROM pg_attribute a
 JOIN pg_class c ON c.oid = a.attrelid
@@ -237,7 +291,7 @@ JOIN pg_namespace n ON n.oid = c.relnamespace
 LEFT JOIN pg_attrdef d ON d.adrelid = a.attrelid AND d.adnum = a.attnum
 LEFT JOIN pg_collation coll ON coll.oid = a.attcollation
 WHERE n.nspname = 'public' AND c.relname = 'nations' AND a.attname = 'ecopo' AND NOT a.attisdropped
-SQL);
+SQL, [$hasGivenNames]);
         $constraint = DB::selectOne(<<<'SQL'
 SELECT pg_get_constraintdef(oid) AS definition, convalidated
 FROM pg_constraint WHERE conrelid = 'public.nations'::regclass AND conname = 'nations_ecopo_nonnegative'

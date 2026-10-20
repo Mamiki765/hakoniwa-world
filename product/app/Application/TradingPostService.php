@@ -278,9 +278,7 @@ final class TradingPostService
             if ($lockedListing->seller_nation_id === $lockedNation->id) {
                 throw new DomainException('自分自身の出品には入札できません。');
             }
-            $minimum = $lockedListing->current_price === null
-                ? $lockedListing->start_price
-                : $lockedListing->current_price + $rules->minimumIncrementMoney;
+            $minimum = $this->minimumBid($lockedListing, $rules);
             if ($amount < $minimum) {
                 throw new DomainException("入札額は{$minimum}億円以上で指定してください。");
             }
@@ -415,6 +413,13 @@ final class TradingPostService
         } finally {
             $this->worldMutationLock->release($world);
         }
+    }
+
+    private function minimumBid(AuctionListing $listing, TradingPostRules $rules): int
+    {
+        return $listing->current_price === null
+            ? $listing->start_price
+            : $listing->current_price + $rules->minimumIncrementMoney;
     }
 
     private function assertListingInput(
@@ -600,9 +605,7 @@ final class TradingPostService
             ],
             'start_price' => $listing->start_price,
             'current_price' => $listing->current_price,
-            'minimum_bid' => $listing->current_price === null
-                ? $listing->start_price
-                : $listing->current_price + $rules->minimumIncrementMoney,
+            'minimum_bid' => $this->minimumBid($listing, $rules),
             'bid_count' => $listing->bid_count,
             'highest_bidder_nation_id' => $listing->highest_bidder_nation_id,
             'highest_bidder' => $listing->highestBidderNation instanceof Nation

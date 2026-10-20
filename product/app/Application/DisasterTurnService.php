@@ -1460,6 +1460,8 @@ final class DisasterTurnService
             'minimum_population_applied' => $minimumPopulationAdjustment > 0,
             'minimum_population_adjustment' => $minimumPopulationAdjustment,
             'capital_identity_preserved' => true,
+            'capital_name' => $cell->owner_nation_id === null ? null
+                : Nation::query()->whereKey($cell->owner_nation_id)->value('capital_name'),
             ...$extra,
         ]);
 

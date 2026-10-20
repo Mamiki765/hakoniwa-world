@@ -19,6 +19,7 @@ final class PublicWorldService
     public function __construct(
         private readonly MoneyFormatter $money,
         private readonly NationBasicStatusProjection $basicStatus,
+        private readonly NationActivityProjection $activity,
         private readonly TurnScheduleStatus $turnSchedule,
         private readonly PublicRankingAchievementProjection $achievements,
         private readonly HakoniwaCalendar $calendar,
@@ -194,15 +195,8 @@ final class PublicWorldService
     private function publicNationFields(Nation $nation, World $world): array
     {
         $estimate = $this->money->publicEstimate((int) $nation->money);
-        $financeOnlyTurns = (int) $nation->idle_counter;
-        $activityStatus = match ($nation->state) {
-            'dormant' => 'dormant',
-            'recovery' => 'recovery',
-            default => $financeOnlyTurns > 0 ? 'finance_only' : 'active',
-        };
-        $recoveryRemainingTurns = $nation->state === 'recovery' && $nation->resume_at_turn !== null
-            ? max(0, (int) $nation->resume_at_turn - (int) $world->current_turn - 1)
-            : null;
+        $activity = $this->activity->forNation($nation, (int) $world->current_turn);
+        $recoveryRemainingTurns = $activity['recovery_remaining_turns'];
         $stateLabel = match ($nation->state) {
             'dormant' => '休眠',
             'recovery' => '休戦中：残り'.$recoveryRemainingTurns.'ターン',
@@ -231,9 +225,9 @@ final class PublicWorldService
             'factory_capacity_people' => (int) ($nation->getAttribute('factory_capacity_people') ?? 0),
             'mine_capacity_people' => (int) ($nation->getAttribute('mine_capacity_people') ?? 0),
             'registered_turn' => (int) $nation->registered_turn,
-            'survival_turns' => max(0, (int) $world->current_turn - (int) $nation->registered_turn),
-            'finance_only_turns' => $financeOnlyTurns,
-            'activity_status' => $activityStatus,
+            'survival_turns' => $activity['survival_turns'],
+            'finance_only_turns' => $activity['finance_only_turns'],
+            'activity_status' => $activity['activity_status'],
             'last_updated_turn' => $world->current_turn,
             ...$this->monsterCounts->forNation($world, $nation->id),
         ];

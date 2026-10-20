@@ -2,6 +2,7 @@
 
 namespace App\Http\Resources;
 
+use App\Application\NationActivityProjection;
 use App\Application\NationBasicStatusProjection;
 use App\Application\NationResourceForecastProjection;
 use App\Domain\Disaster\LandSubsidenceThresholdResolver;
@@ -49,6 +50,7 @@ class NationResource extends JsonResource
         }
         $foodInUse = $foodTotal + $foodEscrow;
         $currentTurn = (int) $this->world()->value('current_turn');
+        $activity = app(NationActivityProjection::class)->forNation($this->resource, $currentTurn);
         $lifecycle = config('hakoniwa.ruleset.nation_lifecycle', []);
         $turnsPerDay = is_int($lifecycle['turns_per_day'] ?? null) ? $lifecycle['turns_per_day'] : 12;
         $abandonmentThreshold = is_int($lifecycle['abandonment_idle_threshold'] ?? null)
@@ -56,9 +58,7 @@ class NationResource extends JsonResource
         $dormancyRemainingTurns = $this->state === 'dormant' && $this->resume_at_turn !== null
             ? max(0, (int) $this->resume_at_turn - $currentTurn - 1)
             : null;
-        $recoveryRemainingTurns = $this->state === 'recovery' && $this->resume_at_turn !== null
-            ? max(0, (int) $this->resume_at_turn - $currentTurn - 1)
-            : null;
+        $recoveryRemainingTurns = $activity['recovery_remaining_turns'];
         $manualDays = $this->state_reason === 'manual'
             && $this->state_started_turn !== null && $this->resume_at_turn !== null
                 ? intdiv((int) $this->resume_at_turn - (int) $this->state_started_turn - 1, $turnsPerDay)
@@ -71,6 +71,7 @@ class NationResource extends JsonResource
             'nation_number' => $this->nation_number, 'name' => $this->name,
             'owner_name' => $this->owner_name,
             'comment' => $this->profile_comment,
+            'capital_name' => $this->capital_name,
             'money' => $this->when($isOwner, (int) $this->money),
             'ecopo' => $this->when($isOwner, (int) $this->ecopo),
             'money_display' => $isOwner ? $money->exact((int) $this->money) : $publicMoney['display'],
@@ -104,13 +105,9 @@ class NationResource extends JsonResource
             'winter_theme_active' => $this->state === 'dormant',
             'current_turn' => $currentTurn,
             'registered_turn' => (int) $this->registered_turn,
-            'survival_turns' => max(0, $currentTurn - (int) $this->registered_turn),
-            'finance_only_turns' => (int) $this->idle_counter,
-            'activity_status' => match ($this->state) {
-                'dormant' => 'dormant',
-                'recovery' => 'recovery',
-                default => (int) $this->idle_counter > 0 ? 'finance_only' : 'active',
-            },
+            'survival_turns' => $activity['survival_turns'],
+            'finance_only_turns' => $activity['finance_only_turns'],
+            'activity_status' => $activity['activity_status'],
             'total_population' => $basicStatus['total_population'],
             'territory_cell_count' => $basicStatus['territory_cell_count'],
             'owned_land_cells' => $basicStatus['owned_land_cells'],

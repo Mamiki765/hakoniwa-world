@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref } from 'vue';
 import { apiEnvelope } from '../api/client';
+import { shipListLabel } from '../formatters/givenName';
 import { shipInstructionLabel } from '../formatters/shipInstruction';
 import type { OwnShipStatus } from '../types';
 
@@ -64,7 +65,7 @@ function closeOnBackdrop(event: MouseEvent): void {
             <p v-else-if="error" class="status error" role="alert">{{ error }}</p>
             <p v-else-if="ships.length === 0">生存している船はありません。</p>
             <ul v-else class="ship-status-list">
-                <li v-for="ship in ships" :key="ship.id">{{ ship.name }} ({{ ship.x }},{{ ship.y }}) HP{{ ship.current_hp }}/{{ ship.max_hp }} {{ shipInstructionLabel(ship, ship.movement_mode) }}</li>
+                <li v-for="ship in ships" :key="ship.id">{{ shipListLabel(ship) }} HP{{ ship.current_hp }}/{{ ship.max_hp }} {{ shipInstructionLabel(ship, ship.movement_mode) }}</li>
             </ul>
             <button type="button" :disabled="loading" @click="load">更新</button>
         </dialog>

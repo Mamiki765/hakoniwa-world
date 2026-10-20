@@ -20,7 +20,7 @@ describe('ship status window', () => {
         ];
         vi.mocked(apiEnvelope).mockResolvedValueOnce({ data: [
             fishing,
-            { ...fishing, id: 2, name: '探検船', heading: 1, current_hp: 1, max_hp: 2 },
+            { ...fishing, id: 2, name: '探検船', custom_name: 'エスポワール', heading: 1, current_hp: 1, max_hp: 2 },
             { ...fishing, id: 3, name: '軍艦', movement_mode: 'heading_only', max_hp: 5 },
             { ...fishing, id: 4, name: '軍艦', movement_mode: 'heading_only', destination: { x: 3, y: -1 }, max_hp: 5 },
         ], meta: { ship_types: types } }).mockResolvedValueOnce({ data: [], meta: {
@@ -41,6 +41,9 @@ describe('ship status window', () => {
         // 指示がなければ移動方式で表示が分かれる(おまかせ / 軍艦の待機)。目的地は進路より先に出す。
         expect(rows[0]).toContain('おまかせ');
         expect(rows[1]).toContain('北東');
+        // 名前は船種の前に添えるだけ。名前のない船は今まで通り。
+        expect(rows[1]).toMatch(/^エスポワール 探検船 \(-2,4\)/);
+        expect(rows[0]).toMatch(/^漁船 \(-2,4\)/);
         expect(rows[2]).toContain('待機');
         expect(rows[3]).toContain('目的地 (3,-1)');
         expect(rows[3]).not.toContain('待機');

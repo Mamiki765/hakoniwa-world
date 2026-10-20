@@ -904,8 +904,13 @@ final class RulesetAuthoringValidator
         }
         $marketPath = 'ruleset.underground_market';
         $market = $this->map($settings['underground_market'] ?? null, $marketPath);
-        $this->requireKeys($market, ['listing_limit', 'duration_hours', 'proceeds_numerator', 'proceeds_denominator', 'page_size'], $marketPath);
-        foreach (['listing_limit', 'duration_hours', 'proceeds_denominator', 'page_size'] as $key) {
+        $indefinite = CanonicalRulesetGeneration::fromSettings($settings) >= 41;
+        $expirationKey = $indefinite ? 'listing_expiration' : 'duration_hours';
+        $this->requireKeys($market, ['listing_limit', $expirationKey, 'proceeds_numerator', 'proceeds_denominator', 'page_size'], $marketPath);
+        if ($indefinite && $market['listing_expiration'] !== 'none') {
+            throw new DomainException($marketPath.'.listing_expiration must be none.');
+        }
+        foreach (['listing_limit', ...($indefinite ? [] : ['duration_hours']), 'proceeds_denominator', 'page_size'] as $key) {
             $this->integer($market[$key], $marketPath.'.'.$key, 1);
             $this->persistedNonNegativeInteger($market[$key], $marketPath.'.'.$key);
         }

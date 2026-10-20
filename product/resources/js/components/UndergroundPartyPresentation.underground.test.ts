@@ -709,7 +709,7 @@ describe('Underground party presentation controls', () => {
                 return Promise.resolve(response({
                     id: 'vault-skip', duplicate: false, content_type: 'hunting_ground', content_key: 'shining_kingdom_vault', execution_count: 10,
                     ticket_cost: 10, xp_awarded: 8_000, shards_awarded: 2_220, combat_level_before: 20, combat_level_after: 20,
-                    rewards: { equipment_granted_count: 10, vault_full_count: 0, drops: [], ticket_balance_after: 19_990 },
+                    rewards: { equipment_granted_count: 10, vault_full_count: 0, drops: [], ticket_balance_after: 19_990, distorted_stones: 7 },
                     settled_at: '2026-09-09T00:00:00Z',
                 }));
             }
@@ -758,6 +758,8 @@ describe('Underground party presentation controls', () => {
         expect(requests).toHaveLength(1);
         expect(requests[0]?.execution_count).toBe(10);
         expect(requests[0]?.hunting_ground_key).toBe('shining_kingdom_vault');
+        const stoneLabel = wrapper.findAll('dt').find((label) => label.text() === '歪んだ輝石');
+        expect(stoneLabel?.element.nextElementSibling?.textContent).toBe('+7個');
         await categories[1]!.get('.underground-skip-custom input').setValue('37');
         expect(categories[1]!.get('.underground-skip-plan').text()).toContain('370');
         await categories[1]!.get('.underground-skip-custom button').trigger('click');
@@ -766,6 +768,7 @@ describe('Underground party presentation controls', () => {
         expect(requests).toHaveLength(2);
         expect(requests[1]?.execution_count).toBe(37);
         expect(requests[1]?.trial_key).toBe('trial_01');
+        expect(wrapper.findAll('dt').some((label) => label.text() === '歪んだ輝石')).toBe(false);
         expect(wrapper.get('.underground-skip-result').text()).toContain('37');
         wrapper.unmount();
     });

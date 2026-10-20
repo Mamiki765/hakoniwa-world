@@ -17,6 +17,7 @@ use Illuminate\Database\Eloquent\Relations\HasOne;
  * @property string $name
  * @property string $owner_name
  * @property string $profile_comment
+ * @property string|null $capital_name
  * @property int $ecopo
  * @property int $money
  * @property string $state
@@ -36,7 +37,7 @@ class Nation extends Model
         'world_id', 'nation_number', 'registered_turn', 'name', 'owner_name', 'profile_comment', 'money', 'state',
         'idle_counter', 'karma', 'state_reason', 'state_started_turn', 'resume_at_turn',
         'population_high_water', 'ecopo',
-        'last_capital_relocation_turn',
+        'last_capital_relocation_turn', 'capital_name',
     ];
 
     /** @return array<string, string> */

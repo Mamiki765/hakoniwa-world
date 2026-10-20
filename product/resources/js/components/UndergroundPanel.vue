@@ -13,17 +13,17 @@ import { ApiError, api } from '../api/client';
 import UndergroundAiEditor from './UndergroundAiEditor.vue';
 import UndergroundSkillTree from './UndergroundSkillTree.vue';
 import type { UndergroundSkillTree as SkillTree } from './undergroundSkills';
-import UndergroundBattlePlayback, { type PlaybackCombatant, type PlaybackHit, type PlaybackMpChange, type PlaybackRound, type PlaybackStep, type PlaybackVitals } from './UndergroundBattlePlayback.vue';
-import UndergroundCombatantCard from './UndergroundCombatantCard.vue';
+import UndergroundBattleLog from './UndergroundBattleLog.vue';
+import { battleRoundCount, type Battle } from './undergroundBattleLog';
 import UndergroundEquipmentShop from './UndergroundEquipmentShop.vue';
 import UndergroundMarket, { type MarketAttention } from './UndergroundMarket.vue';
 import UndergroundEquipmentVault from './UndergroundEquipmentVault.vue';
 import UndergroundEquipmentPolishing from './UndergroundEquipmentPolishing.vue';
 import UndergroundPartyBuilder, { type PartyCandidate } from './UndergroundPartyBuilder.vue';
-import UndergroundPartyBattleCards from './UndergroundPartyBattleCards.vue';
 import { shouldReleasePendingExplorationRequest } from './undergroundExplorationPending';
 import { renderUndergroundStory } from '../undergroundStoryMarkup';
 import type { EquipmentItem, EquipmentSlot } from './EquipmentItemCard.vue';
+import { equipmentSlotLabel, equipmentSlots } from './undergroundEquipmentSlots';
 import type { UndergroundAiConfiguration } from './undergroundAi';
 import type { DailyQuestProgress, MerchantConversationTopic } from '../types';
 
@@ -34,187 +34,6 @@ type Stage = 'not_started' | 'initial_descent' | 'tutorial_ready' | 'escape_pend
     | 'special_loss_pending' | 'special_loss_complete' | 'shop_explanation'
     | 'contract_ready' | 'crystal_selection' | 'growth_path_selected' | 'underground_open';
 
-interface SimpleAction {
-    round: number;
-    side: string;
-    actor_name?: string;
-    target_name?: string;
-    action_label?: string;
-    amount: number;
-}
-
-interface RoundAction {
-    type: string;
-    side: string;
-    kind?: string;
-    action?: string;
-    action_key?: string;
-    effect_type?: string;
-    action_id?: string | null;
-    actor_id?: string | null;
-    target_id?: string | null;
-    target_ids?: string[];
-    actor_name?: string;
-    target_name?: string | null;
-    target_names?: string[];
-    skill_name?: string | null;
-    skill_label?: string | null;
-    action_label?: string | null;
-    label: string;
-    amount?: number;
-    critical?: boolean;
-    evaded?: boolean;
-    guarded?: boolean;
-    parried?: boolean;
-    barrier_absorbed?: number;
-    complete_guarded?: boolean;
-    agility_combo_hits?: number | null;
-    lines?: string[];
-    revived?: boolean;
-    revive_hp_bps?: number | null;
-    important?: boolean;
-    countdown?: number;
-    // MPが増減した行にだけ付く。古い記録には無い（無いものを推測しない）。
-    mp_source?: string;
-    actor_mp?: number;
-    mp_recovered?: number;
-    major_telegraph?: boolean;
-    state?: RoundState | null;
-}
-
-interface RoundState {
-    hp: number;
-    max_hp: number;
-    mp: number;
-    barrier: number;
-    statuses: Array<{ label: string; remaining: number; stacks: number }>;
-    role_stacks: { fighting_spirit: number; grace: number };
-    taunt?: { label?: string; remaining?: number } | null;
-    awakened?: boolean;
-    awakening_technique_used?: boolean;
-    awakening_guard_rounds_remaining?: number;
-    awakening_lifesteal_rounds_remaining?: number;
-    awakening_unlocked?: boolean;
-    awakening_gauge?: number;
-    awakening_gauge_max?: number;
-}
-
-interface RoundStatePair {
-    player: RoundState;
-    enemy: RoundState;
-}
-
-type StateEnvelope = RoundStatePair | Record<string, RoundState>;
-
-interface ImageReference {
-    url?: string | null;
-    credit?: string | null;
-    creation_method_label?: string | null;
-}
-
-interface ImageReferences {
-    compact?: ImageReference | null;
-    awakening_compact?: ImageReference | null;
-    normal?: ImageReference | null;
-    awakening?: ImageReference | null;
-}
-
-interface CombatRound {
-    round: number;
-    actions: RoundAction[];
-    start_state?: StateEnvelope | null;
-    end_state: StateEnvelope | null;
-    state_timing?: 'battle_start' | 'previous_round_end' | string;
-}
-
-interface Battle {
-    id: string;
-    history_cursor?: number;
-    context: 'tutorial' | 'scripted_loss' | 'playtest' | 'exploration' | 'trial' | 'guide_duel' | 'event_battle';
-    party?: {
-        members: Array<PartyBattleMember>;
-        enemies?: Array<PartyBattleMember>;
-    } | null;
-    presentation_log_version?: number;
-    portrait_events?: Array<{
-        type: 'start' | 'awakening' | 'final';
-        combatant_id: string;
-        round?: number;
-        event_id?: string;
-        state?: RoundState | null;
-        image_ref?: ImageReference | null;
-        image_refs?: { compact?: ImageReference | null; normal?: ImageReference | null; awakening?: ImageReference | null };
-    }>;
-    player_display_name?: string;
-    encounter_name: string;
-    build_name?: string;
-    result: 'victory' | 'defeat' | 'withdrawal' | 'stalemate';
-    rounds?: number | CombatRound[];
-    rounds_count?: number;
-    xp_awarded: number;
-    shard_delta: number;
-    combat_level_before?: number;
-    combat_level_after?: number;
-    stp_awarded?: number;
-    unspent_stp_after?: number;
-    detail_available: boolean;
-    actions?: SimpleAction[] | CombatRound[] | null;
-    summary?: Record<string, unknown> | null;
-    initial_state?: StateEnvelope | null;
-    player_image_references?: ImageReferences | null;
-    rewards?: { xp: number; shards: number; g?: number; drops?: unknown[] };
-    detail_message?: string | null;
-    trial_run_key?: string | null;
-    trial_battle_index?: number | null;
-    trial_total_battles?: number | null;
-    trial_status?: 'active' | 'withdrawn' | 'defeated' | 'cleared' | null;
-    trial_next_battle_index?: number | null;
-    interbattle_heal_amount?: number;
-    first_clear_story?: {
-        title: string;
-        body: string;
-        system_messages: string[];
-    } | null;
-    challenge_intro?: string | null;
-    milestone_story?: string | null;
-    duel_dialogue?: string[] | null;
-    hunting_ground?: {
-        key: string;
-        name: string;
-        content_identity: string;
-        item_level_min: number;
-        item_level_max: number;
-    } | null;
-    drop?: {
-        identity: string;
-        status: 'none' | 'ineligible' | 'granted' | 'vault_full';
-        item?: {
-            instance_identity: string;
-            name: string;
-            category: 'weapon' | 'armor' | 'accessory' | 'resonance';
-            item_level: number;
-            rarity: 'common' | 'uncommon' | 'rare' | 'epic' | 'unique';
-            rarity_label: string;
-            affixes: Array<{ key: string; label: string; target: string; value: number }>;
-        };
-    } | null;
-    drops?: Array<NonNullable<Battle['drop']>> | null;
-    treasure?: { found: boolean; base_g: number; multiplier: number; total_g: number } | null;
-    shining_kingdom_key?: { label?: string; balance_before: number; entry_cost?: number; awarded: number; balance_after: number } | null;
-    distorted_stones?: number;
-    daily_quest?: DailyQuestProgress;
-}
-
-interface PartyBattleMember {
-    team: 'player' | 'enemy';
-    combatant_id: string;
-    display_name: string;
-    icon_url?: string | null;
-    portrait_url?: string | null;
-    image_references?: ImageReferences | null;
-    state?: RoundState;
-    awakening_state?: 'ready' | 'awakened' | null;
-}
 
 interface HuntingGround {
     key: string;
@@ -574,17 +393,7 @@ const crystalOffer = stories.crystal_offer.body;
 const commonEnding = stories.common_ending.body;
 
 const statLabels = { vitality: '生命', might: '武力', finesse: '技巧', spirit: '精神', agility: '敏捷' } as const;
-const equipmentSlots: EquipmentSlot[] = ['weapon', 'armor', 'accessory_1', 'accessory_2', 'accessory_3', 'resonance'];
-const equipmentSlotLabels: Record<EquipmentSlot, string> = {
-    weapon: '武器',
-    armor: '防具',
-    accessory_1: 'アクセサリー1',
-    accessory_2: 'アクセサリー2',
-    accessory_3: 'アクセサリー3',
-    resonance: '共鳴結晶',
-};
 const huntingGroundPreferenceKey = 'hakoniwa.underground.selected-hunting-ground';
-function equipmentSlotLabel(slot: EquipmentSlot): string { return equipmentSlotLabels[slot]; }
 const props = defineProps<{ secretaryImageUrl?: string | null; userId?: number }>();
 const emit = defineEmits<{
     returnToSecretary: [];
@@ -602,8 +411,6 @@ const battleHistoryLoading = ref(false);
 const battleHistoryHasMore = ref(false);
 const selectedBattle = ref<Battle | null>(null);
 const selectedPartyMemberIds = ref<number[]>([]);
-const detailVisible = ref(true);
-const detailPreferenceKey = 'hakoniwa.underground.battle-detail-visible';
 const lastScrolledBattleId = ref<string | null>(null);
 const lendingEnabled = ref(false);
 const partySelectionHydrated = ref(false);
@@ -777,7 +584,6 @@ let huntingGroundPreferenceHydrated = false;
 const currentBattle = computed(() => selectedBattle.value ?? state.value?.battle ?? null);
 const activeMadMoonStory = computed(() => state.value?.mad_moon?.story ?? null);
 const pendingMadMoonRequest = ref<string | null>(null);
-const currentBattleDrops = computed(() => currentBattle.value?.drops ?? (currentBattle.value?.drop ? [currentBattle.value.drop] : []));
 const otherworldStage = computed(() => state.value?.otherworld?.stages.find(stage => stage.key === selectedOtherworldStage.value));
 const partySelectedIds = computed(() => selectedPartyMemberIds.value);
 const pendingRentalMutation = ref<PendingMutation | null>(null);
@@ -933,188 +739,6 @@ const exploreCooldownSeconds = computed(() => {
     if (!Number.isFinite(timestamp)) return 0;
     return Math.max(0, Math.ceil((timestamp - cooldownNowMs.value) / 1_000));
 });
-const currentPlayerDisplayName = computed(() => currentBattle.value
-    ? playerDisplayName(currentBattle.value)
-    : state.value?.secretary_name ?? '秘書');
-const currentStructuredRounds = computed(() => currentBattle.value ? structuredRounds(currentBattle.value) : []);
-function isStatePair(value: StateEnvelope | null | undefined): value is RoundStatePair {
-    return value !== null
-        && value !== undefined
-        && typeof value === 'object'
-        && 'player' in value
-        && 'enemy' in value;
-}
-function hasStateEnvelope(value: unknown): value is StateEnvelope {
-    return value !== null
-        && value !== undefined
-        && typeof value === 'object'
-        && Object.keys(value).length > 0;
-}
-function partyStateMap(value: StateEnvelope | null | undefined): Record<string, RoundState> | null {
-    return hasStateEnvelope(value) && !isStatePair(value) ? value : null;
-}
-function soloState(value: StateEnvelope | null | undefined, side: 'player' | 'enemy'): RoundState | null {
-    return isStatePair(value) ? value[side] : null;
-}
-const currentPartyActors = computed(() => {
-    const party = currentBattle.value?.party;
-    return party ? [...party.members, ...(party.enemies ?? [])] : [];
-});
-// ---- 再生: 1行動ずつ進めて、カードの上にダメージや回復の数字を出す ----
-const battleMode = ref<'read' | 'play'>('read');
-const playbackCombatants = computed<PlaybackCombatant[]>(() => {
-    const battle = currentBattle.value;
-    if (!battle) return [];
-    if (currentPartyActors.value.length > 0) {
-        return currentPartyActors.value.map((actor) => ({ id: actor.combatant_id, name: actor.display_name, side: actor.team }));
-    }
-    return [
-        { id: 'player', name: currentPlayerDisplayName.value, side: 'player' },
-        { id: 'enemy', name: battle.encounter_name, side: 'enemy' },
-    ];
-});
-
-function playbackVitals(value: StateEnvelope | null | undefined): Record<string, PlaybackVitals> | null {
-    if (!hasStateEnvelope(value)) return null;
-    const entries = Object.entries(value as Record<string, RoundState>);
-    return Object.fromEntries(entries.map(([id, entry]) => [id, Number.isSafeInteger(entry.mp)
-        ? { hp: entry.hp, max_hp: entry.max_hp, mp: entry.mp }
-        : { hp: entry.hp, max_hp: entry.max_hp }]));
-}
-
-// 数字を出す相手は、対象が1人に決まる行動だけ。複数が対象の行動は、合計か1人ぶんかをログから決められないので出さない。
-function playbackHits(action: RoundAction): PlaybackHit[] {
-    const kind = action.type === 'damage' || action.type === 'counter' ? 'damage'
-        : action.type === 'recovery' || action.type === 'revival' ? 'heal' : null;
-    if (kind === null) return [];
-    const targetId = playbackTargetId(action, kind);
-    if (targetId === null) return [];
-    if (action.evaded || action.complete_guarded) return [{ targetId, kind: 'miss', amount: 0, critical: false }];
-    const amount = action.type === 'revival' ? Math.abs(action.amount ?? 0) : action.amount ?? 0;
-    return amount > 0 ? [{ targetId, kind, amount, critical: action.critical === true }] : [];
-}
-
-function playbackTargetId(action: RoundAction, kind: 'damage' | 'heal'): string | null {
-    const party = currentPartyActors.value.length > 0;
-    const ids = action.target_ids?.filter((id) => id !== '') ?? (action.target_id ? [action.target_id] : []);
-    return party ? ids.length === 1 ? ids[0]! : kind === 'heal' && ids.length === 0 ? action.actor_id ?? null : null
-        : soloPlaybackTarget(action, kind);
-}
-
-// 1対1のログは、陣営が「秘書」「対戦相手」という表示名で入っている。名前が一致すればそれを使い、無ければ陣営から決める。
-function soloPlaybackTarget(action: RoundAction, kind: 'damage' | 'heal'): 'player' | 'enemy' | null {
-    const battle = currentBattle.value;
-    if (!battle) return null;
-    if (action.target_id === 'player' || action.target_id === 'enemy') return action.target_id;
-    const sideOf = (name: string | null | undefined): 'player' | 'enemy' | null => {
-        const player = name === currentPlayerDisplayName.value;
-        const enemy = name === battle.encounter_name;
-        return player === enemy ? null : player ? 'player' : 'enemy';
-    };
-    if (action.target_name === currentPlayerDisplayName.value && action.target_name === battle.encounter_name) return null;
-    const named = sideOf(action.target_name);
-    if (named !== null) return named;
-    const actor = action.side === 'player' || action.side === '秘書'
-        ? 'player'
-        : action.side === 'enemy' || action.side === '対戦相手' ? 'enemy' : sideOf(action.actor_name);
-    if (actor === null) return null;
-    return kind === 'heal' ? actor : actor === 'player' ? 'enemy' : 'player';
-}
-
-// 数字を出すMPの増減。技消費・自然回復と、出どころの分からない古い記録は数字を出さない。
-const mpPopupSources = new Set(['skill_recovery', 'awakening_technique']);
-
-function playbackMpOwner(row: RoundAction): string | null {
-    if (currentPartyActors.value.length > 0) {
-        return (row.type === 'mp_recovery' ? row.target_id || row.actor_id : row.actor_id) || null;
-    }
-    // 1対1では、MPが動いた本人はログの陣営で決まる。名前は秘書と敵で同じことがあるので、陣営が無いときだけ使う。
-    if (row.side === 'player' || row.side === '秘書') return 'player';
-    if (row.side === 'enemy' || row.side === '対戦相手') return 'enemy';
-    return row.type === 'mp_recovery' ? soloPlaybackTarget(row, 'heal') : null;
-}
-
-// ひとまとめにした行動の中のMPの行も読む（技の消費は、まとめた先の行動からは見えなくなるため）。
-function playbackMp(rows: RoundAction[]): PlaybackMpChange[] {
-    return rows.flatMap((row): PlaybackMpChange[] => {
-        const value = Number.isSafeInteger(row.actor_mp) ? row.actor_mp! : null;
-        let delta = 0;
-        if (row.type === 'awakening') {
-            if (row.mp_source !== 'awakening') return [];
-            delta = Number.isSafeInteger(row.mp_recovered) ? Math.max(0, row.mp_recovered!) : 0;
-        } else if (row.type === 'mp_cost' || row.type === 'mp_recovery') {
-            const amount = Number.isSafeInteger(row.amount) ? Math.max(0, row.amount!) : 0;
-            if (row.mp_source !== undefined && mpPopupSources.has(row.mp_source)) delta = row.type === 'mp_cost' ? -amount : amount;
-        } else {
-            return [];
-        }
-        const targetId = playbackMpOwner(row);
-        return targetId === null || (delta === 0 && value === null) ? [] : [{ targetId, delta, value }];
-    });
-}
-
-function playbackUpdates(action: RoundAction, end: StateEnvelope | null | undefined): PlaybackStep['updates'] {
-    if (action.type === 'awakening') {
-        const party = currentPartyActors.value.length > 0;
-        const actor = party ? action.actor_id : action.side === 'player' || action.side === '秘書' ? 'player' : null;
-        if (!actor) return [];
-        const snapshot = action.state;
-        if (snapshot && Number.isSafeInteger(snapshot.hp) && Number.isSafeInteger(snapshot.max_hp) && snapshot.max_hp > 0) {
-            return [{ targetId: actor, hp: snapshot.hp, max_hp: snapshot.max_hp }];
-        }
-        // Solo AlphaV1 logs omit the awakening snapshot. Awakening is the only
-        // in-battle max-HP change and fills HP once, so the awakened round-end
-        // maximum also describes that event. Never calculate it from display text.
-        const boundary = party ? null : soloState(end, 'player');
-        if (boundary?.awakened === true && Number.isSafeInteger(boundary.max_hp) && boundary.max_hp > 0) {
-            return [{ targetId: actor, hp: boundary.max_hp, max_hp: boundary.max_hp }];
-        }
-        return [{ targetId: actor, hp: null }];
-    }
-    if (action.type === 'revival' || action.revived === true) {
-        const targetId = playbackTargetId(action, 'heal');
-        const hp = Math.abs(action.amount ?? 0);
-        return targetId !== null && hp > 0 ? [{ targetId, hp }] : [];
-    }
-    const battle = currentBattle.value;
-    if (currentPartyActors.value.length === 0 && battle
-        && ['damage', 'counter', 'recovery'].includes(action.type)
-        && action.target_name === currentPlayerDisplayName.value && action.target_name === battle.encounter_name
-        && playbackTargetId(action, action.type === 'recovery' ? 'heal' : 'damage') === null) {
-        return [{ targetId: 'player', hp: null }, { targetId: 'enemy', hp: null }];
-    }
-    return [];
-}
-
-const playbackRounds = computed<PlaybackRound[]>(() => {
-    const battle = currentBattle.value;
-    if (!battle) return [];
-    return currentStructuredRounds.value.map((round, index) => ({
-        round: round.round,
-        start: playbackVitals(round.start_state) ?? (index === 0 ? playbackVitals(battle.initial_state) : null),
-        end: playbackVitals(round.end_state),
-        steps: actionGroups(round.actions).map((group) => ({
-            text: group.action.countdown ? `${group.action.countdown}` : actionNarrative(group.action, battle),
-            tone: actionTone(group.action),
-            highlight: actionHighlight(group.action),
-            hits: playbackHits(group.action),
-            updates: playbackUpdates(group.action, round.end_state),
-            mp: playbackMp(group.source),
-        })),
-    }));
-});
-const playbackAvailable = computed(() => playbackRounds.value.length > 0 && playbackRounds.value[0]!.start !== null);
-watch(() => currentBattle.value?.id, () => { battleMode.value = 'read'; });
-
-const finalBattleState = computed<StateEnvelope | null>(() => {
-    const summaryFinalState = currentBattle.value?.summary?.final_state;
-    if (hasStateEnvelope(summaryFinalState)) return summaryFinalState;
-    const roundState = [...currentStructuredRounds.value]
-        .reverse()
-        .find((round) => hasStateEnvelope(round.end_state))?.end_state;
-    if (hasStateEnvelope(roundState)) return roundState;
-    return null;
-});
 const growthEnding = computed(() => state.value?.growth_path?.key === 'free_black'
     ? stories.growth_ending.free_black
     : stories.growth_ending.default);
@@ -1172,25 +796,6 @@ const weaponStyleLabels: Record<string, string> = {
     longsword: '長剣',
     crystal_staff: '輝石杖',
 };
-const summaryLabels: Record<string, string> = {
-    result: '結果',
-    damage_dealt: '与ダメージ',
-    damage_received: '被ダメージ',
-    effective_healing: '有効回復',
-    damage_prevented: '防いだダメージ',
-    mp_spent: 'MP消費',
-    mp_natural_recovery: '自然回復MP',
-    mp_skill_recovery: 'スキル回復MP',
-    skill_unavailable_due_to_mp: 'MP不足回数',
-};
-const hiddenSummaryKeys = new Set([
-    'rounds',
-    'player_remaining_hp',
-    'enemy_remaining_hp',
-    'final_mp',
-    'awakening_triggered',
-    'awakening_technique_used',
-]);
 
 watch(() => state.value?.playtest, (playtest) => {
     if (!playtest) return;
@@ -1707,10 +1312,6 @@ function togglePartyMember(candidate: PartyCandidate): void {
     selectedPartyMemberIds.value = current;
 }
 
-function setBattleDetails(visible: boolean): void {
-    detailVisible.value = visible;
-    try { window.localStorage.setItem(detailPreferenceKey, String(detailVisible.value)); } catch { /* optional */ }
-}
 
 async function saveRentalParty(): Promise<void> {
     if (busy.value || pendingExplorationRequest.value) return;
@@ -1923,20 +1524,12 @@ function maximumSkipExecutions(progress: SkipProgress): number {
     );
 }
 
-function shortcutSkipExecutions(progress: SkipProgress, fraction: 0.5 | 1): number {
-    return Math.floor(maximumSkipExecutions(progress) * fraction);
-}
-
 function maximumHuntingGroundSkipExecutions(ground: HuntingGround): number {
     const keyLimit = ground.entry_key_cost > 0
         ? Math.floor(ground.key_balance / ground.entry_key_cost)
         : maximumBulkSkipExecutions;
 
     return Math.min(maximumSkipExecutions(ground.skip), keyLimit);
-}
-
-function shortcutHuntingGroundSkipExecutions(ground: HuntingGround, fraction: 0.5 | 1): number {
-    return Math.floor(maximumHuntingGroundSkipExecutions(ground) * fraction);
 }
 
 function customSkipExecutions(value: string, maximum: number): number | null {
@@ -1946,20 +1539,53 @@ function customSkipExecutions(value: string, maximum: number): number | null {
     return Number.isSafeInteger(count) && count >= 1 && count <= maximum ? count : null;
 }
 
-function plannedSkipCost(value: string, maximum: number, unitCost: number): number {
-    return (customSkipExecutions(value, maximum) ?? 0) * unitCost;
+// The counts each button in the skip dialog would run for the selected target.
+interface SkipPlan {
+    contentType: 'hunting_ground' | 'trial';
+    contentKey: string;
+    disabled: boolean;
+    half: number;
+    maximum: number;
+    custom: number | null;
 }
 
-async function runCustomHuntingGroundSkip(ground: HuntingGround): Promise<void> {
-    const count = customSkipExecutions(customHuntingGroundSkipCount.value, maximumHuntingGroundSkipExecutions(ground));
-    if (count === null) return;
-    await runSkip('hunting_ground', ground.key, count);
+const huntingGroundSkipPlan = computed<SkipPlan | null>(() => {
+    const ground = selectedSkipHuntingGround.value;
+    if (!ground) return null;
+    const maximum = maximumHuntingGroundSkipExecutions(ground);
+
+    return {
+        contentType: 'hunting_ground',
+        contentKey: ground.key,
+        disabled: ground.disabled || skipDisabled(ground.skip),
+        half: Math.floor(maximum * 0.5),
+        maximum,
+        custom: customSkipExecutions(customHuntingGroundSkipCount.value, maximum),
+    };
+});
+
+const trialSkipPlan = computed<SkipPlan | null>(() => {
+    const trial = selectedSkipTrial.value;
+    if (!trial) return null;
+    const maximum = maximumSkipExecutions(trial.skip);
+
+    return {
+        contentType: 'trial',
+        contentKey: trial.key,
+        disabled: skipDisabled(trial.skip),
+        half: Math.floor(maximum * 0.5),
+        maximum,
+        custom: customSkipExecutions(customTrialSkipCount.value, maximum),
+    };
+});
+
+function skipCountUnavailable(plan: SkipPlan, count: number | null): boolean {
+    return plan.disabled || count === null || count < 1 || skipIntentBlocked(plan.contentType, plan.contentKey, count);
 }
 
-async function runCustomTrialSkip(trial: TrialOption): Promise<void> {
-    const count = customSkipExecutions(customTrialSkipCount.value, maximumSkipExecutions(trial.skip));
+async function runPlannedSkip(plan: SkipPlan, count: number | null): Promise<void> {
     if (count === null) return;
-    await runSkip('trial', trial.key, count);
+    await runSkip(plan.contentType, plan.contentKey, count);
 }
 
 function skipIntentBlocked(
@@ -2278,289 +1904,6 @@ async function enter(): Promise<void> {
     }
 }
 
-function battleResultLabel(result: Battle['result']): string {
-    return result === 'victory' ? '勝利' : result === 'defeat' ? '敗北' : result === 'stalemate' ? '決着なし' : '撤退';
-}
-
-function battleRoundCount(battle: Battle): number {
-    return battle.rounds_count ?? (typeof battle.rounds === 'number' ? battle.rounds : battle.rounds?.length ?? 0);
-}
-
-function structuredRounds(battle: Battle): CombatRound[] {
-    if (Array.isArray(battle.rounds)) return battle.rounds;
-    if (Array.isArray(battle.actions) && battle.actions[0] && 'actions' in battle.actions[0]) {
-        return battle.actions as CombatRound[];
-    }
-    return [];
-}
-
-function summaryLabel(key: string): string {
-    return summaryLabels[key] ?? key;
-}
-
-function summaryValue(key: string, value: boolean | number | string): boolean | number | string {
-    return key === 'result' ? battleResultLabel(String(value) as Battle['result']) : value;
-}
-
-function visibleSummary(summary: Record<string, unknown>): Record<string, boolean | number | string> {
-    const entries = Object.entries(summary).filter(([key, value]) => !hiddenSummaryKeys.has(key)
-        && (typeof value === 'boolean' || typeof value === 'number' || typeof value === 'string'));
-
-    return Object.fromEntries(entries) as Record<string, boolean | number | string>;
-}
-
-function simpleActions(battle: Battle): SimpleAction[] {
-    if (!Array.isArray(battle.actions) || (battle.actions[0] && 'actions' in battle.actions[0])) return [];
-    return battle.actions as SimpleAction[];
-}
-
-function simpleRoundNumbers(battle: Battle): number[] {
-    return [...new Set(simpleActions(battle).map((action) => action.round))];
-}
-
-function playerDisplayName(battle: Battle): string {
-    return battle.player_display_name ?? state.value?.secretary_name ?? '秘書';
-}
-
-function imageUrl(reference: ImageReference | string | null | undefined): string | null {
-    if (typeof reference === 'string') return reference;
-
-    return reference?.url ?? null;
-}
-
-function battlePlayerImageUrl(battle: Battle, awakened = false): string | null {
-    const references = battle.player_image_references;
-    if (!references) return null;
-
-    return awakened
-        ? imageUrl(references.awakening) ?? imageUrl(references.normal)
-        : imageUrl(references.normal);
-}
-
-function roundHasAwakening(round: CombatRound): boolean {
-    return round.actions.some((action) => action.type === 'awakening'
-        || action.type === 'awakening_technique'
-        || action.kind === 'awakening'
-        || action.kind === 'awakening_technique');
-}
-
-function roundStartLabel(round: CombatRound): string {
-    return round.round === 1 || round.state_timing === 'battle_start'
-        ? `第${round.round}ラウンド 開始時`
-        : `第${round.round}ラウンド（前ラウンド終了時）`;
-}
-
-function actorName(side: string, battle: Battle): string {
-    return side === '秘書' || side === 'player'
-        ? playerDisplayName(battle)
-        : side === '対戦相手' || side === 'enemy'
-            ? battle.encounter_name
-            : '戦闘';
-}
-
-function targetName(side: string, battle: Battle): string {
-    return side === '秘書' || side === 'player'
-        ? battle.encounter_name
-        : playerDisplayName(battle);
-}
-
-const fallbackActionLabels: Record<string, string> = {
-    normal_attack: '通常攻撃',
-    defend: '防御',
-    counter: '反撃',
-    self_regeneration: '自己再生',
-    lifesteal: '吸血',
-    complete_guard: '完全防御',
-    taunt: '挑発',
-    awakening: '覚醒',
-    decisive_heavenrend: '天断一閃',
-    absolute_aegis: '絶対護界',
-    life_requiem: '生命讃歌',
-    limitless_reprise: '無窮再演',
-    shura_bloodline: '修羅の血脈',
-    fortress_strike: '城塞撃',
-    judgment_light: '裁きの天光',
-    formless_strike: '無相の一撃',
-};
-
-function actionKey(action: RoundAction): string | null {
-    const key = action.action_key ?? action.action;
-
-    return typeof key === 'string' && key !== '' ? key : null;
-}
-
-function actionLabel(action: RoundAction): string {
-    const key = actionKey(action);
-    const raw = action.skill_name ?? action.skill_label ?? action.action_label ?? action.label;
-    const normalized = typeof raw === 'string' ? raw.trim() : '';
-    const isInternal = normalized === ''
-        || normalized === 'action'
-        || normalized === 'decision'
-        || (key !== null && normalized === key);
-
-    return isInternal
-        ? (key !== null ? fallbackActionLabels[key] ?? 'スキル' : '戦闘行動')
-        : normalized;
-}
-
-function battlePartyMembers(battle: Battle): PartyBattleMember[] {
-    const party = battle.party;
-
-    return party ? [...party.members, ...(party.enemies ?? [])] : [];
-}
-
-function battleActorNameById(battle: Battle, combatantId: string): string | null {
-    const actor = battlePartyMembers(battle).find((member) => member.combatant_id === combatantId);
-
-    return actor?.display_name ?? null;
-}
-
-function actionActorName(action: RoundAction, battle: Battle): string {
-    return (action.actor_id ? battleActorNameById(battle, action.actor_id) : null)
-        ?? action.actor_name
-        ?? actorName(action.side, battle);
-}
-
-function actionTargetNames(action: RoundAction, battle: Battle): string[] {
-    const ids = action.target_ids?.filter((id) => id !== '')
-        ?? (action.target_id ? [action.target_id] : []);
-    const byId = ids.map((id) => battleActorNameById(battle, id) ?? id);
-    const explicit = action.target_names?.filter((name) => name !== '') ?? [];
-    const fallback = action.target_name ? [action.target_name] : [];
-    const names = byId.length > 0 ? byId : explicit.length > 0 ? explicit : fallback;
-
-    return [...new Set(names)];
-}
-
-function actionTargetsText(action: RoundAction, battle: Battle): string {
-    const names = actionTargetNames(action, battle);
-
-    return names.length > 0 ? names.join('、') : targetName(action.side, battle);
-}
-
-function actionNarrative(action: RoundAction, battle: Battle): string {
-    const actor = actionActorName(action, battle);
-    const target = actionTargetsText(action, battle);
-    const amount = action.amount ?? 0;
-    const revival = action.revived === true || action.kind === 'revival' || action.type === 'revival';
-    if (revival) {
-        const hp = action.revive_hp_bps !== undefined && action.revive_hp_bps !== null
-            ? `（HP ${Math.round(action.revive_hp_bps / 100)}%）`
-            : '';
-        return `${actor}の「${actionLabel(action)}」。${target}が復活した！${hp}`;
-    }
-    if (action.lines && action.lines.length > 0) return action.lines.join('\n');
-    if (action.type === 'warning' || action.type === 'phase_transition') return action.label;
-    if (action.type === 'action' || action.type === 'decision' || action.kind === 'decision') return `${actor}は「${actionLabel(action)}」を使用した。`;
-    if (action.type === 'mp_cost') return `${actor}はMPを${amount}消費した。`;
-    if (action.type === 'mp_recovery') return `${actor}はMPを${amount}回復した。`;
-    if (action.type === 'counter') return `${actor}の反撃。${target}に${amount}ダメージ。`;
-    if (action.type === 'guard') return `${actor}は防御態勢を取った。`;
-    if (action.type === 'barrier') {
-        const recipient = actionTargetNames(action, battle).join('、') || actor;
-        return recipient === actor
-            ? `${actor}は「${actionLabel(action)}」で障壁を${amount}得た。`
-            : `${actor}の「${actionLabel(action)}」で${recipient}は障壁を${amount}得た。`;
-    }
-    if (action.type === 'recovery') return `${actor}は「${actionLabel(action)}」で${target}のHPを${amount}回復した。`;
-    if (action.type === 'role_stack_gain' || action.type === 'role_stack_spent') {
-        const role = withoutActionPrefix(actionLabel(action), action.type === 'role_stack_gain' ? '増加:' : '消費:');
-        return `${actor}の${role}が${amount}${action.type === 'role_stack_gain' ? '増加' : '消費'}した。`;
-    }
-    if (action.type === 'status_applied') return `${target}に${withoutActionPrefix(actionLabel(action), '付与:')}が付与された。`;
-    if (action.type === 'status_expired') return `${actor}の${withoutActionPrefix(actionLabel(action), '消滅:')}が消滅した。`;
-    if (action.type === 'status_resisted') return `${target}は${withoutActionPrefix(actionLabel(action), '抵抗:')}を防いだ。`;
-    if (action.type === 'status_removed') return `${actor}は状態効果を${amount}個解除した。`;
-    if (action.type === 'damage') {
-        const qualifiers = [action.critical ? '会心' : '', action.guarded ? '防御' : '', action.parried ? '受け流し' : '']
-            .filter(Boolean).join('・');
-        if (action.complete_guarded) return `${actor}の「${actionLabel(action)}」。${target}は完全防御し、HPダメージは0。`;
-        if (action.evaded) return `${actor}の「${actionLabel(action)}」。${target}は回避した。`;
-        const damage = amount > 0 ? `${target}に${amount}ダメージ。` : `${target}のHPダメージは0。`;
-        const barrier = action.barrier_absorbed ? `障壁が${action.barrier_absorbed}吸収。` : '';
-        return `${actor}の「${actionLabel(action)}」。${qualifiers ? `${qualifiers}。` : ''}${damage}${barrier}`;
-    }
-    return `${actor}に「${actionLabel(action)}」の効果。`;
-}
-
-function withoutActionPrefix(label: string, prefix: string): string {
-    return label.startsWith(prefix) ? label.slice(prefix.length).trimStart() : label;
-}
-
-function actionTone(action: RoundAction): string {
-    if (action.type === 'warning' || action.type === 'phase_transition') return 'is-warning';
-    if (action.type === 'awakening' || action.type === 'awakening_technique') return 'is-awakening';
-    if (action.kind === 'revival' || action.type === 'revival' || action.revived === true) return 'is-recovery';
-    if (action.type === 'mp_recovery') return 'is-support';
-    if (action.type === 'recovery' || action.type === 'barrier') return 'is-recovery';
-    if (action.critical) return 'is-critical';
-    if (action.evaded || action.parried || action.complete_guarded || action.type === 'guard') return 'is-defense';
-    if (action.type === 'damage' || action.type === 'counter') return 'is-impact';
-    return 'is-neutral';
-}
-
-// Only coalesce an adjacent declaration/cost/role-stack/result with matching actor and label.
-// Counterattacks, ongoing effects and ambiguous historical rows retain source order.
-function actionGroups(actions: RoundAction[]): Array<{ action: RoundAction; source: RoundAction[]; cost: number | null }> {
-    const groups: Array<{ action: RoundAction; source: RoundAction[]; cost: number | null }> = [];
-    const sameActor = (left: RoundAction, right: RoundAction): boolean => {
-        if (left.action_id && right.action_id) return left.action_id === right.action_id;
-        if (left.actor_id && right.actor_id) return left.actor_id === right.actor_id;
-
-        return left.side === right.side && left.actor_name === right.actor_name;
-    };
-    const sameLabel = (left: RoundAction, right: RoundAction): boolean => actionLabel(left) === actionLabel(right);
-    for (let index = 0; index < actions.length; index++) {
-        const declaration = actions[index]!;
-        const cost = actions[index + 1];
-        let effectIndex = index + 2;
-        while (actions[effectIndex] && ['role_stack_gain', 'role_stack_spent'].includes(actions[effectIndex]!.type)
-            && sameActor(actions[effectIndex]!, declaration)) effectIndex++;
-        const effect = actions[effectIndex];
-        if ((declaration.type === 'action' || declaration.kind === 'decision')
-            && cost?.type === 'mp_cost' && cost.amount !== undefined
-            && sameActor(cost, declaration)
-            && effect && ['damage', 'recovery', 'barrier'].includes(effect.type)
-            && sameActor(effect, declaration)
-            && sameLabel(effect, declaration)) {
-            groups.push({ action: effect, source: actions.slice(index, effectIndex + 1), cost: cost.amount });
-            index = effectIndex;
-        } else {
-            groups.push({ action: declaration, source: [declaration], cost: null });
-        }
-    }
-    return groups;
-}
-
-function actionHighlight(action: RoundAction): string | null {
-    if (action.type === 'awakening' || action.type === 'awakening_technique') return '覚醒';
-    if (action.kind === 'revival' || action.type === 'revival' || action.revived === true) return '蘇生';
-    if (action.critical) return '会心';
-    if (action.type === 'mp_recovery') return 'MP回復';
-    if (action.type === 'recovery') return '回復';
-    if (action.complete_guarded) return '完全防御';
-    if (action.evaded) return '回避';
-    if (action.parried) return '受け流し';
-    if (action.type === 'warning' || action.type === 'phase_transition') return '警戒';
-    return null;
-}
-
-function isImportantAction(action: RoundAction): boolean {
-    return action.important === true || action.type === 'awakening' || action.type === 'awakening_technique'
-        || action.kind === 'revival' || action.type === 'revival' || action.revived === true
-        || action.type === 'warning' || action.type === 'phase_transition'
-        || action.type === 'damage' && Boolean(action.critical)
-        || action.type === 'victory' || action.type === 'defeat';
-}
-
-function simpleActionNarrative(action: SimpleAction, battle: Battle): string {
-    const actor = action.actor_name ?? actorName(action.side, battle);
-    const target = action.target_name ?? targetName(action.side, battle);
-    const label = action.action_label ?? '戦闘行動';
-    return action.amount > 0
-        ? `${actor}の「${label}」。${target}に${action.amount}ダメージ。`
-        : `${actor}は「${label}」を行った。`;
-}
 
 function closeBattle(): void {
     selectedBattle.value = null;
@@ -2585,10 +1928,6 @@ function applyAiMutation(result: unknown): void {
 }
 
 onMounted(() => {
-    try {
-        const saved = window.localStorage.getItem(detailPreferenceKey);
-        if (saved === 'true' || saved === 'false') detailVisible.value = saved === 'true';
-    } catch { /* optional */ }
     cooldownTimer = window.setInterval(() => { cooldownNowMs.value = Date.now(); }, 1_000);
     void enter();
 });
@@ -2604,215 +1943,7 @@ onUnmounted(() => {
         <p v-if="error" class="status error" role="alert">{{ error }}</p>
 
         <template v-if="state && currentBattle">
-            <section id="underground-battle-start" class="underground-battle-log" aria-label="戦闘ログ">
-                <p v-if="currentBattle.challenge_intro" class="underground-trial-intro" v-html="renderUndergroundStory(currentBattle.challenge_intro)"></p>
-                <p v-if="currentBattle.milestone_story" class="underground-trial-intro" v-html="renderUndergroundStory(currentBattle.milestone_story)"></p>
-                <header class="underground-battle-opening">
-                    <p class="eyebrow">遭遇</p>
-                    <h1>{{ currentBattle.encounter_name }}</h1>
-                    <p v-if="currentBattle.build_name">{{ currentBattle.build_name }}で戦闘を開始した。</p>
-                    <p v-else>{{ currentPlayerDisplayName }}は戦闘を開始した。</p>
-                    <div class="underground-battle-filter" role="group" aria-label="戦闘ログに出す行動">
-                        <button type="button" class="underground-battle-detail-toggle" :aria-pressed="!detailVisible" title="会心・覚醒・予告・撃破などの要点だけを出します" @click="setBattleDetails(false)">要点</button>
-                        <button type="button" :aria-pressed="detailVisible" @click="setBattleDetails(true)">すべて</button>
-                    </div>
-                    <div v-if="playbackAvailable" class="underground-battle-filter underground-battle-mode" role="group" aria-label="戦闘ログの見方">
-                        <button type="button" :aria-pressed="battleMode === 'read'" @click="battleMode = 'read'">読む</button>
-                        <button type="button" :aria-pressed="battleMode === 'play'" @click="battleMode = 'play'">再生</button>
-                    </div>
-                    <a class="underground-log-jump" href="#underground-battle-result">末尾へ</a>
-                </header>
-
-                <UndergroundBattlePlayback
-                    v-if="battleMode === 'play' && playbackAvailable"
-                    :rounds="playbackRounds"
-                    :combatants="playbackCombatants"
-                    :result-label="battleResultLabel(currentBattle.result)"
-                />
-
-                <UndergroundPartyBattleCards
-                    v-if="currentPartyActors.length > 0"
-                    :actors="currentPartyActors"
-                    :state-by-id="partyStateMap(currentBattle.initial_state)"
-                    :portrait-events="currentBattle.portrait_events"
-                    portrait-event-type="start"
-                />
-
-                <section
-                    v-if="currentPartyActors.length === 0 && soloState(currentBattle.initial_state, 'player') && soloState(currentBattle.initial_state, 'enemy')"
-                    class="underground-round-start underground-solo-battle-start"
-                    aria-label="戦闘開始時の状態"
-                >
-                    <div class="underground-matchup-grid">
-                        <UndergroundCombatantCard
-                            :name="currentPlayerDisplayName"
-                            side="player"
-                            :state="soloState(currentBattle.initial_state, 'player')!"
-                            :image-url="battlePlayerImageUrl(currentBattle)"
-                        />
-                        <span class="underground-matchup-versus" aria-hidden="true">VS</span>
-                        <UndergroundCombatantCard
-                            :name="currentBattle.encounter_name"
-                            side="enemy"
-                            :state="soloState(currentBattle.initial_state, 'enemy')!"
-                        />
-                    </div>
-                </section>
-
-                <div v-show="battleMode === 'read'" class="underground-rounds">
-                    <p v-if="currentBattle.detail_message" class="status">{{ currentBattle.detail_message }}</p>
-                    <article v-for="round in currentStructuredRounds" :key="round.round" class="underground-round">
-                        <h2>{{ roundStartLabel(round) }}</h2>
-                        <UndergroundPartyBattleCards
-                            v-if="currentPartyActors.length > 0"
-                            :actors="currentPartyActors"
-                            :portrait-events="currentBattle.portrait_events"
-                            :state-by-id="partyStateMap(round.start_state)"
-                            portrait-event-type="awakening"
-                            :portrait-round="round.round"
-                        />
-                        <section v-if="soloState(round.start_state, 'player') && soloState(round.start_state, 'enemy') && currentPartyActors.length === 0" class="underground-round-start" :aria-label="`第${round.round}ラウンド開始時の状態`">
-                            <div class="underground-matchup-grid">
-                                <UndergroundCombatantCard
-                                    :name="currentPlayerDisplayName"
-                                    side="player"
-                                    :state="soloState(round.start_state, 'player')!"
-                                    compact
-                                />
-                                <span class="underground-matchup-versus" aria-hidden="true">VS</span>
-                                <UndergroundCombatantCard :name="currentBattle.encounter_name" side="enemy" :state="soloState(round.start_state, 'enemy')!" compact />
-                            </div>
-                        </section>
-                        <section
-                            v-if="currentPartyActors.length === 0 && roundHasAwakening(round) && (soloState(round.end_state, 'player') ?? soloState(round.start_state, 'player'))"
-                            class="underground-solo-awakening-art"
-                            aria-label="覚醒時の状態"
-                        >
-                            <UndergroundCombatantCard
-                                :name="currentPlayerDisplayName"
-                                side="player"
-                                :state="(soloState(round.end_state, 'player') ?? soloState(round.start_state, 'player'))!"
-                                :image-url="battlePlayerImageUrl(currentBattle, true)"
-                            />
-                        </section>
-                        <h3 class="underground-round-action-heading">第{{ round.round }}ラウンド 行動</h3>
-                        <ul class="underground-action-log" :class="{ 'is-detail-hidden': !detailVisible }">
-                            <li
-                                v-for="(group, index) in actionGroups(round.actions)"
-                                v-show="detailVisible || isImportantAction(group.action)"
-                                :key="index"
-                                :class="actionTone(group.action)"
-                                :data-action-type="group.action.type"
-                            >
-                                <span class="underground-action-marker" aria-hidden="true" />
-                                <div>
-                                    <span v-if="actionHighlight(group.action)" class="underground-event-badge">{{ actionHighlight(group.action) }}</span>
-                                    <small v-if="group.action.agility_combo_hits" class="underground-agility-combo">{{ group.action.agility_combo_hits }}連続ヒット！</small>
-                                    <span v-if="group.cost !== null" class="underground-action-cost">MP −{{ group.cost.toLocaleString() }}</span>
-                                    <p v-for="(supplement, supplementIndex) in group.source.slice(2, -1)" :key="supplementIndex" class="underground-action-supplement">{{ actionNarrative(supplement, currentBattle) }}</p>
-                                    <template v-if="group.action.countdown">
-                                        <strong class="ug-boss-countdown" :class="{ 'is-major': group.action.major_telegraph }">{{ group.action.countdown }}</strong>
-                                        <p v-if="group.action.major_telegraph">大予告が付与された。</p>
-                                    </template>
-                                    <p v-else>{{ actionNarrative(group.action, currentBattle) }}</p>
-                                    <details v-if="group.source.length > 1" class="underground-action-details">
-                                        <summary>行動の全詳細</summary>
-                                        <p v-for="(source, sourceIndex) in group.source" :key="sourceIndex">{{ actionNarrative(source, currentBattle) }}</p>
-                                    </details>
-                                </div>
-                            </li>
-                        </ul>
-                        <details v-if="!round.start_state && soloState(round.end_state, 'player') && soloState(round.end_state, 'enemy') && currentPartyActors.length === 0" class="underground-round-state">
-                            <summary>ラウンド{{ round.round }}終了時の状態</summary>
-                            <div class="underground-matchup-grid">
-                                <UndergroundCombatantCard :name="currentPlayerDisplayName" side="player" :state="soloState(round.end_state, 'player')!" compact />
-                                <UndergroundCombatantCard :name="currentBattle.encounter_name" side="enemy" :state="soloState(round.end_state, 'enemy')!" compact />
-                            </div>
-                        </details>
-                    </article>
-
-                    <article v-for="roundNumber in simpleRoundNumbers(currentBattle)" :key="`simple-${roundNumber}`" class="underground-round">
-                        <h2>Round {{ roundNumber }}</h2>
-                        <ol class="underground-action-log">
-                            <li v-for="(action, index) in simpleActions(currentBattle).filter((item) => item.round === roundNumber)" :key="index">
-                                <span class="underground-action-marker" aria-hidden="true" />
-                                <div><p>{{ simpleActionNarrative(action, currentBattle) }}</p></div>
-                            </li>
-                        </ol>
-                    </article>
-                </div>
-
-                <footer id="underground-battle-result" class="underground-battle-result">
-                    <p class="eyebrow">戦闘終了</p>
-                    <h2>{{ battleResultLabel(currentBattle.result) }}</h2>
-                    <UndergroundPartyBattleCards
-                        v-if="currentPartyActors.length > 0"
-                        :actors="currentPartyActors"
-                        :state-by-id="partyStateMap(finalBattleState)"
-                        :portrait-events="currentBattle.portrait_events"
-                        portrait-event-type="final"
-                    />
-                    <section v-if="soloState(finalBattleState, 'player') && soloState(finalBattleState, 'enemy') && currentPartyActors.length === 0" class="underground-matchup underground-final-state" aria-labelledby="underground-final-state-title">
-                        <div class="underground-matchup-heading">
-                            <h3 id="underground-final-state-title">戦闘中の最終状態</h3>
-                        </div>
-                        <div class="underground-matchup-grid">
-                            <UndergroundCombatantCard
-                                :name="currentPlayerDisplayName"
-                                side="player"
-                                :state="soloState(finalBattleState, 'player')!"
-                                :image-url="battlePlayerImageUrl(currentBattle, soloState(finalBattleState, 'player')?.awakened === true)"
-                            />
-                            <span class="underground-matchup-versus" aria-hidden="true">VS</span>
-                            <UndergroundCombatantCard :name="currentBattle.encounter_name" side="enemy" :state="soloState(finalBattleState, 'enemy')!" />
-                        </div>
-                    </section>
-                    <p v-if="currentBattle.hunting_ground">狩場: {{ currentBattle.hunting_ground.name }}</p>
-                    <p>{{ battleRoundCount(currentBattle) }}ラウンドで決着。</p>
-                    <p>経験値 +{{ currentBattle.xp_awarded }}・輝石の欠片 {{ currentBattle.shard_delta >= 0 ? '+' : '' }}{{ currentBattle.shard_delta }}G<span v-if="currentBattle.context === 'playtest'">・ドロップなし</span></p>
-                    <p v-if="currentBattle.treasure?.found" class="underground-equipment-drop" role="status">財宝を見つけた！ ×{{ currentBattle.treasure.multiplier }}</p>
-                    <p v-if="(currentBattle.shining_kingdom_key?.awarded ?? 0) > 0" class="underground-equipment-drop" role="status">{{ currentBattle.shining_kingdom_key?.label ?? '輝きの王国の鍵' }} +{{ currentBattle.shining_kingdom_key?.awarded }}</p>
-                    <p v-if="(currentBattle.distorted_stones ?? 0) > 0" class="underground-equipment-drop" role="status">歪んだ輝石 +{{ currentBattle.distorted_stones }}</p>
-                    <template v-for="(drop, dropIndex) in currentBattleDrops" :key="dropIndex">
-                    <p v-if="drop.status === 'granted' && drop.item" class="underground-equipment-drop" role="status">
-                        装備drop: {{ drop.item.rarity_label }}・Item Lv {{ drop.item.item_level }}・{{ drop.item.name }}
-                        <span v-if="drop.item.affixes.length > 0">（{{ drop.item.affixes.map((affix) => affix.label).join('、') }}）</span>
-                    </p>
-                    <p v-if="drop.status === 'vault_full' && drop.item" class="underground-equipment-drop lost" role="alert">
-                        保管庫が満杯のため、{{ drop.item.rarity_label }}・Item Lv {{ drop.item.item_level }}・{{ drop.item.name }}を持ち帰れませんでした。
-                    </p>
-                    </template>
-                    <p v-if="(currentBattle.interbattle_heal_amount ?? 0) > 0" class="underground-interbattle-heal">体力が少し回復した</p>
-                    <div
-                        v-if="currentBattle.combat_level_after !== undefined && currentBattle.combat_level_after !== currentBattle.combat_level_before"
-                        class="underground-level-up"
-                        role="status"
-                        aria-label="レベルアップ"
-                    >
-                        <strong>LEVEL UP！</strong>
-                        <span>戦闘Lv {{ currentBattle.combat_level_before }} → {{ currentBattle.combat_level_after }}</span>
-                        <span>未使用STP +{{ currentBattle.stp_awarded ?? 0 }}（合計 {{ currentBattle.unspent_stp_after ?? 0 }}）</span>
-                    </div>
-                    <details v-if="currentBattle.summary && detailVisible" class="underground-combat-details">
-                        <summary>戦闘詳細</summary>
-                        <dl class="underground-combat-summary">
-                            <div v-for="(value, key) in visibleSummary(currentBattle.summary)" :key="key"><dt>{{ summaryLabel(key) }}</dt><dd>{{ summaryValue(key, value) }}</dd></div>
-                        </dl>
-                    </details>
-                    <a class="underground-log-jump" href="#underground-battle-start">先頭へ</a>
-                </footer>
-                <section v-if="currentBattle.first_clear_story" class="underground-first-clear-story" aria-labelledby="underground-first-clear-title">
-                    <h2 id="underground-first-clear-title">{{ currentBattle.first_clear_story.title }}</h2>
-                    <p class="underground-first-clear-body" v-html="renderUndergroundStory(currentBattle.first_clear_story.body)"></p>
-                    <div class="underground-first-clear-results" role="status">
-                        <p v-for="message in currentBattle.first_clear_story.system_messages" :key="message">{{ message }}</p>
-                    </div>
-                </section>
-                <section v-if="currentBattle.context === 'guide_duel'" class="underground-first-clear-story" aria-label="決闘の結末">
-                    <p v-for="(line, index) in currentBattle.duel_dialogue ?? []" :key="index">{{ line }}</p>
-                    <p>決闘前のHP・MP・覚醒状態に戻りました。経験値・Gの増減はありません。</p>
-                </section>
-            </section>
+            <UndergroundBattleLog :battle="currentBattle" :fallback-player-name="state.secretary_name ?? '秘書'" />
 
             <div v-if="state.stage === 'escape_pending'" class="underground-story underground-after-battle">
                 <p v-for="line in tutorialAftermath" :key="line">{{ line }}</p>
@@ -3405,21 +2536,21 @@ onUnmounted(() => {
                                 <option v-for="ground in unlockedHuntingGrounds" :key="`modal-ground:${ground.key}`" :value="ground.key">{{ ground.name }}</option>
                             </select>
                         </label>
-                        <template v-if="selectedSkipHuntingGround">
+                        <template v-if="selectedSkipHuntingGround && huntingGroundSkipPlan">
                             <p>1回 = {{ selectedSkipHuntingGround.skip.ticket_cost }}枚・実戦 {{ selectedSkipHuntingGround.skip.actual_clear_count }} / {{ selectedSkipHuntingGround.skip.actual_clears_required }}勝</p>
                             <p v-if="selectedSkipHuntingGround.entry_key_cost > 0">さらに鍵{{ selectedSkipHuntingGround.entry_key_cost }}個 / 回（所持 {{ selectedSkipHuntingGround.key_balance }}個）</p>
                             <p v-if="!selectedSkipHuntingGround.skip.unlocked" class="field-hint">実戦clearがあと{{ selectedSkipHuntingGround.skip.actual_clears_required - selectedSkipHuntingGround.skip.actual_clear_count }}回必要です。</p>
                             <div class="underground-skip-shortcuts">
-                                <button type="button" :disabled="selectedSkipHuntingGround.disabled || skipDisabled(selectedSkipHuntingGround.skip) || shortcutHuntingGroundSkipExecutions(selectedSkipHuntingGround, 0.5) < 1 || skipIntentBlocked('hunting_ground', selectedSkipHuntingGround.key, shortcutHuntingGroundSkipExecutions(selectedSkipHuntingGround, 0.5))" @click="runSkip('hunting_ground', selectedSkipHuntingGround.key, shortcutHuntingGroundSkipExecutions(selectedSkipHuntingGround, 0.5))">50%使用（{{ shortcutHuntingGroundSkipExecutions(selectedSkipHuntingGround, 0.5) }}回）</button>
-                                <button type="button" :disabled="selectedSkipHuntingGround.disabled || skipDisabled(selectedSkipHuntingGround.skip) || maximumHuntingGroundSkipExecutions(selectedSkipHuntingGround) < 1 || skipIntentBlocked('hunting_ground', selectedSkipHuntingGround.key, maximumHuntingGroundSkipExecutions(selectedSkipHuntingGround))" @click="runSkip('hunting_ground', selectedSkipHuntingGround.key, maximumHuntingGroundSkipExecutions(selectedSkipHuntingGround))">100%使用（{{ maximumHuntingGroundSkipExecutions(selectedSkipHuntingGround) }}回）</button>
+                                <button type="button" :disabled="skipCountUnavailable(huntingGroundSkipPlan, huntingGroundSkipPlan.half)" @click="runPlannedSkip(huntingGroundSkipPlan, huntingGroundSkipPlan.half)">50%使用（{{ huntingGroundSkipPlan.half }}回）</button>
+                                <button type="button" :disabled="skipCountUnavailable(huntingGroundSkipPlan, huntingGroundSkipPlan.maximum)" @click="runPlannedSkip(huntingGroundSkipPlan, huntingGroundSkipPlan.maximum)">100%使用（{{ huntingGroundSkipPlan.maximum }}回）</button>
                             </div>
                             <div class="underground-skip-custom">
                                 <label>任意回数
-                                    <input v-model="customHuntingGroundSkipCount" inputmode="numeric" type="number" min="1" :max="maximumHuntingGroundSkipExecutions(selectedSkipHuntingGround)" step="1" :disabled="selectedSkipHuntingGround.disabled || skipDisabled(selectedSkipHuntingGround.skip)">
+                                    <input v-model="customHuntingGroundSkipCount" inputmode="numeric" type="number" min="1" :max="huntingGroundSkipPlan.maximum" step="1" :disabled="huntingGroundSkipPlan.disabled">
                                 </label>
-                                <button type="button" :disabled="customSkipExecutions(customHuntingGroundSkipCount, maximumHuntingGroundSkipExecutions(selectedSkipHuntingGround)) === null || selectedSkipHuntingGround.disabled || skipDisabled(selectedSkipHuntingGround.skip) || skipIntentBlocked('hunting_ground', selectedSkipHuntingGround.key, customSkipExecutions(customHuntingGroundSkipCount, maximumHuntingGroundSkipExecutions(selectedSkipHuntingGround)) ?? 0)" @click="runCustomHuntingGroundSkip(selectedSkipHuntingGround)">指定回数を使用</button>
+                                <button type="button" :disabled="skipCountUnavailable(huntingGroundSkipPlan, huntingGroundSkipPlan.custom)" @click="runPlannedSkip(huntingGroundSkipPlan, huntingGroundSkipPlan.custom)">指定回数を使用</button>
                             </div>
-                            <p v-if="customSkipExecutions(customHuntingGroundSkipCount, maximumHuntingGroundSkipExecutions(selectedSkipHuntingGround)) !== null" class="underground-skip-plan">予定消費：🎫 {{ plannedSkipCost(customHuntingGroundSkipCount, maximumHuntingGroundSkipExecutions(selectedSkipHuntingGround), selectedSkipHuntingGround.skip.ticket_cost) }}枚<span v-if="selectedSkipHuntingGround.entry_key_cost > 0">・鍵 {{ plannedSkipCost(customHuntingGroundSkipCount, maximumHuntingGroundSkipExecutions(selectedSkipHuntingGround), selectedSkipHuntingGround.entry_key_cost) }}個</span></p>
+                            <p v-if="huntingGroundSkipPlan.custom !== null" class="underground-skip-plan">予定消費：🎫 {{ huntingGroundSkipPlan.custom * selectedSkipHuntingGround.skip.ticket_cost }}枚<span v-if="selectedSkipHuntingGround.entry_key_cost > 0">・鍵 {{ huntingGroundSkipPlan.custom * selectedSkipHuntingGround.entry_key_cost }}個</span></p>
                         </template>
                         <ul v-if="(state.hunting_grounds ?? []).some((ground) => ground.locked)" class="underground-skip-locked-list">
                             <li v-for="ground in (state.hunting_grounds ?? []).filter((item) => item.locked)" :key="`locked-ground:${ground.key}`">{{ ground.name }}：{{ ground.unlock_condition ?? '未解禁' }}</li>
@@ -3432,20 +2563,20 @@ onUnmounted(() => {
                                 <option v-for="trial in unlockedTrialOptions" :key="`modal-trial:${trial.key}`" :value="trial.key">{{ trial.label }}</option>
                             </select>
                         </label>
-                        <template v-if="selectedSkipTrial">
+                        <template v-if="selectedSkipTrial && trialSkipPlan">
                             <p>1周（{{ selectedSkipTrial.total_battles }}連戦）= {{ selectedSkipTrial.skip.ticket_cost }}枚・実戦 {{ selectedSkipTrial.skip.actual_clear_count }} / {{ selectedSkipTrial.skip.actual_clears_required }}周</p>
                             <p v-if="!selectedSkipTrial.skip.unlocked" class="field-hint">実戦clearがあと{{ selectedSkipTrial.skip.actual_clears_required - selectedSkipTrial.skip.actual_clear_count }}周必要です。</p>
                             <div class="underground-skip-shortcuts">
-                                <button type="button" :disabled="skipDisabled(selectedSkipTrial.skip) || shortcutSkipExecutions(selectedSkipTrial.skip, 0.5) < 1 || skipIntentBlocked('trial', selectedSkipTrial.key, shortcutSkipExecutions(selectedSkipTrial.skip, 0.5))" @click="runSkip('trial', selectedSkipTrial.key, shortcutSkipExecutions(selectedSkipTrial.skip, 0.5))">50%使用（{{ shortcutSkipExecutions(selectedSkipTrial.skip, 0.5) }}周）</button>
-                                <button type="button" :disabled="skipDisabled(selectedSkipTrial.skip) || maximumSkipExecutions(selectedSkipTrial.skip) < 1 || skipIntentBlocked('trial', selectedSkipTrial.key, maximumSkipExecutions(selectedSkipTrial.skip))" @click="runSkip('trial', selectedSkipTrial.key, maximumSkipExecutions(selectedSkipTrial.skip))">100%使用（{{ maximumSkipExecutions(selectedSkipTrial.skip) }}周）</button>
+                                <button type="button" :disabled="skipCountUnavailable(trialSkipPlan, trialSkipPlan.half)" @click="runPlannedSkip(trialSkipPlan, trialSkipPlan.half)">50%使用（{{ trialSkipPlan.half }}周）</button>
+                                <button type="button" :disabled="skipCountUnavailable(trialSkipPlan, trialSkipPlan.maximum)" @click="runPlannedSkip(trialSkipPlan, trialSkipPlan.maximum)">100%使用（{{ trialSkipPlan.maximum }}周）</button>
                             </div>
                             <div class="underground-skip-custom">
                                 <label>任意周回数
-                                    <input v-model="customTrialSkipCount" inputmode="numeric" type="number" min="1" :max="maximumSkipExecutions(selectedSkipTrial.skip)" step="1" :disabled="skipDisabled(selectedSkipTrial.skip)">
+                                    <input v-model="customTrialSkipCount" inputmode="numeric" type="number" min="1" :max="trialSkipPlan.maximum" step="1" :disabled="trialSkipPlan.disabled">
                                 </label>
-                                <button type="button" :disabled="customSkipExecutions(customTrialSkipCount, maximumSkipExecutions(selectedSkipTrial.skip)) === null || skipDisabled(selectedSkipTrial.skip) || skipIntentBlocked('trial', selectedSkipTrial.key, customSkipExecutions(customTrialSkipCount, maximumSkipExecutions(selectedSkipTrial.skip)) ?? 0)" @click="runCustomTrialSkip(selectedSkipTrial)">指定周回数を使用</button>
+                                <button type="button" :disabled="skipCountUnavailable(trialSkipPlan, trialSkipPlan.custom)" @click="runPlannedSkip(trialSkipPlan, trialSkipPlan.custom)">指定周回数を使用</button>
                             </div>
-                            <p v-if="customSkipExecutions(customTrialSkipCount, maximumSkipExecutions(selectedSkipTrial.skip)) !== null" class="underground-skip-plan">予定消費：🎫 {{ plannedSkipCost(customTrialSkipCount, maximumSkipExecutions(selectedSkipTrial.skip), selectedSkipTrial.skip.ticket_cost) }}枚</p>
+                            <p v-if="trialSkipPlan.custom !== null" class="underground-skip-plan">予定消費：🎫 {{ trialSkipPlan.custom * selectedSkipTrial.skip.ticket_cost }}枚</p>
                         </template>
                         <ul v-if="trialOptions.some((trial) => trial.locked)" class="underground-skip-locked-list">
                             <li v-for="trial in trialOptions.filter((item) => item.locked)" :key="`locked-trial:${trial.key}`">{{ trial.label }}：{{ trial.unlock_condition ?? '未解禁' }}</li>

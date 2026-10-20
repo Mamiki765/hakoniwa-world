@@ -169,5 +169,5 @@ PR208の初回CIの失敗は、PT探索代表が貸出snapshotの戦闘開始時
 - `product/tests/Underground/Unit/BahamulCombatTest.php`
 - `product/tests/Underground/Unit/UndergroundRuntimeEquipmentGeneratorTest.php`
 - `product/docs/architecture/underground-equipment-scaling.md`
-- `product/docs/manual/equipment.md`
+- `product/docs/manual/equipment.md`（当時のpath。現在は[地底の手引き](../manual/underground.md)。`ManualController::LEGACY`は`/manual/equipment`を`/manual/underground`へ301 redirectする）
 - `product/docs/plans/bahamul-intermediate-2-balance.md`

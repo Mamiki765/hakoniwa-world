@@ -13,7 +13,7 @@ interface MarketListing {
     item: EquipmentItem;
     seller: { secretary_name: string; island_name: string | null };
     price: number;
-    expires_at: string;
+    expires_at: string | null;
     is_own: boolean;
     purchasable: boolean;
     blocked_reasons: string[];
@@ -28,7 +28,7 @@ interface MarketResponse {
 }
 type ListableItem = EquipmentItem;
 interface VaultResponse { items: ListableItem[]; listing_limit: number; active_count: number }
-interface MineListing { id: number; item?: EquipmentItem; item_snapshot?: EquipmentItem; price: number; proceeds?: number; expires_at?: string; sold_at?: string; expired_at?: string; claimed?: boolean; seen?: boolean }
+interface MineListing { id: number; item?: EquipmentItem; item_snapshot?: EquipmentItem; price: number; proceeds?: number; expires_at?: string | null; sold_at?: string; expired_at?: string; claimed?: boolean; seen?: boolean }
 interface MineResponse {
     listing_limit: number;
     active: MineListing[];
@@ -79,18 +79,15 @@ const yen = (value: number): string => `${value.toLocaleString('ja-JP')}G`;
 
 const mineAttention = computed(() => (props.attention?.unclaimed_count ?? 0) + (props.attention?.unseen_expired_count ?? 0) > 0);
 const fee = computed(() => market.value?.fee ?? { numerator: 1, denominator: 10 });
+const feePercent = computed(() => Math.round(fee.value.numerator * 100 / fee.value.denominator));
 function proceedsOf(price: number): number {
     return price - Math.ceil(price * fee.value.numerator / fee.value.denominator);
 }
 const sellProceeds = computed(() => (sellPrice.value && sellPrice.value > 0 ? proceedsOf(sellPrice.value) : 0));
+const sellFee = computed(() => (sellPrice.value && sellPrice.value > 0 ? sellPrice.value - sellProceeds.value : 0));
 const sellPriceValid = computed(() => !!sellTarget.value && !!sellPrice.value && Number.isInteger(sellPrice.value)
     && sellPrice.value >= (sellTarget.value.market_minimum_price ?? 1));
 
-function daysLeft(iso: string | undefined): string {
-    if (!iso) return '';
-    const hours = Math.max(0, Math.round((Date.parse(iso) - Date.now()) / 3_600_000));
-    return hours >= 24 ? `残り${Math.floor(hours / 24)}日` : `残り${hours}時間`;
-}
 function requestId(): string { return crypto.randomUUID(); }
 function action(fingerprint: string): { fingerprint: string; requestId: string } {
     const current = pending.value?.fingerprint === fingerprint ? pending.value : { fingerprint, requestId: requestId() };
@@ -248,7 +245,7 @@ onMounted(() => { void load(); });
             <div>
                 <p class="eyebrow">Exchange Stalls</p>
                 <h1 id="underground-market-title">露店</h1>
-                <p>掘り当てた装備や結晶を、ほかの秘書と直接売り買いできます。売れると売値の90%が届きます。</p>
+                <p>掘り当てた装備や結晶を、ほかの秘書と直接売り買いできます。売れると売値の{{ 100 - feePercent }}%が届きます。</p>
             </div>
             <dl class="underground-equipment-balances">
                 <div><dt>手持ち</dt><dd>{{ market ? yen(market.carried_shards) : '—' }}</dd></div>
@@ -293,7 +290,7 @@ onMounted(() => { void load(); });
                     :disabled="busy || listing.is_own || !listing.purchasable || listing.blocked_reasons.length > 0"
                     @action="confirmBuy = listing"
                 >
-                    <template #status><span>{{ listing.seller.secretary_name }}<template v-if="listing.seller.island_name">（{{ listing.seller.island_name }}）</template>・{{ daysLeft(listing.expires_at) }}</span></template>
+                    <template #status><span>{{ listing.seller.secretary_name }}<template v-if="listing.seller.island_name">（{{ listing.seller.island_name }}）</template></span></template>
                     <template #price>
                         <span class="underground-market-price">{{ yen(listing.price) }}</span>
                         <span v-for="code in listing.blocked_reasons" :key="code" class="underground-equipment-unaffordable">{{ reason(code) }}</span>
@@ -309,7 +306,7 @@ onMounted(() => { void load(); });
         </template>
 
         <template v-if="pane === 'sell'">
-            <p v-if="listable" class="underground-market-cap">出品中 {{ listable.active_count }} / {{ listable.listing_limit }}件。出品は{{ listable.listing_limit }}件まで、期限は7日です。売れると手数料10%を引いた額が届きます。</p>
+            <p v-if="listable" class="underground-market-cap">出品中 {{ listable.active_count }} / {{ listable.listing_limit }}件。売れると手数料{{ feePercent }}%を引いた額が届きます。</p>
             <p v-if="listable && !canList" class="status">出品枠がいっぱいです。出品を取り下げるか、売れるまでお待ちください。</p>
             <p v-if="!loading && vault.length === 0" class="status">出品できる装備がありません。</p>
             <div class="underground-equipment-card-grid">
@@ -346,13 +343,13 @@ onMounted(() => { void load(); });
                 <ul class="underground-market-rows">
                     <li v-for="listing in mine.active" :key="listing.id">
                         <span>{{ listing.item?.name }} IL{{ listing.item?.item_level }}</span>
-                        <span>{{ yen(listing.price) }}・{{ daysLeft(listing.expires_at) }}</span>
+                        <span>{{ yen(listing.price) }}</span>
                         <button type="button" :disabled="busy" @click="cancel(listing)">取り下げる</button>
                     </li>
                 </ul>
             </section>
             <section v-if="mine.expired.length" class="underground-market-section" aria-labelledby="market-expired-title">
-                <header><h2 id="market-expired-title">期限切れ</h2></header>
+                <header><h2 id="market-expired-title">過去の期限切れ</h2></header>
                 <p>売れ残った品物は保管庫に戻っています。</p>
                 <ul class="underground-market-rows">
                     <li v-for="listing in mine.expired" :key="listing.id">
@@ -368,6 +365,7 @@ onMounted(() => { void load(); });
             <section class="underground-confirm-dialog" role="dialog" aria-modal="true" aria-labelledby="market-buy-title">
                 <header><h2 id="market-buy-title">{{ confirmBuy.item.name }}を買いますか？</h2></header>
                 <dl class="underground-market-summary">
+                    <div><dt>IL・品質</dt><dd>IL {{ confirmBuy.item.item_level }}<template v-if="confirmBuy.item.quality_percent != null">・{{ confirmBuy.item.quality_percent }}%</template></dd></div>
                     <div><dt>価格</dt><dd>{{ yen(confirmBuy.price) }}</dd></div>
                     <div><dt>買った後の手持ち</dt><dd>{{ yen((market?.carried_shards ?? 0) - confirmBuy.price) }}</dd></div>
                     <div><dt>売り手</dt><dd>{{ confirmBuy.seller.secretary_name }}</dd></div>
@@ -384,7 +382,8 @@ onMounted(() => { void load(); });
                 <header><h2 id="market-sell-title">{{ sellTarget.name }}を出品する</h2></header>
                 <label class="underground-market-price-input">売値 <input v-model.number="sellPrice" type="number" :min="sellTarget.market_minimum_price ?? 1" inputmode="numeric" required> G</label>
                 <dl class="underground-market-summary">
-                    <div><dt>受け取れる額</dt><dd>{{ yen(sellProceeds) }}（手数料 {{ yen((sellPrice ?? 0) - sellProceeds) }}）</dd></div>
+                    <div><dt>受け取れる額</dt><dd>{{ yen(sellProceeds) }}</dd></div>
+                    <div><dt>手数料</dt><dd>{{ yen(sellFee) }}</dd></div>
                     <div><dt>最低価格（NPC売値）</dt><dd>{{ yen(sellTarget.market_minimum_price ?? sellTarget.sell_price) }}</dd></div>
                 </dl>
                 <p v-if="sellPrice !== null && !sellPriceValid" class="status error">NPC売値以上の整数を入れてください。</p>

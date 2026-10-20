@@ -1,26 +1,40 @@
 # 現行秘書アイテムカタログ
 
-> 更新日: 2026-09-01 JST
-> 対象: ver 3.1.0 / `hakoniwa-2s-plus-v19`
-> 用途: 現在実装されている秘書アイテムを一覧化し、後続アイテム案を考える際の基準にする。
+> 照合日: 2026-10-19
+> 照合対象: `release/5.6.0` の `93bb230b8cff546e43d1b89baf4c7cd916ff616f`。本番適用の確認ではない。
+> 用途: 現行定義への索引と、3.1.0時点の一覧の履歴を分ける。
 
 この文書は**現行実装の索引**です。Gameplayの正本は immutable Ruleset と実装コードです。ここに書かれた内容とコードが食い違う場合は、最新のreview済みコード / Rulesetを優先してください。
 
-ver 3.1.0 / Ruleset v19の秘書アイテム契約は、v18の現行契約をそのまま利用しています。High Quality / Artifactなど、未実装の将来レアリティや未確定アイデアはこのカタログには含めません。
+下の「3.1.0時点」の表は現在の全品一覧ではありません。HQ・Artifactの弓・衣服、お守り、チケット、紋章などが後から実装されています。現行全品のkey・名称・通常最大Lv・取引可否は`SecretaryItemCatalog::definitions()`、効果と入手対象は設定されたRulesetから確認します。将来案を採用済み定義へ混ぜません。
 
 ## 正本への入口
 
 - 表示名・フレーバー・カテゴリ・レアリティ・最大Lv・売却価格: `product/app/Domain/Secretary/SecretaryItemCatalog.php`
-- Novice Item効果: `product/config/hakoniwa/rulesets/current/secretary.php`
-- Regular / Cursed Item効果: `product/config/hakoniwa/rulesets/v17/secretary.php`
+- 現行Ruleset選択: `product/config/hakoniwa.php`。照合HEADではv41 entrypointの`secretary`がv40 domainを参照し、v39と`current/secretary.php`の不変部分を再利用する。`current/`だけを現行全定義とみなさない。
+- 合成・倉庫・夢魔の定義: `product/config/hakoniwa/rulesets/v40/secretary.php`
 - 効果文・effect contract: `product/app/Domain/Secretary/SecretaryItemGameplayContract.php`
-- 怪獣drop pool / 配分: `product/config/hakoniwa/rulesets/v17/monsters-and-military.php`
+- 怪獣drop pool / 配分: `product/config/hakoniwa/rulesets/current/monsters-and-military.php`（照合HEADのentrypointが使うdomain）
 - 怪獣drop validation: `product/app/Domain/Secretary/SecretaryMonsterDropContract.php`
 - NPC交易場出品: `product/app/Domain/TradingPost/TradingPostRules.php`, `product/app/Application/TradingPostTurnService.php`
+- 合成・保管上限・チケット使用: `product/app/Application/SecretarySynthesisService.php`、`SecretaryItemGrantService.php`、`SecretaryWarehouseService.php`、`SecretaryTicketGachaService.php`
+
+## 5.5系で確認する現行の差分
+
+- 通常入手の`max_level`と合成後の保持上限を分離する。防火・防波・防風・耐震・防星のお守りと、わくわく・ドキドキチケットは同一keyのLvを合算して9999まで保持できる。通常のdrop・ガチャの抽選Lvを9999へ広げる意味ではない。
+- 夢魔の紋章はRelic / Lv1。愛・双子星・三日月の紋章各Lv1からの固定無料合成で、自然回復・誘致の人口増加+100%。プレイヤー交易可、NPC出品不可、通常ガチャから除外する。
+- 倉庫は基本50個。100Pdで+50を最大4回、上限250個。grant・怪獣drop・受領・ガチャは`SecretaryItemGrantService::capacity()`で購入済み拡張を反映する。
+- チケットは使用回数を指定できる。全消費は`used - 1 + draw_count`、部分消費は`used + draw_count`で容量を判定し、回数も再送内容に含む。
+
+採用内容と検証の記録は[5.5.0](../releases/5.5.0-market-synthesis.md)、未採用の弓・衣服育成等は[構想帳](../plans/surface-item-expansion.md)を参照する。
+
+## 3.1.0時点の一覧を保持する範囲
+
+以下の1〜4節は2026-09-01 / ver 3.1.0 / v19時点の記録。v19ではv18の契約を利用していた。各節の「現行」はこの時点を指し、現在の全品・drop pool・容量の根拠にはしない。歴史本文は残し、現在の確認には上の入口を使う。
 
 ---
 
-# 1. 共通ルール
+# 1. 共通ルール（3.1.0時点）
 
 ## 1.1 装備
 
@@ -81,7 +95,7 @@ ver 3.1.0 / Ruleset v19の秘書アイテム契約は、v18の現行契約をそ
 
 ---
 
-# 2. 現行Item一覧
+# 2. Item一覧（3.1.0時点）
 
 | key | 名前 | カテゴリ | レアリティ | 最大Lv | Player交易 | NPC出品 | 怪獣drop |
 |---|---|---|---|---:|---|---|---|
@@ -101,7 +115,7 @@ ver 3.1.0 / Ruleset v19の秘書アイテム契約は、v18の現行契約をそ
 
 ---
 
-# 3. Item詳細
+# 3. Item詳細（3.1.0時点）
 
 ## 古びた弓
 
@@ -243,7 +257,7 @@ ver 3.1.0 / Ruleset v19の秘書アイテム契約は、v18の現行契約をそ
 
 ---
 
-# 4. 現行drop pool
+# 4. drop pool（3.1.0時点）
 
 ## Novice
 
@@ -270,7 +284,7 @@ ver 3.1.0 / Ruleset v19の秘書アイテム契約は、v18の現行契約をそ
 
 # 5. 後続Item追加時の使い方
 
-新しいItemを考える際は、最低限次をこのカタログへ追記してからRuleset化する。
+新しいItemは、Owner承認とRuleset authoring境界を確認し、最低限次を採用するreleaseの仕様書とcanonical定義へ記録する。上の歴史一覧を現在の全品表として書き足さない。
 
 ```text
 名前 / key

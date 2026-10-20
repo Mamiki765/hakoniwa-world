@@ -6,17 +6,22 @@ The application authors one canonical runtime Ruleset. The exact configured key,
 and entrypoint are resolved from `config/hakoniwa.php` and current code; this permanent
 authoring document does not pin a concrete Ruleset generation.
 
-The current entrypoint composes complete domains from `config/hakoniwa/rulesets/current/`.
-It does not load retired Ruleset generations. Flattening an authoring chain must preserve
-the complete published payload, including values, types, container shapes and array order.
+The configured entrypoint resolves one complete payload. Follow its explicit dependencies;
+the directory name `config/hakoniwa/rulesets/current/` does not by itself identify the editable
+release draft. Those domain files may still form the base of immutable predecessor snapshots.
 
 When a release needs a semantic Ruleset change, its draft entrypoint may explicitly compose
 unchanged fields from the exact immutable production predecessor `N` and only the bounded
 changed-domain fragments for `N+1`. It does not load unsupported historical or roadmap
 Rulesets and does not introduce a second runtime schema.
 
+This explicit predecessor composition may retain that predecessor's own frozen dependencies.
+It is not permission to edit a shared ancestor or to load arbitrary historical generations.
+Flattening such a chain must preserve the complete published payload, including values, types,
+container shapes and array order, for every production-used entrypoint that depends on it.
+
 Git is the complete implementation history. The Markdown archive under
-`docs/archive/rulesets/` is a human-readable index, not an executable payload source.
+`product/docs/archive/rulesets/` is a human-readable index, not an executable payload source.
 
 ## Domain-first layout
 
@@ -25,8 +30,8 @@ only the domains that actually change and reuses all unchanged fields exactly. C
 entrypoint and fragment names belong to current code and release-specific history rather than
 this permanent policy document.
 
-There is no recursive merge, implicit flattening, reflection, generic Ruleset inheritance,
-or dynamic historical catalog.
+Do not introduce recursive merge, implicit flattening, reflection, generic Ruleset inheritance,
+or a dynamic historical catalog. The bounded, explicit predecessor reuse above is allowed.
 
 Each changed domain returns a `payload` fragment and adjacent `behavior`, `data`, and
 `flavor` classification selectors.

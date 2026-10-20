@@ -403,6 +403,8 @@ export interface Nation {
     name: string;
     owner_name: string;
     comment: string;
+    // プレイヤーがつけた首都の名前。未設定は null（旧サーバーでは欠ける）。
+    capital_name?: string | null;
     money: number;
     money_display: string;
     money_capacity: number;
@@ -796,6 +798,8 @@ export interface ShipOverlay {
     id: number;
     key: 'fishing' | 'tourist' | 'exploration' | 'pirate' | 'treasure' | 'warship' | 'undersea_construction';
     name: string;
+    // プレイヤーがつけた船の名前。未設定は null。name は船種名のまま。
+    custom_name?: string | null;
     asset_key: string;
     current_hp: number;
     max_hp: number;
@@ -821,6 +825,7 @@ export interface ShipCourse {
 // 自国船一覧（/ships）の1行。
 export interface OwnShipStatus extends ShipCourse {
     name: string;
+    custom_name?: string | null;
     sort_order: number;
     x: number;
     y: number;
@@ -837,6 +842,8 @@ export interface MapCell {
     facility: string | null;
     facility_name: string | null;
     display_name: string;
+    // 本物の首都マスで、持ち主が名前をつけているときだけ入る。
+    capital_name?: string | null;
     owner_nation_id: number | null;
     owner_nation_number: number | null;
     owner_name: string | null;

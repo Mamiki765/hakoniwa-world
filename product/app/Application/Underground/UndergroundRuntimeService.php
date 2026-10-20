@@ -489,15 +489,7 @@ STORY;
                         'shards' => $victoryReward['shards'],
                     ]],
                     'stp_awarded' => $reward['stp_awarded'],
-                    'shining_kingdom_key' => [
-                        'label' => $huntingGround['key_label'],
-                        'balance_before' => $keyBalanceBefore,
-                        'entry_cost' => $huntingGround['entry_key_cost'],
-                        'awarded' => $victoryReward['keys'],
-                        'balance_after' => $this->explorationKeyBalance($profile, $huntingGround),
-                    ],
-                    'treasure' => $victoryReward['treasure'],
-                    'distorted_stones' => $victoryReward['distorted_stones'],
+                    ...$this->explorationBonusSnapshot($profile, $huntingGround, $keyBalanceBefore, $victoryReward),
                     'drops' => [['status' => 'pending']],
                 ],
                 'settled_at' => $settledAt,
@@ -739,6 +731,7 @@ STORY;
             $xpAwarded = 0;
             $shardsAwarded = 0;
             $stpAwarded = 0;
+            $distortedStonesAwarded = 0;
             $encounterCounts = [];
             $encounterSnapshots = [];
             $executions = [];
@@ -755,6 +748,7 @@ STORY;
                 $reward = $this->applyRepeatableReward($profile, $encounter['xp'], $victoryReward['shards']);
                 $this->awardExplorationKeys($profile, $huntingGround, $victoryReward['keys']);
                 $profile->distorted_stone_balance += $victoryReward['distorted_stones'];
+                $distortedStonesAwarded += $victoryReward['distorted_stones'];
                 $xpAwarded += $encounter['xp'];
                 $shardsAwarded += $victoryReward['shards'];
                 $stpAwarded += $reward['stp_awarded'];
@@ -825,6 +819,7 @@ STORY;
                 'encounters' => $encounterSnapshots,
                 'encounter_counts' => $encounterCounts,
                 'stp_awarded' => $stpAwarded,
+                'distorted_stones' => $distortedStonesAwarded,
                 'equipment_granted_count' => $equipmentGranted,
                 'vault_full_count' => $vaultFull,
                 'drops' => $drops,
@@ -1952,16 +1947,12 @@ STORY;
             $seed,
             $resultType === UndergroundBattle::RESULT_VICTORY,
         );
-        $xpAwarded = match ($resultType) {
-            UndergroundBattle::RESULT_VICTORY => $encounter['xp'],
-            UndergroundBattle::RESULT_WITHDRAWAL => intdiv($encounter['xp'], 4),
-            default => 0,
-        };
-        $shardDelta = match ($resultType) {
-            UndergroundBattle::RESULT_VICTORY => $victoryReward['shards'],
-            UndergroundBattle::RESULT_DEFEAT => intdiv($profile->shard_balance, 2) - $profile->shard_balance,
-            default => 0,
-        };
+        ['xp_awarded' => $xpAwarded, 'shard_delta' => $shardDelta] = $this->battleRewardAmounts(
+            $resultType,
+            $encounter['xp'],
+            $victoryReward['shards'],
+            $profile->shard_balance,
+        );
         $rewardSettlement = $this->applyRepeatableReward($profile, $xpAwarded, $shardDelta);
         $this->awardExplorationKeys($profile, $huntingGround, $victoryReward['keys']);
         $profile->distorted_stone_balance += $victoryReward['distorted_stones'];
@@ -2062,15 +2053,7 @@ STORY;
                 'current_hp_after' => $profile->current_hp,
                 'max_hp_after' => $maxHpAfter,
                 'banked_shard_balance' => $profile->banked_shard_balance,
-                'shining_kingdom_key' => [
-                    'label' => $huntingGround['key_label'],
-                    'balance_before' => $keyBalanceBefore,
-                    'entry_cost' => $huntingGround['entry_key_cost'],
-                    'awarded' => $victoryReward['keys'],
-                    'balance_after' => $this->explorationKeyBalance($profile, $huntingGround),
-                ],
-                'treasure' => $victoryReward['treasure'],
-                'distorted_stones' => $victoryReward['distorted_stones'],
+                ...$this->explorationBonusSnapshot($profile, $huntingGround, $keyBalanceBefore, $victoryReward),
                 'awakening' => $result->awakening,
                 'drop' => [
                     'identity' => $this->alphaV1Catalog->explorationDropConfig()['identity'],
@@ -2532,16 +2515,13 @@ STORY;
             $resultType === UndergroundBattle::RESULT_VICTORY,
             $baseShardReward,
         );
-        $xpAwarded = match ($resultType) {
-            UndergroundBattle::RESULT_VICTORY => $averagedReward['xp'],
-            UndergroundBattle::RESULT_WITHDRAWAL => $otherworld ? 0 : intdiv($averagedReward['xp'], 4),
-            default => 0,
-        };
-        $shardDelta = match ($resultType) {
-            UndergroundBattle::RESULT_VICTORY => $victoryReward['shards'],
-            UndergroundBattle::RESULT_DEFEAT => intdiv($profile->shard_balance, 2) - $profile->shard_balance,
-            default => 0,
-        };
+        ['xp_awarded' => $xpAwarded, 'shard_delta' => $shardDelta] = $this->battleRewardAmounts(
+            $resultType,
+            $averagedReward['xp'],
+            $victoryReward['shards'],
+            $profile->shard_balance,
+            grantWithdrawalXp: ! $otherworld,
+        );
         $rewardSettlement = $this->applyRepeatableReward($profile, $xpAwarded, $shardDelta);
         $this->awardExplorationKeys($profile, $huntingGround, $victoryReward['keys']);
         $profile->distorted_stone_balance += $victoryReward['distorted_stones'];
@@ -2656,15 +2636,7 @@ STORY;
                 'current_hp_after' => $profile->current_hp,
                 'max_hp_after' => $maxHpAfter,
                 'banked_shard_balance' => $profile->banked_shard_balance,
-                'shining_kingdom_key' => [
-                    'label' => $huntingGround['key_label'],
-                    'balance_before' => $keyBalanceBefore,
-                    'entry_cost' => $huntingGround['entry_key_cost'],
-                    'awarded' => $victoryReward['keys'],
-                    'balance_after' => $this->explorationKeyBalance($profile, $huntingGround),
-                ],
-                'treasure' => $victoryReward['treasure'],
-                'distorted_stones' => $victoryReward['distorted_stones'],
+                ...$this->explorationBonusSnapshot($profile, $huntingGround, $keyBalanceBefore, $victoryReward),
                 'awakening' => $leaderFinalAwakening,
                 'party_awakening' => $result->awakening,
                 'drop' => [
@@ -2899,16 +2871,12 @@ STORY;
         $xpBefore = $profile->combat_xp;
         $shardsBefore = $profile->shard_balance;
         $unspentStpBefore = $profile->unspent_stp;
-        $xpAwarded = match ($resultType) {
-            UndergroundBattle::RESULT_VICTORY => $reward['xp'],
-            UndergroundBattle::RESULT_WITHDRAWAL => intdiv($reward['xp'], 4),
-            default => 0,
-        };
-        $shardDelta = match ($resultType) {
-            UndergroundBattle::RESULT_VICTORY => $reward['shards'],
-            UndergroundBattle::RESULT_DEFEAT => intdiv($profile->shard_balance, 2) - $profile->shard_balance,
-            default => 0,
-        };
+        ['xp_awarded' => $xpAwarded, 'shard_delta' => $shardDelta] = $this->battleRewardAmounts(
+            $resultType,
+            $reward['xp'],
+            $reward['shards'],
+            $profile->shard_balance,
+        );
         $rewardSettlement = $this->applyRepeatableReward($profile, $xpAwarded, $shardDelta);
         $distortedStones = $resultType === UndergroundBattle::RESULT_VICTORY
             ? $this->rollTrialDistortedStone($trial['distorted_stone_chance_bps'], $seed)
@@ -3795,6 +3763,30 @@ STORY;
         $profile->{$field} -= $totalCost;
     }
 
+    /**
+     * @param  array<string, mixed>  $huntingGround
+     * @param  array<string, mixed>  $victoryReward
+     * @return array<string, mixed>
+     */
+    private function explorationBonusSnapshot(
+        UndergroundProfile $profile,
+        array $huntingGround,
+        int $keyBalanceBefore,
+        array $victoryReward,
+    ): array {
+        return [
+            'shining_kingdom_key' => [
+                'label' => $huntingGround['key_label'],
+                'balance_before' => $keyBalanceBefore,
+                'entry_cost' => $huntingGround['entry_key_cost'],
+                'awarded' => $victoryReward['keys'],
+                'balance_after' => $this->explorationKeyBalance($profile, $huntingGround),
+            ],
+            'treasure' => $victoryReward['treasure'],
+            'distorted_stones' => $victoryReward['distorted_stones'],
+        ];
+    }
+
     /** @param array<string, mixed> $huntingGround */
     private function explorationKeyBalance(UndergroundProfile $profile, array $huntingGround): int
     {
@@ -4184,6 +4176,28 @@ STORY;
         ]);
 
         return $balance->balance;
+    }
+
+    /** @return array{xp_awarded: int, shard_delta: int} */
+    private function battleRewardAmounts(
+        string $resultType,
+        int $victoryXp,
+        int $victoryShards,
+        int $carriedShards,
+        bool $grantWithdrawalXp = true,
+    ): array {
+        return [
+            'xp_awarded' => match ($resultType) {
+                UndergroundBattle::RESULT_VICTORY => $victoryXp,
+                UndergroundBattle::RESULT_WITHDRAWAL => $grantWithdrawalXp ? intdiv($victoryXp, 4) : 0,
+                default => 0,
+            },
+            'shard_delta' => match ($resultType) {
+                UndergroundBattle::RESULT_VICTORY => $victoryShards,
+                UndergroundBattle::RESULT_DEFEAT => intdiv($carriedShards, 2) - $carriedShards,
+                default => 0,
+            },
+        ];
     }
 
     /**

@@ -2,6 +2,7 @@
 
 namespace App\Application;
 
+use App\Domain\Nation\GivenName;
 use App\Domain\Nation\NationProfileText;
 use App\Domain\Ruleset\CurrentRulesetGuard;
 use App\Models\Nation;
@@ -16,7 +17,7 @@ final class NationProfileService
 {
     public function __construct(private readonly CurrentRulesetGuard $rulesetGuard) {}
 
-    /** @param array{owner_name?: string, comment?: string} $changes */
+    /** @param array{owner_name?: string, comment?: string, capital_name?: string|null} $changes */
     public function update(User $user, Nation $nation, array $changes): Nation
     {
         return DB::transaction(function () use ($user, $nation, $changes): Nation {
@@ -40,6 +41,9 @@ final class NationProfileService
                 'profile_comment' => array_key_exists('comment', $changes)
                     ? NationProfileText::comment($changes['comment'])
                     : $lockedNation->profile_comment,
+                'capital_name' => array_key_exists('capital_name', $changes)
+                    ? GivenName::normalize($changes['capital_name'], '首都の名前')
+                    : $lockedNation->capital_name,
             ];
             $before = [];
             $after = [];

@@ -129,6 +129,9 @@ final class MapCellPresenter
             $populationMaximums,
         );
         $monster = $this->monster($cell, $currentTurn, $neutralizeOwnership, $rulesetSettings);
+        $capitalName = $facility?->key === 'capital' && $cell->facility?->key === 'capital'
+            ? $ownerNation?->capital_name
+            : null;
 
         return [
             'x' => $cell->x,
@@ -140,6 +143,7 @@ final class MapCellPresenter
                 ? $displayName
                 : ($centralPresentation['name'] ?? $facilityPresentation['name'] ?? $facility?->name),
             'display_name' => $displayName,
+            'capital_name' => $capitalName,
             'sea_area_name' => $seaAreaName,
             'owner_nation_id' => $visibleState['owner_nation_id'],
             'owner_nation_number' => $ownerNation?->nation_number,
@@ -151,7 +155,7 @@ final class MapCellPresenter
             'buried_treasure_visible' => $buriedTreasureVisible,
             'asset' => $layers['completed'],
             'overlays' => $layers['overlays'],
-            'aria_label' => $this->ariaLabel($cell, $displayName, $ownerNation, $details, $ship, $monster),
+            'aria_label' => $this->ariaLabel($cell, $capitalName === null ? $displayName : "{$capitalName} {$displayName}", $ownerNation, $details, $ship, $monster),
             // Secret-only state changes must not alter a non-owner representation version.
             'version' => $isOwner ? $cell->version : 1,
             'updated_at' => $isOwner ? $cell->updated_at?->toIso8601String() : null,
@@ -268,6 +272,7 @@ final class MapCellPresenter
             'id' => $ship->id,
             'key' => $definition->key,
             'name' => $definition->name,
+            'custom_name' => $ship->custom_name,
             'asset_key' => $definition->assetKey,
             'current_hp' => $ship->current_hp,
             'max_hp' => $ship->max_hp,
@@ -449,7 +454,7 @@ final class MapCellPresenter
         if ($ship !== null) {
             $shipLabel = sprintf(
                 '船 %s HP %d/%d',
-                $ship['name'],
+                $ship['custom_name'] === null ? $ship['name'] : "{$ship['custom_name']} {$ship['name']}",
                 $ship['current_hp'],
                 $ship['max_hp'],
             );

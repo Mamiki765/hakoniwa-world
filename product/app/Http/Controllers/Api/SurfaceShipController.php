@@ -3,8 +3,11 @@
 namespace App\Http\Controllers\Api;
 
 use App\Application\SurfaceShipCourseService;
+use App\Application\SurfaceShipNameService;
 use App\Domain\Concurrency\OptimisticLockException;
 use App\Domain\Map\GridCoordinate;
+use App\Domain\Nation\GivenName;
+use App\Domain\Nation\NationProfileText;
 use App\Domain\Ruleset\ResetRequiredException;
 use App\Domain\Ship\SurfaceShipCatalog;
 use App\Domain\Turn\TurnAlreadyRunningException;
@@ -43,6 +46,7 @@ final class SurfaceShipController extends Controller
             $rows[] = [
                 'id' => $ship->id,
                 'name' => $definition->name,
+                'custom_name' => $ship->custom_name,
                 'sort_order' => $definition->sortOrder,
                 'x' => $ship->cell->x,
                 'y' => $ship->cell->y,
@@ -106,6 +110,26 @@ final class SurfaceShipController extends Controller
             'id' => (int) $updated->id,
             ...$updated->course(),
         ]]);
+    }
+
+    public function updateName(
+        Request $request,
+        Nation $nation,
+        Ship $ship,
+        SurfaceShipNameService $service,
+    ): JsonResponse {
+        $validated = $request->validate([
+            'name' => ['present', 'nullable', 'string', 'max:'.GivenName::MAX_LENGTH, 'regex:'.NationProfileText::SINGLE_LINE_PATTERN],
+        ], attributes: ['name' => '船の名前']);
+        try {
+            $updated = $service->rename($request->user(), $nation, $ship, $validated['name']);
+        } catch (ResetRequiredException $exception) {
+            return response()->json(['message' => $exception->getMessage(), 'code' => ResetRequiredException::ERROR_CODE], 409);
+        } catch (DomainException $exception) {
+            return response()->json(['message' => $exception->getMessage()], 422);
+        }
+
+        return response()->json(['data' => ['id' => (int) $updated->id, 'custom_name' => $updated->custom_name]]);
     }
 
     public function updateDestination(

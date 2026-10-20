@@ -867,8 +867,9 @@ final class PlayerIslandEventService
             'command.undersea_fire_station_built_public' => "{$nation}で海底消防署が建設されたようです(?,?)。",
             'command.facility_built_public' => $this->publicFacilityBuiltMessage($metadata),
             'command.capital_relocated_public' => sprintf(
-                '%sの首都が(%s,%s)から(%s,%s)へ移転しました。',
+                '%sの%sが(%s,%s)から(%s,%s)へ移転しました。',
                 $nation,
+                $this->capitalLabel($metadata),
                 $this->publicCoordinate($metadata, 'from_x'),
                 $this->publicCoordinate($metadata, 'from_y'),
                 $x,
@@ -903,8 +904,8 @@ final class PlayerIslandEventService
             ),
             'facility.undersea_city_abandoned' => "{$nation}の海底都市が破棄されました(?,?)。",
             'facility.undersea_fire_station_abandoned' => "{$nation}の海底消防署が消滅し、海に戻りました(?,?)。",
-            'ship.built' => sprintf('%sが%sを建造しました。', $nation, $metadata['ship_name'] ?? '船'),
-            'ship.sunk' => sprintf('%s%sが沈没しました。', $nation === '島' ? '' : $nation.'の', $metadata['ship_name'] ?? '船'),
+            'ship.built' => sprintf('%sが%sを建造しました。', $nation, $this->shipLabel($metadata)),
+            'ship.sunk' => sprintf('%s%sが沈没しました。', $nation === '島' ? '' : $nation.'の', $this->shipLabel($metadata)),
             'ship.npc_spawned' => match ($metadata['ship_type_key'] ?? null) {
                 'pirate' => '海賊船が出現しました。',
                 'treasure' => '宝船が出現しました。',
@@ -1056,7 +1057,7 @@ final class PlayerIslandEventService
                 $y,
                 $metadata['firing_nation_name'] ?? '他島',
                 $this->missileLabel($metadata['missile_key'] ?? null),
-                $this->missileEffectLabel($metadata['effect'] ?? null),
+                $this->missileEffectLabel($metadata['effect'] ?? null, $metadata),
             ),
             'refugee_generated' => "{$nation}でミサイル攻撃による難民が発生しました。",
             'nation.dormant' => $this->publicDormancyMessage($metadata),
@@ -1213,7 +1214,7 @@ final class PlayerIslandEventService
             'command.territory_abandoned' => ['nation_name', 'x', 'y'],
             'fire.undersea_city_destroyed' => ['nation_name', 'removed_facility_key'],
             'facility.undersea_city_abandoned', 'facility.undersea_fire_station_abandoned' => ['nation_name'],
-            'ship.built', 'ship.sunk' => ['nation_name', 'ship_name'],
+            'ship.built', 'ship.sunk' => ['nation_name', 'ship_name', 'ship_custom_name'],
             'ship.npc_spawned' => ['ship_type_key'],
             'secretary.missile_intercepted' => ['nation_name', 'secretary_name'],
             'command.forest_planted_public', 'command.logging_public',
@@ -1223,7 +1224,7 @@ final class PlayerIslandEventService
             'command.facility_built_public' => [
                 'nation_name', 'facility_key', 'expanded', 'before_scale', 'facility_scale', 'x', 'y',
             ],
-            'command.capital_relocated_public' => ['nation_name', 'from_x', 'from_y', 'x', 'y'],
+            'command.capital_relocated_public' => ['nation_name', 'capital_name', 'from_x', 'from_y', 'x', 'y'],
             'command.attraction_started_public' => ['nation_name'],
             'command.money_aid_public' => [
                 'sender_nation_name', 'receiver_nation_name', 'transferred_money',
@@ -1248,7 +1249,7 @@ final class PlayerIslandEventService
             ],
             'capital.disaster_damaged' => [
                 'nation_name', 'x', 'y', 'disaster_key', 'damage_percent', 'after_population',
-                'before_population', 'population_damage_kind',
+                'before_population', 'population_damage_kind', 'capital_name',
             ],
             'facility.partially_damaged' => [
                 'nation_name', 'x', 'y', 'facility_key', 'damage_kind', 'source_key',
@@ -1277,6 +1278,7 @@ final class PlayerIslandEventService
             'missile.impact' => [
                 'nation_name', 'target_nation_name', 'firing_nation_name',
                 'missile_key', 'effect', 'x', 'y',
+                ...(($metadata['effect'] ?? null) === 'ship_sunk' ? ['ship_name', 'ship_custom_name'] : []),
             ],
             'nation.dormant' => ['nation_name', 'reason', 'secretary_name'],
             'nation.dormancy_resumed' => ['nation_name'],
@@ -1836,7 +1838,8 @@ final class PlayerIslandEventService
             ),
             'territory.influenced' => $this->ownershipTransferMessage($metadata, '領地感化'),
             'command.capital_relocated' => sprintf(
-                '首都を(%s,%s)から(%s,%s)へ遷都しました。',
+                '%sを(%s,%s)から(%s,%s)へ遷都しました。',
+                $this->capitalLabel($metadata),
                 number_format($this->integer($metadata, 'from_x')),
                 number_format($this->integer($metadata, 'from_y')),
                 number_format($this->integer($metadata, 'x')),
@@ -1858,7 +1861,7 @@ final class PlayerIslandEventService
             ),
             'ship.built' => sprintf(
                 '%sを建造し、(%s,%s)へ進水しました。',
-                is_string($metadata['ship_name'] ?? null) ? $metadata['ship_name'] : '船',
+                $this->shipLabel($metadata),
                 number_format($this->integer($metadata, 'x')),
                 number_format($this->integer($metadata, 'y')),
             ),
@@ -1868,9 +1871,9 @@ final class PlayerIslandEventService
                 number_format($this->integer($metadata, 'y')),
             ),
             'ship.destination.ended' => match ($metadata['reason'] ?? null) {
-                'arrived' => ($metadata['ship_name'] ?? '船').'が目的地に到着しました。',
-                'terrain_changed' => ($metadata['ship_name'] ?? '船').'の目的地が海でなくなったため、目的地指示を解除しました。',
-                default => ($metadata['ship_name'] ?? '船').'が目的地へ近づけないため、目的地指示を解除しました。',
+                'arrived' => $this->shipLabel($metadata).'が目的地に到着しました。',
+                'terrain_changed' => $this->shipLabel($metadata).'の目的地が海でなくなったため、目的地指示を解除しました。',
+                default => $this->shipLabel($metadata).'が目的地へ近づけないため、目的地指示を解除しました。',
             },
             'ship.forced_displaced' => sprintf(
                 '船が地形変更を避けて(%s,%s)から(%s,%s)へ退避しました。',
@@ -1881,14 +1884,14 @@ final class PlayerIslandEventService
             ),
             'ship.fuel_shortage_damaged' => sprintf(
                 '%sが石油不足により(%s,%s)で損傷しました（HP %s）。',
-                is_string($metadata['ship_name'] ?? null) ? $metadata['ship_name'] : '船',
+                $this->shipLabel($metadata),
                 number_format($this->integer($metadata, 'x')),
                 number_format($this->integer($metadata, 'y')),
                 number_format($this->integer($metadata, 'current_hp')),
             ),
             'ship.missile_damaged' => sprintf(
                 '%sがミサイル攻撃により(%s,%s)で損傷しました（HP %s）。',
-                is_string($metadata['ship_name'] ?? null) ? $metadata['ship_name'] : '船',
+                $this->shipLabel($metadata),
                 number_format($this->integer($metadata, 'x')),
                 number_format($this->integer($metadata, 'y')),
                 number_format($this->integer($metadata, 'current_hp')),
@@ -1896,7 +1899,7 @@ final class PlayerIslandEventService
             'ship.attack_evaded' => '戦艦がミサイル攻撃を回避しました。',
             'ship.sunk' => sprintf(
                 '%sが%sにより(%s,%s)で沈没しました。',
-                is_string($metadata['ship_name'] ?? null) ? $metadata['ship_name'] : '船',
+                $this->shipLabel($metadata),
                 $this->shipRemovalReasonLabel($metadata['removal_reason'] ?? null),
                 number_format($this->integer($metadata, 'x')),
                 number_format($this->integer($metadata, 'y')),
@@ -2680,7 +2683,7 @@ final class PlayerIslandEventService
             $this->missileLabel($metadata['missile_key'] ?? null),
             number_format($this->integer($metadata, 'x')),
             number_format($this->integer($metadata, 'y')),
-            $this->missileEffectLabel($metadata['effect'] ?? null),
+            $this->missileEffectLabel($metadata['effect'] ?? null, $metadata),
         );
     }
 
@@ -2718,7 +2721,8 @@ final class PlayerIslandEventService
         return is_string($label) && $label !== '' ? $label : '秘書';
     }
 
-    private function missileEffectLabel(mixed $effect): string
+    /** @param array<string, mixed> $metadata */
+    private function missileEffectLabel(mixed $effect, array $metadata = []): string
     {
         return match ($effect) {
             'monster_hit', 'damaged' => '怪獣へ命中しました',
@@ -2729,7 +2733,9 @@ final class PlayerIslandEventService
             'capital_at_minimum' => '首都人口が最低人口のため効果はありませんでした',
             'water_facility_destroyed' => '水上施設を破壊しました',
             'ship_damaged' => '船に損傷を与えました',
-            'ship_sunk' => '船を撃沈しました',
+            'ship_sunk' => $this->givenName($metadata, 'ship_custom_name') === null
+                ? '船を撃沈しました'
+                : $this->shipLabel($metadata).'を撃沈しました',
             'ship_evaded' => '戦艦に攻撃を回避されました',
             'facility_scale_damaged', 'facility_scale_land_damaged' => '施設の規模を減少させました',
             'facility_scale_ineffective' => '施設の規模へ被害を与えられませんでした',
@@ -2780,17 +2786,46 @@ final class PlayerIslandEventService
     /** @param array<string, mixed> $metadata */
     private function capitalDisasterDamageMessage(array $metadata): string
     {
+        $population = $this->givenName($metadata, 'capital_name') === null ? '首都人口' : $this->capitalLabel($metadata).'の人口';
         if (is_string($metadata['population_damage_kind'] ?? null)) {
-            return sprintf('%sにより首都人口が%s人減少し、%s人になりました。',
+            return sprintf('%sにより%sが%s人減少し、%s人になりました。',
                 $this->disasterLabel($metadata['disaster_key'] ?? null),
+                $population,
                 number_format(max(0, $this->integer($metadata, 'before_population') - $this->integer($metadata, 'after_population'))),
                 number_format($this->integer($metadata, 'after_population')));
         }
 
-        return sprintf('%sにより首都人口が%s%%減少し、%s人になりました。',
+        return sprintf('%sにより%sが%s%%減少し、%s人になりました。',
             $this->disasterLabel($metadata['disaster_key'] ?? null),
+            $population,
             number_format($this->integer($metadata, 'damage_percent')),
             number_format($this->integer($metadata, 'after_population')));
+    }
+
+    // Player-given names were added later; unnamed and older events keep their original wording.
+    /** @param array<string, mixed> $metadata */
+    private function shipLabel(array $metadata): string
+    {
+        $type = is_string($metadata['ship_name'] ?? null) ? $metadata['ship_name'] : '船';
+        $name = $this->givenName($metadata, 'ship_custom_name');
+
+        return $name === null ? $type : "{$type}「{$name}」";
+    }
+
+    /** @param array<string, mixed> $metadata */
+    private function capitalLabel(array $metadata): string
+    {
+        $name = $this->givenName($metadata, 'capital_name');
+
+        return $name === null ? '首都' : "首都「{$name}」";
+    }
+
+    /** @param array<string, mixed> $metadata */
+    private function givenName(array $metadata, string $key): ?string
+    {
+        $value = $metadata[$key] ?? null;
+
+        return is_string($value) && $value !== '' ? $value : null;
     }
 
     /** @param array<string, mixed> $metadata */

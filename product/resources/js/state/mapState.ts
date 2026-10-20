@@ -232,6 +232,69 @@ export function useMapState() {
         }
     }
 
+    // 名前の変更を、読み込み済みのマスと選択中のマスへ反映する。
+    function replaceCells(matches: (cell: MapCell) => boolean, change: (cell: MapCell) => MapCell): void {
+        for (const [cellKey, cell] of cells) {
+            if (!matches(cell)) continue;
+            const updated = change(cell);
+            cells.set(cellKey, updated);
+            if (selected.value?.x === cell.x && selected.value?.y === cell.y) selected.value = updated;
+        }
+    }
+
+    // 読み上げラベルも含め、名前を含む表示はサーバーの正規のセル表現から更新する。
+    async function refreshNamedCells(matches: (cell: MapCell) => boolean): Promise<void> {
+        const activeMapSpace = mapSpace;
+        if (activeMapSpace === null) return;
+        const chunks = new Map<string, { x: number; y: number }>();
+        for (const cell of cells.values()) {
+            if (!matches(cell)) continue;
+            const x = floorDiv(cell.x, CHUNK_SIZE);
+            const y = floorDiv(cell.y, CHUNK_SIZE);
+            chunks.set(chunkKey(x, y), { x, y });
+        }
+        const requestGeneration = generation;
+        if (chunks.size > 0) error.value = null;
+        await Promise.all([...chunks].map(async ([requestKey, { x, y }]) => {
+            await inFlightChunks.get(requestKey);
+            if (requestGeneration !== generation) return;
+            try {
+                const chunk = await api<MapChunk>(chunkPath(activeMapSpace.id, x, y));
+                if (requestGeneration !== generation) return;
+                for (const cell of chunk.cells) {
+                    const cellKey = key(cell.x, cell.y);
+                    const current = cells.get(cellKey);
+                    if (current === undefined || !matches(current)
+                        || current.ship?.id !== cell.ship?.id
+                        || (current.ship?.custom_name ?? null) !== (cell.ship?.custom_name ?? null)
+                        || (current.capital_name ?? null) !== (cell.capital_name ?? null)) continue;
+                    // 取得中に保存した進路・version・別の改名結果を古いセルで上書きしない。
+                    cells.set(cellKey, { ...current, aria_label: cell.aria_label });
+                }
+            } catch {
+                if (requestGeneration === generation) error.value = '一部のchunkを取得できませんでした。';
+            }
+        }));
+        if (requestGeneration === generation && selected.value !== null) {
+            selected.value = cells.get(key(selected.value.x, selected.value.y)) ?? selected.value;
+        }
+    }
+
+    async function renameShip(ship: { id: number; custom_name: string | null }): Promise<void> {
+        const matches = (cell: MapCell) => cell.ship?.id === ship.id && cell.ship.is_owner;
+        replaceCells(
+            matches,
+            (cell) => ({ ...cell, ship: cell.ship == null ? cell.ship : { ...cell.ship, custom_name: ship.custom_name } }),
+        );
+        await refreshNamedCells(matches);
+    }
+
+    async function renameCapital(capital: { x: number; y: number; capital_name: string | null }): Promise<void> {
+        const matches = (cell: MapCell) => cell.x === capital.x && cell.y === capital.y;
+        replaceCells(matches, (cell) => ({ ...cell, capital_name: capital.capital_name }));
+        await refreshNamedCells(matches);
+    }
+
     return {
         visibleCells,
         selected,
@@ -247,5 +310,7 @@ export function useMapState() {
         clearSelection,
         moveSelection,
         updateShipCourse,
+        renameShip,
+        renameCapital,
     };
 }

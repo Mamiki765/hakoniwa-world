@@ -195,7 +195,7 @@ onMounted(() => { void load(); });
                     <li v-for="recipe in stackRecipes" :id="`synthesis-recipe-${recipe.key}`" :key="recipe.key" :class="{ highlighted: highlighted === recipe.key }">
                         <strong>{{ recipe.name }}</strong>
                         <span>同じ物どうしでLvを足す（最大{{ (recipe.level_cap ?? 9999).toLocaleString('ja-JP') }}）</span>
-                        <span v-if="recipe.crafted" class="secretary-recipe-crafted">✓</span>
+                        <span v-if="recipe.crafted" class="secretary-recipe-crafted">✓ 作成済み</span>
                     </li>
                 </ul>
             </section>

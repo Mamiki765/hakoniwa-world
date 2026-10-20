@@ -2,6 +2,7 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { floorMod, gridToPixel, TILE_SIZE } from '../map/projection';
 import { seaAreaOutline } from '../map/seaAreaWeather';
+import { cellGivenName } from '../formatters/givenName';
 import type { CommandQueue, CommandQueueItem, MapBounds, MapCell, SeaArea } from '../types';
 
 const props = defineProps<{
@@ -672,7 +673,7 @@ function markAssetFailed(cell: MapCell): void {
                 @focusin="cancelTooltipHide"
                 @focusout="scheduleTooltipHide"
             >
-                <strong>{{ tooltipCell.display_name }} ({{ tooltipCell.x }},{{ tooltipCell.y }})</strong>
+                <strong>{{ cellGivenName(tooltipCell) ? `${cellGivenName(tooltipCell)} ` : '' }}{{ tooltipCell.display_name }} ({{ tooltipCell.x }},{{ tooltipCell.y }})</strong>
                 <span v-for="line in tooltipDetails" :key="line">{{ line }}</span>
             </div>
         </div>

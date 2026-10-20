@@ -6,6 +6,7 @@ use App\Domain\Economy\CapacityBoundedAssetService;
 use App\Domain\Economy\InventorySalePlanner;
 use App\Domain\Economy\NationCapacityResolver;
 use App\Domain\Economy\SalePolicy;
+use App\Domain\Economy\SellerProceedsCalculator;
 use App\Domain\Secretary\SecretaryItemCatalog;
 use App\Domain\TradingPost\TradingPostRules;
 use App\Domain\Turn\DeterministicRandomStream;
@@ -32,6 +33,7 @@ final class TradingPostTurnService
         private readonly CapacityBoundedAssetService $boundedAssets,
         private readonly NationCapacityResolver $capacities,
         private readonly InventorySalePlanner $sales,
+        private readonly SellerProceedsCalculator $proceeds,
         private readonly FoodOverflowResolver $foodOverflow,
         private readonly EcopoService $ecopo,
     ) {}
@@ -149,7 +151,11 @@ final class TradingPostTurnService
         $seller = null;
         if ($listing->seller_type === 'nation') {
             $seller = Nation::query()->whereKey($listing->seller_nation_id)->lockForUpdate()->firstOrFail();
-            $sellerProceedsRequested = $this->sellerProceeds($bid->amount, $rules);
+            $sellerProceedsRequested = $this->proceeds->calculate(
+                $bid->amount,
+                $rules->sellerProceedsNumerator,
+                $rules->sellerProceedsDenominator,
+            );
             $fee = $bid->amount - $sellerProceedsRequested;
             $credit = $this->boundedAssets->creditMoney($seller, $sellerProceedsRequested, $context->ruleset);
             $sellerProceeds = $credit->applied;
@@ -591,15 +597,6 @@ final class TradingPostTurnService
             'auto_relist' => false,
             'status' => AuctionListing::STATUS_ACTIVE,
         ]);
-    }
-
-    private function sellerProceeds(int $amount, TradingPostRules $rules): int
-    {
-        $whole = intdiv($amount, $rules->sellerProceedsDenominator);
-        $remainder = $amount % $rules->sellerProceedsDenominator;
-
-        return $whole * $rules->sellerProceedsNumerator
-            + intdiv($remainder * $rules->sellerProceedsNumerator, $rules->sellerProceedsDenominator);
     }
 
     private function sellerReachedAbandonmentThreshold(

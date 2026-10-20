@@ -2,6 +2,7 @@
 
 namespace App\Application\Underground;
 
+use App\Domain\Economy\SellerProceedsCalculator;
 use App\Domain\Underground\Intro\UndergroundIntroStage;
 use App\Models\NationMembership;
 use App\Models\Secretary;
@@ -16,7 +17,11 @@ use Illuminate\Support\Str;
 /** All writers lock profiles in ID order, then listings, then equipment. */
 final readonly class UndergroundMarketService
 {
-    public function __construct(private UndergroundEquipmentLoadoutResolver $loadout, private UndergroundEquipmentCatalog $catalog) {}
+    public function __construct(
+        private UndergroundEquipmentLoadoutResolver $loadout,
+        private UndergroundEquipmentCatalog $catalog,
+        private SellerProceedsCalculator $proceeds,
+    ) {}
 
     /**
      * @param  array<string,mixed>  $filters
@@ -24,13 +29,11 @@ final readonly class UndergroundMarketService
      */
     public function browse(User $user, array $filters): array
     {
-        $this->expireDue();
-
         return DB::transaction(function () use ($user, $filters): array {
             $profile = $this->openProfile($user);
             $cap = $this->purchaseIlCap($profile);
             $inventory = $this->inventory($profile);
-            $query = UndergroundMarketListing::query()->where('status', 'active')->where('expires_at', '>', now());
+            $query = UndergroundMarketListing::query()->where('status', 'active');
             $rows = $query->orderByDesc('id')->get()->map(function (UndergroundMarketListing $listing) use ($profile, $cap, $inventory): array {
                 $item = $listing->item_snapshot;
                 $reasons = [];
@@ -49,7 +52,7 @@ final readonly class UndergroundMarketService
                 }
 
                 return ['id' => $listing->id, 'item' => $item, 'seller' => $listing->seller_snapshot,
-                    'price' => $listing->price, 'expires_at' => $listing->expires_at->toIso8601String(),
+                    'price' => $listing->price, 'expires_at' => null,
                     'is_own' => $listing->seller_profile_id === $profile->id,
                     'purchasable' => $item['item_level'] <= $cap, 'blocked_reasons' => $reasons];
             })->filter(static function (array $row) use ($filters): bool {
@@ -81,8 +84,6 @@ final readonly class UndergroundMarketService
     /** @return array<string,mixed> */
     public function listable(User $user): array
     {
-        $this->expireDue();
-
         return DB::transaction(function () use ($user): array {
             $profile = $this->openProfile($user);
             $rating = $this->loadout->ratingRequirementBps($profile);
@@ -96,8 +97,6 @@ final readonly class UndergroundMarketService
     /** @return array<string,mixed> */
     public function mine(User $user): array
     {
-        $this->expireDue();
-
         return DB::transaction(function () use ($user): array {
             $profile = $this->openProfile($user);
             $rows = UndergroundMarketListing::query()->where('seller_profile_id', $profile->id)->orderByDesc('id')->get();
@@ -114,8 +113,6 @@ final readonly class UndergroundMarketService
     /** @return array<string,mixed> */
     public function create(User $user, string $requestId, int $equipmentId, int $price): array
     {
-        $this->expireDue();
-
         return $this->mutate($user, $requestId, ['create', $equipmentId, $price], null,
             function (UndergroundProfile $profile) use ($equipmentId, $price): array {
                 if ($this->activeCount($profile) >= $this->rules()['listing_limit']) {
@@ -133,8 +130,7 @@ final readonly class UndergroundMarketService
                     $this->fail('below_minimum_price', 'NPC売値以上の価格を指定してください。');
                 }
                 $rules = $this->rules();
-                $proceeds = intdiv($price, $rules['proceeds_denominator']) * $rules['proceeds_numerator']
-                    + intdiv(($price % $rules['proceeds_denominator']) * $rules['proceeds_numerator'], $rules['proceeds_denominator']);
+                $proceeds = $this->proceeds->calculate($price, $rules['proceeds_numerator'], $rules['proceeds_denominator']);
                 $snapshot = $this->loadout->projectOwned($item);
                 $listing = UndergroundMarketListing::query()->create([
                     'seller_profile_id' => $profile->id, 'equipment_id' => $item->id,
@@ -142,7 +138,7 @@ final readonly class UndergroundMarketService
                     'item_snapshot' => $snapshot,
                     'seller_snapshot' => ['secretary_name' => $profile->secretary->name,
                         'island_name' => NationMembership::query()->where('user_id', $profile->secretary->user_id)->where('role', 'owner')->with('nation')->first()?->nation->name],
-                    'listed_at' => now(), 'expires_at' => now()->addHours($rules['duration_hours']),
+                    'listed_at' => now(), 'expires_at' => null,
                 ]);
                 $item->update(['is_listed' => true]);
 
@@ -158,7 +154,7 @@ final readonly class UndergroundMarketService
         return $this->mutate($user, $requestId, ['purchase', $listingId, $expectedPrice], $sellerId === null ? null : (int) $sellerId,
             function (UndergroundProfile $profile) use ($listingId, $expectedPrice): array {
                 $listing = UndergroundMarketListing::query()->whereKey($listingId)->lockForUpdate()->first();
-                if (! $listing instanceof UndergroundMarketListing || $listing->status !== 'active' || $listing->expires_at->lte(now())) {
+                if (! $listing instanceof UndergroundMarketListing || $listing->status !== 'active') {
                     $this->fail('listing_unavailable', 'この出品は終了しました。');
                 }
                 if ($listing->seller_profile_id === $profile->id) {
@@ -203,7 +199,7 @@ final readonly class UndergroundMarketService
                 $this->fail('listing_unavailable', '出品が見つかりません。');
             }
             if ($listing->status === 'active') {
-                $this->release($listing, $listing->expires_at->lte(now()) ? 'expired' : 'cancelled');
+                $this->release($listing, 'cancelled');
             } elseif ($listing->status === 'sold') {
                 $this->fail('listing_unavailable', 'この品物は売却済みです。');
             }
@@ -268,7 +264,6 @@ final readonly class UndergroundMarketService
 
         return DB::transaction(function () use ($profile): array {
             UndergroundProfile::query()->whereKey($profile->id)->lockForUpdate()->firstOrFail();
-            $this->expireLocked($profile->id);
             $unclaimed = UndergroundMarketListing::query()->where('seller_profile_id', $profile->id)->where('status', 'sold')->whereNull('proceeds_claimed_at');
 
             return ['unclaimed_count' => $unclaimed->count(), 'unclaimed_total' => (int) $unclaimed->sum('proceeds'),
@@ -288,28 +283,10 @@ final readonly class UndergroundMarketService
         }
     }
 
-    public function expireDue(): void
-    {
-        $ids = UndergroundMarketListing::query()->where('status', 'active')->where('expires_at', '<=', now())->distinct()->orderBy('seller_profile_id')->pluck('seller_profile_id');
-        foreach ($ids as $id) {
-            DB::transaction(function () use ($id): void {
-                UndergroundProfile::query()->whereKey($id)->lockForUpdate()->firstOrFail();
-                $this->expireLocked((int) $id);
-            }, 3);
-        }
-    }
-
-    private function expireLocked(int $id): void
-    {
-        foreach (UndergroundMarketListing::query()->where('seller_profile_id', $id)->where('status', 'active')->where('expires_at', '<=', now())->orderBy('id')->lockForUpdate()->get() as $listing) {
-            $this->release($listing, 'expired');
-        }
-    }
-
     private function release(UndergroundMarketListing $listing, string $status): void
     {
         UndergroundOwnedEquipment::query()->whereKey($listing->equipment_id)->where('underground_profile_id', $listing->seller_profile_id)->update(['is_listed' => false]);
-        $listing->update(['status' => $status, ...($status === 'expired' ? ['expired_at' => now()] : [])]);
+        $listing->update(['status' => $status]);
     }
 
     /**
@@ -395,12 +372,12 @@ final readonly class UndergroundMarketService
     {
         return ['id' => $listing->id, 'item' => $listing->item_snapshot, 'item_snapshot' => $listing->item_snapshot,
             'price' => $listing->price, 'fee' => $listing->fee, 'proceeds' => $listing->proceeds,
-            'expires_at' => $listing->expires_at->toIso8601String(), 'sold_at' => $listing->sold_at?->toIso8601String(),
+            'expires_at' => $listing->status === 'active' ? null : $listing->expires_at?->toIso8601String(), 'sold_at' => $listing->sold_at?->toIso8601String(),
             'expired_at' => $listing->expired_at?->toIso8601String(), 'claimed' => $listing->proceeds_claimed_at !== null,
             'seen' => $listing->seen_by_seller_at !== null];
     }
 
-    /** @return array{listing_limit:int,duration_hours:int,proceeds_numerator:int,proceeds_denominator:int,page_size:int} */
+    /** @return array{listing_limit:int,listing_expiration:string,proceeds_numerator:int,proceeds_denominator:int,page_size:int} */
     private function rules(): array
     {
         return config('hakoniwa.ruleset.underground_market');

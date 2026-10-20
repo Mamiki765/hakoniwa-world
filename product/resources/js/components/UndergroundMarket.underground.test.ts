@@ -10,7 +10,7 @@ const item = (id: number, level: number) => ({
 const market = {
     purchase_il_cap: 140, carried_shards: 52000, fee: { numerator: 1, denominator: 10 },
     listings: [
-        { id: 812, item: item(1, 120), seller: { secretary_name: 'ルリ', island_name: '瑠璃島' }, price: 12000, expires_at: '2099-01-01T00:00:00Z', is_own: false, purchasable: true, blocked_reasons: [] },
+        { id: 812, item: item(1, 120), seller: { secretary_name: 'ルリ', island_name: '瑠璃島' }, price: 12000, expires_at: null, is_own: false, purchasable: true, blocked_reasons: [] },
         { id: 813, item: item(2, 160), seller: { secretary_name: 'アキ', island_name: null }, price: 60000, expires_at: '2099-01-01T00:00:00Z', is_own: false, purchasable: false, blocked_reasons: ['il_cap_exceeded', 'insufficient_carried_shards'] },
     ],
     page: 1, has_more: false,
@@ -23,8 +23,12 @@ function json(data: unknown, status = 200): Response {
 afterEach(() => { vi.unstubAllGlobals(); });
 
 describe('underground market stalls', () => {
-    it('shows the IL cap and keeps blocked listings unbuyable with their reasons', async () => {
-        const fetch = vi.fn(async (_url: string) => json(market));
+    it('shows listings without countdowns, keeps purchase limits and retains past expired history', async () => {
+        const mine = {
+            listing_limit: 5, active: [market.listings[1]], sold: [], unclaimed_total: 0,
+            expired: [{ id: 814, item_snapshot: item(3, 100), price: 1200, seen: true }],
+        };
+        const fetch = vi.fn(async (url: string) => json(url.endsWith('/mine') ? mine : market));
         vi.stubGlobal('fetch', fetch);
         const wrapper = mount(UndergroundMarket);
         await flushPromises();
@@ -35,6 +39,12 @@ describe('underground market stalls', () => {
         const buttons = wrapper.findAll('.underground-equipment-card-grid button').filter(button => ['買う', '買えません'].includes(button.text()));
         expect(buttons.map(button => [button.text(), button.attributes('disabled') !== undefined])).toEqual([['買う', false], ['買えません', true]]);
         expect(wrapper.find('[aria-label="露店のページ"]').exists()).toBe(false);
+        expect(wrapper.text()).not.toMatch(/残り\d+(?:日|時間)/);
+        await wrapper.findAll('button').find(button => button.text() === '自分の出品')!.trigger('click');
+        await flushPromises();
+        expect(wrapper.get('[aria-labelledby="market-active-title"]').text()).toContain(mine.active[0]!.item.name);
+        expect(wrapper.get('[aria-labelledby="market-active-title"]').text()).not.toMatch(/残り\d+(?:日|時間)/);
+        expect(wrapper.get('[aria-labelledby="market-expired-title"]').text()).toContain(mine.expired[0]!.item_snapshot.name);
     });
 
     it('confirms a purchase with the expected price and refreshes when someone else bought it first', async () => {
@@ -90,7 +100,7 @@ describe('underground market stalls', () => {
         const wrapper = mount(UndergroundMarket, { props: { initialPane: 'sell' } });
         await flushPromises();
         expect(wrapper.text()).toContain(`出品中 ${listable.active_count} / ${listable.listing_limit}件`);
-        expect(wrapper.text()).toContain(`出品は${listable.listing_limit}件まで`);
+        expect(wrapper.text()).not.toMatch(/期限|販売期間/);
         expect(wrapper.get('.underground-equipment-card-grid button').attributes('disabled')).toBeDefined();
         expect(fetch.mock.calls.some(([url]) => url.endsWith('/mine'))).toBe(false);
     });
