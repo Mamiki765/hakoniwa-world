@@ -874,6 +874,46 @@ describe('application lobby and island entry', () => {
         wrapper.unmount();
     });
 
+    it('keeps the last clicked island when an earlier preview response arrives late', async () => {
+        vi.spyOn(window, 'scrollTo').mockImplementation(() => undefined);
+        let resolveFirstDetail!: (result: Response) => void;
+        const firstDetail = new Promise<Response>((resolve) => { resolveFirstDetail = resolve; });
+        const nextDetail: PublicNationDetail = {
+            ...publicDetail, id: 8, name: '次の島', capital: { x: 40, y: 40 },
+            map_space: { ...publicDetail.map_space, bounds_revision: 'next-bounds' },
+        };
+        const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+            const path = String(input);
+            const lobby = publicResponse(path);
+            if (path.endsWith('/rankings') && lobby) {
+                const { data } = await lobby.json();
+                return response([...data, { ...data[0], id: 8, nation_number: 2, name: nextDetail.name }]);
+            }
+            if (lobby !== null) return lobby;
+            if (path === '/api/v1/me') return response(null, 401);
+            if (path === '/api/v1/public/nations/7') return firstDetail;
+            if (path === '/api/v1/public/nations/8') return response(nextDetail);
+            if (path.includes('/chunks/')) return response(emptyChunk);
+            return response(null, 404);
+        });
+        vi.stubGlobal('fetch', fetchMock);
+        const wrapper = mount(App);
+        await flushPromises();
+
+        await wrapper.findAll('.ranking-island button')[0]!.trigger('click');
+        await wrapper.findAll('.ranking-island button')[1]!.trigger('click');
+        await flushPromises();
+        expect(wrapper.get('.preview-heading h1').text()).toContain(nextDetail.name);
+
+        resolveFirstDetail(response({ ...publicDetail, name: '遅れた先の島' }));
+        await flushPromises();
+
+        expect(wrapper.get('.preview-heading h1').text()).toContain(nextDetail.name);
+        expect(wrapper.findComponent(HexMap).props('capital')).toEqual(nextDetail.capital);
+        expect(fetchMock.mock.calls.some(([path]) => String(path).includes('/api/v1/public/nations/7/map-spaces/'))).toBe(false);
+        wrapper.unmount();
+    });
+
     it.each([1, 2])('keeps the latest preview response when turn %i refreshes finish in reverse order', async (refreshTurn) => {
         vi.useFakeTimers();
         vi.setSystemTime(new Date('2026-08-09T12:00:00Z'));
@@ -1444,6 +1484,30 @@ describe('application lobby and island entry', () => {
         expect(state.previewDetailCalls).toBe(2);
         expect(callsTo(fetchMock, publicChunks)).toBe(publicChunksBefore);
         expect(callsTo(fetchMock, '/api/v1/map-spaces/2/chunks/')).toBeGreaterThan(privateChunksBeforeRefresh);
+        wrapper.unmount();
+    });
+
+    it('stays on the own island when a preview opened just before it responds late', async () => {
+        const { wrapper, fetchMock } = await mountOwnerHud();
+        await navButton(wrapper, 'TOP').trigger('click');
+        let resolvePreviewDetail!: (result: Response) => void;
+        const previewDetail = new Promise<Response>((resolve) => { resolvePreviewDetail = resolve; });
+        vi.stubGlobal('fetch', vi.fn((input: RequestInfo | URL, init?: RequestInit) => String(input) === '/api/v1/public/nations/7'
+            ? previewDetail
+            : fetchMock(input, init)));
+
+        await wrapper.findAll('.ranking-card tbody button').find((button) => button.text().includes('公開島'))!.trigger('click');
+        await navButton(wrapper, '自島へ').trigger('click');
+        await flushPromises();
+        expect(wrapper.find('.island-page').exists()).toBe(true);
+        const privateChunksBefore = callsTo(fetchMock, '/api/v1/map-spaces/2/chunks/');
+
+        resolvePreviewDetail(response(publicDetail));
+        await flushPromises();
+
+        expect(wrapper.find('.island-page').exists()).toBe(true);
+        expect(wrapper.find('.preview-page').exists()).toBe(false);
+        expect(callsTo(fetchMock, '/api/v1/map-spaces/2/chunks/')).toBe(privateChunksBefore);
         wrapper.unmount();
     });
 
