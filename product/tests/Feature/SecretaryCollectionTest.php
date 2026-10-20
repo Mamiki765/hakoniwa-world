@@ -78,19 +78,31 @@ final class SecretaryCollectionTest extends TestCase
                 'metadata' => json_encode(['monster_key' => 'sanjira', 'attacker_nation_id' => $nation->id, 'actual_damage' => $damage]),
             ]);
         }
+        $former = User::factory()->create();
+        $abandoned = app(NationCreationService::class)->create($former, $world, '旧図鑑国', '旧国主');
+        DB::table('nation_monster_kill_stats')->insert([
+            'world_id' => $world->id, 'nation_id' => $abandoned->id,
+            'monster_definition_id' => DB::table('monster_definitions')->where('key', 'inora')->value('id'),
+            'kill_count' => 1, 'first_killed_turn' => 2, 'last_killed_turn' => 2,
+        ]);
+        DB::table('nation_memberships')->where('nation_id', $abandoned->id)->delete();
+        DB::table('nations')->where('id', $abandoned->id)->update(['state' => 'abandoned']);
         DB::table('user_collection_entries')->delete();
         $backfill = app(CollectionBackfill::class);
 
-        $this->assertSame(['damage_events' => 1, 'kill_stats' => 1], array_intersect_key(
+        $this->assertSame(['damage_events' => 1, 'kill_stats' => 2], array_intersect_key(
             $backfill->preview()['entries_by_source'], ['damage_events' => 0, 'kill_stats' => 0],
         ));
         $this->assertSame(0, DB::table('user_collection_entries')->count());
+        // A live entry made after the release keeps its row but takes the older recorded turn.
+        app(CollectionRegistrar::class)->registerMonsterForNation($nation->id, 'sanjira', 9);
         $applied = $backfill->apply();
-        $this->assertSame($applied['candidates'], $applied['inserted']);
+        $this->assertSame($applied['candidates'] - 1, $applied['inserted']);
         $this->assertSame(0, $backfill->apply()['inserted']);
-        $this->assertSame([['inora', 7], ['sanjira', 4]], DB::table('user_collection_entries')
-            ->where('user_id', $user->id)->where('kind', 'monster')->where('source', 'backfill')->orderBy('entry_key')
-            ->get()->map(fn (object $row): array => [$row->entry_key, (int) $row->first_turn])->all());
+        $this->assertSame([['inora', 7, 'backfill'], ['sanjira', 4, 'live']], DB::table('user_collection_entries')
+            ->where('user_id', $user->id)->where('kind', 'monster')->orderBy('entry_key')
+            ->get()->map(fn (object $row): array => [$row->entry_key, (int) $row->first_turn, $row->source])->all());
+        $this->assertDatabaseHas('user_collection_entries', ['user_id' => $former->id, 'kind' => 'monster', 'entry_key' => 'inora', 'first_turn' => 2]);
         $this->assertDatabaseHas('user_collection_entries', ['user_id' => $user->id, 'kind' => 'item', 'entry_key' => SecretaryItemCatalog::RING, 'claimed_at' => null]);
     }
 

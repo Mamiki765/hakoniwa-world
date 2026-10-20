@@ -85,27 +85,31 @@ final class CollectionBackfill
             $merged[$id] = $current;
         };
 
+        $owners = $this->ownersByNation();
+        $addForNation = function (int $nationId, string $kind, string $key, ?int $turn, string $source) use ($owners, $add): void {
+            if (isset($owners[$nationId])) {
+                $add($owners[$nationId], $kind, $key, $turn, $source);
+            }
+        };
+
         foreach (DB::select(<<<'SQL'
-SELECT membership.user_id, definition.key, MIN(stat.first_killed_turn) AS first_turn
+SELECT stat.nation_id, definition.key, MIN(stat.first_killed_turn) AS first_turn
 FROM nation_monster_kill_stats stat
 JOIN monster_definitions definition ON definition.id = stat.monster_definition_id
-JOIN nation_memberships membership ON membership.nation_id = stat.nation_id AND membership.role = 'owner'
-GROUP BY membership.user_id, definition.key
+GROUP BY stat.nation_id, definition.key
 SQL) as $row) {
-            $add((int) $row->user_id, 'monster', (string) $row->key, (int) $row->first_turn, 'kill_stats');
+            $addForNation((int) $row->nation_id, 'monster', (string) $row->key, (int) $row->first_turn, 'kill_stats');
         }
         foreach (DB::select(<<<'SQL'
-SELECT membership.user_id, event.metadata->>'monster_key' AS key, MIN(event.turn) AS first_turn
+SELECT (event.metadata->>'attacker_nation_id')::bigint AS nation_id, event.metadata->>'monster_key' AS key, MIN(event.turn) AS first_turn
 FROM audit_events event
-JOIN nation_memberships membership
-  ON membership.nation_id = (event.metadata->>'attacker_nation_id')::bigint AND membership.role = 'owner'
 WHERE event.event_type IN ('monster.damaged', 'monster.killed')
   AND event.metadata->>'attacker_nation_id' IS NOT NULL
   AND event.metadata->>'monster_key' IS NOT NULL
   AND COALESCE((event.metadata->>'actual_damage')::bigint, 0) > 0
-GROUP BY membership.user_id, event.metadata->>'monster_key'
+GROUP BY 1, 2
 SQL) as $row) {
-            $add((int) $row->user_id, 'monster', (string) $row->key, $row->first_turn === null ? null : (int) $row->first_turn, 'damage_events');
+            $addForNation((int) $row->nation_id, 'monster', (string) $row->key, $row->first_turn === null ? null : (int) $row->first_turn, 'damage_events');
         }
 
         foreach (DB::select(<<<'SQL'
@@ -135,18 +139,51 @@ SQL) as $row) {
             }
         }
         foreach (DB::select(<<<'SQL'
-SELECT DISTINCT membership.user_id, listing.item_key AS key
+SELECT listing.seller_nation_id AS nation_id, listing.item_key AS key
+FROM auction_listings listing WHERE listing.product_type = 'item'
+UNION
+SELECT listing.highest_bidder_nation_id, listing.item_key
 FROM auction_listings listing
-JOIN nation_memberships membership ON membership.role = 'owner' AND (
-    membership.nation_id = listing.seller_nation_id
-    OR (listing.status = 'sold' AND membership.nation_id = listing.highest_bidder_nation_id))
-WHERE listing.product_type = 'item'
+WHERE listing.product_type = 'item' AND listing.status = 'sold' AND listing.highest_bidder_nation_id IS NOT NULL
 SQL) as $row) {
-            $add((int) $row->user_id, 'item', (string) $row->key, null, 'trading_post');
+            $addForNation((int) $row->nation_id, 'item', (string) $row->key, null, 'trading_post');
         }
 
         ksort($merged);
 
         return array_values($merged);
+    }
+
+    /**
+     * Current owners, plus the single provable creator of an abandoned Nation
+     * whose membership was removed. Ambiguous Nations are left out.
+     *
+     * @return array<int, int>
+     */
+    private function ownersByNation(): array
+    {
+        $owners = [];
+        foreach (DB::table('nation_memberships')->where('role', 'owner')->get(['nation_id', 'user_id']) as $row) {
+            $owners[(int) $row->nation_id] = (int) $row->user_id;
+        }
+        $orphans = DB::table('nations')->where('state', 'abandoned')->whereNotIn('id', array_keys($owners) ?: [0])->pluck('id')->all();
+        if ($orphans === []) {
+            return $owners;
+        }
+        $claims = [];
+        foreach (DB::table('nation_creation_requests')->whereIn('nation_id', $orphans)->where('status', 'completed')->get(['nation_id', 'user_id']) as $row) {
+            $claims[(int) $row->nation_id][(int) $row->user_id] = true;
+        }
+        foreach (DB::table('audit_events')->whereIn('nation_id', $orphans)->where('event_type', 'nation.created')
+            ->whereNotNull('actor_user_id')->get(['nation_id', 'actor_user_id']) as $row) {
+            $claims[(int) $row->nation_id][(int) $row->actor_user_id] = true;
+        }
+        foreach ($claims as $nationId => $users) {
+            if (count($users) === 1) {
+                $owners[$nationId] = (int) array_key_first($users);
+            }
+        }
+
+        return $owners;
     }
 }

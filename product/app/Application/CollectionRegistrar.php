@@ -30,16 +30,29 @@ ON CONFLICT (user_id, kind, entry_key) DO NOTHING
 SQL, [$monsterKey, $turn, $nationId]);
     }
 
+    /**
+     * Inserts a historical entry, or moves an existing entry's first turn back
+     * to an older recorded one. Returns true only when a new entry was created.
+     */
     public function registerBackfill(int $userId, string $kind, string $entryKey, ?int $firstTurn): bool
     {
-        return $this->insert($userId, $kind, $entryKey, 'backfill', $firstTurn);
+        $this->assertEntry($kind, $entryKey);
+        $row = DB::selectOne(<<<'SQL'
+INSERT INTO user_collection_entries (user_id, kind, entry_key, source, first_turn, registered_at, created_at, updated_at)
+VALUES (?, ?, ?, 'backfill', ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+ON CONFLICT (user_id, kind, entry_key) DO UPDATE
+SET first_turn = EXCLUDED.first_turn, updated_at = EXCLUDED.updated_at
+WHERE EXCLUDED.first_turn IS NOT NULL
+  AND (user_collection_entries.first_turn IS NULL OR EXCLUDED.first_turn < user_collection_entries.first_turn)
+RETURNING (xmax = 0) AS inserted
+SQL, [$userId, $kind, $entryKey, $firstTurn]);
+
+        return $row !== null && (bool) $row->inserted;
     }
 
     private function insert(int $userId, string $kind, string $entryKey, string $source, ?int $firstTurn): bool
     {
-        if (! in_array($kind, self::KINDS, true) || $entryKey === '') {
-            throw new DomainException('Unknown collection entry.');
-        }
+        $this->assertEntry($kind, $entryKey);
         $now = now();
 
         return DB::table('user_collection_entries')->insertOrIgnore([
@@ -52,5 +65,12 @@ SQL, [$monsterKey, $turn, $nationId]);
             'created_at' => $now,
             'updated_at' => $now,
         ]) === 1;
+    }
+
+    private function assertEntry(string $kind, string $entryKey): void
+    {
+        if (! in_array($kind, self::KINDS, true) || $entryKey === '') {
+            throw new DomainException('Unknown collection entry.');
+        }
     }
 }
