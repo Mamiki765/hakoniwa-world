@@ -241,7 +241,7 @@ final class PriorityCombatAi
     }
 
     /** @param list<BuildCombatState> $targets */
-    private function lowestHpRatioTarget(array $targets): ?BuildCombatState
+    public function lowestHpRatioTarget(array $targets): ?BuildCombatState
     {
         $selected = null;
         foreach ($targets as $target) {

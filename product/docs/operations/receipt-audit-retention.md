@@ -1,6 +1,6 @@
 # Receipt・戦闘snapshot・routine auditの保持整理
 
-2026-10-19、5.5.1候補のcommand/serviceと照合したrunbook。コードが提供する操作と、本番での登録・実行実績は別であり、今回productionへの照会・整理・cron登録は行っていない。以下は自動実行の指示ではなく、operatorが承認された対象・backup・cutoffを確認して使う手順である。
+2026-10-19、5.6.0候補のcommand/serviceと照合したrunbook。コードが提供する操作と、本番での登録・実行実績は別であり、今回productionへの照会・整理・cron登録は行っていない。以下は自動実行の指示ではなく、operatorが承認された対象・backup・cutoffを確認して使う手順である。
 
 ## 対象ごとの境界
 

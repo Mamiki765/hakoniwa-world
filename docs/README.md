@@ -6,7 +6,7 @@
 
 現在の設定は[現行Rulesetの確認方法](../product/docs/architecture/current-ruleset-baseline.md)と[authoring](../product/docs/architecture/ruleset-authoring.md)に従い、対象HEADの[config](../product/config/hakoniwa.php)から確認します。コードの版、PRの統合状態、本番への適用状態は別の証拠です。
 
-- 露店・合成・チケット部分使用・倉庫拡張は[5.5.0](../product/docs/releases/5.5.0-market-synthesis.md)、露店の無期限化は[5.5.1](../product/docs/releases/5.5.1-indefinite-market.md)を参照します。5.5.0の7日期限は5.5.1で置き換わります。
+- 露店・合成・チケット部分使用・倉庫拡張は[5.5.0](../product/docs/releases/5.5.0-market-synthesis.md)、露店の無期限化は[5.6.0](../product/docs/releases/5.6.0.md)を参照します。5.5.0の7日期限は5.6.0で置き換わります。
 - fresh構築とsupported upgradeは[現行install/upgrade境界](../product/docs/architecture/install-upgrade-rebaseline.md)と[5.0.1 rebaselineの承認・検証記録](../product/docs/plans/5.0.1-ruleset-rebaseline.md)を入口にします。旧v27の手順を現行treeへ戻しません。
 - 古い構想帳や`current-contracts`の「地上合成は未実装」「露店・圧縮条件は未決」は、上記5.5系の採用範囲について後続決定に置き換わっています。弓・スーツ育成や自由な効果合成まで採用済みと読み替えません。
 
@@ -42,7 +42,7 @@
 | 5.3.0 エコポ・旧版怪獣の継続・API制限枠 | [5.3.0](../product/docs/releases/5.3.0.md) |
 | 5.4.0 queue・怪獣・地下施設の現在版解決と来歴、省エネXP、3 migration | [5.4.0 queue / provenance / energy](../product/docs/releases/5.4.0-queue-provenance-energy.md) |
 | 5.5.0 地底露店・地上合成・チケット部分使用・倉庫拡張 | [5.5.0 market / synthesis](../product/docs/releases/5.5.0-market-synthesis.md) |
-| 5.5.1 露店の無期限化と統合・検証の記録 | [5.5.1 indefinite market](../product/docs/releases/5.5.1-indefinite-market.md) |
+| 5.6.0 露店の無期限化と統合・検証の記録 | [5.6.0](../product/docs/releases/5.6.0.md) |
 | 外部管理庫の現在地・作業引継ぎへの入口 | [current-status](../product/docs/handoffs/current-status.md) |
 | 取り違えを防ぐ現行contract | [current-contracts](../product/docs/handoffs/current-contracts.md) |
 | IL200超の装備計算・研磨 | [地底装備の倍率とrating](../product/docs/architecture/underground-equipment-scaling.md) |

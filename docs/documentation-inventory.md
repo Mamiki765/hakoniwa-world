@@ -2,11 +2,11 @@
 
 ## 現在の確認先
 
-2026-10-19、5.5.1作業コードを基準に現行文書とarchiveを読み取り確認した。以下は資料の扱いを整理する案内であり、本番適用の証拠や新たな実装指示ではない。
+2026-10-19、5.6.0作業コードを基準に現行文書とarchiveを読み取り確認した。以下は資料の扱いを整理する案内であり、本番適用の証拠や新たな実装指示ではない。
 
 | 対象 | 現在の確認先・扱い |
 |---|---|
-| 露店・地上合成・チケット部分使用・倉庫拡張 | [5.5.0](../product/docs/releases/5.5.0-market-synthesis.md)、[5.5.1](../product/docs/releases/5.5.1-indefinite-market.md)。旧構想帳の未実装・条件未決表記をこの採用範囲へ戻さない |
+| 露店・地上合成・チケット部分使用・倉庫拡張 | [5.5.0](../product/docs/releases/5.5.0-market-synthesis.md)、[5.6.0](../product/docs/releases/5.6.0.md)。旧構想帳の未実装・条件未決表記をこの採用範囲へ戻さない |
 | Rulesetの版・保存・authoring | [current baseline](../product/docs/architecture/current-ruleset-baseline.md)、[authoring](../product/docs/architecture/ruleset-authoring.md)と対象HEADのconfig。旧設定管理のv5やRuleset archiveのv16という「現在」は当時の記録であり、現行版や旧retry互換処理を指定しない |
 | T10・fresh構築・supported upgrade | [現行install/upgrade境界](../product/docs/architecture/install-upgrade-rebaseline.md)、[5.0.1 rebaseline](../product/docs/plans/5.0.1-ruleset-rebaseline.md)。旧T10の最終方針待ちは後続実装で更新済み。保存済みsnapshot・履歴identityの削除許可ではない |
 | DB問い合わせ調査 | [最終記録](../product/docs/testing/post-5.0.1-nplus1.md)から固定SHAの初回・追記台帳へ進む。旧台帳の未適用・未測定を現在の未修正判定に使わない |
@@ -20,7 +20,7 @@
 
 archive内の「current」「未完」や旧root相対リンクは、その資料の固定時点と元pathを示す。通常のrepository rootからのリンクと同じ意味で一括修正しない。Rulesetの旧数値・旧compatibility pathを現行仕様として復活させず、上の現行baselineへ進む。
 
-旧handoffは[現在地の入口](../product/docs/handoffs/current-status.md)から外部管理庫の原文保全manifestへ移管されている。古いarchive索引の同path配置という説明だけで欠落と判定しない。pre-4.4.1の旧READMEには移管時に固定原文URLへ更新したリンクがあり、元blobの確認にはmanifestとGitの固定原文を使う。今回、archiveと移管済み原文の移動・削除・書換えは行っていない。本体の`current-contracts.md`だけは、5.5.1候補に照合した技術表（地上合成・倉庫・露店・バハムル中級2）を更新し、元の照合時点と今回の範囲を冒頭へ残した。作業引継ぎの入口`current-status.md`や外部の作業状態は編集していない。
+旧handoffは[現在地の入口](../product/docs/handoffs/current-status.md)から外部管理庫の原文保全manifestへ移管されている。古いarchive索引の同path配置という説明だけで欠落と判定しない。pre-4.4.1の旧READMEには移管時に固定原文URLへ更新したリンクがあり、元blobの確認にはmanifestとGitの固定原文を使う。今回、archiveと移管済み原文の移動・削除・書換えは行っていない。本体の`current-contracts.md`だけは、5.6.0候補に照合した技術表（地上合成・倉庫・露店・バハムル中級2）を更新し、元の照合時点と今回の範囲を冒頭へ残した。作業引継ぎの入口`current-status.md`や外部の作業状態は編集していない。
 
 ## 4.4.1の分類履歴
 
