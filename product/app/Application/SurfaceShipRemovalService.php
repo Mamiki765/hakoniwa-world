@@ -87,6 +87,7 @@ final class SurfaceShipRemovalService
             'ship_id' => (int) $ship->id,
             'ship_type_key' => $ship->ship_type_key,
             'ship_name' => $definition->name,
+            'ship_custom_name' => $ship->custom_name,
             'removal_reason' => $reason,
             'x' => (int) $cell->x,
             'y' => (int) $cell->y,

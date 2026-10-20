@@ -554,6 +554,11 @@ function dismissRewardToast(): void {
     }, 250);
 }
 
+function renameCapital(capital: { x: number; y: number; capital_name: string | null }): void {
+    map.renameCapital(capital);
+    if (nation.value !== null) nation.value = { ...nation.value, capital_name: capital.capital_name };
+}
+
 function handleDailyQuestProgress(quest: DailyQuestProgress): void {
     const previousDay = dailyQuests.value[0]?.canonical_day;
     if (previousDay !== quest.canonical_day) {
@@ -2315,6 +2320,8 @@ async function abandonNation(): Promise<void> {
                 :nation-state="nation.state"
                 @queue="authoritativeCommandQueue = $event"
                 @ship="map.updateShipCourse"
+                @ship-name="map.renameShip"
+                @capital-name="renameCapital"
                 @daily-quest="handleDailyQuestProgress"
                 @paradox="ledgerParadox = $event"
             />

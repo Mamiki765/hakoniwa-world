@@ -1,15 +1,17 @@
 <script setup lang="ts">
 import { computed } from 'vue';
+import { cellGivenName } from '../formatters/givenName';
 import type { MapCell } from '../types';
 
 const props = defineProps<{ cell: MapCell | null }>();
+const givenName = computed(() => props.cell === null ? null : cellGivenName(props.cell));
 const usesWorkforce = computed(() => ['farm', 'factory', 'mine'].includes(props.cell?.facility ?? ''));
 </script>
 
 <template>
     <section class="selected-cell" aria-live="polite">
         <template v-if="cell">
-            <h3><img v-if="cell.asset.available && cell.asset.url" :src="cell.asset.url" alt="" width="32" height="32">{{ cell.display_name }} ({{ cell.x }}, {{ cell.y }})</h3>
+            <h3><img v-if="cell.asset.available && cell.asset.url" :src="cell.asset.url" alt="" width="32" height="32">{{ givenName ? `${givenName} ` : '' }}{{ cell.display_name }} ({{ cell.x }}, {{ cell.y }})</h3>
             <p v-if="['wind_power', 'thermal_power', 'condenser', 'pizzeria'].includes(cell.facility ?? '') && !cell.asset.available">
                 施設画像は未配備です。
             </p>

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue';
 import { ApiError, api } from '../api/client';
+import { GIVEN_NAME_MAX_LENGTH, shipListLabel } from '../formatters/givenName';
 import { formatExactMoney } from '../formatters/money';
 import { SHIP_HEADING_LABELS, shipIdleLabel, shipInstructionLabel } from '../formatters/shipInstruction';
 import { hexDistance } from '../map/projection';
@@ -56,6 +57,8 @@ const emit = defineEmits<{
     ship: [course: ShipCourse];
     dailyQuest: [quest: DailyQuestProgress];
     paradox: [balance: ParadoxBalance | null];
+    shipName: [ship: { id: number; custom_name: string | null }];
+    capitalName: [capital: { x: number; y: number; capital_name: string | null }];
 }>();
 
 const definitions = ref<CommandDefinition[]>([]);
@@ -387,7 +390,67 @@ async function setShipDestination(): Promise<void> {
     const ship = chosenDestinationShip.value?.ship;
     if (cell === null || ship === undefined) return;
     const target = { x: cell.x, y: cell.y };
-    await sendShipCourse(ship, 'destination', target, destinationStatus, () => `${ship.name} (${ship.x},${ship.y}) の目的地を (${target.x},${target.y}) にしました`);
+    await sendShipCourse(ship, 'destination', target, destinationStatus, () => `${shipListLabel(ship)} の目的地を (${target.x},${target.y}) にしました`);
+}
+
+// 選んだ自国の船・首都の名前。ターンも計画も使わずにその場で保存する。
+const namingTarget = computed(() => {
+    const cell = props.selected;
+    if (cell === null || (props.selectedUnderground ?? null) !== null) return null;
+    if (ownShip.value !== null) return { kind: 'ship' as const, id: ownShip.value.id, current: ownShip.value.custom_name ?? null };
+    if (cell.facility === 'capital' && cell.owner_nation_id === props.nationId) return { kind: 'capital' as const, id: null, current: cell.capital_name ?? null };
+    return null;
+});
+const naming = ref(false);
+const namingDraft = ref('');
+const namingStatus = ref<CommandStatus>({ kind: 'idle', text: '' });
+watch(
+    () => `${props.nationId}:${namingTarget.value?.kind}:${namingTarget.value?.id}:${props.selected?.x}:${props.selected?.y}`,
+    () => {
+        naming.value = false;
+        namingStatus.value = { kind: 'idle', text: '' };
+    },
+);
+
+function startNaming(): void {
+    namingDraft.value = namingTarget.value?.current ?? '';
+    namingStatus.value = { kind: 'idle', text: '' };
+    naming.value = true;
+}
+
+async function saveName(): Promise<void> {
+    const target = namingTarget.value;
+    const cell = props.selected;
+    if (target === null || cell === null || busy.value) return;
+    const trimmedName = namingDraft.value.replace(/^\p{Zs}+|\p{Zs}+$/gu, '');
+    if ([...trimmedName].length > GIVEN_NAME_MAX_LENGTH) {
+        namingStatus.value = { kind: 'error', text: `名前は${GIVEN_NAME_MAX_LENGTH}文字以下で入力してください。` };
+        return;
+    }
+    const name = trimmedName === '' ? null : namingDraft.value;
+    beginMutation();
+    try {
+        if (target.kind === 'ship') {
+            const ship = await api<{ id: number; custom_name: string | null }>(`/api/v1/nations/${props.nationId}/ships/${target.id}/name`, {
+                method: 'PATCH',
+                body: JSON.stringify({ name }),
+            });
+            ownShips.value = ownShips.value.map((row) => row.id === ship.id ? { ...row, custom_name: ship.custom_name } : row);
+            emit('shipName', { id: ship.id, custom_name: ship.custom_name ?? null });
+        } else {
+            const nation = await api<Nation>(`/api/v1/nations/${props.nationId}/profile`, {
+                method: 'PATCH',
+                body: JSON.stringify({ capital_name: name }),
+            });
+            emit('capitalName', { x: cell.x, y: cell.y, capital_name: nation.capital_name ?? null });
+        }
+        naming.value = false;
+        namingStatus.value = { kind: 'idle', text: '' };
+    } catch (error) {
+        namingStatus.value = { kind: 'error', text: error instanceof ApiError && error.status === 422 ? shipFailureReason(error) : '名前を変更できませんでした' };
+    } finally {
+        await finishMutation();
+    }
 }
 
 function targetKey(): string {
@@ -1126,6 +1189,19 @@ onBeforeUnmount(() => {
                 <p>{{ selectedUnderground.coordinate_label }}・{{ selectedUnderground.facility_key === null ? '空き施設枠' : '建築済み施設枠' }}</p>
             </section>
             <CellDetails v-else :cell="selected" />
+            <section v-if="namingTarget" class="sl-ship sl-name" :aria-label="namingTarget.kind === 'ship' ? '船の名前' : '首都の名前'">
+                <form v-if="naming" @submit.prevent="saveName">
+                    <input
+                        v-model="namingDraft"
+                        placeholder="名前なし"
+                        :aria-label="namingTarget.kind === 'ship' ? '船の名前' : '首都の名前'"
+                    >
+                    <button type="submit" :disabled="busy">保存</button>
+                    <button type="button" class="sl-quiet" @click="naming = false">やめる</button>
+                </form>
+                <button v-else type="button" class="sl-quiet" :disabled="busy" @click="startNaming">{{ namingTarget.current ? '名前を変える' : '名前をつける' }}</button>
+                <p v-if="namingStatus.text" class="command-status command-status--error" role="alert">{{ namingStatus.text }}</p>
+            </section>
             <p v-if="queuedOnSelected.length" class="sl-queued"><b>予約</b>{{ queuedOnSelected.map((item) => `${item.queue_position}番 ${item.command_name}${usesConstructionShip(item) ? '（工作船）' : ''}`).join('、') }}</p>
             <section v-if="ownShip" class="sl-ship" aria-label="選択中の自国Ship操作">
                 <p v-if="!nationActive">休止・復興中は船の指示を変更できません。</p>
@@ -1152,7 +1228,7 @@ onBeforeUnmount(() => {
                     <label for="sl-ship-destination">自国の船</label>
                     <select id="sl-ship-destination" v-model="destinationShipId">
                         <option v-for="candidate in destinationCandidates" :key="candidate.ship.id" :value="candidate.ship.id">
-                            {{ candidate.ship.name }} ({{ candidate.ship.x }},{{ candidate.ship.y }})・直線{{ candidate.distance }}マス{{ candidate.here ? '・目的地' : '' }}
+                            {{ shipListLabel(candidate.ship) }}・直線{{ candidate.distance }}マス{{ candidate.here ? '・目的地' : '' }}
                         </option>
                     </select>
                     <button type="submit" :disabled="busy || chosenDestinationShip === null || chosenDestinationShip.here">目的地にする</button>
