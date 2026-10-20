@@ -3,6 +3,7 @@ import { computed, onMounted, ref } from 'vue';
 import { ApiError, api } from '../api/client';
 import EquipmentConfirmDialog from './EquipmentConfirmDialog.vue';
 import EquipmentItemCard, { type EquipmentItem, type EquipmentSlot } from './EquipmentItemCard.vue';
+import { equipmentSlotLabel } from './undergroundEquipmentSlots';
 
 interface ShopResponse {
     catalog_identity: string;
@@ -31,17 +32,6 @@ const pending = ref<{ fingerprint: string; requestId: string } | null>(null);
 
 const categoryLabels = { weapon: '武器', armor: '防具', accessory: 'アクセサリー' };
 const styleLabels: Record<string, string> = { dagger: '短剣', rapier: '細身剣', longsword: '長剣', crystal_staff: '輝石杖' };
-const slotLabels: Record<EquipmentSlot, string> = {
-    weapon: '武器',
-    armor: '防具',
-    accessory_1: 'アクセサリー1',
-    accessory_2: 'アクセサリー2',
-    accessory_3: 'アクセサリー3',
-    resonance: '共鳴結晶',
-};
-function slotLabel(slot: EquipmentSlot | null | undefined): string {
-    return slot ? slotLabels[slot] : 'アクセサリー';
-}
 const visibleItems = computed(() => (shop.value?.items ?? []).filter((item) => {
     if (item.category !== category.value) return false;
     return category.value !== 'weapon' || weaponStyle.value === 'all' || item.weapon_style === weaponStyle.value;
@@ -152,7 +142,7 @@ onMounted(() => { void loadShop(); });
                 <p v-if="shop.owned_items.length === 0" class="status">所有アイテムはありません。</p>
                 <div class="underground-equipment-card-grid">
                     <EquipmentItemCard v-for="item in shop.owned_items" :key="item.id" :item="item" mode="owned" :disabled="busy || item.id === undefined || item.equipped_slot !== null || item.is_protected === true || item.sell_price <= 0" @action="askSell(item)">
-                        <template #status><span v-if="item.equipped_slot" class="underground-equipment-equipped">{{ slotLabel(item.equipped_slot) }}として装備中</span><span v-else>未装備</span></template>
+                        <template #status><span v-if="item.equipped_slot" class="underground-equipment-equipped">{{ equipmentSlotLabel(item.equipped_slot) }}として装備中</span><span v-else>未装備</span></template>
                         <template #price><span>購入価格 {{ item.buy_price === null || item.buy_price === undefined ? '非売品' : `${item.buy_price.toLocaleString('ja-JP')}G` }}</span><span>売却価格 {{ item.sell_price.toLocaleString('ja-JP') }}G</span></template>
                         <template #action>{{ item.equipped_slot ? '装備中' : item.is_protected ? '★ 保護中' : item.sell_price <= 0 ? '売却不可' : '売却する' }}</template>
                     </EquipmentItemCard>

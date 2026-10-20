@@ -3,9 +3,8 @@ import { computed, onMounted, ref, watch } from 'vue';
 import { ApiError, api } from '../api/client';
 import EquipmentItemCard, { type AccessorySlot, type EquipmentItem, type EquipmentSlot } from './EquipmentItemCard.vue';
 import UndergroundBulkSaleConfirmDialog from './UndergroundBulkSaleConfirmDialog.vue';
+import { accessorySlots, equipmentSlotLabel, equipmentSlots } from './undergroundEquipmentSlots';
 
-const equipmentSlots: EquipmentSlot[] = ['weapon', 'armor', 'accessory_1', 'accessory_2', 'accessory_3', 'resonance'];
-const accessorySlots: AccessorySlot[] = ['accessory_1', 'accessory_2', 'accessory_3'];
 
 interface VaultResponse {
     catalog_identity: string;
@@ -113,16 +112,6 @@ const bulkPreviewCanConfirm = computed(() => {
 });
 
 function requestId(): string { return crypto.randomUUID(); }
-function isAccessorySlot(slot: EquipmentSlot | null | undefined): slot is AccessorySlot {
-    return typeof slot === 'string' && slot.startsWith('accessory_');
-}
-function slotLabel(slot: EquipmentSlot | null | undefined): string {
-    if (slot === 'resonance') return '共鳴結晶';
-    if (slot === 'weapon') return '武器';
-    if (slot === 'armor') return '防具';
-    if (isAccessorySlot(slot)) return `アクセサリー${accessorySlots.indexOf(slot) + 1}`;
-    return 'アクセサリー';
-}
 function itemKey(item: EquipmentItem, index: number): string {
     return String(item.id ?? item.instance_identity ?? `${item.key}-${index}`);
 }
@@ -551,7 +540,7 @@ async function changeInventory(next: 'equipment' | 'resonance'): Promise<void> {
                 <h2 id="underground-equipped-title">現在の装備</h2>
                 <div class="underground-equipped-slot-grid">
                     <article v-for="slot in equipmentSlots" :key="slot" class="underground-equipped-slot">
-                        <h3>{{ slotLabel(slot) }}</h3>
+                        <h3>{{ equipmentSlotLabel(slot) }}</h3>
                         <p v-if="vault.equipped[slot]"><strong><span v-if="vault.equipped[slot]!.is_protected" class="underground-protect-mark" aria-label="保護中">★</span>{{ vault.equipped[slot]!.name }}</strong></p><p v-else class="underground-equipment-empty">空き</p>
                         <button v-if="vault.equipped[slot] && slot !== 'weapon'" class="button secondary" type="button" :disabled="busy" @click="mutate('unequip', vault.equipped[slot]!)">外す</button>
                         <small v-if="slot === 'weapon' && vault.equipped[slot]">武器は常に1つ必要です</small>
@@ -672,7 +661,7 @@ async function changeInventory(next: 'equipment' | 'resonance'): Promise<void> {
             <div class="underground-equipment-card-grid underground-vault-items">
                 <EquipmentItemCard v-for="(item, index) in vault.items" :key="itemKey(item, index)" :item="item" mode="vault" :disabled="busy || item.is_listed || item.equipped_slot !== null" @action="mutate('equip', item, selectedSlotFor(item))">
                     <template #status>
-                        <span v-if="item.is_listed">露店に出品中</span><span v-else-if="item.equipped_slot" class="underground-equipment-equipped">{{ slotLabel(item.equipped_slot) }}として装備中</span><span v-else>未装備</span>
+                        <span v-if="item.is_listed">露店に出品中</span><span v-else-if="item.equipped_slot" class="underground-equipment-equipped">{{ equipmentSlotLabel(item.equipped_slot) }}として装備中</span><span v-else>未装備</span>
                         <button
                             v-if="item.id !== undefined && item.sellable !== false"
                             type="button"
@@ -687,7 +676,7 @@ async function changeInventory(next: 'equipment' | 'resonance'): Promise<void> {
                         <label v-if="item.category === 'accessory' && !item.equipped_slot" class="underground-accessory-target">
                             <span>装備先</span>
                             <select v-model="accessoryTargetSlot" :disabled="busy || item.is_listed" aria-label="アクセサリー装備先">
-                                <option v-for="slot in accessorySlots" :key="slot" :value="slot">{{ slotLabel(slot) }}</option>
+                                <option v-for="slot in accessorySlots" :key="slot" :value="slot">{{ equipmentSlotLabel(slot) }}</option>
                             </select>
                         </label>
                     </template>

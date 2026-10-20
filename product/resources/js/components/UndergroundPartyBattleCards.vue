@@ -30,10 +30,13 @@ const props = withDefaults(defineProps<{
     portraitEventType?: PortraitEvent['type'] | null;
     portraitRound?: number | null;
 }>(), { stateById: undefined, portraitEvents: () => [], showCards: true, portraitEventType: null, portraitRound: null });
-const teamGroups = computed(() => [
-    { key: 'player' as const, label: 'PARTY', actors: props.actors.filter((actor) => actor.team === 'player') },
-    { key: 'enemy' as const, label: 'ENEMY', actors: props.actors.filter((actor) => actor.team === 'enemy') },
-].filter((group) => group.actors.length > 0));
+const teamGroups = computed(() => (['player', 'enemy'] as const)
+    .map((team) => ({
+        key: team,
+        label: team === 'player' ? 'PARTY' : 'ENEMY',
+        cards: props.actors.filter((actor) => actor.team === team).map((actor) => ({ actor, state: stateFor(actor) })),
+    }))
+    .filter((group) => group.cards.length > 0));
 const eventKey = (event: PortraitEvent): string => event.event_id ?? `${event.type}:${event.combatant_id}`;
 const visiblePortraitEvents = computed(() => {
     const events = new Map<string, PortraitEvent>();
@@ -123,6 +126,7 @@ const awakeningVisible = (actor: Actor): boolean => {
             ? state.awakening_unlocked === true || state.awakened === true || actor.awakening_state === 'ready' || actor.awakening_state === 'awakened'
             : actor.awakening_unlocked === true);
 };
+const hpText = (state: State): string => `${state.hp}${(state.barrier ?? 0) > 0 ? ` +${state.barrier}` : ''}/${state.max_hp}`;
 const hpPercentFor = (actor: Actor): number => {
     const state = stateFor(actor);
 
@@ -152,19 +156,19 @@ const awakeningStateFor = (actor: Actor): 'charging' | 'ready' | 'awakened' => {
         <section v-for="group in teamGroups" :key="group.key" class="underground-party-team" :data-team="group.key" :aria-label="group.label">
             <header class="underground-party-team-heading">
                 <strong>{{ group.label }}</strong>
-                <small>{{ group.actors.length }}体</small>
+                <small>{{ group.cards.length }}体</small>
             </header>
             <div class="underground-party-battle-cards">
-                <article v-for="actor in group.actors" :key="actor.combatant_id" class="underground-party-battle-card" :data-team="actor.team" :data-combatant-id="actor.combatant_id">
+                <article v-for="{ actor, state } in group.cards" :key="actor.combatant_id" class="underground-party-battle-card" :data-team="actor.team" :data-combatant-id="actor.combatant_id">
                     <img v-if="iconFor(actor)" :src="iconFor(actor)!" :alt="`${actor.display_name}のアイコン`" class="underground-party-icon">
                     <span v-else class="underground-party-icon underground-party-icon-fallback" aria-hidden="true">{{ actor.team === 'enemy' ? '敵' : '秘' }}</span>
                     <div class="underground-party-battle-card-body">
                         <strong>{{ actor.display_name }}</strong>
-                        <template v-if="stateFor(actor)">
-                            <label><span>HP</span><span class="underground-party-meter is-hp" :class="{ 'is-long': `${stateFor(actor)!.hp}${(stateFor(actor)!.barrier ?? 0) > 0 ? ` +${stateFor(actor)!.barrier}` : ''}/${stateFor(actor)!.max_hp}`.length > 11 }"><progress :max="stateFor(actor)!.max_hp" :value="stateFor(actor)!.hp" :aria-label="`HP ${stateFor(actor)!.hp}/${stateFor(actor)!.max_hp}、${hpPercentFor(actor)}%`" /><span><span>{{ stateFor(actor)!.hp }}</span><span v-if="(stateFor(actor)!.barrier ?? 0) > 0"> +{{ stateFor(actor)!.barrier }}</span><span>/{{ stateFor(actor)!.max_hp }}</span></span></span></label>
-                            <label><span>MP</span><span class="underground-party-meter is-mp"><progress max="10000" :value="stateFor(actor)!.mp" :aria-label="`MP ${stateFor(actor)!.mp}`" /><span>{{ stateFor(actor)!.mp }}</span></span></label>
-                            <label v-if="awakeningVisible(actor) && stateFor(actor)!.awakening_gauge_max"><span>覚醒</span><span class="underground-party-meter is-awakening" :data-state="awakeningStateFor(actor)"><progress :max="stateFor(actor)!.awakening_gauge_max" :value="stateFor(actor)!.awakening_gauge ?? 0" :aria-label="`覚醒ゲージ ${gaugePercentFor(actor)}%、${awakeningLabelFor(actor) || '蓄積中'}`" /><span>{{ awakeningLabelFor(actor) }}</span></span></label>
-                            <UndergroundActiveStates :state="stateFor(actor)!" />
+                        <template v-if="state">
+                            <label><span>HP</span><span class="underground-party-meter is-hp" :class="{ 'is-long': hpText(state).length > 11 }"><progress :max="state.max_hp" :value="state.hp" :aria-label="`HP ${state.hp}/${state.max_hp}、${hpPercentFor(actor)}%`" /><span><span>{{ state.hp }}</span><span v-if="(state.barrier ?? 0) > 0"> +{{ state.barrier }}</span><span>/{{ state.max_hp }}</span></span></span></label>
+                            <label><span>MP</span><span class="underground-party-meter is-mp"><progress max="10000" :value="state.mp" :aria-label="`MP ${state.mp}`" /><span>{{ state.mp }}</span></span></label>
+                            <label v-if="awakeningVisible(actor) && state.awakening_gauge_max"><span>覚醒</span><span class="underground-party-meter is-awakening" :data-state="awakeningStateFor(actor)"><progress :max="state.awakening_gauge_max" :value="state.awakening_gauge ?? 0" :aria-label="`覚醒ゲージ ${gaugePercentFor(actor)}%、${awakeningLabelFor(actor) || '蓄積中'}`" /><span>{{ awakeningLabelFor(actor) }}</span></span></label>
+                            <UndergroundActiveStates :state="state" />
                         </template>
                     </div>
                 </article>
