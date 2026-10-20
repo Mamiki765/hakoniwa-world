@@ -3,6 +3,7 @@ import stories from '../stories/intro.json';
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
 import { ApiError, api, apiEnvelope, validationErrors } from './api/client';
 import AnnouncementBody from './components/AnnouncementBody.vue';
+import AnnouncementEditor from './components/AnnouncementEditor.vue';
 import CellDetails from './components/CellDetails.vue';
 import CommandQueuePanel from './components/CommandQueuePanel.vue';
 import GuideConversationTopicAdmin from './components/GuideConversationTopicAdmin.vue';
@@ -118,17 +119,9 @@ const announcementDetail = ref<Announcement | null>(null);
 const announcementPageNumber = ref(1);
 const announcementLastPage = ref(1);
 const announcementView = ref<'list' | 'detail' | 'form'>('list');
-const announcementFormId = ref<number | null>(null);
-const announcementTitle = ref('');
-const announcementBody = ref('');
-const announcementBodyFormat = ref<Announcement['body_format']>('markdown');
-const announcementPreviewHtml = ref<string | null>(null);
-const announcementPreviewVisible = ref(false);
-const announcementErrors = ref<Record<string, string>>({});
-watch([announcementBody, announcementBodyFormat], () => {
-    announcementPreviewVisible.value = false;
-    announcementPreviewHtml.value = null;
-});
+const announcementEditing = ref<Announcement | null>(null);
+// Each new edit starts a fresh editor, even when one is already open.
+const announcementEditorKey = ref(0);
 const nation = ref<Nation | null>(null);
 const secretary = ref<Secretary | null>(null);
 const pendingTicketGacha = ref<{ ticketId: number; drawCount: number; requestKey: string } | null>(null);
@@ -1044,65 +1037,16 @@ async function openAnnouncement(id: number): Promise<void> {
 }
 
 function editAnnouncement(announcement: Announcement | null = null): void {
-    announcementFormId.value = announcement?.id ?? null;
-    announcementTitle.value = announcement?.title ?? '';
-    announcementBody.value = announcement?.body ?? '';
-    announcementBodyFormat.value = announcement === null ? 'markdown' : (announcement.body_format ?? 'plain_text');
-    announcementPreviewVisible.value = false;
-    announcementPreviewHtml.value = null;
-    announcementErrors.value = {};
+    announcementEditing.value = announcement;
+    announcementEditorKey.value += 1;
     announcementView.value = 'form';
     page.value = 'announcements';
 }
 
-async function saveAnnouncement(): Promise<void> {
-    busy.value = true;
-    message.value = '';
-    announcementErrors.value = {};
-    const id = announcementFormId.value;
-    try {
-        const saved = await api<Announcement>(id === null
-            ? '/api/v1/admin/announcements'
-            : `/api/v1/admin/announcements/${id}`, {
-            method: id === null ? 'POST' : 'PATCH',
-            body: JSON.stringify({ title: announcementTitle.value, body: announcementBody.value, body_format: announcementBodyFormat.value }),
-        });
-        announcementDetail.value = saved;
-        announcementView.value = 'detail';
-        latestAnnouncements.value = await api<Announcement[]>('/api/v1/public/announcements/latest');
-    } catch (error) {
-        announcementErrors.value = validationErrors(error);
-        if (Object.keys(announcementErrors.value).length === 0) {
-            message.value = error instanceof Error ? error.message : 'お知らせを保存できませんでした。';
-        }
-    } finally {
-        busy.value = false;
-    }
-}
-
-async function previewAnnouncement(): Promise<void> {
-    const body = announcementBody.value;
-    const format = announcementBodyFormat.value;
-    busy.value = true;
-    message.value = '';
-    announcementErrors.value = {};
-    try {
-        const preview = await api<{ body_html: string | null }>('/api/v1/admin/announcements/preview', {
-            method: 'POST',
-            body: JSON.stringify({ body, body_format: format }),
-        });
-        if (announcementBody.value === body && announcementBodyFormat.value === format) {
-            announcementPreviewHtml.value = preview.body_html;
-            announcementPreviewVisible.value = true;
-        }
-    } catch (error) {
-        announcementErrors.value = validationErrors(error);
-        if (Object.keys(announcementErrors.value).length === 0) {
-            message.value = error instanceof Error ? error.message : 'プレビューを表示できませんでした。';
-        }
-    } finally {
-        busy.value = false;
-    }
+function showSavedAnnouncement(saved: Announcement, latest: Announcement[]): void {
+    announcementDetail.value = saved;
+    announcementView.value = 'detail';
+    latestAnnouncements.value = latest;
 }
 
 async function deleteAnnouncement(announcement: Announcement): Promise<void> {
@@ -2157,46 +2101,15 @@ async function abandonNation(): Promise<void> {
                 </div>
             </article>
 
-            <form v-else-if="announcementView === 'form' && user?.can_manage_announcements" class="announcement-form" @submit.prevent="saveAnnouncement">
-                <h2>{{ announcementFormId === null ? 'お知らせを作成' : 'お知らせを編集' }}</h2>
-                <label>題名
-                    <input v-model="announcementTitle" maxlength="160" required>
-                    <span v-if="announcementErrors.title" class="field-error" role="alert">{{ announcementErrors.title }}</span>
-                </label>
-                <label>本文の形式
-                    <select v-model="announcementBodyFormat">
-                        <option value="markdown">Markdown（文字の装飾・箇条書き）</option>
-                        <option value="plain_text">プレーンテキスト（入力したまま）</option>
-                    </select>
-                    <span v-if="announcementErrors.body_format" class="field-error" role="alert">{{ announcementErrors.body_format }}</span>
-                </label>
-                <label>本文
-                    <textarea v-model="announcementBody" aria-describedby="announcement-format-help" maxlength="20000" rows="12" required></textarea>
-                    <span v-if="announcementErrors.body" class="field-error" role="alert">{{ announcementErrors.body }}</span>
-                </label>
-                <details v-if="announcementBodyFormat === 'markdown'" id="announcement-format-help" class="announcement-format-help">
-                    <summary>書き方の例（Discordでも使える書式）</summary>
-                    <ul>
-                        <li><code>**太字**</code> → <strong>太字</strong></li>
-                        <li><code>## 見出し</code> → 見出し</li>
-                        <li><code>- 項目</code> → 箇条書き</li>
-                        <li><code>~~取り消し~~</code> → <s>取り消し</s></li>
-                        <li><code>[表示名](https://example.com)</code> → リンク</li>
-                    </ul>
-                    <p>改行はそのまま表示されます。保存前にプレビューで確認できます。</p>
-                </details>
-                <p v-else id="announcement-format-help" class="announcement-format-help">文字の装飾はせず、入力した内容と改行をそのまま表示します。</p>
-                <div class="announcement-actions">
-                    <button type="button" :disabled="busy || !announcementBody.trim()" @click="previewAnnouncement">プレビュー</button>
-                    <button class="button primary" type="submit" :disabled="busy">保存</button>
-                    <button type="button" @click="announcementView = announcementDetail ? 'detail' : 'list'">キャンセル</button>
-                </div>
-                <section v-if="announcementPreviewVisible" class="announcement-preview" aria-label="お知らせのプレビュー">
-                    <p class="eyebrow">プレビュー（まだ保存されていません）</p>
-                    <h2>{{ announcementTitle }}</h2>
-                    <AnnouncementBody :body="announcementBody" :format="announcementBodyFormat" :html="announcementPreviewHtml" />
-                </section>
-            </form>
+            <AnnouncementEditor
+                v-else-if="announcementView === 'form' && user?.can_manage_announcements"
+                :key="announcementEditorKey"
+                v-model:busy="busy"
+                :announcement="announcementEditing"
+                @saved="showSavedAnnouncement"
+                @cancel="announcementView = announcementDetail ? 'detail' : 'list'"
+                @message="message = $event"
+            />
         </section>
 
         <section
