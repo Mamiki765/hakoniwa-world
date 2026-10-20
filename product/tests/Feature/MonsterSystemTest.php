@@ -1004,6 +1004,7 @@ class MonsterSystemTest extends TestCase
         $this->assertSame(2, $monster->fresh()->current_hp);
         $this->assertSame($cell->id, $monster->fresh()->occupancy()->value('map_cell_id'));
         $this->assertSame(0, NationMonsterKillStat::query()->count());
+        $this->assertSame(0, DB::table('user_collection_entries')->where('kind', 'monster')->count());
         $metadata = json_decode((string) DB::table('audit_events')
             ->where('event_type', 'monster.damage_blocked')->sole()->metadata, true, 512, JSON_THROW_ON_ERROR);
         $this->assertSame($nation->id, $metadata['attacker_nation_id']);
@@ -1032,6 +1033,11 @@ class MonsterSystemTest extends TestCase
         );
 
         $this->assertSame('damaged', $result->status);
+        $entry = DB::table('user_collection_entries')->where('kind', 'monster')->sole();
+        $this->assertSame([
+            (int) DB::table('nation_memberships')->where('nation_id', $attacker->id)->value('user_id'),
+            'monster', 'inora', 'live', 2,
+        ], [(int) $entry->user_id, $entry->kind, $entry->entry_key, $entry->source, (int) $entry->first_turn]);
         $metadata = json_decode((string) DB::table('audit_events')
             ->where('event_type', 'monster.damaged')->sole()->metadata, true, 512, JSON_THROW_ON_ERROR);
         $this->assertSame($attacker->id, $metadata['attacker_nation_id']);

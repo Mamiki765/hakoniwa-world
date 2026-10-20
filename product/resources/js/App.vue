@@ -22,6 +22,7 @@ import UndergroundPanel from './components/UndergroundPanel.vue';
 import type { MarketAttention } from './components/UndergroundMarket.vue';
 import SecretaryImageSlotsEditor from './components/SecretaryImageSlotsEditor.vue';
 import SecretaryMenu from './components/SecretaryMenu.vue';
+import SecretaryCollection from './components/SecretaryCollection.vue';
 import SecretarySynthesis from './components/SecretarySynthesis.vue';
 import InquiryFormPage from './components/InquiryFormPage.vue';
 import AdminInquiriesPage, { type AdminInquiriesRequest } from './components/AdminInquiriesPage.vue';
@@ -131,6 +132,7 @@ watch([announcementBody, announcementBodyFormat], () => {
 });
 const nation = ref<Nation | null>(null);
 const secretary = ref<Secretary | null>(null);
+const collectionUnclaimed = computed(() => secretary.value?.collection?.unclaimed ?? 0);
 const pendingTicketGacha = ref<{ ticketId: number; drawCount: number; requestKey: string } | null>(null);
 const ticketDrawTarget = ref<Secretary['inventory']['items'][number] | null>(null);
 const warehouseExpandOpen = ref(false);
@@ -1805,7 +1807,7 @@ async function abandonNation(): Promise<void> {
         <nav aria-label="主要ナビゲーション">
             <button type="button" @click="page = 'home'">TOP</button>
             <button v-if="nation" type="button" class="notification-anchor" :aria-label="boardUnread ? '自島へ（伝言板に新しい伝言があります）' : undefined" @click="openOwnIsland">自島へ<span v-if="boardUnread" class="notification-dot" aria-hidden="true" /></button>
-            <button v-if="secretary" type="button" @click="openSecretary">{{ secretary.header_label }}</button>
+            <button v-if="secretary" type="button" class="notification-anchor" :aria-label="collectionUnclaimed ? `${secretary.header_label}（図鑑に受け取れるプレゼントがあります）` : undefined" @click="openSecretary">{{ secretary.header_label }}<span v-if="collectionUnclaimed" class="notification-dot" aria-hidden="true" /></button>
             <button v-if="nation" type="button" @click="page = 'trading-post'">交易場</button>
             <button v-if="secretary" type="button" class="notification-anchor" :aria-label="distortedStoneReminder ? '地底（歪んだ輝石の初回受取があります）' : marketAttention ? '地底（露店にお知らせがあります）' : undefined" @click="openUnderground">地底<span v-if="distortedStoneReminder || marketAttention" class="notification-dot" aria-hidden="true" /></button>
             <button type="button" @click="openOptions">オプション</button>
@@ -2603,7 +2605,7 @@ async function abandonNation(): Promise<void> {
             <template v-else-if="viewedSecretaryProfile">
                 <h2 class="secretary-name">{{ viewedSecretaryProfile.name }}</h2>
                 <p v-if="viewedSecretaryProfile.nickname" class="secretary-nickname">{{ viewedSecretaryProfile.nickname }}</p>
-                <SecretaryMenu v-model="secretarySection" :owner="viewedSecretaryProfile.is_owner" />
+                <SecretaryMenu v-model="secretarySection" :owner="viewedSecretaryProfile.is_owner" :collection-unclaimed="collectionUnclaimed" />
                 <SecretaryWarehouseExpandDialog v-if="warehouseExpandOpen && secretary" :warehouse="secretary.inventory" @close="warehouseExpandOpen = false" @expanded="onWarehouseExpanded" />
                 <SecretaryTicketDrawDialog v-if="ticketDrawTarget" :name="`${ticketDrawTarget.name} Lv${ticketDrawTarget.level.toLocaleString('ja-JP')}`" :level="ticketDrawTarget.level" :max-draw-count="ticketDrawTarget.max_draw_count ?? 0" :busy="busy" @cancel="ticketDrawTarget = null" @draw="drawSecretaryTicket" />
                 <section v-if="secretarySection === 'main'" id="secretary-panel-main" role="tabpanel" aria-labelledby="secretary-tab-main" class="secretary-main-profile">
@@ -2679,6 +2681,9 @@ async function abandonNation(): Promise<void> {
                 </section>
                 <section v-else-if="secretarySection === 'synthesis' && viewedSecretaryProfile.is_owner && secretary" id="secretary-panel-synthesis" role="tabpanel" aria-labelledby="secretary-tab-synthesis">
                     <SecretarySynthesis :warehouse="secretary.inventory" @changed="loadSecretary" @expand="warehouseExpandOpen = true" />
+                </section>
+                <section v-else-if="secretarySection === 'collection' && viewedSecretaryProfile.is_owner && secretary" id="secretary-panel-collection" role="tabpanel" aria-labelledby="secretary-tab-collection">
+                    <SecretaryCollection @changed="loadSecretary" />
                 </section>
                 <section v-else-if="secretarySection === 'achievements' && viewedSecretaryProfile.is_owner && user" id="secretary-panel-achievements" role="tabpanel" aria-labelledby="secretary-tab-achievements" class="secretary-achievements">
                     <section aria-labelledby="secretary-title-heading">

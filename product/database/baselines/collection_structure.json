@@ -1,0 +1,7 @@
+{
+    "sequence:user_collection_bonus_claims_id_seq": "e5310bdaf55055497496ec52c382da22e840a59a8d82a393b18211bd89b121ef",
+    "sequence:user_collection_entries_id_seq": "e5310bdaf55055497496ec52c382da22e840a59a8d82a393b18211bd89b121ef",
+    "table:user_collection_bonus_claims": "3173d582ea569d97012b561db06b52da893a9e03be15c6d18a2156ac2414ff69",
+    "table:user_collection_entries": "c08c3f1c44655c52e6583077681fe8d10f61dd5200cae30ba563d61859cc2fde",
+    "table:user_paradox_ledger": "391a4fb467a6588a4e85f8ebfc18a45babdc093c034180285f6a340117b27fca"
+}

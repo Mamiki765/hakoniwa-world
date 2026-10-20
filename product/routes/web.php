@@ -18,6 +18,7 @@ use App\Http\Controllers\Api\NationProfileController;
 use App\Http\Controllers\Api\PlayerEventController;
 use App\Http\Controllers\Api\PublicApiController;
 use App\Http\Controllers\Api\SalePolicyController;
+use App\Http\Controllers\Api\SecretaryCollectionController;
 use App\Http\Controllers\Api\SecretaryController;
 use App\Http\Controllers\Api\SecretarySynthesisController;
 use App\Http\Controllers\Api\SecretaryTicketGachaController;
@@ -213,6 +214,9 @@ Route::prefix('api/v1')->middleware(['auth', PrivateApiResponse::class])->group(
     Route::get('/me/secretary/synthesis', [SecretarySynthesisController::class, 'index']);
     Route::post('/me/secretary/synthesis', [SecretarySynthesisController::class, 'store']);
     Route::post('/me/secretary/warehouse/expand', [SecretaryWarehouseController::class, 'expand']);
+    Route::get('/me/secretary/collection', [SecretaryCollectionController::class, 'index']);
+    Route::post('/me/secretary/collection/claim', [SecretaryCollectionController::class, 'claim']);
+    Route::post('/me/secretary/collection/claim-all', [SecretaryCollectionController::class, 'claimAll']);
     Route::post('/me/secretary/tickets/draw', [SecretaryTicketGachaController::class, 'draw'])
         ->middleware('throttle:20,1,secretary-ticket-gacha:');
     Route::post('/inquiries', [InquiryController::class, 'store'])->middleware('throttle:3,1,inquiries:');

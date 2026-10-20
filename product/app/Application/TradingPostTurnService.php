@@ -36,6 +36,7 @@ final class TradingPostTurnService
         private readonly SellerProceedsCalculator $proceeds,
         private readonly FoodOverflowResolver $foodOverflow,
         private readonly EcopoService $ecopo,
+        private readonly CollectionRegistrar $collection,
     ) {}
 
     /** @return array<string, int> */
@@ -433,6 +434,8 @@ final class TradingPostTurnService
                 'obtained_at' => now(),
             ]);
         }
+
+        $this->collection->registerItem((int) $secretary->user_id, $item->item_key);
 
         return [
             'item_instance_id' => $item->id,
