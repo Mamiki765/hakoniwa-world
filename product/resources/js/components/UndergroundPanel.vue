@@ -24,6 +24,8 @@ import { shouldReleasePendingExplorationRequest } from './undergroundExploration
 import { renderUndergroundStory } from '../undergroundStoryMarkup';
 import type { EquipmentItem, EquipmentSlot } from './EquipmentItemCard.vue';
 import { equipmentSlotLabel, equipmentSlots } from './undergroundEquipmentSlots';
+import UndergroundStatusAllocation from './UndergroundStatusAllocation.vue';
+import { statLabels, useStpDraft, type StatKey } from './undergroundStpDraft';
 import type { UndergroundAiConfiguration } from './undergroundAi';
 import type { DailyQuestProgress, MerchantConversationTopic } from '../types';
 
@@ -191,7 +193,6 @@ interface PendingTrialRequest {
     runKey: string;
 }
 
-type StatKey = 'vitality' | 'might' | 'finesse' | 'spirit' | 'agility';
 
 interface ActiveSkill {
     key: string;
@@ -392,7 +393,6 @@ const crystalOffer = stories.crystal_offer.body;
 
 const commonEnding = stories.common_ending.body;
 
-const statLabels = { vitality: '生命', might: '武力', finesse: '技巧', spirit: '精神', agility: '敏捷' } as const;
 const huntingGroundPreferenceKey = 'hakoniwa.underground.selected-hunting-ground';
 const props = defineProps<{ secretaryImageUrl?: string | null; userId?: number }>();
 const emit = defineEmits<{
@@ -442,7 +442,6 @@ const pendingInnRequestId = ref<string | null>(null);
 const pendingBankMutation = ref<PendingBankMutation | null>(null);
 const innResting = ref(false);
 const innRested = ref(false);
-const stpDraft = ref<Record<StatKey, number>>({ vitality: 0, might: 0, finesse: 0, spirit: 0, agility: 0 });
 const loadoutDraft = ref<Array<string | null>>([null, null, null, null, null]);
 const pendingStpMutation = ref<PendingMutation | null>(null);
 const pendingSkillAcquire = ref<PendingMutation | null>(null);
@@ -776,8 +775,7 @@ const respecUnavailableReason = computed(() => {
 });
 const respecPaths = computed(() => state.value?.respec?.growth_paths ?? []);
 const selectedRespecPath = computed(() => respecPaths.value.find((path) => path.key === selectedRespecPathKey.value) ?? null);
-const stpDraftTotal = computed(() => Object.values(stpDraft.value).reduce((sum, value) => sum + value, 0));
-const stpDraftRemaining = computed(() => Math.max(0, (state.value?.unspent_stp ?? 0) - stpDraftTotal.value));
+const stpDraft = useStpDraft(() => state.value?.unspent_stp ?? 0);
 const acquiredActiveSkills = computed<ActiveSkill[]>(() => (state.value?.skill_trees ?? [])
     .flatMap((tree) => tree.nodes)
     .filter((node) => node.type === 'active' && node.rank > 0 && node.skill_key !== null)
@@ -1211,7 +1209,7 @@ async function confirmRespec(): Promise<void> {
         growth_path_key: path.key, bypass_cooldown_with_pd: pending.bypassCooldownWithPd,
     }, pending.requestId)) {
         pendingRespecMutation.value = null;
-        stpDraft.value = { vitality: 0, might: 0, finesse: 0, spirit: 0, agility: 0 };
+        stpDraft.reset();
         pendingStpMutation.value = null;
         pendingSkillAcquire.value = null;
         pendingLoadoutMutation.value = null;
@@ -1736,65 +1734,8 @@ async function runBankAction(action: 'deposit' | 'withdraw' | 'deposit_all' | 'w
     }
 }
 
-function maximumStpDraft(stat: StatKey): number {
-    return Math.min(2_147_483_647, stpDraft.value[stat] + stpDraftRemaining.value);
-}
-
-function stepStp(stat: StatKey, delta: number): boolean {
-    const next = Math.max(0, Math.min(maximumStpDraft(stat), stpDraft.value[stat] + delta));
-    if (next === stpDraft.value[stat]) return false;
-    stpDraft.value = { ...stpDraft.value, [stat]: next };
-    return true;
-}
-
-// ＋−は押しっぱなしで加速する。最初は1ずつ、押し続けるほど間隔が短く、歩幅が大きくなる。
-let stpHoldTimer: ReturnType<typeof setTimeout> | null = null;
-
-function beginStpHold(stat: StatKey, direction: 1 | -1, event: PointerEvent): void {
-    if (event.button !== 0) return;
-    endStpHold();
-    let ticks = 0;
-    const tick = (): void => {
-        const stride = ticks < 12 ? 1 : ticks < 30 ? 5 : 25;
-        if (!stepStp(stat, direction * stride) && !stepStp(stat, direction)) return;
-        ticks++;
-        stpHoldTimer = setTimeout(tick, ticks === 1 ? 350 : Math.max(40, 140 - ticks * 8));
-    };
-    tick();
-}
-
-function endStpHold(): void {
-    if (stpHoldTimer !== null) clearTimeout(stpHoldTimer);
-    stpHoldTimer = null;
-}
-
-// キーボード（EnterやSpace）で押したときは、1回ぶんだけ動かす。
-function stepStpFromKeyboard(stat: StatKey, direction: 1 | -1, event: MouseEvent): void {
-    if (event.detail === 0) stepStp(stat, direction);
-}
-
-function setStpShare(stat: StatKey, share: 0.5 | 1): void {
-    stpDraft.value = { ...stpDraft.value, [stat]: Math.floor(maximumStpDraft(stat) * share) };
-}
-
-function setStpDraft(stat: StatKey, event: Event): void {
-    const input = event.currentTarget;
-    if (!(input instanceof HTMLInputElement)) return;
-    const current = stpDraft.value[stat];
-    const parsed = input.value === '' ? 0 : Number(input.value);
-    if (!Number.isSafeInteger(parsed) || parsed < 0) {
-        input.value = String(current);
-        return;
-    }
-    const next = Math.min(parsed, maximumStpDraft(stat));
-    stpDraft.value = { ...stpDraft.value, [stat]: next };
-    if (next !== parsed) input.value = String(next);
-}
-
 async function confirmStp(): Promise<void> {
-    const allocations = Object.fromEntries(
-        Object.entries(stpDraft.value).filter(([, value]) => value > 0),
-    );
+    const allocations = stpDraft.allocations();
     if (Object.keys(allocations).length === 0) return;
     const fingerprint = JSON.stringify(allocations);
     const pending = pendingStpMutation.value?.fingerprint === fingerprint
@@ -1802,7 +1743,7 @@ async function confirmStp(): Promise<void> {
         : { fingerprint, requestId: requestId() };
     pendingStpMutation.value = pending;
     if (await mutate('/api/v1/me/underground/status/stp', { allocations }, pending.requestId)) {
-        stpDraft.value = { vitality: 0, might: 0, finesse: 0, spirit: 0, agility: 0 };
+        stpDraft.reset();
         pendingStpMutation.value = null;
     }
 }
@@ -1932,7 +1873,6 @@ onMounted(() => {
     void enter();
 });
 onUnmounted(() => {
-    endStpHold();
     if (cooldownTimer !== null) window.clearInterval(cooldownTimer);
 });
 </script>
@@ -2603,34 +2543,14 @@ onUnmounted(() => {
                 </section>
             </div>
 
-            <section v-if="equipmentView === 'status' && state.status_breakdown" class="underground-progression-panel" aria-labelledby="underground-status-title">
-                <header>
-                    <div><h2 id="underground-status-title">ステータス</h2></div>
-                    <p>未使用STP {{ state.unspent_stp }} / 仮配分後 {{ stpDraftRemaining }}</p>
-                </header>
-                <div class="underground-table-scroll">
-                    <table class="underground-status-table">
-                        <thead><tr><th scope="col">能力</th><th scope="col">現在値<br>（装備なし）</th><th scope="col">今回の配分</th></tr></thead>
-                        <tbody>
-                            <tr v-for="(label, key) in statLabels" :key="key">
-                                <th scope="row">{{ label }}</th>
-                                <td>{{ state.status_breakdown[key].baseline + state.status_breakdown[key].natural_growth + state.status_breakdown[key].allocated_stp }}</td>
-                                <td class="underground-stp-control">
-                                    <div class="ug-stp-inputs">
-                                    <button type="button" :disabled="busy" :aria-label="`${label}に残りの50%を配分`" @click="setStpShare(key, 0.5)">50%</button>
-                                    <button type="button" class="ug-stp-step" :disabled="busy || stpDraft[key] <= 0" :aria-label="`${label}の配分を1減らす（押し続けると速くなります）`" @pointerdown="beginStpHold(key, -1, $event)" @pointerup="endStpHold" @pointerleave="endStpHold" @pointercancel="endStpHold" @click="stepStpFromKeyboard(key, -1, $event)">−</button>
-                                    <input type="number" min="0" :max="maximumStpDraft(key)" step="1" inputmode="numeric" :value="stpDraft[key]" :disabled="busy" :aria-label="`${label}の今回の配分`" @input="setStpDraft(key, $event)">
-                                    <button type="button" class="ug-stp-step" :disabled="busy || stpDraft[key] >= maximumStpDraft(key)" :aria-label="`${label}の配分を1増やす（押し続けると速くなります）`" @pointerdown="beginStpHold(key, 1, $event)" @pointerup="endStpHold" @pointerleave="endStpHold" @pointercancel="endStpHold" @click="stepStpFromKeyboard(key, 1, $event)">＋</button>
-                                    <button type="button" :disabled="busy" :aria-label="`${label}に残りの100%を配分`" @click="setStpShare(key, 1)">100%</button>
-                                    </div>
-                                </td>
-                            </tr>
-                        </tbody>
-                    </table>
-                </div>
-                <p class="underground-progression-note">50%・100%は、ほかの能力への仮配分を除いた残りを使います。50%の端数は切り捨てます。最後に一括確定してください。</p>
-                <button class="button primary" type="button" :disabled="busy || stpDraftTotal === 0" @click="confirmStp">{{ stpDraftTotal }} STPを一括確定</button>
-            </section>
+            <UndergroundStatusAllocation
+                v-if="equipmentView === 'status' && state.status_breakdown"
+                :breakdown="state.status_breakdown"
+                :unspent-stp="state.unspent_stp"
+                :draft="stpDraft"
+                :busy="busy"
+                @confirm="confirmStp"
+            />
 
             <section v-if="equipmentView === 'skills' && state.skill_trees" class="underground-progression-panel" aria-labelledby="underground-skills-title">
                 <header>
