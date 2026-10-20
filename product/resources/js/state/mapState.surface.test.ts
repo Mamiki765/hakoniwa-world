@@ -257,9 +257,49 @@ describe('lazy map chunk loading', () => {
         expect(carrier?.ship).toMatchObject({ heading: null, destination: { x: 20, y: 18 }, version: 4 });
         expect(map.selected.value?.ship ?? null).toBeNull();
 
-        map.renameShip({ id: 9, custom_name: 'エスポワール' });
-        expect(map.visibleCells.value.find((cell) => cell.ship?.id === 9)?.ship).toMatchObject({ custom_name: 'エスポワール', version: 4 });
-        map.renameCapital({ x: 16, y: 16, capital_name: 'ルミナ' });
-        expect(map.selected.value?.capital_name).toBe('ルミナ');
+    });
+
+    it('refreshes the renamed ship and capital with their authoritative accessible labels without clearing the map', async () => {
+        let shipName: string | null = null;
+        let capitalName: string | null = '旧都';
+        let shipLabel = '名前なしの船、HP 5/5';
+        let capitalLabel = '旧都 首都、所有 操作国';
+        const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+            const chunk = chunkFromPath(String(input));
+            if (chunk.chunk_x === 0 && chunk.chunk_y === 0) {
+                chunk.cells = [{ ...chunk.cells[0]!, aria_label: shipLabel, ship: {
+                    id: 9, key: 'fishing', name: '漁船', custom_name: shipName, asset_key: 'ship.fishing',
+                    current_hp: 5, max_hp: 5, public_state: 'active', is_owner: true,
+                    owner_nation: { nation_number: 1, name: '操作国' }, heading: null, destination: null, version: 4,
+                } }];
+            }
+            if (chunk.chunk_x === 1 && chunk.chunk_y === 1) {
+                chunk.cells = [{ ...chunk.cells[0]!, facility: 'capital', capital_name: capitalName, aria_label: capitalLabel }];
+            }
+            return response(chunk);
+        });
+        vi.stubGlobal('fetch', fetchMock);
+        const map = useMapState();
+        await map.loadAround(mapSpace, 16, 16);
+        map.select(map.visibleCells.value.find((cell) => cell.ship?.id === 9)!);
+
+        shipName = 'エスポワール';
+        shipLabel = '船 エスポワール 漁船、HP 5/5';
+        await map.renameShip({ id: 9, custom_name: shipName });
+        expect(map.selected.value?.ship).toMatchObject({ custom_name: shipName, version: 4 });
+        expect(map.selected.value?.aria_label).toBe(shipLabel);
+        expect(map.visibleCells.value.find((cell) => cell.ship?.id === 9)?.aria_label).toBe(shipLabel);
+
+        map.select(map.visibleCells.value.find((cell) => cell.x === 16 && cell.y === 16)!);
+        capitalName = null;
+        capitalLabel = '首都、所有 操作国';
+        await map.renameCapital({ x: 16, y: 16, capital_name: capitalName });
+        expect(map.selected.value?.capital_name).toBeNull();
+        expect(map.selected.value?.aria_label).toBe(capitalLabel);
+        expect(map.visibleCells.value.find((cell) => cell.x === 16 && cell.y === 16)?.aria_label).toBe(capitalLabel);
+        expect(map.visibleCells.value).toHaveLength(9);
+        expect(fetchMock).toHaveBeenCalledTimes(11);
+        expect(fetchMock.mock.calls.filter(([path]) => String(path).endsWith('/chunks/0/0'))).toHaveLength(2);
+        expect(fetchMock.mock.calls.filter(([path]) => String(path).endsWith('/chunks/1/1'))).toHaveLength(2);
     });
 });

@@ -1057,7 +1057,7 @@ final class PlayerIslandEventService
                 $y,
                 $metadata['firing_nation_name'] ?? '他島',
                 $this->missileLabel($metadata['missile_key'] ?? null),
-                $this->missileEffectLabel($metadata['effect'] ?? null),
+                $this->missileEffectLabel($metadata['effect'] ?? null, $metadata),
             ),
             'refugee_generated' => "{$nation}でミサイル攻撃による難民が発生しました。",
             'nation.dormant' => $this->publicDormancyMessage($metadata),
@@ -1278,6 +1278,7 @@ final class PlayerIslandEventService
             'missile.impact' => [
                 'nation_name', 'target_nation_name', 'firing_nation_name',
                 'missile_key', 'effect', 'x', 'y',
+                ...(($metadata['effect'] ?? null) === 'ship_sunk' ? ['ship_name', 'ship_custom_name'] : []),
             ],
             'nation.dormant' => ['nation_name', 'reason', 'secretary_name'],
             'nation.dormancy_resumed' => ['nation_name'],
@@ -2682,7 +2683,7 @@ final class PlayerIslandEventService
             $this->missileLabel($metadata['missile_key'] ?? null),
             number_format($this->integer($metadata, 'x')),
             number_format($this->integer($metadata, 'y')),
-            $this->missileEffectLabel($metadata['effect'] ?? null),
+            $this->missileEffectLabel($metadata['effect'] ?? null, $metadata),
         );
     }
 
@@ -2720,7 +2721,8 @@ final class PlayerIslandEventService
         return is_string($label) && $label !== '' ? $label : '秘書';
     }
 
-    private function missileEffectLabel(mixed $effect): string
+    /** @param array<string, mixed> $metadata */
+    private function missileEffectLabel(mixed $effect, array $metadata = []): string
     {
         return match ($effect) {
             'monster_hit', 'damaged' => '怪獣へ命中しました',
@@ -2731,7 +2733,9 @@ final class PlayerIslandEventService
             'capital_at_minimum' => '首都人口が最低人口のため効果はありませんでした',
             'water_facility_destroyed' => '水上施設を破壊しました',
             'ship_damaged' => '船に損傷を与えました',
-            'ship_sunk' => '船を撃沈しました',
+            'ship_sunk' => $this->givenName($metadata, 'ship_custom_name') === null
+                ? '船を撃沈しました'
+                : $this->shipLabel($metadata).'を撃沈しました',
             'ship_evaded' => '戦艦に攻撃を回避されました',
             'facility_scale_damaged', 'facility_scale_land_damaged' => '施設の規模を減少させました',
             'facility_scale_ineffective' => '施設の規模へ被害を与えられませんでした',

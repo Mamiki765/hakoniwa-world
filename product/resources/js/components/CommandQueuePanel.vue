@@ -422,7 +422,12 @@ async function saveName(): Promise<void> {
     const target = namingTarget.value;
     const cell = props.selected;
     if (target === null || cell === null || busy.value) return;
-    const name = namingDraft.value.trim() === '' ? null : namingDraft.value;
+    const trimmedName = namingDraft.value.replace(/^\p{Zs}+|\p{Zs}+$/gu, '');
+    if ([...trimmedName].length > GIVEN_NAME_MAX_LENGTH) {
+        namingStatus.value = { kind: 'error', text: `名前は${GIVEN_NAME_MAX_LENGTH}文字以下で入力してください。` };
+        return;
+    }
+    const name = trimmedName === '' ? null : namingDraft.value;
     beginMutation();
     try {
         if (target.kind === 'ship') {
@@ -1188,7 +1193,6 @@ onBeforeUnmount(() => {
                 <form v-if="naming" @submit.prevent="saveName">
                     <input
                         v-model="namingDraft"
-                        :maxlength="GIVEN_NAME_MAX_LENGTH"
                         placeholder="名前なし"
                         :aria-label="namingTarget.kind === 'ship' ? '船の名前' : '首都の名前'"
                     >

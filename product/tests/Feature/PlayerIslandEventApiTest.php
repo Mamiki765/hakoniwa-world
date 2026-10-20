@@ -893,6 +893,16 @@ class PlayerIslandEventApiTest extends TestCase
         $this->audit('missile.impact', $target, $target, 'public', 2, [
             'firing_nation_name' => $firing->name, 'target_nation_name' => $target->name,
             'missile_key' => 'pp_missile', 'effect' => 'ship_sunk', 'x' => 19, 'y' => 15,
+            'ship_id' => 99, 'ship_name' => '漁船', 'ship_custom_name' => 'エスポワール',
+            'before_hp' => 1, 'after_hp' => 0,
+        ]);
+        $this->audit('ship.sunk', $target, $target, 'nation', 2, [
+            'ship_id' => 99, 'ship_name' => '漁船', 'ship_custom_name' => 'エスポワール',
+            'cause' => 'missile', 'x' => 19, 'y' => 15,
+        ]);
+        $this->audit('missile.impact', $target, $target, 'public', 2, [
+            'firing_nation_name' => $firing->name, 'target_nation_name' => $target->name,
+            'missile_key' => 'pp_missile', 'effect' => 'ship_sunk', 'x' => 19, 'y' => 16,
         ]);
         $this->audit('missile.impact', $target, $target, 'public', 2, [
             'firing_nation_name' => $firing->name, 'target_nation_name' => $target->name,
@@ -946,6 +956,8 @@ class PlayerIslandEventApiTest extends TestCase
         $this->assertMessageMentions($publicMessages, '(13,9)');
         $this->assertMessageMentions($publicMessages, '(18,14)');
         $this->assertMessageMentions($publicMessages, '(19,15)');
+        $this->assertMessageMentions($publicMessages, '(19,15)', '漁船「エスポワール」を撃沈しました');
+        $this->assertMessageMentions($publicMessages, '(19,16)', '船を撃沈しました');
         $this->assertMessageMentions($publicMessages, '(20,16)');
         $this->assertMessageMentions($publicMessages, '(21,17)');
         $this->assertMessageMentions($publicMessages, '8発');
@@ -955,6 +967,7 @@ class PlayerIslandEventApiTest extends TestCase
             '(50,51)', '(44,45)', '費用900', 'all_impacts', 'cost_money', 'target_x',
             'firing_bases', 'impacts', 'from_terrain_key', 'to_terrain_key', 'terrain_only',
             'terrain_scorched', 'wasteland', 'scorched', 'missile_name', 'protected_nation_secret', 'hidden',
+            'ship_id', 'before_hp', 'after_hp',
         ] as $hidden) {
             $this->assertStringNotContainsString($hidden, $publicBody);
         }
@@ -983,6 +996,12 @@ class PlayerIslandEventApiTest extends TestCase
             ->getJson("/api/v1/nations/{$target->id}/events")
             ->assertOk();
         $this->assertMessageMentions($this->messages($targetOwnerResponse->json('data.groups')), '(14,10)');
+        $targetMessages = $this->messages($targetOwnerResponse->json('data.groups'));
+        $this->assertMessageMentions($targetMessages, '(19,15)', '漁船「エスポワール」を撃沈しました');
+        $this->assertSame(1, substr_count(implode("\n", $targetMessages), 'エスポワール'));
+        $this->assertFalse(collect($targetOwnerResponse->json('data.groups'))->flatMap(
+            static fn (array $group): array => $group['events'],
+        )->pluck('type')->contains('ship.sunk'));
         $this->assertStringNotContainsString('protected_nation_secret', (string) $targetOwnerResponse->getContent());
     }
 

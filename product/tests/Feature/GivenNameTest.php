@@ -53,7 +53,12 @@ final class GivenNameTest extends TestCase
             ->first(fn (array $row): bool => $row['x'] === $sea->x && $row['y'] === $sea->y);
         $this->assertSame(['漁船', 'エスポワール', false], [$cell['ship']['name'], $cell['ship']['custom_name'], $cell['ship']['is_owner']]);
 
-        $this->actingAs($owner)->patchJson($path, ['name' => '  '])->assertOk()->assertJsonPath('data.custom_name', null);
+        $unicodeName = str_repeat('🚢', GivenName::MAX_LENGTH);
+        $this->actingAs($owner)->patchJson($path, ['name' => $unicodeName])->assertOk()->assertJsonPath('data.custom_name', $unicodeName);
+        $this->patchJson($path, ['name' => $unicodeName.'🚢'])->assertUnprocessable();
+        $this->assertSame($unicodeName, $ship->fresh()->custom_name);
+
+        $this->patchJson($path, ['name' => '  '])->assertOk()->assertJsonPath('data.custom_name', null);
         $this->assertNull($ship->fresh()->custom_name);
     }
 

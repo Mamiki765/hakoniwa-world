@@ -242,15 +242,42 @@ export function useMapState() {
         }
     }
 
-    function renameShip(ship: { id: number; custom_name: string | null }): void {
-        replaceCells(
-            (cell) => cell.ship?.id === ship.id && cell.ship.is_owner,
-            (cell) => ({ ...cell, ship: cell.ship == null ? cell.ship : { ...cell.ship, custom_name: ship.custom_name } }),
-        );
+    // 読み上げラベルも含め、名前を含む表示はサーバーの正規のセル表現から更新する。
+    async function refreshNamedCells(matches: (cell: MapCell) => boolean): Promise<void> {
+        const chunks = new Map<string, { x: number; y: number }>();
+        for (const cell of cells.values()) {
+            if (!matches(cell)) continue;
+            const x = floorDiv(cell.x, CHUNK_SIZE);
+            const y = floorDiv(cell.y, CHUNK_SIZE);
+            chunks.set(chunkKey(x, y), { x, y });
+        }
+        const requestGeneration = generation;
+        if (chunks.size > 0) error.value = null;
+        await Promise.all([...chunks].map(async ([requestKey, { x, y }]) => {
+            await inFlightChunks.get(requestKey);
+            if (requestGeneration !== generation) return;
+            loadedChunks.delete(requestKey);
+            confirmedEmptyChunks.delete(requestKey);
+            await requestChunk(x, y);
+        }));
+        if (requestGeneration === generation && selected.value !== null) {
+            selected.value = cells.get(key(selected.value.x, selected.value.y)) ?? selected.value;
+        }
     }
 
-    function renameCapital(capital: { x: number; y: number; capital_name: string | null }): void {
-        replaceCells((cell) => cell.x === capital.x && cell.y === capital.y, (cell) => ({ ...cell, capital_name: capital.capital_name }));
+    async function renameShip(ship: { id: number; custom_name: string | null }): Promise<void> {
+        const matches = (cell: MapCell) => cell.ship?.id === ship.id && cell.ship.is_owner;
+        replaceCells(
+            matches,
+            (cell) => ({ ...cell, ship: cell.ship == null ? cell.ship : { ...cell.ship, custom_name: ship.custom_name } }),
+        );
+        await refreshNamedCells(matches);
+    }
+
+    async function renameCapital(capital: { x: number; y: number; capital_name: string | null }): Promise<void> {
+        const matches = (cell: MapCell) => cell.x === capital.x && cell.y === capital.y;
+        replaceCells(matches, (cell) => ({ ...cell, capital_name: capital.capital_name }));
+        await refreshNamedCells(matches);
     }
 
     return {

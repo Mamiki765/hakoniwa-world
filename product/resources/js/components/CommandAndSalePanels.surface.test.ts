@@ -1,5 +1,6 @@
 import { flushPromises, mount } from '@vue/test-utils';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { GIVEN_NAME_MAX_LENGTH } from '../formatters/givenName';
 import type {
     CommandCatalog,
     CommandDefinition,
@@ -272,6 +273,7 @@ describe('command plan workspace', () => {
     });
 
     it('names the selected own Ship and capital from a small button, even while the island is dormant', async () => {
+        const shipName = '🚢'.repeat(GIVEN_NAME_MAX_LENGTH);
         const shipSelected: MapCell = {
             ...selected, terrain: 'sea', terrain_name: '海', display_name: '漁船',
             ship: {
@@ -282,7 +284,7 @@ describe('command plan workspace', () => {
         };
         const capital: MapCell = { ...selected, x: 3, y: 3, facility: 'capital', facility_name: '首都', display_name: '首都', capital_name: 'ルミナ' };
         const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
-            if (init?.method === 'PATCH' && String(input).endsWith('/name')) return jsonResponse({ id: 9, custom_name: 'エスポワール' });
+            if (init?.method === 'PATCH' && String(input).endsWith('/name')) return jsonResponse({ id: 9, custom_name: shipName });
             if (init?.method === 'PATCH') return jsonResponse({ id: 1, capital_name: null });
             return jsonResponse(String(input).includes('command-definitions') ? catalog([]) : commandQueue());
         });
@@ -292,13 +294,21 @@ describe('command plan workspace', () => {
 
         await wrapper.get('.sl-name button').trigger('click');
         expect(wrapper.get('.sl-name').text()).not.toContain('名前をつける');
-        await wrapper.get('.sl-name input').setValue('エスポワール');
+        const nameInput = wrapper.get<HTMLInputElement>('[aria-label="船の名前"] input');
+        // Native maxlength counts UTF-16 units, so it must not block a valid supplementary-plane name.
+        expect(nameInput.element.maxLength < 0 || nameInput.element.maxLength >= shipName.length).toBe(true);
+        await nameInput.setValue(`${shipName}🚢`);
+        await wrapper.get('.sl-name form').trigger('submit');
+        await flushPromises();
+        expect(fetchMock.mock.calls.some(([, init]) => init?.method === 'PATCH')).toBe(false);
+        expect(wrapper.get('[role="alert"]').text()).toContain(`${GIVEN_NAME_MAX_LENGTH}文字以下`);
+        await nameInput.setValue(`\u3000${shipName} `);
         await wrapper.get('.sl-name form').trigger('submit');
         await flushPromises();
         const shipPatch = fetchMock.mock.calls.find(([, init]) => init?.method === 'PATCH');
         expect(String(shipPatch?.[0])).toBe('/api/v1/nations/1/ships/9/name');
-        expect(JSON.parse(String(shipPatch?.[1]?.body))).toEqual({ name: 'エスポワール' });
-        expect(wrapper.emitted('shipName')?.[0]?.[0]).toEqual({ id: 9, custom_name: 'エスポワール' });
+        expect(JSON.parse(String(shipPatch?.[1]?.body))).toEqual({ name: `\u3000${shipName} ` });
+        expect(wrapper.emitted('shipName')?.[0]?.[0]).toEqual({ id: 9, custom_name: shipName });
         expect(wrapper.find('.sl-name input').exists()).toBe(false);
 
         await wrapper.setProps({ selected: capital });
