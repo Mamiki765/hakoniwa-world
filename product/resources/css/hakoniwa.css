@@ -200,6 +200,7 @@ main { width: min(1560px, 100%); margin: 0 auto; padding: clamp(16px, 3vw, 46px)
 @media (prefers-reduced-motion: reduce) {
     .reward-toast-enter-active, .reward-toast-leave-active { transition-duration: .01ms; }
 }
+main > .boost-slot { flex: none; margin: 8px 12px; }
 .compensation-banner {
     display: grid;
     grid-template-columns: auto minmax(0, 1fr) auto;
