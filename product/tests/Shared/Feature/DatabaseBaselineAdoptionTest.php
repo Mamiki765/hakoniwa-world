@@ -108,7 +108,8 @@ final class DatabaseBaselineAdoptionTest extends TestCase
         $this->assertSame(0, Artisan::call('migrate', ['--force' => true]));
         $after = $world->fresh()->getAttributes();
         $this->assertNull($after['monster_count_snapshot']);
-        unset($after['monster_count_snapshot']);
+        $this->assertEquals($world->turn_schedule_origin_at?->addHours($world->current_turn * 2), $world->fresh()->next_regular_turn_at);
+        unset($after['monster_count_snapshot'], $after['next_regular_turn_at']);
         $this->assertSame($before, $after);
         app(CurrentDatabaseBaseline::class)->assertExisting();
         $this->assertSame(0, Artisan::call('migrate', ['--force' => true]));
@@ -137,6 +138,7 @@ final class DatabaseBaselineAdoptionTest extends TestCase
             'market listings permit no deadline' => ['ALTER TABLE underground_market_listings ALTER COLUMN expires_at SET NOT NULL'],
             'given name length' => ['ALTER TABLE ships ALTER COLUMN custom_name TYPE varchar(64)'],
             'collection entry uniqueness' => ['ALTER TABLE user_collection_entries DROP CONSTRAINT user_collection_entries_user_id_kind_entry_key_unique'],
+            'turn execution slot uniqueness' => ['ALTER TABLE turn_execution_slots DROP CONSTRAINT turn_execution_slots_world_id_scheduled_at_unique'],
         ];
     }
 
@@ -146,9 +148,11 @@ final class DatabaseBaselineAdoptionTest extends TestCase
         // immutable current snapshot. Remove later extensions and simulate the
         // source ledger to represent that adoption boundary.
         $source = file_get_contents(database_path('schema/pgsql-schema.sql'));
-        foreach (['user_collection_bonus_claims', 'user_collection_entries', 'underground_market_receipts', 'underground_market_listings', 'secretary_synthesis_receipts', 'secretary_warehouse_expansion_receipts'] as $table) {
+        foreach (['turn_execution_slots', 'boost_occurrences', 'boost_series', 'user_collection_bonus_claims', 'user_collection_entries', 'underground_market_receipts', 'underground_market_listings', 'secretary_synthesis_receipts', 'secretary_warehouse_expansion_receipts'] as $table) {
             Schema::drop($table);
         }
+        Schema::table('worlds', fn ($table) => $table->dropColumn('next_regular_turn_at'));
+        DB::table('migrations')->where('migration', CurrentDatabaseBaseline::BOOST_MIGRATION)->delete();
         DB::statement('ALTER TABLE underground_owned_equipment DROP COLUMN is_listed, DROP COLUMN source_market_listing_id');
         DB::statement('ALTER TABLE ships DROP COLUMN custom_name');
         DB::statement('ALTER TABLE nations DROP COLUMN capital_name');
