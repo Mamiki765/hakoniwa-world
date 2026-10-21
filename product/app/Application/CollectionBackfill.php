@@ -126,9 +126,16 @@ SQL) as $row) {
             $addForNation((int) $row->nation_id, 'monster', (string) $row->key, $row->first_turn === null ? null : (int) $row->first_turn, $row->first_at, 'damage_events');
         }
 
+        // A trading-post sale moves the instance but keeps the seller's obtained_at,
+        // so the current owner's first day is the last sale of that instance.
         foreach (DB::select(<<<'SQL'
-SELECT secretary.user_id, item.item_key AS key, MIN(item.obtained_at) AS first_at
+SELECT secretary.user_id, item.item_key AS key, MIN(COALESCE(sale.sold_at, item.obtained_at)) AS first_at
 FROM secretary_item_instances item JOIN secretaries secretary ON secretary.id = item.secretary_id
+LEFT JOIN LATERAL (
+    SELECT MAX(listing.updated_at) AS sold_at
+    FROM auction_listings listing
+    WHERE listing.secretary_item_instance_id = item.id AND listing.status = 'sold'
+) sale ON TRUE
 GROUP BY 1, 2
 SQL) as $row) {
             $add((int) $row->user_id, 'item', (string) $row->key, null, $row->first_at, 'owned_items');
