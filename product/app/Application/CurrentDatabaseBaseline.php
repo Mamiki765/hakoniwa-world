@@ -28,6 +28,8 @@ final class CurrentDatabaseBaseline
 
     public const GIVEN_NAMES_MIGRATION = '2026_10_19_000000_add_ship_and_capital_given_names';
 
+    public const COLLECTION_MIGRATION = '2026_10_21_000000_add_user_collections';
+
     /** @return array<string, string> */
     public function structure(bool $excludeCapitalRelocationTurn = false, bool $excludeEcopo = false, bool $excludeGivenNames = false): array
     {
@@ -234,6 +236,19 @@ SQL, [$hasEcopo, $hasGivenNames]);
             }
             $extension = json_decode(
                 (string) file_get_contents(database_path('baselines/indefinite_market_structure.json')),
+                true, 512, JSON_THROW_ON_ERROR,
+            );
+            foreach ($expected as $key => $variant) {
+                $expected[$key] = array_replace($variant, $extension);
+                ksort($expected[$key]);
+            }
+        }
+        if (in_array(self::COLLECTION_MIGRATION, $applied, true)) {
+            if (! in_array(self::MARKET_SYNTHESIS_MIGRATION, $applied, true)) {
+                throw new RuntimeException('The collection extends the market Paradox sources first.');
+            }
+            $extension = json_decode(
+                (string) file_get_contents(database_path('baselines/collection_structure.json')),
                 true, 512, JSON_THROW_ON_ERROR,
             );
             foreach ($expected as $key => $variant) {

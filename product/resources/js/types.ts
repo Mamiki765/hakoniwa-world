@@ -141,6 +141,7 @@ export interface Secretary {
         slots: Array<{ slot: number; item: SecretaryItem | null }>;
         category_limits: SecretaryEquipmentCategoryLimit[];
     };
+    collection?: { unclaimed: number };
     underground?: {
         available: boolean;
         stage: string;
@@ -150,7 +151,7 @@ export interface Secretary {
     } | null;
 }
 
-export type SecretarySection = 'main' | 'skills' | 'equipment' | 'warehouse' | 'synthesis' | 'settings' | 'achievements';
+export type SecretarySection = 'main' | 'skills' | 'equipment' | 'warehouse' | 'synthesis' | 'collection' | 'settings' | 'achievements';
 
 export interface SecretaryUndergroundStatus {
     growth_path_label: string;

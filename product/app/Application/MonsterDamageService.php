@@ -39,6 +39,7 @@ final class MonsterDamageService
         private readonly MonsterBehaviorResolver $behaviors,
         private readonly EcopoService $ecopo,
         private readonly CurrentMonsterDefinitionResolver $currentDefinitions,
+        private readonly CollectionRegistrar $collection,
     ) {}
 
     public function applyDamage(
@@ -150,6 +151,9 @@ final class MonsterDamageService
             $beforeHp = $locked->current_hp;
             $afterHp = max(0, $beforeHp - $amount);
             $actualDamage = $beforeHp - $afterHp;
+            if ($killerNation !== null && $actualDamage > 0) {
+                $this->collection->registerMonsterForNation($killerNation->id, $locked->definition->key, $context->targetTurn);
+            }
             $damageExperience = $this->creditDamageExperience(
                 $actualDamage,
                 $experiencePerDamage,

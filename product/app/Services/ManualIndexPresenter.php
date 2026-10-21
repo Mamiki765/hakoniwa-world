@@ -142,7 +142,7 @@ final class ManualIndexPresenter
     /**
      * 怪獣の一覧。HP・経験値・残骸の価値・出てくる人口は Ruleset から読み、特徴の文章だけを重ねる。
      *
-     * @return list<array{name: string, hp: string, experience: string, wreckage: string, appearance: string, note: string}>
+     * @return list<array{key: string, name: string, hp: string, experience: string, wreckage: string, appearance: string, note: string}>
      */
     public function monsters(): array
     {
@@ -176,6 +176,7 @@ final class ManualIndexPresenter
                 $appearance[] = '怪獣派遣';
             }
             $rows[] = [
+                'key' => $key,
                 'name' => (string) $definition['name'],
                 'hp' => $low === $high ? (string) $low : "{$low}〜{$high}",
                 'experience' => number_format((int) ($definition['experience_per_damage'] ?? 0)),

@@ -136,6 +136,7 @@ final class DatabaseBaselineAdoptionTest extends TestCase
             'market receipt replay uniqueness' => ['ALTER TABLE underground_market_receipts DROP CONSTRAINT underground_market_receipts_underground_profile_id_request_id_u'],
             'market listings permit no deadline' => ['ALTER TABLE underground_market_listings ALTER COLUMN expires_at SET NOT NULL'],
             'given name length' => ['ALTER TABLE ships ALTER COLUMN custom_name TYPE varchar(64)'],
+            'collection entry uniqueness' => ['ALTER TABLE user_collection_entries DROP CONSTRAINT user_collection_entries_user_id_kind_entry_key_unique'],
         ];
     }
 
@@ -145,7 +146,7 @@ final class DatabaseBaselineAdoptionTest extends TestCase
         // immutable current snapshot. Remove later extensions and simulate the
         // source ledger to represent that adoption boundary.
         $source = file_get_contents(database_path('schema/pgsql-schema.sql'));
-        foreach (['underground_market_receipts', 'underground_market_listings', 'secretary_synthesis_receipts', 'secretary_warehouse_expansion_receipts'] as $table) {
+        foreach (['user_collection_bonus_claims', 'user_collection_entries', 'underground_market_receipts', 'underground_market_listings', 'secretary_synthesis_receipts', 'secretary_warehouse_expansion_receipts'] as $table) {
             Schema::drop($table);
         }
         DB::statement('ALTER TABLE underground_owned_equipment DROP COLUMN is_listed, DROP COLUMN source_market_listing_id');
@@ -159,6 +160,7 @@ final class DatabaseBaselineAdoptionTest extends TestCase
         DB::statement('ALTER TABLE user_paradox_ledger DROP CONSTRAINT user_paradox_ledger_source_check');
         DB::statement('ALTER TABLE user_paradox_ledger ADD CONSTRAINT user_paradox_ledger_source_check '.$matches[1]);
         DB::table('migrations')->whereIn('migration', [
+            CurrentDatabaseBaseline::COLLECTION_MIGRATION,
             CurrentDatabaseBaseline::MARKET_SYNTHESIS_MIGRATION,
             '2026_10_18_010000_publish_market_synthesis_ruleset',
             CurrentDatabaseBaseline::INDEFINITE_MARKET_MIGRATION,

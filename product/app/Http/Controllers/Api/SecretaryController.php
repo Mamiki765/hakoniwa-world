@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Application\SecretaryCollectionService;
 use App\Application\SecretaryEquipmentService;
 use App\Application\SecretaryItemEffectContextResolver;
 use App\Application\SecretaryItemSaleService;
@@ -38,6 +39,7 @@ final class SecretaryController extends Controller
         SecretaryPresenter $presenter,
         SecretaryItemEffectContextResolver $effectContexts,
         UndergroundIntroService $undergroundIntro,
+        SecretaryCollectionService $collection,
     ): JsonResponse {
         $secretary = Secretary::query()->where('user_id', $request->user()->id)
             ->with(['skills', 'itemInstances'])->first();
@@ -58,6 +60,7 @@ final class SecretaryController extends Controller
 
         $data = $presenter->present($secretary, $projection, $request->user());
         $data['underground'] = $undergroundIntro->secretarySummary($request->user());
+        $data['collection'] = ['unclaimed' => $collection->unclaimedCount($request->user())];
 
         return response()->json(['data' => $data]);
     }
