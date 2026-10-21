@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, watch } from 'vue';
+import { onBeforeUnmount, ref, watch } from 'vue';
 import { api, validationErrors } from '../api/client';
 import type { Announcement } from '../types';
 import AnnouncementBody from './AnnouncementBody.vue';
@@ -7,12 +7,25 @@ import AnnouncementBody from './AnnouncementBody.vue';
 // The announcement to edit, or null to write a new one.
 const props = defineProps<{ announcement: Announcement | null }>();
 const emit = defineEmits<{
-    saved: [announcement: Announcement, latest: Announcement[]];
+    saved: [announcement: Announcement];
     cancel: [];
     message: [text: string];
 }>();
 // Shared with the page so the global loading status and other buttons follow saves.
 const busy = defineModel<boolean>('busy', { required: true });
+let requestPending = false;
+let disposed = false;
+onBeforeUnmount(() => {
+    disposed = true;
+    // Model updates no longer reach the page after this editor is unmounted.
+    if (requestPending) busy.value = false;
+});
+
+function finishRequest(): void {
+    requestPending = false;
+    // A late response must not unlock a replacement editor's request.
+    if (!disposed) busy.value = false;
+}
 
 const title = ref(props.announcement?.title ?? '');
 const body = ref(props.announcement?.body ?? '');
@@ -26,6 +39,8 @@ watch([body, bodyFormat], () => {
 });
 
 async function save(): Promise<void> {
+    if (busy.value || requestPending) return;
+    requestPending = true;
     busy.value = true;
     emit('message', '');
     errors.value = {};
@@ -37,19 +52,20 @@ async function save(): Promise<void> {
             method: id === null ? 'POST' : 'PATCH',
             body: JSON.stringify({ title: title.value, body: body.value, body_format: bodyFormat.value }),
         });
-        const latest = await api<Announcement[]>('/api/v1/public/announcements/latest');
-        emit('saved', saved, latest);
+        emit('saved', saved);
     } catch (error) {
         errors.value = validationErrors(error);
         if (Object.keys(errors.value).length === 0) {
             emit('message', error instanceof Error ? error.message : 'お知らせを保存できませんでした。');
         }
     } finally {
-        busy.value = false;
+        finishRequest();
     }
 }
 
 async function preview(): Promise<void> {
+    if (busy.value || requestPending) return;
+    requestPending = true;
     const requestedBody = body.value;
     const requestedFormat = bodyFormat.value;
     busy.value = true;
@@ -70,7 +86,7 @@ async function preview(): Promise<void> {
             emit('message', error instanceof Error ? error.message : 'プレビューを表示できませんでした。');
         }
     } finally {
-        busy.value = false;
+        finishRequest();
     }
 }
 </script>

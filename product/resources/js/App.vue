@@ -1047,10 +1047,14 @@ function editAnnouncement(announcement: Announcement | null = null): void {
     page.value = 'announcements';
 }
 
-function showSavedAnnouncement(saved: Announcement, latest: Announcement[]): void {
+async function showSavedAnnouncement(saved: Announcement): Promise<void> {
     announcementDetail.value = saved;
     announcementView.value = 'detail';
-    latestAnnouncements.value = latest;
+    try {
+        latestAnnouncements.value = await api<Announcement[]>('/api/v1/public/announcements/latest');
+    } catch {
+        message.value = 'お知らせは保存されましたが、最新一覧を更新できませんでした。';
+    }
 }
 
 async function deleteAnnouncement(announcement: Announcement): Promise<void> {

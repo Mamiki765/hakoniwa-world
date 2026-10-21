@@ -660,6 +660,97 @@ describe('application lobby and island entry', () => {
         expect(fetchMock.mock.calls.some(([path, init]) => String(path).endsWith('/admin/announcements/8') && init?.method === 'DELETE')).toBe(true);
     });
 
+    it('keeps a successful announcement save when refreshing the latest list fails', async () => {
+        const article = {
+            id: 8, title: '保存済みの記事', body: '本文', body_format: 'markdown', body_html: '<p>本文</p>',
+            created_at: '2026-08-09T10:30:00+09:00', updated_at: '2026-08-09T10:30:00+09:00',
+        };
+        let saved = false;
+        const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+            const path = String(input);
+            if (path === '/api/v1/public/announcements/latest' && saved) return response(null, 503);
+            const lobby = publicResponse(path);
+            if (lobby !== null) return lobby;
+            if (path === '/api/v1/me') return response({ id: 1, display_name: 'Admin', can_manage_announcements: true, providers: [] });
+            if (path === '/api/v1/me/nation') return response(null);
+            if (path === '/api/v1/public/announcements?page=1') return response([]);
+            if (path === '/api/v1/admin/announcements' && init?.method === 'POST') {
+                saved = true;
+                return response(article, 201);
+            }
+            if (path === '/api/v1/admin/announcements/8' && init?.method === 'PATCH') return response(article);
+            return response(null, 404);
+        });
+        vi.stubGlobal('fetch', fetchMock);
+        const wrapper = mount(App);
+        await flushPromises();
+        await wrapper.find('.announcement-window header button').trigger('click');
+        await flushPromises();
+        await wrapper.findAll('.announcement-actions button').find(button => button.text() === '新規作成')!.trigger('click');
+        await wrapper.find('.announcement-form input').setValue(article.title);
+        await wrapper.find('.announcement-form textarea').setValue(article.body);
+        await wrapper.find('.announcement-form').trigger('submit');
+        await flushPromises();
+
+        expect(wrapper.find('.announcement-form').exists()).toBe(false);
+        expect(wrapper.find('.announcement-article').text()).toContain(article.title);
+        expect(wrapper.text()).toContain('お知らせは保存されましたが、最新一覧を更新できませんでした。');
+        await wrapper.findAll('.announcement-actions button').find(button => button.text() === '編集')!.trigger('click');
+        await wrapper.find('.announcement-form').trigger('submit');
+        await flushPromises();
+        expect(fetchMock.mock.calls.filter(([path, init]) => String(path) === '/api/v1/admin/announcements' && init?.method === 'POST')).toHaveLength(1);
+        expect(fetchMock.mock.calls.some(([path, init]) => String(path) === '/api/v1/admin/announcements/8' && init?.method === 'PATCH')).toBe(true);
+        wrapper.unmount();
+    });
+
+    it.each(['save', 'preview'] as const)('releases a pending announcement %s when replacing the editor without unlocking the next request', async (operation) => {
+        const pending: Array<(response: Response) => void> = [];
+        const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+            const path = String(input);
+            const lobby = publicResponse(path);
+            if (lobby !== null) return lobby;
+            if (path === '/api/v1/me') return response({ id: 1, display_name: 'Admin', can_manage_announcements: true, providers: [] });
+            if (path === '/api/v1/me/nation') return response(null);
+            if (path === '/api/v1/public/announcements?page=1') return response([]);
+            if (path.startsWith('/api/v1/admin/announcements') && init?.method === 'POST') {
+                return new Promise<Response>(resolve => pending.push(resolve));
+            }
+            return response(null, 404);
+        });
+        vi.stubGlobal('fetch', fetchMock);
+        const wrapper = mount(App);
+        await flushPromises();
+        await wrapper.find('.announcement-window header button').trigger('click');
+        await flushPromises();
+        await wrapper.findAll('.announcement-actions button').find(button => button.text() === '新規作成')!.trigger('click');
+        await wrapper.find('.announcement-form input').setValue('通信中の記事');
+        await wrapper.find('.announcement-form textarea').setValue('本文');
+        if (operation === 'save') {
+            await wrapper.find('.announcement-form').trigger('submit');
+        } else {
+            await wrapper.findAll('.announcement-form button').find(button => button.text() === 'プレビュー')!.trigger('click');
+        }
+        expect(wrapper.get<HTMLButtonElement>('.announcement-form button[type="submit"]').element.disabled).toBe(true);
+        await wrapper.findAll('.announcement-form button').find(button => button.text() === 'キャンセル')!.trigger('click');
+        await wrapper.findAll('.announcement-actions button').find(button => button.text() === '新規作成')!.trigger('click');
+        expect(wrapper.get<HTMLButtonElement>('.announcement-form button[type="submit"]').element.disabled).toBe(false);
+
+        await wrapper.find('.announcement-form input').setValue('次の記事');
+        await wrapper.find('.announcement-form textarea').setValue('次の本文');
+        await wrapper.findAll('.announcement-form button').find(button => button.text() === 'プレビュー')!.trigger('click');
+        expect(pending).toHaveLength(2);
+        pending[0]!(response(operation === 'preview' ? { body_html: '<p>古いプレビュー</p>' } : { id: 8, title: '通信中の記事' }));
+        await flushPromises();
+        expect(wrapper.get<HTMLInputElement>('.announcement-form input').element.value).toBe('次の記事');
+        expect(wrapper.get<HTMLButtonElement>('.announcement-form button[type="submit"]').element.disabled).toBe(true);
+        expect(wrapper.find('.announcement-preview').exists()).toBe(false);
+        pending[1]!(response({ body_html: '<p>次の本文</p>' }));
+        await flushPromises();
+        expect(wrapper.get<HTMLButtonElement>('.announcement-form button[type="submit"]').element.disabled).toBe(false);
+        expect(wrapper.find('.announcement-preview').text()).toContain('次の本文');
+        wrapper.unmount();
+    });
+
     it('registers the island profile explicitly and shows field-level validation', async () => {
         const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
             const path = String(input);
