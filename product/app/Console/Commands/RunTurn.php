@@ -13,7 +13,7 @@ final class RunTurn extends Command
     protected $signature = 'hakoniwa:turn:run
                             {--world=shared-world : World key}
                             {--dry-run : Record and display the pipeline without executing game phases}
-                            {--source=manual : Invocation source: manual or cron}';
+                            {--source=manual : Invocation source: manual, cron or scheduler}';
 
     protected $description = 'Run one World turn through the shared TurnRunner service.';
 
@@ -29,13 +29,18 @@ final class RunTurn extends Command
         }
 
         try {
-            $run = $runner->run($world, (bool) $this->option('dry-run'), $source);
+            $run = $runner->run($world, (bool) $this->option('dry-run'), $source, respectSchedule: true);
         } catch (Throwable $exception) {
             $this->error($exception->getMessage());
 
             return self::FAILURE;
         }
 
+        if ($run === null) {
+            $this->info('No eligible turn slot. No game state changed.');
+
+            return self::SUCCESS;
+        }
         $this->line("run={$run->id} world={$world->key} target_turn={$run->target_turn} status={$run->status}");
         $this->line("ruleset_version_id={$run->ruleset_version_id} seed={$run->random_seed}");
         $this->table(

@@ -2,6 +2,7 @@
 
 namespace Tests\Underground\Feature;
 
+use App\Application\Underground\UndergroundAlphaV1PlayerCatalog;
 use App\Application\Underground\UndergroundProfileService;
 use App\Application\Underground\UndergroundRuntimeCatalog;
 use App\Application\Underground\UndergroundRuntimeException;
@@ -21,14 +22,17 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
+use Tests\Concerns\CreatesBoostSchedules;
 use Tests\TestCase;
 
 final class UndergroundSkipSettlementTest extends TestCase
 {
+    use CreatesBoostSchedules;
     use RefreshDatabase;
 
     public function test_hunting_ground_skip_consumes_once_retries_idempotently_and_only_increments_total(): void
     {
+        $this->boostOccurrence();
         config(['underground-alpha-v1.growth_paths.martial_red.unspent_stp_per_level' => 6]);
         [$user, $profile] = $this->readyProfile();
         $curve = app(UndergroundRuntimeCatalog::class)->xpCurve();
@@ -57,6 +61,9 @@ final class UndergroundSkipSettlementTest extends TestCase
         $this->assertSame(1, $result['daily_quest']['progress']);
         $this->assertFalse($result['daily_quest']['completed_now']);
         $this->assertTrue($retry['duplicate']);
+        $entry = $result['settlement']->reward_snapshot['encounters'][0];
+        $base = app(UndergroundAlphaV1PlayerCatalog::class)->explorationEncounter($entry['key'], 'shallow_caves');
+        $this->assertSame($base['xp'] * 2, $result['settlement']->xp_awarded);
         $after = $profile->fresh();
         $this->assertSame($xpBefore + $result['settlement']->xp_awarded, $after->combat_xp);
         $this->assertGreaterThan(1, $after->combat_level);
@@ -96,6 +103,7 @@ final class UndergroundSkipSettlementTest extends TestCase
 
     public function test_trial_skip_consumes_ten_tickets_settles_one_full_repeatable_run_and_creates_no_combat_state(): void
     {
+        $this->boostOccurrence();
         [$user, $profile] = $this->readyProfile();
         $trialProgress = UndergroundTrialProgress::query()->create([
             'underground_profile_id' => $profile->id,
@@ -219,6 +227,7 @@ final class UndergroundSkipSettlementTest extends TestCase
 
     public function test_bulk_hunting_skip_is_one_idempotent_operation_with_distinct_drop_identity(): void
     {
+        $this->boostOccurrence();
         $this->forceShallowStandardDrop();
         [$user, $profile] = $this->readyProfile();
         UndergroundContentClearProgress::query()->create([
@@ -237,6 +246,10 @@ final class UndergroundSkipSettlementTest extends TestCase
         $retry = $runtime->bulkSkipHuntingGround($user, $requestId, 'shallow_caves', 50);
         $batch = $result['batch']->refresh();
 
+        $base = app(UndergroundAlphaV1PlayerCatalog::class)->explorationEncounter('subterranean_rat', 'shallow_caves');
+        $this->assertSame($base['xp'] * 2 * 50, $batch->xp_awarded);
+        $this->assertSame($base['shards'] * 50, $batch->shard_awarded);
+        $this->assertSame(2, $batch->reward_snapshot['boost']['xp_multiplier']);
         $this->assertFalse($result['duplicate']);
         $this->assertTrue($retry['duplicate']);
         $this->assertSame($batch->id, $retry['batch']->id);
@@ -302,6 +315,7 @@ final class UndergroundSkipSettlementTest extends TestCase
 
     public function test_vault_bulk_skip_requires_every_key_and_replays_without_double_consumption(): void
     {
+        $this->boostOccurrence();
         config(['underground-alpha-v1.exploration.grounds.shining_kingdom_vault.rare_encounter.chance_bps' => 10_000]);
         [$user, $profile] = $this->readyProfile();
         UndergroundTrialProgress::query()->create([
@@ -335,6 +349,7 @@ final class UndergroundSkipSettlementTest extends TestCase
         $requestId = (string) Str::uuid();
         $first = $runtime->bulkSkipHuntingGround($user, $requestId, 'shining_kingdom_vault', 3);
         $retry = $runtime->bulkSkipHuntingGround($user, $requestId, 'shining_kingdom_vault', 3);
+        $this->assertSame(1, $first['batch']->reward_snapshot['boost']['xp_multiplier']);
         $this->assertFalse($first['duplicate']);
         $this->assertTrue($retry['duplicate']);
         $this->assertSame(0, $profile->refresh()->shining_kingdom_key_balance);

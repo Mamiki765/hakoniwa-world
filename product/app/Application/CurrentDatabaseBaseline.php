@@ -30,6 +30,8 @@ final class CurrentDatabaseBaseline
 
     public const COLLECTION_MIGRATION = '2026_10_21_000000_add_user_collections';
 
+    public const BOOST_MIGRATION = '2026_10_22_000000_add_boost_schedules_and_turn_slots';
+
     /** @return array<string, string> */
     public function structure(bool $excludeCapitalRelocationTurn = false, bool $excludeEcopo = false, bool $excludeGivenNames = false): array
     {
@@ -251,6 +253,14 @@ SQL, [$hasEcopo, $hasGivenNames]);
                 (string) file_get_contents(database_path('baselines/collection_structure.json')),
                 true, 512, JSON_THROW_ON_ERROR,
             );
+            foreach ($expected as $key => $variant) {
+                $expected[$key] = array_replace($variant, $extension);
+                ksort($expected[$key]);
+            }
+        }
+        if (in_array(self::BOOST_MIGRATION, $applied, true)) {
+            $extension = json_decode((string) file_get_contents(database_path('baselines/boost_schedules_structure.json')),
+                true, 512, JSON_THROW_ON_ERROR);
             foreach ($expected as $key => $variant) {
                 $expected[$key] = array_replace($variant, $extension);
                 ksort($expected[$key]);

@@ -14,6 +14,7 @@ use App\Domain\World\WorldMutationLock;
 use App\Models\RulesetVersion;
 use App\Models\TurnRun;
 use App\Models\World;
+use Carbon\CarbonImmutable;
 use DomainException;
 use Illuminate\Database\Connection;
 use Illuminate\Support\Facades\DB;
@@ -25,7 +26,7 @@ use Throwable;
 
 class TurnRunner
 {
-    private const SOURCES = ['manual', 'cron'];
+    private const SOURCES = ['manual', 'cron', 'scheduler'];
 
     private const MAX_TRANSIENT_ATTEMPTS = 3;
 
@@ -37,10 +38,10 @@ class TurnRunner
         private readonly MonsterKillCycleService $monsterCycles,
     ) {}
 
-    public function run(World $world, bool $dryRun = false, string $source = 'manual'): TurnRun
+    public function run(World $world, bool $dryRun = false, string $source = 'manual', bool $respectSchedule = false): ?TurnRun
     {
         if (! in_array($source, self::SOURCES, true)) {
-            throw new DomainException('Turn source must be manual or cron.');
+            throw new DomainException('Turn source must be manual, cron or scheduler.');
         }
 
         $this->lock->acquire($world);
@@ -55,8 +56,28 @@ class TurnRunner
                 return $this->recordDryRun($world, $ruleset, $targetTurn, $source);
             }
 
+            $schedule = app(TurnExecutionSchedule::class);
+            $existing = TurnRun::query()->where('world_id', $world->id)->where('target_turn', $targetTurn)
+                ->where('is_dry_run', false)->first();
+            $slot = null;
+            if ($schedule->nextRegular($world) !== null && $existing === null) {
+                $slot = $schedule->candidate($world, CarbonImmutable::now(), $source === 'manual');
+                if (($slot === null && ($source !== 'manual' || $respectSchedule)) || app()->isDownForMaintenance()) {
+                    return null;
+                }
+            } elseif ($source !== 'manual' && ($existing === null || app()->isDownForMaintenance())) {
+                return null;
+            }
+
             $this->monsterCycles->assertLegacySeedCoverage($world, $targetTurn);
             $run = $this->prepareRun($world, $ruleset, $targetTurn, $source);
+            if ($slot !== null) {
+                DB::table('turn_execution_slots')->insert([
+                    'world_id' => $world->id, 'scheduled_at' => $slot['scheduled_at'], 'kind' => $slot['kind'],
+                    'boost_occurrence_id' => $slot['boost_occurrence_id'], 'turn_run_id' => $run->id,
+                    'created_at' => now(), 'updated_at' => now(),
+                ]);
+            }
             $validation = $this->pipeline->canonicalValidation();
             if (! $validation['valid']) {
                 $now = now();
@@ -163,7 +184,7 @@ class TurnRunner
                 "World {$world->key} turn {$targetTurn} already has a {$run->status} run.",
             );
         }
-        if ($source === 'cron' && in_array($run->status, [
+        if ($source !== 'manual' && in_array($run->status, [
             TurnRun::STATUS_FAILED,
             TurnRun::STATUS_BLOCKED,
         ], true)) {
@@ -335,7 +356,12 @@ class TurnRunner
             ];
         }
 
-        $lockedWorld->update(['current_turn' => $run->target_turn]);
+        $nextRegular = app(TurnExecutionSchedule::class)->nextRegular($lockedWorld);
+        $lockedWorld->update(['current_turn' => $run->target_turn,
+            'next_regular_turn_at' => $nextRegular !== null && $nextRegular->lessThanOrEqualTo($run->started_at)
+                ? $nextRegular->addHours(2) : $nextRegular]);
+        DB::table('turn_execution_slots')->where('turn_run_id', $run->id)
+            ->update(['completed_at' => now(), 'updated_at' => now()]);
         TurnRun::query()->whereKey($run->id)->lockForUpdate()->firstOrFail()->update([
             'status' => TurnRun::STATUS_COMPLETED,
             'phase_results' => $results,

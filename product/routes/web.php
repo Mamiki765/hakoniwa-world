@@ -5,6 +5,7 @@ use App\Http\Controllers\Api\AdminInquiryController;
 use App\Http\Controllers\Api\AdminOperationsController;
 use App\Http\Controllers\Api\AnnouncementController;
 use App\Http\Controllers\Api\ApiController;
+use App\Http\Controllers\Api\BoostController;
 use App\Http\Controllers\Api\CommandQueueController;
 use App\Http\Controllers\Api\CompensationWarehouseController;
 use App\Http\Controllers\Api\DailyRewardController;
@@ -68,6 +69,7 @@ Route::prefix('api/v1/public')
         Route::get('/announcements/{announcement}', [AnnouncementController::class, 'show']);
         Route::get('/worlds', [PublicApiController::class, 'worlds']);
         Route::get('/worlds/{world}/summary', [PublicApiController::class, 'summary']);
+        Route::get('/worlds/{world}/boosts', [BoostController::class, 'index']);
         Route::get('/worlds/{world}/rankings', [PublicApiController::class, 'rankings']);
         Route::get('/worlds/{world}/major-news', [PublicApiController::class, 'majorNews']);
         Route::get('/worlds/{world}/events', [PublicApiController::class, 'events']);
@@ -85,6 +87,10 @@ Route::prefix('api/v1/admin')
         Route::get('/worlds/{world}/operations', [AdminOperationsController::class, 'overview']);
         Route::post('/worlds/{world}/turn-attempt', [AdminOperationsController::class, 'advanceTurn']);
         Route::get('/worlds/{world}/turn-status', [AdminOperationsController::class, 'turnStatus']);
+        Route::get('/worlds/{world}/boosts', [BoostController::class, 'admin']);
+        Route::post('/worlds/{world}/boosts/preview', [BoostController::class, 'preview']);
+        Route::post('/worlds/{world}/boosts/reserve', [BoostController::class, 'reserve']);
+        Route::post('/worlds/{world}/boosts/{occurrence}/cancel', [BoostController::class, 'cancel'])->whereNumber('occurrence');
         Route::post('/worlds/{world}/operations/{operation}/preview', [AdminOperationsController::class, 'preview'])
             ->whereIn('operation', ['distribution', 'abandonment', 'purge']);
         Route::post('/worlds/{world}/operations/{operation}/apply', [AdminOperationsController::class, 'apply'])

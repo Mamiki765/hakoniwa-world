@@ -34,7 +34,7 @@ final class TurnScheduleStatus
             ->orderByDesc('id')
             ->first();
         $lastSuccessfulAt = $lastSuccessful?->completed_at?->toImmutable()->utc();
-        $expected = $world->turn_schedule_origin_at?->addHours($world->current_turn * $intervalHours)->utc()
+        $expected = app(TurnExecutionSchedule::class)->nextRegular($world)
             ?? ($lastSuccessfulAt === null
                 ? $this->scheduledAtOrBefore($now, $timezone)
                 : $this->scheduledAfter($lastSuccessfulAt, $timezone));
