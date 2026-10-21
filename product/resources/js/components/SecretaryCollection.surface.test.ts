@@ -52,4 +52,15 @@ describe('secretary collection', () => {
         expect(wrapper.text()).toContain('✓ 受け取り済み');
         expect(wrapper.emitted('changed')).toHaveLength(1);
     });
+
+    it('keeps the refusal visible after reloading the collection', async () => {
+        vi.stubGlobal('fetch', vi.fn(async (_url: string, init?: RequestInit) => init?.method === 'POST'
+            ? new Response(JSON.stringify({ message: 'まだ図鑑に登録されていません。', code: 'collection_not_registered' }), { status: 422, headers: { 'Content-Type': 'application/json' } })
+            : json(collection(false, 100))));
+        const wrapper = mount(SecretaryCollection);
+        await flushPromises();
+        await wrapper.findAll('button').find(button => button.text() === 'まとめて受け取る')!.trigger('click');
+        await flushPromises();
+        expect(wrapper.get('[role="alert"]').text()).toBe('まだ図鑑に登録されていません。');
+    });
 });

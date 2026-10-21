@@ -474,6 +474,8 @@ describe('application lobby and island entry', () => {
 
                 return response(nextMap);
             }
+            if (path.startsWith('/api/v1/me/secretary?')) return response({ ...unnamedSecretaryFixture, collection: { unclaimed: 0 } });
+            if (path === '/api/v1/me/secretary/collection') return response({ summary: { unclaimed: summaryCalls >= 2 ? 2 : 0 } });
             if (path === '/api/v1/worlds/1/map-spaces') {
                 mapSpaceCalls++;
                 return response([mapSpaceCalls < 4 ? publicDetail.map_space : {
@@ -533,6 +535,8 @@ describe('application lobby and island entry', () => {
         expect(wrapper.findAll('.underground-slot')[0]!.attributes('aria-pressed')).toBe('true');
         expect(wrapper.findComponent(HexMap).props('bounds')).toEqual(publicDetail.map_space.bounds);
         expect(wrapper.find('.hud-primary').text()).toContain('人口1,500人');
+        // A turn that registered collection entries shows the secretary dot without reloading the secretary.
+        expect(wrapper.findAll('.site-header nav button').find((button) => button.text() === '？？？')!.find('.notification-dot').exists()).toBe(true);
         const failedRefreshChunkCalls = privateChunkCalls;
 
         await vi.advanceTimersByTimeAsync(2_000);

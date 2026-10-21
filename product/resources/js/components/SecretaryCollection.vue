@@ -81,8 +81,9 @@ async function receive(path: string, body?: Record<string, string>): Promise<voi
         if (gained > 0) notice.value = `${gained.toLocaleString('ja-JP')}Pdを受け取りました。`;
         emit('changed');
     } catch (caught) {
-        error.value = caught instanceof Error ? caught.message : '受け取れませんでした。';
+        const message = caught instanceof Error ? caught.message : '受け取れませんでした。';
         await load();
+        error.value = message;
     } finally {
         busy.value = false;
     }

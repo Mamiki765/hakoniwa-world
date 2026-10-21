@@ -837,6 +837,8 @@ async function refreshTurnDependentViewsIfNeeded(summary: PublicWorldSummary): P
         }
     }
 
+    // A turn can register collection entries; the red dot follows without reloading the whole secretary.
+    void refreshCollectionUnclaimed();
     const world = worlds.value[0];
     if (world === undefined) return false;
     const nationRequestGeneration = nationStateGeneration;
@@ -1229,6 +1231,16 @@ async function refreshMyNation(): Promise<void> {
         if (requestGeneration === nationStateGeneration) nation.value = refreshedNation;
     } catch {
         // The authoritative message response is already rendered; account data can refresh later.
+    }
+}
+
+async function refreshCollectionUnclaimed(): Promise<void> {
+    if (secretary.value?.collection === undefined) return;
+    try {
+        const latest = await api<{ summary: { unclaimed: number } }>('/api/v1/me/secretary/collection');
+        if (secretary.value?.collection !== undefined) secretary.value.collection = { unclaimed: latest.summary.unclaimed };
+    } catch {
+        // The next secretary load shows the count instead.
     }
 }
 
