@@ -18,7 +18,7 @@ RUN --mount=type=cache,id=hakoniwa-composer-cache,target=/tmp/composer-cache,sha
 COPY . .
 RUN composer dump-autoload --classmap-authoritative --no-interaction
 
-FROM php:8.5.8-apache-bookworm AS runtime
+FROM php:8.5.12-apache-bookworm@sha256:747123a8d7d28c6f84960df94cc076a406314e4f9d556af0bcfddab81e33bd09 AS runtime
 
 ENV APACHE_DOCUMENT_ROOT=/var/www/html/public
 
