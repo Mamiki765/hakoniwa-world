@@ -17,10 +17,8 @@ function headline(boost: BoostView): string {
 
 function effect(boost: BoostView): string | null {
     if (boost.description) return boost.description;
-    if (boost.kind === 'turn_acceleration' && boost.turn_interval_minutes) {
-        return `ターン更新が${boost.turn_interval_minutes}分ごと${boost.phase === 'active' ? 'になっています' : 'になります'}`;
-    }
-    if (boost.kind === 'hunting_ground' && boost.multiplier) return `狩場の獲得が ×${boost.multiplier}`;
+    if (boost.kind === 'turn_acceleration') return '通常の偶数時に加えて、奇数時にも追加ターン（未補填分のみ）';
+    if (boost.multiplier) return `狩場のレア出現率・鍵出現率・獲得XPが${boost.multiplier}倍`;
 
     return null;
 }
