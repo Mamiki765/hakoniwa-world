@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Application\BoostReservationRejectedException;
 use App\Application\BoostScheduleService;
 use App\Domain\Turn\TurnAlreadyRunningException;
 use App\Http\Controllers\Controller;
@@ -45,6 +46,8 @@ final class BoostController extends Controller
         $input = $request->validate(['token' => ['required', 'string', 'max:100000']]);
         try {
             return response()->json(['data' => $service->reserve($this->actor($request), $world, $input['token'])]);
+        } catch (BoostReservationRejectedException $exception) {
+            return response()->json(['message' => $exception->getMessage(), 'code' => 'boost_reservation_rejected'], 409);
         } catch (DomainException|TurnAlreadyRunningException $exception) {
             return response()->json(['message' => $exception->getMessage()], 409);
         }

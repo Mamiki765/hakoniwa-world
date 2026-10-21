@@ -85,6 +85,7 @@ async function requestPreview(): Promise<void> {
 
 async function reserve(): Promise<void> {
     if (busy.value || preview.value === null) return;
+    const wasUncertain = submitted.value;
     busy.value = true;
     submitted.value = true;
     error.value = '';
@@ -98,7 +99,8 @@ async function reserve(): Promise<void> {
         resultMessage.value = `予約系列 #${result.series_id} の登録を確認しました。`;
         emit('updated');
     } catch (failure) {
-        if (failure instanceof ApiError && failure.status >= 400 && failure.status < 500) {
+        if (failure instanceof ApiError && failure.status >= 400 && failure.status < 500
+            && (!wasUncertain || failure.code === 'boost_reservation_rejected')) {
             submitted.value = false;
             preview.value = null;
         }
@@ -119,6 +121,7 @@ function requestCancellation(row: Occurrence): void {
 
 async function cancel(): Promise<void> {
     if (busy.value || cancellation.value === null) return;
+    const wasUncertain = submitted.value;
     busy.value = true;
     submitted.value = true;
     error.value = '';
@@ -132,7 +135,7 @@ async function cancel(): Promise<void> {
         resultMessage.value = `開催回 #${target.row.id}${target.futureSeries ? ' と以後の同系列' : ''}の取消を確認しました。`;
         emit('updated');
     } catch (failure) {
-        if (failure instanceof ApiError && failure.status >= 400 && failure.status < 500) submitted.value = false;
+        if (!wasUncertain && failure instanceof ApiError && failure.status >= 400 && failure.status < 500) submitted.value = false;
         error.value = `${failure instanceof Error ? failure.message : '取消結果を取得できませんでした。'}${submitted.value
             ? ' 同じ取消の「結果を確認する」で再確認してください。' : ''}`;
     } finally {

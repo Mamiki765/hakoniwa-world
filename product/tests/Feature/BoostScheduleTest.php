@@ -47,11 +47,14 @@ final class BoostScheduleTest extends TestCase
             ->assertJsonPath('data.uncompensated_turns', 10)->assertJsonPath('data.windows.0.additional_slots', 10)->json('data');
         $this->assertEquals(20, $preview['duration_hours']);
         $this->assertDatabaseCount('boost_occurrences', 0);
+        $unreservedToken = $preview['token'];
         app(TurnRunner::class)->run($world);
-        $this->postJson($path.'/reserve', ['token' => $preview['token']])->assertConflict();
+        $this->postJson($path.'/reserve', ['token' => $preview['token']])->assertConflict()->assertJsonPath('code', 'boost_reservation_rejected');
         $preview = $this->postJson($path.'/preview', $input)->assertOk()->json('data');
         $this->postJson($path.'/reserve', ['token' => $preview['token']])->assertOk()->assertJsonPath('data.duplicate', false);
+        Carbon::setTestNow(CarbonImmutable::now()->addMinutes(16));
         $this->postJson($path.'/reserve', ['token' => $preview['token']])->assertOk()->assertJsonPath('data.duplicate', true);
+        $this->postJson($path.'/reserve', ['token' => $unreservedToken])->assertConflict()->assertJsonPath('code', 'boost_reservation_rejected');
         $this->assertDatabaseCount('boost_occurrences', 1);
         $service = app(BoostScheduleService::class);
         $this->assertSame(1, $service->additionalSlots(CarbonImmutable::parse('2026-11-01T01:00:00+09:00'), CarbonImmutable::parse('2026-11-01T03:00:00+09:00')));
@@ -180,7 +183,7 @@ final class BoostScheduleTest extends TestCase
         $lock = \Mockery::mock(WorldMutationLock::class);
         $lock->shouldReceive('acquire')->twice()->andThrow(new TurnAlreadyRunningException('World busy'));
         $this->app->instance(WorldMutationLock::class, $lock);
-        $this->postJson($path.'/reserve', ['token' => $token])->assertConflict();
+        $this->postJson($path.'/reserve', ['token' => $token])->assertConflict()->assertJsonMissingPath('code');
         $this->postJson($path."/{$event->id}/cancel")->assertConflict();
         $this->assertDatabaseCount('boost_series', 1);
         $this->assertNull($event->refresh()->cancelled_at);

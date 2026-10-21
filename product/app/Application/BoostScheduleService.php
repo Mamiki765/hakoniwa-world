@@ -178,17 +178,21 @@ final readonly class BoostScheduleService
                 $now = CarbonImmutable::now();
                 $payload = $claims['payload'];
                 $world = $world->fresh();
-                if ($claims['expires_at'] <= $now->timestamp || $now->isAfter($payload['windows'][0]['starts_at'])) {
-                    throw new DomainException('確認期限または開始時刻を過ぎました。再確認してください。');
+                try {
+                    if ($claims['expires_at'] <= $now->timestamp || $now->isAfter($payload['windows'][0]['starts_at'])) {
+                        throw new DomainException('確認期限または開始時刻を過ぎました。再確認してください。');
+                    }
+                    if ($payload['kind'] === 'turn_acceleration'
+                        && ($payload['current_turn'] !== $world->current_turn
+                            || $payload['uncompensated_turns'] !== $this->turns->debt($world, $now)
+                            || $payload['next_regular_turn_at'] !== $this->turns->nextRegular($world)?->toIso8601String()
+                            || BoostOccurrence::query()->where('world_id', $world->id)->where('kind', 'turn_acceleration')->whereNull('cancelled_at')->where('ends_at', '>', $now)->exists())) {
+                        throw new DomainException('未補填遅延または予約が変わりました。再確認してください。');
+                    }
+                    $this->assertNoOverlap($world, $payload['kind'], $payload['windows']);
+                } catch (DomainException $exception) {
+                    throw new BoostReservationRejectedException($exception->getMessage(), previous: $exception);
                 }
-                if ($payload['kind'] === 'turn_acceleration'
-                    && ($payload['current_turn'] !== $world->current_turn
-                        || $payload['uncompensated_turns'] !== $this->turns->debt($world, $now)
-                        || $payload['next_regular_turn_at'] !== $this->turns->nextRegular($world)?->toIso8601String()
-                        || BoostOccurrence::query()->where('world_id', $world->id)->where('kind', 'turn_acceleration')->whereNull('cancelled_at')->where('ends_at', '>', $now)->exists())) {
-                    throw new DomainException('未補填遅延または予約が変わりました。再確認してください。');
-                }
-                $this->assertNoOverlap($world, $payload['kind'], $payload['windows']);
                 $id = DB::table('boost_series')->insertGetId(['world_id' => $world->id, 'request_id' => $claims['request_id'],
                     'created_by' => $actor->id, 'kind' => $payload['kind'], 'title' => $payload['title'],
                     'schedule' => json_encode($payload, JSON_THROW_ON_ERROR), 'created_at' => $now, 'updated_at' => $now]);

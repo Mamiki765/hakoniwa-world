@@ -62,9 +62,10 @@ it('sends finite weekly dates and keeps the same token through response loss, wi
         if (path.endsWith('/reserve')) {
             attempts++;
             if (attempts === 1) throw new TypeError('応答を受信できませんでした');
+            if (attempts === 2) return new Response(JSON.stringify({ message: 'Worldの更新処理中です。' }), { status: 409 });
             return response({ series_id: 88, duplicate: true });
         }
-        if (attempts === 2) throw new TypeError('一覧だけ取得失敗');
+        if (attempts === 3) throw new TypeError('一覧だけ取得失敗');
         return response(overview);
     }));
     const wrapper = mount(AdminBoostSchedules, { props: { worldId: 7, initialKind: 'hunting_ground' } });
@@ -85,8 +86,12 @@ it('sends finite weekly dates and keeps the same token through response loss, wi
     expect(wrapper.findAll('button').some((candidate) => candidate.text() === '入力に戻る')).toBe(false);
     await button(wrapper, '結果を確認する').trigger('click');
     await flushPromises();
+    expect(button(wrapper, '予約画面を閉じる').attributes('disabled')).toBeDefined();
+    expect(wrapper.find('[aria-label="ブースト予約の確認"]').exists()).toBe(true);
+    await button(wrapper, '結果を確認する').trigger('click');
+    await flushPromises();
     expect(requests.filter((request) => request.path.endsWith('/reserve')).map((request) => request.body)).toEqual([
-        { token: preview.token }, { token: preview.token },
+        { token: preview.token }, { token: preview.token }, { token: preview.token },
     ]);
     expect(requests.filter((request) => request.path.endsWith('/preview'))).toHaveLength(1);
     expect(wrapper.text()).toContain('系列 #88');
@@ -95,13 +100,17 @@ it('sends finite weekly dates and keeps the same token through response loss, wi
     wrapper.unmount();
 });
 
-it('requires a fresh preview after the server rejects stale compensation', async () => {
+it('releases an uncertain token only after the server proves that reservation was not committed', async () => {
     let previews = 0;
     let reserves = 0;
     vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
         const path = String(input);
         if (path.endsWith('/preview')) { previews++; return response(timePreview); }
-        if (path.endsWith('/reserve')) { reserves++; return new Response(JSON.stringify({ message: '未補填遅延が変わりました。再確認してください。' }), { status: 409 }); }
+        if (path.endsWith('/reserve')) {
+            reserves++;
+            if (reserves === 1) throw new TypeError('応答を受信できませんでした');
+            return new Response(JSON.stringify({ message: '未補填遅延が変わりました。再確認してください。', code: 'boost_reservation_rejected' }), { status: 409 });
+        }
         return response(overview);
     }));
     const wrapper = mount(AdminBoostSchedules, { props: { worldId: 7, initialKind: 'turn_acceleration' } });
@@ -110,14 +119,16 @@ it('requires a fresh preview after the server rejects stale compensation', async
     await flushPromises();
     await button(wrapper, 'この内容で予約する').trigger('click');
     await flushPromises();
+    await button(wrapper, '結果を確認する').trigger('click');
+    await flushPromises();
     expect(wrapper.get('[role="alert"]').text()).toContain('未補填遅延が変わりました');
     expect(wrapper.find('[aria-label="ブースト予約の確認"]').exists()).toBe(false);
     expect(previews).toBe(1);
-    expect(reserves).toBe(1);
+    expect(reserves).toBe(2);
     await wrapper.get('form').trigger('submit');
     await flushPromises();
     expect(previews).toBe(2);
-    expect(reserves).toBe(1);
+    expect(reserves).toBe(2);
     wrapper.unmount();
 });
 
@@ -129,6 +140,7 @@ it('confirms occurrence identity and cancellation scope, then retries only that 
         if (String(input).endsWith('/321/cancel')) {
             cancellations.push(JSON.parse(String(init?.body)));
             if (cancellations.length === 1) throw new TypeError('取消応答を受信できませんでした');
+            if (cancellations.length === 2) return new Response(JSON.stringify({ message: 'Worldの更新処理中です。' }), { status: 409 });
             confirmed = true;
             return response({ cancelled: true });
         }
@@ -146,7 +158,10 @@ it('confirms occurrence identity and cancellation scope, then retries only that 
     expect(wrapper.findAll('button').some((candidate) => candidate.text() === '取消をやめる')).toBe(false);
     await button(wrapper, '結果を確認する').trigger('click');
     await flushPromises();
-    expect(cancellations).toEqual([{ future_series: true }, { future_series: true }]);
+    expect(field(wrapper, '取消範囲').attributes('disabled')).toBeDefined();
+    await button(wrapper, '結果を確認する').trigger('click');
+    await flushPromises();
+    expect(cancellations).toEqual([{ future_series: true }, { future_series: true }, { future_series: true }]);
     expect(wrapper.get('[aria-label="開催回 #321"]').text()).toContain('取消済み');
     expect(wrapper.get('[aria-label="開催回 #321"]').find('button').exists()).toBe(false);
     wrapper.unmount();
