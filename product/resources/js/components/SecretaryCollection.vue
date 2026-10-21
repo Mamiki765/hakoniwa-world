@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue';
+import { computed, nextTick, onMounted, ref } from 'vue';
 import { api } from '../api/client';
 
 interface HiddenMonster { registered: false; hint: string }
@@ -88,8 +88,12 @@ async function receive(path: string, body?: Record<string, string>): Promise<voi
     }
 }
 
-function choose(key: string | undefined): void {
+async function choose(key: string | undefined): Promise<void> {
     selectedKey.value = key === undefined || selectedKey.value === key ? null : key;
+    if (selectedKey.value === null) return;
+    // On a phone the detail sits below the whole grid, so bring it into view.
+    await nextTick();
+    document.getElementById('collection-detail')?.scrollIntoView?.({ block: 'nearest', behavior: 'smooth' });
 }
 
 function switchPane(next: 'monster' | 'item'): void {
@@ -145,7 +149,7 @@ onMounted(() => { void load(); });
                 </li>
             </ul>
 
-            <article v-if="selected" class="secretary-collection-detail" :class="selected.kind === 'item' ? `rarity-${selected.entry.rarity}` : 'rarity-monster'">
+            <article v-if="selected" id="collection-detail" class="secretary-collection-detail" :class="selected.kind === 'item' ? `rarity-${selected.entry.rarity}` : 'rarity-monster'">
                 <header>
                     <strong>{{ selected.entry.name }}</strong>
                     <span>{{ selected.kind === 'item' ? `${selected.entry.rarity_label}・${selected.entry.category_label}` : '怪獣' }}</span>

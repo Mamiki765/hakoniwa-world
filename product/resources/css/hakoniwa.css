@@ -1470,7 +1470,7 @@ html:is([data-theme="dark"], [data-theme="old-dark"]) .compensation-banner, html
 .secretary-collection-summary { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: .6rem; padding: .7rem .8rem; border: 1px solid var(--line); background: var(--paper); }
 .secretary-collection-summary p { margin: 0; }
 .secretary-collection-grid { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: .4rem; margin: 0; padding: 0; list-style: none; }
-.secretary-collection-cell { position: relative; display: flex; width: 100%; min-height: 4.6rem; flex-direction: column; justify-content: center; align-items: center; gap: .2rem; padding: .45rem .3rem; border: 1px solid var(--line); border-top: 4px solid var(--rarity-color); background: var(--paper); color: var(--ink); font: inherit; text-align: center; cursor: pointer; }
+.secretary-collection-cell { display: flex; width: 100%; min-height: 4.6rem; flex-direction: column; justify-content: center; align-items: center; gap: .2rem; padding: .45rem .3rem; border: 1px solid var(--line); border-top: 4px solid var(--rarity-color); background: var(--paper); color: var(--ink); font: inherit; text-align: center; cursor: pointer; }
 .secretary-collection-cell strong { font-size: .85rem; line-height: 1.25; overflow-wrap: anywhere; }
 .secretary-collection-cell span { color: var(--muted); font-size: .7rem; }
 .secretary-collection-cell.hidden { background: var(--paper-deep); cursor: default; }
@@ -1478,7 +1478,7 @@ html:is([data-theme="dark"], [data-theme="old-dark"]) .compensation-banner, html
 .secretary-collection-cell.selected { outline: 3px solid var(--navy); outline-offset: 1px; }
 .secretary-collection-cell:hover:not(:disabled):not(.selected) { background: var(--hover-surface); }
 .secretary-collection-cell:focus-visible { outline: 3px solid var(--coral); outline-offset: 1px; }
-.secretary-collection-cell .secretary-collection-badge { position: absolute; top: 2px; right: 2px; padding: 0 .3rem; border-radius: 999px; background: #d62934; color: #fff; font-size: .65rem; font-weight: 900; }
+.secretary-collection-cell .secretary-collection-badge { padding: 0 .4rem; border-radius: 999px; background: #d62934; color: #fff; font-size: .65rem; font-weight: 900; }
 .secretary-collection-detail { display: grid; gap: .5rem; padding: .8rem; border: 1px solid var(--line); border-left: 5px solid var(--rarity-color); background: var(--paper); }
 .secretary-collection-detail > header { display: flex; flex-wrap: wrap; align-items: baseline; gap: .6rem; }
 .secretary-collection-detail > header strong { font-size: 1.1rem; }
