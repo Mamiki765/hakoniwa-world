@@ -17,7 +17,10 @@ final class SecretaryItemGrantService
 
     public const STARTER_OLD_BOW_GRANT = 'starter:old_bow';
 
-    public function __construct(private readonly SecretaryItemCatalog $catalog) {}
+    public function __construct(
+        private readonly SecretaryItemCatalog $catalog,
+        private readonly CollectionRegistrar $collection,
+    ) {}
 
     public static function capacity(Secretary $secretary): int
     {
@@ -208,7 +211,7 @@ final class SecretaryItemGrantService
             }
         }
 
-        return $locked->itemInstances()->create([
+        $item = $locked->itemInstances()->create([
             'item_key' => $itemKey,
             'level' => $level,
             'equipped_slot' => $equippedSlot,
@@ -219,6 +222,9 @@ final class SecretaryItemGrantService
             ]),
             'obtained_at' => now(),
         ]);
+        $this->collection->registerItem((int) $locked->user_id, $itemKey);
+
+        return $item;
     }
 
     private function recordInventoryFull(Secretary $secretary, string $itemKey, ?string $grantKey, int $used): void

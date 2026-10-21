@@ -5,11 +5,12 @@ import SecretaryMenu from './SecretaryMenu.vue';
 
 describe('secretary menu access', () => {
     it('opens synthesis next to the warehouse for the owner', async () => {
-        const wrapper = mount(SecretaryMenu, { props: { owner: true, modelValue: 'warehouse' }, attachTo: document.body });
+        const wrapper = mount(SecretaryMenu, { props: { owner: true, modelValue: 'warehouse', collectionUnclaimed: 2 }, attachTo: document.body });
         await wrapper.get('#secretary-tab-warehouse').trigger('keydown', { key: 'ArrowRight' });
         expect(wrapper.emitted('update:modelValue')?.[0]).toEqual(['synthesis']);
         await wrapper.get('#secretary-tab-synthesis').trigger('click');
         expect(wrapper.emitted('update:modelValue')?.at(-1)).toEqual(['synthesis']);
+        expect(wrapper.find('#secretary-tab-collection .notification-dot').exists()).toBe(true);
         await wrapper.setProps({ modelValue: 'achievements' });
         await wrapper.get('#secretary-tab-achievements').trigger('keydown', { key: 'End' });
         expect(wrapper.emitted('update:modelValue')?.at(-1)).toEqual(['settings']);

@@ -474,6 +474,8 @@ describe('application lobby and island entry', () => {
 
                 return response(nextMap);
             }
+            if (path.startsWith('/api/v1/me/secretary?')) return response({ ...unnamedSecretaryFixture, collection: { unclaimed: 0 } });
+            if (path === '/api/v1/me/secretary/collection') return response({ summary: { unclaimed: summaryCalls >= 2 ? 2 : 0 } });
             if (path === '/api/v1/worlds/1/map-spaces') {
                 mapSpaceCalls++;
                 return response([mapSpaceCalls < 4 ? publicDetail.map_space : {
@@ -533,6 +535,8 @@ describe('application lobby and island entry', () => {
         expect(wrapper.findAll('.underground-slot')[0]!.attributes('aria-pressed')).toBe('true');
         expect(wrapper.findComponent(HexMap).props('bounds')).toEqual(publicDetail.map_space.bounds);
         expect(wrapper.find('.hud-primary').text()).toContain('人口1,500人');
+        // A turn that registered collection entries shows the secretary dot without reloading the secretary.
+        expect(wrapper.findAll('.site-header nav button').find((button) => button.text() === '？？？')!.find('.notification-dot').exists()).toBe(true);
         const failedRefreshChunkCalls = privateChunkCalls;
 
         await vi.advanceTimersByTimeAsync(2_000);
@@ -654,6 +658,97 @@ describe('application lobby and island entry', () => {
         await remove.trigger('click');
         await flushPromises();
         expect(fetchMock.mock.calls.some(([path, init]) => String(path).endsWith('/admin/announcements/8') && init?.method === 'DELETE')).toBe(true);
+    });
+
+    it('keeps a successful announcement save when refreshing the latest list fails', async () => {
+        const article = {
+            id: 8, title: '保存済みの記事', body: '本文', body_format: 'markdown', body_html: '<p>本文</p>',
+            created_at: '2026-08-09T10:30:00+09:00', updated_at: '2026-08-09T10:30:00+09:00',
+        };
+        let saved = false;
+        const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+            const path = String(input);
+            if (path === '/api/v1/public/announcements/latest' && saved) return response(null, 503);
+            const lobby = publicResponse(path);
+            if (lobby !== null) return lobby;
+            if (path === '/api/v1/me') return response({ id: 1, display_name: 'Admin', can_manage_announcements: true, providers: [] });
+            if (path === '/api/v1/me/nation') return response(null);
+            if (path === '/api/v1/public/announcements?page=1') return response([]);
+            if (path === '/api/v1/admin/announcements' && init?.method === 'POST') {
+                saved = true;
+                return response(article, 201);
+            }
+            if (path === '/api/v1/admin/announcements/8' && init?.method === 'PATCH') return response(article);
+            return response(null, 404);
+        });
+        vi.stubGlobal('fetch', fetchMock);
+        const wrapper = mount(App);
+        await flushPromises();
+        await wrapper.find('.announcement-window header button').trigger('click');
+        await flushPromises();
+        await wrapper.findAll('.announcement-actions button').find(button => button.text() === '新規作成')!.trigger('click');
+        await wrapper.find('.announcement-form input').setValue(article.title);
+        await wrapper.find('.announcement-form textarea').setValue(article.body);
+        await wrapper.find('.announcement-form').trigger('submit');
+        await flushPromises();
+
+        expect(wrapper.find('.announcement-form').exists()).toBe(false);
+        expect(wrapper.find('.announcement-article').text()).toContain(article.title);
+        expect(wrapper.text()).toContain('お知らせは保存されましたが、最新一覧を更新できませんでした。');
+        await wrapper.findAll('.announcement-actions button').find(button => button.text() === '編集')!.trigger('click');
+        await wrapper.find('.announcement-form').trigger('submit');
+        await flushPromises();
+        expect(fetchMock.mock.calls.filter(([path, init]) => String(path) === '/api/v1/admin/announcements' && init?.method === 'POST')).toHaveLength(1);
+        expect(fetchMock.mock.calls.some(([path, init]) => String(path) === '/api/v1/admin/announcements/8' && init?.method === 'PATCH')).toBe(true);
+        wrapper.unmount();
+    });
+
+    it.each(['save', 'preview'] as const)('releases a pending announcement %s when replacing the editor without unlocking the next request', async (operation) => {
+        const pending: Array<(response: Response) => void> = [];
+        const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+            const path = String(input);
+            const lobby = publicResponse(path);
+            if (lobby !== null) return lobby;
+            if (path === '/api/v1/me') return response({ id: 1, display_name: 'Admin', can_manage_announcements: true, providers: [] });
+            if (path === '/api/v1/me/nation') return response(null);
+            if (path === '/api/v1/public/announcements?page=1') return response([]);
+            if (path.startsWith('/api/v1/admin/announcements') && init?.method === 'POST') {
+                return new Promise<Response>(resolve => pending.push(resolve));
+            }
+            return response(null, 404);
+        });
+        vi.stubGlobal('fetch', fetchMock);
+        const wrapper = mount(App);
+        await flushPromises();
+        await wrapper.find('.announcement-window header button').trigger('click');
+        await flushPromises();
+        await wrapper.findAll('.announcement-actions button').find(button => button.text() === '新規作成')!.trigger('click');
+        await wrapper.find('.announcement-form input').setValue('通信中の記事');
+        await wrapper.find('.announcement-form textarea').setValue('本文');
+        if (operation === 'save') {
+            await wrapper.find('.announcement-form').trigger('submit');
+        } else {
+            await wrapper.findAll('.announcement-form button').find(button => button.text() === 'プレビュー')!.trigger('click');
+        }
+        expect(wrapper.get<HTMLButtonElement>('.announcement-form button[type="submit"]').element.disabled).toBe(true);
+        await wrapper.findAll('.announcement-form button').find(button => button.text() === 'キャンセル')!.trigger('click');
+        await wrapper.findAll('.announcement-actions button').find(button => button.text() === '新規作成')!.trigger('click');
+        expect(wrapper.get<HTMLButtonElement>('.announcement-form button[type="submit"]').element.disabled).toBe(false);
+
+        await wrapper.find('.announcement-form input').setValue('次の記事');
+        await wrapper.find('.announcement-form textarea').setValue('次の本文');
+        await wrapper.findAll('.announcement-form button').find(button => button.text() === 'プレビュー')!.trigger('click');
+        expect(pending).toHaveLength(2);
+        pending[0]!(response(operation === 'preview' ? { body_html: '<p>古いプレビュー</p>' } : { id: 8, title: '通信中の記事' }));
+        await flushPromises();
+        expect(wrapper.get<HTMLInputElement>('.announcement-form input').element.value).toBe('次の記事');
+        expect(wrapper.get<HTMLButtonElement>('.announcement-form button[type="submit"]').element.disabled).toBe(true);
+        expect(wrapper.find('.announcement-preview').exists()).toBe(false);
+        pending[1]!(response({ body_html: '<p>次の本文</p>' }));
+        await flushPromises();
+        expect(wrapper.get<HTMLButtonElement>('.announcement-form button[type="submit"]').element.disabled).toBe(false);
+        expect(wrapper.find('.announcement-preview').text()).toContain('次の本文');
+        wrapper.unmount();
     });
 
     it('registers the island profile explicitly and shows field-level validation', async () => {
@@ -871,6 +966,46 @@ describe('application lobby and island entry', () => {
         expect(wrapper.get('.preview-heading h1').text()).toContain(nextDetail.name);
         expect(wrapper.findComponent(HexMap).props('capital')).toEqual(nextDetail.capital);
         expect(fetchMock.mock.calls.filter(([path]) => String(path).includes('/chunks/'))).toHaveLength(chunkCallsBeforeOldResponse);
+        wrapper.unmount();
+    });
+
+    it('keeps the last clicked island when an earlier preview response arrives late', async () => {
+        vi.spyOn(window, 'scrollTo').mockImplementation(() => undefined);
+        let resolveFirstDetail!: (result: Response) => void;
+        const firstDetail = new Promise<Response>((resolve) => { resolveFirstDetail = resolve; });
+        const nextDetail: PublicNationDetail = {
+            ...publicDetail, id: 8, name: '次の島', capital: { x: 40, y: 40 },
+            map_space: { ...publicDetail.map_space, bounds_revision: 'next-bounds' },
+        };
+        const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+            const path = String(input);
+            const lobby = publicResponse(path);
+            if (path.endsWith('/rankings') && lobby) {
+                const { data } = await lobby.json();
+                return response([...data, { ...data[0], id: 8, nation_number: 2, name: nextDetail.name }]);
+            }
+            if (lobby !== null) return lobby;
+            if (path === '/api/v1/me') return response(null, 401);
+            if (path === '/api/v1/public/nations/7') return firstDetail;
+            if (path === '/api/v1/public/nations/8') return response(nextDetail);
+            if (path.includes('/chunks/')) return response(emptyChunk);
+            return response(null, 404);
+        });
+        vi.stubGlobal('fetch', fetchMock);
+        const wrapper = mount(App);
+        await flushPromises();
+
+        await wrapper.findAll('.ranking-island button')[0]!.trigger('click');
+        await wrapper.findAll('.ranking-island button')[1]!.trigger('click');
+        await flushPromises();
+        expect(wrapper.get('.preview-heading h1').text()).toContain(nextDetail.name);
+
+        resolveFirstDetail(response({ ...publicDetail, name: '遅れた先の島' }));
+        await flushPromises();
+
+        expect(wrapper.get('.preview-heading h1').text()).toContain(nextDetail.name);
+        expect(wrapper.findComponent(HexMap).props('capital')).toEqual(nextDetail.capital);
+        expect(fetchMock.mock.calls.some(([path]) => String(path).includes('/api/v1/public/nations/7/map-spaces/'))).toBe(false);
         wrapper.unmount();
     });
 
@@ -1444,6 +1579,30 @@ describe('application lobby and island entry', () => {
         expect(state.previewDetailCalls).toBe(2);
         expect(callsTo(fetchMock, publicChunks)).toBe(publicChunksBefore);
         expect(callsTo(fetchMock, '/api/v1/map-spaces/2/chunks/')).toBeGreaterThan(privateChunksBeforeRefresh);
+        wrapper.unmount();
+    });
+
+    it('stays on the own island when a preview opened just before it responds late', async () => {
+        const { wrapper, fetchMock } = await mountOwnerHud();
+        await navButton(wrapper, 'TOP').trigger('click');
+        let resolvePreviewDetail!: (result: Response) => void;
+        const previewDetail = new Promise<Response>((resolve) => { resolvePreviewDetail = resolve; });
+        vi.stubGlobal('fetch', vi.fn((input: RequestInfo | URL, init?: RequestInit) => String(input) === '/api/v1/public/nations/7'
+            ? previewDetail
+            : fetchMock(input, init)));
+
+        await wrapper.findAll('.ranking-card tbody button').find((button) => button.text().includes('公開島'))!.trigger('click');
+        await navButton(wrapper, '自島へ').trigger('click');
+        await flushPromises();
+        expect(wrapper.find('.island-page').exists()).toBe(true);
+        const privateChunksBefore = callsTo(fetchMock, '/api/v1/map-spaces/2/chunks/');
+
+        resolvePreviewDetail(response(publicDetail));
+        await flushPromises();
+
+        expect(wrapper.find('.island-page').exists()).toBe(true);
+        expect(wrapper.find('.preview-page').exists()).toBe(false);
+        expect(callsTo(fetchMock, '/api/v1/map-spaces/2/chunks/')).toBe(privateChunksBefore);
         wrapper.unmount();
     });
 

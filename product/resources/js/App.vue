@@ -3,6 +3,7 @@ import stories from '../stories/intro.json';
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
 import { ApiError, api, apiEnvelope, validationErrors } from './api/client';
 import AnnouncementBody from './components/AnnouncementBody.vue';
+import AnnouncementEditor from './components/AnnouncementEditor.vue';
 import CellDetails from './components/CellDetails.vue';
 import CommandQueuePanel from './components/CommandQueuePanel.vue';
 import GuideConversationTopicAdmin from './components/GuideConversationTopicAdmin.vue';
@@ -22,6 +23,7 @@ import UndergroundPanel from './components/UndergroundPanel.vue';
 import type { MarketAttention } from './components/UndergroundMarket.vue';
 import SecretaryImageSlotsEditor from './components/SecretaryImageSlotsEditor.vue';
 import SecretaryMenu from './components/SecretaryMenu.vue';
+import SecretaryCollection from './components/SecretaryCollection.vue';
 import SecretarySynthesis from './components/SecretarySynthesis.vue';
 import InquiryFormPage from './components/InquiryFormPage.vue';
 import AdminInquiriesPage, { type AdminInquiriesRequest } from './components/AdminInquiriesPage.vue';
@@ -118,19 +120,12 @@ const announcementDetail = ref<Announcement | null>(null);
 const announcementPageNumber = ref(1);
 const announcementLastPage = ref(1);
 const announcementView = ref<'list' | 'detail' | 'form'>('list');
-const announcementFormId = ref<number | null>(null);
-const announcementTitle = ref('');
-const announcementBody = ref('');
-const announcementBodyFormat = ref<Announcement['body_format']>('markdown');
-const announcementPreviewHtml = ref<string | null>(null);
-const announcementPreviewVisible = ref(false);
-const announcementErrors = ref<Record<string, string>>({});
-watch([announcementBody, announcementBodyFormat], () => {
-    announcementPreviewVisible.value = false;
-    announcementPreviewHtml.value = null;
-});
+const announcementEditing = ref<Announcement | null>(null);
+// Each new edit starts a fresh editor, even when one is already open.
+const announcementEditorKey = ref(0);
 const nation = ref<Nation | null>(null);
 const secretary = ref<Secretary | null>(null);
+const collectionUnclaimed = computed(() => secretary.value?.collection?.unclaimed ?? 0);
 const pendingTicketGacha = ref<{ ticketId: number; drawCount: number; requestKey: string } | null>(null);
 const ticketDrawTarget = ref<Secretary['inventory']['items'][number] | null>(null);
 const warehouseExpandOpen = ref(false);
@@ -835,6 +830,8 @@ async function refreshTurnDependentViewsIfNeeded(summary: PublicWorldSummary): P
         }
     }
 
+    // A turn can register collection entries; the red dot follows without reloading the whole secretary.
+    void refreshCollectionUnclaimed();
     const world = worlds.value[0];
     if (world === undefined) return false;
     const nationRequestGeneration = nationStateGeneration;
@@ -1044,64 +1041,19 @@ async function openAnnouncement(id: number): Promise<void> {
 }
 
 function editAnnouncement(announcement: Announcement | null = null): void {
-    announcementFormId.value = announcement?.id ?? null;
-    announcementTitle.value = announcement?.title ?? '';
-    announcementBody.value = announcement?.body ?? '';
-    announcementBodyFormat.value = announcement === null ? 'markdown' : (announcement.body_format ?? 'plain_text');
-    announcementPreviewVisible.value = false;
-    announcementPreviewHtml.value = null;
-    announcementErrors.value = {};
+    announcementEditing.value = announcement;
+    announcementEditorKey.value += 1;
     announcementView.value = 'form';
     page.value = 'announcements';
 }
 
-async function saveAnnouncement(): Promise<void> {
-    busy.value = true;
-    message.value = '';
-    announcementErrors.value = {};
-    const id = announcementFormId.value;
+async function showSavedAnnouncement(saved: Announcement): Promise<void> {
+    announcementDetail.value = saved;
+    announcementView.value = 'detail';
     try {
-        const saved = await api<Announcement>(id === null
-            ? '/api/v1/admin/announcements'
-            : `/api/v1/admin/announcements/${id}`, {
-            method: id === null ? 'POST' : 'PATCH',
-            body: JSON.stringify({ title: announcementTitle.value, body: announcementBody.value, body_format: announcementBodyFormat.value }),
-        });
-        announcementDetail.value = saved;
-        announcementView.value = 'detail';
         latestAnnouncements.value = await api<Announcement[]>('/api/v1/public/announcements/latest');
-    } catch (error) {
-        announcementErrors.value = validationErrors(error);
-        if (Object.keys(announcementErrors.value).length === 0) {
-            message.value = error instanceof Error ? error.message : 'お知らせを保存できませんでした。';
-        }
-    } finally {
-        busy.value = false;
-    }
-}
-
-async function previewAnnouncement(): Promise<void> {
-    const body = announcementBody.value;
-    const format = announcementBodyFormat.value;
-    busy.value = true;
-    message.value = '';
-    announcementErrors.value = {};
-    try {
-        const preview = await api<{ body_html: string | null }>('/api/v1/admin/announcements/preview', {
-            method: 'POST',
-            body: JSON.stringify({ body, body_format: format }),
-        });
-        if (announcementBody.value === body && announcementBodyFormat.value === format) {
-            announcementPreviewHtml.value = preview.body_html;
-            announcementPreviewVisible.value = true;
-        }
-    } catch (error) {
-        announcementErrors.value = validationErrors(error);
-        if (Object.keys(announcementErrors.value).length === 0) {
-            message.value = error instanceof Error ? error.message : 'プレビューを表示できませんでした。';
-        }
-    } finally {
-        busy.value = false;
+    } catch {
+        message.value = 'お知らせは保存されましたが、最新一覧を更新できませんでした。';
     }
 }
 
@@ -1162,7 +1114,8 @@ async function loadPublicEvents(pageNumber: number): Promise<void> {
 async function openOwnIsland(): Promise<void> {
     const currentNation = nation.value;
     if (currentNation?.capital === null || currentNation === null) return;
-    mapViewGeneration++;
+    // 読み込み中に別の島やページを開いたら、遅れて届いた結果で画面を戻さない。
+    let viewGeneration = ++mapViewGeneration;
     busy.value = true;
     message.value = '';
     try {
@@ -1170,6 +1123,7 @@ async function openOwnIsland(): Promise<void> {
             api<MapSpace[]>(`/api/v1/worlds/${currentNation.world_id}/map-spaces`),
             api<UndergroundSurfaceMap | null>('/api/v1/me/underground/surface-map'),
         ]);
+        if (viewGeneration !== mapViewGeneration) return;
         if (spacesResult.status === 'rejected') throw spacesResult.reason;
         const spaces = spacesResult.value;
         undergroundSurfaceMap.value = undergroundMapResult.status === 'fulfilled' ? undergroundMapResult.value : null;
@@ -1177,12 +1131,16 @@ async function openOwnIsland(): Promise<void> {
         mapSpace.value = spaces.find((space) => space.key === 'surface') ?? spaces[0] ?? null;
         if (mapSpace.value !== null) {
             await map.loadAround(mapSpace.value, currentNation.capital.x, currentNation.capital.y, { kind: 'private' });
+            if (viewGeneration !== mapViewGeneration) return;
             page.value = 'island';
+            // ページの切り替え自体も世代を進めるので、開いた後の読み込みはこの世代で見る。
+            viewGeneration = mapViewGeneration;
             await loadCompensationGrants();
             await recordDevelopmentOpened();
             await loadDailyQuests();
         }
     } catch (error) {
+        if (viewGeneration !== mapViewGeneration) return;
         message.value = error instanceof Error ? error.message : '自島を読み込めませんでした。';
     } finally {
         busy.value = false;
@@ -1194,11 +1152,12 @@ async function openPreview(nationId: number): Promise<void> {
         await openOwnIsland();
         return;
     }
-    mapViewGeneration++;
+    const viewGeneration = ++mapViewGeneration;
     busy.value = true;
     message.value = '';
     try {
         const detail = await api<PublicNationDetail>(`/api/v1/public/nations/${nationId}`);
+        if (viewGeneration !== mapViewGeneration) return;
         if (detail.capital === null) throw new Error('首都がまだありません。');
         previewNation.value = detail;
         selectedUndergroundSlot.value = null;
@@ -1209,10 +1168,12 @@ async function openPreview(nationId: number): Promise<void> {
             detail.capital.y,
             previewMapRequestSource(detail.id),
         );
+        if (viewGeneration !== mapViewGeneration) return;
         page.value = 'preview';
         await nextTick();
         window.scrollTo({ top: 0, left: 0, behavior: 'auto' });
     } catch (error) {
+        if (viewGeneration !== mapViewGeneration) return;
         message.value = error instanceof Error ? error.message : '島previewを読み込めませんでした。';
     } finally {
         busy.value = false;
@@ -1227,6 +1188,16 @@ async function refreshMyNation(): Promise<void> {
         if (requestGeneration === nationStateGeneration) nation.value = refreshedNation;
     } catch {
         // The authoritative message response is already rendered; account data can refresh later.
+    }
+}
+
+async function refreshCollectionUnclaimed(): Promise<void> {
+    if (secretary.value?.collection === undefined) return;
+    try {
+        const latest = await api<{ summary: { unclaimed: number } }>('/api/v1/me/secretary/collection');
+        if (secretary.value?.collection !== undefined) secretary.value.collection = { unclaimed: latest.summary.unclaimed };
+    } catch {
+        // The next secretary load shows the count instead.
     }
 }
 
@@ -1805,7 +1776,7 @@ async function abandonNation(): Promise<void> {
         <nav aria-label="主要ナビゲーション">
             <button type="button" @click="page = 'home'">TOP</button>
             <button v-if="nation" type="button" class="notification-anchor" :aria-label="boardUnread ? '自島へ（伝言板に新しい伝言があります）' : undefined" @click="openOwnIsland">自島へ<span v-if="boardUnread" class="notification-dot" aria-hidden="true" /></button>
-            <button v-if="secretary" type="button" @click="openSecretary">{{ secretary.header_label }}</button>
+            <button v-if="secretary" type="button" class="notification-anchor" :aria-label="collectionUnclaimed ? `${secretary.header_label}（図鑑に受け取れるプレゼントがあります）` : undefined" @click="openSecretary">{{ secretary.header_label }}<span v-if="collectionUnclaimed" class="notification-dot" aria-hidden="true" /></button>
             <button v-if="nation" type="button" @click="page = 'trading-post'">交易場</button>
             <button v-if="secretary" type="button" class="notification-anchor" :aria-label="distortedStoneReminder ? '地底（歪んだ輝石の初回受取があります）' : marketAttention ? '地底（露店にお知らせがあります）' : undefined" @click="openUnderground">地底<span v-if="distortedStoneReminder || marketAttention" class="notification-dot" aria-hidden="true" /></button>
             <button type="button" @click="openOptions">オプション</button>
@@ -2157,46 +2128,15 @@ async function abandonNation(): Promise<void> {
                 </div>
             </article>
 
-            <form v-else-if="announcementView === 'form' && user?.can_manage_announcements" class="announcement-form" @submit.prevent="saveAnnouncement">
-                <h2>{{ announcementFormId === null ? 'お知らせを作成' : 'お知らせを編集' }}</h2>
-                <label>題名
-                    <input v-model="announcementTitle" maxlength="160" required>
-                    <span v-if="announcementErrors.title" class="field-error" role="alert">{{ announcementErrors.title }}</span>
-                </label>
-                <label>本文の形式
-                    <select v-model="announcementBodyFormat">
-                        <option value="markdown">Markdown（文字の装飾・箇条書き）</option>
-                        <option value="plain_text">プレーンテキスト（入力したまま）</option>
-                    </select>
-                    <span v-if="announcementErrors.body_format" class="field-error" role="alert">{{ announcementErrors.body_format }}</span>
-                </label>
-                <label>本文
-                    <textarea v-model="announcementBody" aria-describedby="announcement-format-help" maxlength="20000" rows="12" required></textarea>
-                    <span v-if="announcementErrors.body" class="field-error" role="alert">{{ announcementErrors.body }}</span>
-                </label>
-                <details v-if="announcementBodyFormat === 'markdown'" id="announcement-format-help" class="announcement-format-help">
-                    <summary>書き方の例（Discordでも使える書式）</summary>
-                    <ul>
-                        <li><code>**太字**</code> → <strong>太字</strong></li>
-                        <li><code>## 見出し</code> → 見出し</li>
-                        <li><code>- 項目</code> → 箇条書き</li>
-                        <li><code>~~取り消し~~</code> → <s>取り消し</s></li>
-                        <li><code>[表示名](https://example.com)</code> → リンク</li>
-                    </ul>
-                    <p>改行はそのまま表示されます。保存前にプレビューで確認できます。</p>
-                </details>
-                <p v-else id="announcement-format-help" class="announcement-format-help">文字の装飾はせず、入力した内容と改行をそのまま表示します。</p>
-                <div class="announcement-actions">
-                    <button type="button" :disabled="busy || !announcementBody.trim()" @click="previewAnnouncement">プレビュー</button>
-                    <button class="button primary" type="submit" :disabled="busy">保存</button>
-                    <button type="button" @click="announcementView = announcementDetail ? 'detail' : 'list'">キャンセル</button>
-                </div>
-                <section v-if="announcementPreviewVisible" class="announcement-preview" aria-label="お知らせのプレビュー">
-                    <p class="eyebrow">プレビュー（まだ保存されていません）</p>
-                    <h2>{{ announcementTitle }}</h2>
-                    <AnnouncementBody :body="announcementBody" :format="announcementBodyFormat" :html="announcementPreviewHtml" />
-                </section>
-            </form>
+            <AnnouncementEditor
+                v-else-if="announcementView === 'form' && user?.can_manage_announcements"
+                :key="announcementEditorKey"
+                v-model:busy="busy"
+                :announcement="announcementEditing"
+                @saved="showSavedAnnouncement"
+                @cancel="announcementView = announcementDetail ? 'detail' : 'list'"
+                @message="message = $event"
+            />
         </section>
 
         <section
@@ -2603,7 +2543,7 @@ async function abandonNation(): Promise<void> {
             <template v-else-if="viewedSecretaryProfile">
                 <h2 class="secretary-name">{{ viewedSecretaryProfile.name }}</h2>
                 <p v-if="viewedSecretaryProfile.nickname" class="secretary-nickname">{{ viewedSecretaryProfile.nickname }}</p>
-                <SecretaryMenu v-model="secretarySection" :owner="viewedSecretaryProfile.is_owner" />
+                <SecretaryMenu v-model="secretarySection" :owner="viewedSecretaryProfile.is_owner" :collection-unclaimed="collectionUnclaimed" />
                 <SecretaryWarehouseExpandDialog v-if="warehouseExpandOpen && secretary" :warehouse="secretary.inventory" @close="warehouseExpandOpen = false" @expanded="onWarehouseExpanded" />
                 <SecretaryTicketDrawDialog v-if="ticketDrawTarget" :name="`${ticketDrawTarget.name} Lv${ticketDrawTarget.level.toLocaleString('ja-JP')}`" :level="ticketDrawTarget.level" :max-draw-count="ticketDrawTarget.max_draw_count ?? 0" :busy="busy" @cancel="ticketDrawTarget = null" @draw="drawSecretaryTicket" />
                 <section v-if="secretarySection === 'main'" id="secretary-panel-main" role="tabpanel" aria-labelledby="secretary-tab-main" class="secretary-main-profile">
@@ -2679,6 +2619,9 @@ async function abandonNation(): Promise<void> {
                 </section>
                 <section v-else-if="secretarySection === 'synthesis' && viewedSecretaryProfile.is_owner && secretary" id="secretary-panel-synthesis" role="tabpanel" aria-labelledby="secretary-tab-synthesis">
                     <SecretarySynthesis :warehouse="secretary.inventory" @changed="loadSecretary" @expand="warehouseExpandOpen = true" />
+                </section>
+                <section v-else-if="secretarySection === 'collection' && viewedSecretaryProfile.is_owner && secretary" id="secretary-panel-collection" role="tabpanel" aria-labelledby="secretary-tab-collection">
+                    <SecretaryCollection @changed="loadSecretary" />
                 </section>
                 <section v-else-if="secretarySection === 'achievements' && viewedSecretaryProfile.is_owner && user" id="secretary-panel-achievements" role="tabpanel" aria-labelledby="secretary-tab-achievements" class="secretary-achievements">
                     <section aria-labelledby="secretary-title-heading">

@@ -143,3 +143,8 @@ html .tp-news-group h3 { font: var(--sl-w-head) 12px var(--sl-f-head); color: va
     .tp .ranking-secretary-link { padding-block: 6px; }
     .tp-notice-list button { padding-block: 5px; }
 }
+
+/* 狭いスマホでは「自分の島へ（島名）」が3行に折れないよう、主ボタンだけ1段目に置く。 */
+@media (max-width: 480px) {
+    .tp-enter .tp-button.primary { flex-basis: 100%; }
+}

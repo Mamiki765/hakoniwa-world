@@ -144,7 +144,7 @@ onMounted(load);
                         </thead>
                         <tbody>
                             <tr v-for="listing in market.listings" :key="listing.id">
-                                <td>
+                                <td class="trading-post-product-cell">
                                     <template v-if="listing.product.type === 'item'">
                                         {{ productLabel(listing) }}
                                         <ItemEffectInfo
@@ -155,14 +155,14 @@ onMounted(load);
                                     </template>
                                     <template v-else>{{ productLabel(listing) }}</template>
                                 </td>
-                                <td>{{ listing.seller.name }}</td>
-                                <td>{{ listing.start_price.toLocaleString('ja-JP') }}億円</td>
-                                <td class="trading-post-price-cell">
+                                <td data-label="出品者">{{ listing.seller.name }}</td>
+                                <td data-label="開始価格">{{ listing.start_price.toLocaleString('ja-JP') }}億円</td>
+                                <td class="trading-post-price-cell" data-label="最高入札額">
                                     <span>{{ listing.current_price === null ? '入札なし' : `${listing.current_price.toLocaleString('ja-JP')}億円` }}</span>
                                     <small class="trading-post-secondary-line">最高額入札者：{{ listing.highest_bidder?.name ?? 'なし' }}</small>
                                 </td>
-                                <td>残り{{ listing.remaining_turns }}ターン<br><small>終了 T{{ listing.ends_turn }}</small></td>
-                                <td>
+                                <td data-label="残り">残り{{ listing.remaining_turns }}ターン<br><small>終了 T{{ listing.ends_turn }}</small></td>
+                                <td data-label="入札">
                                     <div class="trading-post-bid-cell">
                                         <span class="trading-post-bid-status" :class="`trading-post-bid-status-${listing.viewer_bid_status}`">
                                             {{ bidStatusLabel(listing.viewer_bid_status) }}

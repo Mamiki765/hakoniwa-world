@@ -43,6 +43,7 @@
 | 5.4.0 queue・怪獣・地下施設の現在版解決と来歴、省エネXP、3 migration | [5.4.0 queue / provenance / energy](../product/docs/releases/5.4.0-queue-provenance-energy.md) |
 | 5.5.0 地底露店・地上合成・チケット部分使用・倉庫拡張 | [5.5.0 market / synthesis](../product/docs/releases/5.5.0-market-synthesis.md) |
 | 5.6.0 露店の無期限化と統合・検証の記録 | [5.6.0](../product/docs/releases/5.6.0.md) |
+| 5.7.0 怪獣・地上アイテム図鑑と移行手順 | [5.7.0](../product/docs/releases/5.7.0.md)、[図鑑の仕様とbackfill](../product/docs/releases/5.7.0-collection.md) |
 | 外部管理庫の現在地・作業引継ぎへの入口 | [current-status](../product/docs/handoffs/current-status.md) |
 | 取り違えを防ぐ現行contract | [current-contracts](../product/docs/handoffs/current-contracts.md) |
 | IL200超の装備計算・研磨 | [地底装備の倍率とrating](../product/docs/architecture/underground-equipment-scaling.md) |

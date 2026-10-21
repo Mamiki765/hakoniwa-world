@@ -647,6 +647,7 @@ final class TradingPostApiTest extends TestCase
         $this->assertSame(1_180, $sellerNation->fresh()->money);
         $this->assertSame($buyer->secretary()->valueOrFail('id'), $ring->fresh()->secretary_id);
         $this->assertFalse($ring->fresh()->is_escrowed);
+        $this->assertDatabaseHas('user_collection_entries', ['user_id' => $buyer->id, 'kind' => 'item', 'entry_key' => SecretaryItemCatalog::RING]);
         $saleMetadata = json_decode((string) DB::table('audit_events')
             ->where('event_type', 'trading_post.sold')
             ->where('subject_id', $resourceListing)->value('metadata'), true, 512, JSON_THROW_ON_ERROR);
