@@ -72,10 +72,18 @@ final class SecretaryCollectionTest extends TestCase
             'request_fingerprint' => str_repeat('0', 64), 'material_ids' => '[]', 'created_at' => '2026-10-18 00:00:00',
             'result_snapshot' => json_encode(['result' => ['item_key' => SecretaryItemCatalog::SUCCUBUS_EMBLEM]]),
         ]);
+        DB::table('secretary_gacha_draws')->insert([
+            'secretary_id' => $secretary->id, 'request_key' => '00000000-0000-4000-8000-000000000328', 'ticket_item_instance_id' => 0,
+            'ticket_key' => SecretaryItemCatalog::DOKIDOKI_TICKET, 'ticket_level' => 1, 'result_snapshot' => '[]', 'created_at' => '2026-10-01 00:00:00',
+        ]);
         DB::table('nation_monster_kill_stats')->insert([
             'world_id' => $world->id, 'nation_id' => $nation->id,
             'monster_definition_id' => DB::table('monster_definitions')->where('key', 'inora')->value('id'),
             'kill_count' => 1, 'first_killed_turn' => 7, 'last_killed_turn' => 7,
+        ]);
+        DB::table('audit_events')->insert([
+            'event_type' => 'secretary.disaster_charm_protected', 'turn' => 5, 'world_id' => $world->id, 'occurred_at' => now(),
+            'metadata' => json_encode(['nation_id' => $nation->id, 'item_key' => 'fire_charm', 'disaster_key' => 'fire']),
         ]);
         foreach ([[4, 1], [3, 0]] as [$turn, $damage]) {
             DB::table('audit_events')->insert([
@@ -108,6 +116,9 @@ final class SecretaryCollectionTest extends TestCase
             ->where('user_id', $user->id)->where('kind', 'monster')->orderBy('entry_key')
             ->get()->map(fn (object $row): array => [$row->entry_key, (int) $row->first_turn, $row->source])->all());
         $this->assertDatabaseHas('user_collection_entries', ['user_id' => $former->id, 'kind' => 'monster', 'entry_key' => 'inora', 'first_turn' => 2]);
+        foreach (['love_emblem', 'twin_star_emblem', 'crescent_emblem', SecretaryItemCatalog::DOKIDOKI_TICKET, 'fire_charm'] as $input) {
+            $this->assertDatabaseHas('user_collection_entries', ['user_id' => $user->id, 'kind' => 'item', 'entry_key' => $input]);
+        }
         $this->assertSame(['2026-09-01', '2026-10-18'], DB::table('user_collection_entries')->where('user_id', $user->id)
             ->whereIn('entry_key', [SecretaryItemCatalog::RING, SecretaryItemCatalog::SUCCUBUS_EMBLEM])->orderBy('registered_at')
             ->pluck('registered_at')->map(fn ($at): string => substr((string) $at, 0, 10))->all());

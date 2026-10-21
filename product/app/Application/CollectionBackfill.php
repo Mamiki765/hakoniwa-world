@@ -91,6 +91,15 @@ final class CollectionBackfill
         };
 
         $owners = $this->ownersByNation();
+        $fixedRecipeInputs = [];
+        foreach ((array) config('hakoniwa.ruleset.secretary.synthesis.recipes', []) as $recipe) {
+            if (is_array($recipe) && ($recipe['kind'] ?? null) === 'fixed' && is_string($recipe['key'] ?? null)) {
+                $fixedRecipeInputs[$recipe['key']] = array_values(array_filter(array_map(
+                    static fn ($input): ?string => is_array($input) && is_string($input['item_key'] ?? null) ? $input['item_key'] : null,
+                    (array) ($recipe['inputs'] ?? []),
+                )));
+            }
+        }
         $addForNation = function (int $nationId, string $kind, string $key, ?int $turn, ?string $at, string $source) use ($owners, $add): void {
             if (isset($owners[$nationId])) {
                 $add($owners[$nationId], $kind, $key, $turn, $at, $source);
@@ -134,9 +143,11 @@ SQL) as $row) {
             $add((int) $row->user_id, 'item', (string) $row->key, null, $row->first_at, 'sold_items');
         }
         foreach (DB::select(<<<'SQL'
-SELECT secretary.user_id, draw.result_snapshot, draw.created_at
+SELECT secretary.user_id, draw.ticket_key, draw.result_snapshot, draw.created_at
 FROM secretary_gacha_draws draw JOIN secretaries secretary ON secretary.id = draw.secretary_id
 SQL) as $row) {
+            // A fully used ticket is deleted, so the draw is its only remaining trace.
+            $add((int) $row->user_id, 'item', (string) $row->ticket_key, null, $row->created_at, 'ticket_draws');
             $snapshot = json_decode((string) $row->result_snapshot, true, 512, JSON_THROW_ON_ERROR);
             $results = is_array($snapshot) && array_is_list($snapshot) ? $snapshot : ($snapshot['result']['items'] ?? []);
             foreach (is_array($results) ? $results : [] as $result) {
@@ -146,12 +157,26 @@ SQL) as $row) {
             }
         }
         foreach (DB::select(<<<'SQL'
-SELECT secretary.user_id, receipt.result_snapshot->'result'->>'item_key' AS key, MIN(receipt.created_at) AS first_at
+SELECT secretary.user_id, receipt.recipe_key, receipt.result_snapshot->'result'->>'item_key' AS key, MIN(receipt.created_at) AS first_at
 FROM secretary_synthesis_receipts receipt JOIN secretaries secretary ON secretary.id = receipt.secretary_id
 WHERE receipt.result_snapshot->'result'->>'item_key' IS NOT NULL
-GROUP BY 1, 2
+GROUP BY 1, 2, 3
 SQL) as $row) {
             $add((int) $row->user_id, 'item', (string) $row->key, null, $row->first_at, 'synthesis');
+            // Fixed recipes delete their inputs, so the recipe is the only trace that they were owned.
+            foreach ($fixedRecipeInputs[(string) $row->recipe_key] ?? [] as $inputKey) {
+                $add((int) $row->user_id, 'item', $inputKey, null, $row->first_at, 'synthesis');
+            }
+        }
+        // A charm used up by disasters is deleted; its protection events remain.
+        foreach (DB::select(<<<'SQL'
+SELECT (event.metadata->>'nation_id')::bigint AS nation_id, event.metadata->>'item_key' AS key, MIN(event.occurred_at) AS first_at
+FROM audit_events event
+WHERE event.event_type = 'secretary.disaster_charm_protected'
+  AND event.metadata->>'nation_id' IS NOT NULL AND event.metadata->>'item_key' IS NOT NULL
+GROUP BY 1, 2
+SQL) as $row) {
+            $addForNation((int) $row->nation_id, 'item', (string) $row->key, null, $row->first_at, 'charm_events');
         }
         foreach (DB::select(<<<'SQL'
 SELECT listing.seller_nation_id AS nation_id, listing.item_key AS key, listing.created_at AS first_at
