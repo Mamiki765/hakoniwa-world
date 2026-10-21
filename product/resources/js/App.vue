@@ -1110,7 +1110,8 @@ async function loadPublicEvents(pageNumber: number): Promise<void> {
 async function openOwnIsland(): Promise<void> {
     const currentNation = nation.value;
     if (currentNation?.capital === null || currentNation === null) return;
-    mapViewGeneration++;
+    // 読み込み中に別の島やページを開いたら、遅れて届いた結果で画面を戻さない。
+    let viewGeneration = ++mapViewGeneration;
     busy.value = true;
     message.value = '';
     try {
@@ -1118,6 +1119,7 @@ async function openOwnIsland(): Promise<void> {
             api<MapSpace[]>(`/api/v1/worlds/${currentNation.world_id}/map-spaces`),
             api<UndergroundSurfaceMap | null>('/api/v1/me/underground/surface-map'),
         ]);
+        if (viewGeneration !== mapViewGeneration) return;
         if (spacesResult.status === 'rejected') throw spacesResult.reason;
         const spaces = spacesResult.value;
         undergroundSurfaceMap.value = undergroundMapResult.status === 'fulfilled' ? undergroundMapResult.value : null;
@@ -1125,12 +1127,16 @@ async function openOwnIsland(): Promise<void> {
         mapSpace.value = spaces.find((space) => space.key === 'surface') ?? spaces[0] ?? null;
         if (mapSpace.value !== null) {
             await map.loadAround(mapSpace.value, currentNation.capital.x, currentNation.capital.y, { kind: 'private' });
+            if (viewGeneration !== mapViewGeneration) return;
             page.value = 'island';
+            // ページの切り替え自体も世代を進めるので、開いた後の読み込みはこの世代で見る。
+            viewGeneration = mapViewGeneration;
             await loadCompensationGrants();
             await recordDevelopmentOpened();
             await loadDailyQuests();
         }
     } catch (error) {
+        if (viewGeneration !== mapViewGeneration) return;
         message.value = error instanceof Error ? error.message : '自島を読み込めませんでした。';
     } finally {
         busy.value = false;
@@ -1142,11 +1148,12 @@ async function openPreview(nationId: number): Promise<void> {
         await openOwnIsland();
         return;
     }
-    mapViewGeneration++;
+    const viewGeneration = ++mapViewGeneration;
     busy.value = true;
     message.value = '';
     try {
         const detail = await api<PublicNationDetail>(`/api/v1/public/nations/${nationId}`);
+        if (viewGeneration !== mapViewGeneration) return;
         if (detail.capital === null) throw new Error('首都がまだありません。');
         previewNation.value = detail;
         selectedUndergroundSlot.value = null;
@@ -1157,10 +1164,12 @@ async function openPreview(nationId: number): Promise<void> {
             detail.capital.y,
             previewMapRequestSource(detail.id),
         );
+        if (viewGeneration !== mapViewGeneration) return;
         page.value = 'preview';
         await nextTick();
         window.scrollTo({ top: 0, left: 0, behavior: 'auto' });
     } catch (error) {
+        if (viewGeneration !== mapViewGeneration) return;
         message.value = error instanceof Error ? error.message : '島previewを読み込めませんでした。';
     } finally {
         busy.value = false;
