@@ -14,7 +14,7 @@ final class TurnScheduleStatus
         return $this->scheduledAtOrBefore(CarbonImmutable::now(), (string) config('hakoniwa.turn_schedule.timezone', 'Asia/Tokyo'));
     }
 
-    /** @return array{status: string, last_successful_turn_at: ?string, next_scheduled_turn_at: string, timezone: string} */
+    /** @return array{status: string, last_successful_turn_at: ?string, next_scheduled_turn_at: string, regular_turn_due_at:string, timezone: string} */
     public function forWorld(World $world, ?CarbonImmutable $now = null): array
     {
         $timezone = (string) config('hakoniwa.turn_schedule.timezone', 'Asia/Tokyo');
@@ -55,7 +55,8 @@ final class TurnScheduleStatus
         return [
             'status' => $status,
             'last_successful_turn_at' => $lastSuccessfulAt?->toIso8601String(),
-            'next_scheduled_turn_at' => $expected->toIso8601String(),
+            'next_scheduled_turn_at' => (app(TurnExecutionSchedule::class)->nextAutomatic($world, $now) ?? $expected)->toIso8601String(),
+            'regular_turn_due_at' => $expected->toIso8601String(),
             'timezone' => $timezone,
         ];
     }

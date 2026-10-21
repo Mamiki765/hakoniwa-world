@@ -55,6 +55,9 @@ class TurnRunner
             if ($dryRun) {
                 return $this->recordDryRun($world, $ruleset, $targetTurn, $source);
             }
+            if (app()->isDownForMaintenance()) {
+                return null;
+            }
 
             $schedule = app(TurnExecutionSchedule::class);
             $existing = TurnRun::query()->where('world_id', $world->id)->where('target_turn', $targetTurn)
@@ -62,10 +65,10 @@ class TurnRunner
             $slot = null;
             if ($schedule->nextRegular($world) !== null && $existing === null) {
                 $slot = $schedule->candidate($world, CarbonImmutable::now(), $source === 'manual');
-                if (($slot === null && ($source !== 'manual' || $respectSchedule)) || app()->isDownForMaintenance()) {
+                if ($slot === null && ($source !== 'manual' || $respectSchedule)) {
                     return null;
                 }
-            } elseif ($source !== 'manual' && ($existing === null || app()->isDownForMaintenance())) {
+            } elseif ($source !== 'manual' && $existing === null) {
                 return null;
             }
 

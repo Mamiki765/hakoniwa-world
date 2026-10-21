@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Application\BoostScheduleService;
+use App\Domain\Turn\TurnAlreadyRunningException;
 use App\Http\Controllers\Controller;
 use App\Models\User;
 use App\Models\World;
@@ -34,7 +35,7 @@ final class BoostController extends Controller
             'repeat_count' => ['sometimes', 'integer', 'min:1', 'max:52']]);
         try {
             return response()->json(['data' => $service->preview($this->actor($request), $world, $input)]);
-        } catch (DomainException $exception) {
+        } catch (DomainException|TurnAlreadyRunningException $exception) {
             return response()->json(['message' => $exception->getMessage()], 409);
         }
     }
@@ -44,7 +45,7 @@ final class BoostController extends Controller
         $input = $request->validate(['token' => ['required', 'string', 'max:100000']]);
         try {
             return response()->json(['data' => $service->reserve($this->actor($request), $world, $input['token'])]);
-        } catch (DomainException $exception) {
+        } catch (DomainException|TurnAlreadyRunningException $exception) {
             return response()->json(['message' => $exception->getMessage()], 409);
         }
     }
@@ -52,7 +53,11 @@ final class BoostController extends Controller
     public function cancel(Request $request, World $world, int $occurrence, BoostScheduleService $service): JsonResponse
     {
         $input = $request->validate(['future_series' => ['sometimes', 'boolean']]);
-        $service->cancel($this->actor($request), $world, $occurrence, (bool) ($input['future_series'] ?? false));
+        try {
+            $service->cancel($this->actor($request), $world, $occurrence, (bool) ($input['future_series'] ?? false));
+        } catch (DomainException|TurnAlreadyRunningException $exception) {
+            return response()->json(['message' => $exception->getMessage()], 409);
+        }
 
         return response()->json(['data' => ['cancelled' => true]]);
     }

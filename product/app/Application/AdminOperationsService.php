@@ -63,11 +63,14 @@ final readonly class AdminOperationsService
     {
         $this->authorize($actor);
         $status = app(TurnScheduleStatus::class)->forWorld($world);
+        $retryable = TurnRun::query()->where('world_id', $world->id)->where('target_turn', $world->current_turn + 1)
+            ->where('is_dry_run', false)->whereIn('status', [TurnRun::STATUS_FAILED, TurnRun::STATUS_BLOCKED])->exists();
 
         return [...$status, 'current_turn' => $world->current_turn,
             'calendar_initialized' => $world->turn_schedule_origin_at !== null,
             'can_attempt' => $world->turn_schedule_origin_at !== null
-                && app(TurnExecutionSchedule::class)->candidate($world, CarbonImmutable::now(), true) !== null];
+                && ! app()->isDownForMaintenance()
+                && ($retryable || app(TurnExecutionSchedule::class)->candidate($world, CarbonImmutable::now(), true) !== null)];
     }
 
     /** One explicit manual attempt, bound to the next target displayed to the operator.

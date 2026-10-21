@@ -119,6 +119,9 @@ final class ResetWorld extends Command
                 $this->deleteWorldAuditEvents($lockedWorld);
                 $this->deleteWorldMessages($lockedWorld);
                 $this->deleteQueueItems($lockedWorld);
+                DB::table('turn_execution_slots')->where('world_id', $lockedWorld->id)->delete();
+                DB::table('boost_occurrences')->where('world_id', $lockedWorld->id)->delete();
+                DB::table('boost_series')->where('world_id', $lockedWorld->id)->delete();
                 $lockedWorld->delete();
 
                 $generatedWorld = $generator->initialize($profile);
@@ -160,6 +163,9 @@ final class ResetWorld extends Command
             'audit_events' => $this->worldAuditEvents($world)->count(),
             'island_messages' => DB::table('island_messages')->where('world_id', $world->id)->count(),
             'turn_runs' => DB::table('turn_runs')->where('world_id', $world->id)->count(),
+            'turn_execution_slots' => DB::table('turn_execution_slots')->where('world_id', $world->id)->count(),
+            'boost_occurrences' => DB::table('boost_occurrences')->where('world_id', $world->id)->count(),
+            'boost_series' => DB::table('boost_series')->where('world_id', $world->id)->count(),
             'nation_awards' => DB::table('nation_awards')->where('world_id', $world->id)->count(),
             'nation_monster_cycle_stats' => DB::table('nation_monster_cycle_stats')->where('world_id', $world->id)->count(),
             'nation_monster_cycle_seed_requirements' => DB::table('nation_monster_cycle_seed_requirements')

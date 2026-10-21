@@ -22,6 +22,39 @@ final class TurnExecutionSchedule
         return $next === null || $next->isAfter($now) ? 0 : intdiv($now->timestamp - $next->timestamp, 7200) + 1;
     }
 
+    public function nextAutomatic(World $world, CarbonImmutable $now): ?CarbonImmutable
+    {
+        $nextRegular = $this->nextRegular($world);
+        if ($nextRegular === null || $nextRegular->isAfter($now)) {
+            return $nextRegular;
+        }
+        $current = $this->candidate($world, $now, false);
+        if ($current !== null) {
+            return $current['scheduled_at'];
+        }
+        $next = $now->setTimezone('Asia/Tokyo')->startOfHour()->addHour();
+        if ((int) $next->format('G') % 2 !== 0) {
+            $next = $next->addHour();
+        }
+        $next = $next->utc();
+        foreach (BoostOccurrence::query()->where('world_id', $world->id)->where('kind', 'turn_acceleration')
+            ->whereNull('cancelled_at')->where('ends_at', '>', $now)->where('starts_at', '<', $next)->get() as $boost) {
+            $start = $boost->starts_at->greaterThan($now) ? $boost->starts_at : $now->startOfHour()->addHour();
+            $slot = $start->setTimezone('Asia/Tokyo')->startOfHour();
+            if ($slot->isBefore($start)) {
+                $slot = $slot->addHour();
+            }
+            if ((int) $slot->format('G') % 2 === 0) {
+                $slot = $slot->addHour();
+            }
+            if ($slot->isBefore($boost->ends_at) && $slot->isBefore($next)) {
+                $next = $slot->utc();
+            }
+        }
+
+        return $next;
+    }
+
     /** Only the current wall-clock slot is eligible; missed slots never form an automatic catch-up loop.
      * @return array{scheduled_at:CarbonImmutable,kind:string,boost_occurrence_id:?int}|null
      */

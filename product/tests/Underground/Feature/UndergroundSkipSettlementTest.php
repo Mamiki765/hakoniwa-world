@@ -18,6 +18,8 @@ use App\Models\UndergroundProfile;
 use App\Models\UndergroundTrialProgress;
 use App\Models\User;
 use App\Models\UserSkipTicketBalance;
+use Carbon\CarbonImmutable;
+use Illuminate\Database\Events\QueryExecuted;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -227,7 +229,10 @@ final class UndergroundSkipSettlementTest extends TestCase
 
     public function test_bulk_hunting_skip_is_one_idempotent_operation_with_distinct_drop_identity(): void
     {
-        $this->boostOccurrence();
+        $this->travelTo(CarbonImmutable::parse('2026-11-01T08:00:00+09:00')->utc());
+        $event = $this->boostOccurrence();
+        $expires = now()->addHour();
+        $event->update(['ends_at' => $expires]);
         $this->forceShallowStandardDrop();
         [$user, $profile] = $this->readyProfile();
         UndergroundContentClearProgress::query()->create([
@@ -241,6 +246,13 @@ final class UndergroundSkipSettlementTest extends TestCase
         $requestId = (string) Str::uuid();
         $runtime = app(UndergroundRuntimeService::class);
 
+        $ended = false;
+        DB::listen(function (QueryExecuted $query) use (&$ended, $expires): void {
+            if (! $ended && str_contains($query->sql, 'underground_profiles')) {
+                $ended = true;
+                $this->travelTo($expires);
+            }
+        });
         $result = $runtime->bulkSkipHuntingGround($user, $requestId, 'shallow_caves', 50);
         $afterFirst = $profile->refresh()->only(['combat_level', 'combat_xp', 'shard_balance', 'unspent_stp']);
         $retry = $runtime->bulkSkipHuntingGround($user, $requestId, 'shallow_caves', 50);
