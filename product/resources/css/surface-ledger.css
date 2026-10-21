@@ -467,7 +467,10 @@ html .sl .sl-visit-facts h3 { font: var(--sl-w-head) 12px var(--sl-f-head); colo
 /* スマホでは伝言板を下のタブに直接出す（ログの中の切り替えに隠さない）。 */
 @media (max-width: 760px) {
     .sl-log > .sl-pane-head { display: none; }
-    .sl .sl-tabs button { font-size: 12px; padding-inline: 2px; }
+    .sl .sl-tabs button { flex: 1 1 auto; font-size: 12px; padding-inline: 2px; white-space: nowrap; }
+    .sl-hud-turn { flex: none; white-space: nowrap; }
+    .sl-hud-row h1 { flex: 0 1 auto; min-width: 4.5em; }
+    .sl-hud-name { min-width: auto; }
     .sl .sl-tabs .grow { flex-basis: 42px; }
 }
 .sl-ship-order { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 6px; margin: 0; width: 100%; }
