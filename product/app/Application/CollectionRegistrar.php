@@ -2,6 +2,7 @@
 
 namespace App\Application;
 
+use Carbon\CarbonInterface;
 use DomainException;
 use Illuminate\Support\Facades\DB;
 
@@ -31,21 +32,25 @@ SQL, [$monsterKey, $turn, $nationId]);
     }
 
     /**
-     * Inserts a historical entry, or moves an existing entry's first turn back
-     * to an older recorded one. Returns true only when a new entry was created.
+     * Inserts a historical entry, or moves an existing entry's first turn and
+     * registration time back to older recorded ones. Returns true only when a
+     * new entry was created.
      */
-    public function registerBackfill(int $userId, string $kind, string $entryKey, ?int $firstTurn): bool
+    public function registerBackfill(int $userId, string $kind, string $entryKey, ?int $firstTurn, ?CarbonInterface $firstAt = null): bool
     {
         $this->assertEntry($kind, $entryKey);
         $row = DB::selectOne(<<<'SQL'
-INSERT INTO user_collection_entries (user_id, kind, entry_key, source, first_turn, registered_at, created_at, updated_at)
-VALUES (?, ?, ?, 'backfill', ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+INSERT INTO user_collection_entries AS entry (user_id, kind, entry_key, source, first_turn, registered_at, created_at, updated_at)
+VALUES (?, ?, ?, 'backfill', ?, COALESCE(?::timestamptz, CURRENT_TIMESTAMP), CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 ON CONFLICT (user_id, kind, entry_key) DO UPDATE
-SET first_turn = EXCLUDED.first_turn, updated_at = EXCLUDED.updated_at
-WHERE EXCLUDED.first_turn IS NOT NULL
-  AND (user_collection_entries.first_turn IS NULL OR EXCLUDED.first_turn < user_collection_entries.first_turn)
+SET first_turn = CASE WHEN EXCLUDED.first_turn < entry.first_turn OR entry.first_turn IS NULL
+        THEN COALESCE(EXCLUDED.first_turn, entry.first_turn) ELSE entry.first_turn END,
+    registered_at = LEAST(entry.registered_at, EXCLUDED.registered_at),
+    updated_at = EXCLUDED.updated_at
+WHERE (EXCLUDED.first_turn IS NOT NULL AND (entry.first_turn IS NULL OR EXCLUDED.first_turn < entry.first_turn))
+   OR EXCLUDED.registered_at < entry.registered_at
 RETURNING (xmax = 0) AS inserted
-SQL, [$userId, $kind, $entryKey, $firstTurn]);
+SQL, [$userId, $kind, $entryKey, $firstTurn, $firstAt?->toIso8601String()]);
 
         return $row !== null && (bool) $row->inserted;
     }

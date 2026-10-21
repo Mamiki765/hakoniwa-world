@@ -66,7 +66,12 @@ final class SecretaryCollectionTest extends TestCase
         $user = User::factory()->create();
         $nation = app(NationCreationService::class)->create($user, $world, '図鑑国', '図鑑国主');
         $secretary = Secretary::query()->firstOrCreate(['user_id' => $user->id]);
-        $secretary->itemInstances()->create(['item_key' => SecretaryItemCatalog::RING, 'level' => 1, 'obtained_at' => now()]);
+        $secretary->itemInstances()->create(['item_key' => SecretaryItemCatalog::RING, 'level' => 1, 'obtained_at' => '2026-09-01 00:00:00']);
+        DB::table('secretary_synthesis_receipts')->insert([
+            'secretary_id' => $secretary->id, 'request_id' => 'collection-test', 'recipe_key' => SecretaryItemCatalog::SUCCUBUS_EMBLEM,
+            'request_fingerprint' => str_repeat('0', 64), 'material_ids' => '[]', 'created_at' => '2026-10-18 00:00:00',
+            'result_snapshot' => json_encode(['result' => ['item_key' => SecretaryItemCatalog::SUCCUBUS_EMBLEM]]),
+        ]);
         DB::table('nation_monster_kill_stats')->insert([
             'world_id' => $world->id, 'nation_id' => $nation->id,
             'monster_definition_id' => DB::table('monster_definitions')->where('key', 'inora')->value('id'),
@@ -103,7 +108,9 @@ final class SecretaryCollectionTest extends TestCase
             ->where('user_id', $user->id)->where('kind', 'monster')->orderBy('entry_key')
             ->get()->map(fn (object $row): array => [$row->entry_key, (int) $row->first_turn, $row->source])->all());
         $this->assertDatabaseHas('user_collection_entries', ['user_id' => $former->id, 'kind' => 'monster', 'entry_key' => 'inora', 'first_turn' => 2]);
-        $this->assertDatabaseHas('user_collection_entries', ['user_id' => $user->id, 'kind' => 'item', 'entry_key' => SecretaryItemCatalog::RING, 'claimed_at' => null]);
+        $this->assertSame(['2026-09-01', '2026-10-18'], DB::table('user_collection_entries')->where('user_id', $user->id)
+            ->whereIn('entry_key', [SecretaryItemCatalog::RING, SecretaryItemCatalog::SUCCUBUS_EMBLEM])->orderBy('registered_at')
+            ->pluck('registered_at')->map(fn ($at): string => substr((string) $at, 0, 10))->all());
     }
 
     private function balance(User $user): int
