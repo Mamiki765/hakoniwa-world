@@ -18,7 +18,7 @@ function headline(boost: BoostView): string {
 function effect(boost: BoostView): string | null {
     if (boost.description) return boost.description;
     if (boost.kind === 'turn_acceleration') return '通常の偶数時に加えて、奇数時にも追加ターン（未補填分のみ）';
-    if (boost.multiplier) return `狩場のレア出現率・鍵出現率・獲得XPが${boost.multiplier}倍`;
+    if (boost.multiplier) return `レア敵出現率・通常敵の宝物庫の鍵出現率・経験値が各${boost.multiplier}倍`;
 
     return null;
 }

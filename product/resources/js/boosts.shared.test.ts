@@ -46,7 +46,7 @@ describe('boost schedules', () => {
         expect(banners).toHaveLength(2);
         expect(banners[0]!.attributes()).toMatchObject({ 'data-kind': 'hunting_ground', 'data-phase': 'active' });
         expect(banners[0]!.text()).toContain('開催中');
-        expect(banners[0]!.text()).toContain('レア出現率・鍵出現率・獲得XPが2倍');
+        expect(banners[0]!.text()).toContain('レア敵出現率・通常敵の宝物庫の鍵出現率・経験値が各2倍');
         expect(banners[0]!.text()).not.toContain('獲得が ×2');
         expect(banners[1]!.attributes()).toMatchObject({ 'data-kind': 'turn_acceleration', 'data-phase': 'upcoming' });
         expect(banners[1]!.text()).toContain('未補填分のみ');
