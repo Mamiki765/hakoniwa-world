@@ -53,6 +53,21 @@ describe('secretary collection', () => {
         expect(wrapper.emitted('changed')).toHaveLength(1);
     });
 
+    it('shows where an undiscovered monster appears without naming it', async () => {
+        vi.stubGlobal('fetch', vi.fn(async () => json(collection(false, 100))));
+        const wrapper = mount(SecretaryCollection);
+        await flushPromises();
+        const hidden = wrapper.get('.secretary-collection-cell.hidden');
+        expect(hidden.text()).toBe('？？？怪獣');
+        await hidden.trigger('click');
+        const detail = wrapper.get('#collection-detail');
+        expect(detail.text()).toContain('人口3000人以上');
+        expect(detail.text()).toContain('？？？');
+        expect(detail.find('button').exists()).toBe(false);
+        await hidden.trigger('click');
+        expect(wrapper.find('#collection-detail').exists()).toBe(false);
+    });
+
     it('keeps the refusal visible after reloading the collection', async () => {
         vi.stubGlobal('fetch', vi.fn(async (_url: string, init?: RequestInit) => init?.method === 'POST'
             ? new Response(JSON.stringify({ message: 'まだ図鑑に登録されていません。', code: 'collection_not_registered' }), { status: 422, headers: { 'Content-Type': 'application/json' } })

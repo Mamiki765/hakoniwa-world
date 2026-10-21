@@ -36,7 +36,7 @@ interface CollectionResponse {
     bonuses: Array<{ milestone: number; reached: boolean; claimed: boolean }>;
     paradox_balance: number;
 }
-type Selection = { kind: 'monster'; entry: MonsterEntry } | { kind: 'item'; entry: ItemEntry };
+type Selection = { kind: 'monster'; entry: MonsterEntry } | { kind: 'item'; entry: ItemEntry } | { kind: 'hint'; hint: string };
 
 const emit = defineEmits<{ changed: [] }>();
 const data = ref<CollectionResponse | null>(null);
@@ -51,7 +51,11 @@ const entries = computed(() => pane.value === 'monster' ? data.value?.monsters ?
 const pendingIn = (list: Array<{ registered: boolean; claimed?: boolean }>): boolean => list.some(entry => entry.registered && !entry.claimed);
 const monsterPending = computed(() => pendingIn(data.value?.monsters ?? []));
 const itemPending = computed(() => pendingIn(data.value?.items ?? []));
+const cellKey = (entry: { registered: boolean; key?: string }, index: number): string => entry.registered ? entry.key! : `hidden-${index}`;
 const selected = computed<Selection | null>(() => {
+    // An undiscovered monster opens only its appearance hint; its name stays hidden.
+    const hidden = data.value?.monsters.find((entry, index) => pane.value === 'monster' && !entry.registered && cellKey(entry, index) === selectedKey.value);
+    if (hidden && !hidden.registered) return { kind: 'hint', hint: hidden.hint };
     const entry = entries.value.find(candidate => candidate.registered && candidate.key === selectedKey.value);
     if (!entry?.registered) return null;
     return pane.value === 'monster' ? { kind: 'monster', entry: entry as MonsterEntry } : { kind: 'item', entry: entry as ItemEntry };
@@ -134,14 +138,14 @@ onMounted(() => { void load(); });
             </nav>
 
             <ul class="secretary-collection-grid">
-                <li v-for="(entry, index) in entries" :key="entry.registered ? entry.key : `hidden-${index}`">
+                <li v-for="(entry, index) in entries" :key="cellKey(entry, index)">
                     <button
                         type="button"
                         class="secretary-collection-cell"
-                        :class="['rarity' in entry ? `rarity-${entry.rarity}` : 'rarity-monster', { hidden: !entry.registered, selected: entry.registered && entry.key === selectedKey }]"
-                        :disabled="!entry.registered"
-                        :aria-pressed="entry.registered ? entry.key === selectedKey : undefined"
-                        @click="choose(entry.registered ? entry.key : undefined)"
+                        :class="['rarity' in entry ? `rarity-${entry.rarity}` : 'rarity-monster', { hidden: !entry.registered, hinted: 'hint' in entry, selected: cellKey(entry, index) === selectedKey }]"
+                        :disabled="!entry.registered && !('hint' in entry)"
+                        :aria-pressed="entry.registered || 'hint' in entry ? cellKey(entry, index) === selectedKey : undefined"
+                        @click="choose(entry.registered || 'hint' in entry ? cellKey(entry, index) : undefined)"
                     >
                         <strong>{{ entry.registered ? entry.name : '？？？' }}</strong>
                         <span>{{ 'category_label' in entry ? entry.category_label : '怪獣' }}</span>
@@ -150,7 +154,17 @@ onMounted(() => { void load(); });
                 </li>
             </ul>
 
-            <article v-if="selected" id="collection-detail" class="secretary-collection-detail" :class="selected.kind === 'item' ? `rarity-${selected.entry.rarity}` : 'rarity-monster'">
+            <article v-if="selected?.kind === 'hint'" id="collection-detail" class="secretary-collection-detail rarity-monster">
+                <header>
+                    <strong>？？？</strong>
+                    <span>怪獣・未登録</span>
+                </header>
+                <dl>
+                    <div><dt>出現</dt><dd>{{ selected.hint }}</dd></div>
+                </dl>
+                <p>自分の島の攻撃でHPを減らすと登録されます。</p>
+            </article>
+            <article v-else-if="selected" id="collection-detail" class="secretary-collection-detail" :class="selected.kind === 'item' ? `rarity-${selected.entry.rarity}` : 'rarity-monster'">
                 <header>
                     <strong>{{ selected.entry.name }}</strong>
                     <span>{{ selected.kind === 'item' ? `${selected.entry.rarity_label}・${selected.entry.category_label}` : '怪獣' }}</span>
@@ -180,7 +194,7 @@ onMounted(() => { void load(); });
                     <span v-else class="secretary-recipe-crafted">✓ 受け取り済み</span>
                 </footer>
             </article>
-            <p v-else class="empty-state">登録したマスを押すと、くわしい中身が見られます。</p>
+            <p v-else class="empty-state">登録したマスを押すと、くわしい中身が見られます。<template v-if="pane === 'monster'">未登録の怪獣は出現の目安が見られます。</template></p>
 
             <section class="secretary-synthesis-group" aria-labelledby="collection-bonus-title">
                 <h4 id="collection-bonus-title">登録ボーナス（怪獣とアイテムを合わせて{{ data.bonuses[0]?.milestone ?? 10 }}個ごと）</h4>

@@ -124,6 +124,34 @@ final class SecretaryCollectionTest extends TestCase
             ->pluck('registered_at')->map(fn ($at): string => substr((string) $at, 0, 10))->all());
     }
 
+    public function test_backfill_dates_a_trading_post_purchase_from_the_sale_not_the_sellers_acquisition(): void
+    {
+        $world = $this->lightweightWorld();
+        $seller = User::factory()->create();
+        $buyer = User::factory()->create();
+        $sellerNation = app(NationCreationService::class)->create($seller, $world, '売り手国', '売り手');
+        $buyerNation = app(NationCreationService::class)->create($buyer, $world, '買い手国', '買い手');
+        $buyerSecretary = Secretary::query()->firstOrCreate(['user_id' => $buyer->id]);
+        // The sale moved the seller's instance to the buyer and kept its obtained_at.
+        $item = $buyerSecretary->itemInstances()->create(['item_key' => SecretaryItemCatalog::RING, 'level' => 1, 'obtained_at' => '2026-09-01 00:00:00']);
+        DB::table('auction_listings')->insert([
+            'world_id' => $world->id, 'seller_type' => 'nation', 'seller_nation_id' => $sellerNation->id, 'product_type' => 'item',
+            'secretary_item_instance_id' => $item->id, 'original_secretary_item_instance_id' => $item->id,
+            'item_key' => SecretaryItemCatalog::RING, 'item_level' => 1, 'start_price' => 100, 'current_price' => 100,
+            'highest_bidder_nation_id' => $buyerNation->id, 'bid_count' => 1, 'duration_turns' => 3, 'started_turn' => 10,
+            'ends_turn' => 13, 'status' => 'sold', 'completed_turn' => 13,
+            'created_at' => '2026-10-10 00:00:00', 'updated_at' => '2026-10-12 00:00:00',
+        ]);
+        DB::table('user_collection_entries')->delete();
+
+        app(CollectionBackfill::class)->apply();
+
+        $registeredOn = fn (User $user): string => substr((string) DB::table('user_collection_entries')
+            ->where('user_id', $user->id)->where('entry_key', SecretaryItemCatalog::RING)->value('registered_at'), 0, 10);
+        $this->assertSame('2026-10-12', $registeredOn($buyer));
+        $this->assertSame('2026-10-10', $registeredOn($seller));
+    }
+
     private function balance(User $user): int
     {
         return (int) DB::table('user_paradox_balances')->where('user_id', $user->id)->value('balance');

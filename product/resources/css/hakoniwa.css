@@ -1493,6 +1493,7 @@ html:is([data-theme="dark"], [data-theme="old-dark"]) .compensation-banner, html
 .secretary-collection-cell strong { font-size: .85rem; line-height: 1.25; overflow-wrap: anywhere; }
 .secretary-collection-cell span { color: var(--muted); font-size: .7rem; }
 .secretary-collection-cell.hidden { background: var(--paper-deep); cursor: default; }
+.secretary-collection-cell.hidden.hinted { cursor: pointer; }
 .secretary-collection-cell.hidden strong { color: var(--muted); letter-spacing: .1em; }
 .secretary-collection-cell.selected { outline: 3px solid var(--navy); outline-offset: 1px; }
 .secretary-collection-cell:hover:not(:disabled):not(.selected) { background: var(--hover-surface); }
