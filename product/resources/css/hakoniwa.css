@@ -1498,3 +1498,9 @@ html:is([data-theme="dark"], [data-theme="old-dark"]) .compensation-banner, html
     .secretary-synthesis-dialog footer .button { flex: 1; min-height: 2.8rem; }
     .secretary-synthesis-actions { width: 100%; justify-content: space-between; }
 }
+
+/* 狭いスマホでは経験値の欄をスキル名の下に回し、長いスキル名が1文字ずつ縦に折れないようにする。 */
+@media (max-width: 480px) {
+    .secretary-skill { grid-template-columns: minmax(0, 1fr); grid-template-areas: "name" "progress" "bar" "effect" "condition"; }
+    .secretary-skill-progress { flex-wrap: wrap; justify-content: flex-start; gap: 2px 10px; }
+}

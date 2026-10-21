@@ -293,3 +293,7 @@ main:has(> .underground-panel.ug-panel) { flex: 1; min-height: 0; display: flex;
 @media (max-width: 360px) {
     .ug-navigation button { font-size: .66rem; white-space: nowrap; padding-inline: 0; }
 }
+/* 320px前後では「キャラクター」が隣の「ショップ」とくっついて読めるので、文字を詰めて枠内に収める。 */
+@media (max-width: 340px) {
+    .ug-navigation button { min-width: 0; overflow: hidden; font-size: .56rem; letter-spacing: -.04em; }
+}
