@@ -21,7 +21,7 @@ PowerShellでrepository rootから実行する。
 
 ```powershell
 Copy-Item .env.example .env
-docker run --rm php:8.5.8-cli-bookworm php -r "echo 'base64:'.base64_encode(random_bytes(32)).PHP_EOL;"
+docker run --rm php:8.5.12-cli-bookworm php -r "echo 'base64:'.base64_encode(random_bytes(32)).PHP_EOL;"
 ```
 
 出力をroot `.env`の`APP_KEY=`へ貼り、十分に長いランダムな`HAKONIWA_POSTGRES_PASSWORD`を設定する。secretをcommitしない。
