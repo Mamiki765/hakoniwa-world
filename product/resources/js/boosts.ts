@@ -17,7 +17,7 @@ export interface BoostSchedule {
     ends_at: string;
     title?: string | null;
     description?: string | null;
-    /** 時間加速: 奇数時を追加できる期間の名目的な間隔（60）。実行の保証ではないので次回時刻の計算に使わない。 */
+    /** 時間加速: 追加ターン同士の間隔（奇数時00分のみなので120）。通常の偶数時と合わせると追加枠のある間は1時間ごと。実行の保証ではないので次回時刻の計算に使わない。 */
     turn_interval_minutes?: number | null;
     /** 狩場ブースト: 倍率（2）。 */
     multiplier?: number | null;
