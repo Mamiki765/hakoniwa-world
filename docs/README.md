@@ -46,6 +46,7 @@
 | 5.7.0 怪獣・地上アイテム図鑑と移行手順 | [5.7.0](../product/docs/releases/5.7.0.md)、[図鑑の仕様とbackfill](../product/docs/releases/5.7.0-collection.md) |
 | 5.8.0 予約ブースト・障害補填と公開帯のrelease統合 | [5.8.0](../product/docs/releases/5.8.0.md)、[通常/補填cron手順](../product/docs/operations/turn-scheduler-worker.md) |
 | 5.8.1 ブーストの帯をTOPだけに表示 | [5.8.1](../product/docs/releases/5.8.1.md) |
+| 5.8.2 ルールセット設定のJSON解読をモデル単位で再利用 | [5.8.2](../product/docs/releases/5.8.2.md) |
 | 外部管理庫の現在地・作業引継ぎへの入口 | [current-status](../product/docs/handoffs/current-status.md) |
 | 取り違えを防ぐ現行contract | [current-contracts](../product/docs/handoffs/current-contracts.md) |
 | IL200超の装備計算・研磨 | [地底装備の倍率とrating](../product/docs/architecture/underground-equipment-scaling.md) |
