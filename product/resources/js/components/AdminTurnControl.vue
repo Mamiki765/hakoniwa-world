@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue';
 import { ApiError, api } from '../api/client';
+import AdminBoostSchedules from './AdminBoostSchedules.vue';
 
 interface TurnStatus {
     current_turn: number;
@@ -14,6 +15,8 @@ const emit = defineEmits<{ updated: []; admin: [] }>();
 const status = ref<TurnStatus | null>(null);
 const pendingTarget = ref<number | null>(null);
 const busy = ref(false);
+const boostKind = ref<'turn_acceleration' | 'hunting_ground' | null>(null);
+const boostLocked = ref(false);
 // 手動進行は取り消せないので、内容を確かめてから実行する。
 // 確かめたときの対象ターン。再読込などで状態が変わったら、確認からやり直す。
 const confirmTarget = ref<number | null>(null);
@@ -36,7 +39,7 @@ async function refresh(): Promise<void> {
 }
 
 function requestAttempt(): void {
-    if (busy.value || status.value === null) return;
+    if (busy.value || boostLocked.value || status.value === null) return;
     // 結果の確認・再試行は、同じターンをもう一度確かめるだけなのでそのまま進める。
     if (pendingTarget.value !== null) {
         void attempt();
@@ -46,7 +49,7 @@ function requestAttempt(): void {
 }
 
 async function attempt(): Promise<void> {
-    if (busy.value || status.value === null) return;
+    if (busy.value || boostLocked.value || status.value === null) return;
     // 実行するのは、確かめた対象ターン（または結果を確認中のターン）だけ。いまの状態から対象を作り直さない。
     const target = pendingTarget.value ?? confirmTarget.value;
     confirmTarget.value = null;
@@ -70,6 +73,11 @@ async function attempt(): Promise<void> {
         busy.value = false;
     }
 }
+
+function boostUpdated(): void {
+    void refresh();
+    emit('updated');
+}
 </script>
 
 <template>
@@ -77,15 +85,18 @@ async function attempt(): Promise<void> {
         <p v-if="status">現在 T{{ status.current_turn }} ／ 次回予定 {{ new Date(status.next_scheduled_turn_at).toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo' }) }} JST ／ {{ labels[status.status] }}</p>
         <p v-if="message" role="status">{{ message }}</p>
         <p v-if="status && !status.calendar_initialized">Worldの予定起点が未設定です。運用手順に従って起点を設定すると手動進行を利用できます。</p>
-        <button v-if="!confirming" :disabled="busy || (!status?.can_attempt && pendingTarget === null)" @click="requestAttempt">{{ busy ? '進行結果を確認中…' : pendingTarget !== null ? `T${pendingTarget}の結果を確認・再試行` : 'Turn進行を試みる' }}</button>
+        <button v-if="!confirming" :disabled="busy || boostLocked || (!status?.can_attempt && pendingTarget === null)" @click="requestAttempt">{{ busy ? '進行結果を確認中…' : pendingTarget !== null ? `T${pendingTarget}の結果を確認・再試行` : 'Turn進行を試みる' }}</button>
         <div v-if="confirming && status" class="admin-turn-confirm" role="alertdialog" aria-label="Turn進行の確認">
             <p><strong>T{{ confirmTarget }}への進行を試みます。</strong>全島の計画が実行され、元には戻せません。</p>
             <button class="button primary" :disabled="busy" @click="attempt">この内容で実行する</button>
             <button :disabled="busy" @click="confirmTarget = null">やめる</button>
         </div>
         <button :disabled="busy" @click="refresh">状態を再読込</button>
+        <button :disabled="busy || boostLocked || confirming || pendingTarget !== null" @click="boostKind = 'turn_acceleration'">遅延ターン分</button>
+        <button :disabled="busy || boostLocked || confirming || pendingTarget !== null" @click="boostKind = 'hunting_ground'">ブースト予約</button>
         <button v-if="adminLink" type="button" class="admin-turn-link" @click="emit('admin')">管理ページへ</button>
         <small>次回予定時刻を過ぎた場合だけ、既存の手動実行を1ターン分試みます。</small>
+        <AdminBoostSchedules v-if="boostKind" :key="`${worldId}:${boostKind}`" :world-id="worldId" :initial-kind="boostKind" @locked="boostLocked = $event" @close="boostKind = null" @updated="boostUpdated" />
     </section>
 </template>
 

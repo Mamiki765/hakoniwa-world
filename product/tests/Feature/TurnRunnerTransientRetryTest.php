@@ -16,6 +16,7 @@ use App\Models\MonsterInstance;
 use App\Models\MonsterOccupancy;
 use App\Models\TerrainDefinition;
 use App\Models\TurnRun;
+use Carbon\CarbonImmutable;
 use Closure;
 use DomainException;
 use Illuminate\Database\DeadlockException;
@@ -37,7 +38,9 @@ final class TurnRunnerTransientRetryTest extends TestCase
 
     public function test_nested_deadlock_and_serialization_failure_restart_one_turn_with_fresh_state(): void
     {
+        $this->travelTo(CarbonImmutable::parse('2026-11-01T02:00:00+09:00')->utc());
         $world = $this->lightweightWorld();
+        $world->update(['next_regular_turn_at' => now()->subHours(2)]);
         $originalName = $world->name;
         $cell = MapCell::query()->where('map_space_id', $this->surfaceMapSpace($world)->id)->firstOrFail();
         app(MapCellStateService::class)->transitionTerrain($cell, TerrainDefinition::query()->where('key', 'wasteland')->firstOrFail());
@@ -147,7 +150,9 @@ final class TurnRunnerTransientRetryTest extends TestCase
 
     public function test_non_retryable_sqlstate_is_not_retried_from_a_deadlock_message(): void
     {
+        $this->travelTo(CarbonImmutable::parse('2026-11-01T02:00:00+09:00')->utc());
         $world = $this->lightweightWorld();
+        $world->update(['next_regular_turn_at' => now()->subHours(2)]);
         $executions = 0;
         $runner = $this->runner(function (TurnContext $context, string $phase) use (&$executions): void {
             if ($phase === 'prepare_turn') {
@@ -172,7 +177,9 @@ final class TurnRunnerTransientRetryTest extends TestCase
 
     public function test_retry_aborts_if_the_lock_session_is_lost_after_diagnostics(): void
     {
+        $this->travelTo(CarbonImmutable::parse('2026-11-01T02:00:00+09:00')->utc());
         $world = $this->lightweightWorld();
+        $world->update(['next_regular_turn_at' => now()->subHours(2)]);
         $originalName = $world->name;
         $connection = DB::connection();
         $originalPdo = $connection->getPdo();

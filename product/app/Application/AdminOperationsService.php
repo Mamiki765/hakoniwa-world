@@ -63,11 +63,13 @@ final readonly class AdminOperationsService
     {
         $this->authorize($actor);
         $status = app(TurnScheduleStatus::class)->forWorld($world);
+        $retryable = TurnRun::query()->where('world_id', $world->id)->where('target_turn', $world->current_turn + 1)
+            ->where('is_dry_run', false)->whereIn('status', [TurnRun::STATUS_FAILED, TurnRun::STATUS_BLOCKED])->exists();
 
         return [...$status, 'current_turn' => $world->current_turn,
             'calendar_initialized' => $world->turn_schedule_origin_at !== null,
             'can_attempt' => $world->turn_schedule_origin_at !== null
-                && CarbonImmutable::parse($status['next_scheduled_turn_at'])->isBefore(now())];
+                && ($retryable || CarbonImmutable::parse($status['regular_turn_due_at'])->isBefore(now()))];
     }
 
     /** One explicit manual attempt, bound to the next target displayed to the operator.
@@ -97,6 +99,9 @@ final readonly class AdminOperationsService
                 'occurred_at' => now(), 'created_at' => now(), 'updated_at' => now(),
             ]);
             $run = app(TurnRunner::class)->run($world, source: 'manual');
+            if ($run === null) {
+                throw new DomainException('手動ターンを実行できませんでした。最新状態を確認してください。');
+            }
 
             return ['target_turn' => $targetTurn, 'status' => $run->status, 'duplicate' => false,
                 'failure_code' => $run->failure_code];

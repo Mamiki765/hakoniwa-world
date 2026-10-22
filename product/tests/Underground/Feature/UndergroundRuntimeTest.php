@@ -54,10 +54,12 @@ use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use RuntimeException;
+use Tests\Concerns\CreatesBoostSchedules;
 use Tests\TestCase;
 
 final class UndergroundRuntimeTest extends TestCase
 {
+    use CreatesBoostSchedules;
     use RefreshDatabase;
 
     public function test_otherworld_rewards_consume_one_stone_per_victory_without_sharing_exploration_cooldown(): void
@@ -360,6 +362,7 @@ final class UndergroundRuntimeTest extends TestCase
     public function test_exploration_duplicate_request_replays_once_before_cooldown_without_trial_contamination(): void
     {
         Carbon::setTestNow('2026-08-29 10:00:00+09:00');
+        $this->boostOccurrence();
         [$user, $secretary] = $this->secretaryUser();
         $this->unlockExploration($secretary);
         [$runtime, , $combat] = $this->runtimeWithOutcomes(['player']);
@@ -369,6 +372,8 @@ final class UndergroundRuntimeTest extends TestCase
         $duplicate = $runtime->explore($user, $requestId);
         $profile = UndergroundProfile::query()->sole();
 
+        $this->assertSame($first['battle']->snapshot['encounter']['xp_reward'] * 2, $first['battle']->xp_awarded);
+        $this->assertSame(2, $first['battle']->snapshot['boost']['xp_multiplier']);
         $this->assertFalse($first['duplicate']);
         $this->assertTrue($duplicate['duplicate']);
         $this->assertSame($first['battle']->id, $duplicate['battle']->id);
@@ -1722,6 +1727,7 @@ final class UndergroundRuntimeTest extends TestCase
     public function test_party_exploration_pins_borrowed_snapshot_keeps_owner_state_and_settles_one_reward_authority(): void
     {
         Carbon::setTestNow('2026-09-08 12:00:00+09:00');
+        $this->boostOccurrence();
         [$leader, $leaderSecretary] = $this->secretaryUser();
         $leader->forceFill(['visitor_code' => 'PTYLEAD1'])->save();
         $leaderProfile = $this->unlockExploration($leaderSecretary);
@@ -1753,7 +1759,7 @@ final class UndergroundRuntimeTest extends TestCase
         $this->assertSame(2, $snapshot['party']['enemy_count']);
         $this->assertFalse($snapshot['party']['reward_authority']['multiplied_by_enemy_count']);
         $this->assertCount(2, $partyCombat->calls[0]['enemy_keys']);
-        $this->assertSame([$snapshot['encounter']['xp_reward'], $snapshot['encounter']['shard_reward']], [
+        $this->assertSame([$snapshot['encounter']['xp_reward'] * 2, $snapshot['encounter']['shard_reward']], [
             $battle->xp_awarded,
             $battle->shard_delta,
         ]);

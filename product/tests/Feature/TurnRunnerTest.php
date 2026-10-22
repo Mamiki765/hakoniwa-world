@@ -21,6 +21,7 @@ use App\Models\Nation;
 use App\Models\RulesetVersion;
 use App\Models\TurnRun;
 use App\Models\World;
+use Carbon\CarbonImmutable;
 use Closure;
 use DomainException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -221,7 +222,9 @@ class TurnRunnerTest extends TestCase
 
     public function test_cron_does_not_retry_failed_turn_run(): void
     {
+        $this->travelTo(CarbonImmutable::parse('2026-11-01T02:00:00+09:00')->utc());
         $world = $this->lightweightWorld();
+        $world->update(['next_regular_turn_at' => now()->subHours(2)]);
         $failing = $this->pipeline(function (TurnContext $context, string $phase): void {
             if ($phase === 'development_commands') {
                 throw new RuntimeException('synthetic cron failure');
@@ -265,7 +268,9 @@ class TurnRunnerTest extends TestCase
 
     public function test_cron_does_not_retry_blocked_turn_run(): void
     {
+        $this->travelTo(CarbonImmutable::parse('2026-11-01T02:00:00+09:00')->utc());
         $world = $this->lightweightWorld();
+        $world->update(['next_regular_turn_at' => now()->subHours(2)]);
         $phaseKeys = array_values(array_filter(
             self::PHASES,
             static fn (string $key): bool => $key !== 'global_disasters',

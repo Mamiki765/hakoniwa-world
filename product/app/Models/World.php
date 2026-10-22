@@ -15,17 +15,18 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * @property int $current_turn
  * @property array{counted_turn: int, total_alive_count: int, land_alive_count: int, sea_alive_count: int, nation_counts: array<int, int>}|null $monster_count_snapshot
  * @property CarbonImmutable|null $turn_schedule_origin_at
+ * @property CarbonImmutable|null $next_regular_turn_at
  */
 class World extends Model
 {
     /** @var array<string, mixed> */
     protected $attributes = ['current_turn' => 1];
 
-    protected $fillable = ['key', 'name', 'ruleset_version_id', 'current_turn', 'turn_schedule_origin_at', 'monster_count_snapshot'];
+    protected $fillable = ['key', 'name', 'ruleset_version_id', 'current_turn', 'turn_schedule_origin_at', 'next_regular_turn_at', 'monster_count_snapshot'];
 
     protected function casts(): array
     {
-        return ['turn_schedule_origin_at' => 'immutable_datetime', 'monster_count_snapshot' => 'array'];
+        return ['turn_schedule_origin_at' => 'immutable_datetime', 'next_regular_turn_at' => 'immutable_datetime', 'monster_count_snapshot' => 'array'];
     }
 
     /** @return BelongsTo<RulesetVersion, $this> */

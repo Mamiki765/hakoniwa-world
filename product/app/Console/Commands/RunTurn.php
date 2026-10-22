@@ -21,6 +21,11 @@ final class RunTurn extends Command
     {
         $worldKey = (string) $this->option('world');
         $source = (string) $this->option('source');
+        if (! in_array($source, ['manual', 'cron'], true)) {
+            $this->error('Use manual or cron. Disaster compensation uses hakoniwa:turn:compensate.');
+
+            return self::FAILURE;
+        }
         $world = World::query()->where('key', $worldKey)->first();
         if ($world === null) {
             $this->error("World [{$worldKey}] was not found.");
@@ -36,6 +41,11 @@ final class RunTurn extends Command
             return self::FAILURE;
         }
 
+        if ($run === null) {
+            $this->info('No eligible turn slot. No game state changed.');
+
+            return self::SUCCESS;
+        }
         $this->line("run={$run->id} world={$world->key} target_turn={$run->target_turn} status={$run->status}");
         $this->line("ruleset_version_id={$run->ruleset_version_id} seed={$run->random_seed}");
         $this->table(

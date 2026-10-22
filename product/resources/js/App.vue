@@ -2,8 +2,10 @@
 import stories from '../stories/intro.json';
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
 import { ApiError, api, apiEnvelope, validationErrors } from './api/client';
+import { isCompensationOnly, useBoosts } from './boosts';
 import AnnouncementBody from './components/AnnouncementBody.vue';
 import AnnouncementEditor from './components/AnnouncementEditor.vue';
+import BoostBanner from './components/BoostBanner.vue';
 import CellDetails from './components/CellDetails.vue';
 import CommandQueuePanel from './components/CommandQueuePanel.vue';
 import GuideConversationTopicAdmin from './components/GuideConversationTopicAdmin.vue';
@@ -335,6 +337,17 @@ const foodShortage = computed(() => {
 });
 // 古いserverの応答では項目自体が無いので、未集計と同じに扱う。
 const worldMonsters = computed(() => worldSummary.value?.monster_counts ?? null);
+const boostWorldId = computed(() => worlds.value[0]?.id ?? null);
+const { boosts } = useBoosts(boostWorldId, clockNow);
+const activeTurnAcceleration = computed(() => boosts.value.find((boost) => boost.kind === 'turn_acceleration' && boost.phase === 'active') ?? null);
+// TOPは全部、島は時間加速、地底は狩場ブーストだけを出す。
+const pageBoosts = computed(() => {
+    if (page.value === 'island') return boosts.value.filter((boost) => boost.kind === 'turn_acceleration');
+    if (page.value === 'underground') return boosts.value.filter((boost) => boost.kind === 'hunting_ground');
+
+    return [];
+});
+
 const nextTurnCountdown = computed(() => {
     if (worldSummary.value?.turn_status !== 'normal') return null;
     const remaining = Math.max(0, new Date(worldSummary.value.next_scheduled_turn_at).getTime() - clockNow.value);
@@ -1813,6 +1826,7 @@ async function abandonNation(): Promise<void> {
     <main :class="{ 'ledger-main': page === 'island' || page === 'preview' }">
         <p v-if="busy" class="status" role="status">読み込み中…</p>
         <p v-if="message" class="status error" role="alert">{{ message }}</p>
+        <BoostBanner v-if="pageBoosts.length" class="boost-slot" :boosts="pageBoosts" compact />
 
         <AdminTurnControl
             v-if="user?.can_manage_inquiries && worlds[0]"
@@ -1834,7 +1848,7 @@ async function abandonNation(): Promise<void> {
             @inquiries="openAdminInquiries(1)"
         />
 
-        <section v-if="page === 'home'" class="lobby tp">
+        <section v-if="page === 'home'" class="lobby tp" :class="{ 'has-boost': boosts.length > 0 }">
             <header class="tp-title">
                 <div>
                     <h1>箱庭諸島２S＋</h1>
@@ -1852,9 +1866,10 @@ async function abandonNation(): Promise<void> {
                     <button v-if="secretary" type="button" class="tp-button" @click="openUnderground">地底</button>
                 </div>
             </header>
+            <BoostBanner v-if="boosts.length" class="tp-boost" :boosts="boosts" />
 
             <section class="tp-box tp-turn turn-status-card" :data-status="worldSummary?.turn_status ?? 'normal'" aria-label="ターン更新状況">
-                <header><h2>ターン</h2><small>2時間ごとに更新</small></header>
+                <header><h2>ターン</h2><small v-if="activeTurnAcceleration" class="turn-boosted">{{ isCompensationOnly(activeTurnAcceleration) ? '停止補填中：追加ターンあり（未補填分のみ）' : '時間加速中' }}</small><small v-else>2時間ごとに更新</small></header>
                 <div class="tp-body">
                     <div class="tp-turn-grid">
                         <div class="now num"><span class="turn-now">{{ worldSummary?.current_turn ?? 1 }}</span><small class="hakoniwa-calendar">{{ worldSummary?.hakoniwa_calendar?.label ?? '箱庭歴 1年1月' }}</small></div>

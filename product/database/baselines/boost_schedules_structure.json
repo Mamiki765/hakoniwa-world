@@ -1,0 +1,9 @@
+{
+    "sequence:boost_occurrences_id_seq": "e5310bdaf55055497496ec52c382da22e840a59a8d82a393b18211bd89b121ef",
+    "sequence:boost_series_id_seq": "e5310bdaf55055497496ec52c382da22e840a59a8d82a393b18211bd89b121ef",
+    "sequence:turn_execution_slots_id_seq": "e5310bdaf55055497496ec52c382da22e840a59a8d82a393b18211bd89b121ef",
+    "table:boost_occurrences": "65839efea3070b32cd5eb10af55a71906e4bb7a88ad8abd148d8a8a2027c6546",
+    "table:boost_series": "1be7ee9720aa34d76e8f223c72de53e964b09eb9b7d0d99c19acc9485679f003",
+    "table:turn_execution_slots": "077f46753e9fd79fdd802856379b9813dde1e5b73ba3da02d4a3a1a4d1ecf801",
+    "table:worlds": "c58c954f94772458b48af9a45df7824b86067276f5f8109e47fafa77c315d26c"
+}
