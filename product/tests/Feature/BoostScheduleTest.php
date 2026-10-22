@@ -83,12 +83,14 @@ final class BoostScheduleTest extends TestCase
             ->assertJsonPath('data.0.effects.additional_turn_limit', 7)
             ->assertJsonPath('data.0.effects.additional_turn_scheduled_ats', $preview['windows'][0]['additional_scheduled_ats']);
 
-        // Each command is also invoked at the other command's hour. Neither can execute the other's slot.
+        // The normal cron keeps its even hours; compensation also refuses an even-hour invocation.
         foreach (range(9, 22) as $hour) {
             Carbon::setTestNow(sprintf('2026-11-01T%02d:00:00+09:00', $hour));
             $this->app->forgetInstance(TurnRunner::class);
             foreach (range(1, 2) as $duplicate) {
-                $this->artisan('hakoniwa:turn:run', ['--source' => 'cron'])->assertSuccessful();
+                if ($hour % 2 === 0) {
+                    $this->artisan('hakoniwa:turn:run', ['--source' => 'cron'])->assertSuccessful();
+                }
                 $this->artisan('hakoniwa:turn:compensate')->assertSuccessful();
             }
         }
@@ -133,6 +135,44 @@ final class BoostScheduleTest extends TestCase
         $this->assertSame(5, DB::table('turn_execution_slots')->where('kind', 'regular')->count());
         $this->assertSame(0, TurnRun::query()->where('source', 'compensation')->count());
         $this->artisan('hakoniwa:turn:run', ['--source' => 'compensation'])->assertFailed();
+    }
+
+    public function test_regular_and_explicit_manual_cli_keep_570_behavior_during_http_maintenance(): void
+    {
+        Carbon::setTestNow('2026-11-01T02:30:00+09:00');
+        $world = $this->lightweightWorld();
+        $world->update(['next_regular_turn_at' => CarbonImmutable::now()->startOfHour()->addHours(2)]);
+        $maintenance = app()->maintenanceMode();
+        $maintenance->activate(['time' => now()->timestamp]);
+        try {
+            $this->artisan('hakoniwa:turn:run', ['--source' => 'cron'])->assertSuccessful();
+            $this->assertSame(2, $world->refresh()->current_turn);
+            $this->artisan('hakoniwa:turn:run', ['--source' => 'cron'])->assertSuccessful();
+            $this->assertSame(2, $world->refresh()->current_turn, 'A delayed normal invocation still has a unique regular slot.');
+            Carbon::setTestNow('2026-11-01T03:30:00+09:00');
+            $this->assertSame(0, app(TurnExecutionSchedule::class)->debt($world, CarbonImmutable::now()));
+            $this->artisan('hakoniwa:turn:run', ['--source' => 'manual'])->assertSuccessful();
+            $this->assertSame(3, $world->refresh()->current_turn);
+        } finally {
+            $maintenance->deactivate();
+        }
+    }
+
+    public function test_admin_manual_recovery_can_repeat_for_distinct_overdue_targets_without_repeating_a_request(): void
+    {
+        Carbon::setTestNow('2026-11-01T02:01:00+09:00');
+        $world = $this->lightweightWorld();
+        $world->update(['next_regular_turn_at' => CarbonImmutable::now()->startOfHour()->subHours(4)]);
+        $this->actingAs($this->admin());
+        $path = "/api/v1/admin/worlds/{$world->id}";
+        foreach ([2, 3, 4] as $target) {
+            $this->getJson($path.'/turn-status')->assertOk()->assertJsonPath('data.can_attempt', true);
+            $this->postJson($path.'/turn-attempt', ['target_turn' => $target])->assertOk()->assertJsonPath('data.duplicate', false);
+            $this->postJson($path.'/turn-attempt', ['target_turn' => $target])->assertOk()->assertJsonPath('data.duplicate', true);
+        }
+        $this->assertSame(4, $world->refresh()->current_turn);
+        $this->getJson($path.'/turn-status')->assertOk()->assertJsonPath('data.can_attempt', false);
+        $this->assertDatabaseCount('turn_runs', 3);
     }
 
     public function test_finite_recurrence_overlap_end_exclusive_public_boundary_and_cancellation(): void

@@ -38,7 +38,7 @@ class TurnRunner
         private readonly MonsterKillCycleService $monsterCycles,
     ) {}
 
-    public function run(World $world, bool $dryRun = false, string $source = 'manual', bool $respectSchedule = false): ?TurnRun
+    public function run(World $world, bool $dryRun = false, string $source = 'manual'): ?TurnRun
     {
         if (! in_array($source, self::SOURCES, true)) {
             throw new DomainException('Turn source must be manual, cron or compensation.');
@@ -55,7 +55,7 @@ class TurnRunner
             if ($dryRun) {
                 return $this->recordDryRun($world, $ruleset, $targetTurn, $source);
             }
-            if (app()->isDownForMaintenance()) {
+            if ($source === 'compensation' && app()->isDownForMaintenance()) {
                 return null;
             }
 
@@ -68,7 +68,7 @@ class TurnRunner
                     'cron' => 'regular', 'compensation' => 'turn_acceleration', default => null,
                 };
                 $slot = $schedule->candidate($world, CarbonImmutable::now(), $source === 'manual', $kind);
-                if ($slot === null && ($source !== 'manual' || $respectSchedule)) {
+                if ($slot === null && $source !== 'manual') {
                     return null;
                 }
             }

@@ -4,7 +4,7 @@
 
 ## 起動と空振り
 
-既存の `product/docker/cron/run-turn.sh` は `php artisan hakoniwa:turn:run --source=cron --world=shared-world` を呼ぶ。通常commandはJST偶数時の通常枠だけを扱い、補填予約や未補填数に依存せず通常の進行を維持する。追加枠を実行しない。通常12ターン=箱庭歴1年=実時間1日を保つ。
+既存の `product/docker/cron/run-turn.sh` は `php artisan hakoniwa:turn:run --source=cron --world=shared-world` を呼ぶ。通常commandはJST偶数時の通常枠だけを扱い、補填予約や未補填数に依存せず通常の進行を維持する。追加枠を実行しない。通常12ターン=箱庭歴1年=実時間1日を保つ。遅れて起動した通常commandへ補填の受付期限を適用せず、直前の偶数時枠は二重実行防止の識別だけに使う。
 
 新しい `product/docker/cron/run-compensation-turn.sh` は `php artisan hakoniwa:turn:compensate --world=shared-world` を呼ぶ。これは予約した障害補填の追加枠だけを扱い、通常枠を実行しない。補填側の起動は1日12回、通常側と合わせて24回で、毎分1,440回の起動には変更しない。実際のpath、実行者、cronのtimezone対応、ログ管理は導入時に確認する。
 
@@ -28,7 +28,11 @@ CRON_TZ=Asia/Tokyo
 
 例（テスト用日時・本番予約ではない）: 日曜09:00〜23:00、追加7回 → 09:00 / 11:00 / 13:00 / 15:00 / 17:00 / 19:00 / 21:00。短い18:00〜23:00には2枠しかなく、7回は入らない。ゴールデンタイムだけに7回を収める案は固定奇数時仕様と両立せず、実予約前に時間帯または回数の判断を要する。
 
-手動更新と cron は同じ World lock・実行枠・未補填カーソルを使う。同じ枠の完了記録、カーソル更新、ゲーム決算、TurnRun 完了は同一 transaction。pending/running/failed/blocked は次の cron から自動再試行しない。既存の明示的な管理 retry と、同一起動内の限定 DB 競合 retry だけを維持する。maintenance 中は新規実行しない。
+手動更新とcronは同じWorld lockを使い、通常/補填の同じ枠は一意な実行枠で保護する。枠の完了記録、未補填がある場合のカーソル更新、ゲーム決算、TurnRun完了は同一transaction。pending/running/failed/blockedは次のcronから自動再試行しない。既存の明示的な管理retryと、同一起動内の限定DB競合retryだけを維持する。
+
+HTTP maintenanceの実行停止guardは補填sourceだけへ適用する。通常cron・手動CLIは5.7と同様にHTTP maintenanceだけでは止まらない。通常ターンも停止する必要がある場合は、従来通りcron等を運用側で別に停止する必要がある。今回その停止操作は実施しない。管理室HTTP操作は既存のHTTPアクセス制限に従う。
+
+手動CLIの `php artisan hakoniwa:turn:run --source=manual --world=shared-world` は5.7同様に未補填ゼロ・予定外でも明示実行でき、`respectSchedule` を強制しない。管理室は遅延回復用のままで、`regular_turn_due_at` が現在より前なら `can_attempt` を許可し、failed/blockedの明示retryも許可する。同一targetの再送はduplicate、未補填が残る別targetの連続回復は許可する。これは新policyではなく既存操作の復元であり、World lockや失敗guardを解除するものではない。
 
 ## 導入時の確認と未決事項
 

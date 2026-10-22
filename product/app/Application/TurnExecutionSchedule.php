@@ -94,7 +94,17 @@ final class TurnExecutionSchedule
         if (($manual || $kind === 'turn_acceleration') && $this->debt($world, $now) === 0) {
             return null;
         }
-        $slots = $this->currentSlots($world, $now, $kind);
+        if ($kind === 'regular') {
+            // The existing normal command also admits a delayed invocation.
+            // Its even-hour identity is used only to reject duplicate executions.
+            $at = $now->setTimezone('Asia/Tokyo')->startOfHour();
+            if ((int) $at->format('G') % 2 !== 0) {
+                $at = $at->subHour();
+            }
+            $slots = [['scheduled_at' => $at->utc(), 'kind' => 'regular', 'boost_occurrence_id' => null]];
+        } else {
+            $slots = $this->currentSlots($world, $now, $kind);
+        }
         foreach ($slots as $slot) {
             if (! DB::table('turn_execution_slots')->where('world_id', $world->id)->where('scheduled_at', $slot['scheduled_at'])->exists()) {
                 return $slot;

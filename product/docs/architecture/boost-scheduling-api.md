@@ -64,11 +64,15 @@ preview は確認tokenに加え、`kind`, `title`, `repeat`, `repeat_count`, `du
 
 旧APIとの互換として `ends_at`, `additional_turns`, `interval_minutes` をすべて省略したpreviewは、開始+未補填数×2時間を終了とし、期間内の奇数時00分を追加枠にする。新しい管理室フォームは `starts_at`, `ends_at`, `additional_turns` を明示し、`interval_minutes` を送らない。
 
-未補填は「永続 `next_regular_turn_at` から現在までに到来した通常2時間枠の数」。通常更新・手動更新・追加更新はいずれも成功1回につき最古の未補填枠を1個消化する。失敗・blocked・停止中は消化しない。追加枠の時点で未補填がなければ実行せず、予約後の手動補填による過剰補填を防ぐ。プレビュー時点より後に発生した停止は追加の未補填になる。
+未補填は「永続 `next_regular_turn_at` から現在までに到来した通常2時間枠の数」。成功した通常更新・手動更新・追加更新は、未補填がある場合に最古の枠を1個消化する。失敗・blockedなど完了しなかった処理は消化しない。追加枠の時点で未補填がなければ実行せず、予約後の手動補填による過剰補填を防ぐ。プレビュー時点より後に発生した停止は追加の未補填になる。
 
 通常の `hakoniwa:turn:run --source=cron` は既存のJST偶数時00分cronを維持し、補填予約や未補填数に依存せず通常枠だけを実行する。追加枠は実行しない。新しい `hakoniwa:turn:compensate` はJST奇数時00分cronから単発起動し、予約した追加枠だけを実行する。追加受付は予定の00分内（起動秒のずれ59秒まで）で、01分以降・偶数時・未予約・期間外・上限後・未補填ゼロなら状態を変更せず終了する。共通World lock・一意な実行枠・同じtransactionの完了記録で、1起動最大1ターンと二重決算防止を維持する。常駐workerや毎分pollは追加しない。起動手順は[運用手順](../operations/turn-scheduler-worker.md)を参照する。
 
 既存 `turn-status` の `next_scheduled_turn_at` は通常/追加の次の実行枠を返す。`regular_turn_due_at` は未補填通常枠で、遅延の判定に使う。追加更新が入っても通常偶数時をずらさない。管理室のfailed/blockedの明示retryは、新規枠の取得とは別に同じTurnRunを再利用する。
+
+手動操作は5.7の契約を維持する。管理室は遅れている場合の手動回復で、`can_attempt` は `regular_turn_due_at` が現在より前なら許可し、failed/blockedの明示retryも許可する。同一targetの再送はduplicateとして返し、未補填が残る別targetの連続回復を回数制限しない。手動CLIの `hakoniwa:turn:run --source=manual` は、未補填ゼロや予定外でも明示実行でき、補填予約の条件や `respectSchedule` を強制しない。World lockと既存の失敗guardは両経路で維持する。
+
+HTTP maintenanceによる実行停止guardは補填sourceだけに適用する。通常cron・手動CLIは5.7と同じくHTTP maintenanceだけでは停止しない。管理室HTTP操作は既存のHTTPアクセス制限に従う。通常ターンを止めるには従来通り別の運用停止が必要で、今回は実施しない。
 
 長期停止の未補填基準を再開時刻へ変えるか、失効した追加枠を別時刻へ再配置するかは未決。現実装はカーソルを自動で現在へ進めず、過去枠の回収・再配置・無制限catch-upを行わない。
 

@@ -23,7 +23,7 @@ final class CompensateTurn extends Command
             return self::FAILURE;
         }
         try {
-            $run = $runner->run($world, source: 'compensation', respectSchedule: true);
+            $run = $runner->run($world, source: 'compensation');
         } catch (Throwable $exception) {
             $this->error($exception->getMessage());
 

@@ -49,6 +49,8 @@ The log destination is owned by the host operator. Laravel also emits command fa
 
 The normal command, wrapper and even-hour registration above remain in place. Regular turns do not depend on a compensation reservation, its dates, remaining debt, or compensation status. Existing locks, unique slots and failure safety still apply. Normal operation is twelve turns per day: one Hakoniwa year per real day. Acceleration is an exceptional response to a major outage.
 
+A delayed normal invocation is not rejected by compensation's time limit. It uses the most recent even-hour slot only as an idempotency identity. As in 5.7.0, HTTP maintenance mode alone does not stop the normal or explicit manual CLI. Stopping normal turns requires the existing separate operator procedure. The explicit manual CLI remains available without unpaid debt; the admin room retains its overdue-target check and duplicate-request protection.
+
 Only the additional compensation job uses this separate command:
 
 ```cron

@@ -34,7 +34,7 @@ final class RunTurn extends Command
         }
 
         try {
-            $run = $runner->run($world, (bool) $this->option('dry-run'), $source, respectSchedule: true);
+            $run = $runner->run($world, (bool) $this->option('dry-run'), $source);
         } catch (Throwable $exception) {
             $this->error($exception->getMessage());
 
