@@ -1830,10 +1830,16 @@ final class CompleteTurnEngine
             $cell->population = min($maximumPopulation, $before + $growth + $indomitableBonus);
         }
         $increase = $cell->population - $before;
-        $transition = $this->syncSettlementStage($context, $cell);
         if ($increase > 0) {
             $cell->version++;
-            $this->saveChangedCell($context, $cell);
+        }
+        $transition = $this->syncSettlementStage($context, $cell);
+        if ($increase > 0) {
+            // A stage transition already saved the grown population and both
+            // version increments; skip the second UPDATE of the same row.
+            if ($transition === 0) {
+                $this->saveChangedCell($context, $cell);
+            }
             $context->state->addRoutineSummaryMetric((int) $cell->owner_nation_id, 'population_growth_cells');
             $context->state->addRoutineSummaryMetric(
                 (int) $cell->owner_nation_id,
