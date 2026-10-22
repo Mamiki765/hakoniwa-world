@@ -8,13 +8,15 @@ const response = (data: unknown) => new Response(JSON.stringify({ data }), { sta
 const overview = { current_turn: 11, uncompensated_turns: 10, occurrences: [] };
 const timePreview = {
     token: 'fixed-time-preview', kind: 'turn_acceleration', title: '停止分のターン補填', repeat: 'none', repeat_count: 1,
-    uncompensated_turns: 10, duration_hours: 20,
-    windows: [{ starts_at: '2026-11-01T00:30:00+00:00', ends_at: '2026-11-01T20:30:00+00:00', additional_slots: 10 }],
+    uncompensated_turns: 10, duration_hours: 5, additional_turns: 7, interval_minutes: 30, effective_additional_turns: 7,
+    windows: [{ starts_at: '2026-11-01T09:00:00+00:00', ends_at: '2026-11-01T14:00:00+00:00', additional_slots: 7,
+        additional_scheduled_ats: ['2026-11-01T09:30:00Z', '2026-11-01T10:00:00Z', '2026-11-01T10:30:00Z',
+            '2026-11-01T11:30:00Z', '2026-11-01T12:00:00Z', '2026-11-01T12:30:00Z', '2026-11-01T13:30:00Z'] }],
 };
 const button = (wrapper: VueWrapper, name: string) => wrapper.findAll('button').find((candidate) => candidate.text() === name)!;
 const field = (wrapper: VueWrapper, name: string) => wrapper.findAll('label').find((candidate) => candidate.text().startsWith(name))!.get('input, select');
 
-it('opens compensation from the turn controls, sends JST explicitly, and reserves only after the returned preview is confirmed', async () => {
+it('fills delay assistance, allows a bounded seven-slot evening schedule, and reserves only the confirmed preview', async () => {
     const requests: Array<{ path: string; body: unknown }> = [];
     vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
         const path = String(input);
@@ -30,19 +32,61 @@ it('opens compensation from the turn controls, sends JST explicitly, and reserve
     await flushPromises();
     expect(field(wrapper, 'ブーストの種類').element).toHaveProperty('value', 'turn_acceleration');
     await field(wrapper, '開始日時').setValue('2026-11-01T09:30');
+    await button(wrapper, '遅延ターン分を入力').trigger('click');
+    expect(field(wrapper, '開始日時').element).toHaveProperty('value', '2026-11-01T11:00');
+    expect(field(wrapper, '終了日時').element).toHaveProperty('value', '2026-11-02T07:00');
+    expect(field(wrapper, '追加回数の上限').element).toHaveProperty('value', '10');
+    expect(field(wrapper, '追加間隔').element).toHaveProperty('value', '120');
+    expect(requests).toEqual([]);
+    await field(wrapper, '開始日時').setValue('2026-11-01T18:00');
+    await field(wrapper, '終了日時').setValue('2026-11-01T23:00');
+    await field(wrapper, '追加回数の上限').setValue(7);
+    await field(wrapper, '追加間隔').setValue(30);
     await wrapper.get('form').trigger('submit');
     await flushPromises();
     expect(requests).toEqual([{ path: '/api/v1/admin/worlds/7/boosts/preview', body: {
-        kind: 'turn_acceleration', title: timePreview.title, starts_at: '2026-11-01T09:30:00+09:00',
+        kind: 'turn_acceleration', title: timePreview.title, starts_at: '2026-11-01T18:00:00+09:00',
+        ends_at: '2026-11-01T23:00:00+09:00', additional_turns: 7, interval_minutes: 30,
     } }]);
     const confirmation = wrapper.get('[aria-label="ブースト予約の確認"]');
-    expect(confirmation.text()).toContain('20時間');
-    expect(confirmation.text()).toContain('追加枠 合計 10回');
-    expect(confirmation.get('tbody').text()).toContain('2026/11/2 5:30:00');
+    expect(confirmation.text()).toContain('5時間');
+    expect(confirmation.text()).toContain('追加上限 7回');
+    expect(confirmation.text()).toContain('追加間隔 30分');
+    expect(confirmation.text()).toContain('確認時点の実行上限 7回');
+    expect(confirmation.get('tbody').text()).toContain('2026/11/1 23:00:00');
+    const planned = confirmation.get('[aria-label="追加予定時刻"]').findAll('time');
+    expect(planned.map((slot) => slot.attributes('datetime'))).toEqual(timePreview.windows[0]!.additional_scheduled_ats);
+    expect(planned.at(0)!.text()).toBe('2026/11/1 18:30:00');
+    expect(planned.at(-1)!.text()).toBe('2026/11/1 22:30:00');
     await button(wrapper, 'この内容で予約する').trigger('click');
     await flushPromises();
     expect(requests[1]).toEqual({ path: '/api/v1/admin/worlds/7/boosts/reserve', body: { token: timePreview.token } });
     expect(wrapper.text()).toContain('系列 #87');
+    expect(wrapper.find('[aria-label="ブースト予約の確認"]').exists()).toBe(false);
+    wrapper.unmount();
+});
+
+it('keeps the editable schedule and does not reserve when the server rejects insufficient capacity', async () => {
+    const posted: string[] = [];
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const path = String(input);
+        if (init?.method === 'POST') {
+            posted.push(path);
+            return new Response(JSON.stringify({ message: '指定期間に追加7枠は収まりません。' }), { status: 409 });
+        }
+        return response(overview);
+    }));
+    const wrapper = mount(AdminBoostSchedules, { props: { worldId: 7, initialKind: 'turn_acceleration' } });
+    await flushPromises();
+    await field(wrapper, '開始日時').setValue('2026-11-01T18:00');
+    await field(wrapper, '終了日時').setValue('2026-11-01T20:00');
+    await field(wrapper, '追加回数の上限').setValue(7);
+    await field(wrapper, '追加間隔').setValue(30);
+    await wrapper.get('form').trigger('submit');
+    await flushPromises();
+    expect(posted).toEqual(['/api/v1/admin/worlds/7/boosts/preview']);
+    expect(wrapper.get('[role="alert"]').text()).toContain('追加7枠は収まりません');
+    expect(field(wrapper, '終了日時').element).toHaveProperty('value', '2026-11-01T20:00');
     expect(wrapper.find('[aria-label="ブースト予約の確認"]').exists()).toBe(false);
     wrapper.unmount();
 });

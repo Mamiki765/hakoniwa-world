@@ -26,7 +26,7 @@ use Throwable;
 
 class TurnRunner
 {
-    private const SOURCES = ['manual', 'cron', 'scheduler'];
+    private const SOURCES = ['manual', 'cron'];
 
     private const MAX_TRANSIENT_ATTEMPTS = 3;
 
@@ -41,7 +41,7 @@ class TurnRunner
     public function run(World $world, bool $dryRun = false, string $source = 'manual', bool $respectSchedule = false): ?TurnRun
     {
         if (! in_array($source, self::SOURCES, true)) {
-            throw new DomainException('Turn source must be manual, cron or scheduler.');
+            throw new DomainException('Turn source must be manual or cron.');
         }
 
         $this->lock->acquire($world);

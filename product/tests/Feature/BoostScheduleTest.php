@@ -60,6 +60,50 @@ final class BoostScheduleTest extends TestCase
         $this->assertSame(1, $service->additionalSlots(CarbonImmutable::parse('2026-11-01T01:00:00+09:00'), CarbonImmutable::parse('2026-11-01T03:00:00+09:00')));
     }
 
+    public function test_explicit_seven_slot_window_preserves_regular_hours_caps_extras_and_exposes_actual_schedule(): void
+    {
+        Carbon::setTestNow('2026-11-01T17:59:00+09:00');
+        $world = $this->lightweightWorld();
+        $world->update(['next_regular_turn_at' => CarbonImmutable::parse('2026-10-31T22:00:00+09:00')->utc()]);
+        $path = "/api/v1/admin/worlds/{$world->id}/boosts";
+        $this->actingAs($this->admin());
+        $input = ['kind' => 'turn_acceleration', 'title' => 'Seven evening slots',
+            'starts_at' => '2026-11-01T18:00:00+09:00', 'ends_at' => '2026-11-01T23:00:00+09:00',
+            'additional_turns' => 7, 'interval_minutes' => 30];
+        $this->postJson($path.'/preview', [...$input, 'ends_at' => '2026-11-01T22:00:00+09:00'])->assertConflict();
+        $this->postJson($path.'/preview', array_diff_key($input, ['interval_minutes' => true]))->assertConflict();
+        $preview = $this->postJson($path.'/preview', $input)->assertOk()
+            ->assertJsonPath('data.additional_turns', 7)->assertJsonPath('data.interval_minutes', 30)
+            ->assertJsonPath('data.effective_additional_turns', 7)->json('data');
+        $this->assertDatabaseCount('boost_occurrences', 0);
+        $this->postJson($path.'/reserve', ['token' => $preview['token']])->assertOk();
+        $this->getJson("/api/v1/public/worlds/{$world->id}/boosts")->assertOk()
+            ->assertJsonPath('data.0.turn_interval_minutes', 30)
+            ->assertJsonPath('data.0.effects.additional_turn_limit', 7)
+            ->assertJsonPath('data.0.effects.additional_turn_scheduled_ats', $preview['windows'][0]['additional_scheduled_ats']);
+
+        // Real cron entry point, with repeated starts and a new service instance: each slot executes once.
+        foreach (['18:00', '18:30', '19:00', '19:30', '20:00', '20:30', '21:00', '21:30', '22:00', '22:30'] as $time) {
+            Carbon::setTestNow('2026-11-01T'.$time.':00+09:00');
+            $this->app->forgetInstance(TurnRunner::class);
+            $this->artisan('hakoniwa:turn:run', ['--source' => 'cron'])->assertSuccessful();
+            $this->artisan('hakoniwa:turn:run', ['--source' => 'cron'])->assertSuccessful();
+        }
+        $this->assertSame(11, $world->refresh()->current_turn);
+        $this->assertSame(7, DB::table('turn_execution_slots')->where('kind', 'turn_acceleration')->count());
+        $this->assertSame(3, DB::table('turn_execution_slots')->where('kind', 'regular')->count());
+        $this->assertSame(0, DB::table('turn_execution_slots')->whereNull('completed_at')->count());
+        Carbon::setTestNow('2026-11-01T22:31:00+09:00');
+        $this->assertSame(CarbonImmutable::parse('2026-11-02T00:00:00+09:00')->utc()->toIso8601String(),
+            app(TurnScheduleStatus::class)->forWorld($world)['next_scheduled_turn_at']);
+        $before = $world->getRawOriginal();
+        Carbon::setTestNow('2026-11-01T23:00:00+09:00');
+        $this->artisan('hakoniwa:turn:run', ['--source' => 'cron'])->assertSuccessful();
+        $this->assertSame($before, $world->refresh()->getRawOriginal());
+        $this->assertDatabaseCount('turn_execution_slots', 10);
+        $this->assertDatabaseCount('turn_runs', 10);
+    }
+
     public function test_finite_recurrence_overlap_end_exclusive_public_boundary_and_cancellation(): void
     {
         Carbon::setTestNow('2026-11-01T08:00:00+09:00');
@@ -87,26 +131,26 @@ final class BoostScheduleTest extends TestCase
         $this->getJson($public)->assertOk()->assertJsonCount(0, 'data');
     }
 
-    public function test_worker_cron_and_manual_share_current_slot_and_restart_does_not_repeat_it(): void
+    public function test_repeated_cron_and_manual_share_current_slot_without_repeating_it(): void
     {
         Carbon::setTestNow('2026-11-01T01:00:00+09:00');
         $world = $this->lightweightWorld();
         $world->update(['next_regular_turn_at' => CarbonImmutable::parse('2026-10-31T22:00:00+09:00')->utc()]);
         $this->boostOccurrence('turn_acceleration', $world);
-        $this->artisan('hakoniwa:turn:work', ['--once' => true])->assertSuccessful();
-        $this->assertSame(2, $world->refresh()->current_turn, 'first worker: '.Artisan::output());
+        $this->artisan('hakoniwa:turn:run', ['--source' => 'cron'])->assertSuccessful();
+        $this->assertSame(2, $world->refresh()->current_turn, 'first cron: '.Artisan::output());
         $this->assertSame('2026-10-31T15:00:00+00:00', $world->next_regular_turn_at->utc()->toIso8601String()); // 00:00 JST, one debt repaid.
         $this->assertSame(CarbonImmutable::parse('2026-11-01T02:00:00+09:00')->utc()->toIso8601String(),
             app(TurnScheduleStatus::class)->forWorld($world)['next_scheduled_turn_at']);
         $this->app->forgetInstance(TurnRunner::class);
-        $this->artisan('hakoniwa:turn:work', ['--once' => true])->assertSuccessful();
+        $this->artisan('hakoniwa:turn:run', ['--source' => 'cron'])->assertSuccessful();
         $this->artisan('hakoniwa:turn:run', ['--source' => 'cron'])->assertSuccessful();
         $this->assertDatabaseCount('turn_execution_slots', 1);
         $this->assertNotNull(DB::table('turn_execution_slots')->value('completed_at'));
         $this->actingAs($this->admin())->postJson("/api/v1/admin/worlds/{$world->id}/turn-attempt", ['target_turn' => 2])
             ->assertOk()->assertJsonPath('data.duplicate', true);
         Carbon::setTestNow('2026-11-01T02:00:00+09:00');
-        $this->artisan('hakoniwa:turn:work', ['--once' => true])->assertSuccessful();
+        $this->artisan('hakoniwa:turn:run', ['--source' => 'cron'])->assertSuccessful();
         $this->assertSame(3, $world->refresh()->current_turn, 'next even worker: '.Artisan::output());
         $this->assertDatabaseCount('turn_execution_slots', 2);
         $this->assertSame(CarbonImmutable::parse('2026-11-01T03:00:00+09:00')->utc()->toIso8601String(),
@@ -119,16 +163,16 @@ final class BoostScheduleTest extends TestCase
         $world = $this->lightweightWorld();
         $world->update(['next_regular_turn_at' => CarbonImmutable::parse('2026-10-31T22:00:00+09:00')->utc()]);
         $this->boostOccurrence('turn_acceleration', $world)->update(['starts_at' => CarbonImmutable::parse('2026-11-01T01:00:00+09:00')->utc()]);
-        $this->assertNull(app(TurnRunner::class)->run($world, source: 'scheduler'));
+        $this->assertNull(app(TurnRunner::class)->run($world, source: 'cron'));
         $this->assertSame(1, $world->refresh()->current_turn);
         $world->update(['next_regular_turn_at' => CarbonImmutable::parse('2026-11-01T04:00:00+09:00')->utc()]);
         Carbon::setTestNow('2026-11-01T03:00:00+09:00');
-        $this->assertNull(app(TurnRunner::class)->run($world, source: 'scheduler'));
+        $this->assertNull(app(TurnRunner::class)->run($world, source: 'cron'));
         TurnRun::query()->create(['world_id' => $world->id, 'target_turn' => 2, 'ruleset_version_id' => $world->ruleset_version_id,
             'random_seed' => str_repeat('a', 64), 'source' => 'cron', 'is_dry_run' => false, 'status' => 'failed', 'attempt_count' => 1,
             'pipeline' => [], 'phase_results' => [], 'failure_context' => []]);
         $this->expectException(\DomainException::class);
-        app(TurnRunner::class)->run($world, source: 'scheduler');
+        app(TurnRunner::class)->run($world, source: 'cron');
     }
 
     public function test_forward_migration_initializes_the_old_calendar_without_changing_turn_progress(): void
@@ -160,14 +204,14 @@ final class BoostScheduleTest extends TestCase
         $maintenance = app()->maintenanceMode();
         $maintenance->activate(['time' => now()->timestamp]);
         try {
-            $this->assertNull(app(TurnRunner::class)->run($world, source: 'scheduler'));
+            $this->assertNull(app(TurnRunner::class)->run($world, source: 'cron'));
             $this->assertSame(1, $world->refresh()->current_turn);
             $this->assertDatabaseCount('turn_execution_slots', 0);
         } finally {
             $maintenance->deactivate();
         }
         Carbon::setTestNow('2026-11-01T03:00:00+09:00');
-        $this->assertNull(app(TurnRunner::class)->run($world, source: 'scheduler'));
+        $this->assertNull(app(TurnRunner::class)->run($world, source: 'cron'));
         $this->assertDatabaseCount('turn_execution_slots', 0);
     }
 
@@ -226,7 +270,7 @@ final class BoostScheduleTest extends TestCase
         $event = $this->boostOccurrence('turn_acceleration', $world);
         // A minimal completed slot avoids unrelated NPC market generation in a full gameplay turn.
         $run = TurnRun::query()->create(['world_id' => $world->id, 'target_turn' => 2, 'ruleset_version_id' => $world->ruleset_version_id,
-            'random_seed' => str_repeat('a', 64), 'source' => 'scheduler', 'is_dry_run' => false, 'status' => 'completed', 'attempt_count' => 1,
+            'random_seed' => str_repeat('a', 64), 'source' => 'cron', 'is_dry_run' => false, 'status' => 'completed', 'attempt_count' => 1,
             'pipeline' => [], 'phase_results' => [], 'failure_context' => [], 'started_at' => now(), 'completed_at' => now()]);
         $world->update(['current_turn' => 2]);
         DB::table('turn_execution_slots')->insert(['world_id' => $world->id, 'turn_run_id' => $run->id,

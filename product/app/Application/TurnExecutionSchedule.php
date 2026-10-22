@@ -5,6 +5,7 @@ namespace App\Application;
 use App\Models\BoostOccurrence;
 use App\Models\World;
 use Carbon\CarbonImmutable;
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\DB;
 
 final class TurnExecutionSchedule
@@ -37,45 +38,50 @@ final class TurnExecutionSchedule
             $next = $next->addHour();
         }
         $next = $next->utc();
-        foreach (BoostOccurrence::query()->where('world_id', $world->id)->where('kind', 'turn_acceleration')
-            ->whereNull('cancelled_at')->where('ends_at', '>', $now)->where('starts_at', '<', $next)->get() as $boost) {
-            $start = $boost->starts_at->greaterThan($now) ? $boost->starts_at : $now->startOfHour()->addHour();
-            $slot = $start->setTimezone('Asia/Tokyo')->startOfHour();
-            if ($slot->isBefore($start)) {
-                $slot = $slot->addHour();
-            }
-            if ((int) $slot->format('G') % 2 === 0) {
-                $slot = $slot->addHour();
-            }
-            if ($slot->isBefore($boost->ends_at) && $slot->isBefore($next)) {
-                $next = $slot->utc();
+        foreach ($this->boosts($world, $now, $next) as $boost) {
+            foreach ($this->plan($boost)->slots as $slot) {
+                if ($slot->isAfter($now) && $slot->isBefore($next)) {
+                    $next = $slot;
+                    break;
+                }
             }
         }
 
         return $next;
     }
 
-    /** Only the current wall-clock slot is eligible; missed slots never form an automatic catch-up loop.
-     * @return array{scheduled_at:CarbonImmutable,kind:string,boost_occurrence_id:?int}|null
-     */
-    public function currentSlot(World $world, CarbonImmutable $now): ?array
+    /** @return list<array{scheduled_at:CarbonImmutable,kind:string,boost_occurrence_id:?int}> */
+    private function currentSlots(World $world, CarbonImmutable $now): array
     {
         $slot = $now->setTimezone('Asia/Tokyo')->startOfHour();
-        if ($now->isAfter($slot->addMinutes((int) config('hakoniwa.turn_schedule.grace_minutes', 15)))) {
-            return null;
+        $grace = (int) config('hakoniwa.turn_schedule.grace_minutes', 15);
+        $slots = [];
+        if (AdditionalTurnPlan::regular($slot) && $now->lessThanOrEqualTo($slot->addMinutes($grace))) {
+            $slots[] = ['scheduled_at' => $slot->utc(), 'kind' => 'regular', 'boost_occurrence_id' => null];
         }
-        $boost = null;
-        $kind = 'regular';
-        if ((int) $slot->format('G') % 2 !== 0) {
-            $boost = BoostOccurrence::query()->where('world_id', $world->id)->where('kind', 'turn_acceleration')
-                ->whereNull('cancelled_at')->where('starts_at', '<=', $slot->utc())->where('ends_at', '>', $slot->utc())->first();
-            if ($boost === null) {
-                return null;
+        foreach ($this->boosts($world, $now, $now) as $boost) {
+            $due = $this->plan($boost)->due($now, $boost->ends_at, $grace);
+            if ($due !== null) {
+                $slots[] = ['scheduled_at' => $due, 'kind' => 'turn_acceleration', 'boost_occurrence_id' => $boost->id];
             }
-            $kind = 'turn_acceleration';
         }
 
-        return ['scheduled_at' => $slot->utc(), 'kind' => $kind, 'boost_occurrence_id' => $boost?->id];
+        return $slots;
+    }
+
+    /** @return Collection<int,BoostOccurrence> */
+    private function boosts(World $world, CarbonImmutable $now, CarbonImmutable $startsBefore): Collection
+    {
+        return BoostOccurrence::query()->join('boost_series', 'boost_series.id', '=', 'boost_occurrences.boost_series_id')
+            ->where('boost_occurrences.world_id', $world->id)->where('boost_occurrences.kind', 'turn_acceleration')
+            ->whereNull('boost_occurrences.cancelled_at')->where('boost_occurrences.ends_at', '>', $now)
+            ->where('boost_occurrences.starts_at', '<=', $startsBefore)
+            ->select('boost_occurrences.*', 'boost_series.schedule as series_schedule')->get();
+    }
+
+    private function plan(BoostOccurrence $boost): AdditionalTurnPlan
+    {
+        return AdditionalTurnPlan::stored($boost->starts_at, $boost->ends_at, $boost->series_schedule ?? [], $boost->occurrence_number);
     }
 
     /** @return array{scheduled_at:CarbonImmutable,kind:string,boost_occurrence_id:?int}|null */
@@ -84,17 +90,19 @@ final class TurnExecutionSchedule
         if ($this->debt($world, $now) === 0) {
             return null;
         }
-        $slot = $this->currentSlot($world, $now);
-        if ($slot === null) {
-            if (! $manual) {
-                return null;
+        $slots = $this->currentSlots($world, $now);
+        foreach ($slots as $slot) {
+            if (! DB::table('turn_execution_slots')->where('world_id', $world->id)->where('scheduled_at', $slot['scheduled_at'])->exists()) {
+                return $slot;
             }
-            $slot = ['scheduled_at' => $now->startOfSecond()->utc(), 'kind' => 'manual', 'boost_occurrence_id' => null];
-        }
-        if (DB::table('turn_execution_slots')->where('world_id', $world->id)->where('scheduled_at', $slot['scheduled_at'])->exists()) {
-            return null;
         }
 
-        return $slot;
+        if (! $manual || $slots !== []) {
+            return null;
+        }
+        $at = $now->startOfSecond()->utc();
+
+        return DB::table('turn_execution_slots')->where('world_id', $world->id)->where('scheduled_at', $at)->exists()
+            ? null : ['scheduled_at' => $at, 'kind' => 'manual', 'boost_occurrence_id' => null];
     }
 }

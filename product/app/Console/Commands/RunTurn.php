@@ -13,7 +13,7 @@ final class RunTurn extends Command
     protected $signature = 'hakoniwa:turn:run
                             {--world=shared-world : World key}
                             {--dry-run : Record and display the pipeline without executing game phases}
-                            {--source=manual : Invocation source: manual, cron or scheduler}';
+                            {--source=manual : Invocation source: manual or cron}';
 
     protected $description = 'Run one World turn through the shared TurnRunner service.';
 

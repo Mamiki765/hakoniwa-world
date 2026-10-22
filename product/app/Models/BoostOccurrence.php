@@ -14,6 +14,7 @@ use Illuminate\Database\Eloquent\Model;
  * @property CarbonImmutable $starts_at
  * @property CarbonImmutable $ends_at
  * @property CarbonImmutable|null $cancelled_at
+ * @property array<string,mixed>|null $series_schedule
  */
 class BoostOccurrence extends Model
 {
@@ -21,6 +22,6 @@ class BoostOccurrence extends Model
 
     protected function casts(): array
     {
-        return ['starts_at' => 'immutable_datetime', 'ends_at' => 'immutable_datetime', 'cancelled_at' => 'immutable_datetime'];
+        return ['starts_at' => 'immutable_datetime', 'ends_at' => 'immutable_datetime', 'cancelled_at' => 'immutable_datetime', 'series_schedule' => 'array'];
     }
 }
