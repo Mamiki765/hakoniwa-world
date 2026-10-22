@@ -29,7 +29,6 @@ const startsAt = ref(props.initialKind === 'turn_acceleration'
     : new Date(Date.now() + 5 * 60_000 + 9 * 3_600_000).toISOString().slice(0, 16));
 const endsAt = ref('');
 const additionalTurns = ref(7);
-const intervalMinutes = ref(30);
 let initializedTime = false;
 const repeat = ref<Repeat>('none');
 const repeatCount = ref(2);
@@ -80,7 +79,6 @@ function fillFromDelay(): void {
         const start = nextOddHour(startsAt.value);
         startsAt.value = start;
         additionalTurns.value = turns;
-        intervalMinutes.value = 120;
         endsAt.value = new Date(Date.parse(`${start}:00Z`) + turns * 2 * 3_600_000).toISOString().slice(0, 16);
         error.value = '';
         resultMessage.value = '指定開始時刻以降の奇数時00分から、遅延ターン分を入力しました。予約前に全追加枠を確認してください。';
@@ -123,7 +121,7 @@ async function requestPreview(): Promise<void> {
         const input = { kind: kind.value, title: title.value, starts_at: jstTimestamp(startsAt.value), ends_at: jstTimestamp(endsAt.value),
             ...(kind.value === 'hunting_ground' ? { repeat: repeat.value,
                 repeat_count: repeat.value === 'none' ? 1 : repeatCount.value }
-                : { additional_turns: additionalTurns.value, interval_minutes: intervalMinutes.value }) };
+                : { additional_turns: additionalTurns.value }) };
         preview.value = await api<Preview>(`${endpoint.value}/preview`, { method: 'POST', body: JSON.stringify(input) });
     } catch (failure) {
         error.value = failure instanceof Error ? failure.message : '予約内容を確認できませんでした。';
@@ -215,10 +213,10 @@ async function cancel(): Promise<void> {
                 </template>
                 <template v-else>
                     <label>追加回数の上限<input v-model.number="additionalTurns" type="number" required min="1" max="500" step="1"></label>
-                    <label>追加間隔（分）<input v-model.number="intervalMinutes" type="number" required min="5" max="120" step="1"></label>
                     <button type="button" @click="fillFromDelay">遅延ターン分を入力</button>
-                    <p>通常の偶数時00分は維持し、予約期間内の追加予定枠だけを実行します。通常枠と重なる追加枠は除外します。指定回数が期間に収まるか、全追加時刻を確認画面で確認してください。</p>
-                    <p>追加は回数上限と実行時の未補填数までです。取りこぼした枠や長期停止分を遡って自動実行しません。遅延ターン分の入力は120分間隔で開始を奇数時00分へ揃える補助で、自動予約ではありません。</p>
+                    <p>通常のJST偶数時00分は維持し、補填専用の更新で奇数時00分に追加します。追加だけでは120分間隔で、期間中の追加枠がある間は通常と合わせて1時間ごとの予定枠になります。指定回数が期間に収まるか、全追加時刻を確認画面で確認してください。</p>
+                    <p>通常は箱庭歴1年が実時間1日です。時間加速は大規模障害の補填に使う例外で、通常のお祭り用途ではありません。追加は回数上限と実行時の未補填数までで、停止中は実行せず、取りこぼした枠や長期停止分を遡って自動実行しません。</p>
+                    <p>遅延ターン分の入力は開始を奇数時00分へ揃え、未補填Nターンに対して2N時間を入力する補助で、自動予約ではありません。</p>
                 </template>
                 <p>開始を含み、終了は含みません。初回開始は現在以降1年以内です。確認画面へ進むだけでは予約されません。</p>
                 <button class="button primary" type="submit">予約内容を確認する</button>

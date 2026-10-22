@@ -2,7 +2,7 @@
 
 ## Adopted deployment shape
 
-The OCI host cron remains a thin production trigger. In 5.8.0 the proposed registration polls once per minute; the application preserves regular Asia/Tokyo even-hour slots and checks explicit reserved additional slots. The shell wrapper contains no game rules, ruleset selection, transaction control, or retry loop. This change documents registration only; it does not install or run production cron.
+PR23 enables an OCI host cron as the production trigger. Version 1.1.0 fixes that trigger to every even hour in Asia/Tokyo (00:00, 02:00, ..., 22:00). It invokes the same Laravel Artisan command used by an operator. The shell wrapper contains no game rules, ruleset selection, transaction control, or retry loop.
 
 ```text
 OCI host cron
@@ -30,20 +30,37 @@ HAKONIWA_WORLD_KEY=shared-world \
 
 It runs the command as `www-data`, without allocating a TTY. It inherits the service's existing environment and therefore does not copy credentials into a cron file.
 
-## Minute polling example (5.8.0)
+## Even-hour Asia/Tokyo example
 
-Replace the old even-hour registration with this example only during an approved deployment. The application uses Asia/Tokyo independently of the host timezone:
+Confirm the host cron implementation supports `CRON_TZ` before using this example:
 
 ```cron
 CRON_TZ=Asia/Tokyo
-* * * * * /usr/bin/flock -n /run/lock/hakoniwa-shared-world-turn.lock /usr/bin/env HAKONIWA_PROJECT_DIR=/opt/hakoniwa-world HAKONIWA_WORLD_KEY=shared-world /opt/hakoniwa-world/product/docker/cron/run-turn.sh >> /var/log/hakoniwa-turn.log 2>&1
+0 */2 * * * /usr/bin/flock -n /run/lock/hakoniwa-shared-world-turn.lock /usr/bin/env HAKONIWA_PROJECT_DIR=/opt/hakoniwa-world HAKONIWA_WORLD_KEY=shared-world /opt/hakoniwa-world/product/docker/cron/run-turn.sh >> /var/log/hakoniwa-turn.log 2>&1
 ```
 
-This polls 1,440 times per day. Regular slots remain JST 00:00, 02:00, ..., 22:00; explicit additional slots are read from persistent reservations. An empty poll exits successfully without inserting/updating game state, TurnRun, execution slots or the compensation cursor. It still boots the application, reads database state, acquires/releases the World advisory lock and emits a host log line. Cost must be measured in the intended environment.
+This produces 12 scheduled triggers per local day. On a UTC cron host, the equivalent fixed schedule is `0 1-23/2 * * *`: JST 00:00 is the previous UTC date at 15:00, followed by 17:00, 19:00, 21:00, 23:00, 01:00, ..., 13:00 UTC. Prefer `CRON_TZ=Asia/Tokyo` so this date boundary remains explicit. Japan does not observe daylight-saving time.
 
-The public next-time API and command use the same due decision. Grace is bounded by the configured `HAKONIWA_TURN_SCHEDULE_GRACE_MINUTES` (default 15), the additional interval, the next regular slot and event end. See [persistent slot operations](../../product/docs/operations/turn-scheduler-worker.md) for exact boundaries, missed-slot policy and deferred long-stop decisions. The web process never reads the host crontab directly.
+The public turn health contract uses the same `Asia/Tokyo` even-hour schedule and `HAKONIWA_TURN_SCHEDULE_GRACE_MINUTES` (default 15). Keep the cron entry, environment, and application config together when changing operations. The web process never reads the host crontab directly.
 
 The log destination is owned by the host operator. Laravel also emits command failures through its configured application log. Do not log environment dumps, database URLs, or credentials.
+
+## Optional disaster compensation: a separate odd-hour command (5.8.0)
+
+The normal command, wrapper and even-hour registration above remain in place. Regular turns do not depend on a compensation reservation, its dates, remaining debt, or compensation status. Existing locks, unique slots and failure safety still apply. Normal operation is twelve turns per day: one Hakoniwa year per real day. Acceleration is an exceptional response to a major outage.
+
+Only the additional compensation job uses this separate command:
+
+```cron
+CRON_TZ=Asia/Tokyo
+0 1-23/2 * * * /usr/bin/flock -n /run/lock/hakoniwa-shared-world-turn.lock /usr/bin/env HAKONIWA_PROJECT_DIR=/opt/hakoniwa-world HAKONIWA_WORLD_KEY=shared-world /opt/hakoniwa-world/product/docker/cron/run-compensation-turn.sh >> /var/log/hakoniwa-compensation-turn.log 2>&1
+```
+
+The new wrapper invokes `php artisan hakoniwa:turn:compensate --world=shared-world`; it never invokes a regular turn. It runs at most once per odd JST hour (twelve invocations per day), and only a reserved odd-hour slot within its 00 minute and with unpaid debt can execute. An ineligible invocation exits successfully without changing game state, TurnRun, execution slots or the compensation cursor. No minute polling, resident worker, arbitrary interval, retrospective execution or automatic failure retry is introduced.
+
+The compensation entry is additional to the existing even-hour entry, not a replacement. Both use the same authoritative World advisory lock and unique world/time slots; host flock is auxiliary. During an approved compensation window their distinct two-hour schedules together provide at most one scheduled update per hour. Additional counts are caps, not guarantees during maintenance, failures or missed triggers. See [compensation operations](../../product/docs/operations/turn-scheduler-worker.md) for reservation limits and deferred operational decisions.
+
+These entries are documentation only. This task does not register cron, run a real event, apply a production migration or resume public access.
 
 ## Daily Underground battle-log prune
 
@@ -95,7 +112,7 @@ Before registering production cron:
 
 ## Success, failure, and retry
 
-- Exit code `0`: no slot was due and no game state changed, the dry run completed, or a complete pipeline committed.
+- Exit code `0`: the dry run completed, or a complete production pipeline committed.
 - Non-zero: the World was missing, a lock/idempotency guard rejected execution, the scaffold is incomplete, or execution failed.
 - A duplicate host trigger returns quickly because `flock` may reject it; even without `flock`, the PostgreSQL advisory lock rejects overlap.
 - 4.4.0 C1 retries only transaction-body PostgreSQL `40P01` / `40001` failures, at most three attempts including the first, within the same invocation. It requires a completed root rollback on the same connection/session. The World lock, run ID, target, ruleset and seed remain unchanged; the whole pipeline starts again with fresh attempt state. This applies to manual and cron invocations, not the shell wrapper.

@@ -26,7 +26,7 @@ final class TurnExecutionSchedule
     public function nextAutomatic(World $world, CarbonImmutable $now): ?CarbonImmutable
     {
         $nextRegular = $this->nextRegular($world);
-        if ($nextRegular === null || $nextRegular->isAfter($now)) {
+        if ($nextRegular === null) {
             return $nextRegular;
         }
         $current = $this->candidate($world, $now, false);
@@ -38,7 +38,7 @@ final class TurnExecutionSchedule
             $next = $next->addHour();
         }
         $next = $next->utc();
-        foreach ($this->boosts($world, $now, $next) as $boost) {
+        foreach ($this->debt($world, $now) > 0 ? $this->boosts($world, $now, $next) : [] as $boost) {
             foreach ($this->plan($boost)->slots as $slot) {
                 if ($slot->isAfter($now) && $slot->isBefore($next)) {
                     $next = $slot;
@@ -51,16 +51,20 @@ final class TurnExecutionSchedule
     }
 
     /** @return list<array{scheduled_at:CarbonImmutable,kind:string,boost_occurrence_id:?int}> */
-    private function currentSlots(World $world, CarbonImmutable $now): array
+    private function currentSlots(World $world, CarbonImmutable $now, ?string $kind): array
     {
         $slot = $now->setTimezone('Asia/Tokyo')->startOfHour();
         $grace = (int) config('hakoniwa.turn_schedule.grace_minutes', 15);
         $slots = [];
-        if (AdditionalTurnPlan::regular($slot) && $now->lessThanOrEqualTo($slot->addMinutes($grace))) {
+        if ($kind !== 'turn_acceleration' && AdditionalTurnPlan::regular($slot) && $now->lessThanOrEqualTo($slot->addMinutes($grace))) {
             $slots[] = ['scheduled_at' => $slot->utc(), 'kind' => 'regular', 'boost_occurrence_id' => null];
         }
+        if ($kind === 'regular' || $this->debt($world, $now) === 0
+            || ! AdditionalTurnPlan::additional($slot) || $now->format('i') !== '00') {
+            return $slots;
+        }
         foreach ($this->boosts($world, $now, $now) as $boost) {
-            $due = $this->plan($boost)->due($now, $boost->ends_at, $grace);
+            $due = $this->plan($boost)->due($now, $boost->ends_at);
             if ($due !== null) {
                 $slots[] = ['scheduled_at' => $due, 'kind' => 'turn_acceleration', 'boost_occurrence_id' => $boost->id];
             }
@@ -85,12 +89,12 @@ final class TurnExecutionSchedule
     }
 
     /** @return array{scheduled_at:CarbonImmutable,kind:string,boost_occurrence_id:?int}|null */
-    public function candidate(World $world, CarbonImmutable $now, bool $manual): ?array
+    public function candidate(World $world, CarbonImmutable $now, bool $manual, ?string $kind = null): ?array
     {
-        if ($this->debt($world, $now) === 0) {
+        if (($manual || $kind === 'turn_acceleration') && $this->debt($world, $now) === 0) {
             return null;
         }
-        $slots = $this->currentSlots($world, $now);
+        $slots = $this->currentSlots($world, $now, $kind);
         foreach ($slots as $slot) {
             if (! DB::table('turn_execution_slots')->where('world_id', $world->id)->where('scheduled_at', $slot['scheduled_at'])->exists()) {
                 return $slot;

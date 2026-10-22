@@ -33,7 +33,7 @@ final class BoostController extends Controller
         $input = $request->validate(['kind' => ['required', Rule::in(['turn_acceleration', 'hunting_ground'])],
             'title' => ['required', 'string', 'max:120'], 'starts_at' => ['required', 'string', 'max:40'],
             'ends_at' => ['nullable', 'string', 'max:40'], 'repeat' => ['sometimes', Rule::in(['none', 'daily', 'weekly'])],
-            'additional_turns' => ['sometimes', 'integer', 'min:1', 'max:500'], 'interval_minutes' => ['sometimes', 'integer', 'min:5', 'max:120'],
+            'additional_turns' => ['sometimes', 'integer', 'min:1', 'max:500'], 'interval_minutes' => ['sometimes', 'integer', Rule::in([120])],
             'repeat_count' => ['sometimes', 'integer', 'min:1', 'max:52']]);
         try {
             return response()->json(['data' => $service->preview($this->actor($request), $world, $input)]);

@@ -26,7 +26,7 @@ use Throwable;
 
 class TurnRunner
 {
-    private const SOURCES = ['manual', 'cron'];
+    private const SOURCES = ['manual', 'cron', 'compensation'];
 
     private const MAX_TRANSIENT_ATTEMPTS = 3;
 
@@ -41,7 +41,7 @@ class TurnRunner
     public function run(World $world, bool $dryRun = false, string $source = 'manual', bool $respectSchedule = false): ?TurnRun
     {
         if (! in_array($source, self::SOURCES, true)) {
-            throw new DomainException('Turn source must be manual or cron.');
+            throw new DomainException('Turn source must be manual, cron or compensation.');
         }
 
         $this->lock->acquire($world);
@@ -63,13 +63,14 @@ class TurnRunner
             $existing = TurnRun::query()->where('world_id', $world->id)->where('target_turn', $targetTurn)
                 ->where('is_dry_run', false)->first();
             $slot = null;
-            if ($schedule->nextRegular($world) !== null && $existing === null) {
-                $slot = $schedule->candidate($world, CarbonImmutable::now(), $source === 'manual');
+            if (($source !== 'manual' || $schedule->nextRegular($world) !== null) && $existing === null) {
+                $kind = match ($source) {
+                    'cron' => 'regular', 'compensation' => 'turn_acceleration', default => null,
+                };
+                $slot = $schedule->candidate($world, CarbonImmutable::now(), $source === 'manual', $kind);
                 if ($slot === null && ($source !== 'manual' || $respectSchedule)) {
                     return null;
                 }
-            } elseif ($source !== 'manual' && $existing === null) {
-                return null;
             }
 
             $this->monsterCycles->assertLegacySeedCoverage($world, $targetTurn);

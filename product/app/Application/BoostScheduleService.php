@@ -42,7 +42,7 @@ final readonly class BoostScheduleService
             'ends_at' => $row->ends_at->utc()->toIso8601String(),
             'description' => $row->kind === 'hunting_ground'
                 ? '狩場のレア出現率・通常敵の鍵出現率・獲得XPが2倍（Gや鍵の個数は変わりません）'
-                : '通常の日本時間偶数時00分に加え、予約した追加枠（間隔'.$plan->intervalMinutes.'分・上限'.count($plan->slots).'回）で未補填分だけ実行します',
+                : '大規模障害の補填として、通常の日本時間偶数時00分に加え、期間内の奇数時00分に未補填分だけ追加します（追加上限'.count($plan->slots).'回）',
             'turn_interval_minutes' => $plan?->intervalMinutes,
             'multiplier' => $row->kind === 'hunting_ground' ? 2 : null,
             'status' => $row->cancelled_at !== null ? 'cancelled' : ($now->isBefore($row->starts_at) ? 'scheduled' : ($now->isBefore($row->ends_at) ? 'active' : 'ended')),
@@ -88,8 +88,11 @@ final readonly class BoostScheduleService
             if (BoostOccurrence::query()->where('world_id', $world->id)->where('kind', $kind)->whereNull('cancelled_at')->where('ends_at', '>', $now)->exists()) {
                 throw new DomainException('既存の時間加速が終了または取消されてから予約してください。');
             }
-            if ($explicitTime && (! isset($input['ends_at'], $input['additional_turns'], $input['interval_minutes']))) {
-                throw new DomainException('時間加速の終了日時・追加上限・間隔をすべて指定してください。');
+            if (($input['interval_minutes'] ?? 120) !== 120) {
+                throw new DomainException('補填の間隔は120分固定です。');
+            }
+            if ($explicitTime && (! isset($input['ends_at'], $input['additional_turns']))) {
+                throw new DomainException('時間加速の終了日時・追加上限を両方指定してください。');
             }
             $end = $explicitTime ? $this->timestamp($input['ends_at']) : $start->addHours($debt * 2);
         } else {
@@ -101,7 +104,7 @@ final readonly class BoostScheduleService
         }
         $windows = [];
         $plan = $kind !== 'turn_acceleration' ? null : ($explicitTime
-            ? AdditionalTurnPlan::create($start, $end, (int) $input['additional_turns'], (int) $input['interval_minutes'])
+            ? AdditionalTurnPlan::create($start, $end, (int) $input['additional_turns'])
             : AdditionalTurnPlan::stored($start, $end, []));
         for ($index = 0; $index < $count; $index++) {
             $days = $frequency === 'weekly' ? $index * 7 : $index;
@@ -119,7 +122,7 @@ final readonly class BoostScheduleService
             'current_turn' => $world->current_turn, 'next_regular_turn_at' => $this->turns->nextRegular($world)?->toIso8601String(),
             'additional_turns' => $plan === null ? null : count($plan->slots), 'interval_minutes' => $plan?->intervalMinutes,
             'effective_additional_turns' => $plan === null ? 0 : min(count($plan->slots), $debt),
-            'grace_seconds' => $plan?->graceSeconds((int) config('hakoniwa.turn_schedule.grace_minutes', 15)),
+            'grace_seconds' => $plan?->graceSeconds(),
             'duration_hours' => ($end->timestamp - $start->timestamp) / 3600];
         $claims = ['actor_id' => $actor->id, 'world_id' => $world->id, 'expires_at' => $now->addMinutes(15)->timestamp,
             'request_id' => (string) Str::uuid(), 'payload' => $payload];
@@ -185,6 +188,10 @@ final readonly class BoostScheduleService
                 $payload = $claims['payload'];
                 $world = $world->fresh();
                 try {
+                    if ($payload['kind'] === 'turn_acceleration') {
+                        AdditionalTurnPlan::stored(CarbonImmutable::parse($payload['windows'][0]['starts_at']),
+                            CarbonImmutable::parse($payload['windows'][0]['ends_at']), $payload);
+                    }
                     if ($claims['expires_at'] <= $now->timestamp || $now->isAfter($payload['windows'][0]['starts_at'])) {
                         throw new DomainException('確認期限または開始時刻を過ぎました。再確認してください。');
                     }

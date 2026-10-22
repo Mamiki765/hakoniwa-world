@@ -11,13 +11,13 @@ use Tests\TestCase;
 final class TurnCronNoOpTest extends TestCase
 {
     #[DataProvider('emptyPolls')]
-    public function test_real_cron_command_never_attempts_a_write_on_empty_polls(bool $withBoost, string $time): void
+    public function test_separate_automatic_commands_never_attempt_a_write_without_their_own_eligible_slot(bool $withBoost, string $time, bool $compensation): void
     {
         CarbonImmutable::setTestNow($time);
         try {
             $db = NoOpTurnDatabase::install($this->app, $withBoost);
-            $this->assertSame(0, Artisan::call('hakoniwa:turn:run', ['--source' => 'cron']));
-            $this->assertStringContainsString('No eligible turn slot', Artisan::output());
+            $this->assertSame(0, Artisan::call($compensation ? 'hakoniwa:turn:compensate' : 'hakoniwa:turn:run', $compensation ? [] : ['--source' => 'cron']));
+            $this->assertStringContainsString($compensation ? 'No eligible compensation slot' : 'No eligible turn slot', Artisan::output());
             $this->assertNotEmpty($db->selects, 'The fixture rejects all unknown SQL and any attempt to open a PDO.');
         } finally {
             CarbonImmutable::setTestNow();
@@ -26,7 +26,10 @@ final class TurnCronNoOpTest extends TestCase
 
     public static function emptyPolls(): array
     {
-        return ['odd hour without a boost' => [false, '2026-11-01T19:00:00+09:00'],
-            'between planned slots after grace' => [true, '2026-11-01T19:16:00+09:00']];
+        return ['regular ignores active odd-hour compensation' => [true, '2026-11-01T19:00:00+09:00', false],
+            'compensation without a reservation' => [false, '2026-11-01T19:00:00+09:00', true],
+            'compensation refuses even-hour slots' => [true, '2026-11-01T20:00:00+09:00', true],
+            'compensation refuses minutes after zero' => [true, '2026-11-01T19:01:00+09:00', true],
+            'compensation refuses advance when there is no debt' => [true, '2026-11-01T17:00:00+09:00', true]];
     }
 }

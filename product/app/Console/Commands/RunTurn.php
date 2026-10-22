@@ -21,6 +21,11 @@ final class RunTurn extends Command
     {
         $worldKey = (string) $this->option('world');
         $source = (string) $this->option('source');
+        if (! in_array($source, ['manual', 'cron'], true)) {
+            $this->error('Use manual or cron. Disaster compensation uses hakoniwa:turn:compensate.');
+
+            return self::FAILURE;
+        }
         $world = World::query()->where('key', $worldKey)->first();
         if ($world === null) {
             $this->error("World [{$worldKey}] was not found.");

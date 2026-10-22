@@ -8,15 +8,15 @@ const response = (data: unknown) => new Response(JSON.stringify({ data }), { sta
 const overview = { current_turn: 11, uncompensated_turns: 10, occurrences: [] };
 const timePreview = {
     token: 'fixed-time-preview', kind: 'turn_acceleration', title: '停止分のターン補填', repeat: 'none', repeat_count: 1,
-    uncompensated_turns: 10, duration_hours: 5, additional_turns: 7, interval_minutes: 30, effective_additional_turns: 7,
-    windows: [{ starts_at: '2026-11-01T09:00:00+00:00', ends_at: '2026-11-01T14:00:00+00:00', additional_slots: 7,
-        additional_scheduled_ats: ['2026-11-01T09:30:00Z', '2026-11-01T10:00:00Z', '2026-11-01T10:30:00Z',
-            '2026-11-01T11:30:00Z', '2026-11-01T12:00:00Z', '2026-11-01T12:30:00Z', '2026-11-01T13:30:00Z'] }],
+    uncompensated_turns: 10, duration_hours: 14, additional_turns: 7, interval_minutes: 120, effective_additional_turns: 7,
+    windows: [{ starts_at: '2026-11-01T00:00:00+00:00', ends_at: '2026-11-01T14:00:00+00:00', additional_slots: 7,
+        additional_scheduled_ats: ['2026-11-01T00:00:00Z', '2026-11-01T02:00:00Z', '2026-11-01T04:00:00Z',
+            '2026-11-01T06:00:00Z', '2026-11-01T08:00:00Z', '2026-11-01T10:00:00Z', '2026-11-01T12:00:00Z'] }],
 };
 const button = (wrapper: VueWrapper, name: string) => wrapper.findAll('button').find((candidate) => candidate.text() === name)!;
 const field = (wrapper: VueWrapper, name: string) => wrapper.findAll('label').find((candidate) => candidate.text().startsWith(name))!.get('input, select');
 
-it('fills delay assistance, allows a bounded seven-slot evening schedule, and reserves only the confirmed preview', async () => {
+it('fills delay assistance, previews seven fixed odd-hour slots, and reserves only the confirmed preview', async () => {
     const requests: Array<{ path: string; body: unknown }> = [];
     vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
         const path = String(input);
@@ -36,28 +36,27 @@ it('fills delay assistance, allows a bounded seven-slot evening schedule, and re
     expect(field(wrapper, '開始日時').element).toHaveProperty('value', '2026-11-01T11:00');
     expect(field(wrapper, '終了日時').element).toHaveProperty('value', '2026-11-02T07:00');
     expect(field(wrapper, '追加回数の上限').element).toHaveProperty('value', '10');
-    expect(field(wrapper, '追加間隔').element).toHaveProperty('value', '120');
+    expect(wrapper.findAll('label').some((label) => label.text().startsWith('追加間隔'))).toBe(false);
     expect(requests).toEqual([]);
-    await field(wrapper, '開始日時').setValue('2026-11-01T18:00');
+    await field(wrapper, '開始日時').setValue('2026-11-01T09:00');
     await field(wrapper, '終了日時').setValue('2026-11-01T23:00');
     await field(wrapper, '追加回数の上限').setValue(7);
-    await field(wrapper, '追加間隔').setValue(30);
     await wrapper.get('form').trigger('submit');
     await flushPromises();
     expect(requests).toEqual([{ path: '/api/v1/admin/worlds/7/boosts/preview', body: {
-        kind: 'turn_acceleration', title: timePreview.title, starts_at: '2026-11-01T18:00:00+09:00',
-        ends_at: '2026-11-01T23:00:00+09:00', additional_turns: 7, interval_minutes: 30,
+        kind: 'turn_acceleration', title: timePreview.title, starts_at: '2026-11-01T09:00:00+09:00',
+        ends_at: '2026-11-01T23:00:00+09:00', additional_turns: 7,
     } }]);
     const confirmation = wrapper.get('[aria-label="ブースト予約の確認"]');
-    expect(confirmation.text()).toContain('5時間');
+    expect(confirmation.text()).toContain('14時間');
     expect(confirmation.text()).toContain('追加上限 7回');
-    expect(confirmation.text()).toContain('追加間隔 30分');
+    expect(confirmation.text()).toContain(`追加間隔 ${timePreview.interval_minutes}分`);
     expect(confirmation.text()).toContain('確認時点の実行上限 7回');
     expect(confirmation.get('tbody').text()).toContain('2026/11/1 23:00:00');
     const planned = confirmation.get('[aria-label="追加予定時刻"]').findAll('time');
     expect(planned.map((slot) => slot.attributes('datetime'))).toEqual(timePreview.windows[0]!.additional_scheduled_ats);
-    expect(planned.at(0)!.text()).toBe('2026/11/1 18:30:00');
-    expect(planned.at(-1)!.text()).toBe('2026/11/1 22:30:00');
+    expect(planned.at(0)!.text()).toBe('2026/11/1 9:00:00');
+    expect(planned.at(-1)!.text()).toBe('2026/11/1 21:00:00');
     await button(wrapper, 'この内容で予約する').trigger('click');
     await flushPromises();
     expect(requests[1]).toEqual({ path: '/api/v1/admin/worlds/7/boosts/reserve', body: { token: timePreview.token } });
@@ -81,7 +80,6 @@ it('keeps the editable schedule and does not reserve when the server rejects ins
     await field(wrapper, '開始日時').setValue('2026-11-01T18:00');
     await field(wrapper, '終了日時').setValue('2026-11-01T20:00');
     await field(wrapper, '追加回数の上限').setValue(7);
-    await field(wrapper, '追加間隔').setValue(30);
     await wrapper.get('form').trigger('submit');
     await flushPromises();
     expect(posted).toEqual(['/api/v1/admin/worlds/7/boosts/preview']);

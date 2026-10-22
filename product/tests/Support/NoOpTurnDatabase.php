@@ -55,12 +55,12 @@ final class NoOpTurnDatabase extends Connection
                 return [];
             }
             $start = CarbonImmutable::parse('2026-11-01T19:00:00+09:00');
-            $end = $start->addHour();
-            $plan = AdditionalTurnPlan::create($start, $end, 2, 30);
+            $end = $start->addHours(2);
+            $plan = AdditionalTurnPlan::create($start, $end, 1);
 
             return [(object) ['id' => 1, 'world_id' => 1, 'boost_series_id' => 1, 'kind' => 'turn_acceleration', 'occurrence_number' => 1,
                 'starts_at' => $start->toIso8601String(), 'ends_at' => $end->toIso8601String(),
-                'series_schedule' => json_encode(['interval_minutes' => 30, 'windows' => [['additional_scheduled_ats' => $plan->timestamps()]]], JSON_THROW_ON_ERROR)]];
+                'series_schedule' => json_encode(['interval_minutes' => 120, 'windows' => [['additional_scheduled_ats' => $plan->timestamps()]]], JSON_THROW_ON_ERROR)]];
         }
         throw new RuntimeException('Unexpected no-op probe query: '.$query);
     }
