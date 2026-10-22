@@ -4,7 +4,7 @@
 
 ## 差分の所属
 
-#332の最新確認HEADは `de775082e63d2c8d79c8071f9ca1a6376c310102`。Gitオブジェクトの実コードをUTF-8で読み、`App.vue`、`AppBoosts.shared.test.ts`、`boosts.ts`、`boosts.shared.test.ts`、`BoostBanner.vue`、CSS2件の計7ファイルを確認した。管理室の入力・プレビュー・確認予約・取消は存在しない。
+#332の最新確認HEADは `5ac2b6bfbf4c64ba9b247c98173d61c9bb0ddedb`。Gitオブジェクトの実コードをUTF-8で読み、`App.vue`、`AppBoosts.shared.test.ts`、`boosts.ts`、`boosts.shared.test.ts`、`BoostBanner.vue`、CSS2件の計7ファイルを確認した。管理室の入力・プレビュー・確認予約・取消は存在しない。
 
 #334の `AdminTurnControl.vue` から `AdminBoostSchedules.vue` を開く。TOP／管理室の既存Turn操作の横に「遅延ターン分」「ブースト予約」を置き、同じフォームで時間加速と狩場を扱う。時間加速はJSTの開始・終了、追加上限1〜500回を入力し、間隔の入力は置かない。追加は奇数時00分、追加だけで120分、通常の偶数時00分と合わせ追加枠のある間は1時間ごとの予定になる。通常12ターン=箱庭歴1年=実時間1日を維持し、時間加速は大規模障害補填の例外と説明する。狩場は開始・終了、毎日／毎週の有限繰り返しと回数を入力できる。確認画面は全開催回、実効追加上限、実際の追加時刻全件をJST表示し、確認後に予約する。開催一覧から1回だけ／以後の同系列の取消を行う。#332の帯・App.vue・CSSを#334で上書きしない。
 
@@ -16,9 +16,9 @@ HTTP maintenanceで追加更新を止めるのは補填sourceだけ。通常cron
 
 ## 最新#332との契約照合
 
-固定HEAD `de775082e63d2c8d79c8071f9ca1a6376c310102` の `App.vue` は、開催中を「停止補填中：追加ターンあり（未補填分のみ）」と表示する。TOPの汎用表現は最新の固定奇数時仕様にも適合し、この表示残件は解消済み。次回時刻は既存の `worldSummary.next_scheduled_turn_at` を使い、`turn_interval_minutes` から計算しない。`AppBoosts.shared.test.ts` の期待値も汎用表現に追随している。新しい専用commandを含む最終統合結果はPR本文で追跡する。
+固定HEAD `5ac2b6bfbf4c64ba9b247c98173d61c9bb0ddedb` の `App.vue` は、開催中を「停止補填中：追加ターンあり（未補填分のみ）」と表示する。TOPの汎用表現は最新の固定奇数時仕様にも適合し、この表示残件は解消済み。次回時刻は既存の `worldSummary.next_scheduled_turn_at` を使い、`turn_interval_minutes` から計算しない。`AppBoosts.shared.test.ts` の期待値も汎用表現に追随している。新しい専用commandを含む最終統合結果はPR本文で追跡する。
 
-`boosts.ts` の `turn_interval_minutes` 型コメントはまだ「奇数時を追加できる期間の名目的な間隔（60）」となっている。最新契約は追加だけの間隔120分固定で、通常枠との合計は追加枠がある間に1時間ごとの予定となる。成功を保証せず、次回時刻の計算にも使わない。コメントを更新し、`effects` には `additional_turn_interval_minutes`, `additional_turn_limit`, `additional_turn_scheduled_ats` の明示型を加えるのが残る追随点。`compensation_only` は既に型定義・表示分岐へ追加済み。旧 `additional_turn_hours_jst` はサーバーから返さない。#332のindex signatureは新しいeffects値を許容するが、型コメントの訂正を実行時の検証完了とは扱わない。
+`boosts.ts` の `turn_interval_minutes` 型コメントも追加だけの間隔120分固定へ更新された。通常枠との合計は追加枠がある間に1時間ごとの予定となるが、成功を保証せず、次回時刻の計算にも使わない。直前の `de775082` との差分はこのコメント1行のみ。`effects` の `additional_turn_interval_minutes`, `additional_turn_limit`, `additional_turn_scheduled_ats` は既存のindex signatureで受け取れ、公開帯はサーバーのdescriptionを使うため、個別の明示型追加は動作の前提ではない。`compensation_only` は既に型定義・表示分岐へ追加済み。旧 `additional_turn_hours_jst` はサーバーから返さない。コメントの訂正だけを実行時の検証完了とは扱わず、最新HEAD同士の統合結果をPR本文へ記録する。
 
 `BoostBanner.vue` はAPIの `description` を優先し、障害補填・奇数時00分・上限・未補填条件をサーバーの予定から表示できる。狩場descriptionはG・鍵の個数が増えないことを明示する。公開APIは各種別の開催中または次回を1件返し、`meta.server_now` で端末時計差を補正する。#332は5分ごとに再取得するため、管理室取消から表示への反映は最大約5分遅れることがある。表示の遅れは効果の適用可否に使わず、サーバー受付時の判定を正本にする。タイトルとdescriptionはplain textで表示する。
 
