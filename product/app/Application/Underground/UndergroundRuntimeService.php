@@ -249,6 +249,7 @@ STORY;
          * transaction also freezes the source data used by the battle and
          * releases all source locks before combat starts.
          */
+        $boost = $guideDuel || $otherworld ? new HuntingGroundBoost : HuntingGroundBoost::capture($huntingGround);
         $attempt = 0;
         do {
             /** @var array{secretary_id:int, profile_id:int, combat_level:int, equipment_item_levels:array<string,int>}|null $leaderSyncInputs */
@@ -278,6 +279,7 @@ STORY;
                     $preparedBorrowed,
                     $guideDuel,
                     $otherworld,
+                    $boost,
                 ): array {
                     $profile = $this->lockedProfileForUser($user);
                     $this->assertExplorationUnlocked($profile);
@@ -348,6 +350,7 @@ STORY;
                         $huntingGroundKey,
                         1 + count($borrowedSecretaryIds),
                         $random,
+                        $boost,
                     );
                     $encounterKey = $encounterKeys[0];
                     if ($huntingGround['kind'] === 'vault' && count($encounterKeys) > 1) {
@@ -367,6 +370,7 @@ STORY;
                                 $encounterKey,
                                 $seed,
                                 $keyBalanceBefore,
+                                $boost,
                             )
                             : $this->resolveAndSettlePartyExplorationBattle(
                                 $profile,
@@ -378,6 +382,7 @@ STORY;
                                 $seed,
                                 $keyBalanceBefore,
                                 $preparedBorrowed,
+                                $boost,
                             );
 
                     return [
@@ -413,6 +418,8 @@ STORY;
             'content_identity' => $huntingGround['content_identity'],
         ]);
 
+        $boost = HuntingGroundBoost::capture($huntingGround);
+
         return DB::transaction(function () use (
             $user,
             $requestId,
@@ -420,6 +427,7 @@ STORY;
             $huntingGround,
             $policy,
             $fingerprint,
+            $boost,
         ): array {
             $profile = $this->lockedProfileForUser($user);
             $this->assertExplorationUnlocked($profile);
@@ -454,9 +462,10 @@ STORY;
                 $policy['identity'].':'.$huntingGround['content_identity'],
             );
             $random = new UndergroundRandom($seed);
-            $encounterKey = $this->drawExplorationEncounterKeys($huntingGroundKey, 1, $random)[0];
+            $encounterKey = $this->drawExplorationEncounterKeys($huntingGroundKey, 1, $random, $boost)[0];
             $encounter = $this->alphaV1Catalog->explorationEncounter($encounterKey, $huntingGroundKey);
-            $victoryReward = $this->explorationVictoryReward($huntingGround, $encounterKey, $encounter, $seed, true);
+            $encounter['xp'] *= $boost->multiplier();
+            $victoryReward = $this->explorationVictoryReward($huntingGround, $encounterKey, $encounter, $seed, true, boost: $boost);
             $reward = $this->applyRepeatableReward($profile, $encounter['xp'], $victoryReward['shards']);
             $this->awardExplorationKeys($profile, $huntingGround, $victoryReward['keys']);
             $profile->distorted_stone_balance += $victoryReward['distorted_stones'];
@@ -482,6 +491,7 @@ STORY;
                 'shard_balance_after' => $reward['shard_balance_after'],
                 'private_seed' => $seed,
                 'reward_snapshot' => [
+                    'boost' => $boost->snapshot(),
                     'encounters' => [[
                         'index' => 1,
                         'key' => $encounterKey,
@@ -687,6 +697,8 @@ STORY;
             'execution_count' => $executionCount,
         ]);
 
+        $boost = HuntingGroundBoost::capture($huntingGround);
+
         return DB::transaction(function () use (
             $user,
             $requestId,
@@ -695,6 +707,7 @@ STORY;
             $policy,
             $executionCount,
             $fingerprint,
+            $boost,
         ): array {
             $profile = $this->lockedProfileForUser($user);
             $this->assertExplorationUnlocked($profile);
@@ -742,9 +755,10 @@ STORY;
                     $policy['identity'].':'.$huntingGround['content_identity'].':bulk-execution:'.$execution,
                 );
                 $random = new UndergroundRandom($seed);
-                $encounterKey = $this->drawExplorationEncounterKeys($huntingGroundKey, 1, $random)[0];
+                $encounterKey = $this->drawExplorationEncounterKeys($huntingGroundKey, 1, $random, $boost)[0];
                 $encounter = $this->alphaV1Catalog->explorationEncounter($encounterKey, $huntingGroundKey);
-                $victoryReward = $this->explorationVictoryReward($huntingGround, $encounterKey, $encounter, $seed, true);
+                $encounter['xp'] *= $boost->multiplier();
+                $victoryReward = $this->explorationVictoryReward($huntingGround, $encounterKey, $encounter, $seed, true, boost: $boost);
                 $reward = $this->applyRepeatableReward($profile, $encounter['xp'], $victoryReward['shards']);
                 $this->awardExplorationKeys($profile, $huntingGround, $victoryReward['keys']);
                 $profile->distorted_stone_balance += $victoryReward['distorted_stones'];
@@ -816,6 +830,7 @@ STORY;
                 }
             }
             $batch->reward_snapshot = [
+                'boost' => $boost->snapshot(),
                 'encounters' => $encounterSnapshots,
                 'encounter_counts' => $encounterCounts,
                 'stp_awarded' => $stpAwarded,
@@ -1871,6 +1886,7 @@ STORY;
         string $encounterKey,
         int $seed,
         int $keyBalanceBefore,
+        HuntingGroundBoost $boost,
     ): UndergroundBattle {
         $huntingGround = $this->alphaV1Catalog->explorationHuntingGround($huntingGroundKey);
         $encounter = $this->alphaV1Catalog->explorationEncounter($encounterKey, $huntingGroundKey);
@@ -1946,6 +1962,7 @@ STORY;
             $encounter,
             $seed,
             $resultType === UndergroundBattle::RESULT_VICTORY,
+            boost: $boost,
         );
         ['xp_awarded' => $xpAwarded, 'shard_delta' => $shardDelta] = $this->battleRewardAmounts(
             $resultType,
@@ -1953,6 +1970,7 @@ STORY;
             $victoryReward['shards'],
             $profile->shard_balance,
         );
+        $xpAwarded *= $boost->multiplier();
         $rewardSettlement = $this->applyRepeatableReward($profile, $xpAwarded, $shardDelta);
         $this->awardExplorationKeys($profile, $huntingGround, $victoryReward['keys']);
         $profile->distorted_stone_balance += $victoryReward['distorted_stones'];
@@ -2009,6 +2027,7 @@ STORY;
             'shard_balance_after' => $profile->shard_balance,
             'private_seed' => $seed,
             'snapshot' => $this->battleStorage->compactSnapshot([
+                'boost' => $boost->snapshot(),
                 'exploration_identity' => $this->alphaV1Catalog->explorationIdentity(),
                 'hunting_ground' => [
                     'key' => $huntingGround['key'],
@@ -2417,6 +2436,7 @@ STORY;
         int $seed,
         int $keyBalanceBefore,
         array $borrowed,
+        HuntingGroundBoost $boost,
     ): UndergroundBattle {
         $huntingGround = $this->alphaV1Catalog->explorationHuntingGround($huntingGroundKey);
         $encounter = $this->alphaV1Catalog->explorationEncounter($encounterKey, $huntingGroundKey);
@@ -2514,6 +2534,7 @@ STORY;
             $seed,
             $resultType === UndergroundBattle::RESULT_VICTORY,
             $baseShardReward,
+            $boost,
         );
         ['xp_awarded' => $xpAwarded, 'shard_delta' => $shardDelta] = $this->battleRewardAmounts(
             $resultType,
@@ -2522,6 +2543,7 @@ STORY;
             $profile->shard_balance,
             grantWithdrawalXp: ! $otherworld,
         );
+        $xpAwarded *= $boost->multiplier();
         $rewardSettlement = $this->applyRepeatableReward($profile, $xpAwarded, $shardDelta);
         $this->awardExplorationKeys($profile, $huntingGround, $victoryReward['keys']);
         $profile->distorted_stone_balance += $victoryReward['distorted_stones'];
@@ -2591,6 +2613,7 @@ STORY;
             'shard_balance_after' => $profile->shard_balance,
             'private_seed' => $seed,
             'snapshot' => $this->battleStorage->compactSnapshot([
+                'boost' => $boost->snapshot(),
                 'exploration_identity' => $this->alphaV1Catalog->explorationIdentity(),
                 'hunting_ground' => [
                     'key' => $huntingGround['key'],
@@ -3659,18 +3682,20 @@ STORY;
         string $huntingGroundKey,
         int $partySize,
         UndergroundRandom $random,
+        ?HuntingGroundBoost $boost = null,
     ): array {
+        $boost ??= new HuntingGroundBoost;
         $ground = $this->alphaV1Catalog->explorationHuntingGround($huntingGroundKey);
         $enemyCount = $this->alphaV1Catalog->explorationEnemyCountForPartySize($huntingGroundKey, $partySize);
         $rare = $ground['rare_encounter'] ?? null;
         if (is_array($rare)
-            && $random->integer('runtime:rare-encounter:'.$huntingGroundKey, 1, 10_000) <= $rare['chance_bps']) {
+            && $random->integer('runtime:rare-encounter:'.$huntingGroundKey, 1, 10_000) <= $boost->chance($rare['chance_bps'])) {
             return array_fill(0, $enemyCount, $rare['key']);
         }
-        $first = $this->alphaV1Catalog->weightedExplorationEncounter(
-            $random->integer('runtime:encounter:'.$huntingGroundKey, 1, 10_000),
-            $huntingGroundKey,
-        );
+        $roll = $random->integer('runtime:encounter:'.$huntingGroundKey, 1, 10_000);
+        $first = $rare === null && $boost->multiplier() > 1
+            ? $this->boostedWeightedEncounter($huntingGroundKey, $roll, $boost)
+            : $this->alphaV1Catalog->weightedExplorationEncounter($roll, $huntingGroundKey);
         $firstEncounter = $this->alphaV1Catalog->explorationEncounter($first, $huntingGroundKey);
         if ($rare === null && $firstEncounter['drop_profile'] === 'rare') {
             return array_fill(0, $enemyCount, $first);
@@ -3699,9 +3724,22 @@ STORY;
         return $keys;
     }
 
-    /**
-     * @param  list<array{key:string,weight:int}>  $encounters
-     */
+    private function boostedWeightedEncounter(string $groundKey, int $roll, HuntingGroundBoost $boost): string
+    {
+        $all = $this->alphaV1Catalog->explorationEncounters($groundKey);
+        $rare = array_values(array_filter($all, static fn (array $entry): bool => $entry['drop_profile'] === 'rare'));
+        $normal = array_values(array_filter($all, static fn (array $entry): bool => $entry['drop_profile'] !== 'rare'));
+        $weight = array_sum(array_column($rare, 'weight'));
+        $chance = $boost->chance($weight);
+        if ($roll <= $chance && $weight > 0) {
+            return $this->weightedEncounterKey($rare, (int) ceil($roll * $weight / $chance));
+        }
+        $normalWeight = array_sum(array_column($normal, 'weight'));
+
+        return $this->weightedEncounterKey($normal, (int) ceil(($roll - $chance) * $normalWeight / (10_000 - $chance)));
+    }
+
+    /** @param list<array{key:string,weight:int}> $encounters */
     private function weightedEncounterKey(array $encounters, int $roll): string
     {
         $upper = 0;
@@ -3824,7 +3862,9 @@ STORY;
         int $seed,
         bool $victory,
         ?int $baseGOverride = null,
+        ?HuntingGroundBoost $boost = null,
     ): array {
+        $boost ??= new HuntingGroundBoost;
         if (! $victory) {
             return ['shards' => 0, 'keys' => 0, 'distorted_stones' => 0, 'treasure' => ['found' => false, 'base_g' => 0, 'multiplier' => 1, 'total_g' => 0]];
         }
@@ -3843,9 +3883,9 @@ STORY;
         $keyReward = $huntingGround['key_reward'] ?? null;
         if (is_array($keyReward)) {
             $rare = $huntingGround['rare_encounter'] ?? null;
-            $keys = is_array($rare) && ($rare['key'] ?? null) === $encounterKey
+            $keys = (is_array($rare) && ($rare['key'] ?? null) === $encounterKey) || $encounter['drop_profile'] === 'rare'
                 ? (int) $keyReward['rare_quantity']
-                : ($random->integer('reward:shining-kingdom-key', 1, 10_000) <= $keyReward['normal_chance_bps'] ? 1 : 0);
+                : ($random->integer('reward:shining-kingdom-key', 1, 10_000) <= $boost->chance($keyReward['normal_chance_bps']) ? 1 : 0);
         }
         $totalG = $baseG * $multiplier;
         $rare = $huntingGround['rare_encounter'] ?? null;

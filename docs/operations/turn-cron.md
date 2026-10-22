@@ -45,6 +45,25 @@ The public turn health contract uses the same `Asia/Tokyo` even-hour schedule an
 
 The log destination is owned by the host operator. Laravel also emits command failures through its configured application log. Do not log environment dumps, database URLs, or credentials.
 
+## Optional disaster compensation: a separate odd-hour command (5.8.0)
+
+The normal command, wrapper and even-hour registration above remain in place. Regular turns do not depend on a compensation reservation, its dates, remaining debt, or compensation status. Existing locks, unique slots and failure safety still apply. Normal operation is twelve turns per day: one Hakoniwa year per real day. Acceleration is an exceptional response to a major outage.
+
+A delayed normal invocation is not rejected by compensation's time limit. It uses the most recent even-hour slot only as an idempotency identity. As in 5.7.0, HTTP maintenance mode alone does not stop the normal or explicit manual CLI. Stopping normal turns requires the existing separate operator procedure. The explicit manual CLI remains available without unpaid debt; the admin room retains its overdue-target check and duplicate-request protection.
+
+Only the additional compensation job uses this separate command:
+
+```cron
+CRON_TZ=Asia/Tokyo
+0 1-23/2 * * * /usr/bin/flock -n /run/lock/hakoniwa-shared-world-turn.lock /usr/bin/env HAKONIWA_PROJECT_DIR=/opt/hakoniwa-world HAKONIWA_WORLD_KEY=shared-world /opt/hakoniwa-world/product/docker/cron/run-compensation-turn.sh >> /var/log/hakoniwa-compensation-turn.log 2>&1
+```
+
+The new wrapper invokes `php artisan hakoniwa:turn:compensate --world=shared-world`; it never invokes a regular turn. It runs at most once per odd JST hour (twelve invocations per day), and only a reserved odd-hour slot within its 00 minute and with unpaid debt can execute. An ineligible invocation exits successfully without changing game state, TurnRun, execution slots or the compensation cursor. No minute polling, resident worker, arbitrary interval, retrospective execution or automatic failure retry is introduced.
+
+The compensation entry is additional to the existing even-hour entry, not a replacement. Both use the same authoritative World advisory lock and unique world/time slots; host flock is auxiliary. During an approved compensation window their distinct two-hour schedules together provide at most one scheduled update per hour. Additional counts are caps, not guarantees during maintenance, failures or missed triggers. See [compensation operations](../../product/docs/operations/turn-scheduler-worker.md) for reservation limits and deferred operational decisions.
+
+These entries are documentation only. This task does not register cron, run a real event, apply a production migration or resume public access.
+
 ## Daily Underground battle-log prune
 
 Undergroundの1時間retentionを越えた詳細battle action logは、Turnと同じ既存OCI host cron thin-trigger patternから1日1回cleanupする。期限判定はapplicationが個別詳細を返す時にも適用するため、物理削除前でも1時間を越えたdetailは公開しない。この変更でproduction cron登録を追加・変更せず、Laravel schedulerやcron daemonもapplication containerへ追加しない。checked-in wrapperは既存`hakoniwa-web` container内の`underground:prune-battle-logs`を実行する。

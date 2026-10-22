@@ -42,7 +42,8 @@ final class InitializeTurnSchedule extends Command
                     if ($locked->turn_schedule_origin_at !== null && ! $locked->turn_schedule_origin_at->equalTo($origin)) {
                         throw new DomainException('The calendar is already initialized; this command cannot overwrite it.');
                     }
-                    $locked->update(['turn_schedule_origin_at' => $origin->utc()]);
+                    $locked->update(['turn_schedule_origin_at' => $origin->utc(),
+                        'next_regular_turn_at' => $locked->next_regular_turn_at ?? $origin->addHours($locked->current_turn * 2)->utc()]);
                 });
             } finally {
                 $lock->release($world);
