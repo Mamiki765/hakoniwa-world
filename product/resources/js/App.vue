@@ -340,13 +340,6 @@ const worldMonsters = computed(() => worldSummary.value?.monster_counts ?? null)
 const boostWorldId = computed(() => worlds.value[0]?.id ?? null);
 const { boosts } = useBoosts(boostWorldId, clockNow);
 const activeTurnAcceleration = computed(() => boosts.value.find((boost) => boost.kind === 'turn_acceleration' && boost.phase === 'active') ?? null);
-// TOPは全部、島は時間加速、地底は狩場ブーストだけを出す。
-const pageBoosts = computed(() => {
-    if (page.value === 'island') return boosts.value.filter((boost) => boost.kind === 'turn_acceleration');
-    if (page.value === 'underground') return boosts.value.filter((boost) => boost.kind === 'hunting_ground');
-
-    return [];
-});
 
 const nextTurnCountdown = computed(() => {
     if (worldSummary.value?.turn_status !== 'normal') return null;
@@ -1826,7 +1819,6 @@ async function abandonNation(): Promise<void> {
     <main :class="{ 'ledger-main': page === 'island' || page === 'preview' }">
         <p v-if="busy" class="status" role="status">読み込み中…</p>
         <p v-if="message" class="status error" role="alert">{{ message }}</p>
-        <BoostBanner v-if="pageBoosts.length" class="boost-slot" :boosts="pageBoosts" compact />
 
         <AdminTurnControl
             v-if="user?.can_manage_inquiries && worlds[0]"
