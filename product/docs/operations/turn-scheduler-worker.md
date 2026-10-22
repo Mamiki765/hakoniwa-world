@@ -18,6 +18,8 @@ CRON_TZ=Asia/Tokyo
 
 補填の受付は予約時刻の00分内（起動秒のずれ59秒まで）だけ。01分以降、偶数時、未予約、期間外、上限後、未補填ゼロならexit 0と `No eligible compensation slot. No game state changed.` で終了する。TurnRun、実行枠、World、補填カーソルのINSERT/UPDATEを行わない。必要な読取りやWorld lockの取得/解放、ホストログへの出力は発生し得る。通常側の空振りは `No eligible turn slot. No game state changed.` を返す。障害や未解決TurnRunは空振り成功と分けて扱う。
 
+遅れた補填呼出しも上の共通メッセージを標準出力へ1行出すだけで、遅延秒数・予定時刻・空振り理由を区別した永続ログは追加しない。上のcron例ならstdout/stderrが `hakoniwa-compensation-turn.log` へ追記されるが、command自身は時刻prefixを付けない。成功時は `run=... world=... target_turn=... status=...`、例外時はエラー内容と非ゼロ終了となる。ローカルで本番ログやcron登録は確認・変更していない。失効した枠を15分まで受け付ける変更や、取りこぼしを次回へ持ち越す変更は未採用である。
+
 どちらのcommandもWorld lockと `(world_id, scheduled_at)` 一意制約を共用し、手動更新との二重決算も防ぐ。`flock` は同一ホストの重複起動を省く補助である。1回の呼出しは最大1ターンだけ実行し、shellにretry loopや過去枠のcatch-upを置かない。
 
 ## 予約枠と境界

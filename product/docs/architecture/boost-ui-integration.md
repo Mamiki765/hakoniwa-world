@@ -1,6 +1,6 @@
 # 5.8.0 ブースト画面連携の引継ぎ
 
-サーバー・管理室は [#334](https://github.com/Mamiki765/hakoniwa-world/pull/334)、公開の予告・開催帯はラピスの [#332](https://github.com/Mamiki765/hakoniwa-world/pull/332)。どちらもmain向けの別Draft PRで、マージ・本番反映はしていない。APIの正本は[予約契約](boost-scheduling-api.md)。
+サーバー・管理室は [#334](https://github.com/Mamiki765/hakoniwa-world/pull/334)、公開の予告・開催帯はラピスの [#332](https://github.com/Mamiki765/hakoniwa-world/pull/332)を取り込み元とする。Ownerの追加指示により、固定HEAD同士を `release/5.8.0` へ統合し、main向けリリースPRを入口1本にする。mainへのマージ・本番反映はしていない。APIの正本は[予約契約](boost-scheduling-api.md)。
 
 ## 差分の所属
 
@@ -22,7 +22,7 @@ HTTP maintenanceで追加更新を止めるのは補填sourceだけ。通常cron
 
 `BoostBanner.vue` はAPIの `description` を優先し、障害補填・奇数時00分・上限・未補填条件をサーバーの予定から表示できる。狩場descriptionはG・鍵の個数が増えないことを明示する。公開APIは各種別の開催中または次回を1件返し、`meta.server_now` で端末時計差を補正する。#332は5分ごとに再取得するため、管理室取消から表示への反映は最大約5分遅れることがある。表示の遅れは効果の適用可否に使わず、サーバー受付時の判定を正本にする。タイトルとdescriptionはplain textで表示する。
 
-公開帯の型・コメントの追随はラピスの#332側、追加予約・管理室・サーバー契約は#334側とする。#334から相手branchを書き換えない。公開帯を含む機能には両PRが必要で、両方ともmain向けの別PRのまま検証し、マージしない。
+公開帯の型・コメントの追随はラピスの#332側、追加予約・管理室・サーバー契約は#334側とする。取り込み元branchを書き換えず、両固定HEADをrelease内へmergeする。公開帯を含む機能には両方の変更が必要で、最終統合CIとレビューはmain向けリリースPRで確認する。
 
 ## 隔離した統合検証
 
