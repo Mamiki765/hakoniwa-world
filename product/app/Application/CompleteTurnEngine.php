@@ -90,6 +90,7 @@ final class CompleteTurnEngine
         private readonly SeaAreaWeatherService $weather,
         private readonly WorldMonsterCountSnapshot $monsterCounts,
         private readonly EcopoService $ecopo,
+        private readonly DeferredMapCellWriter $deferredCells,
     ) {}
 
     public function execute(string $phase, TurnContext $context): TurnPhaseResult
@@ -527,6 +528,20 @@ final class CompleteTurnEngine
 
     /** @return array<string, int> */
     private function processCells(TurnContext $context): array
+    {
+        $this->deferredCells->begin();
+        try {
+            $metrics = $this->processSurfaceCells($context);
+            $this->deferredCells->flush();
+
+            return $metrics;
+        } finally {
+            $this->deferredCells->end();
+        }
+    }
+
+    /** @return array<string, int> */
+    private function processSurfaceCells(TurnContext $context): array
     {
         $metrics = [
             'processed' => 0, 'forest_growth' => 0, 'settlements_appeared' => 0,
@@ -1543,7 +1558,7 @@ final class CompleteTurnEngine
         $before = $cell->terrain_quantity;
         $cell->terrain_quantity = $after;
         $cell->version++;
-        $this->saveChangedCell($context, $cell);
+        $this->saveGrownCell($context, $cell);
         if ($cell->owner_nation_id !== null) {
             $context->state->addRoutineSummaryMetric((int) $cell->owner_nation_id, 'forest_growth_cells');
             $context->state->addRoutineSummaryMetric(
@@ -1838,7 +1853,7 @@ final class CompleteTurnEngine
             // A stage transition already saved the grown population and both
             // version increments; skip the second UPDATE of the same row.
             if ($transition === 0) {
-                $this->saveChangedCell($context, $cell);
+                $this->saveGrownCell($context, $cell);
             }
             $context->state->addRoutineSummaryMetric((int) $cell->owner_nation_id, 'population_growth_cells');
             $context->state->addRoutineSummaryMetric(
@@ -1929,6 +1944,15 @@ final class CompleteTurnEngine
     private function saveChangedCell(TurnContext $context, MapCell $cell): void
     {
         $cell->save();
+        $context->state->markMapChunkChanged($cell->map_chunk_id);
+    }
+
+    /** Population or forest growth only; batched with the other growth writes of this pass. */
+    private function saveGrownCell(TurnContext $context, MapCell $cell): void
+    {
+        if (! $this->deferredCells->defer($cell)) {
+            $cell->save();
+        }
         $context->state->markMapChunkChanged($cell->map_chunk_id);
     }
 }
