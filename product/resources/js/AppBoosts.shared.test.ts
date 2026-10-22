@@ -41,7 +41,7 @@ describe('boost display on the top page', () => {
         expect(banners[0]!.text()).toContain('停止のお詫び');
         expect(banners[1]!.text()).toContain('Gや鍵の個数は変わりません');
         const turnHeader = wrapper.get('.turn-status-card header').text();
-        expect(turnHeader).toContain('停止補填中：奇数時にも追加（未補填分のみ）');
+        expect(turnHeader).toContain('停止補填中：追加ターンあり（未補填分のみ）');
         expect(turnHeader).not.toContain('60分');
         wrapper.unmount();
     });

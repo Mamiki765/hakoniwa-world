@@ -1869,7 +1869,7 @@ async function abandonNation(): Promise<void> {
             <BoostBanner v-if="boosts.length" class="tp-boost" :boosts="boosts" />
 
             <section class="tp-box tp-turn turn-status-card" :data-status="worldSummary?.turn_status ?? 'normal'" aria-label="ターン更新状況">
-                <header><h2>ターン</h2><small v-if="activeTurnAcceleration" class="turn-boosted">{{ isCompensationOnly(activeTurnAcceleration) ? '停止補填中：奇数時にも追加（未補填分のみ）' : '時間加速中' }}</small><small v-else>2時間ごとに更新</small></header>
+                <header><h2>ターン</h2><small v-if="activeTurnAcceleration" class="turn-boosted">{{ isCompensationOnly(activeTurnAcceleration) ? '停止補填中：追加ターンあり（未補填分のみ）' : '時間加速中' }}</small><small v-else>2時間ごとに更新</small></header>
                 <div class="tp-body">
                     <div class="tp-turn-grid">
                         <div class="now num"><span class="turn-now">{{ worldSummary?.current_turn ?? 1 }}</span><small class="hakoniwa-calendar">{{ worldSummary?.hakoniwa_calendar?.label ?? '箱庭歴 1年1月' }}</small></div>
