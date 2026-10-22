@@ -3,8 +3,6 @@ import { boostKindLabels, formatBoostRemaining, type BoostView } from '../boosts
 
 defineProps<{
     boosts: BoostView[];
-    /** 島・地底など作業画面では高さを抑える。 */
-    compact?: boolean;
 }>();
 
 const icons = { turn_acceleration: '⏩', hunting_ground: '⚔' } as const;
@@ -38,7 +36,7 @@ function period(boost: BoostView): string {
 </script>
 
 <template>
-    <section v-if="boosts.length" class="boost-banners" :class="{ compact }" aria-label="開催中・予告中のブースト">
+    <section v-if="boosts.length" class="boost-banners" aria-label="開催中・予告中のブースト">
         <article
             v-for="boost in boosts"
             :key="`${boost.kind}-${boost.id}`"
@@ -142,18 +140,10 @@ function period(boost: BoostView): string {
 .boost-countdown small { color: var(--muted); font-weight: 700; }
 .boost-countdown strong { font-size: clamp(1.4rem, 4.4vw, 2.1rem); line-height: 1.1; white-space: nowrap; }
 
-.compact .boost-banner { padding: 8px 14px; gap: 2px 12px; border-radius: 8px; }
-.compact .boost-icon { font-size: 1.8rem; }
-.compact .boost-main .boost-title { font-size: clamp(1.1rem, 3.4vw, 1.4rem); }
-.compact .boost-period { display: none; }
-.compact .boost-countdown strong { font-size: clamp(1.15rem, 3.6vw, 1.5rem); }
-
 @media (max-width: 560px) {
     .boost-banner { grid-template-columns: auto minmax(0, 1fr); padding: 12px 14px; }
     .boost-icon { grid-row: span 2; align-self: start; font-size: 2rem; }
     .boost-countdown { grid-column: 2; display: flex; align-items: baseline; justify-content: flex-start; gap: 8px; text-align: left; }
-    .compact .boost-icon { grid-row: auto; font-size: 1.5rem; }
-    .compact .boost-countdown { grid-column: 1 / -1; }
 }
 
 @keyframes boost-pulse {
