@@ -54,18 +54,23 @@ final class TerritoryInfluenceService
             ->where('world_id', $context->world->id)
             ->where('key', 'surface')
             ->firstOrFail();
+        // Resolve ownership on mutable row snapshots. Only changed cells need
+        // Eloquent models for event subjects and treasure collection.
         $cells = MapCell::query()
             ->where('map_space_id', $space->id)
-            ->whereIn('id', $surfaceCellIds)
-            ->with(['terrain', 'facility'])
-            ->orderBy('id')
-            ->lockForUpdate()
+            ->whereIn('map_cells.id', $surfaceCellIds)
+            ->join('terrain_definitions', 'terrain_definitions.id', '=', 'map_cells.terrain_definition_id')
+            ->leftJoin('facility_definitions', 'facility_definitions.id', '=', 'map_cells.facility_definition_id')
+            ->select('map_cells.*', 'terrain_definitions.key as terrain_key', 'facility_definitions.key as facility_key')
+            ->orderBy('map_cells.id')
+            ->lock('for update of map_cells')
+            ->toBase()
             ->get();
         if ($cells->count() !== count($surfaceCellIds)) {
             throw new DomainException('Territory influence surface order references missing cells.');
         }
         $cellsById = $cells->keyBy('id');
-        $cellsByCoordinate = $cells->mapWithKeys(static fn (MapCell $cell): array => [
+        $cellsByCoordinate = $cells->mapWithKeys(static fn (\stdClass $cell): array => [
             $cell->x.':'.$cell->y => $cell,
         ])->all();
 
@@ -99,7 +104,13 @@ final class TerritoryInfluenceService
         if ($landLimit !== null && $landLimit !== 'land_subsidence_safe_land_cells') {
             throw new DomainException('Territory influence has an unsupported acquisition land limit.');
         }
-        $landCellsByNation = $this->landArea->byNation($cells);
+        $landCellsByNation = [];
+        foreach ($cells as $cell) {
+            if ($cell->owner_nation_id !== null && $this->landArea->isLandTerrain($cell->terrain_key)) {
+                $landCellsByNation[$cell->owner_nation_id] = ($landCellsByNation[$cell->owner_nation_id] ?? 0) + 1;
+            }
+        }
+        ksort($landCellsByNation, SORT_NUMERIC);
         $safeLandCellsByNation = $landLimit === null
             ? []
             : $targetNations->mapWithKeys(fn (Nation $nation): array => [
@@ -115,7 +126,7 @@ final class TerritoryInfluenceService
         }
         $capitalFacts = $capitals->map(function (NationCapital $capital) use ($cellsById): array {
             $cell = $cellsById->get($capital->map_cell_id);
-            if (! $cell instanceof MapCell || $cell->x !== $capital->x || $cell->y !== $capital->y) {
+            if (! $cell instanceof \stdClass || $cell->x !== $capital->x || $cell->y !== $capital->y) {
                 throw new DomainException('An active Nation Capital does not match its surface cell.');
             }
 
@@ -157,10 +168,12 @@ final class TerritoryInfluenceService
          * }> $pendingEvents
          */
         $pendingEvents = [];
+        /** @var array<int, MapCell> $changedCellsById */
+        $changedCellsById = [];
 
         foreach ($surfaceCellIds as $cellId) {
             $target = $cellsById->get($cellId);
-            if (! $target instanceof MapCell) {
+            if (! $target instanceof \stdClass) {
                 throw new DomainException("Surface cell order references missing cell {$cellId}.");
             }
             $metrics['processed']++;
@@ -175,8 +188,8 @@ final class TerritoryInfluenceService
             if (! $this->policy->targetEligible(
                 $settings,
                 $targetOwnerNationId,
-                $target->terrain->key,
-                $target->facility?->key,
+                $target->terrain_key,
+                $target->facility_key,
                 isset($occupiedCellIds[$target->id]),
                 $targetCoreProtected,
                 $targetNationIds,
@@ -189,13 +202,13 @@ final class TerritoryInfluenceService
             $metrics['direction_draws']++;
             $coordinate = (new GridCoordinate($target->x, $target->y))->neighbor($direction);
             $source = $cellsByCoordinate[$coordinate->x.':'.$coordinate->y] ?? null;
-            if (! $source instanceof MapCell || $targetOwnerNationId === null
+            if (! $source instanceof \stdClass || $targetOwnerNationId === null
                 || ! $this->policy->sourceEligible(
                     $settings,
                     $source->owner_nation_id,
                     $targetOwnerNationId,
-                    $source->terrain->key,
-                    $source->facility?->key,
+                    $source->terrain_key,
+                    $source->facility_key,
                     isset($occupiedCellIds[$source->id]),
                     $sourceNationIds,
                 )) {
@@ -213,7 +226,7 @@ final class TerritoryInfluenceService
             if ($this->nationProtection->protects($context, $target->x, $target->y)) {
                 continue;
             }
-            $landTransfer = $this->landArea->isLand($target);
+            $landTransfer = $this->landArea->isLandTerrain($target->terrain_key);
             if ($landLimit !== null && $landTransfer
                 && ($landCellsByNation[$newOwnerNationId] ?? 0) >= $safeLandCellsByNation[$newOwnerNationId]) {
                 continue;
@@ -232,9 +245,11 @@ final class TerritoryInfluenceService
                 'version' => (int) $target->version,
             ];
             $context->state->markMapChunkChanged($target->map_chunk_id);
+            $subject = $this->cellModel($target);
+            $changedCellsById[$target->id] = $subject;
             $pendingEvents[] = [
                 'event_type' => 'territory.influenced',
-                'subject' => $target,
+                'subject' => $subject,
                 'metadata' => [
                     'nation_id' => $newOwnerNationId,
                     'x' => $target->x,
@@ -267,7 +282,7 @@ final class TerritoryInfluenceService
             if (! isset($treasureCellIds[$mutation['id']])) {
                 continue;
             }
-            $cell = $cellsById->get($mutation['id']);
+            $cell = $changedCellsById[$mutation['id']] ?? null;
             $nation = $targetNations->firstWhere('id', $mutation['owner_nation_id']);
             if ($cell instanceof MapCell && $nation instanceof Nation) {
                 $this->buriedTreasures->collectAtCell($context, $cell, $nation, 'territory_influence');
@@ -276,6 +291,14 @@ final class TerritoryInfluenceService
         $this->events->recordMany($context, $pendingEvents, self::PERSISTENCE_BATCH_SIZE);
 
         return $metrics;
+    }
+
+    private function cellModel(\stdClass $snapshot): MapCell
+    {
+        $attributes = (array) $snapshot;
+        unset($attributes['terrain_key'], $attributes['facility_key']);
+
+        return (new MapCell)->newFromBuilder($attributes);
     }
 
     /** @param list<array{id: int, owner_nation_id: int, version: int}> $mutations */

@@ -18,6 +18,7 @@ use App\Models\User;
 use Illuminate\Database\Events\QueryExecuted;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Event;
 use Tests\Concerns\UsesIndividualTestWorld;
 use Tests\TestCase;
 
@@ -115,6 +116,10 @@ final class TerritoryInfluencePerformanceTest extends TestCase
         DB::listen(static function (QueryExecuted $query) use (&$queries): void {
             $queries[] = $query->sql;
         });
+        $hydratedCells = 0;
+        Event::listen('eloquent.retrieved: '.MapCell::class, static function () use (&$hydratedCells): void {
+            $hydratedCells++;
+        });
         $metrics = app(TerritoryInfluenceService::class)->execute($context);
         $queryCount = count($queries);
 
@@ -122,6 +127,8 @@ final class TerritoryInfluencePerformanceTest extends TestCase
         $this->assertGreaterThan(3_000, $metrics['direction_draws']);
         $this->assertGreaterThan(1_000, $metrics['mutations']);
         $this->assertLessThanOrEqual(20, $queryCount);
+        // The pass reads every cell but only changed event subjects need models.
+        $this->assertLessThanOrEqual($metrics['mutations'], $hydratedCells);
         $this->assertSame(
             $metrics['mutations'],
             DB::table('audit_events')->where('event_type', 'territory.influenced')->count(),
