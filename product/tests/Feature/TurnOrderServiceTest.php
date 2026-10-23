@@ -7,6 +7,7 @@ use App\Domain\Turn\TurnRandomStreamFactory;
 use App\Models\MapCell;
 use App\Models\Nation;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Event;
 use Tests\Concerns\CreatesTestWorlds;
 use Tests\TestCase;
 
@@ -30,7 +31,13 @@ class TurnOrderServiceTest extends TestCase
         }
 
         $orders = app(TurnOrderService::class);
+        $hydratedCells = 0;
+        Event::listen('eloquent.retrieved: '.MapCell::class, static function () use (&$hydratedCells): void {
+            $hydratedCells++;
+        });
         $stableCellIds = $orders->stableSurfaceCellIds($world);
+        // Ordering reads scalar IDs; generating a model for every cell scales with World size.
+        $this->assertSame(0, $hydratedCells);
         $abandoned = Nation::query()->where('world_id', $world->id)->orderBy('id')->firstOrFail();
         $abandoned->update(['state' => 'abandoned']);
         $stableNationIds = $orders->stableNationIds($world);

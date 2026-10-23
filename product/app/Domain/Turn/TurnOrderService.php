@@ -40,6 +40,8 @@ final class TurnOrderService
             ->orderBy('map_cells.x')
             ->orderBy('map_cells.y')
             ->orderBy('map_cells.id')
+            // IDs are cast below; Eloquent pluck would hydrate a model for every scalar.
+            ->toBase()
             ->pluck('map_cells.id')
             ->map(static fn (mixed $id): int => (int) $id)
             ->all();
