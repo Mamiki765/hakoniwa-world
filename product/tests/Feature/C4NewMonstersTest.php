@@ -12,6 +12,7 @@ use App\Application\MonsterRemovalService;
 use App\Application\MonsterTurnService;
 use App\Application\MonsterWorldSpawnService;
 use App\Application\NationCreationService;
+use App\Application\PlayerIslandEventService;
 use App\Application\RulesetPublisher;
 use App\Application\SecretaryTurnService;
 use App\Application\SurfaceShipTurnService;
@@ -649,13 +650,27 @@ final class C4NewMonstersTest extends TestCase
     {
         [$world, $ruleset] = $this->v11World();
         $nation = app(NationCreationService::class)->create(User::factory()->create(), $world, '核実験', '実験主');
+        $neighbor = app(NationCreationService::class)->create(User::factory()->create(), $world, '被害国', '被害主');
         $space = $this->surfaceMapSpace($world);
-        $origin = MapCell::query()->where('owner_nation_id', $nation->id)
-            ->whereNotIn('id', $nation->capital()->select('map_cell_id'))
-            ->with(['terrain', 'facility', 'ownerNation'])->firstOrFail();
+        $origin = $this->neutralInteriorSea($space, $nation, $neighbor);
+        $this->setCell($origin, 'plain', null, $nation->id, 0);
+        $origin = $origin->fresh(['terrain', 'facility', 'ownerNation']);
         $zero = $this->monster($world, $ruleset, $origin, 'mecha_inora_zero', 4);
         $zero->update(['current_hp' => 1]);
-        $context = $this->context($world, $ruleset, 2, 'zero-nuclear', [$nation->id]);
+        $center = new GridCoordinate($origin->x, $origin->y);
+        $centralCells = [];
+        foreach ([
+            [$nation, 'central_bank', 1, 0, 10],
+            [$nation, 'central_granary', 2, 0, 10],
+            [$neighbor, 'central_bank', 1, 1, 1],
+            [$neighbor, 'central_granary', 2, 1, 10],
+        ] as [$owner, $facilityKey, $distance, $ringIndex, $level]) {
+            $cell = $this->cellAt($space, $center->ring($distance)[$ringIndex]);
+            $this->setCell($cell, 'plain', $facilityKey, $owner->id, 0);
+            $cell->update(['facility_scale' => $level]);
+            $centralCells[] = [$cell, $owner, $distance, $level];
+        }
+        $context = $this->context($world, $ruleset, 2, 'zero-nuclear', [$nation->id, $neighbor->id]);
         $cells = MapCell::query()->where('map_space_id', $space->id)
             ->with(['terrain', 'facility', 'ownerNation'])->orderBy('id')->get();
         $byCoordinate = $cells->mapWithKeys(static fn (MapCell $cell): array => [
@@ -663,7 +678,7 @@ final class C4NewMonstersTest extends TestCase
         ])->all();
         $terrains = TerrainDefinition::query()->whereIn('key', ['sea', 'shallow', 'wasteland'])
             ->get()->keyBy('key');
-        $index = DisasterMutableCellIndex::fromCells($cells, [$nation->id], $terrains);
+        $index = DisasterMutableCellIndex::fromCells($cells, [$nation->id, $neighbor->id], $terrains);
         $batch = app(MonsterTurnService::class)->load($context);
 
         app(MonsterTurnService::class)->processCell(
@@ -682,6 +697,56 @@ final class C4NewMonstersTest extends TestCase
             ->whereRaw("metadata->>'disaster_key' = ?", ['nuclear_self_destruct'])->count());
         $this->assertSame(0, NationMonsterKillStat::query()->count());
         $this->assertSame(0, DB::table('audit_events')->where('event_type', 'monster.reward_distributed')->count());
+        $damageIds = [];
+        $destroyedIds = [];
+        foreach ($centralCells as [$cell, $owner, $distance, $level]) {
+            $lossKey = $distance === 1 ? 'huge_meteor_ring_one_level_loss' : 'huge_meteor_ring_two_level_loss';
+            $expectedLevel = max(0, $level - $ruleset->settings['central_facilities']['disaster_damage'][$lossKey]);
+            $this->assertSame($expectedLevel, (int) $cell->fresh()->facility_scale);
+            $row = DB::table('audit_events')->where('event_type', 'facility.partially_damaged')
+                ->where('subject_id', $cell->id)->sole();
+            $damage = json_decode((string) $row->metadata, true, 512, JSON_THROW_ON_ERROR);
+            $this->assertSame($owner->id, $row->nation_id);
+            $this->assertSame('private', $row->visibility);
+            $this->assertSame($owner->id, $damage['nation_id']);
+            $this->assertSame($owner->name, $damage['nation_name']);
+            $this->assertSame('nuclear_self_destruct_blast', $damage['source_key']);
+            $this->assertSame($zero->id, $damage['monster_instance_id']);
+            $this->assertSame([$origin->x, $origin->y], [$damage['center_x'], $damage['center_y']]);
+            $this->assertSame([$cell->x, $cell->y], [$damage['x'], $damage['y']]);
+            $this->assertSame($nation->id, $damage['pre_impact_owner_nation_id']);
+            $this->assertSame($nation->id, $damage['blast_origin_nation_id'] ?? null);
+            $damageIds[$owner->id][] = (int) $row->id;
+            if ($expectedLevel === 0) {
+                $destroyedIds[$owner->id][] = (int) $row->id;
+                $this->assertNull($cell->fresh()->owner_nation_id);
+            }
+        }
+        foreach ([$nation, $neighbor] as $owner) {
+            $page = app(PlayerIslandEventService::class)->ownerPage($owner, anchorTurn: $context->targetTurn);
+            $damages = collect($page['groups'])->flatMap(static fn (array $group): array => $group['events'])
+                ->where('type', 'facility.partially_damaged');
+            $this->assertEqualsCanonicalizing($damageIds[$owner->id], $damages->pluck('id')->all());
+            $otherOwner = $owner->id === $nation->id ? $neighbor : $nation;
+            $this->assertStringNotContainsString($otherOwner->name, json_encode($damages->values()->all(), JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE));
+            foreach ($damages as $damage) {
+                $this->assertStringContainsString($owner->name, $damage['message']);
+                if ($owner->id === $nation->id) {
+                    $this->assertStringContainsString('広域災害により損傷', $damage['message']);
+                    $this->assertStringNotContainsString('巻き込まれて', $damage['message']);
+                } else {
+                    $this->assertStringContainsString("({$origin->x},{$origin->y})で発生した広域災害に巻き込まれて損傷", $damage['message']);
+                }
+            }
+            $public = app(PlayerIslandEventService::class)->publicNationPage($owner, anchorTurn: $context->targetTurn);
+            $publicDamage = collect($public['groups'])->flatMap(static fn (array $group): array => $group['events'])
+                ->where('type', 'facility.partially_damaged');
+            $this->assertEqualsCanonicalizing($destroyedIds[$owner->id] ?? [], $publicDamage->pluck('id')->all());
+            foreach ($publicDamage as $damage) {
+                $this->assertStringContainsString($owner->name, $damage['message']);
+                $this->assertStringNotContainsString('Lv', $damage['message']);
+            }
+        }
     }
 
     public function test_zero_blast_removes_a_collateral_zero_without_chaining_and_uses_the_neutral_message(): void
@@ -908,9 +973,10 @@ final class C4NewMonstersTest extends TestCase
         return $monster->fresh(['definition', 'occupancy']);
     }
 
-    private function neutralInteriorSea(MapSpace $space, Nation $nation): MapCell
+    private function neutralInteriorSea(MapSpace $space, Nation $nation, ?Nation $otherNation = null): MapCell
     {
         $capital = new GridCoordinate($nation->capital->x, $nation->capital->y);
+        $otherCapital = $otherNation === null ? null : new GridCoordinate($otherNation->capital->x, $otherNation->capital->y);
 
         return MapCell::query()->where('map_space_id', $space->id)
             ->whereBetween('x', [$space->min_x + 2, $space->max_x - 2])
@@ -919,7 +985,8 @@ final class C4NewMonstersTest extends TestCase
             ->whereDoesntHave('monsterOccupancy')
             ->whereHas('terrain', fn ($query) => $query->where('key', 'sea'))
             ->with(['terrain', 'facility', 'ownerNation'])->orderBy('id')->get()
-            ->first(fn (MapCell $cell): bool => (new GridCoordinate($cell->x, $cell->y))->distanceTo($capital) > 5)
+            ->first(fn (MapCell $cell): bool => (new GridCoordinate($cell->x, $cell->y))->distanceTo($capital) > 5
+                && ($otherCapital === null || (new GridCoordinate($cell->x, $cell->y))->distanceTo($otherCapital) > 5))
             ?? throw new DomainException('No neutral interior sea cell was available.');
     }
 

@@ -73,8 +73,6 @@ final readonly class CentralFacilityDamageService
         $cell->save();
         $context->state->markMapChunkChanged($cell->map_chunk_id);
         $this->events->record($context, 'facility.partially_damaged', $cell, [
-            'nation_id' => $ownerNationId,
-            'nation_name' => $ownerNationName,
             'x' => $cell->x,
             'y' => $cell->y,
             'damage_kind' => $damageKind,
@@ -85,6 +83,9 @@ final readonly class CentralFacilityDamageService
             'scale_loss' => $appliedLoss,
             'facility_destroyed' => $destroyed,
             ...$metadata,
+            // Blast metadata describes the origin; damage belongs to the facility's owner.
+            'nation_id' => $ownerNationId,
+            'nation_name' => $ownerNationName,
         ], 'private');
 
         return [

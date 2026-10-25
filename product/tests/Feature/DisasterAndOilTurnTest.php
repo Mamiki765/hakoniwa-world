@@ -1336,42 +1336,117 @@ class DisasterAndOilTurnTest extends TestCase
         $this->assertSame(90, (int) $target->fresh()->facility_scale);
     }
 
-    public function test_v23_huge_meteor_uses_twenty_five_one_central_facility_damage(): void
+    public static function centralFacilityBlastSources(): array
     {
+        return [
+            'actual huge meteor' => ['huge_meteor', 'huge_meteor', '巨大隕石', true],
+            'zero self destruct' => ['nuclear_self_destruct_blast', 'nuclear_self_destruct_blast', '広域災害', true],
+            'defense blast retains existing log' => ['defense_self_destruct', 'huge_meteor', '巨大隕石', false],
+            'monument blast retains existing log' => ['monument_flight', 'huge_meteor', '巨大隕石', false],
+        ];
+    }
+
+    #[DataProvider('centralFacilityBlastSources')]
+    public function test_huge_meteor_shaped_blast_keeps_central_damage_and_records_the_expected_cause(
+        string $disasterKey,
+        string $expectedSource,
+        string $expectedCause,
+        bool $recordsBlastOrigin,
+    ): void {
         [$world, $nation, $ruleset, $space] = $this->worldAndNation('中央施設巨大隕石国');
-        $center = $this->boundsFor($world)->center();
-        $coordinates = [$center, $center->ring(1)[0], $center->ring(2)[0]];
-        $beforeScales = [30, 10, 2];
+        $neighbor = app(NationCreationService::class)->create(User::factory()->create(), $world, '巻込被害国', '巻込主');
+        $capitals = [
+            new GridCoordinate($nation->capital->x, $nation->capital->y),
+            new GridCoordinate($neighbor->capital->x, $neighbor->capital->y),
+        ];
+        $centerCell = MapCell::query()->where('map_space_id', $space->id)
+            ->whereBetween('x', [$space->min_x + 2, $space->max_x - 2])
+            ->whereBetween('y', [$space->min_y + 2, $space->max_y - 2])
+            ->whereNull('owner_nation_id')->orderBy('id')->get()
+            ->first(static fn (MapCell $cell): bool => collect($capitals)->every(
+                static fn (GridCoordinate $capital): bool => (new GridCoordinate($cell->x, $cell->y))->distanceTo($capital) > 2,
+            )) ?? throw new DomainException('No blast center clear of both Capitals was available.');
+        $center = new GridCoordinate($centerCell->x, $centerCell->y);
+        $coordinates = [$center, $center->ring(1)[0], $center->ring(2)[0], $center->ring(2)[1]];
+        $beforeScales = [20, 10, 2, 1];
+        $owners = [$nation, $neighbor, $neighbor, $nation];
+        $damageContract = $ruleset->settings['central_facilities']['disaster_damage'];
+        $losses = [
+            $damageContract['huge_meteor_center_level_loss'],
+            $damageContract['huge_meteor_ring_one_level_loss'],
+            $damageContract['huge_meteor_ring_two_level_loss'],
+            $damageContract['huge_meteor_ring_two_level_loss'],
+        ];
         $cells = [];
         foreach ($coordinates as $index => $coordinate) {
             $cell = $this->cellAt($space, $coordinate->x, $coordinate->y);
-            $this->setCell($cell, 'plain', $index === 1 ? 'central_granary' : 'central_bank', $nation->id, 0);
+            $this->setCell($cell, 'plain', $index % 2 === 1 ? 'central_granary' : 'central_bank', $owners[$index]->id, 0);
             $cell->facility_scale = $beforeScales[$index];
             $cell->save();
             $cells[] = $cell->fresh(['terrain', 'facility']);
         }
-        $cellIndex = DisasterMutableCellIndex::fromCells($cells, [$nation->id]);
-        [$context, $run] = $this->context($world, $ruleset, hash('sha256', 'v23-central-huge-meteor'), [$nation->id]);
+        $cellIndex = DisasterMutableCellIndex::fromCells($cells, [$nation->id, $neighbor->id]);
+        [$context, $run] = $this->context($world, $ruleset, hash('sha256', 'v23-central-huge-meteor'), [$nation->id, $neighbor->id]);
 
         $damaged = app(DisasterTurnService::class)->resolveHugeMeteorBlast(
             $context,
             $space,
             $center,
             $ruleset->settings['turn_processing']['disasters']['huge_meteor'],
+            $disasterKey,
+            $disasterKey === 'nuclear_self_destruct_blast'
+                ? ['nation_id' => $nation->id, 'nation_name' => $nation->name]
+                : [],
             cellIndex: $cellIndex,
         );
 
-        $this->assertSame(3, $damaged);
-        $this->assertSame([10, 5, 1], array_map(
-            static fn (MapCell $cell): int => (int) $cell->fresh()->facility_scale,
-            $cells,
-        ));
+        $this->assertSame(count($cells), $damaged);
+        $damageIds = [];
+        foreach ($cells as $index => $cell) {
+            $after = $cell->fresh(['terrain', 'facility']);
+            $expectedLevel = max(0, $beforeScales[$index] - $losses[$index]);
+            $this->assertSame($expectedLevel, (int) $after->facility_scale);
+            $this->assertSame($expectedLevel === 0 ? null : $owners[$index]->id, $after->owner_nation_id);
+            $this->assertSame($expectedLevel === 0 ? 'shallow' : 'plain', $after->terrain->key);
+            $this->assertSame($expectedLevel === 0 ? null : $cell->facility_definition_id, $after->facility_definition_id);
+            $row = DB::table('audit_events')->where('event_type', 'facility.partially_damaged')
+                ->where('subject_id', $cell->id)->sole();
+            $this->assertSame($owners[$index]->id, $row->nation_id);
+            $damageIds[$owners[$index]->id][] = (int) $row->id;
+        }
         $events = $this->events($run, 'facility.partially_damaged');
-        $this->assertSame([20, 5, 1], array_column($events, 'scale_loss'));
-        $this->assertSame([0, 1, 2], array_column($events, 'ring_distance'));
-        $this->assertSame(3, DB::table('audit_events')->where('event_type', 'facility.partially_damaged')
+        $this->assertSame(array_map(min(...), $beforeScales, $losses), array_column($events, 'scale_loss'));
+        $this->assertSame([0, 1, 2, 2], array_column($events, 'ring_distance'));
+        $this->assertSame($recordsBlastOrigin ? array_fill(0, count($cells), $nation->id) : [], array_column($events, 'blast_origin_nation_id'));
+        $this->assertSame(array_map(static fn (Nation $owner): int => $owner->id, $owners), array_column($events, 'nation_id'));
+        $this->assertSame(array_map(static fn (Nation $owner): string => $owner->name, $owners), array_column($events, 'nation_name'));
+        foreach (['damage_kind', 'source_key', 'disaster_key'] as $key) {
+            $this->assertSame(array_fill(0, count($cells), $expectedSource), array_column($events, $key));
+        }
+        $this->assertSame(count($cells), DB::table('audit_events')->where('event_type', 'facility.partially_damaged')
             ->where('visibility', 'private')
             ->whereRaw("metadata->>'turn_run_id' = ?", [(string) $run->id])->count());
+
+        foreach ([$nation, $neighbor] as $owner) {
+            $page = app(PlayerIslandEventService::class)->ownerPage($owner, anchorTurn: $context->targetTurn);
+            $damages = collect($page['groups'])->flatMap(static fn (array $group): array => $group['events'])
+                ->where('type', 'facility.partially_damaged');
+            $this->assertEqualsCanonicalizing($damageIds[$owner->id], $damages->pluck('id')->all());
+            foreach ($damages as $damage) {
+                $this->assertStringContainsString($owner->name, $damage['message']);
+                // The cause is the requested display contract, independent of facility names and level settings.
+                if ($recordsBlastOrigin && $owner->id !== $nation->id) {
+                    $this->assertStringContainsString("({$center->x},{$center->y})で発生した{$expectedCause}に巻き込まれて損傷", $damage['message']);
+                } else {
+                    $this->assertStringContainsString($expectedCause.'により損傷', $damage['message']);
+                    $this->assertStringNotContainsString('巻き込まれて', $damage['message']);
+                }
+            }
+        }
+        $public = app(PlayerIslandEventService::class)->publicWorldPage($world, anchorTurn: $context->targetTurn);
+        $publicDamage = collect($public['groups'])->flatMap(static fn (array $group): array => $group['events'])
+            ->where('type', 'facility.partially_damaged');
+        $this->assertCount(count(array_filter($events, static fn (array $event): bool => $event['facility_destroyed'])), $publicDamage);
     }
 
     public function test_v23_eruption_uses_five_one_central_facility_damage(): void
