@@ -116,18 +116,21 @@ final class MonsterDamageService
             $sourceId = $undergroundFiringBase !== null
                 ? $undergroundFiringBase->id
                 : $firingBase?->id;
+            $damageOrigin = [
+                'monster_key' => $locked->definition->key,
+                'nation_id' => $killerNation?->id,
+                'attacker_nation_id' => $killerNation?->id,
+                'attacker_nation_name' => $killerNation?->name,
+                'host_nation_id' => $hostNationSnapshot?->id,
+                'host_nation_name' => $hostNationSnapshot?->name,
+                'x' => $hostCell->x,
+                'y' => $hostCell->y,
+                'damage_type' => $damageType,
+                'requested_damage' => $amount,
+            ];
             if ($this->hardening->isHardened($locked->definition, $context->targetTurn)) {
                 $this->events->record($context, 'monster.damage_blocked', $locked, [
-                    'monster_key' => $locked->definition->key,
-                    'nation_id' => $killerNation?->id,
-                    'attacker_nation_id' => $killerNation?->id,
-                    'attacker_nation_name' => $killerNation?->name,
-                    'host_nation_id' => $hostNationSnapshot?->id,
-                    'host_nation_name' => $hostNationSnapshot?->name,
-                    'x' => $hostCell->x,
-                    'y' => $hostCell->y,
-                    'damage_type' => $damageType,
-                    'requested_damage' => $amount,
+                    ...$damageOrigin,
                     'actual_damage' => 0,
                     'experience_per_damage' => $experiencePerDamage,
                     'firing_base_experience_requested' => 0,
@@ -170,16 +173,7 @@ final class MonsterDamageService
                 $this->removal->synchronizeAliveInstance($context, $locked);
                 $context->state->markMapChunkChanged($hostCell->map_chunk_id);
                 $this->events->record($context, 'monster.damaged', $locked, [
-                    'monster_key' => $locked->definition->key,
-                    'nation_id' => $killerNation?->id,
-                    'attacker_nation_id' => $killerNation?->id,
-                    'attacker_nation_name' => $killerNation?->name,
-                    'host_nation_id' => $hostNationSnapshot?->id,
-                    'host_nation_name' => $hostNationSnapshot?->name,
-                    'x' => $hostCell->x,
-                    'y' => $hostCell->y,
-                    'damage_type' => $damageType,
-                    'requested_damage' => $amount,
+                    ...$damageOrigin,
                     'before_hp' => $beforeHp,
                     'after_hp' => $afterHp,
                     'actual_damage' => $actualDamage,
