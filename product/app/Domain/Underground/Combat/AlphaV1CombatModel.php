@@ -245,7 +245,7 @@ final readonly class AlphaV1CombatModel
         $finalStates = $this->partyStateSnapshots(array_values([...$players, ...$enemies]));
         $awakenings = [];
         foreach ($players as $player) {
-            $awakenings[$player->combatantId] = $this->partyAwakeningSnapshot($player);
+            $awakenings[$player->combatantId] = $this->awakeningSnapshot($player);
         }
 
         return new PartyCombatResult(
@@ -413,8 +413,16 @@ final readonly class AlphaV1CombatModel
         ];
     }
 
-    /** @return array<string, mixed> */
-    private function partyAwakeningSnapshot(BuildCombatState $player): array
+    /**
+     * @return array{
+     *     identity: string, unlocked: bool,
+     *     gauge_before: int, gauge_after: int, gauge_gained: int, triggered: bool,
+     *     normal_max_hp: int, final_max_hp: int,
+     *     normal_stats: array<string, int>, final_stats: array<string, int>,
+     *     technique: array{key: string, name: string, summary: string, consumes_action: bool, used: bool}|null
+     * }
+     */
+    private function awakeningSnapshot(BuildCombatState $player): array
     {
         return [
             'identity' => UndergroundAwakening::IDENTITY,
@@ -722,26 +730,7 @@ final readonly class AlphaV1CombatModel
             $abnormal,
             $actionLog,
             $equipment,
-            [
-                'identity' => UndergroundAwakening::IDENTITY,
-                'unlocked' => $player->awakeningUnlocked,
-                'gauge_before' => $player->awakeningGaugeBefore,
-                'gauge_after' => $player->awakeningGauge,
-                'gauge_gained' => $player->awakeningGaugeGained,
-                'triggered' => $player->awakened,
-                'normal_max_hp' => $player->normalMaxHp,
-                'final_max_hp' => $player->maxHp,
-                'normal_stats' => $player->normalStats,
-                'final_stats' => $player->stats,
-                'technique' => $player->awakeningTechniqueKey !== null
-                    ? array_merge($this->awakening->technique(
-                        $this->growthPathForTechnique($player),
-                        $player->awakeningTechniqueKey,
-                    ), [
-                        'used' => $player->awakeningTechniqueUsed,
-                    ])
-                    : null,
-            ],
+            $this->awakeningSnapshot($player),
             $initialState,
         );
     }
