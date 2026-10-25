@@ -12,6 +12,7 @@ use App\Domain\Economy\SalePolicy;
 use App\Domain\Economy\UnderseaCityMaintenancePlanner;
 use App\Domain\Facility\FacilityCapacityService;
 use App\Domain\Facility\FacilityRankPolicy;
+use App\Domain\Facility\SettlementStageResolver;
 use App\Domain\Map\GridCoordinate;
 use App\Domain\Map\MapCellStateService;
 use App\Domain\Map\NationLandAreaCalculator;
@@ -1856,14 +1857,10 @@ final class CompleteTurnEngine
             return 0;
         }
         $stages = $context->ruleset->settings['turn_processing']['settlement']['stages'];
-        $targetKey = 'city';
-        foreach (['village', 'town', 'city'] as $stageKey) {
-            $stage = $stages[$stageKey];
-            if ($cell->population >= $stage['minimum_population'] && $cell->population <= $stage['maximum_population']) {
-                $targetKey = $stage['facility_key'];
-                break;
-            }
-        }
+        $targetKey = SettlementStageResolver::forPopulation(
+            $cell->population,
+            [$stages['village'], $stages['town'], $stages['city']],
+        );
         $before = $cell->facility?->key;
         if ($before === $targetKey) {
             return 0;
