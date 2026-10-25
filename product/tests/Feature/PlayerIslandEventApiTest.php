@@ -12,6 +12,7 @@ use App\Models\World;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
+use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\Concerns\CreatesTestWorlds;
 use Tests\TestCase;
 
@@ -546,6 +547,74 @@ class PlayerIslandEventApiTest extends TestCase
             }
             $this->assertStringNotContainsString('ミサイルにより一部損壊', (string) $response->getContent());
         }
+    }
+
+    public static function centralFacilityBlastLogContexts(): array
+    {
+        return [
+            'foreign zero' => ['nuclear_self_destruct_blast', 'foreign', true, '広域災害', true],
+            'foreign meteor' => ['huge_meteor', 'foreign', true, '巨大隕石', true],
+            'same island' => ['nuclear_self_destruct_blast', 'same', true, '広域災害', false],
+            'legacy zero without snapshot' => ['nuclear_self_destruct_blast', 'legacy', true, '広域災害', false],
+            'legacy meteor without snapshot' => ['huge_meteor', 'legacy', true, '巨大隕石', false],
+            'neutral origin' => ['nuclear_self_destruct_blast', 'neutral', true, '広域災害', false],
+            'missing center' => ['nuclear_self_destruct_blast', 'foreign', false, '広域災害', false],
+        ];
+    }
+
+    #[DataProvider('centralFacilityBlastLogContexts')]
+    public function test_central_facility_blast_log_uses_only_explicit_foreign_origin_snapshots(
+        string $sourceKey,
+        string $originKind,
+        bool $hasCenter,
+        string $expectedCause,
+        bool $isCollateral,
+    ): void {
+        [$world, $owner, $nation] = $this->nation('被害表示島');
+        [, , $origin] = $this->nation('非公開の発生元', $world);
+        $world->update(['current_turn' => 2]);
+        DB::table('audit_events')->delete();
+        $originId = match ($originKind) {
+            'same' => $nation->id,
+            'neutral' => null,
+            default => $origin->id,
+        };
+        $metadata = [
+            'nation_id' => $nation->id, 'nation_name' => $nation->name,
+            'x' => 24, 'y' => 25,
+            'facility_key' => 'central_granary',
+            'damage_kind' => $sourceKey, 'source_key' => $sourceKey,
+            'before_scale' => 10, 'after_scale' => 5, 'facility_destroyed' => false,
+            'pre_impact_owner_nation_id' => $originId,
+            'pre_impact_owner_nation_name' => $origin->name,
+        ];
+        if ($originKind !== 'legacy') {
+            $metadata['blast_origin_nation_id'] = $originId;
+        }
+        if ($hasCenter) {
+            $metadata['center_x'] = 10;
+            $metadata['center_y'] = 11;
+        }
+        $id = $this->audit('facility.partially_damaged', $nation, $nation, 'private', 2, $metadata);
+
+        $response = $this->actingAs($owner)->getJson("/api/v1/nations/{$nation->id}/events")->assertOk();
+        $event = collect($response->json('data.groups'))->flatMap(static fn (array $group): array => $group['events'])
+            ->firstWhere('id', $id);
+        $this->assertIsArray($event);
+        $this->assertStringContainsString('(24,25)', $event['message']);
+        $this->assertStringContainsString('Lv10からLv5', $event['message']);
+        if ($isCollateral) {
+            $this->assertStringContainsString("(10,11)で発生した{$expectedCause}に巻き込まれて損傷", $event['message']);
+        } else {
+            $this->assertStringNotContainsString('巻き込まれて', $event['message']);
+            $this->assertStringContainsString($expectedCause.'により損傷', $event['message']);
+        }
+        $body = json_encode($response->json(), JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE);
+        foreach ([$origin->name, 'blast_origin_nation_id', 'pre_impact_owner_nation_name', 'metadata'] as $hidden) {
+            $this->assertStringNotContainsString($hidden, $body);
+        }
+        $this->getJson("/api/v1/public/worlds/{$world->id}/events")->assertOk()->assertJsonPath('data.groups', []);
+        $this->getJson("/api/v1/public/nations/{$nation->id}/events")->assertOk()->assertJsonPath('data.groups', []);
     }
 
     public function test_owner_log_requires_membership_and_includes_only_its_own_public_island_events(): void

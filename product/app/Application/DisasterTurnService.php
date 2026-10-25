@@ -1043,12 +1043,18 @@ final class DisasterTurnService
         bool $createBuriedTreasure = false,
     ): int {
         $damaged = 0;
+        $blastOriginNationId = null;
+        $recordBlastOrigin = in_array($disasterKey, ['huge_meteor', 'nuclear_self_destruct_blast'], true);
         $ships = $shipBatch === null
             ? $this->shipRemoval->lockActiveWorldIndex($context)
             : null;
         $coordinates = [...$center->ring(0), ...$center->ring(1), ...$center->ring(2)];
         foreach ($coordinates as $coordinate) {
             $cell = $this->cellAt($space, $coordinate, $cellIndex);
+            if ($coordinate->x === $center->x && $coordinate->y === $center->y) {
+                // Capture the origin before the center can lose its owner.
+                $blastOriginNationId = $cell?->owner_nation_id;
+            }
             if ($cell === null || ! $this->isMutable($cell, $cellIndex)) {
                 continue;
             }
@@ -1074,7 +1080,12 @@ final class DisasterTurnService
                 $cell,
                 'huge_meteor',
                 $distance,
-                ['center_x' => $center->x, 'center_y' => $center->y, ...$eventMetadata],
+                [
+                    'center_x' => $center->x, 'center_y' => $center->y, ...$eventMetadata,
+                    ...($recordBlastOrigin ? ['blast_origin_nation_id' => $blastOriginNationId] : []),
+                ],
+                // Preserve the established central-facility logs for the other shared blast callers.
+                sourceKey: $disasterKey === 'nuclear_self_destruct_blast' ? $disasterKey : null,
             );
             if ($centralDamage !== null) {
                 $damaged += ($centralDamage || $shipRemoved) ? 1 : 0;
@@ -1563,39 +1574,41 @@ final class DisasterTurnService
     private function applyCentralFacilityDisasterDamage(
         TurnContext $context,
         MapCell $cell,
-        string $disasterKey,
+        string $damageProfileKey,
         ?int $ringDistance = null,
         array $metadata = [],
+        ?string $sourceKey = null,
     ): ?bool {
         if (! $this->centralFacilityDamage->isCentral($context, $cell)) {
             return null;
         }
         $contract = $this->centralFacilityDisasterContract($context);
-        if (in_array($disasterKey, $contract['immune_disaster_keys'], true)) {
+        if (in_array($damageProfileKey, $contract['immune_disaster_keys'], true)) {
             return false;
         }
         $levelLoss = match (true) {
-            $disasterKey === 'tsunami' => $contract['tsunami_level_loss'],
-            $disasterKey === 'meteor_shower' => $contract['meteor_shower_level_loss'],
-            $disasterKey === 'huge_meteor' && $ringDistance === 0 => $contract['huge_meteor_center_level_loss'],
-            $disasterKey === 'huge_meteor' && $ringDistance === 1 => $contract['huge_meteor_ring_one_level_loss'],
-            $disasterKey === 'huge_meteor' && $ringDistance === 2 => $contract['huge_meteor_ring_two_level_loss'],
-            $disasterKey === 'eruption' && $ringDistance === 0 => $contract['eruption_center_level_loss'],
-            $disasterKey === 'eruption' && $ringDistance === 1 => $contract['eruption_ring_one_level_loss'],
-            $disasterKey === 'land_subsidence' => $contract['land_subsidence_level_loss'],
+            $damageProfileKey === 'tsunami' => $contract['tsunami_level_loss'],
+            $damageProfileKey === 'meteor_shower' => $contract['meteor_shower_level_loss'],
+            $damageProfileKey === 'huge_meteor' && $ringDistance === 0 => $contract['huge_meteor_center_level_loss'],
+            $damageProfileKey === 'huge_meteor' && $ringDistance === 1 => $contract['huge_meteor_ring_one_level_loss'],
+            $damageProfileKey === 'huge_meteor' && $ringDistance === 2 => $contract['huge_meteor_ring_two_level_loss'],
+            $damageProfileKey === 'eruption' && $ringDistance === 0 => $contract['eruption_center_level_loss'],
+            $damageProfileKey === 'eruption' && $ringDistance === 1 => $contract['eruption_ring_one_level_loss'],
+            $damageProfileKey === 'land_subsidence' => $contract['land_subsidence_level_loss'],
             default => null,
         };
         if ($levelLoss === null || $levelLoss === 0) {
             return false;
         }
+        $sourceKey ??= $damageProfileKey;
         $damage = $this->centralFacilityDamage->apply(
             $context,
             $cell,
             $levelLoss,
-            $disasterKey,
-            $disasterKey,
+            $sourceKey,
+            $sourceKey,
             [
-                'disaster_key' => $disasterKey,
+                'disaster_key' => $sourceKey,
                 'ring_distance' => $ringDistance,
                 ...$metadata,
             ],
