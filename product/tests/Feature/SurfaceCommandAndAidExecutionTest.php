@@ -1368,6 +1368,9 @@ final class SurfaceCommandAndAidExecutionTest extends CommandAndMissileTestCase
         $this->assertSame('terrain_destroyed', $impact['effect']);
         $this->assertSame('central_granary', $impact['removed_facility_key']);
         $this->assertSame(1, $impact['scale_loss']);
+        $auditImpact = json_decode((string) DB::table('audit_events')->where('event_type', 'missile.impact')
+            ->where('subject_id', $cell->id)->value('metadata'), true, 512, JSON_THROW_ON_ERROR);
+        $this->assertSharedLandDamageDetails($impact, $auditImpact, central: true);
     }
 
     public function test_v21_rank_two_land_facility_damage_preserves_cell_and_adds_three_karma_points(): void
@@ -1439,6 +1442,10 @@ final class SurfaceCommandAndAidExecutionTest extends CommandAndMissileTestCase
         $this->assertSame(48, $impact['after_scale']);
         $this->assertSame(3, $impact['scale_loss']);
         $this->assertArrayNotHasKey('removed_facility_key', $impact);
+        $detail = json_decode((string) DB::table('audit_events')->where('event_type', 'missile.launch_detail')
+            ->whereRaw("metadata->>'queue_item_id' = ?", [(string) $item->id])->value('metadata'), true, 512, JSON_THROW_ON_ERROR);
+        $this->assertSharedLandDamageDetails($detail['impacts'][0], $impact, central: false);
+        $this->assertArrayNotHasKey('removed_facility_key', $detail['impacts'][0]);
 
         $karma = DB::table('audit_events')->where('event_type', 'karma.missile_impact')
             ->whereRaw("metadata->>'effect' = 'facility_scale_land_damaged'")
@@ -1448,6 +1455,28 @@ final class SurfaceCommandAndAidExecutionTest extends CommandAndMissileTestCase
         $this->assertSame(3, $karma['impact_category_points']);
         $this->assertSame(3, $karma['crime_points']);
         $this->assertSame(3, (int) $firing->fresh()->karma);
+    }
+
+    /**
+     * The persisted impact and launch detail must expose the same scalar damage contract.
+     *
+     * @param  array<string, mixed>  $launchImpact
+     * @param  array<string, mixed>  $auditImpact
+     */
+    private function assertSharedLandDamageDetails(array $launchImpact, array $auditImpact, bool $central): void
+    {
+        $keys = [
+            'facility_key', 'before_scale', 'after_scale', 'scale_loss',
+            'from_terrain_key', 'to_terrain_key', 'monster_removed',
+        ];
+        if ($central) {
+            $keys[] = 'removed_facility_key';
+        }
+        foreach ($keys as $key) {
+            $this->assertArrayHasKey($key, $launchImpact);
+            $this->assertArrayHasKey($key, $auditImpact);
+            $this->assertSame($launchImpact[$key], $auditImpact[$key], 'Shared land damage detail '.$key);
+        }
     }
 
     /** @return array{World, User, Nation, Nation} */
