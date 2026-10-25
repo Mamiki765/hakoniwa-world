@@ -298,14 +298,7 @@ final class CommandQueueService
             );
             $this->assertVersion($queue, $expectedVersion);
 
-            $activeItems = NationCommandQueueItem::query()
-                ->where('nation_command_queue_id', $queue->id)
-                ->where('status', 'queued')
-                ->orderBy('queue_position')
-                ->orderBy('id')
-                ->with('definition')
-                ->lockForUpdate()
-                ->get();
+            $activeItems = $this->lockedQueuedItems($queue);
             $limit = $this->queueLimit($world);
             if ($activeItems->count() >= $limit) {
                 throw new PlayerFacingCommandException("command queueの上限{$limit}件に達しています。");
@@ -313,14 +306,7 @@ final class CommandQueueService
             if ($activeItems->contains(static fn (NationCommandQueueItem $item): bool => $item->queue_position === null || $item->queue_position < 1 || $item->queue_position > $limit
             )) {
                 $this->queueCompactor->compact($queue);
-                $activeItems = NationCommandQueueItem::query()
-                    ->where('nation_command_queue_id', $queue->id)
-                    ->where('status', 'queued')
-                    ->orderBy('queue_position')
-                    ->orderBy('id')
-                    ->with('definition')
-                    ->lockForUpdate()
-                    ->get();
+                $activeItems = $this->lockedQueuedItems($queue);
             }
             $position ??= $this->firstAutomaticPosition($activeItems->pluck('queue_position')->all(), $limit);
             if ($position < 1 || $position > $limit) {
@@ -564,7 +550,7 @@ final class CommandQueueService
             [$lockedNation] = $this->lockActiveOwnerAfterWorld($user, $nation, $world);
             $queue = NationCommandQueue::query()->where('nation_id', $lockedNation->id)->lockForUpdate()->firstOrFail();
             $this->assertVersion($queue, $expectedVersion);
-            $activeItems = $this->lockedItemsForPositioning($queue);
+            $activeItems = $this->lockedQueuedItems($queue);
             $currentIds = $activeItems->pluck('id')
                 ->map(static fn (mixed $id): int => (int) $id)
                 ->sort()
@@ -635,7 +621,7 @@ final class CommandQueueService
             [$lockedNation] = $this->lockActiveOwnerAfterWorld($user, $nation, $world);
             $queue = NationCommandQueue::query()->where('nation_id', $lockedNation->id)->lockForUpdate()->firstOrFail();
             $this->assertVersion($queue, $expectedVersion);
-            $activeItems = $this->lockedItemsForPositioning($queue);
+            $activeItems = $this->lockedQueuedItems($queue);
             $current = $activeItems->pluck('id')
                 ->map(static fn (mixed $id): int => (int) $id)
                 ->all();
@@ -656,7 +642,7 @@ final class CommandQueueService
     }
 
     /** @return Collection<int, NationCommandQueueItem> */
-    private function lockedItemsForPositioning(NationCommandQueue $queue): Collection
+    private function lockedQueuedItems(NationCommandQueue $queue): Collection
     {
         return NationCommandQueueItem::query()
             ->where('nation_command_queue_id', $queue->id)
@@ -722,14 +708,7 @@ final class CommandQueueService
             if ($item->nation_command_queue_id !== $queue->id || $item->status !== 'queued') {
                 throw new PlayerFacingCommandException('取消できないcommandです。');
             }
-            $activeItems = NationCommandQueueItem::query()
-                ->where('nation_command_queue_id', $queue->id)
-                ->where('status', 'queued')
-                ->orderBy('queue_position')
-                ->orderBy('id')
-                ->with('definition')
-                ->lockForUpdate()
-                ->get();
+            $activeItems = $this->lockedQueuedItems($queue);
             $nextPosition = 1;
             $proposedItems = $activeItems
                 ->reject(static fn (NationCommandQueueItem $activeItem): bool => $activeItem->id === $item->id)
