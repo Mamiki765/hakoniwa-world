@@ -7,6 +7,17 @@ use Tests\TestCase;
 /** @mixin TestCase */
 trait InteractsWithJsonWorkers
 {
+    private function waitForFile(string $path, string $label): void
+    {
+        $deadline = microtime(true) + 10;
+        while (! is_file($path)) {
+            if (microtime(true) >= $deadline) {
+                $this->fail("{$label} barrier timed out.");
+            }
+            usleep(10_000);
+        }
+    }
+
     /** @param list<string> $command
      * @return array{process: resource, pipes: array<int, resource>}
      */
