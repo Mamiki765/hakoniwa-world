@@ -1339,6 +1339,7 @@ final class SecretaryItemEffectsTest extends TestCase
         ]);
         $state = new TurnState;
         $state->setStableNationIds($nationIds);
+        $state->setLifecycleNationIds($nationIds);
         $state->setDevelopmentNationIds($nationIds);
 
         return new TurnContext(
@@ -1356,6 +1357,7 @@ final class SecretaryItemEffectsTest extends TestCase
     {
         $state = new TurnState;
         $state->setStableNationIds($context->state->stableNationIds());
+        $state->setLifecycleNationIds($context->state->lifecycleNationIds());
         $state->setDevelopmentNationIds($context->state->developmentNationIds());
 
         return new TurnContext(

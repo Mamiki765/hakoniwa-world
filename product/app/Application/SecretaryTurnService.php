@@ -202,7 +202,8 @@ final class SecretaryTurnService
         }
         $expected = [];
         $equipmentVersions = [];
-        foreach ($context->state->stableNationIds() as $nationId) {
+        // Dormant Nations also receive the turn-start disaster charm snapshot.
+        foreach ($context->state->lifecycleNationIds() as $nationId) {
             if (! $context->state->hasSecretaryItemEffectSnapshot($nationId)) {
                 continue;
             }

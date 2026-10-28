@@ -11,12 +11,14 @@ use App\Application\NationCreationService;
 use App\Application\OceanWorldGenerator;
 use App\Application\PlayerIslandEventService;
 use App\Application\SecretaryTurnService;
+use App\Application\TurnRunner;
 use App\Application\WorldExpansionService;
 use App\Domain\Map\GridCoordinate;
 use App\Domain\Map\MapCellStateService;
 use App\Domain\Turn\DeterministicRandomStream;
 use App\Domain\Turn\TurnContext;
 use App\Domain\Turn\TurnRandomStreamFactory;
+use App\Domain\Turn\TurnSeedGenerator;
 use App\Domain\Turn\TurnState;
 use App\Domain\World\MapBounds;
 use App\Models\BuriedTreasure;
@@ -856,6 +858,52 @@ class DisasterAndOilTurnTest extends TestCase
         $this->assertSame(1, $result['damaged_cells']);
         $this->assertSame('wasteland', $target->fresh()->terrain()->value('key'));
         $this->assertSame(3, $this->event($run, 'disaster.cell_damaged')['adjacent_water_count']);
+    }
+
+    public function test_dormant_nation_wave_charm_consumption_commits_with_the_complete_turn(): void
+    {
+        [$world, $nation, $ruleset, $space, $user] = $this->worldAndNation('休眠お守り検証国');
+        $ruleset = $this->forceGlobal($ruleset, 'tsunami');
+        $capital = $nation->capital()->sole();
+        $protectionRadius = (int) $ruleset->settings['nation_lifecycle']['dormant_protection_radius'];
+        $bounds = $space->currentBounds();
+        $capitalCoordinate = new GridCoordinate((int) $capital->x, (int) $capital->y);
+        $coordinate = collect($capitalCoordinate->ring($protectionRadius + 1))->first(
+            static fn (GridCoordinate $coordinate): bool => $bounds->contains($coordinate->x, $coordinate->y),
+        );
+        $this->assertInstanceOf(GridCoordinate::class, $coordinate);
+        $target = $this->cellAt($space, $coordinate->x, $coordinate->y);
+        foreach ($coordinate->neighborsWithin($space->min_x, $space->max_x, $space->min_y, $space->max_y) as $neighbor) {
+            $this->setCell($this->cellAt($space, $neighbor->x, $neighbor->y), 'sea', null, null, 0);
+        }
+        $this->setCell($target, 'plain', 'farm', $nation->id, 0);
+        $nation->update([
+            'state' => 'dormant', 'state_reason' => 'idle', 'state_started_turn' => 1,
+            'resume_at_turn' => null,
+            'idle_counter' => $ruleset->settings['nation_lifecycle']['dormant_idle_threshold'],
+        ]);
+        $secretary = $user->secretary()->sole();
+        $equipmentVersion = (int) $secretary->surfaceState()->value('equipment_version');
+        $charm = $secretary->itemInstances()->create([
+            'item_key' => 'wave_charm', 'level' => 2, 'equipped_slot' => 3,
+            'grant_key' => 'test:dormant-wave-charm', 'obtained_at' => now(),
+        ]);
+        $seed = $this->seedForCenter(
+            TurnRandomStreamFactory::GLOBAL_TSUNAMI_CENTER, $target->x, $target->y, $space,
+        );
+        $seeds = $this->createMock(TurnSeedGenerator::class);
+        $seeds->expects($this->once())->method('generate')->willReturn($seed);
+        $this->app->instance(TurnSeedGenerator::class, $seeds);
+
+        $run = app(TurnRunner::class)->run($world);
+
+        $this->assertSame(TurnRun::STATUS_COMPLETED, $run->status);
+        $this->assertSame($run->target_turn, $world->fresh()->current_turn);
+        $this->assertSame('dormant', $nation->fresh()->state);
+        $this->assertSame('farm', $target->fresh()->facility()->value('key'));
+        $this->assertSame(1, $charm->fresh()->level);
+        $this->assertSame($equipmentVersion + 1, (int) $secretary->surfaceState()->value('equipment_version'));
+        $this->assertSame('tsunami', $this->event($run, 'secretary.disaster_charm_protected')['disaster_key']);
     }
 
     private function assertRankTwoFactoryPartiallyDamaged(
